@@ -138,6 +138,11 @@ std::string FileData::getSystemPath(std::string path){
         path = path.substr(9, path.length());
         return System::instance().getShaderPath() + "/" + FileData::simplifyPath(path);
     }
+    if (beginWith(path, "content://")){
+        path = path.substr(10, path.length());
+        const std::string root = System::instance().getContentPath();
+        return root.empty() ? FileData::simplifyPath(path) : root + "/" + FileData::simplifyPath(path);
+    }
 
     return System::instance().getAssetPath() + "/" + FileData::simplifyPath(path);
 }

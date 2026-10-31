@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SystemMac.h"
+#include "PlatformConfig.h"
 #include "WindowMac.h"
 #include "MacTextInputClient.h"
 
@@ -164,6 +165,9 @@ void SystemMac::hideVirtualKeyboard() {
 // executable. A project run from outside the editor keeps them in the project
 // directory, so the editor bakes that path in (Generator::getPlatformCMakeConfig).
 std::string SystemMac::getAssetPath() {
+    // a prebuilt player's content root (Contents/Resources of its bundle, or --content)
+    if (!platformConfig().contentRoot.empty())
+        return platformConfig().contentRoot + "/assets";
     std::string bundlePath;
     if (bundleResourcePath(@"assets", bundlePath)) return bundlePath;
 
@@ -190,6 +194,8 @@ std::string SystemMac::getCachePath() {
 }
 
 std::string SystemMac::getLuaPath() {
+    if (!platformConfig().contentRoot.empty())
+        return platformConfig().contentRoot + "/lua";
     std::string bundlePath;
     if (bundleResourcePath(@"lua", bundlePath)) return bundlePath;
 
@@ -201,6 +207,8 @@ std::string SystemMac::getLuaPath() {
 }
 
 std::string SystemMac::getShaderPath() {
+    if (!platformConfig().contentRoot.empty())
+        return System::getShaderPath();
     std::string bundlePath;
     if (bundleResourcePath(@"shaders", bundlePath)) return bundlePath;
 

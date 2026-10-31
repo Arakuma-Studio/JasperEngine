@@ -78,6 +78,10 @@ namespace jasperengine::editor{
         bool operator!=(const VcsProjectSettings& other) const { return !(*this == other); }
     };
 
+    namespace cook {
+        class SceneCooker;
+    }
+
     struct LocalBuildSettings;
 
     enum class SceneType{
@@ -597,6 +601,9 @@ namespace jasperengine::editor{
         // Google Mobile Ads is linked only when enabled
         bool admobEnabled = false;
         std::string admobAppId;
+        // S30: the team that signs a device build, and the archive's export method
+        std::string teamId;
+        std::string exportMethod = "development";   // development, ad-hoc, app-store
     };
 
     enum class AndroidOrientation {
@@ -630,6 +637,13 @@ namespace jasperengine::editor{
         // Google Mobile Ads is compiled in only when enabled
         bool admobEnabled = false;
         std::string admobAppId;
+        // S30: a prebuilt player's package (androidFormatName: aab, the default; apk-per-abi; or
+        // apk, the universal APK of every selected ABI), and the release keystore (its passwords
+        // are never saved: the build asks, or JASPER_ANDROID_KS_PASS / JASPER_ANDROID_KEY_PASS);
+        // no keystore: the debug one (~/.android/debug.keystore)
+        std::string packageFormat = "aab";
+        std::filesystem::path keystorePath;
+        std::string keystoreAlias;
     };
 
     // Google's sample AdMob apps, which only serve test ads. Exports never fall back to them.
@@ -754,6 +768,8 @@ namespace jasperengine::editor{
         // Build Settings > Development Build (S15 R39): a Release game with the profiler and its
         // --profile options (export: developmentBuild, default off)
         bool developmentBuild = false;
+        std::string buildMethod = "auto";
+        bool packContent = false;
         ApplicationSettings applicationSettings;
         WebProjectSettings webProjectSettings;
         LinuxProjectSettings linuxProjectSettings;
@@ -808,6 +824,9 @@ namespace jasperengine::editor{
         std::unordered_map<uint32_t, AutosaveScene> autosaveScenes;
         float autosaveClock = 0.0f;
         float autosaveNextCheck = 0.0f;
+        // when tickAutosave last ran (the editor renders on demand: isAutosaveDue adds the time
+        // since, which the next frame's delta brings in)
+        std::chrono::steady_clock::time_point autosaveLastTick = std::chrono::steady_clock::now();
         std::shared_ptr<std::atomic<int>> autosaveWritesInFlight = std::make_shared<std::atomic<int>>(0);
         std::optional<RecoveryChoice> nextRecoveryChoice;
         RecoveryOutcome lastRecovery;
@@ -915,6 +934,8 @@ namespace jasperengine::editor{
         // the Scene view's picking (editor/picking) reads the pickable GameObjects and their bounds
         friend class ScenePicker;
         friend class SceneViewController;
+        // the cooked scenes and prefabs of a prebuilt build read what the generated sources do (S30)
+        friend class cook::SceneCooker;
         std::shared_ptr<PlaySession> buildRuntimeSceneStack(uint32_t sceneId, std::vector<size_t>& stackIndices);
         Entity getSceneCamera(const SceneProject* sceneProject) const;
         void cleanupPlaySession(const std::shared_ptr<PlaySession>& session);
@@ -1519,6 +1540,18 @@ namespace jasperengine::editor{
         const DesktopExportSettings& getDesktopExportSettings() const;
         bool isDevelopmentBuild() const { return developmentBuild; }
         void setDevelopmentBuild(bool enabled) { developmentBuild = enabled; }
+        // Build Settings > Build Method (S30 R29): auto, prebuilt or compile; Pack Content
+        const std::string& getBuildMethod() const { return buildMethod; }
+        void setBuildMethod(const std::string& method) { buildMethod = method; }
+        bool isPackContent() const { return packContent; }
+        void setPackContent(bool enabled) { packContent = enabled; }
+        // S30: what the generated main.cpp gives SceneManager::registerScene, for game.json
+        void collectInvolvedScenesForExport(uint32_t sceneId, std::vector<uint32_t>& involvedSceneIds) {
+            collectInvolvedScenes(sceneId, involvedSceneIds);
+        }
+        void collectStartActiveScenesForExport(uint32_t sceneId, std::vector<uint32_t>& activeSceneIds) {
+            collectStartActiveScenes(sceneId, activeSceneIds);
+        }
         ApplicationSettings& getApplicationSettings();
         const ApplicationSettings& getApplicationSettings() const;
 
@@ -1630,6 +1663,9 @@ namespace jasperengine::editor{
         // Scene Auto Save (R13-R15), from the editor loop every frame; userInteracting while an
         // ImGui item or a gizmo drag is active (the backup waits for the next frame)
         void tickAutosave(float deltaSeconds, bool userInteracting);
+        // A scene's Auto Save backup is due (or a changed scene's first interval starts): the
+        // editor renders a frame for it even when idle, as frames are what run tickAutosave
+        bool isAutosaveDue() const;
         // The autosave interval in effect for a scene (it doubles when encoding it is slow)
         float getAutosaveInterval(uint32_t sceneId) const;
 

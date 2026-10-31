@@ -5,6 +5,9 @@
 #define RENDERSYSTEM_H
 
 #include "SubSystem.h"
+#include <functional>
+#include <string>
+#include <vector>
 #include "AtmosphereRenderer.h"
 #include "component/MeshComponent.h"
 #include "component/InstancedMeshComponent.h"
@@ -2582,6 +2585,11 @@ namespace jasperengine{
 
 		bool isAllLoaded() const;
 		void getLoadCount(size_t& loaded, size_t& total) const;
+		// what is not loaded yet, as "<entity name> (<what>)": what keeps isAllLoaded() false
+		std::vector<std::string> describeNotLoaded() const;
+		// every load isAllLoaded() waits for: loaded or not, its entity (NULL_ENTITY: the
+		// scene's own) and what it is
+		void forEachLoad(const std::function<void(bool loaded, Entity entity, const char* what)>& visit) const;
 
 		// Scene inputs (shader library phase 3) in detail: what the loaded objects read, and
 		// what the last frame's camera passes made for them (getSceneInputUsage: the short

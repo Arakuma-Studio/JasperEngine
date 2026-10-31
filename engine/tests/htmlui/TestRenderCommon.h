@@ -73,9 +73,11 @@ namespace jasperengine { namespace test {
         S16On& operator=(const S16On&) = delete;
     };
 
-    // what Engine::systemDraw does before a frame that the tests need: the runtime shader
-    // compiler compiles one waiting variant per frame on the main thread
+    // what Engine::systemDraw does before a frame that the tests need: the shaders and pipelines
+    // created off the render thread are published (spec S32), and the runtime shader compiler
+    // compiles one waiting variant per frame on the main thread
     inline void beginTestFrame(){
+        SystemRender::updateGpuCreation();
         RuntimeShaderCompiler::beginFrame();
     }
 

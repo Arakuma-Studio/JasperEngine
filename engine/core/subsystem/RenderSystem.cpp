@@ -2601,7 +2601,7 @@ void RenderSystem::renderReflectionProbeCapture(){
             continue;
         Transform& transform = transforms->getComponentFromIndex(i);
         MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
-        if (!mesh || !transform.visible || mesh->transparent || !mesh->renderInReflectionProbes || !isRenderActive(entity) ||
+        if (!mesh || !transform.visible || mesh->isTransparent() || !mesh->renderInReflectionProbes || !isRenderActive(entity) ||
                 !isLayerVisible(entity, probe->cullingMask))
             continue;
 
@@ -3010,9 +3010,9 @@ uint32_t RenderSystem::getSubmeshSceneInputs(const MeshComponent& mesh, const Su
         bool transparentQueue = false;
         resolveSubmeshRenderState(mesh, submesh, manifest.get(), blended, transparentQueue);
         if (mesh.autoTransparency)
-            opaqueQueue = !transparentQueue && (!mesh.transparent || mesh.splitQueues);
+            opaqueQueue = !transparentQueue && (!mesh.isTransparent() || mesh.splitQueues);
         else
-            opaqueQueue = !mesh.transparent;
+            opaqueQueue = !mesh.isTransparent();
     }
     return inputs;
 }
@@ -5665,11 +5665,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         Log::warn("Terrain cannot be an InstancedMesh");
     }
 
-    if (mesh.autoTransparency){
-        // Recompute from every current submesh below. This also clears a stale
-        // transparent flag when a model is reloaded with OPAQUE/MASK materials.
-        mesh.transparent = false;
-    }
+    // Recomputed from every current submesh below (runtime only: the authored transparent flag
+    // is what a save writes). This also clears a stale value when a model is reloaded with
+    // OPAQUE/MASK materials.
+    mesh.derivedTransparent = false;
 
     std::map<std::string, Buffer*> buffers;
     std::map<std::string, BufferRender*> bufferNameToRender;
@@ -6229,8 +6228,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         }
         mesh.submeshes[i].skipsScreenEffects = colorState.colorWriteMask == 0 && !colorState.depthWrite;
         mesh.submeshes[i].alphaBlend = transparentQueue;
-        if (mesh.autoTransparency && !mesh.transparent && transparentQueue){
-            mesh.transparent = true;
+        if (transparentQueue){
+            mesh.derivedTransparent = true;
         }
         // the material's sort priority plus the shader's @state priority= offset
         const int priority = mesh.submeshes[i].material.sortPriority + (manifestState ? manifestState->priority : 0);
@@ -6679,13 +6678,13 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
     mesh.sceneInputs = sceneInputs & ShaderRequire_SceneInputs;
     // a mixed mesh whose blended submeshes read the scene keeps its opaque ones in the opaque
     // queue: the basin under a water surface is in the depth and colour the water reads
-    mesh.splitQueues = mesh.autoTransparency && mesh.transparent && hasOpaqueSubmesh && hasTransparentSubmesh &&
+    mesh.splitQueues = mesh.autoTransparency && mesh.isTransparent() && hasOpaqueSubmesh && hasTransparentSubmesh &&
         (blendedSceneInputs & ShaderRequire_SceneInputs) != 0;
     setSceneInputUser(entity, false, mesh.sceneInputs);
     mesh.sceneInputsPredicted = false;
     // what the G-buffer's depth would leave out or draw elsewhere, so a pass reading the
     // scene depth does not take it from there
-    setGBufferDepthMismatch(entity, (customDepthOpaque && !mesh.transparent) || mesh.splitQueues);
+    setGBufferDepthMismatch(entity, (customDepthOpaque && !mesh.isTransparent()) || mesh.splitQueues);
 
     trimSmoothNormals(mesh);
 
@@ -7787,7 +7786,7 @@ void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& ma
         }
 
         // the main camera keeps the order where it is the layering: blended batches and 2D
-        InstanceOrder order = (mesh->transparent || !sortsByDistance(mainCamera)) ? InstanceOrder::KEEP : InstanceOrder::NEAREST;
+        InstanceOrder order = (mesh->isTransparent() || !sortsByDistance(mainCamera)) ? InstanceOrder::KEEP : InstanceOrder::NEAREST;
         const Vector3& eye = mainCameraTransform.worldPosition;
         const InstanceRenderData* instances = instmesh.renderInstances.data();
         const InstanceVatRenderData* vat = instanceVatData(instmesh);
@@ -8909,7 +8908,7 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
 
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
         // (a split mesh: its opaque submeshes, as the opaque queue draws them)
-        if (!transform.visible || (mesh.transparent && !mesh.splitQueues) || !isRenderActive(entity, signature) || !isLayerVisible(entity, camera.cullingMask))
+        if (!transform.visible || (mesh.isTransparent() && !mesh.splitQueues) || !isRenderActive(entity, signature) || !isLayerVisible(entity, camera.cullingMask))
             continue;
         // what the colour pass leaves out (a render-to-texture camera does not draw the
         // objects showing its own image)
@@ -8927,7 +8926,7 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
 
         const Matrix4& model = objectModel(transform);
         vs_depth_t params = {model, renderVP, renderVP * model};
-        passSubmeshQueue = mesh.transparent ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
+        passSubmeshQueue = mesh.isTransparent() ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
         drawMeshDepth(entity, mesh, transform, camera.farClip, camera.frustumPlanes, params, instmesh, terrain, tilemap, true, PIP_DEPTH, instanceView, lodView);
     }
     passSubmeshQueue = SubmeshQueue::ALL;
@@ -9492,7 +9491,7 @@ void RenderSystem::renderGBufferPass(CameraComponent& camera){
             continue;
 
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
-        if (!transform.visible || mesh.transparent || !isRenderActive(entity, signature) || !isLayerVisible(entity, camera.cullingMask))
+        if (!transform.visible || mesh.isTransparent() || !isRenderActive(entity, signature) || !isLayerVisible(entity, camera.cullingMask))
             continue;
 
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
@@ -10728,11 +10727,8 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
         render.addTexture(shaderData.getTextureIndex(TextureShaderType::POINTS), ShaderStageType::FRAGMENT, textureRender);
     }
     // once the texture is loaded (or found in the pool): its alpha is known only then
-    if (points.autoTransparency && !points.transparent){
-        if (points.texture.isTransparent()){ // Particle color is not tested here
-            points.transparent = true;
-        }
-    }
+    // (runtime only: the authored transparent flag is what a save writes)
+    points.derivedTransparent = points.autoTransparency && points.texture.isTransparent(); // Particle color is not tested here
     if (!loadShaderLibraryBindings(points.libraryBindings, shaderData, render, points.shaderTextures, points.shaderManifest.get(),
                                    ShaderReference::getEnabledFeatures(points.customShader, points.shaderFeatures))){
         return false;
@@ -12003,21 +11999,40 @@ static bool isMeshShaderUnavailable(const MeshComponent& mesh){
 void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
     loaded = 0;
     total = 0;
-
-    auto count = [&](bool isLoaded){
+    forEachLoad([&](bool isLoaded, Entity, const char*){
         total++;
         if (isLoaded)
             loaded++;
-    };
+    });
+}
+
+std::vector<std::string> RenderSystem::describeNotLoaded() const{
+    std::vector<std::string> out;
+    forEachLoad([&](bool isLoaded, Entity entity, const char* what){
+        if (isLoaded) return;
+        const std::string name = entity == NULL_ENTITY ? std::string("scene") : scene->getEntityName(entity);
+        out.push_back((name.empty() ? "entity " + std::to_string(entity) : name) + " (" + what + ")");
+    });
+    return out;
+}
+
+void RenderSystem::forEachLoad(const std::function<void(bool, Entity, const char*)>& visit) const{
 
     // Check MeshComponents
     auto meshes = scene->getComponentArray<MeshComponent>();
     for (int i = 0; i < meshes->size(); i++) {
         const MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        const Entity entity = meshes->getEntity(i);
+        // nothing to load: no geometry, and no model (or its load is over: a missing or broken
+        // file leaves the mesh empty for good). Not pending, as an empty UI or Lines is not; a
+        // model still loading, or geometry that arrives later, is waited for (loadMesh runs then)
+        const ModelComponent* model = scene->findComponent<ModelComponent>(entity);
+        const bool nothingToLoad = !mesh.loaded && mesh.buffer.getSize() == 0 && mesh.indices.getSize() == 0 &&
+                                   mesh.numExternalBuffers == 0 && (!model || !model->needUpdateModel);
         // a mesh drawing its previous variant while the new one builds is still loading; one
         // whose load found a GPU pool full has failed (not drawn, nothing to wait for)
-        count((mesh.loaded && !mesh.needVariantReload) || mesh.loadFailed || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)) ||
-              scene->findComponent<SplineExtrudeComponent>(meshes->getEntity(i)) != nullptr);
+        visit((mesh.loaded && !mesh.needVariantReload) || mesh.loadFailed || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)) ||
+              nothingToLoad || scene->findComponent<SplineExtrudeComponent>(entity) != nullptr, entity, "mesh");
     }
 
     // Check UIComponents
@@ -12028,14 +12043,16 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
         const size_t uiBufferSize = std::max(ui.buffer.getSize(),
                                              (size_t)ui.minBufferCount * ui.buffer.getStride());
         if (uiBufferSize > 0)
-            count(ui.loaded || (!ui.loadCalled && isShaderUnavailable(ui.shader, ShaderType::UI, ui.shaderProperties, ui.customShaderId)));
+            visit(ui.loaded || (!ui.loadCalled && isShaderUnavailable(ui.shader, ShaderType::UI, ui.shaderProperties, ui.customShaderId)),
+                  uis->getEntity(i), "ui");
     }
 
     // Check PointsComponents
     auto pointsArray = scene->getComponentArray<PointsComponent>();
     for (int i = 0; i < pointsArray->size(); i++) {
         const PointsComponent& points = pointsArray->getComponentFromIndex(i);
-        count(points.loaded || (!points.loadCalled && isShaderUnavailable(points.shader, ShaderType::POINTS, points.shaderProperties, points.customShaderId)));
+        visit(points.loaded || (!points.loadCalled && isShaderUnavailable(points.shader, ShaderType::POINTS, points.shaderProperties, points.customShaderId)),
+              pointsArray->getEntity(i), "points");
     }
 
     // particle systems with an effect (one that cannot be read never loads)
@@ -12043,7 +12060,7 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
     for (size_t i = 0; i < particleArray->size(); i++) {
         const ParticleSystemComponent& particles = particleArray->getComponentFromIndex(i);
         if (particles.enabled && particles.state && particles.state->effect)
-            count(particles.state->render.loaded);
+            visit(particles.state->render.loaded, particleArray->getEntity(i), "particles");
     }
 
     // Check LineRendererComponents
@@ -12052,7 +12069,8 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
         const LineRendererComponent& lines = linesArray->getComponentFromIndex(i);
         // An empty Lines never loads: addLine() only sets needReload when maxLines grows.
         if (!lines.lines.empty())
-            count(lines.loaded || (!lines.loadCalled && isShaderUnavailable(lines.shader, ShaderType::LINES, lines.shaderProperties, lines.customShaderId)));
+            visit(lines.loaded || (!lines.loadCalled && isShaderUnavailable(lines.shader, ShaderType::LINES, lines.shaderProperties, lines.customShaderId)),
+                  linesArray->getEntity(i), "lines");
     }
 
     // Check the SkyboxComponent: only the first is drawn (and loaded), so another one would
@@ -12060,11 +12078,12 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
     auto skyArray = scene->getComponentArray<SkyboxComponent>();
     if (skyArray->size() > 0) {
         const SkyboxComponent& sky = skyArray->getComponentFromIndex(0);
-        count(sky.loaded || (!sky.loadCalled && isShaderUnavailable(sky.shader, ShaderType::SKYBOX, sky.shaderProperties, sky.customShaderId)));
+        visit(sky.loaded || (!sky.loadCalled && isShaderUnavailable(sky.shader, ShaderType::SKYBOX, sky.shaderProperties, sky.customShaderId)),
+              skyArray->getEntity(0), "skybox");
     }
 
     // the atmosphere's passes (their shaders, the clouds' noise bake)
-    count(!atmosphere.isLoading());
+    visit(!atmosphere.isLoading(), NULL_ENTITY, "atmosphere");
 }
 
 void RenderSystem::updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix, Plane* frustumPlanes){
@@ -13440,7 +13459,7 @@ void RenderSystem::update(double dt){
                         (inverseModel * fadeEyePosition) : fadeEyePosition;
                 }
 
-                bool sortTransparentInstances = mesh.transparent && batchSort;
+                bool sortTransparentInstances = mesh.isTransparent() && batchSort;
 
                 const float cullEnd = instanceFadeCullEnd(*instmesh, mesh, *scene);
                 const bool fadeSelectionChanged = cullEnd != instmesh->lastFadeCullEnd ||
@@ -13600,7 +13619,7 @@ void RenderSystem::update(double dt){
                 }
             }
 
-            if (mesh.autoTransparency && mesh.transparent != expectedTransparent){
+            if (mesh.autoTransparency && mesh.derivedTransparent != expectedTransparent){
                 mesh.needReload = true;
             }
 
@@ -13749,7 +13768,7 @@ void RenderSystem::update(double dt){
                 loadPoints(entity, points, pipelines);
             }
 
-            bool sortTransparentPoints = points.transparent && batchSort;
+            bool sortTransparentPoints = points.isTransparent() && batchSort;
 
             if (batchSortChanged){
                 points.needUpdate = true;
@@ -14740,11 +14759,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
 
             // a split mesh (MeshComponent::splitQueues) is in both: its opaque submeshes here
-            if (!mesh.transparent || mesh.splitQueues){
+            if (!mesh.isTransparent() || mesh.splitQueues){
                 const float distance = mesh.worldAABB.isNull() ? 0.0f : mesh.worldAABB.squaredDistance(cameraTransform.worldPosition);
                 opaqueRenders.push_back({entity, &mesh, instmesh, terrain, tilemap, &transform, distance, mesh.opaqueSortPriority, (uint32_t)opaqueRenders.size()});
             }
-            if (mesh.transparent && distanceSort){
+            if (mesh.isTransparent() && distanceSort){
                 transparentRenders.push_back({TransparentRenderType::MESH, entity, &mesh, nullptr, instmesh, terrain, tilemap, &transform, objectDistance(transform), mesh.transparentSortPriority, transparentOrder++});
             }
         }
@@ -14770,7 +14789,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             if (opaque.mesh->skipsDepthPrepass)
                 continue;
             vs_depth_t params = {objectModel(*opaque.transform), renderVP, objectMVP(*opaque.transform)};
-            passSubmeshQueue = opaque.mesh->transparent ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
+            passSubmeshQueue = opaque.mesh->isTransparent() ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
             drawMeshDepth(opaque.entity, *opaque.mesh, *opaque.transform, camera.farClip, camera.frustumPlanes, params, opaque.instmesh, opaque.terrain, opaque.tilemap, true, prepassPip, instanceView, lodView);
         }
         passSubmeshQueue = SubmeshQueue::ALL;
@@ -14792,7 +14811,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     if (distanceSort){
         for (const OpaqueRenderData& opaque : opaqueRenders){
             // (a transparent mesh here is split: its opaque submeshes)
-            passSubmeshQueue = opaque.mesh->transparent ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
+            passSubmeshQueue = opaque.mesh->isTransparent() ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
             drawMesh(opaque.entity, *opaque.mesh, *opaque.transform, camera, cameraTransform, colorPip, opaque.instmesh, opaque.terrain, opaque.tilemap, terrainView, instanceView, lodView);
         }
         passSubmeshQueue = SubmeshQueue::ALL;
@@ -14959,7 +14978,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             // buffer per frame (VALIDATE_UPDATEBUF_ONCE). Every camera reuses the main
             // camera's ordering computed in update().
             if (transform.visible && renderActive && !samplesCameraTarget(camera, points.texture)){
-                if (!points.transparent || !distanceSort){
+                if (!points.isTransparent() || !distanceSort){
                     drawPoints(entity, points, transform, camera, cameraTransform, colorPip);
                 }else{
                     transparentRenders.push_back({TransparentRenderType::POINTS, entity, nullptr, &points, nullptr, nullptr, nullptr, &transform, objectDistance(transform), points.sortPriority, transparentOrder++});
@@ -15251,7 +15270,7 @@ bool RenderSystem::bindViewPointsOrder(Entity entity, PointsComponent& points, T
     RenderView& view = rv();
     if (!view.secondary || view.sharesPrimaryCamera || passObjects != &view.objects)
         return false;
-    if (!points.transparent || !sortsByDistance(camera) || points.numVisible == 0 || points.renderPoints.size() < points.numVisible)
+    if (!points.isTransparent() || !sortsByDistance(camera) || points.numVisible == 0 || points.renderPoints.size() < points.numVisible)
         return false;
 
     PointsView& pointsView = view.points[entity];
@@ -15765,7 +15784,7 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
         Vector3 direction = Vector3::ZERO;
         if (!sortsByDistance(camera)){
             order = InstanceOrder::KEEP;
-        }else if (mesh->transparent){
+        }else if (mesh->isTransparent()){
             order = InstanceOrder::BACK_TO_FRONT;
             direction = towardCamera;
         }

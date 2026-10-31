@@ -45,6 +45,11 @@ namespace jasperengine{
         // the generation of the chunk that defined the function: once a hot reload retired
         // it (the function is the old code's), calls do nothing (LuaReload)
         std::shared_ptr<lua_reload::CallbackRecord> m_record;
+        // the Lua state the function belongs to (LuaBinding::getLuaStateGeneration): a function
+        // of a closed state (the engine shut down; an Android activity relaunched in the same
+        // process starts a new one) is never called nor released. It may be a coroutine's
+        // lua_State of that state, which shares its registry.
+        uint64_t m_generation = 0;
 
         // push the function from the registry
         void push_function(lua_State *vm, int func);
@@ -90,6 +95,9 @@ namespace jasperengine{
         static T get_value(lua_State *vm);
 
     public:
+        // its Lua state still exists: calls run and the destructor releases its reference
+        bool isLive() const;
+
         LuaFunctionBase(lua_State *vm, const std::string &func);
         LuaFunctionBase(lua_State *vm);
 

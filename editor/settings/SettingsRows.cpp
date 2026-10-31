@@ -19,6 +19,7 @@
 #include "command/type/ShaderCreationSettingsCmd.h"
 #include "reflect/Reflect.h"
 #include "input/InputActions.h"
+#include "players/PlayerRuntimes.h"
 #include "texture/TextureCookQueue.h"
 #include "texture/TextureImportSettings.h"
 #include "log/Logger.h"
@@ -653,6 +654,46 @@ std::vector<Setting> mcpSettingsTable() {
                         [](Project& p) { return p.isDevelopmentBuild(); }, [](Project& p, bool v) { p.setDevelopmentBuild(v); }));
         add(boolSetting("player.pack_native_resources", "Experimental: pack assets and Lua into resources.pak in native builds instead of copying folders.",
                         [](Project& p) { return p.shouldPackNativeResources(); }, [](Project& p, bool v) { p.setPackNativeResources(v); }));
+        // S30: how Build makes the game, and the prebuilt player's content pack
+        auto nameChoice = [&add](const std::string& key, const std::string& description, std::vector<std::string> names,
+                                 std::function<std::string(Project&)> get, std::function<void(Project&, const std::string&)> set) {
+            Setting s;
+            s.key = key;
+            s.type = "enum";
+            s.values = names;
+            s.description = description;
+            s.get = [get](SettingsContext& ctx) { return Json(get(*ctx.project())); };
+            s.set = [names, set](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                std::string text;
+                if (!readString(value, text, error)) return false;
+                if (std::find(names.begin(), names.end(), text) == names.end()) {
+                    error = "one of";
+                    for (const std::string& name : names) error += " " + name;
+                    return false;
+                }
+                if (apply) set(*ctx.project(), text);
+                return true;
+            };
+            add(s);
+        };
+        nameChoice("player.build_method", "Build Settings > Build Method: auto (a prebuilt player unless the project needs native code), prebuilt or compile.",
+                   {"auto", "prebuilt", "compile"}, [](Project& p) { return p.getBuildMethod(); },
+                   [](Project& p, const std::string& v) { p.setBuildMethod(v); });
+        add(boolSetting("player.pack_content", "Prebuilt builds keep their content in one content.jpak (the web always packs it).",
+                        [](Project& p) { return p.isPackContent(); }, [](Project& p, bool v) { p.setPackContent(v); }));
+        nameChoice("android.package_format", "Android builds make an App Bundle (aab, for Google Play: one ABI per device), one APK per ABI "
+                   "(apk-per-abi), or one universal APK of every selected ABI (apk).", {"aab", "apk-per-abi", "apk"},
+                   [](Project& p) { return p.getAndroidProjectSettings().packageFormat; },
+                   [](Project& p, const std::string& v) { p.getAndroidProjectSettings().packageFormat = v; });
+        add(pathSetting("android.keystore_path", "The keystore that signs Android release builds (passwords are asked at build time, never saved).",
+                        [](Project& p) -> fs::path& { return p.getAndroidProjectSettings().keystorePath; }));
+        add(stringSetting("android.keystore_alias", "The key alias of the Android keystore.",
+                          [](Project& p) -> std::string& { return p.getAndroidProjectSettings().keystoreAlias; }));
+        add(stringSetting("ios.team_id", "The Apple Developer team id that signs iOS device builds (DEVELOPMENT_TEAM).",
+                          [](Project& p) -> std::string& { return p.getIOSProjectSettings().teamId; }));
+        nameChoice("ios.export_method", "How an iOS archive is exported to an .ipa.", {"development", "ad-hoc", "app-store", "enterprise"},
+                   [](Project& p) { return p.getIOSProjectSettings().exportMethod; },
+                   [](Project& p, const std::string& v) { p.getIOSProjectSettings().exportMethod = v; });
 
         // ---- per platform (overrides: "" inherits the shared player value)
         add(stringSetting("web.application_name", "Web page title override.", [](Project& p) -> std::string& { return p.getWebProjectSettings().applicationName; }));
@@ -1700,6 +1741,15 @@ std::vector<Setting> mcpSettingsTable() {
                          [] { return AppSettings::getCMakePath(); }, [](const std::string& v) { AppSettings::setCMakePath(v); });
         stringPreference("preferences.emsdk_path", "External Tools: Emscripten SDK root for Web builds (\"\" = EMSDK / PATH).",
                          [] { return AppSettings::getEmsdkPath(); }, [](const std::string& v) { AppSettings::setEmsdkPath(v); });
+        // S30: the platform tools of builds and releases (editor/platform/ExternalTools.h)
+        auto toolPreference = [&stringPreference](const std::string& key, const std::string& tool, const std::string& description) {
+            stringPreference(key, description, [tool] { return AppSettings::getExternalToolPath(tool); },
+                             [tool](const std::string& v) { AppSettings::setExternalToolPath(tool, v); });
+        };
+        toolPreference("preferences.android_sdk_path", "androidSdk", "External Tools: the Android SDK of prebuilt Android builds (\"\" = ANDROID_HOME / ANDROID_SDK_ROOT).");
+        toolPreference("preferences.jdk_path", "jdk", "External Tools: the JDK (keytool, jarsigner, java) of Android builds (\"\" = JAVA_HOME / PATH).");
+        toolPreference("preferences.steamcmd_path", "steamcmd", "External Tools: SteamCMD for Steam uploads (\"\" = STEAMCMD_HOME / PATH).");
+        toolPreference("preferences.rcodesign_path", "rcodesign", "External Tools: rcodesign, which signs macOS builds on any computer (\"\" = PATH).");
         stringPreference("preferences.ffmpeg_path", "External Tools: ffmpeg for video imports (\"\" = JASPER_FFMPEG / PATH).",
                          [] { return AppSettings::getFfmpegPath(); }, [](const std::string& v) { AppSettings::setFfmpegPath(v); });
         stringPreference("preferences.default_export_dir", "Default output directory for builds of projects that have none yet.",
@@ -1814,6 +1864,13 @@ const Placement placements[] = {
     {"player.threading.web_multithreaded", "Player", "Threading", "Web: Multithreaded", "pthreads cross origin isolated"},
     {"player.development_build", "Player", "Publishing Settings", "Development Build", "profiler"},
     {"player.pack_native_resources", "Player", "Publishing Settings", "Native Resource Pack", "resources pak"},
+    {"player.build_method", "Player", "Publishing Settings", "Build Method", "prebuilt compile player"},
+    {"player.pack_content", "Player", "Publishing Settings", "Content Pack", "jpak pack"},
+    {"android.package_format", "Player", "Android", "Package Format", "android apk aab bundle abi universal split"},
+    {"android.keystore_path", "Player", "Android", "Keystore", "android signing key"},
+    {"android.keystore_alias", "Player", "Android", "Key Alias", "android signing key"},
+    {"ios.team_id", "Player", "iOS", "Team ID", "ios signing apple developer"},
+    {"ios.export_method", "Player", "iOS", "Export Method", "ios ipa app store ad hoc"},
     {"web.application_name", "Player", "Web", "App Name", "web page title"},
     {"web.favicon", "Player", "Web", "Favicon", "web icon"},
     {"web.custom_html_shell", "Player", "Web", "Custom HTML Shell", "web emscripten template"},
@@ -1918,6 +1975,10 @@ const Placement placements[] = {
     {"preferences.build_jobs", "External Tools", "Desktop Build", "Build Jobs", "parallel jobs"},
     {"preferences.emsdk_path", "External Tools", "Web Build", "Emscripten SDK", "emsdk web"},
     {"preferences.ffmpeg_path", "External Tools", "Video Import", "FFmpeg", "video av1"},
+    {"preferences.android_sdk_path", "External Tools", "Shipping", "Android SDK", "android sdk aapt2 apksigner build-tools"},
+    {"preferences.jdk_path", "External Tools", "Shipping", "JDK", "java keytool jarsigner"},
+    {"preferences.steamcmd_path", "External Tools", "Shipping", "SteamCMD", "steam upload steampipe"},
+    {"preferences.rcodesign_path", "External Tools", "Shipping", "rcodesign", "macos signing codesign"},
     {"preferences.logging.file_level", "Logging", "", "Log File Level", "editor log"},
     {"preferences.logging.backtrace_on_error", "Logging", "", "Capture Backtrace on Errors", "stack trace"},
     {"preferences.logging.show_source", "Logging", "", "Show Source Location", "file line"},
@@ -2130,6 +2191,12 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         }, "The cooked texture cache's size, and Clear Texture Cache (reimport_textures cooks again)."));
 
     // ---- Preferences rows MCP does not set
+    addOrAbort(registry, uiRow("preferences.player_runtimes", "External Tools", "Shipping", "Player Runtimes", "prebuilt players download install remove",
+        [](SettingsContext&) {
+            Json players = Json::array();
+            for (const PlayerInfo& info : PlayerRuntimes::list()) players.push_back(Json{{"id", info.id}, {"engine_version", info.engineVersion}});
+            return players;
+        }, "The installed prebuilt player runtimes: Remove, Install from file... (install_player_runtime installs one)."));
     const char* general = "General";
     addOrAbort(registry, uiRow("preferences.editor_vsync", general, "", "Editor VSync", "vertical sync refresh",
         [](SettingsContext&) { return Json(AppSettings::getEditorVSyncEnabled()); }));

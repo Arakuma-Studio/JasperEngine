@@ -1,0 +1,33 @@
+<!doctype html>
+<!-- (c) Eduardo Doria and contributors. SPDX-License-Identifier: MIT -->
+<!-- The page of a prebuilt web player (docs/specs/S30-shipping.md R15). A project's own shell
+     (Project Settings > Web > Custom HTML shell) wraps it through {{JASPERENGINE_DEFAULT_HTML}}. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{JASPERENGINE_TITLE}}</title>
+<style>
+html, body { margin: 0; background: #000; color: #ccc; font-family: sans-serif; }
+#canvas { display: block; margin: 0 auto; border: 0; padding: 0; outline: none; }
+#status { position: absolute; left: 0; right: 0; top: 45%; text-align: center; pointer-events: none; }
+#status:empty { display: none; }
+#status[data-failed] { color: #f66; }
+</style>
+{{JASPERENGINE_HEAD_INCLUDE}}
+</head>
+<body>
+<canvas id="canvas" width="{{JASPERENGINE_CANVAS_WIDTH}}" height="{{JASPERENGINE_CANVAS_HEIGHT}}" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+<div id="status"></div>
+<script>
+var Module = {
+    canvas: document.getElementById("canvas"),
+    print: function (text) { console.log(text); },
+    printErr: function (text) { console.error(text); },
+    setStatus: function (text) { var status = document.getElementById("status"); if (status && !status.hasAttribute("data-failed")) status.textContent = text; },
+    onRuntimeInitialized: function () { Module.setStatus(""); }
+};
+</script>
+{{JASPERENGINE_LOADER}}
+</body>
+</html>

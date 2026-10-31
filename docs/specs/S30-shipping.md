@@ -276,14 +276,28 @@ Steam Deck.
   2. Compiles the launcher and adaptive icons with `aapt2 compile`.
   3. Links: `aapt2 link -I <sdk>/platforms/android-<targetSdk>/android.jar --manifest …
      --stable-ids stable-ids.txt --rename-manifest-package <applicationId> -A <staged assets> -o base.apk`.
-  4. Adds the dex files and only the ABIs selected in settings. `.so` files are stored
-     uncompressed.
+  4. Adds the dex files and only the ABIs selected in settings. `.so` files are packed as the
+     Android Gradle plugin packs them, so a prebuilt APK weighs what a compiled one does:
+     - an APK whose `minSdk` is below 23 compresses them and says `extractNativeLibs="true"`, so
+       they are extracted at install;
+     - from `minSdk` 23, and always in a bundle, they are stored and loaded from the APK.
   5. Aligns with `zipalign -P 16 -f 4`.
   6. Signs with `apksigner sign` (v1+v2+v3 when `minSdk < 24`), then checks with
      `apksigner verify`.
 
   - **AAB:** `aapt2 link --proto-format`, then `java -jar bundletool.jar build-bundle`, then
     `jarsigner`.
+  - **Package format** (Project Settings > Android > Package Format, `android.package_format`,
+    `--android-format`, `build_project android_format`):
+    - `aab` is the default. Google Play builds each device's APK from the bundle, carrying only
+      that device's ABI.
+    - `apk-per-abi` makes one APK per selected ABI (`<App>-<abi>.apk`), for distribution outside
+      Play.
+    - `apk` is the universal APK of every selected ABI, and only when chosen. Build Settings shows
+      what it costs: the engine libraries of every ABI in one file, against at most the largest
+      ABI's per device for the other two.
+    - An APK is 16 KB aligned on its 64-bit ABIs (arm64-v8a, x86_64). armeabi-v7a and x86 keep
+      4 KB pages, as Android 15 requires for 64-bit only.
   - **Requirements on the user's machine:** a JDK 17+ (`JAVA_HOME` or `java` on PATH), Android SDK
     `build-tools;35.0.0`+ (`aapt2`, `zipalign`, `apksigner`) and `platforms;android-<targetSdk>`.
     `bundletool` 1.17.x is downloaded once with a pinned sha256 (Apache-2.0, noticed).
@@ -381,8 +395,17 @@ Steam Deck.
       binutils exist;
     - macOS: `.dSYM` moved out *before* re-signing.
     - Prebuilt players ship pre-stripped, and their symbol archives
-      (`jasperengine-player-<id>-<version>-symbols.zip`) are fetched into `symbols/` when
-      available.
+      (`jasperengine-player-<id>-<version>-symbols.zip`) are fetched into `symbols/<target>/player`
+      when available.
+    - Compile builds ship pre-stripped the same way: `JASPERENGINE_SPLIT_SYMBOLS`.
+      - The link step splits the debug information into the build tree's `symbols/`: `<exe>.debug`
+        with a debug link, `<exe>.dSYM`, or the PDB.
+      - The build keeps a copy under `.jasperengine/symbols/<exe sha256>/`, keeping the five newest,
+        and its `content-manifest.json` names that copy (`symbols`).
+      - prepare copies it into `symbols/<target>/game`. A build without one gets
+        `W-BUILD-SYMBOLS`.
+      - Android's Gradle strips the libraries it packages itself. A release bundle carries their
+        symbols for Play (`debugSymbolLevel 'FULL'`).
   - Re-validates, writes `release.json` (D11), and renames the staging dir to `<releasesDir>/<name>`.
   - Refuses an existing release name, and release storage that overlaps a build dir.
 - **R24. `publish verify <release>`.** Re-runs R30 on `content/<target>` and compares
@@ -469,10 +492,10 @@ Steam Deck.
   - a missing `licenses/` entry from `notices[]`;
   - `allowPlayerMismatch`;
   - an unsigned macOS arm64 slice (no `LC_CODE_SIGNATURE`);
-  - for Android: `apksigner verify` failure, or a `.so` that is not 16 KB aligned.
+  - for Android: `apksigner verify` failure, or a 64-bit ABI's `.so` that is not 16 KB aligned.
 - **R31. CLI** (`editor/cli/CommandLine.cpp`). `export` (source project) is unchanged. New
   commands:
-  - `build --project P --platform <windows|linux|macos|android|ios|web> --out D [--backend b] [--method auto|prebuilt|compile] [--development] [--pack] [--android-format apk|aab] [--start-scene s] [--json]`
+  - `build --project P --platform <windows|linux|macos|android|ios|web> --out D [--backend b] [--method auto|prebuilt|compile] [--development] [--pack] [--android-format aab|apk-per-abi|apk] [--start-scene s] [--json]`
   - `players list|install <zip>|download <id>|remove <id> [--players-dir D]`
   - `publish init|prepare|verify|steam-vdf|steam-upload|deck-deploy|deck-rollback|deck-smoke …`
   - `reflect --emit-runtime-fields <file>`
@@ -678,10 +701,12 @@ std::expected<std::map<std::string, TreeEntry>, std::vector<std::string>> treeMa
     - `--screenshot` writes a 1280×720 PNG whose centre pixel matches the fixture baseline.
   - The same `quit-after`/screenshot check runs on Windows (d3d11) and macOS (metal) in the
     on-demand jobs.
-- **AC7. Android, no NDK.** The `android` CI job sets `ANDROID_NDK_HOME=` and removes `cmake` from
-  PATH. It then:
-  - builds `tools/fixtures/unified-lighting` with `--platform android --android-format apk` and
-    with `aab`;
+- **AC7. Android, no NDK.** The `prebuilt-android` CI job runs `tools/ci/android_ac7.sh`. It
+  points `ANDROID_NDK_HOME` nowhere and puts stand-ins first on PATH for `cmake` and `ndk-build`;
+  they fail and log if anything runs them. It then:
+  - builds `tools/fixtures/unified-lighting` with `--platform android` once for each
+    `--android-format`: `aab`, `apk-per-abi` and `apk`;
+  - checks that no stand-in ran;
   - `apksigner verify --verbose` passes (v2 signed);
   - `zipalign -c -P 16 4` passes;
   - `aapt2 dump badging` shows the project's applicationId, versionCode and label;
@@ -797,3 +822,408 @@ std::expected<std::map<std::string, TreeEntry>, std::vector<std::string>> treeMa
   forced; fixtures that need it seed themselves.
 - **Zip writer.** Default: vendor `miniz` 3.x (MIT) in `libs/miniz` for the editor only, with a
   `NOTICE.md` row. Players never link it.
+
+## Re-check (2026-10-29, oe-port at 0c22d3b91)
+
+The spec was written before three rounds of upstream catch-up and the landing of S02-S09,
+S14/S14b, S15, S19-S28 and S31. What the tree has now, and what S30 does about it:
+
+- **Exporter** (`editor/Exporter.{h,cpp}`, now 4,581 lines; §3 line numbers are stale).
+  `runExport` runs `prepareCacheTarget`/`checkTargetDir`, `clearGenerated`,
+  `loadAndSaveAllScenes`, **`checkMissingAssets` (S04)**, `resolveShaderKeys`, `copyGenerated`,
+  `copyLua`, `checkHtmlUIReferences`, **`cookTextures` (S14, `assets/je-cooked/<family>`)**,
+  `copyAssets`, **`writeAssetMap` (S04, `assetmap.bin`)**, `copyCustomShaderSources`,
+  `copyCppScripts`, `copyEngine`, `buildAndSaveShaders`, `writeEffectLicense` (now three notices:
+  shaders.com, WebGL fluid, post-FX) and, for builds, configure/build/collect. S30's Prebuilt
+  method reuses all content steps up to `writeEffectLicense` unchanged (R6) and replaces only
+  `copyGenerated`, `copyCppScripts`, `copyEngine` and configure/build/collect.
+- **Web threads and COOP/COEP (S06, landed).** `ExportConfig::webMultithreaded` (Project
+  Settings > Player > Threading > Web: Multithreaded) builds a second Emscripten tree
+  (`build-threads`) into `threads/`, writes `_headers` and S06's **own** cross-origin isolation
+  service worker (`COI_SERVICE_WORKER`, inline in `Exporter.cpp`) and swaps the page's
+  `<script src>` for a loader. The loader starts the single-thread player *and* reloads at the
+  same time when not isolated (a reload in the middle of a load), and nothing tests a server
+  without isolation (S06 AC21's open half). **Decision (supersedes D7):** keep S06's first-party
+  worker (no third-party notice needed, nothing vendored) but move it to
+  `engine/platform/emscripten/web/coi-serviceworker.js` and the loader to
+  `engine/platform/emscripten/web/player-loader.js`, shared by the Compile and Prebuilt web
+  outputs; the loader decides once (isolated: `mt`; not isolated and a worker can be installed
+  and was not tried this session: register, wait for it to control, reload, without starting a
+  player; otherwise `st`). The browser gate covers threaded, worker-isolated and
+  worker-blocked single-thread runs; this closes S06 AC20/AC21.
+- **S02** landed `tools/web/serve.py` and `browser_gate.py` with **`--no-isolation`** (the spec's
+  `--no-isolation-headers`: we use the existing name), baselines with `isolated`, `query`,
+  `init_script`, `expect`, `console`, `allow`; `tools/mcp/pngdiff.py` (the spec's
+  `pngdiff.py`); `tools/ci/check-notices.py` (NOTICE.md rows + licence files, `--installed`,
+  `--install-manifest`, says "S30 reuses this for exported games"); `tools/ci/gtest-gate.py`;
+  the nightly workflow (`linux`, `web-threads`, `report`); docker images `linux`,
+  `linux-backends`, `web`, `android`, `android-emulator` (no runtime image yet: S30 adds
+  `docker/runtime.Dockerfile`). `engine/notices.json` builds on check-notices' library list
+  instead of a second scanner.
+- **S03** `engine/core/io/AtomicFile.h`: `writeFileAtomic`, `publishFile`, `renameWithRetry`,
+  `makeTemporarySiblingPath`; used for staging swaps, installs and release renames.
+- **S04** GUIDs, `assetmap.bin`, missing-asset check: cooked scenes carry resolved paths, the
+  asset map ships in content as today.
+- **S08** reflection (`editor/reflect/`): `Kind`, `FieldDesc` (member thunks, `cppPath`, flags
+  `NoSave`/`Proxy`/`Transient`/`Derived`/`OmitIfDefault`…), `StructDesc`, `ComponentDesc` with
+  optional `ComponentCodec` and `codegen` (35 components keep a codec or a Factory codegen:
+  mesh, model, terrain, tilemap, sprite, UI, script, particles, skybox, physics bodies,
+  navigation, animation tracks, lattice, pose, gameplay…). The runtime field emitter (R4) reads
+  these tables; components whose table holds every saved key (the S22 gameplay ones, force
+  field, navigation agents…) need no hand-written runtime codec, only the generic table path.
+- **S09** `--log-level` is already parsed by `Engine::systemInit` (`startGameLogger`); the
+  player's LaunchOptions accept and forward it rather than parse it twice.
+- **S15** Development Build (`ExportConfig::developmentBuild`, `Project::isDevelopmentBuild`,
+  `JASPERENGINE_DEVELOPMENT_BUILD`, `--profile*` flags): the `development` flavour is that.
+- **S28** crash reporting is installed by `Engine::systemInit` for every non-editor build
+  (`startGameDiagnostics`); its product name comes from the `JASPERENGINE_WINDOW_TITLE`
+  macro. Players link it unchanged and set the product name from `game.json` at runtime.
+- **S19** navigation, **S20** particles, **S21/S22**, upstream lattice/fluid/pose/water/FBX: new
+  components the cook covers through their tables and codecs.
+- **S31** MCP: tool groups (`McpTools.cpp` module rows), `tools/mcp/budget.json`; the core listing
+  is ~98.3k of 100k characters and the guide 16,366 of 16,384 bytes. New tools go in a
+  `shipping` group; `build_project`/`run_build`/`get_build_info` (core) grow by as few schema
+  characters as possible, paid for by shortening their own descriptions; the guide gets one
+  line and `docs/mcp/guide/shipping.md` the detail.
+- **Still true:** every build compiles; `ExportMode` is `{SourceCode, Desktop, Web}`; Build
+  Settings builds players only for the host desktop and web; scenes are generated C++; project
+  settings are compile-time macros (window, vsync, capacities in `Engine.h`, now also
+  `MAX_MESH_LODS`, `MAX_TEXT_FONTS`, `MAX_MORPHTARGETS`); `resources.pak` is `DXPK1`; desktop
+  content paths are relative to the working directory; `run_build` screenshots with X11
+  `import`; the smoke test compiles (and now also opens the editor and runs S19's
+  `nav_smoke.py`); no zip code in the repository (basisu's `basisu_miniz.h` has no archive API),
+  so miniz 3.0.2 is vendored as D8 says.
+- **Fixtures:** `tools/fixtures/unified-lighting` (Lua only) and `tools/fixtures/prefab-runtime`
+  (C++ scripts in `cpp/`) exist as AC1/AC3 expect.
+
+## Progress
+
+Kept current so the work can continue after an interruption.
+
+- **Done, built, tested (core):** streaming SHA-256 (`engine/core/util/Sha256`), FNV
+  (`util/Fnv.h`), `.jpak` reader (`io/JPak`) mounted through `ResourcePack`, `content://` and
+  `System::getContentPath`, `PlatformConfig` filled by `platform/common/PlatformDefaults.h`,
+  `player::launch` / `LaunchOptions` / `RunControl` (exit codes 0/2/3/4/5/6/7), `FrameReadback`,
+  headless on Linux/Windows/macOS, Lua `Engine.isHeadless()`, `Engine.quit(code)`,
+  `System.args`. Core tests `Sha256.*`, `JPak.*`, `LaunchOptions.*`, `RunControlFixture.*` pass
+  (B); `ReadyTimeoutExitsSix` was timing-dependent and now waits past its timeout.
+- **Written, building:**
+  - cooked format (`serialization/CookStream`, `CookCodecs`, `CookedScene`,
+    `SceneSettingsCodec`, `codecs/`), `RuntimeFields` + the emitter
+    (`jasperengine-editor reflect --emit-runtime-fields`), `editor/cook/SceneCooker`,
+    `editor/cook/JPakWriter`, `tools/jpak.py`;
+  - the player (`engine/player/PlayerMain.cpp`, `-DJASPERENGINE_PLAYER=ON`, ids
+    `<platform>-<arch>-<backend>-<flavour>`), `player/PlayerConfig` (game.json),
+    `player/ContentManifest` (R21 checks);
+  - Exporter `ExportMode::Player` (`editor/ExporterPrebuilt.cpp`): method choice (R5; Auto
+    compiles when the runtime is missing and this computer can), the R6 steps, staging swap
+    (R7), finalizers for Linux, Windows (resource patching), macOS (bundle, ICNS, codesign /
+    rcodesign), web (template, loader, `_headers`), Android (aapt2/zipalign/apksigner, AAB via
+    bundletool, no NDK/Gradle), iOS (Xcode template; xcodebuild on a Mac), the payload
+    validator before the swap;
+  - player runtimes (`editor/players/PlayerRuntimes`: list, find with the version lock,
+    install with the hash table, download with progress and cancel, remove), miniz 3.0.2
+    (`libs/miniz`, `editor/util/ZipArchive`);
+  - publish (`editor/publish/`: `BinaryInfo`, `TreeManifest`, `PayloadValidator`,
+    `Publishing`: publishing.json, prepare with symbol split, verify, SteamPipe scripts,
+    steam-upload, Deck deploy/rollback/smoke), notices (`engine/notices.json`,
+    `editor/publish/Notices`, `tools/ci/check-notices.py --player-notices/--third-party-notices`);
+  - CLI `build`, `players`, `publish`, `reflect`; MCP: `build_project` mode `player` (+
+    `platform`, `method`, `development`, `android_format`), `get_build_info` (`players[]`,
+    `platforms.<name>.{method, compile_reasons, tools_missing}`, `editor_version`), `run_build`
+    (`headless`, `quit_after`, `fixed_fps`, `after_ready`, `screenshot_frame`: the player's own
+    frame), the `shipping` group (`install_player_runtime`, `publish_prepare`,
+    `publish_verify`, `publish_steam_vdf`, `publish_deploy_deck`); guide line +
+    `docs/mcp/guide/shipping.md`;
+  - UI: Build Settings (every platform builds; Build Method row and override; Player Runtime
+    row with Download/progress/cancel; Android package/keystore/tool checklist and the password
+    prompt; iOS "Requires a Mac with Xcode"; Build And Run on the host), Publish tab (targets
+    table, Prepare, Verify, Steam VDF, Upload..., Deploy to Deck, Rollback as cancellable jobs
+    logging to the Console), Preferences > External Tools > Shipping (Android SDK, JDK,
+    SteamCMD, rcodesign, Player Runtimes list/Remove/Install from file), Project Settings rows
+    and SettingsRegistry keys (`player.build_method`, `player.pack_content`,
+    `android.package_format`, `android.keystore_{path,alias}`, `ios.team_id`,
+    `ios.export_method`, `preferences.{android_sdk,jdk,steamcmd,rcodesign}_path`);
+  - web: `engine/platform/emscripten/web/` (`player.html`, `player-loader.js` deciding once,
+    `coi-serviceworker.js`), shared with the Compile web build (S06 AC21 fix);
+  - Android player variant (`-PjasperPlayer=true [-PjasperBackend=vulkan]`,
+    `tools/players/android_player.sh`), iOS (`engine/platform/apple/ios/player-template`,
+    `tools/players/ios_player.sh`), `tools/players/package_player.py`, `write_hashes.py`,
+    `tools/build.sh players` (linux, web, android) and `exec runtime`, `docker/runtime.Dockerfile`,
+    `tools/smoke-test.sh` `SMOKE_METHOD`, `tools/ci/test_player_cli.py`, web gates
+    `prebuilt-unified-lighting*.json`, CI jobs (`players-*`, `player-hashes`, `prebuilt`);
+  - tests: editor `CookedScene.*`, `RuntimeFields.Generated`, `PayloadValidator.*`,
+    `Publishing.*`, `PublishSteam.*`, `PublishDeck.*`, `PlayerInstall.*`, `BuildMethod.*`; MCP
+    `test_build_method.py`, `test_publish.py`.
+- **Verified (remote servers):**
+  - Linux players glcore / gles3 / vulkan, built with warnings as errors. They build the fixture
+    in the compiler-free image (`docker/runtime.Dockerfile`) and run it headless. Each matches
+    its golden and repeats exactly. The contexts it reports:
+    - glcore: `4.5 (Core Profile) Mesa`;
+    - gles3: `OpenGL ES 3.2 Mesa`, and only gles3 links `libGLESv2`;
+    - vulkan: `Vulkan 1.4.318`.
+  - Web: all four modes pass with a checked frame. The modes are threaded, single-thread, the
+    COI worker, and no isolation falling back to single-thread (S06 AC20/AC21).
+  - Android: the prebuilt-path development APK passes the emulator check
+    (`tools/ci/android_prebuilt.sh`).
+  - The `xcode_sync_*.py --check` scripts pass.
+- **S18 (scene format 5):** spline fields are S08 fields with a `cppPath` through `SplineData`'s
+  editable accessors. The emitter now writes those as `JE_RF_ACCESSOR` + `JE_RF_PATH`
+  (`writePath` / `readPath` in `CookCodecs.h`). A `spline` afterLoad hook keeps the decode's
+  invariants (radii, the unit up axis) and bumps the curve's version. Covered by the
+  `CookedScene.SplineCurveThroughAccessors` test.
+- **Merges:**
+  - oe-port 40bec8043 (BF8) is merged. The guide keeps one line for shipping
+    (`build_project: ...; ship: jasper://docs/shipping.`). That line replaces the old Export
+    sentence and is one byte shorter, so the headroom check still passes.
+  - `RuntimeFields.gen.inc` was regenerated after the S18 merge and now holds 77 components.
+- **oe-port e3f0c274d (S32 async shaders) merged:**
+  - Conflicts were resolved keeping both sides. `Engine.cpp` gets S32's shader warm-up beside
+    S30's `Graphics:` line.
+  - The Mac and Windows platforms create S32's GPU worker context, with the vsync of S30's
+    platform configuration.
+  - The Xcode project is the union of both, and every `xcode_sync_*.py --check` passes.
+  - Prebuilt builds ship S32's warm-up list too: `buildAndSaveShaders` writes
+    `shaders/warmup.json`, and the staging copies it into the content.
+  - A player's `--screenshot` now waits for S32's pending GPU creations, as the editor's
+    screenshots do.
+    - The game is held, the frames drawn while it waits are not counted, and the quit follows
+      the capture.
+    - It waits at most 30 s, then captures what is drawn with a warning.
+    - Covered by `RunControlFixture.ScreenshotWaitsForPendingGpuCreation`.
+- **Fixes found by the runs:**
+  - S18's OpenEngine notice for `core/spline` was copied from the export's engine copy, and a
+    prebuilt build has none. It now comes from `Exporter::engineSourceDir()`: the export's copy,
+    else the editor's engine. Caught by MCP `test_prebuilt_linux_build` and `test_release_flow`.
+  - `writeSteamScripts` kept a caller's earlier error message, which failed the next upload
+    (`PublishSteam.UploadRunsSteamcmdAfterVerify`).
+- **Shipped size (in progress, the coordinator's request):**
+  - Release games now link with `JASPERENGINE_RELEASE_LINK` (engine/CMakeLists.txt): sections and
+    `--gc-sections`, hidden visibility, the Android export list
+    (`platform/android/exports.map`), and ThinLTO plus `--icf=safe` with lld.
+  - The numbers: `tools/ci/android_size.sh` (APKs, prebuilt and compiled) and
+    `tools/players/lib_size.py` (the library by source directory).
+  - `test_player_cli.py` gained a `components` check: every component type goes through the
+    release player.
+  - The Android payload check now asks 16 KB pages of the 64-bit ABIs only.
+- **Landing gate v2:**
+  - Android part on A (bb4389942), all green:
+    - the editor, the release players of every ABI, and the development x86_64 runtime;
+    - the sizes, and both emulator checks with `--relaunch`;
+    - AC7, and `tools/build.sh android`.
+  - Everything else on D (cac2f837a), all green except as noted:
+    - the xcode checks, the editor with warnings as errors, and TOOLS.md current;
+    - the Linux and web players, and the web build with warnings as errors;
+    - units: GL 2382 core and 1413 editor, Vulkan 2380 and 1413 with none skipped;
+    - ASan + UBSan, the full suites;
+    - the player CLI (the components check and the four web modes), and both smokes;
+    - MCP, the full suite with slow builds: 1056 passed and 3 failed.
+      - `test_desktop_build_and_run` failed because the compile fallback finished the build
+        before its executable was known. Fixed in 9d854d51e (`Exporter::holdFinish`).
+      - `test_reflection` golden_resave and codegen_golden are known oe-port failures
+        (fix/s32-golden-determinism).
+- **oe-port dc6eb4f2d (SYNC#3, vertex animation) merged:**
+  - `RenderSystem.cpp` keeps upstream's `mesh.loadFailed` and S30's settled empty mesh. The VAT
+    adds no new kind of pending load.
+  - `RuntimeFields.gen.inc` was regenerated and adds the Vertex Animator; its attachments'
+    entities are remapped. It needs no afterLoad hook: the runtime already takes any fade time
+    from Lua.
+  - The short re-check on D (06e2a63dc) is all green:
+    - the xcode checks, the editor with warnings as errors, TOOLS.md and the runtime tables
+      current, and the Linux players with warnings as errors;
+    - GL units 2433 core and 1645 editor, including `LoadSettledGpu`,
+      `LuaFunctionLifetime` and `RunControlFixture`;
+    - the player CLI (the goldens, every component type including the Vertex Animator, the four
+      web modes), and both smokes;
+    - MCP: the export, cook, build, publish and VAT files with slow builds, 156 passed and
+      0 failed. That includes `test_desktop_build_and_run`.
+
+### Shipped size (measured)
+
+- **The build:** `tools/fixtures/unified-lighting`, release, gles3.
+- **How it was measured:**
+  - Android: `tools/ci/android_size.sh` on server A, on code at 1c94d68a0 with the
+    release-link fixes.
+  - The size breakdown: `tools/players/lib_size.py`.
+  - Linux: `.s30-linux-size.sh` on server B.
+- **Units:** MiB (`apk_size.py`).
+- **"Before"** is the same code without `JASPERENGINE_RELEASE_LINK`, with every APK's libraries
+  stored.
+- **"After"** has:
+  - the release link: sections and `--gc-sections`, hidden visibility with the Android export
+    list, ThinLTO and `--icf=safe`;
+  - libraries packed as the Android Gradle plugin packs them: compressed below minSdk 23, and the
+    fixture's minSdk is 21.
+
+**Android engine library**, stripped, uncompressed (MiB; its split symbols in brackets):
+
+| ABI | before | after | final gate |
+|---|---|---|---|
+| arm64-v8a | 39.46 (497) | 27.06 (390) | 27.71 (405) |
+| armeabi-v7a | 28.99 (413) | 18.99 (338) | 19.42 (351) |
+| x86 | 41.86 (408) | 33.16 (378) | 33.98 (392) |
+| x86_64 | 42.04 (478) | 33.25 (422) | 34.04 (437) |
+
+The final gate ran on bb4389942, which adds S21's Animator, BF7 and S32.
+
+- `libc++_shared.so` adds 0.81 to 1.20 per ABI.
+- Exported dynamic symbols: 44,529 before, 6 after. Those are `GameActivity_onCreate` and the
+  five `Java_*` entry points.
+
+**Android APKs** (MiB):
+
+| package | before | after | final gate |
+|---|---|---|---|
+| prebuilt arm64-v8a APK | 41.61 | 12.45 | 12.74 |
+| prebuilt armeabi-v7a APK | 30.76 | 11.38 | 11.64 |
+| prebuilt x86 / x86_64 APK | — | 14.27 / 14.18 | 14.60 / 14.50 |
+| prebuilt universal APK (4 ABIs) | 157.61 | 49.45 | 50.64 |
+| compiled arm64-v8a APK (Gradle, the same project) | 15.13 | 12.31 | 12.59 |
+
+- **Google Play download per device** (after): the App Bundle, the default, measured with
+  `bundletool get-size total --dimensions=ABI` in the final gate. The `.aab` uploaded is 50.54 MiB.
+
+  | ABI | download (MiB) | its per-ABI APK (MiB) |
+  |---|---|---|
+  | arm64-v8a | 12.40 to 12.42 | 12.74 |
+  | armeabi-v7a | 11.28 to 11.30 | 11.64 |
+  | x86 | 14.25 to 14.27 | 14.60 |
+  | x86_64 | 14.15 to 14.17 | 14.50 |
+
+- Inside an APK (after), each package holds:
+  - its native libraries: 11.50 for arm64-v8a, compressed from 28.26;
+  - dex 0.34 (0.76 unpacked) and resources 0.39;
+  - content 0.10 and the signature 0.03.
+- Prebuilt and compiled now cost the same. In the final gate the compiled library is 28,904,736
+  bytes against the prebuilt's 29,059,056. The 0.14 MiB APK difference is the prebuilt's v1 signature and its content
+  files.
+- Before, the gap came from packing: the prebuilt stored its libraries, while Gradle compressed
+  them. The libraries themselves were the same size by both methods (40,597,584 bytes compiled,
+  41,374,936 prebuilt).
+- AndroidX (appcompat, core, activity) costs about 0.7 MiB of dex and resources. GameActivity
+  extends AppCompatActivity, so it stays, and the theme is not its only use.
+
+**Linux** (glcore, MiB):
+- "After" has the release link (sections and `--gc-sections`, hidden visibility; GCC builds have
+  no LTO) and `JASPERENGINE_SPLIT_SYMBOLS`.
+- It also includes S21's Animator, which "before" did not.
+
+| build | before | after |
+|---|---|---|
+| prebuilt: the player | 43.88 stripped (744 symbols) | 40.77 stripped (767 symbols) |
+| prebuilt: the whole build | 44.15 | 41.04 |
+| compiled: the executable | 50.99 unstripped | 39.57 stripped (739 symbols) |
+| compiled: the whole build | 51.26 | 39.84 |
+
+- Prebuilt and compiled are now within 1.2 MiB of each other. The prebuilt player has every
+  feature in it.
+- Where the symbols go:
+  - publish prepare copies the player's into `symbols/linux/player`;
+  - a compiled build keeps its own under `.jasperengine/symbols/<sha256>/`, and its content
+    manifest names them, for `symbols/linux/game`.
+
+**What is left, by size.** These need per-project module stripping, which is the coordinator's
+follow-up stream, not S30.
+- The figures are symbol sizes of the arm64-v8a library after the release link, from
+  `lib_size.py` (24.8 MB of named code and data in total). Rodata and unwind tables add roughly
+  10% on top.
+- Savings would be per build that leaves a feature out.
+
+| module | named size (MB) |
+|---|---|
+| HTML UI: rmlui 1.74, engine 1.55, lexbor 0.70, thorvg 0.19, lunasvg 0.13 | 4.3 |
+| HTML UI video: dav1d 0.44, opus 0.09, libwebm 0.06, engine 0.08 | 0.67 |
+| runtime shader compiler: glslang 0.87, spirv-cross 0.55 | 1.42 |
+| 3D physics: Jolt 0.73, plus engine physics 0.22 shared with 2D | 0.95 |
+| 2D physics: box2d | 0.35 |
+| navigation: recast 0.15, engine 0.20 | 0.35 |
+| particles / splines / lattice / fluid / terrain | 0.28 / 0.24 / 0.05 / 0.05 / 0.01 |
+| Lua bindings (luabridge3 templates) | 1.68 |
+
+- The runtime shader compiler is only needed for variants the build did not precompile.
+- The Lua bindings could shrink with fewer instantiations or `-Oz` on the binding sources.
+- `-Oz` for the whole library would typically take another 15 to 25% of code. It needs a speed
+  check first.
+- A Vulkan backend is not in a gles3 player.
+- About 3.3 MB is file-local helpers that the name grouping cannot attribute.
+
+### Integrator notes
+
+- `tools/web/browser_gate.py` now **fails** a run that asked for `--screenshot` when the page gave
+  none (`Page.captureScreenshot` timed out or returned nothing). Before, it skipped the image
+  silently, and a baseline without `rgb` passed without any frame being checked. Gates of other
+  streams may start failing honestly once this lands. A page that genuinely cannot be captured
+  opts out with `--allow-no-capture "<reason>"`; a heavy scene on software WebGL raises the wait
+  with `--capture-timeout` or a baseline's `capture_timeout` (default 30 s).
+- Why the prebuilt web frame was not captured: on the headless shell's SwiftShader WebGL the
+  unified-lighting scene draws at about 1.5 fps, and the capture waits for the GPU process to
+  produce a frame. The S30 baselines run the player to a fixed end (`?quit-after=3&fixed-fps=60&after-ready`,
+  expecting `JasperEngine exit code 0`) and allow 300 s for the capture; the frame is then
+  checked (centre pixel, and the player CLI test refuses a one-colour page).
+- The engine logs one `Graphics: <backend>; <API version>; <device>` line when its view loads
+  (e.g. `OpenGL ES 3 / WebGL2; OpenGL ES 3.2 Mesa 25.2.8; llvmpipe`).
+- `--after-ready` together with `--fixed-fps` holds the game's update events and clocks until the
+  ready frame (loading and drawing go on), so a run's frames repeat exactly.
+
+- `check`'s summary aborted with `map::at` on every non-quiet `check --shaders` run (S19's
+  `navigation` category had no unit). Fixed in 5ed9c9038. BF7 cherry-picks it with a regression
+  test, so the next oe-port merge takes it cleanly.
+- The OpenEngine notice of `core/spline` (S18) is copied from `Exporter::engineSourceDir()`. That
+  is the export's engine copy, or the editor's own engine dir in a prebuilt build.
+- These MCP tests fail on oe-port at 40bec8043 itself, not because of S30:
+  - `test_pose_runtime` ×7 and `test_post_fx_golden` (goldens, defaults_unchanged);
+  - `test_shadows` (cascade_blend_fade, shadow_goldens);
+  - `test_lattice` show_all, `test_lattice_anim` preview, `test_scene_inputs` manifest_rules.
+
+  On server D they fail the same way with S30's editor and with BF7's oe-port-based editor, both
+  run against S30's test files. S30's run options (offscreen screenshot frames, `--after-ready`)
+  take effect only in a player that `player::launch` configured, and the editor never calls it.
+
+  Corrected attribution (the S18 fix agent: they also fail on the pre-S18 baseline):
+  - BF7's branch fixes all of them except `test_pose_runtime`, mostly in the tests themselves,
+    which is why BF7's editor still failed them against S30's test files:
+    - `test_post_fx_golden`: S14's mip chain;
+    - `test_shadows` and `test_lattice` goldens: S26's Scene camera field of view;
+    - `test_scene_inputs`: S20's message;
+    - `test_shader_library` and `test_synthesize_texture`: the check summary's `map::at`;
+    - `test_place_physics_cli`: S16's HTML UI settings in project.yaml.
+  - `test_pose_runtime` comes from S29's R20, which S29 is fixing.
+
+  S30's final gate counts these files as known oe-port failures while oe-port still fails them,
+  and requires everything else green.
+- `SokolGlTextureLevels.OneLevelTexturesStateTheirMaxLevel` (BF3, 13e13a552) is GL-only. Under
+  `GRAPHIC_BACKEND=vulkan` it called `GTEST_SKIP`, and the unit gate (`--max-skipped 0`) failed
+  oe-port's Vulkan core run. S30 compiles it only for GL instead.
+- An engine restarted in the same process called Lua functions of the closed state. This happens
+  when Android relaunches an activity for a configuration change its manifest does not handle;
+  `0x80000000`, right after an install, is one an app cannot declare.
+  - `Engine::systemShutdown` closes Lua before anything releases the scripts' engine-event
+    subscriptions, so `Engine.onUpdate` kept the old `LuaFunction`s.
+  - The next instance called them, and crashed with SIGSEGV in `lua_rawgeti`. The S30 emulator
+    check of a release APK caught it.
+  - Each Lua state now has a generation (`LuaBinding::getLuaStateGeneration`). A `LuaFunction` of
+    an older state is never called nor released. Covered by `LuaFunctionLifetime.*`.
+  - The old subscriptions stay as inert entries. Releasing every script's subscriptions at shutdown
+    would remove them too; that is a follow-up for the engine-lifecycle owner.
+  - The emulator check now forces such a relaunch: `--relaunch` changes the font scale. The run
+    needs a new view, the same process, and no crash. With the fix, the development prebuilt APK
+    passed it (relaunched in process 1914, still running).
+- A scene with an asset it cannot load used to never get ready.
+  - `RenderSystem::isAllLoaded()` counted a mesh with no geometry as pending forever:
+    `loadMesh` returns early on empty buffers and never sets `loadCalled`.
+  - A model whose file is missing leaves exactly such a mesh. So does the reflection fixture's
+    empty `MeshComponent`, which is what kept `test_player_cli`'s components run from "Engine
+    ready".
+  - A game still played, and `SceneManager`'s loading screen moves on when progress stalls. But an
+    `--after-ready` run waited for its `--ready-timeout` and exited 6.
+  - Now a mesh with nothing to load counts as settled: no buffers, and no model or its load over.
+    A model still loading is still waited for. The failure stays logged ("Model load failed, not
+    retrying").
+  - The ready timeout's error names what it waited for (`Engine::describeNotLoaded`).
+  - Covered by `LoadSettledGpu.*`, and the components check runs `--after-ready` again.
+- Red before green, on server D, for both fixes. With the fix taken out, each test fails:
+  - `LoadSettledGpu` still waits for entities 1002 and 1003 (mesh);
+  - `LuaFunctionLifetime` still counts the closed state's function as live.
+
+  With the fixes back, both pass.
+

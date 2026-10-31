@@ -36,6 +36,8 @@ jasperengine_add_test_target(jasperengine-htmlui-tests
     DEFINITIONS
         JASPER_HTMLUI_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
         JASPER_HTMLUI_TEST_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"
+        # shaders and pipelines created at once (spec S32), see engine/tests/support/TestMain.cpp
+        JASPER_TEST_SYNC_GPU_CREATION=1
     OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/htmlui-test-output
     LABELS htmlui gpu
 )

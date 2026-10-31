@@ -39,6 +39,11 @@ class CheckNoticesTest(unittest.TestCase):
             (self.repo / path).parent.mkdir(parents=True, exist_ok=True)
             (self.repo / path).write_text(text)
         (self.repo / "NOTICE.md").write_text(NOTICE)
+        self.write_game_notices({"beta": {"dir": "engine/libs/beta", "when": "always"}})
+
+    def write_game_notices(self, libraries):
+        import json
+        (self.repo / "engine/notices.json").write_text(json.dumps({"schemaVersion": 1, "libraries": libraries}))
 
     def tearDown(self):
         self.directory.cleanup()
@@ -63,11 +68,40 @@ class CheckNoticesTest(unittest.TestCase):
         self.assertIn("libs/alpha: no licence file (LICENSE, LICENCE, COPYING or UNLICENSE)",
                       check_notices.check_repository(self.repo))
 
-    def test_new_library_without_anything_fails_twice(self):
+    def test_new_library_without_anything_fails_three_times(self):
         (self.repo / "engine/libs/gamma").mkdir()
         problems = check_notices.check_repository(self.repo)
-        self.assertEqual(len(problems), 2)
+        self.assertEqual(len(problems), 3)
         self.assertTrue(all(p.startswith("engine/libs/gamma:") for p in problems))
+        self.assertIn("no engine/notices.json entry", problems[2])
+
+    # S30 AC12: an engine/libs directory missing from engine/notices.json fails
+    def test_engine_library_without_game_notice_entry_fails(self):
+        self.write_game_notices({})
+        self.assertEqual(check_notices.check_repository(self.repo),
+                         ["engine/libs/beta: no engine/notices.json entry (when: always, a player feature or editor)"])
+
+    def test_game_notice_entries_are_checked(self):
+        self.write_game_notices({"beta": {"dir": "engine/libs/beta", "when": "sometimes"},
+                                 "ghost": {"dir": "engine/libs/ghost", "when": "always"}})
+        problems = check_notices.check_repository(self.repo)
+        self.assertTrue(any("beta: when must be one of" in p for p in problems), problems)
+        self.assertTrue(any("ghost: engine/libs/ghost does not exist" in p for p in problems), problems)
+
+    def test_player_manifest_follows_its_features(self):
+        (self.repo / "engine/libs/delta").mkdir()
+        (self.repo / "engine/libs/delta/LICENSE").write_text("MIT")
+        self.write_game_notices({"beta": {"dir": "engine/libs/beta", "when": "always"},
+                                 "delta": {"dir": "engine/libs/delta", "when": "physics3d"}})
+        names = [name for _, name in check_notices.player_manifest(self.repo, [])]
+        self.assertEqual(names, ["beta-LICENSE", "beta-NOTICE"])
+        names = [name for _, name in check_notices.player_manifest(self.repo, ["physics3d"])]
+        self.assertEqual(names, ["beta-LICENSE", "beta-NOTICE", "delta-LICENSE"])
+
+    def test_third_party_notices_text(self):
+        text = check_notices.third_party_notices(self.repo, [])
+        self.assertIn("beta: beta, version 2, zlib (licenses/beta-LICENSE). Used for: b", text)
+        self.assertNotIn("alpha", text)
 
     def test_first_party_directory_is_not_a_library(self):
         self.assertNotIn("engine/libs/shadercompiler", check_notices.vendored_libraries(self.repo))

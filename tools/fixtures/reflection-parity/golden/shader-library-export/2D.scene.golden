@@ -1385,7 +1385,7 @@ entities:
       points:
         enabled: true
         maxPoints: 100
-        transparent: true
+        transparent: false
         autoTransparency: true
         texture:
           textureType: 2D
