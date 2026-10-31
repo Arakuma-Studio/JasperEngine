@@ -7,6 +7,7 @@
 #include "Project.h"
 #include "AppSettings.h"
 #include "window/PlayInput.h"
+#include "window/DeviceProfiles.h"
 
 namespace jasperengine::editor {
 
@@ -42,6 +43,18 @@ namespace jasperengine::editor {
         // the Device menu's Custom language field
         char customLanguage[32] = {0};
         bool customLanguageOpen = false;
+        // the Device menu's Custom... device fields
+        CustomDeviceSettings customDeviceEdit;
+        bool customDeviceOpen = false;
+        // what the last syncSafeArea pushed to Screen (the simulated insets)
+        struct SafeAreaPush {
+            const DeviceProfile* device = nullptr;
+            ScreenOrientation orientation = ScreenOrientation::Portrait;
+            int width = -1, height = -1;
+            CustomDeviceSettings custom;
+        };
+        SafeAreaPush safeAreaPushed;
+        uint64_t editSafeAreaRevision = 0;
         ImVec2 engineScale = ImVec2(1.0f, 1.0f);
 
         // Scene drawn by the edit-mode pass and whether it needs drawing again
@@ -57,6 +70,13 @@ namespace jasperengine::editor {
         void saveSettings();
         // the device simulation of the settings into editor::Platform (System and Screen in Play)
         void applySimulation();
+        // the simulated device's insets to Screen (scaled to the render size) when they change,
+        // and in edit mode the project canvas the editor scenes lay UI out for (Scene view too)
+        void syncSafeArea();
+        // the orientation the render size is laid out for
+        ScreenOrientation renderOrientation() const;
+        // the safe rectangle drawn over an image of w x h: Screen's in Play, the device's stopped
+        Rect safeAreaInImage(float w, float h) const;
         void drawDeviceMenu();
         void drawToolbar();
         void drawContent(uint32_t sceneId);
@@ -104,6 +124,9 @@ namespace jasperengine::editor {
         const GameViewSettings& getSettings();
         void applySettings(const GameViewSettings& newSettings);
         static int getAspectCount();
+        // the simulated device's safe rectangle in a game image of w x h pixels (MCP screenshot
+        // safe_area_in_image); false without a device
+        bool getSafeAreaInImage(float w, float h, Rect& rect) const;
 
         // the orientation of the simulated device the game image is laid out for (the engine's
         // Screen.orientation with a device; App hands it over with the size)

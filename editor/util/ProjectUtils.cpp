@@ -1424,6 +1424,13 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<LayoutGroupComponent>(entity, Stream::decodeLayoutGroupComponent(componentNode));
             }
             break;
+        case ComponentType::SafeAreaComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<SafeAreaComponent>(entity, {});
+            }else{
+                registry->addComponent<SafeAreaComponent>(entity, Stream::decodeSafeAreaComponent(componentNode));
+            }
+            break;
         default:
             break;
     }
@@ -1895,6 +1902,12 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeLayoutGroupComponent(registry->getComponent<LayoutGroupComponent>(entity));
             }
             registry->removeComponent<LayoutGroupComponent>(entity);
+            break;
+        case ComponentType::SafeAreaComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeSafeAreaComponent(registry->getComponent<SafeAreaComponent>(entity));
+            }
+            registry->removeComponent<SafeAreaComponent>(entity);
             break;
         default:
             break;

@@ -47,6 +47,23 @@ struct PanelVisibilitySettings {
     }
 };
 
+// The Game view's Custom device (Device > Custom...): its portrait screen and insets in pixels
+struct CustomDeviceSettings {
+    int width = 1080;
+    int height = 2340;
+    float top = 0.0f;
+    float right = 0.0f;
+    float bottom = 0.0f;
+    float left = 0.0f;
+    float cornerRadius = 0.0f;
+
+    bool operator==(const CustomDeviceSettings& other) const {
+        return width == other.width && height == other.height && top == other.top && right == other.right
+            && bottom == other.bottom && left == other.left && cornerRadius == other.cornerRadius;
+    }
+    bool operator!=(const CustomDeviceSettings& other) const { return !(*this == other); }
+};
+
 // Game view toolbar state
 struct GameViewSettings {
     int aspect = 0;              // index into the Game view's aspect list (0 = Free Aspect)
@@ -58,11 +75,17 @@ struct GameViewSettings {
     std::string device;
     int orientation = 1;
     std::string language;
+    // the device's screen drawn over the game (rounded corners, cutout, home indicator) and
+    // the safe area outlined (safe-area spec 6.6)
+    bool deviceOverlay = true;
+    bool safeAreaOutline = false;
+    CustomDeviceSettings custom{};
 
     bool operator==(const GameViewSettings& other) const {
         return aspect == other.aspect && scale == other.scale
             && maximizeOnPlay == other.maximizeOnPlay && showStats == other.showStats
-            && device == other.device && orientation == other.orientation && language == other.language;
+            && device == other.device && orientation == other.orientation && language == other.language
+            && deviceOverlay == other.deviceOverlay && safeAreaOutline == other.safeAreaOutline && custom == other.custom;
     }
     bool operator!=(const GameViewSettings& other) const { return !(*this == other); }
 };

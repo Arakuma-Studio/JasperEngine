@@ -527,6 +527,9 @@ namespace jasperengine::editor{
         std::string headInclude;
         bool resizeCanvasToWindow = true;
         bool hideEmscriptenUI = false;
+        // the page's viewport covers the whole screen (viewport-fit=cover): the canvas reaches
+        // under a phone's notch and env(safe-area-inset-*) reports it (Screen.safeArea)
+        bool viewportFitCover = true;
     };
 
     struct LinuxProjectSettings {

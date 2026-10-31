@@ -73,7 +73,9 @@ namespace jasperengine::editor{
         FLUID_SIMULATION,
         // a unit lattice (Transform + LatticeComponent); the menus create one through
         // LatticeEditorOps::createLattice, which fits and binds it around the selection
-        LATTICE
+        LATTICE,
+        // a full-stretch RectTransform the Safe Area component drives (GameObject > UI > Safe Area)
+        SAFE_AREA
     };
 
     class CreateEntityCmd: public Command{

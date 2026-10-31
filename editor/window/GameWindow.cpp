@@ -75,6 +75,8 @@ void editor::GameWindow::loadSettings() {
 }
 
 void editor::GameWindow::applySimulation() {
+    // the Custom device is the toolbar's own screen
+    setCustomDevice(settings.custom);
     const DeviceProfile* device = settings.device.empty() ? nullptr : findDeviceProfile(settings.device);
     if (!device) settings.device.clear();
     ScreenOrientation orientation = PlatformRules::isOrientation(settings.orientation)
@@ -101,6 +103,90 @@ void editor::GameWindow::applySimulation() {
 
 ScreenOrientation editor::GameWindow::getLayoutOrientation() const {
     return layoutOrientation;
+}
+
+ScreenOrientation editor::GameWindow::renderOrientation() const {
+    // laid out: the orientation of that size; never shown: the device's
+    return (width > 0 && height > 0) ? layoutOrientation : Platform::getSimulation().orientation;
+}
+
+void editor::GameWindow::syncSafeArea() {
+    const DeviceProfile* device = Platform::getSimulation().device;
+    const ScreenOrientation orientation = renderOrientation();
+    const int renderWidth = getRenderWidth();
+    const int renderHeight = getRenderHeight();
+    const bool custom = device && std::string(device->id) == "custom";
+
+    const bool changed = device != safeAreaPushed.device || renderWidth != safeAreaPushed.width ||
+                         renderHeight != safeAreaPushed.height || (device && orientation != safeAreaPushed.orientation) ||
+                         (custom && settings.custom != safeAreaPushed.custom);
+    if (changed) {
+        safeAreaPushed.device = device;
+        safeAreaPushed.orientation = orientation;
+        safeAreaPushed.width = renderWidth;
+        safeAreaPushed.height = renderHeight;
+        safeAreaPushed.custom = settings.custom;
+        if (!device) {
+            // no device: no insets, as a desktop build
+            Screen::setPlatformSafeArea(EdgeInsets());
+        } else {
+            // the device's pixels to the render's (the image has the device's aspect when shown)
+            int deviceWidth = 0, deviceHeight = 0;
+            profileSize(*device, orientation, deviceWidth, deviceHeight);
+            const float sx = (float)renderWidth / (float)std::max(1, deviceWidth);
+            const float sy = (float)renderHeight / (float)std::max(1, deviceHeight);
+            const EdgeInsets insets = profileInsets(*device, orientation);
+            const EdgeInsets scaled(std::round(insets.left * sx), std::round(insets.top * sy),
+                                    std::round(insets.right * sx), std::round(insets.bottom * sy));
+            std::vector<Rect> cutouts;
+            const Rect cutout = profileCutout(*device, orientation);
+            if (cutout.getWidth() > 0.0f && cutout.getHeight() > 0.0f) {
+                cutouts.push_back(Rect(std::round(cutout.getX() * sx), std::round(cutout.getY() * sy),
+                                       std::round(cutout.getWidth() * sx), std::round(cutout.getHeight() * sy)));
+            }
+            Screen::setPlatformSafeArea(scaled, cutouts);
+        }
+    }
+
+    // edit mode: the editor scenes lay UI out for the project canvas, as a Play at this size would
+    if (project->getPlaySessionSceneId() == NULL_PROJECT_SCENE) {
+        Screen::setEditorReference((int)project->getCanvasWidth(), (int)project->getCanvasHeight(), renderWidth, renderHeight,
+                                   project->getScalingMode());
+        const uint64_t revision = Screen::getSafeAreaRevision();
+        if (revision != editSafeAreaRevision) {
+            editSafeAreaRevision = revision;
+            // Safe Area panels move: the Scene views and the edit pass draw again
+            for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
+                if (sceneProject) sceneProject->needUpdateRender = true;
+            }
+            editPassDirty = true;
+        }
+    }
+}
+
+Rect editor::GameWindow::safeAreaInImage(float w, float h) const {
+    const DeviceProfile* device = Platform::getSimulation().device;
+    if (project->getPlaySessionSceneId() != NULL_PROJECT_SCENE) {
+        // what the game sees: Screen.safeAreaPixels (extras included) over the rendered pixels
+        const Rect pixels = Screen::getSafeAreaPixels();
+        const float sx = w / (float)std::max(1, getRenderWidth());
+        const float sy = h / (float)std::max(1, getRenderHeight());
+        return Rect(pixels.getX() * sx, pixels.getY() * sy, pixels.getWidth() * sx, pixels.getHeight() * sy);
+    }
+    if (!device) return Rect(0, 0, w, h);
+    const ScreenOrientation orientation = renderOrientation();
+    int deviceWidth = 0, deviceHeight = 0;
+    profileSize(*device, orientation, deviceWidth, deviceHeight);
+    const Rect safe = profileSafeRect(*device, orientation);
+    const float sx = w / (float)std::max(1, deviceWidth);
+    const float sy = h / (float)std::max(1, deviceHeight);
+    return Rect(safe.getX() * sx, safe.getY() * sy, safe.getWidth() * sx, safe.getHeight() * sy);
+}
+
+bool editor::GameWindow::getSafeAreaInImage(float w, float h, Rect& rect) const {
+    if (!Platform::getSimulation().device) return false;
+    rect = safeAreaInImage(w, h);
+    return true;
 }
 
 uint8_t editor::GameWindow::getRotatableOrientations() const {
@@ -308,6 +394,8 @@ bool editor::GameWindow::computeAspect(float& aspect) const {
 
 void editor::GameWindow::show() {
     loadSettings();
+    // also while the view is closed: the engine renders at the render size whatever is shown
+    syncSafeArea();
 
     const bool wasVisible = visible;
     visible = false;
@@ -551,6 +639,10 @@ void editor::GameWindow::drawDeviceMenu() {
                 saveSettings();
             }
         }
+        if (ImGui::Selectable("Custom...##device_custom", device == &customDeviceProfile())) {
+            customDeviceEdit = settings.custom;
+            customDeviceOpen = true;
+        }
         ImGui::Separator();
         if (ImGui::BeginMenu("Language")) {
             for (const std::string& language : languagePresets()) {
@@ -572,6 +664,49 @@ void editor::GameWindow::drawDeviceMenu() {
     }
     ImGui::SetItemTooltip("Device simulation: the phone or tablet the game sees (System.getDeviceModel, Screen.dpi, "
                           "Screen.orientation) and the language (System.getSystemLanguage). Editor only.");
+
+    if (customDeviceOpen) {
+        ImGui::OpenPopup("Custom Device##GameCustomDevice");
+        customDeviceOpen = false;
+    }
+    if (ImGui::BeginPopup("Custom Device##GameCustomDevice")) {
+        ImGui::TextUnformatted("Portrait screen and safe-area insets, in pixels:");
+        CustomDeviceSettings& edit = customDeviceEdit;
+        const float fieldWidth = Theme::dpi(90.0f);
+        auto intField = [&](const char* label, int& value) {
+            ImGui::SetNextItemWidth(fieldWidth);
+            ImGui::InputInt(label, &value, 0);
+        };
+        auto floatField = [&](const char* label, float& value) {
+            ImGui::SetNextItemWidth(fieldWidth);
+            ImGui::InputFloat(label, &value, 0.0f, 0.0f, "%.0f");
+        };
+        intField("Width##CustomDevice", edit.width);
+        ImGui::SameLine();
+        intField("Height##CustomDevice", edit.height);
+        floatField("Top##CustomDevice", edit.top);
+        ImGui::SameLine();
+        floatField("Bottom##CustomDevice", edit.bottom);
+        floatField("Left##CustomDevice", edit.left);
+        ImGui::SameLine();
+        floatField("Right##CustomDevice", edit.right);
+        floatField("Corner Radius##CustomDevice", edit.cornerRadius);
+        edit.width = std::clamp(edit.width, 16, 16384);
+        edit.height = std::clamp(edit.height, 16, 16384);
+        for (float* value : {&edit.top, &edit.bottom, &edit.left, &edit.right, &edit.cornerRadius}) {
+            if (!std::isfinite(*value) || *value < 0.0f) *value = 0.0f;
+        }
+        if (ImGui::Button("Apply##CustomDevice")) {
+            settings.custom = edit;
+            settings.device = "custom";
+            applySimulation();
+            saveSettings();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel##CustomDevice")) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
 
     if (customLanguageOpen) {
         ImGui::OpenPopup("Simulated Language##GameLanguage");
@@ -610,6 +745,22 @@ void editor::GameWindow::drawDeviceMenu() {
             ImGui::SetTooltip("Rotate the simulated device (now %s)", PlatformRules::orientationName(simulation.orientation));
         }
     }
+
+    // the device's screen drawn over the game, and its safe area outlined
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!device);
+    if (toggleButton(ICON_FA_MOBILE "##GameDeviceOverlay", settings.deviceOverlay,
+                     "Device Overlay: the simulated device's rounded corners, cutout and home indicator over the game")) {
+        settings.deviceOverlay = !settings.deviceOverlay;
+        saveSettings();
+    }
+    ImGui::SameLine();
+    if (toggleButton(ICON_FA_VECTOR_SQUARE "##GameSafeAreaOutline", settings.safeAreaOutline,
+                     "Safe Area: outline Screen.safeArea (the part of the screen the game's UI should keep to)")) {
+        settings.safeAreaOutline = !settings.safeAreaOutline;
+        saveSettings();
+    }
+    ImGui::EndDisabled();
 }
 
 void editor::GameWindow::drawContent(uint32_t sceneId) {
@@ -674,6 +825,8 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
         if (project->getPlaySessionSceneId() == NULL_PROJECT_SCENE) {
             Platform::setShownOrientation(layoutOrientation);
         }
+        // the simulated insets go with this size, before App hands it to the engine
+        if (resized) syncSafeArea();
 
         // Scale zooms into the image around its centre; the child clips the rest
         const float zoom = std::clamp(settings.scale, MIN_SCALE, MAX_SCALE);
@@ -720,6 +873,13 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
         if (texture != ImTextureID{}) {
             drawList->PushClipRect(canvasMin, canvasMax, true);
             drawList->AddImage(texture, imageMin, imageMax);
+            // the simulated device's screen over it (input is unaffected)
+            const DeviceProfile* device = Platform::getSimulation().device;
+            if (device && (settings.deviceOverlay || settings.safeAreaOutline)) {
+                const Rect safe = safeAreaInImage(imageSize.x, imageSize.y);
+                drawDeviceOverlay(drawList, imageMin, imageMax, *device, layoutOrientation, settings.safeAreaOutline, &safe,
+                                  settings.deviceOverlay);
+            }
             drawList->PopClipRect();
         }
 
@@ -751,7 +911,7 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     const float fps = ImGui::GetIO().Framerate;
     const float ms = fps > 0.0f ? 1000.0f / fps : 0.0f;
 
-    char lines[7][96];
+    char lines[9][96];
     int lineCount = 5;
     snprintf(lines[0], sizeof(lines[0]), "Statistics");
     snprintf(lines[1], sizeof(lines[1]), "Graphics: %.1f FPS (%.1f ms)", fps, ms);
@@ -769,6 +929,11 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
                  PlatformRules::orientationName(Platform::getSimulation().orientation));
         lineCount++;
     }
+    // Screen.safeArea, canvas units
+    const Rect safe = Screen::getSafeArea();
+    snprintf(lines[lineCount], sizeof(lines[lineCount]), "Safe area: %g,%g %gx%g", std::round(safe.getX()), std::round(safe.getY()),
+             std::round(safe.getWidth()), std::round(safe.getHeight()));
+    lineCount++;
     // the scene's HTML UI documents (their offscreen passes are not in the counters above)
     UIDocumentSystem* documents = (sceneProject && sceneProject->scene) ? sceneProject->scene->getSystem<UIDocumentSystem>().get() : nullptr;
     if (documents && documents->hasDocuments()) {

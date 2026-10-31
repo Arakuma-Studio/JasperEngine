@@ -65,6 +65,7 @@ namespace jasperengine::editor {
         fs::path m_webCustomHtmlShell;
         char m_webHeadIncludeBuffer[2048] = {0};
         bool m_webResizeCanvasToWindow = true;
+        bool m_webViewportFitCover = true;
         bool m_webHideEmscriptenUI = false;
         char m_linuxApplicationNameBuffer[256] = {0};
         char m_linuxCommentBuffer[512] = {0};

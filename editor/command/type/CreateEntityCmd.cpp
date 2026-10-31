@@ -312,6 +312,19 @@ bool editor::CreateEntityCmd::execute(){
         polygonComp.points.push_back({Vector3(100, 100, 0), Vector4(1.0f, 1.0f, 1.0f, 1.0f)});
         polygonComp.needUpdatePolygon = true;
 
+    }else if (type == EntityCreationType::SAFE_AREA){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<RectTransformComponent>(entity, {});
+        scene->addComponent<SafeAreaComponent>(entity, {});
+
+        // stretched over its parent (the canvas at the root) until the component drives it
+        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+        layout.usingAnchors = true;
+        layout.anchorPreset = AnchorPreset::FULL_LAYOUT;
+        layout.width = 100;
+        layout.height = 100;
+
     }else if (type == EntityCreationType::LAYOUT_GROUP){
 
         scene->addComponent<Transform>(entity, {});

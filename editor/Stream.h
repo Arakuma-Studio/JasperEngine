@@ -421,6 +421,9 @@ namespace jasperengine::editor {
         static YAML::Node encodeRectTransformComponent(const RectTransformComponent& layout);
         static RectTransformComponent decodeRectTransformComponent(const YAML::Node& node, const RectTransformComponent* oldLayout = nullptr);
 
+        // only what differs from the defaults (every edge on, extras included)
+        static YAML::Node encodeSafeAreaComponent(const SafeAreaComponent& safeArea);
+        static SafeAreaComponent decodeSafeAreaComponent(const YAML::Node& node, const SafeAreaComponent* oldSafeArea = nullptr);
         static YAML::Node encodeLayoutGroupComponent(const LayoutGroupComponent& container);
         static LayoutGroupComponent decodeLayoutGroupComponent(const YAML::Node& node, const LayoutGroupComponent* oldContainer = nullptr);
 

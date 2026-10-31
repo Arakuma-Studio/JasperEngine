@@ -1575,6 +1575,24 @@ std::string editor::Factory::createRectTransformComponent(int indentSpaces, Enti
     return code.str();
 }
 
+std::string editor::Factory::createSafeAreaComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<SafeAreaComponent>(entity)) return "";
+    const SafeAreaComponent& safeArea = scene->getComponent<SafeAreaComponent>(entity);
+    const SafeAreaComponent defaults;
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "SafeAreaComponent safearea;\n";
+    // what differs from the defaults (every edge, extras included)
+    if (safeArea.enabled != defaults.enabled) code << ind << "safearea.enabled = " << formatBool(safeArea.enabled) << ";\n";
+    if (safeArea.left != defaults.left) code << ind << "safearea.left = " << formatBool(safeArea.left) << ";\n";
+    if (safeArea.top != defaults.top) code << ind << "safearea.top = " << formatBool(safeArea.top) << ";\n";
+    if (safeArea.right != defaults.right) code << ind << "safearea.right = " << formatBool(safeArea.right) << ";\n";
+    if (safeArea.bottom != defaults.bottom) code << ind << "safearea.bottom = " << formatBool(safeArea.bottom) << ";\n";
+    if (safeArea.includeExtraInsets != defaults.includeExtraInsets) code << ind << "safearea.includeExtraInsets = " << formatBool(safeArea.includeExtraInsets) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "SafeAreaComponent", "safearea", assignExisting);
+    return code.str();
+}
+
 std::string editor::Factory::createLayoutGroupComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<LayoutGroupComponent>(entity)) return "";
     LayoutGroupComponent& container = scene->getComponent<LayoutGroupComponent>(entity);
@@ -2974,6 +2992,7 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::MeshPolygonComponent: return createMeshPolygonComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::RectTransformComponent: return createRectTransformComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::LayoutGroupComponent: return createLayoutGroupComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::SafeAreaComponent: return createSafeAreaComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::TextComponent: return createTextComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ImageComponent: return createImageComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::SpriteComponent: return createSpriteComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);

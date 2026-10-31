@@ -49,6 +49,9 @@
 #include "App.h"
 #include "Backend.h"
 #include "Theme.h"
+#include "Platform.h"
+#include "Screen.h"
+#include "window/DeviceProfiles.h"
 #include "Widgets.h"
 #include "Factory.h"
 #include "component/ActionComponent.h"
@@ -7812,7 +7815,19 @@ void editor::InspectorWindow::drawRectTransformComponent(ComponentType cpType, S
     settingsPivot.secondColSize = 6 * ImGui::GetFontSize();
     settingsPivot.help = "Scale and rotation center: (0, 0) is the top-left corner, (0.5, 0.5) the center";
 
+    // a Safe Area component sets the anchors, offsets and size (Unity's driven properties)
+    bool drivenBySafeArea = false;
+    for (const Entity& entity : entities){
+        if (sceneProject->scene->findComponent<SafeAreaComponent>(entity)) drivenBySafeArea = true;
+    }
+    if (drivenBySafeArea){
+        ImGui::TextDisabled(ICON_FA_LOCK " Driven by Safe Area");
+        ImGui::SetItemTooltip("The Safe Area component sets the anchors, offsets and size from Screen.safeArea; "
+                              "edit its edges, or remove it to edit these again.");
+    }
+
     beginTable(cpType, getLabelSize("Position Offset"));
+    ImGui::BeginDisabled(drivenBySafeArea);
     propertyRow(RowPropertyType::UInt, cpType, "width", "Width", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::UInt, cpType, "height", "Height", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Bool, cpType, "usingAnchors", "Use Anchors", sceneProject, entities);
@@ -7842,6 +7857,7 @@ void editor::InspectorWindow::drawRectTransformComponent(ComponentType cpType, S
         ImGui::EndDisabled();
     }
     propertyRow(RowPropertyType::Vector2, cpType, "positionOffset", "Position Offset", sceneProject, entities, settingsPositionOffset);
+    ImGui::EndDisabled();
     propertyRow(RowPropertyType::Vector2, cpType, "pivot", "Pivot", sceneProject, entities, settingsPivot);
     propertyRow(RowPropertyType::Bool, cpType, "ignoreScissor", "Ignore Scissor", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "ignoreEvents", "Ignore Events", sceneProject, entities);
@@ -7927,6 +7943,64 @@ void editor::InspectorWindow::drawLayoutGroupComponent(ComponentType cpType, Sce
         endTable();
     }
 
+}
+
+void editor::InspectorWindow::drawSafeAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    Scene* scene = sceneProject->scene;
+
+    // the edges that follow the safe area, in one row (Unity's community SafeArea "Conform X/Y",
+    // per edge); an edge turned off stays at the parent's edge
+    beginTable(cpType, getLabelSize("Include Extra Insets"));
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Edges");
+    ImGui::SetItemTooltip("The edges of the RectTransform that keep inside Screen.safeArea");
+    ImGui::TableSetColumnIndex(1);
+    const struct { const char* property; const char* label; } edges[] = {
+        {"left", "Left"}, {"top", "Top"}, {"right", "Right"}, {"bottom", "Bottom"}};
+    for (int i = 0; i < 4; i++){
+        bool all = true, any = false;
+        for (const Entity& entity : entities){
+            PropertyData prop = Catalog::findProperty(scene, entity, cpType, edges[i].property);
+            const bool on = prop.ref && *static_cast<bool*>(prop.ref);
+            all = all && on;
+            any = any || on;
+        }
+        bool value = all;
+        if (i > 0) ImGui::SameLine();
+        if (any && !all) ImGui::PushStyleColor(ImGuiCol_CheckMark, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        if (ImGui::Checkbox((std::string(edges[i].label) + "##safearea_" + edges[i].property).c_str(), &value)){
+            for (const Entity& entity : entities){
+                cmd = new PropertyCmd<bool>(project, sceneProject->id, entity, cpType, edges[i].property, value);
+                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+            }
+            if (cmd) cmd->setNoMerge();
+        }
+        if (any && !all) ImGui::PopStyleColor();
+    }
+    RowSettings settingsExtra;
+    settingsExtra.help = "Screen.setExtraInsets (a banner ad's height) shrinks this panel too";
+    propertyRow(RowPropertyType::Bool, cpType, "includeExtraInsets", "Include Extra Insets", sceneProject, entities, settingsExtra);
+    endTable();
+
+    bool missingRect = false;
+    for (const Entity& entity : entities){
+        if (!scene->findComponent<RectTransformComponent>(entity)) missingRect = true;
+    }
+    if (missingRect){
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " Needs a RectTransform (a UI element) to drive");
+    }
+
+    // what it fits to now, in canvas units (the Game view's simulated device in the editor)
+    const Rect safe = Screen::getSafeArea();
+    const DeviceProfile* device = Platform::getSimulation().device;
+    char line[160];
+    std::snprintf(line, sizeof(line), "Safe area: x %g, y %g, %g x %g (%s%s)", std::round(safe.getX()), std::round(safe.getY()),
+                  std::round(safe.getWidth()), std::round(safe.getHeight()), device ? "simulated: " : "no device simulated",
+                  device ? device->name : "");
+    ImGui::TextDisabled("%s", line);
+    ImGui::SetItemTooltip("Screen.safeArea, canvas units. Pick a phone in the Game view's Device menu to see it with a notch.");
 }
 
 void editor::InspectorWindow::drawImageComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
@@ -16116,6 +16190,8 @@ void editor::InspectorWindow::show(){
                     drawRectTransformComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::LayoutGroupComponent){
                     drawLayoutGroupComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::SafeAreaComponent){
+                    drawSafeAreaComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::ImageComponent){
                     drawImageComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::SpriteComponent){

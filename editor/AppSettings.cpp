@@ -353,6 +353,18 @@ bool AppSettings::loadSettings() {
                 if (gameNode["device"]) gameViewSettings.device = gameNode["device"].as<std::string>();
                 if (gameNode["orientation"]) gameViewSettings.orientation = gameNode["orientation"].as<int>();
                 if (gameNode["language"]) gameViewSettings.language = gameNode["language"].as<std::string>();
+                if (gameNode["device_overlay"]) gameViewSettings.deviceOverlay = gameNode["device_overlay"].as<bool>();
+                if (gameNode["safe_area_outline"]) gameViewSettings.safeAreaOutline = gameNode["safe_area_outline"].as<bool>();
+                if (const YAML::Node customNode = gameNode["custom_device"]; customNode && customNode.IsMap()) {
+                    CustomDeviceSettings& custom = gameViewSettings.custom;
+                    if (customNode["width"]) custom.width = customNode["width"].as<int>();
+                    if (customNode["height"]) custom.height = customNode["height"].as<int>();
+                    if (customNode["top"]) custom.top = customNode["top"].as<float>();
+                    if (customNode["right"]) custom.right = customNode["right"].as<float>();
+                    if (customNode["bottom"]) custom.bottom = customNode["bottom"].as<float>();
+                    if (customNode["left"]) custom.left = customNode["left"].as<float>();
+                    if (customNode["corner_radius"]) custom.cornerRadius = customNode["corner_radius"].as<float>();
+                }
             }
         }
 
@@ -515,6 +527,20 @@ bool AppSettings::saveSettings() {
         if (!gameViewSettings.device.empty()) gameNode["device"] = gameViewSettings.device;
         if (gameViewSettings.orientation != GameViewSettings{}.orientation) gameNode["orientation"] = gameViewSettings.orientation;
         if (!gameViewSettings.language.empty()) gameNode["language"] = gameViewSettings.language;
+        if (!gameViewSettings.deviceOverlay) gameNode["device_overlay"] = false;
+        if (gameViewSettings.safeAreaOutline) gameNode["safe_area_outline"] = true;
+        if (gameViewSettings.custom != CustomDeviceSettings{}) {
+            const CustomDeviceSettings& custom = gameViewSettings.custom;
+            YAML::Node customNode;
+            customNode["width"] = custom.width;
+            customNode["height"] = custom.height;
+            customNode["top"] = custom.top;
+            customNode["right"] = custom.right;
+            customNode["bottom"] = custom.bottom;
+            customNode["left"] = custom.left;
+            customNode["corner_radius"] = custom.cornerRadius;
+            gameNode["custom_device"] = customNode;
+        }
         editorNode["game_view"] = gameNode;
         settingsData["editor"] = editorNode;
 
