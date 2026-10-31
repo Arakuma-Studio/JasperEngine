@@ -107,7 +107,9 @@ LIMITS.update({"user_settings": 550})
 # enable_collision / anchor_space paid by moving set_joint's type lists and per-argument texts to
 # jasper://docs/physics (set_joint 1020 -> 756); merged with main (script-data, input): 150 tools
 # measured 106620, the limit lowered to it
-TOTAL_LIMIT = 106620
+# camera-shake (on coroutines, merged with main: physics-2d): list_assets' type enum gains "shake"
+# (+8) over coroutines' get_play_state / get_runtime_entity texts (+83): 150 tools measured 106711
+TOTAL_LIMIT = 106711
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

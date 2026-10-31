@@ -95,7 +95,7 @@ async def test_b_shake_files(ed: Editor):
     ed.check(abs(peak["duration"] - (0.05 + 1 + 0.5)) < 1e-4, f"sampled span: {peak}")
 
     listed = await ed.call("list_assets", type="shake")
-    paths = [a["path"] for a in listed["assets"]]
+    paths = [a["path"] for a in listed["entries"]]
     ed.check("assets/shakes/boom.shake" in paths, f"list_assets type shake: {paths}")
     ed.check(all(p.endswith(".shake") for p in paths), f"only .shake files: {paths}")
 

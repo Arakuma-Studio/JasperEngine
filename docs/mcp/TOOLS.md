@@ -1023,7 +1023,7 @@ Run Lua in the running game: the values as JSON (handles as {type, entity, name,
 
 Hints: read-only, idempotent
 
-Play state: played and running scenes (child scenes run as copies with own ids), the session (time, frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), console_cursor, the clock (time_scale, fixed_fps, auto_pause, held); stopped: play_would_start.
+Play state: played and running scenes (child scenes run as copies with own ids), the session (time, frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), console_cursor, script coroutines and timers (counts), the clock (time_scale, fixed_fps, auto_pause, held); stopped: play_would_start.
 
 No parameters.
 
@@ -1034,7 +1034,7 @@ No parameters.
 
 Hints: read-only, idempotent
 
-Live values of a GameObject in the running game (runtime-spawned too): component properties this frame and script state (Lua instance fields, C++ DPROPERTY members). Only while playing.
+Live values of a GameObject in the running game (runtime-spawned too): component properties this frame and script state (Lua instance fields, C++ DPROPERTY members; coroutines with what they wait for, timers). Only while playing.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -1643,7 +1643,7 @@ List/search project files as the Project window shows them. pattern globs the fi
 | `pattern` | string |  |  |
 | `query` | string |  | Name substring. |
 | `recursive` | boolean |  | Default: `true`. |
-| `type` | `"any"` \| `"texture"` \| `"model"` \| `"audio"` \| `"font"` \| `"html"` \| `"css"` \| `"script"` \| `"scene"` \| `"prefab"` \| `"material"` \| `"shader"` \| `"animation"` \| `"vertex_animation"` \| `"folder"` \| `"other"` |  |  |
+| `type` | `"any"` \| `"texture"` \| `"model"` \| `"audio"` \| `"font"` \| `"html"` \| `"css"` \| `"script"` \| `"scene"` \| `"prefab"` \| `"material"` \| `"shader"` \| `"animation"` \| `"vertex_animation"` \| `"shake"` \| `"folder"` \| `"other"` |  |  |
 
 
 ### `list_material_presets`
