@@ -1,0 +1,26 @@
+name: LinesTrails
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: letterbox
+vsync: true
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+assetsDir: assets
+luaDir: scripts
+export:
+  # the script builds every line and trail at run time: the line variants it draws
+  # (Vc4, the ribbon Rib, its base texture Tex, pixel widths Pxw, with and without Pcl)
+  shaderAdditions:
+    - type: lines
+      properties: 2
+    - type: lines
+      properties: 10
+    - type: lines
+      properties: 26
+    - type: lines
+      properties: 42
+startSceneId: 1
+scenes:
+  - filepath: Main Scene.scene

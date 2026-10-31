@@ -18,6 +18,7 @@
 #include "component/Light2DComponent.h"
 #include "component/PointsComponent.h"
 #include "component/LineRendererComponent.h"
+#include "component/TrailRendererComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/SpriteComponent.h"
@@ -302,6 +303,19 @@ namespace jasperengine{
 		float padding[3];
 	} vs_points_params_t;
 
+	// u_vs_linesParams of a ribbon: a thick line or a trail (includes/lines_vs.glsl, LINE_RIBBON)
+	typedef struct vs_lines_ribbon_params_t {
+		Matrix4 mvpMatrix;
+		Matrix4 modelMatrix;
+		Matrix4 viewProjection;
+		// xyz world position (w 0), or the direction towards the camera (w 1, orthographic)
+		Vector4 cameraPosition;
+		// xyz world normal of TransformZ alignment, w 1 TransformZ / 0 View
+		Vector4 alignAxis;
+		// xy render target size in pixels
+		Vector4 viewport;
+	} vs_lines_ribbon_params_t;
+
 	typedef struct check_load_t {
 		Scene* scene;
 		Entity entity;
@@ -447,7 +461,10 @@ namespace jasperengine{
 	private:
 		enum class TransparentRenderType{
 			MESH,
-			POINTS
+			POINTS,
+			// a thick Line Renderer, a Trail Renderer (blended ribbons)
+			LINES,
+			TRAIL
 		};
 
 		struct TransparentRenderData{
@@ -465,6 +482,8 @@ namespace jasperengine{
 			int sortPriority;
 			// submission order: equal priority and distance draw in it, deterministically
 			uint32_t order;
+			LineRendererComponent* lines = nullptr;
+			TrailRendererComponent* trail = nullptr;
 		};
 
 		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
@@ -1920,8 +1939,33 @@ namespace jasperengine{
 		float computePointsScale(const CameraComponent& camera, float viewportHeight) const;
 		void destroyPoints(Entity entity, PointsComponent& points);
 
-		bool drawLines(LineRendererComponent& lines, Transform& transform, Transform& camTransform, PipelineType pipType);
+		bool drawLines(Entity entity, LineRendererComponent& lines, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType);
 		void destroyLines(Entity entity, LineRendererComponent& lines);
+		static void changeTrailLoaded(void* data);
+		static void changeTrailDestroy(void* data);
+		// a thick line's or a trail's draw: the ribbon params for this camera, the blocks, textures
+		template<typename T>
+		bool drawRibbon(T& component, const Matrix4& modelMatrix, const Vector3& alignAxis, bool transformZ,
+		                CameraComponent& camera, Transform& camTransform, PipelineType pipType);
+		bool drawTrail(Entity entity, TrailRendererComponent& trail, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType);
+		// scratch of updateTrail: a trail's centre line and its points' parameters
+		std::vector<Vector3> trailPoints;
+		std::vector<float> trailPointT;
+		void destroyTrail(Entity entity, TrailRendererComponent& trail);
+		// the GPU side of a ribbon (thick line or trail): shader variant, buffers sized to its
+		// capacity, bindings and pipelines; `ribbonVariant` the variant properties without the
+		// post colour bit
+		template<typename T>
+		bool loadRibbonRender(Entity entity, T& component, uint16_t pipelines, uint64_t ribbonVariant, BufferUsage usage);
+		template<typename T>
+		void destroyRibbonRender(Entity entity, T& component);
+		// CPU: the ribbon of a thick line or the segments of a hairline polyline, when dirty;
+		// needReload when the variant or the capacity the data needs changed
+		void updateLinesGeometry(Entity entity, LineRendererComponent& lines, float dt);
+		// a trail's activity for this pass (its own enabled, not the GameObject's other renderers)
+		bool isTrailRenderActive(Entity entity, const TrailRendererComponent& trail, uint32_t cullingMask) const;
+		// the world bounds of a line's ribbon (with its width), null when not culled (pixel widths)
+		AABB linesWorldBounds(const LineRendererComponent& lines, const Transform& transform) const;
 
 		bool drawSky(SkyboxComponent& sky, PipelineType pipType, const Matrix4& viewProjection);
 		void destroySky(Entity entity, SkyboxComponent& sky);
@@ -2086,6 +2130,7 @@ namespace jasperengine{
 		bool loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelines, InstancedMeshComponent* instmesh, TerrainComponent* terrain);
 		bool loadPoints(Entity entity, PointsComponent& points, uint16_t pipelines);
 		bool loadLines(Entity entity, LineRendererComponent& lines, uint16_t pipelines);
+		bool loadTrail(Entity entity, TrailRendererComponent& trail, uint16_t pipelines);
 		bool loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bool isText);
 		bool loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelines);
 
@@ -2109,7 +2154,20 @@ namespace jasperengine{
 		bool isInsideCamera(const float cameraFar, const Plane frustumPlanes[6], const Vector3& center, const float& radius);
 
 		void needReloadPoints();
+		// Line Renderers and Trail Renderers
 		void needReloadLines();
+
+		// Trail Renderers (TrailSystem calls it once per trail per update, after simulating):
+		// builds the ribbon when its points or settings changed, loads or reloads it
+		void updateTrail(Entity entity, TrailRendererComponent& trail, float dt);
+		// the shader variant properties (without the post colour bit) a Line Renderer / Trail
+		// Renderer loads: the hairline (Vc4) or the ribbon (Rib, Tex with a base texture on a
+		// shader without manifest, Pxw for pixel widths). Shader warmup and the editor's
+		// variant collection use them too
+		static uint64_t getLinesVariantProperties(const Scene* scene, const LineRendererComponent& lines);
+		static uint64_t getTrailVariantProperties(const Scene* scene, const TrailRendererComponent& trail);
+		// the base texture (shaderTextures' u_baseTexture), empty without one
+		static const Texture* getLinesBaseTexture(const std::vector<std::pair<std::string, Texture>>& shaderTextures);
 		void needReloadMeshes();
 		// a change of the scene's shader environment that leaves every resource the loaded
 		// variants bind alive (light cap, fog, lights added or removed, reflection probes, 2D

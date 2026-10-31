@@ -3328,6 +3328,22 @@
 		4A534E47981333F75668E2CF /* ScriptClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */; };
 		4A534E47A1EA29B71E34FD57 /* ScriptEvent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473B9ADEBA91C10EBA /* ScriptEvent.h */; };
 		4A534E47A18FD96145634463 /* ScriptRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4700754C227C4F1876 /* ScriptRuntime.h */; };
+		4A534E47ECA800FD8B871567 /* AnimationCurve.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AB97E17551816126 /* AnimationCurve.cpp */; };
+		4A534E47C4CC2BA4600C539E /* AnimationCurve.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AB97E17551816126 /* AnimationCurve.cpp */; };
+		4A534E47699C0D6A66DBCB13 /* Gradient.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CE6A27D093FF30CD /* Gradient.cpp */; };
+		4A534E476CE65E40D89D6748 /* Gradient.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CE6A27D093FF30CD /* Gradient.cpp */; };
+		4A534E47CB7C331EE90C2019 /* TrailRenderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4759A335399714FD33 /* TrailRenderer.cpp */; };
+		4A534E47666B66B24871AAA0 /* TrailRenderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4759A335399714FD33 /* TrailRenderer.cpp */; };
+		4A534E474FD048B43C95AA02 /* LineRibbonBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476309E3EF32DDB09B /* LineRibbonBuilder.cpp */; };
+		4A534E47F807A7F7B7DC0936 /* LineRibbonBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476309E3EF32DDB09B /* LineRibbonBuilder.cpp */; };
+		4A534E47C826FA60D57B648C /* TrailSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B38E42BA45359570 /* TrailSystem.cpp */; };
+		4A534E479399C2E0EAF5A3C3 /* TrailSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B38E42BA45359570 /* TrailSystem.cpp */; };
+		4A534E477488C86519002423 /* TrailRendererComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471E4D971B8C73A691 /* TrailRendererComponent.h */; };
+		4A534E47B22451FC6561CEF6 /* AnimationCurve.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B61DB73C5C1B6ABF /* AnimationCurve.h */; };
+		4A534E4764E472A26357C59D /* Gradient.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475BFC5BBB38279DB9 /* Gradient.h */; };
+		4A534E471ECC1F0F8A111EDB /* TrailRenderer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D1A59D898AF8B4BB /* TrailRenderer.h */; };
+		4A534E478F589171F02F0B63 /* LineRibbonBuilder.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47197C345843945889 /* LineRibbonBuilder.h */; };
+		4A534E47212823E1E8889FB7 /* TrailSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D89F43391B4A415F /* TrailSystem.h */; };
 		4A534E4799074761EB73275F /* DebugOverlay.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C33063FE6F38230 /* DebugOverlay.cpp */; };
 		4A534E47616F1F38DEA04615 /* DebugOverlay.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C33063FE6F38230 /* DebugOverlay.cpp */; };
 		4A534E47363D69401D2B349E /* DebugOverlayResources.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474C923828D7422271 /* DebugOverlayResources.cpp */; };
@@ -6728,6 +6744,17 @@
 		4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptClassesLua.cpp; sourceTree = "<group>"; };
 		4A534E473B9ADEBA91C10EBA /* ScriptEvent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScriptEvent.h; sourceTree = "<group>"; };
 		4A534E4700754C227C4F1876 /* ScriptRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScriptRuntime.h; sourceTree = "<group>"; };
+		4A534E47AB97E17551816126 /* AnimationCurve.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimationCurve.cpp; sourceTree = "<group>"; };
+		4A534E47CE6A27D093FF30CD /* Gradient.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Gradient.cpp; sourceTree = "<group>"; };
+		4A534E4759A335399714FD33 /* TrailRenderer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TrailRenderer.cpp; sourceTree = "<group>"; };
+		4A534E476309E3EF32DDB09B /* LineRibbonBuilder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LineRibbonBuilder.cpp; sourceTree = "<group>"; };
+		4A534E47B38E42BA45359570 /* TrailSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TrailSystem.cpp; sourceTree = "<group>"; };
+		4A534E471E4D971B8C73A691 /* TrailRendererComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TrailRendererComponent.h; sourceTree = "<group>"; };
+		4A534E47B61DB73C5C1B6ABF /* AnimationCurve.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimationCurve.h; sourceTree = "<group>"; };
+		4A534E475BFC5BBB38279DB9 /* Gradient.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Gradient.h; sourceTree = "<group>"; };
+		4A534E47D1A59D898AF8B4BB /* TrailRenderer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TrailRenderer.h; sourceTree = "<group>"; };
+		4A534E47197C345843945889 /* LineRibbonBuilder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LineRibbonBuilder.h; sourceTree = "<group>"; };
+		4A534E47D89F43391B4A415F /* TrailSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TrailSystem.h; sourceTree = "<group>"; };
 		4A534E479C33063FE6F38230 /* DebugOverlay.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DebugOverlay.cpp; sourceTree = "<group>"; };
 		4A534E474C923828D7422271 /* DebugOverlayResources.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DebugOverlayResources.cpp; sourceTree = "<group>"; };
 		4A534E47C62C3BED7646C817 /* DebugStats.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DebugStats.cpp; sourceTree = "<group>"; };
@@ -8194,6 +8221,8 @@
 				4A534E4749FAA44055DBA213 /* RenderBackendTime.h */,
 				4A534E473A33F3DC4FB8A61C /* CpuSkin.cpp */,
 				4A534E4754E256FE333DE6E7 /* CpuSkin.h */,
+				4A534E476309E3EF32DDB09B /* LineRibbonBuilder.cpp */,
+				4A534E47197C345843945889 /* LineRibbonBuilder.h */,
 			);
 			path = render;
 			sourceTree = "<group>";
@@ -8263,6 +8292,7 @@
 				4A534E47625F8F2E8CA675B3 /* AnimationPlayerComponent.h */,
 				4A534E47F4D574AFECE5C17E /* VertexAnimatorComponent.h */,
 				4A534E47C782824D41EC527F /* PhysicsCommon.h */,
+				4A534E471E4D971B8C73A691 /* TrailRendererComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -8295,6 +8325,10 @@
 				7162FC4A25962A0E0075B97D /* Vector3.cpp */,
 				7162FC5725962A0E0075B97D /* Vector4.h */,
 				7162FC4925962A0E0075B97D /* Vector4.cpp */,
+				4A534E47AB97E17551816126 /* AnimationCurve.cpp */,
+				4A534E47CE6A27D093FF30CD /* Gradient.cpp */,
+				4A534E47B61DB73C5C1B6ABF /* AnimationCurve.h */,
+				4A534E475BFC5BBB38279DB9 /* Gradient.h */,
 			);
 			path = math;
 			sourceTree = "<group>";
@@ -8350,6 +8384,8 @@
 				4A534E474E482C208244479A /* AnimationPlayer.h */,
 				4A534E47DA7ED38894929ED6 /* VertexAnimator.cpp */,
 				4A534E47E1D001E6946218B1 /* VertexAnimator.h */,
+				4A534E4759A335399714FD33 /* TrailRenderer.cpp */,
+				4A534E47D1A59D898AF8B4BB /* TrailRenderer.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -8403,6 +8439,8 @@
 				4A534E47452204C1B7C473FF /* ActionSystemPlayers.cpp */,
 				4A534E470570E826DC760188 /* VertexAnimatorSystem.cpp */,
 				4A534E474C490B38DD8DB742 /* VertexAnimatorSystem.h */,
+				4A534E47B38E42BA45359570 /* TrailSystem.cpp */,
+				4A534E47D89F43391B4A415F /* TrailSystem.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -12027,6 +12065,12 @@
 				4A534E4708435C1C1D7160F0 /* ScriptMessages.h in Headers */,
 				4A534E47A1EA29B71E34FD57 /* ScriptEvent.h in Headers */,
 				4A534E47A18FD96145634463 /* ScriptRuntime.h in Headers */,
+				4A534E477488C86519002423 /* TrailRendererComponent.h in Headers */,
+				4A534E47B22451FC6561CEF6 /* AnimationCurve.h in Headers */,
+				4A534E4764E472A26357C59D /* Gradient.h in Headers */,
+				4A534E471ECC1F0F8A111EDB /* TrailRenderer.h in Headers */,
+				4A534E478F589171F02F0B63 /* LineRibbonBuilder.h in Headers */,
+				4A534E47212823E1E8889FB7 /* TrailSystem.h in Headers */,
 				4A534E4700C2B06C425C31F7 /* DebugOverlay.h in Headers */,
 				4A534E47EBF20FD2B6EA0602 /* DebugOverlayResources.h in Headers */,
 				4A534E47CA764B3433135B26 /* DebugStats.h in Headers */,
@@ -14086,6 +14130,11 @@
 				4A534E475F8922B71DF8823D /* ScriptEvent.cpp in Sources */,
 				4A534E470CC4368392A0B2D2 /* ScriptRuntime.cpp in Sources */,
 				4A534E479BBB4CAB67E8BDD1 /* ScriptClassesLua.cpp in Sources */,
+				4A534E47ECA800FD8B871567 /* AnimationCurve.cpp in Sources */,
+				4A534E47699C0D6A66DBCB13 /* Gradient.cpp in Sources */,
+				4A534E47CB7C331EE90C2019 /* TrailRenderer.cpp in Sources */,
+				4A534E474FD048B43C95AA02 /* LineRibbonBuilder.cpp in Sources */,
+				4A534E47C826FA60D57B648C /* TrailSystem.cpp in Sources */,
 				4A534E4799074761EB73275F /* DebugOverlay.cpp in Sources */,
 				4A534E47363D69401D2B349E /* DebugOverlayResources.cpp in Sources */,
 				4A534E4775EA0FE24B50FD95 /* DebugStats.cpp in Sources */,
@@ -14525,6 +14574,11 @@
 				4A534E476DADCD54579A8EF4 /* ScriptEvent.cpp in Sources */,
 				4A534E47EA32FE1232B1C371 /* ScriptRuntime.cpp in Sources */,
 				4A534E47981333F75668E2CF /* ScriptClassesLua.cpp in Sources */,
+				4A534E47C4CC2BA4600C539E /* AnimationCurve.cpp in Sources */,
+				4A534E476CE65E40D89D6748 /* Gradient.cpp in Sources */,
+				4A534E47666B66B24871AAA0 /* TrailRenderer.cpp in Sources */,
+				4A534E47F807A7F7B7DC0936 /* LineRibbonBuilder.cpp in Sources */,
+				4A534E479399C2E0EAF5A3C3 /* TrailSystem.cpp in Sources */,
 				4A534E47616F1F38DEA04615 /* DebugOverlay.cpp in Sources */,
 				4A534E47880AD33FCC731DA0 /* DebugOverlayResources.cpp in Sources */,
 				4A534E470E64957D3C296FB5 /* DebugStats.cpp in Sources */,
