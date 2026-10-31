@@ -975,9 +975,10 @@ later animation features plug into. Code references are to the `gaps/anim-layers
   (the clips' pace); the base layer included (then the player writes nothing).
 - **Shared pose blend.** The evaluator writes its composed values into the shared
   `TransformBlendAccum` map with weight 1, as specified. To meet the budget the map now keeps its
-  nodes between frames (`TransformBlendAccum::reset`, empty entries skipped by the flush, entries
-  of destroyed entities dropped): no allocation per animated entity and frame. Results are
-  unchanged (test 1).
+  nodes between frames (`TransformBlendAccum::reset`; an entry no one wrote this frame is dropped
+  by the flush, so only what animates every frame keeps its node): no allocation per animated
+  entity and frame. Results are unchanged (test 1). A rebind of any state rebuilds the player's
+  whole slot table (reusing its vectors); with unresolved paths that is at most 4 times a second.
 - **Lua layer arguments** are bound as two overloads (an integer index first, then a name), so the
   stubs show `integer` and `string` forms.
 
@@ -1013,8 +1014,70 @@ later animation features plug into. Code references are to the `gaps/anim-layers
 - **Validation details.** Any State transitions count as exits for the dead-end check; empty
   states are never dead ends; a blend tree loops when all its children loop. "Unreachable" is a
   graph search from the default state (Any State targets are reachable).
+- **Re-entering a playing state** (an Any State transition to the current state with
+  `can_transition_to_self`, a crossFade to the playing state, an interruption back to a source)
+  restarts it and keeps the weight it had on top of the transition's `x` (there is no copy state,
+  as in the legacy player): no dip toward the rest pose, but no blend between its two times.
+- **Events and transitions.** The events of the state that is not fading out are collected over
+  the step before a transition is picked, so the step that crosses an exit time still fires the
+  source's events. A state entered through a transition fires its start-time events on the first
+  update it has weight. Triggers read by fired transitions are reset after every layer was driven,
+  so a trigger two layers read fires on both.
+- **Time.** Transitions run in the player's time (`player.speed` scales them, as `Animator.speed`
+  does). A non-fixed duration is a fraction of the source's length in the source's own time
+  (divided by its speed).
+- **A state whose clip failed to load** is an empty state (L11): 1 s long, so its exit times
+  still come. Blend tree children without weight or with a failed clip don't count toward the
+  tree's cycle.
+- **A reload in the middle of a transition** (a controller edit, a clip list change) completes it:
+  the layer keeps the destination.
+- **Legacy calls on controller states.** `stopLayer` and `state.layer` warn once and do nothing
+  with a controller (the driver owns its states). The three-number Lua forms
+  `play(name, a, b)` / `crossFade(name, a, b)` are one binding that reads the numbers by whether the
+  player has a controller (`layer, normalizedTime` / `seconds, layer`) or not (`fade, PlayMode`);
+  the C++ API has distinct overloads.
 - **Mismatched parameter types** warn once per (parameter, requested type) and convert:
   `setBool` on a float sets 0 or 1, `setFloat` on an int rounds, `setBool` on a trigger sets it.
+
+### Editor and MCP
+
+- **Documents.** `.mask` and `.controller` edits go through one template,
+  `editor/animation/AnimAssetDocument.h` (`AvatarMaskDocument`, `AnimatorControllerDocument`),
+  modeled on AnimationClipDocument: one project undo step per commit, merge keys for drags, reload
+  on outside changes, pool invalidation and player reload on every revision.
+- **References.** Both assets are GUID-tracked JSON assets. A `.controller` names its clips and
+  masks by path (the runtime loads by path; GUIDs are editor-only), so renaming a clip, model or
+  mask also rewrites the controllers that name it, in the same undo step. Mask and controller
+  "users" include the layers of the project's controllers, not only players in scenes. A player
+  with a controller preloads the controller's clips and masks instead of its own clip list.
+- **Layer edits** (`editor/command/type/PlayerLayerActions.h`) are single scene steps that move
+  `layers` and every affected `clips[i].layer` together (L8). The base layer can't be removed or
+  moved and nothing moves into index 0; a list back to the default Base Layer is stored empty. An
+  edit on a player without authored layers writes the whole list.
+- **`check --anims`** treats a model sub-clip as `once` (the importer's wrap) for the dead-end
+  check; `.mask`/`.controller` count toward the `anims` total.
+- **Inspector.** The Avatar Mask figure's tooltip shows the hovered part's weight (ImGui tooltips
+  can't hold a field); a fraction is set with the slider under the figure for the last-clicked
+  part. The preview model treats every glTF node as a bone for humanoid detection and honours the
+  `.humanoid` sidecar; a prefab preview uses the first model it names. Create Mask from Selection
+  and Create Controller from Clips ask for the file with a save dialog (`<Layer>.mask`,
+  `<GameObject>.controller`). For a player with a controller, the Animation window still lists the
+  player's own clip entries; controller clips are opened from the Project window or the Animator
+  window.
+- **Animator window.** Its selection inspector is the window's right panel: the Inspector has no
+  hook for another window's selection. A state drag commits once on release (one undo step). A new
+  blend tree on a controller without a number parameter creates a float "Blend" parameter (Unity's
+  behaviour). New Any State transitions start without an exit time. Removing a parameter drops the
+  conditions that read it and clears the blend trees and speed parameters that use it. States
+  without a position (hand-written files) show on a 4-column grid and get one when first moved.
+  Following the selection binds to the nearest ancestor player with a controller.
+- **MCP.** `edit_animator` op paths are project-relative (stored asset-relative with their GUIDs).
+  `preview_animation` refuses players with a controller (use the Animator window's preview) and
+  `over` on base-layer states. `create.from_entity` and the Inspector's Create Controller from
+  Clips share one scene step (`createControllerFile` in `editor/window/InspectorAnimLayers.h`).
+  Tool budget: phase 1 grew `get_animation` and `preview_animation` by 212 characters (limit 600),
+  `edit_animator` is 2290 (limit 3500); `TOTAL_LIMIT` was raised by the measured 2502 with a
+  comment in `tools/mcp/tests/test_html_ui_tools.py`.
 
 ### Extension points
 
