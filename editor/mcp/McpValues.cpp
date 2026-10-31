@@ -3431,7 +3431,7 @@ bool runCommand(CommandHistory* history, Command* cmd, std::string& error, const
         return false;
     }
     std::string logged;
-    for (const LogEntry& entry : Out::getLogsSince(logId, 5, true)) {
+    for (const editor::LogEntry& entry : Out::getLogsSince(logId, 5, true)) {
         if (!logged.empty()) logged += " ";
         logged += entry.message;
     }

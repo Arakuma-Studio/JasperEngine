@@ -358,3 +358,103 @@ Export check: Linux Debug export with `development` shows the console on backquo
 - **http** (future): a remote log sink is a `Log` listener.
 - Risk: HTML UI robustness is shared with the game's documents (same RmlUi); mitigated by an embedded document with no
   project CSS/fonts/scripts and a self-disable on load failure.
+
+## Implementation notes (2026-10-31, branch `gaps/debug-overlay`)
+
+Implemented as specified, with these decisions where the spec was open, ambiguous or did not fit
+the code:
+
+1. **Log**: `LogLevel`, `LogEntry`, `LogDelivery`, `addListener/removeListener`, `dispatchPending`
+   (first thing of `runFrame`, under the draw semaphore), `getEntries`, `clearEntries`,
+   `setBufferSize`, `getCount` as specified. Added: `getLastId`, `getFirstBufferedId` (the console
+   follows trims and clears with them), `getPendingCount`, `setStackTraces`/`wantsStackTrace`
+   (`LogStackTraces`), `setMainThread`/`isMainThread`. The main thread is the one
+   `LuaBinding::createLuaState` runs on (until then the thread that loaded the engine), not
+   `LuaBinding::isLuaThread` directly, so logs before the Lua state exists are judged correctly.
+   `onMessageReceived` is declared with a forward-declared `FunctionSubscribe` (FunctionSubscribe.h
+   includes Log.h). The platform log is called **before** the listeners (spec: after), so the
+   editor's Console shows a line before what a listener logs about it. A line with a split-off
+   `stack traceback:` is marked `fromLua` (Lua errors are logged by C++ code). `time` is seconds
+   since the engine was loaded (a steady clock of Log.cpp), `frame` reads `Engine::gameFrames`, made
+   atomic since worker threads read it. Worker-thread overflow (1,000 lines) is reported as one
+   warning when the queue has room again.
+2. **Lua `Log.*` take any values** (tab-joined `tostring`, like `print`) instead of one string; the
+   lua-api pitfall and the agent guide say so. `Log.getEntries` entries also carry `mainThread`
+   and `fromLua`. `FunctionSubscribe_V_SSI` binds `add/remove/has/call` (`has` added to
+   `FunctionSubscribe`). `Log.onMessageReceived` subscriptions and the scripts' console commands
+   are dropped by `Engine::removeSubscriptionsByTag` (script release) and
+   `Engine::clearAllSubscriptions` (Play stop).
+3. **Commands' owner**: `DebugOverlay.addCommand(name, description, fn [, owner])`. The owner
+   defaults to the `self` local of the calling Lua function (a script method), so commands added
+   in `init` go with their script without passing anything; an explicit table can be given.
+   Built-in names cannot be replaced. Added `DebugOverlay.executeCommand(line)` (IngameDebugConsole's
+   `ExecuteCommand`, also handy for agents) and C++ `hasCommand`, `getCommands`,
+   `removeCommandsByTag`, `removeOwnedCommands`. The command field is always shown (the built-in
+   commands always exist); `lua` is listed by `help` only when allowed.
+4. **The overlay Scene**: a plain `Scene` owned by `DebugOverlay`, made the first time something
+   of the overlay shows (console, popup or stats) once the view is loaded, kept (document hidden,
+   neither updated nor drawn) while enabled and nothing shows, destroyed when disabled, on view
+   loss (`viewDestroyed`, made again when shown) and at shutdown / Play stop. `Engine` reaches it
+   through `DebugOverlay::getScene()` instead of a `setOverlayScene` setter. Its document loads
+   synchronously (`UIDocumentSystem::loadDocumentNow`) so a load failure turns the overlay off at
+   once (one error). The overlay's draw calls are excluded from `Engine::getFrameStats` (the game's).
+5. **Layout scale**: the document is laid out at the view rect divided by
+   `max(1, min(viewW, viewH) / 720)` on desktop and `/ 400` on touch devices (spec: 720 for all),
+   so buttons stay finger-sized on phones; text is 13 px of that. The layout is the view's, not the
+   game canvas's, so the overlay looks the same whatever the canvas setting.
+6. **Input**: `Engine::getInputScenes` puts the overlay Scene on top of the input snapshot for
+   pointer events and, for keys, text and IME, only while the console's search or command field
+   has the focus; `canSendDocumentEvents/canSendUIEvents` never treat it as covered by the
+   loading scene. Gamepads do not reach the overlay. The **stats panel lets taps through**
+   (`pointer-events: none`; spec: consumed when tapped) so an FPS counter over a pause button
+   never eats the game's taps. `handleTouch` gets screen pixels (before the canvas transform, so
+   fingers outside the canvas count); a hold or tap is cancelled when a finger slides more than
+   max(24 px, 4% of the shorter screen side). The four-finger tap needs all four down within
+   0.5 s of the first and all up within 0.5 s.
+7. **Toggle keys** are key names (`InputControlNames`): defaults `backquote` and `f3` (the spec's
+   "`" and "F3" parse to the same keys). Keys toggle on a non-repeat key down.
+8. **Clocks**: the overlay runs on its own unscaled clock (the frame time, `fixedDeltatime`
+   applied), which also advances while the editor holds the game (the HTML UI clock stops then).
+   Gestures, the 4 Hz text and 10 Hz graph refreshes use it.
+9. **Copy / Save**: Copy takes the shown rows, or only the expanded ones when some are. Save writes
+   every buffered line (not only the filtered ones: a saved log is for sharing everything) with
+   `jasperengine::FileUtils::writeText` (feature script-data, merged) to
+   `data://logs/log-YYYYMMDD-HHMMSS.txt` and logs `log saved to <system path>`.
+10. **Popup** counts warnings and errors since the console was last opened (reset by a clear),
+    saturating at "999+"; dragged vertically (RmlUi `drag`), a drag does not open the console.
+    `openOnError` opens the console at the first error after the overlay was enabled, once.
+11. **Stats**: `recordFrame` gets the raw frame time clamped to 1 s (a stall is one long frame,
+    not the scale of the graph). `processMemoryBytes` is implemented once in the base `System`
+    (`engine/core/debug/ProcessMemory.cpp`, platform `#if`s: Linux/Android `/proc/self/statm`,
+    Windows `K32GetProcessMemoryInfo` working set, Apple `TASK_VM_INFO` `phys_footprint`, Web
+    `emscripten_get_heap_size`) instead of in each platform's System subclass, so the editor and
+    every export get it. Entities and bodies are summed over `Engine::getSceneLayers()`.
+    `AudioSystem::getVoiceCounts`, `EntityRegistry::getEntityCount` added.
+12. **Cross-feature hooks** (record what to wire when they merge):
+    - **coroutines**: `DebugStats::setTaskCounters(&ScriptScheduler::coroutineCount, &ScriptScheduler::timerCount)`
+      (both `size_t()` statics in the coroutines spec) at engine start, e.g. in `Engine::systemInit`;
+      until then `coroutines` and `timers` are 0.
+    - **safe-area**: `DebugOverlay::setSafeAreaInsetsProvider(fn)` with a function filling the
+      canvas-px insets from `Screen::getSafeAreaInsets()`; the overlay moves its body's edges in by
+      them (RCSS of an `.rml` document has no `env()`), re-applied when they change. Until then 0.
+    - **persistence**: entity/body/scene counts should add the persistent scene when it is not in
+      `Engine::getSceneLayers()`.
+13. **Editor**: Project Settings > Debug page (Overlay and Log sections) with reset arrows; OK
+    applies one `DebugSettingsCmd` to the project history (undoable, like Input). The settings
+    live in `editor/DebugSettings.{h,cpp}` (struct, value names, `toOverlaySettings`), used by
+    Stream, Generator, Project, the dialog and MCP. MCP `debug.*` keys are undoable (undo scope
+    project). Play start calls `Project::applyDebugSettingsForPlay` (development build, buffer
+    size, stack traces, `DebugOverlay::configure`); Play stop calls `DebugOverlay::shutdown()`.
+    The Game view in Play is drawn by `Engine::systemDraw`, so the overlay shows there; the Scene
+    view and the edit-mode Game preview (`drawView`) never show it (it exists only in Play).
+14. **Exports**: `Generator::debugInitSource` emits `Engine::setDevelopmentBuild(true)` under
+    `#if defined(JASPERENGINE_DEVELOPMENT_BUILD) || defined(DEBUG)`, the log settings and
+    `DebugOverlay::configure` (development mode = `Engine::isDevelopmentBuild()` at run time).
+    `engine/CMakeLists.txt` defines `JASPERENGINE_DEVELOPMENT_BUILD` for the Debug configuration of
+    standalone builds (`$<CONFIG:Debug>`: single- and multi-config generators, Android's debug
+    variant); the Xcode project's Debug configurations define `DEBUG=1`.
+15. **Tests**: the GPU tests (spec 7-11, 13, 14) are in `engine/tests/htmlui/TestDebugOverlay.cpp`
+    (the HTML UI GPU harness lives there, not in editor/tests); the log, Lua, commands, stats and
+    off-cost tests (spec 1-6, 12, 13, 9) in `editor/tests/LogListenerTest.cpp`; settings in
+    `editor/tests/DebugSettingsTest.cpp`. The off-cost test measures the overlay's per-frame hooks
+    (frame ring, update check, input hooks) rather than a whole `runFrame`.

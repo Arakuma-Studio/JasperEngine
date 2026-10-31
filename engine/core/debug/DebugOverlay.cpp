@@ -458,7 +458,8 @@ namespace {
                 if (row.expanded) expanded.insert(row.id);
             }
             clearRows();
-            for (const LogEntry& entry : Log::getEntries())
+            const std::vector<LogEntry> entries = Log::getEntries();
+            for (const LogEntry& entry : entries)
                 addEntry(entry);
             for (Row& row : s.rows){
                 if (expanded.count(row.id)){
@@ -466,7 +467,8 @@ namespace {
                     fillRow(row);
                 }
             }
-            s.lastSeenId = Log::getLastId();
+            // a line another thread logs meanwhile comes with the next update
+            s.lastSeenId = entries.empty() ? firstBuffered - 1 : entries.back().id;
             s.rebuild = false;
             s.scrollToBottom = s.stickToBottom;
         }else{

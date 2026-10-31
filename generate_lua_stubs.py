@@ -2397,6 +2397,11 @@ ENGINE_EVENT_ARGS = {
     'onButtonDown': ['action'], 'onButtonUp': ['action'],
 }
 
+# Handler arguments of other classes' event fields, by (class, field)
+EVENT_FIELD_ARGS = {
+    ('Log', 'onMessageReceived'): ['message', 'stackTrace', 'level'],
+}
+
 _LUA_KEYWORDS = {'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function', 'goto', 'if',
                  'in', 'local', 'nil', 'not', 'or', 'repeat', 'return', 'then', 'true', 'until', 'while'}
 
@@ -2908,6 +2913,9 @@ class Emitter:
             ev = self.bd.r.lua_classes.get(t) if getattr(m, 'is_event', False) else None
             if ev is not None and getattr(ev, 'subscribe_sig', None):
                 hp, hr = ev.subscribe_sig
+                names = EVENT_FIELD_ARGS.get((c.name, m.name))
+                if names and len(names) == len(hp):
+                    hp = [(names[i], tt, o) for i, (_, tt, o) in enumerate(hp)]
                 handler = 'handler: fun(' + ', '.join(f'{n}: {tt}' for n, tt, _ in hp) + ')' + (f': {hr}' if hr else '')
                 if getattr(m, 'assign_fn', None):
                     # assigning a function subscribes it ("luaFunction" tag)
