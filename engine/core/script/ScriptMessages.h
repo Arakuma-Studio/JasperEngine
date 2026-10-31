@@ -65,6 +65,7 @@ namespace jasperengine {
     JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onApplicationPause)
     JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onApplicationFocus)
     JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onApplicationQuit)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onJointBreak2D)
 #undef JASPERENGINE_SCRIPT_OVERRIDE_TRAIT
 
     class JASPERENGINE_API ScriptMessages {
@@ -106,6 +107,7 @@ namespace jasperengine {
         // Told when receivers(scene, entity) may have changed
         using ReceiversChanged = void (*)(Scene* scene, Entity entity);
         static void addReceiversChangedListener(ReceiversChanged listener);
+        static void removeReceiversChangedListener(ReceiversChanged listener);
         // A script instance of the GameObject was created, released, enabled or disabled
         static void notifyReceiversChanged(Scene* scene, Entity entity);
         // The scene goes: its cached masks with it
@@ -124,6 +126,7 @@ namespace jasperengine {
                 if (ScriptOverrides_onApplicationPause<T>::value) mask |= scriptMessageBit(ScriptMessage::ApplicationPause);
                 if (ScriptOverrides_onApplicationFocus<T>::value) mask |= scriptMessageBit(ScriptMessage::ApplicationFocus);
                 if (ScriptOverrides_onApplicationQuit<T>::value) mask |= scriptMessageBit(ScriptMessage::ApplicationQuit);
+                if (ScriptOverrides_onJointBreak2D<T>::value) mask |= scriptMessageBit(ScriptMessage::JointBreak2D);
                 return mask;
             } else {
                 return 0;

@@ -4,6 +4,7 @@
 #include "ScriptBase.h"
 #include "ScriptRuntime.h"
 #include "component/ScriptComponent.h"
+#include "script/ScriptMessages.h"
 
 using namespace jasperengine;
 

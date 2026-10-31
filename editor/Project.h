@@ -88,8 +88,6 @@ namespace jasperengine::editor{
         unsigned int maxExternalBuffers = 0;
         unsigned int maxSpriteFrames = 0;
         unsigned int maxBones = 0;
-        unsigned int maxColliders2D = 0;
-        unsigned int maxColliderPoints2D = 0;
         unsigned int maxColliders3D = 0;
         unsigned int maxColliderVertices3D = 0;
         unsigned int maxColliderIndices3D = 0;

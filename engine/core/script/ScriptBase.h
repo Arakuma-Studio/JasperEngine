@@ -10,6 +10,8 @@
 
 namespace jasperengine {
 
+    class Joint2D;
+
     // The base of a C++ behaviour script (Unity's MonoBehaviour). The engine calls the
     // lifecycle methods below when a subclass overrides them, with the rules of Lua scripts
     // (docs/mcp/guide/cpp-scripting.md): init once when the GameObject is first active in
@@ -66,6 +68,11 @@ namespace jasperengine {
         virtual void onApplicationPause(bool paused) { (void)paused; }
         virtual void onApplicationFocus(bool focused) { (void)focused; }
         virtual void onApplicationQuit() {}
+
+        // Script messages of physics (ScriptMessages), like the Lua methods of the same name.
+        // A 2D joint of this GameObject (or whose bodyA is it) broke (Unity OnJointBreak2D); the
+        // joint still exists during the call.
+        virtual void onJointBreak2D(Joint2D& joint) { (void)joint; }
     };
 
 }

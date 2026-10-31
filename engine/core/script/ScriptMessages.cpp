@@ -259,6 +259,10 @@ void ScriptMessages::addReceiversChangedListener(ReceiversChanged listener) {
     }
 }
 
+void ScriptMessages::removeReceiversChangedListener(ReceiversChanged listener) {
+    receiverListeners.erase(std::remove(receiverListeners.begin(), receiverListeners.end(), listener), receiverListeners.end());
+}
+
 void ScriptMessages::notifyReceiversChanged(Scene* scene, Entity entity) {
     auto sceneCache = receiverCache.find(scene);
     if (sceneCache != receiverCache.end()) {

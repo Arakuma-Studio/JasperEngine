@@ -1034,6 +1034,7 @@ set(JASPERENGINE_SRCS
     core/pool/MeshLodPool.cpp
     core/pool/MeshBufferPool.cpp
     core/pool/AnimationClipPool.cpp
+    core/pool/PhysicsMaterialPool.cpp
     core/pool/VertexAnimationPool.cpp
     core/registry/EntityCloner.cpp
     core/registry/EntityRegistry.cpp
@@ -1041,6 +1042,8 @@ set(JASPERENGINE_SRCS
     core/registry/PhysicsLayers.cpp
     core/physics/ConvexDecomposition.cpp
     core/physics/JoltShapeBuilder.cpp
+    core/physics/PhysicsMaterial.cpp
+    core/physics/PolygonDecomposition2D.cpp
     core/physics/PlacementWorld.cpp
     core/render/BufferRender.cpp
     core/render/CameraRender.cpp

@@ -194,11 +194,12 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   static: floors, level geometry; kinematic: scripted movers.
 - Collider sizes are mesh-local, scaled by the GameObject's scale: never pre-scale them.
   Omit sizes to fit the mesh bounds (never guess).
-- Mass = collider volume/area x density (default 1000 in 3D, 1 in 2D), never set directly.
-  Size forces as mass x acceleration; if they get huge, lower the density.
+- Mass = collider volume/area x density (default 1000 in 3D, 1 in 2D); a 2D body can take an
+  explicit mass (useAutoMass false). Size forces as mass x acceleration; if huge, lower density.
+- 2D joints (set_joint): Unity's set as one Joint2D type, local anchors, motors, springs,
+  limits, breaking; 2D polygons take any points (concave ok): jasper://docs/physics.
 - Continuous forces and torques go in onFixedUpdate, never onUpdate, and are NOT multiplied by
-  deltatime. The 3D and 2D APIs differ (2D calls take a wake flag; mass: body.mass vs
-  body:getMass()): table in jasper://docs/physics.
+  deltatime. The 3D and 2D APIs differ (2D calls take a wake flag): table in jasper://docs/physics.
 - Never move a body by writing its GameObject's transform from onFixedUpdate (silently
   overwritten). Teleport with body.position (and body.rotation / body.angle), velocity with
   body.linearVelocity. One-shot impulses fire once per press, not every held frame.
