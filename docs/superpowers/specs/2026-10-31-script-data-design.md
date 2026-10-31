@@ -430,8 +430,10 @@ implementing; everything else is as specified).
 - Android: besides `hasKey` / `removeAllKeys` / `save` (`commit()`), strings now cross JNI as
   UTF-16 (`newJavaString` / `javaStringToUtf8`), so characters outside the BMP (emoji) survive;
   the old code used modified UTF-8 and leaked `GetStringUTFChars`. Java exceptions are cleared.
-- Apple: typed getters accept a stored `NSNumber` or a numeric `NSString` (older builds'
-  strings) and return the default for other types instead of raising an Objective-C exception;
+- Apple: number getters accept a stored `NSNumber` or a numeric `NSString` and return the
+  default for other types (data) instead of raising an Objective-C exception; `getBoolForKey`
+  reads a number or a string as before (`boolValue`), `getStringForKey` a string or a number as
+  text (`stringForKey:`, as before);
   a key or value that is not valid UTF-8 is refused (logged) instead of crashing in
   `setObject:forKey:nil`; strings keep embedded NULs. `removeAllKeys` on a bare executable
   (no bundle identifier) removes the keys of the process's domain one by one.

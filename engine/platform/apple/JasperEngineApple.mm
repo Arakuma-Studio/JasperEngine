@@ -362,8 +362,10 @@ namespace {
 }
 
 bool JasperEngineApple::getBoolForKey(const char *key, bool defaultValue){
-    NSNumber *value = userSettingsNumber(key);
-    if (value) {
+    NSString* name = userSettingsKey(key);
+    id value = name ? [[NSUserDefaults standardUserDefaults] objectForKey:name] : nil;
+    // a number, or a string as NSString reads it ("YES", "true", "1")
+    if ([value isKindOfClass:[NSNumber class]] || [value isKindOfClass:[NSString class]]) {
         return [value boolValue];
     }
 
@@ -418,10 +420,13 @@ jasperengine::Data JasperEngineApple::getDataForKey(const char* key, const jaspe
 
 std::string JasperEngineApple::getStringForKey(const char *key, const std::string& defaultValue){
     NSString* name = userSettingsKey(key);
-    id value = name ? [[NSUserDefaults standardUserDefaults] objectForKey:name] : nil;
-    if ([value isKindOfClass:[NSString class]]){
-        const char* utf8 = [(NSString*)value UTF8String];
-        return utf8 ? std::string(utf8) : defaultValue;
+    // stringForKey: gives a stored number as text too (as before); data and others are nil
+    NSString* str = name ? [[NSUserDefaults standardUserDefaults] stringForKey:name] : nil;
+    NSData* utf8 = [str dataUsingEncoding:NSUTF8StringEncoding];
+    if (utf8){
+        // the bytes, embedded zeros included (a stored "" is returned as "")
+        if (utf8.length == 0) return std::string();
+        return std::string(static_cast<const char*>(utf8.bytes), utf8.length);
     }
 
     return defaultValue;
