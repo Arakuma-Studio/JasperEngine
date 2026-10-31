@@ -85,8 +85,10 @@ namespace jasperengine::editor{
         // a Trail Renderer's ribbon settings (width, colour, joints, caps, texture layout): its
         // ribbon is built again (values clamped: widths and time >= 0, vertex counts 0..90)
         UpdateFlags_Trail               = (uint64_t)1 << 47,
+        // a Canvas Group field: its alpha is clamped to [0, 1] (UISystem sees the change itself)
+        UpdateFlags_CanvasGroup         = (uint64_t)1 << 48,
         // a Text Effect's selection or layers changed: its glyphs again from their base
-        UpdateFlags_TextEffect          = (uint64_t)1 << 48,
+        UpdateFlags_TextEffect          = (uint64_t)1 << 49,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -160,6 +162,8 @@ namespace jasperengine::editor{
         VertexAnimatorComponent,
         // Unity's Trail Renderer (lines and trails spec 6.4)
         TrailRendererComponent,
+        // Unity's CanvasGroup: group alpha, interactable, blocks raycasts (ui canvas group spec 7.5)
+        CanvasGroupComponent,
         // per-character animation of a Text (ui-scaling-text spec 7.3)
         TextEffectComponent
     };

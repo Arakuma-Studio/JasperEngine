@@ -1821,6 +1821,8 @@ ImFont* editor::App::getBoldFont() {
 }
 
 void editor::App::setup() {
+    // DontDestroyOnLoad moves nothing in edit mode (Play installs the session's factory)
+    Project::refusePersistentScenes();
     mainThreadId = std::this_thread::get_id();
 
     // a queued offscreen pose render keeps the loop drawing until processFrame serves it

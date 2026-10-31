@@ -146,6 +146,9 @@ namespace jasperengine{
         void setCamera(Camera* camera);
         void setCamera(Entity camera);
         Entity getCamera() const;
+        // Back to the scene's own default camera (a UI camera, made if needed): its camera
+        // GameObject went to another scene (SceneManager::moveGameObjectToScene)
+        void useDefaultCamera();
 
         void setBackgroundColor(Vector4 color);
         void setBackgroundColor(float red, float green, float blue);

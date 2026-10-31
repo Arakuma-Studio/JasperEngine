@@ -74,6 +74,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<AnimationPlayerComponent>();
     registerComponent<VertexAnimatorComponent>();
     registerComponent<TrailRendererComponent>();
+    registerComponent<CanvasGroupComponent>();
     registerComponent<TextEffectComponent>();
 }
 

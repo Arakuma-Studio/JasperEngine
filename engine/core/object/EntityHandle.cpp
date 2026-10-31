@@ -136,6 +136,14 @@ bool EntityHandle::isEntityOwned() const{
     return entityOwned;
 }
 
+void EntityHandle::rebind(Scene* scene, Entity entity){
+    this->scene = scene;
+    this->entity = entity;
+    if (entityOwned){
+        sceneLifetime = scene ? scene->getLifetime() : std::weak_ptr<char>();
+    }
+}
+
 void EntityHandle::setEntityOwned(bool entityOwned){
     // taking ownership: from here on the handle watches the scene's lifetime
     if (entityOwned && !this->entityOwned && scene){

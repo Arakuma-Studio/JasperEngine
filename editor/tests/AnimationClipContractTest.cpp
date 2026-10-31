@@ -48,9 +48,9 @@ namespace {
 
 TEST(AnimationClipContract, CatalogKnowsTheAnimationPlayer){
     // appended after it (prefab override masks use the ordinal): the Vertex Animator, the Trail
-    // Renderer, then the Text Effect, which is last
+    // Renderer, the Canvas Group, then the Text Effect, which is last
     EXPECT_EQ(static_cast<int>(ComponentType::VertexAnimatorComponent), static_cast<int>(ComponentType::AnimationPlayerComponent) + 1);
-    EXPECT_EQ(static_cast<int>(ComponentType::TextEffectComponent), static_cast<int>(ComponentType::TrailRendererComponent) + 1);
+    EXPECT_EQ(static_cast<int>(ComponentType::TextEffectComponent), static_cast<int>(ComponentType::CanvasGroupComponent) + 1);
     EXPECT_EQ(LastComponentType, ComponentType::TextEffectComponent);
     EXPECT_EQ(ComponentTypeCount, static_cast<int>(ComponentType::TextEffectComponent) + 1);
     EXPECT_EQ(Catalog::getComponentType("animationplayer"), ComponentType::AnimationPlayerComponent);

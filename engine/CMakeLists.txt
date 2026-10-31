@@ -1037,6 +1037,7 @@ set(JASPERENGINE_SRCS
     core/object/environment/Water.cpp
     core/object/ui/Button.cpp
     core/object/ui/LayoutGroup.cpp
+    core/object/ui/CanvasGroup.cpp
     core/object/ui/Image.cpp
     core/object/ui/Panel.cpp
     core/object/ui/Polygon.cpp

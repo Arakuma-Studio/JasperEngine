@@ -86,6 +86,8 @@ namespace jasperengine::editor{
         static std::string formatPivotPreset(PivotPreset preset);
         static std::string formatAnchorPreset(AnchorPreset preset);
         static std::string formatLayoutGroupType(LayoutGroupType type);
+        static std::string formatCanvasGroupRenderMode(CanvasGroupRenderMode mode);
+        static std::string formatAlphaTweenTarget(AlphaTweenTarget target);
         static std::string formatScrollbarType(ScrollbarType type);
         static std::string formatProgressbarType(ProgressbarType type);
         static std::string formatLightType(LightType type);
@@ -205,6 +207,7 @@ namespace jasperengine::editor{
         static std::string createMeshPolygonComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createRectTransformComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createLayoutGroupComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
+        static std::string createCanvasGroupComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createTextEffectComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createTextComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createImageComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);

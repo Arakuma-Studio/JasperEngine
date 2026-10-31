@@ -99,6 +99,9 @@ namespace luabridge
 
     template<> struct Stack<AnchorPreset> : EnumWrapper<AnchorPreset>{};
     template<> struct Stack<LayoutGroupType> : EnumWrapper<LayoutGroupType>{};
+    // Canvas Groups (ui canvas group spec 7.6)
+    template<> struct Stack<CanvasGroupRenderMode> : EnumWrapper<CanvasGroupRenderMode>{};
+    template<> struct Stack<AlphaTweenTarget> : EnumWrapper<AlphaTweenTarget>{};
     // ui-scaling-text: the Canvas Scaler and Text Effect enums
     template<> struct Stack<UIScaleMode> : EnumWrapper<UIScaleMode>{};
     template<> struct Stack<ScreenMatchMode> : EnumWrapper<ScreenMatchMode>{};

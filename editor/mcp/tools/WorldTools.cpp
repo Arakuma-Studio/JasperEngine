@@ -3910,6 +3910,29 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
         error = where + ": could not add the RectTransform.";
         return false;
     }
+    // canvas_group: true | {alpha, interactable, blocks_raycasts, ignore_parent_groups, render_mode}
+    const bool wantsGroup = has(node, "canvas_group") && !(node["canvas_group"].is_boolean() && !node["canvas_group"].get<bool>());
+    if (wantsGroup) {
+        const Json& group = node["canvas_group"];
+        if (!group.is_boolean() && !group.is_object()) {
+            error = where + ".canvas_group must be true or {alpha, interactable, blocks_raycasts, ignore_parent_groups, render_mode}.";
+            return false;
+        }
+        if (group.is_object()) {
+            static const std::vector<std::string> keys = {"alpha", "interactable", "blocks_raycasts", "ignore_parent_groups", "render_mode"};
+            for (auto it = group.begin(); it != group.end(); ++it) {
+                if (std::find(keys.begin(), keys.end(), it.key()) == keys.end()) {
+                    error = where + ".canvas_group: unknown key '" + it.key() + "' (alpha, interactable, blocks_raycasts, ignore_parent_groups, render_mode).";
+                    return false;
+                }
+            }
+        }
+        if (!scene->findComponent<CanvasGroupComponent>(entity) &&
+            !build.step->add(new AddComponentCmd(target.project, target.sceneId(), entity, ComponentType::CanvasGroupComponent))) {
+            error = where + ": could not add the Canvas Group.";
+            return false;
+        }
+    }
 
     // The entity holding the node's text: itself, a button label, a panel title, an input field's text
     Entity textEntity = NULL_ENTITY;
@@ -4041,6 +4064,34 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
         } else {
             error = where + ".direction is for layout_group, progress_bar and scrollbar.";
             return false;
+        }
+    }
+    if (wantsGroup && node["canvas_group"].is_object()) {
+        const Json& group = node["canvas_group"];
+        const ComponentType cg = ComponentType::CanvasGroupComponent;
+        if (has(group, "alpha")) {
+            if (!group["alpha"].is_number()) {
+                error = where + ".canvas_group.alpha must be a number 0-1.";
+                return false;
+            }
+            addProp<float>(*multi, target, entity, cg, "alpha", std::clamp(group["alpha"].get<float>(), 0.0f, 1.0f));
+        }
+        static const std::vector<std::pair<const char*, const char*>> flags = {
+            {"interactable", "interactable"}, {"blocks_raycasts", "blocksRaycasts"}, {"ignore_parent_groups", "ignoreParentGroups"}};
+        for (const auto& flag : flags) {
+            if (!has(group, flag.first)) continue;
+            if (!group[flag.first].is_boolean()) {
+                error = where + ".canvas_group." + flag.first + " must be true or false.";
+                return false;
+            }
+            addProp<bool>(*multi, target, entity, cg, flag.second, group[flag.first].get<bool>());
+        }
+        if (has(group, "render_mode")) {
+            static const std::vector<std::pair<const char*, CanvasGroupRenderMode>> modes = {
+                {"per_element", CanvasGroupRenderMode::PER_ELEMENT}, {"flatten", CanvasGroupRenderMode::FLATTEN}};
+            CanvasGroupRenderMode mode;
+            if (!pickName(modes, lowerText(stringOr(group, "render_mode", "")), mode, where + ".canvas_group.render_mode", error)) return false;
+            addProp<CanvasGroupRenderMode>(*multi, target, entity, cg, "renderMode", mode);
         }
     }
     if (has(node, "layout") && !addRectLayout(*multi, target, entity, node["layout"], error)) {
@@ -5189,7 +5240,8 @@ void registerWorldTools(McpRegistry& registry) {
         "= title), image, text, button (text = label), input_field, progress_bar (value 0-1), scrollbar, "
         "layout_group (direction), container, polygon. layout {anchor, size, position, pivot, margins} in px, "
         "y down: an anchor (top_left, center, top_wide, ..., stretch) pins to the parent (screen for roots), "
-        "position then offsets; stretch + margins [l,t,r,b] fills it. Colors linear.",
+        "position then offsets; stretch + margins [l,t,r,b] fills it. Colors linear. canvas_group: true | {alpha, "
+        "interactable, blocks_raycasts, ignore_parent_groups, render_mode} adds a Canvas Group (guide ui.md).",
         object({
             {"scene", sceneRef()},
             {"parent", entityRef()},

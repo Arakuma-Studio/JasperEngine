@@ -140,6 +140,12 @@ namespace jasperengine{
         bool hasSyncedPose = false;
         Vector3 syncedPosition;
         Quaternion syncedRotation;
+        // the state of the body it had in another scene (persistence moves a GameObject with
+        // its body): the next body made for it starts with these, once
+        bool hasPendingVelocity = false;
+        Vector3 pendingLinearVelocity;
+        Vector3 pendingAngularVelocity;
+        bool pendingAwake = true;
 
         // Collision filter bits (Rigidbody::setBitsFilter), kept across body reloads. Two
         // bodies collide when each one's category meets the other's mask and the Layer

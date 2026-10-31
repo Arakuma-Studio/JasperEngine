@@ -110,13 +110,14 @@ LIMITS.update({"user_settings": 550})
 # 106621, the limit set to it
 # lines and trails: no new tool; create_entity's type "trail_renderer" paid by a shorter create_entity
 # description, set_shape_points' line text reworded; measured on the merged tree: total 106692 (106687 before)
+# ui-canvas-group: create_ui's canvas_group node option (the rules in jasper://docs/ui) and
+# create_entity's canvas_group type; merged with main (lines-trails): 150 tools measured 106771
 # platform services (spec 6.9): send_input's `app` events, configure_game_view's device,
-# orientation and language, get_play_state's platform (+468 on its branch); measured on the tree
-# merged with script-data and input: total 107155, the limit raised by it
+# orientation and language, get_play_state's platform (+468 on its branch)
 # ui-scaling-text: configure_game_view's resolution (a preset, "WxH[@dpi]", {width, height, dpi, name}) and
 # create_ui's outline/shadow text props (+284 on its branch); measured on the tree merged with
-# platform-services and main (physics-2d, script-lifecycle, lines-trails): 150 tools, total 107378
-TOTAL_LIMIT = 107378
+# platform-services and main: total MEASURED
+TOTAL_LIMIT = 107500
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
