@@ -65,13 +65,15 @@ of the platform it runs on; set the scene's Quality to preview another tier.
 | Soft filter | 3×3 grid (4 fetches) | 5×5 grid (9 fetches) | 16-tap Vogel disk | PCSS: 16-tap blocker search, 16 to 32-tap Vogel PCF |
 | Cascade transition | dither | blend | blend | blend |
 | Receiver-plane bias | off | on | on | on |
-| Cascade fit freeze (caching) | on | on | off | off |
-| Memory (atlases and static caches) | 16 MB | 48 MB | 96 MB | 288 MB |
+| Cascade fit freeze (caching) | on | on | on | on |
+| Memory (atlases and static caches) | 16 MB | 48 MB | 192 MB | 576 MB |
 
 The memory budget is kept: when the maps of a scene would exceed it, the static layers of the
 least important lights go first, then the least important maps are halved (a directional light's
 farthest cascade first). `get_shadow_stats` reports what each light got. The measured costs are
-in `docs/rendering/shadow-budgets.md`.
+in `docs/rendering/shadow-budgets.md`. High and Ultra freeze their cascade fits and have room for
+the static caches since the GPU campaign: without them a moving camera with moving casters redrew
+every static caster each frame (7.2 ms of shadow passes at High on an RTX 3080 Ti; 0.18 ms now).
 
 GLES3 and WebGL2 have 16 texture units and render the Ultra tier's soft shadows with the High
 tier's Vogel disk (no PCSS); so does a painted terrain everywhere. Point lights never take PCSS

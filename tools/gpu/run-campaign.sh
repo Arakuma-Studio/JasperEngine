@@ -2,7 +2,7 @@
 # tools/gpu/run-campaign.sh <part...>  — the real-GPU measurements of docs/perf/gpu-campaign.md, inside the
 # build image on a GPU host, with tools/gpu/xorg-headless.sh running:
 #   JIMG_GPU=1 rb.sh H --img 'tools/gpu/run-campaign.sh s32 s12'
-# Parts: s32 s12 s10 s11 s13 s20 s15 vat (default: all). RUNS (default 5). Results and logs go to
+# Parts: s32 s12 s10 s11 s13 s20 s15 s16 vat (default: all). RUNS (default 5). Results and logs go to
 # build/gpu/<part>-<backend>.{json,log}. GL editor build/linux/editor-install, Vulkan
 # build/linux/editor-vulkan-install (tools/build.sh linux, GRAPHIC_BACKEND=vulkan).
 set -uo pipefail
@@ -15,7 +15,7 @@ mkdir -p "$OUT"
 GL="$PWD/build/linux/editor-install/bin/jasperengine-editor"
 VK="$PWD/build/linux/editor-vulkan-install/bin/jasperengine-editor"   # absolute: the harness runs editors in scratch dirs
 PY=(dbus-run-session -- uv run -q --no-project --with-requirements tools/mcp/requirements.txt python)
-parts=("$@"); [[ ${#parts[@]} -gt 0 ]] || parts=(s32 s12 s10 s11 s13 s20 s15 vat)
+parts=("$@"); [[ ${#parts[@]} -gt 0 ]] || parts=(s32 s15 s12 s10 s11 s13 s20 s16 vat)
 
 run() {  # run <name> <command...>
     local name="$1"; shift
@@ -62,6 +62,16 @@ for part in "${parts[@]}"; do
         # that commit's tools/fixtures/post-processing in build/s15-fixture (both editors read it)
         run s15-gl dbus-run-session -- python3 tools/perf/profiler_overhead.py --editor "$GL" --baseline build/s15base-install/bin/jasperengine-editor \
             --project build/s15-fixture --runs "${S15_ROUNDS:-30}" --no-check --json "$OUT/s15-gl.json"
+        ;;
+      s16)
+        # HtmlUIRenderPerf with the frame's GPU time (R24: B2 at 1280x720, S16 against its baseline);
+        # results also in build/linux/htmlui-render-bench.json
+        for i in $(seq 1 "$RUNS"); do
+            JASPER_HTMLUI_GPU_TIMES=1 run "s16-gl-$i" build/linux/htmlui-tests-glcore/tests/htmlui/jasperengine-htmlui-tests \
+                --gtest_filter='HtmlUIRenderPerf.B2*:HtmlUIRenderPerf.B6*:HtmlUIRenderPerf.B3*'
+            cp build/linux/htmlui-render-bench.json "$OUT/s16-gl-$i.json" 2>/dev/null || true
+        done
+        grep -h "GPU" "$OUT"/s16-gl-*.log
         ;;
       vat)
         run vat-gl python3 tools/performance/vat_crowd.py --editor "$GL" --editor-tests build/linux/editor-tests/jasperengine-editor-tests \
