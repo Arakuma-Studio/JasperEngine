@@ -125,8 +125,9 @@ LIMITS.update({"create_ragdoll": 900})
 # orientation and language, get_play_state's platform (+468 on its branch); merged with main
 # (ui-canvas-group, physics-3d, http): 151 tools measured MEASURED, the limit set to it
 # ui-scaling-text: configure_game_view's resolution (a preset, "WxH[@dpi]", {width, height, dpi, name}) and
-# create_ui's outline/shadow text props (+284 on its branch); measured on the merged tree: MEASURED
-TOTAL_LIMIT = 108000
+# create_ui's outline/shadow text props (+284 on its branch); measured on the tree merged with
+# platform-services and main (ui-canvas-group, persistence, physics-3d, http): 151 tools, total 108378
+TOTAL_LIMIT = 108378
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
