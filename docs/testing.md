@@ -453,6 +453,9 @@ the option errors.
 | `JASPERENGINE_WARNINGS` | ON (editor tree), OFF (`engine/`) | the warning set on our own targets |
 | `JASPERENGINE_WERROR` | OFF | warnings of our targets are errors (needs `JASPERENGINE_WARNINGS`) |
 | `JASPERENGINE_UNITY_BUILD` | OFF | unity builds of our own targets, 16 sources per unit |
+| `JASPERENGINE_PCH` | ON (editor tree), OFF (`engine/`) | precompiled headers of our own targets, GCC and Clang (below) |
+| `JASPERENGINE_LINKER` | AUTO | lld for Debug and RelWithDebInfo builds that ship nothing; `DEFAULT`, `LLD`, `MOLD`, `GOLD` |
+| `JASPERENGINE_VENDORED_UNITY` | ON, OFF for a shipped game | Jolt unity-built |
 
 `engine/CMakeLists.txt` is also the top-level file of every exported game, so all of these default
 to off there, and the exporter never sets them: a game configures and builds exactly as before.
@@ -510,6 +513,37 @@ sources that include Xlib (macros such as `None` and `Status`), and the HTML UI 
 sources, which keep one generic helper set (`lower`, `trim`, `Target`...) per file. A new
 `namespace {}` helper in our code must not reuse a name another source of the target defines at
 file scope. The nightly workflow builds it.
+
+### Build speed
+
+`docs/specs/S33-build-speed.md` has the measurements behind these and the tools to repeat them:
+`tools/perf/build-bench.sh <label> <scenario>` (in the build image: clean, warm-cache, no-op and
+edit rebuilds of one tree, with the host's load recorded) and `tools/perf/build_stats.py` (where a
+`.ninja_log`'s time goes, header fan-out from `ninja -t deps`, header parse costs, `-ftime-report`).
+
+- **Precompiled headers** (`JASPERENGINE_PCH`): `engine/core/JasperPch.h` (standard headers) for
+  the engine, test and project targets, `editor/EditorPch.h` (plus `json.hpp` and yaml-cpp) for the
+  editor's. Only our own C++ sources get them; a source with compile options of its own
+  (`-mavx2`, `-ffp-contract=off`, ...) and the vendored sources compiled inside our targets do not.
+  Nothing of ours goes in a precompiled header: it would make every unit depend on it. On in the
+  editor tree and in `tools/build.sh`'s Linux development and test trees; off for exports, web,
+  Android and players, which therefore check that every source includes what it uses. Not on MSVC
+  (sources define `_USE_MATH_DEFINES` before `<cmath>`) or with the Xcode generator.
+- **ccache** needs `sloppiness = pch_defines,time_macros` to cache a unit that uses a precompiled
+  header; `tools/build.sh` sets it in the Linux images (no Linux unit uses `__DATE__`/`__TIME__`).
+  `base_dir` is not set: it would hand the compiler relative paths and change `__FILE__`.
+- **Linker** (`JASPERENGINE_LINKER=AUTO`): lld (the Linux image installs it) for Debug and
+  RelWithDebInfo builds that ship nothing, where GNU ld spent 20-53 s per link; Release builds,
+  the editor release and every shipped game keep the toolchain's linker.
+- **Editor objects once**: `jasperengine-editor-objects` holds the editor's sources but `main.cpp`;
+  the editor, its Windows command-line twin and the editor test targets link it.
+- **Vendored libraries**: Jolt is unity-built where nothing ships (`JASPERENGINE_VENDORED_UNITY`);
+  the others build source by source, and ccache serves them to every tree of a configuration.
+- **C++-script games** (S30's Compile builds) build in a compile tree per kit in the user cache
+  (`<cache>/jasperengine/compile-builds/<key>/`), shared by every project of that kit: the engine
+  is compiled once and a game compiles its own units. A project's runtime settings (window,
+  logging, crash options) are definitions of its executable only and reach the engine through
+  `PlatformConfig`, so changing them recompiles a few units.
 
 ## CI
 

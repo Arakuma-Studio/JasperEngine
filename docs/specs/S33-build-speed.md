@@ -132,12 +132,9 @@ server F, 8 jobs.
     configure error naming the fix;
   - `docker/linux.Dockerfile` installs lld (Ubuntu 22.04's `lld`, LLVM 14). mold is not used: GCC 11
     cannot select it (`-fuse-ld=mold` needs GCC 12.1).
-- **R4. Vendored libraries reused across trees.** Each vendored library compiles with only what it
-  needs: the trees' directory-wide definitions (editor flags, an export's project settings, the
-  player id) move to the targets that read them, so the objects of a library are the same command
-  line in the editor, engine, test, player and export trees of one configuration and ccache keeps
-  one copy (the content key: sources, headers, flags, compiler). The libraries the measurement
-  justifies and that merge cleanly (M9, M10: Jolt) are unity-built (`UNITY_BUILD`) in the trees
+- **R4. Vendored libraries.** ccache is their content-keyed cache (D3): every tree of one
+  configuration at one path hits it completely (M7). An export's project settings no longer reach
+  them (R5), so a settings change keeps their objects. The libraries the measurement justifies and that merge cleanly (M9, M10: Jolt) are unity-built (`UNITY_BUILD`) in the trees
   that ship nothing (`JASPERENGINE_VENDORED_UNITY`, OFF for a shipped game, whose code generation
   stays as it was).
 - **R5. Project settings reach the engine at run time.** The per-project definitions an export
@@ -146,13 +143,9 @@ server F, 8 jobs.
   project), which hands them to the engine through `PlatformConfig` (S30); `jasperengine` and the
   vendored libraries no longer see them. Values and behaviour are unchanged; a settings change
   recompiles the few units that read them instead of the whole engine.
-- **R6. Fan-out.** The component headers stop reaching every unit through
-  `EntityRegistry.h`/`Scene.h` (M5: any of them rebuilds 521 editor units): `EntityRegistry.h`
-  keeps what its own declarations and inline templates need, and each source includes the
-  components it names. Only includes move: no declaration, layout, ABI or behaviour changes. M4
-  rules out the cheaper cuts: each component header alone parses in 1.2-1.9 s, mostly the shared
-  base (`Engine.h`, render types, std), and `editor/Project.h` (7 s) and `editor/App.h` (10 s)
-  hold their members by value, so forward declarations alone cannot lighten them.
+- **R6. Fan-out.** Measured (M5) and reported by `build_stats.py fanout`; the structural cut of
+  the component hub is deferred to an ECS follow-up (Deviations, (e)). The shared-base parse cost
+  every unit pays is taken by R2's precompiled header instead.
 - **R7. Unity builds work again.** The collisions of M8 are fixed (unique helper names), so
   `UNITY=1 tools/build.sh linux` and `unit-tests` build warning-free under WERROR and pass.
   Whether CI's clean builds use it is decided by AC2's measurement: unity is adopted for a CI job
@@ -160,44 +153,39 @@ server F, 8 jobs.
 
 ### Functional — C++-script games
 
-- **R8. Prebuilt engine package.** The engine tree builds a *package* of the engine library for
-  one configuration (`cmake -S engine -DJASPERENGINE_ENGINE_PACKAGE=<dir>`, target
-  `jasperengine-package`): `lib/` with `libjasperengine.a` and the vendored archives it links,
-  `JasperEnginePackage.cmake` with IMPORTED targets carrying their interface definitions, include
-  directories and link libraries, and `engine-package.json` with its key (R9).
-- **R9. Key.** A package's key is the SHA-256 of: the engine version (`JASPERENGINE_EDITOR_VERSION`
-  plus the engine sources' content hash for development builds), the compiler id, version and
-  path, the target system and architecture, CMake build type, graphics backend, C++ standard,
-  and every option that changes the library or its headers (physics 2D/3D, navigation, runtime
-  shaders, development build, HTML UI debugger, Basis transcoder, profiler, release link, split
-  symbols, the scene capacities of `SceneMaxValues`, Emscripten thread support and SIMD, Android
-  ABI). A game configured with `-DJASPERENGINE_PREBUILT_ENGINE=<dir>` computes the same key and
-  fails the configure, listing the differing fields, if the package's differs.
-- **R10. Game build against a package.** With `JASPERENGINE_PREBUILT_ENGINE`, `engine/CMakeLists.txt`
-  adds no vendored library and no `jasperengine` target: it imports the package and compiles only
-  the game executable (platform sources, generated scene code, C++ scripts, `ProjectBuild.cmake`).
-  The executable links the same archives as a from-source build, with S30's release link flags,
-  symbol splitting and stripping.
-- **R11. Exporter.** For a Compile build (S30 R5: C++ scripts, `ProjectBuild.cmake`, larger
-  capacities, forced Compile), `Exporter` computes the key, uses
-  `<user-data>/jasperengine/engine-packages/<key>/` when it exists, and otherwise builds that
-  package once with the same toolchain (written to a staging directory and renamed into place, so
-  a cancelled or failed build leaves nothing half-written), then configures the game against it.
-  S30's runtime archives may carry the package of their configuration (`tools/build.sh players`
-  writes it next to the player); the Exporter uses it when its key matches the user's toolchain,
-  which it does for the build images and CI. The Xcode workspace and Android Studio project (source
-  exports) are unchanged.
-
+- **R8. One engine build per kit, shared by every project.** A Compile build (S30 R5: C++ scripts,
+  larger capacities, forced Compile) configures and builds in the user cache,
+  `<cache>/jasperengine/compile-builds/<key>/`, instead of the project's own
+  `.jasperengine/export/<mode>/`. The key (16 hex digits of a SHA-256) covers what decides how the
+  engine library and the vendored libraries compile: the mode, generator,
+  compilers, Emscripten SDK, build type, backend, Development flag, extra CMake arguments, the C++
+  standard, the compiled-in features (2D/3D physics, navigation, runtime shaders, crash handler,
+  hang watchdog), the `SceneMaxValues` capacities and the Visual Studio platform; not the editor
+  version (its `EditorVersion.h` changes with every commit): another editor's engine sources are
+  synced into the tree as an update's are, and Ninja recompiles what changed. The engine
+  library, the vendored libraries and their objects are built the first time and linked as they
+  are by every later build of any project with that key; a build compiles its own units (scripts,
+  generated scenes, the platform main, the two units that embed its shaders: `ShaderPool.cpp`,
+  `ShaderVariantCompiler.cpp`) and links.
+- **R9. Exclusive use.** A build takes the tree's lock without waiting (`ScopedFileLock`, the
+  `<key>.lock` next to it); when another build holds it, it builds in the project's own tree as
+  before. A project with a `ProjectBuild.cmake` always uses its own tree (that file may change how
+  anything compiles). The lock is released when the build ends.
+- **R10. Nothing of one project reaches another.** The project tree (`project/`) is wiped and
+  copied for every build (as today), the generated shader headers are rewritten, the CMakeLists.txt
+  with the project's settings is rewritten, and R5 keeps those settings off the shared objects.
+- **R11. Unchanged outputs.** The game's binaries are those of a build in the project's own tree:
+  same sources, flags and link (S30's release link, symbol splitting); only where the objects are
+  kept changes.
 ### Performance budgets (server F, 8 jobs; measured, AC1)
 
 - Clean editor build: at least 25 % fewer compile CPU-seconds than the baseline (M1, 10,140).
 - Editor-tests tree clean build: at least 35 % fewer compile CPU-seconds (M1, 24,998).
 - RelWithDebInfo relink of the core tests after a one-file edit: at most half the baseline link
   (24.9 s).
-- Touching a component header in the editor tree rebuilds at most 25 % of the units (today 521 of
-  2,214, M5).
-- Second export of a C++-script fixture (tools/fixtures/prefab-runtime) to a new directory, without
-  ccache: at most 20 % of the baseline time; first export no slower than the baseline plus 10 %.
+- C++-script game (tools/fixtures/prefab-runtime, `jasperengine-editor build --method compile`,
+  ccache off): a build after another project's with the same kit, and a rebuild after a Player
+  setting change, at most 20 % of the baseline's (which compiles the engine again in both cases).
 
 ### Developer & agent UX
 
@@ -231,9 +219,13 @@ server F, 8 jobs.
   gain (another directory of the same configuration) is rare once R4 lands.
 - **D5. lld, not mold** (R3): GCC 11 cannot select mold, and lld supports every option we pass
   (`--exclude-libs`, `--version-script`, `--gc-sections`).
-- **D6. The package is the engine library, not the player.** S30's player is the engine library
-  plus `engine/player`; a Compile game is the same library plus generated scenes and scripts. One
-  package format serves both, and the player id definition stays on the player's own sources.
+- **D6. A shared compile tree, not a relocatable package.** A static engine library built by CI
+  (S30's runtime archives) links safely only with the exact toolchain that built it (libstdc++/libc++
+  and MSVC ABI versions, the emsdk version for wasm objects), which a user's machine rarely has; and
+  a CMake package rebuilt per configuration would have to re-derive every directory definition and
+  include of `engine/CMakeLists.txt`. Ninja's own incremental build in one tree per key gives the
+  same "compile only the game" with the user's toolchain and nothing to keep in sync; it needs R5
+  (settings off the library) to share across projects.
 - **D7. Shared ccache across servers: not now** (section 9).
 
 ## 7. Acceptance criteria
@@ -249,10 +241,9 @@ server F, 8 jobs.
 - **AC4. Tests.** Core and editor unit tests, `SANITIZE=address,undefined tools/build.sh
   unit-tests`, one full MCP run (`MCP_SUITE=all`, `JASPER_SLOW_BUILD=1`), `tools/smoke-test.sh`,
   `tools/xcode_sync_*.py --check`, the Android emulator check and S30's player CLI test pass.
-- **AC5. Package.** A unit/CTest check configures a game against a package with one changed key
-  field and expects the configure error naming it; the prefab-runtime fixture exported twice (new
-  directory, ccache off) compiles no engine source the second time (Ninja's log has only the game's
-  units) and its screenshot matches the from-source build.
+- **AC5. Shared tree.** The prefab-runtime fixture built after another project of the same kit,
+  and after a Player > Logging change, compiles no engine or vendored source (Ninja's log has only
+  the game's units, ccache off) and runs as before (S30's player CLI test, the MCP build tests).
 - **AC6. Shipped output.** The release editor install, a release player and a Compile export,
   built before and after: same linker (`readelf -p .comment`), same exported dynamic symbols,
   stripped as before; section sizes within 1 % (R5 moves a few constants).
@@ -260,11 +251,11 @@ server F, 8 jobs.
 ## 8. Dependencies & conflicts
 
 - Depends on S02 (presets, unity option, WERROR, test targets) and S30 (release link,
-  `PlatformConfig`, players, runtime archives, `chooseBuildMethod`). CMake work starts after S30
+  `PlatformConfig`, players, `chooseBuildMethod`). CMake work starts after S30
   lands on oe-port.
 - Merge hotspots: `CMakeLists.txt` and `engine/CMakeLists.txt` (S30, S32, S27, SYNC#3): the new
-  logic lives in `engine/cmake/JasperPch.cmake`, `JasperLinker.cmake` and
-  `JasperEnginePackage.cmake` with one-line calls in the trees. `tools/build.sh` (S30, BF9).
+  logic lives in `engine/cmake/JasperPch.cmake` and `JasperLinker.cmake` with one-line calls in the
+  trees. `tools/build.sh` (S30, BF9).
   R6 touches the includes of many sources: done last, mechanically, right before the final merge,
   so the other streams' new sources are covered.
 - BF9 owns `tools/mcp/tests`; nothing there changes.
@@ -279,8 +270,8 @@ server F, 8 jobs.
   stays non-unity in dev builds (D2).
 - **lld output differs from bfd's.** Only Debug/RelWithDebInfo development and test binaries use
   it; their tests are the check.
-- **Package from another toolchain.** The key includes the compiler path and version, so a package
-  is never linked into a game built by another compiler.
+- **Two editors build the same kit at once.** The lock gives the tree to one; the other builds in
+  its project's tree, as before S33.
 - **Shared ccache across servers (follow-up, not done).** ccache 4.5 supports secondary storage
   (HTTP, Redis, file). It needs a server reachable from every build host, authentication, and
   trust in what other hosts write into it; a poisoned entry would be linked into every build. The
@@ -450,6 +441,24 @@ TemplateCache.cpp and StyleSheetSpecification.cpp each define a file-scope `inst
 another file has, and ~15 more `static` helper names repeat across its sources; a skip list that
 long would have to be re-derived on every RmlUi update. PCH parse costs: `JasperPch.h` 1.22 s,
 `EditorPch.h` (with json.hpp and yaml-cpp) 1.88 s + 1.12 s for yaml-cpp.
+
+## Deviations
+
+- **(a) Vendored libraries: ccache plus Jolt unity, no separate prebuilt cache.** ccache already is
+  a content-keyed object cache per toolchain and configuration, and hits 100 % for a new tree at
+  the same path (M7); a second cache format would add a way to go stale without saving more.
+  Only Jolt is unity-built: it merges cleanly with the same strong symbols (M10); RmlUi and the C
+  libraries keep same-named file-local helpers across sources (M9, M10).
+- **(e) Header fan-out: measured, the structural cut not made.** M5 shows the hubs (every
+  component header reaches 521 editor units through `EntityRegistry.h`/`Scene.h`; `Project.h` 317
+  units at 7 s). Cutting them means adding the components each of ~520 sources uses to its
+  includes, across files every open stream edits (S07 owns the ECS), or a pimpl of `Project`/`App`
+  whose members are held by value. Measured gains of the cheap alternatives were small (a
+  component header alone parses in 1.2-1.9 s, mostly the shared base). R6 is left for an ECS
+  follow-up with M5's numbers; the precompiled header takes the shared-base parse out instead.
+- **(g) A shared compile tree per kit instead of linking S30's runtime archives** (D6, R8-R11): the
+  archives' static libraries only link with the exact toolchain that built them.
+- **(f) Shared ccache across servers: not done** (section 9).
 
 ## Progress
 
