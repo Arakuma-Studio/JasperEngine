@@ -380,6 +380,10 @@ BackendFrameCounters SystemRender::getBackendFrameCounters(){
     return SokolSystem::getBackendFrameCounters();
 }
 
+std::string SystemRender::getApiVersion(){
+    return SokolSystem::getApiVersion();
+}
+
 const char* SystemRender::getBackendName(){
     return SokolSystem::getBackendName();
 }

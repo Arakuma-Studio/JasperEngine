@@ -6,12 +6,22 @@
 #include "AppSettings.h"
 #include "Exporter.h"
 #include "ScenesWindow.h"
+#include "players/PlayerRuntimes.h"
+#include "publish/Publishing.h"
 #include "imgui.h"
 
+#include <atomic>
+#include <cstdint>
 #include <string>
 #include <filesystem>
 #include <functional>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <optional>
 #include <set>
+#include <thread>
+#include <utility>
 #include <vector>
 
 namespace jasperengine::editor {
@@ -116,6 +126,78 @@ namespace jasperengine::editor {
 
         Exporter m_exporter;
 
+        // ---- S30: game builds for every platform (prebuilt player or compiled) ----
+        using ShipPlatform = ::jasperengine::editor::BuildPlatform;
+        ShipPlatform shipPlatform() const;
+        std::map<int, int> m_playerBackendIndex;      // per platform: the graphics API this session
+        std::string playerBackend() const;            // its runtime name (glcore, d3d11, ...)
+        BuildMethodChoice m_methodChoice;
+        std::optional<PlayerInfo> m_playerRuntime;
+        std::string m_playerRuntimeId;
+        std::string m_playerRuntimeError;
+        std::vector<std::string> m_androidMissing;    // the SDK tools a prebuilt Android build lacks
+        // the installed Android runtime's native libraries per selected ABI (the package sizes shown)
+        std::vector<std::pair<std::string, uint64_t>> m_androidLibrarySizes;
+        void refreshPlayerState();
+        void drawPlayerRows();
+        bool playerBuildBlocked(std::string& why) const;
+
+        // Build Settings > Download: one runtime at a time, off the UI thread
+        struct RuntimeDownload {
+            std::thread thread;
+            std::atomic<bool> running{false};
+            std::atomic<bool> cancel{false};
+            std::atomic<uint64_t> received{0};
+            uint64_t size = 0;
+            std::string id;
+            std::mutex mutex;
+            std::string message;
+            bool failed = false;
+        };
+        std::unique_ptr<RuntimeDownload> m_download;
+        void startRuntimeDownload(const std::string& id);
+        void drawRuntimeDownload();
+        void finishBackgroundWork();
+
+        // the keystore passwords an Android build asks for (never saved)
+        bool m_askKeystorePasswords = false;
+        bool m_pendingOverwrite = false;
+        char m_keystorePassword[256] = {};
+        char m_keyPassword[256] = {};
+        void drawKeystorePasswordDialog();
+
+        // ---- the Publish tab (publishing.json, releases, Steam, the Deck) ----
+        struct PublishJob {
+            std::thread thread;
+            std::atomic<bool> running{false};
+            std::atomic<bool> cancel{false};
+            std::string title;
+            std::mutex mutex;
+            std::string message;
+            bool failed = false;
+            bool done = false;
+        };
+        std::unique_ptr<PublishJob> m_publishJob;
+        publish::PublishingConfig m_publishing;
+        bool m_publishingLoaded = false;
+        bool m_publishingExists = false;
+        bool m_publishingDirty = false;
+        std::string m_publishingError;
+        char m_releaseName[64] = {};
+        char m_steamBranch[64] = {};
+        char m_steamUser[64] = {};
+        bool m_steamPreview = true;
+        char m_newTargetName[64] = {};
+        std::string m_deckTarget;
+        bool m_confirmUpload = false;
+        void loadPublishing();
+        bool savePublishing();
+        void drawPublishTab();
+        void drawPublishTargets();
+        void drawPublishActions();
+        void startPublishJob(const std::string& title, std::function<bool(const publish::PublishTools&, std::string&)> work);
+        void drawBuildTab();
+
         const char* localExportMode() const;
         void refreshShaderSelection();
         void includeShader(ShaderKey key);
@@ -155,6 +237,7 @@ namespace jasperengine::editor {
         void startConfiguredExport(bool overwriteTarget);
 
     public:
+        ~ExportWindow();
         void open(Project* project);
         void show();
         bool isOpen() const { return m_isOpen; }

@@ -21,10 +21,10 @@
 
 #include "meshoptimizer.h"
 
-// Sokol never sets TRANSFER_SRC, needed to copy render targets out for editor
-// thumbnails (GraphicUtils). Wrapping the call keeps sokol itself unpatched
-// (re-check when sokol_gfx is updated)
-#if (defined(JASPERENGINE_EDITOR) || defined(JASPERENGINE_TEXTURE_READBACK)) && defined(SOKOL_VULKAN)
+// Sokol never sets TRANSFER_SRC, needed to copy render targets out: editor thumbnails
+// (GraphicUtils) and a game's --screenshot (FrameReadback, docs/specs/S30-shipping.md R20).
+// Wrapping the call keeps sokol itself unpatched (re-check when sokol_gfx is updated)
+#if defined(SOKOL_VULKAN)
 #include <vulkan/vulkan.h>
 
 namespace {
@@ -113,7 +113,7 @@ namespace {
 }
 
 const void* SokolTexture::getVulkanView(sg_view view) {
-#if (defined(JASPERENGINE_EDITOR) || defined(JASPERENGINE_TEXTURE_READBACK)) && defined(SOKOL_VULKAN)
+#if defined(SOKOL_VULKAN)
     const _sg_view_t* resource = _sg_lookup_view(view.id);
     return resource ? reinterpret_cast<const void*>(resource->vk.img_view) : nullptr;
 #else
@@ -123,7 +123,7 @@ const void* SokolTexture::getVulkanView(sg_view view) {
 }
 
 const void* SokolTexture::getVulkanImage(sg_image image) {
-#if (defined(JASPERENGINE_EDITOR) || defined(JASPERENGINE_TEXTURE_READBACK)) && defined(SOKOL_VULKAN)
+#if defined(SOKOL_VULKAN)
     const _sg_image_t* resource = _sg_lookup_image(image.id);
     return resource ? reinterpret_cast<const void*>(resource->vk.img) : nullptr;
 #else

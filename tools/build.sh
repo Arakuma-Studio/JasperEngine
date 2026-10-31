@@ -11,15 +11,22 @@
 #   tools/build.sh htmlui-editor-tests      builds the linux editor with jasperengine-htmlui-editor-tests, runs them
 #   tools/build.sh mcp-tests [args...]  the MCP tests against build/linux/editor-install (run tools/build.sh linux first)
 #   tools/build.sh web-gate            the web build (tools/build.sh web) in headless Chrome (tools/web/browser_gate.py)
+#   tools/build.sh players             the prebuilt player runtimes (S30) into build/players/<id>/:
+#                                      PLAYER_PLATFORM=linux (default; PLAYER_BACKENDS="glcore gles3 vulkan")
+#                                      or web (single-thread and pthreads) or android; PLAYER_FLAVOURS="release development";
+#                                      PLAYER_ZIP=1 also writes the archives into build/players/archives/;
+#                                      android: PLAYER_ANDROID_ABIS=x86_64 builds only those ABIs (an emulator's)
 #   tools/build.sh shell <target>      interactive shell in that target's image
 #   tools/build.sh exec <target> <command...>  that command in the image (e.g. exec linux tools/ci/check-presets.sh)
+#                                      (target runtime: the no-compiler image, docker/runtime.Dockerfile:
+#                                      exec runtime python3 tools/ci/test_player_cli.py runs the S30 player CLI test)
 #
 # BUILD_TYPE overrides the CMake build type (default Release; Debug for web; RelWithDebInfo for
 # unit-tests; Debug for every sanitizer build). SKIP_ENGINE=1 builds only the editor for linux.
 # JOBS caps build parallelism and, with CPUS (default: DOCKER_CPUS, else JOBS), the CPUs the
 # container may use (docker --cpus), which also caps what ignores JOBS: the Android gradle/ninja
 # build and the test binaries. DOCKER_CPUS is the same cap under the name tools/smoke-test.sh
-# passes (e.g. DOCKER_CPUS=4 on a shared host).
+# passes (e.g. DOCKER_CPUS=4 on a shared host). KEEP_GOING=1 lets Ninja build on past a failure.
 # DOCKER_GPU=1 runs the container with the host's NVIDIA GPU (see below and tools/gpu/env.sh).
 # GRAPHIC_BACKEND=vulkan builds the linux editor for Vulkan (build/linux/editor-vulkan), and
 # runs the core tests' GPU suites on Vulkan (lavapipe) for unit-tests.
@@ -76,7 +83,7 @@ EDITOR_MIN_TESTS=150
 HTMLUI_MAX_SKIPPED=75
 
 usage() {
-    sed -n '2,63p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,70p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -92,7 +99,9 @@ if [[ "$TARGET" == shell || "$TARGET" == exec ]]; then
     TARGET="$1"; shift
 fi
 case "$TARGET" in
-    linux|web|android|unit-tests|htmlui-tests|htmlui-editor-tests|mcp-tests|web-gate) ;;
+    linux|web|android|unit-tests|htmlui-tests|htmlui-editor-tests|mcp-tests|web-gate|players) ;;
+    # the no-compiler image (docker/runtime.Dockerfile): shell and exec only
+    runtime) [[ $SHELL_MODE -eq 1 || $EXEC_MODE -eq 1 ]] || usage ;;
     *) usage ;;
 esac
 if [[ $EXEC_MODE -eq 1 ]]; then
@@ -112,6 +121,12 @@ IMAGE_TARGET="$TARGET"
 case "$TARGET" in
     unit-tests|htmlui-tests|htmlui-editor-tests|mcp-tests) IMAGE_TARGET=linux ;;
     web-gate) IMAGE_TARGET=web ;;
+    players)
+        case "${PLAYER_PLATFORM:-linux}" in
+            web) IMAGE_TARGET=web ;;
+            android) IMAGE_TARGET=android ;;
+            *) IMAGE_TARGET=linux ;;
+        esac ;;
 esac
 IMAGE="jasperengine/${IMAGE_TARGET}-build"
 OUT="build/$IMAGE_TARGET"
@@ -121,6 +136,8 @@ CACHE="build/.cache"
 MAIN="$(cd "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
 JOBS_FLAG=""
 [[ -n "${JOBS:-}" ]] && JOBS_FLAG="-j $JOBS"
+# KEEP_GOING=1: Ninja builds every target it can after a failure (all the errors of one run)
+[[ "${KEEP_GOING:-0}" == 1 ]] && JOBS_FLAG="$JOBS_FLAG -- -k 0"
 
 # mcp-tests, the full suite: the web build test_mesh_raycast.py's latency gate loads (the
 # mesh-raycast test project for Emscripten, in the web image), built once and kept up to date
@@ -389,6 +406,72 @@ web)
         cmake --preset $PRESET -S engine -B $WEB_DIR -DCMAKE_BUILD_TYPE=$BT $PROJECT_FLAGS $OPTION_FLAGS $SIMD_FLAGS $CCACHE_FLAGS
         cmake --build $WEB_DIR --target $ENGINE_TARGET $JOBS_FLAG
     "
+    ;;
+players)
+    PLAYER_PLATFORM="${PLAYER_PLATFORM:-linux}"
+    PLAYER_FLAVOURS="${PLAYER_FLAVOURS:-release development}"
+    PLAYERS_OUT=build/players
+    ZIP_FLAG=""
+    [[ "${PLAYER_ZIP:-0}" == 1 ]] && ZIP_FLAG="--zip $PLAYERS_OUT/archives"
+    for flavour in $PLAYER_FLAVOURS; do
+        [[ "$flavour" =~ ^(release|development)$ ]] || { echo "PLAYER_FLAVOURS lists release and development (got $flavour)" >&2; exit 1; }
+    done
+    case "$PLAYER_PLATFORM" in
+    linux)
+        PLAYER_BACKENDS="${PLAYER_BACKENDS:-glcore gles3 vulkan}"
+        for backend in $PLAYER_BACKENDS; do
+            [[ "$backend" =~ ^(glcore|gles3|vulkan)$ ]] || { echo "PLAYER_BACKENDS lists glcore, gles3 and vulkan (got $backend)" >&2; exit 1; }
+        done
+        # (one runtime's build and packaging: tools/players/build_linux_player.sh, which the MCP
+        # suite's shared build cache runs too)
+        BUILD_PLAYER_FLAGS=""
+        [[ -n "${JOBS:-}" ]] && BUILD_PLAYER_FLAGS="--jobs $JOBS"
+        [[ "${KEEP_GOING:-0}" == 1 ]] && BUILD_PLAYER_FLAGS="$BUILD_PLAYER_FLAGS --keep-going"
+        run bash -euo pipefail -c "
+            for flavour in $PLAYER_FLAVOURS; do
+                for backend in $PLAYER_BACKENDS; do
+                    tools/players/build_linux_player.sh $BUILD_PLAYER_FLAGS $ZIP_FLAG \$backend \$flavour \
+                        build/players-build/linux-x64-\$backend-\$flavour $PLAYERS_OUT -- $OPTION_FLAGS $ENGINE_WARNING_FLAGS $CCACHE_FLAGS
+                done
+            done
+        "
+        ;;
+    web)
+        run bash -euo pipefail -c "
+            for flavour in $PLAYER_FLAVOURS; do
+                id=web-wasm32-gles3-\$flavour
+                dev=OFF; bt=Release; [[ \$flavour == development ]] && { dev=ON; }
+                for threads in OFF ON; do
+                    tree=build/players-build/\$id-threads\$threads
+                    cmake --preset engine-web-release -S engine -B \$tree -DCMAKE_BUILD_TYPE=\$bt -DJASPERENGINE_PLAYER=ON \
+                        -DGRAPHIC_BACKEND=gles3 -DEMSCRIPTEN_THREAD_SUPPORT=\$threads -DJASPERENGINE_DEVELOPMENT_BUILD=\$dev \
+                        $OPTION_FLAGS $CCACHE_FLAGS
+                    cmake --build \$tree --target jasperengine-player $JOBS_FLAG
+                done
+                python3 tools/players/package_player.py --platform web --arch wasm32 --backend gles3 --flavour \$flavour \
+                    --build build/players-build/\$id-threadsOFF --build-mt build/players-build/\$id-threadsON --out $PLAYERS_OUT $ZIP_FLAG
+            done
+        "
+        ;;
+    android)
+        PLAYER_BACKENDS="${PLAYER_BACKENDS:-gles3 vulkan}"
+        for backend in $PLAYER_BACKENDS; do
+            [[ "$backend" =~ ^(gles3|vulkan)$ ]] || { echo "PLAYER_BACKENDS lists gles3 and vulkan for android (got $backend)" >&2; exit 1; }
+        done
+        run bash -euo pipefail -c "
+            for flavour in $PLAYER_FLAVOURS; do
+                for backend in $PLAYER_BACKENDS; do
+                    dir=build/players-build/android-\$backend-\$flavour
+                    CMAKE_CXX_COMPILER_LAUNCHER=ccache JASPERENGINE_ANDROID_ABIS=${PLAYER_ANDROID_ABIS:-} \
+                        tools/players/android_player.sh \$flavour \$dir \$backend
+                    python3 tools/players/package_player.py --platform android --arch universal --backend \$backend --flavour \$flavour \
+                        --android-dir \$dir --symbols \$dir/symbols --out $PLAYERS_OUT $ZIP_FLAG
+                done
+            done
+        "
+        ;;
+    *) echo "PLAYER_PLATFORM is linux, web or android here (Windows, macOS and iOS runtimes build in CI: .github/workflows)" >&2; exit 1 ;;
+    esac
     ;;
 unit-tests)
     BT="${BUILD_TYPE:-RelWithDebInfo}"

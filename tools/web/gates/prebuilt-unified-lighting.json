@@ -1,0 +1,21 @@
+{
+  "description": "tools/fixtures/unified-lighting built with the prebuilt web player (jasperengine-editor build --platform web, S30 AC2) with Web: Multithreaded on, in the headless shell (SwiftShader WebGL2): served with COOP/COEP, or without them (coi-serviceworker.js isolates the page after one reload). Either way the pthreads player runs. The player runs 3 frames after ready at a fixed 60 fps and quits (?quit-after=3&fixed-fps=60&after-ready), so the page is still while it is captured; software WebGL needs a long capture_timeout for this scene. The centre pixel is the grey floor between the middle cylinders.",
+  "isolated": true,
+  "expect": [
+    "crossOriginIsolated=true threads=true",
+    "JasperEngine exit code 0"
+  ],
+  "query": [
+    "quit-after=3",
+    "fixed-fps=60",
+    "after-ready"
+  ],
+  "seconds": 20,
+  "capture_timeout": 300,
+  "rgb": [
+    93,
+    97,
+    102
+  ],
+  "tolerance": 24
+}

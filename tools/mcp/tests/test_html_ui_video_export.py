@@ -5,8 +5,10 @@
   The actual player below verifies frame conversion and playback.
 - A missing video, poster or <source> fails the export with project-relative file:line:column
   (HtmlUIDependencies' VIDEO references, the compat layer's checkDocument).
-- JASPER_SLOW_BUILD=1 also builds the Desktop player and runs it: the test card plays on screen
-  (its colour bars are found in the player's screenshot, and the frame it shows moves on).
+- JASPER_SLOW_BUILD=1 also builds the Desktop game and runs it: the test card plays on screen
+  (its colour bars are found in the player's screenshot, and the frame it shows moves on). It is
+  built with the prebuilt glcore player runtime the run builds once (compiling the engine for it
+  is test_build.py's check).
 
 Runs on a scratch copy of the fixture project.
 """
@@ -18,14 +20,16 @@ import shutil
 import time
 from pathlib import Path
 
+import build_cache
 from harness import Editor, REPO, skip
 from htmlui_pixels import count_near
 
-EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
+# the Desktop player test builds with the run's prebuilt glcore runtime (tools/mcp/build_cache.py)
+PREBUILT_PLAYERS = ["glcore-release"]
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui", "env": build_cache.player_env("glcore", "release")}
 CI = True
 
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
-JOBS = 2
 
 S: dict = {}
 
@@ -154,12 +158,15 @@ async def test_missing_media_fail_the_export(ed: Editor):
 
 async def test_desktop_build_plays_the_video(ed: Editor):
     if os.environ.get("JASPER_SLOW_BUILD", "") in ("", "0"):
-        skip("set JASPER_SLOW_BUILD=1 to build and run a real Desktop player (compiles the engine)")
+        skip("set JASPER_SLOW_BUILD=1 to build and run a real Desktop player (the run builds its prebuilt runtime once)")
     await _setup_video(ed)
+    # what runs is the game: the prebuilt player (the compile path is test_build.py's)
+    runtime = await build_cache.player_runtime(ed, "glcore", "release")
     out = ed.scratch.root / "export-video-desktop"
-    r = await ed.call("build_project", mode="desktop", output_dir=str(out), build_jobs=JOBS, timeout_seconds=30)
-    job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], TIMEOUT - 300, poll=15.0)
+    r = await ed.call("build_project", mode="desktop", output_dir=str(out), method="prebuilt", timeout_seconds=600)
+    job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], TIMEOUT - 300, poll=5.0)
     ed.check_eq(job["status"], "succeeded", f"{job}")
+    ed.check_eq((job["result"]["method_used"], job["result"]["player_id"]), ("prebuilt", runtime.name), f"{job}")
     shots = []
     for after in (4, 5):
         raw = await ed.call_raw("run_build", {"seconds": after + 2, "screenshot_after_seconds": after})
