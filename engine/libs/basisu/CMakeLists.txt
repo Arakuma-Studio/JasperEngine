@@ -97,6 +97,13 @@ if(JASPERENGINE_TEXTURE_ENCODERS)
     target_compile_options(basisu_encoder PRIVATE
         $<${BASISU_GNU_FE}:-fno-strict-aliasing -ffp-contract=off>
         $<$<CXX_COMPILER_ID:MSVC>:/fp:precise /bigobj>)
+    # its miniz (under the bundled tinyexr: the editor's EXR writes) reads 16-bit words at odd
+    # addresses on x86 on purpose; it turns that off for UBSan only where __has_feature exists
+    # (Clang), so under GCC's UBSan the alignment check is off for this vendored target alone
+    # (the build stops at the first report: -fno-sanitize-recover, no runtime suppression)
+    if(JASPERENGINE_SANITIZE_UNDEFINED)
+        target_compile_options(basisu_encoder PRIVATE $<${BASISU_GNU_FE}:-fno-sanitize=alignment>)
+    endif()
     set_target_properties(basisu_encoder PROPERTIES
         CXX_VISIBILITY_PRESET hidden
         POSITION_INDEPENDENT_CODE ON

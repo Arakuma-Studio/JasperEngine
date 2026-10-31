@@ -1,13 +1,13 @@
 # Project checks: `jasperengine-editor check`
 
 The checks the MCP tools run (`check_script`, `check_shader`, `compile_scripts`, the HTML/CSS
-UI diagnostics the automatic pick-up reports, and the synthesized textures' source state that
-`get_asset_info` shows) are also a CLI subcommand, so an agent that edits
+UI diagnostics the automatic pick-up reports, and the synthesized textures' and Vertex Animations'
+source state that `get_asset_info` shows) are also a CLI subcommand, so an agent that edits
 files with its own tools, a shell, a CI job or an agent hook gets the same findings without an
 editor running. Both sides call the same code (`editor/util/ProjectChecks.{h,cpp}`).
 
 ```
-jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cpp] [--ui] [--textures] [--anims] [--all]
+jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cpp] [--ui] [--textures] [--anims] [--vat] [--all]
                           [--files <paths...>] [--format text|json] [--quiet] [--hook]
 ```
 
@@ -20,8 +20,9 @@ jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cp
 | `--ui` | HTML/CSS UI documents: what the engine's compatibility layer drops or rewrites lossily, missing and remote files, JavaScript, each with `file:line:col`, a stable code and a fix (see below). Pure parsing, no engine start: about 1 ms per document. |
 | `--textures` | Synthesized textures: every project PNG that carries a texture synthesis recipe (an iTXt chunk `jasper.synthesis`, written by `synthesize_texture` and Window > Texture Synthesis) whose sources changed or disappeared since it was made: a warning at the PNG (see below). Reads only the PNG chunks before the image data, and hashes sources only for PNGs with a recipe, both cached by mtime and size: milliseconds once cached. |
 | `--anims` | Animation clips (`.anim`): every clip read as the engine reads it (an error with `line:col` for text that is not a clip; a warning with the JSON path of each part the lenient reader drops), and the clips the project's scenes and prefabs reference: an Animation Player entry naming a missing `.anim` (an error; a warning when its GUID finds the moved file), a model clip whose model is missing or has no animation of that name (see below). Pure parsing, no engine start. |
-| `--all` | All six. Without `--lua/--shaders/--cpp/--ui/--textures/--anims/--all`: `--lua --shaders --ui --textures --anims` (C++ only when asked, since it builds). |
-| `--files <paths...>` | Only these files: absolute, relative to the current directory, or relative to the project. Lua files are checked one by one; a `.vert`/`.frag` checks its fork (a UI effect `.frag`, the effect); a `.glsl` checks every fork and UI effect (any can include it); a C++ file (`.h .hpp .hh .hxx .cpp .cc .cxx .c .inl`) builds the scripts when `--cpp` is given and is ignored otherwise; an `.html`/`.htm` is converted as a document (its stylesheets, imports, images and fonts with it), a `.css` is checked as the project's documents that load it see it (its findings and its imports'), or on its own when no document loads it. An image is checked as a synthesized texture when it carries a recipe, and as a source otherwise: the project's synthesized textures made from it are checked (an edited example reports the textures to regenerate). An `.anim` is checked as a clip (its references from scenes are checked on whole-project runs only). Files outside the project, in hidden or `build` directories, deleted, or of other kinds are skipped; when nothing is left, the command returns at once (no engine start). |
+| `--vat` | Vertex Animations (`.vat`): every `.vat` read as the engine reads it (an error with `line:col` for text that is not one, a warning with the JSON path of each editable field the lenient reader repairs), a source changed or missing since the bake (warnings), a `.vat.glb` that is missing or no longer matches the `.vat` (errors), and a payload texture over the device limit of the recipe's preset (an error; see below). Loads the project (no scenes). |
+| `--all` | All seven. Without `--lua/--shaders/--cpp/--ui/--textures/--anims/--vat/--all`: `--lua --shaders --ui --textures --anims --vat` (C++ only when asked, since it builds). |
+| `--files <paths...>` | Only these files: absolute, relative to the current directory, or relative to the project. Lua files are checked one by one; a `.vert`/`.frag` checks its fork (a UI effect `.frag`, the effect); a `.glsl` checks every fork and UI effect (any can include it); a C++ file (`.h .hpp .hh .hxx .cpp .cc .cxx .c .inl`) builds the scripts when `--cpp` is given and is ignored otherwise; an `.html`/`.htm` is converted as a document (its stylesheets, imports, images and fonts with it), a `.css` is checked as the project's documents that load it see it (its findings and its imports'), or on its own when no document loads it. An image is checked as a synthesized texture when it carries a recipe, and as a source otherwise: the project's synthesized textures made from it are checked (an edited example reports the textures to regenerate). An `.anim` is checked as a clip (its references from scenes are checked on whole-project runs only). A `.vat` is checked as a Vertex Animation, a `.vat.glb` as its `.vat`, and any other file as a source: the project's `.vat` files whose recipe read it are checked (an edited model reports the bakes to rebake). Files outside the project, in hidden or `build` directories, deleted, or of other kinds are skipped; when nothing is left, the command returns at once (no engine start). |
 | `--format json` | One JSON object on stdout (below). Default `text`. |
 | `-q`, `--quiet` | No summary line on stderr. |
 | `--hook` | Agent hook mode (below). |
@@ -69,17 +70,19 @@ JSON (`--format json`):
 }
 ```
 
-`tool` is `lua`, `shader`, `cpp`, `ui`, `texture` or `anim`; `path` is project-relative (absolute for a file outside the
+`tool` is `lua`, `shader`, `cpp`, `ui`, `texture`, `anim` or `vat`; `path` is project-relative (absolute for a file outside the
 project, e.g. a system header warning; `engine/shaderlib/<include>` for an engine shader include;
 `""` when there is no file); `line`/`col` are 1-based, 0 when unknown; `severity` is `error` or
 `warning`. UI findings also have `code` (the compatibility layer's stable diagnostic code) and,
 when there is a fix, `suggestion`; so do the shader findings of a UI effect (`code`
 `HTMLUI-FX-0012` to `HTMLUI-FX-0015`), the texture findings (`synthesis-source-changed`,
-`synthesis-source-missing`, `synthesis-recipe-invalid`) and the Stochastic Tiling warnings
+`synthesis-source-missing`, `synthesis-recipe-invalid`), the vertex animation findings (`code` the kind:
+`vat-source-changed`, `vat-source-missing`, `vat-mesh-mismatch`, `vat-layout-mismatch`, `vat-device-limit`, `vat-invalid`,
+`vat-format`, below) and the Stochastic Tiling warnings
 (`stochastic-tilted-normal-map`, `stochastic-no-effect`, below); the other findings have exactly the six keys above.
 `checked` counts what ran: Lua files, shader forks, C++ scripts, UI files (documents plus the
 stylesheets checked on their own), synthesized textures (`textures`: the PNGs with a recipe whose
-sources were checked), clips (`anims`: the `.anim` files read).
+sources were checked), clips (`anims`: the `.anim` files read), Vertex Animations (`vat`: the `.vat` files read).
 
 Exit code: **0** no errors (warnings allowed), **1** errors, **2** usage error (bad option, no
 `project.yaml`, the project fails to load).
@@ -224,6 +227,33 @@ Main Scene.scene: error: an Animation Player plays 'anim/run.anim', which does n
 - With `--files`, only the named `.anim` files (no reference scan). Binding paths against a
   hierarchy are an editor check: `edit_animation`/`get_animation` with `root`.
 
+## What the vertex animation check runs
+
+A `.vat` records how it was baked or imported (its recipe: the sources with a SHA-1 of every file
+the bake read, and the settings, `docs/vertex-animation.md`). The check reads it with the engine's
+reader, hashes the sources again, reads the payload in its `.vat.glb` and compares the two
+(`editor/vat/VatBakeSession.h` `checkVatStaleness`, what the `.vat` Inspector and `get_asset_info`
+show):
+
+```
+assets/models/hero.vat: warning: 'assets/models/hero.gltf' changed since 'assets/models/hero.vat' was baked (fix: Rebake (Inspector > Rebake, or bake_vertex_animation {rebake: "assets/models/hero.vat"})) [vat-source-changed]
+assets/vat/crowd.vat: error: the payload texture is 4096x37 texels, over the mobile_web preset's 2048 (mobile_web/WebGL2 devices guarantee 2048x2048, desktop 8192): it doesn't upload on those devices and the mesh draws at rest (fix: rebake with a lower --fps, ...) [vat-device-limit]
+```
+
+Tool `vat`, at the `.vat`, `code` the kind and `suggestion` the fix:
+
+| Code | Severity | When | Fix |
+|---|---|---|---|
+| `vat-source-changed` | warning | a file the bake read (model, `.anim`, `.poseanim`, prefab, scene, export texture...) has changed | Rebake: Inspector > Rebake, `bake_vertex_animation {rebake}` or `bake-vat --rebake` |
+| `vat-source-missing` | warning | a file the bake read is gone (the `.vat` still plays) | restore it, or bake from another source |
+| `vat-mesh-mismatch` | error | the `.vat.glb` is missing, holds no payload, or its payload doesn't fit the `.vat` | Rebake |
+| `vat-layout-mismatch` | error | the `.vat` and its `.vat.glb` describe different layouts: a generated field (`layout`, clip `start`/`frames`/`fps`, `mode`) was edited, or the two files come from two bakes | Rebake |
+| `vat-device-limit` | error | the payload texture (width or height) is over the device limit of the recipe's `preset`: 2048 for `mobile_web` (what WebGL2 and GLES3 devices guarantee), 8192 for `desktop`; such a texture doesn't upload there and the mesh draws at rest | rebake with a lower fps, fewer clips, normals off or Bones mode (or, off the web and mobile, the desktop preset) |
+| `vat-invalid` | error | the text is not a `.vat` (not JSON, wrong `format`, a newer `version`, an invalid generated field), at `line:col` when known | bake it again from its source (`bake-vat --source ... --output <the .vat> --overwrite`), or restore it |
+| `vat-format` | warning | an editable field (a clip's `wrap`, `speed`, an event...) the reader repaired, with its JSON path | fix the value |
+
+The CLI that bakes them is `jasperengine-editor bake-vat` (`--help`; `docs/vertex-animation.md`).
+
 ## Examples
 
 ```sh
@@ -239,6 +269,10 @@ jasperengine-editor check --project . --ui
 # animation clips (after editing an .anim with your own tools: --files it)
 jasperengine-editor check --project . --anims
 jasperengine-editor check --project . --files assets/anim/bob.anim
+
+# Vertex Animations: stale bakes, broken files, device limits (after re-exporting a model: --files it)
+jasperengine-editor check --project . --vat
+jasperengine-editor check --project . --files assets/models/hero.gltf
 
 # synthesized textures whose sources changed (after repainting an example: --files it)
 jasperengine-editor check --project . --textures
@@ -257,7 +291,7 @@ So each `--hook` run checks:
 
 - the files the hook input names: Claude Code's `tool_input.file_path` / `notebook_path`, the
   `*** Add File:` / `*** Update File:` / `*** Move to:` lines of a Codex `apply_patch`;
-- and every Lua, shader, C++, `.html`, `.htm`, `.css` and `.anim` file of the project that changed since the
+- and every Lua, shader, C++, `.html`, `.htm`, `.css`, `.anim`, `.vat` and `.vat.glb` file of the project that changed since the
   previous `--hook` run, whatever the tool was. The stamps (mtime, size) of those files are kept in
   `.jasperengine/check-hook-state.json`; a change is checked once, by the first run after it. The
   first run (no state yet) checks the files changed in the last 10 minutes, not the project's

@@ -827,50 +827,49 @@ void registerSynthesisTools(McpRegistry& registry) {
         "companions (normal, roughness...) get the same arrangement. Without output nothing is written: a preview with images and "
         "metrics; the same arguments + the returned seed + output write exactly that (one undo step, PNGs with a recipe). Read "
         "hint. Guide: jasper://docs/texture-synthesis.";
+
+    // what each argument does: docs/mcp/guide/texture-synthesis.md
     const Json pathOrObject = [&] {
         Json j;
         j["anyOf"] = Json::array({Json{{"type", "string"}},
-                                  object({{"path", string("")}, {"sample_mask", string("White may be copied.")},
-                                                {"guide", string("guided.")}, {"sampleable", boolean("")}},
-                                               {"path"})});
+                                  object({{"path", string("")}, {"sample_mask", string("")},
+                                          {"guide", string("")}, {"sampleable", boolean("")}},
+                                         {"path"})});
         return j;
     }();
     Json companionItem;
     companionItem["anyOf"] = Json::array({Json{{"type", "string"}},
-                                          object({{"path", string("")}, {"paths", array(Json{{"type", "string"}}, "One per example.")},
-                                                        {"name", string("")}, {"output", string("")}})});
+                                          object({{"path", string("")}, {"paths", array(Json{{"type", "string"}}, "")},
+                                                  {"name", string("")}, {"output", string("")}})});
     Json companions;
-    companions["description"] = "auto: the maps next to each example (rock_albedo.png -> rock_normal.png...).";
     companions["default"] = "auto";
     companions["anyOf"] = Json::array({stringEnum("", {"auto", "none"}), array(companionItem, "")});
     Json size;
-    size["description"] = "Default 1024; guided: the target guide's. Not for make_tileable/inpaint.";
     size["anyOf"] = Json::array({integer("", 1, 8192), object({{"width", integer("")}, {"height", integer("")}}, {"width", "height"})});
     tool.inputSchema = object({
         {"mode", withDefault(stringEnum("", {"extend", "tileable", "make_tileable", "inpaint", "guided"}), "tileable")},
-        {"examples", array(pathOrObject, "Image paths (albedo).")},
+        {"examples", array(pathOrObject, "")},
         {"companions", companions},
-        {"mask", object({{"path", string("White = regenerate. Omitted: the example's transparent pixels.")},
-                               {"channel", withDefault(stringEnum("", {"luma", "r", "g", "b", "a"}), "luma")},
-                               {"invert", boolean("")}})},
-        {"target_guide", string("guided.")},
+        {"mask", object({{"path", string("")},
+                         {"channel", withDefault(stringEnum("", {"luma", "r", "g", "b", "a"}), "luma")},
+                         {"invert", boolean("")}})},
+        {"target_guide", string("")},
         {"size", size},
-        {"quality", withDefault(stringEnum("draft ~2x faster, high ~2x slower.", {"draft", "balanced", "high"}), "balanced")},
+        {"quality", withDefault(stringEnum("", {"draft", "balanced", "high"}), "balanced")},
         // the fields and their ranges: docs/mcp/guide/texture-synthesis.md (the handler checks them)
-        {"params", anyObject("Expert overrides: jasper://docs/texture-synthesis.")},
-        {"border", withDefault(number("make_tileable band per edge.", 0.0001, 0.5), 0.125)},
+        {"params", anyObject("Expert overrides.")},
+        {"border", withDefault(number("", 0.0001, 0.5), 0.125)},
         {"seed", [] {
              Json j;
-             j["description"] = "0..2^53, or a decimal string up to 2^64-1. Default random (returned).";
-             j["anyOf"] = Json::array({Json{{"type", "integer"}, {"minimum", 0}}, Json{{"type", "string"}}});   // (the handler checks the digits)
+             j["anyOf"] = Json::array({Json{{"type", "integer"}, {"minimum", 0}}, Json{{"type", "string"}}});   // (the handler checks the digits: no pattern, S31's subset)
              return j;
          }()},
-        {"output", string("A .png in the assets dir; omitted = preview only.")},
+        {"output", string("")},
         {"overwrite", withDefault(boolean(""), false)},
         {"uncertainty_output", string("")},
-        {"show_in_editor", withDefault(boolean("Run it in the Texture Synthesis window."), false)},
+        {"show_in_editor", withDefault(boolean(""), false)},
         {"wait", withDefault(boolean(""), true)},
-        {"timeout_seconds", withDefault(number("Then a job_id (get_job).", 1, 3600), 120)}
+        {"timeout_seconds", withDefault(number("", 1, 3600), 120)}
     }, {"examples"});
     tool.handler = synthesizeTextureTool;
     registry.addTool(std::move(tool));

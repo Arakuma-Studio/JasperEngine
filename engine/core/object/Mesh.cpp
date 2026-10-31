@@ -8,6 +8,8 @@
 #include "component/ReflectionProbeComponent.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/MeshSystem.h"
+#include "component/VertexAnimatorComponent.h"
+#include "animation/VertexAnimatorRuntime.h"
 
 using namespace jasperengine;
 
@@ -799,7 +801,12 @@ void Mesh::updateInstance(size_t index, InstanceData instance){
 
     InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
 
-    instmesh.instances.at(index) = instance;
+    InstanceData& current = instmesh.instances.at(index);
+    // the Vertex Animator's state of the instance is runtime state, not user data: it stays (a
+    // new InstanceData() from a script would draw the instance at rest)
+    instance.vat0 = current.vat0;
+    instance.vat1 = current.vat1;
+    current = instance;
 
     instmesh.needUpdateInstances = true;
     markChanged<InstancedMeshComponent>();
@@ -854,6 +861,10 @@ void Mesh::removeInstance(size_t index){
     InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
 
     instmesh.instances.erase(instmesh.instances.begin() + index);
+    // a Vertex Animator's per-instance states stay with their instances
+    if (VertexAnimatorComponent* animator = scene->findComponent<VertexAnimatorComponent>(entity)){
+        vat::eraseInstanceState(*animator, index);
+    }
 
     instmesh.needUpdateInstances = true;
     markChanged<InstancedMeshComponent>();
@@ -910,6 +921,9 @@ void Mesh::clearInstances(){
         InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
 
         instmesh.instances.clear();
+        if (VertexAnimatorComponent* animator = scene->findComponent<VertexAnimatorComponent>(entity)){
+            vat::clearInstanceStates(*animator);
+        }
 
         instmesh.needUpdateInstances = true;
         markChanged<InstancedMeshComponent>();

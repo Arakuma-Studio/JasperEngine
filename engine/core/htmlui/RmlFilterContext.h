@@ -8,6 +8,7 @@
 
 #include <RmlUi/Core/Types.h>
 
+#include "RmlRenderer.h"
 #include "render/ObjectRender.h"
 #include "render/PipelineState.h"
 
@@ -21,7 +22,8 @@ namespace jasperengine {
     // The filter chain of one RmlRenderer::CompositeLayers call: what every phase-1 filter pass
     // (opacity, blur, drop-shadow, colour matrix, mask image) is written against, and what
     // phase-5 filter effects use. Targets are 1-sample RGBA8 images of the layer size with
-    // premultiplied content, rows top-down on every backend. A pass reads primary() and writes
+    // premultiplied content, rows top-down on every backend (a region layer's: the size of the
+    // part of the target plane it covers, its post-process set; P7-F2). A pass reads primary() and writes
     // a free target, which swap() then makes the source of the next filter. primary() may be
     // the source layer itself: it is only read, never written (backdrop-filter reads the layer
     // it draws on), so in-place work goes to secondary()/tertiary() first.
@@ -36,8 +38,9 @@ namespace jasperengine {
         // RmlUi's GL3 blur (downscale passes, 7-tap separable gaussian, upscale) of the scissor
         // region; target must not be the source layer
         void blurInPlace(Framebuffer& target, Framebuffer& temp, float sigmaDevicePx);
-        Rml::Rectanglei getScissor() const;            // target px, top-left origin
+        Rml::Rectanglei getScissor() const;            // layer px, top-left origin
         Rml::Vector2i getLayerSize() const;            // rows top-down on every backend
+        Rml::Rectanglei getLayerFrame() const;         // target px the layer covers (P7-F2)
         // fullscreen triangle (htmlui_post.vert convention) into dst with the given program and
         // state, within the current scissor; applyUniforms is called after beginDraw so the
         // caller uploads its uniform blocks and textures. load: CLEAR (default) or LOAD
@@ -52,11 +55,14 @@ namespace jasperengine {
 
     private:
         friend class RmlRenderer;
-        RmlFilterContext(RmlRenderer& renderer, Framebuffer& sourceLayer);
+        RmlFilterContext(RmlRenderer& renderer, Framebuffer& sourceLayer, Rml::Rectanglei frame);
         void pickFreeTargets();
+        Framebuffer& postTarget(int index);
 
         RmlRenderer& renderer;
         Framebuffer* sourceLayer;
+        Rml::Rectanglei frame;                       // the source layer's
+        RmlRenderTarget::RegionPost* postSet = nullptr;   // its post-process targets (nullptr: the viewport's)
         int primaryIndex = -1;      // -1: the source layer, else a postprocess index (0..2)
         int secondaryIndex = 0;
         int tertiaryIndex = 1;

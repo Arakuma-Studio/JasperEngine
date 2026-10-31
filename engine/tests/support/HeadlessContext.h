@@ -17,6 +17,9 @@ namespace jasperengine { namespace test {
         static void destroy();
         static bool isCreated();
         static const char* getBackendName();   // "glcore" or "vulkan"
+        // the device the frames render on: GL_RENDERER, or the Vulkan device's name ("llvmpipe
+        // (LLVM ...)" for Mesa's llvmpipe and lavapipe, the test image's); empty before create
+        static const char* getRendererName();
     };
 
 } }

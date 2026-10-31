@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: filters reading content beyond the viewport, descendants' filters in their ancestors' filter regions</title>
+<style>
+  html, body { margin: 0; overflow: hidden; }
+  .sq { position: absolute; width: 60px; height: 60px; filter: blur(4px); }
+  .half { position: absolute; background-color: #e04020; }
+  .beyond { background-color: #2040e0; }
+  .h > .half { width: 30px; height: 60px; top: 0px; }
+  .v > .half { width: 60px; height: 30px; left: 0px; }
+  #left { left: -30px; top: 20px; }
+  #left > .beyond { left: 0px; }
+  #left > .on { left: 30px; }
+  #right { left: 310px; top: 110px; }
+  #right > .on { left: 0px; }
+  #right > .beyond { left: 30px; }
+  #top { left: 60px; top: -30px; }
+  #top > .beyond { top: 0px; }
+  #top > .on { top: 30px; }
+  #bottom { left: 140px; top: 200px; }
+  #bottom > .on { top: 0px; }
+  #bottom > .beyond { top: 30px; }
+  .bar { position: absolute; background-color: #e04020; }
+  #cast-down { left: 150px; top: -46px; width: 60px; height: 30px; filter: drop-shadow(#2040e0 0px 52px 2px); }
+  #cast-right { left: -46px; top: 150px; width: 30px; height: 40px; filter: drop-shadow(#2040e0 52px 0px 0px); }
+  .parent { position: absolute; width: 40px; height: 40px; background-color: #808080; }
+  .child { position: absolute; left: 6px; top: 6px; width: 16px; height: 16px; background-color: #e04020; }
+  #p1 { left: 230px; top: 20px; filter: brightness(0.8); }
+  #p1 > .child { filter: drop-shadow(#2040e0 38px 30px 2px); }
+  #p2 { left: 100px; top: 100px; filter: grayscale(1); }
+  #p2 > .child { left: 28px; filter: blur(4px); }
+  #g1 { position: absolute; left: 220px; top: 120px; width: 50px; height: 50px; filter: brightness(0.9); }
+  #g2 { position: absolute; left: 6px; top: 6px; width: 30px; height: 30px; background-color: #808080; filter: grayscale(0.5); }
+  #g2 > .child { left: 4px; top: 4px; width: 12px; height: 12px; filter: drop-shadow(#20a040 44px 46px 1px); }
+</style>
+</head>
+<body><div id="left" class="sq h"><div class="half beyond"></div><div class="half on"></div></div><div id="right" class="sq h"><div class="half on"></div><div class="half beyond"></div></div><div id="top" class="sq v"><div class="half beyond"></div><div class="half on"></div></div><div id="bottom" class="sq v"><div class="half on"></div><div class="half beyond"></div></div><div id="cast-down" class="bar"></div><div id="cast-right" class="bar"></div><div id="p1" class="parent"><div class="child"></div></div><div id="p2" class="parent"><div class="child"></div></div><div id="g1"><div id="g2"><div class="child"></div></div></div></body>
+</html>

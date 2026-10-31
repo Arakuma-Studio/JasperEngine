@@ -563,13 +563,14 @@ endif()
 add_subdirectory(libs/nfd)
 add_subdirectory(libs/yaml-cpp)
 add_subdirectory(libs/ufbx)
-jasperengine_apply_cxx_standard(nfd yaml-cpp)
+add_subdirectory(libs/tinyexr)
+jasperengine_apply_cxx_standard(nfd yaml-cpp tinyexr)
 # The standards the project setting offers (editor/util/CxxStandards.h) and the compiler floors
 # the Play plugin checks (Generator::getToolchainFloorCheck), from the engine's definitions
 get_directory_property(JASPERENGINE_CXX_STANDARDS DIRECTORY ${JASPERENGINE_ROOT} DEFINITION JASPERENGINE_CXX_STANDARDS)
 string(REPLACE ";" "," JASPERENGINE_CXX_STANDARD_LIST "${JASPERENGINE_CXX_STANDARDS}")
 
-foreach(lib IN ITEMS nfd yaml-cpp ufbx)
+foreach(lib IN ITEMS nfd yaml-cpp ufbx tinyexr)
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
     # Reaches the headers they export to the editor, which ImGui gets below
     get_target_property(lib_includes ${lib} INTERFACE_INCLUDE_DIRECTORIES)
@@ -765,6 +766,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/SplineTools.cpp
     ${EDITOR_DIR}/mcp/tools/DiagnosticsTools.cpp
     ${EDITOR_DIR}/mcp/tools/OrganisationTools.cpp
+    ${EDITOR_DIR}/mcp/tools/VatTools.cpp
     ${EDITOR_DIR}/mcp/tools/VcsTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
@@ -831,6 +833,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/ScriptEvents.cpp
     ${EDITOR_DIR}/util/HtmlUITemplates.cpp
     ${EDITOR_DIR}/util/PngWriter.cpp
+    ${EDITOR_DIR}/util/FloatImage.cpp
     ${EDITOR_DIR}/util/FbxImporter.cpp
     ${EDITOR_DIR}/util/GlbBuilder.cpp
     ${JASPERENGINE_TEXSYNTH_SOURCES}
@@ -948,6 +951,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorWindowClips.cpp
     ${EDITOR_DIR}/window/InspectorSplines.cpp
     ${EDITOR_DIR}/window/InputActionsWindow.cpp
+    ${EDITOR_DIR}/window/InspectorWindowVat.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorMaterialPbr.cpp
     ${EDITOR_DIR}/window/InspectorParticles.cpp
@@ -1010,6 +1014,26 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/spline/SplineSceneRender.cpp
     ${EDITOR_DIR}/spline/SplineSceneTools.cpp
     ${EDITOR_DIR}/lattice/LatticeSceneTools.cpp
+    ${EDITOR_DIR}/vat/VatAssetWriter.cpp
+    ${EDITOR_DIR}/vat/VatAssetFiles.cpp
+    ${EDITOR_DIR}/vat/VatDocument.cpp
+    ${EDITOR_DIR}/vat/VatSceneActions.cpp
+    ${EDITOR_DIR}/vat/VatCrowd.cpp
+    ${EDITOR_DIR}/vat/VatReport.cpp
+    ${EDITOR_DIR}/vat/VatBakeTypes.cpp
+    ${EDITOR_DIR}/vat/VatBakeCompute.cpp
+    ${EDITOR_DIR}/vat/VatBakeSource.cpp
+    ${EDITOR_DIR}/vat/VatBakeSession.cpp
+    ${EDITOR_DIR}/vat/VatFrontEnd.cpp
+    ${EDITOR_DIR}/vat/VatCli.cpp
+    ${EDITOR_DIR}/vat/VatContactSheet.cpp
+    ${EDITOR_DIR}/vat/import/VatImport.cpp
+    ${EDITOR_DIR}/vat/import/VatImportCommon.cpp
+    ${EDITOR_DIR}/vat/import/VatSourceMesh.cpp
+    ${EDITOR_DIR}/vat/import/HoudiniVat3.cpp
+    ${EDITOR_DIR}/vat/import/OpenVat.cpp
+    ${EDITOR_DIR}/vat/VatImportWrite.cpp
+    ${EDITOR_DIR}/window/VertexAnimationBakerWindow.cpp
     ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
     ${EDITOR_DIR}/window/PhysicsPlacementWindow.cpp
     ${EDITOR_DIR}/window/SystemsWindow.cpp
@@ -1051,6 +1075,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/render/preview/ModelRender.cpp
     ${EDITOR_DIR}/render/preview/PrefabRender.cpp
     ${EDITOR_DIR}/render/preview/PoseRender.cpp
+    ${EDITOR_DIR}/render/preview/VatPreviewRender.cpp
 
     ${EDITOR_DIR}/pose/PoseImage.cpp
     ${EDITOR_DIR}/pose/PoseSheetRenderer.cpp
@@ -1106,6 +1131,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/LinkMaterialCmd.cpp
     ${EDITOR_DIR}/command/type/CreatePrefabCmd.cpp
     ${EDITOR_DIR}/command/type/CreateClipCmd.cpp
+    ${EDITOR_DIR}/command/type/CreateVatCmd.cpp
     ${EDITOR_DIR}/command/type/ClipSceneActions.cpp
     ${EDITOR_DIR}/command/type/CreatePrefabVariantAssetCmd.cpp
     ${EDITOR_DIR}/command/type/ComponentToPrefabSharedCmd.cpp
@@ -1201,6 +1227,7 @@ function(configure_jasperengine_editor_target target_name)
         astcenc
         basisu_encoder
         ufbx
+        tinyexr
     )
 
     if(WIN32)

@@ -39,6 +39,9 @@ namespace jasperengine {
 
         static sg_environment environment();
         static sg_swapchain swapchain();
+        // the picked physical device's name ("llvmpipe (LLVM ...)" for Mesa's lavapipe); empty
+        // before create
+        static const char* deviceName();
     };
 
 }

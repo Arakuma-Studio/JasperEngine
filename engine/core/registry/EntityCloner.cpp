@@ -125,6 +125,7 @@ template<>
 void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneContext& ctx) {
     mesh.loaded = false;
     mesh.loadCalled = false;
+    mesh.loadFailed = false;
     mesh.needReload = false;
     resetBuffer(mesh.buffer);
     resetBuffer(mesh.indices);
@@ -174,6 +175,9 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
     mesh.lattice = LatticeMeshState();
     mesh.lattice.wantsTessellation = wantsTessellation;
     mesh.lattice.tessellation = tessellation;
+    // the Vertex Animation draw state is the original's load's: the copy's own is made with
+    // its load (RenderSystem, from the copy's Vertex Animator)
+    mesh.vat = VatMeshState();
 }
 
 template<>
@@ -267,8 +271,10 @@ void prepare<SkyboxComponent>(SkyboxComponent& sky, Entity, CloneContext& ctx) {
 template<>
 void prepare<InstancedMeshComponent>(InstancedMeshComponent& instmesh, Entity, CloneContext&) {
     detachExternalBuffer(instmesh.buffer);
+    detachExternalBuffer(instmesh.vatBuffer);
     instmesh.renderInstances.clear();
     instmesh.renderBounds.clear();
+    instmesh.renderVat.clear();
     instmesh.numVisible = 0;
     for (InstanceViewRange& view : instmesh.views) {
         view = InstanceViewRange();
@@ -388,6 +394,36 @@ void prepare<AnimationPlayerComponent>(AnimationPlayerComponent& player, Entity,
     player.runtime.reset();
     player.onEvent.clear();
     player.onFinish.clear();
+}
+
+template<>
+void prepare<VertexAnimatorComponent>(VertexAnimatorComponent& animator, Entity, CloneContext& ctx) {
+    // the authored fields are copied (a copied attachment follows the copy); the copy loads,
+    // starts and plays on its own as a loaded scene starts it, with no callbacks
+    for (VertexAnimatorAttachment& attachment : animator.attachments) {
+        attachment.entity = ctx.remap(attachment.entity);
+    }
+    animator.preview = false;
+    animator.needsLoad = true;
+    animator.started = false;
+    animator.loadedGeneration = 0;
+    animator.loadError.clear();
+    animator.asset.reset();
+    animator.state = vat::VatTrackPair();
+    animator.instanceStates.clear();
+    animator.queued.clear();
+    animator.requests.clear();
+    animator.lastNow = 0.0f;
+    animator.runtime.reset();
+    animator.gpuMode = vat::VatMode::Vertices;
+    animator.gpuState0 = VertexAnimatorComponent().gpuState0;
+    animator.gpuState1 = VertexAnimatorComponent().gpuState1;
+    animator.gpuNow = 0.0f;
+    animator.gpuActive = false;
+    animator.onEvent.clear();
+    animator.onFinish.clear();
+    animator.onInstanceEvent.clear();
+    animator.onInstanceFinish.clear();
 }
 
 template<>
@@ -845,6 +881,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<PoseAnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<AnimationPlayerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<AnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<VertexAnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ScriptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 }
 
@@ -873,28 +910,29 @@ std::vector<Entity> EntityCloner::collectHierarchy(EntityRegistry* registry, Ent
         return meshSystem && meshSystem->getFoliageOwner(entity) != NULL_ENTITY;
     };
 
-    // Transform descendants: the branch that follows the root in the Transform array
+    // Transform descendants: the branch that follows the root in the Transform array (walked by
+    // entity: with the holes of GameObjects destroyed before, an index walk is O(log n) a step)
     const ComponentId transformId = registry->getComponentId<Transform>();
     if (hasComponentSignature(registry, root, transformId)) {
         auto transforms = registry->getComponentArray<Transform>();
         std::unordered_set<Entity> skipped;
-        for (size_t i = transforms->getIndex(root) + 1; i < transforms->size(); i++) {
-            const Entity parent = transforms->getComponentFromIndex(i).parent;
-            const Entity entity = transforms->getEntity(i);
+        transforms->forEachAfter(root, [&](Entity entity, const Transform& transform) {
+            const Entity parent = transform.parent;
             if (skipped.count(parent)) {
                 skipped.insert(entity);
-                continue;
+                return true;
             }
             if (!inSet.count(parent)) {
-                break;
+                return false;
             }
             if (isFoliage(entity)) {
                 skipped.insert(entity);
-                continue;
+                return true;
             }
             result.push_back(entity);
             inSet.insert(entity);
-        }
+            return true;
+        });
     }
 
     // GameObjects without a Transform that belong to these: actions acting on them (their
@@ -913,12 +951,12 @@ std::vector<Entity> EntityCloner::collectHierarchy(EntityRegistry* registry, Ent
     size_t scanned = 0;
     while (added) {
         added = false;
-        for (size_t i = 0; i < actions->size(); i++) {
-            const Entity entity = actions->getEntity(i);
-            if (inSet.count(actions->getComponentFromIndex(i).target) && addOwned(entity)) {
+        actions->forEach([&](Entity entity, const ActionComponent& action) {
+            if (inSet.count(action.target) && addOwned(entity)) {
                 added = true;
             }
-        }
+            return true;
+        });
         for (; scanned < result.size(); scanned++) {
             const Entity entity = result[scanned];
             if (ModelComponent* model = registry->findComponent<ModelComponent>(entity)) {

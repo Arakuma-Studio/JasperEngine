@@ -35,7 +35,8 @@ namespace jasperengine {
         NavGrid = 19,         // a .navgrid's cells (S19)
         AnimatorController = 20,    // a .controller Animator Controller (S21; its GUID in its JSON)
         AvatarMask = 21,            // a .mask avatar mask (S21)
-        AnimationMontage = 22       // a .montage animation montage (S21)
+        AnimationMontage = 22,      // a .montage animation montage (S21)
+        VertexAnimation = 23        // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
     };
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
@@ -63,13 +64,14 @@ namespace jasperengine {
             case AssetType::AnimatorController: return "animator_controller";
             case AssetType::AvatarMask: return "avatar_mask";
             case AssetType::AnimationMontage: return "animation_montage";
+            case AssetType::VertexAnimation: return "vertex_animation";
             case AssetType::Unknown: break;
         }
         return "unknown";
     }
 
     inline AssetType assetTypeFromName(std::string_view name) {
-        for (uint8_t value = 1; value <= static_cast<uint8_t>(AssetType::AnimationMontage); value++) {
+        for (uint8_t value = 1; value <= static_cast<uint8_t>(AssetType::VertexAnimation); value++) {
             const AssetType type = static_cast<AssetType>(value);
             if (name == assetTypeName(type)) {
                 return type;

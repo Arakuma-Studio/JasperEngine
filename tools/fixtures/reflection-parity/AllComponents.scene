@@ -2555,3 +2555,27 @@ entities:
               - left_upper_arm
               - left_lower_arm
               - left_hand
+  - type: Entity
+    entity: 1079
+    name: VertexAnimatorComponent
+    components:
+      transform:
+        position: [78, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      vertexanimator:
+        enabled: false
+        animation: Reflection parity
+        guid: Reflection parity
+        defaultClip: Reflection parity
+        playAutomatically: false
+        speed: 1.7
+        randomStart: false
+        defaultFadeTime: 1.5
+        instanceEvents: true
+        attachments: []

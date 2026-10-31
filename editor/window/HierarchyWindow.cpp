@@ -35,6 +35,7 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/ObjectTransformCmd.h"
 #include "command/type/ModelLoadCmd.h"
+#include "vat/VatSceneActions.h"
 #include "component/InstancedMeshComponent.h"
 #include "subsystem/MeshSystem.h"
 #include "command/type/ImportPrefabCmd.h"
@@ -1217,13 +1218,26 @@ void editor::HierarchyWindow::moveDraggedEntitiesToRootLevel(const std::vector<E
 bool editor::HierarchyWindow::acceptsModelDrop(const std::string& filePath) const {
     // As in the Scene window: a model file of the assets makes a Model GameObject of a 3D scene
     const SceneProject* sceneProject = project->getSelectedScene();
-    return Util::isModelFile(filePath) && sceneProject && sceneProject->sceneType == SceneType::SCENE_3D &&
-        sceneProject->playState == ScenePlayState::STOPPED;
+    return (Util::isModelFile(filePath) || Util::isVertexAnimationFile(filePath)) && sceneProject &&
+        sceneProject->sceneType == SceneType::SCENE_3D && sceneProject->playState == ScenePlayState::STOPPED;
 }
 
 void editor::HierarchyWindow::handleEntityFilesDrop(const std::vector<std::string>& filePaths, Entity parent) {
     for (const std::string& filePath : filePaths) {
         std::filesystem::path path(filePath);
+
+        // a Vertex Animation: Model = its .vat.glb + Vertex Animator, one step (vertex animation spec 3.3)
+        if (Util::isVertexAnimationFile(filePath) && acceptsModelDrop(filePath)) {
+            if (!project->isInsideAssetsPath(path)) {
+                Backend::getApp().registerOutsideAssetsAlert(filePath);
+                continue;
+            }
+            std::string error;
+            if (createVatObject(project, project->getSelectedSceneId(), filePath, Vector3(0, 0, 0), parent, &error) == NULL_ENTITY) {
+                Out::error("%s", error.c_str());
+            }
+            continue;
+        }
 
         if (acceptsModelDrop(filePath)) {
             if (!project->isInsideAssetsPath(path)) {

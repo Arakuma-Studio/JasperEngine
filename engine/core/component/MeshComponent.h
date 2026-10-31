@@ -31,6 +31,8 @@
 
 namespace jasperengine{
 
+    namespace vat{ class VertexAnimation; }
+
     // Submesh fields a model load rewrites from its source file, so an edit to one only survives
     // the load while it is flagged in Submesh::overrideFields (64 bits, saved as a number).
     enum SubmeshOverrideFlags : uint64_t {
@@ -154,6 +156,8 @@ namespace jasperengine{
         int slotVSMorphTarget = -1;
         int slotVSLattice = -1;
         std::pair<int, int> slotVSLatticeTexture = {-1, -1};
+        int slotVSVat = -1;
+        std::pair<int, int> slotVSVatTexture = {-1, -1};
 
         bool loaded = false;
         // its shader failed to build: the submesh draws without it
@@ -232,6 +236,9 @@ namespace jasperengine{
         // u_vs_lattice and u_latticeTexture (includes/lattice.glsl), loaded with a lattice variant
         int slotVSLattice = -1;
         std::pair<int, int> slotVSLatticeTexture = {-1, -1};
+        // u_vs_vat and u_vatTexture (includes/vat.glsl), loaded with a Vertex Animation variant
+        int slotVSVat = -1;
+        std::pair<int, int> slotVSVatTexture = {-1, -1};
         int slotVSTerrain = -1;
         int slotFSTerrainLayers = -1;
         // u_fs_pbrParams of a built-in Lit lobe variant ends with the lobes' values (and the UV
@@ -249,6 +256,8 @@ namespace jasperengine{
         int slotVSDepthMorphTarget = -1;
         int slotVSDepthLattice = -1;
         std::pair<int, int> slotVSDepthLatticeTexture = {-1, -1};
+        int slotVSDepthVat = -1;
+        std::pair<int, int> slotVSDepthVatTexture = {-1, -1};
         int slotVSDepthTerrain = -1;
         int slotVSDepthSprite = -1;
 
@@ -259,6 +268,8 @@ namespace jasperengine{
         int slotVSGBufferMorphTarget = -1;
         int slotVSGBufferLattice = -1;
         std::pair<int, int> slotVSGBufferLatticeTexture = {-1, -1};
+        int slotVSGBufferVat = -1;
+        std::pair<int, int> slotVSGBufferVatTexture = {-1, -1};
         int slotVSGBufferTerrain = -1;
         int slotFSGBufferTerrainLayers = -1;
 
@@ -333,12 +344,44 @@ namespace jasperengine{
         int smoothNormals = -1;
     };
 
+    // The Vertex Animation variant a mesh draws with (vertex animation spec 3.5)
+    enum class VatVariant : uint8_t {
+        NONE,
+        VERTICES,   // 'Vat' (HAS_VAT)
+        BONES       // 'Vab' (HAS_VAT, HAS_VAT_BONES)
+    };
+
+    // u_vs_vat (includes/vat.glsl): clock and bone index/weight scales, layout, the entity's
+    // tracks, the clip table
+    constexpr int VAT_BLOCK_HEADER = 4;
+    constexpr int VAT_BLOCK_CLIPS = 64;     // = vat::VAT_MAX_CLIPS
+
+    // A Vertex Animator's draw state on its mesh: RenderSystem fills it every frame from the
+    // entity's VertexAnimatorComponent (gpuActive, asset, gpuState0/1, gpuNow, gpuMode) and binds
+    // it to the 'Vat' / 'Vab' variants. A change of `variant` reloads the mesh with the new
+    // variant once its shaders are built (needVariantReload), the loaded one drawing until then.
+    struct JASPERENGINE_API VatMeshState{
+        VatVariant variant = VatVariant::NONE;          // what the animator asks for now
+        VatVariant variantActive = VatVariant::NONE;    // as the loaded shaders were built
+        std::shared_ptr<const vat::VertexAnimation> asset; // holds the payload texture
+        TextureRender* texture = nullptr;               // the payload, null without a variant
+        // u_vs_vat, VAT_BLOCK_HEADER + VAT_BLOCK_CLIPS vectors (allocated with a variant); the
+        // bone index and weight scales (x.y, x.z) are each submesh's, written at its draw
+        std::vector<Vector4> block;
+        // the animatedBounds the bounds were last made with (a change marks them dirty)
+        AABB boundsApplied;
+    };
+
     struct MeshComponent{
         // component checkbox: its system skips a disabled component
         bool enabled = true;
 
         bool loaded = false;
         bool loadCalled = false;
+        // its load could not make a GPU object because that pool was full (SokolSystem logs
+        // which, once): not drawn and counted as settled (RenderSystem::isAllLoaded), not as
+        // loading; loaded again when the pools have room (SystemRender::hasResourcePoolRoom)
+        bool loadFailed = false;
 
         InterleavedBuffer buffer;
         IndexBuffer indices;
@@ -395,6 +438,11 @@ namespace jasperengine{
         // lattice deformation (spec 2026-10-23-lattice-deformer-design.md §5): filled by
         // LatticeRender::prepare, uploaded and bound by RenderSystem
         LatticeMeshState lattice;
+        // a Vertex Animator's playback (vertex animation spec 3.5), filled by RenderSystem
+        VatMeshState vat;
+        // loaded from a Vertex Animation mesh (a .vat.glb, glTF extension JASPER_vertex_animation):
+        // its JOINTS_0 / WEIGHTS_0 name the baked bones, there is no skin to draw them with
+        bool vatMesh = false;
 
         AABB aabb = AABB::ZERO;
         AABB verticesAABB = AABB::ZERO; // is not influenced by instances
@@ -402,6 +450,9 @@ namespace jasperengine{
 
         std::vector<AABB> bonesAABB; // bind-pose bounds per bone index, empty when not skinned
         AABB skinnedAABB; // local bounds of the posed mesh, null when not skinned
+        // Vertex Animator: local bounds over every frame of the clips in use (null = none); used
+        // instead of verticesAABB for culling, the world AABB and instance spheres (vertex animation spec 3.2)
+        AABB animatedBounds;
 
         // the lights it is drawn with, see MeshLights
         MeshLights lights;

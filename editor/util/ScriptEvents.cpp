@@ -36,6 +36,7 @@ const std::vector<ScriptEventSourceInfo>& sourceList() {
         {S::PoseAnimator, "Pose Animator", ICON_FA_PERSON_RUNNING, "PoseAnimatorComponent.h", "PoseAnimatorComponent", "REGISTER_COMPONENT_EVENT", "PoseAnimator"},
         {S::AnimationPlayer, "Animation Player", ICON_FA_FILM, "AnimationPlayerComponent.h", "AnimationPlayerComponent", "REGISTER_COMPONENT_EVENT", "AnimationPlayer"},
         {S::Animator, "Animator", ICON_FA_DIAGRAM_PROJECT, "AnimatorComponent.h", "AnimatorComponent", "REGISTER_COMPONENT_EVENT", "Animator"},
+        {S::VertexAnimator, "Vertex Animator", ICON_FA_PEOPLE_GROUP, "VertexAnimatorComponent.h", "VertexAnimatorComponent", "REGISTER_COMPONENT_EVENT", "VertexAnimator"},
         {S::Physics2D, "Physics 2D", ICON_FA_CIRCLE, "PhysicsSystem.h", "", "REGISTER_EVENT", ""},
         {S::Physics3D, "Physics 3D", ICON_FA_CUBE, "PhysicsSystem.h", "", "REGISTER_EVENT", ""},
     };
@@ -131,6 +132,10 @@ const std::vector<ScriptEvent>& eventList() {
         {S::Animator, "onStateExit", nullptr, "A layer left a state", {{"const std::string&", "layer"}, {"const std::string&", "state"}}},
         {S::Animator, "onMontageEnded", nullptr, "A montage ended (interrupted: another montage or stopMontage)", {{"const std::string&", "montage"}, {"bool", "interrupted"}}},
         {S::Animator, "onAnimatorMove", nullptr, "Root motion of this update (world space); when handled it is not applied", {{"Vector3", "deltaPosition"}, {"Quaternion", "deltaRotation"}}},
+        {S::VertexAnimator, "onEvent", nullptr, "A baked clip event fired (a GameObject without instances)", {{"const AnimationEvent&", "event"}}},
+        {S::VertexAnimator, "onFinish", nullptr, "A once clip ended", {{"const std::string&", "clip"}}},
+        {S::VertexAnimator, "onInstanceEvent", nullptr, "A clip event of an instance fired (Instance Events on)", {{"int", "instance"}, {"const AnimationEvent&", "event"}}},
+        {S::VertexAnimator, "onInstanceFinish", nullptr, "A once clip of an instance ended (Instance Events on)", {{"int", "instance"}, {"const std::string&", "clip"}}},
 
         {S::Physics2D, "beginContact2D", "Contacts", "Any two Rigidbody 2Ds start touching, needs Contact Events on a Collider 2D", contact2D},
         {S::Physics2D, "endContact2D", "Contacts", "Any two Rigidbody 2Ds stop touching, needs Contact Events on a Collider 2D", contact2D},

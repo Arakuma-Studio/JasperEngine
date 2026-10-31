@@ -742,7 +742,7 @@ void editor::InspectorWindow::drawMaterialSurfaceRows(ComponentType cpType, Scen
         {(int)MaterialDepthTest::ALWAYS, "Always"}});
 
     // only the lighting modes the shader lists (the built-in Lit: per pixel, per vertex,
-    // mixed), its default first: what Auto draws with
+    // mixed, none), its default first: what Auto draws with
     const std::vector<MaterialLighting> modes = Catalog::getShaderLightingModes(stateManifest);
     lighting.autoLabel = std::string("Auto (") + lightingLabel(modes.front()) + ")";
     lighting.entries.push_back({(int)MaterialLighting::AUTO, lighting.autoLabel.c_str()});
