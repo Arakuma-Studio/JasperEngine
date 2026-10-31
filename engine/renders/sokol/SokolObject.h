@@ -98,6 +98,9 @@ namespace jasperengine{
         size_t bindSlotIndex;
         // the vertex inputs (locations) the shader declares, set by setShader
         uint32_t shaderInputs;
+        // the shader's vertex inputs, names at their locations (setShader): prewarmWith makes another
+        // variant's pipelines on this object's layout only when that variant takes the same inputs
+        uint64_t shaderInputSignature = 0;
 
         // color blending of the color pipelines when set (setBlendState)
         bool blendOverride;
