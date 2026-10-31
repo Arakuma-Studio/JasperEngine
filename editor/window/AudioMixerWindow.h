@@ -70,11 +70,18 @@ namespace jasperengine::editor {
         bool isProjectMixer() const;
         void resolveFile();
         void reload(bool force);
-        // writes `next` as one undo step (it becomes the shown def)
+        // `next` as one undo step, written at the start of the next frame (the widgets drawn after
+        // the edit still read the def of this one)
         bool commit(const AudioMixerDef& next);
-        // a change in a drag: heard now, written by finishDrag
+        bool write(const AudioMixerDef& next);
+        // a change in a drag: heard next frame, written once when the drag ends
         void preview(const AudioMixerDef& next);
         void finishDrag();
+        void applyStaged();
+        AudioMixerDef staged;
+        bool hasStaged = false;
+        bool stagedWrite = false;
+        bool dragEnded = false;
 
         void drawToolbar();
         void drawSidebar();

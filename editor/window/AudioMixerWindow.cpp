@@ -66,7 +66,10 @@ void AudioMixerWindow::open(const fs::path& mixer) {
 void AudioMixerWindow::setOpen(bool open) {
     if (open && !windowOpen) focusRequested = true;
     windowOpen = open;
-    if (!open && dragging) finishDrag();
+    if (!open && (dragging || hasStaged)) {
+        finishDrag();
+        applyStaged();
+    }
 }
 
 bool AudioMixerWindow::isOpen() const {
@@ -82,6 +85,9 @@ void AudioMixerWindow::resetForProjectSwitch() {
     fileText.clear();
     error.clear();
     dragging = false;
+    dragEnded = false;
+    hasStaged = false;
+    stagedWrite = false;
     selectedGroup.clear();
     renaming.clear();
     peaks.clear();
@@ -132,10 +138,19 @@ void AudioMixerWindow::reload(bool force) {
 }
 
 bool AudioMixerWindow::commit(const AudioMixerDef& next) {
+    // applied at the start of the next frame: the widgets of this one still read the def
+    staged = next;
+    hasStaged = true;
+    stagedWrite = true;
+    return true;
+}
+
+bool AudioMixerWindow::write(const AudioMixerDef& next) {
     std::string commitError;
     if (!AudioMixerDocument::commit(project, file, next, "", &commitError)) {
         error = commitError;
         // the file is what counts
+        loaded = false;
         reload(true);
         if (isProjectMixer() && loaded) AudioMixer::apply(def);
         return false;
@@ -147,15 +162,31 @@ bool AudioMixerWindow::commit(const AudioMixerDef& next) {
 }
 
 void AudioMixerWindow::preview(const AudioMixerDef& next) {
-    def = next;
+    staged = next;
+    hasStaged = true;
     dragging = true;
-    if (isProjectMixer() && AudioMixerIO::validate(def).empty()) AudioMixer::apply(def);
 }
 
 void AudioMixerWindow::finishDrag() {
-    if (!dragging) return;
-    dragging = false;
-    commit(def);
+    if (dragging) dragEnded = true;
+}
+
+void AudioMixerWindow::applyStaged() {
+    if (hasStaged) {
+        hasStaged = false;
+        if (stagedWrite) {
+            stagedWrite = false;
+            write(staged);
+        } else {
+            def = staged;
+            if (isProjectMixer() && AudioMixerIO::validate(def).empty()) AudioMixer::apply(def);
+        }
+    }
+    if (dragEnded) {
+        dragEnded = false;
+        dragging = false;
+        write(def);
+    }
 }
 
 std::string AudioMixerWindow::exposedName(const std::string& target) const {
@@ -825,9 +856,13 @@ void AudioMixerWindow::show() {
     }
 
     resolveFile();
+    // what last frame's widgets changed, then a drag the mouse let go of elsewhere
+    applyStaged();
+    if (dragging && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        finishDrag();
+        applyStaged();
+    }
     reload(false);
-    // a drag the mouse let go of elsewhere
-    if (dragging && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) finishDrag();
 
     if (!loaded) {
         if (!loadError.empty()) {
