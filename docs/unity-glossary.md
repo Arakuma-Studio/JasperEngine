@@ -116,7 +116,13 @@ New: the engine had none of these. Unity's members became `System`, `Screen`, `E
 | `Application.internetReachability` | `System.getInternetReachability()` (`NetworkReachability.*`) |
 | `Handheld.Vibrate()` | `System.vibrate([ms])`; iOS-style feedback: `System.hapticFeedback(HapticFeedback.*)` |
 | Player > Default Orientation, Allowed Orientations for Auto Rotation | Project Settings > Player > Resolution and Presentation (`player.default_orientation`, `player.allowed_orientations`; shared by Android and iOS) |
-| Device Simulator (orientation, language, `SystemInfo.deviceModel`) | the Game view's Device menu (device, Rotate, Language) |
+| Device Simulator (orientation, language, `SystemInfo.deviceModel`, safe area, notch overlay) | the Game view's Device menu (device or Custom..., Rotate, Language), Device Overlay and Safe Area toggles; MCP `configure_game_view {device}` |
+| `Screen.safeArea` (pixels, bottom-left origin) | `Screen.safeArea` (canvas units, top-left origin); pixels: `Screen.safeAreaPixels` (top-left); insets: `Screen.safeAreaInsets` (`EdgeInsets`) |
+| `Screen.cutouts` | `Screen.cutouts` (canvas units; empty on iOS) |
+| Community `SafeArea` script (Crystal SafeArea, a `CanvasHelper` safe panel) | the Safe Area component (GameObject > UI > Safe Area; per-edge Left/Top/Right/Bottom) |
+| A banner margin added to the safe panel | `Screen.setExtraInsets(l, t, r, b [, "pixels"])` |
+| Player > Android > *Render outside safe area* | the default Android fullscreen (the game draws under the cutout; `Screen.safeArea` keeps the UI out) |
+| CSS `env(safe-area-inset-*)` (`viewport-fit=cover`) | the same in HTML UI documents (live); web export `web.viewport_fit_cover` |
 
 ## Layers and physics
 

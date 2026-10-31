@@ -149,6 +149,7 @@ Engine events (names valid for `RegisterEngineEvent`; handler arguments in order
 | `onPause`, `onResume`, `onShutdown` | none | application lifecycle (pause = to the background; idempotent) |
 | `onFocus` | `hasFocus` | the app gained or lost focus (a dialog, the notification shade, another window); `onFocus(false)` comes before `onPause`, `onFocus(true)` after `onResume` |
 | `onOrientationChanged` | `orientation` (`ScreenOrientation`) | the interface rotated, after `onCanvasChanged` |
+| `onSafeAreaChanged` | none | `Screen.safeArea` changed (rotation, platform insets, `Screen.setExtraInsets`), after `onCanvasChanged` / `onOrientationChanged` |
 | `onLowMemory` | none | the system is short of memory (Android, iOS) |
 | `onSceneLoaded` | none | a scene loaded by SceneManager is ready |
 | `onKeyDown`, `onKeyUp` | `key, isRepeat, mods` | key event (`key` is an `Input.KEY_*` value) |
@@ -452,6 +453,17 @@ Platform services ([platform-services.md](platform-services.md) has the per-plat
 | `Screen.autorotateToPortrait`, `autorotateToPortraitUpsideDown`, `autorotateToLandscapeLeft`, `autorotateToLandscapeRight` | rw | bools: where `AutoRotation` may turn (the last one cannot be turned off) |
 | `Screen.sleepTimeout` | rw | `SleepTimeout.NeverSleep` (-1, keeps the screen on) or `SleepTimeout.SystemSetting` (-2) |
 | `Screen.dpi`, `Screen.refreshRate` | ro | dots per inch (0 unknown), Hz |
+| `Screen.safeArea` | ro `Rect` | the part no notch, rounded corner or home indicator covers: canvas units, top-left origin, extra insets included |
+| `Screen.safeAreaInsets` | ro `EdgeInsets` | canvas units from each canvas edge |
+| `Screen.deviceSafeArea`, `Screen.deviceSafeAreaInsets` | ro | without the extra insets |
+| `Screen.safeAreaPixels` | ro `Rect` | view pixels, top-left, extras included |
+| `Screen.cutouts` | ro `Rect[]` | canvas units; empty when none or unknown (iOS) |
+| `Screen.extraInsets` | ro `EdgeInsets` | canvas units |
+| `Screen.setExtraInsets(l, t, r, b [, unit])` | fn | space kept free (a banner): `unit` `"canvas"` (default) or `"pixels"`; persists across scene loads |
+| `Screen.clearExtraInsets()` | fn | |
+
+Safe areas: the Safe Area component, HTML `env(safe-area-inset-*)`, editor device simulation:
+jasper://docs/safe-area.
 
 The pixel size is `System.getScreenWidth()` / `getScreenHeight()`; the canvas `Engine.canvasWidth` /
 `canvasHeight`. `LandscapeLeft` = the device turned counter-clockwise from portrait.
@@ -651,6 +663,7 @@ false). `==` with a value of another class is `false`. There is no `v + number`.
 | Class | Key members |
 |---|---|
 | `Rect(x, y, w, h)` | rw `x y width height`; `contains(...)`, `setRect(...)`, `fitOnRect(r)`, `getVector()`, `isZero()`, `isNormalized()` |
+| `EdgeInsets(left, top, right, bottom)` | rw `left top right bottom`; `isZero()`, `==`, `tostring` (Screen.safeAreaInsets) |
 | `Ray(origin, direction)` (Vector3) | rw `origin direction`; `getPoint(t)`; `intersects(AABB/OBB/Plane/Rigidbody2D/Rigidbody/...)`; `Ray.NO_HIT` |
 | `Matrix3`, `Matrix4` | `+ - == tostring`; `*` by a matrix, a number (either side) or a vector (`m * Vector3`, Matrix4 also `m * Vector4`; `Matrix4 * Vector3` applies the translation); `row column get set identity inverse transpose`; Matrix4 static `translateMatrix rotateMatrix rotateXMatrix rotateYMatrix rotateZMatrix scaleMatrix lookAtMatrix orthoMatrix perspectiveMatrix frustumMatrix` |
 | `Plane`, `AABB`, `OBB`, `Sphere` | geometry helpers (`intersects`, `contains`, `getCenter`, `getSize`, `merge`, ...) |
@@ -1073,7 +1086,10 @@ RectTransform (GameObject) rw: `width`, `height`, `anchorPreset` (`AnchorPreset.
 `anchorPointLeft/Top/Right/Bottom`, `anchorOffsetLeft/Top/Right/Bottom`,
 `positionXOffset`, `positionYOffset`, `positionOffset` (Vector2), `pivot` (Vector2),
 `usingAnchors`, `ignoreScissor`, `enabled`; methods `setSize(w, h)`,
-`setAnchorPoints(l, t, r, b)`, `setAnchorOffsets(l, t, r, b)`, `setPivot(x, y)`.
+`setAnchorPoints(l, t, r, b)`, `setAnchorOffsets(l, t, r, b)`, `setPivot(x, y)`,
+`getSafeAreaComponent()` (the Safe Area component driving it, or nil: `SafeAreaComponent`
+rw `left`, `top`, `right`, `bottom`, `includeExtraInsets`, `enabled`; its anchors, offsets and
+size are driven while it is there).
 UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example), or
 `position`.
 

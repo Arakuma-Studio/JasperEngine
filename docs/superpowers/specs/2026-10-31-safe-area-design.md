@@ -478,3 +478,95 @@ iOS by review.
 - **native-bridge**: banner SDK wrappers call `Screen.setExtraInsets` (through Lua or C++).
 - **debug-overlay**: should respect the safe area for its on-device console.
 - **ui-multitouch**: on-screen sticks placed inside a Safe Area panel.
+
+## Implementation notes
+
+Decisions taken while implementing (branch `gaps/safe-area`, on `gaps/platform-services`), where the
+spec was silent, ambiguous or did not fit the code:
+
+1. **The first value is a baseline, not a change.** `Screen` computes the safe area lazily (the first
+   getter or `updateSafeArea`), and that first value fires no event; every later change does. Editor Play
+   start and stop (`Engine::resetApplicationState`) call `Screen::resetSafeAreaState()`: no extras, no
+   editor reference, the next value a baseline again. The revision keeps counting across resets (the HTML
+   documents compare it). So an exported game gets one `onSafeAreaChanged` when the view and the
+   platform's insets arrive after `init()`, as the spec's "zero insets until the platform reports them;
+   the event follows".
+2. **Coalescing (rule 7.2).** `updateSafeArea` only marks the event pending; it fires at the end of
+   `Engine::systemViewChanged` (after `onCanvasChanged` and `onOrientationChanged`) or at the start of
+   the next `runFrame`, never while the app is paused (it waits for the first frame after `onResume`).
+   A platform that reports the new insets and the new surface size in different frames (Android may) can
+   give two events for one rotation; each carries a real value.
+3. **Edit mode (6.6) needs the screen too.** `Screen::setEditorReference(canvasWidth, canvasHeight,
+   screenWidth, screenHeight, scaling)`: the Game view passes the project canvas, its render size and the
+   project's scaling every frame while stopped; `Screen` lays the canvas out as a Play at that size would
+   (`computeViewLayout`) and scales the result to the project canvas (the same fractions of the canvas
+   per edge), so LETTERBOX/CROP effects match Play. `Screen::getSafeAreaCanvasWidth/Height()` tell
+   consumers which canvas the values are in.
+4. **The Safe Area component and HTML use fractions of Screen's canvas**, not raw canvas units: the
+   component maps the safe rectangle to the scene's root UI rect (the editor's anchor reference size, or
+   the Engine canvas), the document system to the document's layout size. That is exact today and keeps
+   working when `ui-scaling-text` makes UI units differ from canvas units (its boundary, §17 there: the
+   insets are never part of the scale).
+5. **2D (y-up) scenes.** The UI lays out top-down in layout space whatever the camera, so a scene whose
+   camera is not `CAMERA_UI` shows layout "top" at the screen's bottom (`tools/mcp/tests/test_ui_anchors.py`).
+   The component mirrors the vertical edges there: the notch (screen top) drives the layout's bottom
+   anchor and the `top` field means the screen's top edge in every scene.
+6. **`SafeAreaComponent.enabled`** (the Inspector checkbox, Unity's component toggle) was added: rule 7.6
+   speaks of a disabled component. Off or inactive, the RectTransform keeps its last anchors and stays
+   driven (its fields editable again only once the component is removed).
+7. **Inspector edges row.** Left/Top/Right/Bottom are one row of four checkboxes (each an undoable
+   `PropertyCmd`); because it is a custom row, those four do not show the bold "overridden" label of a
+   prefab instance (the override itself works: `prefabinternal::diffComponentProperties` lists them).
+   A missing RectTransform shows a warning (there is no RequireComponent in the editor).
+8. **Driven fields.** The RectTransform inspector disables width, height, Use Anchors, the anchors, the
+   offsets and the position offset under "Driven by Safe Area"; MCP refuses them in `set_properties`
+   (`McpValues::safeAreaDrivenError`) and `set_rect_layout`, and `create_ui` refuses a `layout` on a
+   `safe_area` node. Scene view drag handles are not blocked: the component puts the values back at the
+   next UI update.
+9. **HTML custom properties need no fork change.** `Rml::Element::SetProperty(name, value)` already
+   parses `--custom` declarations into the element's local custom properties, so the document system sets
+   `--jasper-safe-area-inset-*` and `--jasper-device-safe-area-inset-*` on each document element with it
+   (values like `47px`, rounded to 1/1000). `CustomPropertyIndex::isDynamic` keeps these variables out of
+   every static resolution (`staticValue`, `resolve`, `expandedValues`). env() inside a math function is
+   rewritten to the variable first (StaticCalc has no `env()`); without the fork's calc() it folds with
+   0px and an Info diagnostic. Reloaded documents get the properties before their first layout.
+10. **Android: insets relative to the surface, polled.** GameActivity's insets are the window's; a
+    windowed game's surface may not start at the window's corner, so `JasperPlatform` keeps (on the UI
+    thread, from a layout listener) where the content view lies in the window and the cutout rectangles
+    (`DisplayCutout.getBoundingRects()`, API 28+) in a volatile `int[]` with a revision; the native side
+    subtracts the offsets. `NativeEngine::updateSafeArea` runs on `APP_CMD_WINDOW_INSETS_CHANGED` (present
+    in games-activity 2.0.2's glue), with each new surface size and once per frame (two struct reads and
+    one int field: nothing is pushed unless something changed).
+11. **`MainActivity.isFullscreenGame()`**, not `isImmersive()`: `android.app.Activity.isImmersive()`
+    already exists (a system flag) and must not be overridden. The exporter's non-fullscreen patch turns it
+    to `return false`; the native side reads it once at setup.
+12. **iOS** scales `safeAreaInsets` by the drawable/bounds ratio per axis (equal to `contentScaleFactor`
+    when the drawable follows the view), on `viewSafeAreaInsetsDidChange`, after `viewDidLoad` and after a
+    rotation transition.
+13. **Web**: the probe is read again with every canvas size change (`changeCanvasSize`, the canvas resize
+    callback) besides `resize`, `orientationchange` and `visualViewport.resize`; values are pushed only on
+    a change. The viewport meta is edited by a regex in `apply.cmake` (a `content=` that lacks
+    `viewport-fit` gets `viewport-fit=cover, ` prepended; a page without a viewport meta gets the spec's).
+14. **Desktop simulation** is skipped in the editor (its Game view simulates devices); the parser accepts
+    integers with spaces around them and rejects anything else (negative, fractional, missing or extra
+    values) with one warning.
+15. **Overlay API.** `rasterizeDeviceOverlay` / `drawDeviceOverlay` take two more (defaulted) arguments:
+    the outlined rectangle in image pixels (`Screen.safeAreaPixels` in Play, extras included; stopped, the
+    device's own safe rectangle) and `screen` (false: the outline only, for Device Overlay off and Safe
+    Area on). Notches are rounded on their inner side only; the Dynamic Island is a pill, punch holes
+    circles.
+16. **Custom device**: `CustomDeviceSettings` (portrait size, insets, corner radius) lives in
+    `AppSettings.h` with the other Game view preferences (`custom_device` in the editor settings); its
+    profile (id `custom`) turns the portrait insets for each orientation, has no cutout shape, dpi 0
+    (unknown) and allows all four orientations. `configure_game_view {custom_device}` alone selects it.
+17. **`configure_game_view` waits three frames** before replying when it changed something, so the
+    reply's `safe_area` / `safe_area_pixels` are those of the new layout (the Game view lays a new device
+    out in its next frame). `get_play_state.safe_area` is reported stopped too (the edit-mode values).
+    `create_entity` also gets `type: "safe_area"`.
+18. **Guide budget.** The guide line shares one bullet with the platform-services line; four sentences
+    elsewhere were shortened to stay within 16 KB.
+19. **Heads-up for the lead (not changed here):** the ECS `Signature` is a `std::bitset<64>`; with the
+    Safe Area component the registry has 62 component types, and other branches add more (Trail
+    Renderer, canvas groups, camera shake...). The merge that crosses 64 must widen `Signature`.
+    `ComponentType::SafeAreaComponent` is appended last (prefab override masks use the ordinal); a branch
+    appending another type at the same place conflicts there and in `AnimationClipContractTest`.

@@ -1379,6 +1379,23 @@ The page is the canvas, so responsiveness is about the canvas size:
   `inspect_ui {"viewport": [720, 1280]}` returns the tree laid out at that size (both restore
   the real size). For a screenshot at another aspect, `configure_game_view {"aspect": "9:16"}`.
 
+### Safe areas (notches)
+
+`env(safe-area-inset-top|right|bottom|left[, fallback])` is the live safe-area inset of the
+screen (`Screen.safeAreaInsets`, the app's extra insets such as a banner included), in the
+document's CSS px, as in a mobile browser with `viewport-fit=cover`:
+
+```css
+.hud { padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+.bottom-bar { position: absolute; left: 0; right: 0; bottom: max(12px, env(safe-area-inset-bottom)); }
+```
+
+It is a runtime variable (`var(--jasper-safe-area-inset-<edge>, <fallback or 0px>)`): a rotation or
+`Screen.setExtraInsets` lays the document out again without a reload; `calc()`, `min()`, `max()`
+and `clamp()` keep it. `--jasper-device-safe-area-inset-*` leave the extras out. Documents on meshes
+get 0. Try it with a phone in the Game view (`configure_game_view {"device": "iphone_15_pro"}`);
+details in jasper://docs/safe-area.
+
 ## The loop in detail
 
 ### UI diagnostics
