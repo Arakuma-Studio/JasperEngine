@@ -99,7 +99,9 @@ LIMITS.update({"bake_vertex_animation": 2000})
 # script data (spec 2026-10-31-script-data 6.4): user_settings measured 515 (the PlayerPrefs
 # store: list/get/set/delete/clear); total 106611 with it (106096 before), the limit raised by it
 LIMITS.update({"user_settings": 550})
-TOTAL_LIMIT = 106620
+# input (spec 2026-10-31-input 12): send_input's action/axis/axis_delta events and the input.actions setting,
+# measured on the merged tree: total 106687 (106611 before), the limit raised by them
+TOTAL_LIMIT = 106700
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
