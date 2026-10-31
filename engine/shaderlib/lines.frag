@@ -10,34 +10,32 @@
 //       float time;
 //       vec4 tint;
 //   } customParams;
+//
+// HAS_TEXTURE ('Tex', a ribbon with a texture): the vertex colour times u_baseTexture at the
+// ribbon's texture coordinate (includes/lines_fs.glsl lineUV).
 
 out vec4 g_finalColor;
 
-#ifdef HAS_VERTEX_COLOR_VEC3
-    in vec3 v_color;
-#endif
-#ifdef HAS_VERTEX_COLOR_VEC4
-    in vec4 v_color;
-#endif
-
-#include "includes/srgb.glsl"
+#include "includes/lines_fs.glsl"
 // the post-processing colour (USE_POST_COLOR)
 #include "includes/post_color.glsl"
 
+#ifdef HAS_TEXTURE
+    uniform texture2D u_baseTexture;
+    uniform sampler u_base_smp;
+#endif
+
 vec4 getLineColor(){
-   vec4 color = vec4(1.0, 1.0, 1.0, 1.0);
+    vec4 color = lineVertexColor();
 
-    #ifdef HAS_VERTEX_COLOR_VEC3
-        color.rgb = v_color.rgb;
-    #endif
-    #ifdef HAS_VERTEX_COLOR_VEC4
-        color = v_color;
+    #ifdef HAS_TEXTURE
+        color *= sRGBToLinear(texture(sampler2D(u_baseTexture, u_base_smp), lineUV()));
     #endif
 
-   return color;
+    return color;
 }
 
-void main() {  
+void main() {
     vec4 color = getLineColor();
 
     #ifdef USE_POST_COLOR

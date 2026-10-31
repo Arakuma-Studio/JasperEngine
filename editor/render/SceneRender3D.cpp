@@ -478,19 +478,18 @@ void editor::SceneRender3D::createOrUpdateLinePointLines(Entity entity, const Tr
     const Vector4 selectedHandleColor(1.0f, 0.6f, 0.0f, 1.0f);
     bool hasPointSelection = (getSelectedLinePointEntity() == entity);
 
-    for (size_t i = 0; i < lines.lines.size(); i++){
-        for (int e = 0; e < 2; e++){
-            const Vector3& localPoint = (e == 0) ? lines.lines[i].pointA : lines.lines[i].pointB;
-            Vector3 worldPoint = transform.modelMatrix * localPoint;
+    // a polyline's points, or each segment's ends
+    const std::vector<Vector3> points = getLinePointWorldPositions(lines, transform);
+    for (size_t i = 0; i < points.size(); i++){
+        const Vector3& worldPoint = points[i];
 
-            bool pointSelected = hasPointSelection && ((int)(i * 2) + e == getSelectedLinePointIndex());
-            const Vector4& color = pointSelected ? selectedHandleColor : handleColor;
-            float halfSize = getPointHandleHalfSize(worldPoint) * (pointSelected ? 0.75f : 0.5f);
+        bool pointSelected = hasPointSelection && ((int)i == getSelectedLinePointIndex());
+        const Vector4& color = pointSelected ? selectedHandleColor : handleColor;
+        float halfSize = getPointHandleHalfSize(worldPoint) * (pointSelected ? 0.75f : 0.5f);
 
-            handlesObj->addLine(worldPoint - Vector3(halfSize, 0, 0), worldPoint + Vector3(halfSize, 0, 0), color);
-            handlesObj->addLine(worldPoint - Vector3(0, halfSize, 0), worldPoint + Vector3(0, halfSize, 0), color);
-            handlesObj->addLine(worldPoint - Vector3(0, 0, halfSize), worldPoint + Vector3(0, 0, halfSize), color);
-        }
+        handlesObj->addLine(worldPoint - Vector3(halfSize, 0, 0), worldPoint + Vector3(halfSize, 0, 0), color);
+        handlesObj->addLine(worldPoint - Vector3(0, halfSize, 0), worldPoint + Vector3(0, halfSize, 0), color);
+        handlesObj->addLine(worldPoint - Vector3(0, 0, halfSize), worldPoint + Vector3(0, 0, halfSize), color);
     }
 }
 
