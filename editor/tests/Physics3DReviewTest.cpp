@@ -262,6 +262,9 @@ TEST(Physics3DReview, PairFilterChangedInsideAStepAfterIt) {
     const Entity other = world.box(Vector3(5, 0.6f, 0), Vector3(1, 1, 1), BodyType::DYNAMIC);
     bool sawDuringStep = true;
     bool asked = false;
+    // the global events run after the step unless synchronous (physics-contacts D12): this one
+    // must change the filter from inside it
+    world.physics()->setSynchronousContactEvents3D(true);
     world.physics()->onContactAdded3D.add("filter", std::function<void(Rigidbody, Rigidbody, Contact3D)>(
         [&](Rigidbody, Rigidbody, Contact3D) {
             if (asked) return;
