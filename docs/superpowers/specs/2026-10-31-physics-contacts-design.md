@@ -724,3 +724,23 @@ contradicted the code:
     (acceptance 6) is `tools/mcp/tests/test_physics_contacts_export.py` (`JASPER_SLOW_BUILD=1`).
     The cost test measures `PhysicsSystem::getContactSeconds3D()` (the processing after the step,
     callbacks included) against `getStepSeconds3D()`.
+13. **Fixes found on the way.** `Rigidbody::setAllowSleeping` / `isAllowSleeping` on a static body
+    dereferenced Jolt's missing motion properties (a crash reachable from Lua): now ignored / false.
+    `edit_colliders` dropped `material: null` / `receiver: null` (the `has()` helper treats null as
+    absent): both clear now. The agent guide's physics lines were tightened so the merged guide
+    (lines-trails pushed `main` over) stays under 16 KB with the new Collisions line.
+14. **Verification** (box, merged with `main` at `211073ea3`): editor and tests build with 0
+    warnings; `jasperengine-editor-tests` 1200 passed, 8 skipped, 0 failed (25 new in
+    `PhysicsContactsTest`, T1-T23 and the cost test: 10 listeners among 500 awake boxes, the work
+    after the step about 3-5% of the step on the shared box, the best of three runs asserted under
+    5%; no listener: nothing recorded). MCP: `test_physics_contacts.py`, `test_stubs`, `test_docs`,
+    `test_html_ui_tools` (150 tools, 106624 characters), `test_protocol` (guide under 16 KB),
+    `test_physics_2d(_inspector)`, `test_lifecycle(_inspector)`, `test_world`, `test_play`,
+    `test_runtime_regressions`, `test_scene`, `test_water`, `test_play_stop_gizmos`,
+    `test_ui_anchors`, `test_trial_fixes`, `test_place_with_physics`: all pass except
+    `test_physics_2d.py::test_old_prefab_overrides_of_colliders`, which fails on `main` too (its fix
+    is on `gaps/physics-2d`, not merged yet). With `JASPER_SLOW_BUILD=1`,
+    `test_physics_contacts_export.py` built a Linux Desktop player whose callbacks (T1 landing, T3
+    trigger crossing) equal editor Play's. Lua stubs: 0 unresolved. Web (emscripten) build of every
+    changed engine source and Android (NDK 28, arm64) `-fsyntax-only` of the same: clean. Apple and
+    Windows: no platform code changed (the Xcode project lists the new sources).
