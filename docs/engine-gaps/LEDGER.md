@@ -23,6 +23,15 @@ Build: native Linux toolchain installed on this host (gcc 13, CMake 3.28, Ninja,
 -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache`, then build `jasperengine-editor` and
 `jasperengine-editor-tests`. The HTML UI tests need the standalone engine build (`cmake -S engine`).
 
+## Baseline (`main` at `b32a3c578`, before any gap work)
+
+- Editor + `jasperengine-editor-tests` build with 0 warnings (Release, ~11 min cold on 8 cores).
+- Unit tests: 944 run, 936 passed, 8 skipped, 0 failed.
+- MCP e2e (`tools/mcp/run-tests.sh -j3`): all pass except 10 pre-existing failures: the 5 tests of
+  `test_animation_assets.py` (need the external `build/fixture-unity` project) and 5 of `test_lattice_scene.py`
+  (`test_click_and_drag_one_point`, `test_box_select`, `test_falloff_drag`, `test_prefab_instance_point_override`,
+  `test_2d_stacked_points`: `KeyError: 'screen_points'`).
+
 ## Features
 
 Status: `todo` / `spec` (being written) / `specced` / `impl` (being implemented) / `review` / `merged` (on
