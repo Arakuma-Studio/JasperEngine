@@ -413,7 +413,9 @@ TEST_F(Shake, TimeScaleZeroFreezesScaledShakesOnly){
     scaledOptions.seed = 5;
     ShakeInstanceHandle scaled = shakerObject.shake(ShakeSource("drunk"), scaledOptions);
     step(DT, 3);
-    // time scale 0: the scene delta is 0, the unscaled one goes on
+    // time scale 0: the scene delta is 0, the unscaled one goes on. The first frozen frame shows
+    // the state the last step reached (MilkShake reports the state before each step), then it holds
+    step(0.0f, 1, DT);
     const Vector3 frozen = shaker(cam).runtime->offsetRotation;
     step(0.0f, 6, DT);
     EXPECT_EQ(shaker(cam).runtime->offsetRotation, frozen);

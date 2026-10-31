@@ -28,6 +28,8 @@ namespace jasperengine{
 
         Plane ();
         Plane (const Plane& rhs);
+        // declared with the user-provided copy constructor (an implicit one is deprecated)
+        Plane& operator= (const Plane& rhs) = default;
         Plane (const Vector3& rkNormal, float fConstant);
         Plane (float a, float b, float c, float d);
         Plane (const Vector3& rkNormal, const Vector3& rkPoint);

@@ -7,6 +7,7 @@ the camera's Transform never shaken, a game-view screenshot, and the camera foll
 import math
 
 from harness import Editor
+from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "Camera Shake"}
 
@@ -115,6 +116,8 @@ async def test_c_shake_in_play(ed: Editor):
         before = await runtime_of(ed, "Main Camera", "camerashaker")
         ed.check_eq(before["camerashaker"]["runtime"]["instances"], [], "idle before the shake")
         position = before["transform"]["position"]
+        steady = await ed.call_raw("screenshot", {"view": "game", "max_width": 320})
+        ed.check(not steady.is_error and steady.images, f"a steady game-view screenshot: {steady.text}")
 
         values = (await ed.call("eval_lua", code="local h = CameraShake.shake('assets/shakes/boom.shake', {seed = 3}) "
                                                  "return h:isValid(), h.count, h.state"))["values"]
@@ -130,6 +133,13 @@ async def test_c_shake_in_play(ed: Editor):
 
         shot = await ed.call_raw("screenshot", {"view": "game", "max_width": 320})
         ed.check(not shot.is_error and shot.images, f"a game-view screenshot while shaking: {shot.text}")
+        # the view moved: the box is drawn elsewhere (the Transform did not move)
+        w1, h1, c1, rows1 = decode_png(steady.images[0][0])
+        w2, h2, c2, rows2 = decode_png(shot.images[0][0])
+        ed.check((w1, h1) == (w2, h2), "same size")
+        changed = sum(1 for y in range(h1) for x in range(0, w1 * c1, c1)
+                      if abs(rows1[y][x] - rows2[y][x]) + abs(rows1[y][x + 1] - rows2[y][x + 1]) > 30)
+        ed.check(changed > 50, f"the shaken frame differs from the steady one ({changed} pixels)")
 
         await ed.call("wait", game_seconds=1.0)
         after = (await runtime_of(ed, "Main Camera", "camerashaker"))["camerashaker"]["runtime"]
