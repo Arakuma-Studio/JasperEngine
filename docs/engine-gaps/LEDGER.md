@@ -40,30 +40,30 @@ origin/main).
 | # | Feature (branch `gaps/<name>`) | Covers | Status |
 |---|---|---|---|
 | 1 | `http` | HTTP client for Lua (GET/POST/HEAD, headers, timeouts, JSON/text/binary bodies, download to file, texture from URL), all platforms | review |
-| 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | specced |
+| 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | impl |
 | 3 | `platform-services` | `openURL`, system language/locale, target frame rate / vsync, runtime orientation lock + iOS orientation setting + device orientation, app focus event | review |
-| 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | specced |
-| 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | specced |
-| 6 | `audio-mixer` | mixer buses with volume/mute and filters (low-pass/high-pass, ...), streamed music, PlayOneShot, fades | specced |
+| 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | impl |
+| 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | impl |
+| 6 | `audio-mixer` | mixer buses with volume/mute and filters (low-pass/high-pass, ...), streamed music, PlayOneShot, fades | impl |
 | 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | review |
-| 8 | `physics-contacts` | per-object collision/trigger callbacks (enter/stay/exit) for 3D and 2D, delivered on the main thread; 3D global handlers off the job threads | specced |
-| 9 | `physics-3d` | damping, centre of mass, safe body-type switching, per-collider sensor/material, collider removal, 3D joint limits/motors/springs, cone fix, ragdoll, runtime-sized collider data and world capacity | specced |
+| 8 | `physics-contacts` | per-object collision/trigger callbacks (enter/stay/exit) for 3D and 2D, delivered on the main thread; 3D global handlers off the job threads | impl |
+| 9 | `physics-3d` | damping, centre of mass, safe body-type switching, per-collider sensor/material, collider removal, 3D joint limits/motors/springs, cone fix, ragdoll, runtime-sized collider data and world capacity | impl |
 | 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | impl |
 | 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | specced |
 | 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | specced |
 | 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | review |
-| 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | specced |
-| 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | specced |
-| 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | impl |
+| 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | impl |
+| 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | impl |
+| 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | review |
 | 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | review |
 | 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | merged |
 | 19 | `input` | key/mouse/button down/up edge queries, virtual axes and buttons (Input Manager-style), bound Touch with phases and deltas | merged |
-| 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | specced |
-| 21 | `ui-scaling-text` | canvas match-width-or-height scaling, per-character text effects (waves etc.), particles inside UI | specced |
-| 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | specced |
-| 23 | `debug-overlay` | on-device log console and stats/FPS overlay | specced |
-| 24 | `camera-shake` | camera shake component and presets (MilkShake-like), camera follow | specced |
-| 25 | `ui-canvas-group` | Canvas Group for the native UI: group alpha, interactable, blocks raycasts, ignore parent groups; animatable (found by the animation spec: legacy clips animate CanvasGroup alpha) | specced |
+| 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | impl |
+| 21 | `ui-scaling-text` | canvas match-width-or-height scaling, per-character text effects (waves etc.), particles inside UI | impl |
+| 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | impl |
+| 23 | `debug-overlay` | on-device log console and stats/FPS overlay | impl |
+| 24 | `camera-shake` | camera shake component and presets (MilkShake-like), camera follow | impl |
+| 25 | `ui-canvas-group` | Canvas Group for the native UI: group alpha, interactable, blocks raycasts, ignore parent groups; animatable (found by the animation spec: legacy clips animate CanvasGroup alpha) | impl |
 
 ## Log
 
@@ -115,3 +115,15 @@ origin/main).
   lead calls: raw bodies default to application/octet-stream, redirects from remote origins to local/private
   addresses are refused). New rule: before handoff, each feature agent merges current `main` into its branch and
   resolves conflicts itself, so merges into `main` are clean.
+- 2026-10-31: owner lifted the 6-agent limit (the harness caps at 20). More compute: Hetzner box #2 (cpx51, 16
+  vCPU) and #3 (ccx33, 8 dedicated; both Hetzner core limits now reached), Vultr box #4 (vc2-8c-32gb; Vultr's
+  monthly-fee limit reached): 48 remote cores in total. Agents build and test there with `jbox` (rsync over SSH
+  through forwarded ports 2201-2204; `/usr/local/bin/jbox`, assignments in `/etc/jbox/assign`). `coroutines`
+  implemented (unit 1066; 10k coroutines + 1k timers ~0.055 ms/frame), in review. Started 12 more
+  implementations, several stacked on branches still in review (camera-shake on coroutines; particles and
+  shader-globals on lines-trails; physics-3d on physics-2d; persistence, physics-contacts, ui-multitouch on
+  script-lifecycle; safe-area, ui-scaling-text on platform-services). Queued: native-bridge and video-mp4 (on
+  http, worktrees ready), anim-properties and anim-retarget (after anim-layers).
+- 2026-10-31: `coroutines` review: 1 memory-safety bug (isDone() stopping the waiting coroutine), C++ repeating
+  timers losing state, an O(n) deactivation scan, paused unscaled time, stop vs immediate waitFor; fixes in
+  progress. `native-bridge` and `video-mp4` started (on gaps/http). Only anim-properties and anim-retarget wait.
