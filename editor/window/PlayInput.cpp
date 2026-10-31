@@ -100,16 +100,29 @@ bool editor::PlayInput::forward(uint32_t sceneId, ImVec2 canvasMin, ImVec2 scale
         }
 
         if (project->isSimulateTouch()) {
-            // the left button is one finger, which never hovers
+            // the left button is one finger, which never hovers. Released with Alt held, finger 0
+            // stays down where it is (pinned) and the next press is finger 1: one mouse holds a
+            // stick and looks around. Releasing Alt lifts the pinned finger.
+            if (fingerPinned && !io.KeyAlt) {
+                Engine::systemTouchEnd(0, pinnedPos.x, pinnedPos.y);
+                fingerPinned = false;
+            }
             if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-                Engine::systemTouchStart(0, x, y);
+                touchFinger = fingerPinned ? 1 : 0;
+                Engine::systemTouchStart(touchFinger, x, y);
                 if (accepted) pressedMouseButtons.insert(ImGuiMouseButton_Left);
             } else if (pressedMouseButtons.count(ImGuiMouseButton_Left) && (mouseDelta.x != 0 || mouseDelta.y != 0)) {
-                Engine::systemTouchMove(0, x, y);
+                Engine::systemTouchMove(touchFinger, x, y);
             }
             if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && pressedMouseButtons.count(ImGuiMouseButton_Left)) {
-                Engine::systemTouchEnd(0, x, y);
+                if (touchFinger == 0 && io.KeyAlt && !fingerPinned) {
+                    fingerPinned = true;
+                    pinnedPos = ImVec2(x, y);
+                } else {
+                    Engine::systemTouchEnd(touchFinger, x, y);
+                }
                 if (accepted) pressedMouseButtons.erase(ImGuiMouseButton_Left);
+                touchFinger = 0;
             }
         } else {
             Engine::systemMouseMove(x, y, mods);
@@ -311,12 +324,17 @@ void editor::PlayInput::releaseMouseButtons(int mods){
     const float y = std::clamp(mousePos.y, view.getY(), view.getY() + std::max(0.0f, view.getHeight()));
     for (int button : pressedMouseButtons){
         if (project->isSimulateTouch()) {
-            Engine::systemTouchEnd(0, x, y);
+            Engine::systemTouchEnd(touchFinger, x, y);
         } else {
             Engine::systemMouseUp(button, x, y, mods);
         }
     }
     pressedMouseButtons.clear();
+    touchFinger = 0;
+    if (fingerPinned) {
+        Engine::systemTouchEnd(0, pinnedPos.x, pinnedPos.y);
+        fingerPinned = false;
+    }
 }
 
 int editor::PlayInput::engineKey(ImGuiKey key) {

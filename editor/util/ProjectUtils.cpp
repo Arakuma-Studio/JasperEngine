@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <fstream>
 #include <filesystem>
 #include <functional>
@@ -44,6 +45,7 @@
 #include "component/UIComponent.h"
 #include "component/TextComponent.h"
 #include "component/InputFieldComponent.h"
+#include "stb_image_write.h"
 #include "component/ImageComponent.h"
 #include "component/PanelComponent.h"
 #include "component/ScrollbarComponent.h"
@@ -1389,6 +1391,27 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<TextComponent>(entity, Stream::decodeTextComponent(componentNode));
             }
             break;
+        case ComponentType::OnScreenStickComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<OnScreenStickComponent>(entity, {});
+            }else{
+                registry->addComponent<OnScreenStickComponent>(entity, Stream::decodeOnScreenStickComponent(componentNode));
+            }
+            break;
+        case ComponentType::OnScreenButtonComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<OnScreenButtonComponent>(entity, {});
+            }else{
+                registry->addComponent<OnScreenButtonComponent>(entity, Stream::decodeOnScreenButtonComponent(componentNode));
+            }
+            break;
+        case ComponentType::TouchAreaComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<TouchAreaComponent>(entity, {});
+            }else{
+                registry->addComponent<TouchAreaComponent>(entity, Stream::decodeTouchAreaComponent(componentNode));
+            }
+            break;
         case ComponentType::InputFieldComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
                 registry->addComponent<InputFieldComponent>(entity, {});
@@ -1866,6 +1889,24 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
             }
             registry->removeComponent<TextComponent>(entity);
             break;
+        case ComponentType::OnScreenStickComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeOnScreenStickComponent(registry->getComponent<OnScreenStickComponent>(entity));
+            }
+            registry->removeComponent<OnScreenStickComponent>(entity);
+            break;
+        case ComponentType::OnScreenButtonComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeOnScreenButtonComponent(registry->getComponent<OnScreenButtonComponent>(entity));
+            }
+            registry->removeComponent<OnScreenButtonComponent>(entity);
+            break;
+        case ComponentType::TouchAreaComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeTouchAreaComponent(registry->getComponent<TouchAreaComponent>(entity));
+            }
+            registry->removeComponent<TouchAreaComponent>(entity);
+            break;
         case ComponentType::InputFieldComponent:
             if (encodeComponent){
                 oldComponent = Stream::encodeInputFieldComponent(registry->getComponent<InputFieldComponent>(entity));
@@ -2332,6 +2373,41 @@ EntityClassInfo handleClass(const char* name) { return {name, false, false}; }
 
 } // namespace
 
+std::string editor::ProjectUtils::ensureOnScreenControlTexture(const std::filesystem::path& assetsPath, bool knob) {
+    const std::string stored = knob ? "ui/onscreen/stick_knob.png" : "ui/onscreen/stick_base.png";
+    const std::filesystem::path file = assetsPath / "ui" / "onscreen" / (knob ? "stick_knob.png" : "stick_base.png");
+    std::error_code ec;
+    if (std::filesystem::exists(file, ec))
+        return stored;
+    std::filesystem::create_directories(file.parent_path(), ec);
+
+    // white, so the Image color tints it: a translucent disc with a brighter rim (the base) or
+    // a nearly opaque disc (the knob), antialiased over one pixel
+    const int size = knob ? 128 : 256;
+    std::vector<unsigned char> pixels(static_cast<size_t>(size) * size * 4, 0);
+    const float radius = size / 2.0f - 1.0f;
+    const float rim = knob ? 0.0f : size * 0.03f;
+    for (int y = 0; y < size; y++) {
+        for (int x = 0; x < size; x++) {
+            const float dx = x + 0.5f - size / 2.0f;
+            const float dy = y + 0.5f - size / 2.0f;
+            const float d = std::sqrt(dx * dx + dy * dy);
+            const float coverage = std::clamp(radius - d + 0.5f, 0.0f, 1.0f);
+            float alpha = knob ? 0.85f : 0.35f;
+            if (!knob && d > radius - rim)
+                alpha = 0.7f;
+            unsigned char* p = &pixels[(static_cast<size_t>(y) * size + x) * 4];
+            p[0] = p[1] = p[2] = 255;
+            p[3] = static_cast<unsigned char>(std::lround(255.0f * alpha * coverage));
+        }
+    }
+    if (!stbi_write_png(file.string().c_str(), size, size, 4, pixels.data(), size * 4)) {
+        Out::error("Could not write %s", file.string().c_str());
+        return "";
+    }
+    return stored;
+}
+
 editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(Scene* scene, Entity entity) {
     if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity)) return handleClass("EntityHandle");
 
@@ -2351,6 +2427,9 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<SkyboxComponent>()))         return handleClass("Skybox");
     if (signature.test(scene->getComponentId<FogComponent>()))         return handleClass("Fog");
     if (signature.test(scene->getComponentId<AudioSourceComponent>()))       return handleClass("AudioSource");
+    if (signature.test(scene->getComponentId<OnScreenStickComponent>()))  return objectClass("OnScreenStick");
+    if (signature.test(scene->getComponentId<OnScreenButtonComponent>())) return objectClass("OnScreenButton");
+    if (signature.test(scene->getComponentId<TouchAreaComponent>()))      return objectClass("TouchArea");
     if (signature.test(scene->getComponentId<ButtonComponent>()))      return objectClass("Button");
     if (signature.test(scene->getComponentId<ScrollbarComponent>()))   return objectClass("Scrollbar");
     if (signature.test(scene->getComponentId<ProgressbarComponent>())) return objectClass("Progressbar");

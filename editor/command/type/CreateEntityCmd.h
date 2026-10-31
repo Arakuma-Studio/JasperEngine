@@ -32,6 +32,12 @@ namespace jasperengine::editor{
         SCROLLBAR,
         PROGRESSBAR,
         INPUT_FIELD,
+        // ui-multitouch: on-screen controls (the stick in Joystick Pack's three modes)
+        ONSCREEN_STICK_FIXED,
+        ONSCREEN_STICK_FLOATING,
+        ONSCREEN_STICK_DYNAMIC,
+        ONSCREEN_BUTTON,
+        TOUCH_AREA,
         PANEL,
         POLYGON,
         LAYOUT_GROUP,

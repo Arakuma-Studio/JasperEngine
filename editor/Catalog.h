@@ -148,12 +148,16 @@ namespace jasperengine::editor{
         // Unity's legacy Animation component (animation clips spec 3.2)
         AnimationPlayerComponent,
         // baked vertex / bone animation played on the GPU (vertex animation spec 3.3)
-        VertexAnimatorComponent
+        VertexAnimatorComponent,
+        // on-screen controls feeding Input actions (ui-multitouch spec 7.4)
+        OnScreenStickComponent,
+        OnScreenButtonComponent,
+        TouchAreaComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::VertexAnimatorComponent;
+    constexpr ComponentType LastComponentType = ComponentType::TouchAreaComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
 
     enum class PropertyType{

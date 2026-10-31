@@ -26,7 +26,7 @@ Prefab = .prefab asset (PrefabComponent on the instance root; PrefabAsset in scr
 Mesh Filter/Renderer = MeshComponent (Primitive for box/sphere/plane...). Sprite Renderer =
 SpriteComponent. Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent
 (Box2D). Collider = an entry of the Rigidbody's colliders list, not a separate component.
-Most others: Unity's name + "Component" (AudioSourceComponent, Light2DComponent...).
+Most others: Unity's name + "Component" (AudioSourceComponent...).
 Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequences).
 
 ## Addressing
@@ -35,7 +35,7 @@ Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequence
 - entity: numeric id ("12" ok), or a path of names from the scene root joined by "/" with "#N" for the
   Nth earlier sibling of the same name ("Player/Gun", "Enemy#2"), or a bare name unique in the
   scene; {"id"|"name"|"path"} objects (as results return them) work too. Ambiguous names fail
-  and list the matching paths. Results return both id and path; prefer ids within a session.
+  listing the matches. Results return both id and path; prefer ids within a session.
   `entities` (array) instead of `entity` applies a tool to several GameObjects. parent
   omitted = scene root; max_width 0 = full size.
 - component: lowercase catalog names (transform, mesh, sprite, rigidbody2d, ...); unknown
@@ -148,7 +148,7 @@ Two kinds (create_script): a ScriptBase subclass, or a subclass of the GameObjec
 (Mesh, Primitive, Sprite, ...) to call its methods on `this`. No reflection macros
 (GENERATED_BODY, GDCLASS): inherit, declare a (jasperengine::Scene*, jasperengine::Entity)
 constructor, expose fields with DPROPERTY("Speed") (DPROPERTY("Tint", Color4) for colors).
-Includes are flat and quoted ("ScriptBase.h", "Engine.h", "Input.h", "Log.h", "Mesh.h"), never
+Includes are flat and quoted ("ScriptBase.h", "Engine.h", "Mesh.h"), never
 <core/...>. Override init/start/onEnable/onDisable/onDestroy as in Lua.
 REGISTER_ENGINE_EVENT(onUpdate) in the constructor or init, UNREGISTER_ENGINE_EVENT in the
 destructor; components: REGISTER_BUTTON_EVENT / REGISTER_UI_EVENT / REGISTER_COMPONENT_EVENT
@@ -156,14 +156,14 @@ destructor; components: REGISTER_BUTTON_EVENT / REGISTER_UI_EVENT / REGISTER_COM
 DEGREES: Quaternion(angle, axis); std::sin/cos want radians (Angle::defaultToRad). Script
 directories are include roots compiled whole (a build runs only with a C++ script attached);
 build settings go in ProjectBuild.cmake, never the generated CMakeLists.txt.
-compile_scripts reports errors without playing. More: jasper://docs/cpp-scripting.
+More: jasper://docs/cpp-scripting.
 
 ## Play and time
 - play: start, stop, pause, resume, step (frames), restart; clock options with any action (or
   action "set"): time_scale, fixed_fps (each frame exactly 1/fixed_fps s: reproducible runs),
   auto_pause (frozen between your calls; runs only inside wait, send_input or step).
 - wait: run for seconds, game_seconds or frames, or until a Lua condition is truthy; input
-  sends send_input events while it waits (hold a key for 2 game seconds, then check).
+  sends send_input events while it waits.
 - run_build runs an exported desktop player with input events and screenshots_at (seconds
   since launch); returns its errors (Lua too) and the log tail.
 
@@ -182,8 +182,9 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   Player (jasper://docs/animation).
 - Crowds: bake_vertex_animation (preview, then output) makes a .vat played on the GPU by a
   Vertex Animator (jasper://docs/vertex-animation).
-- UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; HTML/CSS
-  UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
+- UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; touch
+  controls onscreen_stick/onscreen_button/touch_area feed Input actions; HTML/CSS UI: below;
+  scripts get onPointerDown(e), onDrop(e)...: jasper://docs/lua-api 1.7): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
   and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
   UI camera: put HUDs and menus in a UI scene attached as a child scene (set_child_scene).
 
@@ -230,7 +231,7 @@ forks: jasper://docs/shaders. A failing shader draws as the built-in one (error 
 Post-processing (main camera only): apply_post_processing_preset, then set_scene_settings
 post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
 (jasper://docs/post-processing).
-Textures from examples (tileable, inpainted, PBR sets): synthesize_texture
+Textures from examples: synthesize_texture
 (jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
 (jasper://docs/fluid). Bend/squash: edit_lattice (jasper://docs/lattice).
 

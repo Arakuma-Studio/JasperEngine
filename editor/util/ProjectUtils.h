@@ -75,6 +75,10 @@ public:
     static Entity getEffectiveParent(Scene* scene, Entity entity);
     static bool canMoveLockedEntityOrder(Scene* scene, Entity source, Entity target, InsertionType type, std::string* reason = nullptr);
     static std::string makeUniqueEntityName(const std::string& baseName, const std::unordered_set<std::string>& existingNames);
+    // The on-screen controls' circle images (ui-multitouch), written once into the project's
+    // assets as assets/ui/onscreen/stick_base.png and stick_knob.png (generated, not bundled);
+    // the assets-relative path a Texture stores, "" when it could not be written
+    static std::string ensureOnScreenControlTexture(const std::filesystem::path& assetsPath, bool knob);
     static std::string makeUniqueEntityName(Scene* scene, const std::vector<Entity>& entities, const std::string& baseName, const std::unordered_set<Entity>& ignoredEntities = {});
 
     static size_t getTransformIndex(EntityRegistry* registry, Entity entity);
