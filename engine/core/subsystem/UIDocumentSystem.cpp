@@ -5,6 +5,7 @@
 
 #include "Scene.h"
 #include "Engine.h"
+#include "Screen.h"
 #include "Input.h"
 #include "Log.h"
 #include "object/ui/UIElement.h"
@@ -20,7 +21,10 @@
 #include <RmlUi/Core/Input.h>
 #include <RmlUi/Core/Property.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
+#include <iterator>
 
 namespace jasperengine{
 
@@ -58,6 +62,7 @@ void UIDocumentSystem::destroyContext(){
     scriptContextDestroying();
     reloadContextDestroyed();
     documents.clear();
+    safeAreaApplied.clear();
     inputState.reset();
     delete context;
     context = nullptr;
@@ -213,6 +218,8 @@ void UIDocumentSystem::update(double dt){
     for (size_t i = 0; i < components->size(); i++){
         applyComponent(components->getEntity(i), components->getComponentFromIndex(i));
     }
+    // the live safe area, before the layout below
+    updateSafeAreaProperties();
 
     // p2-html: <script type="text/lua"> of the documents loaded above, before the layout
     compatRunScripts();
@@ -225,6 +232,49 @@ void UIDocumentSystem::update(double dt){
 }
 
 void UIDocumentSystem::draw(){
+}
+
+void UIDocumentSystem::updateSafeAreaProperties(){
+    const uint64_t revision = Screen::getSafeAreaRevision();
+    int width, height;
+    getLayoutSize(width, height);
+
+    // documents gone since the last call
+    for (auto it = safeAreaApplied.begin(); it != safeAreaApplied.end();){
+        auto document = documents.find(it->first);
+        it = (document == documents.end() || document->second != it->second.document) ? safeAreaApplied.erase(it) : std::next(it);
+    }
+
+    for (const auto& entry : documents){
+        const Entity entity = entry.first;
+        Rml::ElementDocument* rmlDocument = entry.second;
+        SafeAreaApplied& applied = safeAreaApplied[entity];
+        if (applied.document == rmlDocument && applied.revision == revision && applied.width == width && applied.height == height)
+            continue;
+        applied.document = rmlDocument;
+        applied.revision = revision;
+        applied.width = width;
+        applied.height = height;
+
+        // CSS px of the document: canvas units at the document's layout scale. A document on a
+        // mesh (texture mode) is not on the screen: no insets
+        const bool screenDocument = getTextureContext(entity) == nullptr;
+        const float canvasWidth = Screen::getSafeAreaCanvasWidth();
+        const float canvasHeight = Screen::getSafeAreaCanvasHeight();
+        const float sx = (screenDocument && canvasWidth > 0.0f) ? (float)width / canvasWidth : 0.0f;
+        const float sy = (screenDocument && canvasHeight > 0.0f) ? (float)height / canvasHeight : 0.0f;
+        auto set = [rmlDocument](const char* prefix, const EdgeInsets& insets, float sx, float sy){
+            const struct { const char* edge; float value; } edges[] = {
+                {"top", insets.top * sy}, {"right", insets.right * sx}, {"bottom", insets.bottom * sy}, {"left", insets.left * sx}};
+            for (const auto& edge : edges){
+                char value[32];
+                std::snprintf(value, sizeof(value), "%gpx", std::round(std::max(0.0f, edge.value) * 1000.0f) / 1000.0f);
+                rmlDocument->SetProperty(std::string(prefix) + edge.edge, value);
+            }
+        };
+        set("--jasper-safe-area-inset-", Screen::getSafeAreaInsets(), sx, sy);
+        set("--jasper-device-safe-area-inset-", Screen::getDeviceSafeAreaInsets(), sx, sy);
+    }
 }
 
 void UIDocumentSystem::onComponentAdded(Entity entity, ComponentId componentId){
@@ -309,6 +359,7 @@ bool UIDocumentSystem::loadDocumentNow(Entity entity){
     context->setDimensions(Rml::Vector2i(width, height));
 
     applyComponent(entity, *document);
+    updateSafeAreaProperties();
     // style and layout, so elements and their boxes can be queried right away
     context->update();
     textureUpdate();

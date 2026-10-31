@@ -104,7 +104,7 @@ namespace {
         {"effect", R, FF::None, R, "jfx-<name>(...)", "phase-5 UI effects in background-image, background, mask-image, filter and backdrop-filter (jasper://docs/html-ui-effects); elsewhere dropped (HTMLUI-FX-0002)", ""},
         {"element", U, FF::None, U, "", "image function not supported; layer dropped", "use url() or a gradient"},
         {"ellipse", E, FF::None, E, "html-shape", "clip-path shape drawn by the html-shape decorator", ""},
-        {"env", R, FF::None, R, "", "safe-area-inset-* -> 0px (or the fallback); other variables -> the fallback or dropped (Info)", ""},
+        {"env", R, FF::None, R, "", "safe-area-inset-* (and safe-area-max-inset-*) -> the live safe area (Screen.safeAreaInsets, updated without a reload; 0 where a value is folded statically); other variables -> the fallback or dropped (Info)", ""},
         {"exp", A, FF::None, A, "folded value", "static folding in every fork state (load-time context for relative units)", ""},
         {"fit-content", F, FF::Grid, N, "", "read by the grid fallback until the fork has Grid", ""},
         {"format", R, FF::None, R, "", "@font-face source selection", ""},

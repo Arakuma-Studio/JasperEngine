@@ -254,6 +254,18 @@ namespace jasperengine{
         int referenceWidth = 0, referenceHeight = 0;
         bool debuggerVisible = false;   // asked before the context existed
 
+        // safe-area spec 6.4: env(safe-area-inset-*) reads the --jasper-safe-area-inset-* custom
+        // properties set on each document root; what each document got last
+        struct SafeAreaApplied {
+            Rml::ElementDocument* document = nullptr;
+            uint64_t revision = 0;
+            int width = 0, height = 0;
+        };
+        std::unordered_map<Entity, SafeAreaApplied> safeAreaApplied;
+        // sets them on the documents whose values are out of date (a load, a reload, a change of
+        // Screen's safe area or of the layout size)
+        void updateSafeAreaProperties();
+
         // ---- phase 1: per-package state and private helpers (each package adds its own in its block) ----
         // shared_ptr: the deleter is bound where the state is created, so ~UIDocumentSystem
         // (UIDocumentSystem.cpp) never needs the complete types
