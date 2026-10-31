@@ -30,30 +30,30 @@ origin/main).
 
 | # | Feature (branch `gaps/<name>`) | Covers | Status |
 |---|---|---|---|
-| 1 | `http` | HTTP client for Lua (GET/POST/HEAD, headers, timeouts, JSON/text/binary bodies, download to file, texture from URL), all platforms | todo |
-| 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | todo |
-| 3 | `platform-services` | `openURL`, system language/locale, target frame rate / vsync, runtime orientation lock + iOS orientation setting + device orientation, app focus event | todo |
-| 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | todo |
-| 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | todo |
-| 6 | `audio-mixer` | mixer buses with volume/mute and filters (low-pass/high-pass, ...), streamed music, PlayOneShot, fades | todo |
-| 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | todo |
-| 8 | `physics-contacts` | per-object collision/trigger callbacks (enter/stay/exit) for 3D and 2D, delivered on the main thread; 3D global handlers off the job threads | todo |
-| 9 | `physics-3d` | damping, centre of mass, safe body-type switching, per-collider sensor/material, collider removal, 3D joint limits/motors/springs, cone fix, ragdoll, runtime-sized collider data and world capacity | todo |
-| 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | todo |
-| 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | todo |
-| 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | todo |
-| 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | todo |
-| 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | todo |
-| 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | todo |
-| 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | todo |
-| 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | todo |
-| 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | todo |
-| 19 | `input` | key/mouse/button down/up edge queries, virtual axes and buttons (Input Manager-style), bound Touch with phases and deltas | todo |
-| 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | todo |
-| 21 | `ui-scaling-text` | canvas match-width-or-height scaling, per-character text effects (waves etc.), particles inside UI | todo |
-| 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | todo |
-| 23 | `debug-overlay` | on-device log console and stats/FPS overlay | todo |
-| 24 | `camera-shake` | camera shake component and presets (MilkShake-like) | todo |
+| 1 | `http` | HTTP client for Lua (GET/POST/HEAD, headers, timeouts, JSON/text/binary bodies, download to file, texture from URL), all platforms | spec |
+| 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | spec |
+| 3 | `platform-services` | `openURL`, system language/locale, target frame rate / vsync, runtime orientation lock + iOS orientation setting + device orientation, app focus event | spec |
+| 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | spec |
+| 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | specced |
+| 6 | `audio-mixer` | mixer buses with volume/mute and filters (low-pass/high-pass, ...), streamed music, PlayOneShot, fades | specced |
+| 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | spec |
+| 8 | `physics-contacts` | per-object collision/trigger callbacks (enter/stay/exit) for 3D and 2D, delivered on the main thread; 3D global handlers off the job threads | spec |
+| 9 | `physics-3d` | damping, centre of mass, safe body-type switching, per-collider sensor/material, collider removal, 3D joint limits/motors/springs, cone fix, ragdoll, runtime-sized collider data and world capacity | spec |
+| 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | spec |
+| 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | spec |
+| 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | spec |
+| 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | impl |
+| 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | specced |
+| 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | specced |
+| 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | spec |
+| 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | spec |
+| 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | spec |
+| 19 | `input` | key/mouse/button down/up edge queries, virtual axes and buttons (Input Manager-style), bound Touch with phases and deltas | impl |
+| 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | spec |
+| 21 | `ui-scaling-text` | canvas match-width-or-height scaling, per-character text effects (waves etc.), particles inside UI | specced |
+| 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | specced |
+| 23 | `debug-overlay` | on-device log console and stats/FPS overlay | spec |
+| 24 | `camera-shake` | camera shake component and presets (MilkShake-like) | spec |
 
 ## Log
 
@@ -61,3 +61,12 @@ origin/main).
   Results in [GAP-REPORT.md](GAP-REPORT.md).
 - 2026-10-31: owner asked to implement everything above. Pulled `origin/main` (no new commits). Installed the
   native toolchain and started a baseline build of `main`. Ledger and gap report written.
+- 2026-10-31: Android SDK (`/opt/android-sdk`, JDK 21) and emsdk 6.0.10 (`/opt/emsdk`) installed so Android and Web
+  code can be compiled here. Six spec agents started, one per feature group: platform (#1-4), scripting
+  (#16-18, #20, #23), physics (#7-9), animation + camera shake (#10-12, #24), rendering (#13-15, #22),
+  input/UI/audio (#19, #5, #21, #6).
+- 2026-10-31: specs committed for lines-trails, shader-globals, video-mp4, particles, input, ui-multitouch,
+  ui-scaling-text, audio-mixer. Baseline on `main`: unit tests 936 passed / 8 skipped / 0 failed; MCP e2e needed
+  dbus-x11 and xdotool (installed); the rest of the failures need the external `build/fixture-unity` project.
+  FFmpeg installed for video-mp4. Implementation started early (free slots) for `input` and `lines-trails`
+  (worktrees in `../engine-wt/<feature>`).
