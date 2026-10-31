@@ -24,6 +24,12 @@ list(REMOVE_ITEM EDITOR_TEST_EDITOR_SOURCES ${EDITOR_DIR}/main.cpp)
 
 # The tests themselves see googletest; the editor sources keep the editor's command lines
 file(GLOB EDITOR_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/*Test.cpp)
+# HttpTest's HTTP server on 127.0.0.1 (POSIX sockets)
+if(NOT WIN32)
+    list(APPEND EDITOR_TEST_SOURCES ${CMAKE_CURRENT_LIST_DIR}/util/TestHttpServer.cpp)
+else()
+    list(REMOVE_ITEM EDITOR_TEST_SOURCES ${CMAKE_CURRENT_LIST_DIR}/HttpTest.cpp)
+endif()
 add_library(jasperengine-editor-tests-objects OBJECT ${EDITOR_TEST_SOURCES})
 # tinyexr: FloatImageTest writes EXRs with custom channel names through it
 target_link_libraries(jasperengine-editor-tests-objects PRIVATE gtest jasperengine yaml-cpp tinyexr)
@@ -58,3 +64,12 @@ set_target_properties(jasperengine-placement-fresh-process PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 add_dependencies(jasperengine-editor-tests jasperengine-placement-fresh-process)
+
+# The engine's include directories and definitions, for tests that compile the C++ the editor
+# generates for exports (LineRendererStreamTest: Factory's component code against the engine
+# headers, with the compiler that builds the tests)
+file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt CONTENT
+"$<JOIN:$<TARGET_PROPERTY:jasperengine,INCLUDE_DIRECTORIES>,\n>\n#defines\n$<JOIN:$<TARGET_PROPERTY:jasperengine,COMPILE_DEFINITIONS>,\n>\n")
+target_compile_definitions(jasperengine-editor-tests-objects PRIVATE
+    JASPER_EDITOR_TEST_ENGINE_FLAGS="${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt"
+    JASPER_EDITOR_TEST_CXX="${CMAKE_CXX_COMPILER}")

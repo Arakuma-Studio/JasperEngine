@@ -73,7 +73,10 @@ namespace jasperengine::editor{
         LocalEntity,
         ExternalEntity,
         Font,
-        LayerMask  // unsigned int culling mask: Unity's Nothing / Everything / per-layer dropdown
+        LayerMask,  // unsigned int culling mask: Unity's Nothing / Everything / per-layer dropdown
+        // Unity AnimationCurve / Gradient (widget/CurveField.h, widget/GradientField.h)
+        Curve,
+        Gradient
     };
 
     struct EnumEntry {
@@ -647,6 +650,10 @@ namespace jasperengine::editor{
         void drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawRectTransformComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLayoutGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawCanvasGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // "Inherited alpha 0.25 · not interactable · click-through (Canvas Group: Panel)" and a
+        // Select button, when the entity is under a Canvas Group
+        void drawCanvasGroupInheritedLine(SceneProject* sceneProject, Entity entity);
         void drawImageComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -664,6 +671,12 @@ namespace jasperengine::editor{
         void drawSkyboxComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawParticleSystemComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLineRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // Line and Trail Renderers (InspectorLinesTrails.cpp)
+        void drawLineSegmentsList(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawLinePositionsList(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawLineRibbonRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities, bool hairline, bool gradient);
+        void drawLineTextureRow(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawTrailRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPolygonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawMeshPolygonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPointsComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -673,6 +686,7 @@ namespace jasperengine::editor{
         void drawRigidbodyComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawJoint2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawJoint3DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawRagdollComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPositionTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

@@ -59,6 +59,15 @@ private:
 
 class ProjectUtils {
 public:
+    // the editor's new Line Renderer (GameObject > Effects > Line, Add Component,
+    // create_entity, add_component): Unity's, a world-space polyline (0,0,0)-(0,0,1) of width
+    // 0.1, in a 2D scene (pixel units) (0,0)-(100,0) of width 4. The component's own defaults
+    // stay the old hairline (scenes and scripts unchanged)
+    static void setupNewLineRenderer(LineRendererComponent& lines, bool scene2D);
+    // the editor's new Trail Renderer: width 0.2 (8 in a 2D scene, whose minimum vertex
+    // distance is 2 pixels), thinning (1 -> 0) and fading out (alpha 1 -> 0) to the tail
+    static void setupNewTrailRenderer(TrailRendererComponent& trail, bool scene2D);
+
 
     static Entity getLockedEntityParent(Scene* scene, Entity entity);
     // getLockedEntityParent's UI part (a control's label, bar, ... below it); `checkPanels`

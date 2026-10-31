@@ -7,6 +7,7 @@
 
 #include "LuaBridge.h"
 #include "LuaBridgeAddon.h"
+#include "LuaFunction.h"
 #include "Scene.h"
 #include "subsystem/RenderSystem.h"
 
@@ -37,6 +38,7 @@
 #include "MeshPolygon.h"
 #include "Points.h"
 #include "LineRenderer.h"
+#include "TrailRenderer.h"
 #include "Sprite.h"
 #include "object/ui/Text.h"   // by path: lexbor has a dom/interfaces/text.h (Xcode header maps ignore case)
 #include "Image.h"
@@ -49,6 +51,7 @@
 
 #include <algorithm>
 #include "LayoutGroup.h"
+#include "object/ui/CanvasGroup.h"
 #include "AudioSource.h"
 #include "Engine.h"
 #include "ObjectManager.h"
@@ -65,6 +68,7 @@
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "Rigidbody.h"
 #include "Joint3D.h"
+#include "Ragdoll.h"
 #include "Contact3D.h"
 #include "CollideShapeResult3D.h"
 #include <stdexcept>
@@ -145,6 +149,66 @@ bool luaValueArg(lua_State* L, int index, T& value){
 //   (position, rotation [, parent])          world values
 //   (scene [, position, rotation])           a prefab in that scene
 // Returns the new GameObject (for a script, the copy's script of the same class), or nil.
+// LineRenderer / TrailRenderer :setPosition(index, position) and :getPosition(index): 0-based
+// like Unity; an index out of range raises an error naming the count
+template<typename T>
+int luaRendererSetPosition(lua_State* L, const char* className){
+    auto self = luabridge::get<T*>(L, 1);
+    if (!self || !*self){
+        return luaL_error(L, "%s.setPosition: call it on a %s (renderer:setPosition(index, position))", className, className);
+    }
+    if (!luabridge::isInstance<Vector3>(L, 3)){
+        // GameObject's setPosition(x, y[, z]) (the object's own position) keeps working
+        if (lua_isnumber(L, 2) && lua_isnumber(L, 3)){
+            if (lua_isnumber(L, 4)){
+                (*self)->GameObject::setPosition((float)lua_tonumber(L, 2), (float)lua_tonumber(L, 3), (float)lua_tonumber(L, 4));
+            }else{
+                (*self)->GameObject::setPosition((float)lua_tonumber(L, 2), (float)lua_tonumber(L, 3));
+            }
+            return 0;
+        }
+        return luaL_error(L, "%s.setPosition: expected (index, Vector3), or the GameObject's (x, y[, z])", className);
+    }
+    if (!lua_isinteger(L, 2)){
+        return luaL_error(L, "%s.setPosition: the index must be an integer (0-based)", className);
+    }
+    const lua_Integer index = lua_tointeger(L, 2);
+    auto position = luabridge::get<Vector3>(L, 3);
+    const int count = (*self)->getPositionCount();
+    if (index < 0 || index >= count || !position){
+        return luaL_error(L, "%s.setPosition: index %d is out of range: positionCount is %d (indices 0..%d)",
+                          className, (int)index, count, count - 1);
+    }
+    (*self)->setPosition((int)index, *position);
+    return 0;
+}
+
+template<typename T>
+int luaRendererGetPosition(lua_State* L, const char* className){
+    auto self = luabridge::get<T*>(L, 1);
+    if (!self || !*self){
+        return luaL_error(L, "%s.getPosition: call it on a %s (renderer:getPosition(index))", className, className);
+    }
+    if (!lua_isinteger(L, 2)){
+        return luaL_error(L, "%s.getPosition: expected (index)", className);
+    }
+    const lua_Integer index = lua_tointeger(L, 2);
+    const int count = (*self)->getPositionCount();
+    if (index < 0 || index >= count){
+        return luaL_error(L, "%s.getPosition: index %d is out of range: positionCount is %d (indices 0..%d)",
+                          className, (int)index, count, count - 1);
+    }
+    if (!luabridge::push(L, (*self)->getPosition((int)index))){
+        return luaL_error(L, "%s.getPosition: out of Lua stack", className);
+    }
+    return 1;
+}
+
+int luaLineSetPosition(lua_State* L){ return luaRendererSetPosition<LineRenderer>(L, "LineRenderer"); }
+int luaLineGetPosition(lua_State* L){ return luaRendererGetPosition<LineRenderer>(L, "LineRenderer"); }
+int luaTrailSetPosition(lua_State* L){ return luaRendererSetPosition<TrailRenderer>(L, "TrailRenderer"); }
+int luaTrailGetPosition(lua_State* L){ return luaRendererGetPosition<TrailRenderer>(L, "TrailRenderer"); }
+
 int luaInstantiate(lua_State* L){
     const int argc = lua_gettop(L);
 
@@ -337,6 +401,56 @@ namespace {
 
 }
 
+#ifdef JASPERENGINE_PHYSICS_3D
+namespace {
+    // a 3D joint body argument: a GameObject (or any handle, a script) with a Rigidbody, or nil
+    Entity luaJoint3DBodyArg(Joint3D* self, const luabridge::LuaRef& value, lua_State* L, const char* property){
+        if (value.isNil()){
+            return NULL_ENTITY;
+        }
+        Scene* scene = nullptr;
+        Entity entity = NULL_ENTITY;
+        const int top = lua_gettop(L);
+        value.push(L);
+        const bool isObject = luaObjectArg(L, lua_gettop(L), scene, entity);
+        lua_settop(L, top);
+        if (!isObject){
+            throw std::runtime_error(std::string("Joint3D.") + property + ": a GameObject or Rigidbody with a Rigidbody, or nil");
+        }
+        if (scene != self->getScene() || !scene->isEntityCreated(entity) || !scene->findComponent<RigidbodyComponent>(entity)){
+            throw std::runtime_error(std::string("Joint3D.") + property + ": \"" + (scene ? scene->getEntityName(entity) : std::string("?")) +
+                                     "\" has no Rigidbody (in the joint's scene)");
+        }
+        return entity;
+    }
+
+    std::optional<GameObject> luaJoint3DBody(const Joint3D* self, Entity body){
+        Scene* scene = self->getScene();
+        if (body == NULL_ENTITY || !scene || !scene->isEntityCreated(body)){
+            return std::nullopt;
+        }
+        return GameObject(scene, body);
+    }
+
+    // a Ragdoll entity argument: a GameObject (or handle) or nil
+    Entity luaEntityArg(Scene* expected, const luabridge::LuaRef& value, lua_State* L, const char* what){
+        if (value.isNil()){
+            return NULL_ENTITY;
+        }
+        Scene* scene = nullptr;
+        Entity entity = NULL_ENTITY;
+        const int top = lua_gettop(L);
+        value.push(L);
+        const bool isObject = luaObjectArg(L, lua_gettop(L), scene, entity);
+        lua_settop(L, top);
+        if (!isObject || scene != expected){
+            throw std::runtime_error(std::string(what) + ": a GameObject of the same scene, or nil");
+        }
+        return entity;
+    }
+}
+#endif
+
 namespace {
     // the shader a component draws with: its customShader, else the scene's default
     template <class T>
@@ -487,6 +601,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("RigidbodyInterpolation")
+        .addVariable("SCENE", RigidbodyInterpolation::SCENE)
+        .addVariable("NONE", RigidbodyInterpolation::NONE)
+        .addVariable("INTERPOLATE", RigidbodyInterpolation::INTERPOLATE)
+        .addVariable("EXTRAPOLATE", RigidbodyInterpolation::EXTRAPOLATE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
         .beginNamespace("PhysicsMaterialCombine")
         .addVariable("AVERAGE", PhysicsMaterialCombine::AVERAGE)
         .addVariable("GEOMETRIC_MEAN", PhysicsMaterialCombine::GEOMETRIC_MEAN)
@@ -510,6 +632,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addVariable("GEAR", Joint3DType::GEAR)
         .addVariable("RACKANDPINON", Joint3DType::RACKANDPINON)
         .addVariable("PULLEY", Joint3DType::PULLEY)
+        .endNamespace();
+
+    // a SIXDOF axis (Unity ConfigurableJointMotion)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("JointMotion")
+        .addVariable("LOCKED", JointMotion::LOCKED)
+        .addVariable("LIMITED", JointMotion::LIMITED)
+        .addVariable("FREE", JointMotion::FREE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("SwingType")
+        .addVariable("CONE", JointSwingType::CONE)
+        .addVariable("PYRAMID", JointSwingType::PYRAMID)
         .endNamespace();
 #endif
 
@@ -614,6 +750,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addStaticFunction("findGameObjectsWithTag", &LuaBinding::luaFindGameObjectsWithTag)
         .addStaticFunction("findObjectOfType", &LuaBinding::luaFindObjectOfType)
         .addStaticFunction("findObjectsOfType", &LuaBinding::luaFindObjectsOfType)
+        // persistent objects (Unity's DontDestroyOnLoad, also a global function)
+        .addStaticFunction("dontDestroyOnLoad", &LuaBinding::luaDontDestroyOnLoad)
+        .addStaticFunction("isPersistent", &LuaBinding::luaIsPersistent)
+        .addStaticFunction("persistSingleton", &LuaBinding::luaPersistSingleton)
         .addFunction("addChild", 
             luabridge::overload<GameObject*>(&GameObject::addChild),
             luabridge::overload<Entity>(&GameObject::addChild))
@@ -664,6 +804,24 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 #ifdef JASPERENGINE_PHYSICS_3D
         .addFunction("getRigidbody", &GameObject::getRigidbody)
         .addFunction("removeRigidbody", &GameObject::removeRigidbody)
+        // the Joint 3D of the GameObject, nil when it has none
+        .addFunction("getJoint3D", +[](GameObject* self) -> std::optional<Joint3D> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<Joint3DComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return Joint3D(scene, self->getEntity());
+        })
+        // the Ragdoll of the GameObject, nil when it has none
+        .addFunction("getRagdoll", +[](GameObject* self) -> std::optional<Ragdoll> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<RagdollComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return Ragdoll(scene, self->getEntity());
+        })
 #endif
         .addFunction("getRay", &GameObject::getRay)
         // the Animation Player of the GameObject, nil when it has none (Unity's GetComponent)
@@ -693,6 +851,53 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             Scene* scene = self->getScene();
             return scene && scene->isEntityCreated(self->getEntity()) &&
                    scene->findComponent<VertexAnimatorComponent>(self->getEntity()) != nullptr;
+        })
+        // the Trail Renderer of the GameObject, nil when it has none
+        .addFunction("getTrailRenderer", +[](GameObject* self) -> std::optional<TrailRenderer> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<TrailRendererComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return TrailRenderer(scene, self->getEntity());
+        })
+        .addFunction("hasTrailRenderer", +[](GameObject* self) -> bool {
+            Scene* scene = self->getScene();
+            return scene && scene->isEntityCreated(self->getEntity()) &&
+                   scene->findComponent<TrailRendererComponent>(self->getEntity()) != nullptr;
+        })
+        // Unity's AddComponent<TrailRenderer>(): its Trail Renderer, added when it has none
+        .addFunction("addTrailRenderer", +[](GameObject* self) -> std::optional<TrailRenderer> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity())){
+                return std::nullopt;
+            }
+            return TrailRenderer::addTo(scene, self->getEntity());
+        })
+        // the Canvas Group of the GameObject, nil when it has none (Unity's GetComponent)
+        .addFunction("getCanvasGroup", +[](GameObject* self) -> std::optional<CanvasGroup> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<CanvasGroupComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return CanvasGroup(scene, self->getEntity());
+        })
+        .addFunction("hasCanvasGroup", +[](GameObject* self) -> bool {
+            Scene* scene = self->getScene();
+            return scene && scene->isEntityCreated(self->getEntity()) &&
+                   scene->findComponent<CanvasGroupComponent>(self->getEntity()) != nullptr;
+        })
+        // adds one when the GameObject has none (Unity AddComponent<CanvasGroup>)
+        .addFunction("addCanvasGroup", +[](GameObject* self) -> CanvasGroup {
+            return CanvasGroup(self->getScene(), self->getEntity());
+        })
+        .addFunction("removeCanvasGroup", +[](GameObject* self) {
+            Scene* scene = self->getScene();
+            if (scene && scene->isEntityCreated(self->getEntity()) &&
+                scene->findComponent<CanvasGroupComponent>(self->getEntity())){
+                scene->removeComponent<CanvasGroupComponent>(self->getEntity());
+            }
         })
         .endClass();
 
@@ -1473,6 +1678,29 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("updateLines", &LineRenderer::updateLines)
         .addFunction("getNumLines", &LineRenderer::getNumLines)
         .addFunction("clearLines", &LineRenderer::clearLines)
+        .addProperty("mode", &LineRenderer::getMode, &LineRenderer::setMode)
+        .addProperty("positionCount", &LineRenderer::getPositionCount, &LineRenderer::setPositionCount)
+        .addFunction("setPosition", &luaLineSetPosition)
+        .addFunction("getPosition", &luaLineGetPosition)
+        .addFunction("setPositions", &LineRenderer::setPositions)
+        .addFunction("getPositions", &LineRenderer::getPositions)
+        .addProperty("loop", &LineRenderer::getLoop, &LineRenderer::setLoop)
+        .addProperty("useWorldSpace", &LineRenderer::getUseWorldSpace, &LineRenderer::setUseWorldSpace)
+        .addProperty("widthMultiplier", &LineRenderer::getWidthMultiplier, &LineRenderer::setWidthMultiplier)
+        .addProperty("startWidth", &LineRenderer::getStartWidth, &LineRenderer::setStartWidth)
+        .addProperty("endWidth", &LineRenderer::getEndWidth, &LineRenderer::setEndWidth)
+        .addProperty("widthCurve", &LineRenderer::getWidthCurve, &LineRenderer::setWidthCurve)
+        .addProperty("widthUnit", &LineRenderer::getWidthUnit, &LineRenderer::setWidthUnit)
+        .addProperty("colorGradient", &LineRenderer::getColorGradient, &LineRenderer::setColorGradient)
+        .addProperty("startColor", &LineRenderer::getStartColor, &LineRenderer::setStartColor)
+        .addProperty("endColor", &LineRenderer::getEndColor, &LineRenderer::setEndColor)
+        .addProperty("numCornerVertices", &LineRenderer::getNumCornerVertices, &LineRenderer::setNumCornerVertices)
+        .addProperty("numCapVertices", &LineRenderer::getNumCapVertices, &LineRenderer::setNumCapVertices)
+        .addProperty("alignment", &LineRenderer::getAlignment, &LineRenderer::setAlignment)
+        .addProperty("textureMode", &LineRenderer::getTextureMode, &LineRenderer::setTextureMode)
+        .addProperty("textureScale", &LineRenderer::getTextureScale, &LineRenderer::setTextureScale)
+        .addProperty("texture", &LineRenderer::getTexture, &LineRenderer::setTexture)
+        .addProperty("sortPriority", &LineRenderer::getSortPriority, &LineRenderer::setSortPriority)
         .addProperty("customShader", &LineRenderer::getCustomShader, &LineRenderer::setCustomShader)
         .addFunction("setShaderUniform",
             luabridge::overload<const std::string&, const Vector4&>(&LineRenderer::setShaderUniform),
@@ -1501,6 +1729,94 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("depthWrite", &LineRenderer::getDepthWrite, &LineRenderer::setDepthWrite)
         .addProperty("stencil", &LineRenderer::getStencil, &LineRenderer::setStencil)
         .addProperty("colorWrite", &LineRenderer::getColorWrite, &LineRenderer::setColorWrite)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LineRendererMode")
+        .addVariable("Segments", LineRendererMode::Segments)
+        .addVariable("Polyline", LineRendererMode::Polyline)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LineWidthUnit")
+        .addVariable("World", LineWidthUnit::World)
+        .addVariable("Pixels", LineWidthUnit::Pixels)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LineAlignment")
+        .addVariable("View", LineAlignment::View)
+        .addVariable("TransformZ", LineAlignment::TransformZ)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LineTextureMode")
+        .addVariable("Stretch", LineTextureMode::Stretch)
+        .addVariable("Tile", LineTextureMode::Tile)
+        .addVariable("DistributePerSegment", LineTextureMode::DistributePerSegment)
+        .addVariable("RepeatPerSegment", LineTextureMode::RepeatPerSegment)
+        .endNamespace();
+
+    // Unity's TrailRenderer: TrailRenderer(scene) is a new GameObject with one,
+    // object:addTrailRenderer() adds one to a GameObject (or returns its own), and
+    // object:getTrailRenderer() / TrailRenderer(scene, entity) are handles to an existing one (nil
+    // / nothing added without one). Positions are the stored points, oldest first
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<TrailRenderer, GameObject>("TrailRenderer")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &TrailRenderer::isEnabled, &TrailRenderer::setEnabled)
+        .addProperty("time", &TrailRenderer::getTime, &TrailRenderer::setTime)
+        .addProperty("minVertexDistance", &TrailRenderer::getMinVertexDistance, &TrailRenderer::setMinVertexDistance)
+        .addProperty("emitting", &TrailRenderer::isEmitting, &TrailRenderer::setEmitting)
+        .addProperty("autodestruct", &TrailRenderer::isAutodestruct, &TrailRenderer::setAutodestruct)
+        .addFunction("clear", &TrailRenderer::clear)
+        .addProperty("positionCount", &TrailRenderer::getPositionCount)
+        .addFunction("getPosition", &luaTrailGetPosition)
+        .addFunction("setPosition", &luaTrailSetPosition)
+        .addFunction("getPositions", &TrailRenderer::getPositions)
+        .addFunction("addPosition", &TrailRenderer::addPosition)
+        .addFunction("addPositions", &TrailRenderer::addPositions)
+        .addProperty("widthMultiplier", &TrailRenderer::getWidthMultiplier, &TrailRenderer::setWidthMultiplier)
+        .addProperty("startWidth", &TrailRenderer::getStartWidth, &TrailRenderer::setStartWidth)
+        .addProperty("endWidth", &TrailRenderer::getEndWidth, &TrailRenderer::setEndWidth)
+        .addProperty("widthCurve", &TrailRenderer::getWidthCurve, &TrailRenderer::setWidthCurve)
+        .addProperty("widthUnit", &TrailRenderer::getWidthUnit, &TrailRenderer::setWidthUnit)
+        .addProperty("colorGradient", &TrailRenderer::getColorGradient, &TrailRenderer::setColorGradient)
+        .addProperty("startColor", &TrailRenderer::getStartColor, &TrailRenderer::setStartColor)
+        .addProperty("endColor", &TrailRenderer::getEndColor, &TrailRenderer::setEndColor)
+        .addProperty("numCornerVertices", &TrailRenderer::getNumCornerVertices, &TrailRenderer::setNumCornerVertices)
+        .addProperty("numCapVertices", &TrailRenderer::getNumCapVertices, &TrailRenderer::setNumCapVertices)
+        .addProperty("alignment", &TrailRenderer::getAlignment, &TrailRenderer::setAlignment)
+        .addProperty("textureMode", &TrailRenderer::getTextureMode, &TrailRenderer::setTextureMode)
+        .addProperty("textureScale", &TrailRenderer::getTextureScale, &TrailRenderer::setTextureScale)
+        .addProperty("texture", &TrailRenderer::getTexture, &TrailRenderer::setTexture)
+        .addProperty("sortPriority", &TrailRenderer::getSortPriority, &TrailRenderer::setSortPriority)
+        .addProperty("customShader", &TrailRenderer::getCustomShader, &TrailRenderer::setCustomShader)
+        .addFunction("setShaderUniform",
+            luabridge::overload<const std::string&, const Vector4&>(&TrailRenderer::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector3&>(&TrailRenderer::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector2&>(&TrailRenderer::setShaderUniform),
+            luabridge::overload<const std::string&, float>(&TrailRenderer::setShaderUniform))
+        .addFunction("getShaderUniform", &TrailRenderer::getShaderUniform)
+        .addFunction("removeShaderUniform", &TrailRenderer::removeShaderUniform)
+        .addFunction("setShaderParam",
+            luabridge::overload<const std::string&, const Vector4&>(&TrailRenderer::setShaderUniform),
+            luabridge::overload<TrailRenderer*, const std::string&, const Vector3&>(+[](TrailRenderer* self, const std::string& name, const Vector3& value) {
+                // a colour given as (r, g, b) is opaque
+                self->setShaderUniform(name, LuaBinding::getShaderParamValue(componentShader(self, ShaderType::LINES), name, value));
+            }),
+            luabridge::overload<const std::string&, const Vector2&>(&TrailRenderer::setShaderUniform),
+            luabridge::overload<const std::string&, float>(&TrailRenderer::setShaderUniform))
+        .addFunction("getShaderParam", &TrailRenderer::getShaderParam)
+        .addFunction("removeShaderParam", &TrailRenderer::removeShaderUniform)
+        .addFunction("setShaderTexture", &TrailRenderer::setShaderTexture)
+        .addFunction("getShaderTexture", &TrailRenderer::getShaderTexture)
+        .addFunction("setShaderFeature", &TrailRenderer::setShaderFeature)
+        .addFunction("isShaderFeatureEnabled", &TrailRenderer::isShaderFeatureEnabled)
+        .addProperty("blendMode", &TrailRenderer::getBlendMode, &TrailRenderer::setBlendMode)
+        .addProperty("depthWrite", &TrailRenderer::getDepthWrite, &TrailRenderer::setDepthWrite)
+        .addProperty("stencil", &TrailRenderer::getStencil, &TrailRenderer::setStencil)
+        .addProperty("colorWrite", &TrailRenderer::getColorWrite, &TrailRenderer::setColorWrite)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1561,7 +1877,71 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("anchorPreset", &RectTransform::getAnchorPreset, &RectTransform::setAnchorPreset)
         .addProperty("usingAnchors", &RectTransform::isUsingAnchors, &RectTransform::setUsingAnchors)
         .addProperty("ignoreScissor", &RectTransform::isIgnoreScissor, &RectTransform::setIgnoreScissor)
+        .addFunction("getInheritedAlpha", &RectTransform::getInheritedAlpha)
+        .addFunction("getGroupsAllowInteraction", &RectTransform::getGroupsAllowInteraction)
+        .addFunction("getGroupsBlockRaycasts", &RectTransform::getGroupsBlockRaycasts)
+        .addFunction("isInteractable", &RectTransform::isInteractable)
         .addFunction("getRectTransformComponent", &RectTransform::getComponent<RectTransformComponent>)
+        .endClass();
+
+    // Unity's CanvasGroup: fades, disables or makes click-through a UI subtree. The fade options
+    // table: {ease = EaseType.*, unscaled = false, deactivate = false, onComplete = function}
+    static auto fadeOptions = +[](const std::optional<luabridge::LuaRef>& optionsArg, lua_State* L) -> CanvasGroupFadeOptions {
+        CanvasGroupFadeOptions result;
+        if (!optionsArg || optionsArg->isNil()){
+            return result;
+        }
+        const luabridge::LuaRef& options = *optionsArg;
+        if (!options.isTable()){
+            luaL_error(L, "CanvasGroup fade options must be a table {ease, unscaled, deactivate, onComplete}");
+            return result;
+        }
+        const luabridge::LuaRef ease = options["ease"];
+        if (ease.isNumber()){
+            result.ease = static_cast<EaseType>(ease.unsafe_cast<int>());
+        }
+        const luabridge::LuaRef unscaled = options["unscaled"];
+        if (!unscaled.isNil()){
+            result.unscaled = unscaled.unsafe_cast<bool>();
+        }
+        const luabridge::LuaRef deactivate = options["deactivate"];
+        if (!deactivate.isNil()){
+            result.deactivate = deactivate.unsafe_cast<bool>();
+        }
+        const luabridge::LuaRef onComplete = options["onComplete"];
+        if (onComplete.isFunction()){
+            onComplete.push(L);
+            result.onComplete = LuaFunction<void>(L);
+        }else if (!onComplete.isNil()){
+            luaL_error(L, "CanvasGroup fade option onComplete must be a function");
+        }
+        return result;
+    };
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<CanvasGroup, EntityHandle>("CanvasGroup")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &CanvasGroup::isEnabled, &CanvasGroup::setEnabled)
+        .addProperty("alpha", &CanvasGroup::getAlpha, &CanvasGroup::setAlpha)
+        .addProperty("interactable", &CanvasGroup::isInteractable, &CanvasGroup::setInteractable)
+        .addProperty("blocksRaycasts", &CanvasGroup::isBlocksRaycasts, &CanvasGroup::setBlocksRaycasts)
+        .addProperty("ignoreParentGroups", &CanvasGroup::isIgnoreParentGroups, &CanvasGroup::setIgnoreParentGroups)
+        .addProperty("renderMode", &CanvasGroup::getRenderMode, &CanvasGroup::setRenderMode)
+        .addFunction("fadeTo", +[](CanvasGroup* self, float alpha, float duration, std::optional<luabridge::LuaRef> options, lua_State* L) -> AlphaTween {
+            return self->fadeTo(alpha, duration, fadeOptions(options, L));
+        })
+        .addFunction("fadeIn", +[](CanvasGroup* self, float duration, std::optional<luabridge::LuaRef> options, lua_State* L) -> AlphaTween {
+            return self->fadeIn(duration, fadeOptions(options, L));
+        })
+        .addFunction("fadeOut", +[](CanvasGroup* self, float duration, std::optional<luabridge::LuaRef> options, lua_State* L) -> AlphaTween {
+            return self->fadeOut(duration, fadeOptions(options, L));
+        })
+        .addFunction("stopFade", +[](CanvasGroup* self, std::optional<bool> jumpToEnd) {
+            self->stopFade(jumpToEnd.value_or(false));
+        })
+        .addFunction("isFading", &CanvasGroup::isFading)
+        .addFunction("getGameObject", &CanvasGroup::getGameObject)
+        .addFunction("getCanvasGroupComponent", &CanvasGroup::getComponent<CanvasGroupComponent>)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -2535,13 +2915,52 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<Vector3, Quaternion, std::vector<Vector3>>(&Rigidbody::createConvexHullCollider))
         .addFunction("createMeshCollider", 
             luabridge::overload<>(&Rigidbody::createMeshCollider),
-            luabridge::overload<std::vector<Vector3>, std::vector<uint16_t>>(&Rigidbody::createMeshCollider),
-            luabridge::overload<Vector3, Quaternion, std::vector<Vector3>, std::vector<uint16_t>>(&Rigidbody::createMeshCollider))
+            luabridge::overload<std::vector<Vector3>, std::vector<uint32_t>>(&Rigidbody::createMeshCollider),
+            luabridge::overload<Vector3, Quaternion, std::vector<Vector3>, std::vector<uint32_t>>(&Rigidbody::createMeshCollider))
         .addFunction("createHeightFieldCollider", 
             luabridge::overload<>(&Rigidbody::createHeightFieldCollider),
             luabridge::overload<unsigned int>(&Rigidbody::createHeightFieldCollider))
         .addFunction("getNumColliders", &Rigidbody::getNumColliders)
+        .addFunction("getColliderCount", &Rigidbody::getColliderCount)
         .addFunction("getColliderType", &Rigidbody::getColliderType)
+        // collider edits: that collider's shape is made again and swapped in (index from 0; out
+        // of range: an error)
+        .addFunction("removeCollider", &Rigidbody::removeCollider)
+        .addFunction("removeAllColliders", &Rigidbody::removeAllColliders)
+        .addFunction("setColliderPosition", &Rigidbody::setColliderPosition)
+        .addFunction("getColliderPosition", &Rigidbody::getColliderPosition)
+        .addFunction("setColliderRotation", &Rigidbody::setColliderRotation)
+        .addFunction("getColliderRotation", &Rigidbody::getColliderRotation)
+        .addFunction("setColliderBoxSize", &Rigidbody::setColliderBoxSize)
+        .addFunction("getColliderBoxSize", &Rigidbody::getColliderBoxSize)
+        .addFunction("setColliderRadius", &Rigidbody::setColliderRadius)
+        .addFunction("getColliderRadius", &Rigidbody::getColliderRadius)
+        .addFunction("setColliderHalfHeight", &Rigidbody::setColliderHalfHeight)
+        .addFunction("getColliderHalfHeight", &Rigidbody::getColliderHalfHeight)
+        .addFunction("setColliderTaperedRadii", &Rigidbody::setColliderTaperedRadii)
+        .addFunction("setColliderVertices",
+            luabridge::overload<size_t, std::vector<Vector3>>(&Rigidbody::setColliderVertices),
+            luabridge::overload<size_t, std::vector<Vector3>, std::vector<uint32_t>>(&Rigidbody::setColliderVertices))
+        .addFunction("getColliderVertices", &Rigidbody::getColliderVertices)
+        .addFunction("getColliderIndices", &Rigidbody::getColliderIndices)
+        .addFunction("setColliderTrigger", &Rigidbody::setColliderTrigger)
+        .addFunction("isColliderTrigger", &Rigidbody::isColliderTrigger)
+        .addFunction("setColliderMaterial", +[](Rigidbody* self, size_t index, luabridge::LuaRef value) {
+            PhysicsMaterial material;
+            std::string path;
+            if (!luaMaterialArg(value, material, path)){
+                throw std::runtime_error("Rigidbody:setColliderMaterial: a .physicsmaterial path, a PhysicsMaterial or nil");
+            }
+            if (material.valid()) self->setColliderMaterial(index, material);
+            else self->setColliderMaterial(index, path);
+        })
+        .addFunction("getColliderMaterial", +[](const Rigidbody* self, size_t index) -> std::optional<PhysicsMaterial> {
+            return luaMaterialResult(self->getColliderMaterial(index));
+        })
+        .addFunction("setColliderFriction", &Rigidbody::setColliderFriction)
+        .addFunction("setColliderBounciness", &Rigidbody::setColliderBounciness)
+        .addFunction("getColliderFriction", &Rigidbody::getColliderFriction)
+        .addFunction("getColliderBounciness", &Rigidbody::getColliderBounciness)
         .addProperty("shapeDensity", (float(Rigidbody::*)()const)&Rigidbody::getColliderDensity, (void(Rigidbody::*)(float))&Rigidbody::setColliderDensity)
         .addFunction("setColliderDensity", 
             luabridge::overload<float>(&Rigidbody::setColliderDensity),
@@ -2549,7 +2968,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getColliderDensity", 
             luabridge::overload<>(&Rigidbody::getColliderDensity),
             luabridge::overload<size_t>(&Rigidbody::getColliderDensity))
-        .addProperty("type", &Rigidbody::getType, &Rigidbody::setType)
+        // a switch a static-only collider refuses logs an error and keeps the type
+        .addProperty("type", &Rigidbody::getType, +[](Rigidbody* self, BodyType type) { self->setType(type); })
+        .addFunction("setType", &Rigidbody::setType)
+        .addProperty("isKinematic", &Rigidbody::isKinematic, &Rigidbody::setKinematic)
         .addProperty("motionQuality", &Rigidbody::getMotionQuality, &Rigidbody::setMotionQuality)
         .addFunction("canBeKinematicOrDynamic", &Rigidbody::canBeKinematicOrDynamic)
         .addFunction("activate", &Rigidbody::activate)
@@ -2559,7 +2981,36 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setAllowedDOFsAll", &Rigidbody::setAllowedDOFsAll)
         .addFunction("setAllowedDOFs2DPlane", &Rigidbody::setAllowedDOFs2DPlane)
         .addFunction("setAllowedDOFs", &Rigidbody::setAllowedDOFs)
+        // Unity's mass fields: setting mass, centerOfMass or inertiaTensor turns its automatic off
         .addProperty("mass", &Rigidbody::getMass, &Rigidbody::setMass)
+        .addProperty("automaticMass", &Rigidbody::isAutomaticMass, &Rigidbody::setAutomaticMass)
+        .addProperty("centerOfMass", &Rigidbody::getCenterOfMass, &Rigidbody::setCenterOfMass)
+        .addProperty("automaticCenterOfMass", &Rigidbody::isAutomaticCenterOfMass, &Rigidbody::setAutomaticCenterOfMass)
+        .addFunction("resetCenterOfMass", &Rigidbody::resetCenterOfMass)
+        .addProperty("inertiaTensor", &Rigidbody::getInertiaTensor, &Rigidbody::setInertiaTensor)
+        .addProperty("inertiaTensorRotation", &Rigidbody::getInertiaTensorRotation, &Rigidbody::setInertiaTensorRotation)
+        .addProperty("automaticInertiaTensor", &Rigidbody::isAutomaticInertiaTensor, &Rigidbody::setAutomaticInertiaTensor)
+        .addFunction("resetInertiaTensor", &Rigidbody::resetInertiaTensor)
+        .addProperty("linearDamping", &Rigidbody::getLinearDamping, &Rigidbody::setLinearDamping)
+        .addProperty("angularDamping", &Rigidbody::getAngularDamping, &Rigidbody::setAngularDamping)
+        .addProperty("maxLinearVelocity", &Rigidbody::getMaxLinearVelocity, &Rigidbody::setMaxLinearVelocity)
+        .addProperty("maxAngularVelocity", &Rigidbody::getMaxAngularVelocity, &Rigidbody::setMaxAngularVelocity)
+        .addProperty("interpolation", &Rigidbody::getInterpolation, &Rigidbody::setInterpolation)
+        .addFunction("isSleeping", &Rigidbody::isSleeping)
+        .addFunction("sleep", &Rigidbody::sleep)
+        .addFunction("wakeUp", &Rigidbody::wakeUp)
+        // the default material of the colliders without one: a path, a PhysicsMaterial or nil
+        .addProperty("material",
+            +[](const Rigidbody* self) -> std::optional<PhysicsMaterial> { return luaMaterialResult(self->getMaterial()); },
+            +[](Rigidbody* self, luabridge::LuaRef value) {
+                PhysicsMaterial material;
+                std::string path;
+                if (!luaMaterialArg(value, material, path)){
+                    throw std::runtime_error("Rigidbody.material: a .physicsmaterial path, a PhysicsMaterial or nil");
+                }
+                if (material.valid()) self->setMaterial(material);
+                else self->setMaterial(path);
+            })
         .addFunction("setOverrideMassAndInertia", &Rigidbody::setOverrideMassAndInertia)
         .addProperty("gravityFactor", &Rigidbody::getGravityFactor, &Rigidbody::setGravityFactor)
         .addProperty("collisionGroupID", &Rigidbody::getCollisionGroupID, &Rigidbody::setCollisionGroupID)
@@ -2596,8 +3047,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginClass<Joint3D>("Joint3D")
+        .deriveClass<Joint3D, EntityHandle>("Joint3D")
         .addConstructor <void (Scene*), void (Scene*, Entity)> ()
+        // as before local anchors: world points and axes, the other fields as Jolt had them
         .addFunction("setFixedJoint", &Joint3D::setFixedJoint)
         .addFunction("setDistanceJoint",
             luabridge::overload<Entity, Entity>(&Joint3D::setDistanceJoint),
@@ -2613,6 +3065,131 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setRackAndPinionJoint", &Joint3D::setRackAndPinionJoint)
         .addFunction("setPulleyJoint", &Joint3D::setPulleyJoint)
         .addFunction("getType", &Joint3D::getType)
+        .addProperty("enabled", &Joint3D::isEnabled, &Joint3D::setEnabled)
+        // the body the joint is on (Unity: the joint's Rigidbody) and the connected one; set with
+        // a GameObject, a Rigidbody or nil (bodyB nil: held to the world, LOCAL joints)
+        .addProperty("bodyA",
+            +[](const Joint3D* self) { return luaJoint3DBody(self, self->getBodyA()); },
+            +[](Joint3D* self, luabridge::LuaRef value) { self->setBodyA(luaJoint3DBodyArg(self, value, value.state(), "bodyA")); })
+        .addProperty("bodyB",
+            +[](const Joint3D* self) { return luaJoint3DBody(self, self->getBodyB()); },
+            +[](Joint3D* self, luabridge::LuaRef value) { self->setBodyB(luaJoint3DBodyArg(self, value, value.state(), "bodyB")); })
+        .addProperty("connectedBody",
+            +[](const Joint3D* self) { return luaJoint3DBody(self, self->getBodyB()); },
+            +[](Joint3D* self, luabridge::LuaRef value) { self->setBodyB(luaJoint3DBodyArg(self, value, value.state(), "connectedBody")); })
+        .addProperty("type", &Joint3D::getType, &Joint3D::setType)
+        .addProperty("anchorSpace", &Joint3D::getAnchorSpace, &Joint3D::setAnchorSpace)
+        .addProperty("anchor", &Joint3D::getAnchor, &Joint3D::setAnchor)
+        .addProperty("anchorA", &Joint3D::getAnchorA, &Joint3D::setAnchorA)
+        .addProperty("anchorB", &Joint3D::getAnchorB, &Joint3D::setAnchorB)
+        .addProperty("connectedAnchor", &Joint3D::getAnchorB, &Joint3D::setAnchorB)
+        .addProperty("autoAnchors", &Joint3D::isAutoAnchors, &Joint3D::setAutoAnchors)
+        .addProperty("autoConfigureConnectedAnchor", &Joint3D::isAutoAnchors, &Joint3D::setAutoAnchors)
+        .addProperty("axis", &Joint3D::getAxis, &Joint3D::setAxis)
+        .addProperty("normal", &Joint3D::getNormal, &Joint3D::setNormal)
+        .addProperty("secondaryAxis", &Joint3D::getNormal, &Joint3D::setNormal)
+        .addProperty("twistAxis", &Joint3D::getTwistAxis, &Joint3D::setTwistAxis)
+        .addProperty("planeAxis", &Joint3D::getPlaneAxis, &Joint3D::setPlaneAxis)
+        .addProperty("swingAxis", &Joint3D::getPlaneAxis, &Joint3D::setPlaneAxis)
+        .addProperty("axisX", &Joint3D::getAxisX, &Joint3D::setAxisX)
+        .addProperty("axisY", &Joint3D::getAxisY, &Joint3D::setAxisY)
+        .addProperty("swingType", &Joint3D::getSwingType, &Joint3D::setSwingType)
+        .addProperty("xMotion", &Joint3D::getXMotion, &Joint3D::setXMotion)
+        .addProperty("yMotion", &Joint3D::getYMotion, &Joint3D::setYMotion)
+        .addProperty("zMotion", &Joint3D::getZMotion, &Joint3D::setZMotion)
+        .addProperty("angularXMotion", &Joint3D::getAngularXMotion, &Joint3D::setAngularXMotion)
+        .addProperty("angularYMotion", &Joint3D::getAngularYMotion, &Joint3D::setAngularYMotion)
+        .addProperty("angularZMotion", &Joint3D::getAngularZMotion, &Joint3D::setAngularZMotion)
+        .addProperty("linearLimitMin", &Joint3D::getLinearLimitMin, &Joint3D::setLinearLimitMin)
+        .addProperty("linearLimitMax", &Joint3D::getLinearLimitMax, &Joint3D::setLinearLimitMax)
+        .addProperty("angularLimitMin", &Joint3D::getAngularLimitMin, &Joint3D::setAngularLimitMin)
+        .addProperty("angularLimitMax", &Joint3D::getAngularLimitMax, &Joint3D::setAngularLimitMax)
+        .addProperty("enableCollision", &Joint3D::isEnableCollision, &Joint3D::setEnableCollision)
+        .addProperty("breakForce", &Joint3D::getBreakForce, &Joint3D::setBreakForce)
+        .addProperty("breakTorque", &Joint3D::getBreakTorque, &Joint3D::setBreakTorque)
+        .addProperty("breakAction", &Joint3D::getBreakAction, &Joint3D::setBreakAction)
+        .addProperty("useLimits", &Joint3D::isUseLimits, &Joint3D::setUseLimits)
+        .addProperty("limitsMin", &Joint3D::getLimitsMin, &Joint3D::setLimitsMin)
+        .addProperty("limitsMax", &Joint3D::getLimitsMax, &Joint3D::setLimitsMax)
+        .addProperty("limitsSpringFrequency", &Joint3D::getLimitsSpringFrequency, &Joint3D::setLimitsSpringFrequency)
+        .addProperty("limitsSpringDamping", &Joint3D::getLimitsSpringDamping, &Joint3D::setLimitsSpringDamping)
+        .addProperty("useMotor", &Joint3D::isUseMotor, &Joint3D::setUseMotor)
+        .addProperty("motorTargetVelocity", &Joint3D::getMotorTargetVelocity, &Joint3D::setMotorTargetVelocity)
+        .addProperty("motorMaxForce", &Joint3D::getMotorMaxForce, &Joint3D::setMotorMaxForce)
+        .addProperty("useSpring", &Joint3D::isUseSpring, &Joint3D::setUseSpring)
+        .addProperty("springStiffness", &Joint3D::getSpringStiffness, &Joint3D::setSpringStiffness)
+        .addProperty("springDamper", &Joint3D::getSpringDamper, &Joint3D::setSpringDamper)
+        .addProperty("springTargetPosition", &Joint3D::getSpringTargetPosition, &Joint3D::setSpringTargetPosition)
+        .addProperty("maxFriction", &Joint3D::getMaxFriction, &Joint3D::setMaxFriction)
+        .addProperty("minDistance", &Joint3D::getMinDistance, &Joint3D::setMinDistance)
+        .addProperty("maxDistance", &Joint3D::getMaxDistance, &Joint3D::setMaxDistance)
+        .addProperty("coneHalfAngle", &Joint3D::getConeHalfAngle, &Joint3D::setConeHalfAngle)
+        .addProperty("normalHalfConeAngle", &Joint3D::getNormalHalfConeAngle, &Joint3D::setNormalHalfConeAngle)
+        // Unity swing1Limit turns about the swing axis (planeAxis): Jolt's normal half cone
+        .addProperty("swing1Limit", &Joint3D::getNormalHalfConeAngle, &Joint3D::setNormalHalfConeAngle)
+        .addProperty("planeHalfConeAngle", &Joint3D::getPlaneHalfConeAngle, &Joint3D::setPlaneHalfConeAngle)
+        .addProperty("swing2Limit", &Joint3D::getPlaneHalfConeAngle, &Joint3D::setPlaneHalfConeAngle)
+        .addProperty("twistMinAngle", &Joint3D::getTwistMinAngle, &Joint3D::setTwistMinAngle)
+        .addProperty("lowTwistLimit", &Joint3D::getTwistMinAngle, &Joint3D::setTwistMinAngle)
+        .addProperty("twistMaxAngle", &Joint3D::getTwistMaxAngle, &Joint3D::setTwistMaxAngle)
+        .addProperty("highTwistLimit", &Joint3D::getTwistMaxAngle, &Joint3D::setTwistMaxAngle)
+        .addProperty("motorTargetRotation", &Joint3D::getMotorTargetRotation, &Joint3D::setMotorTargetRotation)
+        .addProperty("motorSpringFrequency", &Joint3D::getMotorSpringFrequency, &Joint3D::setMotorSpringFrequency)
+        .addProperty("motorSpringDamping", &Joint3D::getMotorSpringDamping, &Joint3D::setMotorSpringDamping)
+        .addProperty("useDrive", &Joint3D::isUseDrive, &Joint3D::setUseDrive)
+        .addProperty("driveStiffness", &Joint3D::getDriveStiffness, &Joint3D::setDriveStiffness)
+        .addProperty("driveDamping", &Joint3D::getDriveDamping, &Joint3D::setDriveDamping)
+        .addProperty("angularDriveStiffness", &Joint3D::getAngularDriveStiffness, &Joint3D::setAngularDriveStiffness)
+        .addProperty("angularDriveDamping", &Joint3D::getAngularDriveDamping, &Joint3D::setAngularDriveDamping)
+        .addProperty("driveMaxForce", &Joint3D::getDriveMaxForce, &Joint3D::setDriveMaxForce)
+        .addProperty("driveMaxTorque", &Joint3D::getDriveMaxTorque, &Joint3D::setDriveMaxTorque)
+        .addProperty("targetPosition", &Joint3D::getTargetPosition, &Joint3D::setTargetPosition)
+        .addProperty("targetRotation", &Joint3D::getTargetRotation, &Joint3D::setTargetRotation)
+        .addProperty("targetVelocity", &Joint3D::getTargetVelocity, &Joint3D::setTargetVelocity)
+        .addProperty("targetAngularVelocity", &Joint3D::getTargetAngularVelocity, &Joint3D::setTargetAngularVelocity)
+        // read-outs of the live joint (0 without one): N, N m, angles in the engine's unit
+        .addProperty("currentForce", &Joint3D::getCurrentForce)
+        .addProperty("currentTorque", &Joint3D::getCurrentTorque)
+        .addProperty("angle", &Joint3D::getAngle)
+        .addProperty("velocity", &Joint3D::getVelocity)
+        .addProperty("position", &Joint3D::getPosition)
+        .addProperty("speed", &Joint3D::getSpeed)
+        .addProperty("currentLength", &Joint3D::getCurrentLength)
+        .addProperty("broken", &Joint3D::isBroken)
+        .addProperty("live", &Joint3D::isLive)
+        .endClass();
+
+    // a character's ragdoll: animated (kinematic parts following the bones) or simulated
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<Ragdoll, EntityHandle>("Ragdoll")
+        .addConstructor <void (Scene*, Entity)> ()
+        .addProperty("enabled", &Ragdoll::isEnabled, &Ragdoll::setEnabled)
+        .addProperty("simulated", &Ragdoll::isSimulated, &Ragdoll::setSimulated)
+        .addFunction("setSimulated", &Ragdoll::setSimulated)
+        .addProperty("inheritVelocity", &Ragdoll::isInheritVelocity, &Ragdoll::setInheritVelocity)
+        .addProperty("selfCollision", &Ragdoll::isSelfCollision, &Ragdoll::setSelfCollision)
+        .addProperty("totalMass", &Ragdoll::getTotalMass, &Ragdoll::setTotalMass)
+        .addProperty("root",
+            +[](const Ragdoll* self) -> std::optional<GameObject> {
+                Entity root = self->getRoot();
+                if (root == NULL_ENTITY || !self->getScene()->isEntityCreated(root)) return std::nullopt;
+                return GameObject(self->getScene(), root);
+            },
+            +[](Ragdoll* self, luabridge::LuaRef value) { self->setRoot(luaEntityArg(self->getScene(), value, value.state(), "Ragdoll.root")); })
+        .addProperty("animator",
+            +[](const Ragdoll* self) -> std::optional<GameObject> {
+                Entity animator = self->getAnimator();
+                if (animator == NULL_ENTITY || !self->getScene()->isEntityCreated(animator)) return std::nullopt;
+                return GameObject(self->getScene(), animator);
+            },
+            +[](Ragdoll* self, luabridge::LuaRef value) { self->setAnimator(luaEntityArg(self->getScene(), value, value.state(), "Ragdoll.animator")); })
+        .addProperty("partCount", &Ragdoll::getPartCount)
+        .addFunction("getParts", &Ragdoll::getParts)
+        .addFunction("applyImpulse", &Ragdoll::applyImpulse)
+        .addFunction("applyForce", &Ragdoll::applyForce)
+        // RegisterEvent(self, ragdoll.onBeforeAnimatedRestore, "fn"): fn(entity) before a ragdoll
+        // of the scene goes back to animated
+        .addProperty("onBeforeAnimatedRestore", [] (Ragdoll* self, lua_State* L) { return &self->onBeforeAnimatedRestore(); }, [] (Ragdoll* self, lua_State* L) { self->onBeforeAnimatedRestore() = L; })
         .endClass();
 
     luabridge::getGlobalNamespace(L)

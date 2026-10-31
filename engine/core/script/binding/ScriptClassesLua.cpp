@@ -21,6 +21,7 @@
 #include "registry/TagManager.h"
 #include "manager/ObjectManager.h"
 #include "manager/SceneManager.h"
+#include "registry/EntityCloner.h"
 #include "component/Transform.h"
 #include "component/ScriptComponent.h"
 #include "component/ActionComponent.h"
@@ -498,6 +499,136 @@ int LuaBinding::luaFindObjectOfType(lua_State* L) {
 
 int LuaBinding::luaFindObjectsOfType(lua_State* L) {
     return findObjectsOfType(L, true);
+}
+
+// ---- persistent objects (Unity's DontDestroyOnLoad, SceneManager.MoveGameObjectToScene)
+
+namespace {
+
+    // The live Lua instance of `className` on a GameObject of `scene`'s `entities` (ascending
+    // ids), other than `self`, pushed; false (nothing pushed) without one
+    bool pushOtherInstance(lua_State* L, Scene* scene, const std::vector<Entity>& entities, const std::string& className, const void* self) {
+        for (Entity entity : entities) {
+            ScriptComponent* scripts = scene->isEntityCreated(entity) ? scene->findComponent<ScriptComponent>(entity) : nullptr;
+            if (!scripts) {
+                continue;
+            }
+            for (const ScriptEntry& entry : scripts->scripts) {
+                if (entry.type != ScriptType::LUA || entry.className != className || !entry.instance) {
+                    continue;
+                }
+                const ScriptState* state = ScriptRuntime::getState(entry.instance);
+                if (state && (state->destroyed || state->destroying)) {
+                    continue;
+                }
+                LuaBinding::pushScriptInstance(L, entry);
+                if (lua_topointer(L, -1) != self) {
+                    return true;
+                }
+                lua_pop(L, 1);
+            }
+        }
+        return false;
+    }
+
+    void persistentObjectArg(lua_State* L, const char* caller, Scene*& scene, Entity& entity) {
+        if (!objectArg(L, 1, scene, entity)) {
+            luaL_error(L, "%s: argument 1 must be a GameObject or a script (self)", caller);
+        }
+    }
+
+}
+
+// DontDestroyOnLoad(obj) and GameObject.dontDestroyOnLoad(obj): nil is ignored
+int LuaBinding::luaDontDestroyOnLoad(lua_State* L) {
+    if (lua_isnoneornil(L, 1)) {
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+    Scene* scene = nullptr;
+    Entity entity = NULL_ENTITY;
+    persistentObjectArg(L, "DontDestroyOnLoad", scene, entity);
+    lua_pushboolean(L, SceneManager::dontDestroyOnLoad(scene, entity) ? 1 : 0);
+    return 1;
+}
+
+// GameObject.isPersistent(obj)
+int LuaBinding::luaIsPersistent(lua_State* L) {
+    if (lua_isnoneornil(L, 1)) {
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+    Scene* scene = nullptr;
+    Entity entity = NULL_ENTITY;
+    persistentObjectArg(L, "GameObject.isPersistent", scene, entity);
+    lua_pushboolean(L, SceneManager::isPersistent(scene, entity) ? 1 : 0);
+    return 1;
+}
+
+// GameObject.persistSingleton(self): the surviving instance of self's class among the
+// persistent objects (self made persistent when there is none, else self's GameObject goes)
+int LuaBinding::luaPersistSingleton(lua_State* L) {
+    Scene* scene = nullptr;
+    Entity entity = NULL_ENTITY;
+    if (!lua_istable(L, 1) || !objectArg(L, 1, scene, entity)) {
+        return luaL_error(L, "GameObject.persistSingleton: argument 1 must be a script instance (self)");
+    }
+    lua_pushstring(L, "__name");
+    lua_rawget(L, 1);
+    const std::string className = lua_isstring(L, -1) ? lua_tostring(L, -1) : "";
+    lua_pop(L, 1);
+    if (className.empty()) {
+        return luaL_error(L, "GameObject.persistSingleton: argument 1 must be a script instance (self)");
+    }
+    const void* self = lua_topointer(L, 1);
+
+    // one already persistent, or marked earlier (two duplicates starting in one pass: the
+    // first wins)
+    bool found = false;
+    if (Scene* persistent = SceneManager::getPersistentScene()) {
+        std::vector<Entity> entities;
+        auto scripts = persistent->getComponentArray<ScriptComponent>();
+        for (size_t i = 0; i < scripts->size(); i++) {
+            entities.push_back(scripts->getEntity(i));
+        }
+        std::sort(entities.begin(), entities.end());
+        found = pushOtherInstance(L, persistent, entities, className, self);
+    }
+    if (!found) {
+        for (const auto& [from, root] : SceneManager::getPendingPersistentRoots()) {
+            if (pushOtherInstance(L, from, EntityCloner::collectHierarchy(from, root), className, self)) {
+                found = true;
+                break;
+            }
+        }
+    }
+    if (found) {
+        // Unity's `else if (instance != this) Destroy(gameObject)`
+        ObjectManager::destroy(scene, entity);
+        return 1;
+    }
+
+    SceneManager::dontDestroyOnLoad(scene, entity);
+    lua_pushvalue(L, 1);
+    return 1;
+}
+
+// SceneManager.moveGameObjectToScene(obj, scene)
+int LuaBinding::luaMoveGameObjectToScene(lua_State* L) {
+    Scene* scene = nullptr;
+    Entity entity = NULL_ENTITY;
+    persistentObjectArg(L, "SceneManager.moveGameObjectToScene", scene, entity);
+    Scene* target = nullptr;
+    if (luabridge::isInstance<Scene*>(L, 2)) {
+        auto result = luabridge::get<Scene*>(L, 2);
+        if (result) {
+            target = result.value();
+        }
+    } else if (!lua_isnoneornil(L, 2)) {
+        return luaL_error(L, "SceneManager.moveGameObjectToScene: argument 2 must be a Scene");
+    }
+    lua_pushboolean(L, SceneManager::moveGameObjectToScene(scene, entity, target) ? 1 : 0);
+    return 1;
 }
 
 void LuaBinding::registerScriptClasses(lua_State* L) {

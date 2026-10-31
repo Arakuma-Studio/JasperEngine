@@ -735,6 +735,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("ALL_LAYERS", &luaAllLayers)
         .addStaticProperty("DEFAULT_RAYCAST_LAYERS", &luaDefaultRaycastLayers)
         .addStaticProperty("IGNORE_RAYCAST_LAYER", &luaIgnoreRaycastLayer)
+        // the runtime collider and joint wireframes of every scene (3D and 2D), and the contacts
+        .addStaticProperty("debugDraw", &Physics::isDebugDraw, &Physics::setDebugDraw)
+        .addStaticProperty("debugDrawContacts", &Physics::isDebugDrawContacts, &Physics::setDebugDrawContacts)
         .addStaticFunction("ignoreLayerCollision", &luaIgnoreLayerCollision<Physics>)
         .addStaticFunction("getIgnoreLayerCollision", &luaGetIgnoreLayerCollision<Physics>)
         .addStaticFunction("getLayerCollisionMask", &luaGetLayerCollisionMask<Physics>)
@@ -1094,6 +1097,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("cancelPreload",
             luabridge::overload<uint32_t>(&SceneManager::cancelPreload),
             luabridge::overload<const std::string&>(&SceneManager::cancelPreload))
+        // the DontDestroyOnLoad scene, nil before the first DontDestroyOnLoad
+        .addStaticProperty("persistentScene", &SceneManager::getPersistentScene)
+        .addStaticFunction("moveGameObjectToScene", &LuaBinding::luaMoveGameObjectToScene)
         .addStaticFunction("clearAll", &SceneManager::clearAll)
         .addStaticFunction("setScenePtr", &SceneManager::setScenePtr)
         .addStaticFunction("getScenePtr", &SceneManager::getScenePtr)

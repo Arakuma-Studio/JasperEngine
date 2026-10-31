@@ -178,6 +178,18 @@ namespace jasperengine::editor::mcp {
         static Json entityReferenceToJson(Project* project, SceneProject* scene, const EntityReference& value);
         static bool entityReferenceFromJson(Project* project, SceneProject* scene, const Json& value, EntityReference& out, std::string& error);
 
+        // Unity AnimationCurve / Gradient (docs/mcp/guide/lines-trails.md): a curve is
+        // {"keys": [[time, value] | [time, value, inTangent, outTangent]...], "pre", "post":
+        // "clamp"|"loop"|"ping_pong"} (an infinite tangent, a step, is "inf" / "-inf"); writes
+        // also take a number (constant) or the keys array alone. A gradient is {"mode":
+        // "blend"|"fixed", "colors": [[time, colour]...], "alphas": [[time, alpha]...]}, colours
+        // "#RRGGBB" (sRGB, read back as such when exact) or [r, g, b] (linear); writes also take
+        // one colour ("#RRGGBB[AA]" or [r, g, b(, a)] linear) for a constant gradient
+        static Json curveToJson(const AnimationCurve& curve);
+        static bool curveFromJson(const Json& value, AnimationCurve& out, std::string& error);
+        static Json gradientToJson(const Gradient& gradient);
+        static bool gradientFromJson(const Json& value, Gradient& out, std::string& error);
+
         static Json textureToJson(Project* project, SceneProject* scene, const Texture& texture);
         // `camera` gets the camera entity of a {"camera": ...} value (NULL_ENTITY otherwise; a
         // {"fluid": ...} value is a plain texture bound to the fluid's output)
@@ -227,6 +239,10 @@ namespace jasperengine::editor::mcp {
         // only: FluidStats in snake_case plus the matching preset, the device's support and the
         // simulator's last error; null when the entity has no FluidSimulationComponent
         static Json fluidStatsToJson(Scene* scene, Entity entity);
+        // A UI element's Canvas Group chain (ui canvas group spec 7.8): {inherited_alpha,
+        // interactable, blocks_raycasts, group: "<path>"}; null outside any group or without a
+        // RectTransform; a FLATTEN group adds flatten {layered, layer_alpha, the scene's layer stats}
+        static Json canvasGroupStateToJson(Scene* scene, Entity entity);
 
         static Json shaderParamsToJson(const ShaderUniformValues& values);
         // `out` replaced by `value` (null clears); `manifest` (may be null) types colour hex

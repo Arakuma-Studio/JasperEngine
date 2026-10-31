@@ -8,6 +8,7 @@
 #include "Scene.h"
 #include "Log.h"
 #include "manager/ObjectManager.h"
+#include "manager/SceneManager.h"
 #include "component/ScriptComponent.h"
 #include "component/Transform.h"
 
@@ -28,6 +29,9 @@ namespace {
 
     // awakened and not unloaded, in start order
     std::vector<Scene*> startedScenes;
+
+    // scenes awakening now (a script's init can start another scene)
+    int awakeningScenes = 0;
 
     bool isStarted(Scene* scene) {
         return scene && std::find(startedScenes.begin(), startedScenes.end(), scene) != startedScenes.end();
@@ -257,8 +261,15 @@ void ScriptRuntime::awakeScene(Scene* scene) {
     startedScenes.push_back(scene);
     // what the scripts instantiate goes to their scene, not yet the Engine's
     ObjectManager::pushActiveScene(scene);
+    awakeningScenes++;
     awake(scene, scriptedOrder(scene));
+    awakeningScenes--;
     ObjectManager::popActiveScene();
+    // the end of a scene's start in a scene load is a safe point for what its scripts asked to
+    // persist (DontDestroyOnLoad in init): it moves before the scene's documents start
+    if (awakeningScenes == 0 && scene != SceneManager::getPersistentScene() && SceneManager::isStartingScenes()) {
+        SceneManager::flushPersistentMoves();
+    }
 }
 
 void ScriptRuntime::awakeEntities(Scene* scene, const std::vector<Entity>& entities) {
@@ -322,6 +333,11 @@ void ScriptRuntime::flushStarts() {
         ScriptEntry* entry = findEntry(scene, entity, instance, &index);
         // not active and enabled now: the next onEnable queues it again
         if (!entry || !state.enabledLatch || !wantsEnabled(scene, entity, *entry, state)) {
+            continue;
+        }
+        // destroyed before its first frame (Unity: Destroy(gameObject) in Awake, a singleton's
+        // duplicate): it goes at the end of this frame without its start
+        if (ObjectManager::isDestroyPending(scene, entity)) {
             continue;
         }
         state.started = true;
@@ -455,5 +471,32 @@ void ScriptRuntime::remap(Scene* from, Scene* to, const std::unordered_map<Entit
             state.scene = to;
             state.entity = moved->second;
         }
+    }
+    // their members (self.gameObject, isActiveAndEnabled) name the new place
+    for (const auto& [oldEntity, newEntity] : entities) {
+        (void)oldEntity;
+        ScriptComponent* scripts = scriptsOf(to, newEntity);
+        if (!scripts) {
+            continue;
+        }
+        for (const ScriptEntry& entry : scripts->scripts) {
+            const ScriptState* state = getState(entry.instance);
+            LuaBinding::syncScriptMembers(to, newEntity, entry, entry.enabled && state && !state->destroyed &&
+                                          to->isEntityActiveInHierarchy(newEntity));
+        }
+    }
+}
+
+void ScriptRuntime::removeSubscriptionsByTag(Scene* scene, const std::string& tag) {
+    if (tag.empty()) {
+        return;
+    }
+    Engine::removeSubscriptionsByTag(tag);
+    if (scene) {
+        scene->removeSubscriptionsByTag(tag);
+    }
+    Scene* persistent = SceneManager::getPersistentScene();
+    if (persistent && persistent != scene) {
+        persistent->removeSubscriptionsByTag(tag);
     }
 }

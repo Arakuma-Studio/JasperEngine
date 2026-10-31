@@ -71,6 +71,15 @@ namespace jasperengine{
 
         void setIgnoreScissor(bool ignoreScissor);
         bool isIgnoreScissor() const;
+
+        // Canvas Groups over this element, the chain walked now (exact before the next sync):
+        // Unity CanvasRenderer.GetInheritedAlpha, CanvasGroup-allowed interaction and raycasts
+        float getInheritedAlpha() const;
+        bool getGroupsAllowInteraction() const;
+        bool getGroupsBlockRaycasts() const;
+        // Unity Selectable.IsInteractable: the groups allow it and the Button / InputField's
+        // own disabled flag is off
+        bool isInteractable() const;
     };
 }
 

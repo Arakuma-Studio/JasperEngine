@@ -10,6 +10,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -101,6 +102,10 @@ namespace jasperengine {
         static const ScriptState* getState(const void* instance);
         // The instance is released or deleted (its ref or address may be reused): its state goes
         static void forgetInstance(const void* instance);
+        // What a released script (`tag`: the "_<address>_" its subscriptions carry) subscribed
+        // goes: the Engine's events, its scene's component events, and the persistent scene's
+        // (a level's script listening to a persistent GameObject; DontDestroyOnLoad)
+        static void removeSubscriptionsByTag(Scene* scene, const std::string& tag);
     };
 
 }

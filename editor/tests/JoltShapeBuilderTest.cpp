@@ -82,16 +82,16 @@ TEST(ScenePhysics, RawHullOnRawMesh) {
     Collider3D& mesh = t.collider(ground, Collider3DType::MESH);
     mesh.source = Collider3DSource::RAW_MESH;
     const Vector3 corners[4] = {Vector3(-5, 0, -5), Vector3(5, 0, -5), Vector3(5, 0, 5), Vector3(-5, 0, 5)};
-    for (const Vector3& c : corners) mesh.vertices[mesh.numVertices++] = c;
+    for (const Vector3& c : corners) mesh.vertices.push_back(c);
     const uint16_t tris[6] = {0, 2, 1, 0, 3, 2};
-    for (uint16_t i : tris) mesh.indices[mesh.numIndices++] = i;
+    for (uint16_t i : tris) mesh.indices.push_back(i);
 
     const Entity body = t.entity(Vector3(0, 1, 0));
     t.setScale(body, Vector3(2, 1, 2));
     Collider3D& hull = t.collider(body, Collider3DType::CONVEX_HULL, BodyType::DYNAMIC);
     hull.source = Collider3DSource::RAW_VERTICES;
     for (int i = 0; i < 8; i++) {
-        hull.vertices[hull.numVertices++] = Vector3((i & 1) ? 0.25f : -0.25f, (i & 2) ? 0.25f : -0.25f, (i & 4) ? 0.25f : -0.25f);
+        hull.vertices.push_back(Vector3((i & 1) ? 0.25f : -0.25f, (i & 2) ? 0.25f : -0.25f, (i & 4) ? 0.25f : -0.25f));
     }
 
     runScene(t, 240);
@@ -128,9 +128,9 @@ TEST(ScenePhysics, MirroredMeshFloor) {
     Collider3D& mesh = t.collider(raw, Collider3DType::MESH);
     mesh.source = Collider3DSource::RAW_MESH;
     const Vector3 corners[4] = {Vector3(-5, 0, -5), Vector3(5, 0, -5), Vector3(5, 0, 5), Vector3(-5, 0, 5)};
-    for (const Vector3& c : corners) mesh.vertices[mesh.numVertices++] = c;
+    for (const Vector3& c : corners) mesh.vertices.push_back(c);
     const uint16_t tris[6] = {0, 2, 1, 0, 3, 2};
-    for (uint16_t i : tris) mesh.indices[mesh.numIndices++] = i;
+    for (uint16_t i : tris) mesh.indices.push_back(i);
 
     std::vector<Entity> crates;
     for (const Vector3& at : {Vector3(0.5f, 2, 0.3f), Vector3(20.5f, 2, 0.3f)}) {

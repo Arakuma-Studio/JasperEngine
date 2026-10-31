@@ -7,6 +7,7 @@
 #include "SubSystem.h"
 #include "System.h"
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -30,7 +31,26 @@
 #include "PointerEventData.h"
 #include "Input.h"
 
+#include "component/CanvasGroupComponent.h"
+#include "component/PointsComponent.h"
+
 namespace jasperengine{
+
+    // An element's Canvas Group chain (ui canvas group spec decision 1): the enabled groups
+    // from the element up, stopping after the first one with ignoreParentGroups
+    struct JASPERENGINE_API CanvasGroupState{
+        float alpha = 1.0f;             // product of the alphas (absolute, Unity GetInheritedAlpha)
+        bool interactable = true;       // AND of the interactable flags
+        bool blocksRaycasts = true;     // AND of the blocksRaycasts flags
+        Entity group = NULL_ENTITY;     // the nearest group of the chain, NULL_ENTITY without one
+    };
+
+    // Work done by UISystem::syncCanvasGroups since the last reset (tests, budgets)
+    struct JASPERENGINE_API CanvasGroupStats{
+        uint64_t fullPasses = 0;        // structural passes over every Transform
+        uint64_t subtreePasses = 0;     // property passes over one group's branch
+        uint64_t visited = 0;           // entities walked by both
+    };
 
     enum class ScriptMessage : uint8_t;   // script/ScriptMessages.h
 
@@ -96,6 +116,55 @@ namespace jasperengine{
         int anchorReferenceHeight;
 
         bool pendingImages; // an image waited for its texture in the last update
+
+        // Canvas Groups (syncCanvasGroups)
+        struct CanvasGroupEntry{
+            float alpha = 1.0f;         // the chain's product (Per Element)
+            float layerAlpha = 1.0f;    // relative to the enclosing layered FLATTEN group
+            bool interactable = true;
+            bool blocks = true;
+            bool underRect = false;     // a RectTransform on the entity or above it (UI particles)
+            uint8_t layerDepth = 0;     // enclosing layered FLATTEN groups
+            Entity group = NULL_ENTITY;
+        };
+        struct CanvasGroupFade{
+            Entity group = NULL_ENTITY;
+            Entity tween = NULL_ENTITY;
+            float endAlpha = 1.0f;
+            bool deactivate = false;
+            std::function<void()> onComplete;
+            bool finished = false;      // the tween stopped (onCanvasGroupFadeStopped)
+            bool completed = false;     // ... at its end (not stopped early)
+        };
+        bool canvasGroupsStructuralDirty = true;
+        uint64_t canvasGroupsRevision = 0;
+        // some element may hold a group's state: one reset pass when the last group goes
+        bool canvasGroupsApplied = false;
+        CanvasGroupStats canvasGroupStats;
+        std::vector<CanvasGroupEntry> canvasGroupScratch;
+        std::vector<size_t> canvasGroupParents;
+        std::vector<Entity> canvasGroupDirty;
+        // elements whose effective interactable turned false: their widgets drop presses,
+        // focus and gestures in the next update (never inside a draw or a raycast)
+        std::vector<Entity> interactabilityLost;
+        std::vector<CanvasGroupFade> canvasGroupFades;
+
+        CanvasGroupEntry combineCanvasGroup(const CanvasGroupEntry& parent, Entity entity, Signature signature, CanvasGroupComponent* group, bool warn);
+        void applyCanvasGroupEntry(Entity entity, Signature signature, const CanvasGroupEntry& entry);
+        bool sanitizeCanvasGroup(Entity entity, CanvasGroupComponent& group);
+        void canvasGroupFullPass();
+        void canvasGroupSubtreePass(Entity groupEntity);
+        void canvasGroupResetPass();
+        void processInteractabilityLost();
+        void processCanvasGroupFades();
+        void finishCanvasGroupFade(CanvasGroupFade fade, bool runCompletion);
+        // The hit test of every pointer event, in one place (UISystemPointer.cpp; raycast() is
+        // it after syncCanvasGroups): the last element in RectTransform order (children after
+        // their parents) that is visible, active in hierarchy with an enabled UIComponent, has
+        // an Image, contains the point (clipped to its panel), does not ignore events and whose
+        // Canvas Groups block raycasts. panelHit: the panel the press brings to front (the
+        // element's panel, or a Panel it is in).
+        Entity raycastHit(const Vector2& point, Entity* panelHit = nullptr) const;
 
         void createOrUpdateUiComponent(RectTransformComponent& layout, Entity entity, Signature signature);
         void getPanelEdges(const PanelComponent& panel, const RectTransformComponent& layout, const Transform& transform, const RectTransformComponent& headerlayout,  Rect& edgeRight, Rect& edgeRightBottom, Rect& edgeBottom, Rect& edgeLeftBottom, Rect& edgeLeft);
@@ -265,12 +334,6 @@ namespace jasperengine{
         bool eventOnPointerUp(float x, float y) { return eventOnPointerUp(-1, D_MOUSE_BUTTON_LEFT, x, y, false); }
         bool eventOnPointerMove(float x, float y) { return eventOnPointerMove(-1, x, y, false); }
 
-        // The hit test of every pointer event, in one place (the contract ui-canvas-group extends
-        // with blocksRaycasts): the last element in RectTransform order (children after their
-        // parents) that is visible, active in hierarchy with an enabled UIComponent, has an
-        // Image, contains the point (clipped to its panel) and does not ignore events. panelHit:
-        // the panel the press brings to front (the element's panel, or a Panel it is in).
-        Entity raycast(const Vector2& point, Entity* panelHit = nullptr) const;
 
         // D15: that pointer (or, with INT_MIN, the mouse or any finger) is over a UI element that
         // takes events, or presses one. The last processed event of the pointer counts.
@@ -286,6 +349,35 @@ namespace jasperengine{
         // on-screen controls: the stick's value for its knob position and the axes options
         // (Joystick Pack: dead zone, normalised past 1, snap); input = (pointer - centre) / radius, y down
         static Vector2 stickInput(const OnScreenStickComponent& stick, Vector2 input);
+
+        // The topmost element under the point a pointer event hits: the last Image in Hierarchy
+        // order that contains it, is visible, active, not ignoreEvents and whose Canvas Groups
+        // block raycasts (ui canvas group spec 7.4); NULL_ENTITY over nothing
+        Entity raycast(Vector2 point);
+
+        // Canvas Groups (ui canvas group spec 7.2). Idempotent, O(number of groups) when nothing
+        // changed: a structural change (hierarchy, a group, UI element or Transform added or
+        // removed, a scene load) runs one pass over the Transforms, a changed group one pass
+        // over its branch. Called by update, draw and every pointer entry point
+        void syncCanvasGroups();
+        // The chain walked on demand (O(depth)): exact even before the next sync
+        CanvasGroupState getCanvasGroupState(Entity entity) const;
+        // Unity Selectable.IsInteractable: the groups allow it and the widget's own flag
+        // (Button / InputField disabled) is off; the groups' state of the last sync
+        bool isInteractable(Entity entity) const;
+        const CanvasGroupStats& getCanvasGroupStats() const;
+        void resetCanvasGroupStats();
+
+        // Fade helpers (CanvasGroup::fadeTo): `tween` is an AlphaTween on `group`, owned here. A
+        // new fade on a group stops its previous one. When the tween finishes, the update
+        // destroys it, then calls onComplete, then deactivates the group's GameObject when asked.
+        // Destroying the group (or the tween) or unloading the scene drops the fade unfinished
+        void startCanvasGroupFade(Entity group, Entity tween, float endAlpha, bool deactivate, std::function<void()> onComplete);
+        // jumpToEnd: the end alpha is written and the fade completes now (onComplete, deactivate)
+        void stopCanvasGroupFade(Entity group, bool jumpToEnd);
+        bool isCanvasGroupFading(Entity group) const;
+        // the AlphaTween's ActionComponent stopped (subscribed by startCanvasGroupFade)
+        void onCanvasGroupFadeStopped(Entity tween, bool atEnd);
 
         // basic UIs
         bool createOrUpdatePolygon(PolygonComponent& polygon, UIComponent& ui, RectTransformComponent& layout);
@@ -304,6 +396,7 @@ namespace jasperengine{
         void destroy() override;
         void update(double dt) override;
 
+        void onComponentAdded(Entity entity, ComponentId componentId) override;
         void onComponentRemoved(Entity entity, ComponentId componentId) override;
     };
 

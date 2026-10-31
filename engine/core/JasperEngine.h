@@ -61,6 +61,7 @@
 #include "component/LightComponent.h"
 #include "component/Light2DComponent.h"
 #include "component/LineRendererComponent.h"
+#include "component/TrailRendererComponent.h"
 #include "component/MeshComponent.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/MirrorComponent.h"
@@ -100,6 +101,7 @@
 #include "component/TranslateTracksComponent.h"
 #include "component/UIComponent.h"
 #include "component/LayoutGroupComponent.h"
+#include "component/CanvasGroupComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/UIDocumentComponent.h"
 
@@ -118,6 +120,8 @@
 #include "io/File.h"
 #include "io/UserSettings.h"
 
+#include "math/AnimationCurve.h"
+#include "math/Gradient.h"
 #include "math/AABB.h"
 #include "math/Matrix3.h"
 #include "math/Matrix4.h"
@@ -143,6 +147,7 @@
 #include "object/Light.h"
 #include "object/Light2D.h"
 #include "object/LineRenderer.h"
+#include "object/TrailRenderer.h"
 #include "object/Mesh.h"
 #include "object/MeshPolygon.h"
 #include "object/Mirror.h"
@@ -172,6 +177,7 @@
 #include "object/Tilemap.h"
 #include "object/ui/Button.h"
 #include "object/ui/LayoutGroup.h"
+#include "object/ui/CanvasGroup.h"
 #include "object/ui/Image.h"
 #include "object/ui/Panel.h"
 #include "object/ui/Polygon.h"
@@ -201,6 +207,7 @@
 #include "render/CameraRender.h"
 #include "render/FramebufferRender.h"
 #include "render/ObjectRender.h"
+#include "render/LineRibbonBuilder.h"
 #include "render/Render.h"
 #include "render/ShaderRender.h"
 #include "render/SystemRender.h"
@@ -224,6 +231,7 @@
 #include "subsystem/ActionSystem.h"
 #include "subsystem/PoseAnimatorSystem.h"
 #include "subsystem/VertexAnimatorSystem.h"
+#include "subsystem/TrailSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/FluidSystem.h"
 #include "subsystem/MeshSystem.h"
@@ -259,7 +267,11 @@
 #include "util/ThreadUtils.h"
 #include "util/UniqueToken.h"
 
+#include "thread/MainThreadQueue.h"
 #include "thread/ResourceProgress.h"
 #include "thread/ThreadPoolManager.h"
+
+#include "net/Http.h"
+#include "script/AsyncOwner.h"
 
 #endif /* jasperengine_h */

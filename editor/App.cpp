@@ -1821,6 +1821,8 @@ ImFont* editor::App::getBoldFont() {
 }
 
 void editor::App::setup() {
+    // DontDestroyOnLoad moves nothing in edit mode (Play installs the session's factory)
+    Project::refusePersistentScenes();
     mainThreadId = std::this_thread::get_id();
 
     // a queued offscreen pose render keeps the loop drawing until processFrame serves it
@@ -1985,6 +1987,10 @@ void editor::App::deleteSelection() {
     bool tileDeleted = false;
     bool instanceDeleted = false;
     if (sp && sp->sceneRender) {
+        // a polyline point selected in the Scene view: that point goes, not the GameObject
+        if (sp->sceneRender->removeSelectedLinePoint(&project, targetSceneId)) {
+            return;
+        }
         int tileIdx = sp->sceneRender->getSelectedTileIndex();
         Entity tileEntity = sp->sceneRender->getSelectedTileEntity();
         if (tileIdx >= 0) {

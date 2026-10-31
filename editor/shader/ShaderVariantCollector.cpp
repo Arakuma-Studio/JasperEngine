@@ -31,6 +31,7 @@
 #include "component/Transform.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/CanvasGroupComponent.h"
 #include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/effects/EffectRegistry.h"
@@ -457,8 +458,12 @@ namespace {
                 if (points || registry->findComponent<ParticleSystemComponent>(entity)){
                     collectPoints(points);
                 }
+                // the hairline, or the ribbon variant a width loads (pixel widths, a base texture)
                 if (const LineRendererComponent* lines = registry->findComponent<LineRendererComponent>(entity)){
-                    insertKeys(ShaderType::LINES, ShaderPool::getLinesProperties(false, true), shaderId(lines->customShader, ShaderType::LINES, lines->shaderFeatures, lines->blendMode));
+                    insertKeys(ShaderType::LINES, RenderSystem::getLinesVariantProperties(scene, *lines), shaderId(lines->customShader, ShaderType::LINES, lines->shaderFeatures, lines->blendMode));
+                }
+                if (const TrailRendererComponent* trail = registry->findComponent<TrailRendererComponent>(entity)){
+                    insertKeys(ShaderType::LINES, RenderSystem::getTrailVariantProperties(scene, *trail), shaderId(trail->customShader, ShaderType::LINES, trail->shaderFeatures, trail->blendMode));
                 }
                 if (const SkyboxComponent* sky = registry->findComponent<SkyboxComponent>(entity)){
                     insertKeys(ShaderType::SKYBOX, 0, shaderId(sky->customShader, ShaderType::SKYBOX, sky->shaderFeatures, MaterialBlendMode::AUTO));
@@ -1060,6 +1065,9 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
     }
     // fixed resolution upscales with it and a scene stack is presented with it
     keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
+    // a FLATTEN Canvas Group composites its layer with the HTML UI passthrough: always (a few
+    // KB), since a script can add a group or switch one to FLATTEN in any scene
+    keys.insert(ShaderPool::getShaderKey(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH)));
     // the uber pass of the scene's post-processing (phase 4: a BLIT variant of its features),
     // and the ones its scripts plausibly switch to; the bloom and blur chain's programs with them
     bool bloom = false;

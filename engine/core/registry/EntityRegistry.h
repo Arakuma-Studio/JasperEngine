@@ -32,6 +32,7 @@
 #include "component/ImageComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/LayoutGroupComponent.h"
+#include "component/CanvasGroupComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/Transform.h"
@@ -48,6 +49,7 @@
 #include "component/ParticleSystemComponent.h"
 #include "component/PointsComponent.h"
 #include "component/LineRendererComponent.h"
+#include "component/TrailRendererComponent.h"
 #include "component/TextComponent.h"
 #include "component/UIComponent.h"
 #include "component/ButtonComponent.h"
@@ -72,6 +74,7 @@
 #include "component/Joint2DComponent.h"
 #include "component/RigidbodyComponent.h"
 #include "component/Joint3DComponent.h"
+#include "component/RagdollComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/PrefabComponent.h"
 

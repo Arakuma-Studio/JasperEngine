@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "EntityRegistry.h"
+#include "script/AsyncOwner.h"
 
 #include <unordered_set>
 
@@ -60,6 +61,7 @@ EntityRegistry::EntityRegistry() {
 #ifdef JASPERENGINE_PHYSICS_3D
     registerComponent<RigidbodyComponent>();
     registerComponent<Joint3DComponent>();
+    registerComponent<RagdollComponent>();
 #endif
     registerComponent<InstancedMeshComponent>();
     registerComponent<PrefabComponent>();
@@ -73,6 +75,8 @@ EntityRegistry::EntityRegistry() {
     registerComponent<PoseAnimatorComponent>();
     registerComponent<AnimationPlayerComponent>();
     registerComponent<VertexAnimatorComponent>();
+    registerComponent<TrailRendererComponent>();
+    registerComponent<CanvasGroupComponent>();
     registerComponent<OnScreenStickComponent>();
     registerComponent<OnScreenButtonComponent>();
     registerComponent<TouchAreaComponent>();
@@ -267,6 +271,8 @@ void EntityRegistry::destroyEntity(Entity entity) {
         logHierarchyChange(destroyedLog, entity);
     }
     onEntityDestroyed(entity, entityManager.getSignature(entity));
+    // async work it owns (HTTP requests...) ends without its callbacks
+    AsyncOwners::entityDestroyed(this, entity);
 
     componentManager.entityDestroyed(entity);
     entityManager.destroy(entity);
@@ -300,6 +306,9 @@ void EntityRegistry::destroyEntities(const std::vector<Entity>& entities) {
     }
     if (doomed.empty()) {
         return;
+    }
+    for (Entity entity : doomed) {
+        AsyncOwners::entityDestroyed(this, entity);
     }
     componentManager.entitiesDestroyed(doomed);
     for (Entity entity : doomed) {
@@ -345,6 +354,17 @@ Entity EntityRegistry::findEntity(const std::string& name, Entity parent) const 
 }
 
 void EntityRegistry::setEntityActive(Entity entity, bool active) {
+    // the trails of a GameObject deactivated (it and its children) are cleared now, not at the
+    // next TrailSystem update: reactivated in the same frame elsewhere it draws no streak
+    if (!active && entityManager.isActive(entity)) {
+        auto trails = componentManager.getComponentArray<TrailRendererComponent>();
+        for (size_t i = 0; i < trails->size(); i++) {
+            const Entity trailEntity = trails->getEntity(i);
+            if (trailEntity == entity || isParentOf(entity, trailEntity)) {
+                trails->getComponentFromIndex(i).clearPoints();
+            }
+        }
+    }
     if (!isActivationObserved() || !isEntityCreated(entity)) {
         entityManager.setActive(entity, active);
         return;

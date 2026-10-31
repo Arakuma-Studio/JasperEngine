@@ -67,7 +67,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::LightComponent, "Directional, point or spot light"},
             {ComponentType::SpriteComponent, "Draws a 2D sprite"},
             {ComponentType::TilemapComponent, "Grid of tiles from a texture atlas"},
-            {ComponentType::LineRendererComponent, "Draws line segments"},
+            {ComponentType::LineRendererComponent, "Draws lines: a polyline with width, colour gradient, joints and caps, or debug segments"},
             {ComponentType::PointsComponent, "Draws a point cloud"},
             {ComponentType::SkyboxComponent, "Skybox cube map and scene environment"},
             {ComponentType::FogComponent, "Distance fog"},
@@ -79,10 +79,12 @@ ComponentAddDialog::ComponentAddDialog() {
         {"Effects", ICON_FA_FIRE, {
             {ComponentType::ParticleSystemComponent, "Emits and animates particles"},
             {ComponentType::FluidSimulationComponent, "GPU fluid with dye, bloom and sunrays, drawn on the sprite or mesh"},
+            {ComponentType::TrailRendererComponent, "Draws a fading ribbon behind a moving object"},
         }},
         {"Physics", ICON_FA_CUBE, {
             {ComponentType::RigidbodyComponent, "Rigidbody with colliders, simulated by Jolt"},
             {ComponentType::Joint3DComponent, "Connects two Rigidbodies"},
+            {ComponentType::RagdollComponent, "Switches a character's bone bodies between animated and simulated"},
         }},
         {"Physics 2D", ICON_FA_CIRCLE, {
             {ComponentType::Rigidbody2DComponent, "2D Rigidbody with colliders, simulated by Box2D"},
@@ -105,6 +107,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::OnScreenButtonComponent, "Touch button feeding an Input action (Fire1)"},
             {ComponentType::TouchAreaComponent, "Drag area feeding Input actions (Mouse X / Mouse Y): touch look"},
             {ComponentType::LayoutGroupComponent, "Arranges child elements in a row, column or grid"},
+            {ComponentType::CanvasGroupComponent, "Fades, disables or makes click-through a UI subtree"},
             {ComponentType::PolygonComponent, "Filled UI polygon"},
             {ComponentType::UIDocumentComponent, "HTML/CSS document rendered by the engine"},
         }},

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneWindow.h"
+#include "util/PhysicsMaterialAssets.h"
 #include "component/Joint2DComponent.h"
 #include "pose/PoseViewport.h"
 #include "util/BidiText.h"
@@ -577,6 +578,17 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                 if (Util::isAnimationClipFile(path)) clips.push_back(path);
                             }
                             Backend::getApp().dispatchClipDrop(sceneProject->id, selEntity, clips);
+                            focusSceneWindow(*sceneProject);
+                        }
+                    }
+                } else if (PhysicsMaterialAssets::isPhysicsMaterialFile(droppedRelativePath)) {
+                    // a physics material onto a GameObject: the material of all its colliders, one step
+                    if (selEntity != NULL_ENTITY && insideAssets && sceneProject->playState == ScenePlayState::STOPPED && !project->isAnyScenePlaying()) {
+                        if (ImGui::AcceptDragDropPayload("resource_files")) {
+                            std::string error;
+                            if (!PhysicsMaterialAssets::applyToObject(project, sceneProject->id, selEntity, droppedAssetPath, error)) {
+                                Out::warning("%s", error.c_str());
+                            }
                             focusSceneWindow(*sceneProject);
                         }
                     }
@@ -1312,6 +1324,10 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                     }
                     if (!blockPointHit) {
                         int pointHit = sceneProject->sceneRender->hitTestLinePoint(selEntity, x, y);
+                        // Inspector > Line Renderer > Edit Points: Ctrl+click on the polyline inserts a point
+                        if (pointHit < 0 && io.KeyCtrl && sceneProject->sceneRender->isLinePointEditing()) {
+                            pointHit = sceneProject->sceneRender->insertLinePointAt(project, sceneId, selEntity, x, y);
+                        }
                         if (pointHit >= 0) {
                             sceneProject->sceneRender->selectLinePoint(selEntity, pointHit);
                             subSelectionClickConsumesRelease[sceneId] = true;

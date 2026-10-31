@@ -89,7 +89,7 @@ namespace {
 
 // ---- the hit test
 
-Entity UISystem::raycast(const Vector2& point, Entity* panelHit) const{
+Entity UISystem::raycastHit(const Vector2& point, Entity* panelHit) const{
     Entity hit = NULL_ENTITY;
     Entity panel = NULL_ENTITY;
 
@@ -102,6 +102,9 @@ Entity UISystem::raycast(const Vector2& point, Entity* panelHit) const{
             continue;
         const Transform& transform = scene->getComponent<Transform>(entity);
         if (!transform.visible || !isUIActive(entity, signature) || layout.ignoreEvents)
+            continue;
+        // a Canvas Group that does not block raycasts lets the pointer through (ui-canvas-group 7.4)
+        if (signature.test(scene->getComponentId<UIComponent>()) && !scene->getComponent<UIComponent>(entity).groupBlocksRaycasts)
             continue;
 
         Rect uirect(transform.worldPosition.x, transform.worldPosition.y, layout.width * transform.worldScale.x, layout.height * transform.worldScale.y);
@@ -415,7 +418,7 @@ void UISystem::legacyPointerDown(UIPointerState& state){
     // a Button: this pointer holds it (the first one presses it)
     if (signature.test(scene->getComponentId<ButtonComponent>())){
         ButtonComponent* button = scene->findComponent<ButtonComponent>(entity);
-        if (button && !button->disabled){
+        if (button && isInteractable(entity)){
             state.buttonPressed = entity;
             refreshButtonPressed(entity);
             UIPointerState* current = findPointer(pointerId);
@@ -431,9 +434,13 @@ void UISystem::legacyPointerDown(UIPointerState& state){
     if (!current || !transform || !layout)
         return;
 
+    // a non-interactable widget (its own flag or a Canvas Group) takes no gesture and no focus
+    const bool interactable = isInteractable(entity);
+    const bool inputFieldBlocked = signature.test(scene->getComponentId<InputFieldComponent>()) && !interactable;
+
     if (signature.test(scene->getComponentId<InputFieldComponent>())){
         InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
-        if (!inputfield.disabled && !isWidgetGestureOwned(entity, pointerId)){
+        if (interactable && !isWidgetGestureOwned(entity, pointerId)){
             TextComponent* text = scene->findComponent<TextComponent>(inputfield.text);
             ImageComponent* img = scene->findComponent<ImageComponent>(entity);
             if (text && img){
@@ -461,7 +468,7 @@ void UISystem::legacyPointerDown(UIPointerState& state){
     }
 
     // a Scrollbar: its bar follows this pointer only (D2)
-    if (signature.test(scene->getComponentId<ScrollbarComponent>()) && !isWidgetGestureOwned(entity, pointerId)){
+    if (interactable && signature.test(scene->getComponentId<ScrollbarComponent>()) && !isWidgetGestureOwned(entity, pointerId)){
         ScrollbarComponent& scrollbar = scene->getComponent<ScrollbarComponent>(entity);
         if (scrollbar.bar != NULL_ENTITY &&
             scene->findComponent<Transform>(scrollbar.bar) &&
@@ -506,7 +513,7 @@ void UISystem::legacyPointerDown(UIPointerState& state){
     layout = &scene->getComponent<RectTransformComponent>(entity);
 
     // a Panel: moved or resized by this pointer only (D2)
-    if (signature.test(scene->getComponentId<PanelComponent>()) && !isWidgetGestureOwned(entity, pointerId)){
+    if (interactable && signature.test(scene->getComponentId<PanelComponent>()) && !isWidgetGestureOwned(entity, pointerId)){
         PanelComponent& panel = scene->getComponent<PanelComponent>(entity);
         RectTransformComponent defaultHeaderLayout;
         const RectTransformComponent& headerlayout = panel.headercontainer != NULL_ENTITY && scene->findComponent<RectTransformComponent>(panel.headercontainer)
@@ -559,7 +566,7 @@ void UISystem::legacyPointerDown(UIPointerState& state){
     if (!ui)
         return;
 
-    if (!ui->focused){
+    if (!ui->focused && !inputFieldBlocked){
         ui->focused = true;
         ui->onGetFocus.call();
         ui = scene->findComponent<UIComponent>(entity);
@@ -615,7 +622,7 @@ void UISystem::legacyPointerMove(UIPointerState& state, CursorType& cursor){
 
         if (current->inputFieldSelecting == entity){
             InputFieldComponent* inputfield = scene->findComponent<InputFieldComponent>(entity);
-            if (inputfield && !inputfield->disabled){
+            if (inputfield && isInteractable(entity)){
                 TextComponent* text = scene->findComponent<TextComponent>(inputfield->text);
                 ImageComponent* img = scene->findComponent<ImageComponent>(entity);
                 if (text && img){
@@ -625,6 +632,10 @@ void UISystem::legacyPointerMove(UIPointerState& state, CursorType& cursor){
         }
     }
     (void)localY;
+
+    // scrollbar and panel gestures stop with the widget's interactability
+    if (!isInteractable(entity))
+        return;
 
     if (current->scrollbar == entity)
         applyScrollbarPointerPosition(entity, x, y);
@@ -731,8 +742,9 @@ void UISystem::legacyPointerUp(UIPointerState& state, bool released, bool overWi
         callLegacy(&UIComponent::onDragEnd, entity, *current);
     }else if (released && !current->internalGesture && overWidget){
         bool canClick = true;
-        if (ButtonComponent* button = scene->findComponent<ButtonComponent>(entity))
-            canClick = !button->disabled;
+        // interactable when released (Unity Button.OnPointerClick)
+        if (scene->findComponent<ButtonComponent>(entity))
+            canClick = isInteractable(entity);
 
         if (canClick){
             callLegacy(&UIComponent::onClick, entity, *current);
@@ -820,6 +832,8 @@ void UISystem::applyScrollbarPointerPosition(Entity entity, float x, float y){
 // ---- the entry points
 
 bool UISystem::eventOnPointerDown(int pointerId, int button, float x, float y, bool touch){
+    // a script may have changed a Canvas Group since the last frame (blocksRaycasts, interactable)
+    syncCanvasGroups();
     validatePointers();
 
     const Vector2 point(x, y);
@@ -849,7 +863,7 @@ bool UISystem::eventOnPointerDown(int pointerId, int button, float x, float y, b
     created.control = NULL_ENTITY;
 
     Entity panelHit = NULL_ENTITY;
-    const Entity hit = raycast(point, &panelHit);
+    const Entity hit = raycastHit(point, &panelHit);
     const bool primary = touch || button == D_MOUSE_BUTTON_LEFT;
 
     // a press elsewhere takes the keyboard focus from the focused element (left button, a finger)
@@ -946,7 +960,8 @@ bool UISystem::eventOnPointerDown(int pointerId, int button, float x, float y, b
 
     if (primary){
         if (PanelComponent* panel = scene->findComponent<PanelComponent>(panelHit)){
-            if (panel->canBringToFront)
+            // a non-interactable panel is not brought to the front
+            if (panel->canBringToFront && isInteractable(panelHit))
                 scene->moveChildToTop(panelHit);
         }
     }
@@ -961,6 +976,7 @@ bool UISystem::eventOnPointerDown(int pointerId, int button, float x, float y, b
 }
 
 bool UISystem::eventOnPointerMove(int pointerId, float x, float y, bool touch){
+    syncCanvasGroups();
     validatePointers();
 
     const Vector2 point(x, y);
@@ -987,7 +1003,7 @@ bool UISystem::eventOnPointerMove(int pointerId, float x, float y, bool touch){
 
     CursorType cursor = CursorType::ARROW;
     Entity panelHit = NULL_ENTITY;
-    const Entity hit = raycast(point, &panelHit);
+    const Entity hit = raycastHit(point, &panelHit);
     bool consumed = false;
 
     for (int id : moved){
@@ -1071,7 +1087,7 @@ bool UISystem::eventOnPointerMove(int pointerId, float x, float y, bool touch){
     }
 
     // the mouse's cursor from what it is over
-    if (!touch && isLiveUIEntity(hit)){
+    if (!touch && isLiveUIEntity(hit) && isInteractable(hit)){
         const Signature signature = scene->getSignature(hit);
         if (signature.test(scene->getComponentId<InputFieldComponent>())){
             if (cursor == CursorType::ARROW) cursor = CursorType::IBEAM;
@@ -1103,6 +1119,7 @@ bool UISystem::eventOnPointerMove(int pointerId, float x, float y, bool touch){
 bool UISystem::eventOnPointerUp(int pointerId, int button, float x, float y, bool touch){
     (void)button;
     (void)touch;
+    syncCanvasGroups();
     validatePointers();
 
     UIPointerState* state = findPointer(pointerId);
@@ -1112,7 +1129,7 @@ bool UISystem::eventOnPointerUp(int pointerId, int button, float x, float y, boo
     const Vector2 point(x, y);
     state->delta = point - state->position;
     state->position = point;
-    state->hit = raycast(point);
+    state->hit = raycastHit(point);
 
     const bool consumed = state->captured;
     endPress(pointerId, true);
@@ -1326,7 +1343,8 @@ void UISystem::resetButtonStates() {
 // ---- on-screen controls
 
 bool UISystem::controlTakesPointers(Entity entity, Signature signature) const{
-    if (!scene->isEntityActiveInHierarchy(entity))
+    // inactive or in a non-interactable Canvas Group: no (a held control is cancelled, D6)
+    if (!scene->isEntityActiveInHierarchy(entity) || !isInteractable(entity))
         return false;
     const bool touchDevice = System::instance().isTouchDevice();
     if (signature.test(scene->getComponentId<OnScreenStickComponent>())){
