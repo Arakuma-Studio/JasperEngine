@@ -112,7 +112,7 @@ label, defaults to `name`), `type` (string, case-insensitive; default `float` if
 
 Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera`, `Light`,
 `Light2D`, `ShadowCaster2D`, `Mesh`, `Primitive`, `Mirror`, `Terrain`, `Tilemap`, `Model`,
-`MeshPolygon`, `Points`, `LineRenderer`, `Sprite`, `AudioSource`, `RectTransform`,
+`MeshPolygon`, `Points`, `LineRenderer`, `TrailRenderer`, `Sprite`, `AudioSource`, `RectTransform`,
 `LayoutGroup`, `Polygon`, `Text`, `Image`, `Button`, `Panel`, `Scrollbar`, `Progressbar`,
 `InputField`, `Bone`, `Fog`, `Skybox`, `ReflectionProbe`, `FluidSimulation`, `Rigidbody2D`, `Joint2D`,
 `Rigidbody`, `Joint3D`, `Action`, `Tween`, `AlphaTween`, `ColorTween`, `PositionTween`,
@@ -616,6 +616,10 @@ false). `==` with a value of another class is `false`. There is no `v + number`.
 | `Ray(origin, direction)` (Vector3) | rw `origin direction`; `getPoint(t)`; `intersects(AABB/OBB/Plane/Rigidbody2D/Rigidbody/...)`; `Ray.NO_HIT` |
 | `Matrix3`, `Matrix4` | `+ - == tostring`; `*` by a matrix, a number (either side) or a vector (`m * Vector3`, Matrix4 also `m * Vector4`; `Matrix4 * Vector3` applies the translation); `row column get set identity inverse transpose`; Matrix4 static `translateMatrix rotateMatrix rotateXMatrix rotateYMatrix rotateZMatrix scaleMatrix lookAtMatrix orthoMatrix perspectiveMatrix frustumMatrix` |
 | `Plane`, `AABB`, `OBB`, `Sphere` | geometry helpers (`intersects`, `contains`, `getCenter`, `getSize`, `merge`, ...) |
+| `AnimationCurve()` | Unity's curve. Static `constant(v)`, `linear(t0, v0, t1, v1)`, `easeInOut(t0, v0, t1, v1)`; `evaluate(t)`; `addKey(time, value [, inTangent, outTangent])` / `addKey(CurveKey)` -> 1-based index (-1 when a key is at that time); `removeKey(i)`; `moveKey(i, time, value)` / `moveKey(i, CurveKey)` -> its new index; `getKey(i)` -> `CurveKey` (nil out of range); ro `keyCount`; rw `keys` (table of `CurveKey`), `preWrapMode`, `postWrapMode` (`CurveWrap.*`) |
+| `CurveKey(time, value [, inTangent, outTangent])` | rw `time value inTangent outTangent` (slopes; `math.huge` is a step) |
+| `Gradient()` | Unity's gradient (white, opaque). `setKeys(colorKeys, alphaKeys)`: `{{time, Vector3 sRGB}, ...}` (or `GradientColorKey`s), `{{time, alpha}, ...}`; `evaluate(t)` -> Vector4 **linear**; rw `mode` (`GradientMode.*`), `colorKeys`, `alphaKeys`; ro `colorKeyCount`, `alphaKeyCount`; `getColorKey(i)`, `getAlphaKey(i)` (1-based) |
+| `GradientColorKey(time, colorV3)`, `GradientAlphaKey(time, alpha)` | rw `time`, `color` (**sRGB**: given and read as pickers show it, stored linear) / `alpha` |
 
 ---
 
@@ -627,7 +631,7 @@ Class hierarchy (methods/properties are inherited):
 EntityHandle
  |- GameObject
  |   |- Camera, Light, Light2D, ShadowCaster2D, ReflectionProbe, Bone, Points, LineRenderer, Lattice,
- |   |  FluidSimulation
+ |   |  FluidSimulation, TrailRenderer
  |   |- Mesh
  |   |   |- Primitive -> Mirror
  |   |   |- Sprite, Tilemap, Model, MeshPolygon, Terrain
@@ -1243,8 +1247,30 @@ end
 
 - `Points`: `addPoint(...)`, `updatePoint(i, ...)`, `removePoint(i)`, `clearPoints()`,
   `getNumPoints()`, `setTexture(path)`, rw `maxPoints`, `enabled`.
-- `LineRenderer`: `addLine(aV3, bV3 [, colorV4 [, colorB]])`, `updateLine(i, ...)`,
-  `removeLine(i)`, `clearLines()`, `getNumLines()`, rw `maxLines`, `enabled`.
+- `LineRenderer` (Unity's LineRenderer, jasper://docs/lines-trails): the polyline:
+  rw `positionCount` (growing repeats the last point), `setPosition(index, V3)` /
+  `getPosition(index)` (**0-based** like Unity; out of range is an error naming the count;
+  `setPosition(x, y[, z])` with numbers still moves the GameObject), `setPositions(table)`,
+  `getPositions()`, rw `loop`, `useWorldSpace`; the width: rw `widthMultiplier` (0 = the 1-pixel
+  hairline), `startWidth`, `endWidth` (set one: the curve becomes linear between them, multiplier
+  1), `widthCurve` (an `AnimationCurve` copy: edit it, assign it back), `widthUnit`
+  (`LineWidthUnit.*`); rw `colorGradient` (a `Gradient` copy), `startColor`, `endColor` (sRGB
+  Vector4, the gradient's ends), `numCornerVertices`, `numCapVertices` (0..90), `alignment`
+  (`LineAlignment.*`), `textureMode` (`LineTextureMode.*`), `textureScale` (Vector2), `texture`
+  (path: the built-in shader's base map), `sortPriority`, `mode` (`LineRendererMode.*`: the
+  polyline API switches to `Polyline`, the segment API to `Segments`). The segments (debug lines):
+  `addLine(aV3, bV3 [, colorV4 [, colorB]])`, `updateLine(i, ...)`, `removeLine(i)`,
+  `clearLines()`, `getNumLines()`, rw `maxLines`, `enabled`; the shader methods as Points.
+- `TrailRenderer` (Unity's TrailRenderer; `TrailRenderer(scene)` makes a GameObject with one,
+  `object:getTrailRenderer()` is nil without one, `object:hasTrailRenderer()`): rw `time`,
+  `minVertexDistance`, `emitting`, `autodestruct`, `enabled`, the width and colour properties
+  of LineRenderer (`widthMultiplier`, `startWidth`, `endWidth`, `widthCurve`, `widthUnit`,
+  `colorGradient`, `startColor`, `endColor`, `numCornerVertices`, `numCapVertices`, `alignment`,
+  `textureMode`, `textureScale`, `texture`, `sortPriority`: curve and gradient run from the head,
+  0, to the tail, 1); `clear()` (after a teleport); ro `positionCount`; `getPosition(i)`,
+  `setPosition(i, V3)` (0-based, the oldest first; the live head is not one), `getPositions()`,
+  `addPosition(V3)`, `addPositions(table)`; the shader methods (`customShader`,
+  `setShaderParam`, `setShaderTexture`, `setShaderFeature`, `blendMode`, ...).
 - `Polygon` (UI): `addVertex(x, y)` / `(Vector3)`, rw `color`, `alpha`, `flipY`;
   `setColor(r,g,b[,a])`, `setTexture(path)`.
 - `MeshPolygon`: `addVertex(...)`, ro `width`, `height`, rw `flipY`.
@@ -1431,6 +1457,12 @@ use the methods. Physics colliders keep the rest shape.
 | `LatticeJiggleAnchor` | `NONE`, `NEGATIVE_X`, `POSITIVE_X`, `NEGATIVE_Y`, `POSITIVE_Y`, `NEGATIVE_Z`, `POSITIVE_Z` |
 | `LatticeStage` | `BEFORE_SKINNING`, `AFTER_SKINNING` |
 | `LatticeMaskChannel` | `NONE`, `RED`, `GREEN`, `BLUE`, `ALPHA`, `INVERTED_RED`, `INVERTED_GREEN`, `INVERTED_BLUE`, `INVERTED_ALPHA` |
+| `LineRendererMode` | `Segments`, `Polyline` (`LineRenderer.mode`) |
+| `LineWidthUnit` | `World`, `Pixels` |
+| `LineAlignment` | `View`, `TransformZ` |
+| `LineTextureMode` | `Stretch`, `Tile`, `DistributePerSegment`, `RepeatPerSegment` |
+| `CurveWrap` | `Clamp`, `Loop`, `PingPong` (`AnimationCurve.preWrapMode` / `postWrapMode`) |
+| `GradientMode` | `Blend`, `Fixed` |
 
 There is no separate Rigidbody2D type enum: both Rigidbody2D and Rigidbody use `BodyType`.
 There is no `Collider2D`/`Collider3D` class: colliders are created/queried through the
