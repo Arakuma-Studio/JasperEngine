@@ -76,4 +76,104 @@ and under `~/je`.
 
 ## Results
 
-(below)
+Medians of 5 runs unless noted; "software" is the earlier figure on the benchmark server E
+(llvmpipe/lavapipe) for comparison. GPU clocks during the captures: 1.7-1.9 GHz (boost 2.1 GHz),
+recorded per case (`_clock_mhz`); light frames (under ~0.3 ms) let the GPU clock down, which is
+why S11 is measured at 4K.
+
+### S32 asynchronous shaders (R21, R22)
+
+`tools/perf/async_shaders_bench.py --runs 5` (10 toggles, the editor focused and its vsync off).
+
+| | R21 max main-thread creation (≤ 4 ms) | R22 worst / idle frame (≤ 2) | software (E) |
+|---|---|---|---|
+| GL `worker`, warm draws on (new default) | **0.014 ms** | 16.4 (worst 11-18.7 ms, idle 1.13 ms) | `parallel` 385.7 ms / 10.0 |
+| GL `worker`, warm draws off | 0.015 ms | 15.7 | |
+| GL `parallel` (compile threads fixed) | 8.83 ms | 10.6 | |
+| GL `sync` | 2192 ms | 1477 | 375.5 ms / 12.9 |
+| GL control: the same edits, no creation | 0.011 ms | 8.7 | |
+| Vulkan `thread` | **0.227 ms** | 3.9 (worst 3.7 ms) | 0.105 ms / 16.0 |
+| Vulkan `sync` | 799 ms | 838 | 298.4 ms / 21.3 |
+
+R21 holds on GL `worker` and Vulkan. R22 does not: on NVIDIA GL the worker's GLSL front end (about
+8 ms per new variant) holds the render thread's GL calls, and an unwarmed first draw compiles
+another ~8 ms; the no-creation control shows that one edit already costs the editor ~10 ms
+against a 1.1 ms idle frame. Fixed: `parallel` mode got no driver compile threads on NVIDIA (a
+2.1 s link on the render thread, now 8.8 ms). Defaults: GL Auto = `worker`, warm draws on for desktop
+GL, off on GLES. Details: `docs/specs/S32-async-shaders.md` (Progress).
+
+### S10 shadows (AC14)
+
+`tools/perf/gpu_campaign.py shadows`, the bench fixture, desktop tiers at 2560x1440, web and mobile
+tiers at 1920x1080 (budgets for their own devices). GL:
+
+| Tier | Receiver, sun soft | Static, cached | Walking, cached + 20 dynamic | software |
+|---|---|---|---|---|
+| Low | 0.061 ms (≤ 1.0) | 0.000 (≤ 0.05) | 1.209 (≤ 1.5) | not timed (no GPU timers then) |
+| Medium | 0.095 (≤ 1.5) | 0.000 | 0.664 (≤ 2.0) | |
+| High | 0.183 (≤ 0.6) | 0.000 | **0.328** (≤ 1.0; was 7.174) | |
+| Ultra | 0.233 (≤ 1.2) | 0.000 | **0.527** (≤ 1.5; was 8.789) | |
+
+Fixed: High and Ultra had no static shadow layer (their D32 atlases filled the memory row) and
+refitted their cascades every frame, so a walking camera redrew all 2,000 static casters each
+frame. They now freeze their fits and have memory rows of 192 / 576 MB
+(`docs/rendering/shadow-budgets.md`). Vulkan (the frames it timed, below): Ultra walking 0.167 ms of
+shadow passes, High walking 0.122 ms.
+
+### S12 atmosphere (AC10)
+
+`tools/performance/atmosphere_bench.py --gpu --runs 5`, 1920x1080, the Atmosphere/* passes each
+feature adds (height fog and the Sky Composite have no pass of their own: the camera pass's GPU
+time over its baseline's). GL / Vulkan:
+
+| Feature | GL | Vulkan | Budget | software (E, relative method) |
+|---|---|---|---|---|
+| Height fog (over linear) | 0.003 ms | - | ≤ 0.10 | within |
+| Sky Composite | 0.008 ms | - | ≤ 0.15 | within |
+| Volumetric fog Low (mobile budget) | 0.094 ms | - | ≤ 1.5 | 2-10x over |
+| Volumetric fog Medium | 0.391 ms | 0.349 | ≤ 1.0 | over |
+| Volumetric fog High | 0.761 ms | 0.662 | ≤ 1.8 | over |
+| Clouds Low (mobile budget) | 0.067 ms | - | ≤ 0.6 | within |
+| Clouds Medium | 0.184 ms | - | ≤ 0.8 | over |
+| Clouds High | 0.307 ms | 0.319 | ≤ 2.5 | over |
+
+All within budget on this card; the software method's 2-10x misses were its own (fragment-bound
+passes on a CPU). VRAM unchanged (11.8 MB Medium/High, 3.8 MB clouds High). Scaled to a GTX 1660
+class (4-5x slower) Volumetric High would be about 3-3.8 ms against 1.8: to be confirmed there.
+
+### S13 post FX
+
+GL, the post-processing fixture at 1920x1080: the whole Game view 0.25-0.27 ms with any preset;
+`film` and `vhs` cost -0.002 / -0.008 ms over `mobile` (within noise). The R14 budget is a
+Mali-G57 / Adreno 610 phone's and stays **pending** (no phone here).
+
+### VAT and S21 GPU skinning
+
+`tools/performance/vat_crowd.py --gpu-passes` (benchmark CLI, Game view 752x362, 300 frames):
+
+| Heroes | Case | GL frame / GPU | Vulkan frame / GPU |
+|---|---|---|---|
+| 1,000 | skinned (Animation Players) | 155.8 / 28.76 ms | 145.0 / 2.90 ms |
+| 1,000 | VAT Vertices | 1.09 / 0.67 ms | 1.00 / 0.58 ms |
+| 1,000 | VAT Bones | 1.07 / 0.79 ms | 1.01 / 0.55 ms |
+| 2,000 | skinned | 589.1 / 61.17 ms | 563.5 / 6.62 ms |
+| 2,000 | VAT Vertices / Bones | 1.49 / 1.33, 1.72 / 1.54 ms | 1.36 / 1.18, 1.26 / 1.09 ms |
+| 5,000 | skinned | 1632.9 / 101.8 ms | 1564.6 / 19.1 ms |
+| 5,000 | VAT Vertices / Bones | 3.65 / 3.34, 4.17 / 3.83 ms | 3.27 / 2.96, 3.03 / 2.75 ms |
+
+VAT draws 5,000 heroes in 3-4 ms of GPU on either backend. The skinned crowd is CPU-bound
+(posing; 126-1624 ms of CPU) and its GL GPU time is ~10x Vulkan's: the bone matrices go to the
+GPU as one texture per hero on GL (an upload per hero per frame) and as storage buffers on Vulkan.
+S21 has no GPU budget; recorded for its follow-up.
+
+### Known measurement limits
+
+- **Vulkan pass timers in the editor drop the Game view's passes on light frames.** Captures of
+  frames under ~0.5 ms (the S10 receiver and static cases, S13, S20, the light S12 configurations)
+  have no Game-view pass in any run, while heavy ones (S12 volumetric/clouds High, S10 Ultra) are
+  timed in every run. The benchmark CLI's frame GPU time is not affected (VAT above). Likely the
+  timer's per-commit results arriving after the ring drops them (`sgj_poll`, `SGJ_MAX_AGE`) at
+  1,000+ uncapped frames a second with three commits each; open for S15. The benches use only the
+  runs a capture timed, and GL is the reference.
+- **The editor draws the Scene view behind a maximised Game view**: the benches keep the Game
+  view unmaximised (its tab hides the Scene view) and size it with `fit_view`.
