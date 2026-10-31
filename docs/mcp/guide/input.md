@@ -148,11 +148,56 @@ cleared, or its owner goes:
 (`self`): then the source goes when the instance is released (GameObject destroyed, scene
 unloaded), so nothing stays pressed. Values count at once; presses and edges at the next frame.
 
-On-screen controls (sticks, buttons, touch areas: feature ui-multitouch) are sources owned by
-their component or element: a stick writes `Horizontal` / `Vertical`, a button `Fire1`, a touch
-area `Mouse X` / `Mouse Y` deltas. C++: `InputActions::setSourceValue(owner, action, value,
-InputSourceKind::Control)`, `addSourceDelta`, `clearSource(owner)` with any unique address as
-owner (a C++ script's `this` is cleared when the script is deleted).
+On-screen controls are sources owned by their component or element: a stick writes
+`Horizontal` / `Vertical`, a button `Fire1`, a touch area `Mouse X` / `Mouse Y` deltas (section
+4.1). C++: `InputActions::setSourceValue(owner, action, value, InputSourceKind::Control)`,
+`addSourceDelta`, `clearSource(owner)` with any unique address as owner (a C++ script's `this` is
+cleared when the script is deleted).
+
+### 4.1 On-screen controls (touch sticks, buttons, look areas)
+
+Three components of the component UI (GameObject > UI, `create_ui`, `add_component`), and the
+same three as HTML elements (`<onscreen-stick>`, `<onscreen-button>`, `<touch-area>`:
+`jasper://docs/html-ui`). They feed the input actions, so `Input.getAxis("Horizontal")` sums the
+keyboard, a gamepad and the stick, and mouse-look code reading `Mouse X` / `Mouse Y` works on touch
+unchanged. Each takes the first pointer that presses it (several fingers at once: a stick on one, a
+touch area on another, a button on a third); the rest of the screen is unaffected.
+
+| Component (Lua wrapper) | Writes | Settings |
+|---|---|---|
+| On-Screen Stick (`OnScreenStick`) | `horizontalAction` / `verticalAction` (default `Horizontal` / `Vertical`), -1..1, y up | `mode` (`OnScreenStickMode.FIXED`, `FLOATING`: the base appears under the finger, `DYNAMIC`: it also follows the finger past `moveThreshold`), `handleRange`, `deadZone`, `axes` (`OnScreenStickAxes.BOTH/HORIZONTAL/VERTICAL`), `snapX` / `snapY`, `hideWhenReleased`, `clampToArea`, `background` / `handle` (child Images) |
+| On-Screen Button (`OnScreenButton`) | `action` (default `Fire1`) = `value` (1; -1 on an axis) while any finger holds it | `pressWhenPointerEnters` (a finger sliding on presses it), `releaseWhenPointerLeaves` |
+| Touch Area (`TouchArea`) | `horizontalAction` / `verticalAction` (default `Mouse X` / `Mouse Y`): the drag delta x `sensitivity` (0.1, the Mouse X/Y default), y up | `invertX`, `invertY` |
+
+- The stick follows Joystick Pack: input = (finger - base centre) / base radius (half the
+  `background` width), axes zeroed per `axes`, 0 within `deadZone`, normalised past 1; snap gives
+  -1/0/1 (horizontal 0 within 22.5 degrees of vertical, vertical 0 within 22.5 degrees of
+  horizontal); the knob sits at input x radius x `handleRange`. The area a press may start in is
+  the stick's own rect (it needs an Image, transparent from the menu). Released: value 0, actions
+  cleared, knob centred, a Floating/Dynamic base hidden (`hideWhenReleased`) back where it rests.
+- Read-only state: `value` (Vector2), `pressed`, `pointerId`; Touch Area `delta` (this frame,
+  canvas px). Events: stick `onValueChanged(x, y)`, `onPress`, `onRelease`; button `onPress`,
+  `onRelease`; touch area `onDrag(dx, dy)` once a frame while it moves.
+- `visibility = OnScreenVisibility.TOUCH_DEVICES_ONLY` hides a control (and makes it ignore
+  pointers) where `System.isTouchDevice()` is false; the Game view's Simulate Touch counts as touch.
+- A Touch Area pressed with the mouse adds nothing to an action bound to mouse movement (the mouse
+  already moves it).
+- Disabling, deactivating or destroying a control, unloading its scene, a touch cancel and app
+  pause release it: no axis stays held.
+- An On-Screen Button with a Button on the same GameObject (the menu's) shows the pressed visuals.
+
+```lua
+-- the game's layout: Floating stick left, look area right, Fire button
+function Player:onUpdate()
+    local move = Input.getVector("Horizontal", "Vertical")      -- keyboard, pad or stick
+    self.yaw = self.yaw + Input.getAxis("Mouse X")              -- mouse or touch area
+    if Input.getButtonDown("Fire1") then self:fire() end        -- mouse, pad or the button
+end
+```
+
+Testing without a touch screen: the Game view's Simulate Touch makes the mouse finger 0; release
+the left button with Alt held to keep that finger down where it is, then the next press-drag is
+finger 1 (hold the stick, look around); releasing Alt lifts the first finger.
 
 ## 5. Rebinding at run time (settings screens)
 
@@ -242,6 +287,12 @@ While playing, `send_input` drives the real devices and the actions:
   `touches` (count) and `keys_held`; `held_input` lists what send_input holds.
 - Check values with `eval_lua "return Input.getAxis('Horizontal')"`, or a probe script that
   counts `Input.getButtonDown("Jump")` per frame and logs it (`read_console`).
+- On-screen controls with several fingers: `touch` events with different `pointer` ids, moves
+  spread over frames (`gap_frames`, `wait` events), e.g. pointer 0 `start` on the stick then `move` 80 px right
+  over 5 frames, pointer 1 `start` / `move` on the touch area, pointer 2 a tap on the button; then
+  `eval_lua` reads `Input.getAxis("Horizontal")` (> 0.9) and `Input.getAxis("Mouse Y")` in the frame
+  of the move, and a probe counts `getButtonDown("Fire1")`. `Input.isPointerOverUI(id)` tells whether
+  a finger is on UI.
 
 ## 8. C++ scripts
 
