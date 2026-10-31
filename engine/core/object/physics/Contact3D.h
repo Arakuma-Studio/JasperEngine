@@ -10,25 +10,54 @@
 #include "Jolt/Physics/Body/Body.h"
 #include "Jolt/Physics/Collision/ContactListener.h"
 
+#include <cstdint>
+#include <vector>
+
 namespace jasperengine{
 
+    // Where two bodies touch: the bodies and their sub shapes (Jolt's ids)
+    struct JASPERENGINE_API ContactPairKey3D {
+        uint32_t body1 = 0;
+        uint32_t body2 = 0;
+        uint32_t subShape1 = 0;
+        uint32_t subShape2 = 0;
+
+        bool operator<(const ContactPairKey3D& other) const;
+        bool operator==(const ContactPairKey3D& other) const;
+    };
+
+    // A contact of the 3D world as Jolt reported it in a step. The events that carry one
+    // (PhysicsSystem::onContactAdded3D, onContactPersisted3D) are delivered after the step, on
+    // the main thread: it is a copy of the contact then. A setting changed on it (friction,
+    // restitution, sensor) applies to that contact from the next step, for as long as the two
+    // bodies keep touching there.
     class JASPERENGINE_API Contact3D{
     private:
-        Scene* scene;
-        const JPH::Body* body1;
-        const JPH::Body* body2;
-        const JPH::ContactManifold* contactManifold;
-        JPH::ContactSettings* contactSettings;
+        Scene* scene = nullptr;
+        ContactPairKey3D key;
+
+        Vector3 baseOffset;
+        Vector3 worldSpaceNormal;
+        float penetrationDepth = 0.0f;
+        size_t colliderIndex1 = 0;
+        size_t colliderIndex2 = 0;
+        std::vector<Vector3> pointsOn1;
+        std::vector<Vector3> pointsOn2;
+
+        float combinedFriction = 0.0f;
+        float combinedRestitution = 0.0f;
+        bool sensor = false;
 
     public:
-        Contact3D(Scene* scene, const JPH::Body* body1, const JPH::Body* body2, const JPH::ContactManifold* contactManifold, JPH::ContactSettings* contactSettings);
+        Contact3D();
+        // A copy of what Jolt reports (called inside the step, from its job threads)
+        Contact3D(Scene* scene, const JPH::Body* body1, const JPH::Body* body2, const JPH::ContactManifold* contactManifold, const JPH::ContactSettings* contactSettings);
         virtual ~Contact3D();
 
         Contact3D(const Contact3D& rhs);
         Contact3D& operator=(const Contact3D& rhs);
 
-        const JPH::ContactManifold* getJoltContactManifold() const;
-        JPH::ContactSettings* getJoltContactSettings() const;
+        const ContactPairKey3D& getKey() const;
 
         // ContactManifold
         Vector3 getBaseOffset() const;
@@ -36,11 +65,12 @@ namespace jasperengine{
         float getPenetrationDepth() const;
         size_t getColliderIndex1() const;
         size_t getColliderIndex2() const;
+        size_t getContactPointCount() const;
+        // Relative to the base offset; a zero vector past the last point
         Vector3 getRelativeContactPointsOnA(size_t index) const;
         Vector3 getRelativeContactPointsOnB(size_t index) const;
 
-
-        // ContactSettings
+        // ContactSettings (a change applies from the next step: see above)
         float getCombinedFriction() const;
         void setCombinedFriction(float combinedFriction);
 
