@@ -547,16 +547,16 @@ TEST_F(VideoMp4Test, PlatformMatrix){
     mp4.videoCodec = "avc1";
     mp4.audioCodec = "mp4a";
     using P = VideoSourceFactory::Platform;
-    EXPECT_STREQ(VideoSourceFactory::playableOn(P::LINUX, mp4), "needs_ffmpeg");
-    EXPECT_STREQ(VideoSourceFactory::playableOn(P::WINDOWS, mp4), "yes");
+    EXPECT_STREQ(VideoSourceFactory::playableOn(P::Linux, mp4), "needs_ffmpeg");
+    EXPECT_STREQ(VideoSourceFactory::playableOn(P::Windows, mp4), "yes");
     EXPECT_STREQ(VideoSourceFactory::playableOn(P::IOS, mp4), "yes");
-    EXPECT_STREQ(VideoSourceFactory::playableOn(P::ANDROID, mp4), "yes");
-    EXPECT_STREQ(VideoSourceFactory::playableOn(P::WEB, mp4), "yes");
+    EXPECT_STREQ(VideoSourceFactory::playableOn(P::Android, mp4), "yes");
+    EXPECT_STREQ(VideoSourceFactory::playableOn(P::Web, mp4), "yes");
     VideoProbe hevc = mp4;
     hevc.videoCodec = "hvc1";
-    EXPECT_STREQ(VideoSourceFactory::playableOn(P::WINDOWS, hevc), "needs_extension");
-    EXPECT_STREQ(VideoSourceFactory::playableOn(P::MACOS, hevc), "yes");
-    EXPECT_STREQ(VideoSourceFactory::playableOn(P::ANDROID, hevc), "device_dependent");
+    EXPECT_STREQ(VideoSourceFactory::playableOn(P::Windows, hevc), "needs_extension");
+    EXPECT_STREQ(VideoSourceFactory::playableOn(P::MacOS, hevc), "yes");
+    EXPECT_STREQ(VideoSourceFactory::playableOn(P::Android, hevc), "device_dependent");
     VideoProbe webm;
     webm.readable = true;
     webm.container = "webm";
@@ -567,9 +567,9 @@ TEST_F(VideoMp4Test, PlatformMatrix){
     VideoProbe vp9 = webm;
     vp9.videoCodec = "V_VP9";
     EXPECT_STREQ(VideoSourceFactory::playableOn(P::IOS, vp9), "no");
-    EXPECT_STREQ(VideoSourceFactory::playableOn(P::ANDROID, vp9), "yes");
+    EXPECT_STREQ(VideoSourceFactory::playableOn(P::Android, vp9), "yes");
     mp4.encrypted = true;
-    EXPECT_STREQ(VideoSourceFactory::playableOn(P::WINDOWS, mp4), "no");
+    EXPECT_STREQ(VideoSourceFactory::playableOn(P::Windows, mp4), "no");
 }
 
 // ---------------------------------------------------------------- the media cache

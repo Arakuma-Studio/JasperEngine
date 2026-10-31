@@ -26,7 +26,7 @@ namespace jasperengine {
     class JASPERENGINE_API VideoSourceFactory {
     public:
         enum class Support { NO, MAYBE, YES };
-        enum class Platform { LINUX, WINDOWS, MACOS, IOS, ANDROID, WEB };
+        enum class Platform { Linux, Windows, MacOS, IOS, Android, Web };
         static constexpr int PLATFORM_COUNT = 6;
 
         struct Options {

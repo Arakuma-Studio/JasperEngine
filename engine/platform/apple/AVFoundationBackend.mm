@@ -356,7 +356,7 @@ std::unique_ptr<PlatformDecoderBackend> platformvideo::createBackend(){
 }
 
 platformvideo::Support platformvideo::supports(const std::string& codec){
-    // what AVFoundation decodes on every supported OS (macOS 11+, iOS 15+); AV1 only with the
+    // what AVFoundation decodes on every supported OS (macOS 12+, iOS 15+); AV1 only with the
     // hardware of newer devices; WebM's codecs not at all (AVFoundation reads no WebM)
     static const char* const always[] = {"h264", "hevc", "aac", "mp3", "alac", "flac", "ac3", "eac3", "mpeg4"};
     for (const char* name : always){

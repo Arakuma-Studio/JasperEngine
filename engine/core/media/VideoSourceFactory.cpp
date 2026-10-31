@@ -369,11 +369,11 @@ namespace {
     // what each OS's own decoders have (docs/mcp/guide/video.md's matrix); Linux is FFmpeg's
     Cell cellFor(VideoSourceFactory::Platform platform, const std::string& codec, bool webm){
         using P = VideoSourceFactory::Platform;
-        const bool apple = platform == P::MACOS || platform == P::IOS;
+        const bool apple = platform == P::MacOS || platform == P::IOS;
         // AVFoundation reads no WebM; Media Foundation reads WebM only for VP9 with the extension
         if (webm && apple)
             return Cell::NO;
-        if (platform == P::LINUX)
+        if (platform == P::Linux)
             return codec.empty() ? Cell::NO : Cell::NEEDS_FFMPEG;
         struct Row { const char* codec; Cell windows, apple, android, web; };
         static const Row rows[] = {
@@ -396,12 +396,12 @@ namespace {
             if (codec != row.codec)
                 continue;
             switch (platform){
-                case P::WINDOWS: return row.windows;
-                case P::MACOS:
+                case P::Windows: return row.windows;
+                case P::MacOS:
                 case P::IOS: return row.apple;
-                case P::ANDROID: return row.android;
-                case P::WEB: return row.web;
-                case P::LINUX: break;
+                case P::Android: return row.android;
+                case P::Web: return row.web;
+                case P::Linux: break;
             }
         }
         return Cell::NO;
@@ -587,24 +587,24 @@ const char* VideoSourceFactory::playableOn(Platform platform, const VideoProbe& 
 
 const char* VideoSourceFactory::platformId(Platform platform){
     switch (platform){
-        case Platform::LINUX: return "linux";
-        case Platform::WINDOWS: return "windows";
-        case Platform::MACOS: return "macos";
+        case Platform::Linux: return "linux";
+        case Platform::Windows: return "windows";
+        case Platform::MacOS: return "macos";
         case Platform::IOS: return "ios";
-        case Platform::ANDROID: return "android";
-        case Platform::WEB: return "web";
+        case Platform::Android: return "android";
+        case Platform::Web: return "web";
     }
     return "";
 }
 
 const char* VideoSourceFactory::platformLabel(Platform platform){
     switch (platform){
-        case Platform::LINUX: return "Linux";
-        case Platform::WINDOWS: return "Windows";
-        case Platform::MACOS: return "macOS";
+        case Platform::Linux: return "Linux";
+        case Platform::Windows: return "Windows";
+        case Platform::MacOS: return "macOS";
         case Platform::IOS: return "iOS";
-        case Platform::ANDROID: return "Android";
-        case Platform::WEB: return "Web";
+        case Platform::Android: return "Android";
+        case Platform::Web: return "Web";
     }
     return "";
 }
