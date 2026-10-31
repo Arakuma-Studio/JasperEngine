@@ -3301,6 +3301,25 @@
 		4A534E473E6B9FE60C626734 /* MeshBufferPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */; };
 		4A534E472437676B559FC859 /* MeshBufferPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */; };
 		4A534E47693D678BC7B907E1 /* MeshBufferPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */; };
+		4A534E47AC37D409692AA7D7 /* Http.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4787C9BCF72092DFEE /* Http.cpp */; };
+		4A534E47947208F6A52C0D79 /* Http.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4787C9BCF72092DFEE /* Http.cpp */; };
+		4A534E4707D0FB4D966D8BE5 /* HttpUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F788CC244AA03377 /* HttpUtil.cpp */; };
+		4A534E47271657C6F28FFA0A /* HttpUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F788CC244AA03377 /* HttpUtil.cpp */; };
+		4A534E4768DDBB2353D5C83D /* AsyncOwner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C1EA7EEF9E302A12 /* AsyncOwner.cpp */; };
+		4A534E47951C64628BDACD07 /* AsyncOwner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C1EA7EEF9E302A12 /* AsyncOwner.cpp */; };
+		4A534E4765A452A70993BC50 /* NetClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C7032EFC250E9A0E /* NetClassesLua.cpp */; };
+		4A534E4704BBC250AA4EB0AC /* NetClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C7032EFC250E9A0E /* NetClassesLua.cpp */; };
+		4A534E47D5FBC9D2B84C3EF4 /* MainThreadQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C9ACB5FAD8A291B0 /* MainThreadQueue.cpp */; };
+		4A534E47265BB2DD7CEE9EEA /* MainThreadQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C9ACB5FAD8A291B0 /* MainThreadQueue.cpp */; };
+		4A534E47C85979F7504AB7AC /* CurlApi.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4746F0372B5BDC60B0 /* CurlApi.h */; };
+		4A534E472BD874B8DCF6E3EC /* Http.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4702C5166EB52DF781 /* Http.h */; };
+		4A534E475B9A526F84177777 /* HttpBackend.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4713FE339C7A9F7A0B /* HttpBackend.h */; };
+		4A534E47C7D46D82696964A0 /* HttpJson.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47FF3619E3F9DCCE88 /* HttpJson.h */; };
+		4A534E4798EE0D734C9C55E0 /* AsyncOwner.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4740FD2A72CFB10C16 /* AsyncOwner.h */; };
+		4A534E47D07D96EA20FAA7F1 /* NetClassesLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C4CB6F074423D782 /* NetClassesLua.h */; };
+		4A534E470B01A240FA439C2A /* MainThreadQueue.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4743499EE7BE02622E /* MainThreadQueue.h */; };
+		4A534E476582D52ED841837C /* HttpBackendApple.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */; };
+		4A534E47D3ECA820EEE9216B /* HttpBackendApple.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6672,6 +6691,19 @@
 		4A534E474C490B38DD8DB742 /* VertexAnimatorSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexAnimatorSystem.h; sourceTree = "<group>"; };
 		4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshBufferPool.cpp; sourceTree = "<group>"; };
 		4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshBufferPool.h; sourceTree = "<group>"; };
+		4A534E4787C9BCF72092DFEE /* Http.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Http.cpp; sourceTree = "<group>"; };
+		4A534E47F788CC244AA03377 /* HttpUtil.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HttpUtil.cpp; sourceTree = "<group>"; };
+		4A534E47C1EA7EEF9E302A12 /* AsyncOwner.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AsyncOwner.cpp; sourceTree = "<group>"; };
+		4A534E47C7032EFC250E9A0E /* NetClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NetClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E47C9ACB5FAD8A291B0 /* MainThreadQueue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MainThreadQueue.cpp; sourceTree = "<group>"; };
+		4A534E4746F0372B5BDC60B0 /* CurlApi.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CurlApi.h; sourceTree = "<group>"; };
+		4A534E4702C5166EB52DF781 /* Http.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Http.h; sourceTree = "<group>"; };
+		4A534E4713FE339C7A9F7A0B /* HttpBackend.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HttpBackend.h; sourceTree = "<group>"; };
+		4A534E47FF3619E3F9DCCE88 /* HttpJson.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HttpJson.h; sourceTree = "<group>"; };
+		4A534E4740FD2A72CFB10C16 /* AsyncOwner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AsyncOwner.h; sourceTree = "<group>"; };
+		4A534E47C4CB6F074423D782 /* NetClassesLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NetClassesLua.h; sourceTree = "<group>"; };
+		4A534E4743499EE7BE02622E /* MainThreadQueue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MainThreadQueue.h; sourceTree = "<group>"; };
+		4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = HttpBackendApple.mm; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -7086,6 +7118,8 @@
 				564944450D63D10E11014513 /* HtmlUIMediaLua.cpp */,
 				414E494D4500000000000044 /* HtmlUIAnimeLua.cpp */,
 				505645430000000000000178 /* HtmlUIVectorLua.cpp */,
+				4A534E47C7032EFC250E9A0E /* NetClassesLua.cpp */,
+				4A534E47C4CB6F074423D782 /* NetClassesLua.h */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -7953,6 +7987,19 @@
 			path = animation;
 			sourceTree = "<group>";
 		};
+		4A534E47325562508AC85529 /* net */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E4787C9BCF72092DFEE /* Http.cpp */,
+				4A534E47F788CC244AA03377 /* HttpUtil.cpp */,
+				4A534E4746F0372B5BDC60B0 /* CurlApi.h */,
+				4A534E4702C5166EB52DF781 /* Http.h */,
+				4A534E4713FE339C7A9F7A0B /* HttpBackend.h */,
+				4A534E47FF3619E3F9DCCE88 /* HttpJson.h */,
+			);
+			path = net;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -7993,6 +8040,7 @@
 				4A534E476D14045E1B1B86B5 /* pose */,
 				4A534E472AD0C1A658CC6825 /* physics */,
 				4A534E477E49C8CF16ED0963 /* animation */,
+				4A534E47325562508AC85529 /* net */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -8443,6 +8491,7 @@
 				713D831D259D3F8F00567F9F /* macos */,
 				7158F43D259C2C82006E55D3 /* Renderer.h */,
 				7158F43E259C2C82006E55D3 /* Renderer.mm */,
+				4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */,
 			);
 			path = apple;
 			sourceTree = "<group>";
@@ -8465,6 +8514,8 @@
 				716803CB2DF75EA200ED71BE /* ResourceProgress.cpp */,
 				716803CC2DF75EA200ED71BE /* ThreadPoolManager.h */,
 				716803CD2DF75EA200ED71BE /* ThreadPoolManager.cpp */,
+				4A534E47C9ACB5FAD8A291B0 /* MainThreadQueue.cpp */,
+				4A534E4743499EE7BE02622E /* MainThreadQueue.h */,
 			);
 			path = thread;
 			sourceTree = "<group>";
@@ -9440,6 +9491,8 @@
 				71AD5E6E2E9F2B86004951AB /* ScriptBase.cpp */,
 				71AD5E6F2E9F2B86004951AB /* ScriptProperty.h */,
 				71AD5E752E9F2B87004951AB /* ScriptProperty.cpp */,
+				4A534E47C1EA7EEF9E302A12 /* AsyncOwner.cpp */,
+				4A534E4740FD2A72CFB10C16 /* AsyncOwner.h */,
 			);
 			path = script;
 			sourceTree = "<group>";
@@ -11914,6 +11967,13 @@
 				4A534E471E767D9BE2C4AF8A /* CpuSkin.h in Headers */,
 				4A534E47348D45F4BBD323C9 /* VertexAnimatorSystem.h in Headers */,
 				4A534E47693D678BC7B907E1 /* MeshBufferPool.h in Headers */,
+				4A534E47C85979F7504AB7AC /* CurlApi.h in Headers */,
+				4A534E472BD874B8DCF6E3EC /* Http.h in Headers */,
+				4A534E475B9A526F84177777 /* HttpBackend.h in Headers */,
+				4A534E47C7D46D82696964A0 /* HttpJson.h in Headers */,
+				4A534E4798EE0D734C9C55E0 /* AsyncOwner.h in Headers */,
+				4A534E47D07D96EA20FAA7F1 /* NetClassesLua.h in Headers */,
+				4A534E470B01A240FA439C2A /* MainThreadQueue.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -13961,6 +14021,12 @@
 				4A534E4759966A2ED417BECD /* CpuSkin.cpp in Sources */,
 				4A534E474B1E43D590AD23B0 /* VertexAnimatorSystem.cpp in Sources */,
 				4A534E473E6B9FE60C626734 /* MeshBufferPool.cpp in Sources */,
+				4A534E47AC37D409692AA7D7 /* Http.cpp in Sources */,
+				4A534E4707D0FB4D966D8BE5 /* HttpUtil.cpp in Sources */,
+				4A534E4768DDBB2353D5C83D /* AsyncOwner.cpp in Sources */,
+				4A534E4765A452A70993BC50 /* NetClassesLua.cpp in Sources */,
+				4A534E47D5FBC9D2B84C3EF4 /* MainThreadQueue.cpp in Sources */,
+				4A534E476582D52ED841837C /* HttpBackendApple.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14387,6 +14453,12 @@
 				4A534E47641FBAF4D870EBAF /* CpuSkin.cpp in Sources */,
 				4A534E47A95FB7E661773FC4 /* VertexAnimatorSystem.cpp in Sources */,
 				4A534E472437676B559FC859 /* MeshBufferPool.cpp in Sources */,
+				4A534E47947208F6A52C0D79 /* Http.cpp in Sources */,
+				4A534E47271657C6F28FFA0A /* HttpUtil.cpp in Sources */,
+				4A534E47951C64628BDACD07 /* AsyncOwner.cpp in Sources */,
+				4A534E4704BBC250AA4EB0AC /* NetClassesLua.cpp in Sources */,
+				4A534E47265BB2DD7CEE9EEA /* MainThreadQueue.cpp in Sources */,
+				4A534E47D3ECA820EEE9216B /* HttpBackendApple.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
