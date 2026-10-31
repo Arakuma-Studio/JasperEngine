@@ -1,0 +1,299 @@
+{
+ "asset": {
+  "version": "2.0",
+  "generator": "vertex-animation make_vat_fixtures.py"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "name": "Rig",
+   "nodes": [
+    0
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "name": "Rig",
+   "children": [
+    1
+   ]
+  },
+  {
+   "name": "Base",
+   "mesh": 0,
+   "children": [
+    2
+   ]
+  },
+  {
+   "name": "Arm",
+   "mesh": 1,
+   "translation": [
+    0.0,
+    0.4,
+    0.0
+   ]
+  }
+ ],
+ "meshes": [
+  {
+   "name": "BaseBox",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1
+     },
+     "indices": 2,
+     "material": 0
+    }
+   ]
+  },
+  {
+   "name": "ArmBox",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 3,
+      "NORMAL": 4
+     },
+     "indices": 5,
+     "material": 1
+    }
+   ]
+  }
+ ],
+ "materials": [
+  {
+   "name": "Red",
+   "pbrMetallicRoughness": {
+    "baseColorFactor": [
+     0.8,
+     0.1,
+     0.1,
+     1.0
+    ],
+    "metallicFactor": 0.0,
+    "roughnessFactor": 0.7
+   }
+  },
+  {
+   "name": "Blue",
+   "pbrMetallicRoughness": {
+    "baseColorFactor": [
+     0.1,
+     0.2,
+     0.8,
+     1.0
+    ],
+    "metallicFactor": 0.0,
+    "roughnessFactor": 0.5
+   }
+  }
+ ],
+ "animations": [
+  {
+   "name": "Swing",
+   "samplers": [
+    {
+     "input": 6,
+     "output": 7,
+     "interpolation": "LINEAR"
+    },
+    {
+     "input": 6,
+     "output": 8,
+     "interpolation": "LINEAR"
+    }
+   ],
+   "channels": [
+    {
+     "sampler": 0,
+     "target": {
+      "node": 1,
+      "path": "translation"
+     }
+    },
+    {
+     "sampler": 1,
+     "target": {
+      "node": 2,
+      "path": "rotation"
+     }
+    }
+   ]
+  },
+  {
+   "name": "Stretch",
+   "samplers": [
+    {
+     "input": 6,
+     "output": 9,
+     "interpolation": "LINEAR"
+    }
+   ],
+   "channels": [
+    {
+     "sampler": 0,
+     "target": {
+      "node": 2,
+      "path": "scale"
+     }
+    }
+   ]
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC3",
+   "min": [
+    -0.3,
+    0.0,
+    -0.3
+   ],
+   "max": [
+    0.3,
+    0.4,
+    0.3
+   ]
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5123,
+   "count": 36,
+   "type": "SCALAR"
+  },
+  {
+   "bufferView": 3,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC3",
+   "min": [
+    -0.1,
+    0.0,
+    -0.1
+   ],
+   "max": [
+    0.1,
+    1.0,
+    0.1
+   ]
+  },
+  {
+   "bufferView": 4,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 5,
+   "componentType": 5123,
+   "count": 36,
+   "type": "SCALAR"
+  },
+  {
+   "bufferView": 6,
+   "componentType": 5126,
+   "count": 3,
+   "type": "SCALAR",
+   "min": [
+    0.0
+   ],
+   "max": [
+    1.0
+   ]
+  },
+  {
+   "bufferView": 7,
+   "componentType": 5126,
+   "count": 3,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 8,
+   "componentType": 5126,
+   "count": 3,
+   "type": "VEC4"
+  },
+  {
+   "bufferView": 9,
+   "componentType": 5126,
+   "count": 3,
+   "type": "VEC3"
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteOffset": 0,
+   "byteLength": 288,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 288,
+   "byteLength": 288,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 576,
+   "byteLength": 72,
+   "target": 34963
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 648,
+   "byteLength": 288,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 936,
+   "byteLength": 288,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 1224,
+   "byteLength": 72,
+   "target": 34963
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 1296,
+   "byteLength": 12
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 1308,
+   "byteLength": 36
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 1344,
+   "byteLength": 48
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 1392,
+   "byteLength": 36
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 1428,
+   "uri": "data:application/octet-stream;base64,mpmZPgAAAACamZm+mpmZPs3MzD6amZm+mpmZPs3MzD6amZk+mpmZPgAAAACamZk+mpmZvgAAAACamZk+mpmZvs3MzD6amZk+mpmZvs3MzD6amZm+mpmZvgAAAACamZm+mpmZvs3MzD6amZm+mpmZvs3MzD6amZk+mpmZPs3MzD6amZk+mpmZPs3MzD6amZm+mpmZvgAAAACamZk+mpmZvgAAAACamZm+mpmZPgAAAACamZm+mpmZPgAAAACamZk+mpmZvgAAAACamZk+mpmZPgAAAACamZk+mpmZPs3MzD6amZk+mpmZvs3MzD6amZk+mpmZPgAAAACamZm+mpmZvgAAAACamZm+mpmZvs3MzD6amZm+mpmZPs3MzD6amZm+AACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAABAAIAAAACAAMABAAFAAYABAAGAAcACAAJAAoACAAKAAsADAANAA4ADAAOAA8AEAARABIAEAASABMAFAAVABYAFAAWABcAzczMPQAAAADNzMy9zczMPQAAgD/NzMy9zczMPQAAgD/NzMw9zczMPQAAAADNzMw9zczMvQAAAADNzMw9zczMvQAAgD/NzMw9zczMvQAAgD/NzMy9zczMvQAAAADNzMy9zczMvQAAgD/NzMy9zczMvQAAgD/NzMw9zczMPQAAgD/NzMw9zczMPQAAgD/NzMy9zczMvQAAAADNzMw9zczMvQAAAADNzMy9zczMPQAAAADNzMy9zczMPQAAAADNzMw9zczMvQAAAADNzMw9zczMPQAAAADNzMw9zczMPQAAgD/NzMw9zczMvQAAgD/NzMw9zczMPQAAAADNzMy9zczMvQAAAADNzMy9zczMvQAAgD/NzMy9zczMPQAAgD/NzMy9AACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAABAAIAAAACAAMABAAFAAYABAAGAAcACAAJAAoACAAKAAsADAANAA4ADAAOAA8AEAARABIAEAASABMAFAAVABYAFAAWABcAAAAAAAAAAD8AAIA/AAAAAAAAAAAAAAAAAAAAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAA8wQ1P/MENT8AAAAAAAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAgQAAAgD8AAIA/AACAPwAAgD8AAIA/"
+  }
+ ]
+}

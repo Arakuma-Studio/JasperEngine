@@ -12,6 +12,9 @@ editor, doing what you would do by hand:
 - place objects with physics in edit mode: drop them onto what is below, push overlapping ones
   apart, slide them against walls, snap them onto surfaces, with a preview before the commit
   ([guide/physics.md](guide/physics.md), `place_with_physics`)
+- bake animations into Vertex Animations for crowds animated on the GPU, or import Houdini and
+  OpenVAT exports, with a preview before writing
+  ([guide/vertex-animation.md](guide/vertex-animation.md), `bake_vertex_animation`)
 - play the game, send keyboard, mouse and touch input, inspect runtime state, and take
   screenshots of the Scene and Game views
 - read the Console, then export and build the game

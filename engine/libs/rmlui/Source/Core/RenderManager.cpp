@@ -53,6 +53,8 @@ void RenderManager::PrepareRender(Vector2i dimensions)
 	RMLUI_ASSERT(state.scissor_region == default_state.scissor_region);
 	RMLUI_ASSERT(state.transform == default_state.transform);
 	RMLUI_ASSERTMSG(render_stack.empty(), "Unbalanced render stack detected, ensure every PushLayer call has a corresponding call to PopLayer.");
+	RMLUI_ASSERTMSG(clip_roots.empty(), "Unbalanced clip roots detected, ensure every PushClipRoot call has a corresponding call to PopClipRoot.");
+	RMLUI_ASSERTMSG(layer_regions.empty(), "Unbalanced layer regions detected, ensure every PushLayer call has a corresponding call to PopLayer.");
 #endif
 
 	ResetClipMemo();
@@ -127,7 +129,8 @@ void RenderManager::SetScissorRegion(Rectanglei new_region)
 
 	if (new_scissor_enable)
 	{
-		new_region = new_region.Intersect(Rectanglei::FromSize(viewport_dimensions));
+		// Fork (P7-F2): within the region of the top layer (the viewport, or a layer's region beyond it).
+		new_region = new_region.Intersect(GetLayerRegion());
 
 		if (new_region != state.scissor_region)
 			render_interface->SetScissorRegion(new_region);
@@ -381,8 +384,29 @@ CompiledShader RenderManager::CompileShader(const String& name, const Dictionary
 
 LayerHandle RenderManager::PushLayer()
 {
-	const LayerHandle layer = render_interface->PushLayer();
+	// Fork (P7-F2): the region of the top layer (the content layers of a filter's layer beyond the viewport keep what lies
+	// there).
+	return PushLayerInRegion(layer_regions.empty() ? Rectanglei::MakeInvalid() : layer_regions.back());
+}
+
+LayerHandle RenderManager::PushLayer(Rectanglei region)
+{
+	const Rectanglei viewport = Rectanglei::FromSize(viewport_dimensions);
+	if (!region.Valid() || region.Width() <= 0 || region.Height() <= 0 || region.Intersect(viewport) == region)
+		region = Rectanglei::MakeInvalid();
+	return PushLayerInRegion(region);
+}
+
+LayerHandle RenderManager::PushLayerInRegion(Rectanglei region)
+{
+	LayerHandle layer;
+	// an ordinary layer (the viewport) when invalid; else what the layer covers, invalid when it is an ordinary one
+	if (region.Valid())
+		layer = render_interface->PushLayerRegion(region);
+	else
+		layer = render_interface->PushLayer();
 	render_stack.push_back(layer);
+	layer_regions.push_back(region);
 	return layer;
 }
 
@@ -398,6 +422,42 @@ void RenderManager::PopLayer()
 	RMLUI_ASSERT(!render_stack.empty());
 	render_interface->PopLayer();
 	render_stack.pop_back();
+	if (!layer_regions.empty())
+		layer_regions.pop_back();
+}
+
+Rectanglei RenderManager::GetLayerRegion() const
+{
+	if (layer_regions.empty() || !layer_regions.back().Valid())
+		return Rectanglei::FromSize(viewport_dimensions);
+	return layer_regions.back();
+}
+
+void RenderManager::BeginTextureGeneration()
+{
+	layer_regions.push_back(Rectanglei::MakeInvalid());
+}
+
+void RenderManager::EndTextureGeneration()
+{
+	RMLUI_ASSERT(!layer_regions.empty() && !layer_regions.back().Valid());
+	if (!layer_regions.empty())
+		layer_regions.pop_back();
+}
+
+void RenderManager::PushClipRoot(const Element* element, Rectanglei window)
+{
+	clip_roots.push_back(ClipRoot{element, window});
+	// Fork (S16-F6 with P7-F1): the regions remembered were found for the clip root before
+	ResetClipMemo();
+}
+
+void RenderManager::PopClipRoot()
+{
+	RMLUI_ASSERT(!clip_roots.empty());
+	if (!clip_roots.empty())
+		clip_roots.pop_back();
+	ResetClipMemo();
 }
 
 LayerHandle RenderManager::GetTopLayer() const

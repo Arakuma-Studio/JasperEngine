@@ -23,14 +23,16 @@ namespace jasperengine{
         SokolBuffer& operator=(const SokolBuffer& rhs);
 
         bool createBuffer(unsigned int size, void* data, BufferType type, BufferUsage usage);
-        void updateBuffer(unsigned int size, void* data);
+        bool updateBuffer(unsigned int size, void* data);
         int appendBuffer(unsigned int size, const void* data);
         void destroyBuffer();
-        bool isCreated();
+        bool isCreated() const;
+        // made on the loading thread (SokolCmdQueue), not created yet
+        bool isPending() const;
         BufferUsage getCreatedUsage() const;
 
-        sg_buffer get();
-        sg_view getView();
+        sg_buffer get() const;
+        sg_view getView() const;
     };
 }
 

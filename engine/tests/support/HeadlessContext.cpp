@@ -16,6 +16,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -23,6 +24,7 @@ using namespace jasperengine::test;
 namespace {
 
 bool created = false;
+std::string rendererName;
 
 #if !defined(SOKOL_VULKAN)
 
@@ -107,6 +109,8 @@ bool createGraphicsContext(){
         glContext = nullptr;
         return false;
     }
+    const GLubyte* renderer = glGetString(GL_RENDERER);
+    rendererName = renderer ? reinterpret_cast<const char*>(renderer) : "";
     // as the player: the shader creation thread's context (spec S32)
     setGpuWorkerContextFactory([](){
         return GlxWorkerContext::create(WindowLinux::display(), framebufferConfig, glContext, attributes);
@@ -151,7 +155,10 @@ bool createGraphicsContext(){
     config.surfaceExtension = VK_KHR_XLIB_SURFACE_EXTENSION_NAME;
     config.createSurface = createWindowSurface;
     config.vsync = false;
-    return VulkanContext::create(config);
+    if (!VulkanContext::create(config))
+        return false;
+    rendererName = VulkanContext::deviceName();
+    return true;
 }
 
 void destroyGraphicsContext(){
@@ -226,4 +233,8 @@ const char* HeadlessContext::getBackendName(){
 #else
     return "glcore";
 #endif
+}
+
+const char* HeadlessContext::getRendererName(){
+    return rendererName.c_str();
 }

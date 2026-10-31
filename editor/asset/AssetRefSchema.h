@@ -44,9 +44,10 @@ namespace jasperengine::editor {
         ScriptProperty, // a script property value {guid, path} (Prefab and Asset types)
         ParticleEffect, // an inline particle effect (its .particles JSON in a string): the textures,
                         // models and child effects its modules name ("<key>.renderer.texture")
-        ClipEntry       // an Animation Player clip entry {clip, guid} (or a bare path): an .anim by
+        ClipEntry,      // an Animation Player clip entry {clip, guid} (or a bare path): an .anim by
                         // GUID and path hint, or a model's sub-clip "<model>#<clip>" (the model,
                         // by path; the clip part and the empty GUID kept)
+        GuidSibling     // "<key>: path" + "guid: guid" in the same map (a Vertex Animator's .vat)
     };
 
     // Where a row's field lives

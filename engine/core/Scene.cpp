@@ -10,6 +10,7 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/LatticeSystem.h"
+#include "subsystem/VertexAnimatorSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/FluidSystem.h"
@@ -51,6 +52,8 @@ void Scene::init(){
     registerSystem<SplineSystem>();
     registerSystem<MeshSystem>();
     registerSystem<LatticeSystem>();
+    // after the lattices, before Render reads the GPU state it writes (vertex animation spec 3.4)
+    registerSystem<VertexAnimatorSystem>();
     registerSystem<UISystem>();
     registerSystem<UIDocumentSystem>();
     registerSystem<FluidSystem>();
@@ -119,6 +122,13 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
     removeComponentSubscriptionsByTag<AnimationPlayerComponent>(this, substring, [](AnimationPlayerComponent& player, const std::string& tag) {
         player.onEvent.removeByTagSubstring(tag);
         player.onFinish.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<VertexAnimatorComponent>(this, substring, [](VertexAnimatorComponent& animator, const std::string& tag) {
+        animator.onEvent.removeByTagSubstring(tag);
+        animator.onFinish.removeByTagSubstring(tag);
+        animator.onInstanceEvent.removeByTagSubstring(tag);
+        animator.onInstanceFinish.removeByTagSubstring(tag);
     });
 
     removeComponentSubscriptionsByTag<AnimatorComponent>(this, substring, [](AnimatorComponent& animator, const std::string& tag) {
@@ -880,17 +890,22 @@ void Scene::destroyHierarchyNow(Entity entity){
     ObjectManager::destroyImmediate(this, entity);
 }
 
+// Each phase starts with the holes of entities destroyed since closed (ComponentArray): the
+// systems then find a settled array, and nothing destroyed before keeps a hole across frames
 void Scene::draw(){
+    compactComponents();
     scheduler.runPhase(*this, SystemPhase::Draw, 0.0);
     endFrame();
 }
 
 void Scene::update(double dt){
+    compactComponents();
     scheduler.runPhase(*this, SystemPhase::Update, dt);
     scheduler.runPhase(*this, SystemPhase::PostUpdate, dt);
 }
 
 void Scene::fixedUpdate(double dt){
+    compactComponents();
     scheduler.runPhase(*this, SystemPhase::FixedUpdate, dt);
 }
 

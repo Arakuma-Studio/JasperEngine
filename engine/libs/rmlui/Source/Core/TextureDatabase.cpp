@@ -1,6 +1,7 @@
 #include "TextureDatabase.h"
 #include "../../Include/RmlUi/Core/Log.h"
 #include "../../Include/RmlUi/Core/RenderInterface.h"
+#include "../../Include/RmlUi/Core/RenderManager.h"
 
 namespace Rml {
 
@@ -49,7 +50,11 @@ auto CallbackTextureDatabase::EnsureLoaded(RenderManager* render_manager, Render
 	CallbackTextureEntry& data = texture_list[callback_index];
 	if (!data.texture_handle && !data.load_failed)
 	{
-		if (!data.callback(CallbackTextureInterface(*render_manager, *render_interface, data.texture_handle, data.dimensions)))
+		// Fork (P7-F2): drawn into layers the size of the viewport, whichever layer is the top one now.
+		render_manager->BeginTextureGeneration();
+		const bool generated = data.callback(CallbackTextureInterface(*render_manager, *render_interface, data.texture_handle, data.dimensions));
+		render_manager->EndTextureGeneration();
+		if (!generated)
 		{
 			data.load_failed = true;
 			data.texture_handle = {};

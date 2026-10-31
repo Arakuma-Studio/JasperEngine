@@ -75,7 +75,8 @@ namespace jasperengine {
 
         // DYNAMIC: uploads width * height * bpp bytes (premultiplied, rows top first). Sokol
         // takes one update per image per frame: false, and nothing uploaded, when this frame
-        // (SystemRender::getFrameCount) already updated it, or for a dead/non-dynamic texture
+        // (SystemRender::getFrameCount) already updated it, for a dead/non-dynamic texture, or
+        // past the frame's stream staging buffer (Engine::GpuResourceLimits::streamStagingBytes)
         bool update(const void* data, size_t size);
         // DYNAMIC: update() would upload this frame
         bool canUpdate() const;

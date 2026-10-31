@@ -427,8 +427,9 @@ TEST_F(FluidSimulatorTest, HalfFloatFallbackGivesTheSameImage){
     const RenderFeatures& features = SystemRender::getFeatures();
     std::printf("[fluid] RG16F render %d filter %d, R16F render %d filter %d: compact formats %d\n", (int)features.renderRG16F,
                 (int)features.filterRG16F, (int)features.renderR16F, (int)features.filterR16F, (int)a.getStats().compactFormats);
-    if (features.renderRG16F && features.filterRG16F && features.renderR16F)
+    if (features.renderRG16F && features.filterRG16F && features.renderR16F) {
         EXPECT_TRUE(a.getStats().compactFormats);
+    }
     EXPECT_LT(b.getStats().gpuBytes, compactBytes * 2);
 }
 
@@ -457,10 +458,15 @@ TEST_F(FluidSimulatorTest, ManualFilteringFallback){
     EXPECT_FALSE(stats.bloomActive);
     EXPECT_FALSE(stats.sunraysActive);
     EXPECT_EQ(stats.steps, 6u);
-    // his bilerp by hand: the same fluid as the hardware's filter, to its precision
+    // his bilerp by hand: the same fluid as the hardware's filter, to its precision. 24 levels on
+    // llvmpipe (whose filter weights are full floats); a hardware GPU's filter quantises the
+    // weights (8 bits of sub-texel position on NVIDIA), and six steps of advection carry that
+    // further: 41 on an NVIDIA GTX 1080 and a GTX 1650 (Vulkan, driver 580). The limit is that
+    // plus about 12 % there (24 on the goldens' renderer); a broken manual bilerp (the half-texel
+    // offset dropped) is off by 255.
     const FluidImage image = readOutput(sim);
     EXPECT_GT(brightest(image), 100);
-    EXPECT_LE(maxDifference(image, reference), 24);
+    EXPECT_LE(maxDifference(image, reference), GpuEnvironment::isReferenceRenderer() ? 24 : 46);
 }
 
 TEST_F(FluidSimulatorTest, UnsupportedDevice){

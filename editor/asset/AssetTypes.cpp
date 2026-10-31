@@ -42,6 +42,9 @@ namespace {
             // engine's YAML assets do; pose animations have a meta like other data files
             {{AssetType::AnimationClip, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".anim"}},
             {{AssetType::PoseAnimation, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".poseanim"}},
+            // Vertex Animations as clips (their JSON "guid"); the generated "<x>.vat.glb" beside one
+            // is a model with a meta like any other
+            {{AssetType::VertexAnimation, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".vat"}},
             {{AssetType::NavMesh, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".navmesh"}},
             {{AssetType::NavGrid, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".navgrid"}},
             // the Animator's assets (S21) keep their GUID in their JSON like clips

@@ -1117,6 +1117,9 @@ namespace jasperengine::editor{
         void clearPlayPrefabTemplates();
 
         void pauseEngineScene(Scene* scene, bool pause) const;
+        // Edit mode: every Vertex Animator previewing in an open scene or prefab stage goes back
+        // to its start with Preview off (play, saves: vertex animation spec 3.6)
+        void stopVertexAnimatorPreviews();
 
         void copyEngineApiToProject();
 
@@ -1841,6 +1844,10 @@ namespace jasperengine::editor{
         // The scenes, then the prefab stages' scenes (Prefab Mode): for what applies to every
         // GameObject being edited (script refreshes, asset path changes, tools)
         std::vector<SceneProject*> getScenesAndPrefabStages();
+        // Closes the holes destroyed entities left in the component arrays of every open scene,
+        // prefab stage and loaded prefab (EntityRegistry::compactComponents): between editor
+        // steps (MCP calls) and before a thread reads them
+        void compactAllComponents();
 
         // Flushes compiled forked-shader caches and flags meshes that use a custom
         // shader for reload, so editing a shader source file updates the viewport.
@@ -2046,9 +2053,12 @@ namespace jasperengine::editor{
         // repaired (asset-relative) and a missing GUID filled in. Sub-clip entries
         // ("<model>#<clip>") are path-only. True when the entry changed.
         bool resolveClipReference(AnimationPlayerClip& entry, bool mayImport = true);
-        // Every Animation Player entry of a registry (a scene, a prefab asset, a play copy); true
-        // when one changed (the players reload). `mayImport` false reads the database only (the
-        // play startup worker)
+        // The same for any GUID-tracked asset reference held as (path hint, GUID): a Vertex
+        // Animator's .vat. True when the hint or the GUID changed
+        bool resolveAssetReference(std::string& path, std::string& guid, bool mayImport = true);
+        // Every Animation Player entry and Vertex Animator animation of a registry (a scene, a
+        // prefab asset, a play copy); true when one changed (they reload). `mayImport` false
+        // reads the database only (the play startup worker)
         bool resolveRegistryClipRefs(EntityRegistry* registry, bool mayImport = true);
         // A file or directory moved through AssetOps (renamed, moved, a move undone): the open
         // clip documents (a clip's, a model's sub-clips), AnimationClipPool and the players learn

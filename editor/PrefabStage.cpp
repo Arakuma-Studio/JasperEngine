@@ -163,6 +163,19 @@ std::vector<editor::SceneProject*> editor::Project::getScenesAndPrefabStages() {
     return result;
 }
 
+void editor::Project::compactAllComponents() {
+    for (SceneProject* sceneProject : getScenesAndPrefabStages()) {
+        if (sceneProject->scene) {
+            sceneProject->scene->compactComponents();
+        }
+    }
+    for (auto& [path, prefab] : prefabAssets) {
+        if (prefab.registry) {
+            prefab.registry->compactComponents();
+        }
+    }
+}
+
 bool editor::Project::isPrefabStage(uint32_t sceneId) const {
     return findPrefabStageScene(sceneId) != nullptr;
 }

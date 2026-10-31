@@ -277,7 +277,9 @@ TEST_F(IntegrationTest, PlayStopCyclesLeakNothing){
             // the texture form is an empty field and an empty label: with the S16 primitives its
             // background is an HTMLUI_PRIM instance, not a geometry, so only the screen document
             // is sure to hold geometry
-            if (!RmlRenderer::isSdfPrimitives()) EXPECT_GT(textureGeometry, 0u);
+            if (!RmlRenderer::isSdfPrimitives()) {
+                EXPECT_GT(textureGeometry, 0u);
+            }
         }else if (cycle > 1){
             EXPECT_EQ(screenContext->getRenderer().getLiveTextureCount(), screenTextures) << "cycle " << cycle;
             EXPECT_EQ(screenContext->getRenderer().getLiveGeometryCount(), screenGeometry) << "cycle " << cycle;
@@ -718,7 +720,13 @@ TEST_F(IntegrationTest, TextureDocumentDrawsClipsLayersAndFilters){
     EXPECT_GE(stats.layersPushed, 3u);
     EXPECT_GT(stats.passes, 3u);
 
-    CompareResult result = compareWithGolden("p1/texture_effects", texels.rgba, texels.width, texels.height);
+    // the golden is llvmpipe's; a hardware GPU anti-aliases the rotated panel's edges, the circle
+    // and the outlined text a little differently: 68 scattered edge pixels over the threshold
+    // (0.104 %, mean difference 0.31) on an NVIDIA GTX 1080 (Vulkan, driver 580). The bad-pixel
+    // limit is that plus about 25 % there (the default 0.05 % on the goldens' renderer).
+    CompareOptions hardware;
+    hardware.maxBadFraction = 0.0013;
+    CompareResult result = compareWithGolden("p1/texture_effects", texels.rgba, texels.width, texels.height, hardwareTolerance(hardware));
     EXPECT_TRUE(result.passed) << result.message;
 }
 

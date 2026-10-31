@@ -93,6 +93,7 @@ bool editor::ImportPrefabCmd::execute(){
         // Clean up root if import failed
         project->clearMissingPrefab(sceneId, rootEntity);
         scene->destroyEntity(rootEntity);
+        scene->compactComponents();
         auto it = std::find(sceneProject->entities.begin(), sceneProject->entities.end(), rootEntity);
         if (it != sceneProject->entities.end()) {
             sceneProject->entities.erase(it);

@@ -188,9 +188,8 @@ bool editor::DeleteEntityCmd::appendEntityData(Entity entity){
     Signature signature = scene->getSignature(entity);
     if (signature.test(scene->getComponentId<Transform>())) {
         entityData.hasTransform = true;
-        Transform& transform = scene->getComponent<Transform>(entity);
+        entityData.parent = scene->getComponent<Transform>(entity).parent;
         entityData.entityIndex = scene->getComponentArray<Transform>()->getIndex(entity);
-        entityData.parent = transform.parent;
     } else {
         auto it = std::find(sceneProject->entities.begin(), sceneProject->entities.end(), entity);
         if (it != sceneProject->entities.end()) {
@@ -521,6 +520,8 @@ void editor::DeleteEntityCmd::recordTransformOrder(){
 void editor::DeleteEntityCmd::destroyEntity(EntityRegistry* registry, Entity entity, std::vector<Entity>& entities, Project* project, uint32_t sceneId){
     destroyEntityWithoutReconcile(registry, entity);
     ProjectUtils::reconcileTrackedEntities(registry, entities, project, sceneId);
+    // the holes it left closed before the step ends (ComponentArray)
+    registry->compactComponents();
 }
 
 void editor::DeleteEntityCmd::destroyEntities(EntityRegistry* registry,
@@ -535,6 +536,7 @@ void editor::DeleteEntityCmd::destroyEntities(EntityRegistry* registry,
     if (reconcile) {
         ProjectUtils::reconcileTrackedEntities(registry, entities, project, sceneId);
     }
+    registry->compactComponents();
 }
 
 bool editor::DeleteEntityCmd::execute(){
@@ -562,9 +564,11 @@ bool editor::DeleteEntityCmd::execute(){
         return requestedSet.count(entity) != 0;
     };
 
+    // indexed once: a scan of the scene's models for each entity made deleting many quadratic
+    const editor::LockedParentIndex lockedParents(sceneProject->scene);
     auto it = entities.begin();
     while (it != entities.end()) {
-        Entity lockedParent = ProjectUtils::getLockedEntityParent(sceneProject->scene, it->entity);
+        Entity lockedParent = lockedParents.get(it->entity);
         bool canDelete = true;
         if (lockedParent != NULL_ENTITY){
             canDelete = (allowLockedRoots && isRequestedEntity(it->entity))
@@ -698,6 +702,8 @@ bool editor::DeleteEntityCmd::execute(){
         CameraTextureLink::resolve(scene);
     }
     survivingEntities = sceneProject->entities;
+    // a delete leaves no holes behind it (ComponentArray): the next step finds packed arrays
+    scene->compactComponents();
 
     return true;
 }
@@ -893,6 +899,8 @@ void editor::DeleteEntityCmd::undo(){
 
     // recreated cameras get a new framebuffer, recreated textures are bound to theirs
     CameraTextureLink::resolve(sceneProject->scene, restoredEntities);
+    // (a restore can replace entities, e.g. a prefab instance's)
+    sceneProject->scene->compactComponents();
 
     sceneProject->isModified = wasModified;
 }

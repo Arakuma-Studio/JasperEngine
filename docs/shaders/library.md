@@ -18,14 +18,14 @@ Document component) draw with their own shaders; their GPU effects are a library
 ## Lighting modes
 
 A mesh shader lists the lighting modes it supports; the first is its default (Auto). The
-material's **Lighting** row picks one of them:
+built-in Lit lists all four, per pixel first. The material's **Lighting** row picks one of them:
 
 | Mode | What it does | When |
 |---|---|---|
 | Per pixel (`pixel`) | Every light of the object is evaluated per pixel: diffuse, specular, shadows, spot masks. | Close-up, important objects; the most expensive. |
 | Per vertex (`vertex`) | Every light is evaluated per vertex and interpolated: diffuse only (no specular, shadows or spot mask; a spot's cone still applies). | Mobile, background and dense scenery, many lights; the cheapest lit mode. Coarse on large triangles near point lights. |
 | Mixed (`mixed`) | Each light follows its own **Shading** (Light inspector, Lua `light.shading`): Per pixel, Per vertex, or Both (per pixel here). | A main light per pixel with shadows and fill lights per vertex. |
-| None (`none`) | Unlit. | Effects, stylised art, UI-like 3D. |
+| None (`none`) | Unlit. The built-in Lit draws the base colour (factor, texture, vertex colour) only; a glTF material with `KHR_materials_unlit` loads with this mode. | Effects, stylised art, UI-like 3D. |
 
 A lit mode in a scene without lights (or with the mesh's Receive Lights off) draws the
 shader's unlit colour. Shadows come only from per-pixel lights that cast them.
