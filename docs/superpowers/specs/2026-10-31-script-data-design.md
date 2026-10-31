@@ -352,3 +352,199 @@ JSON save; `eval_lua` reads them; after `play stop` the XML file contains the ke
 - **platform-services**: none (app pause flush uses existing `Engine::systemPause`).
 - Risk: decision 10 moves desktop saves; the migration copy covers UserSettings, not arbitrary files games
   wrote to the working directory (documented in the release note).
+
+## Implementation notes
+
+What was built differs from the text above in these points (product decisions taken while
+implementing; everything else is as specified).
+
+### C++ API (`engine/core/script/LuaJson.h`) for http / native-bridge / debug-overlay
+
+- The names and semantics http and native-bridge rely on are exactly as 6.1:
+  `LuaJson::toJson(L, idx, out, opts, err)`, `LuaJson::push(L, json, opts)` (opts defaults to
+  `DecodeOptions{}`), `encode`, `decode`, `pushNull`, `isNull`, `EncodeOptions`,
+  `DecodeOptions`, `InvalidUtf8`, `MaxDepth`. Added: `LuaJson::parse(text, json&, opts, err)`
+  (the depth check and the formatted syntax errors of `decode`, without pushing) and
+  `markArray` / `markObject`. **http and native-bridge should parse text with `LuaJson::parse`
+  or `LuaJson::decode`** (not `nlohmann::json::parse` directly) to get the 512-level limit and
+  the "syntax error at line L, column C: ..." messages; `push` of a C++-built json nested deeper
+  than 512 pushes `Json.null` there (warned once) instead of failing, since `push` returns void.
+- `toJson` with `InvalidUtf8::Replace` / `Ignore` sanitizes strings while converting (maximal
+  ill-formed subpart -> one U+FFFD), so the json it returns always dumps without an error
+  handler; with `Error` it fails with the path. The stack is left as it was in every case.
+- Debug-overlay: `jasperengine::FileUtils` (`engine/core/io/FileUtils.h`) has the
+  static functions of 6.3 plus `resolve(path, forWrite, normalized, systemPath, error)` (the
+  absolute path to log), `writeFileAtomic`, `renameFile` and `prepareUserDataFolder`. It is a
+  class in `jasperengine`; editor code inside `jasperengine::editor` still sees its own
+  `editor::FileUtils` first, so nothing clashes.
+
+### Json rules and messages
+
+- Error texts: `cannot encode a <type> at <path>`, `invalid key type float at $.a`,
+  `hole at $.list[2]`, `cycle at $.self`, `NaN or infinity at $.x`, `invalid UTF-8 at $.name[1]`,
+  `invalid UTF-8 in a key at $`, `nesting deeper than 512 at $[1]...` (encode) / `... at line 1,
+  column 513` (decode), `__tojson failed (<message>) at $`, `__tojson returned the value itself
+  at $`, `__tojson is not a function at $`. The raising functions prefix `Json.encode: ` /
+  `Json.decode: `; `tryEncode` / `tryDecode` return the bare message.
+- New rule: a table with both the integer key `1` and the string key `"1"` (they would become
+  the same JSON key, and Lua's iteration order would pick the winner) is an error
+  `duplicate key "1" at $ (an integer and a string key)`.
+- A table marked `Json.array` encodes `t[1..rawlen(t)]` with raw access; its non-integer keys
+  are ignored. Marking a table that carries one of the two marker metatables switches the
+  marker (the shared marker metatables are never modified); a table with a metatable of its
+  own gets `__jsontype` set in it, as specified. `Json.array(5)` raises.
+- `Json.null` is a full userdata whose metatable is protected (`getmetatable(Json.null)` is the
+  string `"Json.null"`), so scripts cannot alter it.
+- Decoding: a table that ends up empty is marked by what it was in JSON (so `{"a":null}` with
+  `null = "nil"` re-encodes as `{}`). A UTF-8 BOM at the start of a file is skipped (nlohmann).
+- `Vector2/3/4` and `Quaternion` floats are written as the shortest text that reads back as the
+  same float (`0.1`, not `0.10000000149011612`).
+- `indent` accepts 0..64 (a larger value is surely a mistake). `Json.writeFile` returns
+  `nil, message` for an encode error too (it never raises for the value; only for wrong
+  argument types, a missing value argument or bad options).
+
+### UserSettings / PlayerPrefs
+
+- The desktop/editor store is `engine/core/io/UserSettingsStore.{h,cpp}` (the spec's
+  "UserSettingsXml"). The file format is extended compatibly: keys that are not plain XML names
+  (spaces, `/`, `:`, a leading digit, non-ASCII letters) are written as
+  `<entry key="...">value</entry>`; values XML text cannot hold exactly (NUL, CR, other control
+  characters, or nothing but whitespace, which XML parsers drop) get `encoding="base64"`. Keys
+  are written sorted. Before, such keys produced a file that no longer parsed and every key was
+  lost. Files of older builds read as before; a file that is not valid XML is moved aside to
+  `UserSettings.xml.corrupt` (logged) instead of being overwritten; a file that is there but
+  cannot be read (permissions, a folder in its place) is never replaced: the values work in
+  memory for the session and an error says they are not saved.
+- Locale independence uses a small helper `engine/core/util/NumberText.{h,cpp}` (shortest
+  round-trip text through `%.*g` with the locale's decimal point replaced, and the reverse for
+  reading): `std::to_chars`/`from_chars` for floating point are unavailable on the Apple
+  deployment targets (macOS 12, iOS 15). Readable forms: `100`, not `1e+02`. Old values written
+  with a decimal comma (`0,500000`, an older build in a German locale) are read too.
+  `getBoolForKey` also accepts `1`/`0`.
+- Empty keys are refused (logged): they could not be stored on any platform before either.
+- The store follows `System::instance()`: when another System is installed (tests, tools) it
+  writes what the old one had unsaved and reads the new one's file; the editor calls
+  `UserSettingsStore::instance().unload()` when it switches projects, so Play always uses the
+  open project's `.jasperengine/user/rundata/UserSettings.xml`. `~System` writes what is
+  unsaved. A failed write is retried a second later (not every frame).
+- Android: besides `hasKey` / `removeAllKeys` / `save` (`commit()`), strings now cross JNI as
+  UTF-16 (`newJavaString` / `javaStringToUtf8`), so characters outside the BMP (emoji) survive;
+  the old code used modified UTF-8 and leaked `GetStringUTFChars`. Java exceptions are cleared.
+- Apple: number getters accept a stored `NSNumber` or a numeric `NSString` and return the
+  default for other types (data) instead of raising an Objective-C exception; `getBoolForKey`
+  reads a number or a string as before (`boolValue`), `getStringForKey` a string or a number as
+  text (`stringForKey:`, as before);
+  a key or value that is not valid UTF-8 is refused (logged) instead of crashing in
+  `setObject:forKey:nil`; strings keep embedded NULs. `removeAllKeys` on a bare executable
+  (no bundle identifier) removes the keys of the process's domain one by one.
+- Web: instead of tombstones for "bare legacy keys read this session" (which left the other
+  legacy keys of the origin visible after `deleteAll`), `deleteAll` sets a marker
+  `<storageId>/\u0001jasperengine:cleared` after which no bare legacy key is read any more. Old
+  builds' empty-string tombstones are converted to the new tombstone once per storage id
+  (marker `<storageId>/\u0001jasperengine:v2`), so a stored `""` is an ordinary value from then
+  on. localStorage exceptions (storage disabled, quota) are caught: reads give the default, a
+  failed write is logged once. The web build needs no typed getter overrides: the base class's
+  typed getters go through the virtual `hasKey` / `getStringForKey` and never throw.
+- Web flush on tab hide: the web platform never calls `Engine::systemPause` for a hidden tab, so
+  a `visibilitychange` listener writes pending files to IndexedDB at once (no pause behaviour
+  was added, to stay out of the way of platform-services' focus events).
+- New virtual `System::flushFileSystem()`: Lua `System.syncFileSystem()` calls it (the web build
+  syncs to IndexedDB now); `System::syncFileSystem()` stays the debounced request that
+  `File.writeText` and `File::write` make.
+- Web restore wait: `Engine::systemInit(argc, argv, system, startProject = true)` and a new
+  `Engine::systemStartProject()`; the web build passes `false` and starts the project from its
+  render loop once IndexedDB is restored (or after 3 s with the warning), then lays the view out
+  again (`systemViewChanged`) because `init()` sets the canvas size after the view exists.
+  Nothing is drawn meanwhile (the canvas stays blank; the restore takes milliseconds).
+- `PlayerPrefs.setInt` accepts a float with an integer value (`6 / 2`), refuses `3.5` ("integer
+  expected, got 3.5") and values outside 32 bits (pointing at `UserSettings.setLongForKey`);
+  `setString` takes only strings, `setFloat` only numbers; keys must be non-empty strings.
+  Getters' defaults are type-checked the same way.
+- MCP `user_settings` saves to disk after each set / delete / clear, infers `type` from the JSON
+  value (integer -> int, number -> float, boolean -> bool, string -> string), lists the stored
+  text of every key and reports the store's project-relative file. Its busy activity is
+  `Control` (the store is no project content, so an export running does not refuse it).
+- The Edit menu item reads "Clear User Settings (PlayerPrefs)..." (it opens a confirm dialog);
+  it clears the shared store and saves, so a running game sees it at once.
+
+### Files and desktop paths
+
+- `File.remove` of a missing file returns `true` (as .NET's `File.Delete`); a folder is refused.
+  `File.list` refuses non-`data://` folders. A `:` inside a path segment is refused (portable
+  saves; `data://C:/x`), and `\` separates like `/`. On Android `asset://`/`lua://` existence is
+  probed through `platformFopen` (the APK), never the device's file system.
+- Desktop identifier: the same rule as the web storage id (Project Settings
+  `application.identifier`, or the project name when it is the shared default), made safe for a
+  folder name by the exporter's `toStorageId` (bytes other than letters, digits, `.` and `-`
+  become `_XX`). The define is written for every export mode (only the desktop System classes
+  read it). `SystemWin::platformFopen` now opens UTF-8 paths (`_wfsopen`), so a per-user folder
+  under a non-ASCII user name works; it was ANSI before.
+- The export's per-user folder also moves the runtime shader cache of Linux/Windows desktop
+  exports there (it follows `getUserDataPath`), which fixes the same not-writable install folder
+  problem for it.
+
+### Docs, agent guide, tools
+
+- The agent guide (`McpInstructions.cpp`) is at its 16 KB budget: the new "Saves" line was paid
+  for by shortening three lines (the editor windows list, the LuaLS sentence, "(seconds to
+  minutes)").
+- `docs/mcp/TOOLS.md` gets a "Saved data (PlayerPrefs)" section (`DataTools.cpp`).
+- The Xcode workspace (`engine/workspaces/xcode/JasperEngine.xcodeproj`) lists the four new
+  engine sources.
+
+### Review fixes
+
+- Web start order is init -> view loaded -> view changed as on every other platform:
+  `Engine::systemViewLoaded()` and the first canvas size now run right after
+  `Engine::systemStartProject()` (so `Engine.onViewLoaded` subscribers of the project get it);
+  page resizes and a quit before the project starts do not touch the view.
+- iOS/macOS `deleteAll` no longer removes the app's persistent domain (that held other SDKs'
+  keys, e.g. the AdMob/UMP consent state and `IABTCF_*` strings). The engine keeps the names of
+  the game's keys in `jasperengine.userSettings.keys` (every key it writes, and every key of an
+  older build that the game reads back, except known SDK prefixes) and `deleteAll` removes only
+  those. Limitation: an older build's key that this build never read or wrote survives a
+  `deleteAll`. Android (its own preferences file), desktop (its own XML file) and Web (prefixed
+  keys) never touched foreign keys.
+- `Engine::systemShutdown` saves UserSettings again at its very end, after the Lua state and the
+  scenes are gone (values set in `onDestroy` then), since desktop System objects are never
+  deleted.
+- Web IndexedDB restore later than the 3 s wait: `FileUtils` refuses `data://` writes (and
+  removals, folder creation) while `System::isUserDataLoaded()` is false, so the late restore
+  (which replaces and removes MEMFS entries) can clobber nothing the game wrote; a warning is
+  logged when it finishes after the start. Lua `io` and the old `File` object API are not
+  covered (documented: use `File.writeText`).
+- Atomic writes use a hidden, unique temporary name in the same folder
+  (`.<name>.<pid>-<counter>.tmp`), never a game file such as `save.json.tmp`.
+- Keys with a zero byte are refused: `PlayerPrefs.*` raise, the `UserSettings` Lua functions now
+  take the whole Lua string and log and ignore such a key (before, `"a\0b"` was stored as `"a"`).
+  Values keep zero bytes on every platform: the web store now passes values with their byte
+  length across the JS boundary (`stringToNewUTF8` / `TextDecoder`). The web build exports
+  `_malloc` and `_free` (the store needs them; with this emsdk they were not exported, so even
+  the previous `_malloc` use of the old store code could not have worked).
+- Empty keys are refused centrally in `UserSettings::set*` (every platform alike; Android's
+  typed setters accepted them).
+- The desktop migration copies `./UserSettings.xml` only on the first run with the per-user
+  folder (marker `.jasperengine-migrated`), so a reset or a deleted file never brings stale
+  values back.
+- Not testable here: the web start order, the late-restore message and the Apple key list (no
+  browser run of the engine, no Apple toolchain; the web store itself was built with em++ and run
+  in node with a fake localStorage, zero bytes included), and the final shutdown save (the unit
+  tests share one engine whose shutdown would end the process's Lua state).
+
+### Verification
+
+- Editor + `jasperengine-editor-tests` build with 0 warnings. Unit tests (after the review
+  fixes): 974 run, 966 passed, 8 skipped (the baseline skips), 0 failed; 30 of them are this
+  feature's (`LuaJsonTest` 12, `UserSettingsTest` 10, `FileUtilsTest` 8; the locale test makes a de_DE locale with
+  `localedef` into a temporary `LOCPATH` when none is installed).
+- MCP: `test_script_data.py` 2/2; `test_docs.py`, `test_protocol.py` (16 KB guide budget),
+  `test_autosync.py` (guide tool names), `test_html_ui_tools.py::test_budget` (106611 chars, limit
+  106620), `test_build.py` export tests (the `JASPERENGINE_APP_IDENTIFIER` line), and a sweep of
+  `test_play`, `test_lua_threads`, `test_script`, `test_project`, `test_project_save`,
+  `test_runtime_regressions`, `test_regressions`, `test_play_startup_scenes`, `test_playctl` pass;
+  `test_stubs.py` passes with its lua-language-server / clangd checks skipped (not installed
+  here; its known-good script now uses the Json, PlayerPrefs and File API for when they are).
+- Not verifiable on this host: the Apple code (`JasperEngineApple.mm`, `SystemMac.mm`) and the
+  Windows code (`SystemWin.cpp`, the `_WIN32` parts of `FileUtils.cpp`) were written carefully
+  but not compiled. Android (Java through Gradle, the JNI and core files with the NDK clang for
+  arm64-v8a) and Web (em++) were compiled; the web localStorage store was exercised in node.

@@ -39,31 +39,31 @@ origin/main).
 
 | # | Feature (branch `gaps/<name>`) | Covers | Status |
 |---|---|---|---|
-| 1 | `http` | HTTP client for Lua (GET/POST/HEAD, headers, timeouts, JSON/text/binary bodies, download to file, texture from URL), all platforms | specced |
+| 1 | `http` | HTTP client for Lua (GET/POST/HEAD, headers, timeouts, JSON/text/binary bodies, download to file, texture from URL), all platforms | review |
 | 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | specced |
-| 3 | `platform-services` | `openURL`, system language/locale, target frame rate / vsync, runtime orientation lock + iOS orientation setting + device orientation, app focus event | impl |
+| 3 | `platform-services` | `openURL`, system language/locale, target frame rate / vsync, runtime orientation lock + iOS orientation setting + device orientation, app focus event | review |
 | 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | specced |
 | 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | specced |
 | 6 | `audio-mixer` | mixer buses with volume/mute and filters (low-pass/high-pass, ...), streamed music, PlayOneShot, fades | specced |
-| 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | impl |
+| 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | review |
 | 8 | `physics-contacts` | per-object collision/trigger callbacks (enter/stay/exit) for 3D and 2D, delivered on the main thread; 3D global handlers off the job threads | specced |
 | 9 | `physics-3d` | damping, centre of mass, safe body-type switching, per-collider sensor/material, collider removal, 3D joint limits/motors/springs, cone fix, ragdoll, runtime-sized collider data and world capacity | specced |
-| 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | specced |
+| 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | impl |
 | 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | specced |
 | 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | specced |
-| 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | impl |
+| 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | review |
 | 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | specced |
 | 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | specced |
-| 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | specced |
-| 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | specced |
-| 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | impl |
-| 19 | `input` | key/mouse/button down/up edge queries, virtual axes and buttons (Input Manager-style), bound Touch with phases and deltas | impl |
+| 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | impl |
+| 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | review |
+| 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | merged |
+| 19 | `input` | key/mouse/button down/up edge queries, virtual axes and buttons (Input Manager-style), bound Touch with phases and deltas | merged |
 | 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | specced |
 | 21 | `ui-scaling-text` | canvas match-width-or-height scaling, per-character text effects (waves etc.), particles inside UI | specced |
 | 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | specced |
 | 23 | `debug-overlay` | on-device log console and stats/FPS overlay | specced |
 | 24 | `camera-shake` | camera shake component and presets (MilkShake-like), camera follow | specced |
-| 25 | `ui-canvas-group` | Canvas Group for the native UI: group alpha, interactable, blocks raycasts, ignore parent groups; animatable (found by the animation spec: legacy clips animate CanvasGroup alpha) | spec |
+| 25 | `ui-canvas-group` | Canvas Group for the native UI: group alpha, interactable, blocks raycasts, ignore parent groups; animatable (found by the animation spec: legacy clips animate CanvasGroup alpha) | specced |
 
 ## Log
 
@@ -87,3 +87,31 @@ origin/main).
   activation like Awake), coroutines, script-data, persistence, debug-overlay. `script-data` implementation started.
 - 2026-10-31: specs committed for physics-2d, physics-contacts, physics-3d (merge order 2d -> 3d -> contacts, contacts
   after script-lifecycle). `physics-2d` implementation started.
+- 2026-10-31: all 25 specs written and committed. The Canvas Group spec found the ECS signature was a 64-bit set
+  with 61 component types used; widened to 128 on `main` (`a23dfd2f7`, unit tests 936/936) before any new
+  component lands, and pushed `main` (specs, ledger, fix). Added a 16 GB swap file (builds of 6 agents ran the
+  machine out of memory). `script-lifecycle` implementation started.
+- 2026-10-31: `script-data` implemented (9 commits; unit 963 passed / 8 skipped; Android/Web compile checks;
+  Apple/Windows code not compilable here). Independent review started.
+- 2026-10-31: **`script-data` merged** (review: 2 medium + 6 low defects, all fixed with regression tests; merged tree:
+  0 warnings, unit 966 passed / 8 skipped, MCP script_data/stubs/docs/play/lua_threads 20 passed). `http` started on
+  top of it. `input` and `platform-services` implemented; reviews found 5 and 7 defects, being fixed. Lead product
+  calls for platform-services: keep-screen-on default applies on mobile only (desktop/Web only when the game asks);
+  iPad `UIRequiresFullScreen` only when orientations are restricted.
+- 2026-10-31: `input` review fixes done (5 defects, regression tests; unit 989). Merged into local `main`
+  (`d29e2a4be`; conflicts in the glossary, test_build.py, Engine.cpp systemPause and TOOLS.md resolved keeping both
+  sides); verification running. `platform-services` review fixes done (7 defects incl. a Windows openURL drive-letter
+  launch and the generated project CMake link). `script-lifecycle` and `physics-2d` implemented, in review.
+  `coroutines` and `anim-layers` started.
+- 2026-10-31: compute: the host (8 cores) ran at load ~28. Rented a Hetzner cpx51 box (16 vCPU, 30 GB, Ubuntu
+  24.04, ~$0.44/h, 48 h limit; the dedicated-core ccx63 was refused by the account's core limit). distcc through
+  the port forward was slower per file than local (12.3 s vs 8.3 s), so the box runs the merge verification
+  instead (`/root/verify.sh <ref> [MCP tests|ALL]`: build, unit suite, MCP, tool budget), leaving the host to the
+  agents. macOS/Windows boxes to compile-check Apple/Windows code are planned in batches at merge time.
+- 2026-10-31: **`input` merged** (verified on the build box: 0 warnings, unit 1019 passed, full MCP 820 passed with
+  only the 10 baseline failures + `test_autosync::test_external_property_picked_up`, which passes alone (load
+  flake) + the tool budget, raised by input's measured +76 with TOOLS.md regenerated). `http` and `lines-trails`
+  implemented and reviewed (http: Windows sync-handle cancel race and Apple TLS session reuse among the findings;
+  lead calls: raw bodies default to application/octet-stream, redirects from remote origins to local/private
+  addresses are refused). New rule: before handoff, each feature agent merges current `main` into its branch and
+  resolves conflicts itself, so merges into `main` are clean.

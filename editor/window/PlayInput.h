@@ -62,6 +62,12 @@ namespace jasperengine::editor {
         void releaseAll();
 
         void setPointerInjected(bool injected) { pointerInjected = injected; }
+
+        // The engine key (D_KEY_*) of an ImGui key, D_KEY_UNKNOWN (-1) when the game has none:
+        // what forward() sends (Project Settings > Input's Listen captures with it)
+        static int engineKey(ImGuiKey key);
+        // The engine gamepad button (D_GAMEPAD_BUTTON_*) of an ImGui gamepad key, else -1
+        static int engineGamepadButton(ImGuiKey key);
     };
 
 }

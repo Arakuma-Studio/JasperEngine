@@ -161,6 +161,23 @@ function Good:onUpdate()
     ---@type integer
     local pending = ShaderPool.getPendingShaderCount()
     print(ready, pending, ShaderPool.isShaderReady("mesh:Ult,Vc3"))
+    -- script data: PlayerPrefs, Json, File (the hand-written signatures and option classes)
+    PlayerPrefs.setInt("coins", PlayerPrefs.getInt("coins", 0) + 1)
+    if PlayerPrefs.hasKey("name") then print(PlayerPrefs.getString("name", "")) end
+    PlayerPrefs.setFloat("volume", PlayerPrefs.getFloat("volume") * 0.5)
+    PlayerPrefs.save()
+    local text = Json.encode({coins = 1, list = Json.array(), none = Json.null}, {pretty = true, emptyTable = "object"})
+    local value, err = Json.tryDecode(text, {null = "nil", allowComments = true})
+    if not value then print(err) end
+    print(Json.isNull(Json.null), Json.decode(text), Json.object({}))
+    local ok, werr = Json.writeFile("data://save.json", {coins = 1})
+    local saved, rerr = Json.readFile("data://save.json")
+    local body, ferr = File.readText("data://save.json")
+    print(ok, werr, saved, rerr, body, ferr, File.exists("save.json"), File.list("data://"))
+    print(File.writeText("data://a.txt", "x"), File.appendText("a.txt", "y"), File.remove("a.txt"), File.makeDirs("data://d"))
+    print(UserSettings.hasKey("coins"), System.syncFileSystem(), System.isUserDataLoaded())
+    UserSettings.deleteKey("coins")
+    UserSettings.deleteAll()
 end
 
 return Good
