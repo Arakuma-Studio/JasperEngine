@@ -380,7 +380,7 @@ The patches in `sokol_gfx.h`:
 struct ShaderCreationSettings {        // S08-reflected (editor) and set by the exported main
     bool asyncCreation = true;
     float mainThreadBudgetMs = 2.0f;
-    bool glWarmDraws = false;
+    bool glWarmDraws = true;     // desktop GL (GPU campaign); GLES and software GL never
 };
 struct AsyncCreateStats { const char* mode; size_t pendingShaders, pendingPipelines, pendingWarmDraws;
     uint64_t createdShaders, createdPipelines; size_t internedPipelines; double lastFrameMainMs, maxMainMs; };
@@ -451,7 +451,8 @@ public:
     warmed state never overlap (`SokolAsyncCreate::beginFirstDraw`): that first draw waits
     while the worker draws the program, and a program first drawn in a frame is not warmed
     until the next `update()`.
-  - **Off by default, and never on a software GL** (`sgj_async_caps.gl_software`: llvmpipe,
+  - **On by default on desktop GL since the GPU campaign (off on GLES until a device run), and
+    never on a software GL** (`sgj_async_caps.gl_software`: llvmpipe,
     softpipe, SwiftShader; `JASPER_GL_WARM_DRAWS=1` overrides for driver investigations). On
     llvmpipe the render thread crashed in the driver drawing programs the worker had drawn
     (`AtmosphereGpu.ScreenCloudsHideFarTerrain`, deterministic). Isolated on D: with the
@@ -463,7 +464,9 @@ public:
     compiles at draw time (llvmpipe: measured in §7 AC13). Warm draws stay for the GPU campaign
     (§8).
 - **parallel**: `sgj_gl_shader_issue` on the main context (the compile and link calls only,
-  shader objects kept for the log). `update()` polls `GL_COMPLETION_STATUS_KHR`, which does not
+  shader objects kept for the log). The mode first sets `glMaxShaderCompilerThreadsKHR(0xFFFFFFFF)`
+  (the extension leaves the initial count to the driver; NVIDIA's is none, so without it the link
+  blocks and the status is always complete; GPU campaign). `update()` polls `GL_COMPLETION_STATUS_KHR`, which does not
   block. When it is true, `sgj_shader_create` adopts the program (patch 1) and checks the link
   status (no wait now). On failure the shader logs are read. There are no warm draws.
 - **deferred**: as parallel, but the program counts as "complete" 2 frames after the issue. At
@@ -696,9 +699,12 @@ public:
      on one thread only (the worker's from its creation thread until `release()`); the worker
      never touches sokol's GL state cache (`_sg_gl_create_shader` reads the bound program with
      `glGetIntegerv` and restores it).
-   - Warm draws need the worker, so they do not run on a software GL either; elsewhere the
-     setting `shader_creation.gl_warm_draws` defaults to off until the GPU campaign verifies
-     them. So on llvmpipe the GLSL link and a program's first-draw compile stay on the render
+   - Warm draws need the worker, so they do not run on a software GL either. **GPU campaign
+     (NVIDIA RTX 3080 Ti, driver 595.99, GLX):** the worker context and warm draws run without a
+     crash or hang over every bench run, and a warm draw takes the driver's first-draw compile of
+     a new variant (about 8 ms) off the render thread, so `shader_creation.gl_warm_draws` now
+     defaults to **on** for desktop GL. GLES (Android EGL) keeps them off until an Adreno/Mali run
+     (`JASPER_GL_WARM_DRAWS=1` allows them there); see Progress. So on llvmpipe the GLSL link and a program's first-draw compile stay on the render
      thread (spread by `parallel`'s completion polling); R21/R22 are measured on E with that
      cost included (Progress).
 7. **A variant switch makes the new pipelines first** (R8, §6.4, added): the loaded object makes
