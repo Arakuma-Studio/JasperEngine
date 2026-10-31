@@ -340,8 +340,10 @@ TEST(AssetDatabase, OpeningAgainChangesNothing) {
     AssetDatabase database;
     database.open(project, "assets");
     EXPECT_TRUE(database.refresh().empty());
-    EXPECT_EQ(fs::last_write_time(project / "assets/textures/brick.png.meta"), metaTime);
-    EXPECT_EQ(fs::last_write_time(project / "Main.scene"), sceneTime);
+    // compared as clock ticks: gtest prints a time point with C++20 chrono formatting, which
+    // libc++ makes unavailable below macOS 13.3, the editor's deployment target being 12.0
+    EXPECT_EQ(fs::last_write_time(project / "assets/textures/brick.png.meta").time_since_epoch().count(), metaTime.time_since_epoch().count());
+    EXPECT_EQ(fs::last_write_time(project / "Main.scene").time_since_epoch().count(), sceneTime.time_since_epoch().count());
 }
 
 // AC3: a file moved without its meta adopts it
