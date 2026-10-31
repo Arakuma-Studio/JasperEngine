@@ -432,3 +432,12 @@ Decisions taken while implementing (branch `gaps/persistence`, on `gaps/script-l
     - `physics-contacts`: receiver masks are recomputed through `notifyReceiversChanged` for
       the old and new ids; contacts never cross worlds.
     - `debug-overlay`: draw above the persistent and loading scenes; count the persistent scene.
+12. **Verification** (merged tree, `main` at `cacb8711d`): editor + tests build with 0 warnings;
+    unit suite 1120 passed, 8 skipped, 0 failed; full MCP suite 834 passed, 12 failed (the 10
+    baseline failures of `test_animation_assets.py` / `test_lattice_scene.py`, and
+    `test_physics_2d.py::test_old_prefab_overrides_of_colliders` and
+    `test_stochastic_tiling.py::test_old_scene_resaves_byte_identical`, which fail on `main` since
+    the physics-2d merge), 18 skipped; tool definitions unchanged (TOOLS.md and the budget as on
+    `main`); agent guide 16379 bytes. Web: the changed engine files compile with em++
+    (`-fsyntax-only`, flags of a Web build). No platform code changed; Android, Apple and
+    Windows builds not run.
