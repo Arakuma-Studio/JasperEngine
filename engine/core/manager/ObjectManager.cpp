@@ -3,6 +3,7 @@
 
 #include "ObjectManager.h"
 #include "script/ScriptScheduler.h"
+#include "script/AsyncOwner.h"
 #include "PrefabManager.h"
 #include "PrefabAsset.h"
 #include "Engine.h"
@@ -517,6 +518,10 @@ std::vector<Entity> ObjectManager::moveToScene(Scene* from, Entity root, Scene* 
     if (moveListener) {
         moveListener(from, to, map);
     }
+
+    // async work (HTTP requests, native calls) owned by the moved GameObjects or their scripts
+    // follows them: their destroyed originals end nothing
+    AsyncOwners::entitiesMoved(from, to, map);
 
     // the originals hold nothing any more (EntityCloner::move): no callback, no sound stops,
     // no instance is released; children first, as destroy does

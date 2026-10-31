@@ -277,7 +277,11 @@
 #include "util/ThreadUtils.h"
 #include "util/UniqueToken.h"
 
+#include "thread/MainThreadQueue.h"
 #include "thread/ResourceProgress.h"
 #include "thread/ThreadPoolManager.h"
+
+#include "net/Http.h"
+#include "script/AsyncOwner.h"
 
 #endif /* jasperengine_h */

@@ -32,7 +32,8 @@ namespace jasperengine {
 
     public:
         ScriptBase(Scene* scene, Entity entity);
-        // cancels this script's timers (invoke / invokeRepeating)
+        // virtual for the lifecycle callbacks; cancels this script's timers (invoke /
+        // invokeRepeating) and ends the async work it owns (AsyncOwners::fromScript(this))
         virtual ~ScriptBase();
 
         Scene* getScene() const;
