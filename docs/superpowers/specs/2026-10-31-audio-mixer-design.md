@@ -463,3 +463,14 @@ Decisions taken while implementing (2026-10-31), where the spec was silent, ambi
   scene (spec persistence 6.3). `EntityCloner`'s clone path keeps resetting the runtime (a clone gets its own voice).
 - Sample rate choices: Auto, 22050, 44100, 48000 (the spec lists Auto/44100/48000; 22050 is common on low-end
   Android). The rate applies the next time the audio opens.
+- **Verification** (tree merged with main at `92cc07d2a`, box 2203): editor + tests build with 0 warnings (clean
+  build); unit tests 1201 passed, 8 skipped (the known ones), 0 failed, 26 of them new (AudioMixerIOTest,
+  AudioMixerMathTest, AudioMixerMathRuntimeTest, AudioMixerRuntimeTest, AudioSourceTest, AudioLuaTest,
+  GeneratorAudioTest; all on the null backend, no device). MCP: `test_audio_mixer.py` (5) and `test_stubs`,
+  `test_docs`, `test_html_ui_tools` (budget: total 107425, the limit raised by it), `test_protocol` (agent guide
+  16313 bytes), `test_play`, `test_project`, `test_html_ui_video`, `test_runtime_regressions`, `test_build`,
+  `test_animation_clip`, `test_prefab`, `test_play_stop_gizmos`: all pass; skipped: the lua-language-server / clangd
+  checks (not installed on the box) and the slow desktop player run of `test_build` (`JASPER_SLOW_BUILD`, not run:
+  its exported-player check of the mixer log line is untested). The changed engine sources and the new SoLoud
+  sources compile with emsdk (Web) and the Android NDK (arm64-v8a clang); `tools/xcode_sync_engine.py --check`
+  passes. Not compiled anywhere: the Xcode project (Apple) and Windows builds.
