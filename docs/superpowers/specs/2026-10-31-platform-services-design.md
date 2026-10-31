@@ -700,3 +700,8 @@ ambiguous or did not fit the code:
     restore, so a visibility or focus change before that is remembered and applied at the start
     (a pause would save `PlayerPrefs` over the ones not restored yet); the hidden-tab file sync of
     script-data runs in the same visibility callback, after the pause.
+29. **Merge with script-lifecycle:** its `ScriptRuntime::broadcast` (Lua and C++ scripts) now sends
+    `onApplicationFocus` / `onApplicationPause`, replacing this feature's Lua-only broadcast; this
+    feature's `systemFocus` / `systemPause` / `systemResume` (idempotent, focus lost before the
+    pause, resume before the focus comes back, input released) are the ones kept, and the
+    script-lifecycle test expects that order (`focusfalse` before `pausetrue`).

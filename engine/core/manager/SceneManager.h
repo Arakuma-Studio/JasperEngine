@@ -83,6 +83,8 @@ namespace jasperengine {
         static std::map<uint32_t, Scene*> scenePtrs;
         // a load factory is building its scenes (and running their scripts' init)
         static bool factoryRunning;
+        // the scenes the running load replaced (getUnloadingScenes)
+        static std::vector<Scene*> unloadingScenes;
 
         static uint32_t loadingSceneId;
         static float loadingDelay;
@@ -180,6 +182,13 @@ namespace jasperengine {
 
         // Tracks the loading of a stack started without loadScene(), as the editor's Play does.
         static void setCurrentScene(uint32_t id);
+
+        // True while a load factory runs (it builds the new stack and starts its scripts)
+        static bool isFactoryRunning();
+        // While a load factory runs: the scenes it replaces, whose scripts were unloaded
+        // (onDisable, onDestroy) before it started; the factory deletes or reuses them. A scene
+        // loaded again is among them: it is built anew (also in the editor's Play).
+        static const std::vector<Scene*>& getUnloadingScenes();
 
         // Loads the files of a scene stack in the background while the game runs, so a later
         // loadScene() finds them ready. They are held until that load or cancelPreload().

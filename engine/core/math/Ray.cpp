@@ -376,7 +376,13 @@ RayReturn Ray::intersects(const Rigidbody2D& body) const{
 RayReturn Ray::intersects(const Rigidbody2D& body, size_t shape) const{
     Rigidbody2DComponent& bodycomp = body.getComponent<Rigidbody2DComponent>();
 
-    if (shape >= bodycomp.numColliders || !b2Shape_IsValid(bodycomp.colliders[shape].shape)){
+    if (shape >= bodycomp.colliders.size()){
+        return NO_HIT;
+    }
+
+    // every Box2D shape of the collider: the convex pieces of a polygon, a chain's segments
+    std::vector<b2ShapeId> shapeIds = body.getBox2DShapes(shape);
+    if (shapeIds.empty()){
         return NO_HIT;
     }
 
@@ -388,15 +394,22 @@ RayReturn Ray::intersects(const Rigidbody2D& body, size_t shape) const{
 
     b2Vec2 translation = b2Sub(bEnd, bOrigin);
 
-    b2ShapeId shapeid = bodycomp.colliders[shape].shape;
     const b2RayCastInput rayCastInput = {bOrigin, translation, 1.0};
-    b2CastOutput castOutput = b2Shape_RayCast(shapeid, &rayCastInput);
+    bool hit = false;
+    b2CastOutput closest = {};
+    for (const b2ShapeId& shapeid : shapeIds){
+        b2CastOutput castOutput = b2Shape_RayCast(shapeid, &rayCastInput);
+        if (castOutput.hit && (!hit || castOutput.fraction < closest.fraction)){
+            closest = castOutput;
+            hit = true;
+        }
+    }
 
-    if (castOutput.hit){
-        Vector3 point = Vector3(castOutput.point.x * ptmScale, castOutput.point.y * ptmScale, 0);
-        Vector3 normal = Vector3(castOutput.normal.x, castOutput.normal.y, 0);
+    if (hit){
+        Vector3 point = Vector3(closest.point.x * ptmScale, closest.point.y * ptmScale, 0);
+        Vector3 normal = Vector3(closest.normal.x, closest.normal.y, 0);
 
-        return {true, castOutput.fraction, point, normal, body.getEntity(), shape};
+        return {true, closest.fraction, point, normal, body.getEntity(), shape};
     }
 
     return NO_HIT;
