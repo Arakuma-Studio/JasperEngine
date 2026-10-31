@@ -455,6 +455,8 @@ Json runningScenesJson(Project* project) {
         const uint32_t source = project->getPlaySourceSceneId(sp->id);
         if (source != sp->id) item["source_scene_id"] = source;
         item["main"] = sp->id == project->getPlaySessionSceneId();
+        // DontDestroyOnLoad's scene: survives scene loads
+        if (project->isPersistentPlayScene(sp->id)) item["persistent"] = true;
         list.push_back(item);
     }
     return list;
@@ -2157,6 +2159,8 @@ void getRuntimeEntityTool(const CallPtr& call) {
     data["path"] = EntityPath::of(sp->scene, entity);
     data["scene"] = McpRefs::sceneJson(project, *sp);
     data["created_at_runtime"] = std::find(created.begin(), created.end(), entity) != created.end();
+    // in the DontDestroyOnLoad scene, or marked to move there
+    if (project->isPersistentPlayScene(sp->id) || SceneManager::isPersistent(sp->scene, entity)) data["persistent"] = true;
     data["components"] = components;
     // a fluid's runtime state (read only; FluidStats, the matching preset)
     if (only.empty() || only.count(ComponentType::FluidSimulationComponent)) {

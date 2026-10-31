@@ -4,6 +4,11 @@
 #include "ScriptBase.h"
 #include "ScriptRuntime.h"
 #include "component/ScriptComponent.h"
+#include "manager/SceneManager.h"
+#include "manager/ObjectManager.h"
+#include "registry/EntityCloner.h"
+
+#include <algorithm>
 
 using namespace jasperengine;
 
@@ -72,4 +77,62 @@ Scene* ScriptBase::getScene() const {
 
 Entity ScriptBase::getEntity() const {
     return entity;
+}
+
+void ScriptBase::rebind(Scene* scene, Entity entity) {
+    this->scene = scene;
+    this->entity = entity;
+}
+
+bool ScriptBase::dontDestroyOnLoad() {
+    if (!scene || !scene->isEntityCreated(entity)) {
+        return false;
+    }
+    return SceneManager::dontDestroyOnLoad(scene, entity);
+}
+
+bool ScriptBase::isPersistent() const {
+    return SceneManager::isPersistent(scene, entity);
+}
+
+ScriptBase* ScriptBase::findPersistentScript(bool (*matches)(ScriptBase*)) const {
+    auto search = [this, matches](Scene* where, const std::vector<Entity>& entities) -> ScriptBase* {
+        for (Entity e : entities) {
+            ScriptComponent* scripts = where->isEntityCreated(e) ? where->findComponent<ScriptComponent>(e) : nullptr;
+            if (!scripts) {
+                continue;
+            }
+            for (const ScriptEntry& entry : scripts->scripts) {
+                const ScriptState* state = ScriptRuntime::getState(entry.cppScript);
+                if (entry.cppScript && entry.cppScript != this && !(state && (state->destroyed || state->destroying)) &&
+                        matches(entry.cppScript)) {
+                    return entry.cppScript;
+                }
+            }
+        }
+        return nullptr;
+    };
+    if (Scene* persistent = SceneManager::getPersistentScene()) {
+        std::vector<Entity> entities;
+        auto scripts = persistent->getComponentArray<ScriptComponent>();
+        for (size_t i = 0; i < scripts->size(); i++) {
+            entities.push_back(scripts->getEntity(i));
+        }
+        std::sort(entities.begin(), entities.end());
+        if (ScriptBase* found = search(persistent, entities)) {
+            return found;
+        }
+    }
+    for (const auto& [from, root] : SceneManager::getPendingPersistentRoots()) {
+        if (ScriptBase* found = search(from, EntityCloner::collectHierarchy(from, root))) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+void ScriptBase::destroyOwnGameObject() {
+    if (scene && scene->isEntityCreated(entity)) {
+        ObjectManager::destroy(scene, entity);
+    }
 }

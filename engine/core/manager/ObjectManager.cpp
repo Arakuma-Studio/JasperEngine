@@ -7,9 +7,12 @@
 #include "Engine.h"
 #include "Scene.h"
 #include "Log.h"
+#include "SceneManager.h"
 #include "registry/EntityCloner.h"
 #include "script/LuaBinding.h"
 #include "script/ScriptRuntime.h"
+#include "script/ScriptMessages.h"
+#include "script/ScriptBase.h"
 #include "component/Transform.h"
 #include "component/RectTransformComponent.h"
 #include "component/ScriptComponent.h"
@@ -23,6 +26,7 @@ namespace {
 
 ObjectManager::ScriptHook cppInitializeHook = nullptr;
 ObjectManager::ScriptHook cppCleanupHook = nullptr;
+ObjectManager::ScriptMoveHook cppMoveHook = nullptr;
 
 struct PendingDestroy {
     Scene* scene;
@@ -34,6 +38,7 @@ std::vector<PendingDestroy> pendingDestroys;
 std::vector<Scene*> activeScenes;
 
 ObjectManager::DestroyListener destroyListener;
+ObjectManager::MoveListener moveListener;
 
 struct WorldPose {
     Matrix4 matrix;
@@ -207,6 +212,14 @@ Entity cloneObject(Scene* scene, Entity original, Scene* target, std::vector<Ent
 
 void ObjectManager::setDestroyListener(DestroyListener listener) {
     destroyListener = std::move(listener);
+}
+
+void ObjectManager::setCppScriptMoveHook(ScriptMoveHook hook) {
+    cppMoveHook = hook;
+}
+
+void ObjectManager::setMoveListener(MoveListener listener) {
+    moveListener = std::move(listener);
 }
 
 void ObjectManager::setCppScriptHooks(ScriptHook initialize, ScriptHook cleanup) {
@@ -413,7 +426,81 @@ void ObjectManager::cleanupScripts(Scene* scene, const std::vector<Entity>& enti
     popActiveScene();
 }
 
+std::vector<Entity> ObjectManager::moveToScene(Scene* from, Entity root, Scene* to) {
+    if (!from || !to || from == to || root == NULL_ENTITY || !from->isEntityCreated(root)) {
+        return {};
+    }
+    const std::vector<Entity> sources = EntityCloner::collectHierarchy(from, root);
+    std::unordered_map<Entity, Entity> map;
+    // the copies get the originals' running state; the originals keep none of it
+    const std::vector<Entity> copies = EntityCloner::move(from, sources, to, map);
+    if (copies.empty()) {
+        return {};
+    }
+
+    // the scripts follow their GameObjects: Lua self.scene / self.entity (and the wrappers of
+    // moved GameObjects they hold), C++ scripts, the lifecycle states, the cached receivers
+    LuaBinding::rebindLuaScripts(from, to, map);
+    std::vector<Entity> movedOld;
+    std::vector<Entity> movedNew;
+    for (size_t i = 0; i < sources.size() && i < copies.size(); i++) {
+        ScriptComponent* scripts = to->findComponent<ScriptComponent>(copies[i]);
+        if (!scripts) {
+            continue;
+        }
+        movedOld.push_back(sources[i]);
+        movedNew.push_back(copies[i]);
+        for (ScriptEntry& entry : scripts->scripts) {
+            if (entry.cppScript) {
+                entry.cppScript->rebind(to, copies[i]);
+            }
+            // (coroutines: ScriptScheduler::rebind(entry.instance, to, copies[i]): its
+            // coroutines and timers follow their owner)
+        }
+    }
+    if (cppMoveHook && !movedOld.empty()) {
+        cppMoveHook(from, to, movedOld.data(), movedNew.data(), movedOld.size());
+    }
+    ScriptRuntime::remap(from, to, map);
+    for (size_t i = 0; i < movedOld.size(); i++) {
+        ScriptMessages::notifyReceiversChanged(from, movedOld[i]);
+        ScriptMessages::notifyReceiversChanged(to, movedNew[i]);
+    }
+
+    // GameObject.destroy calls still pending (a delay) go with them
+    for (PendingDestroy& pending : pendingDestroys) {
+        if (pending.scene != from) {
+            continue;
+        }
+        auto moved = map.find(pending.entity);
+        if (moved != map.end()) {
+            pending.scene = to;
+            pending.entity = moved->second;
+        }
+    }
+
+    // a scene whose camera moved away draws with its default camera again
+    if (map.count(from->getCamera())) {
+        from->useDefaultCamera();
+    }
+
+    if (moveListener) {
+        moveListener(from, to, map);
+    }
+
+    // the originals hold nothing any more (EntityCloner::move): no callback, no sound stops,
+    // no instance is released; children first, as destroy does
+    std::vector<Entity> originals(sources.rbegin(), sources.rend());
+    from->destroyEntities(originals);
+
+    return copies;
+}
+
 void ObjectManager::update(double deltatime) {
+    // DontDestroyOnLoad / MoveGameObjectToScene asked for this frame: now, between the update
+    // and the destroys (a GameObject destroyed before it moved does not move)
+    SceneManager::flushPersistentMoves();
+
     if (pendingDestroys.empty()) {
         return;
     }
@@ -444,6 +531,7 @@ void ObjectManager::update(double deltatime) {
 }
 
 void ObjectManager::forgetScene(Scene* scene) {
+    SceneManager::forgetPendingMoves(scene);
     activeScenes.erase(std::remove(activeScenes.begin(), activeScenes.end(), scene), activeScenes.end());
     pendingDestroys.erase(std::remove_if(pendingDestroys.begin(), pendingDestroys.end(),
         [scene](const PendingDestroy& entry) { return entry.scene == scene; }), pendingDestroys.end());
@@ -453,4 +541,5 @@ void ObjectManager::clearAll() {
     pendingDestroys.clear();
     activeScenes.clear();
     destroyListener = nullptr;
+    moveListener = nullptr;
 }

@@ -10,6 +10,7 @@
 #include "math/Quaternion.h"
 #include <cstddef>
 #include <functional>
+#include <unordered_map>
 #include <vector>
 
 namespace jasperengine {
@@ -40,6 +41,17 @@ namespace jasperengine {
         // editor's Play drops them from what it shows
         using DestroyListener = std::function<void(Scene* scene, const std::vector<Entity>& entities)>;
         static void setDestroyListener(DestroyListener listener);
+
+        // C++ scripts of GameObjects moved to another scene (moveToScene): the generated code
+        // points the GameObject wrapper kind of script, and the wrappers its properties own, at
+        // the new scene and entities (ScriptBase scripts are rebound by the engine itself)
+        using ScriptMoveHook = void (*)(Scene* from, Scene* to, const Entity* oldEntities, const Entity* newEntities, size_t count);
+        static void setCppScriptMoveHook(ScriptMoveHook hook);
+        // Told of GameObjects moved to another scene (old -> new entity), after their scripts
+        // follow and before the originals go: the editor's Play moves what it shows (selection,
+        // the Hierarchy's lists)
+        using MoveListener = std::function<void(Scene* from, Scene* to, const std::unordered_map<Entity, Entity>& moved)>;
+        static void setMoveListener(MoveListener listener);
 
         // A prefab, in `scene` (the active scene when null). With a parent the root goes
         // below it, keeping the prefab root's local placement, or its world placement with
@@ -76,7 +88,15 @@ namespace jasperengine {
         static void initializeScripts(Scene* scene, const std::vector<Entity>& entities);
         static void cleanupScripts(Scene* scene, const std::vector<Entity>& entities);
 
-        // Engine: once a frame, after the update
+        // Moves the root GameObject `root` of `from`, with its children, to `to` keeping what it
+        // runs (persistence: SceneManager::dontDestroyOnLoad / moveGameObjectToScene, which call
+        // it at a safe point): EntityCloner::move, then the scripts follow (Lua `self.scene`,
+        // `self.entity`, C++ ScriptBase::rebind, lifecycle states, pending destroys), no lifecycle
+        // callback runs, and the originals are destroyed. Entity ids are kept when free in `to`.
+        // Returns the GameObjects in `to` (the root first), empty when nothing moved.
+        static std::vector<Entity> moveToScene(Scene* from, Entity root, Scene* to);
+
+        // Engine: once a frame, after the update (the moves queued meanwhile run first)
         static void update(double deltatime);
         // Engine: a scene going away takes its pending destroys with it
         static void forgetScene(Scene* scene);

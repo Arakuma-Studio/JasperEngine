@@ -54,6 +54,7 @@ namespace jasperengine::editor{
         uint32_t runtimeSceneId = 0;        // Child scene nodes while the game runs: the running copy listed
         bool isRuntimeLayer = false;        // A running scene the game layered that is no child scene of this one
         bool isNotRunning = false;          // A child scene the running game does not show
+        bool isPersistent = false;          // The DontDestroyOnLoad scene while the game runs (last row)
         std::list<TreeNode> children;
     };
 

@@ -1525,6 +1525,18 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& bod
         settings.mMassPropertiesOverride.SetMassAndInertiaOfSolidBox(JPH::Vec3(body.solidBoxSize.x, body.solidBoxSize.y, body.solidBoxSize.z), body.solidBoxDensity);
     }
 
+    // moved here from another scene (persistence): it goes on as it went there
+    if (body.hasPendingVelocity){
+        body.hasPendingVelocity = false;
+        if (joltType != JPH::EMotionType::Static){
+            settings.mLinearVelocity = JPH::Vec3(body.pendingLinearVelocity.x, body.pendingLinearVelocity.y, body.pendingLinearVelocity.z);
+            settings.mAngularVelocity = JPH::Vec3(body.pendingAngularVelocity.x, body.pendingAngularVelocity.y, body.pendingAngularVelocity.z);
+            if (!body.pendingAwake){
+                activation = JPH::EActivation::DontActivate;
+            }
+        }
+    }
+
     JPH::Body* jbody = body_interface.CreateBody(settings);
     if (!jbody){
         objectLayerTable3D->release(layer);
@@ -1654,7 +1666,19 @@ bool PhysicsSystem::loadRigidbody2D(Entity entity){
         body.needReloadBody = false;
         body.needUpdateColliders = true;
 
-        return syncRigidbody2DColliders(entity, body);
+        const bool synced = syncRigidbody2DColliders(entity, body);
+        // moved here from another scene (persistence): it goes on as it went there, its mass
+        // known now that it has its colliders
+        Rigidbody2DComponent& moved = scene->getComponent<Rigidbody2DComponent>(entity);
+        if (moved.hasPendingVelocity && b2Body_IsValid(moved.body)){
+            moved.hasPendingVelocity = false;
+            if (moved.type != BodyType::STATIC){
+                b2Body_SetLinearVelocity(moved.body, {moved.pendingLinearVelocity.x, moved.pendingLinearVelocity.y});
+                b2Body_SetAngularVelocity(moved.body, moved.pendingAngularVelocity);
+                b2Body_SetAwake(moved.body, moved.pendingAwake);
+            }
+        }
+        return synced;
     }
 
     Vector2 entityScale = entityWorldScale2D(scene, entity);

@@ -403,46 +403,46 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
     int tagIndex = lua_gettop(L);
 
     // A scene script's engine events (onUpdate, input...) are skipped while its
-    // GameObject is inactive or its entry disabled; other tables are never guarded
-    Scene* guardScene = nullptr;
-    lua_Integer guardEntity = 0;
-    lua_Integer guardRef = 0;
-    if (guardActive) {
-        lua_getfield(L, selfIndex, "scene");
-        if (lua_isuserdata(L, -1)) {
-            auto sceneResult = luabridge::get<Scene*>(L, -1);
-            if (sceneResult) {
-                guardScene = sceneResult.value();
-            }
-        }
-        lua_pop(L, 1);
-        lua_getfield(L, selfIndex, "entity");
-        guardEntity = lua_isinteger(L, -1) ? lua_tointeger(L, -1) : 0;
-        lua_pop(L, 1);
-        lua_getfield(L, selfIndex, "__scriptRef");
-        guardRef = lua_isinteger(L, -1) ? lua_tointeger(L, -1) : 0;
-        lua_pop(L, 1);
-    }
-
+    // GameObject is inactive or its entry disabled; other tables are never guarded. Where the
+    // script is (self.scene, self.entity) is read at each call: a persistent object's
+    // GameObject moves to another scene, and a deleted scene is never reached through it.
     // Build closure: function(...) return method(self, ...) end
     lua_pushvalue(L, methodFuncIndex); // method
     lua_pushvalue(L, selfIndex);       // self
-    if (guardScene && guardEntity > 0) {
-        lua_pushlightuserdata(L, guardScene);
-    } else {
-        lua_pushnil(L);
-    }
-    lua_pushinteger(L, guardEntity);
-    lua_pushinteger(L, guardRef);
+    lua_pushboolean(L, guardActive ? 1 : 0);
     lua_pushcclosure(L,
         [](lua_State* Linner) -> int {
             int nargs = lua_gettop(Linner);
 
-            if (lua_islightuserdata(Linner, lua_upvalueindex(3))) {
-                Scene* scene = static_cast<Scene*>(lua_touserdata(Linner, lua_upvalueindex(3)));
-                Entity entity = static_cast<Entity>(lua_tointeger(Linner, lua_upvalueindex(4)));
-                void* instance = reinterpret_cast<void*>(static_cast<intptr_t>(lua_tointeger(Linner, lua_upvalueindex(5))));
-                if (!isScriptActive(scene, entity, instance)) {
+            if (lua_toboolean(Linner, lua_upvalueindex(3))) {
+                const int self = lua_upvalueindex(2);
+                lua_pushstring(Linner, "__released");
+                lua_rawget(Linner, self);
+                const bool released = lua_toboolean(Linner, -1) != 0;
+                lua_pop(Linner, 1);
+                if (released) {
+                    return 0;
+                }
+                Scene* scene = nullptr;
+                lua_pushstring(Linner, "scene");
+                lua_rawget(Linner, self);
+                if (lua_isuserdata(Linner, -1)) {
+                    auto sceneResult = luabridge::get<Scene*>(Linner, -1);
+                    if (sceneResult) {
+                        scene = sceneResult.value();
+                    }
+                }
+                lua_pop(Linner, 1);
+                lua_pushstring(Linner, "entity");
+                lua_rawget(Linner, self);
+                const lua_Integer entity = lua_isinteger(Linner, -1) ? lua_tointeger(Linner, -1) : 0;
+                lua_pop(Linner, 1);
+                lua_pushstring(Linner, "__scriptRef");
+                lua_rawget(Linner, self);
+                const lua_Integer ref = lua_isinteger(Linner, -1) ? lua_tointeger(Linner, -1) : 0;
+                lua_pop(Linner, 1);
+                void* instance = reinterpret_cast<void*>(static_cast<intptr_t>(ref));
+                if (scene && entity > 0 && !isScriptActive(scene, static_cast<Entity>(entity), instance)) {
                     return 0;
                 }
             }
@@ -461,7 +461,7 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
             // Filters like preSolve2D read what the method returns
             return lua_gettop(Linner) - nargs;
         },
-        5);
+        3);
     int closureIndex = lua_gettop(L);
 
     // a Lua Event: the listener is the script's own, dropped once it is released
@@ -759,6 +759,10 @@ void LuaBinding::registerHelpersFunctions(lua_State *L){
 
     lua_pushcfunction(L, luaUnregisterEngineEvent);
     lua_setglobal(L, "UnregisterEngineEvent");
+
+    // Unity's global DontDestroyOnLoad(obj) (also GameObject.dontDestroyOnLoad)
+    lua_pushcfunction(L, luaDontDestroyOnLoad);
+    lua_setglobal(L, "DontDestroyOnLoad");
 }
 
 
@@ -807,6 +811,12 @@ void LuaBinding::removeScriptSubscriptions(Scene* scene, int luaRef){
     Engine::removeSubscriptionsByTag(addr);
     if (scene) {
         scene->removeSubscriptionsByTag(addr);
+    }
+    // what it subscribed to on a persistent GameObject (a level's script listening to the
+    // persistent HUD's button) outlives its scene: it goes with the script
+    Scene* persistent = SceneManager::getPersistentScene();
+    if (persistent && persistent != scene) {
+        persistent->removeSubscriptionsByTag(addr);
     }
 }
 
@@ -1302,6 +1312,56 @@ void LuaBinding::releaseLuaScriptInstance(Scene* scene, ScriptEntry& scriptEntry
     if (scene && entity != NULL_ENTITY) {
         ScriptMessages::notifyReceiversChanged(scene, entity);
     }
+}
+
+namespace {
+    // A GameObject wrapper in a field of a moved script that points at a moved GameObject
+    // follows it (the wrapper object itself, so whoever else holds it sees it too)
+    void rebindHandle(lua_State* L, int index, Scene* from, Scene* to, const std::unordered_map<Entity, Entity>& moved) {
+        if (lua_type(L, index) != LUA_TUSERDATA || !luabridge::isInstance<EntityHandle>(L, index)) {
+            return;
+        }
+        auto handle = luabridge::get<EntityHandle*>(L, index);
+        if (!handle || !handle.value() || handle.value()->getScene() != from) {
+            return;
+        }
+        auto it = moved.find(handle.value()->getEntity());
+        if (it != moved.end()) {
+            handle.value()->rebind(to, it->second);
+        }
+    }
+}
+
+void LuaBinding::rebindLuaScripts(Scene* from, Scene* to, const std::unordered_map<Entity, Entity>& moved) {
+    lua_State* L = luastate;
+    if (!L || !from || !to) return;
+    const int top = lua_gettop(L);
+    for (const auto& [oldEntity, newEntity] : moved) {
+        ScriptComponent* scripts = to->isEntityCreated(newEntity) ? to->findComponent<ScriptComponent>(newEntity) : nullptr;
+        if (!scripts) continue;
+        for (const ScriptEntry& entry : scripts->scripts) {
+            if (!pushScriptInstance(L, entry)) continue;
+            const int instance = lua_gettop(L);
+            if (lua_istable(L, instance)) {
+                lua_pushstring(L, "scene");
+                if (!luabridge::push<Scene*>(L, to)) {
+                    lua_pushnil(L);
+                }
+                lua_rawset(L, instance);
+                lua_pushstring(L, "entity");
+                lua_pushinteger(L, static_cast<lua_Integer>(newEntity));
+                lua_rawset(L, instance);
+                // its own fields (entity reference properties, wrappers it made): one level
+                lua_pushnil(L);
+                while (lua_next(L, instance) != 0) {
+                    rebindHandle(L, -1, from, to, moved);
+                    lua_pop(L, 1);
+                }
+            }
+            lua_settop(L, top);
+        }
+    }
+    lua_settop(L, top);
 }
 
 void LuaBinding::createLuaScripts(Scene* scene) {

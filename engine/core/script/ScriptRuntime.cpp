@@ -8,6 +8,7 @@
 #include "Scene.h"
 #include "Log.h"
 #include "manager/ObjectManager.h"
+#include "manager/SceneManager.h"
 #include "component/ScriptComponent.h"
 
 #include "lua.hpp"
@@ -27,6 +28,9 @@ namespace {
 
     // awakened and not unloaded, in start order
     std::vector<Scene*> startedScenes;
+
+    // scenes awakening now (a script's init can start another scene)
+    int awakeningScenes = 0;
 
     bool isStarted(Scene* scene) {
         return scene && std::find(startedScenes.begin(), startedScenes.end(), scene) != startedScenes.end();
@@ -248,8 +252,15 @@ void ScriptRuntime::awakeScene(Scene* scene) {
     startedScenes.push_back(scene);
     // what the scripts instantiate goes to their scene, not yet the Engine's
     ObjectManager::pushActiveScene(scene);
+    awakeningScenes++;
     awake(scene, scriptedOrder(scene));
+    awakeningScenes--;
     ObjectManager::popActiveScene();
+    // the end of a scene's start in a scene load is a safe point for what its scripts asked to
+    // persist (DontDestroyOnLoad in init): it moves before the scene's documents start
+    if (awakeningScenes == 0 && scene != SceneManager::getPersistentScene() && SceneManager::isStartingScenes()) {
+        SceneManager::flushPersistentMoves();
+    }
 }
 
 void ScriptRuntime::awakeEntities(Scene* scene, const std::vector<Entity>& entities) {

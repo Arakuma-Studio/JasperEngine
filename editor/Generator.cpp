@@ -827,6 +827,41 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
     }
     sourceContent += "}\n\n";
 
+    // GameObjects moved to another scene (persistence: DontDestroyOnLoad, MoveGameObjectToScene):
+    // the engine rebinds ScriptBase scripts; the GameObject wrapper kind and the wrappers the
+    // properties own follow here (their classes are known only to this code)
+    sourceContent += "extern \"C\" void PROJECT_API moveEntityScripts(jasperengine::Scene* from, jasperengine::Scene* to, const jasperengine::Entity* oldEntities, const jasperengine::Entity* newEntities, size_t count) {\n";
+    if (!scriptFiles.empty()) {
+        sourceContent += "    for (size_t i = 0; i < count; i++) {\n";
+        sourceContent += "        jasperengine::ScriptComponent* scriptComp = to->isEntityCreated(newEntities[i]) ? to->findComponent<jasperengine::ScriptComponent>(newEntities[i]) : nullptr;\n";
+        sourceContent += "        if (!scriptComp) continue;\n";
+        sourceContent += "        for (auto& scriptEntry : scriptComp->scripts) {\n";
+        sourceContent += "            if (scriptEntry.type == ScriptType::LUA || !scriptEntry.instance) continue;\n";
+        for (const auto& s : scriptFiles) {
+            sourceContent += "            if (scriptEntry.className == \"" + s.className + "\") {\n";
+            sourceContent += "                jasperengine::rebindScriptObject(static_cast<" + s.className + "*>(scriptEntry.instance), to, newEntities[i]);\n";
+            std::string references;
+            for (const auto& prop : s.properties) {
+                if (!prop.isPtr || prop.ptrTypeName.empty()) {
+                    continue;
+                }
+                references += "                    if (prop.name == \"" + prop.name + "\") jasperengine::rebindScriptReference(static_cast<" + prop.ptrTypeName + "*>(prop.ownedInstance), from, to, oldEntities, newEntities, count);\n";
+            }
+            if (!references.empty()) {
+                sourceContent += "                for (auto& prop : scriptEntry.properties) {\n";
+                sourceContent += "                    if (!prop.ownedInstance) continue;\n";
+                sourceContent += references;
+                sourceContent += "                }\n";
+            }
+            sourceContent += "            }\n";
+        }
+        sourceContent += "        }\n";
+        sourceContent += "    }\n";
+    } else {
+        sourceContent += "    (void)from; (void)to; (void)oldEntities; (void)newEntities; (void)count;\n";
+    }
+    sourceContent += "}\n\n";
+
     return sourceContent;
 }
 
@@ -2176,6 +2211,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     mainContent += "extern \"C\" void cleanupScripts(jasperengine::Scene* scene);\n";
     mainContent += "extern \"C\" void initEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);\n";
     mainContent += "extern \"C\" void cleanupEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);\n";
+    mainContent += "extern \"C\" void moveEntityScripts(jasperengine::Scene* from, jasperengine::Scene* to, const jasperengine::Entity* oldEntities, const jasperengine::Entity* newEntities, size_t count);\n";
     mainContent += "\n";
 
     std::map<uint32_t, std::string> sceneIdToName;
@@ -2391,7 +2427,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     }
 
     // C++ scripts of the GameObjects scripts instantiate and destroy (scene_scripts.cpp)
-    mainContent += "    ObjectManager::setCppScriptHooks(initEntityScripts, cleanupEntityScripts);\n\n";
+    mainContent += "    ObjectManager::setCppScriptHooks(initEntityScripts, cleanupEntityScripts);\n";
+    // ...and of those DontDestroyOnLoad / MoveGameObjectToScene move to another scene
+    mainContent += "    ObjectManager::setCppScriptMoveHook(moveEntityScripts);\n\n";
 
     // Loading screen, after the scene it names is registered
     const LoadingSettings defaults;

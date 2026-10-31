@@ -183,6 +183,17 @@ Entity Scene::getCamera() const{
     return camera;
 }
 
+void Scene::useDefaultCamera(){
+    if (defaultCamera == NULL_ENTITY || !isEntityCreated(defaultCamera)){
+        defaultCamera = createDefaultCamera();
+    }
+    camera = defaultCamera;
+    if (CameraComponent* cameracomp = findComponent<CameraComponent>(camera)){
+        cameracomp->needUpdate = true;
+    }
+    updateCameraSize();
+}
+
 Entity Scene::createDefaultCamera(){
     defaultCamera = createSystemEntity();
     addComponent<CameraComponent>(defaultCamera);

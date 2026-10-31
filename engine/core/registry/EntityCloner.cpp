@@ -11,7 +11,11 @@
 #include "render/TextureRender.h"
 #include "texture/Framebuffer.h"
 #include "fluid/FluidSimulator.h"
+#include "subsystem/PhysicsSystem.h"
+#include "ecs/EntityManager.h"
+#include "Log.h"
 
+#include <algorithm>
 #include <unordered_set>
 
 using namespace jasperengine;
@@ -22,6 +26,12 @@ struct CloneContext {
     const std::unordered_map<Entity, Entity>& map;
     bool sameRegistry;
     Entity sourceRoot;
+    // EntityCloner::move: the copies take over what the originals run (script instances,
+    // sound voices, running actions, subscriptions, body velocities), see each prepare()
+    bool move = false;
+    // ...and every GameObject kept its id (state bound to entity ids stays valid)
+    bool sameIds = false;
+    EntityRegistry* source = nullptr;
     // a copied camera's framebuffer (a copied fluid's output) -> the copy's, for textures
     // that show it, with the entities they belong to (the link ids name them)
     struct FramebufferCopy {
@@ -192,6 +202,10 @@ void prepare<UIComponent>(UIComponent& ui, Entity, CloneContext& ctx) {
     ui.pointerMoved = false;
     remapFramebufferTexture(ui.texture, ctx);
     remapFramebufferTextures(ui.shaderTextures, ctx);
+    if (ctx.move) {
+        // a moved GameObject keeps who listens to it
+        return;
+    }
     ui.onGetFocus.clear();
     ui.onLostFocus.clear();
     ui.onPointerEnter.clear();
@@ -356,25 +370,39 @@ void prepare<UIDocumentComponent>(UIDocumentComponent& document, Entity, CloneCo
 }
 
 template<>
-void prepare<PoseAnimatorComponent>(PoseAnimatorComponent& animator, Entity, CloneContext&) {
+void prepare<PoseAnimatorComponent>(PoseAnimatorComponent& animator, Entity, CloneContext& ctx) {
+    if (ctx.move && ctx.sameIds) {
+        // its rig is on the same bones (the same ids): it plays on
+        return;
+    }
     // the copy builds its own rig on its own bones and starts as a loaded scene starts it
+    // (a moved one whose ids changed too, keeping its listeners)
     animator.playing = false;
     animator.time = 0;
     animator.started = false;
     animator.needsLoad = true;
     animator.runtime.reset();
-    animator.onFinish.clear();
+    if (!ctx.move) {
+        animator.onFinish.clear();
+    }
 }
 
 template<>
-void prepare<AnimationPlayerComponent>(AnimationPlayerComponent& player, Entity, CloneContext&) {
+void prepare<AnimationPlayerComponent>(AnimationPlayerComponent& player, Entity, CloneContext& ctx) {
+    if (ctx.move && ctx.sameIds) {
+        // its runtime is bound to the same ids: it plays on where it was
+        return;
+    }
     // the authored fields are copied; the copy binds its own hierarchy and starts as a loaded
-    // scene starts it (playAutomatically on its first update), with no callbacks
+    // scene starts it (playAutomatically on its first update), with no callbacks (a moved one
+    // whose ids changed starts over, keeping its callbacks)
     player.needsLoad = true;
     player.started = false;
     player.runtime.reset();
-    player.onEvent.clear();
-    player.onFinish.clear();
+    if (!ctx.move) {
+        player.onEvent.clear();
+        player.onFinish.clear();
+    }
 }
 
 template<>
@@ -401,10 +429,14 @@ void prepare<VertexAnimatorComponent>(VertexAnimatorComponent& animator, Entity,
     animator.gpuState1 = VertexAnimatorComponent().gpuState1;
     animator.gpuNow = 0.0f;
     animator.gpuActive = false;
-    animator.onEvent.clear();
-    animator.onFinish.clear();
-    animator.onInstanceEvent.clear();
-    animator.onInstanceFinish.clear();
+    // a moved one starts over too (its draw state is its mesh's, which reloads), keeping its
+    // callbacks
+    if (!ctx.move) {
+        animator.onEvent.clear();
+        animator.onFinish.clear();
+        animator.onInstanceEvent.clear();
+        animator.onInstanceFinish.clear();
+    }
 }
 
 template<>
@@ -442,7 +474,11 @@ void prepare<BoneComponent>(BoneComponent& bone, Entity, CloneContext& ctx) {
 }
 
 template<>
-void prepare<AudioSourceComponent>(AudioSourceComponent& audio, Entity, CloneContext&) {
+void prepare<AudioSourceComponent>(AudioSourceComponent& audio, Entity, CloneContext& ctx) {
+    if (ctx.move) {
+        // the voice plays on (SoLoud handles are engine-wide), with its sample and listeners
+        return;
+    }
     // its own voice and sample: a Playing state starts it (play on awake)
     audio.sample.reset();
     audio.handle = 0;
@@ -464,6 +500,10 @@ void prepare<AudioSourceComponent>(AudioSourceComponent& audio, Entity, CloneCon
 template<>
 void prepare<ActionComponent>(ActionComponent& action, Entity, CloneContext& ctx) {
     action.target = ctx.remap(action.target);
+    if (ctx.move) {
+        // it runs on from where it is (state, time), with its listeners
+        return;
+    }
     // started again from the beginning, the way a loaded scene starts them
     const ActionState state = action.state;
     action.state = ActionState::Stopped;
@@ -485,7 +525,11 @@ void prepare<AnimationComponent>(AnimationComponent& animation, Entity, CloneCon
 }
 
 template<>
-void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity, CloneContext&) {
+void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity, CloneContext& ctx) {
+    if (ctx.move) {
+        // its live particles go on (they are drawn by its target, which reloads)
+        return;
+    }
     particles.particles.clear();
     particles.newParticlesCount = 0;
     particles.lastUsedParticle = 0;
@@ -501,8 +545,10 @@ void prepare<ButtonComponent>(ButtonComponent& button, Entity, CloneContext& ctx
     button.pressed = false;
     button.hovered = false;
     button.needUpdateButton = true;
-    button.onPress.clear();
-    button.onRelease.clear();
+    if (!ctx.move) {
+        button.onPress.clear();
+        button.onRelease.clear();
+    }
 }
 
 template<>
@@ -511,8 +557,10 @@ void prepare<InputFieldComponent>(InputFieldComponent& input, Entity, CloneConte
     input.selection = ctx.remap(input.selection);
     input.cursor = ctx.remap(input.cursor);
     input.needUpdateInputField = true;
-    input.onChange.clear();
-    input.onSubmit.clear();
+    if (!ctx.move) {
+        input.onChange.clear();
+        input.onSubmit.clear();
+    }
 }
 
 template<>
@@ -523,8 +571,10 @@ void prepare<PanelComponent>(PanelComponent& panel, Entity, CloneContext& ctx) {
     panel.headerPointerDown = false;
     panel.edgePointerDown = PanelEdge::NONE;
     panel.needUpdatePanel = true;
-    panel.onMove.clear();
-    panel.onResize.clear();
+    if (!ctx.move) {
+        panel.onMove.clear();
+        panel.onResize.clear();
+    }
 }
 
 template<>
@@ -532,7 +582,9 @@ void prepare<ScrollbarComponent>(ScrollbarComponent& scrollbar, Entity, CloneCon
     scrollbar.bar = ctx.remap(scrollbar.bar);
     scrollbar.barPointerDown = false;
     scrollbar.needUpdateScrollbar = true;
-    scrollbar.onChange.clear();
+    if (!ctx.move) {
+        scrollbar.onChange.clear();
+    }
 }
 
 template<>
@@ -555,7 +607,11 @@ void prepare<RectTransformComponent>(RectTransformComponent& layout, Entity, Clo
 }
 
 template<>
-void prepare<LatticeComponent>(LatticeComponent& lattice, Entity, CloneContext&) {
+void prepare<LatticeComponent>(LatticeComponent& lattice, Entity, CloneContext& ctx) {
+    if (ctx.move) {
+        // its jiggle goes on
+        return;
+    }
     // the copy starts still: its jiggle warms up again where it is placed; a running tween
     // goes on from where the original is
     lattice.dynamicOffsets.clear();
@@ -609,7 +665,16 @@ void prepare<TilemapComponent>(TilemapComponent& tilemap, Entity, CloneContext&)
 
 #ifdef JASPERENGINE_PHYSICS_2D
 template<>
-void prepare<Rigidbody2DComponent>(Rigidbody2DComponent& body, Entity, CloneContext&) {
+void prepare<Rigidbody2DComponent>(Rigidbody2DComponent& body, Entity, CloneContext& ctx) {
+    // the target's physics makes the body (in its own world) on its next step; a moved one
+    // starts with the velocities it had
+    if (ctx.move && b2Body_IsValid(body.body)) {
+        const b2Vec2 velocity = b2Body_GetLinearVelocity(body.body);
+        body.pendingLinearVelocity = Vector2(velocity.x, velocity.y);
+        body.pendingAngularVelocity = b2Body_GetAngularVelocity(body.body);
+        body.pendingAwake = b2Body_IsAwake(body.body);
+        body.hasPendingVelocity = true;
+    }
     body.body = b2_nullBodyId;
     for (size_t i = 0; i < body.numColliders && i < body.colliders.size(); i++) {
         body.colliders[i].shape = b2_nullShapeId;
@@ -632,6 +697,16 @@ void prepare<Joint2DComponent>(Joint2DComponent& joint, Entity, CloneContext& ct
 #ifdef JASPERENGINE_PHYSICS_3D
 template<>
 void prepare<RigidbodyComponent>(RigidbodyComponent& body, Entity, CloneContext& ctx) {
+    Scene* sourceScene = ctx.move ? dynamic_cast<Scene*>(ctx.source) : nullptr;
+    if (sourceScene && !body.body.IsInvalid()) {
+        JPH::BodyInterface& bodies = sourceScene->getSystem<PhysicsSystem>()->getBodyInterface3D();
+        const JPH::Vec3 linear = bodies.GetLinearVelocity(body.body);
+        const JPH::Vec3 angular = bodies.GetAngularVelocity(body.body);
+        body.pendingLinearVelocity = Vector3(linear.GetX(), linear.GetY(), linear.GetZ());
+        body.pendingAngularVelocity = Vector3(angular.GetX(), angular.GetY(), angular.GetZ());
+        body.pendingAwake = bodies.IsActive(body.body);
+        body.hasPendingVelocity = true;
+    }
     body.body = JPH::BodyID();
     for (size_t i = 0; i < body.numColliders && i < body.colliders.size(); i++) {
         body.colliders[i].shape = nullptr;
@@ -657,6 +732,23 @@ void prepare<Joint3DComponent>(Joint3DComponent& joint, Entity, CloneContext& ct
 
 template<>
 void prepare<ScriptComponent>(ScriptComponent& scripts, Entity, CloneContext& ctx) {
+    if (ctx.move) {
+        // the same instances (Lua tables, C++ objects) and their bound properties: they follow
+        // the GameObject (ObjectManager::moveToScene); a reference to a moved GameObject goes
+        // to its new id, one to another GameObject of this scene means nothing in the new one
+        for (ScriptEntry& entry : scripts.scripts) {
+            for (ScriptProperty& property : entry.properties) {
+                if (property.type == ScriptPropertyType::EntityReference) {
+                    if (EntityReference* reference = std::get_if<EntityReference>(&property.value)) {
+                        if (reference->sceneId == 0) {
+                            reference->entity = ctx.remap(reference->entity);
+                        }
+                    }
+                }
+            }
+        }
+        return;
+    }
     for (ScriptEntry& entry : scripts.scripts) {
         entry.instance = nullptr;
         entry.cppScript = nullptr;
@@ -677,12 +769,46 @@ void prepare<ScriptComponent>(ScriptComponent& scripts, Entity, CloneContext& ct
     }
 }
 
+// A moved GameObject's component that cannot come along
+template<typename T>
+bool keepInMove(const T&, Entity, const CloneContext&) {
+    return true;
+}
+
+// a joint to a body outside the moved GameObjects (the bodies are in different worlds then)
+bool jointBodiesMove(const std::initializer_list<Entity>& bodies, Entity sourceEntity, const CloneContext& ctx) {
+    for (Entity body : bodies) {
+        if (body != NULL_ENTITY && !ctx.map.count(body)) {
+            Log::warn("joint '%s' to an object outside the moved hierarchy was removed", ctx.source->getEntityName(sourceEntity).c_str());
+            return false;
+        }
+    }
+    return true;
+}
+
+#ifdef JASPERENGINE_PHYSICS_2D
+template<>
+bool keepInMove<Joint2DComponent>(const Joint2DComponent& joint, Entity sourceEntity, const CloneContext& ctx) {
+    return jointBodiesMove({joint.bodyA, joint.bodyB}, sourceEntity, ctx);
+}
+#endif
+
+#ifdef JASPERENGINE_PHYSICS_3D
+template<>
+bool keepInMove<Joint3DComponent>(const Joint3DComponent& joint, Entity sourceEntity, const CloneContext& ctx) {
+    return jointBodiesMove({joint.bodyA, joint.bodyB}, sourceEntity, ctx);
+}
+#endif
+
 template<typename T>
 void copyComponent(EntityRegistry* source, Entity sourceEntity, const Signature& signature, Scene* target, Entity targetEntity, CloneContext& ctx) {
     if (!signature.test(source->getComponentId<T>())) {
         return;
     }
     T component = source->getComponent<T>(sourceEntity);
+    if (ctx.move && !keepInMove<T>(component, sourceEntity, ctx)) {
+        return;
+    }
     prepare<T>(component, sourceEntity, ctx);
     if (target->findComponent<T>(targetEntity)) {
         target->getComponent<T>(targetEntity) = std::move(component);
@@ -764,6 +890,102 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
 
 bool hasComponentSignature(EntityRegistry* registry, Entity entity, ComponentId id) {
     return registry->getSignature(entity).test(id);
+}
+
+template<typename T>
+T* componentOf(EntityRegistry* registry, Entity entity, const Signature& signature) {
+    return signature.test(registry->getComponentId<T>()) ? &registry->getComponent<T>(entity) : nullptr;
+}
+
+// EntityCloner::move: what the copy took over is no longer the original's, so destroying it
+// stops no voice, releases no script instance, fires no callback and destroys nothing else
+void handOver(EntityRegistry* source, Entity entity, const CloneContext& ctx) {
+    const Signature signature = source->getSignature(entity);
+    if (ScriptComponent* scripts = componentOf<ScriptComponent>(source, entity, signature)) {
+        for (ScriptEntry& entry : scripts->scripts) {
+            entry.instance = nullptr;
+            entry.cppScript = nullptr;
+            entry.cppMessageMask = 0;
+            for (ScriptProperty& property : entry.properties) {
+                property.memberPtr = nullptr;
+                property.ownedInstance = nullptr;
+                property.luaRef = 0;
+            }
+        }
+    }
+    if (AudioSourceComponent* audio = componentOf<AudioSourceComponent>(source, entity, signature)) {
+        audio->handle = 0;
+        audio->sample.reset();
+        audio->loaded = false;
+        audio->state = AudioSourceState::Stopped;
+        audio->startTrigger = false;
+        audio->stopTrigger = false;
+        audio->pauseTrigger = false;
+        audio->onStart.clear();
+        audio->onPause.clear();
+        audio->onStop.clear();
+    }
+    if (ActionComponent* action = componentOf<ActionComponent>(source, entity, signature)) {
+        // stopped: its removal stops nothing (no onStop), and a target outside it stays
+        action->state = ActionState::Stopped;
+        action->startTrigger = false;
+        action->stopTrigger = false;
+        action->pauseTrigger = false;
+        action->ownedTarget = false;
+        action->onStart.clear();
+        action->onPause.clear();
+        action->onStop.clear();
+        action->onStep.clear();
+    }
+    if (UIComponent* ui = componentOf<UIComponent>(source, entity, signature)) {
+        ui->onGetFocus.clear();
+        ui->onLostFocus.clear();
+        ui->onPointerEnter.clear();
+        ui->onPointerLeave.clear();
+        ui->onPointerMove.clear();
+        ui->onPointerDown.clear();
+        ui->onPointerUp.clear();
+        ui->onClick.clear();
+        ui->onDoubleClick.clear();
+        ui->onDragStart.clear();
+        ui->onDrag.clear();
+        ui->onDragEnd.clear();
+    }
+    if (ButtonComponent* button = componentOf<ButtonComponent>(source, entity, signature)) {
+        button->onPress.clear();
+        button->onRelease.clear();
+    }
+    if (PanelComponent* panel = componentOf<PanelComponent>(source, entity, signature)) {
+        panel->onMove.clear();
+        panel->onResize.clear();
+    }
+    if (ScrollbarComponent* scrollbar = componentOf<ScrollbarComponent>(source, entity, signature)) {
+        scrollbar->onChange.clear();
+    }
+    if (InputFieldComponent* input = componentOf<InputFieldComponent>(source, entity, signature)) {
+        input->onChange.clear();
+        input->onSubmit.clear();
+    }
+    if (AnimationPlayerComponent* player = componentOf<AnimationPlayerComponent>(source, entity, signature)) {
+        player->onEvent.clear();
+        player->onFinish.clear();
+        if (ctx.sameIds) {
+            player->runtime.reset();
+        }
+    }
+    if (PoseAnimatorComponent* animator = componentOf<PoseAnimatorComponent>(source, entity, signature)) {
+        animator->onFinish.clear();
+        if (ctx.sameIds) {
+            // the rig is the copy's now: the original's removal must not put its bones back
+            animator->runtime.reset();
+        }
+    }
+    if (VertexAnimatorComponent* animator = componentOf<VertexAnimatorComponent>(source, entity, signature)) {
+        animator->onEvent.clear();
+        animator->onFinish.clear();
+        animator->onInstanceEvent.clear();
+        animator->onInstanceFinish.clear();
+    }
 }
 
 }
@@ -868,7 +1090,8 @@ std::vector<Entity> EntityCloner::clone(EntityRegistry* source, const std::vecto
         copies.push_back(copy);
     }
 
-    CloneContext ctx{map, source == static_cast<EntityRegistry*>(target), sources[0], {}, {}, {}};
+    CloneContext ctx{map, source == static_cast<EntityRegistry*>(target), sources[0]};
+    ctx.source = source;
     for (Entity entity : sources) {
         if (ModelComponent* model = source->findComponent<ModelComponent>(entity)) {
             ctx.modelMeshes.insert(entity);
@@ -913,6 +1136,83 @@ std::vector<Entity> EntityCloner::clone(EntityRegistry* source, const std::vecto
 
     if (outMap) {
         *outMap = std::move(map);
+    }
+    return copies;
+}
+
+std::vector<Entity> EntityCloner::move(Scene* source, const std::vector<Entity>& sources, Scene* target,
+                                       std::unordered_map<Entity, Entity>& map) {
+    std::vector<Entity> copies;
+    map.clear();
+    if (!source || !target || source == target || sources.empty()) {
+        return copies;
+    }
+
+    // The same ids where the target has them free (user GameObjects only), else new ones
+    copies.reserve(sources.size());
+    map.reserve(sources.size());
+    Entity highest = NULL_ENTITY;
+    bool sameIds = true;
+    for (Entity entity : sources) {
+        Entity copy = NULL_ENTITY;
+        if (entity >= EntityManager::firstUserEntity() && !target->isEntityCreated(entity) && target->recreateEntity(entity)) {
+            copy = entity;
+        } else {
+            copy = target->createUserEntity();
+            sameIds = false;
+        }
+        map[entity] = copy;
+        copies.push_back(copy);
+        highest = std::max(highest, copy);
+    }
+    // what is made in the target later counts from past the kept ids (an instantiated prefab
+    // finds its GameObjects above the counter as it was)
+    target->setLastEntity(highest);
+
+    CloneContext ctx{map, false, sources[0]};
+    ctx.move = true;
+    ctx.sameIds = sameIds;
+    ctx.source = source;
+    for (Entity entity : sources) {
+        if (ModelComponent* model = source->findComponent<ModelComponent>(entity)) {
+            ctx.modelMeshes.insert(entity);
+            for (const auto& [node, meshEntity] : model->meshNodesMapping) {
+                ctx.modelMeshes.insert(meshEntity);
+            }
+        }
+    }
+    // render targets are the copies' own (the GPU state of everything drawn reloads), as for
+    // a clone: textures showing a moved camera's or fluid's output show the copy's
+    const bool fluidsRegistered = source->isComponentRegistered<FluidSimulationComponent>();
+    for (Entity entity : sources) {
+        if (CameraComponent* camera = source->findComponent<CameraComponent>(entity)) {
+            if (camera->framebuffer && !ctx.framebuffers.count(camera->framebuffer)) {
+                ctx.framebuffers[camera->framebuffer] = {new Framebuffer(), entity, map[entity]};
+            }
+        }
+        FluidSimulationComponent* fluid = fluidsRegistered ? source->findComponent<FluidSimulationComponent>(entity) : nullptr;
+        if (fluid && fluid->simulator) {
+            std::shared_ptr<FluidSimulator> copy = std::make_shared<FluidSimulator>();
+            ctx.framebuffers[fluid->simulator->getOutputFramebuffer()] = {copy->getOutputFramebuffer(), entity, map[entity]};
+            ctx.fluidSimulators[entity] = copy;
+        }
+    }
+
+    // in hierarchy order: parents before children, siblings in order
+    for (size_t i = 0; i < sources.size(); i++) {
+        const Entity sourceEntity = sources[i];
+        const Entity copy = copies[i];
+
+        target->setEntityName(copy, source->getEntityName(sourceEntity));
+        target->setEntityActive(copy, source->isEntityActive(sourceEntity));
+        target->setEntityTag(copy, source->getEntityTag(sourceEntity));
+        target->setEntityLayer(copy, source->getEntityLayer(sourceEntity));
+
+        copyComponents(source, sourceEntity, target, copy, ctx);
+    }
+
+    for (Entity entity : sources) {
+        handOver(source, entity, ctx);
     }
     return copies;
 }
