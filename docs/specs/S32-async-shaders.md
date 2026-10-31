@@ -796,3 +796,13 @@ public:
 - **Next:** build GL + Vulkan WERROR, unit tests (write the golden `async_standin_fogged`), MCP
   suite, web, android, ASan+UBSan, smoke, xcode checks, E benches (worker, Vulkan, the sync red
   control), merge oe-port, TOOLS.md, re-gate.
+### Metal on macOS (BF4, 2026-10-31)
+
+The Metal path built and ran natively (macOS 26.2, Apple silicon, CommandLineTools clang 17):
+the core GPU suites run on the default Metal device, `[gpu] shader creation: metal`, and
+`AsyncCreateGpu` passes 7 of 7. One defect was found and fixed: `SokolObject::prewarmWith` made
+the right variant's pipelines on the layout of the stand-in the object had loaded on (another set
+of vertex inputs), and Metal failed them (`METAL_CREATE_RPS_FAILED`, "Vertex attribute a_color(3)
+is missing from the vertex descriptor", `SplineGpu.RoadOnTerrain` after `RenderGpu`); a variant
+with other vertex inputs is now left to its own load. R21/R22 timing on Apple GPUs is still
+unmeasured.

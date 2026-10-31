@@ -642,3 +642,14 @@ Each backend test is parameterised over `{Native, Polling}`.
   byte compare for 10,000 data files) and the Project window classifies a thumbnail by extension
   before it stats the file: slowest `editor_status` 0.42 s with the watcher's flush delivering
   the burst inside the call (R7), on the shared server.
+
+### macOS native run (BF4, 2026-10-31)
+
+- **R7 on FSEvents is a marker barrier, not `FSEventStreamFlushSync` alone.** On macOS 26.2
+  (Apple silicon) the plain flush missed 999 of AC6's 1,000 writes: it delivers what fseventsd
+  already holds, and a write just before it has not reached fseventsd yet. `flush` now writes a
+  numbered marker under the root's `.jasperengine/` and flushes until the stream reports it
+  (FSEvents delivers in event-id order; a probe saw 300 of 300 files before their marker), and
+  writes another every 100 ms while it waits. `start` waits (2 s at most) the same way, because
+  a stream started "since now" reports nothing until fseventsd registered it. AC6 takes about
+  13 s on macOS (an fseventsd round trip a flush), not the inotify fraction of a second.
