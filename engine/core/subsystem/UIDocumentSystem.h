@@ -145,6 +145,10 @@ namespace jasperengine{
         bool hasFocusedTextInput() const;
         // a document took this pointer's down (touch: pointer id; mouse: button) and keeps it until the up
         bool hasPointerCapture(int pointer, int button, bool touch) const;
+        // Input.isPointerOverUI (ui-multitouch D15), native pointer ids: -1 / -2 / -3 the mouse,
+        // >= 0 a finger, INT_MIN the mouse or any finger. Over shown document content, or held
+        // by a document since its press.
+        bool isPointerOverUI(int pointerId) const;
         // the CSS cursor of the element under the pointer, ARROW when the pointer is not over content
         CursorType getPointerCursor() const;
         // p4-input: a gamepad key (Engine's routing turns buttons, the left stick and the triggers into

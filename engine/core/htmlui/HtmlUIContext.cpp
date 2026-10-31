@@ -208,6 +208,7 @@ void HtmlUIContext::destroy(){
     context->UnloadAllDocuments();
     activeElement.reset();
     touches.clear();
+    touchPresses.clear();
 
     // geometry goes back through RmlRenderer::ReleaseGeometry
     RmlRenderer::unbindContext(context);
@@ -302,6 +303,10 @@ void HtmlUIContext::unloadDocument(Rml::ElementDocument* document){
 
     if (activeElement && activeElement->GetOwnerDocument() == document){
         activeElement.reset();
+    }
+    for (auto& press : touchPresses){
+        if (press.second && press.second->GetOwnerDocument() == document)
+            press.second.reset();
     }
 
     context->UnloadDocument(document);

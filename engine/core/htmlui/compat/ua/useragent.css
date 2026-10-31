@@ -909,6 +909,68 @@ videocontrols, videobutton, videotime, videotimeline, videotrack, videoprogress,
     height: 54px;
 }
 
+/* 9a. the engine's on-screen controls (ui-multitouch): <onscreen-stick>, <onscreen-button>,
+   <touch-area> feed Input actions; a touch on them never pans (touch-action: none) ---------- */
+
+onscreen-stick, onscreen-button, touch-area {
+    display: block;
+    touch-action: none;
+}
+
+onscreen-stick {
+    position: relative;
+    width: 200px;
+    height: 200px;
+}
+
+onscreen-stick .stick-base {
+    box-sizing: border-box;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 160px;
+    height: 160px;
+    margin-left: -80px;
+    margin-top: -80px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.55);
+    background-color: rgba(255, 255, 255, 0.22);
+}
+
+onscreen-stick .stick-knob {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 64px;
+    height: 64px;
+    margin-left: -32px;
+    margin-top: -32px;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.8);
+}
+
+onscreen-stick[mode="floating"] .stick-base, onscreen-stick[mode="dynamic"] .stick-base {
+    visibility: hidden;
+}
+
+onscreen-stick[mode="floating"][data-pressed="true"] .stick-base, onscreen-stick[mode="dynamic"][data-pressed="true"] .stick-base {
+    visibility: visible;
+}
+
+onscreen-button {
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.3);
+    color: white;
+    text-align: center;
+    line-height: 96px;
+}
+
+onscreen-button:active {
+    background-color: rgba(255, 255, 255, 0.55);
+}
+
 /* 9b. <video> (phase 6): the replaced element (HTML's rendering: object-fit contain) and the
    default controls, the parts UIVideoControls builds (docs/html-ui/phase-6-video.md 3.10) ------ */
 

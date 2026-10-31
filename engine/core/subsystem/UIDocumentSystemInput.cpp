@@ -22,6 +22,7 @@
 #include <RmlUi/Core/ScrollTypes.h>
 
 #include <bitset>
+#include <climits>
 #include <set>
 #include <vector>
 
@@ -251,8 +252,8 @@ bool UIDocumentSystem::eventOnPointerDown(int pointer, int button, float x, floa
         const int rmlMods = RmlKeyMap::toRmlModifiers(mods);
 
         if (touch){
-            getContext()->processTouchStart(pointer, Rml::Vector2f(cx, cy), rmlMods);
-            consumed = getContext()->isPointerOverContent();
+            // each finger its own pointer: over content (or its press) it is the documents'
+            consumed = getContext()->processTouchStart(pointer, Rml::Vector2f(cx, cy), rmlMods);
             if (consumed) state.capturedTouches.insert(pointer);
             else state.capturedTouches.erase(pointer);
         }else{
@@ -471,6 +472,24 @@ bool UIDocumentSystem::hasPointerCapture(int pointer, int button, bool touch) co
     if (!inputState)
         return false;
     return touch ? inputState->capturedTouches.count(pointer) > 0 : inputState->capturedButtons.count(button) > 0;
+}
+
+bool UIDocumentSystem::isPointerOverUI(int pointerId) const{
+    const bool mouse = pointerId == INT_MIN || pointerId < 0;
+    const bool fingers = pointerId == INT_MIN || pointerId >= 0;
+    if (mouse){
+        if (inputState && !inputState->capturedButtons.empty())
+            return true;
+        if (hasVisibleDocument() && getContext() && getContext()->isPointerOverContent())
+            return true;
+    }
+    if (fingers && inputState){
+        if (pointerId == INT_MIN ? !inputState->capturedTouches.empty() : inputState->capturedTouches.count(pointerId) > 0)
+            return true;
+    }
+    if (fingers && pointerId != INT_MIN && hasVisibleDocument() && getContext() && getContext()->isTouchOverContent(pointerId))
+        return true;
+    return false;
 }
 
 CursorType UIDocumentSystem::getPointerCursor() const{
