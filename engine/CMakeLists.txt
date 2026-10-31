@@ -975,6 +975,8 @@ set(JASPERENGINE_SRCS
     core/manager/PrefabAsset.cpp
     core/manager/PrefabManager.cpp
     core/manager/SceneManager.cpp
+    core/net/Http.cpp
+    core/net/HttpUtil.cpp
     core/io/UserSettings.cpp
     core/io/UserSettingsStore.cpp
     core/math/AABB.cpp
@@ -1058,6 +1060,7 @@ set(JASPERENGINE_SRCS
     core/render/ShaderRender.cpp
     core/render/SystemRender.cpp
     core/render/TextureRender.cpp
+    core/script/AsyncOwner.cpp
     core/script/LuaBinding.cpp
     core/script/LuaFunctionBase.cpp
     core/script/LuaJson.cpp
@@ -1069,6 +1072,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/ECSClassesLua.cpp
     core/script/binding/IOClassesLua.cpp
     core/script/binding/MathClassesLua.cpp
+    core/script/binding/NetClassesLua.cpp
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
@@ -1110,6 +1114,7 @@ set(JASPERENGINE_SRCS
     core/texture/IBLEnvironment.cpp
     core/texture/Texture.cpp
     core/texture/TextureData.cpp
+    core/thread/MainThreadQueue.cpp
     core/thread/ResourceProgress.cpp
     core/thread/ThreadPoolManager.cpp
     core/util/Angle.cpp
@@ -1128,6 +1133,24 @@ set(JASPERENGINE_SRCS
     core/util/UniqueToken.cpp
     core/util/XMLUtils.cpp
 )
+
+# The HTTP client's backend (core/net/HttpBackend.h): each platform's own stack. Outside the
+# list above, which the Xcode workspace mirrors (tools/xcode_sync_engine.py): its engine targets
+# compile platform/apple/HttpBackendApple.mm instead.
+if(EMSCRIPTEN)
+    set(JASPERENGINE_HTTP_BACKEND platform/emscripten/HttpBackendWeb.cpp)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    set(JASPERENGINE_HTTP_BACKEND platform/android/HttpBackendAndroid.cpp)
+elseif(WIN32)
+    set(JASPERENGINE_HTTP_BACKEND platform/win/HttpBackendWin.cpp)
+elseif(APPLE)
+    set(JASPERENGINE_HTTP_BACKEND platform/apple/HttpBackendApple.mm)
+    set_source_files_properties(platform/apple/HttpBackendApple.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+else()
+    # Linux and FreeBSD: the system libcurl through dlopen
+    set(JASPERENGINE_HTTP_BACKEND core/net/HttpBackendCurl.cpp)
+endif()
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_HTTP_BACKEND})
 
 # HTML/CSS compatibility layer (phase 2): globbed per directory
 include(core/htmlui/compat/CompatSources.cmake)
@@ -1200,6 +1223,23 @@ target_compile_definitions(jasperengine
 
 find_package(Threads REQUIRED)
 target_link_libraries(jasperengine PRIVATE Threads::Threads)
+
+# The HTTP backends' system libraries
+if(WIN32)
+    target_link_libraries(jasperengine PRIVATE winhttp)
+elseif(APPLE)
+    target_link_libraries(jasperengine PRIVATE "-framework Foundation")
+elseif(NOT EMSCRIPTEN AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+    # dlopen of libcurl
+    target_link_libraries(jasperengine PRIVATE ${CMAKE_DL_LIBS})
+endif()
+
+# The User-Agent's version ("JasperEngine/<version> (<platform>)"): on this one file only, so a
+# new version recompiles nothing else
+if(JASPERENGINE_EDITOR_VERSION)
+    set_property(SOURCE core/net/Http.cpp APPEND PROPERTY COMPILE_DEFINITIONS
+        "JASPERENGINE_VERSION_STRING=\"${JASPERENGINE_EDITOR_VERSION}\"")
+endif()
 
 if(EMSCRIPTEN AND EMSCRIPTEN_THREAD_SUPPORT)
 	target_compile_options(jasperengine PRIVATE -pthread)
