@@ -9,6 +9,8 @@
 
 namespace jasperengine {
 
+    class Joint2D;
+
     class JASPERENGINE_API ScriptBase {
     protected:
         Scene* scene;
@@ -16,7 +18,7 @@ namespace jasperengine {
 
     public:
         ScriptBase(Scene* scene, Entity entity);
-        ~ScriptBase() = default;
+        virtual ~ScriptBase() = default;
 
         Scene* getScene() const;
         Entity getEntity() const;
@@ -25,6 +27,11 @@ namespace jasperengine {
         // script's entry is enabled. Engine events registered with
         // REGISTER_ENGINE_EVENT are skipped while it is false.
         bool isActiveAndEnabled() const;
+
+        // Script messages (ScriptMessages), called when overridden, like the Lua methods of the
+        // same name. A 2D joint of this GameObject (or whose bodyA is it) broke (Unity
+        // OnJointBreak2D); the joint still exists during the call.
+        virtual void onJointBreak2D(Joint2D& joint) { (void)joint; }
     };
 
 }

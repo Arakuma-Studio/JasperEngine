@@ -5,9 +5,12 @@
 #define SCRIPT_COMPONENT_H
 
 #include "ScriptProperty.h"
+#include <cstdint>
 #include <vector>
 
 namespace jasperengine{
+
+    class ScriptBase;
 
     enum class ScriptType {
         CPP,
@@ -23,6 +26,10 @@ namespace jasperengine{
         std::vector<ScriptProperty> properties;
 
         void* instance = nullptr; // C++ instance OR Lua handle
+        // C++: the ScriptBase of the instance (null when it is not one) and the script messages
+        // it overrides (ScriptMessages::cppMask), set by the generated script factory
+        ScriptBase* cppScript = nullptr;
+        uint32_t cppMessageMask = 0;
     };
 
     struct JASPERENGINE_API ScriptComponent {

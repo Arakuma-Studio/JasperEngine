@@ -670,14 +670,22 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
         sourceContent += "\n";
         sourceContent += "        const std::string className = scriptEntry.className;\n";
         sourceContent += "        void* instance = nullptr;\n";
+        // the script messages it overrides (onJointBreak2D...), called through its ScriptBase
+        sourceContent += "        jasperengine::ScriptBase* cppScript = nullptr;\n";
+        sourceContent += "        uint32_t cppMessageMask = 0;\n";
         for (const auto& s : scriptFiles) {
             sourceContent += "        if (className == \"" + s.className + "\") {\n";
-            sourceContent += "            instance = static_cast<void*>(new " + s.className + "(scene, entity));\n";
+            sourceContent += "            " + s.className + "* typed = new " + s.className + "(scene, entity);\n";
+            sourceContent += "            instance = static_cast<void*>(typed);\n";
+            sourceContent += "            cppScript = jasperengine::ScriptMessages::cppScript<" + s.className + ">(typed);\n";
+            sourceContent += "            cppMessageMask = jasperengine::ScriptMessages::cppMask<" + s.className + ">();\n";
             sourceContent += "        }\n";
         }
         sourceContent += "        scriptComp = scene->isEntityCreated(entity) ? scene->findComponent<jasperengine::ScriptComponent>(entity) : nullptr;\n";
         sourceContent += "        if (scriptComp && s < scriptComp->scripts.size()) {\n";
         sourceContent += "            scriptComp->scripts[s].instance = instance;\n";
+        sourceContent += "            scriptComp->scripts[s].cppScript = cppScript;\n";
+        sourceContent += "            scriptComp->scripts[s].cppMessageMask = cppMessageMask;\n";
         sourceContent += "        }\n";
         sourceContent += "    }\n";
         sourceContent += "}\n\n";
