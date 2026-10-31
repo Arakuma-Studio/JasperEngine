@@ -110,7 +110,9 @@ LIMITS.update({"user_settings": 550})
 # 106621, the limit set to it
 # lines and trails: no new tool; create_entity's type "trail_renderer" paid by a shorter create_entity
 # description, set_shape_points' line text reworded; measured on the merged tree: total 106692 (106687 before)
-TOTAL_LIMIT = 106700  # re-measured on the merged tree by the lead's verification
+# debug overlay: no new tool; get_project_settings' category list (+ "debug") and get_play_state's
+# debug_overlay block; measured on the tree merged with main: total 106648, the limit set to it
+TOTAL_LIMIT = 106648
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
