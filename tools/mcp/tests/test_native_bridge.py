@@ -158,6 +158,8 @@ async def test_native_settings_keys(ed: Editor):
 
 async def test_play_cpp_plugin_and_mock(ed: Editor):
     ed.require_tools("play", "wait", "eval_lua", "create_script")
+    import shutil
+    shutil.rmtree(ed.project / "plugins", ignore_errors=True)
     (ed.project / "plugins" / "native" / "cpp").mkdir(parents=True, exist_ok=True)
     (ed.project / "plugins" / "native" / "cpp" / "CalcPlugin.cpp").write_text(CPP_PLUGIN)
     (ed.project / "native_mocks").mkdir(parents=True, exist_ok=True)

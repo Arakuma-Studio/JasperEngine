@@ -44,13 +44,24 @@ namespace {
         return ext == ".framework" || ext == ".xcframework" || ext == ".bundle";
     }
 
-    // the sources are read for listings only: a huge file is skipped
+    // the sources are read for listings only: a huge file is skipped; line comments go (a
+    // comment's example code is no method), "://" in URLs stays
     std::string readSmallFile(const fs::path& path){
         std::error_code ec;
         const auto size = fs::file_size(path, ec);
         if (ec || size > (1u << 20)) return std::string();
         std::ifstream in(path, std::ios::binary);
-        return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        std::string text(std::istreambuf_iterator<char>(in), (std::istreambuf_iterator<char>()));
+        size_t at = 0;
+        while ((at = text.find("//", at)) != std::string::npos){
+            if (at > 0 && text[at - 1] == ':'){
+                at += 2;
+                continue;
+            }
+            const size_t end = text.find('\n', at);
+            text.erase(at, end == std::string::npos ? std::string::npos : end - at);
+        }
+        return text;
     }
 
     std::vector<std::string> matches(const std::string& text, const std::regex& pattern){
