@@ -517,7 +517,7 @@ void editor::InspectorWindow::drawCameraFollowComponent(ComponentType cpType, Sc
     propertyRow(RowPropertyType::FloatPositive, cpType, "maxSpeed", "Max Speed", sceneProject, entities, speedSettings);
     propertyRow(RowPropertyType::Bool, cpType, "lookAt", "Look At", sceneProject, entities, lookSettings);
     if (follow.lookAt){
-        propertyRow(RowPropertyType::Vector3, cpType, "lookAtOffset", "Offset##lookat", sceneProject, entities, lookOffsetSettings);
+        propertyRow(RowPropertyType::Vector3, cpType, "lookAtOffset", "Look Offset", sceneProject, entities, lookOffsetSettings);
         if (!(camera && camera->useTarget)){
             propertyRow(RowPropertyType::FloatPositive, cpType, "rotationDamping", "Rotation Damping", sceneProject, entities, rotationSettings);
         }

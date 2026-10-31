@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // W4: Lua/C++ scripts, compile check, code editor sync
+#include "camera/ShakePreset.h"
 #include "McpTools.h"
 #include "W4Shared.h"
 
@@ -424,14 +425,28 @@ void addAnimationFileProblems(Project* project, const fs::path& path, Json& prob
     const std::string pathText = path.string();
     const bool clip = Util::isAnimationClipFile(pathText);
     const bool vertexAnimation = Util::isVertexAnimationFile(pathText);
-    if (!clip && !vertexAnimation && !Util::isPoseAnimationFile(pathText)) return;
+    const bool shake = Util::isShakePresetFile(pathText);
+    if (!clip && !vertexAnimation && !shake && !Util::isPoseAnimationFile(pathText)) return;
     std::error_code ec;
     std::string text;
     if (!fs::is_regular_file(path, ec) || !ProjectChecks::readFile(path, text)) return;
     const std::string rel = projectRelative(project, path);
 
     std::vector<std::string> warnings;
-    if (vertexAnimation) {
+    if (shake) {
+        // a .shake (camera shake spec 6): a shake naming it plays nothing until it reads again
+        const camera::ShakeParseResult parsed = camera::parseShakePreset(text);
+        if (!parsed.ok()) {
+            Json problem = {{"path", rel}, {"message", "Not a valid shake preset: " + parsed.error + " (nothing shakes with it)."}};
+            if (parsed.line > 0) {
+                problem["line"] = parsed.line;
+                problem["col"] = parsed.column;
+            }
+            problems.push_back(problem);
+            return;
+        }
+        warnings = parsed.warnings;
+    } else if (vertexAnimation) {
         // a .vat (vertex animation spec 2.1): the parser's error ("line:col: message" for JSON)
         const jasperengine::vat::VatParseResult parsed = jasperengine::vat::parseVat(text);
         if (!parsed.ok()) {

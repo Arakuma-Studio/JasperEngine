@@ -37,7 +37,7 @@ async def setup(ed: Editor) -> dict:
     cam = await ed.call("create_entity", scene=S["scene"], type="camera", name="Main Camera", position=[0, 2, 8])
     S["camera"] = cam["entity_id"]
     await ed.call("set_main_camera", scene=S["scene"], entity="Main Camera")
-    player = await ed.call("create_entity", scene=S["scene"], type="box", name="Player", position=[0, 0, 0])
+    player = await ed.call("create_entity", scene=S["scene"], type="cube", name="Player", position=[0, 0, 0])
     S["player"] = player["entity_id"]
     await ed.call("save_scene", scene=S["scene"])
     return S
