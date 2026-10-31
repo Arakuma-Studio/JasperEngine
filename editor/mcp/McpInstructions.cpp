@@ -177,7 +177,7 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   render_pose_animation, its metrics; degrees from standing (arms down); mirror_pose
   (jasper://docs/pose-animation).
 - Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}; play with an Animation
-  Player (jasper://docs/animation).
+  Player (jasper://docs/animation); layers, .mask masks and edit_animator controllers: same guide.
 - Crowds: bake_vertex_animation (preview, then output) makes a .vat played on the GPU by a
   Vertex Animator (jasper://docs/vertex-animation).
 - UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; HTML/CSS

@@ -5,6 +5,7 @@
 #include "McpTools.h"
 #include "W4Shared.h"
 #include "AnimationClipTools.h"
+#include "AnimatorTools.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -1153,6 +1154,18 @@ void writeFileTool(const CallPtr& call) {
             return;
         }
     }
+    // Avatar Masks and Animator Controllers must stay loadable (layers and players read them): content problems
+    // (and a controller's validation) are warnings
+    std::vector<std::string> animWarnings;
+    if (Util::isAvatarMaskFile(rel) || Util::isAnimatorControllerFile(rel)) {
+        std::string why;
+        const bool mask = Util::isAvatarMaskFile(rel);
+        if (mask ? !animator_tools::checkMaskText(content, animWarnings, why) : !animator_tools::checkControllerText(project, content, animWarnings, why)) {
+            call->fail(std::string(mask ? "Not a valid Avatar Mask: " : "Not a valid Animator Controller: ") + why +
+                       (mask ? ". The format: jasper://docs/animation (Layers and masks)." : ". Prefer edit_animator (jasper://docs/animation)."));
+            return;
+        }
+    }
     // Vertex Animations must stay loadable: generated fields are the baker's (rebake), the rest are warnings
     std::vector<std::string> vatWarnings;
     if (Util::isVertexAnimationFile(rel)) {
@@ -1186,6 +1199,12 @@ void writeFileTool(const CallPtr& call) {
         text += vatWarnings.empty() ? std::string(" Valid Vertex Animation (its animators reload).")
                                     : " Vertex Animation loads with " + std::to_string(vatWarnings.size()) + " warning(s) (the bad parts are dropped):";
         for (size_t i = 0; i < vatWarnings.size() && i < 8; i++) text += "\n" + vatWarnings[i];
+    } else if (Util::isAvatarMaskFile(rel) || Util::isAnimatorControllerFile(rel)) {
+        data["warnings"] = animWarnings;
+        const char* kind = Util::isAvatarMaskFile(rel) ? "Avatar Mask" : "Animator Controller";
+        text += animWarnings.empty() ? std::string(" Valid ") + kind + " (its players reload)."
+                                     : std::string(" ") + kind + " loads with " + std::to_string(animWarnings.size()) + " warning(s):";
+        for (size_t i = 0; i < animWarnings.size() && i < 8; i++) text += "\n" + animWarnings[i];
     } else if (Util::isAnimationClipFile(rel)) {
         data["warnings"] = clipWarnings;
         text += clipWarnings.empty() ? std::string(" Valid clip.") : " Clip loads with " + std::to_string(clipWarnings.size()) + " warning(s) (the bad parts are dropped):";

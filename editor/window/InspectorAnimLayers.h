@@ -72,6 +72,9 @@ namespace jasperengine::editor::animlayersui{
     // Create Controller from Clips: writes `controllerPath` (project-relative, new) and sets the
     // player's controller/controllerGuid in one scene step
     bool createControllerFromClips(Project* project, uint32_t sceneId, Entity entity, const std::string& controllerPath, std::string& error);
+    // the same step with given controller data (MCP edit_animator {create: {from_entity}, ops})
+    bool createControllerFile(Project* project, uint32_t sceneId, Entity entity, const std::string& controllerPath,
+                              const anim::ControllerData& data, std::string& error);
     // a free project-relative path "<dir>/<stem>.<ext>", "<stem> 2.<ext>"...
     std::string freeAssetPath(Project* project, const std::string& directory, const std::string& stem, const std::string& extension);
 

@@ -276,10 +276,22 @@ bool animlayersui::createControllerFromClips(Project* project, uint32_t sceneId,
     const AnimationPlayerComponent* player = sceneProject->scene->findComponent<AnimationPlayerComponent>(entity);
     if (!player) return fail(error, "the GameObject has no Animation Player");
     if (!Util::isAnimatorControllerFile(controllerPath)) return fail(error, "'" + controllerPath + "' is not a .controller path");
-    std::error_code ec;
-    if (fs::exists(project->getProjectPath() / fs::u8path(controllerPath), ec)) return fail(error, "'" + controllerPath + "' exists: choose a new file");
     anim::ControllerData data = controllerFromClips(*player);
     data.guid = anim::generateClipGuid();
+    return createControllerFile(project, sceneId, entity, controllerPath, data, error);
+}
+
+bool animlayersui::createControllerFile(Project* project, uint32_t sceneId, Entity entity, const std::string& controllerPath,
+                                        const anim::ControllerData& input, std::string& error){
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene || !sceneProject->scene->findComponent<AnimationPlayerComponent>(entity)){
+        return fail(error, "the GameObject has no Animation Player");
+    }
+    if (!Util::isAnimatorControllerFile(controllerPath)) return fail(error, "'" + controllerPath + "' is not a .controller path");
+    std::error_code ec;
+    if (fs::exists(project->getProjectPath() / fs::u8path(controllerPath), ec)) return fail(error, "'" + controllerPath + "' exists: choose a new file");
+    anim::ControllerData data = input;
+    if (data.guid.empty()) data.guid = anim::generateClipGuid();
     std::vector<Command*> commands;
     commands.push_back(new PropertyCmd<std::string>(project, sceneId, entity, ComponentType::AnimationPlayerComponent, "controller",
                                                     storedForm(project, controllerPath)));

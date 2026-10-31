@@ -7,6 +7,7 @@
 // point lists of polygons / shadow casters / line renderers.
 #include "McpTools.h"
 #include "AnimationClipTools.h"
+#include "AnimatorTools.h"
 #include "AnimationKeys.h"
 
 #include "mcp/McpCall.h"
@@ -3314,13 +3315,23 @@ void getAnimationTool(const CallPtr& call) {
         clip_tools::getClip(call);
         return;
     }
+    // an Avatar Mask (root: its coverage) or an Animator Controller (anim layers spec 10, 11.5)
+    if (has(args, "mask")) {
+        animator_tools::getMask(call);
+        return;
+    }
+    if (has(args, "controller")) {
+        animator_tools::getController(call);
+        return;
+    }
     if (has(args, "times") || has(args, "root")) {
         call->fail(std::string(has(args, "times") ? "times samples" : "root checks the bindings of") +
                    " a clip file: pass clip (an .anim path or a model clip \"assets/models/hero.gltf#Walk\").");
         return;
     }
     if (!has(args, "entity")) {
-        call->fail("Pass entity (an Animation, or a GameObject that is animated or has an Animation Player) or clip (an .anim path).");
+        call->fail("Pass entity (an Animation, or a GameObject that is animated or has an Animation Player), clip (an .anim path), "
+                   "mask (a .mask) or controller (a .controller).");
         return;
     }
     Target target;
@@ -4811,12 +4822,15 @@ void registerWorldTools(McpRegistry& registry) {
     add("get_animation", "Get Animation",
         "entity: an Animation's timeline (loop, duration, autoplay, target, actions with kind, keys or tween "
         "values), or for another GameObject the animations targeting it or its children (model clips too) and "
-        "the Animation Player playing it (states, clips, bindings). clip (.anim or \"model.gltf#Walk\"): its "
-        "settings, tracks, events, users; times: values sampled there; root: bindings.",
+        "the Animation Player playing it (states, layers, controller, bindings; live in play). clip (.anim or "
+        "\"model.gltf#Walk\"): settings, tracks, events, users; times: values sampled there; root: bindings. "
+        "mask (.mask; root: coverage) or controller (.controller summary).",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("")},
             {"clip", assetPath("")},
+            {"mask", assetPath("")},
+            {"controller", assetPath("")},
             {"times", array(number(""), "Seconds.")},
             {"root", entityRef("")},
             {"max_keys", withDefault(integer("Per track."), 50)}
@@ -4826,11 +4840,12 @@ void registerWorldTools(McpRegistry& registry) {
     add("preview_animation", "Preview Animation",
         "Edit-mode preview (Animation window): play, pause, seek (time), stop (restores the authored "
         "state; always stop when done). animation: an Animation, or a GameObject whose Animation Player plays "
-        "state (default its default clip; returns bound transforms). Selects it; wait_ms lets it play first (it loops).",
+        "state (default its default clip; returns bound transforms); over: a base state under a layer's state. Selects it; wait_ms lets it play first (it loops).",
         object({
             {"scene", sceneRef()},
             {"animation", entityRef()},
             {"state", string("")},
+            {"over", string("")},
             {"action", withDefault(stringEnum("", {"play", "pause", "stop", "seek"}), "play")},
             {"time", number("seek: seconds.")},
             {"wait_ms", integer("", 0, 30000)}
