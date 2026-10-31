@@ -78,6 +78,9 @@ namespace jasperengine::editor{
         bool addTransition(const std::string& fromState, const std::string& toNode, bool fromAnyState, bool fromEntry);
         bool setDefaultState(const std::string& name);
         bool removeSelection();
+        // Delete (the catalog's edit.delete) removes the window's selection: focused, editable,
+        // something selected
+        bool canDelete() const;
         bool addParameter(const std::string& name, AnimatorParameterType type);
         bool addLayer(const std::string& name);
         void selectState(const std::string& name);

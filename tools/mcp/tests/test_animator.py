@@ -21,6 +21,7 @@ from pathlib import Path
 import harness
 from harness import Editor, REPO, free_port, wait_for_port
 
+CI = True
 TIMEOUT = 1500
 PORT = free_port()
 TOKEN = "s21-animator-token"

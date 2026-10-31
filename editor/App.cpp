@@ -1174,6 +1174,8 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::DeleteSelection:
             if (inputActionsWindow->canDelete()) inputActionsWindow->requestDelete();
+            // the Animator window's selected state, sub-state machine, transition or layer
+            else if (animatorWindow->canDelete()) animatorWindow->removeSelection();
             // the Draw Spline tool's last knot, the edited spline's knots
             else if (!SplineSceneTools::deleteRequested(&project)) deleteSelection();
             break;
