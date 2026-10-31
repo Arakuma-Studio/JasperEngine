@@ -33,17 +33,19 @@ namespace {
         size_t systems;
     };
 
-    // the files holding the 18 systems, and how many each holds
+    // the files holding the 18 systems, and how many each holds; every scene also has an instance
+    // of GameOverMenu, whose confetti (#12) is imported with it: 22 systems in all
     const GameFile GAME_FILES[] = {
-        {"Assets/Scenes/A.unity", 2},                                // PlayerAppereance, ExplosionParticles
-        {"Assets/Scenes/B.unity", 2},                                // Start/EndParticles
-        {"Assets/Scenes/D.unity", 5},                                // Eyes x2, Rush/Ambush x3
-        {"Assets/Scenes/E.unity", 1},                                // the WarFX flamethrower instance
+        {"Assets/Scenes/A.unity", 3},                                // PlayerAppereance, ExplosionParticles
+        {"Assets/Scenes/B.unity", 3},                                // Start/EndParticles
+        {"Assets/Scenes/D.unity", 6},                                // Eyes x2, Rush/Ambush x3
+        {"Assets/Scenes/E.unity", 2},                                // the WarFX flamethrower instance
         {"Assets/Prefabs/CollectedParticles.prefab", 1},
         {"Assets/Prefabs/GameOverMenu.prefab", 1},                   // confetti in a UIParticle
         {"Assets/Prefabs/I - Invaders/InvadersExplosion.prefab", 2}, // the root and its Explosion
         {"Assets/Prefabs/I - Invaders/Player.prefab", 4},            // FirePoints
     };
+    constexpr size_t SCENE_COPIES_OF_THE_CONFETTI = 4;
 
     // notes a system of the game may have: approximations the spec lists for it
     const std::set<std::string> EXPECTED_NOTES = {
@@ -77,7 +79,9 @@ TEST(UnityGameImportTest, TheGamesEighteenSystems) {
         ASSERT_TRUE(result.ok) << file.path << ": " << result.error;
         EXPECT_FALSE(result.prefabs.empty()) << file.path;
         const Json& systems = result.report["systems"];
-        EXPECT_EQ(systems.size(), file.systems) << file.path << "\n" << result.report.dump(2);
+        std::string paths;
+        for (const Json& system : systems) paths += "\n  " + system["path"].get<std::string>();
+        EXPECT_EQ(systems.size(), file.systems) << file.path << ":" << paths;
         total += systems.size();
         for (const Json& system : systems) {
             for (const auto& module : system["modules"].items()) {
@@ -90,7 +94,7 @@ TEST(UnityGameImportTest, TheGamesEighteenSystems) {
             }
         }
     }
-    EXPECT_EQ(total, 18u);
+    EXPECT_EQ(total - SCENE_COPIES_OF_THE_CONFETTI, 18u);
     EXPECT_TRUE(uiParticle) << "GameOverMenu's confetti is drawn by UIParticle";
     fs::remove_all(out, ec);
 }

@@ -83,7 +83,22 @@ namespace {
         int classId = 0;
         int64_t id = 0;
         YAML::Node body;
+        // prefab overrides of this object that could not be applied (reported when it is imported)
+        std::vector<std::string> unknownOverrides;
+        // its place in the file (an instance's objects at the instance's): roots and unlisted
+        // children keep the file's order
+        int64_t order = 0;
     };
+
+    // a ParticleSystem's own top-level and module fields (an override of one is worth a warning
+    // even when its object is not found)
+    bool particleOverridePath(const std::string& path){
+        const std::string first = path.substr(0, path.find('.'));
+        static const std::set<std::string> top = {"lengthInSec", "simulationSpeed", "stopAction", "cullingMode", "ringBufferMode",
+            "emitterVelocityMode", "looping", "prewarm", "playOnAwake", "useUnscaledTime", "autoRandomSeed", "startDelay",
+            "moveWithTransform", "scalingMode", "randomSeed"};
+        return top.count(first) || (first.size() > 6 && first.compare(first.size() - 6, 6, "Module") == 0);
+    }
 
     using Graph = std::map<int64_t, Object>;
 
@@ -103,6 +118,7 @@ namespace {
         std::set<std::string> usedNames;
         // each prefab file resolved once (a scene instances the same prefab many times)
         std::map<std::string, Graph> prefabCache;
+        int64_t nextOrder = 0;
         // the notes of the system being converted
         std::vector<ImportNote>* notes = nullptr;
     };
@@ -208,7 +224,8 @@ namespace {
         // a copy: the modifications are this instance's
         Graph objects;
         for (const auto& item : cached->second){
-            objects[item.first] = {item.second.classId, item.second.id, YAML::Clone(item.second.body)};
+            objects[item.first] = {item.second.classId, item.second.id, YAML::Clone(item.second.body), item.second.unknownOverrides,
+                                   item.second.order};
         }
 
         const YAML::Node modification = doc.body["m_Modification"];
@@ -218,9 +235,15 @@ namespace {
                 const std::string path = readString(m, "propertyPath");
                 auto it = target.guid == source.guid ? objects.find(target.fileID) : objects.end();
                 if (it == objects.end() || !applyModification(it->second.body, path, m["value"], readRef(m, "objectReference"))){
-                    // names and transform hints that need nothing
-                    if (path == "m_LocalEulerAnglesHint.x" || path == "m_LocalEulerAnglesHint.y" || path == "m_LocalEulerAnglesHint.z") continue;
-                    ctx.warnings.push_back("override-unknown: " + ctx.project.relative(sourcePath) + ": " + path + " (on &" + std::to_string(target.fileID) + ")");
+                    // transform hints that need nothing
+                    if (path.compare(0, 22, "m_LocalEulerAnglesHint") == 0) continue;
+                    const std::string message = ctx.project.relative(sourcePath) + ": " + path + " (on &" + std::to_string(target.fileID) + ")";
+                    if (it != objects.end()){
+                        // reported if that object is imported
+                        it->second.unknownOverrides.push_back(message);
+                    }else if (particleOverridePath(path)){
+                        ctx.warnings.push_back("override-unknown: " + message);
+                    }
                 }
             }
         }
@@ -231,15 +254,15 @@ namespace {
                 objects.erase(removed.fileID);
             }
         }
-        if (modification && modification["m_AddedComponents"] && modification["m_AddedComponents"].IsSequence() &&
-            modification["m_AddedComponents"].size() > 0){
-            ctx.warnings.push_back("override-unknown: components added to the instance of " + ctx.project.relative(sourcePath) + " are not imported");
-        }
+        // components added to the instance are documents of this file naming its GameObject's
+        // placeholder (componentsOf finds them)
 
         std::set<int64_t> ids;
         for (const auto& item : objects) ids.insert(item.first);
         const Ref parent = readRef(modification, "m_TransformParent");
+        const int64_t base = ctx.nextOrder;
         for (auto& item : objects){
+            ctx.nextOrder = std::max(ctx.nextOrder, base + item.second.order + 1);
             Object object = item.second;
             remapLocalRefs(object.body, doc.fileId, ids);
             // the source's root hangs from the instance's parent
@@ -249,6 +272,7 @@ namespace {
                 object.body["m_Father"] = father;
             }
             object.id = instanceObjectId(item.first, doc.fileId);
+            object.order = base + item.second.order;
             graph.erase(object.id);
             graph.emplace(object.id, object);
         }
@@ -276,7 +300,7 @@ namespace {
                 const int64_t target = instanceObjectId(source, instance);
                 if (source != 0 && instance != 0 && target != doc.fileId) aliases[doc.fileId] = target;
             }else if (!graph.count(doc.fileId)){
-                graph[doc.fileId] = {doc.classId, doc.fileId, YAML::Clone(doc.body)};
+                graph[doc.fileId] = {doc.classId, doc.fileId, YAML::Clone(doc.body), {}, ctx.nextOrder++};
             }
         }
         if (!aliases.empty()){
@@ -372,13 +396,18 @@ namespace {
                 }
             }
         }
-        for (const auto& item : h.parentOf){
-            if (item.second == 0){
-                h.roots.push_back(item.first);
+        // the rest in the file's order
+        std::vector<int64_t> byOrder;
+        for (const auto& item : h.parentOf) byOrder.push_back(item.first);
+        std::stable_sort(byOrder.begin(), byOrder.end(), [&](int64_t a, int64_t b){ return graph.at(a).order < graph.at(b).order; });
+        for (int64_t go : byOrder){
+            const int64_t parent = h.parentOf.at(go);
+            if (parent == 0){
+                h.roots.push_back(go);
                 continue;
             }
-            std::vector<int64_t>& list = h.children[item.second];
-            if (std::find(list.begin(), list.end(), item.first) == list.end()) list.push_back(item.first);
+            std::vector<int64_t>& list = h.children[parent];
+            if (std::find(list.begin(), list.end(), go) == list.end()) list.push_back(go);
         }
         return h;
     }
@@ -1232,6 +1261,19 @@ namespace {
         scene.addComponent<Transform>(entity, transform);
 
         const std::string thisPath = enginePath.empty() ? name : enginePath + "/" + name;
+        // the overrides of this GameObject's objects that did not apply
+        {
+            std::vector<int64_t> used = {go};
+            if (t != h.transformOf.end()) used.push_back(t->second);
+            for (int64_t id : componentsOf(graph, go)) used.push_back(id);
+            for (int64_t id : used){
+                auto object = graph.find(id);
+                if (object == graph.end()) continue;
+                for (const std::string& message : object->second.unknownOverrides){
+                    ctx.warnings.push_back("override-unknown: " + message);
+                }
+            }
+        }
         if (const Object* ps = componentOfClass(graph, go, CLASS_PARTICLESYSTEM)){
             Json system = {{"path", pathOf(graph, h, go)}, {"engine_entity", prefabName + ":" + thisPath}};
             std::vector<ImportNote> notes;

@@ -16,6 +16,7 @@
 #include "Stream.h"
 #include "particles/ParticleSimulation.h"
 #include "unity/UnityParticleImport.h"
+#include "util/Color.h"
 
 #include "stb_image.h"
 
@@ -73,7 +74,7 @@ namespace {
             if (member["name"] && member["name"].as<std::string>() == name) return member;
             if (member["children"]) {
                 YAML::Node found = findMember(member["children"], name);
-                if (found) return found;
+                if (found.IsMap()) return found;
             }
         }
         return YAML::Node();
@@ -109,8 +110,9 @@ namespace {
         return false;
     }
 
+    // the engine's sRGB -> linear (what Unity's gamma colours become)
     float linear(float gamma) {
-        return gamma <= 0.04045f ? gamma / 12.92f : std::pow((gamma + 0.055f) / 1.055f, 2.4f);
+        return Color::sRGBToLinear(Vector3(gamma, gamma, gamma)).x;
     }
 
     // the mean start velocity direction of `count` particles emitted by an imported system
@@ -137,7 +139,7 @@ TEST(UnityParticleImportTest, PrefabSystemValues) {
     EXPECT_EQ(prefab["type"].as<std::string>(), "Prefab");
     EXPECT_FALSE(prefab["guid"].as<std::string>().empty());
     const YAML::Node flame = findMember(prefab["members"], "Flame");
-    ASSERT_TRUE(flame);
+    ASSERT_TRUE(flame.IsMap());
     EXPECT_EQ(childNames(flame), std::vector<std::string>({"Smoke"}));
 
     // the root sits at the origin; its rotation is kept, mirrored (90 deg about Y -> -90)
@@ -257,7 +259,7 @@ TEST(UnityParticleImportTest, ChildSystemMeshAndUnsupportedModules) {
     ASSERT_TRUE(result.ok) << result.error;
     const YAML::Node prefab = YAML::LoadFile((project.root / result.prefabs[0]).string());
     const YAML::Node smoke = findMember(prefab["members"], "Smoke");
-    ASSERT_TRUE(smoke);
+    ASSERT_TRUE(smoke.IsMap());
     const ParticleSystemComponent ps = systemOf(smoke);
     EXPECT_EQ(ps.main.simulationSpace, ParticleSystemSimulationSpace::Local);
     EXPECT_EQ(ps.shape.shapeType, ParticleSystemShapeType::Sphere);
@@ -398,7 +400,7 @@ TEST(UnityParticleImportTest, SceneInstanceWithModifications) {
 
     const YAML::Node members = YAML::LoadFile((project.root / result.prefabs[0]).string())["members"];
     const YAML::Node flame = findMember(members, "BigFlame");
-    ASSERT_TRUE(flame);
+    ASSERT_TRUE(flame.IsMap());
     // Attached hangs from the instance's root through the stripped placeholder (its own id)
     EXPECT_EQ(childNames(flame), std::vector<std::string>({"Smoke", "Attached"}));
     const ParticleSystemComponent ps = systemOf(flame);
