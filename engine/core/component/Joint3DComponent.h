@@ -13,6 +13,7 @@
 #include <limits>
 #include <vector>
 #ifdef JASPERENGINE_PHYSICS_3D
+#include "Jolt/Jolt.h"
 #include "Jolt/Physics/Constraints/TwoBodyConstraint.h"
 #endif
 

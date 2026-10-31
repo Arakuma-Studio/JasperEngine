@@ -25,7 +25,9 @@ namespace jasperengine{
 
     class JoltSurfaceMaterial : public JPH::PhysicsMaterial{
     public:
-        JPH_DECLARE_RTTI_VIRTUAL(JPH_NO_EXPORT, JoltSurfaceMaterial)
+        // its debug name, by address: what tells it from Jolt's own materials (one virtual call,
+        // no JPH RTTI to register)
+        static inline const char* const typeName = "JoltSurfaceMaterial";
 
         float friction = 0.0f;
         float restitution = 0.0f;
@@ -34,13 +36,13 @@ namespace jasperengine{
         bool isTrigger = false;
         uint32_t colliderIndex = 0;
 
-        virtual const char* GetDebugName() const override { return "JoltSurfaceMaterial"; }
+        virtual const char* GetDebugName() const override { return typeName; }
 
         bool hasMaterial() const { return frictionCombine != PhysicsMaterialCombine::NONE; }
 
         // the surface of a sub-shape of a body, null when the leaf has none of ours
         static const JoltSurfaceMaterial* of(const JPH::PhysicsMaterial* material){
-            return material ? JPH::DynamicCast<JoltSurfaceMaterial>(material) : nullptr;
+            return (material && material->GetDebugName() == typeName) ? static_cast<const JoltSurfaceMaterial*>(material) : nullptr;
         }
     };
 

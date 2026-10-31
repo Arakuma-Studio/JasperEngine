@@ -79,6 +79,13 @@ namespace jasperengine::editor{
         UpdateFlags_Joint2D_Params      = (uint64_t)1 << 44,
         // a Rigidbody 2D's gravity scale, damping, mass...: applied to the live body, no rebuild
         UpdateFlags_Rigidbody2D_Params  = (uint64_t)1 << 45,
+        // a Rigidbody's type, damping, mass fields...: applied to the live body (a type switch,
+        // the mass again), no rebuild
+        UpdateFlags_Rigidbody_Params    = (uint64_t)1 << 46,
+        // a 3D joint's motor, spring, limit, friction or break field: applied to the live joint
+        UpdateFlags_Joint3D_Params      = (uint64_t)1 << 47,
+        // a Ragdoll's root or animator: its parts are collected again
+        UpdateFlags_Ragdoll             = (uint64_t)1 << 48,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -113,6 +120,7 @@ namespace jasperengine::editor{
         InstancedMeshComponent,
         Joint2DComponent,
         Joint3DComponent,
+        RagdollComponent,
         KeyframeTracksComponent,
         MeshPolygonComponent,
         MorphTracksComponent,

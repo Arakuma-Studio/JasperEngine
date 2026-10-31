@@ -2266,6 +2266,7 @@ bool PhysicsSystem::reshapeRigidbody3D(Entity entity, RigidbodyComponent& body){
             }
             jbody.SetUseManifoldReduction(usesManifoldReduction3D(body));
             jbody.SetCollideKinematicVsNonDynamic(collidesKinematicVsNonDynamic3D(body));
+            jbody.SetIsSensor(body.sensor);
         }
     }
 
@@ -2351,11 +2352,21 @@ void PhysicsSystem::syncMaterials3D(){
 }
 
 void PhysicsSystem::applyRigidbodyParameters(Entity entity, RigidbodyComponent& body){
-    (void)entity;
     if (body.body.IsInvalid()){
         return;
     }
     JPH::BodyInterface& body_interface = getBodyInterface3D();
+    // a type written into the component (the Inspector, set_properties): switched live
+    {
+        const JPH::EMotionType motion = body_interface.GetMotionType(body.body);
+        const BodyType live = motion == JPH::EMotionType::Dynamic ? BodyType::DYNAMIC
+                            : (motion == JPH::EMotionType::Kinematic ? BodyType::KINEMATIC : BodyType::STATIC);
+        if (live != body.type && !body.hasPendingType){
+            const BodyType wanted = body.type;
+            body.type = live;
+            setRigidbodyType(entity, body, wanted);
+        }
+    }
     {
         JPH::BodyLockWrite lock(getBodyLockInterface3D(), body.body);
         if (!lock.Succeeded()){
