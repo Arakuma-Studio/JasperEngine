@@ -9,6 +9,8 @@
 #include "LuaBridgeAddon.h"
 
 #include "Engine.h"
+
+#include <climits>
 #include "Log.h"
 #include "Scene.h"
 #include "SceneManager.h"
@@ -2068,6 +2070,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         })
         .addStaticFunction("addAxisDelta", +[](const std::string& name, float delta, luabridge::LuaRef source) {
             InputActions::addSourceDelta(luaSourceOwner(source), name, delta, InputSourceKind::Script);
+        })
+        // ui-multitouch D15: the pointer (-1 the mouse, a finger's fingerId; none: the mouse or
+        // any finger) is over component UI that takes events or HTML content, or either holds it
+        .addStaticFunction("isPointerOverUI", +[](luabridge::LuaRef pointerId) {
+            if (pointerId.isNil()) return Engine::isPointerOverUI(INT_MIN);
+            if (!pointerId.isNumber()) return false;
+            return Engine::isPointerOverUI(pointerId.unsafe_cast<int>());
         })
         .addStaticFunction("clearSimulated", +[](luabridge::LuaRef source) {
             if (source.isNil()) InputActions::clearSources(InputSourceKind::Script);

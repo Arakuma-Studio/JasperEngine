@@ -2027,6 +2027,15 @@ OVERRIDES.update({
     ('Input', 'addAxisDelta'): {
         'doc': ['Adds `delta` to the action for this frame only, unclamped (like mouse movement).'],
         'overloads': [([('name', 'string'), ('delta', 'number'), ('source?', _INPUT_SOURCE)], '')]},
+    ('UIComponent', 'getPointerEventData'): {
+        'doc': ['The PointerEventData of the legacy callback running now (`onPointerDown(x, y)`, `onClick`...):',
+                'its pointerId, button, positions; nil outside one.'],
+        'overloads': [([], 'PointerEventData?')]},
+    ('Input', 'isPointerOverUI'): {
+        'doc': ['Whether the pointer is over UI that takes it (Unity\'s EventSystem.IsPointerOverGameObject):',
+                'a component UI element that receives events, HTML content, or a press either holds.',
+                '`pointerId`: -1 the mouse, a finger\'s `Touch.fingerId`; none: the mouse or any finger.'],
+        'overloads': [([('pointerId?', 'integer')], 'boolean')]},
     ('Input', 'clearSimulated'): {
         'doc': ['Removes the simulated values of `source` (without one: of every script).'],
         'overloads': [([('source?', _INPUT_SOURCE)], '')]},
@@ -2135,6 +2144,12 @@ PROPERTY_OVERRIDES = {
     ('Mesh', 'material'): ('Material', True),
     # AnimationEvent.args builds a 1-based table of the event's arguments
     ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
+    # ui-multitouch: the GameObjects of a PointerEventData (nil: none)
+    ('PointerEventData', 'pointerEnter'): ('GameObject?', False),
+    ('PointerEventData', 'pointerPress'): ('GameObject?', False),
+    ('PointerEventData', 'rawPointerPress'): ('GameObject?', False),
+    ('PointerEventData', 'pointerDrag'): ('GameObject?', False),
+    ('PointerEventData', 'target'): ('GameObject?', False),
 }
 
 for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
@@ -2261,12 +2276,24 @@ HTML_UI_FIELD_OVERRIDES = {
 HTML_UI_EVENT_TYPES = [
     ('click', 'a press and release on the element (Enter/Space on a focused button too)'),
     ('dblclick', 'a double click'),
-    ('mousedown', 'a pointer press (event.button: 0 left, 1 middle, 2 right)'),
+    ('mousedown', 'a pointer press (event.button: 0 left, 1 middle, 2 right; every finger too, event.pointerId)'),
     ('mouseup', 'a pointer release'),
     ('mousemove', 'the pointer moved over the element'),
     ('mouseover', 'the pointer entered the element or a child (bubbles)'),
     ('mouseout', 'the pointer left the element or a child (bubbles)'),
     ('wheel', 'the mouse wheel (event.deltaX/deltaY in steps, positive down/right)'),
+    ('pointerdown', 'a pointer pressed: the mouse (pointerId 1) or a finger (event.pointerType "touch", event.fingerId); each finger its own'),
+    ('pointermove', 'the pointer moved (to its capture when captured)'),
+    ('pointerup', 'the pointer released'),
+    ('pointercancel', 'the pointer ended without a release (a touch that started a pan, a cancelled touch)'),
+    ('pointerover', 'the pointer came over the element (bubbles)'),
+    ('pointerout', 'the pointer left the element (bubbles)'),
+    ('pointerenter', 'the pointer entered the element or a child (does not bubble)'),
+    ('pointerleave', 'the pointer left the element and its children (does not bubble)'),
+    ('gotpointercapture', 'the element captured the pointer (setPointerCapture, or a touch\'s pointerdown target)'),
+    ('lostpointercapture', 'the element lost the pointer\'s capture (release, up, cancel)'),
+    ('mouseenter', 'the pointer entered the element (does not bubble)'),
+    ('mouseleave', 'the pointer left the element (does not bubble)'),
     ('keydown', 'a key press on the focused element (event.key: "Enter", "Escape", "ArrowUp", "a"); gamepads too (event.code: "GamepadA", "GamepadDPadUp", ...)'),
     ('keyup', 'a key release (keyboard or gamepad)'),
     ('textinput', 'text typed into the focused element (event.data)'),
@@ -3225,6 +3252,10 @@ class Emitter:
             '---  onDisable(self)         it stops being active and enabled; before onDestroy',
             '---  onDestroy(self)         once: destroy, scene unload, Play stop / quit (only if init ran)',
             '---  onApplicationPause(self, paused) / onApplicationFocus(self, focused) / onApplicationQuit(self)',
+            '---The component UI\'s pointer callbacks (Unity\'s IPointerDownHandler...), e: PointerEventData, sent to',
+            '---the element under the pointer or its first ancestor whose script defines them (lua-api.md 1.7):',
+            '---  onPointerDown / onPointerUp / onPointerClick / onPointerEnter / onPointerExit(self, e)',
+            '---  onInitializePotentialDrag / onBeginDrag / onDrag / onEndDrag / onDrop / onScroll(self, e)',
             '---Update methods (onUpdate, onFixedUpdate, onPostUpdate) run only once registered with',
             '---RegisterEngineEvent; they are skipped while the script is not active and enabled.',
             '---@class ScriptInstance',
