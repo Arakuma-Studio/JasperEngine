@@ -142,7 +142,7 @@ namespace jasperengine{
 
         // the render texture (UI Images, materials: image:setTexture(player:getFramebuffer()))
         Framebuffer* getFramebuffer() const;
-        // the same as a Texture; empty before the player is prepared
+        // the render texture as a Texture; nil before the player is prepared
         std::optional<Texture> getTexture() const;
 
         // ---- static

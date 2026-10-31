@@ -2182,15 +2182,12 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("enabled", &VideoPlayer::isEnabled, &VideoPlayer::setEnabled)
         .addProperty("source", &VideoPlayer::getSource, &VideoPlayer::setSource)
-        // a video asset (.mp4, .m4v, .mov, .webm)
         .addProperty("clip", &VideoPlayer::getClip, &VideoPlayer::setClip)
-        // http(s)://, data://, an absolute path or an asset path
         .addProperty("url", &VideoPlayer::getUrl, &VideoPlayer::setUrl)
         .addProperty("playOnAwake", &VideoPlayer::isPlayOnAwake, &VideoPlayer::setPlayOnAwake)
         .addProperty("waitForFirstFrame", &VideoPlayer::isWaitForFirstFrame, &VideoPlayer::setWaitForFirstFrame)
         .addProperty("isLooping", &VideoPlayer::isLooping, &VideoPlayer::setLooping)
         .addProperty("skipOnDrop", &VideoPlayer::isSkipOnDrop, &VideoPlayer::setSkipOnDrop)
-        // 0.0625 .. 16
         .addProperty("playbackSpeed", &VideoPlayer::getPlaybackSpeed, &VideoPlayer::setPlaybackSpeed)
         .addProperty("timeUpdateMode", &VideoPlayer::getTimeUpdateMode, &VideoPlayer::setTimeUpdateMode)
         .addProperty("renderMode", &VideoPlayer::getRenderMode, &VideoPlayer::setRenderMode)
@@ -2208,21 +2205,17 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("targetMaterialProperty", &VideoPlayer::getTargetMaterialProperty, &VideoPlayer::setTargetMaterialProperty)
         // -1: every submesh
         .addProperty("targetSubmesh", &VideoPlayer::getTargetSubmesh, &VideoPlayer::setTargetSubmesh)
-        // 0 x 0: the video's own size
         .addProperty("renderTextureWidth", &VideoPlayer::getRenderTextureWidth, &VideoPlayer::setRenderTextureWidth)
         .addProperty("renderTextureHeight", &VideoPlayer::getRenderTextureHeight, &VideoPlayer::setRenderTextureHeight)
         .addProperty("audioOutputMode", &VideoPlayer::getAudioOutputMode, &VideoPlayer::setAudioOutputMode)
-        // 0 .. 1 (Unity's SetDirectAudioVolume)
         .addProperty("directVolume", &VideoPlayer::getDirectVolume, &VideoPlayer::setDirectVolume)
         .addProperty("directMute", &VideoPlayer::isDirectMute, &VideoPlayer::setDirectMute)
         // a GameObject with an AudioSource, nil: this one
         .addProperty("targetAudioSource",
             [](const VideoPlayer* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getTargetAudioSource()); },
             [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetAudioSource(entityOf(value, "targetAudioSource")); })
-        // seconds; setting it seeks (onSeekCompleted when the frame shows)
         .addProperty("time", &VideoPlayer::getTime, &VideoPlayer::setTime)
         .addProperty("canSetTime", &VideoPlayer::canSetTime)
-        // the frame shown (-1 before one); setting it seeks there
         .addProperty("frame", &VideoPlayer::getFrame, &VideoPlayer::setFrame)
         .addProperty("frameCount", &VideoPlayer::getFrameCount)
         .addProperty("frameRate", &VideoPlayer::getFrameRate)
@@ -2235,25 +2228,19 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("isPaused", &VideoPlayer::isPaused)
         // 0..1: the download of a URL, then the opening
         .addProperty("prepareProgress", &VideoPlayer::getPrepareProgress)
-        // the render texture as a Texture (nil before prepared)
         .addProperty("texture", &VideoPlayer::getTexture)
-        // "webm", "ffmpeg", "mediacodec", "avfoundation", "mediafoundation", "browser"
         .addProperty("backend", &VideoPlayer::getBackend)
         .addProperty("videoCodec", &VideoPlayer::getVideoCodec)
         .addProperty("audioCodec", &VideoPlayer::getAudioCodec)
         // the last error ("" when none)
         .addProperty("error", &VideoPlayer::getError)
         .addFunction("prepare", &VideoPlayer::prepare)
-        // prepares first when needed; plays once prepared
         .addFunction("play", &VideoPlayer::play)
         .addFunction("pause", &VideoPlayer::pause)
-        // to time 0, the decoder released (the texture keeps its last frame)
         .addFunction("stop", &VideoPlayer::stop)
         // paused: the next frame
         .addFunction("stepForward", &VideoPlayer::stepForward)
-        // the render texture (image:setTexture(player:getFramebuffer()))
         .addFunction("getFramebuffer", &VideoPlayer::getFramebuffer)
-        // "probably", "maybe" or "" for a file (probed) or a URL (by its extension)
         .addStaticFunction("canPlay", &VideoPlayer::canPlay)
         // deletes the media cache's files (of one URL, or all); the number removed
         .addStaticFunction("clearCache",
