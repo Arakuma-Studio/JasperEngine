@@ -140,7 +140,14 @@ TEST(PayloadValidator, RefusesCaseCollisionsAndEscapingSymlinks) {
     target.executable = "game";
     std::vector<std::string> findings;
     EXPECT_FALSE(validatePayload(dir.path(), target, findings));
-    EXPECT_TRUE(hasFinding(findings, "logo.png")) << join(findings);
+    // a case-insensitive filesystem (macOS, Windows) has one file under both names: no collision
+    // to find there
+    size_t logos = 0;
+    for (const fs::directory_entry& entry : fs::directory_iterator(dir / "assets"))
+        logos += entry.path().filename() == "Logo.png" || entry.path().filename() == "logo.png";
+    if (logos == 2) {
+        EXPECT_TRUE(hasFinding(findings, "logo.png")) << join(findings);
+    }
     if (!ec) {
         EXPECT_TRUE(hasFinding(findings, "absolute")) << join(findings);
         EXPECT_TRUE(hasFinding(findings, "escape")) << join(findings);
