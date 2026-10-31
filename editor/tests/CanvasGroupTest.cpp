@@ -586,6 +586,31 @@ TEST_F(CanvasGroupTest, StreamRoundTripAndDefaults){
     EXPECT_EQ(partial.renderMode, CanvasGroupRenderMode::PER_ELEMENT);
 }
 
+TEST_F(CanvasGroupTest, EntityRoundTripIsByteStable){
+    // an element of an old scene (no group) and a group container: encoded, decoded into another
+    // scene and encoded again, the files are the same
+    auto emit = [](const YAML::Node& node){
+        YAML::Emitter out;
+        out << node;
+        return std::string(out.c_str());
+    };
+    Entity old = image(NULL_ENTITY, 10, 10, 50, 50);
+    Entity groupEntity = container(NULL_ENTITY);
+    CanvasGroupComponent& g = addGroup(groupEntity, 0.25f);
+    g.blocksRaycasts = false;
+    g.renderMode = CanvasGroupRenderMode::FLATTEN;
+    ui()->syncCanvasGroups();
+    for (Entity entity : {old, groupEntity}){
+        const YAML::Node first = Stream::encodeComponents(entity, &scene, scene.getSignature(entity));
+        Scene other;
+        Entity copy = other.createEntity();
+        Stream::decodeComponents(copy, NULL_ENTITY, &other, first);
+        const YAML::Node second = Stream::encodeComponents(copy, &other, other.getSignature(copy));
+        EXPECT_EQ(emit(first), emit(second));
+        EXPECT_EQ(first["canvasgroup"].IsDefined(), entity == groupEntity) << "only a group writes the key";
+    }
+}
+
 TEST_F(CanvasGroupTest, OldTweensEncodeUnchanged){
     // a tween of an old scene (no unscaled time, AUTO target) writes no new keys
     TweenComponent tween;
