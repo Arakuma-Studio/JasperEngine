@@ -164,3 +164,9 @@ origin/main).
   (AsyncOwners re-keyed when persistence moves objects). Lead trimmed the agent guide to 16351 bytes and set the
   measured tool budget. Not pushed yet: waiting for ui-canvas-group's fix of an old-scene re-save regression.
   platform-services is doing its final merge of main (16 files conflicted).
+- 2026-10-31 23:2x: the lead's session restarted, stopping every agent and remote job. All four Linux boxes
+  survived (idle). Resumed 15 agents from their transcripts (platform-services mid-merge; review fixes on
+  particles, shader-globals, physics-contacts, ui-scaling-text, native-bridge, camera-shake, coroutines,
+  ui-canvas-group; final suites of audio-mixer; implementations of anim-layers, debug-overlay, safe-area,
+  video-mp4; the ui-multitouch review, which an API limit had stopped). Tailscale: this host had none before the
+  lead installed it; it joins the owner's tailnet through a login link (no auth key) to build on the owner's Mac.
