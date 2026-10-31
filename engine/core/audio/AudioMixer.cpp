@@ -455,7 +455,12 @@ namespace {
         } else {
             group.handle = soloud.play(*group.bus, 1.0f, 0.0f, false);
         }
-        if (group.handle) soloud.setProtectVoice(group.handle, true);
+        if (group.handle) {
+            soloud.setProtectVoice(group.handle, true);
+            // a bus passes its stereo through at unity: SoLoud's centre pan (constant power, 0.707
+            // per side) would take 3 dB off at every level of the tree
+            soloud.setPanAbsolute(group.handle, 1.0f, 1.0f);
+        }
     }
 
     void stopBus(GroupState& group) {

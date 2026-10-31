@@ -99,9 +99,13 @@ namespace {
     class AudioFixture : public scriptdata::ScriptDataTest {
     protected:
         Scene* scene = nullptr;
+        bool wasAsync = false;
 
         void SetUp() override {
             ScriptDataTest::SetUp();
+            // clips load in the frame they are asked for (no worker thread to wait on)
+            wasAsync = Engine::isAsyncLoading();
+            Engine::setAsyncLoading(false);
             AudioSystem::close();
             AudioSystem::setBackend(AudioBackend::Null);
             AudioSystem::configure(AudioConfig());
@@ -121,6 +125,7 @@ namespace {
             AudioSystem::setListenerPaused(false);
             AudioMixer::setMasterPaused(false);
             SoundPool::clear();
+            Engine::setAsyncLoading(wasAsync);
             ScriptDataTest::TearDown();
         }
 
@@ -382,6 +387,8 @@ TEST_F(AudioMixerRuntimeTest, MetersVolumesMuteAndLowPass) {
     // the A5 bypass: the 22000 Hz low-pass leaves the tone as it is
     AudioMixerDef def = AudioMixer::getDef();
     def.findGroup("Music")->effects.clear();
+    def.exposed.erase(std::remove_if(def.exposed.begin(), def.exposed.end(),
+                                     [](const AudioMixerExposedDef& e) { return e.name != "MusicVolume"; }), def.exposed.end());
     AudioMixer::apply(def);
     run(0.2);
     EXPECT_NEAR(AudioMixer::getMeterDb("Music"), open, 1.0f);
@@ -483,14 +490,24 @@ TEST_F(AudioMixerRuntimeTest, AppPauseHoldsTheMasterBusAndKeepsAGamePausedSource
     ASSERT_TRUE(soloud().getPause(ha));
     ASSERT_FALSE(soloud().getPause(hb));
 
+    // what the device would get (the null backend: mixed here)
+    auto peakOut = [this]() {
+        std::vector<float> buffer(2048 * 2);
+        float peak = 0.0f;
+        for (int i = 0; i < 4; i++) {
+            soloud().mix(buffer.data(), 2048);
+            for (float v : buffer) peak = std::max(peak, std::fabs(v));
+        }
+        return peak;
+    };
+    EXPECT_GT(peakOut(), 0.1f);
     AudioSystem::pauseAll();
-    const double before = soloud().getStreamPosition(hb);
     run(0.2);
-    EXPECT_DOUBLE_EQ(soloud().getStreamPosition(hb), before) << "nothing routed advances";
+    EXPECT_FLOAT_EQ(peakOut(), 0.0f) << "nothing routed is heard";
     AudioSystem::resumeAll();
     run(0.1);
+    EXPECT_GT(peakOut(), 0.1f);
     EXPECT_TRUE(soloud().getPause(ha)) << "the game paused it: it stays paused";
-    EXPECT_GT(soloud().getStreamPosition(hb), before);
     EXPECT_TRUE(a.isPaused());
 }
 
