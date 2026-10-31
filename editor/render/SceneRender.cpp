@@ -14,6 +14,7 @@ extern unsigned int bulb_icon_png_len;
 #include "Backend.h"
 #include "Project.h"
 #include "command/CommandHandle.h"
+#include "subsystem/TrailSystem.h"
 #include "command/type/ObjectTransformCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "command/type/MultiPropertyCmd.h"
@@ -1395,6 +1396,11 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
 void editor::SceneRender::mouseReleaseEvent(float x, float y){
     uilayer.setSelectionBoxVisible(false);
 
+    // a drag's edit-mode trail preview ends (its points cleared)
+    if (std::shared_ptr<TrailSystem> trails = scene->findSystem<TrailSystem>()){
+        trails->clearPreviews();
+    }
+
     if (poseViewport){
         // a pose handle drag ends: one undo step
         poseViewport->mouseUp();
@@ -1549,6 +1555,26 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
     if (FluidEditorTools::isPainting(scene)){
         FluidEditorTools::paintStroke(scene, ownerMouseRay);
         return;
+    }
+
+    // edit mode: the Trail Renderers on and under the GameObjects the gizmo drags draw their
+    // trail while dragging (TrailSystem's preview, cleared on release)
+    if (isAnyGizmoSideSelected()){
+        std::shared_ptr<TrailSystem> trails = scene->findSystem<TrailSystem>();
+        if (trails && trails->isPaused() && !selEntities.empty()){
+            auto trailArray = scene->getComponentArray<TrailRendererComponent>();
+            for (size_t i = 0; i < trailArray->size(); i++){
+                const Entity trailEntity = trailArray->getEntity(i);
+                for (Entity ancestor = trailEntity; ancestor != NULL_ENTITY; ){
+                    if (std::find(selEntities.begin(), selEntities.end(), ancestor) != selEntities.end()){
+                        trails->setPreview(trailEntity, true);
+                        break;
+                    }
+                    const Transform* ancestorTransform = scene->findComponent<Transform>(ancestor);
+                    ancestor = ancestorTransform ? ancestorTransform->parent : NULL_ENTITY;
+                }
+            }
+        }
     }
 
     // the box selects while playing too, as on release (Project::selectObjectsByRect)
@@ -1768,18 +1794,14 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     }
 
                     if (selectedLinePointIndex >= 0 && entity == selectedLinePointEntity){
-                        // move the selected line endpoint instead of the entity (the
-                        // gizmo sits on the point, so newPos is its new world position)
+                        // move the selected line point instead of the entity (the gizmo sits
+                        // on the point, so newPos is its new world position)
                         LineRendererComponent* linesComp = target->findComponent<LineRendererComponent>(entity);
                         Transform* lineTransform = target->findComponent<Transform>(entity);
-                        int lineIndex = selectedLinePointIndex / 2;
-                        if (linesComp && lineTransform && lineIndex < (int)linesComp->lines.size()){
-                            bool isPointA = (selectedLinePointIndex % 2 == 0);
-                            Vector3 newLocalPos = lineTransform->modelMatrix.inverse() * newPos;
-
-                            std::string pointProp = "lines[" + std::to_string(lineIndex) + (isPointA ? "].pointA" : "].pointB");
+                        if (linesComp && lineTransform && selectedLinePointIndex < (int)getLinePointWorldPositions(*linesComp, *lineTransform).size()){
+                            Vector3 newLocalPos = toLinePointSpace(*linesComp, *lineTransform, newPos);
                             dragCommand = new PropertyCmd<Vector3>(project, commandSceneId, entity,
-                                ComponentType::LineRendererComponent, pointProp, newLocalPos);
+                                ComponentType::LineRendererComponent, getLinePointProperty(*linesComp, selectedLinePointIndex), newLocalPos);
                         }
                     }else if (selectedPolygonPointIndex >= 0 && entity == selectedPolygonPointEntity){
                         // move the selected polygon vertex instead of the entity
@@ -1888,8 +1910,9 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     if (selectedLinePointIndex >= 0 && entity == selectedLinePointEntity){
                         LineRendererComponent* linesComp = target->findComponent<LineRendererComponent>(entity);
                         Transform* lineTransform = target->findComponent<Transform>(entity);
-                        int lineIndex = selectedLinePointIndex / 2;
-                        if (linesComp && lineTransform && lineIndex < (int)linesComp->lines.size()
+                        const std::vector<Vector3> linePoints = (linesComp && lineTransform)
+                            ? getLinePointWorldPositions(*linesComp, *lineTransform) : std::vector<Vector3>();
+                        if (linesComp && lineTransform && selectedLinePointIndex < (int)linePoints.size()
                             && tools.getGizmo2DSideSelected() == Gizmo2DSideSelected::CENTER){
 
                             // new world position of the endpoint, following the cursor
@@ -1903,16 +1926,13 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                                 }
                             }
 
-                            bool isPointA = (selectedLinePointIndex % 2 == 0);
-                            const Vector3& localPoint = isPointA ? linesComp->lines[lineIndex].pointA : linesComp->lines[lineIndex].pointB;
+                            // the cursor plane is at the entity's Z: keep the point's own Z
+                            const Vector3 oldLocalPos = toLinePointSpace(*linesComp, *lineTransform, linePoints[selectedLinePointIndex]);
+                            Vector3 newLocalPos = toLinePointSpace(*linesComp, *lineTransform, newWorldPos);
+                            newLocalPos.z = oldLocalPos.z;
 
-                            // the cursor plane is at the entity's Z: keep the endpoint's own local Z
-                            Vector3 newLocalPos = lineTransform->modelMatrix.inverse() * newWorldPos;
-                            newLocalPos.z = localPoint.z;
-
-                            std::string pointProp = "lines[" + std::to_string(lineIndex) + (isPointA ? "].pointA" : "].pointB");
                             dragCommand = new PropertyCmd<Vector3>(project, commandSceneId, entity,
-                                ComponentType::LineRendererComponent, pointProp, newLocalPos);
+                                ComponentType::LineRendererComponent, getLinePointProperty(*linesComp, selectedLinePointIndex), newLocalPos);
                         }
                     }else
                     // Handle polygon/mesh-polygon vertex sub-selection drag
@@ -3076,8 +3096,36 @@ float editor::SceneRender::getPointHandleHalfSize(const Vector3& worldPoint){
     return billboardScreenScale(worldPoint, 8.0f);
 }
 
-// Returns the line endpoint under the mouse (-1 when none), flattened as
-// lineIndex * 2 + endpoint (0 = pointA, 1 = pointB).
+std::vector<Vector3> editor::SceneRender::getLinePointWorldPositions(const LineRendererComponent& lines, const Transform& transform){
+    std::vector<Vector3> points;
+    if (lines.mode == LineRendererMode::Polyline){
+        points.reserve(lines.positions.size());
+        for (const Vector3& position : lines.positions){
+            points.push_back(lines.useWorldSpace ? position : transform.modelMatrix * position);
+        }
+    }else{
+        points.reserve(lines.lines.size() * 2);
+        for (const LineData& line : lines.lines){
+            points.push_back(lines.useWorldSpace ? line.pointA : transform.modelMatrix * line.pointA);
+            points.push_back(lines.useWorldSpace ? line.pointB : transform.modelMatrix * line.pointB);
+        }
+    }
+    return points;
+}
+
+std::string editor::SceneRender::getLinePointProperty(const LineRendererComponent& lines, int pointIndex){
+    if (lines.mode == LineRendererMode::Polyline){
+        return "positions[" + std::to_string(pointIndex) + "]";
+    }
+    return "lines[" + std::to_string(pointIndex / 2) + ((pointIndex % 2 == 0) ? "].pointA" : "].pointB");
+}
+
+Vector3 editor::SceneRender::toLinePointSpace(const LineRendererComponent& lines, const Transform& transform, const Vector3& world){
+    return lines.useWorldSpace ? world : transform.modelMatrix.inverse() * world;
+}
+
+// Returns the line point under the mouse (-1 when none): a polyline's position index, or for
+// segments lineIndex * 2 + endpoint (0 = pointA, 1 = pointB).
 int editor::SceneRender::hitTestLinePoint(Entity entity, float x, float y){
     if (!scene->getComponentArray<LineRendererComponent>()->hasEntity(entity)) return -1;
     if (!scene->getComponentArray<Transform>()->hasEntity(entity)) return -1;
@@ -3087,22 +3135,20 @@ int editor::SceneRender::hitTestLinePoint(Entity entity, float x, float y){
 
     Ray ray = screenToRay(x, y);
 
-    // ray test against each endpoint's handle box (works in both ortho and
-    // perspective views), keeping the nearest hit like instance picking
+    // ray test against each point's handle box (works in both ortho and perspective views),
+    // keeping the nearest hit like instance picking
     int bestIndex = -1;
     float bestDistance = FLT_MAX;
-    for (size_t i = 0; i < lines.lines.size(); i++){
-        for (int e = 0; e < 2; e++){
-            const Vector3& localPoint = (e == 0) ? lines.lines[i].pointA : lines.lines[i].pointB;
-            Vector3 worldPoint = transform.modelMatrix * localPoint;
-            float halfSize = getPointHandleHalfSize(worldPoint);
-            AABB handleAABB(worldPoint - Vector3(halfSize), worldPoint + Vector3(halfSize));
+    const std::vector<Vector3> points = getLinePointWorldPositions(lines, transform);
+    for (size_t i = 0; i < points.size(); i++){
+        const Vector3& worldPoint = points[i];
+        float halfSize = getPointHandleHalfSize(worldPoint);
+        AABB handleAABB(worldPoint - Vector3(halfSize), worldPoint + Vector3(halfSize));
 
-            RayReturn rr = ray.intersects(handleAABB);
-            if (rr && rr.distance < bestDistance){
-                bestDistance = rr.distance;
-                bestIndex = (int)i * 2 + e;
-            }
+        RayReturn rr = ray.intersects(handleAABB);
+        if (rr && rr.distance < bestDistance){
+            bestDistance = rr.distance;
+            bestIndex = (int)i;
         }
     }
 
@@ -3116,14 +3162,64 @@ OBB editor::SceneRender::getLinePointOBB(Entity entity, int pointIndex){
     LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
     Transform& transform = scene->getComponent<Transform>(entity);
 
-    int lineIndex = pointIndex / 2;
-    if (pointIndex < 0 || lineIndex >= (int)lines.lines.size()) return OBB();
+    const std::vector<Vector3> points = getLinePointWorldPositions(lines, transform);
+    if (pointIndex < 0 || pointIndex >= (int)points.size()) return OBB();
 
-    const Vector3& localPoint = (pointIndex % 2 == 0) ? lines.lines[lineIndex].pointA : lines.lines[lineIndex].pointB;
-    Vector3 worldPoint = transform.modelMatrix * localPoint;
+    const Vector3& worldPoint = points[pointIndex];
     float halfSize = getPointHandleHalfSize(worldPoint);
     AABB aabb(worldPoint - Vector3(halfSize), worldPoint + Vector3(halfSize));
     return aabb.getOBB();
+}
+
+int editor::SceneRender::insertLinePointAt(Project* project, uint32_t commandSceneId, Entity entity, float x, float y){
+    LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity);
+    Transform* transform = scene->findComponent<Transform>(entity);
+    if (!lines || !transform || lines->mode != LineRendererMode::Polyline || lines->positions.size() < 2) return -1;
+
+    // the segment nearest the cursor on screen, within a few pixels of it (or of its width)
+    const std::vector<Vector3> points = getLinePointWorldPositions(*lines, *transform);
+    const size_t segments = lines->loop ? points.size() : points.size() - 1;
+    const Vector2 cursor(x, y);
+    float bestDistance = overlayPx(10.0f);
+    int bestSegment = -1;
+    float bestT = 0.0f;
+    for (size_t s = 0; s < segments; s++){
+        Vector2 a, b;
+        if (!worldToScreen(points[s], a) || !worldToScreen(points[(s + 1) % points.size()], b)) continue;
+        const Vector2 ab = b - a;
+        const float lengthSquared = ab.dotProduct(ab);
+        const float t = lengthSquared > 0.0f ? std::min(1.0f, std::max(0.0f, (cursor - a).dotProduct(ab) / lengthSquared)) : 0.0f;
+        const float distance = (a + ab * t - cursor).length();
+        if (distance < bestDistance){
+            bestDistance = distance;
+            bestSegment = (int)s;
+            bestT = t;
+        }
+    }
+    if (bestSegment < 0) return -1;
+
+    // a point between the segment's two, in the positions' own space
+    const Vector3& a = lines->positions[(size_t)bestSegment];
+    const Vector3& b = lines->positions[((size_t)bestSegment + 1) % lines->positions.size()];
+    std::vector<Vector3> positions = lines->positions;
+    const int index = bestSegment + 1;
+    positions.insert(positions.begin() + index, a + (b - a) * bestT);
+    CommandHandle::get(commandSceneId)->addCommandNoMerge(
+        new PropertyCmd<std::vector<Vector3>>(project, commandSceneId, entity, ComponentType::LineRendererComponent, "positions", positions));
+    selectLinePoint(entity, index);
+    return index;
+}
+
+bool editor::SceneRender::removeSelectedLinePoint(Project* project, uint32_t commandSceneId){
+    if (selectedLinePointIndex < 0) return false;
+    LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(selectedLinePointEntity);
+    if (!lines || lines->mode != LineRendererMode::Polyline || selectedLinePointIndex >= (int)lines->positions.size()) return false;
+    std::vector<Vector3> positions = lines->positions;
+    positions.erase(positions.begin() + selectedLinePointIndex);
+    CommandHandle::get(commandSceneId)->addCommandNoMerge(
+        new PropertyCmd<std::vector<Vector3>>(project, commandSceneId, selectedLinePointEntity, ComponentType::LineRendererComponent, "positions", positions));
+    clearLinePointSelection();
+    return true;
 }
 
 void editor::SceneRender::selectPolygonPoint(Entity entity, bool isMesh, int pointIndex){

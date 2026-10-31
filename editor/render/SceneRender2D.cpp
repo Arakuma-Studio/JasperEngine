@@ -215,16 +215,13 @@ void editor::SceneRender2D::createOrUpdateLinePointLines(Entity entity, const Tr
     const Vector4 selectedHandleColor(1.0f, 0.6f, 0.0f, 1.0f);
     bool hasPointSelection = (getSelectedLinePointEntity() == entity);
 
-    for (size_t i = 0; i < lines.lines.size(); i++){
-        for (int e = 0; e < 2; e++){
-            const Vector3& localPoint = (e == 0) ? lines.lines[i].pointA : lines.lines[i].pointB;
-            Vector3 worldPoint = transform.modelMatrix * localPoint;
-
-            bool pointSelected = hasPointSelection && ((int)(i * 2) + e == getSelectedLinePointIndex());
-            addPointHandle(handlesObj, worldPoint,
-                           overlayPx(pointSelected ? 6.0f : 4.0f) * zoom,
-                           pointSelected ? selectedHandleColor : handleColor);
-        }
+    // a polyline's points, or each segment's ends
+    const std::vector<Vector3> points = getLinePointWorldPositions(lines, transform);
+    for (size_t i = 0; i < points.size(); i++){
+        bool pointSelected = hasPointSelection && ((int)i == getSelectedLinePointIndex());
+        addPointHandle(handlesObj, points[i],
+                       overlayPx(pointSelected ? 6.0f : 4.0f) * zoom,
+                       pointSelected ? selectedHandleColor : handleColor);
     }
 }
 

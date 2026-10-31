@@ -492,6 +492,8 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
 
         {"Effects", "Particle System", ICON_FA_FIRE, T::PARTICLE_SYSTEM, "Particle System", CREATE_IN_WORLD},
         {"Effects", "Line Renderer", ICON_FA_GRIP_LINES, T::LINE_RENDERER, "Line", CREATE_IN_WORLD},
+        // on the selected GameObject when it has none, else as a child (createGameObject)
+        {"Effects", "Trail Renderer", ICON_FA_WIND, T::TRAIL_RENDERER, "Trail", CREATE_IN_WORLD},
         {"Effects", "Point Renderer", ICON_FA_CIRCLE, T::POINTS, "Points", CREATE_IN_WORLD},
         {"Effects", "Fluid Simulation", ICON_FA_DROPLET, T::FLUID_SIMULATION, "Fluid Simulation", CREATE_IN_WORLD},
 
@@ -568,6 +570,16 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
     }
     if (entry.rootOnly) {
         parent = NULL_ENTITY;
+    }
+    // Unity puts a trail on the moving object itself: the selected GameObject gets one when it
+    // has none (one undo step, its own Trail Renderer); one that has a trail gets a child trail
+    if (entry.type == EntityCreationType::TRAIL_RENDERER && parent != NULL_ENTITY &&
+            sceneProject->scene->isEntityCreated(parent) && sceneProject->scene->findComponent<Transform>(parent) &&
+            !sceneProject->scene->findComponent<TrailRendererComponent>(parent)) {
+        CommandHandle::get(sceneProject->id)->addCommandNoMerge(
+            new AddComponentCmd(project, sceneProject->id, parent, ComponentType::TrailRendererComponent));
+        project->setSelectedEntity(sceneProject->id, parent);
+        return;
     }
     CommandHandle::get(sceneProject->id)->addCommandNoMerge(
         new CreateEntityCmd(project, sceneProject->id, entry.entityName, entry.type, parent, addToPrefab));
@@ -1091,6 +1103,8 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
         return ICON_FA_FILE_AUDIO;
     }else if (signature.test(scene->getComponentId<Rigidbody2DComponent>()) || signature.test(scene->getComponentId<RigidbodyComponent>())){
         return ICON_FA_WEIGHT_HANGING;
+    }else if (signature.test(scene->getComponentId<TrailRendererComponent>())){
+        return ICON_FA_WIND;
     }else if (signature.test(scene->getComponentId<Transform>())){
         return ICON_FA_CUBE; // plain GameObject, Unity's generic cube
     }
