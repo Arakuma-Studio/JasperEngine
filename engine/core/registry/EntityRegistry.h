@@ -73,6 +73,8 @@
 #include "component/Joint3DComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/PrefabComponent.h"
+#include "component/CameraShakerComponent.h"
+#include "component/CameraFollowComponent.h"
 
 namespace jasperengine {
 

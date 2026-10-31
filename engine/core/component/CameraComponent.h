@@ -6,6 +6,7 @@
 
 #include "math/Vector3.h"
 #include "math/Matrix4.h"
+#include "math/Quaternion.h"
 #include "math/Plane.h"
 #include "texture/Framebuffer.h"
 #include "render/CameraRender.h"
@@ -104,6 +105,16 @@ namespace jasperengine{
         bool hasCustomViewMatrix = false;
         Matrix4 customViewMatrix;
         bool invertCulling = false;
+
+        // Camera Shaker's view offset (CameraControlSystem; runtime only, never serialized or
+        // cloned): a pose in camera space applied after the view matrix is built, so the
+        // shake is seen by everything drawn and picked through this camera while the
+        // Transform, direction, right and the audio listener stay steady. The rotation turns
+        // about viewOffsetPivot (camera space: the eye, or a 2D view's centre)
+        bool hasViewOffset = false;
+        Vector3 viewOffsetPosition = Vector3(0, 0, 0);
+        Quaternion viewOffsetRotation;
+        Vector3 viewOffsetPivot = Vector3(0, 0, 0);
 
         bool needUpdate = true;
     };

@@ -74,6 +74,9 @@ EntityRegistry::EntityRegistry() {
     registerComponent<PoseAnimatorComponent>();
     registerComponent<AnimationPlayerComponent>();
     registerComponent<VertexAnimatorComponent>();
+    // camera shake spec 7.1
+    registerComponent<CameraShakerComponent>();
+    registerComponent<CameraFollowComponent>();
 }
 
 EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {

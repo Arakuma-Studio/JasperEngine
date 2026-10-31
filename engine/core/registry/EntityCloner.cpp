@@ -318,6 +318,8 @@ void prepare<CameraComponent>(CameraComponent& camera, Entity, CloneContext& ctx
     auto it = camera.framebuffer ? ctx.framebuffers.find(camera.framebuffer) : ctx.framebuffers.end();
     camera.framebuffer = it != ctx.framebuffers.end() ? it->second.framebuffer : new Framebuffer();
     camera.render = CameraRender();
+    // the original's shake offset is its shaker's, not the copy's
+    camera.hasViewOffset = false;
     camera.needUpdate = true;
 }
 
@@ -583,6 +585,26 @@ void prepare<LatticeFollowerComponent>(LatticeFollowerComponent& follower, Entit
 }
 
 template<>
+void prepare<CameraShakerComponent>(CameraShakerComponent& shaker, Entity, CloneContext&) {
+    // a copy starts with no shake (its start preset plays when it is enabled)
+    shaker.runtime.reset();
+}
+
+template<>
+void prepare<CameraFollowComponent>(CameraFollowComponent& follow, Entity, CloneContext& ctx) {
+    follow.target = ctx.remap(follow.target);
+    // a copy is placed without damping on its first update
+    const CameraFollowComponent defaults;
+    follow.velocity = defaults.velocity;
+    follow.desired = defaults.desired;
+    follow.followedTarget = NULL_ENTITY;
+    follow.placed = false;
+    follow.foreignWriteDetected = false;
+    follow.warnedForeignWrite = false;
+    follow.warnedMissingTarget = false;
+}
+
+template<>
 void prepare<SpriteComponent>(SpriteComponent& sprite, Entity, CloneContext&) {
     sprite.needUpdateSprite = true;
 }
@@ -757,6 +779,8 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<PoseAnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<AnimationPlayerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<VertexAnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<CameraShakerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<CameraFollowComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ScriptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 }
 

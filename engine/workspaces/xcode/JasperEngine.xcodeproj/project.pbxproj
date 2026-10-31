@@ -3313,6 +3313,36 @@
 		4A534E479968450BA2CEF5BB /* InputControlNames.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */; };
 		4A534E4749E3318561E17181 /* InputActions.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47DA77C1DF72E1D462 /* InputActions.h */; };
 		4A534E47CC9B5D8BFDD75814 /* InputControlNames.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4763010A7AB6271A0C /* InputControlNames.h */; };
+		4A534E47048BE5CDF2664DF4 /* CameraShake.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D0853CFF5E642C5C /* CameraShake.cpp */; };
+		4A534E47074A94244F2B20FB /* CameraShake.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D0853CFF5E642C5C /* CameraShake.cpp */; };
+		4A534E4746EC17F97BB42ED1 /* ShakeInstance.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476152A9BE611CA36E /* ShakeInstance.cpp */; };
+		4A534E47725D6230B1B873F3 /* ShakeInstance.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476152A9BE611CA36E /* ShakeInstance.cpp */; };
+		4A534E47D9D7FAB57F144485 /* ShakePreset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F38859BB0988A617 /* ShakePreset.cpp */; };
+		4A534E4784D1DA85F005B40D /* ShakePreset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F38859BB0988A617 /* ShakePreset.cpp */; };
+		4A534E477D68B797CADBE48E /* ShakePresets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474055D2D3C55D7617 /* ShakePresets.cpp */; };
+		4A534E47596A1290685F8DCB /* ShakePresets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474055D2D3C55D7617 /* ShakePresets.cpp */; };
+		4A534E478D983354706E9325 /* ShakerRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473AF067139F43BD5E /* ShakerRuntime.cpp */; };
+		4A534E47638384C30E26EFE7 /* ShakerRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473AF067139F43BD5E /* ShakerRuntime.cpp */; };
+		4A534E47C26B54EF4E5BDC09 /* CameraFollow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475622761E30F06B44 /* CameraFollow.cpp */; };
+		4A534E4725CB54339B6279C7 /* CameraFollow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475622761E30F06B44 /* CameraFollow.cpp */; };
+		4A534E47BADBC140AE5B070C /* CameraShaker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A0C142BC14B4F575 /* CameraShaker.cpp */; };
+		4A534E4707E0059A2D9869E3 /* CameraShaker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A0C142BC14B4F575 /* CameraShaker.cpp */; };
+		4A534E4739799404EF91B066 /* ShakePresetPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4715AC7BEF8A4014B1 /* ShakePresetPool.cpp */; };
+		4A534E475B2541096B24D6E9 /* ShakePresetPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4715AC7BEF8A4014B1 /* ShakePresetPool.cpp */; };
+		4A534E47ACA96965B76DFE3C /* CameraControlSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472D5BDDA43BAF777F /* CameraControlSystem.cpp */; };
+		4A534E47D024053B56F36067 /* CameraControlSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472D5BDDA43BAF777F /* CameraControlSystem.cpp */; };
+		4A534E4762CBD67A870F694C /* CameraShake.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B5AA4757EB461A19 /* CameraShake.h */; };
+		4A534E47F2C776DE753EF7DC /* ShakeInstance.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473E2FABFF3DFC25B1 /* ShakeInstance.h */; };
+		4A534E47B52C287852EA96A5 /* ShakePreset.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471EDC920A8DCBF993 /* ShakePreset.h */; };
+		4A534E47BE2C756D9CCE7E22 /* ShakePresets.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4775CFE4EABC3BFB73 /* ShakePresets.h */; };
+		4A534E474047CEFF2E9BF559 /* ShakerRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470967CFAF401F9620 /* ShakerRuntime.h */; };
+		4A534E47ABFEE84C719133EE /* CameraFollowComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476F1D7EA86CAA5EA6 /* CameraFollowComponent.h */; };
+		4A534E471E1D2C7A5EC6A0F9 /* CameraShakerComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4755A896E2EFAC63FB /* CameraShakerComponent.h */; };
+		4A534E47F7F5B092AAE26B95 /* Noise.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472114016401F2D894 /* Noise.h */; };
+		4A534E47ED1D3D47390E6782 /* CameraFollow.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4752CF16E633DF8695 /* CameraFollow.h */; };
+		4A534E474F36FD3C48FFD8B5 /* CameraShaker.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E25A1D2272719AB1 /* CameraShaker.h */; };
+		4A534E4702AEE79808235DC3 /* ShakePresetPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476CC2911518D3103A /* ShakePresetPool.h */; };
+		4A534E47CE1FCBE31631EF08 /* CameraControlSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47433C8BF3A3471BA4 /* CameraControlSystem.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6694,6 +6724,27 @@
 		4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputControlNames.cpp; sourceTree = "<group>"; };
 		4A534E47DA77C1DF72E1D462 /* InputActions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputActions.h; sourceTree = "<group>"; };
 		4A534E4763010A7AB6271A0C /* InputControlNames.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputControlNames.h; sourceTree = "<group>"; };
+		4A534E47D0853CFF5E642C5C /* CameraShake.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CameraShake.cpp; sourceTree = "<group>"; };
+		4A534E476152A9BE611CA36E /* ShakeInstance.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShakeInstance.cpp; sourceTree = "<group>"; };
+		4A534E47F38859BB0988A617 /* ShakePreset.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShakePreset.cpp; sourceTree = "<group>"; };
+		4A534E474055D2D3C55D7617 /* ShakePresets.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShakePresets.cpp; sourceTree = "<group>"; };
+		4A534E473AF067139F43BD5E /* ShakerRuntime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShakerRuntime.cpp; sourceTree = "<group>"; };
+		4A534E475622761E30F06B44 /* CameraFollow.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CameraFollow.cpp; sourceTree = "<group>"; };
+		4A534E47A0C142BC14B4F575 /* CameraShaker.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CameraShaker.cpp; sourceTree = "<group>"; };
+		4A534E4715AC7BEF8A4014B1 /* ShakePresetPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShakePresetPool.cpp; sourceTree = "<group>"; };
+		4A534E472D5BDDA43BAF777F /* CameraControlSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CameraControlSystem.cpp; sourceTree = "<group>"; };
+		4A534E47B5AA4757EB461A19 /* CameraShake.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraShake.h; sourceTree = "<group>"; };
+		4A534E473E2FABFF3DFC25B1 /* ShakeInstance.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ShakeInstance.h; sourceTree = "<group>"; };
+		4A534E471EDC920A8DCBF993 /* ShakePreset.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ShakePreset.h; sourceTree = "<group>"; };
+		4A534E4775CFE4EABC3BFB73 /* ShakePresets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ShakePresets.h; sourceTree = "<group>"; };
+		4A534E470967CFAF401F9620 /* ShakerRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ShakerRuntime.h; sourceTree = "<group>"; };
+		4A534E476F1D7EA86CAA5EA6 /* CameraFollowComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraFollowComponent.h; sourceTree = "<group>"; };
+		4A534E4755A896E2EFAC63FB /* CameraShakerComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraShakerComponent.h; sourceTree = "<group>"; };
+		4A534E472114016401F2D894 /* Noise.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Noise.h; sourceTree = "<group>"; };
+		4A534E4752CF16E633DF8695 /* CameraFollow.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraFollow.h; sourceTree = "<group>"; };
+		4A534E47E25A1D2272719AB1 /* CameraShaker.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraShaker.h; sourceTree = "<group>"; };
+		4A534E476CC2911518D3103A /* ShakePresetPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ShakePresetPool.h; sourceTree = "<group>"; };
+		4A534E47433C8BF3A3471BA4 /* CameraControlSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraControlSystem.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -7987,6 +8038,23 @@
 			path = input;
 			sourceTree = "<group>";
 		};
+		4A534E47BC91C4E5E4FDA2FC /* camera */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E47D0853CFF5E642C5C /* CameraShake.cpp */,
+				4A534E476152A9BE611CA36E /* ShakeInstance.cpp */,
+				4A534E47F38859BB0988A617 /* ShakePreset.cpp */,
+				4A534E474055D2D3C55D7617 /* ShakePresets.cpp */,
+				4A534E473AF067139F43BD5E /* ShakerRuntime.cpp */,
+				4A534E47B5AA4757EB461A19 /* CameraShake.h */,
+				4A534E473E2FABFF3DFC25B1 /* ShakeInstance.h */,
+				4A534E471EDC920A8DCBF993 /* ShakePreset.h */,
+				4A534E4775CFE4EABC3BFB73 /* ShakePresets.h */,
+				4A534E470967CFAF401F9620 /* ShakerRuntime.h */,
+			);
+			path = camera;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -8030,6 +8098,7 @@
 				4A534E472AD0C1A658CC6825 /* physics */,
 				4A534E477E49C8CF16ED0963 /* animation */,
 				4A534E47BC50EC83811560AA /* input */,
+				4A534E47BC91C4E5E4FDA2FC /* camera */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -8204,6 +8273,8 @@
 				4A534E47C6821B885199BD43 /* PoseAnimatorComponent.h */,
 				4A534E47625F8F2E8CA675B3 /* AnimationPlayerComponent.h */,
 				4A534E47F4D574AFECE5C17E /* VertexAnimatorComponent.h */,
+				4A534E476F1D7EA86CAA5EA6 /* CameraFollowComponent.h */,
+				4A534E4755A896E2EFAC63FB /* CameraShakerComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -8236,6 +8307,7 @@
 				7162FC4A25962A0E0075B97D /* Vector3.cpp */,
 				7162FC5725962A0E0075B97D /* Vector4.h */,
 				7162FC4925962A0E0075B97D /* Vector4.cpp */,
+				4A534E472114016401F2D894 /* Noise.h */,
 			);
 			path = math;
 			sourceTree = "<group>";
@@ -8291,6 +8363,10 @@
 				4A534E474E482C208244479A /* AnimationPlayer.h */,
 				4A534E47DA7ED38894929ED6 /* VertexAnimator.cpp */,
 				4A534E47E1D001E6946218B1 /* VertexAnimator.h */,
+				4A534E475622761E30F06B44 /* CameraFollow.cpp */,
+				4A534E47A0C142BC14B4F575 /* CameraShaker.cpp */,
+				4A534E4752CF16E633DF8695 /* CameraFollow.h */,
+				4A534E47E25A1D2272719AB1 /* CameraShaker.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -8344,6 +8420,8 @@
 				4A534E47452204C1B7C473FF /* ActionSystemPlayers.cpp */,
 				4A534E470570E826DC760188 /* VertexAnimatorSystem.cpp */,
 				4A534E474C490B38DD8DB742 /* VertexAnimatorSystem.h */,
+				4A534E472D5BDDA43BAF777F /* CameraControlSystem.cpp */,
+				4A534E47433C8BF3A3471BA4 /* CameraControlSystem.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -9509,6 +9587,8 @@
 				4A534E47401990531DC7D72F /* VertexAnimationPool.h */,
 				4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */,
 				4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */,
+				4A534E4715AC7BEF8A4014B1 /* ShakePresetPool.cpp */,
+				4A534E476CC2911518D3103A /* ShakePresetPool.h */,
 			);
 			path = pool;
 			sourceTree = "<group>";
@@ -11956,6 +12036,18 @@
 				4A534E47693D678BC7B907E1 /* MeshBufferPool.h in Headers */,
 				4A534E4749E3318561E17181 /* InputActions.h in Headers */,
 				4A534E47CC9B5D8BFDD75814 /* InputControlNames.h in Headers */,
+				4A534E4762CBD67A870F694C /* CameraShake.h in Headers */,
+				4A534E47F2C776DE753EF7DC /* ShakeInstance.h in Headers */,
+				4A534E47B52C287852EA96A5 /* ShakePreset.h in Headers */,
+				4A534E47BE2C756D9CCE7E22 /* ShakePresets.h in Headers */,
+				4A534E474047CEFF2E9BF559 /* ShakerRuntime.h in Headers */,
+				4A534E47ABFEE84C719133EE /* CameraFollowComponent.h in Headers */,
+				4A534E471E1D2C7A5EC6A0F9 /* CameraShakerComponent.h in Headers */,
+				4A534E47F7F5B092AAE26B95 /* Noise.h in Headers */,
+				4A534E47ED1D3D47390E6782 /* CameraFollow.h in Headers */,
+				4A534E474F36FD3C48FFD8B5 /* CameraShaker.h in Headers */,
+				4A534E4702AEE79808235DC3 /* ShakePresetPool.h in Headers */,
+				4A534E47CE1FCBE31631EF08 /* CameraControlSystem.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14008,6 +14100,15 @@
 				4A534E473E6B9FE60C626734 /* MeshBufferPool.cpp in Sources */,
 				4A534E47D17B678C8F81B040 /* InputActions.cpp in Sources */,
 				4A534E47A988705C5C005E19 /* InputControlNames.cpp in Sources */,
+				4A534E47048BE5CDF2664DF4 /* CameraShake.cpp in Sources */,
+				4A534E4746EC17F97BB42ED1 /* ShakeInstance.cpp in Sources */,
+				4A534E47D9D7FAB57F144485 /* ShakePreset.cpp in Sources */,
+				4A534E477D68B797CADBE48E /* ShakePresets.cpp in Sources */,
+				4A534E478D983354706E9325 /* ShakerRuntime.cpp in Sources */,
+				4A534E47C26B54EF4E5BDC09 /* CameraFollow.cpp in Sources */,
+				4A534E47BADBC140AE5B070C /* CameraShaker.cpp in Sources */,
+				4A534E4739799404EF91B066 /* ShakePresetPool.cpp in Sources */,
+				4A534E47ACA96965B76DFE3C /* CameraControlSystem.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14439,6 +14540,15 @@
 				4A534E472437676B559FC859 /* MeshBufferPool.cpp in Sources */,
 				4A534E47AC81945749605313 /* InputActions.cpp in Sources */,
 				4A534E479968450BA2CEF5BB /* InputControlNames.cpp in Sources */,
+				4A534E47074A94244F2B20FB /* CameraShake.cpp in Sources */,
+				4A534E47725D6230B1B873F3 /* ShakeInstance.cpp in Sources */,
+				4A534E4784D1DA85F005B40D /* ShakePreset.cpp in Sources */,
+				4A534E47596A1290685F8DCB /* ShakePresets.cpp in Sources */,
+				4A534E47638384C30E26EFE7 /* ShakerRuntime.cpp in Sources */,
+				4A534E4725CB54339B6279C7 /* CameraFollow.cpp in Sources */,
+				4A534E4707E0059A2D9869E3 /* CameraShaker.cpp in Sources */,
+				4A534E475B2541096B24D6E9 /* ShakePresetPool.cpp in Sources */,
+				4A534E47D024053B56F36067 /* CameraControlSystem.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
