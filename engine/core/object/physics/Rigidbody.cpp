@@ -603,11 +603,17 @@ void Rigidbody::setCollisionGroupID(uint32_t group){
 }
 
 bool Rigidbody::isAllowSleeping() const{
-    return getJoltBody().GetAllowSleeping();
+    const JPH::Body& body = getJoltBody();
+    return !body.IsStatic() && body.GetAllowSleeping();
 }
 
 void Rigidbody::setAllowSleeping(bool allowSleeping){
-    getJoltBodyWrite().SetAllowSleeping(allowSleeping);
+    JPH::Body& body = getJoltBodyWrite();
+    // a static body has no motion properties (Jolt would dereference them): it never sleeps anyway
+    if (body.IsStatic()){
+        return;
+    }
+    body.SetAllowSleeping(allowSleeping);
 }
 
 // Kept in the component too, so a body made again (a collider or scale change) keeps them

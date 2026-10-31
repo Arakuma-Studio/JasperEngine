@@ -659,16 +659,15 @@ Decisions taken while implementing (branch `gaps/physics-contacts`, on `gaps/scr
 `gaps/physics-2d` merged in; `physics-3d` not merged yet), where the spec was silent, ambiguous or
 contradicted the code:
 
-1. **One ScriptMessages.** script-lifecycle and physics-2d each made one. Kept script-lifecycle's
-   (receiver cache, `notifyReceiversChanged`, delivery to initialized and not destroyed instances,
-   `DeliverRequireActive`) and its compile-time override traits for `cppMask<T>()`; physics-2d's
-   run-time learning (`ScriptBase::inheritedMessages`, `baseMessageRan`) is gone: a private,
-   protected or overloaded override still counts (SFINAE fails, the trait says "overridden"), so
-   physics-2d's review test (private `onJointBreak2D`) passes unchanged. Added
-   `removeReceiversChangedListener` (physics-2d's) and `describeReceivers` (the Inspector's
-   Callbacks line, MCP). The generated factory uses `ScriptMessages::asScriptBase`. physics-2d's
-   tests that put C++ / Lua entries in by hand now run the lifecycle's init on them
-   (`physics2dtest::awakeScripts`), since messages go to initialized instances only.
+1. **One ScriptMessages** (the mechanism `main` has after script-lifecycle and physics-2d merged):
+   the twelve contact messages and `onJointBreak` are `ScriptBase` virtuals whose base methods mark
+   `inheritedMessages`, like the lifecycle's; a C++ script counts as receiving a message until its
+   base method ran once (spec 6.1.1's compile-time trait was dropped for that single mechanism: an
+   override may be private, protected or overloaded). So a body with a C++ script that overrides no
+   contact method is recorded until each message reached the base once; `invoke` now tells the
+   `ReceiversChanged` listeners when that happens, so physics drops the bits. Added
+   `describeReceivers` (the Inspector's Callbacks line, MCP) and the per-second error rate limit of
+   the contact messages (note 8). T22 tests that run-time detection instead of a static assert.
 2. **physics-3d is not here yet**, so this branch made what it needs exactly as physics-3d §6.1.6
    specifies: `JoltPairFilter3D` (in `JPA`) on every body (`CollisionGroup(filter, group,
    subGroup = entity)`), `Rigidbody::setCollisionGroupID` sets the group id on it, the gear and
