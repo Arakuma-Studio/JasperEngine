@@ -97,7 +97,7 @@ async def test_lifecycle_in_play(ed: Editor):
     ed.check_eq(lines, ["lifecycle quit", "lifecycle disable", "lifecycle destroy"], "Play stop quits")
     # the played scene is back to its saved state, with its script
     listed = await ed.call("list_scripts", entity="LifeHost")
-    ed.check_eq([s["class"] for s in listed["scripts"]], ["Logger"])
+    ed.check_eq([s["class_name"] for s in listed["scripts"]], ["Logger"])
     await ed.check_alive()
 
 
@@ -119,7 +119,7 @@ async def test_disabled_and_inactive_scripts(ed: Editor):
         ed.check_eq(live["scripts"][0]["initialized"], False)
         await ed.call("set_entity_state", entity="Asleep", active=True)
         ed.check_eq(lifecycle_lines(await ed.console_since(), False), ["lifecycle init Asleep", "lifecycle enable"])
-        await ed.call("update_script_entry", entity="OffHost", enabled=True)
+        await ed.call("set_runtime_property", entity="OffHost", component="script", property="scripts[0].enabled", value=True)
         await ed.call("wait", frames=1)
         ed.check_eq(lifecycle_lines(await ed.console_since()), ["lifecycle enable", "lifecycle start", "lifecycle start"])
     finally:
