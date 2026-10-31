@@ -570,3 +570,96 @@ TEST(AnimatorWindow, EveryPanelDrawsInAFrame){
     ImGui::DestroyContext(context);
     ImGui::SetCurrentContext(previous);
 }
+
+// a threshold moved past its neighbour: the child keeps its clip and lands at its sorted place;
+// typed paths are checked and normalized
+TEST(AnimatorWindow, ThresholdsReSortByChildAndTypedPathsAreChecked){
+    ASSERT_TRUE(headless().ready);
+    const std::string a = writeClip("a", 1.0f);
+    const std::string b = writeClip("b", 2.0f);
+    const std::string c = writeClip("c", 3.0f);
+    AnimatorWindow window(project());
+    std::shared_ptr<AnimatorControllerDocument> doc = freshController(window, "thresholds");
+    ASSERT_TRUE(doc);
+    const int tree = window.createState("", true, nullptr);
+    ASSERT_TRUE(window.editState(tree, [&](anim::ControllerState& state){
+        state.blendTree.children = {anim::BlendTreeChild(), anim::BlendTreeChild(), anim::BlendTreeChild()};
+        state.blendTree.children[0].clip = a;
+        state.blendTree.children[1].clip = b;
+        state.blendTree.children[1].threshold = 1.0f;
+        state.blendTree.children[2].clip = c;
+        state.blendTree.children[2].threshold = 2.0f;
+    }));
+    EXPECT_EQ(window.setBlendThreshold(tree, 0, 1.5f), 1);
+    const std::vector<anim::BlendTreeChild>& children = doc->data().layers[0].states[(size_t)tree].blendTree.children;
+    ASSERT_EQ(children.size(), 3u);
+    EXPECT_EQ(children[0].clip, b);
+    EXPECT_EQ(children[1].clip, a) << "the moved child, past its neighbour";
+    EXPECT_FLOAT_EQ(children[1].threshold, 1.5f);
+    EXPECT_EQ(window.setBlendThreshold(tree, 1, 9.0f), 2);
+    EXPECT_EQ(doc->data().layers[0].states[(size_t)tree].blendTree.children[2].clip, a);
+
+    std::string value, guid;
+    ASSERT_TRUE(window.resolveTypedAsset("assets/" + a, true, value, guid)) << window.notice();
+    EXPECT_EQ(value, a) << "a project-relative path is stored asset-relative";
+    EXPECT_TRUE(anim::isClipGuid(guid));
+    EXPECT_FALSE(window.resolveTypedAsset("animator/nope.anim", true, value, guid));
+    EXPECT_FALSE(window.notice().empty());
+    EXPECT_FALSE(window.resolveTypedAsset(a, false, value, guid)) << "a clip is not a mask";
+    EXPECT_TRUE(window.resolveTypedAsset("", true, value, guid));
+    EXPECT_TRUE(value.empty());
+}
+
+// Delete acts only when the Animator window has the focus (not when another window does)
+TEST(AnimatorWindow, ShortcutsNeedTheWindowFocused){
+    ASSERT_TRUE(headless().ready);
+    AnimatorWindow window(project());
+    std::shared_ptr<AnimatorControllerDocument> doc = freshController(window, "keys");
+    ASSERT_TRUE(doc);
+    window.createState("", false, nullptr);
+    window.createState("", false, nullptr);
+    ImGuiContext* previous = ImGui::GetCurrentContext();
+    ImGuiContext* context = ImGui::CreateContext();
+    ImGui::SetCurrentContext(context);
+    ImGuiIO& io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = ImVec2(1400, 900);
+    io.DeltaTime = 1.0f / 60.0f;
+    unsigned char* pixels;
+    int width, height;
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+    bool focusOther = false;
+    auto frame = [&](){
+        ImGui::NewFrame();
+        window.show();
+        if (focusOther) ImGui::SetNextWindowFocus();
+        focusOther = false;
+        ImGui::Begin("Other");
+        ImGui::End();
+        ImGui::EndFrame();
+    };
+    auto pressDelete = [&](){
+        io.AddKeyEvent(ImGuiKey_Delete, true);
+        frame();
+        io.AddKeyEvent(ImGuiKey_Delete, false);
+        frame();
+    };
+    window.setOpen(true);
+    frame();
+    focusOther = true;
+    frame();
+    frame();
+    EXPECT_FALSE(window.isFocused());
+    window.selectStates({0});
+    pressDelete();
+    EXPECT_EQ(doc->data().layers[0].states.size(), 2u) << "another window has the focus";
+    window.requestFocus();
+    frame();
+    frame();
+    EXPECT_TRUE(window.isFocused());
+    window.selectStates({0});
+    pressDelete();
+    EXPECT_EQ(doc->data().layers[0].states.size(), 1u);
+    ImGui::DestroyContext(context);
+    ImGui::SetCurrentContext(previous);
+}

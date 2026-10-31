@@ -21,6 +21,7 @@
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
+#include <chrono>
 #include <map>
 
 using namespace jasperengine;
@@ -273,6 +274,69 @@ std::string editor::AnimatorWindow::clipGuidOf(const std::string& clip){
     return guid;
 }
 
+int editor::AnimatorWindow::setBlendThreshold(int state, int child, float threshold){
+    const anim::ControllerLayer* data = currentLayerData();
+    if (!data || state < 0 || (size_t)state >= data->states.size() || !data->states[(size_t)state].hasBlendTree) return -1;
+    const std::vector<anim::BlendTreeChild>& children = data->states[(size_t)state].blendTree.children;
+    if (child < 0 || (size_t)child >= children.size()) return -1;
+    // where the child lands: the normalize's stable sort by threshold
+    std::vector<std::pair<float, int>> order;
+    for (size_t c = 0; c < children.size(); c++) order.push_back({(int)c == child ? threshold : children[c].threshold, (int)c});
+    std::stable_sort(order.begin(), order.end(), [](const std::pair<float, int>& a, const std::pair<float, int>& b){ return a.first < b.first; });
+    int landed = child;
+    for (size_t i = 0; i < order.size(); i++){
+        if (order[i].second == child) landed = (int)i;
+    }
+    if (!editState(state, [child, threshold](anim::ControllerState& target){ target.blendTree.children[(size_t)child].threshold = threshold; })) return -1;
+    return landed;
+}
+
+bool editor::AnimatorWindow::resolveTypedAsset(const std::string& typed, bool clip, std::string& assetRelative, std::string& guid){
+    assetRelative.clear();
+    guid.clear();
+    if (typed.empty() || !project) return true;     // cleared
+    // a model clip "<model>#<clip>": the model part is the file
+    anim::SubClipReference reference;
+    const bool subClip = clip && anim::parseSubClipReference(typed, reference);
+    const std::string file = subClip ? reference.model : typed;
+    // asset-relative, project-relative ("assets/..."), or absolute
+    const fs::path given = fs::u8path(file);
+    fs::path absolute;
+    std::error_code ec;
+    if (given.is_absolute()) absolute = given;
+    else if (fs::is_regular_file(project->getAssetsPath() / given, ec)) absolute = project->getAssetsPath() / given;
+    else absolute = project->getProjectPath() / given;
+    const std::string relative = project->normalizeToAssetsRelative(absolute).generic_string();
+    const bool inside = !relative.empty() && relative.rfind("..", 0) != 0 && !fs::u8path(relative).is_absolute();
+    const char* what = clip ? "an .anim file or a model clip (<model>#<clip>)" : "an Avatar Mask (.mask)";
+    if (!inside || !fs::is_regular_file(absolute, ec)){
+        setNotice("\"" + typed + "\": no such file in the project's assets (expected " + what + ")", true);
+        return false;
+    }
+    if (subClip){
+        std::vector<anim::ModelClipInfo> infos;
+        std::string listError;
+        bool found = false;
+        if (anim::isModelFilePath(relative) && anim::listModelFileClips(relative, infos, &listError)){
+            for (const anim::ModelClipInfo& info : infos) found = found || info.name == reference.clip || std::to_string(info.index) == reference.clip;
+        }
+        if (!found){
+            setNotice("\"" + typed + "\": the model has no animation \"" + reference.clip + "\"", true);
+            return false;
+        }
+        assetRelative = anim::formatSubClipReference(relative, reference.clip);
+        return true;
+    }
+    if (clip ? !Util::isAnimationClipFile(relative) : !Util::isAvatarMaskFile(relative)){
+        setNotice("\"" + typed + "\" is not " + what, true);
+        return false;
+    }
+    assetRelative = relative;
+    std::string path = relative;
+    project->resolveAssetReference(path, guid, true);
+    return true;
+}
+
 std::string editor::AnimatorWindow::newMergeKey(const char* what){
     return std::string("animator:") + what + ":" + std::to_string(++fieldGesture);
 }
@@ -282,11 +346,20 @@ const std::vector<ClipWarning>& editor::AnimatorWindow::warnings(){
         validation.clear();
         return validation;
     }
-    if (doc->revision() != validationRevision){
+    // again at once after an edit of the controller; after a clip changed in the pool (an edit,
+    // a reload) within a quarter second; and once a second for files that appeared or went
+    // (the Inspector's pace)
+    const auto now = std::chrono::steady_clock::now();
+    const auto since = now - validationTime;
+    const bool poolChanged = AnimationClipPool::revision() != validationPoolRevision;
+    if (doc->revision() != validationRevision || (poolChanged && since >= std::chrono::milliseconds(250)) || since >= std::chrono::seconds(1)){
         validationRevision = doc->revision();
+        validationTime = now;
         validation = doc->loadWarnings();
         std::vector<ClipWarning> found = validateControllerClips(doc->data());
         validation.insert(validation.end(), found.begin(), found.end());
+        // after the loads the validation made itself
+        validationPoolRevision = AnimationClipPool::revision();
     }
     return validation;
 }
@@ -935,11 +1008,13 @@ void editor::AnimatorWindow::drawLayersTab(){
             ImGui::SetNextItemWidth(Theme::dpi(180.0f));
             ImGui::InputTextWithHint("Mask", "none (drop a .mask)", mask, sizeof(mask));
             if (ImGui::IsItemDeactivatedAfterEdit()){
-                const std::string value = mask;
-                editLayer((int)l, [value](anim::ControllerLayer& target){
-                    target.mask = value;
-                    target.maskGuid.clear();
-                });
+                std::string value, guid;
+                if (resolveTypedAsset(mask, false, value, guid)){
+                    editLayer((int)l, [value, guid](anim::ControllerLayer& target){
+                        target.mask = value;
+                        target.maskGuid = guid;
+                    });
+                }
             }
             if (ImGui::BeginDragDropTarget()){
                 if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
@@ -1346,8 +1421,9 @@ void editor::AnimatorWindow::drawCanvas(float width, float height){
             }
         }
     }
-    // keys (the canvas hovered or the window focused, no text field active)
-    if ((hovered || windowFocused) && !ImGui::GetIO().WantTextInput){
+    // keys: the window focused (not just hovered: Delete in the Hierarchy deletes GameObjects),
+    // no text field active
+    if (windowFocused && !ImGui::GetIO().WantTextInput){
         if (ImGui::IsKeyPressed(ImGuiKey_Delete) || ImGui::IsKeyPressed(ImGuiKey_Backspace)) deleteSelection();
         if (ImGui::IsKeyPressed(ImGuiKey_F) && !io.KeyCtrl) frameSelection();
         if (ImGui::IsKeyPressed(ImGuiKey_A) && !io.KeyCtrl) frameAll();
@@ -1538,12 +1614,13 @@ void editor::AnimatorWindow::drawStateInspector(int state){
         ImGui::InputTextWithHint("Clip", "drop a clip, or pick", clip, sizeof(clip));
         UIProbe::item("animator.state.clip");
         if (ImGui::IsItemDeactivatedAfterEdit()){
-            const std::string value = clip;
-            const std::string guid = clipGuidOf(value);
-            editState(state, [&](anim::ControllerState& target){
-                target.clip = value;
-                target.clipGuid = guid;
-            });
+            std::string value, guid;
+            if (resolveTypedAsset(clip, true, value, guid)){
+                editState(state, [&](anim::ControllerState& target){
+                    target.clip = value;
+                    target.clipGuid = guid;
+                });
+            }
         }
         if (ImGui::BeginDragDropTarget()){
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
@@ -1794,12 +1871,13 @@ void editor::AnimatorWindow::drawBlendTreeInspector(int state){
         ImGui::SetNextItemWidth(Theme::dpi(120.0f));
         ImGui::InputTextWithHint("##clip", "clip", clip, sizeof(clip));
         if (ImGui::IsItemDeactivatedAfterEdit()){
-            const std::string value = clip;
-            const std::string guid = clipGuidOf(value);
-            editState(state, [c, value, guid](anim::ControllerState& target){
-                target.blendTree.children[c].clip = value;
-                target.blendTree.children[c].clipGuid = guid;
-            });
+            std::string value, guid;
+            if (resolveTypedAsset(clip, true, value, guid)){
+                editState(state, [c, value, guid](anim::ControllerState& target){
+                    target.blendTree.children[c].clip = value;
+                    target.blendTree.children[c].clipGuid = guid;
+                });
+            }
         }
         if (ImGui::BeginDragDropTarget()){
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
@@ -1818,13 +1896,22 @@ void editor::AnimatorWindow::drawBlendTreeInspector(int state){
         }
         ImGui::SameLine();
         ImGui::BeginDisabled(tree.automateThresholds);
-        float threshold = child.threshold;
+        // dragged as a local value and committed on release: a commit re-sorts the children by
+        // threshold, which would move the dragged one under the cursor's index mid-drag
+        const bool dragged = thresholdDragState == state && thresholdDragChild == (int)c;
+        float threshold = dragged ? thresholdDragValue : child.threshold;
         ImGui::SetNextItemWidth(Theme::dpi(50.0f));
-        if (ImGui::DragFloat("##threshold", &threshold, 0.01f)){
-            if (ImGui::IsItemActivated() || key.empty()) key = newMergeKey("tree_threshold");
-            editState(state, [c, threshold](anim::ControllerState& target){ target.blendTree.children[c].threshold = threshold; }, key);
+        ImGui::DragFloat("##threshold", &threshold, 0.01f);
+        if (ImGui::IsItemActive()){
+            thresholdDragState = state;
+            thresholdDragChild = (int)c;
+            thresholdDragValue = threshold;
         }
-        if (ImGui::IsItemDeactivated()) key.clear();
+        if (ImGui::IsItemDeactivated()){
+            const bool edited = ImGui::IsItemDeactivatedAfterEdit();
+            thresholdDragState = thresholdDragChild = -1;
+            if (edited) setBlendThreshold(state, (int)c, threshold);
+        }
         ImGui::EndDisabled();
         ImGui::SameLine();
         float speed = child.speed;

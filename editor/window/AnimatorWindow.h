@@ -30,6 +30,7 @@
 #include "ecs/Entity.h"
 
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -106,6 +107,13 @@ namespace jasperengine::editor{
         bool editState(int state, const std::function<void(anim::ControllerState&)>& edit, const std::string& mergeKey = "");
         bool editTransition(int transition, const std::function<void(anim::ControllerTransition&)>& edit, const std::string& mergeKey = "");
         bool editLayer(int layer, const std::function<void(anim::ControllerLayer&)>& edit, const std::string& mergeKey = "");
+        // a blend tree child's threshold (one step; the children re-sort by threshold): the
+        // child's index after the sort, -1 when refused
+        int setBlendThreshold(int state, int child, float threshold);
+        // a typed mask or clip path (asset- or project-relative, or absolute; a clip may be
+        // "<model>#<clip>") as the asset-relative form with its GUID; false (notice) when it is not
+        // a file of that kind in the assets. Empty: true, cleared
+        bool resolveTypedAsset(const std::string& typed, bool clip, std::string& assetRelative, std::string& guid);
 
         // a state drag: one undo step from begin to end (the boxes move with dragStates)
         void beginDrag();
@@ -168,6 +176,8 @@ namespace jasperengine::editor{
         // the validation, per document revision
         std::vector<ClipWarning> validation;
         uint64_t validationRevision = ~uint64_t(0);
+        uint64_t validationPoolRevision = 0;            // AnimationClipPool::revision() it saw
+        std::chrono::steady_clock::time_point validationTime;
 
         // the canvas
         float panX = 0.0f, panY = 0.0f;
@@ -190,6 +200,10 @@ namespace jasperengine::editor{
         bool pickerStale = true;
         bool pickerRequested = false;
         int fieldGesture = 0;
+        // a blend tree threshold being dragged (committed on release)
+        int thresholdDragState = -1;
+        int thresholdDragChild = -1;
+        float thresholdDragValue = 0.0f;
 
         // the preview
         bool previewing = false;
