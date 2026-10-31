@@ -5,6 +5,7 @@
 #include "camera/ShakePreset.h"
 #include "McpTools.h"
 #include "W4Shared.h"
+#include "PlayViewCommon.h"
 
 #include "mcp/McpAutoSync.h"
 #include "mcp/McpCall.h"
@@ -1203,7 +1204,61 @@ void detachScriptTool(const CallPtr& call) {
              Json{{"entity", McpRefs::entityJson(target.scene, target.entity)}, {"scripts", remaining}});
 }
 
+// While playing only `enabled` changes, on the running GameObject: onEnable / onDisable at once
+// (as the Inspector checkbox), undone with the other play-time edits at Stop
+void updateScriptEntryInPlay(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    const Json& args = call->args();
+    for (auto it = args.begin(); it != args.end(); ++it) {
+        if (it.key() != "scene" && it.key() != "entity" && it.key() != "script" && it.key() != "enabled") {
+            call->fail("While playing, update_script_entry changes only enabled (it runs onEnable / onDisable); stop Play "
+                       "(play action \"stop\") to change " + it.key() + ".");
+            return;
+        }
+    }
+    if (!args.contains("enabled") || !args["enabled"].is_boolean()) {
+        call->fail("Nothing to change: pass enabled (true/false); while playing it is the only field.");
+        return;
+    }
+    std::string error;
+    SceneProject* sp = w3::resolveRuntimeScene(project, args.contains("scene") ? args["scene"] : Json(), error);
+    if (!sp) {
+        call->fail(error);
+        return;
+    }
+    const Entity entity = args.contains("entity") ? w3::resolveLiveEntity(project, sp, args["entity"], error) : NULL_ENTITY;
+    if (entity == NULL_ENTITY) {
+        call->fail(args.contains("entity") ? error : "entity is required: a GameObject id or path.");
+        return;
+    }
+    ScriptComponent* component = sp->scene->findComponent<ScriptComponent>(entity);
+    std::vector<ScriptEntry> scripts = component ? component->scripts : std::vector<ScriptEntry>();
+    size_t index = 0;
+    if (!resolveScriptIndex(project, scripts, args.contains("script") ? args["script"] : Json(), index, error)) {
+        call->fail(error);
+        return;
+    }
+    const std::string key = "scripts[" + std::to_string(index) + "].enabled";
+    if (!addSceneCommand(sp->id, new PropertyCmd<bool>(project, sp->id, entity, ComponentType::ScriptComponent, key,
+                                                      args["enabled"].get<bool>()))) {
+        call->fail("The editor refused the change.");
+        return;
+    }
+    ScriptComponent* updated = sp->scene->isEntityCreated(entity) ? sp->scene->findComponent<ScriptComponent>(entity) : nullptr;
+    Json list = Json::array();
+    for (size_t i = 0; updated && i < updated->scripts.size(); i++) {
+        list.push_back(scriptEntryJson(project, sp, entity, i, updated->scripts[i], i == index));
+    }
+    Json data = {{"entity", McpRefs::entityJson(sp, entity)}, {"scripts", list}};
+    call->ok("Set script " + std::to_string(index) + " enabled = " + (args["enabled"].get<bool>() ? "true" : "false") +
+             " on the live GameObject (onEnable / onDisable ran). Play-time change: reverted when play stops.", data);
+}
+
 void updateScriptEntryTool(const CallPtr& call) {
+    if (call->ctx().project()->isAnyScenePlaying()) {
+        updateScriptEntryInPlay(call);
+        return;
+    }
     Target target;
     if (!resolveTarget(call, target)) return;
     Project* project = call->ctx().project();
@@ -1408,6 +1463,55 @@ void listScriptsTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ check_script
 
+// Lifecycle mistakes a static scan finds (script-lifecycle 8.2): Unity method names the engine
+// never calls, update methods never registered, reserved property names
+Json luaLifecycleWarnings(const std::string& code, const std::vector<ScriptProperty>& properties) {
+    static const std::vector<std::pair<std::string, std::string>> renamed = {
+        {"Awake", "init"}, {"awake", "init"}, {"Start", "start"}, {"OnEnable", "onEnable"}, {"OnDisable", "onDisable"},
+        {"OnDestroy", "onDestroy"}, {"OnApplicationQuit", "onApplicationQuit"}, {"OnApplicationPause", "onApplicationPause"},
+        {"OnApplicationFocus", "onApplicationFocus"},
+        {"Update", "onUpdate"}, {"update", "onUpdate"}, {"FixedUpdate", "onFixedUpdate"}, {"fixedUpdate", "onFixedUpdate"},
+        {"LateUpdate", "onPostUpdate"}, {"lateUpdate", "onPostUpdate"},
+    };
+    static const std::set<std::string> registered = {"onUpdate", "onFixedUpdate", "onPostUpdate"};
+    Json warnings = Json::array();
+    // without comments: a commented-out method is not one
+    std::vector<std::string> lines;
+    {
+        std::istringstream in(code);
+        std::string line;
+        while (std::getline(in, line)) {
+            const size_t comment = line.find("--");
+            lines.push_back(comment == std::string::npos ? line : line.substr(0, comment));
+        }
+    }
+    std::string text;
+    for (const std::string& line : lines) text += line + "\n";
+    static const std::regex method(R"(function\s+[A-Za-z_][A-Za-z0-9_]*\s*[:.]\s*([A-Za-z_][A-Za-z0-9_]*)\s*\()");
+    for (size_t i = 0; i < lines.size(); i++) {
+        std::smatch match;
+        if (!std::regex_search(lines[i], match, method)) continue;
+        const std::string name = match[1].str();
+        for (const auto& [unity, engine] : renamed) {
+            if (name != unity) continue;
+            std::string message = "function " + name + " is never called by the engine: name it " + engine;
+            if (registered.count(engine)) message += " and register it in init with RegisterEngineEvent(self, \"" + engine + "\")";
+            warnings.push_back({{"line", (int)i + 1}, {"message", message + "."}});
+        }
+        if (registered.count(name) && text.find("\"" + name + "\"") == std::string::npos && text.find("'" + name + "'") == std::string::npos) {
+            warnings.push_back({{"line", (int)i + 1}, {"message", name + " is defined but never registered: the engine calls it only after "
+                                                                   "RegisterEngineEvent(self, \"" + name + "\") (in init)."}});
+        }
+    }
+    for (const ScriptProperty& prop : properties) {
+        if (prop.name == "enabled" || prop.name == "isActiveAndEnabled" || prop.name == "gameObject") {
+            warnings.push_back({{"line", 0}, {"message", "property \"" + prop.name + "\" uses a reserved name (every script has enabled, "
+                                                         "isActiveAndEnabled and gameObject): the script will not run until it is renamed."}});
+        }
+    }
+    return warnings;
+}
+
 void checkScriptTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -1455,15 +1559,25 @@ void checkScriptTool(const CallPtr& call) {
         Json props = Json::array();
         for (const ScriptProperty& prop : check.properties) props.push_back({{"name", prop.name}, {"type", scriptPropertyTypeName(prop)}});
         data["properties"] = props;
+        const Json warnings = luaLifecycleWarnings(code, check.properties);
+        std::string warningText;
+        if (!warnings.empty()) {
+            data["warnings"] = warnings;
+            warningText = " WARNINGS:";
+            for (const Json& warning : warnings) {
+                const int line = warning.value("line", 0);
+                warningText += "\n- " + (line > 0 ? "line " + std::to_string(line) + ": " : std::string()) + warning.value("message", std::string());
+            }
+        }
         if (!check.findings.empty()) {
             const ProjectChecks::Finding& error = check.findings.front();
             data["errors"] = Json::array({{{"line", error.line}, {"message", error.message}}});
             call->ok("Lua syntax OK, but loading the script failed" +
-                     (error.line > 0 ? " at line " + std::to_string(error.line) : std::string()) + ": " + error.message, data);
+                     (error.line > 0 ? " at line " + std::to_string(error.line) : std::string()) + ": " + error.message + warningText, data);
             return;
         }
         call->ok("Lua syntax OK; " + std::to_string(props.size()) + " propert" + (props.size() == 1 ? "y" : "ies") +
-                 " declared. Runtime errors only show in Play (read the Console).", data);
+                 " declared. Runtime errors only show in Play (read the Console)." + warningText, data);
         return;
     }
     if (language == "cpp_header") {
@@ -1784,8 +1898,9 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "update_script_entry";
         tool.title = "Update Script Entry";
         tool.description =
-            "Change one attached script: enabled, move_to (reorder = run order), path (repoint to another file of "
-            "the same language, e.g. after a rename; same-name property values kept), class_name (C++ class renamed).";
+            "Change one attached script: enabled (also in Play: onEnable/onDisable), move_to (reorder = run order), "
+            "path (another file of the same language, e.g. after a rename; property values kept), class_name (C++ "
+            "class renamed).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -1795,7 +1910,8 @@ void registerScriptTools(McpRegistry& registry) {
             {"path", assetPath("")},
             {"class_name", string("")}
         }, {"entity"});
-        tool.allowedWhilePlaying = false;
+        // in Play: enabled only (the handler refuses the rest)
+        tool.allowedWhilePlaying = true;
         tool.handler = updateScriptEntryTool;
         registry.addTool(std::move(tool));
     }
@@ -1843,8 +1959,8 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "check_script";
         tool.title = "Check Script";
         tool.description =
-            "Check a script without playing: Lua syntax (not run; ok false + error line) and its properties; C++ "
-            "header: class, kind, DPROPERTY fields (code: compile_scripts). path, or code + language.";
+            "Check a script without playing: Lua syntax (not run; ok false + error line), properties, lifecycle "
+            "warnings; C++ header: class, kind, DPROPERTY fields (code: compile_scripts).";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"code", string("")},

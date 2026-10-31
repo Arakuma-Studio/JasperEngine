@@ -35,6 +35,7 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - Stochastic Tiling (hex-tiling) to hide texture repetition on Lit materials, terrain layers, and library shaders
 - Pose animations that play live on any humanoid model (the Pose Animator component and Lua `PoseAnimator`: play, go to a pose with a spring, blend by weight) or bake to a shared Animation Clip or to keyframes in the scene; poses are rig-independent joint angles, so one animation fits every humanoid rig
 - Vertex Animation (VAT): baked vertex or bone animation textures played on the GPU by the Vertex Animator component, so a crowd is one instanced draw per material with no CPU pose work; every instance has its own clip, time, speed and crossfade, with clip events, sockets and a Lua API (`VertexAnimator`), inside OpenGL ES 3 / WebGL2 limits
+- Thick lines and trails: Unity-style Line Renderer (polylines with width curves, colour gradients, round corners and caps, texture modes) and Trail Renderer, on every backend: see [docs/mcp/guide/lines-trails.md](docs/mcp/guide/lines-trails.md)
 - Camera shake and camera follow: a Camera Shaker component (MilkShake's Shaker, with its formulas and the ported game's presets as built-ins, `.shake` preset files with a graph in the Inspector, trauma, 2D and 3D) that shakes the view without touching the camera's Transform, so scripts and followers never fight it, and a Camera Follow component (SmoothDamp damping, look-at, a 2D dead zone, bounds); Lua `CameraShake.shake("explosion")`: see [docs/camera.md](docs/camera.md)
 - Particle systems and heightmap terrain with clipmap LOD and sculpting tools
 - A GPU fluid simulation component (a port of Pavel Dobryakov's WebGL-Fluid-Simulation: vorticity, bloom, sunrays) shown over the screen, on a sprite, image or mesh, or as a texture any material can use, with presets, seeded deterministic runs and a Lua API: see [docs/mcp/guide/fluid.md](docs/mcp/guide/fluid.md)
@@ -43,12 +44,18 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - Box2D and Jolt Physics for 2D/3D rigidbodies, colliders, and joints, drawn interpolated between fixed steps
 - 2D physics with Unity's joint set (wheel suspension and motors, hinge limits, sliders, springs, fixed, relative and target joints, with local anchors that work in prefabs and break forces with `onJointBreak2D`), concave polygon colliders and colliders of any number of points (no limits on device), and physics materials with Unity's combine modes. Colliders created from now on report contact events by default (`contactEvents`), as in Unity
 - Spatial 3D audio and multithreaded asynchronous resource loading
+- Lua and C++ scripts with Unity's MonoBehaviour lifecycle (`init` as Awake, `onEnable`, `start`, `onDisable`, `onDestroy`, application pause/focus/quit), `self.enabled`, `getScript`, scene-wide `GameObject.find*` / `findObjectOfType`, and UnityEvent-style `Event()` listeners: see [docs/mcp/guide/lua-api.md](docs/mcp/guide/lua-api.md)
 - Unity-style coroutines and timers for scripts: `self:startCoroutine(fn)` with `Coroutine.wait`, `waitRealtime`, `nextFrame`, `waitUntil`, `waitFor` (another coroutine, a timer, a tween, a sound, an HTTP request...), `waitForFixedUpdate` and `waitForEndOfFrame`, stopped with their GameObject and logged with their own traceback; `self:invoke` / `invokeRepeating` and `Timer.after` / `Timer.every` (scaled or unscaled; C++ `ScriptBase::invoke`); and a `Time` class with Unity's names (`Time.deltaTime`, `unscaledDeltaTime`, `fixedDeltaTime`, `timeSinceLevelLoad`...)
 - Saves and data for scripts: Unity-style `PlayerPrefs` (with `hasKey`, `deleteAll`, `save`) on every platform, a `Json` module (`Json.encode` / `Json.decode` with exact array, number and null rules and errors that name the place), and atomic save files under `data://` (`File.writeText`, `Json.writeFile`), stored per user on desktop and in IndexedDB on the web (see the Lua API guide, [docs/mcp/guide/lua-api.md](docs/mcp/guide/lua-api.md))
 
 **Saves of older desktop builds**: an exported desktop game now keeps its user data (`data://`, `UserSettings.xml`) in a per-user folder (`~/.local/share/<identifier>`, `%APPDATA%\<identifier>`, `~/Library/Application Support/<identifier>`, after Project Settings `application.identifier`) instead of the working directory. The first run copies an older build's `./UserSettings.xml` there; other files a game wrote next to itself are not moved.
 
 Names follow Unity; see [docs/unity-glossary.md](docs/unity-glossary.md) for the old names and how to migrate older projects.
+
+**Scripts in older projects**: a disabled script's `init` now runs (Unity's Awake: check
+`self.enabled` there, or remove the script to keep it fully off); a script on a GameObject that
+starts inactive gets its `init` on the first activation; `onDestroy` also runs on scene unload
+and Play stop; disabled C++ scripts are compiled too.
 
 **2D normal maps in older projects**:
 

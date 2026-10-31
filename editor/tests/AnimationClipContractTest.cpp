@@ -48,7 +48,7 @@ namespace {
 
 TEST(AnimationClipContract, CatalogKnowsTheAnimationPlayer){
     // appended after it (prefab override masks use the ordinal): the Vertex Animator, then the
-    // Camera Shaker and the Camera Follow, which is last
+    // Trail Renderer, the Camera Shaker and the Camera Follow, which is last
     EXPECT_EQ(static_cast<int>(ComponentType::VertexAnimatorComponent), static_cast<int>(ComponentType::AnimationPlayerComponent) + 1);
     EXPECT_EQ(LastComponentType, ComponentType::CameraFollowComponent);
     EXPECT_EQ(ComponentTypeCount, static_cast<int>(ComponentType::CameraFollowComponent) + 1);

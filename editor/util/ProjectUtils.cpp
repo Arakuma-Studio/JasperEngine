@@ -1200,6 +1200,13 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<VertexAnimatorComponent>(entity, Stream::decodeVertexAnimatorComponent(componentNode));
             }
             break;
+        case ComponentType::TrailRendererComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<TrailRendererComponent>(entity, {});
+            }else{
+                registry->addComponent<TrailRendererComponent>(entity, Stream::decodeTrailRendererComponent(componentNode));
+            }
+            break;
         case ComponentType::Light2DComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
                 registry->addComponent<Light2DComponent>(entity, {});
@@ -1718,6 +1725,12 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeVertexAnimatorComponent(registry->getComponent<VertexAnimatorComponent>(entity));
             }
             registry->removeComponent<VertexAnimatorComponent>(entity);
+            break;
+        case ComponentType::TrailRendererComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeTrailRendererComponent(registry->getComponent<TrailRendererComponent>(entity));
+            }
+            registry->removeComponent<TrailRendererComponent>(entity);
             break;
         case ComponentType::Light2DComponent:
             if (encodeComponent){
@@ -2391,6 +2404,8 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     // after the renderers: a fluid shown on a Sprite or a Mesh is that object first (its
     // FluidSimulation is FluidSimulation(scene, entity) there)
     if (signature.test(scene->getComponentId<FluidSimulationComponent>())) return objectClass("FluidSimulation");
+    // after the renderers too: a trail behind a Sprite or a Mesh is that object first
+    if (signature.test(scene->getComponentId<TrailRendererComponent>())) return objectClass("TrailRenderer");
     if (signature.test(scene->getComponentId<Light2DComponent>()))     return objectClass("Light2D");
     if (signature.test(scene->getComponentId<ShadowCaster2DComponent>()))  return objectClass("ShadowCaster2D");
     if (signature.test(scene->getComponentId<LightComponent>()))       return objectClass("Light");
@@ -2426,4 +2441,28 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
 
 std::string editor::ProjectUtils::getEntityTypeName(Scene* scene, Entity entity) {
     return getEntityClassInfo(scene, entity).name;
+}
+
+void editor::ProjectUtils::setupNewLineRenderer(LineRendererComponent& lines, bool scene2D){
+    lines.mode = LineRendererMode::Polyline;
+    lines.useWorldSpace = true;
+    if (scene2D){
+        lines.positions = {Vector3(0.0f, 0.0f, 0.0f), Vector3(100.0f, 0.0f, 0.0f)};
+        lines.widthMultiplier = 4.0f;
+    }else{
+        lines.positions = {Vector3(0.0f, 0.0f, 0.0f), Vector3(0.0f, 0.0f, 1.0f)};
+        lines.widthMultiplier = 0.1f;
+    }
+    lines.needUpdateRibbon = true;
+}
+
+void editor::ProjectUtils::setupNewTrailRenderer(TrailRendererComponent& trail, bool scene2D){
+    trail.widthMultiplier = scene2D ? 8.0f : 0.2f;
+    if (scene2D){
+        trail.minVertexDistance = 2.0f;
+    }
+    trail.widthCurve = AnimationCurve::linear(0.0f, 1.0f, 1.0f, 0.0f);
+    trail.colorGradient = Gradient({GradientColorKey(0.0f, Vector3(1.0f, 1.0f, 1.0f)), GradientColorKey(1.0f, Vector3(1.0f, 1.0f, 1.0f))},
+                                   {GradientAlphaKey(0.0f, 1.0f), GradientAlphaKey(1.0f, 0.0f)});
+    trail.needUpdateRibbon = true;
 }

@@ -220,7 +220,7 @@ namespace {
 }
 
 TEST(CameraShakeComponents, RegistrationAndCatalog){
-    EXPECT_EQ(static_cast<int>(ComponentType::CameraShakerComponent), static_cast<int>(ComponentType::VertexAnimatorComponent) + 1);
+    EXPECT_EQ(static_cast<int>(ComponentType::CameraShakerComponent), static_cast<int>(ComponentType::TrailRendererComponent) + 1);
     EXPECT_EQ(LastComponentType, ComponentType::CameraFollowComponent) << "appended at the end: prefab override masks use the ordinal";
     EXPECT_EQ(Catalog::getComponentName(ComponentType::CameraShakerComponent, true), "camerashaker");
     EXPECT_EQ(Catalog::getComponentName(ComponentType::CameraFollowComponent, true), "camerafollow");

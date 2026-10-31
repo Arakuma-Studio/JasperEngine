@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Catalog.h"
+#include "script/ScriptRuntime.h"
 
 #include "Stream.h"
 #include "util/EntityClipboard.h"
@@ -812,6 +813,51 @@ namespace {
         makeFastProperty<VertexAnimatorComponent, std::vector<float>, &VertexAnimatorComponent::instanceSpeeds>("instanceSpeeds", PropertyType::Custom, UpdateFlags_VertexAnimator_Reload),
     };
 
+    // A Line Renderer's polyline, width and ribbon settings (lines and trails spec 6.2): its
+    // geometry is built again (UpdateFlags_Lines); the variant (width on or off, pixel widths)
+    // reloads by itself. Alignment and sort order are read per draw
+    static const FastPropertyDescriptor kLineRibbonProperties[] = {
+        makeFastProperty<LineRendererComponent, LineRendererMode, &LineRendererComponent::mode>("mode", PropertyType::Enum, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, std::vector<Vector3>, &LineRendererComponent::positions>("positions", PropertyType::Custom, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, bool, &LineRendererComponent::loop>("loop", PropertyType::Bool, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, bool, &LineRendererComponent::useWorldSpace>("useWorldSpace", PropertyType::Bool, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, float, &LineRendererComponent::widthMultiplier>("widthMultiplier", PropertyType::Float, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, AnimationCurve, &LineRendererComponent::widthCurve>("widthCurve", PropertyType::Curve, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, LineWidthUnit, &LineRendererComponent::widthUnit>("widthUnit", PropertyType::Enum, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, Gradient, &LineRendererComponent::colorGradient>("colorGradient", PropertyType::Gradient, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, unsigned int, &LineRendererComponent::numCornerVertices>("numCornerVertices", PropertyType::UInt, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, unsigned int, &LineRendererComponent::numCapVertices>("numCapVertices", PropertyType::UInt, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, LineAlignment, &LineRendererComponent::alignment>("alignment", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<LineRendererComponent, LineTextureMode, &LineRendererComponent::textureMode>("textureMode", PropertyType::Enum, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, Vector2, &LineRendererComponent::textureScale>("textureScale", PropertyType::Vector2, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, int, &LineRendererComponent::sortPriority>("sortPriority", PropertyType::Int, UpdateFlags_None),
+    };
+
+    // A Trail Renderer (lines and trails spec 6.4): the ribbon's settings rebuild it
+    // (UpdateFlags_Trail), the shader fields reload it like a Line Renderer's
+    static const FastPropertyDescriptor kTrailRendererProperties[] = {
+        makeFastProperty<TrailRendererComponent, float, &TrailRendererComponent::time>("time", PropertyType::Float, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, float, &TrailRendererComponent::minVertexDistance>("minVertexDistance", PropertyType::Float, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, float, &TrailRendererComponent::widthMultiplier>("widthMultiplier", PropertyType::Float, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, AnimationCurve, &TrailRendererComponent::widthCurve>("widthCurve", PropertyType::Curve, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, LineWidthUnit, &TrailRendererComponent::widthUnit>("widthUnit", PropertyType::Enum, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, Gradient, &TrailRendererComponent::colorGradient>("colorGradient", PropertyType::Gradient, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, unsigned int, &TrailRendererComponent::numCornerVertices>("numCornerVertices", PropertyType::UInt, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, unsigned int, &TrailRendererComponent::numCapVertices>("numCapVertices", PropertyType::UInt, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, LineAlignment, &TrailRendererComponent::alignment>("alignment", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<TrailRendererComponent, LineTextureMode, &TrailRendererComponent::textureMode>("textureMode", PropertyType::Enum, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, Vector2, &TrailRendererComponent::textureScale>("textureScale", PropertyType::Vector2, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, bool, &TrailRendererComponent::emitting>("emitting", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TrailRendererComponent, bool, &TrailRendererComponent::autodestruct>("autodestruct", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TrailRendererComponent, int, &TrailRendererComponent::sortPriority>("sortPriority", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<TrailRendererComponent, std::string, &TrailRendererComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
+        makeFastProperty<TrailRendererComponent, ShaderUniformValues, &TrailRendererComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
+        makeFastProperty<TrailRendererComponent, std::vector<std::pair<std::string, Texture>>, &TrailRendererComponent::shaderTextures>("shaderTextures", PropertyType::Custom, UpdateFlags_Shader_Reload),
+        makeFastProperty<TrailRendererComponent, std::vector<std::string>, &TrailRendererComponent::shaderFeatures>("shaderFeatures", PropertyType::Custom, UpdateFlags_Shader_Reload),
+        makeFastProperty<TrailRendererComponent, MaterialBlendMode, &TrailRendererComponent::blendMode>("blendMode", PropertyType::Enum, UpdateFlags_Shader_Reload),
+        makeFastProperty<TrailRendererComponent, MaterialDepthWrite, &TrailRendererComponent::depthWrite>("depthWrite", PropertyType::Enum, UpdateFlags_Shader_Reload),
+    };
+
     static const FastPropertyDescriptor kCameraProperties[] = {
         makeFastProperty<CameraComponent, CameraType, &CameraComponent::type>("type", PropertyType::Enum, UpdateFlags_Camera),
         // read by RenderSystem when the camera draws
@@ -1179,7 +1225,7 @@ namespace {
         }
 
         if (propertyName == "scripts") {
-            return {PropertyType::Custom, UpdateFlags_None, nullptr, (void*)&comp->scripts};
+            return {PropertyType::Custom, UpdateFlags_Script_Enabled, nullptr, (void*)&comp->scripts};
         }
 
         // Parse "scripts[N].fieldName"
@@ -1206,7 +1252,7 @@ namespace {
         std::string fieldName = propertyName.substr(pos);
 
         if (fieldName == "enabled") {
-            return {PropertyType::Bool, UpdateFlags_None, nullptr, (void*)&scriptEntry.enabled};
+            return {PropertyType::Bool, UpdateFlags_Script_Enabled, nullptr, (void*)&scriptEntry.enabled};
         }
 
         for (auto& prop : scriptEntry.properties) {
@@ -3359,14 +3405,14 @@ namespace {
     void enumerateScriptProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
         ScriptComponent* comp = static_cast<ScriptComponent*>(compRef);
 
-        ps["scripts"] = {PropertyType::Custom, UpdateFlags_None, nullptr, compRef ? (void*)&comp->scripts : nullptr};
+        ps["scripts"] = {PropertyType::Custom, UpdateFlags_Script_Enabled, nullptr, compRef ? (void*)&comp->scripts : nullptr};
 
         if (compRef && comp) {
             for (size_t i = 0; i < comp->scripts.size(); i++) {
                 auto& script = comp->scripts[i];
 
                 std::string enabledKey = "scripts[" + std::to_string(i) + "].enabled";
-                ps[enabledKey] = {PropertyType::Bool, UpdateFlags_None, nullptr, (void*)&script.enabled};
+                ps[enabledKey] = {PropertyType::Bool, UpdateFlags_Script_Enabled, nullptr, (void*)&script.enabled};
 
                 for (auto& prop : script.properties) {
                     std::string key = "scripts[" + std::to_string(i) + "]." + prop.name;
@@ -3673,6 +3719,18 @@ namespace {
         LineRendererComponent& def = getDefaultComponent<LineRendererComponent>();
         if (!comp) return PropertyData();
 
+        PropertyData ribbon = resolveDirectProperties(comp, propertyName, kLineRibbonProperties);
+        if (ribbon.ref) return ribbon;
+        // positions[N]
+        if (propertyName.compare(0, 10, "positions[") == 0) {
+            size_t pos = 10;
+            size_t index = 0;
+            if (!parseIndex(propertyName, pos, index) || pos + 1 != propertyName.size() || propertyName[pos] != ']') return PropertyData();
+            if (index >= comp->positions.size()) return PropertyData();
+            static Vector3 defPosition = Vector3(0.0f, 0.0f, 0.0f);
+            return {PropertyType::Vector3, UpdateFlags_Lines, (void*)&defPosition, (void*)&comp->positions[index]};
+        }
+
         if (propertyName == "maxLines") return {PropertyType::UInt, UpdateFlags_Lines_Reload, &def.maxLines, &comp->maxLines};
         if (propertyName == "customShader") return {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, &comp->customShader};
         if (propertyName == "shaderUniforms") return {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, &comp->shaderUniforms};
@@ -3724,6 +3782,29 @@ namespace {
         return getLinesPropertyFast(static_cast<LineRendererComponent*>(comp), propertyName);
     }
 
+    PropertyData resolveTrailPropertyFast(void* compRef, const std::string& propertyName) {
+        TrailRendererComponent* comp = static_cast<TrailRendererComponent*>(compRef);
+        if (!comp) return PropertyData();
+        PropertyData result = resolveDirectProperties(comp, propertyName, kTrailRendererProperties);
+        if (result.ref) return result;
+        TrailRendererComponent& def = getDefaultComponent<TrailRendererComponent>();
+        if (propertyName == "colorWrite" || propertyName.compare(0, 7, "stencil") == 0) {
+            return getStencilColorWriteProperty(&comp->stencil, &def.stencil, &comp->colorWrite, &def.colorWrite,
+                                                propertyName, UpdateFlags_Shader_Reload);
+        }
+        return PropertyData();
+    }
+
+    void enumerateTrailProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
+        TrailRendererComponent* comp = static_cast<TrailRendererComponent*>(compRef);
+        TrailRendererComponent& def = getDefaultComponent<TrailRendererComponent>();
+        enumerateFromDescriptors(compRef, ps, kTrailRendererProperties);
+        for (const char* field : kComponentStencilFields) {
+            ps[field] = getStencilColorWriteProperty(comp ? &comp->stencil : nullptr, &def.stencil, comp ? &comp->colorWrite : nullptr,
+                                                     &def.colorWrite, field, UpdateFlags_Shader_Reload);
+        }
+    }
+
     void enumerateLinesProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
         LineRendererComponent* comp = static_cast<LineRendererComponent*>(compRef);
         LineRendererComponent& def = getDefaultComponent<LineRendererComponent>();
@@ -3742,6 +3823,14 @@ namespace {
 
         static std::vector<LineData> defLines;
         ps["lines"] = {PropertyType::Custom, UpdateFlags_Lines, (void*)&defLines, comp ? (void*)&comp->lines : nullptr};
+
+        enumerateFromDescriptors(compRef, ps, kLineRibbonProperties);
+        if (comp) {
+            static Vector3 defPosition = Vector3(0.0f, 0.0f, 0.0f);
+            for (size_t i = 0; i < comp->positions.size(); i++) {
+                ps["positions[" + std::to_string(i) + "]"] = {PropertyType::Vector3, UpdateFlags_Lines, (void*)&defPosition, (void*)&comp->positions[i]};
+            }
+        }
 
         if (comp) {
             static Vector3 defPoint = Vector3(0.0f, 0.0f, 0.0f);
@@ -3908,6 +3997,7 @@ namespace {
         {ComponentType::ParticleSystemComponent, &findComponentPtr<ParticleSystemComponent>, &resolveParticlesPropertyFast, &enumerateParticlesProperties},
         {ComponentType::PointsComponent, &findComponentPtr<PointsComponent>, &resolvePointsPropertyFast, &enumeratePointsProperties},
         {ComponentType::LineRendererComponent, &findComponentPtr<LineRendererComponent>, &resolveLinesPropertyFast, &enumerateLinesProperties},
+        {ComponentType::TrailRendererComponent, &findComponentPtr<TrailRendererComponent>, &resolveTrailPropertyFast, &enumerateTrailProperties},
         {ComponentType::ActionComponent, &findComponentPtr<ActionComponent>, &resolveActionPropertyFast, &enumerateActionProperties},
         {ComponentType::TweenComponent, &findComponentPtr<TweenComponent>, &resolveTweenPropertyFast, &enumerateTweenProperties},
         {ComponentType::PositionTweenComponent, &findComponentPtr<PositionTweenComponent>, &resolvePositionTweenPropertyFast, &enumeratePositionTweenProperties},
@@ -3949,6 +4039,7 @@ namespace {
             case ComponentType::TerrainComponent: return &getEnabledRef<TerrainComponent>;
             case ComponentType::PointsComponent: return &getEnabledRef<PointsComponent>;
             case ComponentType::LineRendererComponent: return &getEnabledRef<LineRendererComponent>;
+            case ComponentType::TrailRendererComponent: return &getEnabledRef<TrailRendererComponent>;
             case ComponentType::ParticleSystemComponent: return &getEnabledRef<ParticleSystemComponent>;
             case ComponentType::InstancedMeshComponent: return &getEnabledRef<InstancedMeshComponent>;
             case ComponentType::LightComponent: return &getEnabledRef<LightComponent>;
@@ -4120,6 +4211,8 @@ std::string computeComponentName(editor::ComponentType component){
         name = "AnimationPlayerComponent";
     }else if(component == ComponentType::VertexAnimatorComponent){
         name = "VertexAnimatorComponent";
+    }else if(component == ComponentType::TrailRendererComponent){
+        name = "TrailRendererComponent";
     }else if(component == ComponentType::CameraShakerComponent){
         name = "CameraShakerComponent";
     }else if(component == ComponentType::CameraFollowComponent){
@@ -4215,6 +4308,7 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::ScriptComponent: return "Script";
         case ComponentType::MeshComponent: return "Mesh Renderer";
         case ComponentType::LineRendererComponent: return "Line Renderer";
+        case ComponentType::TrailRendererComponent: return "Trail Renderer";
         case ComponentType::LightComponent: return "Light";
         case ComponentType::TerrainComponent: return "Terrain";
         case ComponentType::PointsComponent: return "Point Renderer";
@@ -4284,6 +4378,7 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::ScriptComponent: return ICON_FA_CODE;
         case ComponentType::MeshComponent: return ICON_FA_SHAPES;
         case ComponentType::LineRendererComponent: return ICON_FA_GRIP_LINES;
+        case ComponentType::TrailRendererComponent: return ICON_FA_WIND;
         case ComponentType::LightComponent: return ICON_FA_LIGHTBULB;
         case ComponentType::TerrainComponent: return ICON_FA_MOUNTAIN;
         case ComponentType::PointsComponent: return ICON_FA_BRAILLE;
@@ -4430,6 +4525,8 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<LightComponent>();
         case ComponentType::LineRendererComponent:
             return registry->getComponentId<LineRendererComponent>();
+        case ComponentType::TrailRendererComponent:
+            return registry->getComponentId<TrailRendererComponent>();
         case ComponentType::MeshPolygonComponent:
             return registry->getComponentId<MeshPolygonComponent>();
         case ComponentType::ModelComponent:
@@ -4556,6 +4653,8 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::LightComponent;
     }else if(normalizedName == "linerenderer"){
         return ComponentType::LineRendererComponent;
+    }else if(normalizedName == "trailrenderer" || normalizedName == "trail"){
+        return ComponentType::TrailRendererComponent;
     }else if(normalizedName == "mesh"){
         return ComponentType::MeshComponent;
     }else if(normalizedName == "meshpolygon"){
@@ -4755,6 +4854,9 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<VertexAnimatorComponent>(entity)){
         ret.push_back(ComponentType::VertexAnimatorComponent);
+    }
+    if (registry->findComponent<TrailRendererComponent>(entity)){
+        ret.push_back(ComponentType::TrailRendererComponent);
     }
     if (registry->findComponent<CameraShakerComponent>(entity)){
         ret.push_back(ComponentType::CameraShakerComponent);
@@ -4981,6 +5083,12 @@ uint64_t editor::Catalog::getChangedUpdateFlags(ComponentType compType, void* ol
                 changed = static_cast<EntityReference*>(oldProp.ref)->entity != static_cast<EntityReference*>(newProp.ref)->entity ||
                           static_cast<EntityReference*>(oldProp.ref)->sceneId != static_cast<EntityReference*>(newProp.ref)->sceneId;
                 break;
+            case PropertyType::Curve:
+                changed = *static_cast<AnimationCurve*>(oldProp.ref) != *static_cast<AnimationCurve*>(newProp.ref);
+                break;
+            case PropertyType::Gradient:
+                changed = *static_cast<Gradient*>(oldProp.ref) != *static_cast<Gradient*>(newProp.ref);
+                break;
             case PropertyType::Custom:
                 // Conservative: assume changed for complex types
                 changed = true;
@@ -5065,6 +5173,12 @@ std::vector<const CustomUniformBlock*> editor::Catalog::getShaderUniformBlocks(E
                 blocks.push_back(&lines->customFSParams);
             }
             break;
+        case ComponentType::TrailRendererComponent:
+            if (TrailRendererComponent* trail = registry->findComponent<TrailRendererComponent>(entity)) {
+                blocks.push_back(&trail->customVSParams);
+                blocks.push_back(&trail->customFSParams);
+            }
+            break;
         case ComponentType::SkyboxComponent:
             if (SkyboxComponent* sky = registry->findComponent<SkyboxComponent>(entity)) {
                 blocks.push_back(&sky->customVSParams);
@@ -5130,6 +5244,10 @@ bool editor::Catalog::isCustomShaderBuildFailed(Scene* scene, Entity entity, Com
         case ComponentType::LineRendererComponent:
             if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity))
                 return failed(lines->customShader, ShaderType::LINES, lines->loaded, lines->needReload, lines->customShaderId);
+            break;
+        case ComponentType::TrailRendererComponent:
+            if (TrailRendererComponent* trail = scene->findComponent<TrailRendererComponent>(entity))
+                return failed(trail->customShader, ShaderType::LINES, trail->loaded, trail->needReload, trail->customShaderId);
             break;
         case ComponentType::SkyboxComponent:
             if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity))
@@ -5198,6 +5316,10 @@ std::string editor::Catalog::getShaderReferenceForProperty(Scene* scene, Entity 
         case ComponentType::LineRendererComponent:
             if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity))
                 return lines->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines->customShader;
+            break;
+        case ComponentType::TrailRendererComponent:
+            if (TrailRendererComponent* trail = scene->findComponent<TrailRendererComponent>(entity))
+                return trail->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : trail->customShader;
             break;
         case ComponentType::SkyboxComponent:
             if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity))
@@ -5410,6 +5532,12 @@ uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Mat
 }
 
 void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint64_t updateFlags){
+    if (updateFlags & UpdateFlags_Script_Enabled){
+        // in Play the Inspector checkbox, MCP and undo enable scripts as Lua's self.enabled does
+        if (Scene* scene = dynamic_cast<Scene*>(registry)){
+            ScriptRuntime::refreshEntity(scene, entity);
+        }
+    }
     if (updateFlags & UpdateFlags_Transform){
         if (Transform* transform = registry->findComponent<Transform>(entity)){
             transform->needUpdate = true;
@@ -5515,6 +5643,7 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
         if (UIComponent* u = registry->findComponent<UIComponent>(entity)) u->needReload = true;
         if (PointsComponent* p = registry->findComponent<PointsComponent>(entity)) p->needReload = true;
         if (LineRendererComponent* l = registry->findComponent<LineRendererComponent>(entity)) l->needReload = true;
+        if (TrailRendererComponent* t = registry->findComponent<TrailRendererComponent>(entity)) t->needReload = true;
         if (SkyboxComponent* s = registry->findComponent<SkyboxComponent>(entity)) s->needReload = true;
     }
     if (updateFlags & UpdateFlags_Shader_Uniforms){
@@ -5522,6 +5651,7 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
         if (UIComponent* u = registry->findComponent<UIComponent>(entity)) u->needUpdateShaderUniforms = true;
         if (PointsComponent* p = registry->findComponent<PointsComponent>(entity)) p->needUpdateShaderUniforms = true;
         if (LineRendererComponent* l = registry->findComponent<LineRendererComponent>(entity)) l->needUpdateShaderUniforms = true;
+        if (TrailRendererComponent* t = registry->findComponent<TrailRendererComponent>(entity)) t->needUpdateShaderUniforms = true;
         if (SkyboxComponent* s = registry->findComponent<SkyboxComponent>(entity)) s->needUpdateShaderUniforms = true;
     }
     if (updateFlags & UpdateFlags_Sprite){
@@ -5613,6 +5743,14 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
     }
     if (updateFlags & (UpdateFlags_Lines | UpdateFlags_Lines_Reload)){
         if (LineRendererComponent* lines = registry->findComponent<LineRendererComponent>(entity)){
+            // clamped as the Lua setters do; the geometry (ribbon, polyline segments) is built
+            // again by the render system, which reloads when the variant or capacity changed
+            lines->widthMultiplier = (std::isfinite(lines->widthMultiplier) && lines->widthMultiplier > 0.0f) ? lines->widthMultiplier : 0.0f;
+            lines->numCornerVertices = std::min(lines->numCornerVertices, LINE_RIBBON_MAX_FAN_VERTICES);
+            lines->numCapVertices = std::min(lines->numCapVertices, LINE_RIBBON_MAX_FAN_VERTICES);
+            lines->widthCurve.normalize();
+            lines->colorGradient.normalize();
+            lines->needUpdateRibbon = true;
             bool needsLargerBuffer = lines->lines.size() > lines->maxLines;
             if (needsLargerBuffer){
                 lines->maxLines = static_cast<unsigned int>(lines->lines.size());
@@ -5623,6 +5761,19 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             }else{
                 lines->needUpdateBuffer = true;
             }
+        }
+    }
+    if (updateFlags & UpdateFlags_Trail){
+        if (TrailRendererComponent* trail = registry->findComponent<TrailRendererComponent>(entity)){
+            auto nonNegative = [](float value){ return (std::isfinite(value) && value > 0.0f) ? value : 0.0f; };
+            trail->time = nonNegative(trail->time);
+            trail->minVertexDistance = nonNegative(trail->minVertexDistance);
+            trail->widthMultiplier = nonNegative(trail->widthMultiplier);
+            trail->numCornerVertices = std::min(trail->numCornerVertices, LINE_RIBBON_MAX_FAN_VERTICES);
+            trail->numCapVertices = std::min(trail->numCapVertices, LINE_RIBBON_MAX_FAN_VERTICES);
+            trail->widthCurve.normalize();
+            trail->colorGradient.normalize();
+            trail->needUpdateRibbon = true;
         }
     }
     if (updateFlags & UpdateFlags_AudioSource){
@@ -5800,6 +5951,12 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
         case ComponentType::LineRendererComponent: {
             YAML::Node encoded = Stream::encodeLineRendererComponent(sourceRegistry->getComponent<LineRendererComponent>(sourceEntity));
             targetRegistry->getComponent<LineRendererComponent>(targetEntity) = Stream::decodeLineRendererComponent(encoded);
+            break;
+        }
+
+        case ComponentType::TrailRendererComponent: {
+            YAML::Node encoded = Stream::encodeTrailRendererComponent(sourceRegistry->getComponent<TrailRendererComponent>(sourceEntity));
+            targetRegistry->getComponent<TrailRendererComponent>(targetEntity) = Stream::decodeTrailRendererComponent(encoded);
             break;
         }
 
@@ -6184,6 +6341,18 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             if (source && target) *target = *source;
             break;
         }
+        case PropertyType::Curve: {
+            AnimationCurve* source = Catalog::getPropertyRef<AnimationCurve>(sourceRegistry, sourceEntity, compType, property);
+            AnimationCurve* target = Catalog::getPropertyRef<AnimationCurve>(targetRegistry, targetEntity, compType, property);
+            if (source && target) *target = *source;
+            break;
+        }
+        case PropertyType::Gradient: {
+            Gradient* source = Catalog::getPropertyRef<Gradient>(sourceRegistry, sourceEntity, compType, property);
+            Gradient* target = Catalog::getPropertyRef<Gradient>(targetRegistry, targetEntity, compType, property);
+            if (source && target) *target = *source;
+            break;
+        }
         case PropertyType::Custom:
             if (compType == ComponentType::ScriptComponent) {
                 copyComponent(sourceRegistry, sourceEntity, targetRegistry, targetEntity, compType);
@@ -6251,6 +6420,14 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
                        (property == "values" || property == "inTangents" || property == "outTangents")) {
                 auto* source = Catalog::getPropertyRef<std::vector<std::vector<Vector3>>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<std::vector<Vector3>>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::LineRendererComponent && property == "positions") {
+                auto* source = Catalog::getPropertyRef<std::vector<Vector3>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<Vector3>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::LineRendererComponent && property == "lines") {
+                auto* source = Catalog::getPropertyRef<std::vector<LineData>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<LineData>>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
             } else if (compType == ComponentType::LatticeTracksComponent && property.compare(0, 7, "values[") == 0) {
                 auto* source = Catalog::getPropertyRef<std::vector<Vector3>>(sourceRegistry, sourceEntity, compType, property);

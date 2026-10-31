@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "InspectorWindow.h"
+#include "window/widget/CurveField.h"
+#include "window/widget/GradientField.h"
 #include "SceneWindow.h"
+#include "script/ScriptRuntime.h"
 
 #include "imgui_internal.h"
 
@@ -1873,9 +1876,18 @@ void editor::InspectorWindow::drawGameObjectHeader(SceneProject* sceneProject, c
     ImGui::BeginDisabled(readOnly);
     bool activeValue = active && !activeMixed;
     if (activeMixed) ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, true);
-    if (ImGui::Checkbox("##active", &activeValue)){
-        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
-            EntityStateCmd::active(project, sceneProject->id, entities, activeMixed ? true : activeValue));
+    const bool activeClicked = ImGui::Checkbox("##active", &activeValue);
+    UIProbe::item("inspector.active");
+    if (activeClicked){
+        // after this frame's drawing: in Play it runs onEnable / onDisable (deferredCommands)
+        const uint32_t commandSceneId = project->getSelectedSceneId();
+        const uint32_t stateSceneId = sceneProject->id;
+        const std::vector<Entity> targets = entities;
+        const bool value = activeMixed ? true : activeValue;
+        deferredCommands.push_back([this, commandSceneId, stateSceneId, targets, value]() {
+            if (!project->getScene(stateSceneId)) return;
+            CommandHandle::get(commandSceneId)->addCommandNoMerge(EntityStateCmd::active(project, stateSceneId, targets, value));
+        });
     }
     if (activeMixed) ImGui::PopItemFlag();
     ImGui::EndDisabled();
@@ -4155,6 +4167,53 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         }
         if (dif)
             ImGui::PopStyleColor();
+
+    }else if (type == RowPropertyType::Curve || type == RowPropertyType::Gradient){
+        // Unity AnimationCurve / Gradient: an inline preview that opens its editor popup;
+        // every frame of a drag is one merged command, the edit's end its own undo step
+        auto valueRow = [&](auto sample, auto drawField){
+            using T = decltype(sample);
+            std::map<Entity, T> eValue;
+            const T* defValue = nullptr;
+            bool dif = false;
+            for (Entity& entity : entities){
+                PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, cpType, id);
+                defValue = static_cast<const T*>(prop.def);
+                eValue[entity] = *static_cast<T*>(prop.ref);
+                if (eValue[entity] != eValue[entities[0]])
+                    dif = true;
+            }
+            T newValue = eValue[entities[0]];
+            const bool defChanged = defValue && newValue != *defValue;
+            if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent) && defValue){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<T>(project, sceneProject->id, entity, cpType, id, *defValue, settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
+                finishProperty = true;
+            }
+            const auto edit = drawField(newValue, dif);
+            if (edit.changed){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<T>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
+            }
+            if (edit.finished)
+                finishProperty = true;
+        };
+        // the field leaves room for the help marker after it
+        const float helpWidth = settings.help.empty() ? 0.0f : ImGui::CalcTextSize("(?)").x + ImGui::GetStyle().ItemSpacing.x;
+        auto fieldWidth = [&](){ return std::max(ImGui::GetFontSize() * 4.0f, ImGui::GetContentRegionAvail().x - helpWidth); };
+        if (type == RowPropertyType::Curve){
+            valueRow(AnimationCurve(), [&](AnimationCurve& value, bool mixed){ return curveField(("##curve_" + id).c_str(), value, mixed, fieldWidth()); });
+        }else{
+            valueRow(jasperengine::Gradient(), [&](jasperengine::Gradient& value, bool mixed){ return gradientField(("##gradient_" + id).c_str(), value, mixed, fieldWidth()); });
+        }
+        if (!settings.help.empty()){
+            ImGui::SameLine();
+            helpMarker(settings.help);
+        }
 
     }else if (type == RowPropertyType::Font){
         FontArray* value = nullptr;
@@ -10287,19 +10346,61 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
 
             if (mixed) ImGui::PushStyleColor(ImGuiCol_CheckMark, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
             ImGui::Checkbox(("##script_enabled_" + std::to_string(scriptIdx)).c_str(), &enabled);
+            UIProbe::item("inspector.scriptEnabled." + std::to_string(scriptIdx));
             if (mixed) ImGui::PopStyleColor();
 
             if (ImGui::IsItemDeactivatedAfterEdit()) {
-                std::string propName = "scripts[" + std::to_string(scriptIdx) + "].enabled";
-                for (const Entity& entity : entities) {
-                    cmd = new PropertyCmd<bool>(project, sceneProject->id, entity, ComponentType::ScriptComponent, propName, enabled);
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                }
-                if (cmd) cmd->setNoMerge();
+                // after this frame's drawing: in Play it runs onEnable / onDisable, which may move
+                // the components `script` and the loop below point into (deferredCommands)
+                const std::string propName = "scripts[" + std::to_string(scriptIdx) + "].enabled";
+                const uint32_t commandSceneId = project->getSelectedSceneId();
+                const uint32_t stateSceneId = sceneProject->id;
+                const std::vector<Entity> targets = entities;
+                deferredCommands.push_back([this, propName, commandSceneId, stateSceneId, targets, enabled]() {
+                    if (!project->getScene(stateSceneId)) return;
+                    Command* last = nullptr;
+                    for (const Entity& entity : targets) {
+                        last = new PropertyCmd<bool>(project, stateSceneId, entity, ComponentType::ScriptComponent, propName, enabled);
+                        CommandHandle::get(commandSceneId)->addCommand(last);
+                    }
+                    if (last) last->setNoMerge();
+                });
             }
 
             ImGui::SameLine();
             ImGui::TextUnformatted(script.className.c_str());
+
+            // in Play, where the script is in its lifecycle (as get_runtime_entity reports it)
+            if (entities.size() == 1 && ScriptRuntime::hasStarted(sceneProject->scene)) {
+                const ScriptEntry& live = sceneProject->scene->getComponent<ScriptComponent>(entities[0]).scripts[scriptIdx];
+                const ScriptState* state = ScriptRuntime::getState(live.instance);
+                const char* status = nullptr;
+                const char* help = nullptr;
+                if (!live.instance) {
+                    status = "not running";
+                    help = "No instance: the script failed to load (see the Console) or its C++ class is not built.";
+                } else if (state && state->destroyed) {
+                    status = "destroyed";
+                    help = "onDestroy ran.";
+                } else if (!state || !state->initialized) {
+                    status = "not initialized";
+                    help = "The GameObject has not been active yet: init runs when it is first activated.";
+                } else if (state->started) {
+                    status = state->enabledLatch ? "started" : "started, inactive";
+                    help = state->enabledLatch ? "init, onEnable and start ran." : "start ran; the script is disabled or its GameObject inactive now (onDisable ran).";
+                } else if (state->enabledLatch) {
+                    status = "waiting to start";
+                    help = "onEnable ran; start runs at the beginning of the next frame.";
+                } else {
+                    status = "initialized";
+                    help = "init ran; onEnable and start wait until the script is enabled and its GameObject active.";
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled("(%s)", status);
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s", help);
+                }
+            }
 
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x / 3.0, ImGui::GetStyle().FramePadding.y / 2.0));
 
@@ -11382,15 +11483,15 @@ void editor::InspectorWindow::drawPointsComponent(ComponentType cpType, ScenePro
     }
 }
 
-void editor::InspectorWindow::drawLineRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+// A Line Renderer's Segments: independent A-B segments with their own colours (the engine's
+// debug lines), each edited as before (InspectorLinesTrails.cpp draws the rest)
+void editor::InspectorWindow::drawLineSegmentsList(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsInt;
     settingsInt.secondColSize = 6 * ImGui::GetFontSize();
 
     beginTable(cpType, getLabelSize("Max Lines"));
     propertyRow(RowPropertyType::UInt, cpType, "maxLines", "Max Lines", sceneProject, entities, settingsInt);
     endTable();
-
-    drawCustomShaderRow(cpType, ShaderType::LINES, sceneProject, entities);
 
     if (entities.size() != 1) {
         ImGui::SeparatorText("Lines");
@@ -15401,7 +15502,17 @@ void editor::InspectorWindow::revealAssetInProject(const std::filesystem::path& 
     }
 }
 
+void editor::InspectorWindow::runDeferredCommands(){
+    std::vector<std::function<void()>> commands;
+    commands.swap(deferredCommands);
+    for (const std::function<void()>& command : commands) {
+        command();
+    }
+}
+
 void editor::InspectorWindow::show(){
+    runDeferredCommands();
+
     // Flush any debounced material file writes
     flushDirtyMaterials(ImGui::GetIO().DeltaTime);
 
@@ -15667,6 +15778,8 @@ void editor::InspectorWindow::show(){
                     drawParticleSystemComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::LineRendererComponent){
                     drawLineRendererComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::TrailRendererComponent){
+                    drawTrailRendererComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::PointsComponent){
                     drawPointsComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::InstancedMeshComponent){

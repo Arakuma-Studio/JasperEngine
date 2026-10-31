@@ -1372,6 +1372,10 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                     }
                     if (!blockPointHit) {
                         int pointHit = sceneProject->sceneRender->hitTestLinePoint(selEntity, x, y);
+                        // Inspector > Line Renderer > Edit Points: Ctrl+click on the polyline inserts a point
+                        if (pointHit < 0 && io.KeyCtrl && sceneProject->sceneRender->isLinePointEditing()) {
+                            pointHit = sceneProject->sceneRender->insertLinePointAt(project, sceneId, selEntity, x, y);
+                        }
                         if (pointHit >= 0) {
                             sceneProject->sceneRender->selectLinePoint(selEntity, pointHit);
                             subSelectionClickConsumesRelease[sceneId] = true;

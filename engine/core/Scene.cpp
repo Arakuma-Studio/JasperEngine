@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "manager/ObjectManager.h"
+#include "script/ScriptRuntime.h"
 #include "Scene.h"
 
 #include "object/Camera.h"
@@ -11,6 +12,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/LatticeSystem.h"
 #include "subsystem/VertexAnimatorSystem.h"
+#include "subsystem/TrailSystem.h"
 #include "subsystem/CameraControlSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
@@ -50,6 +52,8 @@ void Scene::init(){
     registerSystem<UIDocumentSystem>();
     registerSystem<FluidSystem>();
     registerSystem<RenderSystem>();
+    // after Render, whose update makes this frame's world transforms (the trails' heads)
+    registerSystem<TrailSystem>();
     registerSystem<PhysicsSystem>();
     registerSystem<AudioSystem>();
 
@@ -67,6 +71,8 @@ Scene::~Scene(){
     lifetime.reset();
     // GameObject::destroy calls still pending for it
     ObjectManager::forgetScene(this);
+    // and the starts of its scripts still queued
+    ScriptRuntime::forgetScene(this);
     // sounds of a deleted scene would play on; not in destroy(), which also runs on view recreation
     getSystem<AudioSystem>()->stopSceneSounds();
     destroy();
@@ -79,6 +85,14 @@ static void removeComponentSubscriptionsByTag(Scene* scene, const std::string& s
     for (size_t i = 0; i < components->size(); i++) {
         callback(components->getComponentFromIndex(i), substring);
     }
+}
+
+bool Scene::isActivationObserved() const{
+    return ScriptRuntime::hasStarted(const_cast<Scene*>(this));
+}
+
+void Scene::onActiveInHierarchyChanged(const std::vector<Entity>& changed, bool nowActive){
+    ScriptRuntime::onActiveInHierarchyChanged(this, changed, nowActive);
 }
 
 std::weak_ptr<char> Scene::getLifetime() const{

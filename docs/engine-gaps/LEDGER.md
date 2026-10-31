@@ -127,3 +127,10 @@ origin/main).
 - 2026-10-31: `coroutines` review: 1 memory-safety bug (isDone() stopping the waiting coroutine), C++ repeating
   timers losing state, an O(n) deactivation scan, paused unscaled time, stop vs immediate waitFor; fixes in
   progress. `native-bridge` and `video-mp4` started (on gaps/http). Only anim-properties and anim-retarget wait.
+- 2026-10-31: `physics-2d` (10 review defects fixed) merged locally (`b377f20e0`); the full MCP suite on the merged
+  tree found 5 failures its own run missed (agent guide 16523 > 16384 bytes; an old-prefab-override test; an old
+  scene's re-save dropping legacy cap keys): not pushed, back to its agent. Box 2202 ran out of memory and was
+  replaced; all boxes got 32 GB swap and lower per-agent parallelism (-j5 / -j3, MCP -j2). New handoff rule: the
+  FULL MCP suite after merging main. `script-lifecycle` (7 review defects fixed incl. a process abort on strict
+  __index modules and an Inspector use-after-free) merged locally (`6ce992460`) with one ScriptMessages mechanism
+  and the guide trimmed to 16369 bytes; pushed together with physics-2d once the full suite is clean.

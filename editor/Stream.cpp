@@ -19,6 +19,7 @@
 #include "pool/SoundPool.h"
 #include "pool/ShaderPool.h"
 #include "util/CameraTextureLink.h"
+#include "util/Color.h"
 #include "util/FluidTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/StringUtils.h"
@@ -34,6 +35,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <cstdlib>
 #include <cstring>
@@ -590,6 +592,9 @@ std::string editor::Stream::attributeTypeToString(AttributeType type) {
         case AttributeType::VAT_INDEX: return "vatindex";
         case AttributeType::INSTANCEVAT0: return "instancevat0";
         case AttributeType::INSTANCEVAT1: return "instancevat1";
+        case AttributeType::LINETANGENTIN: return "linetangentin";
+        case AttributeType::LINETANGENTOUT: return "linetangentout";
+        case AttributeType::LINEPARAMS: return "lineparams";
         default: return "position"; // Default
     }
 }
@@ -635,6 +640,9 @@ AttributeType editor::Stream::stringToAttributeType(const std::string& str) {
     if (str == "vatindex") return AttributeType::VAT_INDEX;
     if (str == "instancevat0") return AttributeType::INSTANCEVAT0;
     if (str == "instancevat1") return AttributeType::INSTANCEVAT1;
+    if (str == "linetangentin") return AttributeType::LINETANGENTIN;
+    if (str == "linetangentout") return AttributeType::LINETANGENTOUT;
+    if (str == "lineparams") return AttributeType::LINEPARAMS;
     return AttributeType::POSITION; // Default
 }
 
@@ -1732,6 +1740,229 @@ Vector4 editor::Stream::decodeVector4(const YAML::Node& node) {
     }
 
     return Vector4(decodeFinite(node[0], 0.0f), decodeFinite(node[1], 0.0f), decodeFinite(node[2], 0.0f), decodeFinite(node[3], 0.0f));
+}
+
+std::string editor::Stream::curveWrapToString(CurveWrap wrap) {
+    switch (wrap) {
+        case CurveWrap::Clamp: return "clamp";
+        case CurveWrap::Loop: return "loop";
+        case CurveWrap::PingPong: return "ping_pong";
+    }
+    return "clamp";
+}
+
+CurveWrap editor::Stream::stringToCurveWrap(const std::string& str) {
+    if (str == "loop" || str == "repeat") return CurveWrap::Loop;
+    if (str == "ping_pong" || str == "pingpong" || str == "pingPong") return CurveWrap::PingPong;
+    return CurveWrap::Clamp;
+}
+
+YAML::Node editor::Stream::encodeCurve(const AnimationCurve& curve) {
+    YAML::Node node;
+    YAML::Node keys(YAML::NodeType::Sequence);
+    for (const CurveKey& key : curve.keys) {
+        YAML::Node keyNode;
+        keyNode.SetStyle(YAML::EmitterStyle::Flow);
+        keyNode.push_back(YamlNumbers::text(key.time));
+        keyNode.push_back(YamlNumbers::text(key.value));
+        if (key.inTangent != 0.0f || key.outTangent != 0.0f) {
+            keyNode.push_back(YamlNumbers::text(key.inTangent));
+            keyNode.push_back(YamlNumbers::text(key.outTangent));
+        }
+        keys.push_back(keyNode);
+    }
+    node["keys"] = keys;
+    if (curve.preWrap != CurveWrap::Clamp) node["pre"] = curveWrapToString(curve.preWrap);
+    if (curve.postWrap != CurveWrap::Clamp) node["post"] = curveWrapToString(curve.postWrap);
+    return node;
+}
+
+AnimationCurve editor::Stream::decodeCurve(const YAML::Node& node, const AnimationCurve& fallback) {
+    if (!node || node.IsNull()) return fallback;
+    // a number: a constant curve
+    if (node.IsScalar()) {
+        try {
+            return AnimationCurve::constant(node.as<float>());
+        } catch (const YAML::Exception&) {
+            return fallback;
+        }
+    }
+    AnimationCurve curve;
+    YAML::Node keys = node.IsSequence() ? node : node["keys"];
+    if (keys && keys.IsSequence()) {
+        for (const YAML::Node& keyNode : keys) {
+            CurveKey key;
+            try {
+                if (keyNode.IsSequence() && keyNode.size() >= 2) {
+                    key.time = keyNode[0].as<float>();
+                    key.value = keyNode[1].as<float>();
+                    if (keyNode.size() >= 4) {
+                        key.inTangent = keyNode[2].as<float>();
+                        key.outTangent = keyNode[3].as<float>();
+                    }
+                } else if (keyNode.IsMap()) {
+                    key.time = keyNode["time"] ? keyNode["time"].as<float>() : 0.0f;
+                    key.value = keyNode["value"] ? keyNode["value"].as<float>() : 0.0f;
+                    if (keyNode["inTangent"]) key.inTangent = keyNode["inTangent"].as<float>();
+                    if (keyNode["outTangent"]) key.outTangent = keyNode["outTangent"].as<float>();
+                } else {
+                    continue;
+                }
+            } catch (const YAML::Exception&) {
+                continue;
+            }
+            curve.keys.push_back(key);
+        }
+    }
+    if (node.IsMap()) {
+        // a wrap that is not a name: the default (clamp), with a warning
+        for (const char* side : {"pre", "post"}) {
+            const YAML::Node wrap = node[side];
+            if (!wrap) continue;
+            if (!wrap.IsScalar()) {
+                Out::warning("Curve: %s is not a wrap mode name (clamp, loop, ping_pong): clamp", side);
+                continue;
+            }
+            (std::string(side) == "pre" ? curve.preWrap : curve.postWrap) = stringToCurveWrap(wrap.Scalar());
+        }
+    }
+    curve.normalize();
+    return curve;
+}
+
+bool editor::Stream::parseHexColor(const std::string& text, Vector4& srgb, bool& hasAlpha) {
+    std::string hex = text;
+    if (!hex.empty() && hex[0] == '#') hex = hex.substr(1);
+    if (hex.size() != 6 && hex.size() != 8) return false;
+    for (char c : hex) {
+        if (!std::isxdigit(static_cast<unsigned char>(c))) return false;
+    }
+    float v[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    for (size_t i = 0; i < hex.size() / 2; i++) {
+        v[i] = static_cast<float>(std::stoi(hex.substr(i * 2, 2), nullptr, 16)) / 255.0f;
+    }
+    srgb = Vector4(v[0], v[1], v[2], v[3]);
+    hasAlpha = hex.size() == 8;
+    return true;
+}
+
+bool editor::Stream::decodeColorValue(const YAML::Node& node, Vector4& linear, bool& hasAlpha) {
+    hasAlpha = false;
+    if (!node) return false;
+    if (node.IsScalar()) {
+        Vector4 srgb;
+        if (!parseHexColor(node.as<std::string>(), srgb, hasAlpha)) return false;
+        const Vector3 color = Color::sRGBToLinear(Vector3(srgb.x, srgb.y, srgb.z));
+        linear = Vector4(color.x, color.y, color.z, srgb.w);
+        return true;
+    }
+    if (node.IsSequence() && node.size() >= 3) {
+        linear = Vector4(decodeFinite(node[0], 0.0f), decodeFinite(node[1], 0.0f), decodeFinite(node[2], 0.0f),
+                         node.size() >= 4 ? decodeFinite(node[3], 1.0f) : 1.0f);
+        hasAlpha = node.size() >= 4;
+        return true;
+    }
+    return false;
+}
+
+namespace {
+
+    // a linear colour as "#RRGGBB" when that is exactly what it is (an 8-bit sRGB value read
+    // back gives it), else [r, g, b] in linear values
+    YAML::Node encodeGradientColor(const Vector3& linear) {
+        const Vector3 srgb = Color::linearTosRGB(Vector3(std::max(linear.x, 0.0f), std::max(linear.y, 0.0f), std::max(linear.z, 0.0f)));
+        const float channels[3] = {srgb.x, srgb.y, srgb.z};
+        const float linearChannels[3] = {linear.x, linear.y, linear.z};
+        int bytes[3];
+        bool exact = true;
+        for (int i = 0; i < 3 && exact; i++) {
+            if (!(channels[i] >= 0.0f && channels[i] <= 1.0f)) {
+                exact = false;
+                break;
+            }
+            bytes[i] = (int)std::lround(channels[i] * 255.0f);
+            const float back = Color::sRGBToLinear(Vector3((float)bytes[i] / 255.0f, 0.0f, 0.0f)).x;
+            exact = std::fabs(back - linearChannels[i]) <= 1e-6f;
+        }
+        if (exact) {
+            char text[8];
+            std::snprintf(text, sizeof(text), "#%02X%02X%02X", bytes[0], bytes[1], bytes[2]);
+            return YAML::Node(std::string(text));
+        }
+        YAML::Node node;
+        node.SetStyle(YAML::EmitterStyle::Flow);
+        node.push_back(editor::YamlNumbers::text(linear.x));
+        node.push_back(editor::YamlNumbers::text(linear.y));
+        node.push_back(editor::YamlNumbers::text(linear.z));
+        return node;
+    }
+
+}
+
+YAML::Node editor::Stream::encodeGradient(const Gradient& gradient) {
+    YAML::Node node;
+    node["mode"] = gradient.mode == GradientMode::Fixed ? "fixed" : "blend";
+    YAML::Node colors(YAML::NodeType::Sequence);
+    for (const GradientColorKey& key : gradient.colorKeys) {
+        YAML::Node keyNode;
+        keyNode.SetStyle(YAML::EmitterStyle::Flow);
+        keyNode.push_back(YamlNumbers::text(key.time));
+        keyNode.push_back(encodeGradientColor(key.color));
+        colors.push_back(keyNode);
+    }
+    node["colors"] = colors;
+    YAML::Node alphas(YAML::NodeType::Sequence);
+    for (const GradientAlphaKey& key : gradient.alphaKeys) {
+        YAML::Node keyNode;
+        keyNode.SetStyle(YAML::EmitterStyle::Flow);
+        keyNode.push_back(YamlNumbers::text(key.time));
+        keyNode.push_back(YamlNumbers::text(key.alpha));
+        alphas.push_back(keyNode);
+    }
+    node["alphas"] = alphas;
+    return node;
+}
+
+Gradient editor::Stream::decodeGradient(const YAML::Node& node, const Gradient& fallback) {
+    if (!node || node.IsNull()) return fallback;
+    // a single colour: a constant gradient
+    Vector4 single;
+    bool singleAlpha = false;
+    if ((node.IsScalar() || (node.IsSequence() && node.size() >= 3 && node[0].IsScalar())) && decodeColorValue(node, single, singleAlpha)) {
+        return Gradient::constant(single);
+    }
+    if (!node.IsMap()) return fallback;
+
+    Gradient gradient({}, {});
+    if (node["mode"]) {
+        if (node["mode"].IsScalar()) {
+            gradient.mode = (node["mode"].Scalar() == "fixed") ? GradientMode::Fixed : GradientMode::Blend;
+        } else {
+            Out::warning("Gradient: mode is not blend or fixed: blend");
+        }
+    }
+    if (node["colors"] && node["colors"].IsSequence()) {
+        for (const YAML::Node& keyNode : node["colors"]) {
+            if (!keyNode.IsSequence() || keyNode.size() < 2) continue;
+            Vector4 color;
+            bool hasAlpha = false;
+            if (!decodeColorValue(keyNode[1], color, hasAlpha)) continue;
+            gradient.colorKeys.push_back(GradientColorKey(decodeFinite(keyNode[0], 0.0f), Vector3(color.x, color.y, color.z)));
+        }
+    }
+    if (node["alphas"] && node["alphas"].IsSequence()) {
+        for (const YAML::Node& keyNode : node["alphas"]) {
+            if (!keyNode.IsSequence() || keyNode.size() < 2) continue;
+            gradient.alphaKeys.push_back(GradientAlphaKey(decodeFinite(keyNode[0], 0.0f), decodeFinite(keyNode[1], 1.0f)));
+        }
+    }
+    // more than Unity's 8 keys: the file still loads, with the first 7 and the last (normalize)
+    if (gradient.colorKeys.size() > Gradient::MAX_KEYS || gradient.alphaKeys.size() > Gradient::MAX_KEYS) {
+        Out::warning("Gradient: %zu colour and %zu alpha keys, at most %zu each: the first %zu and the last are kept",
+                     gradient.colorKeys.size(), gradient.alphaKeys.size(), Gradient::MAX_KEYS, Gradient::MAX_KEYS - 1);
+    }
+    gradient.normalize();
+    return gradient;
 }
 
 YAML::Node editor::Stream::encodeShaderUniforms(const ShaderUniformValues& uniforms) {
@@ -4936,6 +5167,11 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
         compNode[Catalog::getComponentName(ComponentType::VertexAnimatorComponent, true)] = encodeVertexAnimatorComponent(animator);
     }
 
+    if (signature.test(registry->getComponentId<TrailRendererComponent>())) {
+        const TrailRendererComponent& trail = registry->getComponent<TrailRendererComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::TrailRendererComponent, true)] = encodeTrailRendererComponent(trail);
+    }
+
     if (signature.test(registry->getComponentId<CameraShakerComponent>())) {
         const CameraShakerComponent& shaker = registry->getComponent<CameraShakerComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::CameraShakerComponent, true)] = encodeCameraShakerComponent(shaker);
@@ -5520,6 +5756,17 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->addComponent<VertexAnimatorComponent>(entity, std::move(animator));
         }else{
             registry->getComponent<VertexAnimatorComponent>(entity) = std::move(animator);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::TrailRendererComponent, true);
+    if (compNode[compName]) {
+        TrailRendererComponent* existing = registry->findComponent<TrailRendererComponent>(entity);
+        TrailRendererComponent trail = decodeTrailRendererComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<TrailRendererComponent>())){
+            registry->addComponent<TrailRendererComponent>(entity, std::move(trail));
+        }else{
+            registry->getComponent<TrailRendererComponent>(entity) = std::move(trail);
         }
     }
 
@@ -10224,6 +10471,176 @@ PointsComponent editor::Stream::decodePointsComponent(const YAML::Node& node, co
     return points;
 }
 
+std::string editor::Stream::lineRendererModeToString(LineRendererMode mode) {
+    return mode == LineRendererMode::Polyline ? "polyline" : "segments";
+}
+
+LineRendererMode editor::Stream::stringToLineRendererMode(const std::string& str) {
+    return (str == "polyline" || str == "Polyline") ? LineRendererMode::Polyline : LineRendererMode::Segments;
+}
+
+std::string editor::Stream::lineWidthUnitToString(LineWidthUnit unit) {
+    return unit == LineWidthUnit::Pixels ? "pixels" : "world";
+}
+
+LineWidthUnit editor::Stream::stringToLineWidthUnit(const std::string& str) {
+    return (str == "pixels" || str == "Pixels") ? LineWidthUnit::Pixels : LineWidthUnit::World;
+}
+
+std::string editor::Stream::lineAlignmentToString(LineAlignment alignment) {
+    return alignment == LineAlignment::TransformZ ? "transform_z" : "view";
+}
+
+LineAlignment editor::Stream::stringToLineAlignment(const std::string& str) {
+    return (str == "transform_z" || str == "TransformZ" || str == "transformZ") ? LineAlignment::TransformZ : LineAlignment::View;
+}
+
+std::string editor::Stream::lineTextureModeToString(LineTextureMode mode) {
+    switch (mode) {
+        case LineTextureMode::Stretch: return "stretch";
+        case LineTextureMode::Tile: return "tile";
+        case LineTextureMode::DistributePerSegment: return "distribute_per_segment";
+        case LineTextureMode::RepeatPerSegment: return "repeat_per_segment";
+    }
+    return "stretch";
+}
+
+LineTextureMode editor::Stream::stringToLineTextureMode(const std::string& str) {
+    if (str == "tile" || str == "Tile") return LineTextureMode::Tile;
+    if (str == "distribute_per_segment" || str == "DistributePerSegment") return LineTextureMode::DistributePerSegment;
+    if (str == "repeat_per_segment" || str == "RepeatPerSegment") return LineTextureMode::RepeatPerSegment;
+    return LineTextureMode::Stretch;
+}
+
+// The settings LineRendererComponent and TrailRendererComponent share (width, colour,
+// joints, caps, texture layout, sort order), each written away from its default only
+template<typename T>
+void editor::Stream::encodeRibbonFields(YAML::Node& node, const T& component, const T& defaults) {
+    if (component.widthMultiplier != defaults.widthMultiplier) node["widthMultiplier"] = YamlNumbers::text(component.widthMultiplier);
+    if (component.widthCurve != defaults.widthCurve) node["widthCurve"] = editor::Stream::encodeCurve(component.widthCurve);
+    if (component.widthUnit != defaults.widthUnit) node["widthUnit"] = editor::Stream::lineWidthUnitToString(component.widthUnit);
+    if (component.colorGradient != defaults.colorGradient) node["colorGradient"] = editor::Stream::encodeGradient(component.colorGradient);
+    if (component.numCornerVertices != defaults.numCornerVertices) node["numCornerVertices"] = component.numCornerVertices;
+    if (component.numCapVertices != defaults.numCapVertices) node["numCapVertices"] = component.numCapVertices;
+    if (component.alignment != defaults.alignment) node["alignment"] = editor::Stream::lineAlignmentToString(component.alignment);
+    if (component.textureMode != defaults.textureMode) node["textureMode"] = editor::Stream::lineTextureModeToString(component.textureMode);
+    if (component.textureScale != defaults.textureScale) node["textureScale"] = editor::Stream::encodeVector2(component.textureScale);
+    if (component.sortPriority != defaults.sortPriority) node["sortPriority"] = component.sortPriority;
+}
+
+template<typename T>
+void editor::Stream::decodeRibbonFields(const YAML::Node& node, T& component, const T& defaults) {
+    component.widthMultiplier = node["widthMultiplier"] ? std::max(0.0f, editor::Stream::decodeFinite(node["widthMultiplier"], defaults.widthMultiplier)) : defaults.widthMultiplier;
+    component.widthCurve = node["widthCurve"] ? editor::Stream::decodeCurve(node["widthCurve"], defaults.widthCurve) : defaults.widthCurve;
+    component.widthUnit = node["widthUnit"] ? editor::Stream::stringToLineWidthUnit(node["widthUnit"].as<std::string>()) : defaults.widthUnit;
+    component.colorGradient = node["colorGradient"] ? editor::Stream::decodeGradient(node["colorGradient"], defaults.colorGradient) : defaults.colorGradient;
+    component.numCornerVertices = node["numCornerVertices"]
+        ? std::min(YamlNumbers::as<unsigned int>(node["numCornerVertices"]), LINE_RIBBON_MAX_FAN_VERTICES) : defaults.numCornerVertices;
+    component.numCapVertices = node["numCapVertices"]
+        ? std::min(YamlNumbers::as<unsigned int>(node["numCapVertices"]), LINE_RIBBON_MAX_FAN_VERTICES) : defaults.numCapVertices;
+    component.alignment = node["alignment"] ? editor::Stream::stringToLineAlignment(node["alignment"].as<std::string>()) : defaults.alignment;
+    component.textureMode = node["textureMode"] ? editor::Stream::stringToLineTextureMode(node["textureMode"].as<std::string>()) : defaults.textureMode;
+    component.textureScale = node["textureScale"] ? editor::Stream::decodeVector2(node["textureScale"]) : defaults.textureScale;
+    component.sortPriority = node["sortPriority"] ? YamlNumbers::as<int>(node["sortPriority"]) : defaults.sortPriority;
+}
+
+void editor::Stream::encodeLineRibbonSettings(YAML::Node& node, const LineRendererComponent& lines) {
+    static const LineRendererComponent defaults;
+    if (lines.mode != defaults.mode) node["mode"] = lineRendererModeToString(lines.mode);
+    if (!lines.positions.empty()) {
+        YAML::Node positions(YAML::NodeType::Sequence);
+        for (const Vector3& position : lines.positions) positions.push_back(encodeVector3(position));
+        node["positions"] = positions;
+    }
+    if (lines.loop != defaults.loop) node["loop"] = lines.loop;
+    if (lines.useWorldSpace != defaults.useWorldSpace) node["useWorldSpace"] = lines.useWorldSpace;
+    encodeRibbonFields(node, lines, defaults);
+}
+
+void editor::Stream::decodeLineRibbonSettings(const YAML::Node& node, LineRendererComponent& lines) {
+    static const LineRendererComponent defaults;
+    lines.mode = node["mode"] ? stringToLineRendererMode(node["mode"].as<std::string>()) : defaults.mode;
+    lines.positions.clear();
+    if (node["positions"] && node["positions"].IsSequence()) {
+        for (const YAML::Node& position : node["positions"]) lines.positions.push_back(decodeVector3(position));
+    }
+    lines.loop = node["loop"] ? YamlNumbers::as<bool>(node["loop"]) : defaults.loop;
+    lines.useWorldSpace = node["useWorldSpace"] ? YamlNumbers::as<bool>(node["useWorldSpace"]) : defaults.useWorldSpace;
+    decodeRibbonFields(node, lines, defaults);
+}
+
+YAML::Node editor::Stream::encodeTrailRendererComponent(const TrailRendererComponent& trail) {
+    static const TrailRendererComponent defaults;
+    YAML::Node node;
+    node["enabled"] = trail.enabled;
+    node["time"] = YamlNumbers::text(trail.time);
+    node["minVertexDistance"] = YamlNumbers::text(trail.minVertexDistance);
+    // the Trail Renderer's own default width is 1 (Unity's): always written
+    node["widthMultiplier"] = YamlNumbers::text(trail.widthMultiplier);
+    if (trail.emitting != defaults.emitting) node["emitting"] = trail.emitting;
+    if (trail.autodestruct != defaults.autodestruct) node["autodestruct"] = trail.autodestruct;
+    encodeRibbonFields(node, trail, defaults);
+
+    if (!trail.customShader.empty())
+        node["customShader"] = trail.customShader;
+    if (!trail.shaderUniforms.empty())
+        node["shaderUniforms"] = encodeShaderUniforms(trail.shaderUniforms);
+    encodeComponentShaderLibrary(node, trail.shaderTextures, trail.shaderFeatures, &trail.blendMode, &trail.depthWrite, true);
+    encodeStencilAndColorWrite(node, trail.stencil, trail.colorWrite);
+    if (!trail.shaderGlobalBindings.empty()) {
+        YAML::Node bindings(YAML::NodeType::Map);
+        for (const auto& binding : trail.shaderGlobalBindings) bindings[binding.first] = binding.second;
+        node["shaderGlobalBindings"] = bindings;
+    }
+    return node;
+}
+
+TrailRendererComponent editor::Stream::decodeTrailRendererComponent(const YAML::Node& node, const TrailRendererComponent* oldTrail) {
+    static const TrailRendererComponent defaults;
+    TrailRendererComponent trail;
+    if (oldTrail) { trail = *oldTrail; }
+
+    trail.enabled = node["enabled"] ? YamlNumbers::as<bool>(node["enabled"]) : defaults.enabled;
+    trail.time = node["time"] ? std::max(0.0f, decodeFinite(node["time"], defaults.time)) : defaults.time;
+    trail.minVertexDistance = node["minVertexDistance"] ? std::max(0.0f, decodeFinite(node["minVertexDistance"], defaults.minVertexDistance)) : defaults.minVertexDistance;
+    trail.emitting = node["emitting"] ? YamlNumbers::as<bool>(node["emitting"]) : defaults.emitting;
+    trail.autodestruct = node["autodestruct"] ? YamlNumbers::as<bool>(node["autodestruct"]) : defaults.autodestruct;
+    decodeRibbonFields(node, trail, defaults);
+
+    trail.customShader = node["customShader"] ? node["customShader"].as<std::string>() : std::string();
+    trail.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
+    trail.needUpdateShaderUniforms = true;
+    decodeComponentShaderLibrary(node, trail.shaderTextures, trail.shaderFeatures, &trail.blendMode, &trail.depthWrite);
+    decodeStencilAndColorWrite(node, trail.stencil, trail.colorWrite);
+    trail.shaderGlobalBindings.clear();
+    if (node["shaderGlobalBindings"] && node["shaderGlobalBindings"].IsMap()) {
+        for (const auto& binding : node["shaderGlobalBindings"]) {
+            trail.shaderGlobalBindings.push_back({binding.first.as<std::string>(), binding.second.as<std::string>()});
+        }
+    }
+
+    // the runtime starts again: no points, nothing loaded
+    trail.points.reset();
+    trail.hasLastHeadPosition = false;
+    trail.idleTime = 0.0f;
+    trail.warnedCapacity = false;
+    trail.destroyRequested = false;
+    trail.needUpdateRibbon = true;
+    trail.needUpdateBuffer = false;
+    trail.worldAABB.setNull();
+    if (oldTrail && oldTrail->loaded) {
+        // decoded over a loaded trail: reloaded by the render system (its GPU objects freed)
+        trail.needReload = true;
+    } else {
+        trail.loaded = false;
+        trail.loadCalled = false;
+        trail.needReload = false;
+        trail.loadedRibbonKey = 0;
+        trail.ribbon = LineRibbonData();
+    }
+    return trail;
+}
+
 YAML::Node editor::Stream::encodeLineRendererComponent(const LineRendererComponent& lines) {
     YAML::Node node;
     node["enabled"] = lines.enabled;
@@ -10240,6 +10657,10 @@ YAML::Node editor::Stream::encodeLineRendererComponent(const LineRendererCompone
         linesNode.push_back(lineNode);
     }
     node["lines"] = linesNode;
+
+    // the polyline, width and ribbon settings (lines and trails spec 6.7): written only away
+    // from their defaults, so a scene without them is written as it always was
+    encodeLineRibbonSettings(node, lines);
 
     if (!lines.customShader.empty())
         node["customShader"] = lines.customShader;
@@ -10273,16 +10694,30 @@ LineRendererComponent editor::Stream::decodeLineRendererComponent(const YAML::No
         lines.maxLines = static_cast<unsigned int>(lines.lines.size());
     }
 
+    // not merged: an absent key is the default (encode leaves defaults out)
+    decodeLineRibbonSettings(node, lines);
+
     if (node["customShader"]) lines.customShader = node["customShader"].as<std::string>();
     lines.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
     lines.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, lines.shaderTextures, lines.shaderFeatures, &lines.blendMode, &lines.depthWrite);
     decodeStencilAndColorWrite(node, lines.stencil, lines.colorWrite);
 
-    lines.loaded = false;
-    lines.loadCalled = false;
     lines.needUpdateBuffer = false;
-    lines.needReload = false;
+    lines.needUpdateRibbon = true;
+    lines.polylineSegments.clear();
+    if (oldLines && oldLines->loaded) {
+        // decoded over a loaded line: the render system destroys its GPU objects and loads it
+        // again (dropping them here would leak its buffers and pipelines)
+        lines.needReload = true;
+    } else {
+        lines.loaded = false;
+        lines.loadCalled = false;
+        lines.needReload = false;
+        lines.loadedRibbon = false;
+        lines.loadedRibbonKey = 0;
+        lines.ribbon = LineRibbonData();
+    }
 
     if (node["enabled"]) lines.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
