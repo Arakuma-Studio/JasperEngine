@@ -110,7 +110,7 @@ function Player:init()
 end
 
 function Player:onUpdate()
-    local dx = Input.getAxis("Horizontal")              -- arrows / A D, gamepad, on-screen stick
+    local dx = Input.getAxis("Horizontal")              -- keys, gamepad, on-screen stick
     local p = self.go.position                          -- a copy: assign it back
     self.go.position = Vector3(p.x + dx * self.speed * Engine.deltatime, p.y, p.z)
     if Input.getButtonDown("Jump") then                 -- pressed this frame (space, pad Y)
@@ -131,9 +131,9 @@ return Player
 - Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
   Engine.deltatime. A missing method fails with "attempt to call a nil value". Check
   jasper://docs/lua-api (an index: read only what you need), the Lua stubs or search_engine_api before using a name you have not seen there.
-- Input: Input.getAxis/getButtonDown('Jump') read Project Settings > Input actions (Unity's
-  defaults); getKeyDown/getKeyUp(key) are edges, isKeyPressed held; test them with send_input
-  action/axis events (jasper://docs/input). Log.print/warn/error take ONE string (use ..).
+- Input.getAxis/getButtonDown('Jump') read Project Settings > Input actions; getKeyDown(key)
+  is an edge, isKeyPressed held. Test with send_input action/axis events (jasper://docs/input).
+  Log.print/warn/error take ONE string (use ..).
 - Time: Engine.timeScale and Engine.fixedDeltatime (read/write), Engine.gameTime and
   Engine.frameCount (scaled game time and frames since start).
 - C++ default arguments do not exist in Lua: pass every argument (e.g. the wake flag).

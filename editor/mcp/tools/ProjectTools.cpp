@@ -2326,7 +2326,7 @@ void registerProjectTools(McpRegistry& registry) {
         tool.title = "Set Project Settings";
         tool.description =
             "Set get_project_settings keys. Every value is validated first (one bad value changes nothing); "
-            "saved to project.yaml at once, NOT undoable (but input.actions). Lists are replaced; tags_and_layers.layers merges "
+            "saved to project.yaml at once, NOT undoable. Lists are replaced; tags_and_layers.layers merges "
             "by index. Example: {\"values\": {\"player.window_width\": 800}}.";
         tool.inputSchema = object({
             {"values", anyObject("")}

@@ -22,7 +22,7 @@ local PHASES = {[TouchPhase.Began] = "Began", [TouchPhase.Moved] = "Moved", [Tou
 
 function InputProbe:init()
     _G.probe = {spaceDowns = 0, spaceUps = 0, spaceHeld = 0, jumpDowns = 0, jumpUps = 0, jumpEvents = 0,
-                dashDowns = 0, frames = 0, touches = {}, mouseX = {}}
+                dashDowns = 0, frames = 0, touches = {}, mouseX = {}, verticalHeld = 0}
     RegisterEngineEvent(self, "onUpdate")
     RegisterEngineEvent(self, "onButtonDown")
 end
@@ -40,6 +40,7 @@ function InputProbe:onUpdate()
     if Input.getButtonDown("Jump") then p.jumpDowns = p.jumpDowns + 1 end
     if Input.getButtonUp("Jump") then p.jumpUps = p.jumpUps + 1 end
     if Input.hasAction("Dash") and Input.getButtonDown("Dash") then p.dashDowns = p.dashDowns + 1 end
+    if Input.getAxis("Vertical") == -0.5 then p.verticalHeld = p.verticalHeld + 1 end
     if Input.getAxis("Mouse X") ~= 0 then p.mouseX[#p.mouseX + 1] = string.format("%g", Input.getAxis("Mouse X")) end
     for _, touch in ipairs(Input.touches) do
         if touch.phase ~= TouchPhase.Stationary then
@@ -163,10 +164,11 @@ async def test_sources_sum_and_clamp(ed: Editor):
         ed.check("Horizontal" not in state["input"]["actions"], f"at rest: {state['input']}")
 
         # an axis with hold_frames goes back by itself; a delta lasts one frame and is not clamped
-        await send(ed, {"type": "axis", "name": "Vertical", "value": -0.5, "hold_frames": 3}, frames_after=0)
-        ed.check_eq(await axis(ed, "Vertical"), -0.5, "held")
-        await ed.call("wait", frames=4)
+        await lua(ed, "_G.probe.verticalHeld = 0")
+        await send(ed, {"type": "axis", "name": "Vertical", "value": -0.5, "hold_frames": 3}, frames_after=2)
+        ed.check_eq(await lua(ed, "return _G.probe.verticalHeld"), [3], "held for hold_frames")
         ed.check_eq(await axis(ed, "Vertical"), 0, "released after hold_frames")
+        ed.check("axes" not in (await ed.call("get_play_state")).get("held_input", {}), "nothing held")
         await lua(ed, "_G.probe.mouseX = {}")
         await send(ed, {"type": "axis_delta", "name": "Mouse X", "delta": 7}, frames_after=3)
         ed.check_eq(await lua(ed, "return table.concat(_G.probe.mouseX, ',')"), ["7"], "one frame saw the delta, unclamped")

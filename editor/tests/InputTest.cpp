@@ -19,6 +19,7 @@
 #include "json.hpp"
 
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -786,6 +787,10 @@ TEST_F(InputActionsTest, ButtonEventsFireInBeginFrame) {
         void down(const std::string& name) { log->push_back("down " + name); }
         void up(const std::string& name) { log->push_back("up " + name); }
     } listener{&log};
+    // a test that ran the engine may have left the game events paused (Engine::pauseGameEvents)
+    const bool downEnabled = Engine::onButtonDown.isEnabled(), upEnabled = Engine::onButtonUp.isEnabled();
+    Engine::onButtonDown.setEnabled(true);
+    Engine::onButtonUp.setEnabled(true);
     Engine::onButtonDown.add<Listener, &Listener::down>("InputTest", &listener);
     Engine::onButtonUp.add<Listener, &Listener::up>("InputTest", &listener);
     Input::addMousePressed(D_MOUSE_BUTTON_LEFT);
@@ -794,6 +799,8 @@ TEST_F(InputActionsTest, ButtonEventsFireInBeginFrame) {
     frame();
     Engine::onButtonDown.remove("InputTest");
     Engine::onButtonUp.remove("InputTest");
+    Engine::onButtonDown.setEnabled(downEnabled);
+    Engine::onButtonUp.setEnabled(upEnabled);
     EXPECT_EQ(log, (std::vector<std::string>{"down Fire1", "up Fire1"}));
 }
 
@@ -824,14 +831,17 @@ TEST_F(InputActionsTest, DisabledActionReadsZeroAndRestartsFromRest) {
 }
 
 TEST_F(InputActionsTest, UnknownNameLogsOnceAndReadsZero) {
+    // Log reaches the editor's Out, or (another test's System, none) stdout / stderr
     const uint64_t mark = editor::Out::lastLogId();
+    testing::internal::CaptureStdout();
     testing::internal::CaptureStderr();
     begin();
     EXPECT_FLOAT_EQ(InputActions::getAxis("Fire4"), 0.0f);
     EXPECT_FALSE(InputActions::getButtonDown("Fire4"));
     EXPECT_FALSE(InputActions::getButton("Fire4"));
     end();
-    const std::string logged = testing::internal::GetCapturedStderr() + loggedSince(mark);
+    fflush(stdout);
+    const std::string logged = testing::internal::GetCapturedStderr() + testing::internal::GetCapturedStdout() + loggedSince(mark);
     EXPECT_EQ(count(logged, "Input action \"Fire4\" does not exist (Project Settings > Input)"), 1u) << logged;
     EXPECT_FALSE(InputActions::hasAction("Fire4"));
 }

@@ -3404,8 +3404,8 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Get Play State";
         tool.description =
             "Play state: played and running scenes (child scenes run as copies with own ids), the session (time, "
-            "frames, errors, crash), how the last one ended, held input, input (actions not at rest, touches, keys "
-            "held), console_cursor, the clock (time_scale, fixed_fps, auto_pause, held); stopped: play_would_start.";
+            "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), "
+            "console_cursor, the clock (time_scale, fixed_fps, auto_pause, held); stopped: play_would_start.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -3539,15 +3539,13 @@ void registerPlayTools(McpRegistry& registry) {
             "Inject input into the running game across frames (no focus needed). events in order, each {type, "
             "...} (first action = default):\nkey: key (space, a, 0, left, f1, kp_0...), action press|down|up, "
             "hold_frames (2), hold_ms, mods [shift,ctrl,alt,super]\ntext: text (UTF-8); ime: text, cursor (code "
-            "points; -1 selects) = composition; ime_commit: text; ime_cancel\nmouse_leave, mouse_enter (the game "
-            "window)\nmouse: action click|double_click|down|up|move|drag|scroll, x, y (click/down/up default: the "
-            "pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy\ntouch: action "
+            "points; -1 selects) = composition; ime_commit: text; ime_cancel\nmouse_leave, mouse_enter\nmouse: "
+            "action click|double_click|down|up|move|drag|scroll, x, y (default: the pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy\ntouch: action "
             "tap|start|move|end|cancel|swipe, pointer, x, y, to\nmouse/touch: target / to_target = CSS selector "
             "of a UI Document element (its center; document: which)\ngamepad: gamepad (0), button (a, b, start, "
-            "dpad_up...) + action, or axis (left_x..right_trigger) + value -1..1\naction: name, phase "
-            "press|down|up; axis: name, value; axis_delta: name, delta (Project Settings > Input)\nwait: frames, ms. "
-            "release_all.\nspace: canvas px from top-left (Input.getMousePosition), normalized 0..1, view = Game "
-            "view px. down holds until up/release_all/stop. Returns frames, console lines, play state; "
+            "dpad_up...) + action, or axis (left_x..right_trigger) + value -1..1\naction (input actions): name, "
+            "phase press|down|up; axis: name, value; axis_delta: name, delta\nwait: frames, ms. release_all.\nspace: "
+            "canvas px from top-left, normalized 0..1, view = Game view px. down holds until up/release_all/stop. Returns frames, console lines, play state; "
             "auto_pause: only events + frames_after run.";
         tool.inputSchema = object({
             {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500}, {"items", eventItem}}},
