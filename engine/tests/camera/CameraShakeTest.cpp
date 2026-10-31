@@ -472,7 +472,8 @@ TEST_F(Shake, DisablingClearsTheOffsetAndEnablingReplaysTheStartPreset){
     EXPECT_EQ(shaker(cam).runtime->instances.size(), 1u);
     shaker(cam).enabled = true;
     step();
-    EXPECT_EQ(shaker(cam).runtime->instances.size(), 2u);
+    // the start shake held while disabled: it plays on, none is added (no pile-up)
+    EXPECT_EQ(shaker(cam).runtime->instances.size(), 1u);
     // a deactivated GameObject is the same
     scene.setEntityActive(cam, false);
     step();
@@ -483,8 +484,25 @@ TEST_F(Shake, DisablingClearsTheOffsetAndEnablingReplaysTheStartPreset){
         step();
         shaken = shaken || cameraOf(cam).hasViewOffset;
     }
-    EXPECT_EQ(shaker(cam).runtime->instances.size(), 3u);
+    EXPECT_EQ(shaker(cam).runtime->instances.size(), 1u);
     EXPECT_TRUE(shaken);
+    for (int i = 0; i < 10; i++){
+        shaker(cam).enabled = false;
+        step();
+        shaker(cam).enabled = true;
+        step();
+    }
+    EXPECT_EQ(shaker(cam).runtime->instances.size(), 1u) << "ten disable / enable cycles add nothing";
+    // once the start shake is over, the next enable plays it again (Unity's OnEnable)
+    CameraShaker(&scene, cam).stopAll(0.0f);
+    step(DT, 2);
+    EXPECT_EQ(shaker(cam).runtime->instances.size(), 0u);
+    shaker(cam).enabled = false;
+    step();
+    shaker(cam).enabled = true;
+    step();
+    EXPECT_EQ(shaker(cam).runtime->instances.size(), 1u);
+    EXPECT_EQ(shaker(cam).runtime->instances[0].presetName, "electrocute");
 }
 
 TEST_F(Shake, GlobalCallsSkipNonGlobalAndDisabledShakers){
@@ -759,6 +777,110 @@ TEST_F(Shake, LuaApi){
     field("space"); EXPECT_STREQ(lua_tostring(L, -1), "target_yaw"); lua_pop(L, 1);
     field("targetNil"); EXPECT_TRUE(lua_toboolean(L, -1)); lua_pop(L, 1);
     EXPECT_EQ(scene.getComponent<CameraFollowComponent>(cam).target, NULL_ENTITY);
+}
+
+// ---- review fixes
+
+TEST_F(Shake, TransformModeLeavesRelativeScriptMovesExact){
+    // a script moving the GameObject relative to its current pose (position = position + v * dt)
+    // sees the unshaken pose each frame (preUpdate writes the base back): no shake soaks in
+    Entity prop = scene.createEntity();
+    Transform transform;
+    transform.position = Vector3(2, 1, 0);
+    scene.addComponent<Transform>(prop, transform);
+    scene.addComponent<CameraShakerComponent>(prop, {});
+    ShakeOptions options;
+    options.hasSeed = true;
+    options.seed = 11;
+    ShakeInstanceHandle handle = CameraShaker(&scene, prop).shake(ShakeSource(preset(ShakeType::OneShot, 1.0f, 13.0f, 0.05f, 0.3f,
+                                                                                    Vector3(1, 1, 1), Vector3(5, 5, 5))), options);
+    const Vector3 velocity(0.5f, 0.0f, -0.25f);
+    int frames = 0;
+    bool moved = false;
+    while ((handle.isValid() || shaker(prop).runtime->transformActive) && frames < 300){
+        system().preUpdate();
+        Transform& t = scene.getComponent<Transform>(prop);
+        t.position = t.position + velocity * DT;   // the script
+        step();
+        frames++;
+        moved = moved || scene.getComponent<Transform>(prop).position != Vector3(2, 1, 0) + velocity * (DT * frames);
+    }
+    EXPECT_TRUE(moved) << "the shake showed while the script moved it";
+    const Vector3 expected = Vector3(2, 1, 0) + velocity * (DT * frames);
+    const Vector3 got = scene.getComponent<Transform>(prop).position;
+    EXPECT_NEAR(got.x, expected.x, 1e-4f);
+    EXPECT_NEAR(got.y, expected.y, 1e-4f);
+    EXPECT_NEAR(got.z, expected.z, 1e-4f);
+    EXPECT_EQ(scene.getComponent<Transform>(prop).rotation, Quaternion());
+}
+
+TEST_F(Shake, TwoDTransformModeUsesTheSceneCameraHeight){
+    Entity cam = camera(Vector3(0, 0, 0), CameraType::CAMERA_ORTHO);
+    cameraOf(cam).bottomClip = 0.0f;
+    cameraOf(cam).topClip = 20.0f;
+    scene.setCamera(cam);
+    Entity sprite = scene.createEntity();
+    scene.addComponent<Transform>(sprite, {});
+    CameraShakerComponent component;
+    component.mode = CameraShakeMode::Mode2D;
+    scene.addComponent<CameraShakerComponent>(sprite, component);
+    CameraShaker(&scene, sprite).shake(ShakeSource(preset(ShakeType::Sustained, 1.0f, 13.0f, 0.0f, 0.0f)));
+    float maxX = 0.0f;
+    for (int i = 0; i < 300; i++){
+        step();
+        maxX = std::max(maxX, std::fabs(shaker(sprite).runtime->offsetPosition.x));
+    }
+    // tenths of the camera's 20 units, not of the canvas
+    EXPECT_LE(maxX, 2.0f);
+    EXPECT_GT(maxX, 0.2f);
+}
+
+TEST_F(Shake, TheAudioListenerKeepsTheSteadyUp){
+    Entity cam = camera(Vector3(0, 0, 10));
+    cameraOf(cam).hasViewOffset = true;
+    cameraOf(cam).viewOffsetRotation = shakeEulerToQuaternion(Vector3(0, 0, 30));
+    render(cam);
+    const Vector3 steady = cameraOf(cam).steadyWorldUp;
+    EXPECT_NEAR(steady.x, 0.0f, 1e-5f);
+    EXPECT_NEAR(steady.y, 1.0f, 1e-5f);
+    // the drawn view rolled
+    EXPECT_GT(std::fabs(cameraOf(cam).worldUp.x), 0.1f);
+}
+
+TEST_F(Shake, RemovingOrAddingTheCameraSwitchesModeCleanly){
+    Entity cam = camera(Vector3(1, 2, 3));
+    CameraShaker(&scene, cam).shake(ShakeSource(preset(ShakeType::Sustained, 1.0f, 13.0f, 0.0f, 0.0f)));
+    step(DT, 4);
+    ASSERT_TRUE(cameraOf(cam).hasViewOffset);
+    scene.removeComponent<CameraComponent>(cam);
+    EXPECT_FALSE(shaker(cam).runtime->applied);
+    EXPECT_EQ(shaker(cam).runtime->offsetPosition, Vector3(0, 0, 0));
+    // transform mode from its own pose
+    step(DT, 4);
+    EXPECT_TRUE(shaker(cam).runtime->transformActive);
+    EXPECT_NE(scene.getComponent<Transform>(cam).position, Vector3(1, 2, 3));
+    // a camera again: the Transform gets its base back at once, the shake goes to the view
+    CameraComponent component;
+    component.useTarget = false;
+    scene.addComponent<CameraComponent>(cam, component);
+    EXPECT_EQ(scene.getComponent<Transform>(cam).position, Vector3(1, 2, 3));
+    EXPECT_FALSE(shaker(cam).runtime->transformActive);
+    step(DT, 3);
+    EXPECT_TRUE(cameraOf(cam).hasViewOffset);
+    EXPECT_EQ(scene.getComponent<Transform>(cam).position, Vector3(1, 2, 3));
+}
+
+TEST_F(Shake, StaticCallsInAPausedSceneAreDroppedWithTheirOwnWarning){
+    camera();
+    system().setPaused(true);
+    cameratest::takeWarnings();
+    EXPECT_FALSE(CameraShake::shake(ShakeSource("explosion")).isValid());
+    std::vector<std::string> warnings = cameratest::takeWarnings();
+    for (const std::string& warning : warnings){
+        EXPECT_EQ(warning.find("no global Camera Shaker"), std::string::npos) << "a pause is not a missing shaker: " << warning;
+    }
+    system().setPaused(false);
+    EXPECT_TRUE(CameraShake::shake(ShakeSource("explosion")).isValid());
 }
 
 // ---- 13. the budget

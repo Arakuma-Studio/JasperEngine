@@ -15,7 +15,9 @@ Shaker to Main Camera**. Then shake from any script:
 CameraShake.shake("explosion")
 ```
 
-The shake moves what the camera **sees**, not the camera itself. Its Transform keeps its
+The shake moves what the camera **sees**, not the camera itself. Clicks and touches picked
+through the camera, and its world direction / up / right vectors, follow the shaken view (as in
+Unity); its position, rotation, target and the 3D audio listener do not. Its Transform keeps its
 position and rotation. A camera that follows a player, or that a script moves every frame, still
 shakes, and nothing has to be restored afterwards. If you come from MilkShake, you no longer need
 an extra child object for the camera: put the Camera Shaker on the camera itself.
@@ -64,6 +66,9 @@ the Inspector sets the decay, the power, the largest offset and angle, and the f
 
 ### 2D
 
+A HUD drawn by the same camera as the world shakes with it: put the HUD in a separate UI scene
+(attached as a child scene, with its own UI camera) so only the world shakes.
+
 On an orthographic or UI camera (**Mode** Auto, or 2D), only x/y movement and roll are applied.
 Distances are measured in tenths of the view height, so a preset looks the same at any camera
 size, as in Unity's 2D camera.
@@ -75,7 +80,8 @@ The **Test** strip in the Camera Shaker's Inspector has a preset menu, **Shake**
 
 - **Edit mode.** Test previews in the Game view, which shows a "Shake preview" badge. The scene
   is not changed. Play, saving or selecting something else stops the preview.
-- **Play mode.** Test shakes the running game.
+- **Play mode.** Test shakes the running game. While the game is paused, shakes asked by scripts
+  or tools are dropped (a warning says so).
 
 A readout shows the trauma, the number of active shakes and the current offset.
 
@@ -108,6 +114,9 @@ Add **Camera Follow** to a camera and set its **Target**:
 - **Snap Now** places the camera at once. In edit mode this is one undo step.
 
 The Scene view draws the bounds box and the dead zone of the selected Camera Follow.
+
+A level's camera can follow a player that survives scene loads (`DontDestroyOnLoad`): set
+`follow.target = player` from a script. A target in any other scene is refused.
 
 While it is enabled, Camera Follow owns the camera's Transform. If a script also moves the
 camera, Camera Follow wins and the Inspector warns you. A Camera Shaker on the same camera shakes

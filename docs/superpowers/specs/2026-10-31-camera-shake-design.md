@@ -740,3 +740,37 @@ Decisions taken while implementing (branch `gaps/camera-shake`, both phases):
     - **The agent guide** was at 16812 bytes after the merge, over its 16 KB budget (main alone
       was at 16488). Wording was condensed in the intro, Code, Lua, physics, shaders and build
       sections, keeping every rule and pointer, to 16369 bytes.
+18. **Review fixes.**
+    - **Start presets don't pile up.** `startPreset` replays on an enable only when the shake it
+      started (`ShakerRuntime::startInstanceId`) is gone. A disabled shaker holds its shakes, so
+      a disable/enable resumes the same one.
+    - **Transform mode writes the base back before the frame.** It does this at the start of
+      each frame (`CameraControlSystem::preUpdate`, called by `Engine::runFrame` before the fixed
+      steps and scripts) and applies base + offset in the update. A script moving relative to its
+      current pose (`position = position + v * dt`) no longer soaks up the shake. The
+      PoseBlendBone comparison remains for frames run without `preUpdate` (tests, scenes updated
+      by hand).
+    - **2D transform mode on non-UI GameObjects** uses tenths of the scene camera's orthographic
+      height. UI elements keep tenths of the canvas height.
+    - **`CameraComponent::steadyWorldUp`** is the up of the view before the shake. The 3D audio
+      listener uses it, so a shake never turns what is heard. `worldUp` / `worldRight` /
+      `worldDirection`, picking and `getViewMatrix` follow the drawn (shaken) view, as in Unity.
+    - **A CameraComponent removed** from a shaking GameObject turns the shaker to transform mode
+      from its own pose. **One added** to a transform-mode shaker writes the base back at once;
+      the shake continues through the view offset.
+    - **Static calls while a scene is paused** (the editor's Play paused, edit mode) are dropped,
+      not queued (nothing steps there), with their own warning. They no longer use up the
+      once-per-process "no global Camera Shaker" warning.
+    - **2D HUDs** drawn by the shaken camera shake with it. The docs say to put the HUD in a UI
+      child scene. Excluding UI layers from the view offset was not cheap: it would take a second
+      view matrix in the camera loop.
+19. **Camera Follow and the persistent scene** (lead decision with persistence).
+    - A target can be a GameObject of the persistent DontDestroyOnLoad scene
+      (`CameraFollowComponent::targetPersistent`, runtime). Set it from Lua
+      (`follow.target = persistentPlayer`) or C++ `CameraFollow::setTarget(scene, entity)`.
+    - When a followed GameObject moves into the persistent scene
+      (`ObjectManager::moveToScene` -> `CameraControlSystem::remapTargets`), its followers follow
+      the moved copy.
+    - A target in any other scene is refused with a warning, and a move to a scene that is not
+      persistent clears the target with a warning.
+    - Scene files and the Inspector name targets of their own scene only; the flag is not saved.

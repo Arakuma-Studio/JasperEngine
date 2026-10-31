@@ -699,7 +699,8 @@ void prepare<CameraShakerComponent>(CameraShakerComponent& shaker, Entity, Clone
 
 template<>
 void prepare<CameraFollowComponent>(CameraFollowComponent& follow, Entity, CloneContext& ctx) {
-    follow.target = ctx.remap(follow.target);
+    // a persistent target stays (the copy follows the same persistent GameObject)
+    if (!follow.targetPersistent) follow.target = ctx.remap(follow.target);
     // a copy is placed without damping on its first update
     const CameraFollowComponent defaults;
     follow.velocity = defaults.velocity;

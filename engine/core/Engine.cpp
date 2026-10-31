@@ -15,6 +15,7 @@
 #include "lua.hpp"
 #include "manager/SceneManager.h"
 #include "subsystem/AudioSystem.h"
+#include "subsystem/CameraControlSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
@@ -1496,6 +1497,12 @@ void Engine::runFrame(bool draw){
         // while the editor's Play is paused (Engine::pauseGameEvents)
         if (onUpdate.isEnabled())
             ScriptScheduler::beginFrame(frameDelta, unscaledDeltatime);
+
+        // transform-mode Camera Shakers write their base back before anything of this frame
+        // moves their GameObjects (they shake it again in the scene update)
+        for (int i = 0; i < scenes.size(); i++) {
+            if (auto cameras = scenes[i]->findSystem<CameraControlSystem>()) cameras->preUpdate();
+        }
 
         // 0) start of the scripts enabled since the last frame, before their first fixed
         //    update and update (Unity)

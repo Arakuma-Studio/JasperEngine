@@ -2787,10 +2787,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addConstructor <void (*) (Scene*, Entity)> ()
         // Places it on the next update without damping
         .addFunction("snap", &CameraFollow::snap)
-        // The GameObject followed (same scene), or nil
+        // The GameObject followed (this scene's, or a persistent DontDestroyOnLoad one), or nil
         .addProperty("target",
             +[](const CameraFollow* self, lua_State* L) -> luabridge::LuaRef {
-                Scene* scene = self->getScene();
+                Scene* scene = self->getTargetScene();
                 const Entity target = self->getTarget();
                 if (!scene || target == NULL_ENTITY || !scene->isEntityCreated(target)){
                     return luabridge::LuaRef(L);
@@ -2806,12 +2806,11 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
                 }
                 Scene* scene = nullptr;
                 Entity entity = NULL_ENTITY;
-                const bool object = luaObjectArg(L, index, scene, entity);
-                if (!object || scene != self->getScene()){
-                    Log::warn("CameraFollow.target: a GameObject of the same scene, or nil");
+                if (!luaObjectArg(L, index, scene, entity)){
+                    Log::warn("CameraFollow.target: a GameObject (of this scene or the persistent one), or nil");
                     return;
                 }
-                self->setTarget(entity);
+                self->setTarget(scene, entity);
             })
         .addProperty("offset", &CameraFollow::getOffset, &CameraFollow::setOffset)
         .addProperty("offsetSpace", &CameraFollow::getOffsetSpace, &CameraFollow::setOffsetSpace)

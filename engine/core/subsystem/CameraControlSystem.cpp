@@ -14,6 +14,7 @@
 #include "component/Transform.h"
 #include "component/UIComponent.h"
 #include "subsystem/UISystem.h"
+#include "manager/SceneManager.h"
 
 #include <algorithm>
 #include <cmath>
@@ -112,17 +113,52 @@ float CameraControlSystem::smoothDamp(float current, float target, float& veloci
     return output;
 }
 
-WorldPose CameraControlSystem::computeWorldNow(Entity entity) const{
+CameraWorldPose CameraControlSystem::computeWorldNow(Entity entity) const{
+    return computeWorldNow(scene, entity);
+}
+
+Scene* CameraControlSystem::targetSceneOf(const CameraFollowComponent& follow) const{
+    return follow.targetPersistent ? SceneManager::getPersistentScene() : scene;
+}
+
+bool CameraControlSystem::targetAlive(const CameraFollowComponent& follow, Entity self) const{
+    Scene* in = targetSceneOf(follow);
+    return in && follow.target != NULL_ENTITY && !(in == scene && follow.target == self) &&
+           in->isEntityCreated(follow.target) && in->findComponent<Transform>(follow.target);
+}
+
+void CameraControlSystem::remapTargets(Scene* to, const std::unordered_map<Entity, Entity>& moved){
+    const bool persistent = to && to == SceneManager::getPersistentScene();
+    auto followers = scene->getComponentArray<CameraFollowComponent>();
+    for (size_t i = 0; i < followers->size(); i++){
+        CameraFollowComponent& follow = followers->getComponentFromIndex(i);
+        if (follow.targetPersistent) continue;
+        auto it = moved.find(follow.target);
+        if (it == moved.end()) continue;
+        if (persistent){
+            // DontDestroyOnLoad of the target: this scene's camera follows it into the persistent scene
+            follow.target = it->second;
+            follow.targetPersistent = true;
+            follow.followedTarget = it->second;
+        }else{
+            Log::warn("Camera Follow on '%s': its target moved to another scene; only the persistent "
+                      "(DontDestroyOnLoad) scene can be followed from here", scene->getEntityName(followers->getEntity(i)).c_str());
+            follow.target = NULL_ENTITY;
+        }
+    }
+}
+
+CameraWorldPose CameraControlSystem::computeWorldNow(Scene* in, Entity entity){
     // the chain root first; a cycle (never valid) stops after 256 levels
     std::vector<const Transform*> chain;
     Entity current = entity;
-    while (current != NULL_ENTITY && chain.size() < 256){
-        const Transform* transform = scene->findComponent<Transform>(current);
+    while (in && current != NULL_ENTITY && chain.size() < 256){
+        const Transform* transform = in->findComponent<Transform>(current);
         if (!transform) break;
         chain.push_back(transform);
         current = transform->parent;
     }
-    WorldPose pose;
+    CameraWorldPose pose;
     pose.matrix = Matrix4();
     pose.rotation = Quaternion();
     for (auto it = chain.rbegin(); it != chain.rend(); ++it){
@@ -143,14 +179,13 @@ void CameraControlSystem::snap(CameraFollowComponent& follow){
 FollowPlacement CameraControlSystem::computeFollow(Entity entity, CameraFollowComponent& follow, float dt, bool snapNow){
     FollowPlacement placement;
     Transform* transform = scene->findComponent<Transform>(entity);
-    if (!transform || follow.target == NULL_ENTITY || follow.target == entity ||
-        !scene->isEntityCreated(follow.target) || !scene->findComponent<Transform>(follow.target)){
+    if (!transform || !targetAlive(follow, entity)){
         return placement;
     }
 
-    const WorldPose target = computeWorldNow(follow.target);
+    const CameraWorldPose target = computeWorldNow(targetSceneOf(follow), follow.target);
     // the follower's parent now: the world placement goes back through it
-    WorldPose parent;
+    CameraWorldPose parent;
     if (transform->parent != NULL_ENTITY && scene->findComponent<Transform>(transform->parent)){
         parent = computeWorldNow(transform->parent);
     }
@@ -243,9 +278,7 @@ void CameraControlSystem::followOne(Entity entity, CameraFollowComponent& follow
     Transform* transform = scene->findComponent<Transform>(entity);
     if (!transform) return;
 
-    const bool targetAlive = follow.target != NULL_ENTITY && follow.target != entity &&
-                             scene->isEntityCreated(follow.target) && scene->findComponent<Transform>(follow.target);
-    if (!targetAlive){
+    if (!targetAlive(follow, entity)){
         // S9: a destroyed target stops the follower (it holds where it is)
         if (follow.target != NULL_ENTITY && !follow.warnedMissingTarget){
             follow.warnedMissingTarget = true;
@@ -379,6 +412,7 @@ float CameraControlSystem::distanceScale(Entity entity, const CameraShakerCompon
 void CameraControlSystem::restoreTransformBase(Entity entity, ShakerRuntime& runtime){
     if (!runtime.transformActive) return;
     runtime.transformActive = false;
+    runtime.baseRestored = false;
     Transform* transform = scene->findComponent<Transform>(entity);
     if (!transform) return;
     // what the shake wrote goes back to the base; a value someone else wrote meanwhile stays
@@ -411,10 +445,13 @@ void CameraControlSystem::applyTransformOffset(Entity entity, ShakerRuntime& run
 
     // PoseBlendBone's rule: the value still holds what was written last frame -> the base is the
     // one remembered; anything else was written by someone (a script, an animation) and is the base
-    if (!runtime.transformActive){
+    if (!runtime.transformActive || runtime.baseRestored){
+        // first frame, or the base was written back before this frame's scripts: what is there
+        // now is the base
         runtime.basePosition = transform->position;
         runtime.baseRotation = transform->rotation;
         if (anchored) runtime.baseAnchorOffset = layout->positionOffset;
+        runtime.baseRestored = false;
     }else{
         if (anchored){
             if (layout->positionOffset != runtime.writtenAnchorOffset) runtime.baseAnchorOffset = layout->positionOffset;
@@ -455,8 +492,14 @@ void CameraControlSystem::applyOffset(Entity entity, const CameraShakerComponent
         float unit = 1.0f;
         if (camera){
             if (isOrthographic(*camera)) unit = std::fabs(camera->topClip - camera->bottomClip) / 10.0f;
-        }else{
+        }else if (scene->findComponent<UIComponent>(entity) || scene->findComponent<RectTransformComponent>(entity)){
+            // a UI element: tenths of the canvas height
             unit = (float)std::max(1, Engine::getCanvasHeight()) / 10.0f;
+        }else{
+            // a 2D object: tenths of what the scene's camera shows, as on a camera
+            const CameraComponent* view = scene->findComponent<CameraComponent>(scene->getCamera());
+            unit = view && isOrthographic(*view) ? std::fabs(view->topClip - view->bottomClip) / 10.0f
+                                                 : (float)std::max(1, Engine::getCanvasHeight()) / 10.0f;
         }
         position = Vector3(position.x * unit, position.y * unit, 0.0f);
         rotation = Vector3(0.0f, 0.0f, rotation.z);
@@ -552,11 +595,12 @@ void CameraControlSystem::updateShakers(float scaledDt, float unscaledDt){
         ShakerRuntime& runtime = ensureRuntime(shaker);
         if (!runtime.wasActive){
             runtime.wasActive = true;
-            // Unity's OnEnable: the start preset plays on every enable
-            if (!shaker.startPreset.empty()){
+            // Unity's OnEnable: the start preset plays on each enable, unless the one it started
+            // still plays (it held while disabled): a disable and an enable never pile it up
+            if (!shaker.startPreset.empty() && !runtime.findInstance(runtime.startInstanceId)){
                 ShakePreset preset;
                 if (CameraShake::resolveSource(ShakeSource(shaker.startPreset), preset)){
-                    play(entity, shaker, preset, shaker.startPreset, ShakeOptions());
+                    runtime.startInstanceId = play(entity, shaker, preset, shaker.startPreset, ShakeOptions());
                 }
             }
         }
@@ -600,6 +644,56 @@ void CameraControlSystem::onComponentRemoved(Entity entity, ComponentId componen
         if (entity == previewEntity){
             stopPreview();
         }
+        // the shaker goes on in transform mode from the GameObject's own pose (the view offset
+        // goes with the camera)
+        CameraShakerComponent* shaker = scene->findComponent<CameraShakerComponent>(entity);
+        if (shaker && shaker->runtime){
+            shaker->runtime->applied = false;
+            shaker->runtime->transformActive = false;
+            shaker->runtime->baseRestored = false;
+            shaker->runtime->offsetPosition = Vector3(0, 0, 0);
+            shaker->runtime->offsetRotation = Vector3(0, 0, 0);
+        }
+    }
+}
+
+void CameraControlSystem::onComponentAdded(Entity entity, ComponentId componentId){
+    if (componentId != scene->getComponentId<CameraComponent>()) return;
+    // a transform-mode shaker becomes a camera one: the Transform gets its base back, the
+    // shake goes on through the view offset
+    CameraShakerComponent* shaker = scene->findComponent<CameraShakerComponent>(entity);
+    if (shaker && shaker->runtime){
+        restoreTransformBase(entity, *shaker->runtime);
+        shaker->runtime->applied = false;
+        shaker->runtime->baseRestored = false;
+    }
+}
+
+void CameraControlSystem::preUpdate(){
+    if (paused) return;
+    // transform mode: the base goes back before this frame's scripts and animations, so what
+    // they do (position = position + v * dt included) works on the unshaken pose; update()
+    // puts the offset back over whatever they left
+    auto shakers = scene->getComponentArray<CameraShakerComponent>();
+    for (size_t i = 0; i < shakers->size(); i++){
+        CameraShakerComponent& shaker = shakers->getComponentFromIndex(i);
+        if (!shaker.runtime || !shaker.runtime->transformActive) continue;
+        ShakerRuntime& runtime = *shaker.runtime;
+        const Entity entity = shakers->getEntity(i);
+        Transform* transform = scene->findComponent<Transform>(entity);
+        if (!transform) continue;
+        if (runtime.anchored){
+            if (RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity)){
+                if (layout->positionOffset == runtime.writtenAnchorOffset) layout->positionOffset = runtime.baseAnchorOffset;
+            }
+        }else if (transform->position == runtime.writtenPosition){
+            transform->position = runtime.basePosition;
+        }
+        if (transform->rotation == runtime.writtenRotation){
+            transform->rotation = runtime.baseRotation;
+        }
+        transform->needUpdate = true;
+        runtime.baseRestored = true;
     }
 }
 

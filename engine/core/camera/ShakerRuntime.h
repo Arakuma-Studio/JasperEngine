@@ -47,11 +47,17 @@ namespace jasperengine::camera{
 
         // enabled and active in hierarchy at the last update (startPreset plays on the edges)
         bool wasActive = false;
+        // the instance startPreset started (0: none): an enable replays it only once it is gone,
+        // so disabling and enabling again never piles start shakes up
+        uint64_t startInstanceId = 0;
 
         // transform mode: the base under the additive offset and what was written over it
         // (PoseBlendBone's rule: a value that is not what was written was written by someone else)
         bool transformActive = false;
         bool anchored = false;                  // the base is the RectTransform's positionOffset
+        // the base was written back before this frame's scripts (CameraControlSystem::preUpdate):
+        // what the GameObject holds now is the base, whatever wrote it this frame
+        bool baseRestored = false;
         Vector3 basePosition = Vector3(0, 0, 0);
         Vector3 writtenPosition = Vector3(0, 0, 0);
         Vector2 baseAnchorOffset = Vector2(0, 0);

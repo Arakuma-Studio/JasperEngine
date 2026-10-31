@@ -8077,6 +8077,8 @@ CameraFollowComponent editor::Stream::decodeCameraFollowComponent(const YAML::No
         follow.boundsMin = defaults.boundsMin;
         follow.boundsMax = defaults.boundsMax;
         follow.unscaledTime = defaults.unscaledTime;
+        // a scene file names a GameObject of its own scene
+        follow.targetPersistent = false;
     }
     if (node["enabled"]) follow.enabled = YamlNumbers::as<bool>(node["enabled"]);
     if (node["target"]) follow.target = YamlNumbers::as<Entity>(node["target"]);

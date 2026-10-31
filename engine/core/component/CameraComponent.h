@@ -115,6 +115,10 @@ namespace jasperengine{
         Vector3 viewOffsetPosition = Vector3(0, 0, 0);
         Quaternion viewOffsetRotation;
         Vector3 viewOffsetPivot = Vector3(0, 0, 0);
+        // the world up of the view before that offset (updateCamera): the audio listener's, so a
+        // shake never turns what the player hears. worldUp / worldRight / worldDirection are the
+        // drawn (shaken) view's
+        Vector3 steadyWorldUp = Vector3(0, 1, 0);
 
         bool needUpdate = true;
     };

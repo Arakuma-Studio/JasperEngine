@@ -1559,7 +1559,7 @@ overrides the shaker's `unscaledTime`, the fades override the preset's.
 | `enabled`, `global`, `unscaledTime` | rw |
 | `mode` | rw, `"auto"` (2D for orthographic / UI cameras), `"3d"`, `"2d"` (x/y in tenths of the view height and roll only) |
 | `positionScale`, `rotationScale` | rw, gains (>= 0) |
-| `startPreset` | rw, played on start and on each enable (`""` = none) |
+| `startPreset` | rw, played on start and on an enable unless the shake it started still plays (`""` = none) |
 | `traumaDecay`, `traumaPower` (1..4), `traumaMaxOffset` (Vector3, units), `traumaMaxAngle` (Vector3, degrees), `traumaFrequency` | rw |
 | `offsetPosition`, `offsetRotation` | ro, the offset applied this frame (Vector3; rotation in Euler degrees) |
 
@@ -1575,7 +1575,7 @@ overrides the shaker's `unscaledTime`, the fades override the preset's.
 | `CameraFollow` (EntityHandle) | Notes |
 |---|---|
 | `CameraFollow(scene, entity)` | adds the component when missing; `GameObject:getCameraFollow()` returns `nil` without one, `hasCameraFollow()` |
-| `target` | rw, the GameObject followed (same scene) or `nil` |
+| `target` | rw, the GameObject followed (this scene's, or one of the persistent DontDestroyOnLoad scene) or `nil`; another scene's is refused with a warning |
 | `offset` (Vector3), `offsetSpace` (`"world"`, `"target"`, `"target_yaw"`) | rw |
 | `damping` (Vector3, SmoothDamp seconds per world axis; 0 = rigid), `maxSpeed` (0 = unlimited) | rw |
 | `lookAt`, `lookAtOffset` (Vector3), `rotationDamping` | rw; a `useTarget` camera gets its `target` set, others are turned |

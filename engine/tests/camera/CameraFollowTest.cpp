@@ -14,6 +14,8 @@
 #include "component/CameraComponent.h"
 #include "component/Transform.h"
 #include "object/CameraFollow.h"
+#include "manager/ObjectManager.h"
+#include "manager/SceneManager.h"
 #include "subsystem/CameraControlSystem.h"
 
 #include <cmath>
@@ -258,4 +260,67 @@ TEST_F(Follow, MissingTargetHoldsAndSnapPlacesRigidly){
     step(DT, 3);
     EXPECT_EQ(cameratest::takeWarnings().size(), 1u);
     EXPECT_NE(position(cam), placed);
+}
+
+// ---- a target in the persistent (DontDestroyOnLoad) scene (lead decision with persistence)
+
+TEST_F(Follow, FollowsATargetOfThePersistentScene){
+    Scene* persistent = SceneManager::ensurePersistentScene();
+    ASSERT_TRUE(persistent);
+    const Entity player = persistent->createEntity();
+    Transform playerTransform;
+    playerTransform.position = Vector3(4, 0, 0);
+    persistent->addComponent<Transform>(player, playerTransform);
+
+    Entity cam = camera(Vector3(0, 0, 0));
+    scene.addComponent<CameraFollowComponent>(cam, {});
+    CameraFollow follow(&scene, cam);
+    ASSERT_TRUE(follow.setTarget(persistent, player));
+    follow.setDamping(Vector3(0, 0, 0));
+    follow.setLookAt(false);
+    follow.setOffset(Vector3(0, 1, -5));
+    step();
+    EXPECT_EQ(position(cam), Vector3(4, 1, -5));
+    EXPECT_EQ(follow.getTargetScene(), persistent);
+    persistent->getComponent<Transform>(player).position = Vector3(9, 0, 0);
+    step();
+    EXPECT_EQ(position(cam), Vector3(9, 1, -5));
+
+    // another scene's GameObject is refused with a warning
+    Scene other;
+    const Entity stranger = other.createEntity();
+    other.addComponent<Transform>(stranger, {});
+    cameratest::takeWarnings();
+    EXPECT_FALSE(follow.setTarget(&other, stranger));
+    EXPECT_EQ(cameratest::takeWarnings().size(), 1u);
+    EXPECT_EQ(follow.getTarget(), player) << "the refused target changes nothing";
+
+    // the persistent target destroyed: the follower holds
+    persistent->destroyEntity(player);
+    step();
+    EXPECT_EQ(position(cam), Vector3(9, 1, -5));
+    SceneManager::destroyPersistentScene();
+}
+
+TEST_F(Follow, ATargetMovedToThePersistentSceneIsFollowedThere){
+    Scene* persistent = SceneManager::ensurePersistentScene();
+    ASSERT_TRUE(persistent);
+    Entity player = object(Vector3(2, 0, 0));
+    Entity cam = camera(Vector3(0, 0, 0));
+    CameraFollowComponent& f = follow(cam, player);
+    f.damping = Vector3(0, 0, 0);
+    f.lookAt = false;
+    f.offset = Vector3(0, 0, -3);
+    step();
+    EXPECT_EQ(position(cam), Vector3(2, 0, -3));
+    // DontDestroyOnLoad(player): it moves into the persistent scene with a new id there
+    const std::vector<Entity> moved = ObjectManager::moveToScene(&scene, player, persistent);
+    ASSERT_FALSE(moved.empty());
+    const CameraFollowComponent& after = scene.getComponent<CameraFollowComponent>(cam);
+    EXPECT_TRUE(after.targetPersistent);
+    EXPECT_EQ(after.target, moved[0]);
+    persistent->getComponent<Transform>(moved[0]).position = Vector3(7, 0, 0);
+    step();
+    EXPECT_EQ(position(cam), Vector3(7, 0, -3));
+    SceneManager::destroyPersistentScene();
 }

@@ -2130,6 +2130,7 @@ Json followRuntimeJson(const CameraFollowComponent& follow) {
     Json runtime = {{"velocity", McpValues::toJson(follow.velocity)}, {"desired", McpValues::toJson(follow.desired)},
                     {"placed", follow.placed}};
     if (follow.foreignWriteDetected) runtime["foreign_write"] = true;
+    if (follow.targetPersistent) runtime["target_persistent"] = true;
     return runtime;
 }
 

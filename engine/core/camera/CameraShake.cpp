@@ -47,6 +47,7 @@ namespace{
         if (!CameraShake::resolveSource(source, preset)) return ShakeInstanceHandle();
         ShakeInstanceHandle handle;
         bool any = false;
+        int paused = 0;
         CameraShake::forEachGlobalShaker([&](Scene* scene, Entity entity){
             any = true;
             CameraShakerComponent& shaker = scene->getComponent<CameraShakerComponent>(entity);
@@ -54,8 +55,12 @@ namespace{
             const float scale = fromPoint ? system->distanceScale(entity, shaker, point, radius) : 1.0f;
             const uint64_t id = system->play(entity, shaker, preset, source.name, options, scale);
             if (id != 0) handle.add(shaker.runtime, id);
-        });
-        if (!any){
+        }, &paused);
+        if (!any && paused > 0){
+            // the editor's Play paused (or edit mode): nothing steps, the shake is dropped
+            warnOnce("#paused-shakers", "CameraShake: the game is paused, a shake asked now is dropped (it does not wait "
+                     "for the resume)");
+        }else if (!any){
             warnOnce("#no-global-shaker", "CameraShake: no global Camera Shaker to shake (add a Camera Shaker to the camera, "
                      "with Global on)");
         }
@@ -212,12 +217,16 @@ bool CameraShake::resolveSource(const ShakeSource& source, ShakePreset& out){
     return false;
 }
 
-void CameraShake::forEachGlobalShaker(const std::function<void(Scene*, Entity)>& callback){
+void CameraShake::forEachGlobalShaker(const std::function<void(Scene*, Entity)>& callback, int* pausedSkipped){
     for (Scene* scene : Engine::getSceneLayers()){
         // an editor scene in edit mode (its system paused) takes no shake: it would play on Play
         std::shared_ptr<CameraControlSystem> system = scene ? scene->findSystem<CameraControlSystem>() : nullptr;
-        if (!system || system->isPaused()) continue;
+        if (!system) continue;
         auto shakers = scene->getComponentArray<CameraShakerComponent>();
+        if (system->isPaused()){
+            if (pausedSkipped) *pausedSkipped += (int)shakers->size();
+            continue;
+        }
         // the entities first: a callback may grow a runtime, never the array
         std::vector<Entity> entities;
         for (size_t i = 0; i < shakers->size(); i++){

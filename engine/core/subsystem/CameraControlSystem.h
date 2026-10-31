@@ -35,6 +35,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 namespace jasperengine{
 
@@ -52,7 +53,7 @@ namespace jasperengine{
     };
 
     // A GameObject's world pose now (local TRS composed up its parents)
-    struct JASPERENGINE_API WorldPose{
+    struct JASPERENGINE_API CameraWorldPose{
         Matrix4 matrix;
         Vector3 position = Vector3(0, 0, 0);
         Quaternion rotation;
@@ -85,6 +86,10 @@ namespace jasperengine{
     public:
         CameraControlSystem(Scene* scene);
 
+        // The start of a frame, before the scripts and animations (Engine::runFrame): a
+        // transform-mode shaker writes its base back, so they never see (and add to) the offset
+        void preUpdate();
+
         // One frame: the followers, then the shakers. update(dt) calls it with the scene delta and
         // Engine::getUnscaledDeltatime(); tests call it with their own
         void step(float scaledDt, float unscaledDt);
@@ -112,7 +117,15 @@ namespace jasperengine{
         FollowPlacement computeFollow(Entity entity, CameraFollowComponent& follow, float dt, bool snap);
         // the next update places the follower without damping
         static void snap(CameraFollowComponent& follow);
-        WorldPose computeWorldNow(Entity entity) const;
+        CameraWorldPose computeWorldNow(Entity entity) const;
+        static CameraWorldPose computeWorldNow(Scene* scene, Entity entity);
+        // the scene `follow.target` is a GameObject of: this one, or the persistent scene
+        Scene* targetSceneOf(const CameraFollowComponent& follow) const;
+        bool targetAlive(const CameraFollowComponent& follow, Entity self) const;
+        // GameObjects of this scene moved to `to` (ObjectManager::moveToScene, old -> new): a
+        // follower of one follows it there when `to` is the persistent scene (DontDestroyOnLoad),
+        // else it loses its target with a warning (other scenes cannot be followed)
+        void remapTargets(Scene* to, const std::unordered_map<Entity, Entity>& moved);
         // Unity's Mathf.SmoothDamp (maxSpeed <= 0: unlimited; smoothTime <= 0: snaps)
         static float smoothDamp(float current, float target, float& velocity, float smoothTime, float maxSpeed, float dt);
 
@@ -138,6 +151,7 @@ namespace jasperengine{
         void destroy() override;
         void update(double dt) override;
 
+        void onComponentAdded(Entity entity, ComponentId componentId) override;
         void onComponentRemoved(Entity entity, ComponentId componentId) override;
     };
 

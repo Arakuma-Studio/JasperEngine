@@ -91,8 +91,8 @@ namespace {
                 const ImU32 color = IM_COL32(255, 200, 80, 230);
                 const Vector3 cameraWorld = system->computeWorldNow(entity).position;
                 float z = cameraWorld.z;
-                if (follow->target != NULL_ENTITY && scene->isEntityCreated(follow->target) && scene->findComponent<Transform>(follow->target)){
-                    z = system->computeWorldNow(follow->target).position.z;
+                if (system->targetAlive(*follow, entity)){
+                    z = CameraControlSystem::computeWorldNow(system->targetSceneOf(*follow), follow->target).position.z;
                 }
                 // what the camera centres (its position minus the offset), as the system's dead zone
                 const Vector3 focus(cameraWorld.x - follow->offset.x, cameraWorld.y - follow->offset.y, z);

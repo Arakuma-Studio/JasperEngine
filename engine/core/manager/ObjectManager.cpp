@@ -12,6 +12,7 @@
 #include "registry/EntityCloner.h"
 #include "script/LuaBinding.h"
 #include "script/ScriptRuntime.h"
+#include "subsystem/CameraControlSystem.h"
 #include "script/ScriptMessages.h"
 #include "script/ScriptBase.h"
 #include "component/Transform.h"
@@ -485,6 +486,8 @@ std::vector<Entity> ObjectManager::moveToScene(Scene* from, Entity root, Scene* 
         cppMoveHook(from, to, sources.data(), copies.data(), count);
     }
     ScriptRuntime::remap(from, to, map);
+    // the old scene's Camera Follows of a moved GameObject follow it into the persistent scene
+    if (auto cameras = from->findSystem<CameraControlSystem>()) cameras->remapTargets(to, map);
     for (size_t i = 0; i < movedOld.size(); i++) {
         ScriptMessages::notifyReceiversChanged(from, movedOld[i]);
         ScriptMessages::notifyReceiversChanged(to, movedNew[i]);

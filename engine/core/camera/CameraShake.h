@@ -7,7 +7,8 @@
 //   call created (Lua `ShakeInstance`).
 // - Global shakers: enabled, active in hierarchy, `global` set, in every scene of Engine's list
 //   (child scenes and layers too); each gets its own instance. No such shaker: an invalid handle
-//   and a warning (once per process).
+//   and a warning (once per process). Shakers of a paused scene (the editor's Play paused, edit
+//   mode) take nothing: the shake is dropped with its own warning (once).
 // - Presets: a built-in name (no extension), a .shake path (ShakePresetPool) or the values. An
 //   unknown name or an unreadable file logs one warning per name and shakes nothing.
 // - Handles hold weak references: an instance gone (finished, its shaker destroyed, the scene
@@ -113,8 +114,10 @@ namespace jasperengine{
         static bool resolvePreset(const std::string& nameOrPath, camera::ShakePreset& out, std::string* error = nullptr);
         // resolvePreset for a play request: an unknown name logs one warning per name
         static bool resolveSource(const ShakeSource& source, camera::ShakePreset& out);
-        // the shakers the static calls reach, in every scene of the Engine's list
-        static void forEachGlobalShaker(const std::function<void(Scene*, Entity)>& callback);
+        // the shakers the static calls reach, in every scene of the Engine's list. A paused scene
+        // (edit mode, the editor's Play paused) is skipped: its shakers are counted in
+        // `pausedSkipped` and a shake for them is dropped, not queued
+        static void forEachGlobalShaker(const std::function<void(Scene*, Entity)>& callback, int* pausedSkipped = nullptr);
     };
 
 }

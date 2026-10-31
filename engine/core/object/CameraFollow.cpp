@@ -4,6 +4,7 @@
 #include "CameraFollow.h"
 
 #include "Log.h"
+#include "manager/SceneManager.h"
 #include "subsystem/CameraControlSystem.h"
 
 #include <algorithm>
@@ -38,7 +39,30 @@ void CameraFollow::snap(){
 }
 
 void CameraFollow::setTarget(Entity target){
-    getComponent<CameraFollowComponent>().target = target;
+    CameraFollowComponent& follow = getComponent<CameraFollowComponent>();
+    follow.target = target;
+    follow.targetPersistent = false;
+}
+
+bool CameraFollow::setTarget(Scene* targetScene, Entity target){
+    if (target == NULL_ENTITY || targetScene == scene){
+        setTarget(target);
+        return true;
+    }
+    if (targetScene && targetScene == SceneManager::getPersistentScene()){
+        CameraFollowComponent& follow = getComponent<CameraFollowComponent>();
+        follow.target = target;
+        follow.targetPersistent = true;
+        return true;
+    }
+    Log::warn("CameraFollow.target: '%s' is in another scene; a Camera Follow follows a GameObject of its own scene "
+              "or of the persistent (DontDestroyOnLoad) scene", targetScene ? targetScene->getEntityName(target).c_str() : "?");
+    return false;
+}
+
+Scene* CameraFollow::getTargetScene() const{
+    const CameraFollowComponent& follow = getComponent<CameraFollowComponent>();
+    return follow.targetPersistent ? SceneManager::getPersistentScene() : scene;
 }
 
 Entity CameraFollow::getTarget() const{

@@ -1164,6 +1164,28 @@ TEST_F(CoroutineTest, ScriptsWithTheirOwnMetatablesStillGetTheInstanceMethods) {
     EXPECT_EQ(log(), "base function nil dyn function function mine function");
 }
 
+TEST_F(CoroutineTest, TheLifecycleStartRunsAsACoroutineAndMayWait) {
+    // Unity's IEnumerator Start(): the lifecycle's start may wait (it runs as an engine coroutine)
+    addScript("WaitingStart", R"(
+        local M = {}
+        function M:start()
+            Log("start" .. F())
+            Coroutine.wait(0.1)
+            Log("waited" .. F())
+        end
+        return M
+    )");
+    start();
+    frames(12);
+    const std::string early = log();
+    EXPECT_EQ(early.find("waited"), std::string::npos) << early;
+    EXPECT_NE(early.find("start"), std::string::npos) << early;
+    frames(6);
+    const std::string done = log();
+    EXPECT_NE(done.find("waited"), std::string::npos) << "0.1 s of 1/60 s frames: " << done;
+    EXPECT_EQ(logged().find("not inside an engine coroutine"), std::string::npos) << logged();
+}
+
 TEST_F(CoroutineTest, CppStartsALuaCoroutineForAnInstance) {
     const Entity entity = addScript("Starter", R"(
         local M = {}

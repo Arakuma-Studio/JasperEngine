@@ -72,7 +72,8 @@ self.gameObject:getCameraShaker():shake("assets/shakes/boom.shake", {seed = 7, u
   invalid. `stop()` on an invalid handle is a no-op.
   - Disabling the shaker, or deactivating its GameObject, removes the offset. The shakes and the
     trauma hold until it is enabled again.
-  - `startPreset` plays again on every enable, like Unity's `OnEnable`.
+  - `startPreset` plays again on an enable, like Unity's `OnEnable`, unless the shake it started
+    is still playing (it held while disabled): disabling and enabling never piles it up.
 
 ### MilkShake's formulas
 
@@ -184,6 +185,11 @@ assets. `handheld`, `vibration` and `bump` come from EZ Camera Shake (strength =
   the warning, and so does `camerafollow.runtime.foreign_write`. To control the camera yourself
   for a moment, disable the Camera Follow.
 - **Target gone.** When the target is destroyed, the follower holds where it is and warns once.
+- **A persistent target.** A level's camera can follow a player kept with `DontDestroyOnLoad`:
+  set `follow.target = player` from Lua (a GameObject of the persistent scene), or let the move
+  happen: a follower of a GameObject that moves into the persistent scene follows it there. A
+  target in any other scene is refused with a warning. `camerafollow.runtime.target_persistent`
+  says so over MCP.
 - **Shake on top.** A Camera Shaker on the same camera shakes around the followed pose.
 
 ## MCP recipes
@@ -220,18 +226,32 @@ screenshot {view: "game"}
 never shaken. `offsetPosition` and `offsetRotation` on the CameraShaker give the offset of this
 frame.
 
+**What is shaken.** The drawn view is: picking (`screenToRay`), `getViewMatrix()` and
+`getWorldDirection()` / `getWorldUp()` / `getWorldRight()` follow the shaken view, as they would
+in Unity where the shaker moves the camera. The camera's `direction`, `right`, `target` and
+Transform stay steady, and so does the 3D audio listener (it hears from the unshaken pose).
+
+**2D HUDs.** A HUD drawn by the same camera as the 2D world shakes with it. Put the HUD in a UI
+scene attached as a child scene (`set_child_scene`; its own UI camera): only the world shakes.
+
+**Paused games.** While the editor's Play is paused (or in edit mode), `CameraShake.*` reaches no
+shaker: the shake is dropped, not queued, with one warning ("the game is paused"). The
+Inspector's Test previews in edit mode instead.
+
 ## Transform mode (no camera)
 
 A Camera Shaker on a GameObject **without** a Camera moves its Transform additively. The game
 uses this for a jumpscare Image.
 
-- **Base rule.** Each frame, if the value is still what the shaker wrote, the shaker reuses the
-  base it remembered. Otherwise someone else wrote the value, and that value becomes the new
-  base.
+- **Base rule.** At the start of each frame, before the scripts and animations, the shaker
+  writes the base back; after them it applies base + offset. So `self.position = self.position +
+  v * dt` moves the unshaken pose, and the shake never builds up. A value someone wrote between
+  frames (an editor edit) becomes the new base.
 - **Ending.** When the shake ends, the base is written back once.
 - **Anchored UI elements** are shaken through their RectTransform's `positionOffset`, so the
   layout keeps the move.
-- **UI elements** use the 2D rule with units of the canvas height / 10.
+- **UI elements** use the 2D rule with units of the canvas height / 10; other GameObjects in 2D
+  mode use tenths of the scene camera's orthographic height.
 - **Physics bodies.** A GameObject with a Rigidbody or Rigidbody2D is refused, with one warning.
   Shake a camera, or a child without a body.
 - **Edit mode** shows no preview of transform mode. Test it in Play mode.

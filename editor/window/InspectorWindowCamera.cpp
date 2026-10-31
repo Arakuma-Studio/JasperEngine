@@ -535,7 +535,14 @@ void editor::InspectorWindow::drawCameraFollowComponent(ComponentType cpType, Sc
 
     if (entities.size() != 1) return;
 
-    if (follow.target == NULL_ENTITY){
+    std::shared_ptr<CameraControlSystem> followSystem = scene->findSystem<CameraControlSystem>();
+    if (follow.targetPersistent){
+        if (followSystem && followSystem->targetAlive(follow, entity)){
+            drawNote("Follows a persistent (DontDestroyOnLoad) GameObject.");
+        }else{
+            drawWarning("The persistent (DontDestroyOnLoad) target is gone: the camera holds where it is.");
+        }
+    }else if (follow.target == NULL_ENTITY){
         drawWarning("No Target: pick the GameObject to follow.");
     }else if (!scene->isEntityCreated(follow.target) || !scene->findComponent<Transform>(follow.target)){
         drawWarning("The Target is missing (destroyed, or in another scene): the camera holds where it is.");

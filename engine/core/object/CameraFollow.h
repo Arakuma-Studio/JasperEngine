@@ -6,7 +6,8 @@
 //   writes a follower's settings; snap() places it on the next update without damping.
 // - The constructor ADDS the component when the entity has none; Lua `object:getCameraFollow()`
 //   returns nil when the GameObject has none.
-// - target: a GameObject of the same scene, or nil (NULL_ENTITY): the follower holds.
+// - target: a GameObject of the same scene or of the persistent (DontDestroyOnLoad) scene, or nil
+//   (NULL_ENTITY): the follower holds. A target in any other scene is refused with a warning.
 // - Main thread (ECS).
 
 #ifndef CAMERAFOLLOW_H
@@ -34,8 +35,14 @@ namespace jasperengine{
 
         void snap();
 
+        // a GameObject of this scene
         void setTarget(Entity target);
+        // a GameObject of this scene or of the persistent DontDestroyOnLoad scene; false (and a
+        // warning) for another scene, which cannot be followed
+        bool setTarget(Scene* targetScene, Entity target);
         Entity getTarget() const;
+        // the scene of getTarget(): this one, or the persistent scene
+        Scene* getTargetScene() const;
         void setOffset(Vector3 offset);
         Vector3 getOffset() const;
         // "world", "target" or "target_yaw" (another value logs a warning and is ignored)

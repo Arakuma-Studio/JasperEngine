@@ -35,7 +35,8 @@ namespace jasperengine{
 
     struct JASPERENGINE_API CameraFollowComponent{
         bool enabled = true;
-        // the GameObject followed (same scene); nothing happens without one
+        // the GameObject followed: of this scene, or of the persistent DontDestroyOnLoad scene when
+        // targetPersistent (below); nothing happens without one
         Entity target = NULL_ENTITY;
         Vector3 offset = Vector3(0, 2, -6);
         FollowOffsetSpace offsetSpace = FollowOffsetSpace::World;
@@ -58,6 +59,10 @@ namespace jasperengine{
         bool unscaledTime = false;
 
         // ---- runtime (not serialized) ----
+        // `target` is a GameObject of the persistent scene (SceneManager::getPersistentScene): set
+        // by Lua (follow.target = a persistent player) and when the target moves there
+        // (DontDestroyOnLoad); a scene file cannot name one
+        bool targetPersistent = false;
         Vector3 velocity = Vector3(0, 0, 0);        // SmoothDamp state per axis
         Vector3 desired = Vector3(0, 0, 0);         // the position aimed at this frame (world)
         Vector3 writtenPosition = Vector3(0, 0, 0); // the local values written last frame
