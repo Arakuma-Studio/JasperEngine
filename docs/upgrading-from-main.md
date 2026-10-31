@@ -109,9 +109,11 @@ The first open applies rendering migrations that change how a scene looks, on pu
 
 The upgrade test takes screenshots at the same game frames in both editors and compares them at one
 size (480x270: the Game view's size follows each editor's layout, 904x509 against 869x489 here).
-With the fixture's scenes, at most 0.64 % of the pixels differ by more than 24 in a channel, all of
-them expected: glyph and edge resampling of the two render sizes (the HTML UI title and HUD, the
-2D sprites), the shadow edges (S10's bias and filtering) and the particles (S20's simulation). The
+With the fixture's scenes, 0.2 to 1.7 % of the pixels differ by more than 24 in a channel (it varies
+from run to run), all of them expected: glyph and edge resampling of the two render sizes (the HTML
+UI title and HUD, the 2D sprites, every silhouette), the camera, which follows the courier's drawn
+(interpolated) position, a fraction of a frame apart after a load, the shadow edges (S10's bias and
+filtering) and the particles (S20's simulation). The
 images and their diffs are in `build/upgrade-from-main/check/screenshots/`; gameplay, the
 transcripts, does not differ at all.
 

@@ -198,7 +198,7 @@ async def open_and_save(ed: harness.Editor, report: Report, label: str) -> None:
         # as a user looks at it before saving: the Scene view's screenshot waits for its content
         # to load (a save while a model still loads writes its submeshes' vertex counts as they
         # are then, on origin/main too)
-        await ed.screenshot("scene", scene=scene, max_width=320)
+        await ed.screenshot("scene", scene=scene, max_width=320, timeout_seconds=300)
         load = await ed.call("get_load_report", scene=scene)
         issues = harness.find_key(load, "issues") or []
         # a migration is reported (info): what it did goes into the report; anything else fails
