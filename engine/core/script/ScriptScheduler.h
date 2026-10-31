@@ -77,6 +77,10 @@ namespace jasperengine {
         // A GameObject of `registry` was deactivated (or moved under an inactive parent): the
         // coroutines of owners no longer active in hierarchy there stop (EntityRegistry calls it)
         static void stopCoroutinesOfInactive(const EntityRegistry* registry);
+        // The same for the GameObjects listed (a deactivated subtree): only their coroutines are looked at
+        static void stopCoroutinesOfInactive(const EntityRegistry* registry, const Entity* entities, size_t count);
+        // Some script of `registry` has a running or waiting coroutine (a deactivation has work to do)
+        static bool hasCoroutinesIn(const EntityRegistry* registry);
         // The owner's GameObject moved (persistence: another scene or entity id)
         static void rebind(const void* owner, Scene* scene, Entity entity);
         // Play stop, shutdown: every coroutine and timer ends (pending to-be-closed variables run)

@@ -21,7 +21,8 @@ namespace jasperengine {
     public:
         // Game seconds of this frame (times timeScale); inside a fixed step, fixedDeltaTime
         static float getDeltaTime();
-        // The frame delta before timeScale (0 while the app is paused or the simulation held);
+        // The frame delta before timeScale (0 while the app, the game events or the simulation are
+        // paused or held);
         // inside a fixed step, fixedUnscaledDeltaTime
         static float getUnscaledDeltaTime();
 

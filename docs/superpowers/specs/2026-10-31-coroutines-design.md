@@ -512,6 +512,25 @@ the text above, or the text left a choice, this is what was done and why.
 - Re-entrancy: no reference to a record is held across a Lua call (allocations may run finalizers, which may start
   coroutines and move the vectors); records are never erased while a phase, a resume or a close is on the C stack.
 
+### Review fixes
+- No record state read before user Lua runs (an `isDone()`, a predicate, a finaliser, a `__close`) is used after
+  it: `pollTarget` and the predicate path find the record again and require it still suspended on the same wait
+  with a live thread; results go to the main state and are moved to the thread after that check.
+- A thread that runs Lua (resumed by the engine, or by a `coroutine.resume` of user code) is never closed: a stop
+  is deferred and the next phase ends it. The wait helpers yield with a continuation that refuses a resume that
+  is not the engine's (`coroutine.resume` on an engine coroutine raises; the coroutine then ends with an error),
+  and every helper refuses to run unless its coroutine is the one the engine resumed.
+- `waitFor` of an ended coroutine after a stop request yields (the coroutine ends there) instead of returning.
+- `waitFor` raises on a cycle of coroutines waiting for each other.
+- C++ timers keep one callable (`std::shared_ptr<std::function<void()>>`): a repeating `mutable` lambda keeps its
+  state.
+- Deactivation looks only at the deactivated subtree, through an index of the live owned coroutines by
+  (registry, entity) (`ScriptScheduler::stopCoroutinesOfInactive(registry, entities, count)`,
+  `hasCoroutinesIn`); nothing is scanned when the scene has none. 1,000 deactivations with 10,000 coroutines
+  elsewhere: see `DeactivatingGameObjectsWithoutCoroutinesIsCheapWithManyCoroutines`.
+- `Engine::getUnscaledDeltatime()` (same signature) is now also 0 while the game events are paused (the editor's
+  Play pause, edit time), and `unscaledTime` stops then; the HTML UI clock keeps its old rule.
+
 ### Ownership on today's `main` (before `script-lifecycle`)
 - Release: `LuaBinding::releaseLuaScriptInstance` calls `ScriptScheduler::cancelOwner(instance)` (destroy, scene
   unload in the generated `cleanupScripts` and the editor, Play stop); `~ScriptBase` calls `cancelOwner(this)`

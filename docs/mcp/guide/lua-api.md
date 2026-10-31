@@ -840,7 +840,10 @@ Statics: `Coroutine.start(fn, ...)` (unowned: survives scene loads, ends at Play
 `Coroutine.isInside()`. A `Coroutine` handle: `status` (`"running"`, `"suspended"`,
 `"finished"`, `"stopped"`, `"error"`), `error` (string with traceback, or nil), `owner` (the
 script instance or nil), `id`, `isDone()`, `stop()`. Lua's own `coroutine` library is untouched:
-`coroutine.wrap` generators work inside engine coroutines (the wait helpers do not, inside them).
+`coroutine.wrap` generators work inside engine coroutines (the wait helpers do not, inside them);
+`coroutine.resume` of an engine coroutine (`coroutine.running()` inside one) is refused with an error
+and the engine ends it. Two coroutines waiting for each other (`waitFor`) raise "they would wait for
+each other forever".
 
 Timers outside scripts: `Timer.after(delay, fn [, opts])` and `Timer.every(interval, fn [, opts])`,
 `opts = {unscaled = bool, owner = self, delay = firstDelay (every), count = n (every)}`; `every`

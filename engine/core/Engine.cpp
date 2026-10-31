@@ -1425,11 +1425,14 @@ void Engine::runFrame(bool draw){
         frameTime = fixedDeltatime;
     }
     deltatime = simulationHeld ? 0.0 : frameTime * timeScale;
-    // the unscaled delta (Time.unscaledDeltaTime, realtime waits, the UI clock): it runs at
-    // time scale 0 (a pause menu animates) and stops with the updates, a held simulation or a
-    // paused app
-    unscaledDeltatime = (paused || simulationHeld) ? 0.0 : frameTime;
-    HtmlUIClock::advance(unscaledDeltatime);
+    // the unscaled delta (Time.unscaledDeltaTime, realtime waits): it runs at time scale 0 (a
+    // pause menu animates) and stops with the game: a held simulation, a paused app, or the game
+    // events paused (the editor's Play pause, edit time)
+    // (getUnscaledDeltatime(): also 0 while Engine::pauseGameEvents(true), the editor's Play pause)
+    unscaledDeltatime = (paused || simulationHeld || !onUpdate.isEnabled()) ? 0.0 : frameTime;
+    // the UI clock: the same, but it keeps running while only the game events are paused (HTML
+    // UI documents animate in edit mode and in a paused Play)
+    HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);
 
     // the input of this frame is over: no low surrogate will follow a pending high one
     flushCharInput();

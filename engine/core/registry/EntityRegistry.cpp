@@ -342,11 +342,29 @@ Entity EntityRegistry::findEntity(const std::string& name, Entity parent) const 
     });
 }
 
+// The coroutines of the scripts of `root` and its descendants that are no longer active in
+// hierarchy stop (Unity's SetActive(false)). Only the subtree is looked at, and nothing at all
+// when no script of the registry has a coroutine (pooled objects deactivate often).
+static void stopSubtreeCoroutines(EntityRegistry* registry, ComponentManager& components, Entity root){
+    if (!ScriptScheduler::hasCoroutinesIn(registry)) return;
+    auto transforms = components.getComponentArray<Transform>();
+    if (!transforms->hasEntity(root)){
+        ScriptScheduler::stopCoroutinesOfInactive(registry, &root, 1);
+        return;
+    }
+    // a branch is contiguous in the Transform array: the root, then its descendants
+    const size_t first = transforms->getIndex(root);
+    const size_t last = registry->findBranchLastIndex(root);
+    std::vector<Entity> subtree;
+    subtree.reserve(last - first + 1);
+    for (size_t i = first; i <= last; i++) subtree.push_back(transforms->getEntity(i));
+    ScriptScheduler::stopCoroutinesOfInactive(registry, subtree.data(), subtree.size());
+}
+
 void EntityRegistry::setEntityActive(Entity entity, bool active) {
     const bool wasActive = entityManager.isActive(entity);
     entityManager.setActive(entity, active);
-    // the coroutines of scripts no longer active in hierarchy stop (Unity's SetActive(false))
-    if (wasActive && !active) ScriptScheduler::stopCoroutinesOfInactive(this);
+    if (wasActive && !active) stopSubtreeCoroutines(this, componentManager, entity);
 }
 
 bool EntityRegistry::isEntityActive(Entity entity) const {
@@ -642,7 +660,7 @@ void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTran
             }
         }
         // moved under an inactive parent: its scripts' coroutines stop
-        if (entityManager.hasInactive()) ScriptScheduler::stopCoroutinesOfInactive(this);
+        if (entityManager.hasInactive()) stopSubtreeCoroutines(this, componentManager, child);
     }
 
 }
