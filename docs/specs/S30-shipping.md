@@ -1006,10 +1006,37 @@ Kept current so the work can continue after an interruption.
   - `test_player_cli.py` gained a `components` check: every component type goes through the
     release player.
   - The Android payload check now asks 16 KB pages of the 64-bit ABIs only.
-- **Next:**
-  - run the unit tests (and ASan), the MCP suite, and smoke (compile and prebuilt);
-  - measure the release Android size (`tools/ci/android_size.sh`);
-  - merge oe-port, regenerate TOOLS.md, and run the gate.
+- **Landing gate v2:**
+  - Android part on A (bb4389942), all green:
+    - the editor, the release players of every ABI, and the development x86_64 runtime;
+    - the sizes, and both emulator checks with `--relaunch`;
+    - AC7, and `tools/build.sh android`.
+  - Everything else on D (cac2f837a), all green except as noted:
+    - the xcode checks, the editor with warnings as errors, and TOOLS.md current;
+    - the Linux and web players, and the web build with warnings as errors;
+    - units: GL 2382 core and 1413 editor, Vulkan 2380 and 1413 with none skipped;
+    - ASan + UBSan, the full suites;
+    - the player CLI (the components check and the four web modes), and both smokes;
+    - MCP, the full suite with slow builds: 1056 passed and 3 failed.
+      - `test_desktop_build_and_run` failed because the compile fallback finished the build
+        before its executable was known. Fixed in 9d854d51e (`Exporter::holdFinish`).
+      - `test_reflection` golden_resave and codegen_golden are known oe-port failures
+        (fix/s32-golden-determinism).
+- **oe-port dc6eb4f2d (SYNC#3, vertex animation) merged:**
+  - `RenderSystem.cpp` keeps upstream's `mesh.loadFailed` and S30's settled empty mesh. The VAT
+    adds no new kind of pending load.
+  - `RuntimeFields.gen.inc` was regenerated and adds the Vertex Animator; its attachments'
+    entities are remapped. It needs no afterLoad hook: the runtime already takes any fade time
+    from Lua.
+  - The short re-check on D (06e2a63dc) is all green:
+    - the xcode checks, the editor with warnings as errors, TOOLS.md and the runtime tables
+      current, and the Linux players with warnings as errors;
+    - GL units 2433 core and 1645 editor, including `LoadSettledGpu`,
+      `LuaFunctionLifetime` and `RunControlFixture`;
+    - the player CLI (the goldens, every component type including the Vertex Animator, the four
+      web modes), and both smokes;
+    - MCP: the export, cook, build, publish and VAT files with slow builds, 156 passed and
+      0 failed. That includes `test_desktop_build_and_run`.
 
 ### Shipped size (measured)
 
