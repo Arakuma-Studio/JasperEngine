@@ -616,6 +616,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             return scene && scene->isEntityCreated(self->getEntity()) &&
                    scene->findComponent<TrailRendererComponent>(self->getEntity()) != nullptr;
         })
+        // Unity's AddComponent<TrailRenderer>(): its Trail Renderer, added when it has none
+        .addFunction("addTrailRenderer", +[](GameObject* self) -> std::optional<TrailRenderer> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity())){
+                return std::nullopt;
+            }
+            return TrailRenderer::addTo(scene, self->getEntity());
+        })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1475,8 +1483,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .endNamespace();
 
     // Unity's TrailRenderer: TrailRenderer(scene) is a new GameObject with one,
-    // TrailRenderer(scene, entity) adds one to the entity when it has none
-    // (object:getTrailRenderer() is nil instead). Positions are the stored points, oldest first
+    // object:addTrailRenderer() adds one to a GameObject (or returns its own), and
+    // object:getTrailRenderer() / TrailRenderer(scene, entity) are handles to an existing one (nil
+    // / nothing added without one). Positions are the stored points, oldest first
     luabridge::getGlobalNamespace(L)
         .deriveClass<TrailRenderer, GameObject>("TrailRenderer")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()

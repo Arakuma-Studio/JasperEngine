@@ -126,7 +126,7 @@ local function trailed(scene, keep, mesh)
     else
         object = GameObject(scene)
     end
-    local trail = TrailRenderer(scene, object.entity)
+    local trail = object:addTrailRenderer()
     keep[#keep + 1] = object
     return object, trail
 end

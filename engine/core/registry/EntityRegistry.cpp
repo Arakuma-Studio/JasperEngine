@@ -343,6 +343,17 @@ Entity EntityRegistry::findEntity(const std::string& name, Entity parent) const 
 }
 
 void EntityRegistry::setEntityActive(Entity entity, bool active) {
+    // the trails of a GameObject deactivated (it and its children) are cleared now, not at the
+    // next TrailSystem update: reactivated in the same frame elsewhere it draws no streak
+    if (!active && entityManager.isActive(entity)) {
+        auto trails = componentManager.getComponentArray<TrailRendererComponent>();
+        for (size_t i = 0; i < trails->size(); i++) {
+            const Entity trailEntity = trails->getEntity(i);
+            if (trailEntity == entity || isParentOf(entity, trailEntity)) {
+                trails->getComponentFromIndex(i).clearPoints();
+            }
+        }
+    }
     entityManager.setActive(entity, active);
 }
 
