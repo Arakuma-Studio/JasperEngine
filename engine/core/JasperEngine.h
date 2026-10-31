@@ -97,6 +97,7 @@
 #include "component/TranslateTracksComponent.h"
 #include "component/UIComponent.h"
 #include "component/LayoutGroupComponent.h"
+#include "component/SafeAreaComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/UIDocumentComponent.h"
 

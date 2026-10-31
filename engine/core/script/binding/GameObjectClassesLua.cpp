@@ -1409,6 +1409,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("usingAnchors", &RectTransform::isUsingAnchors, &RectTransform::setUsingAnchors)
         .addProperty("ignoreScissor", &RectTransform::isIgnoreScissor, &RectTransform::setIgnoreScissor)
         .addFunction("getRectTransformComponent", &RectTransform::getComponent<RectTransformComponent>)
+        // the Safe Area component driving this RectTransform, nil when it has none
+        .addFunction("getSafeAreaComponent", [] (RectTransform* self) -> SafeAreaComponent* {
+            return self->getScene()->findComponent<SafeAreaComponent>(self->getEntity());
+        })
         .endClass();
 
     luabridge::getGlobalNamespace(L)

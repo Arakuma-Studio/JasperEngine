@@ -424,6 +424,8 @@ namespace jasperengine {
         static void runFrame(bool draw);
         // recomputes the frame pacing and hands it to the System
         static void applyFramePacing();
+        // desktop builds: JASPERENGINE_SIMULATE_SAFE_AREA as the platform's insets
+        static void applySimulatedSafeArea();
         
     public:
         class AsyncThreadScope {
@@ -735,6 +737,9 @@ namespace jasperengine {
         static FunctionSubscribe<void(int)> onOrientationChanged;
         // the system is short of memory (Android, iOS)
         static FunctionSubscribe<void()> onLowMemory;
+        // Screen.safeArea changed (a rotation, the platform's insets, Screen.setExtraInsets): once
+        // per change, after onCanvasChanged and onOrientationChanged
+        static FunctionSubscribe<void()> onSafeAreaChanged;
         // The stack loaded by SceneManager is ready, before its loading scene closes.
         static FunctionSubscribe<void()> onSceneLoaded;
         static FunctionSubscribe<void(int,float,float)> onTouchStart;

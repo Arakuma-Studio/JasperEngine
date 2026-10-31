@@ -151,6 +151,7 @@ FunctionSubscribe<void()> Engine::onShutdown;
 FunctionSubscribe<void(bool)> Engine::onFocus;
 FunctionSubscribe<void(int)> Engine::onOrientationChanged;
 FunctionSubscribe<void()> Engine::onLowMemory;
+FunctionSubscribe<void()> Engine::onSafeAreaChanged;
 FunctionSubscribe<void()> Engine::onSceneLoaded;
 FunctionSubscribe<void(int,float,float)> Engine::onTouchStart;
 FunctionSubscribe<void(int,float,float)> Engine::onTouchEnd;
@@ -966,6 +967,7 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     onFocus.removeByTagSubstring(substring);
     onOrientationChanged.removeByTagSubstring(substring);
     onLowMemory.removeByTagSubstring(substring);
+    onSafeAreaChanged.removeByTagSubstring(substring);
     onSceneLoaded.removeByTagSubstring(substring);
 }
 
@@ -1009,6 +1011,7 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
         onFocus.clear();
         onOrientationChanged.clear();
         onLowMemory.clear();
+        onSafeAreaChanged.clear();
     }
 }
 
@@ -1238,6 +1241,7 @@ void Engine::systemViewLoaded(){
     // the orientation and screen sleep a window
     applyFramePacing();
     Screen::applyToPlatform();
+    applySimulatedSafeArea();
 
     // systemViewDestroyed stopped async loads; a recreated view needs them again
     SoundPool::cancelShutdown();
@@ -1284,10 +1288,16 @@ void Engine::systemViewChanged(){
         scene->updateCameraSize();
     }
 
+    // the canvas mapping changed: Screen.safeArea follows (its event after the two below)
+    Screen::updateSafeArea();
+
     onViewChanged.call();
 
     // a resize can be a rotation: onOrientationChanged comes after onCanvasChanged
     systemOrientationChanged();
+
+    // a backgrounded app gets it after onResume (the next frame)
+    if (!paused) Screen::dispatchSafeAreaEvent();
 }
 
 // With JASPERENGINE_READY_SIGNAL set (tools/smoke-test.sh sets it), logs once the frame
@@ -1377,6 +1387,8 @@ void Engine::runFrame(bool draw){
     if (orientationPendingSince > 0.0){
         systemOrientationChanged();
     }
+    // insets the platform pushed between frames (held while the app is paused)
+    if (!paused) Screen::dispatchSafeAreaEvent();
 
     //Deltatime in seconds
     double rawDelta = stm_sec(stm_laptime(&lastTime));
@@ -1707,6 +1719,20 @@ void Engine::systemLowMemory(){
     Engine::onLowMemory.call();
 }
 
+void Engine::applySimulatedSafeArea(){
+    if (!System::hasInstance()) return;
+    const Platform platform = getPlatform();
+    if (platform != Platform::Linux && platform != Platform::Windows && platform != Platform::MacOS) return;
+    // the editor simulates devices in its Game view
+    if (System::instance().isEditor()) return;
+    EdgeInsets insets;
+    if (System::instance().getSimulatedSafeArea(insets)){
+        Screen::setPlatformSafeArea(insets);
+        Log::print("Simulated safe area (JASPERENGINE_SIMULATE_SAFE_AREA): top %g, right %g, bottom %g, left %g pixels",
+                  insets.top, insets.right, insets.bottom, insets.left);
+    }
+}
+
 void Engine::resetApplicationState(){
     if (paused){
         paused = false;
@@ -1717,6 +1743,8 @@ void Engine::resetApplicationState(){
     orientationPendingSince = 0.0;
     targetFrameRate = -1;
     applyFramePacing();
+    // no extra insets, and the next safe area is where the game starts (no event)
+    Screen::resetSafeAreaState();
 }
 
 bool Engine::isFocused(){

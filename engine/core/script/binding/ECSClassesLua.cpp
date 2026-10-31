@@ -25,6 +25,7 @@
 #include "component/UIComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/LayoutGroupComponent.h"
+#include "component/SafeAreaComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/ParticleSystemComponent.h"
@@ -361,6 +362,17 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("function", [] (TweenComponent* self, lua_State* L) { return &self->function; }, [] (TweenComponent* self, lua_State* L) { self->function = L; })
         .endClass();
     
+    // the Safe Area component: which edges of the RectTransform follow Screen.safeArea
+    luabridge::getGlobalNamespace(L)
+        .beginClass<SafeAreaComponent>("SafeAreaComponent")
+        .addProperty("enabled", &SafeAreaComponent::enabled, &SafeAreaComponent::enabled)
+        .addProperty("left", &SafeAreaComponent::left, &SafeAreaComponent::left)
+        .addProperty("top", &SafeAreaComponent::top, &SafeAreaComponent::top)
+        .addProperty("right", &SafeAreaComponent::right, &SafeAreaComponent::right)
+        .addProperty("bottom", &SafeAreaComponent::bottom, &SafeAreaComponent::bottom)
+        .addProperty("includeExtraInsets", &SafeAreaComponent::includeExtraInsets, &SafeAreaComponent::includeExtraInsets)
+        .endClass();
+
     luabridge::getGlobalNamespace(L)
         .beginClass<RectTransformComponent>("RectTransformComponent")
         .addProperty("width", &RectTransformComponent::width, &RectTransformComponent::width)

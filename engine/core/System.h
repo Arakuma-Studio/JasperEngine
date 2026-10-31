@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 #include "io/Data.h"
+#include "math/EdgeInsets.h"
 #include "sokol_gfx.h"
 
 namespace jasperengine {
@@ -193,6 +194,7 @@ namespace jasperengine {
         friend class Engine;
         // TEST-ONLY seam (no engine code defines it): a test detaches and restores the instance
         friend struct SystemTestAccess;
+        friend struct SafeAreaTestAccess;
 
         static System* systemInstance;
         static ApplicationInfo applicationInfo;
@@ -321,6 +323,11 @@ namespace jasperengine {
         // false where the device cannot vibrate; iOS ignores the length
         virtual bool vibrate(int milliseconds);
         virtual bool hapticFeedback(HapticFeedback type);
+
+        // Desktop builds: fixed safe-area insets (view pixels) to test a game's notch layout
+        // without a phone, from JASPERENGINE_SIMULATE_SAFE_AREA="top,right,bottom,left" at start
+        // (Engine::systemViewLoaded pushes them). False when unset or malformed (a warning).
+        bool getSimulatedSafeArea(EdgeInsets& insets);
 
         // Display: dots per inch of the screen (0 unknown) and its refresh rate in Hz
         virtual float getScreenDpi();

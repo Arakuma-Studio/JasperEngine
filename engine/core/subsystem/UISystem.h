@@ -11,6 +11,7 @@
 
 #include "component/RectTransformComponent.h"
 #include "component/LayoutGroupComponent.h"
+#include "component/SafeAreaComponent.h"
 #include "component/TextComponent.h"
 #include "component/ImageComponent.h"
 #include "component/UIComponent.h"
@@ -118,6 +119,8 @@ namespace jasperengine{
         void convertLocalParentSpaceToLayoutSpace(Entity transformParent, Entity layoutParent, float& posX, float& posY) const;
 
         void applyAnchorPreset(RectTransformComponent& layout);
+        // a Safe Area component's anchors: the safe area relative to its anchor reference
+        void applySafeArea(SafeAreaComponent& safeArea, RectTransformComponent& layout, const Transform& transform);
         void changeFlipY(UIComponent& ui, CameraComponent& camera);
 
         void destroyText(TextComponent& text);

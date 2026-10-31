@@ -1931,6 +1931,14 @@ OVERRIDES = {
     },
 }
 
+OVERRIDES[('Screen', 'setExtraInsets')] = {
+    'doc': ['Space the game keeps free per edge on top of the device insets (a banner ad): every safe-area',
+            'consumer includes it (Screen.safeArea, the Safe Area component, HTML env()). `unit` is',
+            '"canvas" (default) or "pixels" (view pixels, converted again when the canvas changes).'],
+    'overloads': [([('left', 'number'), ('top', 'number'), ('right', 'number'), ('bottom', 'number'),
+                    ('unit?', '"canvas"|"pixels"')], '')],
+}
+
 # Mesh:getMaterial and Mesh.material push the Material copy themselves (a LuaRef: the copy
 # remembers the shader its submesh draws with, LuaBinding::setMaterialDrawnShader)
 OVERRIDES[('Mesh', 'getMaterial')] = {

@@ -3302,6 +3302,8 @@
 		4A534E4792C92F90213540FE /* Screen.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471F33544BB442A466 /* Screen.h */; };
 		4A534E471041FDE4DF7EF626 /* FrameLimiter.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47DB493E51DF771D1F /* FrameLimiter.h */; };
 		4A534E4777DAA850BCD6D5EA /* PlatformRules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47778D99DE934432D4 /* PlatformRules.h */; };
+		4A534E47616A59222953D876 /* SafeAreaComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4758E5D66F14FC1ED7 /* SafeAreaComponent.h */; };
+		4A534E47D4879777C388C7A3 /* EdgeInsets.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477A428FAA7908B6A0 /* EdgeInsets.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6671,6 +6673,8 @@
 		4A534E471F33544BB442A466 /* Screen.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Screen.h; sourceTree = "<group>"; };
 		4A534E47DB493E51DF771D1F /* FrameLimiter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FrameLimiter.h; sourceTree = "<group>"; };
 		4A534E47778D99DE934432D4 /* PlatformRules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlatformRules.h; sourceTree = "<group>"; };
+		4A534E4758E5D66F14FC1ED7 /* SafeAreaComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SafeAreaComponent.h; sourceTree = "<group>"; };
+		4A534E477A428FAA7908B6A0 /* EdgeInsets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EdgeInsets.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -8166,6 +8170,7 @@
 				4A534E47C6821B885199BD43 /* PoseAnimatorComponent.h */,
 				4A534E47625F8F2E8CA675B3 /* AnimationPlayerComponent.h */,
 				4A534E47F4D574AFECE5C17E /* VertexAnimatorComponent.h */,
+				4A534E4758E5D66F14FC1ED7 /* SafeAreaComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -8198,6 +8203,7 @@
 				7162FC4A25962A0E0075B97D /* Vector3.cpp */,
 				7162FC5725962A0E0075B97D /* Vector4.h */,
 				7162FC4925962A0E0075B97D /* Vector4.cpp */,
+				4A534E477A428FAA7908B6A0 /* EdgeInsets.h */,
 			);
 			path = math;
 			sourceTree = "<group>";
@@ -11914,6 +11920,8 @@
 				4A534E4792C92F90213540FE /* Screen.h in Headers */,
 				4A534E471041FDE4DF7EF626 /* FrameLimiter.h in Headers */,
 				4A534E4777DAA850BCD6D5EA /* PlatformRules.h in Headers */,
+				4A534E47616A59222953D876 /* SafeAreaComponent.h in Headers */,
+				4A534E47D4879777C388C7A3 /* EdgeInsets.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

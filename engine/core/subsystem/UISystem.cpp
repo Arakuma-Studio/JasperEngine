@@ -11,6 +11,7 @@
 #include "Input.h"
 #include "Engine.h"
 #include "System.h"
+#include "Screen.h"
 #include "util/STBText.h"
 #include "util/StringUtils.h"
 #include "pool/FontPool.h"
@@ -1609,6 +1610,59 @@ Rect UISystem::getAnchorReferenceRect(const RectTransformComponent& layout, cons
     return boxRect;
 }
 
+void UISystem::applySafeArea(SafeAreaComponent& safeArea, RectTransformComponent& layout, const Transform& transform){
+    // the anchor reference in world axes (the canvas for a root element); a rotated or scaled
+    // parent gets the safe area axis-aligned
+    const Rect reference = getAnchorReferenceRect(layout, transform, true);
+    if (reference.getWidth() <= 0.0f || reference.getHeight() <= 0.0f)
+        return;
+
+    // Screen's canvas to this scene's UI units: the same fractions of the root canvas (the
+    // editor lays edit-mode UI out for the project canvas)
+    const float canvasWidth = (float)(anchorReferenceWidth != 0 ? anchorReferenceWidth : Engine::getCanvasWidth());
+    const float canvasHeight = (float)(anchorReferenceHeight != 0 ? anchorReferenceHeight : Engine::getCanvasHeight());
+    const float screenWidth = Screen::getSafeAreaCanvasWidth();
+    const float screenHeight = Screen::getSafeAreaCanvasHeight();
+    const float sx = screenWidth > 0.0f ? canvasWidth / screenWidth : 1.0f;
+    const float sy = screenHeight > 0.0f ? canvasHeight / screenHeight : 1.0f;
+    const Rect safe = safeArea.includeExtraInsets ? Screen::getSafeArea() : Screen::getDeviceSafeArea();
+    const float safeLeft = safe.getX() * sx;
+    const float safeRight = (safe.getX() + safe.getWidth()) * sx;
+    // Screen's rectangle is top-left; a 2D (y-up) camera puts layout's "top" at the screen's
+    // bottom: there the screen's bottom edge is the smaller layout y
+    const Entity cameraEntity = scene->getCamera();
+    const CameraComponent* camera = cameraEntity != NULL_ENTITY ? scene->findComponent<CameraComponent>(cameraEntity) : nullptr;
+    const bool yUp = camera && camera->type != CameraType::CAMERA_UI;
+    const float screenTop = safe.getY() * sy;
+    const float screenBottom = (safe.getY() + safe.getHeight()) * sy;
+    const float safeTop = yUp ? canvasHeight - screenBottom : screenTop;
+    const float safeBottom = yUp ? canvasHeight - screenTop : screenBottom;
+    const bool followTop = yUp ? safeArea.bottom : safeArea.top;
+    const bool followBottom = yUp ? safeArea.top : safeArea.bottom;
+
+    auto fraction = [](float value, float origin, float size){
+        return std::clamp((value - origin) / size, 0.0f, 1.0f);
+    };
+    const float anchorLeft = safeArea.left ? fraction(safeLeft, reference.getX(), reference.getWidth()) : 0.0f;
+    const float anchorTop = followTop ? fraction(safeTop, reference.getY(), reference.getHeight()) : 0.0f;
+    const float anchorRight = safeArea.right ? fraction(safeRight, reference.getX(), reference.getWidth()) : 1.0f;
+    const float anchorBottom = followBottom ? fraction(safeBottom, reference.getY(), reference.getHeight()) : 1.0f;
+
+    layout.usingAnchors = true;
+    layout.anchorPreset = AnchorPreset::NONE;
+    layout.anchorPointLeft = anchorLeft;
+    layout.anchorPointTop = anchorTop;
+    layout.anchorPointRight = std::max(anchorRight, anchorLeft);
+    layout.anchorPointBottom = std::max(anchorBottom, anchorTop);
+    layout.anchorOffsetLeft = 0;
+    layout.anchorOffsetTop = 0;
+    layout.anchorOffsetRight = 0;
+    layout.anchorOffsetBottom = 0;
+    layout.positionOffset = Vector2(0.0f, 0.0f);
+    layout.needUpdateAnchorOffsets = false;
+    safeArea.appliedRevision = Screen::getSafeAreaRevision();
+}
+
 void UISystem::setAnchorReferenceSize(int width, int height){
     this->anchorReferenceWidth = width;
     this->anchorReferenceHeight = height;
@@ -2257,6 +2311,14 @@ void UISystem::update(double dt){
 
         if (signature.test(scene->getComponentId<Transform>())){
             Transform& transform = scene->getComponent<Transform>(entity);
+
+            // a Safe Area panel's anchors follow Screen.safeArea; an inactive one keeps what it had
+            if (signature.test(scene->getComponentId<SafeAreaComponent>())){
+                SafeAreaComponent& safeArea = scene->getComponent<SafeAreaComponent>(entity);
+                if (safeArea.enabled && scene->isEntityActiveInHierarchy(entity)){
+                    applySafeArea(safeArea, layout, transform);
+                }
+            }
 
             if (layout.usingAnchors){
                 if (layout.anchorPointRight < layout.anchorPointLeft)

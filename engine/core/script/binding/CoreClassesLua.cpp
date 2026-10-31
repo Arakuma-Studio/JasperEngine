@@ -69,6 +69,29 @@ static int luaLayerMaskGetMask(lua_State* L){
     return 1;
 }
 
+// Screen.setExtraInsets(left, top, right, bottom [, unit]): unit "canvas" (default) or "pixels"
+static int luaScreenSetExtraInsets(lua_State* L){
+    const char* edges[] = {"left", "top", "right", "bottom"};
+    float values[4];
+    for (int i = 0; i < 4; i++){
+        if (lua_type(L, i + 1) != LUA_TNUMBER){
+            return luaL_error(L, "Screen.setExtraInsets: %s must be a number (left, top, right, bottom [, \"canvas\"|\"pixels\"])", edges[i]);
+        }
+        values[i] = (float)lua_tonumber(L, i + 1);
+    }
+    bool pixels = false;
+    if (!lua_isnoneornil(L, 5)){
+        const char* unit = lua_type(L, 5) == LUA_TSTRING ? lua_tostring(L, 5) : nullptr;
+        if (unit && std::string(unit) == "pixels"){
+            pixels = true;
+        }else if (!unit || std::string(unit) != "canvas"){
+            return luaL_error(L, "Screen.setExtraInsets: unit must be \"canvas\" or \"pixels\"");
+        }
+    }
+    Screen::setExtraInsets(EdgeInsets(values[0], values[1], values[2], values[3]), pixels);
+    return 0;
+}
+
 // Physics and Physics2D. Layer masks are read as Unity's int and any integer is taken by
 // its low 32 bits, so LayerMask.getMask(...), ~mask and -1 (Everything) all work.
 namespace{
@@ -876,6 +899,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("onFocus", [] () { return &Engine::onFocus; }, [] (lua_State* L) { Engine::onFocus = L; })
         .addStaticProperty("onOrientationChanged", [] () { return &Engine::onOrientationChanged; }, [] (lua_State* L) { Engine::onOrientationChanged = L; })
         .addStaticProperty("onLowMemory", [] () { return &Engine::onLowMemory; }, [] (lua_State* L) { Engine::onLowMemory = L; })
+        .addStaticProperty("onSafeAreaChanged", [] () { return &Engine::onSafeAreaChanged; }, [] (lua_State* L) { Engine::onSafeAreaChanged = L; })
         .addStaticProperty("onSceneLoaded", [] () { return &Engine::onSceneLoaded; }, [] (lua_State* L) { Engine::onSceneLoaded = L; })
         .addStaticProperty("onTouchStart", [] () { return &Engine::onTouchStart; }, [] (lua_State* L) { Engine::onTouchStart = L; })
         .addStaticProperty("onTouchEnd", [] () { return &Engine::onTouchEnd; }, [] (lua_State* L) { Engine::onTouchEnd = L; })
@@ -1931,6 +1955,15 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("sleepTimeout", &Screen::getSleepTimeout, &Screen::setSleepTimeout)
         .addStaticProperty("dpi", &Screen::getDpi)
         .addStaticProperty("refreshRate", &Screen::getRefreshRate)
+        .addStaticProperty("safeArea", &Screen::getSafeArea)
+        .addStaticProperty("safeAreaInsets", &Screen::getSafeAreaInsets)
+        .addStaticProperty("deviceSafeArea", &Screen::getDeviceSafeArea)
+        .addStaticProperty("deviceSafeAreaInsets", &Screen::getDeviceSafeAreaInsets)
+        .addStaticProperty("safeAreaPixels", &Screen::getSafeAreaPixels)
+        .addStaticProperty("cutouts", &Screen::getCutouts)
+        .addStaticProperty("extraInsets", &Screen::getExtraInsets)
+        .addStaticFunction("setExtraInsets", &luaScreenSetExtraInsets)
+        .addStaticFunction("clearExtraInsets", &Screen::clearExtraInsets)
         .endClass();
 
 #endif //DISABLE_LUA_BINDINGS
