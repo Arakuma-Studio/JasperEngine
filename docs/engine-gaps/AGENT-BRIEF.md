@@ -67,6 +67,13 @@ statics, `RegisterEvent`/`RegisterEngineEvent`).
   and `xvfb-run -a build/editor/jasperengine-editor-tests`.
 - The machine has 8 cores / 15 GB RAM shared by up to 6 agents: **use `-j3` at most** and don't run several big
   builds at once from one agent.
+- MCP end-to-end tests from a worktree: install your build first
+  (`cmake --install build/editor --prefix build/linux/editor-install`) and ALWAYS pass your own editor:
+  `JASPER_EDITOR=$PWD/build/linux/editor-install/bin/jasperengine-editor tools/mcp/run-tests.sh -j2 <files>`
+  (without it the harness silently uses the MAIN checkout's editor). xdotool, dbus-x11, uv, FFmpeg (tools + dev
+  libs) are installed. Known baseline: tests needing the external `build/fixture-unity` project fail on `main` too
+  (see LEDGER "Baseline"); every other MCP test passes on `main`.
+- Baseline on `main` (`b32a3c578`): editor + tests build with 0 warnings; unit tests 936 passed, 8 skipped, 0 failed.
 - Never use `git push`, never touch `main` or other branches/worktrees: the lead merges.
 
 ## Commits
