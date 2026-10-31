@@ -87,6 +87,9 @@ namespace luabridge
 
     template<> struct Stack<AnchorPreset> : EnumWrapper<AnchorPreset>{};
     template<> struct Stack<LayoutGroupType> : EnumWrapper<LayoutGroupType>{};
+    // Canvas Groups (ui canvas group spec 7.6)
+    template<> struct Stack<CanvasGroupRenderMode> : EnumWrapper<CanvasGroupRenderMode>{};
+    template<> struct Stack<AlphaTweenTarget> : EnumWrapper<AlphaTweenTarget>{};
     template<> struct Stack<PivotPreset> : EnumWrapper<PivotPreset>{};
 
     template<> struct Stack<ScrollbarType> : EnumWrapper<ScrollbarType>{};
