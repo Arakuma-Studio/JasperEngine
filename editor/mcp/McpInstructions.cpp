@@ -181,6 +181,8 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   Player (jasper://docs/animation).
 - Crowds: bake_vertex_animation (preview, then output) makes a .vat played on the GPU by a
   Vertex Animator (jasper://docs/vertex-animation).
+- Camera shake: a camerashaker on the camera, then CameraShake.shake("explosion") or addTrauma;
+  camerafollow follows a target (jasper://docs/camera).
 - UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; HTML/CSS
   UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
   and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
