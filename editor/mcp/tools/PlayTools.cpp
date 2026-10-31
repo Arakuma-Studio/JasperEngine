@@ -9,6 +9,8 @@
 //   eval_lua              run Lua in the game's Lua state, results as JSON
 //   list_runtime_entities / get_runtime_entity / set_runtime_property   live GameObjects
 //   send_input            keyboard / text / mouse / touch / gamepad sequences across frames
+#include "object/physics/Joint3D.h"
+#include "object/physics/Rigidbody.h"
 #include "McpTools.h"
 #include "HtmlUiShared.h"
 #include "PlayViewCommon.h"
@@ -2116,6 +2118,39 @@ Json physicsContactsJson(SceneProject* sp, Entity entity) {
     return out;
 }
 
+Json vec3Json(const Vector3& v) {
+    return Json::array({v.x, v.y, v.z});
+}
+
+Json rigidbody3DReadoutsJson(Scene* scene, Entity entity) {
+    RigidbodyComponent& component = scene->getComponent<RigidbodyComponent>(entity);
+    if (component.body.IsInvalid()) return Json{{"live", false}};
+    Rigidbody body(scene, entity);
+    return Json{{"live", true}, {"type", component.type == BodyType::DYNAMIC ? "dynamic" : (component.type == BodyType::KINEMATIC ? "kinematic" : "static")},
+                {"mass", body.getMass()}, {"center_of_mass_world", vec3Json(body.getCenterOfMassPosition())},
+                {"linear_velocity", vec3Json(body.getLinearVelocity())}, {"angular_velocity", vec3Json(body.getAngularVelocity())},
+                {"sleeping", body.isSleeping()}, {"colliders", component.colliders.size()}};
+}
+
+Json joint3DReadoutsJson(Scene* scene, Entity entity) {
+    Joint3D joint(scene, entity);
+    const Joint3DComponent& component = scene->getComponent<Joint3DComponent>(entity);
+    Json out = {{"live", joint.isLive()}, {"broken", joint.isBroken()}};
+    if (!joint.isLive()) return out;
+    out["current_force"] = vec3Json(joint.getCurrentForce());
+    out["current_torque"] = vec3Json(joint.getCurrentTorque());
+    if (component.type == Joint3DType::HINGE) {
+        out["angle"] = joint.getAngle();
+        out["velocity"] = joint.getVelocity();
+    } else if (component.type == Joint3DType::PRISMATIC) {
+        out["position"] = joint.getPosition();
+        out["speed"] = joint.getSpeed();
+    } else if (component.type == Joint3DType::DISTANCE) {
+        out["current_length"] = joint.getCurrentLength();
+    }
+    return out;
+}
+
 void getRuntimeEntityTool(const CallPtr& call) {
     const Json& args = call->args();
     McpContext& ctx = call->ctx();
@@ -2199,6 +2234,12 @@ void getRuntimeEntityTool(const CallPtr& call) {
     if ((only.empty() || only.count(ComponentType::Rigidbody2DComponent)) && sp->scene->findComponent<Rigidbody2DComponent>(entity)) {
         data["rigidbody2d"] = rigidbody2DReadoutsJson(sp->scene, entity);
     }
+    if ((only.empty() || only.count(ComponentType::Joint3DComponent)) && sp->scene->findComponent<Joint3DComponent>(entity)) {
+        data["joint3d"] = joint3DReadoutsJson(sp->scene, entity);
+    }
+    if ((only.empty() || only.count(ComponentType::RigidbodyComponent)) && sp->scene->findComponent<RigidbodyComponent>(entity)) {
+        data["rigidbody"] = rigidbody3DReadoutsJson(sp->scene, entity);
+    }
     // physics-contacts: what the body touches now and the contact callbacks its scripts define
     {
         const Json physics = physicsContactsJson(sp, entity);
@@ -2215,6 +2256,8 @@ void getRuntimeEntityTool(const CallPtr& call) {
     if (data.contains("joint2d")) text += "\njoint2d: " + data["joint2d"].dump();
     if (data.contains("rigidbody2d")) text += "\nrigidbody2d: " + data["rigidbody2d"].dump();
     if (data.contains("physics")) text += "\nphysics: " + data["physics"].dump();
+    if (data.contains("joint3d")) text += "\njoint3d: " + data["joint3d"].dump();
+    if (data.contains("rigidbody")) text += "\nrigidbody: " + data["rigidbody"].dump();
     if (text.size() > 12000) text = text.substr(0, 12000) + " ... (see structuredContent)";
     call->ok(text, data);
 }

@@ -132,8 +132,8 @@ namespace jasperengine::physicstest {
                 scene.addComponent<RigidbodyComponent>(e, body);
             }
             RigidbodyComponent& body = scene.getComponent<RigidbodyComponent>(e);
-            Collider3D& c = body.colliders[body.numColliders++];
-            c = Collider3D();
+            body.colliders.push_back(Collider3D());
+            Collider3D& c = body.colliders.back();
             c.type = type;
             return c;
         }

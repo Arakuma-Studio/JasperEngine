@@ -148,7 +148,7 @@ namespace {
             body.type = type;
             body.sensor = sensor;
             for (const Collider3D& collider : colliders) {
-                body.colliders[body.numColliders++] = collider;
+                body.colliders.push_back(collider);
             }
             scene->addComponent<RigidbodyComponent>(e, body);
             if (script) addScript(scene, e, script);

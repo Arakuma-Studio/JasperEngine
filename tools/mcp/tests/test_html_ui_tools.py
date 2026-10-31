@@ -112,9 +112,15 @@ LIMITS.update({"user_settings": 550})
 # description, set_shape_points' line text reworded; measured on the merged tree: total 106692 (106687 before)
 # ui-canvas-group: create_ui's canvas_group node option (the rules in jasper://docs/ui) and
 # create_entity's canvas_group type; merged with main (lines-trails): 150 tools measured 106771
+# physics-3d: create_ragdoll (506, capped at 900), set_joint's 3D arguments (cone_half_angle and the
+# no-body_b wording), edit_colliders' 3D vertices / indices / is_trigger / material, configure_game_view's
+# physics_debug / physics_debug_contacts; measured on the tree merged with main (script-lifecycle,
+# lines-trails) and gaps/physics-2d: 151 tools, total 107295 (tool_budget.py), the limit set to it
+LIMITS.update({"create_ragdoll": 900})
+# merged by the lead (ui-canvas-group + physics-3d): provisional sum of both increments
 # physics-contacts: get_runtime_entity's physics contacts / callbacks paid by a shorter description
-# (edit_colliders' receiver is in the guide); merged with main (ui-canvas-group): 150 tools measured 106769
-TOTAL_LIMIT = 106769
+# (edit_colliders' receiver is in the guide); merged with main (ui-canvas-group, physics-3d): MEASURED
+TOTAL_LIMIT = 107440
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

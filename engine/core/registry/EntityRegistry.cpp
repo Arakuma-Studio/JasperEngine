@@ -60,6 +60,7 @@ EntityRegistry::EntityRegistry() {
 #ifdef JASPERENGINE_PHYSICS_3D
     registerComponent<RigidbodyComponent>();
     registerComponent<Joint3DComponent>();
+    registerComponent<RagdollComponent>();
 #endif
     registerComponent<InstancedMeshComponent>();
     registerComponent<PrefabComponent>();

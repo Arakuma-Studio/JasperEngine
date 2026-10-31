@@ -2194,6 +2194,9 @@ PROPERTY_OVERRIDES = {
     ('Joint2D', 'bodyA'): ('GameObject|nil', False),
     ('Joint2D', 'bodyB'): ('GameObject|nil', False),
     ('Joint2D', 'connectedBody'): ('GameObject|nil', False),
+    ('Joint3D', 'bodyA'): ('GameObject|nil', False),
+    ('Joint3D', 'bodyB'): ('GameObject|nil', False),
+    ('Joint3D', 'connectedBody'): ('GameObject|nil', False),
 }
 
 # physics-contacts: the callbacks' values. Their GameObject / body / receiver getters are
@@ -2446,6 +2449,7 @@ def html_ui_types_file():
 _PARAM_TYPE_OVERRIDES = {
     # 2D physics materials: a .physicsmaterial path, a PhysicsMaterial or nil (none)
     ('Rigidbody2D', 'setColliderMaterial', 'value'): 'string|PhysicsMaterial|nil',
+    ('Rigidbody', 'setColliderMaterial', 'value'): 'string|PhysicsMaterial|nil',
     ('PhysicsMaterial', 'new', 'params'): '{friction?: number, bounciness?: number, frictionCombine?: PhysicsMaterialCombine, bounceCombine?: PhysicsMaterialCombine}|nil',
 }
 # anime (engine/core/script/binding/HtmlUIAnimeLua.cpp, phase-1 p1-anim): the parameter tables

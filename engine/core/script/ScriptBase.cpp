@@ -166,8 +166,8 @@ void ScriptBase::onJointBreak2D(Joint2D& joint) {
     inherited(*this, ScriptMessage::JointBreak2D);
 }
 
-void ScriptBase::onJointBreak(float breakForce, Joint3D& joint) {
-    (void)breakForce;
+void ScriptBase::onJointBreak(float force, Joint3D& joint) {
+    (void)force;
     (void)joint;
     inherited(*this, ScriptMessage::JointBreak);
 }

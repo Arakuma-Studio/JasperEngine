@@ -38,12 +38,12 @@ mesh bounds in 3D) unless `fit: false`; sizes you pass win.
 | | shapes and their fields | also |
 |---|---|---|
 | 2D | `box` (`size`, `center`), `circle` (`radius`), `capsule` (`radius`, `point_a`, `point_b`), `segment` (`point_a`, `point_b`), `polygon` (`points`: any number, 3 or more, concave allowed), `chain` (`points`: 2 or more, `loop`); sizes in points before the GameObject's scale; any number of colliders per body | `density`, `friction`, `restitution`, `material` (a `.physicsmaterial` path or null), `sensor` (alias `is_trigger`), `hit_events`, `contact_events`, `pre_solve_events`, `sensor_events`, `category_bits`, `mask_bits`, `group_index`, `center`, `offset`, `receiver` |
-| 3D | `box` (`size`), `sphere` (`radius`), `capsule` / `cylinder` (`radius`, `half_height`), `tapered_capsule` (`top_radius`, `bottom_radius`, `half_height`), `convex_hull` / `mesh` (from the GameObject's mesh, or `source`), `heightfield` (a terrain's, `samples_size`) | `density`, `center`, `rotation`, `receiver`; `friction` and `restitution` are per body (they go to the Rigidbody, for all its colliders) |
+| 3D | `box` (`size`), `sphere` (`radius`), `capsule` / `cylinder` (`radius`, `half_height`), `tapered_capsule` (`top_radius`, `bottom_radius`, `half_height`), `convex_hull` / `mesh` (from the GameObject's mesh, or `source`; or raw `vertices` [[x,y,z]...] and, for a mesh, `indices`: any number), `heightfield` (a terrain's, `samples_size`); any number of colliders per body | `density`, `center`, `rotation`, `is_trigger`, `material` (a `.physicsmaterial` path or null), `receiver`; `friction` and `restitution` without a material are per body (they go to the Rigidbody) |
 
 ## Mass
 
-By default mass comes from the collider's size and density (a 2D body can also take an
-explicit mass, below).
+By default mass comes from the collider's size and density; either body can take an explicit mass
+(3D: `automaticMass: false` + `mass`, below; 2D: `useAutoMass: false` + `mass`).
 
 | | 3D (Jolt) | 2D (Box2D) |
 |---|---|---|
@@ -53,13 +53,13 @@ explicit mass, below).
 | example | radius-1 sphere ~ 4189 kg, radius-0.5 ~ 524 kg | 100x100 point box ~ 2.4 kg |
 | read it (C++) | `getMass()` | `getMass()` |
 | read it (Lua) | `body.mass` (property) | `body.mass` (property) or `body:getMass()` |
-| author it | density | density, or `useAutoMass: false` + `mass` (kg) |
+| author it | density, or `automaticMass: false` + `mass` (kg) | density, or `useAutoMass: false` + `mass` (kg) |
 
 Size forces as `F = mass x desired acceleration` using the real mass: a few hundred newtons
 on a multi-tonne body looks like a broken script. If movement needs implausibly large forces
 or feels sluggish, lower the collider density (or shrink the collider) instead of inflating
-the force. `Rigidbody::setMass` only writes the live Jolt body and is lost on reload: persist
-mass by authoring density.
+the force. Setting `body.mass` (Lua) / `setMass` (C++) turns `automaticMass` off and is saved like
+any field.
 
 ## Forces, velocity, teleport
 
@@ -97,6 +97,111 @@ default arguments): a missing `wake` reads as false.
   moved with a velocity. Setting the body's position, rotation, velocity or type from a
   script takes that part over from the transform.
 - Never describe transform-only movement as physics.
+
+## 3D bodies, colliders and materials
+
+`RigidbodyComponent` fields (Unity's Rigidbody; Catalog names for `set_properties`, `edit_colliders`
+`body` (snake_case accepted: `linear_damping`), Lua properties of the same name; the defaults are
+what bodies did before these fields, so old scenes move as they did):
+
+| field | default | |
+|---|---|---|
+| `linearDamping`, `angularDamping` | 0.05, 0.05 | Unity drag / angularDrag (Jolt's, not Unity's 0) |
+| `maxLinearVelocity`, `maxAngularVelocity` | 500 m/s, 47.1 rad/s | Unity maxLinearVelocity / maxAngularVelocity |
+| `automaticMass`, `mass` | true, 1 | false: `mass` kg instead of volume x density (setting `body.mass` turns it off) |
+| `automaticCenterOfMass`, `centerOfMass` | true, (0,0,0) | body-local, world units; a low one makes a box self-right |
+| `automaticInertiaTensor`, `inertiaTensor`, `inertiaTensorRotation` | true, (1,1,1), identity | principal moments, kg m^2 (auto: from the colliders, scaled with an explicit mass) |
+| `allowSleeping` | true | false: never sleeps |
+| `collideKinematicVsNonDynamic` | false | a kinematic body also touches static and kinematic ones (always with a trigger collider) |
+| `interpolation` | `scene` | `none`, `interpolate`, `extrapolate` (Interpolation below) |
+| `material` | "" | default `.physicsmaterial` of the colliders without one |
+
+**Type** switches live, in Play too (Inspector, `set_runtime_property`, Lua `body.type`,
+`body.isKinematic`): the same body, joints and contacts. A dynamic body made kinematic stops; a
+kinematic one made dynamic keeps the velocity it was moving with. A body with a `mesh` or
+`heightfield` collider can only be static (an error names the collider).
+
+**Triggers per collider** (Unity Is Trigger): a collider with `isTrigger` passes through and
+reports a sensor contact, the body's other colliders still collide; triggers add no mass and do not
+spoil continuous collision (`linear_cast` bodies stop at thin walls with a trigger around them). A
+kinematic body with a trigger detects static bodies. The old body-wide `sensor` still works.
+
+**Editing colliders from Lua at run time** swaps the shape (the body keeps its id, velocity,
+joints and contacts): `body:setColliderRadius(i, r)`, `setColliderBoxSize`, `setColliderHalfHeight`,
+`setColliderTaperedRadii`, `setColliderPosition`, `setColliderRotation`, `setColliderVertices(i,
+vertices [, indices])`, `setColliderTrigger`, `setColliderMaterial`, `removeCollider(i)` (later
+indices shift down). No collider or vertex caps: a 20 000-index mesh collider is fine.
+
+**Materials** are the same `.physicsmaterial` assets as 2D (below): on a collider (`material`) or
+the body (its colliders without one). Without materials two colliders combine as before
+(geometric mean friction, maximum restitution of the bodies' `friction` / `restitution`).
+`setColliderFriction` / `setColliderBounciness` give the collider its own copy (Unity
+`collider.material`); drop a material on a GameObject (Scene or Hierarchy) to set it on all its
+colliders in one undo step.
+
+## 3D joints
+
+One `Joint3DComponent` per joint (its own GameObject under bodyA: `set_joint` and the Hierarchy's
+Joint 3D put it there). bodyA is Unity's "this", bodyB the connected body; without bodyB the joint
+holds bodyA to the world.
+
+| Unity | `type` | main fields |
+|---|---|---|
+| HingeJoint | `hinge` | `axis`, `normal` (Secondary Axis), `useLimits` + `limitsMin` / `limitsMax` (any range, 10..50 too), `useSpring` + `springStiffness` / `springDamper` / `springTargetPosition`, `useMotor` + `motorTargetVelocity` / `motorMaxForce`, `maxFriction` |
+| ConfigurableJoint (slider) | `prismatic` | `axis`, limits in metres, spring, motor (N) |
+| SpringJoint | `distance` | `minDistance` / `maxDistance` (-1: the length when made), `useSpring` (soft rope) |
+| CharacterJoint | `swingtwist` | `twistAxis`, `planeAxis` (Swing Axis), `twistMinAngle` / `twistMaxAngle` (Low / High Twist), `normalHalfConeAngle` (Swing 1: about the swing axis), `planeHalfConeAngle` (Swing 2: about the normal), `swingType`, motor to `motorTargetRotation` |
+| ConfigurableJoint | `sixdof` | `x/y/zMotion`, `angularX/Y/ZMotion` (`locked`, `limited`, `free`; with the limits, live), `linear/angularLimitMin/Max`, drives (`useDrive`; a stiffness springs to the target pose, a damping alone damps towards the target velocity, neither: no drive) |
+| FixedJoint | `fixed` | |
+| | `point`, `cone` (`coneHalfAngle`, 45), `path`, `gear`, `rack_and_pinion`, `pulley` | |
+
+All types: `enableCollision` (default off), `breakForce`, `breakTorque` (infinite), `breakAction`
+(as 2D: `ignore`, `callback_only`, `disable`, `destroy`; the callback is `onJointBreak(force,
+joint)`, C++ `onJointBreak(float, Joint3D&)`).
+
+**Anchors.** `anchorSpace: local` (new joints): `anchor` in bodyA's local space, `anchorB` the
+connected anchor in bodyB's (a world point without bodyB), `autoAnchors` puts it where `anchor` is
+when the joint is made; axes in bodyA's frame. A joint in a prefab works wherever it is placed.
+`world` is the old meaning (scenes saved before: world points, the bodies collide); the
+Inspector's Convert to Local changes one. **Angles and positions** (`angle`, `position`, limits,
+targets) are bodyA's relative to the connected body, measured from the pose the joint is made in,
+in the engine's angle unit; a hinge or slider range not containing 0 works (Unity's 10..50).
+
+`set_joint` 3D (`dimension: "3d"` when the bodies do not tell): `anchor` (or `anchor_a`),
+`anchor_b`, `axis`, `normal`, `anchor_space`, `enable_collision`, `cone_half_angle`, `motor
+{enabled, speed, max}`, `spring {enabled, stiffness, damper, target}`, `limits [min, max] | false`
+(hinge angles, prismatic metres, distance min/max, swingtwist twist), `break {force, torque,
+action}`, any field through `properties`. In Play, `get_runtime_entity` adds `joint3d` (force,
+torque, angle, velocity, position, speed, length, broken) and `rigidbody` (mass, velocities,
+sleeping).
+
+## Ragdolls
+
+`create_ragdoll {entity}` (GameObject > 3D Object > Ragdoll..., or the Model's component menu) is
+Unity's Ragdoll Wizard on a character root: the bones from its humanoid map (or Mixamo, Unity and
+Blender names; override with `bones {pelvis, left_hips, left_knee, left_foot, right_hips, ...,
+middle_spine, head}`) get a Rigidbody, a capsule / box / sphere collider and a local swing-twist
+joint to their parent bone with Unity's limits, masses summing to `total_mass` (20); the root gets a
+`Ragdoll` component. One undo step; running it again rebuilds. `start: animated` (kinematic parts
+following the animation) or `simulated`. In a script: `local r = self.object:getRagdoll();
+r.simulated = true` (the Animation Player pauses, the parts keep the animation's velocity with
+`inheritVelocity`), `r:applyImpulse(impulse, point)` (the nearest part; in the same frame as `simulated = true` it reaches
+the now dynamic parts), `r:getParts()`. Simulated pauses everything that moves the bones (the
+Animation Player, Model animations, Pose and Vertex Animators) and resumes it after;
+`ragdoll.onBeforeAnimatedRestore` is told just before the parts go back to the animation.
+`selfCollision` off keeps the parts from touching each other.
+
+## Debug draw and world capacity
+
+`configure_game_view {physics_debug: true}` (Game view toolbar Physics, Lua `Physics.debugDraw =
+true`) draws every collider while playing (green awake, dark green asleep, blue kinematic, grey
+static, yellow triggers), joints in magenta and, with `physics_debug_contacts`, contact points in
+red; 2D too. A screenshot then shows them.
+
+Each scene's 3D world holds at most Project Settings > Physics > 3D World Capacity: Max Bodies,
+Max Body Pairs, Max Contact Constraints (8192 each, about 3.6 MB per world; `set_project_settings`
+`physics.max_bodies`, `physics.max_body_pairs`, `physics.max_contact_constraints`). Past one, the
+console names the setting (once per scene); scenes made after a change use it.
 
 ## 2D bodies, colliders and materials
 
@@ -213,10 +318,8 @@ joint's GameObject and of bodyA's; C++ scripts override `onJointBreak2D(Joint2D&
 {enabled, frequency, damping}` (weld: its stiffness), `limits [min, max]` (angles for revolute,
 translation for prismatic and wheel, length for distance; `false` turns them off), `break {force,
 torque, action}` (null force = never), `rope` (distance), `target` (mouse), and any field (Catalog
-name) through `properties`; `dimension` when the bodies do not tell. 3D (`dimension: "3d"`):
-`fixed`, `distance`, `point`, `hinge`, `cone`, `prismatic`, `swing_twist`, `six_dof`, `path`,
-`gear`, `rack_and_pinion`, `pulley`, with `anchor` (world point), `normal` (axis) and `limits
-[min, max]`; both bodies need a Rigidbody. The result has every resolved field. In Play, `get_runtime_entity` adds
+name) through `properties`; `dimension` when the bodies do not tell (3D: "3D joints" above). The
+result has every resolved field. In Play, `get_runtime_entity` adds
 `joint2d` read-outs: `reaction_force`, `reaction_torque`, `joint_angle`, `joint_speed`,
 `joint_translation`, `joint_linear_speed`, `motor_torque`, `motor_force`, `current_length`,
 `limit_state`; and `rigidbody2d`: mass, velocities, Box2D shapes per collider.
@@ -234,7 +337,9 @@ name) through `properties`; `dimension` when the bodies do not tell. 3D (`dimens
 Bodies are drawn interpolated between their last two fixed steps (scene setting
 `physics_interpolation`, Inspector > Scene > Physics > Interpolate, Lua
 `scene.physicsInterpolation`; on by default), so they move smoothly whatever the frame rate,
-drawn up to one step behind the simulation. A camera or anything else that follows a body
+drawn up to one step behind the simulation. A body's own `interpolation` (Rigidbody and
+Rigidbody 2D: `scene` by default) overrides it: `none` draws the step poses, `interpolate`, or
+`extrapolate` (drawn ahead by its velocity: no lag, can overshoot a contact by one step). A camera or anything else that follows a body
 reads the GameObject's world position (`object:getWorldPosition()`, C++ `getWorldPosition()`), not
 `body.position`, which moves once per step. Teleports through the body (`body.position`,
 `setPosition`) are not interpolated, and a body whose transform a script or animation moved

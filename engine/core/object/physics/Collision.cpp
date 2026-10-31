@@ -26,7 +26,7 @@ namespace {
 
     const Collider3D* colliderOf(const ColliderRef& ref) {
         const RigidbodyComponent* body = bodyOf(ref);
-        if (!body || ref.index < 0 || (size_t)ref.index >= body->numColliders) {
+        if (!body || ref.index < 0 || (size_t)ref.index >= body->colliders.size()) {
             return nullptr;
         }
         return &body->colliders[(size_t)ref.index];
@@ -77,7 +77,8 @@ int ColliderRef::getType() const {
 bool ColliderRef::isTrigger() const {
 #ifdef JASPERENGINE_PHYSICS_3D
     if (const RigidbodyComponent* body = bodyOf(*this)) {
-        return body->sensor;
+        // the collider's isTrigger, or the whole body a sensor (legacy)
+        return body->sensor || (index >= 0 && (size_t)index < body->colliders.size() && body->colliders[(size_t)index].isTrigger);
     }
 #endif
     return false;

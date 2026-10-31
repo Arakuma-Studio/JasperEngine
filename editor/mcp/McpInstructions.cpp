@@ -96,7 +96,7 @@ AudioSource(...); a constructor given only self.scene CREATES a new GameObject. 
 local Player = {
     properties = {
         { name = "speed", displayName = "Speed", type = "float", default = 300.0 },
-        { name = "label", displayName = "Label", type = "Text" },      -- GameObject reference
+        { name = "label", displayName = "Label", type = "Text" },  -- GameObject reference
         { name = "bullet", displayName = "Bullet", type = "Prefab" },  -- PrefabAsset
     }
 }
@@ -107,10 +107,10 @@ function Player:init()
 end
 
 function Player:onUpdate()
-    local dx = Input.getAxis("Horizontal")              -- keys, gamepad, on-screen stick
-    local p = self.go.position                          -- a copy: assign it back
+    local dx = Input.getAxis("Horizontal")  -- keys, gamepad, on-screen stick
+    local p = self.go.position  -- a copy: assign it back
     self.go.position = Vector3(p.x + dx * self.speed * Engine.deltatime, p.y, p.z)
-    if Input.getButtonDown("Jump") then                 -- pressed this frame (space, pad Y)
+    if Input.getButtonDown("Jump") then  -- pressed this frame (space, pad Y)
         GameObject.instantiate(self.bullet, self.scene, self.go.position, Quaternion.IDENTITY)
     end
 end
@@ -191,13 +191,15 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   static: floors, level geometry; kinematic: scripted movers.
 - Collider sizes are mesh-local, scaled by the GameObject's scale: never pre-scale them; omit
   sizes to fit the mesh bounds (never guess).
-- Mass = collider volume/area x density (1000 in 3D, 1 in 2D; a 2D body may set it). Size
-  forces as mass x acceleration; if huge, lower density.
+- Mass = collider volume/area x density (default 1000 in 3D, 1 in 2D) unless set explicitly.
+  Size forces as mass x acceleration; if huge, lower density.
+- Joints (set_joint, 2D/3D): Unity's set, local anchors, motors, springs, limits, breaking;
+  ragdolls: create_ragdoll; collider wireframes in Play: configure_game_view physics_debug.
 - Continuous forces and torques go in onFixedUpdate, never onUpdate, NOT multiplied by deltatime.
-  3D and 2D APIs differ (2D calls take a wake flag). 2D joints (set_joint: motors, springs,
-  limits, breaking, local anchors) and concave polygons: jasper://docs/physics.
-- Never write a body's transform in onFixedUpdate (overwritten): teleport with body.position
-  (rotation / angle), set body.linearVelocity. One-shot impulses: once per press, not per frame.
+  3D and 2D APIs differ (2D calls take a wake flag), concave 2D polygons: jasper://docs/physics.
+- Never move a body by writing its GameObject's transform from onFixedUpdate (silently
+  overwritten). Teleport with body.position (and body.rotation / body.angle), velocity with
+  body.linearVelocity. One-shot impulses fire once per press, not every held frame.
 - Collisions: define onCollisionEnter / onTriggerEnter(2D) on the script; filter with the Layer
   Collision Matrix or Physics.ignoreCollision; raycasts take a layer mask. Drop or settle
   objects: place_with_physics.

@@ -109,8 +109,9 @@ namespace jasperengine {
         // A 2D joint of this GameObject (or whose bodyA is it) broke (Unity OnJointBreak2D); the
         // joint still exists during the call.
         virtual void onJointBreak2D(Joint2D& joint);
-        // A 3D joint of this GameObject broke (Unity OnJointBreak), with the force that broke it
-        virtual void onJointBreak(float breakForce, Joint3D& joint);
+        // A 3D joint of this GameObject (or whose bodyA is it) broke under `force` (N, Unity
+        // OnJointBreak(float)); the joint still exists during the call
+        virtual void onJointBreak(float force, Joint3D& joint);
         // Contacts (physics-contacts): on the main thread after the fixed step that caused them,
         // enabled or not, while the GameObject is active in hierarchy (docs/mcp/guide/physics.md).
         // A collision is seen from this side (its collider is the other one); a trigger gets the

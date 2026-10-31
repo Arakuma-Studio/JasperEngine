@@ -696,7 +696,7 @@ namespace {
 
     Entity receiver3D(Scene* scene, const ColliderKey& key){
         const RigidbodyComponent* body = rigidbodyOf(scene, key.entity);
-        if (!body || key.collider < 0 || (size_t)key.collider >= body->numColliders){
+        if (!body || key.collider < 0 || (size_t)key.collider >= body->colliders.size()){
             return NULL_ENTITY;
         }
         const Entity receiver = body->colliders[(size_t)key.collider].receiver;
@@ -796,24 +796,30 @@ std::vector<ContactSummary> PhysicsSystem::getContactSummary3D(Entity entity){
 
 void PhysicsSystem::refreshListenerMask3D(Entity entity, RigidbodyComponent& body){
     std::vector<Entity> receivers;
-    for (size_t i = 0; i < body.numColliders; i++){
-        if (body.colliders[i].receiver != NULL_ENTITY) receivers.push_back(body.colliders[i].receiver);
+    for (const Collider3D& collider : body.colliders){
+        if (collider.receiver != NULL_ENTITY) receivers.push_back(collider.receiver);
     }
     const uint16_t mask = computeListenerMask(entity, receivers);
     if (mask == body.listenerMask){
         return;
     }
-    const bool reductionBefore = !(body.numColliders > 1 && (body.listenerMask & PhysicsCallbacks::COLLISION_3D));
-    const bool reductionAfter = !(body.numColliders > 1 && (mask & PhysicsCallbacks::COLLISION_3D));
     body.listenerMask = mask;
     if (body.body.IsInvalid() || steppingWorld3D){
         return;
     }
-    JPH::BodyLockWrite lock(getBodyLockInterface3D(), body.body);
-    if (lock.Succeeded()){
-        lock.GetBody().SetUserData(PhysicsCallbacks::packBodyUserData(entity, mask));
-        if (reductionBefore != reductionAfter){
-            lock.GetBody().SetUseManifoldReduction(reductionAfter);
+    const uint64_t userData = PhysicsCallbacks::packBodyUserData(entity, mask);
+    {
+        JPH::BodyLockWrite lock(getBodyLockInterface3D(), body.body);
+        if (lock.Succeeded()){
+            lock.GetBody().SetUserData(userData);
+            lock.GetBody().SetUseManifoldReduction(usesManifoldReduction3D(body));
+        }
+    }
+    // its trigger colliders' sensor body reports for it
+    if (!body.triggerBody.IsInvalid()){
+        JPH::BodyLockWrite lock(getBodyLockInterface3D(), body.triggerBody);
+        if (lock.Succeeded()){
+            lock.GetBody().SetUserData(userData);
         }
     }
 }
@@ -830,56 +836,17 @@ bool PhysicsSystem::isStepSynchronous3D() const{
     return stepSynchronous3D;
 }
 
-JoltPairFilter3D* PhysicsSystem::getPairFilter3D(){
-    return pairFilter3D.GetPtr();
-}
-
-void PhysicsSystem::applyIgnoreCollision3D(Entity a, Entity b, bool ignore){
-    if (ignore){
-        pairFilter3D->add(a, b, JoltPairFilter3D::SCRIPT);
-    }else{
-        pairFilter3D->remove(a, b, JoltPairFilter3D::SCRIPT);
-    }
-    // resting pairs are tested again (a sleeping body keeps its contacts otherwise)
-    for (Entity entity : {a, b}){
-        const RigidbodyComponent* body = rigidbodyOf(scene, entity);
-        if (body && !body->body.IsInvalid()){
-            wakeAround3D(body->body);
-        }
-    }
-}
-
 bool PhysicsSystem::setIgnoreCollision3D(Entity a, Entity b, bool ignore){
     if (a == b || !rigidbodyOf(scene, a) || !rigidbodyOf(scene, b)){
         return false;
     }
-    // job threads read the filter while the world steps
-    if (steppingWorld3D){
-        pendingIgnores3D.push_back({a, b, ignore});
-        return true;
-    }
-    applyIgnoreCollision3D(a, b, ignore);
+    // queued while the world steps, both woken (physics-3d's pair filter)
+    setBodyPairIgnored3D(a, b, JoltPairFilter3D::SCRIPT, ignore);
     return true;
 }
 
 bool PhysicsSystem::getIgnoreCollision3D(Entity a, Entity b) const{
-    for (auto it = pendingIgnores3D.rbegin(); it != pendingIgnores3D.rend(); ++it){
-        if ((it->a == a && it->b == b) || (it->a == b && it->b == a)){
-            return it->ignore;
-        }
-    }
-    return pairFilter3D->has(a, b, JoltPairFilter3D::SCRIPT);
-}
-
-void PhysicsSystem::setCollisionGroup3D(Entity entity, uint32_t group){
-    RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity);
-    if (!body || body->body.IsInvalid()){
-        return;
-    }
-    JPH::BodyLockWrite lock(getBodyLockInterface3D(), body->body);
-    if (lock.Succeeded()){
-        lock.GetBody().SetCollisionGroup(JPH::CollisionGroup(pairFilter3D, (JPH::CollisionGroup::GroupID)group, (JPH::CollisionGroup::SubGroupID)entity));
-    }
+    return pairFilter3D && (pairFilter3D->getReasons(a, b) & JoltPairFilter3D::SCRIPT) != 0;
 }
 
 void PhysicsSystem::dispatchContactRemoved3D(const JPH::BodyID& body1, const JPH::BodyID& body2, uint32_t subShape1, uint32_t subShape2){
@@ -911,17 +878,6 @@ void PhysicsSystem::processContacts3D(){
     std::vector<RawContact3D>& raws = *rawContacts3D;
     contactRecorder3D->collect(raws);
     contactTracker3D.setRecordedCount(raws.size());
-
-    // Physics.ignoreCollision called inside the step
-    if (!pendingIgnores3D.empty()){
-        std::vector<PendingIgnore3D> pending;
-        pending.swap(pendingIgnores3D);
-        for (const PendingIgnore3D& change : pending){
-            if (rigidbodyOf(scene, change.a) && rigidbodyOf(scene, change.b)){
-                applyIgnoreCollision3D(change.a, change.b, change.ignore);
-            }
-        }
-    }
 
     // 1. the global events of the step (legacy names and arguments, now here; a synchronous
     // step called the contact ones inside it). Activations first, then contacts added,
@@ -959,10 +915,12 @@ void PhysicsSystem::processContacts3D(){
         if (raw.kind == RawContact3D::Removed || !((raw.mask1 | raw.mask2) & wanted)){
             continue;
         }
-        // a body a global handler above destroyed or made again (its exits were sent then)
+        // a body a global handler above destroyed or made again (its exits were sent then);
+        // a trigger collider's sensor body counts as its body
         const RigidbodyComponent* body1 = rigidbodyOf(scene, raw.entity1);
         const RigidbodyComponent* body2 = rigidbodyOf(scene, raw.entity2);
-        if (!body1 || !body2 || body1->body != raw.body1 || body2->body != raw.body2){
+        if (!body1 || !body2 || (body1->body != raw.body1 && body1->triggerBody != raw.body1) ||
+                (body2->body != raw.body2 && body2->triggerBody != raw.body2)){
             continue;
         }
         const ColliderKey key1{raw.entity1, raw.collider1};
@@ -986,9 +944,16 @@ void PhysicsSystem::processContacts3D(){
         }
         bool keep = true;
         for (const ColliderKey& side : {key.a, key.b}){
+            // a trigger collider on a sensor body of its own: that body never sleeps, its
+            // overlaps are always reported
+            const RigidbodyComponent* owner = rigidbodyOf(scene, side.entity);
+            if (pair.trigger && owner && !owner->triggerBody.IsInvalid()){
+                keep = false;
+                break;
+            }
             const RigidbodyComponent* body = rigidbodyOf(scene, side.entity);
             if (!body || body->body.IsInvalid() || !bodyInterface.IsAdded(body->body) || bodyInterface.IsActive(body->body) ||
-                    side.collider < 0 || (size_t)side.collider >= body->numColliders){
+                    side.collider < 0 || (size_t)side.collider >= body->colliders.size()){
                 keep = false;
                 break;
             }
@@ -1079,10 +1044,10 @@ void PhysicsSystem::processContacts3D(){
 }
 
 void PhysicsSystem::contactBodyRemoved3D(Entity entity){
-    pairFilter3D->removeEntity(entity);
-    pendingIgnores3D.erase(std::remove_if(pendingIgnores3D.begin(), pendingIgnores3D.end(), [entity](const PendingIgnore3D& change){
-        return change.a == entity || change.b == entity;
-    }), pendingIgnores3D.end());
+    // its ignored pairs go with it (the entity id may be reused)
+    if (pairFilter3D){
+        changePairFilter3D([entity](JoltPairFilter3D& filter){ filter.forgetEntity(entity); });
+    }
 
     const std::vector<ContactTracker::Pair> pairs = contactTracker3D.removeEntity(entity);
     if (scene->isTearingDown() || pairs.empty()){

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // W3: screenshots, Scene view camera, window focus, Game view settings
+#include "registry/PhysicsLayers.h"
 #include "McpTools.h"
 #include "PlayViewCommon.h"
 
@@ -20,6 +21,7 @@
 #include "render/SceneRender.h"
 #include "render/SceneRender2D.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "object/ui/UIDocument.h"
@@ -1235,7 +1237,23 @@ void configureGameViewTool(const CallPtr& call) {
         }
         changed.push_back("simulate_touch");
     }
+    // the runtime collider / joint wireframes (Physics.debugDraw): every scene, Play and exports
+    if (args.contains("physics_debug")) {
+        Physics::setDebugDraw(args.value("physics_debug", false));
+        changed.push_back("physics_debug");
+    }
+    if (args.contains("physics_debug_contacts")) {
+        Physics::setDebugDrawContacts(args.value("physics_debug_contacts", false));
+        changed.push_back("physics_debug_contacts");
+    }
     if (!changed.empty()) gw->applySettings(settings);
+
+    // the lines the playing scenes drew last frame (0 until a frame is drawn after turning it on)
+    size_t physicsDebugLines = 0;
+    for (const SceneProject& sceneProject : project->getScenes()) {
+        if (sceneProject.playState == ScenePlayState::STOPPED || !sceneProject.scene) continue;
+        if (auto physics = sceneProject.scene->getSystem<PhysicsSystem>()) physicsDebugLines += physics->getDebugLineCount();
+    }
 
     Json data = {
         {"aspect", aspectNames()[std::clamp(settings.aspect, 0, (int)aspectNames().size() - 1)]},
@@ -1243,6 +1261,9 @@ void configureGameViewTool(const CallPtr& call) {
         {"maximize_on_play", settings.maximizeOnPlay},
         {"show_stats", settings.showStats},
         {"simulate_touch", project->isSimulateTouch()},
+        {"physics_debug", Physics::isDebugDraw()},
+        {"physics_debug_contacts", Physics::isDebugDrawContacts()},
+        {"physics_debug_lines", physicsDebugLines},
         {"open", gw->isOpen()},
         {"visible", gw->isVisible()},
         {"view_size", {gw->getWidth(), gw->getHeight()}},
@@ -1362,7 +1383,9 @@ void registerViewTools(McpRegistry& registry) {
             {"scale", number("", 1, 5)},
             {"maximize_on_play", boolean("")},
             {"show_stats", boolean("")},
-            {"simulate_touch", boolean("Mouse = one finger. Not while playing.")}
+            {"simulate_touch", boolean("Mouse = one finger. Not while playing.")},
+            {"physics_debug", boolean("Collider/joint wireframes in Play.")},
+            {"physics_debug_contacts", boolean("")}
         });
         tool.annotations.idempotent = true;
         tool.handler = configureGameViewTool;

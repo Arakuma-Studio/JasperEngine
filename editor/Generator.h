@@ -112,6 +112,10 @@ namespace jasperengine::editor {
         std::vector<std::string> layerNames;  // index = layer, empty when built-in or unnamed
         LayerCollisionRows layerCollisionMatrix3D = allLayersCollide();
         LayerCollisionRows layerCollisionMatrix2D = allLayersCollide();
+        // Project Settings > Physics > 3D World Capacity (PhysicsSystem::setWorldCapacity3D)
+        unsigned int maxBodies3D = 8192;
+        unsigned int maxBodyPairs3D = 8192;
+        unsigned int maxContactConstraints3D = 8192;
     };
 
     class Generator {

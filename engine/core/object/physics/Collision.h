@@ -46,7 +46,7 @@ namespace jasperengine {
         int getIndex() const { return index; }
         // Collider3DType as an int (the enum lives with the 3D component)
         int getType() const;
-        // a trigger collider (today: the body is a sensor)
+        // a trigger collider (its isTrigger, or its body a sensor)
         bool isTrigger() const;
         std::string getTag() const;
         bool compareTag(const std::string& tag) const;
