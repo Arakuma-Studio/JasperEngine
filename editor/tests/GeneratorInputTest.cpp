@@ -120,6 +120,10 @@ TEST(GeneratorInputTest, MainCppHasTheLineOnlyWhenTheProjectHasAnInputNode) {
     EXPECT_EQ(rawLiteralValue(mainCpp.substr(at, mainCpp.find(";\n", at) - at)), json);
     // before the first scene loads
     EXPECT_LT(at, mainCpp.find("SceneManager::loadScene"));
+    // main.cpp includes only JasperEngine.h: InputActions must be declared through it
+    EXPECT_NE(mainCpp.find("#include \"JasperEngine.h\""), std::string::npos);
+    const std::string umbrella = readFile(fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "engine" / "core" / "JasperEngine.h");
+    EXPECT_NE(umbrella.find("#include \"input/InputActions.h\""), std::string::npos);
 
     // what the build reads back is the project's definition
     std::vector<InputAction> parsed;

@@ -1011,6 +1011,8 @@ void ProjectSettingsWindow::show() {
 }
 
 void ProjectSettingsWindow::drawSettings() {
+    // the Input page's Listen takes Escape: it must not close the dialog in the frame it ends
+    const bool listening = m_inputListen.action >= 0;
     const ImGuiStyle& style = ImGui::GetStyle();
     const float footerY = ImGui::GetWindowHeight() - style.WindowPadding.y - ImGui::GetFrameHeight();
     float regionHeight = std::max(1.0f, footerY - style.ItemSpacing.y * 2.0f - ImGui::GetCursorPosY());
@@ -1073,7 +1075,6 @@ void ProjectSettingsWindow::drawSettings() {
 
     ImGui::SameLine();
     // Escape cancels a Listen of the Input page first
-    const bool listening = m_inputListen.action >= 0;
     if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) ||
         (!listening && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
@@ -2079,7 +2080,10 @@ namespace {
 }
 
 std::string ProjectSettingsWindow::inputError() const {
-    return InputActions::validate(m_inputActions);
+    // names are trimmed when their field is left (and on OK): no error while one is typed
+    std::vector<InputAction> actions = m_inputActions;
+    for (InputAction& action : actions) action.name = TagManager::trimName(action.name);
+    return InputActions::validate(actions);
 }
 
 void ProjectSettingsWindow::commitInputEdit() {
@@ -2179,7 +2183,8 @@ void ProjectSettingsWindow::pollInputListen() {
             return;
         }
     }
-    for (int button = 0; button < 5; button++) {
+    // a click on the dialog (Listen again, another field) is not a binding: click empty space
+    for (int button = 0; button < 5 && !ImGui::IsAnyItemHovered(); button++) {
         if (ImGui::IsMouseClicked(button)) {
             addControl({InputDevice::Mouse, button});
             return;
@@ -2490,7 +2495,8 @@ void ProjectSettingsWindow::drawInputControls(const char* id, std::vector<InputC
         }
     }
     if (listening) ImGui::PopStyleColor();
-    ImGui::SetItemTooltip("Adds the next key, mouse button or gamepad button you press (a pad the playing game reads too)");
+    ImGui::SetItemTooltip("Adds the next key or gamepad button you press, or a mouse button clicked on empty space "
+                          "(a pad the playing game reads too). Esc or Listen again cancels.");
     ImGui::PopID();
 }
 
@@ -2519,7 +2525,7 @@ void ProjectSettingsWindow::drawInputBinding(InputAction& action, int actionInde
             }
             ImGui::EndCombo();
         }
-        endSettingsRow("Which pad (Input.getGamepadId order of connection ids); Any reads every pad.");
+        endSettingsRow("The gamepad id (0-15) whose buttons and axes this binding reads; Any reads every connected pad.");
     };
 
     switch (binding.kind) {
@@ -2754,6 +2760,7 @@ bool ProjectSettingsWindow::applySettings() {
 
     // Input: one undoable step of the project history (Edit > Undo with the Project window
     // focused, MCP undo scope project)
+    for (InputAction& action : m_inputActions) action.name = TagManager::trimName(action.name);
     if (InputActions::actionsToJson(m_inputActions) != InputActions::actionsToJson(m_project->getInputActions())) {
         auto* command = new InputActionsCmd(m_project, m_project->getInputActions(), m_inputActions);
         command->setNoMerge();

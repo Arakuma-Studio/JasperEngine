@@ -7,8 +7,10 @@
 #include "json.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <map>
 #include <set>
 #include <unordered_map>
