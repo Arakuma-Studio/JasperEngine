@@ -3994,6 +3994,10 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
         for (const auto& variant : ShaderPool::getHtmlUIVariants())
             insertKeys(variant.first, variant.second, 0);
     }
+    // Canvas Groups composite their FLATTEN layers with the HTML UI passthrough
+    if (scene->isComponentRegistered<CanvasGroupComponent>() && scene->getComponentArray<CanvasGroupComponent>()->size() > 0) {
+        insertKeys(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH), 0);
+    }
 
     // 2D lights with shadows render occluder segments through the shadow2d
     // pass. The runtime additionally gates on an enabled ShadowCaster2D existing

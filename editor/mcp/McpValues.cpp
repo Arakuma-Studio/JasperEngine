@@ -31,6 +31,8 @@
 #include "animation/AnimationClipIO.h"
 #include "animation/ModelSubClips.h"
 #include "subsystem/RenderSystem.h"
+#include "subsystem/UISystem.h"
+#include "util/EntityPath.h"
 #include "texture/TextureData.h"
 #include "util/CameraTextureLink.h"
 #include "util/FluidTextureLink.h"
@@ -535,6 +537,23 @@ const EnumOptions& layoutGroupTypeOptions() {
         {(int)LayoutGroupType::HORIZONTAL, "horizontal", "Horizontal"},
         {(int)LayoutGroupType::VERTICAL_WRAP, "vertical_wrap", "Vertical Wrap"},
         {(int)LayoutGroupType::HORIZONTAL_WRAP, "horizontal_wrap", "Horizontal Wrap"}
+    };
+    return options;
+}
+
+const EnumOptions& canvasGroupRenderModeOptions() {
+    static const EnumOptions options = {
+        {(int)CanvasGroupRenderMode::PER_ELEMENT, "per_element", "Per Element"},
+        {(int)CanvasGroupRenderMode::FLATTEN, "flatten", "Flatten"}
+    };
+    return options;
+}
+
+const EnumOptions& alphaTweenTargetOptions() {
+    static const EnumOptions options = {
+        {(int)AlphaTweenTarget::AUTO, "auto", "Auto"},
+        {(int)AlphaTweenTarget::COLOR, "color", "Color"},
+        {(int)AlphaTweenTarget::CANVAS_GROUP, "canvas_group", "Canvas Group"}
     };
     return options;
 }
@@ -1070,6 +1089,12 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             break;
         case ComponentType::LayoutGroupComponent:
             if (name == "type") return &layoutGroupTypeOptions();
+            break;
+        case ComponentType::CanvasGroupComponent:
+            if (name == "renderMode") return &canvasGroupRenderModeOptions();
+            break;
+        case ComponentType::AlphaTweenComponent:
+            if (name == "alphaTarget") return &alphaTweenTargetOptions();
             break;
         case ComponentType::MeshComponent:
             if (name == "submeshes[].material.alphaMode") return &alphaModeOptions();
@@ -3027,6 +3052,14 @@ bool McpValues::parseChanges(const Json& changes, std::vector<Change>& out, std:
         return false;
     }
     return true;
+}
+
+Json McpValues::canvasGroupStateToJson(Scene* scene, Entity entity) {
+    if (!scene || !scene->isEntityCreated(entity) || !scene->findComponent<RectTransformComponent>(entity)) return nullptr;
+    const CanvasGroupState state = scene->getSystem<UISystem>()->getCanvasGroupState(entity);
+    if (state.group == NULL_ENTITY) return nullptr;
+    return {{"inherited_alpha", state.alpha}, {"interactable", state.interactable},
+            {"blocks_raycasts", state.blocksRaycasts}, {"group", EntityPath::of(scene, state.group)}};
 }
 
 Json McpValues::fluidStatsToJson(Scene* scene, Entity entity) {

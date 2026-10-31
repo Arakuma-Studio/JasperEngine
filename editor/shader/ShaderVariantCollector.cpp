@@ -31,6 +31,7 @@
 #include "component/Transform.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/CanvasGroupComponent.h"
 #include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/effects/EffectRegistry.h"
@@ -452,6 +453,10 @@ namespace {
                 if (registry->isComponentRegistered<UIDocumentComponent>() && registry->findComponent<UIDocumentComponent>(entity)){
                     for (const auto& variant : ShaderPool::getHtmlUIVariants())
                         insertKeys(variant.first, variant.second, 0);
+                }
+                // a Canvas Group's FLATTEN layer composite (any group: a script can switch it)
+                if (registry->isComponentRegistered<CanvasGroupComponent>() && registry->findComponent<CanvasGroupComponent>(entity)){
+                    insertKeys(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH), 0);
                 }
                 const PointsComponent* points = registry->findComponent<PointsComponent>(entity);
                 if (points || registry->findComponent<ParticleSystemComponent>(entity)){
