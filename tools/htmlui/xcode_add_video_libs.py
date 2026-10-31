@@ -22,8 +22,9 @@
 #   its target depends on them;
 # - every configuration that has lunasvg's include path (the engine and app targets) gets the
 #   three public include paths and DAV1D_API= / OPUS_EXPORT= (the CMake targets' interface);
-# - engine/core/htmlui/media (the element, the pipeline) in the engine targets, as
-#   xcode_sync_effects.py does for effects (an htmlui/media group), and
+# - engine/core/htmlui/media (the element and its controls) in the engine targets, as
+#   xcode_sync_effects.py does for effects (an htmlui/media group; the platform-neutral pipeline
+#   moved to engine/core/media, which tools/xcode_sync_engine.py keeps in step), and
 #   engine/core/script/binding/HtmlUIMediaLua.cpp next to HtmlUIClassesLua.cpp.
 #
 # Object ids are "VIDE" + sha1 of a key, deterministic and distinct from the other scripts' ids.

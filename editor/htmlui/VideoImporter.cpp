@@ -4,7 +4,7 @@
 #include "VideoImporter.h"
 #include "util/FileUtils.h"
 
-#include "htmlui/media/VideoFormats.h"
+#include "media/VideoFormats.h"
 #include "util/CommandRunner.h"
 #include "util/ShellEnv.h"
 

@@ -14,7 +14,7 @@
 #include "htmlui/compat/SupportTables.h"
 #include "htmlui/compat/UrlResolver.h"
 #include "htmlui/compat/VirtualFiles.h"
-#include "htmlui/media/VideoFormats.h"
+#include "media/VideoFormats.h"
 
 #include <cstdio>
 #include <cstdlib>

@@ -2,7 +2,7 @@
 
 - Upstream: https://chromium.googlesource.com/webm/libwebm, tag `libwebm-1.0.0.32` (BSD-3-Clause,
   `LICENSE.TXT`; Google's additional patent grant, `PATENTS.TXT`; `AUTHORS.TXT`).
-- Used by: the HTML UI's `<video>` (`engine/core/htmlui/media/VideoDemuxer.cpp`,
+- Used by: the HTML UI's `<video>` (`engine/core/media/VideoDemuxer.cpp`,
   `docs/html-ui/phase-6-video.md`): the WebM/Matroska parser only.
 
 ## Vendored (byte for byte from the tag)

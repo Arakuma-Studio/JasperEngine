@@ -4,8 +4,8 @@
 #include "UIVideoElement.h"
 
 #include "UIVideoControls.h"
-#include "VideoColorConvert.h"
-#include "VideoFormats.h"
+#include "media/VideoColorConvert.h"
+#include "media/VideoFormats.h"
 
 #include "Engine.h"
 #include "HtmlUIClock.h"

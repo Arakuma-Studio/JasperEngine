@@ -5,10 +5,10 @@
 #define UIVIDEOELEMENT_H
 
 #include "Export.h"
-#include "VideoAudio.h"
-#include "VideoPlayback.h"
-#include "VideoStream.h"
-#include "VideoTypes.h"
+#include "media/VideoAudio.h"
+#include "media/VideoPlayback.h"
+#include "media/VideoStream.h"
+#include "media/VideoTypes.h"
 
 #include <RmlUi/Core/CallbackTexture.h>
 #include <RmlUi/Core/Element.h>

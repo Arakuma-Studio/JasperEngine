@@ -14,7 +14,7 @@
 #include "htmlui/compat/css/Units.h"
 #include "htmlui/compat/css/ValueNormalizer.h"
 #include "htmlui/effects/EffectCompat.h"
-#include "htmlui/media/VideoFormats.h"
+#include "media/VideoFormats.h"
 
 #include <algorithm>
 #include <cstring>

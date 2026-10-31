@@ -1,6 +1,6 @@
 # libopus 1.6.1 - https://opus-codec.org (BSD-3-Clause, COPYING)
 #
-# The Opus decoder of the HTML UI's <video> audio (engine/core/htmlui/media/OpusAudioDecoder,
+# The Opus decoder of the HTML UI's <video> audio (engine/core/media/OpusAudioDecoder,
 # docs/html-ui/phase-6-video.md §3.2). This file replaces upstream's build: the floating-point
 # decoder only (mono/stereo and multistream), no encoder, no DNN (deep PLC, DRED, OSCE), no
 # intrinsics. The sources are the objects a decoder-only program links (README.jasper.md).

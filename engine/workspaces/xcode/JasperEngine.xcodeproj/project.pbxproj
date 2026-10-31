@@ -8009,6 +8009,7 @@
 				7162FC7A25962A0E0075B97D /* JasperEngine.h */,
 				71E36B8125D5996400EFEED4 /* ecs */,
 				48544D4C0000000000000047 /* htmlui */,
+				4A534E470A099A4C30353C59 /* media */,
 				7162FC2B25962A0E0075B97D /* Engine.h */,
 				7162FC7225962A0E0075B97D /* Engine.cpp */,
 				175DCCB9300FA22F008C19EC /* Export.h */,
@@ -10115,17 +10116,12 @@
 			path = effects;
 			sourceTree = "<group>";
 		};
-		564944458116A96C5CD0F039 /* media */ = {
+		4A534E470A099A4C30353C59 /* media */ = {
 			isa = PBXGroup;
 			children = (
 				56494445783E8C8D23A1C4D9 /* Av1Decoder.cpp */,
 				56494445D31D88592C8CF96D /* OpusAudioDecoder.cpp */,
 				56494445F701B01C30E50DD4 /* OpusAudioDecoder.h */,
-				564944455290864DACC3F91B /* UIElementVideo.cpp */,
-				5649444579C6B97FBB1D6450 /* UIVideoControls.cpp */,
-				56494445F90BDBE2D6EDCF28 /* UIVideoControls.h */,
-				5649444537C6684EB96656FB /* UIVideoElement.cpp */,
-				564944452DF739A966803F11 /* UIVideoElement.h */,
 				5649444576BE8C53B2BD4D50 /* VideoAudio.cpp */,
 				56494445344519E458F23CDF /* VideoAudio.h */,
 				56494445A2E7098068F688E1 /* VideoColorConvert.cpp */,
@@ -10140,6 +10136,18 @@
 				564944453B3DFA12D6052B13 /* VideoStream.cpp */,
 				564944456115B9D95A2337FE /* VideoStream.h */,
 				564944458505D549C503B49E /* VideoTypes.h */,
+			);
+			path = media;
+			sourceTree = "<group>";
+		};
+		564944458116A96C5CD0F039 /* media */ = {
+			isa = PBXGroup;
+			children = (
+				564944455290864DACC3F91B /* UIElementVideo.cpp */,
+				5649444579C6B97FBB1D6450 /* UIVideoControls.cpp */,
+				56494445F90BDBE2D6EDCF28 /* UIVideoControls.h */,
+				5649444537C6684EB96656FB /* UIVideoElement.cpp */,
+				564944452DF739A966803F11 /* UIVideoElement.h */,
 			);
 			path = media;
 			sourceTree = "<group>";

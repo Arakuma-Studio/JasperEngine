@@ -1,7 +1,7 @@
 # dav1d in JasperEngine
 
 - Upstream: https://code.videolan.org/videolan/dav1d, tag `1.5.4` (BSD-2-Clause, `COPYING`).
-- Used by: the HTML UI's `<video>` (`engine/core/htmlui/media/Av1Decoder.cpp`,
+- Used by: the HTML UI's `<video>` (`engine/core/media/Av1Decoder.cpp`,
   `docs/html-ui/phase-6-video.md`).
 
 ## Vendored (byte for byte from the tag)
