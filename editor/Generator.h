@@ -114,7 +114,7 @@ namespace jasperengine::editor {
         LayerCollisionRows layerCollisionMatrix2D = allLayersCollide();
         // Project Settings > Physics > 3D World Capacity (PhysicsSystem::setWorldCapacity3D)
         unsigned int maxBodies3D = 8192;
-        unsigned int maxBodyPairs3D = 16384;
+        unsigned int maxBodyPairs3D = 8192;
         unsigned int maxContactConstraints3D = 8192;
     };
 

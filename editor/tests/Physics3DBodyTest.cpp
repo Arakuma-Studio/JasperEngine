@@ -482,6 +482,8 @@ TEST(Physics3DBody, DefaultCapacityWorldFitsInFourMegabytes) {
     {
         JoltHeapCounter counter;
         auto scene = std::make_unique<Scene>();
+        // made when first needed: made here
+        scene->getSystem<PhysicsSystem>()->getWorld3D();
         bytes = JoltHeapCounter::live();
         EXPECT_EQ(scene->getSystem<PhysicsSystem>()->getMaxBodies3D(), 8192u);
         scene.reset();

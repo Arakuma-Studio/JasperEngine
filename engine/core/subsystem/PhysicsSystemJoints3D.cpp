@@ -230,6 +230,54 @@ namespace {
         return index == 0 ? v.x : (index == 1 ? v.y : v.z);
     }
 
+    // A six-DOF axis's range as Jolt takes it: LOCKED 0..0, FREE unbounded (rotations +-pi),
+    // LIMITED the fields (radians for rotations), Jolt's sign for LOCAL joints (jointSign), the
+    // cone swing axes symmetric (Jolt keeps only their maximum)
+    void sixDOFRange(const Joint3DComponent& joint, int axis, float& minValue, float& maxValue){
+        const JointMotion motion = sixDOFMotion(joint, axis);
+        const bool linear = axis < 3;
+        if (motion == JointMotion::LOCKED){
+            minValue = maxValue = 0.0f;
+            return;
+        }
+        if (motion == JointMotion::FREE){
+            minValue = linear ? -FLT_MAX : -JPH::JPH_PI;
+            maxValue = linear ? FLT_MAX : JPH::JPH_PI;
+            return;
+        }
+        minValue = linear ? vectorAxis(joint.linearLimitMin, axis) : Angle::defaultToRad(vectorAxis(joint.angularLimitMin, axis - 3));
+        maxValue = linear ? vectorAxis(joint.linearLimitMax, axis) : Angle::defaultToRad(vectorAxis(joint.angularLimitMax, axis - 3));
+        if (maxValue < minValue) std::swap(minValue, maxValue);
+        if (joint.anchorSpace == JointAnchorSpace::LOCAL){
+            const float low = minValue;
+            minValue = -maxValue;
+            maxValue = -low;
+        }
+        if (!linear){
+            minValue = std::max(-JPH::JPH_PI, minValue);
+            maxValue = std::min(JPH::JPH_PI, maxValue);
+            if (axis > 3 && joint.swingType == JointSwingType::CONE){
+                const float half = std::max(std::fabs(minValue), std::fabs(maxValue));
+                minValue = -half;
+                maxValue = half;
+            }
+        }
+    }
+
+    // a drive on the axis: its stiffness and damping (linear or angular)
+    void sixDOFDrive(const Joint3DComponent& joint, int axis, float& stiffness, float& damping){
+        stiffness = nonNegative(axis < 3 ? joint.driveStiffness : joint.angularDriveStiffness);
+        damping = nonNegative(axis < 3 ? joint.driveDamping : joint.angularDriveDamping);
+    }
+
+    // gears and racks: whether their two bodies are kept apart. LOCAL (new) ones always (their
+    // teeth overlap); WORLD (old scenes) ones as before, by enableCollision only
+    bool ignoresPair(const Joint3DComponent& joint){
+        if (joint.bodyB == NULL_ENTITY) return false;
+        if (!joint.enableCollision) return true;
+        return (joint.type == Joint3DType::GEAR || joint.type == Joint3DType::RACKANDPINON) && joint.anchorSpace == JointAnchorSpace::LOCAL;
+    }
+
     // the force (N) of an impulse over the step: the length of `impulse` / dt
     Vector3 perStep(JPH::Vec3Arg impulse, float dt){
         return fromJolt(impulse / dt);
@@ -388,7 +436,7 @@ bool PhysicsSystem::buildJoint3D(Entity entity, Joint3DComponent& joint){
     Vector3 worldAnchorB = joint.anchor;
     if (local){
         worldAnchorA = pointOn(A, joint.anchor, scaleA);
-        if (joint.autoAnchors && joint.type != Joint3DType::DISTANCE){
+        if (joint.autoAnchors && joint.type != Joint3DType::DISTANCE && joint.type != Joint3DType::PULLEY){
             worldAnchorB = worldAnchorA;
             joint.anchorB = localPointOn(B, worldAnchorA, scaleB);
         }else{
@@ -504,7 +552,7 @@ bool PhysicsSystem::buildJoint3D(Entity entity, Joint3DComponent& joint){
                 // (user = c - Jolt, jointSign)
                 settings.mAutoDetectPoint = false;
                 settings.mPoint1 = toJolt(worldAnchorA - axis * limits.center);
-                settings.mPoint2 = toJolt(worldAnchorA);
+                settings.mPoint2 = toJolt(worldAnchorB);
             }else{
                 settings.mPoint1 = settings.mPoint2 = autoDetectedPoint(A, B);
             }
@@ -561,30 +609,19 @@ bool PhysicsSystem::buildJoint3D(Entity entity, Joint3DComponent& joint){
             }
             settings.mAxisX1 = settings.mAxisX2 = toJolt(axisX);
             settings.mAxisY1 = settings.mAxisY2 = toJolt(axisY);
+            settings.mSwingType = joint.swingType == JointSwingType::PYRAMID ? JPH::ESwingType::Pyramid : JPH::ESwingType::Cone;
             for (int axis = 0; axis < 6; axis++){
                 const JointMotion motion = sixDOFMotion(joint, axis);
                 if (motion == JointMotion::LOCKED){
                     settings.MakeFixedAxis(sixDOFAxis(axis));
                 }else if (motion == JointMotion::LIMITED){
-                    float minValue = axis < 3 ? vectorAxis(joint.linearLimitMin, axis) : Angle::defaultToRad(vectorAxis(joint.angularLimitMin, axis - 3));
-                    float maxValue = axis < 3 ? vectorAxis(joint.linearLimitMax, axis) : Angle::defaultToRad(vectorAxis(joint.angularLimitMax, axis - 3));
-                    if (maxValue < minValue) std::swap(minValue, maxValue);
-                    if (local){
-                        const float lowValue = minValue;
-                        minValue = -maxValue;
-                        maxValue = -lowValue;
-                    }
-                    if (axis >= 3){
-                        // Jolt's swing limits are symmetric within [-pi, pi] (twist about X too)
-                        minValue = std::max(-JPH::JPH_PI, minValue);
-                        maxValue = std::min(JPH::JPH_PI, maxValue);
-                    }
+                    float minValue, maxValue;
+                    sixDOFRange(joint, axis, minValue, maxValue);
                     settings.SetLimitedAxis(sixDOFAxis(axis), minValue, maxValue);
                 }else{
                     settings.MakeFreeAxis(sixDOFAxis(axis));
                 }
             }
-            settings.mSwingType = joint.swingType == JointSwingType::PYRAMID ? JPH::ESwingType::Pyramid : JPH::ESwingType::Cone;
             for (int axis = 0; axis < 6; axis++){
                 if (sixDOFMotion(joint, axis) != JointMotion::LOCKED){
                     settings.mMaxFriction[axis] = nonNegative(joint.maxFriction);
@@ -611,8 +648,11 @@ bool PhysicsSystem::buildJoint3D(Entity entity, Joint3DComponent& joint){
             break;
         }
         case Joint3DType::GEAR: {
-            JPH::HingeConstraintSettings* hingeSetA = (JPH::HingeConstraintSettings*)((JPH::HingeConstraint*)drivenA)->GetConstraintSettings().GetPtr();
-            JPH::HingeConstraintSettings* hingeSetB = (JPH::HingeConstraintSettings*)((JPH::HingeConstraint*)drivenB)->GetConstraintSettings().GetPtr();
+            // the driven hinges' axes, in world space (their settings are body-local)
+            const JPH::Vec3 axisA = static_cast<JPH::HingeConstraint*>(drivenA)->GetBody1()->GetRotation() *
+                                    static_cast<JPH::HingeConstraint*>(drivenA)->GetLocalSpaceHingeAxis1();
+            const JPH::Vec3 axisB = static_cast<JPH::HingeConstraint*>(drivenB)->GetBody1()->GetRotation() *
+                                    static_cast<JPH::HingeConstraint*>(drivenB)->GetLocalSpaceHingeAxis1();
             int teethA = joint.numTeethGearA;
             int teethB = joint.numTeethGearB;
             if (teethA <= 0 || teethB <= 0){
@@ -621,16 +661,19 @@ bool PhysicsSystem::buildJoint3D(Entity entity, Joint3DComponent& joint){
                 teethB = std::max(1, teethB);
             }
             JPH::GearConstraintSettings settings;
-            settings.mHingeAxis1 = hingeSetA->mHingeAxis1;
-            settings.mHingeAxis2 = hingeSetB->mHingeAxis1;
+            settings.mHingeAxis1 = axisA.Normalized();
+            settings.mHingeAxis2 = axisB.Normalized();
             settings.SetRatio(teethA, teethB);
             constraint = settings.Create(A, B);
             ((JPH::GearConstraint*)constraint)->SetConstraints(drivenA, drivenB);
             break;
         }
         case Joint3DType::RACKANDPINON: {
-            JPH::HingeConstraintSettings* hingeSet = (JPH::HingeConstraintSettings*)((JPH::HingeConstraint*)drivenA)->GetConstraintSettings().GetPtr();
-            JPH::SliderConstraintSettings* sliderSet = (JPH::SliderConstraintSettings*)((JPH::SliderConstraint*)drivenB)->GetConstraintSettings().GetPtr();
+            const JPH::HingeConstraint* drivenHinge = static_cast<JPH::HingeConstraint*>(drivenA);
+            const JPH::SliderConstraint* drivenSlider = static_cast<JPH::SliderConstraint*>(drivenB);
+            const JPH::Vec3 hingeAxis = drivenHinge->GetBody1()->GetRotation() * drivenHinge->GetLocalSpaceHingeAxis1();
+            // a slider's axis in its body 1's frame (its settings hold it for body 2 too)
+            const JPH::Vec3 sliderAxis = drivenSlider->GetBody1()->GetRotation() * (drivenSlider->GetConstraintToBody1Matrix().GetAxisX());
             int teethRack = joint.numTeethRack;
             int teethGear = joint.numTeethGear;
             int rackLength = joint.rackLength;
@@ -641,8 +684,8 @@ bool PhysicsSystem::buildJoint3D(Entity entity, Joint3DComponent& joint){
                 rackLength = std::max(1, rackLength);
             }
             JPH::RackAndPinionConstraintSettings settings;
-            settings.mHingeAxis = hingeSet->mHingeAxis1;
-            settings.mSliderAxis = sliderSet->mSliderAxis2;
+            settings.mHingeAxis = hingeAxis.Normalized();
+            settings.mSliderAxis = sliderAxis.Normalized();
             settings.SetRatio(teethRack, (float)rackLength, teethGear);
             constraint = settings.Create(A, B);
             ((JPH::RackAndPinionConstraint*)constraint)->SetConstraints(drivenA, drivenB);
@@ -675,8 +718,8 @@ bool PhysicsSystem::buildJoint3D(Entity entity, Joint3DComponent& joint){
     // the connected bodies do not collide (Unity enableCollision false); gears and racks never
     // did (their teeth overlap)
     releaseJointPair3D(joint);
-    if (!toWorld && (!joint.enableCollision || joint.type == Joint3DType::GEAR || joint.type == Joint3DType::RACKANDPINON)){
-        pairFilter3D->addJoint(bodyAEntity, bodyBEntity);
+    if (ignoresPair(joint)){
+        changePairFilter3D([bodyAEntity, bodyBEntity](JoltPairFilter3D& filter){ filter.addJoint(bodyAEntity, bodyBEntity); });
         joint.ignoredA = bodyAEntity;
         joint.ignoredB = bodyBEntity;
     }
@@ -687,7 +730,8 @@ bool PhysicsSystem::buildJoint3D(Entity entity, Joint3DComponent& joint){
 
 void PhysicsSystem::releaseJointPair3D(Joint3DComponent& joint){
     if (joint.ignoredA != NULL_ENTITY && joint.ignoredB != NULL_ENTITY){
-        pairFilter3D->removeJoint(joint.ignoredA, joint.ignoredB);
+        const Entity a = joint.ignoredA, b = joint.ignoredB;
+        changePairFilter3D([a, b](JoltPairFilter3D& filter){ filter.removeJoint(a, b); });
         if (!steppingWorld3D){
             for (Entity entity : {joint.ignoredA, joint.ignoredB}){
                 RigidbodyComponent* body = scene->isEntityCreated(entity) ? scene->findComponent<RigidbodyComponent>(entity) : nullptr;
@@ -708,12 +752,12 @@ void PhysicsSystem::applyJoint3DParameters(Entity entity, Joint3DComponent& join
     }
 
     // enableCollision: the pair filter, live
-    const bool wantsIgnored = joint.bodyB != NULL_ENTITY &&
-                              (!joint.enableCollision || joint.type == Joint3DType::GEAR || joint.type == Joint3DType::RACKANDPINON);
+    const bool wantsIgnored = ignoresPair(joint);
     const bool isIgnored = joint.ignoredA != NULL_ENTITY;
     if (wantsIgnored != isIgnored){
         if (wantsIgnored){
-            pairFilter3D->addJoint(joint.bodyA, joint.bodyB);
+            const Entity a = joint.bodyA, b = joint.bodyB;
+            changePairFilter3D([a, b](JoltPairFilter3D& filter){ filter.addJoint(a, b); });
             joint.ignoredA = joint.bodyA;
             joint.ignoredB = joint.bodyB;
         }else{
@@ -733,9 +777,11 @@ void PhysicsSystem::applyJoint3DParameters(Entity entity, Joint3DComponent& join
         case Joint3DType::HINGE: {
             JPH::HingeConstraint* hinge = static_cast<JPH::HingeConstraint*>(joint.joint);
             const HingeLimits limits = hingeLimits(joint, local, entity);
-            // a new centre turns the joint's frame: made again
+            // a new centre turns the joint's frame, from the frame it was made with (its zero stays)
             if (std::fabs(limits.center - joint.limitsCenter) > 1.0e-6f){
-                joint.needUpdateJoint = true;
+                if (!recenterJoint3D(entity, joint, limits.center)){
+                    joint.needUpdateJoint = true;
+                }
                 return;
             }
             hinge->SetLimits(limits.active ? limits.min : -JPH::JPH_PI, limits.active ? limits.max : JPH::JPH_PI);
@@ -760,13 +806,24 @@ void PhysicsSystem::applyJoint3DParameters(Entity entity, Joint3DComponent& join
             break;
         }
         case Joint3DType::PRISMATIC: {
+            const SliderLimits limits = sliderLimits(joint, local);
             if (joint.joint->GetSubType() != JPH::EConstraintSubType::Slider){
+                // made as a fixed joint for equal limits: a slider again once they differ
+                if (!limits.degenerate){
+                    joint.needUpdateJoint = true;
+                    return;
+                }
                 break;
             }
             JPH::SliderConstraint* slider = static_cast<JPH::SliderConstraint*>(joint.joint);
-            const SliderLimits limits = sliderLimits(joint, local);
-            if (limits.degenerate || std::fabs(limits.center - joint.limitsCenter) > 1.0e-6f){
+            if (limits.degenerate){
                 joint.needUpdateJoint = true;
+                return;
+            }
+            if (std::fabs(limits.center - joint.limitsCenter) > 1.0e-6f){
+                if (!recenterJoint3D(entity, joint, limits.center)){
+                    joint.needUpdateJoint = true;
+                }
                 return;
             }
             slider->SetLimits(limits.active ? limits.min : -FLT_MAX, limits.active ? limits.max : FLT_MAX);
@@ -817,8 +874,16 @@ void PhysicsSystem::applyJoint3DParameters(Entity entity, Joint3DComponent& join
             const float coneMax = JPH::DegreesToRadians(179.9f);
             swingTwist->SetNormalHalfConeAngle(std::clamp(Angle::defaultToRad(joint.normalHalfConeAngle), 0.0f, coneMax));
             swingTwist->SetPlaneHalfConeAngle(std::clamp(Angle::defaultToRad(joint.planeHalfConeAngle), 0.0f, coneMax));
-            swingTwist->SetTwistMinAngle(std::max(-JPH::JPH_PI, Angle::defaultToRad(twistMin)));
-            swingTwist->SetTwistMaxAngle(std::min(JPH::JPH_PI, Angle::defaultToRad(twistMax)));
+            // each setter checks min <= max with the other's current value: the one moving away first
+            const float newMin = std::max(-JPH::JPH_PI, Angle::defaultToRad(twistMin));
+            const float newMax = std::min(JPH::JPH_PI, Angle::defaultToRad(twistMax));
+            if (newMin > swingTwist->GetTwistMaxAngle()){
+                swingTwist->SetTwistMaxAngle(newMax);
+                swingTwist->SetTwistMinAngle(newMin);
+            }else{
+                swingTwist->SetTwistMinAngle(newMin);
+                swingTwist->SetTwistMaxAngle(newMax);
+            }
             swingTwist->SetMaxFrictionTorque(nonNegative(joint.maxFriction));
             if (joint.useMotor){
                 // a position drive to motorTargetRotation (joint frame)
@@ -839,29 +904,58 @@ void PhysicsSystem::applyJoint3DParameters(Entity entity, Joint3DComponent& join
         }
         case Joint3DType::SIXDOF: {
             JPH::SixDOFConstraint* sixDOF = static_cast<JPH::SixDOFConstraint*>(joint.joint);
+            // motions and limits, live (Jolt works out which axes are fixed or free)
+            JPH::Vec3 linearMin, linearMax, angularMin, angularMax;
+            for (int axis = 0; axis < 6; axis++){
+                float minValue, maxValue;
+                sixDOFRange(joint, axis, minValue, maxValue);
+                if (axis < 3){
+                    linearMin.SetComponent(axis, minValue);
+                    linearMax.SetComponent(axis, maxValue);
+                }else{
+                    angularMin.SetComponent(axis - 3, minValue);
+                    angularMax.SetComponent(axis - 3, maxValue);
+                }
+            }
+            sixDOF->SetTranslationLimits(linearMin, linearMax);
+            sixDOF->SetRotationLimits(angularMin, angularMax);
+            joint.dampedAxes = 0;
             for (int axis = 0; axis < 6; axis++){
                 const JPH::SixDOFConstraintSettings::EAxis eaxis = sixDOFAxis(axis);
                 if (sixDOFMotion(joint, axis) == JointMotion::LOCKED){
+                    sixDOF->SetMotorState(eaxis, JPH::EMotorState::Off);
                     continue;
                 }
                 sixDOF->SetMaxFriction(eaxis, nonNegative(joint.maxFriction));
-                if (!joint.useDrive){
+                float stiffness, damping;
+                sixDOFDrive(joint, axis, stiffness, damping);
+                // Unity's drives: a stiffness springs to the target pose; a damping alone pulls
+                // towards the target velocity with damping x the velocity error (a velocity motor
+                // whose force limit follows that error, set before each step:
+                // updateSixDOFDampers3D); neither: no drive
+                if (!joint.useDrive || (stiffness <= 0.0f && damping <= 0.0f)){
                     sixDOF->SetMotorState(eaxis, JPH::EMotorState::Off);
                     continue;
                 }
                 const bool linear = axis < 3;
                 JPH::MotorSettings& motor = sixDOF->GetMotorSettings(eaxis);
-                motor.mSpringSettings = linear ? stiffnessSpring(joint.driveStiffness, joint.driveDamping)
-                                               : stiffnessSpring(joint.angularDriveStiffness, joint.angularDriveDamping);
-                if (linear){
-                    motor.SetForceLimit(forceLimit(joint.driveMaxForce));
+                if (stiffness > 0.0f){
+                    motor.mSpringSettings = stiffnessSpring(stiffness, damping);
+                    if (linear){
+                        motor.SetForceLimit(forceLimit(joint.driveMaxForce));
+                    }else{
+                        motor.SetTorqueLimit(forceLimit(joint.driveMaxTorque));
+                    }
+                    sixDOF->SetMotorState(eaxis, JPH::EMotorState::Position);
                 }else{
-                    motor.SetTorqueLimit(forceLimit(joint.driveMaxTorque));
+                    if (linear){
+                        motor.SetForceLimit(0.0f);
+                    }else{
+                        motor.SetTorqueLimit(0.0f);
+                    }
+                    sixDOF->SetMotorState(eaxis, JPH::EMotorState::Velocity);
+                    joint.dampedAxes |= (uint8_t)(1u << axis);
                 }
-                // Unity's drives: a stiffness drives to the target pose, a damping alone to the
-                // target velocity
-                const bool position = linear ? joint.driveStiffness > 0.0f : joint.angularDriveStiffness > 0.0f;
-                sixDOF->SetMotorState(eaxis, position ? JPH::EMotorState::Position : JPH::EMotorState::Velocity);
             }
             // LOCAL targets are bodyA's relative to the connected body: Jolt's negated (jointSign)
             const float sign = jointSign(joint);
@@ -890,6 +984,7 @@ void PhysicsSystem::applyJoint3DParameters(Entity entity, Joint3DComponent& join
 void PhysicsSystem::destroyJoint3D(Joint3DComponent& joint){
     releaseJointPair3D(joint);
     if (joint.joint){
+        invalidateDependentJoints3D(joint.joint);
         // Parked like a body, the Ref keeping the constraint alive until the flush.
         if (steppingWorld3D){
             pendingJointDestroy3D.push_back(joint.joint);
@@ -1254,6 +1349,111 @@ bool PhysicsSystem::loadPulleyJoint3D(Joint3DComponent& joint, Entity bodyA, Ent
     joint.fixedPointA = fixedPointA;
     joint.fixedPointB = fixedPointB;
     return buildJoint3D(jointEntityOf(scene, joint), joint);
+}
+
+// ---- live re-centring, dependents, damped six-DOF axes ----------------------------------------
+
+// A hinge or slider whose limits moved their centre: made again from the frames it holds (body
+// local, as it was first made), turned or shifted by the change, so its zero stays where it was
+// whatever the bodies' poses now (rebuilding from the poses would move it)
+bool PhysicsSystem::recenterJoint3D(Entity entity, Joint3DComponent& joint, float center){
+    if (!joint.joint || steppingWorld3D){
+        return false;
+    }
+    const float delta = center - joint.limitsCenter;
+    JPH::Ref<JPH::ConstraintSettings> base = joint.joint->GetConstraintSettings();
+    JPH::Body* body1 = joint.joint->GetBody1();
+    JPH::Body* body2 = joint.joint->GetBody2();
+    if (!base || !body1 || !body2){
+        return false;
+    }
+    JPH::TwoBodyConstraint* made = nullptr;
+    if (joint.type == Joint3DType::HINGE && joint.joint->GetSubType() == JPH::EConstraintSubType::Hinge){
+        JPH::HingeConstraintSettings* settings = static_cast<JPH::HingeConstraintSettings*>(base.GetPtr());
+        settings->mNormalAxis2 = (JPH::Quat::sRotation(settings->mHingeAxis2.Normalized(), delta) * settings->mNormalAxis2).Normalized();
+        made = settings->Create(*body1, *body2);
+    }else if (joint.type == Joint3DType::PRISMATIC && joint.joint->GetSubType() == JPH::EConstraintSubType::Slider){
+        JPH::SliderConstraintSettings* settings = static_cast<JPH::SliderConstraintSettings*>(base.GetPtr());
+        settings->mPoint1 -= JPH::RVec3(settings->mSliderAxis1.Normalized() * delta);
+        made = settings->Create(*body1, *body2);
+    }
+    if (!made){
+        return false;
+    }
+    JPH::Ref<JPH::TwoBodyConstraint> previous = joint.joint;
+    invalidateDependentJoints3D(joint.joint);
+    world3D.RemoveConstraint(joint.joint);
+    joint.joint = made;
+    world3D.AddConstraint(joint.joint);
+    joint.limitsCenter = center;
+    applyJoint3DParameters(entity, joint);
+    return true;
+}
+
+// gears and racks hold the joints they drive: one of those going takes them with it (made
+// again once it is back)
+void PhysicsSystem::invalidateDependentJoints3D(const JPH::TwoBodyConstraint* constraint){
+    if (!constraint){
+        return;
+    }
+    auto joints3d = scene->getComponentArray<Joint3DComponent>();
+    for (size_t i = 0; i < joints3d->size(); i++){
+        Joint3DComponent& other = joints3d->getComponentFromIndex(i);
+        if (!other.joint || (other.type != Joint3DType::GEAR && other.type != Joint3DType::RACKANDPINON)){
+            continue;
+        }
+        const Entity first = other.type == Joint3DType::GEAR ? other.hingeA : other.hinge;
+        const Entity second = other.type == Joint3DType::GEAR ? other.hingeB : other.slider;
+        for (Entity driven : {first, second}){
+            const Joint3DComponent* drivenJoint = (driven != NULL_ENTITY && scene->isEntityCreated(driven)) ? scene->findComponent<Joint3DComponent>(driven) : nullptr;
+            if (drivenJoint && drivenJoint->joint == constraint){
+                destroyJoint3D(other);
+                other.needUpdateJoint = true;
+                break;
+            }
+        }
+    }
+}
+
+// Unity's damper-only drives (no stiffness): force = damping x (target velocity - velocity) on
+// the axis. Jolt's velocity motor reaches its target at once, so its force limit is set to that
+// force before each step (it then applies exactly it, or less when that would overshoot)
+void PhysicsSystem::updateSixDOFDampers3D(){
+    auto joints3d = scene->getComponentArray<Joint3DComponent>();
+    for (size_t i = 0; i < joints3d->size(); i++){
+        Joint3DComponent& joint = joints3d->getComponentFromIndex(i);
+        if (!joint.joint || joint.type != Joint3DType::SIXDOF || joint.dampedAxes == 0 ||
+                joint.joint->GetSubType() != JPH::EConstraintSubType::SixDOF){
+            continue;
+        }
+        JPH::SixDOFConstraint* sixDOF = static_cast<JPH::SixDOFConstraint*>(joint.joint);
+        const JPH::Body* body1 = sixDOF->GetBody1();
+        const JPH::Body* body2 = sixDOF->GetBody2();
+        const JPH::RMat44 frame1 = body1->GetCenterOfMassTransform() * sixDOF->GetConstraintToBody1Matrix();
+        const JPH::Quat inverse = frame1.GetQuaternion().Conjugated();
+        const JPH::RVec3 point = frame1.GetTranslation();
+        const JPH::Vec3 linear = inverse * (body2->GetPointVelocity(point) - body1->GetPointVelocity(point));
+        const JPH::Vec3 angular = inverse * (body2->GetAngularVelocity() - body1->GetAngularVelocity());
+        const JPH::Vec3 targetLinear = sixDOF->GetTargetVelocityCS();
+        const JPH::Vec3 targetAngular = sixDOF->GetTargetAngularVelocityCS();
+        for (int axis = 0; axis < 6; axis++){
+            if (!(joint.dampedAxes & (1u << axis))){
+                continue;
+            }
+            const bool isLinear = axis < 3;
+            float stiffness, damping;
+            sixDOFDrive(joint, axis, stiffness, damping);
+            const float error = isLinear ? targetLinear[axis] - linear[axis] : targetAngular[axis - 3] - angular[axis - 3];
+            const float cap = forceLimit(isLinear ? joint.driveMaxForce : joint.driveMaxTorque);
+            const float limit = std::min(cap, damping * std::fabs(error));
+            JPH::MotorSettings& motor = sixDOF->GetMotorSettings(sixDOFAxis(axis));
+            if (isLinear){
+                motor.SetForceLimit(limit);
+            }else{
+                motor.SetTorqueLimit(limit);
+            }
+        }
+    }
 }
 
 #endif

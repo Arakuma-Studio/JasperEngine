@@ -677,6 +677,7 @@ void prepare<Joint2DComponent>(Joint2DComponent& joint, Entity, CloneContext& ct
 template<>
 void prepare<RigidbodyComponent>(RigidbodyComponent& body, Entity, CloneContext& ctx) {
     body.body = JPH::BodyID();
+    body.triggerBody = JPH::BodyID();
     for (Collider3D& collider : body.colliders) {
         collider.shape = nullptr;
         collider.surface = nullptr;
@@ -716,6 +717,7 @@ void prepare<Joint3DComponent>(Joint3DComponent& joint, Entity, CloneContext& ct
     joint.currentTorque = Vector3::ZERO;
     joint.broken = false;
     joint.breakArmed = true;
+    joint.dampedAxes = 0;
 }
 
 template<>
@@ -729,6 +731,8 @@ void prepare<RagdollComponent>(RagdollComponent& ragdoll, Entity, CloneContext& 
     ragdoll.ignoredPairs.clear();
     ragdoll.pausedAnimator = NULL_ENTITY;
     ragdoll.animatorWasEnabled = true;
+    ragdoll.pausedDrivers.clear();
+    ragdoll.pendingPushes.clear();
 }
 #endif
 

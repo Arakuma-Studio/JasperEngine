@@ -8,6 +8,8 @@
 #include "ecs/Entity.h"
 #include "math/Vector3.h"
 
+#include <cstdint>
+#include <utility>
 #include <vector>
 
 namespace jasperengine{
@@ -50,6 +52,17 @@ namespace jasperengine{
         // the animator this ragdoll paused and whether it was enabled before
         Entity pausedAnimator = NULL_ENTITY;
         bool animatorWasEnabled = true;
+        // the other bone drivers paused while simulated: entity animations (Model animations,
+        // Animation actions), Pose Animators, Vertex Animators, to resume after
+        enum class Driver : uint8_t { ACTION, POSE, VERTEX };
+        std::vector<std::pair<Entity, Driver>> pausedDrivers;
+        // impulses (point given) and forces asked for before the simulated state was applied
+        struct Push{
+            Vector3 value;
+            Vector3 point;
+            bool force = false;
+        };
+        std::vector<Push> pendingPushes;
     };
 
 }

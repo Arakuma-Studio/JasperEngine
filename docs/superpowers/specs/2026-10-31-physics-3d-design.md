@@ -769,8 +769,11 @@ script-lifecycle), where the spec was silent, ambiguous or contradicted what the
 9. **Material detection on job threads** compares `PhysicsMaterial::GetDebugName()`'s pointer with
    `JoltSurfaceMaterial::typeName` instead of Jolt RTTI (the class lives outside the JPH namespace,
    where `JPH_DECLARE_RTTI_VIRTUAL` does not compile).
-10. **Gears and racks** always put their two bodies in the pair filter (their teeth overlap), whatever
-    `enableCollision` says.
+10. **Gears and racks** made in LOCAL space (new ones) always put their two bodies in the pair filter
+    (their teeth overlap); WORLD ones (old scenes) follow `enableCollision` only, so their bodies
+    collide as before. Their driven hinges' and slider's axes are now taken in world space (the old
+    code read the body-local axes of the driven joints' settings as world axes, and used a pointer
+    into a destroyed temporary).
 11. **`setColliderFriction` / `setColliderBounciness` on a collider without a material** give it an
     own copy with the legacy modes (geometric mean friction, maximum bounce), so it still combines
     as before with colliders without one.
@@ -805,3 +808,51 @@ script-lifecycle), where the spec was silent, ambiguous or contradicted what the
     Windows builds; acceptance 2 (BACK-MAN's rig and an exported Linux player toggling the ragdoll):
     the wizard and the toggle are covered by `RagdollTest` and `test_physics_3d.py` on the
     pose-animation fixture's Mixamo hero, not on BACK-MAN.
+20. **Trigger colliders of a body with solid ones live on a sensor body of their own** (the review's
+    CCD finding): Jolt's continuous collision keeps the closest hit of a cast and skips sensor
+    *bodies* only, so a trigger inside a LinearCast body (or in front of a wall) was that hit and the
+    body tunnelled. The companion is a kinematic (static for a static body) sensor with the trigger
+    leaves, the same user data (the GameObject), collision group and layer, created, swapped and
+    destroyed with the body, put where the body is and given its velocity before each step, and
+    never reported as a body of its own (activation callbacks skip it; the pair filter keeps it from
+    touching its own body). Contacts, rays and callbacks report the owning Rigidbody and the
+    trigger's collider index as before. A body of trigger colliders only is a body-level sensor.
+    Triggers then add no mass without a mass override. Jolt's per-contact `mIsSensor` stays for the
+    legacy body-wide `sensor`.
+21. **Ragdoll state changes apply at once** outside a step (`ragdoll.simulated = true` then
+    `applyImpulse` in the same frame works, the documented idiom); inside a step and before the parts
+    exist, impulses and forces are queued and given once the state is applied.
+22. **The ragdoll pauses every bone driver** of the character while simulated, not only the
+    Animation Player: running Model entity animations (their Animation actions are paused and
+    started again), Pose Animators (`playing`) and Vertex Animators (`enabled`), on the root, its
+    ancestors and its subtree; only what was running is resumed.
+23. **`Ragdoll::onBeforeAnimatedRestore`** (§6.1.11's hook) is a `FunctionSubscribe<void(int)>` of
+    the scene's PhysicsSystem (the argument is the ragdoll's entity), called before a ragdoll's parts
+    go back to kinematic, Lua `RegisterEvent(self, ragdoll.onBeforeAnimatedRestore, "fn")`.
+24. **Six-DOF drives**: no drive at all when both stiffness and damping are 0 (they were velocity
+    motors with an infinite force: the axes were locked). A damping alone is Unity's damper (force =
+    damping x velocity error): Jolt's velocity motor with its force limit set to that force before
+    each step (Jolt's spring settings with stiffness 0 are rigid); measured against v0 (1 - c dt /
+    m)^n within 2% (`Physics3DReview.SixDOFDamperOnlyDampsLikeUnity`).
+25. **Live limit edits keep the joint's zero.** A hinge or slider whose limits move their centre is
+    made again from its own constraint's body-local frames (turned / shifted by the change), not
+    from the bodies' current poses; six-DOF motions and limits are set on the live constraint
+    (`SetTranslationLimits` / `SetRotationLimits`), and their Catalog flags no longer rebuild. A
+    slider made as a fixed joint for equal limits becomes a slider again when they differ. Gears and
+    racks driving a joint that is made again are made again too. Cone swing limits of a LOCAL six-DOF
+    joint are made symmetric with the larger half (Jolt keeps only the maximum).
+26. **Mass**: going back to automatic mass, centre of mass or inertia restores Jolt's own mass
+    properties (`SetShape` skips them for an unchanged shape); `setAllowedDOFs` re-applies the mass
+    fields afterwards.
+27. **Nested bodies (D11)**: a static or kinematic body under a body written in the same pass, not
+    following its Transform, keeps its local pose (a hitbox on a vehicle rides with it, as before);
+    its Jolt body follows at the next step.
+28. **Pair filter changes inside a step** (a contact callback ignoring a pair, a joint destroyed
+    there) are queued and made right after the step: Jolt's job threads read the filter.
+29. **The 3D world is made lazily** (like the 2D one): the first body, joint or 3D query of a scene
+    makes it, so editor previews, thumbnails and UI scenes pay nothing for the 3.64 MB; a ray cast on
+    a scene without one hits nothing. The memory test makes the world explicitly.
+30. **A shape swap wakes what touches the body** (a crate resting on a platform whose collider is
+    shrunk); the editor's exported capacity default for body pairs is 8192 like the project's.
+31. **T17**: the Factory output is checked by text in the unit suite; compiling it needs the export
+    toolchain (the `JASPER_SLOW_BUILD` MCP export test does), so it is not compiled there.

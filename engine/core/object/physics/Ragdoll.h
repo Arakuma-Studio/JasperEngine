@@ -11,6 +11,7 @@
 #include "EntityHandle.h"
 #include "component/RagdollComponent.h"
 #include "math/Vector3.h"
+#include "util/FunctionSubscribe.h"
 
 #include <vector>
 
@@ -62,6 +63,9 @@ namespace jasperengine{
         void applyImpulse(const Vector3& impulse, const Vector3& point);
         // the force (N) over every part by its mass (each part accelerates alike)
         void applyForce(const Vector3& force);
+        // Called (with the ragdoll's entity) for every ragdoll of the scene just before it goes
+        // back to animated, while its parts still hold the simulated pose (a blend hook)
+        FunctionSubscribe<void(int)>& onBeforeAnimatedRestore() const;
     };
 }
 

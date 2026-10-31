@@ -454,6 +454,8 @@ void Rigidbody::applyAllowedDOFs(JPH::EAllowedDOFs allowedDOFs){
             motionProperties->SetMassProperties(allowedDOFs, jbody.GetShape()->GetMassProperties());
         }
     }
+    // the DOFs are set; the mass, centre of mass and inertia the fields ask for again
+    massChanged();
 }
 
 void Rigidbody::setAllowedDOFsAll(){

@@ -427,6 +427,16 @@ RayReturn Ray::intersects(const Rigidbody& body) const{
         JPH::RayCastResult hit;
 
         JPH::ShapeRefC shapeRef = physicsSystem->getBodyInterface3D().GetShape(bodycomp.body);
+        // trigger colliders of a body with solid ones are on their own body (PhysicsSystem): the nearer
+        if (!bodycomp.triggerBody.IsInvalid()){
+            JPH::ShapeRefC triggers = physicsSystem->getBodyInterface3D().GetShape(bodycomp.triggerBody);
+            JPH::RayCastResult solidHit;
+            const bool solid = shapeRef->CastRay(ray, id_creator, solidHit);
+            JPH::RayCastResult triggerHit;
+            if (triggers && triggers->CastRay(ray, id_creator, triggerHit) && (!solid || triggerHit.mFraction < solidHit.mFraction)){
+                shapeRef = triggers;
+            }
+        }
 
         if (shapeRef->CastRay(ray, id_creator, hit)){
             JPH::Vec3 normal = shapeRef->GetSurfaceNormal(hit.mSubShapeID2, ray.GetPointOnRay(hit.mFraction));
@@ -627,7 +637,8 @@ RayReturn Ray::cast(Scene* scene, RayFilter raytest, int broadPhaseLayer3D, bool
         }
 
         std::shared_ptr<PhysicsSystem> physicsSystem = scene->getSystem<PhysicsSystem>();
-        JPH::PhysicsSystem* world = physicsSystem->getWorld3D();
+        // no 3D world made yet (no body ever): nothing to hit
+        JPH::PhysicsSystem* world = physicsSystem->hasWorld3D() ? physicsSystem->getWorld3D() : nullptr;
 
         if (world){
             JPH::RayCast ray(JPH::Vec3(origin.x, origin.y, origin.z), JPH::Vec3(direction.x, direction.y, direction.z));

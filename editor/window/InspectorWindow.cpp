@@ -12563,7 +12563,7 @@ void editor::InspectorWindow::drawJoint3DComponent(ComponentType cpType, ScenePr
     settingsSwingType.onValueChanged = markJoint3DDirty;
     RowSettings settingsMotion;
     settingsMotion.enumEntries = &entriesJointMotion3D;
-    settingsMotion.onValueChanged = markJoint3DDirty;
+    // motions and limits reach the live joint (no rebuild: its zero stays)
     RowSettings settingsAnchorSpace;
     settingsAnchorSpace.enumEntries = &entriesJointAnchorSpace3D;
     settingsAnchorSpace.onValueChanged = markJoint3DDirty;
@@ -12771,12 +12771,12 @@ void editor::InspectorWindow::drawJoint3DComponent(ComponentType cpType, ScenePr
         const bool linearLimited = joint.xMotion == JointMotion::LIMITED || joint.yMotion == JointMotion::LIMITED || joint.zMotion == JointMotion::LIMITED;
         const bool angularLimited = joint.angularXMotion == JointMotion::LIMITED || joint.angularYMotion == JointMotion::LIMITED || joint.angularZMotion == JointMotion::LIMITED;
         if (linearLimited){
-            propertyRow(RowPropertyType::Vector3, cpType, "linearLimitMin", "Linear Limit Min", sceneProject, entities, settingsJointValue);
-            propertyRow(RowPropertyType::Vector3, cpType, "linearLimitMax", "Linear Limit Max", sceneProject, entities, settingsJointValue);
+            propertyRow(RowPropertyType::Vector3, cpType, "linearLimitMin", "Linear Limit Min", sceneProject, entities, settingsParam);
+            propertyRow(RowPropertyType::Vector3, cpType, "linearLimitMax", "Linear Limit Max", sceneProject, entities, settingsParam);
         }
         if (angularLimited){
-            propertyRow(RowPropertyType::Vector3, cpType, "angularLimitMin", "Angular Limit Min", sceneProject, entities, settingsJointValue);
-            propertyRow(RowPropertyType::Vector3, cpType, "angularLimitMax", "Angular Limit Max", sceneProject, entities, settingsJointValue);
+            propertyRow(RowPropertyType::Vector3, cpType, "angularLimitMin", "Angular Limit Min", sceneProject, entities, settingsParam);
+            propertyRow(RowPropertyType::Vector3, cpType, "angularLimitMax", "Angular Limit Max", sceneProject, entities, settingsParam);
         }
     }else if (joint.type == Joint3DType::GEAR){
         propertyRow(RowPropertyType::LocalEntity, cpType, "hingeA", "Hinge A", sceneProject, entities, settingsJointValue);

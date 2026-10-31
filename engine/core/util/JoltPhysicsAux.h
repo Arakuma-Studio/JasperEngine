@@ -260,6 +260,10 @@ namespace jasperengine{
 			if (group1 != JPH::CollisionGroup::cInvalidGroup && group1 == inGroup2.GetGroupID()){
 				return false;
 			}
+			// a body and the sensor body of its own trigger colliders (same GameObject)
+			if (inGroup1.GetSubGroupID() == inGroup2.GetSubGroupID()){
+				return false;
+			}
 			if (ignored.empty()){
 				return true;
 			}
@@ -403,7 +407,7 @@ namespace jasperengine{
 		// Jolt calls these from its job threads: subscribers run one at a time (see
 		// PhysicsSystem::getCallbackMutex3D), and not at all when there are none
 		virtual void OnBodyActivated(const JPH::BodyID &inBodyID, uint64_t inBodyUserData) override{
-			if (!physicsSystem->onBodyActivated3D.hasSubscribers()){
+			if (!physicsSystem->onBodyActivated3D.hasSubscribers() || physicsSystem->isTriggerCompanion3D(inBodyID)){
 				return;
 			}
 			std::lock_guard<std::recursive_mutex> lock(physicsSystem->getCallbackMutex3D());
@@ -411,7 +415,7 @@ namespace jasperengine{
 		}
 
 		virtual void OnBodyDeactivated(const JPH::BodyID &inBodyID, uint64_t inBodyUserData) override{
-			if (!physicsSystem->onBodyDeactivated3D.hasSubscribers()){
+			if (!physicsSystem->onBodyDeactivated3D.hasSubscribers() || physicsSystem->isTriggerCompanion3D(inBodyID)){
 				return;
 			}
 			std::lock_guard<std::recursive_mutex> lock(physicsSystem->getCallbackMutex3D());

@@ -174,7 +174,7 @@ void PhysicsSystem::updateDebugLines(){
     debugLinesShown = true;
 
 #ifdef JASPERENGINE_PHYSICS_3D
-    {
+    if (world3DReady){
         JPH::BodyInterface& bodyInterface = getBodyInterface3D();
         auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
         for (size_t i = 0; i < bodies3d->size(); i++){

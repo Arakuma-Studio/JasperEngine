@@ -1529,8 +1529,10 @@ hinge.limitsMin, hinge.limitsMax = 0, 110
 **Ragdoll** (EntityHandle; `go:getRagdoll()`): rw `enabled`, `simulated` (false: the parts are
 kinematic and follow the animation; true: dynamic, the Animation Player paused), `inheritVelocity`,
 `selfCollision`, `totalMass`, `root`, `animator`; ro `partCount`; `getParts()` (table of
-`Rigidbody`), `applyImpulse(impulse, point)` (the part nearest the point), `applyForce(force)`
-(every part by its mass). Made by the Ragdoll wizard (`create_ragdoll`).
+`Rigidbody`), `applyImpulse(impulse, point)` (the part nearest the point; after `simulated = true`
+in the same frame too), `applyForce(force)` (every part by its mass); event
+`onBeforeAnimatedRestore` (`RegisterEvent(self, ragdoll.onBeforeAnimatedRestore, "fn")`, fn(entity)
+before a ragdoll goes back to animated). Made by the Ragdoll wizard (`create_ragdoll`).
 
 ### 4.15 Actions and Tweens
 

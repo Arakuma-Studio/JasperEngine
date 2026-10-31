@@ -116,6 +116,9 @@ namespace jasperengine{
 
 #ifdef JASPERENGINE_PHYSICS_3D
         JPH::BodyID body;
+        // runtime: a sensor body with the trigger colliders of a body that has solid ones too,
+        // following it (invalid when the body has no such mix)
+        JPH::BodyID triggerBody;
 #endif
 
         std::vector<Collider3D> colliders;

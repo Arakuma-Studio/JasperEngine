@@ -7,7 +7,6 @@
 #include "Scene.h"
 #include "subsystem/PhysicsSystem.h"
 
-#include <limits>
 
 using namespace jasperengine;
 
@@ -38,6 +37,8 @@ bool Ragdoll::isSimulated() const{
 
 void Ragdoll::setSimulated(bool simulated){
     ragdoll().simulated = simulated;
+    // now, so an impulse right after reaches dynamic parts (inside a step: at the next one)
+    scene->getSystem<PhysicsSystem>()->updateRagdoll(entity);
 }
 
 Entity Ragdoll::getRoot() const{
@@ -100,35 +101,13 @@ std::vector<Rigidbody> Ragdoll::getParts() const{
 }
 
 void Ragdoll::applyImpulse(const Vector3& impulse, const Vector3& point){
-    Entity nearest = NULL_ENTITY;
-    float nearestDistance = std::numeric_limits<float>::max();
-    for (Entity part : getPartEntities()){
-        Rigidbody body(scene, part);
-        const float distance = (body.getCenterOfMassPosition() - point).squaredLength();
-        if (distance < nearestDistance){
-            nearestDistance = distance;
-            nearest = part;
-        }
-    }
-    if (nearest != NULL_ENTITY){
-        Rigidbody(scene, nearest).applyImpulse(impulse, point);
-    }
+    scene->getSystem<PhysicsSystem>()->applyRagdollImpulse3D(entity, impulse, point);
 }
 
 void Ragdoll::applyForce(const Vector3& force){
-    std::vector<Entity> parts = getPartEntities();
-    float total = 0.0f;
-    std::vector<float> masses;
-    masses.reserve(parts.size());
-    for (Entity part : parts){
-        const float mass = Rigidbody(scene, part).getMass();
-        masses.push_back(mass);
-        total += mass;
-    }
-    if (!(total > 0.0f)){
-        return;
-    }
-    for (size_t i = 0; i < parts.size(); i++){
-        Rigidbody(scene, parts[i]).applyForce(force * (masses[i] / total));
-    }
+    scene->getSystem<PhysicsSystem>()->applyRagdollForce3D(entity, force);
+}
+
+FunctionSubscribe<void(int)>& Ragdoll::onBeforeAnimatedRestore() const{
+    return scene->getSystem<PhysicsSystem>()->onRagdollBeforeAnimatedRestore3D;
 }

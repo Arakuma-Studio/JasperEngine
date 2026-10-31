@@ -122,7 +122,8 @@ kinematic one made dynamic keeps the velocity it was moving with. A body with a 
 `heightfield` collider can only be static (an error names the collider).
 
 **Triggers per collider** (Unity Is Trigger): a collider with `isTrigger` passes through and
-reports a sensor contact, the body's other colliders still collide; triggers add no mass. A
+reports a sensor contact, the body's other colliders still collide; triggers add no mass and do not
+spoil continuous collision (`linear_cast` bodies stop at thin walls with a trigger around them). A
 kinematic body with a trigger detects static bodies. The old body-wide `sensor` still works.
 
 **Editing colliders from Lua at run time** swaps the shape (the body keeps its id, velocity,
@@ -150,7 +151,7 @@ holds bodyA to the world.
 | ConfigurableJoint (slider) | `prismatic` | `axis`, limits in metres, spring, motor (N) |
 | SpringJoint | `distance` | `minDistance` / `maxDistance` (-1: the length when made), `useSpring` (soft rope) |
 | CharacterJoint | `swingtwist` | `twistAxis`, `planeAxis` (Swing Axis), `twistMinAngle` / `twistMaxAngle` (Low / High Twist), `normalHalfConeAngle` (Swing 1: about the swing axis), `planeHalfConeAngle` (Swing 2: about the normal), `swingType`, motor to `motorTargetRotation` |
-| ConfigurableJoint | `sixdof` | `x/y/zMotion`, `angularX/Y/ZMotion` (`locked`, `limited`, `free`), `linear/angularLimitMin/Max`, drives (`useDrive`, stiffness / damping, targets) |
+| ConfigurableJoint | `sixdof` | `x/y/zMotion`, `angularX/Y/ZMotion` (`locked`, `limited`, `free`; with the limits, live), `linear/angularLimitMin/Max`, drives (`useDrive`; a stiffness springs to the target pose, a damping alone damps towards the target velocity, neither: no drive) |
 | FixedJoint | `fixed` | |
 | | `point`, `cone` (`coneHalfAngle`, 45), `path`, `gear`, `rack_and_pinion`, `pulley` | |
 
@@ -184,7 +185,10 @@ joint to their parent bone with Unity's limits, masses summing to `total_mass` (
 `Ragdoll` component. One undo step; running it again rebuilds. `start: animated` (kinematic parts
 following the animation) or `simulated`. In a script: `local r = self.object:getRagdoll();
 r.simulated = true` (the Animation Player pauses, the parts keep the animation's velocity with
-`inheritVelocity`), `r:applyImpulse(impulse, point)` (the nearest part), `r:getParts()`.
+`inheritVelocity`), `r:applyImpulse(impulse, point)` (the nearest part; in the same frame as `simulated = true` it reaches
+the now dynamic parts), `r:getParts()`. Simulated pauses everything that moves the bones (the
+Animation Player, Model animations, Pose and Vertex Animators) and resumes it after;
+`ragdoll.onBeforeAnimatedRestore` is told just before the parts go back to the animation.
 `selfCollision` off keeps the parts from touching each other.
 
 ## Debug draw and world capacity

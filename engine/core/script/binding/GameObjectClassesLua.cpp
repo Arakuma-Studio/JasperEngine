@@ -3029,6 +3029,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getParts", &Ragdoll::getParts)
         .addFunction("applyImpulse", &Ragdoll::applyImpulse)
         .addFunction("applyForce", &Ragdoll::applyForce)
+        // RegisterEvent(self, ragdoll.onBeforeAnimatedRestore, "fn"): fn(entity) before a ragdoll
+        // of the scene goes back to animated
+        .addProperty("onBeforeAnimatedRestore", [] (Ragdoll* self, lua_State* L) { return &self->onBeforeAnimatedRestore(); }, [] (Ragdoll* self, lua_State* L) { self->onBeforeAnimatedRestore() = L; })
         .endClass();
 
     luabridge::getGlobalNamespace(L)

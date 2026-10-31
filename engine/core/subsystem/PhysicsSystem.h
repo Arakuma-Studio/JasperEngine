@@ -37,6 +37,7 @@
 
 #include <unordered_map>
 
+#include <functional>
 #include <mutex>
 #include <string>
 #include <unordered_set>
@@ -96,6 +97,16 @@ namespace jasperengine{
 #ifdef JASPERENGINE_PHYSICS_3D
 		bool lock3DBodies;
 		bool steppingWorld3D = false;
+		// the Jolt world is made when the scene first needs it (a body, a query): editor
+		// previews, thumbnails and UI scenes never pay for it
+		bool world3DReady = false;
+		void ensureWorld3D();
+		// pair filter changes asked for inside a step (Jolt's job threads read the filter then),
+		// made right after it
+		std::vector<std::function<void(JoltPairFilter3D&)>> pendingPairFilter3D;
+		// the sensor bodies holding the trigger colliders of bodies that also have solid ones
+		// (Jolt's continuous collision takes any sensor hit as the closest one): their ids
+		std::unordered_set<uint32_t> triggerCompanions3D;
 
 		void flushPendingDestroys3D();
 		bool useLockedInterfaces3D() const;
@@ -228,6 +239,9 @@ namespace jasperengine{
 		// leaf or the leaf), with the centre of mass moved when the mass fields or a trigger
 		// collider ask for it; mass properties to give Jolt in `mass` (false: Jolt's own)
 		JPH::ShapeRefC buildBodyShape3D(Entity entity, RigidbodyComponent& body, JPH::MassProperties& mass, bool& overrideMass);
+		// the colliders' leaves at these indices as one shape (a compound, a rotated /
+		// translated leaf or the leaf)
+		JPH::ShapeRefC composeColliderShape3D(Entity entity, RigidbodyComponent& body, const std::vector<size_t>& indices);
 		// builds the dirty (all: every) colliders' leaves; false when one cannot be made yet
 		bool buildColliderLeaves3D(Entity entity, RigidbodyComponent& body, bool all, bool& sourceLoading);
 		// resolves every collider's surface (material, trigger) into its JoltSurfaceMaterial
@@ -236,6 +250,22 @@ namespace jasperengine{
 		bool collidesKinematicVsNonDynamic3D(const RigidbodyComponent& body) const;
 		// joints whose bodyA or bodyB is the entity: made again once the body is back
 		void invalidateJoints3D(Entity body);
+		// gears and racks driving the constraint: destroyed, made again later
+		void invalidateDependentJoints3D(const JPH::TwoBodyConstraint* constraint);
+		// a hinge or slider with a new limits centre, made again from its own frames
+		bool recenterJoint3D(Entity entity, Joint3DComponent& joint, float center);
+		// the force limits of the damper-only six-DOF drives, before a step
+		void updateSixDOFDampers3D();
+		// the trigger colliders of a body with solid ones too: made, swapped or removed with it
+		void syncTriggerCompanion3D(Entity entity, RigidbodyComponent& body);
+		void destroyTriggerCompanion3D(RigidbodyComponent& body);
+		// before a step: the companions where their bodies are, moving as they do
+		void followTriggerCompanions3D();
+		// the ragdolls' bone drivers (entity animations, Pose Animators, Vertex Animators) paused
+		// while simulated and resumed after
+		void pauseRagdollDrivers3D(Entity entity, RagdollComponent& ragdoll);
+		void resumeRagdollDrivers3D(RagdollComponent& ragdoll);
+		void flushRagdollPushes3D(Entity entity, RagdollComponent& ragdoll);
 		// the reason JOINT of a joint's body pair, on while it lives with enableCollision off
 		void releaseJointPair3D(Joint3DComponent& joint);
 		// after a step: joints past breakForce / breakTorque, the read-outs; then told
@@ -277,6 +307,7 @@ namespace jasperengine{
 		void orderByHierarchy(std::vector<Entity>& entities);
 		// the Transforms between the entity and the nearest ancestor written in this pass
 		void refreshAncestors(Entity entity);
+		bool hasWrittenAncestor(Entity entity) const;
 		void markWritten(Entity entity);
 		// a body's interpolation with SCENE resolved by the scene setting
 		RigidbodyInterpolation interpolationOf(RigidbodyInterpolation mode) const{
@@ -455,9 +486,23 @@ namespace jasperengine{
 		// DISTANCE: the anchors' distance (metres)
 		float getJoint3DLength(const Joint3DComponent& joint);
 
-		// Turns a ragdoll between animated and simulated now (Ragdoll::setSimulated applies it
-		// at the next fixed step)
+		// Collects a ragdoll's parts when they may have changed
 		void refreshRagdoll(Entity entity);
+		// Applies a ragdoll's simulated state now (outside a step; inside one it waits for the
+		// next fixed step), then the impulses and forces given while it was not applied
+		void updateRagdoll(Entity entity);
+		// Ragdoll::applyImpulse / applyForce: now when the state they need is applied, else
+		// queued until it is (a script setting simulated = true and pushing in the same frame)
+		void applyRagdollImpulse3D(Entity entity, const Vector3& impulse, const Vector3& point);
+		void applyRagdollForce3D(Entity entity, const Vector3& force);
+		// a ragdoll is about to go back to animated (its entity): Ragdoll::onBeforeAnimatedRestore
+		FunctionSubscribe<void(int)> onRagdollBeforeAnimatedRestore3D;
+
+		// Changes the pair filter now, or right after the step when inside one
+		void changePairFilter3D(const std::function<void(JoltPairFilter3D&)>& change);
+		bool isTriggerCompanion3D(const JPH::BodyID& body) const;
+		// the 3D world exists (made by the first body or query)
+		bool hasWorld3D() const { return world3DReady; }
 #endif
 
 		// Physics.debugDraw: the runtime collider lines of this scene (3D and 2D), drawn while on

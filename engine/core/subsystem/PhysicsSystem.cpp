@@ -288,8 +288,6 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     maxBodies3D = worldCapacity3D().maxBodies;
     maxBodyPairs3D = worldCapacity3D().maxBodyPairs;
     maxContactConstraints3D = worldCapacity3D().maxContactConstraints;
-    const unsigned int cNumBodyMutexes = 0;
-
     objectLayerTable3D = new JoltObjectLayerTable();
     broad_phase_layer_interface = new JoltBroadPhaseLayers(MAX_BROADPHASELAYER_3D, *objectLayerTable3D);
     object_vs_broadphase_layer_filter = new JoltObjectVsBroadPhaseLayerFilter(*broad_phase_layer_interface);
@@ -299,15 +297,6 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     Physics::getLayerCollisionMatrix().getRows(appliedLayerRows3D);
     appliedLayerVersion3D = Physics::getLayerCollisionMatrix().getVersion();
 
-    // Now we can create the actual physics system.
-    world3D.Init(maxBodies3D, cNumBodyMutexes, maxBodyPairs3D, maxContactConstraints3D, *broad_phase_layer_interface, *object_vs_broadphase_layer_filter, *object_vs_object_layer_filter);
-    world3D.SetGravity(JPH::Vec3(this->gravity3D.x, this->gravity3D.y, this->gravity3D.z));
-
-    // per-collider materials and their combine modes; colliders without one combine as Jolt
-    // always did (geometric mean friction, maximum restitution)
-    world3D.SetCombineFriction(&combineFriction3D);
-    world3D.SetCombineRestitution(&combineRestitution3D);
-
     pairFilter3D = new JoltPairFilter3D();
     pairFilter3D->AddRef();
 
@@ -316,14 +305,32 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     job_system = &JoltShapeBuilder::sharedPhysicsJobSystem();
 
     activationListener3D = new JoltActivationListener(scene, this);
-    world3D.SetBodyActivationListener(activationListener3D);
-
     contactListener3D = new JoltContactListener(scene, this);
-    world3D.SetContactListener(contactListener3D);
 
     lock3DBodies = true;
+    // the Jolt world itself: ensureWorld3D, when a body or a query first needs it
 #endif
 }
+
+#ifdef JASPERENGINE_PHYSICS_3D
+void PhysicsSystem::ensureWorld3D(){
+    if (world3DReady){
+        return;
+    }
+    world3DReady = true;
+    const unsigned int cNumBodyMutexes = 0;
+    world3D.Init(maxBodies3D, cNumBodyMutexes, maxBodyPairs3D, maxContactConstraints3D, *broad_phase_layer_interface, *object_vs_broadphase_layer_filter, *object_vs_object_layer_filter);
+    world3D.SetGravity(JPH::Vec3(this->gravity3D.x, this->gravity3D.y, this->gravity3D.z));
+
+    // per-collider materials and their combine modes; colliders without one combine as Jolt
+    // always did (geometric mean friction, maximum restitution)
+    world3D.SetCombineFriction(&combineFriction3D);
+    world3D.SetCombineRestitution(&combineRestitution3D);
+
+    world3D.SetBodyActivationListener(activationListener3D);
+    world3D.SetContactListener(contactListener3D);
+}
+#endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
 void PhysicsSystem::ensureWorld2D(){
@@ -434,7 +441,9 @@ void PhysicsSystem::setGravity3D(Vector3 gravity){
     if (this->gravity3D != gravity){
         this->gravity3D = gravity;
 #ifdef JASPERENGINE_PHYSICS_3D
-        world3D.SetGravity(JPH::Vec3(gravity.x, gravity.y, gravity.z));
+        if (world3DReady){
+            world3D.SetGravity(JPH::Vec3(gravity.x, gravity.y, gravity.z));
+        }
 #endif
     }
 }
@@ -480,6 +489,7 @@ void PhysicsSystem::clearSubscriptions(){
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
     onBodyActivated3D.clear();
+    onRagdollBeforeAnimatedRestore3D.clear();
     onBodyDeactivated3D.clear();
     onContactAdded3D.clear();
     onContactPersisted3D.clear();
@@ -500,6 +510,7 @@ void PhysicsSystem::removeSubscriptionsByTag(const std::string& substring){
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
     onBodyActivated3D.removeByTagSubstring(substring);
+    onRagdollBeforeAnimatedRestore3D.removeByTagSubstring(substring);
     onBodyDeactivated3D.removeByTagSubstring(substring);
     onContactAdded3D.removeByTagSubstring(substring);
     onContactPersisted3D.removeByTagSubstring(substring);
@@ -625,15 +636,18 @@ bool PhysicsSystem::useLockedInterfaces3D() const{
 }
 
 JPH::BodyInterface& PhysicsSystem::getBodyInterface3D(){
+    ensureWorld3D();
     return useLockedInterfaces3D() ? world3D.GetBodyInterface() : world3D.GetBodyInterfaceNoLock();
 }
 
 const JPH::BodyLockInterface& PhysicsSystem::getBodyLockInterface3D(){
+    ensureWorld3D();
     return useLockedInterfaces3D() ? static_cast<const JPH::BodyLockInterface&>(world3D.GetBodyLockInterface())
                                    : static_cast<const JPH::BodyLockInterface&>(world3D.GetBodyLockInterfaceNoLock());
 }
 
 const JPH::NarrowPhaseQuery& PhysicsSystem::getNarrowPhaseQuery3D(){
+    ensureWorld3D();
     return useLockedInterfaces3D() ? world3D.GetNarrowPhaseQuery() : world3D.GetNarrowPhaseQueryNoLock();
 }
 
@@ -646,6 +660,14 @@ std::recursive_mutex& PhysicsSystem::getCallbackMutex3D(){
 }
 
 void PhysicsSystem::flushPendingDestroys3D(){
+    // the pair filter changes asked for while the job threads read it
+    for (const auto& change : pendingPairFilter3D){
+        change(*pairFilter3D);
+    }
+    pendingPairFilter3D.clear();
+    if (!world3DReady){
+        return;
+    }
     for (const JPH::Ref<JPH::TwoBodyConstraint>& constraint : pendingJointDestroy3D){
         world3D.RemoveConstraint(constraint);
     }
@@ -706,11 +728,20 @@ void PhysicsSystem::refreshRigidbodyFilter3D(Entity entity){
 
     body_interface.SetObjectLayer(body->body, wanted);
     objectLayerTable3D->release(current);
+    if (!body->triggerBody.IsInvalid()){
+        const JPH::ObjectLayer companionLayer = objectLayerTable3D->acquire(scene->getEntityLayer(entity), body->categoryBits, body->maskBits);
+        const JPH::ObjectLayer companionCurrent = body_interface.GetObjectLayer(body->triggerBody);
+        body_interface.SetObjectLayer(body->triggerBody, companionLayer);
+        objectLayerTable3D->release(companionCurrent);
+    }
 
     wakeAround3D(body->body);
 }
 
 void PhysicsSystem::syncLayerCollisionMatrix3D(){
+    if (!world3DReady){
+        return;
+    }
     const LayerCollisionMatrix& matrix = Physics::getLayerCollisionMatrix();
     const uint32_t version = matrix.getVersion();
     if (version == appliedLayerVersion3D){
@@ -1848,6 +1879,17 @@ namespace {
         return !body.colliders.empty();
     }
 
+    // a body with trigger and solid colliders keeps its triggers on a sensor body of their own
+    bool splitsTriggers3D(const RigidbodyComponent& body){
+        return !body.sensor && anyTrigger3D(body) && !allTriggers3D(body);
+    }
+
+    // a body of trigger colliders only is a sensor itself (Jolt's continuous collision then
+    // skips it)
+    bool isSensorBody3D(const RigidbodyComponent& body){
+        return body.sensor || (!body.colliders.empty() && allTriggers3D(body));
+    }
+
     // the collider that keeps a body static (Jolt cannot move a mesh or heightfield)
     int staticOnlyCollider3D(const RigidbodyComponent& body){
         for (size_t i = 0; i < body.colliders.size(); i++){
@@ -2052,17 +2094,15 @@ bool PhysicsSystem::computeMass3D(Entity entity, const RigidbodyComponent& body,
     return true;
 }
 
-JPH::ShapeRefC PhysicsSystem::buildBodyShape3D(Entity entity, RigidbodyComponent& body, JPH::MassProperties& mass, bool& overrideMass){
-    overrideMass = false;
-    if (body.colliders.empty()){
+JPH::ShapeRefC PhysicsSystem::composeColliderShape3D(Entity entity, RigidbodyComponent& body, const std::vector<size_t>& indices){
+    if (indices.empty()){
         return NULL;
     }
-
     JPH::ShapeRefC shape;
     const Vector3 entityScale = entityWorldScale(scene, entity);
-    if (body.colliders.size() > 1){
+    if (indices.size() > 1){
         JPH::StaticCompoundShapeSettings compound_shape;
-        for (size_t i = 0; i < body.colliders.size(); i++){
+        for (size_t i : indices){
             Vector3 scaledPosition = body.colliders[i].position * entityScale;
             JPH::Vec3 jPosition(scaledPosition.x, scaledPosition.y, scaledPosition.z);
             JPH::Quat jQuat = toValidatedJoltRotation(body.colliders[i].rotation, entity, static_cast<int>(i));
@@ -2076,11 +2116,12 @@ JPH::ShapeRefC PhysicsSystem::buildBodyShape3D(Entity entity, RigidbodyComponent
         }
         shape = shape_result.Get();
     }else{
-        Collider3D& shapeData = body.colliders[0];
+        const size_t index = indices[0];
+        Collider3D& shapeData = body.colliders[index];
         if (shapeData.position != Vector3::ZERO || shapeData.rotation != Quaternion::IDENTITY){
             Vector3 scaledPosition = shapeData.position * entityScale;
             JPH::Vec3 jPosition(scaledPosition.x, scaledPosition.y, scaledPosition.z);
-            JPH::Quat jQuat = toValidatedJoltRotation(shapeData.rotation, entity, 0);
+            JPH::Quat jQuat = toValidatedJoltRotation(shapeData.rotation, entity, static_cast<int>(index));
             JPH::RotatedTranslatedShapeSettings rtShape(jPosition, jQuat, shapeData.shape);
             JPH::ShapeSettings::ShapeResult shape_result = rtShape.Create();
             if (!shape_result.IsValid()){
@@ -2092,11 +2133,33 @@ JPH::ShapeRefC PhysicsSystem::buildBodyShape3D(Entity entity, RigidbodyComponent
             shape = shapeData.shape;
         }
     }
+    return shape;
+}
+
+JPH::ShapeRefC PhysicsSystem::buildBodyShape3D(Entity entity, RigidbodyComponent& body, JPH::MassProperties& mass, bool& overrideMass){
+    overrideMass = false;
+    if (body.colliders.empty()){
+        return NULL;
+    }
+
+    // the body's own shape: every collider, or its solid ones when it has triggers too (those
+    // are its trigger companion's, syncTriggerCompanion3D)
+    std::vector<size_t> indices;
+    const bool split = splitsTriggers3D(body);
+    for (size_t i = 0; i < body.colliders.size(); i++){
+        if (!split || !body.colliders[i].isTrigger){
+            indices.push_back(i);
+        }
+    }
+    JPH::ShapeRefC shape = composeColliderShape3D(entity, body, indices);
+    if (!shape){
+        return NULL;
+    }
 
     // Jolt's own mass properties unless a mass field or a trigger collider changes them; the
     // legacy solid box override (setOverrideMassAndInertia) wins over both
     const bool customMass = !body.automaticMass || !body.automaticCenterOfMass || !body.automaticInertiaTensor ||
-                            (anyTrigger3D(body) && !allTriggers3D(body));
+                            (anyTrigger3D(body) && !allTriggers3D(body) && !split);
     if (!customMass || body.overrideMassProperties || shape->MustBeStatic()){
         return shape;
     }
@@ -2179,6 +2242,7 @@ bool PhysicsSystem::syncRigidbodyColliders(Entity entity, RigidbodyComponent& bo
     body.newBody = true;
     body.loadedScale = entityWorldScale(scene, entity);
     body.appliedMaterialRevision = PhysicsMaterialRuntime::revision();
+    syncTriggerCompanion3D(entity, body);
 
     return true;
 }
@@ -2262,11 +2326,14 @@ bool PhysicsSystem::reshapeRigidbody3D(Entity entity, RigidbodyComponent& body){
                     motion->SetMassProperties(motion->GetAllowedDOFs(), box);
                 }else if (overrideMass){
                     motion->SetMassProperties(motion->GetAllowedDOFs(), mass);
+                }else if (!shape->MustBeStatic()){
+                    // Jolt's own again (SetShape skips it for the same shape: back to automatic)
+                    motion->SetMassProperties(motion->GetAllowedDOFs(), shape->GetMassProperties());
                 }
             }
             jbody.SetUseManifoldReduction(usesManifoldReduction3D(body));
             jbody.SetCollideKinematicVsNonDynamic(collidesKinematicVsNonDynamic3D(body));
-            jbody.SetIsSensor(body.sensor);
+            jbody.SetIsSensor(isSensorBody3D(body));
         }
     }
 
@@ -2274,6 +2341,9 @@ bool PhysicsSystem::reshapeRigidbody3D(Entity entity, RigidbodyComponent& body){
     body.massDirty = false;
     body.loadedScale = entityScale;
     body.appliedMaterialRevision = PhysicsMaterialRuntime::revision();
+    syncTriggerCompanion3D(entity, body);
+    // what touches it sees the new shape (a resting contact keeps its old manifold otherwise)
+    wakeAround3D(body.body);
     return true;
 }
 
@@ -2489,9 +2559,14 @@ void PhysicsSystem::setBodyPairIgnored3D(Entity a, Entity b, uint32_t reason, bo
     if (a == NULL_ENTITY || b == NULL_ENTITY || a == b){
         return;
     }
+    if (steppingWorld3D){
+        // the job threads read the filter: changed after the step
+        changePairFilter3D([a, b, reason, ignore](JoltPairFilter3D& filter){ filter.setReason(a, b, reason, ignore); });
+        return;
+    }
     const bool before = pairFilter3D->isIgnored(a, b);
     pairFilter3D->setReason(a, b, reason, ignore);
-    if (before != pairFilter3D->isIgnored(a, b) && !steppingWorld3D){
+    if (before != pairFilter3D->isIgnored(a, b)){
         for (Entity entity : {a, b}){
             RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity);
             if (body && !body->body.IsInvalid()){
@@ -2499,6 +2574,18 @@ void PhysicsSystem::setBodyPairIgnored3D(Entity a, Entity b, uint32_t reason, bo
             }
         }
     }
+}
+
+void PhysicsSystem::changePairFilter3D(const std::function<void(JoltPairFilter3D&)>& change){
+    if (steppingWorld3D){
+        pendingPairFilter3D.push_back(change);
+        return;
+    }
+    change(*pairFilter3D);
+}
+
+bool PhysicsSystem::isTriggerCompanion3D(const JPH::BodyID& body) const{
+    return !triggerCompanions3D.empty() && triggerCompanions3D.count(body.GetIndexAndSequenceNumber()) > 0;
 }
 
 static_assert((uint8_t)JPH::EAllowedDOFs::Plane2D == (RigidbodyAllowedDOF_TranslationX | RigidbodyAllowedDOF_TranslationY | RigidbodyAllowedDOF_RotationZ)
@@ -2536,7 +2623,7 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& bod
     }
     JPH::BodyCreationSettings settings(shape, createPosition, createRotation, joltType, layer);
     settings.mMotionQuality = getRigidbodyMotionQualityToJolt(body.motionQuality);
-    settings.mIsSensor = body.sensor;
+    settings.mIsSensor = isSensorBody3D(body);
     settings.mGravityFactor = body.gravityFactor;
     settings.mFriction = body.friction;
     settings.mRestitution = body.restitution;
@@ -2638,6 +2725,7 @@ b2WorldId PhysicsSystem::getWorld2D() const{
 
 #ifdef JASPERENGINE_PHYSICS_3D
 JPH::PhysicsSystem* PhysicsSystem::getWorld3D(){
+    ensureWorld3D();
     return &world3D;
 }
 #endif
@@ -2816,7 +2904,137 @@ bool PhysicsSystem::ensureRigidbodyLoaded(Entity entity){
     return body && !body->body.IsInvalid();
 }
 
+// ---- trigger companions ---------------------------------------------------------------------
+// Jolt's continuous collision (LinearCast) keeps only the closest hit of a cast and skips sensor
+// bodies, not sensor contacts: a trigger collider inside a solid body would be that closest hit
+// and the body would pass through what is behind it. So the trigger colliders of a body that
+// also has solid ones live on a sensor body of their own, the same GameObject (user data, group,
+// layer), moved with the body before each step. Contacts, rays and callbacks report the owning
+// body and the trigger's collider index (its leaf keeps it), as before.
+
+void PhysicsSystem::destroyTriggerCompanion3D(RigidbodyComponent& body){
+    if (body.triggerBody.IsInvalid()){
+        return;
+    }
+    triggerCompanions3D.erase(body.triggerBody.GetIndexAndSequenceNumber());
+    if (steppingWorld3D){
+        pendingBodyDestroy3D.push_back(body.triggerBody);
+    }else{
+        JPH::BodyInterface& body_interface = getBodyInterface3D();
+        if (body_interface.IsAdded(body.triggerBody)){
+            body_interface.RemoveBody(body.triggerBody);
+        }
+        releaseObjectLayer3D(body.triggerBody);
+        body_interface.DestroyBody(body.triggerBody);
+    }
+    body.triggerBody = JPH::BodyID();
+}
+
+void PhysicsSystem::syncTriggerCompanion3D(Entity entity, RigidbodyComponent& body){
+    if (body.body.IsInvalid() || !splitsTriggers3D(body)){
+        destroyTriggerCompanion3D(body);
+        return;
+    }
+    std::vector<size_t> triggers;
+    for (size_t i = 0; i < body.colliders.size(); i++){
+        if (body.colliders[i].isTrigger && body.colliders[i].shape){
+            triggers.push_back(i);
+        }
+    }
+    JPH::ShapeRefC shape = composeColliderShape3D(entity, body, triggers);
+    if (!shape){
+        destroyTriggerCompanion3D(body);
+        return;
+    }
+    JPH::BodyInterface& body_interface = getBodyInterface3D();
+    JPH::RVec3 position;
+    JPH::Quat rotation;
+    body_interface.GetPositionAndRotation(body.body, position, rotation);
+    const bool movable = body.type != BodyType::STATIC && !shape->MustBeStatic();
+    if (!body.triggerBody.IsInvalid()){
+        body_interface.SetShape(body.triggerBody, shape, false, JPH::EActivation::DontActivate);
+        body_interface.SetPositionAndRotation(body.triggerBody, position, rotation, JPH::EActivation::DontActivate);
+        return;
+    }
+    const JPH::ObjectLayer layer = objectLayerTable3D->acquire(scene->getEntityLayer(entity), body.categoryBits, body.maskBits);
+    JPH::BodyCreationSettings settings(shape, position, rotation, movable ? JPH::EMotionType::Kinematic : JPH::EMotionType::Static, layer);
+    settings.mIsSensor = true;
+    settings.mAllowDynamicOrKinematic = !shape->MustBeStatic();
+    // Unity: a Rigidbody's trigger also sees static colliders
+    settings.mCollideKinematicVsNonDynamic = true;
+    settings.mAllowSleeping = false;
+    settings.mCollisionGroup = JPH::CollisionGroup(pairFilter3D, body.collisionGroupID, (JPH::CollisionGroup::SubGroupID)entity);
+    settings.mUserData = entity;
+    JPH::Body* companion = body_interface.CreateBody(settings);
+    if (!companion){
+        objectLayerTable3D->release(layer);
+        if (!reportedBodyLimit3D){
+            reportedBodyLimit3D = true;
+            Log::error("Cannot create the trigger colliders' body of '%s': the world holds %u bodies at most. Raise Project Settings > Physics > 3D World Capacity > Max Bodies (physics3D.maxBodies).",
+                       scene->getEntityName(entity).c_str(), maxBodies3D);
+        }
+        return;
+    }
+    body.triggerBody = companion->GetID();
+    triggerCompanions3D.insert(body.triggerBody.GetIndexAndSequenceNumber());
+    if (body_interface.IsAdded(body.body)){
+        body_interface.AddBody(body.triggerBody, movable ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
+    }
+}
+
+void PhysicsSystem::followTriggerCompanions3D(){
+    if (triggerCompanions3D.empty()){
+        return;
+    }
+    JPH::BodyInterface& body_interface = getBodyInterface3D();
+    auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
+    for (size_t i = 0; i < bodies3d->size(); i++){
+        RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
+        if (body.triggerBody.IsInvalid() || body.body.IsInvalid()){
+            continue;
+        }
+        const bool added = body_interface.IsAdded(body.body);
+        if (body_interface.IsAdded(body.triggerBody) != added){
+            if (added){
+                body_interface.AddBody(body.triggerBody, JPH::EActivation::DontActivate);
+            }else{
+                body_interface.RemoveBody(body.triggerBody);
+                continue;
+            }
+        }
+        if (!added){
+            continue;
+        }
+        // static or kinematic like its body (a static body's triggers do not move)
+        const JPH::EMotionType wanted = body.type == BodyType::STATIC ? JPH::EMotionType::Static : JPH::EMotionType::Kinematic;
+        if (body_interface.GetMotionType(body.triggerBody) != wanted){
+            JPH::BodyLockRead lock(getBodyLockInterface3D(), body.triggerBody);
+            const bool canMove = lock.Succeeded() && lock.GetBody().CanBeKinematicOrDynamic();
+            lock.ReleaseLock();
+            if (canMove){
+                body_interface.SetMotionType(body.triggerBody, wanted, JPH::EActivation::DontActivate);
+            }
+        }
+        JPH::RVec3 position;
+        JPH::Quat rotation;
+        body_interface.GetPositionAndRotation(body.body, position, rotation);
+        if (body_interface.GetMotionType(body.triggerBody) == JPH::EMotionType::Static){
+            body_interface.SetPositionAndRotation(body.triggerBody, position, rotation, JPH::EActivation::DontActivate);
+            continue;
+        }
+        // where its body is, moving as it does over the step (the velocity of its centre of
+        // mass as a point of the body)
+        const JPH::RVec3 center = body_interface.GetCenterOfMassPosition(body.body);
+        const JPH::Vec3 angular = body_interface.GetAngularVelocity(body.body);
+        body_interface.SetPositionAndRotation(body.triggerBody, position, rotation, JPH::EActivation::Activate);
+        const JPH::RVec3 companionCenter = body_interface.GetCenterOfMassPosition(body.triggerBody);
+        const JPH::Vec3 linear = body_interface.GetLinearVelocity(body.body) + angular.Cross(JPH::Vec3(companionCenter - center));
+        body_interface.SetLinearAndAngularVelocity(body.triggerBody, linear, angular);
+    }
+}
+
 void PhysicsSystem::destroyRigidbody(RigidbodyComponent& body){
+    destroyTriggerCompanion3D(body);
     if (body.body.IsInvalid()){
         return;
     }
@@ -3815,7 +4033,7 @@ void PhysicsSystem::fixedUpdate(double dt){
 
     syncLayerCollisionMatrix3D();
 
-    if (bodies3d->size() > 0){
+    if (bodies3d->size() > 0 && world3DReady){
 		const int cCollisionSteps = 1;
 
 		// Clears the flag and drains the teardown queue from the destructor, so a C++
@@ -3825,6 +4043,10 @@ void PhysicsSystem::fixedUpdate(double dt){
 			explicit StepScope(PhysicsSystem* s): system(s) { s->steppingWorld3D = true; }
 			~StepScope() { system->steppingWorld3D = false; system->flushPendingDestroys3D(); }
 		};
+
+		// the trigger colliders' bodies with their bodies, the damper-only drives' forces
+		followTriggerCompanions3D();
+		updateSixDOFDampers3D();
 
 		// the bodies floating in a library:water (Water.h)
 		Water::applyBuoyancy(scene, fixedStep);
@@ -3892,6 +4114,20 @@ void PhysicsSystem::orderByHierarchy(std::vector<Entity>& entities){
     for (const auto& item : writeOrderScratch){
         entities.push_back(item.second);
     }
+}
+
+bool PhysicsSystem::hasWrittenAncestor(Entity entity) const{
+    if (writtenThisPass.empty()){
+        return false;
+    }
+    const Transform* transform = scene->findComponent<Transform>(entity);
+    while (transform && transform->parent != NULL_ENTITY){
+        if (writtenThisPass.count(transform->parent)){
+            return true;
+        }
+        transform = scene->findComponent<Transform>(transform->parent);
+    }
+    return false;
 }
 
 void PhysicsSystem::refreshAncestors(Entity entity){
@@ -3978,6 +4214,9 @@ void PhysicsSystem::writeBackBodies2D(float alpha, bool interpolating){
 
 #ifdef JASPERENGINE_PHYSICS_3D
 void PhysicsSystem::writeBackBodies3D(float alpha, bool interpolating){
+    if (!world3DReady){
+        return;
+    }
     std::vector<Entity>& entities = writeBackScratch;
     entities.clear();
     auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
@@ -4011,6 +4250,12 @@ void PhysicsSystem::writeBackBodies3D(float alpha, bool interpolating){
         refreshAncestors(entity);
         if (!interpolating && Engine::getFixedStepsLeft() == 1){
             finishFollowing3D(entity, *body);
+        }
+        // a static or kinematic body under a body written in this pass (a hitbox on a vehicle)
+        // keeps its local pose and so moves with it; its body follows its Transform at the next
+        // step (writing its own pose back would leave it behind, a step at a time)
+        if (body->type != BodyType::DYNAMIC && hasWrittenAncestor(entity)){
+            continue;
         }
         updateTransformFromRigidbody(entity, *body, alpha);
         markWritten(entity);

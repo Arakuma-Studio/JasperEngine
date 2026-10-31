@@ -24,6 +24,7 @@
 #include <cstdio>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace jasperengine::physics3dtest {
@@ -128,13 +129,18 @@ namespace jasperengine::physics3dtest {
         Joint3D j(Entity e) { return Joint3D(&scene, e); }
         Joint3DComponent& jointComponent(Entity e) { return scene.getComponent<Joint3DComponent>(e); }
 
+        // World transforms resolved as the render pass does: a Transform to update, or one whose
+        // parent was updated (parents come first in the array)
         void resolve() {
             auto transforms = scene.getComponentArray<Transform>();
+            std::unordered_set<Entity> updated;
             for (size_t i = 0; i < transforms->size(); i++) {
                 Transform& transform = transforms->getComponentFromIndex(i);
-                if (transform.needUpdate) {
-                    scene.getSystem<RenderSystem>()->updateTransform(transform, transforms->getEntity(i));
+                const Entity entity = transforms->getEntity(i);
+                if (transform.needUpdate || (transform.parent != NULL_ENTITY && updated.count(transform.parent))) {
+                    scene.getSystem<RenderSystem>()->updateTransform(transform, entity);
                     transform.needUpdate = false;
+                    updated.insert(entity);
                 }
             }
         }

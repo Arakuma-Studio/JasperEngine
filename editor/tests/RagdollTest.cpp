@@ -12,12 +12,18 @@
 
 #include "Physics3DTestWorld.h"
 
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
 #include "component/AnimationPlayerComponent.h"
+#include "component/ModelComponent.h"
+#include "component/PoseAnimatorComponent.h"
+#include "component/VertexAnimatorComponent.h"
 #include "component/RagdollComponent.h"
 #include "object/physics/Ragdoll.h"
 #include "physics/RagdollBuilder.h"
 
 #include <cmath>
+#include <functional>
 #include <map>
 #include <string>
 
@@ -223,4 +229,78 @@ TEST(Ragdoll, ImpulseAndSelfCollision) {
     c.world.step();
     EXPECT_GT(c.world.rb(head).getLinearVelocity().z, 0.5f) << "the nearest part takes it";
     EXPECT_NEAR(ragdoll.getTotalMass(), 20.0f, 1e-5f);
+}
+
+// ---- review: the documented idiom, the other bone drivers, the restore hook --------------------
+
+TEST(Ragdoll, ImpulseInTheFrameItTurnsSimulatedIsKept) {
+    Character c;
+    const RagdollBuildResult result = c.build(false);
+    ASSERT_TRUE(RagdollBuilder::apply(&c.world.scene, c.root, result));
+    c.world.load();
+    c.world.step();
+    Ragdoll ragdoll(&c.world.scene, c.root);
+    const Entity head = c.bones["Head"];
+    EXPECT_EQ(c.world.component(head).type, BodyType::KINEMATIC);
+    // a script hit: simulated, then the push, in the same frame (physics.md)
+    ragdoll.setSimulated(true);
+    EXPECT_EQ(c.world.component(head).type, BodyType::DYNAMIC) << "applied at once outside a step";
+    ragdoll.applyImpulse(Vector3(0, 0, 40), c.world.rb(head).getPosition());
+    c.world.step();
+    EXPECT_GT(c.world.rb(head).getLinearVelocity().z, 0.5f) << "the push reached a dynamic part";
+}
+
+TEST(Ragdoll, PushBeforeThePartsExistWaitsForThem) {
+    Character c;
+    const RagdollBuildResult result = c.build(true);
+    ASSERT_TRUE(RagdollBuilder::apply(&c.world.scene, c.root, result));
+    Ragdoll ragdoll(&c.world.scene, c.root);
+    const Entity head = c.bones["Head"];
+    ragdoll.applyImpulse(Vector3(0, 0, 40), c.world.transform(head).worldPosition);
+    EXPECT_EQ(c.world.scene.getComponent<RagdollComponent>(c.root).pendingPushes.size(), 1u) << "queued: no bodies yet";
+    c.world.load();
+    c.world.step(2);
+    EXPECT_TRUE(c.world.scene.getComponent<RagdollComponent>(c.root).pendingPushes.empty());
+    EXPECT_GT(c.world.rb(head).getLinearVelocity().z, 0.3f);
+}
+
+TEST(Ragdoll, OtherBoneDriversPauseAndResume) {
+    Character c;
+    const RagdollBuildResult result = c.build(false);
+    ASSERT_TRUE(RagdollBuilder::apply(&c.world.scene, c.root, result));
+    // an entity animation playing (Model:playAnimation), a Pose Animator and a Vertex Animator
+    const Entity animation = c.world.scene.createEntity();
+    ActionComponent action;
+    action.state = ActionState::Running;
+    c.world.scene.addComponent<ActionComponent>(animation, action);
+    c.world.scene.addComponent<AnimationComponent>(animation, AnimationComponent());
+    ModelComponent model;
+    model.animations.push_back(animation);
+    c.world.scene.addComponent<ModelComponent>(c.root, model);
+    PoseAnimatorComponent pose;
+    pose.playing = true;
+    pose.started = true;
+    c.world.scene.addComponent<PoseAnimatorComponent>(c.root, pose);
+    c.world.scene.addComponent<VertexAnimatorComponent>(c.bones["Hips"], VertexAnimatorComponent());
+    int restores = 0;
+    Ragdoll ragdoll(&c.world.scene, c.root);
+    ragdoll.onBeforeAnimatedRestore().add("count", std::function<void(int)>([&](int entity) {
+        EXPECT_EQ((Entity)entity, c.root);
+        EXPECT_EQ(c.world.component(c.bones["Head"]).type, BodyType::DYNAMIC) << "before the parts go back";
+        restores++;
+    }));
+    c.world.load();
+    c.world.step();
+
+    ragdoll.setSimulated(true);
+    EXPECT_TRUE(c.world.scene.getComponent<ActionComponent>(animation).pauseTrigger);
+    EXPECT_FALSE(c.world.scene.getComponent<PoseAnimatorComponent>(c.root).playing);
+    EXPECT_FALSE(c.world.scene.getComponent<VertexAnimatorComponent>(c.bones["Hips"]).enabled);
+    c.world.step(10);
+    ragdoll.setSimulated(false);
+    EXPECT_EQ(restores, 1);
+    EXPECT_TRUE(c.world.scene.getComponent<ActionComponent>(animation).startTrigger) << "resumed";
+    EXPECT_TRUE(c.world.scene.getComponent<PoseAnimatorComponent>(c.root).playing);
+    EXPECT_TRUE(c.world.scene.getComponent<VertexAnimatorComponent>(c.bones["Hips"]).enabled);
+    c.world.physics()->onRagdollBeforeAnimatedRestore3D.remove("count");
 }

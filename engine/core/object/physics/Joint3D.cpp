@@ -315,7 +315,7 @@ JointMotion Joint3D::getXMotion() const{
 
 void Joint3D::setXMotion(JointMotion value){
     joint().xMotion = value;
-    rebuild();
+    parametersChanged();
 }
 
 JointMotion Joint3D::getYMotion() const{
@@ -324,7 +324,7 @@ JointMotion Joint3D::getYMotion() const{
 
 void Joint3D::setYMotion(JointMotion value){
     joint().yMotion = value;
-    rebuild();
+    parametersChanged();
 }
 
 JointMotion Joint3D::getZMotion() const{
@@ -333,7 +333,7 @@ JointMotion Joint3D::getZMotion() const{
 
 void Joint3D::setZMotion(JointMotion value){
     joint().zMotion = value;
-    rebuild();
+    parametersChanged();
 }
 
 JointMotion Joint3D::getAngularXMotion() const{
@@ -342,7 +342,7 @@ JointMotion Joint3D::getAngularXMotion() const{
 
 void Joint3D::setAngularXMotion(JointMotion value){
     joint().angularXMotion = value;
-    rebuild();
+    parametersChanged();
 }
 
 JointMotion Joint3D::getAngularYMotion() const{
@@ -351,7 +351,7 @@ JointMotion Joint3D::getAngularYMotion() const{
 
 void Joint3D::setAngularYMotion(JointMotion value){
     joint().angularYMotion = value;
-    rebuild();
+    parametersChanged();
 }
 
 JointMotion Joint3D::getAngularZMotion() const{
@@ -360,7 +360,7 @@ JointMotion Joint3D::getAngularZMotion() const{
 
 void Joint3D::setAngularZMotion(JointMotion value){
     joint().angularZMotion = value;
-    rebuild();
+    parametersChanged();
 }
 
 Vector3 Joint3D::getLinearLimitMin() const{
@@ -369,7 +369,7 @@ Vector3 Joint3D::getLinearLimitMin() const{
 
 void Joint3D::setLinearLimitMin(Vector3 value){
     joint().linearLimitMin = value;
-    rebuild();
+    parametersChanged();
 }
 
 Vector3 Joint3D::getLinearLimitMax() const{
@@ -378,7 +378,7 @@ Vector3 Joint3D::getLinearLimitMax() const{
 
 void Joint3D::setLinearLimitMax(Vector3 value){
     joint().linearLimitMax = value;
-    rebuild();
+    parametersChanged();
 }
 
 Vector3 Joint3D::getAngularLimitMin() const{
@@ -387,7 +387,7 @@ Vector3 Joint3D::getAngularLimitMin() const{
 
 void Joint3D::setAngularLimitMin(Vector3 value){
     joint().angularLimitMin = value;
-    rebuild();
+    parametersChanged();
 }
 
 Vector3 Joint3D::getAngularLimitMax() const{
@@ -396,7 +396,7 @@ Vector3 Joint3D::getAngularLimitMax() const{
 
 void Joint3D::setAngularLimitMax(Vector3 value){
     joint().angularLimitMax = value;
-    rebuild();
+    parametersChanged();
 }
 
 // ---- parameters: applied to the live joint ----

@@ -194,6 +194,8 @@ namespace jasperengine{
         Vector3 currentTorque = Vector3::ZERO;
         // breaking reports once until the load goes back below the thresholds (CALLBACK_ONLY)
         bool breakArmed = true;
+        // six-DOF axes driven by a damping without stiffness (bit per axis, X Y Z then angular)
+        uint8_t dampedAxes = 0;
         // DISABLE / DESTROY broke it; cleared when the joint is made again
         bool broken = false;
     };
