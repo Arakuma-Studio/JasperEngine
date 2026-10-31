@@ -521,7 +521,7 @@ TEST(Physics3DBody, PastMaxBodiesTheErrorNamesTheSetting) {
     world.step();
     EXPECT_TRUE(world.component(bodies[99]).body.IsInvalid() == false);
     EXPECT_TRUE(world.component(bodies[100]).body.IsInvalid());
-    EXPECT_EQ(log.count("physics3D.maxBodies"), 1u) << "once per scene";
+    EXPECT_EQ(log.count("physics3DWorld.maxBodies"), 1u) << "once per scene";
 }
 
 TEST(Physics3DBody, ContactOverflowIsReportedOnce) {

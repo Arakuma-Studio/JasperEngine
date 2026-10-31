@@ -3064,14 +3064,15 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         }
     }
 
-    // Project Settings > Physics > 3D World Capacity: only when it differs from the defaults
+    // Project Settings > Physics > 3D World Capacity: only when it differs from the defaults (its own key:
+    // physics3D is the 3D physics on/off switch)
     if (project->getPhysics3DWorldSettings() != Physics3DWorldSettings()) {
         const Physics3DWorldSettings& world = project->getPhysics3DWorldSettings();
         YAML::Node physicsNode;
         physicsNode["maxBodies"] = world.maxBodies;
         physicsNode["maxBodyPairs"] = world.maxBodyPairs;
         physicsNode["maxContactConstraints"] = world.maxContactConstraints;
-        root["physics3D"] = physicsNode;
+        root["physics3DWorld"] = physicsNode;
     }
 
     // Project Settings > Input: only once edited (an old project reads Unity's defaults)
@@ -3491,13 +3492,13 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     {
         // Project Settings > Physics > 3D World Capacity; missing: the defaults
         Physics3DWorldSettings world;
-        const YAML::Node physicsNode = node["physics3D"];
+        const YAML::Node physicsNode = node["physics3DWorld"];
         if (physicsNode && physicsNode.IsMap()) {
             if (physicsNode["maxBodies"]) world.maxBodies = YamlNumbers::as<unsigned int>(physicsNode["maxBodies"]);
             if (physicsNode["maxBodyPairs"]) world.maxBodyPairs = YamlNumbers::as<unsigned int>(physicsNode["maxBodyPairs"]);
             if (physicsNode["maxContactConstraints"]) world.maxContactConstraints = YamlNumbers::as<unsigned int>(physicsNode["maxContactConstraints"]);
         } else if (physicsNode) {
-            Out::warning("Ignoring physics3D in project settings: not a map");
+            Out::warning("Ignoring physics3DWorld in project settings: not a map");
         }
         project->setPhysics3DWorldSettings(world);
     }

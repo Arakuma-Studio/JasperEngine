@@ -83,7 +83,7 @@ namespace jasperengine::editor{
         std::string filepath;
     };
 
-    // the 3D world capacity (project.yaml physics3D); defaults = PhysicsSystem's
+    // the 3D world capacity (project.yaml physics3DWorld; physics3D is the 3D physics switch); defaults = PhysicsSystem's
     struct Physics3DWorldSettings {
         unsigned int maxBodies = 8192;
         unsigned int maxBodyPairs = 8192;
