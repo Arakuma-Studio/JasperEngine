@@ -2129,7 +2129,7 @@ bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& scen
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const std::string& inputActionsJson){
     // the generated sources (main.cpp, scene and prefab factories) live in the editor's internal
     // folder, which an MCP call's deny-by-default guard refuses otherwise (util/SafeWrite.h)
     safewrite::EditorInternal ownInternal(projectInternalPath);
@@ -2363,6 +2363,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     emitLayerCollisionMatrix("Physics", tagsAndLayers.layerCollisionMatrix3D);
     emitLayerCollisionMatrix("Physics2D", tagsAndLayers.layerCollisionMatrix2D);
 
+    // Project Settings > Input (the engine starts with Unity's defaults), before any script reads it
+    mainContent += inputActionsInitSource(inputActionsJson);
+
     mainContent += "\n";
 
     // Register all stacks with SceneManager
@@ -2430,6 +2433,30 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     FileUtils::writeIfChanged(mainFile, mainContent);
 
     writeSourceFiles(projectPath, projectInternalPath, libName, scriptFiles, scenes, prefabs, vsyncEnabled, windowSettings, assetsPath, luaPath, scriptDirs, cxxStandard);
+}
+
+std::string editor::Generator::inputActionsInitSource(const std::string& inputActionsJson) {
+    if (inputActionsJson.empty()) return "";
+    // a raw string delimiter the JSON does not hold (a description may hold `)jinput"`)
+    std::string delimiter = "jinput";
+    for (int n = 1; inputActionsJson.find(")" + delimiter + "\"") != std::string::npos; n++) {
+        delimiter = "jinput" + std::to_string(n);
+    }
+    // in pieces: MSVC takes string literals of at most 16 KB, adjacent ones are joined
+    constexpr size_t pieceSize = 8000;
+    std::string literal;
+    for (size_t at = 0; at < inputActionsJson.size();) {
+        // a piece ends on a character boundary (an editor shows each literal as valid UTF-8)
+        size_t end = std::min(at + pieceSize, inputActionsJson.size());
+        while (end < inputActionsJson.size() && end > at + 1 &&
+               (static_cast<unsigned char>(inputActionsJson[end]) & 0xC0) == 0x80) {
+            end--;
+        }
+        std::string piece = inputActionsJson.substr(at, end - at);
+        at = end;
+        literal += (literal.empty() ? "" : "\n        ") + std::string("R\"") + delimiter + "(" + piece + ")" + delimiter + "\"";
+    }
+    return "    InputActions::loadJson(" + literal + ", nullptr);\n";
 }
 
 std::string editor::Generator::resolveCMakePath(const std::string& userPath) {
