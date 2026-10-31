@@ -125,14 +125,6 @@
 #define MAX_BROADPHASELAYER_3D 6
 #endif
 
-#ifndef MAX_COLLIDERS_2D
-#define MAX_COLLIDERS_2D 10
-#endif
-
-#ifndef MAX_COLLIDER_POINTS_2D
-#define MAX_COLLIDER_POINTS_2D 16
-#endif
-
 #ifndef MAX_COLLIDERS_3D
 #define MAX_COLLIDERS_3D 10
 #endif

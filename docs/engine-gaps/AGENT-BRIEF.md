@@ -57,7 +57,25 @@ statics, `RegisterEvent`/`RegisterEngineEvent`).
    `~/.local/bin/uv` and xvfb). Platform code that cannot run here must at least compile (Android: Gradle/NDK;
    Web: emsdk) - see Build.
 
-## Build and test on this host
+## Build and test on a remote build box (preferred)
+
+The host is saturated, so builds and tests run on rented Linux boxes (Ubuntu 24.04, gcc 13, CMake 3.28, ccache,
+xvfb, xdotool, dbus-x11, uv, FFmpeg: the same toolchain as the host). From inside your worktree:
+
+- `jbox run '<command>'` syncs your worktree to the box (changed files only; `build/` and `.git` are not copied)
+  and runs `<command>` from the worktree root there. Examples:
+  `jbox run 'cmake -S . -B build/editor -G Ninja -DCMAKE_BUILD_TYPE=Release -DJASPERENGINE_EDITOR_TESTS=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache && cmake --build build/editor --target jasperengine-editor jasperengine-editor-tests -j8'`
+  `jbox run 'xvfb-run -a build/editor/jasperengine-editor-tests --gtest_filter=Foo*'`
+  `jbox run 'cmake --install build/editor --prefix build/linux/editor-install >/dev/null && JASPER_EDITOR=$PWD/build/linux/editor-install/bin/jasperengine-editor tools/mcp/run-tests.sh -j4 tools/mcp/tests/test_x.py'`
+- `jbox get <path> [<dest>]` copies a file back (e.g. a regenerated `docs/mcp/TOOLS.md`, screenshots).
+- Your box is given in your task (`JBOX_PORT`); export it in every command (`JBOX_PORT=2202 jbox run ...`) or rely
+  on `/etc/jbox/assign`. Boxes are shared by several agents: 16-core boxes (ports 2201, 2202) use `-j8`, 8-core
+  boxes (2203, 2204) `-j4`.
+- The box copy is NOT a git repository of your branch (git state there is stale): commit locally, never on the box.
+  Long commands: keep them under the tool timeout or run them in the background locally (`jbox run ... > log &`).
+- Android (Gradle/NDK) and Web (emsdk) compile checks still run on the host (toolchains only here): keep them few.
+
+## Build and test on this host (fallback)
 
 - Native Linux toolchain: gcc 13, CMake 3.28, Ninja, ccache (shared cache, `base_dir=/var/lib/orquester/workspaces/jaspersito`),
   xvfb (`xvfb-run -a`), nasm, JDK 21, Android SDK at `/opt/android-sdk` (AGP installs the NDK), emsdk 6.0.10 at

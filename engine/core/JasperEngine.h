@@ -57,6 +57,7 @@
 #include "component/ImageComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/Joint2DComponent.h"
+#include "component/PhysicsCommon.h"
 #include "component/Joint3DComponent.h"
 #include "component/KeyframeTracksComponent.h"
 #include "component/LightComponent.h"
@@ -193,6 +194,7 @@
 #include "pool/ModelPool.h"
 #include "pool/AnimationClipPool.h"
 #include "pool/ShakePresetPool.h"
+#include "pool/PhysicsMaterialPool.h"
 
 #include "registry/EntityRegistry.h"
 #include "registry/TagManager.h"
@@ -212,6 +214,9 @@
 #include "script/LuaFunction.h"
 #include "script/LuaScript.h"
 #include "script/ScriptBase.h"
+#include "script/ScriptMessages.h"
+#include "physics/PhysicsMaterial.h"
+#include "physics/PolygonDecomposition2D.h"
 #include "script/ScriptProperty.h"
 
 #include "shader/ShaderData.h"

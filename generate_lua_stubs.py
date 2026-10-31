@@ -2125,7 +2125,8 @@ OVERRIDES.update({
         'overloads': [([('interval', 'number'), ('fn', 'fun(timer: Timer): boolean?'), ('opts?', 'TimerOptions')], 'Timer')]},
 })
 
-# Properties whose getter returns a LuaRef: (Lua type, a copy)
+# Properties whose getter returns a LuaRef, or whose lambda's return type is not inferred:
+# (Lua type, a copy)
 PROPERTY_OVERRIDES = {
     # the null sentinel (stubs/Json.lua: JsonNull)
     ('Json', 'null'): ('JsonNull', False),
@@ -2137,6 +2138,10 @@ PROPERTY_OVERRIDES = {
     ('Coroutine', 'owner'): ('ScriptInstance?', False),
     # the GameObject a Camera Follow follows (same scene), nil without one
     ('CameraFollow', 'target'): ('GameObject?', False),
+    # the joint's bodies (std::optional<GameObject> lambdas): nil = the world
+    ('Joint2D', 'bodyA'): ('GameObject|nil', False),
+    ('Joint2D', 'bodyB'): ('GameObject|nil', False),
+    ('Joint2D', 'connectedBody'): ('GameObject|nil', False),
 }
 
 for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
@@ -2382,6 +2387,9 @@ def html_ui_types_file():
 # `any`): (Lua class, member, parameter name) -> Lua type. A `luabridge::LuaRef` parameter of a
 # bound function that takes a callback or a parameter table belongs here.
 _PARAM_TYPE_OVERRIDES = {
+    # 2D physics materials: a .physicsmaterial path, a PhysicsMaterial or nil (none)
+    ('Rigidbody2D', 'setColliderMaterial', 'value'): 'string|PhysicsMaterial|nil',
+    ('PhysicsMaterial', 'new', 'params'): '{friction?: number, bounciness?: number, frictionCombine?: PhysicsMaterialCombine, bounceCombine?: PhysicsMaterialCombine}|nil',
 }
 # anime (engine/core/script/binding/HtmlUIAnimeLua.cpp, phase-1 p1-anim): the parameter tables
 # are the Anime*Params classes of engine/core/script/binding/stubs/anime.lua
@@ -2745,7 +2753,8 @@ class Builder:
             if visible:
                 self.unresolve(c, m, 'getter takes arguments')
         if cpp_type is None:
-            self.unresolve(c, m, 'getter return type not inferred')
+            if (c.name, m.name) not in PROPERTY_OVERRIDES:
+                self.unresolve(c, m, 'getter return type not inferred')
             m.lua_type = 'any'
         else:
             base, stars = bare_type(cpp_type)

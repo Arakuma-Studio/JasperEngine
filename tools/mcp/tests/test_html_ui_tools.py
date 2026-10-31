@@ -103,7 +103,11 @@ LIMITS.update({"user_settings": 550})
 # measured on the merged tree: total 106687 (106611 before), the limit raised by them
 # coroutines (spec 2026-10-31-coroutines 7): get_play_state names its coroutines/timers counts and
 # get_runtime_entity the scripts' coroutines and timers: total 106770 (106687 before), the limit raised by them (+83)
-TOTAL_LIMIT = 106783
+# physics-2d: edit_physics_material (396) and set_joint's motor / spring / limits / break /
+# enable_collision / anchor_space paid by moving set_joint's type lists and per-argument texts to
+# jasper://docs/physics (set_joint 1020 -> 756); merged with main (script-data, input): 150 tools
+# measured 106620, the limit lowered to it
+TOTAL_LIMIT = 106620
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

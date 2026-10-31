@@ -528,6 +528,10 @@ namespace jasperengine::editor {
 
         static std::string joint2DTypeToString(Joint2DType type);
         static Joint2DType stringToJoint2DType(const std::string& str);
+        static std::string jointAnchorSpaceToString(JointAnchorSpace space);
+        static JointAnchorSpace stringToJointAnchorSpace(const std::string& str);
+        static std::string jointBreakActionToString(JointBreakAction action);
+        static JointBreakAction stringToJointBreakAction(const std::string& str);
 
         static std::string joint3DTypeToString(Joint3DType type);
         static Joint3DType stringToJoint3DType(const std::string& str);

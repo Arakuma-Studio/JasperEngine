@@ -181,5 +181,29 @@ and the `Physics2D` ones with `Vector2` origin and direction. Without a mask the
 `Ray:intersects`. With a `Ray`, `distance` is the fraction of `ray.direction`; with an
 origin, a direction and a distance it is in world units (scene units in 2D).
 
+## 2D physics: Unity names and their JasperEngine counterparts
+
+| Unity | JasperEngine |
+|---|---|
+| `WheelJoint2D`, `HingeJoint2D`, `SliderJoint2D`, `DistanceJoint2D`, `SpringJoint2D`, `FixedJoint2D`, `RelativeJoint2D`, `FrictionJoint2D`, `TargetJoint2D` | one `Joint2D` component (Hierarchy > Physics > Joint 2D) with `type` `WHEEL`, `REVOLUTE`, `PRISMATIC`, `DISTANCE`, `DISTANCE` + `enableSpring`, `WELD`, `MOTOR`, `MOTOR` + `correctionFactor = 0`, `MOUSE` |
+| `connectedBody` | `bodyB` (alias `connectedBody`); the joint's own Rigidbody 2D is `bodyA` |
+| `anchor`, `connectedAnchor`, `autoConfigureConnectedAnchor` | `anchorA`, `anchorB` (aliases `anchor`, `connectedAnchor`), `autoAnchors`, with `anchorSpace = LOCAL` |
+| `suspension.frequency`, `suspension.dampingRatio`, `suspension.angle` | `frequency`, `dampingRatio`, `axis` (angle 90 = `(0, 1)`) |
+| `useMotor`, `motor.motorSpeed`, `motor.maxMotorTorque` | `useMotor`, `motorSpeed` (deg/s), `maxMotorTorque` (`maxMotorForce` for sliders and distance) |
+| `useLimits`, `limits.min/max` (hinge), `limits` (slider) | `useLimits`, `lowerAngle` / `upperAngle`, `lowerTranslation` / `upperTranslation` |
+| `maxDistanceOnly`, `autoConfigureDistance`, `distance` | `rope`, `autoLength`, `length` |
+| `breakForce`, `breakTorque`, `breakAction` (`JointBreakAction2D`) | `breakForce`, `breakTorque`, `breakAction` (`JointBreakAction.IGNORE` / `CALLBACK_ONLY` / `DISABLE` / `DESTROY`) |
+| `OnJointBreak2D(Joint2D)` | `onJointBreak2D(self, joint)` (Lua), `onJointBreak2D(Joint2D&)` (C++ `ScriptBase`) |
+| `reactionForce`, `reactionTorque`, `jointAngle`, `jointSpeed`, `jointTranslation`, `GetMotorTorque` | `reactionForce`, `reactionTorque`, `jointAngle`, `jointSpeed`, `jointTranslation`, `motorTorque` |
+| `PolygonCollider2D` | a `POLYGON` collider (any number of points, concave split in convex pieces; one path per collider) |
+| `EdgeCollider2D` | a `CHAIN` collider (2+ points) |
+| `PhysicsMaterial2D` (`friction`, `bounciness`) | `PhysicsMaterial` (`.physicsmaterial`, Create > Physics Material 2D), shared with 3D, with `frictionCombine` / `bounceCombine` (Unity 2D's `Mean` is `geometric_mean`; the name `mean` is read as it) |
+| `Rigidbody2D.sharedMaterial`, `Collider2D.sharedMaterial` | the body's `material`, the collider's `material` |
+| `useAutoMass`, `mass`, `centerOfMass`, `inertia` | `useAutoMass`, `mass`, `centerOfMass` (+ `autoCenterOfMass`), `inertia` (+ `autoInertia`) |
+| `drag`, `angularDrag`, `gravityScale`, `freezeRotation` | `linearDamping`, `angularDamping`, `gravityScale`, `fixedRotation` |
+| `collisionDetectionMode` (`CollisionDetectionMode2D`), `sleepMode` (`RigidbodySleepMode2D`) | `collisionDetection`, `sleepingMode` (same enum names) |
+| `isTrigger` (a collider) | the collider's `sensor` (`setColliderTrigger(i, b)`) |
+| Physics 2D settings: Velocity / Position Iterations | the scene's `physics2DSubSteps` (Box2D 3 sub-steps) |
+
 In scene and prefab files the component keys follow the class names, e.g.
 `rigidbody2d:`, `audiosource:`, `recttransform:`, `colliders:`, `prefabPath:`.

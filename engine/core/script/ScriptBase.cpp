@@ -3,6 +3,7 @@
 
 #include "ScriptBase.h"
 #include "component/ScriptComponent.h"
+#include "script/ScriptMessages.h"
 
 using namespace jasperengine;
 
@@ -68,4 +69,12 @@ Scene* ScriptBase::getScene() const {
 
 Entity ScriptBase::getEntity() const {
     return entity;
+}
+
+bool ScriptBase::baseMessageRan = false;
+
+void ScriptBase::onJointBreak2D(Joint2D& joint) {
+    (void)joint;
+    inheritedMessages |= scriptMessageBit(ScriptMessage::JointBreak2D);
+    baseMessageRan = true;
 }

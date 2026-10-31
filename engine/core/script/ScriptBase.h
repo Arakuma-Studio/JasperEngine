@@ -12,6 +12,8 @@
 
 namespace jasperengine {
 
+    class Joint2D;
+
     class JASPERENGINE_API ScriptBase {
     protected:
         Scene* scene;
@@ -20,7 +22,7 @@ namespace jasperengine {
     public:
         ScriptBase(Scene* scene, Entity entity);
         // cancels this script's timers (invoke / invokeRepeating)
-        ~ScriptBase();
+        virtual ~ScriptBase();
 
         Scene* getScene() const;
         Entity getEntity() const;
@@ -45,6 +47,19 @@ namespace jasperengine {
         // A timer of this script is pending (any, or the one with that id)
         bool isInvoking() const;
         bool isInvoking(TaskId id) const;
+
+        // Script messages (ScriptMessages), like the Lua methods of the same name: override them
+        // (public, protected or private) and do not call the base, which only notes the message
+        // is not overridden. A 2D joint of this GameObject (or whose bodyA is it) broke (Unity
+        // OnJointBreak2D); the joint still exists during the call.
+        virtual void onJointBreak2D(Joint2D& joint);
+
+        // the messages (ScriptMessage bits) whose base method ran: not overridden, so not sent
+        // again and not among ScriptMessages::receivers
+        uint32_t inheritedMessages = 0;
+        // set by a base message method (ScriptMessages reads it after a call without touching a
+        // script the call may have destroyed)
+        static bool baseMessageRan;
     };
 
 }

@@ -311,6 +311,11 @@ namespace jasperengine::editor{
         void drawShakePresetAsset(const std::filesystem::path& asset);
         // the Test strip's edit-mode preview stops once its GameObject (or .shake) is not shown
         void syncCameraShakePreview(SceneProject* shown, const std::vector<Entity>& selection);
+        // a .physicsmaterial: friction, bounciness and their combine modes (InspectorPhysics2D.cpp)
+        void drawPhysicsMaterialAsset(const std::filesystem::path& asset);
+        // a .physicsmaterial path field (drop from the Project window, pick, clear) with undo
+        bool physicsMaterialRow(ComponentType cpType, const std::string& property, const std::string& label,
+                                SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& help = "");
         void drawCreateCrowdDialog();
         // Sprite normals (InspectorWindowSpriteNormals.cpp): a generated normal map (or its source
         // image) clicked in the Project window; false for any other image (the scene selection
