@@ -58,10 +58,10 @@ namespace {
         void init() {}
     };
 
-    static_assert(ScriptMessages::cppMask<CppPlain>() == 0, "no overrides, no messages");
-    static_assert(ScriptMessages::cppMask<CppPartial>() ==
-                  (scriptMessageBit(ScriptMessage::Enable) | scriptMessageBit(ScriptMessage::ApplicationPause)),
-                  "only the overridden messages");
+    // every message is a candidate for a ScriptBase (overrides, possibly private, are learned
+    // when sent: CppOverridesLearnedWhenSent)
+    static_assert(ScriptMessages::cppMask<CppPlain>() == ScriptMessages::cppMask<CppPartial>(), "no member is named");
+    static_assert(ScriptMessages::cppMask<CppPlain>() & scriptMessageBit(ScriptMessage::Init), "a candidate");
     static_assert(ScriptMessages::cppMask<CppWrapper>() == 0, "not a ScriptBase: no messages");
 
     std::string joined(const std::vector<std::string>& lines) {
@@ -665,4 +665,231 @@ TEST_F(ScriptLifecycleTest, RefreshAfterDirectWrites) {
     scene->getComponent<ScriptComponent>(x).scripts[0].enabled = false;
     ScriptRuntime::refreshEntity(scene, x);
     EXPECT_EQ(takeLog(), "disableX1");
+}
+
+// ---- review regressions ----------------------------------------------------------------------
+
+// a script enabled during a frame (by another script's onUpdate) gets its start at the next frame
+// start point, and its onUpdate only after it: Unity's "Start before the first Update"
+TEST_F(ScriptLifecycleTest, EnabledMidFrameStartsBeforeItsFirstUpdate) {
+    writeScript("Mgr",
+        "local M = {}\n"
+        "function M:init() RegisterEngineEvent(self, 'onUpdate') end\n"
+        "function M:onUpdate() if not self.done then self.done = true; log[#log + 1] = 'mgr'; self:getScript('L2').enabled = true end end\n"
+        "return M\n");
+    writeLogger("L2");
+    Scene* scene = newScene();
+    const Entity x = entity(scene, "X");
+    addScript(scene, x, "Mgr");
+    addScript(scene, x, "L2", false);
+    LuaBinding::initializeLuaScripts(scene);
+    clearLog();
+    frame();
+    EXPECT_EQ(takeLog(), "mgr enableX2") << "no onUpdate before its start";
+    frame();
+    EXPECT_EQ(takeLog(), "startX2 updateX2");
+}
+
+namespace {
+    class CppUpdater : public ScriptBase {
+    public:
+        CppUpdater(Scene* scene, Entity entity) : ScriptBase(scene, entity) { REGISTER_ENGINE_EVENT(onUpdate); }
+        ~CppUpdater() override { UNREGISTER_ENGINE_EVENT(onUpdate); }
+        void onEnable() override { cppLog.push_back("enable"); }
+        void start() override { cppLog.push_back("start"); }
+        void onUpdate() { if (!updated) { updated = true; cppLog.push_back("update"); } }
+        bool updated = false;
+    };
+}
+
+// the same for C++ engine events (REGISTER_ENGINE_EVENT)
+TEST_F(ScriptLifecycleTest, CppEnabledMidFrameStartsBeforeItsFirstUpdate) {
+    cppLog.clear();
+    Scene* scene = newScene();
+    const Entity x = entity(scene, "X");
+    CppUpdater* updater = nullptr;
+    Engine::onUpdate.add("lifecycle-test-enabler", std::function<void()>([&updater]() {
+        if (updater && !updater->isEnabled()) updater->setEnabled(true);
+    }));
+    updater = addCppScript<CppUpdater>(scene, x, "CppUpdater", false);
+    ScriptRuntime::awakeScene(scene);
+    frame();
+    EXPECT_EQ(joined(cppLog), "enable");
+    frame();
+    EXPECT_EQ(joined(cppLog), "enable start update");
+    EXPECT_TRUE(updater->isActiveAndEnabled());
+    Engine::onUpdate.remove("lifecycle-test-enabler");
+    ScriptRuntime::unloadScenes({scene});
+    deleteCppScripts(scene);
+}
+
+// onDestroy (and onDisable) still find the GameObject's other scripts: they go after it
+TEST_F(ScriptLifecycleTest, GetScriptFromOnDestroy) {
+    writeScript("A1", "local M = {}\nfunction M:onDestroy() end\nreturn M\n");
+    writeScript("B2",
+        "local M = {}\n"
+        "function M:onDisable() log[#log + 1] = 'disable' .. tostring(self:getScript('A1') ~= nil) end\n"
+        "function M:onDestroy() log[#log + 1] = 'destroy' .. tostring(self:getScript('A1') ~= nil) .. "
+        "tostring(GameObject.findObjectOfType('A1', true) ~= nil) end\n"
+        "return M\n");
+    Scene* scene = newScene();
+    const Entity x = entity(scene, "X");
+    addScript(scene, x, "A1");
+    addScript(scene, x, "B2");
+    setScene("testScene", scene);
+    Engine::setScene(scene);
+    LuaBinding::initializeLuaScripts(scene);
+    lua("GameObject.destroyImmediate(GameObject(testScene, " + std::to_string(x) + "))");
+    EXPECT_EQ(takeLog(), "disabletrue destroytruetrue");
+    // a scene unload: the other GameObjects' scripts are still reachable in onDestroy
+    const Entity y = entity(scene, "Y");
+    const Entity z = entity(scene, "Z");
+    addScript(scene, y, "B2");
+    addScript(scene, z, "A1");
+    ObjectManager::initializeScripts(scene, {y, z});
+    lua("other = GameObject(testScene, " + std::to_string(z) + ")");
+    writeScript("C3", "local M = {}\nfunction M:onDestroy() log[#log + 1] = 'cross' .. tostring(other:getScript('A1') ~= nil) end\nreturn M\n");
+    const Entity w = entity(scene, "W");
+    addScript(scene, w, "C3");
+    ObjectManager::initializeScripts(scene, {w});
+    clearLog();
+    ScriptRuntime::unloadScenes({scene});
+    EXPECT_NE(log().find("crosstrue"), std::string::npos) << log();
+    lua("other = nil");
+    Engine::removeAllScenes();
+}
+
+// a released script is not kept alive by the Event listeners it owned
+TEST_F(ScriptLifecycleTest, EventListenersDoNotKeepReleasedScriptsAlive) {
+    writeScript("V1",
+        "local M = {}\n"
+        "function M:init() shared:addListener(self, 'm'); RegisterEvent(self, shared, 'm'); weakRefs[self] = true end\n"
+        "function M:m() end\n"
+        "return M\n");
+    lua("shared = Event(); weakRefs = setmetatable({}, {__mode = 'k'})");
+    Scene* scene = newScene();
+    addScript(scene, entity(scene, "X"), "V1");
+    LuaBinding::initializeLuaScripts(scene);
+    EXPECT_EQ(lua("return shared.listenerCount"), "2");
+    LuaBinding::cleanupLuaScripts(scene);
+    EXPECT_EQ(lua("return shared.listenerCount"), "0") << "dropped at release, not lazily";
+    EXPECT_EQ(lua("collectgarbage(); collectgarbage(); local n = 0; for _ in pairs(weakRefs) do n = n + 1 end; return n"), "0")
+        << "the released instance was collected";
+    lua("shared = nil; weakRefs = nil");
+}
+
+// writing the enabled flag as the Inspector's command does (then refreshEntity): callbacks that
+// instantiate many GameObjects (the component arrays move) or destroy one at once are safe
+TEST_F(ScriptLifecycleTest, EnabledWriteRunsCallbacksThatMoveComponents) {
+    writeScript("S1",
+        "local M = {}\n"
+        "function M:onEnable() if self.gameObject.name == 'X' then for i = 1, 64 do GameObject.instantiate(self.gameObject) end end end\n"
+        "function M:onDisable() if self.gameObject.name == 'X' then local v = GameObject.find('V'); if v then GameObject.destroyImmediate(v) end end end\n"
+        "return M\n");
+    Scene* scene = newScene();
+    const Entity x = entity(scene, "X");
+    const Entity v = entity(scene, "V");
+    addScript(scene, x, "S1", false);
+    Engine::setScene(scene);
+    LuaBinding::initializeLuaScripts(scene);
+    const size_t before = scene->getEntityList().size();
+    scene->getComponent<ScriptComponent>(x).scripts[0].enabled = true;
+    ScriptRuntime::refreshEntity(scene, x);
+    EXPECT_GE(scene->getEntityList().size(), before + 64);
+    // read again after the callbacks (the arrays moved)
+    scene->getComponent<ScriptComponent>(x).scripts[0].enabled = false;
+    ScriptRuntime::refreshEntity(scene, x);
+    EXPECT_FALSE(scene->isEntityCreated(v));
+    Engine::removeAllScenes();
+}
+
+// a class with an __index of its own: a function that raises for what it lacks ("strict"
+// classes) and a base table (inheritance); engine lookups never raise through it
+TEST_F(ScriptLifecycleTest, ClassesWithTheirOwnIndex) {
+    writeScript("Z1",
+        "local M = {}\n"
+        "function M:init() log[#log + 1] = 'init' .. tostring(self.enabled) .. tostring(self.gameObject.name) end\n"
+        "setmetatable(M, {__index = function(_, k) error('strict: no member ' .. tostring(k)) end})\n"
+        "return M\n");
+    writeScript("Base", "local Base = {}\nfunction Base:onEnable() log[#log + 1] = 'base enable ' .. self.__name end\nreturn Base\n");
+    writeScript("Derived",
+        "local Base = require('Base')\n"
+        "local M = setmetatable({}, {__index = Base})\n"
+        "function M:start() log[#log + 1] = 'start ' .. tostring(self:getScript('Z1') ~= nil) .. tostring(self.isActiveAndEnabled) end\n"
+        "return M\n");
+    Scene* scene = newScene();
+    const Entity x = entity(scene, "X");
+    addScript(scene, x, "Z1");
+    addScript(scene, x, "Derived");
+    setScene("testScene", scene);
+    LuaBinding::initializeLuaScripts(scene);
+    EXPECT_EQ(takeLog(), "inittrueX base enable Derived");
+    frame();
+    EXPECT_EQ(takeLog(), "start truetrue");
+    EXPECT_EQ(lua("local s = GameObject(testScene, " + std::to_string(x) + "):getScript('Z1'); s.enabled = false; "
+                  "return tostring(s.enabled) .. tostring(s.isActiveAndEnabled)"), "falsefalse");
+    EXPECT_NE(luaError("local s = GameObject(testScene, " + std::to_string(x) + "):getScript('Z1'); return s.missing").find("strict"),
+              std::string::npos) << "the class's own rule still applies to its fields";
+    ScriptRuntime::quitAll();
+    EXPECT_EQ(takeLog(), "") << "messages the strict class lacks are skipped";
+}
+
+// a class defining one of the engine's members does not run
+TEST_F(ScriptLifecycleTest, ClassFieldsWithReservedNames) {
+    writeScript("R1", "local M = { enabled = true }\nfunction M:init() log[#log + 1] = 'init' end\nreturn M\n");
+    Scene* scene = newScene();
+    const Entity x = entity(scene, "X");
+    addScript(scene, x, "R1");
+    LuaBinding::initializeLuaScripts(scene);
+    EXPECT_EQ(takeLog(), "");
+    EXPECT_TRUE(logged("its table defines 'enabled'"));
+}
+
+// method calls and missing-field reads on self cost what they cost on a plain table
+TEST_F(ScriptLifecycleTest, InstanceLookupsStayTableLookups) {
+    writeScript("P1",
+        "local M = {}\n"
+        "function M:noop() end\n"
+        "local function best(f) local b = math.huge; for _ = 1, 3 do local t = os.clock(); f(); b = math.min(b, os.clock() - t) end; return b end\n"
+        "function M:bench(n)\n"
+        "  local plain = setmetatable({}, {__index = {noop = M.noop}})\n"
+        "  local a = best(function() for i = 1, n do self:noop() end end)\n"
+        "  local b = best(function() for i = 1, n do plain:noop() end end)\n"
+        "  local c = best(function() for i = 1, n do local _ = self.missingField end end)\n"
+        "  local d = best(function() for i = 1, n do local _ = plain.missingField end end)\n"
+        "  return string.format('%.3f %.3f', a / b, c / d)\n"
+        "end\n"
+        "return M\n");
+    Scene* scene = newScene();
+    const Entity x = entity(scene, "X");
+    addScript(scene, x, "P1");
+    setScene("testScene", scene);
+    LuaBinding::initializeLuaScripts(scene);
+    const std::string ratios = lua("return GameObject(testScene, " + std::to_string(x) + "):getScript('P1'):bench(1000000)");
+    double method = 0, missing = 0;
+    ASSERT_EQ(std::sscanf(ratios.c_str(), "%lf %lf", &method, &missing), 2) << ratios;
+    std::printf("[lookup cost vs a plain table] method call %.2fx, missing field %.2fx\n", method, missing);
+    EXPECT_LT(method, 1.5) << ratios;
+    EXPECT_LT(missing, 1.5) << ratios;
+}
+
+// a C++ script that does not override a message is learned to the first time it is sent (its base
+// method ran): no longer among the receivers, never sent again
+TEST_F(ScriptLifecycleTest, CppOverridesLearnedWhenSent) {
+    Scene* scene = newScene();
+    const Entity p = entity(scene, "P");
+    CppPartial* partial = addCppScript<CppPartial>(scene, p, "CppPartial");
+    EXPECT_TRUE(ScriptMessages::receivers(scene, p) & scriptMessageBit(ScriptMessage::Init)) << "not known yet";
+    ScriptRuntime::awakeScene(scene);
+    const ScriptMessageMask mask = ScriptMessages::receivers(scene, p);
+    EXPECT_FALSE(mask & scriptMessageBit(ScriptMessage::Init)) << "its base init ran";
+    EXPECT_TRUE(mask & scriptMessageBit(ScriptMessage::Enable)) << "an override";
+    EXPECT_TRUE(partial->inheritedMessages & scriptMessageBit(ScriptMessage::Init));
+    EXPECT_EQ(ScriptMessages::send(scene, p, ScriptMessage::ApplicationPause, nullptr,
+                                   [](ScriptBase& script) { script.onApplicationPause(true); }), 1);
+    EXPECT_EQ(ScriptMessages::send(scene, p, ScriptMessage::ApplicationQuit, nullptr,
+                                   [](ScriptBase& script) { script.onApplicationQuit(); }), 0) << "not overridden: not counted";
+    EXPECT_FALSE(ScriptMessages::receivers(scene, p) & scriptMessageBit(ScriptMessage::ApplicationQuit));
+    ScriptRuntime::unloadScenes({scene});
+    deleteCppScripts(scene);
 }

@@ -344,6 +344,10 @@ typedef struct b2ShapeDef
 	/// Collision filtering data.
 	b2Filter filter;
 
+	// JASPER PATCH: surface callbacks (upstream 3.1 API)
+	/// User material identifier, passed to the friction and restitution callbacks. Default 0.
+	int userMaterialId;
+
 	/// Custom debug draw color.
 	uint32_t customColor;
 
@@ -417,6 +421,11 @@ typedef struct b2ChainDef
 
 	/// Contact filtering data.
 	b2Filter filter;
+
+	// JASPER PATCH: surface callbacks (upstream 3.1 API)
+	/// User material identifier of the chain segments, passed to the friction and restitution
+	/// callbacks. Default 0.
+	int userMaterialId;
 
 	/// Custom debug draw color.
 	uint32_t customColor;
@@ -1151,6 +1160,20 @@ typedef bool b2CustomFilterFcn( b2ShapeId shapeIdA, b2ShapeId shapeIdB, void* co
 /// @warning Do not attempt to modify the world inside this callback
 /// @ingroup world
 typedef bool b2PreSolveFcn( b2ShapeId shapeIdA, b2ShapeId shapeIdB, b2Manifold* manifold, void* context );
+
+// JASPER PATCH: surface callbacks (upstream 3.1 API)
+/// Optional friction mixing callback. This intentionally provides no context objects because this is called
+/// from a worker thread.
+/// @warning This function should not attempt to modify Box2D state or user application state.
+/// @ingroup world
+typedef float b2FrictionCallback( float frictionA, int userMaterialIdA, float frictionB, int userMaterialIdB );
+
+// JASPER PATCH: surface callbacks (upstream 3.1 API)
+/// Optional restitution mixing callback. This intentionally provides no context objects because this is called
+/// from a worker thread.
+/// @warning This function should not attempt to modify Box2D state or user application state.
+/// @ingroup world
+typedef float b2RestitutionCallback( float restitutionA, int userMaterialIdA, float restitutionB, int userMaterialIdB );
 
 /// Prototype callback for overlap queries.
 /// Called for each shape found in the query.

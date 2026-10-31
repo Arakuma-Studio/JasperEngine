@@ -5,6 +5,9 @@
 
 #include "Project.h"
 #include "LineDrawUtils.h"
+#include "Joint2DAnchors.h"
+#include "physics/PolygonDecomposition2D.h"
+#include "subsystem/PhysicsSystem.h"
 
 #include <algorithm>
 #include <cmath>
@@ -333,13 +336,13 @@ void editor::SceneRender2D::createOrUpdatePolygonPointLines(Entity entity, const
     }
 }
 
-void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transform& transform, const Rigidbody2DComponent& body, bool visible, bool highlighted){
+void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transform& transform, Rigidbody2DComponent& body, bool visible, bool highlighted){
     LineRenderer* bodyLinesObj = bodyLines[entity];
 
     bodyLinesObj->clearLines();
     bodyLinesObj->setVisible(transform.visible && visible);
 
-    if (!transform.visible || !visible || body.numColliders == 0){
+    if (!transform.visible || !visible || body.colliders.empty()){
         return;
     }
 
@@ -440,25 +443,39 @@ void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transfo
         addArc(Vector2(x0 + r, y1 - r), r, 0.5f * M_PI, M_PI, 8);
     };
 
-    for (size_t i = 0; i < body.numColliders; i++){
+    for (size_t i = 0; i < body.colliders.size(); i++){
         const Collider2D& shape = body.colliders[i];
         bodyColor = shape.sensor ? sensorColor : solidColor;
 
         auto addPolygonEdges = [&](){
-            for (size_t j = 0; j < shape.numVertices; j++){
-                Vector2 p0 = scaledPoint(shape.vertices[j]);
-                Vector2 p1 = scaledPoint(shape.vertices[(j + 1) % shape.numVertices]);
+            const size_t count = shape.points.size();
+            for (size_t j = 0; j < count; j++){
+                Vector2 p0 = scaledPoint(shape.points[j]);
+                Vector2 p1 = scaledPoint(shape.points[(j + 1) % count]);
                 bodyLinesObj->addLine(toWorld(p0), toWorld(p1), bodyColor);
+            }
+            // a selected concave polygon shows the convex pieces Box2D gets, faintly
+            if (highlighted && count > 3){
+                // the body's own pieces (cached on the collider by points and scale)
+                const std::vector<std::vector<Vector2>> pieces = scene->getSystem<PhysicsSystem>()->getCollider2DPiecesLocal(entity, body.colliders[i]);
+                if (pieces.size() > 1){
+                    const Vector4 seamColor(bodyColor.x, bodyColor.y, bodyColor.z, bodyColor.w * 0.3f);
+                    for (const std::vector<Vector2>& piece : pieces){
+                        for (size_t k = 0; k < piece.size(); k++){
+                            bodyLinesObj->addLine(toWorld(scaledPoint(piece[k])), toWorld(scaledPoint(piece[(k + 1) % piece.size()])), seamColor);
+                        }
+                    }
+                }
             }
         };
 
         if (shape.type == Collider2DType::POLYGON){
-            if (shape.numVertices >= 3){
-                if (shape.radius > 0.0f && shape.numVertices == 4){
-                    Vector2 minPt = scaledPoint(shape.vertices[0]);
+            if (shape.points.size() >= 3){
+                if (shape.radius > 0.0f && shape.points.size() == 4){
+                    Vector2 minPt = scaledPoint(shape.points[0]);
                     Vector2 maxPt = minPt;
-                    for (size_t j = 1; j < shape.numVertices; j++){
-                        Vector2 p = scaledPoint(shape.vertices[j]);
+                    for (size_t j = 1; j < shape.points.size(); j++){
+                        Vector2 p = scaledPoint(shape.points[j]);
                         minPt.x = std::min(minPt.x, p.x);
                         minPt.y = std::min(minPt.y, p.y);
                         maxPt.x = std::max(maxPt.x, p.x);
@@ -518,27 +535,28 @@ void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transfo
         }else if (shape.type == Collider2DType::SEGMENT){
             bodyLinesObj->addLine(toWorld(scaledPoint(shape.pointA)), toWorld(scaledPoint(shape.pointB)), bodyColor);
         }else if (shape.type == Collider2DType::CHAIN){
-            if (shape.numVertices >= 2){
-                for (size_t j = 0; j < shape.numVertices - 1; j++){
-                    bodyLinesObj->addLine(toWorld(scaledPoint(shape.vertices[j])), toWorld(scaledPoint(shape.vertices[j + 1])), bodyColor);
+            if (shape.points.size() >= 2){
+                for (size_t j = 0; j < shape.points.size() - 1; j++){
+                    bodyLinesObj->addLine(toWorld(scaledPoint(shape.points[j])), toWorld(scaledPoint(shape.points[j + 1])), bodyColor);
                 }
 
-                if (shape.loop){
-                    bodyLinesObj->addLine(toWorld(scaledPoint(shape.vertices[shape.numVertices - 1])), toWorld(scaledPoint(shape.vertices[0])), bodyColor);
+                if (shape.loop && shape.points.size() >= 3){
+                    bodyLinesObj->addLine(toWorld(scaledPoint(shape.points[shape.points.size() - 1])), toWorld(scaledPoint(shape.points[0])), bodyColor);
                 }
             }
 
-            // ticks on the colliding side (right of each edge), open chains skip the end edges
-            if (shape.numVertices >= 4){
-                size_t n = shape.numVertices;
+            // ticks on the colliding side (right of each edge), open chains skip the end edges;
+            // a chain of 2 or 3 points is two-sided segments
+            if (shape.points.size() >= 4){
+                size_t n = shape.points.size();
                 size_t first = shape.loop ? 0 : 1;
                 size_t end = shape.loop ? n : n - 2;
                 // mirrored chains are reversed in PhysicsSystem, keeping the side
                 float side = (entityScale.x * entityScale.y < 0.0f) ? -1.0f : 1.0f;
 
                 for (size_t j = first; j < end; j++){
-                    Vector2 p0 = scaledPoint(shape.vertices[j]);
-                    Vector2 p1 = scaledPoint(shape.vertices[(j + 1) % n]);
+                    Vector2 p0 = scaledPoint(shape.points[j]);
+                    Vector2 p1 = scaledPoint(shape.points[(j + 1) % n]);
                     Vector2 dir = p1 - p0;
                     float length = dir.normalizeL();
                     if (length > 0.0f){
@@ -562,21 +580,6 @@ void editor::SceneRender2D::createOrUpdateJointLines(Entity entity, const Joint2
         return;
     }
 
-    auto getBodyWorldPosition = [&](Entity bodyEntity){
-        if (bodyEntity != NULL_ENTITY){
-            Transform* transform = scene->findComponent<Transform>(bodyEntity);
-            if (transform){
-                return transform->worldPosition;
-            }
-        }
-
-        return Vector3::ZERO;
-    };
-
-    auto toWorldPoint = [](const Vector2& point){
-        return Vector3(point.x, point.y, 0.0f);
-    };
-
     float alpha = highlighted ? 1.0f : 0.35f;
 
     const Vector4 jointColor(0.95f, 0.75f, 0.2f, alpha);
@@ -584,56 +587,103 @@ void editor::SceneRender2D::createOrUpdateJointLines(Entity entity, const Joint2
     const Vector4 axisColor(0.2f, 0.9f, 1.0f, alpha);
     const Vector4 limitColor(1.0f, 0.35f, 0.35f, alpha);
 
-    Vector3 anchorA = getBodyWorldPosition(joint.bodyA);
-    Vector3 anchorB = getBodyWorldPosition(joint.bodyB);
-
-    switch (joint.type){
-        case Joint2DType::DISTANCE:
-            if (!joint.autoAnchors){
-                anchorA = toWorldPoint(joint.anchorA);
-                anchorB = toWorldPoint(joint.anchorB);
-            }
-            break;
-        case Joint2DType::REVOLUTE:
-        case Joint2DType::PRISMATIC:
-        case Joint2DType::WHEEL:
-        case Joint2DType::WELD:
-            anchorA = anchorB = toWorldPoint(joint.anchorA);
-            break;
-        case Joint2DType::MOUSE:
-            anchorB = toWorldPoint(joint.target);
-            break;
-        case Joint2DType::MOTOR:
-            break;
-    }
+    // where PhysicsSystem puts the anchors (local to each body, or world points)
+    const Joint2DAnchorsWorld anchors = joint2DAnchorsWorld(scene, joint);
+    const Vector3 anchorA = anchors.anchorA;
+    const Vector3 anchorB = anchors.anchorB;
 
     jointLinesObj->addLine(anchorA, anchorB, jointColor);
 
     const float sz = overlayScale * zoom;
     float markSize = 8.0f * sz;
 
+    // anchor A: a circle and cross; anchor B: a smaller circle (the handles the Move tool drags)
+    LineDrawUtils::addCircle2D(jointLinesObj, anchorA, 5.0f * sz, jointColor, 12);
     jointLinesObj->addLine(anchorA + Vector3(-markSize, 0.0f, 0.0f), anchorA + Vector3(markSize, 0.0f, 0.0f), helperColor);
     jointLinesObj->addLine(anchorA + Vector3(0.0f, -markSize, 0.0f), anchorA + Vector3(0.0f, markSize, 0.0f), helperColor);
 
-    jointLinesObj->addLine(anchorB + Vector3(-markSize, 0.0f, 0.0f), anchorB + Vector3(markSize, 0.0f, 0.0f), helperColor);
-    jointLinesObj->addLine(anchorB + Vector3(0.0f, -markSize, 0.0f), anchorB + Vector3(0.0f, markSize, 0.0f), helperColor);
+    if ((anchorB - anchorA).length() > 0.001f){
+        LineDrawUtils::addCircle2D(jointLinesObj, anchorB, 4.0f * sz, anchors.anchorBEditable ? jointColor : helperColor, 12);
+        jointLinesObj->addLine(anchorB + Vector3(-markSize, 0.0f, 0.0f), anchorB + Vector3(markSize, 0.0f, 0.0f), helperColor);
+        jointLinesObj->addLine(anchorB + Vector3(0.0f, -markSize, 0.0f), anchorB + Vector3(0.0f, markSize, 0.0f), helperColor);
+    }
+
+    auto addTick = [&](const Vector3& at, const Vector3& direction, float halfLength, const Vector4& color){
+        const Vector3 perp(-direction.y, direction.x, 0.0f);
+        jointLinesObj->addLine(at - perp * halfLength, at + perp * halfLength, color);
+    };
 
     switch (joint.type){
         case Joint2DType::DISTANCE:{
-            // Connection line + anchor crosses already drawn above
+            // the length kept (or its limits): ticks along the line from anchor A
+            Vector3 direction = anchorB - anchorA;
+            direction.z = 0.0f;
+            const float current = direction.length();
+            if (current > 0.001f){
+                direction = direction * (1.0f / current);
+                if (!joint.autoLength && joint.length > 0.0f){
+                    addTick(anchorA + direction * joint.length, direction, 6.0f * sz, axisColor);
+                }
+                if (joint.useLimits || joint.rope){
+                    const float length = joint.autoLength ? current : joint.length;
+                    const float minLength = joint.useLimits ? joint.minLength : 0.0f;
+                    const float maxLength = joint.rope ? length : (joint.maxLength > 0.0f ? joint.maxLength : length);
+                    addTick(anchorA + direction * minLength, direction, 5.0f * sz, limitColor);
+                    addTick(anchorA + direction * maxLength, direction, 5.0f * sz, limitColor);
+                }
+            }
             break;
         }
         case Joint2DType::REVOLUTE:{
             LineDrawUtils::addCircle2D(jointLinesObj, anchorA, 10.0f * sz, helperColor, 18);
-            if ((anchorB - anchorA).length() > 0.001f){
-                LineDrawUtils::addCircle2D(jointLinesObj, anchorB, 8.0f * sz, helperColor, 16);
+            if (joint.useLimits){
+                // the angle range, from bodyA's frame
+                const float radius = 18.0f * sz;
+                const float lower = anchors.bodyAAngle + std::max(-180.0f, std::min(joint.lowerAngle, joint.upperAngle)) * (float)M_PI / 180.0f;
+                const float upper = anchors.bodyAAngle + std::min(180.0f, std::max(joint.lowerAngle, joint.upperAngle)) * (float)M_PI / 180.0f;
+                LineDrawUtils::addArc2D(jointLinesObj, anchorA, radius, lower, upper, limitColor, 20);
+                jointLinesObj->addLine(anchorA, anchorA + Vector3(std::cos(lower), std::sin(lower), 0.0f) * radius, limitColor);
+                jointLinesObj->addLine(anchorA, anchorA + Vector3(std::cos(upper), std::sin(upper), 0.0f) * radius, limitColor);
             }
             break;
         }
-        case Joint2DType::WHEEL:{
-            LineDrawUtils::addCircle2D(jointLinesObj, anchorA, 10.0f * sz, helperColor, 18);
-            if ((anchorB - anchorA).length() > 0.001f){
-                LineDrawUtils::addCircle2D(jointLinesObj, anchorB, 8.0f * sz, helperColor, 16);
+        case Joint2DType::WHEEL:
+        case Joint2DType::PRISMATIC:{
+            const Vector3 axis3 = anchors.axis;
+            const Vector3 railPerp(-axis3.y, axis3.x, 0.0f);
+            if (joint.type == Joint2DType::WHEEL){
+                LineDrawUtils::addCircle2D(jointLinesObj, anchorA, 10.0f * sz, helperColor, 18);
+            }
+
+            // the line of motion
+            const float halfRail = 40.0f * sz;
+            const float railOffset = (joint.type == Joint2DType::PRISMATIC ? 5.0f : 2.0f) * sz;
+            Vector3 railStart = anchorA - axis3 * halfRail;
+            Vector3 railEnd = anchorA + axis3 * halfRail;
+            jointLinesObj->addLine(railStart + railPerp * railOffset, railEnd + railPerp * railOffset, axisColor);
+            jointLinesObj->addLine(railStart - railPerp * railOffset, railEnd - railPerp * railOffset, axisColor);
+
+            // the translation limits: a bar between them
+            if (joint.useLimits){
+                const float lower = std::min(joint.lowerTranslation, joint.upperTranslation);
+                const float upper = std::max(joint.lowerTranslation, joint.upperTranslation);
+                const Vector3 lowerPoint = anchorA + axis3 * lower;
+                const Vector3 upperPoint = anchorA + axis3 * upper;
+                jointLinesObj->addLine(lowerPoint, upperPoint, limitColor);
+                addTick(lowerPoint, axis3, 6.0f * sz, limitColor);
+                addTick(upperPoint, axis3, 6.0f * sz, limitColor);
+            }
+
+            // the axis arrow
+            const Vector3 arrowEnd = anchorA + axis3 * (24.0f * sz);
+            jointLinesObj->addLine(anchorA, arrowEnd, axisColor);
+            jointLinesObj->addLine(arrowEnd, arrowEnd - axis3 * (5.0f * sz) + railPerp * (3.0f * sz), axisColor);
+            jointLinesObj->addLine(arrowEnd, arrowEnd - axis3 * (5.0f * sz) - railPerp * (3.0f * sz), axisColor);
+
+            if (joint.type == Joint2DType::PRISMATIC){
+                float t = (anchorB - anchorA).x * axis3.x + (anchorB - anchorA).y * axis3.y;
+                t = std::max(-halfRail, std::min(halfRail, t));
+                LineDrawUtils::addCircle2D(jointLinesObj, anchorA + axis3 * t, 7.0f * sz, jointColor, 14);
             }
             break;
         }
@@ -644,13 +694,6 @@ void editor::SceneRender2D::createOrUpdateJointLines(Entity entity, const Joint2
             jointLinesObj->addLine(anchorA + Vector3(d, 0, 0), anchorA + Vector3(0, -d, 0), limitColor);
             jointLinesObj->addLine(anchorA + Vector3(0, -d, 0), anchorA + Vector3(-d, 0, 0), limitColor);
             jointLinesObj->addLine(anchorA + Vector3(-d, 0, 0), anchorA + Vector3(0, d, 0), limitColor);
-            if ((anchorB - anchorA).length() > 0.001f){
-                float d2 = 8.0f * sz;
-                jointLinesObj->addLine(anchorB + Vector3(0, d2, 0), anchorB + Vector3(d2, 0, 0), limitColor);
-                jointLinesObj->addLine(anchorB + Vector3(d2, 0, 0), anchorB + Vector3(0, -d2, 0), limitColor);
-                jointLinesObj->addLine(anchorB + Vector3(0, -d2, 0), anchorB + Vector3(-d2, 0, 0), limitColor);
-                jointLinesObj->addLine(anchorB + Vector3(-d2, 0, 0), anchorB + Vector3(0, d2, 0), limitColor);
-            }
             break;
         }
         case Joint2DType::MOTOR:{
@@ -670,55 +713,13 @@ void editor::SceneRender2D::createOrUpdateJointLines(Entity entity, const Joint2
             jointLinesObj->addLine(tip, tip - dir * arrowSize - perp * arrowSize * 0.5f, axisColor);
             break;
         }
-        case Joint2DType::PRISMATIC:{
-            Vector2 axis2 = joint.axis;
-            if (axis2.length() <= 0.0001f){
-                axis2 = Vector2(1.0f, 0.0f);
-            }else{
-                axis2.normalize();
-            }
-
-            Vector3 axis3(axis2.x, axis2.y, 0.0f);
-            Vector3 railPerp(-axis3.y, axis3.x, 0.0f);
-
-            float halfRail = 40.0f * sz;
-            float railOffset = 5.0f * sz;
-
-            Vector3 railStart = anchorA - axis3 * halfRail;
-            Vector3 railEnd = anchorA + axis3 * halfRail;
-
-            jointLinesObj->addLine(railStart + railPerp * railOffset, railEnd + railPerp * railOffset, axisColor);
-            jointLinesObj->addLine(railStart - railPerp * railOffset, railEnd - railPerp * railOffset, axisColor);
-
-            float endCap = 6.0f * sz;
-            jointLinesObj->addLine(railStart - railPerp * endCap, railStart + railPerp * endCap, limitColor);
-            jointLinesObj->addLine(railEnd - railPerp * endCap, railEnd + railPerp * endCap, limitColor);
-
-            float t = (anchorB - anchorA).x * axis3.x + (anchorB - anchorA).y * axis3.y;
-            t = std::max(-halfRail, std::min(halfRail, t));
-            Vector3 sliderCenter = anchorA + axis3 * t;
-            LineDrawUtils::addCircle2D(jointLinesObj, sliderCenter, 7.0f * sz, jointColor, 14);
-            break;
-        }
         case Joint2DType::MOUSE:{
-            Vector3 target(joint.target.x, joint.target.y, 0.0f);
-            LineDrawUtils::addCircle2D(jointLinesObj, target, 8.0f * sz, Vector4(1.0f, 0.4f, 0.4f, alpha), 16);
-            jointLinesObj->addLine(target + Vector3(-markSize, 0.0f, 0.0f), target + Vector3(markSize, 0.0f, 0.0f), limitColor);
-            jointLinesObj->addLine(target + Vector3(0.0f, -markSize, 0.0f), target + Vector3(0.0f, markSize, 0.0f), limitColor);
+            LineDrawUtils::addCircle2D(jointLinesObj, anchorB, 8.0f * sz, Vector4(1.0f, 0.4f, 0.4f, alpha), 16);
+            jointLinesObj->addLine(anchorB + Vector3(-markSize, 0.0f, 0.0f), anchorB + Vector3(markSize, 0.0f, 0.0f), limitColor);
+            jointLinesObj->addLine(anchorB + Vector3(0.0f, -markSize, 0.0f), anchorB + Vector3(0.0f, markSize, 0.0f), limitColor);
             break;
         }
     }
-
-    // Only draw generic axis for types that don't already visualize it
-    if (joint.axis.length() > 0.0001f && joint.type != Joint2DType::PRISMATIC){
-        Vector2 axis = joint.axis;
-        axis.normalize();
-
-        Vector3 center = (anchorA + anchorB) * 0.5f;
-        Vector3 axisEnd = center + Vector3(axis.x, axis.y, 0.0f) * (20.0f * sz);
-        jointLinesObj->addLine(center, axisEnd, axisColor);
-    }
-
 }
 
 void editor::SceneRender2D::createLines(unsigned int width, unsigned int height){

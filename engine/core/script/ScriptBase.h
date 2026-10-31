@@ -11,6 +11,8 @@
 
 namespace jasperengine {
 
+    class Joint2D;
+
     // The base of a C++ behaviour script (Unity's MonoBehaviour). The engine calls the
     // lifecycle methods below when a subclass overrides them, with the rules of Lua scripts
     // (docs/mcp/guide/cpp-scripting.md): init once when the GameObject is first active in
@@ -58,31 +60,45 @@ namespace jasperengine {
             return nullptr;
         }
 
-        // Lifecycle (script-lifecycle spec 7.2). Override what the script needs.
-        virtual void init() {}
-        virtual void start() {}
-        virtual void onEnable() {}
-        virtual void onDisable() {}
-        virtual void onDestroy() {}
-        virtual void onApplicationPause(bool paused) { (void)paused; }
-        virtual void onApplicationFocus(bool focused) { (void)focused; }
-        virtual void onApplicationQuit() {}
+        // Script messages (ScriptMessages), like the Lua methods of the same name: override what
+        // the script needs (public, protected or private) and do not call the base, which only
+        // notes the message is not overridden (it is not sent again).
+        // Lifecycle (script-lifecycle spec 7.2):
+        virtual void init();
+        virtual void start();
+        virtual void onEnable();
+        virtual void onDisable();
+        virtual void onDestroy();
+        virtual void onApplicationPause(bool paused);
+        virtual void onApplicationFocus(bool focused);
+        virtual void onApplicationQuit();
+
+        // A 2D joint of this GameObject (or whose bodyA is it) broke (Unity OnJointBreak2D); the
+        // joint still exists during the call.
+        virtual void onJointBreak2D(Joint2D& joint);
 
         // The component UI's EventSystem callbacks (ui-multitouch, Unity's IPointerDownHandler...):
         // sent up the hierarchy from the element under the pointer to the first GameObject whose
         // script overrides them. The event lives for the call (copy what you keep); use() and
         // useDragThreshold write back.
-        virtual void onPointerDown(PointerEventData& e) { (void)e; }
-        virtual void onPointerUp(PointerEventData& e) { (void)e; }
-        virtual void onPointerClick(PointerEventData& e) { (void)e; }
-        virtual void onPointerEnter(PointerEventData& e) { (void)e; }
-        virtual void onPointerExit(PointerEventData& e) { (void)e; }
-        virtual void onInitializePotentialDrag(PointerEventData& e) { (void)e; }
-        virtual void onBeginDrag(PointerEventData& e) { (void)e; }
-        virtual void onDrag(PointerEventData& e) { (void)e; }
-        virtual void onEndDrag(PointerEventData& e) { (void)e; }
-        virtual void onDrop(PointerEventData& e) { (void)e; }
-        virtual void onScroll(PointerEventData& e) { (void)e; }
+        virtual void onPointerDown(PointerEventData& e);
+        virtual void onPointerUp(PointerEventData& e);
+        virtual void onPointerClick(PointerEventData& e);
+        virtual void onPointerEnter(PointerEventData& e);
+        virtual void onPointerExit(PointerEventData& e);
+        virtual void onInitializePotentialDrag(PointerEventData& e);
+        virtual void onBeginDrag(PointerEventData& e);
+        virtual void onDrag(PointerEventData& e);
+        virtual void onEndDrag(PointerEventData& e);
+        virtual void onDrop(PointerEventData& e);
+        virtual void onScroll(PointerEventData& e);
+
+        // the messages (ScriptMessage bits) whose base method ran: not overridden, so not sent
+        // again and not among ScriptMessages::receivers
+        uint64_t inheritedMessages = 0;   // ScriptMessageMask
+        // set by a base message method (ScriptMessages reads it after a call without touching a
+        // script the call may have destroyed)
+        static bool baseMessageRan;
     };
 
 }

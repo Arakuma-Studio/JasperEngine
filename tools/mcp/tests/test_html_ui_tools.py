@@ -101,10 +101,17 @@ LIMITS.update({"bake_vertex_animation": 2000})
 LIMITS.update({"user_settings": 550})
 # input (spec 2026-10-31-input 12): send_input's action/axis/axis_delta events and the input.actions setting,
 # measured on the merged tree: total 106687 (106611 before), the limit raised by them
-TOTAL_LIMIT = 106700
+# physics-2d: edit_physics_material (396) and set_joint's motor / spring / limits / break /
+# enable_collision / anchor_space paid by moving set_joint's type lists and per-argument texts to
+# jasper://docs/physics (set_joint 1020 -> 756); merged with main (script-data, input): 150 tools
+# measured 106620, the limit lowered to it
+# script-lifecycle: check_script's lifecycle warnings and update_script_entry's enabled in Play, paid
+# by shorter texts of both; merged with main (script-data, input, physics-2d): 150 tools measured
+# 106621, the limit set to it
+TOTAL_LIMIT = 106621
 # ui-multitouch (spec 2026-10-31-ui-multitouch 10): create_ui's onscreen_stick / onscreen_button / touch_area
-# types and their mode / action / actions fields (+183); measured on the merged tree: total 106883
-TOTAL_LIMIT = 106883
+# types and their mode / action / actions fields; measured on the merged tree
+TOTAL_LIMIT = 106804
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

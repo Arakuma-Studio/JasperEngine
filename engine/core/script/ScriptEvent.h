@@ -27,8 +27,11 @@ namespace jasperengine {
         ScriptEvent& operator=(const ScriptEvent&) = delete;
 
         // RegisterEvent(self, ev, "method" [, tag]): a function under a tag (one per tag),
-        // owned by the script at ownerIndex (0: none)
-        void addTagged(lua_State* L, const std::string& tag, int functionIndex, int ownerIndex);
+        // owned by the script at ownerIndex (0: none); eventIndex is this Event's userdata
+        void addTagged(lua_State* L, int eventIndex, const std::string& tag, int functionIndex, int ownerIndex);
+        // The script instance at `ownerIndex` is released: every Event drops the listeners it
+        // owns (their registry references would keep it alive)
+        static void releaseOwner(lua_State* L, int ownerIndex);
         bool removeTag(const std::string& tag);
         bool hasTag(const std::string& tag) const;
         // the listeners (those of released owners are dropped first)
@@ -60,6 +63,9 @@ namespace jasperengine {
         void compact() const;
         bool ownerReleased(lua_State* L, const Listener& listener) const;
         void dropReleasedOwners() const;
+        void dropOwner(lua_State* L, int ownerIndex);
+        // owner -> the Events (weak) holding its listeners, for releaseOwner
+        static void trackOwner(lua_State* L, int ownerIndex, int eventIndex);
     };
 
 }

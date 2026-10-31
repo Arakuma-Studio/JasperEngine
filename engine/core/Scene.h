@@ -227,6 +227,10 @@ namespace jasperengine{
         void setPhysicsInterpolation(bool interpolation);
         bool isPhysicsInterpolation() const;
 
+        // forwarder to PhysicsSystem::setSubSteps2D: Box2D sub-steps of each fixed step (1..16)
+        void setPhysics2DSubSteps(int subSteps);
+        int getPhysics2DSubSteps() const;
+
         void setDefaultMeshShader(const std::string& path);
         const std::string& getDefaultMeshShader() const;
 

@@ -2392,35 +2392,71 @@ std::string editor::Factory::createRigidbody2DComponent(int indentSpaces, Entity
     Rigidbody2DComponent& body = scene->getComponent<Rigidbody2DComponent>(entity);
     std::ostringstream code;
     const std::string ind = indentation(indentSpaces);
+    const Rigidbody2DComponent def;
+    const Collider2D defCollider;
     code << ind << "Rigidbody2DComponent rigidbody2d;\n";
     code << ind << "rigidbody2d.type = " << formatBodyType(body.type) << ";\n";
     code << ind << "rigidbody2d.needReloadBody = " << formatBool(body.needReloadBody) << ";\n";
     code << ind << "rigidbody2d.needUpdateColliders = " << formatBool(body.needUpdateColliders) << ";\n";
     code << ind << "rigidbody2d.newBody = " << formatBool(body.newBody) << ";\n";
-    code << ind << "rigidbody2d.numColliders = " << body.numColliders << ";\n";
 
-    for (size_t i = 0; i < body.numColliders; i++) {
-        const std::string idx = std::to_string(i);
-        code << ind << "rigidbody2d.colliders[" << idx << "].type = " << formatCollider2DType(body.colliders[i].type) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].pointA = " << formatVector2(body.colliders[i].pointA) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].pointB = " << formatVector2(body.colliders[i].pointB) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].radius = " << formatFloat(body.colliders[i].radius) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].numVertices = " << (int)body.colliders[i].numVertices << ";\n";
-        for (size_t j = 0; j < body.colliders[i].numVertices; j++) {
-            code << ind << "rigidbody2d.colliders[" << idx << "].vertices[" << j << "] = " << formatVector2(body.colliders[i].vertices[j]) << ";\n";
+    // the body fields that differ from the defaults
+    if (body.gravityScale != def.gravityScale) code << ind << "rigidbody2d.gravityScale = " << formatFloat(body.gravityScale) << ";\n";
+    if (body.linearDamping != def.linearDamping) code << ind << "rigidbody2d.linearDamping = " << formatFloat(body.linearDamping) << ";\n";
+    if (body.angularDamping != def.angularDamping) code << ind << "rigidbody2d.angularDamping = " << formatFloat(body.angularDamping) << ";\n";
+    if (body.fixedRotation != def.fixedRotation) code << ind << "rigidbody2d.fixedRotation = " << formatBool(body.fixedRotation) << ";\n";
+    if (body.collisionDetection != def.collisionDetection) code << ind << "rigidbody2d.collisionDetection = CollisionDetectionMode2D::CONTINUOUS;\n";
+    if (body.sleepingMode == RigidbodySleepMode2D::NEVER_SLEEP) code << ind << "rigidbody2d.sleepingMode = RigidbodySleepMode2D::NEVER_SLEEP;\n";
+    if (body.sleepingMode == RigidbodySleepMode2D::START_ASLEEP) code << ind << "rigidbody2d.sleepingMode = RigidbodySleepMode2D::START_ASLEEP;\n";
+    if (body.useAutoMass != def.useAutoMass) code << ind << "rigidbody2d.useAutoMass = " << formatBool(body.useAutoMass) << ";\n";
+    if (body.mass != def.mass) code << ind << "rigidbody2d.mass = " << formatFloat(body.mass) << ";\n";
+    if (body.autoCenterOfMass != def.autoCenterOfMass) code << ind << "rigidbody2d.autoCenterOfMass = " << formatBool(body.autoCenterOfMass) << ";\n";
+    if (body.centerOfMass != def.centerOfMass) code << ind << "rigidbody2d.centerOfMass = " << formatVector2(body.centerOfMass) << ";\n";
+    if (body.autoInertia != def.autoInertia) code << ind << "rigidbody2d.autoInertia = " << formatBool(body.autoInertia) << ";\n";
+    if (body.inertia != def.inertia) code << ind << "rigidbody2d.inertia = " << formatFloat(body.inertia) << ";\n";
+    if (!body.material.empty()) code << ind << "rigidbody2d.material = " << formatString(body.material) << ";\n";
+
+    if (!body.colliders.empty()) {
+        code << ind << "rigidbody2d.colliders.resize(" << body.colliders.size() << ");\n";
+    }
+    for (size_t i = 0; i < body.colliders.size(); i++) {
+        const Collider2D& collider = body.colliders[i];
+        const std::string target = "rigidbody2d.colliders[" + std::to_string(i) + "]";
+        code << ind << target << ".type = " << formatCollider2DType(collider.type) << ";\n";
+        code << ind << target << ".pointA = " << formatVector2(collider.pointA) << ";\n";
+        code << ind << target << ".pointB = " << formatVector2(collider.pointB) << ";\n";
+        code << ind << target << ".radius = " << formatFloat(collider.radius) << ";\n";
+        // any number of points: one statement per 64 so a long terrain compiles everywhere
+        const size_t chunk = 64;
+        for (size_t start = 0; start < collider.points.size(); start += chunk) {
+            const size_t end = std::min(collider.points.size(), start + chunk);
+            if (start == 0) {
+                code << ind << target << ".points = {";
+            } else {
+                code << ind << target << ".points.insert(" << target << ".points.end(), {";
+            }
+            for (size_t j = start; j < end; j++) {
+                if (j > start) code << ", ";
+                code << formatVector2(collider.points[j]);
+            }
+            code << (start == 0 ? "};\n" : "});\n");
         }
-        code << ind << "rigidbody2d.colliders[" << idx << "].loop = " << formatBool(body.colliders[i].loop) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].density = " << formatFloat(body.colliders[i].density) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].friction = " << formatFloat(body.colliders[i].friction) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].restitution = " << formatFloat(body.colliders[i].restitution) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].sensor = " << formatBool(body.colliders[i].sensor) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].enableHitEvents = " << formatBool(body.colliders[i].enableHitEvents) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].contactEvents = " << formatBool(body.colliders[i].contactEvents) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].preSolveEvents = " << formatBool(body.colliders[i].preSolveEvents) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].sensorEvents = " << formatBool(body.colliders[i].sensorEvents) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].categoryBits = " << body.colliders[i].categoryBits << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].maskBits = " << body.colliders[i].maskBits << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].groupIndex = " << body.colliders[i].groupIndex << ";\n";
+        code << ind << target << ".loop = " << formatBool(collider.loop) << ";\n";
+        code << ind << target << ".density = " << formatFloat(collider.density) << ";\n";
+        code << ind << target << ".friction = " << formatFloat(collider.friction) << ";\n";
+        code << ind << target << ".restitution = " << formatFloat(collider.restitution) << ";\n";
+        if (!collider.material.empty()) code << ind << target << ".material = " << formatString(collider.material) << ";\n";
+        code << ind << target << ".sensor = " << formatBool(collider.sensor) << ";\n";
+        code << ind << target << ".enableHitEvents = " << formatBool(collider.enableHitEvents) << ";\n";
+        code << ind << target << ".contactEvents = " << formatBool(collider.contactEvents) << ";\n";
+        code << ind << target << ".preSolveEvents = " << formatBool(collider.preSolveEvents) << ";\n";
+        code << ind << target << ".sensorEvents = " << formatBool(collider.sensorEvents) << ";\n";
+        code << ind << target << ".categoryBits = " << collider.categoryBits << ";\n";
+        code << ind << target << ".maskBits = " << collider.maskBits << ";\n";
+        code << ind << target << ".groupIndex = " << collider.groupIndex << ";\n";
+        if (collider.receiver != defCollider.receiver) {
+            code << ind << target << ".receiver = " << formatEntity(collider.receiver, entityVarNames) << ";\n";
+        }
     }
 
     if (!body.enabled) code << ind << "rigidbody2d.enabled = false;\n";
@@ -2515,16 +2551,71 @@ std::string editor::Factory::createJoint2DComponent(int indentSpaces, EntityRegi
     Joint2DComponent& joint = scene->getComponent<Joint2DComponent>(entity);
     std::ostringstream code;
     const std::string ind = indentation(indentSpaces);
+    const Joint2DComponent def;
+    // a float field: infinite as numeric_limits (breakForce / breakTorque never break)
+    auto floatCode = [&](float value) -> std::string {
+        if (std::isinf(value)) return value > 0 ? "std::numeric_limits<float>::infinity()" : "-std::numeric_limits<float>::infinity()";
+        return formatFloat(value);
+    };
+    auto floatField = [&](const char* name, float value, float defaultValue) {
+        if (value != defaultValue && !(std::isnan(value) && std::isnan(defaultValue))) {
+            code << ind << "joint2d." << name << " = " << floatCode(value) << ";\n";
+        }
+    };
+    auto boolField = [&](const char* name, bool value, bool defaultValue) {
+        if (value != defaultValue) code << ind << "joint2d." << name << " = " << formatBool(value) << ";\n";
+    };
+    auto vectorField = [&](const char* name, const Vector2& value, const Vector2& defaultValue) {
+        if (value != defaultValue) code << ind << "joint2d." << name << " = " << formatVector2(value) << ";\n";
+    };
+
     code << ind << "Joint2DComponent joint2d;\n";
     code << ind << "joint2d.type = " << formatJoint2DType(joint.type) << ";\n";
     code << ind << "joint2d.bodyA = " << formatEntity(joint.bodyA, entityVarNames) << ";\n";
     code << ind << "joint2d.bodyB = " << formatEntity(joint.bodyB, entityVarNames) << ";\n";
-    code << ind << "joint2d.anchorA = " << formatVector2(joint.anchorA) << ";\n";
-    code << ind << "joint2d.anchorB = " << formatVector2(joint.anchorB) << ";\n";
-    code << ind << "joint2d.axis = " << formatVector2(joint.axis) << ";\n";
-    code << ind << "joint2d.target = " << formatVector2(joint.target) << ";\n";
-    code << ind << "joint2d.autoAnchors = " << formatBool(joint.autoAnchors) << ";\n";
-    code << ind << "joint2d.rope = " << formatBool(joint.rope) << ";\n";
+    code << ind << "joint2d.anchorSpace = " << (joint.anchorSpace == JointAnchorSpace::LOCAL ? "JointAnchorSpace::LOCAL" : "JointAnchorSpace::WORLD") << ";\n";
+    vectorField("anchorA", joint.anchorA, def.anchorA);
+    vectorField("anchorB", joint.anchorB, def.anchorB);
+    boolField("autoAnchors", joint.autoAnchors, def.autoAnchors);
+    vectorField("axis", joint.axis, def.axis);
+    vectorField("target", joint.target, def.target);
+    boolField("enableCollision", joint.enableCollision, def.enableCollision);
+    floatField("breakForce", joint.breakForce, def.breakForce);
+    floatField("breakTorque", joint.breakTorque, def.breakTorque);
+    if (joint.breakAction != def.breakAction) {
+        const char* action = "JointBreakAction::DESTROY";
+        if (joint.breakAction == JointBreakAction::IGNORE) action = "JointBreakAction::IGNORE";
+        else if (joint.breakAction == JointBreakAction::CALLBACK_ONLY) action = "JointBreakAction::CALLBACK_ONLY";
+        else if (joint.breakAction == JointBreakAction::DISABLE) action = "JointBreakAction::DISABLE";
+        code << ind << "joint2d.breakAction = " << action << ";\n";
+    }
+    boolField("useLimits", joint.useLimits, def.useLimits);
+    floatField("lowerAngle", joint.lowerAngle, def.lowerAngle);
+    floatField("upperAngle", joint.upperAngle, def.upperAngle);
+    floatField("lowerTranslation", joint.lowerTranslation, def.lowerTranslation);
+    floatField("upperTranslation", joint.upperTranslation, def.upperTranslation);
+    boolField("useMotor", joint.useMotor, def.useMotor);
+    floatField("motorSpeed", joint.motorSpeed, def.motorSpeed);
+    floatField("maxMotorTorque", joint.maxMotorTorque, def.maxMotorTorque);
+    floatField("maxMotorForce", joint.maxMotorForce, def.maxMotorForce);
+    boolField("enableSpring", joint.enableSpring, def.enableSpring);
+    floatField("frequency", joint.frequency, def.frequency);
+    floatField("dampingRatio", joint.dampingRatio, def.dampingRatio);
+    floatField("length", joint.length, def.length);
+    boolField("autoLength", joint.autoLength, def.autoLength);
+    floatField("minLength", joint.minLength, def.minLength);
+    floatField("maxLength", joint.maxLength, def.maxLength);
+    boolField("rope", joint.rope, def.rope);
+    floatField("linearFrequency", joint.linearFrequency, def.linearFrequency);
+    floatField("angularFrequency", joint.angularFrequency, def.angularFrequency);
+    floatField("linearDampingRatio", joint.linearDampingRatio, def.linearDampingRatio);
+    floatField("angularDampingRatio", joint.angularDampingRatio, def.angularDampingRatio);
+    vectorField("linearOffset", joint.linearOffset, def.linearOffset);
+    floatField("angularOffset", joint.angularOffset, def.angularOffset);
+    boolField("autoOffset", joint.autoOffset, def.autoOffset);
+    floatField("maxForce", joint.maxForce, def.maxForce);
+    floatField("maxTorque", joint.maxTorque, def.maxTorque);
+    floatField("correctionFactor", joint.correctionFactor, def.correctionFactor);
     code << ind << "joint2d.needUpdateJoint = " << formatBool(joint.needUpdateJoint) << ";\n";
     if (!joint.enabled) code << ind << "joint2d.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "Joint2DComponent", "joint2d", assignExisting);
@@ -3517,6 +3608,8 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     out << ind2 << "scene->setGravity3D(" << formatVector3(scene->getGravity3D()) << ");\n";
     if (scene->isPhysicsInterpolation() != SceneSettings().physicsInterpolation)
         out << ind2 << "scene->setPhysicsInterpolation(" << formatBool(scene->isPhysicsInterpolation()) << ");\n";
+    if (scene->getPhysics2DSubSteps() != SceneSettings().physics2DSubSteps)
+        out << ind2 << "scene->setPhysics2DSubSteps(" << scene->getPhysics2DSubSteps() << ");\n";
     out << ind2 << "scene->setLightState(" << formatLightState(scene->getLightState()) << ");\n";
     out << ind2 << "scene->setSSAOEnabled(" << formatBool(scene->isSSAOEnabled()) << ");\n";
     out << ind2 << "scene->setSSAORadius(" << formatFloat(scene->getSSAORadius()) << ");\n";

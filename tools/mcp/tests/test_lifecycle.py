@@ -119,7 +119,10 @@ async def test_disabled_and_inactive_scripts(ed: Editor):
         ed.check_eq(live["scripts"][0]["initialized"], False)
         await ed.call("set_entity_state", entity="Asleep", active=True)
         ed.check_eq(lifecycle_lines(await ed.console_since(), False), ["lifecycle init Asleep", "lifecycle enable"])
-        await ed.call("set_runtime_property", entity="OffHost", component="script", property="scripts[0].enabled", value=True)
+        # update_script_entry in Play: enabled only, on the running GameObject
+        await ed.check_error("update_script_entry", entity="OffHost", move_to=0, contains="only enabled")
+        updated = await ed.call("update_script_entry", entity="OffHost", enabled=True)
+        ed.check_eq(updated["scripts"][0]["enabled"], True)
         await ed.call("wait", frames=1)
         ed.check_eq(lifecycle_lines(await ed.console_since()), ["lifecycle enable", "lifecycle start", "lifecycle start"])
     finally:

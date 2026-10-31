@@ -182,6 +182,27 @@ Entity UISystem::findPointerHandler(Entity from, ScriptMessage m) const{
     return NULL_ENTITY;
 }
 
+// ExecuteEvents.ExecuteHierarchy: sent from the element up until a GameObject handles it (an
+// on-screen control for the control messages, or a script whose method ran: a C++ script that
+// does not override it is passed, ScriptMessages tells); the handler, or NULL_ENTITY
+Entity UISystem::executeHierarchy(int pointerId, Entity from, ScriptMessage m,
+                                  const std::function<void(PointerEventData&)>& adjust){
+    for (Entity current = from; current != NULL_ENTITY && scene->isEntityCreated(current);){
+        const Entity handler = findPointerHandler(current, m);
+        if (handler == NULL_ENTITY)
+            return NULL_ENTITY;
+        UIPointerState* state = findPointer(pointerId);
+        if (!state)
+            return NULL_ENTITY;
+        const bool control = controlTakesPointers(handler, scene->getSignature(handler));
+        if (sendPointerMessage(*state, handler, m, adjust) || control)
+            return handler;
+        const Transform* transform = scene->findComponent<Transform>(handler);
+        current = transform ? transform->parent : NULL_ENTITY;
+    }
+    return NULL_ENTITY;
+}
+
 bool UISystem::sendPointerMessage(UIPointerState& state, Entity target, ScriptMessage m,
                                   const std::function<void(PointerEventData&)>& adjust){
     if (target == NULL_ENTITY || !scene->isEntityCreated(target))
@@ -875,13 +896,11 @@ bool UISystem::eventOnPointerDown(int pointerId, int button, float x, float y, b
     // Unity's ProcessPress: the down handler is pointerPress (else the click handler), the drag
     // handler gets onInitializePotentialDrag
     state->rawPress = hit;
-    Entity downHandler = findPointerHandler(hit, ScriptMessage::PointerDown);
-    if (downHandler != NULL_ENTITY){
-        sendPointerMessage(*state, downHandler, ScriptMessage::PointerDown);
-        state = findPointer(pointerId);
-        if (!state)
-            return true;
-    }else{
+    Entity downHandler = executeHierarchy(pointerId, hit, ScriptMessage::PointerDown);
+    state = findPointer(pointerId);
+    if (!state)
+        return true;
+    if (downHandler == NULL_ENTITY){
         downHandler = findPointerHandler(hit, ScriptMessage::PointerClick);
     }
 
@@ -1144,12 +1163,9 @@ void UISystem::endPress(int pointerId, bool released){
 
     if (state->drag != NULL_ENTITY && state->dragging){
         if (released){
-            const Entity dropHandler = findPointerHandler(hit, ScriptMessage::Drop);
-            if (dropHandler != NULL_ENTITY){
-                sendPointerMessage(*state, dropHandler, ScriptMessage::Drop);
-                state = findPointer(pointerId);
-                if (!state) return;
-            }
+            executeHierarchy(pointerId, hit, ScriptMessage::Drop);
+            state = findPointer(pointerId);
+            if (!state) return;
         }
         sendPointerMessage(*state, state->drag, ScriptMessage::EndDrag, canceled);
         state = findPointer(pointerId);
@@ -1217,12 +1233,8 @@ bool UISystem::eventOnScroll(float dx, float dy){
     UIPointerState* state = findPointer(-1);
     if (!state)
         return false;
-    const Entity handler = findPointerHandler(state->hit, ScriptMessage::Scroll);
-    if (handler == NULL_ENTITY)
-        return false;
-
-    const bool called = sendPointerMessage(*state, handler, ScriptMessage::Scroll,
-        [dx, dy](PointerEventData& data){ data.scrollDelta = Vector2(dx, dy); });
+    const bool called = executeHierarchy(-1, state->hit, ScriptMessage::Scroll,
+        [dx, dy](PointerEventData& data){ data.scrollDelta = Vector2(dx, dy); }) != NULL_ENTITY;
     return called;
 }
 

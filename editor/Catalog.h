@@ -75,9 +75,13 @@ namespace jasperengine::editor{
         UpdateFlags_AnimationPlayer_Reload = (uint64_t)1 << 42,
         // a Vertex Animator's animation changed: load it again (the fade is kept >= 0)
         UpdateFlags_VertexAnimator_Reload = (uint64_t)1 << 43,
+        // a 2D joint's motor, spring, limit or break field: applied to the live joint, no rebuild
+        UpdateFlags_Joint2D_Params      = (uint64_t)1 << 44,
+        // a Rigidbody 2D's gravity scale, damping, mass...: applied to the live body, no rebuild
+        UpdateFlags_Rigidbody2D_Params  = (uint64_t)1 << 45,
         // a script entry's enabled flag (or the list) changed: while the scene's scripts run,
         // onEnable / onDisable as due (ScriptRuntime::refreshEntity)
-        UpdateFlags_Script_Enabled      = (uint64_t)1 << 44,
+        UpdateFlags_Script_Enabled      = (uint64_t)1 << 46,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -440,6 +444,11 @@ namespace jasperengine::editor{
                     return scene->isPhysicsInterpolation();
                 }
             }
+            else if (propertyName == "physics_2d_sub_steps") {
+                if constexpr (std::is_same_v<T, int>) {
+                    return scene->getPhysics2DSubSteps();
+                }
+            }
             else if (propertyName == "light_state") {
                 if constexpr (std::is_same_v<T, LightState>) {
                     return scene->getLightState();
@@ -646,6 +655,9 @@ namespace jasperengine::editor{
             else if (propertyName == "physics_interpolation") {
                 if constexpr (std::is_same_v<T, bool>) return d.physicsInterpolation;
             }
+            else if (propertyName == "physics_2d_sub_steps") {
+                if constexpr (std::is_same_v<T, int>) return d.physics2DSubSteps;
+            }
             else if (propertyName == "light_state") {
                 if constexpr (std::is_same_v<T, LightState>) return d.lightState;
             }
@@ -804,6 +816,11 @@ namespace jasperengine::editor{
             else if (propertyName == "physics_interpolation") {
                 if constexpr (std::is_same_v<T, bool>) {
                     scene->setPhysicsInterpolation(value);
+                }
+            }
+            else if (propertyName == "physics_2d_sub_steps") {
+                if constexpr (std::is_same_v<T, int>) {
+                    scene->setPhysics2DSubSteps(value);
                 }
             }
             else if (propertyName == "light_state") {

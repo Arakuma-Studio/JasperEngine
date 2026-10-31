@@ -5,6 +5,7 @@
 #include "EntityRegistry.h"
 #include "Scene.h"
 #include "subsystem/MeshSystem.h"
+#include "physics/PhysicsMaterial.h"
 #include "render/BufferRender.h"
 #include "render/ObjectRender.h"
 #include "render/CameraRender.h"
@@ -639,11 +640,18 @@ void prepare<TilemapComponent>(TilemapComponent& tilemap, Entity, CloneContext&)
 
 #ifdef JASPERENGINE_PHYSICS_2D
 template<>
-void prepare<Rigidbody2DComponent>(Rigidbody2DComponent& body, Entity, CloneContext&) {
+void prepare<Rigidbody2DComponent>(Rigidbody2DComponent& body, Entity, CloneContext& ctx) {
     body.body = b2_nullBodyId;
-    for (size_t i = 0; i < body.numColliders && i < body.colliders.size(); i++) {
-        body.colliders[i].shape = b2_nullShapeId;
-        body.colliders[i].chain = b2_nullChainId;
+    for (Collider2D& collider : body.colliders) {
+        collider.shapes.clear();
+        collider.chain = b2_nullChainId;
+        collider.dirty = true;
+        collider.receiver = ctx.remap(collider.receiver);
+        // a collider's own material copy (setColliderFriction on a material): the clone gets
+        // its own copy of it, with the same values; a script's shared PhysicsMaterial stays shared
+        if (collider.ownsMaterialInstance && collider.materialInstance) {
+            collider.materialInstance = std::make_shared<PhysicsMaterialRuntime>(collider.materialInstance->toData(), std::string());
+        }
     }
     body.needReloadBody = true;
     body.needUpdateColliders = true;
@@ -656,6 +664,10 @@ void prepare<Joint2DComponent>(Joint2DComponent& joint, Entity, CloneContext& ct
     joint.bodyA = ctx.remap(joint.bodyA);
     joint.bodyB = ctx.remap(joint.bodyB);
     joint.needUpdateJoint = true;
+    joint.needApplyParameters = false;
+    joint.broken = false;
+    joint.breakArmed = true;
+    joint.loadFailed = false;
 }
 #endif
 

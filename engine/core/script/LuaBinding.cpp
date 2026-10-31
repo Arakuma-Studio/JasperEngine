@@ -490,7 +490,7 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
     if (luabridge::isInstance<ScriptEvent>(L, eventIndex)) {
         auto event = luabridge::get<ScriptEvent*>(L, eventIndex);
         if (event && event.value()) {
-            event.value()->addTagged(L, lua_tostring(L, tagIndex), closureIndex, guardActive ? 0 : selfIndex);
+            event.value()->addTagged(L, eventIndex, lua_tostring(L, tagIndex), closureIndex, guardActive ? 0 : selfIndex);
             return 0;
         }
     }
@@ -957,10 +957,8 @@ void LuaBinding::clearLoadedProjectModules() {
 }
 
 namespace {
-    // registry keys: the methods every script instance has, and the GameObject wrapper each
-    // instance's `gameObject` gives (weak keys: it goes with the instance)
+    // registry key: the methods every script instance has
     const char* const SCRIPT_INSTANCE_BASE = "jasperengine.ScriptInstanceBase";
-    const char* const SCRIPT_GAME_OBJECTS = "jasperengine.scriptGameObjects";
 
     bool isReservedMember(const char* key) {
         return std::strcmp(key, "enabled") == 0 || std::strcmp(key, "isActiveAndEnabled") == 0 ||
@@ -1026,70 +1024,93 @@ bool LuaBinding::pushScriptInstance(lua_State* L, const ScriptEntry& entry) {
     return true;
 }
 
-void LuaBinding::pushInstanceProperty(lua_State* L, int selfIndex, const char* key) {
-    selfIndex = lua_absindex(L, selfIndex);
-    Scene* scene = nullptr;
-    Entity entity = NULL_ENTITY;
-    ScriptEntry* entry = instanceEntry(L, selfIndex, scene, entity);
-    if (std::strcmp(key, "enabled") == 0) {
-        lua_pushboolean(L, entry && entry->enabled);
-        return;
+namespace {
+    int getFieldUnprotected(lua_State* L) {
+        lua_gettable(L, 1);
+        return 1;
     }
-    if (std::strcmp(key, "isActiveAndEnabled") == 0) {
-        const ScriptState* state = entry ? ScriptRuntime::getState(entry->instance) : nullptr;
-        lua_pushboolean(L, entry && entry->enabled && !(state && state->destroyed) && scene->isEntityActiveInHierarchy(entity));
-        return;
-    }
-    // gameObject: one wrapper per instance, made again when the instance's GameObject changed
-    if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity)) {
-        lua_pushnil(L);
-        return;
-    }
-    if (lua_getfield(L, LUA_REGISTRYINDEX, SCRIPT_GAME_OBJECTS) != LUA_TTABLE) {
+
+    // the GameObject wrapper of the members table at `members`, made again when the
+    // instance's GameObject is another one (a move to another scene)
+    void syncGameObject(lua_State* L, int members, Scene* scene, Entity entity) {
+        lua_pushstring(L, "gameObject");
+        lua_rawget(L, members);
+        if (luabridge::isInstance<GameObject>(L, -1)) {
+            auto cached = luabridge::get<GameObject*>(L, -1);
+            if (cached && cached.value() && cached.value()->getScene() == scene && cached.value()->getEntity() == entity) {
+                lua_pop(L, 1);
+                return;
+            }
+        }
         lua_pop(L, 1);
-        lua_newtable(L);
-        lua_newtable(L);
-        lua_pushstring(L, "k");
-        lua_setfield(L, -2, "__mode");
-        lua_setmetatable(L, -2);
-        lua_pushvalue(L, -1);
-        lua_setfield(L, LUA_REGISTRYINDEX, SCRIPT_GAME_OBJECTS);
+        lua_pushstring(L, "gameObject");
+        if (!scene || entity == NULL_ENTITY || !luabridge::push<GameObject>(L, GameObject(scene, entity))) {
+            lua_pushnil(L);
+        }
+        lua_rawset(L, members);
     }
-    const int cache = lua_gettop(L);
-    lua_pushvalue(L, selfIndex);
-    lua_rawget(L, cache);
-    if (luabridge::isInstance<GameObject>(L, -1)) {
-        auto cached = luabridge::get<GameObject*>(L, -1);
-        if (cached && cached.value() && cached.value()->getScene() == scene && cached.value()->getEntity() == entity) {
-            lua_remove(L, cache);
+
+    // pushes the members table of the instance at `index` (nil when it has none)
+    void pushMembers(lua_State* L, int index) {
+        if (!lua_getmetatable(L, index)) {
+            lua_pushnil(L);
             return;
         }
+        lua_pushstring(L, "__members");
+        lua_rawget(L, -2);
+        lua_remove(L, -2);
     }
-    lua_pop(L, 1);
-    if (!luabridge::push<GameObject>(L, GameObject(scene, entity))) {
-        lua_pop(L, 1);
-        lua_pushnil(L);
-        lua_remove(L, cache);
-        return;
-    }
-    lua_pushvalue(L, selfIndex);
-    lua_pushvalue(L, -2);
-    lua_rawset(L, cache);
-    lua_remove(L, cache);
 }
 
-// __index of a script instance (upvalue 1: its class, the module table): the members every
-// instance has, then the class (and what it inherits), then ScriptInstanceBase
-int LuaBinding::luaInstanceIndex(lua_State* L) {
-    if (lua_type(L, 2) == LUA_TSTRING) {
-        const char* key = lua_tostring(L, 2);
-        if (isReservedMember(key)) {
-            pushInstanceProperty(L, 1, key);
-            return 1;
+bool LuaBinding::protectedGetField(lua_State* L, int index, const char* key) {
+    index = lua_absindex(L, index);
+    lua_pushcfunction(L, getFieldUnprotected);
+    lua_pushvalue(L, index);
+    lua_pushstring(L, key);
+    if (lua_pcall(L, 2, 1, 0) != LUA_OK) {
+        lua_pop(L, 1);
+        lua_pushnil(L);
+        return false;
+    }
+    return true;
+}
+
+void LuaBinding::syncScriptMembers(Scene* scene, Entity entity, const ScriptEntry& entry, bool activeAndEnabled) {
+    lua_State* L = luastate;
+    if (!L || entry.type != ScriptType::LUA || !entry.instance) {
+        return;
+    }
+    const int top = lua_gettop(L);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, static_cast<int>(reinterpret_cast<intptr_t>(entry.instance)));
+    if (lua_istable(L, -1)) {
+        pushMembers(L, -1);
+        if (lua_istable(L, -1)) {
+            const int members = lua_gettop(L);
+            lua_pushstring(L, "enabled");
+            lua_pushboolean(L, entry.enabled);
+            lua_rawset(L, members);
+            lua_pushstring(L, "isActiveAndEnabled");
+            lua_pushboolean(L, activeAndEnabled);
+            lua_rawset(L, members);
+            syncGameObject(L, members, scene, entity);
         }
     }
+    lua_settop(L, top);
+}
+
+// __index of an instance whose class (the module, upvalue 1) has a metatable of its own (it
+// inherits, or is strict) or is shared with other instances: the engine members (upvalue 2),
+// the class's own fields, ScriptInstanceBase, then what the class inherits. A plain class needs
+// none of this: it holds the members and methods itself, the instance's __index is the class.
+int LuaBinding::luaInstanceIndex(lua_State* L) {
     lua_pushvalue(L, 2);
-    lua_gettable(L, lua_upvalueindex(1));
+    lua_rawget(L, lua_upvalueindex(2));
+    if (!lua_isnil(L, -1)) {
+        return 1;
+    }
+    lua_pop(L, 1);
+    lua_pushvalue(L, 2);
+    lua_rawget(L, lua_upvalueindex(1));
     if (!lua_isnil(L, -1)) {
         return 1;
     }
@@ -1097,6 +1118,12 @@ int LuaBinding::luaInstanceIndex(lua_State* L) {
     pushScriptInstanceBase(L);
     lua_pushvalue(L, 2);
     lua_rawget(L, -2);
+    if (!lua_isnil(L, -1)) {
+        return 1;
+    }
+    lua_pop(L, 2);
+    lua_pushvalue(L, 2);
+    lua_gettable(L, lua_upvalueindex(1));
     return 1;
 }
 
@@ -1220,15 +1247,88 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
         lua_setfield(L, -2, prop.name.c_str());
     }
 
-    // Methods come from the class (the module) and, after it, ScriptInstanceBase; enabled,
-    // isActiveAndEnabled and gameObject are answered by the engine
+    // the class may not define the engine's members either (a class another instance already
+    // holds them in is shared: below)
+    lua_pushstring(L, "__scriptInstanceClass");
+    lua_rawget(L, moduleIndex);
+    const bool sharedClass = !lua_isnil(L, -1);
+    lua_pop(L, 1);
+    for (const char* reserved : {"enabled", "isActiveAndEnabled", "gameObject"}) {
+        if (sharedClass) break;
+        lua_pushstring(L, reserved);
+        lua_rawget(L, moduleIndex);
+        const bool defined = !lua_isnil(L, -1);
+        lua_pop(L, 1);
+        if (defined) {
+            Log::error("Lua script '%s': its table defines '%s', a member every script has (enabled, isActiveAndEnabled, "
+                       "gameObject); rename it. The script does not run.", scriptEntry.className.c_str(), reserved);
+            lua_pop(L, 2);
+            return false;
+        }
+    }
+
+    // The engine's members of this instance (enabled, isActiveAndEnabled, gameObject: kept
+    // current by ScriptRuntime, syncScriptMembers) and ScriptInstanceBase's methods. The class
+    // (the module) is one per instance (its chunk runs per instance): a plain one holds them
+    // itself, so every lookup on self stays one table hop (instance -> class), as before. A
+    // class with a metatable of its own (inheritance, a strict __index), or one shared by
+    // several instances, keeps its chain: the members go to a table of their own, asked by a
+    // closure.
+    lua_pushstring(L, "__scriptInstanceClass");
+    lua_rawget(L, moduleIndex);
+    const bool shared = !lua_isnil(L, -1);
+    lua_pop(L, 1);
+    const bool plainModule = !shared && !lua_getmetatable(L, moduleIndex);
+    if (!plainModule && !shared) {
+        lua_pop(L, 1);
+    }
+    if (plainModule) {
+        lua_pushvalue(L, moduleIndex);
+        lua_pushstring(L, "__scriptInstanceClass");
+        lua_pushboolean(L, 1);
+        lua_rawset(L, moduleIndex);
+        // ScriptInstanceBase's methods the class does not define itself
+        pushScriptInstanceBase(L);
+        lua_pushnil(L);
+        while (lua_next(L, -2) != 0) {
+            lua_pushvalue(L, -2);
+            lua_rawget(L, moduleIndex);
+            const bool own = !lua_isnil(L, -1);
+            lua_pop(L, 1);
+            if (!own) {
+                lua_pushvalue(L, -2);
+                lua_insert(L, -2);
+                lua_rawset(L, moduleIndex);
+            } else {
+                lua_pop(L, 1);
+            }
+        }
+        lua_pop(L, 1);
+    } else {
+        lua_newtable(L);
+    }
+    const int membersIndex = lua_gettop(L);
+    lua_pushboolean(L, scriptEntry.enabled);
+    lua_setfield(L, membersIndex, "enabled");
+    lua_pushboolean(L, scriptEntry.enabled && scene->isEntityCreated(entity) && scene->isEntityActiveInHierarchy(entity));
+    lua_setfield(L, membersIndex, "isActiveAndEnabled");
+    syncGameObject(L, membersIndex, scene, entity);
+
     lua_newtable(L);
-    lua_pushvalue(L, moduleIndex);
-    lua_pushcclosure(L, luaInstanceIndex, 1);
+    if (plainModule) {
+        lua_pushvalue(L, moduleIndex);
+    } else {
+        lua_pushvalue(L, moduleIndex);
+        lua_pushvalue(L, membersIndex);
+        lua_pushcclosure(L, luaInstanceIndex, 2);
+    }
     lua_setfield(L, -2, "__index");
     lua_pushcfunction(L, luaInstanceNewIndex);
     lua_setfield(L, -2, "__newindex");
-    lua_setmetatable(L, -2);
+    lua_pushvalue(L, membersIndex);
+    lua_setfield(L, -2, "__members");
+    lua_setmetatable(L, -3);
+    lua_pop(L, 1); // members
 
     int ref = luaL_ref(L, LUA_REGISTRYINDEX);
     scriptEntry.instance = reinterpret_cast<void*>(static_cast<intptr_t>(ref));
@@ -1255,8 +1355,8 @@ bool LuaBinding::pushScriptObject(lua_State* L, Scene* scene, Entity entity, con
     // enabled or not (Unity: a reference to a disabled component is still that component)
     if (ScriptComponent* scriptComp = scene->findComponent<ScriptComponent>(entity)) {
         for (auto& script : scriptComp->scripts) {
-            const ScriptState* state = ScriptRuntime::getState(script.instance);
-            if (script.type == ScriptType::LUA && script.instance && !(state && state->destroyed) &&
+            // until it is released (onDestroy still finds it, as Unity's components)
+            if (script.type == ScriptType::LUA && script.instance &&
                     (className.empty() || script.className == className)) {
                 lua_rawgeti(L, LUA_REGISTRYINDEX, static_cast<int>(reinterpret_cast<intptr_t>(script.instance)));
                 return true;
@@ -1314,7 +1414,18 @@ void LuaBinding::releaseLuaScriptInstance(Scene* scene, ScriptEntry& scriptEntry
             lua_pushstring(luastate, "__released");
             lua_pushboolean(luastate, 1);
             lua_rawset(luastate, -3);
+            pushMembers(luastate, -1);
+            if (lua_istable(luastate, -1)) {
+                lua_pushboolean(luastate, 0);
+                lua_setfield(luastate, -2, "enabled");
+                lua_pushboolean(luastate, 0);
+                lua_setfield(luastate, -2, "isActiveAndEnabled");
+            }
+            lua_pop(luastate, 1);
+            // D4's notes of the instance (ui-multitouch): its table address can be reused
             ScriptMessages::forgetLegacySubscriptions(lua_topointer(luastate, -1));
+            // the Event listeners it owns go now, so nothing keeps it alive
+            ScriptEvent::releaseOwner(luastate, -1);
         }
         lua_pop(luastate, 1);
     }

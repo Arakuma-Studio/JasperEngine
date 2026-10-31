@@ -162,7 +162,9 @@ namespace jasperengine{
         // ExecuteEvents.GetEventHandler: scripts defining the message, or a built-in receiver (the
         // on-screen controls take down, drag and up)
         Entity findPointerHandler(Entity from, ScriptMessage m) const;
-        // ExecuteEvents.Execute: the scripts of `target`; returns whether any defines it
+        Entity executeHierarchy(int pointerId, Entity from, ScriptMessage m,
+                                const std::function<void(PointerEventData&)>& adjust = nullptr);
+        // ExecuteEvents.Execute: the scripts of `target`; returns whether any handled it
         bool sendPointerMessage(UIPointerState& state, Entity target, ScriptMessage m,
                                 const std::function<void(PointerEventData&)>& adjust = nullptr);
         void updateEnterChain(UIPointerState& state, Entity newHit);

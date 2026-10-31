@@ -40,7 +40,7 @@ namespace jasperengine::editor{
         void applyZoomProjection();
         void updateGridLines();
         void addPointHandle(LineRenderer* linesObj, const Vector3& worldPoint, float halfSize, const Vector4& color);
-        void createOrUpdateBodyLines(Entity entity, const Transform& transform, const Rigidbody2DComponent& body, bool visible, bool highlighted);
+        void createOrUpdateBodyLines(Entity entity, const Transform& transform, Rigidbody2DComponent& body, bool visible, bool highlighted);
         void createOrUpdateJointLines(Entity entity, const Joint2DComponent& joint, bool visible, bool highlighted);
         void createOrUpdateLight2DLines(Entity entity, const Transform& transform, const Light2DComponent& light, bool visible, bool highlighted);
         void createOrUpdateStickLines(Entity entity, const OnScreenStickComponent& stick, bool visible);
