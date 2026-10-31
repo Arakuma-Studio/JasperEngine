@@ -12004,21 +12004,40 @@ static bool isMeshShaderUnavailable(const MeshComponent& mesh){
 void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
     loaded = 0;
     total = 0;
-
-    auto count = [&](bool isLoaded){
+    forEachLoad([&](bool isLoaded, Entity, const char*){
         total++;
         if (isLoaded)
             loaded++;
-    };
+    });
+}
+
+std::vector<std::string> RenderSystem::describeNotLoaded() const{
+    std::vector<std::string> out;
+    forEachLoad([&](bool isLoaded, Entity entity, const char* what){
+        if (isLoaded) return;
+        const std::string name = entity == NULL_ENTITY ? std::string("scene") : scene->getEntityName(entity);
+        out.push_back((name.empty() ? "entity " + std::to_string(entity) : name) + " (" + what + ")");
+    });
+    return out;
+}
+
+void RenderSystem::forEachLoad(const std::function<void(bool, Entity, const char*)>& visit) const{
 
     // Check MeshComponents
     auto meshes = scene->getComponentArray<MeshComponent>();
     for (int i = 0; i < meshes->size(); i++) {
         const MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        const Entity entity = meshes->getEntity(i);
+        // nothing to load: no geometry, and no model (or its load is over: a missing or broken
+        // file leaves the mesh empty for good). Not pending, as an empty UI or Lines is not; a
+        // model still loading, or geometry that arrives later, is waited for (loadMesh runs then)
+        const ModelComponent* model = scene->findComponent<ModelComponent>(entity);
+        const bool nothingToLoad = !mesh.loaded && mesh.buffer.getSize() == 0 && mesh.indices.getSize() == 0 &&
+                                   mesh.numExternalBuffers == 0 && (!model || !model->needUpdateModel);
         // a mesh drawing its previous variant while the new one builds is still loading; one
         // whose load found a GPU pool full has failed (not drawn, nothing to wait for)
-        count((mesh.loaded && !mesh.needVariantReload) || mesh.loadFailed || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)) ||
-              scene->findComponent<SplineExtrudeComponent>(meshes->getEntity(i)) != nullptr);
+        visit((mesh.loaded && !mesh.needVariantReload) || mesh.loadFailed || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)) ||
+              nothingToLoad || scene->findComponent<SplineExtrudeComponent>(entity) != nullptr, entity, "mesh");
     }
 
     // Check UIComponents
@@ -12029,14 +12048,16 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
         const size_t uiBufferSize = std::max(ui.buffer.getSize(),
                                              (size_t)ui.minBufferCount * ui.buffer.getStride());
         if (uiBufferSize > 0)
-            count(ui.loaded || (!ui.loadCalled && isShaderUnavailable(ui.shader, ShaderType::UI, ui.shaderProperties, ui.customShaderId)));
+            visit(ui.loaded || (!ui.loadCalled && isShaderUnavailable(ui.shader, ShaderType::UI, ui.shaderProperties, ui.customShaderId)),
+                  uis->getEntity(i), "ui");
     }
 
     // Check PointsComponents
     auto pointsArray = scene->getComponentArray<PointsComponent>();
     for (int i = 0; i < pointsArray->size(); i++) {
         const PointsComponent& points = pointsArray->getComponentFromIndex(i);
-        count(points.loaded || (!points.loadCalled && isShaderUnavailable(points.shader, ShaderType::POINTS, points.shaderProperties, points.customShaderId)));
+        visit(points.loaded || (!points.loadCalled && isShaderUnavailable(points.shader, ShaderType::POINTS, points.shaderProperties, points.customShaderId)),
+              pointsArray->getEntity(i), "points");
     }
 
     // particle systems with an effect (one that cannot be read never loads)
@@ -12044,7 +12065,7 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
     for (size_t i = 0; i < particleArray->size(); i++) {
         const ParticleSystemComponent& particles = particleArray->getComponentFromIndex(i);
         if (particles.enabled && particles.state && particles.state->effect)
-            count(particles.state->render.loaded);
+            visit(particles.state->render.loaded, particleArray->getEntity(i), "particles");
     }
 
     // Check LineRendererComponents
@@ -12053,7 +12074,8 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
         const LineRendererComponent& lines = linesArray->getComponentFromIndex(i);
         // An empty Lines never loads: addLine() only sets needReload when maxLines grows.
         if (!lines.lines.empty())
-            count(lines.loaded || (!lines.loadCalled && isShaderUnavailable(lines.shader, ShaderType::LINES, lines.shaderProperties, lines.customShaderId)));
+            visit(lines.loaded || (!lines.loadCalled && isShaderUnavailable(lines.shader, ShaderType::LINES, lines.shaderProperties, lines.customShaderId)),
+                  linesArray->getEntity(i), "lines");
     }
 
     // Check the SkyboxComponent: only the first is drawn (and loaded), so another one would
@@ -12061,11 +12083,12 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
     auto skyArray = scene->getComponentArray<SkyboxComponent>();
     if (skyArray->size() > 0) {
         const SkyboxComponent& sky = skyArray->getComponentFromIndex(0);
-        count(sky.loaded || (!sky.loadCalled && isShaderUnavailable(sky.shader, ShaderType::SKYBOX, sky.shaderProperties, sky.customShaderId)));
+        visit(sky.loaded || (!sky.loadCalled && isShaderUnavailable(sky.shader, ShaderType::SKYBOX, sky.shaderProperties, sky.customShaderId)),
+              skyArray->getEntity(0), "skybox");
     }
 
     // the atmosphere's passes (their shaders, the clouds' noise bake)
-    count(!atmosphere.isLoading());
+    visit(!atmosphere.isLoading(), NULL_ENTITY, "atmosphere");
 }
 
 void RenderSystem::updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix, Plane* frustumPlanes){

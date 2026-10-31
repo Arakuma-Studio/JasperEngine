@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "JasperEngineApple.h"
+#include "PlatformConfig.h"
 
 #include "Engine.h"
 #include "Log.h"
@@ -258,6 +259,9 @@ void JasperEngineApple::quit(){
 }
 
 std::string JasperEngineApple::getAssetPath(){
+    // a prebuilt player's content root (its bundle's Content/, or --content)
+    if (!jasperengine::platformConfig().contentRoot.empty())
+        return jasperengine::platformConfig().contentRoot + "/assets";
     NSString* path = [[NSBundle mainBundle] pathForResource:@"assets" ofType:nil];
 
     if (!path){
@@ -309,6 +313,8 @@ std::string JasperEngineApple::getCachePath(){
 }
 
 std::string JasperEngineApple::getLuaPath(){
+    if (!jasperengine::platformConfig().contentRoot.empty())
+        return jasperengine::platformConfig().contentRoot + "/lua";
     NSString* path = [[NSBundle mainBundle] pathForResource:@"lua" ofType:nil];
 
     if (!path){
@@ -323,6 +329,8 @@ std::string JasperEngineApple::getLuaPath(){
 }
 
 std::string JasperEngineApple::getShaderPath(){
+    if (!jasperengine::platformConfig().contentRoot.empty())
+        return System::getShaderPath();
     NSString* path = [[NSBundle mainBundle] pathForResource:@"shaders" ofType:nil];
 
     if (!path){

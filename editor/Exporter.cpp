@@ -757,6 +757,16 @@ bool editor::Exporter::generateShaders(const ExportConfig& cfg) {
 }
 
 void editor::Exporter::runExport() {
+    // a player for a target: prebuilt, or this export's Desktop/Web build (S30 D1)
+    if (project && config.mode == ExportMode::Player) {
+        if (config.method == BuildMethod::Auto) {
+            BuildMethod saved = BuildMethod::Auto;
+            if (parseBuildMethod(project->getBuildMethod(), saved)) config.method = saved;
+        }
+        config.packNativeResources = config.packNativeResources || project->isPackContent();
+        runPlayerBuild();
+        return;
+    }
     const bool shaderGenerationOnly = (project == nullptr);
     if (project && config.mode == ExportMode::Web)
         config.webMultithreaded = config.webMultithreaded || project->getThreadingSettings().webMultithreaded;
@@ -861,7 +871,7 @@ void editor::Exporter::runExport() {
         setProgressRaw("Build complete", 1.0f);
         {
             std::lock_guard<std::mutex> lock(progressMutex);
-            progress.finished = true;
+            if (!holdFinish) progress.finished = true;
         }
         Out::info("Build completed: %s", config.destinationDir.string().c_str());
         return;
@@ -872,7 +882,7 @@ void editor::Exporter::runExport() {
     setProgress("Build complete", 1.0f);
     {
         std::lock_guard<std::mutex> lock(progressMutex);
-        progress.finished = true;
+        if (!holdFinish) progress.finished = true;
     }
     Out::info("Build completed: %s", config.targetDir.string().c_str());
 }
@@ -1673,55 +1683,16 @@ bool editor::Exporter::collectWebArtifacts() {
 
 namespace {
 
-    // Our own cross-origin isolation service worker: a static host that sends no COOP/COEP
-    // headers still gets an isolated page (needed for SharedArrayBuffer, so for threads) after
-    // one reload. It adds the headers to every same-origin response it serves.
-    const char* const COI_SERVICE_WORKER = R"js(// Cross-origin isolation for the multithreaded web player (JasperEngine export).
-// Adds Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy to the responses of this
-// origin, so browsers allow SharedArrayBuffer on hosts that cannot send those headers.
-self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
-self.addEventListener("fetch", (event) => {
-    const request = event.request;
-    if (request.cache === "only-if-cached" && request.mode !== "same-origin") return;
-    event.respondWith(fetch(request).then((response) => {
-        if (response.status === 0) return response;
-        const headers = new Headers(response.headers);
-        headers.set("Cross-Origin-Embedder-Policy", "require-corp");
-        headers.set("Cross-Origin-Opener-Policy", "same-origin");
-        headers.set("Cross-Origin-Resource-Policy", "same-origin");
-        return new Response(response.body, {status: response.status, statusText: response.statusText, headers});
-    }).catch((error) => { console.error(error); throw error; }));
-});
-)js";
-
-    // Picks the player: the pthreads build when the page is cross-origin isolated, else the
-    // single-thread one. Without isolation it registers the service worker above and reloads
-    // once (some hosts then serve an isolated page).
-    std::string webPlayerLoader(const std::string& app) {
-        return std::string(R"js(<script>
-(function () {
-    var isolated = self.crossOriginIsolated === true;
-    if (!isolated && window.isSecureContext && "serviceWorker" in navigator && !sessionStorage.getItem("jasperengine-coi-reload")) {
-        navigator.serviceWorker.register("coi-serviceworker.js").then(function (registration) {
-            if (!navigator.serviceWorker.controller) {
-                sessionStorage.setItem("jasperengine-coi-reload", "1");
-                window.location.reload();
-            }
-        }).catch(function (error) { console.warn("coi-serviceworker: " + error); });
-    }
-    var threads = isolated && typeof SharedArrayBuffer !== "undefined";
-    console.log("crossOriginIsolated=" + isolated + " threads=" + threads);
-    var base = threads ? "threads/" : "";
-    window.Module = window.Module || {};
-    var locate = Module.locateFile;
-    Module.locateFile = function (path, prefix) { return locate ? locate(base + path, prefix) : base + path; };
-    var script = document.createElement("script");
-    script.async = true;
-    script.src = base + ")js") + app + R"js(.js";
-    document.body.appendChild(script);
-})();
-</script>)js";
+    // S06's cross-origin isolation service worker and the loader that picks the single-thread or
+    // the pthreads player: engine/platform/emscripten/web/, shared with the prebuilt web player
+    bool readWebTemplate(const fs::path& targetDir, const char* name, std::string& out) {
+        std::error_code ec;
+        fs::path path = targetDir / "platform" / "emscripten" / "web" / name;
+        if (!fs::is_regular_file(path, ec)) path = editor::FileUtils::getEngineDir() / "platform" / "emscripten" / "web" / name;
+        std::ifstream in(path, std::ios::binary);
+        if (!in) return false;
+        out.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        return true;
     }
 
 }
@@ -1758,9 +1729,16 @@ bool editor::Exporter::collectWebThreadsArtifacts() {
         }
     }
 
-    if (!FileUtils::writeIfChanged(config.destinationDir / "coi-serviceworker.js", COI_SERVICE_WORKER)) {
-        setError("Failed to write coi-serviceworker.js");
-        return false;
+    for (const char* name : {"coi-serviceworker.js", "player-loader.js"}) {
+        std::string text;
+        if (!readWebTemplate(config.targetDir, name, text)) {
+            setError(std::string("The engine has no platform/emscripten/web/") + name);
+            return false;
+        }
+        if (!FileUtils::writeIfChanged(config.destinationDir / name, text)) {
+            setError(std::string("Failed to write ") + name);
+            return false;
+        }
     }
     // what hosts that read a _headers file (and the dev server) send for isolation
     FileUtils::writeIfChanged(config.destinationDir / "_headers",
@@ -1781,7 +1759,8 @@ bool editor::Exporter::collectWebThreadsArtifacts() {
         setError("The web page does not load " + appName + ".js with a <script src>; the multithreaded build cannot be wired in (custom HTML shell?)");
         return false;
     }
-    html.replace(open, close + 9 - open, webPlayerLoader(appName));
+    html.replace(open, close + 9 - open, "<script src=\"player-loader.js\" data-st=\"" + appName + ".js\" data-mt=\"threads/" + appName +
+                                             ".js\" data-worker=\"coi-serviceworker.js\"></script>");
     if (!FileUtils::writeIfChanged(page, html)) {
         setError("Failed to write " + page.string());
         return false;
@@ -1863,6 +1842,18 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 }
                 project->warnPreservedNotInBuild(sceneProject);
                 project->saveSceneToPath(sceneProject.id, sceneProject.filepath);
+            }
+
+            // S30: a prebuilt player's cooked scenes and prefabs, from the scenes as they are
+            // loaded now (the same GameObjects the generated sources describe)
+            cookedFiles.clear();
+            cookedPrefabs.clear();
+            if (imported && config.mode == ExportMode::Player) {
+                std::string cookError;
+                if (!cook::SceneCooker::cookProject(project, cookedFiles, cookedPrefabs, cookError)) {
+                    importError = "Cooking the scenes: " + cookError;
+                    imported = false;
+                }
             }
 
             // The UI Documents the build ships, checked by checkHtmlUIReferences()
@@ -2266,6 +2257,7 @@ bool editor::Exporter::cookTextures() {
     std::vector<std::string> platforms;
     if (config.mode == ExportMode::Desktop) platforms = {"linux"};
     else if (config.mode == ExportMode::Web) platforms = {"web"};
+    else if (config.mode == ExportMode::Player) platforms = {buildPlatformName(config.platform)};
     else platforms = {"windows", "linux", "macos", "ios", "android", "web"};
     const std::vector<TextureFamily> families =
         TextureCookQueue::familiesForExport(platforms, project->getTextureSettings().androidEtc2Fallback);
@@ -3193,6 +3185,10 @@ std::string editor::Exporter::buildScriptDirIncludes() const {
 }
 
 std::vector<std::pair<std::string, unsigned int>> editor::Exporter::getSceneMaxValues() const {
+    return sceneMaxValuesOf(project);
+}
+
+std::vector<std::pair<std::string, unsigned int>> editor::Exporter::sceneMaxValuesOf(const Project* project) {
     // Aggregate the per-scene maxima into a single project-wide capacity for each
     // HybridArray. SceneProject::maxValues is refreshed for every scene during
     // loadAndSaveAllScenes(), which always runs before copyEngine().
@@ -4485,8 +4481,10 @@ namespace {
 }
 
 bool editor::Exporter::writeEffectLicense() {
-    // copyEngine put the engine's shaderlib next to the export
-    const fs::path effects = config.targetDir / "shaderlib" / "effects";
+    // copyEngine put the engine's shaderlib next to the export (a prebuilt build has none: the
+    // editor's own)
+    const fs::path shaderlib = shaderlibSourceDir();
+    const fs::path effects = shaderlib / "effects";
     std::string error;
     // Every UI effect is compiled with the effects include library, which ports functions of
     // the shaders.com kit (engine/shaderlib/effects/LICENSE.shaders-com.txt lists it with the
@@ -4511,12 +4509,12 @@ bool editor::Exporter::writeEffectLicense() {
     const bool postFx = std::any_of(config.selectedShaderKeys.begin(), config.selectedShaderKeys.end(), [](ShaderKey key) {
         return ShaderPool::getShaderTypeFromKey(key) == ShaderType::BLIT && (ShaderPool::getPropertiesFromKey(key) & postFxBits) != 0;
     });
-    if (!writeNotice(postFx, config.targetDir, postFxLicensePath(), config.targetDir / "shaderlib" / "includes" / "LICENSE.post-fx.txt", error)) {
+    if (!writeNotice(postFx, config.targetDir, postFxLicensePath(), shaderlib / "includes" / "LICENSE.post-fx.txt", error)) {
         setError("The post FX notice: " + error);
         return false;
     }
     // every game links the spline module (core/spline), adapted from OpenEngine (NOTICE.md)
-    if (!writeNotice(true, config.targetDir, openEngineLicensePath(), config.targetDir / "core" / "spline" / "LICENSE.OpenEngine.txt", error)) {
+    if (!writeNotice(true, config.targetDir, openEngineLicensePath(), engineSourceDir() / "core" / "spline" / "LICENSE.OpenEngine.txt", error)) {
         setError("The OpenEngine notice: " + error);
         return false;
     }
@@ -4580,6 +4578,18 @@ std::string editor::Exporter::getCMakeGraphicBackend(::jasperengine::ShaderBacke
         case ShaderBackend::Vulkan:     return "vulkan";
         default:                        return "glcore";
     }
+}
+
+const char* editor::Exporter::androidPermissionName(const std::string& key) {
+    return androidPermissionManifestName(key);
+}
+
+std::string editor::Exporter::androidOrientationValue(AndroidOrientation orientation) {
+    return androidOrientationManifestValue(orientation);
+}
+
+std::string editor::Exporter::escapeXml(const std::string& value) {
+    return escapeXmlAttribute(value);
 }
 
 editor::EmsdkInfo editor::Exporter::detectEmsdk(const std::string& overridePath) {

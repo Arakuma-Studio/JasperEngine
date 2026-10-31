@@ -3942,6 +3942,52 @@
 		4A534E47F87D5FF11AC2A146 /* Ktx2Detail.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47979EFB31D7BE0582 /* Ktx2Detail.h */; };
 		4A534E47178DC2D457E6C7CF /* ThreadPoolManagerLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47BE01A205C9521034 /* ThreadPoolManagerLua.h */; };
 		4A534E474CAEE9AEB993E80D /* CubeLut.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476546F72D989CD289 /* CubeLut.h */; };
+		4A534E47848C83E9BB0538FE /* PlatformConfig.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47998EC0B6EC5E52BF /* PlatformConfig.cpp */; };
+		4A534E476FB86AA6BDFD0B77 /* PlatformConfig.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47998EC0B6EC5E52BF /* PlatformConfig.cpp */; };
+		4A534E4753E1C3C4EE90B458 /* ContentManifest.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476DD53ABE0816D5A0 /* ContentManifest.cpp */; };
+		4A534E47B7FB6CBCBC1D1515 /* ContentManifest.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476DD53ABE0816D5A0 /* ContentManifest.cpp */; };
+		4A534E47331FCD70A31F5BB7 /* Launch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4705BADBA0E66DC7CD /* Launch.cpp */; };
+		4A534E47CABD0CE2F1F7CF11 /* Launch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4705BADBA0E66DC7CD /* Launch.cpp */; };
+		4A534E4752B4F6A3D95A6FA2 /* LaunchOptions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A442534DD93368F9 /* LaunchOptions.cpp */; };
+		4A534E474B203BCD1226DD08 /* LaunchOptions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A442534DD93368F9 /* LaunchOptions.cpp */; };
+		4A534E47B45763FF8D78BBF7 /* PlayerConfig.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DA38129196F7DFE9 /* PlayerConfig.cpp */; };
+		4A534E47928A3751A861FAA9 /* PlayerConfig.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DA38129196F7DFE9 /* PlayerConfig.cpp */; };
+		4A534E4790E37F135F2A8819 /* RunControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474C3FBAD503D651B9 /* RunControl.cpp */; };
+		4A534E47067A6FFE1CF5AFA4 /* RunControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474C3FBAD503D651B9 /* RunControl.cpp */; };
+		4A534E479D2077BFB7F6F26C /* CookCodecs.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F90B3960454EC884 /* CookCodecs.cpp */; };
+		4A534E4742FDD611619ABAD8 /* CookCodecs.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F90B3960454EC884 /* CookCodecs.cpp */; };
+		4A534E476C44146E94A8063F /* CookedScene.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475957A2F4A8BAF144 /* CookedScene.cpp */; };
+		4A534E47B95C0F4A79E2AA9B /* CookedScene.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475957A2F4A8BAF144 /* CookedScene.cpp */; };
+		4A534E47B33347B1111BBE6C /* CookStream.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4750D707F4BC486CA2 /* CookStream.cpp */; };
+		4A534E4727712FDC174E8F8F /* CookStream.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4750D707F4BC486CA2 /* CookStream.cpp */; };
+		4A534E479C544BD3E8BEB6D3 /* ComponentHooks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479AFF1E896AB23D1D /* ComponentHooks.cpp */; };
+		4A534E47369C4A7DCB0B6316 /* ComponentHooks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479AFF1E896AB23D1D /* ComponentHooks.cpp */; };
+		4A534E472504AB00DF6A00E7 /* RuntimeFields.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476A8A23A72244173B /* RuntimeFields.cpp */; };
+		4A534E477CE153871E5BFBBA /* RuntimeFields.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476A8A23A72244173B /* RuntimeFields.cpp */; };
+		4A534E47FDCC5156D134596F /* SceneSettingsCodec.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B87937590E99AF63 /* SceneSettingsCodec.cpp */; };
+		4A534E47F12DC20262F5B282 /* SceneSettingsCodec.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B87937590E99AF63 /* SceneSettingsCodec.cpp */; };
+		4A534E47318FF282CFD36253 /* JPak.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478A53FD45D6859CB8 /* JPak.cpp */; };
+		4A534E472881AC0441EADBF9 /* JPak.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478A53FD45D6859CB8 /* JPak.cpp */; };
+		4A534E47ABD13F87F94D3E36 /* FrameReadback.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47500DFD86D792E79A /* FrameReadback.cpp */; };
+		4A534E475580527B562ECAE1 /* FrameReadback.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47500DFD86D792E79A /* FrameReadback.cpp */; };
+		4A534E47CC04771FF01717B6 /* Sha256.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47331F4EB69AA9D7BF /* Sha256.cpp */; };
+		4A534E476C5EF18475BC73B0 /* Sha256.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47331F4EB69AA9D7BF /* Sha256.cpp */; };
+		4A534E477188C51A65C11B7D /* PlatformConfig.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472E000F3F6C5FD5DB /* PlatformConfig.h */; };
+		4A534E475A9C597275C3E4BB /* JPak.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477327188402907BEC /* JPak.h */; };
+		4A534E479A258BC931183744 /* ContentManifest.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47BBC061D558A1BEAA /* ContentManifest.h */; };
+		4A534E47F446F90181305FB9 /* Launch.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4711CCFCC38C29F349 /* Launch.h */; };
+		4A534E47D8C8930C399C7C40 /* LaunchOptions.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CB6DD4DE98FB3C90 /* LaunchOptions.h */; };
+		4A534E47FC186D22BB2313BB /* PlayerConfig.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B90A7E226F42E9D1 /* PlayerConfig.h */; };
+		4A534E47A61EB369AD208C05 /* RunControl.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C484ACD2846CB3C2 /* RunControl.h */; };
+		4A534E472223184F71BA2919 /* FrameReadback.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4763FF8AC23A88D493 /* FrameReadback.h */; };
+		4A534E47C72CDFCCCC159631 /* CookCodecs.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A997AFEC31C3960E /* CookCodecs.h */; };
+		4A534E47B7113CA1B8814E55 /* CookStream.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475EE5D428009E23E6 /* CookStream.h */; };
+		4A534E4786746F883E9104F4 /* CookedScene.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473C64FD6446F94A44 /* CookedScene.h */; };
+		4A534E47D7138E3CF8FC267D /* RuntimeFields.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CB6EFCCC74058202 /* RuntimeFields.h */; };
+		4A534E4764C5EA8054CD59E3 /* SceneSettingsCodec.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476BD09887BDB2804D /* SceneSettingsCodec.h */; };
+		4A534E47F2D9EF5A4421BD30 /* CookTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473433D981FDF2CFAB /* CookTypes.h */; };
+		4A534E47344898165C223B9D /* Fnv.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471B0DE3863DB7C7D0 /* Fnv.h */; };
+		4A534E475EFA77C0D1DD2193 /* Sha256.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476F9A6EBAF26D3D14 /* Sha256.h */; };
 		4A534E47CC13C8C412DB108A /* VertexAnimatorRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CF58BA7A83C3FA66 /* VertexAnimatorRuntime.cpp */; };
 		4A534E473755AC2BABF1B73D /* VertexAnimatorRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CF58BA7A83C3FA66 /* VertexAnimatorRuntime.cpp */; };
 		4A534E4757AC3EE186286D26 /* VertexAnimation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CAF9C2B816B80C47 /* VertexAnimation.cpp */; };
@@ -4005,6 +4051,7 @@
 		4A534E47B08F761D851139AA /* Animator.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CAAFBC3B8A6B9358 /* Animator.h */; };
 		4A534E47A4AFF745E6C79336 /* AnimatorAssetPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475859F759CDED73BC /* AnimatorAssetPool.h */; };
 		4A534E4719ED4496CD61367E /* AnimatorSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C7892946585F9415 /* AnimatorSystem.h */; };
+		4A534E47285F526FD30A8918 /* CustomCodecs.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476ED3B894B5F99179 /* CustomCodecs.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -7911,6 +7958,37 @@
 		4A534E47979EFB31D7BE0582 /* Ktx2Detail.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Ktx2Detail.h; sourceTree = "<group>"; };
 		4A534E47BE01A205C9521034 /* ThreadPoolManagerLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ThreadPoolManagerLua.h; sourceTree = "<group>"; };
 		4A534E476546F72D989CD289 /* CubeLut.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CubeLut.h; sourceTree = "<group>"; };
+		4A534E47998EC0B6EC5E52BF /* PlatformConfig.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PlatformConfig.cpp; sourceTree = "<group>"; };
+		4A534E476DD53ABE0816D5A0 /* ContentManifest.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ContentManifest.cpp; sourceTree = "<group>"; };
+		4A534E4705BADBA0E66DC7CD /* Launch.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Launch.cpp; sourceTree = "<group>"; };
+		4A534E47A442534DD93368F9 /* LaunchOptions.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LaunchOptions.cpp; sourceTree = "<group>"; };
+		4A534E47DA38129196F7DFE9 /* PlayerConfig.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PlayerConfig.cpp; sourceTree = "<group>"; };
+		4A534E474C3FBAD503D651B9 /* RunControl.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RunControl.cpp; sourceTree = "<group>"; };
+		4A534E47F90B3960454EC884 /* CookCodecs.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CookCodecs.cpp; sourceTree = "<group>"; };
+		4A534E475957A2F4A8BAF144 /* CookedScene.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CookedScene.cpp; sourceTree = "<group>"; };
+		4A534E4750D707F4BC486CA2 /* CookStream.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CookStream.cpp; sourceTree = "<group>"; };
+		4A534E479AFF1E896AB23D1D /* ComponentHooks.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ComponentHooks.cpp; sourceTree = "<group>"; };
+		4A534E476A8A23A72244173B /* RuntimeFields.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RuntimeFields.cpp; sourceTree = "<group>"; };
+		4A534E47B87937590E99AF63 /* SceneSettingsCodec.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SceneSettingsCodec.cpp; sourceTree = "<group>"; };
+		4A534E478A53FD45D6859CB8 /* JPak.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = JPak.cpp; sourceTree = "<group>"; };
+		4A534E47500DFD86D792E79A /* FrameReadback.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FrameReadback.cpp; sourceTree = "<group>"; };
+		4A534E47331F4EB69AA9D7BF /* Sha256.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Sha256.cpp; sourceTree = "<group>"; };
+		4A534E472E000F3F6C5FD5DB /* PlatformConfig.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlatformConfig.h; sourceTree = "<group>"; };
+		4A534E477327188402907BEC /* JPak.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JPak.h; sourceTree = "<group>"; };
+		4A534E47BBC061D558A1BEAA /* ContentManifest.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ContentManifest.h; sourceTree = "<group>"; };
+		4A534E4711CCFCC38C29F349 /* Launch.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Launch.h; sourceTree = "<group>"; };
+		4A534E47CB6DD4DE98FB3C90 /* LaunchOptions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LaunchOptions.h; sourceTree = "<group>"; };
+		4A534E47B90A7E226F42E9D1 /* PlayerConfig.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlayerConfig.h; sourceTree = "<group>"; };
+		4A534E47C484ACD2846CB3C2 /* RunControl.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RunControl.h; sourceTree = "<group>"; };
+		4A534E4763FF8AC23A88D493 /* FrameReadback.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FrameReadback.h; sourceTree = "<group>"; };
+		4A534E47A997AFEC31C3960E /* CookCodecs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CookCodecs.h; sourceTree = "<group>"; };
+		4A534E475EE5D428009E23E6 /* CookStream.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CookStream.h; sourceTree = "<group>"; };
+		4A534E473C64FD6446F94A44 /* CookedScene.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CookedScene.h; sourceTree = "<group>"; };
+		4A534E47CB6EFCCC74058202 /* RuntimeFields.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RuntimeFields.h; sourceTree = "<group>"; };
+		4A534E476BD09887BDB2804D /* SceneSettingsCodec.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SceneSettingsCodec.h; sourceTree = "<group>"; };
+		4A534E473433D981FDF2CFAB /* CookTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CookTypes.h; sourceTree = "<group>"; };
+		4A534E471B0DE3863DB7C7D0 /* Fnv.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Fnv.h; sourceTree = "<group>"; };
+		4A534E476F9A6EBAF26D3D14 /* Sha256.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Sha256.h; sourceTree = "<group>"; };
 		4A534E47CF58BA7A83C3FA66 /* VertexAnimatorRuntime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexAnimatorRuntime.cpp; sourceTree = "<group>"; };
 		4A534E47CAF9C2B816B80C47 /* VertexAnimation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexAnimation.cpp; sourceTree = "<group>"; };
 		4A534E47DA7ED38894929ED6 /* VertexAnimator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexAnimator.cpp; sourceTree = "<group>"; };
@@ -7960,6 +8038,7 @@
 		4A534E4718E1195664730F1C /* sokol_gpu_timer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = sokol_gpu_timer.h; sourceTree = "<group>"; };
 		4A534E4773258A6672E9EEE2 /* sokol_gpu_timer_impl.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = sokol_gpu_timer_impl.h; sourceTree = "<group>"; };
 		4A534E472653CC6B20761400 /* sokol_log.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = sokol_log.h; sourceTree = "<group>"; };
+		4A534E476ED3B894B5F99179 /* CustomCodecs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CustomCodecs.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -9523,6 +9602,51 @@
 			path = graph;
 			sourceTree = "<group>";
 		};
+		4A534E47350930182CD57D1F /* player */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E476DD53ABE0816D5A0 /* ContentManifest.cpp */,
+				4A534E4705BADBA0E66DC7CD /* Launch.cpp */,
+				4A534E47A442534DD93368F9 /* LaunchOptions.cpp */,
+				4A534E47DA38129196F7DFE9 /* PlayerConfig.cpp */,
+				4A534E474C3FBAD503D651B9 /* RunControl.cpp */,
+				4A534E47BBC061D558A1BEAA /* ContentManifest.h */,
+				4A534E4711CCFCC38C29F349 /* Launch.h */,
+				4A534E47CB6DD4DE98FB3C90 /* LaunchOptions.h */,
+				4A534E47B90A7E226F42E9D1 /* PlayerConfig.h */,
+				4A534E47C484ACD2846CB3C2 /* RunControl.h */,
+			);
+			path = player;
+			sourceTree = "<group>";
+		};
+		4A534E47AAC9B2556717895C /* codecs */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E479AFF1E896AB23D1D /* ComponentHooks.cpp */,
+				4A534E473433D981FDF2CFAB /* CookTypes.h */,
+				4A534E476ED3B894B5F99179 /* CustomCodecs.h */,
+			);
+			path = codecs;
+			sourceTree = "<group>";
+		};
+		4A534E479CC9A1A9761D36CE /* serialization */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E47F90B3960454EC884 /* CookCodecs.cpp */,
+				4A534E475957A2F4A8BAF144 /* CookedScene.cpp */,
+				4A534E4750D707F4BC486CA2 /* CookStream.cpp */,
+				4A534E47AAC9B2556717895C /* codecs */,
+				4A534E476A8A23A72244173B /* RuntimeFields.cpp */,
+				4A534E47B87937590E99AF63 /* SceneSettingsCodec.cpp */,
+				4A534E47A997AFEC31C3960E /* CookCodecs.h */,
+				4A534E475EE5D428009E23E6 /* CookStream.h */,
+				4A534E473C64FD6446F94A44 /* CookedScene.h */,
+				4A534E47CB6EFCCC74058202 /* RuntimeFields.h */,
+				4A534E476BD09887BDB2804D /* SceneSettingsCodec.h */,
+			);
+			path = serialization;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -9582,6 +9706,10 @@
 				50525443F2555146A1CC118F /* particles */,
 				53504C4EACD7159559E486AD /* spline */,
 				4A534E476B7A5F4C9CCA7211 /* graph */,
+				4A534E47998EC0B6EC5E52BF /* PlatformConfig.cpp */,
+				4A534E47350930182CD57D1F /* player */,
+				4A534E479CC9A1A9761D36CE /* serialization */,
+				4A534E472E000F3F6C5FD5DB /* PlatformConfig.h */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -9653,6 +9781,9 @@
 				4A534E47951BAE2F6DCE875F /* PostColorLut.cpp */,
 				4A534E47BE2CA7B811737252 /* PostColorLut.h */,
 				4A534E476546F72D989CD289 /* CubeLut.h */,
+				4A534E47331F4EB69AA9D7BF /* Sha256.cpp */,
+				4A534E471B0DE3863DB7C7D0 /* Fnv.h */,
+				4A534E476F9A6EBAF26D3D14 /* Sha256.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -9677,6 +9808,8 @@
 				53303346FA879A45D28931E2 /* AtomicFile.cpp */,
 				53303346D2EB5AA9BC43456C /* AtomicFile.h */,
 				A5E05A7C0000000000000001 /* watch */,
+				4A534E478A53FD45D6859CB8 /* JPak.cpp */,
+				4A534E477327188402907BEC /* JPak.h */,
 			);
 			path = io;
 			sourceTree = "<group>";
@@ -9714,6 +9847,8 @@
 				4A534E478D473D85C71E9BDD /* AtmosphereQuality.h */,
 				4A534E47011D609AFF567019 /* BlueNoise64.h */,
 				4A534E4732CB524BA50A4FE6 /* DynamicResolutionController.h */,
+				4A534E47500DFD86D792E79A /* FrameReadback.cpp */,
+				4A534E4763FF8AC23A88D493 /* FrameReadback.h */,
 				4A534E473A33F3DC4FB8A61C /* CpuSkin.cpp */,
 				4A534E4754E256FE333DE6E7 /* CpuSkin.h */,
 				4A534E4707C476B1E1AD0416 /* GpuCreation.h */,
@@ -14111,6 +14246,22 @@
 				4A534E47F87D5FF11AC2A146 /* Ktx2Detail.h in Headers */,
 				4A534E47178DC2D457E6C7CF /* ThreadPoolManagerLua.h in Headers */,
 				4A534E474CAEE9AEB993E80D /* CubeLut.h in Headers */,
+				4A534E477188C51A65C11B7D /* PlatformConfig.h in Headers */,
+				4A534E475A9C597275C3E4BB /* JPak.h in Headers */,
+				4A534E479A258BC931183744 /* ContentManifest.h in Headers */,
+				4A534E47F446F90181305FB9 /* Launch.h in Headers */,
+				4A534E47D8C8930C399C7C40 /* LaunchOptions.h in Headers */,
+				4A534E47FC186D22BB2313BB /* PlayerConfig.h in Headers */,
+				4A534E47A61EB369AD208C05 /* RunControl.h in Headers */,
+				4A534E472223184F71BA2919 /* FrameReadback.h in Headers */,
+				4A534E47C72CDFCCCC159631 /* CookCodecs.h in Headers */,
+				4A534E47B7113CA1B8814E55 /* CookStream.h in Headers */,
+				4A534E4786746F883E9104F4 /* CookedScene.h in Headers */,
+				4A534E47D7138E3CF8FC267D /* RuntimeFields.h in Headers */,
+				4A534E4764C5EA8054CD59E3 /* SceneSettingsCodec.h in Headers */,
+				4A534E47F2D9EF5A4421BD30 /* CookTypes.h in Headers */,
+				4A534E47344898165C223B9D /* Fnv.h in Headers */,
+				4A534E475EFA77C0D1DD2193 /* Sha256.h in Headers */,
 				4A534E476AF4D3453B6FDB2F /* VertexAnimation.h in Headers */,
 				4A534E4721B3FC78A3346BD5 /* VertexAnimatorRuntime.h in Headers */,
 				4A534E47A2C66EC65C694120 /* VertexAnimatorComponent.h in Headers */,
@@ -14136,6 +14287,7 @@
 				4A534E47B08F761D851139AA /* Animator.h in Headers */,
 				4A534E47A4AFF745E6C79336 /* AnimatorAssetPool.h in Headers */,
 				4A534E4719ED4496CD61367E /* AnimatorSystem.h in Headers */,
+				4A534E47285F526FD30A8918 /* CustomCodecs.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -16510,6 +16662,21 @@
 				4A534E4742B055E8016AAB01 /* ToolchainFingerprint.cpp in Sources */,
 				4A534E476744EC521C7A4AFD /* WaterSystem.cpp in Sources */,
 				4A534E47A2DF41E61E74E1FF /* Ktx2Write.cpp in Sources */,
+				4A534E47848C83E9BB0538FE /* PlatformConfig.cpp in Sources */,
+				4A534E4753E1C3C4EE90B458 /* ContentManifest.cpp in Sources */,
+				4A534E47331FCD70A31F5BB7 /* Launch.cpp in Sources */,
+				4A534E4752B4F6A3D95A6FA2 /* LaunchOptions.cpp in Sources */,
+				4A534E47B45763FF8D78BBF7 /* PlayerConfig.cpp in Sources */,
+				4A534E4790E37F135F2A8819 /* RunControl.cpp in Sources */,
+				4A534E479D2077BFB7F6F26C /* CookCodecs.cpp in Sources */,
+				4A534E476C44146E94A8063F /* CookedScene.cpp in Sources */,
+				4A534E47B33347B1111BBE6C /* CookStream.cpp in Sources */,
+				4A534E479C544BD3E8BEB6D3 /* ComponentHooks.cpp in Sources */,
+				4A534E472504AB00DF6A00E7 /* RuntimeFields.cpp in Sources */,
+				4A534E47FDCC5156D134596F /* SceneSettingsCodec.cpp in Sources */,
+				4A534E47318FF282CFD36253 /* JPak.cpp in Sources */,
+				4A534E47ABD13F87F94D3E36 /* FrameReadback.cpp in Sources */,
+				4A534E47CC04771FF01717B6 /* Sha256.cpp in Sources */,
 				4A534E47CC13C8C412DB108A /* VertexAnimatorRuntime.cpp in Sources */,
 				4A534E4757AC3EE186286D26 /* VertexAnimation.cpp in Sources */,
 				4A534E47B9FCC85DD853EC1E /* VertexAnimator.cpp in Sources */,
@@ -17195,6 +17362,21 @@
 				4A534E472A547FE67AA08421 /* ToolchainFingerprint.cpp in Sources */,
 				4A534E4732EBCE8A0413BA29 /* WaterSystem.cpp in Sources */,
 				4A534E47762E1E309584ABA2 /* Ktx2Write.cpp in Sources */,
+				4A534E476FB86AA6BDFD0B77 /* PlatformConfig.cpp in Sources */,
+				4A534E47B7FB6CBCBC1D1515 /* ContentManifest.cpp in Sources */,
+				4A534E47CABD0CE2F1F7CF11 /* Launch.cpp in Sources */,
+				4A534E474B203BCD1226DD08 /* LaunchOptions.cpp in Sources */,
+				4A534E47928A3751A861FAA9 /* PlayerConfig.cpp in Sources */,
+				4A534E47067A6FFE1CF5AFA4 /* RunControl.cpp in Sources */,
+				4A534E4742FDD611619ABAD8 /* CookCodecs.cpp in Sources */,
+				4A534E47B95C0F4A79E2AA9B /* CookedScene.cpp in Sources */,
+				4A534E4727712FDC174E8F8F /* CookStream.cpp in Sources */,
+				4A534E47369C4A7DCB0B6316 /* ComponentHooks.cpp in Sources */,
+				4A534E477CE153871E5BFBBA /* RuntimeFields.cpp in Sources */,
+				4A534E47F12DC20262F5B282 /* SceneSettingsCodec.cpp in Sources */,
+				4A534E472881AC0441EADBF9 /* JPak.cpp in Sources */,
+				4A534E475580527B562ECAE1 /* FrameReadback.cpp in Sources */,
+				4A534E476C5EF18475BC73B0 /* Sha256.cpp in Sources */,
 				4A534E473755AC2BABF1B73D /* VertexAnimatorRuntime.cpp in Sources */,
 				4A534E47A5EEED9853189CC6 /* VertexAnimation.cpp in Sources */,
 				4A534E47ECA5B9EB455C1097 /* VertexAnimator.cpp in Sources */,
