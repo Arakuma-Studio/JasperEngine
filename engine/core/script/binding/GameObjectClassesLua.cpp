@@ -33,6 +33,7 @@
 #include "PoseAnimator.h"
 #include "AnimationPlayer.h"
 #include "VertexAnimator.h"
+#include "VideoPlayer.h"
 #include "animation/AnimationEvent.h"
 #include "MeshPolygon.h"
 #include "Points.h"
@@ -81,6 +82,35 @@ static void setLuaCullingMask(T* self, lua_Integer mask){
 // ---- GameObject.instantiate / destroy / destroyImmediate (Unity's Object.Instantiate...) ----
 
 namespace {
+
+bool luaObjectArg(lua_State* L, int index, Scene*& scene, Entity& entity, std::string* scriptClass);
+
+// An entity field of a component shown to Lua (the Video Player's targets): a GameObject, nil
+// for none
+std::optional<GameObject> gameObjectOrNil(Scene* scene, Entity entity){
+    if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity))
+        return std::nullopt;
+    return GameObject(scene, entity);
+}
+
+// ... set from a GameObject (any handle, a script instance), an entity number or nil
+Entity entityOf(const luabridge::LuaRef& value, const char* field){
+    if (value.isNil())
+        return NULL_ENTITY;
+    if (value.isNumber())
+        return (Entity)value.unsafe_cast<lua_Integer>();
+    lua_State* L = value.state();
+    value.push(L);
+    Scene* scene = nullptr;
+    Entity entity = NULL_ENTITY;
+    const bool ok = luaObjectArg(L, -1, scene, entity, nullptr);
+    lua_pop(L, 1);
+    if (!ok){
+        Log::error("VideoPlayer.%s takes a GameObject or nil", field);
+        return NULL_ENTITY;
+    }
+    return entity;
+}
 
 // A GameObject argument: any GameObject handle (EntityHandle and what derives from it), or
 // a Lua script instance (its self: a table with scene and entity), whose class is returned
@@ -540,6 +570,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             Scene* scene = self->getScene();
             return scene && scene->isEntityCreated(self->getEntity()) &&
                    scene->findComponent<VertexAnimatorComponent>(self->getEntity()) != nullptr;
+        })
+        // the Video Player of the GameObject, nil when it has none (Unity's GetComponent<VideoPlayer>)
+        .addFunction("getVideoPlayer", +[](GameObject* self) -> std::optional<VideoPlayer> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<VideoPlayerComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return VideoPlayer(scene, self->getEntity());
+        })
+        .addFunction("hasVideoPlayer", +[](GameObject* self) -> bool {
+            Scene* scene = self->getScene();
+            return scene && scene->isEntityCreated(self->getEntity()) &&
+                   scene->findComponent<VideoPlayerComponent>(self->getEntity()) != nullptr;
         })
         .endClass();
 
@@ -1948,6 +1992,136 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // a function called with (instance, clip name) when instanceEvents is on
         .addProperty("onInstanceFinish", [] (VertexAnimator* self, lua_State*) { return &self->getOnInstanceFinish(); }, [] (VertexAnimator* self, lua_State* L) { self->getOnInstanceFinish() = L; })
         .addFunction("getVertexAnimatorComponent", &VertexAnimator::getComponent<VertexAnimatorComponent>)
+        .endClass();
+
+    // Unity's VideoPlayer enums (docs/mcp/guide/video.md)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("VideoPlayerSource")
+        .addVariable("CLIP", VideoPlayerSource::CLIP)
+        .addVariable("URL", VideoPlayerSource::URL)
+        .endNamespace()
+        .beginNamespace("VideoTimeUpdateMode")
+        .addVariable("GAME_TIME", VideoTimeUpdateMode::GAME_TIME)
+        .addVariable("UNSCALED_GAME_TIME", VideoTimeUpdateMode::UNSCALED_GAME_TIME)
+        .endNamespace()
+        .beginNamespace("VideoRenderMode")
+        .addVariable("CAMERA_FAR_PLANE", VideoRenderMode::CAMERA_FAR_PLANE)
+        .addVariable("CAMERA_NEAR_PLANE", VideoRenderMode::CAMERA_NEAR_PLANE)
+        .addVariable("RENDER_TEXTURE", VideoRenderMode::RENDER_TEXTURE)
+        .addVariable("MATERIAL_OVERRIDE", VideoRenderMode::MATERIAL_OVERRIDE)
+        .addVariable("API_ONLY", VideoRenderMode::API_ONLY)
+        .endNamespace()
+        .beginNamespace("VideoAspectRatio")
+        .addVariable("NO_SCALING", VideoAspectRatio::NO_SCALING)
+        .addVariable("FIT_VERTICALLY", VideoAspectRatio::FIT_VERTICALLY)
+        .addVariable("FIT_HORIZONTALLY", VideoAspectRatio::FIT_HORIZONTALLY)
+        .addVariable("FIT_INSIDE", VideoAspectRatio::FIT_INSIDE)
+        .addVariable("FIT_OUTSIDE", VideoAspectRatio::FIT_OUTSIDE)
+        .addVariable("STRETCH", VideoAspectRatio::STRETCH)
+        .endNamespace()
+        .beginNamespace("VideoAudioOutputMode")
+        .addVariable("NONE", VideoAudioOutputMode::NONE)
+        .addVariable("AUDIO_SOURCE", VideoAudioOutputMode::AUDIO_SOURCE)
+        .addVariable("DIRECT", VideoAudioOutputMode::DIRECT)
+        .endNamespace();
+
+    // Unity's VideoPlayer: plays a clip or a URL into its render texture, a material, a camera
+    // plane or nowhere (API only); its sound directly or through an AudioSource
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<VideoPlayer, EntityHandle>("VideoPlayer")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &VideoPlayer::isEnabled, &VideoPlayer::setEnabled)
+        .addProperty("source", &VideoPlayer::getSource, &VideoPlayer::setSource)
+        // a video asset (.mp4, .m4v, .mov, .webm)
+        .addProperty("clip", &VideoPlayer::getClip, &VideoPlayer::setClip)
+        // http(s)://, data://, an absolute path or an asset path
+        .addProperty("url", &VideoPlayer::getUrl, &VideoPlayer::setUrl)
+        .addProperty("playOnAwake", &VideoPlayer::isPlayOnAwake, &VideoPlayer::setPlayOnAwake)
+        .addProperty("waitForFirstFrame", &VideoPlayer::isWaitForFirstFrame, &VideoPlayer::setWaitForFirstFrame)
+        .addProperty("isLooping", &VideoPlayer::isLooping, &VideoPlayer::setLooping)
+        .addProperty("skipOnDrop", &VideoPlayer::isSkipOnDrop, &VideoPlayer::setSkipOnDrop)
+        // 0.0625 .. 16
+        .addProperty("playbackSpeed", &VideoPlayer::getPlaybackSpeed, &VideoPlayer::setPlaybackSpeed)
+        .addProperty("timeUpdateMode", &VideoPlayer::getTimeUpdateMode, &VideoPlayer::setTimeUpdateMode)
+        .addProperty("renderMode", &VideoPlayer::getRenderMode, &VideoPlayer::setRenderMode)
+        // a GameObject with a Camera, nil: the main camera
+        .addProperty("targetCamera",
+            [](const VideoPlayer* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getTargetCamera()); },
+            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetCamera(entityOf(value, "targetCamera")); })
+        .addProperty("targetCameraAlpha", &VideoPlayer::getTargetCameraAlpha, &VideoPlayer::setTargetCameraAlpha)
+        .addProperty("aspectRatio", &VideoPlayer::getAspectRatio, &VideoPlayer::setAspectRatio)
+        // a GameObject with a Mesh, Sprite or Image, nil: this one
+        .addProperty("targetMaterialRenderer",
+            [](const VideoPlayer* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getTargetMaterialRenderer()); },
+            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetMaterialRenderer(entityOf(value, "targetMaterialRenderer")); })
+        // "baseColorTexture" (default), "emissiveTexture", ... or a shader @texture uniform
+        .addProperty("targetMaterialProperty", &VideoPlayer::getTargetMaterialProperty, &VideoPlayer::setTargetMaterialProperty)
+        // -1: every submesh
+        .addProperty("targetSubmesh", &VideoPlayer::getTargetSubmesh, &VideoPlayer::setTargetSubmesh)
+        // 0 x 0: the video's own size
+        .addProperty("renderTextureWidth", &VideoPlayer::getRenderTextureWidth, &VideoPlayer::setRenderTextureWidth)
+        .addProperty("renderTextureHeight", &VideoPlayer::getRenderTextureHeight, &VideoPlayer::setRenderTextureHeight)
+        .addProperty("audioOutputMode", &VideoPlayer::getAudioOutputMode, &VideoPlayer::setAudioOutputMode)
+        // 0 .. 1 (Unity's SetDirectAudioVolume)
+        .addProperty("directVolume", &VideoPlayer::getDirectVolume, &VideoPlayer::setDirectVolume)
+        .addProperty("directMute", &VideoPlayer::isDirectMute, &VideoPlayer::setDirectMute)
+        // a GameObject with an AudioSource, nil: this one
+        .addProperty("targetAudioSource",
+            [](const VideoPlayer* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getTargetAudioSource()); },
+            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetAudioSource(entityOf(value, "targetAudioSource")); })
+        // seconds; setting it seeks (onSeekCompleted when the frame shows)
+        .addProperty("time", &VideoPlayer::getTime, &VideoPlayer::setTime)
+        .addProperty("canSetTime", &VideoPlayer::canSetTime)
+        // the frame shown (-1 before one); setting it seeks there
+        .addProperty("frame", &VideoPlayer::getFrame, &VideoPlayer::setFrame)
+        .addProperty("frameCount", &VideoPlayer::getFrameCount)
+        .addProperty("frameRate", &VideoPlayer::getFrameRate)
+        // seconds
+        .addProperty("length", &VideoPlayer::getLength)
+        .addProperty("width", &VideoPlayer::getWidth)
+        .addProperty("height", &VideoPlayer::getHeight)
+        .addProperty("isPrepared", &VideoPlayer::isPrepared)
+        .addProperty("isPlaying", &VideoPlayer::isPlaying)
+        .addProperty("isPaused", &VideoPlayer::isPaused)
+        // 0..1: the download of a URL, then the opening
+        .addProperty("prepareProgress", &VideoPlayer::getPrepareProgress)
+        // the render texture as a Texture (nil before prepared)
+        .addProperty("texture", &VideoPlayer::getTexture)
+        // "webm", "ffmpeg", "mediacodec", "avfoundation", "mediafoundation", "browser"
+        .addProperty("backend", &VideoPlayer::getBackend)
+        .addProperty("videoCodec", &VideoPlayer::getVideoCodec)
+        .addProperty("audioCodec", &VideoPlayer::getAudioCodec)
+        // the last error ("" when none)
+        .addProperty("error", &VideoPlayer::getError)
+        .addFunction("prepare", &VideoPlayer::prepare)
+        // prepares first when needed; plays once prepared
+        .addFunction("play", &VideoPlayer::play)
+        .addFunction("pause", &VideoPlayer::pause)
+        // to time 0, the decoder released (the texture keeps its last frame)
+        .addFunction("stop", &VideoPlayer::stop)
+        // paused: the next frame
+        .addFunction("stepForward", &VideoPlayer::stepForward)
+        // the render texture (image:setTexture(player:getFramebuffer()))
+        .addFunction("getFramebuffer", &VideoPlayer::getFramebuffer)
+        // "probably", "maybe" or "" for a file (probed) or a URL (by its extension)
+        .addStaticFunction("canPlay", &VideoPlayer::canPlay)
+        // deletes the media cache's files (of one URL, or all); the number removed
+        .addStaticFunction("clearCache",
+            luabridge::overload<>(+[]() -> int { return VideoPlayer::clearCache(); }),
+            luabridge::overload<const std::string&>(+[](const std::string& url) -> int { return VideoPlayer::clearCache(url); }))
+        // function(player) when it can play
+        .addProperty("onPrepareCompleted", [] (VideoPlayer* self, lua_State*) { return &self->getOnPrepareCompleted(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnPrepareCompleted() = L; })
+        // function(player) when the first frame of a play shows
+        .addProperty("onStarted", [] (VideoPlayer* self, lua_State*) { return &self->getOnStarted(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnStarted() = L; })
+        // function(player) at each loop and at the end of a play that does not loop
+        .addProperty("onLoopPointReached", [] (VideoPlayer* self, lua_State*) { return &self->getOnLoopPointReached(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnLoopPointReached() = L; })
+        // function(player, message)
+        .addProperty("onErrorReceived", [] (VideoPlayer* self, lua_State*) { return &self->getOnErrorReceived(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnErrorReceived() = L; })
+        // function(player) when a seek's frame shows
+        .addProperty("onSeekCompleted", [] (VideoPlayer* self, lua_State*) { return &self->getOnSeekCompleted(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnSeekCompleted() = L; })
+        // function(player, frameIndex) each frame shown (a call per frame: set it only when needed)
+        .addProperty("onFrameReady", [] (VideoPlayer* self, lua_State*) { return &self->getOnFrameReady(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnFrameReady() = L; })
+        .addFunction("getVideoPlayerComponent", (VideoPlayerComponent&(VideoPlayer::*)() const)&VideoPlayer::getComponent)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

@@ -135,6 +135,7 @@
 #include "object/environment/Fog.h"
 #include "object/FluidSimulation.h"
 #include "object/VideoPlayer.h"
+#include "media/VideoTextureConverter.h"
 #include "object/environment/ReflectionProbe.h"
 #include "object/environment/Water.h"
 #include "object/environment/Skybox.h"

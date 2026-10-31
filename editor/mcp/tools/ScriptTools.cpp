@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // W4: Lua/C++ scripts, compile check, code editor sync
+#include "media/VideoFormats.h"
 #include "McpTools.h"
 #include "W4Shared.h"
 
@@ -102,6 +103,8 @@ std::string assetType(const fs::path& path) {
     if (Util::isImageFile(p)) return "texture";
     if (Util::isModelFile(p)) return "model";
     if (Util::isAudioFile(p)) return "audio";
+    // .webm, .mkv, .mp4, .m4v, .mov (the probe decides what plays where)
+    if (jasperengine::VideoFormats::isPlayableExtension(p)) return "video";
     if (Util::isFontFile(p)) return "font";
     if (Util::isHtmlFile(p)) return "html";
     if (Util::isCssFile(p)) return "css";

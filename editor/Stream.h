@@ -12,6 +12,7 @@
 #include "math/Quaternion.h"
 #include "math/Matrix4.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/VideoPlayerComponent.h"
 
 #include <filesystem>
 #include <set>
@@ -465,6 +466,8 @@ namespace jasperengine::editor {
         // only what differs from the defaults is written; a missing key is the default. Over an
         // old component its runtime state (the simulator) stays; a new seed or start burst
         // restarts it (needReset)
+        static YAML::Node encodeVideoPlayerComponent(const VideoPlayerComponent& player);
+        static VideoPlayerComponent decodeVideoPlayerComponent(const YAML::Node& node, const VideoPlayerComponent* oldPlayer = nullptr);
         static YAML::Node encodeFluidSimulationComponent(const FluidSimulationComponent& fluid);
         static FluidSimulationComponent decodeFluidSimulationComponent(const YAML::Node& node, const FluidSimulationComponent* oldFluid = nullptr);
 

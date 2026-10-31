@@ -225,6 +225,10 @@ namespace jasperengine::editor::mcp {
         // only: FluidStats in snake_case plus the matching preset, the device's support and the
         // simulator's last error; null when the entity has no FluidSimulationComponent
         static Json fluidStatsToJson(Scene* scene, Entity entity);
+        // A Video Player's playback state (get_entity, get_runtime_entity: "video"): prepared,
+        // playing, time, frame, frameCount, length, backend, codecs, error, prepareProgress; null
+        // when the entity has none or nothing was opened yet (edit mode)
+        static Json videoStatusToJson(Scene* scene, Entity entity);
 
         static Json shaderParamsToJson(const ShaderUniformValues& values);
         // `out` replaced by `value` (null clears); `manifest` (may be null) types colour hex

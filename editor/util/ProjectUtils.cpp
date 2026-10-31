@@ -28,6 +28,7 @@
 #include "component/ButtonComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
 #include "component/MeshComponent.h"
@@ -1186,6 +1187,13 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<VertexAnimatorComponent>(entity, Stream::decodeVertexAnimatorComponent(componentNode));
             }
             break;
+        case ComponentType::VideoPlayerComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<VideoPlayerComponent>(entity, {});
+            }else{
+                registry->addComponent<VideoPlayerComponent>(entity, Stream::decodeVideoPlayerComponent(componentNode));
+            }
+            break;
         case ComponentType::Light2DComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
                 registry->addComponent<Light2DComponent>(entity, {});
@@ -1691,6 +1699,13 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeVertexAnimatorComponent(registry->getComponent<VertexAnimatorComponent>(entity));
             }
             registry->removeComponent<VertexAnimatorComponent>(entity);
+            break;
+        case ComponentType::VideoPlayerComponent:
+            // its source closes and its texture keeps no frame (VideoPlayerSystem::onComponentRemoved)
+            if (encodeComponent){
+                oldComponent = Stream::encodeVideoPlayerComponent(registry->getComponent<VideoPlayerComponent>(entity));
+            }
+            registry->removeComponent<VideoPlayerComponent>(entity);
             break;
         case ComponentType::Light2DComponent:
             if (encodeComponent){

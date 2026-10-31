@@ -2161,6 +2161,11 @@ void getRuntimeEntityTool(const CallPtr& call) {
         const Json fluid = McpValues::fluidStatsToJson(sp->scene, entity);
         if (!fluid.is_null()) data["fluid_stats"] = fluid;
     }
+    // a Video Player's playback
+    if (only.empty() || only.count(ComponentType::VideoPlayerComponent)) {
+        const Json video = McpValues::videoStatusToJson(sp->scene, entity);
+        if (!video.is_null()) data["video"] = video;
+    }
     if (args.value("include_script_state", true)) {
         data["scripts"] = scriptStateJson(project, sp, entity, std::clamp(args.value("max_depth", 2), 1, 8));
     }
@@ -2168,6 +2173,7 @@ void getRuntimeEntityTool(const CallPtr& call) {
                        sp->name + "\": " + data["components"].dump();
     if (data.contains("scripts") && !data["scripts"].empty()) text += "\nscripts: " + data["scripts"].dump();
     if (data.contains("fluid_stats")) text += "\nfluid_stats: " + data["fluid_stats"].dump();
+    if (data.contains("video")) text += "\nvideo: " + data["video"].dump();
     if (text.size() > 12000) text = text.substr(0, 12000) + " ... (see structuredContent)";
     call->ok(text, data);
 }

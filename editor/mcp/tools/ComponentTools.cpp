@@ -332,6 +332,14 @@ void getEntityTool(const CallPtr& call) {
             text += ". fluid_stats: " + fluid.dump();
         }
     }
+    // a Video Player's playback (read only; in Play)
+    if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::VideoPlayerComponent) != filter.end()) {
+        const Json video = McpValues::videoStatusToJson(registry, entity);
+        if (!video.is_null()) {
+            data["video"] = video;
+            text += ". video: " + video.dump();
+        }
+    }
     // what its draws read of the scene (phase 3) in their current variants, and the cost
     const Json sceneInputs = McpValues::entitySceneInputsToJson(registry, entity);
     if (!sceneInputs.empty()) {
