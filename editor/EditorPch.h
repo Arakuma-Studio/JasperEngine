@@ -6,6 +6,6 @@
 // each) and yaml-cpp (every unit that includes Project.h, 1.1 s); docs/specs/S33-build-speed.md M4.
 // No editor or engine header of ours.
 
-#include "JasperPch.h"
+#include "../engine/cmake/JasperPch.h"
 #include "json.hpp"
 #include "yaml-cpp/yaml.h"

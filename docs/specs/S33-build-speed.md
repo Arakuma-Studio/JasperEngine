@@ -108,7 +108,7 @@ server F, 8 jobs.
   gives today; only the duplicate compile goes.
 - **R2. Precompiled headers.** `engine/cmake/JasperPch.cmake` adds `JASPERENGINE_PCH` (a cache
   BOOL) and `jasperengine_target_pch(<target> [EDITOR])`:
-  - the header is `engine/core/JasperPch.h`: the standard headers our units include most (M4: the
+  - the header is `engine/cmake/JasperPch.h`: the standard headers our units include most (M4: the
     set of 25 costs 1.25 s per unit); `EDITOR` targets use `editor/EditorPch.h`, which adds
     `json.hpp` (1.8 s, 281 units) and yaml-cpp (1.1 s, every unit of `Project.h`). Nothing
     of ours: a precompiled header of `Scene.h`, `Engine.h` or `Project.h` would make every unit

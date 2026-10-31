@@ -1,5 +1,5 @@
 # Precompiled headers of our own C++ targets (docs/testing.md "Build speed",
-# docs/specs/S33-build-speed.md R2): engine/core/JasperPch.h (standard headers) for the engine,
+# docs/specs/S33-build-speed.md R2): engine/cmake/JasperPch.h (standard headers) for the engine,
 # test and project targets, editor/EditorPch.h (those plus json.hpp) for the editor's.
 #
 # JASPERENGINE_PCH is ON by default in the editor tree and OFF when engine/ is the top level (every
@@ -36,7 +36,7 @@ endif()
 # the vendored trees: engine/libs and the editor's libs
 set(JASPERENGINE_PCH_ENGINE_LIBS "${jasperenginePchEngineDir}/libs")
 set(JASPERENGINE_PCH_ROOT_LIBS "${CMAKE_SOURCE_DIR}/libs")
-set(JASPERENGINE_PCH_HEADER "${CMAKE_CURRENT_LIST_DIR}/../core/JasperPch.h")
+set(JASPERENGINE_PCH_HEADER "${CMAKE_CURRENT_LIST_DIR}/JasperPch.h")
 set(JASPERENGINE_EDITOR_PCH_HEADER "${CMAKE_CURRENT_LIST_DIR}/../../editor/EditorPch.h")
 
 # jasperengine_target_pch(<target> [EDITOR]): a no-op unless JASPERENGINE_PCH is active

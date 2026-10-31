@@ -521,7 +521,7 @@ file scope. The nightly workflow builds it.
 edit rebuilds of one tree, with the host's load recorded) and `tools/perf/build_stats.py` (where a
 `.ninja_log`'s time goes, header fan-out from `ninja -t deps`, header parse costs, `-ftime-report`).
 
-- **Precompiled headers** (`JASPERENGINE_PCH`): `engine/core/JasperPch.h` (standard headers) for
+- **Precompiled headers** (`JASPERENGINE_PCH`): `engine/cmake/JasperPch.h` (standard headers) for
   the engine, test and project targets, `editor/EditorPch.h` (plus `json.hpp` and yaml-cpp) for the
   editor's. Only our own C++ sources get them; a source with compile options of its own
   (`-mavx2`, `-ffp-contract=off`, ...) and the vendored sources compiled inside our targets do not.
