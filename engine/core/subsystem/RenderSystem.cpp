@@ -10685,7 +10685,23 @@ namespace {
                                      const std::vector<std::pair<std::string, Texture>>& textures){
         const std::string& base = customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : customShader;
         // a library shader (or a fork with a manifest) declares and binds its own textures
-        const bool texture = !findManifest(base) && RenderSystem::getLinesBaseTexture(textures) != nullptr;
+        const bool texture = RenderSystem::getLinesBaseTexture(textures) != nullptr && !findManifest(base);
+        return ShaderPool::getLinesProperties(false, true, true, texture, unit == LineWidthUnit::Pixels);
+    }
+
+    // the same, for the check every frame: the manifest lookup remembered in the ribbon
+    uint64_t ribbonVariantPropertiesCached(const Scene* scene, const std::string& customShader, LineWidthUnit unit,
+                                           const std::vector<std::pair<std::string, Texture>>& textures, LineRibbonData& ribbon){
+        bool texture = RenderSystem::getLinesBaseTexture(textures) != nullptr;
+        if (texture){
+            const std::string& base = customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : customShader;
+            if (!ribbon.manifestKnown || ribbon.manifestShader != base){
+                ribbon.manifestShader = base;
+                ribbon.hasManifest = findManifest(base) != nullptr;
+                ribbon.manifestKnown = true;
+            }
+            texture = !ribbon.hasManifest;
+        }
         return ShaderPool::getLinesProperties(false, true, true, texture, unit == LineWidthUnit::Pixels);
     }
 
@@ -10769,7 +10785,8 @@ static void rebuildLinesGeometry(LineRendererComponent& lines){
         }
     }else if (lines.mode == LineRendererMode::Polyline){
         // a width-0 polyline still shows: connected hairline segments with the gradient's colours
-        std::vector<Vector3> points;
+        thread_local std::vector<Vector3> points;
+        points.clear();
         points.reserve(lines.positions.size());
         for (const Vector3& point : lines.positions){
             if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z)){
@@ -10814,7 +10831,10 @@ static const std::vector<LineData>& hairlineSegments(const LineRendererComponent
 void RenderSystem::updateLinesGeometry(Entity entity, LineRendererComponent& lines, float dt){
     (void)entity;
     // another variant (width on or off, pixel widths, a base texture added or removed)
-    if (lines.loaded && !lines.needReload && getLinesVariantProperties(scene, lines) != lines.loadedRibbonKey){
+    const uint64_t variant = (lines.widthMultiplier > 0.0f)
+        ? ribbonVariantPropertiesCached(scene, lines.customShader, lines.widthUnit, lines.shaderTextures, lines.ribbon)
+        : ShaderPool::getLinesProperties(false, true);
+    if (lines.loaded && !lines.needReload && variant != lines.loadedRibbonKey){
         lines.needReload = true;
     }
 
@@ -10913,12 +10933,13 @@ bool RenderSystem::loadRibbonRender(Entity entity, T& component, uint16_t pipeli
                                                     component.shaderManifest.get(), component.shaderFeatures, false);
     // both faces: which one a camera sees depends on its side of the ribbon
     state.faceCulling = false;
-    // AUTO writes no depth: blended ribbons writing it cut each other (an explicit choice, or
-    // the manifest's zwrite=, stays)
+    // AUTO writes no depth when blended: blended ribbons writing it cut each other; an opaque
+    // ribbon writes it like any opaque object (an explicit choice, or the manifest's zwrite=,
+    // stays)
     MaterialDepthWrite manifestDepthWrite = MaterialDepthWrite::AUTO;
     if (component.shaderManifest)
         manifestDepthWrite = component.shaderManifest->resolveState(component.shaderManifest->resolveFeatures(component.shaderFeatures)).depthWrite;
-    if (component.depthWrite == MaterialDepthWrite::AUTO && manifestDepthWrite == MaterialDepthWrite::AUTO)
+    if (component.depthWrite == MaterialDepthWrite::AUTO && manifestDepthWrite == MaterialDepthWrite::AUTO && state.blend != BlendMode::NONE)
         state.depthWrite = false;
     component.transparent = state.blend != BlendMode::NONE;
     // the transparent queue order is the component's, offset by the shader's @state priority=
@@ -11019,11 +11040,20 @@ bool RenderSystem::drawRibbon(T& component, const Matrix4& modelMatrix, const Ve
     return true;
 }
 
-// the transform's Z axis in world space (TransformZ alignment)
+// the world normal of the transform's XY plane (TransformZ alignment): the cross product of
+// its X and Y axes (the normal matrix's Z: with a non-uniform scale and a rotation the model's
+// Z axis is not perpendicular to that plane), else its Z axis when X or Y is scaled to 0
 static Vector3 transformZAxis(const Matrix4& model){
-    Vector3 axis = (model * Vector3(0.0f, 0.0f, 1.0f)) - (model * Vector3(0.0f, 0.0f, 0.0f));
-    const float length = axis.length();
-    return (length > 0.0f) ? axis / length : Vector3(0.0f, 0.0f, 1.0f);
+    const Vector3 origin = model * Vector3(0.0f, 0.0f, 0.0f);
+    const Vector3 x = (model * Vector3(1.0f, 0.0f, 0.0f)) - origin;
+    const Vector3 y = (model * Vector3(0.0f, 1.0f, 0.0f)) - origin;
+    Vector3 axis = x.crossProduct(y);
+    float length = axis.length();
+    if (!(length > 1e-12f)){
+        axis = (model * Vector3(0.0f, 0.0f, 1.0f)) - origin;
+        length = axis.length();
+    }
+    return (length > 1e-12f) ? axis / length : Vector3(0.0f, 0.0f, 1.0f);
 }
 
 AABB RenderSystem::linesWorldBounds(const LineRendererComponent& lines, const Transform& transform) const{
@@ -11036,7 +11066,7 @@ AABB RenderSystem::linesWorldBounds(const LineRendererComponent& lines, const Tr
         bounds.setNull();
         return bounds;
     }
-    const float grow = lines.ribbon.maxHalfWidth;
+    const float grow = lines.ribbon.maxHalfWidth * LineRibbonBuilder::boundsGrowth(lines.numCornerVertices);
     bounds.setExtents(bounds.getMinimum() - Vector3(grow, grow, grow), bounds.getMaximum() + Vector3(grow, grow, grow));
     return bounds;
 }
@@ -11075,6 +11105,8 @@ bool RenderSystem::loadTrail(Entity entity, TrailRendererComponent& trail, uint1
     if (!Engine::isViewLoaded())
         return false;
 
+    // looked up again (a manifest added or removed reloads)
+    trail.ribbon.manifestKnown = false;
     const uint64_t variant = getTrailVariantProperties(scene, trail);
     if (!loadRibbonRender(entity, trail, pipelines, variant, BufferUsage::STREAM))
         return false;
@@ -11093,7 +11125,8 @@ void RenderSystem::destroyTrail(Entity entity, TrailRendererComponent& trail){
 }
 
 void RenderSystem::updateTrail(Entity entity, TrailRendererComponent& trail, float dt){
-    if (trail.loaded && !trail.needReload && getTrailVariantProperties(scene, trail) != trail.loadedRibbonKey){
+    if (trail.loaded && !trail.needReload &&
+            ribbonVariantPropertiesCached(scene, trail.customShader, trail.widthUnit, trail.shaderTextures, trail.ribbon) != trail.loadedRibbonKey){
         trail.needReload = true;
     }
 
@@ -11129,7 +11162,8 @@ void RenderSystem::updateTrail(Entity entity, TrailRendererComponent& trail, flo
             ribbon.length = result.length;
             ribbon.maxHalfWidth = result.maxHalfWidth;
             if (trail.widthUnit == LineWidthUnit::World && !result.bounds.isNull() && result.bounds.isFinite()){
-                const Vector3 grow(result.maxHalfWidth, result.maxHalfWidth, result.maxHalfWidth);
+                const float half = result.maxHalfWidth * LineRibbonBuilder::boundsGrowth(trail.numCornerVertices);
+                const Vector3 grow(half, half, half);
                 trail.worldAABB = AABB(result.bounds.getMinimum() - grow, result.bounds.getMaximum() + grow);
             }
         }
@@ -11176,6 +11210,7 @@ bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16
 
     // a width: the ribbon (thick line), loaded even before it has points so its shader is ready
     if (lines.widthMultiplier > 0.0f){
+        lines.ribbon.manifestKnown = false;
         const uint64_t variant = getLinesVariantProperties(scene, lines);
         if (!loadRibbonRender(entity, lines, pipelines, variant, BufferUsage::DYNAMIC))
             return false;

@@ -109,6 +109,12 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_definitions("-DJASPERENGINE_WINDOW_RESIZABLE=${JASPERENGINE_WINDOW_RESIZABLE_VALUE}")
     add_definitions("-DJASPERENGINE_WINDOW_TITLE=\"${JASPERENGINE_WINDOW_TITLE}\"")
     add_definitions("-DJASPERENGINE_STORAGE_ID=\"${JASPERENGINE_STORAGE_ID}\"")
+    # Only an editor export sets it: desktop builds then save per user
+    # (~/.local/share/<id>, %APPDATA%\<id>, ~/Library/Application Support/<id>) instead of in
+    # the working directory
+    if(DEFINED JASPERENGINE_APP_IDENTIFIER AND NOT JASPERENGINE_APP_IDENTIFIER STREQUAL "")
+        add_definitions("-DJASPERENGINE_APP_IDENTIFIER=\"${JASPERENGINE_APP_IDENTIFIER}\"")
+    endif()
     # X11 class / Wayland app_id (APP_NAME is a plain identifier, safe to quote).
     # Desktop environments match it against <APP_NAME>.desktop for the app icon.
     add_definitions("-DJASPERENGINE_APP_ID=\"${APP_NAME}\"")
@@ -258,7 +264,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 "${EM_DEBUG_INFO} \
                 -s INITIAL_MEMORY=256MB \
                 -s STACK_SIZE=4MB \
-                -s EXPORTED_FUNCTIONS=\"['_getScreenWidth','_getScreenHeight','_changeCanvasSize','_main']\" \
+                -s EXPORTED_FUNCTIONS=\"['_getScreenWidth','_getScreenHeight','_changeCanvasSize','_main','_malloc','_free']\" \
                 -s EXPORTED_RUNTIME_METHODS=\"['ccall', 'cwrap']\" \
                 ${EM_PRELOAD_FILES} \
                 ${EM_ADDITIONAL_LINK_FLAGS} \
@@ -853,6 +859,8 @@ endif()
 set(JASPERENGINE_SRCS
     core/Engine.cpp
     core/Input.cpp
+    core/input/InputActions.cpp
+    core/input/InputControlNames.cpp
     core/Log.cpp
     core/Scene.cpp
     core/SceneSettings.cpp
@@ -963,12 +971,14 @@ set(JASPERENGINE_SRCS
     core/io/Data.cpp
     core/io/File.cpp
     core/io/FileData.cpp
+    core/io/FileUtils.cpp
     core/io/ResourcePack.cpp
     core/manager/ObjectManager.cpp
     core/manager/PrefabAsset.cpp
     core/manager/PrefabManager.cpp
     core/manager/SceneManager.cpp
     core/io/UserSettings.cpp
+    core/io/UserSettingsStore.cpp
     core/math/AABB.cpp
     core/math/AnimationCurve.cpp
     core/math/Gradient.cpp
@@ -1044,6 +1054,7 @@ set(JASPERENGINE_SRCS
     core/pool/MeshLodPool.cpp
     core/pool/MeshBufferPool.cpp
     core/pool/AnimationClipPool.cpp
+    core/pool/PhysicsMaterialPool.cpp
     core/pool/VertexAnimationPool.cpp
     core/registry/EntityCloner.cpp
     core/registry/EntityRegistry.cpp
@@ -1051,6 +1062,8 @@ set(JASPERENGINE_SRCS
     core/registry/PhysicsLayers.cpp
     core/physics/ConvexDecomposition.cpp
     core/physics/JoltShapeBuilder.cpp
+    core/physics/PhysicsMaterial.cpp
+    core/physics/PolygonDecomposition2D.cpp
     core/physics/PlacementWorld.cpp
     core/render/BufferRender.cpp
     core/render/CameraRender.cpp
@@ -1063,9 +1076,13 @@ set(JASPERENGINE_SRCS
     core/render/TextureRender.cpp
     core/script/LuaBinding.cpp
     core/script/LuaFunctionBase.cpp
+    core/script/LuaJson.cpp
     core/script/LuaScript.cpp
     core/script/ScriptBase.cpp
+    core/script/ScriptEvent.cpp
+    core/script/ScriptMessages.cpp
     core/script/ScriptProperty.cpp
+    core/script/ScriptRuntime.cpp
     core/script/binding/ActionClassesLua.cpp
     core/script/binding/CoreClassesLua.cpp
     core/script/binding/ECSClassesLua.cpp
@@ -1079,6 +1096,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/UtilClassesLua.cpp
     core/script/binding/HtmlUIClassesLua.cpp
     core/script/binding/HtmlUIAnimeLua.cpp
+    core/script/binding/ScriptClassesLua.cpp
     core/shader/RuntimeShaderCompiler.cpp
     core/shader/ShaderData.cpp
     core/shader/ShaderDataSerializer.cpp
@@ -1124,6 +1142,7 @@ set(JASPERENGINE_SRCS
     core/util/FontRegistry.cpp
     core/util/GlyphAtlas.cpp
     core/util/LunaSVGRuntime.cpp
+    core/util/NumberText.cpp
     core/util/PostColorLut.cpp
     core/util/STBText.cpp
     core/util/StringUtils.cpp

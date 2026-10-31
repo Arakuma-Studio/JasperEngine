@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 #include "ComponentArray.h"
+#include "Signature.h"
 #include "Log.h"
 
 namespace jasperengine {
@@ -71,6 +72,10 @@ namespace jasperengine {
 			}
 
 			// Ids stay sequential: they are signature bit positions.
+			if (nextComponentIdId >= Signature().size()){
+				Log::error("Too many component types for the entity signature (widen Signature in ecs/Signature.h)");
+				throw std::length_error("Too many component types for the entity signature");
+			}
 			entries[index].array = std::make_shared<ComponentArray<T>>();
 			entries[index].id = nextComponentIdId;
 

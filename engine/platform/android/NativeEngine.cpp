@@ -845,6 +845,9 @@ void NativeEngine::setupJNI(){
     mJniData.setStringForKeyRef = env->GetMethodID(mJniData.userSettingsClsRef, "setStringForKey", "(Ljava/lang/String;Ljava/lang/String;)V");
 
     mJniData.removeKeyRef = env->GetMethodID(mJniData.userSettingsClsRef, "removeKey", "(Ljava/lang/String;)V");
+    mJniData.hasKeyRef = env->GetMethodID(mJniData.userSettingsClsRef, "hasKey", "(Ljava/lang/String;)Z");
+    mJniData.removeAllKeysRef = env->GetMethodID(mJniData.userSettingsClsRef, "removeAllKeys", "()V");
+    mJniData.saveUserSettingsRef = env->GetMethodID(mJniData.userSettingsClsRef, "save", "()Z");
 
     if (mJniData.adMobWrapperClsRef) {
         mJniData.initializeAdMob = env->GetMethodID(mJniData.adMobWrapperClsRef, "initialize","(ZZ)V");
@@ -1382,10 +1385,12 @@ void NativeEngine::handleCommand(int32_t cmd) {
         case APP_CMD_GAINED_FOCUS:
             mHasFocus = true;
             mState.mHasFocus = appState.mHasFocus = mHasFocus;
+            jasperengine::Engine::systemFocus(true);
             break;
         case APP_CMD_LOST_FOCUS:
             mHasFocus = false;
             mState.mHasFocus = appState.mHasFocus = mHasFocus;
+            jasperengine::Engine::systemFocus(false);
             break;
         case APP_CMD_PAUSE:
             jasperengine::Engine::systemPause();

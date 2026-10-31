@@ -1802,8 +1802,6 @@ class TypeMapper:
             return 'string'
         if base == 'Signature':
             return 'string'
-        if base == 'Touch':
-            return 'Touch'
         m = _OPT.match(base)
         if m:
             inner = self.lua(m.group(1), ctx_class, depth + 1)
@@ -1931,6 +1929,79 @@ OVERRIDES = {
     },
 }
 
+# script-lifecycle: the getScript family on every GameObject handle (and script instance, Script.lua),
+# GameObject's scene-wide finds and the Event class (lua_CFunctions)
+_GET_SCRIPT_DOCS = {
+    'getScript': ["The Lua script instance of class `className` on this GameObject, enabled or not (Unity's",
+                  "GetComponent<Script>()), or nil. Type it with `---@type Enemy` (LuaLS cannot infer the class)."],
+    'getScripts': ["Every Lua script instance of this GameObject, or those of class `className`, in component order."],
+    'getScriptInChildren': ["The first script of class `className` on this GameObject or a descendant (pre-order); inactive",
+                            "GameObjects only with `includeInactive`. Scripts may be disabled (Unity's GetComponentInChildren)."],
+    'getScriptsInChildren': ["Every script of class `className` on this GameObject and its descendants (pre-order); inactive",
+                             "GameObjects only with `includeInactive`."],
+    'getScriptInParent': ["The first script of class `className` on this GameObject or an ancestor (upward); inactive",
+                          "GameObjects only with `includeInactive`."],
+}
+_GET_SCRIPT_SIGS = {
+    'getScript': [([('className', 'string')], 'any')],
+    'getScripts': [([('className?', 'string')], 'ScriptInstance[]')],
+    'getScriptInChildren': [([('className', 'string'), ('includeInactive?', 'boolean')], 'any')],
+    'getScriptsInChildren': [([('className', 'string'), ('includeInactive?', 'boolean')], 'ScriptInstance[]')],
+    'getScriptInParent': [([('className', 'string'), ('includeInactive?', 'boolean')], 'any')],
+}
+for _name, _doc in _GET_SCRIPT_DOCS.items():
+    OVERRIDES[('EntityHandle', _name)] = {'doc': _doc, 'overloads': _GET_SCRIPT_SIGS[_name]}
+OVERRIDES.update({
+    ('GameObject', 'find'): {
+        'doc': ["The first active GameObject named `name` in the running scenes (main scene first, then the layers;",
+                "ascending ids within a scene), else nil. `\"Arm/Hand\"` is a Hand below an Arm, `\"/Monster/Arm/Hand\"`",
+                "a path from a root. Unity's GameObject.Find: not for every frame (a linear scan)."],
+        'overloads': [([('name', 'string')], 'GameObject')]},
+    ('GameObject', 'findWithTag'): {
+        'doc': ["The first active GameObject with the tag in the running scenes, else nil. A tag the project",
+                "does not define logs \"Tag: X is not defined.\" and finds nothing."],
+        'overloads': [([('tag', 'string')], 'GameObject')]},
+    ('GameObject', 'findGameObjectsWithTag'): {
+        'doc': ["Every active GameObject with the tag in the running scenes (possibly empty)."],
+        'overloads': [([('tag', 'string')], 'GameObject[]')]},
+    ('GameObject', 'findObjectOfType'): {
+        'doc': ["The first script instance of Lua class `className` that is active and enabled (any, with",
+                "`includeInactive`) in the running scenes, else nil. A component wrapper name (\"Camera\",",
+                "\"AudioSource\", \"Rigidbody\", ...) gives that wrapper for a GameObject with the component.",
+                "Unity's FindObjectOfType: not for every frame (a linear scan)."],
+        'overloads': [([('className', 'string'), ('includeInactive?', 'boolean')], 'any')]},
+    ('GameObject', 'findObjectsOfType'): {
+        'doc': ["Every match of findObjectOfType, in scene order (possibly empty)."],
+        'overloads': [([('className', 'string'), ('includeInactive?', 'boolean')], 'any[]')]},
+    ('Event', 'addListener'): {
+        'doc': ["Adds a listener (Unity's AddListener / C# `+=`): a function, or a method of a script instance",
+                "(`ev:addListener(self, \"onScore\")`), which is dropped once that script is destroyed. Adding the",
+                "same one again does nothing."],
+        'overloads': [([('fn', 'function')], ''), ([('owner', 'table'), ('methodName', 'string')], '')]},
+    ('Event', 'removeListener'): {
+        'doc': ["Removes a listener added with the same arguments (C# `-=`); true if one was removed."],
+        'overloads': [([('fn', 'function')], 'boolean'), ([('owner', 'table'), ('methodName', 'string')], 'boolean')]},
+    ('Event', 'removeAllListeners'): {
+        'doc': ["Removes every listener."],
+        'overloads': [([], '')]},
+    ('Event', 'invoke'): {
+        'doc': ["Calls the listeners in the order they were added with these arguments. A listener's error is",
+                "logged with its traceback and the others still run; one added meanwhile runs from the next invoke."],
+        'overloads': [([('...', 'any')], '')]},
+    ('Event', 'add'): {
+        'doc': ["Subscribes `fn` under `tag` (the event object protocol RegisterEvent uses); replaces that tag's."],
+        'overloads': [([('tag', 'string'), ('fn', 'function')], 'boolean')]},
+    ('Event', 'remove'): {
+        'doc': ["Removes the subscription with `tag`; true if there was one."],
+        'overloads': [([('tag', 'string')], 'boolean')]},
+    ('Event', 'has'): {
+        'doc': ["Whether a subscription with `tag` exists."],
+        'overloads': [([('tag', 'string')], 'boolean')]},
+    ('Event', '__tostring'): {
+        'doc': [],
+        'overloads': [([], 'string')]},
+})
+
 # Line and Trail Renderers (lines and trails spec 6.6): the points by 0-based index (Unity's
 # SetPosition / GetPosition); an index out of range raises an error naming positionCount.
 # setPosition(x, y[, z]) is still the GameObject's own position
@@ -1969,6 +2040,36 @@ OVERRIDES[('Gradient', 'setKeys')] = {
     'overloads': [([('colorKeys', '({[1]: number, [2]: Vector3}|GradientColorKey)[]'),
                     ('alphaKeys?', '({[1]: number, [2]: number}|GradientAlphaKey)[]')], '')]}
 
+# Input (CoreClassesLua.cpp): the rebinding functions read and push tables, the simulated
+# sources take a name or a script instance
+_INPUT_SOURCE = 'string|ScriptInstance'
+OVERRIDES.update({
+    ('Input', 'getBindings'): {
+        'doc': ['The bindings the action uses now (a runtime override, else Project Settings > Input).'],
+        'overloads': [([('name', 'string')], 'InputBinding[]')]},
+    ('Input', 'setBindings'): {
+        'doc': ['Replaces the action\'s bindings at run time (a settings screen); `false, error` when invalid.',
+                'Input.resetBindings undoes it, Input.exportBindings saves it.'],
+        'overloads': [([('name', 'string'), ('bindings', 'InputBinding[]')], 'boolean, string?')]},
+    ('Input', 'importBindings'): {
+        'doc': ['Replaces the runtime bindings with what Input.exportBindings returned; `false, error` when invalid.'],
+        'overloads': [([('json', 'string')], 'boolean, string?')]},
+    ('Input', 'simulateButton'): {
+        'doc': ['Holds (or releases) the action\'s button like an on-screen button: a source keyed by `source`',
+                '(default "script"; `self` = gone with the script instance). Seen by getButton* next frame.'],
+        'overloads': [([('name', 'string'), ('pressed', 'boolean'), ('source?', _INPUT_SOURCE)], '')]},
+    ('Input', 'simulateAxis'): {
+        'doc': ['Adds `value` (-1..1) to the action like an on-screen stick, until set again; 0 removes it.',
+                '`source` as in simulateButton.'],
+        'overloads': [([('name', 'string'), ('value', 'number'), ('source?', _INPUT_SOURCE)], '')]},
+    ('Input', 'addAxisDelta'): {
+        'doc': ['Adds `delta` to the action for this frame only, unclamped (like mouse movement).'],
+        'overloads': [([('name', 'string'), ('delta', 'number'), ('source?', _INPUT_SOURCE)], '')]},
+    ('Input', 'clearSimulated'): {
+        'doc': ['Removes the simulated values of `source` (without one: of every script).'],
+        'overloads': [([('source?', _INPUT_SOURCE)], '')]},
+})
+
 # Mesh:getMaterial and Mesh.material push the Material copy themselves (a LuaRef: the copy
 # remembers the shader its submesh draws with, LuaBinding::setMaterialDrawnShader)
 OVERRIDES[('Mesh', 'getMaterial')] = {
@@ -1976,8 +2077,100 @@ OVERRIDES[('Mesh', 'getMaterial')] = {
     'overloads': [([], 'Material'), ([('submesh', 'integer')], 'Material')],
 }
 
-# Properties whose getter returns a LuaRef: (Lua type, a copy)
+# script-data (IOClassesLua.cpp): Json, File helpers and PlayerPrefs are lua_CFunctions (option
+# tables, `nil, err` results); JsonEncodeOptions / JsonDecodeOptions / JsonNull / JsonValue are
+# in engine/core/script/binding/stubs/Json.lua
+_JSON_VALUE = 'JsonValue'
+OVERRIDES.update({
+    ('Json', 'encode'): {
+        'doc': ['JSON text of `value` (tables, strings, numbers, booleans, Json.null, Vector2/3/4, Quaternion,',
+                'a `__tojson` metamethod). Keys sorted; a table with keys 1..n is an array, an empty one `[]`',
+                '(Json.object({}) or emptyTable = "object" for `{}`); integers stay integers, floats keep `.0`.',
+                'Raises with the place: "Json.encode: cannot encode a function at $.player.onHit".'],
+        'overloads': [([('value', 'any'), ('opts?', 'JsonEncodeOptions')], 'string')]},
+    ('Json', 'decode'): {
+        'doc': ['The Lua value of JSON `text`: objects and arrays become tables (empty ones marked, so they',
+                'encode back the same), null becomes Json.null (or nil with `null = "nil"`), integers integers.',
+                'Raises "Json.decode: syntax error at line 3, column 14: ...".'],
+        'overloads': [([('text', 'string'), ('opts?', 'JsonDecodeOptions')], _JSON_VALUE)]},
+    ('Json', 'tryEncode'): {
+        'doc': ['Json.encode without raising: the text, or nil and the message (options are still checked).'],
+        'overloads': [([('value', 'any'), ('opts?', 'JsonEncodeOptions')], 'string?, string?')]},
+    ('Json', 'tryDecode'): {
+        'doc': ['Json.decode without raising: the value, or nil and the message. A JSON `null` gives Json.null,',
+                'so nil always means failure.'],
+        'overloads': [([('text', 'string'), ('opts?', 'JsonDecodeOptions')], _JSON_VALUE + '?, string?')]},
+    ('Json', 'isNull'): {
+        'doc': ['`v` is Json.null.'],
+        'overloads': [([('v', 'any')], 'boolean')]},
+    ('Json', 'array'): {
+        'doc': ['Marks `t` (or a new table) to encode as a JSON array (`[]` when empty; holes are an error); returns it.'],
+        'overloads': [([('t?', 'table')], 'table')]},
+    ('Json', 'object'): {
+        'doc': ['Marks `t` (or a new table) to encode as a JSON object (`{}` when empty); returns it.'],
+        'overloads': [([('t?', 'table')], 'table')]},
+    ('Json', 'readFile'): {
+        'doc': ['File.readText + Json.decode: the value, or nil and "not found: data://save.json" /',
+                '"data://save.json: syntax error at line 2, column 5: ...". Paths as File.readText.'],
+        'overloads': [([('path', 'string'), ('opts?', 'JsonDecodeOptions')], _JSON_VALUE + '?, string?')]},
+    ('Json', 'writeFile'): {
+        'doc': ['Json.encode + File.writeText (atomic): true, or nil and the message. Paths as File.writeText.'],
+        'overloads': [([('path', 'string'), ('value', 'any'), ('opts?', 'JsonEncodeOptions')], 'true?, string?')]},
+    ('File', 'readText'): {
+        'doc': ['The whole file as a string, or nil and the message ("not found: data://save.json"). Paths:',
+                '"data://x" (user data, writable), "asset://x" and "lua://x" (read-only), a bare relative path',
+                'means data://; ".." is refused; absolute paths are read on desktop and in the editor only.'],
+        'overloads': [([('path', 'string')], 'string?, string?')]},
+    ('File', 'writeText'): {
+        'doc': ['Replaces the data:// file with `text` atomically (missing folders made): true, or nil and',
+                'the message. On the web it reaches IndexedDB within half a second (System.syncFileSystem: now).'],
+        'overloads': [([('path', 'string'), ('text', 'string')], 'true?, string?')]},
+    ('File', 'appendText'): {
+        'doc': ['Adds `text` to the end of the data:// file (made when missing; not atomic): true, or nil and the message.'],
+        'overloads': [([('path', 'string'), ('text', 'string')], 'true?, string?')]},
+    ('File', 'exists'): {
+        'doc': ['A file or folder is at `path` (paths as File.readText).'],
+        'overloads': [([('path', 'string')], 'boolean')]},
+    ('File', 'remove'): {
+        'doc': ['Removes the data:// file (never a folder): true (also when nothing was there), or nil and the message.'],
+        'overloads': [([('path', 'string')], 'true?, string?')]},
+    ('File', 'makeDirs'): {
+        'doc': ['Makes the data:// folder and the missing ones above it: true, or nil and the message.'],
+        'overloads': [([('path', 'string')], 'true?, string?')]},
+    ('File', 'list'): {
+        'doc': ['Names of the files and folders in a data:// folder, sorted, or nil and the message.'],
+        'overloads': [([('dir', 'string')], 'string[]?, string?')]},
+    ('PlayerPrefs', 'getInt'): {
+        'doc': ["Unity's PlayerPrefs.GetInt: the stored integer, or `default` (0) when the key is not there."],
+        'overloads': [([('key', 'string'), ('default?', 'integer')], 'integer')]},
+    ('PlayerPrefs', 'setInt'): {
+        'doc': ['Stores a 32-bit integer (3.5 raises "integer expected").'],
+        'overloads': [([('key', 'string'), ('value', 'integer')], '')]},
+    ('PlayerPrefs', 'getFloat'): {
+        'doc': ['The stored float, or `default` (0.0) when the key is not there.'],
+        'overloads': [([('key', 'string'), ('default?', 'number')], 'number')]},
+    ('PlayerPrefs', 'setFloat'): {
+        'doc': ['Stores a float (32-bit, as Unity).'],
+        'overloads': [([('key', 'string'), ('value', 'number')], '')]},
+    ('PlayerPrefs', 'getString'): {
+        'doc': ['The stored string (an empty one too), or `default` ("") when the key is not there.'],
+        'overloads': [([('key', 'string'), ('default?', 'string')], 'string')]},
+    ('PlayerPrefs', 'hasKey'): {
+        'doc': ['The key is stored (an empty value too).'],
+        'overloads': [([('key', 'string')], 'boolean')]},
+    ('PlayerPrefs', 'deleteKey'): {
+        'doc': ['Removes the key; nothing happens when it is not there.'],
+        'overloads': [([('key', 'string')], '')]},
+    ('PlayerPrefs', 'setString'): {
+        'doc': ['Stores a string (Json.encode a table to store it).'],
+        'overloads': [([('key', 'string'), ('value', 'string')], '')]},
+})
+
+# Properties whose getter returns a LuaRef, or whose lambda's return type is not inferred:
+# (Lua type, a copy)
 PROPERTY_OVERRIDES = {
+    # the null sentinel (stubs/Json.lua: JsonNull)
+    ('Json', 'null'): ('JsonNull', False),
     ('Mesh', 'material'): ('Material', True),
     # the Particle System module views (binding/stubs/ParticleSystemModules.lua, from
     # tools/gen_particle_stubs.py): live views, not copies
@@ -1987,6 +2180,10 @@ PROPERTY_OVERRIDES = {
         'rotationOverLifetime', 'rotationBySpeed', 'noise', 'textureSheetAnimation', 'renderer')},
     # AnimationEvent.args builds a 1-based table of the event's arguments
     ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
+    # the joint's bodies (std::optional<GameObject> lambdas): nil = the world
+    ('Joint2D', 'bodyA'): ('GameObject|nil', False),
+    ('Joint2D', 'bodyB'): ('GameObject|nil', False),
+    ('Joint2D', 'connectedBody'): ('GameObject|nil', False),
 }
 
 for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
@@ -2211,6 +2408,9 @@ def html_ui_types_file():
 # `any`): (Lua class, member, parameter name) -> Lua type. A `luabridge::LuaRef` parameter of a
 # bound function that takes a callback or a parameter table belongs here.
 _PARAM_TYPE_OVERRIDES = {
+    # 2D physics materials: a .physicsmaterial path, a PhysicsMaterial or nil (none)
+    ('Rigidbody2D', 'setColliderMaterial', 'value'): 'string|PhysicsMaterial|nil',
+    ('PhysicsMaterial', 'new', 'params'): '{friction?: number, bounciness?: number, frictionCombine?: PhysicsMaterialCombine, bounceCombine?: PhysicsMaterialCombine}|nil',
 }
 # anime (engine/core/script/binding/HtmlUIAnimeLua.cpp, phase-1 p1-anim): the parameter tables
 # are the Anime*Params classes of engine/core/script/binding/stubs/anime.lua
@@ -2290,6 +2490,7 @@ ENGINE_EVENT_ARGS = {
     'onGamepadConnect': ['gamepad'], 'onGamepadDisconnect': ['gamepad'],
     'onGamepadButtonDown': ['gamepad', 'button'], 'onGamepadButtonUp': ['gamepad', 'button'],
     'onGamepadAxisMove': ['gamepad', 'axis', 'value'],
+    'onButtonDown': ['action'], 'onButtonUp': ['action'],
 }
 
 _LUA_KEYWORDS = {'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function', 'goto', 'if',
@@ -2384,7 +2585,7 @@ class Builder:
             fs = re.match(r'^FunctionSubscribe<(.*?)\((.*)\)>$', c.cpp) or \
                 re.match(r'^FunctionSubscribe<(.*?)\((.*)\)>$', c.base_cpp or '')
             for m in c.members:
-                if fs and m.kind == 'Method' and m.name in ('call', '__call', 'add'):
+                if fs and m.kind == 'Method' and m.name in ('call', '__call', 'add', 'remove', 'has'):
                     self.subscribe_member(c, m, fs.group(1), fs.group(2))
                     continue
                 if m.kind in ('Method', 'StaticMethod'):
@@ -2513,6 +2714,14 @@ class Builder:
         if m.name in ('call', '__call'):
             m.lua_sigs = [LuaSig(handler_params, ret)]
             m.doc = ['Calls every subscribed function with these arguments.'] if m.name == 'call' else []
+        elif m.name == 'remove':
+            m.lua_sigs = [LuaSig([('tag', 'string', False)], 'boolean')]
+            m.doc = ['Removes the subscription with `tag` (UnregisterEvent computes it); true if there was one.']
+            return
+        elif m.name == 'has':
+            m.lua_sigs = [LuaSig([('tag', 'string', False)], 'boolean')]
+            m.doc = ['Whether a subscription with `tag` exists.']
+            return
         else:
             fn = 'fun(' + ', '.join(f'{n}: {t}' for n, t, _ in handler_params) + ')' + (f': {ret}' if ret else '')
             m.lua_sigs = [LuaSig([('tag', 'string', False), ('fn', fn, False)], 'boolean')]
@@ -2572,7 +2781,8 @@ class Builder:
             if visible:
                 self.unresolve(c, m, 'getter takes arguments')
         if cpp_type is None:
-            self.unresolve(c, m, 'getter return type not inferred')
+            if (c.name, m.name) not in PROPERTY_OVERRIDES:
+                self.unresolve(c, m, 'getter return type not inferred')
             m.lua_type = 'any'
         else:
             base, stars = bare_type(cpp_type)
@@ -2979,15 +3189,43 @@ class Emitter:
             '---@param tag? string',
             'function RegisterEvent(self, event, methodName, tag) end',
             '',
+            '---Removes what `RegisterEngineEvent(self, methodName [, tag])` subscribed (same tag); true if it was',
+            '---subscribed. Unity\'s `-=` for an engine event, typically in onDisable.',
+            '---@param self table # the script instance (`self`)',
+            '---@param methodName EngineEventName',
+            '---@param tag? string',
+            '---@return boolean',
+            'function UnregisterEngineEvent(self, methodName, tag) end',
+            '',
+            '---Removes what `RegisterEvent(self, event, methodName [, tag])` subscribed (same tag); true if it was',
+            '---subscribed.',
+            '---@param self table # the script instance (`self`)',
+            '---@param event FunctionSubscribe|Event',
+            '---@param methodName string',
+            '---@param tag? string',
+            '---@return boolean',
+            'function UnregisterEvent(self, event, methodName, tag) end',
+            '',
             '---An event object (the `FunctionSubscribe_*` classes): functions subscribed to it are called when',
             '---the event fires. Subscribe a script method with RegisterEvent / RegisterEngineEvent, or any',
-            '---function with `event:add(tag, fn)`.',
+            '---function with `event:add(tag, fn)`; `event:remove(tag)` and `event:has(tag)` by tag.',
             '---@class FunctionSubscribe',
             '',
-            '---What Input.getTouches() returns for each touch (a plain table, not a class).',
-            '---@class Touch',
-            '---@field pointer integer',
-            '---@field position Vector2',
+            '---One binding of an input action (Input.getBindings / setBindings; Project Settings > Input).',
+            '---kind buttons: positive / negative control names, gravity, sensitivity, dead, snap;',
+            '---gamepad_axis: axis (left_x..right_trigger), gamepad ("any" or 0-15), dead, sensitivity;',
+            '---mouse_delta: axis ("x", "y", "wheel"), sensitivity. invert on every kind.',
+            '---@class InputBinding',
+            '---@field kind "buttons"|"gamepad_axis"|"mouse_delta"',
+            '---@field positive? string[] # buttons: "space", "mouse_left", "gamepad_a"...',
+            '---@field negative? string[]',
+            '---@field axis? string # gamepad_axis: "left_x"...; mouse_delta: "x"|"y"|"wheel"',
+            '---@field gamepad? "any"|integer',
+            '---@field gravity? number',
+            '---@field sensitivity? number',
+            '---@field dead? number',
+            '---@field snap? boolean',
+            '---@field invert? boolean',
             '',
         ]
         self.files['Globals.lua'] = '\n'.join(L).rstrip() + '\n'
@@ -3000,8 +3238,9 @@ class Emitter:
         L = [FILE_HEADER]
         L += [
             '-- The script module contract. A Lua script returns a module table; for every Script component',
-            '-- entry using it the engine makes an instance (the module is its __index), sets `self.__name`,',
-            '-- `self.scene`, `self.entity` and every property, then calls `init(self)`. Annotate a script\'s',
+            '-- entry using it (enabled or not) the engine makes an instance whose methods come from the module,',
+            '-- sets `self.__name`, `self.scene`, `self.entity` and every property, then calls `init(self)` when',
+            '-- the GameObject is first active (ScriptInstance below lists the lifecycle). Annotate a script\'s',
             '-- module as a subclass to get completion and checks on `self`:',
             '--',
             '--   ---@class Player : ScriptInstance',
@@ -3030,16 +3269,37 @@ class Emitter:
             '---@field type? ScriptPropertyType # default "float"',
             '---@field default? any # default value: number, boolean, string, or an array table for vectors/colors ({x, y, z})',
             '',
-            '---A Lua script instance (`self` in a script\'s methods). `init(self)` is called once after every',
-            '---instance of the scene exists; `onDestroy(self)` when its GameObject is destroyed at runtime.',
-            '---Other methods run only when registered (RegisterEngineEvent / RegisterEvent).',
+            '---A Lua script instance (`self` in a script\'s methods), Unity\'s MonoBehaviour. Every Script component',
+            '---entry has one, enabled or not. The engine calls these methods by name when the script defines',
+            '---them (lua-api.md 1.1):',
+            '---  init(self)              once, when the GameObject is first active in hierarchy, enabled or not (Awake)',
+            '---  onEnable(self)          it becomes active and enabled (after init)',
+            '---  start(self)             once, at the start of the frame after the first onEnable (Start)',
+            '---  onDisable(self)         it stops being active and enabled; before onDestroy',
+            '---  onDestroy(self)         once: destroy, scene unload, Play stop / quit (only if init ran)',
+            '---  onApplicationPause(self, paused) / onApplicationFocus(self, focused) / onApplicationQuit(self)',
+            '---Update methods (onUpdate, onFixedUpdate, onPostUpdate) run only once registered with',
+            '---RegisterEngineEvent; they are skipped while the script is not active and enabled.',
             '---@class ScriptInstance',
             '---@field scene Scene # the scene of the GameObject the script is attached to',
             '---@field entity integer # the GameObject\'s entity; wrap it: `Sprite(self.scene, self.entity)`',
             '---@field __name string # the script class name (the file name)',
             '---@field properties? ScriptPropertyDef[] # the properties the Inspector shows',
+            '---@field enabled boolean # Unity\'s enabled: assigning calls onEnable / onDisable (and start on the next frame)',
+            '---@field isActiveAndEnabled boolean # (read-only) the GameObject is active in hierarchy and the script enabled',
+            '---@field gameObject GameObject # (read-only) the script\'s GameObject',
+            'local ScriptInstance = {}',
             '',
         ]
+        for name, doc in _GET_SCRIPT_DOCS.items():
+            for line in doc:
+                L.append('---' + line)
+            params, ret = _GET_SCRIPT_SIGS[name][0]
+            for pname, ptype in params:
+                L.append(f'---@param {pname} {ptype}')
+            L.append(f'---@return {ret}')
+            L.append(f'function ScriptInstance:{name}(' + ', '.join(p.rstrip("?") for p, _ in params) + ') end')
+            L.append('')
         self.files['Script.lua'] = '\n'.join(L).rstrip() + '\n'
 
     def derives(self, c, base):

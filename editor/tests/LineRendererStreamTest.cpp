@@ -17,6 +17,8 @@
 #include "component/LineRendererComponent.h"
 #include "component/TrailRendererComponent.h"
 #include "component/Transform.h"
+#include "mcp/McpValues.h"
+#include "object/LineRenderer.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/RenderSystem.h"
 
@@ -403,4 +405,63 @@ TEST(LineRendererStreamTest, FactoryCodeCompiles){
 #else
     GTEST_SKIP() << "built without the engine flags";
 #endif
+}
+
+TEST(LineRendererStreamTest, SetPositionOutOfRangeChangesNothing){
+    Scene scene;
+    const Entity entity = scene.createUserEntity();
+    scene.addComponent<Transform>(entity, {});
+    LineRendererComponent segments;
+    segments.lines.push_back(LineData{Vector3(0, 0, 0), Vector4(1, 1, 1, 1), Vector3(1, 0, 0), Vector4(1, 1, 1, 1)});
+    scene.addComponent<LineRendererComponent>(entity, segments);
+    LineRenderer line(&scene, entity);
+    EXPECT_FALSE(line.setPosition(3, Vector3(1, 2, 3)));
+    EXPECT_EQ(scene.getComponent<LineRendererComponent>(entity).mode, LineRendererMode::Segments);
+    line.setPositionCount(2);
+    EXPECT_TRUE(line.setPosition(1, Vector3(1, 2, 3)));
+    EXPECT_EQ(scene.getComponent<LineRendererComponent>(entity).mode, LineRendererMode::Polyline);
+}
+
+TEST(LineRendererStreamTest, McpLineDataPicksTheMode){
+    // the whole segment list is Segments in local space, the positions list Polyline; unless the
+    // same call names the mode (or the space) itself
+    using mcp::McpValues;
+    using mcp::Json;
+    auto parse = [](const char* text){
+        std::vector<McpValues::Change> changes;
+        std::string error;
+        EXPECT_TRUE(McpValues::parseChanges(Json::parse(text), changes, error)) << error;
+        std::map<std::string, Json> byProperty;
+        for (const McpValues::Change& change : changes) byProperty[change.property] = change.value;
+        return byProperty;
+    };
+    auto lines = parse(R"({"linerenderer": {"lines": []}})");
+    EXPECT_EQ(lines["mode"], "segments");
+    EXPECT_EQ(lines["useWorldSpace"], false);
+    auto positions = parse(R"({"line": {"positions": [[0,0,0],[1,0,0]]}})");
+    EXPECT_EQ(positions["mode"], "polyline");
+    EXPECT_EQ(positions.count("useWorldSpace"), 0u);
+    auto explicitMode = parse(R"({"linerenderer": {"lines": [], "mode": "polyline", "useWorldSpace": true}})");
+    EXPECT_EQ(explicitMode["mode"], "polyline");
+    EXPECT_EQ(explicitMode["useWorldSpace"], true);
+    auto element = parse(R"([{"component": "linerenderer", "property": "positions[0]", "value": [1,2,3]}])");
+    EXPECT_EQ(element.count("mode"), 0u);
+}
+
+TEST(LineRendererStreamTest, MalformedCurveAndGradientFallBack){
+    // a wrap or a mode that is not a name: the default, no exception
+    const AnimationCurve curve = editor::Stream::decodeCurve(YAML::Load("{keys: [[0, 1], [1, 2]], pre: [1, 2], post: {a: 1}}"), AnimationCurve::constant(5.0f));
+    EXPECT_EQ(curve.keys.size(), 2u);
+    EXPECT_EQ(curve.preWrap, CurveWrap::Clamp);
+    EXPECT_EQ(curve.postWrap, CurveWrap::Clamp);
+    const Gradient gradient = editor::Stream::decodeGradient(YAML::Load("{mode: [x], colors: [[0, '#FF0000'], [1, '#0000FF']]}"), Gradient());
+    EXPECT_EQ(gradient.mode, GradientMode::Blend);
+    EXPECT_EQ(gradient.colorKeys.size(), 2u);
+    // more than 8 keys in a file: loaded with the first 7 and the last
+    std::string many = "{colors: [";
+    for (int i = 0; i <= 10; i++) many += std::string(i ? ", " : "") + "[" + std::to_string(i / 10.0f) + ", '#FFFFFF']";
+    many += "]}";
+    const Gradient capped = editor::Stream::decodeGradient(YAML::Load(many), Gradient());
+    ASSERT_EQ(capped.colorKeys.size(), Gradient::MAX_KEYS);
+    EXPECT_FLOAT_EQ(capped.colorKeys.back().time, 1.0f);
 }

@@ -46,7 +46,9 @@ statics, `RegisterEvent`/`RegisterEngineEvent`).
    command system.
 4. MCP (`editor/mcp`, tools in `editor/mcp/tools`): the component/property surfaces agents use to author the
    feature; `docs/mcp/TOOLS.md` is generated (`tools/mcp/gen_tool_docs.py`), the tool definitions have a size
-   budget (`tools/mcp/tool_budget.py`); the agent guide (`editor/mcp/McpInstructions.cpp`, `jasper://guide`) has a
+   budget (`tools/mcp/tool_budget.py`; when new tool text is worth it, raise `TOTAL_LIMIT`/`LIMITS` in
+   `tools/mcp/tests/test_html_ui_tools.py` by the measured amount with a comment, as earlier features did; keep
+   descriptions tight and move detail to the guides); the agent guide (`editor/mcp/McpInstructions.cpp`, `jasper://guide`) has a
    tight budget - put details in `docs/mcp/guide/*.md` instead.
 5. Docs: `docs/mcp/guide/lua-api.md` and the topic guides, `docs/unity-glossary.md` (Unity name -> engine name),
    README feature list when user-visible.
@@ -55,7 +57,25 @@ statics, `RegisterEvent`/`RegisterEngineEvent`).
    `~/.local/bin/uv` and xvfb). Platform code that cannot run here must at least compile (Android: Gradle/NDK;
    Web: emsdk) - see Build.
 
-## Build and test on this host
+## Build and test on a remote build box (preferred)
+
+The host is saturated, so builds and tests run on rented Linux boxes (Ubuntu 24.04, gcc 13, CMake 3.28, ccache,
+xvfb, xdotool, dbus-x11, uv, FFmpeg: the same toolchain as the host). From inside your worktree:
+
+- `jbox run '<command>'` syncs your worktree to the box (changed files only; `build/` and `.git` are not copied)
+  and runs `<command>` from the worktree root there. Examples:
+  `jbox run 'cmake -S . -B build/editor -G Ninja -DCMAKE_BUILD_TYPE=Release -DJASPERENGINE_EDITOR_TESTS=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache && cmake --build build/editor --target jasperengine-editor jasperengine-editor-tests -j8'`
+  `jbox run 'xvfb-run -a build/editor/jasperengine-editor-tests --gtest_filter=Foo*'`
+  `jbox run 'cmake --install build/editor --prefix build/linux/editor-install >/dev/null && JASPER_EDITOR=$PWD/build/linux/editor-install/bin/jasperengine-editor tools/mcp/run-tests.sh -j4 tools/mcp/tests/test_x.py'`
+- `jbox get <path> [<dest>]` copies a file back (e.g. a regenerated `docs/mcp/TOOLS.md`, screenshots).
+- Your box is given in your task (`JBOX_PORT`); export it in every command (`JBOX_PORT=2202 jbox run ...`) or rely
+  on `/etc/jbox/assign`. Boxes are shared by several agents: 16-core boxes (ports 2201, 2202) use `-j5`, 8-core
+  boxes (2203, 2204) `-j3` (more parallel jobs ran a box out of memory). MCP tests: `-j2`.
+- The box copy is NOT a git repository of your branch (git state there is stale): commit locally, never on the box.
+  Long commands: keep them under the tool timeout or run them in the background locally (`jbox run ... > log &`).
+- Android (Gradle/NDK) and Web (emsdk) compile checks still run on the host (toolchains only here): keep them few.
+
+## Build and test on this host (fallback)
 
 - Native Linux toolchain: gcc 13, CMake 3.28, Ninja, ccache (shared cache, `base_dir=/var/lib/orquester/workspaces/jaspersito`),
   xvfb (`xvfb-run -a`), nasm, JDK 21, Android SDK at `/opt/android-sdk` (AGP installs the NDK), emsdk 6.0.10 at
@@ -71,10 +91,14 @@ statics, `RegisterEvent`/`RegisterEngineEvent`).
   (`cmake --install build/editor --prefix build/linux/editor-install`) and ALWAYS pass your own editor:
   `JASPER_EDITOR=$PWD/build/linux/editor-install/bin/jasperengine-editor tools/mcp/run-tests.sh -j2 <files>`
   (without it the harness silently uses the MAIN checkout's editor). xdotool, dbus-x11, uv, FFmpeg (tools + dev
-  libs) are installed. Known baseline: tests needing the external `build/fixture-unity` project fail on `main` too
-  (see LEDGER "Baseline"); every other MCP test passes on `main`.
+  libs) are installed. Known baseline failures on `main` (LEDGER "Baseline"): the 5 tests of
+  `test_animation_assets.py` and 5 of `test_lattice_scene.py`; every other MCP test passes on `main`.
 - Baseline on `main` (`b32a3c578`): editor + tests build with 0 warnings; unit tests 936 passed, 8 skipped, 0 failed.
 - Never use `git push`, never touch `main` or other branches/worktrees: the lead merges.
+- Before you hand off (and again when the lead asks), merge the current local `main` into your branch
+  (`git merge main` inside your worktree; `main` is shared through the repository), resolve conflicts keeping both
+  features' intent, rebuild, re-run the unit suite and your MCP tests, and regenerate TOOLS.md / re-check the tool
+  budget against the merged tree. The lead then merges your branch with no conflicts.
 
 ## Commits
 

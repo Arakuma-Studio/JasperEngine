@@ -131,6 +131,12 @@ namespace jasperengine::editor{
         Project* project;
         SceneWindow* sceneWindow;
         Command* cmd;
+        // Commands that can run scripts at once while playing (a GameObject's Active and a
+        // script's enabled checkbox: onEnable / onDisable, which may instantiate or destroy and
+        // move the component arrays): run at the start of the next show(), when the Inspector
+        // holds no reference into the scene
+        std::vector<std::function<void()>> deferredCommands;
+        void runDeferredCommands();
 
         bool windowOpen;
         bool focusRequested;
@@ -314,6 +320,11 @@ namespace jasperengine::editor{
         void clearVertexAnimatorPreviewScene(uint32_t sceneId);
         // the inspected .vat (Project window click)
         void drawVatAsset(const std::filesystem::path& asset);
+        // a .physicsmaterial: friction, bounciness and their combine modes (InspectorPhysics2D.cpp)
+        void drawPhysicsMaterialAsset(const std::filesystem::path& asset);
+        // a .physicsmaterial path field (drop from the Project window, pick, clear) with undo
+        bool physicsMaterialRow(ComponentType cpType, const std::string& property, const std::string& label,
+                                SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& help = "");
         void drawCreateCrowdDialog();
         // Sprite normals (InspectorWindowSpriteNormals.cpp): a generated normal map (or its source
         // image) clicked in the Project window; false for any other image (the scene selection

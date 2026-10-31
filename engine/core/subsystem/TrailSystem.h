@@ -10,8 +10,9 @@
 //   so the head is drawn where the object is drawn, in the same frame.
 // - Points: dropped once older than `time`; added while emitting when the head moved more than
 //   minVertexDistance from the newest one (the first one where the head was when it started
-//   moving); at most MAX_POINTS (the oldest go first, a warning once). The live head is always
-//   the first vertex of the ribbon; width and colour run by age (0 head, 1 the oldest point).
+//   moving); at most MAX_POINTS (the oldest go first, a warning once). While emitting the live
+//   head is the first vertex of the ribbon (not emitting: the stored points only, detached from
+//   the object, as Unity); width and colour run by age (0 head, 1 the oldest point).
 // - A trail whose GameObject is inactive in the hierarchy, or which is disabled, is cleared
 //   (pooled objects reactivated elsewhere draw no streak from where they were).
 // - autodestruct: the GameObject is destroyed (end of frame, GameObject.destroy) once the trail
@@ -61,7 +62,7 @@ namespace jasperengine{
         // the curve and gradient parameter of a point born at `birthTime`: its age over `time`
         static float ageT(const TrailRendererComponent& trail, float birthTime, float now);
 
-        // The centre line the ribbon is built from: the live head, then the stored points
+        // The centre line the ribbon is built from: the live head (while emitting), then the stored points
         // newest to oldest, with each one's parameter (head 0). Empty when the trail has no
         // stored point
         static void ribbonPoints(const TrailRendererComponent& trail, const Vector3& head, float now,

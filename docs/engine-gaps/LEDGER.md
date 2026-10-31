@@ -23,6 +23,15 @@ Build: native Linux toolchain installed on this host (gcc 13, CMake 3.28, Ninja,
 -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache`, then build `jasperengine-editor` and
 `jasperengine-editor-tests`. The HTML UI tests need the standalone engine build (`cmake -S engine`).
 
+## Baseline (`main` at `b32a3c578`, before any gap work)
+
+- Editor + `jasperengine-editor-tests` build with 0 warnings (Release, ~11 min cold on 8 cores).
+- Unit tests: 944 run, 936 passed, 8 skipped, 0 failed.
+- MCP e2e (`tools/mcp/run-tests.sh -j3`): all pass except 10 pre-existing failures: the 5 tests of
+  `test_animation_assets.py` (need the external `build/fixture-unity` project) and 5 of `test_lattice_scene.py`
+  (`test_click_and_drag_one_point`, `test_box_select`, `test_falloff_drag`, `test_prefab_instance_point_override`,
+  `test_2d_stacked_points`: `KeyError: 'screen_points'`).
+
 ## Features
 
 Status: `todo` / `spec` (being written) / `specced` / `impl` (being implemented) / `review` / `merged` (on
@@ -30,30 +39,31 @@ origin/main).
 
 | # | Feature (branch `gaps/<name>`) | Covers | Status |
 |---|---|---|---|
-| 1 | `http` | HTTP client for Lua (GET/POST/HEAD, headers, timeouts, JSON/text/binary bodies, download to file, texture from URL), all platforms | todo |
-| 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | todo |
-| 3 | `platform-services` | `openURL`, system language/locale, target frame rate / vsync, runtime orientation lock + iOS orientation setting + device orientation, app focus event | todo |
-| 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | todo |
-| 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | todo |
-| 6 | `audio-mixer` | mixer buses with volume/mute and filters (low-pass/high-pass, ...), streamed music, PlayOneShot, fades | todo |
-| 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | todo |
-| 8 | `physics-contacts` | per-object collision/trigger callbacks (enter/stay/exit) for 3D and 2D, delivered on the main thread; 3D global handlers off the job threads | todo |
-| 9 | `physics-3d` | damping, centre of mass, safe body-type switching, per-collider sensor/material, collider removal, 3D joint limits/motors/springs, cone fix, ragdoll, runtime-sized collider data and world capacity | todo |
-| 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | todo |
-| 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | todo |
-| 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | todo |
-| 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | todo |
-| 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | todo |
-| 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | todo |
-| 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | todo |
-| 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | todo |
-| 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | todo |
-| 19 | `input` | key/mouse/button down/up edge queries, virtual axes and buttons (Input Manager-style), bound Touch with phases and deltas | todo |
-| 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | todo |
-| 21 | `ui-scaling-text` | canvas match-width-or-height scaling, per-character text effects (waves etc.), particles inside UI | todo |
-| 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | todo |
-| 23 | `debug-overlay` | on-device log console and stats/FPS overlay | todo |
-| 24 | `camera-shake` | camera shake component and presets (MilkShake-like) | todo |
+| 1 | `http` | HTTP client for Lua (GET/POST/HEAD, headers, timeouts, JSON/text/binary bodies, download to file, texture from URL), all platforms | review |
+| 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | impl |
+| 3 | `platform-services` | `openURL`, system language/locale, target frame rate / vsync, runtime orientation lock + iOS orientation setting + device orientation, app focus event | review |
+| 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | impl |
+| 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | impl |
+| 6 | `audio-mixer` | mixer buses with volume/mute and filters (low-pass/high-pass, ...), streamed music, PlayOneShot, fades | impl |
+| 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | review |
+| 8 | `physics-contacts` | per-object collision/trigger callbacks (enter/stay/exit) for 3D and 2D, delivered on the main thread; 3D global handlers off the job threads | impl |
+| 9 | `physics-3d` | damping, centre of mass, safe body-type switching, per-collider sensor/material, collider removal, 3D joint limits/motors/springs, cone fix, ragdoll, runtime-sized collider data and world capacity | impl |
+| 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | impl |
+| 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | specced |
+| 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | specced |
+| 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | review |
+| 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | impl |
+| 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | impl |
+| 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | review |
+| 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | review |
+| 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | merged |
+| 19 | `input` | key/mouse/button down/up edge queries, virtual axes and buttons (Input Manager-style), bound Touch with phases and deltas | merged |
+| 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | impl |
+| 21 | `ui-scaling-text` | canvas match-width-or-height scaling, per-character text effects (waves etc.), particles inside UI | impl |
+| 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | impl |
+| 23 | `debug-overlay` | on-device log console and stats/FPS overlay | impl |
+| 24 | `camera-shake` | camera shake component and presets (MilkShake-like), camera follow | impl |
+| 25 | `ui-canvas-group` | Canvas Group for the native UI: group alpha, interactable, blocks raycasts, ignore parent groups; animatable (found by the animation spec: legacy clips animate CanvasGroup alpha) | impl |
 
 ## Log
 
@@ -61,3 +71,66 @@ origin/main).
   Results in [GAP-REPORT.md](GAP-REPORT.md).
 - 2026-10-31: owner asked to implement everything above. Pulled `origin/main` (no new commits). Installed the
   native toolchain and started a baseline build of `main`. Ledger and gap report written.
+- 2026-10-31: Android SDK (`/opt/android-sdk`, JDK 21) and emsdk 6.0.10 (`/opt/emsdk`) installed so Android and Web
+  code can be compiled here. Six spec agents started, one per feature group: platform (#1-4), scripting
+  (#16-18, #20, #23), physics (#7-9), animation + camera shake (#10-12, #24), rendering (#13-15, #22),
+  input/UI/audio (#19, #5, #21, #6).
+- 2026-10-31: specs committed for lines-trails, shader-globals, video-mp4, particles, input, ui-multitouch,
+  ui-scaling-text, audio-mixer. Baseline on `main`: unit tests 936 passed / 8 skipped / 0 failed; MCP e2e needed
+  dbus-x11 and xdotool (installed); the rest of the failures need the external `build/fixture-unity` project.
+  FFmpeg installed for video-mp4. Implementation started early (free slots) for `input` and `lines-trails`
+  (worktrees in `../engine-wt/<feature>`).
+- 2026-10-31: specs committed for http, native-bridge, platform-services, safe-area, anim-layers (with an Animator
+  Controller phase), anim-retarget, anim-properties, camera-shake (with a Camera Follow phase). Added feature #25
+  `ui-canvas-group`. `platform-services` implementation started.
+- 2026-10-31: specs committed for script-lifecycle (Unity lifecycle incl. start/onEnable/onDisable, init on first
+  activation like Awake), coroutines, script-data, persistence, debug-overlay. `script-data` implementation started.
+- 2026-10-31: specs committed for physics-2d, physics-contacts, physics-3d (merge order 2d -> 3d -> contacts, contacts
+  after script-lifecycle). `physics-2d` implementation started.
+- 2026-10-31: all 25 specs written and committed. The Canvas Group spec found the ECS signature was a 64-bit set
+  with 61 component types used; widened to 128 on `main` (`a23dfd2f7`, unit tests 936/936) before any new
+  component lands, and pushed `main` (specs, ledger, fix). Added a 16 GB swap file (builds of 6 agents ran the
+  machine out of memory). `script-lifecycle` implementation started.
+- 2026-10-31: `script-data` implemented (9 commits; unit 963 passed / 8 skipped; Android/Web compile checks;
+  Apple/Windows code not compilable here). Independent review started.
+- 2026-10-31: **`script-data` merged** (review: 2 medium + 6 low defects, all fixed with regression tests; merged tree:
+  0 warnings, unit 966 passed / 8 skipped, MCP script_data/stubs/docs/play/lua_threads 20 passed). `http` started on
+  top of it. `input` and `platform-services` implemented; reviews found 5 and 7 defects, being fixed. Lead product
+  calls for platform-services: keep-screen-on default applies on mobile only (desktop/Web only when the game asks);
+  iPad `UIRequiresFullScreen` only when orientations are restricted.
+- 2026-10-31: `input` review fixes done (5 defects, regression tests; unit 989). Merged into local `main`
+  (`d29e2a4be`; conflicts in the glossary, test_build.py, Engine.cpp systemPause and TOOLS.md resolved keeping both
+  sides); verification running. `platform-services` review fixes done (7 defects incl. a Windows openURL drive-letter
+  launch and the generated project CMake link). `script-lifecycle` and `physics-2d` implemented, in review.
+  `coroutines` and `anim-layers` started.
+- 2026-10-31: compute: the host (8 cores) ran at load ~28. Rented a Hetzner cpx51 box (16 vCPU, 30 GB, Ubuntu
+  24.04, ~$0.44/h, 48 h limit; the dedicated-core ccx63 was refused by the account's core limit). distcc through
+  the port forward was slower per file than local (12.3 s vs 8.3 s), so the box runs the merge verification
+  instead (`/root/verify.sh <ref> [MCP tests|ALL]`: build, unit suite, MCP, tool budget), leaving the host to the
+  agents. macOS/Windows boxes to compile-check Apple/Windows code are planned in batches at merge time.
+- 2026-10-31: **`input` merged** (verified on the build box: 0 warnings, unit 1019 passed, full MCP 820 passed with
+  only the 10 baseline failures + `test_autosync::test_external_property_picked_up`, which passes alone (load
+  flake) + the tool budget, raised by input's measured +76 with TOOLS.md regenerated). `http` and `lines-trails`
+  implemented and reviewed (http: Windows sync-handle cancel race and Apple TLS session reuse among the findings;
+  lead calls: raw bodies default to application/octet-stream, redirects from remote origins to local/private
+  addresses are refused). New rule: before handoff, each feature agent merges current `main` into its branch and
+  resolves conflicts itself, so merges into `main` are clean.
+- 2026-10-31: owner lifted the 6-agent limit (the harness caps at 20). More compute: Hetzner box #2 (cpx51, 16
+  vCPU) and #3 (ccx33, 8 dedicated; both Hetzner core limits now reached), Vultr box #4 (vc2-8c-32gb; Vultr's
+  monthly-fee limit reached): 48 remote cores in total. Agents build and test there with `jbox` (rsync over SSH
+  through forwarded ports 2201-2204; `/usr/local/bin/jbox`, assignments in `/etc/jbox/assign`). `coroutines`
+  implemented (unit 1066; 10k coroutines + 1k timers ~0.055 ms/frame), in review. Started 12 more
+  implementations, several stacked on branches still in review (camera-shake on coroutines; particles and
+  shader-globals on lines-trails; physics-3d on physics-2d; persistence, physics-contacts, ui-multitouch on
+  script-lifecycle; safe-area, ui-scaling-text on platform-services). Queued: native-bridge and video-mp4 (on
+  http, worktrees ready), anim-properties and anim-retarget (after anim-layers).
+- 2026-10-31: `coroutines` review: 1 memory-safety bug (isDone() stopping the waiting coroutine), C++ repeating
+  timers losing state, an O(n) deactivation scan, paused unscaled time, stop vs immediate waitFor; fixes in
+  progress. `native-bridge` and `video-mp4` started (on gaps/http). Only anim-properties and anim-retarget wait.
+- 2026-10-31: `physics-2d` (10 review defects fixed) merged locally (`b377f20e0`); the full MCP suite on the merged
+  tree found 5 failures its own run missed (agent guide 16523 > 16384 bytes; an old-prefab-override test; an old
+  scene's re-save dropping legacy cap keys): not pushed, back to its agent. Box 2202 ran out of memory and was
+  replaced; all boxes got 32 GB swap and lower per-agent parallelism (-j5 / -j3, MCP -j2). New handoff rule: the
+  FULL MCP suite after merging main. `script-lifecycle` (7 review defects fixed incl. a process abort on strict
+  __index modules and an Inspector use-after-free) merged locally (`6ce992460`) with one ScriptMessages mechanism
+  and the guide trimmed to 16369 bytes; pushed together with physics-2d once the full suite is clean.

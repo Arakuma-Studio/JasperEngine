@@ -272,12 +272,11 @@ int LineRenderer::getPositionCount() const{
 
 bool LineRenderer::setPosition(int index, Vector3 position){
     LineRendererComponent& lines = getComponent<LineRendererComponent>();
-    lines.mode = LineRendererMode::Polyline;
+    // out of range: refused, nothing changes (the mode neither)
     if (index < 0 || (size_t)index >= lines.positions.size())
         return false;
-    if (lines.positions[index] != position){
-        lines.positions[index] = position;
-    }
+    lines.mode = LineRendererMode::Polyline;
+    lines.positions[index] = position;
     lines.needUpdateRibbon = true;
     return true;
 }

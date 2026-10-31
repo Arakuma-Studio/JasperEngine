@@ -3,6 +3,7 @@
 
 #include "Catalog.h"
 #include "particles/ParticleFields.h"
+#include "script/ScriptRuntime.h"
 
 #include "Stream.h"
 #include "util/EntityClipboard.h"
@@ -112,6 +113,26 @@ namespace {
     bool endsWith(const std::string& text, const char* suffix) {
         const size_t length = std::strlen(suffix);
         return text.size() >= length && text.compare(text.size() - length, length, suffix) == 0;
+    }
+
+    // a collider's authored data over another; the target's body is made again (its Box2D
+    // shapes go with it), so no live handle or runtime copy travels
+    void copyCollider2D(const Collider2D& source, Collider2D& target) {
+        target = source;
+        target.shapes.clear();
+        target.chain = b2_nullChainId;
+        target.dirty = true;
+        target.materialInstance.reset();
+        target.ownsMaterialInstance = false;
+        target.decompositionKey = 0;
+        target.pieces.clear();
+    }
+
+    void copyColliders2D(const std::vector<Collider2D>& source, std::vector<Collider2D>& target) {
+        target.resize(source.size());
+        for (size_t i = 0; i < source.size(); i++) {
+            copyCollider2D(source[i], target[i]);
+        }
     }
 
     bool parseIndex(const std::string& text, size_t& pos, size_t& value) {
@@ -875,17 +896,50 @@ namespace {
         makeFastProperty<TextComponent, bool, &TextComponent::pivotCentered>("pivotCentered", PropertyType::Bool, UpdateFlags_Text),
     };
 
+    // R: the joint is made again; P: applied to the live joint (motors, springs, limits, breaking)
     static const FastPropertyDescriptor kJoint2DProperties[] = {
         makeFastProperty<Joint2DComponent, Joint2DType, &Joint2DComponent::type>("type", PropertyType::Enum, UpdateFlags_Joint2D),
         makeFastProperty<Joint2DComponent, Entity, &Joint2DComponent::bodyA>("bodyA", PropertyType::Entity, UpdateFlags_Joint2D),
         makeFastProperty<Joint2DComponent, Entity, &Joint2DComponent::bodyB>("bodyB", PropertyType::Entity, UpdateFlags_Joint2D),
+        makeFastProperty<Joint2DComponent, JointAnchorSpace, &Joint2DComponent::anchorSpace>("anchorSpace", PropertyType::Enum, UpdateFlags_Joint2D),
         makeFastProperty<Joint2DComponent, Vector2, &Joint2DComponent::anchorA>("anchorA", PropertyType::Vector2, UpdateFlags_Joint2D),
         makeFastProperty<Joint2DComponent, Vector2, &Joint2DComponent::anchorB>("anchorB", PropertyType::Vector2, UpdateFlags_Joint2D),
-        makeFastProperty<Joint2DComponent, Vector2, &Joint2DComponent::axis>("axis", PropertyType::Vector2, UpdateFlags_Joint2D),
-        makeFastProperty<Joint2DComponent, Vector2, &Joint2DComponent::target>("target", PropertyType::Vector2, UpdateFlags_Joint2D),
         makeFastProperty<Joint2DComponent, bool, &Joint2DComponent::autoAnchors>("autoAnchors", PropertyType::Bool, UpdateFlags_Joint2D),
-        makeFastProperty<Joint2DComponent, bool, &Joint2DComponent::rope>("rope", PropertyType::Bool, UpdateFlags_Joint2D),
+        makeFastProperty<Joint2DComponent, Vector2, &Joint2DComponent::axis>("axis", PropertyType::Vector2, UpdateFlags_Joint2D),
+        makeFastProperty<Joint2DComponent, Vector2, &Joint2DComponent::target>("target", PropertyType::Vector2, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, bool, &Joint2DComponent::enableCollision>("enableCollision", PropertyType::Bool, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::breakForce>("breakForce", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::breakTorque>("breakTorque", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, JointBreakAction, &Joint2DComponent::breakAction>("breakAction", PropertyType::Enum, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, bool, &Joint2DComponent::useLimits>("useLimits", PropertyType::Bool, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::lowerAngle>("lowerAngle", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::upperAngle>("upperAngle", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::lowerTranslation>("lowerTranslation", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::upperTranslation>("upperTranslation", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, bool, &Joint2DComponent::useMotor>("useMotor", PropertyType::Bool, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::motorSpeed>("motorSpeed", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::maxMotorTorque>("maxMotorTorque", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::maxMotorForce>("maxMotorForce", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, bool, &Joint2DComponent::enableSpring>("enableSpring", PropertyType::Bool, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::frequency>("frequency", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::dampingRatio>("dampingRatio", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::length>("length", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, bool, &Joint2DComponent::autoLength>("autoLength", PropertyType::Bool, UpdateFlags_Joint2D),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::minLength>("minLength", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::maxLength>("maxLength", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, bool, &Joint2DComponent::rope>("rope", PropertyType::Bool, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::linearFrequency>("linearFrequency", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::angularFrequency>("angularFrequency", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::linearDampingRatio>("linearDampingRatio", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::angularDampingRatio>("angularDampingRatio", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, Vector2, &Joint2DComponent::linearOffset>("linearOffset", PropertyType::Vector2, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::angularOffset>("angularOffset", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, bool, &Joint2DComponent::autoOffset>("autoOffset", PropertyType::Bool, UpdateFlags_Joint2D),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::maxForce>("maxForce", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::maxTorque>("maxTorque", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::correctionFactor>("correctionFactor", PropertyType::Float, UpdateFlags_Joint2D_Params),
     };
+
 
     static const FastPropertyDescriptor kJoint3DProperties[] = {
         makeFastProperty<Joint3DComponent, Joint3DType, &Joint3DComponent::type>("type", PropertyType::Enum, UpdateFlags_Joint3D),
@@ -1140,7 +1194,7 @@ namespace {
         }
 
         if (propertyName == "scripts") {
-            return {PropertyType::Custom, UpdateFlags_None, nullptr, (void*)&comp->scripts};
+            return {PropertyType::Custom, UpdateFlags_Script_Enabled, nullptr, (void*)&comp->scripts};
         }
 
         // Parse "scripts[N].fieldName"
@@ -1167,7 +1221,7 @@ namespace {
         std::string fieldName = propertyName.substr(pos);
 
         if (fieldName == "enabled") {
-            return {PropertyType::Bool, UpdateFlags_None, nullptr, (void*)&scriptEntry.enabled};
+            return {PropertyType::Bool, UpdateFlags_Script_Enabled, nullptr, (void*)&scriptEntry.enabled};
         }
 
         for (auto& prop : scriptEntry.properties) {
@@ -1236,6 +1290,73 @@ namespace {
         return PropertyData();
     }
 
+    // the Rigidbody 2D fields applied to a live body without rebuilding it
+    constexpr uint64_t UpdateFlags_Rigidbody2DBody = UpdateFlags_Rigidbody2D_Params;
+
+    // a collider's fields: name, type, update flags and where it is in a Collider2D
+    struct Collider2DField {
+        const char* name;
+        PropertyType type;
+        uint64_t updateFlags;
+        void* (*ref)(Collider2D&);
+    };
+
+    const std::vector<Collider2DField>& collider2DFields() {
+        static const std::vector<Collider2DField> fields = {
+            {"type", PropertyType::Enum, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.type; }},
+            {"pointA", PropertyType::Vector2, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.pointA; }},
+            {"pointB", PropertyType::Vector2, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.pointB; }},
+            {"radius", PropertyType::Float, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.radius; }},
+            {"loop", PropertyType::Bool, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.loop; }},
+            {"points", PropertyType::Custom, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.points; }},
+            {"density", PropertyType::Float, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.density; }},
+            {"friction", PropertyType::Float, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.friction; }},
+            {"restitution", PropertyType::Float, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.restitution; }},
+            {"material", PropertyType::String, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.material; }},
+            {"sensor", PropertyType::Bool, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.sensor; }},
+            {"enableHitEvents", PropertyType::Bool, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.enableHitEvents; }},
+            {"contactEvents", PropertyType::Bool, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.contactEvents; }},
+            {"preSolveEvents", PropertyType::Bool, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.preSolveEvents; }},
+            {"sensorEvents", PropertyType::Bool, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.sensorEvents; }},
+            {"receiver", PropertyType::Entity, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.receiver; }},
+        };
+        return fields;
+    }
+
+    // the body's own fields
+    struct Rigidbody2DField {
+        const char* name;
+        PropertyType type;
+        uint64_t updateFlags;
+        void* (*ref)(Rigidbody2DComponent&);
+    };
+
+    const std::vector<Rigidbody2DField>& rigidbody2DFields() {
+        static const std::vector<Rigidbody2DField> fields = {
+            {"type", PropertyType::Enum, UpdateFlags_Rigidbody2D, [](Rigidbody2DComponent& b) -> void* { return &b.type; }},
+            {"gravityScale", PropertyType::Float, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.gravityScale; }},
+            {"linearDamping", PropertyType::Float, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.linearDamping; }},
+            {"angularDamping", PropertyType::Float, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.angularDamping; }},
+            {"fixedRotation", PropertyType::Bool, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.fixedRotation; }},
+            {"collisionDetection", PropertyType::Enum, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.collisionDetection; }},
+            {"sleepingMode", PropertyType::Enum, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.sleepingMode; }},
+            {"useAutoMass", PropertyType::Bool, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.useAutoMass; }},
+            {"mass", PropertyType::Float, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.mass; }},
+            {"autoCenterOfMass", PropertyType::Bool, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.autoCenterOfMass; }},
+            {"centerOfMass", PropertyType::Vector2, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.centerOfMass; }},
+            {"autoInertia", PropertyType::Bool, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.autoInertia; }},
+            {"inertia", PropertyType::Float, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.inertia; }},
+            {"material", PropertyType::String, UpdateFlags_Rigidbody2D, [](Rigidbody2DComponent& b) -> void* { return &b.material; }},
+            {"colliders", PropertyType::Custom, UpdateFlags_Rigidbody2D, [](Rigidbody2DComponent& b) -> void* { return &b.colliders; }},
+        };
+        return fields;
+    }
+
+    Collider2D& defaultCollider2D() {
+        static Collider2D collider;
+        return collider;
+    }
+
     PropertyData getRigidbody2DPropertyFast(Rigidbody2DComponent* comp, const std::string& propertyName) {
         Rigidbody2DComponent& defaultRigidbody2D = getDefaultComponent<Rigidbody2DComponent>();
 
@@ -1243,11 +1364,10 @@ namespace {
             return PropertyData();
         }
 
-        if (propertyName == "type") {
-            return {PropertyType::Enum, UpdateFlags_Rigidbody2D, (void*)&defaultRigidbody2D.type, (void*)&comp->type};
-        }
-        if (propertyName == "numColliders") {
-            return {PropertyType::UInt, UpdateFlags_Rigidbody2D, (void*)&defaultRigidbody2D.numColliders, (void*)&comp->numColliders};
+        for (const Rigidbody2DField& field : rigidbody2DFields()) {
+            if (propertyName == field.name) {
+                return {field.type, field.updateFlags, field.ref(defaultRigidbody2D), field.ref(*comp)};
+            }
         }
 
         constexpr const char* shapePrefix = "colliders[";
@@ -1261,11 +1381,12 @@ namespace {
             return PropertyData();
         }
 
-        if (colliderIndex >= MAX_COLLIDERS_2D) {
+        // any number of colliders: the ones the body has
+        if (colliderIndex >= comp->colliders.size()) {
             return PropertyData();
         }
         Collider2D& shape = comp->colliders[colliderIndex];
-        Collider2D& defaultShape = defaultRigidbody2D.colliders[0];
+        Collider2D& defaultShape = defaultCollider2D();
 
         pos++;
         if (pos == propertyName.size()) {
@@ -1277,59 +1398,31 @@ namespace {
         }
 
         const size_t fieldPos = pos + 1;
-        if (propertyName.compare(fieldPos, 4, "type") == 0 && fieldPos + 4 == propertyName.size()) {
-            return {PropertyType::Enum, UpdateFlags_Rigidbody2D, (void*)&defaultShape.type, (void*)&shape.type};
-        }
-        if (propertyName.compare(fieldPos, 6, "pointA") == 0 && fieldPos + 6 == propertyName.size()) {
-            return {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defaultShape.pointA, (void*)&shape.pointA};
-        }
-        if (propertyName.compare(fieldPos, 6, "pointB") == 0 && fieldPos + 6 == propertyName.size()) {
-            return {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defaultShape.pointB, (void*)&shape.pointB};
-        }
-        if (propertyName.compare(fieldPos, 6, "radius") == 0 && fieldPos + 6 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defaultShape.radius, (void*)&shape.radius};
-        }
-        if (propertyName.compare(fieldPos, 4, "loop") == 0 && fieldPos + 4 == propertyName.size()) {
-            return {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defaultShape.loop, (void*)&shape.loop};
-        }
-        if (propertyName.compare(fieldPos, 7, "density") == 0 && fieldPos + 7 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defaultShape.density, (void*)&shape.density};
-        }
-        if (propertyName.compare(fieldPos, 8, "friction") == 0 && fieldPos + 8 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defaultShape.friction, (void*)&shape.friction};
-        }
-        if (propertyName.compare(fieldPos, 11, "restitution") == 0 && fieldPos + 11 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defaultShape.restitution, (void*)&shape.restitution};
-        }
-        if (propertyName.compare(fieldPos, 6, "sensor") == 0 && fieldPos + 6 == propertyName.size()) {
-            return {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defaultShape.sensor, (void*)&shape.sensor};
-        }
-        if (propertyName.compare(fieldPos, 15, "enableHitEvents") == 0 && fieldPos + 15 == propertyName.size()) {
-            return {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defaultShape.enableHitEvents, (void*)&shape.enableHitEvents};
-        }
-        if (propertyName.compare(fieldPos, 13, "contactEvents") == 0 && fieldPos + 13 == propertyName.size()) {
-            return {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defaultShape.contactEvents, (void*)&shape.contactEvents};
-        }
-        if (propertyName.compare(fieldPos, 14, "preSolveEvents") == 0 && fieldPos + 14 == propertyName.size()) {
-            return {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defaultShape.preSolveEvents, (void*)&shape.preSolveEvents};
-        }
-        if (propertyName.compare(fieldPos, 12, "sensorEvents") == 0 && fieldPos + 12 == propertyName.size()) {
-            return {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defaultShape.sensorEvents, (void*)&shape.sensorEvents};
+        const std::string field = propertyName.substr(fieldPos);
+        for (const Collider2DField& colliderField : collider2DFields()) {
+            if (field == colliderField.name) {
+                return {colliderField.type, colliderField.updateFlags, colliderField.ref(defaultShape), colliderField.ref(shape)};
+            }
         }
 
-        constexpr const char* verticesPrefix = "vertices[";
-        if (propertyName.compare(fieldPos, 9, verticesPrefix) == 0) {
-            size_t vertexPos = fieldPos + 9;
-            size_t vertexIndex = 0;
-            if (!parseIndex(propertyName, vertexPos, vertexIndex) || vertexPos >= propertyName.size() || propertyName[vertexPos] != ']') {
+        // "vertices[i]": the name before points
+        size_t pointPos = std::string::npos;
+        if (propertyName.compare(fieldPos, 7, "points[") == 0) {
+            pointPos = fieldPos + 7;
+        } else if (propertyName.compare(fieldPos, 9, "vertices[") == 0) {
+            pointPos = fieldPos + 9;
+        }
+        if (pointPos != std::string::npos) {
+            size_t pointIndex = 0;
+            if (!parseIndex(propertyName, pointPos, pointIndex) || pointPos >= propertyName.size() || propertyName[pointPos] != ']') {
+                return PropertyData();
+            }
+            if (pointPos + 1 != propertyName.size() || pointIndex >= shape.points.size()) {
                 return PropertyData();
             }
 
-            if (vertexPos + 1 != propertyName.size()) {
-                return PropertyData();
-            }
-
-            return {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defaultShape.vertices[0], (void*)&shape.vertices[vertexIndex]};
+            static const Vector2 defaultPoint = Vector2::ZERO;
+            return {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defaultPoint, (void*)&shape.points[pointIndex]};
         }
 
         return PropertyData();
@@ -3153,33 +3246,19 @@ namespace {
         Rigidbody2DComponent* comp = static_cast<Rigidbody2DComponent*>(compRef);
         Rigidbody2DComponent& def = getDefaultComponent<Rigidbody2DComponent>();
 
-        ps["type"] = {PropertyType::Enum, UpdateFlags_Rigidbody2D, (void*)&def.type, compRef ? (void*)&comp->type : nullptr};
-        ps["numColliders"] = {PropertyType::UInt, UpdateFlags_Rigidbody2D, (void*)&def.numColliders, compRef ? (void*)&comp->numColliders : nullptr};
+        for (const Rigidbody2DField& field : rigidbody2DFields()) {
+            ps[field.name] = {field.type, field.updateFlags, field.ref(def), compRef ? field.ref(*comp) : nullptr};
+        }
 
-        for (int s = 0; s < (compRef ? (int)comp->numColliders : 1); s++) {
+        Collider2D& defShape = defaultCollider2D();
+        for (int s = 0; s < (compRef ? (int)comp->colliders.size() : 1); s++) {
             std::string idx = compRef ? std::to_string(s) : "";
 
-            Collider2D& shape = compRef ? comp->colliders[s] : def.colliders[0];
-            Collider2D& defShape = def.colliders[0];
+            Collider2D& shape = compRef ? comp->colliders[s] : defShape;
 
             ps["colliders[" + idx + "]"] = {PropertyType::Custom, UpdateFlags_Rigidbody2D, (void*)&defShape, compRef ? (void*)&shape : nullptr};
-            ps["colliders[" + idx + "].type"] = {PropertyType::Enum, UpdateFlags_Rigidbody2D, (void*)&defShape.type, compRef ? (void*)&shape.type : nullptr};
-            ps["colliders[" + idx + "].pointA"] = {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defShape.pointA, compRef ? (void*)&shape.pointA : nullptr};
-            ps["colliders[" + idx + "].pointB"] = {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defShape.pointB, compRef ? (void*)&shape.pointB : nullptr};
-            ps["colliders[" + idx + "].radius"] = {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defShape.radius, compRef ? (void*)&shape.radius : nullptr};
-            ps["colliders[" + idx + "].loop"] = {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defShape.loop, compRef ? (void*)&shape.loop : nullptr};
-            ps["colliders[" + idx + "].density"] = {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defShape.density, compRef ? (void*)&shape.density : nullptr};
-            ps["colliders[" + idx + "].friction"] = {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defShape.friction, compRef ? (void*)&shape.friction : nullptr};
-            ps["colliders[" + idx + "].restitution"] = {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defShape.restitution, compRef ? (void*)&shape.restitution : nullptr};
-            ps["colliders[" + idx + "].sensor"] = {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defShape.sensor, compRef ? (void*)&shape.sensor : nullptr};
-            ps["colliders[" + idx + "].enableHitEvents"] = {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defShape.enableHitEvents, compRef ? (void*)&shape.enableHitEvents : nullptr};
-            ps["colliders[" + idx + "].contactEvents"] = {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defShape.contactEvents, compRef ? (void*)&shape.contactEvents : nullptr};
-            ps["colliders[" + idx + "].preSolveEvents"] = {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defShape.preSolveEvents, compRef ? (void*)&shape.preSolveEvents : nullptr};
-            ps["colliders[" + idx + "].sensorEvents"] = {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defShape.sensorEvents, compRef ? (void*)&shape.sensorEvents : nullptr};
-
-            for (int v = 0; v < (compRef ? (int)shape.numVertices : 1); v++) {
-                std::string vidx = compRef ? std::to_string(v) : "";
-                ps["colliders[" + idx + "].vertices[" + vidx + "]"] = {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defShape.vertices[0], compRef ? (void*)&shape.vertices[v] : nullptr};
+            for (const Collider2DField& field : collider2DFields()) {
+                ps["colliders[" + idx + "]." + field.name] = {field.type, field.updateFlags, field.ref(defShape), compRef ? field.ref(shape) : nullptr};
             }
         }
     }
@@ -3307,14 +3386,14 @@ namespace {
     void enumerateScriptProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
         ScriptComponent* comp = static_cast<ScriptComponent*>(compRef);
 
-        ps["scripts"] = {PropertyType::Custom, UpdateFlags_None, nullptr, compRef ? (void*)&comp->scripts : nullptr};
+        ps["scripts"] = {PropertyType::Custom, UpdateFlags_Script_Enabled, nullptr, compRef ? (void*)&comp->scripts : nullptr};
 
         if (compRef && comp) {
             for (size_t i = 0; i < comp->scripts.size(); i++) {
                 auto& script = comp->scripts[i];
 
                 std::string enabledKey = "scripts[" + std::to_string(i) + "].enabled";
-                ps[enabledKey] = {PropertyType::Bool, UpdateFlags_None, nullptr, (void*)&script.enabled};
+                ps[enabledKey] = {PropertyType::Bool, UpdateFlags_Script_Enabled, nullptr, (void*)&script.enabled};
 
                 for (auto& prop : script.properties) {
                     std::string key = "scripts[" + std::to_string(i) + "]." + prop.name;
@@ -5424,6 +5503,12 @@ uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Mat
 }
 
 void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint64_t updateFlags){
+    if (updateFlags & UpdateFlags_Script_Enabled){
+        // in Play the Inspector checkbox, MCP and undo enable scripts as Lua's self.enabled does
+        if (Scene* scene = dynamic_cast<Scene*>(registry)){
+            ScriptRuntime::refreshEntity(scene, entity);
+        }
+    }
     if (updateFlags & UpdateFlags_Transform){
         if (Transform* transform = registry->findComponent<Transform>(entity)){
             transform->needUpdate = true;
@@ -5572,9 +5657,21 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             body->needUpdateColliders = true;
         }
     }
+    if (updateFlags & UpdateFlags_Rigidbody2D_Params){
+        if (Rigidbody2DComponent* body = registry->findComponent<Rigidbody2DComponent>(entity)){
+            body->needApplyParameters = true;
+        }
+    }
     if (updateFlags & UpdateFlags_Joint2D){
         if (Joint2DComponent* joint = registry->findComponent<Joint2DComponent>(entity)){
             joint->needUpdateJoint = true;
+        }
+    }
+    if (updateFlags & UpdateFlags_Joint2D_Params){
+        if (Joint2DComponent* joint = registry->findComponent<Joint2DComponent>(entity)){
+            joint->needApplyParameters = true;
+            // a joint broken by its threshold can break again
+            joint->breakArmed = true;
         }
     }
     if (updateFlags & UpdateFlags_Joint3D){
@@ -6081,14 +6178,20 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
                                        EntityRegistry* targetRegistry, Entity targetEntity, 
                                        ComponentType compType, const std::string& property) {
 
-    // Get the property data to determine the type
+    // Get the property data to determine the type: the enumerated names, else the lookup (names
+    // it resolves but does not list, such as a 2D collider's "colliders[i].points[j]")
     auto sourceProperties = Catalog::findEntityProperties(sourceRegistry, sourceEntity, compType);
     auto propIt = sourceProperties.find(property);
-    if (propIt == sourceProperties.end()) {
-        return; // Property not found
+    PropertyType propType;
+    if (propIt != sourceProperties.end()) {
+        propType = propIt->second.type;
+    } else {
+        const PropertyData found = Catalog::findProperty(sourceRegistry, sourceEntity, compType, property);
+        if (!found.ref || !Catalog::findProperty(targetRegistry, targetEntity, compType, property).ref) {
+            return; // Property not found
+        }
+        propType = found.type;
     }
-
-    PropertyType propType = propIt->second.type;
 
     // Copy based on property type
     switch (propType) {
@@ -6264,6 +6367,18 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             } else if (compType == ComponentType::VertexAnimatorComponent && property == "instanceSpeeds") {
                 auto* source = Catalog::getPropertyRef<std::vector<float>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<float>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::Rigidbody2DComponent && property == "colliders") {
+                auto* source = Catalog::getPropertyRef<std::vector<Collider2D>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<Collider2D>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) copyColliders2D(*source, *target);
+            } else if (compType == ComponentType::Rigidbody2DComponent && property.compare(0, 10, "colliders[") == 0 && endsWith(property, "]")) {
+                auto* source = Catalog::getPropertyRef<Collider2D>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<Collider2D>(targetRegistry, targetEntity, compType, property);
+                if (source && target) copyCollider2D(*source, *target);
+            } else if (compType == ComponentType::Rigidbody2DComponent && property.compare(0, 10, "colliders[") == 0 && endsWith(property, "].points")) {
+                auto* source = Catalog::getPropertyRef<std::vector<Vector2>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<Vector2>>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
             } else if (compType == ComponentType::AnimationPlayerComponent && property == "clips") {
                 auto* source = Catalog::getPropertyRef<std::vector<AnimationPlayerClip>>(sourceRegistry, sourceEntity, compType, property);

@@ -7,7 +7,10 @@
 // Unity's Gradient: colour keys and alpha keys over [0, 1], blended or stepped, shared by
 // the line and trail renderers (colour over the length) and the particle modules. Colours
 // are linear RGB in memory (the engine's convention; the Inspector, Lua and MCP show and
-// take sRGB). No dependency on components; pure, gtested (editor/tests/GradientTest.cpp).
+// take sRGB). Blend mode mixes two colour keys in sRGB (gamma) space, as Unity's gradients
+// do, so a gradient ported from Unity looks the same; alpha mixes linearly. At most 8 keys per
+// list (Unity): Lua and MCP refuse more, normalize() (and a scene file) keeps the first 7 and
+// the last. No dependency on components; pure, gtested (editor/tests/GradientTest.cpp).
 
 #include "Export.h"
 #include "Vector3.h"
@@ -66,11 +69,20 @@ namespace jasperengine {
         static Gradient twoColors(const Vector4& start, const Vector4& end);
 
         // non-finite times and values dropped, times clamped to [0, 1], stable sort by time,
-        // at most MAX_KEYS keys per list (the first ones by time)
+        // at most MAX_KEYS keys per list (the first MAX_KEYS - 1 by time and the last, so both
+        // ends stay)
         void normalize();
 
+        // the keys' values compared (not the cache below)
         bool operator==(const Gradient& other) const;
         bool operator!=(const Gradient& other) const { return !(*this == other); }
+
+    private:
+        // the colour keys in sRGB, each with the linear value it was made from (made by the
+        // constructors and normalize(); a key changed since is converted when evaluated)
+        std::vector<std::pair<Vector3, Vector3>> srgbKeys;
+        void updateSRGBKeys();
+        Vector3 keySRGB(size_t index) const;
     };
 
 }

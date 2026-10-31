@@ -61,10 +61,7 @@ namespace {
 }
 
 void TrailSimulation::clear(TrailRendererComponent& trail){
-    trail.points.clear();
-    trail.hasLastHeadPosition = false;
-    trail.idleTime = 0.0f;
-    trail.needUpdateRibbon = true;
+    trail.clearPoints();
 }
 
 void TrailSimulation::addPosition(TrailRendererComponent& trail, const Vector3& position, float now){
@@ -150,8 +147,11 @@ void TrailSimulation::ribbonPoints(const TrailRendererComponent& trail, const Ve
     }
     points.reserve(trail.points.size() + 1);
     pointT.reserve(trail.points.size() + 1);
-    points.push_back(head);
-    pointT.push_back(0.0f);
+    // not emitting: detached from the object (Unity), the stored points only
+    if (trail.emitting){
+        points.push_back(head);
+        pointT.push_back(0.0f);
+    }
     for (size_t i = trail.points.size(); i-- > 0;){
         const TrailPoint& point = trail.points.at(i);
         points.push_back(point.position);

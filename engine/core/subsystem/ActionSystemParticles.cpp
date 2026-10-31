@@ -8,6 +8,7 @@
 // systems keep their own code path (ActionSystem.cpp) untouched.
 
 #include "ActionSystem.h"
+#include "script/ScriptMessages.h"
 #include "Scene.h"
 #include "Log.h"
 #include "Engine.h"
@@ -323,7 +324,8 @@ void ActionSystem::runParticleStopActions(){
                 ObjectManager::destroy(scene, entity, 0.0f);
                 break;
             case ParticleSystemStopAction::Callback:
-                LuaBinding::callLuaScriptMethod(scene, entity, "onParticleSystemStopped", {});
+                ScriptMessages::send(scene, entity, ScriptMessage::ParticleSystemStopped, nullptr,
+                                     [](ScriptBase& script){ script.onParticleSystemStopped(); });
                 break;
         }
     }

@@ -20,6 +20,7 @@
 #include "util/Util.h"
 #include "physics/PlacementSettings.h"
 #include "window/SpriteNormalsWindowSettings.h"
+#include "input/InputActions.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -88,8 +89,6 @@ namespace jasperengine::editor{
         unsigned int maxExternalBuffers = 0;
         unsigned int maxSpriteFrames = 0;
         unsigned int maxBones = 0;
-        unsigned int maxColliders2D = 0;
-        unsigned int maxColliderPoints2D = 0;
         unsigned int maxColliders3D = 0;
         unsigned int maxColliderVertices3D = 0;
         unsigned int maxColliderIndices3D = 0;
@@ -631,6 +630,13 @@ namespace jasperengine::editor{
         // Layer Collision Matrices of Physics (3D) and Physics 2D, all layers collide by default
         LayerCollisionRows layerCollisionMatrix3D = allLayersCollide();
         LayerCollisionRows layerCollisionMatrix2D = allLayersCollide();
+        // Project Settings > Input; Unity's Input Manager defaults (and nothing in project.yaml)
+        // until edited
+        bool inputActionsCustomized = false;
+        std::vector<InputAction> inputActions = InputActions::defaults();
+        // an input node of project.yaml that could not be read: written back as it was until
+        // the actions are edited, so a typo made by hand does not lose them
+        std::string unreadableInputNode;
         bool packNativeResources;
         bool versionControlMetadata;
         ShaderOverrides shaderOverrides;
@@ -696,6 +702,7 @@ namespace jasperengine::editor{
             bool ownedRuntime = false;       // true when the scene used is a copy, deleted with the session
             bool initialized = false;        // true when scripts and library are initialized
             bool initializing = false;       // true while its scripts run, to stop re-entrant init
+            bool scriptsRan = false;         // its scripts were started once (a load replacing it retires it)
         };
 
         // The scene a runtime entry plays (the Engine's while playing): its copy, or the played
@@ -706,6 +713,9 @@ namespace jasperengine::editor{
         struct PlaySession {
             uint32_t mainSceneId = NULL_PROJECT_SCENE;
             std::vector<PlayRuntimeScene> runtimeScenes;
+            // scenes a scene load replaced (script-lifecycle 9.4): out of the game, their scripts
+            // released; a Play copy is deleted and the played scene restored at Stop
+            std::vector<PlayRuntimeScene> retiredRuntimeScenes;
             std::atomic<bool> cancelled{false};
             std::atomic<bool> startupThreadDone{false};  // Set when connect thread exits
             std::atomic<bool> startupSucceeded{false};   // True only if finalizeStart was called
@@ -721,6 +731,11 @@ namespace jasperengine::editor{
         float stepSavedMaxDeltatime = 0.0f;
 
         SceneProject* createRuntimeCloneFromSource(const SceneProject* source);
+        // ...from a scene node (the file's, or the played scene's Play-start snapshot)
+        SceneProject* createRuntimeCloneFromNode(const SceneProject* source, const YAML::Node& sceneNode);
+        // A load factory's first step: the session's scenes that load replaced (their scripts
+        // unloaded) leave the game, so the stack is built anew as an exported build does
+        void retireReplacedRuntimeScenes();
 
         // Play copies (the child scenes of the played scene run as copies, see PlaySession)
         // answer to ids of their own while the session lasts, so getScene(), selection,
@@ -1194,6 +1209,23 @@ namespace jasperengine::editor{
         // Puts the project's matrices back into the engine, undoing what scripts changed
         // with Physics.ignoreLayerCollision during a Play
         void applyLayerCollisionMatrices() const;
+
+        // Project Settings > Input: the input actions (virtual axes and buttons). Setting them
+        // validates nothing (callers do: InputActions::validate) and applies them to the
+        // engine's InputActions, which Play reads; actions equal to Unity's defaults are
+        // stored as "not customized" (no input node in project.yaml)
+        void setInputActions(const std::vector<InputAction>& actions);
+        const std::vector<InputAction>& getInputActions() const;
+        bool hasCustomInputActions() const;
+        void resetInputActions();
+        void applyInputActions() const;
+        // the actions as InputActions::loadJson reads them; "" for the defaults (exports emit nothing)
+        std::string getInputActionsJsonForBuild() const;
+        void setUnreadableInputNode(const std::string& yaml);
+        const std::string& getUnreadableInputNode() const;
+        // Play starts and stops with clean input: no held keys, touches, rebinding overrides,
+        // disabled actions or simulated sources of the last Play
+        void resetPlayInput() const;
 
         // Absolute roots stored references are relative to: assets for textures, models,
         // sounds and fonts ("asset://"), Lua for script entries ("lua://").
@@ -2186,6 +2218,9 @@ namespace jasperengine::editor{
         void waitForPlaySessionToFinish();
 
         std::vector<Scene*> getRunningRuntimeLayers(uint32_t sceneId);
+        // A scene load replaced the played scene itself (another scene, or a fresh copy of it):
+        // the game shows the stack that load built, not the played scene
+        bool isPlayedSceneReplaced(uint32_t sceneId);
     };
 
 }

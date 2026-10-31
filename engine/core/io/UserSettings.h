@@ -38,6 +38,20 @@ namespace jasperengine {
 
         static void removeKey(const char *key);
 
+        // The key is stored (an empty value too)
+        static bool hasKey(const char *key);
+        // Same as removeKey (Unity's name); nothing happens when the key is not there
+        static void deleteKey(const char *key);
+        // Every key of this game goes
+        static void deleteAll();
+        // Writes what is unsaved now. Without it the values still persist: desktop and the editor
+        // write a second after a change and on app pause, shutdown and Play stop; Android, iOS and
+        // the web stores persist by themselves (save() makes Android's write synchronous)
+        static void save();
+
+        // Engine::runFrame, once a frame: the desktop store's write-behind
+        static void tick();
+
     };
 }
 

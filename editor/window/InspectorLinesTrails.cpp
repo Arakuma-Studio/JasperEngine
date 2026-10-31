@@ -166,6 +166,7 @@ void editor::InspectorWindow::drawLineTextureRow(ComponentType cpType, SceneProj
     prefabRowProperty = "shaderTextures";
     if (propertyHeader("Texture", -1, !current.empty())){
         setTexture("");
+        prefabRowProperty.clear();
         ImGui::PopID();
         return;
     }

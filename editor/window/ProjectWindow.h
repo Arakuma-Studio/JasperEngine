@@ -47,7 +47,8 @@ namespace jasperengine::editor {
         POSE_ANIMATION,     // .poseanim (the Pose Animation window)
         HUMANOID,           // .humanoid bone-mapping sidecar (plain data)
         ANIMATION_CLIP,     // .anim (the Animation window; an icon, no thumbnail)
-        VERTEX_ANIMATION    // .vat (the Inspector's asset view / the baker; an icon, no thumbnail)
+        VERTEX_ANIMATION,   // .vat (the Inspector's asset view / the baker; an icon, no thumbnail)
+        PHYSICS_MATERIAL    // .physicsmaterial (the Inspector's asset view; an icon)
     };
 
     struct FileEntry {
@@ -131,6 +132,8 @@ namespace jasperengine::editor {
         std::vector<uint8_t> poseAnimationIconPixels;
         // drawn by the editor too: a film strip (animation clips spec 4.1, 9.R53)
         Texture animationClipIcon;
+        Texture physicsMaterialIcon;
+        std::vector<uint8_t> physicsMaterialIconPixels;
         std::vector<uint8_t> animationClipIconPixels;
         // and a crowd of three figures for .vat files (vertex animation spec 5.3)
         Texture vertexAnimationIcon;
@@ -386,6 +389,9 @@ namespace jasperengine::editor {
         // one project undo step (AnimationClipDocument::create), then renamed in place (the
         // App's createClipAsset hook, set by this window)
         void assetsCreateAnimationClip();
+        // Unity's Create > Physics Material / Physics Material 2D (the 2D preset: friction 0.4,
+        // geometric mean / maximum)
+        void assetsCreatePhysicsMaterial(bool preset2D);
         void assetsShowInFileManager();
         void assetsOpenSelected();
         void assetsRenameSelected();

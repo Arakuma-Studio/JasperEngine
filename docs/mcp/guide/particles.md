@@ -73,7 +73,7 @@ duration for the `main` start values, the emission rates and the gravity (Unity'
 - `play()` starts a stopped system at time 0 (a new seed when `autoRandomSeed`), resumes a paused
   one; a looping system with `prewarm` starts as if one whole cycle had played. `stop()` stops
   the emission, the particles live out, then the system is stopped and `stopAction` runs
-  (Disable / Destroy the GameObject, or `onParticleSystemStopped()` on its Lua scripts);
+  (Disable / Destroy the GameObject, or `onParticleSystemStopped()` on its scripts, Lua and C++);
   `StopEmittingAndClear` removes them at once. `startDelay` holds the first emission.
 - In Play, `playOnAwake` systems start when the scene starts or their GameObject becomes active;
   a deactivated GameObject stops and clears its system.

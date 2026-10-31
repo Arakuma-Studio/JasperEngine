@@ -28,9 +28,13 @@ TrailRenderer::TrailRenderer(Scene* scene): GameObject(scene){
 }
 
 TrailRenderer::TrailRenderer(Scene* scene, Entity entity): GameObject(scene, entity){
+}
+
+TrailRenderer TrailRenderer::addTo(Scene* scene, Entity entity){
     if (!scene->findComponent<TrailRendererComponent>(entity)){
         scene->addComponent<TrailRendererComponent>(entity, {});
     }
+    return TrailRenderer(scene, entity);
 }
 
 TrailRenderer::~TrailRenderer(){
@@ -42,7 +46,12 @@ TrailRenderer::TrailRenderer(TrailRenderer&& rhs) noexcept = default;
 TrailRenderer& TrailRenderer::operator=(TrailRenderer&& rhs) noexcept = default;
 
 void TrailRenderer::setEnabled(bool enabled){
-    getComponent<TrailRendererComponent>().enabled = enabled;
+    TrailRendererComponent& trail = getComponent<TrailRendererComponent>();
+    // disabled: cleared now (re-enabled in the same frame, it draws no streak)
+    if (!enabled){
+        trail.clearPoints();
+    }
+    trail.enabled = enabled;
 }
 
 bool TrailRenderer::isEnabled() const{
@@ -69,7 +78,10 @@ float TrailRenderer::getMinVertexDistance() const{
 }
 
 void TrailRenderer::setEmitting(bool emitting){
-    getComponent<TrailRendererComponent>().emitting = emitting;
+    TrailRendererComponent& trail = getComponent<TrailRendererComponent>();
+    trail.emitting = emitting;
+    // the live head joins the ribbon only while emitting
+    trail.needUpdateRibbon = true;
 }
 
 bool TrailRenderer::isEmitting() const{
