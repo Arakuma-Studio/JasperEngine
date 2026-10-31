@@ -79,13 +79,19 @@ namespace jasperengine::editor{
         UpdateFlags_Joint2D_Params      = (uint64_t)1 << 44,
         // a Rigidbody 2D's gravity scale, damping, mass...: applied to the live body, no rebuild
         UpdateFlags_Rigidbody2D_Params  = (uint64_t)1 << 45,
+        // a script entry's enabled flag (or the list) changed: while the scene's scripts run,
+        // onEnable / onDisable as due (ScriptRuntime::refreshEntity)
+        UpdateFlags_Script_Enabled      = (uint64_t)1 << 46,
+        // a Trail Renderer's ribbon settings (width, colour, joints, caps, texture layout): its
+        // ribbon is built again (values clamped: widths and time >= 0, vertex counts 0..90)
+        UpdateFlags_Trail               = (uint64_t)1 << 47,
         // a Rigidbody's type, damping, mass fields...: applied to the live body (a type switch,
         // the mass again), no rebuild
-        UpdateFlags_Rigidbody_Params    = (uint64_t)1 << 46,
+        UpdateFlags_Rigidbody_Params    = (uint64_t)1 << 48,
         // a 3D joint's motor, spring, limit, friction or break field: applied to the live joint
-        UpdateFlags_Joint3D_Params      = (uint64_t)1 << 47,
+        UpdateFlags_Joint3D_Params      = (uint64_t)1 << 49,
         // a Ragdoll's root or animator: its parts are collected again
-        UpdateFlags_Ragdoll             = (uint64_t)1 << 48,
+        UpdateFlags_Ragdoll             = (uint64_t)1 << 50,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -157,12 +163,14 @@ namespace jasperengine::editor{
         // Unity's legacy Animation component (animation clips spec 3.2)
         AnimationPlayerComponent,
         // baked vertex / bone animation played on the GPU (vertex animation spec 3.3)
-        VertexAnimatorComponent
+        VertexAnimatorComponent,
+        // Unity's Trail Renderer (lines and trails spec 6.4)
+        TrailRendererComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::VertexAnimatorComponent;
+    constexpr ComponentType LastComponentType = ComponentType::TrailRendererComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
 
     enum class PropertyType{
@@ -183,7 +191,10 @@ namespace jasperengine::editor{
         Ease,
         Custom,
         Entity,
-        EntityReference
+        EntityReference,
+        // Unity AnimationCurve / Gradient (math/AnimationCurve.h, math/Gradient.h)
+        Curve,
+        Gradient
     };
 
     struct PropertyData{

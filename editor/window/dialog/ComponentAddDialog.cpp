@@ -67,7 +67,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::LightComponent, "Directional, point or spot light"},
             {ComponentType::SpriteComponent, "Draws a 2D sprite"},
             {ComponentType::TilemapComponent, "Grid of tiles from a texture atlas"},
-            {ComponentType::LineRendererComponent, "Draws line segments"},
+            {ComponentType::LineRendererComponent, "Draws lines: a polyline with width, colour gradient, joints and caps, or debug segments"},
             {ComponentType::PointsComponent, "Draws a point cloud"},
             {ComponentType::SkyboxComponent, "Skybox cube map and scene environment"},
             {ComponentType::FogComponent, "Distance fog"},
@@ -79,6 +79,7 @@ ComponentAddDialog::ComponentAddDialog() {
         {"Effects", ICON_FA_FIRE, {
             {ComponentType::ParticleSystemComponent, "Emits and animates particles"},
             {ComponentType::FluidSimulationComponent, "GPU fluid with dye, bloom and sunrays, drawn on the sprite or mesh"},
+            {ComponentType::TrailRendererComponent, "Draws a fading ribbon behind a moving object"},
         }},
         {"Physics", ICON_FA_CUBE, {
             {ComponentType::RigidbodyComponent, "Rigidbody with colliders, simulated by Jolt"},

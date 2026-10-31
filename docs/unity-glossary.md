@@ -56,6 +56,13 @@ Projects made before the rename are migrated once with
 | `Skybox` / `SkyboxComponent` | `SkyBox` / `SkyComponent` |
 | `ShadowCaster2D` / `ShadowCaster2DComponent` | `Occluder2D` / `Occluder2DComponent` |
 | `LineRenderer` / `LineRendererComponent` | `Lines` / `LinesComponent` |
+| `LineRenderer.positionCount`, `SetPosition(index, position)`, `GetPosition`, `SetPositions`, `loop`, `useWorldSpace` (0-based indices, as Unity) | none (new): the engine had independent segments only (`addLine`, still there as `mode` Segments) |
+| `LineRenderer.widthMultiplier`, `widthCurve`, `startWidth` / `endWidth`, `colorGradient`, `startColor` / `endColor`, `numCornerVertices`, `numCapVertices` | none (new): lines were 1 pixel wide (width 0 still is that hairline) |
+| `LineAlignment` (`View`, `TransformZ`), `LineTextureMode` (`Stretch`, `Tile`, `DistributePerSegment`, `RepeatPerSegment`), `textureScale` | same names (`LineAlignment.TransformZ`, `LineTextureMode.Tile`; MCP `transform_z`, `tile`) |
+| `TrailRenderer` (`time`, `minVertexDistance`, `emitting`, `autodestruct`, `Clear`, `AddPosition`) | `TrailRenderer` / `TrailRendererComponent` (new; `object:getTrailRenderer()`) |
+| `AnimationCurve`, `Keyframe` (`time`, `value`, `inTangent`, `outTangent`), `WrapMode` of a curve | `AnimationCurve`, `CurveKey`, `CurveWrap` (`Clamp`, `Loop`, `PingPong`); keys 1-based in Lua |
+| `Gradient`, `GradientColorKey`, `GradientAlphaKey`, `GradientMode` (`Blend`, `Fixed`) | same names; colours sRGB in Lua, stored linear |
+| A line's `material` (Default-Line, a shader with a sprite-sheet flipbook) | the built-in line shader with `texture` (u_baseTexture), or a `lines` library shader such as `library:line_flipbook` |
 | `ParticleSystem` / `ParticleSystemComponent` | `Particles` / `ParticlesComponent` |
 | `RectTransform` / `RectTransformComponent` | `UILayout` / `UILayoutComponent` |
 | `LayoutGroup` / `LayoutGroupComponent` | `Container` / `UIContainerComponent` |
@@ -63,7 +70,13 @@ Projects made before the rename are migrated once with
 | `Tween` / `TweenComponent` | `TimedAction` / `TimedActionComponent` |
 | `PositionTween`, `RotationTween`, `ScaleTween`, `ColorTween`, `AlphaTween` | `PositionAction`, `RotationAction`, `ScaleAction`, `ColorAction`, `AlphaAction` |
 | `GameObject.instantiate` / `GameObject::instantiate` (Unity's `Object.Instantiate`: a prefab or a copy of a GameObject, optional parent and `instantiateInWorldSpace`, or position and rotation) | `BundleManager.createBundle`, then `PrefabManager.createPrefab` (removed) |
-| `GameObject.destroy(object [, delay])`, `GameObject.destroyImmediate(object)` (Unity's `Object.Destroy`, `DestroyImmediate`; Lua scripts get `onDestroy`) | `BundleManager.destroyBundle`, then `PrefabManager.destroyPrefab` (removed) |
+| `GameObject.destroy(object [, delay])`, `GameObject.destroyImmediate(object)` (Unity's `Object.Destroy`, `DestroyImmediate`; scripts get `onDisable`, then `onDestroy`) | `BundleManager.destroyBundle`, then `PrefabManager.destroyPrefab` (removed) |
+| MonoBehaviour messages: `Awake` -> `init`, `Start` -> `start`, `OnEnable` -> `onEnable`, `OnDisable` -> `onDisable`, `OnDestroy` -> `onDestroy`, `OnApplicationPause/Focus/Quit` -> `onApplicationPause/Focus/Quit` (Lua methods called by name; C++ `ScriptBase` overrides), Unity's rules and order ([lua-api.md](mcp/guide/lua-api.md) 1.1) | `init` (enabled scripts only, at load) and `onDestroy` (runtime destroy only); the others none (new) |
+| `Update` / `FixedUpdate` / `LateUpdate` -> `onUpdate` / `onFixedUpdate` / `onPostUpdate` registered with `RegisterEngineEvent(self, "onUpdate")` (C++ `REGISTER_ENGINE_EVENT`) | unchanged |
+| `MonoBehaviour.enabled` -> `self.enabled` (Lua, rw: fires `onEnable`/`onDisable`), `isEnabled()` / `setEnabled(bool)` (C++); `isActiveAndEnabled` -> `self.isActiveAndEnabled` / `isActiveAndEnabled()`; `gameObject` -> `self.gameObject` | none (new) |
+| `GetComponent<Enemy>()`, `GetComponents`, `GetComponentInChildren`, `GetComponentsInChildren`, `GetComponentInParent` (for scripts) -> `go:getScript("Enemy")`, `getScripts`, `getScriptInChildren`, `getScriptsInChildren`, `getScriptInParent` (also on `self`); C++ `getScript<T>()` | none (new): a script property typed with the script's class |
+| `GameObject.Find`, `GameObject.FindWithTag`, `FindGameObjectsWithTag`, `Object.FindObjectOfType<T>()`, `FindObjectsOfType<T>(includeInactive)` -> `GameObject.find`, `findWithTag`, `findGameObjectsWithTag`, `findObjectOfType("T")`, `findObjectsOfType("T", includeInactive)` (every running scene) | `scene:findEntity`, `scene:findByTag` (one scene) |
+| `UnityEvent` / C# `event` (`AddListener` / `+=`, `RemoveListener` / `-=`, `Invoke`) -> `Event()` (`addListener`, `removeListener`, `invoke`); `-=` of an engine or component event -> `UnregisterEngineEvent` / `UnregisterEvent` | none (new): no unregister from Lua |
 | `PrefabAsset` (what a Prefab script property holds; `PrefabAsset.load("path")`) | none (new) |
 | `PrefabManager` (the build's prefab registry: `findPrefab`, `getPrefabNames`, `prefabCount`) | `BundleManager` |
 | `PrefabComponent` | `BundleComponent` |

@@ -9,6 +9,7 @@
 #include "Log.h"
 #include "registry/EntityCloner.h"
 #include "script/LuaBinding.h"
+#include "script/ScriptRuntime.h"
 #include "component/Transform.h"
 #include "component/RectTransformComponent.h"
 #include "component/ScriptComponent.h"
@@ -300,6 +301,10 @@ void ObjectManager::popActiveScene() {
     }
 }
 
+std::vector<Scene*> ObjectManager::getActiveSceneStack() {
+    return activeScenes;
+}
+
 void ObjectManager::destroy(Scene* scene, Entity entity, float delay) {
     if (!scene || entity == NULL_ENTITY) {
         return;
@@ -371,14 +376,19 @@ void ObjectManager::initializeScripts(Scene* scene, const std::vector<Entity>& e
     }
     bool lua, cpp;
     scriptKinds(scene, entities, lua, cpp);
-    // Lua first, as initScripts does for a scene; what they instantiate goes to their scene
+    if (!lua && !cpp) {
+        return;
+    }
+    // Lua instances first, as initScripts does for a scene, then the C++ ones, then their
+    // init and onEnable; what they instantiate goes to their scene
     pushActiveScene(scene);
     if (lua) {
-        LuaBinding::initializeLuaScripts(scene, entities);
+        LuaBinding::createLuaScripts(scene, entities);
     }
     if (cpp && cppInitializeHook) {
         cppInitializeHook(scene, entities.data(), entities.size());
     }
+    ScriptRuntime::awakeEntities(scene, entities);
     popActiveScene();
 }
 
@@ -388,7 +398,12 @@ void ObjectManager::cleanupScripts(Scene* scene, const std::vector<Entity>& enti
     }
     bool lua, cpp;
     scriptKinds(scene, entities, lua, cpp);
+    if (!lua && !cpp) {
+        return;
+    }
     pushActiveScene(scene);
+    // onDisable, then onDestroy of every script, while the others still run
+    ScriptRuntime::destroyEntities(scene, entities);
     if (lua) {
         LuaBinding::cleanupLuaScripts(scene, entities);
     }

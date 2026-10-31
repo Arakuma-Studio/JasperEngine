@@ -659,8 +659,16 @@ bool editor::CreateEntityCmd::execute(){
 
     }else if (type == EntityCreationType::LINE_RENDERER){
 
+        // Unity's new Line: a 2-point world-space polyline with a width (lines and trails 6.8)
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<LineRendererComponent>(entity, {});
+        ProjectUtils::setupNewLineRenderer(scene->getComponent<LineRendererComponent>(entity), sceneProject->sceneType != SceneType::SCENE_3D);
+
+    }else if (type == EntityCreationType::TRAIL_RENDERER){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<TrailRendererComponent>(entity, {});
+        ProjectUtils::setupNewTrailRenderer(scene->getComponent<TrailRendererComponent>(entity), sceneProject->sceneType != SceneType::SCENE_3D);
 
     }else if (type == EntityCreationType::MESH_POLYGON){
 

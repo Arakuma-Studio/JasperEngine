@@ -4960,8 +4960,10 @@ void setShapePointsTool(const CallPtr& call) {
         written = list.size();
     } else if (component == "line_renderer") {
         if (!scene->findComponent<LineRendererComponent>(target.entity)) { call->fail("The GameObject has no Line Renderer."); return; }
-        std::vector<LineData> lines;
+        const ComponentType lineType = ComponentType::LineRendererComponent;
         if (has(args, "lines")) {
+            // a segment list: Segments mode, in the GameObject's space (as segment lists always were)
+            std::vector<LineData> lines;
             if (!args["lines"].is_array()) { call->fail("lines is [{a: [x,y,z], b: [x,y,z], color_a, color_b}]."); return; }
             for (const Json& l : args["lines"]) {
                 LineData line;
@@ -4973,17 +4975,52 @@ void setShapePointsTool(const CallPtr& call) {
                 }
                 lines.push_back(line);
             }
+            LineRendererComponent& renderer = scene->getComponent<LineRendererComponent>(target.entity);
+            if (lines.size() > renderer.maxLines) {
+                addProp<unsigned int>(*multi, target, target.entity, lineType, "maxLines", static_cast<unsigned int>(lines.size()));
+            }
+            addProp<LineRendererMode>(*multi, target, target.entity, lineType, "mode", LineRendererMode::Segments);
+            addProp<bool>(*multi, target, target.entity, lineType, "useWorldSpace", false);
+            addProp<std::vector<LineData>>(*multi, target, target.entity, lineType, "lines", lines);
+            written = lines.size();
         } else {
-            // A polyline through the points; closed joins the last to the first
-            for (size_t i = 0; i + 1 < points.size(); i++) lines.push_back({points[i], colorAt(i), points[i + 1], colorAt(i + 1)});
-            if (boolOr(args, "closed", false) && points.size() > 2) lines.push_back({points.back(), colorAt(points.size() - 1), points.front(), colorAt(0)});
+            // a polyline through the points (Polyline mode); the points are local like every shape's,
+            // moved to world space for a world-space line (the default of new ones); closed makes
+            // it a loop; colours become its gradient
+            if (points.size() < 2) { call->fail("A line needs at least 2 points."); return; }
+            std::vector<Vector3> positions = points;
+            const LineRendererComponent& renderer = scene->getComponent<LineRendererComponent>(target.entity);
+            if (renderer.useWorldSpace) {
+                if (const Transform* transform = scene->findComponent<Transform>(target.entity)) {
+                    for (Vector3& p : positions) p = transform->modelMatrix * p;
+                }
+            }
+            addProp<LineRendererMode>(*multi, target, target.entity, lineType, "mode", LineRendererMode::Polyline);
+            addProp<std::vector<Vector3>>(*multi, target, target.entity, lineType, "positions", positions);
+            addProp<bool>(*multi, target, target.entity, lineType, "loop", boolOr(args, "closed", false));
+            if (has(args, "colors")) {
+                if (colors.size() > Gradient::MAX_KEYS) {
+                    call->fail("colors: a polyline's gradient takes at most " + std::to_string(Gradient::MAX_KEYS) +
+                               " keys (one per point); set colorGradient with set_properties for more points.");
+                    return;
+                }
+                // a key per point, at its share of the length
+                std::vector<float> at(points.size(), 0.0f);
+                for (size_t i = 1; i < points.size(); i++) at[i] = at[i - 1] + points[i - 1].distance(points[i]);
+                const float total = at.back();
+                Gradient gradient({}, {});
+                for (size_t i = 0; i < points.size(); i++) {
+                    const float t = total > 0.0f ? at[i] / total : (float)i / (float)(points.size() - 1);
+                    gradient.colorKeys.push_back(GradientColorKey(t, Vector3(colors[i].x, colors[i].y, colors[i].z)));
+                    gradient.alphaKeys.push_back(GradientAlphaKey(t, colors[i].w));
+                }
+                gradient.normalize();
+                addProp<Gradient>(*multi, target, target.entity, lineType, "colorGradient", gradient);
+            } else if (has(args, "color")) {
+                addProp<Gradient>(*multi, target, target.entity, lineType, "colorGradient", Gradient::constant(color));
+            }
+            written = points.size();
         }
-        LineRendererComponent& renderer = scene->getComponent<LineRendererComponent>(target.entity);
-        if (lines.size() > renderer.maxLines) {
-            addProp<unsigned int>(*multi, target, target.entity, ComponentType::LineRendererComponent, "maxLines", static_cast<unsigned int>(lines.size()));
-        }
-        addProp<std::vector<LineData>>(*multi, target, target.entity, ComponentType::LineRendererComponent, "lines", lines);
-        written = lines.size();
     } else {
         call->fail("component must be polygon, mesh_polygon, shadow_caster_2d or line_renderer.");
         return;
@@ -4994,7 +5031,7 @@ void setShapePointsTool(const CallPtr& call) {
         return;
     }
     step.commit();
-    call->ok("Set " + std::to_string(written) + (component == "line_renderer" ? " line(s)" : " point(s)") + " on the " + component +
+    call->ok("Set " + std::to_string(written) + (component == "line_renderer" && has(args, "lines") ? " line(s)" : " point(s)") + " on the " + component +
              " of \"" + scene->getEntityName(target.entity) + "\".",
              Json{{"entity", entityJson(target, target.entity)}, {"component", component}, {"count", written}});
 }
@@ -5462,7 +5499,7 @@ void registerWorldTools(McpRegistry& registry) {
     add("set_shape_points", "Set Shape Points",
         "Set the points of a Polygon (UI), Polygon Mesh, Shadow Caster 2D or Line Renderer: points (local), "
         "circle or rect. Polygon order outline converts a convex outline to the triangle strip; strip: points "
-        "as is. Line renderers: polyline (closed joins ends) or lines.",
+        "as is. Line renderers: a polyline (closed: loop) or lines (segments).",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},

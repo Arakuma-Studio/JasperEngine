@@ -33,6 +33,7 @@
 #include "subsystem/RenderSystem.h"
 #include "texture/TextureData.h"
 #include "util/CameraTextureLink.h"
+#include "util/Color.h"
 #include "util/FluidTextureLink.h"
 #include "component/FluidSimulationComponent.h"
 #include "fluid/FluidPresets.h"
@@ -44,6 +45,7 @@
 #include "util/Util.h"
 
 #include <algorithm>
+#include <limits>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -201,6 +203,7 @@ ShaderType shaderPathType(ComponentType component, const std::string& propertyNa
         case ComponentType::UIComponent: return ShaderType::UI;
         case ComponentType::PointsComponent: return ShaderType::POINTS;
         case ComponentType::LineRendererComponent: return ShaderType::LINES;
+        case ComponentType::TrailRendererComponent: return ShaderType::LINES;
         case ComponentType::SkyboxComponent: return ShaderType::SKYBOX;
         default: return ShaderType::MESH;
     }
@@ -345,6 +348,40 @@ const EnumOptions& fogTypeOptions() {
         {(int)FogType::LINEAR, "linear", "Linear"},
         {(int)FogType::EXPONENTIAL, "exponential", "Exponential"},
         {(int)FogType::EXPONENTIALSQUARED, "exponential_squared", "Exponential Squared"}
+    };
+    return options;
+}
+
+const EnumOptions& lineModeOptions() {
+    static const EnumOptions options = {
+        {(int)LineRendererMode::Segments, "segments", "Segments"},
+        {(int)LineRendererMode::Polyline, "polyline", "Polyline"}
+    };
+    return options;
+}
+
+const EnumOptions& lineWidthUnitOptions() {
+    static const EnumOptions options = {
+        {(int)LineWidthUnit::World, "world", "World"},
+        {(int)LineWidthUnit::Pixels, "pixels", "Pixels"}
+    };
+    return options;
+}
+
+const EnumOptions& lineAlignmentOptions() {
+    static const EnumOptions options = {
+        {(int)LineAlignment::View, "view", "View"},
+        {(int)LineAlignment::TransformZ, "transform_z", "Transform Z"}
+    };
+    return options;
+}
+
+const EnumOptions& lineTextureModeOptions() {
+    static const EnumOptions options = {
+        {(int)LineTextureMode::Stretch, "stretch", "Stretch"},
+        {(int)LineTextureMode::Tile, "tile", "Tile"},
+        {(int)LineTextureMode::DistributePerSegment, "distribute_per_segment", "Distribute Per Segment"},
+        {(int)LineTextureMode::RepeatPerSegment, "repeat_per_segment", "Repeat Per Segment"}
     };
     return options;
 }
@@ -986,6 +1023,8 @@ std::string McpValues::propertyTypeName(PropertyType type) {
         case PropertyType::Custom: return "custom";
         case PropertyType::Entity: return "entity";
         case PropertyType::EntityReference: return "entity_reference";
+        case PropertyType::Curve: return "curve";
+        case PropertyType::Gradient: return "gradient";
     }
     return "unknown";
 }
@@ -1096,6 +1135,13 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
         case ComponentType::UIComponent:
         case ComponentType::PointsComponent:
         case ComponentType::LineRendererComponent:
+        case ComponentType::TrailRendererComponent:
+            if (component == ComponentType::LineRendererComponent || component == ComponentType::TrailRendererComponent) {
+                if (name == "mode" && component == ComponentType::LineRendererComponent) return &lineModeOptions();
+                if (name == "widthUnit") return &lineWidthUnitOptions();
+                if (name == "alignment") return &lineAlignmentOptions();
+                if (name == "textureMode") return &lineTextureModeOptions();
+            }
             if (name == "blendMode") return &blendModeOptions();
             if (name == "depthWrite") return &depthWriteOptions();
             if (name == "stencil.compare") return &stencilCompareOptions();
@@ -1775,6 +1821,258 @@ bool McpValues::entityReferenceFromJson(Project* project, SceneProject* scene, c
     return true;
 }
 
+namespace {
+
+    Json curveNumber(float value) {
+        if (std::isinf(value)) return value > 0.0f ? Json("inf") : Json("-inf");
+        return McpValues::number(value);
+    }
+
+    bool curveNumberFromJson(const Json& value, float& out) {
+        if (value.is_number()) {
+            out = value.get<float>();
+            return std::isfinite(out);
+        }
+        if (value.is_string()) {
+            const std::string text = value.get<std::string>();
+            if (text == "inf" || text == "+inf" || text == ".inf" || text == "Infinity") { out = std::numeric_limits<float>::infinity(); return true; }
+            if (text == "-inf" || text == "-.inf" || text == "-Infinity") { out = -std::numeric_limits<float>::infinity(); return true; }
+        }
+        return false;
+    }
+
+    const char* curveWrapName(CurveWrap wrap) {
+        switch (wrap) {
+            case CurveWrap::Loop: return "loop";
+            case CurveWrap::PingPong: return "ping_pong";
+            default: return "clamp";
+        }
+    }
+
+    bool curveWrapFromJson(const Json& value, CurveWrap& out) {
+        if (!value.is_string()) return false;
+        const std::string name = value.get<std::string>();
+        if (name == "clamp") { out = CurveWrap::Clamp; return true; }
+        if (name == "loop") { out = CurveWrap::Loop; return true; }
+        if (name == "ping_pong") { out = CurveWrap::PingPong; return true; }
+        return false;
+    }
+
+    // a colour of a gradient key: "#RRGGBB" (sRGB) or [r, g, b(, a)] (linear), as linear RGBA
+    bool gradientColorFromJson(const Json& value, Vector4& linear, bool& hasAlpha) {
+        hasAlpha = false;
+        float v[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+        int count = 0;
+        if (parseHexColor(value, v, count)) {
+            const Vector3 color = Color::sRGBToLinear(Vector3(v[0], v[1], v[2]));
+            linear = Vector4(color.x, color.y, color.z, count == 4 ? v[3] : 1.0f);
+            hasAlpha = count == 4;
+            return true;
+        }
+        if (value.is_array() && (value.size() == 3 || value.size() == 4)) {
+            for (size_t i = 0; i < value.size(); i++) {
+                if (!value[i].is_number()) return false;
+                v[i] = value[i].get<float>();
+                if (!std::isfinite(v[i])) return false;
+            }
+            linear = Vector4(v[0], v[1], v[2], v[3]);
+            hasAlpha = value.size() == 4;
+            return true;
+        }
+        return false;
+    }
+
+}
+
+Json McpValues::curveToJson(const AnimationCurve& curve) {
+    Json keys = Json::array();
+    for (const CurveKey& key : curve.keys) {
+        Json item = Json::array({number(key.time), number(key.value)});
+        if (key.inTangent != 0.0f || key.outTangent != 0.0f) {
+            item.push_back(curveNumber(key.inTangent));
+            item.push_back(curveNumber(key.outTangent));
+        }
+        keys.push_back(item);
+    }
+    Json out = Json::object();
+    out["keys"] = keys;
+    out["pre"] = curveWrapName(curve.preWrap);
+    out["post"] = curveWrapName(curve.postWrap);
+    return out;
+}
+
+bool McpValues::curveFromJson(const Json& value, AnimationCurve& out, std::string& error) {
+    const char* shape = "a number (constant), [[time, value], [time, value, inTangent, outTangent], ...] or "
+                        "{\"keys\": [...], \"pre\": \"clamp\"|\"loop\"|\"ping_pong\", \"post\": ...}";
+    out = AnimationCurve();
+    if (value.is_number()) {
+        const float constant = value.get<float>();
+        if (!std::isfinite(constant)) {
+            error = "a constant must be a finite number.";
+            return false;
+        }
+        out = AnimationCurve::constant(constant);
+        return true;
+    }
+    const Json* keys = nullptr;
+    if (value.is_array()) {
+        keys = &value;
+    } else if (value.is_object()) {
+        for (auto it = value.begin(); it != value.end(); ++it) {
+            if (it.key() != "keys" && it.key() != "pre" && it.key() != "post") {
+                error = "unknown key \"" + it.key() + "\"; expected " + shape + ".";
+                return false;
+            }
+        }
+        if (!value.contains("keys") || !value["keys"].is_array()) {
+            error = "missing \"keys\" array; expected " + std::string(shape) + ".";
+            return false;
+        }
+        keys = &value["keys"];
+        if (value.contains("pre") && !curveWrapFromJson(value["pre"], out.preWrap)) {
+            error = "\"pre\" must be \"clamp\", \"loop\" or \"ping_pong\".";
+            return false;
+        }
+        if (value.contains("post") && !curveWrapFromJson(value["post"], out.postWrap)) {
+            error = "\"post\" must be \"clamp\", \"loop\" or \"ping_pong\".";
+            return false;
+        }
+    } else {
+        error = std::string("expected ") + shape + ".";
+        return false;
+    }
+    for (size_t i = 0; i < keys->size(); i++) {
+        const Json& item = (*keys)[i];
+        CurveKey key;
+        bool ok = item.is_array() && (item.size() == 2 || item.size() == 4) && item[0].is_number() && item[1].is_number();
+        if (ok) {
+            key.time = item[0].get<float>();
+            key.value = item[1].get<float>();
+            ok = std::isfinite(key.time) && std::isfinite(key.value);
+            if (ok && item.size() == 4) {
+                // a step is an infinite tangent: "inf" / "-inf"
+                ok = curveNumberFromJson(item[2], key.inTangent) && curveNumberFromJson(item[3], key.outTangent);
+            }
+        }
+        if (!ok) {
+            error = "keys[" + std::to_string(i) + "] must be [time, value] or [time, value, inTangent, outTangent] "
+                    "(finite numbers; a step tangent is \"inf\" / \"-inf\").";
+            return false;
+        }
+        for (const CurveKey& existing : out.keys) {
+            if (existing.time == key.time) {
+                error = "keys[" + std::to_string(i) + "]: two keys at time " + std::to_string(key.time) + ".";
+                return false;
+            }
+        }
+        out.keys.push_back(key);
+    }
+    out.normalize();
+    return true;
+}
+
+Json McpValues::gradientToJson(const Gradient& gradient) {
+    Json out = Json::object();
+    out["mode"] = gradient.mode == GradientMode::Fixed ? "fixed" : "blend";
+    Json colors = Json::array();
+    for (const GradientColorKey& key : gradient.colorKeys) {
+        // the YAML form's rule: "#RRGGBB" when that is exactly the value, else linear numbers
+        const YAML::Node encoded = Stream::encodeGradient(Gradient({key}, {}))["colors"][0][1];
+        Json color = encoded.IsScalar() ? Json(encoded.as<std::string>())
+                                        : Json::array({number(key.color.x), number(key.color.y), number(key.color.z)});
+        colors.push_back(Json::array({number(key.time), color}));
+    }
+    out["colors"] = colors;
+    Json alphas = Json::array();
+    for (const GradientAlphaKey& key : gradient.alphaKeys) {
+        alphas.push_back(Json::array({number(key.time), number(key.alpha)}));
+    }
+    out["alphas"] = alphas;
+    return out;
+}
+
+bool McpValues::gradientFromJson(const Json& value, Gradient& out, std::string& error) {
+    const char* shape = "{\"mode\": \"blend\"|\"fixed\", \"colors\": [[time, \"#RRGGBB\" or [r, g, b] linear], ...], "
+                        "\"alphas\": [[time, alpha], ...]} (up to 8 keys each, times 0..1), or one colour for a constant gradient";
+    Vector4 single;
+    bool singleAlpha = false;
+    if (gradientColorFromJson(value, single, singleAlpha)) {
+        out = Gradient::constant(single);
+        return true;
+    }
+    if (!value.is_object()) {
+        error = std::string("expected ") + shape + ".";
+        return false;
+    }
+    out = Gradient({}, {});
+    for (auto it = value.begin(); it != value.end(); ++it) {
+        if (it.key() != "mode" && it.key() != "colors" && it.key() != "alphas") {
+            error = "unknown key \"" + it.key() + "\"; expected " + shape + ".";
+            return false;
+        }
+    }
+    if (value.contains("mode")) {
+        const Json& mode = value["mode"];
+        if (!mode.is_string() || (mode.get<std::string>() != "blend" && mode.get<std::string>() != "fixed")) {
+            error = "\"mode\" must be \"blend\" or \"fixed\".";
+            return false;
+        }
+        out.mode = mode.get<std::string>() == "fixed" ? GradientMode::Fixed : GradientMode::Blend;
+    }
+    auto checkTime = [&](const Json& time, const std::string& where, float& outTime) -> bool {
+        if (!time.is_number() || !std::isfinite(time.get<float>()) || time.get<float>() < 0.0f || time.get<float>() > 1.0f) {
+            error = where + ": the time must be a number in 0..1.";
+            return false;
+        }
+        outTime = time.get<float>();
+        return true;
+    };
+    if (value.contains("colors")) {
+        const Json& colors = value["colors"];
+        if (!colors.is_array() || colors.size() > Gradient::MAX_KEYS) {
+            error = "\"colors\" must be an array of up to 8 [time, colour] keys.";
+            return false;
+        }
+        for (size_t i = 0; i < colors.size(); i++) {
+            const std::string where = "colors[" + std::to_string(i) + "]";
+            const Json& item = colors[i];
+            Vector4 color;
+            bool hasAlpha = false;
+            float time = 0.0f;
+            if (!item.is_array() || item.size() != 2) {
+                error = where + " must be [time, colour].";
+                return false;
+            }
+            if (!checkTime(item[0], where, time)) return false;
+            if (!gradientColorFromJson(item[1], color, hasAlpha)) {
+                error = where + ": the colour must be \"#RRGGBB\" (sRGB) or [r, g, b] (linear).";
+                return false;
+            }
+            out.colorKeys.push_back(GradientColorKey(time, Vector3(color.x, color.y, color.z)));
+        }
+    }
+    if (value.contains("alphas")) {
+        const Json& alphas = value["alphas"];
+        if (!alphas.is_array() || alphas.size() > Gradient::MAX_KEYS) {
+            error = "\"alphas\" must be an array of up to 8 [time, alpha] keys.";
+            return false;
+        }
+        for (size_t i = 0; i < alphas.size(); i++) {
+            const std::string where = "alphas[" + std::to_string(i) + "]";
+            const Json& item = alphas[i];
+            float time = 0.0f;
+            if (!item.is_array() || item.size() != 2 || !item[1].is_number() || !std::isfinite(item[1].get<float>())) {
+                error = where + " must be [time, alpha] (numbers).";
+                return false;
+            }
+            if (!checkTime(item[0], where, time)) return false;
+            out.alphaKeys.push_back(GradientAlphaKey(time, item[1].get<float>()));
+        }
+    }
+    out.normalize();
+    return true;
+}
+
 Json McpValues::textureToJson(Project* project, SceneProject* scene, const Texture& texture) {
     const Entity camera = CameraTextureLink::parse(texture.getId());
     if (camera != NULL_ENTITY) {
@@ -2436,6 +2734,10 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
             return entityToJson(ctx.scene, *static_cast<Entity*>(ref));
         case PropertyType::EntityReference:
             return entityReferenceToJson(ctx.project, ctx.scene, *static_cast<EntityReference*>(ref));
+        case PropertyType::Curve:
+            return curveToJson(*static_cast<AnimationCurve*>(ref));
+        case PropertyType::Gradient:
+            return gradientToJson(*static_cast<Gradient*>(ref));
         case PropertyType::Material: {
             std::string linked;
             unsigned int submesh = 0;
@@ -2853,6 +3155,24 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
             }
             return new PropertyCmd<EntityReference>(project, sceneId, entity, component, propertyName, ref, onChanged);
         }
+        case PropertyType::Curve: {
+            AnimationCurve curve;
+            std::string why;
+            if (!curveFromJson(value, curve, why)) {
+                error = "Property " + propertyName + " is a curve: " + why;
+                return nullptr;
+            }
+            return new PropertyCmd<AnimationCurve>(project, sceneId, entity, component, propertyName, curve, onChanged);
+        }
+        case PropertyType::Gradient: {
+            Gradient gradient;
+            std::string why;
+            if (!gradientFromJson(value, gradient, why)) {
+                error = "Property " + propertyName + " is a gradient: " + why;
+                return nullptr;
+            }
+            return new PropertyCmd<Gradient>(project, sceneId, entity, component, propertyName, gradient, onChanged);
+        }
         case PropertyType::Material: {
             unsigned int submesh = 0;
             const bool linkable = component == ComponentType::MeshComponent && submeshMaterialIndex(propertyName, submesh);
@@ -3021,6 +3341,40 @@ bool isFluidPreset(const McpValues::Change& change) {
     return change.component == ComponentType::FluidSimulationComponent && change.property == "preset";
 }
 
+// A Line or Trail Renderer's "texture": the built-in line shader's base map, stored as
+// shaderTextures.u_baseTexture (one storage, LineRenderer::setTexture)
+// A Line Renderer's data picks its mode: the whole `lines` list (the segment list, in the
+// GameObject's space as it always was) is Segments mode in local space, the whole `positions` list
+// Polyline mode; unless the same call sets mode (and, for lines, useWorldSpace) itself
+void inferLineMode(std::vector<McpValues::Change>& out) {
+    bool lines = false, positions = false, mode = false, worldSpace = false;
+    for (const McpValues::Change& change : out) {
+        if (change.component != ComponentType::LineRendererComponent) continue;
+        if (change.op == "set" && change.property == "lines") lines = true;
+        if (change.op == "set" && change.property == "positions") positions = true;
+        if (change.property == "mode") mode = true;
+        if (change.property == "useWorldSpace") worldSpace = true;
+    }
+    if (mode || lines == positions) return;
+    McpValues::Change change;
+    change.component = ComponentType::LineRendererComponent;
+    change.property = "mode";
+    change.value = lines ? "segments" : "polyline";
+    out.push_back(change);
+    if (lines && !worldSpace) {
+        change.property = "useWorldSpace";
+        change.value = false;
+        out.push_back(change);
+    }
+}
+
+void aliasLineTexture(McpValues::Change& change) {
+    if ((change.component == ComponentType::LineRendererComponent || change.component == ComponentType::TrailRendererComponent) &&
+            change.property == "texture") {
+        change.property = std::string("shaderTextures.") + LINE_BASE_TEXTURE_UNIFORM;
+    }
+}
+
 }
 
 namespace {
@@ -3060,9 +3414,11 @@ bool McpValues::parseChangesAsGiven(const Json& changes, std::vector<Change>& ou
                 change.property = prop.key();
                 change.value = prop.value();
                 if (isFluidPreset(change)) continue;
+                aliasLineTexture(change);
                 out.push_back(change);
             }
         }
+        inferLineMode(out);
         return true;
     }
     if (!changes.is_array()) {
@@ -3083,6 +3439,7 @@ bool McpValues::parseChangesAsGiven(const Json& changes, std::vector<Change>& ou
             return false;
         }
         change.property = item["property"].get<std::string>();
+        aliasLineTexture(change);
         const int ops = (item.contains("value") ? 1 : 0) + (item.contains("insert") ? 1 : 0) + (item.contains("remove") ? 1 : 0);
         if (ops != 1) {
             error = where + " needs exactly one of value, insert (with optional index) or remove (an index).";
@@ -3125,6 +3482,7 @@ bool McpValues::parseChangesAsGiven(const Json& changes, std::vector<Change>& ou
         error = "changes is empty.";
         return false;
     }
+    inferLineMode(out);
     return true;
 }
 

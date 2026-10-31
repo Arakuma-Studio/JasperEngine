@@ -214,7 +214,13 @@ namespace jasperengine{
         // vat::vatPackInstance vectors, in their own per-instance buffer)
         VAT_INDEX,
         INSTANCEVAT0,
-        INSTANCEVAT1
+        INSTANCEVAT1,
+        // the ribbon of thick lines and trails (includes/lines_vs.glsl): the directions of the
+        // line in and out of the vertex's point (a_tangentIn, a_tangentOut), its side, half
+        // width, role and fan parameter (a_lineParams)
+        LINETANGENTIN,
+        LINETANGENTOUT,
+        LINEPARAMS
     };
 
     enum class AttributeDataType{
