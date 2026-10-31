@@ -404,6 +404,28 @@ SplineSceneRender.cpp), `isDocument` (VcsCommitWindow.cpp, VcsConflictsWindow.cp
 `shortcutText` (AnimationWindowClipDraw.cpp, PoseAnimationWindow.cpp) and an ambiguous `color`
 in PoseAnimationWindow.cpp, among others.
 
+### M9. Unity builds of the vendored libraries (engine tree, Release, ccache off, e3f0c274d)
+
+`CMAKE_UNITY_BUILD=ON` (16 sources a unit) on the vendored targets only, `ninja -k 0`:
+
+| Library | Plain CPU-s | Unity CPU-s | Unity result |
+|---|---|---|---|
+| joltphysics | 248 | 68 | builds |
+| rmlui | 394 | 101 (3 units failed) | `IsEscapedCharacter`, `RunMode` collide |
+| shadercompiler (glslang, SPIRV, spirv-cross) | 151 | 13 (2 failed) | glslang's generated parser does not merge |
+| dav1d | 140 | 112 | builds (C, per-bitdepth templates) |
+| thorvg | 58 | 17 (1 failed) | `_find` collides |
+| soloud, recastnavigation, opus, stb | 25, 14, ~10, 12 | (1 failed each) | `catmullrom`, `prev`, static/extern clash, ... |
+| all 25 targets | 1,236 (166 s wall) | 478 of the units that built (71 s) | 10 failed units |
+
+The C libraries gain little (dav1d −20 %) for the most macro-leak risk; Jolt (−73 %) and RmlUi
+(~−70 % once its colliding sources are kept apart) carry most of the gain.
+
+The editor tree's own unity build (`ninja -k 0`) fails in 20 units: anonymous-namespace
+`Registry`, `fail`, `isInside`, `lower`, `isDescendantOf`, `useProject` and differently-aliased
+`Json` types in the animation documents, the lattice bake, the layout presets, the organisation
+labels and the pose window, besides those of M8.
+
 ## Progress
 
 - 2026-10-30: measurement tools committed (`tools/perf/build-bench.sh`, `tools/perf/build_stats.py`);
