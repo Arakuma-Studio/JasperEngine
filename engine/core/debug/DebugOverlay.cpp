@@ -25,6 +25,7 @@
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/ElementText.h>
 #include <RmlUi/Core/Elements/ElementFormControl.h>
 #include <RmlUi/Core/Event.h>
 #include <RmlUi/Core/EventListener.h>
@@ -136,6 +137,7 @@ namespace {
         float popupDragStartY = 0.0f;
         float popupDragStartTop = 0.0f;
         bool popupDragged = false;
+        float appliedPopupTop = -1.0f;
 
         std::vector<Command> commands;
 
@@ -285,9 +287,17 @@ namespace {
             element->SetClass("hidden", hidden);
     }
 
+    // replaces the element's content with a text node; nothing when it already shows the text
+    // (a change dirties the layout: counts and stats are set every frame)
     void setText(Rml::Element* element, const std::string& text){
         if (!element || !state().document)
             return;
+        if (element->GetNumChildren() == 1){
+            if (auto* node = rmlui_dynamic_cast<Rml::ElementText*>(element->GetChild(0))){
+                if (node->GetText() == text)
+                    return;
+            }
+        }
         while (element->GetNumChildren() > 0)
             element->RemoveChild(element->GetChild(0));
         element->AppendChild(state().document->CreateTextNode(text));
@@ -610,10 +620,13 @@ namespace {
         if (errors < s.errorAtOpen) s.errorAtOpen = 0;
         setText("popup-warn", countText(warnings - s.warnAtOpen));
         setText("popup-error", countText(errors - s.errorAtOpen));
-        if (Rml::Element* popup = byId("popup")){
-            char top[32];
-            snprintf(top, sizeof(top), "%.1f%%", s.popupTop * 100.0f);
-            popup->SetProperty("top", top);
+        if (s.popupTop != s.appliedPopupTop){
+            if (Rml::Element* popup = byId("popup")){
+                char top[32];
+                snprintf(top, sizeof(top), "%.1f%%", s.popupTop * 100.0f);
+                popup->SetProperty("top", top);
+                s.appliedPopupTop = s.popupTop;
+            }
         }
     }
 
@@ -691,6 +704,7 @@ namespace {
         }
         s.document = nullptr;
         s.appliedInsets.clear();
+        s.appliedPopupTop = -1.0f;
         s.bars.clear();
         s.statValues.clear();
         s.rows.clear();

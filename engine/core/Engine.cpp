@@ -1665,7 +1665,7 @@ void Engine::systemShutdown(){
 
     Engine::onShutdown.call();
 
-    // the overlay's Lua commands go while the Lua state still exists
+    // the overlay (and its Lua commands) goes while the Lua state still exists
     DebugOverlay::shutdown();
 
     // what the game (and its onShutdown handlers) stored is on disk before it goes

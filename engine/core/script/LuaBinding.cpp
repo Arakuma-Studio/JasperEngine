@@ -8,6 +8,7 @@
 #include "math/Vector4.h"
 
 #include "Log.h"
+#include "debug/DebugOverlay.h"
 #include "System.h"
 #include "Engine.h"
 #include "Scene.h"
@@ -781,6 +782,10 @@ namespace {
 }
 
 void LuaBinding::cleanup(){
+    // nothing may call into the state once it is closed: a line logged later would reach the
+    // scripts' log listeners, a console command its Lua function
+    Log::onMessageReceived.clear();
+    DebugOverlay::removeOwnedCommands();
     clearScriptChunks(luastate);
     if (luastate) {
         lua_close(luastate);

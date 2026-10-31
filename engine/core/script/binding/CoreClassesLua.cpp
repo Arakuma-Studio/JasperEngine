@@ -617,7 +617,8 @@ namespace {
             auto function = std::make_shared<LuaCommandFunction>();
             function->L = L;
             function->ref = ref;
-            const std::string ownerTag = owner ? "_" + std::to_string(reinterpret_cast<std::uintptr_t>(owner)) + "_" : std::string();
+            // without an owner a Lua command still goes with the Lua state (Play stop, quit)
+            const std::string ownerTag = owner ? "_" + std::to_string(reinterpret_cast<std::uintptr_t>(owner)) + "_" : std::string("lua");
             added = DebugOverlay::addCommand(commandName, std::string(description, descriptionLength),
                 [function, commandName](const std::vector<std::string>& args){
                     lua_State* state = function->L;
