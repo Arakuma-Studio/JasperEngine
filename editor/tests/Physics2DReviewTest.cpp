@@ -20,6 +20,7 @@
 #include "util/Prefab.h"
 
 #include "lua.hpp"
+#include "LuaBridge.h"
 
 #include <cmath>
 #include <limits>
