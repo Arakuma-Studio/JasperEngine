@@ -782,7 +782,15 @@ and `using AnimationCurve = Curve;`. `MinMaxCurve` must have
 - [x] Recorder (R24-R31): window, session, PNG and FFmpeg sinks, offline audio, sidecar,
       `ProcessStream`; non-asset folders.
 - [x] MCP (R41, R42), commands (S25), docs (R40), NOTICE.
-- [ ] Editor builds green (WERROR GL, Vulkan), web and Android builds.
-- [ ] Built-in templates generated (`tools/templates/make_project_templates.py`) and the
-      tween-curve fixture (`tools/fixtures/make_tween_curve_fixture.py`).
-- [ ] Unit tests (plain and ASan+UBSan), the full MCP suite, smoke, goldens, TOOLS.md.
+- [x] Builds on the merged commit (oe-port e3f0c274d): linux GL and Vulkan with warnings as
+      errors, web (and the `tween-curve` web gate: PASS), Android (and its `tween-curve` project).
+- [x] Built-in templates and the tween-curve fixture made by the editor (`tools/templates/
+      make_project_templates.py`, `tools/fixtures/make_tween_curve_fixture.py`).
+- [x] Unit tests: core 2366/2366, editor 1427/1427; ASan+UBSan on S27's areas (editor 149, core
+      30) and, before the last merge, the whole suites (core 2347, editor 1418 but one basisu
+      Debug assertion outside S27). Smoke: fixture-unity and tools/fixtures/tween-curve PASS
+      (the exported game logs the curve checks; `record` writes 30 frames). Xcode checks clean.
+      TOOLS.md regenerated. The full MCP suite (MCP_SUITE=all, slow builds) on the merged commit.
+- Unverified here: Windows and macOS (the screen eyedropper's BitBlt / NSColorSampler, the
+  Shift-at-launch readers, D3D11 and Metal rect readback compile paths), manual checks of
+  docs/editor/color-picker.md and curves.md, R36-R38 budgets on the benchmark server.
