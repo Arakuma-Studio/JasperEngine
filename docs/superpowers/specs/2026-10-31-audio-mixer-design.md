@@ -448,7 +448,7 @@ Decisions taken while implementing (2026-10-31), where the spec was silent, ambi
 - **MCP.** `audio_mixer` also has `set_exposed` (remember, rename), `set_mixer` (update mode), `set_group parent /
   new_name`, `set_effect move_to`; snapshot `values` accept exposed names, `"<group>/volume"` and
   `"<group>/<effect>/<param>"`. Project Settings keys add `audio.default_output_group` (a Project Settings > Audio
-  field the spec lists). `audio.mixer` is shown as `assets/...`; project.yaml stores it assets-relative under `audio`.
+  field the spec lists). `audio.mixer` is shown project-relative (like every MCP path); project.yaml stores it assets-relative under `audio`, which the exported `AudioMixer::load` takes. The default `audio/Main.mixer` is in the assets folder (the spec's `assets/audio/Main.mixer` for a project whose assets folder is `assets/`).
   `get_play_state.audio` adds `output` when there is no device. Lua `getEffect` is 1-based, MCP `index` 0-based.
 - **Lua additions** beyond the spec's list: `AudioMixer.getCurrentSnapshot()`, `AudioMixerGroup.id`, `isValid()`,
   `getMeter()`, `setVolume(db, seconds, opts)`, `AudioMixerEffect.id`, `isValid()`, `hasParameter()`,

@@ -123,7 +123,7 @@ async def test_prepare_project(ed: Editor):
     actions = settings["settings"]["input.actions"] + [
         {"name": "Dash", "type": "button", "bindings": [{"kind": "buttons", "positive": ["left_shift"]}]}]
     await ed.call("set_project_settings", values={"input.actions": actions})
-    # and the project's Audio Mixer (assets/audio/Main.mixer, loaded by the generated init)
+    # and the project's Audio Mixer (audio/Main.mixer, loaded by the generated init)
     if ed.has_tool("audio_mixer"):
         await ed.call("audio_mixer", action="edit", ops=[
             {"op": "add_group", "name": "Music"},

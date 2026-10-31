@@ -15,7 +15,7 @@ from harness import Editor
 EDITOR = {"create": True, "name": "Audio Mixer"}
 TIMEOUT = 900
 
-MIXER = "assets/audio/Main.mixer"
+MIXER = "audio/Main.mixer"   # a new project's assets folder is the project folder
 
 
 def write_tone(path, seconds=2.0, frequency=1000.0, amplitude=0.5, rate=44100):
@@ -50,7 +50,7 @@ async def stop(ed: Editor) -> None:
 
 
 async def test_setup_and_build_the_mixer(ed: Editor):
-    write_tone(ed.project / "assets" / "music.wav")
+    write_tone(ed.project / "music.wav")
     await ed.call("create_entity", name="Music", type="audio_source")
     await ed.call("set_properties", entity="Music",
                   values={"audiosource": {"filename": "music.wav", "looping": True, "state": "playing"}})

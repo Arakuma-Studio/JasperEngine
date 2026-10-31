@@ -11,7 +11,7 @@ meters, `isPlaying`, events and fades are real. Lua reference: `jasper://docs/lu
 
 ## 1. The loop for agents
 
-1. Build the mixer in one call (it creates `assets/audio/Main.mixer` and makes it the project's):
+1. Build the mixer in one call (it creates `audio/Main.mixer` in the assets folder and makes it the project's):
 
 ```json
 {"action": "edit", "ops": [
@@ -121,7 +121,7 @@ Every effect also has `wet` (0..1, default 1; 0 = dry) and `bypass`. Values are 
 
 ## 6. `audio_mixer` ops
 
-`{"action": "get" | "edit", "mixer"?: "assets/....mixer", "ops": [...]}`. `mixer` defaults to the
+`{"action": "get" | "edit", "mixer"?: "<path>.mixer", "ops": [...]}`. `mixer` defaults to the
 project's (created on the first edit). Groups are named by name (or id); effects by `index`
 (0-based) or `type` (the first of that type). The ops run in order; one failing op changes nothing.
 

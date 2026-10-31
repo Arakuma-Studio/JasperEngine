@@ -1323,7 +1323,7 @@ namespace jasperengine::editor{
         void setAudioSettings(const AudioSettings& settings);
         // the project mixer's file (absolute; empty when none is set)
         std::filesystem::path getAudioMixerFile() const;
-        // where a new project mixer goes (assets/audio/Main.mixer)
+        // where a new project mixer goes (audio/Main.mixer, assets-relative)
         static constexpr const char* defaultAudioMixerPath = "audio/Main.mixer";
         // Loads the project mixer into the engine's AudioMixer with the asset's values (Edit mode
         // and live edits keep their runtime; Play starts it over); a missing or broken file leaves

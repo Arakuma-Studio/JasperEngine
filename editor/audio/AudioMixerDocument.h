@@ -23,7 +23,7 @@ namespace jasperengine::editor {
     // (Project::audioFilesChanged), in Edit mode and in Play.
     class AudioMixerDocument {
     public:
-        // The project's mixer file: Project Settings > Audio's, else assets/audio/Main.mixer (set
+        // The project's mixer file: Project Settings > Audio's, else audio/Main.mixer in the assets (set
         // as the project's). Created with Master when missing (`created`). False + error when it
         // cannot be written.
         static bool ensureProjectMixer(Project* project, std::filesystem::path& file, std::string* error, bool* created = nullptr);

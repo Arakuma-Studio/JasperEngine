@@ -42,7 +42,7 @@ bool mixerFile(McpContext& ctx, const Json& args, bool create, fs::path& file, b
         if (!fs::exists(path, ec) && text.rfind("assets/", 0) != 0) path = project->resolveAssetPath(FileUtils::pathFromUtf8(text));
         path = path.lexically_normal();
         if (!project->isInsideAssetsPath(path)) {
-            error = "`mixer` must be a .mixer file inside assets/ (\"assets/audio/Main.mixer\").";
+            error = "`mixer` must be a .mixer file inside the assets folder (\"audio/Main.mixer\").";
             return false;
         }
         if (path.extension() != ".mixer") {
@@ -125,7 +125,7 @@ void audioMixerTool(const CallPtr& call) {
             data["mixer"] = nullptr;
             data["project_mixer"] = true;
             call->ok("The project has no Audio Mixer yet: sounds play through an implicit Master at 0 dB. "
-                     "audio_mixer edit creates assets/audio/Main.mixer.", data);
+                     "audio_mixer edit creates audio/Main.mixer in the assets folder.", data);
             return;
         }
         AudioMixerDef def;
@@ -187,7 +187,7 @@ void registerAudioTools(McpRegistry& registry) {
     tool.description =
         "The project's Audio Mixer (.mixer; Unity's AudioMixer). get: groups, effects, exposed parameters, snapshots "
         "(in Play also live values and meters). edit: `ops` applied in order, one undo step, heard at once; creates "
-        "assets/audio/Main.mixer when the project has none. Ops and effect parameters: jasper://docs/audio.";
+        "audio/Main.mixer in the assets when the project has none. Ops and effect parameters: jasper://docs/audio.";
     tool.inputSchema = object({
         {"action", stringEnum("", {"get", "edit"})},
         {"mixer", string("A .mixer path; default the project's.")},

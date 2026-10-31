@@ -13,6 +13,7 @@
 //                          (replaces add_project_scene / set_start_scene)
 //   edit_project_build_file  read / write ProjectBuild.cmake (replaces update_project_build_file)
 #include "McpTools.h"
+#include "W4Shared.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -1457,15 +1458,15 @@ const std::vector<Setting>& settingsTable() {
             Setting s;
             s.key = "audio.mixer";
             s.type = "path";
-            s.description = "The project's Audio Mixer (.mixer under assets; \"\" = none: an implicit Master). audio_mixer "
-                            "edit creates assets/audio/Main.mixer when unset. Guide: jasper://docs/audio.";
+            s.description = "The project's Audio Mixer (a .mixer in the assets; \"\" = none: an implicit Master). audio_mixer "
+                            "edit creates audio/Main.mixer there when unset. Guide: jasper://docs/audio.";
             s.get = [](McpContext& ctx) {
-                const std::string mixer = ctx.project()->getAudioSettings().mixer;
-                return Json(mixer.empty() ? std::string() : "assets/" + mixer);
+                Project* p = ctx.project();
+                return Json(p->getAudioSettings().mixer.empty() ? std::string() : w4::projectRelative(p, p->getAudioMixerFile()));
             };
             s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
                 if (!value.is_string()) {
-                    error = "must be a .mixer path (\"assets/audio/Main.mixer\") or \"\"";
+                    error = "must be a .mixer path (\"audio/Main.mixer\") or \"\"";
                     return false;
                 }
                 std::string text = value.get<std::string>();
