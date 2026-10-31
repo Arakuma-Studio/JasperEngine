@@ -51,19 +51,6 @@ namespace {
         CppPlainScript(Scene* scene, Entity entity) : ScriptBase(scene, entity) {}
     };
 
-    class CppPrivateTrigger : public ScriptBase {
-    public:
-        CppPrivateTrigger(Scene* scene, Entity entity) : ScriptBase(scene, entity) {}
-    private:
-        void onTriggerEnter2D(const ColliderRef2D&) override {}
-    };
-
-    static_assert(ScriptMessages::cppMask<CppContactScript>() == scriptMessageBit(ScriptMessage::CollisionEnter),
-                  "an onCollisionEnter override is a CollisionEnter receiver, nothing else");
-    static_assert(ScriptMessages::cppMask<CppPlainScript>() == 0, "no override, no bit");
-    static_assert(ScriptMessages::cppMask<CppPrivateTrigger>() & scriptMessageBit(ScriptMessage::TriggerEnter2D),
-                  "a private override still counts");
-
     const char* LOGGER_LUA =
         "local M = {}\n"
         "local function n(go) if go then return go.name else return 'nil' end end\n"
@@ -803,7 +790,8 @@ TEST_F(PhysicsContactsTest, CallbacksMayChangeTheWorld) {
     }
 }
 
-// T22: a C++ ScriptBase override gets the bit and the call; a plain one neither
+// T22: a C++ ScriptBase override gets the call; a script that does not override a message stops
+// receiving it (and the body stops listening for it) once its base method ran
 TEST_F(PhysicsContactsTest, CppOverridesReceiveContacts) {
     floor3D();
     const Entity ball = body3D("Ball", Vector3(0, 1, 0), BodyType::DYNAMIC, {sphere(0.5f)});
@@ -812,10 +800,15 @@ TEST_F(PhysicsContactsTest, CppOverridesReceiveContacts) {
     addCpp<CppPlainScript>(other);
     start();
     EXPECT_TRUE(ScriptMessages::receivers(scene, ball) & scriptMessageBit(ScriptMessage::CollisionEnter));
-    EXPECT_FALSE(ScriptMessages::receivers(scene, other) & PhysicsCallbacks::ALL_3D);
     run(60);
     EXPECT_EQ(cppEnters, 1);
     EXPECT_EQ(scene->getEntityName(script->lastOther), "Floor");
+    EXPECT_FALSE(ScriptMessages::receivers(scene, other) & scriptMessageBit(ScriptMessage::CollisionEnter))
+        << "its base onCollisionEnter ran: not an override";
+    EXPECT_FALSE(ScriptMessages::receivers(scene, other) & scriptMessageBit(ScriptMessage::CollisionStay));
+    EXPECT_FALSE(scene->getComponent<RigidbodyComponent>(other).listenerMask & scriptMessageBit(ScriptMessage::CollisionEnter))
+        << "the body's listener mask follows";
+    EXPECT_TRUE(ScriptMessages::receivers(scene, ball) & scriptMessageBit(ScriptMessage::CollisionEnter));
 }
 
 // T23: time scale 0: no step, no callbacks; 4 fixed steps in a frame: 4 Stay rounds

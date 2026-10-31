@@ -50,6 +50,8 @@
 #include "render/preview/PoseRender.h"
 #include "render/preview/VatPreviewRender.h"
 #include "util/FileUtils.h"
+#include "io/UserSettings.h"
+#include "io/UserSettingsStore.h"
 #include "pose/PoseTemplates.h"
 #include "pose/PoseViewport.h"
 #include "animation/AnimationClipAppHooks.h"
@@ -289,6 +291,7 @@ enum class AppMenuCommand : uint32_t {
     ToggleDetachableWindows,
     ResetLayout,
     ProjectSettings,
+    ClearUserSettings,
     ProjectScenes,
     ProjectPrefabs,
     ClearTrash,
@@ -587,6 +590,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuCommand(AppMenuCommand::StopScene, "Stop", mainToolbar->isInPlayMode()),
         menuSeparator(),
         menuCommand(AppMenuCommand::ProjectSettings, "Project Settings..."),
+        menuCommand(AppMenuCommand::ClearUserSettings, "Clear User Settings (PlayerPrefs)..."),
         menuCommand(AppMenuCommand::EditorSettings, "Preferences...")
     }));
 
@@ -905,6 +909,21 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::EditorSettings:
             editorSettingsWindow.open(&project);
             break;
+        case AppMenuCommand::ClearUserSettings: {
+            // the store Play mode uses (.jasperengine/user/rundata/UserSettings.xml): a running
+            // game sees the keys gone at once
+            const size_t count = UserSettingsStore::instance().entries().size();
+            const std::string file = UserSettingsStore::instance().getFilePath();
+            registerConfirmAlert("Clear User Settings",
+                "Delete every UserSettings / PlayerPrefs key of this project (" + std::to_string(count) +
+                (count == 1 ? " key" : " keys") + ")?\n" + file + "\nThis cannot be undone.",
+                []() {
+                    UserSettings::deleteAll();
+                    UserSettings::save();
+                    Out::info("Cleared the project's User Settings (PlayerPrefs)");
+                });
+            break;
+        }
         case AppMenuCommand::ProjectScenes:
             if (!project.isAnyScenePlaying())
                 scenesWindow.open(&project);

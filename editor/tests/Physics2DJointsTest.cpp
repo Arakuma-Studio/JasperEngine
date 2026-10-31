@@ -523,11 +523,10 @@ namespace {
         entry.enabled = true;
         entry.className = "BreakCounter";
         entry.instance = script;
-        entry.cppScript = ScriptMessages::asScriptBase(script);
+        entry.cppScript = ScriptMessages::cppScript<BreakCounter>(script);
         entry.cppMessageMask = ScriptMessages::cppMask<BreakCounter>();
         scripts.scripts.push_back(entry);
         world.scene.addComponent<ScriptComponent>(entity, scripts);
-        awakeScripts(world.scene, entity);
     }
 
     // a 10 kg body hanging on a revolute joint that breaks at 50 N (its weight is 98 N)
@@ -652,7 +651,6 @@ TEST(Physics2DJoints, BreakingCallsLuaOnJointBreak2D) {
     entry.instance = reinterpret_cast<void*>(static_cast<intptr_t>(ref));
     scripts.scripts.push_back(entry);
     h.world.scene.addComponent<ScriptComponent>(h.joint, scripts);
-    awakeScripts(h.world.scene, h.joint);
     EXPECT_TRUE(ScriptMessages::receivers(&h.world.scene, h.joint) & scriptMessageBit(ScriptMessage::JointBreak2D));
 
     h.world.load();

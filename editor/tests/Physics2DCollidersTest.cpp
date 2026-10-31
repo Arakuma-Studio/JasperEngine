@@ -86,10 +86,18 @@ TEST(Physics2DColliders, EditingOneColliderRebuildsOnlyIt) {
     const Vector2 velocityBefore = body.getLinearVelocity();
     const std::vector<b2ShapeId> otherShapes = body.getBox2DShapes(3);
 
+    // still one convex piece: the shape is changed in place (spec 6.1.4)
+    const b2ShapeId editedBefore = body.getBox2DShapes(2)[0];
     body.setColliderPoints(2, {Vector2(30, -8), Vector2(50, -8), Vector2(50, 8), Vector2(30, 8)});
     world.step();
+    EXPECT_EQ(world.physics()->getShapesCreated2D() - shapesBefore, 0u) << "b2Shape_SetPolygon";
+    EXPECT_TRUE(B2_ID_EQUALS(body.getBox2DShapes(2)[0], editedBefore));
 
-    EXPECT_EQ(world.physics()->getShapesCreated2D() - shapesBefore, 1u) << "collider 2 only";
+    // concave now (two pieces): collider 2 only is made again
+    body.setColliderPoints(2, {Vector2(30, -8), Vector2(50, -8), Vector2(50, 0), Vector2(40, 0), Vector2(40, 8), Vector2(30, 8)});
+    world.step();
+
+    EXPECT_EQ(world.physics()->getShapesCreated2D() - shapesBefore, 2u) << "collider 2 only (its two pieces)";
     EXPECT_EQ(world.physics()->getChainsCreated2D(), chainsBefore);
     EXPECT_TRUE(B2_ID_EQUALS(world.component(e).body, bodyBefore));
     EXPECT_TRUE(B2_ID_EQUALS(world.jointComponent(jointEntity).joint, jointBefore));
@@ -105,7 +113,7 @@ TEST(Physics2DColliders, EditingOneColliderRebuildsOnlyIt) {
             EXPECT_EQ(reinterpret_cast<size_t>(b2Shape_GetUserData(shape)), i);
         }
     }
-    EXPECT_EQ(b2Body_GetShapeCount(world.component(e).body), 4);
+    EXPECT_EQ(b2Body_GetShapeCount(world.component(e).body), 5) << "four colliders, the concave one in two pieces";
     EXPECT_THROW(body.removeCollider(9), std::runtime_error);
 }
 

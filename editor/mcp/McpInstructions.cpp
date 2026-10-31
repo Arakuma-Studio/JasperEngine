@@ -13,8 +13,7 @@ const char* mcpServerInstructions() {
 R"JE(# JasperEngine editor (MCP)
 
 You are driving a running JasperEngine editor: a C++ game engine with a Unity-style editor
-(Hierarchy, Inspector, Project window, Console, Scene and Game views) and Lua or C++ gameplay
-scripts. Every tool edit is an undoable editor command, shown live to a human.
+and Lua or C++ gameplay scripts. Every tool edit is an undoable editor command, shown live to a human.
 Build scenes with tools, write code with your own file tools, verify by playing, screenshots
 and the Console. tools/list is authoritative for tool names and arguments; read a
 tool's description before first use. Deeper reference: resources jasper://docs/... (Lua API,
@@ -56,7 +55,7 @@ Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequence
    project.yaml (the editor would overwrite you). Group many edits in one `batch` call
    (undo_group: one undo step). Edit code with your own tools (see Code).
 3. Save the scenes you changed.
-4. Play the start scene; a C++ project builds first (seconds to minutes).
+4. Play the start scene; a C++ project builds first.
 5. Look: screenshot the Game view (Scene view for layout). Drive the game with
    send_input / wait; query runtime state while playing (get_runtime_entity, eval_lua).
 6. Read the Console since your last cursor: compile, script and Lua errors, missing assets.
@@ -91,8 +90,7 @@ A Lua script returns a module table; attach it to a GameObject through its Scrip
 self.gameObject is its GameObject, self.scene the Scene, self.entity a numeric id (NOT an
 object: never call self.entity:...). Wrap it: Sprite(self.scene, self.entity), Text(...),
 AudioSource(...); a constructor given only self.scene CREATES a new GameObject. Declare
-`---@class Name : ScriptInstance` (Name = the file name): lua-language-server then types self
-and catches typos.
+`---@class Name : ScriptInstance` (Name = the file name): LuaLS then types self.
 
 ```lua
 ---@class Player : ScriptInstance
@@ -110,15 +108,12 @@ function Player:init()
 end
 
 function Player:onUpdate()
-    local dx = 0
-    if Input.isKeyPressed(Input.KEY_RIGHT) then dx = dx + 1 end
-    if Input.isKeyPressed(Input.KEY_LEFT) then dx = dx - 1 end
+    local dx = Input.getAxis("Horizontal")              -- keys, gamepad, on-screen stick
     local p = self.go.position                          -- a copy: assign it back
     self.go.position = Vector3(p.x + dx * self.speed * Engine.deltatime, p.y, p.z)
-    if Input.isKeyPressed(Input.KEY_SPACE) and not self.fired then
+    if Input.getButtonDown("Jump") then                 -- pressed this frame (space, pad Y)
         GameObject.instantiate(self.bullet, self.scene, self.go.position, Quaternion.IDENTITY)
     end
-    self.fired = Input.isKeyPressed(Input.KEY_SPACE)
 end
 
 return Player
@@ -134,13 +129,15 @@ return Player
   onDisable, onDestroy; self.enabled; obj:getScript("Enemy"). jasper://docs/lua-api 1.1.
 - Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
   Engine.deltatime. A missing method fails with "attempt to call a nil value". Check
-  jasper://docs/lua-api (an index), the Lua stubs or search_engine_api for names you have not
-  seen.
-- Input.isKeyPressed is the held state; detect a press by remembering last frame's value or
-  with onKeyDown(key, isRepeat, mods). Log.print/warn/error take ONE string (use ..).
+  jasper://docs/lua-api (an index), the Lua stubs or search_engine_api for unseen names.
+- Input.getAxis/getButtonDown('Jump') read Project Settings > Input actions; getKeyDown(key)
+  is an edge, isKeyPressed held. Test with send_input action/axis events (jasper://docs/input).
+  Log.print/warn/error take ONE string (use ..).
 - Time: Engine.timeScale, Engine.fixedDeltatime (read/write), Engine.gameTime and
   Engine.frameCount (scaled, since start).
-- C++ default arguments do not exist in Lua: pass every argument (e.g. the wake flag).
+- Lua has no C++ default arguments: pass every argument (e.g. the wake flag).
+- Saves: PlayerPrefs, Json.encode/decode, File.writeText("data://x") (jasper://docs/lua-api
+  2.4); user_settings reads/resets PlayerPrefs.
 - Lua has no Dori.Script, getComponent, setProperty or timers. Never put editor property
   paths (submeshes[0]...) in scripts.
 
@@ -161,23 +158,23 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 
 ## Play and time
 - play: start, stop, pause, resume, step (frames), restart; clock options with any action (or
-  action "set"): time_scale, fixed_fps (each frame exactly 1/fixed_fps s: reproducible runs),
+  action "set"): time_scale, fixed_fps (exactly 1/fixed_fps s a frame: reproducible),
   auto_pause (frozen between your calls; runs only inside wait, send_input or step).
 - wait: run for seconds, game_seconds or frames, or until a Lua condition is truthy; input
-  sends send_input events while it waits (hold a key for 2 game seconds, then check).
-- run_build runs an exported desktop player with input events and screenshots_at (seconds
-  since launch); returns its errors (Lua too) and the log tail.
+  sends send_input events while it waits.
+- run_build runs an exported desktop player (input events, screenshots_at seconds); returns
+  its errors (Lua too) and the log tail.
 
 ## 2D and 3D
-- 2D: sprites, tilemaps, UI; units are points (canvas pixels, y up). Box2D converts with pointsToMeterScale (64 points per meter). Light 2D
-  adds to the 2D ambient (lower ambient_light_2d_intensity to see it); Shadow Caster 2D needs the
+- 2D: sprites, tilemaps, UI; units are points (canvas pixels, y up), 64 per Box2D meter
+  (pointsToMeterScale). Light 2D adds to the 2D ambient (lower ambient_light_2d_intensity to see it); Shadow Caster 2D needs the
   light's shadows on; normal maps (generate_sprite_normals, jasper://docs/sprite-normals) need
   its height > 0.
 - 3D: meshes (box, sphere, plane, model files), lights, skybox, fog, terrain. Cameras look at
-  their target by default (useTarget): the GameObject's rotation is ignored until you call
+  their target by default (useTarget): the GameObject's rotation is ignored until
   disableTarget() (orbiting: jasper://docs/lua-api, Camera).
 - Humanoid poses (.poseanim): get_pose_animation -> edit_pose_animation ->
-  render_pose_animation, its metrics; degrees from standing (arms down); mirror_pose
+  render_pose_animation; degrees from standing (arms down); mirror_pose
   (jasper://docs/pose-animation).
 - Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}; play with an Animation
   Player (jasper://docs/animation).
@@ -194,19 +191,17 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   static: floors, level geometry; kinematic: scripted movers.
 - Collider sizes are mesh-local, scaled by the GameObject's scale: never pre-scale them.
   Omit sizes to fit the mesh bounds (never guess).
-- Mass = collider volume/area x density (default 1000 in 3D, 1 in 2D); a 2D body can take an
-  explicit mass (useAutoMass false). Size forces as mass x acceleration; if huge, lower density.
-- 2D joints (set_joint): Unity's set as one Joint2D type, local anchors, motors, springs,
-  limits, breaking; 2D polygons take any points (concave ok): jasper://docs/physics.
+- Mass = collider volume/area x density (default 1000 in 3D, 1 in 2D); a 2D body may set it
+  (useAutoMass false). Size forces as mass x acceleration; if huge, lower density.
+- 2D joints (set_joint: Unity's set, motors, springs, limits, breaking), any 2D polygon
+  (concave ok): jasper://docs/physics.
 - Continuous forces and torques go in onFixedUpdate, never onUpdate, and are NOT multiplied by
   deltatime. The 3D and 2D APIs differ (2D calls take a wake flag): table in jasper://docs/physics.
 - Never move a body by writing its GameObject's transform from onFixedUpdate (silently
   overwritten). Teleport with body.position (and body.rotation / body.angle), velocity with
   body.linearVelocity. One-shot impulses fire once per press, not every held frame.
-- Collisions: define onCollisionEnter / onTriggerEnter(2D) on the script (no registration);
-  ignore a pair with Physics.ignoreCollision: jasper://docs/physics.
-- Layer Collision Matrix (project settings, per backend) gates contacts; raycasts take an
-  optional layer mask.
+- Collisions: define onCollisionEnter / onTriggerEnter(2D) on the script; filter with the Layer
+  Collision Matrix or Physics.ignoreCollision; raycasts take a layer mask.
 - Drop or settle objects: place_with_physics.
 
 ## Prefabs

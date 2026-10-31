@@ -324,9 +324,100 @@ std::string JasperEngineApple::getShaderPath(){
     return [path cStringUsingEncoding:NSASCIIStringEncoding];
 }
 
+// ---- UserSettings: NSUserDefaults. Values keep their type there; one read with another type
+// than it was written with gives the default (a number read as a string, data read as a
+// number), never an exception. A key or value that is no valid UTF-8 has no NSString: the
+// read gives the default, the write is refused (logged).
+
+namespace {
+
+    // standardUserDefaults is shared with the app's SDKs (AdMob / UMP consent, IABTCF_* strings):
+    // deleteAll must only remove the game's keys. The engine keeps their names in this list:
+    // every key it writes, and every key of an older build the game reads back. Other SDKs'
+    // keys are never adopted from a read, only when the game itself writes one.
+    NSString* const KEY_LIST = @"jasperengine.userSettings.keys";
+
+    bool isForeignKey(NSString* name){
+        static NSArray* prefixes = @[@"IABTCF_", @"IABGPP_", @"IABUSPrivacy", @"UMP", @"gad_", @"GAD", @"GoogleAds",
+                                     @"com.google.", @"com.apple.", @"Apple", @"NS", @"WebKit",
+                                     @"jasperengine.userSettings."];
+        for (NSString* prefix in prefixes){
+            if ([name hasPrefix:prefix]) return true;
+        }
+        return false;
+    }
+
+    NSMutableSet* gameKeys(){
+        static NSMutableSet* keys = nil;
+        if (!keys){
+            keys = [NSMutableSet set];
+            NSArray* stored = [[NSUserDefaults standardUserDefaults] arrayForKey:KEY_LIST];
+            for (id name in stored){
+                if ([name isKindOfClass:[NSString class]]) [keys addObject:name];
+            }
+        }
+        return keys;
+    }
+
+    void rememberKey(NSString* name){
+        @synchronized (KEY_LIST) {
+            NSMutableSet* keys = gameKeys();
+            if ([keys containsObject:name]) return;
+            [keys addObject:name];
+            [[NSUserDefaults standardUserDefaults] setObject:[keys allObjects] forKey:KEY_LIST];
+        }
+    }
+
+    void forgetKey(NSString* name){
+        @synchronized (KEY_LIST) {
+            NSMutableSet* keys = gameKeys();
+            if (![keys containsObject:name]) return;
+            [keys removeObject:name];
+            [[NSUserDefaults standardUserDefaults] setObject:[keys allObjects] forKey:KEY_LIST];
+        }
+    }
+
+    NSString* userSettingsKey(const char* key){
+        return key ? [NSString stringWithUTF8String:key] : nil;
+    }
+
+    // The stored object of a key the game reads: a key of an older build joins the list
+    id userSettingsObject(NSString* name){
+        if (!name) return nil;
+        id value = [[NSUserDefaults standardUserDefaults] objectForKey:name];
+        if (value && !isForeignKey(name)) rememberKey(name);
+        return value;
+    }
+
+    // The stored number: an NSNumber, or a numeric NSString (an older build's string)
+    NSNumber* userSettingsNumber(const char* key){
+        id value = userSettingsObject(userSettingsKey(key));
+        if ([value isKindOfClass:[NSNumber class]]) return (NSNumber*)value;
+        if ([value isKindOfClass:[NSString class]]){
+            NSScanner* scanner = [NSScanner scannerWithString:(NSString*)value];
+            [scanner setLocale:[NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"]];
+            double number = 0;
+            if ([scanner scanDouble:&number] && [scanner isAtEnd]) return [NSNumber numberWithDouble:number];
+        }
+        return nil;
+    }
+
+    void setUserSettingsObject(const char* key, id object){
+        NSString* name = userSettingsKey(key);
+        if (!name || [name length] == 0 || !object){
+            jasperengine::Log::error("UserSettings: the key or the value is not valid UTF-8 (or the key is empty); not stored");
+            return;
+        }
+        [[NSUserDefaults standardUserDefaults] setObject:object forKey:name];
+        rememberKey(name);
+    }
+
+}
+
 bool JasperEngineApple::getBoolForKey(const char *key, bool defaultValue){
-    NSNumber *value = [[NSUserDefaults standardUserDefaults] objectForKey:[NSString stringWithUTF8String:key]];
-    if (value) {
+    id value = userSettingsObject(userSettingsKey(key));
+    // a number, or a string as NSString reads it ("YES", "true", "1")
+    if ([value isKindOfClass:[NSNumber class]] || [value isKindOfClass:[NSString class]]) {
         return [value boolValue];
     }
 
@@ -334,7 +425,7 @@ bool JasperEngineApple::getBoolForKey(const char *key, bool defaultValue){
 }
 
 int JasperEngineApple::getIntegerForKey(const char *key, int defaultValue){
-    NSNumber *value = [[NSUserDefaults standardUserDefaults] objectForKey:[NSString stringWithUTF8String:key]];
+    NSNumber *value = userSettingsNumber(key);
     if (value) {
         return [value intValue];
     }
@@ -343,7 +434,7 @@ int JasperEngineApple::getIntegerForKey(const char *key, int defaultValue){
 }
 
 long JasperEngineApple::getLongForKey(const char *key, long defaultValue){
-    NSNumber *value = [[NSUserDefaults standardUserDefaults] objectForKey:[NSString stringWithUTF8String:key]];
+    NSNumber *value = userSettingsNumber(key);
     if (value) {
         return [value longValue];
     }
@@ -352,7 +443,7 @@ long JasperEngineApple::getLongForKey(const char *key, long defaultValue){
 }
 
 float JasperEngineApple::getFloatForKey(const char *key, float defaultValue){
-    NSNumber *value = [[NSUserDefaults standardUserDefaults] objectForKey:[NSString stringWithUTF8String:key]];
+    NSNumber *value = userSettingsNumber(key);
     if (value) {
         return [value floatValue];
     }
@@ -361,7 +452,7 @@ float JasperEngineApple::getFloatForKey(const char *key, float defaultValue){
 }
 
 double JasperEngineApple::getDoubleForKey(const char *key, double defaultValue){
-    NSNumber *value = [[NSUserDefaults standardUserDefaults] objectForKey:[NSString stringWithUTF8String:key]];
+    NSNumber *value = userSettingsNumber(key);
     if (value) {
         return [value doubleValue];
     }
@@ -370,53 +461,90 @@ double JasperEngineApple::getDoubleForKey(const char *key, double defaultValue){
 }
 
 jasperengine::Data JasperEngineApple::getDataForKey(const char* key, const jasperengine::Data& defaultValue){
-    NSData *data = [[NSUserDefaults standardUserDefaults] dataForKey:[NSString stringWithUTF8String:key]];
-    if (data){
+    NSString* name = userSettingsKey(key);
+    userSettingsObject(name);
+    NSData *data = name ? [[NSUserDefaults standardUserDefaults] dataForKey:name] : nil;
+    if (data && data.length > 0){
         return jasperengine::Data((unsigned char*)data.bytes, (unsigned int)data.length, true, true);
     }
-    
-     return defaultValue;
+
+    return defaultValue;
 }
 
 std::string JasperEngineApple::getStringForKey(const char *key, const std::string& defaultValue){
-    NSString *str = [[NSUserDefaults standardUserDefaults] stringForKey:[NSString stringWithUTF8String:key]];
-    if (str){
-        return [str UTF8String];
+    NSString* name = userSettingsKey(key);
+    userSettingsObject(name);
+    // stringForKey: gives a stored number as text too (as before); data and others are nil
+    NSString* str = name ? [[NSUserDefaults standardUserDefaults] stringForKey:name] : nil;
+    NSData* utf8 = [str dataUsingEncoding:NSUTF8StringEncoding];
+    if (utf8){
+        // the bytes, embedded zeros included (a stored "" is returned as "")
+        if (utf8.length == 0) return std::string();
+        return std::string(static_cast<const char*>(utf8.bytes), utf8.length);
     }
-    
+
     return defaultValue;
 }
 
 void JasperEngineApple::setBoolForKey(const char *key, bool value){
-    [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithBool:value] forKey:[NSString stringWithUTF8String:key]];
+    setUserSettingsObject(key, [NSNumber numberWithBool:value]);
 }
 
 void JasperEngineApple::setIntegerForKey(const char *key, int value){
-    [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithInt:value] forKey:[NSString stringWithUTF8String:key]];
+    setUserSettingsObject(key, [NSNumber numberWithInt:value]);
 }
 
 void JasperEngineApple::setLongForKey(const char *key, long value){
-    [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithLong:value] forKey:[NSString stringWithUTF8String:key]];
+    setUserSettingsObject(key, [NSNumber numberWithLong:value]);
 }
 
 void JasperEngineApple::setFloatForKey(const char *key, float value){
-    [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithFloat:value] forKey:[NSString stringWithUTF8String:key]];
+    setUserSettingsObject(key, [NSNumber numberWithFloat:value]);
 }
 
 void JasperEngineApple::setDoubleForKey(const char *key, double value){
-    [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithDouble:value] forKey:[NSString stringWithUTF8String:key]];
+    setUserSettingsObject(key, [NSNumber numberWithDouble:value]);
 }
 
 void JasperEngineApple::setDataForKey(const char* key, jasperengine::Data& value){
-    [[NSUserDefaults standardUserDefaults] setObject:[NSData dataWithBytes: value.getMemPtr() length: value.length()] forKey:[NSString stringWithUTF8String:key]];
+    if (!value.getMemPtr()){
+        jasperengine::Log::error("No data to add for key: %s", key ? key : "(null)");
+        return;
+    }
+    setUserSettingsObject(key, [NSData dataWithBytes: value.getMemPtr() length: value.length()]);
 }
 
 void JasperEngineApple::setStringForKey(const char* key, const std::string& value){
-    [[NSUserDefaults standardUserDefaults] setObject:[NSString stringWithUTF8String:value.c_str()] forKey:[NSString stringWithUTF8String:key]];
+    // initWithBytes keeps embedded zeros; nil when the bytes are not UTF-8
+    NSString* text = [[NSString alloc] initWithBytes:value.data() length:value.size() encoding:NSUTF8StringEncoding];
+    setUserSettingsObject(key, text);
 }
 
 void JasperEngineApple::removeKey(const char *key){
-    [[NSUserDefaults standardUserDefaults] removeObjectForKey:[NSString stringWithUTF8String:key]];
+    NSString* name = userSettingsKey(key);
+    if (name){
+        [[NSUserDefaults standardUserDefaults] removeObjectForKey:name];
+        forgetKey(name);
+    }
+}
+
+bool JasperEngineApple::hasKey(const char *key){
+    return userSettingsObject(userSettingsKey(key)) != nil;
+}
+
+void JasperEngineApple::removeAllKeys(){
+    // the game's keys only (KEY_LIST), never the SDKs' (consent state lives here too)
+    @synchronized (KEY_LIST) {
+        NSMutableSet* keys = gameKeys();
+        for (NSString* name in keys)
+            [[NSUserDefaults standardUserDefaults] removeObjectForKey:name];
+        [keys removeAllObjects];
+        [[NSUserDefaults standardUserDefaults] removeObjectForKey:KEY_LIST];
+    }
+}
+
+void JasperEngineApple::saveUserSettings(){
+    [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
 void JasperEngineApple::initializeAdMob(bool tagForChildDirectedTreatment, bool tagForUnderAgeOfConsent){

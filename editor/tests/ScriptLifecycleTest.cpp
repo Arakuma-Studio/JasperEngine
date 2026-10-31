@@ -58,10 +58,10 @@ namespace {
         void init() {}
     };
 
-    static_assert(ScriptMessages::cppMask<CppPlain>() == 0, "no overrides, no messages");
-    static_assert(ScriptMessages::cppMask<CppPartial>() ==
-                  (scriptMessageBit(ScriptMessage::Enable) | scriptMessageBit(ScriptMessage::ApplicationPause)),
-                  "only the overridden messages");
+    // every message is a candidate for a ScriptBase (overrides, possibly private, are learned
+    // when sent: CppOverridesLearnedWhenSent)
+    static_assert(ScriptMessages::cppMask<CppPlain>() == ScriptMessages::cppMask<CppPartial>(), "no member is named");
+    static_assert(ScriptMessages::cppMask<CppPlain>() & scriptMessageBit(ScriptMessage::Init), "a candidate");
     static_assert(ScriptMessages::cppMask<CppWrapper>() == 0, "not a ScriptBase: no messages");
 
     std::string joined(const std::vector<std::string>& lines) {
@@ -871,4 +871,25 @@ TEST_F(ScriptLifecycleTest, InstanceLookupsStayTableLookups) {
     std::printf("[lookup cost vs a plain table] method call %.2fx, missing field %.2fx\n", method, missing);
     EXPECT_LT(method, 1.5) << ratios;
     EXPECT_LT(missing, 1.5) << ratios;
+}
+
+// a C++ script that does not override a message is learned to the first time it is sent (its base
+// method ran): no longer among the receivers, never sent again
+TEST_F(ScriptLifecycleTest, CppOverridesLearnedWhenSent) {
+    Scene* scene = newScene();
+    const Entity p = entity(scene, "P");
+    CppPartial* partial = addCppScript<CppPartial>(scene, p, "CppPartial");
+    EXPECT_TRUE(ScriptMessages::receivers(scene, p) & scriptMessageBit(ScriptMessage::Init)) << "not known yet";
+    ScriptRuntime::awakeScene(scene);
+    const ScriptMessageMask mask = ScriptMessages::receivers(scene, p);
+    EXPECT_FALSE(mask & scriptMessageBit(ScriptMessage::Init)) << "its base init ran";
+    EXPECT_TRUE(mask & scriptMessageBit(ScriptMessage::Enable)) << "an override";
+    EXPECT_TRUE(partial->inheritedMessages & scriptMessageBit(ScriptMessage::Init));
+    EXPECT_EQ(ScriptMessages::send(scene, p, ScriptMessage::ApplicationPause, nullptr,
+                                   [](ScriptBase& script) { script.onApplicationPause(true); }), 1);
+    EXPECT_EQ(ScriptMessages::send(scene, p, ScriptMessage::ApplicationQuit, nullptr,
+                                   [](ScriptBase& script) { script.onApplicationQuit(); }), 0) << "not overridden: not counted";
+    EXPECT_FALSE(ScriptMessages::receivers(scene, p) & scriptMessageBit(ScriptMessage::ApplicationQuit));
+    ScriptRuntime::unloadScenes({scene});
+    deleteCppScripts(scene);
 }

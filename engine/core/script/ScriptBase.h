@@ -64,38 +64,47 @@ namespace jasperengine {
             return nullptr;
         }
 
-        // Lifecycle (script-lifecycle spec 7.2). Override what the script needs.
-        virtual void init() {}
-        virtual void start() {}
-        virtual void onEnable() {}
-        virtual void onDisable() {}
-        virtual void onDestroy() {}
-        virtual void onApplicationPause(bool paused) { (void)paused; }
-        virtual void onApplicationFocus(bool focused) { (void)focused; }
-        virtual void onApplicationQuit() {}
+        // Script messages (ScriptMessages), like the Lua methods of the same name: override what
+        // the script needs (public, protected or private) and do not call the base, which only
+        // notes the message is not overridden (it is not sent again).
+        // Lifecycle (script-lifecycle spec 7.2):
+        virtual void init();
+        virtual void start();
+        virtual void onEnable();
+        virtual void onDisable();
+        virtual void onDestroy();
+        virtual void onApplicationPause(bool paused);
+        virtual void onApplicationFocus(bool focused);
+        virtual void onApplicationQuit();
 
-        // Script messages of physics (ScriptMessages), like the Lua methods of the same name:
-        // called on the main thread after the fixed step that caused them, enabled or not,
-        // while the GameObject is active in hierarchy (docs/mcp/guide/physics.md).
-        // Collisions: `collision` is seen from this side (its collider is the other one).
-        virtual void onCollisionEnter(const Collision& collision) { (void)collision; }
-        virtual void onCollisionStay(const Collision& collision) { (void)collision; }
-        virtual void onCollisionExit(const Collision& collision) { (void)collision; }
-        // Triggers: the other collider
-        virtual void onTriggerEnter(const ColliderRef& other) { (void)other; }
-        virtual void onTriggerStay(const ColliderRef& other) { (void)other; }
-        virtual void onTriggerExit(const ColliderRef& other) { (void)other; }
-        virtual void onCollisionEnter2D(const Collision2D& collision) { (void)collision; }
-        virtual void onCollisionStay2D(const Collision2D& collision) { (void)collision; }
-        virtual void onCollisionExit2D(const Collision2D& collision) { (void)collision; }
-        virtual void onTriggerEnter2D(const ColliderRef2D& other) { (void)other; }
-        virtual void onTriggerStay2D(const ColliderRef2D& other) { (void)other; }
-        virtual void onTriggerExit2D(const ColliderRef2D& other) { (void)other; }
-        // A 3D joint of this GameObject broke (Unity OnJointBreak), with the force that broke it
-        virtual void onJointBreak(float breakForce, Joint3D& joint) { (void)breakForce; (void)joint; }
         // A 2D joint of this GameObject (or whose bodyA is it) broke (Unity OnJointBreak2D); the
         // joint still exists during the call.
-        virtual void onJointBreak2D(Joint2D& joint) { (void)joint; }
+        virtual void onJointBreak2D(Joint2D& joint);
+        // A 3D joint of this GameObject broke (Unity OnJointBreak), with the force that broke it
+        virtual void onJointBreak(float breakForce, Joint3D& joint);
+        // Contacts (physics-contacts): on the main thread after the fixed step that caused them,
+        // enabled or not, while the GameObject is active in hierarchy (docs/mcp/guide/physics.md).
+        // A collision is seen from this side (its collider is the other one); a trigger gets the
+        // other collider.
+        virtual void onCollisionEnter(const Collision& collision);
+        virtual void onCollisionStay(const Collision& collision);
+        virtual void onCollisionExit(const Collision& collision);
+        virtual void onTriggerEnter(const ColliderRef& other);
+        virtual void onTriggerStay(const ColliderRef& other);
+        virtual void onTriggerExit(const ColliderRef& other);
+        virtual void onCollisionEnter2D(const Collision2D& collision);
+        virtual void onCollisionStay2D(const Collision2D& collision);
+        virtual void onCollisionExit2D(const Collision2D& collision);
+        virtual void onTriggerEnter2D(const ColliderRef2D& other);
+        virtual void onTriggerStay2D(const ColliderRef2D& other);
+        virtual void onTriggerExit2D(const ColliderRef2D& other);
+
+        // the messages (ScriptMessage bits) whose base method ran: not overridden, so not sent
+        // again and not among ScriptMessages::receivers
+        uint32_t inheritedMessages = 0;
+        // set by a base message method (ScriptMessages reads it after a call without touching a
+        // script the call may have destroyed)
+        static bool baseMessageRan;
     };
 
 }

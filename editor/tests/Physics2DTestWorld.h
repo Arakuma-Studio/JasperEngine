@@ -15,8 +15,6 @@
 #include "object/physics/Rigidbody2D.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
-#include "script/ScriptMessages.h"
-#include "script/ScriptRuntime.h"
 #include "util/Angle.h"
 
 #include <cmath>
@@ -93,14 +91,6 @@ namespace jasperengine::physics2dtest {
             }
         }
     };
-
-    // Script entries added by hand get the lifecycle's init (ScriptMessages sends to initialized
-    // instances only) and a fresh receiver mask; the scene's destructor forgets them
-    inline void awakeScripts(Scene& scene, Entity entity) {
-        if (!ScriptRuntime::hasStarted(&scene)) ScriptRuntime::awakeScene(&scene);
-        else ScriptRuntime::awakeEntities(&scene, {entity});
-        ScriptMessages::notifyReceiversChanged(&scene, entity);
-    }
 
     inline float rad(float degrees) { return degrees * (float)M_PI / 180.0f; }
 

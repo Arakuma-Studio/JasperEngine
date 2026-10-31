@@ -718,3 +718,48 @@ physics-contacts), where the spec was silent, ambiguous or contradicted itself:
     rested there exactly as in Play (T3 on both). Lua stubs: 0 unresolved. Android (NDK 28, arm64)
     and Web (emscripten) compile checks of every changed engine source (`-fsyntax-only` with the
     platform's defines; a full Android configure needs the Gradle game-activity prefab): clean.
+25. **Review fixes** (independent review of the branch; each has a regression test in
+    `Physics2DReviewTest.cpp`, `PolygonDecomposition2DTest.cpp`, `test_physics_2d.py` or
+    `test_physics_2d_inspector.py`):
+    - *Old prefab overrides.* Override names recorded before the caps went are migrated when read
+      (`PrefabObjectOverrides::addProperty`): `numColliders` is the `colliders` list,
+      `colliders[i].numVertices` its `points`, `colliders[i].vertices[j]` `points[j]`; and
+      `Catalog::copyPropertyValue` copies names the lookup resolves but does not list (a single
+      point), so rebuilds and Apply to Prefab keep point edits.
+    - *Decomposition fidelity.* A point is dropped as "straight on" when it, and every point
+      dropped next to it, lies within the weld distance (Box2D's linear slop) of the line between
+      the kept points around them: local and absolute (the bbox-relative tolerance flattened 1 m
+      hills on a 3 km terrain and a 2000-tooth comb). Zero-area checks are rounding-noise only;
+      thin pieces are still dropped by the weld test.
+    - *Pieces in the editor.* The Inspector, the Scene view and MCP's `pieces` read
+      `PhysicsSystem::updateCollider2DPieces` / `getCollider2DPiecesLocal`: the body's own pieces
+      (after the GameObject's scale, unhullable slivers left out), cached on the collider by
+      points, scale and units, so nothing is decomposed every frame.
+    - *Breaking.* A joint broken with DISABLE and enabled again (Joint2D::setEnabled, or the
+      field from the Inspector) is a fresh joint that can break again; `isLive()` (read-outs, the
+      Inspector's Runtime section) also requires no pending rebuild and a Box2D joint of the
+      component's type. A joint that cannot be made (a body removed) logs once (`loadFailed`).
+    - *Materials at run time.* The Box2D patch mixes friction and restitution again at every
+      contact update, so a material change no longer refilters the body: resting contacts stay
+      (no end / begin events). Unity 2D's `Mean` reads as `geometric_mean`.
+    - *C++ messages.* `ScriptMessages::cppMask<T>()` no longer names `T::onJointBreak2D` (a
+      protected, private or overloaded override made the generated factory fail to compile): a
+      C++ script counts as a receiver of every message until a message reaches the base method,
+      which marks it (`ScriptBase::inheritedMessages`); script-lifecycle can keep this mechanism.
+    - *Inspector.* Each collider's widgets are under its own ImGui ID; the axis Angle drag ends its
+      undo step at release; a physics material's Friction and Bounciness (and each drag) are
+      separate project undo steps; copied points keep full float precision.
+    - *Units and errors.* Revolute limit defaults (-90 / 90 degrees) and `set_joint`'s half-turn
+      clamp follow the project's angle unit; Lua argument errors throw (LuaBridge turns them into
+      Lua errors) instead of `luaL_error` longjmps past C++ objects.
+    - *Spec 6.1.4.* A polygon edit that stays one convex piece uses `b2Shape_SetPolygon` (the same
+      shape id). Box2D 3.1 still drops that shape's contacts there; the body's other shapes and
+      contacts are untouched.
+26. **Verification after the review fixes and the merge of `main`** (script-data, input, the
+    128-bit ECS signature; built on a 16-core box): `jasperengine-editor-tests` 1075 passed, 8
+    skipped, 0 failed; MCP `test_physics_2d.py`, `test_physics_2d_inspector.py` (real input),
+    `test_stubs`, `test_docs`, `test_html_ui_tools` (150 tools, 106620 characters, the limit),
+    `test_prefab`, `test_world`, `test_scene`, `test_play*`, `test_runtime_regressions`: 96 passed,
+    8 skipped (no lua-language-server / clangd / xev, slow C++ builds); zero warnings in the
+    changed sources; Android and Web syntax checks of the engine sources the fixes touched: clean.
+    The exported-player test was not run again after the fixes.

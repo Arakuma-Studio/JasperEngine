@@ -21,6 +21,7 @@
 
 #include "lua.hpp"
 #include "LuaBridge.h"
+#include "LuaBridgeAddon.h"
 
 #include <cmath>
 #include <limits>
@@ -172,12 +173,11 @@ namespace {
         entry.enabled = true;
         entry.className = "Script";
         entry.instance = script;
-        entry.cppScript = ScriptMessages::asScriptBase(script);
+        entry.cppScript = ScriptMessages::cppScript<T>(script);
         entry.cppMessageMask = ScriptMessages::cppMask<T>();
         scripts.scripts.push_back(entry);
         if (world.scene.findComponent<ScriptComponent>(entity)) world.scene.getComponent<ScriptComponent>(entity) = scripts;
         else world.scene.addComponent<ScriptComponent>(entity, scripts);
-        awakeScripts(world.scene, entity);
     }
 
 }

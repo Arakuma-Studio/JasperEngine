@@ -96,8 +96,11 @@ ones, with the rules and order of Lua scripts (`jasper://docs/lua-api`, 1.1):
 | `void onDisable() override` | it stops being active and enabled; before `onDestroy` | `OnDisable` |
 | `void onDestroy() override` | once: destroy, scene unload, Play stop / quit (only if `init` ran); the destructor runs after it | `OnDestroy` |
 | `void onApplicationPause(bool paused) override`, `onApplicationFocus(bool focused)`, `onApplicationQuit()` | app background / focus / quit | `OnApplication*` |
+| `void onJointBreak2D(jasperengine::Joint2D& joint) override` | a 2D joint of this GameObject (or whose bodyA is it) broke | `OnJointBreak2D` |
 
-The constructor runs first, before the properties are bound: read DPROPERTY members in
+Overrides may be public, protected or private; do not call the base method: it only notes the
+script does not override the message, which is then not sent to it again. The constructor runs
+first, before the properties are bound: read DPROPERTY members in
 `init()`, not in the constructor. Events registered with `REGISTER_ENGINE_EVENT` start after
 `start()` (a script enabled during a frame gets its first `onUpdate` in the next one).
 Migration: a method of an existing script named like one of these is now an override the engine
@@ -138,6 +141,20 @@ The method name must be the Engine event's name (`onUpdate`, `onFixedUpdate`,
 `onPostUpdate`, `onKeyDown`, ...). Events of a disabled script (inactive GameObject or
 disabled entry) are skipped. Registering in the constructor or in `init()` both work.
 
+## Saves and JSON
+
+- PlayerPrefs: `jasperengine::UserSettings` (`"io/UserSettings.h"`, flat include
+  `"UserSettings.h"`): `getIntegerForKey(k, default)`, `setIntegerForKey(k, v)`, the float,
+  double, long, bool, string and `Data` versions, `hasKey`, `deleteKey`, `deleteAll`, `save`.
+  The same keys as Lua `PlayerPrefs` / `UserSettings` (jasper://docs/lua-api, 2.4).
+- Files: `jasperengine::FileUtils` (`"FileUtils.h"`): `readText(path, out, error)`,
+  `writeText(path, text, error)` (atomic), `appendText`, `exists`, `remove`, `makeDirs`, `list`,
+  with the Lua `File.*` path rules (`data://` writable; `asset://`, `lua://` read-only).
+- JSON: nlohmann json 3.11 is on the include path (`#include "json.hpp"`, `nlohmann::json`);
+  `nlohmann::json::parse(text)` and `j.dump()`. To hand JSON to Lua or take it from Lua use
+  `jasperengine::LuaJson` (`"LuaJson.h"`: `toJson`, `push`, `encode`, `decode`, the same rules
+  as the Lua `Json` module).
+
 ## Rules that bite
 
 - Includes are quoted and resolve against the engine API snapshot: `"Engine.h"`,
@@ -146,6 +163,11 @@ disabled entry) are skipped. Registering in the constructor or in `init()` both 
 - Logging: `Log::print("pos %f %f", p.x, p.y)`, `Log::warn`, `Log::error` (printf format).
   Never `printf`, `std::cout` or `Engine::log` (it does not exist).
 - Key codes are `D_KEY_*` macros (`D_KEY_SPACE`, `D_KEY_LEFT`); Lua uses `Input.KEY_*`.
+- Input as in Lua (jasper://docs/input): `Input::getKeyDown(D_KEY_SPACE)`, `Input::getTouch(0)`,
+  and the input actions of Project Settings > Input with `#include "input/InputActions.h"`:
+  `InputActions::getAxis("Horizontal")`, `InputActions::getButtonDown("Jump")`. A source the
+  script feeds (`InputActions::setSourceValue(reinterpret_cast<uintptr_t>(this), "Horizontal",
+  1.0f, InputSourceKind::Script)`) is cleared when the script is deleted.
 - Angles are in DEGREES by default (`Engine::setUseDegrees(false)` switches):
   `Quaternion(angle, axis)` takes the angle first; `Quaternion::fromEulerAngles`,
   `Camera::rotateView` all go through `Angle::defaultToRad`. `std::sin/cos` want radians:
