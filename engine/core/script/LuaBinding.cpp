@@ -3,6 +3,7 @@
 
 #include <unordered_map>
 #include "LuaBinding.h"
+#include "script/AsyncOwner.h"
 #include "shader/ShaderManifest.h"
 #include "math/Vector3.h"
 #include "math/Vector4.h"
@@ -726,6 +727,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerECSClasses(L);
     registerIOClasses(L);
     registerMathClasses(L); 
+    registerNetClasses(L);
     registerUtilClasses(L);
     registerThreadClasses(L);
     registerHtmlUIClasses(L);
@@ -1395,6 +1397,9 @@ bool LuaBinding::callLuaScriptMethod(Scene* scene, Entity entity, const std::str
 }
 
 void LuaBinding::releaseLuaScriptInstance(Scene* scene, ScriptEntry& scriptEntry) {
+    // async work owned by the instance (HTTP requests with owner = self) ends without its
+    // callbacks
+    AsyncOwners::scriptInstanceReleased(scriptEntry.instance);
     int ref = static_cast<int>(reinterpret_cast<intptr_t>(scriptEntry.instance));
     // its coroutines and timers end with it (destroy, scene unload, Play stop), while the
     // instance still exists for their to-be-closed variables

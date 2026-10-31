@@ -722,3 +722,137 @@ and `engine/core/physics/PlacementWorld.cpp` (collider storage users).
   blending of ragdoll and animation is a future extension (hook in §6.1.11).
 - **lines-trails**: debug draw lines use whatever `LineRenderer` width support exists (1 px today).
 - **persistence**: a ragdoll on a persistent object keeps its components (nothing scene-specific).
+
+## Implementation notes
+
+Decisions taken while implementing (branch `gaps/physics-3d`, on top of physics-2d and the merged
+script-lifecycle), where the spec was silent, ambiguous or contradicted what the engine does:
+
+1. **World capacity defaults lowered (§6.1.13).** Measured with Jolt's allocation hooks around a
+   scene's creation (`Physics3DBody.DefaultCapacityWorldFitsInFourMegabytes`): 8192 bodies / 16384
+   pairs / 8192 contact constraints take 4.32 MB, over the 4 MB budget, so the default
+   `maxBodyPairs` is **8192**: 8192 / 8192 / 8192 take **3.64 MB** (1024 / 1024 / 1024, the old
+   hard-coded values, took 0.49 MB). Each step also takes `maxContactConstraints` x ~450 bytes from
+   the shared temp allocator; it is now Jolt's `TempAllocatorImplWithMallocFallback` (the same
+   10 MiB arena, malloc past it), so a large capacity no longer aborts the step.
+2. **Setting names.** project.yaml keeps the spec's `physics3D: {maxBodies, maxBodyPairs,
+   maxContactConstraints}` (written only when not the defaults); the MCP project settings are
+   `physics.max_bodies`, `physics.max_body_pairs`, `physics.max_contact_constraints`, in the
+   existing `physics` category of `set_project_settings` rather than a new `physics3D` one. The
+   Project Settings panel is Physics > 3D World Capacity.
+3. **LOCAL anchors.** `anchor` is the point on bodyA in its local space, `anchorB` the connected
+   anchor in bodyB's (a world point when there is no bodyB, Unity's connectedAnchor); `anchorA`
+   stays the WORLD distance / six-DOF / pulley field. `autoAnchors` writes `anchorB` back when the
+   joint is made; LOCAL distance joints ignore it (as physics-2d note 4). Joints remade because a
+   body was recreated take the bodies' poses of that moment.
+4. **Sign convention.** LOCAL joint values (hinge angle, slider position, speeds, limits, motor and
+   spring targets, twist limits, six-DOF limits and targets, the swing-twist target rotation) are
+   bodyA's relative to the connected body, Unity's meaning; Jolt measures body 2 relative to body 1,
+   so they are Jolt's negated. WORLD joints keep Jolt's (the old engine's) meaning. The hinge /
+   slider re-centring turns the frame so Jolt reads +c at the start pose (the user's 0).
+5. **Swing names (§6.3, T9).** Jolt's `mNormalHalfConeAngle` limits rotation *about the plane
+   (swing) axis* and `mPlaneHalfConeAngle` rotation about the normal (measured: a torque about the
+   plane axis stops at the normal half angle). So Unity's `swing1Limit` (about the swing axis) is
+   `normalHalfConeAngle` and `swing2Limit` is `planeHalfConeAngle`, not the other way round as the
+   spec wrote; the Inspector labels, Lua aliases, docs and the Ragdoll builder (swing 1 into
+   `normalHalfConeAngle`, swing 2 = 0 into `planeHalfConeAngle`) follow.
+6. **Auto-detected anchor of WORLD fixed and slider joints.** Every body that may switch type is
+   now made with `mAllowDynamicOrKinematic` (static ones too, except mesh / heightfield shapes), and
+   Jolt's `mAutoDetectPoint` then weighs a static body like a movable one, which moved the old
+   slider's anchor (T1 caught it). The engine computes the old point itself: a static body anchors
+   at the other body's centre of mass. With that, the legacy fixture matches to 1e-5.
+7. **Type switches.** Dynamic to kinematic stops the body (Unity `isKinematic = true`); kinematic to
+   dynamic keeps its velocity; any switch keeps the BodyID (T4). A body whose type changes from or
+   to "must be static" (a mesh collider added or removed) is rebuilt.
+8. **Angles** of every joint field are in the engine's angle unit (degrees by default), the cone's
+   default `Angle::degToDefault(45)`; Factory always writes `coneHalfAngle` and `anchorSpace`.
+9. **Material detection on job threads** compares `PhysicsMaterial::GetDebugName()`'s pointer with
+   `JoltSurfaceMaterial::typeName` instead of Jolt RTTI (the class lives outside the JPH namespace,
+   where `JPH_DECLARE_RTTI_VIRTUAL` does not compile).
+10. **Gears and racks** made in LOCAL space (new ones) always put their two bodies in the pair filter
+    (their teeth overlap); WORLD ones (old scenes) follow `enableCollision` only, so their bodies
+    collide as before. Their driven hinges' and slider's axes are now taken in world space (the old
+    code read the body-local axes of the driven joints' settings as world axes, and used a pointer
+    into a destroyed temporary).
+11. **`setColliderFriction` / `setColliderBounciness` on a collider without a material** give it an
+    own copy with the legacy modes (geometric mean friction, maximum bounce), so it still combines
+    as before with colliders without one.
+12. **Catalog edits of colliders** (Inspector, `set_properties`, MCP) mark the colliders dirty and swap
+    the shape like the Lua setters; the body is only rebuilt when it has none yet.
+13. **Ragdoll wizard re-run.** The part list of the Ragdoll component is collected at run time, so in
+    the editor a root that already has a Ragdoll counts every Rigidbody below it as the previous
+    run's: the wizard removes their Rigidbody and Joint 3D components and those of the newly chosen
+    bones, then builds, all in one undo step (a Rigidbody prop held by such a character is removed
+    too: add it again after re-running). The Hierarchy entry is a new `EntityCreationType::RAGDOLL_WIZARD` (appended) that
+    opens the dialog on the row or the single selection; the Model component's menu has the same
+    entry.
+14. **`numColliders`** is still written to YAML for older editors and bounds the decoded list (as
+    physics-2d §6.2); the component field, the exported code and `MAX_COLLIDER*` are gone, so
+    acceptance 3 holds for code, not for that compatibility key. A scene's old `maxColliders3D`,
+    `maxColliderVertices3D` and `maxColliderIndices3D` are read only to be written back as they were
+    (as physics-2d does for its caps): re-saving an old scene changes no line, new scenes have none.
+15. **Debug draw.** One system GameObject per scene ("Physics Debug Lines", Transform + Line
+    Renderer) rebuilt at each draw while `Physics.debugDraw` is on (process-wide, not saved), hidden
+    when off; static bodies' edges are cached; contact points are recorded by the contact listener.
+    `configure_game_view` also returns `physics_debug_lines` (lines drawn by the playing scenes last
+    frame) for agents and the e2e test.
+16. **Dropping a `.physicsmaterial`** on a GameObject in the Scene view or the Hierarchy sets it on
+    every collider of its Rigidbody and Rigidbody 2D in one undo step (edit mode only).
+17. **T13 skinning** is checked through the bones: after the steps every part's Transform
+    (`worldPosition`, `modelMatrix`) equals its Jolt pose to 1e-4; the RenderSystem skin binding
+    (`bonesMatrix = inverse mesh x bone modelMatrix x inverse bind`) is unchanged and needs a render
+    update, so it is not run headless.
+18. **Destroying a body** now invalidates its constraints first (the old code left them in the
+    world pointing at the removed body).
+19. **Not verified here:** macOS / iOS (Xcode project updated with `tools/xcode_sync_engine.py`) and
+    Windows builds; acceptance 2 (BACK-MAN's rig and an exported Linux player toggling the ragdoll):
+    the wizard and the toggle are covered by `RagdollTest` and `test_physics_3d.py` on the
+    pose-animation fixture's Mixamo hero, not on BACK-MAN.
+20. **Trigger colliders of a body with solid ones live on a sensor body of their own** (the review's
+    CCD finding): Jolt's continuous collision keeps the closest hit of a cast and skips sensor
+    *bodies* only, so a trigger inside a LinearCast body (or in front of a wall) was that hit and the
+    body tunnelled. The companion is a kinematic (static for a static body) sensor with the trigger
+    leaves, the same user data (the GameObject), collision group and layer, created, swapped and
+    destroyed with the body, put where the body is and given its velocity before each step, and
+    never reported as a body of its own (activation callbacks skip it; the pair filter keeps it from
+    touching its own body). Contacts, rays and callbacks report the owning Rigidbody and the
+    trigger's collider index as before. A body of trigger colliders only is a body-level sensor.
+    Triggers then add no mass without a mass override. Jolt's per-contact `mIsSensor` stays for the
+    legacy body-wide `sensor`.
+21. **Ragdoll state changes apply at once** outside a step (`ragdoll.simulated = true` then
+    `applyImpulse` in the same frame works, the documented idiom); inside a step and before the parts
+    exist, impulses and forces are queued and given once the state is applied.
+22. **The ragdoll pauses every bone driver** of the character while simulated, not only the
+    Animation Player: running Model entity animations (their Animation actions are paused and
+    started again), Pose Animators (`playing`) and Vertex Animators (`enabled`), on the root, its
+    ancestors and its subtree; only what was running is resumed.
+23. **`Ragdoll::onBeforeAnimatedRestore`** (§6.1.11's hook) is a `FunctionSubscribe<void(int)>` of
+    the scene's PhysicsSystem (the argument is the ragdoll's entity), called before a ragdoll's parts
+    go back to kinematic, Lua `RegisterEvent(self, ragdoll.onBeforeAnimatedRestore, "fn")`.
+24. **Six-DOF drives**: no drive at all when both stiffness and damping are 0 (they were velocity
+    motors with an infinite force: the axes were locked). A damping alone is Unity's damper (force =
+    damping x velocity error): Jolt's velocity motor with its force limit set to that force before
+    each step (Jolt's spring settings with stiffness 0 are rigid); measured against v0 (1 - c dt /
+    m)^n within 2% (`Physics3DReview.SixDOFDamperOnlyDampsLikeUnity`).
+25. **Live limit edits keep the joint's zero.** A hinge or slider whose limits move their centre is
+    made again from its own constraint's body-local frames (turned / shifted by the change), not
+    from the bodies' current poses; six-DOF motions and limits are set on the live constraint
+    (`SetTranslationLimits` / `SetRotationLimits`), and their Catalog flags no longer rebuild. A
+    slider made as a fixed joint for equal limits becomes a slider again when they differ. Gears and
+    racks driving a joint that is made again are made again too. Cone swing limits of a LOCAL six-DOF
+    joint are made symmetric with the larger half (Jolt keeps only the maximum).
+26. **Mass**: going back to automatic mass, centre of mass or inertia restores Jolt's own mass
+    properties (`SetShape` skips them for an unchanged shape); `setAllowedDOFs` re-applies the mass
+    fields afterwards.
+27. **Nested bodies (D11)**: a static or kinematic body under a body written in the same pass, not
+    following its Transform, keeps its local pose (a hitbox on a vehicle rides with it, as before);
+    its Jolt body follows at the next step.
+28. **Pair filter changes inside a step** (a contact callback ignoring a pair, a joint destroyed
+    there) are queued and made right after the step: Jolt's job threads read the filter.
+29. **The 3D world is made lazily** (like the 2D one): the first body, joint or 3D query of a scene
+    makes it, so editor previews, thumbnails and UI scenes pay nothing for the 3.64 MB; a ray cast on
+    a scene without one hits nothing. The memory test makes the world explicitly.
+30. **A shape swap wakes what touches the body** (a crate resting on a platform whose collider is
+    shrunk); the editor's exported capacity default for body pairs is 8192 like the project's.
+31. **T17**: the Factory output is checked by text in the unit suite; compiling it needs the export
+    toolchain (the `JASPER_SLOW_BUILD` MCP export test does), so it is not compiled there.

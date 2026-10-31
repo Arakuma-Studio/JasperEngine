@@ -4,6 +4,7 @@
 #include "ScriptBase.h"
 #include "ScriptRuntime.h"
 #include "component/ScriptComponent.h"
+#include "script/AsyncOwner.h"
 #include "script/ScriptMessages.h"
 #include "manager/SceneManager.h"
 #include "manager/ObjectManager.h"
@@ -86,6 +87,7 @@ ScriptBase::ScriptBase(Scene* scene, Entity entity)
 
 ScriptBase::~ScriptBase() {
     ScriptScheduler::cancelOwner(this);
+    AsyncOwners::scriptInstanceReleased(this);
 }
 
 TaskId ScriptBase::invoke(std::function<void()> fn, float delay, TimeMode mode) {
@@ -193,6 +195,12 @@ namespace {
 void ScriptBase::onJointBreak2D(Joint2D& joint) {
     (void)joint;
     inherited(*this, ScriptMessage::JointBreak2D);
+}
+
+void ScriptBase::onJointBreak(float force, Joint3D& joint) {
+    (void)force;
+    (void)joint;
+    inherited(*this, ScriptMessage::JointBreak);
 }
 
 void ScriptBase::init() { inherited(*this, ScriptMessage::Init); }
