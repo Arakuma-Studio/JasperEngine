@@ -311,8 +311,8 @@ Simulation (`engine/core/subsystem/TrailSystem.{h,cpp}`, a new SubSystem updated
 after scripts' `onPostUpdate`, animations, physics interpolation and transform updates; `Scene` registers it
 like the other systems): `now` = the scene's scaled game time. For each enabled, active trail: drop points with
 `now - birthTime > time`; if `emitting` and the head moved more than `minVertexDistance` from the last stored
-point, append (position = transform world position); the live head (current position) is always the first
-vertex of the ribbon. Width/colour t = 0 at the head, 1 at the oldest point **by age** (`(now-birth)/time`,
+point, append (position = transform world position); while emitting, the live head (current position) is the
+first vertex of the ribbon (not emitting: the stored points only, detached from the object, as Unity). Width/colour t = 0 at the head, 1 at the oldest point **by age** (`(now-birth)/time`,
 Unity's trail fade). `autodestruct`: when the trail has no points and the object has not moved for `time`
 seconds, `GameObject.destroy` the entity (end of frame, as `destroy` does). Inactive / disabled: cleared
 (§5.10). `clear()` empties it immediately. Scene load: trails are scene objects, cleared with them.
@@ -512,3 +512,136 @@ Acceptance (checkable):
 - `script-lifecycle` (#17): trail clearing on `onDisable` order is independent (engine side).
 - `persistence` (#20): a persistent object's trail is cleared on scene load (its transform jumps).
 - `ui-scaling-text` (#21): none (trails in UI are not in scope).
+
+## Implementation notes
+
+Decisions taken while implementing (branch `gaps/lines-trails`), where the spec was ambiguous,
+wrong or in conflict with the code:
+
+1. **Ribbon vertex size**: `LineRibbonVertex` is 19 packed floats (76 bytes): the fields listed in
+   6.2 add up to 3+4+2+3+3+4 = 19, not 20. The w of an in or out vertex at a joint is 1 when the
+   joint is round (the shader may not miter it), the fan parameter on fan vertices. Indices are
+   uint16 while the vertex capacity fits them, uint32 past 65536 (capacity, not count, decides,
+   so the pipeline's index type only changes on a reload).
+2. **Joint geometry**: the wedge of each side fans around the *other side's* in vertex (the inner
+   miter point), not around the centre point: with the centre a bevel or round joint left two
+   uncovered slivers between the body quads. Inner-side vertices all collapse onto the inner miter
+   point (limit 4 half widths), so their triangles have no area. `LineRibbonBuilder::vertexOffset`
+   is a C++ mirror of `lineOffset` in `includes/lines_vs.glsl`, used by the tests (areas of
+   straight lines, miters, bevels, round joints and caps, loops, U-turns, end-on views) and kept
+   identical to the shader. U-turns treat both sides as outer (bevel or round through the front).
+   Pixel widths (`Pxw`) build the same offsets in screen space; Transform Z alignment does not
+   apply to them.
+3. **Shared GLSL**: the ribbon expansion lives in `includes/lines_vs.glsl` (the built-in
+   `lines.vert` and library `.vert`s include only it) and `includes/lines_fs.glsl`
+   (`lineVertexColor()`, `lineUV()`); the hairline path of the include is the old `lines.vert`,
+   so the hairline variant's output is the same. A fork made before this keeps drawing hairlines;
+   with a width it needs the include (documented in the guide).
+4. **Variant bits**: `Tex` is set only for a shader without a manifest (the built-in shader or a
+   fork of it) with a non-empty `u_baseTexture`; a library shader declares its own textures.
+   `Rib`, `Tex` and `Pxw` are never set on a hairline. `RenderSystem::getLinesVariantProperties` /
+   `getTrailVariantProperties` are the single source for loads, warmup (`collectSceneShaders`),
+   the editor's variant collector and the library matrix (which now builds ribbon, hairline and
+   pixel-width variants).
+5. **Render state**: AUTO depth write is off for blended ribbons, on for opaque ones (blend None) (an explicit `depthWrite` or a manifest
+   `zwrite=` still wins); face culling is off (which side a camera sees depends on the view).
+   The transparent queue order is `sortPriority` plus the shader's `@state priority=` (applied
+   without a reload). Thick lines and trails with world widths are frustum-culled by their bounds
+   grown by the largest half width.
+6. **Trail timing**: `TrailSystem` is registered right after `RenderSystem`, whose update makes the
+   frame's world transforms; each trail is simulated there and its ribbon built and loaded in the
+   same update (`RenderSystem::updateTrail`), so the head is drawn where the object is drawn that
+   frame. Lua `onPostUpdate` (Engine::onPostUpdate) runs after the scene update: a move made there
+   reaches every renderer's world transform, the trail's included, next frame, so meshes and trails
+   stay in step (the spec's "after scripts' onPostUpdate" cannot hold for any renderer without a
+   second transform pass). The first point of a trail is where the head was when it started moving
+   (born a frame earlier), so a stationary object keeps no points and autodestruct can fire.
+7. **Texture shortcut**: one storage, as the spec says: `shaderTextures.u_baseTexture`. `texture`
+   is a Lua/C++ accessor (`setTexture`/`getTexture`) and an MCP alias (`set_properties` rewrites
+   `texture` to `shaderTextures.u_baseTexture`); it is not a Catalog property (a Texture property
+   pointing into the list would have mutated it on read and given prefab overrides two names for one
+   value). The Inspector shows a Texture slot for the built-in shader; a library shader shows its
+   own slots.
+8. **useWorldSpace** also applies to Segments mode (the transform is ignored for every point).
+9. **Editor defaults**: the Unity presets (Polyline, world space, (0,0,0)-(0,0,1), width 0.1 /
+   2D (0,0)-(100,0), width 4; trails width 0.2 / 8) are applied by the menu, `create_entity` and
+   also Add Component / `add_component` (AddComponentCmd, like the existing Light 2D height),
+   so every way of adding one in the editor gives a visible line. A new 2D trail also gets
+   `minVertexDistance` 2 (pixel units), and new trails thin 1 -> 0 and fade out. The structs keep
+   their defaults (hairline, Segments; trail time 5, width 1) for scenes and scripts.
+10. **Position API vs GameObject**: `setPosition(index, Vector3)` / `getPosition(index)` live next
+    to GameObject's own `setPosition(x, y[, z])` (C++ `using` declarations; the Lua function
+    dispatches on its arguments), so old scripts moving a LineRenderer by coordinates keep working.
+11. **Curves and gradients in files**: tangents are written only when not flat; wraps only when not
+    clamp. Gradient colours are written as `"#RRGGBB"` only when the linear value is exactly an
+    8-bit sRGB value read back (else linear `[r, g, b]`), so a round trip is lossless. MCP writes
+    infinite tangents as `"inf"` / `"-inf"` (JSON has no infinity); YAML uses `.inf`. A new
+    `Gradient` is Unity's (white at both ends, opaque); "no keys" evaluates white and opaque.
+    Lua curve keys are 1-based (`addKey` returns -1 when a key is at that time).
+12. **Curve editor tangent modes**: a key has no stored tangent mode (the spec's `CurveKey`):
+    a key counts as Auto when its tangents equal the auto value and is recomputed when neighbours
+    move; Free is a per-key flag of the open editor (only needed when a free key's two tangents
+    happen to be equal). The widgets also take a second curve (particles' Two Curves).
+13. **Scene view point editing**: the polyline's point handles show and drag like the segments'
+    endpoints always did (Move or 2D tool); the Inspector's Edit Points toggle enables Ctrl+click
+    insertion on the line; Delete removes the selected point (instead of the GameObject).
+14. **shader-globals**: `TrailRendererComponent::shaderGlobalBindings` exists, is serialized,
+    copied and exported (Factory); it is not editable yet: the shader-globals feature wires it
+    (and the same field on the other components) when it lands.
+15. **get_entity**: `ribbon` is `{vertices, indices, length, loaded}` for a thick line and
+    `{hairline: true, segments}` for a hairline; `trail` is `{points, vertices, length}`.
+16. **A trail on a mesh**: `RenderSystem::isRenderActive` (every renderer on the entity must be
+    enabled) is not extended with the Trail Renderer, so disabling a trail does not hide the mesh
+    or sprite it follows; trails use their own `isTrailRenderActive` (enabled, active in the
+    hierarchy, layer, editor overlay rules).
+17. **check_shader without custom shaders**: the MCP tool returned early ("No custom shader is
+    used") before adding the scene findings; it now reports the Stochastic Tiling and the new
+    `line-texture-no-uv` / `trail-zero-time` findings in that case too (the CLI `check` already
+    did).
+18. **Bench**: the 50-trail bench is the fixture run with `LINES_TRAILS_BENCH=1`, not a separate
+    fixture folder. Measured on the shared Linux build host (8 cores, load average ~28, so the
+    numbers are inflated): the CPU side of 50 trails of 64 points (simulation, centre line and
+    ribbon build, outside the editor) took 0.6-0.65 ms per frame on average after writing the
+    vertices field by field and reserving the lists (0.7-0.97 ms before). Not measured on an
+    Android device.
+19. **MCP tool budget**: no new tool; `create_entity`'s `trail_renderer` type (+20 characters) is
+    paid by a shorter `create_entity` description (total 106093 of 106100).
+20. **Edit-mode preview**: a trail previewed while its GameObject is dragged in edit mode never
+    autodestructs (that would delete the edited GameObject without an undo step); autodestruct is
+    Play's. A trail with points is rebuilt every frame while time runs (dt > 0), moving or not,
+    since its width and colour are by age.
+21. **Gradient blending (lead decision)**: Blend mode mixes two colour keys in sRGB (the engine's
+    conversion, util/Color) and converts the result to linear, as Unity's gradients do, so a gradient
+    copied from Unity looks the same; alpha mixes linearly (sRGB as util/Color converts it).
+    Keys stay stored linear (files and MCP
+    unchanged). Each gradient keeps the keys' sRGB values (made by its constructors and
+    `normalize()`, checked against the key so a key edited in place is still right) and converts
+    back through a 1024-step table, so a trail evaluating it at every point every frame pays no
+    `pow`. The particle modules evaluate the same `Gradient`.
+22. **More than 8 keys**: Lua (`setKeys`, `colorKeys`, `alphaKeys`) and MCP refuse with an error;
+    a scene file with more still loads, with the first 7 and the last key (both ends kept) and a
+    warning; `Gradient::normalize()` keeps the first 7 and the last. A curve wrap or gradient mode
+    in a file that is not a name falls back to the default with a warning.
+23. **MCP line data**: writing the whole `lines` list (set_properties, create_entity / add_component
+    values) switches the line to Segments in local space, the whole `positions` list to Polyline,
+    unless the call sets `mode` (and `useWorldSpace`) itself. `set_shape_points` writes `positions`
+    and `loop` (from `closed`) for points, local to the GameObject like every shape (moved to world
+    space for a world-space line); `colors` become the gradient (up to 8 points); `lines` write
+    Segments in local space.
+24. **Pixel widths through the near plane**: ribbon vertices carry their segments' vectors (from
+    the previous point, to the next; zero on an end's open side) instead of unit directions, and
+    each joint's wedge fans around its own copy of the other side's in vertex (role 4,
+    `LineRibbonRole_JointCentre`, 2 vertices per joint). The pixel-width shader moves a body
+    vertex behind the near plane along its segment to the plane (the other end in front), else
+    leaves it behind; a cap, corner or wedge-centre vertex of a point behind the plane stays
+    behind, so its joint is clipped away instead of spanning the screen. The same vectors give
+    a transform scaled to 0 a direction (no NaN), and TransformZ uses the normal of the
+    transform's XY plane (cross of its X and Y axes) instead of its Z axis.
+25. **Trail handles**: `TrailRenderer(scene, entity)` (C++ and Lua, also `object(name,
+    "TrailRenderer")`) is a handle and adds nothing, like the other components;
+    `TrailRenderer::addTo(scene, entity)` / Lua `object:addTrailRenderer()` is AddComponent.
+    Deactivating a GameObject clears the trails under it at once (`EntityRegistry::setEntityActive`),
+    and `TrailRenderer::setEnabled(false)` clears it, so a same-frame reactivation draws no streak.
+26. **Culling and picking**: a ribbon's bounds grow by 4 half widths (the miter limit) when it has
+    no corner vertices, else 1; the editor's picking, selection box and Frame Selected use the
+    points of either mode in their space (world or local), grown by the ribbon.
