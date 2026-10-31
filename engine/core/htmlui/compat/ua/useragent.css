@@ -932,7 +932,7 @@ onscreen-stick .stick-base {
     height: 160px;
     margin-left: -80px;
     margin-top: -80px;
-    border-radius: 50%;
+    border-radius: 9999px;   /* a circle on the square boxes, in every fork state */
     border: 2px solid rgba(255, 255, 255, 0.55);
     background-color: rgba(255, 255, 255, 0.22);
 }
@@ -945,7 +945,7 @@ onscreen-stick .stick-knob {
     height: 64px;
     margin-left: -32px;
     margin-top: -32px;
-    border-radius: 50%;
+    border-radius: 9999px;   /* a circle on the square boxes, in every fork state */
     background-color: rgba(255, 255, 255, 0.8);
 }
 
@@ -960,7 +960,7 @@ onscreen-stick[mode="floating"][data-pressed="true"] .stick-base, onscreen-stick
 onscreen-button {
     width: 96px;
     height: 96px;
-    border-radius: 50%;
+    border-radius: 9999px;   /* a circle on the square boxes, in every fork state */
     background-color: rgba(255, 255, 255, 0.3);
     color: white;
     text-align: center;

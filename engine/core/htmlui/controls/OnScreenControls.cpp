@@ -166,6 +166,14 @@ void UIOnScreenControl::OnUpdate(){
     }
 }
 
+void UIOnScreenControl::OnChildRemove(Rml::Element* child){
+    Rml::Element::OnChildRemove(child);
+    // RmlUi calls it on the removed element itself too: a control taken out of its document
+    // (UIElement::remove keeps it for a later insert) lets go of what it holds
+    if (child == this)
+        releaseAll(false);
+}
+
 void UIOnScreenControl::ProcessEvent(Rml::Event& event){
     const int pointerId = event.GetParameter<int>("pointer_id", 0);
     if (pointerId == 0 || hiddenForDevice)

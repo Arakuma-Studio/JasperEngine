@@ -198,6 +198,7 @@ namespace jasperengine::editor {
         "text-wrap",
         "text-wrap-mode",
         "top",
+        "touch-action",
         "transform",
         "transform-origin",
         "transform-origin-x",
