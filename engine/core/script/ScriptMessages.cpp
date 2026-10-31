@@ -96,7 +96,8 @@ ScriptMessageMask ScriptMessages::receivers(Scene* scene, Entity entity) {
                 }
                 lua_rawgeti(L, LUA_REGISTRYINDEX, luaRefOf(entry));
                 for (int m = 0; m < static_cast<int>(ScriptMessage::Count); m++) {
-                    lua_getfield(L, -1, methodName(static_cast<ScriptMessage>(m)));
+                    // protected: a class's own __index may raise for what it does not define
+                    LuaBinding::protectedGetField(L, -1, methodName(static_cast<ScriptMessage>(m)));
                     if (lua_isfunction(L, -1)) {
                         mask |= 1u << m;
                     }
@@ -133,7 +134,7 @@ bool ScriptMessages::invoke(Scene* scene, Entity entity, size_t scriptIndex, Scr
         const std::string className = entry.className;
         const int top = lua_gettop(L);
         lua_rawgeti(L, LUA_REGISTRYINDEX, luaRefOf(entry));
-        lua_getfield(L, -1, method);
+        LuaBinding::protectedGetField(L, -1, method);
         if (!lua_isfunction(L, -1)) {
             lua_settop(L, top);
             return false;
@@ -229,7 +230,7 @@ bool ScriptMessages::sendNamed(Scene* scene, Entity entity, const std::string& m
         const std::string className = entry.className;
         const int top = lua_gettop(L);
         lua_rawgeti(L, LUA_REGISTRYINDEX, luaRefOf(entry));
-        lua_getfield(L, -1, method.c_str());
+        LuaBinding::protectedGetField(L, -1, method.c_str());
         if (!lua_isfunction(L, -1)) {
             lua_settop(L, top);
             continue;

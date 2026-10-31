@@ -45,7 +45,6 @@ namespace jasperengine {
         // members every instance has (enabled, isActiveAndEnabled, gameObject, getScript...)
         static int luaInstanceIndex(lua_State* L);
         static int luaInstanceNewIndex(lua_State* L);
-        static void pushInstanceProperty(lua_State* L, int selfIndex, const char* key);
 
         // GameObject / EntityHandle script lookups (binding/ScriptClassesLua.cpp)
         static int luaGetScript(lua_State* L);
@@ -159,6 +158,12 @@ namespace jasperengine {
         // The table of the methods every Lua script instance has after its own class's
         // (getScript...; ScriptInstanceBase): features add theirs to it
         static void pushScriptInstanceBase(lua_State* L);
+        // t[key] of the value at `index` in a protected call (a class's __index may raise):
+        // pushes the value, or nil and false on an error
+        static bool protectedGetField(lua_State* L, int index, const char* key);
+        // The engine members of a Lua script instance (enabled, isActiveAndEnabled, gameObject),
+        // plain fields of a table the instance reads through: ScriptRuntime keeps them current
+        static void syncScriptMembers(Scene* scene, Entity entity, const ScriptEntry& entry, bool activeAndEnabled);
         // Pushes the Lua instance of a script entry; false (nothing pushed) without one
         static bool pushScriptInstance(lua_State* L, const ScriptEntry& entry);
 

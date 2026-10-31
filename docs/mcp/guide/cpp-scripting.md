@@ -98,7 +98,11 @@ ones, with the rules and order of Lua scripts (`jasper://docs/lua-api`, 1.1):
 | `void onApplicationPause(bool paused) override`, `onApplicationFocus(bool focused)`, `onApplicationQuit()` | app background / focus / quit | `OnApplication*` |
 
 The constructor runs first, before the properties are bound: read DPROPERTY members in
-`init()`, not in the constructor. Every Script component entry gets its object, enabled or not
+`init()`, not in the constructor. Events registered with `REGISTER_ENGINE_EVENT` start after
+`start()` (a script enabled during a frame gets its first `onUpdate` in the next one).
+Migration: a method of an existing script named like one of these is now an override the engine
+calls (twice if the script calls it itself too); one with another signature (`bool init()`) no
+longer compiles: rename it. Every Script component entry gets its object, enabled or not
 (disabled C++ scripts are compiled too). Exceptions thrown from these methods are logged and
 the loop goes on. The GameObject-subclass kind (below) is an object wrapper, not a behaviour:
 it gets no lifecycle calls.
