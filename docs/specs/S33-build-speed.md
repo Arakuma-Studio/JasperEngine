@@ -442,6 +442,44 @@ another file has, and ~15 more `static` helper names repeat across its sources; 
 long would have to be re-derived on every RmlUi update. PCH parse costs: `JasperPch.h` 1.22 s,
 `EditorPch.h` (with json.hpp and yaml-cpp) 1.88 s + 1.12 s for yaml-cpp.
 
+### M11. Before and after (AC1)
+
+Server F, 8 jobs, `.ninja_log` CPU-seconds next to wall times; base = oe-port e3f0c274d with S30
+(befa60aab) merged, after = the same plus S33 (`mbase`, `mafter2`, run the same day). Other
+streams' jobs kept F's load at 4-45 (recorded per phase), so the wall times carry ±15 % noise; the
+step counts and link times are exact.
+
+| Measure | Before | After |
+|---|---|---|
+| Clean editor (Release; GNU ld both) | 1,250 s, 9,770 CPU-s | 1,310 s at load 26-45 (1,115 s, 8,686 CPU-s at load 7 in M10; 8,301 own CPU-s against 8,317 in M1 at the same load) |
+| Clean standalone engine (shipped-game flags: no PCH, GNU ld) | 638 s, 4,777 CPU-s | 622 s, 4,619 CPU-s |
+| Clean core tests | 816 s, 6,189 CPU-s | 758 s, 5,646 CPU-s |
+| Clean editor tests (RelWithDebInfo) | 2,906 s, 22,088 CPU-s, 3,014 steps | 1,786 s, 14,010 CPU-s, 2,359 steps |
+| Clean web (Debug) | 732 s at load 10-41 | 583 s |
+| Warm, same path (editor / core tests / editor tests) | 32 / 51 / 188 s | 77 / 62 / 72 s (load 26-45) |
+| Edit one source: InspectorWindow.cpp in the editor / the editor tests | 70 / 292 s | 69 / 96 s |
+| Edit one source: MeshSystem.cpp, core tests (RelWithDebInfo) | 58 s | 38 s |
+| Touch Scene.h (editor / core tests) | 765 / 294 s | 766 / 260 s |
+| Touch LightComponent.h, editor | 771 s, 544 steps | 732 s, 544 steps |
+| Links with debug information: editor tests / editor / libjasperengine.so / core tests | 54.5 / 46.1 / 18.1 / 21.5 s | 3.7 / 2.8 / 2.5 / 2.1 s |
+| C++-script game (prefab-runtime, Compile, ccache off): first build | 872 s, 1,630 units | 687 s, 1,630 units |
+| ... a second project of the same kit | 764 s, 1,630 units | 38 s, 15 units |
+| ... after a Player setting (window title) changed | the whole engine again (the run was stopped at 46 %, past the vendored libraries) | 38 s, 15 units |
+| Android, 4 ABIs (Debug) | 1,596 s (M1) | x86_64 and every-ABI builds pass; not re-timed |
+
+## Verification (AC2-AC6)
+
+On server C (4 jobs), the branch before the final oe-port merge (S30 at befa60aab):
+`WERROR=1 tools/build.sh linux` (GL) and `GRAPHIC_BACKEND=vulkan`, both with the symbol-leak
+gates; `WERROR=1 tools/build.sh unit-tests` (core 2,382 ran, editor 1,413, 0 failed, 0 skipped),
+the same on Vulkan (2,380 / 1,413), `SANITIZE=address,undefined tools/build.sh unit-tests` (2,380 /
+1,412, 0 failed); `tools/build.sh web`, `WEB_THREADS=1 tools/build.sh web`, `tools/build.sh
+web-gate`; the editor with `JASPERENGINE_PCH=OFF -DJASPERENGINE_WERROR=ON`; `ANDROID_ABIS=x86_64
+tools/build.sh android` and `tools/android-emulator-test.sh build/android/app-debug.apk --seconds
+30 --forbid E/JasperEngine` pass. `UNITY=1 WERROR=1 tools/build.sh unit-tests` builds, but 9 tests
+fail in the unity binaries only (below). `xcode_sync_engine.py --check` found the precompiled
+header under `engine/core`, which moved to `engine/cmake` (16ef3ffc8).
+
 ## Deviations
 
 - **(a) Vendored libraries: ccache plus Jolt unity, no separate prebuilt cache.** ccache already is
@@ -459,11 +497,27 @@ long would have to be re-derived on every RmlUi update. PCH parse costs: `Jasper
 - **(g) A shared compile tree per kit instead of linking S30's runtime archives** (D6, R8-R11): the
   archives' static libraries only link with the exact toolchain that built them.
 - **(f) Shared ccache across servers: not done** (section 9).
+- **(b) Unity builds of our own code: not adopted, R7 only half met.** With the skip lists the
+  editor tree and the core tests build unity under WERROR, but the unity binaries fail 9 tests
+  that pass in the normal build: six `AnimationClipControllerTest` cases (undo routing),
+  `NavAgentTest.CharacterControllerDriver`, and two timing tests (`AnimationWindowClipTest.
+  LargeClipStaysResponsive`, `AtomicFileBench.CacheWriteNearPlainWrite`). Merged units change
+  behaviour (most likely a same-named non-anonymous helper or static that the separate units kept
+  apart), so unity is no speed lever for CI here; the precompiled header takes the parse cost
+  instead. The failures are left to their owners (S21, S19) as a unity-only finding; the option
+  stays S02's nightly configuration.
+- **Budgets.** The clean-editor budget (-25 % CPU-s) was not met: the precompiled header saves 14-17 %
+  (M10); the slowest units are code generation (M3), which no lever here changes without touching
+  optimisation flags. The editor-tests budget (-35 %) is met (-37 % CPU-s, -39 % wall), as are the
+  relink and the C++-script game budgets.
 
 ## Progress
 
 - 2026-10-30: measurement tools committed (`tools/perf/build-bench.sh`, `tools/perf/build_stats.py`);
   baseline run `base` on server F (b620283cd).
 - 2026-10-31: oe-port e3f0c274d merged (S29 fix, S32); web, Android, unity, ccache and header
-  measurements on it; spec written from M1-M8. Next: M9 (vendored unity), then wait for S30 before
-  any CMake change.
+  measurements on it; spec written from M1-M8; M9, M10 from uncommitted wiring.
+- 2026-11-01: S30 landed; oe-port b49bc1166 then d5a1b7f2e (BF9) merged; levers committed
+  (8e87eccdc, 4461d59e2, 651562b19, 16ef3ffc8); M11 and the verification above. Pending at the
+  time of writing: the full MCP suite on F and the smoke test, players and S30's player CLI test on
+  C, on the merged branch.
