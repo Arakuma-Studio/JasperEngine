@@ -6911,14 +6911,16 @@ TextComponent editor::Stream::decodeTextComponent(const YAML::Node& node, const 
     if (node["fixedHeight"]) text.fixedHeight = YamlNumbers::as<bool>(node["fixedHeight"]);
     if (node["pivotBaseline"]) text.pivotBaseline = YamlNumbers::as<bool>(node["pivotBaseline"]);
     if (node["pivotCentered"]) text.pivotCentered = YamlNumbers::as<bool>(node["pivotCentered"]);
-    if (node["outlineWidth"]) text.outlineWidth = std::max(decodeFinite(node["outlineWidth"], 0.0f), 0.0f);
-    if (node["outlineColor"]) text.outlineColor = decodeVector4(node["outlineColor"]);
-    if (node["shadowEnabled"]) text.shadowEnabled = YamlNumbers::as<bool>(node["shadowEnabled"]);
-    if (node["shadowColor"]) text.shadowColor = decodeVector4(node["shadowColor"]);
-    if (node["shadowOffset"]) text.shadowOffset = decodeVector2(node["shadowOffset"]);
-    if (node["shadowSoftness"]) text.shadowSoftness = std::max(decodeFinite(node["shadowSoftness"], 0.0f), 0.0f);
-    if (node["shadowDilate"]) text.shadowDilate = std::max(decodeFinite(node["shadowDilate"], 0.0f), 0.0f);
-    if (node["visibleCharacters"]) text.visibleCharacters = std::max(YamlNumbers::as<int>(node["visibleCharacters"]), -1);
+    // absent = the default, also over an old text (written only when set)
+    const TextComponent defaults;
+    text.outlineWidth = node["outlineWidth"] ? std::max(decodeFinite(node["outlineWidth"], 0.0f), 0.0f) : defaults.outlineWidth;
+    text.outlineColor = node["outlineColor"] ? decodeVector4(node["outlineColor"]) : defaults.outlineColor;
+    text.shadowEnabled = node["shadowEnabled"] ? YamlNumbers::as<bool>(node["shadowEnabled"]) : defaults.shadowEnabled;
+    text.shadowColor = node["shadowColor"] ? decodeVector4(node["shadowColor"]) : defaults.shadowColor;
+    text.shadowOffset = node["shadowOffset"] ? decodeVector2(node["shadowOffset"]) : defaults.shadowOffset;
+    text.shadowSoftness = node["shadowSoftness"] ? std::max(decodeFinite(node["shadowSoftness"], 0.0f), 0.0f) : defaults.shadowSoftness;
+    text.shadowDilate = node["shadowDilate"] ? std::max(decodeFinite(node["shadowDilate"], 0.0f), 0.0f) : defaults.shadowDilate;
+    text.visibleCharacters = node["visibleCharacters"] ? std::max(YamlNumbers::as<int>(node["visibleCharacters"]), -1) : defaults.visibleCharacters;
 
     return text;
 }
@@ -7010,19 +7012,21 @@ TextEffectComponent editor::Stream::decodeTextEffectComponent(const YAML::Node& 
         effect = *oldEffect;
     }
     if (!node || !node.IsMap()) return effect;
-    if (node["enabled"]) effect.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    // absent = the default, also over an old effect (fields are written only when set)
+    const TextEffectComponent d;
+    effect.enabled = node["enabled"] ? YamlNumbers::as<bool>(node["enabled"]) : d.enabled;
+    effect.layers = d.layers;
     if (node["layers"] && node["layers"].IsSequence()) {
-        effect.layers = std::array<TextEffectLayer, MAX_TEXT_EFFECT_LAYERS>();
         for (size_t i = 0; i < node["layers"].size() && i < effect.layers.size(); i++) {
             effect.layers[i] = decodeTextEffectLayer(node["layers"][i]);
         }
     }
-    if (node["autoPlay"]) effect.autoPlay = YamlNumbers::as<bool>(node["autoPlay"]);
-    if (node["loop"]) effect.loop = YamlNumbers::as<bool>(node["loop"]);
-    if (node["useUnscaledTime"]) effect.useUnscaledTime = YamlNumbers::as<bool>(node["useUnscaledTime"]);
-    if (node["startIndex"]) effect.startIndex = std::max(YamlNumbers::as<int>(node["startIndex"]), 0);
-    if (node["length"]) effect.length = std::max(YamlNumbers::as<int>(node["length"]), -1);
-    if (node["forWords"]) effect.forWords = node["forWords"].as<std::string>();
+    effect.autoPlay = node["autoPlay"] ? YamlNumbers::as<bool>(node["autoPlay"]) : d.autoPlay;
+    effect.loop = node["loop"] ? YamlNumbers::as<bool>(node["loop"]) : d.loop;
+    effect.useUnscaledTime = node["useUnscaledTime"] ? YamlNumbers::as<bool>(node["useUnscaledTime"]) : d.useUnscaledTime;
+    effect.startIndex = node["startIndex"] ? std::max(YamlNumbers::as<int>(node["startIndex"]), 0) : d.startIndex;
+    effect.length = node["length"] ? std::max(YamlNumbers::as<int>(node["length"]), -1) : d.length;
+    effect.forWords = node["forWords"] ? node["forWords"].as<std::string>() : d.forWords;
     effect.needApply = true;
     return effect;
 }

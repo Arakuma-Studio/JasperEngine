@@ -20,6 +20,7 @@
 #include "util/STBText.h"
 #include "util/TextEffects.h"
 #include "object/ui/TextEffect.h"
+#include "Stream.h"
 
 #include <cmath>
 #include <vector>
@@ -449,4 +450,36 @@ TEST(TextSdfTest, VisibleCharactersCollapseTheRest){
         EXPECT_FLOAT_EQ(positions[q * 4 + 1].x, positions[q * 4].x);
         EXPECT_FLOAT_EQ(positions[q * 4 + 2].y, positions[q * 4].y);
     }
+}
+
+// fields written only when set read as their defaults over an old component (play restore, undo)
+TEST(TextEffectStreamTest, AbsentFieldsResetOverAnOldComponent){
+    TextComponent old;
+    old.outlineWidth = 3.0f;
+    old.shadowEnabled = true;
+    old.visibleCharacters = 4;
+    const TextComponent plain = editor::Stream::decodeTextComponent(editor::Stream::encodeTextComponent(TextComponent()), &old);
+    EXPECT_EQ(plain.outlineWidth, TextComponent().outlineWidth);
+    EXPECT_FALSE(plain.shadowEnabled);
+    EXPECT_EQ(plain.visibleCharacters, TextComponent().visibleCharacters);
+
+    TextEffectComponent oldEffect;
+    oldEffect.layers[0].type = TextEffectType::Wave;
+    oldEffect.loop = !oldEffect.loop;
+    oldEffect.forWords = "gold";
+    const TextEffectComponent fresh = editor::Stream::decodeTextEffectComponent(
+        editor::Stream::encodeTextEffectComponent(TextEffectComponent()), &oldEffect);
+    EXPECT_EQ(fresh.layers[0].type, TextEffectComponent().layers[0].type);
+    EXPECT_EQ(fresh.loop, TextEffectComponent().loop);
+    EXPECT_TRUE(fresh.forWords.empty());
+
+    // and what is written comes back
+    TextComponent outlined;
+    outlined.outlineWidth = 2.0f;
+    outlined.shadowEnabled = true;
+    outlined.shadowOffset = Vector2(3.0f, -1.0f);
+    const TextComponent back = editor::Stream::decodeTextComponent(editor::Stream::encodeTextComponent(outlined));
+    EXPECT_EQ(back.outlineWidth, 2.0f);
+    EXPECT_TRUE(back.shadowEnabled);
+    EXPECT_EQ(back.shadowOffset, Vector2(3.0f, -1.0f));
 }
