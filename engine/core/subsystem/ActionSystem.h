@@ -268,6 +268,7 @@ namespace jasperengine{
 		bool playerControllerPoolChanged = false;
 		std::vector<float> controllerWeights;
 		std::vector<float> controllerThresholds;
+		std::vector<int> controllerConsumed;
 
 	public:
 		ActionSystem(Scene* scene);

@@ -1639,12 +1639,16 @@ void ActionSystem::clearPoseBlend(){
 }
 
 void ActionSystem::flushPoseBlend(){
-    for (auto& entry : transformBlend){
-        Entity target = entry.first;
-        TransformBlendAccum& accum = entry.second;
-        // kept from an earlier frame, nothing this one
-        if (accum.empty())
+    for (auto it = transformBlend.begin(); it != transformBlend.end();){
+        // kept from an earlier frame, nothing this one: dropped (the nodes of what animates
+        // every frame stay; the rest does not cost later frames)
+        if (it->second.empty()){
+            it = transformBlend.erase(it);
             continue;
+        }
+        Entity target = it->first;
+        TransformBlendAccum& accum = it->second;
+        ++it;
 
         // one lookup: a destroyed entity has no components
         Transform* transform = scene->findComponent<Transform>(target);

@@ -701,3 +701,13 @@ TEST_F(Layers, PerformanceBudget){
     GTEST_SKIP() << "timing needs a Release build";
 #endif
 }
+
+TEST_F(Layers, RemovingALayerShiftsRuntimeMoves){
+    AnimationPlayer object = player({{"walk", walk(), 0}, {"hold", hold(), 0}}, {layer(anim::BASE_LAYER_NAME), layer("A"), layer("B")});
+    step(0.0);
+    object.getState("hold").setLayer(2);
+    EXPECT_TRUE(object.removeLayer("A"));
+    step(0.0);
+    EXPECT_EQ(object.getState("hold").getLayer(), 1) << "it stays on B";
+    EXPECT_EQ(object.getLayerName(1), "B");
+}

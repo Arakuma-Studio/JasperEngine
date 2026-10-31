@@ -903,7 +903,14 @@ std::shared_ptr<const anim::AnimatorController> anim::AnimatorController::build(
     AnimatorController* controller = new AnimatorController();
     std::shared_ptr<const AnimatorController> shared(controller);
     controller->data = source;
-    normalizeController(controller->data, &warnings);
+    // already normalized when parsed: what a second pass reports again is not repeated
+    std::vector<ClipWarning> again;
+    normalizeController(controller->data, &again);
+    for (const ClipWarning& warning : again){
+        bool known = false;
+        for (const ClipWarning& kept : warnings) known |= kept.path == warning.path && kept.message == warning.message;
+        if (!known) warnings.push_back(warning);
+    }
     controller->warnings = std::move(warnings);
     const ControllerData& data = controller->data;
     controller->layers.resize(data.layers.size());

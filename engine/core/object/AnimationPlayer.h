@@ -222,6 +222,10 @@ namespace jasperengine{
         // play with a controller: the state (on its layer, or `layer`) from `normalizedTime`
         void play(const std::string& name, int layer, float normalizedTime);
         void crossFade(const std::string& name, float seconds, int layer);
+        // Lua's three-argument forms: with a controller play(name, layer, normalizedTime) and
+        // crossFade(name, seconds, layer); without one play/crossFade(name, fade, PlayMode)
+        void playWithArguments(const std::string& name, float fadeOrLayer, float modeOrNormalizedTime);
+        void crossFadeWithArguments(const std::string& name, float seconds, float modeOrLayer);
         void setFloat(const std::string& name, float value);
         void setFloat(const std::string& name, float value, float dampTime);
         float getFloat(const std::string& name) const;

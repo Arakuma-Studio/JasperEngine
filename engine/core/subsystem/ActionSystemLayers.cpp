@@ -476,7 +476,14 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
                     case ClipChannel::Position: {
                         if (!rest.hasTransform) continue;
                         if (additive){
-                            addVector(touch(scratch, slot.first), sample.vector - reference->vector, w);
+                            // a relative track's values go through its rest matrix first (an
+                            // anchored UI element's is not a pure translation)
+                            if (track.relative){
+                                const Matrix4 matrix = getRelativeTrackMatrix(target, rest.position);
+                                addVector(touch(scratch, slot.first), matrix * sample.vector - matrix * reference->vector, w);
+                            }else{
+                                addVector(touch(scratch, slot.first), sample.vector - reference->vector, w);
+                            }
                         }else{
                             Vector3 value = sample.vector;
                             if (track.relative) value = getRelativeTrackMatrix(target, rest.position) * value;

@@ -102,6 +102,7 @@ namespace {
         group.time = 0.0;
         group.previous = 0.0;
         group.entered = false;
+        group.startEvents = false;
         for (size_t index : group.states){
             if (index < runtime.states.size()) stopState(runtime.states[index]);
         }
@@ -113,6 +114,8 @@ namespace {
         group.time = time;
         group.previous = time;
         group.entered = true;
+        group.startEvents = true;
+        group.start = time;
     }
 
 }
@@ -133,12 +136,30 @@ void ActionSystem::driveController(Entity entity, AnimationPlayerComponent& play
     // reused between players and frames (no allocation per frame)
     std::vector<float>& weights = controllerWeights;
     std::vector<float>& thresholds = controllerThresholds;
+    // triggers the fired transitions read: reset after every layer was driven, so a trigger two
+    // layers read fires on both
+    std::vector<int>& consumed = controllerConsumed;
+    consumed.clear();
+
+    // the child weights of a group (a clip state: one child at 1; a blend tree: by its parameter)
+    auto childWeights = [&](const AnimatorController::State& stateData, const anim::ControllerGroup& group){
+        const size_t children = group.states.size();
+        weights.assign(children, children == 1 ? 1.0f : 0.0f);
+        if (stateData.data->hasBlendTree){
+            thresholds.clear();
+            for (const BlendTreeChild& child : stateData.data->blendTree.children) thresholds.push_back(child.threshold);
+            const float value = stateData.blendParameter >= 0 ? controller.params[(size_t)stateData.blendParameter].value : 0.0f;
+            anim::blendTreeWeights(thresholds, value, weights);
+            weights.resize(children, 0.0f);
+        }
+    };
 
     for (size_t l = 0; l < controller.layers.size() && l < ac.getLayers().size(); l++){
         anim::ControllerLayerRuntime& layer = controller.layers[l];
         const AnimatorController::Layer& layerData = ac.getLayers()[l];
         if (layerData.states.empty() || layer.groups.size() != layerData.states.size()) continue;
         const int li = (int)l;
+        const float lambda = runtime.layerWeight(li);
 
         // start: the default state at weight 1 (spec 11.2 Start)
         if (!layer.started){
@@ -153,7 +174,7 @@ void ActionSystem::driveController(Entity entity, AnimationPlayerComponent& play
             pendStateCallback(runtime, li, layerData.states[(size_t)start].data->name, true);
         }
 
-        // normalized times
+        // normalized times (a state entered last update starts moving now)
         for (size_t g = 0; g < layer.groups.size(); g++){
             anim::ControllerGroup& group = layer.groups[g];
             group.previous = group.time;
@@ -161,7 +182,60 @@ void ActionSystem::driveController(Entity entity, AnimationPlayerComponent& play
             const float length = anim::controllerStateLength(runtime, li, (int)g);
             if (length > 0.0f) group.time += (double)dt * anim::controllerStateSpeed(runtime, li, (int)g) * playerSpeed / length;
         }
-        if (layer.transition.active) layer.transition.elapsed += dt;
+        // transitions run in the player's time (Unity: Animator.speed scales them)
+        if (layer.transition.active) layer.transition.elapsed += dt * std::fabs(playerSpeed);
+
+        // events (R16 with the layer rule) of the state that is not fading out, over this step,
+        // before a transition may start (the step that crosses an exit time still fires the
+        // source's events); in a blend tree only the heaviest child's
+        const int eventState = layer.transition.active ? layer.transition.to : layer.current;
+        if (eventState >= 0 && lambda > 0.0f){
+            anim::ControllerGroup& group = layer.groups[(size_t)eventState];
+            if (group.active && group.weight > 0.0f && !group.states.empty()){
+                childWeights(layerData.states[(size_t)eventState], group);
+                size_t heaviest = 0;
+                for (size_t c = 1; c < weights.size(); c++){
+                    if (weights[c] > weights[heaviest]) heaviest = c;
+                }
+                anim::PlayerStateRuntime& playerState = runtime.states[group.states[heaviest]];
+                const float length = anim::stateLength(playerState);
+                const bool includeStart = group.startEvents;
+                group.startEvents = false;
+                if (weights[heaviest] > 0.0f && playerState.bindings.clip && length > 0.0f && !playerState.bindings.clip->getEvents().empty()){
+                    const AnimationClip& clip = *playerState.bindings.clip;
+                    const ClipWrapMode wrap = anim::stateWrap(playerState);
+                    // a state that had no weight since it entered fires from its start
+                    const double previous = includeStart ? group.start : group.previous;
+                    double from = 0.0, to = 0.0;
+                    if (wrap == ClipWrapMode::Loop || wrap == ClipWrapMode::PingPong){
+                        const double period = wrap == ClipWrapMode::PingPong ? 2.0 : 1.0;
+                        const double base = period * std::floor(std::min(previous, group.time) / period);
+                        from = (previous - base) * length;
+                        to = (group.time - base) * length;
+                    }else{
+                        from = std::min(std::max(previous, 0.0), 1.0) * length;
+                        to = std::min(std::max(group.time, 0.0), 1.0) * length;
+                    }
+                    if (from != to || includeStart){
+                        // reused (the driver runs on the main thread only)
+                        static std::vector<anim::CrossedEvent> crossed;
+                        crossed.clear();
+                        anim::collectCrossedEvents(clip, wrap, (float)from, (float)to, includeStart, crossed);
+                        for (const anim::CrossedEvent& event : crossed){
+                            const ClipEventData& eventData = clip.getEvents()[event.index];
+                            anim::PendingPlayerCallback callback;
+                            callback.event.functionName = eventData.function;
+                            callback.event.args = eventData.args;
+                            callback.event.state = playerState.name;
+                            callback.event.time = eventData.time;
+                            callback.when = to != from ? dt * (float)std::min(1.0, std::max(0.0, (event.position - from) / (to - from))) : 0.0f;
+                            callback.clip = playerState.clip;
+                            runtime.pending.push_back(std::move(callback));
+                        }
+                    }
+                }
+            }
+        }
 
         // at most one transition this update
         auto fires = [&](int index, int fromState) -> bool {
@@ -196,8 +270,7 @@ void ActionSystem::driveController(Entity entity, AnimationPlayerComponent& play
             pick(layerData.anyTransitions, layer.current, true);
             if (layer.current >= 0) pick(layerData.states[(size_t)layer.current].transitions, layer.current, false);
         }else if (interruption != TransitionInterruption::None){
-            const int exitState = layer.transition.to;
-            pick(layerData.anyTransitions, exitState, true);
+            pick(layerData.anyTransitions, layer.transition.to, true);
             if (interruption == TransitionInterruption::CurrentState && layer.current >= 0){
                 pick(layerData.states[(size_t)layer.current].transitions, layer.current, false);
             }else if (interruption == TransitionInterruption::NextState){
@@ -218,13 +291,24 @@ void ActionSystem::driveController(Entity entity, AnimationPlayerComponent& play
             started.active = true;
             started.to = transition.to;
             started.transition = chosen;
-            const float sourceLength = source >= 0 ? anim::controllerStateLength(runtime, li, source) : 0.0f;
-            started.duration = transitionData.fixedDuration ? transitionData.duration : transitionData.duration * sourceLength;
-            // every state playing now keeps its weight at the start, scaled by (1 - x)
+            float duration = transitionData.duration;
+            if (!transitionData.fixedDuration){
+                // a fraction of the source's length, in the source's own time
+                const float sourceLength = source >= 0 ? anim::controllerStateLength(runtime, li, source) : 0.0f;
+                const float sourceSpeed = source >= 0 ? std::fabs(anim::controllerStateSpeed(runtime, li, source)) : 1.0f;
+                duration = sourceSpeed > 0.0f ? transitionData.duration * sourceLength / sourceSpeed : 0.0f;
+            }
+            started.duration = duration;
+            // every state playing now keeps its weight at the start, scaled by (1 - x); the
+            // destination itself when it is playing (a self or re-entry transition) restarts, and
+            // the weight it had stays with it (no copy state: no dip toward the rest pose)
             for (size_t g = 0; g < layer.groups.size(); g++){
                 anim::ControllerGroup& group = layer.groups[g];
                 if ((int)g == transition.to){
-                    if (group.active) stopGroup(runtime, group);
+                    if (group.active){
+                        started.selfWeight = group.weight;
+                        stopGroup(runtime, group);
+                    }
                     continue;
                 }
                 if (group.active && group.weight > 0.0f) started.sources.push_back({(int)g, group.weight});
@@ -237,16 +321,16 @@ void ActionSystem::driveController(Entity entity, AnimationPlayerComponent& play
             if (layer.lastEntered >= 0) pendStateCallback(runtime, li, layerData.states[(size_t)layer.lastEntered].data->name, false);
             pendStateCallback(runtime, li, destination.name, true);
             layer.lastEntered = transition.to;
-            // the triggers it read are consumed
+            // the triggers it read are consumed (after every layer)
             for (const AnimatorController::Condition& condition : transition.conditions){
                 if (condition.parameter >= 0 && data.parameters[(size_t)condition.parameter].type == ControllerParameterType::Trigger){
-                    controller.params[(size_t)condition.parameter].value = 0.0f;
+                    consumed.push_back(condition.parameter);
                 }
             }
         }
 
-        // weights: the destination x, the sources (1 - x) of their start weights; at 1 the
-        // sources stop and rewind
+        // weights: the destination x (plus what it had when it restarted), the sources (1 - x) of
+        // their start weights; at 1 the sources stop and rewind
         if (layer.transition.active){
             anim::ControllerTransitionRuntime& transition = layer.transition;
             const float x = transition.duration > 0.0f ? std::min(1.0f, std::max(0.0f, transition.elapsed / transition.duration)) : 1.0f;
@@ -258,7 +342,7 @@ void ActionSystem::driveController(Entity entity, AnimationPlayerComponent& play
                 layer.current = transition.to;
                 layer.transition = anim::ControllerTransitionRuntime();
             }else{
-                layer.groups[(size_t)transition.to].weight = x;
+                layer.groups[(size_t)transition.to].weight = x + (1.0f - x) * transition.selfWeight;
                 for (const std::pair<int, float>& entry : transition.sources){
                     layer.groups[(size_t)entry.first].weight = entry.second * (1.0f - x);
                 }
@@ -267,35 +351,15 @@ void ActionSystem::driveController(Entity entity, AnimationPlayerComponent& play
             layer.groups[(size_t)layer.current].weight = 1.0f;
         }
 
-        // the player states: weights and clip times; events of the state that is not fading out
-        const int playing = layer.transition.active ? layer.transition.to : layer.current;
-        const float lambda = runtime.layerWeight(li);
+        // the player states: weights and clip times
         for (size_t g = 0; g < layer.groups.size(); g++){
             anim::ControllerGroup& group = layer.groups[g];
-            const AnimatorController::State& stateData = layerData.states[g];
-            if (!group.active){
-                continue;
-            }
-            const ControllerState& state = *stateData.data;
-            const size_t children = group.states.size();
-            weights.assign(children, children == 1 ? 1.0f : 0.0f);
-            if (state.hasBlendTree){
-                thresholds.clear();
-                for (const BlendTreeChild& child : state.blendTree.children) thresholds.push_back(child.threshold);
-                const float value = stateData.blendParameter >= 0 ? controller.params[(size_t)stateData.blendParameter].value : 0.0f;
-                anim::blendTreeWeights(thresholds, value, weights);
-                weights.resize(children, 0.0f);
-            }
-            size_t heaviest = 0;
-            for (size_t c = 1; c < children; c++){
-                if (weights[c] > weights[heaviest]) heaviest = c;
-            }
-            for (size_t c = 0; c < children; c++){
+            if (!group.active) continue;
+            childWeights(layerData.states[g], group);
+            for (size_t c = 0; c < group.states.size(); c++){
                 anim::PlayerStateRuntime& playerState = runtime.states[group.states[c]];
-                const float length = anim::stateLength(playerState);
-                const ClipWrapMode wrap = anim::stateWrap(playerState);
                 const float weight = group.weight * weights[c];
-                const float clipTime = clipTimeOf(group.time, length, wrap);
+                const float clipTime = clipTimeOf(group.time, anim::stateLength(playerState), anim::stateWrap(playerState));
                 playerState.weight = weight;
                 playerState.targetWeight = weight;
                 playerState.fadeSpeed = 0.0f;
@@ -305,37 +369,10 @@ void ActionSystem::driveController(Entity entity, AnimationPlayerComponent& play
                 playerState.finishing = false;
                 playerState.time = clipTime;
                 playerState.drivenTime = clipTime;
-
-                // events (R16 with the layer rule): the playing state's heaviest child only
-                if ((int)g != playing || c != heaviest || !(weight > 0.0f) || !(lambda > 0.0f) || !playerState.bindings.clip || length <= 0.0f) continue;
-                const AnimationClip& clip = *playerState.bindings.clip;
-                if (clip.getEvents().empty()) continue;
-                double from = 0.0, to = 0.0;
-                if (wrap == ClipWrapMode::Loop || wrap == ClipWrapMode::PingPong){
-                    const double period = wrap == ClipWrapMode::PingPong ? 2.0 : 1.0;
-                    const double base = period * std::floor(std::min(group.previous, group.time) / period);
-                    from = (group.previous - base) * length;
-                    to = (group.time - base) * length;
-                }else{
-                    from = std::min(std::max(group.previous, 0.0), 1.0) * length;
-                    to = std::min(std::max(group.time, 0.0), 1.0) * length;
-                }
-                if (from == to && !group.entered) continue;
-                std::vector<anim::CrossedEvent> crossed;
-                anim::collectCrossedEvents(clip, wrap, (float)from, (float)to, group.entered, crossed);
-                for (const anim::CrossedEvent& event : crossed){
-                    const ClipEventData& eventData = clip.getEvents()[event.index];
-                    anim::PendingPlayerCallback callback;
-                    callback.event.functionName = eventData.function;
-                    callback.event.args = eventData.args;
-                    callback.event.state = playerState.name;
-                    callback.event.time = eventData.time;
-                    callback.when = to != from ? dt * (float)std::min(1.0, std::max(0.0, (event.position - from) / (to - from))) : 0.0f;
-                    callback.clip = playerState.clip;
-                    runtime.pending.push_back(std::move(callback));
-                }
             }
-            group.entered = false;
         }
+        // what entered this update (or since the last one) moves from the next update on
+        for (anim::ControllerGroup& group : layer.groups) group.entered = false;
     }
+    for (int parameter : consumed) controller.params[(size_t)parameter].value = 0.0f;
 }

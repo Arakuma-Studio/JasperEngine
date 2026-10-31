@@ -86,6 +86,7 @@ namespace {
         group.time = 0.0;
         group.previous = 0.0;
         group.entered = false;
+        group.startEvents = false;
         for (size_t index : group.states){
             if (index < runtime.states.size()) stopState(runtime.states[index]);
         }
@@ -109,20 +110,25 @@ namespace {
 
 void anim::resetControllerLayers(AnimationPlayerRuntime& runtime){
     ControllerRuntime& controller = *runtime.controller;
-    // what each layer was playing, by name (groupNames: the names the groups were built for)
+    // what each layer was playing, by name (groupNames: the names the groups were built for); a
+    // layer in a transition keeps its destination (the transition completes)
     struct Kept{ std::string layer; std::string state; double time; };
     std::vector<Kept> kept;
     for (size_t l = 0; l < controller.layers.size() && l < controller.groupNames.size(); l++){
         const ControllerLayerRuntime& layer = controller.layers[l];
         const std::vector<std::string>& names = controller.groupNames[l].second;
-        if (!layer.started || layer.current < 0 || (size_t)layer.current >= names.size() || (size_t)layer.current >= layer.groups.size()) continue;
-        kept.push_back({controller.groupNames[l].first, names[(size_t)layer.current], layer.groups[(size_t)layer.current].time});
+        const int state = layer.transition.active ? layer.transition.to : layer.current;
+        if (!layer.started || state < 0 || (size_t)state >= names.size() || (size_t)state >= layer.groups.size()) continue;
+        kept.push_back({controller.groupNames[l].first, names[(size_t)state], layer.groups[(size_t)state].time});
     }
     controller.layers.clear();
     controller.groupNames.clear();
     if (!controller.controller) return;
     const ControllerData& data = controller.controller->getData();
     controller.layers.resize(data.layers.size());
+    // the runtime states were built from the controller in this same order (controllerSpecs):
+    // positional, so names that happen to collide ("A.B" + "C" and "A" + "B.C") stay apart
+    size_t next = 0;
     for (size_t l = 0; l < data.layers.size(); l++){
         const ControllerLayer& layerData = data.layers[l];
         ControllerLayerRuntime& layer = controller.layers[l];
@@ -131,17 +137,9 @@ void anim::resetControllerLayers(AnimationPlayerRuntime& runtime){
         for (size_t s = 0; s < layerData.states.size(); s++){
             const ControllerState& state = layerData.states[s];
             names.push_back(state.name);
-            const std::string full = layerData.name + "." + state.name;
             ControllerGroup& group = layer.groups[s];
-            if (!state.clip.empty()){
-                const int index = runtime.findState(full);
-                if (index >= 0) group.states.push_back((size_t)index);
-            }else if (state.hasBlendTree){
-                for (size_t c = 0; c < state.blendTree.children.size(); c++){
-                    const int index = runtime.findState(full + "#" + std::to_string(c));
-                    if (index >= 0) group.states.push_back((size_t)index);
-                }
-            }
+            const size_t count = !state.clip.empty() ? 1 : (state.hasBlendTree ? state.blendTree.children.size() : 0);
+            for (size_t c = 0; c < count && next < runtime.states.size(); c++) group.states.push_back(next++);
         }
         controller.groupNames.push_back({layerData.name, names});
         for (const Kept& entry : kept){
@@ -241,9 +239,11 @@ void anim::blendTreeWeights(const std::vector<float>& thresholds, float value, s
 
 namespace {
 
-    // the blend tree's child weights at the parameter's current value
+    // the blend tree's child weights at the parameter's current value (main thread: the scratch
+    // is reused, no allocation per frame)
     void treeWeights(const AnimationPlayerRuntime& runtime, const ControllerState& state, int parameter, std::vector<float>& out){
-        std::vector<float> thresholds;
+        static std::vector<float> thresholds;
+        thresholds.clear();
         for (const BlendTreeChild& child : state.blendTree.children) thresholds.push_back(child.threshold);
         const float value = parameter >= 0 && (size_t)parameter < runtime.controller->params.size() ? runtime.controller->params[(size_t)parameter].value : 0.0f;
         blendTreeWeights(thresholds, value, out);
@@ -258,18 +258,26 @@ float anim::controllerStateLength(const AnimationPlayerRuntime& runtime, int lay
     const AnimatorController::State& stateData = layerData.states[(size_t)state];
     const ControllerGroup& group = controller.layers[(size_t)layer].groups[(size_t)state];
     if (stateData.data->isEmpty()) return 1.0f;
+    // a clip that failed to load makes an empty state (L11): 1 s, so its time and exit times go on
+    auto failed = [&](size_t index){ return runtime.states[index].loadFailed && !runtime.states[index].bindings.clip; };
     if (!stateData.data->hasBlendTree){
-        return group.states.empty() ? 0.0f : stateLength(runtime.states[group.states[0]]);
+        if (group.states.empty() || failed(group.states[0])) return 1.0f;
+        return stateLength(runtime.states[group.states[0]]);
     }
-    // a blend tree: the cycle of its weighted children (1 / Σ w_c speed_c / length_c)
-    std::vector<float> weights;
+    // a blend tree: the cycle of its weighted children (1 / Σ w_c speed_c / length_c); children
+    // without weight or without a clip (failed) do not count; 0 while a weighted one loads
+    static std::vector<float> weights;
     treeWeights(runtime, *stateData.data, stateData.blendParameter, weights);
     double rate = 0.0;
+    bool any = false;
     for (size_t c = 0; c < weights.size() && c < group.states.size(); c++){
+        if (!(weights[c] > 0.0f) || failed(group.states[c])) continue;
         const float length = stateLength(runtime.states[group.states[c]]);
         if (length <= 0.0f) return 0.0f;
         rate += (double)weights[c] * stateData.data->blendTree.children[c].speed / length;
+        any = true;
     }
+    if (!any) return 1.0f;
     return rate > 0.0 ? (float)(1.0 / rate) : 0.0f;
 }
 
@@ -404,6 +412,8 @@ bool anim::controllerPlay(AnimationPlayerComponent& player, const std::string& n
     group.time = std::isfinite(normalizedTime) ? (double)normalizedTime : 0.0;
     group.previous = group.time;
     group.entered = true;
+    group.startEvents = true;
+    group.start = group.time;
     target.current = s;
     target.lastEntered = s;
     target.started = true;
@@ -434,7 +444,11 @@ bool anim::controllerCrossFade(AnimationPlayerComponent& player, const std::stri
     for (size_t g = 0; g < target.groups.size(); g++){
         ControllerGroup& group = target.groups[g];
         if ((int)g == s){
-            if (group.active) stopGroup(runtime, group);
+            // a crossFade to a playing state restarts it, keeping its weight (no copy state)
+            if (group.active){
+                transition.selfWeight = group.weight;
+                stopGroup(runtime, group);
+            }
             continue;
         }
         if (group.active && group.weight > 0.0f) transition.sources.push_back({(int)g, group.weight});
@@ -447,6 +461,8 @@ bool anim::controllerCrossFade(AnimationPlayerComponent& player, const std::stri
     group.time = 0.0;
     group.previous = 0.0;
     group.entered = true;
+    group.startEvents = true;
+    group.start = 0.0;
     target.transition = transition;
     target.lastEntered = s;
     pendStateCallback(runtime, l, stateName(*controller, l, s), true);

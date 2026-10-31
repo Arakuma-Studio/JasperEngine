@@ -234,6 +234,14 @@ void anim::setLayerBlend(AnimationPlayerComponent& player, int layer, AnimationL
 void anim::stopLayer(AnimationPlayerComponent& player, int layer, float fade){
     AnimationPlayerRuntime& runtime = playerRuntime(player);
     if (layer < 0 || (size_t)layer >= runtime.layers.size()) return;
+    if (runtime.controller){
+        // the controller drives its states (spec 11.2): a layer's weight is the way to mute it
+        if (std::find(runtime.warnedLayers.begin(), runtime.warnedLayers.end(), "controller:stopLayer") == runtime.warnedLayers.end()){
+            runtime.warnedLayers.push_back("controller:stopLayer");
+            Log::warn("Animation Player: stopLayer is not available with an Animator Controller (use setLayerWeight, play or stop)");
+        }
+        return;
+    }
     player.started = true;
     clearQueue(runtime, layer);
     fade = finiteOr(fade, 0.0f);
@@ -280,6 +288,13 @@ bool anim::removeLayer(AnimationPlayerComponent& player, int layer, const std::s
                   moved, moved == 1 ? "y" : "ies", layers[0].name.c_str());
     }
     layers.erase(layers.begin() + layer);
+    // runtime moves (Lua state.layer) follow the layers that shift down
+    if (player.runtime){
+        for (PlayerStateRuntime& state : player.runtime->states){
+            if (state.layerOverride == layer) state.layerOverride = -1;
+            else if (state.layerOverride > layer) state.layerOverride--;
+        }
+    }
     player.layers = layers.size() == 1 && layers[0].name == BASE_LAYER_NAME && layers[0].mask.empty() ? std::vector<AnimationPlayerLayer>() : layers;
     player.needsLoad = true;
     return true;
@@ -288,6 +303,14 @@ bool anim::removeLayer(AnimationPlayerComponent& player, int layer, const std::s
 void anim::setStateLayer(AnimationPlayerComponent& player, PlayerStateRuntime& state, int layer){
     AnimationPlayerRuntime& runtime = playerRuntime(player);
     if (layer < 0 || (size_t)layer >= runtime.layers.size()) return;
+    if (state.driven){
+        // a controller state lives on its controller layer
+        if (std::find(runtime.warnedLayers.begin(), runtime.warnedLayers.end(), "controller:layer") == runtime.warnedLayers.end()){
+            runtime.warnedLayers.push_back("controller:layer");
+            Log::warn("Animation Player: an Animator Controller state stays on its controller layer (state.layer is ignored)");
+        }
+        return;
+    }
     const int from = runtime.stateLayer(state);
     state.layerOverride = layer == state.layer ? -1 : layer;
     if (from == layer) return;

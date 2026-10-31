@@ -2214,6 +2214,23 @@ OVERRIDES[('UIDocument', 'createDataModel')] = {
 OVERRIDES[('UIDocument', 'getDataModel')] = {
     'doc': ['The proxy of a data model this document created, or nil.'],
     'overloads': [([('name', 'string')], 'UIDataModel|nil')]}
+# AnimationPlayer's three-argument forms read their numbers by whether the player has an Animator
+# Controller (one binding, AnimationPlayer::playWithArguments / crossFadeWithArguments)
+OVERRIDES[('AnimationPlayer', 'play')] = {
+    'doc': ["Without a controller: plays `name` (instant, or a crossfade with `fade` > 0); `mode` is",
+            "`PlayMode.STOP_SAME_LAYER` (default) or `PlayMode.STOP_ALL`. With an Animator Controller: jumps",
+            "to the state `name` (\"Layer.State\" or \"State\") on `layer` (-1: any) at `normalizedTime`."],
+    'overloads': [([('name', 'string')], ''),
+                  ([('name', 'string'), ('fade', 'number')], ''),
+                  ([('name', 'string'), ('fade', 'number'), ('mode', 'PlayMode')], ''),
+                  ([('name', 'string'), ('layer', 'integer'), ('normalizedTime', 'number')], '')]}
+OVERRIDES[('AnimationPlayer', 'crossFade')] = {
+    'doc': ["Fades `name` in over `fade` seconds (no fade: defaultFadeTime). Without a controller `mode` is a",
+            "PlayMode; with an Animator Controller the third argument is the layer (-1: any)."],
+    'overloads': [([('name', 'string')], ''),
+                  ([('name', 'string'), ('fade', 'number')], ''),
+                  ([('name', 'string'), ('fade', 'number'), ('mode', 'PlayMode')], ''),
+                  ([('name', 'string'), ('seconds', 'number'), ('layer', 'integer')], '')]}
 OVERRIDES[('UIClassList', 'add')] = {
     'doc': ['Adds the classes.'], 'overloads': [([('...', 'string')], '')]}
 OVERRIDES[('UIClassList', 'remove')] = {

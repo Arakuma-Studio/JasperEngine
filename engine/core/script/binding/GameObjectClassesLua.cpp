@@ -2206,12 +2206,11 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("play",
             luabridge::overload<const std::string&>(&AnimationPlayer::play),
             luabridge::overload<const std::string&, float>(&AnimationPlayer::play),
-            luabridge::overload<const std::string&, float, PlayMode>(&AnimationPlayer::play),
-            luabridge::overload<const std::string&, int, float>(&AnimationPlayer::play))
+            luabridge::overload<const std::string&, float, float>(&AnimationPlayer::playWithArguments))
         .addFunction("crossFade",
             luabridge::overload<const std::string&>(&AnimationPlayer::crossFade),
             luabridge::overload<const std::string&, float>(&AnimationPlayer::crossFade),
-            luabridge::overload<const std::string&, float, PlayMode>(&AnimationPlayer::crossFade))
+            luabridge::overload<const std::string&, float, float>(&AnimationPlayer::crossFadeWithArguments))
         .addFunction("blend",
             luabridge::overload<const std::string&, float>(&AnimationPlayer::blend),
             luabridge::overload<const std::string&, float, float>(&AnimationPlayer::blend))

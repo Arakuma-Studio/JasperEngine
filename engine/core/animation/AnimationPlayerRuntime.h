@@ -318,7 +318,9 @@ namespace jasperengine::anim{
         double previous = 0.0;              // at the start of this update (exit time crossings, events)
         float weight = 0.0f;
         bool active = false;                // current, destination or a transition source
-        bool entered = false;               // started this update (events at its start time fire)
+        bool entered = false;               // entered this update (or since the last): its time moves from the next one
+        bool startEvents = false;           // its events from its start time still fire (when it first has weight)
+        double start = 0.0;                 // the normalized time it entered at
     };
 
     struct JASPERENGINE_API ControllerTransitionRuntime{
@@ -329,6 +331,9 @@ namespace jasperengine::anim{
         float duration = 0.0f;
         // the states playing when it started, with their weights then (they scale by 1 - x)
         std::vector<std::pair<int, float>> sources;
+        // the destination's weight when it restarted (a self or re-entry transition): it keeps
+        // it, scaled by (1 - x), on top of x (no copy state)
+        float selfWeight = 0.0f;
     };
 
     struct JASPERENGINE_API ControllerLayerRuntime{

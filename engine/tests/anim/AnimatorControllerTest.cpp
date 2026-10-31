@@ -506,3 +506,81 @@ TEST_F(Controllers, MissingClipsAreEmptyStatesAndControllersReload){
     EXPECT_EQ(object.getCurrentStateName(), "Idle");
     EXPECT_NEAR(legX(), 1.0f, 1e-5f);
 }
+
+// review fixes: a transition into the playing state keeps its weight (no dip to the rest pose),
+// start events fire when a state is entered through a transition, a trigger two layers read
+// fires on both, a state whose clip failed counts as empty (1 s) so exit times go on
+TEST_F(Controllers, ReentryStartEventsSharedTriggersAndFailedClips){
+    ClipData hit = still(4);
+    hit.events = {ClipEventData{0.0f, "onHit", {}}};
+    clip("hit", hit);
+    clip("idle", still(1));
+    clip("upper", still(2));
+    AnimationPlayer object = player(controller("reentry", R"({"format": "jasperengine.controller", "version": 1,
+      "parameters": [{"name": "Hit", "type": "trigger"}],
+      "layers": [{"name": "Base Layer", "states": [{"name": "Idle", "clip": "@idle.anim"}, {"name": "Hit", "clip": "@hit.anim"},
+                                                   {"name": "Broken", "clip": "@missing.anim"}],
+        "transitions": [{"from": "any", "to": "Hit", "conditions": [{"parameter": "Hit", "mode": "if"}], "has_exit_time": false, "duration": 0.2},
+                        {"from": "Idle", "to": "Broken", "conditions": [{"parameter": "Hit", "mode": "if_not"}], "has_exit_time": true, "exit_time": 5},
+                        {"from": "Broken", "to": "Idle", "exit_time": 0.5, "duration": 0}]},
+        {"name": "Upper", "states": [{"name": "Rest", "clip": "@upper.anim"}, {"name": "Flinch", "clip": "@upper.anim"}],
+         "transitions": [{"from": "Rest", "to": "Flinch", "conditions": [{"parameter": "Hit", "mode": "if"}], "has_exit_time": false, "duration": 0}]}]})"));
+    std::vector<std::string> fired;
+    object.getOnEvent().add("test", std::function<void(const AnimationEvent&)>([&](const AnimationEvent& e){ fired.push_back(e.functionName); }));
+    step(0.1);
+    object.setTrigger("Hit");
+    step(0.1);
+    EXPECT_EQ(object.getCurrentStateName(1), "Flinch") << "the trigger fired on both layers";
+    EXPECT_TRUE(object.isInTransition(0));
+    step(0.1);
+    step(0.2);
+    EXPECT_EQ(fired.size(), 1u) << "Hit's event at 0 fires once it has weight, through a 0.2 s transition";
+    EXPECT_EQ(object.getCurrentStateName(0), "Hit");
+    object.setTrigger("Hit");
+    step(0.1);
+    step(0.1);
+    EXPECT_NEAR(weight(object, "Base Layer.Hit"), 1.0f, 1e-5f) << "re-entering the playing state keeps its weight";
+
+    // a failed clip: an empty state of 1 s whose exit time still comes
+    object.play("Broken");
+    step(0.0);
+    EXPECT_EQ(object.getCurrentStateName(), "Broken");
+    step(0.3, 2);
+    EXPECT_EQ(object.getCurrentStateName(), "Idle");
+    object.getOnEvent().clear();
+}
+
+TEST_F(Controllers, ReloadDuringATransitionKeepsItsDestination){
+    clip("a", still(1));
+    clip("b", still(2));
+    const std::string text = R"({"format": "jasperengine.controller", "version": 1, "parameters": [{"name": "Go", "type": "bool"}],
+      "layers": [{"name": "Base Layer", "states": [{"name": "A", "clip": "@a.anim"}, {"name": "B", "clip": "@b.anim"}],
+        "transitions": [{"from": "A", "to": "B", "conditions": [{"parameter": "Go", "mode": "if"}], "has_exit_time": false, "duration": 1}]}]})";
+    const std::string path = controller("mid", text);
+    AnimationPlayer object = player(path);
+    std::vector<std::string> log;
+    object.getOnStateExit().add("test", std::function<void(int, const std::string&)>([&](int, const std::string& name){ log.push_back(name); }));
+    step(0.1);
+    object.setBool("Go", true);
+    step(0.1);
+    step(0.3);
+    ASSERT_TRUE(object.isInTransition());
+    controller("mid", text);
+    AnimatorControllerPool::invalidate(path);
+    step(0.1);
+    EXPECT_EQ(object.getCurrentStateName(), "B");
+    EXPECT_FALSE(object.isInTransition());
+    ASSERT_EQ(log.size(), 1u);
+    EXPECT_EQ(log[0], "A");
+    object.getOnStateExit().clear();
+}
+
+TEST(ControllerIO, BuildDoesNotRepeatWarnings){
+    anim::ControllerParseResult parsed = anim::parseController(R"({"format": "jasperengine.controller", "version": 1,
+      "parameters": [{"name": "S", "type": "float"}],
+      "layers": [{"name": "Base Layer", "states": [{"name": "M", "blend_tree": {"parameter": "S", "children": [{"clip": "a.anim", "threshold": 1}, {"clip": "b.anim", "threshold": 1}]}}]}]})");
+    ASSERT_TRUE(parsed.ok());
+    const size_t count = parsed.warnings.size();
+    EXPECT_GE(count, 1u);
+    EXPECT_EQ(anim::AnimatorController::build(*parsed.data, parsed.warnings)->getWarnings().size(), count);
+}

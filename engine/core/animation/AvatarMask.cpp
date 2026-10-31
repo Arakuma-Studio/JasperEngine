@@ -392,7 +392,14 @@ std::shared_ptr<const anim::AvatarMask> anim::AvatarMask::build(const AvatarMask
     AvatarMask* mask = new AvatarMask();
     std::shared_ptr<const AvatarMask> shared(mask);
     mask->data = data;
-    normalizeAvatarMask(mask->data, &warnings);
+    // already normalized when parsed: what a second pass reports again is not repeated
+    std::vector<ClipWarning> again;
+    normalizeAvatarMask(mask->data, &again);
+    for (const ClipWarning& warning : again){
+        bool known = false;
+        for (const ClipWarning& kept : warnings) known |= kept.path == warning.path && kept.message == warning.message;
+        if (!known) warnings.push_back(warning);
+    }
     mask->warnings = std::move(warnings);
     return shared;
 }
