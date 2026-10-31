@@ -25,6 +25,8 @@ const String document_rml = R"(
 	#db { left: 200px; top: 200px; drag: drag; }
 	#scroller { left: 400px; top: 0; width: 100px; height: 100px; overflow: auto; }
 	#content { position: static; width: 300px; height: 300px; }
+	scrollbarvertical { width: 4px; }
+	scrollbarhorizontal { height: 4px; }
 	.none { touch-action: none; }
 	.pany { touch-action: pan-y; }
 </style>
@@ -55,20 +57,12 @@ struct Recorder : EventListener {
 	}
 };
 
-PointerInput Touch(PointerId id, float x, float y)
+PointerInput TouchAt(PointerId id, float x, float y)
 {
 	PointerInput input;
 	input.id = id;
 	input.type = PointerType::Touch;
 	input.position = {x, y};
-	return input;
-}
-
-PointerInput Mouse(float x, float y, int button = 0)
-{
-	PointerInput input;
-	input.position = {x, y};
-	input.button = button;
 	return input;
 }
 
@@ -106,8 +100,8 @@ TEST_CASE("PointerEvents.per_pointer_active_and_hover")
 	Element* a = f.Get("a");
 	Element* b = f.Get("b");
 
-	f.context->ProcessPointerDown(Touch(2, 50, 50));
-	f.context->ProcessPointerDown(Touch(3, 250, 50));
+	f.context->ProcessPointerDown(TouchAt(2, 50, 50));
+	f.context->ProcessPointerDown(TouchAt(3, 250, 50));
 	CHECK(a->IsPseudoClassSet("active"));
 	CHECK(b->IsPseudoClassSet("active"));
 	CHECK(a->IsPseudoClassSet("hover"));
@@ -116,7 +110,7 @@ TEST_CASE("PointerEvents.per_pointer_active_and_hover")
 	CHECK(f.context->GetHoverElement(3) == b);
 
 	// lifting one finger releases only its own element; a finger has no hover after its up
-	f.context->ProcessPointerUp(Touch(2, 50, 50));
+	f.context->ProcessPointerUp(TouchAt(2, 50, 50));
 	CHECK(!a->IsPseudoClassSet("active"));
 	CHECK(!a->IsPseudoClassSet("hover"));
 	CHECK(b->IsPseudoClassSet("active"));
@@ -125,7 +119,7 @@ TEST_CASE("PointerEvents.per_pointer_active_and_hover")
 
 	// the mouse over b keeps its :hover after the finger goes (counted)
 	f.context->ProcessMouseMove(260, 60, 0);
-	f.context->ProcessPointerUp(Touch(3, 250, 50));
+	f.context->ProcessPointerUp(TouchAt(3, 250, 50));
 	CHECK(!b->IsPseudoClassSet("active"));
 	CHECK(b->IsPseudoClassSet("hover"));
 }
@@ -139,8 +133,8 @@ TEST_CASE("PointerEvents.event_order_and_compat_mouse_events")
 		{EventId::Pointerover, EventId::Pointerenter, EventId::Pointerdown, EventId::Pointerup, EventId::Pointerout, EventId::Pointerleave,
 			EventId::Mousedown, EventId::Mouseup, EventId::Click, EventId::Mouseover, EventId::Mouseout, EventId::Mouseenter, EventId::Mouseleave});
 
-	f.context->ProcessPointerDown(Touch(4, 50, 50));
-	f.context->ProcessPointerUp(Touch(4, 50, 50));
+	f.context->ProcessPointerDown(TouchAt(4, 50, 50));
+	f.context->ProcessPointerUp(TouchAt(4, 50, 50));
 	CHECK(rec.Joined() ==
 		"pointerover:4 mouseover:4 pointerenter:4 mouseenter:4 pointerdown:4 mousedown:4 pointerup:4 mouseup:4 click:4 "
 		"pointerout:4 mouseout:4 pointerleave:4 mouseleave:4");
@@ -177,15 +171,15 @@ TEST_CASE("PointerEvents.implicit_capture_of_touches")
 	Listen(a, rec_a, {EventId::Gotpointercapture, EventId::Pointermove, EventId::Pointerup, EventId::Lostpointercapture});
 	Listen(b, rec_b, {EventId::Pointermove, EventId::Pointerup});
 
-	f.context->ProcessPointerDown(Touch(5, 50, 50));
+	f.context->ProcessPointerDown(TouchAt(5, 50, 50));
 	CHECK(a->HasPointerCapture(5));
-	f.context->ProcessPointerMove(Touch(5, 250, 50));
+	f.context->ProcessPointerMove(TouchAt(5, 250, 50));
 	// the capture gets the move; :hover follows the real hit
 	CHECK(rec_a.Joined() == "gotpointercapture:5 pointermove:5");
 	CHECK(rec_b.events.empty());
 	CHECK(b->IsPseudoClassSet("hover"));
 	CHECK(!a->IsPseudoClassSet("hover"));
-	f.context->ProcessPointerUp(Touch(5, 250, 50));
+	f.context->ProcessPointerUp(TouchAt(5, 250, 50));
 	CHECK(rec_a.Joined() == "gotpointercapture:5 pointermove:5 pointerup:5 lostpointercapture:5");
 	CHECK(rec_b.events.empty());
 }
@@ -202,6 +196,7 @@ TEST_CASE("PointerEvents.explicit_capture_of_the_mouse")
 	// without a press the mouse cannot be captured
 	CHECK(!a->SetPointerCapture(MousePointerId));
 	f.context->ProcessMouseMove(50, 50, 0);
+	rec.events.clear();
 	f.context->ProcessMouseButtonDown(0, 0);
 	CHECK(a->HasPointerCapture(MousePointerId));
 	f.context->ProcessMouseMove(260, 50, 0);
@@ -222,16 +217,16 @@ TEST_CASE("PointerEvents.per_pointer_click")
 	Listen(b, rec_b, {EventId::Click});
 
 	// two fingers click two elements; released elsewhere, no click
-	f.context->ProcessPointerDown(Touch(2, 50, 50));
-	f.context->ProcessPointerDown(Touch(3, 250, 50));
-	f.context->ProcessPointerUp(Touch(3, 250, 50));
-	f.context->ProcessPointerUp(Touch(2, 50, 50));
+	f.context->ProcessPointerDown(TouchAt(2, 50, 50));
+	f.context->ProcessPointerDown(TouchAt(3, 250, 50));
+	f.context->ProcessPointerUp(TouchAt(3, 250, 50));
+	f.context->ProcessPointerUp(TouchAt(2, 50, 50));
 	CHECK(rec_a.Joined() == "click:2");
 	CHECK(rec_b.Joined() == "click:3");
 
-	f.context->ProcessPointerDown(Touch(2, 50, 50));
+	f.context->ProcessPointerDown(TouchAt(2, 50, 50));
 	CHECK(rec_a.Joined() == "click:2 dblclick:2");
-	f.context->ProcessPointerUp(Touch(2, 260, 50));
+	f.context->ProcessPointerUp(TouchAt(2, 260, 50));
 	CHECK(rec_a.Joined() == "click:2 dblclick:2");
 }
 
@@ -244,16 +239,16 @@ TEST_CASE("PointerEvents.per_pointer_drag")
 	Listen(da, rec_a, {EventId::Dragstart, EventId::Dragend});
 	Listen(db, rec_b, {EventId::Dragstart, EventId::Dragend});
 
-	f.context->ProcessPointerDown(Touch(2, 50, 250));
-	f.context->ProcessPointerDown(Touch(3, 250, 250));
-	f.context->ProcessPointerMove(Touch(2, 60, 260));
-	f.context->ProcessPointerMove(Touch(3, 260, 260));
+	f.context->ProcessPointerDown(TouchAt(2, 50, 250));
+	f.context->ProcessPointerDown(TouchAt(3, 250, 250));
+	f.context->ProcessPointerMove(TouchAt(2, 60, 260));
+	f.context->ProcessPointerMove(TouchAt(3, 260, 260));
 	CHECK(rec_a.Joined() == "dragstart:2");
 	CHECK(rec_b.Joined() == "dragstart:3");
-	f.context->ProcessPointerUp(Touch(2, 60, 260));
+	f.context->ProcessPointerUp(TouchAt(2, 60, 260));
 	CHECK(rec_a.Joined() == "dragstart:2 dragend:2");
 	CHECK(rec_b.Joined() == "dragstart:3");
-	f.context->ProcessPointerUp(Touch(3, 260, 260));
+	f.context->ProcessPointerUp(TouchAt(3, 260, 260));
 	CHECK(rec_b.Joined() == "dragstart:3 dragend:3");
 }
 
@@ -269,23 +264,25 @@ TEST_CASE("PointerEvents.touch_action_pan")
 
 	SUBCASE("auto pans and cancels the pointer")
 	{
-		f.context->ProcessPointerDown(Touch(2, 450, 80));
+		f.context->ProcessPointerDown(TouchAt(2, 430, 80));
+		Element* hit = f.context->GetHoverElement(2);
+		CHECK_MESSAGE(hit == content, "hit: " << (hit ? hit->GetAddress() : String("none")));
 		CHECK(content->IsPseudoClassSet("active"));
-		f.context->ProcessPointerMove(Touch(2, 450, 40));
+		f.context->ProcessPointerMove(TouchAt(2, 430, 40));
 		CHECK(rec.Joined() == "pointercancel:2");
 		CHECK(!content->IsPseudoClassSet("active"));
 		CHECK(scroller->GetScrollTop() > 0.f);
-		f.context->ProcessPointerMove(Touch(2, 450, 30));
-		f.context->ProcessPointerUp(Touch(2, 450, 30));
+		f.context->ProcessPointerMove(TouchAt(2, 430, 30));
+		f.context->ProcessPointerUp(TouchAt(2, 430, 30));
 		CHECK(rec.Joined() == "pointercancel:2");
 	}
 	SUBCASE("none does not pan")
 	{
 		content->SetClass("none", true);
 		f.context->Update();
-		f.context->ProcessPointerDown(Touch(2, 450, 80));
-		f.context->ProcessPointerMove(Touch(2, 450, 40));
-		f.context->ProcessPointerUp(Touch(2, 450, 40));
+		f.context->ProcessPointerDown(TouchAt(2, 430, 80));
+		f.context->ProcessPointerMove(TouchAt(2, 430, 40));
+		f.context->ProcessPointerUp(TouchAt(2, 430, 40));
 		CHECK(rec.Joined() == "pointermove:2 pointerup:2");
 		CHECK(scroller->GetScrollTop() == 0.f);
 	}
@@ -293,11 +290,11 @@ TEST_CASE("PointerEvents.touch_action_pan")
 	{
 		scroller->SetClass("pany", true);
 		f.context->Update();
-		f.context->ProcessPointerDown(Touch(2, 480, 50));
-		f.context->ProcessPointerMove(Touch(2, 420, 50));
+		f.context->ProcessPointerDown(TouchAt(2, 470, 50));
+		f.context->ProcessPointerMove(TouchAt(2, 420, 50));
 		CHECK(rec.Joined() == "pointermove:2");
-		f.context->ProcessPointerMove(Touch(2, 420, 10));
-		f.context->ProcessPointerUp(Touch(2, 420, 10));
+		f.context->ProcessPointerMove(TouchAt(2, 420, 10));
+		f.context->ProcessPointerUp(TouchAt(2, 420, 10));
 		CHECK_MESSAGE(rec.Joined() == "pointermove:2 pointermove:2 pointerup:2", "a horizontal pan is not allowed: the pointer stays");
 	}
 }
