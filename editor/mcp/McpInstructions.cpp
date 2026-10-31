@@ -15,9 +15,8 @@ R"JE(# JasperEngine editor (MCP)
 You are driving a running JasperEngine editor: a C++ game engine with a Unity-style editor
 and Lua or C++ gameplay scripts. Every tool edit is an undoable editor command, shown live to a human.
 Build scenes with tools, write code with your own file tools, verify by playing, screenshots
-and the Console. tools/list is authoritative for tool names and arguments; read a
-tool's description before first use. Deeper reference: resources jasper://docs/... (Lua API,
-C++ scripting, physics, shaders, prefabs, HTML/CSS UI, Unity glossary).
+and the Console. tools/list is authoritative; read a tool's description before first use.
+Deeper reference: jasper://docs/... (Lua API, physics, shaders, UI, glossary...).
 
 ## Unity names -> engine names
 Use Unity terms in prose; tools, component names and script APIs use the engine names.
@@ -49,8 +48,7 @@ Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequence
   writes refuse links out of the project.
 
 ## The loop
-1. Inspect: `editor_status`, the scene list, the hierarchy, then the GameObjects you will
-   touch.
+1. Inspect: `editor_status`, the scene list, the hierarchy, the GameObjects you will touch.
 2. Edit scenes, prefabs and settings with tools, never by hand-editing .scene/.prefab/
    project.yaml (the editor would overwrite you). Group many edits in one `batch` call
    (undo_group: one undo step). Edit code with your own tools (see Code).
@@ -63,7 +61,7 @@ Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequence
    Never claim a script works without playing it and reading the Console.
 Long operations (play with a C++ build, export, build players) take wait/timeout_seconds;
 past it you get a job id: poll get_job, cancel with cancel_job.
-A tool error says what was wrong and lists valid choices: fix the arguments, don't repeat.
+A tool error says what was wrong and lists valid choices: fix the arguments.
 
 ## Code (Lua, C++, shaders, materials)
 The project is a normal folder: `editor_status` gives its absolute path (project.path). Work
@@ -180,8 +178,7 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   Player (jasper://docs/animation).
 - Crowds: bake_vertex_animation (preview, then output) makes a .vat played on the GPU by a
   Vertex Animator (jasper://docs/vertex-animation).
-- UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; HTML/CSS
-  UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
+- UI (text, image, button, panel, layout group...; HTML/CSS UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
   and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
   UI camera: put HUDs and menus in a UI scene attached as a child scene (set_child_scene).
 
@@ -229,17 +226,16 @@ forks: jasper://docs/shaders. A failing shader draws as the built-in one (error 
 Post-processing (main camera only): apply_post_processing_preset, then set_scene_settings
 post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
 (jasper://docs/post-processing).
-Textures from examples (tileable, inpainted, PBR sets): synthesize_texture
+Textures from examples (tileable, PBR sets): synthesize_texture
 (jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
 (jasper://docs/fluid). Bend/squash: edit_lattice (jasper://docs/lattice). Thick lines, lasers,
 bullet trails: line_renderer / trail_renderer, curves and gradients (jasper://docs/lines-trails).
-Fire, smoke, sparks: create_particles (Unity modules; Unity prefabs: import_unity_particles)
-(jasper://docs/particles).
+Particles: create_particles; Unity ones: import_unity_particles (jasper://docs/particles).
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
 (Build Settings) produces a standalone CMake project or builds players per platform (a long
-job, see The loop). The 2D/3D physics switches strip backends from the export
+job). The 2D/3D physics switches strip backends from the export
 (jasper://docs/cpp-scripting). Before exporting: every scene saved, Console clean in play, the
 start scene correct.
 )JE"
@@ -255,9 +251,8 @@ set_ui_effect_time).
 Edit mode runs no Lua. First read jasper://docs/html-ui.
 
 ## Pitfalls
-- Unsaved scenes are lost when the editor closes; save after each working step.
-- Edits made while playing are lost when play stops (as in Unity): stop before editing
-  the scene for real.
+- Unsaved scenes are lost when the editor closes: save after each step.
+- Edits made while playing are lost at stop (as in Unity).
 - Lua: static functions use a dot (GameObject.instantiate), methods a colon (go:setScale(2)).
 )JE";
 }
