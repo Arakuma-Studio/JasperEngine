@@ -5,6 +5,11 @@
 
 #include "LinuxInputRouter.h"
 #include "WindowLinux.h"
+#include "io/FileUtils.h"
+
+#include <cstdlib>
+#include <pwd.h>
+#include <unistd.h>
 
 #if defined(SOKOL_VULKAN)
 #include "VulkanContext.h"
@@ -117,8 +122,33 @@ std::string SystemLinux::getAssetPath() {
 #endif
 }
 
+// An export (the Exporter defines JASPERENGINE_APP_IDENTIFIER) saves per user, as the install
+// folder may not be writable: $XDG_DATA_HOME/<identifier>, by default ~/.local/share/<identifier>.
+// Other builds (a project run from outside the editor, engine tests) keep the working directory.
 std::string SystemLinux::getUserDataPath() {
+#ifdef JASPERENGINE_APP_IDENTIFIER
+    static const std::string path = []() {
+        std::string base;
+        // the XDG spec: a relative value is invalid and ignored
+        const char* xdg = std::getenv("XDG_DATA_HOME");
+        if (xdg && xdg[0] == '/') {
+            base = xdg;
+        } else {
+            const char* home = std::getenv("HOME");
+            if (!home || !home[0]) {
+                const passwd* user = getpwuid(getuid());
+                home = user ? user->pw_dir : nullptr;
+            }
+            if (home && home[0]) base = std::string(home) + "/.local/share";
+        }
+        if (base.empty()) return std::string(".");
+        const std::string dir = base + "/" + JASPERENGINE_APP_IDENTIFIER;
+        return FileUtils::prepareUserDataFolder(dir) ? dir : std::string(".");
+    }();
+    return path;
+#else
     return ".";
+#endif
 }
 
 std::string SystemLinux::getLuaPath() {

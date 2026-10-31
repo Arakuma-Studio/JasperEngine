@@ -26,6 +26,9 @@ private:
     static int syncWaitTime;
     static bool enabledIDB;
     static bool loadedIDB;
+    // the project waits for the IndexedDB restore (at most 3 s from startTime, ms)
+    static bool projectStarted;
+    static double startTime;
 
     static int screenWidth;
     static int screenHeight;
@@ -45,6 +48,7 @@ private:
     static EM_BOOL touch_callback(int emsc_type, const EmscriptenTouchEvent* emsc_event, void* user_data);
 
     static EM_BOOL canvas_resize(int eventType, const void *reserved, void *userData);
+    static EM_BOOL visibility_callback(int eventType, const EmscriptenVisibilityChangeEvent* e, void* userData);
     static EM_BOOL webgl_context_callback(int emsc_type, const void* reserved, void* user_data);
 
     static EM_BOOL renderLoop(double time, void* userdata);
@@ -103,11 +107,15 @@ public:
     virtual std::string getUserDataPath() override;
 
     virtual bool syncFileSystem() override;
+    virtual bool flushFileSystem() override;
     virtual bool isUserDataLoaded() override;
 
     virtual std::string getStringForKey(const char *key, const std::string& defaultValue) override;
     virtual void setStringForKey(const char* key, const std::string& value) override;
     virtual void removeKey(const char *key) override;
+    virtual bool hasKey(const char *key) override;
+    virtual void removeAllKeys() override;
+    virtual void saveUserSettings() override;
 
     virtual void initializeCrazyGamesSDK() override;
     virtual void showCrazyGamesAd(const std::string& type) override;
