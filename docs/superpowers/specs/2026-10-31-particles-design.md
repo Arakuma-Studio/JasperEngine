@@ -715,3 +715,26 @@ Deviations and decisions taken while implementing (branch `gaps/particles`).
 - **Simulation fixes found by the tests**: the FPS frame and emission counts round with a 1e-4 tolerance (a second of
   0.01 s steps sums to 0.99999); a prewarmed system draws its start delay random like a cold one, so both take the
   same particle randoms.
+- **Review fixes** (after the first handoff):
+  - The upgrade reads what the version 1 target drew: Points and `instancedBillboard` quads become Billboard,
+    `instancedCylindricalBillboard` VerticalBillboard, a plain instanced mesh renderMode Mesh with
+    `renderer.mesh = "model"` (the GameObject's own mesh, never replaced) and alignment Local (local systems) or World;
+    no on-screen size limit (maxParticleSize 0). The report has a `renderer` item.
+  - A burst at `time == duration` fires at the end of every cycle (before the wrap), looping or not.
+  - min/max particle size are written for Billboard only (Unity) and limit the size before a stretch; other modes are no
+    longer rebuilt per camera for the limit alone. `renderer.sortPriority` is added to the shader's queue priority when
+    the batch is queued (InstanceParticleRender::sortPriority, PointsComponent::particleSortPriority) instead of
+    overwriting it.
+  - Loop / PingPong arcs and radii advance per particle (each spawn at its offset in the step); arc, radius and noise
+    scroll speeds with a random range take one value per play from the system's seed.
+  - Importer: a `Blend` line is tokenized (factors in any case, line comments skipped, `[_SrcBlend] [_DstBlend]` read
+    from the material); Unity's Standard particle shaders blend by `_SrcBlend`/`_DstBlend` or `_Mode`; built-in shader ids
+    201 (Additive Soft), 202 (Alpha Blended Premultiply), 203 (Alpha Blended), 205 (Multiply), 210/211 (Standard
+    Surface / Unlit) were added (202, 203 and 211 agree with what the game's materials using them hold; 201, 205 and 210
+    are Unity's documented ids, not seen in the game). Output files of two assets with one name get numbered names;
+    the notes of a shared material or texture go to every system using it; a `_MainTex` not in the project draws the
+    built-in particle texture (note `texture-missing`); `m_RemovedGameObjects` is honoured; render mode None (5)
+    imports with the renderer disabled; `object` matches an exact path first and refuses an ambiguous name; a `dest`
+    inside the Unity project is refused; any exception from a malformed file becomes an import error (CLI exit 1).
+  - `JASPERENGINE_FRAME_STATS=1` logs `particles_sim_ms` (and the alive count) with the engine's frame stats;
+    `tools/fixtures/particles/bench` is the 2000-particle, six-module benchmark.
