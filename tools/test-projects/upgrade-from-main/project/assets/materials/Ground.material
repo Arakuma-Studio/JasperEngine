@@ -1,0 +1,22 @@
+baseColorFactor: [1, 1, 1, 1]
+metallicFactor: 0
+roughnessFactor: 0.9
+alphaCutoff: 0.5
+foliageTransmission: 0
+alphaMode: AUTO
+emissiveFactor: [0, 0, 0]
+baseColorTexture:
+  textureType: 2D
+  source: path
+  path: assets/textures/ground.png
+  minFilter: linear
+  magFilter: linear
+  wrapU: repeat
+  wrapV: repeat
+  releaseDataAfterLoad: true
+baseColorTexCoord: 0
+metallicRoughnessTexCoord: 0
+occlusionTexCoord: 0
+emissiveTexCoord: 0
+normalTexCoord: 0
+name: assets/materials/Ground.material

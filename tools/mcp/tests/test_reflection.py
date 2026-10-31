@@ -73,13 +73,15 @@ def first_difference(actual: str, expected: str) -> str:
 # from the scene: a save writes what the last frame laid out, so they follow the editor's window
 # layout, not the code under test (S26's fix of a stray scrollbar made the Scene view 11 px wider
 # and moved every one of them). They are masked in the goldens and in the re-saves alike:
-# - a RectTransform's scissor, the UI layout's clip rectangle in canvas pixels (Derived);
+# - a RectTransform's scissor, the UI layout's clip rectangle in canvas pixels (Derived): no
+#   longer written at all (NotWritten, found by tools/ci/upgrade_from_main), so its lines are
+#   dropped from the goldens (captured before) rather than masked;
 # - an autoResize camera's clips and aspect, which updateCamera sets from the canvas each frame
 #   (an orthographic camera its clips, a perspective one its aspect); a camera without autoResize
 #   keeps its own and is compared.
 VIEW_MASKED = "<view>"
 CAMERA_VIEW_KEYS = ("leftClip", "rightClip", "bottomClip", "topClip", "aspect")
-SCISSOR_LINE = re.compile(r"^(\s*)scissor: .*$")
+SCISSOR_LINE = re.compile(r"^\s*scissor: .*$")
 CAMERA_LINE = re.compile(r"^(\s*)camera:\s*$")
 CAMERA_VIEW_LINE = re.compile(r"^(\s*)(" + "|".join(CAMERA_VIEW_KEYS) + r"): .*$")
 CODE_CAMERA = re.compile(r"^\s*CameraComponent (\w+);\s*$")
@@ -92,9 +94,7 @@ def masked_view(text: str) -> str:
     i = 0
     while i < len(lines):
         line = lines[i]
-        scissor = SCISSOR_LINE.match(line.rstrip("\n"))
-        if scissor:
-            out.append(f"{scissor.group(1)}scissor: {VIEW_MASKED}\n")
+        if SCISSOR_LINE.match(line.rstrip("\n")):
             i += 1
             continue
         camera = CAMERA_LINE.match(line.rstrip("\n"))
@@ -171,7 +171,9 @@ def normalized_source(text: str, project: Path) -> str:
     return masked_view_code(text.replace(str(project), "<project>").replace(project.as_posix(), "<project>"))
 
 
-def compare_or_update(path: Path, actual: str, what: str, mismatches: list[str]) -> None:
+def compare_or_update(path: Path, actual: str, what: str, mismatches: list[str], golden_filter=None) -> None:
+    """golden_filter: applied to the golden before the comparison (masked_view: the goldens were
+    captured with the scissor lines the editor no longer writes)."""
     if UPDATE:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(actual, encoding="utf-8", newline="")
@@ -180,6 +182,8 @@ def compare_or_update(path: Path, actual: str, what: str, mismatches: list[str])
         mismatches.append(f"{what}: no golden {path.relative_to(harness.REPO)}")
         return
     expected = path.read_text(encoding="utf-8")
+    if golden_filter:
+        expected = golden_filter(expected)
     if expected != actual:
         mismatches.append(f"{what} differs from {path.relative_to(harness.REPO)}: {first_difference(actual, expected)}")
 
@@ -235,7 +239,8 @@ async def resave(ed: Editor, project: Path, name: str, mismatches: list[str], so
             previous, text = text, (project / rel).read_text(encoding="utf-8")
             if text == previous:
                 break
-        compare_or_update(GOLDEN / name / (rel + ".golden"), normalized_scene(text), f"{name}/{rel}", mismatches)
+        compare_or_update(GOLDEN / name / (rel + ".golden"), normalized_scene(text), f"{name}/{rel}", mismatches,
+                          golden_filter=masked_view)
     prefabs = sorted(p.relative_to(project).as_posix() for p in project.rglob("*.prefab")
                      if ".jasperengine" not in p.parts)
     for rel in prefabs:
@@ -243,7 +248,8 @@ async def resave(ed: Editor, project: Path, name: str, mismatches: list[str], so
         await ed.call("prefab_mode", action="save", allow_data_loss=True)
         await ed.call("prefab_mode", action="close", unsaved="discard")
         text = (project / rel).read_text(encoding="utf-8")
-        compare_or_update(GOLDEN / name / (rel + ".golden"), masked_view(text), f"{name}/{rel}", mismatches)
+        compare_or_update(GOLDEN / name / (rel + ".golden"), masked_view(text), f"{name}/{rel}", mismatches,
+                          golden_filter=masked_view)
     await ed.call("save_project")
     compare_or_update(GOLDEN / name / "project.yaml.golden", (project / "project.yaml").read_text(encoding="utf-8"),
                       f"{name}/project.yaml", mismatches)

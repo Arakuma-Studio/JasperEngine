@@ -22,7 +22,9 @@ documents have their own effects library instead, `effect(<name>, ...)` in CSS (
 - **Mesh shaders go on a material**, per submesh: `set_properties` on the mesh with
   `submeshes[0].material.shader = "library:toon"` (`""` is the built-in Lit shader). A
   `.material` file takes the same keys (`create_material` / `update_material` `values`), and
-  linked submeshes follow it.
+  linked submeshes follow it. Setting a field of a linked submesh's material with
+  `set_properties` makes it the GameObject's own material (unlinked, the file untouched: a
+  linked submesh takes the file's values when its scene opens); `update_material` changes them all.
 - **UI, Points, Lines and Sky shaders** go in the component's `customShader`; their
   parameters are its `shaderUniforms`.
 - Values (paths of the submesh's material, `submeshes[N].material.<key>`):

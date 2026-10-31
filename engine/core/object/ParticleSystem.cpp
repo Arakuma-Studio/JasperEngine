@@ -44,6 +44,15 @@ namespace {
         Log::warn("[Particles] ParticleSystem.%s is deprecated: edit the effect's modules (edit_particle_effect, the Inspector, setFloat)", what);
     }
 
+    // an old Action member that has a new name now
+    void renamed(const char* what, const char* now){
+        static std::vector<std::string> noted;
+        if (std::find(noted.begin(), noted.end(), what) != noted.end())
+            return;
+        noted.push_back(what);
+        Log::warn("[Particles] ParticleSystem.%s is deprecated: use %s", what, now);
+    }
+
 }
 
 // the effect's old view, changed by a deprecated setter and written back: an asset effect
@@ -302,6 +311,31 @@ void ParticleSystem::reset(){
 
 bool ParticleSystem::isRunning() const{
     return isPlaying();
+}
+
+Entity ParticleSystem::getTarget() const{
+    renamed("target", "the system's own GameObject (it lives on its old target now)");
+    return entity;
+}
+
+void ParticleSystem::setSpeed(float speed){
+    renamed("speed", "playbackSpeed");
+    setPlaybackSpeed(speed);
+}
+
+float ParticleSystem::getSpeed() const{
+    renamed("speed", "playbackSpeed");
+    return getPlaybackSpeed();
+}
+
+float ParticleSystem::getTimeCount() const{
+    renamed("getTimeCount()", "time");
+    return getTime();
+}
+
+bool ParticleSystem::isStopped() const{
+    renamed("isStopped()", "not (isPlaying or isPaused)");
+    return !isPlaying() && !isPaused();
 }
 
 void ParticleSystem::setTarget(GameObject* target){

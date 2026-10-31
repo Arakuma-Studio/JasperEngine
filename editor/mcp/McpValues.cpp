@@ -2155,6 +2155,40 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                                          const std::string& propertyName, const PropertyData& property,
                                          const Json& value, std::string& error, std::function<void()> onChanged,
                                          const std::string* shaderReference, const std::set<std::string>* editedKeys) {
+    Command* command = buildPropertyCommandUnlinked(project, sceneId, entity, component, propertyName, property, value, error,
+                                                    onChanged, shaderReference, editedKeys);
+    if (!command || component != ComponentType::MeshComponent || !project) {
+        return command;
+    }
+    // "submeshes[N].material.<field>" (not the name: that is the link itself)
+    const size_t dot = propertyName.find("].material.");
+    unsigned int submesh = 0;
+    const std::string materialProperty = dot == std::string::npos ? std::string() : propertyName.substr(0, dot + 10);
+    if (materialProperty.empty() || !submeshMaterialIndex(materialProperty, submesh) ||
+            propertyName.compare(dot + 10, std::string::npos, ".name") == 0) {
+        return command;
+    }
+    // linked as the scene's load sees it: a material named by a .material file takes the file's
+    // values when the scene opens (a prefab instance's link comes from its prefab, in no
+    // link table of this scene)
+    SceneProject* sceneProject = project->getScene(sceneId);
+    const MeshComponent* mesh = sceneProject && sceneProject->scene ? sceneProject->scene->findComponent<MeshComponent>(entity) : nullptr;
+    const bool linked = !project->getMaterialFilePath(sceneId, entity, submesh).empty() ||
+                        (mesh && submesh < mesh->numSubmeshes && Util::isMaterialFile(mesh->submeshes[submesh].material.name.path));
+    if (!linked) {
+        return command;
+    }
+    auto* multi = new MultiPropertyCmd();
+    multi->addCommand(std::make_unique<UnlinkMaterialCmd>(project, sceneId, component, materialProperty, submesh,
+                                                          std::vector<Entity>{entity}));
+    multi->addCommand(std::unique_ptr<Command>(command));
+    return multi;
+}
+
+Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t sceneId, Entity entity, ComponentType component,
+                                                 const std::string& propertyName, const PropertyData& property,
+                                                 const Json& value, std::string& error, std::function<void()> onChanged,
+                                                 const std::string* shaderReference, const std::set<std::string>* editedKeys) {
     SceneProject* scene = project ? project->getScene(sceneId) : nullptr;
     if (!scene || !scene->scene) {
         error = "The scene is not loaded.";

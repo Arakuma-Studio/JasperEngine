@@ -1,0 +1,1496 @@
+[
+ {
+  "tool": "set_project_settings",
+  "arguments": {
+   "values": {
+    "player.product_name": "Upgrade Courier",
+    "player.identifier": "com.jasperengine.upgradecourier",
+    "player.version": "0.3",
+    "player.window_title": "Upgrade Courier",
+    "player.window_width": 960,
+    "player.window_height": 540,
+    "graphics.canvas_width": 960,
+    "graphics.canvas_height": 540,
+    "quality.vsync": false,
+    "tags_and_layers.tags": [
+     "Gem",
+     "Pickup"
+    ],
+    "tags_and_layers.layers": {
+     "8": "Pickups"
+    }
+   }
+  }
+ },
+ {
+  "tool": "sync_files",
+  "arguments": {}
+ },
+ {
+  "tool": "import_files",
+  "arguments": {
+   "sources": [
+    "/src/tools/fixtures/pose-animation/assets/models/robot_apose.gltf"
+   ],
+   "to_dir": "assets/models"
+  }
+ },
+ {
+  "tool": "generate_placeholder_art",
+  "arguments": {
+   "path": "assets/textures/ground.png",
+   "shape": "checker",
+   "color": "#5b8c5a",
+   "color2": "#3f6b40",
+   "cells": 8,
+   "width": 256,
+   "height": 256
+  }
+ },
+ {
+  "tool": "generate_placeholder_art",
+  "arguments": {
+   "path": "assets/textures/crate.png",
+   "shape": "rounded_rect",
+   "color": "#b07a3b",
+   "outline_color": "#5a3a14",
+   "outline_width": 10,
+   "corner_radius": 12,
+   "width": 128,
+   "height": 128,
+   "background": "#8a5a24"
+  }
+ },
+ {
+  "tool": "generate_placeholder_art",
+  "arguments": {
+   "path": "assets/sprites/ball.png",
+   "shape": "circle",
+   "color": "#ffd166",
+   "outline_color": "#7a5500",
+   "outline_width": 3,
+   "width": 64,
+   "height": 64
+  }
+ },
+ {
+  "tool": "generate_placeholder_art",
+  "arguments": {
+   "path": "assets/sprites/ground2d.png",
+   "shape": "rect",
+   "color": "#4a4e69",
+   "width": 64,
+   "height": 16
+  }
+ },
+ {
+  "tool": "generate_placeholder_art",
+  "arguments": {
+   "path": "assets/sprites/cloud.png",
+   "shape": "ellipse",
+   "color": "#f1faee",
+   "width": 128,
+   "height": 64
+  }
+ },
+ {
+  "tool": "generate_placeholder_art",
+  "arguments": {
+   "path": "assets/sprites/flag.png",
+   "shape": "gradient",
+   "color": "#e63946",
+   "color2": "#457b9d",
+   "direction": "horizontal",
+   "width": 128,
+   "height": 32
+  }
+ },
+ {
+  "tool": "create_material",
+  "arguments": {
+   "path": "assets/materials/Ground.material",
+   "values": {
+    "baseColorTexture": "assets/textures/ground.png",
+    "roughnessFactor": 0.9,
+    "metallicFactor": 0.0
+   }
+  }
+ },
+ {
+  "tool": "create_material",
+  "arguments": {
+   "path": "assets/materials/Crate.material",
+   "values": {
+    "baseColorTexture": "assets/textures/crate.png",
+    "roughnessFactor": 0.7
+   }
+  }
+ },
+ {
+  "tool": "create_material",
+  "arguments": {
+   "path": "assets/materials/Gem.material",
+   "values": {
+    "baseColorFactor": [
+     0.25,
+     0.8,
+     1.0,
+     1.0
+    ],
+    "emissiveFactor": [
+     0.1,
+     0.4,
+     0.6
+    ],
+    "metallicFactor": 0.3,
+    "roughnessFactor": 0.2
+   }
+  }
+ },
+ {
+  "tool": "create_script",
+  "arguments": {
+   "kind": "lua",
+   "name": "Arena",
+   "content": "-- Arena 2D director: three balls on Rigidbody 2Ds; the arrow keys push the first one.\n---@class Arena : ScriptInstance\nlocal Arena = {\n    properties = {\n        { name = \"duration\", displayName = \"Duration (frames)\", type = \"int\", default = 180 },\n        { name = \"push\", displayName = \"Push (m/s per step)\", type = \"float\", default = 0.12 },\n        { name = \"cloud\", displayName = \"Cloud\", type = \"Sprite\" },\n    }\n}\n\nlocal T = require(\"lib.transcript\")\n\nfunction Arena:init()\n    T.enter(\"Arena2D\")\n    T.schedule(\"Arena2D\", { { Input.KEY_RIGHT, 30, 60 }, { Input.KEY_LEFT, 90, 105 } })\n    self.balls = {}\n    for i = 1, 3 do\n        local e = self.scene:findEntity(\"Ball \" .. i)\n        if e ~= 0 then self.balls[#self.balls + 1] = Rigidbody2D(self.scene, e) end\n    end\n    self.hits = 0\n    RegisterEvent(self, self.scene:getPhysicsSystem().beginContact2D, \"onBeginContact\")\n    RegisterEngineEvent(self, \"onFixedUpdate\")\n    RegisterEngineEvent(self, \"onPostUpdate\")\n    T.log(\"setup\", #self.balls, self.cloud ~= nil)\nend\n\nfunction Arena:onBeginContact(bodyA, shapeA, bodyB, shapeB)\n    self.hits = self.hits + 1\nend\n\nfunction Arena:onFixedUpdate()\n    local ball = self.balls[1]\n    if not ball then return end\n    local dir = 0\n    if T.held(Input.KEY_RIGHT) then dir = dir + 1 end\n    if T.held(Input.KEY_LEFT) then dir = dir - 1 end\n    if dir ~= 0 then\n        ball:applyLinearImpulseToCenter(Vector2(dir * self.push * ball:getMass(), 0), true)\n    end\nend\n\nfunction Arena:onPostUpdate()\n    local f = T.frame\n    if f % 10 == 0 then\n        for i, ball in ipairs(self.balls) do\n            T.log(\"ball\", i, ball.position, ball.linearVelocity, ball.angle)\n        end\n    end\n    if f % 30 == 0 and self.cloud then\n        T.log(\"cloud\", self.cloud.position)\n    end\n    if f == self.duration then\n        T.log(\"summary\", self.hits > 0)\n        T.finish()\n    end\n    T.step()\nend\n\nreturn Arena\n",
+   "overwrite": true
+  }
+ },
+ {
+  "tool": "create_script",
+  "arguments": {
+   "kind": "lua",
+   "name": "Beacon",
+   "content": "-- The beacon bobs with an Animation Clip on its Animation Player; the clip's event calls\n-- onBeaconPulse.\n---@class Beacon : ScriptInstance\nlocal Beacon = {\n    properties = {\n        { name = \"clip\", displayName = \"Clip\", type = \"string\", default = \"Hover\" },\n    }\n}\n\nlocal T = require(\"lib.transcript\")\n\nfunction Beacon:init()\n    self.go = GameObject(self.scene, self.entity)\n    self.player = self.go:getAnimationPlayer()\n    self.pulses = 0\n    self.started = -1\n    RegisterEngineEvent(self, \"onUpdate\")\nend\n\nfunction Beacon:onUpdate()\n    if not self.player then return end\n    if self.started < 0 then\n        -- clips load asynchronously: the timeline starts with the clip\n        if self.player:isLoaded() then\n            self.player:play(self.clip)\n            self.started = T.frame\n        end\n        return\n    end\n    local n = T.frame - self.started\n    if n % 15 == 0 and n <= 240 then\n        local state = self.player:getState(self.clip)\n        T.logAt(\"beacon\", n, \"clip\", state.time, state.normalizedTime, self.player:isPlaying(self.clip),\n                self.go.position, self.pulses)\n    end\nend\n\nfunction Beacon:onBeaconPulse(strength, label)\n    self.pulses = self.pulses + 1\n    T.state.pulses = T.state.pulses + 1\n    T.logAt(\"beacon\", T.frame - self.started, \"pulse\", self.pulses, strength, label)\nend\n\nreturn Beacon\n",
+   "overwrite": true
+  }
+ },
+ {
+  "tool": "create_script",
+  "arguments": {
+   "kind": "lua",
+   "name": "CameraFollow",
+   "content": "-- The main camera follows the Player from an offset, smoothly.\n---@class CameraFollow : ScriptInstance\nlocal CameraFollow = {\n    properties = {\n        { name = \"target\", displayName = \"Target\", type = \"GameObject\" },\n        { name = \"offset\", displayName = \"Offset\", type = \"vector3\", default = { 0, 6, 11 } },\n        { name = \"smoothing\", displayName = \"Smoothing\", type = \"float\", default = 4.0 },\n    }\n}\n\nfunction CameraFollow:init()\n    self.camera = Camera(self.scene, self.entity)\n    RegisterEngineEvent(self, \"onUpdate\")\nend\n\nfunction CameraFollow:onUpdate()\n    if not self.target then return end\n    local t = self.target:getWorldPosition()\n    local p = self.camera.position\n    local k = math.min(1, Engine.deltatime * self.smoothing)\n    local goal = Vector3(t.x + self.offset.x, t.y + self.offset.y, t.z + self.offset.z)\n    self.camera.position = p + (goal - p) * k\n    self.camera:setTarget(t.x, t.y, t.z)\nend\n\nreturn CameraFollow\n",
+   "overwrite": true
+  }
+ },
+ {
+  "tool": "create_script",
+  "arguments": {
+   "kind": "lua",
+   "name": "Gem",
+   "content": "-- A gem: spins, and is collected when the Player comes close.\n---@class Gem : ScriptInstance\nlocal Gem = {\n    properties = {\n        { name = \"value\", displayName = \"Value\", type = \"int\", default = 1 },\n        { name = \"spinSpeed\", displayName = \"Spin Speed\", type = \"float\", default = 90.0 },\n        { name = \"radius\", displayName = \"Pickup Radius\", type = \"float\", default = 1.1 },\n    }\n}\n\nlocal T = require(\"lib.transcript\")\n\nfunction Gem:init()\n    self.go = GameObject(self.scene, self.entity)\n    local player = self.scene:findEntity(\"Player\")\n    -- the courier's body: its Transform is interpolated for drawing (see Level.lua)\n    self.player = player ~= 0 and Rigidbody(self.scene, player) or nil\n    self.angle = 0\n    self.collected = false\n    T.state.gems = (T.state.gems or 0) + 1\n    RegisterEngineEvent(self, \"onUpdate\")\nend\n\nfunction Gem:onUpdate()\n    if self.collected then return end\n    self.angle = (self.angle + self.spinSpeed * Engine.deltatime) % 360\n    self.go:setRotation(0, self.angle, 0)\n    if self.player then\n        local p = self.player.position\n        local g = self.go:getWorldPosition()\n        local dx, dz = p.x - g.x, p.z - g.z\n        if dx * dx + dz * dz < self.radius * self.radius and math.abs(p.y - g.y) < 2.0 then\n            self:collect()\n        end\n    end\nend\n\nfunction Gem:collect()\n    self.collected = true\n    T.state.score = T.state.score + self.value\n    T.state.pickups = T.state.pickups + 1\n    T.log(\"pickup\", self.go.name, self.value, T.state.score)\n    -- the Director plays the pickup sound and the burst where the gem was\n    T.state.pending = T.state.pending or {}\n    table.insert(T.state.pending, self.go:getWorldPosition())\n    self.go:setActive(false)\nend\n\nreturn Gem\n",
+   "overwrite": true
+  }
+ },
+ {
+  "tool": "create_script",
+  "arguments": {
+   "kind": "lua",
+   "name": "HudUI",
+   "content": "-- The HTML HUD of Level 1: the score and the gems collected.\n---@class HudUI : ScriptInstance\nlocal HudUI = { properties = {} }\n\nlocal T = require(\"lib.transcript\")\n\nfunction HudUI:init()\n    self.doc = UIDocument(self.scene, self.entity)\n    RegisterEngineEvent(self, \"onUpdate\")\nend\n\nfunction HudUI:onUpdate()\n    local score = self.doc:getElementById(\"score\")\n    local gems = self.doc:getElementById(\"gems\")\n    if score then score.textContent = tostring(T.state.score) end\n    if gems then\n        gems.textContent = \"gems \" .. T.state.pickups .. \"/\" .. (T.state.gems or 0)\n        if T.state.gems and T.state.pickups >= T.state.gems then gems.classList:add(\"all\") end\n    end\nend\n\nreturn HudUI\n",
+   "overwrite": true
+  }
+ },
+ {
+  "tool": "create_script",
+  "arguments": {
+   "kind": "lua",
+   "name": "LegacyHud",
+   "content": "-- The HUD child scene (the engine's own UI components): a score Text, a time Progressbar.\n---@class LegacyHud : ScriptInstance\nlocal LegacyHud = {\n    properties = {\n        { name = \"label\", displayName = \"Score Label\", type = \"Text\" },\n        { name = \"timeBar\", displayName = \"Time Bar\", type = \"Progressbar\" },\n        { name = \"duration\", displayName = \"Duration (frames)\", type = \"int\", default = 360 },\n    }\n}\n\nlocal T = require(\"lib.transcript\")\n\nfunction LegacyHud:init()\n    RegisterEngineEvent(self, \"onUpdate\")\nend\n\nfunction LegacyHud:onUpdate()\n    -- first what the previous frame showed (its score was final), then this frame's values\n    if T.scene == \"Level1\" and T.frame % 30 == 0 and self.label and self.timeBar then\n        T.log(\"legacy_hud\", self.label.text, self.timeBar.value)\n    end\n    if self.label then self.label.text = \"Score \" .. T.state.score end\n    if self.timeBar then self.timeBar.value = math.min(1, T.frame / self.duration) end\nend\n\nreturn LegacyHud\n",
+   "overwrite": true
+  }
+ },
+ {
+  "tool": "create_script",
+  "arguments": {
+   "kind": "lua",
+   "name": "Level",
+   "content": "-- Level 1 director: counts the frames, plays the pickup feedback, prints the transcript and\n-- moves on to the next scene.\n---@class Level : ScriptInstance\nlocal Level = {\n    properties = {\n        { name = \"duration\", displayName = \"Duration (frames)\", type = \"int\", default = 360 },\n        { name = \"nextScene\", displayName = \"Next Scene\", type = \"string\", default = \"Arena2D\" },\n        { name = \"pickupSound\", displayName = \"Pickup Sound\", type = \"AudioSource\" },\n        { name = \"burst\", displayName = \"Pickup Burst\", type = \"ParticleSystem\" },\n        { name = \"hud\", displayName = \"HUD\", type = \"UIDocument\" },\n    }\n}\n\nlocal T = require(\"lib.transcript\")\n\nfunction Level:init()\n    T.enter(\"Level1\")\n    T.schedule(\"Level1\", {\n        { Input.KEY_RIGHT, 20, 80 }, { Input.KEY_UP, 80, 130 }, { Input.KEY_SPACE, 140, 142 },\n        { Input.KEY_LEFT, 150, 210 }, { Input.KEY_DOWN, 210, 250 }, { Input.KEY_SPACE, 260, 262 },\n    })\n    self.player = GameObject(self.scene, self.scene:findEntity(\"Player\"))\n    self.body = Rigidbody(self.scene, self.player.entity)\n    -- physics state is read from the bodies: a GameObject's Transform is drawn between the last\n    -- two fixed steps (physics interpolation), as far as the frame's leftover time, which a\n    -- loading frame changes\n    self.crates = {}\n    for i = 1, 3 do\n        local e = self.scene:findEntity(\"Crate \" .. i)\n        if e ~= 0 then self.crates[#self.crates + 1] = { name = \"Crate \" .. i, body = Rigidbody(self.scene, e) } end\n    end\n    RegisterEngineEvent(self, \"onUpdate\")\n    RegisterEngineEvent(self, \"onPostUpdate\")\n    T.log(\"setup\", #self.crates, T.state.gems or 0, self.pickupSound ~= nil, self.burst ~= nil, self.hud ~= nil)\nend\n\nfunction Level:onUpdate()\n    local pending = T.state.pending\n    if pending and #pending > 0 then\n        for _, position in ipairs(pending) do\n            if self.pickupSound then\n                self.pickupSound:stop()\n                self.pickupSound:play()\n                T.state.sfx = T.state.sfx + 1\n            end\n            if self.burst then\n                local fx = GameObject(self.scene, self.burst.target)\n                fx.position = position\n                self.burst:start()\n                T.state.bursts = T.state.bursts + 1\n            end\n        end\n        T.state.pending = {}\n    end\nend\n\nfunction Level:onPostUpdate()\n    local f = T.frame\n    if f % 10 == 0 then\n        T.log(\"player\", self.body.position, self.body.linearVelocity, T.state.score, T.state.pickups)\n    end\n    if f % 30 == 0 then\n        for _, crate in ipairs(self.crates) do\n            T.log(\"crate\", crate.name, crate.body.position, crate.body.rotation)\n        end\n        if self.hud then\n            local score = self.hud:getElementById(\"score\")\n            local gems = self.hud:getElementById(\"gems\")\n            T.log(\"hud\", score and score.textContent or \"?\", gems and gems.textContent or \"?\",\n                  gems ~= nil and gems.classList:contains(\"all\"))\n        end\n        T.log(\"fx\", T.state.sfx, T.state.bursts, self.burst ~= nil and self.burst:isRunning())\n    end\n    if f == self.duration then\n        T.log(\"summary\", T.state.score, T.state.pickups, T.state.pulses)\n        SceneManager.loadScene(self.nextScene)\n    end\n    T.step()\nend\n\nreturn Level\n",
+   "overwrite": true
+  }
+ },
+ {
+  "tool": "create_script",
+  "arguments": {
+   "kind": "lua",
+   "name": "Player",
+   "content": "-- The courier: a dynamic Rigidbody pushed by the arrow keys, Space jumps.\n---@class Player : ScriptInstance\nlocal Player = {\n    properties = {\n        { name = \"acceleration\", displayName = \"Acceleration\", type = \"float\", default = 14.0 },\n        { name = \"jumpSpeed\", displayName = \"Jump Speed\", type = \"float\", default = 5.5 },\n    }\n}\n\nlocal T = require(\"lib.transcript\")\n\nfunction Player:init()\n    self.go = GameObject(self.scene, self.entity)\n    self.body = Rigidbody(self.scene, self.entity)\n    self.jumps = 0\n    RegisterEngineEvent(self, \"onFixedUpdate\")\n    RegisterEngineEvent(self, \"onUpdate\")\nend\n\nfunction Player:onFixedUpdate()\n    local fx, fz = 0, 0\n    if T.held(Input.KEY_RIGHT) then fx = fx + 1 end\n    if T.held(Input.KEY_LEFT) then fx = fx - 1 end\n    if T.held(Input.KEY_UP) then fz = fz - 1 end\n    if T.held(Input.KEY_DOWN) then fz = fz + 1 end\n    if fx ~= 0 or fz ~= 0 then\n        -- a force of mass x acceleration: the body's mass comes from its collider and density\n        local f = self.body.mass * self.acceleration\n        self.body:applyForce(Vector3(fx * f, 0, fz * f))\n    end\nend\n\nfunction Player:onUpdate()\n    if T.pressed(Input.KEY_SPACE) then\n        local v = self.body.linearVelocity\n        self.body.linearVelocity = Vector3(v.x, self.jumpSpeed, v.z)\n        self.jumps = self.jumps + 1\n        T.log(\"jump\", self.jumps)\n    end\nend\n\nreturn Player\n",
+   "overwrite": true
+  }
+ },
+ {
+  "tool": "create_script",
+  "arguments": {
+   "kind": "lua",
+   "name": "Robot",
+   "content": "-- The robot waves with a Pose Animation on its Pose Animator.\n---@class Robot : ScriptInstance\nlocal Robot = {\n    properties = {\n        { name = \"speed\", displayName = \"Speed\", type = \"float\", default = 1.0 },\n    }\n}\n\nlocal T = require(\"lib.transcript\")\n\nfunction Robot:init()\n    self.anim = Model(self.scene, self.entity):getPoseAnimator()\n    self.started = -1\n    self.finished = 0\n    self.anim.onFinish = function() self.finished = self.finished + 1 end\n    RegisterEngineEvent(self, \"onUpdate\")\nend\n\nfunction Robot:onUpdate()\n    if self.started < 0 then\n        -- the model loads asynchronously: the timeline starts with the animation\n        if self.anim:isLoaded() then\n            self.anim:setSpeed(self.speed)\n            self.anim:play()\n            self.started = T.frame\n            T.logAt(\"robot\", 0, \"poses\", self.anim:getPoseCount(), self.anim:getPoseName(0), self.anim:getLength())\n        end\n        return\n    end\n    local n = T.frame - self.started\n    if n % 20 == 0 and n <= 240 then\n        T.logAt(\"robot\", n, \"pose\", self.anim:getTime(), self.anim:isPlaying(), self.finished)\n    end\nend\n\nreturn Robot\n",
+   "overwrite": true
+  }
+ },
+ {
+  "tool": "create_script",
+  "arguments": {
+   "kind": "lua",
+   "name": "Title",
+   "content": "-- Title screen: an HTML UI menu. Enter (or a click on Play) starts the game.\n---@class Title : ScriptInstance\nlocal Title = {\n    properties = {\n        { name = \"nextScene\", displayName = \"Next Scene\", type = \"string\", default = \"Level1\" },\n        { name = \"startDelay\", displayName = \"Start Delay (frames)\", type = \"int\", default = 6 },\n    }\n}\n\nlocal T = require(\"lib.transcript\")\n\nfunction Title:init()\n    T.enter(\"Title\")\n    T.schedule(\"Title\", { { Input.KEY_ENTER, 30, 32 } })\n    self.doc = UIDocument(self.scene, self.entity)\n    self.startAt = -1\n    self.clicks = 0\n    self.onPlay = function(event)\n        self.clicks = self.clicks + 1\n        self:start(\"click\")\n    end\n    RegisterEvent(self, self.doc.onLoad, \"bind\")\n    self:bind()\n    RegisterEngineEvent(self, \"onUpdate\")\n    RegisterEngineEvent(self, \"onPostUpdate\")\nend\n\nfunction Title:bind()\n    local play = self.doc:getElementById(\"play\")\n    if play then play:addEventListener(\"click\", self.onPlay) end\nend\n\nfunction Title:start(how)\n    if self.startAt >= 0 then return end\n    self.startAt = T.frame + self.startDelay\n    local status = self.doc:getElementById(\"status\")\n    if status then\n        status.textContent = \"Starting (\" .. how .. \")\"\n        status.classList:add(\"ready\")\n    end\n    T.log(\"start\", how)\nend\n\nfunction Title:onUpdate()\n    if T.pressed(Input.KEY_ENTER) then self:start(\"enter\") end\n    local ticks = self.doc:getElementById(\"ticks\")\n    if ticks then ticks.textContent = \"frame \" .. T.frame end\n    if self.startAt >= 0 and T.frame == self.startAt then\n        T.log(\"load\", self.nextScene)\n        SceneManager.loadScene(self.nextScene)\n    end\nend\n\nfunction Title:onPostUpdate()\n    if T.frame % 10 == 0 then\n        local ticks = self.doc:getElementById(\"ticks\")\n        local status = self.doc:getElementById(\"status\")\n        T.log(\"ui\", ticks and ticks.textContent or \"?\", status and status.textContent or \"?\",\n              status ~= nil and status.classList:contains(\"ready\"), self.clicks)\n    end\n    T.step()\nend\n\nreturn Title\n",
+   "overwrite": true
+  }
+ },
+ {
+  "tool": "write_file",
+  "arguments": {
+   "path": "lib/transcript.lua",
+   "content": "-- Behaviour transcript of the upgrade fixture (tools/ci/upgrade_from_main).\n-- Every scene's Director counts the scene's frames and prints the gameplay state as lines\n--   T|<scene>|<frame>|<key>|<value>|...\n-- that an old and a new editor (or player) must print identically. Shared by every script of\n-- the game through require: one table for the whole play session.\nlocal T = {\n    scene = \"\",\n    frame = 0,        -- frames since the scene's Director started (its onPostUpdate counts them)\n    total = 0,        -- frames since the game started\n    done = false,     -- the last scene ended its run\n    state = { score = 0, pickups = 0, sfx = 0, bursts = 0, pulses = 0, contacts = 0 },\n}\n\n-- Autopilot: the game plays its own input schedule (exported players, the web), instead of\n-- the keys an agent sends through the editor's send_input.\nT.autopilot = (os.getenv ~= nil and os.getenv(\"UPGRADE_AUTOPILOT\") == \"1\") or Engine.platform == Platform.Web\n-- The autopilot also fixes the clock: every frame advances exactly 1/60 s whatever the machine's\n-- speed (the editor runs do the same through the play tool's fixed_fps)\nif T.autopilot then\n    Engine.fixedDeltatime = 1 / 60\nend\n-- Exported desktop players quit after the last scene when asked to\nT.exitAtEnd = os.getenv ~= nil and os.getenv(\"UPGRADE_EXIT_AT_END\") == \"1\"\n\nlocal function num(v)\n    local s = string.format(\"%.3f\", v)\n    if s == \"-0.000\" then s = \"0.000\" end\n    return s\nend\n\nfunction T.fmt(v)\n    local t = type(v)\n    if t == \"number\" then\n        if math.type(v) == \"integer\" then return tostring(v) end\n        return num(v)\n    elseif t == \"boolean\" then\n        return v and \"true\" or \"false\"\n    elseif t == \"nil\" then\n        return \"nil\"\n    elseif t == \"string\" then\n        return v\n    end\n    -- Vector2 / Vector3 / Vector4 / Quaternion userdata\n    local ok, x = pcall(function() return v.x end)\n    if ok and x ~= nil then\n        local parts = { num(v.x), num(v.y) }\n        local okz, z = pcall(function() return v.z end)\n        if okz and z ~= nil then parts[#parts + 1] = num(z) end\n        local okw, w = pcall(function() return v.w end)\n        if okw and w ~= nil then parts[#parts + 1] = num(w) end\n        return \"(\" .. table.concat(parts, \",\") .. \")\"\n    end\n    return tostring(v)\nend\n\nfunction T.log(key, ...)\n    if T.done then return end   -- after the end line: a player left running (the web) adds nothing\n    local parts = { \"T\", T.scene, tostring(T.frame), key }\n    for i = 1, select(\"#\", ...) do\n        parts[#parts + 1] = T.fmt((select(i, ...)))\n    end\n    print(table.concat(parts, \"|\"))\nend\n\n-- A line on a timeline of its own: frames counted from when something started (a clip, a\n-- model that loads asynchronously), so the scene frame it started on stays out of the line\nfunction T.logAt(timeline, frame, key, ...)\n    if T.done then return end\n    local parts = { \"T\", T.scene, timeline .. \"+\" .. tostring(frame), key }\n    for i = 1, select(\"#\", ...) do\n        parts[#parts + 1] = T.fmt((select(i, ...)))\n    end\n    print(table.concat(parts, \"|\"))\nend\n\nfunction T.enter(scene)\n    T.scene = scene\n    T.frame = 0\n    T.log(\"enter\", T.autopilot)\nend\n\n-- Called once per frame by the scene's Director, from onPostUpdate (after every onUpdate)\nfunction T.step()\n    T.frame = T.frame + 1\n    T.total = T.total + 1\nend\n\nfunction T.finish()\n    T.log(\"end\", T.total, T.state.score)\n    T.done = true\n    if T.exitAtEnd then\n        io.stdout:flush()\n        os.exit(0)\n    end\nend\n\n-- Input: the real keys, or the autopilot's schedule of the scene ({key, from, to} frames)\n-- (public: the editor-driven runs read it to send the same keys through send_input)\nT.schedules = {}\nfunction T.schedule(scene, list)\n    T.schedules[scene] = list\nend\n\nfunction T.held(key)\n    if not T.autopilot then\n        return Input.isKeyPressed(key)\n    end\n    for _, s in ipairs(T.schedules[T.scene] or {}) do\n        if s[1] == key and T.frame >= s[2] and T.frame < s[3] then return true end\n    end\n    return false\nend\n\n-- True on the first frame a key is held (scripts keep no per-key state)\nlocal previous = {}\nfunction T.pressed(key)\n    local now = T.held(key)\n    local id = T.scene .. \":\" .. tostring(key)\n    local was = previous[id]\n    previous[id] = now\n    return now and not was\nend\n\nreturn T\n"
+  }
+ },
+ {
+  "tool": "write_file",
+  "arguments": {
+   "path": "assets/ui/hud.css",
+   "content": "body { margin: 0; font-family: sans-serif; color: #ffffff; }\n.hud { position: absolute; top: 12px; right: 16px; display: flex; gap: 16px; padding: 8px 14px;\n       background-color: rgba(0, 0, 0, 0.55); border-radius: 8px; }\n.score { font-size: 26px; color: #ffd166; }\n.gems { font-size: 18px; }\n.gems.all { color: #8fe388; }\n"
+  }
+ },
+ {
+  "tool": "write_file",
+  "arguments": {
+   "path": "assets/ui/hud.html",
+   "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <title>HUD</title>\n  <link rel=\"stylesheet\" href=\"hud.css\">\n</head>\n<body>\n  <div class=\"hud\">\n    <span id=\"score\" class=\"score\">0</span>\n    <span id=\"gems\" class=\"gems\">gems 0</span>\n  </div>\n</body>\n</html>\n"
+  }
+ },
+ {
+  "tool": "write_file",
+  "arguments": {
+   "path": "assets/ui/title.css",
+   "content": ":root { --accent: #f2a541; --panel: rgba(16, 22, 38, 0.88); --text: #f4f6fb; }\n* { box-sizing: border-box; }\nhtml { background: linear-gradient(160deg, #1d3557, #0b0c16 75%); }\nbody { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;\n       font-family: sans-serif; color: var(--text); }\n.menu { width: 420px; padding: 28px; display: flex; flex-direction: column; gap: 14px;\n        background: var(--panel); border: 2px solid rgba(255, 255, 255, 0.15); border-radius: 14px; }\n.title { margin: 0; font-size: 40px; text-align: center; color: var(--accent); }\n.subtitle { margin: 0; text-align: center; opacity: 0.75; }\n.btn { padding: 12px 16px; font-size: 20px; color: var(--text); border: 0; border-radius: 10px;\n       background-color: #3a5a8c; }\n.btn.primary { background-color: #e07a1f; }\n.status { margin: 0; text-align: center; }\n.status.ready { color: #8fe388; }\n.ticks { margin: 0; text-align: right; font-size: 14px; opacity: 0.6; }\n"
+  }
+ },
+ {
+  "tool": "write_file",
+  "arguments": {
+   "path": "assets/ui/title.html",
+   "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <title>Upgrade Courier</title>\n  <link rel=\"stylesheet\" href=\"title.css\">\n</head>\n<body>\n  <main class=\"menu\">\n    <h1 id=\"title\" class=\"title\">Upgrade Courier</h1>\n    <p class=\"subtitle\">collect the gems, mind the crates</p>\n    <button id=\"play\" class=\"btn primary\">Play</button>\n    <p id=\"status\" class=\"status\">Press Enter or click Play</p>\n    <p id=\"ticks\" class=\"ticks\">frame 0</p>\n  </main>\n</body>\n</html>\n"
+  }
+ },
+ {
+  "tool": "edit_animation",
+  "arguments": {
+   "clip": "assets/anim/Hover.anim",
+   "create": {},
+   "wrap": "loop",
+   "frame_rate": 30,
+   "tracks": [
+    {
+     "path": "",
+     "channel": "position",
+     "relative": true,
+     "keys": [
+      {
+       "time": 0,
+       "value": [
+        0,
+        0,
+        0
+       ]
+      },
+      {
+       "time": 0.5,
+       "value": [
+        0,
+        0.6,
+        0
+       ],
+       "ease": "quad_out"
+      },
+      {
+       "time": 1.0,
+       "value": [
+        0,
+        0,
+        0
+       ],
+       "ease": "quad_in"
+      }
+     ]
+    },
+    {
+     "path": "",
+     "channel": "rotation",
+     "keys": [
+      {
+       "time": 0,
+       "value": {
+        "euler": [
+         0,
+         0,
+         0
+        ]
+       }
+      },
+      {
+       "time": 1.0,
+       "value": {
+        "euler": [
+         0,
+         180,
+         0
+        ]
+       }
+      }
+     ]
+    }
+   ],
+   "events": [
+    {
+     "time": 0.5,
+     "function": "onBeaconPulse",
+     "args": [
+      1,
+      "top"
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "tool": "edit_pose_animation",
+  "arguments": {
+   "path": "assets/anim/RobotWave.poseanim",
+   "create": {
+    "template": "Wave",
+    "preview_model": "assets/models/robot_apose.gltf"
+   }
+  }
+ },
+ {
+  "tool": "create_scene",
+  "arguments": {
+   "path": "scenes/Title.scene",
+   "name": "Title",
+   "type": "2D"
+  }
+ },
+ {
+  "tool": "create_ui_document",
+  "arguments": {
+   "scene": "scenes/Title.scene",
+   "html": "assets/ui/title.html",
+   "name": "TitleMenu",
+   "script": false
+  }
+ },
+ {
+  "tool": "attach_script",
+  "arguments": {
+   "scene": "scenes/Title.scene",
+   "entity": "TitleMenu",
+   "path": "Title.lua"
+  }
+ },
+ {
+  "tool": "save_scene",
+  "arguments": {
+   "scene": "scenes/Title.scene"
+  }
+ },
+ {
+  "tool": "close_scene",
+  "arguments": {
+   "scene": "New Scene",
+   "unsaved": "discard"
+  }
+ },
+ {
+  "tool": "create_scene",
+  "arguments": {
+   "path": "scenes/Level1.scene",
+   "name": "Level1",
+   "type": "3D"
+  }
+ },
+ {
+  "tool": "set_properties",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Directional Light",
+   "values": {
+    "light": {
+     "shadows": true
+    }
+   }
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "type": "point_light",
+   "name": "Lamp",
+   "position": [
+    -3,
+    4,
+    2
+   ],
+   "values": {
+    "light": {
+     "shadows": true,
+     "intensity": 3.0,
+     "range": 12.0
+    }
+   }
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "type": "cube",
+   "name": "Floor",
+   "position": [
+    0,
+    -0.25,
+    0
+   ],
+   "scale": [
+    40,
+    0.5,
+    40
+   ]
+  }
+ },
+ {
+  "tool": "link_material",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Floor",
+   "material": "assets/materials/Ground.material"
+  }
+ },
+ {
+  "tool": "edit_colliders",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Floor",
+   "body_type": "static",
+   "add": [
+    {
+     "shape": "box"
+    }
+   ]
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "type": "sphere",
+   "name": "Player",
+   "position": [
+    0,
+    0.6,
+    0
+   ]
+  }
+ },
+ {
+  "tool": "edit_colliders",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Player",
+   "body_type": "dynamic",
+   "add": [
+    {
+     "shape": "sphere"
+    }
+   ]
+  }
+ },
+ {
+  "tool": "attach_script",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Player",
+   "path": "Player.lua"
+  }
+ },
+ {
+  "tool": "set_script_properties",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Player",
+   "values": {
+    "acceleration": 3.0
+   }
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "type": "cube",
+   "name": "Crate 1",
+   "position": [
+    4,
+    0.5,
+    -1
+   ]
+  }
+ },
+ {
+  "tool": "link_material",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Crate 1",
+   "material": "assets/materials/Crate.material"
+  }
+ },
+ {
+  "tool": "edit_colliders",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Crate 1",
+   "body_type": "dynamic",
+   "add": [
+    {
+     "shape": "box"
+    }
+   ]
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "type": "cube",
+   "name": "Crate 2",
+   "position": [
+    4,
+    1.51,
+    -1
+   ]
+  }
+ },
+ {
+  "tool": "link_material",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Crate 2",
+   "material": "assets/materials/Crate.material"
+  }
+ },
+ {
+  "tool": "edit_colliders",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Crate 2",
+   "body_type": "dynamic",
+   "add": [
+    {
+     "shape": "box"
+    }
+   ]
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "type": "cube",
+   "name": "Crate 3",
+   "position": [
+    4,
+    2.52,
+    -1
+   ]
+  }
+ },
+ {
+  "tool": "link_material",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Crate 3",
+   "material": "assets/materials/Crate.material"
+  }
+ },
+ {
+  "tool": "edit_colliders",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Crate 3",
+   "body_type": "dynamic",
+   "add": [
+    {
+     "shape": "box"
+    }
+   ]
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "type": "camera",
+   "name": "Main Camera",
+   "position": [
+    0,
+    6,
+    11
+   ],
+   "values": {
+    "camera": {
+     "type": "perspective"
+    }
+   }
+  }
+ },
+ {
+  "tool": "set_main_camera",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Main Camera"
+  }
+ },
+ {
+  "tool": "attach_script",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Main Camera",
+   "path": "CameraFollow.lua"
+  }
+ },
+ {
+  "tool": "set_script_properties",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Main Camera",
+   "values": {
+    "target": "Player"
+   }
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "type": "torus",
+   "name": "Gem",
+   "position": [
+    0,
+    0.8,
+    0
+   ],
+   "scale": [
+    0.4,
+    0.4,
+    0.4
+   ]
+  }
+ },
+ {
+  "tool": "link_material",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Gem",
+   "material": "assets/materials/Gem.material"
+  }
+ },
+ {
+  "tool": "attach_script",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Gem",
+   "path": "Gem.lua"
+  }
+ },
+ {
+  "tool": "create_particles",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "preset": "magic",
+   "name": "Sparkle",
+   "parent": "Gem",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rate": 12,
+   "max_particles": 64,
+   "autoplay": true,
+   "loop": true
+  }
+ },
+ {
+  "tool": "create_prefab",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Gem/Sparkle",
+   "path": "prefabs/Sparkle.prefab"
+  }
+ },
+ {
+  "tool": "create_prefab",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Gem",
+   "path": "prefabs/Gem.prefab"
+  }
+ },
+ {
+  "tool": "rename_entity",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Gem",
+   "name": "Gem A"
+  }
+ },
+ {
+  "tool": "set_transform",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Gem A",
+   "position": [
+    1.6,
+    0.8,
+    0
+   ]
+  }
+ },
+ {
+  "tool": "create_prefab_variant",
+  "arguments": {
+   "base": "prefabs/Gem.prefab",
+   "path": "prefabs/Gem Gold.prefab"
+  }
+ },
+ {
+  "tool": "prefab_mode",
+  "arguments": {
+   "action": "open",
+   "prefab": "prefabs/Gem Gold.prefab",
+   "auto_save": false
+  }
+ },
+ {
+  "tool": "get_scene_tree",
+  "arguments": {
+   "scene": "735800631"
+  }
+ },
+ {
+  "tool": "set_script_properties",
+  "arguments": {
+   "scene": "735800631",
+   "entity": "1001",
+   "values": {
+    "value": 10
+   }
+  }
+ },
+ {
+  "tool": "set_transform",
+  "arguments": {
+   "scene": "735800631",
+   "entity": "1001",
+   "scale": [
+    0.55,
+    0.55,
+    0.55
+   ]
+  }
+ },
+ {
+  "tool": "prefab_mode",
+  "arguments": {
+   "action": "save",
+   "scene": "735800631"
+  }
+ },
+ {
+  "tool": "prefab_mode",
+  "arguments": {
+   "action": "close"
+  }
+ },
+ {
+  "tool": "instantiate_prefab",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "prefab": "prefabs/Gem.prefab",
+   "name": "Gem B",
+   "position": [
+    2.6,
+    0.8,
+    -0.6
+   ]
+  }
+ },
+ {
+  "tool": "instantiate_prefab",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "prefab": "prefabs/Gem Gold.prefab",
+   "name": "Gem C",
+   "position": [
+    1.8,
+    0.8,
+    -2.7
+   ]
+  }
+ },
+ {
+  "tool": "instantiate_prefab",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "prefab": "prefabs/Gem.prefab",
+   "name": "Gem D",
+   "position": [
+    -2,
+    0.8,
+    -3
+   ]
+  }
+ },
+ {
+  "tool": "instantiate_prefab",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "prefab": "prefabs/Gem Gold.prefab",
+   "name": "Gem E",
+   "position": [
+    6,
+    0.8,
+    4
+   ]
+  }
+ },
+ {
+  "tool": "set_script_properties",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Gem B",
+   "values": {
+    "value": 3
+   }
+  }
+ },
+ {
+  "tool": "set_transform",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Gem B",
+   "scale": [
+    0.5,
+    0.25,
+    0.5
+   ]
+  }
+ },
+ {
+  "tool": "set_entity_state",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Gem B/Sparkle",
+   "active": false
+  }
+ },
+ {
+  "tool": "set_script_properties",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Gem D",
+   "values": {
+    "spinSpeed": 240.0
+   }
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "type": "cylinder",
+   "name": "Beacon",
+   "position": [
+    -4,
+    1,
+    1
+   ],
+   "scale": [
+    0.5,
+    1,
+    0.5
+   ]
+  }
+ },
+ {
+  "tool": "add_component",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Beacon",
+   "component": "animationplayer",
+   "values": {
+    "animationplayer": {
+     "clips": [
+      {
+       "clip": "assets/anim/Hover.anim"
+      }
+     ],
+     "playAutomatically": false
+    }
+   }
+  }
+ },
+ {
+  "tool": "attach_script",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Beacon",
+   "path": "Beacon.lua"
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "type": "model",
+   "name": "Robot",
+   "model": "assets/models/robot_apose.gltf",
+   "position": [
+    -1,
+    0,
+    -6
+   ]
+  }
+ },
+ {
+  "tool": "add_component",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Robot",
+   "component": "poseanimator",
+   "values": {
+    "poseanimator": {
+     "animation": "assets/anim/RobotWave.poseanim",
+     "autoplay": false
+    }
+   }
+  }
+ },
+ {
+  "tool": "attach_script",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Robot",
+   "path": "Robot.lua"
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "type": "audio_source",
+   "name": "PickupSound",
+   "values": {
+    "audiosource": {
+     "filename": "assets/audio/pickup.wav",
+     "volume": 0.6
+    }
+   }
+  }
+ },
+ {
+  "tool": "create_particles",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "preset": "sparks",
+   "name": "PickupFX",
+   "position": [
+    0,
+    1,
+    0
+   ],
+   "autoplay": false,
+   "loop": false,
+   "bursts": [
+    {
+     "time": 0,
+     "count": 24
+    }
+   ]
+  }
+ },
+ {
+  "tool": "get_scene_tree",
+  "arguments": {
+   "scene": "scenes/Level1.scene"
+  }
+ },
+ {
+  "tool": "rename_entity",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "1024",
+   "name": "PickupBurst"
+  }
+ },
+ {
+  "tool": "create_ui_document",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "html": "assets/ui/hud.html",
+   "name": "HUD",
+   "script": false
+  }
+ },
+ {
+  "tool": "attach_script",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "HUD",
+   "path": "HudUI.lua"
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "type": "empty",
+   "name": "Director"
+  }
+ },
+ {
+  "tool": "attach_script",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Director",
+   "path": "Level.lua"
+  }
+ },
+ {
+  "tool": "set_script_properties",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "entity": "Director",
+   "values": {
+    "pickupSound": "PickupSound",
+    "hud": "HUD",
+    "burst": "PickupBurst"
+   }
+  }
+ },
+ {
+  "tool": "save_scene",
+  "arguments": {
+   "scene": "scenes/Level1.scene"
+  }
+ },
+ {
+  "tool": "create_scene",
+  "arguments": {
+   "path": "scenes/HUD.scene",
+   "name": "HUD",
+   "type": "UI"
+  }
+ },
+ {
+  "tool": "create_ui",
+  "arguments": {
+   "scene": "scenes/HUD.scene",
+   "root": {
+    "type": "container",
+    "name": "HUDRoot",
+    "layout": {
+     "anchor": "top_left",
+     "size": [
+      320,
+      90
+     ],
+     "position": [
+      16,
+      16
+     ]
+    },
+    "children": [
+     {
+      "type": "text",
+      "name": "ScoreLabel",
+      "text": "Score 0",
+      "font_size": 28,
+      "layout": {
+       "anchor": "top_left",
+       "size": [
+        300,
+        36
+       ],
+       "position": [
+        0,
+        0
+       ]
+      }
+     },
+     {
+      "type": "progress_bar",
+      "name": "TimeBar",
+      "value": 0.0,
+      "layout": {
+       "anchor": "top_left",
+       "size": [
+        300,
+        20
+       ],
+       "position": [
+        0,
+        48
+       ]
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "tool": "attach_script",
+  "arguments": {
+   "scene": "scenes/HUD.scene",
+   "entity": "HUDRoot",
+   "path": "LegacyHud.lua"
+  }
+ },
+ {
+  "tool": "set_script_properties",
+  "arguments": {
+   "scene": "scenes/HUD.scene",
+   "entity": "HUDRoot",
+   "values": {
+    "label": "HUDRoot/ScoreLabel",
+    "timeBar": "HUDRoot/TimeBar"
+   }
+  }
+ },
+ {
+  "tool": "save_scene",
+  "arguments": {
+   "scene": "scenes/HUD.scene"
+  }
+ },
+ {
+  "tool": "set_child_scene",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "child": "scenes/HUD.scene",
+   "start_active": true,
+   "loaded_inline": true
+  }
+ },
+ {
+  "tool": "save_scene",
+  "arguments": {
+   "scene": "scenes/Level1.scene"
+  }
+ },
+ {
+  "tool": "create_scene",
+  "arguments": {
+   "path": "scenes/Arena2D.scene",
+   "name": "Arena2D",
+   "type": "2D"
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene",
+   "type": "sprite",
+   "name": "Ground",
+   "position": [
+    30,
+    20,
+    0
+   ],
+   "values": {
+    "sprite": {
+     "width": 900,
+     "height": 40
+    },
+    "mesh": {
+     "submeshes[0].material.baseColorTexture": "assets/sprites/ground2d.png"
+    }
+   }
+  }
+ },
+ {
+  "tool": "edit_colliders",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene",
+   "entity": "Ground",
+   "body_type": "static",
+   "add": [
+    {
+     "shape": "box"
+    }
+   ]
+  }
+ },
+ {
+  "tool": "set_properties",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene",
+   "entity": "Ground",
+   "values": {
+    "rigidbody2d": {
+     "colliders[0].contactEvents": true
+    }
+   }
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene",
+   "type": "sprite",
+   "name": "Ball",
+   "values": {
+    "sprite": {
+     "width": 48,
+     "height": 48
+    },
+    "mesh": {
+     "submeshes[0].material.baseColorTexture": "assets/sprites/ball.png"
+    }
+   }
+  }
+ },
+ {
+  "tool": "edit_colliders",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene",
+   "entity": "Ball",
+   "body_type": "dynamic",
+   "add": [
+    {
+     "shape": "circle",
+     "restitution": 0.5
+    }
+   ]
+  }
+ },
+ {
+  "tool": "set_properties",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene",
+   "entity": "Ball",
+   "values": {
+    "rigidbody2d": {
+     "colliders[0].contactEvents": true
+    }
+   }
+  }
+ },
+ {
+  "tool": "create_prefab",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene",
+   "entity": "Ball",
+   "path": "prefabs/Ball.prefab"
+  }
+ },
+ {
+  "tool": "delete_entities",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene",
+   "entities": [
+    "Ball"
+   ]
+  }
+ },
+ {
+  "tool": "instantiate_prefab",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene",
+   "prefab": "prefabs/Ball.prefab",
+   "name": "Ball 1",
+   "position": [
+    300,
+    300,
+    0
+   ]
+  }
+ },
+ {
+  "tool": "instantiate_prefab",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene",
+   "prefab": "prefabs/Ball.prefab",
+   "name": "Ball 2",
+   "position": [
+    480,
+    420,
+    0
+   ]
+  }
+ },
+ {
+  "tool": "instantiate_prefab",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene",
+   "prefab": "prefabs/Ball.prefab",
+   "name": "Ball 3",
+   "position": [
+    640,
+    360,
+    0
+   ]
+  }
+ },
+ {
+  "tool": "set_properties",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene",
+   "entity": "Ball 2",
+   "values": {
+    "mesh": {
+     "submeshes[0].material.baseColorFactor": [
+      0.6,
+      1.0,
+      0.6,
+      1.0
+     ]
+    }
+   }
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene",
+   "type": "sprite",
+   "name": "Cloud",
+   "position": [
+    200,
+    480,
+    0
+   ],
+   "values": {
+    "sprite": {
+     "width": 128,
+     "height": 64
+    },
+    "mesh": {
+     "submeshes[0].material.baseColorTexture": "assets/sprites/cloud.png"
+    }
+   }
+  }
+ },
+ {
+  "tool": "edit_animation",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene",
+   "target": "Cloud",
+   "name": "CloudDrift",
+   "autoplay": true,
+   "tweens": [
+    {
+     "type": "position",
+     "from": [
+      200,
+      480,
+      0
+     ],
+     "to": [
+      760,
+      480,
+      0
+     ],
+     "duration": 4.0,
+     "loop": true,
+     "ping_pong": true,
+     "ease": "sine_in_out"
+    }
+   ]
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene",
+   "type": "sprite",
+   "name": "Flag",
+   "position": [
+    860,
+    120,
+    0
+   ],
+   "values": {
+    "sprite": {
+     "width": 64,
+     "height": 32
+    },
+    "mesh": {
+     "submeshes[0].material.baseColorTexture": "assets/sprites/flag.png"
+    }
+   }
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene",
+   "type": "light_2d",
+   "name": "Glow",
+   "position": [
+    480,
+    300,
+    0
+   ]
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene",
+   "type": "empty",
+   "name": "Director"
+  }
+ },
+ {
+  "tool": "attach_script",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene",
+   "entity": "Director",
+   "path": "Arena.lua"
+  }
+ },
+ {
+  "tool": "set_script_properties",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene",
+   "entity": "Director",
+   "values": {
+    "cloud": "Cloud"
+   }
+  }
+ },
+ {
+  "tool": "save_scene",
+  "arguments": {
+   "scene": "scenes/Arena2D.scene"
+  }
+ },
+ {
+  "tool": "edit_build_scenes",
+  "arguments": {
+   "action": "set_start",
+   "scene": "scenes/Title.scene"
+  }
+ },
+ {
+  "tool": "save_scene",
+  "arguments": {
+   "all": true
+  }
+ },
+ {
+  "tool": "save_project",
+  "arguments": {}
+ }
+]

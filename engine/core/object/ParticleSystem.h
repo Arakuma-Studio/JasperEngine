@@ -95,6 +95,14 @@ namespace jasperengine{
         bool isRunning() const;
         void setTarget(GameObject* target);
         void setTarget(Entity target);
+        // the rest of the old Action's members an old script calls (each warns once): the
+        // target is where the system is now (its own GameObject), the speed its playback speed,
+        // the time count its time; stopped = neither playing nor paused
+        Entity getTarget() const;
+        void setSpeed(float speed);
+        float getSpeed() const;
+        float getTimeCount() const;
+        bool isStopped() const;
 
         void setMaxParticles(unsigned int maxParticles);
         unsigned int getMaxParticles() const;

@@ -976,7 +976,6 @@ const FieldEntry kBody_RectTransformComponent_fields[] = {
     JE_RF(RectTransformComponent, usingAnchors, 0x7f5d06b7u, Bool),
     JE_RF_ENTITY(RectTransformComponent, panel, 0xe5031745u, Entity),
     JE_RF(RectTransformComponent, containerBoxIndex, 0xfb9910e7u, Int),
-    JE_RF(RectTransformComponent, scissor, 0xc3910381u, Rect),
     JE_RF(RectTransformComponent, ignoreScissor, 0x7359ef13u, Bool),
     JE_RF(RectTransformComponent, ignoreEvents, 0x9d3f0286u, Bool),
 };

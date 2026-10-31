@@ -1,0 +1,21 @@
+{
+  "format": "jasperengine.anim",
+  "version": 1,
+  "guid": "393c56252d5ddae7ada3fdb465012bee",
+  "frame_rate": 30,
+  "wrap": "loop",
+  "tracks": [
+    {"path": "", "channel": "position", "relative": true, "keys": [
+      [0, [0, 0, 0]],
+      [0.5, [0, 0.6, 0], "quad_out"],
+      [1, [0, 0, 0], "quad_in"]
+    ]},
+    {"path": "", "channel": "rotation", "keys": [
+      [0, [0, 0, 0, 1]],
+      [1, [0, -1, 0, 4.37114e-08]]
+    ]}
+  ],
+  "events": [
+    {"time": 0.5, "function": "onBeaconPulse", "args": [1, "top"]}
+  ]
+}
