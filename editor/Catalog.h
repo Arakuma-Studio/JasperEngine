@@ -79,6 +79,9 @@ namespace jasperengine::editor{
         UpdateFlags_Joint2D_Params      = (uint64_t)1 << 44,
         // a Rigidbody 2D's gravity scale, damping, mass...: applied to the live body, no rebuild
         UpdateFlags_Rigidbody2D_Params  = (uint64_t)1 << 45,
+        // a script entry's enabled flag (or the list) changed: while the scene's scripts run,
+        // onEnable / onDisable as due (ScriptRuntime::refreshEntity)
+        UpdateFlags_Script_Enabled      = (uint64_t)1 << 46,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };

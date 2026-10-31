@@ -122,6 +122,12 @@ namespace jasperengine::editor{
         Project* project;
         SceneWindow* sceneWindow;
         Command* cmd;
+        // Commands that can run scripts at once while playing (a GameObject's Active and a
+        // script's enabled checkbox: onEnable / onDisable, which may instantiate or destroy and
+        // move the component arrays): run at the start of the next show(), when the Inspector
+        // holds no reference into the scene
+        std::vector<std::function<void()>> deferredCommands;
+        void runDeferredCommands();
 
         bool windowOpen;
         bool focusRequested;
