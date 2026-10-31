@@ -119,8 +119,8 @@ LIMITS.update({"user_settings": 550})
 LIMITS.update({"create_ragdoll": 900})
 # merged by the lead (ui-canvas-group + physics-3d): provisional sum of both increments
 # physics-contacts: get_runtime_entity's physics contacts / callbacks paid by a shorter description
-# (edit_colliders' receiver is in the guide); merged with main (ui-canvas-group, physics-3d): MEASURED
-TOTAL_LIMIT = 107440
+# (edit_colliders' receiver is in the guide); merged with main (ui-canvas-group, physics-3d): 151 tools measured 107438
+TOTAL_LIMIT = 107438
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
