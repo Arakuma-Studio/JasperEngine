@@ -117,6 +117,8 @@ TOTAL_LIMIT = 106700  # re-measured on the merged tree by the lead's verificatio
 # (re-measured on the merged tree below)
 LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 2400})
 TOTAL_LIMIT = 106700 + 2502
+# the Animator window (anim layers spec 11.4): focus_window's window enum gains "animator" (+11)
+TOTAL_LIMIT += 11
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

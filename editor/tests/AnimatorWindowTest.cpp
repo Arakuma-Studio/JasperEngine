@@ -322,7 +322,7 @@ TEST(AnimatorWindow, CreateStatesMakeATransitionSetAConditionUndoRedo){
     ASSERT_EQ(window.createState(run, false, nullptr), 1);
     EXPECT_EQ(window.selectedStates(), std::vector<int>({1}));
     EXPECT_EQ(doc->data().layers[0].states[0].name, "idle");
-    EXPECT_EQ(doc->data().layers[0].states[0].position[0], 300.0f);
+    EXPECT_EQ(doc->data().layers[0].states[0].position[0], 300.0f - animator::STATE_WIDTH * 0.5f) << "centred on the point";
     EXPECT_TRUE(anim::isClipGuid(doc->data().layers[0].states[0].clipGuid)) << "an .anim gets its GUID";
     const int parameter = window.addParameter(anim::ControllerParameterType::Float);
     ASSERT_EQ(parameter, 0);

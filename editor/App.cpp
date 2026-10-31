@@ -2315,6 +2315,13 @@ void editor::App::show(){
         }
     }
 
+    // the Animator window's edits are its controller file's: the project history
+    const bool animatorKeys = animatorWindow->isFocused();
+    if (!popupOpen && animatorKeys) {
+        if (isUndo) project.getProjectCommandHistory()->undo();
+        if (isRedo) project.getProjectCommandHistory()->redo();
+    }
+
     // clip edits of the Animation window are project files too (the window runs its own keys)
     const bool clipKeys = lastFocusedWindow == LastFocusedWindow::AnimationClip;
     const bool clipRedo = !poseKeys && clipRedoToProject;
@@ -2323,7 +2330,7 @@ void editor::App::show(){
         // a scene redo while the window takes the keys (the scene block below is off then)
         if (isRedo && !clipRedo && clipWindowKeys) CommandHandle::get(project.getSelectedSceneId())->redo();
     }
-    if (!popupOpen && clipRedo && isRedo) {
+    if (!popupOpen && clipRedo && isRedo && !animatorKeys) {
         project.getProjectCommandHistory()->redo();
     }
 
@@ -2358,7 +2365,7 @@ void editor::App::show(){
     }
 
     // Record routing undo from the Scene view keeps the scene's other keys (Delete, Ctrl+D...)
-    if (!popupOpen && !poseKeys && !spriteNormalsKeys && !(clipKeys && clipWindowKeys) && !projectWindow->isFocused() && !codeEditor->isFocused()){
+    if (!popupOpen && !poseKeys && !spriteNormalsKeys && !animatorKeys && !(clipKeys && clipWindowKeys) && !projectWindow->isFocused() && !codeEditor->isFocused()){
         uint32_t sceneId = project.getSelectedSceneId();
 
         // Update the Undo and Redo button logic (during a physics gesture or its settle, undo

@@ -625,7 +625,9 @@ void editor::InspectorWindow::drawAnimationPlayerLayers(ComponentType cpType, Sc
             ImGui::SetItemTooltip("The base layer's weight is always 1");
         }else{
             float weight = layer.weight;
-            if (ImGui::SliderFloat("##layer_weight", &weight, 0.0f, 1.0f, "%.2f")){
+            const bool weightChanged = ImGui::SliderFloat("##layer_weight", &weight, 0.0f, 1.0f, "%.2f");
+            UIProbe::item("player.layer." + std::to_string(index) + ".weight");
+            if (weightChanged){
                 weight = std::clamp(weight, 0.0f, 1.0f);
                 cmd = layerFieldCommand(project, sceneId, entity, snapshot, index, "weight", weight, &AnimationPlayerLayer::weight);
                 if (cmd) CommandHandle::get(sceneId)->addCommand(cmd);
@@ -709,9 +711,13 @@ void editor::InspectorWindow::drawPlayerClipLayerRow(ComponentType cpType, Scene
     const bool known = layer >= 0 && (size_t)layer < layers.size();
     const std::string current = known ? layers[(size_t)layer].name : "Layer " + std::to_string(layer) + " (missing: plays on the base)";
     ImGui::BeginDisabled(sceneProject->playState != ScenePlayState::STOPPED);
-    if (ImGui::BeginCombo("##clip_layer", current.c_str())){
+    const bool comboOpen = ImGui::BeginCombo("##clip_layer", current.c_str());
+    UIProbe::item("player.clip." + std::to_string(index) + ".layer");
+    if (comboOpen){
         for (size_t l = 0; l < layers.size(); l++){
-            if (ImGui::Selectable((layers[l].name + "##layer" + std::to_string(l)).c_str(), (int)l == layer) && (int)l != layer){
+            const bool picked = ImGui::Selectable((layers[l].name + "##layer" + std::to_string(l)).c_str(), (int)l == layer);
+            UIProbe::item("player.clip." + std::to_string(index) + ".layerOption." + std::to_string(l));
+            if (picked && (int)l != layer){
                 CommandHandle::get(sceneProject->id)->addCommandNoMerge(
                     new PropertyCmd<int>(project, sceneProject->id, entity, cpType, prefix + ".layer", (int)l));
             }
@@ -961,6 +967,7 @@ void editor::InspectorWindow::drawAvatarMaskAsset(const fs::path& asset){
         for (const animlayersui::FigureShape& shape : animlayersui::figureShapes()){
             const ImVec2 a(origin.x + shape.x0 * size.x, origin.y + shape.y0 * size.y);
             const ImVec2 b(origin.x + shape.x1 * size.x, origin.y + shape.y1 * size.y);
+            UIProbe::rect(std::string("mask.part.") + anim::avatarMaskPartName(shape.part), a.x, a.y, b.x, b.y);
             const float weight = data.hasHumanoid ? data.partWeight(shape.part) : data.defaultWeight;
             const ImU32 fill = weightColor(weight, data.hasHumanoid ? 1.0f : 0.35f);
             const ImU32 outline = (int)shape.part == hoveredPart ? IM_COL32(255, 255, 255, 255) : IM_COL32(20, 20, 20, 200);

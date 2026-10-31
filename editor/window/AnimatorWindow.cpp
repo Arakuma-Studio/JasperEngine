@@ -441,8 +441,9 @@ int editor::AnimatorWindow::createState(const std::string& clip, bool blendTree,
         }
     }
     if (at){
-        state.position[0] = std::round((*at)[0]);
-        state.position[1] = std::round((*at)[1]);
+        // centred on the clicked point
+        state.position[0] = std::round((*at)[0] - animator::STATE_WIDTH * 0.5f);
+        state.position[1] = std::round((*at)[1] - animator::STATE_HEIGHT * 0.5f);
         state.hasPosition = true;
     }
     const int index = animator::addState(data, layer, state);
@@ -937,7 +938,9 @@ void editor::AnimatorWindow::drawLeftPanel(float width, float height){
             drawLayersTab();
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem("Parameters")){
+        const bool parametersTab = ImGui::BeginTabItem("Parameters");
+        UIProbe::item("animator.tab.parameters");
+        if (parametersTab){
             drawParametersTab();
             ImGui::EndTabItem();
         }
@@ -1068,9 +1071,13 @@ void editor::AnimatorWindow::drawParametersTab(){
     ImGui::SetItemTooltip("Add a parameter");
     if (ImGui::BeginPopup("add_parameter")){
         if (ImGui::MenuItem("Float")) addParameter(anim::ControllerParameterType::Float);
+        UIProbe::item("animator.add_parameter.float");
         if (ImGui::MenuItem("Int")) addParameter(anim::ControllerParameterType::Int);
+        UIProbe::item("animator.add_parameter.int");
         if (ImGui::MenuItem("Bool")) addParameter(anim::ControllerParameterType::Bool);
+        UIProbe::item("animator.add_parameter.bool");
         if (ImGui::MenuItem("Trigger")) addParameter(anim::ControllerParameterType::Trigger);
+        UIProbe::item("animator.add_parameter.trigger");
         ImGui::EndPopup();
     }
     const bool live = isLive();
@@ -1144,6 +1151,7 @@ void editor::AnimatorWindow::drawParametersTab(){
                 }
                 break;
         }
+        UIProbe::item("animator.parameter." + std::to_string(p) + ".value");
         if (changed){
             if (live){
                 setLiveParameter(parameter.name, value);
@@ -1288,6 +1296,7 @@ void editor::AnimatorWindow::drawCanvas(float width, float height){
             isSelected = std::find(selectedStateList.begin(), selectedStateList.end(), state) != selectedStateList.end();
         }
         drawList->AddRectFilled(r0, r1, fill, rounding);
+        UIProbe::rect(state == -2 ? std::string("animator.any_state") : "animator.state." + std::to_string(state), r0.x, r0.y, r1.x, r1.y);
         if (state >= 0 && (state == liveCurrent || state == liveNext)){
             // the live state: a blue bar of its normalized time
             const float fraction = state == liveCurrent ? liveTime - std::floor(liveTime) : 0.0f;
@@ -1443,8 +1452,11 @@ void editor::AnimatorWindow::drawCanvas(float width, float height){
 
 void editor::AnimatorWindow::drawCanvasMenus(){
     if (ImGui::BeginPopup("canvas_menu")){
-        if (ImGui::BeginMenu("Create State")){
+        const bool createMenu = ImGui::BeginMenu("Create State");
+        UIProbe::item("animator.menu.create_state");
+        if (createMenu){
             if (ImGui::MenuItem("Empty")) createState("", false, &contextAt);
+            UIProbe::item("animator.menu.create_empty");
             if (ImGui::MenuItem("From Clip...")){
                 pickerAt = contextAt;
                 pickerStale = true;
@@ -1461,6 +1473,7 @@ void editor::AnimatorWindow::drawCanvasMenus(){
     }
     if (ImGui::BeginPopup("state_menu")){
         if (ImGui::MenuItem("Make Transition", nullptr, false, selectedStateList.size() == 1)) linkFrom = selectedStateList.front();
+        UIProbe::item("animator.menu.make_transition");
         if (ImGui::MenuItem("Set as Layer Default State", nullptr, false, selectedStateList.size() == 1)) setDefaultState(selectedStateList.front());
         if (ImGui::MenuItem("Copy", "Ctrl+C")) copySelection();
         if (ImGui::MenuItem("Delete", "Delete")) deleteSelection();
