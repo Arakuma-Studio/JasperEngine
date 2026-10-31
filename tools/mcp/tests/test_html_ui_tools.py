@@ -96,6 +96,9 @@ LIMITS.update({"get_pose_animation": 700, "edit_pose_animation": 1220})
 # fix FC: clips entries may be {name, wrap, interpolate, fps} objects (the detail in the guide), paid by
 # a shorter description: bake_vertex_animation 1977, total 106049
 LIMITS.update({"bake_vertex_animation": 2000})
+# physics-2d: edit_physics_material (396) and set_joint's motor / spring / limits / break /
+# enable_collision / anchor_space paid by moving set_joint's type lists and per-argument texts to
+# jasper://docs/physics (set_joint 1020 -> 756): 149 tools measured 106029
 TOTAL_LIMIT = 106100
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
