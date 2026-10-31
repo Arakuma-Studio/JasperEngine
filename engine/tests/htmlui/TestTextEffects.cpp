@@ -464,3 +464,168 @@ TEST_F(TextEffectDocumentTest, ReducedMotionReachesTheGlyphs){
     HtmlTextEffects::get().GetTextEffect(*found[0], first);
     EXPECT_FALSE(HtmlTextEffects::get().lastGlyphs()->reducedMotion);
 }
+
+// review fixes ----------------------------------------------------------------------------------
+
+// text-effect set to none and back to the same value starts it again
+TEST_F(TextEffectDocumentTest, NoneThenTheSameValueStartsAgain){
+    HtmlUIClock::setFixedTime(30.0);
+    load("<p id='line' style='text-effect: typewriter(10); text-effect-iteration: 1'>Hi there</p>");
+    Rml::Element* line = document->GetElementById("line");
+    ASSERT_NE(line, nullptr);
+    EventCount ended;
+    line->AddEventListener("texteffectend", &ended);
+    HtmlUIClock::setFixedTime(30.0);
+    frame();
+    HtmlUIClock::setFixedTime(31.0);
+    frame();
+    frame();
+    ASSERT_EQ(ended.count, 1);
+
+    line->SetProperty("text-effect", "none");
+    frame();
+    frame();
+    line->SetProperty("text-effect", "typewriter(10)");
+    frame();
+    frame();
+    EXPECT_EQ(ended.count, 1) << "typing again from the start";
+    HtmlUIClock::setFixedTime(32.0);
+    frame();
+    frame();
+    EXPECT_EQ(ended.count, 2);
+    line->RemoveEventListener("texteffectend", &ended);
+}
+
+// text-effect-time: game reads its start on the game clock, also for a value set at runtime
+TEST_F(TextEffectDocumentTest, GameTimeStartsOnTheGameClock){
+    load("<p id='line' style='text-effect: typewriter(10); text-effect-time: game'>Hi there</p>");
+    Rml::Element* line = document->GetElementById("line");
+    ASSERT_NE(line, nullptr);
+    std::vector<Rml::ElementText*> found = texts(line);
+    ASSERT_EQ(found.size(), 1u);
+    // the UI clock far from the game clock (which does not run here)
+    HtmlUIClock::setFixedTime(-100.0);
+    line->SetProperty("text-effect", "typewriter(20)");
+    frame();
+    int first = 0;
+    ASSERT_NE(HtmlTextEffects::get().GetTextEffect(*found[0], first), nullptr);
+    EXPECT_NEAR(HtmlTextEffects::get().lastGlyphs()->cycleTime, 0.0f, 1e-3f) << "not 100 s in (a UI-clock start)";
+    HtmlUIClock::setFixedTime(10.0);
+}
+
+// a new line wrap of the same text does not start a one-shot again
+TEST_F(TextEffectDocumentTest, ReWrapDoesNotRestart){
+    HtmlUIClock::setFixedTime(40.0);
+    load("<p id='line' style='width: 300px; text-effect: typewriter(10); text-effect-iteration: 1'>Hi there friend</p>");
+    Rml::Element* line = document->GetElementById("line");
+    ASSERT_NE(line, nullptr);
+    EventCount ended;
+    line->AddEventListener("texteffectend", &ended);
+    HtmlUIClock::setFixedTime(40.0);
+    frame();
+    HtmlUIClock::setFixedTime(42.0);
+    frame();
+    frame();
+    ASSERT_EQ(ended.count, 1);
+    // narrower: "Hi there" / "friend" on two lines, the same text
+    line->SetProperty("width", "90px");
+    frame();
+    frame();
+    HtmlUIClock::setFixedTime(45.0);
+    frame();
+    frame();
+    EXPECT_EQ(ended.count, 1) << "it did not type again";
+    line->RemoveEventListener("texteffectend", &ended);
+}
+
+// an effect over several paragraphs ends when the longest one did, and counts TMP's characters
+TEST_F(TextEffectDocumentTest, SeveralParagraphsEndWithTheLongest){
+    HtmlUIClock::setFixedTime(50.0);
+    load("<div id='box' style='text-effect: typewriter(10); text-effect-iteration: 1'><p>Hello there friend</p><p>Hi</p></div>");
+    Rml::Element* box = document->GetElementById("box");
+    ASSERT_NE(box, nullptr);
+    EventCount ended;
+    box->AddEventListener("texteffectend", &ended);
+    HtmlUIClock::setFixedTime(50.0);
+    frame();
+    // the short paragraph alone would be done at 0.2 s; the whole (18 visible characters) at 1.8 s
+    HtmlUIClock::setFixedTime(50.5);
+    frame();
+    frame();
+    EXPECT_EQ(ended.count, 0) << "the long paragraph is still typing";
+    HtmlUIClock::setFixedTime(51.9);
+    frame();
+    frame();
+    EXPECT_EQ(ended.count, 1);
+
+    std::vector<Rml::ElementText*> found = texts(box);
+    ASSERT_GE(found.size(), 1u);
+    int first = 0;
+    ASSERT_NE(HtmlTextEffects::get().GetTextEffect(*found[0], first), nullptr);
+    // the index runs on across the paragraphs (their texts are one chain): 16 + 2 visible
+    EXPECT_EQ(HtmlTextEffects::get().lastGlyphs()->count, 18);
+    EXPECT_EQ(HtmlTextEffects::get().lastGlyphs()->characters, 20) << "spaces count in TMP's timing";
+    box->RemoveEventListener("texteffectend", &ended);
+}
+
+// restartTextEffect() on an inner element restarts the whole effect it is part of
+TEST_F(TextEffectDocumentTest, RestartFromAnInnerElement){
+    HtmlUIClock::setFixedTime(60.0);
+    load("<p id='line' style='text-effect: typewriter(10); text-effect-iteration: 1'>Hi <b id='inner'>there</b></p>");
+    Rml::Element* line = document->GetElementById("line");
+    Rml::Element* inner = document->GetElementById("inner");
+    ASSERT_NE(inner, nullptr);
+    EventCount ended;
+    line->AddEventListener("texteffectend", &ended);
+    HtmlUIClock::setFixedTime(60.0);
+    frame();
+    HtmlUIClock::setFixedTime(61.0);
+    frame();
+    frame();
+    ASSERT_EQ(ended.count, 1);
+
+    HtmlTextEffects::get().restart(inner);
+    frame();
+    // both texts draw from the start: the "Hi " one shows nothing yet
+    std::vector<Rml::ElementText*> found = texts(line);
+    ASSERT_EQ(found.size(), 2u);
+    int first = 0;
+    ASSERT_NE(HtmlTextEffects::get().GetTextEffect(*found[0], first), nullptr);
+    EXPECT_NEAR(HtmlTextEffects::get().lastGlyphs()->cycleTime, 0.0f, 1e-3f);
+    HtmlUIClock::setFixedTime(62.0);
+    frame();
+    frame();
+    EXPECT_EQ(ended.count, 2);
+    line->RemoveEventListener("texteffectend", &ended);
+}
+
+// reduced motion holds a grow() still: the effect still ends (once)
+TEST_F(TextEffectDocumentTest, ReducedMotionEndsMotionOnlyEffects){
+    HtmlUIClock::setFixedTime(70.0);
+    load("<p id='line' style='text-effect: grow(2s)'>Grow</p>");
+    Rml::Element* line = document->GetElementById("line");
+    ASSERT_NE(line, nullptr);
+    EventCount ended;
+    line->AddEventListener("texteffectend", &ended);
+    HtmlTextEffects::get().setReducedMotion(context, true);
+    HtmlUIClock::setFixedTime(70.0);
+    frame();
+    frame();
+    frame();
+    HtmlUIClock::setFixedTime(70.1);
+    frame();
+    frame();
+    HtmlTextEffects::get().setReducedMotion(context, false);
+    EXPECT_EQ(ended.count, 1) << "ended at once, not every frame";
+    line->RemoveEventListener("texteffectend", &ended);
+}
+
+// grow() and unfold() take TMP's Amplitude third (default 1)
+TEST(TextEffectProperty, GrowAndUnfoldAmplitude){
+    HtmlTextEffect grow = parsed("grow(1s 0.5)");
+    ASSERT_EQ(grow.layers.size(), 1u);
+    EXPECT_FLOAT_EQ(grow.layers[0].amplitude, 1.0f);
+    HtmlTextEffect half = parsed("unfold(1s 0.5 0.5)");
+    ASSERT_EQ(half.layers.size(), 1u);
+    EXPECT_FLOAT_EQ(half.layers[0].amplitude, 0.5f);
+}

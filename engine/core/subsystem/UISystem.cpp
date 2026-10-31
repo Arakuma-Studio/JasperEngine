@@ -1908,6 +1908,14 @@ void UISystem::applyTextEffect(Entity entity, TextEffectComponent& effect, TextC
     const int count = (int)selectedGlyphs.size();
     for (int i = 0; i < count; i++)
         order[selectedGlyphs[(size_t)i].second] = i;
+    // TMP Effect times glyphs over the characters, spaces included: the selection's and the text's
+    const int textCharacters = (int)clusters.size();
+    int characters = 0;
+    if (byWords){
+        characters = (int)std::count(wordCodepoints.begin(), wordCodepoints.end(), true);
+    }else{
+        characters = std::max(0, std::min(rangeEnd, textCharacters) - std::min(rangeStart, textCharacters));
+    }
 
     const bool reduced = UISystem::isReducedMotion();
     const float fontSize = (float)text.fontSize;
@@ -1940,7 +1948,7 @@ void UISystem::applyTextEffect(Entity entity, TextEffectComponent& effect, TextC
 
         for (const TextEffectLayer& layer : effect.layers){
             const float layerTime = (float)(TextEffects::isOneShot(layer.type) ? effect.cycleTime : effect.time);
-            TextEffects::applyLayer(layer, order[g], count, layerTime, fontSize, reduced, state);
+            TextEffects::applyLayer(layer, order[g], count, layerTime, fontSize, reduced, state, characters, textCharacters);
         }
 
         const Vector3 rgb = Color::sRGBToLinear(Vector3(state.color.x, state.color.y, state.color.z));
@@ -1965,15 +1973,10 @@ void UISystem::applyTextEffect(Entity entity, TextEffectComponent& effect, TextC
         break;
     }
 
-    // the one-shot layers finished: every glyph reached its end
-    float oneShotLength = 0.0f;
+    // the one-shot layers finished: every glyph reached its end (a layer reduced motion holds
+    // still is done at once)
     bool anyOneShot = false;
-    for (const TextEffectLayer& layer : effect.layers){
-        if (!layer.enabled || !TextEffects::isOneShot(layer.type) || (reduced && TextEffects::isMotion(layer.type)))
-            continue;
-        anyOneShot = true;
-        oneShotLength = std::max(oneShotLength, TextEffects::oneShotLength(layer, count));
-    }
+    const float oneShotLength = TextEffects::effectLength(effect.layers.data(), effect.layers.size(), count, reduced, anyOneShot);
     if (anyOneShot && count > 0 && !effect.finished && effect.cycleTime >= (double)oneShotLength){
         effect.finished = true;
         completed = true;
@@ -2096,8 +2099,11 @@ void UISystem::updateTextEffects(double dt){
         applyTextEffect(entity, effect, *text, *ui, events.revealed, events.completed);
         effect.needApply = false;
 
-        // TMP Repeat: the one-shot layers again, the looping ones carry on
-        if (events.completed && effect.loop){
+        // TMP Repeat: the one-shot layers again, the looping ones carry on (not one that reduced
+        // motion holds still: it would complete every frame)
+        bool anyOneShot = false;
+        const bool repeats = TextEffects::effectLength(effect.layers.data(), effect.layers.size(), 1, UISystem::isReducedMotion(), anyOneShot) > 0.0f;
+        if (events.completed && effect.loop && repeats){
             effect.cycleTime = 0.0;
             effect.revealed = 0;
             effect.finished = false;
@@ -2324,7 +2330,12 @@ void UISystem::destroyText(TextComponent& text){
     text.atlasVersion = 0;
 
     if (text.stbtext){
-        text.stbtext.reset();
+        // an atlas of a raster scale or a distance field is one of many (each canvas scale,
+        // each padding): it goes with its last text; plain atlases stay pooled as before
+        if (text.rasterScale != 1.0f || text.sdfPadding > 0)
+            FontPool::release(text.stbtext);
+        else
+            text.stbtext.reset();
     }
 }
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // W3: screenshots, Scene view camera, window focus, Game view settings
+#include "Screen.h"
 #include "McpTools.h"
 #include "PlayViewCommon.h"
 
@@ -1214,6 +1215,12 @@ void configureGameViewTool(const CallPtr& call) {
             return;
         }
         settings.aspect = static_cast<int>(it - aspectNames().begin());
+        // an aspect replaces a fixed resolution, as the toolbar's Aspect entries do (a
+        // resolution given in the same call still wins: it is applied below)
+        settings.resolution.clear();
+        settings.resolutionWidth = 0;
+        settings.resolutionHeight = 0;
+        settings.resolutionDpi = 0.0f;
         changed.push_back("aspect");
     }
     if (args.contains("scale")) {
@@ -1358,7 +1365,8 @@ void configureGameViewTool(const CallPtr& call) {
         {"resolution", resolution},
         {"resolutions", resolutions},
         {"custom_resolutions", customResolutions},
-        {"screen_dpi", Platform::getSimulation().device ? Platform::getSimulation().device->dpi : Platform::getSimulation().dpi},
+        // Screen.dpi as Play reads it: the device's, a resolution preset's, else the host's
+        {"screen_dpi", Screen::getDpi()},
         {"changed", changed}
     };
     call->ok(std::string(changed.empty() ? "Game view settings: " : "Updated the Game view: ") + data.dump(), data);

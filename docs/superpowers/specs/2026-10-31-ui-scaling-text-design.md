@@ -581,3 +581,37 @@ spec was silent, ambiguous or did not fit the code:
     `text-effect` gradient colours parse with compat's CSS colour parser (no RmlUi needed: `jasperengine-editor
     check --ui` validated the guide's snippet without RmlUi and crashed); stops are `<color> [<percentage>]`
     words, so colours with inner spaces (`rgb(1 2 3)`) are not accepted there: use hex or names.
+15. **Second review.**
+    - `<particle-system>`:
+      - The prefab's whole hierarchy goes with the element, its document or a new `src`
+        (`ObjectManager::destroyImmediate`).
+      - None of its renderers draws.
+      - `play`/`pause`/`stop` before the prefab exists are queued (the last one wins over `autoplay`).
+      - `el:getParticleSystem()` is `nil` until then. C++ has `UIElement::hasParticleSystem()`; the C++
+        getter returns an empty handle.
+      - A bad `src` is HTMLUI-HTML-0029 in the document's diagnostics too.
+      - Texture-mode documents register their context's scene, so they work as screen ones do.
+    - Text atlases of a raster scale or a distance field are released with their last text
+      (`FontPool::release`); plain atlases stay pooled as before.
+    - TMP fidelity:
+      - One-shot timing uses TMP's character counts with spaces (`oneShotProgress(..., characters,
+        textCharacters)`).
+      - Grow and Unfold honour Amplitude (`LerpUnclamped`), whose default is 1 for those two types
+        (`TextEffects::defaultAmplitude`; written to files only when it differs).
+      - A type change moves an amplitude left at the old type's default to the new one's: Lua setters, and
+        Catalog edits (Inspector, MCP) through `TextEffectComponent::editedTypes`.
+      - HTML `grow()`/`unfold()` take the amplitude third.
+    - Reduced motion: an effect whose one-shot layers are all held still ends at once, and does not
+      repeat (it would end every frame).
+    - HTML driver:
+      - A scope whose element lost its effect is dropped, so setting it again starts afresh.
+      - The clock is settled before a start is read.
+      - A restart compares the text, so a new line wrap does not restart.
+      - Several inline formatting contexts end with the longest.
+      - `restartTextEffect()` regenerates the whole effect's texts.
+    - Editor:
+      - Edit mode lays the UI out with `Screen.dpi` as Play reads it (device, preset, host).
+      - `configure_game_view {aspect}` clears a fixed resolution.
+      - A hidden Game tab renders at the fixed resolution.
+      - The soft particle texture is project-relative (`assets/ui/particle_soft.png`).
+      - The Inspector lists every Text Effect layer up to the last used one, plus one.

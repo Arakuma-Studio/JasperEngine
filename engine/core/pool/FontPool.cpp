@@ -49,6 +49,27 @@ void FontPool::remove(const std::string& id){
 		map.erase(it);
 }
 
+void FontPool::release(std::shared_ptr<STBText>& text){
+	if (!text)
+		return;
+	auto& map = getMap();
+	for (auto it = map.begin(); it != map.end(); ++it){
+		if (it->second == text){
+			text.reset();
+			if (it->second.use_count() <= 1)
+				map.erase(it);
+			return;
+		}
+	}
+	text.reset();
+}
+
+bool FontPool::contains(const std::string& id){
+	auto& map = getMap();
+	auto it = map.find(id);
+	return it != map.end() && it->second;
+}
+
 void FontPool::clear(){
 	getMap().clear();
 }

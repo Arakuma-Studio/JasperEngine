@@ -57,6 +57,9 @@ namespace jasperengine {
 
         static void registerInstancer();
         static void releaseInstancer();
+        // the prefabs of `scene`'s elements no longer in a document (detached by a script, or
+        // with an ancestor) go; such an element makes its prefab again once attached
+        static void releaseDetached(Scene* scene);
 
         bool GetIntrinsicDimensions(Rml::Vector2f& dimensions, float& ratio) override;
 
@@ -65,6 +68,7 @@ namespace jasperengine {
         void pause();
         void clear();
         bool isPlaying() const;
+        // play / pause / stop before the prefab is made are queued (the last one applies)
         // the hidden entity's Particle System (NULL_ENTITY before it is made or without one)
         Scene* getScene() const;
         Entity getParticleEntity() const;
@@ -84,6 +88,9 @@ namespace jasperengine {
         bool instantiate();
         void applyAttributes();
         void fail(const std::string& message);
+
+        enum class Command { None, Play, Pause, Stop };
+        Command pending = Command::None;
 
         Scene* scene = nullptr;
         std::weak_ptr<char> sceneLifetime;

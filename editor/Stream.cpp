@@ -7014,7 +7014,8 @@ YAML::Node editor::Stream::encodeTextEffectLayer(const TextEffectLayer& layer) {
     YAML::Node node(YAML::NodeType::Map);
     node["type"] = TextEffects::typeName(layer.type);
     if (layer.enabled != d.enabled) node["enabled"] = layer.enabled;
-    if (layer.amplitude != d.amplitude) node["amplitude"] = layer.amplitude;
+    // (the default amplitude is the type's: 1 for Grow and Unfold)
+    if (layer.amplitude != TextEffects::defaultAmplitude(layer.type)) node["amplitude"] = layer.amplitude;
     if (layer.duration != d.duration) node["duration"] = layer.duration;
     if (layer.spread != d.spread) node["spread"] = layer.spread;
     if (layer.phaseStep != d.phaseStep) node["phaseStep"] = layer.phaseStep;
@@ -7044,6 +7045,7 @@ TextEffectLayer editor::Stream::decodeTextEffectLayer(const YAML::Node& node) {
         Log::warn("Unknown Text Effect type '%s'", node["type"].as<std::string>().c_str());
     }
     if (node["enabled"]) layer.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    layer.amplitude = TextEffects::defaultAmplitude(layer.type);
     if (node["amplitude"]) layer.amplitude = decodeFinite(node["amplitude"], layer.amplitude);
     if (node["duration"]) layer.duration = decodeFinite(node["duration"], layer.duration);
     if (node["spread"]) layer.spread = decodeFinite(node["spread"], layer.spread);
@@ -7105,6 +7107,8 @@ TextEffectComponent editor::Stream::decodeTextEffectComponent(const YAML::Node& 
             effect.layers[i] = decodeTextEffectLayer(node["layers"][i]);
         }
     }
+    for (size_t i = 0; i < effect.layers.size(); i++)
+        effect.editedTypes[i] = effect.layers[i].type;
     effect.autoPlay = node["autoPlay"] ? YamlNumbers::as<bool>(node["autoPlay"]) : d.autoPlay;
     effect.loop = node["loop"] ? YamlNumbers::as<bool>(node["loop"]) : d.loop;
     effect.useUnscaledTime = node["useUnscaledTime"] ? YamlNumbers::as<bool>(node["useUnscaledTime"]) : d.useUnscaledTime;

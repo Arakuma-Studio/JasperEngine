@@ -5729,6 +5729,17 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
     if (updateFlags & UpdateFlags_TextEffect){
         if (TextEffectComponent* effect = registry->findComponent<TextEffectComponent>(entity)){
             effect->needApply = true;
+            // a type changed: an amplitude left at the old type's default takes the new one's
+            // (Grow and Unfold use TMP's Amplitude, 1 = the whole change)
+            for (size_t i = 0; i < effect->layers.size(); i++){
+                TextEffectLayer& layer = effect->layers[i];
+                if (layer.type != effect->editedTypes[i]){
+                    const TextEffectType type = layer.type;
+                    layer.type = effect->editedTypes[i];
+                    TextEffects::setType(layer, type);
+                    effect->editedTypes[i] = type;
+                }
+            }
         }
     }
     if (updateFlags & (UpdateFlags_Text | UpdateFlags_Text_Atlas)){

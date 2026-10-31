@@ -39,7 +39,13 @@ void LuaBinding::registerHtmlUIVectorClasses(lua_State *L){
         .addFunction("stop", [](UIElement* self, lua_State* L) { checkElement(self, L); self->stop(); })
         // <particle-system> and text-effect (ui-scaling-text)
         .addFunction("clear", [](UIElement* self, lua_State* L) { checkElement(self, L); self->clear(); })
-        .addFunction("getParticleSystem", [](UIElement* self, lua_State* L) { checkElement(self, L); return self->getParticleSystem(); })
+        // nil before the prefab is made (document scripts, onLoad, edit mode) or when its src failed
+        .addFunction("getParticleSystem", [](UIElement* self, lua_State* L) -> luabridge::LuaRef {
+            checkElement(self, L);
+            if (!self->hasParticleSystem())
+                return luabridge::LuaRef(L);
+            return luabridge::LuaRef(L, self->getParticleSystem());
+        })
         .addFunction("restartTextEffect", [](UIElement* self, lua_State* L) { checkElement(self, L); self->restartTextEffect(); })
         .addFunction("seek", [](UIElement* self, float seconds, lua_State* L) { checkElement(self, L); self->seek(seconds); })
         .addFunction("setFrame", [](UIElement* self, float frame, lua_State* L) { checkElement(self, L); self->setFrame(frame); })

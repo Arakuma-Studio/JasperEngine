@@ -62,6 +62,9 @@ namespace jasperengine{
         Vector4 baseColor = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
         std::string appliedText;
         unsigned int appliedFontSize = 0;
+        // the layer types the last edit saw: an edit that changes a type moves an amplitude left
+        // at the old type's default to the new one's (TextEffects::setType; editor and MCP)
+        std::array<TextEffectType, MAX_TEXT_EFFECT_LAYERS> editedTypes{};
     };
 
 }

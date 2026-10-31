@@ -85,7 +85,8 @@ public:
     static bool canMoveLockedEntityOrder(Scene* scene, Entity source, Entity target, InsertionType type, std::string* reason = nullptr);
     static std::string makeUniqueEntityName(const std::string& baseName, const std::unordered_set<std::string>& existingNames);
     // the soft round particle image the UI Particle System starts with ("ui/particle_soft.png"
-    // in the assets, made once); its assets-relative path, "" when it cannot be written
+    // in the assets, made once); its project-relative path ("assets/ui/particle_soft.png", as
+    // Texture paths are), "" when it cannot be written
     static std::string ensureSoftParticleTexture(Project* project);
     static std::string makeUniqueEntityName(Scene* scene, const std::vector<Entity>& entities, const std::string& baseName, const std::unordered_set<Entity>& ignoredEntities = {});
 

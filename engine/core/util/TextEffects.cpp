@@ -77,12 +77,43 @@ bool TextEffects::isColor(TextEffectType type){
     return type == TextEffectType::Rainbow || type == TextEffectType::Gradient;
 }
 
-float TextEffects::oneShotProgress(int index, int count, float progress, float spread){
-    const float n = (float)std::max(count, 1);
+float TextEffects::defaultAmplitude(TextEffectType type){
+    return (type == TextEffectType::Grow || type == TextEffectType::Unfold) ? 1.0f : 0.15f;
+}
+
+void TextEffects::setType(TextEffectLayer& layer, TextEffectType type){
+    if (layer.amplitude == defaultAmplitude(layer.type))
+        layer.amplitude = defaultAmplitude(type);
+    layer.type = type;
+}
+
+float TextEffects::oneShotProgress(int index, int count, float progress, float spread, int characters, int textCharacters){
+    const float selection = (float)std::max(characters > 0 ? characters : count, 1);
+    const float total = (float)std::max(textCharacters > 0 ? textCharacters : (characters > 0 ? characters : count), 1);
     const float s = clamp01(spread);
-    const float start = lerp((float)index / n, 0.0f, s);
-    const float length = lerp(1.0f / n, 1.0f, s);
+    const float start = lerp((float)index / selection, 0.0f, s);
+    const float length = lerp(1.0f / total, 1.0f, s);
     return clamp01((std::min(progress, 1.0f) - start) / length);
+}
+
+float TextEffects::effectLength(const TextEffectLayer* layers, size_t layerCount, int count, bool reducedMotion, bool& oneShot){
+    oneShot = false;
+    float length = 0.0f;
+    for (size_t i = 0; i < layerCount; i++){
+        const TextEffectLayer& layer = layers[i];
+        if (!layer.enabled || !isOneShot(layer.type))
+            continue;
+        oneShot = true;
+        // held still by reduced motion: done at once
+        if (reducedMotion && isMotion(layer.type))
+            continue;
+        length = std::max(length, oneShotLength(layer, count));
+    }
+    return length;
+}
+
+float TextEffects::effectLength(const std::vector<TextEffectLayer>& layers, int count, bool reducedMotion, bool& oneShot){
+    return effectLength(layers.data(), layers.size(), count, reducedMotion, oneShot);
 }
 
 float TextEffects::revealTime(const TextEffectLayer& layer, int index, int count){
@@ -155,7 +186,7 @@ Vector4 TextEffects::hsl(float hue, float saturation, float lightness){
 }
 
 void TextEffects::applyLayer(const TextEffectLayer& layer, int index, int count, float time, float fontSize,
-                             bool reducedMotion, TextEffectGlyphState& glyph){
+                             bool reducedMotion, TextEffectGlyphState& glyph, int characters, int textCharacters){
     if (!layer.enabled || layer.type == TextEffectType::None || count <= 0)
         return;
     if (reducedMotion && isMotion(layer.type))
@@ -214,27 +245,33 @@ void TextEffects::applyLayer(const TextEffectLayer& layer, int index, int count,
         }
 
         case TextEffectType::FadeIn: {
-            glyph.color.w *= oneShotProgress(index, count, progress, layer.spread);
+            glyph.color.w *= oneShotProgress(index, count, progress, layer.spread, characters, textCharacters);
             break;
         }
 
         case TextEffectType::Grow: {
-            // TMP Effect Grow: the top edge rises from the bottom edge (vertices 1, 2 from 0, 3)
-            const float q = oneShotProgress(index, count, progress, layer.spread);
-            glyph.corners[0] = glyph.corners[3] + (glyph.corners[0] - glyph.corners[3]) * q;
-            glyph.corners[1] = glyph.corners[2] + (glyph.corners[1] - glyph.corners[2]) * q;
+            // TMP Effect Grow: the top edge rises from the bottom edge (vertices 1, 2 from 0, 3),
+            // then every corner LerpUnclamped(base, grown, Amplitude)
+            const float q = oneShotProgress(index, count, progress, layer.spread, characters, textCharacters);
+            const float a = std::isfinite(layer.amplitude) ? layer.amplitude : 1.0f;
+            const Vector2 grownTopLeft = glyph.corners[3] + (glyph.corners[0] - glyph.corners[3]) * q;
+            const Vector2 grownTopRight = glyph.corners[2] + (glyph.corners[1] - glyph.corners[2]) * q;
+            glyph.corners[0] = glyph.corners[0] + (grownTopLeft - glyph.corners[0]) * a;
+            glyph.corners[1] = glyph.corners[1] + (grownTopRight - glyph.corners[1]) * a;
             break;
         }
 
         case TextEffectType::Unfold: {
-            // TMP Effect Unfold: from the horizontal centre line
-            const float q = oneShotProgress(index, count, progress, layer.spread);
+            // TMP Effect Unfold: from the horizontal centre line, then LerpUnclamped by Amplitude
+            const float q = oneShotProgress(index, count, progress, layer.spread, characters, textCharacters);
+            const float a = std::isfinite(layer.amplitude) ? layer.amplitude : 1.0f;
             const Vector2 left = (glyph.corners[0] + glyph.corners[3]) * 0.5f;
             const Vector2 right = (glyph.corners[1] + glyph.corners[2]) * 0.5f;
-            glyph.corners[0] = left + (glyph.corners[0] - left) * q;
-            glyph.corners[3] = left + (glyph.corners[3] - left) * q;
-            glyph.corners[1] = right + (glyph.corners[1] - right) * q;
-            glyph.corners[2] = right + (glyph.corners[2] - right) * q;
+            const Vector2 middles[4] = {left, right, right, left};
+            for (int c = 0; c < 4; c++){
+                const Vector2 unfolded = middles[c] + (glyph.corners[c] - middles[c]) * q;
+                glyph.corners[c] = glyph.corners[c] + (unfolded - glyph.corners[c]) * a;
+            }
             break;
         }
 
@@ -246,7 +283,7 @@ void TextEffects::applyLayer(const TextEffectLayer& layer, int index, int count,
 
         case TextEffectType::Gradient: {
             // TMP Effect: the gradient at each glyph's progress, the period wrapping
-            const float q = oneShotProgress(index, count, fract(progress), layer.spread);
+            const float q = oneShotProgress(index, count, fract(progress), layer.spread, characters, textCharacters);
             glyph.color = mixColor(glyph.color, evaluateGradient(layer.gradient, q), layer.mix);
             break;
         }
@@ -307,6 +344,7 @@ std::vector<TextEffectLayer> TextEffects::fromTMPEffect(const char* effectType, 
     auto oneShot = [&](TextEffectType oneShotType){
         TextEffectLayer layer = base;
         layer.type = oneShotType;
+        layer.amplitude = amplitude;            // TMP: LerpUnclamped(base, shaped, Amplitude)
         layers.push_back(layer);
     };
 

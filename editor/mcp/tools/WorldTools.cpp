@@ -4518,7 +4518,7 @@ void createParticlesTool(const CallPtr& call) {
         if (!has(args, "texture") && scene->findComponent<PointsComponent>(emitter)) {
             const std::string soft = ProjectUtils::ensureSoftParticleTexture(target.project);
             if (!soft.empty() && !addCatalogProperties(target.project, target.scene, emitter, ComponentType::PointsComponent,
-                                                       Json{{"texture", (target.project->getAssetsDir() / soft).generic_string()}}, *multi, error)) {
+                                                       Json{{"texture", soft}}, *multi, error)) {
                 failWith("texture: " + error);
                 return;
             }

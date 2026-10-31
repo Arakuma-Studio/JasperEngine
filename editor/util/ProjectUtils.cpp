@@ -2449,7 +2449,8 @@ std::string editor::ProjectUtils::getEntityTypeName(Scene* scene, Entity entity)
 
 std::string editor::ProjectUtils::ensureSoftParticleTexture(Project* project) {
     if (!project) return "";
-    const std::string relative = "ui/particle_soft.png";
+    // project-relative, as texture paths are ("assets/ui/particle_soft.png")
+    const std::string relative = (project->getAssetsDir() / "ui" / "particle_soft.png").generic_string();
     const fs::path file = project->getAssetsPath() / "ui" / "particle_soft.png";
     std::error_code ec;
     if (fs::exists(file, ec)) return relative;

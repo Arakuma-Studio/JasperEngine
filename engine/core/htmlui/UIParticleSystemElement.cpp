@@ -11,12 +11,18 @@
 #include "component/ParticleSystemComponent.h"
 #include "component/PointsComponent.h"
 #include "component/Transform.h"
+#include "manager/ObjectManager.h"
 #include "manager/PrefabManager.h"
+#include "registry/EntityCloner.h"
+#include "htmlui/compat/DiagnosticCodes.h"
+#include "htmlui/compat/Diagnostics.h"
+#include "htmlui/compat/DocumentLoader.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "util/Color.h"
 
 #include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Context.h>
+#include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/ElementInstancer.h>
 #include <RmlUi/Core/Factory.h>
 #include <RmlUi/Core/Mesh.h>
@@ -25,6 +31,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <unordered_set>
+#include <vector>
 
 using namespace jasperengine;
 
@@ -33,6 +41,12 @@ namespace {
     std::unique_ptr<Rml::ElementInstancerGeneric<UIParticleSystemElement>>& particleInstancer(){
         static std::unique_ptr<Rml::ElementInstancerGeneric<UIParticleSystemElement>> value;
         return value;
+    }
+
+    // every element alive (releaseDetached)
+    std::unordered_set<UIParticleSystemElement*>& liveElements(){
+        static std::unordered_set<UIParticleSystemElement*> elements;
+        return elements;
     }
 
     Rml::byte toByte(float value){
@@ -113,10 +127,26 @@ bool UIParticleSource::material(Scene* scene, Entity emitter, std::string& textu
 RMLUI_RTTI_Define(UIParticleSystemElement)
 
 UIParticleSystemElement::UIParticleSystemElement(const Rml::String& tag): Rml::Element(tag){
+    liveElements().insert(this);
 }
 
 UIParticleSystemElement::~UIParticleSystemElement(){
+    liveElements().erase(this);
     destroyEntity();
+}
+
+void UIParticleSystemElement::releaseDetached(Scene* scene){
+    std::vector<UIParticleSystemElement*> detached;
+    for (UIParticleSystemElement* element : liveElements()){
+        if (element->scene == scene && element->root != NULL_ENTITY && !element->GetContext())
+            detached.push_back(element);
+    }
+    for (UIParticleSystemElement* element : detached){
+        if (!liveElements().count(element))
+            continue;
+        element->destroyEntity();
+        element->sourceDirty = true;
+    }
 }
 
 void UIParticleSystemElement::registerInstancer(){
@@ -138,15 +168,24 @@ bool UIParticleSystemElement::GetIntrinsicDimensions(Rml::Vector2f& dimensions, 
 
 void UIParticleSystemElement::fail(const std::string& message){
     error = message;
-    // HTMLUI-HTML-0029 (particle-system-source)
-    Log::warn("[HTML UI] HTMLUI-HTML-0029 <particle-system src=\"%s\">: %s", GetAttribute<Rml::String>("src", "").c_str(), message.c_str());
+    // HTMLUI-HTML-0029 (particle-system-source): logged and in the document's diagnostics
+    const std::string source = GetAttribute<Rml::String>("src", "");
+    Log::warn("[HTML UI] HTMLUI-HTML-0029 <particle-system src=\"%s\">: %s", source.c_str(), message.c_str());
+    if (Rml::ElementDocument* document = GetOwnerDocument()){
+        htmlui::compat::Diagnostic diagnostic;
+        diagnostic.code = htmlui::compat::codes::ParticleSystemSource;
+        diagnostic.message = "<particle-system src=\"" + source + "\">: " + message;
+        diagnostic.subject = "particle-system";
+        htmlui::compat::DocumentLoader::addRuntimeDiagnostic(document, diagnostic);
+    }
 }
 
 void UIParticleSystemElement::destroyEntity(){
     if (scene && !sceneLifetime.expired() && root != NULL_ENTITY && scene->isEntityCreated(root)){
         if (UIDocumentSystem* documents = scene->findSystem<UIDocumentSystem>().get())
             documents->removeRuntimeEntity(root);
-        scene->destroyEntity(root);
+        // the prefab's whole hierarchy (its children and the actions on them) goes
+        ObjectManager::destroyImmediate(scene, root);
     }
     root = system = emitter = NULL_ENTITY;
     quads.clear();
@@ -178,20 +217,12 @@ bool UIParticleSystemElement::instantiate(){
     if (UIDocumentSystem* documents = scene->findSystem<UIDocumentSystem>().get())
         documents->addRuntimeEntity(root);
 
-    // the Particle System: on the root, else the first of its descendants
-    std::vector<Entity> pending{root};
-    std::vector<Entity> all = scene->getEntityList();
-    while (!pending.empty() && system == NULL_ENTITY){
-        const Entity entity = pending.front();
-        pending.erase(pending.begin());
+    // the Particle System: on the root, else the first of its descendants (hierarchy order)
+    const std::vector<Entity> hierarchy = EntityCloner::collectHierarchy(scene, root);
+    for (Entity entity : hierarchy){
         if (scene->findComponent<ParticleSystemComponent>(entity) && scene->findComponent<ActionComponent>(entity)){
             system = entity;
             break;
-        }
-        for (Entity child : all){
-            Transform* transform = scene->findComponent<Transform>(child);
-            if (transform && transform->parent == entity)
-                pending.push_back(child);
         }
     }
     if (system == NULL_ENTITY){
@@ -202,22 +233,30 @@ bool UIParticleSystemElement::instantiate(){
     ActionComponent& action = scene->getComponent<ActionComponent>(system);
     emitter = (action.target != NULL_ENTITY) ? action.target : system;
 
-    // simulated where the prefab is made, drawn only here
+    // simulated where the prefab is made, drawn only here: none of its renderers draws
     if (Transform* transform = scene->findComponent<Transform>(root)){
         transform->position = Vector3(0.0f, 0.0f, 0.0f);
         transform->needUpdate = true;
     }
-    if (Transform* transform = scene->findComponent<Transform>(emitter)){
-        transform->visible = false;
-        transform->needUpdate = true;
+    for (Entity entity : hierarchy){
+        if (Transform* transform = scene->findComponent<Transform>(entity)){
+            transform->visible = false;
+            transform->needUpdate = true;
+        }
     }
     UIParticleSource::material(scene, emitter, texturePath, additive);
 
     applyAttributes();
-    if (HasAttribute("autoplay"))
+    // a play / pause / stop asked before the system existed wins over autoplay
+    const Command command = pending;
+    pending = Command::None;
+    if (command == Command::Play || (command == Command::None && HasAttribute("autoplay"))){
         play();
-    else
+    }else{
         stop();
+        if (command == Command::Pause)
+            pause();
+    }
     return true;
 }
 
@@ -243,21 +282,30 @@ void UIParticleSystemElement::OnAttributeChange(const Rml::ElementAttributes& ch
 }
 
 void UIParticleSystemElement::play(){
-    if (!scene || system == NULL_ENTITY || sceneLifetime.expired())
+    if (!scene || system == NULL_ENTITY || sceneLifetime.expired()){
+        // queued until the prefab is made (document scripts run before the first update)
+        pending = Command::Play;
         return;
+    }
     ParticleSystem(scene, system).start();
     completeSent = false;
 }
 
 void UIParticleSystemElement::stop(){
-    if (!scene || system == NULL_ENTITY || sceneLifetime.expired())
+    if (!scene || system == NULL_ENTITY || sceneLifetime.expired()){
+        // queued until the prefab is made (document scripts run before the first update)
+        pending = Command::Stop;
         return;
+    }
     ParticleSystem(scene, system).stop();
 }
 
 void UIParticleSystemElement::pause(){
-    if (!scene || system == NULL_ENTITY || sceneLifetime.expired())
+    if (!scene || system == NULL_ENTITY || sceneLifetime.expired()){
+        // queued until the prefab is made (document scripts run before the first update)
+        pending = Command::Pause;
         return;
+    }
     ParticleSystem(scene, system).pause();
 }
 

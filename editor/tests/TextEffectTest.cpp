@@ -21,7 +21,12 @@
 #include "util/TextEffects.h"
 #include "object/ui/TextEffect.h"
 #include "Stream.h"
+#include "Factory.h"
+#include "Catalog.h"
+#include "pool/FontPool.h"
+#include "component/ParticleSystemComponent.h"
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -33,7 +38,7 @@ namespace {
 
     TextEffectLayer layerOf(TextEffectType type){
         TextEffectLayer layer;
-        layer.type = type;
+        TextEffects::setType(layer, type);   // (the type's default amplitude)
         return layer;
     }
 
@@ -482,4 +487,215 @@ TEST(TextEffectStreamTest, AbsentFieldsResetOverAnOldComponent){
     EXPECT_EQ(back.outlineWidth, 2.0f);
     EXPECT_TRUE(back.shadowEnabled);
     EXPECT_EQ(back.shadowOffset, Vector2(3.0f, -1.0f));
+}
+
+// ---- review fixes -------------------------------------------------------------------------------
+
+// TMP Effect (TextMeshProEffect.Apply): start = lerp(i / C, 0, r), length = lerp(1 / T, 1, r), with
+// C the selection's characters and T the text's, spaces included, i counting visible glyphs
+TEST(TextEffectFormulas, OneShotTimingCountsSpacesAsTMP){
+    const float r = 0.25f;
+    // "Hi there": 8 characters, 7 visible; glyph 2 ('t') starts at lerp(2/8, 0, r)
+    const float start = (2.0f / 8.0f) * (1.0f - r);
+    const float length = (1.0f / 8.0f) * (1.0f - r) + r;
+    for (float p : {0.1f, 0.2f, 0.3f, 0.5f}){
+        const float expected = std::clamp((p - start) / length, 0.0f, 1.0f);
+        EXPECT_NEAR(TextEffects::oneShotProgress(2, 7, p, r, 8, 8), expected, 1e-6f) << p;
+    }
+    // without the characters, the visible count (the former behaviour)
+    EXPECT_NEAR(TextEffects::oneShotProgress(2, 7, 0.3f, r), std::clamp((0.3f - (2.0f / 7.0f) * (1.0f - r)) / ((1.0f / 7.0f) * (1.0f - r) + r), 0.0f, 1.0f), 1e-6f);
+    // a selection: its characters start the glyphs, the whole text's give the length
+    const float selStart = (1.0f / 4.0f) * (1.0f - r);
+    const float selLength = (1.0f / 10.0f) * (1.0f - r) + r;
+    EXPECT_NEAR(TextEffects::oneShotProgress(1, 3, 0.4f, r, 4, 10), std::clamp((0.4f - selStart) / selLength, 0.0f, 1.0f), 1e-6f);
+}
+
+// Grow and Unfold honour Amplitude (TMP: LerpUnclamped(base, shaped, Amplitude)); their default is 1
+TEST(TextEffectFormulas, GrowAndUnfoldHonourAmplitude){
+    auto box = [](){
+        TextEffectGlyphState g;
+        g.corners[0] = Vector2(0, 0); g.corners[1] = Vector2(10, 0); g.corners[2] = Vector2(10, 20); g.corners[3] = Vector2(0, 20);
+        return g;
+    };
+    TextEffectLayer grow = layerOf(TextEffectType::Grow);
+    EXPECT_FLOAT_EQ(grow.amplitude, 1.0f);
+    grow.duration = 1.0f;
+    grow.spread = 1.0f;
+    grow.amplitude = 0.5f;
+    TextEffectGlyphState g = box();
+    TextEffects::applyLayer(grow, 0, 1, 0.0f, 20.0f, false, g);
+    // grown 0 -> the top at the bottom (20); half of that change
+    EXPECT_NEAR(g.corners[0].y, 10.0f, 1e-4f);
+    EXPECT_NEAR(g.corners[3].y, 20.0f, 1e-4f);
+    grow.amplitude = 2.0f;   // unclamped: overshoots
+    g = box();
+    TextEffects::applyLayer(grow, 0, 1, 0.0f, 20.0f, false, g);
+    EXPECT_NEAR(g.corners[0].y, 40.0f, 1e-4f);
+
+    TextEffectLayer unfold = layerOf(TextEffectType::Unfold);
+    unfold.duration = 1.0f;
+    unfold.spread = 1.0f;
+    unfold.amplitude = 0.5f;
+    g = box();
+    TextEffects::applyLayer(unfold, 0, 1, 0.0f, 20.0f, false, g);
+    EXPECT_NEAR(g.corners[0].y, 5.0f, 1e-4f);    // halfway to the middle (10)
+    EXPECT_NEAR(g.corners[3].y, 15.0f, 1e-4f);
+
+    // TMP import: Grow keeps the effect's Amplitude
+    const std::vector<TextEffectLayer> imported = TextEffects::fromTMPEffect("Grow", 1.0f, 0.8f, 0.5f, {}, false);
+    ASSERT_EQ(imported.size(), 1u);
+    EXPECT_FLOAT_EQ(imported[0].amplitude, 0.8f);
+}
+
+// a type change takes the new type's default amplitude when the old one was at its default;
+// edits through the Catalog (Inspector, MCP) do the same
+TEST(TextEffectComponentTest, TypeChangeMovesADefaultAmplitude){
+    TextEffectLayer layer;
+    TextEffects::setType(layer, TextEffectType::Wave);
+    EXPECT_FLOAT_EQ(layer.amplitude, 0.15f);
+    TextEffects::setType(layer, TextEffectType::Grow);
+    EXPECT_FLOAT_EQ(layer.amplitude, 1.0f);
+    layer.amplitude = 0.7f;
+    TextEffects::setType(layer, TextEffectType::Unfold);
+    EXPECT_FLOAT_EQ(layer.amplitude, 0.7f) << "a set amplitude stays";
+
+    TextScene t("Hi");
+    TextEffectComponent& effect = t.effect();
+    effect.layers[1].type = TextEffectType::Grow;   // as a property command writes it
+    editor::Catalog::updateEntity(&t.scene, t.entity, editor::UpdateFlags_TextEffect);
+    EXPECT_FLOAT_EQ(t.effect().layers[1].amplitude, 1.0f);
+    t.effect().layers[1].type = TextEffectType::Wave;   // undo
+    editor::Catalog::updateEntity(&t.scene, t.entity, editor::UpdateFlags_TextEffect);
+    EXPECT_FLOAT_EQ(t.effect().layers[1].amplitude, 0.15f);
+}
+
+// reduced motion holds a Grow still: with only motion one-shots the effect still completes, once
+TEST(TextEffectComponentTest, ReducedMotionCompletesMotionOnlyEffects){
+    TextScene t("Hi there");
+    TextEffectComponent& effect = t.effect();
+    effect.layers[0] = layerOf(TextEffectType::Grow);
+    effect.loop = true;
+    effect.useUnscaledTime = false;
+    int completed = 0;
+    effect.onComplete.add("test", [&](){ completed++; });
+    UISystem::setReducedMotion(true);
+    t.update(0.0);
+    t.update(0.1);
+    t.update(0.1);
+    t.update(0.1);
+    UISystem::setReducedMotion(false);
+    EXPECT_EQ(completed, 1) << "done at once, and not again every frame (Repeat would loop a 0 s effect)";
+    EXPECT_TRUE(t.effect().finished);
+}
+
+// Text outline/shadow, visibleCharacters and Text Effect layers (gradient stops, a Grow's
+// amplitude) survive the scene file
+TEST(TextEffectStreamTest, NonDefaultFieldsRoundTrip){
+    TextComponent text;
+    text.outlineWidth = 2.5f;
+    text.outlineColor = Vector4(0.1f, 0.2f, 0.3f, 0.9f);
+    text.shadowEnabled = true;
+    text.shadowColor = Vector4(0.0f, 0.0f, 0.0f, 0.5f);
+    text.shadowOffset = Vector2(2.0f, -3.0f);
+    text.shadowSoftness = 4.0f;
+    text.shadowDilate = 1.5f;
+    text.visibleCharacters = 7;
+    const TextComponent back = editor::Stream::decodeTextComponent(editor::Stream::encodeTextComponent(text));
+    EXPECT_FLOAT_EQ(back.outlineWidth, 2.5f);
+    EXPECT_EQ(back.outlineColor, text.outlineColor);
+    EXPECT_TRUE(back.shadowEnabled);
+    EXPECT_EQ(back.shadowColor, text.shadowColor);
+    EXPECT_EQ(back.shadowOffset, text.shadowOffset);
+    EXPECT_FLOAT_EQ(back.shadowSoftness, 4.0f);
+    EXPECT_FLOAT_EQ(back.shadowDilate, 1.5f);
+    EXPECT_EQ(back.visibleCharacters, 7);
+
+    TextEffectComponent effect;
+    effect.layers[0] = layerOf(TextEffectType::Wave);
+    effect.layers[0].amplitude = 0.3f;
+    effect.layers[0].phaseStep = 0.5f;
+    effect.layers[2] = layerOf(TextEffectType::Gradient);
+    effect.layers[2].mix = TextEffectMix::Add;
+    effect.layers[2].gradient = {TextEffectGradientStop{Vector4(1.0f, 1.0f, 0.0f, 1.0f), 0.0f},
+                                 TextEffectGradientStop{Vector4(1.0f, 0.5f, 0.0f, 0.8f), 1.0f}};
+    effect.layers[3] = layerOf(TextEffectType::Grow);   // amplitude 1: the type's default, not written
+    effect.loop = false;
+    effect.useUnscaledTime = false;
+    effect.startIndex = 2;
+    effect.length = 5;
+    effect.forWords = "gold";
+    const YAML::Node node = editor::Stream::encodeTextEffectComponent(effect);
+    EXPECT_FALSE(node["layers"][3]["amplitude"]) << "a Grow's default amplitude is not written";
+    const TextEffectComponent decoded = editor::Stream::decodeTextEffectComponent(node);
+    for (size_t i = 0; i < effect.layers.size(); i++)
+        EXPECT_EQ(decoded.layers[i], effect.layers[i]) << "layer " << i;
+    EXPECT_EQ(decoded.editedTypes[3], TextEffectType::Grow);
+    EXPECT_FALSE(decoded.loop);
+    EXPECT_FALSE(decoded.useUnscaledTime);
+    EXPECT_EQ(decoded.startIndex, 2);
+    EXPECT_EQ(decoded.length, 5);
+    EXPECT_EQ(decoded.forWords, "gold");
+}
+
+// the exported scene's C++ (Factory): a Text Effect's layers and settings, a Particle System's
+// useUnscaledTime
+TEST(TextEffectStreamTest, GeneratedCode){
+    Scene scene;
+    const Entity entity = scene.createEntity();
+    TextEffectComponent effect;
+    effect.layers[0] = layerOf(TextEffectType::Grow);
+    effect.layers[0].amplitude = 0.5f;
+    effect.layers[1] = layerOf(TextEffectType::Gradient);
+    effect.layers[1].gradient = {TextEffectGradientStop{Vector4(1.0f, 0.0f, 0.0f, 1.0f), 0.0f}};
+    effect.useUnscaledTime = false;
+    effect.forWords = "gold";
+    scene.addComponent<TextEffectComponent>(entity, effect);
+    const std::string code = editor::Factory::createComponent(0, &scene, entity, editor::ComponentType::TextEffectComponent, "", "scene", "entity");
+    EXPECT_NE(code.find("TextEffectComponent textEffect;"), std::string::npos) << code;
+    EXPECT_NE(code.find("textEffect.layers[0].type = TextEffectType::Grow;"), std::string::npos) << code;
+    EXPECT_NE(code.find("textEffect.layers[0].amplitude = 0.5"), std::string::npos) << code;
+    EXPECT_NE(code.find("textEffect.layers[1].type = TextEffectType::Gradient;"), std::string::npos) << code;
+    EXPECT_NE(code.find("textEffect.layers[1].gradient.push_back(TextEffectGradientStop{"), std::string::npos) << code;
+    EXPECT_NE(code.find("textEffect.useUnscaledTime = false;"), std::string::npos) << code;
+    EXPECT_NE(code.find("textEffect.forWords = \"gold\";"), std::string::npos) << code;
+    EXPECT_NE(code.find("addComponent<TextEffectComponent>"), std::string::npos) << code;
+
+    const Entity emitter = scene.createEntity();
+    ParticleSystemComponent particles;
+    particles.useUnscaledTime = true;
+    scene.addComponent<ParticleSystemComponent>(emitter, particles);
+    const std::string particleCode = editor::Factory::createComponent(0, &scene, emitter, editor::ComponentType::ParticleSystemComponent, "", "scene", "entity");
+    EXPECT_NE(particleCode.find("particles.useUnscaledTime = true;"), std::string::npos) << particleCode;
+    scene.getComponent<ParticleSystemComponent>(emitter).useUnscaledTime = false;
+    EXPECT_EQ(editor::Factory::createComponent(0, &scene, emitter, editor::ComponentType::ParticleSystemComponent, "", "scene", "entity").find("useUnscaledTime"),
+              std::string::npos);
+}
+
+// atlases of a raster scale or a distance field go with their last text (a resize makes new ones)
+TEST(TextSdfTest, ScaledAndDistanceFieldAtlasesAreReleased){
+    TextScene t("Outlined", false);
+    t.text().outlineWidth = 2.0f;
+    t.update(0.0);
+    ASSERT_TRUE(t.text().loaded);
+    ASSERT_GT(t.text().sdfPadding, 0);
+    const std::string id = t.ui().getFontId(t.text());
+    EXPECT_TRUE(FontPool::contains(id));
+
+    // another padding: the old atlas has no text left
+    t.text().outlineWidth = 9.0f;
+    t.update(0.0);
+    const std::string newId = t.ui().getFontId(t.text());
+    ASSERT_NE(newId, id);
+    EXPECT_FALSE(FontPool::contains(id)) << "the old distance-field atlas was released";
+    EXPECT_TRUE(FontPool::contains(newId));
+
+    // a plain atlas stays pooled (as before)
+    TextScene plain("Plain", false);
+    plain.update(0.0);
+    const std::string plainId = plain.ui().getFontId(plain.text());
+    plain.text().fontSize = 31;
+    plain.text().needReloadAtlas = true;
+    plain.update(0.0);
+    EXPECT_NE(plain.ui().getFontId(plain.text()), plainId);
+    EXPECT_TRUE(FontPool::contains(plainId));
 }

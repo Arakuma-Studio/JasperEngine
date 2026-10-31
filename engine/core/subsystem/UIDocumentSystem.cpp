@@ -15,6 +15,7 @@
 #include "htmlui/HtmlUI.h"
 #include "htmlui/HtmlUIContext.h"
 #include "htmlui/HtmlUIClock.h"
+#include "htmlui/UIParticleSystemElement.h"
 #include "htmlui/anim/AnimEngine.h"
 
 #include <atomic>
@@ -295,6 +296,9 @@ void UIDocumentSystem::update(double dt){
     context->update();
     textureUpdate();
     scriptUpdate();
+    // <particle-system> elements a script detached (with an ancestor too) get no update: their
+    // prefabs go now, and come back when the element is attached again
+    UIParticleSystemElement::releaseDetached(scene);
 }
 
 void UIDocumentSystem::draw(){

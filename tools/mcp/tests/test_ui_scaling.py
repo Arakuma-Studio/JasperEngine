@@ -3,7 +3,8 @@ Scaler of a UI scene (Expand at 1920x1080) seen through the Game view's fixed re
 20:9: the UI size, a stretch-anchored panel filling the view, a centred element hit at the view's
 centre), the HTML document laid out at the same UI size, the project and scene settings over MCP,
 create_ui's outline and shadow, a Text Effect added with add_component animating its text, and a
-UI Particle System playing at time scale 0.
+UI Particle System playing at time scale 0, the Game view's fixed resolutions (render size, Screen.dpi in
+edit mode and Play, aspect, custom ones in the workspace).
 """
 
 from harness import Editor
@@ -164,3 +165,45 @@ async def test_ui_particles_play_while_paused(ed: Editor):
     finally:
         await lua(ed, "Engine.timeScale = 1")
         await ed.call("play", action="stop")
+
+
+async def test_game_view_resolutions_render_size_and_dpi(ed: Editor):
+    """a fixed resolution sets the render size and Screen.dpi in Play (the preset's, else the host's), the
+    edit-mode screen_dpi equals Play's; an aspect clears the fixed resolution; a custom resolution is kept in
+    the editor workspace"""
+    s = await setup(ed)
+    try:
+        await ed.call("configure_game_view", resolution="2400x1080")
+        await ed.call("wait", frames=2)
+        view = await ed.call("configure_game_view")
+        ed.check_eq(view["render_size"], [2400, 1080], f"render size of the preset (Game tab shown or hidden): {view}")
+        ed.check_eq(view["screen_dpi"], 400, "the 20:9 phone preset's dpi")
+        await ed.call("play", action="start", scene=s["scene"])
+        try:
+            await ed.call("wait", frames=3)
+            ed.check_eq((await lua(ed, "return Screen.dpi"))[0], 400, "Screen.dpi in Play")
+        finally:
+            await ed.call("play", action="stop")
+
+        # no dpi given: the host's, the same in edit mode and in Play
+        view = await ed.call("configure_game_view", resolution="1440x1080")
+        edit_dpi = view["screen_dpi"]
+        ed.check(edit_dpi > 0, f"the host's dpi in edit mode: {view}")
+        await ed.call("play", action="start", scene=s["scene"])
+        try:
+            await ed.call("wait", frames=3)
+            ed.check_eq((await lua(ed, "return Screen.dpi"))[0], edit_dpi, "Play reads the dpi edit mode laid the UI out with")
+        finally:
+            await ed.call("play", action="stop")
+
+        # an aspect replaces the fixed resolution (as the toolbar's Aspect entries)
+        view = await ed.call("configure_game_view", aspect="16:9")
+        ed.check_eq(view["resolution"], "free", f"the aspect cleared the resolution: {view}")
+
+        # a named one is saved as a custom resolution in the workspace
+        view = await ed.call("configure_game_view", resolution={"width": 1280, "height": 800, "dpi": 206, "name": "Deck"})
+        ed.check(any(r.get("name") == "Deck" for r in view["custom_resolutions"]), f"listed: {view}")
+        workspace = (ed.project / ".jasperengine/user/workspace.yaml").read_text()
+        ed.check("Deck" in workspace and "1280" in workspace, f"kept in the workspace file: {workspace[:400]}")
+    finally:
+        await ed.call("configure_game_view", resolution="free")

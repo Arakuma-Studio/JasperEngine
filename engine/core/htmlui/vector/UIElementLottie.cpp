@@ -190,6 +190,11 @@ void UIElement::clear(){
     Log::error("[HTML UI] UIElement::clear: not a <particle-system> element");
 }
 
+bool UIElement::hasParticleSystem() const{
+    UIParticleSystemElement* particles = asParticles(get());
+    return particles && particles->getScene() && particles->getParticleEntity() != NULL_ENTITY;
+}
+
 ParticleSystem UIElement::getParticleSystem() const{
     if (UIParticleSystemElement* particles = asParticles(get())){
         if (particles->getScene() && particles->getParticleEntity() != NULL_ENTITY)

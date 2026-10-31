@@ -49,7 +49,9 @@ namespace jasperengine {
     struct JASPERENGINE_API TextEffectLayer {
         TextEffectType type = TextEffectType::None;
         bool enabled = true;
-        float amplitude = 0.15f;            // em (Wave, Bounce, Shake), scale delta (Pulse)
+        float amplitude = 0.15f;            // em (Wave, Bounce, Shake), scale delta (Pulse), the share
+                                            // of the change (Grow, Unfold: TMP's Amplitude, default 1:
+                                            // TextEffects::defaultAmplitude)
         float duration = 1.5f;              // s: the period (looping) or the length (one-shot)
         float spread = 0.5f;                // 0..1 stagger (TMP Effect CharacterDurationRatio)
         float phaseStep = 0.3f;             // rad per glyph (Wave; Rainbow: hue turns x 2 pi)
@@ -81,10 +83,19 @@ namespace jasperengine {
         // a colour type (Rainbow, Gradient)
         JASPERENGINE_API bool isColor(TextEffectType type);
 
-        // TMP Effect's per-glyph progress of a one-shot effect: glyph `index` of `count` at
-        // progress p (time / duration, clamped to 1) with stagger `spread`:
-        // start = lerp(i/N, 0, spread), length = lerp(1/N, 1, spread), q = clamp01((p - start) / length)
-        JASPERENGINE_API float oneShotProgress(int index, int count, float progress, float spread);
+        // A layer's amplitude when nothing set it: 1 (TMP Effect's Amplitude: the whole change) for
+        // Grow and Unfold, 0.15 (em, scale) for the others
+        JASPERENGINE_API float defaultAmplitude(TextEffectType type);
+        // Changes a layer's type; an amplitude left at the old type's default takes the new one's
+        JASPERENGINE_API void setType(TextEffectLayer& layer, TextEffectType type);
+
+        // TMP Effect's per-glyph progress of a one-shot effect (TextMeshProEffect.Apply): visible
+        // glyph `index` at progress p (time / duration, clamped to 1) with stagger `spread`:
+        // start = lerp(i / C, 0, spread), length = lerp(1 / T, 1, spread), q = clamp01((p - start) / length),
+        // where C is the selection's characters and T the text's, spaces included (TMP's
+        // characterCount); both default to `count` (the visible glyphs)
+        JASPERENGINE_API float oneShotProgress(int index, int count, float progress, float spread,
+                                               int characters = -1, int textCharacters = -1);
 
         // Typewriter: the time glyph `index` of `count` appears ((i + 1) / cps, or the
         // whole text over the duration when cps is 0)
@@ -94,8 +105,14 @@ namespace jasperengine {
 
         // Applies a layer to glyph `index` of `count` at `time` seconds since it started:
         // positions accumulate, colours compose. fontSize is the em. reducedMotion skips motion.
+        // `characters` / `textCharacters`: as oneShotProgress (-1: `count`).
         JASPERENGINE_API void applyLayer(const TextEffectLayer& layer, int index, int count, float time, float fontSize,
-                                         bool reducedMotion, TextEffectGlyphState& glyph);
+                                         bool reducedMotion, TextEffectGlyphState& glyph,
+                                         int characters = -1, int textCharacters = -1);
+        // the seconds until every one-shot layer reached its end, a layer reduced motion holds
+        // still counting 0; `oneShot` tells whether there is any (reduced motion or not)
+        JASPERENGINE_API float effectLength(const std::vector<TextEffectLayer>& layers, int count, bool reducedMotion, bool& oneShot);
+        JASPERENGINE_API float effectLength(const TextEffectLayer* layers, size_t layerCount, int count, bool reducedMotion, bool& oneShot);
 
         // base (sRGB) combined with a layer colour
         JASPERENGINE_API Vector4 mixColor(const Vector4& base, const Vector4& color, TextEffectMix mix);

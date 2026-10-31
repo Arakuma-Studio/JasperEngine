@@ -2022,7 +2022,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .beginClass<TextEffectLayer>("TextEffectLayer")
         .addConstructor<void(*)()>()
-        .addProperty("type", &TextEffectLayer::type, &TextEffectLayer::type)
+        // (a type's default amplitude follows: 1 for Grow and Unfold)
+        .addProperty("type", [] (const TextEffectLayer* self) -> TextEffectType { return self->type; },
+                             [] (TextEffectLayer* self, TextEffectType type) { TextEffects::setType(*self, type); })
         .addProperty("enabled", &TextEffectLayer::enabled, &TextEffectLayer::enabled)
         .addProperty("amplitude", &TextEffectLayer::amplitude, &TextEffectLayer::amplitude)
         .addProperty("duration", &TextEffectLayer::duration, &TextEffectLayer::duration)
@@ -2078,7 +2080,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
                     if (field.isNumber()) target = field.unsafe_cast<float>();
                 };
                 luabridge::LuaRef type = value["type"];
-                if (type.isNumber()) layer.type = (TextEffectType)type.unsafe_cast<int>();
+                // (a type's default amplitude: 1 for Grow and Unfold)
+                if (type.isNumber()) TextEffects::setType(layer, (TextEffectType)type.unsafe_cast<int>());
                 luabridge::LuaRef enabled = value["enabled"];
                 if (enabled.isBool()) layer.enabled = enabled.unsafe_cast<bool>();
                 number("amplitude", layer.amplitude);

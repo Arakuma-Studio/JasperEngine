@@ -43,8 +43,10 @@ namespace jasperengine{
                 return;
             }
             set(*l);
-            if (TextEffectComponent* effect = scene->findComponent<TextEffectComponent>(entity))
+            if (TextEffectComponent* effect = scene->findComponent<TextEffectComponent>(entity)){
                 effect->needApply = true;
+                effect->editedTypes[index] = l->type;
+            }
         }
 
     public:
@@ -53,7 +55,8 @@ namespace jasperengine{
             : scene(scene), entity(entity), index(index), lifetime(scene ? scene->getLifetime() : std::weak_ptr<char>()) {}
 
         TextEffectType getType() const { return read([](const TextEffectLayer& l){ return l.type; }, TextEffectType::None); }
-        void setType(TextEffectType type) { write([&](TextEffectLayer& l){ l.type = type; }); }
+        // an amplitude left at the old type's default takes the new one's (1 for Grow, Unfold)
+        void setType(TextEffectType type) { write([&](TextEffectLayer& l){ TextEffects::setType(l, type); }); }
         bool isEnabled() const { return read([](const TextEffectLayer& l){ return l.enabled; }, false); }
         void setEnabled(bool enabled) { write([&](TextEffectLayer& l){ l.enabled = enabled; }); }
         float getAmplitude() const { return read([](const TextEffectLayer& l){ return l.amplitude; }, 0.0f); }
@@ -144,6 +147,7 @@ namespace jasperengine{
                 return;
             }
             get().layers[index - 1] = layer;
+            get().editedTypes[index - 1] = layer.type;
             get().needApply = true;
         }
 

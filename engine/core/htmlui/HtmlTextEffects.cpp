@@ -143,8 +143,11 @@ namespace {
             slots = {{Arg::Number, &layer.charactersPerSecond, false}, {Arg::Time, &layer.fadeTime, false}};
         }else if (name == "fade-in" || name == "grow" || name == "unfold"){
             layer.type = (name == "fade-in") ? TextEffectType::FadeIn : (name == "grow") ? TextEffectType::Grow : TextEffectType::Unfold;
-            layer.duration = 0.5f; layer.spread = 0.5f;
+            layer.duration = 0.5f; layer.spread = 0.5f; layer.amplitude = TextEffects::defaultAmplitude(layer.type);
             slots = {{Arg::Time, &layer.duration, false}, {Arg::Number, &layer.spread, false}};
+            // grow() and unfold(): TMP's Amplitude (1 = the whole change) third
+            if (layer.type != TextEffectType::FadeIn)
+                slots.push_back({Arg::Number, &layer.amplitude, false});
         }else if (name == "rainbow"){
             layer.type = TextEffectType::Rainbow; layer.duration = 2.0f; layer.phaseStep = 20.0f * PI / 180.0f;
             layer.saturation = 0.8f; layer.lightness = 0.6f;
@@ -213,6 +216,16 @@ namespace {
         }
         layer.spread = std::clamp(layer.spread, 0.0f, 1.0f);
         return true;
+    }
+
+    // UTF-8 code points
+    int codepointCount(const std::string& text){
+        int count = 0;
+        for (unsigned char c : text){
+            if ((c & 0xC0) != 0x80)
+                count++;
+        }
+        return count;
     }
 
     Rml::PropertyId propertyId(compat::CompatProperty property){
@@ -328,6 +341,10 @@ const void* HtmlTextEffects::GetTextEffect(Rml::ElementText& text, int& first_in
 
     Scope& scope = scopes[root];
     const bool fresh = !scope.root;
+    // the clock first: a start is read on the clock the effect runs on
+    const bool gameTime = lower(stringProperty(text, compat::CompatProperty::TextEffectTime)) == "game";
+    const bool clockChanged = gameTime != scope.gameTime;
+    scope.gameTime = gameTime;
     if (fresh || scope.value != value){
         std::string error;
         HtmlTextEffect parsed;
@@ -338,18 +355,16 @@ const void* HtmlTextEffects::GetTextEffect(Rml::ElementText& text, int& first_in
         scope.context = text.GetContext();
         scope.value = value;
         scope.effect = parsed;
-        scope.start = scope.cycleStart = HtmlUIClock::now();
+        scope.start = scope.cycleStart = now(scope);
         scope.iterationsDone = 0;
         scope.finished = false;
         scope.texts.clear();
+        scope.counts.clear();
+    }else if (clockChanged){
+        scope.start = scope.cycleStart = now(scope);
     }
     int iterations = -1;
     scope.iterations = parseTextEffectIteration(stringProperty(text, compat::CompatProperty::TextEffectIteration), iterations) ? iterations : -1;
-    const bool gameTime = lower(stringProperty(text, compat::CompatProperty::TextEffectTime)) == "game";
-    if (gameTime != scope.gameTime || fresh){
-        scope.gameTime = gameTime;
-        scope.start = scope.cycleStart = now(scope);
-    }
     if (scope.effect.layers.empty())
         return nullptr;
 
@@ -359,20 +374,21 @@ const void* HtmlTextEffects::GetTextEffect(Rml::ElementText& text, int& first_in
     while (first->GetContextPrevious())
         first = first->GetContextPrevious();
     int count = 0;
+    int characters = 0;
     for (Rml::ElementText* item = first; item; item = item->GetContextNext()){
         if (item != &text && findRoot(item) != root)
             continue;
         if (item == &text)
             first_index = count;
-        for (const Rml::ElementText::Line& line : item->GetLines())
+        for (const Rml::ElementText::Line& line : item->GetLines()){
             count += Rml::ElementText::CountEffectCharacters(line.text);
+            characters += codepointCount(line.text);
+        }
     }
-    scope.lastCount = count;
 
-    // a text that shows something else starts the effect again
-    std::string shown;
-    for (const Rml::ElementText::Line& line : text.GetLines())
-        shown += line.text;
+    // a text that shows something else starts the effect again, and so does a new text joining
+    // in a later frame (new content); a new line wrap of the same text does not
+    const std::string& shown = text.GetText();
     auto known = scope.texts.find(&text);
     const bool replaced = known == scope.texts.end() && !scope.texts.empty() && scope.textsFrame != frame;
     if (replaced || (known != scope.texts.end() && known->second != shown)){
@@ -380,14 +396,18 @@ const void* HtmlTextEffects::GetTextEffect(Rml::ElementText& text, int& first_in
         scope.iterationsDone = 0;
         scope.finished = false;
     }
-    if (replaced)
+    if (replaced){
         scope.texts.clear();
+        scope.counts.clear();
+    }
     scope.texts[&text] = shown;
     scope.textsFrame = frame;
+    scope.counts[first] = count;
 
     const double t = now(scope);
     scratch.effect = &scope.effect;
     scratch.count = count;
+    scratch.characters = characters;
     scratch.time = (float)std::max(0.0, t - scope.start);
     scratch.cycleTime = (float)std::max(0.0, t - scope.cycleStart);
     scratch.em = std::max(text.GetComputedValues().font_size(), 1.0f);
@@ -395,9 +415,8 @@ const void* HtmlTextEffects::GetTextEffect(Rml::ElementText& text, int& first_in
     scratch.reducedMotion = reduced != reducedMotion.end() && reduced->second;
     // a finished one-shot holds its end
     if (scope.finished){
-        float end = 0.0f;
-        for (const TextEffectLayer& layer : scope.effect.layers)
-            end = std::max(end, TextEffects::oneShotLength(layer, count));
+        bool oneShot = false;
+        const float end = TextEffects::effectLength(scope.effect.layers, count, scratch.reducedMotion, oneShot);
         scratch.cycleTime = std::max(scratch.cycleTime, end);
     }
 
@@ -425,25 +444,27 @@ void HtmlTextEffects::update(Rml::Context* context){
     std::vector<Rml::ObserverPtr<Rml::Element>> ended;
     for (auto it = scopes.begin(); it != scopes.end();){
         Scope& scope = it->second;
-        if (!scope.root.get()){
+        Rml::Element* root = scope.root.get();
+        // gone, or its effect removed (set again later, it starts afresh)
+        const std::string value = root ? lower(stringProperty(*root, compat::CompatProperty::TextEffect)) : std::string();
+        if (!root || value.empty() || value == "none"){
             it = scopes.erase(it);
             continue;
         }
-        if (scope.context == context && !scope.finished && scope.lastCount > 0){
-            float length = 0.0f;
-            bool oneShot = false;
+        int count = 0;
+        for (const auto& [head, headCount] : scope.counts)
+            count = std::max(count, headCount);
+        if (scope.context == context && !scope.finished && count > 0){
             auto reduced = reducedMotion.find(context);
             const bool still = reduced != reducedMotion.end() && reduced->second;
-            for (const TextEffectLayer& layer : scope.effect.layers){
-                if (!layer.enabled || !TextEffects::isOneShot(layer.type) || (still && TextEffects::isMotion(layer.type)))
-                    continue;
-                oneShot = true;
-                length = std::max(length, TextEffects::oneShotLength(layer, scope.lastCount));
-            }
+            // a layer reduced motion holds still is done at once
+            bool oneShot = false;
+            const float length = TextEffects::effectLength(scope.effect.layers, count, still, oneShot);
             const double t = now(scope);
             if (oneShot && t - scope.cycleStart >= (double)length){
                 scope.iterationsDone++;
-                if (scope.iterations < 0 || scope.iterationsDone < scope.iterations){
+                // (one held still entirely ends: repeating it would end every frame)
+                if ((scope.iterations < 0 || scope.iterationsDone < scope.iterations) && length > 0.0f){
                     scope.cycleStart = t;
                 }else{
                     scope.finished = true;
@@ -491,8 +512,9 @@ void HtmlTextEffects::restart(Rml::Element* element){
         scope.iterationsDone = 0;
         scope.finished = false;
     }
-    // its texts draw from the start at the next frame
-    std::vector<Rml::Element*> stack{element};
+    // the texts of the whole effect draw from the start at the next frame (an inner element
+    // restarts the effect it is part of)
+    std::vector<Rml::Element*> stack{root};
     while (!stack.empty()){
         Rml::Element* e = stack.back();
         stack.pop_back();

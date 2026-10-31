@@ -33,6 +33,7 @@ namespace jasperengine::htmlui {
     struct JASPERENGINE_API HtmlTextEffectGlyphs {
         const HtmlTextEffect* effect = nullptr;
         int count = 0;            // the visible characters the effect animates (its N)
+        int characters = 0;       // the same with white space (TMP's characterCount: its timing)
         float time = 0.0f;        // seconds since it started (looping layers)
         float cycleTime = 0.0f;   // seconds into the one-shot cycle
         float em = 16.0f;         // the text's font size
@@ -41,7 +42,7 @@ namespace jasperengine::htmlui {
 
     // `text-effect: <function>[, <function>]*`: wave(<length> <time> <angle>), bounce(<length> <time>
     // <spread>), shake(<length> <Hz>), pulse(<number> <time> <spread>), typewriter(<cps> <fade time>),
-    // fade-in(<time> <spread>), grow(<time> <spread>), unfold(<time> <spread>), rainbow(<time> <hue step
+    // fade-in(<time> <spread>), grow(<time> <spread> <amplitude>), unfold(<time> <spread> <amplitude>), rainbow(<time> <hue step
     // angle> <saturation %> <lightness %>), gradient(<time> [multiply|add|replace]? <color> [<position %>]#),
     // `none`. Omitted trailing arguments take their defaults. False with `error` otherwise.
     JASPERENGINE_API bool parseTextEffect(const std::string& value, HtmlTextEffect& out, std::string& error);
@@ -88,7 +89,9 @@ namespace jasperengine::htmlui {
             double cycleStart = 0.0;
             int iterationsDone = 0;
             bool finished = false;
-            int lastCount = 0;
+            // the visible characters of each inline formatting context it animates, by the
+            // context's first text: a one-shot ends when the longest one did
+            std::unordered_map<const Rml::ElementText*, int> counts;
             // what each of its texts showed: a change starts it again, and so does a text
             // joining in a later frame (new content: the old texts are gone)
             std::unordered_map<const Rml::ElementText*, std::string> texts;

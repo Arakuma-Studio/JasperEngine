@@ -782,7 +782,7 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
                     if (l < fx->effect->amplitudeInPx.size() && fx->effect->amplitudeInPx[l])
                         layer.amplitude /= fx->em;
                     const float time = TextEffects::isOneShot(layer.type) ? fx->cycleTime : fx->time;
-                    TextEffects::applyLayer(layer, index, fx->count, time, fx->em, fx->reducedMotion, state);
+                    TextEffects::applyLayer(layer, index, fx->count, time, fx->em, fx->reducedMotion, state, fx->characters, fx->characters);
                 }
                 for (int c = 0; c < 4; c++)
                     effect.corners[c] = Rml::Vector2f(state.corners[c].x, state.corners[c].y);

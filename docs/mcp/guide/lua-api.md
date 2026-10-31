@@ -1817,7 +1817,8 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   Getters load a document that is due, so `init` can query elements.
 - `<particle-system>` elements (`jasper://docs/html-ui`): `el:play()`, `el:pause()`, `el:stop()`,
   `el:isPlaying()`, `el:clear()` (its live particles go), `el:getParticleSystem()` (the
-  `ParticleSystem` of its hidden entity: every particle API works); event `complete`. Text effects:
+  `ParticleSystem` of its hidden entity: every particle API works; `nil` before the element's first
+  update or when its `src` failed; play/pause/stop before that are queued); event `complete`. Text effects:
   `el.style.textEffect = "wave(0.15em 1.5s)"`, `el:restartTextEffect()`, event `texteffectend`.
 - `UIElement` (weak handle; `nil` when a query finds nothing; any use but `isValid()` of a
   dead one raises): rw `id`, `className`, `textContent`, `innerHTML`, `outerHTML` (HTML in an

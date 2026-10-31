@@ -301,12 +301,23 @@ int editor::GameWindow::getRenderWidth() const {
     if (width > 0 && height > 0) {
         return width;
     }
+    // the tab hidden: a fixed resolution (a device, a preset) still renders at its size
+    int fixedWidth = 0, fixedHeight = 0;
+    float dpi = 0.0f;
+    if (getFixedResolution(fixedWidth, fixedHeight, dpi)) {
+        return fixedWidth;
+    }
     return std::max(1, (int)project->getCanvasWidth());
 }
 
 int editor::GameWindow::getRenderHeight() const {
     if (width > 0 && height > 0) {
         return height;
+    }
+    int fixedWidth = 0, fixedHeight = 0;
+    float dpi = 0.0f;
+    if (getFixedResolution(fixedWidth, fixedHeight, dpi)) {
+        return fixedHeight;
     }
     return std::max(1, (int)project->getCanvasHeight());
 }
@@ -841,7 +852,8 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
         }
         // the Scene view lays UI out for what this view shows (Canvas Scaler)
         if (width > 0 && height > 0) {
-            project->setEditViewSize((float)width, (float)height, fixed ? fixedDpi : Platform::getSimulation().dpi);
+            // Screen.dpi as Play reads it (the device's, a resolution preset's, else the host's)
+            project->setEditViewSize((float)width, (float)height, Screen::getDpi());
         }
 
         // Scale zooms into the image around its centre; the child clips the rest

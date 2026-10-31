@@ -560,7 +560,8 @@ trailing arguments taking their defaults:
 | `shake()` | `<length>` (0.05em), frequency Hz (12) |
 | `pulse()` | scale change (0.15), `<time>` (1s), spread (0.5) |
 | `typewriter()` | characters per second (30), fade `<time>` (0s) |
-| `fade-in()`, `grow()`, `unfold()` | `<time>` (0.5s), spread (0.5): one-shot |
+| `fade-in()` | `<time>` (0.5s), spread (0.5): one-shot |
+| `grow()`, `unfold()` | `<time>` (0.5s), spread (0.5), amplitude (1: the whole change, TMP's Amplitude): one-shot |
 | `rainbow()` | `<time>` (2s), hue step `<angle>` (20deg), saturation `%` (80%), lightness `%` (60%) |
 | `gradient()` | `<time>` (1.5s), `multiply` / `add` / `replace` (multiply), colour stops `<color> [<percentage>]` |
 
@@ -574,8 +575,9 @@ shadows (`font-effect`, `text-shadow`) follow each glyph. `text-effect-iteration
 <integer>` repeats the one-shot functions (typewriter, fade-in, grow, unfold), then `texteffectend`
 (bubbles) fires at the element that declares the effect; `text-effect-time: ui` (default, unscaled:
 runs at `Engine.timeScale = 0`) or `game`. `doc:setReducedMotion(true)` holds the motion functions
-still (wave, bounce, shake, pulse, grow, unfold). Lua: `el.style.textEffect = "bounce()"`,
-`el:restartTextEffect()`. An animating text regenerates its glyphs each frame (never its layout):
+still (wave, bounce, shake, pulse, grow, unfold; an effect of only those still ends). Lua:
+`el.style.textEffect = "bounce()"` (set, changed or `none` at runtime; new content types again, a
+new line wrap does not), `el:restartTextEffect()` (on any element of the effect: all of it). An animating text regenerates its glyphs each frame (never its layout):
 cheap for titles and dialog lines.
 
 ### CSS units, fonts and icons
@@ -1220,12 +1222,16 @@ unit is `scale` CSS px, y up. `time="ui"` (default) plays while the game is paus
 ```
 
 Lua: `el:play()`, `el:pause()`, `el:stop()`, `el:clear()`, `el:isPlaying()`,
-`el:getParticleSystem()` (the system of its hidden GameObject: every `ParticleSystem` API works);
-event `complete` when a system that does not loop stops. The prefab is made on a hidden GameObject
-of the document's scene (not in the Hierarchy, not saved) when the document shows, and goes with the
-element or the document. Prefabs exist in Play and in exported games: in edit mode the element is
-empty. A `src` that names no prefab with a Particle System logs `HTMLUI-HTML-0029`. Keep a system
-under about 1000 particles (one mesh is rebuilt each frame).
+`el:getParticleSystem()` (the system of its hidden GameObject: every `ParticleSystem` API works;
+`nil` until the element's first update made the prefab, e.g. in `onLoad`, in edit mode, or when its
+`src` failed); event `complete` when a system that does not loop stops. `play()` / `pause()` /
+`stop()` before the prefab exists are queued (the last one applies, over `autoplay`). The prefab is
+made on a hidden GameObject of the document's scene (not in the Hierarchy, not saved; none of its
+renderers draws) and goes, with all its children, with the element, its document or a new `src`.
+Screen and texture-mode (world) documents both work. Prefabs exist in Play and in exported games: in
+edit mode the element is empty. A `src` that names no prefab with a Particle System logs
+`HTMLUI-HTML-0029` and adds it to the document's diagnostics (`inspect_ui`). Keep a system under
+about 1000 particles (one mesh is rebuilt each frame).
 
 ### Fonts
 

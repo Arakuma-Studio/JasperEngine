@@ -8067,11 +8067,15 @@ void editor::InspectorWindow::drawTextEffectComponent(ComponentType cpType, Scen
     propertyRow(RowPropertyType::String, cpType, "forWords", "For Words", sceneProject, entities, settingsWords);
     endTable();
 
+    // every layer up to the last one in use, and the next empty one (empty layers between
+    // used ones stay shown: MCP and Lua may fill any slot)
+    int lastUsed = -1;
     for (int i = 0; i < MAX_TEXT_EFFECT_LAYERS; i++) {
+        if (effect->layers[i].type != TextEffectType::None) lastUsed = i;
+    }
+    for (int i = 0; i < MAX_TEXT_EFFECT_LAYERS && i <= lastUsed + 1; i++) {
         const std::string prefix = "layers[" + std::to_string(i) + "].";
         TextEffectLayer& layer = effect->layers[i];
-        // the next empty layer is offered, later empty ones wait
-        if (layer.type == TextEffectType::None && i > 0 && effect->layers[i - 1].type == TextEffectType::None) break;
 
         ImGui::PushID(i);
         ImGui::SeparatorText(("Layer " + std::to_string(i + 1)).c_str());
@@ -8089,8 +8093,11 @@ void editor::InspectorWindow::drawTextEffectComponent(ComponentType cpType, Scen
             propertyRow(RowPropertyType::Bool, cpType, prefix + "enabled", "Enabled", sceneProject, entities);
 
             RowSettings amplitude = settingsF;
-            amplitude.help = (type == TextEffectType::Pulse) ? "Scale change (0.15 = 15% bigger and smaller)." : "Font sizes (em).";
-            if (type == TextEffectType::Wave || type == TextEffectType::Bounce || type == TextEffectType::Shake || type == TextEffectType::Pulse)
+            amplitude.help = (type == TextEffectType::Pulse) ? "Scale change (0.15 = 15% bigger and smaller)."
+                           : (type == TextEffectType::Grow || type == TextEffectType::Unfold) ? "Share of the change (TMP Effect's Amplitude): 1 = the whole glyph, above overshoots."
+                           : "Font sizes (em).";
+            if (type == TextEffectType::Wave || type == TextEffectType::Bounce || type == TextEffectType::Shake || type == TextEffectType::Pulse ||
+                type == TextEffectType::Grow || type == TextEffectType::Unfold)
                 propertyRow(RowPropertyType::Float, cpType, prefix + "amplitude", "Amplitude", sceneProject, entities, amplitude);
 
             RowSettings duration = settingsF;

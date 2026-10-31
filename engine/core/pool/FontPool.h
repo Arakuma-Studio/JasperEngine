@@ -25,6 +25,10 @@ namespace jasperengine{
         static std::shared_ptr<STBText> get(const std::string& id, const std::string& fontpath, const std::vector<std::string>& fallbackPaths, unsigned int fontSize,
                                             const STBTextOptions& options);
         static void remove(const std::string& id);
+        // drops `text` (reset) and its pool entry when no one else uses that atlas
+        static void release(std::shared_ptr<STBText>& text);
+        // an atlas of that id is pooled
+        static bool contains(const std::string& id);
 
         // necessary for engine shutdown
         static void clear();

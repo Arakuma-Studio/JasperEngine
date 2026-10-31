@@ -198,8 +198,11 @@ namespace jasperengine{
 
         void play(); void pause(); void stop(); void seek(float seconds); void setFrame(float frame);
         // <particle-system> (ui-scaling-text): play/pause/stop/isPlaying above, its live particles
-        // gone, and the ParticleSystem of its hidden entity (every particle API works)
+        // gone, and the ParticleSystem of its hidden entity (every particle API works). Before the
+        // prefab is made (document scripts, onLoad, edit mode) or when its src failed there is none:
+        // hasParticleSystem() is false and getParticleSystem() an empty handle (Lua: nil)
         void clear();
+        bool hasParticleSystem() const;
         ParticleSystem getParticleSystem() const;
         // text-effect: the effect of this element (or the one its text inherits) from the start
         void restartTextEffect();

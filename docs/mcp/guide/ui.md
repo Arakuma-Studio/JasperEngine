@@ -168,15 +168,19 @@ up, colours compose). Types and their fields:
 | Shake | amplitude (em), frequency (Hz) | looping jitter |
 | Pulse | amplitude (scale change), duration, spread | looping |
 | Typewriter | charactersPerSecond (0: the whole text over duration), fadeTime | one-shot, `onCharacterRevealed(index)` |
-| FadeIn, Grow, Unfold | duration, spread (0 one after the other, 1 all at once) | one-shot (Grow from the bottom edge, Unfold from the middle line, as TMP Effect) |
+| FadeIn | duration, spread (0 one after the other, 1 all at once) | one-shot |
+| Grow, Unfold | duration, spread, amplitude (TMP's Amplitude: 1, the default, is the whole change; above overshoots) | one-shot (Grow from the bottom edge, Unfold from the middle line, as TMP Effect) |
 | Rainbow | duration, phaseStep, saturation, lightness, mix | looping colour |
 | Gradient | duration, spread, gradient stops (sRGB), mix (multiply, add, replace) | looping colour |
 
 Component fields: `autoPlay` (starts when shown), `loop` (one-shot layers start again once they all
 finished; `onComplete` fires at each end), `useUnscaledTime` (default true: runs at
 `Engine.timeScale = 0`, pause menus), `startIndex` / `length` (characters, -1 to the end) or
-`forWords` (whole words, space separated). `UI.reducedMotion = true` skips the motion types and keeps
-colour and reveal ones. The Inspector's Preview plays it in edit mode.
+`forWords` (whole words, space separated). One-shot timing is TMP Effect's: the stagger counts the
+characters with their spaces. `UI.reducedMotion = true` skips the motion types and keeps colour and
+reveal ones (an effect of only motion one-shots ends at once). Changing a layer's type moves an
+amplitude left at the old type's default to the new one's (0.15 em, 1 for Grow and Unfold). The
+Inspector's Preview plays it in edit mode.
 
 ```lua
 local fx = TextEffect(scene, title.entity)        -- adds the component when missing
@@ -194,7 +198,7 @@ typing:restart()                                   -- also play(), stop() (plain
 TextMesh Pro Effect: Waves with `Amplitude A`, `DurationInSeconds T`, `CharacterDurationRatio r` and a
 gradient with Mix Add is a Wave layer (amplitude `0.3 x A` em, duration T, phaseStep 0.3) and a
 Gradient layer (duration T, spread r, mix add, its stops); Grow and Unfold map one to one (duration,
-spread = ratio); Sketch is Shake (amplitude `0.1 x A`); Repeat is `loop`, AutoPlay `autoPlay`, ForWords
+spread = ratio, amplitude A); Sketch is Shake (amplitude `0.1 x A`); Repeat is `loop`, AutoPlay `autoPlay`, ForWords
 `forWords`. TMP Effect runs on unscaled time, as the default here.
 
 ## Particles in the UI
