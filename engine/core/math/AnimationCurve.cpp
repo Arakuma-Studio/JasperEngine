@@ -142,7 +142,8 @@ int AnimationCurve::addKey(const CurveKey& key){
 }
 
 int AnimationCurve::moveKey(size_t index, const CurveKey& key){
-    if (index >= keys.size() || !std::isfinite(key.time) || !std::isfinite(key.value)){
+    if (index >= keys.size() || !std::isfinite(key.time) || !std::isfinite(key.value) ||
+        std::isnan(key.inTangent) || std::isnan(key.outTangent)){
         return -1;
     }
     for (size_t i = 0; i < keys.size(); i++){

@@ -50,7 +50,10 @@ bool TrailRenderer::isEnabled() const{
 }
 
 void TrailRenderer::setTime(float time){
-    getComponent<TrailRendererComponent>().time = nonNegative(time);
+    TrailRendererComponent& trail = getComponent<TrailRendererComponent>();
+    trail.time = nonNegative(time);
+    // the points' ages are over it: the width and colour along the trail change
+    trail.needUpdateRibbon = true;
 }
 
 float TrailRenderer::getTime() const{

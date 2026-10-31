@@ -79,7 +79,7 @@ namespace jasperengine{
         std::vector<Vector3> scratchPoints;
         std::vector<float> scratchT;
 
-        void updateTrail(Entity entity, TrailRendererComponent& trail, float now, float dt);
+        void updateTrail(Entity entity, TrailRendererComponent& trail, float now, float dt, bool allowDestroy);
 
     public:
         TrailSystem(Scene* scene);

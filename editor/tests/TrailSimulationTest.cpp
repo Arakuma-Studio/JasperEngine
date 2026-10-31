@@ -264,3 +264,27 @@ TEST(TrailSimulationTest, SystemAutodestructDestroysTheGameObject){
     }
     EXPECT_FALSE(scene.isEntityCreated(entity));
 }
+
+TEST(TrailSimulationTest, StillTrailKeepsFadingByAge){
+    // the head stops: the points still age, so the ribbon (width and colour by age) changes
+    // every frame until the last point expires, and not after
+    Mover mover;
+    mover.trail.time = 0.5f;
+    mover.trail.minVertexDistance = 0.0f;
+    mover.step(0.0f, 0.0f);
+    for (int i = 0; i < 5; i++) mover.step(1.0f / 60.0f, 0.1f);
+    ASSERT_FALSE(mover.trail.points.empty());
+    for (int i = 0; i < 10; i++){
+        mover.trail.needUpdateRibbon = false;
+        EXPECT_TRUE(mover.step(1.0f / 60.0f, 0.0f) & TrailSimulation::Step_Changed) << "frame " << i;
+        EXPECT_TRUE(mover.trail.needUpdateRibbon);
+    }
+    for (int i = 0; i < 60; i++) mover.step(1.0f / 60.0f, 0.0f);
+    EXPECT_TRUE(mover.trail.points.empty());
+    EXPECT_EQ(mover.step(1.0f / 60.0f, 0.0f) & TrailSimulation::Step_Changed, 0u);
+    // time scale 0: nothing ages
+    mover.step(1.0f / 60.0f, 0.1f);
+    mover.step(1.0f / 60.0f, 0.1f);
+    ASSERT_FALSE(mover.trail.points.empty());
+    EXPECT_EQ(mover.step(0.0f, 0.0f) & TrailSimulation::Step_Changed, 0u);
+}

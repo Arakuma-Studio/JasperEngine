@@ -139,6 +139,10 @@ TEST(AnimationCurveTest, KeyEditing){
     EXPECT_EQ(curve.moveKey(1, CurveKey(1.0f, 4.0f)), -1);
     EXPECT_FLOAT_EQ(curve.keys[1].time, 0.75f);
     EXPECT_EQ(curve.moveKey(9, CurveKey(0.1f, 0.0f)), -1);
+    // a NaN tangent: refused, and the key stays
+    EXPECT_EQ(curve.moveKey(1, CurveKey(0.6f, 1.0f, std::nanf(""), 0.0f)), -1);
+    ASSERT_EQ(curve.keys.size(), 3u);
+    EXPECT_FLOAT_EQ(curve.keys[1].time, 0.75f);
 
     EXPECT_TRUE(curve.removeKey(2));
     EXPECT_FALSE(curve.removeKey(2));

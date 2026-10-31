@@ -606,3 +606,7 @@ wrong or in conflict with the code:
     Android device.
 19. **MCP tool budget**: no new tool; `create_entity`'s `trail_renderer` type (+20 characters) is
     paid by a shorter `create_entity` description (total 106093 of 106100).
+20. **Edit-mode preview**: a trail previewed while its GameObject is dragged in edit mode never
+    autodestructs (that would delete the edited GameObject without an undo step); autodestruct is
+    Play's. A trail with points is rebuilt every frame while time runs (dt > 0), moving or not,
+    since its width and colour are by age.

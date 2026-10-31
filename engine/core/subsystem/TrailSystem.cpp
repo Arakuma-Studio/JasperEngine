@@ -118,6 +118,11 @@ unsigned int TrailSimulation::step(TrailRendererComponent& trail, const Vector3&
             }
         }
 
+        // the points age: the width and colour by age change even while the head stays still
+        if (!trail.points.empty()){
+            result |= Step_Changed;
+        }
+
         if (moved){
             trail.idleTime = 0.0f;
         }else{
@@ -195,7 +200,7 @@ void TrailSystem::getRibbonPoints(Entity entity, const TrailRendererComponent& t
     TrailSimulation::ribbonPoints(trail, head, now, points, pointT);
 }
 
-void TrailSystem::updateTrail(Entity entity, TrailRendererComponent& trail, float now, float dt){
+void TrailSystem::updateTrail(Entity entity, TrailRendererComponent& trail, float now, float dt, bool allowDestroy){
     Transform* transform = scene->findComponent<Transform>(entity);
     if (!transform){
         return;
@@ -205,7 +210,7 @@ void TrailSystem::updateTrail(Entity entity, TrailRendererComponent& trail, floa
         Log::warn("Trail Renderer of entity %u reached %zu points: the oldest are dropped (raise its Min Vertex Distance or lower its Time)",
                   (unsigned int)entity, TrailSimulation::MAX_POINTS);
     }
-    if ((result & TrailSimulation::Step_Destroy) && !trail.destroyRequested){
+    if ((result & TrailSimulation::Step_Destroy) && allowDestroy && !trail.destroyRequested){
         // once: the destroy runs at the end of the frame
         trail.destroyRequested = true;
         ObjectManager::destroy(scene, entity);
@@ -242,9 +247,10 @@ void TrailSystem::update(double dt){
                 TrailSimulation::clear(trail);
             }
         }else if (!paused){
-            updateTrail(entity, trail, (float)clock, (float)dt);
+            updateTrail(entity, trail, (float)clock, (float)dt, true);
         }else if (isPreviewing(entity)){
-            updateTrail(entity, trail, (float)previewClock, (float)dt);
+            // an edit-mode preview never destroys the edited GameObject (autodestruct is Play's)
+            updateTrail(entity, trail, (float)previewClock, (float)dt, false);
         }
 
         if (render){
