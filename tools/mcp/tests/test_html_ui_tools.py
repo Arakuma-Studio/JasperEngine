@@ -123,8 +123,9 @@ LIMITS.update({"create_ragdoll": 900})
 # merged by the lead (+ http): provisional, re-measured on the merged tree
 TOTAL_LIMIT = 107621
 # ui-multitouch (spec 2026-10-31-ui-multitouch 10): create_ui's onscreen_stick / onscreen_button / touch_area
-# types and their mode / action / actions fields (+209 on its branch); re-measured on the merged tree below
-TOTAL_LIMIT = 107830
+# types and their mode / action / actions fields (+209 on its branch); merged with main (ui-canvas-group,
+# physics-3d, http, lines-trails, persistence): 151 tools measured 107835, the limit set to it
+TOTAL_LIMIT = 107835
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
