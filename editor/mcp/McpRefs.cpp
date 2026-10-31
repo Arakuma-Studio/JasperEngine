@@ -387,8 +387,8 @@ bool McpRefs::resolveComponent(const Json& ref, ComponentType& out, std::string&
             {"rigidbody3d", "rigidbody"}, {"collider", "rigidbody"}, {"collider2d", "rigidbody2d"},
             {"canvasrenderer", "ui"},
             {"sky", "skybox"}, {"audio", "audiosource"}, {"sound", "audiosource"}, {"scripts", "script"},
-            {"lua", "script"}, {"particles", "particlesystem"}, {"lines", "linerenderer"}, {"fluid", "fluidsimulation"},
-            {"video", "videoplayer"}
+            {"lua", "script"}, {"particles", "particlesystem"}, {"lines", "linerenderer"}, {"line", "linerenderer"},
+            {"fluid", "fluidsimulation"}, {"video", "videoplayer"}
         };
         auto alias = aliases.find(key);
         for (const std::string& candidate : {given, key, alias != aliases.end() ? alias->second : key}) {

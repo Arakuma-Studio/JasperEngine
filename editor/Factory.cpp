@@ -691,6 +691,95 @@ std::string editor::Factory::formatFloat(float value) {
     return oss.str();
 }
 
+namespace {
+
+    std::string formatCurveNumber(float value) {
+        if (std::isinf(value)) return value > 0.0f ? "AnimationCurve::STEP" : "-AnimationCurve::STEP";
+        return editor::Factory::formatFloat(value);
+    }
+
+    const char* formatCurveWrap(CurveWrap wrap) {
+        switch (wrap) {
+            case CurveWrap::Loop: return "CurveWrap::Loop";
+            case CurveWrap::PingPong: return "CurveWrap::PingPong";
+            default: return "CurveWrap::Clamp";
+        }
+    }
+
+    const char* formatLineWidthUnit(LineWidthUnit unit) {
+        return unit == LineWidthUnit::Pixels ? "LineWidthUnit::Pixels" : "LineWidthUnit::World";
+    }
+
+    const char* formatLineAlignment(LineAlignment alignment) {
+        return alignment == LineAlignment::TransformZ ? "LineAlignment::TransformZ" : "LineAlignment::View";
+    }
+
+    const char* formatLineTextureMode(LineTextureMode mode) {
+        switch (mode) {
+            case LineTextureMode::Tile: return "LineTextureMode::Tile";
+            case LineTextureMode::DistributePerSegment: return "LineTextureMode::DistributePerSegment";
+            case LineTextureMode::RepeatPerSegment: return "LineTextureMode::RepeatPerSegment";
+            default: return "LineTextureMode::Stretch";
+        }
+    }
+
+    // the ribbon settings Line and Trail Renderers share, each away from its default
+    template<typename T>
+    void formatRibbonFields(std::ostringstream& code, const std::string& ind, const std::string& var, const T& component, const T& defaults) {
+        using editor::Factory;
+        if (component.widthMultiplier != defaults.widthMultiplier)
+            code << ind << var << ".widthMultiplier = " << Factory::formatFloat(component.widthMultiplier) << ";\n";
+        if (component.widthCurve != defaults.widthCurve)
+            code << ind << var << ".widthCurve = " << Factory::formatCurve(component.widthCurve) << ";\n";
+        if (component.widthUnit != defaults.widthUnit)
+            code << ind << var << ".widthUnit = " << formatLineWidthUnit(component.widthUnit) << ";\n";
+        if (component.colorGradient != defaults.colorGradient)
+            code << ind << var << ".colorGradient = " << Factory::formatGradient(component.colorGradient) << ";\n";
+        if (component.numCornerVertices != defaults.numCornerVertices)
+            code << ind << var << ".numCornerVertices = " << std::to_string(component.numCornerVertices) << ";\n";
+        if (component.numCapVertices != defaults.numCapVertices)
+            code << ind << var << ".numCapVertices = " << std::to_string(component.numCapVertices) << ";\n";
+        if (component.alignment != defaults.alignment)
+            code << ind << var << ".alignment = " << formatLineAlignment(component.alignment) << ";\n";
+        if (component.textureMode != defaults.textureMode)
+            code << ind << var << ".textureMode = " << formatLineTextureMode(component.textureMode) << ";\n";
+        if (component.textureScale != defaults.textureScale)
+            code << ind << var << ".textureScale = Vector2(" << Factory::formatFloat(component.textureScale.x) << ", " << Factory::formatFloat(component.textureScale.y) << ");\n";
+        if (component.sortPriority != defaults.sortPriority)
+            code << ind << var << ".sortPriority = " << std::to_string(component.sortPriority) << ";\n";
+    }
+
+}
+
+std::string editor::Factory::formatCurve(const AnimationCurve& curve) {
+    std::ostringstream code;
+    code << "AnimationCurve({";
+    for (size_t i = 0; i < curve.keys.size(); i++) {
+        const CurveKey& key = curve.keys[i];
+        if (i > 0) code << ", ";
+        code << "CurveKey(" << formatFloat(key.time) << ", " << formatFloat(key.value) << ", "
+             << formatCurveNumber(key.inTangent) << ", " << formatCurveNumber(key.outTangent) << ")";
+    }
+    code << "}, " << formatCurveWrap(curve.preWrap) << ", " << formatCurveWrap(curve.postWrap) << ")";
+    return code.str();
+}
+
+std::string editor::Factory::formatGradient(const Gradient& gradient) {
+    std::ostringstream code;
+    code << "Gradient({";
+    for (size_t i = 0; i < gradient.colorKeys.size(); i++) {
+        if (i > 0) code << ", ";
+        code << "GradientColorKey(" << formatFloat(gradient.colorKeys[i].time) << ", " << formatVector3(gradient.colorKeys[i].color) << ")";
+    }
+    code << "}, {";
+    for (size_t i = 0; i < gradient.alphaKeys.size(); i++) {
+        if (i > 0) code << ", ";
+        code << "GradientAlphaKey(" << formatFloat(gradient.alphaKeys[i].time) << ", " << formatFloat(gradient.alphaKeys[i].alpha) << ")";
+    }
+    code << "}, " << (gradient.mode == GradientMode::Fixed ? "GradientMode::Fixed" : "GradientMode::Blend") << ")";
+    return code.str();
+}
+
 std::string editor::Factory::formatPositiveFloat(float value) {
     return formatFloat(std::isfinite(value) && value > 0.0f ? value : 1.0f);
 }
@@ -814,6 +903,9 @@ std::string editor::Factory::formatAttributeType(AttributeType type) {
         case AttributeType::VAT_INDEX: return "AttributeType::VAT_INDEX";
         case AttributeType::INSTANCEVAT0: return "AttributeType::INSTANCEVAT0";
         case AttributeType::INSTANCEVAT1: return "AttributeType::INSTANCEVAT1";
+        case AttributeType::LINETANGENTIN: return "AttributeType::LINETANGENTIN";
+        case AttributeType::LINETANGENTOUT: return "AttributeType::LINETANGENTOUT";
+        case AttributeType::LINEPARAMS: return "AttributeType::LINEPARAMS";
         default: return "AttributeType::POSITION";
     }
 }
@@ -3148,6 +3240,7 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::LatticeTracksComponent: return createLatticeTracksComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ParticleSystemComponent: return createParticleSystemComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::LineRendererComponent: return createLineRendererComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::TrailRendererComponent: return createTrailRendererComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::PointsComponent: return createPointsComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::InstancedMeshComponent: return createInstancedMeshComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         default: return "";
@@ -4197,8 +4290,52 @@ std::string editor::Factory::createLineRendererComponent(int indentSpaces, Entit
         code << ind << "}\n";
     }
 
+    // the polyline and its ribbon (lines and trails spec 6.7), away from the defaults
+    static const LineRendererComponent defaults;
+    if (l.mode != defaults.mode)
+        code << ind << "linescomp.mode = LineRendererMode::Polyline;\n";
+    if (!l.positions.empty()) {
+        code << ind << "linescomp.positions = {";
+        for (size_t i = 0; i < l.positions.size(); i++) {
+            code << (i > 0 ? ", " : "") << formatVector3(l.positions[i]);
+        }
+        code << "};\n";
+    }
+    if (l.loop) code << ind << "linescomp.loop = true;\n";
+    if (l.useWorldSpace) code << ind << "linescomp.useWorldSpace = true;\n";
+    formatRibbonFields(code, ind, "linescomp", l, defaults);
+
     if (!l.enabled) code << ind << "linescomp.enabled = false;\n";
 
     addComponentCode(code, ind, sceneName, entityName, entity, "LineRendererComponent", "linescomp", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createTrailRendererComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    (void)entityVarNames;
+    if (!scene->findComponent<TrailRendererComponent>(entity)) return "";
+    TrailRendererComponent& t = scene->getComponent<TrailRendererComponent>(entity);
+    static const TrailRendererComponent defaults;
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+
+    code << ind << "TrailRendererComponent trailcomp;\n";
+    if (t.time != defaults.time) code << ind << "trailcomp.time = " << formatFloat(t.time) << ";\n";
+    if (t.minVertexDistance != defaults.minVertexDistance) code << ind << "trailcomp.minVertexDistance = " << formatFloat(t.minVertexDistance) << ";\n";
+    if (t.emitting != defaults.emitting) code << ind << "trailcomp.emitting = " << (t.emitting ? "true" : "false") << ";\n";
+    if (t.autodestruct != defaults.autodestruct) code << ind << "trailcomp.autodestruct = " << (t.autodestruct ? "true" : "false") << ";\n";
+    formatRibbonFields(code, ind, "trailcomp", t, defaults);
+    if (!t.customShader.empty())
+        code << ind << "trailcomp.customShader = " << formatString(t.customShader) << ";\n";
+    if (!t.shaderUniforms.empty())
+        code << ind << "trailcomp.shaderUniforms = " << formatShaderUniforms(t.shaderUniforms) << ";\n";
+    code << formatComponentShaderLibrary(indentSpaces, t.shaderTextures, t.shaderFeatures, &t.blendMode, &t.depthWrite, "trailcomp", fs::path());
+    code << formatStencilAndColorWrite(indentSpaces, t.stencil, t.colorWrite, "trailcomp");
+    for (const auto& binding : t.shaderGlobalBindings) {
+        code << ind << "trailcomp.shaderGlobalBindings.push_back({" << formatString(binding.first) << ", " << formatString(binding.second) << "});\n";
+    }
+    if (!t.enabled) code << ind << "trailcomp.enabled = false;\n";
+
+    addComponentCode(code, ind, sceneName, entityName, entity, "TrailRendererComponent", "trailcomp", assignExisting);
     return code.str();
 }

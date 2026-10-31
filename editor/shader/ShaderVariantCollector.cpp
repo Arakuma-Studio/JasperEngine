@@ -463,8 +463,12 @@ namespace {
                 if (points || registry->findComponent<ParticleSystemComponent>(entity)){
                     collectPoints(points);
                 }
+                // the hairline, or the ribbon variant a width loads (pixel widths, a base texture)
                 if (const LineRendererComponent* lines = registry->findComponent<LineRendererComponent>(entity)){
-                    insertKeys(ShaderType::LINES, ShaderPool::getLinesProperties(false, true), shaderId(lines->customShader, ShaderType::LINES, lines->shaderFeatures, lines->blendMode));
+                    insertKeys(ShaderType::LINES, RenderSystem::getLinesVariantProperties(scene, *lines), shaderId(lines->customShader, ShaderType::LINES, lines->shaderFeatures, lines->blendMode));
+                }
+                if (const TrailRendererComponent* trail = registry->findComponent<TrailRendererComponent>(entity)){
+                    insertKeys(ShaderType::LINES, RenderSystem::getTrailVariantProperties(scene, *trail), shaderId(trail->customShader, ShaderType::LINES, trail->shaderFeatures, trail->blendMode));
                 }
                 if (const SkyboxComponent* sky = registry->findComponent<SkyboxComponent>(entity)){
                     insertKeys(ShaderType::SKYBOX, 0, shaderId(sky->customShader, ShaderType::SKYBOX, sky->shaderFeatures, MaterialBlendMode::AUTO));

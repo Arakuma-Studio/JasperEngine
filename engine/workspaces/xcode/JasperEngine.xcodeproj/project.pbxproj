@@ -3379,6 +3379,22 @@
 		4A534E475FDEC90B55413D73 /* VideoTextureConverter.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4737F56A38B128F115 /* VideoTextureConverter.h */; };
 		4A534E4740C9C045E5EA20CA /* VideoPlayer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477741740820D741F9 /* VideoPlayer.h */; };
 		4A534E47E561ADFD60E21F7A /* VideoPlayerSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D88DB63824966935 /* VideoPlayerSystem.h */; };
+		4A534E47ECA800FD8B871567 /* AnimationCurve.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AB97E17551816126 /* AnimationCurve.cpp */; };
+		4A534E47C4CC2BA4600C539E /* AnimationCurve.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AB97E17551816126 /* AnimationCurve.cpp */; };
+		4A534E47699C0D6A66DBCB13 /* Gradient.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CE6A27D093FF30CD /* Gradient.cpp */; };
+		4A534E476CE65E40D89D6748 /* Gradient.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CE6A27D093FF30CD /* Gradient.cpp */; };
+		4A534E47CB7C331EE90C2019 /* TrailRenderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4759A335399714FD33 /* TrailRenderer.cpp */; };
+		4A534E47666B66B24871AAA0 /* TrailRenderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4759A335399714FD33 /* TrailRenderer.cpp */; };
+		4A534E474FD048B43C95AA02 /* LineRibbonBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476309E3EF32DDB09B /* LineRibbonBuilder.cpp */; };
+		4A534E47F807A7F7B7DC0936 /* LineRibbonBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476309E3EF32DDB09B /* LineRibbonBuilder.cpp */; };
+		4A534E47C826FA60D57B648C /* TrailSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B38E42BA45359570 /* TrailSystem.cpp */; };
+		4A534E479399C2E0EAF5A3C3 /* TrailSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B38E42BA45359570 /* TrailSystem.cpp */; };
+		4A534E477488C86519002423 /* TrailRendererComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471E4D971B8C73A691 /* TrailRendererComponent.h */; };
+		4A534E47B22451FC6561CEF6 /* AnimationCurve.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B61DB73C5C1B6ABF /* AnimationCurve.h */; };
+		4A534E4764E472A26357C59D /* Gradient.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475BFC5BBB38279DB9 /* Gradient.h */; };
+		4A534E471ECC1F0F8A111EDB /* TrailRenderer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D1A59D898AF8B4BB /* TrailRenderer.h */; };
+		4A534E478F589171F02F0B63 /* LineRibbonBuilder.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47197C345843945889 /* LineRibbonBuilder.h */; };
+		4A534E47212823E1E8889FB7 /* TrailSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D89F43391B4A415F /* TrailSystem.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6803,6 +6819,17 @@
 		4A534E4737F56A38B128F115 /* VideoTextureConverter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VideoTextureConverter.h; sourceTree = "<group>"; };
 		4A534E477741740820D741F9 /* VideoPlayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VideoPlayer.h; sourceTree = "<group>"; };
 		4A534E47D88DB63824966935 /* VideoPlayerSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VideoPlayerSystem.h; sourceTree = "<group>"; };
+		4A534E47AB97E17551816126 /* AnimationCurve.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimationCurve.cpp; sourceTree = "<group>"; };
+		4A534E47CE6A27D093FF30CD /* Gradient.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Gradient.cpp; sourceTree = "<group>"; };
+		4A534E4759A335399714FD33 /* TrailRenderer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TrailRenderer.cpp; sourceTree = "<group>"; };
+		4A534E476309E3EF32DDB09B /* LineRibbonBuilder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LineRibbonBuilder.cpp; sourceTree = "<group>"; };
+		4A534E47B38E42BA45359570 /* TrailSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TrailSystem.cpp; sourceTree = "<group>"; };
+		4A534E471E4D971B8C73A691 /* TrailRendererComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TrailRendererComponent.h; sourceTree = "<group>"; };
+		4A534E47B61DB73C5C1B6ABF /* AnimationCurve.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimationCurve.h; sourceTree = "<group>"; };
+		4A534E475BFC5BBB38279DB9 /* Gradient.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Gradient.h; sourceTree = "<group>"; };
+		4A534E47D1A59D898AF8B4BB /* TrailRenderer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TrailRenderer.h; sourceTree = "<group>"; };
+		4A534E47197C345843945889 /* LineRibbonBuilder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LineRibbonBuilder.h; sourceTree = "<group>"; };
+		4A534E47D89F43391B4A415F /* TrailSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TrailSystem.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -8264,6 +8291,8 @@
 				4A534E4749FAA44055DBA213 /* RenderBackendTime.h */,
 				4A534E473A33F3DC4FB8A61C /* CpuSkin.cpp */,
 				4A534E4754E256FE333DE6E7 /* CpuSkin.h */,
+				4A534E476309E3EF32DDB09B /* LineRibbonBuilder.cpp */,
+				4A534E47197C345843945889 /* LineRibbonBuilder.h */,
 			);
 			path = render;
 			sourceTree = "<group>";
@@ -8334,6 +8363,7 @@
 				4A534E47F4D574AFECE5C17E /* VertexAnimatorComponent.h */,
 				4A534E47C782824D41EC527F /* PhysicsCommon.h */,
 				4A534E47C9EB4F5CD128ABB8 /* VideoPlayerComponent.h */,
+				4A534E471E4D971B8C73A691 /* TrailRendererComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -8366,6 +8396,10 @@
 				7162FC4A25962A0E0075B97D /* Vector3.cpp */,
 				7162FC5725962A0E0075B97D /* Vector4.h */,
 				7162FC4925962A0E0075B97D /* Vector4.cpp */,
+				4A534E47AB97E17551816126 /* AnimationCurve.cpp */,
+				4A534E47CE6A27D093FF30CD /* Gradient.cpp */,
+				4A534E47B61DB73C5C1B6ABF /* AnimationCurve.h */,
+				4A534E475BFC5BBB38279DB9 /* Gradient.h */,
 			);
 			path = math;
 			sourceTree = "<group>";
@@ -8423,6 +8457,8 @@
 				4A534E47E1D001E6946218B1 /* VertexAnimator.h */,
 				4A534E47CE10E825FF34974A /* VideoPlayer.cpp */,
 				4A534E477741740820D741F9 /* VideoPlayer.h */,
+				4A534E4759A335399714FD33 /* TrailRenderer.cpp */,
+				4A534E47D1A59D898AF8B4BB /* TrailRenderer.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -8478,6 +8514,8 @@
 				4A534E474C490B38DD8DB742 /* VertexAnimatorSystem.h */,
 				4A534E47456C3BFEBD9D2182 /* VideoPlayerSystem.cpp */,
 				4A534E47D88DB63824966935 /* VideoPlayerSystem.h */,
+				4A534E47B38E42BA45359570 /* TrailSystem.cpp */,
+				4A534E47D89F43391B4A415F /* TrailSystem.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -12150,6 +12188,12 @@
 				4A534E475FDEC90B55413D73 /* VideoTextureConverter.h in Headers */,
 				4A534E4740C9C045E5EA20CA /* VideoPlayer.h in Headers */,
 				4A534E47E561ADFD60E21F7A /* VideoPlayerSystem.h in Headers */,
+				4A534E477488C86519002423 /* TrailRendererComponent.h in Headers */,
+				4A534E47B22451FC6561CEF6 /* AnimationCurve.h in Headers */,
+				4A534E4764E472A26357C59D /* Gradient.h in Headers */,
+				4A534E471ECC1F0F8A111EDB /* TrailRenderer.h in Headers */,
+				4A534E478F589171F02F0B63 /* LineRibbonBuilder.h in Headers */,
+				4A534E47212823E1E8889FB7 /* TrailSystem.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14222,6 +14266,11 @@
 				4A534E4720664EC386B0A5CE /* VideoPlayer.cpp in Sources */,
 				4A534E4792F11A258CA8A565 /* VideoPlayerSystem.cpp in Sources */,
 				4A534E47AD81333694BBB14E /* AVFoundationBackend.mm in Sources */,
+				4A534E47ECA800FD8B871567 /* AnimationCurve.cpp in Sources */,
+				4A534E47699C0D6A66DBCB13 /* Gradient.cpp in Sources */,
+				4A534E47CB7C331EE90C2019 /* TrailRenderer.cpp in Sources */,
+				4A534E474FD048B43C95AA02 /* LineRibbonBuilder.cpp in Sources */,
+				4A534E47C826FA60D57B648C /* TrailSystem.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14673,6 +14722,11 @@
 				4A534E47F36B81CE674FD681 /* VideoPlayer.cpp in Sources */,
 				4A534E47A10B7A3578EE235B /* VideoPlayerSystem.cpp in Sources */,
 				4A534E471D096D8A6704E583 /* AVFoundationBackend.mm in Sources */,
+				4A534E47C4CC2BA4600C539E /* AnimationCurve.cpp in Sources */,
+				4A534E476CE65E40D89D6748 /* Gradient.cpp in Sources */,
+				4A534E47666B66B24871AAA0 /* TrailRenderer.cpp in Sources */,
+				4A534E47F807A7F7B7DC0936 /* LineRibbonBuilder.cpp in Sources */,
+				4A534E479399C2E0EAF5A3C3 /* TrailSystem.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

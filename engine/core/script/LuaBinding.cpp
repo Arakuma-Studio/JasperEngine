@@ -29,6 +29,7 @@
 #include "object/MeshPolygon.h"
 #include "object/Points.h"
 #include "object/LineRenderer.h"
+#include "object/TrailRenderer.h"
 #include "object/Sprite.h"
 #include "object/Terrain.h"
 #include "object/Tilemap.h"
@@ -863,6 +864,7 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
     DISPATCH_TYPE(MeshPolygon, "meshpolygon");
     DISPATCH_TYPE(Points, "points");
     DISPATCH_TYPE(LineRenderer, "linerenderer");
+    DISPATCH_TYPE(TrailRenderer, "trailrenderer");
     DISPATCH_TYPE(Sprite, "sprite");
     DISPATCH_TYPE(AudioSource, "audiosource");
     DISPATCH_TYPE(RectTransform, "recttransform");

@@ -204,6 +204,7 @@ const std::vector<EntityKind>& entityKinds() {
         {"video_background", EntityCreationType::VIDEO_BACKGROUND, "Video Background"},
         {"points", EntityCreationType::POINTS, "Points"},
         {"line_renderer", EntityCreationType::LINE_RENDERER, "Line Renderer"},
+        {"trail_renderer", EntityCreationType::TRAIL_RENDERER, "Trail Renderer"},
         {"mesh_polygon", EntityCreationType::MESH_POLYGON, "Mesh Polygon"},
         {"sprite", EntityCreationType::SPRITE, "Sprite"},
         {"tilemap", EntityCreationType::TILEMAP, "Tilemap"},
@@ -253,7 +254,8 @@ const EntityKind* findKind(const std::string& given) {
         {"rigidbody3d", "rigidbody"}, {"joint", "joint3d"}, {"joint_2d", "joint2d"}, {"progress_bar", "progressbar"},
         {"sun", "directional_light"}, {"audio", "audio_source"}, {"ui_image", "image"}, {"ui_text", "text"},
         {"label", "text"}, {"quad", "plane"}, {"uidocument", "ui_document"}, {"html", "ui_document"},
-        {"fluid", "fluid_simulation"}, {"video", "video_player"}, {"videoplayer", "video_player"}, {"video_camera_background", "video_background"}
+        {"fluid", "fluid_simulation"}, {"line", "line_renderer"}, {"trail", "trail_renderer"}, {"video", "video_player"},
+        {"videoplayer", "video_player"}, {"video_camera_background", "video_background"}
     };
     auto alias = aliases.find(key);
     if (alias != aliases.end()) key = alias->second;
@@ -1213,8 +1215,8 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "create_entity";
         tool.title = "Create Entity";
         tool.description =
-            "GameObject > Create with parent (omitted = scene root), name, local transform, extra components "
-            "and initial values in one step. empty = Transform only; bare = no components (root only); model "
+            "GameObject > Create with parent (default root), name, local transform, extra components "
+            "and initial values. empty = Transform only; bare = no components (root only); model "
             "needs model; *_tween/*_tracks are animation actions. values {component: {property: value}} or "
             "changes, as set_properties.";
         tool.inputSchema = object({

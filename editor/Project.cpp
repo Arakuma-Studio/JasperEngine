@@ -53,6 +53,7 @@
 #include "fluid/FluidSimulator.h"
 #include "subsystem/PoseAnimatorSystem.h"
 #include "subsystem/VertexAnimatorSystem.h"
+#include "subsystem/TrailSystem.h"
 #include "pose/ModelRig.h"
 #include "pose/PoseAnimatorRuntime.h"
 #include "animation/ModelSubClips.h"
@@ -563,6 +564,7 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
     visitComponents(registry->getComponentArray<UIComponent>(), [&](UIComponent& ui) { visitShaderTextures(ui.shaderTextures, ui.needReload); });
     visitComponents(registry->getComponentArray<PointsComponent>(), [&](PointsComponent& points) { visitShaderTextures(points.shaderTextures, points.needReload); });
     visitComponents(registry->getComponentArray<LineRendererComponent>(), [&](LineRendererComponent& lines) { visitShaderTextures(lines.shaderTextures, lines.needReload); });
+    visitComponents(registry->getComponentArray<TrailRendererComponent>(), [&](TrailRendererComponent& trail) { visitShaderTextures(trail.shaderTextures, trail.needReload); });
     visitComponents(registry->getComponentArray<SkyboxComponent>(), [&](SkyboxComponent& sky) { visitShaderTextures(sky.shaderTextures, sky.needReload); });
 
     visitComponents(registry->getComponentArray<UIComponent>(), [&](UIComponent& ui) {
@@ -800,6 +802,9 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
     });
     visitComponents(registry->getComponentArray<LineRendererComponent>(), [&](LineRendererComponent& lines) {
         for (const auto& shaderTexture : lines.shaderTextures) addTexture(shaderTexture.second, false);
+    });
+    visitComponents(registry->getComponentArray<TrailRendererComponent>(), [&](TrailRendererComponent& trail) {
+        for (const auto& shaderTexture : trail.shaderTextures) addTexture(shaderTexture.second, false);
     });
     visitComponents(registry->getComponentArray<SkyboxComponent>(), [&](SkyboxComponent& sky) {
         for (const auto& shaderTexture : sky.shaderTextures) addTexture(shaderTexture.second, false);
@@ -1509,6 +1514,7 @@ void editor::Project::applyCustomShaderPathChange(const std::function<bool(std::
         applyToArray(registry->getComponentArray<UIComponent>(), &UIComponent::customShader);
         applyToArray(registry->getComponentArray<PointsComponent>(), &PointsComponent::customShader);
         applyToArray(registry->getComponentArray<LineRendererComponent>(), &LineRendererComponent::customShader);
+        applyToArray(registry->getComponentArray<TrailRendererComponent>(), &TrailRendererComponent::customShader);
         applyToArray(registry->getComponentArray<SkyboxComponent>(), &SkyboxComponent::customShader);
         // a submesh material's own shader and its extra pass's (mesh reload)
         auto meshes = registry->getComponentArray<MeshComponent>();
@@ -3960,6 +3966,13 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
             }
         }
 
+        if (signature.test(scene->getComponentId<TrailRendererComponent>())) {
+            const TrailRendererComponent& trail = scene->getComponent<TrailRendererComponent>(entity);
+            if (trail.loaded) {
+                insertKeys(ShaderType::LINES, trail.shaderProperties, effectiveShaderId(trail.customShader, ShaderType::LINES, trail.shaderFeatures, trail.blendMode));
+            }
+        }
+
         if (signature.test(scene->getComponentId<SkyboxComponent>())) {
             const SkyboxComponent& sky = scene->getComponent<SkyboxComponent>(entity);
             if (sky.loaded) {
@@ -5598,6 +5611,11 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<LatticeSystem>()->setPaused(pause);
     // Vertex Animators hold still in edit mode unless their Preview is on
     scene->getSystem<VertexAnimatorSystem>()->setPaused(pause);
+    // trails keep no point in edit mode but a dragged GameObject's (TrailSystem's preview)
+    if (auto trails = scene->findSystem<TrailSystem>()){
+        trails->setPaused(pause);
+        if (!pause) trails->clearPreviews();
+    }
 }
 
 void editor::Project::stopVertexAnimatorPreviews() {
@@ -7099,10 +7117,13 @@ AABB editor::Project::getEntityWorldAABB(Scene* scene, Entity entity, Scene* mai
             }
 
             if (signature.test(scene->getComponentId<LineRendererComponent>())){
+                // either mode, world or local space points; a ribbon of world widths around them
                 const LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
-                for (const LineData& line : lines.lines) {
-                    mergeWorldPoint(transform.modelMatrix * line.pointA);
-                    mergeWorldPoint(transform.modelMatrix * line.pointB);
+                const float half = (lines.loadedRibbon && lines.widthUnit == LineWidthUnit::World)
+                    ? lines.ribbon.maxHalfWidth * LineRibbonBuilder::boundsGrowth(lines.numCornerVertices) : 0.0f;
+                for (const Vector3& point : SceneRender::getLinePointWorldPositions(lines, transform)) {
+                    mergeWorldPoint(point);
+                    if (half > 0.0f) aabb.merge(AABB(point.x - half, point.y - half, point.z - half, point.x + half, point.y + half, point.z + half));
                 }
             }
         }
@@ -7153,12 +7174,8 @@ AABB editor::Project::getEntityLocalAABB(Scene* scene, Entity entity) const{
                 aabb.merge(pt.position);
             }
         }
-        if (signature.test(scene->getComponentId<LineRendererComponent>())){
-            const LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
-            for (const LineData& line : lines.lines) {
-                aabb.merge(line.pointA);
-                aabb.merge(line.pointB);
-            }
+        if (signature.test(scene->getComponentId<LineRendererComponent>()) && signature.test(scene->getComponentId<Transform>())){
+            SceneRender::mergeLineLocalPoints(aabb, scene->getComponent<LineRendererComponent>(entity), scene->getComponent<Transform>(entity));
         }
     }
 

@@ -258,7 +258,7 @@ bool resolveShaderComponent(const CallPtr& call, Target& target, ShaderType& sha
         return true;
     }
     for (ComponentType candidate : {ComponentType::MeshComponent, ComponentType::UIComponent, ComponentType::PointsComponent,
-                                    ComponentType::LineRendererComponent, ComponentType::SkyboxComponent}) {
+                                    ComponentType::LineRendererComponent, ComponentType::TrailRendererComponent, ComponentType::SkyboxComponent}) {
         if (McpRefs::hasComponent(target.scene, target.entity, candidate)) {
             target.component = candidate;
             target.hasComponent = true;
@@ -267,7 +267,7 @@ bool resolveShaderComponent(const CallPtr& call, Target& target, ShaderType& sha
         }
     }
     (void)scene;
-    call->fail("The GameObject has no shader-capable component (mesh, ui, points, linerenderer, skybox).");
+    call->fail("The GameObject has no shader-capable component (mesh, ui, points, linerenderer, trailrenderer, skybox).");
     return false;
 }
 
@@ -2916,7 +2916,18 @@ void checkShaderTool(const CallPtr& call) {
         // every fork in use
         forks = ProjectChecks::shaderForksUsingFiles(project, {"x.glsl"});
         if (forks.empty()) {
-            call->ok("No custom shader is used by the loaded scenes.", Json{{"results", Json::array()}, {"failed", 0}, {"findings", Json::array()}});
+            // no shader to compile: the scenes' own findings still apply (Stochastic Tiling,
+            // Line and Trail Renderers)
+            std::vector<ProjectChecks::Finding> sceneFindings = ProjectChecks::stochasticTilingFindings(project);
+            const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(project);
+            sceneFindings.insert(sceneFindings.end(), lines.begin(), lines.end());
+            std::string text = "No custom shader is used by the loaded scenes.";
+            Json findings = Json::array();
+            for (const ProjectChecks::Finding& finding : sceneFindings) {
+                findings.push_back(ProjectChecks::toJson(finding));
+                text += "\n" + finding.severity + ": " + finding.message;
+            }
+            call->ok(text, Json{{"results", Json::array()}, {"failed", 0}, {"findings", findings}});
             return;
         }
     }
@@ -2927,6 +2938,9 @@ void checkShaderTool(const CallPtr& call) {
     if (!args.contains("shader")) {
         const std::vector<ProjectChecks::Finding> stochastic = ProjectChecks::stochasticTilingFindings(project);
         stateFindings.insert(stateFindings.end(), stochastic.begin(), stochastic.end());
+        // Line and Trail Renderers: a hairline sampling a texture, a trail with Time 0
+        const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(project);
+        stateFindings.insert(stateFindings.end(), lines.begin(), lines.end());
     }
     checkShadersWithFindings(call, forks, [call, stateFindings](Json results, Json findings) {
         for (const ProjectChecks::Finding& finding : stateFindings) findings.push_back(ProjectChecks::toJson(finding));

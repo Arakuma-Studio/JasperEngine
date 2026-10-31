@@ -82,6 +82,9 @@ namespace jasperengine::editor{
         // a script entry's enabled flag (or the list) changed: while the scene's scripts run,
         // onEnable / onDisable as due (ScriptRuntime::refreshEntity)
         UpdateFlags_Script_Enabled      = (uint64_t)1 << 46,
+        // a Trail Renderer's ribbon settings (width, colour, joints, caps, texture layout): its
+        // ribbon is built again (values clamped: widths and time >= 0, vertex counts 0..90)
+        UpdateFlags_Trail               = (uint64_t)1 << 47,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -153,6 +156,8 @@ namespace jasperengine::editor{
         AnimationPlayerComponent,
         // baked vertex / bone animation played on the GPU (vertex animation spec 3.3)
         VertexAnimatorComponent,
+        // Unity's Trail Renderer (lines and trails spec 6.4)
+        TrailRendererComponent,
         // Unity's VideoPlayer (video-mp4 spec 6.4)
         VideoPlayerComponent
     };
@@ -180,7 +185,10 @@ namespace jasperengine::editor{
         Ease,
         Custom,
         Entity,
-        EntityReference
+        EntityReference,
+        // Unity AnimationCurve / Gradient (math/AnimationCurve.h, math/Gradient.h)
+        Curve,
+        Gradient
     };
 
     struct PropertyData{
