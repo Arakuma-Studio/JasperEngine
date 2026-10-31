@@ -190,6 +190,10 @@ static int luaGradientSetKeys(lua_State* L){
             alphas.push_back(key);
         }
     }
+    if (colors.size() > Gradient::MAX_KEYS || alphas.size() > Gradient::MAX_KEYS){
+        return luaL_error(L, "Gradient.setKeys: at most %d colour keys and %d alpha keys (got %d and %d)",
+                          (int)Gradient::MAX_KEYS, (int)Gradient::MAX_KEYS, (int)colors.size(), (int)alphas.size());
+    }
     (*self)->colorKeys = colors;
     (*self)->alphaKeys = alphas;
     (*self)->normalize();
@@ -477,10 +481,24 @@ void LuaBinding::registerMathClasses(lua_State *L){
         })
         .addProperty("colorKeys",
             +[](const Gradient* self) -> std::vector<GradientColorKey> { return self->colorKeys; },
-            +[](Gradient* self, std::vector<GradientColorKey> keys) { self->colorKeys = std::move(keys); self->normalize(); })
+            +[](Gradient* self, std::vector<GradientColorKey> keys, lua_State* L) {
+                if (keys.size() > Gradient::MAX_KEYS){
+                    luaL_error(L, "Gradient.colorKeys: at most %d keys (got %d)", (int)Gradient::MAX_KEYS, (int)keys.size());
+                    return;
+                }
+                self->colorKeys = std::move(keys);
+                self->normalize();
+            })
         .addProperty("alphaKeys",
             +[](const Gradient* self) -> std::vector<GradientAlphaKey> { return self->alphaKeys; },
-            +[](Gradient* self, std::vector<GradientAlphaKey> keys) { self->alphaKeys = std::move(keys); self->normalize(); })
+            +[](Gradient* self, std::vector<GradientAlphaKey> keys, lua_State* L) {
+                if (keys.size() > Gradient::MAX_KEYS){
+                    luaL_error(L, "Gradient.alphaKeys: at most %d keys (got %d)", (int)Gradient::MAX_KEYS, (int)keys.size());
+                    return;
+                }
+                self->alphaKeys = std::move(keys);
+                self->normalize();
+            })
         .addFunction("__eq", &equalsLua<Gradient>)
         .endClass();
 

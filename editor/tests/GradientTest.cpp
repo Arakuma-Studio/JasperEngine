@@ -53,7 +53,9 @@ TEST(GradientTest, BlendBetweenKeysAtDifferentTimes){
     // before the first colour key: the first colour; after the last: the last
     expectColor(gradient.evaluate(0.0f), Vector4(1, 0, 0, 1));
     expectColor(gradient.evaluate(0.8f), Vector4(0, 0, 1, 0.2f));
-    expectColor(gradient.evaluate(0.4f), Vector4(0.5f, 0, 0.5f, 0.6f));
+    // colours mix in sRGB (Unity): halfway is 0.5 sRGB a channel, alpha mixes linearly
+    const float half = Color::sRGBToLinear(Vector3(0.5f, 0.5f, 0.5f)).x;
+    expectColor(gradient.evaluate(0.4f), Vector4(half, 0, half, 0.6f));
     // t is clamped
     expectColor(gradient.evaluate(-2.0f), Vector4(1, 0, 0, 1));
     expectColor(gradient.evaluate(3.0f), Vector4(0, 0, 1, 0));
@@ -99,6 +101,9 @@ TEST(GradientTest, NormalizeCapsSortsAndClamps){
     for (size_t i = 1; i < gradient.colorKeys.size(); i++){
         EXPECT_LE(gradient.colorKeys[i - 1].time, gradient.colorKeys[i].time);
     }
+    // the first 7 by time and the last: both ends stay
+    EXPECT_FLOAT_EQ(gradient.colorKeys.back().time, 1.0f);
+    EXPECT_FLOAT_EQ(gradient.colorKeys[Gradient::MAX_KEYS - 2].time, 6.0f / 9.0f);
     EXPECT_FLOAT_EQ(gradient.colorKeys.front().time, 0.0f);
     EXPECT_FLOAT_EQ(gradient.alphaKeys.front().time, 0.0f);
     EXPECT_FLOAT_EQ(gradient.alphaKeys.front().alpha, 0.5f);
@@ -108,7 +113,30 @@ TEST(GradientTest, ConstantAndTwoColors){
     Gradient constant = Gradient::constant(Vector4(0.2f, 0.4f, 0.6f, 0.5f));
     expectColor(constant.evaluate(0.9f), Vector4(0.2f, 0.4f, 0.6f, 0.5f));
     Gradient two = Gradient::twoColors(Vector4(1, 0, 0, 1), Vector4(0, 0, 1, 0));
-    expectColor(two.evaluate(0.5f), Vector4(0.5f, 0, 0.5f, 0.5f));
+    const float half = Color::sRGBToLinear(Vector3(0.5f, 0.5f, 0.5f)).x;
+    expectColor(two.evaluate(0.5f), Vector4(half, 0, half, 0.5f));
+}
+
+TEST(GradientTest, BlendsInSRGBLikeUnity){
+    // black to white: the middle is sRGB 0.5 (linear ~0.218), what Unity shows; the table
+    // used for the conversion back to linear stays within 1e-5 of the exact value
+    Gradient gradient = Gradient::twoColors(Vector4(0, 0, 0, 1), Vector4(1, 1, 1, 1));
+    for (int i = 0; i <= 64; i++){
+        const float t = (float)i / 64.0f;
+        const Vector3 expected = Color::sRGBToLinear(Vector3(t, t, t));
+        const Vector3 actual = gradient.evaluateColor(t);
+        EXPECT_NEAR(actual.x, expected.x, 1e-5f) << t;
+        EXPECT_NEAR(actual.z, expected.z, 1e-5f) << t;
+    }
+    // keys changed in place (no normalize) are still mixed from their current values
+    gradient.colorKeys[1].color = Vector3(0, 1, 0);
+    const Vector3 changed = gradient.evaluateColor(0.5f);
+    EXPECT_NEAR(changed.x, 0.0f, 1e-6f);
+    EXPECT_NEAR(changed.y, Color::sRGBToLinear(Vector3(0.5f, 0.5f, 0.5f)).x, 1e-5f);
+    // a copy evaluates the same
+    const Gradient copy = gradient;
+    EXPECT_NEAR(copy.evaluateColor(0.25f).y, gradient.evaluateColor(0.25f).y, 1e-7f);
+    EXPECT_TRUE(copy == gradient);
 }
 
 TEST(GradientTest, YamlRoundTrip){
