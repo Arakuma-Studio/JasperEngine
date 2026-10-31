@@ -273,9 +273,12 @@ TEST_F(CanvasGroupTest, ScrollbarAndPanelGesturesAreIgnored){
     Entity root = container(NULL_ENTITY);
     addGroup(root).interactable = false;
     Entity bar = image(root, 0, 0, 20, 200);
+    Entity handle = image(bar, 0, 0, 20, 100);
     ScrollbarComponent scrollbar;
     scrollbar.barSize = 0.5f;
+    scrollbar.bar = handle;
     scene.addComponent<ScrollbarComponent>(bar, scrollbar);
+    scene.getComponent<RectTransformComponent>(handle).ignoreEvents = true;
     ui()->eventOnPointerDown(5, 150);
     EXPECT_FALSE(scene.getComponent<ScrollbarComponent>(bar).barPointerDown);
     ui()->eventOnPointerUp(5, 150);
@@ -286,7 +289,21 @@ TEST_F(CanvasGroupTest, ScrollbarAndPanelGesturesAreIgnored){
     scene.addComponent<PanelComponent>(panel, panelcomp);
     ui()->eventOnPointerDown(199, 150);
     EXPECT_EQ(scene.getComponent<PanelComponent>(panel).edgePointerDown, PanelEdge::NONE);
-    EXPECT_FALSE(scene.getComponent<PanelComponent>(panel).headerPointerDown);
+    ui()->eventOnPointerUp(199, 150);
+
+    // the same presses start the gestures when interactable
+    group(root).interactable = true;
+    ui()->eventOnPointerDown(5, 150);
+    EXPECT_TRUE(scene.getComponent<ScrollbarComponent>(bar).barPointerDown);
+    // the group turns off mid-drag: the gesture ends in the next update
+    group(root).interactable = false;
+    ui()->syncCanvasGroups();
+    ui()->update(0);
+    EXPECT_FALSE(scene.getComponent<ScrollbarComponent>(bar).barPointerDown);
+    ui()->eventOnPointerUp(5, 150);
+    group(root).interactable = true;
+    ui()->eventOnPointerDown(199, 150);
+    EXPECT_EQ(scene.getComponent<PanelComponent>(panel).edgePointerDown, PanelEdge::RIGHT);
     ui()->eventOnPointerUp(199, 150);
 }
 
@@ -393,6 +410,14 @@ TEST_F(CanvasGroupTest, NoWalkWhenNothingChanged){
     for (int i = 0; i < 10; i++) ui()->syncCanvasGroups();
     EXPECT_EQ(ui()->getCanvasGroupStats().visited, 0u);
     EXPECT_EQ(ui()->getCanvasGroupStats().fullPasses, 0u);
+    // the UI update (layout, widgets) changes nothing a group depends on
+    ui()->update(0);
+    ui()->resetCanvasGroupStats();
+    for (int i = 0; i < 5; i++){
+        ui()->update(0);
+        ui()->draw();
+    }
+    EXPECT_EQ(ui()->getCanvasGroupStats().visited, 0u) << "a frame with no change walks nothing";
 
     // an alpha change of a group with 3 descendants: one subtree pass over 4 entities
     group(root).alpha = 0.25f;
