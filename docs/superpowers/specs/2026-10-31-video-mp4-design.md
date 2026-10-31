@@ -577,6 +577,15 @@ What the implementation does differently from the text above, and why.
 - MCP aliases: `create_entity type video` / `videoplayer` -> `video_player`, `video_camera_background` ->
   `video_background`; component alias `video` -> `videoplayer`.
 - The guide is `docs/mcp/guide/video.md`, served as `jasper://docs/video`.
+- The editor reuses the edit-time Scene for Play, so `VideoPlayerSystem` is paused with the other systems in
+  edit mode (nothing plays, `playOnAwake` waits) and `resetPlayers()` at Play stop closes every source and
+  arms `playOnAwake` for the next Play.
+- `prepare()` / `play()` right after a new `clip`/`url` (`vp.url = x; vp:prepare()`, the ad flow) open the new
+  source at once; a new value alone still stops the player without `playOnAwake` starting it again.
+- Progressive start probes the growing download first at 32 bytes, then each time a quarter more (at least
+  4 KiB) arrived, until the `moov` box is complete or known to follow the media data.
+- The agent guide's line is "Video Player (texture video|<id>), MP4, WebM: jasper://docs/video." (shorter
+  than §6.10's: the guide is at its 16 KB limit after the merges).
 
 **Editor, exports, tools**
 - Apple frameworks (AVFoundation, CoreMedia, CoreVideo): in the Xcode project the `.mm`'s `#import`s of the
