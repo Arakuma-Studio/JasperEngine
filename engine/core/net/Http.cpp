@@ -425,7 +425,9 @@ bool HttpTransfer::begin(int status, HttpHeaders responseHeaders, const std::str
         m_keepPartial = false;
     }
     m_total.store(total, std::memory_order_release);
-    m_progressDirty.store(true, std::memory_order_release);
+    if (!m_progressDirty.exchange(true, std::memory_order_acq_rel)){
+        jasperengineHttpNotifyProgress();
+    }
     return true;
 }
 

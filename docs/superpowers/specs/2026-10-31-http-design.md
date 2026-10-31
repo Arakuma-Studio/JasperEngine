@@ -615,3 +615,107 @@ Reuse: `FileData::getSystemPath` (`engine/core/io/FileData.cpp:125`) for `data:/
 - **video-mp4**: plays files downloaded by `Http.download` (and may stream URLs itself).
 - **persistence**: requests without an owner already survive scene loads; with a DontDestroyOnLoad
   owner they live as long as that object.
+
+## Implementation notes
+
+What was built differs from the text above in these points (decisions taken while
+implementing; everything else is as specified).
+
+### Backend interface: a transfer object instead of id callbacks
+
+`HttpBackend::start` takes a `std::shared_ptr<HttpTransfer>` (engine/core/net/HttpBackend.h)
+instead of `(id, desc)` plus `HttpBackendCallbacks`. A backend only moves bytes for one hop at a
+time and reports to the transfer: `redirect(status, location)` for a 3xx with a Location,
+`begin(status, headers, finalUrl)` for the final response, `write(bytes)` per chunk and
+`finish(errorCode, detail)` exactly once. The transfer (shared C++, every platform) applies the
+redirect rules (method changes, hop limit, the plain-HTTP policy of every hop, credentials
+dropped on a cross-origin hop), body limits, files (`.part`, rename, resume, keepPartial),
+texture and JSON decoding (on the backend's thread), the error texts and progress. So the
+platforms behave the same by construction:
+
+- **Redirects are followed by the engine** on Linux (curl with FOLLOWLOCATION off), Windows
+  (WINHTTP_OPTION_REDIRECT_POLICY_NEVER) and Android (as specified), and through
+  `willPerformHTTPRedirection` on Apple. Only the browser follows them itself: on the web a hop
+  limit other than 0 is the browser's (20), and `redirected` is fetch's flag.
+- **Android streams the body to C++** (`nativeData` per 64 KiB chunk) instead of writing files in
+  Java; Java only runs the connection (redirect decisions come from `nativeRedirect`). The native
+  methods are `nativeResponse(id, status, finalUrl, headers)`, `nativeData(id, bytes, length)`,
+  `nativeComplete(id, errorCode, message)` and `nativeRedirect(id, status, location)`;
+  `JasperHttp.start(id, method, url, headers, body, connectTimeoutMs, timeoutMs, verifyTls)`.
+  The class is found through the activity's class loader in `NativeEngine::setupJNI`
+  (`httpAndroidSetup`, engine/platform/android/HttpBackendAndroid.h).
+- **Web** reads `response.body` as a stream and hands each chunk to `jasper_http_on_data`
+  (instead of one `jasper_http_on_complete` with the whole body), so downloads and progress need
+  no buffering in JavaScript; the C side writes files through the same transfer, and
+  `System::syncFileSystem()` runs at delivery. Headers go both ways as JSON text. The
+  User-Agent header is never set on the web (it would make every cross-origin request need a
+  CORS preflight).
+
+### Cancel semantics
+
+`cancel()` on a queued or running request turns the handle `Cancelled` at once (with a
+cancelled `response`), and the callback runs with `"cancelled"` once the backend has stopped the
+transfer (normally the next frame). A request whose response has already arrived (the backend
+finished it, the callback not run yet) is not changed by `cancel()`: its file is already renamed,
+and reporting it as cancelled would lie. A cancel and the response's arrival are serialized by
+the transfer (`requestCancel` vs. the commit in `finish`), so a cancelled download never leaves
+its file.
+
+### Additions
+
+- `HttpRequestDesc::resume` and `keepPartial` (requested by video-mp4); also Lua options
+  `resume` and `keepPartial`. With `resume` the byte counts include the part already on disk; a
+  416 removes the `.part` (the next try starts over).
+- `HttpResponse::method`, `json` (the parsed body of `HttpResponseType::Json`, an opaque
+  `HttpJson` in net/HttpJson.h, parsed on the worker with `LuaJson::parse`), `header(name)` and
+  `takeTexture()`; `Http::unavailableReason()`, `getLogFailures/setLogFailures`, and
+  `Stats::cancelled` (cancelled requests are counted apart, not as failures; MCP
+  `get_play_state.http.cancelled`).
+- `MainThreadQueue::epoch()` (a poster knows its queued task was dropped by `clear()`),
+  `isMainThread()` / `setMainThread()`. `AsyncOwners::fromLua` returns `bool` with an error text
+  (Lua is built as C: a raising C++ function would skip destructors), plus `fromScene`,
+  `fromScript(const ScriptBase*)`, `describe` and `count`. Owners are keyed by registry
+  (`EntityRegistry*`); a script instance owner is also ended with its GameObject and scene.
+- `ExportFeatureScan` (editor/util) is generic (`scan(root, features)`), with `http()` as the
+  first feature; platform-services adds its own.
+- An HTTP test seam `HttpTesting` (curl library names, running transfers, deliver).
+
+### Decisions
+
+- **App Transport Security**: Apple ignores `NSAllowsArbitraryLoads` when
+  `NSAllowsLocalNetworking` is present too, so the export writes only one of them:
+  `NSAllowsArbitraryLoads = true` when insecure HTTP is allowed (localhost included), else
+  `NSAllowsLocalNetworking = true`. The template Info.plists carry the default.
+- **Error bodies of downloads and textures** stay in memory (at most 1 MiB) so `response.body`
+  shows what the server said; `maxBodySize = 0` means no limit.
+- `responseType = "json"` with an empty 2xx body (not 204, not HEAD) is `decode`; a non-2xx JSON
+  body is still parsed into `data` when it is valid (APIs send JSON errors).
+- Unknown option keys log a warning once per key name; wrong option *types* raise (they are
+  programming errors), as do `body`/`json`/`form` on GET/HEAD/getTexture/download and a body
+  given twice.
+- `Accept-Encoding` set by the caller is ignored with a warning like the other managed headers
+  (otherwise Android and curl would not decode gzip).
+- The offline simulation also fails running non-localhost requests (`"offline"`), and survives
+  Play stop (it is the editor's toggle; the editor restart resets it).
+- The default User-Agent version comes from `JASPERENGINE_EDITOR_VERSION`, set on Http.cpp only
+  (so a version change recompiles one file); a build without it says `JasperEngine (<platform>)`.
+- `TextureData` follows the engine's ownership rule: the `textureData` pushed to Lua does not own
+  its pixels (the texture pool that receives it does); a response whose texture was never read
+  frees them.
+- Apple: NSURLSession's per-request timeout is an idle timeout, so it is set to the time left of
+  the whole request (a timer enforces the total); `connectTimeout` has no separate effect there.
+  Repeated `Set-Cookie` headers arrive joined with ", " (allHeaderFields).
+- C++ scripts include `"net/Http.h"` (also in JasperEngine.h); `core/net` is not a flat include
+  directory.
+- `build_project` reports the "native plugins but no INTERNET" hint as a warning on
+  `project.yaml:1` when `<project>/plugins/native` exists and nothing uses Http.
+
+### Verification
+
+See the commit log of `gaps/http`: unit tests (editor/tests/HttpTest.cpp) against
+editor/tests/util/TestHttpServer and a Python HTTPS server with an openssl self-signed
+certificate; MCP e2e tools/mcp/tests/test_http.py; export checks in test_build.py
+(`test_http_export`). The web backend was run in Node 24 (emsdk) against a local server with
+the client core (GET, POST with a binary body, 404, timeout, redirect followed / not followed,
+cancel, a file download). Windows (WinHTTP) and Apple (NSURLSession) code could not be compiled
+on this host.

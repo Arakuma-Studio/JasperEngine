@@ -25,6 +25,11 @@
 
 using namespace jasperengine;
 
+namespace luabridge {
+    // HttpRequest.state as the integers of HttpState.*
+    template<> struct Stack<HttpState> : EnumWrapper<HttpState>{};
+}
+
 // =============================================================================================
 // LuaRegistrySlot
 

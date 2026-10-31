@@ -273,6 +273,10 @@ AppleBackend::AppleBackend(){
 }
 
 void AppleBackend::start(const std::shared_ptr<HttpTransfer>& transfer){
+    if (!session){
+        transfer->finish("unsupported", "the HTTP session is shut down");
+        return;
+    }
     NSMutableURLRequest* request = makeRequest(*transfer);
     if (!request){
         transfer->finish("invalid_url");

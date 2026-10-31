@@ -50,6 +50,8 @@ namespace {
         std::shared_ptr<HttpTransfer> transfer;
         CURL* easy = nullptr;
         curl_slist* headers = nullptr;
+        // the hop's request body, which curl reads while the transfer's may change (a redirect)
+        std::vector<uint8_t> body;
         char errorBuffer[CURL_ERROR_SIZE] = {0};
         std::string rawHeaders;      // of the current hop
         bool headDone = false;       // begin() or redirect() decided for this hop
@@ -333,8 +335,9 @@ namespace {
                 api.easy_setopt(e, CURLOPT_CUSTOMREQUEST, m.c_str());
             }
             if (sendsBody && m != "GET" && m != "HEAD"){
-                api.easy_setopt(e, CURLOPT_POSTFIELDSIZE_LARGE, (curl_off_t)t.body.size());
-                api.easy_setopt(e, CURLOPT_POSTFIELDS, t.body.empty() ? "" : reinterpret_cast<const char*>(t.body.data()));
+                job.body = t.body;
+                api.easy_setopt(e, CURLOPT_POSTFIELDSIZE_LARGE, (curl_off_t)job.body.size());
+                api.easy_setopt(e, CURLOPT_POSTFIELDS, job.body.empty() ? "" : reinterpret_cast<const char*>(job.body.data()));
             }
             if (api.multi_add_handle(multi, e) != CURLM_OK){
                 freeEasy(job);
