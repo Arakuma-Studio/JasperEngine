@@ -16,6 +16,7 @@
 #include "AppSettings.h"
 #include "Engine.h"
 #include "Project.h"
+#include "net/Http.h"
 #include "mcp/McpActivityWindow.h"
 #include "render/SceneRender.h"
 #include "render/SceneRender2D.h"
@@ -1235,6 +1236,16 @@ void configureGameViewTool(const CallPtr& call) {
         }
         changed.push_back("simulate_touch");
     }
+    if (args.contains("network")) {
+        const std::string network = args.value("network", "");
+        if (network != "online" && network != "offline") {
+            call->fail("network must be online or offline (simulated: Http requests to hosts other than localhost fail with "
+                       "errorCode \"offline\").");
+            return;
+        }
+        Http::setOfflineSimulated(network == "offline");
+        changed.push_back("network");
+    }
     if (!changed.empty()) gw->applySettings(settings);
 
     Json data = {
@@ -1243,6 +1254,7 @@ void configureGameViewTool(const CallPtr& call) {
         {"maximize_on_play", settings.maximizeOnPlay},
         {"show_stats", settings.showStats},
         {"simulate_touch", project->isSimulateTouch()},
+        {"network", Http::isOfflineSimulated() ? "offline" : "online"},
         {"open", gw->isOpen()},
         {"visible", gw->isVisible()},
         {"view_size", {gw->getWidth(), gw->getHeight()}},
@@ -1362,7 +1374,8 @@ void registerViewTools(McpRegistry& registry) {
             {"scale", number("", 1, 5)},
             {"maximize_on_play", boolean("")},
             {"show_stats", boolean("")},
-            {"simulate_touch", boolean("Mouse = one finger. Not while playing.")}
+            {"simulate_touch", boolean("Mouse = one finger. Not while playing.")},
+            {"network", stringEnum("offline: Http to non-localhost fails with \"offline\". Works while playing.", {"online", "offline"})}
         });
         tool.annotations.idempotent = true;
         tool.handler = configureGameViewTool;

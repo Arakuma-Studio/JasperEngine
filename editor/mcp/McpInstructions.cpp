@@ -140,6 +140,8 @@ return Player
 - C++ default arguments do not exist in Lua: pass every argument (e.g. the wake flag).
 - Saves: PlayerPrefs, Json.encode/decode, File.writeText("data://x") (jasper://docs/lua-api
   2.4); user_settings reads/resets PlayerPrefs.
+- HTTP: Http.get/post/download/getTexture with a callback, results on the main thread (pass
+  owner = self); see jasper://docs/networking.
 - Lua has no Dori.Script, on_start, getComponent, setProperty or timers. Never put editor
   property paths (submeshes[0]...) in scripts.
 

@@ -698,6 +698,9 @@ const EnumMap<AndroidOrientation> androidOrientations[] = {
     {"landscape", AndroidOrientation::Landscape}, {"sensor_portrait", AndroidOrientation::SensorPortrait},
     {"sensor_landscape", AndroidOrientation::SensorLandscape}, {"full_sensor", AndroidOrientation::FullSensor}};
 
+const EnumMap<AndroidInternetAccess> androidInternetAccesses[] = {
+    {"auto", AndroidInternetAccess::Auto}, {"require", AndroidInternetAccess::Require}};
+
 template <typename T, size_t N>
 std::vector<std::string> enumNames(const EnumMap<T> (&map)[N]) {
     std::vector<std::string> names;
@@ -1153,6 +1156,9 @@ const std::vector<Setting>& settingsTable() {
         }
         add(boolField("player.async_loading", "Load the start scene asynchronously behind the loading scene.",
                       [](Project& p) -> bool& { return p.getLoadingSettings().asyncLoading; }));
+        add(boolField("player.allow_insecure_http", "Plain http:// to hosts other than localhost/127.0.0.1/::1 (Http). Off (default): "
+                      "insecure_http on every platform, editor Play included; exports set Android cleartext and iOS/macOS ATS to match.",
+                      [](Project& p) -> bool& { return p.getApplicationSettings().allowInsecureHttp; }));
         add(boolSetting("player.pack_native_resources", "Experimental: pack assets and Lua into resources.pak in native builds instead of copying folders.",
                         [](Project& p) { return p.shouldPackNativeResources(); }, [](Project& p, bool v) { p.setPackNativeResources(v); }));
 
@@ -1307,6 +1313,22 @@ const std::vector<Setting>& settingsTable() {
                     permissions.insert(lowerText(item.get<std::string>()));
                 }
                 if (apply) ctx.project()->getAndroidProjectSettings().permissions = permissions;
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "android.internet_access";
+            s.type = "enum";
+            s.values = enumNames(androidInternetAccesses);
+            s.description = "INTERNET permission: auto adds it when exported Lua/C++ uses Http (or android.permissions has internet); "
+                            "require always adds it (e.g. a native plugin uses the network).";
+            s.get = [](McpContext& ctx) { return Json(enumName(androidInternetAccesses, ctx.project()->getAndroidProjectSettings().internetAccess)); };
+            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                AndroidInternetAccess access;
+                if (!parseEnum(androidInternetAccesses, value, access, error)) return false;
+                if (apply) ctx.project()->getAndroidProjectSettings().internetAccess = access;
                 return true;
             };
             add(s);
