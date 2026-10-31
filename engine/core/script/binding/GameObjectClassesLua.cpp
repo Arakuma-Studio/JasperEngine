@@ -1836,6 +1836,18 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("clearMixingTransforms", &AnimationState::clearMixingTransforms)
         .endClass();
 
+    // Unity's AnimatorStateInfo (a copy): AnimationPlayer:getCurrentStateInfo / getNextStateInfo
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AnimatorStateInfo>("AnimatorStateInfo")
+        .addProperty("isValid", &AnimatorStateInfo::isValid)
+        .addProperty("name", &AnimatorStateInfo::name)
+        .addProperty("fullName", &AnimatorStateInfo::fullName)
+        .addProperty("normalizedTime", &AnimatorStateInfo::normalizedTime)
+        .addProperty("length", &AnimatorStateInfo::length)
+        .addProperty("speed", &AnimatorStateInfo::speed)
+        .addProperty("loop", &AnimatorStateInfo::loop)
+        .endClass();
+
     // Unity's PlayMode: what play / crossFade stop
     luabridge::getGlobalNamespace(L)
         .beginNamespace("PlayMode")
@@ -1850,7 +1862,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("play",
             luabridge::overload<const std::string&>(&AnimationPlayer::play),
             luabridge::overload<const std::string&, float>(&AnimationPlayer::play),
-            luabridge::overload<const std::string&, float, PlayMode>(&AnimationPlayer::play))
+            luabridge::overload<const std::string&, float, PlayMode>(&AnimationPlayer::play),
+            luabridge::overload<const std::string&, int, float>(&AnimationPlayer::play))
         .addFunction("crossFade",
             luabridge::overload<const std::string&>(&AnimationPlayer::crossFade),
             luabridge::overload<const std::string&, float>(&AnimationPlayer::crossFade),
@@ -1921,6 +1934,36 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<int, float>(&AnimationPlayer::stopLayer),
             luabridge::overload<const std::string&>(&AnimationPlayer::stopLayer),
             luabridge::overload<const std::string&, float>(&AnimationPlayer::stopLayer))
+        // Animator Controller (Unity's Animator): the controller asset and its parameters
+        .addProperty("controller", &AnimationPlayer::getController, &AnimationPlayer::setController)
+        .addFunction("hasController", &AnimationPlayer::hasController)
+        .addFunction("setFloat",
+            luabridge::overload<const std::string&, float>(&AnimationPlayer::setFloat),
+            luabridge::overload<const std::string&, float, float>(&AnimationPlayer::setFloat))
+        .addFunction("getFloat", &AnimationPlayer::getFloat)
+        .addFunction("setInteger", &AnimationPlayer::setInteger)
+        .addFunction("getInteger", &AnimationPlayer::getInteger)
+        .addFunction("setBool", &AnimationPlayer::setBool)
+        .addFunction("getBool", &AnimationPlayer::getBool)
+        .addFunction("setTrigger", &AnimationPlayer::setTrigger)
+        .addFunction("resetTrigger", &AnimationPlayer::resetTrigger)
+        .addFunction("hasParameter", &AnimationPlayer::hasParameter)
+        .addFunction("getParameterType", &AnimationPlayer::getParameterType)
+        .addFunction("getCurrentStateName",
+            luabridge::constOverload<>(&AnimationPlayer::getCurrentStateName),
+            luabridge::constOverload<int>(&AnimationPlayer::getCurrentStateName))
+        .addFunction("getCurrentStateInfo",
+            luabridge::constOverload<>(&AnimationPlayer::getCurrentStateInfo),
+            luabridge::constOverload<int>(&AnimationPlayer::getCurrentStateInfo))
+        .addFunction("getNextStateInfo",
+            luabridge::constOverload<>(&AnimationPlayer::getNextStateInfo),
+            luabridge::constOverload<int>(&AnimationPlayer::getNextStateInfo))
+        .addFunction("isInTransition",
+            luabridge::constOverload<>(&AnimationPlayer::isInTransition),
+            luabridge::constOverload<int>(&AnimationPlayer::isInTransition))
+        // functions called with (layer, state name) when a controller state is entered / exited
+        .addProperty("onStateEnter", [] (AnimationPlayer* self, lua_State*) { return &self->getOnStateEnter(); }, [] (AnimationPlayer* self, lua_State* L) { self->getOnStateEnter() = L; })
+        .addProperty("onStateExit", [] (AnimationPlayer* self, lua_State*) { return &self->getOnStateExit(); }, [] (AnimationPlayer* self, lua_State* L) { self->getOnStateExit() = L; })
         // a function called with an AnimationEvent when a clip event fires
         .addProperty("onEvent", [] (AnimationPlayer* self, lua_State*) { return &self->getOnEvent(); }, [] (AnimationPlayer* self, lua_State* L) { self->getOnEvent() = L; })
         // a function called with the state name when a once state ends (or a clamp_forever one first reaches its end)

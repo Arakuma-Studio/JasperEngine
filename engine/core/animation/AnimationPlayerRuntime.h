@@ -39,6 +39,7 @@
 #include "Export.h"
 #include "animation/AnimationClip.h"
 #include "animation/AnimationEvent.h"
+#include "animation/AnimatorController.h"
 #include "animation/KeyframeSampling.h"
 #include "component/AnimationPlayerComponent.h"
 #include "ecs/Entity.h"
@@ -57,6 +58,7 @@
 namespace jasperengine::anim{
 
     class AvatarMask;
+    class AnimatorController;
     struct HumanoidSlots;
 
     // ---- state names (the one rule for runtime, Inspector, controller, MCP) ----
@@ -180,6 +182,13 @@ namespace jasperengine::anim{
         bool referenceWarned = false;       // a zero scale reference was reported
         // per clip track: the slot of the player's PlayerPoseScratch (UINT32_MAX: none)
         std::vector<uint32_t> trackSlots;
+
+        // ---- Animator Controller states (anim layers spec 11.2) ----
+        // the driver owns the state: its time (sampled at drivenTime), weight and events
+        bool driven = false;
+        float drivenTime = 0.0f;
+        // a blend tree child ("<Layer>.<State>#<child>"): not addressable by name from Lua
+        bool hidden = false;
     };
 
     struct JASPERENGINE_API QueuedState{
@@ -187,9 +196,13 @@ namespace jasperengine::anim{
         float fade = 0.0f;
     };
 
-    // a callback to run after the pose is written: an event, or a finished state
+    // a callback to run after the pose is written: an event, a finished state, or an Animator
+    // Controller state entered / exited (event.state: the state name, `layer` its layer)
     struct JASPERENGINE_API PendingPlayerCallback{
         bool finish = false;
+        bool stateEnter = false;
+        bool stateExit = false;
+        int layer = 0;
         AnimationEvent event;               // finish: event.state is the finished state
         float when = 0.0f;                  // seconds into the update it happened (dispatch order)
         std::string clip;                   // the state's clip reference (missing-handler warning)
@@ -287,6 +300,68 @@ namespace jasperengine::anim{
         bool dirty = true;
     };
 
+    // ---- the Animator Controller runtime (anim layers spec 11.2) ----
+
+    struct JASPERENGINE_API ControllerParamValue{
+        float value = 0.0f;                 // float; int (whole); bool / trigger: 0 or 1
+        // setFloat(name, v, dampTime): SmoothDamp toward `target` once per update
+        bool damping = false;
+        float target = 0.0f;
+        float velocity = 0.0f;
+        float dampTime = 0.0f;
+    };
+
+    // one controller state: its player states, normalized time and weight
+    struct JASPERENGINE_API ControllerGroup{
+        std::vector<size_t> states;         // into AnimationPlayerRuntime::states (a clip: 1, a tree: its children)
+        double time = 0.0;                  // normalized time, whole loops counted (Unity's normalizedTime)
+        double previous = 0.0;              // at the start of this update (exit time crossings, events)
+        float weight = 0.0f;
+        bool active = false;                // current, destination or a transition source
+        bool entered = false;               // started this update (events at its start time fire)
+    };
+
+    struct JASPERENGINE_API ControllerTransitionRuntime{
+        bool active = false;
+        int to = -1;                        // destination state
+        int transition = -1;                // into the layer's transitions; -1: a crossFade from script
+        float elapsed = 0.0f;
+        float duration = 0.0f;
+        // the states playing when it started, with their weights then (they scale by 1 - x)
+        std::vector<std::pair<int, float>> sources;
+    };
+
+    struct JASPERENGINE_API ControllerLayerRuntime{
+        int current = -1;                   // the state whose transitions are checked
+        int lastEntered = -1;               // what the next onStateExit names
+        bool started = false;               // entered its default state
+        ControllerTransitionRuntime transition;
+        std::vector<ControllerGroup> groups;    // per controller state
+    };
+
+    struct JASPERENGINE_API ControllerRuntime{
+        std::string path;                   // the component's controller it was loaded for
+        std::shared_ptr<const AnimatorController> controller;
+        uint64_t generation = 0;            // AnimatorControllerPool generation of `controller`
+        bool failed = false;
+        bool errorLogged = false;
+        float retryTimer = 0.0f;
+        std::string error;
+        // parameters by index of the controller's (initialized from the defaults; kept by name
+        // across reloads)
+        std::vector<ControllerParamValue> params;
+        std::vector<ControllerLayerRuntime> layers;
+        // per layer: its name and its states' names, as the groups were built (a reload keeps
+        // each layer's current state by name)
+        std::vector<std::pair<std::string, std::vector<std::string>>> groupNames;
+        // stop() was called: nothing plays until a play() or the player is enabled again
+        bool stopped = false;
+        bool sawDisabled = false;
+        // warned once: unknown parameters and type mismatches ("<what>:<name>"), the ignored clips
+        std::vector<std::string> warned;
+        bool clipsWarned = false;
+    };
+
     class JASPERENGINE_API AnimationPlayerRuntime{
     public:
         std::vector<PlayerStateRuntime> states;
@@ -310,6 +385,9 @@ namespace jasperengine::anim{
         // EntityRegistry::hierarchyRevision() the models under the root were collected at
         uint64_t modelsRevision = 0;
         bool modelsCollected = false;
+
+        // the Animator Controller (spec 11.2): set while the component names one
+        std::shared_ptr<ControllerRuntime> controller;
 
         // the layered evaluator's scratch (anim layers spec 7.3); scratchSerial counts its
         // rebuilds (what the states' track masks were computed for)
@@ -372,6 +450,65 @@ namespace jasperengine::anim{
     JASPERENGINE_API void addMixingTransform(PlayerStateRuntime& state, const std::string& path, bool recursive);
     JASPERENGINE_API bool removeMixingTransform(PlayerStateRuntime& state, const std::string& path);
     JASPERENGINE_API void clearMixingTransforms(PlayerStateRuntime& state);
+
+    // ---- Animator Controller (anim layers spec 11.2-11.3; AnimatorControllerPlayback.cpp) ----
+
+    // the layers the runtime plays: with a controller set, the loaded controller's layers (one
+    // Base Layer until it loads); else playerLayers
+    JASPERENGINE_API std::vector<AnimationPlayerLayer> effectivePlayerLayers(const AnimationPlayerComponent& player);
+    // (Re)builds the controller layers' state groups for the current runtime states: each layer
+    // keeps its current state (by name) at its normalized time, transitions are cancelled
+    JASPERENGINE_API void resetControllerLayers(AnimationPlayerRuntime& runtime);
+    // Loads the component's controller (AnimatorControllerPool) when it is not loaded, or again
+    // when its pool generation changed (`poolChanged`), and rebuilds the states then; a failure is
+    // logged once and retried every second. True when a controller is loaded.
+    JASPERENGINE_API bool ensureController(AnimationPlayerComponent& player, const std::string& who, float dt, bool poolChanged);
+
+    // A 1D blend tree's child weights at parameter value `value` (spec 11.2.4): linear between the
+    // two neighbouring thresholds, clamped to the end children; `out` gets one per child
+    JASPERENGINE_API void blendTreeWeights(const std::vector<float>& thresholds, float value, std::vector<float>& out);
+    // a controller state's length in seconds (a clip's; a blend tree's weighted cycle; 0 while
+    // its clips load; an empty state 1) and its speed (state speed x speed parameter)
+    JASPERENGINE_API float controllerStateLength(const AnimationPlayerRuntime& runtime, int layer, int state);
+    JASPERENGINE_API float controllerStateSpeed(const AnimationPlayerRuntime& runtime, int layer, int state);
+    // a state's loop flag (its wrap, else its clips': loop or ping_pong)
+    JASPERENGINE_API bool controllerStateLoops(const AnimationPlayerRuntime& runtime, int layer, int state);
+
+    // parameters. `as` is the type the caller means (setFloat: Float...): a mismatch warns once
+    // per (parameter, type) and converts (setBool on a trigger sets it; setFloat on an int
+    // rounds). Unknown names (or no controller) warn once and do nothing / return 0.
+    // dampTime > 0 (floats): SmoothDamp toward the value; else the value is set at once.
+    JASPERENGINE_API bool setControllerParameter(AnimationPlayerComponent& player, const std::string& name, ControllerParameterType as,
+                                                 float value, float dampTime, const std::string& who);
+    JASPERENGINE_API float getControllerParameter(AnimationPlayerComponent& player, const std::string& name, ControllerParameterType as,
+                                                  const std::string& who);
+    // -1 when the controller (or the parameter) is missing
+    JASPERENGINE_API int findControllerParameter(AnimationPlayerComponent& player, const std::string& name);
+
+    // a state by "<Layer>.<State>" or "<State>" (searched from the base layer up; `layer` >= 0:
+    // that layer only): false when unknown
+    JASPERENGINE_API bool findControllerState(const AnimationPlayerRuntime& runtime, const std::string& name, int layer, int& outLayer, int& outState);
+    // Lua play with a controller: an instant switch at `normalizedTime` (the layer's transition is
+    // cancelled); a stopped controller enters the other layers' default states again
+    JASPERENGINE_API bool controllerPlay(AnimationPlayerComponent& player, const std::string& name, int layer, float normalizedTime, const std::string& who);
+    // Lua crossFade with a controller: a transition of `seconds` (Unity CrossFadeInFixedTime)
+    JASPERENGINE_API bool controllerCrossFade(AnimationPlayerComponent& player, const std::string& name, float seconds, int layer, const std::string& who);
+    // stop(): every state stops; nothing plays until a play() or the player is enabled again
+    JASPERENGINE_API void controllerStop(AnimationPlayerComponent& player);
+
+    struct JASPERENGINE_API ControllerStateView{
+        bool valid = false;
+        std::string name;                   // without the layer
+        std::string fullName;               // "<Layer>.<State>"
+        float normalizedTime = 0.0f;        // whole loops counted
+        float length = 0.0f;
+        float speed = 1.0f;
+        bool loop = false;
+    };
+    // the current state of a layer, or (next) the destination of its transition (valid only
+    // during one)
+    JASPERENGINE_API ControllerStateView controllerStateInfo(const AnimationPlayerComponent& player, int layer, bool next);
+    JASPERENGINE_API bool controllerInTransition(const AnimationPlayerComponent& player, int layer);
 
     // ---- playback (Unity legacy Animation semantics, object/AnimationPlayer.h) ----
 

@@ -3,6 +3,7 @@
 
 #include "AnimationPlayerRuntime.h"
 
+#include "animation/AnimatorController.h"
 #include "animation/ModelSubClips.h"
 #include "Log.h"
 
@@ -436,6 +437,69 @@ namespace {
 
 }
 
+namespace {
+
+    // what one runtime state is built from: a clip entry, or an Animator Controller state (or
+    // blend tree child)
+    struct StateSpec{
+        std::string name;
+        std::string clip;
+        ClipWrapMode wrap = ClipWrapMode::Default;
+        int layer = 0;
+        size_t entry = SIZE_MAX;
+        bool driven = false;
+        bool hidden = false;
+    };
+
+    // the controller's states: "<Layer>.<State>" per clip state, "<Layer>.<State>#<i>" per
+    // blend tree child (spec 11.2)
+    std::vector<StateSpec> controllerSpecs(const AnimatorController& controller){
+        std::vector<StateSpec> specs;
+        const ControllerData& data = controller.getData();
+        for (size_t l = 0; l < data.layers.size(); l++){
+            const ControllerLayer& layer = data.layers[l];
+            for (const ControllerState& state : layer.states){
+                const std::string name = layer.name + "." + state.name;
+                if (!state.clip.empty()){
+                    specs.push_back({name, state.clip, state.wrap, (int)l, SIZE_MAX, true, false});
+                }else if (state.hasBlendTree){
+                    for (size_t c = 0; c < state.blendTree.children.size(); c++){
+                        specs.push_back({name + "#" + std::to_string(c), state.blendTree.children[c].clip, state.wrap, (int)l, SIZE_MAX, true, true});
+                    }
+                }
+            }
+        }
+        return specs;
+    }
+
+    std::vector<AnimationPlayerLayer> controllerLayers(const AnimatorController& controller){
+        std::vector<AnimationPlayerLayer> layers;
+        for (const ControllerLayer& source : controller.getData().layers){
+            AnimationPlayerLayer layer;
+            layer.name = source.name;
+            layer.weight = source.weight;
+            layer.blend = source.blend;
+            layer.mask = source.mask;
+            layer.maskGuid = source.maskGuid;
+            layers.push_back(layer);
+        }
+        return layers;
+    }
+
+}
+
+std::vector<AnimationPlayerLayer> anim::effectivePlayerLayers(const AnimationPlayerComponent& player){
+    if (!player.controller.empty()){
+        if (player.runtime && player.runtime->controller && player.runtime->controller->controller){
+            return controllerLayers(*player.runtime->controller->controller);
+        }
+        AnimationPlayerLayer base;
+        base.name = BASE_LAYER_NAME;
+        return {base};
+    }
+    return playerLayers(player);
+}
+
 anim::AnimationPlayerRuntime& anim::playerRuntime(AnimationPlayerComponent& player){
     if (!player.runtime){
         player.runtime = std::make_shared<AnimationPlayerRuntime>();
@@ -445,33 +509,64 @@ anim::AnimationPlayerRuntime& anim::playerRuntime(AnimationPlayerComponent& play
     if (player.needsLoad){
         player.needsLoad = false;
         // the queues by state name, before the states and layers change
-        std::vector<std::vector<std::pair<std::string, float>>> queued;
+        std::vector<std::pair<std::string, float>> queued;
         for (const LayerRuntime& layer : runtime.layers){
             for (const QueuedState& entry : layer.queue){
-                if (entry.state < runtime.states.size()) queued.push_back({{runtime.states[entry.state].name, entry.fade}});
+                if (entry.state < runtime.states.size()) queued.push_back({runtime.states[entry.state].name, entry.fade});
             }
         }
-        rebuildLayers(runtime, playerLayers(player));
+        // a controller owns the states (spec 5.10): its runtime follows the component's path
+        if (player.controller.empty()){
+            runtime.controller.reset();
+        }else if (!runtime.controller || runtime.controller->path != player.controller){
+            std::shared_ptr<ControllerRuntime> previous = runtime.controller;
+            runtime.controller = std::make_shared<ControllerRuntime>();
+            runtime.controller->path = player.controller;
+            // a script's parameters outlive a change of the file the controller is read from
+            if (previous) runtime.controller->params = previous->params;
+        }
+        rebuildLayers(runtime, effectivePlayerLayers(player));
         const int layerCount = (int)runtime.layers.size();
-        std::string badLayers;
-        // one state per entry; a surviving name keeps its playback, and its loaded clip and
-        // bindings while the entry names the same clip
-        std::vector<std::string> names = playerStateNames(player.clips);
-        std::vector<PlayerStateRuntime> states(player.clips.size());
+
+        std::vector<StateSpec> specs;
         runtime.duplicateStateNames.clear();
-        for (size_t i = 0; i < player.clips.size(); i++){
-            const std::string base = defaultStateName(player.clips[i]);
-            if (names[i] != base){
-                if (!runtime.duplicateStateNames.empty()) runtime.duplicateStateNames += ", ";
-                runtime.duplicateStateNames += "'" + base + "' (clip " + std::to_string(i + 1) + ") plays as '" + names[i] + "'";
+        std::string badLayers;
+        if (runtime.controller){
+            if (runtime.controller->controller) specs = controllerSpecs(*runtime.controller->controller);
+        }else{
+            std::vector<std::string> names = playerStateNames(player.clips);
+            for (size_t i = 0; i < player.clips.size(); i++){
+                const AnimationPlayerClip& entry = player.clips[i];
+                const std::string base = defaultStateName(entry);
+                if (names[i] != base){
+                    if (!runtime.duplicateStateNames.empty()) runtime.duplicateStateNames += ", ";
+                    runtime.duplicateStateNames += "'" + base + "' (clip " + std::to_string(i + 1) + ") plays as '" + names[i] + "'";
+                }
+                StateSpec spec;
+                spec.name = names[i];
+                spec.clip = entry.clip;
+                spec.wrap = entry.wrap;
+                spec.entry = i;
+                spec.layer = entry.layer;
+                if (entry.layer < 0 || entry.layer >= layerCount){
+                    if (!badLayers.empty()) badLayers += ", ";
+                    badLayers += "'" + names[i] + "' (layer " + std::to_string(entry.layer) + ")";
+                    spec.layer = 0;
+                }
+                specs.push_back(spec);
             }
         }
-        for (size_t i = 0; i < player.clips.size(); i++){
+
+        // one state per spec; a surviving name keeps its playback, and its loaded clip and
+        // bindings while it names the same clip
+        std::vector<PlayerStateRuntime> states(specs.size());
+        for (size_t i = 0; i < specs.size(); i++){
+            const StateSpec& spec = specs[i];
             PlayerStateRuntime& state = states[i];
-            int old = runtime.findState(names[i]);
+            int old = runtime.findState(spec.name);
             if (old >= 0){
                 state = runtime.states[(size_t)old];
-                if (state.clip != player.clips[i].clip){
+                if (state.clip != spec.clip){
                     state.bindings = ClipBindings();
                     state.loadFailed = false;
                     state.retryTimer = 0.0f;
@@ -479,19 +574,14 @@ anim::AnimationPlayerRuntime& anim::playerRuntime(AnimationPlayerComponent& play
                     state.error.clear();
                 }
             }
-            state.name = names[i];
-            state.entry = i;
-            state.clip = player.clips[i].clip;
-            state.entryWrap = player.clips[i].wrap;
-            const int layer = player.clips[i].layer;
-            if (layer < 0 || layer >= layerCount){
-                if (!badLayers.empty()) badLayers += ", ";
-                badLayers += "'" + names[i] + "' (layer " + std::to_string(layer) + ")";
-                state.layer = 0;
-            }else{
-                state.layer = layer;
-            }
-            if (state.layerOverride >= layerCount) state.layerOverride = -1;
+            state.name = spec.name;
+            state.entry = spec.entry;
+            state.clip = spec.clip;
+            state.entryWrap = spec.wrap;
+            state.layer = spec.layer;
+            state.driven = spec.driven;
+            state.hidden = spec.hidden;
+            if (state.layerOverride >= layerCount || spec.driven) state.layerOverride = -1;
         }
         // entries on layers the player does not have play on the base layer (said once per list)
         if (badLayers != runtime.warnedEntryLayers){
@@ -503,16 +593,15 @@ anim::AnimationPlayerRuntime& anim::playerRuntime(AnimationPlayerComponent& play
         }
         runtime.states = std::move(states);
         // queued states follow their names, on their (new) layer's queue, in their order
-        for (const auto& group : queued){
-            for (const auto& entry : group){
-                int index = runtime.findState(entry.first);
-                if (index < 0) continue;
-                QueuedState moved;
-                moved.state = (size_t)index;
-                moved.fade = entry.second;
-                runtime.layers[(size_t)runtime.stateLayer(runtime.states[(size_t)index])].queue.push_back(moved);
-            }
+        for (const auto& entry : queued){
+            int index = runtime.findState(entry.first);
+            if (index < 0) continue;
+            QueuedState moved;
+            moved.state = (size_t)index;
+            moved.fade = entry.second;
+            runtime.layers[(size_t)runtime.stateLayer(runtime.states[(size_t)index])].queue.push_back(moved);
         }
+        if (runtime.controller) resetControllerLayers(runtime);
         runtime.scratch.dirty = true;
         runtime.warnedStates.clear();
         runtime.warnedLayers.clear();

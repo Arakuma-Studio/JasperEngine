@@ -375,6 +375,8 @@ void prepare<AnimationPlayerComponent>(AnimationPlayerComponent& player, Entity,
     player.runtime.reset();
     player.onEvent.clear();
     player.onFinish.clear();
+    player.onStateEnter.clear();
+    player.onStateExit.clear();
 }
 
 template<>

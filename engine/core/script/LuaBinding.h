@@ -127,8 +127,10 @@ namespace jasperengine {
         static bool pushScriptObject(lua_State* L, Scene* scene, Entity entity, const std::string& className);
         // Calls `method` on every Lua script instance of the GameObject that defines it, with
         // `args` spread as its parameters (an Animation Player's clip event, animation clips spec
-        // 3.5). True when at least one script defines it.
-        static bool callLuaScriptMethod(Scene* scene, Entity entity, const std::string& method, const std::vector<AnimationEventArg>& args);
+        // 3.5). True when at least one script defines it. `integers`: whole numbers are passed
+        // as Lua integers (an Animator Controller's onStateEnter layer index), else as floats
+        static bool callLuaScriptMethod(Scene* scene, Entity entity, const std::string& method, const std::vector<AnimationEventArg>& args,
+                                        bool integers = false);
         static void clearLoadedProjectModules();
 
         static std::string getLuaStackErrorString(lua_State* L, int index = -1);

@@ -40,6 +40,7 @@
 #include "pool/MeshBufferPool.h"
 #include "pool/AnimationClipPool.h"
 #include "pool/AvatarMaskPool.h"
+#include "pool/AnimatorControllerPool.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #ifndef NO_THREAD_SUPPORT
@@ -905,6 +906,7 @@ void Engine::clearPools(){
     MeshBufferPool::clear();
     AnimationClipPool::clear();
     AvatarMaskPool::clear();
+    AnimatorControllerPool::clear();
 }
 
 void Engine::clearUnusedPools(){
@@ -919,6 +921,7 @@ void Engine::clearUnusedPools(){
     MeshBufferPool::clearUnused();
     AnimationClipPool::clearUnused();
     AvatarMaskPool::clearUnused();
+    AnimatorControllerPool::clearUnused();
 }
 
 void Engine::removeSubscriptionsByTag(const std::string& substring) {
@@ -1098,6 +1101,8 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
         AnimationPlayerComponent& player = players->getComponentFromIndex(i);
         player.onEvent.clear();
         player.onFinish.clear();
+        player.onStateEnter.clear();
+        player.onStateExit.clear();
     }
 
     auto vertexAnimators = scene->getComponentArray<VertexAnimatorComponent>();

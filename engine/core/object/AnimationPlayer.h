@@ -27,6 +27,11 @@
 //     target's layer. A layer is a 0-based index or a name: an unknown one warns once and does
 //     nothing (getters return 0, "" or -1). Layer weight, mask and blend setters are runtime
 //     (not saved); addLayer / removeLayer are authored (the next update reloads).
+//   * with an Animator Controller (anim layers spec 11.2-11.3): the controller owns the states.
+//     play(name) jumps to "<Layer>.<State>" or "<State>" instantly (play(name, layer,
+//     normalizedTime)), crossFade(name, seconds) is a transition in seconds, blend and queue warn
+//     once and do nothing, stop() stops everything until the next play (or a disable/enable).
+//     The parameter calls need a controller (without one they warn once and return defaults).
 
 #ifndef ANIMATIONPLAYER_H
 #define ANIMATIONPLAYER_H
@@ -56,6 +61,17 @@ namespace jasperengine{
         bool queued = false;
         size_t boundTracks = 0;         // tracks whose path resolved
         size_t trackCount = 0;
+    };
+
+    // Unity's AnimatorStateInfo: a copy of an Animator Controller layer's current (or next) state
+    struct JASPERENGINE_API AnimatorStateInfo{
+        bool isValid = false;
+        std::string name;               // the state name (without the layer)
+        std::string fullName;           // "<Layer>.<State>"
+        float normalizedTime = 0.0f;    // whole loops counted
+        float length = 0.0f;            // seconds
+        float speed = 1.0f;
+        bool loop = false;
     };
 
     // One state of an Animation Player, by (entity, state name): re-resolved on every access,
@@ -198,8 +214,42 @@ namespace jasperengine{
         void stopLayer(const std::string& layer);
         void stopLayer(const std::string& layer, float fade);
 
+        // ---- Animator Controller (anim layers spec 11.3) ----
+        // the controller asset (asset-relative .controller, "" = none); setting it reloads
+        void setController(const std::string& controller);
+        std::string getController() const;
+        bool hasController() const;
+        // play with a controller: the state (on its layer, or `layer`) from `normalizedTime`
+        void play(const std::string& name, int layer, float normalizedTime);
+        void crossFade(const std::string& name, float seconds, int layer);
+        void setFloat(const std::string& name, float value);
+        void setFloat(const std::string& name, float value, float dampTime);
+        float getFloat(const std::string& name) const;
+        void setInteger(const std::string& name, int value);
+        int getInteger(const std::string& name) const;
+        void setBool(const std::string& name, bool value);
+        bool getBool(const std::string& name) const;
+        void setTrigger(const std::string& name);
+        void resetTrigger(const std::string& name);
+        bool hasParameter(const std::string& name) const;
+        // "float", "int", "bool", "trigger" ("" when unknown)
+        std::string getParameterType(const std::string& name) const;
+        // the current state of a layer (default 0), without the layer prefix ("" when none)
+        std::string getCurrentStateName() const;
+        std::string getCurrentStateName(int layer) const;
+        AnimatorStateInfo getCurrentStateInfo() const;
+        AnimatorStateInfo getCurrentStateInfo(int layer) const;
+        // the destination of the layer's transition (isValid only during one)
+        AnimatorStateInfo getNextStateInfo() const;
+        AnimatorStateInfo getNextStateInfo(int layer) const;
+        bool isInTransition() const;
+        bool isInTransition(int layer) const;
+
         FunctionSubscribe<void(const AnimationEvent&)>& getOnEvent();
         FunctionSubscribe<void(const std::string&)>& getOnFinish();
+        // Animator Controller states entered / exited (layer index, state name)
+        FunctionSubscribe<void(int, const std::string&)>& getOnStateEnter();
+        FunctionSubscribe<void(int, const std::string&)>& getOnStateExit();
     };
 
 }

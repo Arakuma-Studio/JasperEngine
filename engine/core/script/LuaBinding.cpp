@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include <cmath>
 #include <unordered_map>
 #include "LuaBinding.h"
 #include "shader/ShaderManifest.h"
@@ -1013,7 +1014,8 @@ void LuaBinding::callLuaScriptFunction(lua_State* L, ScriptEntry& scriptEntry, c
     lua_pop(L, 1);
 }
 
-bool LuaBinding::callLuaScriptMethod(Scene* scene, Entity entity, const std::string& method, const std::vector<AnimationEventArg>& args) {
+bool LuaBinding::callLuaScriptMethod(Scene* scene, Entity entity, const std::string& method, const std::vector<AnimationEventArg>& args,
+                                     bool integers) {
     lua_State* L = luastate;
     if (!L || !scene || method.empty() || !scene->isEntityCreated(entity)) return false;
 
@@ -1032,7 +1034,8 @@ bool LuaBinding::callLuaScriptMethod(Scene* scene, Entity entity, const std::str
                 lua_pushvalue(L, -2);
                 for (const AnimationEventArg& arg : args) {
                     if (const double* number = std::get_if<double>(&arg)) {
-                        lua_pushnumber(L, *number);
+                        if (integers && std::floor(*number) == *number && std::fabs(*number) < 9.0e15) lua_pushinteger(L, (lua_Integer)*number);
+                        else lua_pushnumber(L, *number);
                     } else if (const std::string* text = std::get_if<std::string>(&arg)) {
                         lua_pushlstring(L, text->data(), text->size());
                     } else {

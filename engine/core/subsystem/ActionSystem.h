@@ -246,6 +246,12 @@ namespace jasperengine{
 		// AvatarMaskPool::revision() seen by the last player update
 		uint64_t playerMaskPoolRevision = 0;
 		bool playerMaskPoolChanged = false;
+		// The Animator Controller driver (anim layers spec 11.2; ActionSystemController.cpp):
+		// advancePlayer calls it instead of the fades and queues for a player with a controller
+		void driveController(Entity entity, AnimationPlayerComponent& player, float dt);
+		// AnimatorControllerPool::revision() seen by the last player update
+		uint64_t playerControllerPoolRevision = 0;
+		bool playerControllerPoolChanged = false;
 
 	public:
 		ActionSystem(Scene* scene);
