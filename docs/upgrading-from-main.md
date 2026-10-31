@@ -75,14 +75,24 @@ The upgrade test found these, fixed in this editor (each with a test that failed
 
 ## Known, as on origin/main
 
-- A submesh linked to a `.material` takes the file's values when its scene opens: a colour set on
-  one prefab instance's linked material is lost on the next open. Unlink it first (`link_material`
-  with `material: null`) to keep its own values.
 - A save while a model is still loading writes its submeshes' vertex counts as they are at that
   moment (derived values, rebuilt on load); save once the scene has loaded to keep the file stable.
-- `onContactAdded3D` (and the other 3D contact events) call Lua from the physics worker threads:
-  the Lua state is not thread-safe, so a script that registers them can crash the game (the
-  generator's first game did, in the origin/main editor; the fixture keeps to 2D contact events).
+
+Two more that origin/main has are fixed in this editor (also found by the upgrade test):
+
+- **A tint on a linked material was lost on reopen.** A submesh linked to a `.material` file takes
+  the file's values when its scene opens, so a colour set on one field of it (`set_properties
+  submeshes[N].material.baseColorFactor`, on a GameObject or a prefab instance) was saved, then
+  replaced by the file's. Such an edit now makes it the GameObject's own material (unlinked, the
+  file untouched), as an edit of the whole material and a material preset already did. An
+  origin/main scene saved with a tint on a still linked submesh shows the file's colour, as it did
+  on origin/main after a reopen: set the tint again.
+- **3D contact events called Lua from the physics worker threads**, which could crash the game.
+  `onContactAdded3D`, `onContactPersisted3D`, `onContactRemoved3D`, `onBodyActivated3D` and
+  `onBodyDeactivated3D` are delivered on the main thread right after the physics step, in the same
+  order on every run. A `combinedFriction`, `combinedRestitution` or `sensor` a handler sets on the
+  delivered contact applies from the next step (it changed the contact being solved before), and
+  with a `shouldCollide3D` handler the 3D step runs on the main thread only.
 
 ## Lua scripts
 
