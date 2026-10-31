@@ -1026,14 +1026,14 @@ int editor::Backend::init(int argc, char* argv[]) {
                 }
 
                 // as EditorFrame::run (the other backends' loop): a frame asked for, a text field's
-                // caret, and the shaders and pipelines still being created off the render thread
-                // (spec S32) keep it drawing
+                // caret, the shaders and pipelines still being created off the render thread
+                // (spec S32) and a due Auto Save backup (it runs in a frame) keep it drawing
                 const bool frameRequest = app.consumeFrameRequest();
                 const bool textFocused = ImGui::GetIO().WantTextInput;
                 const bool renderRequested = playSessionActive || !idleFrame ||
                     backend->redrawRequested ||
                     app.hasPendingMainThreadTasks() || frameRequest || textFocused ||
-                    !SystemRender::isGpuCreationIdle();
+                    !SystemRender::isGpuCreationIdle() || activeProject->isAutosaveDue();
                 const bool frameReady = visible && renderRequested;
 
                 if (frameReady)

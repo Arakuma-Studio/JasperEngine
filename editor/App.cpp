@@ -1146,6 +1146,8 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::DeleteSelection:
             if (inputActionsWindow->canDelete()) inputActionsWindow->requestDelete();
+            // the Animator window's selected state, sub-state machine, transition or layer
+            else if (animatorWindow->canDelete()) animatorWindow->removeSelection();
             // the Draw Spline tool's last knot, the edited spline's knots
             else if (!SplineSceneTools::deleteRequested(&project)) deleteSelection();
             break;
@@ -2861,7 +2863,8 @@ bool editor::App::consumeBenchmarkExit() {
 void editor::App::engineInit(int argc, char** argv) {
     parseBenchmarkArgs(argc, argv);
     reportLoadingProgress("Initializing engine...");
-    // the editor's loop marks the frames (EditorFrame::run), not each Engine::systemDraw
+    // the editor's loop marks the frames and publishes the off-thread GPU creations (EditorFrame::run,
+    // BackendMac's own loop on macOS), not each Engine::systemDraw
     FrameTimes::setExternalFrames(true);
     // the profiler's command line (--profile, --profile-capture, --profile-frames), wherever it
     // was given (CommandLine::takeProfilerFlags); a benchmark captures its measured frames itself
