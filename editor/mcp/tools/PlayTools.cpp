@@ -3499,7 +3499,7 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Get Runtime GameObject";
         tool.description =
             "Live values of a GameObject in the running game (runtime-spawned too): component properties this frame "
-            "and script state (lifecycle flags, Lua instance fields, C++ DPROPERTY members). Only while playing.";
+            "and script state (Lua instance fields, C++ DPROPERTY members). Only while playing.";
         tool.inputSchema = object({
             {"scene", runtimeScene},
             {"entity", entityRef()},

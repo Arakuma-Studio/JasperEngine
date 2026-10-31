@@ -124,3 +124,64 @@ async def test_disabled_and_inactive_scripts(ed: Editor):
         ed.check_eq(lifecycle_lines(await ed.console_since()), ["lifecycle enable", "lifecycle start", "lifecycle start"])
     finally:
         await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
+
+
+CPP_HEADER = """#pragma once
+#include "ScriptBase.h"
+#include "ScriptProperty.h"
+#include <string>
+
+class CppLife : public jasperengine::ScriptBase {
+public:
+    DPROPERTY("Label")
+    std::string label = "constructor";
+
+    CppLife(jasperengine::Scene* scene, jasperengine::Entity entity);
+    void init() override;
+    void start() override;
+    void onEnable() override;
+    void onDisable() override;
+    void onDestroy() override;
+};
+"""
+
+CPP_SOURCE = """#include "CppLife.h"
+#include "Log.h"
+
+using namespace jasperengine;
+
+CppLife::CppLife(Scene* scene, Entity entity): ScriptBase(scene, entity) {}
+void CppLife::init() { Log::print("lifecycle cpp init %s %s", label.c_str(), getScript<CppLife>() == this ? "self" : "other"); }
+void CppLife::start() { Log::print("lifecycle cpp start"); }
+void CppLife::onEnable() { Log::print("lifecycle cpp enable %d", isEnabled() ? 1 : 0); }
+void CppLife::onDisable() { Log::print("lifecycle cpp disable"); }
+void CppLife::onDestroy() { Log::print("lifecycle cpp destroy"); }
+"""
+
+
+async def test_cpp_script_lifecycle(ed: Editor):
+    scene = (await ed.call("create_scene", name="Cpp", type="2d"))["scene"]["id"]
+    entity = (await ed.call("create_entity", scene=scene, name="CppHost", type="empty", select=False))["entity_id"]
+    await ed.call("create_script", kind="cpp_script", name="CppLife", entity=entity, scene=scene,
+                  header_content=CPP_HEADER, source_content=CPP_SOURCE)
+    await ed.call("set_script_properties", entity=entity, scene=scene, values={"label": "bound"})
+    await ed.call("save_scene", scene=scene, path="CppLife.scene")
+    await ed.console_since(None)
+    started = await ed.call_raw("play", {"action": "start", "scene": scene, "timeout_seconds": 900, "auto_pause": True,
+                                         "fixed_fps": 60}, timeout=1000)
+    ed.check(not started.is_error, f"play with the C++ script: {started.text[:1500]}")
+    try:
+        await ed.call("wait", frames=2)
+        ed.check_eq(lifecycle_lines(await ed.console_since()),
+                    ["lifecycle cpp init bound self", "lifecycle cpp enable 1", "lifecycle cpp start"],
+                    "init after the properties are bound, then onEnable, then start")
+        await ed.call("set_runtime_property", entity="CppHost", component="script", property="scripts[0].enabled", value=False)
+        ed.check_eq(lifecycle_lines(await ed.console_since()), ["lifecycle cpp disable"])
+        live = await ed.call("get_runtime_entity", entity="CppHost")
+        ed.check_eq((live["scripts"][0]["initialized"], live["scripts"][0]["started"], live["scripts"][0]["active_and_enabled"]),
+                    (True, True, False))
+        await ed.call("set_runtime_property", entity="CppHost", component="script", property="scripts[0].enabled", value=True)
+        ed.check_eq(lifecycle_lines(await ed.console_since()), ["lifecycle cpp enable 1"])
+    finally:
+        await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
+    ed.check_eq(lifecycle_lines(await ed.console_since()), ["lifecycle cpp disable", "lifecycle cpp destroy"], "Play stop")

@@ -1886,7 +1886,7 @@ void registerScriptTools(McpRegistry& registry) {
         tool.title = "Check Script";
         tool.description =
             "Check a script without playing: Lua syntax (not run; ok false + error line), properties, lifecycle "
-            "warnings; C++ header: class, kind, DPROPERTY fields (code: compile_scripts). path, or code + language.";
+            "warnings; C++ header: class, kind, DPROPERTY fields (code: compile_scripts).";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"code", string("")},
