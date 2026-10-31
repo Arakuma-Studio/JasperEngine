@@ -40,6 +40,7 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - UI toolkit with Rect Transforms, layout groups, text, images, buttons, input fields, scrollbars, and other widgets
 - Box2D and Jolt Physics for 2D/3D rigidbodies, colliders, and joints, drawn interpolated between fixed steps
 - Spatial 3D audio and multithreaded asynchronous resource loading
+- Platform services with Unity's names on every platform: `System.openURL`, the system language and region, `Engine.targetFrameRate` / `vSyncCount`, `Screen.orientation` and `autorotateTo*` (one Default / Allowed Orientations setting for Android and iOS), focus, pause and low-memory events, screen sleep, vibration and haptics, and app and device information; the Game view simulates phones (model, dpi, rotation) and languages: see [docs/mcp/guide/platform-services.md](docs/mcp/guide/platform-services.md)
 
 Names follow Unity; see [docs/unity-glossary.md](docs/unity-glossary.md) for the old names and how to migrate older projects.
 
