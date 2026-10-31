@@ -1068,7 +1068,7 @@ bool applyCollider2D(Project* project, Scene* scene, Entity entity, const Json& 
     shape.density = numberOr(spec, "density", shape.density);
     shape.friction = numberOr(spec, "friction", shape.friction);
     shape.restitution = numberOr(spec, "restitution", shape.restitution);
-    if (has(spec, "material")) {
+    if (spec.is_object() && spec.contains("material")) {
         if (spec["material"].is_null()) {
             shape.material.clear();
         } else if (spec["material"].is_string()) {
@@ -1102,7 +1102,7 @@ bool applyCollider2D(Project* project, Scene* scene, Entity entity, const Json& 
 
 // receiver (physics-contacts D9): also gets the collider's contact callbacks; null clears it
 bool applyColliderReceiver(const Target& target, const Json& spec, Entity& receiver, std::string& error) {
-    if (!has(spec, "receiver")) return true;
+    if (!spec.is_object() || !spec.contains("receiver")) return true;
     if (spec["receiver"].is_null()) {
         receiver = NULL_ENTITY;
         return true;
