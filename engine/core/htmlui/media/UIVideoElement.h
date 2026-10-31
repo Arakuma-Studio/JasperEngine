@@ -5,6 +5,7 @@
 #define UIVIDEOELEMENT_H
 
 #include "Export.h"
+#include "media/IVideoSource.h"
 #include "media/VideoAudio.h"
 #include "media/VideoPlayback.h"
 #include "media/VideoStream.h"
@@ -26,7 +27,9 @@ namespace jasperengine {
     class UIVideoControls;
 
     // <video src autoplay loop muted controls poster preload> (docs/html-ui/phase-6-video.md): AV1 +
-    // Opus WebM decoded by a VideoStream, drawn as a replaced element (object-fit and
+    // Opus WebM decoded by a VideoStream, MP4 and other codecs by the platform's decoders, http(s)
+    // URLs through the media cache (an IVideoSource from VideoSourceFactory,
+    // docs/superpowers/specs/2026-10-31-video-mp4-design.md), drawn as a replaced element (object-fit and
     // object-position, rounded content, image-color x opacity, as the fork's <img>), on the UI clock
     // (HtmlUIClock). HTMLMediaElement's states and events, the <source> choice, the poster, the
     // audio through SoLoud in sync with the picture, and the default controls (UIVideoControls).
@@ -107,7 +110,10 @@ namespace jasperengine {
             uint64_t streamsCreated = 0;
         };
         const Stats& getStats() const;
-        VideoStream::Stats getStreamStats() const;
+        VideoStats getStreamStats() const;
+        // what decodes it: "webm", "ffmpeg", "mediacodec", "avfoundation", "mediafoundation",
+        // "browser" ("" before a source opened)
+        std::string getVideoBackend() const;
         int getShownFrameIndex() const;      // the index of the frame on screen (-1: none)
         int64_t getShownSequence() const;
         bool isShowingPoster() const;
@@ -199,7 +205,8 @@ namespace jasperengine {
         std::vector<Candidate> candidates;
         size_t candidateIndex = 0;
         std::string currentSrc;
-        std::unique_ptr<VideoStream> stream;
+        std::unique_ptr<IVideoSource> stream;
+        bool sourceFrame = false;          // the source draws `frame` itself (the browser's element)
         bool metadataSent = false;
         bool dataSent = false;
         bool autoplayPending = false;

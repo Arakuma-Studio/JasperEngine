@@ -6,6 +6,7 @@
 #include "UIVideoControls.h"
 #include "media/VideoColorConvert.h"
 #include "media/VideoFormats.h"
+#include "media/VideoSourceFactory.h"
 
 #include "Engine.h"
 #include "HtmlUIClock.h"
@@ -130,6 +131,9 @@ int UIVideoElement::getLiveCount(){
 // ---------------------------------------------------------------- loading
 
 std::string UIVideoElement::resolvePath(const std::string& source) const{
+    // an http(s) URL plays through the media cache (the browser streams it on the Web)
+    if (VideoSourceFactory::isUrl(source))
+        return source;
     // relative to the document, as <img> and <lottie> resolve sources
     std::string path = source;
     if (Rml::ElementDocument* document = const_cast<UIVideoElement*>(this)->GetOwnerDocument()){
@@ -173,6 +177,7 @@ void UIVideoElement::resetMedia(bool fireEmptied){
     currentSrc.clear();
     intrinsicSize = Rml::Vector2f(0.0f, 0.0f);
     frame = VideoFrame();
+    sourceFrame = false;
     hasPicture = false;
     uploadPending = false;
     shownSequence = -1;
@@ -202,7 +207,8 @@ void UIVideoElement::selectCandidates(){
         if (child->HasAttribute("type")){
             const std::string type = child->GetAttribute<Rml::String>("type", "");
             if (VideoFormats::canPlayType(type) == VideoFormats::CanPlay::NO){
-                Log::verbose("[HTML UI] <video>: <source src=\"%s\" type=\"%s\"> skipped: the engine plays video/webm (AV1, Opus)",
+                Log::verbose("[HTML UI] <video>: <source src=\"%s\" type=\"%s\"> skipped: not a type this platform plays "
+                             "(video/webm with AV1 and Opus everywhere; MP4 where the platform's decoders have its codecs)",
                              source.c_str(), type.c_str());
                 continue;
             }
@@ -237,7 +243,8 @@ void UIVideoElement::runLoad(){
         }
         if (anySource){
             networkState = NETWORK_NO_SOURCE;
-            Log::warn("[HTML UI] <video>: none of its <source> elements has a type the engine plays (video/webm; AV1, Opus): %s%s",
+            Log::warn("[HTML UI] <video>: none of its <source> elements has a type this platform plays (video/webm with AV1 and Opus "
+                      "everywhere; MP4 where the platform's decoders have its codecs): %s%s",
                       VideoFormats::conversionHint(), diagnosticSuffix(htmlui::compat::codes::UnsupportedMediaFormat).c_str());
         }
         return;
@@ -272,7 +279,10 @@ bool UIVideoElement::startFetch(){
         currentSrc = candidate.path;
         // hot reload watches the file (a document load scope records it)
         HtmlUIFileLog::recordFile(candidate.path);
-        stream = std::make_unique<VideoStream>(candidate.path, VideoStream::platformHasThreads(), true);
+        VideoSourceFactory::Options options;
+        options.threaded = VideoStream::platformHasThreads();
+        options.audio = true;
+        stream = VideoSourceFactory::create(candidate.path, options);
         stats.streamsCreated++;
         if (frameExactNow()){
             stream->waitOpen();
@@ -317,16 +327,18 @@ void UIVideoElement::failSource(const std::string& message, MediaErrorCode code)
 void UIVideoElement::pollStream(){
     if (!stream || metadataSent)
         return;
-    VideoStream::State state = stream->getState();
-    if (state == VideoStream::State::OPENING){
+    IVideoSource::State state = stream->getState();
+    if (state == IVideoSource::State::OPENING || state == IVideoSource::State::BUFFERING){
         stream->pump(1);
         state = stream->getState();
     }
-    if (state == VideoStream::State::FAILED){
+    if (state == IVideoSource::State::FAILED){
         const MediaError streamError = stream->getError();
         std::string message = streamError.message;
         // a file that is there but in a format the engine does not play: the fix is a conversion
-        if (streamError.code == MediaErrorCode::SRC_NOT_SUPPORTED && message.find("could not be read") == std::string::npos)
+        // (the platform's messages already say what to do)
+        if (streamError.code == MediaErrorCode::SRC_NOT_SUPPORTED && message.find("could not be read") == std::string::npos &&
+            message.find("convert") == std::string::npos && message.find("install") == std::string::npos)
             message += "; " + std::string(VideoFormats::conversionHint()) + diagnosticSuffix(htmlui::compat::codes::UnsupportedMediaFormat);
         if (streamError.code == MediaErrorCode::SRC_NOT_SUPPORTED || streamError.code == MediaErrorCode::NETWORK){
             tryNextCandidate(message);
@@ -336,12 +348,12 @@ void UIVideoElement::pollStream(){
         }
         return;
     }
-    if (state == VideoStream::State::READY)
+    if (state == IVideoSource::State::READY)
         onMetadata();
 }
 
 void UIVideoElement::onMetadata(){
-    const VideoStream::Info& info = stream->getInfo();
+    const VideoInfo& info = stream->getInfo();
     metadataSent = true;
     playback.setDuration(info.duration);
     playback.setLoop(getLoop());
@@ -374,15 +386,17 @@ bool UIVideoElement::frameExactNow() const{
 void UIVideoElement::advance(bool fromUpdate){
     if (!stream || !metadataSent)
         return;
-    frameExact = frameExactNow();
+    frameExact = frameExactNow() && stream->isFrameExact();
     if (fromUpdate)
         playback.update(HtmlUIClock::now(), playbackEvents);
+    // a source that is its own clock (the browser's element) follows this one
+    stream->setClock(playback.isAdvancing(), playback.getPlaybackRate());
     showFrameForTime();
     handlePlaybackEvents();
 }
 
 void UIVideoElement::showFrameForTime(){
-    const VideoStream::Info& info = stream->getInfo();
+    const VideoInfo& info = stream->getInfo();
     const double now = HtmlUIClock::now();
     if (!info.hasVideo){
         // audio only: the data is there once open
@@ -405,13 +419,20 @@ void UIVideoElement::showFrameForTime(){
     }
 
     VideoFrame next;
-    const VideoStream::FrameResult result = stream->acquireFrame(playback.getIteration(), playback.getPosition(), frameExact, shownSequence, next);
+    const IVideoSource::FrameResult result = stream->acquireFrame(playback.getIteration(), playback.getPosition(), frameExact, shownSequence, next);
     bool exact = false;
     switch (result){
-        case VideoStream::FrameResult::NEW:
-        case VideoStream::FrameResult::STALE:
+        case IVideoSource::FrameResult::NEW:
+        case IVideoSource::FrameResult::STALE:
             shownSequence = next.sequence;
-            if (!next.y.empty()){
+            if (stream->rendersToTexture()){
+                // the browser draws its current frame into the texture (uploadFrame)
+                frame.width = info.displayWidth;
+                frame.height = info.displayHeight;
+                sourceFrame = frame.width > 0 && frame.height > 0;
+                uploadPending = sourceFrame;
+                stats.framesShown++;
+            }else if (!next.y.empty()){
                 // shown as is: the UI composites SDR (3.6.5); the importer tone-maps HDR files
                 if (next.color.isHdr() && !hdrWarned){
                     hdrWarned = true;
@@ -422,14 +443,14 @@ void UIVideoElement::showFrameForTime(){
                 uploadPending = true;
                 stats.framesShown++;
             }
-            exact = result == VideoStream::FrameResult::NEW;
+            exact = result == IVideoSource::FrameResult::NEW;
             break;
-        case VideoStream::FrameResult::SAME:
+        case IVideoSource::FrameResult::SAME:
             exact = true;
             break;
-        case VideoStream::FrameResult::NOT_READY:
+        case IVideoSource::FrameResult::NOT_READY:
             break;
-        case VideoStream::FrameResult::FAILED: {
+        case IVideoSource::FrameResult::FAILED: {
             if (!error){
                 const MediaError streamError = stream->getError();
                 error.code = streamError.code == MediaErrorCode::NONE ? MediaErrorCode::DECODE : streamError.code;
@@ -775,6 +796,11 @@ float UIVideoElement::effectiveVolume() const{
 void UIVideoElement::updateAudio(){
     if (!stream || !metadataSent || !stream->getInfo().hasAudio)
         return;
+    // the browser plays the element's own sound: its volume follows this one
+    if (stream->playsOwnAudio()){
+        stream->setOutputVolume(effectiveVolume() * AudioSystem::getGlobalVolume());
+        return;
+    }
     std::shared_ptr<VideoAudioRing> ring = stream->getAudioRing();
     if (!ring)
         return;
@@ -1053,6 +1079,17 @@ bool UIVideoElement::createTexture(const Rml::CallbackTextureInterface& textureI
         created->render = &created->ownedTarget->getRender().getColorTexture();
         created->width = width;
         created->height = height;
+        if (sourceFrame){
+            // the source draws into the target itself: no planes
+            stats.texturesCreated++;
+            HtmlUITexture* raw = created.release();
+            textureInterface.SetTextureHandle(reinterpret_cast<Rml::TextureHandle>(raw), textureSize);
+            liveTexture = raw;
+            hasPicture = false;
+            uploadPending = true;
+            uploadedFrame = UINT64_MAX;
+            return true;
+        }
         const bool chroma = frame.hasChroma();
         const int chromaWidth = chroma ? frame.chromaWidth() : 1;
         const int chromaHeight = chroma ? frame.chromaHeight() : 1;
@@ -1089,9 +1126,10 @@ bool UIVideoElement::createTexture(const Rml::CallbackTextureInterface& textureI
 
 bool UIVideoElement::ensureTexture(){
     Rml::RenderManager* renderManager = GetRenderManager();
-    if (!renderManager || frame.y.empty())
+    if (!renderManager || (frame.y.empty() && !sourceFrame))
         return false;
-    const bool gpu = RmlRenderer::forContext(GetContext()) != nullptr;
+    // a source's own frames need a render target
+    const bool gpu = RmlRenderer::forContext(GetContext()) != nullptr || sourceFrame;
     const Rml::Vector2i size(frame.width, frame.height);
     if (texture && (textureSize != size || gpuConversion != gpu))
         releaseTexture();
@@ -1109,7 +1147,7 @@ bool UIVideoElement::ensureTexture(){
 }
 
 void UIVideoElement::uploadFrame(){
-    if (!uploadPending || frame.y.empty())
+    if (!uploadPending || (frame.y.empty() && !sourceFrame))
         return;
     // one update of an image per sokol frame: a second frame in the same one waits for the next
     const uint64_t engineFrame = SystemRender::getFrameCount();
@@ -1119,7 +1157,11 @@ void UIVideoElement::uploadFrame(){
         return;
     if (liveTexture->dead)
         return;
-    if (gpuConversion){
+    if (sourceFrame){
+        if (!stream || !liveTexture->ownedTarget || !stream->uploadTo(*liveTexture->ownedTarget))
+            return;
+        stats.uploads++;
+    }else if (gpuConversion){
         RmlRenderer* renderer = RmlRenderer::forContext(GetContext());
         if (!renderer)
             return;
@@ -1239,8 +1281,12 @@ const UIVideoElement::Stats& UIVideoElement::getStats() const{
     return stats;
 }
 
-VideoStream::Stats UIVideoElement::getStreamStats() const{
-    return stream ? stream->getStats() : VideoStream::Stats();
+std::string UIVideoElement::getVideoBackend() const{
+    return stream ? stream->backendName() : "";
+}
+
+VideoStats UIVideoElement::getStreamStats() const{
+    return stream ? stream->getStats() : VideoStats();
 }
 
 int UIVideoElement::getShownFrameIndex() const{
@@ -1264,12 +1310,12 @@ HtmlUITexture* UIVideoElement::getTexture() const{
 }
 
 double UIVideoElement::getDecodeMsPerFrame() const{
-    const VideoStream::Stats s = getStreamStats();
+    const VideoStats s = getStreamStats();
     return s.framesDecoded ? (double)s.decodeNs / 1e6 / (double)s.framesDecoded : 0.0;
 }
 
 size_t UIVideoElement::getMemoryBytes() const{
-    const VideoStream::Stats s = getStreamStats();
+    const VideoStats s = getStreamStats();
     size_t bytes = s.pictureBytes + s.queueBytes + s.cacheBytes + frame.bytes();
     if (liveTexture){
         bytes += (size_t)textureSize.x * (size_t)textureSize.y * 4;

@@ -6,6 +6,7 @@
 // and run under Xvfb (tools/build.sh htmlui-tests).
 
 #include "harness/GpuEnvironment.h"
+#include "media/VideoSourceFactory.h"
 
 #include <gtest/gtest.h>
 
@@ -18,6 +19,9 @@ int main(int argc, char** argv){
     setenv("JASPER_LUA_THREAD_CHECK", "abort", 0);
 
     jasperengine::test::GpuEnvironment::initEngine(argc, argv);
+    // the video suites' world is the WebM path's alone (the same on every machine): MP4 and the
+    // platform's decoders are the editor tests' (VideoMp4Test)
+    jasperengine::VideoSourceFactory::setPlatformDecodersEnabledForTesting(false);
 
     const int result = RUN_ALL_TESTS();
     // the engine shuts down after every global environment's TearDown (some still compile

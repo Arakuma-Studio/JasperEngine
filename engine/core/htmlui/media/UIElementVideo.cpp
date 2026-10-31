@@ -225,6 +225,11 @@ std::string UIElement::getCurrentSrc() const{
     return video ? video->getCurrentSrc() : std::string();
 }
 
+std::string UIElement::getVideoBackend() const{
+    VIDEO_OF(getVideoBackend);
+    return video ? video->getVideoBackend() : std::string();
+}
+
 std::string UIElement::getPoster() const{
     VIDEO_OF(getPoster);
     return video ? video->getPoster() : std::string();

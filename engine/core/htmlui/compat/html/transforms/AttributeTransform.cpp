@@ -15,7 +15,10 @@
 #include "htmlui/compat/UrlResolver.h"
 #include "htmlui/compat/VirtualFiles.h"
 #include "media/VideoFormats.h"
+#include "media/VideoSourceFactory.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <unordered_map>
@@ -155,15 +158,22 @@ namespace {
     bool checkVideoUrl(TransformContext& context, const ResolvedUrl& resolved, const std::string& value, const std::string& type, SourceRef where){
         using jasperengine::VideoFormats;
         using jasperengine::VideoProbe;
-        if (!type.empty() && VideoFormats::canPlayType(type) == VideoFormats::CanPlay::NO){
+        using jasperengine::VideoSourceFactory;
+        // MP4 types play where the platform decodes their codecs: judged per export platform by
+        // `check` (video-codec-unsupported-on-target), not by the machine converting
+        std::string lowerType = type;
+        std::transform(lowerType.begin(), lowerType.end(), lowerType.begin(), [](unsigned char c){ return (char)std::tolower(c); });
+        const bool mp4Type = lowerType.rfind("video/mp4", 0) == 0 || lowerType.rfind("audio/mp4", 0) == 0 || lowerType.rfind("video/quicktime", 0) == 0;
+        if (!type.empty() && !mp4Type && VideoFormats::canPlayType(type) == VideoFormats::CanPlay::NO){
             context.sink.report(codes::UnsupportedMediaFormat, where,
-                                "type \"" + type + "\" of '" + value + "' is not played: the engine plays video/webm (AV1 video, Opus audio)",
+                                "type \"" + type + "\" of '" + value + "' is not played: the engine plays video/webm (AV1 video, Opus audio) "
+                                "everywhere and MP4 where the platform's decoders have its codecs",
                                 VideoFormats::conversionHint(), "", value);
             return false;
         }
         if (VideoFormats::isRejectedExtension(resolved.assetPath.empty() ? value : resolved.assetPath)){
             context.sink.report(codes::UnsupportedMediaFormat, where,
-                                "'" + value + "' is in a format the engine does not play (it plays WebM with AV1 video and Opus audio)",
+                                "'" + value + "' is in a format the engine does not play (it plays WebM with AV1 video and Opus audio, and MP4)",
                                 VideoFormats::conversionHint(), "", value);
             return false;
         }
@@ -180,11 +190,17 @@ namespace {
         }else{
             probe = VideoFormats::probeFile(resolved.assetPath);
         }
-        if (!probe.playable){
+        // an MP4 (or other platform-decoded video) some export platform plays: `check` reports the others
+        bool somewhere = false;
+        if (!probe.playable && probe.readable && !probe.encrypted){
+            for (int p = 0; p < VideoSourceFactory::PLATFORM_COUNT; p++)
+                somewhere = somewhere || std::string(VideoSourceFactory::playableOn((VideoSourceFactory::Platform)p, probe)) != "no";
+        }
+        if (!probe.playable && !somewhere){
             context.sink.report(codes::UnsupportedMediaFormat, where, "'" + value + "': " + probe.error.message, VideoFormats::conversionHint(), "", value);
             return false;
         }
-        if (!probe.audioPlayable){
+        if (!probe.audioPlayable && probe.backend == "webm"){
             context.sink.report(codes::UnsupportedMediaFormat, where,
                                 "'" + value + "': its " + VideoFormats::codecName(probe.audioCodec) + " audio is not played (the engine plays Opus)",
                                 VideoFormats::conversionHint(), "", value);

@@ -226,6 +226,9 @@ namespace jasperengine{
         int getReadyState() const; int getNetworkState() const;
         int getVideoWidth() const; int getVideoHeight() const;
         std::string getCurrentSrc() const;
+        // what decodes it: "webm" (AV1/Opus in software), "ffmpeg", "mediacodec", "avfoundation",
+        // "mediafoundation", "browser" ("" before a source opened)
+        std::string getVideoBackend() const;
         std::string getPoster() const; void setPoster(const std::string& poster);
         std::string getPreload() const; void setPreload(const std::string& preload);
         std::optional<UIMediaError> getMediaError() const;

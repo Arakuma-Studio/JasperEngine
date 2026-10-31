@@ -40,7 +40,9 @@ namespace jasperengine::editor::htmlui {
     public:
         // a file a video importer must look at: any video extension (.webm, .mkv, .mp4, .mov, ...)
         static bool isVideoFile(const std::filesystem::path& path);
-        // the engine plays it as it is (the probe: AV1/Opus WebM or Matroska)
+        // the engine plays it as it is (the probe: AV1/Opus WebM or Matroska everywhere; an MP4 or
+        // other video some export platform's decoders play, docs/superpowers/specs/
+        // 2026-10-31-video-mp4-design.md §6.8): imported unchanged, never converted on its own
         static bool isPlayable(const std::filesystem::path& path);
 
         // FFmpeg: JASPER_FFMPEG, then the editor's override (setFfmpegPath: Preferences > External
@@ -68,9 +70,11 @@ namespace jasperengine::editor::htmlui {
 
         // Imports one file into `targetDir` (absolute): copied when the engine plays it, else
         // converted to <stem>.webm (the original is not copied), else copied with HTMLUI-IMP-0010.
-        // Blocks while FFmpeg runs (call it off the main thread); onLine gets FFmpeg's output.
+        // convert: AV1 + Opus WebM even when it plays as it is (the Project window's "Convert to
+        // WebM (AV1)..."; the original stays). Blocks while FFmpeg runs (call it off the main
+        // thread); onLine gets FFmpeg's output.
         static VideoImportResult importFile(const std::filesystem::path& input, const std::filesystem::path& targetDir, bool overwrite,
-                                            const std::function<void(const std::string&)>& onLine = {});
+                                            const std::function<void(const std::string&)>& onLine = {}, bool convert = false);
     };
 
     // A downloaded video (RemoteImporter: import_files URLs and a document's remote <video src>,
