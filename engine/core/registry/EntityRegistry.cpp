@@ -359,16 +359,12 @@ void EntityRegistry::setEntityActive(Entity entity, bool active) {
             }
         }
     }
-    // the coroutines of scripts no longer active in hierarchy stop (Unity's SetActive(false))
-    const bool wasActive = entityManager.isActive(entity);
     if (!isActivationObserved() || !isEntityCreated(entity)) {
         entityManager.setActive(entity, active);
-        if (wasActive && !active) ScriptScheduler::stopCoroutinesOfInactive(this);
         return;
     }
     const bool before = isEntityActiveInHierarchy(entity);
     entityManager.setActive(entity, active);
-    if (wasActive && !active) ScriptScheduler::stopCoroutinesOfInactive(this);
     const bool after = isEntityActiveInHierarchy(entity);
     if (before != after) {
         onActiveInHierarchyChanged(collectActivationBranch(entity), after);
