@@ -565,8 +565,6 @@ spec was silent, ambiguous or did not fit the code:
     `create_entity` also gets `type: "safe_area"`.
 18. **Guide budget.** The guide line shares one bullet with the platform-services line; four sentences
     elsewhere were shortened to stay within 16 KB.
-19. **Heads-up for the lead (not changed here):** the ECS `Signature` is a `std::bitset<64>`; with the
-    Safe Area component the registry has 62 component types, and other branches add more (Trail
-    Renderer, canvas groups, camera shake...). The merge that crosses 64 must widen `Signature`.
-    `ComponentType::SafeAreaComponent` is appended last (prefab override masks use the ordinal); a branch
-    appending another type at the same place conflicts there and in `AnimationClipContractTest`.
+19. **Merge note:** `ComponentType::SafeAreaComponent` is appended last (prefab override masks use the
+    ordinal): a branch appending another type at the same place conflicts there and in
+    `AnimationClipContractTest`. (The ECS `Signature` limit of 64 types was raised to 128 on `main`.)
