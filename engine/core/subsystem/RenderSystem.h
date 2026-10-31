@@ -1617,6 +1617,8 @@ namespace jasperengine{
 		// the global shader values a draw's shader declares (ShaderGlobals: its globals blocks,
 		// repacked when a value changed, and its texture globals)
 		void applyGlobals(ObjectRender& render, const ShaderLibraryBindings& bindings);
+		// its texture globals only (at load, outside a pass)
+		void applyGlobalTextures(ObjectRender& render, const ShaderLibraryBindings& bindings);
 		// the scene inputs of the pass being drawn, to a colour draw whose shader declares them
 		// (the far-plane depth and black where the pass has none)
 		void applySceneInputs(ObjectRender& render, const ShaderLibraryBindings& bindings);

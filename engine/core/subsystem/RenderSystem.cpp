@@ -4043,7 +4043,8 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
             bindings.globalTextures.push_back(globalSlot);
         }
     }
-    applyGlobals(render, bindings);
+    // (the blocks are pushed per draw, inside its pass)
+    applyGlobalTextures(render, bindings);
 
     return bindShaderTextures(bindings, render, textures);
 }
@@ -4863,6 +4864,10 @@ void RenderSystem::applyGlobals(ObjectRender& render, const ShaderLibraryBinding
         bindings.fsGlobals->update();
         render.applyUniformBlock(bindings.slotFSGlobals, bindings.fsGlobals->size, bindings.fsGlobals->bytes.data());
     }
+    applyGlobalTextures(render, bindings);
+}
+
+void RenderSystem::applyGlobalTextures(ObjectRender& render, const ShaderLibraryBindings& bindings){
     for (const GlobalTextureSlot& textureSlot : bindings.globalTextures){
         TextureRender* fallback = textureSlot.cube ? &emptyCubeBlack : &emptyWhite;
         TextureRender* textureRender = ShaderGlobals::getTextureRender(textureSlot.globalId, textureSlot.cube, fallback);
