@@ -776,9 +776,11 @@ script-lifecycle), where the spec was silent, ambiguous or contradicted what the
     as before with colliders without one.
 12. **Catalog edits of colliders** (Inspector, `set_properties`, MCP) mark the colliders dirty and swap
     the shape like the Lua setters; the body is only rebuilt when it has none yet.
-13. **Ragdoll wizard re-run** removes the Rigidbody and Joint 3D components of the previous ragdoll's
-    parts (the Ragdoll component's part list) and of the newly chosen bones, then builds, all in one
-    undo step. The Hierarchy entry is a new `EntityCreationType::RAGDOLL_WIZARD` (appended) that
+13. **Ragdoll wizard re-run.** The part list of the Ragdoll component is collected at run time, so in
+    the editor a root that already has a Ragdoll counts every Rigidbody below it as the previous
+    run's: the wizard removes their Rigidbody and Joint 3D components and those of the newly chosen
+    bones, then builds, all in one undo step (a Rigidbody prop held by such a character is removed
+    too: add it again after re-running). The Hierarchy entry is a new `EntityCreationType::RAGDOLL_WIZARD` (appended) that
     opens the dialog on the row or the single selection; the Model component's menu has the same
     entry.
 14. **`numColliders`** is still written to YAML for older editors and bounds the decoded list (as
