@@ -25,6 +25,7 @@ namespace jasperengine{
         : LuaFunctionBase(vm){ }
 
         Ret operator()() {
+            if (!isLive()) return Ret{};
             push_function(m_vm, m_func);
             call(0, 1);
             return get_value<Ret>(m_vm);
@@ -32,6 +33,7 @@ namespace jasperengine{
 
         template <typename... Args, std::enable_if_t<(sizeof...(Args) > 0 && sizeof...(Args) <= 6), int> = 0>
         Ret operator()(const Args&... args){
+            if (!isLive()) return Ret{};
             push_function(m_vm, m_func);
             (push_value(m_vm, args), ...);
             call(sizeof...(Args), 1);
@@ -53,12 +55,14 @@ namespace jasperengine{
         : LuaFunctionBase(vm) { }
 
         void operator()(){
+            if (!isLive()) return;
             push_function(m_vm, m_func);
             call(0);
         }
 
         template <typename... Args, std::enable_if_t<(sizeof...(Args) > 0 && sizeof...(Args) <= 8), int> = 0>
         void operator()(const Args&... args){
+            if (!isLive()) return;
             push_function(m_vm, m_func);
             (push_value(m_vm, args), ...);
             call(sizeof...(Args));

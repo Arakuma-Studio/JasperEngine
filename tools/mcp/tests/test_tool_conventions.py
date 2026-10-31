@@ -48,6 +48,8 @@ VERBS = {
     "dismiss", "debug",
     # S19: visualize_navigation (the spec's name: overlay flags and a Scene view image)
     "visualize",
+    # S30: install_player_runtime (the spec's name: a download or a local archive into the runtimes)
+    "install",
 }
 
 # Names registered before the verb_noun rule (S31): they keep their names

@@ -5,6 +5,7 @@
 #include "Out.h"
 #include "cli/CallCommand.h"
 #include "cli/CommandLine.h"
+#include "cli/ShippingCommands.h"
 #include "mcp/McpLaunch.h"
 #include "reload/HotReloadService.h"
 #include "util/EditorDiagnostics.h"
@@ -79,6 +80,19 @@ int runEditor(int argc, char* argv[]) {
     }
     if (argc >= 2 && std::strcmp(argv[1], "synthesize-texture") == 0) {
         return editor::CommandLine::runSynthesizeTextureCommand(argc - 1, argv + 1, argv[0]);
+    }
+    // S30: prebuilt players, publishing, the runtime field tables
+    if (argc >= 2 && std::strcmp(argv[1], "reflect") == 0) {
+        return editor::ShippingCommands::runReflect(argc - 1, argv + 1, argv[0]);
+    }
+    if (argc >= 2 && std::strcmp(argv[1], "build") == 0) {
+        return editor::ShippingCommands::runBuild(argc - 1, argv + 1, argv[0]);
+    }
+    if (argc >= 2 && std::strcmp(argv[1], "players") == 0) {
+        return editor::ShippingCommands::runPlayers(argc - 1, argv + 1, argv[0]);
+    }
+    if (argc >= 2 && std::strcmp(argv[1], "publish") == 0) {
+        return editor::ShippingCommands::runPublish(argc - 1, argv + 1, argv[0]);
     }
     if (argc >= 2 && std::strcmp(argv[1], "place-physics") == 0) {
         return editor::CommandLine::runPlacePhysicsCommand(argc - 1, argv + 1, argv[0]);

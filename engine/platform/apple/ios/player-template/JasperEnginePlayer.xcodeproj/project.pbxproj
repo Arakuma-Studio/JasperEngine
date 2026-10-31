@@ -1,0 +1,274 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		8C2DAA0D29E526164F3D02E4 /* Content in Resources */ = {isa = PBXBuildFile; fileRef = E3E1C63CC17638FF4F035581 /* Content */; };
+		B7C16D6F6D893BAD98C18CB7 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = F300E525478E435B6F9311F3 /* Main.storyboard */; };
+		E75CA4ED209CEE8B7188A803 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 16921782D71381D23D29534A /* LaunchScreen.storyboard */; };
+		1292570F097720FE4AEA42DC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E04CEA74A9AE8F1FB0A9BC5C /* Assets.xcassets */; };
+		CC24E15E75817A522665DA7E /* Stub.m in Sources */ = {isa = PBXBuildFile; fileRef = 38AA550468E7607909F14FEA /* Stub.m */; };
+		117A083FE2A9FEFC4B57EC1F /* JasperEnginePlayer.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = C38FC4B2D7DA490F6AF7C8B8 /* JasperEnginePlayer.xcframework */; };
+		98A2024DF8761FAC057E6652 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 890036A790E826DB3C21E187 /* Metal.framework */; };
+		4252BF1B4C4681332EA4BAE2 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 37520B272D73E76E84AB0176 /* MetalKit.framework */; };
+		80D8CB78BFFDB712511B4F68 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE8C8F2A2C6869DE55853DB3 /* UIKit.framework */; };
+		93BDC6A0612441586F56B99E /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A4D375F3AD9EC96941333C18 /* QuartzCore.framework */; };
+		FBC7FAF05F2EFAE5BA13C57F /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 672C1961A92C4398CAE766F3 /* AudioToolbox.framework */; };
+		8059B39A2B10901FFFBD3FEE /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BF8A4E3C8F832762B09EBBEE /* AVFoundation.framework */; };
+		76A5B55D229AD0ABCDBBFA1B /* GameController.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F8CDC42C73EB5204CEE28ED3 /* GameController.framework */; };
+		F813E11342AE323807D5CEC9 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F6CA52BDA807A4859019FBCB /* CoreGraphics.framework */; };
+		45F735ED74F3B4FEB0B3C0D2 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6755ADE52797F7231ACF0C63 /* Foundation.framework */; };
+		DB3A2836D7EC855EE8BCD4BD /* CoreMotion.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5D34F0EA05C640D7B462DD88 /* CoreMotion.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		E164028A77A396FC44DEDC86 /* {{PRODUCT_NAME}}.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "{{PRODUCT_NAME}}.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		53A1DC1989C3083016B9B334 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		E3E1C63CC17638FF4F035581 /* Content */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Content; sourceTree = "<group>"; };
+		F300E525478E435B6F9311F3 /* Main.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = Main.storyboard; sourceTree = "<group>"; };
+		16921782D71381D23D29534A /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		E04CEA74A9AE8F1FB0A9BC5C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		38AA550468E7607909F14FEA /* Stub.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Stub.m; sourceTree = "<group>"; };
+		C38FC4B2D7DA490F6AF7C8B8 /* JasperEnginePlayer.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = JasperEnginePlayer.xcframework; sourceTree = "<group>"; };
+		890036A790E826DB3C21E187 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		37520B272D73E76E84AB0176 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
+		CE8C8F2A2C6869DE55853DB3 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		A4D375F3AD9EC96941333C18 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		672C1961A92C4398CAE766F3 /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
+		BF8A4E3C8F832762B09EBBEE /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
+		F8CDC42C73EB5204CEE28ED3 /* GameController.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GameController.framework; path = System/Library/Frameworks/GameController.framework; sourceTree = SDKROOT; };
+		F6CA52BDA807A4859019FBCB /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		6755ADE52797F7231ACF0C63 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		5D34F0EA05C640D7B462DD88 /* CoreMotion.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMotion.framework; path = System/Library/Frameworks/CoreMotion.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B34FC6AC614C39851F551BE4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				117A083FE2A9FEFC4B57EC1F /* JasperEnginePlayer.xcframework in Frameworks */,
+				98A2024DF8761FAC057E6652 /* Metal.framework in Frameworks */,
+				4252BF1B4C4681332EA4BAE2 /* MetalKit.framework in Frameworks */,
+				80D8CB78BFFDB712511B4F68 /* UIKit.framework in Frameworks */,
+				93BDC6A0612441586F56B99E /* QuartzCore.framework in Frameworks */,
+				FBC7FAF05F2EFAE5BA13C57F /* AudioToolbox.framework in Frameworks */,
+				8059B39A2B10901FFFBD3FEE /* AVFoundation.framework in Frameworks */,
+				76A5B55D229AD0ABCDBBFA1B /* GameController.framework in Frameworks */,
+				F813E11342AE323807D5CEC9 /* CoreGraphics.framework in Frameworks */,
+				45F735ED74F3B4FEB0B3C0D2 /* Foundation.framework in Frameworks */,
+				DB3A2836D7EC855EE8BCD4BD /* CoreMotion.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1A45CAE6B01FDB5FB1F46D8C = {
+			isa = PBXGroup;
+			children = (
+				53A1DC1989C3083016B9B334 /* Info.plist */,
+				E3E1C63CC17638FF4F035581 /* Content */,
+				F300E525478E435B6F9311F3 /* Main.storyboard */,
+				16921782D71381D23D29534A /* LaunchScreen.storyboard */,
+				E04CEA74A9AE8F1FB0A9BC5C /* Assets.xcassets */,
+				38AA550468E7607909F14FEA /* Stub.m */,
+				C38FC4B2D7DA490F6AF7C8B8 /* JasperEnginePlayer.xcframework */,
+				85CDD5C50F7F11A63D8DF59A /* Frameworks */,
+				9A8AD47B0F0D056D3D6115F8 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		85CDD5C50F7F11A63D8DF59A /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				890036A790E826DB3C21E187 /* Metal.framework */,
+				37520B272D73E76E84AB0176 /* MetalKit.framework */,
+				CE8C8F2A2C6869DE55853DB3 /* UIKit.framework */,
+				A4D375F3AD9EC96941333C18 /* QuartzCore.framework */,
+				672C1961A92C4398CAE766F3 /* AudioToolbox.framework */,
+				BF8A4E3C8F832762B09EBBEE /* AVFoundation.framework */,
+				F8CDC42C73EB5204CEE28ED3 /* GameController.framework */,
+				F6CA52BDA807A4859019FBCB /* CoreGraphics.framework */,
+				6755ADE52797F7231ACF0C63 /* Foundation.framework */,
+				5D34F0EA05C640D7B462DD88 /* CoreMotion.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		9A8AD47B0F0D056D3D6115F8 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E164028A77A396FC44DEDC86 /* {{PRODUCT_NAME}}.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		2B277CF64320022F5BEC8CAD /* JasperEnginePlayer */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A7058B59134F491E0E93A3EF /* Build configuration list for PBXNativeTarget "JasperEnginePlayer" */;
+			buildPhases = (
+				3F7127E20543B4C4F2C0EA43 /* Sources */,
+				B34FC6AC614C39851F551BE4 /* Frameworks */,
+				7E2CADB09A99108E6AC086F0 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = JasperEnginePlayer;
+			productName = "{{PRODUCT_NAME}}";
+			productReference = E164028A77A396FC44DEDC86 /* {{PRODUCT_NAME}}.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		6AE4FEA9AB8DCE3AE8CE8C0D /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1600;
+			};
+			buildConfigurationList = 0B0936F3B10F5C4AC70FE85E /* Build configuration list for PBXProject "JasperEnginePlayer" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 1A45CAE6B01FDB5FB1F46D8C;
+			productRefGroup = 9A8AD47B0F0D056D3D6115F8 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				2B277CF64320022F5BEC8CAD /* JasperEnginePlayer */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		7E2CADB09A99108E6AC086F0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8C2DAA0D29E526164F3D02E4 /* Content in Resources */,
+				B7C16D6F6D893BAD98C18CB7 /* Main.storyboard in Resources */,
+				E75CA4ED209CEE8B7188A803 /* LaunchScreen.storyboard in Resources */,
+				1292570F097720FE4AEA42DC /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3F7127E20543B4C4F2C0EA43 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC24E15E75817A522665DA7E /* Stub.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		60A95B71900EC2B5CCD12DE1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				ONLY_ACTIVE_ARCH = YES;
+			};
+			name = Debug;
+		};
+		5694EFB1B446B93C5EADC9A3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		27726D686A5633F0CC6F12CC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "{{BUILD}}";
+				DEVELOPMENT_TEAM = "{{TEAM_ID}}";
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = "{{VERSION}}";
+				OTHER_LDFLAGS = (
+					"-all_load",
+					"-ObjC",
+					"-lc++",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "{{BUNDLE_ID}}";
+				PRODUCT_NAME = "{{PRODUCT_NAME}}";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+			};
+			name = Debug;
+		};
+		8EE5A5A7E9047D71B7A737C2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "{{BUILD}}";
+				DEVELOPMENT_TEAM = "{{TEAM_ID}}";
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = "{{VERSION}}";
+				OTHER_LDFLAGS = (
+					"-all_load",
+					"-ObjC",
+					"-lc++",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "{{BUNDLE_ID}}";
+				PRODUCT_NAME = "{{PRODUCT_NAME}}";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0B0936F3B10F5C4AC70FE85E /* Build configuration list for PBXProject "JasperEnginePlayer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				60A95B71900EC2B5CCD12DE1 /* Debug */,
+				5694EFB1B446B93C5EADC9A3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A7058B59134F491E0E93A3EF /* Build configuration list for PBXNativeTarget "JasperEnginePlayer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				27726D686A5633F0CC6F12CC /* Debug */,
+				8EE5A5A7E9047D71B7A737C2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 6AE4FEA9AB8DCE3AE8CE8C0D /* Project object */;
+}

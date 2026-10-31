@@ -660,6 +660,21 @@ static void drawScriptDirsSetting(Project* project, std::vector<fs::path>& direc
     }
 }
 
+// S30 (docs/shipping.md)
+static const char* const buildMethodNames[] = {"auto", "prebuilt", "compile"};
+static const char* const buildMethodLabels[] = {"Auto", "Prebuilt Player", "Compile From Source"};
+// the default first (AndroidFormat: aab), the universal APK last (an explicit choice)
+static const char* const androidPackageFormats[] = {"aab", "apk-per-abi", "apk"};
+static const char* const androidPackageFormatLabels[] = {"App Bundle (AAB, Google Play)", "One APK per ABI", "Universal APK (every ABI)"};
+static const char* const iosExportMethods[] = {"development", "ad-hoc", "app-store", "enterprise"};
+
+template<size_t N>
+static int indexOfName(const char* const (&names)[N], const std::string& value) {
+    for (size_t i = 0; i < N; i++)
+        if (value == names[i]) return static_cast<int>(i);
+    return 0;
+}
+
 static void drawProjectFilePathSetting(
     Project* project,
     const char* label,
@@ -978,6 +993,8 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_iosSupportsHighRefreshRate = ios.supportsHighRefreshRate;
     m_iosAdmobEnabled = ios.admobEnabled;
     snprintf(m_iosAdmobAppIdBuffer, sizeof(m_iosAdmobAppIdBuffer), "%s", ios.admobAppId.c_str());
+    snprintf(m_iosTeamIdBuffer, sizeof(m_iosTeamIdBuffer), "%s", ios.teamId.c_str());
+    m_iosExportMethodIndex = indexOfName(iosExportMethods, ios.exportMethod);
 
     const AndroidProjectSettings& android = project->getAndroidProjectSettings();
     snprintf(m_androidApplicationNameBuffer, sizeof(m_androidApplicationNameBuffer), "%s", android.applicationName.c_str());
@@ -1004,6 +1021,9 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_androidKeepScreenOn = android.keepScreenOn;
     m_androidAdmobEnabled = android.admobEnabled;
     snprintf(m_androidAdmobAppIdBuffer, sizeof(m_androidAdmobAppIdBuffer), "%s", android.admobAppId.c_str());
+    m_androidPackageFormatIndex = indexOfName(androidPackageFormats, android.packageFormat);
+    m_androidKeystorePath = android.keystorePath;
+    snprintf(m_androidKeystoreAliasBuffer, sizeof(m_androidKeystoreAliasBuffer), "%s", android.keystoreAlias.c_str());
 
     m_startSceneId = project->getStartSceneId();
     const SceneProject* startScene = project->getScene(m_startSceneId);
@@ -1025,6 +1045,8 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
 
     m_packNativeResources = project->shouldPackNativeResources();
     m_versionControlMetadata = project->hasVersionControlMetadata();
+    m_buildMethodIndex = indexOfName(buildMethodNames, project->getBuildMethod());
+    m_packContent = project->isPackContent();
     m_vcs = project->getVcsProjectSettings();
 
     m_tags = project->getTags();
@@ -1547,6 +1569,19 @@ void ProjectSettingsWindow::drawPlayerSettings() {
                 ImGui::Checkbox("##PackNativeResources", &m_packNativeResources);
                 endSettingsRow("Experimental. Packs exported assets and Lua files into resources.pak for Desktop and Android source exports. "
                     "Packed resources are read through Data; direct File handles cannot open them.");
+            }
+            if (settingsui::beginRow("player.build_method")) {
+                if (projectBeginSettingsRow("Build Method", m_buildMethodIndex != 0)) m_buildMethodIndex = 0;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::Combo("##BuildMethod", &m_buildMethodIndex, buildMethodLabels, IM_ARRAYSIZE(buildMethodLabels));
+                endSettingsRow("How Build makes the game. Auto: a prebuilt player (no compiler needed) unless the project needs native code "
+                               "(C++ scripts, ProjectBuild.cmake, capacities above the player's, AdMob), then compiled from source.");
+            }
+            if (settingsui::beginRow("player.pack_content")) {
+                if (projectBeginSettingsRow("Content Pack", m_packContent)) m_packContent = false;
+                ImGui::Checkbox("##PackContent", &m_packContent);
+                endSettingsRow("Prebuilt builds keep their content in one content.jpak next to the player instead of loose files "
+                               "(the web always packs it).");
             }
 
             ImGui::EndTable();
@@ -2639,6 +2674,20 @@ void ProjectSettingsWindow::drawIOSSettings() {
         endSettingsRow("Hide the iOS status bar while the app runs.");
     }
 
+    if (settingsui::beginRow("ios.team_id")) {
+        projectBeginSettingsRow("Team ID");
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::InputTextWithHint("##IOSTeamId", "ABCDE12345", m_iosTeamIdBuffer, sizeof(m_iosTeamIdBuffer));
+        endSettingsRow("The Apple Developer team that signs device builds (Xcode's DEVELOPMENT_TEAM). The simulator needs none.");
+    }
+
+    if (settingsui::beginRow("ios.export_method")) {
+        if (projectBeginSettingsRow("Export Method", m_iosExportMethodIndex != 0)) m_iosExportMethodIndex = 0;
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::Combo("##IOSExportMethod", &m_iosExportMethodIndex, iosExportMethods, IM_ARRAYSIZE(iosExportMethods));
+        endSettingsRow("How xcodebuild -exportArchive makes the .ipa on a Mac (development, ad-hoc, app-store, enterprise).");
+    }
+
     if (settingsui::beginRow("ios.hide_home_indicator")) {
         if (projectBeginSettingsRow("Hide Home Indicator", !m_iosHideHomeIndicator)) {
             m_iosHideHomeIndicator = true;
@@ -2807,6 +2856,30 @@ void ProjectSettingsWindow::drawAndroidSettings() {
         endSettingsRow("Android screen/window behavior.");
     }
 
+    if (settingsui::beginRow("android.package_format")) {
+        if (projectBeginSettingsRow("Package Format", m_androidPackageFormatIndex != 0)) m_androidPackageFormatIndex = 0;
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::Combo("##AndroidPackageFormat", &m_androidPackageFormatIndex, androidPackageFormatLabels, IM_ARRAYSIZE(androidPackageFormatLabels));
+        endSettingsRow("What Build makes. App Bundle: for Google Play, which serves each device only its ABI's libraries "
+                       "(bundletool is downloaded once). One APK per ABI: installable files, each with one ABI's libraries. "
+                       "Universal APK: one installable file with every selected ABI's libraries (several times the download).");
+    }
+
+    if (settingsui::beginRow("android.keystore_path")) {
+        drawProjectFilePathSetting(m_project, "Keystore", "The keystore that signs release builds. Its passwords are asked when you build "
+            "(or JASPER_ANDROID_KS_PASS / JASPER_ANDROID_KEY_PASS) and never saved. None: the debug keystore signs it.",
+            "##AndroidKeystorePath", "Browse##androidkeystore", "Clear##androidkeystore", m_androidKeystorePath, FILE_DIALOG_ALL);
+    }
+
+    if (settingsui::beginRow("android.keystore_alias")) {
+        ImGui::BeginDisabled(m_androidKeystorePath.empty());
+        projectBeginSettingsRow("Key Alias");
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::InputTextWithHint("##AndroidKeystoreAlias", "upload", m_androidKeystoreAliasBuffer, sizeof(m_androidKeystoreAliasBuffer));
+        endSettingsRow("The key of the keystore that signs the build.");
+        ImGui::EndDisabled();
+    }
+
     if (settingsui::beginRow("android.admob_enabled")) {
         if (projectBeginSettingsRow("Google AdMob", m_androidAdmobEnabled != defaults.admobEnabled)) {
             m_androidAdmobEnabled = defaults.admobEnabled;
@@ -2954,6 +3027,8 @@ bool ProjectSettingsWindow::applySettings() {
     ios.supportsHighRefreshRate = m_iosSupportsHighRefreshRate;
     ios.admobEnabled = m_iosAdmobEnabled;
     applyTextBuffer(ios.admobAppId, m_iosAdmobAppIdBuffer);
+    applyTextBuffer(ios.teamId, m_iosTeamIdBuffer);
+    ios.exportMethod = iosExportMethods[std::clamp(m_iosExportMethodIndex, 0, static_cast<int>(IM_ARRAYSIZE(iosExportMethods)) - 1)];
 
     AndroidProjectSettings& android = m_project->getAndroidProjectSettings();
     applyOverride(android.applicationName, m_androidApplicationNameBuffer, inheritedName);
@@ -2981,6 +3056,9 @@ bool ProjectSettingsWindow::applySettings() {
     android.keepScreenOn = m_androidKeepScreenOn;
     android.admobEnabled = m_androidAdmobEnabled;
     applyTextBuffer(android.admobAppId, m_androidAdmobAppIdBuffer);
+    android.packageFormat = androidPackageFormats[std::clamp(m_androidPackageFormatIndex, 0, static_cast<int>(IM_ARRAYSIZE(androidPackageFormats)) - 1)];
+    android.keystorePath = m_androidKeystorePath;
+    applyTextBuffer(android.keystoreAlias, m_androidKeystoreAliasBuffer);
 
     const SceneProject* startScene = m_project->getScene(m_startSceneId);
     if (startScene && !startScene->filepath.empty()) {
@@ -3009,6 +3087,8 @@ bool ProjectSettingsWindow::applySettings() {
 
     m_project->setPackNativeResources(m_packNativeResources);
     m_project->setVersionControlMetadata(m_versionControlMetadata);
+    m_project->setBuildMethod(buildMethodNames[std::clamp(m_buildMethodIndex, 0, 2)]);
+    m_project->setPackContent(m_packContent);
     m_project->setVcsProjectSettings(m_vcs);
 
     // a name typed into New Tag Name but not added yet is kept rather than lost

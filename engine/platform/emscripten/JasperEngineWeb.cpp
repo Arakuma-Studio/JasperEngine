@@ -15,11 +15,8 @@
 #include "Input.h"
 #include "System.h"
 #include "Log.h"
-
-// Prefix of the saved keys, set per project by the export
-#ifndef JASPERENGINE_STORAGE_ID
-#define JASPERENGINE_STORAGE_ID "JasperEngine"
-#endif
+#include "PlatformConfig.h"
+#include "player/RunControl.h"
 
 #ifdef __clang__
 #pragma clang diagnostic push
@@ -328,9 +325,10 @@ int JasperEngineWeb::init(int argc, char **argv){
 
     canvas = "#canvas";
 
-    int sWidth = DEFAULT_WINDOW_WIDTH;
-    int sHeight = DEFAULT_WINDOW_HEIGHT;
-    if (argv[1] != NULL && argv[2] != NULL){
+    // the canvas size the page gives (its arguments), else the game's
+    int sWidth = jasperengine::platformConfig().width;
+    int sHeight = jasperengine::platformConfig().height;
+    if (argc > 2 && argv[1] != NULL && argv[2] != NULL){
         sWidth = atoi(argv[1]);
         sHeight = atoi(argv[2]);
     }
@@ -626,6 +624,10 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
         if (syncWaitTime > 0)
             syncFileSystemNow();
 
+        // a page has no process exit code: the run's (R19) is logged for the browser gate
+        const int exitCode = jasperengine::player::RunControl::finish();
+        std::printf("JasperEngine exit code %d\n", exitCode);
+        std::fflush(stdout);
         return EM_FALSE;
     }
 
@@ -1213,7 +1215,7 @@ std::string JasperEngineWeb::getStringForKey(const char *key, const std::string&
             return buf;
         }
         return null;
-    }, key, JASPERENGINE_STORAGE_ID);
+    }, key, jasperengine::platformConfig().storageId.c_str());
 
     if (value){
         std::string strValue = value;
@@ -1229,7 +1231,7 @@ void JasperEngineWeb::setStringForKey(const char* key, const std::string& value)
         var key = UTF8ToString($0);
         var value = UTF8ToString($1);
         localStorage.setItem(UTF8ToString($2) + '/' + key, value);
-    }, key, value.c_str(), JASPERENGINE_STORAGE_ID);
+    }, key, value.c_str(), jasperengine::platformConfig().storageId.c_str());
 }
 
 void JasperEngineWeb::removeKey(const char *key){
@@ -1239,7 +1241,7 @@ void JasperEngineWeb::removeKey(const char *key){
         var own = UTF8ToString($1) + '/' + key;
         if (localStorage.getItem(key) === null) localStorage.removeItem(own);
         else localStorage.setItem(own, "");
-    }, key, JASPERENGINE_STORAGE_ID);
+    }, key, jasperengine::platformConfig().storageId.c_str());
 }
 
 void JasperEngineWeb::initializeCrazyGamesSDK(){

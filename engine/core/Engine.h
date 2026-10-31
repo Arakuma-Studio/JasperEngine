@@ -428,8 +428,12 @@ namespace jasperengine {
         static std::mutex sceneListMutex;
 
         static Framebuffer* framebuffer;
-        // stacked scenes draw here so the frame keeps a single swapchain pass
+        // stacked scenes draw here so the frame keeps a single swapchain pass, and so does the
+        // capture frame of a --screenshot run (docs/specs/S30-shipping.md R20), read back after it
         static Framebuffer compositeFramebuffer;
+        static bool captureFrame;
+        // the composite of the frame that just drew, for the run control's screenshot
+        static bool readCompositeFrame(std::vector<uint8_t>& rgba, int& width, int& height, std::string& error);
 
         static bool transformCoordPos(float& x, float& y);
         // systemDraw: a high surrogate that never got its low one reaches documents as U+FFFD
@@ -527,6 +531,9 @@ namespace jasperengine {
 
         // every scene drawn is loaded (its HTML UI documents too) and no shader build is pending
         static bool areScenesLoaded();
+        // what keeps areScenesLoaded() false, for a person: the shaders still building, each
+        // scene's objects not loaded yet (a few, then how many more), its HTML UI documents
+        static std::string describeNotLoaded();
         
         static void setCallMouseInTouchEvent(bool callMouseInTouchEvent);
         static bool isCallMouseInTouchEvent();
@@ -637,6 +644,15 @@ namespace jasperengine {
         // it there, whatever the wall clock or the fixed delta. A negative value unpins it: the
         // next latch reads the clock again (a fixed delta then starts from the pinned time).
         static void setPinnedShaderTime(double seconds);
+
+        // A shipped game started with --headless (docs/specs/S30-shipping.md R17): no window shown,
+        // no audio output, no input; frames still render
+        static bool isHeadless();
+        // Ends the game after this frame with that process exit code (0: success; R19's codes
+        // mean what they say there); the first request wins
+        static void quit(int code = 0);
+        // the "Engine ready:" line was logged (every scene loaded, no shader build pending)
+        static bool isReadySignalled();
 
         // Scaled seconds and frames the update loop has run (since start; not while paused or held)
         static double getGameTime();

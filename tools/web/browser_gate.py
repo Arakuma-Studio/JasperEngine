@@ -15,11 +15,13 @@ uncaught exceptions, crossOriginIsolated and the canvas's centre pixel, then the
 Exit 1 on: an uncaught exception; a console message of level error; a console line matching
 ERROR_MARKERS (WebGL errors, the engine's (ERROR) lines, Lua errors, missing shaders, Emscripten
 aborts, wasm traps); no ready line before --timeout (with --until-ready); a missing --expect line;
-a centre pixel outside the baseline's rgb +- tolerance; crossOriginIsolated differing from the
+a centre pixel outside the baseline's rgb +- tolerance; a --screenshot the page did not give
+(Page.captureScreenshot timed out or returned nothing), unless --allow-no-capture REASON says why it
+cannot be (a page without a WebGL canvas); crossOriginIsolated differing from the
 baseline's isolated; a line of the baseline's "console" list ({"text", "level"}: log, info,
 warning, error) missing, at another console level, or (with "ordered": true) out of order. An
 error the "console" list names is expected and fails nothing. A baseline may also give "query" (items added to the
-page URL's query), "seconds" (the run length when --seconds is not given), "init_script" (JavaScript run before the page's own scripts), "eval" with "eval_expect" (substrings
+page URL's query), "seconds" (the run length when --seconds is not given), "capture_timeout" (seconds the screenshot may take), "init_script" (JavaScript run before the page's own scripts), "eval" with "eval_expect" (substrings
 its value must contain), and "allow": substrings of console lines and uncaught exceptions that are expected (a
 deliberate crash) and fail nothing. Exit 2 when the gate itself cannot run (no Chrome, no page target).
 
@@ -305,7 +307,13 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=120.0, help="seconds to wait for the ready line (120)")
     parser.add_argument("--seconds", type=float,
                         help="seconds to run: after the ready line with --until-ready (default 2), else in all (default 10)")
-    parser.add_argument("--screenshot", type=Path, help="write the captured page here (PNG)")
+    parser.add_argument("--screenshot", type=Path, help="write the captured page here (PNG); no capture fails the gate")
+    parser.add_argument("--capture-timeout", type=float,
+                        help="seconds the page may take to give its screenshot (default: the baseline's capture_timeout, "
+                             "else 30; a heavy scene on software WebGL needs more while the GPU process catches up)")
+    parser.add_argument("--allow-no-capture", metavar="REASON",
+                        help="a run whose page cannot be captured (no WebGL canvas, ...): a missing --screenshot does not "
+                             "fail it; REASON is printed with the result")
     parser.add_argument("--transcript", type=Path, help="write the console transcript here too")
     parser.add_argument("--baseline", type=Path, help="JSON: rgb, tolerance (the canvas centre pixel), isolated")
     parser.add_argument("--expect", action="append", default=[], help="fail unless a console line contains this (repeatable)")
@@ -322,6 +330,8 @@ def main() -> int:
     # a baseline's "seconds" is its own default run length (a scene that needs a while: S19's bakes)
     default_seconds = (2.0 if args.until_ready else 10.0)
     seconds = args.seconds if args.seconds is not None else float(baseline.get("seconds", default_seconds))
+    if args.capture_timeout is None:
+        args.capture_timeout = float(baseline.get("capture_timeout", 30.0))
     if not (args.root / args.page).is_file():
         print(f"browser_gate: no {args.page} in {args.root}", file=sys.stderr)
         return 2
@@ -411,10 +421,17 @@ def main() -> int:
                                " r.width, r.height]; })()")
 
         png = b""
+        capture_problem = ""
         try:
-            png = base64.b64decode(cdp.send("Page.captureScreenshot", timeout=30.0, format="png")["result"]["data"])
+            reply = cdp.send("Page.captureScreenshot", timeout=args.capture_timeout, format="png")
+            png = base64.b64decode(reply.get("result", {}).get("data", "") or "")
+            if not png:
+                capture_problem = "Page.captureScreenshot returned no image: " + json.dumps(reply.get("error", reply))[:500]
         except (socket.timeout, TimeoutError):
-            print("browser_gate: Page.captureScreenshot did not answer within 30 s: the page's main thread is blocked")
+            capture_problem = (f"Page.captureScreenshot did not answer within {args.capture_timeout:g} s: the page's main thread "
+                               "or the browser's GPU process is blocked")
+        if capture_problem:
+            print(f"browser_gate: {capture_problem}")
         if args.screenshot and png:
             args.screenshot.parent.mkdir(parents=True, exist_ok=True)
             args.screenshot.write_bytes(png)
@@ -477,6 +494,13 @@ def main() -> int:
                 failures.append("no centre pixel (no screenshot)")
             elif any(abs(c - b) > tolerance for c, b in zip(centre, baseline["rgb"])):
                 failures.append(f"centre pixel {centre} is outside the baseline {tuple(baseline['rgb'])} +- {tolerance}")
+        # a screenshot asked for and not taken is a failure, unless the run says why it cannot be
+        if args.screenshot and not png:
+            if args.allow_no_capture:
+                print(f"browser_gate: no screenshot, allowed: {args.allow_no_capture}")
+            else:
+                failures.append(f"no screenshot ({capture_problem or 'the capture is empty'}); --allow-no-capture REASON "
+                                "for a page that cannot be captured")
         if "isolated" in baseline and bool(isolated) != bool(baseline["isolated"]):
             failures.append(f"crossOriginIsolated is {bool(isolated)}, the baseline says {bool(baseline['isolated'])}")
 
