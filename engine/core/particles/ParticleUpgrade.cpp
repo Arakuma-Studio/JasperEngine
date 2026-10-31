@@ -164,13 +164,18 @@ namespace {
 
     // Euler angles in radians of a quaternion, applied X then Y then Z (eulerRadians' order)
     Vector3 eulerOf(const Quaternion& q){
-        // R = Rz * Ry * Rx: the classic roll / pitch / yaw extraction
-        const float sinY = 2.0f * (q.w * q.y - q.z * q.x);
-        Vector3 e;
-        e.x = std::atan2(2.0f * (q.w * q.x + q.y * q.z), 1.0f - 2.0f * (q.x * q.x + q.y * q.y));
-        e.y = std::fabs(sinY) >= 1.0f ? std::copysign(3.14159265f * 0.5f, sinY) : std::asin(sinY);
-        e.z = std::atan2(2.0f * (q.w * q.z + q.x * q.y), 1.0f - 2.0f * (q.y * q.y + q.z * q.z));
-        return e;
+        // from the rotation matrix R = Rz * Ry * Rx, gimbal lock (Y at +-90 degrees) included
+        const float r00 = 1.0f - 2.0f * (q.y * q.y + q.z * q.z);
+        const float r01 = 2.0f * (q.x * q.y - q.w * q.z);
+        const float r02 = 2.0f * (q.x * q.z + q.w * q.y);
+        const float r10 = 2.0f * (q.x * q.y + q.w * q.z);
+        const float r20 = 2.0f * (q.x * q.z - q.w * q.y);
+        const float r21 = 2.0f * (q.y * q.z + q.w * q.x);
+        const float r22 = 1.0f - 2.0f * (q.x * q.x + q.y * q.y);
+        const float halfPi = 3.14159265f * 0.5f;
+        if (std::fabs(r20) < 0.99999f) return Vector3(std::atan2(r21, r22), std::asin(-r20), std::atan2(r10, r00));
+        if (r20 < 0.0f) return Vector3(std::atan2(r01, r02), halfPi, 0.0f);
+        return Vector3(std::atan2(-r01, -r02), -halfPi, 0.0f);
     }
 
     // the legacy gradient's colour at t (its stops blended in the space they are written in)
@@ -218,6 +223,11 @@ const char* particles::upgradeStatusName(UpgradeStatus status){
 }
 
 UpgradeResult particles::upgradeLegacy(const ParticleSystemComponent& legacy, bool targetIsPoints, bool force){
+    return upgradeLegacy(legacy, targetIsPoints ? LegacyTarget::Points : LegacyTarget::Billboard, force);
+}
+
+UpgradeResult particles::upgradeLegacy(const ParticleSystemComponent& legacy, LegacyTarget target, bool force){
+    const bool targetIsPoints = target == LegacyTarget::Points;
     UpgradeResult result;
     UpgradeReport& report = result.report;
     ParticleSystemComponent& c = result.component;
@@ -241,6 +251,23 @@ UpgradeResult particles::upgradeLegacy(const ParticleSystemComponent& legacy, bo
     c.noise = ParticleNoiseModule();
     c.textureSheetAnimation = ParticleTextureSheetAnimationModule();
     c.renderer = ParticleRendererModule();
+    // how the target drew its particles (version 1 did not clamp sizes on screen)
+    switch (target){
+        case LegacyTarget::Points:
+        case LegacyTarget::Billboard:
+            c.renderer.renderMode = ParticleSystemRenderMode::Billboard;
+            break;
+        case LegacyTarget::VerticalBillboard:
+            c.renderer.renderMode = ParticleSystemRenderMode::VerticalBillboard;
+            break;
+        case LegacyTarget::Mesh:
+            // its own mesh at each particle, turned by the particle's rotation in the system's space
+            c.renderer.renderMode = ParticleSystemRenderMode::Mesh;
+            c.renderer.mesh = "model";
+            c.renderer.alignment = legacy.localSpace ? ParticleSystemRenderSpace::Local : ParticleSystemRenderSpace::World;
+            break;
+    }
+    if (target != LegacyTarget::Points) c.renderer.maxParticleSize = 0.0f;
 
     const ParticleSystemComponent& L = legacy;
     ParticleMainModule& main = c.main;
@@ -257,6 +284,21 @@ UpgradeResult particles::upgradeLegacy(const ParticleSystemComponent& legacy, bo
     // its spawn positions
     main.scalingMode = L.localSpace ? ParticleSystemScalingMode::Hierarchy : ParticleSystemScalingMode::Shape;
     add(report, "localSpace", UpgradeStatus::Exact, std::string("simulationSpace ") + (L.localSpace ? "Local" : "World"));
+    switch (target){
+        case LegacyTarget::Points:
+            add(report, "renderer", UpgradeStatus::Exact, "Billboard points");
+            break;
+        case LegacyTarget::Billboard:
+            add(report, "renderer", UpgradeStatus::Exact, "renderer.renderMode Billboard (the instanced billboard quad), no on-screen size limit");
+            break;
+        case LegacyTarget::VerticalBillboard:
+            add(report, "renderer", UpgradeStatus::Exact, "renderer.renderMode VerticalBillboard (the cylindrical billboard), no on-screen size limit");
+            break;
+        case LegacyTarget::Mesh:
+            add(report, "renderer", UpgradeStatus::Exact, std::string("renderer.renderMode Mesh (the GameObject's own mesh), alignment ") +
+                (L.localSpace ? "Local" : "World") + ", no on-screen size limit");
+            break;
+    }
 
     if (L.loop){
         const float cycle = legacyCycle(L);

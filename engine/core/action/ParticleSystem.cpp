@@ -910,8 +910,7 @@ particles::UpgradeReport ParticleSystem::upgrade(bool force){
     }
     ActionSystem* actions = scene->getSystem<ActionSystem>().get();
     const Entity target = actions->particleTarget(getEntity());
-    const bool points = scene->findComponent<PointsComponent>(target) != nullptr;
-    particles::UpgradeResult result = particles::upgradeLegacy(c, points, force);
+    particles::UpgradeResult result = particles::upgradeLegacy(c, legacyTargetOf(scene, target), force);
     if (result.report.upgraded){
         // the legacy particles go (the system restarts with the modules when played)
         actions->particleActionReset(getEntity());
@@ -953,6 +952,15 @@ void ParticleSystem::setupDefaultRenderer(Scene* scene, Entity entity){
         action->target = entity;
         action->ownedTarget = false;
     }
+}
+
+particles::LegacyTarget ParticleSystem::legacyTargetOf(Scene* scene, Entity target){
+    if (scene->findComponent<PointsComponent>(target)) return particles::LegacyTarget::Points;
+    if (const InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(target)){
+        if (instmesh->instancedCylindricalBillboard) return particles::LegacyTarget::VerticalBillboard;
+        if (instmesh->instancedBillboard) return particles::LegacyTarget::Billboard;
+    }
+    return particles::LegacyTarget::Mesh;
 }
 
 bool ParticleSystem::applyRendererMesh(Scene* scene, Entity entity, const std::string& mesh){

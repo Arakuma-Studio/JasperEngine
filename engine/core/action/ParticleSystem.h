@@ -72,6 +72,9 @@ namespace jasperengine{
         // the target mesh of a Mesh render mode: "quad", "cube", "sphere", "cylinder", "capsule",
         // "plane" (a model path is the editor's: false)
         static bool applyRendererMesh(Scene* scene, Entity entity, const std::string& mesh);
+        // what a version 1 system's target draws its particles as (the upgrade's render mode):
+        // Points, a camera-facing or Y-turned instanced quad, or its own mesh
+        static particles::LegacyTarget legacyTargetOf(Scene* scene, Entity target);
 
         void setMaxParticles(unsigned int maxParticles);
         unsigned int getMaxParticles() const;

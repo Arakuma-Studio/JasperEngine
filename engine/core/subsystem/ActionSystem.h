@@ -207,6 +207,8 @@ namespace jasperengine{
 		void queueParticleStopAction(Entity entity);
 		void runParticleStopActions();
 		std::vector<Entity> pendingParticleStops;
+		// updateParticleSystems' list of systems, kept between frames
+		std::vector<Entity> particleUpdateScratch;
 
 		float getDuration(Entity entity, int depth);
 		bool isAnimationReachable(Entity from, Entity target, std::unordered_set<Entity>& visited);
@@ -260,6 +262,9 @@ namespace jasperengine{
 		// the GameObject and, withChildren, of its children in hierarchy order. play() and
 		// stop() change the system now; onStart / onStop follow at the next update
 		void particleSystemPlay(Entity entity, bool withChildren);
+		// the time spent simulating version 2 Particle Systems (every scene) since the last call,
+		// in milliseconds, and the particles alive after it (frame stats: particles_sim_ms)
+		static double takeParticleSimMs(size_t* alive = nullptr);
 		void particleSystemStop(Entity entity, bool withChildren, ParticleSystemStopBehavior behavior);
 		void particleSystemPause(Entity entity, bool withChildren);
 		void particleSystemClear(Entity entity, bool withChildren);

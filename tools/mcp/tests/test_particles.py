@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import os
 import shutil
+import struct
+import zlib
 from pathlib import Path
 
 from harness import Editor, find_key, skip
@@ -234,5 +236,198 @@ async def test_import_unity_particles(ed: Editor):
         await ed.call("play", action="step", frames=30)
         v = await lua(ed, "local o = object('Flame'):getParticleSystem(); return {o.version, o.particleCount, o.main.duration}")
         ed.check(v[0] == 2 and v[1] > 0 and abs(v[2] - 2) < 1e-4, f"the imported system plays: {v}")
+    finally:
+        await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
+
+
+# ---------------------------------------------------------------------------- pixels (spec 9)
+
+PIXEL_SCENE = "scenes/Pixels.scene"
+SHEET = "assets/textures/sheet2x2.png"
+SHEET_COLOURS = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0)]   # frames 0..3: TL, TR, BL, BR
+
+
+def png_rgb(width: int, height: int, pixels) -> bytes:
+    raw = b"".join(b"\x00" + bytes(c for px in row for c in px) for row in pixels)
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) +
+            chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
+def lit_extent(data: bytes, threshold: int = 70):
+    """(x0, y0, x1, y1, count) of the pixels brighter than the dark background."""
+    w, h, ch, rows = decode_png(data)
+    xs, ys = [], []
+    for y in range(h):
+        line = rows[y]
+        for x in range(w):
+            if max(line[x * ch], line[x * ch + 1], line[x * ch + 2]) > threshold:
+                xs.append(x)
+                ys.append(y)
+    if not xs:
+        return None
+    return min(xs), min(ys), max(xs), max(ys), len(xs)
+
+
+def centre_rgb(data: bytes):
+    w, h, ch, rows = decode_png(data)
+    line = rows[h // 2]
+    return tuple(line[(w // 2) * ch:(w // 2) * ch + 3])
+
+
+async def pixel_scene(ed: Editor, camera: list, target: list = (0, 0, 0)):
+    """An empty scene, its camera at `camera` looking at `target`."""
+    await ed.call("create_scene", name="Pixels", path=PIXEL_SCENE)
+    await clear_scene(ed)
+    cam = find_key(await ed.call("create_entity", type="camera", name="View", position=list(camera)), "entity_id", "id")
+    await ed.call("set_main_camera", entity=cam)
+    await ed.call("set_properties", entity=str(cam), values={"camera": {"target": list(target), "useTarget": True}})
+    return str(cam)
+
+
+async def one_particle(ed: Editor, name: str, modules: dict, texture: str | None = None) -> str:
+    """A still particle at the origin (one burst, no speed, a long life), plus `modules`."""
+    base = {"main": {"startSpeed": 0, "startLifetime": 100, "startSize": 1, "startColor": [1, 1, 1, 1], "duration": 100},
+            "shape": {"enabled": False}, "emission": {"rateOverTime": 0, "bursts": [{"time": 0, "count": 1}]}}
+    for module, fields in modules.items():
+        base.setdefault(module, {}).update(fields)
+    args = {"preset": "none", "name": name, "position": [0, 0, 0], "modules": base}
+    if texture:
+        args["texture"] = texture
+    return system_id(await ed.call("create_particles", **args))
+
+
+async def play_shot(ed: Editor, label: str, frames: int = 10, camera: str | None = None, positions: list | None = None) -> list:
+    """Shots of PIXEL_SCENE in Play after `frames`; with `positions`, one per camera position."""
+    await ed.call("save_scene", scene=PIXEL_SCENE)
+    await ed.call("play", action="start", scene=PIXEL_SCENE, auto_pause=True, fixed_fps=60)
+    shots = []
+    try:
+        await ed.call("play", action="step", frames=frames)
+        for i, position in enumerate(positions or [None]):
+            if position is not None:
+                await ed.call("eval_lua", scene=PIXEL_SCENE,
+                              code=f"local c = object('View', 'Camera'); c.position = Vector3({position[0]}, {position[1]}, {position[2]})")
+                await ed.call("play", action="step", frames=2)
+            shots.append(await game_shot(ed, PIXEL_SCENE, f"{label}-{i}"))
+    finally:
+        await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
+    return shots
+
+
+async def test_render_modes_pixels(ed: Editor):
+    ed.require_tools("create_scene", "create_entity", "create_particles", "set_properties", "play", "eval_lua", "screenshot")
+    # a billboard faces the camera wherever it orbits: about as wide as high at every angle
+    await pixel_scene(ed, [0, 0, 6])
+    await one_particle(ed, "Billboard", {"renderer": {"renderMode": "billboard"}})
+    shots = await play_shot(ed, "billboard", positions=[[0, 0, 6], [4.2, 0, 4.2], [6, 0, 0.3], [0, 4.2, 4.2]])
+    for i, data in enumerate(shots):
+        e = lit_extent(data)
+        ed.check(e is not None, f"billboard {i}: nothing drawn")
+        w, h = e[2] - e[0] + 1, e[3] - e[1] + 1
+        ed.check(0.75 < w / h < 1.33 and w > 20, f"billboard {i} faces the camera: {w}x{h}")
+
+    # horizontal: flat on the ground, full seen from above, a sliver at a grazing angle
+    await pixel_scene(ed, [0, 6, 0.01])
+    await one_particle(ed, "Flat", {"renderer": {"renderMode": "horizontal_billboard"}})
+    top, side = await play_shot(ed, "horizontal", positions=[[0, 6, 0.01], [0, 0.4, 6]])
+    et, es = lit_extent(top), lit_extent(side)
+    ed.check(et is not None and (et[3] - et[1]) > 20, f"horizontal from above: {et}")
+    ed.check(es is None or (es[3] - es[1] + 1) * 3 < (es[2] - es[0] + 1), f"horizontal edge-on is thin: {es}")
+
+    # vertical: upright, turned about Y only: from high above it is foreshortened, a billboard is not
+    await pixel_scene(ed, [0, 5, 1.5])
+    await one_particle(ed, "Upright", {"renderer": {"renderMode": "vertical_billboard"}})
+    [high] = await play_shot(ed, "vertical")
+    ev = lit_extent(high)
+    ed.check(ev is not None, "vertical: nothing drawn")
+    ed.check((ev[3] - ev[1] + 1) * 1.8 < (ev[2] - ev[0] + 1), f"a vertical billboard seen from above is short: {ev}")
+
+    # stretched: along its velocity, longer than wide by more than 2
+    await pixel_scene(ed, [0, 0, 8])
+    await one_particle(ed, "Streak", {"renderer": {"renderMode": "stretch", "lengthScale": 3, "velocityScale": 0.2},
+                                      "velocityOverLifetime": {"enabled": True, "x": 0.5, "space": "world"}})
+    [streak] = await play_shot(ed, "stretched", frames=5)
+    es = lit_extent(streak)
+    ed.check(es is not None, "stretched: nothing drawn")
+    ed.check((es[2] - es[0] + 1) > 2 * (es[3] - es[1] + 1), f"stretched aspect > 2: {es}")
+
+    # mesh: a cube per particle (a square silhouette, filled, unlike the soft disc)
+    await pixel_scene(ed, [0, 0, 6])
+    await one_particle(ed, "Cubes", {"renderer": {"renderMode": "mesh", "mesh": "cube", "alignment": "world"}})
+    [cube] = await play_shot(ed, "mesh")
+    ec = lit_extent(cube)
+    ed.check(ec is not None, "mesh: nothing drawn")
+    area = (ec[2] - ec[0] + 1) * (ec[3] - ec[1] + 1)
+    ed.check(ec[4] > 0.9 * area, f"a cube fills its square ({ec[4]} of {area} pixels)")
+
+
+async def test_texture_sheet_fps(ed: Editor):
+    ed.require_tools("create_scene", "create_particles", "play", "screenshot")
+    (ed.project / SHEET).parent.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for y in range(64):
+        rows.append([SHEET_COLOURS[(0 if x < 32 else 1) + (0 if y < 32 else 2)] for x in range(64)])
+    (ed.project / SHEET).write_bytes(png_rgb(64, 64, rows))
+    await pixel_scene(ed, [0, 0, 4])
+    await one_particle(ed, "Sheet", {"textureSheetAnimation": {"enabled": True, "numTilesX": 2, "numTilesY": 2, "timeMode": "fps", "fps": 1},
+                                     "main": {"startSize": 2}}, texture=SHEET)
+    await ed.call("save_scene", scene=PIXEL_SCENE)
+    await ed.call("play", action="start", scene=PIXEL_SCENE, auto_pause=True, fixed_fps=10)
+    seen = []
+    try:
+        for second in range(4):
+            await ed.call("play", action="step", frames=5 if second == 0 else 10)
+            seen.append(centre_rgb(await game_shot(ed, PIXEL_SCENE, f"sheet-{second}")))
+    finally:
+        await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
+
+    def nearest(rgb):
+        return min(range(4), key=lambda i: sum((a - b) ** 2 for a, b in zip(rgb, SHEET_COLOURS[i])))
+
+    frames = [nearest(c) for c in seen]
+    ed.check(frames == [0, 1, 2, 3], f"one frame a second, in order (TL, TR, BL, BR): {frames} from {seen}")
+
+
+async def test_age_sorting(ed: Editor):
+    ed.require_tools("create_scene", "create_particles", "play", "screenshot")
+    # two particles at the same place: the first red, the second (0.5 s later) blue
+    results = {}
+    for mode in ("oldest_in_front", "youngest_in_front"):
+        await pixel_scene(ed, [0, 0, 5])
+        await one_particle(ed, "Pair", {
+            # start colour by the system's time (fixed keys): red at 0 s, blue at 0.5 s of 100
+            "main": {"startColor": {"mode": "gradient", "gradient": {"mode": "fixed", "colors": [[0.004, [1, 0, 0]], [1, [0, 0, 1]]]}}},
+            "emission": {"bursts": [{"time": 0, "count": 1}, {"time": 0.5, "count": 1}]},
+            "renderer": {"sortMode": mode}})
+        [shot] = await play_shot(ed, mode, frames=50)
+        results[mode] = centre_rgb(shot)
+    old, young = results["oldest_in_front"], results["youngest_in_front"]
+    ed.check(old[0] > old[2] + 60, f"oldest in front: the first (red) on top: {old}")
+    ed.check(young[2] > young[0] + 60, f"youngest in front: the second (blue) on top: {young}")
+
+
+async def test_bench_script(ed: Editor):
+    """The benchmark fixture's script (tools/fixtures/particles/bench): 2000 particles alive with
+    six modules, and the frame stats line it is measured by."""
+    ed.require_tools("create_scene", "create_entity", "attach_script", "play", "eval_lua")
+    src = REPO / "tools" / "fixtures" / "particles" / "bench" / "scripts" / "ParticlesBench.lua"
+    ed.check(src.is_file(), f"missing {src}")
+    (ed.project / "scripts").mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, ed.project / "scripts" / "ParticlesBench.lua")
+    await ed.call("create_scene", name="Bench", path="scenes/Bench.scene")
+    await clear_scene(ed)
+    game = find_key(await ed.call("create_entity", type="empty", name="Game"), "entity_id", "id")
+    await ed.call("attach_script", entity=str(game), path="scripts/ParticlesBench.lua")
+    await ed.call("save_scene", scene="scenes/Bench.scene")
+    await ed.call("play", action="start", scene="scenes/Bench.scene", auto_pause=True, fixed_fps=60)
+    try:
+        await ed.call("play", action="step", frames=180)
+        alive = (await ed.call("eval_lua", scene="scenes/Bench.scene", code=(
+            "local n = 0; for _, o in ipairs(script('Game').systems) do n = n + o.particleCount end; return n")))["values"][0]
+        ed.check(1800 <= alive <= 2100, f"the bench keeps ~2000 particles alive: {alive}")
     finally:
         await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)

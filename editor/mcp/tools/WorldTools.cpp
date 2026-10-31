@@ -4698,7 +4698,7 @@ void upgradeParticlesTool(const CallPtr& call, Target& target, Entity system) {
     Scene* scene = target.engineScene();
     const ParticleSystemComponent& legacy = scene->getComponent<ParticleSystemComponent>(system);
     const Entity drawTarget = scene->getSystem<ActionSystem>()->particleTarget(system);
-    const particles::UpgradeResult result = particles::upgradeLegacy(legacy, scene->findComponent<PointsComponent>(drawTarget) != nullptr,
+    const particles::UpgradeResult result = particles::upgradeLegacy(legacy, ParticleSystem::legacyTargetOf(scene, drawTarget),
                                                                     boolOr(call->args(), "force", false));
     Json items = Json::array();
     for (const particles::UpgradeItem& item : result.report.items) {

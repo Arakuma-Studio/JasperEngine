@@ -26,6 +26,7 @@
 #endif
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 using namespace jasperengine;
@@ -224,13 +225,14 @@ void ActionSystem::syncParticleRenderer(Entity entity, ParticleSystemComponent& 
         render.lengthScale = renderer.lengthScale;
         render.velocityScale = renderer.velocityScale;
         render.cameraVelocityScale = renderer.cameraVelocityScale;
-        render.minSize = renderer.minParticleSize;
-        render.maxSize = renderer.maxParticleSize;
+        // Unity limits the on-screen size of Billboard particles only
+        const bool billboard = renderer.renderMode == ParticleSystemRenderMode::Billboard;
+        render.minSize = billboard ? renderer.minParticleSize : 0.0f;
+        render.maxSize = billboard ? renderer.maxParticleSize : 0.0f;
         render.sort = renderer.sortMode == ParticleSystemSortMode::Distance ? InstanceSortMode::ByDistance : InstanceSortMode::Keep;
         render.sortingFudge = renderer.sortingFudge;
-        if (MeshComponent* mesh = scene->findComponent<MeshComponent>(target)){
-            mesh->transparentSortPriority = renderer.sortPriority;
-        }
+        // added to the shader's queue priority when the batch is queued
+        render.sortPriority = renderer.sortPriority;
         SpriteComponent* sprite = scene->findComponent<SpriteComponent>(target);
 
         instmesh->instances.resize(std::min(count, (size_t)std::max(1u, instmesh->maxInstances)));
@@ -256,6 +258,12 @@ void ActionSystem::syncParticleRenderer(Entity entity, ParticleSystemComponent& 
         instmesh->needUpdateInstances = true;
     }else if (PointsComponent* points = scene->findComponent<PointsComponent>(target)){
         points->sortingFudge = renderer.sortingFudge;
+        points->particleSortPriority = renderer.sortPriority;
+        // a texture sheet draws a frame of the texture: the points carry their rects
+        if (sheet.enabled && !points->hasTextureRect){
+            points->hasTextureRect = true;
+            points->needReload = true;
+        }
         points->points.resize(std::min(count, (size_t)std::max(1u, points->maxPoints)));
         const size_t drawn = points->points.size();
         for (size_t k = 0; k < drawn; k++){
@@ -370,11 +378,34 @@ void ActionSystem::stepParticleSystem(double dt, double unscaledDt, Entity entit
     }
 }
 
+namespace {
+    // frame stats (main thread): simulation time and alive particles since the last take
+    double particleSimSeconds = 0.0;
+    size_t particleAlive = 0;
+
+    struct ParticleSimTimer {
+        std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+        ~ParticleSimTimer(){
+            particleSimSeconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        }
+    };
+}
+
+double ActionSystem::takeParticleSimMs(size_t* alive){
+    const double ms = particleSimSeconds * 1000.0;
+    if (alive) *alive = particleAlive;
+    particleSimSeconds = 0.0;
+    particleAlive = 0;
+    return ms;
+}
+
 void ActionSystem::updateParticleSystems(double dt){
     auto systems = scene->getComponentArray<ParticleSystemComponent>();
     if (systems->size() == 0) return;
-    std::vector<Entity> entities;
-    entities.reserve(systems->size());
+    const ParticleSimTimer timer;
+    // a member: no allocation every frame once it has grown
+    std::vector<Entity>& entities = particleUpdateScratch;
+    entities.clear();
     for (size_t i = 0; i < systems->size(); i++){
         if (systems->getComponentFromIndex(i).version >= 2) entities.push_back(systems->getEntity(i));
     }
@@ -416,6 +447,9 @@ void ActionSystem::updateParticleSystems(double dt){
             }
         }
         stepParticleSystem(dt, unscaled, entity);
+        if (const ParticleSystemComponent* stepped = scene->findComponent<ParticleSystemComponent>(entity)){
+            particleAlive += stepped->state.count();
+        }
     }
 }
 

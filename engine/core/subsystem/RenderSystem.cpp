@@ -237,6 +237,27 @@ namespace {
         const Vector3 worldPosition = transform.modelMatrix * instance.position;
         Vector3 scale = instance.scale;
         Quaternion rotation;
+        // the min/max share of the viewport (Billboard particles only: the sync writes them for
+        // that mode), before a stretch lengthens the quad
+        if (render.minSize > 0.0f || render.maxSize > 0.0f){
+            const float extent = std::max(std::fabs(scale.x), std::fabs(scale.y));
+            float viewport;
+            if (camera.type == CameraType::CAMERA_PERSPECTIVE){
+                const Vector3 forward = cameraRotation * Vector3(0.0f, 0.0f, -1.0f);
+                const float depth = std::max(1e-4f, (worldPosition - cameraPosition).dotProduct(forward));
+                viewport = depth * 2.0f * std::tan(camera.yfov * 0.5f);
+            }else{
+                viewport = std::fabs(camera.topClip - camera.bottomClip);
+            }
+            if (viewport > 0.0f && extent > 0.0f){
+                const float fraction = extent / viewport;
+                float limited = fraction;
+                if (render.maxSize > 0.0f) limited = std::min(limited, render.maxSize);
+                if (render.minSize > 0.0f) limited = std::max(limited, render.minSize);
+                scale = scale * (limited / fraction);
+            }
+        }
+
         const Vector3 cameraUp = cameraRotation * Vector3(0.0f, 1.0f, 0.0f);
         auto roll = [&](float angle){
             Quaternion q;
@@ -293,7 +314,13 @@ namespace {
                     const Vector3 axisX = v / speed;
                     toCamera.normalize();
                     Vector3 normal = toCamera - axisX * toCamera.dotProduct(axisX);
-                    if (normal.squaredLength() < 1e-10f) normal = cameraRotation * Vector3(0.0f, 0.0f, 1.0f);
+                    if (normal.squaredLength() < 1e-10f){
+                        // moving along the view ray: any axis across the velocity (the camera's
+                        // up, or its right when the velocity is vertical on screen)
+                        Vector3 across = cameraUp;
+                        if (std::fabs(across.dotProduct(axisX)) > 0.99f) across = cameraRotation * Vector3(1.0f, 0.0f, 0.0f);
+                        normal = across - axisX * across.dotProduct(axisX);
+                    }
                     normal.normalize();
                     const Vector3 axisY = normal.crossProduct(axisX);
                     rotation = Quaternion(axisX, axisY, normal);
@@ -303,25 +330,6 @@ namespace {
                     rotation = cameraRotation * roll(instance.roll);
                 }
                 break;
-            }
-        }
-
-        if (render.minSize > 0.0f || render.maxSize > 0.0f){
-            const float extent = std::max(std::fabs(scale.x), std::fabs(scale.y));
-            float viewport;
-            if (camera.type == CameraType::CAMERA_PERSPECTIVE){
-                const Vector3 forward = cameraRotation * Vector3(0.0f, 0.0f, -1.0f);
-                const float depth = std::max(1e-4f, (worldPosition - cameraPosition).dotProduct(forward));
-                viewport = depth * 2.0f * std::tan(camera.yfov * 0.5f);
-            }else{
-                viewport = std::fabs(camera.topClip - camera.bottomClip);
-            }
-            if (viewport > 0.0f && extent > 0.0f){
-                const float fraction = extent / viewport;
-                float limited = fraction;
-                if (render.maxSize > 0.0f) limited = std::min(limited, render.maxSize);
-                if (render.minSize > 0.0f) limited = std::max(limited, render.minSize);
-                scale = scale * (limited / fraction);
             }
         }
 
@@ -12715,11 +12723,15 @@ void RenderSystem::sortInstancedMesh(InstancedMeshComponent& instmesh, MeshCompo
     Vector3 camDir = (camTransform.worldPosition - camera.worldTarget).normalize();
 
     // the bounds follow the sort so the instance views keep matching
-    const auto order = detail::instanceDepthOrder(instmesh.renderInstances, transform.modelMatrix, camDir);
-    std::vector<InstanceRenderData> sortedInstances(order.size());
-    std::vector<InstanceBounds> sortedBounds(std::min(order.size(), instmesh.renderBounds.size()));
+    detail::instanceDepthOrder(instmesh.renderInstances, transform.modelMatrix, camDir, sortOrderScratch, sortDepthScratch);
+    const std::vector<unsigned int>& order = sortOrderScratch;
+    std::vector<InstanceRenderData>& sortedInstances = sortInstancesScratch;
+    sortedInstances.resize(order.size());
+    std::vector<InstanceBounds>& sortedBounds = sortBoundsScratch;
+    sortedBounds.resize(std::min(order.size(), instmesh.renderBounds.size()));
     // a VAT batch's states move with their instances
-    std::vector<InstanceVatRenderData> sortedVat(std::min(order.size(), instmesh.renderVat.size()));
+    std::vector<InstanceVatRenderData>& sortedVat = sortVatScratch;
+    sortedVat.resize(std::min(order.size(), instmesh.renderVat.size()));
     for (unsigned int i = 0; i < order.size(); i++){
         sortedInstances[i] = instmesh.renderInstances[order[i]];
         if (order[i] < sortedBounds.size() && i < sortedBounds.size())
@@ -16163,8 +16175,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             }
             if (mesh.transparent && distanceSort){
                 // a Particle System's sorting fudge moves it in the queue (lower: on top)
-                const float fudge = (instmesh && instmesh->particle.alignment != InstanceAlignment::None) ? instmesh->particle.sortingFudge : 0.0f;
-                transparentRenders.push_back({TransparentRenderType::MESH, entity, &mesh, nullptr, instmesh, terrain, tilemap, &transform, objectDistance(transform) + fudge, mesh.transparentSortPriority, transparentOrder++});
+                const bool particles = instmesh && instmesh->particle.alignment != InstanceAlignment::None;
+                const float fudge = particles ? instmesh->particle.sortingFudge : 0.0f;
+                const int priority = mesh.transparentSortPriority + (particles ? instmesh->particle.sortPriority : 0);
+                transparentRenders.push_back({TransparentRenderType::MESH, entity, &mesh, nullptr, instmesh, terrain, tilemap, &transform, objectDistance(transform) + fudge, priority, transparentOrder++});
             }
         }
 
@@ -16397,7 +16411,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 if (!points.transparent || !distanceSort){
                     drawPoints(entity, points, transform, camera, cameraTransform, colorPip);
                 }else{
-                    transparentRenders.push_back({TransparentRenderType::POINTS, entity, nullptr, &points, nullptr, nullptr, nullptr, &transform, objectDistance(transform) + points.sortingFudge, points.sortPriority, transparentOrder++});
+                    transparentRenders.push_back({TransparentRenderType::POINTS, entity, nullptr, &points, nullptr, nullptr, nullptr, &transform, objectDistance(transform) + points.sortingFudge, points.sortPriority + points.particleSortPriority, transparentOrder++});
                 }
             }
 

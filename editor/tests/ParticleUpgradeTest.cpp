@@ -14,6 +14,9 @@
 #include "subsystem/ActionSystem.h"
 #include "component/ActionComponent.h"
 #include "component/PointsComponent.h"
+#include "component/InstancedMeshComponent.h"
+#include "component/MeshComponent.h"
+#include "action/ParticleSystem.h"
 #include "component/Transform.h"
 #include "util/Color.h"
 
@@ -271,4 +274,67 @@ TEST(ParticleUpgrade, MeshTargetsUseTheScale) {
     EXPECT_TRUE(r.component.main.startSize3D);
     EXPECT_FLOAT_EQ(r.component.main.startSizeY.evaluate(0, 0), 2.0f);
     EXPECT_FLOAT_EQ(r.component.main.startSizeZ.evaluate(0, 0), 3.0f);
+}
+
+// what the legacy target drew decides the render mode (a mesh stays a mesh, not a billboard)
+TEST(ParticleUpgrade, TheTargetDecidesTheRenderMode) {
+    ParticleSystemComponent p = legacy();
+    p.localSpace = true;
+    const UpgradeResult mesh = upgradeLegacy(p, LegacyTarget::Mesh);
+    EXPECT_EQ(mesh.component.renderer.renderMode, ParticleSystemRenderMode::Mesh);
+    EXPECT_EQ(mesh.component.renderer.alignment, ParticleSystemRenderSpace::Local);
+    EXPECT_FLOAT_EQ(mesh.component.renderer.maxParticleSize, 0.0f) << "no on-screen size limit";
+    ASSERT_NE(mesh.report.find("renderer"), nullptr);
+    EXPECT_EQ(mesh.report.find("renderer")->status, UpgradeStatus::Exact);
+    p.localSpace = false;
+    EXPECT_EQ(upgradeLegacy(p, LegacyTarget::Mesh).component.renderer.alignment, ParticleSystemRenderSpace::World);
+    EXPECT_EQ(upgradeLegacy(p, LegacyTarget::Billboard).component.renderer.renderMode, ParticleSystemRenderMode::Billboard);
+    EXPECT_EQ(upgradeLegacy(p, LegacyTarget::VerticalBillboard).component.renderer.renderMode, ParticleSystemRenderMode::VerticalBillboard);
+    EXPECT_EQ(upgradeLegacy(p, LegacyTarget::Points).component.renderer.renderMode, ParticleSystemRenderMode::Billboard);
+}
+
+TEST(ParticleUpgrade, MeshTargetsInAScene) {
+    Scene scene;
+    const Entity target = scene.createEntity();
+    scene.addComponent<Transform>(target, Transform());
+    scene.addComponent<MeshComponent>(target, MeshComponent());
+    scene.addComponent<InstancedMeshComponent>(target, InstancedMeshComponent());
+    EXPECT_EQ(ParticleSystem::legacyTargetOf(&scene, target), LegacyTarget::Mesh);
+    scene.getComponent<InstancedMeshComponent>(target).instancedBillboard = true;
+    EXPECT_EQ(ParticleSystem::legacyTargetOf(&scene, target), LegacyTarget::Billboard);
+    scene.getComponent<InstancedMeshComponent>(target).instancedCylindricalBillboard = true;
+    EXPECT_EQ(ParticleSystem::legacyTargetOf(&scene, target), LegacyTarget::VerticalBillboard);
+    scene.getComponent<InstancedMeshComponent>(target).instancedBillboard = false;
+    scene.getComponent<InstancedMeshComponent>(target).instancedCylindricalBillboard = false;
+
+    const Entity system = scene.createEntity();
+    ActionComponent action;
+    action.target = target;
+    scene.addComponent<ActionComponent>(system, action);
+    ParticleSystemComponent p = legacy();
+    p.localSpace = false;
+    scene.addComponent<ParticleSystemComponent>(system, p);
+    ParticleSystem(&scene, system).upgrade(true);
+    const ParticleSystemComponent& c = scene.getComponent<ParticleSystemComponent>(system);
+    EXPECT_EQ(c.version, 2);
+    EXPECT_EQ(c.renderer.renderMode, ParticleSystemRenderMode::Mesh);
+    EXPECT_EQ(c.renderer.alignment, ParticleSystemRenderSpace::World);
+}
+
+// a legacy loop whose last burst is its cycle: that burst still fires every loop
+TEST(ParticleUpgrade, ALastBurstAtTheCycleEndKeepsFiring) {
+    ParticleSystemComponent p;
+    p.maxParticles = 1000;
+    p.rate = 0;
+    p.loop = true;
+    p.lifeInitializer.minLife = 100.0f;
+    p.lifeInitializer.maxLife = 100.0f;
+    p.bursts = {{0.0f, 1, 1}, {1.0f, 2, 2}};
+    UpgradeResult r = upgradeLegacy(p, true);
+    ParticleSystemComponent& c = r.component;
+    EXPECT_FLOAT_EQ(c.main.duration, 1.0f);
+    c.main.autoRandomSeed = false;
+    particles::play(c, ParticleEmitterFrame(), ParticleEnvironment());
+    for (int i = 0; i < 150; i++) particles::step(c, 1.0f / 60.0f, ParticleEmitterFrame(), ParticleEnvironment());
+    EXPECT_EQ(particles::particleCount(c), 7u) << "1 at 0 s, 2 at 1 s, 1 at 1 s (the next loop), 2 at 2 s, 1 at 2 s";
 }

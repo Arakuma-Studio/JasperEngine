@@ -37,6 +37,14 @@ namespace {
         {BUILTIN_RESOURCES_GUID, 10308, {BuiltinAsset::Material, "Default-ParticleSystem", ""}},
         {BUILTIN_RESOURCES_GUID, 10300, {BuiltinAsset::Texture, "Default-Particle", ""}},
         {BUILTIN_RESOURCES_GUID, 200, {BuiltinAsset::Shader, "Legacy Shaders/Particles/Additive", ""}},
+        // 202, 203 and 211 match what the game's materials using them hold (a premultiplied
+        // smoke, an alpha-blended one, a Standard Unlit material with _Mode / _SrcBlend)
+        {BUILTIN_RESOURCES_GUID, 201, {BuiltinAsset::Shader, "Legacy Shaders/Particles/Additive (Soft)", ""}},
+        {BUILTIN_RESOURCES_GUID, 202, {BuiltinAsset::Shader, "Legacy Shaders/Particles/Alpha Blended Premultiply", ""}},
+        {BUILTIN_RESOURCES_GUID, 203, {BuiltinAsset::Shader, "Legacy Shaders/Particles/Alpha Blended", ""}},
+        {BUILTIN_RESOURCES_GUID, 205, {BuiltinAsset::Shader, "Legacy Shaders/Particles/Multiply", ""}},
+        {BUILTIN_RESOURCES_GUID, 210, {BuiltinAsset::Shader, "Particles/Standard Surface", ""}},
+        {BUILTIN_RESOURCES_GUID, 211, {BuiltinAsset::Shader, "Particles/Standard Unlit", ""}},
         {BUILTIN_RESOURCES_GUID, 10720, {BuiltinAsset::Shader, "Mobile/Particles/Additive", ""}},
         {BUILTIN_RESOURCES_GUID, 10721, {BuiltinAsset::Shader, "Mobile/Particles/Alpha Blended", ""}},
     };

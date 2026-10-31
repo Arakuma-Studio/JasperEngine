@@ -371,6 +371,8 @@ namespace jasperengine {
         float arcPhase = 0.0f;    // Loop / PingPong: degrees advanced along the arc
         float radiusPhase = 0.0f; // radius lengths advanced
         float noiseScroll = 0.0f; // the Noise module's scroll so far
+        float arcRate = 0.0f;     // this substep's arc / radius speeds (degrees, lengths per second):
+        float radiusRate = 0.0f;  // a particle's phase is the substep's start plus its offset in it
         // the editor preview replays the same particles (spec 6.8): play() takes this seed
         bool fixedSeed = false;
         uint32_t fixedSeedValue = 1;

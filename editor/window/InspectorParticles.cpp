@@ -238,7 +238,7 @@ void editor::InspectorWindow::drawParticleUpgradeBanner(ComponentType cpType, Sc
             const ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity);
             if (!ps || ps->version >= 2) continue;
             const Entity target = scene->getSystem<ActionSystem>()->particleTarget(entity);
-            const particles::UpgradeResult result = particles::upgradeLegacy(*ps, scene->findComponent<PointsComponent>(target) != nullptr, particleUpgradeForce);
+            const particles::UpgradeResult result = particles::upgradeLegacy(*ps, ParticleSystem::legacyTargetOf(scene, target), particleUpgradeForce);
             any = true;
             refused = refused || !result.report.upgraded;
             ImGui::SeparatorText(scene->getEntityName(entity).c_str());
@@ -269,7 +269,7 @@ void editor::InspectorWindow::drawParticleUpgradeBanner(ComponentType cpType, Sc
                 const ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity);
                 if (!ps || ps->version >= 2) continue;
                 const Entity target = scene->getSystem<ActionSystem>()->particleTarget(entity);
-                const particles::UpgradeResult result = particles::upgradeLegacy(*ps, scene->findComponent<PointsComponent>(target) != nullptr, particleUpgradeForce);
+                const particles::UpgradeResult result = particles::upgradeLegacy(*ps, ParticleSystem::legacyTargetOf(scene, target), particleUpgradeForce);
                 if (result.report.upgraded){
                     ProjectUtils::addParticleSystemValues(*multi, project, sceneProject->id, scene, entity, result.component);
                 }

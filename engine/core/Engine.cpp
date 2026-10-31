@@ -13,6 +13,7 @@
 #include "script/ScriptRuntime.h"
 #include "lua.hpp"
 #include "manager/SceneManager.h"
+#include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -1335,8 +1336,13 @@ void Engine::signalReadyOnce(){
         if (frameStats){
             frames++;
             const uint64_t after = frames - signalledFrame;
-            if (frameStatsAll || after == 2 || after == 30 || after == 90)
+            // the particle simulation of this frame (particles spec 8: the CPU budget)
+            size_t alive = 0;
+            const double particleMs = ActionSystem::takeParticleSimMs(&alive);
+            if (frameStatsAll || after == 2 || after == 30 || after == 90){
                 SystemRender::logFrameStats(frames);
+                if (alive > 0) Log::print("Frame %llu particles_sim_ms %.3f (%zu particles)", (unsigned long long)frames, particleMs, alive);
+            }
         }
         return;
     }

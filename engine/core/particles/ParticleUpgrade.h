@@ -42,9 +42,16 @@ namespace particles {
         UpgradeReport report;
     };
 
-    // `targetIsPoints`: the system draws on a Points renderer (its size initializer is the
-    // particle size) rather than an instanced mesh (its scale initializer is); `force`:
-    // upgrade even when a value would be dropped (reported)
+    // what a version 1 system drew on: Points, a plain instanced mesh (its own mesh at each
+    // particle, rotated in 3D), or an instanced mesh turned to the camera (instancedBillboard)
+    // or around Y only (instancedCylindricalBillboard)
+    enum class LegacyTarget { Points, Mesh, Billboard, VerticalBillboard };
+
+    // `target`: what the system draws on (Points: its size initializer is the particle size;
+    // an instanced mesh: its scale initializer is); `force`: upgrade even when a value would be
+    // dropped (reported)
+    JASPERENGINE_API UpgradeResult upgradeLegacy(const ParticleSystemComponent& legacy, LegacyTarget target, bool force = false);
+    // the same with only Points or not (a mesh target is taken as a camera-facing quad)
     JASPERENGINE_API UpgradeResult upgradeLegacy(const ParticleSystemComponent& legacy, bool targetIsPoints, bool force = false);
 
     JASPERENGINE_API const char* upgradeStatusName(UpgradeStatus status);

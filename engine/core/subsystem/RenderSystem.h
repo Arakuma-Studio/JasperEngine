@@ -1988,6 +1988,12 @@ namespace jasperengine{
 
 		void sortPoints(PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform);
 		void sortInstancedMesh(InstancedMeshComponent& instmesh, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform);
+		// sortInstancedMesh's buffers, kept between frames (a distance-sorted batch sorts every frame)
+		std::vector<unsigned int> sortOrderScratch;
+		std::vector<float> sortDepthScratch;
+		std::vector<InstanceRenderData> sortInstancesScratch;
+		std::vector<InstanceBounds> sortBoundsScratch;
+		std::vector<InstanceVatRenderData> sortVatScratch;
 
 	public:
 

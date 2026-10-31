@@ -111,9 +111,15 @@ namespace {
         std::vector<std::string> warnings;
         Json materials = Json::array();
         Json textures = Json::array();
-        // Unity material key -> the engine material (its name: the .material path)
-        std::map<std::string, Material> materialCache;
-        std::map<std::string, std::string> textureCache;   // Unity texture path -> engine path
+        // Unity material path -> the engine material (its name: the .material path) and the
+        // notes its import made (given again to every system that uses it)
+        struct CachedMaterial { Material material; std::vector<ImportNote> notes; };
+        std::map<std::string, CachedMaterial> materialCache;
+        // Unity texture path -> engine path ("" when not copied) and its notes
+        struct CachedTexture { std::string path; std::vector<ImportNote> notes; };
+        std::map<std::string, CachedTexture> textureCache;
+        // output path -> the Unity asset it was given to (two "smoke.png" get two names)
+        std::map<std::string, std::string> claimedOutputs;
         std::vector<std::pair<fs::path, std::string>> files;  // to write: absolute path, bytes
         std::set<std::string> usedNames;
         // each prefab file resolved once (a scene instances the same prefab many times)
@@ -123,9 +129,43 @@ namespace {
         std::vector<ImportNote>* notes = nullptr;
     };
 
+    // file names compare without case (case-insensitive file systems)
+    std::string lowercaseName(std::string text){
+        std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c){ return (char)std::tolower(c); });
+        return text;
+    }
+
     void note(Context& ctx, const std::string& code, const std::string& message){
         if (ctx.notes) ctx.notes->push_back({code, message});
         else ctx.warnings.push_back(code + ": " + message);
+    }
+
+    // the notes made since `mark` (the current system's), to keep with a cached asset
+    std::vector<ImportNote> notesSince(const Context& ctx, size_t mark){
+        if (!ctx.notes || ctx.notes->size() < mark) return {};
+        return std::vector<ImportNote>(ctx.notes->begin() + (long)mark, ctx.notes->end());
+    }
+
+    size_t noteMark(const Context& ctx){
+        return ctx.notes ? ctx.notes->size() : 0;
+    }
+
+    void replayNotes(Context& ctx, const std::vector<ImportNote>& notes){
+        for (const ImportNote& n : notes) note(ctx, n.code, n.message);
+    }
+
+    // a project-relative output path in `dir` for the Unity asset `source`: `stem` + `ext`, or
+    // "<stem> 1" ... when another asset of this import has that name already
+    std::string claimOutput(Context& ctx, const std::string& dir, const std::string& stem, const std::string& ext, const std::string& source){
+        for (int i = 0; ; i++){
+            const std::string rel = dir + "/" + (i == 0 ? stem : stem + " " + std::to_string(i)) + ext;
+            auto it = ctx.claimedOutputs.find(lowercaseName(rel));
+            if (it == ctx.claimedOutputs.end()){
+                ctx.claimedOutputs[lowercaseName(rel)] = source;
+                return rel;
+            }
+            if (it->second == source) return rel;
+        }
     }
 
     // a local reference's id inside the graph moved by an instance (XOR with the instance id)
@@ -138,6 +178,22 @@ namespace {
             for (auto it = node.begin(); it != node.end(); ++it) remapLocalRefs(it->second, key, ids);
         }else if (node.IsSequence()){
             for (size_t i = 0; i < node.size(); i++) remapLocalRefs(node[i], key, ids);
+        }
+    }
+
+    // a modification's value written into the node it targets: the object reference when it
+    // names one ({fileID, guid, type}), else the scalar
+    void assignModification(YAML::Node target, const YAML::Node& value, const Ref& objectReference){
+        if (objectReference.fileID != 0 || !objectReference.guid.empty()){
+            YAML::Node ref(YAML::NodeType::Map);
+            ref["fileID"] = std::to_string(objectReference.fileID);
+            if (!objectReference.guid.empty()){
+                ref["guid"] = objectReference.guid;
+                ref["type"] = std::to_string(objectReference.type);
+            }
+            target = ref;
+        }else{
+            target = value.IsScalar() ? value.Scalar() : std::string();
         }
     }
 
@@ -175,7 +231,8 @@ namespace {
                 }
                 YAML::Node element = current[index];
                 if (i + 1 == tokens.size()){
-                    element = value.Scalar();
+                    // an element itself: a value or an object reference (m_Materials.Array.data[0])
+                    assignModification(element, value, objectReference);
                     return true;
                 }
                 current.reset(element);
@@ -186,17 +243,7 @@ namespace {
             }
             if (last){
                 YAML::Node target = current[t];
-                if (objectReference.fileID != 0 || !objectReference.guid.empty()){
-                    YAML::Node ref(YAML::NodeType::Map);
-                    ref["fileID"] = std::to_string(objectReference.fileID);
-                    if (!objectReference.guid.empty()){
-                        ref["guid"] = objectReference.guid;
-                        ref["type"] = std::to_string(objectReference.type);
-                    }
-                    target = ref;
-                }else{
-                    target = value.IsScalar() ? value.Scalar() : std::string();
-                }
+                assignModification(target, value, objectReference);
                 return true;
             }
             YAML::Node next = current[t];
@@ -252,6 +299,36 @@ namespace {
             for (const YAML::Node& r : modification["m_RemovedComponents"]){
                 const Ref removed = toRef(r);
                 objects.erase(removed.fileID);
+            }
+        }
+        // removed GameObjects: with their components and their children's
+        if (modification && modification["m_RemovedGameObjects"] && modification["m_RemovedGameObjects"].IsSequence()){
+            std::set<int64_t> gone;
+            for (const YAML::Node& r : modification["m_RemovedGameObjects"]){
+                const int64_t id = toRef(r).fileID;
+                if (id != 0) gone.insert(id);
+            }
+            bool grew = !gone.empty();
+            while (grew){
+                grew = false;
+                // a transform under a removed GameObject's transform: its GameObject goes too
+                std::set<int64_t> goneTransforms;
+                for (const auto& item : objects){
+                    if ((item.second.classId == CLASS_TRANSFORM || item.second.classId == CLASS_RECTTRANSFORM) &&
+                        gone.count(readRef(item.second.body, "m_GameObject").fileID)) goneTransforms.insert(item.first);
+                }
+                for (const auto& item : objects){
+                    if ((item.second.classId == CLASS_TRANSFORM || item.second.classId == CLASS_RECTTRANSFORM) &&
+                        goneTransforms.count(readRef(item.second.body, "m_Father").fileID)){
+                        const int64_t child = readRef(item.second.body, "m_GameObject").fileID;
+                        if (child != 0 && gone.insert(child).second) grew = true;
+                    }
+                }
+            }
+            for (auto it = objects.begin(); it != objects.end();){
+                const bool remove = gone.count(it->first) || (it->second.classId != CLASS_GAMEOBJECT &&
+                                                             gone.count(readRef(it->second.body, "m_GameObject").fileID));
+                it = remove ? objects.erase(it) : std::next(it);
             }
         }
         // components added to the instance are documents of this file naming its GameObject's
@@ -632,7 +709,54 @@ namespace {
 
     // a custom shader's blend from its source: Blend One One, DstColor SrcAlpha / Zero, SrcAlpha
     // OneMinusSrcAlpha, or none with ZWrite On (opaque)
-    bool blendOfShaderSource(const fs::path& file, std::string& shaderName, Blend& blend){
+    std::string lowercase(std::string text){
+        std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c){ return (char)std::tolower(c); });
+        return text;
+    }
+
+    // Unity's UnityEngine.Rendering.BlendMode values (what _SrcBlend / _DstBlend hold) by name
+    int blendFactorOfName(const std::string& name){
+        static const std::map<std::string, int> factors = {
+            {"zero", 0}, {"one", 1}, {"dstcolor", 2}, {"srccolor", 3}, {"oneminusdstcolor", 4}, {"srcalpha", 5},
+            {"oneminussrccolor", 6}, {"dstalpha", 7}, {"oneminusdstalpha", 8}, {"srcalphasaturate", 9}, {"oneminussrcalpha", 10}};
+        auto it = factors.find(lowercase(name));
+        return it == factors.end() ? -1 : it->second;
+    }
+
+    // the blend of a (source, destination) factor pair; false when no engine blend matches it
+    bool blendOfFactors(int src, int dst, Blend& blend){
+        if (src == 1 && dst == 0) { blend = Blend::Opaque; return true; }
+        if (dst == 1 && (src == 1 || src == 5)) { blend = Blend::Additive; return true; }
+        if (src == 5 && dst == 10) { blend = Blend::Alpha; return true; }
+        if (src == 1 && dst == 10) { blend = Blend::Premultiplied; return true; }
+        if ((src == 2 && (dst == 0 || dst == 5 || dst == 3)) || (src == 0 && dst == 3)) { blend = Blend::Multiply; return true; }
+        return false;
+    }
+
+    // a material's float by name (m_SavedProperties.m_Floats), `fallback` when missing
+    float materialFloat(const YAML::Node& saved, const char* name, float fallback);
+
+    // the blend of a material's _SrcBlend / _DstBlend (or Unity's Standard particle _Mode)
+    bool blendOfMaterialFloats(const YAML::Node& saved, Blend& blend){
+        const float src = materialFloat(saved, "_SrcBlend", -1.0f), dst = materialFloat(saved, "_DstBlend", -1.0f);
+        if (src >= 0.0f && dst >= 0.0f && blendOfFactors((int)src, (int)dst, blend)) return true;
+        // Particles/Standard Unlit / Surface: 0 opaque, 1 cutout, 2 fade, 3 transparent,
+        // 4 additive, 5 subtractive, 6 modulate
+        switch ((int)materialFloat(saved, "_Mode", -1.0f)){
+            case 0: case 1: blend = Blend::Opaque; return true;
+            case 2: blend = Blend::Alpha; return true;
+            case 3: blend = Blend::Premultiplied; return true;
+            case 4: case 5: blend = Blend::Additive; return true;
+            case 6: blend = Blend::Multiply; return true;
+            default: return false;
+        }
+    }
+
+    // A custom shader's blend from its source: its first `Blend <src> <dst>` line, factors by
+    // name (any case) or by material property ([_SrcBlend] [_DstBlend]: `byProperties`); none
+    // with ZWrite On: opaque
+    bool blendOfShaderSource(const fs::path& file, std::string& shaderName, Blend& blend, bool& byProperties){
+        byProperties = false;
         std::ifstream in(file);
         if (!in) return false;
         std::stringstream buffer;
@@ -643,13 +767,38 @@ namespace {
             const size_t end = text.find('"', quote + 8);
             if (end != std::string::npos) shaderName = text.substr(quote + 8, end - quote - 8);
         }
-        auto has = [&](const char* s){ return text.find(s) != std::string::npos; };
-        if (has("Blend One One")) { blend = Blend::Additive; return true; }
-        if (has("Blend DstColor SrcAlpha") || has("Blend DstColor Zero") || has("Blend Zero SrcColor")) { blend = Blend::Multiply; return true; }
-        if (has("Blend One OneMinusSrcAlpha")) { blend = Blend::Premultiplied; return true; }
-        if (has("Blend SrcAlpha OneMinusSrcAlpha")) { blend = Blend::Alpha; return true; }
-        if (has("Blend SrcAlpha One")) { blend = Blend::Additive; return true; }
-        if (!has("Blend ") && has("ZWrite On")) { blend = Blend::Opaque; return true; }
+        std::istringstream lines(text);
+        std::string line;
+        bool zwriteOn = false;
+        while (std::getline(lines, line)){
+            // a line comment says nothing
+            const size_t comment = line.find("//");
+            if (comment != std::string::npos) line.erase(comment);
+            std::istringstream words(line);
+            std::vector<std::string> tokens;
+            std::string word;
+            while (words >> word){
+                word.erase(std::remove(word.begin(), word.end(), ','), word.end());
+                if (!word.empty()) tokens.push_back(word);
+            }
+            for (size_t i = 0; i + 1 < tokens.size(); i++){
+                const std::string key = lowercase(tokens[i]);
+                if (key == "zwrite" && lowercase(tokens[i + 1]) == "on") zwriteOn = true;
+                if (key != "blend" || i + 2 >= tokens.size()) continue;
+                const std::string& a = tokens[i + 1];
+                const std::string& b = tokens[i + 2];
+                if (lowercase(a) == "off") { blend = Blend::Opaque; return true; }
+                if (a.front() == '[' || b.front() == '['){
+                    byProperties = true;
+                    return true;
+                }
+                if (blendOfFactors(blendFactorOfName(a), blendFactorOfName(b), blend)) return true;
+            }
+        }
+        if (zwriteOn){
+            blend = Blend::Opaque;
+            return true;
+        }
         return false;
     }
 
@@ -662,11 +811,26 @@ namespace {
         return YAML::Node();
     }
 
+    float materialFloat(const YAML::Node& saved, const char* name, float fallback){
+        float value = fallback;
+        const YAML::Node node = savedProperty(saved["m_Floats"], name);
+        if (node && scalarFloat(node, value)) return value;
+        return fallback;
+    }
+
     // a texture copied into dest/textures (A8 ones expanded to white + alpha); its engine path
     std::string importTexture(Context& ctx, const fs::path& source){
         const std::string key = source.generic_string();
         auto cached = ctx.textureCache.find(key);
-        if (cached != ctx.textureCache.end()) return cached->second;
+        if (cached != ctx.textureCache.end()){
+            replayNotes(ctx, cached->second.notes);
+            return cached->second.path;
+        }
+        const size_t mark = noteMark(ctx);
+        auto finish = [&](const std::string& path){
+            ctx.textureCache[key] = {path, notesSince(ctx, mark)};
+            return path;
+        };
         std::string ext = source.extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c){ return (char)std::tolower(c); });
         Json entry = {{"unity", ctx.project.relative(source)}};
@@ -674,8 +838,7 @@ namespace {
             note(ctx, "texture-format", ctx.project.relative(source) + ": a " + ext + " texture is not copied (convert it to PNG)");
             entry["status"] = "texture-format";
             ctx.textures.push_back(entry);
-            ctx.textureCache[key] = "";
-            return "";
+            return finish("");
         }
         // Unity's Alpha8 import: the image's alpha (or grey) is all it keeps
         bool alpha8 = false;
@@ -687,16 +850,14 @@ namespace {
             }
         }
         if (importer && readInt(importer, "textureFormat", -1) == 1) alpha8 = true;
-        const std::string fileName = alpha8 ? source.stem().string() + ".png" : source.filename().string();
-        const std::string rel = ctx.destRel + "/textures/" + fileName;
+        const std::string rel = claimOutput(ctx, ctx.destRel + "/textures", source.stem().string(), alpha8 ? std::string(".png") : source.extension().string(), key);
         std::error_code exists;
         if (!ctx.options.overwrite && fs::exists(ctx.engineRoot / rel, exists)){
             // an earlier import's (or the user's) file: kept
             entry["file"] = rel;
             entry["reused"] = true;
             ctx.textures.push_back(entry);
-            ctx.textureCache[key] = rel;
-            return rel;
+            return finish(rel);
         }
         std::string bytes;
         if (alpha8){
@@ -723,14 +884,12 @@ namespace {
         }
         if (bytes.empty()){
             note(ctx, "texture-format", ctx.project.relative(source) + ": the image could not be read");
-            ctx.textureCache[key] = "";
-            return "";
+            return finish("");
         }
         ctx.files.push_back({ctx.engineRoot / rel, bytes});
         entry["file"] = rel;
         ctx.textures.push_back(entry);
-        ctx.textureCache[key] = rel;
-        return rel;
+        return finish(rel);
     }
 
     // the engine material of a renderer's first Unity material
@@ -756,7 +915,11 @@ namespace {
         const fs::path file = ctx.project.pathOf(ref.guid);
         const std::string key = file.generic_string();
         auto cached = ctx.materialCache.find(key);
-        if (cached != ctx.materialCache.end()) return cached->second;
+        if (cached != ctx.materialCache.end()){
+            replayNotes(ctx, cached->second.notes);
+            return cached->second.material;
+        }
+        const size_t mark = noteMark(ctx);
         if (file.empty()){
             note(ctx, "material-missing", "material guid " + ref.guid + " is not in the project: the default particle material is used");
             material.shaderFeatures = {"PARTICLE_TEXTURE"};
@@ -785,22 +948,30 @@ namespace {
         Blend blend = Blend::Alpha;
         bool known = false;
         bool legacyTint = false;
+        const YAML::Node saved = moduleOf(doc->body, "m_SavedProperties");
         if (const BuiltinAsset* shader = UnityProject::builtin(shaderRef); shader && shader->kind == BuiltinAsset::Shader){
             shaderName = shader->name;
-            known = blendOfShaderName(shaderName, blend);
+            // Unity's Standard particle shaders blend by the material's own settings
+            known = (shaderName.find("Standard") != std::string::npos && blendOfMaterialFloats(saved, blend)) ||
+                    blendOfShaderName(shaderName, blend);
         }else if (!shaderRef.guid.empty() && !UnityProject::isBuiltinGuid(shaderRef.guid)){
             const fs::path shaderFile = ctx.project.pathOf(shaderRef.guid);
-            if (!shaderFile.empty() && blendOfShaderSource(shaderFile, shaderName, blend)){
-                known = blendOfShaderName(shaderName, blend) || false;
-                if (!known){
+            bool byProperties = false;
+            if (!shaderFile.empty() && blendOfShaderSource(shaderFile, shaderName, blend, byProperties) &&
+                (!byProperties || blendOfMaterialFloats(saved, blend))){
+                if (!blendOfShaderName(shaderName, blend)){
                     note(ctx, "shader-approximated", "material " + unityName + ": the shader '" + shaderName +
                          "' is drawn with library:unlit by its Blend state");
                 }
                 known = true;
             }else{
                 note(ctx, "shader-approximated", "material " + unityName + ": the shader " +
-                     (shaderName.empty() ? ctx.project.relative(shaderFile) : "'" + shaderName + "'") + " is unreadable: alpha blended");
+                     (shaderName.empty() ? ctx.project.relative(shaderFile) : "'" + shaderName + "'") + " has no readable Blend: alpha blended");
             }
+        }else if (blendOfMaterialFloats(saved, blend)){
+            known = true;
+            note(ctx, "shader-approximated", "material " + unityName + ": built-in shader id " + std::to_string(shaderRef.fileID) +
+                 " is unknown: blended by the material's _SrcBlend / _DstBlend");
         }else{
             note(ctx, "shader-approximated", "material " + unityName + ": built-in shader id " + std::to_string(shaderRef.fileID) + " is unknown: alpha blended");
         }
@@ -819,17 +990,23 @@ namespace {
             case Blend::Alpha: break;
         }
 
-        const YAML::Node saved = moduleOf(doc->body, "m_SavedProperties");
         const YAML::Node mainTex = savedProperty(saved["m_TexEnvs"], "_MainTex");
         const Ref textureRef = readRef(mainTex, "m_Texture");
         if (const BuiltinAsset* texture = UnityProject::builtin(textureRef); texture && texture->kind == BuiltinAsset::Texture){
             material.shaderFeatures = {"PARTICLE_TEXTURE"};
         }else if (!textureRef.guid.empty()){
             const fs::path texture = ctx.project.pathOf(textureRef.guid);
+            if (texture.empty()){
+                note(ctx, "texture-missing", "material " + unityName + ": its _MainTex (guid " + textureRef.guid +
+                     ") is not in the project: the built-in particle texture is used");
+            }
             const std::string rel = texture.empty() ? std::string() : importTexture(ctx, texture);
             if (!rel.empty()){
                 material.shaderTextures = {{"u_baseTexture", Texture(rel)}};
                 entry["texture"] = rel;
+            }else{
+                // not copied: the soft particle rather than a white quad
+                material.shaderFeatures = {"PARTICLE_TEXTURE"};
             }
         }else{
             material.shaderFeatures = {"PARTICLE_TEXTURE"};
@@ -860,8 +1037,7 @@ namespace {
         }
 
         // its file: dest/materials/<name>.material, linked (the name is the file)
-        std::string fileName = sanitize(unityName) + ".material";
-        const std::string rel = ctx.destRel + "/materials/" + fileName;
+        const std::string rel = claimOutput(ctx, ctx.destRel + "/materials", sanitize(unityName), ".material", key);
         material.name = rel;
         std::error_code exists;
         if (!ctx.options.overwrite && fs::exists(ctx.engineRoot / rel, exists)){
@@ -874,7 +1050,7 @@ namespace {
         entry["blend"] = blend == Blend::Additive ? "additive" : blend == Blend::Multiply ? "multiply" :
                          blend == Blend::Premultiplied ? "premultiplied" : blend == Blend::Opaque ? "opaque" : "alpha";
         ctx.materials.push_back(entry);
-        ctx.materialCache[key] = material;
+        ctx.materialCache[key] = {material, notesSince(ctx, mark)};
         return material;
     }
 
@@ -1195,6 +1371,8 @@ namespace {
         ParticleRendererModule& rm = c.renderer;
         const int mode = readInt(r, "m_RenderMode");
         rm.renderMode = (mode >= 0 && mode <= 4) ? (ParticleSystemRenderMode)mode : ParticleSystemRenderMode::Billboard;
+        // Unity's None (5): simulated, not drawn (its renderer disabled below)
+        const bool notRendered = mode == 5;
         const int sort = readInt(r, "m_SortMode");
         rm.sortMode = (sort >= 0 && sort <= 3) ? (ParticleSystemSortMode)sort : ParticleSystemSortMode::None;
         rm.sortingFudge = readFloat(r, "m_SortingFudge");
@@ -1229,7 +1407,7 @@ namespace {
         mesh.submeshes[0].material = material;
         mesh.castShadows = readInt(r, "m_CastShadows") != 0;
         mesh.receiveShadows = readBool(r, "m_ReceiveShadows");
-        if (!readBool(r, "m_Enabled", true)) mesh.enabled = false;
+        if (!readBool(r, "m_Enabled", true) || notRendered) mesh.enabled = false;
     }
 
     // ------------------------------------------------------------------ the prefab
@@ -1370,7 +1548,25 @@ namespace {
 
 }
 
+namespace {
+    ImportResult importParticlesUnchecked(const ImportOptions& options);
+}
+
 ImportResult jasperengine::editor::unity::importParticles(const ImportOptions& options){
+    // a malformed file (yaml-cpp's errors past the document split) fails the import, never the caller
+    try {
+        return importParticlesUnchecked(options);
+    } catch (const std::exception& e){
+        componentIndex = ComponentIndex();
+        ImportResult result;
+        result.error = "cannot import " + options.file.string() + ": " + e.what();
+        return result;
+    }
+}
+
+namespace {
+
+ImportResult importParticlesUnchecked(const ImportOptions& options){
     ImportResult result;
     Context ctx;
     ctx.options = options;
@@ -1407,6 +1603,16 @@ ImportResult jasperengine::editor::unity::importParticles(const ImportOptions& o
     }
     ctx.destRel = destPath.generic_string();
     ctx.dest = ctx.engineRoot / destPath;
+    // never into the Unity project (an engine project inside it, or the same folder)
+    {
+        const std::string unityDir = lowercaseName(fs::weakly_canonical(ctx.project.root(), ec).generic_string());
+        const std::string destDir = lowercaseName(fs::weakly_canonical(ctx.dest, ec).generic_string());
+        if (!unityDir.empty() && (destDir == unityDir || destDir.compare(0, unityDir.size() + 1, unityDir + "/") == 0)){
+            result.error = "dest " + ctx.dest.string() + " is inside the Unity project " + ctx.project.root().string() +
+                           ": the importer never writes there (use an engine project outside it)";
+            return result;
+        }
+    }
 
     Graph graph;
     componentIndex = ComponentIndex();   // built for this graph on first use
@@ -1419,17 +1625,28 @@ ImportResult jasperengine::editor::unity::importParticles(const ImportOptions& o
     // the roots: a named object, the prefab's root, or in a scene each topmost GameObject with a system
     std::vector<int64_t> roots;
     if (!options.object.empty()){
-        for (const auto& item : h.transformOf){
-            if (pathOf(graph, h, item.first) == options.object || nameOf(graph, item.first) == options.object){
-                roots.push_back(item.first);
-                if (pathOf(graph, h, item.first) == options.object) break;
-            }
+        // an exact path first; else a name, which must be unique
+        std::vector<int64_t> byPath, byName;
+        std::vector<int64_t> ordered;
+        for (const auto& item : h.transformOf) ordered.push_back(item.first);
+        std::stable_sort(ordered.begin(), ordered.end(), [&](int64_t a, int64_t b){ return graph.at(a).order < graph.at(b).order; });
+        for (int64_t go : ordered){
+            if (pathOf(graph, h, go) == options.object) byPath.push_back(go);
+            else if (nameOf(graph, go) == options.object) byName.push_back(go);
         }
-        if (roots.size() > 1) roots.resize(1);
-        if (roots.empty()){
+        const std::vector<int64_t>& found = byPath.empty() ? byName : byPath;
+        if (found.empty()){
             result.error = "no GameObject '" + options.object + "' in " + file.filename().string();
             return result;
         }
+        if (found.size() > 1){
+            std::string paths;
+            for (int64_t go : found) paths += "\n  " + pathOf(graph, h, go);
+            result.error = "'" + options.object + "' names " + std::to_string(found.size()) + " GameObjects in " + file.filename().string() +
+                           ": give the path of one" + paths;
+            return result;
+        }
+        roots.push_back(found.front());
     }else if (ext == ".prefab"){
         for (int64_t root : h.roots){
             if (subtreeHasSystem(graph, h, root)) roots.push_back(root);
@@ -1509,6 +1726,8 @@ ImportResult jasperengine::editor::unity::importParticles(const ImportOptions& o
     componentIndex = ComponentIndex();
     result.ok = true;
     return result;
+}
+
 }
 
 ImportResult jasperengine::editor::unity::importParticlesIntoProject(jasperengine::editor::Project* project, ImportOptions options){

@@ -16,6 +16,7 @@
 #include "Stream.h"
 #include "particles/ParticleSimulation.h"
 #include "unity/UnityParticleImport.h"
+#include "cli/CommandLine.h"
 #include "util/Color.h"
 
 #include "stb_image.h"
@@ -401,8 +402,14 @@ TEST(UnityParticleImportTest, SceneInstanceWithModifications) {
     const YAML::Node members = YAML::LoadFile((project.root / result.prefabs[0]).string())["members"];
     const YAML::Node flame = findMember(members, "BigFlame");
     ASSERT_TRUE(flame.IsMap());
-    // Attached hangs from the instance's root through the stripped placeholder (its own id)
-    EXPECT_EQ(childNames(flame), std::vector<std::string>({"Smoke", "Attached"}));
+    // Attached hangs from the instance's root through the stripped placeholder (its own id);
+    // the instance removed its Smoke child (m_RemovedGameObjects)
+    EXPECT_EQ(childNames(flame), std::vector<std::string>({"Attached"}));
+    EXPECT_FALSE(findMember(members, "Smoke").IsMap());
+    // m_Materials.Array.data[0] overridden by an object reference: the Smoke material
+    const MeshComponent flameMesh = Stream::decodeMeshComponent(component(flame, ComponentType::MeshComponent));
+    ASSERT_GT(flameMesh.submeshes.size(), 0u);
+    EXPECT_EQ(flameMesh.submeshes[0].material.name, "assets/fx/materials/Smoke.material");
     const ParticleSystemComponent ps = systemOf(flame);
     EXPECT_FLOAT_EQ(ps.main.startSize.constant, 4.0f);
     EXPECT_NEAR(ps.main.startSize.curve.evaluate(0.0f), 0.5f, 1e-5f);
@@ -461,4 +468,120 @@ TEST(UnityParticleImportTest, SelectObjectNumberedNamesAndDryRun) {
     outside.engineProject = project.root;
     outside.dest = "../elsewhere";
     EXPECT_FALSE(unity::importParticles(outside).ok);
+}
+
+namespace {
+
+    Material materialFile(const TempProject& project, const std::string& rel) {
+        return Stream::decodeMaterial(YAML::LoadFile((project.root / rel).string()));
+    }
+
+    std::string materialOf(const YAML::Node& members, const std::string& name) {
+        const YAML::Node member = findMember(members, name);
+        if (!member.IsMap()) return "";
+        const MeshComponent mesh = Stream::decodeMeshComponent(component(member, ComponentType::MeshComponent));
+        return mesh.submeshes.size() > 0 ? mesh.submeshes[0].material.name : "";
+    }
+
+}
+
+TEST(UnityParticleImportTest, ShaderBlendsAndSharedAssets) {
+    TempProject project;
+    unity::ImportOptions options;
+    options.file = UNITY / "Assets/Fx/Materials.prefab";
+    options.engineProject = project.root;
+    const unity::ImportResult result = unity::importParticles(options);
+    ASSERT_TRUE(result.ok) << result.error;
+    const YAML::Node members = YAML::LoadFile((project.root / result.prefabs[0]).string())["members"];
+
+    // "blend one oneminussrcalpha" (any case, after a comment naming another Blend): premultiplied
+    EXPECT_EQ(materialFile(project, materialOf(members, "Premul")).blendMode, MaterialBlendMode::PREMULTIPLIED);
+    // Blend [_SrcBlend] [_DstBlend] with the material's 1 / 1: additive
+    EXPECT_EQ(materialFile(project, materialOf(members, "ByProperties")).blendMode, MaterialBlendMode::ADDITIVE);
+    // built-in shaders by guid: Particles/Standard Unlit with _Mode 4 additive, 202 premultiplied
+    EXPECT_EQ(materialFile(project, materialOf(members, "StandardAdd")).blendMode, MaterialBlendMode::ADDITIVE);
+    EXPECT_EQ(materialFile(project, materialOf(members, "LegacyPremul")).blendMode, MaterialBlendMode::PREMULTIPLIED);
+    // a _MainTex not in the project: the soft particle texture, with a note
+    const Material noTexture = materialFile(project, materialOf(members, "NoTexture"));
+    EXPECT_NE(std::find(noTexture.shaderFeatures.begin(), noTexture.shaderFeatures.end(), "PARTICLE_TEXTURE"), noTexture.shaderFeatures.end());
+    EXPECT_TRUE(hasNote(*systemReport(result.report, "Materials/NoTexture"), "texture-missing"));
+
+    // two Unity materials named Fire, two textures named smoke.png: four files
+    const std::string fireA = materialOf(members, "FireA"), fireB = materialOf(members, "FireB");
+    EXPECT_NE(fireA, fireB);
+    EXPECT_EQ(fireA, "assets/fx/materials/Fire.material");
+    EXPECT_EQ(fireB, "assets/fx/materials/Fire 1.material");
+    std::string textureA, textureB;
+    for (const auto& t : materialFile(project, fireA).shaderTextures) textureA = t.second.getPath();
+    for (const auto& t : materialFile(project, fireB).shaderTextures) textureB = t.second.getPath();
+    EXPECT_EQ(textureA, "assets/fx/textures/smoke.png");
+    EXPECT_EQ(textureB, "assets/fx/textures/smoke 1.png");
+    EXPECT_TRUE(fs::is_regular_file(project.root / textureA));
+    EXPECT_TRUE(fs::is_regular_file(project.root / textureB));
+
+    // a material used twice: both systems carry its notes
+    EXPECT_TRUE(hasNote(*systemReport(result.report, "Materials/Premul"), "shader-approximated"));
+    EXPECT_TRUE(hasNote(*systemReport(result.report, "Materials/PremulAgain"), "shader-approximated"));
+
+    // Unity's render mode None: simulated, not drawn
+    bool hiddenTwin = false;
+    for (const YAML::Node& child : findMember(members, "Materials")["children"]) {
+        if (child["name"].as<std::string>() != "Twin") continue;
+        const MeshComponent mesh = Stream::decodeMeshComponent(component(child, ComponentType::MeshComponent));
+        hiddenTwin = hiddenTwin || !mesh.enabled;
+    }
+    EXPECT_TRUE(hiddenTwin);
+}
+
+TEST(UnityParticleImportTest, ObjectPickingByPathThenUniqueName) {
+    TempProject project;
+    // an exact path wins
+    const unity::ImportResult byPath = importFile(project, "Assets/Fx/Flame.prefab", "Flame/Smoke", true);
+    ASSERT_TRUE(byPath.ok) << byPath.error;
+    EXPECT_EQ(byPath.prefabs, std::vector<std::string>({"assets/fx/Smoke.prefab"}));
+    // a name naming two GameObjects is refused with both paths
+    const unity::ImportResult twins = importFile(project, "Assets/Fx/Materials.prefab", "Twin", true);
+    EXPECT_FALSE(twins.ok);
+    EXPECT_NE(twins.error.find("2 GameObjects"), std::string::npos) << twins.error;
+    EXPECT_NE(twins.error.find("Materials/Twin"), std::string::npos) << twins.error;
+}
+
+TEST(UnityParticleImportTest, NestedPrefabInstances) {
+    TempProject project;
+    const unity::ImportResult result = importFile(project, "Assets/Scenes/Nested.unity");
+    ASSERT_TRUE(result.ok) << result.error;
+    ASSERT_EQ(result.prefabs.size(), 1u) << result.report.dump(2);
+    // Rig (no system) holds the Flame instance: that is the topmost system, renamed by Rig
+    EXPECT_EQ(result.prefabs[0], "assets/fx/NestedFlame.prefab");
+    const YAML::Node members = YAML::LoadFile((project.root / result.prefabs[0]).string())["members"];
+    const ParticleSystemComponent ps = systemOf(findMember(members, "NestedFlame"));
+    EXPECT_FLOAT_EQ(ps.main.startSpeed.constant, 9.0f) << "Rig's modification of its nested instance";
+    EXPECT_FLOAT_EQ(ps.emission.rateOverTime.constant, 33.0f) << "the scene's modification of the nested object";
+    EXPECT_EQ(childNames(findMember(members, "NestedFlame")), std::vector<std::string>({"Smoke"}));
+}
+
+TEST(UnityParticleImportTest, MalformedFileFailsCleanly) {
+    TempProject project;
+    const unity::ImportResult result = importFile(project, "Assets/Fx/Broken.prefab");
+    EXPECT_FALSE(result.ok);
+    EXPECT_FALSE(result.error.empty());
+    // the CLI exits 1 with a message (no exception escapes)
+    const std::string file = (UNITY / "Assets/Fx/Broken.prefab").string();
+    const std::string projectDir = project.root.string();
+    std::vector<std::string> args = {"import-unity-particles", file, "--project", projectDir};
+    std::vector<char*> argv;
+    for (std::string& a : args) argv.push_back(a.data());
+    argv.push_back(nullptr);
+    EXPECT_EQ(CommandLine::runImportUnityParticlesCommand((int)args.size(), argv.data(), "jasperengine-editor"), 1);
+}
+
+TEST(UnityParticleImportTest, NeverWritesIntoTheUnityProject) {
+    unity::ImportOptions options;
+    options.file = UNITY / "Assets/Fx/Flame.prefab";
+    options.engineProject = UNITY;
+    options.dest = "ASSETS/Imported";
+    options.dryRun = true;
+    const unity::ImportResult result = unity::importParticles(options);
+    EXPECT_FALSE(result.ok);
+    EXPECT_NE(result.error.find("inside the Unity project"), std::string::npos) << result.error;
 }

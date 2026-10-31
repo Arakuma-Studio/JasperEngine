@@ -56,6 +56,9 @@ namespace jasperengine{
         // added to the camera distance in the transparent queue (lower draws on top, Unity)
         float sortingFudge = 0.0f;
 
+        // the renderer's sortPriority, added to the mesh's (its shader's) in the transparent queue
+        int sortPriority = 0;
+
         bool cameraDependent() const{
             return alignment == InstanceAlignment::View || alignment == InstanceAlignment::Vertical ||
                    alignment == InstanceAlignment::Stretched || alignment == InstanceAlignment::Facing ||

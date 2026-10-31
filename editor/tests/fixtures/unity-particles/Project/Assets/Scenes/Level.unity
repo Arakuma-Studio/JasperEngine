@@ -58,9 +58,14 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.y
       value: 90
       objectReference: {fileID: 0}
+    - target: {fileID: 19900000, guid: 000000000000000000000000a11ce000, type: 3}
+      propertyPath: m_Materials.Array.data[0]
+      value: 
+      objectReference: {fileID: 2100000, guid: 000000000000000000000000a11ce004, type: 2}
     m_RemovedComponents:
     - {fileID: 11400000, guid: 000000000000000000000000a11ce000, type: 3}
-    m_RemovedGameObjects: []
+    m_RemovedGameObjects:
+    - {fileID: 100002, guid: 000000000000000000000000a11ce000, type: 3}
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 000000000000000000000000a11ce000, type: 3}

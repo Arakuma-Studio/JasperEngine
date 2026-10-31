@@ -16,6 +16,7 @@
 #include "component/InstancedMeshComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ParticleSystemComponent.h"
+#include "component/PointsComponent.h"
 #include "component/Transform.h"
 #include "particles/ParticleSimulation.h"
 #include "subsystem/ActionSystem.h"
@@ -525,4 +526,70 @@ TEST(ParticleSystemAction, AgeSortOrdersTheInstances) {
         }
         EXPECT_EQ(instmesh.particle.sort, InstanceSortMode::Keep);
     }
+}
+
+// the on-screen size limit is Billboard's only (Unity); other modes are then not redrawn per camera
+TEST(ParticleSystemAction, SizeLimitIsForBillboardsOnly) {
+    ParticleSystemComponent values = base();
+    values.emission.rateOverTime = MinMaxCurve(10.0f);
+    values.renderer.maxParticleSize = 0.5f;
+    values.renderer.minParticleSize = 0.01f;
+    values.renderer.sortPriority = 3;
+    {
+        Scene scene;
+        const Entity entity = makeSystem(scene, values);
+        step(scene, 0.1, 2);
+        const InstancedMeshComponent& instmesh = scene.getComponent<InstancedMeshComponent>(entity);
+        EXPECT_FLOAT_EQ(instmesh.particle.maxSize, 0.5f);
+        EXPECT_FLOAT_EQ(instmesh.particle.minSize, 0.01f);
+        // the renderer's priority is added when queued: the shader's stays on the mesh
+        EXPECT_EQ(instmesh.particle.sortPriority, 3);
+        EXPECT_EQ(scene.getComponent<MeshComponent>(entity).transparentSortPriority, 0);
+    }
+    values.renderer.renderMode = ParticleSystemRenderMode::Mesh;
+    values.renderer.alignment = ParticleSystemRenderSpace::World;
+    {
+        Scene scene;
+        const Entity entity = makeSystem(scene, values);
+        step(scene, 0.1, 2);
+        const InstancedMeshComponent& instmesh = scene.getComponent<InstancedMeshComponent>(entity);
+        EXPECT_FLOAT_EQ(instmesh.particle.maxSize, 0.0f);
+        EXPECT_FLOAT_EQ(instmesh.particle.minSize, 0.0f);
+        EXPECT_FALSE(instmesh.particle.cameraDependent()) << "world-aligned meshes are built once, not per camera";
+    }
+    values.renderer.renderMode = ParticleSystemRenderMode::Stretch;
+    {
+        Scene scene;
+        const Entity entity = makeSystem(scene, values);
+        step(scene, 0.1, 2);
+        EXPECT_FLOAT_EQ(scene.getComponent<InstancedMeshComponent>(entity).particle.maxSize, 0.0f);
+    }
+}
+
+// a grid texture sheet on a Points target: the points carry their frame rects
+TEST(ParticleSystemAction, PointsTargetTextureSheet) {
+    Scene scene;
+    const Entity points = scene.createEntity();
+    scene.addComponent<Transform>(points, Transform());
+    scene.addComponent<PointsComponent>(points, PointsComponent());
+    const Entity system = scene.createEntity();
+    ActionComponent action;
+    action.target = points;
+    scene.addComponent<ActionComponent>(system, action);
+    ParticleSystemComponent values = base();
+    values.emission.rateOverTime = MinMaxCurve(10.0f);
+    values.textureSheetAnimation.enabled = true;
+    values.textureSheetAnimation.numTilesX = 2;
+    values.textureSheetAnimation.numTilesY = 2;
+    values.textureSheetAnimation.timeMode = ParticleSystemAnimationTimeMode::FPS;
+    values.textureSheetAnimation.fps = 0.0f;
+    values.renderer.sortPriority = 2;
+    scene.addComponent<ParticleSystemComponent>(system, values);
+    step(scene, 0.1, 3);
+    const PointsComponent& p = scene.getComponent<PointsComponent>(points);
+    ASSERT_GT(p.points.size(), 0u);
+    EXPECT_TRUE(p.hasTextureRect);
+    EXPECT_FLOAT_EQ(p.points[0].textureRect.getWidth(), 0.5f);
+    EXPECT_FLOAT_EQ(p.points[0].textureRect.getHeight(), 0.5f);
+    EXPECT_EQ(p.particleSortPriority, 2);
 }

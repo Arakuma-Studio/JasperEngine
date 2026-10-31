@@ -10,6 +10,7 @@
 
 #include "particles/ParticleSimulation.h"
 
+#include <algorithm>
 #include <cmath>
 
 using namespace jasperengine;
@@ -193,4 +194,64 @@ TEST(ParticleEmission, StartDelayHoldsTheClock) {
     EXPECT_NEAR(ps.state.time, 0.0f, 1e-5f);
     run(ps, 1.0f, 0.05f);
     EXPECT_EQ(particles::particleCount(ps), 10u);
+}
+
+// Unity fires a burst at time == duration at the end of each cycle (before the loop wraps)
+TEST(ParticleEmission, BurstAtTheCycleEndFiresEveryLoop) {
+    ParticleSystemComponent ps = counter();
+    ps.main.duration = 1.0f;
+    ParticleEmissionBurst end;
+    end.time = 1.0f;
+    end.count = MinMaxCurve(2.0f);
+    ps.emission.bursts = {end};
+    particles::play(ps, ParticleEmitterFrame(), ParticleEnvironment());
+    run(ps, 2.5f, 1.0f / 60.0f);
+    EXPECT_EQ(particles::particleCount(ps), 4u) << "at 1 s and 2 s";
+    // a non-looping one fires it once, then finishes
+    ParticleSystemComponent once = counter();
+    once.main.duration = 1.0f;
+    once.main.looping = false;
+    once.emission.bursts = {end};
+    particles::play(once, ParticleEmitterFrame(), ParticleEnvironment());
+    run(once, 2.5f, 1.0f / 60.0f);
+    EXPECT_EQ(particles::particleCount(once), 2u);
+}
+
+// Loop arcs place each particle of a step where the arc was when it spawned
+TEST(ParticleEmission, LoopArcAdvancesPerParticle) {
+    ParticleSystemComponent ps = counter();
+    ps.emission.rateOverTime = MinMaxCurve(100.0f);
+    ps.shape.enabled = true;
+    ps.shape.shapeType = ParticleSystemShapeType::Circle;
+    ps.shape.radius = 1.0f;
+    ps.shape.radiusThickness = 0.0f;
+    ps.shape.arcMode = ParticleSystemShapeMultiModeValue::Loop;
+    ps.shape.arcSpeed = MinMaxCurve(1.0f);   // one turn a second
+    particles::play(ps, ParticleEmitterFrame(), ParticleEnvironment());
+    // one 0.1 s step: 10 particles along a tenth of the circle, not all at one point
+    particles::step(ps, 0.1f, ParticleEmitterFrame(), ParticleEnvironment());
+    ASSERT_EQ(particles::particleCount(ps), 10u);
+    const Vector3 a = ps.state.position[0], b = ps.state.position[9];
+    EXPECT_GT((a - b).length(), 0.4f) << "spread over ~32 degrees of a unit circle";
+}
+
+// a two-constants arc speed picks a value in its range per play, not its maximum
+TEST(ParticleEmission, ArcSpeedRangeIsRandomPerPlay) {
+    float lowest = 1e9f, highest = -1e9f;
+    for (uint32_t seed = 1; seed <= 40; seed++) {
+        ParticleSystemComponent ps = counter();
+        ps.main.randomSeed = seed;
+        ps.emission.rateOverTime = MinMaxCurve(10.0f);
+        ps.shape.enabled = true;
+        ps.shape.shapeType = ParticleSystemShapeType::Circle;
+        ps.shape.arcMode = ParticleSystemShapeMultiModeValue::Loop;
+        ps.shape.arcSpeed = MinMaxCurve::between(0.0f, 1.0f);
+        particles::play(ps, ParticleEmitterFrame(), ParticleEnvironment());
+        particles::step(ps, 0.05f, ParticleEmitterFrame(), ParticleEnvironment());
+        lowest = std::min(lowest, ps.state.arcRate);
+        highest = std::max(highest, ps.state.arcRate);
+    }
+    EXPECT_LT(lowest, 180.0f);
+    EXPECT_GT(highest, 180.0f);
+    EXPECT_LE(highest, 360.0f);
 }

@@ -5,6 +5,7 @@
 #include "ParticleNoise.h"
 #include "ParticleRandom.h"
 #include "ParticleShapes.h"
+#include "Log.h"
 
 #include <algorithm>
 #include <atomic>
@@ -587,8 +588,9 @@ namespace {
         const ParticleEmitterFrame e = lerpFrame(from, to, f);
         for (int k = 0; k < count; k++){
             ShapeContext context;
-            context.arcPhase = s.arcPhase;
-            context.radiusPhase = s.radiusPhase;
+            // the arc / radius position where this particle spawns in the substep
+            context.arcPhase = s.arcPhase + s.arcRate * offset;
+            context.radiusPhase = s.radiusPhase + s.radiusRate * offset;
             // BurstSpread spreads a burst; the rate's particles pick at random
             context.spreadIndex = k;
             context.spreadCount = burst ? count : 0;
@@ -650,7 +652,8 @@ namespace {
                     const float interval = std::max(1e-4f, burst.interval);
                     while (burst.cycles <= 0 || state.cyclesDone < burst.cycles){
                         const float fire = burst.time + (float)state.cyclesDone * interval;
-                        const bool inside = fire >= start && (fire < end || (finishing && !ps.main.looping && fire <= end));
+                        // a burst at the very end of the cycle fires before it ends (or wraps)
+                        const bool inside = fire >= start && (fire < end || (finishing && fire <= end));
                         if (fire < start){
                             state.cyclesDone++;   // a time jump went past it
                             continue;
@@ -689,8 +692,12 @@ namespace {
         const float distance = (to.position - from.position).length();
         if (distance <= 0.0f) return;
         if (distance > TELEPORT_DISTANCE){
-            // a teleport: no burst of thousands
-            s.teleportWarned = true;
+            // a teleport: no burst of thousands (said once per system)
+            if (!s.teleportWarned){
+                Log::warn("Particle System: the emitter jumped %.1f units in one step; rate over distance spawned nothing for it",
+                          distance);
+                s.teleportWarned = true;
+            }
             return;
         }
         Pcg32 rng = systemRng(s);
@@ -720,12 +727,13 @@ namespace {
         s.emitterVelocityDelta = emitterVelocity - s.emitterVelocity;
         s.emitterVelocity = emitterVelocity;
 
-        // the system clocks of the arc / radius modes and the noise scroll
+        // the speeds of the arc / radius modes and the noise scroll (a random range: one value
+        // per system play, from its seed)
         const float tSys = clamp01(s.time / duration(ps));
-        s.arcPhase += ps.shape.arcSpeed.evaluate(tSys, 1.0f) * 360.0f * dt;
-        s.radiusPhase += ps.shape.radiusSpeed.evaluate(tSys, 1.0f) * dt;
+        s.arcRate = ps.shape.arcSpeed.evaluate(tSys, hash01(s.seedUsed, RANDOM_SYSTEM_ARC_SPEED)) * 360.0f;
+        s.radiusRate = ps.shape.radiusSpeed.evaluate(tSys, hash01(s.seedUsed, RANDOM_SYSTEM_RADIUS_SPEED));
         if (ps.noise.enabled){
-            s.noiseScroll += ps.noise.scrollSpeed.evaluate(tSys, 1.0f) * dt;
+            s.noiseScroll += ps.noise.scrollSpeed.evaluate(tSys, hash01(s.seedUsed, RANDOM_SYSTEM_SCROLL_SPEED)) * dt;
         }
 
         // the particles alive before this step
@@ -739,6 +747,8 @@ namespace {
             emitOverTime(ps, b, dt, from, to, env);
             emitOverDistance(ps, b, dt, from, to, env);
         }
+        s.arcPhase += s.arcRate * dt;
+        s.radiusPhase += s.radiusRate * dt;
 
         compact(s);
     }
