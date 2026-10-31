@@ -237,10 +237,9 @@ void System::platformLog(const int type, const char *fmt, va_list args){
 
 void System::installLogSinks(){
     PlatformLogOptions options;
-#ifdef JASPERENGINE_LOG_FILE
-    options.fileLog = JASPERENGINE_LOG_FILE != 0;
-#endif
-    // a prebuilt player's Player > Logging (game.json)
+    // the build's Player > Logging (PlatformDefaults.h), then a prebuilt player's (game.json)
+    if (platformConfig().builtLogFile >= 0)
+        options.fileLog = platformConfig().builtLogFile != 0;
     if (platformConfig().logFile >= 0)
         options.fileLog = platformConfig().logFile != 0;
     if (options.fileLog) {

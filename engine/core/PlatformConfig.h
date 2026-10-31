@@ -39,8 +39,8 @@ namespace jasperengine {
         // own paths, relative to the working directory or set at build time)
         std::string contentRoot;
 
-        // Player > Logging and Crash Handling of a prebuilt player (game.json); a Compile build
-        // has them as macros. -1 / empty: the build's own
+        // Player > Logging and Crash Handling of a prebuilt player (game.json). -1 / empty: the
+        // build's own (below)
         std::string logLevel;
         int logFile = -1;
         int logBacktrace = -1;
@@ -50,6 +50,18 @@ namespace jasperengine {
         int hangWatchdog = -1;
         int hangMs = 0;
         int crashWebOverlay = -1;
+
+        // The build's own Player > Logging and Crash Handling: a Compile build's settings, which
+        // the Exporter sets as macros of the game's executable and applyPlatformDefaults() copies
+        // here (docs/specs/S33-build-speed.md R5), else the engine's defaults. -1 / empty: none
+        // (the platform's or the logger's default)
+        std::string builtLogLevel;
+        int builtLogFile = -1;
+        int builtLogBacktrace = -1;
+        bool builtCrashLogTail = true;
+        bool builtCrashDumpWithHeap = false;
+        int builtHangMs = 5000;
+        bool builtCrashWebOverlay = true;
     };
 
     JASPERENGINE_API PlatformConfig& platformConfig();

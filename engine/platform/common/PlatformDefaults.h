@@ -3,8 +3,9 @@
 
 #pragma once
 
-// The compile-time window settings a Compile build bakes in (the Exporter sets them on the
-// command line), as the runtime PlatformConfig the platform layers read
+// The compile-time window, logging and crash settings a Compile build bakes in (the Exporter sets
+// them as definitions of the game's executable), as the runtime PlatformConfig the platform
+// layers and the engine read
 // (docs/specs/S30-shipping.md R1). Included by each platform's main source, where the macros
 // are visible; the defaults are the ones the platforms always had.
 
@@ -57,6 +58,29 @@ namespace jasperengine {
         config.title = JASPERENGINE_WINDOW_TITLE;
         config.appId = JASPERENGINE_APP_ID;
         config.storageId = JASPERENGINE_STORAGE_ID;
+        // Player > Logging and Crash Handling, when the Exporter set them (the engine's defaults
+        // stay otherwise)
+    #ifdef JASPERENGINE_LOG_LEVEL
+        config.builtLogLevel = JASPERENGINE_LOG_LEVEL;
+    #endif
+    #ifdef JASPERENGINE_LOG_FILE
+        config.builtLogFile = JASPERENGINE_LOG_FILE != 0 ? 1 : 0;
+    #endif
+    #ifdef JASPERENGINE_LOG_BACKTRACE
+        config.builtLogBacktrace = JASPERENGINE_LOG_BACKTRACE != 0 ? 1 : 0;
+    #endif
+    #ifdef JASPERENGINE_CRASH_LOG_TAIL
+        config.builtCrashLogTail = JASPERENGINE_CRASH_LOG_TAIL != 0;
+    #endif
+    #ifdef JASPERENGINE_CRASH_DUMP_WITH_HEAP
+        config.builtCrashDumpWithHeap = JASPERENGINE_CRASH_DUMP_WITH_HEAP != 0;
+    #endif
+    #ifdef JASPERENGINE_CRASH_HANG_MS
+        config.builtHangMs = JASPERENGINE_CRASH_HANG_MS;
+    #endif
+    #ifdef JASPERENGINE_CRASH_WEB_OVERLAY
+        config.builtCrashWebOverlay = JASPERENGINE_CRASH_WEB_OVERLAY != 0;
+    #endif
         return config;
     }
 
