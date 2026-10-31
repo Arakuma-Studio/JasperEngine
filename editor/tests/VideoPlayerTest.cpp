@@ -259,6 +259,28 @@ TEST_F(VideoPlayerSystemTest, StopReleasesAndPrepareOpensAgain){
     EXPECT_EQ(std::count(events.begin(), events.end(), "prepared"), 2);
 }
 
+TEST_F(VideoPlayerSystemTest, PausedHoldsPlayOnAwakeAndResetArmsItAgain){
+    // the editor's edit mode: the system is paused, a player made then set later plays at Play
+    const Entity entity = makePlayer();
+    scene.getComponent<VideoPlayerComponent>(entity).clip = "";
+    system()->setPaused(true);
+    run(3, 0.05);
+    scene.getComponent<VideoPlayerComponent>(entity).clip = "ads/ad1.mp4";
+    run(3, 0.05);
+    EXPECT_TRUE(opened.empty()) << "nothing plays while paused";
+    system()->setPaused(false);
+    run(4, 0.05);
+    VideoPlayer player(&scene, entity);
+    EXPECT_TRUE(player.isPlaying()) << "playOnAwake at the first unpaused update";
+    // Play stop: everything closes; the next Play runs playOnAwake again
+    system()->resetPlayers();
+    EXPECT_FALSE(player.isPrepared());
+    EXPECT_EQ(system()->getOpenSources(), 0);
+    run(4, 0.05);
+    EXPECT_TRUE(player.isPlaying());
+    EXPECT_EQ(opened.size(), 2u);
+}
+
 TEST_F(VideoPlayerSystemTest, AnotherClipStopsThePlayer){
     const Entity entity = makePlayer();
     VideoPlayer player(&scene, entity);

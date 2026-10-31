@@ -213,8 +213,9 @@ namespace {
                 return;
             std::shared_ptr<GrowingFileState> file = download->getFile();
             const int64_t available = file->getAvailable();
-            // probe again once 64 KiB more arrived (the moov box of a short clip is a few KiB)
-            if (available < 32 || available < probedAt + 65536)
+            // probe again once a quarter more arrived (at least 4 KiB): a short clip's moov box
+            // is a few KiB, a long one's some MiB, and each probe reads it again from the start
+            if (available < 32 || (probedAt >= 0 && available < probedAt + std::max<int64_t>(4096, probedAt / 4)))
                 return;
             probedAt = available;
             std::unique_ptr<MediaByteSource> snapshot = GrowingFileReader::snapshot(file, url);
@@ -278,7 +279,7 @@ namespace {
         VideoInfo empty;
         bool loop = false;
         bool progressiveRefused = false;
-        int64_t probedAt = -65536;
+        int64_t probedAt = -1;
     };
 
     // ---------------------------------------------------------------- local files

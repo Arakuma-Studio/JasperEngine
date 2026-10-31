@@ -352,6 +352,26 @@ void VideoPlayerSystem::stop(Entity entity){
     entry.lastIteration = 0;
 }
 
+void VideoPlayerSystem::resetPlayers(){
+    if (!scene || !state)
+        return;
+    std::vector<Entity> entities;
+    for (const auto& [entity, entry] : state->entries)
+        entities.push_back(entity);
+    for (Entity entity : entities){
+        stop(entity);
+        PlayerEntry& entry = state->entries[entity];
+        entry.awoken = false;
+        entry.warnedEmpty = false;
+        entry.error = MediaError();
+        entry.errorReported = false;
+        entry.now = 0.0;
+        entry.lastAudioNow = -1.0;
+    }
+    state->pendingEvents.clear();
+    state->lastUiNow = -1.0;
+}
+
 void VideoPlayerSystem::setTime(Entity entity, double seconds){
     auto it = state->entries.find(entity);
     if (it == state->entries.end() || !it->second.prepared || !std::isfinite(seconds))

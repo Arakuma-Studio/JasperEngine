@@ -54,6 +54,9 @@ namespace jasperengine{
         void play(Entity entity);           // prepares first when needed: plays once prepared
         void pause(Entity entity);
         void stop(Entity entity);           // to time 0, the decoder released; the texture keeps its last frame
+        // every player stopped and not yet awoken (playOnAwake runs at the next update): the
+        // editor's Play stop, which keeps the scene
+        void resetPlayers();
         void stepForward(Entity entity);    // paused: the next frame
         void setTime(Entity entity, double seconds);
         void setFrame(Entity entity, int64_t frame);

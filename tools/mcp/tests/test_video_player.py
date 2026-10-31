@@ -149,6 +149,15 @@ async def status(ed: Editor, entity) -> dict:
     return got["video"]
 
 
+async def probe_script(ed: Editor, scene, entity) -> None:
+    """The VideoProbe script on a player: made by the first test that needs it, attached after"""
+    if not S.get("probe"):
+        made = await ed.call("create_script", kind="lua", name="VideoProbe", content=PROBE, scene=scene, entity=entity)
+        S["probe"] = made.get("path") or "VideoProbe.lua"
+    else:
+        await ed.call("attach_script", scene=scene, entity=entity, path=S["probe"])
+
+
 # ---------------------------------------------------------------- render texture -> UI Image
 
 async def test_render_texture_to_image(ed: Editor):
@@ -175,7 +184,7 @@ async def test_render_texture_to_image(ed: Editor):
     await ed.call("set_properties", scene=scene, entity=screen, values={"ui": {"texture": f"video|{player}"}})
     got = await ed.call("get_entity", scene=scene, entity=screen, components=["ui"], properties=["texture"])
     ed.check_eq(got["components"]["ui"]["texture"]["video"]["id"], player, "the Image shows the player's texture")
-    await ed.call("create_script", kind="lua", name="VideoProbe", content=PROBE, scene=scene, entity=player)
+    await probe_script(ed, scene, player)
     await ed.call("create_script", kind="lua", name="FillCanvas", content=FILL, scene=scene, entity=screen)
     await ed.call("save_scene", scene=scene)
     cursor = (await ed.call("read_console", limit=1))["next_cursor"]
@@ -247,7 +256,7 @@ async def test_camera_far_plane(ed: Editor):
                 ("camera_far_plane", "fit_outside", True, True), f"the camera background's settings: {got}")
     await ed.call("set_properties", scene=scene, entity=background, values={"videoplayer": {
         "clip": "assets/video/clip.mp4", "audioOutputMode": "none"}})
-    await ed.call("create_script", kind="lua", name="VideoProbe", content=PROBE, scene=scene, entity=background)
+    await probe_script(ed, scene, background)
     await ed.call("save_scene", scene=scene)
 
     await ed.call("play", action="start", scene=scene, fixed_fps=60, auto_pause=True)
@@ -373,7 +382,7 @@ async def test_url_progressive_start(ed: Editor):
         player = (await ed.call("create_entity", scene=scene, type="video_player", name="UrlPlayer"))["entity_id"]
         await ed.call("set_properties", scene=scene, entity=player, values={"videoplayer": {
             "source": "url", "playOnAwake": False, "audioOutputMode": "none"}})
-        await ed.call("create_script", kind="lua", name="VideoProbe", content=PROBE, scene=scene, entity=player)
+        await probe_script(ed, scene, player)
         await ed.call("save_scene", scene=scene)
         await ed.call("play", action="start", scene=scene, fixed_fps=0, auto_pause=False)
         try:
