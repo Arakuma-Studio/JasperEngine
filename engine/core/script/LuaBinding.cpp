@@ -216,6 +216,8 @@ void LuaBinding::createLuaState(){
 
     // the thread making the state owns it; from here on its allocations check the thread
     luaThread.store(std::this_thread::get_id(), std::memory_order_relaxed);
+    // and is the main thread of the log (its listeners, Log.onMessageReceived)
+    Log::setMainThread();
     const char* check = std::getenv("JASPER_LUA_THREAD_CHECK");
     if (check && std::strcmp(check, "abort") == 0)
         setThreadCheck(ThreadCheck::Abort);
@@ -665,7 +667,7 @@ static int luaPrint(lua_State* L){
         line.append(s, len);
         lua_pop(L, 1);
     }
-    Log::print("%s", line.c_str());
+    Log::emitEntry(LogLevel::Info, line, std::string(), true);
     return 0;
 }
 

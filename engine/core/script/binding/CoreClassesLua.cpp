@@ -10,6 +10,8 @@
 
 #include "Engine.h"
 #include "Log.h"
+#include "debug/DebugOverlay.h"
+#include "debug/DebugStats.h"
 #include "Scene.h"
 #include "SceneManager.h"
 #include "PrefabManager.h"
@@ -19,6 +21,7 @@
 #include "input/InputControlNames.h"
 #include "json.hpp"
 
+#include <cstring>
 #include <set>
 #include "System.h"
 #include "registry/PhysicsLayers.h"
@@ -422,6 +425,220 @@ namespace{
         return 1;
     }
 #endif
+
+}
+
+// ---- Log and DebugOverlay (feature debug-overlay). Lua is built as C: lua_error longjmps over
+// C++ destructors, so every check that can raise comes before the first C++ object.
+namespace {
+
+    struct LogLevelNames {};
+
+    // Log.print/verbose/debug/warn/error(...): the values joined with tabs (tostring), a Lua
+    // traceback per Project Settings > Debug > Log Stack Traces
+    int luaLogLine(lua_State* L, LogLevel level){
+        const int count = lua_gettop(L);
+        luaL_Buffer buffer;
+        luaL_buffinit(L, &buffer);
+        if (count == 0)
+            luaL_addstring(&buffer, "(nil)");
+        for (int i = 1; i <= count; i++){
+            if (i > 1)
+                luaL_addchar(&buffer, '\t');
+            luaL_tolstring(L, i, nullptr);
+            luaL_addvalue(&buffer);
+        }
+        luaL_pushresult(&buffer);
+        if (Log::wantsStackTrace(level))
+            luaL_traceback(L, L, nullptr, 1);
+        else
+            lua_pushliteral(L, "");
+        size_t messageLength = 0, traceLength = 0;
+        const char* message = lua_tolstring(L, -2, &messageLength);
+        const char* trace = lua_tolstring(L, -1, &traceLength);
+        {
+            const std::string messageText(message, messageLength);
+            const std::string traceText(trace, traceLength);
+            lua_pop(L, 2);
+            Log::emitEntry(level, messageText, traceText, true);
+        }
+        return 0;
+    }
+
+    int luaLogPrint(lua_State* L){ return luaLogLine(L, LogLevel::Info); }
+    int luaLogVerbose(lua_State* L){ return luaLogLine(L, LogLevel::Verbose); }
+    int luaLogDebug(lua_State* L){ return luaLogLine(L, LogLevel::Debug); }
+    int luaLogWarn(lua_State* L){ return luaLogLine(L, LogLevel::Warn); }
+    int luaLogError(lua_State* L){ return luaLogLine(L, LogLevel::Error); }
+
+    // Log.getEntries([maxCount [, levels]]): the buffered lines, newest last
+    int luaLogGetEntries(lua_State* L){
+        lua_Integer maxCount = 0;
+        if (!lua_isnoneornil(L, 1)){
+            maxCount = luaL_checkinteger(L, 1);
+            if (maxCount < 0)
+                return luaL_argerror(L, 1, "must be 0 (all) or more");
+        }
+        uint32_t mask = LOG_LEVELS_ALL;
+        if (!lua_isnoneornil(L, 2)){
+            luaL_checktype(L, 2, LUA_TTABLE);
+            mask = 0;
+            const lua_Integer length = (lua_Integer)lua_rawlen(L, 2);
+            for (lua_Integer i = 1; i <= length; i++){
+                lua_rawgeti(L, 2, i);
+                int isNumber = 0;
+                const lua_Integer value = lua_tointegerx(L, -1, &isNumber);
+                lua_pop(L, 1);
+                if (!isNumber || value < 0 || value > static_cast<lua_Integer>(LogLevel::Error))
+                    return luaL_argerror(L, 2, "a list of LogLevel values (LogLevel.INFO .. LogLevel.ERROR)");
+                mask |= logLevelBit(static_cast<LogLevel>(value));
+            }
+        }
+        const std::vector<LogEntry> entries = Log::getEntries(static_cast<size_t>(maxCount), mask);
+        lua_createtable(L, static_cast<int>(entries.size()), 0);
+        for (size_t i = 0; i < entries.size(); i++){
+            const LogEntry& entry = entries[i];
+            lua_createtable(L, 0, 8);
+            lua_pushinteger(L, static_cast<lua_Integer>(entry.id));
+            lua_setfield(L, -2, "id");
+            lua_pushinteger(L, static_cast<lua_Integer>(entry.level));
+            lua_setfield(L, -2, "level");
+            lua_pushlstring(L, entry.message.data(), entry.message.size());
+            lua_setfield(L, -2, "message");
+            lua_pushlstring(L, entry.stackTrace.data(), entry.stackTrace.size());
+            lua_setfield(L, -2, "stackTrace");
+            lua_pushnumber(L, entry.time);
+            lua_setfield(L, -2, "time");
+            lua_pushinteger(L, static_cast<lua_Integer>(entry.frame));
+            lua_setfield(L, -2, "frame");
+            lua_pushboolean(L, entry.mainThread);
+            lua_setfield(L, -2, "mainThread");
+            lua_pushboolean(L, entry.fromLua);
+            lua_setfield(L, -2, "fromLua");
+            lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
+        }
+        return 1;
+    }
+
+    // Log.count(level)
+    int luaLogCount(lua_State* L){
+        const lua_Integer level = luaL_checkinteger(L, 1);
+        if (level < 0 || level > static_cast<lua_Integer>(LogLevel::Error))
+            return luaL_argerror(L, 1, "a LogLevel value (LogLevel.INFO .. LogLevel.ERROR)");
+        lua_pushinteger(L, static_cast<lua_Integer>(Log::getCount(static_cast<LogLevel>(level))));
+        return 1;
+    }
+
+    // DebugOverlay.getStats(): DebugStatsSnapshot's fields, camelCase
+    int luaDebugOverlayGetStats(lua_State* L){
+        const DebugStatsSnapshot s = DebugStats::sample();
+        lua_createtable(L, 0, 20);
+        auto number = [L](const char* name, double value){
+            lua_pushnumber(L, value);
+            lua_setfield(L, -2, name);
+        };
+        auto integer = [L](const char* name, uint64_t value){
+            lua_pushinteger(L, static_cast<lua_Integer>(value));
+            lua_setfield(L, -2, name);
+        };
+        number("fps", s.fps);
+        number("frameMs", s.frameMs);
+        number("frameMsAvg", s.frameMsAvg);
+        number("frameMsMin", s.frameMsMin);
+        number("frameMsMax", s.frameMsMax);
+        number("frameMs1PercentLow", s.frameMs1PercentLow);
+        integer("drawCalls", s.drawCalls);
+        integer("instances", s.instances);
+        integer("triangles", s.triangles);
+        integer("processMemoryBytes", s.processMemoryBytes);
+        integer("luaMemoryBytes", s.luaMemoryBytes);
+        integer("audioVoices", s.audioVoices);
+        integer("audioVoicesMax", s.audioVoicesMax);
+        integer("bodies2D", s.bodies2D);
+        integer("bodies3D", s.bodies3D);
+        integer("entities", s.entities);
+        integer("scenes", s.scenes);
+        integer("coroutines", s.coroutines);
+        integer("timers", s.timers);
+        integer("htmlUiDrawCalls", s.htmlUiDrawCalls);
+        return 1;
+    }
+
+    // a console command's Lua function, unreferenced when the command goes (while its state lives)
+    struct LuaCommandFunction {
+        lua_State* L = nullptr;
+        int ref = LUA_NOREF;
+        ~LuaCommandFunction(){
+            if (L && ref != LUA_NOREF && LuaBinding::getLuaState() == L)
+                luaL_unref(L, LUA_REGISTRYINDEX, ref);
+        }
+    };
+
+    // the table `self` of the Lua function that called (a script method), or 0
+    const void* callerSelf(lua_State* L){
+        lua_Debug ar;
+        if (!lua_getstack(L, 1, &ar))
+            return nullptr;
+        const void* self = nullptr;
+        for (int i = 1; ; i++){
+            const char* name = lua_getlocal(L, &ar, i);
+            if (!name)
+                break;
+            if (std::strcmp(name, "self") == 0 && lua_istable(L, -1))
+                self = lua_topointer(L, -1);
+            lua_pop(L, 1);
+            if (self || std::strcmp(name, "self") == 0)
+                break;
+        }
+        return self;
+    }
+
+    // DebugOverlay.addCommand(name, description, fn [, owner]): fn(args) gets the words after the
+    // name. The owner (a script table; by default the `self` of the calling method) takes the
+    // command with it when it is released
+    int luaDebugOverlayAddCommand(lua_State* L){
+        size_t nameLength = 0;
+        const char* name = luaL_checklstring(L, 1, &nameLength);
+        size_t descriptionLength = 0;
+        const char* description = lua_isnoneornil(L, 2) ? "" : luaL_checklstring(L, 2, &descriptionLength);
+        luaL_checktype(L, 3, LUA_TFUNCTION);
+        const void* owner = nullptr;
+        if (!lua_isnoneornil(L, 4)){
+            luaL_checktype(L, 4, LUA_TTABLE);
+            owner = lua_topointer(L, 4);
+        }else{
+            owner = callerSelf(L);
+        }
+        lua_pushvalue(L, 3);
+        const int ref = luaL_ref(L, LUA_REGISTRYINDEX);
+        bool added = false;
+        {
+            const std::string commandName(name, nameLength);
+            auto function = std::make_shared<LuaCommandFunction>();
+            function->L = L;
+            function->ref = ref;
+            const std::string ownerTag = owner ? "_" + std::to_string(reinterpret_cast<std::uintptr_t>(owner)) + "_" : std::string();
+            added = DebugOverlay::addCommand(commandName, std::string(description, descriptionLength),
+                [function, commandName](const std::vector<std::string>& args){
+                    lua_State* state = function->L;
+                    if (!state || LuaBinding::getLuaState() != state)
+                        return;
+                    lua_rawgeti(state, LUA_REGISTRYINDEX, function->ref);
+                    lua_createtable(state, static_cast<int>(args.size()), 0);
+                    for (size_t i = 0; i < args.size(); i++){
+                        lua_pushlstring(state, args[i].data(), args[i].size());
+                        lua_rawseti(state, -2, static_cast<lua_Integer>(i + 1));
+                    }
+                    if (LuaBinding::pcallWithTraceback(state, 1, 0) != LUA_OK){
+                        const std::string error = LuaBinding::getLuaStackErrorString(state, -1);
+                        lua_pop(state, 1);
+                        Log::error("Lua Error: console command '%s': %s", commandName.c_str(), error.c_str());
+                    }
+                }, ownerTag);
+        }
+        lua_pushboolean(L, added);
+        return 1;
+    }
 
 }
 
@@ -928,6 +1145,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("fixedDeltatime", &Engine::getFixedDeltatime, &Engine::setFixedDeltatime)
         .addStaticProperty("gameTime", &Engine::getGameTime)
         .addStaticProperty("frameCount", &Engine::getGameFrames)
+        // Unity's Debug.isDebugBuild: the editor's Play and Debug-type exports
+        .addStaticProperty("isDevelopmentBuild", &Engine::isDevelopmentBuild)
         .addStaticProperty("asyncLoading", &Engine::isAsyncLoading, &Engine::setAsyncLoading)
         .addStaticFunction("startAsyncThread", &Engine::startAsyncThread)
         .addStaticFunction("commitThreadQueue", &Engine::commitThreadQueue)
@@ -1713,12 +1932,58 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("LogLevel")
+        .addVariable("INFO", LogLevel::Info)
+        .addVariable("VERBOSE", LogLevel::Verbose)
+        .addVariable("DEBUG", LogLevel::Debug)
+        .addVariable("WARN", LogLevel::Warn)
+        .addVariable("ERROR", LogLevel::Error)
+        .endNamespace();
+
+    // Log.onMessageReceived's event: (message, stackTrace, level)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(const std::string&, const std::string&, int)>>("FunctionSubscribe_V_SSI")
+        .addFunction("__call", &FunctionSubscribe<void(const std::string&, const std::string&, int)>::call)
+        .addFunction("call", &FunctionSubscribe<void(const std::string&, const std::string&, int)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(const std::string&, const std::string&, int)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(const std::string&, const std::string&, int)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(const std::string&, const std::string&, int)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(const std::string&, const std::string&, int)>::has)
+        .endClass();
+
+    // the engine's log (feature debug-overlay): lines with any values (tostring, tab-joined),
+    // a traceback on warnings and errors (Project Settings > Debug), the buffer and listeners
+    luabridge::getGlobalNamespace(L)
         .beginClass<Log>("Log")
-        .addStaticFunction("print", [] (const char* text) { Log::print("%s", text ? text : "(nil)"); })
-        .addStaticFunction("verbose", [] (const char* text) { Log::verbose("%s", text ? text : "(nil)"); })
-        .addStaticFunction("debug", [] (const char* text) { Log::debug("%s", text ? text : "(nil)"); })
-        .addStaticFunction("warn", [] (const char* text) { Log::warn("%s", text ? text : "(nil)"); })
-        .addStaticFunction("error", [] (const char* text) { Log::error("%s", text ? text : "(nil)"); })
+        .addStaticFunction("print", &luaLogPrint)
+        .addStaticFunction("verbose", &luaLogVerbose)
+        .addStaticFunction("debug", &luaLogDebug)
+        .addStaticFunction("warn", &luaLogWarn)
+        .addStaticFunction("error", &luaLogError)
+        // Unity's Application.logMessageReceived: RegisterEvent(self, Log.onMessageReceived, "onLog")
+        .addStaticProperty("onMessageReceived", [] () { return &Log::onMessageReceived; }, [] (lua_State* L) { Log::onMessageReceived = L; })
+        .addStaticFunction("getEntries", &luaLogGetEntries)
+        .addStaticFunction("clear", &Log::clearEntries)
+        .addStaticFunction("count", &luaLogCount)
+        .addStaticProperty("bufferSize", [] () -> int { return (int)std::min<size_t>(Log::getBufferSize(), INT32_MAX); },
+                           [] (int size) { Log::setBufferSize(size > 0 ? (size_t)size : 0); })
+        .endClass();
+
+    // the on-device console and stats overlay (Unity's IngameDebugConsole and Graphy)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<DebugOverlay>("DebugOverlay")
+        .addStaticProperty("enabled", &DebugOverlay::isEnabled, &DebugOverlay::setEnabled)
+        .addStaticFunction("showConsole", &DebugOverlay::showConsole)
+        .addStaticFunction("hideConsole", &DebugOverlay::hideConsole)
+        .addStaticFunction("toggleConsole", &DebugOverlay::toggleConsole)
+        .addStaticProperty("consoleVisible", &DebugOverlay::isConsoleVisible)
+        .addStaticProperty("statsMode", &DebugOverlay::getStatsMode, &DebugOverlay::setStatsMode)
+        .addStaticProperty("STATS_OFF", [] () -> int { return (int)DebugOverlaySettings::Stats::Off; })
+        .addStaticProperty("STATS_FPS", [] () -> int { return (int)DebugOverlaySettings::Stats::Fps; })
+        .addStaticProperty("STATS_FULL", [] () -> int { return (int)DebugOverlaySettings::Stats::Full; })
+        .addStaticFunction("getStats", &luaDebugOverlayGetStats)
+        .addStaticFunction("addCommand", &luaDebugOverlayAddCommand)
+        .addStaticFunction("removeCommand", &DebugOverlay::removeCommand)
+        .addStaticFunction("executeCommand", &DebugOverlay::executeCommand)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

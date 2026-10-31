@@ -11,6 +11,8 @@
 #include "texture/Material.h"
 #include "component/UIDocumentComponent.h"
 #include "component/FluidSimulationComponent.h"
+#include "debug/DebugOverlay.h"
+#include "Log.h"
 
 using namespace jasperengine;
 
@@ -121,6 +123,10 @@ namespace luabridge
 
     // Touch is a bound value class (CoreClassesLua.cpp); its phase an enum
     template<> struct Stack<TouchPhase> : EnumWrapper<TouchPhase>{};
+
+    // feature debug-overlay: LogLevel.INFO .. ERROR, DebugOverlay.STATS_*
+    template<> struct Stack<LogLevel> : EnumWrapper<LogLevel>{};
+    template<> struct Stack<DebugOverlaySettings::Stats> : EnumWrapper<DebugOverlaySettings::Stats>{};
 
     // Entity type is not necessary here because it already exists Stack<unsigned int>
 

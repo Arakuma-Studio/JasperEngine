@@ -671,6 +671,11 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     include_directories(${PROJECT_ROOT})
     include_directories(${PROJECT_ROOT}/scripts)
 
+    # A Debug-type export is a development build (Engine.isDevelopmentBuild, the debug overlay's
+    # "development" mode): the generated init reads it. Multi-config generators (Xcode, Visual
+    # Studio) and Android's debug variant get it for their Debug configuration.
+    add_compile_definitions($<$<CONFIG:Debug>:JASPERENGINE_DEVELOPMENT_BUILD>)
+
 endif() # End standalone project setup
 
 # =============================================================
@@ -862,6 +867,10 @@ set(JASPERENGINE_SRCS
     core/input/InputActions.cpp
     core/input/InputControlNames.cpp
     core/Log.cpp
+    core/debug/DebugOverlay.cpp
+    core/debug/DebugOverlayResources.cpp
+    core/debug/DebugStats.cpp
+    core/debug/ProcessMemory.cpp
     core/Scene.cpp
     core/SceneSettings.cpp
     core/System.cpp

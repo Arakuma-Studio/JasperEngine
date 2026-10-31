@@ -2055,6 +2055,35 @@ OVERRIDES.update({
         'overloads': [([('key', 'string'), ('value', 'string')], '')]},
 })
 
+# debug-overlay (CoreClassesLua.cpp): Log.* and DebugOverlay's table functions are lua_CFunctions;
+# DebugLogEntry / DebugStats are in engine/core/script/binding/stubs/DebugOverlay.lua
+for _level, _doc in (('print', 'An information line'), ('verbose', 'A verbose line'),
+                     ('debug', 'A debug line (compiled out of release builds of the engine)'),
+                     ('warn', 'A warning line'), ('error', 'An error line')):
+    OVERRIDES[('Log', _level)] = {
+        'doc': [_doc + ' of the values (tostring, joined with tabs, like print) into the log: the editor\'s',
+                'Console, logcat / the terminal, the on-device console, Log.getEntries and Log.onMessageReceived.',
+                'Warnings and errors carry a Lua traceback (Project Settings > Debug > Log Stack Traces).'],
+        'overloads': [([('...', 'any')], '')]}
+OVERRIDES.update({
+    ('Log', 'getEntries'): {
+        'doc': ['The buffered log lines, oldest first: the newest `maxCount` (0 or nil: all), of the `levels` given',
+                '(a list of LogLevel values; nil: every level). `Log.getEntries(20, {LogLevel.ERROR})`.'],
+        'overloads': [([('maxCount?', 'integer'), ('levels?', 'integer[]')], 'DebugLogEntry[]')]},
+    ('Log', 'count'): {
+        'doc': ['Lines of that LogLevel logged since the last Log.clear (buffered or not).'],
+        'overloads': [([('level', 'integer')], 'integer')]},
+    ('DebugOverlay', 'getStats'): {
+        'doc': ['The stats the overlay shows, now (works while the overlay is off): FPS and frame times of the last',
+                '2 s, draw calls, memory, audio voices, physics bodies, entities, scenes, coroutines, HTML UI draws.'],
+        'overloads': [([], 'DebugStats')]},
+    ('DebugOverlay', 'addCommand'): {
+        'doc': ['A console command: typing `name a b` runs `fn({"a", "b"})` (quotes group words). Names are',
+                '[a-z0-9_-]+; adding a name again replaces it. `owner` (default: the `self` of the calling script',
+                'method) takes the command with it when that script is released. False when refused (logged).'],
+        'overloads': [([('name', 'string'), ('description', 'string'), ('fn', 'fun(args: string[])'), ('owner?', 'table')], 'boolean')]},
+})
+
 # Properties whose getter returns a LuaRef: (Lua type, a copy)
 PROPERTY_OVERRIDES = {
     # the null sentinel (stubs/Json.lua: JsonNull)

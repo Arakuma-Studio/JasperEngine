@@ -3307,6 +3307,17 @@
 		4A534E479968450BA2CEF5BB /* InputControlNames.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */; };
 		4A534E4749E3318561E17181 /* InputActions.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47DA77C1DF72E1D462 /* InputActions.h */; };
 		4A534E47CC9B5D8BFDD75814 /* InputControlNames.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4763010A7AB6271A0C /* InputControlNames.h */; };
+		4A534E4799074761EB73275F /* DebugOverlay.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C33063FE6F38230 /* DebugOverlay.cpp */; };
+		4A534E47616F1F38DEA04615 /* DebugOverlay.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C33063FE6F38230 /* DebugOverlay.cpp */; };
+		4A534E47363D69401D2B349E /* DebugOverlayResources.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474C923828D7422271 /* DebugOverlayResources.cpp */; };
+		4A534E47880AD33FCC731DA0 /* DebugOverlayResources.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474C923828D7422271 /* DebugOverlayResources.cpp */; };
+		4A534E4775EA0FE24B50FD95 /* DebugStats.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C62C3BED7646C817 /* DebugStats.cpp */; };
+		4A534E470E64957D3C296FB5 /* DebugStats.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C62C3BED7646C817 /* DebugStats.cpp */; };
+		4A534E47A6F7345580E0D892 /* ProcessMemory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FD4ED9251979D6D1 /* ProcessMemory.cpp */; };
+		4A534E4702E0F1BB649CA319 /* ProcessMemory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FD4ED9251979D6D1 /* ProcessMemory.cpp */; };
+		4A534E4700C2B06C425C31F7 /* DebugOverlay.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470614F67155D9E9FC /* DebugOverlay.h */; };
+		4A534E47EBF20FD2B6EA0602 /* DebugOverlayResources.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C029F7456AC311E6 /* DebugOverlayResources.h */; };
+		4A534E47CA764B3433135B26 /* DebugStats.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47FC23B0CE0C82B758 /* DebugStats.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6682,6 +6693,13 @@
 		4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputControlNames.cpp; sourceTree = "<group>"; };
 		4A534E47DA77C1DF72E1D462 /* InputActions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputActions.h; sourceTree = "<group>"; };
 		4A534E4763010A7AB6271A0C /* InputControlNames.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputControlNames.h; sourceTree = "<group>"; };
+		4A534E479C33063FE6F38230 /* DebugOverlay.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DebugOverlay.cpp; sourceTree = "<group>"; };
+		4A534E474C923828D7422271 /* DebugOverlayResources.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DebugOverlayResources.cpp; sourceTree = "<group>"; };
+		4A534E47C62C3BED7646C817 /* DebugStats.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DebugStats.cpp; sourceTree = "<group>"; };
+		4A534E47FD4ED9251979D6D1 /* ProcessMemory.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ProcessMemory.cpp; sourceTree = "<group>"; };
+		4A534E470614F67155D9E9FC /* DebugOverlay.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DebugOverlay.h; sourceTree = "<group>"; };
+		4A534E47C029F7456AC311E6 /* DebugOverlayResources.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DebugOverlayResources.h; sourceTree = "<group>"; };
+		4A534E47FC23B0CE0C82B758 /* DebugStats.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DebugStats.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -7974,6 +7992,20 @@
 			path = input;
 			sourceTree = "<group>";
 		};
+		4A534E47B1D2BFA5C64803C4 /* debug */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E479C33063FE6F38230 /* DebugOverlay.cpp */,
+				4A534E474C923828D7422271 /* DebugOverlayResources.cpp */,
+				4A534E47C62C3BED7646C817 /* DebugStats.cpp */,
+				4A534E47FD4ED9251979D6D1 /* ProcessMemory.cpp */,
+				4A534E470614F67155D9E9FC /* DebugOverlay.h */,
+				4A534E47C029F7456AC311E6 /* DebugOverlayResources.h */,
+				4A534E47FC23B0CE0C82B758 /* DebugStats.h */,
+			);
+			path = debug;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -8015,6 +8047,7 @@
 				4A534E472AD0C1A658CC6825 /* physics */,
 				4A534E477E49C8CF16ED0963 /* animation */,
 				4A534E47BC50EC83811560AA /* input */,
+				4A534E47B1D2BFA5C64803C4 /* debug */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -11938,6 +11971,9 @@
 				4A534E47693D678BC7B907E1 /* MeshBufferPool.h in Headers */,
 				4A534E4749E3318561E17181 /* InputActions.h in Headers */,
 				4A534E47CC9B5D8BFDD75814 /* InputControlNames.h in Headers */,
+				4A534E4700C2B06C425C31F7 /* DebugOverlay.h in Headers */,
+				4A534E47EBF20FD2B6EA0602 /* DebugOverlayResources.h in Headers */,
+				4A534E47CA764B3433135B26 /* DebugStats.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -13987,6 +14023,10 @@
 				4A534E473E6B9FE60C626734 /* MeshBufferPool.cpp in Sources */,
 				4A534E47D17B678C8F81B040 /* InputActions.cpp in Sources */,
 				4A534E47A988705C5C005E19 /* InputControlNames.cpp in Sources */,
+				4A534E4799074761EB73275F /* DebugOverlay.cpp in Sources */,
+				4A534E47363D69401D2B349E /* DebugOverlayResources.cpp in Sources */,
+				4A534E4775EA0FE24B50FD95 /* DebugStats.cpp in Sources */,
+				4A534E47A6F7345580E0D892 /* ProcessMemory.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14415,6 +14455,10 @@
 				4A534E472437676B559FC859 /* MeshBufferPool.cpp in Sources */,
 				4A534E47AC81945749605313 /* InputActions.cpp in Sources */,
 				4A534E479968450BA2CEF5BB /* InputControlNames.cpp in Sources */,
+				4A534E47616F1F38DEA04615 /* DebugOverlay.cpp in Sources */,
+				4A534E47880AD33FCC731DA0 /* DebugOverlayResources.cpp in Sources */,
+				4A534E470E64957D3C296FB5 /* DebugStats.cpp in Sources */,
+				4A534E4702E0F1BB649CA319 /* ProcessMemory.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

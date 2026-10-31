@@ -46,6 +46,8 @@ namespace jasperengine{
 
 		static void setGlobalVolume(float volume);
 		static float getGlobalVolume();
+		// sounds playing now and the most that play at once (0, 0 before the output opens)
+		static void getVoiceCounts(uint32_t& active, uint32_t& max);
 
         bool loadSound(AudioSourceComponent& audio);
 		void destroySound(AudioSourceComponent& audio);

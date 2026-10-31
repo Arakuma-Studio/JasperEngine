@@ -110,6 +110,10 @@ namespace jasperengine{
             metadata.erase(it);
         }
 
+        size_t getEntityCount() const{
+            return metadata.size();
+        }
+
         std::vector<Entity> getEntityList() const{
             std::vector<Entity> list;
             for (auto const& [key, val] : metadata){

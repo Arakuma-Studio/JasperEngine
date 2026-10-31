@@ -57,6 +57,15 @@ bool AudioSystem::isOutputAvailable(){
     return !outputUnavailable;
 }
 
+void AudioSystem::getVoiceCounts(uint32_t& active, uint32_t& max){
+    active = 0;
+    max = 0;
+    if (!inited)
+        return;
+    active = getSoloud().getActiveVoiceCount();
+    max = getSoloud().getMaxActiveVoiceCount();
+}
+
 void AudioSystem::deInit(){
     if (inited){
         getSoloud().deinit();
