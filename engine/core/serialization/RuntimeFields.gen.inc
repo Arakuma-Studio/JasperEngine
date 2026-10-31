@@ -995,6 +995,7 @@ const FieldEntry kBody_TweenComponent_fields[] = {
     JE_RF(TweenComponent, loop, 0x3229150cu, Bool),
     JE_RF(TweenComponent, pingPong, 0x894b309cu, Bool),
     JE_RF(TweenComponent, function, 0xfa10436au, Ease),
+    JE_RF(TweenComponent, curve, 0xd238e139u, Custom),
 };
 const StructTable kBody_TweenComponent{"tween", kBody_TweenComponent_fields, std::size(kBody_TweenComponent_fields)};
 
