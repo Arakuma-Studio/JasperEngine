@@ -19,6 +19,7 @@
 #include "LuaBinding.h"
 #include "Log.h"
 #include "animation/AnimationEvent.h"
+#include "object/VideoPlayer.h"
 
 #include "lua.hpp"
 #include "LuaBridge.h"
@@ -162,6 +163,11 @@ void LuaFunctionBase::push_value(lua_State *vm, Contact2D o){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
+void LuaFunctionBase::push_value(lua_State *vm, const VideoPlayer &o){
+    if (!luabridge::push<VideoPlayer>(vm, o))
+        throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
+}
+
 void LuaFunctionBase::push_value(lua_State *vm, Rigidbody o){
     if (!luabridge::push<Rigidbody>(vm, o))
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);

@@ -74,6 +74,7 @@
 
 #include "texture/Texture.h"
 #include "component/UIDocumentComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "Engine.h"
 #include "io/UserSettings.h"
 #include "io/UserSettingsStore.h"
@@ -3953,6 +3954,11 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     // HTML UI documents draw geometry, gradients and layer/filter passes (RmlRenderer)
     if (scene->isComponentRegistered<UIDocumentComponent>() && scene->getComponentArray<UIDocumentComponent>()->size() > 0) {
         for (const auto& variant : ShaderPool::getHtmlUIVariants())
+            insertKeys(variant.first, variant.second, 0);
+    }
+    // Video Players convert their frames (HTMLUI_POST Yuv) and blit camera planes (Passthrough)
+    if (scene->isComponentRegistered<VideoPlayerComponent>() && scene->getComponentArray<VideoPlayerComponent>()->size() > 0) {
+        for (const auto& variant : ShaderPool::getVideoPlayerVariants())
             insertKeys(variant.first, variant.second, 0);
     }
 

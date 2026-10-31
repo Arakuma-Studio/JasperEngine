@@ -957,6 +957,7 @@ set(JASPERENGINE_SRCS
     core/media/VideoPlayback.cpp
     core/media/VideoSourceFactory.cpp
     core/media/VideoStream.cpp
+    core/media/VideoTextureConverter.cpp
     core/htmlui/media/UIElementVideo.cpp
     core/htmlui/media/UIVideoControls.cpp
     core/htmlui/media/UIVideoElement.cpp
@@ -1004,6 +1005,7 @@ set(JASPERENGINE_SRCS
     core/object/Light2D.cpp
     core/object/LineRenderer.cpp
     core/object/Mesh.cpp
+    core/object/VideoPlayer.cpp
     core/object/MeshPolygon.cpp
     core/object/Mirror.cpp
     core/object/FluidSimulation.cpp
@@ -1098,6 +1100,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/PoseAnimatorSystem.cpp
     core/subsystem/VertexAnimatorSystem.cpp
     core/subsystem/FluidSystem.cpp
+    core/subsystem/VideoPlayerSystem.cpp
     core/fluid/FluidSimulator.cpp
     core/fluid/FluidPresets.cpp
     core/subsystem/AudioSystem.cpp

@@ -31,6 +31,7 @@
 #include "component/Transform.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/effects/EffectRegistry.h"
@@ -451,6 +452,11 @@ namespace {
                 // registration must not throw while it saves)
                 if (registry->isComponentRegistered<UIDocumentComponent>() && registry->findComponent<UIDocumentComponent>(entity)){
                     for (const auto& variant : ShaderPool::getHtmlUIVariants())
+                        insertKeys(variant.first, variant.second, 0);
+                }
+                // a Video Player's frame conversion and camera-plane blit (VideoTextureConverter)
+                if (registry->isComponentRegistered<VideoPlayerComponent>() && registry->findComponent<VideoPlayerComponent>(entity)){
+                    for (const auto& variant : ShaderPool::getVideoPlayerVariants())
                         insertKeys(variant.first, variant.second, 0);
                 }
                 const PointsComponent* points = registry->findComponent<PointsComponent>(entity);

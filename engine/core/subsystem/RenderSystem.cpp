@@ -30,6 +30,7 @@
 #include "texture/Texture.h"
 #include "object/environment/Water.h"
 #include "subsystem/FluidSystem.h"
+#include "subsystem/VideoPlayerSystem.h"
 #include <memory>
 #include <algorithm>
 #include <array>
@@ -3401,6 +3402,11 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
     // an HTML UI document: geometry, gradients and layer/filter passes (RmlRenderer)
     if (scene->findComponent<UIDocumentComponent>(entity)){
         for (const auto& variant : ShaderPool::getHtmlUIVariants())
+            add(variant.first, variant.second, 0);
+    }
+    // a Video Player: its frames' YUV conversion and its camera-plane blit (VideoTextureConverter)
+    if (scene->isComponentRegistered<VideoPlayerComponent>() && scene->findComponent<VideoPlayerComponent>(entity)){
+        for (const auto& variant : ShaderPool::getVideoPlayerVariants())
             add(variant.first, variant.second, 0);
     }
 }
@@ -14476,6 +14482,9 @@ void RenderSystem::drawFramePasses(){
     frameFluids = scene->findSystem<FluidSystem>().get();
     if (frameFluids)
         frameFluids->renderFluids();
+    // the Video Players' frames of this update into their textures, before anything samples them
+    if (std::shared_ptr<VideoPlayerSystem> videos = scene->findSystem<VideoPlayerSystem>())
+        videos->processConversions();
 
     // Runtime-captured probes share a strict budget: one cubemap face total per
     // frame. Static probes without an authored cubemap capture once; dynamic
@@ -14857,6 +14866,7 @@ void RenderSystem::drawCameras(bool includeMain){
         CameraPass pass;
         pass.camera = &camera;
         pass.cameraTransform = cameraTransformPtr;
+        pass.entity = cameraEntity;
         pass.isMain = isMainCamera;
         pass.renderToTexture = camera.renderToTexture;
         pass.terrainView = terrainView;
@@ -15425,6 +15435,29 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
     }
 
+    //---------Video Players on this camera's planes (Unity's CameraFarPlane / CameraNearPlane)----------
+    // the far plane replaces the background (after the clear and the sky, under the opaque
+    // queue: no depth test or write); the near one goes over the scene, under the UI. Game
+    // cameras only (not the editor's Scene view)
+    VideoPlayerSystem* videoPlanes = scene->findSystem<VideoPlayerSystem>().get();
+    const Entity videoCamera = pass.entity != NULL_ENTITY ? pass.entity : (isMainCamera ? scene->getCamera() : NULL_ENTITY);
+    bool videoPlanesAllowed = videoPlanes && videoCamera != NULL_ENTITY;
+#ifdef JASPERENGINE_EDITOR
+    videoPlanesAllowed = videoPlanesAllowed && !passDrawsOverlays;
+#endif
+    // the picture's first row at the top: GL's destinations stored bottom row first take it flipped
+    const bool videoFlipY = Engine::isOpenGL() && !isRenderingFlipped(camera);
+    if (videoPlanesAllowed && videoPlanes->hasCameraPlanes(true)){
+        videoPlanes->drawCameraPlanes(videoCamera, true, targetFormatFor(colorPip, passMsaa), camera.render, colorPassViewport, videoFlipY);
+    }
+    bool videoNearPending = videoPlanesAllowed && videoPlanes->hasCameraPlanes(false);
+    auto drawVideoNearPlanes = [&](){
+        if (!videoNearPending)
+            return;
+        videoNearPending = false;
+        videoPlanes->drawCameraPlanes(videoCamera, false, targetFormatFor(colorPip, passMsaa), camera.render, colorPassViewport, videoFlipY);
+    };
+
     if (distanceSort){
         for (const OpaqueRenderData& opaque : opaqueRenders){
             // (a transparent mesh here is split: its opaque submeshes)
@@ -15466,9 +15499,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
 
         // (a UI element this pass draws: not one hidden, inactive or culled)
-        if (screenFluidsPending && signature.test(scene->getComponentId<UIComponent>()) && transform.visible &&
+        if ((screenFluidsPending || videoNearPending) && signature.test(scene->getComponentId<UIComponent>()) && transform.visible &&
                 isRenderActive(entity, signature) && isLayerVisible(entity, cullingMask) &&
                 !samplesCameraTarget(camera, scene->getComponent<UIComponent>(entity).texture)){
+            drawVideoNearPlanes();
             drawScreenFluids();
         }
 
@@ -15626,7 +15660,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
     }
 
-    //---------Draw SCREEN fluid simulations, if no UI element came first----------
+    //---------Draw near-plane videos and SCREEN fluid simulations, if no UI element came first----------
+    drawVideoNearPlanes();
     drawScreenFluids();
 
     //---------Draw HTML UI documents (in front of everything, including component UI)----------

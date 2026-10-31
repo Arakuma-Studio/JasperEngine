@@ -223,6 +223,28 @@ bool VideoAudioSource::start(float volume){
     return handle != 0;
 }
 
+bool VideoAudioSource::start3d(float volume, float x, float y, float z){
+    if (isPlaying())
+        return true;
+    if (!AudioSystem::init())
+        return false;
+    handle = AudioSystem::getSoloud().play3d(*source, x, y, z, 0.0f, 0.0f, 0.0f, volume, true);
+    paused = true;
+    return handle != 0;
+}
+
+void VideoAudioSource::set3d(float x, float y, float z, float minDistance, float maxDistance, unsigned int attenuation, float rolloff,
+                             const float listener[9]){
+    if (!isPlaying())
+        return;
+    SoLoud::Soloud& soloud = AudioSystem::getSoloud();
+    soloud.set3dSourceMinMaxDistance(handle, minDistance, maxDistance);
+    soloud.set3dSourceAttenuation(handle, attenuation, rolloff);
+    soloud.set3dSourcePosition(handle, x, y, z);
+    soloud.set3dListenerParameters(listener[0], listener[1], listener[2], listener[3], listener[4], listener[5], listener[6], listener[7], listener[8]);
+    soloud.update3dAudio();
+}
+
 bool VideoAudioSource::isPlaying() const{
     return handle != 0 && AudioSystem::isOutputAvailable() && AudioSystem::getSoloud().isValidVoiceHandle(handle);
 }

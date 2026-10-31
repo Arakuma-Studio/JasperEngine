@@ -93,6 +93,12 @@ namespace jasperengine {
 
         // AudioSystem::init() and a paused voice; false without audio output
         bool start(float volume);
+        // the same as a 3D voice at a world position (a Video Player through an AudioSource)
+        bool start3d(float volume, float x, float y, float z);
+        // a 3D voice's position and distance model (SoLoud's attenuation models, the
+        // AudioSource's values), and the listener (the scene camera)
+        void set3d(float x, float y, float z, float minDistance, float maxDistance, unsigned int attenuation, float rolloff,
+                   const float listener[9]);
         bool isPlaying() const;    // a valid voice exists (SoLoud may have been torn down)
         void setPaused(bool paused);
         void setVolume(float volume);

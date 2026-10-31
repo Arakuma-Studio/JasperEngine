@@ -825,6 +825,8 @@ namespace jasperengine{
 		struct CameraPass{
 			CameraComponent* camera = nullptr;
 			Transform* cameraTransform = nullptr;
+			// the camera's entity (NULL_ENTITY: a mirror's or a view's own camera)
+			Entity entity = NULL_ENTITY;
 			// the view camera: culled instances, detail levels, SSAO, SSR, post-process, fixed resolution
 			bool isMain = false;
 			// draws into camera->framebuffer

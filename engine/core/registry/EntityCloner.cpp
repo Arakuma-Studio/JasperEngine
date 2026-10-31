@@ -11,6 +11,7 @@
 #include "render/TextureRender.h"
 #include "texture/Framebuffer.h"
 #include "fluid/FluidSimulator.h"
+#include "media/VideoTextureConverter.h"
 
 #include <unordered_set>
 
@@ -32,6 +33,7 @@ struct CloneContext {
     std::unordered_map<const Framebuffer*, FramebufferCopy> framebuffers;
     // a copied fluid with a simulator -> the copy's own (made first: its output is mapped)
     std::unordered_map<Entity, std::shared_ptr<FluidSimulator>> fluidSimulators;
+    std::unordered_map<Entity, std::shared_ptr<VideoTextureConverter>> videoOutputs;
     // meshes whose external buffers point into the file data of a model copied with them
     std::unordered_set<Entity> modelMeshes;
 
@@ -408,6 +410,23 @@ void prepare<VertexAnimatorComponent>(VertexAnimatorComponent& animator, Entity,
 }
 
 template<>
+void prepare<VideoPlayerComponent>(VideoPlayerComponent& player, Entity sourceEntity, CloneContext& ctx) {
+    // the copy plays on its own (its own texture; the textures showing the original's show its
+    // own after the remap), with no listeners of the original
+    auto it = ctx.videoOutputs.find(sourceEntity);
+    player.output = it != ctx.videoOutputs.end() ? it->second : nullptr;
+    player.targetCamera = ctx.remap(player.targetCamera);
+    player.targetMaterialRenderer = ctx.remap(player.targetMaterialRenderer);
+    player.targetAudioSource = ctx.remap(player.targetAudioSource);
+    player.onPrepareCompleted.clear();
+    player.onStarted.clear();
+    player.onLoopPointReached.clear();
+    player.onErrorReceived.clear();
+    player.onSeekCompleted.clear();
+    player.onFrameReady.clear();
+}
+
+template<>
 void prepare<FluidSimulationComponent>(FluidSimulationComponent& fluid, Entity sourceEntity, CloneContext& ctx) {
     // the copy runs its own simulation (its own targets and output), restarted from its
     // settings: the simulator clone() made for it when the original had one (the copied
@@ -757,6 +776,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<PoseAnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<AnimationPlayerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<VertexAnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<VideoPlayerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ScriptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 }
 
@@ -877,6 +897,7 @@ std::vector<Entity> EntityCloner::clone(EntityRegistry* source, const std::vecto
     }
     // cameras and fluids first: textures showing what one renders follow it to the copy
     const bool fluidsRegistered = source->isComponentRegistered<FluidSimulationComponent>();
+    const bool videosRegistered = source->isComponentRegistered<VideoPlayerComponent>();
     for (Entity entity : sources) {
         if (CameraComponent* camera = source->findComponent<CameraComponent>(entity)) {
             if (camera->framebuffer && !ctx.framebuffers.count(camera->framebuffer)) {
@@ -888,6 +909,12 @@ std::vector<Entity> EntityCloner::clone(EntityRegistry* source, const std::vecto
             std::shared_ptr<FluidSimulator> copy = std::make_shared<FluidSimulator>();
             ctx.framebuffers[fluid->simulator->getOutputFramebuffer()] = {copy->getOutputFramebuffer(), entity, map[entity]};
             ctx.fluidSimulators[entity] = copy;
+        }
+        VideoPlayerComponent* video = videosRegistered ? source->findComponent<VideoPlayerComponent>(entity) : nullptr;
+        if (video && video->output) {
+            std::shared_ptr<VideoTextureConverter> copy = std::make_shared<VideoTextureConverter>();
+            ctx.framebuffers[video->output->getFramebuffer()] = {copy->getFramebuffer(), entity, map[entity]};
+            ctx.videoOutputs[entity] = copy;
         }
     }
 
