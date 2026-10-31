@@ -185,6 +185,9 @@ b2WorldId b2CreateWorld( const b2WorldDef* def )
 	world->jointDampingRatio = def->jointDampingRatio;
 	world->frictionMixingRule = def->frictionMixingRule;
 	world->restitutionMixingRule = def->restitutionMixingRule;
+	// JASPER PATCH: surface callbacks (upstream 3.1 API)
+	world->frictionCallback = NULL;
+	world->restitutionCallback = NULL;
 	world->enableSleep = def->enableSleep;
 	world->locked = false;
 	world->enableWarmStarting = true;
@@ -2513,6 +2516,20 @@ void b2World_SetPreSolveCallback( b2WorldId worldId, b2PreSolveFcn* fcn, void* c
 	b2World* world = b2GetWorldFromId( worldId );
 	world->preSolveFcn = fcn;
 	world->preSolveContext = context;
+}
+
+// JASPER PATCH: surface callbacks (upstream 3.1 API)
+void b2World_SetFrictionCallback( b2WorldId worldId, b2FrictionCallback* callback )
+{
+	b2World* world = b2GetWorldFromId( worldId );
+	world->frictionCallback = callback;
+}
+
+// JASPER PATCH: surface callbacks (upstream 3.1 API)
+void b2World_SetRestitutionCallback( b2WorldId worldId, b2RestitutionCallback* callback )
+{
+	b2World* world = b2GetWorldFromId( worldId );
+	world->restitutionCallback = callback;
 }
 
 void b2World_SetGravity( b2WorldId worldId, b2Vec2 gravity )

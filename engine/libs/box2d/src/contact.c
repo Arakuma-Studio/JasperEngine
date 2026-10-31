@@ -334,8 +334,13 @@ void b2CreateContact( b2World* world, b2Shape* shapeA, b2Shape* shapeB )
 	contactSim->shapeIdB = shapeIdB;
 	contactSim->cache = b2_emptySimplexCache;
 	contactSim->manifold = ( b2Manifold ){ 0 };
-	contactSim->friction = b2MixFloats( shapeA->friction, shapeB->friction, world->frictionMixingRule );
-	contactSim->restitution = b2MixFloats( shapeA->restitution, shapeB->restitution, world->restitutionMixingRule );
+	// JASPER PATCH: surface callbacks (upstream 3.1 API)
+	contactSim->friction = world->frictionCallback != NULL
+		? world->frictionCallback( shapeA->friction, shapeA->userMaterialId, shapeB->friction, shapeB->userMaterialId )
+		: b2MixFloats( shapeA->friction, shapeB->friction, world->frictionMixingRule );
+	contactSim->restitution = world->restitutionCallback != NULL
+		? world->restitutionCallback( shapeA->restitution, shapeA->userMaterialId, shapeB->restitution, shapeB->userMaterialId )
+		: b2MixFloats( shapeA->restitution, shapeB->restitution, world->restitutionMixingRule );
 	contactSim->tangentSpeed = 0.0f;
 	contactSim->simFlags = 0;
 
