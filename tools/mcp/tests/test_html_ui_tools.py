@@ -123,8 +123,8 @@ LIMITS.update({"create_ragdoll": 900})
 # merged by the lead (ui-canvas-group, physics-3d, http): 151 tools measured 107626 on the merged tree
 # audio mixer (spec 2026-10-31-audio-mixer 10): the audio_mixer tool (get / edit with ops; the ops and effect
 # parameters in jasper://docs/audio) and get_play_state's audio block; measured on the tree merged with main:
-# 152 tools, total MEASURED, the limit set to it
-TOTAL_LIMIT = MEASURED
+# 152 tools, total 108425 (107626 before), the limit set to it
+TOTAL_LIMIT = 108425
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
