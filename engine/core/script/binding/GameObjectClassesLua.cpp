@@ -37,6 +37,7 @@
 #include "MeshPolygon.h"
 #include "Points.h"
 #include "LineRenderer.h"
+#include "TrailRenderer.h"
 #include "Sprite.h"
 #include "object/ui/Text.h"   // by path: lexbor has a dom/interfaces/text.h (Xcode header maps ignore case)
 #include "Image.h"
@@ -138,6 +139,66 @@ bool luaValueArg(lua_State* L, int index, T& value){
 //   (position, rotation [, parent])          world values
 //   (scene [, position, rotation])           a prefab in that scene
 // Returns the new GameObject (for a script, the copy's script of the same class), or nil.
+// LineRenderer / TrailRenderer :setPosition(index, position) and :getPosition(index): 0-based
+// like Unity; an index out of range raises an error naming the count
+template<typename T>
+int luaRendererSetPosition(lua_State* L, const char* className){
+    auto self = luabridge::get<T*>(L, 1);
+    if (!self || !*self){
+        return luaL_error(L, "%s.setPosition: call it on a %s (renderer:setPosition(index, position))", className, className);
+    }
+    if (!luabridge::isInstance<Vector3>(L, 3)){
+        // GameObject's setPosition(x, y[, z]) (the object's own position) keeps working
+        if (lua_isnumber(L, 2) && lua_isnumber(L, 3)){
+            if (lua_isnumber(L, 4)){
+                (*self)->GameObject::setPosition((float)lua_tonumber(L, 2), (float)lua_tonumber(L, 3), (float)lua_tonumber(L, 4));
+            }else{
+                (*self)->GameObject::setPosition((float)lua_tonumber(L, 2), (float)lua_tonumber(L, 3));
+            }
+            return 0;
+        }
+        return luaL_error(L, "%s.setPosition: expected (index, Vector3), or the GameObject's (x, y[, z])", className);
+    }
+    if (!lua_isinteger(L, 2)){
+        return luaL_error(L, "%s.setPosition: the index must be an integer (0-based)", className);
+    }
+    const lua_Integer index = lua_tointeger(L, 2);
+    auto position = luabridge::get<Vector3>(L, 3);
+    const int count = (*self)->getPositionCount();
+    if (index < 0 || index >= count || !position){
+        return luaL_error(L, "%s.setPosition: index %d is out of range: positionCount is %d (indices 0..%d)",
+                          className, (int)index, count, count - 1);
+    }
+    (*self)->setPosition((int)index, *position);
+    return 0;
+}
+
+template<typename T>
+int luaRendererGetPosition(lua_State* L, const char* className){
+    auto self = luabridge::get<T*>(L, 1);
+    if (!self || !*self){
+        return luaL_error(L, "%s.getPosition: call it on a %s (renderer:getPosition(index))", className, className);
+    }
+    if (!lua_isinteger(L, 2)){
+        return luaL_error(L, "%s.getPosition: expected (index)", className);
+    }
+    const lua_Integer index = lua_tointeger(L, 2);
+    const int count = (*self)->getPositionCount();
+    if (index < 0 || index >= count){
+        return luaL_error(L, "%s.getPosition: index %d is out of range: positionCount is %d (indices 0..%d)",
+                          className, (int)index, count, count - 1);
+    }
+    if (!luabridge::push(L, (*self)->getPosition((int)index))){
+        return luaL_error(L, "%s.getPosition: out of Lua stack", className);
+    }
+    return 1;
+}
+
+int luaLineSetPosition(lua_State* L){ return luaRendererSetPosition<LineRenderer>(L, "LineRenderer"); }
+int luaLineGetPosition(lua_State* L){ return luaRendererGetPosition<LineRenderer>(L, "LineRenderer"); }
+int luaTrailSetPosition(lua_State* L){ return luaRendererSetPosition<TrailRenderer>(L, "TrailRenderer"); }
+int luaTrailGetPosition(lua_State* L){ return luaRendererGetPosition<TrailRenderer>(L, "TrailRenderer"); }
+
 int luaInstantiate(lua_State* L){
     const int argc = lua_gettop(L);
 
@@ -540,6 +601,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             Scene* scene = self->getScene();
             return scene && scene->isEntityCreated(self->getEntity()) &&
                    scene->findComponent<VertexAnimatorComponent>(self->getEntity()) != nullptr;
+        })
+        // the Trail Renderer of the GameObject, nil when it has none
+        .addFunction("getTrailRenderer", +[](GameObject* self) -> std::optional<TrailRenderer> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<TrailRendererComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return TrailRenderer(scene, self->getEntity());
+        })
+        .addFunction("hasTrailRenderer", +[](GameObject* self) -> bool {
+            Scene* scene = self->getScene();
+            return scene && scene->isEntityCreated(self->getEntity()) &&
+                   scene->findComponent<TrailRendererComponent>(self->getEntity()) != nullptr;
         })
         .endClass();
 
@@ -1320,6 +1395,29 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("updateLines", &LineRenderer::updateLines)
         .addFunction("getNumLines", &LineRenderer::getNumLines)
         .addFunction("clearLines", &LineRenderer::clearLines)
+        .addProperty("mode", &LineRenderer::getMode, &LineRenderer::setMode)
+        .addProperty("positionCount", &LineRenderer::getPositionCount, &LineRenderer::setPositionCount)
+        .addFunction("setPosition", &luaLineSetPosition)
+        .addFunction("getPosition", &luaLineGetPosition)
+        .addFunction("setPositions", &LineRenderer::setPositions)
+        .addFunction("getPositions", &LineRenderer::getPositions)
+        .addProperty("loop", &LineRenderer::getLoop, &LineRenderer::setLoop)
+        .addProperty("useWorldSpace", &LineRenderer::getUseWorldSpace, &LineRenderer::setUseWorldSpace)
+        .addProperty("widthMultiplier", &LineRenderer::getWidthMultiplier, &LineRenderer::setWidthMultiplier)
+        .addProperty("startWidth", &LineRenderer::getStartWidth, &LineRenderer::setStartWidth)
+        .addProperty("endWidth", &LineRenderer::getEndWidth, &LineRenderer::setEndWidth)
+        .addProperty("widthCurve", &LineRenderer::getWidthCurve, &LineRenderer::setWidthCurve)
+        .addProperty("widthUnit", &LineRenderer::getWidthUnit, &LineRenderer::setWidthUnit)
+        .addProperty("colorGradient", &LineRenderer::getColorGradient, &LineRenderer::setColorGradient)
+        .addProperty("startColor", &LineRenderer::getStartColor, &LineRenderer::setStartColor)
+        .addProperty("endColor", &LineRenderer::getEndColor, &LineRenderer::setEndColor)
+        .addProperty("numCornerVertices", &LineRenderer::getNumCornerVertices, &LineRenderer::setNumCornerVertices)
+        .addProperty("numCapVertices", &LineRenderer::getNumCapVertices, &LineRenderer::setNumCapVertices)
+        .addProperty("alignment", &LineRenderer::getAlignment, &LineRenderer::setAlignment)
+        .addProperty("textureMode", &LineRenderer::getTextureMode, &LineRenderer::setTextureMode)
+        .addProperty("textureScale", &LineRenderer::getTextureScale, &LineRenderer::setTextureScale)
+        .addProperty("texture", &LineRenderer::getTexture, &LineRenderer::setTexture)
+        .addProperty("sortPriority", &LineRenderer::getSortPriority, &LineRenderer::setSortPriority)
         .addProperty("customShader", &LineRenderer::getCustomShader, &LineRenderer::setCustomShader)
         .addFunction("setShaderUniform",
             luabridge::overload<const std::string&, const Vector4&>(&LineRenderer::setShaderUniform),
@@ -1348,6 +1446,93 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("depthWrite", &LineRenderer::getDepthWrite, &LineRenderer::setDepthWrite)
         .addProperty("stencil", &LineRenderer::getStencil, &LineRenderer::setStencil)
         .addProperty("colorWrite", &LineRenderer::getColorWrite, &LineRenderer::setColorWrite)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LineRendererMode")
+        .addVariable("Segments", LineRendererMode::Segments)
+        .addVariable("Polyline", LineRendererMode::Polyline)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LineWidthUnit")
+        .addVariable("World", LineWidthUnit::World)
+        .addVariable("Pixels", LineWidthUnit::Pixels)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LineAlignment")
+        .addVariable("View", LineAlignment::View)
+        .addVariable("TransformZ", LineAlignment::TransformZ)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LineTextureMode")
+        .addVariable("Stretch", LineTextureMode::Stretch)
+        .addVariable("Tile", LineTextureMode::Tile)
+        .addVariable("DistributePerSegment", LineTextureMode::DistributePerSegment)
+        .addVariable("RepeatPerSegment", LineTextureMode::RepeatPerSegment)
+        .endNamespace();
+
+    // Unity's TrailRenderer: TrailRenderer(scene) is a new GameObject with one,
+    // TrailRenderer(scene, entity) adds one to the entity when it has none
+    // (object:getTrailRenderer() is nil instead). Positions are the stored points, oldest first
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<TrailRenderer, GameObject>("TrailRenderer")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &TrailRenderer::isEnabled, &TrailRenderer::setEnabled)
+        .addProperty("time", &TrailRenderer::getTime, &TrailRenderer::setTime)
+        .addProperty("minVertexDistance", &TrailRenderer::getMinVertexDistance, &TrailRenderer::setMinVertexDistance)
+        .addProperty("emitting", &TrailRenderer::isEmitting, &TrailRenderer::setEmitting)
+        .addProperty("autodestruct", &TrailRenderer::isAutodestruct, &TrailRenderer::setAutodestruct)
+        .addFunction("clear", &TrailRenderer::clear)
+        .addProperty("positionCount", &TrailRenderer::getPositionCount)
+        .addFunction("getPosition", &luaTrailGetPosition)
+        .addFunction("setPosition", &luaTrailSetPosition)
+        .addFunction("getPositions", &TrailRenderer::getPositions)
+        .addFunction("addPosition", &TrailRenderer::addPosition)
+        .addFunction("addPositions", &TrailRenderer::addPositions)
+        .addProperty("widthMultiplier", &TrailRenderer::getWidthMultiplier, &TrailRenderer::setWidthMultiplier)
+        .addProperty("startWidth", &TrailRenderer::getStartWidth, &TrailRenderer::setStartWidth)
+        .addProperty("endWidth", &TrailRenderer::getEndWidth, &TrailRenderer::setEndWidth)
+        .addProperty("widthCurve", &TrailRenderer::getWidthCurve, &TrailRenderer::setWidthCurve)
+        .addProperty("widthUnit", &TrailRenderer::getWidthUnit, &TrailRenderer::setWidthUnit)
+        .addProperty("colorGradient", &TrailRenderer::getColorGradient, &TrailRenderer::setColorGradient)
+        .addProperty("startColor", &TrailRenderer::getStartColor, &TrailRenderer::setStartColor)
+        .addProperty("endColor", &TrailRenderer::getEndColor, &TrailRenderer::setEndColor)
+        .addProperty("numCornerVertices", &TrailRenderer::getNumCornerVertices, &TrailRenderer::setNumCornerVertices)
+        .addProperty("numCapVertices", &TrailRenderer::getNumCapVertices, &TrailRenderer::setNumCapVertices)
+        .addProperty("alignment", &TrailRenderer::getAlignment, &TrailRenderer::setAlignment)
+        .addProperty("textureMode", &TrailRenderer::getTextureMode, &TrailRenderer::setTextureMode)
+        .addProperty("textureScale", &TrailRenderer::getTextureScale, &TrailRenderer::setTextureScale)
+        .addProperty("texture", &TrailRenderer::getTexture, &TrailRenderer::setTexture)
+        .addProperty("sortPriority", &TrailRenderer::getSortPriority, &TrailRenderer::setSortPriority)
+        .addProperty("customShader", &TrailRenderer::getCustomShader, &TrailRenderer::setCustomShader)
+        .addFunction("setShaderUniform",
+            luabridge::overload<const std::string&, const Vector4&>(&TrailRenderer::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector3&>(&TrailRenderer::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector2&>(&TrailRenderer::setShaderUniform),
+            luabridge::overload<const std::string&, float>(&TrailRenderer::setShaderUniform))
+        .addFunction("getShaderUniform", &TrailRenderer::getShaderUniform)
+        .addFunction("removeShaderUniform", &TrailRenderer::removeShaderUniform)
+        .addFunction("setShaderParam",
+            luabridge::overload<const std::string&, const Vector4&>(&TrailRenderer::setShaderUniform),
+            luabridge::overload<TrailRenderer*, const std::string&, const Vector3&>(+[](TrailRenderer* self, const std::string& name, const Vector3& value) {
+                // a colour given as (r, g, b) is opaque
+                self->setShaderUniform(name, LuaBinding::getShaderParamValue(componentShader(self, ShaderType::LINES), name, value));
+            }),
+            luabridge::overload<const std::string&, const Vector2&>(&TrailRenderer::setShaderUniform),
+            luabridge::overload<const std::string&, float>(&TrailRenderer::setShaderUniform))
+        .addFunction("getShaderParam", &TrailRenderer::getShaderParam)
+        .addFunction("removeShaderParam", &TrailRenderer::removeShaderUniform)
+        .addFunction("setShaderTexture", &TrailRenderer::setShaderTexture)
+        .addFunction("getShaderTexture", &TrailRenderer::getShaderTexture)
+        .addFunction("setShaderFeature", &TrailRenderer::setShaderFeature)
+        .addFunction("isShaderFeatureEnabled", &TrailRenderer::isShaderFeatureEnabled)
+        .addProperty("blendMode", &TrailRenderer::getBlendMode, &TrailRenderer::setBlendMode)
+        .addProperty("depthWrite", &TrailRenderer::getDepthWrite, &TrailRenderer::setDepthWrite)
+        .addProperty("stencil", &TrailRenderer::getStencil, &TrailRenderer::setStencil)
+        .addProperty("colorWrite", &TrailRenderer::getColorWrite, &TrailRenderer::setColorWrite)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

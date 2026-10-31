@@ -19,6 +19,7 @@
 #include "object/Light.h"
 #include "object/Light2D.h"
 #include "object/LineRenderer.h"
+#include "object/TrailRenderer.h"
 #include "object/Mesh.h"
 #include "object/MeshPolygon.h"
 #include "object/Mirror.h"
@@ -130,7 +131,7 @@ namespace {
 
     using Wrappers = ::testing::Types<
         EntityHandle, GameObject, Mesh, Model, Primitive, Mirror, MeshPolygon, Sprite, Terrain, Tilemap,
-        Light, Light2D, Camera, Points, LineRenderer, ShadowCaster2D, Bone,
+        Light, Light2D, Camera, Points, LineRenderer, TrailRenderer, ShadowCaster2D, Bone,
         Fog, Skybox, ReflectionProbe, AudioSource, FluidSimulation,
         RectTransform, Image, Button, Panel, Scrollbar, Progressbar, InputField, LayoutGroup, Polygon, Text, UIDocument,
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -148,7 +149,7 @@ namespace {
         static std::string GetName(int index){
             const char* names[] = {
                 "EntityHandle", "GameObject", "Mesh", "Model", "Primitive", "Mirror", "MeshPolygon", "Sprite", "Terrain", "Tilemap",
-                "Light", "Light2D", "Camera", "Points", "LineRenderer", "ShadowCaster2D", "Bone",
+                "Light", "Light2D", "Camera", "Points", "LineRenderer", "TrailRenderer", "ShadowCaster2D", "Bone",
                 "Fog", "Skybox", "ReflectionProbe", "AudioSource", "FluidSimulation",
                 "RectTransform", "Image", "Button", "Panel", "Scrollbar", "Progressbar", "InputField", "LayoutGroup", "Polygon", "Text", "UIDocument",
 #ifdef JASPERENGINE_PHYSICS_2D

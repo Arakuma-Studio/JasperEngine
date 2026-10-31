@@ -11,6 +11,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/LatticeSystem.h"
 #include "subsystem/VertexAnimatorSystem.h"
+#include "subsystem/TrailSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/FluidSystem.h"
@@ -46,6 +47,8 @@ void Scene::init(){
     registerSystem<UIDocumentSystem>();
     registerSystem<FluidSystem>();
     registerSystem<RenderSystem>();
+    // after Render, whose update makes this frame's world transforms (the trails' heads)
+    registerSystem<TrailSystem>();
     registerSystem<PhysicsSystem>();
     registerSystem<AudioSystem>();
 
