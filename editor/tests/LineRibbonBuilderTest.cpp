@@ -83,16 +83,16 @@ TEST(LineRibbonBuilderTest, VertexAndIndexCounts){
 
     // 2 points: two pairs, one quad
     expectCounts(two, false, 0, 0, 4, 6);
-    // a joint: 2 sides x (in, out) and a wedge triangle per side
-    expectCounts(three, false, 0, 0, 8, 18);
+    // a joint: 2 sides x (in, out, the wedge's centre) and a wedge triangle per side
+    expectCounts(three, false, 0, 0, 10, 18);
     // corner fans of 2 and caps of 3: + 2 x 2 corner vertices (2 x 3 triangles), caps 1 + 3 each (4 triangles)
-    expectCounts(three, false, 2, 3, 20, 54);
+    expectCounts(three, false, 2, 3, 22, 54);
     // a loop of 4: the start's out pair and 4 joints, 4 quads
-    expectCounts(four, true, 0, 0, 18, 48);
+    expectCounts(four, true, 0, 0, 26, 48);
     // caps are ignored on a loop
-    expectCounts(four, true, 1, 5, 2 + 4 * 6, 4 * 6 + 4 * 2 * 2 * 3);
+    expectCounts(four, true, 1, 5, 2 + 4 * 8, 4 * 6 + 4 * 2 * 2 * 3);
     // a loop of 2 draws the segment twice (Unity)
-    expectCounts(two, true, 0, 0, 10, 24);
+    expectCounts(two, true, 0, 0, 14, 24);
     // counts are capped at 90
     size_t vertices = 0, indices = 0;
     LineRibbonBuilder::counts(3, false, 500, 500, vertices, indices);
@@ -188,7 +188,8 @@ TEST(LineRibbonBuilderTest, WidthsAndColours){
     for (const LineRibbonVertex& vertex : built.vertices){
         if (vertex.position == Vector3(1, 0, 0)){
             EXPECT_NEAR(vertex.params.y, 2.0f / 3.0f, 1e-6f);
-            EXPECT_NEAR(vertex.color.x, 2.0f / 3.0f, 1e-5f);
+            // colours mix in sRGB: a third of the way from red to blue is 2/3 sRGB red
+            EXPECT_NEAR(vertex.color.x, Color::sRGBToLinear(Vector3(2.0f / 3.0f, 0, 0)).x, 1e-5f);
             EXPECT_NEAR(vertex.color.w, 2.0f / 3.0f, 1e-5f);
             middle = true;
         }
@@ -348,4 +349,45 @@ TEST(LineRibbonBuilderTest, WidthAndColourShortcuts){
     // linear in memory
     EXPECT_NEAR(gradient.evaluate(0.0f).y, Color::sRGBToLinear(Vector3(0.0f, 0.5f, 0.0f)).y, 1e-5f);
     EXPECT_EQ(gradient.colorKeys.size(), 2u);
+}
+
+TEST(LineRibbonBuilderTest, SegmentVectorsAndJointCentres){
+    // the vertices carry the segments' vectors (the pixel-width shader clips a segment at the
+    // near plane with the point at its other end): zero on an end's open side
+    LineRibbonSettings settings;
+    Built built = build({Vector3(0, 0, 0), Vector3(2, 0, 0), Vector3(2, 3, 0)}, settings);
+    int centres = 0;
+    for (const LineRibbonVertex& vertex : built.vertices){
+        if (vertex.position == Vector3(0, 0, 0)){
+            EXPECT_EQ(vertex.tangentIn, Vector3(0, 0, 0));
+            EXPECT_EQ(vertex.tangentOut, Vector3(2, 0, 0));
+        }else if (vertex.position == Vector3(2, 3, 0)){
+            EXPECT_EQ(vertex.tangentIn, Vector3(0, 3, 0));
+            EXPECT_EQ(vertex.tangentOut, Vector3(0, 0, 0));
+        }else{
+            EXPECT_EQ(vertex.tangentIn, Vector3(2, 0, 0));
+            EXPECT_EQ(vertex.tangentOut, Vector3(0, 3, 0));
+        }
+        // a joint's wedge centres sit where the other side's in vertex does (the inner miter point)
+        if (vertex.params.z == (float)LineRibbonRole_JointCentre){
+            centres++;
+            bool matched = false;
+            for (const LineRibbonVertex& other : built.vertices){
+                if (other.params.z == (float)LineRibbonRole_In && other.position == vertex.position && other.params.x == vertex.params.x){
+                    EXPECT_NEAR((placed(other) - placed(vertex)).length(), 0.0f, 1e-6f);
+                    matched = true;
+                }
+            }
+            EXPECT_TRUE(matched);
+        }
+    }
+    EXPECT_EQ(centres, 2);
+    // the end offsets use the one segment there (no NaN from the zero vector)
+    for (const LineRibbonVertex& vertex : built.vertices){
+        const Vector3 offset = LineRibbonBuilder::vertexOffset(vertex, Vector3(0.0f, 0.0f, 1.0f));
+        EXPECT_TRUE(std::isfinite(offset.x) && std::isfinite(offset.y) && std::isfinite(offset.z));
+    }
+    // culling reaches the miter limit without corner vertices, one half width with them
+    EXPECT_FLOAT_EQ(LineRibbonBuilder::boundsGrowth(0), 4.0f);
+    EXPECT_FLOAT_EQ(LineRibbonBuilder::boundsGrowth(3), 1.0f);
 }

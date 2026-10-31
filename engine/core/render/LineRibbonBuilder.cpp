@@ -22,11 +22,6 @@ namespace {
         return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
     }
 
-    Vector3 direction(const Vector3& from, const Vector3& to){
-        Vector3 d = to - from;
-        const float length = d.length();
-        return (length > 0.0f) ? d / length : Vector3(1.0f, 0.0f, 0.0f);
-    }
 
     // A station of the ribbon: a point of the centre line with what its vertices share
     struct Station {
@@ -40,6 +35,15 @@ namespace {
         // (0: -1, 1: +1)
         uint32_t in[2];
         uint32_t out[2];
+    };
+
+    // build()'s working lists, reused (no allocation per call once grown)
+    struct BuildScratch {
+        std::vector<size_t> used;
+        std::vector<float> lengths;
+        std::vector<Vector3> segmentVectors;
+        std::vector<Station> stations;
+        std::vector<uint32_t> chain[2];
     };
 
 }
@@ -59,7 +63,8 @@ void LineRibbonBuilder::counts(size_t points, bool loop, unsigned int numCornerV
     }
     const size_t corner = std::min(numCornerVertices, LINE_RIBBON_MAX_FAN_VERTICES);
     const size_t cap = std::min(numCapVertices, LINE_RIBBON_MAX_FAN_VERTICES);
-    const size_t jointVertices = 2 * (2 + corner);
+    // per side: in, corner fan, out, and the copy of the other side's in vertex (the wedge's centre)
+    const size_t jointVertices = 2 * (3 + corner);
     const size_t jointIndices = 2 * (corner + 1) * 3;
     if (loop){
         const size_t segments = points;
@@ -82,8 +87,12 @@ LineRibbonResult LineRibbonBuilder::build(const Vector3* points, size_t count, c
     LineRibbonResult result;
     result.bounds.setNull();
 
+    // the working lists, kept between calls (a trail rebuilds every frame)
+    thread_local BuildScratch scratch;
+
     // the points used, with their index in the input (for pointT and pointColors)
-    std::vector<size_t> used;
+    std::vector<size_t>& used = scratch.used;
+    used.clear();
     used.reserve(count);
     for (size_t i = 0; i < count; i++){
         if (!isFinite(points[i])){
@@ -117,19 +126,24 @@ LineRibbonResult LineRibbonBuilder::build(const Vector3* points, size_t count, c
     };
 
     // cumulative lengths
-    std::vector<float> lengths(stationCount, 0.0f);
+    std::vector<float>& lengths = scratch.lengths;
+    lengths.assign(stationCount, 0.0f);
     for (size_t s = 1; s < stationCount; s++){
         lengths[s] = lengths[s - 1] + pointOf(s - 1).distance(pointOf(s));
     }
     const float totalLength = lengths[stationCount - 1];
     result.length = totalLength;
 
-    std::vector<Vector3> segmentDirections(segments);
+    // each segment's vector (its length too: the pixel-width shader clips a segment at the near
+    // plane with the point at its other end)
+    std::vector<Vector3>& segmentVectors = scratch.segmentVectors;
+    segmentVectors.resize(segments);
     for (size_t k = 0; k < segments; k++){
-        segmentDirections[k] = direction(pointOf(k), pointOf(k + 1));
+        segmentVectors[k] = pointOf(k + 1) - pointOf(k);
     }
 
-    std::vector<Station> stations(stationCount);
+    std::vector<Station>& stations = scratch.stations;
+    stations.resize(stationCount);
     for (size_t s = 0; s < stationCount; s++){
         Station& station = stations[s];
         const size_t source = used[s % n];
@@ -171,11 +185,12 @@ LineRibbonResult LineRibbonBuilder::build(const Vector3* points, size_t count, c
         }
 
         if (loop){
-            station.tangentIn = segmentDirections[(s + segments - 1) % segments];
-            station.tangentOut = segmentDirections[s % segments];
+            station.tangentIn = segmentVectors[(s + segments - 1) % segments];
+            station.tangentOut = segmentVectors[s % segments];
         }else{
-            station.tangentIn = segmentDirections[(s == 0) ? 0 : s - 1];
-            station.tangentOut = segmentDirections[(s == segments) ? segments - 1 : s];
+            // an end has no segment on its open side: zero (the shader uses the other one)
+            station.tangentIn = (s == 0) ? Vector3(0.0f, 0.0f, 0.0f) : segmentVectors[s - 1];
+            station.tangentOut = (s == segments) ? Vector3(0.0f, 0.0f, 0.0f) : segmentVectors[s];
         }
 
         result.bounds.merge(station.position);
@@ -223,7 +238,7 @@ LineRibbonResult LineRibbonBuilder::build(const Vector3* points, size_t count, c
 
     // the in and out vertices of a joint tell the shader it is round (w 1: no miter)
     const float roundJoint = corner > 0 ? 1.0f : 0.0f;
-    std::vector<uint32_t> chain[2];
+    std::vector<uint32_t>* chain = scratch.chain;
     for (size_t s = 0; s < stationCount; s++){
         Station& station = stations[s];
         const bool end = !loop && (s == 0 || s == stationCount - 1);
@@ -256,10 +271,13 @@ LineRibbonResult LineRibbonBuilder::build(const Vector3* points, size_t count, c
             station.out[j] = addVertex(station, side, station.halfWidth, LineRibbonRole_Out, roundJoint, v);
             chain[j].push_back(station.out[j]);
         }
-        // the wedge of each side fans around the other side's in vertex: the inner side's
-        // vertices all sit on the miter point there, so only the outer side's have area
+        // the wedge of each side fans around a copy of the other side's in vertex (the inner
+        // miter point): the inner side's vertices all sit on it, so only the outer side's have
+        // area. A copy (LineRibbonRole_JointCentre), so that the pixel-width shader can drop a
+        // joint behind the camera without moving the body quads
         for (int j = 0; j < 2; j++){
-            const uint32_t centre = station.in[1 - j];
+            const float otherSide = j == 0 ? 1.0f : -1.0f;
+            const uint32_t centre = addVertex(station, otherSide, station.halfWidth, LineRibbonRole_JointCentre, roundJoint, j == 0 ? 1.0f : 0.0f);
             for (size_t m = 0; m + 1 < chain[j].size(); m++){
                 triangle(centre, chain[j][m], chain[j][m + 1]);
             }
@@ -365,11 +383,15 @@ Vector3 LineRibbonBuilder::vertexOffset(const LineRibbonVertex& vertex, const Ve
     return vertexOffset(vertex, vertex.tangentIn, vertex.tangentOut, normal);
 }
 
-Vector3 LineRibbonBuilder::vertexOffset(const LineRibbonVertex& vertex, const Vector3& tin, const Vector3& tout, const Vector3& n){
+Vector3 LineRibbonBuilder::vertexOffset(const LineRibbonVertex& vertex, const Vector3& tangentIn, const Vector3& tangentOut, const Vector3& n){
+    // the segment vectors (zero on an end's open side: the other one), as the shader
+    const Vector3 tout = normalizedOr(tangentOut, normalizedOr(tangentIn, Vector3(1.0f, 0.0f, 0.0f)));
+    const Vector3 tin = normalizedOr(tangentIn, tout);
     const float side = vertex.params.x;
-    const float role = vertex.params.z;
+    // a joint centre is placed as an in vertex
+    const float role = vertex.params.z > 3.5f ? 0.0f : vertex.params.z;
     const float w = vertex.params.w;
-    const float MITER_LIMIT = 4.0f;
+    const float MITER_LIMIT = LINE_RIBBON_MITER_LIMIT;
     const Vector3 sin = perpendicular(tin, n);
     const Vector3 sout = perpendicular(tout, n);
 
