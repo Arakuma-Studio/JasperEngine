@@ -25,7 +25,8 @@ namespace jasperengine {
 
     public:
         ScriptBase(Scene* scene, Entity entity);
-        // ends the async work owned by the script (AsyncOwners::fromScript(this))
+        // virtual for the lifecycle callbacks; ends the async work owned by the script
+        // (AsyncOwners::fromScript(this))
         virtual ~ScriptBase();
 
         Scene* getScene() const;

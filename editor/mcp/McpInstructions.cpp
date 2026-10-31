@@ -134,11 +134,11 @@ return Player
   is an edge, isKeyPressed held. Test with send_input action/axis events (jasper://docs/input).
   Log.print/warn/error take ONE string (use ..).
 - Time: Engine.timeScale, fixedDeltatime (read/write), gameTime, frameCount (scaled).
-- Lua has no default arguments: pass every one.
+- Lua has no default arguments: pass every one (the wake flag too).
 - Saves: PlayerPrefs, Json.encode/decode, File.writeText("data://x") (jasper://docs/lua-api
   2.4); user_settings reads/resets PlayerPrefs.
-- Http.get/post (jasper://docs/networking), Native.call/callAsync (native_plugins,
-  jasper://docs/native-bridge): callbacks on the main thread.
+- Http.get/post (jasper://docs/networking), Native.call (native_plugins,
+  jasper://docs/native-bridge): main-thread callbacks.
 - Lua has no Dori.Script, getComponent, setProperty or timers. Never put editor property
   paths (submeshes[0]...) in scripts.
 
@@ -238,8 +238,8 @@ Textures from examples (tileable, inpainted, PBR sets): synthesize_texture
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
 (Build Settings) produces a standalone CMake project or builds players per platform (a long
 job, see The loop). The 2D/3D physics switches strip backends from the export
-(jasper://docs/cpp-scripting). Before exporting: scenes saved, Console clean in play, start
-scene set.
+(jasper://docs/cpp-scripting). Before exporting: every scene saved, Console clean in play, the
+start scene correct.
 )JE"
 R"JE(
 ## HTML/CSS UI
@@ -254,7 +254,7 @@ Edit mode runs no Lua. First read jasper://docs/html-ui.
 
 ## Pitfalls
 - Save after each working step: unsaved scenes are lost on close.
-- Play-mode edits are lost when play stops (as in Unity): stop first.
+- Play-mode edits are lost when play stops: stop first.
 - Lua: static functions use a dot (GameObject.instantiate), methods a colon (go:setScale(2)).
 )JE";
 }
