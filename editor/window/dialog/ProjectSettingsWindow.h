@@ -54,6 +54,7 @@ namespace jasperengine::editor {
         bool m_physics3DEnabled = true;
         bool m_runtimeShadersEnabled = true;
         bool m_packNativeResources = false;
+        bool m_allowInsecureHttp = false;
         bool m_versionControlMetadata = true;
         char m_webApplicationNameBuffer[256] = {0};
         fs::path m_webFavicon;
@@ -99,6 +100,7 @@ namespace jasperengine::editor {
         bool m_androidAbiX86 = true;
         bool m_androidAbiX86_64 = true;
         std::set<std::string> m_androidPermissions;
+        int m_androidInternetAccessIndex = 0;
         bool m_androidAllowBackup = true;
         bool m_androidFullscreen = true;
         bool m_androidKeepScreenOn = false;

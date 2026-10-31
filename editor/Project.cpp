@@ -57,6 +57,8 @@
 #include "pose/PoseAnimatorRuntime.h"
 #include "animation/ModelSubClips.h"
 #include "htmlui/anim/AnimEngine.h"
+#include "net/Http.h"
+#include "thread/MainThreadQueue.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
@@ -5687,6 +5689,9 @@ void editor::Project::finalizeStart(SceneProject* mainSceneProject, std::vector<
         selectedSceneForProperties = runtime->id;
     }
 
+    // the plain-HTTP policy of the exported game (Generator writes the same call)
+    Http::setInsecureHttpAllowed(applicationSettings.allowInsecureHttp);
+
     Engine::pauseGameEvents(false);
     Engine::onViewLoaded.call();
     Engine::systemViewChanged();
@@ -6842,7 +6847,7 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples);
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, applicationSettings.allowInsecureHttp);
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -8544,7 +8549,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples);
+    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, applicationSettings.allowInsecureHttp);
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
     }
@@ -9243,6 +9248,10 @@ void editor::Project::stop(uint32_t sceneId) {
 
             // anime: every animation of the play, and its script callbacks, before the scripts go
             AnimEngine::instance().reset();
+            // HTTP requests of the play end without their callbacks (nothing waits for a
+            // transfer); what worker threads posted for the game is dropped
+            Http::shutdown();
+            MainThreadQueue::clear();
 
             const bool libraryConnected = conector.isLibraryConnected();
             if (libraryConnected) {
