@@ -375,6 +375,12 @@ void getEntityTool(const CallPtr& call) {
             text += ". particles: " + state.dump();
         }
     }
+    // the Canvas Groups over a UI element (inherited alpha, interactable, click-through)
+    const Json groupState = McpValues::canvasGroupStateToJson(registry, entity);
+    if (!groupState.is_null()) {
+        data["canvas_group_state"] = groupState;
+        text += ". canvas_group_state: " + groupState.dump();
+    }
     // what its draws read of the scene (phase 3) in their current variants, and the cost
     const Json sceneInputs = McpValues::entitySceneInputsToJson(registry, entity);
     if (!sceneInputs.empty()) {

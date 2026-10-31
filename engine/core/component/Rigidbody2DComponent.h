@@ -142,6 +142,8 @@ namespace jasperengine{
         float inertia = 0.0f;
         // default .physicsmaterial of the colliders without one ("" = none)
         std::string material;
+        // how it is drawn between fixed steps; SCENE: the scene's physics_interpolation
+        RigidbodyInterpolation interpolation = RigidbodyInterpolation::SCENE;
 
         bool newBody = true;
         Vector2 loadedScale = Vector2::UNIT_SCALE;
@@ -173,6 +175,12 @@ namespace jasperengine{
         bool hasSyncedPose = false;
         Vector3 syncedPosition;
         Quaternion syncedRotation;
+        // the state of the body it had in another scene (persistence moves a GameObject with
+        // its body), in Box2D units: the next body made for it starts with these, once
+        bool hasPendingVelocity = false;
+        Vector2 pendingLinearVelocity = Vector2::ZERO;
+        float pendingAngularVelocity = 0.0f;
+        bool pendingAwake = true;
     };
 
 }

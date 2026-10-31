@@ -100,6 +100,7 @@
 #include "component/TranslateTracksComponent.h"
 #include "component/UIComponent.h"
 #include "component/LayoutGroupComponent.h"
+#include "component/CanvasGroupComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/UIDocumentComponent.h"
 
@@ -179,6 +180,7 @@
 #include "object/Tilemap.h"
 #include "object/ui/Button.h"
 #include "object/ui/LayoutGroup.h"
+#include "object/ui/CanvasGroup.h"
 #include "object/ui/Image.h"
 #include "object/ui/Panel.h"
 #include "object/ui/Polygon.h"
