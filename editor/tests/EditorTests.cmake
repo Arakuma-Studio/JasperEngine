@@ -30,6 +30,10 @@ if(NOT WIN32)
 else()
     list(REMOVE_ITEM EDITOR_TEST_SOURCES ${CMAKE_CURRENT_LIST_DIR}/HttpTest.cpp)
 endif()
+# VideoMp4Test: the Linux FFmpeg backend and the media cache against that server
+if(WIN32 OR APPLE)
+    list(REMOVE_ITEM EDITOR_TEST_SOURCES ${CMAKE_CURRENT_LIST_DIR}/VideoMp4Test.cpp)
+endif()
 add_library(jasperengine-editor-tests-objects OBJECT ${EDITOR_TEST_SOURCES})
 # tinyexr: FloatImageTest writes EXRs with custom channel names through it
 target_link_libraries(jasperengine-editor-tests-objects PRIVATE gtest jasperengine yaml-cpp tinyexr)
@@ -37,6 +41,10 @@ target_include_directories(jasperengine-editor-tests-objects PRIVATE ${CMAKE_SOU
 target_include_directories(jasperengine-editor-tests-objects SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/${IMGUI_DIR} ${CMAKE_SOURCE_DIR}/${IMGUI_DIR}/backends)
 # Test models and other inputs read from the source tree (fixtures/rigged_cube.fbx ...)
 target_compile_definitions(jasperengine-editor-tests-objects PRIVATE JASPER_EDITOR_TEST_FIXTURES="${CMAKE_CURRENT_LIST_DIR}/fixtures")
+# the video tests' clips (tools/media/make_test_clips.sh) and the HTML UI's WebM fixtures
+target_compile_definitions(jasperengine-editor-tests-objects PRIVATE
+    JASPER_MEDIA_TEST_CLIPS="${CMAKE_SOURCE_DIR}/engine/tests/media/clips"
+    JASPER_HTMLUI_VIDEO_FIXTURES="${CMAKE_SOURCE_DIR}/engine/tests/htmlui/fixtures/video")
 set_target_properties(jasperengine-editor-tests-objects PROPERTIES
     CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
     CXX_STANDARD_REQUIRED ON

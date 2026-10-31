@@ -51,8 +51,9 @@ namespace jasperengine {
 
     // Blocking positional reads over a GrowingFileState (docs/superpowers/specs/
     // 2026-10-31-video-mp4-design.md §6.6, progressive start): a read past what has arrived waits
-    // until the bytes are there, the download fails (-1) or abort() (-1). Reads only ever see
-    // bytes the writer reported, so a decoder never reads a hole.
+    // until some of the bytes are there (it may return fewer than asked, like a socket), the
+    // download fails (-1) or abort() (-1). Reads only ever see bytes the writer reported, so a
+    // decoder never reads a hole.
     class JASPERENGINE_API GrowingFileReader : public MediaByteSource {
     public:
         // name: the URL, for messages

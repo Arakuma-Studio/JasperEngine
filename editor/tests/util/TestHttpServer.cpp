@@ -107,6 +107,7 @@ namespace {
             case 206: return "Partial Content";
             case 301: return "Moved Permanently";
             case 302: return "Found";
+            case 304: return "Not Modified";
             case 303: return "See Other";
             case 307: return "Temporary Redirect";
             case 308: return "Permanent Redirect";
@@ -254,6 +255,16 @@ TestHttpServer::~TestHttpServer(){
     if (listenSocket >= 0) ::close(listenSocket);
 }
 
+void TestHttpServer::addFile(const std::string& name, std::string bytes, std::string etag){
+    std::lock_guard<std::mutex> lock(countMutex);
+    files[name] = File{std::move(bytes), std::move(etag)};
+}
+
+void TestHttpServer::cutNext(const std::string& name, size_t bytes){
+    std::lock_guard<std::mutex> lock(countMutex);
+    files[name].cutNext = bytes;
+}
+
 std::string TestHttpServer::url(const std::string& path) const{
     return "http://127.0.0.1:" + std::to_string(boundPort) + path;
 }
@@ -398,6 +409,58 @@ void TestHttpServer::serve(int socket){
         wait(std::atoi(path.c_str() + 7));
         --active;
         sendAll(socket, response(200, "counted"));
+    } else if (startsWith(path, "/file/")){
+        File file;
+        bool found = false;
+        {
+            std::lock_guard<std::mutex> lock(countMutex);
+            auto it = files.find(path.substr(6));
+            if (it != files.end()){
+                file = it->second;
+                it->second.cutNext = 0;
+                found = true;
+            }
+        }
+        const std::string modified = "Last-Modified: Wed, 21 Oct 2026 07:28:00 GMT";
+        if (!found){
+            sendAll(socket, response(404, "no file " + path));
+        } else if (!file.etag.empty() && request.header("if-none-match") == file.etag){
+            sendAll(socket, "HTTP/1.1 304 Not Modified\r\nETag: " + file.etag + "\r\n" + modified + "\r\nConnection: close\r\n\r\n");
+        } else {
+            size_t from = 0;
+            const std::string range = request.header("range");
+            if (startsWith(range, "bytes="))
+                from = (size_t)std::strtoull(range.c_str() + 6, nullptr, 10);
+            if (from >= file.bytes.size() && from > 0){
+                sendAll(socket, response(416, "", "text/plain", {"Content-Range: bytes */" + std::to_string(file.bytes.size())}));
+            } else {
+                const std::string body = file.bytes.substr(from);
+                const int status = from > 0 ? 206 : 200;
+                std::string head = "HTTP/1.1 " + std::to_string(status) + " " + reason(status) + "\r\nContent-Type: video/mp4\r\nContent-Length: " +
+                                   std::to_string(body.size()) + "\r\nAccept-Ranges: bytes\r\n" + modified + "\r\n";
+                if (!file.etag.empty())
+                    head += "ETag: " + file.etag + "\r\n";
+                if (from > 0)
+                    head += "Content-Range: bytes " + std::to_string(from) + "-" + std::to_string(file.bytes.size() - 1) + "/" +
+                            std::to_string(file.bytes.size()) + "\r\n";
+                head += "Connection: close\r\n\r\n";
+                const int trickle = std::atoi(queryValue(request.query, "trickle").c_str());
+                const std::string cutText = queryValue(request.query, "cut");
+                size_t cut = cutText.empty() ? body.size() : std::min(body.size(), (size_t)std::strtoull(cutText.c_str(), nullptr, 10));
+                if (file.cutNext > 0)
+                    cut = std::min(cut, file.cutNext);
+                bool ok = sendAll(socket, head);
+                for (size_t pos = 0; ok && pos < cut && !stopping; pos += 4096){
+                    ok = sendAll(socket, body.substr(pos, std::min<size_t>(4096, cut - pos)));
+                    if (trickle > 0)
+                        wait(trickle);
+                }
+                if (cut < body.size()){
+                    // a broken transfer: the connection goes without the rest
+                    ::shutdown(socket, SHUT_RDWR);
+                }
+            }
+        }
     } else if (path == "/drop"){
         // nothing: the connection closes
     } else {

@@ -181,9 +181,9 @@ int64_t GrowingFileReader::readAt(int64_t offset, void* dst, size_t size){
     bool complete = false;
     {
         std::unique_lock<std::mutex> lock(state->mutex);
-        // the bytes asked for, or the end of a finished file
+        // some of the bytes asked for (a short read, as from a socket), or the end of the file
         state->changed.wait(lock, [&]{
-            return aborted || state->failed || state->done || state->available >= offset + (int64_t)size ||
+            return aborted || state->failed || state->done || state->available > offset ||
                    (state->total >= 0 && state->available >= state->total);
         });
         if (aborted || state->failed)

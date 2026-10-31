@@ -238,9 +238,14 @@ namespace FFMPEG_NAMESPACE {
                     return fail(error, readFailed ? MediaErrorCode::NETWORK : MediaErrorCode::SRC_NOT_SUPPORTED,
                                 "FFmpeg cannot read it (" + errorText(a, result) + ")");
                 }
-                result = a.avformat_find_stream_info(format, nullptr);
-                if (result < 0)
-                    return fail(error, readFailed ? MediaErrorCode::NETWORK : MediaErrorCode::DECODE, "FFmpeg found no streams (" + errorText(a, result) + ")");
+                // the stream analysis reads ahead (seconds of packets): a file still downloading
+                // plays without it when the headers say enough (an MP4's moov does)
+                if (!bytes.isGrowing() || !headersDescribeStreams()){
+                    format->max_analyze_duration = 2 * AV_TIME_BASE;
+                    result = a.avformat_find_stream_info(format, nullptr);
+                    if (result < 0)
+                        return fail(error, readFailed ? MediaErrorCode::NETWORK : MediaErrorCode::DECODE, "FFmpeg found no streams (" + errorText(a, result) + ")");
+                }
                 const AVMediaType type = which == Stream::VIDEO ? AVMEDIA_TYPE_VIDEO : AVMEDIA_TYPE_AUDIO;
                 streamIndex = a.av_find_best_stream(format, type, -1, -1, nullptr, 0);
                 if (streamIndex < 0)
@@ -413,6 +418,22 @@ namespace FFMPEG_NAMESPACE {
                     return AVERROR(EINVAL);
                 self->position = target;
                 return target;
+            }
+
+            // every stream has its codec and, for video, its size from the container's headers
+            bool headersDescribeStreams() const{
+                if (!format || format->nb_streams == 0)
+                    return false;
+                for (unsigned i = 0; i < format->nb_streams; i++){
+                    const AVCodecParameters* par = format->streams[i]->codecpar;
+                    if (par->codec_id == AV_CODEC_ID_NONE)
+                        return false;
+                    if (par->codec_type == AVMEDIA_TYPE_VIDEO && (par->width <= 0 || par->height <= 0))
+                        return false;
+                    if (par->codec_type == AVMEDIA_TYPE_AUDIO && par->sample_rate <= 0)
+                        return false;
+                }
+                return true;
             }
 
             bool fail(MediaError& error, MediaErrorCode code, const std::string& message){

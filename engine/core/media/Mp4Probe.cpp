@@ -51,10 +51,24 @@ namespace {
 
     enum class ReadResult { OK, END, SHORT, ERROR };
 
+    // up to `size` bytes, through short reads (a growing source returns what has arrived)
+    int64_t readFully(MediaByteSource& source, int64_t offset, uint8_t* dst, int64_t size){
+        int64_t done = 0;
+        while (done < size){
+            const int64_t got = source.readAt(offset + done, dst + done, (size_t)(size - done));
+            if (got < 0)
+                return done > 0 ? done : -1;
+            if (got == 0)
+                break;
+            done += got;
+        }
+        return done;
+    }
+
     // the header at `offset` of a box inside [.., limit)
     ReadResult readHeader(MediaByteSource& source, int64_t offset, int64_t limit, BoxHeader& box){
         uint8_t head[16];
-        const int64_t got = source.readAt(offset, head, 8);
+        const int64_t got = readFully(source, offset, head, 8);
         if (got < 0)
             return ReadResult::ERROR;
         if (got == 0)
@@ -66,7 +80,7 @@ namespace {
         uint64_t size = be32(head);
         box.headerSize = 8;
         if (size == 1){
-            if (source.readAt(offset + 8, head + 8, 8) < 8)
+            if (readFully(source, offset + 8, head + 8, 8) < 8)
                 return ReadResult::SHORT;
             size = be64(head + 8);
             box.headerSize = 16;
@@ -342,7 +356,7 @@ namespace {
                 }else if (isType(type, "hvcC") && payloadSize >= 23){
                     const int profile = payload[1] & 0x1F;
                     const int level = payload[12];
-                    current.bitDepth = (payload[21] & 0x07) + 8;
+                    current.bitDepth = (payload[17] & 0x07) + 8;     // bitDepthLumaMinus8
                     current.codecString = current.fourcc + "." + std::to_string(profile) + ".L" + std::to_string(level);
                 }else if (isType(type, "vpcC") && payloadSize >= 7){
                     // FullBox: version/flags, profile, level, bitDepth(4) chromaSubsampling(3) ...
@@ -496,7 +510,7 @@ bool Mp4Probe::sniff(const uint8_t* data, size_t size){
 Mp4ProbeResult Mp4Probe::probe(MediaByteSource& source){
     Mp4ProbeResult result;
     uint8_t head[12] = {};
-    const int64_t got = source.readAt(0, head, sizeof(head));
+    const int64_t got = readFully(source, 0, head, sizeof(head));
     if (got < 8){
         result.needMoreData = got >= 0 && source.isGrowing();
         result.error = got < 0 ? "could not be read" : "too short to be a video";

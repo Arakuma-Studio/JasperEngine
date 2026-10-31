@@ -185,7 +185,6 @@ namespace jasperengine {
         int decodeIteration = 0;
         int64_t discardBelow = 0;
         int64_t lastPushed = -1;            // the newest sequence queued (or discarded) since the last seek
-        bool biasKnown = false;
         int64_t ptsBias = 0;                // the decoder's first pts less the index's
         int audioIteration = 0;
         bool audioRestart = true;

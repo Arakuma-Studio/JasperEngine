@@ -526,7 +526,7 @@ void PlatformVideoSource::openNow(){
                 found.frameRate = probe.video.frameRate;
             found.rotation = probe.video.rotation;
         }
-        if (probe.audio.kind == Mp4Track::Kind::AUDIO && found.audioCodec.empty())
+        if (probe.audio.kind == Mp4Track::Kind::AUDIO)
             found.audioCodec = probe.audio.fourcc;
     }
     found.duration = (double)found.durationNs / 1e9;
@@ -550,6 +550,40 @@ void PlatformVideoSource::openNow(){
         found.decoderThreads = videoBackend ? videoBackend->getDecoderThreads() : 0;
     }
 
+    // The first picture: the decoder's time origin against the index's (some decoders apply an
+    // edit list, others give the composition times), learnt before any seek can move it
+    VideoFrame first;
+    bool hasFirst = false;
+    int64_t bias = 0;
+    if (videoBackend){
+        for (int attempt = 0; attempt < 512; attempt++){
+            std::vector<float> unused;
+            double unusedStart = 0.0;
+            MediaError failure;
+            VideoFrame frame;
+            const PlatformDecoderBackend::Step result = videoBackend->decodeNext(frame, unused, unusedStart, failure);
+            if (result == PlatformDecoderBackend::Step::FRAME){
+                if (frame.ptsNs < 0)
+                    continue;       // pre-roll before the first frame shown
+                bias = frame.ptsNs - (exact && !built.ptsNs.empty() ? built.ptsNs[0] : 0);
+                frame.ptsNs -= bias;
+                if (found.rotation != 0)
+                    VideoFramePlanes::rotate(frame, found.rotation);
+                first = std::move(frame);
+                hasFirst = true;
+                break;
+            }
+            if (result == PlatformDecoderBackend::Step::AGAIN)
+                continue;
+            if (result == PlatformDecoderBackend::Step::ERROR){
+                std::lock_guard<std::mutex> lock(mutex);
+                failLocked(failure.code == MediaErrorCode::NONE ? MediaErrorCode::DECODE : failure.code, "'" + path + "': " + failure.message);
+                return;
+            }
+            break;      // END: no picture at all
+        }
+    }
+
     std::lock_guard<std::mutex> lock(mutex);
     info = found;
     index = std::move(built);
@@ -560,9 +594,18 @@ void PlatformVideoSource::openNow(){
     decodeIteration = 0;
     nextSequence = 0;
     lastPushed = -1;
+    ptsBias = bias;
     audioIteration = 0;
     audioRestart = true;
     audioEnd = !audio;
+    if (hasFirst){
+        stats.framesDecoded++;
+        const int firstIndex = indexOf(std::max<int64_t>(first.ptsNs, 0));
+        nextSequence = firstIndex + 1;
+        pushFrame(first, firstIndex);
+    }else if (video){
+        videoEnd = true;
+    }
     opened = true;
     if (state == State::OPENING)
         state = State::READY;
@@ -690,13 +733,6 @@ PlatformVideoSource::Work PlatformVideoSource::decodeVideo(std::unique_lock<std:
             break;
     }
     stats.framesDecoded++;
-    // the decoder's time origin against the index's (edit lists some decoders apply and others not)
-    if (!biasKnown){
-        if (frame.ptsNs < 0)
-            return Work::DONE;     // pre-roll before the first frame shown
-        ptsBias = frame.ptsNs - ptsOf(0);
-        biasKnown = true;
-    }
     const int64_t pts = frame.ptsNs - ptsBias;
     const int64_t halfFrame = (int64_t)(5e8 / (info.frameRate > 0.0 ? info.frameRate : 30.0));
     if (pts < -halfFrame)
