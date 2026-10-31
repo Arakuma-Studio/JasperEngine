@@ -123,8 +123,8 @@ LIMITS.update({"create_ragdoll": 900})
 # merged by the lead (ui-canvas-group, physics-3d, http): 151 tools measured 107626 on the merged tree
 # shader globals (spec 2026-10-31-shader-globals 6.7): no new tool; get_shader_uniforms names the globals a
 # shader reads and its global_bindings (+51); merged with main (persistence, ui-canvas-group, physics-3d,
-# http): measured below, the limit set to it
-TOTAL_LIMIT = 107626
+# http): 151 tools measured 107680, the limit set to it
+TOTAL_LIMIT = 107680
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

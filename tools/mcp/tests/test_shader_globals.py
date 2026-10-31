@@ -352,15 +352,19 @@ async def test_prefab_overrides_of_bindings(ed: Editor):
     ed.check("shaderGlobalBindings" in str(info["overrides"]), f"a component override: {info['overrides']}")
     # saved and reopened, then applied to the prefab file
     await ed.call("save_scene", scene=SCENE)
+    await ed.call("create_scene", name="Spare", path="scenes/Spare.scene")  # (the last scene cannot close)
     await ed.call("close_scene", scene=SCENE, unsaved="discard")
     await ed.call("open_scene", scene=SCENE)
+    await ed.call("close_scene", scene="scenes/Spare.scene", unsaved="discard")
+    await ed.call("select_scene", scene=SCENE)
     u = await ed.call("get_shader_uniforms", entity="CrateCopy", submesh=0)
     ed.check_eq(u["global_bindings"], {"baseColor": "FogTint"}, "the override survives the reload (override bit)")
     await ed.call("prefab_overrides", entity="CrateCopy", action="apply", component="mesh",
                   properties=["submeshes[0].material.shaderGlobalBindings"])
-    ed.check_in("shaderGlobalBindings", (ed.project / path).read_text(), "applied to the prefab file")
     u = await ed.call("get_shader_uniforms", entity="Crate", submesh=0)
     ed.check_eq(u["global_bindings"], {"baseColor": "FogTint"}, "the other instance follows")
+    await ed.call("save_scene", scene=SCENE)
+    ed.check_in("shaderGlobalBindings", (ed.project / path).read_text(), "applied to the prefab file")
     for name in ("Crate", "CrateCopy", "Dots", "DotsCopy"):
         await ed.call("delete_entities", entities=[name])
 
