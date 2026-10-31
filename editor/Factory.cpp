@@ -1913,6 +1913,14 @@ static const char* formatClipWrapMode(ClipWrapMode wrap) {
     return "ClipWrapMode::Default";
 }
 
+// the C++ of one authored layer (anim layers spec 6.3): `target` is the layer's expression
+static void emitAnimationPlayerLayer(std::ostringstream& code, const std::string& ind, const std::string& target, const AnimationPlayerLayer& layer) {
+    code << ind << target << ".name = " << editor::Factory::formatString(layer.name) << ";\n";
+    if (layer.weight != 1.0f) code << ind << target << ".weight = " << editor::Factory::formatFloat(layer.weight) << ";\n";
+    if (layer.blend == AnimationLayerBlend::Additive) code << ind << target << ".blend = AnimationLayerBlend::Additive;\n";
+    if (!layer.mask.empty()) code << ind << target << ".mask = " << editor::Factory::formatString(layer.mask) << ";\n";
+}
+
 std::string editor::Factory::createAnimationPlayerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<AnimationPlayerComponent>(entity)) return "";
     AnimationPlayerComponent& player = scene->getComponent<AnimationPlayerComponent>(entity);
@@ -1928,7 +1936,14 @@ std::string editor::Factory::createAnimationPlayerComponent(int indentSpaces, En
         code << ind << target << ".clip = " << formatString(entry.clip) << ";\n";
         if (!entry.name.empty()) code << ind << target << ".name = " << formatString(entry.name) << ";\n";
         if (entry.wrap != ClipWrapMode::Default) code << ind << target << ".wrap = " << formatClipWrapMode(entry.wrap) << ";\n";
+        if (entry.layer != 0) code << ind << target << ".layer = " << entry.layer << ";\n";
     }
+    if (!player.layers.empty()) code << ind << "animationplayer.layers.resize(" << player.layers.size() << ");\n";
+    for (size_t i = 0; i < player.layers.size(); i++) {
+        emitAnimationPlayerLayer(code, ind, "animationplayer.layers[" + std::to_string(i) + "]", player.layers[i]);
+    }
+    // the controller (and its masks and clips) load by path from the exported assets
+    if (!player.controller.empty()) code << ind << "animationplayer.controller = " << formatString(player.controller) << ";\n";
     if (!player.defaultClip.empty()) code << ind << "animationplayer.defaultClip = " << formatString(player.defaultClip) << ";\n";
     code << ind << "animationplayer.playAutomatically = " << formatBool(player.playAutomatically) << ";\n";
     code << ind << "animationplayer.speed = " << formatFloat(player.speed) << ";\n";
@@ -3506,6 +3521,12 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     }
     for (const std::string& vat : resources.vats) {
         out << ind2 << "resources.vats.push_back(" << formatString(vat) << ");\n";
+    }
+    for (const std::string& mask : resources.masks) {
+        out << ind2 << "resources.masks.push_back(" << formatString(mask) << ");\n";
+    }
+    for (const std::string& controller : resources.controllers) {
+        out << ind2 << "resources.controllers.push_back(" << formatString(controller) << ");\n";
     }
     out << ind2 << "return resources;\n";
     out << ind << "}\n";

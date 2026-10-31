@@ -12,6 +12,7 @@
 #include "util/YamlNumbers.h"
 #include "lattice/LatticeTypes.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/AnimationPlayerRuntime.h"
 #include "animation/ModelSubClips.h"
 #include "Factory.h"
 #include "pool/SoundPool.h"
@@ -7499,9 +7500,30 @@ YAML::Node editor::Stream::encodeAnimationPlayerComponent(const AnimationPlayerC
         if (!entry.guid.empty()) entryNode["guid"] = entry.guid;
         if (!entry.name.empty()) entryNode["name"] = entry.name;
         if (entry.wrap != ClipWrapMode::Default) entryNode["wrap"] = anim::wrapName(entry.wrap);
+        if (entry.layer != 0) entryNode["layer"] = entry.layer;
         clipsNode.push_back(entryNode);
     }
     node["clips"] = clipsNode;
+    // layers (anim layers spec 6.3): only when they differ from the default single Base Layer
+    // (a missing key decodes to that default)
+    const bool defaultLayers = player.layers.empty() ||
+        (player.layers.size() == 1 && player.layers[0].name == anim::BASE_LAYER_NAME && player.layers[0].mask.empty() &&
+         player.layers[0].maskGuid.empty() && player.layers[0].weight == 1.0f && player.layers[0].blend == AnimationLayerBlend::Override);
+    if (!defaultLayers) {
+        YAML::Node layersNode(YAML::NodeType::Sequence);
+        for (const AnimationPlayerLayer& layer : player.layers) {
+            YAML::Node layerNode;
+            layerNode["name"] = layer.name;
+            if (layer.weight != 1.0f) encodeFinite(layerNode, "weight", layer.weight);
+            if (layer.blend != AnimationLayerBlend::Override) layerNode["blend"] = anim::layerBlendName(layer.blend);
+            if (!layer.mask.empty()) layerNode["mask"] = layer.mask;
+            if (!layer.maskGuid.empty()) layerNode["maskGuid"] = layer.maskGuid;
+            layersNode.push_back(layerNode);
+        }
+        node["layers"] = layersNode;
+    }
+    if (!player.controller.empty()) node["controller"] = player.controller;
+    if (!player.controllerGuid.empty()) node["controllerGuid"] = player.controllerGuid;
     node["defaultClip"] = player.defaultClip;
     node["playAutomatically"] = YamlNumbers::text(player.playAutomatically);
     encodeFinite(node, "speed", player.speed);
@@ -7520,6 +7542,8 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
     // over the component must not bring back a released Lua function
     player.onEvent.clear();
     player.onFinish.clear();
+    player.onStateEnter.clear();
+    player.onStateExit.clear();
 
     // a missing key is the default, not the old value
     const AnimationPlayerComponent defaults;
@@ -7568,6 +7592,11 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
                     }
                     entry.wrap = ClipWrapMode::Default;
                 }
+                const YAML::Node layerNode = entryNode["layer"];
+                if (layerNode && layerNode.IsScalar()) {
+                    int layer = 0;
+                    if (YamlNumbers::readPlain(layerNode.Scalar(), layer) && layer >= 0) entry.layer = layer;
+                }
             } else {
                 // a list, or a map whose clip is not a path
                 continue;
@@ -7577,12 +7606,46 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
     }
     player.clips = std::move(clips);
 
+    // layers: a missing key is the default single Base Layer (empty)
+    std::vector<AnimationPlayerLayer> layers;
+    const YAML::Node layersNode = node["layers"];
+    if (layersNode && layersNode.IsSequence()) {
+        for (const YAML::Node& layerNode : layersNode) {
+            AnimationPlayerLayer layer;
+            if (layerNode.IsScalar()) {
+                layer.name = layerNode.Scalar();
+            } else if (layerNode.IsMap()) {
+                auto text = [&layerNode](const char* key) {
+                    const YAML::Node value = layerNode[key];
+                    return value && value.IsScalar() ? value.Scalar() : std::string();
+                };
+                layer.name = text("name");
+                if (layerNode["weight"] && layerNode["weight"].IsScalar()) {
+                    layer.weight = std::clamp(decodeFinite(layerNode["weight"], 1.0f), 0.0f, 1.0f);
+                }
+                const std::string blend = text("blend");
+                if (!blend.empty() && !anim::layerBlendFromName(blend, layer.blend)) {
+                    Out::warning("Animation Player layer \"%s\": unknown blend \"%s\" (override, additive), using override", layer.name.c_str(), blend.c_str());
+                    layer.blend = AnimationLayerBlend::Override;
+                }
+                layer.mask = text("mask");
+                layer.maskGuid = text("maskGuid");
+            } else {
+                continue;
+            }
+            layers.push_back(std::move(layer));
+        }
+    }
+    player.layers = std::move(layers);
+    player.controller = given("controller") && node["controller"].IsScalar() ? node["controller"].Scalar() : std::string();
+    player.controllerGuid = given("controllerGuid") && node["controllerGuid"].IsScalar() ? node["controllerGuid"].Scalar() : std::string();
+
     player.defaultClip = given("defaultClip") && node["defaultClip"].IsScalar() ? node["defaultClip"].Scalar() : std::string();
     player.playAutomatically = boolean("playAutomatically", defaults.playAutomatically);
     player.speed = given("speed") ? decodeFinite(node["speed"], defaults.speed) : defaults.speed;
     player.defaultFadeTime = given("defaultFadeTime") ? std::max(0.0f, decodeFinite(node["defaultFadeTime"], defaults.defaultFadeTime)) : defaults.defaultFadeTime;
 
-    if (oldPlayer && oldPlayer->clips != player.clips) {
+    if (oldPlayer && (oldPlayer->clips != player.clips || oldPlayer->layers != player.layers || oldPlayer->controller != player.controller)) {
         player.needsLoad = true;
     }
 

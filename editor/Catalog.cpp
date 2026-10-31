@@ -730,10 +730,14 @@ namespace {
 
     // enabled is the shared component checkbox (findEnabledGetter). The clip list is `clips`
     // (Custom: the whole list, what a prefab override of the list holds) plus
-    // clips[i].clip/guid/name/wrap (resolveAnimationPlayerPropertyFast); the runtime fields are
+    // clips[i].clip/guid/name/wrap/layer, layers[i].name/weight/blend/mask/maskGuid
+    // (resolveAnimationPlayerPropertyFast); the runtime fields are
     // not properties. The settings are read by the player when it plays (no update flag).
     static const FastPropertyDescriptor kAnimationPlayerProperties[] = {
         makeFastProperty<AnimationPlayerComponent, std::vector<AnimationPlayerClip>, &AnimationPlayerComponent::clips>("clips", PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload),
+        makeFastProperty<AnimationPlayerComponent, std::vector<AnimationPlayerLayer>, &AnimationPlayerComponent::layers>("layers", PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload),
+        makeFastProperty<AnimationPlayerComponent, std::string, &AnimationPlayerComponent::controller>("controller", PropertyType::String, UpdateFlags_AnimationPlayer_Reload),
+        makeFastProperty<AnimationPlayerComponent, std::string, &AnimationPlayerComponent::controllerGuid>("controllerGuid", PropertyType::String, UpdateFlags_AnimationPlayer_Reload),
         makeFastProperty<AnimationPlayerComponent, std::string, &AnimationPlayerComponent::defaultClip>("defaultClip", PropertyType::String, UpdateFlags_None),
         makeFastProperty<AnimationPlayerComponent, bool, &AnimationPlayerComponent::playAutomatically>("playAutomatically", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<AnimationPlayerComponent, float, &AnimationPlayerComponent::speed>("speed", PropertyType::Float, UpdateFlags_None),
@@ -1912,6 +1916,28 @@ namespace {
                 if (fieldName == ".wrap") {
                     return {PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.wrap, (void*)&entry.wrap};
                 }
+                if (fieldName == ".layer") {
+                    return {PropertyType::Int, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.layer, (void*)&entry.layer};
+                }
+            }
+        }
+
+        // layers[i].name / .weight / .mask / .maskGuid; .blend is an AnimationLayerBlend, one
+        // byte: Custom like clips[i].wrap (anim layers spec 6.3)
+        if (propertyName.compare(0, 7, "layers[") == 0) {
+            size_t pos = 7;
+            size_t index = 0;
+            if (!parseIndex(propertyName, pos, index)) return PropertyData();
+            if (pos + 1 >= propertyName.length() || propertyName[pos] != ']') return PropertyData();
+            if (index < comp->layers.size()) {
+                static AnimationPlayerLayer defLayer;
+                AnimationPlayerLayer& layer = comp->layers[index];
+                const std::string fieldName = propertyName.substr(pos + 1);
+                if (fieldName == ".name") return {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.name, (void*)&layer.name};
+                if (fieldName == ".weight") return {PropertyType::Float, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.weight, (void*)&layer.weight};
+                if (fieldName == ".blend") return {PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.blend, (void*)&layer.blend};
+                if (fieldName == ".mask") return {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.mask, (void*)&layer.mask};
+                if (fieldName == ".maskGuid") return {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.maskGuid, (void*)&layer.maskGuid};
             }
         }
 
@@ -3012,6 +3038,17 @@ namespace {
             ps[prefix + ".guid"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.guid, entry ? (void*)&entry->guid : nullptr};
             ps[prefix + ".name"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.name, entry ? (void*)&entry->name : nullptr};
             ps[prefix + ".wrap"] = {PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.wrap, entry ? (void*)&entry->wrap : nullptr};
+            ps[prefix + ".layer"] = {PropertyType::Int, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.layer, entry ? (void*)&entry->layer : nullptr};
+        }
+        static AnimationPlayerLayer defLayer;
+        for (size_t i = 0; i < (compRef ? comp->layers.size() : 1); i++) {
+            const std::string prefix = "layers[" + (compRef ? std::to_string(i) : std::string()) + "]";
+            AnimationPlayerLayer* layer = compRef ? &comp->layers[i] : nullptr;
+            ps[prefix + ".name"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.name, layer ? (void*)&layer->name : nullptr};
+            ps[prefix + ".weight"] = {PropertyType::Float, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.weight, layer ? (void*)&layer->weight : nullptr};
+            ps[prefix + ".blend"] = {PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.blend, layer ? (void*)&layer->blend : nullptr};
+            ps[prefix + ".mask"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.mask, layer ? (void*)&layer->mask : nullptr};
+            ps[prefix + ".maskGuid"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.maskGuid, layer ? (void*)&layer->maskGuid : nullptr};
         }
     }
 
@@ -6045,6 +6082,14 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             } else if (compType == ComponentType::AnimationPlayerComponent && property.compare(0, 6, "clips[") == 0 && endsWith(property, "].wrap")) {
                 auto* source = Catalog::getPropertyRef<ClipWrapMode>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<ClipWrapMode>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::AnimationPlayerComponent && property == "layers") {
+                auto* source = Catalog::getPropertyRef<std::vector<AnimationPlayerLayer>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<AnimationPlayerLayer>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::AnimationPlayerComponent && property.compare(0, 7, "layers[") == 0 && endsWith(property, "].blend")) {
+                auto* source = Catalog::getPropertyRef<AnimationLayerBlend>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<AnimationLayerBlend>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
             } else if (compType == ComponentType::LatticeTracksComponent && property == "points") {
                 auto* source = Catalog::getPropertyRef<std::vector<int>>(sourceRegistry, sourceEntity, compType, property);
