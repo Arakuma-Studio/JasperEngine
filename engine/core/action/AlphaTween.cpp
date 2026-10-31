@@ -21,3 +21,11 @@ void AlphaTween::setAction(float startAlpha, float endAlpha, float duration, boo
     alphaTween.startAlpha = startAlpha;
     alphaTween.endAlpha = endAlpha;
 }
+
+void AlphaTween::setAlphaTarget(AlphaTweenTarget alphaTarget){
+    getComponent<AlphaTweenComponent>().alphaTarget = alphaTarget;
+}
+
+AlphaTweenTarget AlphaTween::getAlphaTarget() const{
+    return getComponent<AlphaTweenComponent>().alphaTarget;
+}

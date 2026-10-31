@@ -30,6 +30,9 @@ documents have their own effects library instead, `effect(<name>, ...)` in CSS (
   `texture` shortcut) times the line's colour, a library or forked one its own textures at
   `lineUV()` (`includes/lines_fs.glsl`). A hairline (width 0) has no texture coordinates
   (jasper://docs/lines-trails).
+  A UI shader gets the element's colour with its Canvas Group alpha already applied in
+  `uiParams.color` (jasper://docs/ui): one that ignores that uniform does not fade with its
+  group, but the element is still not drawn at group alpha 0.
 - Values (paths of the submesh's material, `submeshes[N].material.<key>`):
   - `shaderParams`: `{member: value}`, or one entry `shaderParams.<member>`. Numbers or
     `[x,y,z,w]` as stored: colours are **linear**; a `"#RRGGBB[AA]"` string is sRGB and is

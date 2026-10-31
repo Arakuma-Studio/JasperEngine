@@ -11,6 +11,7 @@
 #include "shader/ShaderUniforms.h"
 #include "texture/Material.h"
 #include "math/AABB.h"
+#include "ecs/Entity.h"
 #include <string>
 #include <memory>
 
@@ -97,6 +98,25 @@ namespace jasperengine{
         bool needUpdateAABB = false;
         bool needUpdateBuffer = false;
         bool needUpdateTexture = false;
+
+        // Canvas Group state over the element's chain (UISystem::syncCanvasGroups), runtime,
+        // never serialized. groupAlpha multiplies the draw alpha (the chain's product: what a
+        // Per Element draw uses); groupLayerAlpha is the same relative to the nearest enclosing
+        // layered FLATTEN group (what the element draws with inside that group's layer, which
+        // is composited at the group's alpha). color is never changed by a group
+        float groupAlpha = 1.0f;
+        float groupLayerAlpha = 1.0f;
+        bool groupInteractable = true;
+        bool groupBlocksRaycasts = true;
+        // the nearest group of the chain (Inspector, MCP), NULL_ENTITY without one
+        Entity groupEntity = NULL_ENTITY;
+        // resolved at load (RenderSystem::loadUI): the blend the draw uses and whether it
+        // writes the stencil (a mask still draws at alpha 0)
+        MaterialBlendMode drawBlendMode = MaterialBlendMode::AUTO;
+        bool writesStencil = false;
+        // the pipeline types it was loaded with (a FLATTEN Canvas Group layer draws it with
+        // PIP_RTT*; one loaded before needs a reload)
+        uint16_t loadedPipelines = 0;
     };
 
 }

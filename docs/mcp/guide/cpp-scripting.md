@@ -115,6 +115,20 @@ void Spinner::init() { if (!target) Log::warn("Spinner: no target"); }
 void Spinner::onDisable() { Log::print("paused"); }
 ```
 
+Persistent objects (Unity's `DontDestroyOnLoad`, rules in `jasper://docs/lua-api` 2.8.1):
+
+```cpp
+void AdsManager::init() {
+    if (persistSingleton<AdsManager>() != this) return;   // a duplicate: its GameObject goes
+}
+void MusicPlayer::init() { dontDestroyOnLoad(); }           // the root GameObject survives loads
+```
+
+`isPersistent()`, `SceneManager::dontDestroyOnLoad(scene, root)` and
+`SceneManager::moveGameObjectToScene(from, root, to)` do the same from anywhere. The move keeps
+the object (its members, pointers to it stay valid); `getScene()` and `getEntity()` change with
+it, and the wrappers its entity-reference properties made for the moved GameObjects follow.
+
 A GameObject subclass looks the same with `public jasperengine::Primitive` (or `Mesh`,
 `Sprite`...) as base, `#include "Primitive.h"`, and `Primitive(scene, entity)` in the
 initializer list; it can then call `setColor(...)`, `getPosition()`, `setPosition(...)` directly.

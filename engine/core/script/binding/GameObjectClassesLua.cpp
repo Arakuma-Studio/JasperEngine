@@ -7,6 +7,7 @@
 
 #include "LuaBridge.h"
 #include "LuaBridgeAddon.h"
+#include "LuaFunction.h"
 #include "Scene.h"
 #include "subsystem/RenderSystem.h"
 
@@ -47,6 +48,7 @@
 #include "Progressbar.h"
 #include "InputField.h"
 #include "LayoutGroup.h"
+#include "object/ui/CanvasGroup.h"
 #include "AudioSource.h"
 #include "Engine.h"
 #include "ObjectManager.h"
@@ -680,6 +682,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addStaticFunction("findGameObjectsWithTag", &LuaBinding::luaFindGameObjectsWithTag)
         .addStaticFunction("findObjectOfType", &LuaBinding::luaFindObjectOfType)
         .addStaticFunction("findObjectsOfType", &LuaBinding::luaFindObjectsOfType)
+        // persistent objects (Unity's DontDestroyOnLoad, also a global function)
+        .addStaticFunction("dontDestroyOnLoad", &LuaBinding::luaDontDestroyOnLoad)
+        .addStaticFunction("isPersistent", &LuaBinding::luaIsPersistent)
+        .addStaticFunction("persistSingleton", &LuaBinding::luaPersistSingleton)
         .addFunction("addChild", 
             luabridge::overload<GameObject*>(&GameObject::addChild),
             luabridge::overload<Entity>(&GameObject::addChild))
@@ -781,6 +787,31 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
                 return std::nullopt;
             }
             return TrailRenderer::addTo(scene, self->getEntity());
+        })
+        // the Canvas Group of the GameObject, nil when it has none (Unity's GetComponent)
+        .addFunction("getCanvasGroup", +[](GameObject* self) -> std::optional<CanvasGroup> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<CanvasGroupComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return CanvasGroup(scene, self->getEntity());
+        })
+        .addFunction("hasCanvasGroup", +[](GameObject* self) -> bool {
+            Scene* scene = self->getScene();
+            return scene && scene->isEntityCreated(self->getEntity()) &&
+                   scene->findComponent<CanvasGroupComponent>(self->getEntity()) != nullptr;
+        })
+        // adds one when the GameObject has none (Unity AddComponent<CanvasGroup>)
+        .addFunction("addCanvasGroup", +[](GameObject* self) -> CanvasGroup {
+            return CanvasGroup(self->getScene(), self->getEntity());
+        })
+        .addFunction("removeCanvasGroup", +[](GameObject* self) {
+            Scene* scene = self->getScene();
+            if (scene && scene->isEntityCreated(self->getEntity()) &&
+                scene->findComponent<CanvasGroupComponent>(self->getEntity())){
+                scene->removeComponent<CanvasGroupComponent>(self->getEntity());
+            }
         })
         .endClass();
 
@@ -1784,7 +1815,71 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("anchorPreset", &RectTransform::getAnchorPreset, &RectTransform::setAnchorPreset)
         .addProperty("usingAnchors", &RectTransform::isUsingAnchors, &RectTransform::setUsingAnchors)
         .addProperty("ignoreScissor", &RectTransform::isIgnoreScissor, &RectTransform::setIgnoreScissor)
+        .addFunction("getInheritedAlpha", &RectTransform::getInheritedAlpha)
+        .addFunction("getGroupsAllowInteraction", &RectTransform::getGroupsAllowInteraction)
+        .addFunction("getGroupsBlockRaycasts", &RectTransform::getGroupsBlockRaycasts)
+        .addFunction("isInteractable", &RectTransform::isInteractable)
         .addFunction("getRectTransformComponent", &RectTransform::getComponent<RectTransformComponent>)
+        .endClass();
+
+    // Unity's CanvasGroup: fades, disables or makes click-through a UI subtree. The fade options
+    // table: {ease = EaseType.*, unscaled = false, deactivate = false, onComplete = function}
+    static auto fadeOptions = +[](const std::optional<luabridge::LuaRef>& optionsArg, lua_State* L) -> CanvasGroupFadeOptions {
+        CanvasGroupFadeOptions result;
+        if (!optionsArg || optionsArg->isNil()){
+            return result;
+        }
+        const luabridge::LuaRef& options = *optionsArg;
+        if (!options.isTable()){
+            luaL_error(L, "CanvasGroup fade options must be a table {ease, unscaled, deactivate, onComplete}");
+            return result;
+        }
+        const luabridge::LuaRef ease = options["ease"];
+        if (ease.isNumber()){
+            result.ease = static_cast<EaseType>(ease.unsafe_cast<int>());
+        }
+        const luabridge::LuaRef unscaled = options["unscaled"];
+        if (!unscaled.isNil()){
+            result.unscaled = unscaled.unsafe_cast<bool>();
+        }
+        const luabridge::LuaRef deactivate = options["deactivate"];
+        if (!deactivate.isNil()){
+            result.deactivate = deactivate.unsafe_cast<bool>();
+        }
+        const luabridge::LuaRef onComplete = options["onComplete"];
+        if (onComplete.isFunction()){
+            onComplete.push(L);
+            result.onComplete = LuaFunction<void>(L);
+        }else if (!onComplete.isNil()){
+            luaL_error(L, "CanvasGroup fade option onComplete must be a function");
+        }
+        return result;
+    };
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<CanvasGroup, EntityHandle>("CanvasGroup")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &CanvasGroup::isEnabled, &CanvasGroup::setEnabled)
+        .addProperty("alpha", &CanvasGroup::getAlpha, &CanvasGroup::setAlpha)
+        .addProperty("interactable", &CanvasGroup::isInteractable, &CanvasGroup::setInteractable)
+        .addProperty("blocksRaycasts", &CanvasGroup::isBlocksRaycasts, &CanvasGroup::setBlocksRaycasts)
+        .addProperty("ignoreParentGroups", &CanvasGroup::isIgnoreParentGroups, &CanvasGroup::setIgnoreParentGroups)
+        .addProperty("renderMode", &CanvasGroup::getRenderMode, &CanvasGroup::setRenderMode)
+        .addFunction("fadeTo", +[](CanvasGroup* self, float alpha, float duration, std::optional<luabridge::LuaRef> options, lua_State* L) -> AlphaTween {
+            return self->fadeTo(alpha, duration, fadeOptions(options, L));
+        })
+        .addFunction("fadeIn", +[](CanvasGroup* self, float duration, std::optional<luabridge::LuaRef> options, lua_State* L) -> AlphaTween {
+            return self->fadeIn(duration, fadeOptions(options, L));
+        })
+        .addFunction("fadeOut", +[](CanvasGroup* self, float duration, std::optional<luabridge::LuaRef> options, lua_State* L) -> AlphaTween {
+            return self->fadeOut(duration, fadeOptions(options, L));
+        })
+        .addFunction("stopFade", +[](CanvasGroup* self, std::optional<bool> jumpToEnd) {
+            self->stopFade(jumpToEnd.value_or(false));
+        })
+        .addFunction("isFading", &CanvasGroup::isFading)
+        .addFunction("getGameObject", &CanvasGroup::getGameObject)
+        .addFunction("getCanvasGroupComponent", &CanvasGroup::getComponent<CanvasGroupComponent>)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

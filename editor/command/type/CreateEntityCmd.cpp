@@ -312,6 +312,19 @@ bool editor::CreateEntityCmd::execute(){
         polygonComp.points.push_back({Vector3(100, 100, 0), Vector4(1.0f, 1.0f, 1.0f, 1.0f)});
         polygonComp.needUpdatePolygon = true;
 
+    }else if (type == EntityCreationType::CANVAS_GROUP){
+
+        // a container stretched over its parent with a Canvas Group (Unity: add the children
+        // to fade, disable or make click-through together)
+        scene->addComponent<Transform>(entity, {});
+        RectTransformComponent layout;
+        layout.width = 100;
+        layout.height = 100;
+        layout.anchorPreset = AnchorPreset::FULL_LAYOUT;
+        layout.usingAnchors = true;
+        scene->addComponent<RectTransformComponent>(entity, layout);
+        scene->addComponent<CanvasGroupComponent>(entity, {});
+
     }else if (type == EntityCreationType::LAYOUT_GROUP){
 
         scene->addComponent<Transform>(entity, {});
