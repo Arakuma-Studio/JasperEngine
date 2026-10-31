@@ -1165,26 +1165,27 @@ TEST_F(CoroutineTest, ScriptsWithTheirOwnMetatablesStillGetTheInstanceMethods) {
 }
 
 TEST_F(CoroutineTest, CppStartsALuaCoroutineForAnInstance) {
+    // not named start: the script lifecycle calls a method of that name itself
     const Entity entity = addScript("Starter", R"(
         local M = {}
         function M:init() end
-        function M:start() Log("start" .. F()) Coroutine.nextFrame() Log("resumed" .. F()) end
+        function M:launch() Log("launch" .. F()) Coroutine.nextFrame() Log("resumed" .. F()) end
         return M
     )");
     start();
     lua_rawgeti(L, LUA_REGISTRYINDEX, static_cast<lua_Integer>(reinterpret_cast<intptr_t>(instanceOf(entity))));
-    lua_getfield(L, -1, "start");
+    lua_getfield(L, -1, "launch");
     lua_pushvalue(L, -2);
-    const TaskId id = ScriptScheduler::startCoroutine(L, -3, -2, 1, "start");
+    const TaskId id = ScriptScheduler::startCoroutine(L, -3, -2, 1, "launch");
     lua_pop(L, 3);
     EXPECT_NE(id, 0u);
     const std::vector<ScriptCoroutineInfo> infos = ScriptScheduler::coroutinesOf(instanceOf(entity));
     ASSERT_EQ(infos.size(), 1u);
-    EXPECT_EQ(infos[0].method, "start");
+    EXPECT_EQ(infos[0].method, "launch");
     EXPECT_EQ(infos[0].origin, "Starter.lua:4");
     EXPECT_EQ(infos[0].waiting, "frames 1");
     frames(1);
-    EXPECT_EQ(log(), "start0 resumed1");
+    EXPECT_EQ(log(), "launch0 resumed1");
     // not a live instance: nothing starts
     lua_newtable(L);
     lua_pushcfunction(L, [](lua_State*) -> int { return 0; });

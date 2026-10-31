@@ -202,7 +202,9 @@ TEST(LineRendererStreamTest, TrailRoundTripKeepsNoRuntime){
 
 TEST(LineRendererStreamTest, TrailRegistrationAndCatalog){
     const ComponentType type = ComponentType::TrailRendererComponent;
-    EXPECT_EQ(LastComponentType, type) << "appended at the end: prefab override masks use the ordinal";
+    // appended after every older type (prefab override masks use the ordinal); the Camera Shaker
+    // came after it
+    EXPECT_EQ(static_cast<int>(type) + 1, static_cast<int>(ComponentType::CameraShakerComponent));
     EXPECT_EQ(Catalog::getComponentName(type, true), "trailrenderer");
     EXPECT_EQ(Catalog::getComponentDisplayName(type), "Trail Renderer");
     EXPECT_EQ(Catalog::getComponentType("trailrenderer"), type);
