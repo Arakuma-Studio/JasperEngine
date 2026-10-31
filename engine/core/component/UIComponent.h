@@ -42,6 +42,11 @@ namespace jasperengine{
         // values of the fork's custom uniform blocks, by member name
         ShaderUniformValues shaderUniforms;
         bool needUpdateShaderUniforms = false;
+        // custom-block members that follow a global shader value (Shader.setGlobal*): member
+        // -> global name, over shaderUniforms and the manifest default; globalsVersionSeen is
+        // ShaderGlobals::getVersion() when the blocks were last written with them
+        ShaderGlobalBindings shaderGlobalBindings;
+        uint64_t globalsVersionSeen = 0;
         CustomUniformBlock customVSParams;
         CustomUniformBlock customFSParams;
         // shader library: textures by @texture uniform name and enabled @feature/@keywords

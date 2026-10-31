@@ -65,6 +65,15 @@
 //   #define SURFACE_DISPLACE_NORMAL
 //   vec3 surfaceDisplaceNormal(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv){ ... }
 //
+// Per-vertex work of a fork at the final world position and normal (vertex lighting read
+// from global shader values, u_vs_globals: docs/mcp/guide/shaders.md "Global values"), with
+// the vertex colour and UV the varyings get; it writes varyings of its own:
+//
+//   #define SURFACE_VERTEX
+//   #include "includes/surface_vs.glsl"
+//   out vec3 v_light;
+//   void surfaceVertex(vec3 worldPosition, vec3 worldNormal, vec4 color, vec2 uv){ v_light = ...; }
+//
 // Lattices (HAS_LATTICE, includes/lattice.glsl): the vertex goes through the lattices bound
 // to the mesh with its normal, smoothed normal and tangent, the before-skinning ones on the
 // bind pose, the others after the instance matrix and the instance fade, so the hooks above
@@ -259,6 +268,9 @@ float surfaceFadeVisible;
 #ifdef SURFACE_DISPLACE_NORMAL
     // the same inputs as surfaceDisplace; returns the moved object-space normal
     vec3 surfaceDisplaceNormal(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv);
+#endif
+#ifdef SURFACE_VERTEX
+    void surfaceVertex(vec3 worldPosition, vec3 worldNormal, vec4 color, vec2 uv);
 #endif
 
 // the vertex colour attribute, white without one
@@ -514,6 +526,10 @@ void main() {
     for (int i = 0; i < MAX_SHADOW_ATLAS_SLOTS; ++i){
         v_lightProjPos[i] = lightVPMatrix[i] * (worldPos + vec4(worldNormal * shadowParams[i].x, 0.0));
     }
+    #endif
+
+    #ifdef SURFACE_VERTEX
+        surfaceVertex(worldPos.xyz / worldPos.w, worldNormal, color, uv1);
     #endif
 
     gl_Position = pbrParams.mvpMatrix * pos;

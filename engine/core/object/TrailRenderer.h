@@ -102,6 +102,10 @@ namespace jasperengine{
         Vector4 getShaderUniform(const std::string& name) const;
         bool removeShaderUniform(const std::string& name);
         Vector4 getShaderParam(const std::string& name) const;
+        // a custom-block member that follows a global shader value (Shader.setGlobal*) instead of
+        // its shader uniform; "" unbinds (false when nothing changed)
+        bool setShaderGlobalBinding(const std::string& member, const std::string& global);
+        std::string getShaderGlobalBinding(const std::string& member) const;
         void setShaderTexture(const std::string& name, const std::string& path);
         std::string getShaderTexture(const std::string& name) const;
         void setShaderFeature(const std::string& define, bool enabled);

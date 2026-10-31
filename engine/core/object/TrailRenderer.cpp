@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TrailRenderer.h"
+#include "shader/ShaderGlobals.h"
 #include "shader/ShaderManifest.h"
 #include "subsystem/TrailSystem.h"
 #include "render/LineRibbonBuilder.h"
@@ -322,6 +323,21 @@ bool TrailRenderer::removeShaderUniform(const std::string& name){
 Vector4 TrailRenderer::getShaderParam(const std::string& name) const{
     const TrailRendererComponent& trail = getComponent<TrailRendererComponent>();
     return ShaderLibraryValues::getParam(trail.shaderUniforms, trail.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : trail.customShader, name);
+}
+
+bool TrailRenderer::setShaderGlobalBinding(const std::string& member, const std::string& global){
+    TrailRendererComponent& trail = getComponent<TrailRendererComponent>();
+
+    if (!ShaderGlobals::setBinding(trail.shaderGlobalBindings, member, global))
+        return false;
+    trail.needUpdateShaderUniforms = true;
+    return true;
+}
+
+std::string TrailRenderer::getShaderGlobalBinding(const std::string& member) const{
+    const TrailRendererComponent& trail = getComponent<TrailRendererComponent>();
+
+    return ShaderGlobals::getBinding(trail.shaderGlobalBindings, member);
 }
 
 void TrailRenderer::setShaderTexture(const std::string& name, const std::string& path){

@@ -201,6 +201,9 @@ namespace jasperengine{
         // the shader's textures by uniform (its manifest's @texture, or any it declares when it
         // has no manifest); one it declares and has none of binds the manifest default (white)
         std::vector<std::pair<std::string, Texture>> textures;
+        // u_fs_postParams members that follow a global shader value (Shader.setGlobal*):
+        // member -> global name, over uniforms and the manifest default
+        ShaderGlobalBindings shaderGlobalBindings;
         // the pass's output resolution, a fraction of the chain's (0.1..1): the next pass (or a
         // copy to the destination, after the last) samples it bilinearly
         float scale = 1.0f;

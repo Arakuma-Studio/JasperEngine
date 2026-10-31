@@ -89,10 +89,11 @@ namespace jasperengine{
         MaterialDepthWrite depthWrite = MaterialDepthWrite::AUTO;
         MaterialStencil stencil;
         int colorWrite = -1;
-        // global shader values bound to members of the shader's custom blocks (member ->
-        // global name), for the shader-globals feature (Shader.setGlobal*): stored and copied
-        // here, read by its binding path
-        std::vector<std::pair<std::string, std::string>> shaderGlobalBindings;
+        // custom-block members that follow a global shader value (Shader.setGlobal*): member
+        // -> global name, over shaderUniforms and the manifest default; globalsVersionSeen is
+        // ShaderGlobals::getVersion() when the blocks were last written with them
+        ShaderGlobalBindings shaderGlobalBindings;
+        uint64_t globalsVersionSeen = 0;
 
         // runtime: the points and the clock state (TrailSystem), the GPU objects and the ribbon
         TrailPointRing points;
