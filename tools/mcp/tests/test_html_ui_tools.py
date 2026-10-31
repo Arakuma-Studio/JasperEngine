@@ -108,7 +108,9 @@ LIMITS.update({"user_settings": 550})
 # script-lifecycle: check_script's lifecycle warnings and update_script_entry's enabled in Play, paid
 # by shorter texts of both; merged with main (script-data, input, physics-2d): 150 tools measured
 # 106621, the limit set to it
-TOTAL_LIMIT = 106621
+# http: configure_game_view's network and get_play_state's http block; merged with main (script-data,
+# input, physics-2d, script-lifecycle): 150 tools measured 106807, the limit set to it
+TOTAL_LIMIT = 106807
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
