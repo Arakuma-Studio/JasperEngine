@@ -2691,6 +2691,8 @@ bool editor::Exporter::copyEngine() {
         const std::string identifier = project->getApplicationIdentifier();
         const std::string storageId = (identifier != ApplicationSettings{}.identifier) ? identifier : project->getName();
         projectSettings += indent + "set(JASPERENGINE_STORAGE_ID \"" + toStorageId(storageId) + "\")";
+        // Desktop saves (data://) go to a per-user folder named after it (System::getUserDataPath)
+        projectSettings += indent + "set(JASPERENGINE_APP_IDENTIFIER \"" + toStorageId(storageId) + "\")";
         if (iconGenerated) {
             projectSettings += indent + "set(JASPERENGINE_WINDOW_ICON ON)";
         }

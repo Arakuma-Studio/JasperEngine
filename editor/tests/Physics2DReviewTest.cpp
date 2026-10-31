@@ -21,6 +21,7 @@
 
 #include "lua.hpp"
 #include "LuaBridge.h"
+#include "LuaBridgeAddon.h"
 
 #include <cmath>
 #include <limits>
