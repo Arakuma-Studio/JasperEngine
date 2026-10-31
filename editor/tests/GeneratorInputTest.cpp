@@ -94,6 +94,41 @@ TEST(GeneratorInputTest, ALongDefinitionIsSplitIntoLiteralsMsvcTakes) {
     EXPECT_GE(pieces, 3u);
 }
 
+TEST(GeneratorInputTest, PiecesEndOnCharacterBoundaries) {
+    // review fix: a fixed 8000-byte cut could split a UTF-8 character between two literals
+    std::vector<InputAction> actions;
+    for (int i = 0; i < 120; i++) {
+        InputAction action;
+        action.name = "Acci\xc3\xb3n " + std::to_string(i);
+        // two- and four-byte characters everywhere, so some fall on a cut
+        for (int k = 0; k < 20; k++) action.description += "\xc3\xa9\xf0\x9f\x98\x80";
+        actions.push_back(action);
+    }
+    const std::string json = InputActions::actionsToJson(actions);
+    ASSERT_GT(json.size(), 16000u);
+    const std::string line = Generator::inputActionsInitSource(json);
+    EXPECT_EQ(rawLiteralValue(line), json);
+    size_t at = 0;
+    int pieces = 0;
+    while ((at = line.find("R\"jinput(", at)) != std::string::npos) {
+        const size_t open = at + 9;
+        const size_t end = line.find(")jinput\"", open);
+        ASSERT_NE(end, std::string::npos);
+        const std::string piece = line.substr(open, end - open);
+        ASSERT_FALSE(piece.empty());
+        // no piece starts with a continuation byte or ends inside a character
+        EXPECT_NE(static_cast<unsigned char>(piece.front()) & 0xC0, 0x80) << "piece " << pieces;
+        size_t lead = piece.size() - 1;
+        while (lead > 0 && (static_cast<unsigned char>(piece[lead]) & 0xC0) == 0x80) lead--;
+        const unsigned char c = static_cast<unsigned char>(piece[lead]);
+        const size_t length = c < 0x80 ? 1 : (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xE ? 3 : 4;
+        EXPECT_EQ(piece.size() - lead, length) << "piece " << pieces;
+        pieces++;
+        at = end;
+    }
+    EXPECT_GE(pieces, 3);
+}
+
 TEST(GeneratorInputTest, MainCppHasTheLineOnlyWhenTheProjectHasAnInputNode) {
     const fs::path project = tempProject("main");
     const fs::path internal = project / ".jasperengine";

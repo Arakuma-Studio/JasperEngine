@@ -502,6 +502,20 @@ the code:
     keys, gamepad buttons (ImGui's or the playing game's), sticks/triggers for a gamepad axis
     binding, and mouse buttons clicked on empty space (a click on the dialog is not a binding).
 
+15. **Review fixes** (each with a regression test):
+    - A `wait` whose condition ends it early releases the actions and axes the cut input held
+      through the `"mcp"` source (axes held before the wait go back to their value).
+    - `Input::releaseAll` (app pause) reports the touches Canceled in `Input.touches` but leaves
+      the fingers-down list to the platform's `systemTouchCancel`, so `onTouchCancel` and the
+      documents' cancel still come after a pause exactly as before.
+    - A virtual-source press and release between two updates (an on-screen button tapped within a
+      frame, or its owner cleared before the frame) gives `getButtonDown` and `getButtonUp`; so does
+      a source released and pressed again (a second source tapped while one holds the action gives
+      no edges, like a second key).
+    - A control released and pressed again inside one frame while held (and down/up/down from
+      rest) gives both action edges, as `getKeyDown` / `getKeyUp` do (§7.2 step 5).
+    - The generated literal pieces end on UTF-8 character boundaries.
+
 Verification: editor + tests build with 0 warnings; `jasperengine-editor-tests` 985 passed,
 8 skipped (the known ones), 0 failed (49 new: InputEdgesTest, InputTouchTest, InputActionsTest,
 InputControlNamesTest, GeneratorInputTest, ProjectInputTest). MCP `test_input.py`,

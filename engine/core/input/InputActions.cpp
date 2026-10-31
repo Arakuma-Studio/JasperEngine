@@ -35,6 +35,12 @@ namespace {
         bool pressed = false;
         bool down = false;
         bool up = false;
+        // what the virtual sources did since the last update (a press and release between two
+        // updates must still give the edges): a source went past the press point, one went back,
+        // one went back and then past it again
+        bool sourcePressLatch = false;
+        bool sourceReleaseLatch = false;
+        bool sourceRepressLatch = false;
     };
 
     struct Source {
@@ -133,17 +139,20 @@ namespace {
     }
 
     // held now, and pressed in this frame (a press and release inside the frame count as a press)
-    void readControl(const InputControl& control, int gamepad, bool& held, bool& pressedThisFrame) {
+    void readControl(const InputControl& control, int gamepad, bool& held, bool& pressedThisFrame, bool& releasedThisFrame) {
         held = false;
         pressedThisFrame = false;
+        releasedThisFrame = false;
         switch (control.device) {
             case InputDevice::Key:
                 held = Input::isKeyPressed(control.code);
                 pressedThisFrame = Input::getKeyDown(control.code);
+                releasedThisFrame = Input::getKeyUp(control.code);
                 break;
             case InputDevice::Mouse:
                 held = Input::isMousePressed(control.code);
                 pressedThisFrame = Input::getMouseButtonDown(control.code);
+                releasedThisFrame = Input::getMouseButtonUp(control.code);
                 break;
             case InputDevice::GamepadButton:
                 if (gamepad < 0) {
@@ -154,6 +163,7 @@ namespace {
                     held = Input::isGamepadButtonPressed(gamepad, control.code);
                 }
                 pressedThisFrame = Input::getGamepadButtonDown(gamepad, control.code);
+                releasedThisFrame = Input::getGamepadButtonUp(gamepad, control.code);
                 break;
             case InputDevice::GamepadAxis:
                 break;
@@ -433,6 +443,25 @@ namespace {
         runtime.smoothed.clear();
         runtime.boundedValue = runtime.boundedRaw = runtime.deltaValue = 0.0f;
         runtime.pressed = runtime.down = runtime.up = false;
+        runtime.sourcePressLatch = runtime.sourceReleaseLatch = runtime.sourceRepressLatch = false;
+    }
+
+    bool pastPressPoint(const InputAction& action, float value) {
+        return (action.type == InputActionType::Button ? value : std::fabs(value)) >= action.pressPoint;
+    }
+
+    // a bounded source of the action went from `before` to `after`
+    void noteSourceChange(Registry& s, int index, float before, float after) {
+        if (index < 0 || index >= static_cast<int>(s.actions.size())) return;
+        const InputAction& action = s.actions[index];
+        ActionRuntime& runtime = s.runtime[index];
+        const bool was = pastPressPoint(action, before), now = pastPressPoint(action, after);
+        if (!was && now) {
+            runtime.sourcePressLatch = true;
+            if (runtime.sourceReleaseLatch) runtime.sourceRepressLatch = true;
+        } else if (was && !now) {
+            runtime.sourceReleaseLatch = true;
+        }
     }
 
     // the bounded and delta sums of the action's virtual sources
@@ -752,7 +781,8 @@ void InputActions::update(double unscaledDeltaTime, const InputSuppression& supp
         const bool isButton = action.type == InputActionType::Button;
         float bounded = 0.0f, raw = 0.0f, delta = 0.0f;
         bool pressed = false;
-        bool tapped = false;   // a control pressed in this frame (released again within it too)
+        bool tapped = false;     // a control pressed in this frame (released again within it too)
+        bool repressed = false;  // a control released and pressed again in this frame, held now
 
         for (size_t b = 0; b < bindings.size(); b++) {
             const InputBinding& binding = bindings[b];
@@ -762,10 +792,11 @@ void InputActions::update(double unscaledDeltaTime, const InputSuppression& supp
                     auto scan = [&](const std::vector<InputControl>& controls, bool& any) {
                         for (const InputControl& control : controls) {
                             if (suppressed(control, suppression)) continue;
-                            bool held, pressedThisFrame;
-                            readControl(control, binding.gamepad, held, pressedThisFrame);
+                            bool held, pressedThisFrame, releasedThisFrame;
+                            readControl(control, binding.gamepad, held, pressedThisFrame, releasedThisFrame);
                             if (held) any = true;
                             if (pressedThisFrame) tapped = true;
+                            if (held && pressedThisFrame && releasedThisFrame) repressed = true;
                         }
                     };
                     scan(binding.positive, positive);
@@ -823,14 +854,20 @@ void InputActions::update(double unscaledDeltaTime, const InputSuppression& supp
             if ((isButton ? source.value : std::fabs(source.value)) >= action.pressPoint) pressed = true;
         }
 
+        // a source pressed (and maybe released again) since the last update counts like a control
+        if (runtime.sourcePressLatch) tapped = true;
+        if (runtime.sourceRepressLatch) repressed = true;
+        runtime.sourcePressLatch = runtime.sourceReleaseLatch = runtime.sourceRepressLatch = false;
+
         const bool wasPressed = runtime.pressed;
         runtime.boundedValue = bounded;
         runtime.boundedRaw = raw;
         runtime.deltaValue = delta;
         runtime.pressed = pressed;
-        // a press and release inside one frame give the down and the up in that frame
-        runtime.down = !wasPressed && (pressed || tapped);
-        runtime.up = (wasPressed && !pressed) || (!wasPressed && !pressed && tapped);
+        // a press and release inside one frame give the down and the up in that frame, and so
+        // does a release and a press again while held (Unity's GetKeyDown and GetKeyUp both true)
+        runtime.down = (!wasPressed && (pressed || tapped)) || repressed;
+        runtime.up = (wasPressed && !pressed) || (!wasPressed && !pressed && tapped) || repressed;
         if (runtime.down) s.frameDowns.push_back(action.name);
         if (runtime.up) s.frameUps.push_back(action.name);
     }
@@ -941,12 +978,14 @@ void InputActions::setSourceValue(uintptr_t owner, const std::string& action, fl
     const int index = find(action);
     for (auto it = s.sources.begin(); it != s.sources.end(); ++it) {
         if (it->owner == owner && !it->delta && it->action == action) {
+            noteSourceChange(s, it->index, it->value, value);
             if (value == 0.0f) s.sources.erase(it);
             else it->value = value;
             return;
         }
     }
     if (value == 0.0f || index < 0) return;
+    noteSourceChange(s, index, 0.0f, value);
     Source source;
     source.owner = owner;
     source.action = action;
@@ -979,18 +1018,32 @@ void InputActions::addSourceDelta(uintptr_t owner, const std::string& action, fl
 
 void InputActions::clearSource(uintptr_t owner) {
     Registry& s = loaded();
-    s.sources.erase(std::remove_if(s.sources.begin(), s.sources.end(), [owner](const Source& source) { return source.owner == owner; }),
+    s.sources.erase(std::remove_if(s.sources.begin(), s.sources.end(), [&s, owner](const Source& source) {
+                        if (!(source.owner == owner)) return false;
+                        // a button released by its owner going still gives its up
+                        if (!source.delta) noteSourceChange(s, source.index, source.value, 0.0f);
+                        return true;
+                    }),
                     s.sources.end());
 }
 
 void InputActions::clearSources(InputSourceKind kind) {
     Registry& s = loaded();
-    s.sources.erase(std::remove_if(s.sources.begin(), s.sources.end(), [kind](const Source& source) { return source.kind == kind; }),
+    s.sources.erase(std::remove_if(s.sources.begin(), s.sources.end(), [&s, kind](const Source& source) {
+                        if (!(source.kind == kind)) return false;
+                        // a button released by its owner going still gives its up
+                        if (!source.delta) noteSourceChange(s, source.index, source.value, 0.0f);
+                        return true;
+                    }),
                     s.sources.end());
 }
 
 void InputActions::clearAllSources() {
-    loaded().sources.clear();
+    Registry& s = loaded();
+    for (const Source& source : s.sources) {
+        if (!source.delta) noteSourceChange(s, source.index, source.value, 0.0f);
+    }
+    s.sources.clear();
 }
 
 // the top bit: no user-space address has it

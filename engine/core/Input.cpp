@@ -494,7 +494,15 @@ void Input::releaseAll(){
     for (Gamepad& gamepad : gamepads) {
         for (ControlState& state : gamepad.buttons) releaseControl(state, frame);
     }
-    clearTouches();
+    // Input.touches reports the fingers Canceled. The fingers down now (numTouches, getTouches)
+    // stay for the platform's own cancel (Engine::systemTouchCancel), which the UI and onTouchCancel
+    // get through that list, as before
+    for (TouchRecord& record : touchRecords) {
+        if (record.ended) continue;
+        record.ended = true;
+        record.endPhase = TouchPhase::Canceled;
+    }
+    lastTap.valid = false;
     modifiers = 0;
     // movement while away is not the player's
     pendingMouseDelta = Vector2(0, 0);

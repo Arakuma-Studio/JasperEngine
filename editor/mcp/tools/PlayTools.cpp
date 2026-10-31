@@ -2948,6 +2948,25 @@ bool cutInputShort(InputRun& run) {
             padButtons.erase(b);
         }
     }
+    // the input actions it pressed are released, the axes it moved go back to where they were
+    std::vector<std::string> actions;
+    for (const std::string& name : held.actions) if (!before.actions.count(name)) actions.push_back(name);
+    for (const std::string& name : actions) {
+        InputActions::setSourceValue(mcpInputSource(), name, 0.0f, InputSourceKind::Agent);
+        held.actions.erase(name);
+    }
+    std::vector<std::string> axes;
+    for (const auto& [name, value] : held.axes) {
+        auto it = before.axes.find(name);
+        if (it == before.axes.end() || it->second != value) axes.push_back(name);
+    }
+    for (const std::string& name : axes) {
+        auto it = before.axes.find(name);
+        const float value = it == before.axes.end() ? 0.0f : it->second;
+        InputActions::setSourceValue(mcpInputSource(), name, value, InputSourceKind::Agent);
+        if (value != 0.0f) held.axes[name] = value;
+        else held.axes.erase(name);
+    }
     return true;
 }
 

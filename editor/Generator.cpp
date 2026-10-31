@@ -2428,8 +2428,15 @@ std::string editor::Generator::inputActionsInitSource(const std::string& inputAc
     // in pieces: MSVC takes string literals of at most 16 KB, adjacent ones are joined
     constexpr size_t pieceSize = 8000;
     std::string literal;
-    for (size_t at = 0; at < inputActionsJson.size(); at += pieceSize) {
-        std::string piece = inputActionsJson.substr(at, pieceSize);
+    for (size_t at = 0; at < inputActionsJson.size();) {
+        // a piece ends on a character boundary (an editor shows each literal as valid UTF-8)
+        size_t end = std::min(at + pieceSize, inputActionsJson.size());
+        while (end < inputActionsJson.size() && end > at + 1 &&
+               (static_cast<unsigned char>(inputActionsJson[end]) & 0xC0) == 0x80) {
+            end--;
+        }
+        std::string piece = inputActionsJson.substr(at, end - at);
+        at = end;
         literal += (literal.empty() ? "" : "\n        ") + std::string("R\"") + delimiter + "(" + piece + ")" + delimiter + "\"";
     }
     return "    InputActions::loadJson(" + literal + ", nullptr);\n";

@@ -302,7 +302,9 @@ namespace jasperengine {
         static double getInputTime();
 
         // Releases every held key, mouse button and gamepad button (their up edges are seen by
-        // the next frame) and cancels the touches: app pause, focus loss, editor Play stop
+        // the next frame) and reports the touches Canceled in Input.touches: app pause, focus
+        // loss, editor Play stop. The fingers down now (numTouches) are left to the platform's
+        // touch cancel (Engine::systemTouchCancel), which the UI and onTouchCancel hear
         static void releaseAll();
         // releaseAll and a clean slate (frames, deltas, text, touches, taps): editor Play start
         static void reset();

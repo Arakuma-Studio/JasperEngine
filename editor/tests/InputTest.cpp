@@ -259,13 +259,46 @@ TEST_F(InputEdgesTest, ReleaseAllGivesTheUps) {
     Input::addTouch(4, 10, 10);
     frame();
     Input::releaseAll();
-    EXPECT_EQ(Input::numTouches(), 0u);
+    // the finger is left to the platform's touch cancel (it reaches the UI and onTouchCancel)
+    EXPECT_EQ(Input::numTouches(), 1u);
     begin();
     EXPECT_TRUE(Input::getKeyUp(D_KEY_D));
     EXPECT_TRUE(Input::getMouseButtonUp(D_MOUSE_BUTTON_LEFT));
     EXPECT_FALSE(Input::isAnyKeyPressed());
     ASSERT_EQ(Input::getTouchCount(), 1);
     EXPECT_EQ(Input::getTouch(0).phase, TouchPhase::Canceled);
+    end();
+}
+
+TEST_F(InputEdgesTest, AnAppPauseStillLetsThePlatformCancelReachScripts) {
+    // review fix: Engine::systemPause released everything, so the platform's systemTouchCancel
+    // found no finger and onTouchCancel (and the documents' cancel) never came
+    std::vector<int> cancelled;
+    struct Listener {
+        std::vector<int>* log;
+        void cancel(int pointer, float, float) { log->push_back(pointer); }
+    } listener{&cancelled};
+    const bool enabled = Engine::onTouchCancel.isEnabled();
+    Engine::onTouchCancel.setEnabled(true);
+    Engine::onTouchCancel.add<Listener, &Listener::cancel>("InputTest", &listener);
+
+    Input::addTouch(6, 10, 10);
+    frame();
+    Engine::systemPause();
+    EXPECT_EQ(Input::numTouches(), 1u);
+    Engine::systemTouchCancel();
+    EXPECT_EQ(Input::numTouches(), 0u);
+    Engine::systemResume();
+    Engine::onTouchCancel.remove("InputTest");
+    Engine::onTouchCancel.setEnabled(enabled);
+    EXPECT_EQ(cancelled, std::vector<int>{6});
+
+    begin();
+    ASSERT_EQ(Input::getTouchCount(), 1);
+    EXPECT_EQ(Input::getTouch(0).phase, TouchPhase::Canceled);
+    end();
+    begin();
+    EXPECT_EQ(Input::getTouchCount(), 0);
     end();
 }
 
@@ -777,6 +810,87 @@ TEST_F(InputActionsTest, ATapInsideOneFrameGivesDownAndUp) {
     // space is Jump and Submit
     EXPECT_EQ(InputActions::getFrameButtonDowns(), (std::vector<std::string>{"Jump", "Submit"}));
     EXPECT_EQ(InputActions::getFrameButtonUps(), (std::vector<std::string>{"Jump", "Submit"}));
+    end();
+}
+
+TEST_F(InputActionsTest, AVirtualPressAndReleaseBetweenUpdatesGivesBothEdges) {
+    // review fix: an on-screen button tapped between two frames was lost
+    const uintptr_t button = 0x4000;
+    InputActions::setSourceValue(button, "Jump", 1.0f);
+    InputActions::setSourceValue(button, "Jump", 0.0f);
+    begin();
+    EXPECT_TRUE(InputActions::getButtonDown("Jump"));
+    EXPECT_TRUE(InputActions::getButtonUp("Jump"));
+    EXPECT_FALSE(InputActions::getButton("Jump"));
+    EXPECT_EQ(InputActions::getFrameButtonDowns(), std::vector<std::string>{"Jump"});
+    end();
+    begin();
+    EXPECT_FALSE(InputActions::getButtonDown("Jump"));
+    EXPECT_FALSE(InputActions::getButtonUp("Jump"));
+    end();
+
+    // its owner going (a control destroyed) between the press and the frame: the same
+    InputActions::setSourceValue(button, "Fire1", 1.0f);
+    InputActions::clearSource(button);
+    begin();
+    EXPECT_TRUE(InputActions::getButtonDown("Fire1"));
+    EXPECT_TRUE(InputActions::getButtonUp("Fire1"));
+    end();
+
+    // held, released and pressed again between two frames: an up and a down
+    InputActions::setSourceValue(button, "Jump", 1.0f);
+    frame();
+    InputActions::setSourceValue(button, "Jump", 0.0f);
+    InputActions::setSourceValue(button, "Jump", 1.0f);
+    begin();
+    EXPECT_TRUE(InputActions::getButtonDown("Jump"));
+    EXPECT_TRUE(InputActions::getButtonUp("Jump"));
+    EXPECT_TRUE(InputActions::getButton("Jump"));
+    end();
+
+    // a second button tapped while the first holds the action: no edges (one press)
+    const uintptr_t other = 0x5000;
+    InputActions::setSourceValue(other, "Jump", 1.0f);
+    InputActions::setSourceValue(other, "Jump", 0.0f);
+    begin();
+    EXPECT_FALSE(InputActions::getButtonDown("Jump"));
+    EXPECT_FALSE(InputActions::getButtonUp("Jump"));
+    EXPECT_TRUE(InputActions::getButton("Jump"));
+    end();
+    InputActions::clearSource(button);
+    frame();
+}
+
+TEST_F(InputActionsTest, AReleaseAndPressAgainWhileHeldGivesBothEdges) {
+    // review fix: space held, released and pressed again inside one frame gave getKeyDown and
+    // getKeyUp but no action edges
+    Input::addKeyPressed(D_KEY_SPACE);
+    frame();
+    frame();
+    Input::releaseKeyPressed(D_KEY_SPACE);
+    Input::addKeyPressed(D_KEY_SPACE);
+    begin();
+    EXPECT_TRUE(Input::getKeyDown(D_KEY_SPACE));
+    EXPECT_TRUE(Input::getKeyUp(D_KEY_SPACE));
+    EXPECT_TRUE(InputActions::getButtonDown("Jump"));
+    EXPECT_TRUE(InputActions::getButtonUp("Jump"));
+    EXPECT_TRUE(InputActions::getButton("Jump"));
+    end();
+    begin();
+    EXPECT_FALSE(InputActions::getButtonDown("Jump"));
+    EXPECT_FALSE(InputActions::getButtonUp("Jump"));
+    end();
+
+    // from rest: down, up, down inside one frame gives both too (as getKeyDown / getKeyUp)
+    Input::releaseKeyPressed(D_KEY_SPACE);
+    frame();
+    Input::addKeyPressed(D_KEY_SPACE);
+    Input::releaseKeyPressed(D_KEY_SPACE);
+    Input::addKeyPressed(D_KEY_SPACE);
+    begin();
+    EXPECT_TRUE(InputActions::getButtonDown("Jump"));
+    EXPECT_TRUE(InputActions::getButtonUp("Jump"));
+    EXPECT_TRUE(InputActions::getButton("Jump"));
     end();
 }
 

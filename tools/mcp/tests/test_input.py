@@ -238,6 +238,29 @@ async def test_authoring_actions_over_mcp(ed: Editor):
     ed.check("Dash" not in names, "defaults restored")
 
 
+async def test_wait_cut_short_releases_actions(ed: Editor):
+    """review fix: a wait whose condition ends it early released keys and buttons but left the
+    actions and axes send_input held through the "mcp" source pressed"""
+    await start(ed)
+    try:
+        await send(ed, {"type": "axis", "name": "Vertical", "value": 0.5})      # held before: stays
+        r = await ed.call_raw("wait", {"until": "Input.getButton('Jump') and Input.getAxis('Horizontal') > 0.9",
+                                       "frames": 200,
+                                       "input": [{"type": "action", "name": "Jump", "phase": "press", "hold_frames": 60},
+                                                 {"type": "axis", "name": "Horizontal", "value": 1, "hold_frames": 60},
+                                                 {"type": "axis", "name": "Vertical", "value": -1, "hold_frames": 60}]})
+        ed.check(not r.is_error, r.text[:400])
+        await ed.call("wait", frames=2)
+        ed.check_eq(await lua(ed, "return Input.getButton('Jump'), Input.getAxis('Horizontal'), Input.getAxis('Vertical')"),
+                    [False, 0, 0.5], "the cut input is released, the axis held before is back")
+        held = (await ed.call("get_play_state")).get("held_input", {})
+        ed.check("actions" not in held, f"no action held: {held}")
+        ed.check_eq(held.get("axes"), {"Vertical": 0.5}, f"held axes: {held}")
+        await send(ed, {"type": "release_all"})
+    finally:
+        await stop(ed)
+
+
 async def test_lua_rebinding_and_simulation(ed: Editor):
     await start(ed)
     try:
