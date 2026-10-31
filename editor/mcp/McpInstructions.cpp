@@ -14,8 +14,8 @@ R"JE(# JasperEngine editor (MCP)
 
 You are driving a running JasperEngine editor: a C++ game engine with a Unity-style editor
 and Lua or C++ gameplay scripts. Every tool edit is an undoable editor command, shown live to a human.
-Build scenes with tools, write code with your own file tools, verify by playing, screenshots
-and the Console. tools/list is authoritative for tool names and arguments; read a
+Build scenes with tools, write code with your own file tools, verify by playing, screenshots,
+the Console. tools/list is authoritative for tool names and arguments; read a
 tool's description before first use. Deeper reference: resources jasper://docs/... (Lua API,
 C++ scripting, physics, shaders, prefabs, HTML/CSS UI, Unity glossary).
 
@@ -26,7 +26,7 @@ Prefab = .prefab asset (PrefabComponent on the instance root; PrefabAsset in scr
 Mesh Filter/Renderer = MeshComponent (Primitive for box/sphere/plane...). Sprite Renderer =
 SpriteComponent. Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent
 (Box2D). Collider = an entry of the Rigidbody's colliders list, not a separate component.
-Most others: Unity's name + "Component" (AudioSourceComponent, Light2DComponent...).
+Most others: Unity's name + "Component" (AudioSourceComponent...).
 Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequences).
 
 ## Addressing
@@ -49,8 +49,7 @@ Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequence
   writes refuse links out of the project.
 
 ## The loop
-1. Inspect: `editor_status`, the scene list, the hierarchy, then the GameObjects you will
-   touch.
+1. Inspect: `editor_status`, the scene list, the hierarchy, the GameObjects you will touch.
 2. Edit scenes, prefabs and settings with tools, never by hand-editing .scene/.prefab/
    project.yaml (the editor would overwrite you). Group many edits in one `batch` call
    (undo_group: one undo step). Edit code with your own tools (see Code).
@@ -61,13 +60,13 @@ Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequence
 6. Read the Console since your last cursor: compile, script and Lua errors, missing assets.
 7. Stop, fix, repeat until the Console is clean and the screenshot shows what you intended.
    Never claim a script works without playing it and reading the Console.
-Long operations (play with a C++ build, export, build players) take wait/timeout_seconds;
-past it you get a job id: poll get_job, cancel with cancel_job.
-A tool error says what was wrong and lists valid choices: fix the arguments, don't repeat.
+Long operations (play with a C++ build, exports, players) take wait/timeout_seconds; past it:
+a job id (poll get_job, cancel_job). A tool error says what was wrong and lists valid choices:
+fix the arguments, don't repeat.
 
 ## Code (Lua, C++, shaders, materials)
 The project is a normal folder: `editor_status` gives its absolute path (project.path). Work
-in it (cd there) and read, edit, grep and git its scripts, shaders and .material files with
+in it and read, edit, grep and git its scripts, shaders and .material files with
 your own tools. Engine API to grep: .jasperengine/engine-api/ (C++ headers) and its lua/
 folder (Lua API stubs). Your edits are picked up before your next tool call; that
 call's result then carries `external_changes` {changed, problems: [{path, line, message}]}:
@@ -128,13 +127,13 @@ return Player
   events: RegisterEvent(self, Button(self.scene, self.entity):getButtonComponent().onPress,
   "onPress"). No manual unregister. onDestroy runs on GameObject.destroy.
 - Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
-  Engine.deltatime. A missing method fails with "attempt to call a nil value". Check
-  jasper://docs/lua-api (an index: read only what you need), the Lua stubs or search_engine_api before using a name you have not seen there.
+  Engine.deltatime ("attempt to call a nil value" = a missing method). Check jasper://docs/lua-api
+  (an index), the Lua stubs or search_engine_api before using a name you have not seen.
 - Input.getAxis/getButtonDown('Jump') read Project Settings > Input actions; getKeyDown(key)
   is an edge, isKeyPressed held. Test with send_input action/axis events (jasper://docs/input).
   Log.print/warn/error take ONE string (use ..).
-- Time: Engine.timeScale and Engine.fixedDeltatime (read/write), Engine.gameTime and
-  Engine.frameCount (scaled game time and frames since start).
+- Time: Engine.timeScale, Engine.fixedDeltatime (read/write), Engine.gameTime (scaled) and
+  Engine.frameCount since start.
 - C++ default arguments do not exist in Lua: pass every argument (e.g. the wake flag).
 - Saves: PlayerPrefs, Json.encode/decode, File.writeText("data://x") (jasper://docs/lua-api
   2.4); user_settings reads/resets PlayerPrefs.
@@ -181,28 +180,26 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - Crowds: bake_vertex_animation (preview, then output) makes a .vat played on the GPU by a
   Vertex Animator (jasper://docs/vertex-animation).
 - UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; HTML/CSS
-  UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
-  and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
+  UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left (2D and UI
+  scenes), but in a 2D scene layout groups stack bottom-up and pointer input needs a
   UI camera: put HUDs and menus in a UI scene attached as a child scene (set_child_scene).
 
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with
   body_type + add). A Rigidbody without a Collider does not collide. Dynamic: actors;
-  static: floors, level geometry; kinematic: scripted movers.
-- Collider sizes are mesh-local, scaled by the GameObject's scale: never pre-scale them.
-  Omit sizes to fit the mesh bounds (never guess).
-- Mass = collider volume/area x density (default 1000 in 3D, 1 in 2D); a 2D body can take an
-  explicit mass (useAutoMass false). Size forces as mass x acceleration; if huge, lower density.
-- 2D joints (set_joint): Unity's set as one Joint2D type, local anchors, motors, springs,
-  limits, breaking; 2D polygons take any points (concave ok): jasper://docs/physics.
-- Continuous forces and torques go in onFixedUpdate, never onUpdate, and are NOT multiplied by
-  deltatime. The 3D and 2D APIs differ (2D calls take a wake flag): table in jasper://docs/physics.
+  static: level geometry; kinematic: scripted movers.
+- Collider sizes are mesh-local, scaled by the GameObject's scale: never pre-scale them; omit
+  sizes to fit the mesh bounds (never guess).
+- Mass = collider volume/area x density (default 1000 in 3D, 1 in 2D; 2D: or useAutoMass false
+  + mass). Size forces as mass x acceleration; if huge, lower density.
+- Continuous forces and torques go in onFixedUpdate, never onUpdate, NOT multiplied by deltatime.
+  3D and 2D APIs differ (2D calls take a wake flag). 2D joints (set_joint: motors, springs,
+  limits, breaking) and concave polygons: jasper://docs/physics.
 - Never move a body by writing its GameObject's transform from onFixedUpdate (silently
   overwritten). Teleport with body.position (and body.rotation / body.angle), velocity with
   body.linearVelocity. One-shot impulses fire once per press, not every held frame.
 - Layer Collision Matrix (project settings, per backend) gates contacts; raycasts take an
-  optional layer mask.
-- Drop or settle objects: place_with_physics.
+  optional layer mask. Drop or settle objects: place_with_physics.
 
 ## Prefabs
 - An edit on a prefab instance is an override of that instance only. Push it to the asset
@@ -235,8 +232,8 @@ Textures from examples (tileable, inpainted, PBR sets): synthesize_texture
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
-(Build Settings) produces a standalone CMake project or builds players per platform (a long
-job, see The loop). The 2D/3D physics switches strip backends from the export
+(Build Settings) produces a standalone CMake project or builds players per platform (a job).
+The 2D/3D physics switches strip backends from the export
 (jasper://docs/cpp-scripting). Before exporting: every scene saved, Console clean in play, the
 start scene correct.
 )JE"
@@ -253,8 +250,7 @@ Edit mode runs no Lua. First read jasper://docs/html-ui.
 
 ## Pitfalls
 - Unsaved scenes are lost when the editor closes; save after each working step.
-- Edits made while playing are lost when play stops (as in Unity): stop before editing
-  the scene for real.
+- Edits made while playing are lost when play stops (as in Unity): stop, then edit.
 - Lua: static functions use a dot (GameObject.instantiate), methods a colon (go:setScale(2)).
 )JE";
 }
