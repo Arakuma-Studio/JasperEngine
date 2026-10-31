@@ -398,3 +398,68 @@ nosound in CI).
 - **coroutines**: fades/transitions are engine-driven, no coroutine needed; scripts may still tween with coroutines.
 - **platform-services**: app focus loss can pause audio with `AudioListener.pause` (game choice); `onFocus` event
   lives there.
+
+## Implementation notes
+
+Decisions taken while implementing (2026-10-31), where the spec was silent, ambiguous or did not fit the code:
+
+- **Meters are post-effect and post-fader.** SoLoud's bus visualization is taken before the bus's own filters and
+  volume, so it cannot show a low-pass or a mute. Each group bus gets an engine `MeterFilter` in a ninth filter slot
+  (the vendored `soloud.h` `FILTERS_PER_STREAM` is raised from 8 to 9, commented): it keeps the peaks of the last 8
+  mix blocks (~90 ms); `getMeterDb` = that peak x the bus's current volume. Groups still hold 8 effects. The duck
+  effect keeps listening to SoLoud's (pre-fader) visualization of its side-chain bus, as SoLoud does.
+- **Backends.** No device: `MINIAUDIO` -> `NOSOUND` (its own mixing thread, real time) -> `NULLDRIVER`, which
+  `AudioMixer::update` mixes on the main thread by the frame's unscaled delta (where threads are missing, e.g. a Web
+  build without pthreads, and in the unit tests: `AudioSystem::setBackend(AudioBackend::Null)` makes every meter,
+  fade and end exact without a device). `JASPERENGINE_AUDIO_BACKEND=nosound|null` forces one.
+  `AudioSystem::close()` reopens the audio with new settings (tests).
+- **Streaming** goes through an `EngineWavStream` (a `WavStream` whose every voice opens its own `SoloudEngineFile`
+  over the engine `File`: SoLoud's `loadFile` would share one file between the voices of a clip). On the Web the
+  preloaded assets are a file system too, so it streams from there as well (the spec's `loadMem` fallback is kept for
+  resource packs only: a packed file has no random access, it becomes Compressed In Memory). The scene resource
+  lists carry a non-Auto load type as `"<file>#<type>"` (`SoundPool::parseClipRef`). `SoundPool::getEntries`
+  reports each cached sample's memory (decoded PCM, the file's bytes, or 0 when streamed).
+- **Edit mode sounds as the faders** (the asset's values); Play (and an exported game) starts from the start
+  snapshot and the remembered values; Play stop returns to the faders (`Project::resetPlayAudio`). The faders edit
+  the asset's values, not "the current snapshot" (Unity): snapshots are captured with "Save Current Values"
+  (`set_snapshot capture`) or given values. The Audio Mixer window hears a drag live and writes it once, when it
+  ends (one undo step).
+- **Script values.** Setting `AudioMixerGroup.volume` / `setVolume` or `AudioMixerEffect:setParameter` from Lua is a
+  script value like `setFloat` (it overrides snapshots until cleared); `mute` / `solo` / `bypassEffects` from Lua
+  change the runtime only. `opts.unscaled = true` forces unscaled time; without it the mixer's `updateMode` decides
+  (so `{unscaled = false}` cannot make a call scaled on an unscaled mixer).
+- **Events and isPlaying.** `onStart` also fires when a paused source resumes; `onStop` also when the voice budget
+  stole the main voice. `isPlaying()` is true right after `play()` and while any voice of the source (one-shots
+  included) plays, false while it is paused.
+- **Pause.** `AudioSystem.pauseAll/resumeAll` (and the app pause) pause the Master bus voice; `stopAll` stops the
+  engine's voices, never the buses. The editor's Play pause and `AudioListener.pause` both go through one rule: a
+  voice is paused when its source is Paused, or the scene's audio is paused, or the listener is paused (not for
+  `ignoreListenerPause`); so nothing un-pauses what the game paused. HTML UI video audio plays through the Master
+  bus now (app pause and the master volume reach it).
+- **Group removal** (window, MCP `remove_group`) removes its subgroups too (Unity), and drops the exposed parameters
+  and snapshot values of what went. A running voice of a removed group is annexed to Master; a source keeps its
+  group name, so a group of that name coming back takes it again.
+- **Live edits** (`AudioMixer::apply`) never restart a bus: new buses are played, moved groups annexed into their new
+  parent, removed ones stopped after their voices moved; a changed effect list re-sets only the slots that changed.
+  An echo whose delay grows past the one it was made with is rebuilt (SoLoud sizes its buffer once).
+- **Editor decode keeps voices.** `Stream::decodeAudioSourceComponent` over an existing component (an Inspector edit
+  or an undo in Play) used to zero the voice handle and leave the voice playing on its own; it now keeps the voices,
+  and the system stops them when the state says Stopped or the file changed.
+- **MCP.** `audio_mixer` also has `set_exposed` (remember, rename), `set_mixer` (update mode), `set_group parent /
+  new_name`, `set_effect move_to`; snapshot `values` accept exposed names, `"<group>/volume"` and
+  `"<group>/<effect>/<param>"`. Project Settings keys add `audio.default_output_group` (a Project Settings > Audio
+  field the spec lists). `audio.mixer` is shown as `assets/...`; project.yaml stores it assets-relative under `audio`.
+  `get_play_state.audio` adds `output` when there is no device. Lua `getEffect` is 1-based, MCP `index` 0-based.
+- **Lua additions** beyond the spec's list: `AudioMixer.getCurrentSnapshot()`, `AudioMixerGroup.id`, `isValid()`,
+  `getMeter()`, `setVolume(db, seconds, opts)`, `AudioMixerEffect.id`, `isValid()`, `hasParameter()`,
+  `AudioSource:getVoiceCount()`, `getResolvedLoadType()`, `AudioSystem.isOutputAvailable()`, `getVoiceCount()`.
+  `AudioSystem.preload` holds the sample until the engine shuts down (`SoundPool::pin`).
+- **Persistence contract** (feature `persistence`, implemented in parallel): after copying an `AudioSourceComponent`
+  into the persistent scene, call `AudioSystem::moveSourceVoices(fromScene, sourceComponent, toScene,
+  targetComponent)`: it moves the runtime state (main voice, one-shots and their samples, pending one-shots, fade,
+  pause state, resolved group) to the copy and re-owns the voices in the engine-wide voice registry (which
+  `stopSceneSounds` and the budget use), leaving the source component without voices, so destroying it or its scene
+  stops nothing. The persistent scene's `AudioSystem::setListenerEnabled(false)` leaves the 3D listener to the main
+  scene (spec persistence 6.3). `EntityCloner`'s clone path keeps resetting the runtime (a clone gets its own voice).
+- Sample rate choices: Auto, 22050, 44100, 48000 (the spec lists Auto/44100/48000; 22050 is common on low-end
+  Android). The rate applies the next time the audio opens.

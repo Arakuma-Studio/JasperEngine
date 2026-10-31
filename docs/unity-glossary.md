@@ -121,6 +121,28 @@ and reads 0 (Unity throws). On-screen sticks and buttons feed the same actions, 
 `Input.getAxis("Horizontal")` sums keyboard, gamepad and the touch stick. See
 [mcp/guide/input.md](mcp/guide/input.md).
 
+## Audio
+
+The project has one Audio Mixer asset (`.mixer`, JSON), chosen in Project Settings > Audio and
+edited in Window > Audio > Audio Mixer or with MCP `audio_mixer`. Without one every sound plays
+through an implicit Master at 0 dB. See [mcp/guide/audio.md](mcp/guide/audio.md).
+
+| Unity term | JasperEngine name |
+|---|---|
+| `AudioMixer` (asset) | `.mixer` asset (Assets > Create > Audio Mixer); Lua `AudioMixer` (static: the project's mixer) |
+| `AudioMixerGroup`, `AudioSource.outputAudioMixerGroup` | mixer group; `AudioSource.outputGroup` (the group's name, "" = Master); Lua `AudioMixer.getGroup(name)` -> `AudioMixerGroup` |
+| `AudioMixer.SetFloat` / `GetFloat` / `ClearFloat`, exposed parameters | `AudioMixer.setFloat(name, value [, seconds [, opts]])` / `getFloat(name)` / `clearFloat(name)`; expose in the Audio Mixer window (right-click a fader or a value) or `audio_mixer` op `expose`; "Remember" keeps script values in UserSettings |
+| `AudioMixerSnapshot.TransitionTo`, `AudioMixer.TransitionToSnapshots`, `FindSnapshot` | `AudioMixer.transitionTo(name, seconds [, opts])`, `AudioMixer.transitionToSnapshots(names, weights, seconds)`, snapshots by name |
+| Audio Mixer update mode Normal / Unscaled Time | mixer `updateMode` "scaled" / "unscaled"; per call `{unscaled = true}` |
+| Lowpass / Highpass / Echo / SFX Reverb / ParamEQ / Distortion / Flange / Duck Volume effects | mixer effects `lowpass`, `highpass`, `bandpass`, `echo`, `reverb`, `equalizer`, `distortion`, `flanger`, `lofi`, `bassboost`, `duck`, `limiter` (up to 8 per group) |
+| `AudioSource.PlayOneShot(clip, volumeScale)` | `sound:playOneShot(path [, volumeScale])` (up to `maxVoices` overlapping voices) |
+| `AudioSource.PlayClipAtPoint(clip, position, volume)` | `AudioSource.playClipAtPoint(scene, path, position [, volume [, group]])` |
+| AudioClip Load Type Decompress On Load / Compressed In Memory / Streaming | `AudioSource.loadType` (`AudioLoadType.DecompressOnLoad` / `CompressedInMemory` / `Streaming`, default `Auto`: streams files of 1 MiB and more): per source, no clip import settings |
+| `AudioSource.pitch` | `pitch` (= `speed`) |
+| `AudioSource.priority`, Project Settings Real / Virtual Voices | `priority` (0..256, 128); Project Settings > Audio Max Real Voices (32) and Max Voices (256) |
+| `AudioSource.ignoreListenerPause`, `AudioListener.pause`, `AudioListener.volume` | the same names (`AudioListener.volume` = `AudioSystem.globalVolume`) |
+| volume fades (tweens, `DOFade`) | `sound:fadeIn(seconds)`, `fadeOut(seconds [, {pause = true}])`, `fadeTo(volume, seconds)` |
+
 ## Layers and physics
 
 Each physics backend has its Layer Collision Matrix (Project Settings > Physics for
