@@ -40,7 +40,7 @@ origin/main).
 | # | Feature (branch `gaps/<name>`) | Covers | Status |
 |---|---|---|---|
 | 1 | `http` | HTTP client for Lua (GET/POST/HEAD, headers, timeouts, JSON/text/binary bodies, download to file, texture from URL), all platforms | review |
-| 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | impl |
+| 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | review |
 | 3 | `platform-services` | `openURL`, system language/locale, target frame rate / vsync, runtime orientation lock + iOS orientation setting + device orientation, app focus event | review |
 | 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | impl |
 | 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | impl |
@@ -59,10 +59,11 @@ origin/main).
 | 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | merged |
 | 19 | `input` | key/mouse/button down/up edge queries, virtual axes and buttons (Input Manager-style), bound Touch with phases and deltas | merged |
 | 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | merged |
-| 21 | `ui-scaling-text` | canvas match-width-or-height scaling, per-character text effects (waves etc.), particles inside UI | impl |
+| 21 | `ui-scaling-text` | canvas match-width-or-height scaling, per-character text effects (waves etc.), particles inside UI | review |
 | 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | review |
 | 23 | `debug-overlay` | on-device log console and stats/FPS overlay | impl |
-| 24 | `camera-shake` | camera shake component and presets (MilkShake-like), camera follow | impl |
+| 24 | `camera-shake` | camera shake component and presets (MilkShake-like), camera follow | review |
+| 26 | `xcode26-dav1d` | iOS/macOS builds fail on Xcode 26.6 (pre-existing on the original main): dav1d's aarch64 assembly (src/arm/64/refmvs.S ...) does not assemble; fix and verify on a macOS box | todo |
 | 25 | `ui-canvas-group` | Canvas Group for the native UI: group alpha, interactable, blocks raycasts, ignore parent groups; animatable (found by the animation spec: legacy clips animate CanvasGroup alpha) | review |
 
 ## Log
@@ -147,3 +148,19 @@ origin/main).
   ragdoll impulse on the switch frame, six-DOF zero-stiffness drives locking; lead calls: fix trigger-vs-CCD
   properly, create the 3D world lazily) and `particles` reviewed (4 high incl. legacy mesh particles upgraded to
   billboards, end-of-cycle bursts lost): fixes in progress.
+- 2026-10-31: merged locally, not yet pushed (full verification running on box 2201): `ui-canvas-group`,
+  `physics-3d` (lead resolved UpdateFlags: CanvasGroup 48, Rigidbody_Params 49, Joint3D_Params 50, Ragdoll 51),
+  `http` (lead resolved the generator.configure argument lists, ViewTools options, the Game view toolbar width,
+  shutdown order, the agent guide). Found after merging: Canvas Group's always-exported composite shader adds a
+  shader key to every saved scene (old scenes no longer re-save byte-identically) -> back to its agent; AsyncOwners
+  must re-key owners when persistence moves objects -> http agent. Reviews done: camera-shake (its merge had made
+  Lua `start` a plain call again), native-bridge (critical: JasperNative.h not findable by the Xcode app targets;
+  CocoaPods not linked). Rented a macOS box (Blacksmith, arm64, Xcode 26.6, ~$4.80/h, 24 h) to build the iOS and
+  macOS targets at merge time: Apple code had never been compiled before.
+- 2026-10-31: macOS box session (~$3.24): merged main (c7ea32946) and gaps/platform-services build the "JasperEngine
+  macOS" and "JasperEngine iOS" app schemes with 0 errors once dav1d's assembly is disabled locally. That dav1d
+  failure also happens on the original baseline commit: added as feature #26. The Mac was destroyed; it will be
+  rented again for one batch check (native-bridge, safe-area, video-mp4, #26). http follow-up merged
+  (AsyncOwners re-keyed when persistence moves objects). Lead trimmed the agent guide to 16351 bytes and set the
+  measured tool budget. Not pushed yet: waiting for ui-canvas-group's fix of an old-scene re-save regression.
+  platform-services is doing its final merge of main (16 files conflicted).

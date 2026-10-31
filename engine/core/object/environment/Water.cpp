@@ -216,7 +216,7 @@ void Water::applyBuoyancy(Scene* scene, float deltaTime){
             continue;
         // Jolt has no submerged volume for a mesh or heightfield (it asserts and leaves it unset)
         bool solid = true;
-        for (size_t c = 0; c < body.numColliders && solid; c++){
+        for (size_t c = 0; c < body.colliders.size() && solid; c++){
             solid = body.colliders[c].type != Collider3DType::MESH && body.colliders[c].type != Collider3DType::HEIGHTFIELD;
         }
         if (!solid)

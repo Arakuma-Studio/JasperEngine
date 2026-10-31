@@ -4,6 +4,7 @@
 #include "manager/ObjectManager.h"
 #include "script/ScriptRuntime.h"
 #include "Scene.h"
+#include "script/AsyncOwner.h"
 
 #include "object/Camera.h"
 #include "Engine.h"
@@ -63,6 +64,8 @@ void Scene::init(){
 }
 
 Scene::~Scene(){
+    // async work owned by the scene or its GameObjects ends without its callbacks
+    AsyncOwners::sceneDestroyed(this);
     // first: handles that own entities of this scene and go during (or after) its teardown
     // leave them to it
     lifetime.reset();

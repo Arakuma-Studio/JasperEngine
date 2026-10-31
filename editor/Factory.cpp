@@ -1195,6 +1195,7 @@ std::string editor::Factory::guardComponentCode(ComponentType type, const std::s
             return guardPhysicsCode(code, "JASPERENGINE_PHYSICS_2D");
         case ComponentType::RigidbodyComponent:
         case ComponentType::Joint3DComponent:
+        case ComponentType::RagdollComponent:
             return guardPhysicsCode(code, "JASPERENGINE_PHYSICS_3D");
         default:
             return code;
@@ -2597,7 +2598,38 @@ std::string editor::Factory::createRigidbodyComponent(int indentSpaces, EntityRe
     code << ind << "rigidbody.overrideMassProperties = " << formatBool(body.overrideMassProperties) << ";\n";
     code << ind << "rigidbody.solidBoxSize = " << formatVector3(body.solidBoxSize) << ";\n";
     code << ind << "rigidbody.solidBoxDensity = " << formatFloat(body.solidBoxDensity) << ";\n";
-    code << ind << "rigidbody.numColliders = " << body.numColliders << ";\n";
+    // the Rigidbody fields (written when not at their defaults)
+    const RigidbodyComponent def{};
+    auto floatField = [&](const char* name, float value, float defaultValue) {
+        if (value != defaultValue) code << ind << "rigidbody." << name << " = " << formatFloat(value) << ";\n";
+    };
+    auto boolField = [&](const char* name, bool value, bool defaultValue) {
+        if (value != defaultValue) code << ind << "rigidbody." << name << " = " << formatBool(value) << ";\n";
+    };
+    if (!body.material.empty()) code << ind << "rigidbody.material = " << formatString(body.material) << ";\n";
+    floatField("linearDamping", body.linearDamping, def.linearDamping);
+    floatField("angularDamping", body.angularDamping, def.angularDamping);
+    floatField("maxLinearVelocity", body.maxLinearVelocity, def.maxLinearVelocity);
+    floatField("maxAngularVelocity", body.maxAngularVelocity, def.maxAngularVelocity);
+    boolField("automaticMass", body.automaticMass, def.automaticMass);
+    floatField("mass", body.mass, def.mass);
+    boolField("automaticCenterOfMass", body.automaticCenterOfMass, def.automaticCenterOfMass);
+    if (body.centerOfMass != def.centerOfMass) code << ind << "rigidbody.centerOfMass = " << formatVector3(body.centerOfMass) << ";\n";
+    boolField("automaticInertiaTensor", body.automaticInertiaTensor, def.automaticInertiaTensor);
+    if (body.inertiaTensor != def.inertiaTensor) code << ind << "rigidbody.inertiaTensor = " << formatVector3(body.inertiaTensor) << ";\n";
+    if (body.inertiaTensorRotation != def.inertiaTensorRotation) code << ind << "rigidbody.inertiaTensorRotation = " << formatQuaternion(body.inertiaTensorRotation) << ";\n";
+    boolField("allowSleeping", body.allowSleeping, def.allowSleeping);
+    boolField("collideKinematicVsNonDynamic", body.collideKinematicVsNonDynamic, def.collideKinematicVsNonDynamic);
+    if (body.interpolation != def.interpolation) {
+        const char* interpolation = "RigidbodyInterpolation::SCENE";
+        if (body.interpolation == RigidbodyInterpolation::NONE) interpolation = "RigidbodyInterpolation::NONE";
+        else if (body.interpolation == RigidbodyInterpolation::INTERPOLATE) interpolation = "RigidbodyInterpolation::INTERPOLATE";
+        else if (body.interpolation == RigidbodyInterpolation::EXTRAPOLATE) interpolation = "RigidbodyInterpolation::EXTRAPOLATE";
+        code << ind << "rigidbody.interpolation = " << interpolation << ";\n";
+    }
+    if (!body.colliders.empty()) {
+        code << ind << "rigidbody.colliders.resize(" << body.colliders.size() << ");\n";
+    }
 
     auto sanitizeSourceForType = [](Collider3DType type, Collider3DSource source) {
         if (type == Collider3DType::CONVEX_HULL){
@@ -2618,35 +2650,59 @@ std::string editor::Factory::createRigidbodyComponent(int indentSpaces, EntityRe
         return source;
     };
 
-    for (size_t i = 0; i < body.numColliders; i++) {
-        const std::string idx = std::to_string(i);
-        const Collider3DSource source = sanitizeSourceForType(body.colliders[i].type, body.colliders[i].source);
+    for (size_t i = 0; i < body.colliders.size(); i++) {
+        const Collider3D& collider = body.colliders[i];
+        const std::string target = "rigidbody.colliders[" + std::to_string(i) + "]";
+        const Collider3DSource source = sanitizeSourceForType(collider.type, collider.source);
         const Entity sourceEntity =
-            (source != Collider3DSource::NONE && body.colliders[i].sourceEntity == NULL_ENTITY)
+            (source != Collider3DSource::NONE && collider.sourceEntity == NULL_ENTITY)
                 ? entity
-                : body.colliders[i].sourceEntity;
+                : collider.sourceEntity;
 
-        code << ind << "rigidbody.colliders[" << idx << "].type = " << formatCollider3DType(body.colliders[i].type) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].position = " << formatVector3(body.colliders[i].position) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].rotation = " << formatQuaternion(body.colliders[i].rotation) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].width = " << formatFloat(body.colliders[i].width) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].height = " << formatFloat(body.colliders[i].height) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].depth = " << formatFloat(body.colliders[i].depth) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].radius = " << formatFloat(body.colliders[i].radius) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].halfHeight = " << formatFloat(body.colliders[i].halfHeight) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].topRadius = " << formatFloat(body.colliders[i].topRadius) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].bottomRadius = " << formatFloat(body.colliders[i].bottomRadius) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].density = " << formatFloat(body.colliders[i].density) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].source = " << formatCollider3DSource(source) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].sourceEntity = " << formatEntity(sourceEntity, entityVarNames) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].samplesSize = " << body.colliders[i].samplesSize << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].numVertices = " << body.colliders[i].numVertices << ";\n";
-        for (size_t j = 0; j < body.colliders[i].numVertices; j++) {
-            code << ind << "rigidbody.colliders[" << idx << "].vertices[" << j << "] = " << formatVector3(body.colliders[i].vertices[j]) << ";\n";
+        code << ind << target << ".type = " << formatCollider3DType(collider.type) << ";\n";
+        code << ind << target << ".position = " << formatVector3(collider.position) << ";\n";
+        code << ind << target << ".rotation = " << formatQuaternion(collider.rotation) << ";\n";
+        code << ind << target << ".width = " << formatFloat(collider.width) << ";\n";
+        code << ind << target << ".height = " << formatFloat(collider.height) << ";\n";
+        code << ind << target << ".depth = " << formatFloat(collider.depth) << ";\n";
+        code << ind << target << ".radius = " << formatFloat(collider.radius) << ";\n";
+        code << ind << target << ".halfHeight = " << formatFloat(collider.halfHeight) << ";\n";
+        code << ind << target << ".topRadius = " << formatFloat(collider.topRadius) << ";\n";
+        code << ind << target << ".bottomRadius = " << formatFloat(collider.bottomRadius) << ";\n";
+        code << ind << target << ".density = " << formatFloat(collider.density) << ";\n";
+        code << ind << target << ".source = " << formatCollider3DSource(source) << ";\n";
+        code << ind << target << ".sourceEntity = " << formatEntity(sourceEntity, entityVarNames) << ";\n";
+        code << ind << target << ".samplesSize = " << collider.samplesSize << ";\n";
+        if (collider.isTrigger) code << ind << target << ".isTrigger = true;\n";
+        if (!collider.material.empty()) code << ind << target << ".material = " << formatString(collider.material) << ";\n";
+        if (collider.receiver != NULL_ENTITY) code << ind << target << ".receiver = " << formatEntity(collider.receiver, entityVarNames) << ";\n";
+        // any size: one statement per 64 values so a large mesh compiles everywhere
+        const size_t chunk = 64;
+        for (size_t start = 0; start < collider.vertices.size(); start += chunk) {
+            const size_t end = std::min(collider.vertices.size(), start + chunk);
+            if (start == 0) {
+                code << ind << target << ".vertices = {";
+            } else {
+                code << ind << target << ".vertices.insert(" << target << ".vertices.end(), {";
+            }
+            for (size_t j = start; j < end; j++) {
+                if (j > start) code << ", ";
+                code << formatVector3(collider.vertices[j]);
+            }
+            code << (start == 0 ? "};\n" : "});\n");
         }
-        code << ind << "rigidbody.colliders[" << idx << "].numIndices = " << body.colliders[i].numIndices << ";\n";
-        for (size_t j = 0; j < body.colliders[i].numIndices; j++) {
-            code << ind << "rigidbody.colliders[" << idx << "].indices[" << j << "] = " << body.colliders[i].indices[j] << ";\n";
+        for (size_t start = 0; start < collider.indices.size(); start += chunk) {
+            const size_t end = std::min(collider.indices.size(), start + chunk);
+            if (start == 0) {
+                code << ind << target << ".indices = {";
+            } else {
+                code << ind << target << ".indices.insert(" << target << ".indices.end(), {";
+            }
+            for (size_t j = start; j < end; j++) {
+                if (j > start) code << ", ";
+                code << collider.indices[j] << "u";
+            }
+            code << (start == 0 ? "};\n" : "});\n");
         }
     }
 
@@ -2773,9 +2829,102 @@ std::string editor::Factory::createJoint3DComponent(int indentSpaces, EntityRegi
     code << ind << "joint3d.pathPosition = " << formatVector3(joint.pathPosition) << ";\n";
     code << ind << "joint3d.isLooping = " << formatBool(joint.isLooping) << ";\n";
     code << ind << "joint3d.autoAnchors = " << formatBool(joint.autoAnchors) << ";\n";
+    {
+        const Joint3DComponent def{};
+        auto floatCode = [&](float value) -> std::string {
+            if (std::isinf(value)) return value > 0 ? "std::numeric_limits<float>::infinity()" : "-std::numeric_limits<float>::infinity()";
+            return formatFloat(value);
+        };
+        auto floatField = [&](const char* name, float value, float defaultValue) {
+            if (value != defaultValue && !(std::isnan(value) && std::isnan(defaultValue))) {
+                code << ind << "joint3d." << name << " = " << floatCode(value) << ";\n";
+            }
+        };
+        auto boolField = [&](const char* name, bool value, bool defaultValue) {
+            if (value != defaultValue) code << ind << "joint3d." << name << " = " << formatBool(value) << ";\n";
+        };
+        auto vectorField = [&](const char* name, const Vector3& value, const Vector3& defaultValue) {
+            if (value != defaultValue) code << ind << "joint3d." << name << " = " << formatVector3(value) << ";\n";
+        };
+        auto quatField = [&](const char* name, const Quaternion& value, const Quaternion& defaultValue) {
+            if (value != defaultValue) code << ind << "joint3d." << name << " = " << formatQuaternion(value) << ";\n";
+        };
+        auto motion = [](JointMotion m) {
+            return m == JointMotion::LOCKED ? "JointMotion::LOCKED" : (m == JointMotion::LIMITED ? "JointMotion::LIMITED" : "JointMotion::FREE");
+        };
+        // every time: the struct's default is LOCAL, a scene saved before local anchors is WORLD
+        code << ind << "joint3d.anchorSpace = " << (joint.anchorSpace == JointAnchorSpace::LOCAL ? "JointAnchorSpace::LOCAL" : "JointAnchorSpace::WORLD") << ";\n";
+        boolField("enableCollision", joint.enableCollision, def.enableCollision);
+        floatField("breakForce", joint.breakForce, def.breakForce);
+        floatField("breakTorque", joint.breakTorque, def.breakTorque);
+        if (joint.breakAction != def.breakAction) {
+            const char* action = "JointBreakAction::DESTROY";
+            if (joint.breakAction == JointBreakAction::IGNORE) action = "JointBreakAction::IGNORE";
+            else if (joint.breakAction == JointBreakAction::CALLBACK_ONLY) action = "JointBreakAction::CALLBACK_ONLY";
+            else if (joint.breakAction == JointBreakAction::DISABLE) action = "JointBreakAction::DISABLE";
+            code << ind << "joint3d.breakAction = " << action << ";\n";
+        }
+        boolField("useLimits", joint.useLimits, def.useLimits);
+        floatField("limitsSpringFrequency", joint.limitsSpringFrequency, def.limitsSpringFrequency);
+        floatField("limitsSpringDamping", joint.limitsSpringDamping, def.limitsSpringDamping);
+        boolField("useMotor", joint.useMotor, def.useMotor);
+        floatField("motorTargetVelocity", joint.motorTargetVelocity, def.motorTargetVelocity);
+        floatField("motorMaxForce", joint.motorMaxForce, def.motorMaxForce);
+        boolField("useSpring", joint.useSpring, def.useSpring);
+        floatField("springStiffness", joint.springStiffness, def.springStiffness);
+        floatField("springDamper", joint.springDamper, def.springDamper);
+        floatField("springTargetPosition", joint.springTargetPosition, def.springTargetPosition);
+        floatField("maxFriction", joint.maxFriction, def.maxFriction);
+        floatField("minDistance", joint.minDistance, def.minDistance);
+        floatField("maxDistance", joint.maxDistance, def.maxDistance);
+        // every time: its default follows the project's angle unit
+        code << ind << "joint3d.coneHalfAngle = " << floatCode(joint.coneHalfAngle) << ";\n";
+        if (joint.swingType != def.swingType) code << ind << "joint3d.swingType = JointSwingType::PYRAMID;\n";
+        quatField("motorTargetRotation", joint.motorTargetRotation, def.motorTargetRotation);
+        floatField("motorSpringFrequency", joint.motorSpringFrequency, def.motorSpringFrequency);
+        floatField("motorSpringDamping", joint.motorSpringDamping, def.motorSpringDamping);
+        if (joint.xMotion != def.xMotion) code << ind << "joint3d.xMotion = " << motion(joint.xMotion) << ";\n";
+        if (joint.yMotion != def.yMotion) code << ind << "joint3d.yMotion = " << motion(joint.yMotion) << ";\n";
+        if (joint.zMotion != def.zMotion) code << ind << "joint3d.zMotion = " << motion(joint.zMotion) << ";\n";
+        if (joint.angularXMotion != def.angularXMotion) code << ind << "joint3d.angularXMotion = " << motion(joint.angularXMotion) << ";\n";
+        if (joint.angularYMotion != def.angularYMotion) code << ind << "joint3d.angularYMotion = " << motion(joint.angularYMotion) << ";\n";
+        if (joint.angularZMotion != def.angularZMotion) code << ind << "joint3d.angularZMotion = " << motion(joint.angularZMotion) << ";\n";
+        vectorField("linearLimitMin", joint.linearLimitMin, def.linearLimitMin);
+        vectorField("linearLimitMax", joint.linearLimitMax, def.linearLimitMax);
+        vectorField("angularLimitMin", joint.angularLimitMin, def.angularLimitMin);
+        vectorField("angularLimitMax", joint.angularLimitMax, def.angularLimitMax);
+        boolField("useDrive", joint.useDrive, def.useDrive);
+        floatField("driveStiffness", joint.driveStiffness, def.driveStiffness);
+        floatField("driveDamping", joint.driveDamping, def.driveDamping);
+        floatField("angularDriveStiffness", joint.angularDriveStiffness, def.angularDriveStiffness);
+        floatField("angularDriveDamping", joint.angularDriveDamping, def.angularDriveDamping);
+        floatField("driveMaxForce", joint.driveMaxForce, def.driveMaxForce);
+        floatField("driveMaxTorque", joint.driveMaxTorque, def.driveMaxTorque);
+        vectorField("targetPosition", joint.targetPosition, def.targetPosition);
+        quatField("targetRotation", joint.targetRotation, def.targetRotation);
+        vectorField("targetVelocity", joint.targetVelocity, def.targetVelocity);
+        vectorField("targetAngularVelocity", joint.targetAngularVelocity, def.targetAngularVelocity);
+    }
     code << ind << "joint3d.needUpdateJoint = " << formatBool(joint.needUpdateJoint) << ";\n";
     if (!joint.enabled) code << ind << "joint3d.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "Joint3DComponent", "joint3d", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createRagdollComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<RagdollComponent>(entity)) return "";
+    RagdollComponent& ragdoll = scene->getComponent<RagdollComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "RagdollComponent ragdoll;\n";
+    code << ind << "ragdoll.simulated = " << formatBool(ragdoll.simulated) << ";\n";
+    code << ind << "ragdoll.root = " << formatEntity(ragdoll.root, entityVarNames) << ";\n";
+    code << ind << "ragdoll.animator = " << formatEntity(ragdoll.animator, entityVarNames) << ";\n";
+    code << ind << "ragdoll.inheritVelocity = " << formatBool(ragdoll.inheritVelocity) << ";\n";
+    code << ind << "ragdoll.selfCollision = " << formatBool(ragdoll.selfCollision) << ";\n";
+    code << ind << "ragdoll.totalMass = " << formatFloat(ragdoll.totalMass) << ";\n";
+    if (!ragdoll.enabled) code << ind << "ragdoll.enabled = false;\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "RagdollComponent", "ragdoll", assignExisting);
     return code.str();
 }
 
@@ -3284,6 +3433,7 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::RigidbodyComponent: return guardPhysicsCode(createRigidbodyComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_3D");
         case ComponentType::Joint2DComponent: return guardPhysicsCode(createJoint2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_2D");
         case ComponentType::Joint3DComponent: return guardPhysicsCode(createJoint3DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_3D");
+        case ComponentType::RagdollComponent: return guardPhysicsCode(createRagdollComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_3D");
         case ComponentType::ActionComponent: return createActionComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::TweenComponent: return createTweenComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::PositionTweenComponent: return createPositionTweenComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);

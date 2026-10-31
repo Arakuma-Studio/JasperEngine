@@ -3139,6 +3139,16 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         }
     }
 
+    // Project Settings > Physics > 3D World Capacity: only when it differs from the defaults
+    if (project->getPhysics3DWorldSettings() != Physics3DWorldSettings()) {
+        const Physics3DWorldSettings& world = project->getPhysics3DWorldSettings();
+        YAML::Node physicsNode;
+        physicsNode["maxBodies"] = world.maxBodies;
+        physicsNode["maxBodyPairs"] = world.maxBodyPairs;
+        physicsNode["maxContactConstraints"] = world.maxContactConstraints;
+        root["physics3D"] = physicsNode;
+    }
+
     // Project Settings > Input: only once edited (an old project reads Unity's defaults)
     if (project->hasCustomInputActions()) {
         root["input"] = encodeInputActions(project->getInputActions());
@@ -3199,6 +3209,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (application.identifier != defaultApplication.identifier) applicationNode["identifier"] = application.identifier;
         if (application.version != defaultApplication.version) applicationNode["version"] = application.version;
         if (application.build != defaultApplication.build) applicationNode["build"] = application.build;
+        if (application.allowInsecureHttp != defaultApplication.allowInsecureHttp) applicationNode["allowInsecureHttp"] = application.allowInsecureHttp;
         if (applicationNode.size() != 0) root["application"] = applicationNode;
     }
 
@@ -3301,6 +3312,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             permissionsNode.push_back(permission);
         }
         if (android.permissions != defaults.permissions) androidNode["permissions"] = permissionsNode;
+        if (android.internetAccess != defaults.internetAccess) {
+            androidNode["internetAccess"] = android.internetAccess == AndroidInternetAccess::Require ? "require" : "auto";
+        }
 
         if (android.allowBackup != defaults.allowBackup) androidNode["allowBackup"] = android.allowBackup;
         if (android.fullscreen != defaults.fullscreen) androidNode["fullscreen"] = android.fullscreen;
@@ -3566,6 +3580,20 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     {
+        // Project Settings > Physics > 3D World Capacity; missing: the defaults
+        Physics3DWorldSettings world;
+        const YAML::Node physicsNode = node["physics3D"];
+        if (physicsNode && physicsNode.IsMap()) {
+            if (physicsNode["maxBodies"]) world.maxBodies = YamlNumbers::as<unsigned int>(physicsNode["maxBodies"]);
+            if (physicsNode["maxBodyPairs"]) world.maxBodyPairs = YamlNumbers::as<unsigned int>(physicsNode["maxBodyPairs"]);
+            if (physicsNode["maxContactConstraints"]) world.maxContactConstraints = YamlNumbers::as<unsigned int>(physicsNode["maxContactConstraints"]);
+        } else if (physicsNode) {
+            Out::warning("Ignoring physics3D in project settings: not a map");
+        }
+        project->setPhysics3DWorldSettings(world);
+    }
+
+    {
         // Project Settings > Input; no node: Unity's Input Manager defaults
         const YAML::Node inputNode = node["input"];
         std::vector<InputAction> actions = InputActions::defaults();
@@ -3641,6 +3669,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (applicationNode["identifier"]) application.identifier = applicationNode["identifier"].as<std::string>();
         if (applicationNode["version"]) application.version = applicationNode["version"].as<std::string>();
         if (applicationNode["build"]) application.build = std::max(1u, YamlNumbers::as<unsigned int>(applicationNode["build"]));
+        if (applicationNode["allowInsecureHttp"].IsDefined()) application.allowInsecureHttp = YamlNumbers::as<bool>(applicationNode["allowInsecureHttp"]);
     }
 
     if (node["web"] && node["web"].IsMap()) {
@@ -3731,6 +3760,10 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
         }
 
+        if (androidNode["internetAccess"]) {
+            android.internetAccess = androidNode["internetAccess"].as<std::string>() == "require"
+                ? AndroidInternetAccess::Require : AndroidInternetAccess::Auto;
+        }
         if (androidNode["allowBackup"].IsDefined()) android.allowBackup = YamlNumbers::as<bool>(androidNode["allowBackup"]);
         if (androidNode["fullscreen"].IsDefined()) android.fullscreen = YamlNumbers::as<bool>(androidNode["fullscreen"]);
         // android.keepScreenOn is dropped: exported games always kept the screen on (the native
@@ -3888,9 +3921,9 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
     // read from an older scene: written back unchanged (no churn in users' files)
     if (sceneProject->maxValues.legacyMaxColliders2D) maxValuesNode["maxColliders2D"] = *sceneProject->maxValues.legacyMaxColliders2D;
     if (sceneProject->maxValues.legacyMaxColliderPoints2D) maxValuesNode["maxColliderPoints2D"] = *sceneProject->maxValues.legacyMaxColliderPoints2D;
-    maxValuesNode["maxColliders3D"] = sceneProject->maxValues.maxColliders3D;
-    maxValuesNode["maxColliderVertices3D"] = sceneProject->maxValues.maxColliderVertices3D;
-    maxValuesNode["maxColliderIndices3D"] = sceneProject->maxValues.maxColliderIndices3D;
+    if (sceneProject->maxValues.legacyMaxColliders3D) maxValuesNode["maxColliders3D"] = *sceneProject->maxValues.legacyMaxColliders3D;
+    if (sceneProject->maxValues.legacyMaxColliderVertices3D) maxValuesNode["maxColliderVertices3D"] = *sceneProject->maxValues.legacyMaxColliderVertices3D;
+    if (sceneProject->maxValues.legacyMaxColliderIndices3D) maxValuesNode["maxColliderIndices3D"] = *sceneProject->maxValues.legacyMaxColliderIndices3D;
     root["maxValues"] = maxValuesNode;
 
     YAML::Node shaderKeysNode = Stream::encodeShaderKeys(sceneProject->shaderKeys);
@@ -4050,13 +4083,13 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
         if (maxValuesNode["maxExternalBuffers"]) sceneProject->maxValues.maxExternalBuffers = YamlNumbers::as<unsigned int>(maxValuesNode["maxExternalBuffers"]);
         if (maxValuesNode["maxSpriteFrames"]) sceneProject->maxValues.maxSpriteFrames = YamlNumbers::as<unsigned int>(maxValuesNode["maxSpriteFrames"]);
         if (maxValuesNode["maxBones"]) sceneProject->maxValues.maxBones = YamlNumbers::as<unsigned int>(maxValuesNode["maxBones"]);
-        // maxColliders2D / maxColliderPoints2D of older editors: 2D colliders have no caps any
-        // more; kept only to write them back as they were
+        // the collider caps of older editors: colliders have no caps any more; kept only to
+        // write them back as they were
         if (maxValuesNode["maxColliders2D"]) sceneProject->maxValues.legacyMaxColliders2D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliders2D"]);
         if (maxValuesNode["maxColliderPoints2D"]) sceneProject->maxValues.legacyMaxColliderPoints2D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderPoints2D"]);
-        if (maxValuesNode["maxColliders3D"]) sceneProject->maxValues.maxColliders3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliders3D"]);
-        if (maxValuesNode["maxColliderVertices3D"]) sceneProject->maxValues.maxColliderVertices3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderVertices3D"]);
-        if (maxValuesNode["maxColliderIndices3D"]) sceneProject->maxValues.maxColliderIndices3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderIndices3D"]);
+        if (maxValuesNode["maxColliders3D"]) sceneProject->maxValues.legacyMaxColliders3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliders3D"]);
+        if (maxValuesNode["maxColliderVertices3D"]) sceneProject->maxValues.legacyMaxColliderVertices3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderVertices3D"]);
+        if (maxValuesNode["maxColliderIndices3D"]) sceneProject->maxValues.legacyMaxColliderIndices3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderIndices3D"]);
     }
 
     sceneProject->shaderKeys.clear();
@@ -5384,6 +5417,11 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
         compNode[Catalog::getComponentName(ComponentType::Joint3DComponent, true)] = encodeJoint3DComponent(joint);
     }
 
+    if (signature.test(registry->getComponentId<RagdollComponent>())) {
+        const RagdollComponent& ragdoll = registry->getComponent<RagdollComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::RagdollComponent, true)] = encodeRagdollComponent(ragdoll);
+    }
+
     if (signature.test(registry->getComponentId<ActionComponent>())) {
         const ActionComponent& action = registry->getComponent<ActionComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::ActionComponent, true)] = encodeActionComponent(action);
@@ -6044,6 +6082,19 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::Joint3DComponent, existing, &joint);
             registry->getComponent<Joint3DComponent>(entity) = std::move(joint);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::RagdollComponent, true);
+    if (compNode[compName]) {
+        RagdollComponent* existing = registry->findComponent<RagdollComponent>(entity);
+        RagdollComponent ragdoll = decodeRagdollComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<RagdollComponent>())){
+            registry->addComponent<RagdollComponent>(entity, std::move(ragdoll));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::RagdollComponent, existing, &ragdoll);
+            registry->getComponent<RagdollComponent>(entity) = std::move(ragdoll);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -8979,6 +9030,26 @@ YAML::Node editor::Stream::encodeRigidbodyComponent(const RigidbodyComponent& bo
     node["buoyancy"] = body.buoyancy;
     node["waterDrag"] = body.waterDrag;
     node["waterAngularDrag"] = body.waterAngularDrag;
+    node["material"] = body.material;
+    node["linearDamping"] = body.linearDamping;
+    node["angularDamping"] = body.angularDamping;
+    node["maxLinearVelocity"] = body.maxLinearVelocity;
+    node["maxAngularVelocity"] = body.maxAngularVelocity;
+    node["automaticMass"] = body.automaticMass;
+    node["mass"] = body.mass;
+    node["automaticCenterOfMass"] = body.automaticCenterOfMass;
+    node["centerOfMass"] = encodeVector3(body.centerOfMass);
+    node["automaticInertiaTensor"] = body.automaticInertiaTensor;
+    node["inertiaTensor"] = encodeVector3(body.inertiaTensor);
+    node["inertiaTensorRotation"] = encodeQuaternion(body.inertiaTensorRotation);
+    node["allowSleeping"] = body.allowSleeping;
+    node["collideKinematicVsNonDynamic"] = body.collideKinematicVsNonDynamic;
+    node["interpolation"] = rigidbodyInterpolationToString(body.interpolation);
+    if (body.overrideMassProperties) {
+        node["overrideMassProperties"] = true;
+        node["solidBoxSize"] = encodeVector3(body.solidBoxSize);
+        node["solidBoxDensity"] = body.solidBoxDensity;
+    }
 
     // Six booleans instead of the bit mask, so the file stays readable.
     YAML::Node dofsNode;
@@ -8993,24 +9064,25 @@ YAML::Node editor::Stream::encodeRigidbodyComponent(const RigidbodyComponent& bo
     dof("rotationZ", RigidbodyAllowedDOF_RotationZ);
     node["allowedDOFs"] = dofsNode;
 
-    node["numColliders"] = static_cast<unsigned int>(body.numColliders);
+    // read by editors from before the list had no cap
+    node["numColliders"] = static_cast<unsigned int>(body.colliders.size());
 
-    YAML::Node shapesNode;
-    for (size_t i = 0; i < body.numColliders; i++) {
+    YAML::Node shapesNode = YAML::Node(YAML::NodeType::Sequence);
+    for (const Collider3D& collider : body.colliders) {
         YAML::Node shapeNode;
-        shapeNode["type"] = collider3DTypeToString(body.colliders[i].type);
-        shapeNode["position"] = encodeVector3(body.colliders[i].position);
-        shapeNode["rotation"] = encodeQuaternion(body.colliders[i].rotation);
-        shapeNode["width"] = body.colliders[i].width;
-        shapeNode["height"] = body.colliders[i].height;
-        shapeNode["depth"] = body.colliders[i].depth;
-        shapeNode["radius"] = body.colliders[i].radius;
-        shapeNode["halfHeight"] = body.colliders[i].halfHeight;
-        shapeNode["topRadius"] = body.colliders[i].topRadius;
-        shapeNode["bottomRadius"] = body.colliders[i].bottomRadius;
-        shapeNode["density"] = body.colliders[i].density;
+        shapeNode["type"] = collider3DTypeToString(collider.type);
+        shapeNode["position"] = encodeVector3(collider.position);
+        shapeNode["rotation"] = encodeQuaternion(collider.rotation);
+        shapeNode["width"] = collider.width;
+        shapeNode["height"] = collider.height;
+        shapeNode["depth"] = collider.depth;
+        shapeNode["radius"] = collider.radius;
+        shapeNode["halfHeight"] = collider.halfHeight;
+        shapeNode["topRadius"] = collider.topRadius;
+        shapeNode["bottomRadius"] = collider.bottomRadius;
+        shapeNode["density"] = collider.density;
 
-        switch (body.colliders[i].source) {
+        switch (collider.source) {
             case Collider3DSource::RAW_VERTICES: shapeNode["source"] = "raw_vertices"; break;
             case Collider3DSource::RAW_MESH: shapeNode["source"] = "raw_mesh"; break;
             case Collider3DSource::ENTITY_MESH: shapeNode["source"] = "entity_mesh"; break;
@@ -9018,18 +9090,25 @@ YAML::Node editor::Stream::encodeRigidbodyComponent(const RigidbodyComponent& bo
             default: shapeNode["source"] = "none"; break;
         }
 
-        shapeNode["sourceEntity"] = body.colliders[i].sourceEntity;
-        shapeNode["samplesSize"] = body.colliders[i].samplesSize;
+        shapeNode["sourceEntity"] = collider.sourceEntity;
+        shapeNode["samplesSize"] = collider.samplesSize;
+        shapeNode["isTrigger"] = collider.isTrigger;
+        if (!collider.material.empty()) {
+            shapeNode["material"] = collider.material;
+        }
+        if (collider.receiver != NULL_ENTITY) {
+            shapeNode["receiver"] = collider.receiver;
+        }
 
-        YAML::Node verticesNode;
-        for (size_t j = 0; j < body.colliders[i].numVertices; j++) {
-            verticesNode.push_back(encodeVector3(body.colliders[i].vertices[j]));
+        YAML::Node verticesNode = YAML::Node(YAML::NodeType::Sequence);
+        for (const Vector3& vertex : collider.vertices) {
+            verticesNode.push_back(encodeVector3(vertex));
         }
         shapeNode["vertices"] = verticesNode;
 
-        YAML::Node indicesNode;
-        for (size_t j = 0; j < body.colliders[i].numIndices; j++) {
-            indicesNode.push_back(body.colliders[i].indices[j]);
+        YAML::Node indicesNode = YAML::Node(YAML::NodeType::Sequence);
+        for (uint32_t index : collider.indices) {
+            indicesNode.push_back(index);
         }
         shapeNode["indices"] = indicesNode;
 
@@ -9045,6 +9124,11 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
 
     if (oldBody) {
         body = *oldBody;
+        // keys left out at their default decode to it over a live component too (Stop's restore)
+        body.material.clear();
+        body.materialInstance.reset();
+        body.overrideMassProperties = false;
+        body.hasPendingType = false;
     }
 
     if (node["type"]) body.type = stringToBodyType(node["type"].as<std::string>());
@@ -9056,6 +9140,25 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
     if (node["buoyancy"]) body.buoyancy = YamlNumbers::as<float>(node["buoyancy"]);
     if (node["waterDrag"]) body.waterDrag = YamlNumbers::as<float>(node["waterDrag"]);
     if (node["waterAngularDrag"]) body.waterAngularDrag = YamlNumbers::as<float>(node["waterAngularDrag"]);
+    // the Rigidbody fields; a scene saved before them gets what Jolt used (the struct defaults)
+    if (node["material"]) body.material = node["material"].as<std::string>();
+    if (node["linearDamping"]) body.linearDamping = YamlNumbers::as<float>(node["linearDamping"]);
+    if (node["angularDamping"]) body.angularDamping = YamlNumbers::as<float>(node["angularDamping"]);
+    if (node["maxLinearVelocity"]) body.maxLinearVelocity = YamlNumbers::as<float>(node["maxLinearVelocity"]);
+    if (node["maxAngularVelocity"]) body.maxAngularVelocity = YamlNumbers::as<float>(node["maxAngularVelocity"]);
+    if (node["automaticMass"]) body.automaticMass = YamlNumbers::as<bool>(node["automaticMass"]);
+    if (node["mass"]) body.mass = YamlNumbers::as<float>(node["mass"]);
+    if (node["automaticCenterOfMass"]) body.automaticCenterOfMass = YamlNumbers::as<bool>(node["automaticCenterOfMass"]);
+    if (node["centerOfMass"]) body.centerOfMass = decodeVector3(node["centerOfMass"]);
+    if (node["automaticInertiaTensor"]) body.automaticInertiaTensor = YamlNumbers::as<bool>(node["automaticInertiaTensor"]);
+    if (node["inertiaTensor"]) body.inertiaTensor = decodeVector3(node["inertiaTensor"]);
+    if (node["inertiaTensorRotation"]) body.inertiaTensorRotation = decodeQuaternion(node["inertiaTensorRotation"]);
+    if (node["allowSleeping"]) body.allowSleeping = YamlNumbers::as<bool>(node["allowSleeping"]);
+    if (node["collideKinematicVsNonDynamic"]) body.collideKinematicVsNonDynamic = YamlNumbers::as<bool>(node["collideKinematicVsNonDynamic"]);
+    if (node["interpolation"]) body.interpolation = stringToRigidbodyInterpolation(node["interpolation"].as<std::string>());
+    if (node["overrideMassProperties"]) body.overrideMassProperties = YamlNumbers::as<bool>(node["overrideMassProperties"]);
+    if (node["solidBoxSize"]) body.solidBoxSize = decodeVector3(node["solidBoxSize"]);
+    if (node["solidBoxDensity"]) body.solidBoxDensity = YamlNumbers::as<float>(node["solidBoxDensity"]);
 
     if (node["allowedDOFs"]) {
         const YAML::Node& dofsNode = node["allowedDOFs"];
@@ -9075,74 +9178,72 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
         body.allowedDOFs = dofs == 0 ? RigidbodyAllowedDOF_All : dofs;
     }
 
-    if (node["numColliders"]) body.numColliders = YamlNumbers::as<unsigned int>(node["numColliders"]);
-
     if (node["colliders"]) {
-        size_t count = node["colliders"].size();
+        const YAML::Node& collidersNode = node["colliders"];
+        size_t count = collidersNode.size();
+        // an older editor's count of the list (it kept unused slots)
+        if (node["numColliders"]) {
+            count = std::min(count, (size_t)YamlNumbers::as<unsigned int>(node["numColliders"]));
+        }
+        body.colliders.clear();
+        body.colliders.resize(count);
         for (size_t i = 0; i < count; i++) {
-            if (node["colliders"][i]["type"]) {
-                body.colliders[i].type = stringToCollider3DType(node["colliders"][i]["type"].as<std::string>());
-            }
-            if (node["colliders"][i]["position"]) {
-                body.colliders[i].position = decodeVector3(node["colliders"][i]["position"]);
+            const YAML::Node& shapeNode = collidersNode[i];
+            Collider3D& collider = body.colliders[i];
+            if (shapeNode["type"]) collider.type = stringToCollider3DType(shapeNode["type"].as<std::string>());
+            if (shapeNode["position"]) {
+                collider.position = decodeVector3(shapeNode["position"]);
 
-                const float physicsOffset = (body.colliders[i].position * bodyScale).length();
-                if (body.numColliders == 1 && physicsOffset > MAX_SINGLE_SHAPE_PHYSICS_OFFSET) {
+                const float physicsOffset = (collider.position * bodyScale).length();
+                if (count == 1 && physicsOffset > MAX_SINGLE_SHAPE_PHYSICS_OFFSET) {
                     Log::warn("Rigidbody shape position after transform scale is too large (%.2f). Physics may be unstable.", physicsOffset);
                 }
             }
-            if (node["colliders"][i]["rotation"]) {
-                body.colliders[i].rotation = decodeQuaternion(node["colliders"][i]["rotation"]);
-            }
-            if (node["colliders"][i]["width"]) body.colliders[i].width = YamlNumbers::as<float>(node["colliders"][i]["width"]);
-            if (node["colliders"][i]["height"]) body.colliders[i].height = YamlNumbers::as<float>(node["colliders"][i]["height"]);
-            if (node["colliders"][i]["depth"]) body.colliders[i].depth = YamlNumbers::as<float>(node["colliders"][i]["depth"]);
-            if (node["colliders"][i]["radius"]) body.colliders[i].radius = YamlNumbers::as<float>(node["colliders"][i]["radius"]);
-            if (node["colliders"][i]["halfHeight"]) body.colliders[i].halfHeight = YamlNumbers::as<float>(node["colliders"][i]["halfHeight"]);
-            if (node["colliders"][i]["topRadius"]) body.colliders[i].topRadius = YamlNumbers::as<float>(node["colliders"][i]["topRadius"]);
-            if (node["colliders"][i]["bottomRadius"]) body.colliders[i].bottomRadius = YamlNumbers::as<float>(node["colliders"][i]["bottomRadius"]);
-            if (node["colliders"][i]["density"]) body.colliders[i].density = YamlNumbers::as<float>(node["colliders"][i]["density"]);
+            if (shapeNode["rotation"]) collider.rotation = decodeQuaternion(shapeNode["rotation"]);
+            if (shapeNode["width"]) collider.width = YamlNumbers::as<float>(shapeNode["width"]);
+            if (shapeNode["height"]) collider.height = YamlNumbers::as<float>(shapeNode["height"]);
+            if (shapeNode["depth"]) collider.depth = YamlNumbers::as<float>(shapeNode["depth"]);
+            if (shapeNode["radius"]) collider.radius = YamlNumbers::as<float>(shapeNode["radius"]);
+            if (shapeNode["halfHeight"]) collider.halfHeight = YamlNumbers::as<float>(shapeNode["halfHeight"]);
+            if (shapeNode["topRadius"]) collider.topRadius = YamlNumbers::as<float>(shapeNode["topRadius"]);
+            if (shapeNode["bottomRadius"]) collider.bottomRadius = YamlNumbers::as<float>(shapeNode["bottomRadius"]);
+            if (shapeNode["density"]) collider.density = YamlNumbers::as<float>(shapeNode["density"]);
 
-            if (node["colliders"][i]["source"]) {
-                std::string source = node["colliders"][i]["source"].as<std::string>();
-                if (source == "raw_vertices") body.colliders[i].source = Collider3DSource::RAW_VERTICES;
-                else if (source == "raw_mesh") body.colliders[i].source = Collider3DSource::RAW_MESH;
-                else if (source == "entity_mesh") body.colliders[i].source = Collider3DSource::ENTITY_MESH;
-                else if (source == "entity_heightfield") body.colliders[i].source = Collider3DSource::ENTITY_HEIGHTFIELD;
-                else body.colliders[i].source = Collider3DSource::NONE;
+            if (shapeNode["source"]) {
+                std::string source = shapeNode["source"].as<std::string>();
+                if (source == "raw_vertices") collider.source = Collider3DSource::RAW_VERTICES;
+                else if (source == "raw_mesh") collider.source = Collider3DSource::RAW_MESH;
+                else if (source == "entity_mesh") collider.source = Collider3DSource::ENTITY_MESH;
+                else if (source == "entity_heightfield") collider.source = Collider3DSource::ENTITY_HEIGHTFIELD;
+                else collider.source = Collider3DSource::NONE;
             }
 
-            if (body.colliders[i].source == Collider3DSource::NONE) {
-                if (body.colliders[i].type == Collider3DType::CONVEX_HULL) {
-                    body.colliders[i].source = Collider3DSource::ENTITY_MESH;
-                } else if (body.colliders[i].type == Collider3DType::MESH) {
-                    body.colliders[i].source = Collider3DSource::ENTITY_MESH;
-                } else if (body.colliders[i].type == Collider3DType::HEIGHTFIELD) {
-                    body.colliders[i].source = Collider3DSource::ENTITY_HEIGHTFIELD;
+            if (collider.source == Collider3DSource::NONE) {
+                if (collider.type == Collider3DType::CONVEX_HULL) {
+                    collider.source = Collider3DSource::ENTITY_MESH;
+                } else if (collider.type == Collider3DType::MESH) {
+                    collider.source = Collider3DSource::ENTITY_MESH;
+                } else if (collider.type == Collider3DType::HEIGHTFIELD) {
+                    collider.source = Collider3DSource::ENTITY_HEIGHTFIELD;
                 }
             }
 
-            if (node["colliders"][i]["sourceEntity"]) body.colliders[i].sourceEntity = YamlNumbers::as<Entity>(node["colliders"][i]["sourceEntity"]);
+            if (shapeNode["sourceEntity"]) collider.sourceEntity = YamlNumbers::as<Entity>(shapeNode["sourceEntity"]);
+            if (shapeNode["samplesSize"]) collider.samplesSize = YamlNumbers::as<unsigned int>(shapeNode["samplesSize"]);
+            if (shapeNode["isTrigger"]) collider.isTrigger = YamlNumbers::as<bool>(shapeNode["isTrigger"]);
+            if (shapeNode["material"]) collider.material = shapeNode["material"].as<std::string>();
+            if (shapeNode["receiver"]) collider.receiver = YamlNumbers::as<Entity>(shapeNode["receiver"]);
 
-            if (node["colliders"][i]["samplesSize"]) body.colliders[i].samplesSize = YamlNumbers::as<unsigned int>(node["colliders"][i]["samplesSize"]);
-
-            if (node["colliders"][i]["vertices"]) {
-                size_t vcount = node["colliders"][i]["vertices"].size();
-                body.colliders[i].numVertices = (uint16_t)vcount;
-                for (size_t j = 0; j < vcount; j++) {
-                    body.colliders[i].vertices[j] = decodeVector3(node["colliders"][i]["vertices"][j]);
+            if (shapeNode["vertices"]) {
+                for (const YAML::Node& vertex : shapeNode["vertices"]) {
+                    collider.vertices.push_back(decodeVector3(vertex));
                 }
             }
-
-            if (node["colliders"][i]["indices"]) {
-                size_t icount = node["colliders"][i]["indices"].size();
-                body.colliders[i].numIndices = (uint16_t)icount;
-                for (size_t j = 0; j < icount; j++) {
-                    body.colliders[i].indices[j] = YamlNumbers::as<uint16_t>(node["colliders"][i]["indices"][j]);
+            if (shapeNode["indices"]) {
+                for (const YAML::Node& index : shapeNode["indices"]) {
+                    collider.indices.push_back(YamlNumbers::as<uint32_t>(index));
                 }
             }
-
-            body.colliders[i].shape = NULL;
         }
     }
 
@@ -9321,6 +9422,51 @@ YAML::Node editor::Stream::encodeJoint3DComponent(const Joint3DComponent& joint)
     node["pathPosition"] = encodeVector3(joint.pathPosition);
     node["isLooping"] = joint.isLooping;
     node["autoAnchors"] = joint.autoAnchors;
+    node["anchorSpace"] = jointAnchorSpaceToString(joint.anchorSpace);
+    node["enableCollision"] = joint.enableCollision;
+    // only when finite (YAML has no infinity the other readers agree on)
+    if (std::isfinite(joint.breakForce)) node["breakForce"] = joint.breakForce;
+    if (std::isfinite(joint.breakTorque)) node["breakTorque"] = joint.breakTorque;
+    node["breakAction"] = jointBreakActionToString(joint.breakAction);
+    node["useLimits"] = joint.useLimits;
+    node["limitsSpringFrequency"] = joint.limitsSpringFrequency;
+    node["limitsSpringDamping"] = joint.limitsSpringDamping;
+    node["useMotor"] = joint.useMotor;
+    node["motorTargetVelocity"] = joint.motorTargetVelocity;
+    node["motorMaxForce"] = joint.motorMaxForce;
+    node["useSpring"] = joint.useSpring;
+    node["springStiffness"] = joint.springStiffness;
+    node["springDamper"] = joint.springDamper;
+    node["springTargetPosition"] = joint.springTargetPosition;
+    node["maxFriction"] = joint.maxFriction;
+    node["minDistance"] = joint.minDistance;
+    node["maxDistance"] = joint.maxDistance;
+    node["coneHalfAngle"] = joint.coneHalfAngle;
+    node["swingType"] = joint.swingType == JointSwingType::PYRAMID ? "pyramid" : "cone";
+    node["motorTargetRotation"] = encodeQuaternion(joint.motorTargetRotation);
+    node["motorSpringFrequency"] = joint.motorSpringFrequency;
+    node["motorSpringDamping"] = joint.motorSpringDamping;
+    node["xMotion"] = jointMotionToString(joint.xMotion);
+    node["yMotion"] = jointMotionToString(joint.yMotion);
+    node["zMotion"] = jointMotionToString(joint.zMotion);
+    node["angularXMotion"] = jointMotionToString(joint.angularXMotion);
+    node["angularYMotion"] = jointMotionToString(joint.angularYMotion);
+    node["angularZMotion"] = jointMotionToString(joint.angularZMotion);
+    node["linearLimitMin"] = encodeVector3(joint.linearLimitMin);
+    node["linearLimitMax"] = encodeVector3(joint.linearLimitMax);
+    node["angularLimitMin"] = encodeVector3(joint.angularLimitMin);
+    node["angularLimitMax"] = encodeVector3(joint.angularLimitMax);
+    node["useDrive"] = joint.useDrive;
+    node["driveStiffness"] = joint.driveStiffness;
+    node["driveDamping"] = joint.driveDamping;
+    node["angularDriveStiffness"] = joint.angularDriveStiffness;
+    node["angularDriveDamping"] = joint.angularDriveDamping;
+    if (std::isfinite(joint.driveMaxForce)) node["driveMaxForce"] = joint.driveMaxForce;
+    if (std::isfinite(joint.driveMaxTorque)) node["driveMaxTorque"] = joint.driveMaxTorque;
+    node["targetPosition"] = encodeVector3(joint.targetPosition);
+    node["targetRotation"] = encodeQuaternion(joint.targetRotation);
+    node["targetVelocity"] = encodeVector3(joint.targetVelocity);
+    node["targetAngularVelocity"] = encodeVector3(joint.targetAngularVelocity);
 
     return node;
 }
@@ -9328,11 +9474,17 @@ YAML::Node editor::Stream::encodeJoint3DComponent(const Joint3DComponent& joint)
 Joint3DComponent editor::Stream::decodeJoint3DComponent(const YAML::Node& node, const Joint3DComponent* oldJoint) {
     Joint3DComponent joint;
 
+    const Joint3DType type = node["type"] ? stringToJoint3DType(node["type"].as<std::string>()) : Joint3DType::FIXED;
     if (oldJoint) {
         joint = *oldJoint;
+        joint.loadFailed = false;
     }
-
-    if (node["type"]) joint.type = stringToJoint3DType(node["type"].as<std::string>());
+    // a key missing from a scene saved before is what the joint had then (Jolt's defaults, world
+    // anchors, the connected bodies colliding), so old scenes simulate as they did
+    if (!node["anchorSpace"]) {
+        setJoint3DLegacyParameters(joint, type);
+    }
+    joint.type = type;
     if (node["bodyA"]) joint.bodyA = YamlNumbers::as<Entity>(node["bodyA"]);
     if (node["bodyB"]) joint.bodyB = YamlNumbers::as<Entity>(node["bodyB"]);
     if (node["anchorA"]) joint.anchorA = decodeVector3(node["anchorA"]);
@@ -9370,6 +9522,51 @@ Joint3DComponent editor::Stream::decodeJoint3DComponent(const YAML::Node& node, 
     if (node["pathPosition"]) joint.pathPosition = decodeVector3(node["pathPosition"]);
     if (node["isLooping"]) joint.isLooping = YamlNumbers::as<bool>(node["isLooping"]);
     if (node["autoAnchors"]) joint.autoAnchors = YamlNumbers::as<bool>(node["autoAnchors"]);
+    if (node["anchorSpace"]) joint.anchorSpace = stringToJointAnchorSpace(node["anchorSpace"].as<std::string>());
+    if (node["enableCollision"]) joint.enableCollision = YamlNumbers::as<bool>(node["enableCollision"]);
+    // written only when finite: missing is infinite, over a live component too
+    joint.breakForce = node["breakForce"] ? YamlNumbers::as<float>(node["breakForce"]) : std::numeric_limits<float>::infinity();
+    joint.breakTorque = node["breakTorque"] ? YamlNumbers::as<float>(node["breakTorque"]) : std::numeric_limits<float>::infinity();
+    if (node["breakAction"]) joint.breakAction = stringToJointBreakAction(node["breakAction"].as<std::string>());
+    if (node["useLimits"]) joint.useLimits = YamlNumbers::as<bool>(node["useLimits"]);
+    if (node["limitsSpringFrequency"]) joint.limitsSpringFrequency = YamlNumbers::as<float>(node["limitsSpringFrequency"]);
+    if (node["limitsSpringDamping"]) joint.limitsSpringDamping = YamlNumbers::as<float>(node["limitsSpringDamping"]);
+    if (node["useMotor"]) joint.useMotor = YamlNumbers::as<bool>(node["useMotor"]);
+    if (node["motorTargetVelocity"]) joint.motorTargetVelocity = YamlNumbers::as<float>(node["motorTargetVelocity"]);
+    if (node["motorMaxForce"]) joint.motorMaxForce = YamlNumbers::as<float>(node["motorMaxForce"]);
+    if (node["useSpring"]) joint.useSpring = YamlNumbers::as<bool>(node["useSpring"]);
+    if (node["springStiffness"]) joint.springStiffness = YamlNumbers::as<float>(node["springStiffness"]);
+    if (node["springDamper"]) joint.springDamper = YamlNumbers::as<float>(node["springDamper"]);
+    if (node["springTargetPosition"]) joint.springTargetPosition = YamlNumbers::as<float>(node["springTargetPosition"]);
+    if (node["maxFriction"]) joint.maxFriction = YamlNumbers::as<float>(node["maxFriction"]);
+    if (node["minDistance"]) joint.minDistance = YamlNumbers::as<float>(node["minDistance"]);
+    if (node["maxDistance"]) joint.maxDistance = YamlNumbers::as<float>(node["maxDistance"]);
+    if (node["coneHalfAngle"]) joint.coneHalfAngle = YamlNumbers::as<float>(node["coneHalfAngle"]);
+    if (node["swingType"]) joint.swingType = node["swingType"].as<std::string>() == "pyramid" ? JointSwingType::PYRAMID : JointSwingType::CONE;
+    if (node["motorTargetRotation"]) joint.motorTargetRotation = decodeQuaternion(node["motorTargetRotation"]);
+    if (node["motorSpringFrequency"]) joint.motorSpringFrequency = YamlNumbers::as<float>(node["motorSpringFrequency"]);
+    if (node["motorSpringDamping"]) joint.motorSpringDamping = YamlNumbers::as<float>(node["motorSpringDamping"]);
+    if (node["xMotion"]) joint.xMotion = stringToJointMotion(node["xMotion"].as<std::string>());
+    if (node["yMotion"]) joint.yMotion = stringToJointMotion(node["yMotion"].as<std::string>());
+    if (node["zMotion"]) joint.zMotion = stringToJointMotion(node["zMotion"].as<std::string>());
+    if (node["angularXMotion"]) joint.angularXMotion = stringToJointMotion(node["angularXMotion"].as<std::string>());
+    if (node["angularYMotion"]) joint.angularYMotion = stringToJointMotion(node["angularYMotion"].as<std::string>());
+    if (node["angularZMotion"]) joint.angularZMotion = stringToJointMotion(node["angularZMotion"].as<std::string>());
+    if (node["linearLimitMin"]) joint.linearLimitMin = decodeVector3(node["linearLimitMin"]);
+    if (node["linearLimitMax"]) joint.linearLimitMax = decodeVector3(node["linearLimitMax"]);
+    if (node["angularLimitMin"]) joint.angularLimitMin = decodeVector3(node["angularLimitMin"]);
+    if (node["angularLimitMax"]) joint.angularLimitMax = decodeVector3(node["angularLimitMax"]);
+    if (node["useDrive"]) joint.useDrive = YamlNumbers::as<bool>(node["useDrive"]);
+    if (node["driveStiffness"]) joint.driveStiffness = YamlNumbers::as<float>(node["driveStiffness"]);
+    if (node["driveDamping"]) joint.driveDamping = YamlNumbers::as<float>(node["driveDamping"]);
+    if (node["angularDriveStiffness"]) joint.angularDriveStiffness = YamlNumbers::as<float>(node["angularDriveStiffness"]);
+    if (node["angularDriveDamping"]) joint.angularDriveDamping = YamlNumbers::as<float>(node["angularDriveDamping"]);
+    joint.driveMaxForce = node["driveMaxForce"] ? YamlNumbers::as<float>(node["driveMaxForce"]) : std::numeric_limits<float>::infinity();
+    joint.driveMaxTorque = node["driveMaxTorque"] ? YamlNumbers::as<float>(node["driveMaxTorque"]) : std::numeric_limits<float>::infinity();
+    if (node["targetPosition"]) joint.targetPosition = decodeVector3(node["targetPosition"]);
+    if (node["targetRotation"]) joint.targetRotation = decodeQuaternion(node["targetRotation"]);
+    if (node["targetVelocity"]) joint.targetVelocity = decodeVector3(node["targetVelocity"]);
+    if (node["targetAngularVelocity"]) joint.targetAngularVelocity = decodeVector3(node["targetAngularVelocity"]);
 
     if (oldJoint && oldJoint->joint) {
         joint.needUpdateJoint = true;
@@ -9378,6 +9575,66 @@ Joint3DComponent editor::Stream::decodeJoint3DComponent(const YAML::Node& node, 
     if (node["enabled"]) joint.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return joint;
+}
+
+// ── RagdollComponent ──
+
+YAML::Node editor::Stream::encodeRagdollComponent(const RagdollComponent& ragdoll) {
+    YAML::Node node;
+    node["enabled"] = ragdoll.enabled;
+    node["simulated"] = ragdoll.simulated;
+    node["root"] = ragdoll.root;
+    node["animator"] = ragdoll.animator;
+    node["inheritVelocity"] = ragdoll.inheritVelocity;
+    node["selfCollision"] = ragdoll.selfCollision;
+    node["totalMass"] = ragdoll.totalMass;
+    return node;
+}
+
+RagdollComponent editor::Stream::decodeRagdollComponent(const YAML::Node& node, const RagdollComponent* oldRagdoll) {
+    RagdollComponent ragdoll;
+    if (oldRagdoll) {
+        ragdoll = *oldRagdoll;
+        ragdoll.needCollectParts = true;
+    }
+    if (node["enabled"]) ragdoll.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["simulated"]) ragdoll.simulated = YamlNumbers::as<bool>(node["simulated"]);
+    if (node["root"]) ragdoll.root = YamlNumbers::as<Entity>(node["root"]);
+    if (node["animator"]) ragdoll.animator = YamlNumbers::as<Entity>(node["animator"]);
+    if (node["inheritVelocity"]) ragdoll.inheritVelocity = YamlNumbers::as<bool>(node["inheritVelocity"]);
+    if (node["selfCollision"]) ragdoll.selfCollision = YamlNumbers::as<bool>(node["selfCollision"]);
+    if (node["totalMass"]) ragdoll.totalMass = YamlNumbers::as<float>(node["totalMass"]);
+    return ragdoll;
+}
+
+std::string editor::Stream::jointMotionToString(JointMotion motion) {
+    switch (motion) {
+        case JointMotion::LOCKED: return "locked";
+        case JointMotion::LIMITED: return "limited";
+        default: return "free";
+    }
+}
+
+JointMotion editor::Stream::stringToJointMotion(const std::string& str) {
+    if (str == "locked") return JointMotion::LOCKED;
+    if (str == "limited") return JointMotion::LIMITED;
+    return JointMotion::FREE;
+}
+
+std::string editor::Stream::rigidbodyInterpolationToString(RigidbodyInterpolation interpolation) {
+    switch (interpolation) {
+        case RigidbodyInterpolation::NONE: return "none";
+        case RigidbodyInterpolation::INTERPOLATE: return "interpolate";
+        case RigidbodyInterpolation::EXTRAPOLATE: return "extrapolate";
+        default: return "scene";
+    }
+}
+
+RigidbodyInterpolation editor::Stream::stringToRigidbodyInterpolation(const std::string& str) {
+    if (str == "none") return RigidbodyInterpolation::NONE;
+    if (str == "interpolate") return RigidbodyInterpolation::INTERPOLATE;
+    if (str == "extrapolate") return RigidbodyInterpolation::EXTRAPOLATE;
+    return RigidbodyInterpolation::SCENE;
 }
 
 // ── ActionComponent ──

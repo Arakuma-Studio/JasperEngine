@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneWindow.h"
+#include "util/PhysicsMaterialAssets.h"
 #include "component/Joint2DComponent.h"
 #include "pose/PoseViewport.h"
 #include "util/BidiText.h"
@@ -577,6 +578,17 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                 if (Util::isAnimationClipFile(path)) clips.push_back(path);
                             }
                             Backend::getApp().dispatchClipDrop(sceneProject->id, selEntity, clips);
+                            focusSceneWindow(*sceneProject);
+                        }
+                    }
+                } else if (PhysicsMaterialAssets::isPhysicsMaterialFile(droppedRelativePath)) {
+                    // a physics material onto a GameObject: the material of all its colliders, one step
+                    if (selEntity != NULL_ENTITY && insideAssets && sceneProject->playState == ScenePlayState::STOPPED && !project->isAnyScenePlaying()) {
+                        if (ImGui::AcceptDragDropPayload("resource_files")) {
+                            std::string error;
+                            if (!PhysicsMaterialAssets::applyToObject(project, sceneProject->id, selEntity, droppedAssetPath, error)) {
+                                Out::warning("%s", error.c_str());
+                            }
                             focusSceneWindow(*sceneProject);
                         }
                     }

@@ -112,6 +112,10 @@ namespace jasperengine::editor {
         std::vector<std::string> layerNames;  // index = layer, empty when built-in or unnamed
         LayerCollisionRows layerCollisionMatrix3D = allLayersCollide();
         LayerCollisionRows layerCollisionMatrix2D = allLayersCollide();
+        // Project Settings > Physics > 3D World Capacity (PhysicsSystem::setWorldCapacity3D)
+        unsigned int maxBodies3D = 8192;
+        unsigned int maxBodyPairs3D = 8192;
+        unsigned int maxContactConstraints3D = 8192;
     };
 
     // Player > Resolution and Presentation and the application, baked into the generated
@@ -214,7 +218,7 @@ namespace jasperengine::editor {
         void writeSceneSource(Scene* scene, uint32_t sceneId, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources);
         void clearSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath);
         bool hasSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath) const;
-        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const std::string& inputActionsJson = "", const PlayerSettings& playerSettings = PlayerSettings());
+        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const std::string& inputActionsJson = "", bool allowInsecureHttp = false, const PlayerSettings& playerSettings = PlayerSettings());
         // the Canvas Scaler project default the next configure() writes into the generated main
         void setUIScale(const CanvasScalerSettings& settings) { uiScale = settings; }
         // main.cpp's init line of Project Settings > Input: InputActions::loadJson of the project's

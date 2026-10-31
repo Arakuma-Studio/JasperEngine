@@ -889,6 +889,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("ALL_LAYERS", &luaAllLayers)
         .addStaticProperty("DEFAULT_RAYCAST_LAYERS", &luaDefaultRaycastLayers)
         .addStaticProperty("IGNORE_RAYCAST_LAYER", &luaIgnoreRaycastLayer)
+        // the runtime collider and joint wireframes of every scene (3D and 2D), and the contacts
+        .addStaticProperty("debugDraw", &Physics::isDebugDraw, &Physics::setDebugDraw)
+        .addStaticProperty("debugDrawContacts", &Physics::isDebugDrawContacts, &Physics::setDebugDrawContacts)
         .addStaticFunction("ignoreLayerCollision", &luaIgnoreLayerCollision<Physics>)
         .addStaticFunction("getIgnoreLayerCollision", &luaGetIgnoreLayerCollision<Physics>)
         .addStaticFunction("getLayerCollisionMask", &luaGetLayerCollisionMask<Physics>)

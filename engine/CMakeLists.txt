@@ -15,6 +15,9 @@ option(JASPERENGINE_RUNTIME_SHADERS "Compile missing shader variants at runtime"
 # The editor export turns it off unless the project enables AdMob for iOS (Android's
 # Gradle build gets the same switch from the export)
 option(JASPERENGINE_ADMOB "Link Google Mobile Ads into iOS builds" ON)
+# Plain http:// to hosts other than localhost (the export sets it from player.allow_insecure_http):
+# App Transport Security of bare macOS executables; Http itself enforces the policy everywhere
+option(JASPERENGINE_ALLOW_INSECURE_HTTP "Allow plain http:// in Apple's App Transport Security" OFF)
 # googletest suite of the HTML/CSS UI (engine/tests/htmlui), standalone engine builds only:
 # the editor's shared engine hides the RmlUi symbols the tests need (tools/build.sh htmlui-tests)
 option(JASPERENGINE_HTMLUI_TESTS "Build jasperengine-htmlui-tests" OFF)
@@ -573,6 +576,23 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 "-framework GameController"
             )
 
+            # A bare executable has no bundle Info.plist, so App Transport Security would block
+            # every http:// URL, localhost too: an embedded __info_plist section carries the
+            # same ATS dictionary the Xcode bundle gets
+            if(JASPERENGINE_ALLOW_INSECURE_HTTP)
+                set(JASPERENGINE_ATS_KEY NSAllowsArbitraryLoads)
+            else()
+                set(JASPERENGINE_ATS_KEY NSAllowsLocalNetworking)
+            endif()
+            set(JASPERENGINE_ATS_PLIST ${CMAKE_BINARY_DIR}/jasperengine-ats-Info.plist)
+            file(WRITE ${JASPERENGINE_ATS_PLIST}
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+                "<plist version=\"1.0\">\n<dict>\n"
+                "\t<key>NSAppTransportSecurity</key>\n\t<dict>\n\t\t<key>${JASPERENGINE_ATS_KEY}</key>\n\t\t<true/>\n\t</dict>\n"
+                "</dict>\n</plist>\n")
+            list(APPEND PLATFORM_LIBS "-Wl,-sectcreate,__TEXT,__info_plist,${JASPERENGINE_ATS_PLIST}")
+
             # MTKView has no GL or Vulkan drawable, so those get views of their own
             if(GRAPHIC_BACKEND STREQUAL "glcore")
                 list(APPEND PLATFORM_SOURCE ${PLATFORM_ROOT}/MacViewGL.mm)
@@ -991,6 +1011,8 @@ set(JASPERENGINE_SRCS
     core/manager/PrefabAsset.cpp
     core/manager/PrefabManager.cpp
     core/manager/SceneManager.cpp
+    core/net/Http.cpp
+    core/net/HttpUtil.cpp
     core/io/UserSettings.cpp
     core/io/UserSettingsStore.cpp
     core/math/AABB.cpp
@@ -1070,7 +1092,9 @@ set(JASPERENGINE_SRCS
     core/registry/PhysicsLayers.cpp
     core/physics/ConvexDecomposition.cpp
     core/physics/JoltShapeBuilder.cpp
+    core/physics/PhysicsDebugLines.cpp
     core/physics/PhysicsMaterial.cpp
+    core/physics/RagdollBuilder.cpp
     core/physics/PolygonDecomposition2D.cpp
     core/physics/PlacementWorld.cpp
     core/render/BufferRender.cpp
@@ -1082,6 +1106,7 @@ set(JASPERENGINE_SRCS
     core/render/ShaderRender.cpp
     core/render/SystemRender.cpp
     core/render/TextureRender.cpp
+    core/script/AsyncOwner.cpp
     core/script/LuaBinding.cpp
     core/script/LuaFunctionBase.cpp
     core/script/LuaJson.cpp
@@ -1096,6 +1121,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/ECSClassesLua.cpp
     core/script/binding/IOClassesLua.cpp
     core/script/binding/MathClassesLua.cpp
+    core/script/binding/NetClassesLua.cpp
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
@@ -1126,6 +1152,9 @@ set(JASPERENGINE_SRCS
     core/lattice/LatticePresets.cpp
     core/lattice/LatticeRender.cpp
     core/subsystem/PhysicsSystem.cpp
+    core/subsystem/PhysicsSystemJoints3D.cpp
+    core/subsystem/PhysicsSystemRagdoll.cpp
+    core/subsystem/PhysicsSystemDebugDraw.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UIDocumentSystem.cpp
@@ -1139,6 +1168,7 @@ set(JASPERENGINE_SRCS
     core/texture/IBLEnvironment.cpp
     core/texture/Texture.cpp
     core/texture/TextureData.cpp
+    core/thread/MainThreadQueue.cpp
     core/thread/ResourceProgress.cpp
     core/thread/ThreadPoolManager.cpp
     core/util/Angle.cpp
@@ -1162,6 +1192,24 @@ set(JASPERENGINE_SRCS
     core/util/XMLUtils.cpp
 )
 
+# The HTTP client's backend (core/net/HttpBackend.h): each platform's own stack. Outside the
+# list above, which the Xcode workspace mirrors (tools/xcode_sync_engine.py): its engine targets
+# compile platform/apple/HttpBackendApple.mm instead.
+if(EMSCRIPTEN)
+    set(JASPERENGINE_HTTP_BACKEND platform/emscripten/HttpBackendWeb.cpp)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    set(JASPERENGINE_HTTP_BACKEND platform/android/HttpBackendAndroid.cpp)
+elseif(WIN32)
+    set(JASPERENGINE_HTTP_BACKEND platform/win/HttpBackendWin.cpp)
+elseif(APPLE)
+    set(JASPERENGINE_HTTP_BACKEND platform/apple/HttpBackendApple.mm)
+    set_source_files_properties(platform/apple/HttpBackendApple.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+else()
+    # Linux and FreeBSD: the system libcurl through dlopen
+    set(JASPERENGINE_HTTP_BACKEND core/net/HttpBackendCurl.cpp)
+endif()
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_HTTP_BACKEND})
+
 # HTML/CSS compatibility layer (phase 2): globbed per directory
 include(core/htmlui/compat/CompatSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${HTMLUI_COMPAT_SRCS})
@@ -1182,6 +1230,7 @@ if(JASPERENGINE_PHYSICS_3D)
         core/object/physics/CollideShapeResult3D.cpp
         core/object/physics/Contact3D.cpp
         core/object/physics/Joint3D.cpp
+        core/object/physics/Ragdoll.cpp
     )
 endif()
 
@@ -1233,6 +1282,24 @@ target_compile_definitions(jasperengine
 
 find_package(Threads REQUIRED)
 target_link_libraries(jasperengine PRIVATE Threads::Threads)
+
+# The HTTP backends' system libraries
+if(WIN32)
+    # iphlpapi: whether a network is up at all ("offline")
+    target_link_libraries(jasperengine PRIVATE winhttp iphlpapi)
+elseif(APPLE)
+    target_link_libraries(jasperengine PRIVATE "-framework Foundation")
+elseif(NOT EMSCRIPTEN AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+    # dlopen of libcurl
+    target_link_libraries(jasperengine PRIVATE ${CMAKE_DL_LIBS})
+endif()
+
+# The User-Agent's version ("JasperEngine/<version> (<platform>)"): on this one file only, so a
+# new version recompiles nothing else
+if(JASPERENGINE_EDITOR_VERSION)
+    set_property(SOURCE core/net/Http.cpp APPEND PROPERTY COMPILE_DEFINITIONS
+        "JASPERENGINE_VERSION_STRING=\"${JASPERENGINE_EDITOR_VERSION}\"")
+endif()
 
 if(EMSCRIPTEN AND EMSCRIPTEN_THREAD_SUPPORT)
 	target_compile_options(jasperengine PRIVATE -pthread)

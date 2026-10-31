@@ -6,6 +6,7 @@
 // ---------------------------------------
 
 #include "NativeEngine.h"
+#include "HttpBackendAndroid.h"
 
 #include <game-activity/native_app_glue/android_native_app_glue.h>
 #include <android/log.h>
@@ -921,6 +922,8 @@ void NativeEngine::setupJNI(){
     if (!mJniData.setClipboardText || !mJniData.getClipboardText)
         jasperengine::Log::warn("NativeEngine: activity has no clipboard methods, using an in-process clipboard");
 
+    // the HTTP client's Java side (JasperHttp) and its native callbacks
+    jasperengine::httpAndroidSetup(env, mJniData.gameActivityObjRef);
     setupPlatformJNI(env);
 }
 

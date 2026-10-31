@@ -3,6 +3,7 @@
 
 #include "util/SafeWrite.h"
 #include "Exporter.h"
+#include "util/ExportFeatureScan.h"
 #include "util/PngEditorChunks.h"
 #include "EditorHost.h"
 #include "Factory.h"
@@ -531,6 +532,56 @@ namespace {
         } else if (plist.compare(valueStart, 8, "<false/>") == 0) {
             plist.replace(valueStart, 8, value ? "<true/>" : "<false/>");
         }
+    }
+
+    // Replaces (or adds) the top-level key holding a dictionary; `body` is the dictionary's
+    // inner lines, indented with two tabs
+    void replacePlistDictValue(std::string& plist, const std::string& key, const std::string& body) {
+        const std::string keyTag = "\t<key>" + key + "</key>";
+        const std::string value = "\t<dict>\n" + body + "\t</dict>\n";
+        size_t keyPos = plist.find(keyTag);
+        if (keyPos == std::string::npos) {
+            const size_t dictEnd = plist.rfind("</dict>");
+            if (dictEnd == std::string::npos) return;
+            plist.insert(dictEnd, keyTag + "\n" + value);
+            return;
+        }
+        const size_t valueStart = plist.find_first_not_of(" \t\r\n", keyPos + keyTag.size());
+        if (valueStart == std::string::npos || plist.compare(valueStart, 6, "<dict>") != 0) return;
+        // the matching </dict> (nested dictionaries counted)
+        int depth = 0;
+        size_t pos = valueStart;
+        size_t valueEnd = std::string::npos;
+        while (pos < plist.size()) {
+            const size_t open = plist.find("<dict>", pos);
+            const size_t close = plist.find("</dict>", pos);
+            if (close == std::string::npos) return;
+            if (open != std::string::npos && open < close) {
+                depth++;
+                pos = open + 6;
+            } else {
+                depth--;
+                pos = close + 7;
+                if (depth == 0) {
+                    valueEnd = pos;
+                    break;
+                }
+            }
+        }
+        if (valueEnd == std::string::npos) return;
+        if (valueEnd < plist.size() && plist[valueEnd] == '\n') valueEnd++;
+        const size_t lineStart = plist.rfind('\n', valueStart);
+        const size_t eraseStart = lineStart == std::string::npos ? valueStart : lineStart + 1;
+        plist.replace(eraseStart, valueEnd - eraseStart, value);
+    }
+
+    // App Transport Security from Project Settings > Player > Allow Insecure HTTP. Apple ignores
+    // NSAllowsArbitraryLoads when NSAllowsLocalNetworking is there too, so only one is written:
+    // arbitrary loads (any http://, localhost included) or local networking alone.
+    void writeAppTransportSecurity(std::string& plist, bool allowInsecureHttp) {
+        replacePlistDictValue(plist, "NSAppTransportSecurity", allowInsecureHttp
+            ? "\t\t<key>NSAllowsArbitraryLoads</key>\n\t\t<true/>\n"
+            : "\t\t<key>NSAllowsLocalNetworking</key>\n\t\t<true/>\n");
     }
 
     std::array<int, 4> parseWindowsVersion(const std::string& value) {
@@ -2774,6 +2825,9 @@ bool editor::Exporter::copyEngine() {
         const IOSProjectSettings& ios = project->getIOSProjectSettings();
         const bool iosAdMob = isAdMobIncluded(ios.admobEnabled, ios.admobAppId, "iOS", iosSampleAdMobAppId, false);
         projectSettings += indent + std::string("set(JASPERENGINE_ADMOB ") + (iosAdMob ? "ON" : "OFF") + ")";
+        // App Transport Security of a bare macOS executable (Ninja/Makefile builds have no bundle)
+        projectSettings += indent + std::string("set(JASPERENGINE_ALLOW_INSECURE_HTTP ") +
+                           (project->getApplicationSettings().allowInsecureHttp ? "ON" : "OFF") + ")";
         cmakeContent.replace(projectSettingsPos, projectSettingsMarker.size(), projectSettings);
     } else {
         Out::warning("Exported CMakeLists.txt is missing the project settings marker; using platform defaults");
@@ -2968,9 +3022,6 @@ std::vector<std::pair<std::string, unsigned int>> editor::Exporter::getSceneMaxV
         agg.maxExternalBuffers  = std::max(agg.maxExternalBuffers, sceneProject.maxValues.maxExternalBuffers);
         agg.maxSpriteFrames     = std::max(agg.maxSpriteFrames, sceneProject.maxValues.maxSpriteFrames);
         agg.maxBones            = std::max(agg.maxBones, sceneProject.maxValues.maxBones);
-        agg.maxColliders3D         = std::max(agg.maxColliders3D, sceneProject.maxValues.maxColliders3D);
-        agg.maxColliderVertices3D  = std::max(agg.maxColliderVertices3D, sceneProject.maxValues.maxColliderVertices3D);
-        agg.maxColliderIndices3D   = std::max(agg.maxColliderIndices3D, sceneProject.maxValues.maxColliderIndices3D);
     }
 
     // Floor each capacity at the engine default declared in core/Engine.h: growing past the
@@ -2988,9 +3039,6 @@ std::vector<std::pair<std::string, unsigned int>> editor::Exporter::getSceneMaxV
         {"MAX_SPRITE_FRAMES", capacity(agg.maxSpriteFrames, MAX_SPRITE_FRAMES)},
         {"MAX_EXTERNAL_BUFFERS", capacity(agg.maxExternalBuffers, MAX_EXTERNAL_BUFFERS)},
         {"MAX_BONES", capacity(agg.maxBones, MAX_BONES)},
-        {"MAX_COLLIDERS_3D", capacity(agg.maxColliders3D, MAX_COLLIDERS_3D)},
-        {"MAX_COLLIDER_VERTICES_3D", capacity(agg.maxColliderVertices3D, MAX_COLLIDER_VERTICES_3D)},
-        {"MAX_COLLIDER_INDICES_3D", capacity(agg.maxColliderIndices3D, MAX_COLLIDER_INDICES_3D)},
     };
 }
 
@@ -3134,6 +3182,35 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         iconReference = "@mipmap/ic_launcher";
     }
 
+    // INTERNET: Internet Access "require", the permission ticked, or Http in the exported code
+    // (Lua, HTML UI Lua, C++ scripts)
+    const bool internetTicked = android.permissions.count("internet") > 0;
+    bool internet = internetTicked || android.internetAccess == AndroidInternetAccess::Require;
+    if (!internet) {
+        // what the build packs and compiles: the Lua and asset trees (HTML UI documents) and the
+        // C++ scripts, as they are in the export folder (a file an earlier export left there
+        // ships too); not the generated sources, which call Http themselves
+        const fs::path exportRoot = getExportProjectRoot();
+        std::vector<fs::path> shipped;
+        ExportFeatureScan::collect(exportRoot, exportRoot / "lua", shipped);
+        ExportFeatureScan::collect(exportRoot, exportRoot / "assets", shipped);
+        ExportFeatureScan::collect(exportRoot, exportRoot / "scripts", shipped);
+        const std::vector<ExportFeatureScan::Use> uses = ExportFeatureScan::scanFiles(exportRoot, shipped, {ExportFeatureScan::http()});
+        if (!uses.empty()) {
+            internet = true;
+            Out::info("Android: added INTERNET (Http used in %s%s)", uses[0].file.c_str(),
+                      uses[0].files > 1 ? (" and " + std::to_string(uses[0].files - 1) + " more").c_str() : "");
+        } else {
+            // a native plugin's own networking is invisible to the scan
+            std::error_code pluginError;
+            if (fs::is_directory(project->getProjectPath() / "plugins" / "native", pluginError)) {
+                Out::warning("project.yaml:1: warning: Android export without the INTERNET permission: no Lua or C++ uses Http, "
+                             "but the project has native plugins (plugins/native). If they use the network, set "
+                             "Project Settings > Android > Internet Access to Require (android.internet_access: require)");
+            }
+        }
+    }
+
     std::string manifest;
     manifest += "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
     manifest += "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n\n";
@@ -3144,11 +3221,20 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     if (serviceUse.vibrate && permissions.insert("vibrate").second) {
         Out::info("Android: added the VIBRATE permission (System.vibrate in %s)", serviceUse.vibrateFile.filename().string().c_str());
     }
-    if (serviceUse.reachability && permissions.insert("access_network_state").second) {
+    // with INTERNET, ACCESS_NETWORK_STATE is written anyway (below)
+    if (serviceUse.reachability && !internet && permissions.insert("access_network_state").second) {
         Out::info("Android: added the ACCESS_NETWORK_STATE permission (System.getInternetReachability in %s)",
                   serviceUse.reachabilityFile.filename().string().c_str());
     }
+    if (internet) {
+        manifest += "    <uses-permission android:name=\"android.permission.INTERNET\" />\n";
+        // a normal permission (no prompt): lets Http tell "offline" from a DNS failure
+        manifest += "    <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />\n";
+        wrotePermission = true;
+    }
     for (const std::string& permission : permissions) {
+        // written above, once
+        if (permission == "internet" || (internet && permission == "access_network_state")) continue;
         const char* manifestName = androidPermissionManifestName(permission);
         if (!manifestName) continue;
         manifest += "    <uses-permission android:name=\"android.permission.";
@@ -3160,6 +3246,8 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     manifest += "    <application\n";
     manifest += std::string("        android:allowBackup=\"") + (android.allowBackup ? "true" : "false") + "\"\n";
     manifest += "        android:icon=\"" + iconReference + "\"\n";
+    // plain http:// (cleartext): Project Settings > Player > Allow Insecure HTTP; localhost always
+    manifest += "        android:networkSecurityConfig=\"@xml/network_security_config\"\n";
     manifest += "        android:label=\"@string/app_name\">\n\n";
     if (admob) {
         manifest += "        <meta-data\n";
@@ -3196,6 +3284,27 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     manifest += "    <uses-feature android:glEsVersion=\"0x00030000\" android:required=\"true\" />\n\n";
     manifest += "</manifest>";
     FileUtils::writeIfChanged(manifestPath, manifest);
+
+    // The cleartext policy Http enforces itself (player.allow_insecure_http), declared to Android
+    // too: localhost / 127.0.0.1 always, other hosts only when insecure HTTP is allowed
+    {
+        const bool cleartext = project->getApplicationSettings().allowInsecureHttp;
+        std::string config;
+        config += "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
+        config += "<!-- Written by the export from Project Settings > Player > Allow Insecure HTTP -->\n";
+        config += "<network-security-config>\n";
+        config += std::string("    <base-config cleartextTrafficPermitted=\"") + (cleartext ? "true" : "false") + "\"/>\n";
+        config += "    <domain-config cleartextTrafficPermitted=\"true\">\n";
+        config += "        <domain includeSubdomains=\"false\">localhost</domain>\n";
+        config += "        <domain includeSubdomains=\"false\">127.0.0.1</domain>\n";
+        config += "        <domain includeSubdomains=\"false\">::1</domain>\n";
+        config += "    </domain-config>\n";
+        config += "</network-security-config>\n";
+        const fs::path xmlDir = androidAppDir / "src" / "main" / "res" / "xml";
+        std::error_code xmlError;
+        fs::create_directories(xmlDir, xmlError);
+        FileUtils::writeIfChanged(xmlDir / "network_security_config.xml", config);
+    }
 
     std::string strings;
     strings += "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\n";
@@ -3307,6 +3416,7 @@ bool editor::Exporter::writeAppleProjectSettings() {
         replacePlistStringValue(macOSPlist, "CFBundleVersion",
             Project::toAppleVersion(project->getApplicationBuild(macOS.buildNumber)));
         replacePlistBoolValue(macOSPlist, "NSHighResolutionCapable", macOS.highDpi);
+        writeAppTransportSecurity(macOSPlist, project->getApplicationSettings().allowInsecureHttp);
         FileUtils::writeIfChanged(macOSPlistPath, macOSPlist);
     }
 
@@ -3534,6 +3644,7 @@ bool editor::Exporter::writeAppleProjectSettings() {
             }
         }
         replacePlistBoolValue(iosPlist, "CADisableMinimumFrameDurationOnPhone", ios.supportsHighRefreshRate);
+        writeAppTransportSecurity(iosPlist, project->getApplicationSettings().allowInsecureHttp);
         if (iosAdMob) {
             replacePlistStringValue(iosPlist, "GADApplicationIdentifier", ios.admobAppId);
         } else {
