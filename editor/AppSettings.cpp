@@ -140,6 +140,7 @@ std::string AppSettings::lastCMakeCCompiler;
 std::string AppSettings::lastCMakeCxxCompiler;
 std::string AppSettings::lastCMakeGenerator;
 std::string AppSettings::emsdkPath;
+std::map<std::string, std::string> AppSettings::externalToolPaths;
 std::string AppSettings::cmakePath;
 std::string AppSettings::ffmpegPath;
 std::filesystem::path AppSettings::defaultExportDirectory;
@@ -358,6 +359,12 @@ bool AppSettings::applySettings(const YAML::Node& node) {
         }
 
         // Load Emscripten SDK path override
+        if (settingsData["externalTools"] && settingsData["externalTools"].IsMap()) {
+            externalToolPaths.clear();
+            for (const auto& item : settingsData["externalTools"]) {
+                if (item.second.IsScalar()) externalToolPaths[item.first.as<std::string>()] = item.second.as<std::string>();
+            }
+        }
         if (settingsData["emsdk"] && settingsData["emsdk"]["path"]) {
             emsdkPath = settingsData["emsdk"]["path"].as<std::string>();
         }
@@ -651,6 +658,15 @@ bool AppSettings::saveSettings() {
             settingsData["cmake_kit"] = kitNode;
         } else {
             settingsData.remove("cmake_kit");
+        }
+
+        // Preferences > External Tools
+        if (!externalToolPaths.empty()) {
+            YAML::Node toolsNode;
+            for (const auto& [tool, path] : externalToolPaths) toolsNode[tool] = path;
+            settingsData["externalTools"] = toolsNode;
+        } else {
+            settingsData.remove("externalTools");
         }
 
         // Emscripten SDK path override
@@ -950,6 +966,17 @@ void AppSettings::setLastCMakeKit(const std::string& cCompiler, const std::strin
     lastCMakeCCompiler = cCompiler;
     lastCMakeCxxCompiler = cxxCompiler;
     lastCMakeGenerator = generator;
+    saveSettings();
+}
+
+std::string AppSettings::getExternalToolPath(const std::string& tool) {
+    auto it = externalToolPaths.find(tool);
+    return it != externalToolPaths.end() ? it->second : std::string();
+}
+
+void AppSettings::setExternalToolPath(const std::string& tool, const std::string& path) {
+    if (path.empty()) externalToolPaths.erase(tool);
+    else externalToolPaths[tool] = path;
     saveSettings();
 }
 

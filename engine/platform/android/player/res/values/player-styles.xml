@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- (c) Eduardo Doria and contributors. SPDX-License-Identifier: MIT
+     The prebuilt Android player's themes (AndroidManifest.template.xml {{THEME}}): AppTheme comes
+     from the app's styles.xml; a game that is not fullscreen keeps the status bar. -->
+<resources>
+    <style name="AppThemeWindowed" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowFullscreen">false</item>
+    </style>
+</resources>

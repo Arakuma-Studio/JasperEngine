@@ -103,12 +103,6 @@ FBX import of the editor (editor-only: an exported game ships the converted `.gl
 |---|---|---|---|---|
 | [ufbx](https://github.com/ufbx/ufbx) | 0.23.1 (as vendored by Doriax `8e8dde5d6`) | `libs/ufbx/` (`LICENSE`) | MIT OR Unlicense (public domain), used under MIT | reading `.fbx` files, converted to `.glb` by `editor/util/FbxImporter` and `GlbBuilder` |
 
-Zip reading of the Project Hub's import (editor-only):
-
-| Library | Version | Location | License | Used for |
-|---|---|---|---|---|
-| [miniz](https://github.com/richgel999/miniz) | 3.0.2 (as vendored by OpenEngine, `Engine/Source/ThirdParty/miniz`) | `libs/miniz/` (`LICENSE`, `README.jasper.md`) | MIT | extracting `.zip` projects (Project Hub > Import, `import_project`) |
-
 EXR reading of the editor (editor-only: the Vertex Animation importers re-pack EXR textures into `.vat.glb` payloads, exported games never read EXR):
 
 | Library | Version | Location | License | Used for |
@@ -146,6 +140,13 @@ Texture compression (cooked KTX2 textures, spec S14, `docs/textures.md`). Games 
 | [astc-encoder](https://github.com/ARM-software/astc-encoder) | 5.7.0 | `engine/libs/astcenc/` (`LICENSE.txt`, `README.jasper.md`) | Apache-2.0 | ASTC 4x4-12x12 encoding and decoding of mobile textures (editor only) |
 | [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo) | `master` at `b9438627eef7` | `engine/libs/bc7enc_rdo/` (`LICENSE`, `README.jasper.md`) | MIT or Unlicense | BC1/BC3/BC4/BC5/BC7 encoding with rate-distortion optimisation of desktop textures (editor only) |
 
+Shipping of the editor (S30, `docs/shipping.md`; editor-only: never part of a game):
+
+| Library | Version | Location | License | Used for |
+|---|---|---|---|---|
+| [miniz](https://github.com/richgel999/miniz) | 3.0.2 | `libs/miniz/` (`LICENSE`, `README.jasper.md`) | MIT | zip reading and writing: player runtime archives, APK and AAB assembly, the Project Hub's zip import (S27) |
+| [bundletool](https://github.com/google/bundletool) | 1.17.2 (`bundletool-all-1.17.2.jar`, SHA-256 `2d4ad908faea64047c1cc9cb747e6aa667c6ab192e09607bd16b67246a8cd6ae`) | not vendored: downloaded by the editor into its cache on the first Android App Bundle build (`editor/platform/AndroidTools.cpp`) and checked against that hash | Apache-2.0 | building `.aab` files from a prebuilt Android player |
+
 Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, Copyright (c) 2026 Gamecrafters Guild Limited and contributors), used by the OpenEngine port (`docs/specs/`). Each adapted file names its source in its header.
 
 | Code | Location | Used for |
@@ -155,6 +156,7 @@ Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, 
 | `Engine/Modules/NativeScripting/Include/NativeScripting/NativeScriptingABI.h` (the `GE_ToolchainFingerprint` fill, adapted and extended) | `engine/core/script/ToolchainFingerprint.h` | the toolchain fingerprint of C++ script libraries (S23) |
 | `Apps/Editor/Source/ScriptEditor/SourceLocation.cpp` (the path-start scan and the `:L:C` / `(L,C)` readers, adapted and extended) | `editor/util/SourceLocation.*` | the Console's source-location parser (S23) |
 | `Engine/Modules/FileWatcher` (FileWatcher, FileIdentity), `Engine/Include/Assets/ExpectedWriteLedger.h` (+ its tests), `Engine/Modules/AssetCore/.../SharedFileRead.*` (adapted, headers kept) | `engine/core/io/watch/`, `engine/tests/core/io/watch/ExpectedWriteLedgerTest.cpp` | the file watcher's rename pairing and delete hold, file identities, the self-write ledger, share-delete reads on Windows (S05) |
+| `Tools/Scripts/publish_game.py` (`validate_payload`, `binary_target`, `tree_manifest`, `vdf_string`, the SteamPipe scripts, `prepare`/`verify_release`, the Deck deploy's verify-then-swap; adapted, rewritten in C++) and `Tools/Web/export_web_player.py` (the player manifest idea) | `editor/publish/` (`Publishing`, `PayloadValidator`, `BinaryInfo`, `TreeManifest`) | releases, Steam and Steam Deck publishing (S30) |
 | `Engine/Modules/AssetCore/Source/GUID.cpp`: `GUID::Derive`, `FnvHash`, `SplitMix64` (adapted) | `engine/core/asset/Guid.cpp` (`Guid::derive`) | deterministic sub-asset GUIDs (asset identity, S04) |
 | `Modules/Memory` (`Arena`, `ScratchScope`, `ObjectPool`, `RangeAllocator`, `SerialUseCheck`, `AddressSanitizer`), adapted | `engine/core/memory/` | the allocators, adapted to our naming and stats registry (S06) |
 | `Modules/JobSystem` (`ParallelForCore`, `ParallelAlgorithms`, `JobCounter`, `JobChannel`, the `WorkStealingThreadPool` lane contracts), adapted | `engine/core/jobs/` | parallelFor, counters, blocking channels; the scheduler itself is our own (S06) |

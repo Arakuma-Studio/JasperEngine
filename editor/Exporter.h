@@ -4,6 +4,8 @@
 #pragma once
 
 #include "Project.h"
+#include "ShippingTypes.h"
+#include "cook/SceneCooker.h"
 #include "shader/ShaderBuilder.h"
 #include "ShaderDataSerializer.h"
 #include "util/CommandRunner.h"
@@ -31,8 +33,12 @@ namespace jasperengine::editor {
     enum class ExportMode {
         SourceCode,
         Desktop,
-        Web
+        Web,
+        // a player for ExportConfig::platform, prebuilt or compiled (docs/specs/S30-shipping.md D1)
+        Player
     };
+
+    struct PlayerInfo;
 
     struct ExportConfig {
         ExportMode mode = ExportMode::SourceCode;
@@ -73,6 +79,42 @@ namespace jasperengine::editor {
         // Web: also a pthreads build (threads/), which the page picks when cross-origin
         // isolated (Project Settings > Player > Threading > Web: Multithreaded)
         bool webMultithreaded = false;
+
+        // Player (S30): the target, how it is built (Auto: a prebuilt player unless the project
+        // needs native code, chooseBuildMethod), the Android package, where players are found
+        BuildPlatform platform = hostBuildPlatform();
+        BuildMethod method = BuildMethod::Auto;
+        AndroidFormat androidFormat = AndroidFormat::Aab;
+        fs::path playersDir;
+        // CLI only (engine developers): a player of another engine version; recorded in the
+        // content manifest, refused by publish verify
+        bool allowPlayerMismatch = false;
+        // Android signing: never saved (the prompt, or JASPER_ANDROID_KS_PASS / _KEY_PASS);
+        // empty keystore: the debug keystore
+        std::string keystorePassword;
+        std::string keyPassword;
+        // iOS: the simulator's unsigned .app instead of an archive
+        bool iosSimulator = false;
+    };
+
+    // Why a project needs the Compile method (R5); empty: a prebuilt player can build it
+    struct BuildMethodChoice {
+        BuildMethod method = BuildMethod::Prebuilt;
+        std::vector<std::string> reasons;
+    };
+
+    // What a Player build produced (the CLI's, MCP's and UI's report)
+    struct ExportResult {
+        BuildMethod methodUsed = BuildMethod::Auto;
+        std::vector<std::string> compileReasons;
+        std::string playerId;
+        fs::path outputDir;
+        fs::path contentManifest;
+        fs::path executable;
+        std::vector<fs::path> artifacts;
+        std::vector<BuildWarning> warnings;
+        // what the user does next ("Open on a Mac with Xcode")
+        std::vector<std::string> notes;
     };
 
     struct ExportProgress {
@@ -120,6 +162,25 @@ namespace jasperengine::editor {
         // copyAssets() leaves out
         std::set<std::string> cookedTextureSources;
 
+        // S30: the Player build's report, the cooked scenes and prefabs loadAndSaveAllScenes()
+        // made while every scene was loaded, and the player runtime it stages
+        ExportResult result;
+        std::vector<cook::CookedFileBytes> cookedFiles;
+        std::vector<cook::CookedPrefabInfo> cookedPrefabs;
+        std::shared_ptr<PlayerInfo> player;
+        // the staging directory the build is written to, and its content root inside it
+        fs::path stagingDir;
+        fs::path contentDir;
+        // a Compile build's staged notices, by library
+        std::vector<std::string> compileNotices;
+        // a Compile build's split debug information, kept for publish prepare (content manifest)
+        fs::path buildSymbolsDir;
+        // a player build's Compile fallback runs runExport() inside it: the inner export does not
+        // report the build finished, the fallback does once its own steps are done (the content
+        // manifest, the executable a caller reads at once)
+        bool holdFinish = false;
+        bool keepBuildSymbols(const fs::path& executable);
+
         // Lua sources copyLua() shipped, so copyAssets() can skip them
         std::set<fs::path> luaCopiedSources;
         // Paths copyLua() wrote, relative to the lua tree, so copyAssets() can keep
@@ -139,6 +200,31 @@ namespace jasperengine::editor {
         void setDetail(const std::string& line);
         void setError(const std::string& message);
         void runExport();
+        // ExportMode::Player: the method, then the prebuilt steps or the Compile build (D1)
+        void runPlayerBuild();
+        bool runPrebuilt();
+        bool resolvePlayer();
+        // R6 steps after the content ones
+        bool cookScenes();
+        bool writeGameConfig();
+        bool stagePlayer();
+        bool packContent();
+        bool stageNotices();
+        bool writeContentManifest(bool prebuilt);
+        bool finalizeLinux();
+        bool finalizeWindows();
+        bool finalizeMacOS();
+        bool finalizeWeb();
+        bool finalizeAndroid();
+        bool finalizeIOS();
+        // R7: <dest>.staging-<pid> swapped in, the old build moved aside and deleted after
+        bool swapStagingIntoPlace();
+        void discardStaging();
+        void warn(const std::string& code, const std::string& message);
+        // where the content steps' shaderlib notices come from (copyEngine's copy, else the editor's)
+        fs::path shaderlibSourceDir() const;
+        // the engine sources a build's notices come from (the export's engine copy, or the editor's)
+        fs::path engineSourceDir() const;
         // returns once the export started by startExport has ended
         void waitForExport();
 
@@ -237,6 +323,7 @@ namespace jasperengine::editor {
         // Aggregates SceneMaxValues across all project scenes into the capacities that
         // size the engine's fixed-capacity HybridArrays (MAX_SUBMESHES, MAX_SPRITE_FRAMES, ...).
         std::vector<std::pair<std::string, unsigned int>> getSceneMaxValues() const;
+        static std::vector<std::pair<std::string, unsigned int>> sceneMaxValuesOf(const Project* project);
         // add_definitions() block applying them to the export.
         std::string buildSceneMaxValuesDefinitions() const;
         // Project-relative form of a script root, empty when it falls outside the project.
@@ -262,6 +349,14 @@ namespace jasperengine::editor {
         ~Exporter();
 
         void startExport(Project* project, const ExportConfig& config);
+        // the last Player build's report
+        ExportResult getResult() const;
+        // R5: Prebuilt unless the project has C++ script sources, a ProjectBuild.cmake, capacities
+        // above the player's, a feature the player lacks, or the user forced Compile. `player`
+        // may be null (no runtime installed: the capacities are the engine defaults)
+        static BuildMethodChoice chooseBuildMethod(Project* project, const ExportConfig& config, const PlayerInfo* player);
+        // the runtime id a Player build of this config uses
+        static std::string playerIdFor(const ExportConfig& config, bool development);
         bool exportProject(Project* project, const ExportConfig& config);
         bool generateShaders(const ExportConfig& config);
         void cancelExport();
@@ -274,6 +369,14 @@ namespace jasperengine::editor {
         static std::string getShaderDisplayName(ShaderType type, uint64_t properties, uint16_t customId = 0);
         static std::string getCMakeGraphicBackend(::jasperengine::ShaderBackend backend);
         static EmsdkInfo detectEmsdk(const std::string& overridePath);
+        // the manifest names of the Android permission keys and orientations (a Compile build's
+        // AndroidManifest.xml and a prebuilt package's alike)
+        static const char* androidPermissionName(const std::string& key);
+        static std::string androidOrientationValue(AndroidOrientation orientation);
+        static std::string escapeXml(const std::string& value);
+        // a prebuilt web page: the markers filled, the head additions of the Compile shell, the loader tag
+        static std::string composeWebPage(std::string page, const std::string& title, const std::string& headInclude, bool resize,
+                                          bool hideUi, bool favicon, int canvasWidth, int canvasHeight, bool threads);
     };
 
 }

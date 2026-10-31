@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AudioSystem.h"
+#include "PlatformConfig.h"
 
 #include "pool/SoundPool.h"
 #include "Scene.h"
@@ -37,6 +38,12 @@ bool AudioSystem::init(){
         // Opened once: without an output device (a headless machine, a server, a CI
         // runner) every retry would probe all the audio backends again, for each sound
         if (outputUnavailable) {
+            return false;
+        }
+        // --headless and --silent-audio open no device (docs/specs/S30-shipping.md R17)
+        if (platformConfig().silentAudio) {
+            outputUnavailable = true;
+            Log::print("Audio output off (--silent-audio or --headless): sounds are muted");
             return false;
         }
 

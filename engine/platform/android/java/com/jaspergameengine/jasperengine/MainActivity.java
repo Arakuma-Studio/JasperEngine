@@ -31,7 +31,26 @@ public class MainActivity extends GameActivity {
 
 	private native void onBackPressedNative();
 
+	// A prebuilt player's Project Settings (docs/specs/S30-shipping.md R13): <meta-data> of the
+	// activity its package writes, since its code is not generated per game. A Compile build has
+	// none and keeps the defaults (its source is patched instead).
+	private boolean metaFlag(String name, boolean fallback) {
+		try {
+			android.content.pm.ActivityInfo info = getPackageManager().getActivityInfo(getComponentName(),
+					android.content.pm.PackageManager.GET_META_DATA);
+			if (info.metaData != null && info.metaData.containsKey(name)) return info.metaData.getBoolean(name, fallback);
+		} catch (android.content.pm.PackageManager.NameNotFoundException e) {
+			Log.w("JasperEngine", "no activity info: " + e);
+		}
+		return fallback;
+	}
+
 	private void hideSystemUI() {
+		if (!metaFlag("jasperengine.fullscreen", true)) {
+			// a windowed player fits inside the system bars
+			WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
+			return;
+		}
 		// This will put the game behind any cutouts and waterfalls on devices which have
 		// them, so the corresponding insets will be non-zero.
 		if (VERSION.SDK_INT >= VERSION_CODES.P) {
@@ -60,6 +79,7 @@ public class MainActivity extends GameActivity {
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
+		if (metaFlag("jasperengine.keepScreenOn", false)) getWindow().addFlags(LayoutParams.FLAG_KEEP_SCREEN_ON);
 		// When true, the app will fit inside any system UI windows.
 		// When false, we render behind any system UI windows.
 		WindowCompat.setDecorFitsSystemWindows(getWindow(), false);

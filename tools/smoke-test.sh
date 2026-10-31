@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
 # End-to-end check of a Linux build (run tools/build.sh linux first):
 #
-#   1. export an editor project with the command-line exporter
-#   2. build the exported standalone CMake project
-#   3. run the game under a virtual X server and screenshot it
-#   4. open the project in the editor GUI and screenshot it
-#   5. bake a navmesh and query a path through the editor's MCP tools (tools/mcp/nav_smoke.py)
-#   (and after 3, record 30 frames of the project's start scene to PNG from the shell:
+#   1. build the game: with a prebuilt player (SMOKE_METHOD=prebuilt, the default: jasperengine-editor
+#      build, no compiler, in the image of docker/runtime.Dockerfile) or from source
+#      (SMOKE_METHOD=compile: export the project, build the exported CMake project)
+#   2. run the game under a virtual X server and screenshot it (prebuilt: the player's own
+#      --headless --after-ready --quit-after 30 --fixed-fps 60 --screenshot --fail-on-error run)
+#   3. open the project in the editor GUI and screenshot it
+#   4. bake a navmesh and query a path through the editor's MCP tools (tools/mcp/nav_smoke.py)
+#   (and after 2, record 30 frames of the project's start scene to PNG from the shell:
 #   `jasperengine-editor call --project ... --wait-job record_game`, S27 AC26)
+#
+# SMOKE_METHOD=prebuilt needs the player runtimes (tools/build.sh players, build/players;
+# SMOKE_PLAYERS_DIR=build/<dir> for others). SMOKE_QUIT_AFTER (30) frames are run there.
+# SMOKE_PLAY=1 (the default for prebuilt) runs a compiled game the same way, with its own
+# frame as game.png (tools/ci/parity.sh compares the two methods' frames).
 #
 #   tools/smoke-test.sh <editor-project-dir>
 #
@@ -18,7 +25,8 @@
 # the audio device Docker lacks is not an error.
 #
 # A smoke-expect.txt in the project lists lines (one per line, '#' comments) the game's log must
-# hold after its run (tools/fixtures/tween-curve: the tween's curve checked in the exported game).
+# hold after its run (tools/fixtures/tween-curve: the tween's curve checked in the exported game);
+# such a project runs 120 frames unless SMOKE_QUIT_AFTER says otherwise.
 #
 # SMOKE_GAME_ENV="NAME=value ..." is passed to the game's environment.
 # SMOKE_EXPORT_ARGS="..." is added to the export command (e.g. --development-build).
@@ -66,12 +74,25 @@ esac
 # The main checkout's compiler cache, even when running from a git worktree.
 MAIN="$(cd "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
 
-[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,50p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+METHOD="${SMOKE_METHOD:-prebuilt}"
+[[ "$METHOD" == prebuilt || "$METHOD" == compile ]] || { echo "SMOKE_METHOD must be prebuilt or compile (got $METHOD)" >&2; exit 1; }
+PLAYERS="${SMOKE_PLAYERS_DIR:-build/players}"
+[[ "$PLAYERS" =~ ^build/[A-Za-z0-9_./-]+$ ]] || { echo "SMOKE_PLAYERS_DIR must be build/<dir> (got $PLAYERS)" >&2; exit 1; }
+
+[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,58p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 PROJECT="$(cd "$1" && pwd)"
+[[ -z "${SMOKE_QUIT_AFTER:-}" && -f "$PROJECT/smoke-expect.txt" ]] && SMOKE_QUIT_AFTER=120
 [[ -x "$ROOT/$EDITOR" ]] || { echo "No editor at $EDITOR; run tools/build.sh linux" >&2; exit 1; }
 
+if [[ "$METHOD" == prebuilt ]]; then
+    [[ -d "$ROOT/$PLAYERS" ]] || { echo "No player runtimes in $PLAYERS; run tools/build.sh players (or SMOKE_METHOD=compile)" >&2; exit 1; }
+fi
 if [[ -n "${JASPER_DOCKER_IMAGE:-}" ]]; then
     IMAGE="$JASPER_DOCKER_IMAGE"
+elif [[ "$METHOD" == prebuilt ]]; then
+    # a user's computer: no compiler (the image refuses to build with one)
+    IMAGE=jasperengine/runtime-build
+    docker build -q -t "$IMAGE" -f "$ROOT/docker/runtime.Dockerfile" "$ROOT/docker" >/dev/null
 else
     docker build -q -t "$IMAGE" -f "$ROOT/docker/linux.Dockerfile" "$ROOT/docker" >/dev/null
     if [[ "$BACKEND" != opengl ]]; then
@@ -109,6 +130,10 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
     -e SMOKE_GAME_SECONDS="${SMOKE_GAME_SECONDS:-ready}" \
     -e SMOKE_READY_TIMEOUT="${SMOKE_READY_TIMEOUT:-300}" \
     -e SMOKE_READY_SETTLE="${SMOKE_READY_SETTLE:-2}" \
+    -e SMOKE_METHOD="$METHOD" \
+    -e SMOKE_PLAY="${SMOKE_PLAY:-$([[ "$METHOD" == prebuilt ]] && echo 1 || echo 0)}" \
+    -e SMOKE_QUIT_AFTER="${SMOKE_QUIT_AFTER:-30}" \
+    -e JASPER_PLAYERS_DIR="/src/$PLAYERS" \
     "$IMAGE" bash -euo pipefail -c '
         mkdir -p "$HOME"
 
@@ -137,6 +162,16 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
             fi
         }
 
+        if [[ "$SMOKE_METHOD" == prebuilt ]]; then
+        echo "== build (prebuilt player)"
+        # shellcheck disable=SC2086
+        "$EDITOR" build --project project --platform linux --backend "$EXPORT_BACKEND" --out game-out --method prebuilt \
+            $SMOKE_EXPORT_ARGS > build.log 2>&1 || { echo "FAIL: build"; tail -30 build.log; exit 1; }
+        check_log build build.log
+        grep -q "^method: prebuilt" build.log || { echo "FAIL: the build did not use the prebuilt player"; cat build.log; exit 1; }
+        GAME="$(sed -n "s/^executable: //p" build.log | head -1)"
+        [[ -x "$GAME" ]] || { echo "FAIL: no executable ($GAME)"; exit 1; }
+        else
         echo "== export"
         # Relative paths, as a user types them (relative to the current directory)
         # shellcheck disable=SC2086
@@ -156,6 +191,7 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
         [[ ! -e export/CMakePresets.json ]] || { echo "FAIL: the export carries CMakePresets.json"; exit 1; }
         if grep -E "^JASPERENGINE_(WERROR|WARNINGS|UNITY_BUILD)(:BOOL)?=(ON|TRUE|1)$|^JASPERENGINE_SANITIZE(:STRING)?=.+$" export-build/CMakeCache.txt; then
             echo "FAIL: the exported project configured with the repository build options above"; exit 1
+        fi
         fi
 
         Xvfb :99 -screen 0 1600x900x24 > /dev/null 2>&1 &
@@ -205,10 +241,33 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
             echo "ok: ${name##*/} ran (screenshot $OUT/${name##*/}.png)"
         }
 
+        # play <name> <env...> -- <args...>: the prebuilt player runs itself (R17) and writes its
+        # own frame; its exit code is the verdict (0, or 2-7: docs/shipping.md)
+        play() {
+            local name="$1"; shift
+            local envs=()
+            while [[ $# -gt 0 && "$1" != -- ]]; do envs+=("$1"); shift; done
+            shift
+            local status=0
+            (cd "$(dirname "$GAME")" && timeout 900 env JASPERENGINE_READY_SIGNAL=1 ${envs[@]+"${envs[@]}"} stdbuf -oL -eL \
+                "./$(basename "$GAME")" --headless --after-ready --quit-after "$SMOKE_QUIT_AFTER" --fixed-fps 60 \
+                --screenshot "/src/$OUT/$name.png" --fail-on-error "$@" > "/src/$OUT/$name.log" 2>&1) || status=$?
+            if [[ $status -ne 0 ]]; then
+                echo "FAIL: ${name} exited with $status"; tail -20 "$name.log"; exit 1
+            fi
+            [[ -s "$name.png" ]] || { echo "FAIL: ${name} wrote no screenshot"; tail -20 "$name.log"; exit 1; }
+            echo "ok: ${name} ran (screenshot $OUT/${name}.png)"
+        }
+
         echo "== run game"
         # word splitting of SMOKE_GAME_ENV is wanted: one NAME=value per word
-        # shellcheck disable=SC2086
-        (cd "$(dirname "$GAME")" && run ../game ../game.log "$SMOKE_GAME_SECONDS" env JASPERENGINE_READY_SIGNAL=1 $SMOKE_GAME_ENV "./$(basename "$GAME")" $SMOKE_GAME_ARGS)
+        if [[ "$SMOKE_PLAY" == 1 ]]; then
+            # shellcheck disable=SC2086
+            play game $SMOKE_GAME_ENV -- $SMOKE_GAME_ARGS
+        else
+            # shellcheck disable=SC2086
+            (cd "$(dirname "$GAME")" && run ../game ../game.log "$SMOKE_GAME_SECONDS" env JASPERENGINE_READY_SIGNAL=1 $SMOKE_GAME_ENV "./$(basename "$GAME")" $SMOKE_GAME_ARGS)
+        fi
         check_log game game.log
         if [[ -f project/smoke-expect.txt ]]; then
             while IFS= read -r line; do
@@ -226,8 +285,13 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
             label="${words[0]}"
             [[ "$label" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "FAIL: SMOKE_GAME_RUNS name \"$label\""; exit 1; }
             echo "== run game ($label)"
-            # shellcheck disable=SC2086
-            (cd "$(dirname "$GAME")" && run "../game-$label" "../game-$label.log" "$SMOKE_GAME_SECONDS" env JASPERENGINE_READY_SIGNAL=1 $SMOKE_GAME_ENV "${words[@]:1}" "./$(basename "$GAME")")
+            if [[ "$SMOKE_PLAY" == 1 ]]; then
+                # shellcheck disable=SC2086
+                play "game-$label" $SMOKE_GAME_ENV "${words[@]:1}" --
+            else
+                # shellcheck disable=SC2086
+                (cd "$(dirname "$GAME")" && run "../game-$label" "../game-$label.log" "$SMOKE_GAME_SECONDS" env JASPERENGINE_READY_SIGNAL=1 $SMOKE_GAME_ENV "${words[@]:1}" "./$(basename "$GAME")")
+            fi
             check_log "game ($label)" "game-$label.log"
         done
 

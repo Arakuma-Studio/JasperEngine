@@ -30,14 +30,16 @@ from pathlib import Path
 import yaml
 
 import harness
-from harness import Editor, skip, REPO
+from harness import Editor, build_jobs, skip, REPO
 from htmlui_pixels import decode_png, near
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
 CI = True
 
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
-JOBS = 2
+# the container's CPU allowance (harness.build_jobs: JOBS, else docker's --cpus quota): Docker's
+# cap is what shares the host, so the compile needs no cap of its own
+JOBS = build_jobs()
 
 S: dict = {}
 _copies: list[tempfile.TemporaryDirectory] = []
@@ -265,10 +267,13 @@ async def test_desktop_player_draws_the_effects(ed: Editor):
     await _setup_effects(ed)
     out = ed.scratch.root / "export-effects-desktop"
     # This build also clears additions left by the persistence test; no reset-only export is needed.
+    # compiled from source: only a compiled game can be built without the runtime shader compiler
+    # (every prebuilt runtime carries it), so only it shows the exported variants are all it needs
     r = await ed.call("build_project", mode="desktop", output_dir=str(out), build_jobs=JOBS, timeout_seconds=30,
-                      shaders={"reset": True})
+                      shaders={"reset": True}, method="compile")
     job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], TIMEOUT - 300, poll=15.0)
     ed.check_eq(job["status"], "succeeded", f"{job}")
+    ed.check_eq(job["result"]["method_used"], "compile", f"{job}")
     ed.check((out / "licenses" / "shaders.com-LICENSE.txt").is_file(), "the player ships the notice")
     raw = await ed.call_raw("run_build", {"seconds": 10, "screenshot_after_seconds": 8})
     ed.check(not raw.is_error, raw.text)

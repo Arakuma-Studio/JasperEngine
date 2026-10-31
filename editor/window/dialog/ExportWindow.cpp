@@ -17,7 +17,9 @@
 #include "Factory.h"
 #include "SettingsCategoryList.h"
 
+#include <algorithm>
 #include <cstdlib>
+#include <iterator>
 
 namespace jasperengine::editor {
 
@@ -97,6 +99,7 @@ void ExportWindow::open(Project* project) {
     m_runAfterBuild = false;
     m_launchDone = false;
     m_playerSettingsRequested = false;
+    m_publishingLoaded = false;
 
     populateBackendList();
     // Remember the platform between openings, like Unity's active build target.
@@ -108,6 +111,13 @@ void ExportWindow::open(Project* project) {
 }
 
 const char* ExportWindow::localExportMode() const {
+    if (m_mode == ExportMode::Player) {
+        // the keys build_project uses too: this computer's platform keeps the Desktop one
+        static const char* const keys[] = {"player-windows", "player-linux", "player-macos", "player-android", "player-ios", "web"};
+        const ShipPlatform platform = shipPlatform();
+        if (platform == hostBuildPlatform()) return "desktop";
+        return keys[static_cast<int>(platform)];
+    }
     return m_mode == ExportMode::SourceCode ? "sourceCode" : m_mode == ExportMode::Desktop ? "desktop" : "web";
 }
 
@@ -181,6 +191,14 @@ void ExportWindow::selectMode(ExportMode mode) {
         m_missingBuildTools = Generator::checkBuildTools();
     } else if (mode == ExportMode::Web) {
         refreshEmsdkStatus();
+    } else if (mode == ExportMode::Player) {
+        // a player build compiles when the project needs native code: this computer's tools
+        if (shipPlatform() == hostBuildPlatform()) m_missingBuildTools = Generator::checkBuildTools();
+        if (shipPlatform() == ShipPlatform::Web) {
+            m_emsdkOverride = AppSettings::getEmsdkPath();
+            refreshEmsdkStatus();
+        }
+        refreshPlayerState();
     }
     m_step = Step::Settings;
 }
@@ -248,6 +266,15 @@ void ExportWindow::loadSettingsFromProject() {
         }
     } else if (m_mode == ExportMode::Web) {
         m_emsdkOverride = AppSettings::getEmsdkPath();
+    } else if (m_mode == ExportMode::Player && shipPlatform() == hostBuildPlatform()) {
+        // this computer's player remembers its graphics API as the Desktop build did
+        const DesktopExportSettings& settings = m_project->getDesktopExportSettings();
+        if (settings.graphicBackendConfigured) {
+            const std::string wanted = normalizeBackend(Exporter::getCMakeGraphicBackend(settings.graphicBackend));
+            const std::vector<std::string> backends = jasperengine::editor::platformBackends(shipPlatform());
+            auto it = std::find(backends.begin(), backends.end(), wanted);
+            if (it != backends.end()) m_playerBackendIndex[static_cast<int>(m_platform)] = static_cast<int>(it - backends.begin());
+        }
     }
 
     const auto file = m_project->getProjectPath() / "project.yaml";
@@ -274,7 +301,7 @@ bool ExportWindow::saveCurrentSettingsToProject(bool saveProjectFile) {
         return false;
     }
 
-    if (m_mode == ExportMode::Desktop) {
+    if (m_mode == ExportMode::Desktop || (m_mode == ExportMode::Player && shipPlatform() == hostBuildPlatform())) {
         // Only the job count belongs to this dialog, so the rest is re-read: the
         // compiler may have changed in Editor Settings since the mode was selected
         const unsigned int jobs = static_cast<unsigned int>(m_desktopBuildJobs);
@@ -297,6 +324,13 @@ bool ExportWindow::saveCurrentSettingsToProject(bool saveProjectFile) {
     } else if (m_mode == ExportMode::Desktop && m_desktopBackendConfigured) {
         auto& settings = m_project->getDesktopExportSettings();
         const auto backend = desktopGraphicBackends[m_graphicBackendIndex];
+        changed = !settings.graphicBackendConfigured || settings.graphicBackend != backend;
+        settings.graphicBackend = backend;
+        settings.graphicBackendConfigured = true;
+    } else if (m_mode == ExportMode::Player && shipPlatform() == hostBuildPlatform() &&
+               m_playerBackendIndex.count(static_cast<int>(m_platform))) {
+        auto& settings = m_project->getDesktopExportSettings();
+        const ShaderBackend backend = shaderBackendOf(shipPlatform(), playerBackend());
         changed = !settings.graphicBackendConfigured || settings.graphicBackend != backend;
         settings.graphicBackend = backend;
         settings.graphicBackendConfigured = true;
@@ -406,7 +440,8 @@ const char* ExportWindow::platformIcon(BuildPlatform platform) {
 }
 
 bool ExportWindow::platformCanBuildPlayer(BuildPlatform platform) const {
-    return platform == hostPlatform() || platform == BuildPlatform::Web;
+    // S30: every platform builds a game (iOS: an Xcode project, built on a Mac)
+    return platform != BuildPlatform::Custom && platform != BuildPlatform::Count;
 }
 
 std::set<ShaderBackend> ExportWindow::platformBackends(BuildPlatform platform) const {
@@ -428,11 +463,7 @@ void ExportWindow::selectPlatform(BuildPlatform platform, bool buildPlayer) {
     m_buildPlayer = buildPlayer;
     m_platformInitialized = true;
 
-    ExportMode mode = ExportMode::SourceCode;
-    if (buildPlayer) {
-        mode = platform == BuildPlatform::Web ? ExportMode::Web : ExportMode::Desktop;
-    }
-    selectMode(mode);
+    selectMode(buildPlayer ? ExportMode::Player : ExportMode::SourceCode);
 }
 
 void ExportWindow::setStartScene(uint32_t sceneId) {
@@ -561,7 +592,9 @@ void ExportWindow::drawPlatformList() {
             if (m_platform != platform) selectPlatform(platform, platformCanBuildPlayer(platform));
         }
         if (platform == hostPlatform()) {
-            ImGui::SetItemTooltip("This computer: builds a ready-to-run player.");
+            ImGui::SetItemTooltip("This computer: builds a ready-to-run game.");
+        } else if (platform == BuildPlatform::IOS) {
+            ImGui::SetItemTooltip("Requires a Mac with Xcode to build and sign; elsewhere the build is the Xcode project.");
         } else if (platform == BuildPlatform::Custom) {
             ImGui::SetItemTooltip("C++ source project with hand-picked graphics APIs.");
         }
@@ -592,7 +625,8 @@ void ExportWindow::drawBuildTypeRow() {
         return;
     }
 
-    const char* playerLabel = m_platform == BuildPlatform::Web ? "WebAssembly Player" : "Executable Player";
+    const char* playerLabel = m_platform == BuildPlatform::Web ? "Web Game" : m_platform == BuildPlatform::IOS ? "Xcode Project / IPA"
+                            : m_platform == BuildPlatform::Android ? "APK / App Bundle" : "Executable Game";
     const char* labels[] = {playerLabel, "C++ Source Project"};
     int index = m_buildPlayer ? 0 : 1;
     ImGui::SetNextItemWidth(-1);
@@ -634,9 +668,20 @@ fs::path ExportWindow::builtPlayerPath() const {
 }
 
 void ExportWindow::launchBuiltPlayer() {
-    if (m_mode != ExportMode::Desktop) return;
+    if (m_mode != ExportMode::Desktop && !(m_mode == ExportMode::Player && shipPlatform() == hostBuildPlatform())) return;
 
-    const fs::path exePath = builtPlayerPath();
+    fs::path exePath = builtPlayerPath();
+    if (m_mode == ExportMode::Player) {
+        exePath = m_exporter.getResult().executable;
+        #ifdef __APPLE__
+        // a bundle opens through LaunchServices
+        if (exePath.extension() == ".app") {
+            const std::string command = "open '" + exePath.string() + "'";
+            if (std::system(command.c_str()) != 0) Out::error("Build And Run: could not open %s", exePath.string().c_str());
+            return;
+        }
+        #endif
+    }
     std::error_code ec;
     if (!fs::exists(exePath, ec)) {
         Out::error("Build And Run: player not found at %s", exePath.string().c_str());
@@ -937,7 +982,12 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
     settingsui::boldText(platformName(m_platform), 1.3f);
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
     ImGui::PushTextWrapPos(0.0f);
-    if (m_mode == ExportMode::Desktop) {
+    if (m_mode == ExportMode::Player) {
+        if (m_methodChoice.method == BuildMethod::Compile)
+            ImGui::Text("Builds the game from source: %s.", m_methodChoice.reasons.empty() ? "Compile chosen" : m_methodChoice.reasons.front().c_str());
+        else
+            ImGui::TextUnformatted("Builds the game with a prebuilt player: no compiler needed.");
+    } else if (m_mode == ExportMode::Desktop) {
         ImGui::TextUnformatted("Builds a ready-to-run native player for this computer.");
     } else if (m_mode == ExportMode::Web) {
         ImGui::TextUnformatted("Builds an HTML and WebAssembly player with Emscripten.");
@@ -960,7 +1010,10 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
         if (!isCustom) drawBuildTypeRow();
         drawDevelopmentBuildRow();
         drawOutputDirRow("Output Directory");
-        if (m_mode == ExportMode::Desktop) {
+        if (m_mode == ExportMode::Player) {
+            drawPlayerRows();
+            if (m_methodChoice.method == BuildMethod::Compile && shipPlatform() == hostBuildPlatform()) drawDesktopKitRows();
+        } else if (m_mode == ExportMode::Desktop) {
             drawGraphicBackendRow();
             drawDesktopKitRows();
         } else if (m_mode == ExportMode::Web) {
@@ -1030,6 +1083,12 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
                 ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " No graphics APIs selected");
                 canExport = false;
             }
+        }
+    } else if (m_mode == ExportMode::Player) {
+        std::string why;
+        if (playerBuildBlocked(why)) {
+            ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " %s", why.c_str());
+            canExport = false;
         }
     } else if (m_mode == ExportMode::Desktop) {
         if (!m_missingBuildTools.empty()) {
@@ -1115,6 +1174,20 @@ void ExportWindow::drawTextureSection() {
 }
 
 void ExportWindow::drawSettings() {
+    if (ImGui::BeginTabBar("##BuildSettingsTabs")) {
+        if (ImGui::BeginTabItem("Build")) {
+            drawBuildTab();
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Publish")) {
+            drawPublishTab();
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+    }
+}
+
+void ExportWindow::drawBuildTab() {
     const ImGuiStyle& style = ImGui::GetStyle();
     const float footerHeight = ImGui::GetFrameHeight() + style.ItemSpacing.y;
 
@@ -1175,18 +1248,20 @@ void ExportWindow::drawSettings() {
         }
     };
 
-    ImGui::BeginDisabled(!canExport);
+    const bool runnable = m_mode == ExportMode::Desktop || (m_mode == ExportMode::Player && m_platform == hostPlatform());
+    ImGui::BeginDisabled(!canExport || (m_download && m_download->running.load()));
     if (ImGui::Button("Build", ImVec2(actionWidth, 0))) startBuild(false);
     ImGui::SameLine();
-    ImGui::BeginDisabled(m_mode != ExportMode::Desktop);
+    ImGui::BeginDisabled(!runnable);
     if (ImGui::Button("Build And Run", ImVec2(actionWidth, 0))) startBuild(true);
     ImGui::EndDisabled();
     ImGui::EndDisabled();
-    if (m_mode != ExportMode::Desktop && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui::SetTooltip("Build And Run needs an Executable Player for this computer.");
+    if (!runnable && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("Build And Run needs a game for this computer.");
     }
 
     drawOverwriteConfirmDialog();
+    drawKeystorePasswordDialog();
     m_scenesWindow.show();
 }
 
@@ -1209,7 +1284,11 @@ void ExportWindow::drawOverwriteConfirmDialog() {
 
     ImGui::Spacing();
     ImGui::PushTextWrapPos();
-    ImGui::Text("Files with the same name will be overwritten.");
+    if (m_mode == ExportMode::Player) {
+        ImGui::Text("Its contents are replaced by the new build once that is complete (until then they stay as they are).");
+    } else {
+        ImGui::Text("Files with the same name will be overwritten.");
+    }
     if (m_mode == ExportMode::SourceCode) {
         ImGui::TextDisabled("Files left from an earlier build are not removed and may break it.");
     }
@@ -1242,7 +1321,32 @@ void ExportWindow::startConfiguredExport(bool overwriteTarget) {
     exportConfig.overwriteTarget = overwriteTarget;
     exportConfig.allowMissingAssets = m_allowMissingAssets;
 
-    if (m_mode == ExportMode::SourceCode) {
+    if (m_mode == ExportMode::Player) {
+        // an Android release build with a keystore asks its passwords first (never saved)
+        const AndroidProjectSettings& android = m_project->getAndroidProjectSettings();
+        if (shipPlatform() == ShipPlatform::Android && !android.keystorePath.empty() && !m_askKeystorePasswords &&
+            m_keystorePassword[0] == '\0' && !std::getenv("JASPER_ANDROID_KS_PASS")) {
+            m_askKeystorePasswords = true;
+            m_pendingOverwrite = overwriteTarget;
+            return;
+        }
+        exportConfig.destinationDir = m_targetDir;
+        exportConfig.platform = shipPlatform();
+        exportConfig.graphicBackend = playerBackend();
+        exportConfig.androidFormat = AndroidFormat::Aab;
+        parseAndroidFormat(android.packageFormat, exportConfig.androidFormat);
+        exportConfig.keystorePassword = m_keystorePassword;
+        exportConfig.keyPassword = m_keyPassword;
+        std::fill(std::begin(m_keystorePassword), std::end(m_keystorePassword), '\0');
+        std::fill(std::begin(m_keyPassword), std::end(m_keyPassword), '\0');
+        // what a Compile build of this computer or the web uses
+        const LocalBuildSettings build = AppSettings::getBuildSettings(m_project->getProjectPath() / "project.yaml");
+        exportConfig.cmakeCCompiler = build.cCompiler;
+        exportConfig.cmakeCxxCompiler = build.cxxCompiler;
+        exportConfig.cmakeGenerator = build.generator;
+        exportConfig.buildJobs = static_cast<unsigned int>(m_desktopBuildJobs);
+        exportConfig.emsdkPath = m_emsdkOverride;
+    } else if (m_mode == ExportMode::SourceCode) {
         exportConfig.targetDir = m_targetDir;
         exportConfig.packNativeResources = m_project->shouldPackNativeResources();
         if (m_platform == BuildPlatform::Custom) {
@@ -1469,7 +1573,7 @@ void ExportWindow::drawProgress() {
     }
 
     ImGui::Dummy(ImVec2(0.0f, Theme::dpi(6.0f)));
-    ImGui::TextUnformatted(m_mode == ExportMode::SourceCode ? "Exporting project..." : "Building player...");
+    ImGui::TextUnformatted(m_mode == ExportMode::SourceCode ? "Exporting project..." : m_mode == ExportMode::Player ? "Building the game..." : "Building player...");
     ImGui::Spacing();
 
     ImGui::ProgressBar(progress.overallProgress, ImVec2(-1.0f, 0.0f));
@@ -1505,6 +1609,17 @@ void ExportWindow::drawProgress() {
         }
         ImGui::Spacing();
         ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), ICON_FA_CIRCLE_CHECK " Build completed successfully!");
+        if (m_mode == ExportMode::Player) {
+            const ExportResult result = m_exporter.getResult();
+            ImGui::PushTextWrapPos(0.0f);
+            if (result.methodUsed == BuildMethod::Prebuilt) ImGui::TextDisabled("Prebuilt player %s", result.playerId.c_str());
+            else ImGui::TextDisabled("Compiled from source%s%s", result.compileReasons.empty() ? "" : ": ",
+                                     result.compileReasons.empty() ? "" : result.compileReasons.front().c_str());
+            for (const BuildWarning& warning : result.warnings)
+                ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.2f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " %s: %s", warning.code.c_str(), warning.message.c_str());
+            for (const std::string& note : result.notes) ImGui::TextUnformatted(note.c_str());
+            ImGui::PopTextWrapPos();
+        }
         ImGui::Spacing();
 
         float closeWidth = Theme::dpi(120.0f);

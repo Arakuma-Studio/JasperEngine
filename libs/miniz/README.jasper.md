@@ -1,9 +1,10 @@
-# miniz (vendored)
+# miniz in JasperEngine
 
-- Upstream: https://github.com/richgel999/miniz, version 3.0.2 (the split sources of the
-  repository root, `miniz*.c/.h`, not the release amalgamation), unchanged.
-- Copied from OpenEngine's vendored copy of that tag (`Engine/Source/ThirdParty/miniz`);
-  `miniz_export.h` is ours (miniz's CMake generates it upstream).
-- License: MIT (`LICENSE`).
-- Used by the editor only: the Project Hub's zip import (`editor/hub/ProjectImporter.cpp`,
-  docs/specs/S27-editor-tools.md R22). Games never link it.
+[miniz](https://github.com/richgel999/miniz) 3.0.2, the release amalgamation
+(`miniz-3.0.2.zip`, sha256 `ada38db0b703a56d3dd6d57bf84a9c5d664921d870d8fea4db153979fb5332c5`):
+`miniz.c`, `miniz.h` and `LICENSE`, unmodified.
+
+The editor uses it for zip archives (the prebuilt player runtimes it installs, the Android
+packages it assembles; docs/specs/S30-shipping.md D8) and for the Project Hub's zip import
+(`editor/hub/ProjectImporter.cpp`, docs/specs/S27-editor-tools.md R22). Shipped games never
+link it.

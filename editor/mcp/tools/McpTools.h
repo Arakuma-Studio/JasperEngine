@@ -45,6 +45,7 @@ namespace jasperengine::editor::mcp {
     void registerTextureTools(McpRegistry& registry);
     void registerDocsTools(McpRegistry& registry);
     void registerBuildTools(McpRegistry& registry);
+    void registerPublishTools(McpRegistry& registry);   // S30
     void registerWorldTools(McpRegistry& registry);
     void registerLatticeTools(McpRegistry& registry);
     void registerHtmlUiTools(McpRegistry& registry);

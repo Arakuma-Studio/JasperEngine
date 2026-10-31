@@ -40,11 +40,7 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
 # the MCP tools (editor_tools, and the hub's core ones)
 list(APPEND JASPERENGINE_EDITOR_SOURCES ${EDITOR_DIR}/mcp/tools/EditorToolsTools.cpp)
 
-# miniz (MIT, libs/miniz): the Project Hub's zip import; zlib's names stay free for other libraries
-set(MINIZ_SOURCES libs/miniz/miniz.c libs/miniz/miniz_tdef.c libs/miniz/miniz_tinfl.c libs/miniz/miniz_zip.c)
-set_property(SOURCE ${MINIZ_SOURCES} APPEND PROPERTY COMPILE_OPTIONS ${EXTERNAL_WARNING_FLAG})
-set_property(SOURCE ${MINIZ_SOURCES} APPEND PROPERTY COMPILE_DEFINITIONS MINIZ_NO_ZLIB_COMPATIBLE_NAMES)
-list(APPEND JASPERENGINE_EDITOR_SOURCES ${MINIZ_SOURCES})
+# miniz (libs/miniz) is the editor's already (CMakeLists.txt, S30): the Project Hub's zip import uses it too
 
 # The Project Hub (editor/hub): paths, recent projects, templates, importers and its window
 list(APPEND JASPERENGINE_EDITOR_SOURCES

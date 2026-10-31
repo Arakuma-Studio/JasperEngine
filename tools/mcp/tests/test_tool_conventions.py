@@ -50,6 +50,8 @@ VERBS = {
     "visualize",
     # S27: evaluate_curve (the spec's name: a stored curve evaluated at times, as the runtime does)
     "evaluate",
+    # S30: install_player_runtime (the spec's name: a download or a local archive into the runtimes)
+    "install",
 }
 
 # Names registered before the verb_noun rule (S31): they keep their names
