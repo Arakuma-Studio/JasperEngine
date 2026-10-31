@@ -7,6 +7,7 @@
 #include "pool/ShaderPool.h"
 #include "component/TerrainComponent.h"
 #include "lattice/LatticeTypes.h"
+#include "animation/VertexAnimation.h"
 #include "shader/ShaderManifest.h"
 #include "texture/MaterialPbr.h"
 
@@ -379,10 +380,12 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
         // the height fog, chosen by its block at run time (includes/fog.glsl, S12)
         defs.push_back({"HAS_HEIGHT_FOG", "1"});
     }
-    if (prop & shaderPropertyBit(13)) defs.push_back({"HAS_SKINNING", "1"});              // 'Ski'
-    if (prop & shaderPropertyBit(14)) defs.push_back({"HAS_MORPHTARGET", "1"});           // 'Mta'
-    if (prop & shaderPropertyBit(15)) defs.push_back({"HAS_MORPHNORMAL", "1"});           // 'Mnr'
-    if (prop & shaderPropertyBit(16)) defs.push_back({"HAS_MORPHTANGENT", "1"});          // 'Mtg'
+    // a Vertex Animation ('Vat', 'Vab'; never on a terrain) replaces skinning and morph targets
+    const bool vat = (prop & ShaderPool::getVatProperties(ShaderType::MESH)) && !(prop & shaderPropertyBit(17));
+    if ((prop & shaderPropertyBit(13)) && !vat) defs.push_back({"HAS_SKINNING", "1"});    // 'Ski'
+    if ((prop & shaderPropertyBit(14)) && !vat) defs.push_back({"HAS_MORPHTARGET", "1"}); // 'Mta'
+    if ((prop & shaderPropertyBit(15)) && !vat) defs.push_back({"HAS_MORPHNORMAL", "1"}); // 'Mnr'
+    if ((prop & shaderPropertyBit(16)) && !vat) defs.push_back({"HAS_MORPHTANGENT", "1"}); // 'Mtg'
     if (prop & shaderPropertyBit(17)) defs.push_back({"HAS_TERRAIN", "1"});               // 'Ter'
     if (prop & shaderPropertyBit(18)) defs.push_back({"HAS_INSTANCING", "1"});            // 'Ist'
     if (prop & shaderPropertyBit(19)) defs.push_back({"USE_IBL", "1"});                   // 'Ibl'
@@ -401,14 +404,19 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     // a terrain is never deformed (its variant keeps the bit inert)
     if ((prop & shaderPropertyBit(32)) && !(prop & shaderPropertyBit(17))) defs.push_back({"HAS_LATTICE", "1"}); // 'Ltc'
     if (prop & shaderPropertyBit(33)) defs.push_back({"USE_SHADOWS_HQ", "1"});         // 'Shq' (S10; bit 5 is 'Sto')
+    // includes/vat.glsl: Bones mode ('Vab') wins when a key has both
+    if (vat) defs.push_back({"HAS_VAT", "1"});                                              // 'Vat', 'Vab'
+    if (vat && (prop & ShaderPool::getVatProperty(ShaderType::MESH, true))) defs.push_back({"HAS_VAT_BONES", "1"}); // 'Vab'
 }
 
 void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
     if (prop & shaderPropertyBit(0))  defs.push_back({"HAS_TEXTURE", "1"});       // 'Tex'
-    if (prop & shaderPropertyBit(1))  defs.push_back({"HAS_SKINNING", "1"});      // 'Ski'
-    if (prop & shaderPropertyBit(2))  defs.push_back({"HAS_MORPHTARGET", "1"});   // 'Mta'
-    if (prop & shaderPropertyBit(3))  defs.push_back({"HAS_MORPHNORMAL", "1"});   // 'Mnr'
-    if (prop & shaderPropertyBit(4))  defs.push_back({"HAS_MORPHTANGENT", "1"});  // 'Mtg'
+    // a Vertex Animation ('Vat', 'Vab'; never on a terrain) replaces skinning and morph targets
+    const bool vat = (prop & (shaderPropertyBit(16) | shaderPropertyBit(17))) && !(prop & shaderPropertyBit(5));
+    if ((prop & shaderPropertyBit(1)) && !vat) defs.push_back({"HAS_SKINNING", "1"});      // 'Ski'
+    if ((prop & shaderPropertyBit(2)) && !vat) defs.push_back({"HAS_MORPHTARGET", "1"});   // 'Mta'
+    if ((prop & shaderPropertyBit(3)) && !vat) defs.push_back({"HAS_MORPHNORMAL", "1"});   // 'Mnr'
+    if ((prop & shaderPropertyBit(4)) && !vat) defs.push_back({"HAS_MORPHTANGENT", "1"});  // 'Mtg'
     if (prop & shaderPropertyBit(5))  defs.push_back({"HAS_TERRAIN", "1"});       // 'Ter'
     if (prop & shaderPropertyBit(6))  defs.push_back({"HAS_INSTANCING", "1"});    // 'Ist'
     if (prop & shaderPropertyBit(7))  defs.push_back({"ALPHA_MASK", "1"});         // 'Ams'
@@ -420,15 +428,19 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & shaderPropertyBit(13)) defs.push_back({"HAS_TEXTURERECT", "1"});       // 'Txr'
     if (prop & shaderPropertyBit(14)) defs.push_back({"USE_STOCHASTIC_TILING", "1"}); // 'Sto'
     if ((prop & shaderPropertyBit(15)) && !(prop & shaderPropertyBit(5))) defs.push_back({"HAS_LATTICE", "1"}); // 'Ltc' (never on a terrain)
+    if (vat) defs.push_back({"HAS_VAT", "1"});                                              // 'Vat', 'Vab'
+    if (vat && (prop & shaderPropertyBit(17))) defs.push_back({"HAS_VAT_BONES", "1"});      // 'Vab'
 }
 
 void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
     if (prop & shaderPropertyBit(0))  defs.push_back({"HAS_BASECOLOR_TEXTURE", "1"});         // 'Bct'
     if (prop & shaderPropertyBit(1))  defs.push_back({"HAS_NORMALS", "1"});                   // 'Nor'
-    if (prop & shaderPropertyBit(2))  defs.push_back({"HAS_SKINNING", "1"});                  // 'Ski'
-    if (prop & shaderPropertyBit(3))  defs.push_back({"HAS_MORPHTARGET", "1"});               // 'Mta'
-    if (prop & shaderPropertyBit(4))  defs.push_back({"HAS_MORPHNORMAL", "1"});               // 'Mnr'
-    if (prop & shaderPropertyBit(5))  defs.push_back({"HAS_MORPHTANGENT", "1"});              // 'Mtg'
+    // a Vertex Animation ('Vat', 'Vab'; never on a terrain) replaces skinning and morph targets
+    const bool vat = (prop & (shaderPropertyBit(14) | shaderPropertyBit(15))) && !(prop & shaderPropertyBit(6));
+    if ((prop & shaderPropertyBit(2)) && !vat) defs.push_back({"HAS_SKINNING", "1"});         // 'Ski'
+    if ((prop & shaderPropertyBit(3)) && !vat) defs.push_back({"HAS_MORPHTARGET", "1"});      // 'Mta'
+    if ((prop & shaderPropertyBit(4)) && !vat) defs.push_back({"HAS_MORPHNORMAL", "1"});      // 'Mnr'
+    if ((prop & shaderPropertyBit(5)) && !vat) defs.push_back({"HAS_MORPHTANGENT", "1"});     // 'Mtg'
     if (prop & shaderPropertyBit(6))  defs.push_back({"HAS_TERRAIN", "1"});                   // 'Ter'
     if (prop & shaderPropertyBit(7))  defs.push_back({"HAS_INSTANCING", "1"});                // 'Ist'
     if (prop & shaderPropertyBit(8))  defs.push_back({"HAS_METALLICROUGHNESS_TEXTURE", "1"}); // 'Mrt'
@@ -437,6 +449,8 @@ void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& de
     if ((prop & shaderPropertyBit(11)) && !(prop & shaderPropertyBit(6))) defs.push_back({"HAS_LATTICE", "1"}); // 'Ltc' (never on a terrain)
     if (prop & shaderPropertyBit(12)) defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});         // 'Vc3' (a lattice mask's)
     if (prop & shaderPropertyBit(13)) defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});         // 'Vc4'
+    if (vat) defs.push_back({"HAS_VAT", "1"});                                                  // 'Vat', 'Vab'
+    if (vat && (prop & shaderPropertyBit(15))) defs.push_back({"HAS_VAT_BONES", "1"});          // 'Vab'
 }
 
 void addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -671,6 +685,8 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
         args.defines.push_back({"LATTICE_MAX_PER_MESH", std::to_string(LATTICE_MAX_PER_MESH)});
         args.defines.push_back({"LATTICE_TEXTURE_WIDTH", std::to_string(LATTICE_TEXTURE_WIDTH)});
         args.defines.push_back({"LATTICE_RECORD_HEADER", std::to_string(LATTICE_RECORD_HEADER)});
+        // the clip table of includes/vat.glsl (animation/VertexAnimation.h)
+        args.defines.push_back({"VAT_MAX_CLIPS", std::to_string(vat::VAT_MAX_CLIPS)});
     }
     if (shaderType == ShaderType::VOLUMETRIC_FOG){
         // the light shafts sample S10's directional cascades (includes/shadow_sampling.glsl)
@@ -780,7 +796,8 @@ uint64_t ShaderVariantCompiler::getLibraryHash(){
             std::to_string(MAX_SHADOWCASCADES) + "," + std::to_string(MAX_LIGHTS) + "," +
             std::to_string(SPOT_MASK_ATLAS_TILES) + "," + std::to_string(LATTICE_MAX_PER_MESH) + "," +
             std::to_string(LATTICE_TEXTURE_WIDTH) + "," + std::to_string(LATTICE_RECORD_HEADER) + "," +
-            std::to_string(MAX_POINT_SHADOW_LIGHTS) + "," + std::to_string(SHADOW_CUBE_FACES));
+            std::to_string(MAX_POINT_SHADOW_LIGHTS) + "," + std::to_string(SHADOW_CUBE_FACES) + "," +
+            std::to_string(vat::VAT_MAX_CLIPS));
 
         const auto& sources = getLibrarySources();
         std::vector<std::string> names;

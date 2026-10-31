@@ -707,6 +707,13 @@ void editor::Exporter::startExport(Project* proj, const ExportConfig& cfg) {
         this->progress.started = true;
     }
 
+    // the export reads the open scenes and prefabs while the frames go on: the holes of
+    // destroyed entities are closed before it starts (ComponentArray; an index read on the
+    // export's thread would close them under the main thread)
+    if (proj) {
+        proj->compactAllComponents();
+    }
+
     // Run the export on the process channel so the UI does not block
     jobs::SubmitOptions options;
     options.name = "export";

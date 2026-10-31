@@ -13,8 +13,9 @@ clamps, echoes what it clamped and keeps the undo history.
 
 ## The loop
 
-1. `get_pose_animation {path}`: settings, timing (`start_time` of every pose, `length`) and the poses.
-   With a rig (the file's `preview_model`, or `model`: a model GameObject of the scene) every pose has
+1. `get_pose_animation {path}`: settings (`loop`, `frame_rate`, `feel`, `humanize`, `preset`), timing
+   (`start_time` of every pose, `length`) and the poses (fields: Poses below; `detail: "summary"` omits
+   their angles, `poses` picks some by index). With a rig (the file's `preview_model`, or `model`: a model GameObject of the scene) every pose has
    `metrics`: foot heights and contacts, `balanced` / `balance_margin`, `limit_hits`; `rig` says which
    model it is, how many slots are `mapped` (`bones`: slot -> bone), the `missing` required slots and
    `human_scale` (or the `error` that kept the model from being a usable humanoid).
@@ -108,8 +109,8 @@ last pose back to the first. `length` = all holds + all transitions; a one-pose 
 | `delete_pose` | `index` (the last pose cannot be deleted) |
 | `move_pose` | `index`, `to` |
 | `mirror_pose` | `index`, `as_new` (true: a mirrored copy inserted after it), `name`. Exact: mirroring twice gives the pose back |
-| `set_settings` | any of `loop`, `frame_rate` (12..120), `transition`, `step_rate`, `overlap`, `looseness`, `weights {spine, head, arms, legs}`, `humanize {...}` (partial objects) |
-| `apply_preset` | `name`: one of the feel presets below |
+| `set_settings` | any of `loop`, `frame_rate` (12..120), `transition`, `step_rate`, `overlap`, `looseness`, `weights {spine, head, arms, legs}`, `humanize {...}` (partial objects), `clear_custom` (true: every pose uses the animation's transition again) |
+| `apply_preset` | `name`: one of the feel presets below; `clear_custom` as in `set_settings` |
 | `auto_timing` | holds and transition durations from how far each pose moves (bigger moves get longer snaps); the total length stays |
 | `set_preview_model` | `model`: the model file previews and metrics use (`""` clears) |
 | `set_humanoid` | `model`, `bones {slot: bone name}`: fixes the auto-detected bone mapping of a model, written to its `.humanoid` sidecar (`""` = slot unmapped, `null` = back to auto-detect) |

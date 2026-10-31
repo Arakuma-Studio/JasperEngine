@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../Include/RmlUi/Core/CompiledFilterShader.h"
+#include "../../Include/RmlUi/Core/Geometry.h"
 #include "../../Include/RmlUi/Core/Types.h"
 
 namespace Rml {
@@ -9,6 +10,7 @@ class Decorator;
 class ElementBackgroundLayers;
 class Element;
 class Filter;
+class RenderManager;
 
 enum class RenderStage { Enter, Decoration, Exit };
 
@@ -32,6 +34,13 @@ public:
 		return effects_dirty || effects_data_dirty || !decorators.empty() || !filters.empty() || !backdrop_filters.empty() || bool(group_opacity) ||
 			opacity < 1.f || has_mask_image;
 	}
+
+	// Fork (P7-F2): extends 'region' (window coordinates: the ink of the element's subtree) by the extent of the element's
+	// filters (a blur's and a shadow's spread), applied in its own space: scaled by its transform. Returns the largest
+	// extent added on a side (the filters' reach), zero without filters.
+	float ExtendByFilterExtent(Rectanglef& region);
+	// The same for any element (its effects).
+	static float ExtendByFilterExtent(Element* element, Rectanglef& region);
 
 	// Mark effects as dirty and force them to reset themselves.
 	void DirtyEffects();
@@ -69,6 +78,16 @@ private:
 	// this filter, compiled for 'group_opacity_value'.
 	CompiledFilter group_opacity;
 	float group_opacity_value = 1.f;
+
+	// Fork (P7-F1): the window of the element's layer, which the filters read (the filter region within the clips established
+	// outside the element, extended by the filters' reach), set when the layer is pushed, and whether its clip root is pushed.
+	Rectanglei layer_window = Rectanglei::MakeInvalid();
+	bool layer_clip_root = false;
+	// The rectangle of those clips' scissor region in the clip mask of the layer's composite, when the window extends
+	// beyond it; built for 'clip_rect_manager' at 'clip_rect_size' (placed by the clip mask's offset).
+	Geometry clip_rect_geometry;
+	RenderManager* clip_rect_manager = nullptr;
+	Vector2f clip_rect_size;
 
 	// If set, a full reload is necessary.
 	bool effects_dirty = false;

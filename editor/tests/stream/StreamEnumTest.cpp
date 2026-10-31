@@ -122,7 +122,10 @@ TEST(StreamEnum, AttributeTypeRoundTrips){
         AttributeType::PARTICLEROTATIONFRAME,
         AttributeType::PARTICLEVELOCITY,
         AttributeType::PARTICLEROTATION,
-        AttributeType::PARTICLECUSTOM
+        AttributeType::PARTICLECUSTOM,
+        AttributeType::VAT_INDEX,
+        AttributeType::INSTANCEVAT0,
+        AttributeType::INSTANCEVAT1
     }, AttributeType::POSITION);
 }
 

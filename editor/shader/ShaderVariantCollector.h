@@ -35,7 +35,9 @@ namespace jasperengine::editor {
     //
     // A mesh bound to a lattice (its own Lattice Modifier or an ancestor's with
     // includeChildren, LatticeRender::isLatticeTarget) adds its lattice variants ('Ltc') to
-    // the ones it draws with unbound.
+    // the ones it draws with unbound. A mesh with a Vertex Animator adds its Vertex Animation
+    // variants ('Vat' or 'Vab', by its asset's mode; both when the asset cannot be read) to the
+    // ones it draws with at rest.
     //
     // A scene's lighting decides the variants (lights, shadows, 2D lights, fog, IBL), and a
     // prefab a script spawns can bring its own: every combination the scene's content and the

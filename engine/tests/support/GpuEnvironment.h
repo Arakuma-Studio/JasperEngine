@@ -39,6 +39,12 @@ namespace jasperengine { namespace test {
 
         static Framebuffer& target();
 
+        // The goldens' renderer: Mesa's llvmpipe (glcore) or lavapipe (vulkan), the test image's
+        // software devices. Strict image tolerances hold there; a hardware GPU may take the looser
+        // per-test ones its measurements set (ImageCompare's hardwareTolerance). True before a
+        // device exists (nothing is compared then).
+        static bool isReferenceRenderer();
+
         // systemViewDestroyed, systemShutdown, device and display (gtest TearDown)
         static void shutdown();
     };

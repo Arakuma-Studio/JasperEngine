@@ -41,6 +41,14 @@ namespace jasperengine::rendershared {
         return mesh.worldAABB != AABB::ZERO && (!instmesh || instmesh->cullInstances);
     }
 
+    // a VAT batch's states parallel to its render list, null for any other batch (or one whose
+    // list is shorter: no state is read past it)
+    inline const InstanceVatRenderData* instanceVatData(const InstancedMeshComponent& instmesh){
+        if (instmesh.renderVat.empty() || instmesh.renderVat.size() < instmesh.numVisible)
+            return nullptr;
+        return instmesh.renderVat.data();
+    }
+
 }
 
 #endif // RENDERSYSTEMSHARED_H

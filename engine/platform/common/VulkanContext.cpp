@@ -41,6 +41,7 @@ namespace {
     VkSurfaceKHR gSurface = VK_NULL_HANDLE;
     VkSurfaceFormatKHR gSurfaceFormat{};
     VkPhysicalDevice gPhysicalDevice = VK_NULL_HANDLE;
+    char gDeviceName[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE] = {};
     uint32_t gQueueFamily = UINT32_MAX;
     VkDevice gDevice = VK_NULL_HANDLE;
     VkQueue gQueue = VK_NULL_HANDLE;
@@ -185,6 +186,8 @@ namespace {
 
             gPhysicalDevice = candidate;
             gQueueFamily = family;
+            std::memcpy(gDeviceName, properties.deviceName, sizeof(gDeviceName));
+            gDeviceName[sizeof(gDeviceName) - 1] = '\0';
             // A software device only stands in until real hardware turns up
             if (properties.deviceType != VK_PHYSICAL_DEVICE_TYPE_CPU) break;
         }
@@ -664,4 +667,8 @@ sg_swapchain VulkanContext::swapchain() {
     swapchain.vulkan.render_finished_semaphore = gSync[gImageIndex].renderFinished;
     swapchain.vulkan.present_complete_semaphore = gSync[gSyncSlot].presentComplete;
     return swapchain;
+}
+
+const char* VulkanContext::deviceName() {
+    return gDeviceName;
 }

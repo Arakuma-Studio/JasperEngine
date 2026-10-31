@@ -37,6 +37,7 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "lattice/LatticeEditorOps.h"
+#include "window/InspectorVatBake.h"
 #include "lattice/LatticeSolver.h"
 #include "command/type/UnlinkMaterialCmd.h"
 #include "command/type/LinkMaterialCmd.h"
@@ -682,6 +683,14 @@ static void drawLatticeBakeRow(editor::Project* project, editor::SceneProject* s
         }else{
             Log::error("Lattice bake: %s", error.c_str());
         }
+    }
+    // Bake ▾ › Vertex Animation…: the lattice tracks of the clips that move it, baked per vertex
+    if (editor::vatbakeentry::available()){
+        editor::VatBakeEntry entry;
+        entry.kind = editor::VatBakeEntry::Kind::LatticeModifier;
+        entry.sceneId = sceneProject->id;
+        entry.entity = entity;
+        editor::vatbakeentry::bakeButton(project, entry, stopped, "lattice_bake_vat", "lattice.bake");
     }
 }
 

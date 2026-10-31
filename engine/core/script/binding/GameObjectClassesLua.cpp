@@ -34,6 +34,7 @@
 #include "Model.h"
 #include "PoseAnimator.h"
 #include "AnimationPlayer.h"
+#include "VertexAnimator.h"
 #include "Animator.h"
 #include "animation/AnimationEvent.h"
 #include "MeshPolygon.h"
@@ -631,6 +632,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             Scene* scene = self->getScene();
             return scene && scene->isEntityCreated(self->getEntity()) &&
                    scene->findComponent<AnimationPlayerComponent>(self->getEntity()) != nullptr;
+        })
+        // the Vertex Animator of the GameObject (baked .vat clips on the GPU), nil when it has none
+        .addFunction("getVertexAnimator", +[](GameObject* self) -> std::optional<VertexAnimator> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<VertexAnimatorComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return VertexAnimator(scene, self->getEntity());
+        })
+        .addFunction("hasVertexAnimator", +[](GameObject* self) -> bool {
+            Scene* scene = self->getScene();
+            return scene && scene->isEntityCreated(self->getEntity()) &&
+                   scene->findComponent<VertexAnimatorComponent>(self->getEntity()) != nullptr;
         })
         // the Animator of the GameObject, nil when it has none (Animator(scene, entity) adds one)
         .addFunction("getAnimator", +[](GameObject* self) -> std::optional<Animator> {
@@ -2219,6 +2234,91 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // a function called with the state name when a once state ends (or a clamp_forever one first reaches its end)
         .addProperty("onFinish", [] (AnimationPlayer* self, lua_State*) { return &self->getOnFinish(); }, [] (AnimationPlayer* self, lua_State* L) { self->getOnFinish() = L; })
         .addFunction("getAnimationPlayerComponent", &AnimationPlayer::getComponent<AnimationPlayerComponent>)
+        .endClass();
+
+    // A baked socket's pose in the GameObject's space (VertexAnimator:getSocketPose)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<VertexAnimatorSocketPose>("VertexAnimatorSocketPose")
+        .addProperty("position", &VertexAnimatorSocketPose::position)
+        .addProperty("rotation", &VertexAnimatorSocketPose::rotation)
+        // false when the socket or the asset is not there
+        .addProperty("valid", &VertexAnimatorSocketPose::valid)
+        .endClass();
+
+    // Plays a baked Vertex Animation (.vat) on the GPU: the GameObject and every instance of its
+    // Instanced Mesh, each with its own clip, time, speed and crossfade. Instances count from 0
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<VertexAnimator, EntityHandle>("VertexAnimator")
+        .addConstructor <void (*) (Scene*, Entity)> ()
+        // plays a clip now; with a fade > 0, crossFade
+        .addFunction("play",
+            luabridge::overload<const std::string&>(&VertexAnimator::play),
+            luabridge::overload<const std::string&, float>(&VertexAnimator::play))
+        // fades to a clip over `fade` seconds (defaultFadeTime without it)
+        .addFunction("crossFade",
+            luabridge::overload<const std::string&>(&VertexAnimator::crossFade),
+            luabridge::overload<const std::string&, float>(&VertexAnimator::crossFade))
+        // holds clips a and b at a fixed weight of b (0..1), b's phase following a's (walk/run by speed)
+        .addFunction("blend", &VertexAnimator::blend)
+        // plays a clip when the current one ends (or ends its cycle)
+        .addFunction("queue", &VertexAnimator::queue)
+        // holds the current pose
+        .addFunction("stop", &VertexAnimator::stop)
+        .addFunction("isPlaying",
+            luabridge::constOverload<>(&VertexAnimator::isPlaying),
+            luabridge::constOverload<const std::string&>(&VertexAnimator::isPlaying))
+        // seconds in the current clip
+        .addProperty("time", &VertexAnimator::getTime, &VertexAnimator::setTime)
+        // 0..1 in the current clip
+        .addProperty("normalizedTime", &VertexAnimator::getNormalizedTime)
+        // multiplies every clip's speed (phases are kept)
+        .addProperty("speed", &VertexAnimator::getSpeed, &VertexAnimator::setSpeed)
+        // the clip playing (the one faded to during a crossfade)
+        .addProperty("currentClip", &VertexAnimator::getCurrentClip)
+        .addFunction("getClipNames", &VertexAnimator::getClipNames)
+        // seconds, 0 for an unknown clip
+        .addFunction("getClipLength", &VertexAnimator::getClipLength)
+        // a baked socket now: position and rotation in the GameObject's space (of an instance with its index)
+        .addFunction("getSocketPose",
+            luabridge::constOverload<const std::string&>(&VertexAnimator::getSocketPose),
+            luabridge::constOverload<const std::string&, int>(&VertexAnimator::getSocketPose))
+        .addFunction("playInstance",
+            luabridge::overload<int, const std::string&>(&VertexAnimator::playInstance),
+            luabridge::overload<int, const std::string&, float>(&VertexAnimator::playInstance))
+        .addFunction("crossFadeInstance", &VertexAnimator::crossFadeInstance)
+        .addFunction("setInstanceSpeed", &VertexAnimator::setInstanceSpeed)
+        .addFunction("setInstanceTime", &VertexAnimator::setInstanceTime)
+        .addFunction("getInstanceClip", &VertexAnimator::getInstanceClip)
+        .addFunction("getInstanceNormalizedTime", &VertexAnimator::getInstanceNormalizedTime)
+        .addFunction("getInstanceCount", &VertexAnimator::getInstanceCount)
+        // the GameObject and every instance
+        .addFunction("playAll",
+            luabridge::overload<const std::string&>(&VertexAnimator::playAll),
+            luabridge::overload<const std::string&, float>(&VertexAnimator::playAll))
+        // every instance at a seeded time of its clip (the same seed, the same times)
+        .addFunction("randomizeTimes", &VertexAnimator::randomizeTimes)
+        // the .vat, relative to the assets folder
+        .addProperty("animation", &VertexAnimator::getAnimation, &VertexAnimator::setAnimation)
+        .addProperty("defaultClip", &VertexAnimator::getDefaultClip, &VertexAnimator::setDefaultClip)
+        .addProperty("playAutomatically", &VertexAnimator::isPlayAutomatically, &VertexAnimator::setPlayAutomatically)
+        .addProperty("randomStart", &VertexAnimator::isRandomStart, &VertexAnimator::setRandomStart)
+        .addProperty("defaultFadeTime", &VertexAnimator::getDefaultFadeTime, &VertexAnimator::setDefaultFadeTime)
+        .addProperty("instanceEvents", &VertexAnimator::isInstanceEvents, &VertexAnimator::setInstanceEvents)
+        // editor: animate in edit mode
+        .addProperty("preview", &VertexAnimator::isPreview, &VertexAnimator::setPreview)
+        .addProperty("enabled", &VertexAnimator::isEnabled, &VertexAnimator::setEnabled)
+        .addFunction("isLoaded", &VertexAnimator::isLoaded)
+        // why it does not play ("" when it does)
+        .addFunction("getLoadError", &VertexAnimator::getLoadError)
+        // a function called with an AnimationEvent when a clip event fires (GameObjects without instances)
+        .addProperty("onEvent", [] (VertexAnimator* self, lua_State*) { return &self->getOnEvent(); }, [] (VertexAnimator* self, lua_State* L) { self->getOnEvent() = L; })
+        // a function called with the clip name when a once clip ends
+        .addProperty("onFinish", [] (VertexAnimator* self, lua_State*) { return &self->getOnFinish(); }, [] (VertexAnimator* self, lua_State* L) { self->getOnFinish() = L; })
+        // a function called with (instance, AnimationEvent) when instanceEvents is on
+        .addProperty("onInstanceEvent", [] (VertexAnimator* self, lua_State*) { return &self->getOnInstanceEvent(); }, [] (VertexAnimator* self, lua_State* L) { self->getOnInstanceEvent() = L; })
+        // a function called with (instance, clip name) when instanceEvents is on
+        .addProperty("onInstanceFinish", [] (VertexAnimator* self, lua_State*) { return &self->getOnInstanceFinish(); }, [] (VertexAnimator* self, lua_State* L) { self->getOnInstanceFinish() = L; })
+        .addFunction("getVertexAnimatorComponent", &VertexAnimator::getComponent<VertexAnimatorComponent>)
         .endClass();
 
     // a layer's current or next state (Animator:getCurrentState / getNextState)
