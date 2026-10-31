@@ -383,7 +383,11 @@ the code:
    and `fromLua`. `FunctionSubscribe_V_SSI` binds `add/remove/has/call` (`has` added to
    `FunctionSubscribe`). `Log.onMessageReceived` subscriptions and the scripts' console commands
    are dropped by `Engine::removeSubscriptionsByTag` (script release) and
-   `Engine::clearAllSubscriptions` (Play stop).
+   `Engine::clearAllSubscriptions` (Play stop), and `LuaBinding::cleanup` drops both before the
+   state closes (a line logged during shutdown would otherwise call into a closed state); a
+   command added with no owner is tagged "lua" so it goes with the state too. A Lua `Log.warn` /
+   `Log.error` line reaches the editor's Console and the platform log with its traceback under the
+   message (as Lua errors already did); `test_play.py`'s console regex filter was adjusted to it.
 3. **Commands' owner**: `DebugOverlay.addCommand(name, description, fn [, owner])`. The owner
    defaults to the `self` local of the calling Lua function (a script method), so commands added
    in `init` go with their script without passing anything; an explicit table can be given.
