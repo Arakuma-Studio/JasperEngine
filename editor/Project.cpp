@@ -3783,15 +3783,6 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
         maxValues.maxTilemapTiles = std::max(maxValues.maxTilemapTiles, tilemap.numTiles);
     }
 
-    auto bodies2d = sceneProject->scene->getComponentArray<Rigidbody2DComponent>();
-    for (size_t i = 0; i < bodies2d->size(); ++i) {
-        const Rigidbody2DComponent& body = bodies2d->getComponentFromIndex(i);
-        maxValues.maxColliders2D = std::max(maxValues.maxColliders2D, static_cast<unsigned int>(body.numColliders));
-        for (size_t s = 0; s < body.numColliders; ++s) {
-            maxValues.maxColliderPoints2D = std::max(maxValues.maxColliderPoints2D, static_cast<unsigned int>(body.colliders[s].numVertices));
-        }
-    }
-
     auto bodies3d = sceneProject->scene->getComponentArray<RigidbodyComponent>();
     for (size_t i = 0; i < bodies3d->size(); ++i) {
         const RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);

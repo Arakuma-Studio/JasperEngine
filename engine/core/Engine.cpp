@@ -39,6 +39,7 @@
 #include "pool/MeshLodPool.h"
 #include "pool/MeshBufferPool.h"
 #include "pool/AnimationClipPool.h"
+#include "pool/PhysicsMaterialPool.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #ifndef NO_THREAD_SUPPORT
@@ -903,6 +904,7 @@ void Engine::clearPools(){
     MeshLodPool::clear();
     MeshBufferPool::clear();
     AnimationClipPool::clear();
+    PhysicsMaterialPool::clear();
 }
 
 void Engine::clearUnusedPools(){
@@ -916,6 +918,7 @@ void Engine::clearUnusedPools(){
     MeshLodPool::clearUnused();
     MeshBufferPool::clearUnused();
     AnimationClipPool::clearUnused();
+    PhysicsMaterialPool::clearUnused();
 }
 
 void Engine::removeSubscriptionsByTag(const std::string& substring) {
