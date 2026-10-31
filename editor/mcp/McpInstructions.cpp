@@ -17,8 +17,8 @@ You are driving a running JasperEngine editor: a C++ game engine with a Unity-st
 scripts. Every tool edit is an undoable editor command, shown live to a human.
 Build scenes with tools, write code with your own file tools, verify by playing, screenshots
 and the Console. tools/list is authoritative for tool names and arguments; read a
-tool's description before first use. Deeper reference: resources jasper://docs/... (Lua API,
-C++ scripting, physics, shaders, prefabs, HTML/CSS UI, Unity glossary).
+tool's description before first use. Deeper reference: resources jasper://docs/... (listed by
+jasper://docs).
 
 ## Unity names -> engine names
 Use Unity terms in prose; tools, component names and script APIs use the engine names.
@@ -136,8 +136,8 @@ return Player
   jasper://docs/lua-api (an index: read only what you need), the Lua stubs or search_engine_api before using a name you have not seen there.
 - Input.isKeyPressed is the held state; detect a press by remembering last frame's value or
   with onKeyDown(key, isRepeat, mods). Log.print/warn/error take ONE string (use ..).
-- Time: Engine.timeScale and Engine.fixedDeltatime (read/write), Engine.gameTime and
-  Engine.frameCount (scaled game time and frames since start).
+- Time: Engine.timeScale, Engine.fixedDeltatime (rw), Engine.gameTime, Engine.frameCount
+  (scaled, since start).
 - C++ default arguments do not exist in Lua: pass every argument (e.g. the wake flag).
 - Lua has no Dori.Script, on_start, getComponent, setProperty or timers. Never put editor
   property paths (submeshes[0]...) in scripts.
@@ -164,6 +164,7 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   sends send_input events while it waits (hold a key for 2 game seconds, then check).
 - run_build runs an exported desktop player with input events and screenshots_at (seconds
   since launch); returns its errors (Lua too) and the log tail.
+- Simulated focus, pause, rotation, language, opened URLs: jasper://docs/platform-services.
 
 ## 2D and 3D
 - 2D: sprites, tilemaps, UI; units are points (pixels of the canvas, project canvasWidth x

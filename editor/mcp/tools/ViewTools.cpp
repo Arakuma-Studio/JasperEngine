@@ -15,6 +15,7 @@
 #include "App.h"
 #include "AppSettings.h"
 #include "Engine.h"
+#include "Platform.h"
 #include "Project.h"
 #include "mcp/McpActivityWindow.h"
 #include "render/SceneRender.h"
@@ -27,6 +28,8 @@
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 #include "util/GraphicUtils.h"
+#include "util/PlatformRules.h"
+#include "window/DeviceProfiles.h"
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
 #include "window/PoseAnimationWindow.h"
@@ -1235,7 +1238,60 @@ void configureGameViewTool(const CallPtr& call) {
         }
         changed.push_back("simulate_touch");
     }
+    if (args.contains("device")) {
+        const std::string device = args["device"].is_string() ? args["device"].get<std::string>() : std::string();
+        if (device == "none" || device.empty()) {
+            settings.device.clear();
+        } else if (findDeviceProfile(device)) {
+            settings.device = device;
+        } else {
+            std::string ids;
+            for (const DeviceProfile& profile : deviceProfiles()) ids += std::string(" ") + profile.id;
+            call->fail("device must be none or one of:" + ids + ".");
+            return;
+        }
+        changed.push_back("device");
+    }
+    if (args.contains("language")) {
+        const std::string language = args["language"].is_string() ? args["language"].get<std::string>() : std::string();
+        const std::string tag = (language == "system" || language.empty()) ? std::string() : LocaleRules::normalize(language);
+        if (!language.empty() && language != "system" && LocaleRules::languageCode(tag).size() < 2) {
+            call->fail("language must be \"system\" or a BCP 47 tag like es-MX, pt-BR, zh-Hant.");
+            return;
+        }
+        settings.language = tag;
+        changed.push_back("language");
+    }
     if (!changed.empty()) gw->applySettings(settings);
+
+    if (args.contains("orientation")) {
+        ScreenOrientation orientation;
+        const std::string name = args.value("orientation", "");
+        if (!PlatformRules::parseOrientationName(name, orientation) || !PlatformRules::isFixedOrientation(orientation)) {
+            call->fail("orientation must be portrait, portrait_upside_down, landscape_left or landscape_right.");
+            return;
+        }
+        const DeviceProfile* device = Platform::getSimulation().device;
+        if (!device) {
+            call->fail("orientation turns a simulated device: pass device too (e.g. {device: \"iphone_15_pro\", "
+                       "orientation: \"" + name + "\"}).");
+            return;
+        }
+        if (!(gw->getRotatableOrientations() & PlatformRules::orientationBit(orientation))) {
+            call->fail(std::string(device->name) + " cannot show " + name + " now" +
+                       (project->isAnyScenePlaying() ? " (the playing game allows other orientations: Screen.orientation / "
+                                                       "Screen.autorotateTo*)." : " (iPhones do not turn upside down)."));
+            return;
+        }
+        // as Rotate: the toolbar's orientation, and the device turned now
+        gw->turnDevice(orientation);
+        changed.push_back("orientation");
+    }
+    settings = gw->getSettings();
+
+    const PlatformSimulation& simulation = Platform::getSimulation();
+    Json devices = Json::array();
+    for (const DeviceProfile& profile : deviceProfiles()) devices.push_back(profile.id);
 
     Json data = {
         {"aspect", aspectNames()[std::clamp(settings.aspect, 0, (int)aspectNames().size() - 1)]},
@@ -1248,6 +1304,10 @@ void configureGameViewTool(const CallPtr& call) {
         {"view_size", {gw->getWidth(), gw->getHeight()}},
         {"render_size", {gw->getRenderWidth(), gw->getRenderHeight()}},
         {"canvas", {project->getCanvasWidth(), project->getCanvasHeight()}},
+        {"device", simulation.device ? Json(simulation.device->id) : Json("none")},
+        {"orientation", PlatformRules::orientationName(simulation.orientation)},
+        {"language", settings.language.empty() ? std::string("system") : settings.language},
+        {"devices", devices},
         {"changed", changed}
     };
     call->ok(std::string(changed.empty() ? "Game view settings: " : "Updated the Game view: ") + data.dump(), data);
@@ -1356,13 +1416,17 @@ void registerViewTools(McpRegistry& registry) {
         tool.title = "Configure Game View";
         tool.description =
             "Read (no arguments) or change the Game view toolbar settings (editor preferences, not undoable). aspect "
-            "project = the canvas size (a project setting); the game renders at render_size.";
+            "project = the canvas size (a project setting); the game renders at render_size. device, orientation, "
+            "language: a simulated phone and system language (editor only).";
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
             {"scale", number("", 1, 5)},
             {"maximize_on_play", boolean("")},
             {"show_stats", boolean("")},
-            {"simulate_touch", boolean("Mouse = one finger. Not while playing.")}
+            {"simulate_touch", boolean("Mouse = one finger. Not while playing.")},
+            {"device", string("An id of devices, or none.")},
+            {"orientation", stringEnum("", {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"})},
+            {"language", string("es-MX..., or system.")}
         });
         tool.annotations.idempotent = true;
         tool.handler = configureGameViewTool;

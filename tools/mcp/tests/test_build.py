@@ -249,6 +249,77 @@ async def test_admob_export(ed: Editor):
     check_left_out("disabled again")
 
 
+async def test_platform_services_export(ed: Editor):
+    """Player > Resolution and Presentation reaches the Android manifest (screenOrientation, a
+    configChanges list that keeps the activity on rotation and locale changes) and the iOS
+    Info.plist (orientation arrays with the default first, UIRequiresFullScreen); the scripts'
+    System.vibrate / getInternetReachability add their Android permissions; screen sleep is
+    Screen.sleepTimeout's (no MainActivity patch); the generated init() sets them."""
+    out = ed.scratch.root / "export-platform"
+    android_app = out / "workspaces" / "androidstudio" / "app"
+    manifest = android_app / "src" / "main" / "AndroidManifest.xml"
+    plist = out / "workspaces" / "xcode" / "ios" / "Info.plist"
+    activity = out / "platform" / "android" / "java" / "com" / "jaspergameengine" / "jasperengine" / "MainActivity.java"
+
+    async def export() -> dict:
+        r = await ed.call("build_project", mode="source", output_dir=str(out), overwrite=True, timeout_seconds=600)
+        ed.check_eq(r["status"], "succeeded", f"{r}")
+        return r["result"]
+
+    # the defaults: auto-rotation in portrait and both landscapes
+    await export()
+    m, pl = manifest.read_text(), plist.read_text()
+    ed.check_in('android:screenOrientation="user"', m)
+    ed.check_in('android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|'
+                'screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"', m)
+    ed.check("android.permission.VIBRATE" not in m, "no VIBRATE without System.vibrate")
+    ed.check("FLAG_KEEP_SCREEN_ON" not in activity.read_text(), "no keep-screen-on patch: Screen.sleepTimeout does it")
+    portrait_first = ("<key>UISupportedInterfaceOrientations</key>\n\t<array>\n"
+                      "\t\t<string>UIInterfaceOrientationPortrait</string>\n"
+                      "\t\t<string>UIInterfaceOrientationLandscapeRight</string>\n"
+                      "\t\t<string>UIInterfaceOrientationLandscapeLeft</string>\n\t</array>")
+    ed.check_in(portrait_first, pl)
+    ed.check_in(portrait_first.replace("Orientations</key>", "Orientations~ipad</key>"), pl)
+    ed.check_in("<key>UIRequiresFullScreen</key>\n\t<true/>", pl)
+    main = (out / "project" / "main.cpp").read_text()
+    ed.check_in("Screen::initialize(ScreenOrientation::AutoRotation, 0x1A, true);", main)
+    ed.check_in("Engine::setTargetFrameRate(-1);", main)
+    ed.check_in("System::setApplicationInfo({\"Build Test\", \"com.yourcompany.project\", \"1.0\", 1});", main)
+
+    # a fixed landscape default, a script that vibrates and checks the network
+    await ed.call("create_script", kind="lua", name="Haptics", content=(
+        "local Haptics = { properties = {} }\n"
+        "function Haptics:init()\n"
+        "    if System.getInternetReachability() ~= NetworkReachability.NotReachable then System.vibrate(50) end\n"
+        "end\nreturn Haptics\n"))
+    await ed.call("set_project_settings", values={"player.default_orientation": "landscape_right", "player.target_frame_rate": 30})
+    try:
+        result = await export()
+        m, pl = manifest.read_text(), plist.read_text()
+        ed.check_in('android:screenOrientation="reverseLandscape"', m)
+        ed.check_in('<uses-permission android:name="android.permission.VIBRATE" />', m)
+        ed.check_in('<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />', m)
+        ed.check_in("<key>UISupportedInterfaceOrientations</key>\n\t<array>\n"
+                    "\t\t<string>UIInterfaceOrientationLandscapeLeft</string>\n\t</array>", pl)
+        log = Path(result["log_file"]).read_text()
+        ed.check_in("added the VIBRATE permission", log)
+        main = (out / "project" / "main.cpp").read_text()
+        ed.check_in("Screen::initialize(ScreenOrientation::LandscapeRight,", main)
+        ed.check_in("Engine::setTargetFrameRate(30);", main)
+
+        # every orientation allowed: iPad multitasking may stay on
+        await ed.call("set_project_settings", values={
+            "player.default_orientation": "auto_rotation",
+            "player.allowed_orientations": ["portrait", "portrait_upside_down", "landscape_left", "landscape_right"]})
+        await export()
+        ed.check_in('android:screenOrientation="fullUser"', manifest.read_text())
+        ed.check_in("<key>UIRequiresFullScreen</key>\n\t<false/>", plist.read_text())
+    finally:
+        await ed.call("set_project_settings", values={
+            "player.default_orientation": "auto_rotation", "player.target_frame_rate": -1,
+            "player.allowed_orientations": ["portrait", "landscape_left", "landscape_right"]})
+
+
 async def test_cancel_desktop_build(ed: Editor):
     out = ed.scratch.root / "export-cancel"
     r = await ed.call("build_project", mode="desktop", output_dir=str(out), wait=False, build_jobs=JOBS)

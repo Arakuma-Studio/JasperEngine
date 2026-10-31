@@ -96,7 +96,9 @@ LIMITS.update({"get_pose_animation": 700, "edit_pose_animation": 1220})
 # fix FC: clips entries may be {name, wrap, interpolate, fps} objects (the detail in the guide), paid by
 # a shorter description: bake_vertex_animation 1977, total 106049
 LIMITS.update({"bake_vertex_animation": 2000})
-TOTAL_LIMIT = 106100
+# platform services (spec 6.9): send_input's `app` events (+88), configure_game_view's device,
+# orientation and language (+330), get_play_state's platform (+46), measured total 106564 (148 tools)
+TOTAL_LIMIT = 106600
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
