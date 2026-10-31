@@ -120,14 +120,14 @@ LIMITS.update({"create_ragdoll": 900})
 # merged by the lead (ui-canvas-group + physics-3d): provisional sum of both increments, re-measured below
 # http: configure_game_view's network and get_play_state's http block; merged with main (script-data,
 # input, physics-2d, script-lifecycle): 150 tools measured 106807, the limit set to it
-# merged by the lead (+ http): provisional, re-measured on the merged tree
-TOTAL_LIMIT = 107621
+# merged by the lead (ui-canvas-group, physics-3d, http): 151 tools measured 107626 on the merged tree
+TOTAL_LIMIT = 107626
 # anim layers (spec 10, 11.4, 11.5): get_animation 670 -> 815 (mask, controller: +145) and
 # preview_animation 654 -> 721 (over: +67), phase 1 +212 (under its 600); edit_animator 2290 (under its
 # 3500; the op fields are in jasper://docs/animation); focus_window's "animator" (+11): +2513 in all, the
-# limits raised by them
+# limits raised by them; measured on the tree merged with main: 152 tools, 110139
 LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 2400})
-TOTAL_LIMIT = 107621 + 2513
+TOTAL_LIMIT = 107626 + 2513
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
