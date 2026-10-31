@@ -42,6 +42,7 @@
 #include <vector>
 
 namespace jasperengine{
+    class EntityRegistry;
     class Scene;
 }
 
@@ -126,7 +127,7 @@ namespace jasperengine::anim{
     JASPERENGINE_API HumanoidSlots resolveHumanoidSlots(Scene* scene, Entity root);
     // The slots of a hierarchy whose entity names are the map's bone names (the first entity of
     // that name in `root`'s branch, hierarchy order): tests and tools without a Model
-    JASPERENGINE_API HumanoidSlots humanoidSlotsByName(Scene* scene, Entity root, const std::array<std::string, pose::HUMAN_BONE_COUNT>& boneNames);
+    JASPERENGINE_API HumanoidSlots humanoidSlotsByName(EntityRegistry* scene, Entity root, const std::array<std::string, pose::HUMAN_BONE_COUNT>& boneNames);
 
     // which rule gave an entity its weight (MCP coverage: "transform", "humanoid:<part>", "default")
     struct JASPERENGINE_API AvatarMaskWeight{
@@ -152,13 +153,13 @@ namespace jasperengine::anim{
 
         // The transform entries resolved on a root (ClipBinding path grammar): what weightOf
         // needs, computed once per bind. Entries that do not resolve are NULL_ENTITY.
-        std::vector<Entity> bindTransforms(Scene* scene, Entity root) const;
+        std::vector<Entity> bindTransforms(EntityRegistry* scene, Entity root) const;
         // E's weight under R (rules above); `transformEntities` from bindTransforms(scene, root),
         // `humanoid` null or not valid: rule 2 is skipped
-        AvatarMaskWeight weightOf(Scene* scene, Entity root, Entity entity, const std::vector<Entity>& transformEntities,
+        AvatarMaskWeight weightOf(EntityRegistry* scene, Entity root, Entity entity, const std::vector<Entity>& transformEntities,
                                   const HumanoidSlots* humanoid) const;
-        // the same without a prepared bind (MCP, tools)
-        float weightOf(Scene* scene, Entity root, Entity entity, const HumanoidSlots* humanoid) const;
+        // the same without a prepared bind (MCP, tools; any registry: a scene, a preview hierarchy)
+        float weightOf(EntityRegistry* scene, Entity root, Entity entity, const HumanoidSlots* humanoid) const;
 
     private:
         AvatarMask() = default;

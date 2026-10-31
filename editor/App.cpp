@@ -306,6 +306,8 @@ enum class AppMenuCommand : uint32_t {
     AssetsCreateHtmlDocument,
     AssetsCreatePoseAnimation,
     AssetsCreateAnimationClip,      // shown only once AnimationClipAppHooks::createClipAsset is set
+    AssetsCreateAnimatorController, // (createControllerAsset)
+    AssetsCreateAvatarMask,         // (createMaskAsset)
     AssetsCreateCppScript,
     AssetsShowInFileManager,
     AssetsOpen,
@@ -606,6 +608,12 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     // Animation Clip: once the clip asset task set its hook
     if (animationClipAppHooks().createClipAsset) {
         assetsCreateItems.push_back(menuCommand(AppMenuCommand::AssetsCreateAnimationClip, "Animation Clip"));
+    }
+    if (animationClipAppHooks().createControllerAsset) {
+        assetsCreateItems.push_back(menuCommand(AppMenuCommand::AssetsCreateAnimatorController, "Animator Controller"));
+    }
+    if (animationClipAppHooks().createMaskAsset) {
+        assetsCreateItems.push_back(menuCommand(AppMenuCommand::AssetsCreateAvatarMask, "Avatar Mask"));
     }
     assetsCreateItems.push_back(menuSeparator());
     assetsCreateItems.push_back(menuSubmenu("Scene", newSceneItems(), !isProjectBusy));
@@ -1009,6 +1017,18 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AssetsCreateAnimationClip:
             if (animationClipAppHooks().createClipAsset) {
                 animationClipAppHooks().createClipAsset(&project);
+                projectWindow->refreshCurrentDirectory();
+            }
+            break;
+        case AppMenuCommand::AssetsCreateAnimatorController:
+            if (animationClipAppHooks().createControllerAsset) {
+                animationClipAppHooks().createControllerAsset(&project);
+                projectWindow->refreshCurrentDirectory();
+            }
+            break;
+        case AppMenuCommand::AssetsCreateAvatarMask:
+            if (animationClipAppHooks().createMaskAsset) {
+                animationClipAppHooks().createMaskAsset(&project);
                 projectWindow->refreshCurrentDirectory();
             }
             break;

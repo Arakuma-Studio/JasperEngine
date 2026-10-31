@@ -30,7 +30,7 @@ namespace{
         return std::isfinite(weight) ? std::min(std::max(weight, 0.0f), 1.0f) : 1.0f;
     }
 
-    Entity parentOf(Scene* scene, Entity entity){
+    Entity parentOf(EntityRegistry* scene, Entity entity){
         const Transform* transform = scene->findComponent<Transform>(entity);
         return transform ? transform->parent : NULL_ENTITY;
     }
@@ -355,7 +355,7 @@ anim::HumanoidSlots anim::resolveHumanoidSlots(Scene* scene, Entity root){
     return slots;
 }
 
-anim::HumanoidSlots anim::humanoidSlotsByName(Scene* scene, Entity root, const std::array<std::string, pose::HUMAN_BONE_COUNT>& boneNames){
+anim::HumanoidSlots anim::humanoidSlotsByName(EntityRegistry* scene, Entity root, const std::array<std::string, pose::HUMAN_BONE_COUNT>& boneNames){
     HumanoidSlots slots;
     if (!scene || root == NULL_ENTITY || !scene->isEntityCreated(root)) return slots;
     auto transforms = scene->getComponentArray<Transform>();
@@ -397,7 +397,7 @@ std::shared_ptr<const anim::AvatarMask> anim::AvatarMask::build(const AvatarMask
     return shared;
 }
 
-std::vector<Entity> anim::AvatarMask::bindTransforms(Scene* scene, Entity root) const{
+std::vector<Entity> anim::AvatarMask::bindTransforms(EntityRegistry* scene, Entity root) const{
     std::vector<Entity> entities(data.transforms.size(), NULL_ENTITY);
     for (size_t i = 0; i < data.transforms.size(); i++){
         entities[i] = data.transforms[i].path.empty() ? root : resolvePath(scene, root, data.transforms[i].path);
@@ -405,7 +405,7 @@ std::vector<Entity> anim::AvatarMask::bindTransforms(Scene* scene, Entity root) 
     return entities;
 }
 
-anim::AvatarMaskWeight anim::AvatarMask::weightOf(Scene* scene, Entity root, Entity entity, const std::vector<Entity>& transformEntities,
+anim::AvatarMaskWeight anim::AvatarMask::weightOf(EntityRegistry* scene, Entity root, Entity entity, const std::vector<Entity>& transformEntities,
                                                   const HumanoidSlots* humanoid) const{
     AvatarMaskWeight result;
     result.weight = data.defaultWeight;
@@ -478,6 +478,6 @@ anim::AvatarMaskWeight anim::AvatarMask::weightOf(Scene* scene, Entity root, Ent
     return result;
 }
 
-float anim::AvatarMask::weightOf(Scene* scene, Entity root, Entity entity, const HumanoidSlots* humanoid) const{
+float anim::AvatarMask::weightOf(EntityRegistry* scene, Entity root, Entity entity, const HumanoidSlots* humanoid) const{
     return weightOf(scene, root, entity, bindTransforms(scene, root), humanoid).weight;
 }

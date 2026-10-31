@@ -33,6 +33,7 @@
 #include "animation/AnimationClipAppHooks.h"
 #include "animation/AnimationClipController.h"
 #include "animation/AnimationClipDocument.h"
+#include "animation/AnimAssetDocument.h"
 #include "animation/AnimationClipInspectorHooks.h"
 #include "vat/VatAppHooks.h"
 #include "vat/VatAssetFiles.h"
@@ -295,10 +296,19 @@ editor::ProjectWindow::ProjectWindow(Project* project, CodeEditor* codeEditor, I
     animationClipAppHooks().createClipAsset = [this](Project*) {
         assetsCreateAnimationClip();
     };
+    // Assets > Create > Animator Controller / Avatar Mask (anim layers spec 9, 11.4)
+    animationClipAppHooks().createControllerAsset = [this](Project*) {
+        assetsCreateAnimatorController();
+    };
+    animationClipAppHooks().createMaskAsset = [this](Project*) {
+        assetsCreateAvatarMask();
+    };
 }
 
 editor::ProjectWindow::~ProjectWindow() {
     animationClipAppHooks().createClipAsset = nullptr;
+    animationClipAppHooks().createControllerAsset = nullptr;
+    animationClipAppHooks().createMaskAsset = nullptr;
     cancelThumbnailWork();
     stopThumbnailThread = true;
     thumbnailCondition.notify_one(); // Wake the worker thread to check stop condition
@@ -886,6 +896,10 @@ ImU32 editor::ProjectWindow::fileSeparatorColor(const FileEntry& fe) const{
             return ImGui::GetColorU32(ImVec4(0.91f, 0.53f, 0.23f, 1.0f));
         case FileType::VERTEX_ANIMATION:
             return ImGui::GetColorU32(ImVec4(0.25f, 0.65f, 0.63f, 1.0f));
+        case FileType::ANIMATOR_CONTROLLER:
+            return ImGui::GetColorU32(ImVec4(0.85f, 0.42f, 0.18f, 1.0f));
+        case FileType::AVATAR_MASK:
+            return ImGui::GetColorU32(ImVec4(0.36f, 0.62f, 0.30f, 1.0f));
         case FileType::NONE:
         default:
             return ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 1.0f));
@@ -929,6 +943,14 @@ void editor::ProjectWindow::renderCreateMenuItems() {
     }
     if (ImGui::MenuItem(ICON_FA_FILM " Create Animation Clip")){
         assetsCreateAnimationClip();
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_DIAGRAM_PROJECT " Create Animator Controller")){
+        assetsCreateAnimatorController();
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_CHILD_REACHING " Create Avatar Mask")){
+        assetsCreateAvatarMask();
         ImGui::CloseCurrentPopup();
     }
 
@@ -2355,6 +2377,10 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::directory_entry
             fileEntry.icon = animationClipIcon.getRender();
         }else if (fileEntry.extension == ".humanoid"){
             fileEntry.type = FileType::HUMANOID;
+        }else if (Util::isAnimatorControllerFile(fileEntry.extension)){
+            fileEntry.type = FileType::ANIMATOR_CONTROLLER;
+        }else if (Util::isAvatarMaskFile(fileEntry.extension)){
+            fileEntry.type = FileType::AVATAR_MASK;
         }
 
         if (fileEntry.type == FileType::IMAGE || fileEntry.type == FileType::MATERIAL || fileEntry.type == FileType::MODEL ||
@@ -4088,6 +4114,67 @@ void editor::ProjectWindow::assetsCreatePoseAnimation() {
     lastSelectedFile = fileName;
 }
 
+// a new animation asset (a controller or a mask) in the current folder as one project undo
+// step, selected and renamed like a new clip
+template<class Document, class Data>
+static bool createAnimAsset(editor::Project* project, const fs::path& relative, const Data& initial, const char* what){
+    std::string error;
+    const uint64_t clock = editor::AnimationClipController::clipCommitClock(project);
+    if (!Document::create(project, relative.generic_string(), initial, &error)) {
+        editor::Backend::getApp().registerAlert(what, error);
+        return false;
+    }
+    // an animation asset write of the editor UI: Ctrl+Z undoes it from any window (9.R5c)
+    editor::AnimationClipController::markClipCommit(clock);
+    return true;
+}
+
+void editor::ProjectWindow::assetsCreateAnimatorController() {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    // Unity's Create > Animator Controller: a Base Layer, no states, no parameters
+    anim::ControllerData initial;
+    anim::ControllerLayer base;
+    base.name = anim::BASE_LAYER_NAME;
+    initial.layers.push_back(base);
+    const fs::path relative = uniqueRelativePath(currentPath, "New Animator Controller", anim::CONTROLLER_EXTENSION);
+    if (!createAnimAsset<AnimatorControllerDocument, anim::ControllerData>(project, relative, initial, "Create Animator Controller")) {
+        return;
+    }
+    scanDirectory(currentPath);
+    const std::string fileName = relative.filename().string();
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+    updateInspectedAsset(fileName);
+    startRename(fileName);
+}
+
+void editor::ProjectWindow::assetsCreateAvatarMask() {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    // Unity's Create > Avatar Mask: everything passes (every body part 1, default 1)
+    anim::AvatarMaskData initial;
+    initial.defaultWeight = 1.0f;
+    initial.hasHumanoid = true;
+    for (auto& part : initial.parts) part = 1.0f;
+    const fs::path relative = uniqueRelativePath(currentPath, "New Avatar Mask", anim::MASK_EXTENSION);
+    if (!createAnimAsset<AvatarMaskDocument, anim::AvatarMaskData>(project, relative, initial, "Create Avatar Mask")) {
+        return;
+    }
+    scanDirectory(currentPath);
+    const std::string fileName = relative.filename().string();
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+    updateInspectedAsset(fileName);
+    startRename(fileName);
+}
+
 void editor::ProjectWindow::assetsCreateAnimationClip() {
     if (currentPath.empty()) {
         return;
@@ -4188,6 +4275,18 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
         if (vatAppHooks().openBaker) {
             vatAppHooks().openBaker(project, filePath, VatBakerSource::VatAsset);
         }
+    } else if (file.type == FileType::AVATAR_MASK || (file.type == FileType::ANIMATOR_CONTROLLER && !animationClipAppHooks().openAnimator)) {
+        // edited in the Inspector's asset view (a controller there too until the Animator window is)
+        selectedFiles.clear();
+        selectedFiles.insert(file.name);
+        lastSelectedFile = file.name;
+        project->setInspectedAsset(filePath.lexically_normal());
+        if (InspectorWindow* inspector = Backend::getApp().getInspectorWindow()) {
+            inspector->setOpen(true);
+        }
+    } else if (file.type == FileType::ANIMATOR_CONTROLLER) {
+        // the Animator window on the controller, bound to no GameObject
+        animationClipAppHooks().openAnimator(project, project->normalizeToProjectRelative(filePath).generic_string(), 0, NULL_ENTITY);
     } else if (file.type == FileType::ANIMATION_CLIP && animationClipInspectorHooks().openClip) {
         // the Animation window, target-less (the clip's preview model), as the component stores it
         const std::string clip = project->isInsideAssetsPath(filePath)
