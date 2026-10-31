@@ -305,6 +305,12 @@ namespace jasperengine::editor{
         void clearVertexAnimatorPreviewScene(uint32_t sceneId);
         // the inspected .vat (Project window click)
         void drawVatAsset(const std::filesystem::path& asset);
+        // InspectorWindowCamera.cpp (camera shake spec 9)
+        void drawCameraShakerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawCameraFollowComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawShakePresetAsset(const std::filesystem::path& asset);
+        // the Test strip's edit-mode preview stops once its GameObject (or .shake) is not shown
+        void syncCameraShakePreview(SceneProject* shown, const std::vector<Entity>& selection);
         void drawCreateCrowdDialog();
         // Sprite normals (InspectorWindowSpriteNormals.cpp): a generated normal map (or its source
         // image) clicked in the Project window; false for any other image (the scene selection

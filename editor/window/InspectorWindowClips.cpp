@@ -1384,6 +1384,13 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         drawVatAsset(asset);
         return true;
     }
+    // a .shake: its own view (InspectorWindowCamera.cpp)
+    if (Util::isShakePresetFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawShakePresetAsset(asset);
+        return true;
+    }
     // a generated normal map or its source image: their own view; any other image keeps the scene selection
     if (Util::isImageFile(file)) return drawSpriteNormalsAsset(asset);
     const bool clip = Util::isAnimationClipFile(file);

@@ -386,6 +386,9 @@ namespace jasperengine::editor {
         // one project undo step (AnimationClipDocument::create), then renamed in place (the
         // App's createClipAsset hook, set by this window)
         void assetsCreateAnimationClip();
+        // Assets > Create > Shake Preset: "New Shake Preset.shake" with the explosion preset's values,
+        // one project undo step, then renamed in place (camera shake spec 6)
+        void assetsCreateShakePreset();
         void assetsShowInFileManager();
         void assetsOpenSelected();
         void assetsRenameSelected();

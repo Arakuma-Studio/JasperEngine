@@ -16007,6 +16007,8 @@ void editor::InspectorWindow::show(){
         stopSoundPreview();
         stopActionPreviewIfActive();
         stopVertexAnimatorPreview();
+        // a .shake's Test preview belongs to the inspected asset
+        syncCameraShakePreview(project->getSelectedScene(), {});
         ImGui::End();
         return;
     }
@@ -16031,6 +16033,8 @@ void editor::InspectorWindow::show(){
             && entities[0] == actionPreviewEntity;
     // the Vertex Animator preview belongs to the shown GameObject too
     syncVertexAnimatorPreview(sceneProject, entities);
+    // and the Camera Shaker's Test preview
+    syncCameraShakePreview(sceneProject, entities);
     if (actionPreviewing && !previewSelectionMatches) {
         stopActionPreviewIfActive();
     }
@@ -16159,6 +16163,10 @@ void editor::InspectorWindow::show(){
                     drawAnimationPlayerComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::VertexAnimatorComponent){
                     drawVertexAnimatorComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::CameraShakerComponent){
+                    drawCameraShakerComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::CameraFollowComponent){
+                    drawCameraFollowComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::CameraComponent){
                     drawCameraComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::AudioSourceComponent){
