@@ -113,9 +113,9 @@ LIMITS.update({"user_settings": 550})
 # ui-canvas-group: create_ui's canvas_group node option (the rules in jasper://docs/ui) and
 # create_entity's canvas_group type; merged with main (lines-trails): 150 tools measured 106771
 # shader globals (spec 2026-10-31-shader-globals 6.7): no new tool; get_shader_uniforms names the globals a
-# shader reads and its global_bindings (+51); merged with main (lines-trails, physics-2d, script-lifecycle):
-# 150 tools measured 106680, the limit set to it
-TOTAL_LIMIT = 106680
+# shader reads and its global_bindings (+51); merged with main (persistence, ui-canvas-group): 150 tools
+# measured 106825, the limit set to it
+TOTAL_LIMIT = 106825
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

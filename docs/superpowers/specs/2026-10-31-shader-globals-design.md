@@ -429,7 +429,7 @@ Decisions taken while implementing (branch `gaps/shader-globals`, on `gaps/lines
     numbers (lossless); an entry that cannot be read is left out with an error, the rest kept.
 12. **Agent guide**: the merged tree's guide was over its 16 KB budget (lines-trails' line); the
     shader-globals line was added and a few sentences elsewhere were shortened to fit (16333
-    bytes; again after merging main: 16332).
+    bytes; after the later merges of main: 16373).
 13. **Not done**: the frame-stats bench of section 8 (500 draws on a mid-range Android phone) was
     not measured: no device here. The `SMOKE_BACKEND=gles3/vulkan` smoke runs were not run;
     every backend's compile and reflection offsets are checked by the unit test
