@@ -257,9 +257,23 @@ namespace {
         return allowed;
     }
 
-    // GL warm draws (spec S32 R4): asked for, in worker mode
+    // GLES (Android): warm draws wait for a run on Adreno/Mali (the GPU campaign verified desktop
+    // GL on NVIDIA only); JASPER_GL_WARM_DRAWS=1 allows them there, for driver investigations
+    bool glesWarmDrawsAllowed(){
+#if defined(SOKOL_GLES3)
+        static const bool allowed = [](){
+            const char* value = std::getenv("JASPER_GL_WARM_DRAWS");
+            return value && std::string(value) == "1";
+        }();
+        return allowed;
+#else
+        return true;
+#endif
+    }
+
+    // GL warm draws (spec S32 R4): asked for, in worker mode, on a hardware desktop GL
     bool warmOn(const State& s){
-        if (s.mode != GpuCreationMode::GlWorker || !s.settings.glWarmDraws)
+        if (s.mode != GpuCreationMode::GlWorker || !s.settings.glWarmDraws || !glesWarmDrawsAllowed())
             return false;
         return !s.caps.gl_software || softwareWorkerAllowed();
     }

@@ -46,7 +46,7 @@ TEST(ShaderCreationReflect, EveryFieldRoundTrips){
     ShaderCreationProjectSettings changed;
     changed.asyncCreation = false;
     changed.mainThreadBudgetMs = 6.5f;
-    changed.glWarmDraws = true;
+    changed.glWarmDraws = false;
     changed.recordDuringPlay = true;
     changed.includeInBuilds = false;
     changed.holdFirstScene = false;

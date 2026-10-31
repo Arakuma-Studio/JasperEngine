@@ -190,8 +190,8 @@ async def test_capture_profile(ed: Editor):
 
 
 async def test_capture_game_view_passes(ed: Editor):
-    """A capture taken while playing: view "game" is the Game view's passes (its camera's, under the
-    view's own tag), not only the editor's last pass; no view is every view's (GPU campaign fix)."""
+    """A capture taken while playing: view "game" (the engine's frame then) lists the Game view's
+    camera passes with their times, as the real-GPU benches read them (docs/perf/gpu-campaign.md)."""
     scene = await red_scene(ed)
     await ed.call("play", action="start", scene=scene)
     try:

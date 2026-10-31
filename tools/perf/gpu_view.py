@@ -78,10 +78,19 @@ async def device(ed) -> dict:
 
 
 async def gpu_passes(ed, frames: int = 300, view: str = "game") -> dict:
-    """{label: median GPU ms per frame} over `frames` recorded frames, plus "_frame" (the frame)."""
+    """{label: median GPU ms per frame} over `frames` recorded frames, plus "_frame" (the engine
+    frame's GPU time). A capture keeps each commit's view tag: while playing the Game view's passes
+    are the engine frame's (-1) on GL, but its own tag (2) on Vulkan with the view maximised, so
+    every tag is read and the labels merged (a sample has one tag: nothing counts twice)."""
     capture = await ed.call("capture_profile", frames=frames, gpu=True)
-    passes = await ed.call("get_gpu_passes", view=view, capture_id=capture["capture_id"])
-    out = {p["label"]: float((p.get("gpu_ms") or {}).get("median") or 0.0) for p in passes.get("passes", [])}
-    out["_frame"] = float((passes.get("frame_gpu_ms") or {}).get("median") or 0.0)
-    out["_frames"] = int(passes.get("frames_with_gpu", 0))
+    out: dict = {}
+    frames_seen = 0
+    for tag in (-1, 1, 2):
+        passes = await ed.call("get_gpu_passes", view=tag, capture_id=capture["capture_id"])
+        for p in passes.get("passes", []):
+            out[p["label"]] = out.get(p["label"], 0.0) + float((p.get("gpu_ms") or {}).get("median") or 0.0)
+        if tag == -1:
+            out["_frame"] = float((passes.get("frame_gpu_ms") or {}).get("median") or 0.0)
+        frames_seen = max(frames_seen, int(passes.get("frames_with_gpu", 0)))
+    out["_frames"] = frames_seen
     return out

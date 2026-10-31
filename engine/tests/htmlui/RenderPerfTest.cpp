@@ -41,6 +41,7 @@
 #include "htmlui/compat/ImportManifest.h"
 #include "htmlui/widgets/ItemsViewElement.h"
 #include "render/RenderBackendTime.h"
+#include "render/SystemRender.h"
 
 #include "json.hpp"
 
@@ -88,6 +89,7 @@ namespace {
         double maxGlyphMs = 0.0;
         double engineMs = 0.0;               // median: wall less the backend
         double frameMs = 0.0;                // median wall time
+        double gpuMs = -1.0;                 // median GPU time of the frame (S15 timers; -1: none)
         double gatherMs = 0.0;               // median
         double updateMs = 0.0, recordMs = 0.0, replayMs = 0.0;   // medians: Context::Update, Render, endFrame less the backend
         size_t gatherLive = 0, gatherCapacity = 0;
@@ -126,8 +128,14 @@ namespace {
     BenchRun measure(FixtureRunner& runner, int warm = 30, int measured = 120, const std::function<void(int)>& perFrame = {}){
         double clock = runner.time();
         RenderBackendTime::setEnabled(true);
+        // JASPER_HTMLUI_GPU_TIMES=1: the frame's GPU time too (S16 R24, the GPU campaign), a few
+        // frames late; off by default, so the CI timings do not include the timer queries
+        static const bool gpuTimes = std::getenv("JASPER_HTMLUI_GPU_TIMES") != nullptr;
+        if (gpuTimes)
+            SystemRender::acquireGpuTiming();
+        uint64_t gpuSeenFrame = 0;
         BenchRun run;
-        std::vector<double> engines, frames, gathers, updates, records, replays;
+        std::vector<double> engines, frames, gathers, updates, records, replays, gpus;
         for (int i = 0; i < warm + measured; i++){
             clock += 1.0 / 60.0;
             if (perFrame)
@@ -139,6 +147,11 @@ namespace {
             const auto start = std::chrono::steady_clock::now();
             runner.frameAt(clock, true);
             const double wall = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+            const PassList gpuList = gpuTimes ? SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, true) : PassList();
+            if (gpuTimes && i >= warm + 3 && gpuList.gpuFrameValid && gpuList.frame != gpuSeenFrame){
+                gpuSeenFrame = gpuList.frame;
+                gpus.push_back(gpuList.gpuFrameMs);
+            }
             if (i < warm)
                 continue;
             const HtmlUIRenderStats& stats = runner.renderer()->getStats();
@@ -162,6 +175,9 @@ namespace {
             run.gatherCapacity = std::max(run.gatherCapacity, runner.renderer()->getGatherCapacityBytes());
         }
         RenderBackendTime::setEnabled(false);
+        if (gpuTimes)
+            SystemRender::releaseGpuTiming();
+        run.gpuMs = gpus.empty() ? -1.0 : median(gpus);
         run.basePages = HtmlUI::getFontEngine().getPageCount();
         run.distancePages = HtmlUI::getFontEngine().getDistancePageCount();
         run.engineMs = median(engines);
@@ -205,7 +221,7 @@ namespace {
                 {"layersPushed", run.maxLayers}, {"boxShadowTextures", run.maxBoxShadowTextures}, {"runsMerged", run.last.runsMerged},
                 {"runCacheHits", run.last.runCacheHits}, {"instancesDrawn", run.last.instancesDrawn}, {"verticesGathered", run.last.verticesGathered},
                 {"geometrySubmitted", run.last.geometrySubmitted}, {"atlasBytes", run.last.atlasBytes}, {"maxGlyphsRasterized", run.maxGlyphs},
-                {"maxGlyphRasterMs", run.maxGlyphMs}, {"engineMs", run.engineMs}, {"frameMs", run.frameMs}, {"gatherMs", run.gatherMs}, {"updateMs", run.updateMs}, {"recordMs", run.recordMs}, {"replayMs", run.replayMs},
+                {"maxGlyphRasterMs", run.maxGlyphMs}, {"engineMs", run.engineMs}, {"frameMs", run.frameMs}, {"gpuMs", run.gpuMs}, {"gatherMs", run.gatherMs}, {"updateMs", run.updateMs}, {"recordMs", run.recordMs}, {"replayMs", run.replayMs},
                 {"gatherLiveBytes", run.gatherLive}, {"gatherCapacityBytes", run.gatherCapacity}};
     }
 
@@ -216,6 +232,8 @@ namespace {
                     name.c_str(), baseline.maxDraws, s16.maxDraws, baseline.maxStencilDraws, s16.maxStencilDraws, baseline.maxLayers,
                     s16.maxLayers, baseline.maxBoxShadowTextures, s16.maxBoxShadowTextures, baseline.engineMs, s16.engineMs, baseline.frameMs,
                     s16.frameMs);
+        if (baseline.gpuMs >= 0.0 && s16.gpuMs >= 0.0)
+            std::printf("[ ui-bench ] %-24s GPU %.4f -> %.4f ms (S15 timers, the frame)\n", "", baseline.gpuMs, s16.gpuMs);
         std::printf("[ ui-bench ] %-24s update %.3f -> %.3f ms, record %.3f -> %.3f ms, replay %.3f -> %.3f ms (gather %.3f ms)\n", "",
                     baseline.updateMs, s16.updateMs, baseline.recordMs, s16.recordMs, baseline.replayMs, s16.replayMs, s16.gatherMs);
         // what started the S16 runs (RmlRenderer::RunBreak), when it batched
