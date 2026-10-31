@@ -154,6 +154,8 @@ Log::print, never printf or std::cout. Angles are DEGREES. Build settings go in 
 - Poses (.poseanim): get/edit/render_pose_animation (jasper://docs/pose-animation).
 - Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}, for an Animation
   Player (jasper://docs/animation).
+- Crowds: bake_vertex_animation (preview, then output): a .vat a Vertex Animator plays on the
+  GPU (jasper://docs/vertex-animation).
 - Animator (.controller): edit_animator_controller, control_animator (jasper://docs/animator).
 
 ## Atmosphere

@@ -1,7 +1,7 @@
 #ifdef HAS_MORPHTARGET
     in vec3 a_morphTarget0;
     in vec3 a_morphTarget1;
-    #if (defined(HAS_MORPHNORMAL) && !defined(HAS_MORPHTANGENT)) || (!defined(HAS_MORPHNORMAL) && defined(HAS_MORPHTANGENT))
+    #if !defined(HAS_MORPHNORMAL) || !defined(HAS_MORPHTANGENT)
         in vec3 a_morphTarget2;
         in vec3 a_morphTarget3;
     #endif
@@ -41,7 +41,7 @@ vec3 getMorphPosition(vec3 pos){
     #ifdef HAS_MORPHTARGET
         pos += (morphWeights[0].x * a_morphTarget0);
         pos += (morphWeights[0].y * a_morphTarget1);
-        #if (defined(HAS_MORPHNORMAL) && !defined(HAS_MORPHTANGENT)) || (!defined(HAS_MORPHNORMAL) && defined(HAS_MORPHTANGENT))
+        #if !defined(HAS_MORPHNORMAL) || !defined(HAS_MORPHTANGENT)
             pos += (morphWeights[0].z * a_morphTarget2);
             pos += (morphWeights[0].w * a_morphTarget3);
         #endif

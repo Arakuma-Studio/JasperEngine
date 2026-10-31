@@ -310,6 +310,17 @@ namespace jasperengine {
             return holeCount == 0 && !orderDirty;
         }
 
+        // Closes the holes now (and re-sorts a Hierarchy array out of order): what the next
+        // index observation would do, at a point chosen for it (EntityRegistry::compactComponents:
+        // the scene's update and draw, the editor between commands and before a thread reads)
+        void compact(){
+            settle();
+        }
+
+        bool hasHoles() const {
+            return holeCount != 0;
+        }
+
         size_t size() const {
             return slotCount - holeCount;
         }
@@ -702,6 +713,16 @@ namespace jasperengine {
             sorts++;
         }
 
+        template<typename Fn>
+        void walkFrom(size_t slot, Fn& fn) {
+            for (; slot < slotCount; slot++){
+                const Entity entity = slotEntities[slot];
+                if (entity != NULL_ENTITY && !fn(entity, *slotPtr(slot))){
+                    return;
+                }
+            }
+        }
+
     public:
         ComponentArray(){
             trivialRemoval = std::is_trivially_destructible_v<T>;
@@ -818,6 +839,30 @@ namespace jasperengine {
                 if (slotEntities[next] != NULL_ENTITY) return slotPtr(next);
             }
             return nullptr;
+        }
+
+        // Calls fn(entity, component) for every component in index order while it returns
+        // true. Holes are stepped over, not closed: a component found by entity before stays
+        // where it is (only a Hierarchy array out of order is sorted first, as an index read
+        // would). fn must not add or remove components of this array.
+        template<typename Fn>
+        void forEach(Fn&& fn) {
+            if (orderDirty){
+                settle();
+            }
+            walkFrom(0, fn);
+        }
+
+        // The same for the components after the entity's (nothing when it has none here)
+        template<typename Fn>
+        void forEachAfter(Entity entity, Fn&& fn) {
+            if (orderDirty){
+                settle();
+            }
+            const uint32_t slot = entityToSlot.find(entity);
+            if (slot != ecs::SparseIndex::kNone){
+                walkFrom((size_t)slot + 1, fn);
+            }
         }
 
         JE_ECS_INLINE T* findComponent(Entity entity) {

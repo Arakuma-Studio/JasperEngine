@@ -106,6 +106,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<SplineInstantiateComponent>(ComponentOrder::Insertion, "SplineInstantiateComponent");
     registerComponent<SplineAnimateComponent>(ComponentOrder::Insertion, "SplineAnimateComponent");
     registerComponent<AnimatorComponent>(ComponentOrder::Insertion, "AnimatorComponent");
+    registerComponent<VertexAnimatorComponent>(ComponentOrder::Insertion, "VertexAnimatorComponent");
 
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
@@ -570,6 +571,10 @@ size_t EntityRegistry::getSystemEntityCount() const {
     return entityManager.countSystem();
 }
 
+void EntityRegistry::compactComponents() {
+    componentManager.compactAll();
+}
+
 void EntityRegistry::setEntityName(Entity entity, const std::string& name) {
     // only a name under a parent is part of a path (a root's or a lone entity's never is)
     if (entityManager.isCreated(entity) && entityManager.getSignature(entity).test(getComponentId<Transform>()) &&
@@ -821,6 +826,7 @@ void EntityRegistry::clear() {
     if (editorData) {
         editorData->registryCleared();
     }
+    compactComponents();
 }
 
 void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTransform){

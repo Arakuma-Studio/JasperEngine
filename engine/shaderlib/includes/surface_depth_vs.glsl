@@ -13,8 +13,8 @@
 // and v_color (SURFACE_COLOR, the vertex colour times the instance colour) for a fragment
 // stage that alpha clips (includes/surface_depth_fs.glsl with SURFACE_DEPTH_DISCARD).
 // SURFACE_SMOOTH_NORMALS gives the hook surfaceSmoothNormal as includes/surface_vs.glsl does,
-// and surfaceFadeVisible (the instance distance fade's scale) is the same too. The lattices
-// (HAS_LATTICE) deform the vertex as there, before the hook.
+// and surfaceFadeVisible (the instance distance fade's scale) is the same too. A Vertex
+// Animation (HAS_VAT) and the lattices (HAS_LATTICE) move the vertex as there, before the hook.
 
 // Inputs only the hooks read: without them they are not declared at all, since a GL
 // driver drops an unread attribute and the bind then misses it
@@ -118,6 +118,14 @@ out vec2 v_projZW;
 #include "includes/instance_normal.glsl"
 #include "includes/morphtarget.glsl"
 #include "includes/lattice.glsl"
+#include "includes/vat.glsl"
+
+// as includes/surface_vs.glsl
+#ifdef HAS_NORMALS
+    #define SURFACE_REST_NORMAL a_normal
+#else
+    #define SURFACE_REST_NORMAL a_smoothNormal
+#endif
 
 // the object-space smoothed normal the hook may read (SURFACE_SMOOTH_NORMALS)
 vec3 surfaceSmoothNormal;
@@ -130,18 +138,20 @@ float surfaceFadeVisible;
 #endif
 
 void main() {
+    // the baked vertex animation first (HAS_VAT), as includes/surface_vs.glsl
+    vatEvaluate();
     mat4 boneTransform = getBoneTransform();
 
-    vec3 position = getMorphPosition(a_position);
+    vec3 position = getMorphPosition(vatPosition(a_position));
     #ifdef HAS_LATTICE
         // as includes/surface_vs.glsl (no tangent here)
         float latticeStretchValue = 1.0;
         vec3 latticeNormal = vec3(0.0, 1.0, 0.0);
         #ifdef HAS_NORMALS
-            latticeNormal = getMorphNormal(a_normal);
+            latticeNormal = getMorphNormal(vatNormal(a_normal));
         #endif
         #ifdef SURFACE_SMOOTH_NORMAL_INPUT
-            vec3 latticeSmoothNormal = a_smoothNormal;
+            vec3 latticeSmoothNormal = vatSmoothNormal(a_smoothNormal, SURFACE_REST_NORMAL);
         #else
             vec3 latticeSmoothNormal = latticeNormal;
         #endif
@@ -160,7 +170,7 @@ void main() {
         #ifdef HAS_LATTICE
             objectNormal = getSkinNormal(latticeNormal, boneTransform);
         #else
-            objectNormal = getSkinNormal(getMorphNormal(a_normal), boneTransform);
+            objectNormal = getSkinNormal(getMorphNormal(vatNormal(a_normal)), boneTransform);
         #endif
         #ifdef HAS_TERRAIN
             objectNormal = getTerrainNormal(objectNormal, position);
@@ -172,7 +182,7 @@ void main() {
         #ifdef HAS_LATTICE
             vec3 smoothNormal = normalize(getSkinNormal(latticeSmoothNormal, boneTransform));
         #else
-            vec3 smoothNormal = normalize(getSkinNormal(a_smoothNormal, boneTransform));
+            vec3 smoothNormal = normalize(getSkinNormal(vatSmoothNormal(a_smoothNormal, SURFACE_REST_NORMAL), boneTransform));
         #endif
     #endif
 

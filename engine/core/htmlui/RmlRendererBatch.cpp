@@ -214,10 +214,13 @@ Rml::Rectanglef RmlRenderer::geometryBounds(RmlGeometry& geometry){
 }
 
 Rml::Rectanglei RmlRenderer::effectiveScissorTarget() const{
-    const Rml::Rectanglei full = Rml::Rectanglei::FromSize(Rml::Vector2i(std::max(targetSize.x, 1), std::max(targetSize.y, 1)));
-    Rml::Rectanglei scissor = scissorEnabled ? scissorTarget : full;
+    // in the top layer's pixels: the viewport's, or a region layer's beyond it (P7-F2)
+    const Rml::Rectanglei frame = getTopLayerFrame();
+    Rml::Rectanglei scissor = scissorIn(frame);
     if (activeClipScope >= 0 && activeClipScope < (int)clipScopes.size() && clipScopes[(size_t)activeClipScope].mode == ScopeMode::ELIDED){
-        const Rml::Rectanglei clip = clipScopes[(size_t)activeClipScope].scissor;
+        // the scope's scissor is in target px, as the recording's
+        const Rml::Rectanglei scoped = clipScopes[(size_t)activeClipScope].scissor;
+        const Rml::Rectanglei clip = Rml::Rectanglei::FromCorners(scoped.p0 - frame.p0, scoped.p1 - frame.p0);
         const Rml::Vector2i p0 = Rml::Math::Max(scissor.p0, clip.p0);
         const Rml::Vector2i p1 = Rml::Math::Min(scissor.p1, clip.p1);
         scissor = Rml::Rectanglei::FromCorners(p0, Rml::Math::Max(p0, p1));
@@ -492,7 +495,9 @@ void RmlRenderer::drawPrimitivesNow(const HtmlUIPrimitive* primitives, size_t co
         return;
     if (!bindDrawLayer(false))
         return;
-    // clipped away: sokol widens an empty scissor to 1x1 on Metal/Vulkan/WebGPU
+    // the frame of the layer drawn into: the viewport, or a region layer's part of the target
+    // plane (P7-F2); clipped away: sokol widens an empty scissor to 1x1 on Metal/Vulkan/WebGPU
+    const Rml::Rectanglei frame = frameRectOf(drawLayerIndex());
     const Rml::Rectanglei scissor = currentScissorTarget();
     if (scissor.Width() <= 0 || scissor.Height() <= 0)
         return;
@@ -503,14 +508,16 @@ void RmlRenderer::drawPrimitivesNow(const HtmlUIPrimitive* primitives, size_t co
     size_t offset = 0;
     if (!appendTransient(primitiveScratch.data(), count * sizeof(HtmlUIPrimitive), false, buffer, offset))
         return;
-    applyPassViewport(Rml::Rectanglei::FromSize(Rml::Vector2i(std::max(targetSize.x, 1), std::max(targetSize.y, 1))));
+    applyPassViewport(Rml::Rectanglei::FromSize(Rml::Vector2i(std::max(frame.Width(), 1), std::max(frame.Height(), 1))));
     applyPassScissor(scissor);
     static const std::array<HtmlUITexture*, 4> none{};
-    drawInstances(*buffer, offset, (uint32_t)count, none, transform, currentClipParams(nullptr), getGeometryState(BlendMode::PREMULTIPLIED), scissor);
+    drawInstances(*buffer, offset, (uint32_t)count, none, transform, currentClipParams(nullptr), getGeometryState(BlendMode::PREMULTIPLIED), scissor,
+                  frame);
 }
 
 bool RmlRenderer::drawInstances(BufferRender& buffer, size_t byteOffset, uint32_t count, const std::array<HtmlUITexture*, 4>& slots,
-                                const Rml::Matrix4f& matrix, const ClipParams& clipParams, const PipelineState& state, Rml::Rectanglei scissor){
+                                const Rml::Matrix4f& matrix, const ClipParams& clipParams, const PipelineState& state, Rml::Rectanglei scissor,
+                                Rml::Rectanglei frame){
     primObject.replaceVertexBuffer(&primInstanceTemplate, &buffer, byteOffset);
     // u_fs_htmluiSlots: each slot's kind and MTSDF parameters
     struct SlotParams {
@@ -542,22 +549,25 @@ bool RmlRenderer::drawInstances(BufferRender& buffer, size_t byteOffset, uint32_
     }
     if (!primObject.beginDraw(state))
         return false;
+    // `matrix` is to the target's clip space, the layer drawn into covers `frame` of it
     HtmlUIPrimParams params;
-    std::memcpy(params.transform, matrix.data(), sizeof(params.transform));
-    params.viewport[0] = (float)std::max(targetSize.x, 1);
-    params.viewport[1] = (float)std::max(targetSize.y, 1);
+    const Rml::Matrix4f inFrame = toFrame(frame, matrix);
+    std::memcpy(params.transform, inFrame.data(), sizeof(params.transform));
+    params.viewport[0] = (float)std::max(frame.Width(), 1);
+    params.viewport[1] = (float)std::max(frame.Height(), 1);
     params.viewport[2] = params.viewport[3] = 0.0f;
     // shapes drawn in document px (no element transform): their quads, widened for the edge's
     // antialiasing, cut to the scissor, so no fragment outside it is ever made (a rasterizer may
-    // leak samples of a primitive across the scissor's edge: llvmpipe at 4 samples)
+    // leak samples of a primitive across the scissor's edge: llvmpipe at 4 samples). The scissor
+    // is in the frame's px, the quads in document px
     params.scissor[0] = params.scissor[1] = params.scissor[2] = params.scissor[3] = 0.0f;
     if (std::memcmp(matrix.data(), projection.data(), sizeof(float) * 16) == 0){
         const Rml::Vector2f pixel = getPixelScale();
         params.viewport[2] = 1.0f;
-        params.scissor[0] = (float)scissor.Left() / pixel.x;
-        params.scissor[1] = (float)scissor.Top() / pixel.y;
-        params.scissor[2] = (float)scissor.Right() / pixel.x;
-        params.scissor[3] = (float)scissor.Bottom() / pixel.y;
+        params.scissor[0] = (float)(scissor.Left() + frame.Left()) / pixel.x;
+        params.scissor[1] = (float)(scissor.Top() + frame.Top()) / pixel.y;
+        params.scissor[2] = (float)(scissor.Right() + frame.Left()) / pixel.x;
+        params.scissor[3] = (float)(scissor.Bottom() + frame.Top()) / pixel.y;
     }
     primObject.applyUniformBlock(primParamsSlot, sizeof(HtmlUIPrimParams), &params);
     primObject.applyUniformBlock(primClipSlot, sizeof(ClipParams), const_cast<ClipParams*>(&clipParams));
@@ -1396,10 +1406,19 @@ void RmlRenderer::destroyGatherPages(){
 void RmlRenderer::drawRun(const BatchRun& run){
     if (!bindTopLayer())
         return;
-    const Rml::Rectanglei full = Rml::Rectanglei::FromSize(Rml::Vector2i(std::max(targetSize.x, 1), std::max(targetSize.y, 1)));
-    const Rml::Rectanglei scissor = run.scissorSet ? run.scissor : full;
+    // the top layer's part of the target plane: the viewport, or a region layer's (P7-F2); the
+    // run's scissor is in target px, as recorded
+    const Rml::Rectanglei frame = frameRectOf(layersSize - 1);
+    const Rml::Rectanglei full = Rml::Rectanglei::FromSize(Rml::Vector2i(std::max(frame.Width(), 1), std::max(frame.Height(), 1)));
+    Rml::Rectanglei scissor = full;
+    if (run.scissorSet){
+        const Rml::Vector2i p0 = Rml::Math::Max(run.scissor.p0 - frame.p0, full.p0);
+        const Rml::Vector2i p1 = Rml::Math::Min(run.scissor.p1 - frame.p0, full.p1);
+        scissor = Rml::Rectanglei::FromCorners(p0, Rml::Math::Max(p0, p1));
+    }
     if (scissor.Width() <= 0 || scissor.Height() <= 0)
         return;
+    const Rml::Matrix4f runTransform = toFrame(frame, run.transform);
 
     StencilState stencil;
     if (run.stencil){
@@ -1441,7 +1460,8 @@ void RmlRenderer::drawRun(const BatchRun& run){
         applyPassViewport(full);
         applyPassScissor(scissor);
         if (instances){
-            if (!drawInstances(page.data, (size_t)first.dataFirst * sizeof(HtmlUIPrimitive), count, run.slots, run.transform, clipParams, state, scissor))
+            if (!drawInstances(page.data, (size_t)first.dataFirst * sizeof(HtmlUIPrimitive), count, run.slots, run.transform, clipParams, state, scissor,
+                               frame))
                 return;
         }else{
             geometryObject.replaceVertexBuffer(&compositeVertexBuffer, &page.data, 0);
@@ -1452,7 +1472,7 @@ void RmlRenderer::drawRun(const BatchRun& run){
             if (!geometryObject.beginDraw(state))
                 return;
             HtmlUIParams params;
-            std::memcpy(params.transform, run.transform.data(), sizeof(params.transform));
+            std::memcpy(params.transform, runTransform.data(), sizeof(params.transform));
             params.translation[0] = params.translation[1] = params.translation[2] = params.translation[3] = 0.0f;
             geometryObject.applyUniformBlock(geometryParamsSlot, sizeof(HtmlUIParams), &params);
             geometryObject.applyUniformBlock(geometryClipSlot, sizeof(ClipParams), const_cast<ClipParams*>(&clipParams));

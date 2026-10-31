@@ -21,10 +21,10 @@ TIMEOUT = 900
 EVIDENCE = Path(__file__).resolve().parents[3] / "build" / "evidence"
 
 SYSTEMS = ["ActionSystem", "MeshSystem", "UISystem", "UIDocumentSystem", "RenderSystem", "PhysicsSystem", "ParticleSubsystem", "AudioSystem"]
-# every scene system in schedule order: upstream's pose animator, lattice deformer and fluid
-# simulation systems, S21's animator, S18's splines and S19's navigation too (the timing checks
-# stay on SYSTEMS: those have nothing to do in these scenes)
-ALL_SYSTEMS = ["ActionSystem", "AnimatorSystem", "PoseAnimatorSystem", "SplineSystem", "MeshSystem", "LatticeSystem", "UISystem", "UIDocumentSystem", "FluidSystem", "RenderSystem",
+# every scene system in schedule order: S21's Animator, upstream's pose animator, lattice deformer,
+# vertex animator and fluid simulation systems, S18's splines and S19's navigation too (the timing
+# checks stay on SYSTEMS: those have nothing to do in these scenes)
+ALL_SYSTEMS = ["ActionSystem", "AnimatorSystem", "PoseAnimatorSystem", "SplineSystem", "MeshSystem", "LatticeSystem", "VertexAnimatorSystem", "UISystem", "UIDocumentSystem", "FluidSystem", "RenderSystem",
                "NavigationSystem", "PhysicsSystem", "ParticleSubsystem", "AudioSystem"]
 
 

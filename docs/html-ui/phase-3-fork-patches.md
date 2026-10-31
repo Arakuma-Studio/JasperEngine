@@ -2716,7 +2716,8 @@ The agent-browser MCP tool is not used for goldens (shared browser, non-determin
   `"keyboard": true` presses Tab until the element has the focus, without it clicks the element
   (the pointer stays there); pointer positions are the rounded centre of the border box on both
   sides; without a capture step one capture is taken at the end (`<name>.png`); `"comment"` is
-  required with `"tolerance"` (`channel`, `badPercent`, `cluster`, `box`) and with `"samples": 1` (the engine renders the
+  required with `"tolerance"` (`channel`, `badPercent`, `cluster`, `box`; `"hardware": {...}` the same keys a hardware
+  GPU takes on top, where llvmpipe and lavapipe, the goldens' renderers, keep the rest) and with `"samples": 1` (the engine renders the
   fixture without MSAA instead of its default 4x; for content scrolled past clip edges, §3.12.10); `"boxes": true` makes
   the boxes the oracle and the image comparison reported only (glyph rasterization differs);
   `"selfTest": {"expect": "match" | "mismatch", "referenceCss"}` is for `fixtures/p3/testkit`

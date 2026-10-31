@@ -4,8 +4,9 @@
 // Unity's AssetDatabase: every asset of the project (editor/asset/AssetTypes.cpp decides
 // which files are assets) has a 128-bit GUID that survives renames and moves, inside the
 // editor or outside it. Engine YAML assets (.prefab, .scene, .material) keep it in the file
-// as a top-level `guid:` key, .anim clips as the top-level "guid" member of their JSON
-// (animation clips spec 9.R8); every other asset in a `<file>.meta` sidecar (AssetMeta).
+// as a top-level `guid:` key, .anim clips and .vat Vertex Animations as the top-level "guid"
+// member of their JSON (animation clips spec 9.R8, vertex animation spec 2.1); every other
+// asset in a `<file>.meta` sidecar (AssetMeta).
 // Model files list their sub-assets (meshes, materials, ...) with derived GUIDs. An asset
 // may list former GUIDs (redirects): references to them resolve to it.
 //
