@@ -399,7 +399,7 @@ or paused physics: none). Every script of the GameObject that defines the method
 or not** (Unity), while the GameObject is active in hierarchy. A collider's `receiver` (Inspector
 "Send Callbacks To", `edit_colliders` `receiver`) also gets that collider's callbacks: Unity's child
 colliders with their own scripts. Collisions need a dynamic body on one side (or a kinematic one
-with `collideKinematicVsNonDynamic`); triggers (a 2D collider's `sensor`, a 3D body's `sensor`) also
+with `collideKinematicVsNonDynamic`); triggers (a 2D collider's `sensor`, a 3D collider's `isTrigger` or body `sensor`) also
 fire with kinematic and static bodies in 3D. One callback per collider pair: a trigger and a
 solid collider of one body touching the same collider give both.
 

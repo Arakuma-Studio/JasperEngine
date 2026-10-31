@@ -668,18 +668,16 @@ contradicted the code:
    `ReceiversChanged` listeners when that happens, so physics drops the bits. Added
    `describeReceivers` (the Inspector's Callbacks line, MCP) and the per-second error rate limit of
    the contact messages (note 8). T22 tests that run-time detection instead of a static assert.
-2. **physics-3d is not here yet**, so this branch made what it needs exactly as physics-3d §6.1.6
-   specifies: `JoltPairFilter3D` (in `JPA`) on every body (`CollisionGroup(filter, group,
-   subGroup = entity)`), `Rigidbody::setCollisionGroupID` sets the group id on it, the gear and
-   rack-and-pinion joints use its `JOINT` reason (removed when the joint is destroyed) instead of a
-   `GroupFilterTable` that replaced the body's group, `Physics.ignoreCollision` its `SCRIPT` reason.
-   3D triggers are the body `sensor` until physics-3d adds `Collider3D::isTrigger` (its
-   §6.1.5 trigger step goes first in the listener, marked there); `Collider.isTrigger` reports the
-   body's sensor. D15 is applied for kinematic sensor bodies (`mCollideKinematicVsNonDynamic`);
-   manifold reduction is turned off for compound bodies with collision listener bits, also when
-   the mask changes on a live body. physics-3d's shape-only rebuilds and `removeCollider` are not
-   needed for D8: a whole-body rebuild is already invisible (the pair is found again in the same
-   step).
+2. **physics-3d** (merged into this branch late, from `main`): its `JoltPairFilter3D`, per-collider
+   trigger step (first in the listener) and trigger companions are used as they are.
+   `Physics.ignoreCollision` sets its `SCRIPT` reason through `setBodyPairIgnored3D` (queued inside a
+   step, both bodies woken); a body that goes forgets its pairs. The packed user data
+   (`entity | mask << 32`) is on the body and on its trigger companion, whose contacts count as the
+   owner's (the raw contact check accepts either id; a companion never sleeps, so its trigger pairs
+   are not kept as asleep). Manifold reduction is off for compound bodies with collision listener
+   bits (`usesManifoldReduction3D`); D15 also covers kinematic body-level sensors.
+   `Collider.isTrigger` is the collider's `isTrigger` or the body's `sensor`. Removing a 3D collider
+   renumbers the tracker's pairs like 2D.
 3. **Listener masks** are recomputed for all bodies of a scene before its next step when any
    `ReceiversChanged` arrives (rare: an instance made, released, enabled, disabled), and at body
    creation. 2D: a listening body's shapes get Box2D's contact / sensor events (chain segments
