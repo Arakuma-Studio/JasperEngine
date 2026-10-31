@@ -452,10 +452,12 @@ void editor::InspectorWindow::drawVideoPlayerComponent(ComponentType cpType, Sce
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(1);
             if (ImGui::SmallButton("Native##videosize")){
-                CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
-                    new PropertyCmd<unsigned int>(project, sceneProject->id, entities[0], cpType, "renderTextureWidth", 0u));
-                CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
-                    new PropertyCmd<unsigned int>(project, sceneProject->id, entities[0], cpType, "renderTextureHeight", 0u));
+                // both sizes back to the video's: one undo step
+                MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
+                multiCmd->addPropertyCmd<unsigned int>(project, sceneProject->id, entities[0], cpType, "renderTextureWidth", 0u);
+                multiCmd->addPropertyCmd<unsigned int>(project, sceneProject->id, entities[0], cpType, "renderTextureHeight", 0u);
+                multiCmd->setNoMerge();
+                CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
             }
         }
     }
