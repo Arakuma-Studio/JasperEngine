@@ -116,12 +116,16 @@ namespace {
             GpuEnvironment::drawFrames(1);
         }
 
+        // after a clear: the lines the fixture's loads logged are not in the list
         void logKnownSet(){
+            Log::clearEntries();
             Log::print("alpha info");
             Log::warn("beta warning");
             Log::error("gamma error\nstack traceback:\n\tgame.lua:12: in function 'hit'");
             Log::error("gamma error\nstack traceback:\n\tgame.lua:12: in function 'hit'");
             Log::print("delta info");
+            // these errors are the test's own
+            TestSystem::get().clearLogs();
         }
 
         // the RGBA of the target at a pixel (rows top first)
@@ -248,8 +252,9 @@ TEST_F(DebugOverlayTest, ThreeFingerHold){
 TEST_F(DebugOverlayTest, FiltersSearchCollapseAndTraces){
     ASSERT_TRUE(fixture->waitUntilLoaded());
     enable();
-    logKnownSet();
     DebugOverlay::showConsole();
+    GpuEnvironment::drawFrames(2);
+    logKnownSet();
     GpuEnvironment::drawFrames(2);
     ASSERT_NE(document(), nullptr);
     EXPECT_EQ(rows(), 5);
@@ -302,8 +307,9 @@ TEST_F(DebugOverlayTest, FiltersSearchCollapseAndTraces){
 TEST_F(DebugOverlayTest, CopyAndSave){
     ASSERT_TRUE(fixture->waitUntilLoaded());
     enable();
-    logKnownSet();
     DebugOverlay::showConsole();
+    GpuEnvironment::drawFrames(2);
+    logKnownSet();
     GpuEnvironment::drawFrames(2);
     click("copy");
     const std::string copied = System::instance().getClipboardText();
@@ -363,15 +369,19 @@ TEST_F(DebugOverlayTest, AboveTheGameAndOfferedInputFirst){
          "<div id=\"full\"></div>");
     fixture->addDocument("ui/game.html", 0);
     ASSERT_TRUE(fixture->waitUntilLoaded());
+    GpuEnvironment::drawFrames(2);
+    const std::array<int, 4> game = pixel(640, 600);
+    ASSERT_GT(game[0], 200) << "the game's page: " << game[0] << "," << game[1] << "," << game[2];
     enable();
     DebugOverlay::showConsole();
     GpuEnvironment::drawFrames(3);
     ASSERT_NE(document(), nullptr);
 
-    // the console (top half, dark) over the game's red page; the red below it
+    // the console (top half, #0b0d12ee) over the game's red page; the red below it
     const std::array<int, 4> console = pixel(640, 300);
     const std::array<int, 4> below = pixel(640, 600);
-    EXPECT_LT(console[0], 60) << console[0] << "," << console[1] << "," << console[2];
+    EXPECT_NEAR(console[0], 28, 6) << console[0] << "," << console[1] << "," << console[2];
+    EXPECT_NEAR(console[1], 12, 6);
     EXPECT_GT(below[0], 200) << below[0];
 
     // a tap on the console's list is the overlay's; one below it is the game document's

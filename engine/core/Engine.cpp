@@ -889,7 +889,8 @@ void Engine::beginCompositeFramebuffer(){
 // per commit, so stacked scenes draw offscreen and are presented once. The other
 // backends draw them straight to the swapchain (re-check when sokol_gfx is updated)
 #if defined(SOKOL_VULKAN)
-    if (framebuffer || scenes.size() <= 1)
+    // the debug overlay's Scene is drawn as one more layer
+    if (framebuffer || scenes.size() + (DebugOverlay::getScene() ? 1 : 0) <= 1)
         return;
 
     if (ensureCompositeFramebuffer())

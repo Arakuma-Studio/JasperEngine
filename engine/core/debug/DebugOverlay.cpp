@@ -723,8 +723,10 @@ namespace {
         document.filename = EngineResources::overlayDocument;
         document.sortOrder = 1000;
         scene.addComponent<UIDocumentComponent>(s.entity, document);
-        // its default UI camera; the systems load with the view
+        // its default UI camera, sized to the canvas (Engine::systemViewChanged keeps it so); the
+        // systems load with the view
         scene.load();
+        scene.updateCameraSize();
 
         const float scale = overlayScale();
         const Rect view = Engine::getViewRect();
@@ -1389,6 +1391,11 @@ void DebugOverlay::update(double unscaledDelta){
             return;
     }
 
+    // the panels follow the state even when nothing shows, so a panel hidden now does not
+    // come back with the next one shown
+    if (s.layoutChanged)
+        applyLayout();
+
     // nothing shows: the document is hidden and nothing is drawn
     UIDocumentComponent* component = s.scene->findComponent<UIDocumentComponent>(s.entity);
     if (component && component->enabled != visible){
@@ -1405,8 +1412,6 @@ void DebugOverlay::update(double unscaledDelta){
     s.scene->getSystem<UIDocumentSystem>()->setReferenceSize(std::max(1, (int)std::round(view.getWidth() / scale)),
                                                            std::max(1, (int)std::round(view.getHeight() / scale)));
 
-    if (s.layoutChanged)
-        applyLayout();
     applySafeArea(scale);
     if (s.consoleVisible){
         updateRows();
