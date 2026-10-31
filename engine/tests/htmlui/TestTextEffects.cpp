@@ -13,7 +13,9 @@
 #include "htmlui/HtmlTextEffects.h"
 #include "htmlui/HtmlUIClock.h"
 #include "htmlui/compat/runtime/CompatProperties.h"
+#include "RmlFile.h"
 #include "RmlFontEngine.h"
+#include "RmlSystem.h"
 #include "util/FontRegistry.h"
 #include "util/TextEffects.h"
 
@@ -111,40 +113,12 @@ TEST(TextEffectProperty, EveryFunctionAndItsDefaults){
     EXPECT_FLOAT_EQ(parsed("rainbow()").layers[0].saturation, 0.8f);
 }
 
-TEST(TextEffectProperty, GradientAndLayers){
-    // as compat normalizes it (colours as hex) and as written
-    HtmlTextEffect gradient = parsed("gradient(2s add #ffff00 0%, #ff8800 100%)");
-    ASSERT_EQ(gradient.layers.size(), 1u);
-    const TextEffectLayer& layer = gradient.layers[0];
-    EXPECT_EQ(layer.type, TextEffectType::Gradient);
-    EXPECT_FLOAT_EQ(layer.duration, 2.0f);
-    EXPECT_EQ(layer.mix, TextEffectMix::Add);
-    ASSERT_EQ(layer.gradient.size(), 2u);
-    EXPECT_FLOAT_EQ(layer.gradient[0].color.y, 1.0f);
-    EXPECT_FLOAT_EQ(layer.gradient[1].position, 1.0f);
-    EXPECT_NEAR(layer.gradient[1].color.y, 0x88 / 255.0f, 1e-4f);
-
-    // stops spread evenly without positions; the mix defaults to multiply
-    HtmlTextEffect plain = parsed("gradient(red, lime, blue)");
-    EXPECT_EQ(plain.layers[0].mix, TextEffectMix::Multiply);
-    ASSERT_EQ(plain.layers[0].gradient.size(), 3u);
-    EXPECT_FLOAT_EQ(plain.layers[0].gradient[1].position, 0.5f);
-
-    // the menu title of the game: Waves + an added gradient, two layers in order
-    HtmlTextEffect menu = parsed("wave(0.06em 1.5s), gradient(1.5s add #ffffff, #ffd040)");
-    ASSERT_EQ(menu.layers.size(), 2u);
-    EXPECT_EQ(menu.layers[0].type, TextEffectType::Wave);
-    EXPECT_EQ(menu.layers[1].type, TextEffectType::Gradient);
-}
-
 TEST(TextEffectProperty, InvalidValuesAreReported){
     EXPECT_NE(parseError("wiggle()").find("unknown function"), std::string::npos);
     EXPECT_NE(parseError("wave(1s)").find("length"), std::string::npos);
     EXPECT_NE(parseError("wave(0.1em 2px)").find("time"), std::string::npos);
     EXPECT_NE(parseError("wave(0.1em 1s 1s)").find("angle"), std::string::npos);
     EXPECT_NE(parseError("shake(1em 2 3)").find("at most"), std::string::npos);
-    EXPECT_NE(parseError("gradient(2s)").find("colour"), std::string::npos);
-    EXPECT_NE(parseError("gradient(2s add notacolour)").find("colour"), std::string::npos);
     EXPECT_NE(parseError("wave").find("not a function"), std::string::npos);
 
     int iterations = 0;
@@ -210,6 +184,36 @@ namespace {
         }
     };
 
+}
+
+// colours parse through RmlUi (initialised by the fixture)
+TEST_F(TextEffectGlyphsTest, GradientAndLayers){
+    // as compat normalizes it (colours as hex) and as written
+    HtmlTextEffect gradient = parsed("gradient(2s add #ffff00 0%, #ff8800 100%)");
+    ASSERT_EQ(gradient.layers.size(), 1u);
+    const TextEffectLayer& layer = gradient.layers[0];
+    EXPECT_EQ(layer.type, TextEffectType::Gradient);
+    EXPECT_FLOAT_EQ(layer.duration, 2.0f);
+    EXPECT_EQ(layer.mix, TextEffectMix::Add);
+    ASSERT_EQ(layer.gradient.size(), 2u);
+    EXPECT_FLOAT_EQ(layer.gradient[0].color.y, 1.0f);
+    EXPECT_FLOAT_EQ(layer.gradient[1].position, 1.0f);
+    EXPECT_NEAR(layer.gradient[1].color.y, 0x88 / 255.0f, 1e-4f);
+
+    // stops spread evenly without positions; the mix defaults to multiply
+    HtmlTextEffect plain = parsed("gradient(red, lime, blue)");
+    EXPECT_EQ(plain.layers[0].mix, TextEffectMix::Multiply);
+    ASSERT_EQ(plain.layers[0].gradient.size(), 3u);
+    EXPECT_FLOAT_EQ(plain.layers[0].gradient[1].position, 0.5f);
+
+    // the menu title of the game: Waves + an added gradient, two layers in order
+    HtmlTextEffect menu = parsed("wave(0.06em 1.5s), gradient(1.5s add #ffffff, #ffd040)");
+    ASSERT_EQ(menu.layers.size(), 2u);
+    EXPECT_EQ(menu.layers[0].type, TextEffectType::Wave);
+    EXPECT_EQ(menu.layers[1].type, TextEffectType::Gradient);
+
+    EXPECT_NE(parseError("gradient(2s)").find("colour"), std::string::npos);
+    EXPECT_NE(parseError("gradient(2s add notacolour)").find("colour"), std::string::npos);
 }
 
 TEST_F(TextEffectGlyphsTest, WaveMovesEachGlyphByItsIndexAcrossStrings){
@@ -298,7 +302,7 @@ namespace {
 
         void SetUp() override{
             TextEffectGlyphsTest::SetUp();
-            compat::CompatProperties::registerAll();
+            jasperengine::htmlui::compat::CompatProperties::registerAll();
             HtmlTextEffects::install();
             HtmlUIClock::setFixedTime(10.0);
         }
@@ -309,7 +313,7 @@ namespace {
             if (document)
                 document->Close();
             document = nullptr;
-            compat::CompatProperties::reset();
+            jasperengine::htmlui::compat::CompatProperties::reset();
             TextEffectGlyphsTest::TearDown();
         }
 

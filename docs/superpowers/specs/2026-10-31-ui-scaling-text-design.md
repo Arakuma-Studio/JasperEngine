@@ -528,9 +528,10 @@ spec was silent, ambiguous or did not fit the code:
 10. **Lua `TextEffect`** is a standalone wrapper (not an `EntityHandle`: its `setLayer(i, ...)` would clash
     with `EntityHandle.setLayer(layer)`); `getLayer(i)` returns a `TextEffectLayerRef` whose fields write through
     to the running effect; `setLayer(i, ...)` takes a `TextEffectLayer` or a plain table.
-11. **UI particles (native).** Verified in code: Points sizes under a UI camera are UI units
-    (`computePointsScale` uses the camera's ortho height), and they inherit the ancestor scissor like UI
-    elements. "UI > Particle System" makes the legacy two-GameObject layout (a Points emitter "UI Particles"
+11. **UI particles (native).** Verified: Points sizes under a UI camera are UI units (`computePointsScale`
+    uses the camera's ortho height). The scissor was NOT inherited (only entities with a RectTransform took
+    the parent's scissor): fixed in `RenderSystem` so Points under UI use the nearest ancestor RectTransform's
+    scissor (an empty one skips the draw), pinned by `FullPathGoldenTest.UIPointsClippedByAPanel`. "UI > Particle System" makes the legacy two-GameObject layout (a Points emitter "UI Particles"
     with a generated `ui/particle_soft.png` and its "Particle System" child: unscaled time, local space, a
     sparkle in UI units, y down) because the single-GameObject form belongs to the particles feature.
     `create_particles` under a UI element or in a UI scene does the same for its presets (y flipped, unscaled

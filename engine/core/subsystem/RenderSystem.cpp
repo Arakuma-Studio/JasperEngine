@@ -15562,6 +15562,23 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
             if (clippedAway)
                 continue;
+        }else if (transform.parent != NULL_ENTITY &&
+                  signature.test(scene->getComponentId<PointsComponent>())){
+            // Points under UI (UI particles): clipped by the nearest ancestor RectTransform's
+            // scissor, like its UI children; they set none of their own
+            Entity ancestor = transform.parent;
+            while (ancestor != NULL_ENTITY && !scene->getSignature(ancestor).test(scene->getComponentId<RectTransformComponent>())){
+                ancestor = scene->getComponent<Transform>(ancestor).parent;
+            }
+            if (ancestor != NULL_ENTITY){
+                PassScissor parent = passScissor(scene->getComponent<Transform>(ancestor), scene->getComponent<RectTransformComponent>(ancestor));
+                if (*parent.active){
+                    if (parent.rect->getWidth() <= 0 || parent.rect->getHeight() <= 0)
+                        continue; // an empty rect would leak a pixel (see above)
+                    camera.render.applyScissor(*parent.rect);
+                    hasActiveScissor = true;
+                }
+            }
         }
 
         if (signature.test(scene->getComponentId<MeshComponent>())){
