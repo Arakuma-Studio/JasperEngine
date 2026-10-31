@@ -455,3 +455,8 @@ Decisions taken while implementing (branch `gaps/persistence`, on `gaps/script-l
     states by the entry's instance. A GameObject destroyed (no delay) before its first frame, such as a singleton's duplicate, gets no `start` (`ScriptRuntime::flushStarts` skips it, `ObjectManager::isDestroyPending`; Unity's Destroy in Awake). Regression tests for each, plus 3D Rigidbody velocity, the
     Hierarchy row and selection following (`PlayStartupScenesTest.cpp`) and an MCP test of a
     compiled C++ script in the persistent scene through a load and Play stop.
+14. **Verification after the review fixes** (`main` at `92cc07d2a` merged): 0 warnings; unit
+    suite 1201 passed, 8 skipped, 0 failed; full MCP suite 851 passed, 10 failed (the baseline
+    `test_animation_assets.py` / `test_lattice_scene.py`), 18 skipped; tool definitions, TOOLS.md
+    and TOTAL_LIMIT as on `main` (this feature adds no tool text); Web syntax check of the
+    changed engine files clean.
