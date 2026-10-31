@@ -18,6 +18,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
 
 using namespace jasperengine;
@@ -162,13 +164,6 @@ void UIOnScreenControl::OnUpdate(){
         if (hide || !IsVisible(true) || !document || !document->IsVisible())
             releaseAll(true);
     }
-}
-
-void UIOnScreenControl::OnChildRemove(Rml::Element* child){
-    Rml::Element::OnChildRemove(child);
-    // the control itself is being detached (it is its own child here): let go
-    if (child == this)
-        releaseAll(false);
 }
 
 void UIOnScreenControl::ProcessEvent(Rml::Event& event){

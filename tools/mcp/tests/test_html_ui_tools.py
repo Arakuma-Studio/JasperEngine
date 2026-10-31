@@ -102,6 +102,9 @@ LIMITS.update({"user_settings": 550})
 # input (spec 2026-10-31-input 12): send_input's action/axis/axis_delta events and the input.actions setting,
 # measured on the merged tree: total 106687 (106611 before), the limit raised by them
 TOTAL_LIMIT = 106700
+# ui-multitouch (spec 2026-10-31-ui-multitouch 10): create_ui's onscreen_stick / onscreen_button / touch_area
+# types and their mode / action / actions fields (+183); measured on the merged tree: total 106883
+TOTAL_LIMIT = 106883
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

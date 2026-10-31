@@ -106,7 +106,7 @@ async def add_probe(ed: Editor, scene):
 async def test_native_controls_three_fingers(ed: Editor):
     scene = (await ed.call("create_scene", name="Controls", type="UI"))["scene"]["id"]
     made = await ed.call("create_ui", scene=scene, root={"type": "onscreen_stick", "name": "Stick", "mode": "floating"})
-    ed.check(made.get("background") and made.get("handle"), f"the stick's parts: {made}")
+    ed.check(made["root"].get("background") and made["root"].get("handle"), f"the stick's parts: {made}")
     await ed.call("create_ui", scene=scene, root={"type": "touch_area", "name": "Look"})
     await ed.call("create_ui", scene=scene, root={"type": "onscreen_button", "name": "Fire", "action": "Fire1", "text": "Fire"})
     await add_probe(ed, scene)

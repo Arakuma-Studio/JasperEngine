@@ -37,7 +37,6 @@ namespace jasperengine{
 
     protected:
         void OnUpdate() override;
-        void OnChildRemove(Rml::Element* child) override;
 
     private:
         enum class Kind { STICK, BUTTON, AREA };
