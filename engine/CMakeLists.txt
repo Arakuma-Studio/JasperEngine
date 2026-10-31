@@ -1036,10 +1036,13 @@ set(JASPERENGINE_SRCS
     core/pool/AnimationClipPool.cpp
     core/pool/PhysicsMaterialPool.cpp
     core/pool/VertexAnimationPool.cpp
+    core/object/physics/Collision.cpp
+    core/object/physics/Collision2D.cpp
     core/registry/EntityCloner.cpp
     core/registry/EntityRegistry.cpp
     core/registry/TagManager.cpp
     core/registry/PhysicsLayers.cpp
+    core/physics/ContactTracker.cpp
     core/physics/ConvexDecomposition.cpp
     core/physics/JoltShapeBuilder.cpp
     core/physics/PhysicsMaterial.cpp
@@ -1095,6 +1098,7 @@ set(JASPERENGINE_SRCS
     core/lattice/LatticePresets.cpp
     core/lattice/LatticeRender.cpp
     core/subsystem/PhysicsSystem.cpp
+    core/subsystem/PhysicsSystemContacts.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UIDocumentSystem.cpp

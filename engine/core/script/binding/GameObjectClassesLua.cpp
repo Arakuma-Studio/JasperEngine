@@ -58,16 +58,62 @@
 #include "Joint2D.h"
 #include "Contact2D.h"
 #include "Manifold2D.h"
+#include "Collision2D.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "Rigidbody.h"
 #include "Joint3D.h"
 #include "Contact3D.h"
 #include "CollideShapeResult3D.h"
+#include "Collision.h"
 #include <stdexcept>
 #endif
 
 using namespace jasperengine;
+
+// The contact callbacks' values (physics-contacts): what they name may be gone since (nil then)
+namespace {
+
+    template<typename Ref>
+    std::optional<GameObject> luaColliderGameObject(const Ref& ref){
+        return ref.hasGameObject() ? std::optional<GameObject>(ref.getGameObject()) : std::nullopt;
+    }
+
+    template<typename Ref>
+    std::optional<GameObject> luaColliderReceiver(const Ref& ref){
+        const Entity receiver = ref.getReceiver();
+        return receiver != NULL_ENTITY ? std::optional<GameObject>(GameObject(ref.scene, receiver)) : std::nullopt;
+    }
+
+    // a new 1-based table of the contact points
+    template<typename CollisionT>
+    luabridge::LuaRef luaContactsTable(const CollisionT* self, lua_State* L){
+        luabridge::LuaRef table = luabridge::newTable(L);
+        for (size_t i = 0; i < self->contacts.size(); i++){
+            table[(int)i + 1] = self->contacts[i];
+        }
+        return table;
+    }
+
+    // getContact(i): 0-based, an error out of range (Unity throws)
+    template<typename CollisionT>
+    int luaGetContact(lua_State* L){
+        auto self = luabridge::get<const CollisionT*>(L, 1);
+        if (!self || !self.value()){
+            return luaL_error(L, "getContact: call it on a collision (collision:getContact(i))");
+        }
+        const lua_Integer index = luaL_checkinteger(L, 2);
+        const CollisionT* collision = self.value();
+        if (index < 0 || (size_t)index >= collision->contacts.size()){
+            return luaL_error(L, "getContact(%d): index out of range, the collision has %d contacts (0-based)", (int)index, (int)collision->contacts.size());
+        }
+        if (!luabridge::push(L, collision->contacts[(size_t)index])){
+            lua_pushnil(L);
+        }
+        return 1;
+    }
+
+}
 
 // Layer masks read as Unity's int (Everything is -1) and take any integer, keeping its
 // low 32 bits, so both -1 and ~LayerMask.getMask("UI") work
@@ -2442,6 +2488,51 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getBodyB", &Contact2D::getBodyB)
         .addFunction("getColliderIndexB", &Contact2D::getColliderIndexB)
         .endClass();
+    // physics-contacts: what onCollisionEnter2D / onTriggerEnter2D... get. Unity's Collision2D
+    // names the other side collider / rigidbody and this side otherCollider / otherRigidbody;
+    // thisCollider / thisRigidbody say it plainly.
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ColliderRef2D>("Collider2D")
+        .addProperty("gameObject", [] (const ColliderRef2D* self) -> std::optional<GameObject> { return luaColliderGameObject(*self); })
+        .addProperty("rigidbody", [] (const ColliderRef2D* self) -> std::optional<Rigidbody2D> { return self->hasRigidbody() ? std::optional<Rigidbody2D>(self->getRigidbody()) : std::nullopt; })
+        .addProperty("attachedRigidbody", [] (const ColliderRef2D* self) -> std::optional<Rigidbody2D> { return self->hasRigidbody() ? std::optional<Rigidbody2D>(self->getRigidbody()) : std::nullopt; })
+        .addProperty("index", &ColliderRef2D::getIndex)
+        .addProperty("type", &ColliderRef2D::getType)
+        .addProperty("isTrigger", &ColliderRef2D::isTrigger)
+        .addProperty("tag", &ColliderRef2D::getTag)
+        .addFunction("compareTag", &ColliderRef2D::compareTag)
+        .addProperty("receiver", [] (const ColliderRef2D* self) -> std::optional<GameObject> { return luaColliderReceiver(*self); })
+        .addFunction("isValid", &ColliderRef2D::isValid)
+        .addFunction("__eq", [] (const ColliderRef2D* self, const ColliderRef2D* other) { return other && *self == *other; })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ContactPoint2D>("ContactPoint2D")
+        .addProperty("point", &ContactPoint2D::getPoint)
+        .addProperty("normal", &ContactPoint2D::getNormal)
+        .addProperty("separation", &ContactPoint2D::getSeparation)
+        .addProperty("normalImpulse", &ContactPoint2D::getNormalImpulse)
+        .addProperty("tangentImpulse", &ContactPoint2D::getTangentImpulse)
+        .addProperty("relativeVelocity", &ContactPoint2D::getRelativeVelocity)
+        .addProperty("thisCollider", &ContactPoint2D::getThisCollider)
+        .addProperty("otherCollider", &ContactPoint2D::getOtherCollider)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<Collision2D>("Collision2D")
+        .addProperty("gameObject", [] (const Collision2D* self) -> std::optional<GameObject> { return luaColliderGameObject(self->otherCollider); })
+        .addProperty("collider", &Collision2D::getCollider)
+        .addProperty("rigidbody", [] (const Collision2D* self) -> std::optional<Rigidbody2D> { return self->otherCollider.hasRigidbody() ? std::optional<Rigidbody2D>(self->getRigidbody()) : std::nullopt; })
+        .addProperty("otherCollider", &Collision2D::getThisCollider)
+        .addProperty("otherRigidbody", [] (const Collision2D* self) -> std::optional<Rigidbody2D> { return self->thisCollider.hasRigidbody() ? std::optional<Rigidbody2D>(self->getThisRigidbody()) : std::nullopt; })
+        .addProperty("thisCollider", &Collision2D::getThisCollider)
+        .addProperty("thisRigidbody", [] (const Collision2D* self) -> std::optional<Rigidbody2D> { return self->thisCollider.hasRigidbody() ? std::optional<Rigidbody2D>(self->getThisRigidbody()) : std::nullopt; })
+        .addProperty("relativeVelocity", &Collision2D::getRelativeVelocity)
+        .addProperty("enabled", &Collision2D::isEnabled)
+        .addProperty("contactCount", &Collision2D::getContactCount)
+        .addFunction("getContact", &luaGetContact<Collision2D>)
+        .addProperty("contacts", [] (const Collision2D* self, lua_State* L) -> luabridge::LuaRef { return luaContactsTable(self, L); })
+        .endClass();
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -2564,6 +2655,50 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("combinedFriction", &Contact3D::getCombinedFriction, &Contact3D::setCombinedFriction)
         .addProperty("combinedRestitution", &Contact3D::getCombinedRestitution, &Contact3D::setCombinedRestitution)
         .addProperty("sensor", &Contact3D::isSensor, &Contact3D::setIsSensor)
+        // the points of getRelativeContactPointsOnA / OnB
+        .addProperty("numContactPoints", &Contact3D::getNumContactPoints)
+        // delivered after the step (setters do nothing then)
+        .addProperty("snapshot", &Contact3D::isSnapshot)
+        .endClass();
+
+    // physics-contacts: what onCollisionEnter / onTriggerEnter... get
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ColliderRef>("Collider")
+        .addProperty("gameObject", [] (const ColliderRef* self) -> std::optional<GameObject> { return luaColliderGameObject(*self); })
+        .addProperty("rigidbody", [] (const ColliderRef* self) -> std::optional<Rigidbody> { return self->hasRigidbody() ? std::optional<Rigidbody>(self->getRigidbody()) : std::nullopt; })
+        .addProperty("attachedRigidbody", [] (const ColliderRef* self) -> std::optional<Rigidbody> { return self->hasRigidbody() ? std::optional<Rigidbody>(self->getRigidbody()) : std::nullopt; })
+        .addProperty("index", &ColliderRef::getIndex)
+        .addProperty("type", &ColliderRef::getType)
+        .addProperty("isTrigger", &ColliderRef::isTrigger)
+        .addProperty("tag", &ColliderRef::getTag)
+        .addFunction("compareTag", &ColliderRef::compareTag)
+        .addProperty("receiver", [] (const ColliderRef* self) -> std::optional<GameObject> { return luaColliderReceiver(*self); })
+        .addFunction("isValid", &ColliderRef::isValid)
+        .addFunction("__eq", [] (const ColliderRef* self, const ColliderRef* other) { return other && *self == *other; })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ContactPoint>("ContactPoint")
+        .addProperty("point", &ContactPoint::getPoint)
+        .addProperty("normal", &ContactPoint::getNormal)
+        .addProperty("separation", &ContactPoint::getSeparation)
+        .addProperty("impulse", &ContactPoint::getImpulse)
+        .addProperty("thisCollider", &ContactPoint::getThisCollider)
+        .addProperty("otherCollider", &ContactPoint::getOtherCollider)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<Collision>("Collision")
+        .addProperty("gameObject", [] (const Collision* self) -> std::optional<GameObject> { return luaColliderGameObject(self->otherCollider); })
+        .addProperty("collider", &Collision::getCollider)
+        .addProperty("rigidbody", [] (const Collision* self) -> std::optional<Rigidbody> { return self->otherCollider.hasRigidbody() ? std::optional<Rigidbody>(self->getRigidbody()) : std::nullopt; })
+        .addProperty("thisCollider", &Collision::getThisCollider)
+        .addProperty("thisRigidbody", [] (const Collision* self) -> std::optional<Rigidbody> { return self->thisCollider.hasRigidbody() ? std::optional<Rigidbody>(self->getThisRigidbody()) : std::nullopt; })
+        .addProperty("impulse", &Collision::getImpulse)
+        .addProperty("relativeVelocity", &Collision::getRelativeVelocity)
+        .addProperty("contactCount", &Collision::getContactCount)
+        .addFunction("getContact", &luaGetContact<Collision>)
+        .addProperty("contacts", [] (const Collision* self, lua_State* L) -> luabridge::LuaRef { return luaContactsTable(self, L); })
         .endClass();
 
     luabridge::getGlobalNamespace(L)

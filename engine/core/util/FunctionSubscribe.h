@@ -131,6 +131,8 @@ namespace jasperengine {
             int owners = 0;
             // unsubscribed from all of them, or disabled by the crash guard: a running call skips it
             bool removed = false;
+            // a Lua function (add(tag, lua_State*)): it may only run on the Lua thread
+            bool lua = false;
         };
         using SubscriberList = std::vector<std::shared_ptr<Subscriber>>;
 
@@ -245,7 +247,25 @@ namespace jasperengine {
 
         bool add(const std::string& tag, lua_State *L){
             std::function<Ret(Args...)> function = LuaFunction<Ret>(L);
-            return add(tag, std::move(function));
+            const bool added = add(tag, std::move(function));
+            if (added && subscribers && !subscribers->empty()) {
+                subscribers->back()->lua = true;
+            }
+            return added;
+        }
+
+        // The live subscribers that are Lua functions (physics runs a 3D world on the main
+        // thread while its shouldCollide3D has one)
+        size_t luaSubscriberCount() const {
+            size_t count = 0;
+            if (subscribers) {
+                for (const auto& subscriber : *subscribers) {
+                    if (!subscriber->removed && subscriber->lua) {
+                        count++;
+                    }
+                }
+            }
+            return count;
         }
 
         bool add(const std::string& tag, std::function<Ret(Args...)> function) {

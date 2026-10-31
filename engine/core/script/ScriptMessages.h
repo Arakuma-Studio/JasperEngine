@@ -66,6 +66,19 @@ namespace jasperengine {
     JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onApplicationFocus)
     JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onApplicationQuit)
     JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onJointBreak2D)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onCollisionEnter)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onCollisionStay)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onCollisionExit)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onTriggerEnter)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onTriggerStay)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onTriggerExit)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onCollisionEnter2D)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onCollisionStay2D)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onCollisionExit2D)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onTriggerEnter2D)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onTriggerStay2D)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onTriggerExit2D)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onJointBreak)
 #undef JASPERENGINE_SCRIPT_OVERRIDE_TRAIT
 
     class JASPERENGINE_API ScriptMessages {
@@ -104,6 +117,10 @@ namespace jasperengine {
                            const std::function<int(lua_State*)>& pushArgs,
                            const std::function<void(ScriptBase&)>& callCpp);
 
+        // The messages of `filter` each script of the GameObject defines, as
+        // "onTriggerEnter (Coin)" (the Inspector's Callbacks line, get_runtime_entity)
+        static std::vector<std::string> describeReceivers(Scene* scene, Entity entity, ScriptMessageMask filter);
+
         // Told when receivers(scene, entity) may have changed
         using ReceiversChanged = void (*)(Scene* scene, Entity entity);
         static void addReceiversChangedListener(ReceiversChanged listener);
@@ -127,6 +144,19 @@ namespace jasperengine {
                 if (ScriptOverrides_onApplicationFocus<T>::value) mask |= scriptMessageBit(ScriptMessage::ApplicationFocus);
                 if (ScriptOverrides_onApplicationQuit<T>::value) mask |= scriptMessageBit(ScriptMessage::ApplicationQuit);
                 if (ScriptOverrides_onJointBreak2D<T>::value) mask |= scriptMessageBit(ScriptMessage::JointBreak2D);
+                if (ScriptOverrides_onCollisionEnter<T>::value) mask |= scriptMessageBit(ScriptMessage::CollisionEnter);
+                if (ScriptOverrides_onCollisionStay<T>::value) mask |= scriptMessageBit(ScriptMessage::CollisionStay);
+                if (ScriptOverrides_onCollisionExit<T>::value) mask |= scriptMessageBit(ScriptMessage::CollisionExit);
+                if (ScriptOverrides_onTriggerEnter<T>::value) mask |= scriptMessageBit(ScriptMessage::TriggerEnter);
+                if (ScriptOverrides_onTriggerStay<T>::value) mask |= scriptMessageBit(ScriptMessage::TriggerStay);
+                if (ScriptOverrides_onTriggerExit<T>::value) mask |= scriptMessageBit(ScriptMessage::TriggerExit);
+                if (ScriptOverrides_onCollisionEnter2D<T>::value) mask |= scriptMessageBit(ScriptMessage::CollisionEnter2D);
+                if (ScriptOverrides_onCollisionStay2D<T>::value) mask |= scriptMessageBit(ScriptMessage::CollisionStay2D);
+                if (ScriptOverrides_onCollisionExit2D<T>::value) mask |= scriptMessageBit(ScriptMessage::CollisionExit2D);
+                if (ScriptOverrides_onTriggerEnter2D<T>::value) mask |= scriptMessageBit(ScriptMessage::TriggerEnter2D);
+                if (ScriptOverrides_onTriggerStay2D<T>::value) mask |= scriptMessageBit(ScriptMessage::TriggerStay2D);
+                if (ScriptOverrides_onTriggerExit2D<T>::value) mask |= scriptMessageBit(ScriptMessage::TriggerExit2D);
+                if (ScriptOverrides_onJointBreak<T>::value) mask |= scriptMessageBit(ScriptMessage::JointBreak);
                 return mask;
             } else {
                 return 0;

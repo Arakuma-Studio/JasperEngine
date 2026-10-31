@@ -2132,6 +2132,44 @@ Json rigidbody2DReadoutsJson(Scene* scene, Entity entity) {
                 {"angular_velocity", body.getAngularVelocity()}, {"awake", body.isAwake()}, {"collider_shapes", pieces}};
 }
 
+// physics.contacts [{other, other_path, collider, other_collider, trigger, since_step, asleep}]
+// and physics.callbacks (the contact methods its scripts define), for bodies and listeners
+Json physicsContactsJson(SceneProject* sp, Entity entity) {
+    Json out = Json::object();
+    Scene* scene = sp->scene;
+    std::vector<ContactSummary> contacts;
+    std::shared_ptr<PhysicsSystem> physics = scene->getSystem<PhysicsSystem>();
+    bool hasBody = false;
+#ifdef JASPERENGINE_PHYSICS_2D
+    if (scene->findComponent<Rigidbody2DComponent>(entity)) {
+        hasBody = true;
+        contacts = physics->getContactSummary2D(entity);
+    }
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+    if (scene->findComponent<RigidbodyComponent>(entity)) {
+        hasBody = true;
+        const std::vector<ContactSummary> contacts3D = physics->getContactSummary3D(entity);
+        contacts.insert(contacts.end(), contacts3D.begin(), contacts3D.end());
+    }
+#endif
+    const std::vector<std::string> callbacks = ScriptMessages::describeReceivers(scene, entity, PhysicsCallbacks::ALL_3D | PhysicsCallbacks::ALL_2D);
+    if (!hasBody && callbacks.empty()) return out;
+    if (hasBody) {
+        Json list = Json::array();
+        for (const ContactSummary& contact : contacts) {
+            Json item = {{"other", contact.other}, {"collider", contact.collider}, {"other_collider", contact.otherCollider},
+                         {"trigger", contact.trigger}, {"asleep", contact.asleep}};
+            if (scene->isEntityCreated(contact.other)) item["other_path"] = EntityPath::of(scene, contact.other);
+            item["since_step"] = contact.sinceStep > 0 ? Json(contact.sinceStep) : Json(nullptr);
+            list.push_back(item);
+        }
+        out["contacts"] = list;
+    }
+    out["callbacks"] = callbacks;
+    return out;
+}
+
 void getRuntimeEntityTool(const CallPtr& call) {
     const Json& args = call->args();
     McpContext& ctx = call->ctx();
@@ -2210,6 +2248,11 @@ void getRuntimeEntityTool(const CallPtr& call) {
     if ((only.empty() || only.count(ComponentType::Rigidbody2DComponent)) && sp->scene->findComponent<Rigidbody2DComponent>(entity)) {
         data["rigidbody2d"] = rigidbody2DReadoutsJson(sp->scene, entity);
     }
+    // physics-contacts: what the body touches now and the contact callbacks its scripts define
+    {
+        const Json physics = physicsContactsJson(sp, entity);
+        if (!physics.empty()) data["physics"] = physics;
+    }
     if (args.value("include_script_state", true)) {
         data["scripts"] = scriptStateJson(project, sp, entity, std::clamp(args.value("max_depth", 2), 1, 8));
     }
@@ -2219,6 +2262,7 @@ void getRuntimeEntityTool(const CallPtr& call) {
     if (data.contains("fluid_stats")) text += "\nfluid_stats: " + data["fluid_stats"].dump();
     if (data.contains("joint2d")) text += "\njoint2d: " + data["joint2d"].dump();
     if (data.contains("rigidbody2d")) text += "\nrigidbody2d: " + data["rigidbody2d"].dump();
+    if (data.contains("physics")) text += "\nphysics: " + data["physics"].dump();
     if (text.size() > 12000) text = text.substr(0, 12000) + " ... (see structuredContent)";
     call->ok(text, data);
 }
@@ -3548,7 +3592,7 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Get Runtime GameObject";
         tool.description =
             "Live values of a GameObject in the running game (runtime-spawned too): component properties this frame "
-            "and script state (Lua instance fields, C++ DPROPERTY members). Only while playing.";
+            "and script state (Lua instance fields, C++ DPROPERTY members); physics: contacts, callbacks. Only while playing.";
         tool.inputSchema = object({
             {"scene", runtimeScene},
             {"entity", entityRef()},

@@ -59,6 +59,7 @@ void Scene::init(){
 }
 
 Scene::~Scene(){
+    tearingDown = true;
     // first: handles that own entities of this scene and go during (or after) its teardown
     // leave them to it
     lifetime.reset();

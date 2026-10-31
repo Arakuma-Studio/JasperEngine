@@ -8289,6 +8289,10 @@ YAML::Node editor::Stream::encodeRigidbodyComponent(const RigidbodyComponent& bo
 
         shapeNode["sourceEntity"] = body.colliders[i].sourceEntity;
         shapeNode["samplesSize"] = body.colliders[i].samplesSize;
+        // physics-contacts: also gets this collider's callbacks (omitted when none)
+        if (body.colliders[i].receiver != NULL_ENTITY) {
+            shapeNode["receiver"] = body.colliders[i].receiver;
+        }
 
         YAML::Node verticesNode;
         for (size_t j = 0; j < body.colliders[i].numVertices; j++) {
@@ -8394,6 +8398,7 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
             if (node["colliders"][i]["sourceEntity"]) body.colliders[i].sourceEntity = YamlNumbers::as<Entity>(node["colliders"][i]["sourceEntity"]);
 
             if (node["colliders"][i]["samplesSize"]) body.colliders[i].samplesSize = YamlNumbers::as<unsigned int>(node["colliders"][i]["samplesSize"]);
+            body.colliders[i].receiver = node["colliders"][i]["receiver"] ? YamlNumbers::as<Entity>(node["colliders"][i]["receiver"]) : NULL_ENTITY;
 
             if (node["colliders"][i]["vertices"]) {
                 size_t vcount = node["colliders"][i]["vertices"].size();

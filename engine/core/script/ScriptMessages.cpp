@@ -11,6 +11,7 @@
 #include "lua.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <exception>
 #include <unordered_map>
 
@@ -34,6 +35,23 @@ namespace {
     bool destroyed(const ScriptEntry& entry) {
         const ScriptState* state = ScriptRuntime::getState(entry.instance);
         return state && state->destroyed;
+    }
+
+    // The contact messages run every fixed step: an error in one is logged once per second per
+    // script class and message (physics-contacts spec 7.13), the others every time
+    bool reportError(ScriptMessage m, const std::string& className) {
+        if (static_cast<int>(m) > static_cast<int>(ScriptMessage::TriggerExit2D)) {
+            return true;
+        }
+        static std::unordered_map<std::string, std::chrono::steady_clock::time_point> lastReports;
+        const auto now = std::chrono::steady_clock::now();
+        const std::string key = className + "." + ScriptMessages::methodName(m);
+        auto last = lastReports.find(key);
+        if (last != lastReports.end() && now - last->second < std::chrono::seconds(1)) {
+            return false;
+        }
+        lastReports[key] = now;
+        return true;
     }
 
     bool mainThread() {
@@ -112,6 +130,45 @@ ScriptMessageMask ScriptMessages::receivers(Scene* scene, Entity entity) {
     return mask;
 }
 
+std::vector<std::string> ScriptMessages::describeReceivers(Scene* scene, Entity entity, ScriptMessageMask filter) {
+    std::vector<std::string> names;
+    if (!scene || !scene->isEntityCreated(entity)) {
+        return names;
+    }
+    ScriptComponent* scripts = scene->findComponent<ScriptComponent>(entity);
+    lua_State* L = LuaBinding::getLuaState();
+    if (!scripts) {
+        return names;
+    }
+    for (const ScriptEntry& entry : scripts->scripts) {
+        if (!entry.instance || destroyed(entry)) {
+            continue;
+        }
+        for (int m = 0; m < static_cast<int>(ScriptMessage::Count); m++) {
+            if (!(filter & (1u << m))) {
+                continue;
+            }
+            bool defines = false;
+            if (entry.type == ScriptType::LUA) {
+                if (!L) continue;
+                lua_rawgeti(L, LUA_REGISTRYINDEX, luaRefOf(entry));
+                if (lua_istable(L, -1)) {
+                    lua_getfield(L, -1, methodName(static_cast<ScriptMessage>(m)));
+                    defines = lua_isfunction(L, -1);
+                    lua_pop(L, 1);
+                }
+                lua_pop(L, 1);
+            } else if (entry.cppScript) {
+                defines = (entry.cppMessageMask & (1u << m)) != 0;
+            }
+            if (defines) {
+                names.push_back(std::string(methodName(static_cast<ScriptMessage>(m))) + " (" + entry.className + ")");
+            }
+        }
+    }
+    return names;
+}
+
 // One entry, no delivery rules (ScriptRuntime's own checks, or send/sendTo's)
 bool ScriptMessages::invoke(Scene* scene, Entity entity, size_t scriptIndex, ScriptMessage m,
                             const std::function<int(lua_State*)>& pushArgs,
@@ -141,7 +198,7 @@ bool ScriptMessages::invoke(Scene* scene, Entity entity, size_t scriptIndex, Scr
         lua_insert(L, -2); // method, self
         const std::string entityName = scene->getEntityName(entity);
         const int nargs = pushArgs ? pushArgs(L) : 0;
-        if (LuaBinding::pcallWithTraceback(L, 1 + nargs, 0) != LUA_OK) {
+        if (LuaBinding::pcallWithTraceback(L, 1 + nargs, 0) != LUA_OK && reportError(m, className)) {
             Log::error("Lua %s() failed for '%s' on '%s': %s", method, className.c_str(), entityName.c_str(),
                        LuaBinding::getLuaStackErrorString(L, -1).c_str());
         }
@@ -156,9 +213,9 @@ bool ScriptMessages::invoke(Scene* scene, Entity entity, size_t scriptIndex, Scr
     try {
         callCpp(*script);
     } catch (const std::exception& e) {
-        Log::error("C++ %s() failed for '%s': %s", method, className.c_str(), e.what());
+        if (reportError(m, className)) Log::error("C++ %s() failed for '%s': %s", method, className.c_str(), e.what());
     } catch (...) {
-        Log::error("C++ %s() failed for '%s': unknown exception", method, className.c_str());
+        if (reportError(m, className)) Log::error("C++ %s() failed for '%s': unknown exception", method, className.c_str());
     }
     return true;
 }

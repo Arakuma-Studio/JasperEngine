@@ -2451,6 +2451,9 @@ std::string editor::Factory::createRigidbodyComponent(int indentSpaces, EntityRe
         code << ind << "rigidbody.colliders[" << idx << "].source = " << formatCollider3DSource(source) << ";\n";
         code << ind << "rigidbody.colliders[" << idx << "].sourceEntity = " << formatEntity(sourceEntity, entityVarNames) << ";\n";
         code << ind << "rigidbody.colliders[" << idx << "].samplesSize = " << body.colliders[i].samplesSize << ";\n";
+        if (body.colliders[i].receiver != NULL_ENTITY) {
+            code << ind << "rigidbody.colliders[" << idx << "].receiver = " << formatEntity(body.colliders[i].receiver, entityVarNames) << ";\n";
+        }
         code << ind << "rigidbody.colliders[" << idx << "].numVertices = " << body.colliders[i].numVertices << ";\n";
         for (size_t j = 0; j < body.colliders[i].numVertices; j++) {
             code << ind << "rigidbody.colliders[" << idx << "].vertices[" << j << "] = " << formatVector3(body.colliders[i].vertices[j]) << ";\n";

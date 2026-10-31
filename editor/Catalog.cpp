@@ -1500,6 +1500,9 @@ namespace {
         if (propertyName.compare(fieldPos, 11, "samplesSize") == 0 && fieldPos + 11 == propertyName.size()) {
             return {PropertyType::UInt, UpdateFlags_Rigidbody, (void*)&defaultShape.samplesSize, (void*)&shape.samplesSize};
         }
+        if (propertyName.compare(fieldPos, 8, "receiver") == 0 && fieldPos + 8 == propertyName.size()) {
+            return {PropertyType::Entity, UpdateFlags_Rigidbody, (void*)&defaultShape.receiver, (void*)&shape.receiver};
+        }
         if (propertyName.compare(fieldPos, 11, "numVertices") == 0 && fieldPos + 11 == propertyName.size()) {
             return {PropertyType::UInt, UpdateFlags_Rigidbody, (void*)&defaultShape.numVertices, (void*)&shape.numVertices};
         }
@@ -3228,6 +3231,7 @@ namespace {
             ps["colliders[" + idx + "].source"] = {PropertyType::Enum, UpdateFlags_Rigidbody, (void*)&defShape.source, compRef ? (void*)&shape.source : nullptr};
             ps["colliders[" + idx + "].sourceEntity"] = {PropertyType::Entity, UpdateFlags_Rigidbody, (void*)&defShape.sourceEntity, compRef ? (void*)&shape.sourceEntity : nullptr};
             ps["colliders[" + idx + "].samplesSize"] = {PropertyType::UInt, UpdateFlags_Rigidbody, (void*)&defShape.samplesSize, compRef ? (void*)&shape.samplesSize : nullptr};
+            ps["colliders[" + idx + "].receiver"] = {PropertyType::Entity, UpdateFlags_Rigidbody, (void*)&defShape.receiver, compRef ? (void*)&shape.receiver : nullptr};
             ps["colliders[" + idx + "].numVertices"] = {PropertyType::UInt, UpdateFlags_Rigidbody, (void*)&defShape.numVertices, compRef ? (void*)&shape.numVertices : nullptr};
             ps["colliders[" + idx + "].numIndices"] = {PropertyType::UInt, UpdateFlags_Rigidbody, (void*)&defShape.numIndices, compRef ? (void*)&shape.numIndices : nullptr};
 

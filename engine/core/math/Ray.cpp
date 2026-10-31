@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Ray.h"
+#include "physics/ContactTracker.h"
 
 #include "Scene.h"
 #include "component/MeshComponent.h"
@@ -649,7 +650,7 @@ RayReturn Ray::cast(Scene* scene, RayFilter raytest, int broadPhaseLayer3D, bool
                 if (lock.Succeeded()){
                     const JPH::Body &hit_body = lock.GetBody();
                     normal = hit_body.GetWorldSpaceSurfaceNormal(subShapeId, ray.GetPointOnRay(fraction));
-                    entity = hit_body.GetUserData();
+                    entity = PhysicsCallbacks::bodyEntity(hit_body.GetUserData());
                     colliderIndex = hit_body.GetShape()->GetSubShapeUserData(subShapeId);
                 }
                 return {true, fraction, getPoint(fraction), Vector3(normal.GetX(), normal.GetY(), normal.GetZ()), entity, colliderIndex};

@@ -1100,6 +1100,26 @@ bool applyCollider2D(Project* project, Scene* scene, Entity entity, const Json& 
     return true;
 }
 
+// receiver (physics-contacts D9): also gets the collider's contact callbacks; null clears it
+bool applyColliderReceiver(const Target& target, const Json& spec, Entity& receiver, std::string& error) {
+    if (!has(spec, "receiver")) return true;
+    if (spec["receiver"].is_null()) {
+        receiver = NULL_ENTITY;
+        return true;
+    }
+    const Entity resolved = resolveRef(target.scene, spec["receiver"], error);
+    if (resolved == NULL_ENTITY) {
+        error = "receiver: " + error;
+        return false;
+    }
+    receiver = resolved;
+    return true;
+}
+
+void colliderReceiverJson(const Target& target, Entity receiver, Json& out) {
+    if (receiver != NULL_ENTITY && target.engineScene()->isEntityCreated(receiver)) out["receiver"] = entityJson(target, receiver);
+}
+
 Json collider2DJson(Project* project, Scene* scene, Entity entity, const Collider2D& shape) {
     Json out = {{"shape", nameOf(collider2DTypes(), shape.type)}, {"density", shape.density}, {"friction", shape.friction},
                 {"restitution", shape.restitution}, {"sensor", shape.sensor},
@@ -1356,7 +1376,8 @@ void editCollidersTool(const CallPtr& call) {
             shapes = body->colliders;
         }
         auto apply = [&](const Json& spec, Collider2D& shape, bool isNew, std::string& err) {
-            return applyCollider2D(target.project, scene, target.entity, spec, shape, isNew, err);
+            return applyCollider2D(target.project, scene, target.entity, spec, shape, isNew, err) &&
+                   applyColliderReceiver(target, spec, shape.receiver, err);
         };
         // no limit on colliders per body
         if (!editShapes(args, shapes, SIZE_MAX, apply, error)) {
@@ -1368,7 +1389,7 @@ void editCollidersTool(const CallPtr& call) {
         if (editing && (has(args, "add") || has(args, "update") || has(args, "remove") || boolOr(args, "clear", false))) {
             addProp<std::vector<Collider2D>>(*multi, target, target.entity, bodyType, "colliders", shapes);
         }
-        for (const Collider2D& shape : shapes) colliders.push_back(collider2DJson(target.project, scene, target.entity, shape));
+        for (const Collider2D& shape : shapes) { colliders.push_back(collider2DJson(target.project, scene, target.entity, shape)); colliderReceiverJson(target, shape.receiver, colliders.back()); }
     } else {
         std::vector<Collider3D> shapes;
         if (RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(target.entity)) {
@@ -1376,7 +1397,8 @@ void editCollidersTool(const CallPtr& call) {
             for (size_t i = 0; i < body->numColliders; i++) shapes.push_back(body->colliders[i]);
         }
         auto apply = [&](const Json& spec, Collider3D& shape, bool isNew, std::string& err) {
-            return applyCollider3D(target, target.entity, spec, shape, isNew, err);
+            return applyCollider3D(target, target.entity, spec, shape, isNew, err) &&
+                   applyColliderReceiver(target, spec, shape.receiver, err);
         };
         if (!editShapes(args, shapes, MAX_COLLIDERS_3D, apply, error)) {
             call->fail(error);
@@ -1406,7 +1428,7 @@ void editCollidersTool(const CallPtr& call) {
             addProp<Collider3D>(*multi, target, target.entity, bodyType, "colliders[" + std::to_string(i) + "]",
                                 i < newCount ? shapes[i] : Collider3D());
         }
-        for (const Collider3D& shape : shapes) colliders.push_back(collider3DJson(target, shape));
+        for (const Collider3D& shape : shapes) { colliders.push_back(collider3DJson(target, shape)); colliderReceiverJson(target, shape.receiver, colliders.back()); }
     }
     if (editing && !is2D) {
         if (newCount != oldCount || !hasBody) addProp<size_t>(*multi, target, target.entity, bodyType, "numColliders", newCount);
@@ -1457,10 +1479,10 @@ void editCollidersTool(const CallPtr& call) {
     colliders = Json::array();
     if (is2D) {
         Rigidbody2DComponent& body = scene->getComponent<Rigidbody2DComponent>(target.entity);
-        for (const Collider2D& shape : body.colliders) colliders.push_back(collider2DJson(target.project, scene, target.entity, shape));
+        for (const Collider2D& shape : body.colliders) { colliders.push_back(collider2DJson(target.project, scene, target.entity, shape)); colliderReceiverJson(target, shape.receiver, colliders.back()); }
     } else {
         RigidbodyComponent& body = scene->getComponent<RigidbodyComponent>(target.entity);
-        for (size_t i = 0; i < body.numColliders; i++) colliders.push_back(collider3DJson(target, body.colliders[i]));
+        for (size_t i = 0; i < body.numColliders; i++) { colliders.push_back(collider3DJson(target, body.colliders[i])); colliderReceiverJson(target, body.colliders[i].receiver, colliders.back()); }
     }
     data["colliders"] = colliders;
     data["body_type"] = is2D ? nameOf(bodyTypes(), scene->getComponent<Rigidbody2DComponent>(target.entity).type)

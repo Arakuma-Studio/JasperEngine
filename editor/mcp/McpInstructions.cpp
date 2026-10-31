@@ -203,6 +203,8 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - Never move a body by writing its GameObject's transform from onFixedUpdate (silently
   overwritten). Teleport with body.position (and body.rotation / body.angle), velocity with
   body.linearVelocity. One-shot impulses fire once per press, not every held frame.
+- Collisions: define onCollisionEnter / onTriggerEnter(2D) on the script (no registration);
+  ignore a pair with Physics.ignoreCollision: jasper://docs/physics.
 - Layer Collision Matrix (project settings, per backend) gates contacts; raycasts take an
   optional layer mask.
 - Drop or settle objects: place_with_physics.

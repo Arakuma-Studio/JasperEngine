@@ -595,10 +595,11 @@ uint32_t Rigidbody::getCollisionGroupID() const{
 }
 
 void Rigidbody::setCollisionGroupID(uint32_t group){
-    JPH::Ref<JPH::GroupFilterTable> group_filter = new JPH::GroupFilterTable(2);
-    group_filter->DisableCollision(0, 0);
-
-    getJoltBodyWrite().SetCollisionGroup(JPH::CollisionGroup(group_filter, group, 0));
+    // bodies with the same id never collide (the PhysicsSystem's pair filter, which also
+    // keeps Physics.ignoreCollision pairs apart)
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    checkBody(body);
+    scene->getSystem<PhysicsSystem>()->setCollisionGroup3D(entity, group);
 }
 
 bool Rigidbody::isAllowSleeping() const{

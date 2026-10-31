@@ -11,6 +11,11 @@
 namespace jasperengine {
 
     class Joint2D;
+    class Joint3D;
+    class Collision;
+    class Collision2D;
+    class ColliderRef;
+    class ColliderRef2D;
 
     // The base of a C++ behaviour script (Unity's MonoBehaviour). The engine calls the
     // lifecycle methods below when a subclass overrides them, with the rules of Lua scripts
@@ -69,7 +74,25 @@ namespace jasperengine {
         virtual void onApplicationFocus(bool focused) { (void)focused; }
         virtual void onApplicationQuit() {}
 
-        // Script messages of physics (ScriptMessages), like the Lua methods of the same name.
+        // Script messages of physics (ScriptMessages), like the Lua methods of the same name:
+        // called on the main thread after the fixed step that caused them, enabled or not,
+        // while the GameObject is active in hierarchy (docs/mcp/guide/physics.md).
+        // Collisions: `collision` is seen from this side (its collider is the other one).
+        virtual void onCollisionEnter(const Collision& collision) { (void)collision; }
+        virtual void onCollisionStay(const Collision& collision) { (void)collision; }
+        virtual void onCollisionExit(const Collision& collision) { (void)collision; }
+        // Triggers: the other collider
+        virtual void onTriggerEnter(const ColliderRef& other) { (void)other; }
+        virtual void onTriggerStay(const ColliderRef& other) { (void)other; }
+        virtual void onTriggerExit(const ColliderRef& other) { (void)other; }
+        virtual void onCollisionEnter2D(const Collision2D& collision) { (void)collision; }
+        virtual void onCollisionStay2D(const Collision2D& collision) { (void)collision; }
+        virtual void onCollisionExit2D(const Collision2D& collision) { (void)collision; }
+        virtual void onTriggerEnter2D(const ColliderRef2D& other) { (void)other; }
+        virtual void onTriggerStay2D(const ColliderRef2D& other) { (void)other; }
+        virtual void onTriggerExit2D(const ColliderRef2D& other) { (void)other; }
+        // A 3D joint of this GameObject broke (Unity OnJointBreak), with the force that broke it
+        virtual void onJointBreak(float breakForce, Joint3D& joint) { (void)breakForce; (void)joint; }
         // A 2D joint of this GameObject (or whose bodyA is it) broke (Unity OnJointBreak2D); the
         // joint still exists during the call.
         virtual void onJointBreak2D(Joint2D& joint) { (void)joint; }

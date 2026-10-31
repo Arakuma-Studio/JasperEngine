@@ -652,3 +652,76 @@ Fixed step 1/60 s, deterministic setups:
 - **persistence** (DontDestroyOnLoad): no contact pairs cross scenes (§7.8).
 - **coroutines**: `onCollisionEnter` may not yield (Unity allows a coroutine OnCollision): a Lua
   callback that wants to wait starts a coroutine with the `coroutines` API.
+
+## Implementation notes
+
+Decisions taken while implementing (branch `gaps/physics-contacts`, on `gaps/script-lifecycle` with
+`gaps/physics-2d` merged in; `physics-3d` not merged yet), where the spec was silent, ambiguous or
+contradicted the code:
+
+1. **One ScriptMessages.** script-lifecycle and physics-2d each made one. Kept script-lifecycle's
+   (receiver cache, `notifyReceiversChanged`, delivery to initialized and not destroyed instances,
+   `DeliverRequireActive`) and its compile-time override traits for `cppMask<T>()`; physics-2d's
+   run-time learning (`ScriptBase::inheritedMessages`, `baseMessageRan`) is gone: a private,
+   protected or overloaded override still counts (SFINAE fails, the trait says "overridden"), so
+   physics-2d's review test (private `onJointBreak2D`) passes unchanged. Added
+   `removeReceiversChangedListener` (physics-2d's) and `describeReceivers` (the Inspector's
+   Callbacks line, MCP). The generated factory uses `ScriptMessages::asScriptBase`. physics-2d's
+   tests that put C++ / Lua entries in by hand now run the lifecycle's init on them
+   (`physics2dtest::awakeScripts`), since messages go to initialized instances only.
+2. **physics-3d is not here yet**, so this branch made what it needs exactly as physics-3d §6.1.6
+   specifies: `JoltPairFilter3D` (in `JPA`) on every body (`CollisionGroup(filter, group,
+   subGroup = entity)`), `Rigidbody::setCollisionGroupID` sets the group id on it, the gear and
+   rack-and-pinion joints use its `JOINT` reason (removed when the joint is destroyed) instead of a
+   `GroupFilterTable` that replaced the body's group, `Physics.ignoreCollision` its `SCRIPT` reason.
+   3D triggers are the body `sensor` until physics-3d adds `Collider3D::isTrigger` (its
+   §6.1.5 trigger step goes first in the listener, marked there); `Collider.isTrigger` reports the
+   body's sensor. D15 is applied for kinematic sensor bodies (`mCollideKinematicVsNonDynamic`);
+   manifold reduction is turned off for compound bodies with collision listener bits, also when
+   the mask changes on a live body. physics-3d's shape-only rebuilds and `removeCollider` are not
+   needed for D8: a whole-body rebuild is already invisible (the pair is found again in the same
+   step).
+3. **Listener masks** are recomputed for all bodies of a scene before its next step when any
+   `ReceiversChanged` arrives (rare: an instance made, released, enabled, disabled), and at body
+   creation. 2D: a listening body's shapes get Box2D's contact / sensor events (chain segments
+   too, which Box2D makes without events); a change on a live body re-flags them and re-pairs them
+   with the refilter bit only when a flag really changes.
+4. **2D global events (D16).** `beginContact2D` / `endContact2D` / `stayContact2D` fire for pairs
+   where a shape has the authored `contactEvents` (chain segments never had their own: Box2D gives
+   them none, kept); the sensor events are not filtered, since sensor shapes always enabled them.
+   `stayContact2D` / `staySensorContact2D` start the step after the pair began (Unity's Stay; the
+   spec said "once per step per touching pair"), while either body is awake, in shape-id order.
+5. **`Collision2D.enabled` is always true:** Box2D 3 makes a contact disabled by `preSolve2D` not
+   touching (no points), so the pair gets an Exit, then an Enter when enabled again. Documented.
+6. **Data.** A 3D contact point is the midpoint of the two surface points Jolt reports, its
+   separation `(p2 - p1)·n` (negative when overlapping); `impulse` is the estimate on *this* body;
+   3D `relativeVelocity` uses the point velocities at the manifold centre (pre-solve, read in the
+   listener). Several manifolds of one collider pair (mesh triangles) merge: the deepest one's
+   normal and velocities, every point (the deepest 8). `Collider.type` / `Collider2D.type` are the
+   integer values of `Collider3DType` / `Collider2DType`. `Collider` / `Collider2D` compare with
+   `==`.
+7. **Global 3D events after the step.** Activations reported outside a step (a body added or woken
+   from the main thread holds Jolt's locks then) are also delivered after the next step, in both
+   modes. Order: activations, then added, persisted, removed, each sorted by body ids and
+   sub-shapes. `Contact3D` gained `numContactPoints` and `snapshot`; the setters' warning is once
+   per scene. The "auto synchronous" notice is `Log::print` (the engine has no info level).
+8. **Errors in callbacks** are rate-limited per script class and method (one a second) for the
+   twelve contact messages only; the lifecycle messages keep logging every error.
+9. **Scene teardown:** `Scene::isTearingDown()` is set first in `~Scene`; removals then clear the
+   pairs and send nothing (Play stop and scene loads delete their scenes).
+10. **Editor.** "Send Callbacks To" is a GameObject field (`LocalEntity` row, undoable through the
+    Catalog path `colliders[i].receiver`, prefab overrides as every Catalog property) on each 2D
+    and 3D collider; the yellow kinematic-sensor note on 2D sensors of kinematic bodies; in Play a
+    Callbacks line and a Contacts foldout under each body (single selection), read at most 10
+    times a second.
+11. **MCP.** `get_runtime_entity` adds `physics` (`contacts`, `callbacks`) for bodies and for
+    GameObjects whose scripts define contact methods (receivers). 2D contacts come from the tracker,
+    Box2D's touching contacts and sensor overlaps; 3D from the tracker for listened bodies, else a
+    narrow-phase `CollideShape` of the body at its pose (2 cm, Jolt's speculative distance).
+    `edit_colliders` takes `receiver` (an entity ref, null clears it) per collider in both
+    dimensions and lists it.
+12. **Tests.** T21's scene load uses `SceneManager.loadScene` of a scene that is not in the build
+    (unit tests have no build scenes): the call must not break the dispatch. The export parity test
+    (acceptance 6) is `tools/mcp/tests/test_physics_contacts_export.py` (`JASPER_SLOW_BUILD=1`).
+    The cost test measures `PhysicsSystem::getContactSeconds3D()` (the processing after the step,
+    callbacks included) against `getStepSeconds3D()`.

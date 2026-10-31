@@ -648,6 +648,7 @@ void prepare<RigidbodyComponent>(RigidbodyComponent& body, Entity, CloneContext&
     for (size_t i = 0; i < body.numColliders && i < body.colliders.size(); i++) {
         body.colliders[i].shape = nullptr;
         body.colliders[i].sourceEntity = ctx.remap(body.colliders[i].sourceEntity);
+        body.colliders[i].receiver = ctx.remap(body.colliders[i].receiver);
     }
     body.needReloadBody = true;
     body.needUpdateColliders = true;

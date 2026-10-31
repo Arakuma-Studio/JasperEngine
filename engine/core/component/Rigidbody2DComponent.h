@@ -167,7 +167,12 @@ namespace jasperengine{
         float followedAngularVelocity = 0.0f;
         // pose before the last step, drawn towards the current one
         b2Transform previousTransform = b2Transform_identity;
+        // linear velocity before the last step (m/s): Collision2D.relativeVelocity of an Enter
+        b2Vec2 preStepLinearVelocity = b2Vec2_zero;
 #endif
+        // the contact messages its scripts (and its colliders' receivers') define
+        // (PhysicsCallbacks bits): the shapes' Box2D events follow it
+        uint16_t listenerMask = 0;
         // world pose physics and the Transform last agreed on (written to the Transform, or
         // the body put at it): a Transform still there was moved by nobody else since
         bool hasSyncedPose = false;

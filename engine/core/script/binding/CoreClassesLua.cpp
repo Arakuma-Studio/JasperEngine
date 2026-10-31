@@ -126,6 +126,97 @@ namespace{
         return 0;
     }
 
+    // Physics.ignoreCollision(a, b [, ignore = true]) / getIgnoreCollision(a, b): a and b are
+    // GameObjects or bodies (any EntityHandle) with a Rigidbody (2D: Rigidbody 2D) of one scene
+    template<bool is2D>
+    bool luaBodyPairArgs(lua_State* L, const char* function, Scene*& scene, Entity& a, Entity& b){
+        const char* kind = is2D ? "Rigidbody 2D" : "Rigidbody";
+        Entity entities[2] = {NULL_ENTITY, NULL_ENTITY};
+        Scene* scenes[2] = {nullptr, nullptr};
+        for (int i = 0; i < 2; i++){
+            EntityHandle* handle = nullptr;
+            if (luabridge::isInstance<EntityHandle>(L, i + 1)){
+                auto result = luabridge::get<EntityHandle*>(L, i + 1);
+                if (result) handle = result.value();
+            }
+            if (!handle || !handle->getScene() || !handle->getScene()->isEntityCreated(handle->getEntity())){
+                luaL_error(L, "%s: argument %d must be a GameObject or %s", function, i + 1, kind);
+                return false;
+            }
+            scenes[i] = handle->getScene();
+            entities[i] = handle->getEntity();
+            bool hasBody = false;
+            if constexpr (is2D){
+#ifdef JASPERENGINE_PHYSICS_2D
+                hasBody = scenes[i]->findComponent<Rigidbody2DComponent>(entities[i]) != nullptr;
+#endif
+            }else{
+#ifdef JASPERENGINE_PHYSICS_3D
+                hasBody = scenes[i]->findComponent<RigidbodyComponent>(entities[i]) != nullptr;
+#endif
+            }
+            if (!hasBody){
+                luaL_error(L, "%s: argument %d ('%s') has no %s", function, i + 1, scenes[i]->getEntityName(entities[i]).c_str(), kind);
+                return false;
+            }
+        }
+        if (scenes[0] != scenes[1]){
+            luaL_error(L, "%s: the two bodies are in different scenes", function);
+            return false;
+        }
+        if (entities[0] == entities[1]){
+            luaL_error(L, "%s: a body with itself", function);
+            return false;
+        }
+        scene = scenes[0];
+        a = entities[0];
+        b = entities[1];
+        return true;
+    }
+
+    template<bool is2D>
+    int luaIgnoreCollision(lua_State* L){
+        const char* function = is2D ? "Physics2D.ignoreCollision" : "Physics.ignoreCollision";
+        Scene* scene = nullptr;
+        Entity a = NULL_ENTITY, b = NULL_ENTITY;
+        if (!luaBodyPairArgs<is2D>(L, function, scene, a, b)){
+            return 0;
+        }
+        const bool ignore = lua_isnoneornil(L, 3) ? true : lua_toboolean(L, 3) != 0;
+        if constexpr (is2D){
+#ifdef JASPERENGINE_PHYSICS_2D
+            scene->getSystem<PhysicsSystem>()->setIgnoreCollision2D(a, b, ignore);
+#endif
+        }else{
+#ifdef JASPERENGINE_PHYSICS_3D
+            scene->getSystem<PhysicsSystem>()->setIgnoreCollision3D(a, b, ignore);
+#endif
+        }
+        return 0;
+    }
+
+    template<bool is2D>
+    int luaGetIgnoreCollision(lua_State* L){
+        const char* function = is2D ? "Physics2D.getIgnoreCollision" : "Physics.getIgnoreCollision";
+        Scene* scene = nullptr;
+        Entity a = NULL_ENTITY, b = NULL_ENTITY;
+        if (!luaBodyPairArgs<is2D>(L, function, scene, a, b)){
+            return 0;
+        }
+        bool ignored = false;
+        if constexpr (is2D){
+#ifdef JASPERENGINE_PHYSICS_2D
+            ignored = scene->getSystem<PhysicsSystem>()->getIgnoreCollision2D(a, b);
+#endif
+        }else{
+#ifdef JASPERENGINE_PHYSICS_3D
+            ignored = scene->getSystem<PhysicsSystem>()->getIgnoreCollision3D(a, b);
+#endif
+        }
+        lua_pushboolean(L, ignored ? 1 : 0);
+        return 1;
+    }
+
 #if defined(JASPERENGINE_PHYSICS_2D) || defined(JASPERENGINE_PHYSICS_3D)
     Scene* luaSceneArg(lua_State* L, const char* function){
         Scene* scene = nullptr;
@@ -550,6 +641,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("getLayerCollisionMask", &luaGetLayerCollisionMask<Physics>)
         .addStaticFunction("setLayerCollisionMask", &luaSetLayerCollisionMask<Physics>)
         .addStaticFunction("resetLayerCollisionMatrix", &luaResetLayerCollisionMatrix<Physics>)
+        .addStaticFunction("ignoreCollision", &luaIgnoreCollision<false>)
+        .addStaticFunction("getIgnoreCollision", &luaGetIgnoreCollision<false>)
 #ifdef JASPERENGINE_PHYSICS_3D
         .addStaticFunction("raycast", &luaRaycast<Vector3, false, false>)
         .addStaticFunction("raycastAll", &luaRaycast<Vector3, true, false>)
@@ -566,6 +659,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("getLayerCollisionMask", &luaGetLayerCollisionMask<Physics2D>)
         .addStaticFunction("setLayerCollisionMask", &luaSetLayerCollisionMask<Physics2D>)
         .addStaticFunction("resetLayerCollisionMatrix", &luaResetLayerCollisionMatrix<Physics2D>)
+        .addStaticFunction("ignoreCollision", &luaIgnoreCollision<true>)
+        .addStaticFunction("getIgnoreCollision", &luaGetIgnoreCollision<true>)
 #ifdef JASPERENGINE_PHYSICS_2D
         .addStaticFunction("raycast", &luaRaycast<Vector2, false, true>)
         .addStaticFunction("raycastAll", &luaRaycast<Vector2, true, true>)
