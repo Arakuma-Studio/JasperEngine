@@ -894,6 +894,21 @@ void AudioSystem::update(double dt){
                              listenerScene->findComponent<Transform>(listenerScene->getCamera());
     bool any3D = false;
 
+    // The persistent scene's 3D sounds are heard by the loaded main scene's camera every frame
+    // (the main scene's own system places it only when it plays 3D voices), before they are
+    // placed against it
+    if (persistent && hasListener && listenerEnabled){
+        bool playing3D = false;
+        for (int i = 0; i < audios->size() && !playing3D; i++){
+            const AudioSourceComponent& audio = audios->getComponentFromIndex(i);
+            playing3D = audio.enabled && audio.state == AudioSourceState::Playing &&
+                        scene->getSignature(audios->getEntity(i)).test(scene->getComponentId<Transform>());
+        }
+        if (playing3D){
+            placeListener(*listenerScene);
+        }
+    }
+
     // the callbacks run after the loop: a script may add or remove components
     std::vector<std::pair<Entity, int>> events;
 
