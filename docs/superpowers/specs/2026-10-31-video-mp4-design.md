@@ -579,9 +579,9 @@ What the implementation does differently from the text above, and why.
 - The guide is `docs/mcp/guide/video.md`, served as `jasper://docs/video`.
 
 **Editor, exports, tools**
-- Apple frameworks (AVFoundation, CoreMedia, CoreVideo) are autolinked through clang modules (`@import`-style
-  module imports in the `.mm`, plus the CMake link list for CMake builds); `tools/xcode_sync_engine.py` adds the
-  source file only.
+- Apple frameworks (AVFoundation, CoreMedia, CoreVideo): in the Xcode project the `.mm`'s `#import`s of the
+  framework headers are module imports (`CLANG_ENABLE_MODULES = YES`), which autolink them;
+  `tools/xcode_sync_engine.py` adds the source file only. CMake Apple builds link them explicitly.
 - Android's `noCompress 'mp4', 'm4v', 'mov', 'webm'` is in the Gradle template
   (`engine/workspaces/androidstudio/app/build.gradle`, `androidResources`), which every Android export copies,
   rather than written by the Exporter. The INTERNET permission comes from `Exporter::videoUrlScene()` (a scene
