@@ -244,8 +244,21 @@ async def test_old_prefab_overrides_of_colliders(ed: Editor):
                   properties=["colliders[0].points[1]"])
     source = await collider_list(ed, sid, "Crate")
     ed.check_eq(source[0]["points"][1], [60, 5], f"Apply to Prefab reaches the other instances: {source}")
-    prefab_text = (ed.project / path).read_text()
-    ed.check("60" in prefab_text, "the prefab file has the applied point")
+    # the asset is written with the scene's save (its prefabs with changes): the point is in it
+    await ed.call("save_scene", scene=sid)
+
+    def has_point(node) -> bool:
+        if isinstance(node, dict):
+            points = node.get("points")
+            if isinstance(points, list) and len(points) > 1 and [float(v) for v in points[1]] == [60.0, 5.0]:
+                return True
+            return any(has_point(value) for value in node.values())
+        if isinstance(node, list):
+            return any(has_point(value) for value in node)
+        return False
+
+    prefab = yaml.safe_load((ed.project / path).read_text())
+    ed.check(has_point(prefab), f"the prefab file has the applied point: {(ed.project / path).read_text()[:3000]}")
 
 def car_probe_line(lines) -> dict:
     for line in lines:
