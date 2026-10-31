@@ -425,7 +425,7 @@ int MediaCache::clear(const std::string& url){
         const std::string path = utf8Of(file);
         // the base file of every companion (.meta, .part, .new, .tmp)
         std::string base = path;
-        for (const char* suffix : {".meta.tmp", ".meta", ".part", ".new"}){
+        for (const char* suffix : {".part.meta", ".meta.tmp", ".meta", ".part", ".new"}){
             const std::string s = suffix;
             if (base.size() > s.size() && base.compare(base.size() - s.size(), s.size(), s) == 0){
                 base = base.substr(0, base.size() - s.size());
@@ -484,7 +484,7 @@ void MediaCache::evict(){
             continue;
         std::string path = utf8Of(entry.path());
         std::string base = path;
-        for (const char* suffix : {".new.meta", ".meta.tmp", ".meta", ".part", ".new"}){
+        for (const char* suffix : {".part.meta", ".new.meta", ".meta.tmp", ".meta", ".part", ".new"}){
             const std::string s = suffix;
             if (base.size() > s.size() && base.compare(base.size() - s.size(), s.size(), s) == 0){
                 base = base.substr(0, base.size() - s.size());
@@ -511,7 +511,7 @@ void MediaCache::evict(){
             break;
         if (inUse(item.base))
             continue;
-        for (const char* suffix : {"", ".meta", ".part", ".new", ".new.meta", ".meta.tmp"})
+        for (const char* suffix : {"", ".meta", ".part", ".part.meta", ".new", ".new.meta", ".meta.tmp"})
             removeFile(item.base + suffix);
         total -= std::min(total, item.bytes);
     }

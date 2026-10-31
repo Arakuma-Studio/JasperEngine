@@ -13,6 +13,8 @@
 #include "net/CurlApi.h"
 
 #include <dlfcn.h>
+#include <ifaddrs.h>
+#include <net/if.h>
 
 #include <algorithm>
 #include <condition_variable>
@@ -44,6 +46,18 @@ namespace {
 
     std::vector<std::string> defaultLibraryNames(){
         return {"libcurl.so.4", "libcurl-gnutls.so.4", "libcurl.so"};
+    }
+
+    // an interface other than loopback is up with an address (else the OS has no network)
+    bool hasNetwork(){
+        ifaddrs* list = nullptr;
+        if (getifaddrs(&list) != 0) return true;
+        bool up = false;
+        for (ifaddrs* a = list; a && !up; a = a->ifa_next){
+            up = a->ifa_addr && (a->ifa_flags & IFF_UP) && (a->ifa_flags & IFF_RUNNING) && !(a->ifa_flags & IFF_LOOPBACK);
+        }
+        freeifaddrs(list);
+        return up;
     }
 
     struct Job {
@@ -291,7 +305,12 @@ namespace {
             api.easy_setopt(e, CURLOPT_NOSIGNAL, 1L);
             api.easy_setopt(e, CURLOPT_ERRORBUFFER, job.errorBuffer);
             api.easy_setopt(e, CURLOPT_FOLLOWLOCATION, 0L);
-            api.easy_setopt(e, CURLOPT_ACCEPT_ENCODING, "");
+            // every encoding curl decodes, unless the transfer asks for one (identity, resuming)
+            bool namedEncoding = false;
+            for (const auto& header : t.headers){
+                if (HttpUtil::lower(header.first) == "accept-encoding") namedEncoding = true;
+            }
+            if (!namedEncoding) api.easy_setopt(e, CURLOPT_ACCEPT_ENCODING, "");
             api.easy_setopt(e, CURLOPT_NOPROGRESS, 1L);
             api.easy_setopt(e, CURLOPT_HEADERFUNCTION, &CurlBackend::onHeader);
             api.easy_setopt(e, CURLOPT_HEADERDATA, &job);
@@ -386,7 +405,9 @@ namespace {
             }
             if (result != CURLE_OK){
                 std::string detail = job.errorBuffer[0] ? job.errorBuffer : api.easy_strerror(result);
-                t.finish(mapError(result), detail);
+                std::string code = mapError(result);
+                if ((code == "dns" || code == "connect") && !hasNetwork()) code = "offline";
+                t.finish(code, detail);
                 return;
             }
             if (!job.headDone && !decideHead(job)){

@@ -307,6 +307,10 @@ void jasperengine::httpAndroidSetup(JNIEnv* env, jobject activity){
         httpClass = nullptr;
         return;
     }
+    // the context that answers "is there a network" (errorCode "offline")
+    jmethodID initMethod = env->GetStaticMethodID(httpClass, "init", "(Landroid/content/Context;)V");
+    if (initMethod) env->CallStaticVoidMethod(httpClass, initMethod, activity);
+    clearException(env);
     startMethod = env->GetStaticMethodID(httpClass, "start", "(JLjava/lang/String;Ljava/lang/String;[Ljava/lang/String;[BIIZ)V");
     cancelMethod = env->GetStaticMethodID(httpClass, "cancel", "(J)V");
     if (clearException(env) || !startMethod || !cancelMethod){

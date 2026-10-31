@@ -13,6 +13,7 @@
 
 #include "media/VideoFormats.h"
 #include "InspectorWindow.h"
+#include "util/PhysicsMaterialAssets.h"
 #include "InspectorWindowClips.h"
 #include "InspectorVatBake.h"
 #include "util/FileUtils.h"
@@ -1390,6 +1391,13 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         std::error_code ec;
         if (!fs::is_regular_file(asset, ec)) return false;
         drawVideoAsset(asset);
+        return true;
+    }
+    // a physics material: its four fields (InspectorPhysics2D.cpp)
+    if (PhysicsMaterialAssets::isPhysicsMaterialFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawPhysicsMaterialAsset(asset);
         return true;
     }
     // a generated normal map or its source image: their own view; any other image keeps the scene selection

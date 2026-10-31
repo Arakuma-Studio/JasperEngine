@@ -579,8 +579,8 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/WinInputRouter.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/GamepadWin.cpp\n";
     content += "        )\n";
-    content += "        # winhttp: the HTTP client's backend (platform/win/HttpBackendWin.cpp)\n";
-    content += "        list(APPEND PLATFORM_LIBS gdi32 user32 shell32 imm32 winhttp)\n";
+    content += "        # winhttp, iphlpapi: the HTTP client's backend (platform/win/HttpBackendWin.cpp)\n";
+    content += "        list(APPEND PLATFORM_LIBS gdi32 user32 shell32 imm32 winhttp iphlpapi)\n";
     content += "        if(JASPERENGINE_GRAPHIC_BACKEND STREQUAL \"vulkan\")\n";
     content += "            add_definitions(\"-DSOKOL_VULKAN\")\n";
     content += "            add_definitions(\"-DVK_USE_PLATFORM_WIN32_KHR\")\n";
@@ -671,14 +671,23 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
         sourceContent += "\n";
         sourceContent += "        const std::string className = scriptEntry.className;\n";
         sourceContent += "        void* instance = nullptr;\n";
+        // a behaviour (ScriptBase) gets the lifecycle and other script messages it overrides
+        sourceContent += "        jasperengine::ScriptBase* cppScript = nullptr;\n";
+        sourceContent += "        jasperengine::ScriptMessageMask cppMessageMask = 0;\n";
         for (const auto& s : scriptFiles) {
             sourceContent += "        if (className == \"" + s.className + "\") {\n";
-            sourceContent += "            instance = static_cast<void*>(new " + s.className + "(scene, entity));\n";
+            sourceContent += "            " + s.className + "* typed = new " + s.className + "(scene, entity);\n";
+            sourceContent += "            instance = static_cast<void*>(typed);\n";
+            sourceContent += "            cppScript = jasperengine::ScriptMessages::cppScript<" + s.className + ">(typed);\n";
+            sourceContent += "            cppMessageMask = jasperengine::ScriptMessages::cppMask<" + s.className + ">();\n";
             sourceContent += "        }\n";
         }
         sourceContent += "        scriptComp = scene->isEntityCreated(entity) ? scene->findComponent<jasperengine::ScriptComponent>(entity) : nullptr;\n";
         sourceContent += "        if (scriptComp && s < scriptComp->scripts.size()) {\n";
         sourceContent += "            scriptComp->scripts[s].instance = instance;\n";
+        sourceContent += "            scriptComp->scripts[s].cppScript = cppScript;\n";
+        sourceContent += "            scriptComp->scripts[s].cppMessageMask = cppMessageMask;\n";
+        sourceContent += "            jasperengine::ScriptMessages::notifyReceiversChanged(scene, entity);\n";
         sourceContent += "        }\n";
         sourceContent += "    }\n";
         sourceContent += "}\n\n";
@@ -782,8 +791,10 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
         sourceContent += "}\n\n";
     }
 
+    // A scene's scripts: every instance (Lua, then C++ made and bound), then their init and
+    // onEnable in one pass for both languages (ScriptRuntime), then the HTML documents' scripts
     sourceContent += "extern \"C\" void PROJECT_API initScripts(jasperengine::Scene* scene) {\n";
-    sourceContent += "    LuaBinding::initializeLuaScripts(scene);\n";
+    sourceContent += "    LuaBinding::createLuaScripts(scene);\n";
     if (!scriptFiles.empty()) {
         sourceContent += "\n";
         // what a constructor instantiates goes to this scene, not yet the Engine's
@@ -796,9 +807,10 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
         sourceContent += "        bindCppScriptProperties(scene, scriptsArray->getEntity(i));\n";
         sourceContent += "    }\n";
         sourceContent += "    ObjectManager::popActiveScene();\n";
-    } else {
-        sourceContent += "    (void)scene; // Suppress unused parameter warning\n";
     }
+    sourceContent += "\n";
+    sourceContent += "    ScriptRuntime::awakeScene(scene);\n";
+    sourceContent += "    scene->getSystem<UIDocumentSystem>()->startDocumentScripts();\n";
     sourceContent += "}\n\n";
 
     // GameObjects instantiated while the game runs (ObjectManager): their Lua scripts are
@@ -834,10 +846,13 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
             sourceContent += "                    std::string addr = \"_\" + std::to_string(reinterpret_cast<std::uintptr_t>(scriptEntry.instance)) + \"_\";\n";
             sourceContent += "                    Engine::removeSubscriptionsByTag(addr);\n";
             sourceContent += "                    scene->removeSubscriptionsByTag(addr);\n";
+            sourceContent += "                    jasperengine::ScriptRuntime::forgetInstance(scriptEntry.instance);\n";
             sourceContent += "                    delete static_cast<" + s.className + "*>(scriptEntry.instance);\n";
             sourceContent += "                }\n";
         }
         sourceContent += "                scriptEntry.instance = nullptr;\n";
+        sourceContent += "                scriptEntry.cppScript = nullptr;\n";
+        sourceContent += "                scriptEntry.cppMessageMask = 0;\n";
         sourceContent += "            }\n";
 
         // delete the wrappers initScripts created for entity reference members
@@ -1554,6 +1569,8 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "A script class attached to a GameObject's Script component either inherits `jasperengine::ScriptBase` (`#include \"ScriptBase.h\"`, general logic) "
                      "or the GameObject's own class (`jasperengine::Mesh`, `jasperengine::Sprite`, ... to call its methods on `this`), and declares a "
                      "`(jasperengine::Scene* scene, jasperengine::Entity entity)` constructor; fields marked `DPROPERTY(\"Name\")` show in the Inspector. "
+                     "A `ScriptBase` script overrides the lifecycle it needs, as Lua scripts: `init()` (first activation, after its properties are bound), "
+                     "`onEnable()`, `start()`, `onDisable()`, `onDestroy()`. "
                      "Ordinary helper classes and source files need neither. "
                      "The editor discovers and registers scripts automatically; "
                      "they are added to `SCRIPT_SOURCES` in the generated `CMakeLists.txt` and compiled into the project.\n";
@@ -2113,7 +2130,7 @@ bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& scen
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, bool allowInsecureHttp){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const std::string& inputActionsJson, bool allowInsecureHttp){
     // the generated sources (main.cpp, scene and prefab factories) live in the editor's internal
     // folder, which an MCP call's deny-by-default guard refuses otherwise (util/SafeWrite.h)
     safewrite::EditorInternal ownInternal(projectInternalPath);
@@ -2349,6 +2366,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     emitLayerCollisionMatrix("Physics", tagsAndLayers.layerCollisionMatrix3D);
     emitLayerCollisionMatrix("Physics2D", tagsAndLayers.layerCollisionMatrix2D);
 
+    // Project Settings > Input (the engine starts with Unity's defaults), before any script reads it
+    mainContent += inputActionsInitSource(inputActionsJson);
+
     mainContent += "\n";
 
     // Register all stacks with SceneManager
@@ -2416,6 +2436,30 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     FileUtils::writeIfChanged(mainFile, mainContent);
 
     writeSourceFiles(projectPath, projectInternalPath, libName, scriptFiles, scenes, prefabs, vsyncEnabled, windowSettings, assetsPath, luaPath, scriptDirs, cxxStandard);
+}
+
+std::string editor::Generator::inputActionsInitSource(const std::string& inputActionsJson) {
+    if (inputActionsJson.empty()) return "";
+    // a raw string delimiter the JSON does not hold (a description may hold `)jinput"`)
+    std::string delimiter = "jinput";
+    for (int n = 1; inputActionsJson.find(")" + delimiter + "\"") != std::string::npos; n++) {
+        delimiter = "jinput" + std::to_string(n);
+    }
+    // in pieces: MSVC takes string literals of at most 16 KB, adjacent ones are joined
+    constexpr size_t pieceSize = 8000;
+    std::string literal;
+    for (size_t at = 0; at < inputActionsJson.size();) {
+        // a piece ends on a character boundary (an editor shows each literal as valid UTF-8)
+        size_t end = std::min(at + pieceSize, inputActionsJson.size());
+        while (end < inputActionsJson.size() && end > at + 1 &&
+               (static_cast<unsigned char>(inputActionsJson[end]) & 0xC0) == 0x80) {
+            end--;
+        }
+        std::string piece = inputActionsJson.substr(at, end - at);
+        at = end;
+        literal += (literal.empty() ? "" : "\n        ") + std::string("R\"") + delimiter + "(" + piece + ")" + delimiter + "\"";
+    }
+    return "    InputActions::loadJson(" + literal + ", nullptr);\n";
 }
 
 std::string editor::Generator::resolveCMakePath(const std::string& userPath) {

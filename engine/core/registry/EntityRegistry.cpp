@@ -350,7 +350,40 @@ Entity EntityRegistry::findEntity(const std::string& name, Entity parent) const 
 }
 
 void EntityRegistry::setEntityActive(Entity entity, bool active) {
+    if (!isActivationObserved() || !isEntityCreated(entity)) {
+        entityManager.setActive(entity, active);
+        return;
+    }
+    const bool before = isEntityActiveInHierarchy(entity);
     entityManager.setActive(entity, active);
+    const bool after = isEntityActiveInHierarchy(entity);
+    if (before != after) {
+        onActiveInHierarchyChanged(collectActivationBranch(entity), after);
+    }
+}
+
+std::vector<Entity> EntityRegistry::collectActivationBranch(Entity root) {
+    std::vector<Entity> branch;
+    branch.push_back(root);
+    if (!entityManager.getSignature(root).test(getComponentId<Transform>())) {
+        return branch;
+    }
+    // the branch follows root in the Transform array; a descendant flips when it and every
+    // parent below root are active themselves
+    std::unordered_set<Entity> inBranch{root};
+    std::unordered_set<Entity> flipping{root};
+    componentManager.getComponentArray<Transform>()->forEachAfter(root, [&](Entity entity, const Transform& transform) {
+        if (!inBranch.count(transform.parent)) {
+            return false;
+        }
+        inBranch.insert(entity);
+        if (flipping.count(transform.parent) && entityManager.isActive(entity)) {
+            flipping.insert(entity);
+            branch.push_back(entity);
+        }
+        return true;
+    });
+    return branch;
 }
 
 bool EntityRegistry::isEntityActive(Entity entity) const {
@@ -542,6 +575,23 @@ std::vector<Entity> EntityRegistry::getEntityList() const{
     return entityManager.getEntityList();
 }
 
+std::vector<Entity> EntityRegistry::getHierarchyOrder() const{
+    std::vector<Entity> order;
+    auto transforms = componentManager.getComponentArray<Transform>();
+    order.reserve(transforms->size());
+    transforms->forEach([&order](Entity entity, const Transform&) {
+        order.push_back(entity);
+        return true;
+    });
+    const ComponentId transformId = componentManager.getComponentId<Transform>();
+    for (Entity entity : entityManager.getEntityList()) {
+        if (!entityManager.getSignature(entity).test(transformId)) {
+            order.push_back(entity);
+        }
+    }
+    return order;
+}
+
 void EntityRegistry::setDefaultEntityPool(EntityPool pool) { 
     defaultPool = pool;
 }
@@ -596,6 +646,19 @@ void EntityRegistry::clear() {
 }
 
 void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTransform){
+    // under an inactive (or active) parent the moved branch may change activeInHierarchy
+    const bool observed = isActivationObserved() && isEntityCreated(child);
+    const bool activeBefore = observed && isEntityActiveInHierarchy(child);
+    setEntityChild(parent, child, changeTransform);
+    if (observed && isEntityCreated(child)) {
+        const bool activeAfter = isEntityActiveInHierarchy(child);
+        if (activeAfter != activeBefore) {
+            onActiveInHierarchyChanged(collectActivationBranch(child), activeAfter);
+        }
+    }
+}
+
+void EntityRegistry::setEntityChild(Entity parent, Entity child, bool changeTransform){
     Signature childSignature = entityManager.getSignature(child);
     if (childSignature.test(getComponentId<Transform>())){
         Transform& transformChild = componentManager.getComponent<Transform>(child);

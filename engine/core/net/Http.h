@@ -144,9 +144,13 @@ namespace jasperengine {
 
         // Every request ends as cancelled; their callbacks run with "cancelled"
         static void cancelAll();
-        // Play stop / engine shutdown: every request ends without a callback, the stats reset.
-        // Never waits for a transfer.
+        // Play stop: every request ends without a callback; the stats and the settings scripts
+        // change (maxConcurrentRequests, userAgent, timeout, logFailures) reset. Never waits for
+        // a transfer.
         static void shutdown();
+        // Engine shutdown: shutdown() and the platform stack's worker threads stopped (joined,
+        // so none outlives the engine); a later request starts them again
+        static void terminate();
 
         // requests running at once (1..64, default 8); more wait in order (HttpState.Queued)
         static int getMaxConcurrentRequests();

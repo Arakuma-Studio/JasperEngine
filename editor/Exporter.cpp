@@ -2755,6 +2755,9 @@ bool editor::Exporter::copyEngine() {
         const IOSProjectSettings& ios = project->getIOSProjectSettings();
         const bool iosAdMob = isAdMobIncluded(ios.admobEnabled, ios.admobAppId, "iOS", iosSampleAdMobAppId, false);
         projectSettings += indent + std::string("set(JASPERENGINE_ADMOB ") + (iosAdMob ? "ON" : "OFF") + ")";
+        // App Transport Security of a bare macOS executable (Ninja/Makefile builds have no bundle)
+        projectSettings += indent + std::string("set(JASPERENGINE_ALLOW_INSECURE_HTTP ") +
+                           (project->getApplicationSettings().allowInsecureHttp ? "ON" : "OFF") + ")";
         cmakeContent.replace(projectSettingsPos, projectSettingsMarker.size(), projectSettings);
     } else {
         Out::warning("Exported CMakeLists.txt is missing the project settings marker; using platform defaults");
@@ -2949,8 +2952,6 @@ std::vector<std::pair<std::string, unsigned int>> editor::Exporter::getSceneMaxV
         agg.maxExternalBuffers  = std::max(agg.maxExternalBuffers, sceneProject.maxValues.maxExternalBuffers);
         agg.maxSpriteFrames     = std::max(agg.maxSpriteFrames, sceneProject.maxValues.maxSpriteFrames);
         agg.maxBones            = std::max(agg.maxBones, sceneProject.maxValues.maxBones);
-        agg.maxColliders2D         = std::max(agg.maxColliders2D, sceneProject.maxValues.maxColliders2D);
-        agg.maxColliderPoints2D    = std::max(agg.maxColliderPoints2D, sceneProject.maxValues.maxColliderPoints2D);
         agg.maxColliders3D         = std::max(agg.maxColliders3D, sceneProject.maxValues.maxColliders3D);
         agg.maxColliderVertices3D  = std::max(agg.maxColliderVertices3D, sceneProject.maxValues.maxColliderVertices3D);
         agg.maxColliderIndices3D   = std::max(agg.maxColliderIndices3D, sceneProject.maxValues.maxColliderIndices3D);
@@ -2971,8 +2972,6 @@ std::vector<std::pair<std::string, unsigned int>> editor::Exporter::getSceneMaxV
         {"MAX_SPRITE_FRAMES", capacity(agg.maxSpriteFrames, MAX_SPRITE_FRAMES)},
         {"MAX_EXTERNAL_BUFFERS", capacity(agg.maxExternalBuffers, MAX_EXTERNAL_BUFFERS)},
         {"MAX_BONES", capacity(agg.maxBones, MAX_BONES)},
-        {"MAX_COLLIDERS_2D", capacity(agg.maxColliders2D, MAX_COLLIDERS_2D)},
-        {"MAX_COLLIDER_POINTS_2D", capacity(agg.maxColliderPoints2D, MAX_COLLIDER_POINTS_2D)},
         {"MAX_COLLIDERS_3D", capacity(agg.maxColliders3D, MAX_COLLIDERS_3D)},
         {"MAX_COLLIDER_VERTICES_3D", capacity(agg.maxColliderVertices3D, MAX_COLLIDER_VERTICES_3D)},
         {"MAX_COLLIDER_INDICES_3D", capacity(agg.maxColliderIndices3D, MAX_COLLIDER_INDICES_3D)},
@@ -3124,11 +3123,12 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     const bool internetTicked = android.permissions.count("internet") > 0;
     bool internet = internetTicked || android.internetAccess == AndroidInternetAccess::Require;
     if (!internet) {
-        // what this export ships: its Lua files, the HTML UI documents and the C++ scripts (not the
-        // generated sources, which call Http themselves, nor files an earlier export left)
+        // what the build packs and compiles: the Lua and asset trees (HTML UI documents) and the
+        // C++ scripts, as they are in the export folder (a file an earlier export left there
+        // ships too); not the generated sources, which call Http themselves
         const fs::path exportRoot = getExportProjectRoot();
         std::vector<fs::path> shipped;
-        for (const fs::path& lua : luaExportedPaths) shipped.push_back(fs::path("lua") / lua);
+        ExportFeatureScan::collect(exportRoot, exportRoot / "lua", shipped);
         ExportFeatureScan::collect(exportRoot, exportRoot / "assets", shipped);
         ExportFeatureScan::collect(exportRoot, exportRoot / "scripts", shipped);
         const std::vector<ExportFeatureScan::Use> uses = ExportFeatureScan::scanFiles(exportRoot, shipped, {ExportFeatureScan::http()});
@@ -3153,11 +3153,13 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     bool wrotePermission = false;
     if (internet) {
         manifest += "    <uses-permission android:name=\"android.permission.INTERNET\" />\n";
+        // a normal permission (no prompt): lets Http tell "offline" from a DNS failure
+        manifest += "    <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />\n";
         wrotePermission = true;
     }
     for (const std::string& permission : android.permissions) {
         // written above, once
-        if (permission == "internet") continue;
+        if (permission == "internet" || (internet && permission == "access_network_state")) continue;
         const char* manifestName = androidPermissionManifestName(permission);
         if (!manifestName) continue;
         manifest += "    <uses-permission android:name=\"android.permission.";
@@ -3209,6 +3211,7 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         config += "    <domain-config cleartextTrafficPermitted=\"true\">\n";
         config += "        <domain includeSubdomains=\"false\">localhost</domain>\n";
         config += "        <domain includeSubdomains=\"false\">127.0.0.1</domain>\n";
+        config += "        <domain includeSubdomains=\"false\">::1</domain>\n";
         config += "    </domain-config>\n";
         config += "</network-security-config>\n";
         const fs::path xmlDir = androidAppDir / "src" / "main" / "res" / "xml";

@@ -1531,7 +1531,7 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 | `getElementByID`, other misspelt members | the DOM names (`getElementById`) | LuaLS `undefined-field` |
 | `addEventListener("onclick")`, `"mouseenter"`, `"pointerdown"` | `"click"`, `"mouseover"`/`"mouseout"`, `"mousedown"` | LuaLS `param-type-mismatch` (`UIEventType`); a warning at run time |
 | `setTimeout`, `setInterval`, `requestAnimationFrame` | `anime.createTimer({ duration = 2000, onComplete = fn })`, or `RegisterEngineEvent(self, "onUpdate")` | none (Lua has no such globals) |
-| `fetch`, `XMLHttpRequest` | call Lua `Http` (`Http.get(url, {owner = self}, function(res) ... end)`, `jasper://docs/networking`) from the document's `<script type="text/lua">` or the GameObject's script; documents themselves load nothing from the network | none |
+| `fetch`, `XMLHttpRequest` | call Lua `Http` (`jasper://docs/networking`): in the document's `<script type="text/lua">` `Http.get(url, {owner = document}, function(res) ... end)` (no `self` there; the document's GameObject owns it), in the GameObject's script `{owner = self}`; documents themselves load nothing from the network | none |
 | `localStorage` | `UserSettings.setStringForKey(key, value)` / `getStringForKey` | none |
 | `alert()`, `confirm()` | a `<dialog>` with `showModal()`, or a modal element | `HTMLUI-HTML-0006` (inside JavaScript) |
 | JS animation libraries (GSAP, anime.js `<script>`) | the Lua `anime` API | `HTMLUI-HTML-0007` |

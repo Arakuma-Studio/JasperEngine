@@ -710,21 +710,73 @@ its file.
 - `build_project` reports the "native plugins but no INTERNET" hint as a warning on
   `project.yaml:1` when `<project>/plugins/native` exists and nothing uses Http.
 
+### Review fixes (second pass)
+
+- **Windows** runs WinHTTP in asynchronous mode (`WINHTTP_FLAG_ASYNC`, one status callback, a
+  heap "hop" per request handle as its context, freed at `WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING`):
+  closing a request handle is then the documented cancel, also for the whole-request timeout
+  (a watchdog thread that ends after 30 s without timed requests; deadlines under one mutex).
+  TLS 1.2 and 1.3 are enabled (`WINHTTP_OPTION_SECURE_PROTOCOLS`, TLS 1.2 alone where 1.3 is
+  unknown); a header WinHTTP refuses fails the request (never sent without it). `iphlpapi`
+  is linked for the offline check.
+- **verifyTls = false** runs on a session of its own (Apple: an ephemeral NSURLSession;
+  Windows: a second WinHttpOpen session), so a connection that skipped the certificate check is
+  never reused by a verified request. Curl checks per transfer (no shared unverified pool:
+  curl does not reuse a connection across different SSL_VERIFY settings).
+- **One default Content-Type**: a non-empty body without a Content-Type header gets
+  `application/octet-stream`, set in the core for every backend (tables stay
+  `application/json`, `form` `application/x-www-form-urlencoded`). The stacks' own defaults
+  (a form on Android and Apple, curl's form for POST) never apply.
+- **Resume** sends `If-Range` with the validator the part was written with (a strong ETag, else
+  Last-Modified, stored in `<path>.part.meta`) and `Accept-Encoding: identity`; a part without a
+  validator is not continued (a 200 starts over). A 200 to a resume rewrites the part from the
+  start. The meta file goes with the part.
+- **One download per file**: a download to a path another live request is writing fails at
+  once with `errorCode = "file"` ("data://x is being downloaded already (request N)"), rather
+  than joining it (two callbacks, two owners, two option sets would have to agree).
+- **Private Network Access** (lead decision): a redirect from a host that is not loopback /
+  private / link-local to one that is (literal addresses and `localhost` names; DNS names are
+  not resolved) fails with `redirect_blocked`. The same check, and the plain-HTTP policy, run on
+  the final URL a stack reached by itself (the browser).
+- **Editor Play** sets the plain-HTTP policy before any scene's scripts initialise
+  (`runPlayStartup`), as the exported main does. The macOS editor's Info.plist allows arbitrary
+  loads (the engine enforces the project policy itself); a macOS export built without Xcode
+  embeds an `__info_plist` section with the project's ATS dictionary
+  (`JASPERENGINE_ALLOW_INSECURE_HTTP`, written by the export). Builds of the project outside the
+  editor that link the editor's engine library (Generator's non-plugin path) get no ATS section.
+- **Android**: custom methods over HTTPS fail with `unsupported` (HttpsURLConnection would send
+  a GET); a refused redirect disconnects; response headers keep their wire order without
+  Android's `X-Android-*`; `offline` when ConnectivityManager says there is no network (the
+  export adds `ACCESS_NETWORK_STATE`, a normal permission, with INTERNET). The cleartext config
+  also lists `::1`. Curl (`getifaddrs`) and Windows (`GetAdaptersAddresses`) report `offline` for
+  a DNS/connect failure when no interface but loopback is up.
+- **Apple**: no total timeout means `connectTimeout` (else 60 s) as the idle timeout; a redirect
+  target NSURL cannot parse fails with `invalid_url`.
+- **Settings**: `Http::shutdown` (Play stop) also resets `maxConcurrentRequests`, `userAgent`,
+  `timeout` and `logFailures`; engine shutdown calls the new `Http::terminate`, which also
+  joins the platform stack's threads (the next request starts them again).
+- **Lua**: `options.file` with `responseType` raises.
+- **Export scan**: any use of the name `Http` in shipped Lua (aliases such as `local H = Http`),
+  HTML UI documents' Lua, and C++ `Http::`, `jasperengine::Http`, `HttpRequestDesc`,
+  `"net/Http.h"`; it reads the export's `lua/`, `assets/` and `scripts/` as they are on disk
+  (what the build packs and compiles), never the generated sources.
+- **HTML UI documents** have no `self`: their scripts pass `owner = document` (the document's
+  GameObject).
+
 ### Verification
 
-- Unit tests (editor/tests/HttpTest.cpp, 42 cases: the 18 of section 9 plus TLS, redirect method
-  rules and credentials, resume / keepPartial / 416, body limits, owners by scene and script,
-  shutdown, stats and logFailures, URL helpers, the Lua API, coroutine callers, the export scan)
-  against editor/tests/util/TestHttpServer and a Python HTTPS server with an openssl self-signed
-  certificate: all pass; the whole suite 1014 tests, 1006 passed, 8 skipped (the known ones).
-- MCP: tools/mcp/tests/test_http.py (2), test_build.py `test_http_export` and the rest of
-  test_build.py, test_stubs.py with lua-language-server (the Http stubs check clean and a wrong
-  `Http.maxConcurrentRequests` assignment is reported), test_docs.py, test_protocol.py (the
-  agent guide stays under 16 KB) pass.
-- Android: `assembleDebug` of engine/workspaces/androidstudio for arm64-v8a (JasperHttp.java,
-  HttpBackendAndroid.cpp, NativeEngine.cpp) builds; the APK has the class and the natives.
-- Web: the full emsdk build of the engine and its sample project links (EM_JS, exports); the web
-  backend with the client core ran in Node 24 against a local server (GET, POST with a binary
-  body, 404, timeout, redirect followed / not followed, cancel, a file download).
-- Windows (WinHTTP) and Apple (NSURLSession) code could not be compiled on this host; they were
-  written against the current SDK APIs and re-read.
+- After the review fixes and the merge of main (input, script-data), on build box 2203: the
+  whole unit suite 1071 tests, 1063 passed, 8 skipped (the known ones), 0 failed, 44 of them
+  HTTP (editor/tests/HttpTest.cpp against editor/tests/util/TestHttpServer and a Python HTTPS
+  server with an openssl self-signed certificate; plus HttpClientProtocols); 0 compiler warnings.
+- MCP: test_http.py (3, with the Play policy before init), test_build.py (`test_http_export`:
+  Lua alias, HTML-only and C++-only use, permissions once, cleartext and ATS, pbxproj),
+  test_play.py, test_docs.py, test_protocol.py (the guide at 16,356 bytes) and test_stubs.py with
+  lua-language-server: 47 passed, 0 failed (the slow Desktop/C++ builds and clangd skipped).
+- Android: `assembleDebug` of engine/workspaces/androidstudio for arm64-v8a builds after the
+  fixes (JasperHttp.java, HttpBackendAndroid.cpp, NativeEngine.cpp); javac -Xlint:all clean.
+- Web: the full emsdk build of the engine and its sample project linked (first pass); the web
+  backend with the client core runs in Node 24 against a local server after the fixes (GET,
+  binary POST, 404, timeout, redirect followed / not followed, cancel, file download).
+- Windows (WinHTTP async) and Apple (NSURLSession) code could not be compiled on this host; they
+  were written against the current SDK APIs and re-read.
