@@ -231,7 +231,8 @@ post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
 (jasper://docs/post-processing).
 Textures from examples (tileable, inpainted, PBR sets): synthesize_texture
 (jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
-(jasper://docs/fluid). Bend/squash: edit_lattice (jasper://docs/lattice).
+(jasper://docs/fluid). Bend/squash: edit_lattice (jasper://docs/lattice). Thick lines, lasers,
+bullet trails: line_renderer / trail_renderer, curves and gradients (jasper://docs/lines-trails).
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
