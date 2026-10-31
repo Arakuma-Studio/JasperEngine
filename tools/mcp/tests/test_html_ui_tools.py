@@ -116,8 +116,8 @@ LIMITS.update({"user_settings": 550})
 # orientation and language, get_play_state's platform (+468 on its branch)
 # ui-scaling-text: configure_game_view's resolution (a preset, "WxH[@dpi]", {width, height, dpi, name}) and
 # create_ui's outline/shadow text props (+284 on its branch); measured on the tree merged with
-# platform-services and main: total MEASURED
-TOTAL_LIMIT = 107500
+# platform-services and main (ui-canvas-group, persistence): 150 tools, total 107523
+TOTAL_LIMIT = 107523
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
