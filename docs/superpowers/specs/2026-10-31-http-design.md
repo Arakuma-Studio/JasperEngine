@@ -712,10 +712,19 @@ its file.
 
 ### Verification
 
-See the commit log of `gaps/http`: unit tests (editor/tests/HttpTest.cpp) against
-editor/tests/util/TestHttpServer and a Python HTTPS server with an openssl self-signed
-certificate; MCP e2e tools/mcp/tests/test_http.py; export checks in test_build.py
-(`test_http_export`). The web backend was run in Node 24 (emsdk) against a local server with
-the client core (GET, POST with a binary body, 404, timeout, redirect followed / not followed,
-cancel, a file download). Windows (WinHTTP) and Apple (NSURLSession) code could not be compiled
-on this host.
+- Unit tests (editor/tests/HttpTest.cpp, 42 cases: the 18 of section 9 plus TLS, redirect method
+  rules and credentials, resume / keepPartial / 416, body limits, owners by scene and script,
+  shutdown, stats and logFailures, URL helpers, the Lua API, coroutine callers, the export scan)
+  against editor/tests/util/TestHttpServer and a Python HTTPS server with an openssl self-signed
+  certificate: all pass; the whole suite 1014 tests, 1006 passed, 8 skipped (the known ones).
+- MCP: tools/mcp/tests/test_http.py (2), test_build.py `test_http_export` and the rest of
+  test_build.py, test_stubs.py with lua-language-server (the Http stubs check clean and a wrong
+  `Http.maxConcurrentRequests` assignment is reported), test_docs.py, test_protocol.py (the
+  agent guide stays under 16 KB) pass.
+- Android: `assembleDebug` of engine/workspaces/androidstudio for arm64-v8a (JasperHttp.java,
+  HttpBackendAndroid.cpp, NativeEngine.cpp) builds; the APK has the class and the natives.
+- Web: the full emsdk build of the engine and its sample project links (EM_JS, exports); the web
+  backend with the client core ran in Node 24 against a local server (GET, POST with a binary
+  body, 404, timeout, redirect followed / not followed, cancel, a file download).
+- Windows (WinHTTP) and Apple (NSURLSession) code could not be compiled on this host; they were
+  written against the current SDK APIs and re-read.
