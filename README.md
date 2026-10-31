@@ -38,6 +38,7 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - Particle systems and heightmap terrain with clipmap LOD and sculpting tools
 - A GPU fluid simulation component (a port of Pavel Dobryakov's WebGL-Fluid-Simulation: vorticity, bloom, sunrays) shown over the screen, on a sprite, image or mesh, or as a texture any material can use, with presets, seeded deterministic runs and a Lua API: see [docs/mcp/guide/fluid.md](docs/mcp/guide/fluid.md)
 - UI toolkit with Rect Transforms, layout groups, text, images, buttons, input fields, scrollbars, and other widgets
+- UI scaling with a Canvas Scaler (scale with screen size, match width or height, expand/shrink, constant physical size), text outlines and shadows, per-character text effects (wave, typewriter, gradient, ...) and particles inside the UI, in the native UI and the HTML/CSS UI alike
 - Box2D and Jolt Physics for 2D/3D rigidbodies, colliders, and joints, drawn interpolated between fixed steps
 - Spatial 3D audio and multithreaded asynchronous resource loading
 - Platform services with Unity's names on every platform: `System.openURL`, the system language and region, `Engine.targetFrameRate` / `vSyncCount`, `Screen.orientation` and `autorotateTo*` (one Default / Allowed Orientations setting for Android and iOS), focus, pause and low-memory events, screen sleep, vibration and haptics, and app and device information; the Game view simulates phones (model, dpi, rotation) and languages: see [docs/mcp/guide/platform-services.md](docs/mcp/guide/platform-services.md)

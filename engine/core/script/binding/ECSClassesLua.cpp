@@ -679,6 +679,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("emitter", &ParticleSystemComponent::emitter, &ParticleSystemComponent::emitter)
         .addProperty("loop", &ParticleSystemComponent::loop, &ParticleSystemComponent::loop)
         .addProperty("localSpace", &ParticleSystemComponent::localSpace, &ParticleSystemComponent::localSpace)
+        .addProperty("useUnscaledTime", &ParticleSystemComponent::useUnscaledTime, &ParticleSystemComponent::useUnscaledTime)
         .addProperty("rate", &ParticleSystemComponent::rate, &ParticleSystemComponent::rate)
         .addProperty("maxPerUpdate", &ParticleSystemComponent::maxPerUpdate, &ParticleSystemComponent::maxPerUpdate)
         .addProperty("bursts", &ParticleSystemComponent::bursts, &ParticleSystemComponent::bursts)

@@ -186,6 +186,8 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
   and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
   UI camera: put HUDs and menus in a UI scene attached as a child scene (set_child_scene).
+- UI scale: Canvas Scaler (project graphics.ui_scale, scene canvas_scaler); preview with
+  configure_game_view resolution. Text outline/shadow, Text Effect, UI particles: jasper://docs/ui.
 
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with

@@ -41,6 +41,10 @@ namespace jasperengine{
         void setLocalSpace(bool localSpace);
         bool isLocalSpace() const;
 
+        // advance on the unscaled frame time (plays while Engine.timeScale is 0)
+        void setUseUnscaledTime(bool useUnscaledTime);
+        bool isUseUnscaledTime() const;
+
         void setMaxPerUpdate(int maxPerUpdate);
         int getMaxPerUpdate() const;
 

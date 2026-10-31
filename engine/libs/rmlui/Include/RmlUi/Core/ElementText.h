@@ -10,9 +10,31 @@ namespace Rml {
 
 struct LineClampEllipsis;
 
+class ElementText;
+
+/**
+    Per-character text animation (fork, T21-1/T21-2): the engine's provider gives a text the state of its effect, which the
+    font engine reads in GenerateString (TextShapingContext::text_effect).
+ */
+class RMLUICORE_API TextEffectProvider {
+public:
+	virtual ~TextEffectProvider() {}
+	/// The effect state of 'text' (null: none) and, in 'first_index', the index of its first visible character (not white
+	/// space) among the characters its effect animates in its inline formatting context.
+	virtual const void* GetTextEffect(ElementText& text, int& first_index) = 0;
+};
+
 class RMLUICORE_API ElementText final : public Element {
 public:
 	RMLUI_RTTI_DeclareWithParent(ElementText, Element)
+
+	/// The provider of text effects (null: none); not owned.
+	static void SetTextEffectProvider(TextEffectProvider* provider);
+	static TextEffectProvider* GetTextEffectProvider();
+	/// Generates the text's geometry again before it is next drawn, keeping its layout (an animating text effect).
+	void DirtyGeometry();
+	/// The visible characters (not white space) of the text's lines, as the text effect index counts them.
+	static int CountEffectCharacters(StringView text);
 
 	ElementText(const String& tag);
 	virtual ~ElementText();

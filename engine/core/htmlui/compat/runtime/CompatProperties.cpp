@@ -48,6 +48,10 @@ namespace {
         {"stroke-linecap", "", true, false, {{"keyword", "butt, round, square"}, {nullptr, nullptr}, {nullptr, nullptr}}},
         {"stroke-linejoin", "", true, false, {{"keyword", "miter, round, bevel, miter-clip, arcs"}, {nullptr, nullptr}, {nullptr, nullptr}}},
         {"stroke-dasharray", "", true, false, {{"string", ""}, {nullptr, nullptr}, {nullptr, nullptr}}},
+        // engine extensions: per-character text animation (ui-scaling-text spec 7.4)
+        {"text-effect", "none", true, false, {{"string", ""}, {nullptr, nullptr}, {nullptr, nullptr}}},
+        {"text-effect-iteration", "infinite", true, false, {{"string", ""}, {nullptr, nullptr}, {nullptr, nullptr}}},
+        {"text-effect-time", "ui", true, false, {{"keyword", "ui, game"}, {nullptr, nullptr}, {nullptr, nullptr}}},
     };
 
     struct State {

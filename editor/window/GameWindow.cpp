@@ -17,6 +17,7 @@
 #include "subsystem/UIDocumentSystem.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cmath>
 #include <string>
 
@@ -96,7 +97,76 @@ void editor::GameWindow::applySimulation() {
         Platform::setSimulatedDevice(device, orientation);
     }
     Platform::setSimulatedLanguage(settings.language);
+    // a resolution preset's dpi (Screen.dpi, Constant Physical Size); a device has its own
+    Platform::setSimulatedDpi(device ? 0.0f : (settings.resolution.empty() ? 0.0f : settings.resolutionDpi));
     editPassDirty = true;
+}
+
+bool editor::GameWindow::getFixedResolution(int& fixedWidth, int& fixedHeight, float& dpi) const {
+    // a simulated device renders at its screen's pixels, turned as it is now
+    if (const DeviceProfile* device = Platform::getSimulation().device) {
+        profileSize(*device, Platform::getSimulation().orientation, fixedWidth, fixedHeight);
+        dpi = device->dpi;
+        return fixedWidth > 0 && fixedHeight > 0;
+    }
+    if (!settings.resolution.empty() && isValidGameResolution(settings.resolutionWidth, settings.resolutionHeight, settings.resolutionDpi)) {
+        fixedWidth = settings.resolutionWidth;
+        fixedHeight = settings.resolutionHeight;
+        dpi = settings.resolutionDpi;
+        return true;
+    }
+    return false;
+}
+
+bool editor::GameWindow::setResolution(const std::string& name, std::string* error) {
+    loadSettings();
+    if (name.empty() || name == "free") {
+        settings.resolution.clear();
+        settings.resolutionWidth = 0;
+        settings.resolutionHeight = 0;
+        settings.resolutionDpi = 0.0f;
+    } else {
+        GameResolution resolution;
+        std::string why;
+        if (!findGameResolution(name, project->getCustomResolutions(), resolution, why)) {
+            if (error) *error = why;
+            return false;
+        }
+        settings.resolution = resolution.name;
+        settings.resolutionWidth = resolution.width;
+        settings.resolutionHeight = resolution.height;
+        settings.resolutionDpi = resolution.dpi;
+    }
+    applySimulation();
+    saveSettings();
+    return true;
+}
+
+bool editor::GameWindow::addCustomResolution(const GameResolution& resolution, std::string* error) {
+    if (resolution.name.empty() || !isValidGameResolution(resolution.width, resolution.height, resolution.dpi)) {
+        if (error) *error = "a custom resolution needs a name, 16..16384 pixels a side and a dpi of 0..2000";
+        return false;
+    }
+    for (const GameResolution& builtIn : builtInGameResolutions()) {
+        if (builtIn.name == resolution.name) {
+            if (error) *error = "\"" + resolution.name + "\" is a built-in resolution";
+            return false;
+        }
+    }
+    std::vector<GameResolution> custom = project->getCustomResolutions();
+    custom.erase(std::remove_if(custom.begin(), custom.end(), [&](const GameResolution& r) { return r.name == resolution.name; }), custom.end());
+    custom.push_back(resolution);
+    project->setCustomResolutions(custom);
+    project->saveWorkspaceFile();
+    return true;
+}
+
+void editor::GameWindow::removeCustomResolution(const std::string& name) {
+    std::vector<GameResolution> custom = project->getCustomResolutions();
+    custom.erase(std::remove_if(custom.begin(), custom.end(), [&](const GameResolution& r) { return r.name == name; }), custom.end());
+    project->setCustomResolutions(custom);
+    project->saveWorkspaceFile();
+    if (settings.resolution == name) setResolution("");
 }
 
 ScreenOrientation editor::GameWindow::getLayoutOrientation() const {
@@ -282,11 +352,11 @@ int editor::GameWindow::getAspectCount() {
 }
 
 bool editor::GameWindow::computeAspect(float& aspect) const {
-    // a simulated device has its own screen, turned as it is now
-    if (const DeviceProfile* device = Platform::getSimulation().device) {
-        int deviceWidth = 0, deviceHeight = 0;
-        profileSize(*device, Platform::getSimulation().orientation, deviceWidth, deviceHeight);
-        aspect = (float)deviceWidth / (float)std::max(1, deviceHeight);
+    // a simulated device's screen, or a fixed resolution
+    int fixedWidth = 0, fixedHeight = 0;
+    float dpi = 0.0f;
+    if (getFixedResolution(fixedWidth, fixedHeight, dpi)) {
+        aspect = (float)fixedWidth / (float)std::max(1, fixedHeight);
         return true;
     }
     if (settings.aspect == ASPECT_PROJECT) {
@@ -417,21 +487,60 @@ void editor::GameWindow::drawToolbar() {
         deviceAspect = std::to_string(deviceWidth) + "x" + std::to_string(deviceHeight) + " (Device)";
     }
 
+    // the aspect or the fixed resolution, and how much the image is shrunk to fit
+    std::string sizeLabel = device ? deviceAspect : aspectLabel(settings.aspect);
+    if (!device && !settings.resolution.empty()) {
+        sizeLabel = std::to_string(settings.resolutionWidth) + "x" + std::to_string(settings.resolutionHeight);
+    }
+    if (fixed && std::fabs(fitScale - 1.0f) > 0.005f) {
+        char scaleText[32];
+        std::snprintf(scaleText, sizeof(scaleText), " (%.2fx)", fitScale);
+        sizeLabel += scaleText;
+    }
+
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(Theme::dpi(150.0f));
+    ImGui::SetNextItemWidth(Theme::dpi(170.0f));
     ImGui::BeginDisabled(device != nullptr);
-    if (ImGui::BeginCombo("##GameAspect", device ? deviceAspect.c_str() : aspectLabel(settings.aspect))) {
+    if (ImGui::BeginCombo("##GameAspect", sizeLabel.c_str(), ImGuiComboFlags_HeightLarge)) {
+        ImGui::SeparatorText("Aspect");
         for (int i = 0; i < ASPECT_COUNT; i++) {
-            if (ImGui::Selectable(aspectLabel(i), settings.aspect == i)) {
+            if (ImGui::Selectable(aspectLabel(i), settings.resolution.empty() && settings.aspect == i)) {
                 settings.aspect = i;
+                setResolution("");
                 editPassDirty = true;
                 saveSettings();
             }
         }
+        // fixed sizes: the game renders at them and the image is fitted to the view (Scale zooms)
+        ImGui::SeparatorText("Resolutions");
+        for (const GameResolution& resolution : builtInGameResolutions()) {
+            if (ImGui::Selectable(gameResolutionLabel(resolution).c_str(), settings.resolution == resolution.name)) {
+                setResolution(resolution.name);
+            }
+        }
+        std::string removeName;
+        for (const GameResolution& resolution : project->getCustomResolutions()) {
+            ImGui::PushID(resolution.name.c_str());
+            if (ImGui::Selectable(gameResolutionLabel(resolution).c_str(), settings.resolution == resolution.name)) {
+                setResolution(resolution.name);
+            }
+            if (ImGui::BeginPopupContextItem()) {
+                if (ImGui::MenuItem("Remove")) removeName = resolution.name;
+                ImGui::EndPopup();
+            }
+            ImGui::SetItemTooltip("Right-click to remove");
+            ImGui::PopID();
+        }
+        if (!removeName.empty()) removeCustomResolution(removeName);
+        if (ImGui::Selectable(ICON_FA_PLUS " Add custom...", false)) {
+            customPopupRequested = true;
+        }
         ImGui::EndCombo();
     }
     ImGui::EndDisabled();
-    ImGui::SetItemTooltip(device ? "The simulated device's screen sets the aspect" : "Aspect ratio of the game view");
+    ImGui::SetItemTooltip(device ? "The simulated device's screen sets the resolution"
+                                 : "Aspect ratio, or a fixed resolution the game renders at (fitted to the view)");
+    drawCustomResolutionPopup();
 
     ImGui::SameLine(0, Theme::dpi(12.0f));
     ImGui::AlignTextToFramePadding();
@@ -522,6 +631,48 @@ void editor::GameWindow::drawToolbar() {
     }
 
     ImGui::SetCursorPosY(toolbarRowY + ImGui::GetTextLineHeightWithSpacing());
+}
+
+// "Add custom...": a named size and dpi, kept in this project's editor workspace
+void editor::GameWindow::drawCustomResolutionPopup() {
+    if (customPopupRequested) {
+        customPopupRequested = false;
+        std::snprintf(customName, sizeof(customName), "Custom %zu", project->getCustomResolutions().size() + 1);
+        ImGui::OpenPopup("Add Game View Resolution");
+    }
+    if (!ImGui::BeginPopupModal("Add Game View Resolution", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+
+    ImGui::SetNextItemWidth(Theme::dpi(200.0f));
+    ImGui::InputText("Name", customName, sizeof(customName));
+    ImGui::SetNextItemWidth(Theme::dpi(200.0f));
+    ImGui::InputInt("Width", &customWidth);
+    ImGui::SetNextItemWidth(Theme::dpi(200.0f));
+    ImGui::InputInt("Height", &customHeight);
+    ImGui::SetNextItemWidth(Theme::dpi(200.0f));
+    ImGui::InputFloat("DPI", &customDpi, 1.0f, 10.0f, "%.0f");
+    ImGui::SetItemTooltip("Screen.dpi while this resolution is chosen (0: the computer's); Constant Physical Size uses it");
+    customWidth = std::clamp(customWidth, 16, 16384);
+    customHeight = std::clamp(customHeight, 16, 16384);
+    customDpi = std::clamp(customDpi, 0.0f, 2000.0f);
+
+    GameResolution resolution;
+    resolution.name = customName;
+    resolution.width = customWidth;
+    resolution.height = customHeight;
+    resolution.dpi = customDpi;
+    std::string error;
+    ImGui::BeginDisabled(resolution.name.empty());
+    if (ImGui::Button("Add")) {
+        if (addCustomResolution(resolution, &error)) {
+            setResolution(resolution.name);
+            ImGui::CloseCurrentPopup();
+        }
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+    if (!error.empty()) ImGui::TextColored(Theme::Colors::WarningText, "%s", error.c_str());
+    ImGui::EndPopup();
 }
 
 // Device simulation (Unity's Device Simulator): a phone or tablet, how it is turned and the
@@ -653,8 +804,22 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
         if (dpiScale < 0.5f || dpiScale > 8.0f) dpiScale = 1.0f;
         engineScale = Backend::sceneRenderScale(fbScale, dpiScale);
 
-        const int newWidth = areaSize.x > 0.0f ? std::max(1, (int)std::lround(areaSize.x * engineScale.x)) : 0;
-        const int newHeight = areaSize.y > 0.0f ? std::max(1, (int)std::lround(areaSize.y * engineScale.y)) : 0;
+        int newWidth = areaSize.x > 0.0f ? std::max(1, (int)std::lround(areaSize.x * engineScale.x)) : 0;
+        int newHeight = areaSize.y > 0.0f ? std::max(1, (int)std::lround(areaSize.y * engineScale.y)) : 0;
+        // a fixed resolution renders at its own size, the image fitted to the area
+        int fixedWidth = 0, fixedHeight = 0;
+        float fixedDpi = 0.0f;
+        fixed = getFixedResolution(fixedWidth, fixedHeight, fixedDpi) && areaSize.x > 0.0f && areaSize.y > 0.0f;
+        if (fixed) {
+            newWidth = fixedWidth;
+            newHeight = fixedHeight;
+            // the image's screen pixels per game pixel (the toolbar's "(0.48x)"), then engine
+            // pixels per ImGui pixel of the fitted image
+            fitScale = areaSize.x * engineScale.x / (float)fixedWidth;
+            engineScale = ImVec2((float)fixedWidth / areaSize.x, (float)fixedHeight / areaSize.y);
+        } else {
+            fitScale = 1.0f;
+        }
         bool resized = false;
         if (newWidth != width || newHeight != height) {
             width = newWidth;
@@ -673,6 +838,10 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
         // hands it to the engine with the size it goes with
         if (project->getPlaySessionSceneId() == NULL_PROJECT_SCENE) {
             Platform::setShownOrientation(layoutOrientation);
+        }
+        // the Scene view lays UI out for what this view shows (Canvas Scaler)
+        if (width > 0 && height > 0) {
+            project->setEditViewSize((float)width, (float)height, fixed ? fixedDpi : Platform::getSimulation().dpi);
         }
 
         // Scale zooms into the image around its centre; the child clips the rest

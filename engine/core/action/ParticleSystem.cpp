@@ -88,6 +88,18 @@ bool ParticleSystem::isLocalSpace() const{
     return partAnim.localSpace;
 }
 
+void ParticleSystem::setUseUnscaledTime(bool useUnscaledTime){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
+
+    partAnim.useUnscaledTime = useUnscaledTime;
+}
+
+bool ParticleSystem::isUseUnscaledTime() const{
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
+
+    return partAnim.useUnscaledTime;
+}
+
 void ParticleSystem::setMaxPerUpdate(int maxPerUpdate){
     ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
     

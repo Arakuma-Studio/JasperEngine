@@ -145,6 +145,7 @@
 #define MAX_COLLIDER_INDICES_3D 768
 #endif
 
+#include "util/CanvasScaler.h"
 #include "Export.h"
 #include "System.h"
 #include "util/FunctionSubscribe.h"
@@ -343,6 +344,8 @@ namespace jasperengine {
         static Rect viewRect;
 
         static Scaling scalingMode;
+        // the project's Canvas Scaler (Project Settings > Graphics > UI Scale)
+        static CanvasScalerSettings defaultCanvasScaler;
         static TextureStrategy textureStrategy;
         
         static bool callMouseInTouchEvent;
@@ -368,6 +371,7 @@ namespace jasperengine {
         static double updateTime;
 
         static double timeScale;
+        static double unscaledDeltatime;
         static double fixedDeltatime;
         static double gameTime;
         static uint64_t gameFrames;
@@ -470,6 +474,12 @@ namespace jasperengine {
         static void setScalingMode(Scaling scalingMode);
         static Scaling getScalingMode();
 
+        // The UI's own space, the project default each scene uses unless it overrides it
+        // (Scene::setCanvasScaler). FollowGameCanvas (the default) lays the UI out in the game
+        // canvas above. A change recomputes every running scene's UI size.
+        static void setDefaultCanvasScaler(const CanvasScalerSettings& settings);
+        static const CanvasScalerSettings& getDefaultCanvasScaler();
+
         static void setTextureStrategy(TextureStrategy textureStrategy);
         static TextureStrategy getTextureStrategy();
         
@@ -543,6 +553,11 @@ namespace jasperengine {
         // Scaled seconds and frames the update loop has run (since start; not while paused or held)
         static double getGameTime();
         static uint64_t getGameFrames();
+
+        // The frame delta before timeScale (Unity's Time.unscaledDeltaTime): the measured frame
+        // time capped by maxDeltatime, or the fixed frame delta when set; 0 while the app is
+        // paused or the simulation held. It keeps running at time scale 0 (a pause menu).
+        static float getUnscaledDeltatime();
 
         // A host (the editor's MCP server) holds the simulation: frames may still draw, but no
         // update runs and no game time passes. Released, the first frame measures at most one

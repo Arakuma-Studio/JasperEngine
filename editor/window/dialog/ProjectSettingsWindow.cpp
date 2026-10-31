@@ -8,6 +8,7 @@
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "SettingsCategoryList.h"
+#include "window/CanvasScalerFields.h"
 
 #include <algorithm>
 #include <cmath>
@@ -848,6 +849,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_canvasWidth = project->getCanvasWidth();
     m_canvasHeight = project->getCanvasHeight();
     m_scalingModeIndex = findScalingIndex(project->getScalingMode());
+    m_uiScale = project->getUIScale();
     m_textureStrategyIndex = findTextureStrategyIndex(project->getTextureStrategy());
     m_vsyncEnabled = project->isVSyncEnabled();
     m_htmlUiMsaaIndex = findHtmlUiMsaaIndex(project->getHtmlUiMsaaSamples());
@@ -1367,6 +1369,40 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
         drawComboSetting("Scaling Mode", "##ScalingMode", scalingModeNames, scalingModeCount, m_scalingModeIndex, findScalingIndex(Project::defaultScalingMode));
         ImGui::Spacing();
         drawScalingPreview(scalingModeValues[m_scalingModeIndex], m_canvasWidth, m_canvasHeight);
+
+        // the Canvas Scaler's project default: the UI's own space, apart from the game canvas
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Spacing();
+        ImGui::TextUnformatted("UI Scale");
+        ImGui::SameLine();
+        if (m_uiScale != CanvasScalerSettings()) {
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+            if (ImGui::SmallButton(ICON_FA_ROTATE_LEFT "##resetUIScale"))
+                m_uiScale = CanvasScalerSettings();
+            ImGui::SetItemTooltip("Restore default (Follow Game Canvas)");
+            ImGui::PopStyleColor(2);
+            ImGui::PopStyleVar();
+        }
+        ImGui::TableSetColumnIndex(1);
+        ImGui::Spacing();
+        ImGui::TextDisabled("Canvas Scaler of the UI scenes and HTML UI documents (a scene can override it)");
+        drawCanvasScalerFields("##UIScale", m_uiScale);
+        if (m_uiScale.mode != UIScaleMode::FollowGameCanvas && m_canvasWidth > 0 && m_canvasHeight > 0) {
+            float viewWidth = 0.0f, viewHeight = 0.0f, dpi = 0.0f;
+            m_project->getEditViewSize(viewWidth, viewHeight, dpi);
+            int gameCanvasWidth = m_canvasWidth, gameCanvasHeight = m_canvasHeight;
+            Rect viewRect;
+            Engine::computeViewLayout((int)viewWidth, (int)viewHeight, m_canvasWidth, m_canvasHeight, scalingModeValues[m_scalingModeIndex],
+                                      gameCanvasWidth, gameCanvasHeight, viewRect);
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextDisabled("%s", canvasScalerPreview(m_uiScale, viewRect.getWidth(), viewRect.getHeight(),
+                                                          (float)gameCanvasWidth, (float)gameCanvasHeight, dpi).c_str());
+            ImGui::SetItemTooltip("For the Game view's current resolution; pick another in its resolution menu.");
+        }
 
         drawComboSetting("Texture Strategy", "##TextureStrategy", textureStrategyNames, textureStrategyCount, m_textureStrategyIndex, findTextureStrategyIndex(Project::defaultTextureStrategy),
             "Only very old GPUs need power-of-two textures. Resize blurs the edges of atlas tiles. The editor applies a change when the project is reopened.");
@@ -2082,6 +2118,8 @@ bool ProjectSettingsWindow::applySettings() {
 
     m_project->setCanvasSize(m_canvasWidth, m_canvasHeight);
     m_project->setScalingMode(scalingModeValues[m_scalingModeIndex]);
+    if (m_project->getUIScale() != m_uiScale)
+        m_project->setUIScale(m_uiScale);
     m_project->setTextureStrategy(textureStrategyValues[m_textureStrategyIndex]);
     m_project->setVSyncEnabled(m_vsyncEnabled);
     m_project->setHtmlUiMsaaSamples(htmlUiMsaaValues[m_htmlUiMsaaIndex]);

@@ -246,6 +246,9 @@ namespace jasperengine{
 
         bool loop = true;
         bool localSpace = false;
+        // advance on the unscaled frame delta (Engine::getUnscaledDeltatime): plays while
+        // Engine.timeScale is 0 (a pause menu, UI particles). Unity's main.useUnscaledTime
+        bool useUnscaledTime = false;
 
         int rate = 5; //per second
         int maxPerUpdate = 100;

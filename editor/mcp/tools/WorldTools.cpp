@@ -5,6 +5,7 @@
 // tilemaps, sprite sheets and sprite animations, keyframe animations and tweens, physics
 // colliders and joints, UI widget trees and rect layouts, particle systems, models, and the
 // point lists of polygons / shadow casters / line renderers.
+#include "util/ProjectUtils.h"
 #include "McpTools.h"
 #include "AnimationClipTools.h"
 #include "AnimationKeys.h"
@@ -3489,8 +3490,7 @@ float layoutParentHeight(Scene* scene, Entity entity) {
         parent = ptf ? ptf->parent : NULL_ENTITY;
     }
     UISystem* ui = scene->getSystem<UISystem>().get();
-    const int height = ui ? ui->getAnchorReferenceHeight() : 0;
-    return static_cast<float>(height != 0 ? height : Engine::getCanvasHeight());
+    return ui ? ui->getCanvasSize().y : static_cast<float>(Engine::getCanvasHeight());
 }
 
 // RectTransform layout: absolute (position + size), an anchor preset (+ size, offset), or
@@ -3702,6 +3702,32 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
         return false;
     }
     if (has(node, "multiline") && textEntity != NULL_ENTITY) addProp<bool>(*multi, target, textEntity, tc, "multiline", boolOr(node, "multiline", true));
+    // TMP outline {width, color} and underlay shadow {offset, color, softness, dilate} (UI units, colours linear)
+    if (has(node, "outline")) {
+        const Json& outline = node["outline"];
+        Vector4 outlineColor(0.0f, 0.0f, 0.0f, 1.0f);
+        if (textEntity == NULL_ENTITY || !outline.is_object() || (outline.contains("color") && !parseColor4(outline["color"], outlineColor))) {
+            error = where + ".outline must be {width, color} on an element with text.";
+            return false;
+        }
+        addProp<float>(*multi, target, textEntity, tc, "outlineWidth", std::max(0.0f, (float)numberOr(outline, "width", 2.0f)));
+        addProp<Vector4>(*multi, target, textEntity, tc, "outlineColor", outlineColor);
+    }
+    if (has(node, "shadow")) {
+        const Json& shadow = node["shadow"];
+        Vector4 shadowColor(0.0f, 0.0f, 0.0f, 0.5f);
+        Vector2 offset(2.0f, 2.0f);
+        if (textEntity == NULL_ENTITY || !shadow.is_object() || (shadow.contains("color") && !parseColor4(shadow["color"], shadowColor)) ||
+            (shadow.contains("offset") && !McpValues::parseVector2(shadow["offset"], offset))) {
+            error = where + ".shadow must be {offset: [x, y], color, softness, dilate} on an element with text.";
+            return false;
+        }
+        addProp<bool>(*multi, target, textEntity, tc, "shadowEnabled", true);
+        addProp<Vector4>(*multi, target, textEntity, tc, "shadowColor", shadowColor);
+        addProp<Vector2>(*multi, target, textEntity, tc, "shadowOffset", offset);
+        addProp<float>(*multi, target, textEntity, tc, "shadowSoftness", std::max(0.0f, (float)numberOr(shadow, "softness", 0.0f)));
+        addProp<float>(*multi, target, textEntity, tc, "shadowDilate", std::max(0.0f, (float)numberOr(shadow, "dilate", 0.0f)));
+    }
     Vector4 color;
     if (has(node, "text_color")) {
         if (textEntity == NULL_ENTITY || !parseColor4(node["text_color"], color)) {
@@ -4147,6 +4173,15 @@ void createParticlesTool(const CallPtr& call) {
         created = true;
     }
 
+    // particles of a UI scene or under a UI element: UI units, y down, unscaled time, local space
+    // (they play in a paused game and follow their element)
+    bool inUI = target.scene->sceneType == SceneType::SCENE_UI;
+    for (Entity e = emitter; e != NULL_ENTITY && !inUI;) {
+        Transform* tf = scene->findComponent<Transform>(e);
+        e = tf ? tf->parent : NULL_ENTITY;
+        if (e != NULL_ENTITY && scene->findComponent<RectTransformComponent>(e)) inUI = true;
+    }
+
     ParticleSettings settings;
     const std::string preset = lowerText(stringOr(args, "preset", created ? "fire" : ""));
     auto* multi = new MultiPropertyCmd();
@@ -4180,9 +4215,28 @@ void createParticlesTool(const CallPtr& call) {
                 // y is up in 2D too; flat emitters keep z at 0
                 settings.minPosition.z = settings.maxPosition.z = 0.0f;
             }
+            if (inUI) {
+                // the UI is y down: what rises in the world rises on screen
+                auto flipY = [](Vector3& a, Vector3& b) { const float low = -b.y, high = -a.y; a.y = low; b.y = high; };
+                flipY(settings.minPosition, settings.maxPosition);
+                flipY(settings.minVelocity, settings.maxVelocity);
+                flipY(settings.minAcceleration, settings.maxAcceleration);
+            }
         }
         if (!applyParticleOverrides(args, settings, error)) { failWith(error); return; }
         addParticleWrites(*multi, target, system, settings);
+    }
+    if (created && inUI) {
+        addProp<bool>(*multi, target, system, ComponentType::ParticleSystemComponent, "useUnscaledTime", true);
+        addProp<bool>(*multi, target, system, ComponentType::ParticleSystemComponent, "localSpace", true);
+        if (!has(args, "texture") && scene->findComponent<PointsComponent>(emitter)) {
+            const std::string soft = ProjectUtils::ensureSoftParticleTexture(target.project);
+            if (!soft.empty() && !addCatalogProperties(target.project, target.scene, emitter, ComponentType::PointsComponent,
+                                                       Json{{"texture", (target.project->getAssetsDir() / soft).generic_string()}}, *multi, error)) {
+                failWith("texture: " + error);
+                return;
+            }
+        }
     }
     if (has(args, "texture") && emitter != NULL_ENTITY && scene->findComponent<PointsComponent>(emitter) &&
         !addCatalogProperties(target.project, target.scene, emitter, ComponentType::PointsComponent, Json{{"texture", args["texture"]}}, *multi, error)) {
@@ -4839,8 +4893,9 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- UI
     add("create_ui", "Create UI",
-        "Build a UI tree from one root node {type, name, layout, text, font_size, font, text_color, color, "
-        "colors, texture, value, placeholder, direction, multiline, properties, children}. Types: panel (text "
+        "Build a UI tree from one root node {type, name, layout, text, font_size, font, text_color, outline {width, "
+        "color}, shadow {offset, color, softness}, color, colors, texture, value, placeholder, direction, multiline, "
+        "properties, children}. Types: panel (text "
         "= title), image, text, button (text = label), input_field, progress_bar (value 0-1), scrollbar, "
         "layout_group (direction), container, polygon. layout {anchor, size, position, pivot, margins} in px, "
         "y down: an anchor (top_left, center, top_wide, ..., stretch) pins to the parent (screen for roots), "

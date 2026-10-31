@@ -8,6 +8,7 @@
 #include "math/Rect.h"
 #include "math/Vector3.h"
 #include "UIValue.h"
+#include "action/ParticleSystem.h"
 
 #include <cstdint>
 #include <functional>
@@ -196,6 +197,12 @@ namespace jasperengine{
         // --- phase 1 (p1-vector): <lottie> control; logs an error on other elements ---
 
         void play(); void pause(); void stop(); void seek(float seconds); void setFrame(float frame);
+        // <particle-system> (ui-scaling-text): play/pause/stop/isPlaying above, its live particles
+        // gone, and the ParticleSystem of its hidden entity (every particle API works)
+        void clear();
+        ParticleSystem getParticleSystem() const;
+        // text-effect: the effect of this element (or the one its text inherits) from the start
+        void restartTextEffect();
         void setSpeed(float speed); void setDirection(int direction); void setLoop(bool loop); void setLoopCount(int count);
         void setSegment(float startFrame, float endFrame); void setMarker(const std::string& marker);
         bool isPlaying() const; float getCurrentFrame() const; float getTotalFrames() const; float getDuration() const;

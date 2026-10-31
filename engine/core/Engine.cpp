@@ -79,6 +79,7 @@ int Engine::preferredCanvasHeight;
 Rect Engine::viewRect;
 
 Scaling Engine::scalingMode = Scaling::FITWIDTH;
+CanvasScalerSettings Engine::defaultCanvasScaler;
 TextureStrategy Engine::textureStrategy = TextureStrategy::NONE;
 
 bool Engine::callMouseInTouchEvent = false;
@@ -107,6 +108,7 @@ double Engine::maxDeltatime = 0.25;
 double Engine::updateTime = 1.0 / 60.0; //60Hz
 
 double Engine::timeScale = 1.0;
+double Engine::unscaledDeltatime = 0.0;
 double Engine::fixedDeltatime = 0.0;
 double Engine::gameTime = 0.0;
 uint64_t Engine::gameFrames = 0;
@@ -461,6 +463,20 @@ Scaling Engine::getScalingMode(){
     return scalingMode;
 }
 
+void Engine::setDefaultCanvasScaler(const CanvasScalerSettings& settings){
+    Engine::defaultCanvasScaler = settings;
+
+    if (viewLoaded){
+        for (Scene* scene : getScenesSnapshot()){
+            scene->updateCameraSize();
+        }
+    }
+}
+
+const CanvasScalerSettings& Engine::getDefaultCanvasScaler(){
+    return defaultCanvasScaler;
+}
+
 void Engine::setTextureStrategy(TextureStrategy textureStrategy){
     Engine::textureStrategy = textureStrategy;
 }
@@ -675,6 +691,10 @@ void Engine::setTimeScale(float scale){
         return;
     }
     timeScale = (scale < 0.0f) ? 0.0 : (scale > 100.0f) ? 100.0 : (double)scale;
+}
+
+float Engine::getUnscaledDeltatime(){
+    return (float)unscaledDeltatime;
 }
 
 float Engine::getTimeScale(){
@@ -1396,9 +1416,11 @@ void Engine::runFrame(bool draw){
         frameTime = fixedDeltatime;
     }
     deltatime = simulationHeld ? 0.0 : frameTime * timeScale;
-    // the UI clock runs on the unscaled delta (a pause menu animates at time scale 0) and
-    // stops with the updates: a held simulation or a paused app
-    HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);
+    // the unscaled delta (Time.unscaledDeltaTime, unscaled particles and text effects, the UI
+    // clock): it runs at time scale 0 (a pause menu animates) and stops with the updates: a
+    // held simulation or a paused app
+    unscaledDeltatime = (paused || simulationHeld) ? 0.0 : frameTime;
+    HtmlUIClock::advance(unscaledDeltatime);
 
     // the input of this frame is over: no low surrogate will follow a pending high one
     flushCharInput();

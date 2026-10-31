@@ -190,6 +190,8 @@ int ShaderData::getUniformBlockIndex(UniformBlockType type){
         ustr = "u_vs_uiParams";
     }else if (type == UniformBlockType::UI_FS_PARAMS){
         ustr = "u_fs_uiParams";
+    }else if (type == UniformBlockType::UI_FS_TEXT_PARAMS){
+        ustr = "u_fs_textParams";
     }else if (type == UniformBlockType::SPRITE_VS_PARAMS){
         ustr = "u_vs_spriteParams";
     }else if (type == UniformBlockType::POINTS_VS_PARAMS){

@@ -21,6 +21,9 @@ namespace jasperengine{
     public:
         static std::shared_ptr<STBText> get(const std::string& id);
         static std::shared_ptr<STBText> get(const std::string& id, const std::string& fontpath, const std::vector<std::string>& fallbackPaths, unsigned int fontSize);
+        // an atlas of a raster scale or an SDF (the id must name them: UISystem::getFontId)
+        static std::shared_ptr<STBText> get(const std::string& id, const std::string& fontpath, const std::vector<std::string>& fallbackPaths, unsigned int fontSize,
+                                            const STBTextOptions& options);
         static void remove(const std::string& id);
 
         // necessary for engine shutdown

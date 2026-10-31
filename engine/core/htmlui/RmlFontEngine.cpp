@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "RmlFontEngine.h"
+#include "htmlui/HtmlTextEffects.h"
 
 #include "HtmlUIDependencies.h"
 #include "Log.h"
@@ -723,6 +724,99 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
 
     const float uvScale = 1.0f / (float)pageSize;
 
+    // a text effect (HtmlTextEffects): each visible glyph's quad and colour, which every layer
+    // of it then follows (the shadow and outline layers move with the glyph and take its alpha)
+    struct GlyphEffect {
+        bool active = false;
+        Rml::Vector2f boxMin, boxMax;
+        Rml::Vector2f corners[4];   // top-left, top-right, bottom-right, bottom-left
+        Rml::ColourbPremultiplied colour;
+        float alpha = 1.0f;         // the glyph's alpha over the text's
+    };
+    std::vector<GlyphEffect> glyphEffects;
+    if (const htmlui::HtmlTextEffectGlyphs* fx = static_cast<const htmlui::HtmlTextEffectGlyphs*>(text_shaping_context.text_effect)){
+        if (fx->effect && fx->count > 0){
+            // the effect's index of each code point: visible characters (not white space) counted
+            auto isSpace = [](uint32_t c){
+                return c == 0x20 || c == 0x09 || c == 0x0A || c == 0x0D || c == 0xA0 || c == 0x3000 || (c >= 0x2000 && c <= 0x200B);
+            };
+            std::vector<int> indexOf(codepoints.size(), -1);
+            int visible = 0;
+            for (size_t c = 0; c < codepoints.size(); c++){
+                if (!isSpace(codepoints[c]))
+                    indexOf[c] = text_shaping_context.glyph_index_base + visible++;
+            }
+
+            const float alphaBase = colour.alpha / 255.0f;
+            const Vector4 base = alphaBase > 0.0f
+                ? Vector4(colour.red / 255.0f / alphaBase, colour.green / 255.0f / alphaBase, colour.blue / 255.0f / alphaBase, alphaBase)
+                : Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+            const float layerOpacity = std::max(0.0f, std::min(opacity, 1.0f));
+
+            glyphEffects.resize(shaped.size());
+            float pen = 0.0f;
+            for (size_t g = 0; g < shaped.size(); g++){
+                const ShapedGlyph& glyph = shaped[g];
+                const float penX = position.x + pen + glyph.xOffset;
+                const float baseline = position.y - glyph.yOffset;
+                pen += glyph.xAdvance;
+                const int index = glyph.cluster < indexOf.size() ? indexOf[glyph.cluster] : -1;
+                const GlyphEntry& entry = getGlyph(*handle, glyph.face, glyph.glyphIndex, scale);
+                if (index < 0 || entry.page < 0 || entry.width <= 0 || entry.height <= 0)
+                    continue;
+
+                GlyphEffect& effect = glyphEffects[g];
+                effect.active = true;
+                effect.boxMin = Rml::Vector2f(std::round(penX * scale + entry.xoff) / scale, std::round(baseline * scale + entry.yoff) / scale);
+                effect.boxMax = effect.boxMin + Rml::Vector2f(entry.width / scale, entry.height / scale);
+
+                TextEffectGlyphState state;
+                state.corners[0] = Vector2(effect.boxMin.x, effect.boxMin.y);
+                state.corners[1] = Vector2(effect.boxMax.x, effect.boxMin.y);
+                state.corners[2] = Vector2(effect.boxMax.x, effect.boxMax.y);
+                state.corners[3] = Vector2(effect.boxMin.x, effect.boxMax.y);
+                state.color = base;
+                for (size_t l = 0; l < fx->effect->layers.size(); l++){
+                    TextEffectLayer layer = fx->effect->layers[l];
+                    // a px amplitude in em of this text
+                    if (l < fx->effect->amplitudeInPx.size() && fx->effect->amplitudeInPx[l])
+                        layer.amplitude /= fx->em;
+                    const float time = TextEffects::isOneShot(layer.type) ? fx->cycleTime : fx->time;
+                    TextEffects::applyLayer(layer, index, fx->count, time, fx->em, fx->reducedMotion, state);
+                }
+                for (int c = 0; c < 4; c++)
+                    effect.corners[c] = Rml::Vector2f(state.corners[c].x, state.corners[c].y);
+                const float a = std::max(0.0f, std::min(state.color.w, 1.0f)) * layerOpacity;
+                auto channel = [&](float v){ return (Rml::byte)std::lround(std::max(0.0f, std::min(v, 1.0f)) * a * 255.0f); };
+                effect.colour = Rml::ColourbPremultiplied(channel(state.color.x), channel(state.color.y), channel(state.color.z),
+                                                          (Rml::byte)std::lround(a * 255.0f));
+                effect.alpha = (base.w > 0.0f) ? std::max(0.0f, std::min(state.color.w / base.w, 1.0f)) : 0.0f;
+            }
+        }
+    }
+    // the last quad of a mesh moved as its glyph's effect moved the glyph's box
+    auto applyGlyphEffect = [&](Rml::Mesh& mesh, size_t g, bool baseLayer){
+        if (g >= glyphEffects.size() || !glyphEffects[g].active || mesh.vertices.size() < 4)
+            return;
+        const GlyphEffect& effect = glyphEffects[g];
+        const Rml::Vector2f size = effect.boxMax - effect.boxMin;
+        Rml::Vertex* vertices = &mesh.vertices[mesh.vertices.size() - 4];
+        for (int i = 0; i < 4; i++){
+            const float u = size.x != 0.0f ? (vertices[i].position.x - effect.boxMin.x) / size.x : 0.0f;
+            const float v = size.y != 0.0f ? (vertices[i].position.y - effect.boxMin.y) / size.y : 0.0f;
+            const Rml::Vector2f top = effect.corners[0] + (effect.corners[1] - effect.corners[0]) * u;
+            const Rml::Vector2f bottom = effect.corners[3] + (effect.corners[2] - effect.corners[3]) * u;
+            vertices[i].position = top + (bottom - top) * v;
+            if (baseLayer){
+                vertices[i].colour = effect.colour;
+            }else{
+                Rml::ColourbPremultiplied& c = vertices[i].colour;
+                c = Rml::ColourbPremultiplied((Rml::byte)std::lround(c.red * effect.alpha), (Rml::byte)std::lround(c.green * effect.alpha),
+                                              (Rml::byte)std::lround(c.blue * effect.alpha), (Rml::byte)std::lround(c.alpha * effect.alpha));
+            }
+        }
+    };
+
     // One layer: the base text (effect null) or one effect, each with its own meshes (one per
     // page) so the mesh list draws in layer order
     std::vector<int> meshOfPage;
@@ -739,7 +833,8 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
         }
 
         float pen = 0.0f;
-        for (const ShapedGlyph& glyph : shaped){
+        for (size_t glyphNumber = 0; glyphNumber < shaped.size(); glyphNumber++){
+            const ShapedGlyph& glyph = shaped[glyphNumber];
             const float penX = position.x + pen + glyph.xOffset;
             const float baseline = position.y - glyph.yOffset;
             pen += glyph.xAdvance;
@@ -781,6 +876,7 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
             const Rml::Vector2f uv1((entry.x + entry.width) * uvScale, (entry.y + entry.height) * uvScale);
             addQuad(mesh_list[(size_t)meshIndex].mesh, origin, dimensions, quadColour, uv0, uv1, baseline,
                     handle->italicShear[glyph.face]);
+            applyGlyphEffect(mesh_list[(size_t)meshIndex].mesh, glyphNumber, effect == nullptr);
         }
         return pen;
     };

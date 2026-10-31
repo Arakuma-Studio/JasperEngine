@@ -919,6 +919,8 @@ set(JASPERENGINE_SRCS
     core/ecs/ComponentManager.cpp
     core/htmlui/HtmlUI.cpp
     core/htmlui/HtmlUIClock.cpp
+    core/htmlui/HtmlTextEffects.cpp
+    core/htmlui/UIParticleSystemElement.cpp
     core/htmlui/HtmlUIContext.cpp
     core/htmlui/HtmlUIContextRender.cpp
     core/htmlui/HtmlUIDependencies.cpp
@@ -1121,6 +1123,8 @@ set(JASPERENGINE_SRCS
     core/util/FontFace.cpp
     core/util/FontRegistry.cpp
     core/util/FrameLimiter.cpp
+    core/util/CanvasScaler.cpp
+    core/util/TextEffects.cpp
     core/util/GlyphAtlas.cpp
     core/util/LunaSVGRuntime.cpp
     core/util/PlatformRules.cpp

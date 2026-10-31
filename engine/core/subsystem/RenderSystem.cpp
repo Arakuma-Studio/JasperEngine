@@ -3371,19 +3371,23 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
 
     // as loadUI, loadPoints, loadLines and loadSky pick them
     if (UIComponent* ui = scene->findComponent<UIComponent>(entity)){
-        const bool isText = scene->findComponent<TextComponent>(entity) != nullptr;
+        const TextComponent* text = scene->findComponent<TextComponent>(entity);
+        const bool isText = text != nullptr;
         bool hasTexture = false;
         bool hasFontAtlasTexture = false;
         bool vertexColorVec4 = true;
+        // a text with outline or shadow draws SDF glyphs, one with a Text Effect a vertex colour
+        bool fontAtlasSdf = false;
         if (!ui->texture.empty()){
             if (isText){
-                vertexColorVec4 = false;
+                vertexColorVec4 = text->vertexColor || scene->findComponent<TextEffectComponent>(entity) != nullptr;
                 hasFontAtlasTexture = true;
+                fontAtlasSdf = (std::isfinite(text->outlineWidth) && text->outlineWidth > 0.0f) || text->shadowEnabled;
             }else{
                 hasTexture = true;
             }
         }
-        add(ShaderType::UI, ShaderPool::getUIProperties(hasTexture, hasFontAtlasTexture, false, vertexColorVec4),
+        add(ShaderType::UI, ShaderPool::getUIProperties(hasTexture, hasFontAtlasTexture, false, vertexColorVec4, fontAtlasSdf),
             shaderId(ui->customShader, ShaderType::UI, ui->shaderFeatures, ui->blendMode));
     }
     if (PointsComponent* points = scene->findComponent<PointsComponent>(entity)){
@@ -10189,16 +10193,19 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     bool p_hasTexture = false;
     bool p_vertexColorVec4 = true;
     bool p_hasFontAtlasTexture = false;
+    bool p_fontAtlasSdf = false;
     if (hasUITexture){
         if (isText){
-            p_vertexColorVec4 = false;
+            // a text's buffer has a colour only for a Text Effect
+            p_vertexColorVec4 = ui.buffer.getAttribute(AttributeType::COLOR) != nullptr;
             p_hasFontAtlasTexture = true;
+            p_fontAtlasSdf = ui.textSdf;
         }else{
             p_hasTexture = true;
         }
     }
 
-    ui.shaderProperties = ShaderPool::getUIProperties(p_hasTexture, p_hasFontAtlasTexture, false, p_vertexColorVec4);
+    ui.shaderProperties = ShaderPool::getUIProperties(p_hasTexture, p_hasFontAtlasTexture, false, p_vertexColorVec4, p_fontAtlasSdf);
     const std::string& uiShaderBase = ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader;
     const std::string uiShaderSrc = getComponentShaderReference(uiShaderBase, ui.shaderFeatures, ui.blendMode);
     ui.customShaderId = ShaderPool::registerCustomShader(uiShaderSrc);
@@ -10219,6 +10226,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
 
     ui.slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::UI_VS_PARAMS);
     ui.slotFSParams = shaderData.getUniformBlockIndex(UniformBlockType::UI_FS_PARAMS);
+    ui.slotFSTextParams = p_fontAtlasSdf ? shaderData.getUniformBlockIndex(UniformBlockType::UI_FS_TEXT_PARAMS) : -1;
     // the manifest of the shader it draws with (none for the built-in fallback)
     ui.shaderManifest = (ui.customShaderId != 0) ? findManifest(uiShaderBase) : nullptr;
     ui.customVSParams.resolve(shaderData, "u_vs_customParams");
@@ -10339,8 +10347,16 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
             return false;
         }
         render.applyUniformBlock(ui.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
-        //Color
-        render.applyUniformBlock(ui.slotFSParams, sizeof(float) * 4, &ui.color);
+        //Color (a Text Effect writes each glyph's colour in its vertices: then only the alpha here)
+        if (ui.vertexColorAbsolute){
+            const Vector4 alphaOnly(1.0f, 1.0f, 1.0f, ui.color.w);
+            render.applyUniformBlock(ui.slotFSParams, sizeof(float) * 4, (void*)&alphaOnly);
+        }else{
+            render.applyUniformBlock(ui.slotFSParams, sizeof(float) * 4, &ui.color);
+        }
+        if (ui.slotFSTextParams >= 0){
+            render.applyUniformBlock(ui.slotFSTextParams, sizeof(float) * 16, ui.textParams);
+        }
         applyComponentUniforms(render, ui.customVSParams, ui.customFSParams, ui.shaderUniforms, ui.shaderManifest.get(), ui.needUpdateShaderUniforms, frameTime, passResolution);
         applyFrameBlock(render, ui.libraryBindings);
         render.draw(0, ui.vertexCount, 1);
@@ -10388,6 +10404,7 @@ void RenderSystem::destroyUI(Entity entity, UIComponent& ui){
     //Shaders uniforms
     ui.slotVSParams = -1;
     ui.slotFSParams = -1;
+    ui.slotFSTextParams = -1;
     ui.customVSParams.clear();
     ui.customFSParams.clear();
     ui.libraryBindings.clear();

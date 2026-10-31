@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "Text.h"
+
+#include <algorithm>
+#include <cmath>
 #include "shader/ShaderManifest.h"
 
 #include "Log.h"
@@ -476,4 +479,83 @@ int Text::getColorWrite() const{
     UIComponent& ui = getComponent<UIComponent>();
 
     return ui.colorWrite;
+}
+
+// colours and offsets reach the shader each frame; a width the atlas padding does not cover
+// rebuilds the atlas (UISystem::getTextOptions)
+void Text::setOutlineWidth(float outlineWidth){
+    TextComponent& textcomp = getComponent<TextComponent>();
+    if (textcomp.outlineWidth != outlineWidth){
+        textcomp.outlineWidth = std::isfinite(outlineWidth) ? std::max(outlineWidth, 0.0f) : 0.0f;
+        textcomp.needUpdateText = true;
+    }
+}
+
+float Text::getOutlineWidth() const{
+    return getComponent<TextComponent>().outlineWidth;
+}
+
+void Text::setOutlineColor(Vector4 color){
+    getComponent<TextComponent>().outlineColor = Color::sRGBToLinear(color);
+}
+
+Vector4 Text::getOutlineColor() const{
+    return Color::linearTosRGB(getComponent<TextComponent>().outlineColor);
+}
+
+void Text::setShadowEnabled(bool shadowEnabled){
+    TextComponent& textcomp = getComponent<TextComponent>();
+    if (textcomp.shadowEnabled != shadowEnabled){
+        textcomp.shadowEnabled = shadowEnabled;
+        textcomp.needUpdateText = true;
+    }
+}
+
+bool Text::isShadowEnabled() const{
+    return getComponent<TextComponent>().shadowEnabled;
+}
+
+void Text::setShadowColor(Vector4 color){
+    getComponent<TextComponent>().shadowColor = Color::sRGBToLinear(color);
+}
+
+Vector4 Text::getShadowColor() const{
+    return Color::linearTosRGB(getComponent<TextComponent>().shadowColor);
+}
+
+void Text::setShadowOffset(Vector2 offset){
+    getComponent<TextComponent>().shadowOffset = offset;
+}
+
+Vector2 Text::getShadowOffset() const{
+    return getComponent<TextComponent>().shadowOffset;
+}
+
+void Text::setShadowSoftness(float softness){
+    getComponent<TextComponent>().shadowSoftness = std::isfinite(softness) ? std::max(softness, 0.0f) : 0.0f;
+}
+
+float Text::getShadowSoftness() const{
+    return getComponent<TextComponent>().shadowSoftness;
+}
+
+void Text::setShadowDilate(float dilate){
+    getComponent<TextComponent>().shadowDilate = std::isfinite(dilate) ? std::max(dilate, 0.0f) : 0.0f;
+}
+
+float Text::getShadowDilate() const{
+    return getComponent<TextComponent>().shadowDilate;
+}
+
+void Text::setVisibleCharacters(int visibleCharacters){
+    TextComponent& textcomp = getComponent<TextComponent>();
+    visibleCharacters = std::max(visibleCharacters, -1);
+    if (textcomp.visibleCharacters != visibleCharacters){
+        textcomp.visibleCharacters = visibleCharacters;
+        textcomp.needUpdateText = true;
+    }
+}
+
+int Text::getVisibleCharacters() const{
+    return getComponent<TextComponent>().visibleCharacters;
 }

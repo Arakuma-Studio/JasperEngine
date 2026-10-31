@@ -151,6 +151,8 @@ namespace jasperengine::editor{
         static std::string guardPhysicsCode(const std::string& code, const char* backendMacro);
 
     public:
+        // a CanvasScalerSettings expression with its non-default fields (generated code)
+        static std::string formatCanvasScaler(const CanvasScalerSettings& settings);
         // Registry members in build_prefab_* order (the prefab's root GameObject left out: it is
         // the root build_prefab_* is given). A nested root's children are GameObjects the prefab
         // adds to that nested instance: members like any other.
@@ -199,6 +201,7 @@ namespace jasperengine::editor{
         static std::string createMeshPolygonComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createRectTransformComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createLayoutGroupComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
+        static std::string createTextEffectComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createTextComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createImageComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createSpriteComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);

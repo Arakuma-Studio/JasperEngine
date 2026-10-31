@@ -455,3 +455,109 @@ Export: Linux export of the scaler scene starts and logs the canvas size; Web/An
 - **particles**: owns particle modules and the Unity importer; `useUnscaledTime` is added here (one field) and
   must be kept by its serialization changes.
 - **anim-properties**: clip channels can animate `outlineColor`, Text Effect fields (UI properties).
+
+## Implementation notes
+
+Decisions taken while implementing (branch `gaps/ui-scaling-text`, on `gaps/platform-services`), where the
+spec was silent, ambiguous or did not fit the code:
+
+1. **Where the scaler lives.** `engine/core/util/CanvasScaler.{h,cpp}` (the engine has no `ui/` folder):
+   `CanvasScaler::compute` with Unity's formulas, names for files and MCP (`follow_game_canvas`,
+   `scale_with_screen_size`, `expand`, `points`, ...). The scene's settings are part of `SceneSettings`
+   (`canvasScalerUseProjectDefault`, `canvasScaler`); the result is on `Scene` (`getCanvasScale()`,
+   `isUIScaled()` for a UI-camera scene, `isDocumentScaled()` for its screen documents). `Scene::updateCameraSize`
+   (called by `includeScene`, `systemViewChanged`, `setCamera`) computes it from `Engine::getViewRect()`, the game
+   canvas and `Screen::getDpi()`, then sizes the camera (UI size for a UI camera, else the canvas). `UISystem`
+   reads it through `getCanvasSize()` (an explicit `setAnchorReferenceSize`, the editor's, still wins; the anchor
+   reference is a float now for fractional UI sizes), converts pointer events canvas -> UI units inside
+   `eventOnPointerDown/Up/Move` (one place for the Engine, Lua and ui-multitouch), and `UIDocumentSystem`
+   lays documents out at the rounded UI size; a scaled document in a 2D scene still covers the game canvas
+   (`getFrameSize`).
+2. **Follow Game Canvas changes nothing**, crisp raster included: the native Text rasterizes at the scale only
+   when the Canvas Scaler scales a UI scene (`UISystem::getTextRasterScale`); under Follow Game Canvas it keeps
+   rasterizing at its font size as before (the spec's S6 formula would have changed every old text in the
+   Game view, whose size differs from the canvas). Raster sizes are whole pixels (`round(fontSize x scale)`),
+   so resizing a window reuses atlases; plain texts keep their exact font id (`font|20`) and code path.
+3. **Scene settings over MCP** are one setting, `canvas_scaler` (an object; fields given on a scene that used
+   the project default start from that default and turn `use_project_default` off); the Inspector edits it
+   through one `ScenePropertyCmd<SceneCanvasScaler>` (a drag is one undo step). The edit-mode Scene view and
+   the Game view's edit pass lay a UI scene out at the UI size computed for the Game view's resolution
+   (`Project::applyEditCanvasScale`, `setEditViewSize` from the Game view).
+4. **Lua `scene:getCanvasScaler()`** returns a `CanvasScaler` reference (`util/CanvasScalerRef.h`): reads give
+   what applies (the project default while `useProjectDefault`), and setting a field of such a scene copies
+   the default into the scene and overrides it, as an agent or a script expects. Changes apply at once (the
+   UI lays out in them from the next frame).
+5. **Game view resolutions.** Built-in presets as listed (landscape and portrait), "Add custom..." (name,
+   size, dpi) in the per-user workspace file (`gameResolutions`), the choice in the editor preferences with
+   the aspect. A fixed resolution renders the game at its pixels; the image is fitted to the view and the
+   toolbar shows `WxH (0.48x)`; the simulated device of platform-services uses the same path (its screen
+   is the fixed resolution). `Screen.dpi` is the device's, else the preset's (`Platform::setSimulatedDpi`),
+   else the host's. MCP `configure_game_view resolution` takes a preset or custom name, `"WxH"`, `"WxH@dpi"`,
+   `{width, height, dpi[, name]}` (a name saves it as custom) or `"free"`, and reports `resolution`,
+   `resolutions`, `custom_resolutions`, `screen_dpi`. The safe-area device profiles (owned by safe-area) plug
+   into the Device menu that platform-services added, as specified.
+6. **Text outline/shadow.** Colours are stored linear like `UIComponent::color` (the Inspector's colour rows
+   and MCP treat UI colours as linear); the `Text` Lua setters take sRGB like `Text.color`. The SDF atlas is a
+   separate STBText per (font, size, raster size, padding) with its GlyphAtlas padding equal to the SDF
+   padding, so a shadow sampled up to that far outside its glyph finds empty texels, never a neighbour. The
+   padding is quantized to steps of 4 px (2..64), an SDF glyph is rasterized at 32 px at least (small texts
+   keep their corners), and the shader variant bit is `Sdf` (UI property bit 4, `ui_FtxSdf`). Colours,
+   offsets and softness reach the shader every frame without rebuilding the text; a width the padding does
+   not cover rebuilds the atlas. The vertex colour of a Text Effect multiplies the face, its alpha also the
+   outline and shadow (a typewriter fades all three in), so a hollow text (face alpha 0) keeps its outline.
+7. **`visibleCharacters`** collapses the quads of later characters (characters = grapheme clusters, from
+   HarfBuzz's cluster values) without a vertex colour or a shader change.
+8. **Text Effect formulas vs. the spec.** The shared math is `engine/core/util/TextEffects.{h,cpp}` (native and
+   HTML). Checked against the game's `TextMeshProEffect.cs`: Wave moves glyphs **down** at t = 0
+   (`y_down += A em cos(2 pi t/T - phaseStep i)`; TMP subtracts from y up; the spec's `y -=` had the sign the
+   other way); TMP's Grow grows each glyph **up from its bottom edge** (vertices 1, 2 lerp from 0, 3), not
+   from its left edge as the spec said; Unfold is from the horizontal centre line as specified. TMP's
+   Gradient is evaluated at each glyph's one-shot progress q_i with the period wrapping (also for looping
+   effects): our Gradient layer does that (spread 1 = the whole text one colour cycling). Typewriter: glyph i
+   appears at (i + 1) / cps and fades in over `fadeTime`. Bounce is the spec's looping hop (TMP's Bounce is a
+   one-shot cosine that ends displaced; `fromTMPEffect` maps it to our Bounce). `TextEffects::fromTMPEffect`
+   maps a TMP Effect's settings to layers (Waves: amplitude 0.3 x A em, phase 0.3 rad; Sketch: Shake 0.1 x A;
+   a non-white gradient: a Gradient layer with TMP's Mix), documented in ui.md and the glossary.
+9. **Text Effect colours** are composed in sRGB (as TMP) from the text's colour and written as linear vertex
+   colours with an alpha factor; the draw then takes only the alpha of `UIComponent::color`
+   (`vertexColorAbsolute`). `onComplete` fires each time the one-shot layers end (with `loop` they start again
+   right away); looping layers keep their phase across cycles. Reduced motion is the global `UI.reducedMotion`
+   (the spec's `TextEffect.reducedMotion` read as that global). In edit mode effects hold still
+   (`UISystem::setTextEffectsHeld`, set by the editor's pause of edit scenes) unless the Inspector's Preview
+   plays them on the wall clock; Play and Stop start them again as a loaded scene does.
+10. **Lua `TextEffect`** is a standalone wrapper (not an `EntityHandle`: its `setLayer(i, ...)` would clash
+    with `EntityHandle.setLayer(layer)`); `getLayer(i)` returns a `TextEffectLayerRef` whose fields write through
+    to the running effect; `setLayer(i, ...)` takes a `TextEffectLayer` or a plain table.
+11. **UI particles (native).** Verified in code: Points sizes under a UI camera are UI units
+    (`computePointsScale` uses the camera's ortho height), and they inherit the ancestor scissor like UI
+    elements. "UI > Particle System" makes the legacy two-GameObject layout (a Points emitter "UI Particles"
+    with a generated `ui/particle_soft.png` and its "Particle System" child: unscaled time, local space, a
+    sparkle in UI units, y down) because the single-GameObject form belongs to the particles feature.
+    `create_particles` under a UI element or in a UI scene does the same for its presets (y flipped, unscaled
+    time, local space, the soft image). `useUnscaledTime` advances by the scene's delta divided by the time
+    scale (the unscaled delta at time scale 0), which keeps editor previews (time scale 1) on their own step;
+    `Engine::getUnscaledDeltatime()` is declared exactly as the coroutines branch declares it (a trivial merge).
+12. **HTML `text-effect`.** Engine properties registered by the compat layer (`CompatProperty::TextEffect*`,
+    PropertyTable rows with `RewriteId::TextEffect`, a rewriter that validates with the parser and reports
+    `HTMLUI-CSS-0004` for an invalid value). Fork rows T21-1/T21-2: `TextShapingContext::text_effect` +
+    `glyph_index_base`, `Rml::TextEffectProvider` (`ElementText::SetTextEffectProvider`), `ElementText::DirtyGeometry`
+    and `CountEffectCharacters`; ElementText asks the provider once per geometry generation and advances the
+    index per line; the engine's `HtmlTextEffects` finds the element that declares the effect, counts the
+    visible characters of its texts in the linked inline formatting context and returns the time and count;
+    `RmlFontEngine::GenerateString` applies the shared formulas to the base glyph box and maps every layer's
+    quad (outlines, `font-effect` shadows, text-shadow passes) through it. A `px` amplitude is divided by the
+    text's font size. `texteffectend` is dispatched (bubbling) at the declaring element; `el:restartTextEffect()`
+    restarts it and its descendants' effects.
+13. **`<particle-system>`.** `htmlui/UIParticleSystemElement.{h,cpp}`: the prefab through `PrefabManager`
+    (registered in Play and exports; the editor's edit mode has no prefab factories, so the element is empty
+    there, documented); the hidden entity is listed by `UIDocumentSystem::addRuntimeEntity` and the editor
+    leaves it (and its children) out of the play-created GameObjects; the emitter is made invisible to the
+    scene's renderers and simulated by the ActionSystem; the element draws one mesh per frame (premultiplied;
+    additive particles with alpha 0). Prefab units are y up (the 2D convention). Exports include every prefab
+    (`collectAllPrefabs`), so a prefab used only from a document is in the build. Diagnostic
+    `HTMLUI-HTML-0029` (particle-system-source) for a src without a Particle System. The seam for the
+    particles feature: `UIParticleSource::read`/`material` read Points render points and InstancedMesh
+    instance data (position, scale, colour, textureRect); **when particles merges**: read
+    `InstanceData.roll` into `UIParticleQuad::rotation` and, for its single-GameObject systems, take the
+    emitter = the system's own entity (already the fallback when `ActionComponent.target` is empty) and the
+    built-in particle texture of its quad material.

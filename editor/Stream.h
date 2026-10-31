@@ -12,6 +12,7 @@
 #include "math/Quaternion.h"
 #include "math/Matrix4.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/TextEffectComponent.h"
 
 #include <filesystem>
 #include <set>
@@ -271,6 +272,10 @@ namespace jasperengine::editor {
         static ScriptProperty decodeScriptProperty(const YAML::Node& node);
 
     public:
+        // the Canvas Scaler: only the fields that differ from the defaults (project.yaml uiScale,
+        // a scene's canvasScaler); decode starts from the defaults
+        static YAML::Node encodeCanvasScaler(const CanvasScalerSettings& settings);
+        static CanvasScalerSettings decodeCanvasScaler(const YAML::Node& node);
         // A shader variant key (scene shaderKeys, project shaderAdditions/shaderExclusions):
         // a map of type, properties (a plain integer of up to 64 bits, left out when 0) and
         // customShader (a fork's project-relative path: the session-local id is not written;
@@ -426,6 +431,11 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeTextComponent(const TextComponent& text);
         static TextComponent decodeTextComponent(const YAML::Node& node, const TextComponent* oldText = nullptr);
+        // only what differs from the defaults (old scenes re-save byte-identical)
+        static YAML::Node encodeTextEffectComponent(const TextEffectComponent& effect);
+        static TextEffectComponent decodeTextEffectComponent(const YAML::Node& node, const TextEffectComponent* oldEffect = nullptr);
+        static YAML::Node encodeTextEffectLayer(const TextEffectLayer& layer);
+        static TextEffectLayer decodeTextEffectLayer(const YAML::Node& node);
 
         static YAML::Node encodeImageComponent(const ImageComponent& image);
         static ImageComponent decodeImageComponent(const YAML::Node& node, const ImageComponent* oldImage = nullptr);

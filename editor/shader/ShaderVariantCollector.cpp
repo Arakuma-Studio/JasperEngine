@@ -10,6 +10,8 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/TextEffectComponent.h"
+#include "component/TextComponent.h"
 #include "component/FogComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/Light2DComponent.h"
@@ -42,6 +44,7 @@
 #include "util/Util.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cctype>
 #include <cstring>
 #include <filesystem>
@@ -444,7 +447,8 @@ namespace {
                     collectFoliage(*terrain);
                 }
                 if (const UIComponent* ui = registry->findComponent<UIComponent>(entity)){
-                    collectUI(*ui);
+                    collectUI(*ui, registry->findComponent<TextComponent>(entity),
+                              registry->isComponentRegistered<TextEffectComponent>() && registry->findComponent<TextEffectComponent>(entity));
                 }
                 // an HTML UI document draws geometry, gradients and its layer/filter passes
                 // (RmlRenderer) (asked first: an editor built without the document component's
@@ -708,11 +712,21 @@ namespace {
         // The three UI variants (plain, texture, font atlas) are all a UI component can take:
         // its texture comes and goes with what the UI shows (a button's state, a script, a
         // font atlas), see RenderSystem::loadUI
-        void collectUI(const UIComponent& ui){
+        // A Text with a Text Effect also draws its atlas with a vertex colour, one with an outline or a
+        // shadow from a distance field (ui-scaling-text; scripts turning them on later rely on the
+        // runtime shader compiler)
+        void collectUI(const UIComponent& ui, const TextComponent* text = nullptr, bool textEffect = false){
             const uint16_t id = shaderId(ui.customShader, ShaderType::UI, ui.shaderFeatures, ui.blendMode);
             insertKeys(ShaderType::UI, ShaderPool::getUIProperties(false, false, false, true), id);
             insertKeys(ShaderType::UI, ShaderPool::getUIProperties(true, false, false, true), id);
             insertKeys(ShaderType::UI, ShaderPool::getUIProperties(false, true, false, false), id);
+            if (text){
+                const bool sdf = (std::isfinite(text->outlineWidth) && text->outlineWidth > 0.0f) || text->shadowEnabled;
+                if (textEffect)
+                    insertKeys(ShaderType::UI, ShaderPool::getUIProperties(false, true, false, true), id);
+                if (sdf)
+                    insertKeys(ShaderType::UI, ShaderPool::getUIProperties(false, true, false, textEffect, true), id);
+            }
         }
 
         // Likewise for points, with or without a texture and texture rects (RenderSystem::loadPoints)

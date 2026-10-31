@@ -3,7 +3,11 @@
 
 #include "UIDocumentSystem.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include "Scene.h"
+#include "component/Transform.h"
 #include "Engine.h"
 #include "Input.h"
 #include "Log.h"
@@ -59,6 +63,8 @@ void UIDocumentSystem::destroyContext(){
     reloadContextDestroyed();
     documents.clear();
     inputState.reset();
+    if (context)
+        contextScenes().erase(context->getRmlContext());
     delete context;
     context = nullptr;
     if (acquired){
@@ -106,6 +112,7 @@ bool UIDocumentSystem::ensureContext(){
         return false;
     }
     context = created;
+    contextScenes()[created->getRmlContext()] = scene;
     scriptContextCreated();
 
     if (debuggerVisible){
@@ -115,9 +122,75 @@ bool UIDocumentSystem::ensureContext(){
     return true;
 }
 
+std::unordered_map<const Rml::Context*, Scene*>& UIDocumentSystem::contextScenes(){
+    static std::unordered_map<const Rml::Context*, Scene*> scenes;
+    return scenes;
+}
+
+Scene* UIDocumentSystem::sceneOfContext(const Rml::Context* context){
+    auto it = contextScenes().find(context);
+    return it != contextScenes().end() ? it->second : nullptr;
+}
+
+void UIDocumentSystem::addRuntimeEntity(Entity entity){
+    if (std::find(runtimeEntities.begin(), runtimeEntities.end(), entity) == runtimeEntities.end())
+        runtimeEntities.push_back(entity);
+}
+
+void UIDocumentSystem::removeRuntimeEntity(Entity entity){
+    runtimeEntities.erase(std::remove(runtimeEntities.begin(), runtimeEntities.end(), entity), runtimeEntities.end());
+}
+
+bool UIDocumentSystem::isRuntimeEntity(Entity entity) const{
+    // the entity or one of its ancestors
+    for (Entity e = entity; e != NULL_ENTITY;){
+        if (std::find(runtimeEntities.begin(), runtimeEntities.end(), e) != runtimeEntities.end())
+            return true;
+        const Transform* transform = scene->findComponent<Transform>(e);
+        e = transform ? transform->parent : NULL_ENTITY;
+    }
+    return false;
+}
+
 void UIDocumentSystem::getLayoutSize(int& width, int& height) const{
-    width = (referenceWidth != 0) ? referenceWidth : Engine::getCanvasWidth();
-    height = (referenceHeight != 0) ? referenceHeight : Engine::getCanvasHeight();
+    width = Engine::getCanvasWidth();
+    height = Engine::getCanvasHeight();
+    // the Canvas Scaler's UI size, in whole CSS pixels
+    if (scene->isDocumentScaled()){
+        width = std::max(1, (int)std::lround(scene->getCanvasScale().uiWidth));
+        height = std::max(1, (int)std::lround(scene->getCanvasScale().uiHeight));
+    }
+    if (referenceWidth != 0)
+        width = referenceWidth;
+    if (referenceHeight != 0)
+        height = referenceHeight;
+}
+
+void UIDocumentSystem::getFrameSize(float& width, float& height) const{
+    if (frameWidth > 0.0f && frameHeight > 0.0f){
+        width = frameWidth;
+        height = frameHeight;
+        return;
+    }
+    int layoutWidth = 0, layoutHeight = 0;
+    getLayoutSize(layoutWidth, layoutHeight);
+    width = (float)layoutWidth;
+    height = (float)layoutHeight;
+    // a scaled document still covers the game canvas a 2D camera shows; a UI camera spans the UI size
+    if (scene->isDocumentScaled() && referenceWidth == 0 && referenceHeight == 0){
+        if (scene->isUIScaled()){
+            width = scene->getCanvasScale().uiWidth;
+            height = scene->getCanvasScale().uiHeight;
+        }else{
+            width = (float)Engine::getCanvasWidth();
+            height = (float)Engine::getCanvasHeight();
+        }
+    }
+}
+
+void UIDocumentSystem::setFrameSize(float width, float height){
+    frameWidth = width;
+    frameHeight = height;
 }
 
 void UIDocumentSystem::unloadEntityDocument(Entity entity){
@@ -289,6 +362,8 @@ void UIDocumentSystem::setReferenceSize(int width, int height){
 void UIDocumentSystem::clearReferenceSize(){
     referenceWidth = 0;
     referenceHeight = 0;
+    frameWidth = 0.0f;
+    frameHeight = 0.0f;
 }
 
 bool UIDocumentSystem::loadDocumentNow(Entity entity){

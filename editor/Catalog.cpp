@@ -827,6 +827,25 @@ namespace {
         makeFastProperty<TextComponent, bool, &TextComponent::fixedHeight>("fixedHeight", PropertyType::Bool, UpdateFlags_Text),
         makeFastProperty<TextComponent, bool, &TextComponent::pivotBaseline>("pivotBaseline", PropertyType::Bool, UpdateFlags_Text),
         makeFastProperty<TextComponent, bool, &TextComponent::pivotCentered>("pivotCentered", PropertyType::Bool, UpdateFlags_Text),
+        // the colours and offsets reach the shader each frame; widths may need another atlas padding
+        makeFastProperty<TextComponent, float, &TextComponent::outlineWidth>("outlineWidth", PropertyType::Float, UpdateFlags_Text),
+        makeFastProperty<TextComponent, Vector4, &TextComponent::outlineColor>("outlineColor", PropertyType::Vector4, UpdateFlags_None),
+        makeFastProperty<TextComponent, bool, &TextComponent::shadowEnabled>("shadowEnabled", PropertyType::Bool, UpdateFlags_Text),
+        makeFastProperty<TextComponent, Vector4, &TextComponent::shadowColor>("shadowColor", PropertyType::Vector4, UpdateFlags_None),
+        makeFastProperty<TextComponent, Vector2, &TextComponent::shadowOffset>("shadowOffset", PropertyType::Vector2, UpdateFlags_None),
+        makeFastProperty<TextComponent, float, &TextComponent::shadowSoftness>("shadowSoftness", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<TextComponent, float, &TextComponent::shadowDilate>("shadowDilate", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<TextComponent, int, &TextComponent::visibleCharacters>("visibleCharacters", PropertyType::Int, UpdateFlags_Text),
+    };
+
+    static const FastPropertyDescriptor kTextEffectProperties[] = {
+        makeFastProperty<TextEffectComponent, bool, &TextEffectComponent::enabled>("enabled", PropertyType::Bool, UpdateFlags_TextEffect),
+        makeFastProperty<TextEffectComponent, bool, &TextEffectComponent::autoPlay>("autoPlay", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TextEffectComponent, bool, &TextEffectComponent::loop>("loop", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TextEffectComponent, bool, &TextEffectComponent::useUnscaledTime>("useUnscaledTime", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TextEffectComponent, int, &TextEffectComponent::startIndex>("startIndex", PropertyType::Int, UpdateFlags_TextEffect),
+        makeFastProperty<TextEffectComponent, int, &TextEffectComponent::length>("length", PropertyType::Int, UpdateFlags_TextEffect),
+        makeFastProperty<TextEffectComponent, std::string, &TextEffectComponent::forWords>("forWords", PropertyType::String, UpdateFlags_TextEffect),
     };
 
     static const FastPropertyDescriptor kJoint2DProperties[] = {
@@ -1966,6 +1985,46 @@ namespace {
         return resolveDirectProperties(static_cast<TextComponent*>(comp), propertyName, kTextProperties);
     }
 
+    // a Text Effect layer's field ("type", "amplitude", ...); def is a default layer's
+    PropertyData getTextEffectLayerPropertyFast(TextEffectLayer& layer, const std::string& field) {
+        static TextEffectLayer d;
+        const uint64_t flags = UpdateFlags_TextEffect;
+        if (field == "type") return {PropertyType::Enum, flags, &d.type, &layer.type};
+        if (field == "enabled") return {PropertyType::Bool, flags, &d.enabled, &layer.enabled};
+        if (field == "amplitude") return {PropertyType::Float, flags, &d.amplitude, &layer.amplitude};
+        if (field == "duration") return {PropertyType::Float, flags, &d.duration, &layer.duration};
+        if (field == "spread") return {PropertyType::Float, flags, &d.spread, &layer.spread};
+        if (field == "phaseStep") return {PropertyType::Float, flags, &d.phaseStep, &layer.phaseStep};
+        if (field == "frequency") return {PropertyType::Float, flags, &d.frequency, &layer.frequency};
+        if (field == "charactersPerSecond") return {PropertyType::Float, flags, &d.charactersPerSecond, &layer.charactersPerSecond};
+        if (field == "fadeTime") return {PropertyType::Float, flags, &d.fadeTime, &layer.fadeTime};
+        if (field == "gradient") return {PropertyType::Custom, flags, &d.gradient, &layer.gradient};
+        if (field == "mix") return {PropertyType::Enum, flags, &d.mix, &layer.mix};
+        if (field == "saturation") return {PropertyType::Float, flags, &d.saturation, &layer.saturation};
+        if (field == "lightness") return {PropertyType::Float, flags, &d.lightness, &layer.lightness};
+        return PropertyData();
+    }
+
+    const char* const kTextEffectLayerFields[] = {"type", "enabled", "amplitude", "duration", "spread", "phaseStep", "frequency",
+                                                 "charactersPerSecond", "fadeTime", "gradient", "mix", "saturation", "lightness"};
+
+    PropertyData resolveTextEffectPropertyFast(void* compRef, const std::string& propertyName) {
+        TextEffectComponent* comp = static_cast<TextEffectComponent*>(compRef);
+        if (!comp) return PropertyData();
+
+        PropertyData result = resolveDirectProperties(comp, propertyName, kTextEffectProperties);
+        if (result.ref) return result;
+
+        // layers[N].<field>
+        size_t index = 0;
+        size_t fieldPos = 0;
+        if (parseIndexedProperty(propertyName, "layers[", comp->layers.size(), index, fieldPos) && fieldPos != std::string::npos) {
+            return getTextEffectLayerPropertyFast(comp->layers[index], propertyName.substr(fieldPos));
+        }
+
+        return PropertyData();
+    }
+
     PropertyData resolveJoint2DPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<Joint2DComponent*>(comp), propertyName, kJoint2DProperties);
     }
@@ -2017,6 +2076,7 @@ namespace {
         if (propertyName == "emitter") return {PropertyType::Bool, UpdateFlags_None, &def.emitter, &comp->emitter};
         if (propertyName == "loop") return {PropertyType::Bool, UpdateFlags_None, &def.loop, &comp->loop};
         if (propertyName == "localSpace") return {PropertyType::Bool, UpdateFlags_None, &def.localSpace, &comp->localSpace};
+        if (propertyName == "useUnscaledTime") return {PropertyType::Bool, UpdateFlags_None, &def.useUnscaledTime, &comp->useUnscaledTime};
         if (propertyName == "rate") return {PropertyType::Int, UpdateFlags_None, &def.rate, &comp->rate};
         if (propertyName == "maxPerUpdate") return {PropertyType::Int, UpdateFlags_None, &def.maxPerUpdate, &comp->maxPerUpdate};
         if (propertyName == "bursts") return {PropertyType::Custom, UpdateFlags_None, &def.bursts, &comp->bursts};
@@ -3057,6 +3117,23 @@ namespace {
         enumerateFromDescriptors(comp, ps, kTextProperties);
     }
 
+    void enumerateTextEffectProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
+        TextEffectComponent* comp = static_cast<TextEffectComponent*>(compRef);
+
+        enumerateFromDescriptors(compRef, ps, kTextEffectProperties);
+
+        static TextEffectLayer defLayer;
+        for (size_t i = 0; i < (size_t)MAX_TEXT_EFFECT_LAYERS; i++) {
+            const std::string prefix = "layers[" + std::to_string(i) + "].";
+            TextEffectLayer& layer = compRef ? comp->layers[i] : defLayer;
+            for (const char* field : kTextEffectLayerFields) {
+                PropertyData property = getTextEffectLayerPropertyFast(layer, field);
+                if (!compRef) property.ref = nullptr;
+                ps[prefix + field] = property;
+            }
+        }
+    }
+
     void enumerateJoint2DProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kJoint2DProperties);
     }
@@ -3314,6 +3391,7 @@ namespace {
         ps["emitter"] = {PropertyType::Bool, UpdateFlags_None, &def.emitter, comp ? &comp->emitter : nullptr};
         ps["loop"] = {PropertyType::Bool, UpdateFlags_None, &def.loop, comp ? &comp->loop : nullptr};
         ps["localSpace"] = {PropertyType::Bool, UpdateFlags_None, &def.localSpace, comp ? &comp->localSpace : nullptr};
+        ps["useUnscaledTime"] = {PropertyType::Bool, UpdateFlags_None, &def.useUnscaledTime, comp ? &comp->useUnscaledTime : nullptr};
         ps["rate"] = {PropertyType::Int, UpdateFlags_None, &def.rate, comp ? &comp->rate : nullptr};
         ps["maxPerUpdate"] = {PropertyType::Int, UpdateFlags_None, &def.maxPerUpdate, comp ? &comp->maxPerUpdate : nullptr};
         ps["bursts"] = {PropertyType::Custom, UpdateFlags_None, &def.bursts, comp ? &comp->bursts : nullptr};
@@ -3771,6 +3849,7 @@ namespace {
         {ComponentType::AudioSourceComponent, &findComponentPtr<AudioSourceComponent>, &resolveAudioPropertyFast, &enumerateAudioProperties},
         {ComponentType::SkyboxComponent, &findComponentPtr<SkyboxComponent>, &resolveSkyPropertyFast, &enumerateSkyProperties},
         {ComponentType::TextComponent, &findComponentPtr<TextComponent>, &resolveTextPropertyFast, &enumerateTextProperties},
+        {ComponentType::TextEffectComponent, &findComponentPtr<TextEffectComponent>, &resolveTextEffectPropertyFast, &enumerateTextEffectProperties},
         {ComponentType::ScriptComponent, &findComponentPtr<ScriptComponent>, &resolveScriptPropertyFast, &enumerateScriptProperties},
         {ComponentType::Joint2DComponent, &findComponentPtr<Joint2DComponent>, &resolveJoint2DPropertyFast, &enumerateJoint2DProperties},
         {ComponentType::Joint3DComponent, &findComponentPtr<Joint3DComponent>, &resolveJoint3DPropertyFast, &enumerateJoint3DProperties},
@@ -3839,6 +3918,7 @@ namespace {
             case ComponentType::LatticeFollowerComponent: return &getEnabledRef<LatticeFollowerComponent>;
             case ComponentType::AnimationPlayerComponent: return &getEnabledRef<AnimationPlayerComponent>;
             case ComponentType::VertexAnimatorComponent: return &getEnabledRef<VertexAnimatorComponent>;
+            case ComponentType::TextEffectComponent: return &getEnabledRef<TextEffectComponent>;
             default: return nullptr;
         }
     }
@@ -3990,6 +4070,8 @@ std::string computeComponentName(editor::ComponentType component){
         name = "AnimationPlayerComponent";
     }else if(component == ComponentType::VertexAnimatorComponent){
         name = "VertexAnimatorComponent";
+    }else if(component == ComponentType::TextEffectComponent){
+        name = "TextEffectComponent";
     }else if(component == ComponentType::Light2DComponent){
         name = "Light2DComponent";
     }else if(component == ComponentType::ShadowCaster2DComponent){
@@ -4138,6 +4220,7 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::PoseAnimatorComponent: return "Pose Animator";
         case ComponentType::AnimationPlayerComponent: return "Animation Player";
         case ComponentType::VertexAnimatorComponent: return "Vertex Animator";
+        case ComponentType::TextEffectComponent: return "Text Effect";
     }
     return getComponentName(component);
 }
@@ -4205,6 +4288,7 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::PoseAnimatorComponent: return ICON_FA_PERSON_RUNNING;
         case ComponentType::AnimationPlayerComponent: return ICON_FA_FILM;
         case ComponentType::VertexAnimatorComponent: return ICON_FA_PEOPLE_GROUP;
+        case ComponentType::TextEffectComponent: return ICON_FA_WAND_MAGIC_SPARKLES;
     }
     return ICON_FA_PUZZLE_PIECE;
 }
@@ -4270,6 +4354,8 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<AnimationPlayerComponent>();
         case ComponentType::VertexAnimatorComponent:
             return registry->getComponentId<VertexAnimatorComponent>();
+        case ComponentType::TextEffectComponent:
+            return registry->getComponentId<TextEffectComponent>();
         case ComponentType::Light2DComponent:
             return registry->getComponentId<Light2DComponent>();
         case ComponentType::ShadowCaster2DComponent:
@@ -4392,6 +4478,8 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::AnimationPlayerComponent;
     }else if(normalizedName == "vertexanimator"){
         return ComponentType::VertexAnimatorComponent;
+    }else if(normalizedName == "texteffect"){
+        return ComponentType::TextEffectComponent;
     }else if(normalizedName == "light2d"){
         return ComponentType::Light2DComponent;
     }else if(normalizedName == "shadowcaster2d"){
@@ -4663,6 +4751,9 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<TextComponent>(entity)){
         ret.push_back(ComponentType::TextComponent);
+    }
+    if (registry->findComponent<TextEffectComponent>(entity)){
+        ret.push_back(ComponentType::TextEffectComponent);
     }
     if (registry->findComponent<InputFieldComponent>(entity)){
         ret.push_back(ComponentType::InputFieldComponent);
@@ -5384,6 +5475,11 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             }
         }
     }
+    if (updateFlags & UpdateFlags_TextEffect){
+        if (TextEffectComponent* effect = registry->findComponent<TextEffectComponent>(entity)){
+            effect->needApply = true;
+        }
+    }
     if (updateFlags & (UpdateFlags_Text | UpdateFlags_Text_Atlas)){
         if (TextComponent* text = registry->findComponent<TextComponent>(entity)){
             if (updateFlags & UpdateFlags_Text)
@@ -5606,6 +5702,14 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
         case ComponentType::TextComponent: {
             YAML::Node encoded = Stream::encodeTextComponent(sourceRegistry->getComponent<TextComponent>(sourceEntity));
             targetRegistry->getComponent<TextComponent>(targetEntity) = Stream::decodeTextComponent(encoded);
+            break;
+        }
+
+        case ComponentType::TextEffectComponent: {
+            // over the target's own: it keeps playing where it was
+            YAML::Node encoded = Stream::encodeTextEffectComponent(sourceRegistry->getComponent<TextEffectComponent>(sourceEntity));
+            TextEffectComponent& target = targetRegistry->getComponent<TextEffectComponent>(targetEntity);
+            target = Stream::decodeTextEffectComponent(encoded, &target);
             break;
         }
 

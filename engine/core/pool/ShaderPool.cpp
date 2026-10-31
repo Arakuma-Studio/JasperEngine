@@ -521,7 +521,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::MESH:   return 35;
         case ShaderType::DEPTH:  return 18;
         case ShaderType::GBUFFER: return 16;
-        case ShaderType::UI:     return 4;
+        case ShaderType::UI:     return 5;
         case ShaderType::POINTS: return 5;
         case ShaderType::LINES:  return 3;
         case ShaderType::SKYBOX: return 1;
@@ -649,6 +649,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 1: return shortName ? "Ftx" : "Font Texture";
             case 2: return shortName ? "Vc3" : "Vertex Color 3";
             case 3: return shortName ? "Vc4" : "Vertex Color 4";
+            // a Text with outline or shadow: signed-distance glyphs
+            case 4: return shortName ? "Sdf" : "Font SDF";
         }
     } else if (shaderType == ShaderType::HTMLUI) {
         switch (bit) {
@@ -1548,13 +1550,14 @@ uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normal
     return prop;
 }
 
-uint64_t ShaderPool::getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4){
+uint64_t ShaderPool::getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4, bool fontAtlasSdf){
     uint64_t prop = 0;
 
     prop |= texture          ? shaderPropertyBit(0) : 0;
     prop |= fontAtlasTexture ? shaderPropertyBit(1) : 0;
     prop |= vertexColorVec3  ? shaderPropertyBit(2) : 0;
     prop |= vertexColorVec4  ? shaderPropertyBit(3) : 0;
+    prop |= (fontAtlasTexture && fontAtlasSdf) ? shaderPropertyBit(4) : 0;
 
     return prop;
 }

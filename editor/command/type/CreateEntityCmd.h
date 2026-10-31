@@ -63,6 +63,9 @@ namespace jasperengine::editor{
         LATTICE_TRACKS,
         MODEL,
         PARTICLE_SYSTEM,
+        // a Points emitter in UI units under a UI element and its Particle System child
+        // (unscaled time, local space): particles drawn in canvas order, clipped by panels
+        UI_PARTICLE_SYSTEM,
         POINTS,
         LINE_RENDERER,
         MESH_POLYGON,

@@ -58,7 +58,7 @@ void STBText::addFace(const std::shared_ptr<FontFace>& face, unsigned int fontSi
 
     faces.push_back(face);
     facePointers.push_back(face.get());
-    faceScales.push_back(face->scaleForPixelHeight((float)fontSize));
+    faceScales.push_back(face->scaleForPixelHeight((float)fontSize * options.rasterScale));
 }
 
 void STBText::addBuiltInFaces(unsigned int fontSize){
@@ -179,7 +179,9 @@ void STBText::resetAtlas(unsigned int width, unsigned int height){
         retiredAtlases.push_back(std::move(atlas));
     }
 
-    atlas.reset(new GlyphAtlas(width, height, atlasPadding));
+    // an SDF atlas keeps its padding empty between glyphs too: a shadow samples up to that far
+    // outside its own glyph and must find nothing there
+    atlas.reset(new GlyphAtlas(width, height, options.sdfPadding > 0 ? options.sdfPadding : atlasPadding));
     atlasWidth = width;
     atlasHeight = height;
 
@@ -248,6 +250,10 @@ const STBText::FontGlyph* STBText::getGlyph(unsigned int face, uint32_t glyphInd
         return &it->second;
     }
 
+    if (options.sdfPadding > 0){
+        return getSdfGlyph(face, glyphIndex, key);
+    }
+
     int x0, y0, x1, y1;
     stbtt_GetGlyphBitmapBox(&faces[face]->getInfo(), glyphIndex, faceScales[face], faceScales[face], &x0, &y0, &x1, &y1);
 
@@ -262,6 +268,55 @@ const STBText::FontGlyph* STBText::getGlyph(unsigned int face, uint32_t glyphInd
 
     FontGlyph& glyph = glyphMap[key];
     rasterizeGlyph(face, glyphIndex, glyph, x, y);
+
+    return &glyph;
+}
+
+// a signed distance field of the glyph with sdfPadding pixels around it (128 on the edge, a
+// pixel away 128 / sdfPadding less outside, more inside); the quad covers the padding too
+const STBText::FontGlyph* STBText::getSdfGlyph(unsigned int face, uint32_t glyphIndex, uint64_t key){
+    const float scale = faceScales[face];
+    const int padding = options.sdfPadding;
+
+    int width = 0, height = 0, xoff = 0, yoff = 0;
+    unsigned char* sdf = stbtt_GetGlyphSDF(&faces[face]->getInfo(), scale, (int)glyphIndex, padding, 128, 128.0f / (float)padding,
+                                           &width, &height, &xoff, &yoff);
+    if (!sdf){
+        // no ink (a space): an empty quad that still advances
+        width = 0;
+        height = 0;
+    }
+
+    int x = 0, y = 0;
+    if (!atlas->pack(width, height, x, y)){
+        // growAtlas() repacks the cached glyphs, this one is still missing
+        if (!growAtlas() || !atlas->pack(width, height, x, y)){
+            if (sdf)
+                stbtt_FreeSDF(sdf, nullptr);
+            Log::error("Failed to pack glyph in font atlas");
+            return NULL;
+        }
+    }
+
+    if (sdf){
+        atlas->blit(sdf, width, height, x, y);
+        stbtt_FreeSDF(sdf, nullptr);
+    }
+
+    FontGlyph& glyph = glyphMap[key];
+    glyph.xoff = (float)xoff;
+    glyph.yoff = (float)yoff;
+    glyph.xoff2 = (float)(xoff + width);
+    glyph.yoff2 = (float)(yoff + height);
+
+    glyph.s0 = (float)x / atlasWidth;
+    glyph.t0 = (float)y / atlasHeight;
+    glyph.s1 = (float)(x + width) / atlasWidth;
+    glyph.t1 = (float)(y + height) / atlasHeight;
+
+    glyph.xadvance = faces[face]->getGlyphAdvance(glyphIndex, scale);
+
+    atlasVersion++;
 
     return &glyph;
 }
@@ -289,20 +344,21 @@ void STBText::refreshTextureData(){
     textureData = new TextureData(atlasWidth, atlasHeight, textureSize, ColorFormat::RED, 1, (void*)atlas->getPixels().data());
 }
 
+// the metrics are kept in raster pixels and reported in text pixels
 float STBText::getAscent(){
-    return ascent;
+    return (options.rasterScale == 1.0f) ? ascent : ascent / options.rasterScale;
 }
 
 float STBText::getDescent(){
-    return descent;
+    return (options.rasterScale == 1.0f) ? descent : descent / options.rasterScale;
 }
 
 float STBText::getLineGap(){
-    return lineGap;
+    return (options.rasterScale == 1.0f) ? lineGap : lineGap / options.rasterScale;
 }
 
 int STBText::getLineHeight(){
-    return lineHeight;
+    return (options.rasterScale == 1.0f) ? lineHeight : (int)std::lround((float)lineHeight / options.rasterScale);
 }
 
 float STBText::getCharWidth(uint32_t codepoint){
@@ -310,7 +366,24 @@ float STBText::getCharWidth(uint32_t codepoint){
     if (!glyph)
         return 0;
 
-    return glyph->xadvance;
+    return (options.rasterScale == 1.0f) ? glyph->xadvance : glyph->xadvance / options.rasterScale;
+}
+
+void STBText::setOptions(const STBTextOptions& options){
+    this->options = options;
+    if (!std::isfinite(this->options.rasterScale) || this->options.rasterScale <= 0.0f)
+        this->options.rasterScale = 1.0f;
+    if (this->options.sdfPadding < 0)
+        this->options.sdfPadding = 0;
+}
+
+const STBTextOptions& STBText::getOptions() const{
+    return options;
+}
+
+float STBText::getSdfDistanceScale() const{
+    // stb: value = 128 + distance * (128 / padding)
+    return (options.sdfPadding > 0) ? 255.0f * (float)options.sdfPadding / 128.0f : 0.0f;
 }
 
 unsigned long STBText::getAtlasVersion() const{
@@ -370,7 +443,8 @@ TextureData* STBText::load(const std::string& fontpath, const std::vector<std::s
 
 void STBText::createText(const std::string& text, Buffer* buffer, std::vector<uint16_t>& indices, std::vector<Vector2>& charPositions,
                          std::vector<CharExtent>& charExtents,
-                         unsigned int& width, unsigned int& height, bool fixedWidth, bool fixedHeight, bool multiline, bool invert){
+                         unsigned int& width, unsigned int& height, bool fixedWidth, bool fixedHeight, bool multiline, bool invert,
+                         std::vector<TextGlyphInfo>* glyphInfo){
 
     bool hadInvalid = false;
     std::vector<uint32_t> codepoints = StringUtils::decodeUtf8ToCodepoints(text, hadInvalid);
@@ -380,8 +454,17 @@ void STBText::createText(const std::string& text, Buffer* buffer, std::vector<ui
 
     unsigned long startVersion = atlasVersion;
 
+    // the layout runs in raster pixels; everything it outputs goes back to text pixels at the end
+    const float rasterScale = options.rasterScale;
+    const bool scaled = rasterScale != 1.0f;
+    const unsigned int layoutWidth = (scaled && fixedWidth) ? (unsigned int)std::lround((float)width * rasterScale) : width;
+    const int firstVertex = (int)buffer->getCount();
+
+    if (glyphInfo)
+        glyphInfo->clear();
+
     std::vector<ShapedGlyph> shaped;
-    int lineCount = (int)shapeLines(codepoints, width, fixedWidth, multiline, shaped);
+    int lineCount = (int)shapeLines(codepoints, layoutWidth, fixedWidth, multiline, shaped);
 
     //rasterize every glyph first, a grow in the middle of the layout would repack
     //the ones already written in the buffer
@@ -496,6 +579,13 @@ void STBText::createText(const std::string& text, Buffer* buffer, std::vector<ui
         indices.push_back(ind+2);
         indices.push_back(ind+3);
         ind = ind + 4;
+
+        if (glyphInfo){
+            TextGlyphInfo info;
+            info.cluster = shapedGlyph.cluster;
+            info.line = shapedGlyph.line;
+            glyphInfo->push_back(info);
+        }
     }
 
     //a cluster covers every codepoint up to the next one, and they share its glyphs,
@@ -560,10 +650,33 @@ void STBText::createText(const std::string& text, Buffer* buffer, std::vector<ui
         indices.push_back(1);
         indices.push_back(2);
     }
-    if (!fixedWidth)
-        width = maxX1 - minX0;
-    if (!fixedHeight)
-        height = lineCount * lineHeight;
+    if (scaled){
+        const float inverse = 1.0f / rasterScale;
+
+        Attribute* positions = buffer->getAttribute(AttributeType::POSITION);
+        for (int i = firstVertex; i < (int)buffer->getCount(); i++){
+            Vector3 vertex = buffer->getVector3(positions, i);
+            buffer->setVector3(i, positions, Vector3(vertex.x * inverse, vertex.y * inverse, vertex.z));
+        }
+        for (Vector2& position : charPositions){
+            position = position * inverse;
+        }
+        for (CharExtent& extent : charExtents){
+            extent.left *= inverse;
+            extent.right *= inverse;
+            extent.y *= inverse;
+        }
+
+        if (!fixedWidth)
+            width = (unsigned int)std::ceil((float)(maxX1 - minX0) * inverse);
+        if (!fixedHeight)
+            height = (unsigned int)std::lround((float)(lineCount * lineHeight) * inverse);
+    }else{
+        if (!fixedWidth)
+            width = maxX1 - minX0;
+        if (!fixedHeight)
+            height = lineCount * lineHeight;
+    }
 
     if (atlasVersion != startVersion){
         refreshTextureData();
