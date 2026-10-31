@@ -281,7 +281,9 @@ void editor::Exporter::runPlayerBuild() {
         config.mode = config.platform == BuildPlatform::Web ? ExportMode::Web : ExportMode::Desktop;
         config.selectedBackends = {shaderBackendOf(config.platform, config.graphicBackend)};
         config.webMultithreaded = config.webMultithreaded || project->getThreadingSettings().webMultithreaded;
+        holdFinish = true;
         runExport();
+        holdFinish = false;
         if (getProgress().failed) return;
         // a Compile build ships the same notices and manifest, so publish treats both alike
         std::string error;
@@ -305,6 +307,8 @@ void editor::Exporter::runPlayerBuild() {
         result.contentManifest = config.destinationDir / "content-manifest.json";
         std::error_code exists;
         if (config.mode == ExportMode::Desktop && fs::is_regular_file(executable, exists)) result.executable = executable;
+        // only now: a caller reading the result once the build is finished finds all of it
+        progress.finished = true;
         return;
     }
 

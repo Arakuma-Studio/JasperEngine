@@ -864,7 +864,7 @@ void editor::Exporter::runExport() {
         setProgressRaw("Build complete", 1.0f);
         {
             std::lock_guard<std::mutex> lock(progressMutex);
-            progress.finished = true;
+            if (!holdFinish) progress.finished = true;
         }
         Out::info("Build completed: %s", config.destinationDir.string().c_str());
         return;
@@ -875,7 +875,7 @@ void editor::Exporter::runExport() {
     setProgress("Build complete", 1.0f);
     {
         std::lock_guard<std::mutex> lock(progressMutex);
-        progress.finished = true;
+        if (!holdFinish) progress.finished = true;
     }
     Out::info("Build completed: %s", config.targetDir.string().c_str());
 }

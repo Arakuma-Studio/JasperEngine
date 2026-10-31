@@ -175,6 +175,10 @@ namespace jasperengine::editor {
         std::vector<std::string> compileNotices;
         // a Compile build's split debug information, kept for publish prepare (content manifest)
         fs::path buildSymbolsDir;
+        // a player build's Compile fallback runs runExport() inside it: the inner export does not
+        // report the build finished, the fallback does once its own steps are done (the content
+        // manifest, the executable a caller reads at once)
+        bool holdFinish = false;
         bool keepBuildSymbols(const fs::path& executable);
 
         // Lua sources copyLua() shipped, so copyAssets() can skip them
