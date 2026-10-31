@@ -531,15 +531,14 @@ the text above, or the text left a choice, this is what was done and why.
 - `Engine::getUnscaledDeltatime()` (same signature) is now also 0 while the game events are paused (the editor's
   Play pause, edit time), and `unscaledTime` stops then; the HTML UI clock keeps its old rule.
 
-### Ownership on today's `main` (before `script-lifecycle`)
+### Ownership
 - Release: `LuaBinding::releaseLuaScriptInstance` calls `ScriptScheduler::cancelOwner(instance)` (destroy, scene
   unload in the generated `cleanupScripts` and the editor, Play stop); `~ScriptBase` calls `cancelOwner(this)`
   (the generated code deletes C++ scripts by their class). `cancelOwner` forgets the owner pointer of what it
   stopped (a Lua registry ref is reused by the next instance).
-- Deactivation: `EntityRegistry::setEntityActive(e, false)` and `addEntityChild` (a move under an inactive parent)
-  call `ScriptScheduler::stopCoroutinesOfInactive(this)`: coroutines of owners of that registry no longer active
-  in hierarchy stop at once (to-be-closed variables close). The check before every resume (6.3) stays as the
-  catch-all.
+- Deactivation: before `script-lifecycle` this branch hooked `EntityRegistry::setEntityActive` / `addEntityChild`;
+  with it merged, lifecycle's activation pass calls the scheduler (below). The check before every resume (6.3)
+  stays as the catch-all.
 - `ScriptScheduler::clear()`: editor Play stop (next to `AnimEngine::reset`), failed Play startup,
   `Engine::systemShutdown` and `LuaBinding::cleanup` (no thread may outlive the state).
 - `ScriptScheduler::rebind(owner, scene, entity)` exists for `persistence`.
@@ -571,22 +570,19 @@ the text above, or the text left a choice, this is what was done and why.
   `ScriptScheduler::timerOwner / cancelTimersOf / coroutinesOf / timersOf / luaRefCount`,
   `ScriptBase::isInvoking(TaskId)`.
 
-### What `script-lifecycle` must wire when it merges
-1. One `ScriptInstanceBase`: keep this branch's registry table (`jasperengine.ScriptInstanceBase`,
-   `LuaBinding::pushScriptInstanceBase`, filled by `ScriptSchedulerLua::addInstanceMethods`) and its install on the
-   module table in `createLuaScriptInstance` (`installScriptInstanceBase`: plain metatable, added `__index`, or a
-   chained C closure, skipped when the chain would loop). Lifecycle adds `getScript`/`getScripts` to the same table
-   and its `__index` C function (`enabled`, `isActiveAndEnabled`, `gameObject`) as that table's metatable.
-2. `ScriptRuntime::flushStarts`: run Lua `start` with `ScriptScheduler::startCoroutine(L, instanceIndex,
-   startFnIndex, 1 /* self */, "start")` so `start` may wait (it returns 0 for a dead instance).
-3. Deactivation (lifecycle 6.3, `!nowActive`): after the `onDisable` calls, `ScriptScheduler::stopCoroutinesOf
-   (instance)` for each instance of the subtree, or keep the `stopCoroutinesOfInactive(this)` calls this branch put
-   in `EntityRegistry::setEntityActive` / `addEntityChild` (the lifecycle rewrite of those functions must keep one
-   of the two; both together are harmless).
-4. Destroy / unload pass 2: `ScriptScheduler::cancelOwner(instance)` (Lua: `ScriptEntry::instance`; C++: the
-   `ScriptBase*`) before `onDestroy` for Unity's order. `releaseLuaScriptInstance` keeps its call (after
-   `onDestroy`, idempotent).
-5. `self.enabled = false` must not stop coroutines or timers (nothing to call).
+### Wired with `script-lifecycle` (merged from `main`)
+1. One `ScriptInstanceBase`: lifecycle's table (`LuaBinding::pushScriptInstanceBase`) also gets this feature's
+   seven methods (`ScriptSchedulerLua::addInstanceMethods`); this branch's own module-metatable install was dropped
+   for lifecycle's class/instance scheme.
+2. `ScriptRuntime::flushStarts` runs a Lua `start` with `ScriptScheduler::startCoroutine(L, self, start, 1,
+   "start")`, so `start` may wait; C++ `start` stays a plain call.
+3. Deactivation: `ScriptRuntime::onActiveInHierarchyChanged(!nowActive)` calls, after the `onDisable` calls,
+   `ScriptScheduler::stopCoroutinesOfInactive(scene, changed, n)` (the owner index: only those GameObjects are
+   looked at). The `EntityRegistry` hooks of this branch were dropped for lifecycle's activation observer.
+4. Destroy and unload: `ScriptRuntime::destroyEntities` / `unloadScenes` call `ScriptScheduler::cancelOwner` for
+   every script of the GameObjects between `onDisable` and `onDestroy` (Unity's order);
+   `releaseLuaScriptInstance` and `~ScriptBase` keep theirs (idempotent). C++ owners are `ScriptEntry::cppScript`.
+5. `self.enabled = false` stops nothing.
 
 ### Other features
 - `http`: put `AsyncOwners::scriptInstanceReleased` next to `ScriptScheduler::cancelOwner` in

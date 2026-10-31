@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Catalog.h"
+#include "script/ScriptRuntime.h"
 
 #include "Stream.h"
 #include "util/EntityClipboard.h"
@@ -111,6 +112,26 @@ namespace {
     bool endsWith(const std::string& text, const char* suffix) {
         const size_t length = std::strlen(suffix);
         return text.size() >= length && text.compare(text.size() - length, length, suffix) == 0;
+    }
+
+    // a collider's authored data over another; the target's body is made again (its Box2D
+    // shapes go with it), so no live handle or runtime copy travels
+    void copyCollider2D(const Collider2D& source, Collider2D& target) {
+        target = source;
+        target.shapes.clear();
+        target.chain = b2_nullChainId;
+        target.dirty = true;
+        target.materialInstance.reset();
+        target.ownsMaterialInstance = false;
+        target.decompositionKey = 0;
+        target.pieces.clear();
+    }
+
+    void copyColliders2D(const std::vector<Collider2D>& source, std::vector<Collider2D>& target) {
+        target.resize(source.size());
+        for (size_t i = 0; i < source.size(); i++) {
+            copyCollider2D(source[i], target[i]);
+        }
     }
 
     bool parseIndex(const std::string& text, size_t& pos, size_t& value) {
@@ -760,6 +781,51 @@ namespace {
         makeFastProperty<VertexAnimatorComponent, std::vector<float>, &VertexAnimatorComponent::instanceSpeeds>("instanceSpeeds", PropertyType::Custom, UpdateFlags_VertexAnimator_Reload),
     };
 
+    // A Line Renderer's polyline, width and ribbon settings (lines and trails spec 6.2): its
+    // geometry is built again (UpdateFlags_Lines); the variant (width on or off, pixel widths)
+    // reloads by itself. Alignment and sort order are read per draw
+    static const FastPropertyDescriptor kLineRibbonProperties[] = {
+        makeFastProperty<LineRendererComponent, LineRendererMode, &LineRendererComponent::mode>("mode", PropertyType::Enum, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, std::vector<Vector3>, &LineRendererComponent::positions>("positions", PropertyType::Custom, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, bool, &LineRendererComponent::loop>("loop", PropertyType::Bool, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, bool, &LineRendererComponent::useWorldSpace>("useWorldSpace", PropertyType::Bool, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, float, &LineRendererComponent::widthMultiplier>("widthMultiplier", PropertyType::Float, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, AnimationCurve, &LineRendererComponent::widthCurve>("widthCurve", PropertyType::Curve, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, LineWidthUnit, &LineRendererComponent::widthUnit>("widthUnit", PropertyType::Enum, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, Gradient, &LineRendererComponent::colorGradient>("colorGradient", PropertyType::Gradient, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, unsigned int, &LineRendererComponent::numCornerVertices>("numCornerVertices", PropertyType::UInt, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, unsigned int, &LineRendererComponent::numCapVertices>("numCapVertices", PropertyType::UInt, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, LineAlignment, &LineRendererComponent::alignment>("alignment", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<LineRendererComponent, LineTextureMode, &LineRendererComponent::textureMode>("textureMode", PropertyType::Enum, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, Vector2, &LineRendererComponent::textureScale>("textureScale", PropertyType::Vector2, UpdateFlags_Lines),
+        makeFastProperty<LineRendererComponent, int, &LineRendererComponent::sortPriority>("sortPriority", PropertyType::Int, UpdateFlags_None),
+    };
+
+    // A Trail Renderer (lines and trails spec 6.4): the ribbon's settings rebuild it
+    // (UpdateFlags_Trail), the shader fields reload it like a Line Renderer's
+    static const FastPropertyDescriptor kTrailRendererProperties[] = {
+        makeFastProperty<TrailRendererComponent, float, &TrailRendererComponent::time>("time", PropertyType::Float, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, float, &TrailRendererComponent::minVertexDistance>("minVertexDistance", PropertyType::Float, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, float, &TrailRendererComponent::widthMultiplier>("widthMultiplier", PropertyType::Float, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, AnimationCurve, &TrailRendererComponent::widthCurve>("widthCurve", PropertyType::Curve, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, LineWidthUnit, &TrailRendererComponent::widthUnit>("widthUnit", PropertyType::Enum, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, Gradient, &TrailRendererComponent::colorGradient>("colorGradient", PropertyType::Gradient, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, unsigned int, &TrailRendererComponent::numCornerVertices>("numCornerVertices", PropertyType::UInt, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, unsigned int, &TrailRendererComponent::numCapVertices>("numCapVertices", PropertyType::UInt, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, LineAlignment, &TrailRendererComponent::alignment>("alignment", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<TrailRendererComponent, LineTextureMode, &TrailRendererComponent::textureMode>("textureMode", PropertyType::Enum, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, Vector2, &TrailRendererComponent::textureScale>("textureScale", PropertyType::Vector2, UpdateFlags_Trail),
+        makeFastProperty<TrailRendererComponent, bool, &TrailRendererComponent::emitting>("emitting", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TrailRendererComponent, bool, &TrailRendererComponent::autodestruct>("autodestruct", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TrailRendererComponent, int, &TrailRendererComponent::sortPriority>("sortPriority", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<TrailRendererComponent, std::string, &TrailRendererComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
+        makeFastProperty<TrailRendererComponent, ShaderUniformValues, &TrailRendererComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
+        makeFastProperty<TrailRendererComponent, std::vector<std::pair<std::string, Texture>>, &TrailRendererComponent::shaderTextures>("shaderTextures", PropertyType::Custom, UpdateFlags_Shader_Reload),
+        makeFastProperty<TrailRendererComponent, std::vector<std::string>, &TrailRendererComponent::shaderFeatures>("shaderFeatures", PropertyType::Custom, UpdateFlags_Shader_Reload),
+        makeFastProperty<TrailRendererComponent, MaterialBlendMode, &TrailRendererComponent::blendMode>("blendMode", PropertyType::Enum, UpdateFlags_Shader_Reload),
+        makeFastProperty<TrailRendererComponent, MaterialDepthWrite, &TrailRendererComponent::depthWrite>("depthWrite", PropertyType::Enum, UpdateFlags_Shader_Reload),
+    };
+
     static const FastPropertyDescriptor kCameraProperties[] = {
         makeFastProperty<CameraComponent, CameraType, &CameraComponent::type>("type", PropertyType::Enum, UpdateFlags_Camera),
         // read by RenderSystem when the camera draws
@@ -829,17 +895,50 @@ namespace {
         makeFastProperty<TextComponent, bool, &TextComponent::pivotCentered>("pivotCentered", PropertyType::Bool, UpdateFlags_Text),
     };
 
+    // R: the joint is made again; P: applied to the live joint (motors, springs, limits, breaking)
     static const FastPropertyDescriptor kJoint2DProperties[] = {
         makeFastProperty<Joint2DComponent, Joint2DType, &Joint2DComponent::type>("type", PropertyType::Enum, UpdateFlags_Joint2D),
         makeFastProperty<Joint2DComponent, Entity, &Joint2DComponent::bodyA>("bodyA", PropertyType::Entity, UpdateFlags_Joint2D),
         makeFastProperty<Joint2DComponent, Entity, &Joint2DComponent::bodyB>("bodyB", PropertyType::Entity, UpdateFlags_Joint2D),
+        makeFastProperty<Joint2DComponent, JointAnchorSpace, &Joint2DComponent::anchorSpace>("anchorSpace", PropertyType::Enum, UpdateFlags_Joint2D),
         makeFastProperty<Joint2DComponent, Vector2, &Joint2DComponent::anchorA>("anchorA", PropertyType::Vector2, UpdateFlags_Joint2D),
         makeFastProperty<Joint2DComponent, Vector2, &Joint2DComponent::anchorB>("anchorB", PropertyType::Vector2, UpdateFlags_Joint2D),
-        makeFastProperty<Joint2DComponent, Vector2, &Joint2DComponent::axis>("axis", PropertyType::Vector2, UpdateFlags_Joint2D),
-        makeFastProperty<Joint2DComponent, Vector2, &Joint2DComponent::target>("target", PropertyType::Vector2, UpdateFlags_Joint2D),
         makeFastProperty<Joint2DComponent, bool, &Joint2DComponent::autoAnchors>("autoAnchors", PropertyType::Bool, UpdateFlags_Joint2D),
-        makeFastProperty<Joint2DComponent, bool, &Joint2DComponent::rope>("rope", PropertyType::Bool, UpdateFlags_Joint2D),
+        makeFastProperty<Joint2DComponent, Vector2, &Joint2DComponent::axis>("axis", PropertyType::Vector2, UpdateFlags_Joint2D),
+        makeFastProperty<Joint2DComponent, Vector2, &Joint2DComponent::target>("target", PropertyType::Vector2, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, bool, &Joint2DComponent::enableCollision>("enableCollision", PropertyType::Bool, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::breakForce>("breakForce", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::breakTorque>("breakTorque", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, JointBreakAction, &Joint2DComponent::breakAction>("breakAction", PropertyType::Enum, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, bool, &Joint2DComponent::useLimits>("useLimits", PropertyType::Bool, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::lowerAngle>("lowerAngle", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::upperAngle>("upperAngle", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::lowerTranslation>("lowerTranslation", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::upperTranslation>("upperTranslation", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, bool, &Joint2DComponent::useMotor>("useMotor", PropertyType::Bool, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::motorSpeed>("motorSpeed", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::maxMotorTorque>("maxMotorTorque", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::maxMotorForce>("maxMotorForce", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, bool, &Joint2DComponent::enableSpring>("enableSpring", PropertyType::Bool, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::frequency>("frequency", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::dampingRatio>("dampingRatio", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::length>("length", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, bool, &Joint2DComponent::autoLength>("autoLength", PropertyType::Bool, UpdateFlags_Joint2D),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::minLength>("minLength", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::maxLength>("maxLength", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, bool, &Joint2DComponent::rope>("rope", PropertyType::Bool, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::linearFrequency>("linearFrequency", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::angularFrequency>("angularFrequency", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::linearDampingRatio>("linearDampingRatio", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::angularDampingRatio>("angularDampingRatio", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, Vector2, &Joint2DComponent::linearOffset>("linearOffset", PropertyType::Vector2, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::angularOffset>("angularOffset", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, bool, &Joint2DComponent::autoOffset>("autoOffset", PropertyType::Bool, UpdateFlags_Joint2D),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::maxForce>("maxForce", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::maxTorque>("maxTorque", PropertyType::Float, UpdateFlags_Joint2D_Params),
+        makeFastProperty<Joint2DComponent, float, &Joint2DComponent::correctionFactor>("correctionFactor", PropertyType::Float, UpdateFlags_Joint2D_Params),
     };
+
 
     static const FastPropertyDescriptor kJoint3DProperties[] = {
         makeFastProperty<Joint3DComponent, Joint3DType, &Joint3DComponent::type>("type", PropertyType::Enum, UpdateFlags_Joint3D),
@@ -1094,7 +1193,7 @@ namespace {
         }
 
         if (propertyName == "scripts") {
-            return {PropertyType::Custom, UpdateFlags_None, nullptr, (void*)&comp->scripts};
+            return {PropertyType::Custom, UpdateFlags_Script_Enabled, nullptr, (void*)&comp->scripts};
         }
 
         // Parse "scripts[N].fieldName"
@@ -1121,7 +1220,7 @@ namespace {
         std::string fieldName = propertyName.substr(pos);
 
         if (fieldName == "enabled") {
-            return {PropertyType::Bool, UpdateFlags_None, nullptr, (void*)&scriptEntry.enabled};
+            return {PropertyType::Bool, UpdateFlags_Script_Enabled, nullptr, (void*)&scriptEntry.enabled};
         }
 
         for (auto& prop : scriptEntry.properties) {
@@ -1190,6 +1289,73 @@ namespace {
         return PropertyData();
     }
 
+    // the Rigidbody 2D fields applied to a live body without rebuilding it
+    constexpr uint64_t UpdateFlags_Rigidbody2DBody = UpdateFlags_Rigidbody2D_Params;
+
+    // a collider's fields: name, type, update flags and where it is in a Collider2D
+    struct Collider2DField {
+        const char* name;
+        PropertyType type;
+        uint64_t updateFlags;
+        void* (*ref)(Collider2D&);
+    };
+
+    const std::vector<Collider2DField>& collider2DFields() {
+        static const std::vector<Collider2DField> fields = {
+            {"type", PropertyType::Enum, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.type; }},
+            {"pointA", PropertyType::Vector2, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.pointA; }},
+            {"pointB", PropertyType::Vector2, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.pointB; }},
+            {"radius", PropertyType::Float, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.radius; }},
+            {"loop", PropertyType::Bool, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.loop; }},
+            {"points", PropertyType::Custom, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.points; }},
+            {"density", PropertyType::Float, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.density; }},
+            {"friction", PropertyType::Float, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.friction; }},
+            {"restitution", PropertyType::Float, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.restitution; }},
+            {"material", PropertyType::String, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.material; }},
+            {"sensor", PropertyType::Bool, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.sensor; }},
+            {"enableHitEvents", PropertyType::Bool, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.enableHitEvents; }},
+            {"contactEvents", PropertyType::Bool, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.contactEvents; }},
+            {"preSolveEvents", PropertyType::Bool, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.preSolveEvents; }},
+            {"sensorEvents", PropertyType::Bool, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.sensorEvents; }},
+            {"receiver", PropertyType::Entity, UpdateFlags_Rigidbody2D, [](Collider2D& c) -> void* { return &c.receiver; }},
+        };
+        return fields;
+    }
+
+    // the body's own fields
+    struct Rigidbody2DField {
+        const char* name;
+        PropertyType type;
+        uint64_t updateFlags;
+        void* (*ref)(Rigidbody2DComponent&);
+    };
+
+    const std::vector<Rigidbody2DField>& rigidbody2DFields() {
+        static const std::vector<Rigidbody2DField> fields = {
+            {"type", PropertyType::Enum, UpdateFlags_Rigidbody2D, [](Rigidbody2DComponent& b) -> void* { return &b.type; }},
+            {"gravityScale", PropertyType::Float, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.gravityScale; }},
+            {"linearDamping", PropertyType::Float, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.linearDamping; }},
+            {"angularDamping", PropertyType::Float, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.angularDamping; }},
+            {"fixedRotation", PropertyType::Bool, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.fixedRotation; }},
+            {"collisionDetection", PropertyType::Enum, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.collisionDetection; }},
+            {"sleepingMode", PropertyType::Enum, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.sleepingMode; }},
+            {"useAutoMass", PropertyType::Bool, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.useAutoMass; }},
+            {"mass", PropertyType::Float, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.mass; }},
+            {"autoCenterOfMass", PropertyType::Bool, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.autoCenterOfMass; }},
+            {"centerOfMass", PropertyType::Vector2, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.centerOfMass; }},
+            {"autoInertia", PropertyType::Bool, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.autoInertia; }},
+            {"inertia", PropertyType::Float, UpdateFlags_Rigidbody2DBody, [](Rigidbody2DComponent& b) -> void* { return &b.inertia; }},
+            {"material", PropertyType::String, UpdateFlags_Rigidbody2D, [](Rigidbody2DComponent& b) -> void* { return &b.material; }},
+            {"colliders", PropertyType::Custom, UpdateFlags_Rigidbody2D, [](Rigidbody2DComponent& b) -> void* { return &b.colliders; }},
+        };
+        return fields;
+    }
+
+    Collider2D& defaultCollider2D() {
+        static Collider2D collider;
+        return collider;
+    }
+
     PropertyData getRigidbody2DPropertyFast(Rigidbody2DComponent* comp, const std::string& propertyName) {
         Rigidbody2DComponent& defaultRigidbody2D = getDefaultComponent<Rigidbody2DComponent>();
 
@@ -1197,11 +1363,10 @@ namespace {
             return PropertyData();
         }
 
-        if (propertyName == "type") {
-            return {PropertyType::Enum, UpdateFlags_Rigidbody2D, (void*)&defaultRigidbody2D.type, (void*)&comp->type};
-        }
-        if (propertyName == "numColliders") {
-            return {PropertyType::UInt, UpdateFlags_Rigidbody2D, (void*)&defaultRigidbody2D.numColliders, (void*)&comp->numColliders};
+        for (const Rigidbody2DField& field : rigidbody2DFields()) {
+            if (propertyName == field.name) {
+                return {field.type, field.updateFlags, field.ref(defaultRigidbody2D), field.ref(*comp)};
+            }
         }
 
         constexpr const char* shapePrefix = "colliders[";
@@ -1215,11 +1380,12 @@ namespace {
             return PropertyData();
         }
 
-        if (colliderIndex >= MAX_COLLIDERS_2D) {
+        // any number of colliders: the ones the body has
+        if (colliderIndex >= comp->colliders.size()) {
             return PropertyData();
         }
         Collider2D& shape = comp->colliders[colliderIndex];
-        Collider2D& defaultShape = defaultRigidbody2D.colliders[0];
+        Collider2D& defaultShape = defaultCollider2D();
 
         pos++;
         if (pos == propertyName.size()) {
@@ -1231,59 +1397,31 @@ namespace {
         }
 
         const size_t fieldPos = pos + 1;
-        if (propertyName.compare(fieldPos, 4, "type") == 0 && fieldPos + 4 == propertyName.size()) {
-            return {PropertyType::Enum, UpdateFlags_Rigidbody2D, (void*)&defaultShape.type, (void*)&shape.type};
-        }
-        if (propertyName.compare(fieldPos, 6, "pointA") == 0 && fieldPos + 6 == propertyName.size()) {
-            return {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defaultShape.pointA, (void*)&shape.pointA};
-        }
-        if (propertyName.compare(fieldPos, 6, "pointB") == 0 && fieldPos + 6 == propertyName.size()) {
-            return {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defaultShape.pointB, (void*)&shape.pointB};
-        }
-        if (propertyName.compare(fieldPos, 6, "radius") == 0 && fieldPos + 6 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defaultShape.radius, (void*)&shape.radius};
-        }
-        if (propertyName.compare(fieldPos, 4, "loop") == 0 && fieldPos + 4 == propertyName.size()) {
-            return {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defaultShape.loop, (void*)&shape.loop};
-        }
-        if (propertyName.compare(fieldPos, 7, "density") == 0 && fieldPos + 7 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defaultShape.density, (void*)&shape.density};
-        }
-        if (propertyName.compare(fieldPos, 8, "friction") == 0 && fieldPos + 8 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defaultShape.friction, (void*)&shape.friction};
-        }
-        if (propertyName.compare(fieldPos, 11, "restitution") == 0 && fieldPos + 11 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defaultShape.restitution, (void*)&shape.restitution};
-        }
-        if (propertyName.compare(fieldPos, 6, "sensor") == 0 && fieldPos + 6 == propertyName.size()) {
-            return {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defaultShape.sensor, (void*)&shape.sensor};
-        }
-        if (propertyName.compare(fieldPos, 15, "enableHitEvents") == 0 && fieldPos + 15 == propertyName.size()) {
-            return {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defaultShape.enableHitEvents, (void*)&shape.enableHitEvents};
-        }
-        if (propertyName.compare(fieldPos, 13, "contactEvents") == 0 && fieldPos + 13 == propertyName.size()) {
-            return {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defaultShape.contactEvents, (void*)&shape.contactEvents};
-        }
-        if (propertyName.compare(fieldPos, 14, "preSolveEvents") == 0 && fieldPos + 14 == propertyName.size()) {
-            return {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defaultShape.preSolveEvents, (void*)&shape.preSolveEvents};
-        }
-        if (propertyName.compare(fieldPos, 12, "sensorEvents") == 0 && fieldPos + 12 == propertyName.size()) {
-            return {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defaultShape.sensorEvents, (void*)&shape.sensorEvents};
+        const std::string field = propertyName.substr(fieldPos);
+        for (const Collider2DField& colliderField : collider2DFields()) {
+            if (field == colliderField.name) {
+                return {colliderField.type, colliderField.updateFlags, colliderField.ref(defaultShape), colliderField.ref(shape)};
+            }
         }
 
-        constexpr const char* verticesPrefix = "vertices[";
-        if (propertyName.compare(fieldPos, 9, verticesPrefix) == 0) {
-            size_t vertexPos = fieldPos + 9;
-            size_t vertexIndex = 0;
-            if (!parseIndex(propertyName, vertexPos, vertexIndex) || vertexPos >= propertyName.size() || propertyName[vertexPos] != ']') {
+        // "vertices[i]": the name before points
+        size_t pointPos = std::string::npos;
+        if (propertyName.compare(fieldPos, 7, "points[") == 0) {
+            pointPos = fieldPos + 7;
+        } else if (propertyName.compare(fieldPos, 9, "vertices[") == 0) {
+            pointPos = fieldPos + 9;
+        }
+        if (pointPos != std::string::npos) {
+            size_t pointIndex = 0;
+            if (!parseIndex(propertyName, pointPos, pointIndex) || pointPos >= propertyName.size() || propertyName[pointPos] != ']') {
+                return PropertyData();
+            }
+            if (pointPos + 1 != propertyName.size() || pointIndex >= shape.points.size()) {
                 return PropertyData();
             }
 
-            if (vertexPos + 1 != propertyName.size()) {
-                return PropertyData();
-            }
-
-            return {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defaultShape.vertices[0], (void*)&shape.vertices[vertexIndex]};
+            static const Vector2 defaultPoint = Vector2::ZERO;
+            return {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defaultPoint, (void*)&shape.points[pointIndex]};
         }
 
         return PropertyData();
@@ -3079,33 +3217,19 @@ namespace {
         Rigidbody2DComponent* comp = static_cast<Rigidbody2DComponent*>(compRef);
         Rigidbody2DComponent& def = getDefaultComponent<Rigidbody2DComponent>();
 
-        ps["type"] = {PropertyType::Enum, UpdateFlags_Rigidbody2D, (void*)&def.type, compRef ? (void*)&comp->type : nullptr};
-        ps["numColliders"] = {PropertyType::UInt, UpdateFlags_Rigidbody2D, (void*)&def.numColliders, compRef ? (void*)&comp->numColliders : nullptr};
+        for (const Rigidbody2DField& field : rigidbody2DFields()) {
+            ps[field.name] = {field.type, field.updateFlags, field.ref(def), compRef ? field.ref(*comp) : nullptr};
+        }
 
-        for (int s = 0; s < (compRef ? (int)comp->numColliders : 1); s++) {
+        Collider2D& defShape = defaultCollider2D();
+        for (int s = 0; s < (compRef ? (int)comp->colliders.size() : 1); s++) {
             std::string idx = compRef ? std::to_string(s) : "";
 
-            Collider2D& shape = compRef ? comp->colliders[s] : def.colliders[0];
-            Collider2D& defShape = def.colliders[0];
+            Collider2D& shape = compRef ? comp->colliders[s] : defShape;
 
             ps["colliders[" + idx + "]"] = {PropertyType::Custom, UpdateFlags_Rigidbody2D, (void*)&defShape, compRef ? (void*)&shape : nullptr};
-            ps["colliders[" + idx + "].type"] = {PropertyType::Enum, UpdateFlags_Rigidbody2D, (void*)&defShape.type, compRef ? (void*)&shape.type : nullptr};
-            ps["colliders[" + idx + "].pointA"] = {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defShape.pointA, compRef ? (void*)&shape.pointA : nullptr};
-            ps["colliders[" + idx + "].pointB"] = {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defShape.pointB, compRef ? (void*)&shape.pointB : nullptr};
-            ps["colliders[" + idx + "].radius"] = {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defShape.radius, compRef ? (void*)&shape.radius : nullptr};
-            ps["colliders[" + idx + "].loop"] = {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defShape.loop, compRef ? (void*)&shape.loop : nullptr};
-            ps["colliders[" + idx + "].density"] = {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defShape.density, compRef ? (void*)&shape.density : nullptr};
-            ps["colliders[" + idx + "].friction"] = {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defShape.friction, compRef ? (void*)&shape.friction : nullptr};
-            ps["colliders[" + idx + "].restitution"] = {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defShape.restitution, compRef ? (void*)&shape.restitution : nullptr};
-            ps["colliders[" + idx + "].sensor"] = {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defShape.sensor, compRef ? (void*)&shape.sensor : nullptr};
-            ps["colliders[" + idx + "].enableHitEvents"] = {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defShape.enableHitEvents, compRef ? (void*)&shape.enableHitEvents : nullptr};
-            ps["colliders[" + idx + "].contactEvents"] = {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defShape.contactEvents, compRef ? (void*)&shape.contactEvents : nullptr};
-            ps["colliders[" + idx + "].preSolveEvents"] = {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defShape.preSolveEvents, compRef ? (void*)&shape.preSolveEvents : nullptr};
-            ps["colliders[" + idx + "].sensorEvents"] = {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defShape.sensorEvents, compRef ? (void*)&shape.sensorEvents : nullptr};
-
-            for (int v = 0; v < (compRef ? (int)shape.numVertices : 1); v++) {
-                std::string vidx = compRef ? std::to_string(v) : "";
-                ps["colliders[" + idx + "].vertices[" + vidx + "]"] = {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defShape.vertices[0], compRef ? (void*)&shape.vertices[v] : nullptr};
+            for (const Collider2DField& field : collider2DFields()) {
+                ps["colliders[" + idx + "]." + field.name] = {field.type, field.updateFlags, field.ref(defShape), compRef ? field.ref(shape) : nullptr};
             }
         }
     }
@@ -3233,14 +3357,14 @@ namespace {
     void enumerateScriptProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
         ScriptComponent* comp = static_cast<ScriptComponent*>(compRef);
 
-        ps["scripts"] = {PropertyType::Custom, UpdateFlags_None, nullptr, compRef ? (void*)&comp->scripts : nullptr};
+        ps["scripts"] = {PropertyType::Custom, UpdateFlags_Script_Enabled, nullptr, compRef ? (void*)&comp->scripts : nullptr};
 
         if (compRef && comp) {
             for (size_t i = 0; i < comp->scripts.size(); i++) {
                 auto& script = comp->scripts[i];
 
                 std::string enabledKey = "scripts[" + std::to_string(i) + "].enabled";
-                ps[enabledKey] = {PropertyType::Bool, UpdateFlags_None, nullptr, (void*)&script.enabled};
+                ps[enabledKey] = {PropertyType::Bool, UpdateFlags_Script_Enabled, nullptr, (void*)&script.enabled};
 
                 for (auto& prop : script.properties) {
                     std::string key = "scripts[" + std::to_string(i) + "]." + prop.name;
@@ -3547,6 +3671,18 @@ namespace {
         LineRendererComponent& def = getDefaultComponent<LineRendererComponent>();
         if (!comp) return PropertyData();
 
+        PropertyData ribbon = resolveDirectProperties(comp, propertyName, kLineRibbonProperties);
+        if (ribbon.ref) return ribbon;
+        // positions[N]
+        if (propertyName.compare(0, 10, "positions[") == 0) {
+            size_t pos = 10;
+            size_t index = 0;
+            if (!parseIndex(propertyName, pos, index) || pos + 1 != propertyName.size() || propertyName[pos] != ']') return PropertyData();
+            if (index >= comp->positions.size()) return PropertyData();
+            static Vector3 defPosition = Vector3(0.0f, 0.0f, 0.0f);
+            return {PropertyType::Vector3, UpdateFlags_Lines, (void*)&defPosition, (void*)&comp->positions[index]};
+        }
+
         if (propertyName == "maxLines") return {PropertyType::UInt, UpdateFlags_Lines_Reload, &def.maxLines, &comp->maxLines};
         if (propertyName == "customShader") return {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, &comp->customShader};
         if (propertyName == "shaderUniforms") return {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, &comp->shaderUniforms};
@@ -3598,6 +3734,29 @@ namespace {
         return getLinesPropertyFast(static_cast<LineRendererComponent*>(comp), propertyName);
     }
 
+    PropertyData resolveTrailPropertyFast(void* compRef, const std::string& propertyName) {
+        TrailRendererComponent* comp = static_cast<TrailRendererComponent*>(compRef);
+        if (!comp) return PropertyData();
+        PropertyData result = resolveDirectProperties(comp, propertyName, kTrailRendererProperties);
+        if (result.ref) return result;
+        TrailRendererComponent& def = getDefaultComponent<TrailRendererComponent>();
+        if (propertyName == "colorWrite" || propertyName.compare(0, 7, "stencil") == 0) {
+            return getStencilColorWriteProperty(&comp->stencil, &def.stencil, &comp->colorWrite, &def.colorWrite,
+                                                propertyName, UpdateFlags_Shader_Reload);
+        }
+        return PropertyData();
+    }
+
+    void enumerateTrailProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
+        TrailRendererComponent* comp = static_cast<TrailRendererComponent*>(compRef);
+        TrailRendererComponent& def = getDefaultComponent<TrailRendererComponent>();
+        enumerateFromDescriptors(compRef, ps, kTrailRendererProperties);
+        for (const char* field : kComponentStencilFields) {
+            ps[field] = getStencilColorWriteProperty(comp ? &comp->stencil : nullptr, &def.stencil, comp ? &comp->colorWrite : nullptr,
+                                                     &def.colorWrite, field, UpdateFlags_Shader_Reload);
+        }
+    }
+
     void enumerateLinesProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
         LineRendererComponent* comp = static_cast<LineRendererComponent*>(compRef);
         LineRendererComponent& def = getDefaultComponent<LineRendererComponent>();
@@ -3616,6 +3775,14 @@ namespace {
 
         static std::vector<LineData> defLines;
         ps["lines"] = {PropertyType::Custom, UpdateFlags_Lines, (void*)&defLines, comp ? (void*)&comp->lines : nullptr};
+
+        enumerateFromDescriptors(compRef, ps, kLineRibbonProperties);
+        if (comp) {
+            static Vector3 defPosition = Vector3(0.0f, 0.0f, 0.0f);
+            for (size_t i = 0; i < comp->positions.size(); i++) {
+                ps["positions[" + std::to_string(i) + "]"] = {PropertyType::Vector3, UpdateFlags_Lines, (void*)&defPosition, (void*)&comp->positions[i]};
+            }
+        }
 
         if (comp) {
             static Vector3 defPoint = Vector3(0.0f, 0.0f, 0.0f);
@@ -3780,6 +3947,7 @@ namespace {
         {ComponentType::ParticleSystemComponent, &findComponentPtr<ParticleSystemComponent>, &resolveParticlesPropertyFast, &enumerateParticlesProperties},
         {ComponentType::PointsComponent, &findComponentPtr<PointsComponent>, &resolvePointsPropertyFast, &enumeratePointsProperties},
         {ComponentType::LineRendererComponent, &findComponentPtr<LineRendererComponent>, &resolveLinesPropertyFast, &enumerateLinesProperties},
+        {ComponentType::TrailRendererComponent, &findComponentPtr<TrailRendererComponent>, &resolveTrailPropertyFast, &enumerateTrailProperties},
         {ComponentType::ActionComponent, &findComponentPtr<ActionComponent>, &resolveActionPropertyFast, &enumerateActionProperties},
         {ComponentType::TweenComponent, &findComponentPtr<TweenComponent>, &resolveTweenPropertyFast, &enumerateTweenProperties},
         {ComponentType::PositionTweenComponent, &findComponentPtr<PositionTweenComponent>, &resolvePositionTweenPropertyFast, &enumeratePositionTweenProperties},
@@ -3821,6 +3989,7 @@ namespace {
             case ComponentType::TerrainComponent: return &getEnabledRef<TerrainComponent>;
             case ComponentType::PointsComponent: return &getEnabledRef<PointsComponent>;
             case ComponentType::LineRendererComponent: return &getEnabledRef<LineRendererComponent>;
+            case ComponentType::TrailRendererComponent: return &getEnabledRef<TrailRendererComponent>;
             case ComponentType::ParticleSystemComponent: return &getEnabledRef<ParticleSystemComponent>;
             case ComponentType::InstancedMeshComponent: return &getEnabledRef<InstancedMeshComponent>;
             case ComponentType::LightComponent: return &getEnabledRef<LightComponent>;
@@ -3990,6 +4159,8 @@ std::string computeComponentName(editor::ComponentType component){
         name = "AnimationPlayerComponent";
     }else if(component == ComponentType::VertexAnimatorComponent){
         name = "VertexAnimatorComponent";
+    }else if(component == ComponentType::TrailRendererComponent){
+        name = "TrailRendererComponent";
     }else if(component == ComponentType::Light2DComponent){
         name = "Light2DComponent";
     }else if(component == ComponentType::ShadowCaster2DComponent){
@@ -4081,6 +4252,7 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::ScriptComponent: return "Script";
         case ComponentType::MeshComponent: return "Mesh Renderer";
         case ComponentType::LineRendererComponent: return "Line Renderer";
+        case ComponentType::TrailRendererComponent: return "Trail Renderer";
         case ComponentType::LightComponent: return "Light";
         case ComponentType::TerrainComponent: return "Terrain";
         case ComponentType::PointsComponent: return "Point Renderer";
@@ -4148,6 +4320,7 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::ScriptComponent: return ICON_FA_CODE;
         case ComponentType::MeshComponent: return ICON_FA_SHAPES;
         case ComponentType::LineRendererComponent: return ICON_FA_GRIP_LINES;
+        case ComponentType::TrailRendererComponent: return ICON_FA_WIND;
         case ComponentType::LightComponent: return ICON_FA_LIGHTBULB;
         case ComponentType::TerrainComponent: return ICON_FA_MOUNTAIN;
         case ComponentType::PointsComponent: return ICON_FA_BRAILLE;
@@ -4288,6 +4461,8 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<LightComponent>();
         case ComponentType::LineRendererComponent:
             return registry->getComponentId<LineRendererComponent>();
+        case ComponentType::TrailRendererComponent:
+            return registry->getComponentId<TrailRendererComponent>();
         case ComponentType::MeshPolygonComponent:
             return registry->getComponentId<MeshPolygonComponent>();
         case ComponentType::ModelComponent:
@@ -4410,6 +4585,8 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::LightComponent;
     }else if(normalizedName == "linerenderer"){
         return ComponentType::LineRendererComponent;
+    }else if(normalizedName == "trailrenderer" || normalizedName == "trail"){
+        return ComponentType::TrailRendererComponent;
     }else if(normalizedName == "mesh"){
         return ComponentType::MeshComponent;
     }else if(normalizedName == "meshpolygon"){
@@ -4609,6 +4786,9 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<VertexAnimatorComponent>(entity)){
         ret.push_back(ComponentType::VertexAnimatorComponent);
+    }
+    if (registry->findComponent<TrailRendererComponent>(entity)){
+        ret.push_back(ComponentType::TrailRendererComponent);
     }
     if (registry->findComponent<MorphTracksComponent>(entity)){
         ret.push_back(ComponentType::MorphTracksComponent);
@@ -4829,6 +5009,12 @@ uint64_t editor::Catalog::getChangedUpdateFlags(ComponentType compType, void* ol
                 changed = static_cast<EntityReference*>(oldProp.ref)->entity != static_cast<EntityReference*>(newProp.ref)->entity ||
                           static_cast<EntityReference*>(oldProp.ref)->sceneId != static_cast<EntityReference*>(newProp.ref)->sceneId;
                 break;
+            case PropertyType::Curve:
+                changed = *static_cast<AnimationCurve*>(oldProp.ref) != *static_cast<AnimationCurve*>(newProp.ref);
+                break;
+            case PropertyType::Gradient:
+                changed = *static_cast<Gradient*>(oldProp.ref) != *static_cast<Gradient*>(newProp.ref);
+                break;
             case PropertyType::Custom:
                 // Conservative: assume changed for complex types
                 changed = true;
@@ -4913,6 +5099,12 @@ std::vector<const CustomUniformBlock*> editor::Catalog::getShaderUniformBlocks(E
                 blocks.push_back(&lines->customFSParams);
             }
             break;
+        case ComponentType::TrailRendererComponent:
+            if (TrailRendererComponent* trail = registry->findComponent<TrailRendererComponent>(entity)) {
+                blocks.push_back(&trail->customVSParams);
+                blocks.push_back(&trail->customFSParams);
+            }
+            break;
         case ComponentType::SkyboxComponent:
             if (SkyboxComponent* sky = registry->findComponent<SkyboxComponent>(entity)) {
                 blocks.push_back(&sky->customVSParams);
@@ -4978,6 +5170,10 @@ bool editor::Catalog::isCustomShaderBuildFailed(Scene* scene, Entity entity, Com
         case ComponentType::LineRendererComponent:
             if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity))
                 return failed(lines->customShader, ShaderType::LINES, lines->loaded, lines->needReload, lines->customShaderId);
+            break;
+        case ComponentType::TrailRendererComponent:
+            if (TrailRendererComponent* trail = scene->findComponent<TrailRendererComponent>(entity))
+                return failed(trail->customShader, ShaderType::LINES, trail->loaded, trail->needReload, trail->customShaderId);
             break;
         case ComponentType::SkyboxComponent:
             if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity))
@@ -5046,6 +5242,10 @@ std::string editor::Catalog::getShaderReferenceForProperty(Scene* scene, Entity 
         case ComponentType::LineRendererComponent:
             if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity))
                 return lines->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines->customShader;
+            break;
+        case ComponentType::TrailRendererComponent:
+            if (TrailRendererComponent* trail = scene->findComponent<TrailRendererComponent>(entity))
+                return trail->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : trail->customShader;
             break;
         case ComponentType::SkyboxComponent:
             if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity))
@@ -5258,6 +5458,12 @@ uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Mat
 }
 
 void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint64_t updateFlags){
+    if (updateFlags & UpdateFlags_Script_Enabled){
+        // in Play the Inspector checkbox, MCP and undo enable scripts as Lua's self.enabled does
+        if (Scene* scene = dynamic_cast<Scene*>(registry)){
+            ScriptRuntime::refreshEntity(scene, entity);
+        }
+    }
     if (updateFlags & UpdateFlags_Transform){
         if (Transform* transform = registry->findComponent<Transform>(entity)){
             transform->needUpdate = true;
@@ -5363,6 +5569,7 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
         if (UIComponent* u = registry->findComponent<UIComponent>(entity)) u->needReload = true;
         if (PointsComponent* p = registry->findComponent<PointsComponent>(entity)) p->needReload = true;
         if (LineRendererComponent* l = registry->findComponent<LineRendererComponent>(entity)) l->needReload = true;
+        if (TrailRendererComponent* t = registry->findComponent<TrailRendererComponent>(entity)) t->needReload = true;
         if (SkyboxComponent* s = registry->findComponent<SkyboxComponent>(entity)) s->needReload = true;
     }
     if (updateFlags & UpdateFlags_Shader_Uniforms){
@@ -5370,6 +5577,7 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
         if (UIComponent* u = registry->findComponent<UIComponent>(entity)) u->needUpdateShaderUniforms = true;
         if (PointsComponent* p = registry->findComponent<PointsComponent>(entity)) p->needUpdateShaderUniforms = true;
         if (LineRendererComponent* l = registry->findComponent<LineRendererComponent>(entity)) l->needUpdateShaderUniforms = true;
+        if (TrailRendererComponent* t = registry->findComponent<TrailRendererComponent>(entity)) t->needUpdateShaderUniforms = true;
         if (SkyboxComponent* s = registry->findComponent<SkyboxComponent>(entity)) s->needUpdateShaderUniforms = true;
     }
     if (updateFlags & UpdateFlags_Sprite){
@@ -5404,9 +5612,21 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             body->needUpdateColliders = true;
         }
     }
+    if (updateFlags & UpdateFlags_Rigidbody2D_Params){
+        if (Rigidbody2DComponent* body = registry->findComponent<Rigidbody2DComponent>(entity)){
+            body->needApplyParameters = true;
+        }
+    }
     if (updateFlags & UpdateFlags_Joint2D){
         if (Joint2DComponent* joint = registry->findComponent<Joint2DComponent>(entity)){
             joint->needUpdateJoint = true;
+        }
+    }
+    if (updateFlags & UpdateFlags_Joint2D_Params){
+        if (Joint2DComponent* joint = registry->findComponent<Joint2DComponent>(entity)){
+            joint->needApplyParameters = true;
+            // a joint broken by its threshold can break again
+            joint->breakArmed = true;
         }
     }
     if (updateFlags & UpdateFlags_Joint3D){
@@ -5449,6 +5669,14 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
     }
     if (updateFlags & (UpdateFlags_Lines | UpdateFlags_Lines_Reload)){
         if (LineRendererComponent* lines = registry->findComponent<LineRendererComponent>(entity)){
+            // clamped as the Lua setters do; the geometry (ribbon, polyline segments) is built
+            // again by the render system, which reloads when the variant or capacity changed
+            lines->widthMultiplier = (std::isfinite(lines->widthMultiplier) && lines->widthMultiplier > 0.0f) ? lines->widthMultiplier : 0.0f;
+            lines->numCornerVertices = std::min(lines->numCornerVertices, LINE_RIBBON_MAX_FAN_VERTICES);
+            lines->numCapVertices = std::min(lines->numCapVertices, LINE_RIBBON_MAX_FAN_VERTICES);
+            lines->widthCurve.normalize();
+            lines->colorGradient.normalize();
+            lines->needUpdateRibbon = true;
             bool needsLargerBuffer = lines->lines.size() > lines->maxLines;
             if (needsLargerBuffer){
                 lines->maxLines = static_cast<unsigned int>(lines->lines.size());
@@ -5459,6 +5687,19 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             }else{
                 lines->needUpdateBuffer = true;
             }
+        }
+    }
+    if (updateFlags & UpdateFlags_Trail){
+        if (TrailRendererComponent* trail = registry->findComponent<TrailRendererComponent>(entity)){
+            auto nonNegative = [](float value){ return (std::isfinite(value) && value > 0.0f) ? value : 0.0f; };
+            trail->time = nonNegative(trail->time);
+            trail->minVertexDistance = nonNegative(trail->minVertexDistance);
+            trail->widthMultiplier = nonNegative(trail->widthMultiplier);
+            trail->numCornerVertices = std::min(trail->numCornerVertices, LINE_RIBBON_MAX_FAN_VERTICES);
+            trail->numCapVertices = std::min(trail->numCapVertices, LINE_RIBBON_MAX_FAN_VERTICES);
+            trail->widthCurve.normalize();
+            trail->colorGradient.normalize();
+            trail->needUpdateRibbon = true;
         }
     }
     if (updateFlags & UpdateFlags_AudioSource){
@@ -5636,6 +5877,12 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
         case ComponentType::LineRendererComponent: {
             YAML::Node encoded = Stream::encodeLineRendererComponent(sourceRegistry->getComponent<LineRendererComponent>(sourceEntity));
             targetRegistry->getComponent<LineRendererComponent>(targetEntity) = Stream::decodeLineRendererComponent(encoded);
+            break;
+        }
+
+        case ComponentType::TrailRendererComponent: {
+            YAML::Node encoded = Stream::encodeTrailRendererComponent(sourceRegistry->getComponent<TrailRendererComponent>(sourceEntity));
+            targetRegistry->getComponent<TrailRendererComponent>(targetEntity) = Stream::decodeTrailRendererComponent(encoded);
             break;
         }
 
@@ -5886,14 +6133,20 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
                                        EntityRegistry* targetRegistry, Entity targetEntity, 
                                        ComponentType compType, const std::string& property) {
 
-    // Get the property data to determine the type
+    // Get the property data to determine the type: the enumerated names, else the lookup (names
+    // it resolves but does not list, such as a 2D collider's "colliders[i].points[j]")
     auto sourceProperties = Catalog::findEntityProperties(sourceRegistry, sourceEntity, compType);
     auto propIt = sourceProperties.find(property);
-    if (propIt == sourceProperties.end()) {
-        return; // Property not found
+    PropertyType propType;
+    if (propIt != sourceProperties.end()) {
+        propType = propIt->second.type;
+    } else {
+        const PropertyData found = Catalog::findProperty(sourceRegistry, sourceEntity, compType, property);
+        if (!found.ref || !Catalog::findProperty(targetRegistry, targetEntity, compType, property).ref) {
+            return; // Property not found
+        }
+        propType = found.type;
     }
-
-    PropertyType propType = propIt->second.type;
 
     // Copy based on property type
     switch (propType) {
@@ -5999,6 +6252,18 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             if (source && target) *target = *source;
             break;
         }
+        case PropertyType::Curve: {
+            AnimationCurve* source = Catalog::getPropertyRef<AnimationCurve>(sourceRegistry, sourceEntity, compType, property);
+            AnimationCurve* target = Catalog::getPropertyRef<AnimationCurve>(targetRegistry, targetEntity, compType, property);
+            if (source && target) *target = *source;
+            break;
+        }
+        case PropertyType::Gradient: {
+            Gradient* source = Catalog::getPropertyRef<Gradient>(sourceRegistry, sourceEntity, compType, property);
+            Gradient* target = Catalog::getPropertyRef<Gradient>(targetRegistry, targetEntity, compType, property);
+            if (source && target) *target = *source;
+            break;
+        }
         case PropertyType::Custom:
             if (compType == ComponentType::ScriptComponent) {
                 copyComponent(sourceRegistry, sourceEntity, targetRegistry, targetEntity, compType);
@@ -6038,6 +6303,18 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
                 auto* source = Catalog::getPropertyRef<std::vector<float>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<float>>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
+            } else if (compType == ComponentType::Rigidbody2DComponent && property == "colliders") {
+                auto* source = Catalog::getPropertyRef<std::vector<Collider2D>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<Collider2D>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) copyColliders2D(*source, *target);
+            } else if (compType == ComponentType::Rigidbody2DComponent && property.compare(0, 10, "colliders[") == 0 && endsWith(property, "]")) {
+                auto* source = Catalog::getPropertyRef<Collider2D>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<Collider2D>(targetRegistry, targetEntity, compType, property);
+                if (source && target) copyCollider2D(*source, *target);
+            } else if (compType == ComponentType::Rigidbody2DComponent && property.compare(0, 10, "colliders[") == 0 && endsWith(property, "].points")) {
+                auto* source = Catalog::getPropertyRef<std::vector<Vector2>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<Vector2>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
             } else if (compType == ComponentType::AnimationPlayerComponent && property == "clips") {
                 auto* source = Catalog::getPropertyRef<std::vector<AnimationPlayerClip>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<AnimationPlayerClip>>(targetRegistry, targetEntity, compType, property);
@@ -6054,6 +6331,14 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
                        (property == "values" || property == "inTangents" || property == "outTangents")) {
                 auto* source = Catalog::getPropertyRef<std::vector<std::vector<Vector3>>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<std::vector<Vector3>>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::LineRendererComponent && property == "positions") {
+                auto* source = Catalog::getPropertyRef<std::vector<Vector3>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<Vector3>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::LineRendererComponent && property == "lines") {
+                auto* source = Catalog::getPropertyRef<std::vector<LineData>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<LineData>>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
             } else if (compType == ComponentType::LatticeTracksComponent && property.compare(0, 7, "values[") == 0) {
                 auto* source = Catalog::getPropertyRef<std::vector<Vector3>>(sourceRegistry, sourceEntity, compType, property);

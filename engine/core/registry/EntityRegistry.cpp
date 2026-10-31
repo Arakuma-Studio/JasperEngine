@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "EntityRegistry.h"
-#include "script/ScriptScheduler.h"
 
 #include <unordered_set>
 
@@ -74,6 +73,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<PoseAnimatorComponent>();
     registerComponent<AnimationPlayerComponent>();
     registerComponent<VertexAnimatorComponent>();
+    registerComponent<TrailRendererComponent>();
 }
 
 EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {
@@ -342,29 +342,52 @@ Entity EntityRegistry::findEntity(const std::string& name, Entity parent) const 
     });
 }
 
-// The coroutines of the scripts of `root` and its descendants that are no longer active in
-// hierarchy stop (Unity's SetActive(false)). Only the subtree is looked at, and nothing at all
-// when no script of the registry has a coroutine (pooled objects deactivate often).
-static void stopSubtreeCoroutines(EntityRegistry* registry, ComponentManager& components, Entity root){
-    if (!ScriptScheduler::hasCoroutinesIn(registry)) return;
-    auto transforms = components.getComponentArray<Transform>();
-    if (!transforms->hasEntity(root)){
-        ScriptScheduler::stopCoroutinesOfInactive(registry, &root, 1);
+void EntityRegistry::setEntityActive(Entity entity, bool active) {
+    // the trails of a GameObject deactivated (it and its children) are cleared now, not at the
+    // next TrailSystem update: reactivated in the same frame elsewhere it draws no streak
+    if (!active && entityManager.isActive(entity)) {
+        auto trails = componentManager.getComponentArray<TrailRendererComponent>();
+        for (size_t i = 0; i < trails->size(); i++) {
+            const Entity trailEntity = trails->getEntity(i);
+            if (trailEntity == entity || isParentOf(entity, trailEntity)) {
+                trails->getComponentFromIndex(i).clearPoints();
+            }
+        }
+    }
+    if (!isActivationObserved() || !isEntityCreated(entity)) {
+        entityManager.setActive(entity, active);
         return;
     }
-    // a branch is contiguous in the Transform array: the root, then its descendants
-    const size_t first = transforms->getIndex(root);
-    const size_t last = registry->findBranchLastIndex(root);
-    std::vector<Entity> subtree;
-    subtree.reserve(last - first + 1);
-    for (size_t i = first; i <= last; i++) subtree.push_back(transforms->getEntity(i));
-    ScriptScheduler::stopCoroutinesOfInactive(registry, subtree.data(), subtree.size());
+    const bool before = isEntityActiveInHierarchy(entity);
+    entityManager.setActive(entity, active);
+    const bool after = isEntityActiveInHierarchy(entity);
+    if (before != after) {
+        onActiveInHierarchyChanged(collectActivationBranch(entity), after);
+    }
 }
 
-void EntityRegistry::setEntityActive(Entity entity, bool active) {
-    const bool wasActive = entityManager.isActive(entity);
-    entityManager.setActive(entity, active);
-    if (wasActive && !active) stopSubtreeCoroutines(this, componentManager, entity);
+std::vector<Entity> EntityRegistry::collectActivationBranch(Entity root) {
+    std::vector<Entity> branch;
+    branch.push_back(root);
+    if (!entityManager.getSignature(root).test(getComponentId<Transform>())) {
+        return branch;
+    }
+    // the branch follows root in the Transform array; a descendant flips when it and every
+    // parent below root are active themselves
+    std::unordered_set<Entity> inBranch{root};
+    std::unordered_set<Entity> flipping{root};
+    componentManager.getComponentArray<Transform>()->forEachAfter(root, [&](Entity entity, const Transform& transform) {
+        if (!inBranch.count(transform.parent)) {
+            return false;
+        }
+        inBranch.insert(entity);
+        if (flipping.count(transform.parent) && entityManager.isActive(entity)) {
+            flipping.insert(entity);
+            branch.push_back(entity);
+        }
+        return true;
+    });
+    return branch;
 }
 
 bool EntityRegistry::isEntityActive(Entity entity) const {
@@ -556,6 +579,23 @@ std::vector<Entity> EntityRegistry::getEntityList() const{
     return entityManager.getEntityList();
 }
 
+std::vector<Entity> EntityRegistry::getHierarchyOrder() const{
+    std::vector<Entity> order;
+    auto transforms = componentManager.getComponentArray<Transform>();
+    order.reserve(transforms->size());
+    transforms->forEach([&order](Entity entity, const Transform&) {
+        order.push_back(entity);
+        return true;
+    });
+    const ComponentId transformId = componentManager.getComponentId<Transform>();
+    for (Entity entity : entityManager.getEntityList()) {
+        if (!entityManager.getSignature(entity).test(transformId)) {
+            order.push_back(entity);
+        }
+    }
+    return order;
+}
+
 void EntityRegistry::setDefaultEntityPool(EntityPool pool) { 
     defaultPool = pool;
 }
@@ -610,6 +650,19 @@ void EntityRegistry::clear() {
 }
 
 void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTransform){
+    // under an inactive (or active) parent the moved branch may change activeInHierarchy
+    const bool observed = isActivationObserved() && isEntityCreated(child);
+    const bool activeBefore = observed && isEntityActiveInHierarchy(child);
+    setEntityChild(parent, child, changeTransform);
+    if (observed && isEntityCreated(child)) {
+        const bool activeAfter = isEntityActiveInHierarchy(child);
+        if (activeAfter != activeBefore) {
+            onActiveInHierarchyChanged(collectActivationBranch(child), activeAfter);
+        }
+    }
+}
+
+void EntityRegistry::setEntityChild(Entity parent, Entity child, bool changeTransform){
     Signature childSignature = entityManager.getSignature(child);
     if (childSignature.test(getComponentId<Transform>())){
         Transform& transformChild = componentManager.getComponent<Transform>(child);
@@ -659,8 +712,6 @@ void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTran
                 }
             }
         }
-        // moved under an inactive parent: its scripts' coroutines stop
-        if (entityManager.hasInactive()) stopSubtreeCoroutines(this, componentManager, child);
     }
 
 }

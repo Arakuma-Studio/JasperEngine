@@ -125,14 +125,6 @@
 #define MAX_BROADPHASELAYER_3D 6
 #endif
 
-#ifndef MAX_COLLIDERS_2D
-#define MAX_COLLIDERS_2D 10
-#endif
-
-#ifndef MAX_COLLIDER_POINTS_2D
-#define MAX_COLLIDER_POINTS_2D 16
-#endif
-
 #ifndef MAX_COLLIDERS_3D
 #define MAX_COLLIDERS_3D 10
 #endif
@@ -383,6 +375,7 @@ namespace jasperengine {
 
         static std::atomic<bool> viewLoaded;
         static std::atomic<bool> paused;
+        static bool focused;
         static std::atomic<bool> asyncLoading;
         static bool frameRunning;
 
@@ -646,6 +639,10 @@ namespace jasperengine {
 
         static void systemPause();
         static void systemResume();
+        // The application gained or lost the focus (platforms that report it). Idempotent:
+        // only a change fires onFocus and the scripts' onApplicationFocus.
+        static void systemFocus(bool hasFocus);
+        static bool isFocused();
 
         static void systemTouchStart(int pointer, float x, float y);
         static void systemTouchEnd(int pointer, float x, float y);
@@ -715,6 +712,7 @@ namespace jasperengine {
         static FunctionSubscribe<void()> onPause;
         static FunctionSubscribe<void()> onResume;
         static FunctionSubscribe<void()> onShutdown;
+        static FunctionSubscribe<void(bool)> onFocus;
         // The stack loaded by SceneManager is ready, before its loading scene closes.
         static FunctionSubscribe<void()> onSceneLoaded;
         static FunctionSubscribe<void(int,float,float)> onTouchStart;

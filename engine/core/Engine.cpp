@@ -11,6 +11,8 @@
 #include "render/SystemRender.h"
 #include "script/LuaBinding.h"
 #include "script/ScriptScheduler.h"
+#include "script/ScriptRuntime.h"
+#include "lua.hpp"
 #include "manager/SceneManager.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
@@ -40,6 +42,7 @@
 #include "pool/MeshLodPool.h"
 #include "pool/MeshBufferPool.h"
 #include "pool/AnimationClipPool.h"
+#include "pool/PhysicsMaterialPool.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #ifndef NO_THREAD_SUPPORT
@@ -124,6 +127,7 @@ bool Engine::clampNextDelta = false;
 
 std::atomic<bool> Engine::viewLoaded = false;
 std::atomic<bool> Engine::paused = false;
+bool Engine::focused = true;
 std::atomic<bool> Engine::asyncLoading = false;
 bool Engine::frameRunning = false;
 
@@ -146,6 +150,7 @@ FunctionSubscribe<void()> Engine::onPostUpdate;
 FunctionSubscribe<void()> Engine::onPause;
 FunctionSubscribe<void()> Engine::onResume;
 FunctionSubscribe<void()> Engine::onShutdown;
+FunctionSubscribe<void(bool)> Engine::onFocus;
 FunctionSubscribe<void()> Engine::onSceneLoaded;
 FunctionSubscribe<void(int,float,float)> Engine::onTouchStart;
 FunctionSubscribe<void(int,float,float)> Engine::onTouchEnd;
@@ -948,6 +953,7 @@ void Engine::clearPools(){
     MeshLodPool::clear();
     MeshBufferPool::clear();
     AnimationClipPool::clear();
+    PhysicsMaterialPool::clear();
 }
 
 void Engine::clearUnusedPools(){
@@ -961,6 +967,7 @@ void Engine::clearUnusedPools(){
     MeshLodPool::clearUnused();
     MeshBufferPool::clearUnused();
     AnimationClipPool::clearUnused();
+    PhysicsMaterialPool::clearUnused();
 }
 
 void Engine::removeSubscriptionsByTag(const std::string& substring) {
@@ -999,6 +1006,7 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     onPause.removeByTagSubstring(substring);
     onResume.removeByTagSubstring(substring);
     onShutdown.removeByTagSubstring(substring);
+    onFocus.removeByTagSubstring(substring);
     onSceneLoaded.removeByTagSubstring(substring);
 
     // a released script instance's tag is "_<address>_": the input sources it owned go too
@@ -1051,6 +1059,7 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
         onPause.clear();
         onResume.clear();
         onShutdown.clear();
+        onFocus.clear();
     }
 }
 
@@ -1475,6 +1484,10 @@ void Engine::runFrame(bool draw){
         if (onUpdate.isEnabled())
             ScriptScheduler::beginFrame(frameDelta, unscaledDeltatime);
 
+        // 0) start of the scripts enabled since the last frame, before their first fixed
+        //    update and update (Unity)
+        ScriptRuntime::flushStarts();
+
         // 1) Fixed-timestep phase (deterministic). Runs zero or more times per frame.
         //    Used for physics, networking, and any subsystem overriding fixedUpdate().
         if (updateTime > 0.0) {
@@ -1673,6 +1686,10 @@ void Engine::systemViewDestroyed(){
 }
 
 void Engine::systemShutdown(){
+    // Unity's quit: onApplicationQuit to every script, then onDisable and onDestroy (the OS
+    // may end a mobile app without this)
+    ScriptRuntime::quitAll();
+
     Engine::onShutdown.call();
 
     // what the game (and its onShutdown handlers) stored is on disk before it goes
@@ -1692,6 +1709,8 @@ void Engine::systemShutdown(){
 
 void Engine::systemPause(){
     AudioSystem::pauseAll();
+    ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 1); return 1; },
+        [](ScriptBase& script) { script.onApplicationPause(true); });
     Engine::onPause.call();
     paused = true;
     // the key and button ups of a paused app never come: the first frame after resume sees them
@@ -1703,8 +1722,24 @@ void Engine::systemPause(){
 
 void Engine::systemResume(){
     AudioSystem::resumeAll();
+    ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 0); return 1; },
+        [](ScriptBase& script) { script.onApplicationPause(false); });
     Engine::onResume.call();
     paused = false;
+}
+
+void Engine::systemFocus(bool hasFocus){
+    if (focused == hasFocus){
+        return;
+    }
+    focused = hasFocus;
+    Engine::onFocus.call(hasFocus);
+    ScriptRuntime::broadcast(ScriptMessage::ApplicationFocus, [hasFocus](lua_State* L) { lua_pushboolean(L, hasFocus ? 1 : 0); return 1; },
+        [hasFocus](ScriptBase& script) { script.onApplicationFocus(hasFocus); });
+}
+
+bool Engine::isFocused(){
+    return focused;
 }
 
 // Scenes below a loading scene only get pointer-up, so nothing stays pressed

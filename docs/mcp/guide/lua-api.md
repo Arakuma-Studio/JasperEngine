@@ -66,23 +66,84 @@ the project (see [editor-integration.md](editor-integration.md)).
 
 ### 1.1 Lifecycle
 
+Unity's MonoBehaviour lifecycle. The engine calls these methods **by name** when the script
+defines them (no registration):
+
+| Method | When | Unity |
+|---|---|---|
+| `init(self)` | once, the first time the GameObject is active in hierarchy, **whether or not the script is enabled**; after every instance and reference of the scene exists | `Awake` |
+| `onEnable(self)` | the script becomes active and enabled: after `init` at load / instantiate / activation, and every time it is re-enabled or its GameObject re-activated | `OnEnable` |
+| `start(self)` | once, at the start of the frame after its first `onEnable`, before that frame's `onFixedUpdate`/`onUpdate`; not run while disabled or inactive (it waits). A script's registered updates begin only after its `start`: one enabled during a frame gets its first `onUpdate` in the next frame, after `start` | `Start` |
+| `onDisable(self)` | the script stops being active and enabled: `self.enabled = false`, its GameObject or a parent deactivated, destroy, scene unload, Play stop; always before `onDestroy` | `OnDisable` |
+| `onDestroy(self)` | once: `GameObject.destroy` (end of frame) / `destroyImmediate`, scene unload (a `SceneManager.loadScene`), Play stop / application quit; only if `init` ran | `OnDestroy` |
+| `onApplicationPause(self, paused)` | the app goes to the background (`true`) and returns (`false`); scripts of active GameObjects, enabled or not | `OnApplicationPause` |
+| `onApplicationFocus(self, focused)` | the app lost / gained the focus (platforms that report it) | `OnApplicationFocus` |
+| `onApplicationQuit(self)` | Play stop / app shutdown, before `onDisable`/`onDestroy` | `OnApplicationQuit` |
+
+Order, deterministic: a scene load runs all `init` (parents before children, siblings in order,
+scripts in component order), then all `onEnable`, then the scene's HTML documents start;
+`start` follows at the next frame. A scene load first unloads the old scenes (their
+`onDisable`, then `onDestroy`), then the new ones `init`: a singleton clearing
+`Manager.instance` in `onDestroy` does not clobber the new one. `GameObject.instantiate`
+returns after the copies' `init` and `onEnable` ran. `go:setActive(true)` runs `init` (first
+time) and `onEnable` before it returns; `setActive(false)` runs `onDisable`. Play stop (and
+an exported build's shutdown): `onApplicationQuit` to every script, then `onDisable`, then
+`onDestroy`. A mobile OS may end an app without the shutdown: save state in
+`onApplicationPause(true)`.
+
 | Step | What happens |
 |---|---|
-| Instance creation | The file's chunk is executed once **per instance** (compiled once, run per attached script). The returned module table becomes the `__index` prototype of a fresh instance table. So file-level `local` variables are per instance; `require`d modules are shared. |
+| Instance creation | Every Script component entry has an instance, enabled or not (Unity components exist when disabled), also on inactive GameObjects. The file's chunk is executed once **per instance** (compiled once, run per attached script); the instance gets its methods from the returned module table. So file-level `local` variables are per instance; `require`d modules are shared. |
 | Fields set | `self.__name` (class name), `self.scene` (Scene userdata), `self.entity` (integer Entity id), then every property `self.<name>` = Inspector value. |
 | References | After all instances of the scene exist, entity-reference properties are resolved (second pass). So in `init()` all references are valid, but the referenced script's own `init()` may not have run yet. |
-| `init(self)` | Called once (third pass) for every enabled Lua script. Register events here. |
+| Lifecycle | `init`, `onEnable`, `start`, ... as above. Register events in `init` (or `onEnable`, unregistering in `onDisable`). |
 | Events | Methods registered with `RegisterEngineEvent` / `RegisterEvent` are called by the engine. |
 | Coroutines, timers | `self:startCoroutine(fn)` and `self:invoke(...)` belong to the instance: deactivating the GameObject stops its coroutines (not its timers), destroying it or unloading its scene ends both (2.14). |
-| `onDestroy(self)` | Called (if defined) when the GameObject is destroyed at runtime (`GameObject.destroy` / `destroyImmediate`), before the instance is released. It is NOT called when the scene/play mode simply stops. Not a registered event, just define the method. |
-| Release | All subscriptions made through `RegisterEngineEvent`/`RegisterEvent` for this instance are removed automatically. |
+| Release | After `onDestroy` (or for a GameObject never active, without it): subscriptions made through `RegisterEngineEvent`/`RegisterEvent` and `Event` listeners the instance owns are removed. |
 
-`init` and `onDestroy` are the only methods the engine calls by name. Everything else
-(`onUpdate`, `onFixedUpdate`, ...) is called **only if registered**.
+Script messages besides the lifecycle (defined methods, no registration; every script of the
+GameObject that defines it gets the call, enabled or not, after the fixed step that caused it):
 
-Engine events registered with `RegisterEngineEvent` are skipped while the script's
-GameObject is inactive or the script entry is disabled. `RegisterEvent` (component/physics
-events) is not guarded.
+| Method | When |
+|---|---|
+| `onJointBreak2D(self, joint)` | a `Joint2D` of this GameObject, or whose bodyA is it, broke (its `breakForce` / `breakTorque` passed; `joint` still exists during the call, its `breakAction` decides what follows) |
+
+Every instance also has (Unity's MonoBehaviour members):
+
+| Member | Kind | Meaning |
+|---|---|---|
+| `self.enabled` | rw boolean | the Script entry's enabled flag (the Inspector checkbox); assigning calls `onEnable`/`onDisable` at once, inside the assignment (as Unity), and `start` at the next frame the first time. Only `true`/`false` (else error). |
+| `self.isActiveAndEnabled` | ro boolean | GameObject active in hierarchy and the script enabled |
+| `self.gameObject` | ro `GameObject` | the script's GameObject (cached) |
+| `self:getScript(className)` ... | methods | the scripts of the same GameObject, its children or parents (4.1) |
+
+`enabled`, `isActiveAndEnabled` and `gameObject` are reserved: a `properties` entry with one
+of these names is an error (the script does not run until it is renamed).
+
+Update methods (`onUpdate`, `onFixedUpdate`, `onPostUpdate`, input events) are called **only if
+registered** with `RegisterEngineEvent`, and are skipped while the script's GameObject is
+inactive or the script disabled. `RegisterEvent` (component/physics events) is not guarded.
+Disabling a script does not stop what it started (tweens, sounds); deactivating its GameObject
+pauses its updates. Unity names (`Awake`, `Start`, `Update`, `OnEnable`, ...) are never called:
+`check_script` warns about them.
+
+Migration (projects from before this lifecycle):
+
+- A **disabled** script's `init` now runs (Unity's Awake): check `self.enabled` in `init` or
+  remove the script to keep it fully off. A script on a GameObject that starts **inactive** gets
+  its `init` when the GameObject is first activated (it used to run at load). `onDestroy` now
+  also runs on scene unload and Play stop.
+- Methods named `start`, `onEnable`, `onDisable`, `onApplicationPause/Focus/Quit` are now called
+  by the engine; a script that called its own `start()` from `init` now runs it twice.
+- `self.gameObject = ...`, `self.isActiveAndEnabled = ...` and a non-boolean `self.enabled`
+  now raise an error; a `properties` entry or a field of the script's table named `enabled`,
+  `isActiveAndEnabled` or `gameObject` stops the script (renamed, it runs). The script's table
+  also holds these three members and the `getScript*` methods (it is per instance).
+- C++: `ScriptBase` methods named `init`, `start`, `onEnable`, `onDisable`, `onDestroy`,
+  `onApplicationPause/Focus/Quit` are now overrides the engine calls (twice if the script also
+  calls them itself, e.g. `init()` from its constructor); one with another signature (`bool
+  init()`) no longer compiles: rename it. Disabled C++ scripts are compiled into the build too
+  (they can be enabled at runtime).
 
 The editor reads `properties` by executing the file in an isolated Lua state of its own
 (engine globals there are inert stand-ins, see [checks](../checks.md)), and the game runs it
@@ -107,13 +168,13 @@ label, defaults to `name`), `type` (string, case-insensitive; default `float` if
 | `"color3"` | `Vector3` | `{r, g, b}` |
 | `"color4"` | `Vector4` | `{r, g, b, a}` (a defaults 1) |
 | `"prefab"`, `"prefabasset"` | `PrefabAsset`, or `nil` when left None | no default (assigned in Inspector) |
-| `"entity"`, `"entitypointer"`, `"pointer"` | the first enabled Lua script instance on the referenced GameObject if it has one, otherwise an `EntityHandle`; `nil` if unassigned | none |
+| `"entity"`, `"entitypointer"`, `"pointer"` | the first Lua script instance (enabled or not) on the referenced GameObject if it has one, otherwise an `EntityHandle`; `nil` if unassigned | none |
 | any other string = a wrapper class name (see list below) | an instance of that wrapper class for the referenced entity; `nil` if unassigned | none |
 | any other string = a Lua script class name (e.g. `"Enemy"`) | that GameObject's `Enemy` script instance table (its `self`) | none |
 
 Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera`, `Light`,
 `Light2D`, `ShadowCaster2D`, `Mesh`, `Primitive`, `Mirror`, `Terrain`, `Tilemap`, `Model`,
-`MeshPolygon`, `Points`, `LineRenderer`, `Sprite`, `AudioSource`, `RectTransform`,
+`MeshPolygon`, `Points`, `LineRenderer`, `TrailRenderer`, `Sprite`, `AudioSource`, `RectTransform`,
 `LayoutGroup`, `Polygon`, `Text`, `Image`, `Button`, `Panel`, `Scrollbar`, `Progressbar`,
 `InputField`, `Bone`, `Fog`, `Skybox`, `ReflectionProbe`, `FluidSimulation`, `Rigidbody2D`, `Joint2D`,
 `Rigidbody`, `Joint3D`, `Action`, `Tween`, `AlphaTween`, `ColorTween`, `PositionTween`,
@@ -130,10 +191,40 @@ a sound -> `"AudioSource"`).
 | Function | Meaning |
 |---|---|
 | `RegisterEngineEvent(self, "methodName" [, tag])` | Subscribes `self:methodName(...)` to `Engine.<methodName>`. The method name must equal the Engine event name and must already exist on `self` (error otherwise). |
-| `RegisterEvent(self, eventObject, "methodName" [, tag])` | Subscribes `self:methodName(...)` to any event object (component or physics event). |
+| `RegisterEvent(self, eventObject, "methodName" [, tag])` | Subscribes `self:methodName(...)` to any event object (component or physics event, or an `Event`). |
+| `UnregisterEngineEvent(self, "methodName" [, tag])` | Removes that `RegisterEngineEvent` subscription (same tag); `true` if it existed. Unity's `-=`. |
+| `UnregisterEvent(self, eventObject, "methodName" [, tag])` | Removes that `RegisterEvent` subscription; `true` if it existed. |
 
-Re-registering the same method (same tag) replaces the previous subscription. There is no
-Lua-side unregister; subscriptions end when the instance is released.
+Re-registering the same method (same tag) replaces the previous subscription. Subscriptions
+also end when the instance is released (destroy, scene unload, Play stop). The usual Unity
+pattern works: register in `onEnable`, unregister in `onDisable`. Every event object
+(`Engine.onUpdate`, `button.onPress`, ...) also has `ev:add(tag, fn)`, `ev:remove(tag) -> bool`
+and `ev:has(tag) -> bool`.
+
+**`Event()`** (Unity's UnityEvent / a C# `event`): an event a script owns and invokes.
+
+```lua
+function Health:init()
+    self.onDied = Event()                          -- other scripts listen to it
+end
+function Health:hit(n) if n >= self.hp then self.onDied:invoke(self) end end
+
+function Hud:onEnable()
+    self.health = GameObject.findObjectOfType("Health")
+    self.health.onDied:addListener(self, "showGameOver")   -- owned by self: dropped when self goes
+end
+function Hud:onDisable() self.health.onDied:removeListener(self, "showGameOver") end
+```
+
+| Member | Meaning |
+|---|---|
+| `Event()` | a new event |
+| `ev:addListener(fn)` / `ev:addListener(self, "method")` | adds a listener (the second form is owned by `self`: removed once that script is released); adding the same one twice is ignored |
+| `ev:removeListener(fn)` / `ev:removeListener(self, "method")` | `true` if it was there |
+| `ev:removeAllListeners()` | |
+| `ev:invoke(...)` | calls the listeners in add order with these arguments; a listener's error is logged (with its traceback) and the others still run; listeners added during `invoke` run from the next one, removed ones are skipped at once |
+| `ev.listenerCount` | ro |
+| `ev:add(tag, fn)`, `ev:remove(tag)`, `ev:has(tag)` | the event object protocol: `RegisterEvent(self, ev, "method")` / `UnregisterEvent` work on it |
 
 Engine events (names valid for `RegisterEngineEvent`; handler arguments in order):
 
@@ -197,10 +288,11 @@ Events") enabled on the Collider 2D (Inspector, or `body.shapeContactEvents = tr
 
 ### 1.4 Getting wrappers for your own GameObject
 
-`self.entity` is a plain integer. Wrap it with a bound constructor `(Scene, Entity)`:
+`self.gameObject` is the script's `GameObject`. `self.entity` is a plain integer: wrap it with a
+bound constructor `(Scene, Entity)` for the other wrappers:
 
 ```lua
-local go     = GameObject(self.scene, self.entity)
+local go     = self.gameObject                         -- same as GameObject(self.scene, self.entity)
 local sprite = Sprite(self.scene, self.entity)
 local text   = Text(self.scene, self.entity)
 local body2d = Rigidbody2D(self.scene, self.entity)   -- body must exist (or use go:getRigidbody2D())
@@ -630,6 +722,27 @@ local b = GameObject.instantiate(self.bullet, Vector3(x, y, 0), Quaternion.IDENT
 if b then GameObject.destroy(b, 2.0) end
 ```
 
+Finding objects (Unity's `GameObject.Find`, `FindWithTag`, `FindObjectOfType`): they search
+**every running scene** (the main scene, then its layers bottom to top; ascending entity ids
+within a scene; while a scene starts, its own objects too, so `init` finds them). They are
+linear scans: call them in `init`/`start` and keep the result, not every frame.
+
+```lua
+GameObject.find("Player")                     -- first ACTIVE GameObject named so, or nil
+GameObject.find("Canvas/Panel/Score")          -- a Score below Panel below Canvas
+GameObject.find("/Canvas/Panel/Score")         -- ... with Canvas a root
+GameObject.findWithTag("Player")               -- first active GameObject with the tag, or nil
+GameObject.findGameObjectsWithTag("Enemy")     -- list (possibly empty)
+GameObject.findObjectOfType("ScoreManager")    -- a script instance (active and enabled), or nil
+GameObject.findObjectsOfType("Enemy", true)    -- every Enemy script, also inactive / disabled
+GameObject.findObjectOfType("Camera")          -- a wrapper name: a Camera for a GameObject with a camera
+```
+
+`className` is a Lua script class (the file name) or a wrapper class name of 1.2 that has a
+component (`"Camera"`, `"AudioSource"`, `"Rigidbody"`, `"Sprite"`, ...; `"GameObject"` is an
+error). Without `includeInactive`, only active GameObjects (and, for scripts, enabled ones)
+count. A tag the project does not define logs "Tag: X is not defined." and finds nothing.
+
 ### 2.7 PrefabAsset / PrefabManager
 
 | Name | Kind |
@@ -675,11 +788,13 @@ Entities are plain integers (`0` = none).
 | `gravity2D` (Vector2, rw); `setGravity2D(x, y)` | |
 | `gravity3D` (Vector3, rw); `setGravity3D(x, y, z)` | |
 | `physicsInterpolation` (bool, rw) | bodies drawn between their last two fixed steps (default true); the scene setting `physics_interpolation` |
+| `physics2DSubSteps` (integer, rw) | Box2D sub-steps of each fixed step, 1-16 (default 4); the scene setting `physics_2d_sub_steps` |
 | `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `shadowQuality`, `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects |
 
 `PhysicsSystem` (from `self.scene:getPhysicsSystem()`): `gravity` / `gravity2D` /
-`gravity3D` (rw), `interpolation` (rw, as `scene.physicsInterpolation`), `pointsToMeterScale2D` (rw), event objects (section 1.3),
+`gravity3D` (rw), `interpolation` (rw, as `scene.physicsInterpolation`), `pointsToMeterScale2D` (rw),
+`subSteps2D` (rw, 1-16, as `scene.physics2DSubSteps`), event objects (section 1.3),
 `createRigidbody2D(e)`, `removeRigidbody2D(e)`, `createRigidbody(e)`, `removeRigidbody(e)`
 (partial).
 
@@ -924,6 +1039,10 @@ false). `==` with a value of another class is `false`. There is no `v + number`.
 | `Ray(origin, direction)` (Vector3) | rw `origin direction`; `getPoint(t)`; `intersects(AABB/OBB/Plane/Rigidbody2D/Rigidbody/...)`; `Ray.NO_HIT` |
 | `Matrix3`, `Matrix4` | `+ - == tostring`; `*` by a matrix, a number (either side) or a vector (`m * Vector3`, Matrix4 also `m * Vector4`; `Matrix4 * Vector3` applies the translation); `row column get set identity inverse transpose`; Matrix4 static `translateMatrix rotateMatrix rotateXMatrix rotateYMatrix rotateZMatrix scaleMatrix lookAtMatrix orthoMatrix perspectiveMatrix frustumMatrix` |
 | `Plane`, `AABB`, `OBB`, `Sphere` | geometry helpers (`intersects`, `contains`, `getCenter`, `getSize`, `merge`, ...) |
+| `AnimationCurve()` | Unity's curve. Static `constant(v)`, `linear(t0, v0, t1, v1)`, `easeInOut(t0, v0, t1, v1)`; `evaluate(t)`; `addKey(time, value [, inTangent, outTangent])` / `addKey(CurveKey)` -> 1-based index (-1 when a key is at that time); `removeKey(i)`; `moveKey(i, time, value)` / `moveKey(i, CurveKey)` -> its new index; `getKey(i)` -> `CurveKey` (nil out of range); ro `keyCount`; rw `keys` (table of `CurveKey`), `preWrapMode`, `postWrapMode` (`CurveWrap.*`) |
+| `CurveKey(time, value [, inTangent, outTangent])` | rw `time value inTangent outTangent` (slopes; `math.huge` is a step) |
+| `Gradient()` | Unity's gradient (white, opaque). `setKeys(colorKeys, alphaKeys)`: `{{time, Vector3 sRGB}, ...}` (or `GradientColorKey`s), `{{time, alpha}, ...}`; `evaluate(t)` -> Vector4 **linear**; rw `mode` (`GradientMode.*`), `colorKeys`, `alphaKeys`; ro `colorKeyCount`, `alphaKeyCount`; `getColorKey(i)`, `getAlphaKey(i)` (1-based) |
+| `GradientColorKey(time, colorV3)`, `GradientAlphaKey(time, alpha)` | rw `time`, `color` (**sRGB**: given and read as pickers show it, stored linear) / `alpha` |
 
 ---
 
@@ -935,18 +1054,18 @@ Class hierarchy (methods/properties are inherited):
 EntityHandle
  |- GameObject
  |   |- Camera, Light, Light2D, ShadowCaster2D, ReflectionProbe, Bone, Points, LineRenderer, Lattice,
- |   |  FluidSimulation
+ |   |  FluidSimulation, TrailRenderer
  |   |- Mesh
  |   |   |- Primitive -> Mirror
  |   |   |- Sprite, Tilemap, Model, MeshPolygon, Terrain
  |   |- RectTransform
  |       |- Text, Polygon, LayoutGroup
  |       |- Image -> Button, Panel, Scrollbar, Progressbar, InputField
- |- AudioSource, PoseAnimator, AnimationPlayer, VertexAnimator, Rigidbody2D, Rigidbody, Fog, Skybox
+ |- AudioSource, PoseAnimator, AnimationPlayer, VertexAnimator, Rigidbody2D, Joint2D, Rigidbody, Fog, Skybox
  |- Action -> Tween (AlphaTween, ColorTween, PositionTween, RotationTween, ScaleTween),
              ParticleSystem, SpriteAnimation, Animation,
              KeyframeTracks (MorphTracks, LatticeTracks, RotateTracks, ScaleTracks, TranslateTracks)
-Joint2D, Joint3D, AnimationState, AnimationEvent, VertexAnimatorSocketPose (standalone classes)
+Joint3D, AnimationState, AnimationEvent, VertexAnimatorSocketPose, PhysicsMaterial (standalone classes)
 ```
 
 Constructors: every wrapper has `(Scene, Entity)` to wrap an existing entity. Most also have
@@ -970,6 +1089,15 @@ after its scene ended (play stop, scene change) does nothing: the scene destroye
 | `activeSelf`, `activeInHierarchy` | ro |
 | `entityOwned` | rw |
 | `setActive(bool)`, `isActive()`, `isActiveInHierarchy()`, `compareTag(tag)` | methods |
+| `getScript(className)` | method: the Lua script instance of that class on this GameObject (enabled or not; Unity's `GetComponent<Enemy>()`), or nil |
+| `getScripts([className])` | method: a list of its script instances (all, or of that class), component order |
+| `getScriptInChildren(className [, includeInactive])` | method: this GameObject first, then its descendants (pre-order); inactive GameObjects only with `includeInactive` |
+| `getScriptsInChildren(className [, includeInactive])` | method: list |
+| `getScriptInParent(className [, includeInactive])` | method: this GameObject, then its parents upward |
+
+Script instances (`self`) have the same five methods for their own GameObject:
+`self:getScript("Weapon")`. Lua scripts only (C++ scripts are not reachable from Lua); a
+non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:getScript("Enemy") ---@type Enemy`.
 
 ### 4.2 GameObject
 
@@ -991,6 +1119,7 @@ after its scene ended (play stop, scene change) does nothing: the scene destroye
 | `localMatrix` (rw), `modelMatrix` (ro), `normalMatrix` (ro), `updateTransform()` | | |
 | `getRigidbody2D()` | method | returns `Rigidbody2D`, CREATING the component if missing |
 | `removeRigidbody2D()` | method | |
+| `getJoint2D()` | method | the GameObject's `Joint2D`, `nil` when it has none |
 | `getRigidbody()` / `removeRigidbody()` | method | 3D, same semantics |
 | `getRay(direction)` | method | Ray from world position |
 | `getAnimationPlayer()` | method | the GameObject's `AnimationPlayer` (4.8.2), `nil` when it has none (it never adds one) |
@@ -1381,11 +1510,17 @@ Restart a one-shot: `snd:stop(); snd:play()`.
 | `angle` | rw number | default units (degrees) |
 | `linearVelocity` | rw `Vector2` | points per second |
 | `angularVelocity` | rw | |
-| `linearDamping`, `angularDamping`, `gravityScale` | rw | |
+| `linearDamping`, `angularDamping`, `gravityScale` | rw | saved fields too (Unity drag, gravity scale) |
 | `type` | rw | `BodyType.STATIC`, `BodyType.KINEMATIC`, `BodyType.DYNAMIC` |
-| `fixedRotation`, `bullet`, `awake`, `enableSleep`, `enabled` | rw bool | |
+| `fixedRotation`, `bullet`, `awake`, `enableSleep`, `enabled` | rw bool | `bullet` = `collisionDetection` CONTINUOUS, `enableSleep` false = NEVER_SLEEP |
+| `collisionDetection` | rw | `CollisionDetectionMode2D.DISCRETE` / `CONTINUOUS` (never tunnels) |
+| `sleepingMode` | rw | `RigidbodySleepMode2D.NEVER_SLEEP` / `START_AWAKE` / `START_ASLEEP` |
+| `mass` | rw number | kg; setting it turns `useAutoMass` off (also `getMass()`) |
+| `useAutoMass` | rw bool | true: mass from the colliders (area x density) |
+| `centerOfMass`, `autoCenterOfMass` | rw `Vector2`, bool | body-local, collider units (points); setting the centre turns auto off |
+| `inertia`, `autoInertia` | rw number, bool | kg m^2 about the centre of mass; setting it turns auto off |
+| `material` | rw | default material of the colliders without one: a `.physicsmaterial` path, a `PhysicsMaterial` or nil; reads a `PhysicsMaterial` or nil |
 | `pointsToMeterScale` | ro | default 64 |
-| `getMass()` | method | kg (NOT a property) |
 | `getRotationalInertia()`, `applyMassFromColliders()` | methods | |
 | `applyForce(forceV2, pointV2, wake)` | method | point in world points |
 | `applyForceToCenter(forceV2, wake)` | method | |
@@ -1395,10 +1530,16 @@ Restart a one-shot: `snd:stop(); snd:play()`.
 | `applyAngularImpulse(i, wake)` | method | |
 | `createBoxCollider(w, h)` | method | box from local (0,0) to (w,h); returns collider index |
 | `createCenteredBoxCollider(w, h [, centerV2, angle])` | method | centered box |
-| `createRoundedBoxCollider(w, h, radius)`, `createCircleCollider(centerV2, radius)`, `createCapsuleCollider(c1, c2, radius)`, `createSegmentCollider(p1, p2)`, `createPolygonCollider({Vector2...})`, `createChainCollider({Vector2...}, loop)` | methods | |
+| `createRoundedBoxCollider(w, h, radius)`, `createCircleCollider(centerV2, radius)`, `createCapsuleCollider(c1, c2, radius)`, `createSegmentCollider(p1, p2)`, `createPolygonCollider({Vector2...})`, `createChainCollider({Vector2...}, loop)` | methods | any number of colliders; a polygon of any number of points, concave too (split in convex pieces); a chain of 2+ points (2-3: segments) |
 | `removeAllColliders()`, `getNumColliders()`, `getColliderType(i)` | methods | |
-| `load()` | method | rebuilds the body after changing colliders from script |
-| `shapeDensity`, `shapeFriction`, `shapeRestitution`, `shapeSensor`, `shapeContactEvents`, `shapeSensorEvents`, `shapeEnableHitEvents`, `shapePreSolveEvents` | rw | first collider; per collider: `setColliderX(index, v)` / `getColliderX(index)` (`Density`, `Friction`, `Restitution`), `setColliderSensor(i, b)`, `isColliderSensor(i)` ... |
+| `removeCollider(i)` | method | -> bool; later indices shift down |
+| `setColliderPoints(i, {Vector2...})`, `getColliderPoints(i)` | methods | polygon or chain, any count |
+| `setColliderLoop(i, b)`, `isColliderLoop(i)`, `setColliderRadius(i, r)`, `getColliderRadius(i)`, `setColliderCenter(i, v2)` (circle), `getColliderCenter(i)`, `setColliderSegment(i, a, b)` (segment, capsule) | methods | rebuild that collider only at the next step: the body keeps its velocity, joints and other contacts |
+| `setColliderMaterial(i, material)`, `getColliderMaterial(i)` | methods | a `.physicsmaterial` path, a `PhysicsMaterial` or nil; the getter returns the one in use (the collider's, else the body's) or nil |
+| `setColliderTrigger(i, b)`, `isColliderTrigger(i)` | methods | Unity `isTrigger` (the sensor flag) |
+| `getColliderPieceCount(i)` | method | the Box2D shapes of the collider (convex pieces of a polygon, segments of a chain) |
+| `load()` | method | rebuilds the whole body (collider edits do not need it) |
+| `shapeDensity`, `shapeFriction`, `shapeRestitution`, `shapeSensor`, `shapeContactEvents`, `shapeSensorEvents`, `shapeEnableHitEvents`, `shapePreSolveEvents` | rw | first collider; per collider: `setColliderX(index, v)` / `getColliderX(index)` (`Density`, `Friction`, `Restitution`), `setColliderSensor(i, b)`, `isColliderSensor(i)` ... Friction / restitution of a collider with a material read the material's; setting them gives the collider its own copy of it (Unity `collider.material`) |
 | `categoryBitsFilter`, `maskBitsFilter`, `groupIndexFilter` | rw | also `setBitsFilter(category, mask)` |
 | `getBodyContacts()`, `getColliderContacts(i)` | methods | tables of `Contact2D` |
 | `getAttachedObject()` | method | GameObject |
@@ -1406,9 +1547,48 @@ Restart a one-shot: `snd:stop(); snd:play()`.
 `Contact2D`: `getBodyA()`, `getBodyB()` (Rigidbody2D), `getBodyEntityA()`,
 `getBodyEntityB()`, `getColliderIndexA()`, `getColliderIndexB()`, `getManifold()`.
 `Manifold2D`: `getNormal()`, `getPointCount()`, `getManifoldPointPosition(i)`, ... .
-`Joint2D(scene [, entity])`: `setDistanceJoint(bodyA, bodyB [, anchorA, anchorB, ...])`,
-`setRevoluteJoint`, `setPrismaticJoint`, `setMouseJoint`, `setWheelJoint`, `setWeldJoint`,
-`setMotorJoint`, `getType()` (partial; arguments follow the C++ headers).
+`PhysicsMaterial` (shared with 3D): `PhysicsMaterial.load(path)` (the asset's runtime copy, shared
+by every collider naming it until the scene ends; nil when it cannot be read),
+`PhysicsMaterial.new{friction = 0.4, bounciness = 0, frictionCombine =
+PhysicsMaterialCombine.MINIMUM, bounceCombine = ...}` (a material of the script's own); rw
+`friction`, `bounciness`, `frictionCombine`, `bounceCombine`, ro `path` ("" for a new one).
+Editing one changes every collider using it at the next step.
+
+### 4.13.1 Joint2D (EntityHandle) - 2D joints
+
+`go:getJoint2D()` (nil when none), `Joint2D(scene, entity)`, `Joint2D(scene)` (a new GameObject
+with a joint). Units: points, degrees (the engine's angle unit), degrees/s or points/s, N, N m, Hz.
+Unity mapping: WheelJoint2D = `Joint2DType.WHEEL`, HingeJoint2D = `REVOLUTE`, SliderJoint2D =
+`PRISMATIC`, DistanceJoint2D = `DISTANCE` (`rope` = maxDistanceOnly), SpringJoint2D = `DISTANCE`
+with `enableSpring`, FixedJoint2D = `WELD`, RelativeJoint2D = `MOTOR`, TargetJoint2D = `MOUSE`.
+
+| Member | Kind | Notes |
+|---|---|---|
+| `type` | rw `Joint2DType` | changing it rebuilds the joint (fields at the old type's defaults take the new type's) |
+| `bodyA`, `bodyB` (alias `connectedBody`) | rw GameObject or nil | set with a GameObject or Rigidbody2D that has a Rigidbody 2D (else a Lua error), or nil (bodyB nil: the world) |
+| `anchorSpace` | rw `JointAnchorSpace.LOCAL` / `WORLD` | LOCAL: anchors in each body's space, axis in bodyA's |
+| `anchorA` (alias `anchor`), `anchorB` (alias `connectedAnchor`), `autoAnchors`, `axis` | rw | changing them rebuilds the joint before the next step |
+| `enableCollision` | rw bool | the connected bodies collide |
+| `breakForce`, `breakTorque` | rw number | N, N m; `math.huge` never breaks (default) |
+| `breakAction` | rw `JointBreakAction.IGNORE` / `CALLBACK_ONLY` / `DISABLE` / `DESTROY` | default DESTROY; the callback is `onJointBreak2D(joint)` |
+| `useLimits`, `lowerAngle`, `upperAngle`, `lowerTranslation`, `upperTranslation` | rw | revolute angles; prismatic and wheel translations |
+| `useMotor`, `motorSpeed`, `maxMotorTorque`, `maxMotorForce` | rw | live: change them every frame (a car's throttle) |
+| `enableSpring`, `frequency`, `dampingRatio` | rw | wheel suspension, revolute / prismatic / distance spring, mouse stiffness |
+| `length`, `autoLength`, `minLength`, `maxLength`, `rope` | rw | distance (setting `length` turns `autoLength` off) |
+| `linearFrequency`, `angularFrequency`, `linearDampingRatio`, `angularDampingRatio` | rw | weld (0 = rigid) |
+| `linearOffset`, `angularOffset`, `autoOffset`, `maxForce`, `maxTorque`, `correctionFactor` | rw | motor joint (setting an offset turns `autoOffset` off); mouse `maxForce` (0: 1000 x mass) |
+| `target` | rw `Vector2` | mouse joint world point |
+| `enabled` | rw bool | a disabled joint leaves the simulation (a broken DISABLE joint stays so until enabled) |
+| `reactionForce` (Vector2), `reactionTorque`, `jointAngle`, `jointSpeed`, `jointTranslation`, `jointLinearSpeed`, `motorTorque`, `motorForce`, `currentLength`, `limitState` (`JointLimitState2D`), `referenceAngle`, `broken` | ro | the live joint (0 without one) |
+| `setDistanceJoint(bodyA, bodyB [, anchorA, anchorB, rope])`, `setRevoluteJoint(a, b, anchor)`, `setPrismaticJoint(a, b, anchor, axis)`, `setMouseJoint(a, b, target)`, `setWheelJoint(a, b, anchor, axis)`, `setWeldJoint(a, b, anchor)`, `setMotorJoint(a, b)` | methods | bodies are entities; build a joint as before local anchors: WORLD anchors and Box2D's defaults for every other field (set properties after) |
+
+```lua
+local joint = self.frontWheel:getJoint2D()
+joint.useMotor = true
+joint.motorSpeed = -720      -- deg/s
+joint.maxMotorTorque = 10000
+function Car:onJointBreak2D(joint) Log.print("snap") end
+```
 
 ### 4.14 Rigidbody (EntityHandle) - 3D physics (Jolt)
 
@@ -1551,8 +1731,31 @@ end
 
 - `Points`: `addPoint(...)`, `updatePoint(i, ...)`, `removePoint(i)`, `clearPoints()`,
   `getNumPoints()`, `setTexture(path)`, rw `maxPoints`, `enabled`.
-- `LineRenderer`: `addLine(aV3, bV3 [, colorV4 [, colorB]])`, `updateLine(i, ...)`,
-  `removeLine(i)`, `clearLines()`, `getNumLines()`, rw `maxLines`, `enabled`.
+- `LineRenderer` (Unity's LineRenderer, jasper://docs/lines-trails): the polyline:
+  rw `positionCount` (growing repeats the last point), `setPosition(index, V3)` /
+  `getPosition(index)` (**0-based** like Unity; out of range is an error naming the count;
+  `setPosition(x, y[, z])` with numbers still moves the GameObject), `setPositions(table)`,
+  `getPositions()`, rw `loop`, `useWorldSpace`; the width: rw `widthMultiplier` (0 = the 1-pixel
+  hairline), `startWidth`, `endWidth` (set one: the curve becomes linear between them, multiplier
+  1), `widthCurve` (an `AnimationCurve` copy: edit it, assign it back), `widthUnit`
+  (`LineWidthUnit.*`); rw `colorGradient` (a `Gradient` copy), `startColor`, `endColor` (sRGB
+  Vector4, the gradient's ends), `numCornerVertices`, `numCapVertices` (0..90), `alignment`
+  (`LineAlignment.*`), `textureMode` (`LineTextureMode.*`), `textureScale` (Vector2), `texture`
+  (path: the built-in shader's base map), `sortPriority`, `mode` (`LineRendererMode.*`: the
+  polyline API switches to `Polyline`, the segment API to `Segments`). The segments (debug lines):
+  `addLine(aV3, bV3 [, colorV4 [, colorB]])`, `updateLine(i, ...)`, `removeLine(i)`,
+  `clearLines()`, `getNumLines()`, rw `maxLines`, `enabled`; the shader methods as Points.
+- `TrailRenderer` (Unity's TrailRenderer; `TrailRenderer(scene)` makes a GameObject with one,
+  `object:addTrailRenderer()` adds one to a GameObject (AddComponent; its own when it has one),
+  `object:getTrailRenderer()` is nil without one, `object:hasTrailRenderer()`): rw `time`,
+  `minVertexDistance`, `emitting`, `autodestruct`, `enabled`, the width and colour properties
+  of LineRenderer (`widthMultiplier`, `startWidth`, `endWidth`, `widthCurve`, `widthUnit`,
+  `colorGradient`, `startColor`, `endColor`, `numCornerVertices`, `numCapVertices`, `alignment`,
+  `textureMode`, `textureScale`, `texture`, `sortPriority`: curve and gradient run from the head,
+  0, to the tail, 1); `clear()` (after a teleport); ro `positionCount`; `getPosition(i)`,
+  `setPosition(i, V3)` (0-based, the oldest first; the live head is not one), `getPositions()`,
+  `addPosition(V3)`, `addPositions(table)`; the shader methods (`customShader`,
+  `setShaderParam`, `setShaderTexture`, `setShaderFeature`, `blendMode`, ...).
 - `Polygon` (UI): `addVertex(x, y)` / `(Vector3)`, rw `color`, `alpha`, `flipY`;
   `setColor(r,g,b[,a])`, `setTexture(path)`.
 - `MeshPolygon`: `addVertex(...)`, ro `width`, `height`, rw `flipY`.
@@ -1686,6 +1889,12 @@ use the methods. Physics colliders keep the rest shape.
 | `Collider3DType` | `SPHERE`, `BOX`, `CAPSULE`, `TAPERED_CAPSULE`, `CYLINDER`, `CONVEX_HULL`, `MESH`, `HEIGHTFIELD` |
 | `RigidbodyMotionQuality` | `DISCRETE`, `LINEAR_CAST` |
 | `Joint2DType` | `DISTANCE`, `REVOLUTE`, `PRISMATIC`, `MOUSE`, `WHEEL`, `WELD`, `MOTOR` |
+| `JointAnchorSpace` | `WORLD`, `LOCAL` |
+| `JointBreakAction` | `IGNORE`, `CALLBACK_ONLY`, `DISABLE`, `DESTROY` |
+| `JointLimitState2D` | `INACTIVE`, `LOWER`, `UPPER`, `EQUAL` |
+| `CollisionDetectionMode2D` | `DISCRETE`, `CONTINUOUS` |
+| `RigidbodySleepMode2D` | `NEVER_SLEEP`, `START_AWAKE`, `START_ASLEEP` |
+| `PhysicsMaterialCombine` | `AVERAGE`, `GEOMETRIC_MEAN`, `MINIMUM`, `MULTIPLY`, `MAXIMUM` |
 | `Joint3DType` | `FIXED`, `DISTANCE`, `POINT`, `HINGE`, `CONE`, `PRISMATIC`, `SWINGTWIST`, `SIXDOF`, `PATH`, `GEAR`, `RACKANDPINON`, `PULLEY` |
 | `CameraType` | `CAMERA_UI`, `CAMERA_ORTHO`, `CAMERA_PERSPECTIVE` |
 | `LightType` | `DIRECTIONAL`, `POINT`, `SPOT` |
@@ -1740,6 +1949,12 @@ use the methods. Physics colliders keep the rest shape.
 | `LatticeJiggleAnchor` | `NONE`, `NEGATIVE_X`, `POSITIVE_X`, `NEGATIVE_Y`, `POSITIVE_Y`, `NEGATIVE_Z`, `POSITIVE_Z` |
 | `LatticeStage` | `BEFORE_SKINNING`, `AFTER_SKINNING` |
 | `LatticeMaskChannel` | `NONE`, `RED`, `GREEN`, `BLUE`, `ALPHA`, `INVERTED_RED`, `INVERTED_GREEN`, `INVERTED_BLUE`, `INVERTED_ALPHA` |
+| `LineRendererMode` | `Segments`, `Polyline` (`LineRenderer.mode`) |
+| `LineWidthUnit` | `World`, `Pixels` |
+| `LineAlignment` | `View`, `TransformZ` |
+| `LineTextureMode` | `Stretch`, `Tile`, `DistributePerSegment`, `RepeatPerSegment` |
+| `CurveWrap` | `Clamp`, `Loop`, `PingPong` (`AnimationCurve.preWrapMode` / `postWrapMode`) |
+| `GradientMode` | `Blend`, `Fixed` |
 
 There is no separate Rigidbody2D type enum: both Rigidbody2D and Rigidbody use `BodyType`.
 There is no `Collider2D`/`Collider3D` class: colliders are created/queried through the
@@ -1802,9 +2017,11 @@ Rigidbody wrappers by index.
     with `self.entity`. 2D contact events require the per-collider event flags.
 17. **Unassigned references are `nil`**: an entity-reference or Prefab property not set in
     the Inspector is `nil`; guard (`if self.target then ... end`).
-18. **No `getComponent`, no script lookup by entity**: to talk to another script, expose a
-    property typed with that script's class name (`type = "Enemy"`) and assign it in the
-    Inspector; `GameObject.instantiate(scriptSelf, ...)` also returns the copy's script.
+18. **Scripts by class name, not `getComponent`**: `go:getScript("Enemy")` (same GameObject:
+    `self:getScript(...)`), `getScriptInChildren/InParent`, or across scenes
+    `GameObject.findObjectOfType("Enemy")`. A property typed with the script's class name
+    (`type = "Enemy"`) assigned in the Inspector is the cheapest; `GameObject.instantiate(scriptSelf, ...)`
+    also returns the copy's script.
 19. **Canvas size in `init`**: `Engine.canvasWidth/Height` can be 0 in exported builds during
     `init`; use `Engine.preferredCanvasWidth/Height` there.
 20. **`Log.*` take a single string**; build messages with `..`/`tostring`/`string.format`.
@@ -1812,8 +2029,10 @@ Rigidbody wrappers by index.
     (`event.functionName`, `event.args[1]`), not `function(name, args)`; `onFinish` gets the
     state name. `GameObject:getAnimationPlayer()` is `nil` without the component (unlike
     `getRigidbody2D`, it never adds one).
-22. **`onDestroy` is only for runtime destruction**; to clean up when play stops nothing is
-    called. Event subscriptions are cleaned up automatically.
+22. **`onDestroy` runs on every end**: `GameObject.destroy`, a scene unload (`SceneManager.loadScene`,
+    also of the same scene) and Play stop / quit (after `onApplicationQuit` and `onDisable`), only
+    for scripts whose `init` ran. Do not create objects there. Event subscriptions are cleaned up
+    automatically.
 23. **Colors** on wrappers (`setColor`, `color`, Button colors) are sRGB 0..1 values;
     raw component fields (`UIComponent.color`, `ButtonComponent.colorNormal`) are linear.
 24. **Integers**: entity ids, indices and enum values are integers; do not pass fractional
@@ -1825,13 +2044,21 @@ Rigidbody wrappers by index.
 26. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
     Android); `File.*` and `Json.*File` return `nil, message` on file problems instead of
     raising: check the first result. On Web, Lua `io` writes need `System.syncFileSystem()`.
-27. **Event handlers cannot wait.** `onUpdate`, input events, `init` and `onDestroy` are called
-    from C: `Coroutine.wait` there raises "not inside an engine coroutine". Start a coroutine
+27. **`self.enabled` and the reserved names**: `self.enabled = false` disables the script
+    (`onDisable`, its registered updates stop) but not what it started; it takes only `true` /
+    `false`. `enabled`, `isActiveAndEnabled` and `gameObject` cannot be `properties` names, and
+    `isActiveAndEnabled` / `gameObject` cannot be assigned. A disabled script's `init` still runs.
+28. **Unity method names are not called**: `Awake` -> `init`, `Start` -> `start`, `OnEnable` ->
+    `onEnable`, `Update` -> `onUpdate` registered with `RegisterEngineEvent(self, "onUpdate")`
+    (`FixedUpdate` -> `onFixedUpdate`, `LateUpdate` -> `onPostUpdate`). `check_script` warns.
+29. **Event handlers cannot wait.** `onUpdate`, input events, `init`, `onEnable`, `onDisable`
+    and `onDestroy` are called from C: `Coroutine.wait` there raises "not inside an engine
+    coroutine" (`start` may wait: it runs as a coroutine). Start a coroutine
     (`self:startCoroutine(function() ... end)`). Waits inside a `table.sort` comparator, a
     metamethod or another C callback raise too ("waits cannot cross a C function").
-28. **Realtime stops when paused.** `Coroutine.waitRealtime` and unscaled timers run at
+30. **Realtime stops when paused.** `Coroutine.waitRealtime` and unscaled timers run at
     `timeScale = 0` but not while the app is in the background or the editor's Play is paused
     (unlike Unity's wall clock).
-29. **Timers outlive deactivation; coroutines do not.** `self:invoke` keeps firing while the
+31. **Timers outlive deactivation; coroutines do not.** `self:invoke` keeps firing while the
     GameObject is inactive (Unity); coroutines stop when it is deactivated and do not come back
     on reactivation: start them again (in `onEnable`, or where you reactivate).

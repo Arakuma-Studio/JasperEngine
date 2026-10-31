@@ -11,6 +11,7 @@
 #include "texture/Material.h"
 #include "component/UIDocumentComponent.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/LineRendererComponent.h"
 
 using namespace jasperengine;
 
@@ -96,6 +97,12 @@ namespace luabridge
     template<> struct Stack<Collider3DType> : EnumWrapper<Collider3DType>{};
     template<> struct Stack<BodyType> : EnumWrapper<BodyType>{};
     template<> struct Stack<Joint2DType> : EnumWrapper<Joint2DType>{};
+    template<> struct Stack<JointLimitState2D> : EnumWrapper<JointLimitState2D>{};
+    template<> struct Stack<CollisionDetectionMode2D> : EnumWrapper<CollisionDetectionMode2D>{};
+    template<> struct Stack<RigidbodySleepMode2D> : EnumWrapper<RigidbodySleepMode2D>{};
+    template<> struct Stack<JointAnchorSpace> : EnumWrapper<JointAnchorSpace>{};
+    template<> struct Stack<JointBreakAction> : EnumWrapper<JointBreakAction>{};
+    template<> struct Stack<PhysicsMaterialCombine> : EnumWrapper<PhysicsMaterialCombine>{};
     template<> struct Stack<UIDocumentRenderMode> : EnumWrapper<UIDocumentRenderMode>{};
     template<> struct Stack<FluidOutput> : EnumWrapper<FluidOutput>{};
     // bound enums that had none: LuaBridge pushed them as unregistered userdata (an error
@@ -118,6 +125,11 @@ namespace luabridge
     template<> struct Stack<MaterialStencilCompare> : EnumWrapper<MaterialStencilCompare>{};
     template<> struct Stack<MaterialStencilOp> : EnumWrapper<MaterialStencilOp>{};
     template<> struct Stack<MaterialColorWriteBits> : EnumWrapper<MaterialColorWriteBits>{};
+    // Line and Trail Renderers (lines and trails spec 6.6)
+    template<> struct Stack<LineRendererMode> : EnumWrapper<LineRendererMode>{};
+    template<> struct Stack<LineWidthUnit> : EnumWrapper<LineWidthUnit>{};
+    template<> struct Stack<LineAlignment> : EnumWrapper<LineAlignment>{};
+    template<> struct Stack<LineTextureMode> : EnumWrapper<LineTextureMode>{};
 
     // Touch is a bound value class (CoreClassesLua.cpp); its phase an enum
     template<> struct Stack<TouchPhase> : EnumWrapper<TouchPhase>{};

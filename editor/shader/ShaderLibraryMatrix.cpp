@@ -329,7 +329,10 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
                           {"texture", ShaderPool::getPointsProperties(true, false, true, false)},
                           {"texture rect", ShaderPool::getPointsProperties(true, false, true, true)}};
         }else if (type == ShaderType::LINES){
-            properties = {{"plain", ShaderPool::getLinesProperties(false, true)}};
+            // the hairline, the ribbon of thick lines and trails, its pixel-width form
+            properties = {{"ribbon", ShaderPool::getLinesProperties(false, true, true)},
+                          {"hairline", ShaderPool::getLinesProperties(false, true)},
+                          {"ribbon pixel width", ShaderPool::getLinesProperties(false, true, true, false, true)}};
         }else{
             properties = {{"sky", 0}};
         }
