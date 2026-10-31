@@ -2087,6 +2087,57 @@ OVERRIDES.update({
         'overloads': [([('name', 'string')], 'string?')]},
 })
 
+# native-bridge (NativeClassesLua.cpp): the Native functions are lua_CFunctions (positional
+# optional args, callback, options); NativeCallOptions / NativeErrorCode / NativePending are in
+# engine/core/script/binding/stubs/Native.lua
+_NATIVE_CB = 'fun(result: JsonValue, errMessage: string?, errCode: NativeErrorCode?)'
+OVERRIDES.update({
+    ('Native', 'call'): {
+        'doc': ['Calls `method` of the native plugin `plugin` now (Unity\'s AndroidJavaClass.CallStatic): a C++ plugin,',
+                'else the platform\'s (Java/Kotlin static method, Objective-C/Swift class method, JavaScript function),',
+                'else a Lua mock. Arguments and the result are JSON values. Errors are values:',
+                '`local v, err, code = Native.call("Device", "getCode")`.'],
+        'overloads': [([('plugin', 'string'), ('method', 'string'), ('...', 'JsonValue')], 'JsonValue, string?, NativeErrorCode?')]},
+    ('Native', 'callAsync'): {
+        'doc': ['Starts an asynchronous call; `callback(result, errMessage, errCode)` runs once on the main thread, before',
+                'onUpdate (not when cancelled or its owner went). Pass `{owner = self}` in per-scene scripts.'],
+        'overloads': [
+            ([('plugin', 'string'), ('method', 'string')], 'NativeCall'),
+            ([('plugin', 'string'), ('method', 'string'), ('callback', _NATIVE_CB), ('options?', 'NativeCallOptions')], 'NativeCall'),
+            ([('plugin', 'string'), ('method', 'string'), ('args', 'JsonValue[]|nil'), ('callback?', _NATIVE_CB), ('options?', 'NativeCallOptions')], 'NativeCall'),
+        ]},
+    ('Native', 'on'): {
+        'doc': ['Subscribes to native events (JasperNative.emit on the native side): `handler(payload)` runs on the main thread',
+                'before onUpdate, handlers in registration order. With an owner it goes with it. Returns the id for Native.off.'],
+        'overloads': [([('plugin', 'string'), ('event', 'string'), ('handler', 'fun(payload: JsonValue)'), ('owner?', 'ScriptInstance|EntityHandle|Scene')], 'integer')]},
+    ('Native', 'off'): {
+        'doc': ['Removes a Native.on handler (an unknown id does nothing).'],
+        'overloads': [([('id', 'integer')], '')]},
+    ('Native', 'has'): {
+        'doc': ['A C++, platform or mock implementation of the plugin exists here; with `method`, that method exists.'],
+        'overloads': [([('plugin', 'string'), ('method?', 'string')], 'boolean')]},
+    ('Native', 'setMock'): {
+        'doc': ['A Lua mock of the plugin, used only when no C++ or platform plugin exists (editor Play, desktop): each',
+                'function gets the call\'s arguments (async calls: plus the NativeCall last) and returns the value, or nil,',
+                'message [, code], or Native.pending() to complete later with call:resolve / call:reject.'],
+        'overloads': [([('plugin', 'string'), ('mock', 'table<string, function>')], '')]},
+    ('Native', 'clearMock'): {
+        'doc': ['Removes the Native.setMock mock of the plugin.'],
+        'overloads': [([('plugin', 'string')], '')]},
+    ('Native', 'emitMock'): {
+        'doc': ['Fires the Native.on handlers of (plugin, event) in the next frame, as if native code emitted it.'],
+        'overloads': [([('plugin', 'string'), ('event', 'string'), ('payload?', 'JsonValue')], '')]},
+    ('Native', 'pending'): {
+        'doc': ['What an async mock function returns to complete its call later (call:resolve / call:reject).'],
+        'overloads': [([], 'NativePending')]},
+    ('NativeCall', 'resolve'): {
+        'doc': ['Mocks: completes the call with `value` (false when it was already completed or cancelled).'],
+        'overloads': [([('value?', 'JsonValue')], 'boolean')]},
+    ('NativeCall', 'reject'): {
+        'doc': ['Mocks: fails the call with `code` and `message` (false when it was already completed or cancelled).'],
+        'overloads': [([('code', 'NativeErrorCode|string'), ('message?', 'string')], 'boolean')]},
+})
+
 # Properties whose getter returns a LuaRef: (Lua type, a copy)
 PROPERTY_OVERRIDES = {
     # the null sentinel (stubs/Json.lua: JsonNull)
@@ -2095,6 +2146,9 @@ PROPERTY_OVERRIDES = {
     # AnimationEvent.args builds a 1-based table of the event's arguments
     ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
     ('HttpRequest', 'response'): ('HttpResponse|nil', False),
+    ('NativeCall', 'result'): ('JsonValue', False),
+    ('NativeCall', 'errorCode'): ('NativeErrorCode|nil', False),
+    ('NativeCall', 'errorMessage'): ('string|nil', False),
     ('HttpResponse', 'headers'): ('table<string, string>', True),
     ('HttpResponse', 'body'): ('string', False),
     ('HttpResponse', 'data'): ('JsonValue', False),

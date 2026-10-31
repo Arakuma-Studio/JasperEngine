@@ -141,6 +141,8 @@ return Player
 - Saves: PlayerPrefs, Json.encode/decode, File.writeText("data://x") (jasper://docs/lua-api
   2.4); user_settings reads/resets PlayerPrefs.
 - HTTP: Http.get/post, callbacks on the main thread: jasper://docs/networking.
+- Native code: Native.call/callAsync/on; plugins in plugins/native (native_plugins scaffolds
+  them with a Lua mock): jasper://docs/native-bridge.
 - Lua has no Dori.Script, on_start, getComponent, setProperty or timers. Never put editor
   property paths (submeshes[0]...) in scripts.
 

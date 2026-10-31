@@ -101,6 +101,22 @@ solver of your own, or a package.
 | `Resources.Load<TextAsset>(path).text`, `StreamingAssets` files | `File.readText("asset://path")` (read-only, in the APK on Android too); `Json.readFile("asset://...")` |
 | ScriptableObject (data assets) | a JSON file (`Json.readFile("lua://data/items.json")`) or a Lua data module (`require("data.items")`): jasper://docs/lua-api 2.4.2 |
 
+## Native plugins
+
+Details: jasper://docs/native-bridge.
+
+| Unity term | JasperEngine name |
+|---|---|
+| `new AndroidJavaClass("com.me.X").CallStatic<T>("m", args)` | `Native.call("X", "m", ...)` (a public static method of a class in `plugins/native/android`; the full name works too) |
+| `AndroidJavaProxy` callbacks, `UnitySendMessage` / `SendMessage` from native code | `NativeCall` (`Native.callAsync`: one result) or `JasperNative.emit(plugin, event, payload)` + `Native.on(plugin, event, fn)` |
+| `[DllImport("__Internal")]` functions (iOS) | Objective-C/Swift class methods `+ (id)m:(NSArray*)args` in `plugins/native/ios` or `apple` |
+| `.jslib` (`mergeInto(LibraryManager.library, ...)`), `SendMessage` (Web) | `plugins/native/web/*.js` with `JasperNative.register(name, {...})`, `JasperNative.emit` |
+| `Assets/Plugins/Android`, `Assets/Plugins/iOS`, `Assets/Plugins/WebGL` | `plugins/native/android`, `plugins/native/ios` (or `apple`), `plugins/native/web` |
+| Native C++ plugins (desktop `DllImport`) | `JASPERENGINE_NATIVE_PLUGIN(Name)` in `plugins/native/cpp` |
+| External Dependency Manager `*Dependencies.xml` (`androidPackage`, `iosPod`) | `android.gradle_dependencies` + `android.gradle_repositories`, `ios.cocoapods` (Project Settings > Native Plugins) |
+| `mainTemplate.gradle`, `gradleTemplate.properties`, custom `AndroidManifest.xml` | `android.gradle_*` settings, `android.manifest_xml` / `manifest_application_xml`, `plugins/native/android/AndroidManifest.xml` (merged) |
+| `PostProcessBuild` Info.plist / capabilities edits | `ios.plist_entries`, `ios.plist_xml`, `ios.frameworks`, `ios.entitlements_xml`, `ios.swift_packages` |
+
 ## Networking
 
 Details: jasper://docs/networking.

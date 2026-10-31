@@ -731,6 +731,34 @@ Http.get("https://backend.example.com/Now", {responseType = "json", timeout = 10
 end)
 ```
 
+### 2.14 Native (static, native code of the platform)
+
+Full reference, every platform's conventions, mocks and SDK settings: `jasper://docs/native-bridge`.
+A plugin name answers from, in order: a C++ plugin, the platform's class/object (Java/Kotlin on
+Android, Objective-C/Swift on iOS/macOS, JavaScript on the Web), a Lua mock
+(`<Lua folder>/native_mocks/<Plugin>.lua` or `Native.setMock`). Values are JSON (the `Json` rules);
+errors are values; callbacks and events run on the main thread before `onUpdate`.
+
+| Call | Meaning |
+|---|---|
+| `Native.call(plugin, method, ...)` | sync: `value, nil, nil` or `nil, errMessage, errCode` |
+| `Native.callAsync(plugin, method [, args] [, callback] [, options])` | `callback(result, errMessage, errCode)`; options `thread` (`"main"`/`"background"`), `owner`, `timeout`; returns a `NativeCall` |
+| `Native.on(plugin, event, handler [, owner])` / `Native.off(id)` | native events (`handler(payload)`) |
+| `Native.has(plugin [, method])` | an implementation exists here |
+| `Native.setMock(plugin, table)`, `Native.clearMock(plugin)`, `Native.emitMock(plugin, event, payload)`, `Native.pending()` | Lua mocks |
+
+`NativeCall`: `id`, `plugin`, `method`, `result`, `errorCode`, `errorMessage`, `call:isDone()`
+(`Coroutine.waitFor(call)`), `call:cancel()`, and for mocks `call:resolve(value)`,
+`call:reject(code, message)`. Codes: `not_found`, `no_method`, `bad_args`, `exception`,
+`unsupported_type`, `invalid_utf8`, `cancelled`, `timeout`, `async_only`, `not_ready`, `unavailable`.
+
+```lua
+local version, err = Native.call("Device", "getCode")
+Native.callAsync("Ads", "showRewarded", {"unit-1"}, function(result, err, code)
+    if err then Log.warn(code .. ": " .. err) else self.coins = self.coins + result.amount end
+end, {owner = self})
+```
+
 ---
 
 ## 3. Math
