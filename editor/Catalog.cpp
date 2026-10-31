@@ -11,6 +11,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "lattice/LatticeTypes.h"
 #include "pose/PoseAnimatorRuntime.h"
+#include "audio/AudioMixer.h"
 
 #include <algorithm>
 #include <cctype>
@@ -802,6 +803,12 @@ namespace {
         makeFastProperty<AudioSourceComponent, AudioSourceAttenuation, &AudioSourceComponent::attenuationModel>("attenuationModel", PropertyType::Enum, UpdateFlags_AudioSource),
         makeFastProperty<AudioSourceComponent, float, &AudioSourceComponent::attenuationRolloffFactor>("attenuationRolloffFactor", PropertyType::Float, UpdateFlags_AudioSource),
         makeFastProperty<AudioSourceComponent, float, &AudioSourceComponent::dopplerFactor>("dopplerFactor", PropertyType::Float, UpdateFlags_AudioSource),
+        // the mixer group by name ("" = Master); the update below resolves its id (AudioSourceComponent::outputGroup)
+        makeFastProperty<AudioSourceComponent, std::string, &AudioSourceComponent::outputGroupName>("outputGroup", PropertyType::String, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, AudioLoadType, &AudioSourceComponent::loadType>("loadType", PropertyType::Enum, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, int, &AudioSourceComponent::priority>("priority", PropertyType::Int, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, int, &AudioSourceComponent::maxVoices>("maxVoices", PropertyType::Int, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, bool, &AudioSourceComponent::ignoreListenerPause>("ignoreListenerPause", PropertyType::Bool, UpdateFlags_AudioSource),
         makeFastPropertyNoDefault<AudioSourceComponent, double, &AudioSourceComponent::length>("length", PropertyType::Double, UpdateFlags_None),
         makeFastPropertyNoDefault<AudioSourceComponent, double, &AudioSourceComponent::playingTime>("playingTime", PropertyType::Double, UpdateFlags_None),
     };
@@ -5464,6 +5471,17 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
     if (updateFlags & UpdateFlags_AudioSource){
         if (AudioSourceComponent* audio = registry->findComponent<AudioSourceComponent>(entity)){
             audio->needUpdate = true;
+            audio->priority = std::clamp(audio->priority, 0, 256);
+            audio->maxVoices = std::clamp(audio->maxVoices, 1, 64);
+            // the group is set by name: its id follows (a name not in the mixer keeps the last id,
+            // the runtime then finds the group by name, else plays through Master)
+            if (audio->outputGroupName.empty()) {
+                audio->outputGroup.clear();
+            } else {
+                const std::string id = AudioMixer::findGroupId(audio->outputGroupName);
+                if (!id.empty()) audio->outputGroup = id;
+            }
+            audio->groupWarned = false;
         }
     }
     if (updateFlags & UpdateFlags_Fluid_Reset){

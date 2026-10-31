@@ -655,6 +655,7 @@ namespace jasperengine::editor{
 
         uint32_t startSceneId;
         LoadingSettings loadingSettings;
+        AudioSettings audioSettings;
         TerrainEditorSettings terrainEditorSettings;
         PhysicsPlacementSettings physicsPlacementSettings;
         SpriteNormalsWindowSettings spriteNormalsSettings;
@@ -1308,6 +1309,25 @@ namespace jasperengine::editor{
 
         LoadingSettings& getLoadingSettings();
         const LoadingSettings& getLoadingSettings() const;
+
+        // Project Settings > Audio (audio-mixer spec 9): the mixer asset, the voices, the sample
+        // rate, the group new Audio Sources get. Setting them loads the mixer into the engine.
+        const AudioSettings& getAudioSettings() const;
+        void setAudioSettings(const AudioSettings& settings);
+        // the project mixer's file (absolute; empty when none is set)
+        std::filesystem::path getAudioMixerFile() const;
+        // where a new project mixer goes (assets/audio/Main.mixer)
+        static constexpr const char* defaultAudioMixerPath = "audio/Main.mixer";
+        // Loads the project mixer into the engine's AudioMixer with the asset's values (Edit mode
+        // and live edits keep their runtime; Play starts it over); a missing or broken file leaves
+        // the implicit Master (logged). False + error when it does not read.
+        bool applyAudioMixer(std::string* error = nullptr);
+        // a file changed on disk (an editor write, its undo / redo, an external edit): the project
+        // mixer reloads when it is that file
+        void audioFilesChanged(const std::vector<std::filesystem::path>& changed);
+        // Play starts from the start snapshot and the remembered values; Play stops back to the
+        // asset's values (no script overrides, the listener unpaused)
+        void resetPlayAudio(bool starting) const;
 
         TerrainEditorSettings& getTerrainEditorSettings();
         const TerrainEditorSettings& getTerrainEditorSettings() const;

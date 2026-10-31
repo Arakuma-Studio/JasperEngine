@@ -623,6 +623,16 @@ std::string editor::Factory::formatAudioSourceState(AudioSourceState state) {
     }
 }
 
+std::string editor::Factory::formatAudioLoadType(AudioLoadType loadType) {
+    switch (loadType) {
+        case AudioLoadType::Auto: return "AudioLoadType::Auto";
+        case AudioLoadType::DecompressOnLoad: return "AudioLoadType::DecompressOnLoad";
+        case AudioLoadType::CompressedInMemory: return "AudioLoadType::CompressedInMemory";
+        case AudioLoadType::Streaming: return "AudioLoadType::Streaming";
+    }
+    return "AudioLoadType::Auto";
+}
+
 std::string editor::Factory::formatAudioSourceAttenuation(AudioSourceAttenuation attenuation) {
     switch (attenuation) {
         case AudioSourceAttenuation::NO_ATTENUATION: return "AudioSourceAttenuation::NO_ATTENUATION";
@@ -2127,6 +2137,14 @@ std::string editor::Factory::createAudioSourceComponent(int indentSpaces, Entity
     code << ind << "audio.attenuationModel = " << formatAudioSourceAttenuation(audio.attenuationModel) << ";\n";
     code << ind << "audio.attenuationRolloffFactor = " << formatFloat(audio.attenuationRolloffFactor) << ";\n";
     code << ind << "audio.dopplerFactor = " << formatFloat(audio.dopplerFactor) << ";\n";
+    // audio mixer fields, only when not their default
+    const AudioSourceComponent defaults;
+    if (!audio.outputGroup.empty()) code << ind << "audio.outputGroup = " << formatString(audio.outputGroup) << ";\n";
+    if (!audio.outputGroupName.empty()) code << ind << "audio.outputGroupName = " << formatString(audio.outputGroupName) << ";\n";
+    if (audio.loadType != defaults.loadType) code << ind << "audio.loadType = " << formatAudioLoadType(audio.loadType) << ";\n";
+    if (audio.priority != defaults.priority) code << ind << "audio.priority = " << audio.priority << ";\n";
+    if (audio.maxVoices != defaults.maxVoices) code << ind << "audio.maxVoices = " << audio.maxVoices << ";\n";
+    if (audio.ignoreListenerPause != defaults.ignoreListenerPause) code << ind << "audio.ignoreListenerPause = " << formatBool(audio.ignoreListenerPause) << ";\n";
     code << ind << "audio.needUpdate = true;\n";
     if (audio.state == AudioSourceState::Playing) {
         code << ind << "audio.startTrigger = true;\n";

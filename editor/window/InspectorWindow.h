@@ -305,6 +305,8 @@ namespace jasperengine::editor{
         void clearVertexAnimatorPreviewScene(uint32_t sceneId);
         // the inspected .vat (Project window click)
         void drawVatAsset(const std::filesystem::path& asset);
+        // a selected .mixer: groups, exposed parameters, snapshots; Use as Project Mixer, Open in Audio Mixer
+        void drawAudioMixerAsset(const std::filesystem::path& asset);
         void drawCreateCrowdDialog();
         // Sprite normals (InspectorWindowSpriteNormals.cpp): a generated normal map (or its source
         // image) clicked in the Project window; false for any other image (the scene selection

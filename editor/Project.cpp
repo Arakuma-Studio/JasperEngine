@@ -53,6 +53,9 @@
 #include "fluid/FluidSimulator.h"
 #include "subsystem/PoseAnimatorSystem.h"
 #include "subsystem/VertexAnimatorSystem.h"
+#include "pool/SoundPool.h"
+#include "audio/AudioMixer.h"
+#include "audio/AudioMixerDocument.h"
 #include "pose/ModelRig.h"
 #include "pose/PoseAnimatorRuntime.h"
 #include "animation/ModelSubClips.h"
@@ -848,7 +851,12 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
     });
 
     visitComponents(registry->getComponentArray<AudioSourceComponent>(), [&](AudioSourceComponent& sound) {
-        addFile(resources.sounds, sound.filename);
+        // the source's Load Type rides along (SoundPool::parseClipRef): Auto is the plain file
+        if (sound.filename.empty() || sound.loadType == AudioLoadType::Auto) {
+            addFile(resources.sounds, sound.filename);
+        } else {
+            addFile(resources.sounds, sound.filename + "#" + SoundPool::loadTypeName(sound.loadType));
+        }
     });
 
     // Animation Player clips (AnimationClipPool); a model sub-clip is built once its model is
@@ -3355,6 +3363,86 @@ void editor::Project::setStartSceneId(uint32_t sceneId){
 
 editor::LoadingSettings& editor::Project::getLoadingSettings(){
     return loadingSettings;
+}
+
+const editor::AudioSettings& editor::Project::getAudioSettings() const{
+    return audioSettings;
+}
+
+void editor::Project::setAudioSettings(const AudioSettings& settings){
+    const bool mixerChanged = settings.mixer != audioSettings.mixer;
+    audioSettings = settings;
+    audioSettings.maxRealVoices = std::clamp(audioSettings.maxRealVoices, 1, 255);
+    audioSettings.maxVoices = std::clamp(audioSettings.maxVoices, 1, 1000);
+    if (audioSettings.sampleRate < 0) audioSettings.sampleRate = 0;
+    AudioSystem::configure({audioSettings.maxRealVoices, audioSettings.maxVoices, audioSettings.sampleRate});
+    AudioMixerDocument::setDefaultOutputGroup(audioSettings.defaultOutputGroup);
+    if (mixerChanged || AudioMixer::getPath() != audioSettings.mixer) {
+        applyAudioMixer();
+    }
+}
+
+std::filesystem::path editor::Project::getAudioMixerFile() const{
+    if (audioSettings.mixer.empty()) return {};
+    return resolveAssetPath(FileUtils::pathFromUtf8(audioSettings.mixer)).lexically_normal();
+}
+
+bool editor::Project::applyAudioMixer(std::string* error){
+    if (audioSettings.mixer.empty()) {
+        if (AudioMixer::hasAsset()) AudioMixer::unload();
+        return true;
+    }
+    const fs::path file = getAudioMixerFile();
+    std::string text;
+    std::error_code ec;
+    auto readText = [](const fs::path& path, std::string& out) {
+        std::ifstream in(path, std::ios::binary);
+        if (!in) return false;
+        out.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        return true;
+    };
+    if (!fs::is_regular_file(file, ec) || !readText(file, text)) {
+        // created on first use (the Audio Mixer window, MCP audio_mixer edit)
+        if (AudioMixer::hasAsset()) AudioMixer::unload();
+        if (error) *error = "'" + audioSettings.mixer + "' does not exist";
+        return false;
+    }
+    AudioMixerDef def;
+    std::string parseError;
+    std::vector<std::string> warnings;
+    if (!AudioMixerIO::parse(text, def, &parseError, &warnings)) {
+        Out::error("Audio mixer '%s': %s (the implicit Master plays)", audioSettings.mixer.c_str(), parseError.c_str());
+        if (error) *error = parseError;
+        return false;
+    }
+    for (const std::string& warning : warnings) {
+        Out::warning("Audio mixer '%s': %s", audioSettings.mixer.c_str(), warning.c_str());
+    }
+    const bool fresh = AudioMixer::getPath() != audioSettings.mixer;
+    AudioMixer::apply(def);
+    AudioMixer::setAssetPath(audioSettings.mixer);
+    // another mixer: the asset's values, not what the last one moved
+    if (fresh && !isAnyScenePlaying()) AudioMixer::resetRuntime(false);
+    return true;
+}
+
+void editor::Project::audioFilesChanged(const std::vector<std::filesystem::path>& changed){
+    const fs::path mixer = getAudioMixerFile();
+    if (mixer.empty()) return;
+    for (const fs::path& path : changed) {
+        std::error_code ec;
+        if (path.lexically_normal() == mixer || fs::equivalent(path, mixer, ec)) {
+            applyAudioMixer();
+            return;
+        }
+    }
+}
+
+void editor::Project::resetPlayAudio(bool starting) const{
+    AudioSystem::setListenerPaused(false);
+    AudioMixer::setMasterPaused(false);
+    AudioMixer::resetRuntime(starting);
+    if (starting) AudioMixer::loadRemembered();
 }
 
 const editor::LoadingSettings& editor::Project::getLoadingSettings() const{
@@ -6884,7 +6972,7 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, getInputActionsJsonForBuild());
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), getAudioSettings());
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -8586,7 +8674,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, getInputActionsJsonForBuild());
+    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), getAudioSettings());
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
     }
@@ -9111,6 +9199,8 @@ void editor::Project::start(uint32_t sceneId) {
     applyLayerCollisionMatrices();
     // and from clean input (Project Settings > Input, no runtime rebinding)
     resetPlayInput();
+    // and audio: the mixer's start snapshot and remembered values, the listener unpaused
+    resetPlayAudio(true);
     CommandHandle::get(sceneId)->beginPlaySession();
     editor::getEditorHost().saveAllCodeEditors();
     editor::getEditorHost().requestScenePlayFocus(sceneId);
@@ -9328,6 +9418,8 @@ void editor::Project::stop(uint32_t sceneId) {
             applyLayerCollisionMatrices();
             // so do held input, rebinding overrides and simulated input sources
             resetPlayInput();
+            // and the mixer values scripts set (the remembered ones stay in UserSettings)
+            resetPlayAudio(false);
 
             // what the game stored in UserSettings / PlayerPrefs is on disk when Play has stopped
             UserSettings::save();

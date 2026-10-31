@@ -20,6 +20,7 @@ struct PanelVisibilitySettings {
     bool poseAnimation = false;
     bool terrain = false;
     bool textureSynthesis = false;
+    bool audioMixer = false;
     bool vertexAnimationBaker = false;
     bool physicsPlacement = false;
     bool spriteNormals = false;
@@ -35,6 +36,7 @@ struct PanelVisibilitySettings {
             && poseAnimation == other.poseAnimation
             && terrain == other.terrain
             && textureSynthesis == other.textureSynthesis
+            && audioMixer == other.audioMixer
             && vertexAnimationBaker == other.vertexAnimationBaker
             && physicsPlacement == other.physicsPlacement
             && spriteNormals == other.spriteNormals

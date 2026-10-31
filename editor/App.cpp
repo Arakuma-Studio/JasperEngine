@@ -138,6 +138,7 @@ editor::App::App(){
     poseAnimationWindow = new PoseAnimationWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
+    audioMixerWindow = new AudioMixerWindow(&project);
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
@@ -280,6 +281,7 @@ enum class AppMenuCommand : uint32_t {
     TogglePoseAnimation,
     ToggleTerrain,
     ToggleTextureSynthesis,
+    ToggleAudioMixer,
     ToggleSpriteNormals,
     ToggleVertexAnimationBaker,
     TogglePhysicsPlacement,
@@ -304,6 +306,7 @@ enum class AppMenuCommand : uint32_t {
     AssetsCreateFolder,
     AssetsCreateLuaScript,
     AssetsCreateHtmlDocument,
+    AssetsCreateAudioMixer,
     AssetsCreatePoseAnimation,
     AssetsCreateAnimationClip,      // shown only once AnimationClipAppHooks::createClipAsset is set
     AssetsCreateCppScript,
@@ -601,6 +604,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuSeparator(),
         menuCommand(AppMenuCommand::AssetsCreateHtmlDocument, "HTML Document"),
         menuSeparator(),
+        menuCommand(AppMenuCommand::AssetsCreateAudioMixer, "Audio Mixer"),
+        menuSeparator(),
         menuCommand(AppMenuCommand::AssetsCreatePoseAnimation, "Pose Animation")
     };
     // Animation Clip: once the clip asset task set its hook
@@ -645,6 +650,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6"),
             menuCommand(AppMenuCommand::TogglePoseAnimation, windowMenuLabel(PoseAnimationWindow::WINDOW_NAME)),
             menuCommand(AppMenuCommand::ToggleVertexAnimationBaker, windowMenuLabel(VertexAnimationBakerWindow::WINDOW_NAME))
+        }),
+        menuSubmenu("Audio", {
+            menuCommand(AppMenuCommand::ToggleAudioMixer, windowMenuLabel(AudioMixerWindow::WINDOW_NAME))
         }),
         menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         menuCommand(AppMenuCommand::ToggleTextureSynthesis, windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
@@ -845,6 +853,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleTextureSynthesis:
             textureSynthesisWindow->open();
             break;
+        case AppMenuCommand::ToggleAudioMixer:
+            audioMixerWindow->open();
+            break;
         case AppMenuCommand::ToggleSpriteNormals:
             spriteNormalsWindow->open();
             break;
@@ -895,6 +906,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             poseAnimationWindow->setOpen(false);
             terrainEditWindow->setOpen(false);
             textureSynthesisWindow->setOpen(false);
+            audioMixerWindow->setOpen(false);
             spriteNormalsWindow->setOpen(false);
             vertexAnimationBakerWindow->setOpen(false);
             physicsPlacementWindow->setOpen(false);
@@ -1002,6 +1014,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsCreateHtmlDocument:
             projectWindow->assetsCreateHtmlDocument();
+            break;
+        case AppMenuCommand::AssetsCreateAudioMixer:
+            projectWindow->assetsCreateAudioMixer();
             break;
         case AppMenuCommand::AssetsCreatePoseAnimation:
             projectWindow->assetsCreatePoseAnimation();
@@ -1578,6 +1593,8 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow("Game", dock_id_middle_top);
     // Texture Synthesis is mostly a preview: a tab next to the Scene and Game views
     ImGui::DockBuilderDockWindow(TextureSynthesisWindow::WINDOW_NAME, dock_id_middle_top);
+    // the Audio Mixer's strips want the width of the views
+    ImGui::DockBuilderDockWindow(AudioMixerWindow::WINDOW_NAME, dock_id_middle_top);
     // the baker too (its preview), so the Inspector entries that open it stay in view
     ImGui::DockBuilderDockWindow(VertexAnimationBakerWindow::WINDOW_NAME, dock_id_middle_top);
     // the Sprite Normal Map window: a preview too
@@ -2411,6 +2428,7 @@ void editor::App::show(){
     PoseViewport::frame(&project);
     terrainEditWindow->show();
     textureSynthesisWindow->show();
+    audioMixerWindow->show();
     // also the tick of its Shift-click generations (with the window closed)
     spriteNormalsWindow->show();
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
@@ -3745,6 +3763,7 @@ void editor::App::prepareForProjectSwitch() {
     imageViewerWindow->closeAll();
     // a synthesis started in this project is cancelled and never written into the next one
     textureSynthesisWindow->resetForProjectSwitch();
+    audioMixerWindow->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
     spriteNormalsWindow->resetForProjectSwitch();
     spriteNormalsWatcher->reset();
@@ -4274,6 +4293,10 @@ editor::MainToolbar* editor::App::getMainToolbar() const{
     return mainToolbar;
 }
 
+void editor::App::openAudioMixerWindow(const std::filesystem::path& mixer){
+    audioMixerWindow->open(mixer);
+}
+
 void editor::App::openTextureSynthesis(const std::filesystem::path& image, bool editRecipe){
     if (!editRecipe) {
         textureSynthesisWindow->openWithExample(image);
@@ -4496,6 +4519,7 @@ void editor::App::applyPanelVisibilitySettings() {
     poseAnimationWindow->setOpen(visibility.poseAnimation);
     terrainEditWindow->setOpen(visibility.terrain);
     textureSynthesisWindow->setOpen(visibility.textureSynthesis);
+    audioMixerWindow->setOpen(visibility.audioMixer);
     spriteNormalsWindow->setOpen(visibility.spriteNormals);
     vertexAnimationBakerWindow->setOpen(visibility.vertexAnimationBaker);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
@@ -4513,6 +4537,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.poseAnimation = poseAnimationWindow->isOpen();
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.textureSynthesis = textureSynthesisWindow->isOpen();
+    visibility.audioMixer = audioMixerWindow->isOpen();
     visibility.spriteNormals = spriteNormalsWindow->isOpen();
     visibility.vertexAnimationBaker = vertexAnimationBakerWindow->isOpen();
     visibility.physicsPlacement = physicsPlacementWindow->isOpen();

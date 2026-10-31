@@ -3,6 +3,8 @@
 
 #include "CreateEntityCmd.h"
 
+#include "audio/AudioMixerDocument.h"
+
 #include "editor/Out.h"
 #include "util/PrimitiveParameters.h"
 #include "util/ProjectUtils.h"
@@ -617,12 +619,12 @@ bool editor::CreateEntityCmd::execute(){
 
     }else if (type == EntityCreationType::AUDIO_SOURCE){
 
-        scene->addComponent<AudioSourceComponent>(entity, {});
+        scene->addComponent<AudioSourceComponent>(entity, AudioMixerDocument::newAudioSource());
 
     }else if (type == EntityCreationType::AUDIO_SOURCE_3D){
 
         scene->addComponent<Transform>(entity, {});
-        scene->addComponent<AudioSourceComponent>(entity, {});
+        scene->addComponent<AudioSourceComponent>(entity, AudioMixerDocument::newAudioSource());
 
     }else if (type == EntityCreationType::MODEL){
 

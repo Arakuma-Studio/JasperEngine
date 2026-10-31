@@ -51,6 +51,8 @@
 #include "Theme.h"
 #include "Widgets.h"
 #include "Factory.h"
+#include "audio/AudioMixer.h"
+#include "pool/SoundPool.h"
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
@@ -274,6 +276,13 @@ static std::vector<editor::EnumEntry> entriesAudioAttenuation = {
     { (int)AudioSourceAttenuation::INVERSE_DISTANCE, "Inverse Distance" },
     { (int)AudioSourceAttenuation::LINEAR_DISTANCE, "Linear Distance" },
     { (int)AudioSourceAttenuation::EXPONENTIAL_DISTANCE, "Exponential Distance" }
+};
+
+static std::vector<editor::EnumEntry> entriesAudioLoadType = {
+    { (int)AudioLoadType::Auto, "Auto" },
+    { (int)AudioLoadType::DecompressOnLoad, "Decompress On Load" },
+    { (int)AudioLoadType::CompressedInMemory, "Compressed In Memory" },
+    { (int)AudioLoadType::Streaming, "Streaming" }
 };
 
 static std::vector<editor::EnumEntry> entriesUIDocumentRenderMode = {
@@ -713,7 +722,6 @@ bool editor::InspectorWindow::loadSoundPreview(SceneProject* sceneProject, Entit
         return false;
     }
 
-    ap.sample.setSingleInstance(true);
     ap.sample.setVolume(1.0f);
     ap.loaded = true;
     ap.sceneId = sceneProject->id;
@@ -723,6 +731,17 @@ bool editor::InspectorWindow::loadSoundPreview(SceneProject* sceneProject, Entit
     ap.error.clear();
 
     return true;
+}
+
+// the preview plays through the source's mixer group (its id, else its name; Master when neither is in the mixer)
+static unsigned int playPreviewVoice(SoLoud::AudioSource& sample, const AudioSourceComponent& audio) {
+    std::string group = audio.outputGroup.empty() ? "" : AudioMixer::findGroupId(audio.outputGroup);
+    if (!audio.outputGroupName.empty()) {
+        const std::string byName = AudioMixer::findGroupId(audio.outputGroupName);
+        if (!byName.empty()) group = byName;
+    }
+    const unsigned int handle = AudioMixer::play(group, sample, false, Vector3(0, 0, 0), static_cast<float>(audio.volume), false, 0.0);
+    return handle;
 }
 
 bool editor::InspectorWindow::startSoundPreview(SceneProject* sceneProject, Entity entity, const AudioSourceComponent& audio) {
@@ -738,7 +757,7 @@ bool editor::InspectorWindow::startSoundPreview(SceneProject* sceneProject, Enti
         return true;
     }
 
-    ap.handle = AudioSystem::getSoloud().play(ap.sample);
+    ap.handle = playPreviewVoice(ap.sample, audio);
     if (ap.handle == 0) {
         ap.error = "Failed to start audio preview.";
         return false;
@@ -748,6 +767,7 @@ bool editor::InspectorWindow::startSoundPreview(SceneProject* sceneProject, Enti
     ap.playing = true;
     ap.time = 0.0;
     applySoundPreviewSettings(audio);
+    AudioSystem::getSoloud().setPause(ap.handle, false);
 
     return true;
 }
@@ -770,7 +790,7 @@ bool editor::InspectorWindow::seekSoundPreview(SceneProject* sceneProject, Entit
     SoundPreviewRuntime& ap = soundPreviewRuntime;
     bool shouldKeepPlaying = ap.active && ap.playing;
     if (!ap.active || ap.handle == 0) {
-        ap.handle = AudioSystem::getSoloud().play(ap.sample);
+        ap.handle = playPreviewVoice(ap.sample, audio);
         if (ap.handle == 0) {
             ap.error = "Failed to start audio preview.";
             return false;
@@ -808,7 +828,7 @@ void editor::InspectorWindow::updateSoundPreview(const AudioSourceComponent& aud
     }
 
     applySoundPreviewSettings(audio);
-    ap.time = soloud.getStreamTime(ap.handle);
+    ap.time = soloud.getStreamPosition(ap.handle);
 }
 
 std::string editor::InspectorWindow::formatPropertyLabelValue(const PropertyData& prop) {
@@ -8613,10 +8633,67 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
 
     ImGui::SeparatorText("Playback");
 
-    beginTable(cpType, getLabelSize("Inaudible Must Tick"), "audio_playback_settings");
+    beginTable(cpType, getLabelSize("Ignore Listener Pause"), "audio_playback_settings");
+
+    // Output: the mixer group (Unity's outputAudioMixerGroup), by name; "" is Master
+    {
+        const std::vector<std::string> groups = AudioMixer::getGroupNames();
+        auto shownGroup = [](const AudioSourceComponent& audio) {
+            if (!audio.outputGroup.empty()) {
+                const std::string name = AudioMixer::getGroupName(audio.outputGroup);
+                if (!name.empty()) return name;
+            }
+            return audio.outputGroupName;
+        };
+        const std::string current = shownGroup(sceneProject->scene->getComponent<AudioSourceComponent>(entities[0]));
+        bool different = false;
+        for (Entity entity : entities) {
+            different = different || shownGroup(sceneProject->scene->getComponent<AudioSourceComponent>(entity)) != current;
+        }
+        const bool missing = !current.empty() && !AudioMixer::hasGroup(current);
+        const std::string masterName = groups.empty() ? std::string("Master") : groups[0];
+
+        prefabRowProperty = "outputGroup";
+        bool reset = propertyHeader("Output", compactSettings.secondColSize * 1.6f, !current.empty() && !different);
+        std::string chosen;
+        bool choose = false;
+        const std::string preview = different ? std::string("-") : current.empty() ? masterName :
+                                    missing ? current + " (not in the mixer)" : current;
+        if (ImGui::BeginCombo("##audio_output_group", preview.c_str())) {
+            for (size_t i = 0; i < groups.size(); i++) {
+                // Master is the empty name: a source keeps playing through it whatever it is called
+                const std::string value = i == 0 ? "" : groups[i];
+                const bool selected = !different && value == current;
+                if (ImGui::Selectable(groups[i].c_str(), selected)) {
+                    chosen = value;
+                    choose = true;
+                }
+            }
+            ImGui::Separator();
+            if (ImGui::Selectable(ICON_FA_SLIDERS " Open Audio Mixer...")) {
+                editor::getEditorHost().openAudioMixerWindow();
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::SetItemTooltip("%s", AudioMixer::hasAsset() ? ("The mixer group it plays through (" + AudioMixer::getPath() + ")").c_str()
+                                                           : "The mixer group it plays through. The project has no mixer yet: Window > Audio > Audio Mixer.");
+        if (reset) {
+            chosen = "";
+            choose = true;
+        }
+        if (choose && (different || chosen != current)) {
+            auto* multi = new MultiPropertyCmd();
+            for (Entity entity : entities) {
+                multi->addPropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "outputGroup", chosen);
+            }
+            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(multi);
+        }
+    }
 
     propertyRow(RowPropertyType::DoublePositive, cpType, "volume", "Volume", sceneProject, entities, doubleSettings);
-    propertyRow(RowPropertyType::FloatPositive, cpType, "speed", "Speed", sceneProject, entities, floatSettings);
+    RowSettings pitchSettings = floatSettings;
+    pitchSettings.help = "Playback speed: 2 is an octave up and twice as fast (Unity's Pitch; Lua pitch or speed)";
+    propertyRow(RowPropertyType::FloatPositive, cpType, "speed", "Pitch", sceneProject, entities, pitchSettings);
 
     RowSettings panSettings = floatSettings;
     panSettings.help = "-1 left, 0 center, 1 right";
@@ -8628,6 +8705,44 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
     propertyRow(RowPropertyType::Bool, cpType, "enableClocked", "Clocked", sceneProject, entities, compactSettings);
     propertyRow(RowPropertyType::Bool, cpType, "inaudibleBehaviorMustTick", "Inaudible Must Tick", sceneProject, entities, compactSettings);
     propertyRow(RowPropertyType::Bool, cpType, "inaudibleBehaviorKill", "Inaudible Kill", sceneProject, entities, compactSettings);
+
+    RowSettings prioritySettings = compactSettings;
+    prioritySettings.stepSize = 1.0f;
+    prioritySettings.intMin = 0;
+    prioritySettings.intMax = 256;
+    prioritySettings.help = "0 is the most important, 256 the least (Unity). Past the voice limit (Project Settings > Audio) the least important voice is stopped.";
+    propertyRow(RowPropertyType::Int, cpType, "priority", "Priority", sceneProject, entities, prioritySettings);
+
+    RowSettings voicesSettings = compactSettings;
+    voicesSettings.stepSize = 1.0f;
+    voicesSettings.intMin = 1;
+    voicesSettings.intMax = 64;
+    voicesSettings.help = "Voices of this source at once (the clip and its PlayOneShot voices); past it the oldest one-shot is stopped.";
+    propertyRow(RowPropertyType::Int, cpType, "maxVoices", "Max Voices", sceneProject, entities, voicesSettings);
+
+    RowSettings listenerSettings = compactSettings;
+    listenerSettings.help = "Keeps playing while AudioListener.pause is set (the sounds of a pause menu)";
+    propertyRow(RowPropertyType::Bool, cpType, "ignoreListenerPause", "Ignore Listener Pause", sceneProject, entities, listenerSettings);
+
+    RowSettings loadTypeSettings;
+    loadTypeSettings.enumEntries = &entriesAudioLoadType;
+    loadTypeSettings.help = "Auto streams files of 1 MiB or more (music) and decodes smaller ones (effects, no latency)";
+    propertyRow(RowPropertyType::Enum, cpType, "loadType", "Load Type", sceneProject, entities, loadTypeSettings);
+    if (entities.size() == 1) {
+        const AudioSourceComponent& audio = sceneProject->scene->getComponent<AudioSourceComponent>(entities[0]);
+        if (!audio.filename.empty()) {
+            const uint64_t bytes = SoundPool::fileSize(audio.filename);
+            const AudioLoadType resolved = SoundPool::resolveLoadType(audio.filename, audio.loadType);
+            const char* names[] = {"Auto", "Decompress On Load", "Compressed In Memory", "Streaming"};
+            char text[160];
+            snprintf(text, sizeof(text), "%s%s, file %.2f MB", audio.loadType == AudioLoadType::Auto ? "Auto: " : "",
+                     names[(int)resolved], bytes / (1024.0 * 1024.0));
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TableNextColumn();
+            ImGui::TextDisabled("%s", text);
+        }
+    }
 
     bool show3DSettings = false;
     for (Entity entity : entities){

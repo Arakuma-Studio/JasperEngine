@@ -386,6 +386,9 @@ namespace jasperengine::editor {
         // one project undo step (AnimationClipDocument::create), then renamed in place (the
         // App's createClipAsset hook, set by this window)
         void assetsCreateAnimationClip();
+        // Assets > Create > Audio Mixer: "New Audio Mixer.mixer" (Master only) in the current folder,
+        // one project undo step, then renamed in place
+        void assetsCreateAudioMixer();
         void assetsShowInFileManager();
         void assetsOpenSelected();
         void assetsRenameSelected();

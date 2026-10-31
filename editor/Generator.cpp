@@ -2112,7 +2112,7 @@ bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& scen
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const std::string& inputActionsJson){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const std::string& inputActionsJson, const AudioSettings& audioSettings){
     // the generated sources (main.cpp, scene and prefab factories) live in the editor's internal
     // folder, which an MCP call's deny-by-default guard refuses otherwise (util/SafeWrite.h)
     safewrite::EditorInternal ownInternal(projectInternalPath);
@@ -2349,6 +2349,10 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     // Project Settings > Input (the engine starts with Unity's defaults), before any script reads it
     mainContent += inputActionsInitSource(inputActionsJson);
 
+    // Project Settings > Audio: the voices, then the mixer (its remembered values come back
+    // before any sound plays)
+    mainContent += audioInitSource(audioSettings);
+
     mainContent += "\n";
 
     // Register all stacks with SceneManager
@@ -2440,6 +2444,20 @@ std::string editor::Generator::inputActionsInitSource(const std::string& inputAc
         literal += (literal.empty() ? "" : "\n        ") + std::string("R\"") + delimiter + "(" + piece + ")" + delimiter + "\"";
     }
     return "    InputActions::loadJson(" + literal + ", nullptr);\n";
+}
+
+std::string editor::Generator::audioInitSource(const AudioSettings& audioSettings) {
+    std::string source;
+    const AudioSettings defaults;
+    if (audioSettings.maxRealVoices != defaults.maxRealVoices || audioSettings.maxVoices != defaults.maxVoices ||
+        audioSettings.sampleRate != defaults.sampleRate) {
+        source += "    AudioSystem::configure({" + std::to_string(audioSettings.maxRealVoices) + ", " +
+                  std::to_string(audioSettings.maxVoices) + ", " + std::to_string(audioSettings.sampleRate) + "});\n";
+    }
+    if (!audioSettings.mixer.empty()) {
+        source += "    AudioMixer::load(" + Factory::formatString(audioSettings.mixer) + ");\n";
+    }
+    return source;
 }
 
 std::string editor::Generator::resolveCMakePath(const std::string& userPath) {
