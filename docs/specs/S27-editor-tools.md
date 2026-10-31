@@ -749,9 +749,10 @@ and `using AnimationCurve = Curve;`. `MinMaxCurve` must have
 7. **D7 `fromEase` adds keys where 16 are not enough.** AC3 asks every named ease within 0.01;
    with cubic Hermite segments Elastic In Out needs about 24 keys (its central oscillations), so
    `fromEase(type, keys = 16)` starts from `keys` and adds keys, up to 64, while the curve is
-   further than 0.005 from the ease. `fromFunction(f, 16)` (S20's legacy sampler) keeps its
-   exact count. Each key is placed by a local search around the worst point, which puts keys on
-   the bounces' kinks (their parabolic arcs then are exact).
+   further than 0.005 from the ease, each new key placed by a local search around the worst point
+   (keys land on the bounces' kinks, whose parabolic arcs then are exact). `fromFunction(f, 16)`
+   without a tolerance is S20's legacy sampler exactly (same keys, so converted effects and their
+   goldens are unchanged).
 8. **D8 `create_project` without `template` keeps today's project.** R42 makes `empty` the
    default. MCP tests and agents rely on `create_project` giving one untitled 3D scene and no
    files; a template is asked for by name (`template: "empty"`). The Project Hub always uses a

@@ -427,9 +427,9 @@ Curve Curve::fromFunction(const std::function<float(float)>& function, int keyCo
         return key;
     };
     // the ends, then a key where the curve is worst, until there are `keys` (kinks and the steep
-    // parts get the keys). Each new key is placed by a search around the worst point: the time
-    // giving the smallest error over the two segments it splits (a key on a kink makes the
-    // bounces' parabolic arcs exact)
+    // parts get the keys). With a tolerance each new key is placed by a search around the worst
+    // point: the time giving the smallest error over the two segments it splits (a key on a kink
+    // makes the bounces' parabolic arcs exact)
     Curve curve;
     curve.keys = {keyAt(0.0f), keyAt(1.0f)};
     std::vector<float> target(kSamples + 1);
@@ -465,9 +465,11 @@ Curve Curve::fromFunction(const std::function<float(float)>& function, int keyCo
         const float left = std::prev(upper)->time, right = upper->time;
         CurveKey best = keyAt(worstT);
         float bestError = INFINITY;
+        // only when fitting to a tolerance (fromEase): without one the keys stay on the worst
+        // points, S20's legacy sampler exactly (converted effects keep their curves)
         constexpr int kCandidates = 64;
         const float reach = 3.0f / (float)kSamples;
-        for (int c = 0; c <= kCandidates; c++){
+        for (int c = 0; tolerance > 0.0f && c <= kCandidates; c++){
             const float t = worstT - reach + 2.0f * reach * (float)c / (float)kCandidates;
             if (!(t > left) || !(t < right)) continue;
             Curve trial = curve;
