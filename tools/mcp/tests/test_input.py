@@ -246,9 +246,12 @@ async def test_wait_cut_short_releases_actions(ed: Editor):
         await send(ed, {"type": "axis", "name": "Vertical", "value": 0.5})      # held before: stays
         r = await ed.call_raw("wait", {"until": "Input.getButton('Jump') and Input.getAxis('Horizontal') > 0.9",
                                        "frames": 200,
-                                       "input": [{"type": "action", "name": "Jump", "phase": "press", "hold_frames": 60},
-                                                 {"type": "axis", "name": "Horizontal", "value": 1, "hold_frames": 60},
-                                                 {"type": "axis", "name": "Vertical", "value": -1, "hold_frames": 60}]})
+                                       # events run one after another: these three hold at once, then the
+                                       # trailing wait is what the met condition cuts short
+                                       "input": [{"type": "action", "name": "Jump", "phase": "down"},
+                                                 {"type": "axis", "name": "Horizontal", "value": 1},
+                                                 {"type": "axis", "name": "Vertical", "value": -1},
+                                                 {"type": "wait", "frames": 120}]})
         ed.check(not r.is_error, r.text[:400])
         await ed.call("wait", frames=2)
         ed.check_eq(await lua(ed, "return Input.getButton('Jump'), Input.getAxis('Horizontal'), Input.getAxis('Vertical')"),
