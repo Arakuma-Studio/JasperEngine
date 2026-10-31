@@ -111,8 +111,8 @@ LIMITS.update({"user_settings": 550})
 # lines and trails: no new tool; create_entity's type "trail_renderer" paid by a shorter create_entity
 # description, set_shape_points' line text reworded; measured on the merged tree: total 106692 (106687 before)
 # native-bridge: the native_plugins tool (list / create a plugin for every platform with its Lua mock)
-# measured 1022; merged with gaps/http and main: MEASURED
-TOTAL_LIMIT = 107829
+# measured 1022; merged with gaps/http and main (lines-trails): 151 tools measured 107834, the limit set to it
+TOTAL_LIMIT = 107834
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
