@@ -501,6 +501,57 @@ async def test_cli_anims_masks_and_controllers():
         check_eq(data["checked"], {"anims": 1}, f"--files a controller: {data}")
 
 
+MASK_GUID = "11111111111111111111111111111111"
+CONTROLLER_GUID = "22222222222222222222222222222222"
+# Animation Players naming masks and a controller (anim layers): one there, one missing, one moved
+# (found by its GUID), a controller missing
+LAYER_SCENE = """name: Layers
+entities:
+  - name: Hero
+    components:
+      animationplayer:
+        clips: []
+        layers:
+          - name: Base Layer
+          - name: Arm
+            mask: anim/arm.mask
+            maskGuid: 11111111111111111111111111111111
+          - name: Gone
+            mask: anim/gone.mask
+          - name: Moved
+            mask: old/arm.mask
+            maskGuid: 11111111111111111111111111111111
+        controller: anim/gone.controller
+        controllerGuid: 33333333333333333333333333333333
+  - name: Other
+    components:
+      animationplayer:
+        clips: []
+        controller: old/hero.controller
+        controllerGuid: 22222222222222222222222222222222
+"""
+
+
+async def test_cli_anims_player_mask_and_controller_references():
+    with scratch_project() as project:
+        write(project, "assets/anim/arm.mask", json.dumps({"format": "jasperengine.mask", "version": 1, "guid": MASK_GUID,
+                                                          "default": 0, "transforms": []}, indent=2) + "\n")
+        write(project, "assets/anim/hero.controller", json.dumps({"format": "jasperengine.controller", "version": 1, "guid": CONTROLLER_GUID,
+                                                                 "parameters": [], "layers": [{"name": "Base Layer", "states": []}]}, indent=2) + "\n")
+        write(project, "Layers.scene", LAYER_SCENE)
+        code, data = run_json(project, "--anims")
+        scene = sorted((f["severity"], f["message"]) for f in data["findings"] if f["path"] == "Layers.scene")
+        check_eq(code, 1, f"errors exit 1: {data}")
+        check_eq(len(scene), 4, f"the missing mask and controller, the moved mask and controller: {scene}")
+        check(any(s == "error" and "layers[2].mask 'anim/gone.mask'" in m and "does not exist" in m for s, m in scene), f"missing mask: {scene}")
+        check(any(s == "error" and "controller 'anim/gone.controller'" in m and "does not exist" in m for s, m in scene),
+              f"missing controller: {scene}")
+        check(any(s == "warning" and "'old/arm.mask'" in m and "moved to 'assets/anim/arm.mask'" in m for s, m in scene),
+              f"a moved mask found by its GUID: {scene}")
+        check(any(s == "warning" and "'old/hero.controller'" in m and "moved to 'assets/anim/hero.controller'" in m for s, m in scene),
+              f"a moved controller found by its GUID: {scene}")
+
+
 # ---------------------------------------------------------------------------- CLI: vertex animations
 
 VAT_MODELS = harness.REPO / "tools" / "fixtures" / "vertex-animation" / "assets" / "models"

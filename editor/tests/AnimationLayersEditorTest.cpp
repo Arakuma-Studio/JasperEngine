@@ -326,6 +326,11 @@ TEST(AnimationLayersEditor, LayerEditsMoveTheirEntries) {
     EXPECT_EQ(result.clips[1].layer, 0) << "its entries move to the base layer";
     EXPECT_EQ(result.clips[2].layer, 1) << "the layers above move down";
     EXPECT_FALSE(PlayerLayerActions::computeRemove(player, 0, result, &error));
+    // an entry on a layer the player does not have (it plays on the base) is not moved onto one
+    AnimationPlayerComponent stray = player;
+    stray.clips[2].layer = 3;
+    ASSERT_TRUE(PlayerLayerActions::computeRemove(stray, 1, result, &error));
+    EXPECT_EQ(result.clips[2].layer, 3) << "out of range before, out of range after";
 
     EXPECT_FALSE(PlayerLayerActions::computeRename(player, 1, "Hit", result, &error)) << "names are unique";
     EXPECT_FALSE(PlayerLayerActions::computeAdd(player, layerOf("Holding"), result, &error));

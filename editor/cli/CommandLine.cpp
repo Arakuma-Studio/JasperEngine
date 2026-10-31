@@ -85,6 +85,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #if defined(_WIN32)
@@ -2101,6 +2102,41 @@ void collectPlayerClips(const YAML::Node& node, std::vector<std::pair<std::strin
     }
 }
 
+// The masks (layers[i].mask) and the controller of every Animation Player under a node:
+// {what, path, guid}, what being "layers[i].mask" or "controller"
+struct PlayerAssetReference {
+    std::string what;
+    std::string path;
+    std::string guid;
+};
+
+void collectPlayerAssets(const YAML::Node& node, std::vector<PlayerAssetReference>& out, int depth = 0) {
+    if (depth > 64 || !node) return;
+    auto scalar = [](const YAML::Node& map, const char* key) {
+        const YAML::Node value = map[key];
+        return value && value.IsScalar() ? value.Scalar() : std::string();
+    };
+    if (node.IsMap()) {
+        for (const auto& item : node) {
+            const YAML::Node value = item.second;
+            if (item.first.IsScalar() && item.first.Scalar() == "animationplayer" && value.IsMap()) {
+                if (value["layers"] && value["layers"].IsSequence()) {
+                    for (size_t i = 0; i < value["layers"].size(); i++) {
+                        const YAML::Node layer = value["layers"][i];
+                        if (!layer.IsMap() || scalar(layer, "mask").empty()) continue;
+                        out.push_back({"layers[" + std::to_string(i) + "].mask", scalar(layer, "mask"), scalar(layer, "maskGuid")});
+                    }
+                }
+                if (!scalar(value, "controller").empty()) out.push_back({"controller", scalar(value, "controller"), scalar(value, "controllerGuid")});
+                continue;
+            }
+            collectPlayerAssets(value, out, depth + 1);
+        }
+    } else if (node.IsSequence()) {
+        for (const YAML::Node& child : node) collectPlayerAssets(child, out, depth + 1);
+    }
+}
+
 // The glTF animation names of a model file, read from its JSON without the engine: a .gltf's
 // text, a .glb's JSON chunk, and for an .fbx the .glb the editor imported it to (none yet:
 // false, nothing to compare with). Empty names stay empty (subClipNames names them).
@@ -2151,7 +2187,9 @@ bool readModelAnimationNames(const fs::path& root, const fs::path& assets, const
 // Avatar Masks (.mask: the format) and Animator Controllers (.controller: the format and
 // anim::validateController, with the clips it names read here: .anim files parsed, model
 // sub-clips looked up in the model)
-void checkAnimAssetFiles(const fs::path& root, const std::vector<fs::path>& masks, const std::vector<fs::path>& controllers, ClipCheck& check) {
+// `guids`: each readable mask's and controller's GUID -> its project-relative path
+void checkAnimAssetFiles(const fs::path& root, const std::vector<fs::path>& masks, const std::vector<fs::path>& controllers, ClipCheck& check,
+                         std::map<std::string, std::string>& guids) {
     const fs::path assets = ProjectChecks::assetsRootFromProjectFile(root);
     for (const fs::path& file : masks) {
         std::string text;
@@ -2163,6 +2201,7 @@ void checkAnimAssetFiles(const fs::path& root, const std::vector<fs::path>& mask
             check.findings.push_back({"anim", rel, parsed.error.line, parsed.error.column, "error", parsed.error.message});
             continue;
         }
+        if (!parsed.data->guid.empty()) guids[parsed.data->guid] = rel;
         for (const ClipWarning& warning : parsed.warnings) {
             check.findings.push_back({"anim", rel, 0, 0, "warning", (warning.path.empty() ? "" : warning.path + ": ") + warning.message});
         }
@@ -2210,6 +2249,7 @@ void checkAnimAssetFiles(const fs::path& root, const std::vector<fs::path>& mask
             check.findings.push_back({"anim", rel, parsed.error.line, parsed.error.column, "error", parsed.error.message});
             continue;
         }
+        if (!parsed.data->guid.empty()) guids[parsed.data->guid] = rel;
         for (const ClipWarning& warning : parsed.warnings) {
             check.findings.push_back({"anim", rel, 0, 0, "warning", (warning.path.empty() ? "" : warning.path + ": ") + warning.message});
         }
@@ -2240,7 +2280,8 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
         masks = ProjectChecks::findProjectFiles(root, {".mask"});
         controllers = ProjectChecks::findProjectFiles(root, {".controller"});
     }
-    checkAnimAssetFiles(root, masks, controllers, check);
+    std::map<std::string, std::string> assetGuids;   // mask / controller guid -> project-relative path
+    checkAnimAssetFiles(root, masks, controllers, check, assetGuids);
     const std::vector<fs::path> clips = all ? ProjectChecks::findProjectFiles(root, {".anim"}) : given;
     std::map<std::string, std::string> guids;   // guid -> project-relative path
     for (const fs::path& file : clips) {
@@ -2263,9 +2304,12 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
     std::map<std::string, std::pair<bool, std::vector<std::string>>> modelNames;   // model file -> (read, animation names)
     for (const fs::path& file : ProjectChecks::findProjectFiles(root, {".scene", ".prefab"})) {
         std::vector<std::pair<std::string, std::string>> entries;
+        std::vector<PlayerAssetReference> assetReferences;
         const std::string rel = ProjectChecks::projectRelative(root, file);
         try {
-            collectPlayerClips(YAML::LoadFile(file.string()), entries);
+            const YAML::Node loaded = YAML::LoadFile(file.string());
+            collectPlayerClips(loaded, entries);
+            collectPlayerAssets(loaded, assetReferences);
         } catch (const std::exception& e) {
             check.findings.push_back({"anim", rel, 0, 0, "warning", std::string("could not read Animation Player entries: ") + e.what()});
             continue;
@@ -2319,6 +2363,26 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
             } else {
                 check.findings.push_back({"anim", rel, 0, 0, "error", "an Animation Player plays '" + clip + "', which does not exist "
                                           "(paths are relative to the assets folder)"});
+            }
+        }
+        // its masks and controllers, as its clips (the editor resolves their GUIDs first too)
+        std::set<std::tuple<std::string, std::string, std::string>> assetsReported;
+        for (const PlayerAssetReference& reference : assetReferences) {
+            if (!assetsReported.insert({reference.what, reference.path, reference.guid}).second) continue;
+            const fs::path target = (assets / fs::u8path(reference.path)).lexically_normal();
+            const std::string what = "an Animation Player's " + reference.what + " '" + reference.path + "'";
+            auto named = reference.guid.empty() ? assetGuids.end() : assetGuids.find(reference.guid);
+            std::error_code ec;
+            if (fs::is_regular_file(target, ec)) {
+                if (named != assetGuids.end() && named->second != ProjectChecks::projectRelative(root, target)) {
+                    check.findings.push_back({"anim", rel, 0, 0, "warning", what + " has the GUID of '" + named->second +
+                                              "', which the editor uses (it resolves the GUID first): set it again in the editor, or fix the GUID"});
+                }
+            } else if (named != assetGuids.end()) {
+                check.findings.push_back({"anim", rel, 0, 0, "warning", what + " moved to '" + named->second +
+                                          "' (found by its GUID; the editor updates the path when the file is opened and saved)"});
+            } else {
+                check.findings.push_back({"anim", rel, 0, 0, "error", what + " does not exist (paths are relative to the assets folder)"});
             }
         }
     }

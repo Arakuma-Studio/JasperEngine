@@ -42,6 +42,27 @@ namespace {
         return false;
     }
 
+    // a project-relative path of a new .mask / .controller to write (ClipSceneActions' check of
+    // clips): inside the project and its assets folder, with the extension; `path` normalized
+    bool checkNewAssetPath(Project* project, std::string& path, bool (*isKind)(const std::string&), const char* kind, std::string& error){
+        if (path.empty()) return fail(error, std::string("no ") + kind + " path given");
+        const std::string given = path;
+        fs::path absolute = fs::u8path(path);
+        absolute = (absolute.is_absolute() ? absolute : project->getProjectPath() / absolute).lexically_normal();
+        const fs::path relative = project->normalizeToProjectRelative(absolute);
+        const std::string text = relative.generic_string();
+        if (relative.empty() || relative.is_absolute() || text.compare(0, 2, "..") == 0) return fail(error, "'" + given + "' is outside the project");
+        if (!isKind(text)) return fail(error, "'" + given + "' is not a " + kind + " path");
+        if (!project->isInsideAssetsPath(absolute)){
+            return fail(error, "'" + given + "' is outside the assets folder (" +
+                        project->normalizeToProjectRelative(project->getAssetsPath()).generic_string() + "): the runtime can't load it");
+        }
+        std::error_code ec;
+        if (fs::exists(absolute, ec)) return fail(error, "'" + given + "' exists: choose a new file");
+        path = text;
+        return true;
+    }
+
     std::string readText(const fs::path& path){
         std::ifstream file(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
@@ -237,7 +258,7 @@ std::string animlayersui::freeAssetPath(Project* project, const std::string& dir
     return (dir / fs::u8path(stem + extension)).generic_string();
 }
 
-bool animlayersui::createMaskFromSelection(Project* project, uint32_t sceneId, Entity entity, int layer, const std::string& maskPath,
+bool animlayersui::createMaskFromSelection(Project* project, uint32_t sceneId, Entity entity, int layer, const std::string& maskPathIn,
                                            const std::vector<Entity>& selection, std::string& error){
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return fail(error, "no scene");
@@ -246,9 +267,8 @@ bool animlayersui::createMaskFromSelection(Project* project, uint32_t sceneId, E
     if (!player) return fail(error, "the GameObject has no Animation Player");
     std::vector<AnimationPlayerLayer> layers = anim::playerLayers(*player);
     if (layer < 0 || (size_t)layer >= layers.size()) return fail(error, "no layer " + std::to_string(layer));
-    if (!Util::isAvatarMaskFile(maskPath)) return fail(error, "'" + maskPath + "' is not a .mask path");
-    std::error_code ec;
-    if (fs::exists(project->getProjectPath() / fs::u8path(maskPath), ec)) return fail(error, "'" + maskPath + "' exists: choose a new file");
+    std::string maskPath = maskPathIn;
+    if (!checkNewAssetPath(project, maskPath, Util::isAvatarMaskFile, ".mask", error)) return false;
     anim::AvatarMaskData data;
     std::string why;
     if (!maskFromSelection(scene, entity, selection, data, &why)) return fail(error, why);
@@ -275,21 +295,19 @@ bool animlayersui::createControllerFromClips(Project* project, uint32_t sceneId,
     if (!sceneProject || !sceneProject->scene) return fail(error, "no scene");
     const AnimationPlayerComponent* player = sceneProject->scene->findComponent<AnimationPlayerComponent>(entity);
     if (!player) return fail(error, "the GameObject has no Animation Player");
-    if (!Util::isAnimatorControllerFile(controllerPath)) return fail(error, "'" + controllerPath + "' is not a .controller path");
     anim::ControllerData data = controllerFromClips(*player);
     data.guid = anim::generateClipGuid();
     return createControllerFile(project, sceneId, entity, controllerPath, data, error);
 }
 
-bool animlayersui::createControllerFile(Project* project, uint32_t sceneId, Entity entity, const std::string& controllerPath,
+bool animlayersui::createControllerFile(Project* project, uint32_t sceneId, Entity entity, const std::string& controllerPathIn,
                                         const anim::ControllerData& input, std::string& error){
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene || !sceneProject->scene->findComponent<AnimationPlayerComponent>(entity)){
         return fail(error, "the GameObject has no Animation Player");
     }
-    if (!Util::isAnimatorControllerFile(controllerPath)) return fail(error, "'" + controllerPath + "' is not a .controller path");
-    std::error_code ec;
-    if (fs::exists(project->getProjectPath() / fs::u8path(controllerPath), ec)) return fail(error, "'" + controllerPath + "' exists: choose a new file");
+    std::string controllerPath = controllerPathIn;
+    if (!checkNewAssetPath(project, controllerPath, Util::isAnimatorControllerFile, ".controller", error)) return false;
     anim::ControllerData data = input;
     if (data.guid.empty()) data.guid = anim::generateClipGuid();
     std::vector<Command*> commands;

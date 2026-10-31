@@ -112,6 +112,15 @@ async def test_all_or_nothing_and_undo(ed: Editor):
     ed.check("Velocity" in (ed.project / CONTROLLER).read_text(), "redo")
     await ed.call("undo", scope="project")
 
+    # remove_parameter clears the blend trees reading it, as the Animator window does
+    r = await ed.call("edit_animator", controller="assets/anim/mix.controller", create={}, ops=[
+        {"op": "add_parameter", "name": "Blend", "type": "float"},
+        {"op": "add_state", "name": "Mix", "blend_tree": {"parameter": "Blend", "children": [
+            {"clip": "assets/anim/idle.anim", "threshold": 0}, {"clip": "assets/anim/running.anim", "threshold": 1}]}}])
+    ed.check_eq(r["layers"][0]["states"][0]["blend_tree"]["parameter"], "Blend", "the tree reads Blend")
+    r = await ed.call("edit_animator", controller="assets/anim/mix.controller", ops=[{"op": "remove_parameter", "name": "Blend"}])
+    ed.check_eq(r["layers"][0]["states"][0]["blend_tree"]["parameter"], "", "remove_parameter cleared the tree's parameter")
+
     got = await ed.call("get_animation", controller=CONTROLLER)
     ed.check_eq([l["name"] for l in got["layers"]], ["Base Layer", "Holding"], "get_animation {controller}")
     ed.check(warned(got, "layers[0].states[2]", "dead end"), "with its warnings")
@@ -144,6 +153,9 @@ async def test_create_from_entity_and_write_file(ed: Editor):
     box_id = box["entity"]["id"] if "entity" in box else box["id"]
     await ed.call("add_component", entity=box_id, component="animationplayer", values={"animationplayer": {
         "clips": [{"clip": "assets/anim/idle.anim", "name": "Idle"}, {"clip": "assets/anim/running.anim", "name": "Run"}], "defaultClip": "Run"}})
+    # a new controller file stays in the assets folder
+    await refused(ed, "edit_animator", {"controller": "box.controller", "create": {"from_entity": box_id}}, "inside the assets")
+    ed.check(not (ed.project / "box.controller").exists(), "nothing written outside the assets folder")
     r = await ed.call_raw("edit_animator", {"controller": "assets/anim/box.controller", "create": {"from_entity": box_id},
                                              "ops": [{"op": "add_parameter", "name": "Go", "type": "trigger"}]})
     ed.check(not r.is_error, r.text[:600])

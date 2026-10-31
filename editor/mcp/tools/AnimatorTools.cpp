@@ -20,6 +20,7 @@
 #include "animation/AnimAssetDocument.h"
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimationPlayerRuntime.h"
+#include "animation/AnimatorEdits.h"
 #include "animation/AvatarMask.h"
 #include "animation/ClipBinding.h"
 #include "util/FileUtils.h"
@@ -361,18 +362,9 @@ bool applyOp(Project* project, const Json& op, const std::string& where, anim::C
         }
         if (index < 0) return fail(error, field(where, "name"), "no parameter \"" + name + "\"");
         if (kind == "remove_parameter") {
-            // the conditions reading it go; speed parameters and blend trees lose it (validation says so)
-            data.parameters.erase(data.parameters.begin() + index);
-            for (anim::ControllerLayer& layer : data.layers) {
-                for (anim::ControllerTransition& transition : layer.transitions) {
-                    transition.conditions.erase(std::remove_if(transition.conditions.begin(), transition.conditions.end(),
-                                                               [&](const anim::ControllerCondition& c) { return c.parameter == name; }),
-                                                transition.conditions.end());
-                }
-                for (anim::ControllerState& state : layer.states) {
-                    if (state.speedParameter == name) state.speedParameter.clear();
-                }
-            }
+            // the conditions reading it go; speed parameters and blend trees lose it (validation
+            // says so), as in the Animator window
+            animator::removeParameter(data, index);
             return true;
         }
         anim::ControllerParameter& parameter = data.parameters[(size_t)index];

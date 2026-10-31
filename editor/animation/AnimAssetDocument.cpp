@@ -339,7 +339,11 @@ std::vector<AnimAssetHintEdit> jasperengine::editor::remapControllerReferences(P
         edits.push_back({file, text, newText});
         written.push_back(file);
     }
-    if (!written.empty()) AnimatorControllerDocument::filesChanged(written, project);
+    if (!written.empty()){
+        AnimatorControllerDocument::filesChanged(written, project);
+        // the MCP file sync: rewritten by the editor, not changed outside it
+        if (registry<anim::ControllerData>().filesWrittenHook) registry<anim::ControllerData>().filesWrittenHook(written);
+    }
     return edits;
 }
 

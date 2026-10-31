@@ -92,6 +92,15 @@ namespace jasperengine::editor{
         uint64_t maskBuiltRevision = 0;
         std::string maskBuiltPath;
         std::shared_ptr<const anim::AvatarMask> maskBuilt;
+        // the merge key of the mask field being dragged: a new one per gesture (a later drag of
+        // the same field is its own undo step)
+        std::string maskMergeKey;
+        uint64_t maskGesture = 0;
+
+        const std::string& maskGestureKey(const char* what){
+            if (ImGui::IsItemActivated() || maskMergeKey.empty()) maskMergeKey = std::string("mask:") + what + ":" + std::to_string(++maskGesture);
+            return maskMergeKey;
+        }
 
         void forgetProject(const fs::path& path){
             if (project == path) return;
@@ -870,10 +879,12 @@ void editor::InspectorWindow::drawAvatarMaskAsset(const fs::path& asset){
     ImGui::SeparatorText("Default");
     float defaultWeight = data.defaultWeight;
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-    if (ImGui::SliderFloat("##mask_default", &defaultWeight, 0.0f, 1.0f, "Default %.2f")){
+    const bool defaultChanged = ImGui::SliderFloat("##mask_default", &defaultWeight, 0.0f, 1.0f, "Default %.2f");
+    const std::string defaultKey = state.maskGestureKey("default");
+    if (defaultChanged){
         anim::AvatarMaskData edited = data;
         edited.defaultWeight = std::clamp(defaultWeight, 0.0f, 1.0f);
-        commit(edited, "mask-default");
+        commit(edited, defaultKey);
     }
     UIProbe::item("mask.default");
     ImGui::SetItemTooltip("The weight of every bone no rule below covers (1: an empty mask passes everything)");
@@ -977,11 +988,13 @@ void editor::InspectorWindow::drawAvatarMaskAsset(const fs::path& asset){
         float weight = data.partWeight(part);
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
         const std::string format = std::string(animlayersui::partLabel(part)) + " %.2f";
-        if (ImGui::SliderFloat("##mask_part_weight", &weight, 0.0f, 1.0f, format.c_str())){
+        const bool partChanged = ImGui::SliderFloat("##mask_part_weight", &weight, 0.0f, 1.0f, format.c_str());
+        const std::string partKey = state.maskGestureKey("part");
+        if (partChanged){
             anim::AvatarMaskData edited = data;
             edited.hasHumanoid = true;
             edited.parts[(size_t)part] = std::clamp(weight, 0.0f, 1.0f);
-            commit(edited, "mask-part-" + std::to_string(state.selectedPart));
+            commit(edited, partKey);
         }
         ImGui::SetItemTooltip("The weight of the part last clicked (a fraction blends it)");
     }
@@ -1042,10 +1055,14 @@ void editor::InspectorWindow::drawAvatarMaskAsset(const fs::path& asset){
                 ImGui::SameLine();
                 float weight = transform.weight;
                 ImGui::SetNextItemWidth(ImGui::GetFontSize() * 4.0f);
-                if (ImGui::DragFloat("##weight", &weight, 0.01f, 0.0f, 1.0f, "%.2f")){
-                    anim::AvatarMaskData edited = data;
-                    edited.transforms[(size_t)entry].weight = std::clamp(weight, 0.0f, 1.0f);
-                    commit(edited, "mask-transform-" + nodePath);
+                const bool weightChanged = ImGui::DragFloat("##weight", &weight, 0.01f, 0.0f, 1.0f, "%.2f");
+                if (weightChanged || ImGui::IsItemActivated()){
+                    const std::string weightKey = state.maskGestureKey("transform");
+                    if (weightChanged){
+                        anim::AvatarMaskData edited = data;
+                        edited.transforms[(size_t)entry].weight = std::clamp(weight, 0.0f, 1.0f);
+                        commit(edited, weightKey);
+                    }
                 }
                 ImGui::SameLine();
                 bool children = transform.children;

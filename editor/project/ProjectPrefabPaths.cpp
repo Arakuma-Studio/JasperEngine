@@ -8,6 +8,7 @@
 // 9.R8): its references are Animation Player entries {clip: path hint, guid}.
 
 #include "Project.h"
+#include "animation/AnimAssetDocument.h"
 #include "animation/AnimationClipDocument.h"
 #include "animation/ModelSubClips.h"
 #include "vat/VatAssetFiles.h"
@@ -608,8 +609,11 @@ void editor::Project::remapClipFilePath(const std::filesystem::path& oldPath, co
     if (projectPath.empty()) {
         return;
     }
-    // open .vat documents go with their files first (the asset changes below reload them)
+    // open .vat, .mask and .controller documents go with their files first (the asset changes
+    // below would see their old paths gone)
     VatDocument::filesMoved(oldPath.lexically_normal(), newPath.lexically_normal());
+    AvatarMaskDocument::filesMoved(oldPath.lexically_normal(), newPath.lexically_normal());
+    AnimatorControllerDocument::filesMoved(oldPath.lexically_normal(), newPath.lexically_normal());
     std::error_code ec;
     // a directory's tracked files moved with remapPrefabFilePath; a model is not tracked
     if (!fs::is_directory(newPath, ec) && (Util::isGuidJsonAssetFile(oldPath.string()) || Util::isGuidJsonAssetFile(newPath.string()))) {

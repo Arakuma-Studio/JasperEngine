@@ -70,11 +70,13 @@ bool PlayerLayerActions::computeRemove(const AnimationPlayerComponent& player, i
     std::vector<AnimationPlayerLayer> layers = anim::playerLayers(player);
     if (layer == 0) return fail(error, "the base layer cannot be removed");
     if (layer < 0 || (size_t)layer >= layers.size()) return fail(error, "the player has no layer " + std::to_string(layer));
+    const int count = (int)layers.size();
     layers.erase(layers.begin() + layer);
     out.clips = player.clips;
     for (AnimationPlayerClip& entry : out.clips){
+        // an entry on a layer the player does not have plays on the base: it stays as it is
         if (entry.layer == layer) entry.layer = 0;
-        else if (entry.layer > layer) entry.layer--;
+        else if (entry.layer > layer && entry.layer < count) entry.layer--;
     }
     out.layers = stored(layers);
     out.index = -1;

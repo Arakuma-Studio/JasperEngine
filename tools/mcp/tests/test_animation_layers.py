@@ -125,8 +125,21 @@ async def test_layers_through_set_properties(ed: Editor):
     for values, why in (({"layers[0].weight": 0.5}, "base layer"), ({"layers[0].blend": "additive"}, "base layer"),
                         ({"layers": [{"name": "A"}, {"name": "A"}]}, "unique"),
                         ({"layers[1].mask": "assets/anim/nope.mask"}, "does not exist"),
+                        # one field: the list's checks
+                        ({"layers[1].name": ""}, "required"), ({"layers[1].name": "Base Layer"}, "unique"),
+                        ({"layers[1].weight": 1.5}, "0 to 1"),
                         ({"clips[1].layer": 7}, "add the layer first")):
         await refused(ed, "set_properties", {"entity": "Hero", "values": {"animationplayer": values}}, why)
+
+    # a player without layers: a field of layer 0 (its implicit Base Layer) makes the list explicit
+    plain = await ed.call("create_entity", type="cube", name="Plain")
+    plain_id = plain["entity"]["id"] if "entity" in plain else plain["id"]
+    await ed.call("add_component", entity=plain_id, component="animationplayer", values={"animationplayer": {
+        "clips": [{"clip": BASE, "name": "base"}]}})
+    await ed.call("set_properties", entity=plain_id, values={"animationplayer": {"layers[0].mask": MASK, "layers[0].name": "Main"}})
+    layers = harness.find_key(await ed.call("get_entity", entity=plain_id, components=["animationplayer"]), "layers")
+    ed.check_eq([(l["name"], l["mask"]) for l in layers], [("Main", MASK)], f"the base layer's fields on a default player: {layers}")
+    await ed.call("delete_entities", entities=[plain_id])
 
     player = (await ed.call("get_animation", entity="Hero"))["players"][0]
     ed.check_eq([(l["index"], l["name"], l["states"]) for l in player["layers"]], [(0, "Base Layer", ["base"]), (1, "Holding", ["hold"])],

@@ -317,6 +317,24 @@ TEST_F(AnimationLayersUi, CreateMaskFromSelectionIsOneStepWithItsFile) {
     EXPECT_EQ(plain.player().layers[0].mask, "layers/base.mask");
 }
 
+TEST_F(AnimationLayersUi, CreatedMasksAndControllersStayInTheAssetsFolder) {
+    LayerScene s = layerScene();
+    std::string error;
+    const std::pair<const char*, const char*> refused[] = {{"../outside.mask", "outside the project"}, {"loose.mask", "outside the assets folder"},
+                                                           {"assets/layers/upper.anim", "not a .mask path"}};
+    for (const auto& [path, why] : refused){
+        EXPECT_FALSE(animlayersui::createMaskFromSelection(project(), s.id, s.hero, 1, path, {s.arm}, error)) << path;
+        EXPECT_NE(error.find(why), std::string::npos) << path << ": " << error;
+    }
+    EXPECT_FALSE(fs::exists(project()->getProjectPath() / "loose.mask"));
+    EXPECT_FALSE(animlayersui::createControllerFromClips(project(), s.id, s.hero, "../outside.controller", error));
+    EXPECT_NE(error.find("outside the project"), std::string::npos) << error;
+    EXPECT_FALSE(animlayersui::createControllerFromClips(project(), s.id, s.hero, "loose.controller", error));
+    EXPECT_NE(error.find("outside the assets folder"), std::string::npos) << error;
+    EXPECT_EQ(s.player().layers[1].mask, "layers/arm.mask") << "nothing changed";
+    EXPECT_TRUE(s.player().controller.empty());
+}
+
 TEST_F(AnimationLayersUi, CreateControllerFromClips) {
     LayerScene s = layerScene();
     std::string error;

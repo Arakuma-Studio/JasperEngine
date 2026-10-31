@@ -3046,10 +3046,38 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 "which resamples the offsets so the shape stays.";
         return nullptr;
     }
-    // the base layer's weight is always 1 (anim layers spec 5.2)
-    if (component == ComponentType::AnimationPlayerComponent && propertyName == "layers[0].weight") {
-        error = "layers[0].weight: the base layer always has weight 1; give a layer above it a weight (layers[1].weight).";
-        return nullptr;
+    // one field of a layer: the checks of a whole list (normalizePlayerLayers) that apply to it.
+    // The base layer's weight is always 1 (anim layers spec 5.2)
+    if (component == ComponentType::AnimationPlayerComponent && propertyName.compare(0, 7, "layers[") == 0) {
+        if (propertyName == "layers[0].weight") {
+            error = "layers[0].weight: the base layer always has weight 1; give a layer above it a weight (layers[1].weight).";
+            return nullptr;
+        }
+        const size_t close = propertyName.find(']');
+        size_t index = 0;
+        const bool indexed = close != std::string::npos && YamlNumbers::readPlain(propertyName.substr(7, close - 7), index);
+        const std::string field = close == std::string::npos ? std::string() : propertyName.substr(close + 1);
+        if (indexed && field == ".name" && value.is_string()) {
+            const std::string name = value.get<std::string>();
+            if (name.empty()) {
+                error = propertyName + " is required (layers are addressed by name in Lua).";
+                return nullptr;
+            }
+            const AnimationPlayerComponent* player = scene->scene->findComponent<AnimationPlayerComponent>(entity);
+            for (size_t i = 0; player && i < player->layers.size(); i++) {
+                if (i != index && player->layers[i].name == name) {
+                    error = propertyName + " \"" + name + "\" is already a layer (layers[" + std::to_string(i) + "]): names are unique.";
+                    return nullptr;
+                }
+            }
+        }
+        if (indexed && field == ".weight" && value.is_number()) {
+            const double weight = value.get<double>();
+            if (!std::isfinite(weight) || weight < 0.0 || weight > 1.0) {
+                error = propertyName + " must be a number from 0 to 1.";
+                return nullptr;
+            }
+        }
     }
     const std::string typeName = propertyTypeName(property.type);
     auto expect = [&](const std::string& what) -> Command* {
@@ -3788,14 +3816,56 @@ static bool isWholeValueProperty(Scene* scene, Entity entity, ComponentType comp
             endsWith(property, "shaderFeatures"));
 }
 
+// A player without authored layers plays one Base Layer (playerLayers), which has no layers[0].*
+// property: its field edits become one edit of the whole effective list, which then holds them
+// (as the Inspector's layer fields do), checked like any list
+static std::vector<McpValues::Change> withPlayerLayerList(Project* project, Scene* scene, Entity entity,
+                                                          const std::vector<McpValues::Change>& changes) {
+    const AnimationPlayerComponent* player = scene->findComponent<AnimationPlayerComponent>(entity);
+    if (!player || !player->layers.empty()) return changes;
+    auto isBaseField = [](const McpValues::Change& change) {
+        return change.component == ComponentType::AnimationPlayerComponent && change.op == "set" &&
+               (change.property == "layers[0].name" || change.property == "layers[0].weight" ||
+                change.property == "layers[0].blend" || change.property == "layers[0].mask");
+    };
+    bool fields = false;
+    for (const McpValues::Change& change : changes) {
+        if (change.component == ComponentType::AnimationPlayerComponent && change.property == "layers") return changes;
+        fields = fields || isBaseField(change);
+    }
+    if (!fields) return changes;
+    Json list = Json::array();
+    for (const AnimationPlayerLayer& layer : anim::playerLayers(*player)) {
+        Json item = {{"name", layer.name}, {"weight", layer.weight}, {"blend", anim::layerBlendName(layer.blend)}};
+        if (!layer.mask.empty()) item["mask"] = McpValues::assetPathToJson(project, layer.mask);
+        list.push_back(item);
+    }
+    std::vector<McpValues::Change> out;
+    size_t at = 0;
+    for (const McpValues::Change& change : changes) {
+        if (!isBaseField(change)) {
+            out.push_back(change);
+            continue;
+        }
+        if (at == 0) {
+            out.push_back({ComponentType::AnimationPlayerComponent, "layers", "set", Json(), -1});
+            at = out.size();
+        }
+        list[0][change.property.substr(10)] = change.value;
+    }
+    out[at - 1].value = list;
+    return out;
+}
+
 bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, const std::vector<Entity>& entities,
-                                     const std::vector<Change>& changes, MultiPropertyCmd& multi, std::string& error) {
+                                     const std::vector<Change>& allChanges, MultiPropertyCmd& multi, std::string& error) {
     if (!scene || !scene->scene) {
         error = "The scene is not loaded.";
         return false;
     }
     for (Entity entity : entities) {
         const std::string label = "GameObject " + std::to_string(entity) + " \"" + scene->scene->getEntityName(entity) + "\"";
+        const std::vector<Change> changes = withPlayerLayerList(project, scene->scene, entity, allChanges);
         // an entry's layer is one of the player's layers after this edit (anim layers spec 10)
         if (const AnimationPlayerComponent* player = scene->scene->findComponent<AnimationPlayerComponent>(entity)) {
             int layers = (int)anim::playerLayers(*player).size();
