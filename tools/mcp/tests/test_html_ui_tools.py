@@ -120,11 +120,10 @@ LIMITS.update({"create_ragdoll": 900})
 # merged by the lead (ui-canvas-group + physics-3d): provisional sum of both increments, re-measured below
 # http: configure_game_view's network and get_play_state's http block; merged with main (script-data,
 # input, physics-2d, script-lifecycle): 150 tools measured 106807, the limit set to it
-# merged by the lead (+ http): provisional, re-measured on the merged tree
-TOTAL_LIMIT = 107621
+# merged by the lead (ui-canvas-group, physics-3d, http): 151 tools measured 107626 on the merged tree
+TOTAL_LIMIT = 107626
 # ui-multitouch (spec 2026-10-31-ui-multitouch 10): create_ui's onscreen_stick / onscreen_button / touch_area
-# types and their mode / action / actions fields (+209 on its branch); merged with main (ui-canvas-group,
-# physics-3d, http, lines-trails, persistence): 151 tools measured 107835, the limit set to it
+# types and their mode / action / actions fields (+209); merged with main: 151 tools measured 107835
 TOTAL_LIMIT = 107835
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
