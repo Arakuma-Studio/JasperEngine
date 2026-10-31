@@ -1187,6 +1187,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("cancelPreload",
             luabridge::overload<uint32_t>(&SceneManager::cancelPreload),
             luabridge::overload<const std::string&>(&SceneManager::cancelPreload))
+        // the DontDestroyOnLoad scene, nil before the first DontDestroyOnLoad
+        .addStaticProperty("persistentScene", &SceneManager::getPersistentScene)
+        .addStaticFunction("moveGameObjectToScene", &LuaBinding::luaMoveGameObjectToScene)
         .addStaticFunction("clearAll", &SceneManager::clearAll)
         .addStaticFunction("setScenePtr", &SceneManager::setScenePtr)
         .addStaticFunction("getScenePtr", &SceneManager::getScenePtr)

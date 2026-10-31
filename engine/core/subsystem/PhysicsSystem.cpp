@@ -2000,6 +2000,18 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& bod
         settings.mMassPropertiesOverride.SetMassAndInertiaOfSolidBox(JPH::Vec3(body.solidBoxSize.x, body.solidBoxSize.y, body.solidBoxSize.z), body.solidBoxDensity);
     }
 
+    // moved here from another scene (persistence): it goes on as it went there
+    if (body.hasPendingVelocity){
+        body.hasPendingVelocity = false;
+        if (joltType != JPH::EMotionType::Static){
+            settings.mLinearVelocity = JPH::Vec3(body.pendingLinearVelocity.x, body.pendingLinearVelocity.y, body.pendingLinearVelocity.z);
+            settings.mAngularVelocity = JPH::Vec3(body.pendingAngularVelocity.x, body.pendingAngularVelocity.y, body.pendingAngularVelocity.z);
+            if (!body.pendingAwake){
+                activation = JPH::EActivation::DontActivate;
+            }
+        }
+    }
+
     JPH::Body* jbody = body_interface.CreateBody(settings);
     if (!jbody){
         objectLayerTable3D->release(layer);
@@ -2141,9 +2153,19 @@ bool PhysicsSystem::loadRigidbody2D(Entity entity){
         body.needApplyMass = false;
 
         const bool synced = syncRigidbody2DColliders(entity, body, true);
-        // made asleep (after its shapes, whose creation wakes it)
-        if (body.sleepingMode == RigidbodySleepMode2D::START_ASLEEP && body.type != BodyType::STATIC){
-            b2Body_SetAwake(body.body, false);
+        Rigidbody2DComponent& made = scene->getComponent<Rigidbody2DComponent>(entity);
+        if (made.hasPendingVelocity && b2Body_IsValid(made.body)){
+            // moved here from another scene (persistence): it goes on as it went there, its
+            // mass known now that it has its colliders
+            made.hasPendingVelocity = false;
+            if (made.type != BodyType::STATIC){
+                b2Body_SetLinearVelocity(made.body, {made.pendingLinearVelocity.x, made.pendingLinearVelocity.y});
+                b2Body_SetAngularVelocity(made.body, made.pendingAngularVelocity);
+                b2Body_SetAwake(made.body, made.pendingAwake);
+            }
+        }else if (made.sleepingMode == RigidbodySleepMode2D::START_ASLEEP && made.type != BodyType::STATIC){
+            // made asleep (after its shapes, whose creation wakes it)
+            b2Body_SetAwake(made.body, false);
         }
         return synced;
     }

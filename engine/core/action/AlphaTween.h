@@ -14,6 +14,11 @@ namespace jasperengine{
         AlphaTween(Scene* scene, Entity entity);
 
         void setAction(float startAlpha, float endAlpha, float duration, bool loop=false);
+
+        // what the tween writes: AUTO (the target's enabled Canvas Group, else its colour
+        // alpha), COLOR or CANVAS_GROUP
+        void setAlphaTarget(AlphaTweenTarget alphaTarget);
+        AlphaTweenTarget getAlphaTarget() const;
     };
 }
 

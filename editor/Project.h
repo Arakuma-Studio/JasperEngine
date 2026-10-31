@@ -708,6 +708,9 @@ namespace jasperengine::editor{
             bool initialized = false;        // true when scripts and library are initialized
             bool initializing = false;       // true while its scripts run, to stop re-entrant init
             bool scriptsRan = false;         // its scripts were started once (a load replacing it retires it)
+            // the DontDestroyOnLoad scene (SceneManager's persistent scene): no load replaces it,
+            // Stop deletes it with the session
+            bool persistent = false;
         };
 
         // The scene a runtime entry plays (the Engine's while playing): its copy, or the played
@@ -741,6 +744,12 @@ namespace jasperengine::editor{
         // A load factory's first step: the session's scenes that load replaced (their scripts
         // unloaded) leave the game, so the stack is built anew as an exported build does
         void retireReplacedRuntimeScenes();
+        // SceneManager's persistent scene factory while the session plays: a runtime scene of
+        // the session named "DontDestroyOnLoad" (null when nothing plays)
+        Scene* createPersistentRuntimeScene();
+        // What DontDestroyOnLoad / MoveGameObjectToScene moved: the lists the editor shows
+        // (authored GameObjects, the selection) follow
+        void onPlayObjectsMoved(Scene* from, Scene* to, const std::unordered_map<Entity, Entity>& moved);
 
         // Play copies (the child scenes of the played scene run as copies, see PlaySession)
         // answer to ids of their own while the session lasts, so getScene(), selection,
@@ -1530,8 +1539,15 @@ namespace jasperengine::editor{
         // The scene a Play copy id is a copy of; any other id is returned as is
         uint32_t getPlaySourceSceneId(uint32_t sceneId) const;
         bool isPlayRuntimeScene(uint32_t sceneId) const;
-        // The Play copies of sceneId's running game layers, as the Scene view draws them
+        // The Play copies of sceneId's running game layers, as the Scene view draws them (in the
+        // Engine's layer order: the persistent scene above the game's, the loading scene last)
         std::vector<SceneProject*> getRunningRuntimeLayerScenes(uint32_t sceneId);
+        // The DontDestroyOnLoad scene of the session (Play id), NULL_PROJECT_SCENE without one
+        uint32_t getPersistentPlaySceneId() const;
+        bool isPersistentPlayScene(uint32_t sceneId) const;
+        // SceneManager's persistent scene factory outside Play: refuses (DontDestroyOnLoad moves
+        // nothing in edit mode); Play installs the session's (createPersistentRuntimeScene)
+        static void refusePersistentScenes();
         // Once a frame: a Play copy no longer running, or its GameObjects destroyed, are
         // no longer selected
         void syncPlayRuntimeSelections();

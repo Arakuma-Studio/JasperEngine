@@ -35,6 +35,7 @@ namespace jasperengine::editor{
         PANEL,
         POLYGON,
         LAYOUT_GROUP,
+        CANVAS_GROUP,
         POINT_LIGHT,
         DIRECTIONAL_LIGHT,
         SPOT_LIGHT,

@@ -54,6 +54,7 @@ namespace jasperengine::editor{
         uint32_t runtimeSceneId = 0;        // Child scene nodes while the game runs: the running copy listed
         bool isRuntimeLayer = false;        // A running scene the game layered that is no child scene of this one
         bool isNotRunning = false;          // A child scene the running game does not show
+        bool isPersistent = false;          // The DontDestroyOnLoad scene while the game runs (last row)
         std::list<TreeNode> children;
     };
 
@@ -85,6 +86,9 @@ namespace jasperengine::editor{
         uint32_t sceneId = NULL_PROJECT_SCENE;
         Entity entity = NULL_ENTITY;
     };
+
+    // tests (PlayStartupScenesTest.cpp): the tree the panel draws
+    struct HierarchyTestAccess;
 
     class HierarchyWindow{
     private:
@@ -167,6 +171,7 @@ namespace jasperengine::editor{
         void drawRenameField();
         void commitRename();
         void revealInProject(const std::filesystem::path& path);
+        friend struct HierarchyTestAccess;
         void rebuildEntityTree(SceneProject* sceneProject, TreeNode& root, std::unordered_set<Entity>& sceneEntitiesSet);
         void showToolbar();
         void showTreeNode(TreeNode& node);

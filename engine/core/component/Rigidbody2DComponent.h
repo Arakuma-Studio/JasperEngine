@@ -178,6 +178,12 @@ namespace jasperengine{
         bool hasSyncedPose = false;
         Vector3 syncedPosition;
         Quaternion syncedRotation;
+        // the state of the body it had in another scene (persistence moves a GameObject with
+        // its body), in Box2D units: the next body made for it starts with these, once
+        bool hasPendingVelocity = false;
+        Vector2 pendingLinearVelocity = Vector2::ZERO;
+        float pendingAngularVelocity = 0.0f;
+        bool pendingAwake = true;
     };
 
 }
