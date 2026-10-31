@@ -2055,6 +2055,73 @@ OVERRIDES.update({
         'overloads': [([('key', 'string'), ('value', 'string')], '')]},
 })
 
+# audio-mixer (ECSClassesLua.cpp, GameObjectClassesLua.cpp): option tables ({unscaled = true}),
+# `nil` results and table results; AudioTimeOptions / AudioFadeOutOptions are in
+# engine/core/script/binding/stubs/Audio.lua
+OVERRIDES.update({
+    ('AudioMixer', 'setFloat'): {
+        'doc': ["Unity's AudioMixer.SetFloat: sets an exposed parameter (a group volume in dB, an effect value),",
+                'over `seconds` (default at once). It wins over snapshots until clearFloat. False (logged once)',
+                'for an unknown name. Remembered parameters are saved to UserSettings at the end of the frame.'],
+        'overloads': [([('name', 'string'), ('value', 'number'), ('seconds?', 'number'), ('opts?', 'AudioTimeOptions')], 'boolean')]},
+    ('AudioMixer', 'getFloat'): {
+        'doc': ['The value an exposed parameter has now (a script value, else the snapshot / mixer value); nil when unknown.'],
+        'overloads': [([('name', 'string')], 'number?')]},
+    ('AudioMixer', 'getParameterNames'): {
+        'doc': ['The exposed parameter names.'],
+        'overloads': [([], 'string[]')]},
+    ('AudioMixer', 'transitionTo'): {
+        'doc': ["Unity's AudioMixerSnapshot.TransitionTo: every parameter moves to the snapshot over `seconds`",
+                '(dB linearly, frequencies along log2). False for an unknown snapshot.'],
+        'overloads': [([('snapshot', 'string'), ('seconds', 'number'), ('opts?', 'AudioTimeOptions')], 'boolean')]},
+    ('AudioMixer', 'transitionToSnapshots'): {
+        'doc': ["Unity's AudioMixer.TransitionToSnapshots: to the weighted blend of snapshots (weights normalized)."],
+        'overloads': [([('snapshots', 'string[]'), ('weights', 'number[]'), ('seconds', 'number'), ('opts?', 'AudioTimeOptions')], 'boolean')]},
+    ('AudioMixer', 'getSnapshotNames'): {
+        'doc': ['The snapshot names.'],
+        'overloads': [([], 'string[]')]},
+    ('AudioMixer', 'getGroup'): {
+        'doc': ['A mixer group by name (live values; setting its volume is a script value, like setFloat), nil when none.'],
+        'overloads': [([('name', 'string')], 'AudioMixerGroup?')]},
+    ('AudioMixer', 'getGroupNames'): {
+        'doc': ['The group names, Master first, parents before children.'],
+        'overloads': [([], 'string[]')]},
+    ('AudioMixerGroup', 'getEffect'): {
+        'doc': ['An effect of the group by index (1-based) or type ("lowpass": the first of it); nil when none.'],
+        'overloads': [([('index', 'integer')], 'AudioMixerEffect?'), ([('type', 'string')], 'AudioMixerEffect?')]},
+    ('AudioMixerGroup', 'setVolume'): {
+        'doc': ['Moves the group volume (dB) over `seconds` (a script value, like setFloat).'],
+        'overloads': [([('db', 'number'), ('seconds?', 'number'), ('opts?', 'AudioTimeOptions')], '')]},
+    ('AudioMixerEffect', 'setParameter'): {
+        'doc': ['Sets a parameter of the effect ("cutoff", "resonance", "wet", ...: docs audio.md), over `seconds`.',
+                'A script value (wins over snapshots). False when the effect has no such parameter.'],
+        'overloads': [([('name', 'string'), ('value', 'number'), ('seconds?', 'number'), ('opts?', 'AudioTimeOptions')], 'boolean')]},
+    ('AudioMixerEffect', 'getParameter'): {
+        'doc': ['The value a parameter has now; nil when the effect has no such parameter.'],
+        'overloads': [([('name', 'string')], 'number?')]},
+    ('AudioSystem', 'preload'): {
+        'doc': ['Decodes (or opens, for streaming) a clip ahead so its first play or one-shot has no load; held until',
+                'the game ends. `loadType` as AudioSource.loadType (default Auto). False when the file does not load.'],
+        'overloads': [([('path', 'string'), ('loadType?', 'AudioLoadType')], 'boolean')]},
+    ('AudioSource', 'playOneShot'): {
+        'doc': ["Unity's PlayOneShot: the clip as an extra voice over what plays (volume x volumeScale, the",
+                "source's group, pitch, pan and position). Up to maxVoices voices; the oldest one-shot is stolen."],
+        'overloads': [([('path', 'string'), ('volumeScale?', 'number')], '')]},
+    ('AudioSource', 'fadeIn'): {
+        'doc': ['Plays from silence to the current volume over `seconds` (starting it when it is not playing).'],
+        'overloads': [([('seconds', 'number'), ('opts?', 'AudioTimeOptions')], '')]},
+    ('AudioSource', 'fadeOut'): {
+        'doc': ['To silence over `seconds`, then stops (opts.pause: pauses); the volume is put back for the next play().'],
+        'overloads': [([('seconds', 'number'), ('opts?', 'AudioFadeOutOptions')], '')]},
+    ('AudioSource', 'fadeTo'): {
+        'doc': ['The volume moves to `volume` over `seconds`.'],
+        'overloads': [([('volume', 'number'), ('seconds', 'number'), ('opts?', 'AudioTimeOptions')], '')]},
+    ('AudioSource', 'playClipAtPoint'): {
+        'doc': ["Unity's AudioSource.PlayClipAtPoint: the clip at a world position (3D when the scene has a camera),",
+                'through a mixer group (name; default Master); it belongs to `scene` and stops with it.'],
+        'overloads': [([('scene', 'Scene'), ('path', 'string'), ('position', 'Vector3'), ('volume?', 'number'), ('group?', 'string')], '')]},
+})
+
 # Properties whose getter returns a LuaRef: (Lua type, a copy)
 PROPERTY_OVERRIDES = {
     # the null sentinel (stubs/Json.lua: JsonNull)

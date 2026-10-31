@@ -9,15 +9,20 @@
 #include "thread/ResourceProgress.h"
 #include "thread/ThreadPoolManager.h"
 
+#include "io/File.h"
+#include "io/ResourcePack.h"
+#include "audio/SoloudEngineFile.h"
+
 #include "soloud.h"
 #include "soloud_wav.h"
+#include "soloud_wavstream.h"
 
 #include <filesystem>
 #include <vector>
 
 using namespace jasperengine;
 
-std::unordered_map<std::string, std::future<std::shared_ptr<SoLoud::Wav>>> SoundPool::pendingBuilds;
+std::unordered_map<std::string, std::future<std::shared_ptr<SoLoud::AudioSource>>> SoundPool::pendingBuilds;
 std::unordered_set<std::string> SoundPool::failedBuilds;
 std::mutex SoundPool::cacheMutex;
 std::atomic<bool> SoundPool::shutdownRequested{false};
@@ -29,11 +34,14 @@ sounds_t& SoundPool::getMap(){
     return *map;
 };
 
-SoundLoadResult SoundPool::loadFromFile(const std::string& id, const std::string& filename){
+SoundLoadResult SoundPool::loadClip(const std::string& filename, AudioLoadType requested){
+    const AudioLoadType loadType = resolveLoadType(filename, requested);
+    const std::string id = key(filename, loadType);
     auto& shared = getMap()[id];
 
     SoundLoadResult result;
     result.id = id;
+    result.loadType = loadType;
 
     if (shared){
         result.state = ResourceLoadState::Finished;
@@ -92,13 +100,13 @@ SoundLoadResult SoundPool::loadFromFile(const std::string& id, const std::string
         ResourceProgress::startBuild(buildId, ResourceType::Sound, soundName);
 
         pendingBuilds[id] = ThreadPoolManager::getInstance().enqueue(
-            [id, filename]() {
-                return loadSoundInternal(id, filename, true);
+            [id, filename, loadType]() {
+                return loadSoundInternal(id, filename, loadType, true);
             }
         );
     } else {
         try {
-            shared = loadSoundInternal(id, filename, false);
+            shared = loadSoundInternal(id, filename, loadType, false);
 
             result.state = ResourceLoadState::Finished;
             result.data = shared;
@@ -119,76 +127,206 @@ SoundLoadResult SoundPool::loadFromFile(const std::string& id, const std::string
     return result;
 }
 
-void SoundPool::retry(const std::string& id){
+void SoundPool::retry(const std::string& idOrFile){
     std::lock_guard<std::mutex> lock(cacheMutex);
-    failedBuilds.erase(id);
+    failedBuilds.erase(idOrFile);
+    // a file name: each of its load types
+    const std::string prefix = idOrFile + "#";
+    for (auto it = failedBuilds.begin(); it != failedBuilds.end();) {
+        if (it->compare(0, prefix.size(), prefix) == 0) it = failedBuilds.erase(it);
+        else ++it;
+    }
+    std::lock_guard<std::mutex> sizeLock(sizeMutex());
+    fileSizes().erase(idOrFile);
 }
 
-std::shared_ptr<SoLoud::Wav> SoundPool::loadSoundInternal(const std::string& id, const std::string& filename, bool trackProgress){
+std::shared_ptr<SoLoud::AudioSource> SoundPool::loadSoundInternal(const std::string& id, const std::string& filename, AudioLoadType loadType, bool trackProgress){
     uint64_t buildId = std::hash<std::string>{}(id);
 
-    if (trackProgress) {
-        if (shutdownRequested.load()) {
+    auto failBuild = [&](const std::string& message) {
+        if (trackProgress) {
+            ResourceProgress::failBuild(buildId);
+        }
+        Log::error("%s", message.c_str());
+        throw std::runtime_error(message);
+    };
+    auto checkShutdown = [&]() {
+        if (trackProgress && shutdownRequested.load()) {
             ResourceProgress::failBuild(buildId);
             throw std::runtime_error("Shutdown requested");
         }
+    };
+
+    if (trackProgress) {
+        checkShutdown();
         ResourceProgress::updateProgress(buildId, 0.35f);
     }
 
-    Data filedata;
+    std::shared_ptr<SoLoud::AudioSource> sound;
+    SoLoud::result res = SoLoud::SO_NO_ERROR;
 
-    if (filedata.open(filename.c_str()) != FileErrors::FILEDATA_OK){
+    if (loadType == AudioLoadType::Streaming) {
+        // each voice reads the file through the engine File (APK assets on Android)
+        auto stream = std::make_shared<EngineWavStream>();
+        if (!stream->open(filename, &res)) {
+            if (res == SoLoud::FILE_NOT_FOUND) {
+                failBuild("Sound file not found: " + filename);
+            }
+        }
+        sound = stream;
+    } else {
+        Data filedata;
+
+        if (filedata.open(filename.c_str()) != FileErrors::FILEDATA_OK){
+            failBuild("Sound file not found: " + filename);
+        }
+
         if (trackProgress) {
-            ResourceProgress::failBuild(buildId);
+            checkShutdown();
+            ResourceProgress::updateProgress(buildId, 0.7f);
         }
-        Log::error("Sound file not found: %s", filename.c_str());
-        throw std::runtime_error("Sound file not found: " + filename);
-    }
 
-    if (trackProgress) {
-        if (shutdownRequested.load()) {
-            ResourceProgress::failBuild(buildId);
-            throw std::runtime_error("Shutdown requested");
+        if (loadType == AudioLoadType::CompressedInMemory) {
+            // the file's bytes, decoded while it plays
+            auto stream = std::make_shared<SoLoud::WavStream>();
+            res = stream->loadMem(filedata.getMemPtr(), filedata.length(), true, true);
+            sound = stream;
+        } else {
+            auto wav = std::make_shared<SoLoud::Wav>();
+            res = wav->loadMem(filedata.getMemPtr(), filedata.length(), false, false);
+            sound = wav;
         }
-        ResourceProgress::updateProgress(buildId, 0.7f);
     }
-
-    auto sound = std::make_shared<SoLoud::Wav>();
-    SoLoud::result res = sound->loadMem(filedata.getMemPtr(), filedata.length(), false, false);
 
     if (res == SoLoud::SOLOUD_ERRORS::FILE_LOAD_FAILED){
-        if (trackProgress) {
-            ResourceProgress::failBuild(buildId);
-        }
-        Log::error("Sound file type of '%s' could not be loaded", filename.c_str());
-        throw std::runtime_error("Sound file type of '" + filename + "' could not be loaded");
+        failBuild("Sound file type of '" + filename + "' could not be loaded");
     }else if (res == SoLoud::SOLOUD_ERRORS::OUT_OF_MEMORY){
-        if (trackProgress) {
-            ResourceProgress::failBuild(buildId);
-        }
-        Log::error("Out of memory when loading '%s'", filename.c_str());
-        throw std::runtime_error("Out of memory when loading '" + filename + "'");
-    }else if (res == SoLoud::SOLOUD_ERRORS::UNKNOWN_ERROR){
-        if (trackProgress) {
-            ResourceProgress::failBuild(buildId);
-        }
-        Log::error("Unknown error when loading '%s'", filename.c_str());
-        throw std::runtime_error("Unknown error when loading '" + filename + "'");
+        failBuild("Out of memory when loading '" + filename + "'");
+    }else if (res != SoLoud::SOLOUD_ERRORS::SO_NO_ERROR){
+        failBuild("Unknown error when loading '" + filename + "'");
     }
 
-    sound->setSingleInstance(true);
+    // shared by every source playing the file: voices of one sample overlap (spec A9)
+    sound->setSingleInstance(false);
     sound->setVolume(1.0);
 
     if (trackProgress) {
-        if (shutdownRequested.load()) {
-            ResourceProgress::failBuild(buildId);
-            throw std::runtime_error("Shutdown requested");
-        }
+        checkShutdown();
         ResourceProgress::updateProgress(buildId, 1.0f);
         ResourceProgress::completeBuild(buildId);
     }
 
     return sound;
+}
+
+std::mutex& SoundPool::sizeMutex(){
+    static std::mutex* mutex = new std::mutex();
+    return *mutex;
+}
+
+std::unordered_map<std::string, uint64_t>& SoundPool::fileSizes(){
+    static auto* sizes = new std::unordered_map<std::string, uint64_t>();
+    return *sizes;
+}
+
+uint64_t SoundPool::fileSize(const std::string& filename){
+    {
+        std::lock_guard<std::mutex> lock(sizeMutex());
+        auto it = fileSizes().find(filename);
+        if (it != fileSizes().end()) return it->second;
+    }
+    uint64_t size = 0;
+    if (!ResourcePack::size(filename, size)) {
+        File file;
+        if (file.open(filename.c_str()) == FileErrors::FILEDATA_OK && file.getFilePtr()) {
+            size = file.length();
+        }
+    }
+    std::lock_guard<std::mutex> lock(sizeMutex());
+    fileSizes()[filename] = size;
+    return size;
+}
+
+AudioLoadType SoundPool::resolveLoadType(const std::string& filename, AudioLoadType requested){
+    AudioLoadType type = requested;
+    if (type == AudioLoadType::Auto) {
+        type = fileSize(filename) >= streamingThreshold ? AudioLoadType::Streaming : AudioLoadType::DecompressOnLoad;
+    }
+    // a packed file has no random access: its bytes stay in memory instead (spec A8)
+    if (type == AudioLoadType::Streaming && ResourcePack::contains(filename)) {
+        type = AudioLoadType::CompressedInMemory;
+    }
+    return type;
+}
+
+const char* SoundPool::loadTypeName(AudioLoadType type){
+    switch (type) {
+        case AudioLoadType::Auto: return "auto";
+        case AudioLoadType::DecompressOnLoad: return "decompress_on_load";
+        case AudioLoadType::CompressedInMemory: return "compressed_in_memory";
+        case AudioLoadType::Streaming: return "streaming";
+    }
+    return "auto";
+}
+
+bool SoundPool::loadTypeFromName(const std::string& name, AudioLoadType& type){
+    std::string key;
+    for (char c : name) {
+        if (c == ' ' || c == '_' || c == '-') continue;
+        key += (char)std::tolower((unsigned char)c);
+    }
+    if (key == "auto") type = AudioLoadType::Auto;
+    else if (key == "decompressonload" || key == "decompress") type = AudioLoadType::DecompressOnLoad;
+    else if (key == "compressedinmemory" || key == "compressed") type = AudioLoadType::CompressedInMemory;
+    else if (key == "streaming" || key == "stream") type = AudioLoadType::Streaming;
+    else return false;
+    return true;
+}
+
+std::string SoundPool::key(const std::string& filename, AudioLoadType resolved){
+    return filename + "#" + loadTypeName(resolved);
+}
+
+void SoundPool::parseClipRef(const std::string& ref, std::string& filename, AudioLoadType& type){
+    filename = ref;
+    type = AudioLoadType::Auto;
+    const size_t hash = ref.rfind('#');
+    if (hash == std::string::npos) return;
+    AudioLoadType parsed;
+    if (loadTypeFromName(ref.substr(hash + 1), parsed)) {
+        filename = ref.substr(0, hash);
+        type = parsed;
+    }
+}
+
+double SoundPool::getLength(SoLoud::AudioSource* sample){
+    if (auto* wav = dynamic_cast<SoLoud::Wav*>(sample)) return wav->getLength();
+    if (auto* stream = dynamic_cast<SoLoud::WavStream*>(sample)) return stream->getLength();
+    return 0.0;
+}
+
+std::vector<SoundPoolEntry> SoundPool::getEntries(){
+    std::vector<SoundPoolEntry> entries;
+    for (const auto& [id, sample] : getMap()) {
+        if (!sample) continue;
+        SoundPoolEntry entry;
+        entry.id = id;
+        parseClipRef(id, entry.file, entry.loadType);
+        entry.length = getLength(sample.get());
+        if (auto* wav = dynamic_cast<SoLoud::Wav*>(sample.get())) {
+            entry.memoryBytes = (size_t)wav->mSampleCount * wav->mChannels * sizeof(float);
+        } else if (auto* stream = dynamic_cast<SoLoud::WavStream*>(sample.get())) {
+            entry.memoryBytes = stream->mMemFile ? stream->mMemFile->length() : 0;
+        }
+        entries.push_back(entry);
+    }
+    return entries;
+}
+
+size_t SoundPool::getMemoryBytes(){
+    size_t total = 0;
+    for (const SoundPoolEntry& entry : getEntries()) total += entry.memoryBytes;
+    return total;
 }
 
 void SoundPool::requestShutdown(){
@@ -238,6 +376,16 @@ void SoundPool::remove(const std::string& id){
     }
 }
 
+sounds_t& SoundPool::getPinned(){
+    static sounds_t* map = new sounds_t();
+    return *map;
+}
+
+void SoundPool::pin(const std::string& id){
+    auto it = getMap().find(id);
+    if (it != getMap().end() && it->second) getPinned()[id] = it->second;
+}
+
 void SoundPool::clear(){
     {
         std::lock_guard<std::mutex> lock(cacheMutex);
@@ -249,7 +397,10 @@ void SoundPool::clear(){
         pendingBuilds.clear();
         failedBuilds.clear();
     }
+    getPinned().clear();
     getMap().clear();
+    std::lock_guard<std::mutex> lock(sizeMutex());
+    fileSizes().clear();
 }
 
 void SoundPool::clearUnused(){

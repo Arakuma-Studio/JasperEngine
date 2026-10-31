@@ -445,7 +445,18 @@ template<>
 void prepare<AudioSourceComponent>(AudioSourceComponent& audio, Entity, CloneContext&) {
     // its own voice and sample: a Playing state starts it (play on awake)
     audio.sample.reset();
+    audio.sampleKey.clear();
     audio.handle = 0;
+    audio.oneShots.clear();
+    audio.pendingOneShots.clear();
+    // a running fade does not carry over; fadeIn / fadeOut leave the authored volume
+    if (audio.fade.active && audio.fade.restore) audio.volume = audio.fade.restoreVolume;
+    audio.fade = AudioFade();
+    audio.voicePaused = false;
+    audio.listenerPaused = false;
+    audio.resolvedGroup.clear();
+    audio.groupWarned = false;
+    audio.lastVolumeApplied = -1;
     audio.loaded = false;
     audio.loadFailed = false;
     audio.playingTime = 0;

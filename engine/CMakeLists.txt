@@ -860,6 +860,10 @@ set(JASPERENGINE_SRCS
     core/Engine.cpp
     core/Input.cpp
     core/input/InputActions.cpp
+    core/audio/AudioEffects.cpp
+    core/audio/AudioMixer.cpp
+    core/audio/AudioMixerIO.cpp
+    core/audio/SoloudEngineFile.cpp
     core/input/InputControlNames.cpp
     core/Log.cpp
     core/Scene.cpp

@@ -85,6 +85,49 @@ namespace jasperengine {
 
         void setDopplerFactor(float dopplerFactor);
         float getDopplerFactor() const;
+
+        // ---- mixer and voices (audio-mixer spec 7.3, 8)
+
+        // the mixer group by name ("" = Master); a name not in the mixer plays through Master
+        void setOutputGroup(const std::string& groupName);
+        std::string getOutputGroup() const;
+
+        void setLoadType(AudioLoadType loadType);
+        AudioLoadType getLoadType() const;
+        // what Auto resolves to for the current file (by its size)
+        AudioLoadType getResolvedLoadType() const;
+
+        // 0 (most important) .. 256 (least); default 128
+        void setPriority(int priority);
+        int getPriority() const;
+
+        // main + one-shot voices of this source (1..64, default 8)
+        void setMaxVoices(int maxVoices);
+        int getMaxVoices() const;
+
+        void setIgnoreListenerPause(bool ignore);
+        bool isIgnoreListenerPause() const;
+
+        // Unity's name for speed
+        void setPitch(float pitch);
+        float getPitch() const;
+
+        // Unity PlayOneShot: an extra voice of the clip over what plays (volume x volumeScale)
+        void playOneShot(const std::string& filename, float volumeScale = 1.0f);
+        // plays from silence to the current volume (starting it when it is not playing)
+        void fadeIn(double seconds, bool unscaled = false);
+        // to silence, then stops (or pauses); the volume is put back for the next play()
+        void fadeOut(double seconds, bool pause = false, bool unscaled = false);
+        // the volume moves to `volume` over `seconds`
+        void fadeTo(double volume, double seconds, bool unscaled = false);
+        bool isFading() const;
+        // the voices playing now (main + one-shots)
+        int getVoiceCount() const;
+
+        // Unity AudioSource.PlayClipAtPoint: a voice of `scene` at a world position, stopped with
+        // the scene; through a mixer group by name ("" = Master)
+        static void playClipAtPoint(Scene* scene, const std::string& filename, Vector3 position,
+                                    float volume = 1.0f, const std::string& group = "");
     };
 
 }

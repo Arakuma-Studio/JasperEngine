@@ -80,6 +80,70 @@ static void setLuaCullingMask(T* self, lua_Integer mask){
 
 // ---- GameObject.instantiate / destroy / destroyImmediate (Unity's Object.Instantiate...) ----
 
+// AudioSource (audio-mixer spec 8): the calls with option tables read the Lua stack themselves
+namespace {
+
+    AudioSource* luaAudioSelf(lua_State* L){
+        AudioSource* self = luabridge::detail::Userdata::get<AudioSource>(L, 1, false);
+        if (!self) luaL_error(L, "AudioSource: call with ':' on an AudioSource");
+        return self;
+    }
+
+    bool luaAudioOpt(lua_State* L, int index, const char* field){
+        if (!lua_istable(L, index)) return false;
+        lua_getfield(L, index, field);
+        const bool value = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
+        return value;
+    }
+
+    // sound:playOneShot(path [, volumeScale])
+    int luaAudioPlayOneShot(lua_State* L){
+        AudioSource* self = luaAudioSelf(L);
+        self->playOneShot(luaL_checkstring(L, 2), (float)luaL_optnumber(L, 3, 1.0));
+        return 0;
+    }
+
+    // sound:fadeIn(seconds [, opts])
+    int luaAudioFadeIn(lua_State* L){
+        AudioSource* self = luaAudioSelf(L);
+        self->fadeIn(luaL_checknumber(L, 2), luaAudioOpt(L, 3, "unscaled"));
+        return 0;
+    }
+
+    // sound:fadeOut(seconds [, opts]): opts.pause pauses instead of stopping
+    int luaAudioFadeOut(lua_State* L){
+        AudioSource* self = luaAudioSelf(L);
+        self->fadeOut(luaL_checknumber(L, 2), luaAudioOpt(L, 3, "pause"), luaAudioOpt(L, 3, "unscaled"));
+        return 0;
+    }
+
+    // sound:fadeTo(volume, seconds [, opts])
+    int luaAudioFadeTo(lua_State* L){
+        AudioSource* self = luaAudioSelf(L);
+        self->fadeTo(luaL_checknumber(L, 2), luaL_checknumber(L, 3), luaAudioOpt(L, 4, "unscaled"));
+        return 0;
+    }
+
+    // AudioSource.playClipAtPoint(scene, path, position [, volume [, group]])
+    int luaAudioPlayClipAtPoint(lua_State* L){
+        Scene* scene = nullptr;
+        if (luabridge::isInstance<Scene*>(L, 1)){
+            auto result = luabridge::get<Scene*>(L, 1);
+            if (result) scene = result.value();
+        }
+        if (!scene) return luaL_error(L, "AudioSource.playClipAtPoint: argument 1 must be a Scene");
+        const std::string path = luaL_checkstring(L, 2);
+        auto position = luabridge::get<Vector3>(L, 3);
+        if (!position) return luaL_error(L, "AudioSource.playClipAtPoint: argument 3 must be a Vector3");
+        const float volume = (float)luaL_optnumber(L, 4, 1.0);
+        const std::string group = lua_isstring(L, 5) ? lua_tostring(L, 5) : "";
+        AudioSource::playClipAtPoint(scene, path, position.value(), volume, group);
+        return 0;
+    }
+
+}
+
 namespace {
 
 // A GameObject argument: any GameObject handle (EntityHandle and what derives from it), or
@@ -1982,6 +2046,22 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("attenuationModel", &AudioSource::getAttenuationModel, &AudioSource::setAttenuationModel)
         .addProperty("attenuationRolloffFactor", &AudioSource::getAttenuationRolloffFactor, &AudioSource::setAttenuationRolloffFactor)
         .addProperty("dopplerFactor", &AudioSource::getDopplerFactor, &AudioSource::setDopplerFactor)
+        // the mixer group by name ("" = Master)
+        .addProperty("outputGroup", &AudioSource::getOutputGroup, &AudioSource::setOutputGroup)
+        .addProperty("loadType", &AudioSource::getLoadType, &AudioSource::setLoadType)
+        .addFunction("getResolvedLoadType", &AudioSource::getResolvedLoadType)
+        .addProperty("priority", &AudioSource::getPriority, &AudioSource::setPriority)
+        .addProperty("maxVoices", &AudioSource::getMaxVoices, &AudioSource::setMaxVoices)
+        .addProperty("ignoreListenerPause", &AudioSource::isIgnoreListenerPause, &AudioSource::setIgnoreListenerPause)
+        // Unity's name for speed
+        .addProperty("pitch", &AudioSource::getPitch, &AudioSource::setPitch)
+        .addFunction("playOneShot", &luaAudioPlayOneShot)
+        .addFunction("fadeIn", &luaAudioFadeIn)
+        .addFunction("fadeOut", &luaAudioFadeOut)
+        .addFunction("fadeTo", &luaAudioFadeTo)
+        .addFunction("isFading", &AudioSource::isFading)
+        .addFunction("getVoiceCount", &AudioSource::getVoiceCount)
+        .addStaticFunction("playClipAtPoint", &luaAudioPlayClipAtPoint)
         .addFunction("getAudioSourceComponent", &AudioSource::getComponent<AudioSourceComponent>)
         .endClass();
 

@@ -34,8 +34,11 @@ add_library(
 
     src/audiosource/wav/dr_impl.cpp
     src/audiosource/wav/soloud_wav.cpp
+    src/audiosource/wav/soloud_wavstream.cpp
 
     src/backend/miniaudio/soloud_miniaudio.cpp
+    src/backend/nosound/soloud_nosound.cpp
+    src/backend/null/soloud_null.cpp
 
     src/filter/soloud_bassboostfilter.cpp
     src/filter/soloud_biquadresonantfilter.cpp
@@ -61,6 +64,10 @@ if(APPLE)
         ${AV_FOUNDATION_LIBRARY} ${AUDIOTOOLBOX_LIBRARY}
     )
 endif()
+
+# no device (CI, servers, headless boxes): NoSound mixes in its own thread with no output,
+# Null on the main thread (AudioSystem; audio-mixer spec A14)
+target_compile_definitions(soloud PRIVATE WITH_NOSOUND WITH_NULL)
 
 find_package(Threads REQUIRED)
 target_link_libraries(soloud PRIVATE Threads::Threads)

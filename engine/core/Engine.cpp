@@ -12,6 +12,7 @@
 #include "script/LuaBinding.h"
 #include "manager/SceneManager.h"
 #include "subsystem/AudioSystem.h"
+#include "audio/AudioMixer.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
@@ -1382,6 +1383,9 @@ void Engine::runFrame(bool draw){
     // the UI clock runs on the unscaled delta (a pause menu animates at time scale 0) and
     // stops with the updates: a held simulation or a paused app
     HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);
+    // the audio mixer's snapshot transitions and timed values, once a frame before the scenes
+    // (scaled ones hold at time scale 0; both hold while the app or the simulation is held)
+    AudioMixer::update(paused ? 0.0 : deltatime, (paused || simulationHeld) ? 0.0 : frameTime);
 
     // the input of this frame is over: no low surrogate will follow a pending high one
     flushCharInput();
