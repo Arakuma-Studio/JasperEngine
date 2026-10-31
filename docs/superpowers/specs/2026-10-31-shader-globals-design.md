@@ -441,13 +441,13 @@ Decisions taken while implementing (branch `gaps/shader-globals`, on `gaps/lines
     `vec4 x[N]` read in `.x` (std140 gives `float x[N]` the same 16-byte stride, so the packer
     fills either), and `check_shader` warns about float/vec2/vec3 arrays in a globals block. The
     vertex-lights shaders copy the block's vectors to locals before indexing them per light.
-15. **Verification** (merged with main at 211073ea3, built on the shared host: the build boxes were
-    overloaded): editor and tests build with no warnings; unit tests 1203 passed, 8 skipped, 0
+15. **Verification** (merged with main at e0d9f2b21, built on the shared host: the build boxes were
+    overloaded): editor and tests build with no warnings; unit tests 1264 passed, 9 skipped, 0
     failed (28 shader-globals tests, the every-backend compiles included); MCP
-    `test_shader_globals.py` 9/9 with `JASPER_SLOW_BUILD=1` (a Desktop export compiles main.cpp's
-    `ShaderGlobals::declare` and the player draws the default colour); the full MCP suite 855
-    passed, 12 failed: the 10 baseline failures plus `test_physics_2d::test_old_prefab_overrides_of_colliders`
-    and `test_stochastic_tiling::test_old_scene_resaves_byte_identical`, which come from the
-    physics-2d merge (the second fails the same with the physics-2d branch's own editor: it drops
-    the old `maxColliders2D` keys on resave). Android and Web builds were not run: no platform
-    code changed.
+    `test_shader_globals.py` 9/9 with `JASPER_SLOW_BUILD=1` (run on the previous merge: a Desktop
+    export compiles main.cpp's `ShaderGlobals::declare` and the player draws the default colour);
+    the full MCP suite (`-j2`) 863 passed, 11 failed: the 10 baseline failures plus
+    `test_stochastic_tiling::test_old_scene_resaves_byte_identical`, which comes from physics-2d
+    (it fails the same with the physics-2d branch's own editor: the old `maxColliders2D` keys are
+    dropped on resave). Tool budget 106825 measured on the merged tree. Android and Web builds
+    were not run: no platform code changed.
