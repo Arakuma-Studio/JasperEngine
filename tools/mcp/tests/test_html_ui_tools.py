@@ -156,7 +156,7 @@ LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 
 TOTAL_LIMIT = 112100
 # anim properties (spec 2026-10-31-anim-properties 11): edit_animation's property channel (channel enum,
 # component, property: 3523) and get_animation's list_properties (911), under the spec's +400; measured on
-# the tree merged with main 5762bb259: 153 tools, total 112129 (tool_budget.py), the limit set to it
+# the tree merged with main fda5c0d0f: 153 tools, total 112129 (tool_budget.py), the limit set to it
 LIMITS.update({"edit_animation": 3600, "get_animation": 930})
 TOTAL_LIMIT = 112129
 

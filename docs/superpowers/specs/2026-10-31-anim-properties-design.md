@@ -699,3 +699,9 @@ Code references are to the `gaps/anim-properties` branch.
   step. MCP: `tools/mcp/tests/test_animation_properties.py`. The script-lifecycle case of test 2
   (an `onEnable` reading the frame's animated colour) follows from the deferred flush order and
   is covered by the play-mode event check (handlers see the values written).
+- **Verification at handoff** (merged with main fda5c0d0f, Linux box): editor + tests build with
+  0 warnings; editor unit tests 1641 passed, 9 skipped, 0 failed; anim tests 197 passed, 1 skipped
+  (`Layers.PerformanceBudget` under load); full MCP suite 923 passed, 21 skipped, 10 failed (only
+  the baseline `test_animation_assets` x5 and `test_lattice_scene` x5). Web: an em++ syntax check of
+  the changed engine sources. Not run here: the Apple, Windows and Android builds (no platform code
+  changed; the Xcode project lists the new source) and on-device timings.
