@@ -40,6 +40,8 @@ namespace jasperengine{
 	enum class AudioBackend { Auto, NoSound, Null };
 
 	class JASPERENGINE_API AudioSystem : public SubSystem {
+		// the unit tests reach a voice's parameters without the frame's 3D pass after them
+		friend struct AudioSystemTestAccess;
 
     private:
 		static bool inited;

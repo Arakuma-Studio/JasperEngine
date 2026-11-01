@@ -12,10 +12,13 @@
 #include "ScriptDataTestSupport.h"
 
 #include "Generator.h"
+#include "PlatformConfig.h"
+#include "Project.h"
 #include "Scene.h"
 #include "Stream.h"
 #include "audio/AudioMixer.h"
 #include "audio/AudioMixerIO.h"
+#include "component/CameraComponent.h"
 #include "io/UserSettings.h"
 #include "object/sound/AudioSource.h"
 #include "pool/SoundPool.h"
@@ -132,11 +135,17 @@ namespace {
             SoundPool::clear();
             writeTone(root / "assets" / "tone.wav", 0.5);
             scene = new Scene();
+            // the game's main scene (its camera is the 3D listener)
+            Engine::setScene(scene);
         }
 
         void TearDown() override {
+            AudioSystem::endOfflineCapture();
+            Engine::removeScene(scene);
             delete scene;
             scene = nullptr;
+            platformConfig().silentAudio = false;
+            AudioSystem::setGlobalVolume(1.0f);
             AudioSystem::close();
             AudioMixer::unload();
             AudioSystem::setListenerPaused(false);
@@ -179,7 +188,88 @@ namespace {
         }
 
         SoLoud::Soloud& soloud() { return AudioSystem::getSoloud(); }
+
+        // a source with a Transform: 3D where its scene has a camera
+        AudioSource source3d(const std::string& file = "tone.wav") {
+            AudioSource sound(scene, true);
+            sound.loadSound(file);
+            return sound;
+        }
+
+        // ---- 3D (the camera and transforms as RenderSystem leaves them for the frame)
+
+        // the scene's camera at `position`, looking at `target` with +Y up; an orthographic or UI
+        // view spans [left, right] x [bottom, top] from it
+        Entity camera(Scene* in, CameraType type, const Vector3& position, const Vector3& target,
+                      float left = 0, float right = 0, float bottom = 0, float top = 0) {
+            const Entity entity = in->createEntity();
+            in->addComponent<Transform>(entity, Transform());
+            CameraComponent component;
+            component.type = type;
+            component.autoResize = false;
+            in->addComponent<CameraComponent>(entity, component);
+            in->setCamera(entity);
+            moveCamera(in, position, target);
+            CameraComponent& placed = in->getComponent<CameraComponent>(entity);
+            placed.leftClip = left;
+            placed.rightClip = right;
+            placed.bottomClip = bottom;
+            placed.topClip = top;
+            return entity;
+        }
+
+        void moveCamera(Scene* in, const Vector3& position, const Vector3& target) {
+            const Entity entity = in->getCamera();
+            in->getComponent<Transform>(entity).worldPosition = position;
+            CameraComponent& component = in->getComponent<CameraComponent>(entity);
+            component.worldTarget = target;
+            component.steadyWorldUp = Vector3(0, 1, 0);
+        }
+
+        void place(AudioSource& sound, const Vector3& position) {
+            sound.getComponent<Transform>().worldPosition = position;
+        }
+
+        // SoLoud's state of a voice (its 3D data, channel volumes)
+        int voiceIndex(unsigned int handle) { return soloud().getVoiceFromHandle_internal(handle); }
+        float doppler(unsigned int handle) { return soloud().m3dData[voiceIndex(handle)].mDopplerValue; }
+        Vector3 voicePosition(unsigned int handle) {
+            const float* p = soloud().m3dData[voiceIndex(handle)].m3dPosition;
+            return Vector3(p[0], p[1], p[2]);
+        }
+        Vector3 listenerPosition() { return Vector3(soloud().m3dPosition[0], soloud().m3dPosition[1], soloud().m3dPosition[2]); }
+        float channelVolume(unsigned int handle, int channel) { return soloud().mVoice[voiceIndex(handle)]->mChannelVolume[channel]; }
     };
+
+    // a 16-bit mono WAV of a constant level (onsets are the first loud frame)
+    void writeLevel(const fs::path& path, double seconds, double level = 0.5, int rate = 44100) {
+        fs::create_directories(path.parent_path());
+        const uint32_t samples = (uint32_t)(seconds * rate);
+        std::ofstream out(path, std::ios::binary);
+        auto u32 = [&out](uint32_t v) { out.write(reinterpret_cast<const char*>(&v), 4); };
+        auto u16 = [&out](uint16_t v) { out.write(reinterpret_cast<const char*>(&v), 2); };
+        out.write("RIFF", 4);
+        u32(36 + samples * 2);
+        out.write("WAVEfmt ", 8);
+        u32(16);
+        u16(1);
+        u16(1);
+        u32((uint32_t)rate);
+        u32((uint32_t)rate * 2);
+        u16(2);
+        u16(16);
+        out.write("data", 4);
+        u32(samples * 2);
+        for (uint32_t i = 0; i < samples; i++) u16((uint16_t)(int16_t)std::lround(level * 32767.0));
+    }
+
+    // the first frame of a channel of interleaved stereo louder than `threshold`, -1 when none
+    int onsetOf(const std::vector<float>& stereo, int channel, float threshold = 0.05f) {
+        for (size_t i = channel; i < stereo.size(); i += 2) {
+            if (std::fabs(stereo[i]) > threshold) return (int)(i / 2);
+        }
+        return -1;
+    }
 
     class AudioMixerMathRuntimeTest : public AudioFixture {};
     class AudioMixerRuntimeTest : public AudioFixture {};
@@ -1068,4 +1158,388 @@ TEST(GeneratorAudioTest, InitConfiguresTheVoicesAndLoadsTheMixer) {
     ASSERT_NE(load, std::string::npos);
     EXPECT_LT(load, mainCpp.find("SceneManager::loadScene"));
     fs::remove_all(project);
+}
+
+// ================================================================== BF14: audio and engine bug fixes
+// (the comparison with the snd/sound-layer branch, je-evidence/sound-layer-analysis-engine.md)
+
+namespace jasperengine {
+    // the voice parameters a needUpdate applies, without the frame's 3D pass after them
+    struct AudioSystemTestAccess {
+        static void applyVoiceParameters(AudioSystem& system, AudioSourceComponent& audio, unsigned int handle, bool use3D) {
+            system.applyVoiceParameters(audio, handle, true, use3D);
+        }
+    };
+}
+
+namespace {
+    constexpr double kFrame60 = 1.0 / 60.0;
+}
+
+// ---- S-6: a voice through a group bus starts in the next mix ------------------------------------
+
+TEST_F(AudioMixerRuntimeTest, AVoiceThroughGroupBusesIsHeardFromTheNextMix) {
+    loadMusicMixer();
+    writeLevel(root / "assets" / "level.wav", 1.0);
+    AudioSource music = source("level.wav", "Music");
+    ASSERT_TRUE(AudioSystem::init());
+    EXPECT_FALSE(soloud().getAutoStop(AudioMixer::getBusHandle("Master"))) << "a bus never ends by itself";
+    EXPECT_FALSE(soloud().getAutoStop(AudioMixer::getBusHandle("Music")));
+    // a mix of 300 frames: each bus read a 512-frame block and kept 212 of them
+    std::vector<float> out(2048 * 2);
+    soloud().mix(out.data(), 300);
+    music.play();
+    scene->getSystem<AudioSystem>()->update(0.0);
+    soloud().mix(out.data(), 735);
+    out.resize(735 * 2);
+    EXPECT_EQ(onsetOf(out, 0), 0) << "Master > Music > voice: no bus mixes a block it read ahead";
+}
+
+// ---- S-7: the null pump keeps in step with the frames -------------------------------------------
+
+TEST_F(AudioMixerRuntimeTest, TheNullPumpMixesExactlyTheTimeOfItsFrames) {
+    AudioSource loop = source();
+    loop.setLooping(true);
+    loop.play();
+    step(1.0 / 144.0);
+    ASSERT_TRUE(loop.isPlaying());
+    const double start = soloud().mStreamTime;
+    // 144 fps at 44.1 kHz: 306.25 frames each, which a per-frame rounding mixes as 306
+    for (int i = 0; i < 1440; i++) step(1.0 / 144.0);
+    EXPECT_NEAR(soloud().mStreamTime - start, 10.0, 1e-4) << "10 s of frames are 10 s of audio";
+}
+
+// ---- X-1: a Recorder capture mixes each frame once ---------------------------------------------
+
+TEST_F(AudioSourceTest, ARecorderCaptureMixesEachFrameOnce) {
+    ASSERT_TRUE(AudioSystem::beginOfflineCapture(48000, 2));
+    AudioSource loop = source();
+    loop.setLooping(true);
+    loop.play();
+    // the Recorder's frame: the game steps 1/30 s (the mixer's update), then takes 1/30 s of audio
+    std::vector<float> out(1600 * 2);
+    const double start = soloud().mStreamTime;
+    for (int i = 0; i < 30; i++) {
+        step(1.0 / 30.0);
+        AudioSystem::mixOffline(out.data(), 1600);
+    }
+    EXPECT_NEAR(soloud().mStreamTime - start, 1.0, 1e-3) << "one second of frames, one second mixed";
+    AudioSystem::endOfflineCapture();
+}
+
+TEST_F(AudioSourceTest, ARecorderCaptureHearsTheMixer) {
+    loadMusicMixer();
+    ASSERT_TRUE(AudioSystem::beginOfflineCapture(48000, 2));
+    EXPECT_NE(AudioMixer::getBusHandle("Music"), AudioMixer::getBusHandle("Master")) << "the groups' buses are there";
+    writeLevel(root / "assets" / "level.wav", 1.0);
+    AudioSource music = source("level.wav", "Music");
+    AudioMixer::setGroupMute("Music", true);
+    music.setLooping(true);
+    music.play();
+    std::vector<float> out(1600 * 2);
+    float peak = 0.0f;
+    for (int i = 0; i < 10; i++) {
+        step(1.0 / 30.0);
+        AudioSystem::mixOffline(out.data(), 1600);
+        for (float v : out) peak = std::max(peak, std::fabs(v));
+    }
+    EXPECT_TRUE(music.isPlaying());
+    EXPECT_FLOAT_EQ(peak, 0.0f) << "a muted group is muted in the capture too";
+    AudioSystem::endOfflineCapture();
+}
+
+// ---- B5: --headless and --silent-audio mix on the null driver ------------------------------------
+
+TEST_F(AudioSourceTest, AHeadlessRunPlaysItsSoundsAsANormalRunDoes) {
+    AudioSystem::close();
+    AudioSystem::setBackend(AudioBackend::Auto);
+    platformConfig().silentAudio = true;
+    writeTone(root / "assets" / "short.wav", 0.1);
+    AudioSource sound = source("short.wav");
+    std::vector<std::string> events;
+    AudioSourceComponent& audio = sound.getComponent<AudioSourceComponent>();
+    audio.onStart.add("test", std::function<void()>([&events]() { events.push_back("start"); }));
+    audio.onStop.add("test", std::function<void()>([&events]() { events.push_back("stop"); }));
+    sound.play();
+    step(0.02);
+    EXPECT_TRUE(sound.isPlaying()) << "the game sees it play";
+    EXPECT_EQ(events, (std::vector<std::string>{"start"}));
+    run(0.2);
+    EXPECT_EQ(events, (std::vector<std::string>{"start", "stop"})) << "and end after its length of game time";
+    EXPECT_FALSE(AudioSystem::isOutputAvailable()) << "no device";
+    EXPECT_EQ(AudioSystem::getBackendName(), "null driver");
+}
+
+// ---- B9: clocked voices start at the game time they were played --------------------------------
+
+TEST_F(AudioSourceTest, ClockedVoicesStartAsFarApartAsTheFramesThatPlayedThem) {
+    ASSERT_TRUE(AudioSystem::beginOfflineCapture(44100, 2));
+    writeLevel(root / "assets" / "level.wav", 1.0);
+    AudioSource left = source("level.wav");
+    AudioSource right = source("level.wav");
+    left.setClockedSound(true);
+    right.setClockedSound(true);
+    left.setPan(-1.0f);
+    right.setPan(1.0f);
+    // two frames of 1/60 s, one sound each, before the output takes its next buffer
+    step(kFrame60);
+    left.play();
+    scene->getSystem<AudioSystem>()->update(kFrame60);
+    step(kFrame60);
+    right.play();
+    scene->getSystem<AudioSystem>()->update(kFrame60);
+    std::vector<float> out(4096 * 2);
+    AudioSystem::mixOffline(out.data(), 4096);
+    const int a = onsetOf(out, 0);
+    const int b = onsetOf(out, 1);
+    ASSERT_GE(a, 0);
+    ASSERT_GE(b, 0);
+    EXPECT_NEAR(b - a, 735, 1) << "a frame of 1/60 s apart (enableClocked)";
+    AudioSystem::endOfflineCapture();
+}
+
+// ---- B11: a game's global volume ends with its Play ---------------------------------------------
+
+TEST_F(AudioSourceTest, PlayStartAndStopRestoreTheGlobalVolume) {
+    AudioSource sound = source();
+    sound.play();
+    step(0.02);
+    editor::Project project;
+    for (bool starting : {false, true}) {
+        // AudioListener.volume = 0 in a game
+        AudioSystem::setGlobalVolume(0.0f);
+        project.resetPlayAudio(starting);
+        EXPECT_FLOAT_EQ(AudioSystem::getGlobalVolume(), 1.0f) << (starting ? "Play start" : "Play stop");
+        EXPECT_FLOAT_EQ(soloud().getGlobalVolume(), 1.0f);
+    }
+}
+
+// ---- B13: an exported game keeps a saved Paused state --------------------------------------------
+
+TEST(AudioSourceSerializationTest, AnExportedSourceKeepsItsSavedState) {
+    const reflect::ComponentDesc& desc = *reflect::find(ComponentType::AudioSourceComponent);
+    reflect::CodegenContext ctx;
+    ctx.variable = "audio";
+    AudioSourceComponent audio;
+    audio.state = AudioSourceState::Paused;
+    std::string code = reflect::cppAssignments(desc, &audio, ctx);
+    EXPECT_NE(code.find("audio.state = AudioSourceState::Paused;"), std::string::npos) << "as the editor's Play loads it:\n" << code;
+    EXPECT_EQ(code.find("startTrigger"), std::string::npos);
+
+    // Playing starts through startTrigger, from Stopped
+    audio.state = AudioSourceState::Playing;
+    code = reflect::cppAssignments(desc, &audio, ctx);
+    EXPECT_NE(code.find("audio.state = AudioSourceState::Stopped;"), std::string::npos) << code;
+    EXPECT_NE(code.find("audio.startTrigger = true;"), std::string::npos) << code;
+}
+
+// ---- B6: the platform's pause is not the game's pauseAll ----------------------------------------
+
+TEST_F(AudioMixerRuntimeTest, ReturningFromTheBackgroundKeepsTheGamesPauseAll) {
+    AudioSource sound = source();
+    sound.setLooping(true);
+    sound.play();
+    run(0.1);
+    auto peakOut = [this]() {
+        std::vector<float> buffer(2048 * 2);
+        float peak = 0.0f;
+        for (int i = 0; i < 4; i++) {
+            soloud().mix(buffer.data(), 2048);
+            for (float v : buffer) peak = std::max(peak, std::fabs(v));
+        }
+        return peak;
+    };
+    EXPECT_GT(peakOut(), 0.1f);
+    // a pause menu
+    AudioSystem::pauseAll();
+    run(0.05);
+    EXPECT_FLOAT_EQ(peakOut(), 0.0f);
+    // the app goes to the background and comes back
+    Engine::systemPause();
+    Engine::systemResume();
+    run(0.05);
+    EXPECT_FLOAT_EQ(peakOut(), 0.0f) << "the game's pause holds";
+    EXPECT_TRUE(AudioMixer::isMasterPaused());
+    AudioSystem::resumeAll();
+    run(0.05);
+    EXPECT_GT(peakOut(), 0.1f);
+
+    // and the other way: the platform's pause holds what the game resumes
+    Engine::systemPause();
+    AudioSystem::resumeAll();
+    run(0.05);
+    EXPECT_FLOAT_EQ(peakOut(), 0.0f) << "in the background";
+    Engine::systemResume();
+    run(0.05);
+    EXPECT_GT(peakOut(), 0.1f);
+}
+
+// ---- setPan on a 3D voice ----------------------------------------------------------------------
+
+TEST_F(AudioSourceTest, AppliedParametersKeepA3DVoicesPan) {
+    camera(scene, CameraType::CAMERA_PERSPECTIVE, Vector3(0, 0, 0), Vector3(0, 0, -1));
+    AudioSource sound = source3d();
+    place(sound, Vector3(10, 0, -1));
+    sound.setLooping(true);
+    sound.play();
+    step(kFrame60);
+    AudioSourceComponent& audio = sound.getComponent<AudioSourceComponent>();
+    ASSERT_NE(audio.handle, 0u);
+    const float left = channelVolume(audio.handle, 0);
+    const float right = channelVolume(audio.handle, 1);
+    ASSERT_GT(right, left + 0.5f) << "hard right";
+    // a needUpdate (a pitch, a loop change) applies the parameters before the frame's 3D pass
+    AudioSystemTestAccess::applyVoiceParameters(*scene->getSystem<AudioSystem>(), audio, audio.handle, true);
+    EXPECT_FLOAT_EQ(channelVolume(audio.handle, 0), left) << "not the centre of a 2D pan";
+    EXPECT_FLOAT_EQ(channelVolume(audio.handle, 1), right);
+}
+
+// ---- decision 9: a 2D or UI camera hears at the centre of its view --------------------------------
+
+TEST_F(AudioSourceTest, A2DCamerasListenerStandsAtTheCentreOfItsView) {
+    for (CameraType type : {CameraType::CAMERA_ORTHO, CameraType::CAMERA_UI}) {
+        SCOPED_TRACE((int)type);
+        Scene* view = new Scene();
+        Engine::setScene(view);
+        Scene* old = scene;
+        scene = view;
+        camera(view, type, Vector3(0, 0, 1), Vector3(0, 0, 0), 0, 800, 0, 600);
+        AudioSource sound = source3d();
+        place(sound, Vector3(400, 300, 0));
+        sound.setLooping(true);
+        sound.play();
+        step(kFrame60);
+        const unsigned int handle = sound.getComponent<AudioSourceComponent>().handle;
+        ASSERT_NE(handle, 0u);
+        const Vector3 listener = listenerPosition();
+        EXPECT_FLOAT_EQ(listener.x, 400.0f);
+        EXPECT_FLOAT_EQ(listener.y, 300.0f);
+        EXPECT_FLOAT_EQ(listener.z, 1.0f);
+        EXPECT_NEAR(channelVolume(handle, 0), channelVolume(handle, 1), 1e-5f) << "a sound at the centre of the screen is centred";
+        sound.stop();
+        step(kFrame60);
+        scene = old;
+        Engine::setScene(scene);
+        Engine::removeScene(view);
+        delete view;
+    }
+}
+
+// ---- B4b, B4c, pixel units: Doppler ---------------------------------------------------------------
+
+TEST_F(AudioSourceTest, DopplerFollowsSpeedsInUnitsPerSecondAtAnyFrameRate) {
+    const float c = soloud().get3dSoundSpeed();
+    camera(scene, CameraType::CAMERA_PERSPECTIVE, Vector3(0, 0, 0), Vector3(0, 0, -1));
+    for (double fps : {30.0, 60.0, 144.0}) {
+        SCOPED_TRACE(fps);
+        const double dt = 1.0 / fps;
+        // a source coming at the listener at a tenth of the speed of sound
+        AudioSource sound = source3d();
+        place(sound, Vector3(0, 0, -100));
+        sound.setLooping(true);
+        sound.play();
+        step(dt);
+        const unsigned int handle = sound.getComponent<AudioSourceComponent>().handle;
+        ASSERT_NE(handle, 0u);
+        Vector3 at(0, 0, -100);
+        for (int i = 0; i < 5; i++) {
+            at.z += (float)(0.1 * c * dt);
+            place(sound, at);
+            step(dt);
+        }
+        EXPECT_NEAR(doppler(handle), 1.0f / 0.9f, 1e-3f) << "c / (c - v)";
+
+        // B4c: it stops; its pitch comes back
+        step(dt);
+        step(dt);
+        EXPECT_NEAR(doppler(handle), 1.0f, 1e-6f) << "a still source has no Doppler";
+
+        // the listener coming at the still source at a tenth of the speed of sound
+        Vector3 eye(0, 0, 0);
+        for (int i = 0; i < 5; i++) {
+            eye.z -= (float)(0.1 * c * dt);
+            moveCamera(scene, eye, eye + Vector3(0, 0, -1));
+            step(dt);
+        }
+        EXPECT_NEAR(doppler(handle), 1.1f, 1e-3f) << "(c + v) / c";
+        step(dt);
+        step(dt);
+        EXPECT_NEAR(doppler(handle), 1.0f, 1e-6f) << "the listener stopped";
+        moveCamera(scene, Vector3(0, 0, 0), Vector3(0, 0, -1));
+        sound.stop();
+        step(dt);
+        step(dt);
+    }
+}
+
+TEST_F(AudioSourceTest, A2DSceneMovingInPixelsHasNoDoppler) {
+    for (CameraType type : {CameraType::CAMERA_ORTHO, CameraType::CAMERA_UI}) {
+        Scene* view = new Scene();
+        Engine::setScene(view);
+        Scene* old = scene;
+        scene = view;
+        camera(view, type, Vector3(0, 0, 1), Vector3(0, 0, 0), 0, 800, 0, 600);
+        for (double fps : {30.0, 60.0}) {
+            SCOPED_TRACE(fps);
+            // a sprite crossing the screen at 600 px/s
+            AudioSource sound = source3d();
+            Vector3 at(100, 300, 0);
+            place(sound, at);
+            sound.setLooping(true);
+            sound.play();
+            step(1.0 / fps);
+            const unsigned int handle = sound.getComponent<AudioSourceComponent>().handle;
+            ASSERT_NE(handle, 0u);
+            for (int i = 0; i < 5; i++) {
+                at.x += (float)(600.0 / fps);
+                place(sound, at);
+                step(1.0 / fps);
+            }
+            EXPECT_FLOAT_EQ(doppler(handle), 1.0f) << "no pitch from a speed in pixels";
+            sound.stop();
+            step(1.0 / fps);
+        }
+        scene = old;
+        Engine::setScene(scene);
+        Engine::removeScene(view);
+        delete view;
+    }
+}
+
+// ---- B4d: a layer scene hears through the main scene's listener ----------------------------------
+
+TEST_F(AudioSourceTest, ALayerScenesSoundsAreHeardByTheMainCamera) {
+    // the main scene: a perspective camera at the origin looking down -Z
+    camera(scene, CameraType::CAMERA_PERSPECTIVE, Vector3(0, 0, 0), Vector3(0, 0, -1));
+    // a layer with its own camera at (100, 0, 0) looking down -X, and a sound 1 m in front of it
+    // and 2 m to its right
+    Scene* layer = new Scene();
+    Engine::addSceneLayer(layer);
+    camera(layer, CameraType::CAMERA_PERSPECTIVE, Vector3(100, 0, 0), Vector3(99, 0, 0));
+    Scene* main = scene;
+    scene = layer;
+    AudioSource sound = source3d();
+    place(sound, Vector3(99, 0, -2));
+    sound.setLooping(true);
+    sound.play();
+    scene = main;
+    for (int i = 0; i < 3; i++) {
+        AudioMixer::update(kFrame60, kFrame60);
+        main->getSystem<AudioSystem>()->update(kFrame60);
+        layer->getSystem<AudioSystem>()->update(kFrame60);
+    }
+    const unsigned int handle = sound.getComponent<AudioSourceComponent>().handle;
+    ASSERT_NE(handle, 0u);
+    const Vector3 listener = listenerPosition();
+    EXPECT_FLOAT_EQ(listener.x, 0.0f) << "the listener stays at the main camera";
+    EXPECT_FLOAT_EQ(listener.y, 0.0f);
+    EXPECT_FLOAT_EQ(listener.z, 0.0f);
+    const Vector3 heard = voicePosition(handle);
+    EXPECT_NEAR(heard.x, 2.0f, 1e-4f) << "2 m to the main camera's right";
+    EXPECT_NEAR(heard.y, 0.0f, 1e-4f);
+    EXPECT_NEAR(heard.z, -1.0f, 1e-4f) << "1 m in front of it";
+    sound.stop();
+    layer->getSystem<AudioSystem>()->update(kFrame60);
+    Engine::removeScene(layer);
+    delete layer;
 }
