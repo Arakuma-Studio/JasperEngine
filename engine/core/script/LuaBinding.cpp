@@ -974,7 +974,8 @@ void LuaBinding::logLuaError(const char* format, ...){
     Logger::write(LogLevel::Error, category, text, nullptr, LogFlagLua | LogFlagNoBacktrace, format);
 }
 
-void LuaBinding::logFromLua(lua_State* L, LogLevel level, const LogCategory& category, std::string_view text){
+void LuaBinding::logFromLua(lua_State* L, LogLevel level, const LogCategory& category, std::string_view text,
+                            const std::string& stackTrace){
     // the calling Lua function's chunk and line (level 1: the caller of this C function)
     lua_Debug ar{};
     LogSource source{nullptr, nullptr, 0};
@@ -983,7 +984,11 @@ void LuaBinding::logFromLua(lua_State* L, LogLevel level, const LogCategory& cat
         source.function = ar.name ? ar.name : "";
         source.line = static_cast<uint32_t>(ar.currentline);
     }
-    Logger::write(level, category, text, source.file ? &source : nullptr, LogFlagLua | LogFlagNoBacktrace);
+    if (stackTrace.empty()) {
+        Logger::write(level, category, text, source.file ? &source : nullptr, LogFlagLua | LogFlagNoBacktrace);
+        return;
+    }
+    Log::emitEntry(level, std::string(text), stackTrace, true, &category, source.file ? &source : nullptr);
 }
 
 void LuaBinding::registerHelpersFunctions(lua_State *L){

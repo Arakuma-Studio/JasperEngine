@@ -3047,6 +3047,11 @@ ENGINE_EVENT_ARGS = {
     'onButtonDown': ['action'], 'onButtonUp': ['action'],
 }
 
+# Handler arguments of other classes' event fields, by (class, field)
+EVENT_FIELD_ARGS = {
+    ('Log', 'onMessageReceived'): ['message', 'stackTrace', 'level'],
+}
+
 _LUA_KEYWORDS = {'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function', 'goto', 'if',
                  'in', 'local', 'nil', 'not', 'or', 'repeat', 'return', 'then', 'true', 'until', 'while'}
 
@@ -3383,3 +3388,30 @@ class Builder:
     def unresolve(self, c, m, why):
         m.unresolved.append(why)
         self.unresolved.append(f'{c.name}.{m.name}: {why}')
+
+# The log and the debug overlay (feature debug-overlay on S09's Logger, CoreClassesLua.cpp):
+# Log.* take any values (tab-joined) and are lua_CFunctions, as are the buffer's readers and
+# the overlay's getStats/addCommand; DebugLogEntry and DebugStats are in
+# engine/core/script/binding/stubs/DebugOverlay.lua
+for _name, _level in (('print', 'Info'), ('info', 'Info'), ('verbose', 'Trace'), ('debug', 'Debug (compiled out of release builds)'),
+                      ('warn', 'Warn'), ('error', 'Error')):
+    OVERRIDES[('Log', _name)] = {
+        'doc': [f'Logs the values joined with tabs (tostring) at level {_level}, category `lua`, with the calling',
+                'chunk and line. Project Settings > Debug > Log Stack Traces decides which levels carry a Lua traceback.'],
+        'overloads': [([('...', 'any')], '')]}
+OVERRIDES[('Log', 'getEntries')] = {
+    'doc': ['The log buffer\'s lines (every record of the Logger), oldest first: the newest `maxCount`',
+            '(0 or nil: all) of the `levels` given (a list of LogLevel values; nil: every level).'],
+    'overloads': [([('maxCount?', 'integer'), ('levels?', 'integer[]')], 'DebugLogEntry[]')]}
+OVERRIDES[('Log', 'count')] = {
+    'doc': ['Lines of that LogLevel since the last Log.clear(), buffered or not.'],
+    'overloads': [([('level', 'integer')], 'integer')]}
+OVERRIDES[('DebugOverlay', 'getStats')] = {
+    'doc': ['The stats panel\'s figures now (works while the overlay is off): frame times from the engine\'s',
+            'frame-time ring (S15), draw calls, memory, audio, physics, entities, coroutines, timers.'],
+    'overloads': [([], 'DebugStats')]}
+OVERRIDES[('DebugOverlay', 'addCommand')] = {
+    'doc': ['Adds a console command (name `[a-z0-9_-]+`; re-adding replaces): `fn(args)` gets the words after',
+            'the name. It goes with `owner` (default: the `self` of the calling script method). False for a bad',
+            'or built-in name.'],
+    'overloads': [([('name', 'string'), ('description', 'string?'), ('fn', 'fun(args: string[])'), ('owner?', 'table')], 'boolean')]}

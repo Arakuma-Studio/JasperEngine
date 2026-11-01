@@ -4,16 +4,17 @@
 
 ---One line of the log (Log.getEntries)
 ---@class DebugLogEntry
----@field id integer # increasing from 1, never reused
----@field level integer # a LogLevel value (LogLevel.INFO .. LogLevel.ERROR)
+---@field id integer # the Logger's record id: increasing from 1, never reused
+---@field category string # the log category ("lua" for Lua, "engine" for Log::* of C++, "render"...)
+---@field level integer # a LogLevel value (LogLevel.TRACE .. LogLevel.FATAL)
 ---@field message string # the text before "stack traceback:"
 ---@field stackTrace string # the Lua traceback ("" when none)
----@field time number # seconds since the app started
+---@field time number # seconds since the app started (monotonic)
 ---@field frame integer # Engine.frameCount when it was logged
 ---@field mainThread boolean # logged on the main thread (false: an engine worker thread)
 ---@field fromLua boolean # logged by Lua (print, Log.*, a Lua error)
 
----The stats of the debug overlay (DebugOverlay.getStats); frame times are of the last 2 s, unscaled
+---The stats of the debug overlay (DebugOverlay.getStats); frame times are of the last 2 s of the engine's frame-time ring (S15)
 ---@class DebugStats
 ---@field fps number
 ---@field frameMs number # the last frame
