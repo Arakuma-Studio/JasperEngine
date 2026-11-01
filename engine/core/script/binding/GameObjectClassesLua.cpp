@@ -2301,6 +2301,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("time", &ParticleSystem::getTime)
         .addProperty("playOnAwake", &ParticleSystem::isPlayOnAwake, &ParticleSystem::setPlayOnAwake)
         .addProperty("playbackSpeed", &ParticleSystem::getPlaybackSpeed, &ParticleSystem::setPlaybackSpeed)
+        // (ui-scaling-text) the GameObject's Unscaled Time: it plays at Engine.timeScale 0
+        .addProperty("useUnscaledTime", &ParticleSystem::isUseUnscaledTime, &ParticleSystem::setUseUnscaledTime)
         .addProperty("seed", &ParticleSystem::getSeed, &ParticleSystem::setSeed)
         .addProperty("effect", &ParticleSystem::getEffect, &ParticleSystem::setEffect)
         .addFunction("setInlineEffect", &ParticleSystem::setInlineEffect)

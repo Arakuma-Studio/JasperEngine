@@ -1629,6 +1629,8 @@ YAML::Node editor::Stream::encodeParticleSystemComponent(const ParticleSystemCom
     node["playOnAwake"] = particles.playOnAwake;
     node["seed"] = particles.seed;
     node["playbackSpeed"] = particles.playbackSpeed;
+    // written only when on, so a file from before it stays as it was
+    if (particles.useUnscaledTime) node["useUnscaledTime"] = true;
     if (!particles.exposedValues.empty()){
         YAML::Node values;
         for (const ParticleExposedValue& v : particles.exposedValues){
@@ -1668,6 +1670,8 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
     if (node["playOnAwake"]) particles.playOnAwake = YamlNumbers::as<bool>(node["playOnAwake"]);
     if (node["seed"]) particles.seed = YamlNumbers::as<uint32_t>(node["seed"]);
     if (node["playbackSpeed"]) particles.playbackSpeed = YamlNumbers::as<float>(node["playbackSpeed"]);
+    // absent: off, over an old component too (it is written only when on)
+    particles.useUnscaledTime = node["useUnscaledTime"] ? YamlNumbers::as<bool>(node["useUnscaledTime"]) : false;
     // written only when not empty: absent is none (over an old component too)
     particles.exposedValues.clear();
     if (node["exposedValues"] && node["exposedValues"].IsSequence()){

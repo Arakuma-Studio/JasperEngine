@@ -27591,7 +27591,8 @@
     "inlineEffect",
     "playOnAwake",
     "playbackSpeed",
-    "seed"
+    "seed",
+    "useUnscaledTime"
    ],
    "name": "ParticleSystemComponent",
    "properties_of_default": {
@@ -27634,6 +27635,11 @@
      9,
      2199023255552,
      true
+    ],
+    "useUnscaledTime": [
+     0,
+     0,
+     true
     ]
    },
    "properties_without_component": {
@@ -27675,6 +27681,11 @@
     "seed": [
      9,
      2199023255552,
+     true
+    ],
+    "useUnscaledTime": [
+     0,
+     0,
      true
     ]
    },
@@ -41869,6 +41880,11 @@
    "seed": [
     9,
     2199023255552,
+    true
+   ],
+   "useUnscaledTime": [
+    0,
+    0,
     true
    ]
   },

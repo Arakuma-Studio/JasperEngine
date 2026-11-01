@@ -709,6 +709,25 @@ unique there, reads every upstream file losslessly and drops the second model.
   origin/main's constructors `ParticleSystem(scene, true)`, `MinMaxCurve(min, max)`,
   `MinMaxCurve(multiplier, curve[, maxCurve])`, `MinMaxGradient(min, max)` and
   `MinMaxGradient(gradient[, maxGradient])` (its benchmark script, `tools/fixtures/particles/bench`, runs).
+- **UI particles** (origin/main's ui-scaling-text): the component's own `useUnscaledTime`
+  (OmitIfDefault: written only when on; Inspector "Unscaled Time", Lua `ps.useUnscaledTime`, the
+  exported code) ticks a system on the unscaled frame time, as the effect's Unscaled Time does
+  (either one: a prefab with a shared asset plays unscaled without a copy); an old system's
+  `useUnscaledTime` key migrates onto it. A Particle System under a RectTransform draws in place,
+  between its siblings, inside the nearest panel's scissor (as UI Points do). GameObject > UI >
+  Particle System is one GameObject: origin/main's sparkle through the old system's converter, the
+  soft image `ui/particle_soft.png`, unscaled time; `create_particles` under a UI element or in a
+  UI scene turns the Transform 180 degrees about X (y down), Local space, unscaled time, the soft
+  image, and replies `ui: true`. The HTML `<particle-system>` finds the first Particle System of its
+  prefab (an older prefab's controller action is left idle) and draws the render extraction's
+  billboards (`UIParticleSource`: positions, sizes, rotations, colours, sheet frames, the soft disc
+  of an untextured system); `time="ui"` is the component's `useUnscaledTime` (`game` also turns the
+  effect's off), `loop=` the effect's Looping (the GameObject's own copy), `clear()` Unity's Clear,
+  `isPlaying()` S20's, `complete` when a system that does not loop stops. Not kept: a Canvas
+  Group's alpha does not fade a Particle System (it fades Points; S20's shader has no group alpha).
+  Tests: `engine/tests/htmlui/TestParticleSystemElement.cpp` (origin/main's, on S20 systems, with
+  its golden; time, loop, clear, pause, complete, an old prefab layout) and
+  `TestGoldenUIScaling.cpp`'s `UIParticleSystemsClippedByAPanel`.
 - **Dropped**: origin/main's ParticleSystemComponent version 2 fields and their simulation
   (`particles/MinMax`, `ParticleFields`, `ParticleNoise`, `ParticleShapes`,
   `ParticleSimulation`, `ParticleUpgrade`, `ActionSystemParticles.cpp`), its overlay and shape

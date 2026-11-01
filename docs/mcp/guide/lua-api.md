@@ -2612,8 +2612,10 @@ t seconds), `step(ticks)`, `sendTrigger(name)` (the effect's Trigger sub-emitter
 `getColor` for the effect's exposed parameters (a set returns false for a name it does not expose),
 `setInlineEffect(json)` / `getInlineEffect()`, `addCollisionPlane(gameObject)` /
 `clearCollisionPlanes()`. rw: `enabled`, `playOnAwake`, `playbackSpeed`, `seed` (0: a new seed
-at every play), `effect` (a .particles path; "" plays the inline effect). ro: `isPlaying`,
-`isPaused`, `isEmitting`, `particleCount`, `time`.
+at every play), `effect` (a .particles path; "" plays the inline effect), `useUnscaledTime` (the
+GameObject's own: it ticks with the unscaled frame time and plays at `Engine.timeScale` 0, a pause
+menu or UI particles; the effect's `ps.main.useUnscaledTime` does the same for every system playing
+it). ro: `isPlaying`, `isPaused`, `isEmitting`, `particleCount`, `time`.
 
 Events, one batch per frame on the main thread after the simulation (plain tables, 1-based):
 `onCollision(fn)` (position, normal, velocity, particleId, killed; at most the Collision
@@ -2646,8 +2648,6 @@ lives on the old target now), `speed` (= `playbackSpeed`); `isRunning()`, `isSto
 Color/Alpha/Size/Sprite/Rotation/Scale. Component: `getParticleSystemComponent()` (the old misspelt `getParticlesomponent()` still works,
 deprecated). The old Action's `isPaused()` method is the property `isPaused` now: write
 `ps.isPaused` (calling it fails). More: jasper://docs/particles.
-
-<!-- SYNC4-ABSORB(particles): ui-scaling-text's `useUnscaledTime` (a system playing at `Engine.timeScale` 0: UI particles) was on the version 1 system; S20's ParticleSystem has no such field yet -->
 
 ### 4.17 FluidSimulation (GameObject)
 

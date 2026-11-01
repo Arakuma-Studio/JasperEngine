@@ -65,6 +65,11 @@ namespace jasperengine{
         bool isPlayOnAwake() const;
         void setPlaybackSpeed(float playbackSpeed);
         float getPlaybackSpeed() const;
+        // ticks with the unscaled frame time: it plays at Engine.timeScale 0 (a pause menu, UI
+        // particles). The GameObject's own switch; the effect's Unscaled Time (main.useUnscaledTime)
+        // does the same for every system playing that effect
+        void setUseUnscaledTime(bool useUnscaledTime);
+        bool isUseUnscaledTime() const;
         // 0: a new random seed at every play
         void setSeed(unsigned int seed);
         unsigned int getSeed() const;

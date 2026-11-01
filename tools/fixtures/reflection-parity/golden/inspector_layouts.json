@@ -4095,6 +4095,14 @@
    "label": "Playback Speed",
    "path": "playbackSpeed",
    "read_only": false
+  },
+  {
+   "component": "particlesystem",
+   "group": "",
+   "kind": "Bool",
+   "label": "Unscaled Time",
+   "path": "useUnscaledTime",
+   "read_only": false
   }
  ],
  "point_light#0": [

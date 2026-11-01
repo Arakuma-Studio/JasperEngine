@@ -274,6 +274,9 @@ namespace {
                 // the action plays it (its start, stop and pause), as it did
                 converted.playOnAwake = !action;
                 converted.playbackSpeed = action && action["speed"] ? editor::YamlNumbers::as<float>(action["speed"]) : 1.0f;
+                // origin/main's (ui-scaling-text) Unscaled Time of an old system (its UI particles):
+                // the GameObject's own, as it was the component's
+                converted.useUnscaledTime = old["useUnscaledTime"] && editor::YamlNumbers::as<bool>(old["useUnscaledTime"]);
             }
 
             components.remove("particlesystem");

@@ -7,19 +7,23 @@
 #include "Log.h"
 #include "object/ParticleSystem.h"
 #include "component/ActionComponent.h"
-#include "component/InstancedMeshComponent.h"
 #include "component/ParticleSystemComponent.h"
-#include "component/PointsComponent.h"
 #include "component/Transform.h"
+#include "math/Matrix4.h"
+#include "memory/Arena.h"
+#include "particles/ParticleRender.h"
 #include "manager/ObjectManager.h"
 #include "manager/PrefabManager.h"
 #include "registry/EntityCloner.h"
 #include "htmlui/compat/DiagnosticCodes.h"
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/DocumentLoader.h"
+#include "subsystem/ParticleSubsystem.h"
+#include "subsystem/ParticleSystemState.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "util/Color.h"
 
+#include <RmlUi/Core/CallbackTexture.h>
 #include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/ElementDocument.h>
@@ -31,7 +35,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <memory>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 using namespace jasperengine;
@@ -57,69 +63,117 @@ namespace {
 
 // ---------------------------------------------------------------- the particle source seam
 
-bool UIParticleSource::read(Scene* scene, Entity emitter, std::vector<UIParticleQuad>& out){
-    out.clear();
-    if (!scene || emitter == NULL_ENTITY)
-        return false;
+namespace {
 
-    if (PointsComponent* points = scene->findComponent<PointsComponent>(emitter)){
-        out.reserve(points->points.size());
-        for (const PointData& point : points->points){
-            if (!point.visible)
-                continue;
-            UIParticleQuad quad;
-            quad.position = point.position;
-            quad.size = point.size;
-            quad.rotation = point.rotation;
-            quad.color = point.color;
-            quad.textureRect = point.textureRect;
-            out.push_back(quad);
-        }
-        return true;
+    // the records of one read (the main thread's: the HTML UI updates there)
+    memory::Arena& packArena(){
+        static memory::Arena arena{"HtmlUI.ParticleSystem"};
+        return arena;
     }
 
-    // a quad InstancedMesh target (the particles feature's default): position, uniform scale
-    // as the size, the colour and sprite frame of each visible instance. Its roll joins here
-    // when InstanceData gets one (the particles feature).
-    if (InstancedMeshComponent* instances = scene->findComponent<InstancedMeshComponent>(emitter)){
-        out.reserve(instances->instances.size());
-        for (const InstanceData& instance : instances->instances){
-            if (!instance.visible)
-                continue;
-            UIParticleQuad quad;
-            quad.position = instance.position;
-            quad.size = std::max(std::fabs(instance.scale.x), std::fabs(instance.scale.y));
-            quad.rotation = 0.0f;
-            quad.color = instance.color;
-            quad.textureRect = instance.textureRect;
-            out.push_back(quad);
-        }
-        return true;
+    Matrix4 matrixOf(const float* m){
+        Matrix4 out;
+        for (int c = 0; c < 4; c++)
+            for (int r = 0; r < 4; r++)
+                out[c][r] = m[c * 4 + r];
+        return out;
     }
-    return false;
+
+    // the rect (UV, v down) of a sheet frame, as the particle shader picks it (particles_vs.glsl)
+    Rect frameRect(const particles::ParticleProgram& program, float frame01){
+        const particles::RenderParams& rp = program.render;
+        const float frames = (float)std::max<uint32_t>(rp.frameCount, 1u);
+        const float frame = std::floor(frame01 * frames);
+        if (rp.sheet == particles::SheetKind::Sprites && rp.spriteCount > 0){
+            const float* rects = reinterpret_cast<const float*>(reinterpret_cast<const unsigned char*>(program.pool.data()) + rp.sprites);
+            const uint32_t index = (uint32_t)std::clamp(frame, 0.0f, (float)rp.spriteCount - 1.0f);
+            return Rect(rects[index * 4], rects[index * 4 + 1], rects[index * 4 + 2], rects[index * 4 + 3]);
+        }
+        if (rp.sheet != particles::SheetKind::None){
+            const float tilesX = (float)std::max<uint32_t>(rp.tilesX, 1u);
+            const float tilesY = (float)std::max<uint32_t>(rp.tilesY, 1u);
+            const float column = std::fmod(frame, tilesX);
+            const float row = std::floor(frame / tilesX);
+            return Rect(column / tilesX, row / tilesY, 1.0f / tilesX, 1.0f / tilesY);
+        }
+        return Rect(0.0f, 0.0f, 1.0f, 1.0f);
+    }
+
 }
 
-bool UIParticleSource::material(Scene* scene, Entity emitter, std::string& texturePath, bool& additive){
-    texturePath.clear();
-    additive = false;
+bool UIParticleSource::read(Scene* scene, Entity emitter, std::vector<UIParticleQuad>& out){
+    out.clear();
+    if (!scene || emitter == NULL_ENTITY || !scene->findComponent<ParticleSystemComponent>(emitter))
+        return false;
+    std::shared_ptr<ParticleSubsystem> subsystem = scene->getSystem<ParticleSubsystem>();
+    particles::ParticleSystemState* state = subsystem ? subsystem->getState(emitter) : nullptr;
+    if (!state || !state->effect)
+        return false;
+    const particles::EmitterRuntime& runtime = state->runtime;
+    const particles::ParticleProgram& program = state->effect->program;
+    const particles::RendererModule& renderer = state->effect->document.renderer;
+    if (runtime.count() == 0 || !renderer.enabled || renderer.renderMode == particles::RenderMode::None || runtime.isPrewarming())
+        return true;
+
+    // the records the billboards draw (one view: nothing sorts, nothing thins)
+    memory::Arena& arena = packArena();
+    arena.reset();
+    particles::RenderView view;
+    const particles::PackResult packed = particles::ParticleRenderPrep::pack(runtime, view, arena);
+
+    // simulation space -> the GameObject's local space (the element's)
+    Matrix4 toLocal = matrixOf(runtime.simToWorld());
+    if (Transform* transform = scene->findComponent<Transform>(emitter))
+        toLocal = transform->modelMatrix.inverse() * toLocal;
+    const Vector4& tiling = renderer.textureTiling;
+
+    out.reserve(packed.count);
+    for (uint32_t i = 0; i < packed.count; i++){
+        const particles::ParticleInstance& record = packed.instances[i];
+        float width = particles::ParticleRenderPrep::fromHalf((uint16_t)(record.size & 0xffffu));
+        float height = particles::ParticleRenderPrep::fromHalf((uint16_t)(record.size >> 16));
+        if (!(std::fabs(width) > 0.0f) || !(std::fabs(height) > 0.0f))
+            continue;
+        UIParticleQuad quad;
+        quad.position = toLocal * Vector3(record.position[0], record.position[1], record.position[2]);
+        quad.size = std::fabs(width);
+        quad.height = std::fabs(height);
+        // the shader turns a billboard clockwise as seen; the quads turn counter-clockwise
+        const float turns = (float)(record.rotationFrame & 0xffffu) / 65535.0f;
+        quad.rotation = -turns * 6.28318530718f;
+        // UBYTE4N, the rgb encoded with gamma 2.2 (the shader's linearisation)
+        auto channel = [&](int shift){ return std::pow((float)((record.color >> shift) & 255u) / 255.0f, 2.2f); };
+        quad.color = Vector4(channel(0), channel(8), channel(16), (float)(record.color >> 24) / 255.0f);
+        // the frame, then the Renderer's tiling and offset; a negative size mirrors the texture
+        const Rect frame = frameRect(program, (float)(record.rotationFrame >> 16) / 65535.0f);
+        float u0 = frame.getX() * tiling.x + tiling.z, v0 = frame.getY() * tiling.y + tiling.w;
+        float u1 = u0 + frame.getWidth() * tiling.x, v1 = v0 + frame.getHeight() * tiling.y;
+        if (width < 0.0f) std::swap(u0, u1);
+        if (height < 0.0f) std::swap(v0, v1);
+        quad.textureRect = Rect(u0, v0, u1 - u0, v1 - v0);
+        out.push_back(quad);
+    }
+    return true;
+}
+
+bool UIParticleSource::material(Scene* scene, Entity emitter, UIParticleMaterial& out){
+    out = UIParticleMaterial();
     if (!scene || emitter == NULL_ENTITY)
         return false;
-    if (PointsComponent* points = scene->findComponent<PointsComponent>(emitter)){
-        texturePath = points->texture.getPath();
-        additive = points->blendMode == MaterialBlendMode::ADDITIVE;
+    const ParticleSystemComponent* component = scene->findComponent<ParticleSystemComponent>(emitter);
+    if (!component)
+        return false;
+    const particles::ParticleEffectDocument* document = ParticleSubsystem::getDocument(*component);
+    if (!document)
         return true;
-    }
-    if (scene->findComponent<InstancedMeshComponent>(emitter)){
-        // the quad mesh's material (the particles feature's built-in soft circle by default)
-        if (MeshComponent* mesh = scene->findComponent<MeshComponent>(emitter)){
-            if (mesh->numSubmeshes > 0){
-                texturePath = mesh->submeshes[0].material.baseColorTexture.getPath();
-                additive = mesh->submeshes[0].material.blendMode == MaterialBlendMode::ADDITIVE;
-            }
-        }
-        return true;
-    }
-    return false;
+    const particles::RendererModule& renderer = document->renderer;
+    out.texturePath = renderer.texture;
+    out.additive = renderer.blend == particles::ParticleBlend::Additive;
+    // the particle shader's untextured billboard: a soft disc (Unity's default), else a square;
+    // a sheet without a texture draws its frames' squares
+    const bool sheet = document->textureSheetAnimation.present && document->textureSheetAnimation.enabled;
+    out.softDisc = renderer.texture.empty() && renderer.untexturedShape == particles::UntexturedShape::Disc && !sheet;
+    return true;
 }
 
 // ---------------------------------------------------------------- the element
@@ -187,7 +241,7 @@ void UIParticleSystemElement::destroyEntity(){
         // the prefab's whole hierarchy (its children and the actions on them) goes
         ObjectManager::destroyImmediate(scene, root);
     }
-    root = system = emitter = NULL_ENTITY;
+    root = system = NULL_ENTITY;
     quads.clear();
     drawn = 0;
 }
@@ -217,10 +271,11 @@ bool UIParticleSystemElement::instantiate(){
     if (UIDocumentSystem* documents = scene->findSystem<UIDocumentSystem>().get())
         documents->addRuntimeEntity(root);
 
-    // the Particle System: on the root, else the first of its descendants (hierarchy order)
+    // the Particle System: on the root, else the first of its descendants (hierarchy order); it
+    // renders itself (S20), so it is the emitter too
     const std::vector<Entity> hierarchy = EntityCloner::collectHierarchy(scene, root);
     for (Entity entity : hierarchy){
-        if (scene->findComponent<ParticleSystemComponent>(entity) && scene->findComponent<ActionComponent>(entity)){
+        if (scene->findComponent<ParticleSystemComponent>(entity)){
             system = entity;
             break;
         }
@@ -230,8 +285,13 @@ bool UIParticleSystemElement::instantiate(){
         destroyEntity();
         return false;
     }
-    ActionComponent& action = scene->getComponent<ActionComponent>(system);
-    emitter = (action.target != NULL_ENTITY) ? action.target : system;
+    // the element plays it: an older prefab's controller action (D1) starts nothing of its own
+    for (Entity entity : hierarchy){
+        if (ActionComponent* action = scene->findComponent<ActionComponent>(entity); action && action->target == system){
+            action->state = ActionState::Stopped;
+            action->startTrigger = false;
+        }
+    }
 
     // simulated where the prefab is made, drawn only here: none of its renderers draws
     if (Transform* transform = scene->findComponent<Transform>(root)){
@@ -244,9 +304,8 @@ bool UIParticleSystemElement::instantiate(){
             transform->needUpdate = true;
         }
     }
-    UIParticleSource::material(scene, emitter, texturePath, additive);
-
     applyAttributes();
+    UIParticleSource::material(scene, system, material);
     // a play / pause / stop asked before the system existed wins over autoplay
     const Command command = pending;
     pending = Command::None;
@@ -263,12 +322,31 @@ bool UIParticleSystemElement::instantiate(){
 void UIParticleSystemElement::applyAttributes(){
     if (!scene || system == NULL_ENTITY || sceneLifetime.expired())
         return;
-    ParticleSystemComponent* particles = scene->findComponent<ParticleSystemComponent>(system);
-    if (!particles)
+    ParticleSystemComponent* component = scene->findComponent<ParticleSystemComponent>(system);
+    if (!component)
         return;
-    // SYNC4-ABSORB(particles): time="ui" (unscaled: a pause menu plays it) and loop= on the
-    // legacy particle system; S20's main module takes them with the particles absorption
-    (void)particles;
+    // time="ui" (default): unscaled, a pause menu plays it; "game" follows Engine.timeScale, the
+    // effect's own Unscaled Time included
+    const bool unscaled = GetAttribute<Rml::String>("time", "ui") != "game";
+    component->useUnscaledTime = unscaled;
+    ParticleSystem handle(scene, system);
+    particles::ParticleEffectDocument document = handle.getEffectDocument();
+    bool changed = false;
+    if (!unscaled && document.useUnscaledTime){
+        document.useUnscaledTime = false;
+        changed = true;
+    }
+    // loop= the effect's Looping (the prefab's own otherwise)
+    if (HasAttribute("loop")){
+        const bool loop = GetAttribute<Rml::String>("loop", "") != "false";
+        if (document.looping != loop){
+            document.looping = loop;
+            changed = true;
+        }
+    }
+    // the GameObject's own copy of the effect (an asset stays as it is), its live particles kept
+    if (changed)
+        handle.setEffectDocument(document);
 }
 
 void UIParticleSystemElement::OnAttributeChange(const Rml::ElementAttributes& changed_attributes){
@@ -285,7 +363,7 @@ void UIParticleSystemElement::play(){
         pending = Command::Play;
         return;
     }
-    ParticleSystem(scene, system).start();
+    ParticleSystem(scene, system).play();
     completeSent = false;
 }
 
@@ -308,23 +386,18 @@ void UIParticleSystemElement::pause(){
 }
 
 void UIParticleSystemElement::clear(){
-    // the live particles go, the system keeps its state
-    if (!scene || emitter == NULL_ENTITY || sceneLifetime.expired())
+    // the live particles go, the system keeps its state (Unity's Clear: playing, stopped or paused)
+    if (!scene || system == NULL_ENTITY || sceneLifetime.expired())
         return;
-    if (PointsComponent* points = scene->findComponent<PointsComponent>(emitter)){
-        for (PointData& point : points->points)
-            point.visible = false;
-    }
-    // SYNC4-ABSORB(particles): the legacy system's particles end here; S20's clear with the
-    // particles absorption
+    ParticleSystem(scene, system).clear(false);
     quads.clear();
 }
 
 bool UIParticleSystemElement::isPlaying() const{
+    // playing: not paused, not stopped (a system that does not loop plays until its last particle dies)
     if (!scene || system == NULL_ENTITY || sceneLifetime.expired())
         return false;
-    const ActionComponent* action = scene->findComponent<ActionComponent>(system);
-    return action && action->state == ActionState::Running;
+    return ParticleSystem(scene, system).isPlaying();
 }
 
 Scene* UIParticleSystemElement::getScene() const{
@@ -349,7 +422,7 @@ void UIParticleSystemElement::OnUpdate(){
     if (scene && sceneLifetime.expired()){
         // the scene went first: what was made went with it
         scene = nullptr;
-        root = system = emitter = NULL_ENTITY;
+        root = system = NULL_ENTITY;
     }
     if (sourceDirty){
         destroyEntity();
@@ -359,14 +432,19 @@ void UIParticleSystemElement::OnUpdate(){
     if (!scene || system == NULL_ENTITY)
         return;
 
-    UIParticleSource::read(scene, emitter, quads);
+    UIParticleSource::read(scene, system, quads);
+    // a script may have given it another effect or texture
+    UIParticleSource::material(scene, system, material);
+    // drawn here, so seen: its culling never pauses it (none of its renderers draws in a camera)
+    if (std::shared_ptr<ParticleSubsystem> subsystem = scene->getSystem<ParticleSubsystem>())
+        subsystem->markVisible(system);
 
-    // `complete`: a system that does not loop stopped by itself
+    // `complete`: a system that does not loop stopped (by itself: its last particle died)
     const bool running = isPlaying();
     if (wasRunning && !running && !completeSent){
-        const ParticleSystemComponent* particles = scene->findComponent<ParticleSystemComponent>(system);
-        // SYNC4-ABSORB(particles): a system that does not loop (S20's main module with the absorption)
-        if (particles){
+        const ParticleSystemComponent* component = scene->findComponent<ParticleSystemComponent>(system);
+        const particles::ParticleEffectDocument* document = component ? ParticleSubsystem::getDocument(*component) : nullptr;
+        if (document && !document->looping){
             completeSent = true;
             DispatchEvent("complete", Rml::Dictionary(), false, false);
         }
@@ -382,9 +460,34 @@ void UIParticleSystemElement::OnRender(){
     if (quads.empty())
         return;
 
-    if (texturePath != loadedTexture){
-        loadedTexture = texturePath;
-        texture = texturePath.empty() ? Rml::Texture() : renderManager->LoadTexture(texturePath);
+    if (material.texturePath != loadedTexture || material.softDisc != loadedDisc){
+        loadedTexture = material.texturePath;
+        loadedDisc = material.softDisc;
+        if (!material.texturePath.empty()){
+            texture = renderManager->LoadTexture(material.texturePath);
+        }else if (material.softDisc){
+            // the particle shader's untextured billboard: a white disc whose alpha falls off as
+            // (1 - r^2)^2 (RenderSystem's "particle" default), premultiplied
+            constexpr int size = 64;
+            auto pixels = std::make_shared<std::vector<Rml::byte>>((size_t)size * size * 4);
+            for (int y = 0; y < size; y++){
+                for (int x = 0; x < size; x++){
+                    const float u = ((float)x + 0.5f) / (float)size * 2.0f - 1.0f;
+                    const float v = ((float)y + 0.5f) / (float)size * 2.0f - 1.0f;
+                    const float r2 = std::min(1.0f, u * u + v * v);
+                    const Rml::byte a = toByte((1.0f - r2) * (1.0f - r2));
+                    Rml::byte* pixel = pixels->data() + ((size_t)y * size + x) * 4;
+                    pixel[0] = pixel[1] = pixel[2] = pixel[3] = a;
+                }
+            }
+            const Rml::Vector2i dimensions(size, size);
+            discTexture = renderManager->MakeCallbackTexture([pixels, dimensions](const Rml::CallbackTextureInterface& textureInterface) -> bool {
+                return textureInterface.GenerateTexture({pixels->data(), pixels->size()}, dimensions);
+            });
+            texture = discTexture;
+        }else{
+            texture = Rml::Texture();
+        }
     }
 
     // the emitter at the content box's centre, one unit = scale px, y up
@@ -398,18 +501,19 @@ void UIParticleSystemElement::OnRender(){
     mesh.indices.reserve(quads.size() * 6);
     for (const UIParticleQuad& quad : quads){
         const float half = quad.size * scale * 0.5f;
-        if (!(half > 0.0f))
+        const float halfHeight = (quad.height < 0.0f ? quad.size : quad.height) * scale * 0.5f;
+        if (!(half > 0.0f) || !(halfHeight > 0.0f))
             continue;
         const Rml::Vector2f at(centre.x + quad.position.x * scale, centre.y - quad.position.y * scale);
         // y down: a counter-clockwise turn of the world is clockwise on screen
         const float c = std::cos(-quad.rotation), s = std::sin(-quad.rotation);
-        const Rml::Vector2f corners[4] = {{-half, -half}, {half, -half}, {half, half}, {-half, half}};
+        const Rml::Vector2f corners[4] = {{-half, -halfHeight}, {half, -halfHeight}, {half, halfHeight}, {-half, halfHeight}};
 
         const Vector3 srgb = Color::linearTosRGB(Vector3(quad.color.x, quad.color.y, quad.color.z));
         const float alpha = std::clamp(quad.color.w * opacity, 0.0f, 1.0f);
         // premultiplied; additive particles add their colour (alpha 0 in a premultiplied blend)
         const Rml::ColourbPremultiplied colour(toByte(srgb.x * alpha), toByte(srgb.y * alpha), toByte(srgb.z * alpha),
-                                               additive ? (Rml::byte)0 : toByte(alpha));
+                                               material.additive ? (Rml::byte)0 : toByte(alpha));
         const float u0 = quad.textureRect.getX(), v0 = quad.textureRect.getY();
         const float u1 = u0 + quad.textureRect.getWidth(), v1 = v0 + quad.textureRect.getHeight();
         const Rml::Vector2f uvs[4] = {{u0, v0}, {u1, v0}, {u1, v1}, {u0, v1}};

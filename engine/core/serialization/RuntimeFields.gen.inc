@@ -1373,6 +1373,7 @@ const FieldEntry kBody_ParticleSystemComponent_fields[] = {
     JE_RF(ParticleSystemComponent, playOnAwake, 0x3067463eu, Bool),
     JE_RF(ParticleSystemComponent, seed, 0x75e55be5u, UInt),
     JE_RF(ParticleSystemComponent, playbackSpeed, 0x87a6362cu, Float),
+    JE_RF(ParticleSystemComponent, useUnscaledTime, 0x54d44b97u, Bool),
     JE_RF(ParticleSystemComponent, exposedValues, 0xfac14eb6u, Custom),
     JE_RF_ENTITIES(ParticleSystemComponent, collisionPlanes, 0x5027e34bu, Array),
 };

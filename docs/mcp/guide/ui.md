@@ -206,8 +206,10 @@ spread = ratio, amplitude A); Sketch is Shake (amplitude `0.1 x A`); Repeat is `
 A Particle System under a UI element of a UI scene draws in Hierarchy order (between its siblings),
 in UI units (scaling with the canvas), clipped by the nearest Panel or scissor above it, never hit
 by pointer events, hidden with a hidden or inactive ancestor. Create one with GameObject > UI >
-Particle System (a Points emitter with a soft round image and its Particle System child: unscaled
-time, local space, a sparkle in UI units) or `create_particles {parent: "<UI element>"}` in a UI
-scene (presets in UI units, y down, unscaled time). `useUnscaledTime` (Inspector "Unscaled Time",
-Lua `ps.useUnscaledTime`) plays it while the game is paused (`Engine.timeScale = 0`). Unity's Coffee
-UIParticle is this: a Particle System under the element, no extra component.
+Particle System (one GameObject: unscaled time, local space, the soft round image, a sparkle in UI
+units) or `create_particles {parent: "<UI element>"}` in a UI scene (presets in UI units, turned y
+down, local space, unscaled time, the soft image; its reply says `ui: true`). `useUnscaledTime`
+(Inspector "Unscaled Time", Lua `ps.useUnscaledTime`; the effect's own Unscaled Time does the same)
+plays it while the game is paused (`Engine.timeScale = 0`). A Canvas Group's alpha does not fade a
+Particle System (it fades points). Unity's Coffee UIParticle is this: a Particle System under the
+element, no extra component.

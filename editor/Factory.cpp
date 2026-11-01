@@ -3446,6 +3446,7 @@ std::string editor::Factory::createParticleSystemComponent(int indentSpaces, Ent
     if (p.playOnAwake != defaults.playOnAwake) code << ind << "particles.playOnAwake = " << formatBool(p.playOnAwake) << ";\n";
     if (p.seed != defaults.seed) code << ind << "particles.seed = " << formatUInt(p.seed) << ";\n";
     if (p.playbackSpeed != defaults.playbackSpeed) code << ind << "particles.playbackSpeed = " << formatFloat(p.playbackSpeed) << ";\n";
+    if (p.useUnscaledTime != defaults.useUnscaledTime) code << ind << "particles.useUnscaledTime = " << formatBool(p.useUnscaledTime) << ";\n";
     for (const ParticleExposedValue& v : p.exposedValues)
         code << ind << "particles.exposedValues.push_back({" << formatString(v.name) << ", " << formatVector4(v.value) << "});\n";
     for (Entity plane : p.collisionPlanes)

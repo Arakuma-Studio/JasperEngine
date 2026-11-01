@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 // Native UI on the GPU (ui-scaling-text spec 14): Text with a 3 px outline and with a soft shadow
-// (signed-distance glyphs, goldens), points under a Panel clipped by it and sized in UI units, and
-// a UI scene under a Canvas Scaler (Expand) filling a 4:3 view with its stretch-anchored image.
+// (signed-distance glyphs, goldens), points and Particle Systems (S20) under a Panel clipped by it,
+// sized in UI units and drawn between their siblings, and a UI scene under a Canvas Scaler
+// (Expand) filling a 4:3 view with its stretch-anchored image.
 
 #include "TestGoldenCommon.h"
 
 #include "Scene.h"
+#include "object/ParticleSystem.h"
 #include "object/Points.h"
 #include "object/ui/Image.h"
 #include "object/ui/Panel.h"
@@ -97,6 +99,51 @@ TEST_F(FullPathGoldenTest, UIPointsClippedByAPanel){
 
     // inside: a 20 x 20 green square (UI units = pixels at this canvas)
     EXPECT_NEAR((double)screen.countColor({150, 150, 170, 170}, 0, 255, 0, 40), 400.0, 60.0);
+    // across the edge: only its half inside the panel
+    EXPECT_GT(screen.countColor({288, 150, 300, 170}, 0, 255, 0, 40), 150u);
+    EXPECT_EQ(screen.countColor({301, 150, 312, 170}, 0, 255, 0, 40), 0u);
+    // outside: clipped away
+    EXPECT_EQ(screen.countColor({480, 140, 520, 180}, 0, 255, 0, 40), 0u);
+}
+
+// S20's Particle System under a Panel (UI particles): drawn where it is in the Hierarchy (a later
+// sibling covers it), clipped by the panel, in UI units, as the points above
+TEST_F(FullPathGoldenTest, UIParticleSystemsClippedByAPanel){
+    SceneFixture fixture;
+
+    Panel& panel = fixture.add<Panel>();
+    panel.setPosition(100, 100);
+    panel.setSize(200, 120);
+    panel.setColor(0.0f, 0.0f, 0.5f, 1.0f);
+
+    // one square particle of 20 UI units at each emitter: inside the panel, across its right
+    // edge, outside it
+    const char* const effect = R"({"version": 1, "duration": 1, "looping": false, "maxParticles": 1, "modules": [
+        {"type": "main", "startLifetime": 1000, "startSpeed": 0, "startSize": 20, "startColor": [0, 1, 0, 1]},
+        {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 1}]},
+        {"type": "renderer", "untexturedShape": "square"}]})";
+    const Vector2 at[3] = {Vector2(60, 60), Vector2(200, 60), Vector2(400, 60)};
+    for (const Vector2& position : at){
+        ParticleSystem& system = fixture.add<ParticleSystem>();
+        ASSERT_TRUE(system.setInlineEffect(effect));
+        panel.addChild(&system);
+        system.setPosition(position.x, position.y);
+    }
+    // a later sibling over the inside one's top-left quarter
+    Image& cover = fixture.add<Image>();
+    panel.addChild(&cover);
+    cover.setPosition(50, 50);
+    cover.setSize(10, 10);
+    cover.setColor(1.0f, 0.0f, 0.0f, 1.0f);
+
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    GpuEnvironment::drawFrames(4);
+    Screen screen;
+    ASSERT_TRUE(capture(screen));
+
+    // inside: a 20 x 20 green square (UI units = pixels at this canvas) less the covered quarter
+    EXPECT_NEAR((double)screen.countColor({150, 150, 170, 170}, 0, 255, 0, 40), 300.0, 60.0);
+    EXPECT_GT(screen.countColor({150, 150, 160, 160}, 255, 0, 0, 40), 70u) << "the later sibling draws over it";
     // across the edge: only its half inside the panel
     EXPECT_GT(screen.countColor({288, 150, 300, 170}, 0, 255, 0, 40), 150u);
     EXPECT_EQ(screen.countColor({301, 150, 312, 170}, 0, 255, 0, 40), 0u);

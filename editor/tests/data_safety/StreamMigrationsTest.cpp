@@ -5,6 +5,8 @@
 // it is MigrationsTest.cpp
 
 #include "StreamMigrations.h"
+#include "Stream.h"
+#include "component/ParticleSystemComponent.h"
 #include "pool/ShaderPool.h"
 
 #include <gtest/gtest.h>
@@ -193,6 +195,27 @@ TEST(StreamMigrations, SceneV2ToV3ParticleSystemsMoveToTheirTargets){
 
     // a format 3 scene is not touched again
     EXPECT_TRUE(StreamMigrations::migrate(DocumentKind::Scene, root).applied.empty());
+}
+
+TEST(StreamMigrations, OldUIParticleSystemKeepsItsUnscaledTime){
+    // origin/main's (ui-scaling-text) UI particles: a Points emitter under a UI element and its old
+    // Particle System child with useUnscaledTime; the converted system on the emitter keeps it
+    YAML::Node root = YAML::Load(
+        "{formatVersion: 2, entities: ["
+        "{type: Entity, entity: 1001, name: Sparkle, components: {transform: {position: [0, 0, 0]}, points: {points: []}}},"
+        "{type: Entity, entity: 1002, name: Particle System, components: {action: {state: Running, target: 1001},"
+        " particlesystem: {maxParticles: 100, rate: 25, localSpace: true, useUnscaledTime: true}}},"
+        "{type: Entity, entity: 1003, name: Scaled, components: {particlesystem: {rate: 3}}}]}");
+    StreamMigrations::migrate(DocumentKind::Scene, root);
+    const YAML::Node sparkle = root["entities"][0]["components"]["particlesystem"];
+    ASSERT_TRUE(sparkle);
+    ASSERT_TRUE(sparkle["useUnscaledTime"]);
+    EXPECT_TRUE(sparkle["useUnscaledTime"].as<bool>());
+    const ParticleSystemComponent decoded = Stream::decodeParticleSystemComponent(sparkle);
+    EXPECT_TRUE(decoded.useUnscaledTime);
+    EXPECT_EQ(decoded.inlineEffect.simulationSpace, particles::SimulationSpace::Local);
+    // one without it is written as before (no key)
+    EXPECT_FALSE(root["entities"][2]["components"]["particlesystem"]["useUnscaledTime"]);
 }
 
 TEST(StreamMigrations, PrefabV4ToV5ParticleSystems){
