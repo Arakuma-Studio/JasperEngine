@@ -519,11 +519,6 @@ namespace jasperengine {
         static float getMaxDeltatime();
         static void setMaxDeltatime(float seconds);
 
-        // The frame delta before timeScale (Unity's Time.unscaledDeltaTime): the measured frame
-        // time capped by maxDeltatime, or the fixed frame delta when set; 0 while the app is
-        // paused or the simulation held. It keeps running at time scale 0 (a pause menu).
-        static float getUnscaledDeltatime();
-
         // Monotonic wall-clock time in seconds, independent of scene pause / update loop.
         static double getSystemTime();
 
@@ -547,7 +542,8 @@ namespace jasperengine {
 
         // The frame delta before timeScale (Unity's Time.unscaledDeltaTime): the measured frame
         // time capped by maxDeltatime, or the fixed frame delta when set; 0 while the app is
-        // paused or the simulation held. It keeps running at time scale 0 (a pause menu).
+        // paused, the simulation held or the game events paused (the editor's Play pause). It keeps
+        // running at time scale 0 (a pause menu).
         static float getUnscaledDeltatime();
         // Sum of getUnscaledDeltatime() over the frames the update loop has run
         static double getUnscaledTime();
