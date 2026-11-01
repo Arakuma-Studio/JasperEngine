@@ -76,7 +76,7 @@ EXR reading of the editor (editor-only: the Vertex Animation importers re-pack E
 
 | Library | Version | Location | License | Used for |
 |---|---|---|---|---|
-| [tinyexr](https://github.com/syoyo/tinyexr) (v1: `tinyexr.h` with the two headers it includes, `exr_reader.hh` and `streamreader.hh`; it contains OpenEXR-derived code under the same BSD-3-Clause terms, noted in its header) | v3.2.0 release (`6f470c9ab24b`), unmodified | `libs/tinyexr/` (`LICENSE`; configured in `CMakeLists.txt`: deflate through the engine's stb_image/stb_image_write zlib, so neither miniz nor zlib is vendored) | BSD-3-Clause | reading and writing `.exr` images (`editor/util/FloatImage`) |
+| [tinyexr](https://github.com/syoyo/tinyexr) (v1: `tinyexr.h` with the two headers it includes, `exr_reader.hh` and `streamreader.hh`; it contains OpenEXR-derived code under the same BSD-3-Clause terms, noted in its header) | v3.2.0 release (`6f470c9ab24b`); local patch: `outputBits` shifts its bit buffer unsigned (a signed `long long` shift past the top bit was undefined behaviour) | `libs/tinyexr/` (`LICENSE`; configured in `CMakeLists.txt`: deflate through the engine's stb_image/stb_image_write zlib, so neither miniz nor zlib is vendored) | BSD-3-Clause | reading and writing `.exr` images (`editor/util/FloatImage`) |
 
 Vertex Animation (`.vat`, [docs/vertex-animation.md](docs/vertex-animation.md)): no third-party code is copied. The formats and formulas below were reimplemented from their sources and are credited here:
 

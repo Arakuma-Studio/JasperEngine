@@ -2273,7 +2273,9 @@ inline long long hufCode(long long code) { return code >> 6; }
 
 inline void outputBits(int nBits, long long bits, long long &c, int &lc,
                        char *&out) {
-  c <<= nBits;
+  // JasperEngine local patch: shifted unsigned (only the low lc bits are kept; a signed shift
+  // past the top is undefined behaviour, reported by UBSan from hufPackEncTable)
+  c = static_cast<long long>(static_cast<unsigned long long>(c) << nBits);
   lc += nBits;
 
   c |= bits;
