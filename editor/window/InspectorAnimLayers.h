@@ -1,17 +1,20 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The non-ImGui part of the Inspector's animation layer UI (anim layers spec 9, 11.4;
-// InspectorWindowAnimLayers.cpp): the Avatar Mask figure's geometry and toggles, the mask
-// "Create Mask from Selection" and "Create Controller from Clips" builds and their scene steps,
+// The non-ImGui part of the Inspector's animation layer UI (upstream anim layers spec 9, 11.4;
+// docs/specs/S21-animation.md "Upstream absorption"; InspectorWindowAnimLayers.cpp and the mask
+// asset view of InspectorAnimator.cpp): the Avatar Mask figure's geometry and toggles, the mask
+// "Create Mask from Selection" build and its scene step, "Create Animator Controller from Clips"
+// (the controller written and played by an Animator the player hands over to, one scene step),
 // the mask coverage line of the Bindings report, and the preview hierarchy of a model the mask
-// Inspector draws its tree and figure from. Kept apart so the editor tests drive exactly what the
-// Inspector's clicks run. Main thread.
+// Inspector draws its tree and figure from. S21's masks (AvatarMaskDef) and weight rule
+// (AvatarMaskWeights.h). Kept apart so the editor tests drive exactly what the Inspector's clicks
+// run. Main thread.
 
 #pragma once
 
-#include "animation/AnimatorController.h"
-#include "animation/AvatarMask.h"
+#include "animation/AvatarMaskWeights.h"
+#include "animation/ControllerDef.h"
 #include "component/AnimationPlayerComponent.h"
 #include "ecs/Entity.h"
 
@@ -34,7 +37,7 @@ namespace jasperengine::editor::animlayersui{
     // ---- the humanoid figure (the mask Inspector), in figure space: x and y in [0, 1] ----
 
     struct FigureShape{
-        anim::AvatarMaskPart part = anim::AvatarMaskPart::Root;
+        AvatarBodyPart part = AvatarBodyPart::Root;
         float x0 = 0, y0 = 0, x1 = 0, y1 = 0;    // a rounded box, or the root disc's bounds
         bool disc = false;
     };
@@ -43,38 +46,40 @@ namespace jasperengine::editor::animlayersui{
     // the part under a point of figure space (the last shape drawn there), -1 when none
     int figurePartAt(float x, float y);
     // the centre of a part's first shape (tests click there)
-    void figurePartCenter(anim::AvatarMaskPart part, float& x, float& y);
-    // Unity's labels: "Root", "Body", "Head", "Left Leg", ..., "Right Fingers"
-    const char* partLabel(anim::AvatarMaskPart part);
-    // a click on a part: 1 -> 0, anything below 1 -> 1 (the humanoid object is added when missing)
-    anim::AvatarMaskData togglePart(const anim::AvatarMaskData& data, anim::AvatarMaskPart part);
+    void figurePartCenter(AvatarBodyPart part, float& x, float& y);
+    // Unity's labels: "Root", "Body", "Head", "Left Arm", ..., "Right Fingers"
+    const char* partLabel(AvatarBodyPart part);
+    // a click on a part: 1 -> 0, anything below 1 -> 1 (the part is set when it was not)
+    anim::AvatarMaskDef togglePart(const anim::AvatarMaskDef& data, AvatarBodyPart part);
     // a Shift-click in the transform tree: the entry and every entry below `path` set to `on`
     // (on: weight 1 with children; off: removed)
-    anim::AvatarMaskData setTransform(const anim::AvatarMaskData& data, const std::string& path, bool on, bool subtree,
-                                      const std::vector<std::string>& allPaths);
+    anim::AvatarMaskDef setTransform(const anim::AvatarMaskDef& data, const std::string& path, bool on, bool subtree,
+                                     const std::vector<std::string>& allPaths);
 
     // ---- builds ----
 
     // A mask that animates the selected GameObjects (and what is below them): one transform
     // entry per selected entity under `root` (its path, children: true), default 0. False when
     // none of them is under the root.
-    bool maskFromSelection(EntityRegistry* registry, Entity root, const std::vector<Entity>& selection, anim::AvatarMaskData& out,
+    bool maskFromSelection(EntityRegistry* registry, Entity root, const std::vector<Entity>& selection, anim::AvatarMaskDef& out,
                            std::string* error);
     // An Animator Controller with one state per clip entry (named like the player's states), the
-    // player's layers as controller layers (weight, blend, mask), the default clip's state as the
-    // base layer's default, laid out on a grid, no transitions and no parameters
-    anim::ControllerData controllerFromClips(const AnimationPlayerComponent& player);
+    // player's layers as controller layers (weight, blending, mask), the default clip's state as
+    // its layer's default, laid out on a grid, no transitions and no parameters
+    // (AnimatorAssetDocument.h appendPlayerStates)
+    anim::ControllerDef controllerFromClips(const AnimationPlayerComponent& player);
 
     // Create Mask from Selection... as ONE scene step that writes `maskPath` (project-relative,
     // a new file) and sets layers[layer].mask/maskGuid (CreateClipCmd)
     bool createMaskFromSelection(Project* project, uint32_t sceneId, Entity entity, int layer, const std::string& maskPath,
                                  const std::vector<Entity>& selection, std::string& error);
-    // Create Controller from Clips: writes `controllerPath` (project-relative, new) and sets the
-    // player's controller/controllerGuid in one scene step
+    // Create Animator Controller from Clips: writes `controllerPath` (project-relative, new),
+    // gives the GameObject an Animator playing it (added when it has none) and disables the
+    // player, which hands over to the Animator (object/AnimationPlayer.h), in one scene step
     bool createControllerFromClips(Project* project, uint32_t sceneId, Entity entity, const std::string& controllerPath, std::string& error);
-    // the same step with given controller data (MCP edit_animator {create: {from_entity}, ops})
+    // the same step with given controller data
     bool createControllerFile(Project* project, uint32_t sceneId, Entity entity, const std::string& controllerPath,
-                              const anim::ControllerData& data, std::string& error);
+                              const anim::ControllerDef& data, std::string& error);
     // a free project-relative path "<dir>/<stem>.<ext>", "<stem> 2.<ext>"...
     std::string freeAssetPath(Project* project, const std::string& directory, const std::string& stem, const std::string& extension);
 
@@ -87,13 +92,13 @@ namespace jasperengine::editor::animlayersui{
         std::string rigError;
     };
     // `targets`: the entities the layer's clips bind (duplicates allowed)
-    MaskCoverage maskCoverage(Scene* scene, Entity root, const anim::AvatarMask& mask, const std::vector<Entity>& targets);
+    MaskCoverage maskCoverage(Scene* scene, Entity root, const anim::AvatarMaskDef& mask, const std::vector<Entity>& targets);
 
     // ---- the mask Inspector's preview hierarchy ----
 
     // A model's nodes (or a GameObject's descendants) as a registry of named entities, so the
     // mask Inspector can resolve paths, draw the tree and evaluate the mask exactly as a player
-    // would (AvatarMask::weightOf), with the humanoid map auto-detected from the node names and
+    // would (anim::maskWeightOf), with the humanoid map auto-detected from the node names and
     // the model's .humanoid sidecar.
     struct PreviewHierarchy{
         std::unique_ptr<EntityRegistry> registry;

@@ -17,8 +17,6 @@
 
 #include "json.hpp"
 #include "animation/AnimationClipIO.h"
-#include "animation/AnimatorController.h"
-#include "animation/AvatarMask.h"
 #include "animation/VertexAnimation.h"
 #include "animation/AnimatorAssetIO.h"
 #include "yaml-cpp/yaml.h"

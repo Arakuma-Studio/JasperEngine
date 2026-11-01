@@ -1245,11 +1245,9 @@ void writeFileTool(const CallPtr& call) {
     if (Util::isAvatarMaskFile(rel) || Util::isAnimatorControllerFile(rel)) {
         std::string why;
         const bool mask = Util::isAvatarMaskFile(rel);
-        // SYNC4-ABSORB(animator): upstream's checkMaskText / checkControllerText (its file format, not S21's)
-        (void)mask;
-        if (false) {
+        if (mask ? !animator_tools::checkMaskText(content, animWarnings, why) : !animator_tools::checkControllerText(project, content, animWarnings, why)) {
             call->fail(std::string(mask ? "Not a valid Avatar Mask: " : "Not a valid Animator Controller: ") + why +
-                       (mask ? ". The format: jasper://docs/animation (Layers and masks)." : ". Prefer edit_animator (jasper://docs/animation)."));
+                       (mask ? ". The format: jasper://docs/animator (Avatar Masks); or edit_avatar_mask." : ". Prefer edit_animator_controller (jasper://docs/animator)."));
             return;
         }
     }

@@ -808,25 +808,20 @@ void editor::InspectorWindow::drawAnimationPlayerComponent(ComponentType cpType,
     fadeSettings.secondColSize = 6 * ImGui::GetFontSize();
     fadeSettings.help = "Seconds of the crossfade when play(name, fade), crossFade(name) or Model:playAnimation give none.";
 
-    // a controller owns the states (anim layers spec 5.10): the clip list, default clip and
-    // layers are hidden (the Controller field says what is ignored)
-    bool hasController = false;
+    // the Animator Controller row: create one from the clips (an Animator plays it), or what a
+    // player that hands over to its Animator plays (upstream's controller players)
     if (entities.size() == 1){
-        // SYNC4-ABSORB(animator): upstream's Controller field and controller-driven players (InspectorWindowAnimLayers.cpp)
+        drawAnimationPlayerController(cpType, sceneProject, entities[0]);
     }
 
     // Unity's order: the default clip ("Animation"), the list, then the settings
-    if (!hasController){
-        beginTable(cpType, getLabelSize("Play Automatically"), "player_default");
-        drawPlayerDefaultClipRow(cpType, sceneProject, entities);
-        endTable();
-    }
+    beginTable(cpType, getLabelSize("Play Automatically"), "player_default");
+    drawPlayerDefaultClipRow(cpType, sceneProject, entities);
+    endTable();
 
     if (entities.size() == 1){
-        if (!hasController){
-            // SYNC4-ABSORB(animator): upstream's layers (drawAnimationPlayerLayers)
-            drawAnimationPlayerClips(cpType, sceneProject, entities[0]);
-        }
+        drawAnimationPlayerLayers(cpType, sceneProject, entities[0]);
+        drawAnimationPlayerClips(cpType, sceneProject, entities[0]);
     }else{
         beginTable(cpType, getLabelSize("Play Automatically"), "player_clips_multi");
         propertyHeader("Clips");
@@ -841,12 +836,6 @@ void editor::InspectorWindow::drawAnimationPlayerComponent(ComponentType cpType,
     endTable();
 
     if (entities.size() != 1){
-        return;
-    }
-    if (hasController){
-        if (sceneProject->playState != ScenePlayState::STOPPED){
-            // SYNC4-ABSORB(animator): upstream's controller play state (drawControllerPlayState)
-        }
         return;
     }
     drawAnimationPlayerBindings(sceneProject, entities[0]);
@@ -1003,7 +992,7 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
             }
 
             drawPlayerClipNameRow(cpType, sceneProject, entity, i);
-            // SYNC4-ABSORB(animator): upstream's clip layer row (drawPlayerClipLayerRow)
+            drawPlayerClipLayerRow(cpType, sceneProject, entity, i);
 
             // wrap: a one-byte enum (PropertyCmd<ClipWrapMode>, never the int Enum row)
             ClipWrapMode clipWrap = ClipWrapMode::Once;
@@ -1335,7 +1324,7 @@ void editor::InspectorWindow::drawAnimationPlayerBindings(SceneProject* scenePro
         ImGui::PopID();
     }
     // the layers' masks: how many bound entities each covers (anim layers spec 9)
-    // SYNC4-ABSORB(animator): upstream's mask coverage (drawPlayerMaskCoverage)
+    drawPlayerMaskCoverage(sceneProject, entity);
     ImGui::TreePop();
 }
 
@@ -1354,7 +1343,7 @@ void editor::InspectorWindow::drawAnimationPlayerStates(ComponentType cpType, Sc
     // grouped under their layers (anim layers spec 9: a live weight per layer)
     const size_t layerCount = std::max<size_t>(1, runtime.layers.size());
     for (size_t layer = 0; layer < layerCount; layer++){
-        // SYNC4-ABSORB(animator): upstream's per-layer header (drawPlayerLayerStatesHeader)
+        if (layerCount > 1) drawPlayerLayerStatesHeader(sceneProject, entity, (int)layer);
         beginTable(cpType, getLabelSize("Play Automatically"), "player_states" + std::to_string(layer));
         for (size_t i = 0; i < states.size(); i++){
             const int stateIndex = runtime.findState(states[i]);
@@ -1426,13 +1415,6 @@ bool editor::InspectorWindow::drawInspectedAsset(){
     }
     // a generated normal map or its source image: their own view; any other image keeps the scene selection
     if (Util::isImageFile(file)) return drawSpriteNormalsAsset(asset);
-    // an Avatar Mask / Animator Controller (anim layers spec 9, 11.4); gone: the scene selection
-    if (Util::isAvatarMaskFile(file) || Util::isAnimatorControllerFile(file)){
-        std::error_code ec;
-        if (!fs::is_regular_file(asset, ec)) return false;
-        // SYNC4-ABSORB(animator): upstream's mask / controller asset views (S21's drawAnimatorAsset above takes them)
-        return false;
-    }
     const bool clip = Util::isAnimationClipFile(file);
     if (!clip && !Util::isModelFile(file)) return false;
     if (state.relativeOf != asset){

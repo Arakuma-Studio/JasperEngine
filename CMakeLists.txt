@@ -952,6 +952,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/animation/AnimationClipController.cpp
     ${EDITOR_DIR}/animation/AnimationClipDocument.cpp
     ${EDITOR_DIR}/animation/AnimatorAssetDocument.cpp
+    ${EDITOR_DIR}/animation/AnimatorAssetUsers.cpp
     ${EDITOR_DIR}/animation/PreviewParticles.cpp
     ${EDITOR_DIR}/animation/ClipConverters.cpp
     ${EDITOR_DIR}/animation/ClipRecordHooks.cpp
@@ -1042,8 +1043,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorWindowClips.cpp
     ${EDITOR_DIR}/window/InspectorSplines.cpp
     ${EDITOR_DIR}/window/InputActionsWindow.cpp
-    # SYNC4-ABSORB(animator): upstream's Animation Player layers Inspector (InspectorWindowAnimLayers.cpp,
-    # InspectorAnimLayers.cpp) waits for the Animator absorption
+    ${EDITOR_DIR}/window/InspectorWindowAnimLayers.cpp
+    ${EDITOR_DIR}/window/InspectorAnimLayers.cpp
     ${EDITOR_DIR}/window/InspectorWindowVat.cpp
     ${EDITOR_DIR}/window/InspectorPhysics2D.cpp
     ${EDITOR_DIR}/window/InspectorWindowSpriteNormals.cpp

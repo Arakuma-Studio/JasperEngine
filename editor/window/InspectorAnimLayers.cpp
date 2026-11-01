@@ -10,7 +10,11 @@
 #include "animation/ModelSubClips.h"
 #include "command/Command.h"
 #include "command/type/ClipSceneActions.h"
+#include "animation/AnimatorAssetDocument.h"
+#include "animation/AnimatorAssetIO.h"
+#include "command/type/AddComponentCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "component/AnimatorComponent.h"
 #include "component/Transform.h"
 #include "pose/HumanoidMap.h"
 #include "pose/HumanoidMapIO.h"
@@ -33,9 +37,9 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    using anim::AvatarMaskPart;
-
-    const char* const partLabels[] = {"Root", "Body", "Head", "Left Leg", "Right Leg", "Left Arm", "Right Arm", "Left Fingers", "Right Fingers"};
+    // AvatarBodyPart's order
+    const char* const partLabels[] = {"Root", "Body", "Head", "Left Arm", "Right Arm", "Left Hand", "Right Hand", "Left Leg", "Right Leg",
+                                      "Left Fingers", "Right Fingers"};
 
     bool fail(std::string& error, const std::string& message){
         error = message;
@@ -114,16 +118,19 @@ namespace {
 
 const std::vector<animlayersui::FigureShape>& animlayersui::figureShapes(){
     // a front view (the character's right on the viewer's left, as Unity draws it)
+    // (the hand is the bone, the fingers what is below it)
     static const std::vector<FigureShape> shapes = {
-        {AvatarMaskPart::Root, 0.36f, 0.90f, 0.64f, 0.98f, true},
-        {AvatarMaskPart::LeftLeg, 0.52f, 0.52f, 0.64f, 0.90f, false},
-        {AvatarMaskPart::RightLeg, 0.36f, 0.52f, 0.48f, 0.90f, false},
-        {AvatarMaskPart::Body, 0.36f, 0.20f, 0.64f, 0.54f, false},
-        {AvatarMaskPart::Head, 0.42f, 0.03f, 0.58f, 0.18f, false},
-        {AvatarMaskPart::LeftArm, 0.66f, 0.21f, 0.76f, 0.50f, false},
-        {AvatarMaskPart::RightArm, 0.24f, 0.21f, 0.34f, 0.50f, false},
-        {AvatarMaskPart::LeftFingers, 0.66f, 0.52f, 0.78f, 0.62f, false},
-        {AvatarMaskPart::RightFingers, 0.22f, 0.52f, 0.34f, 0.62f, false},
+        {AvatarBodyPart::Root, 0.36f, 0.90f, 0.64f, 0.98f, true},
+        {AvatarBodyPart::LeftLeg, 0.52f, 0.52f, 0.64f, 0.90f, false},
+        {AvatarBodyPart::RightLeg, 0.36f, 0.52f, 0.48f, 0.90f, false},
+        {AvatarBodyPart::Body, 0.36f, 0.20f, 0.64f, 0.54f, false},
+        {AvatarBodyPart::Head, 0.42f, 0.03f, 0.58f, 0.18f, false},
+        {AvatarBodyPart::LeftArm, 0.66f, 0.21f, 0.76f, 0.47f, false},
+        {AvatarBodyPart::RightArm, 0.24f, 0.21f, 0.34f, 0.47f, false},
+        {AvatarBodyPart::LeftHand, 0.66f, 0.48f, 0.77f, 0.54f, false},
+        {AvatarBodyPart::RightHand, 0.23f, 0.48f, 0.34f, 0.54f, false},
+        {AvatarBodyPart::LeftFingers, 0.66f, 0.55f, 0.78f, 0.63f, false},
+        {AvatarBodyPart::RightFingers, 0.22f, 0.55f, 0.34f, 0.63f, false},
     };
     return shapes;
 }
@@ -143,7 +150,7 @@ int animlayersui::figurePartAt(float x, float y){
     return found;
 }
 
-void animlayersui::figurePartCenter(AvatarMaskPart part, float& x, float& y){
+void animlayersui::figurePartCenter(AvatarBodyPart part, float& x, float& y){
     x = y = -1.0f;
     for (const FigureShape& shape : figureShapes()){
         if (shape.part == part){
@@ -154,21 +161,20 @@ void animlayersui::figurePartCenter(AvatarMaskPart part, float& x, float& y){
     }
 }
 
-const char* animlayersui::partLabel(AvatarMaskPart part){
+const char* animlayersui::partLabel(AvatarBodyPart part){
     const size_t index = (size_t)part;
     return index < sizeof(partLabels) / sizeof(partLabels[0]) ? partLabels[index] : "";
 }
 
-anim::AvatarMaskData animlayersui::togglePart(const anim::AvatarMaskData& data, AvatarMaskPart part){
-    anim::AvatarMaskData out = data;
-    out.hasHumanoid = true;
-    out.parts[(size_t)part] = data.partWeight(part) >= 1.0f ? 0.0f : 1.0f;
+anim::AvatarMaskDef animlayersui::togglePart(const anim::AvatarMaskDef& data, AvatarBodyPart part){
+    anim::AvatarMaskDef out = data;
+    out.bodyParts[(int)part] = data.partWeight(part) >= 1.0f ? 0.0f : 1.0f;
     return out;
 }
 
-anim::AvatarMaskData animlayersui::setTransform(const anim::AvatarMaskData& data, const std::string& path, bool on, bool subtree,
-                                                const std::vector<std::string>& allPaths){
-    anim::AvatarMaskData out = data;
+anim::AvatarMaskDef animlayersui::setTransform(const anim::AvatarMaskDef& data, const std::string& path, bool on, bool subtree,
+                                               const std::vector<std::string>& allPaths){
+    anim::AvatarMaskDef out = data;
     std::vector<std::string> targets = {path};
     if (subtree){
         const std::string prefix = path.empty() ? std::string() : path + "/";
@@ -177,72 +183,40 @@ anim::AvatarMaskData animlayersui::setTransform(const anim::AvatarMaskData& data
         }
     }
     for (const std::string& target : targets){
-        const int index = out.findTransform(target);
+        const int index = out.findPath(target);
         if (on){
-            if (index < 0) out.transforms.push_back({target, 1.0f, true});
-            else if (out.transforms[(size_t)index].weight <= 0.0f) out.transforms[(size_t)index].weight = 1.0f;
+            if (index < 0) out.paths.push_back({target, 1.0f, true});
+            else if (out.paths[(size_t)index].weight <= 0.0f) out.paths[(size_t)index].weight = 1.0f;
         }else if (index >= 0){
-            out.transforms.erase(out.transforms.begin() + index);
+            out.paths.erase(out.paths.begin() + index);
         }
     }
+    anim::normalizeMask(out, nullptr);
     return out;
 }
 
 // ---- builds ----
 
-bool animlayersui::maskFromSelection(EntityRegistry* registry, Entity root, const std::vector<Entity>& selection, anim::AvatarMaskData& out,
+bool animlayersui::maskFromSelection(EntityRegistry* registry, Entity root, const std::vector<Entity>& selection, anim::AvatarMaskDef& out,
                                      std::string* error){
-    out = anim::AvatarMaskData();
+    out = anim::AvatarMaskDef();
     out.defaultWeight = 0.0f;
     for (Entity entity : selection){
         std::string path;
         if (!anim::relativePath(registry, root, entity, path)) continue;
-        if (out.findTransform(path) < 0) out.transforms.push_back({path, 1.0f, true});
+        if (out.findPath(path) < 0) out.paths.push_back({path, 1.0f, true});
     }
-    if (out.transforms.empty()){
+    if (out.paths.empty()){
         if (error) *error = "Select the GameObjects the layer animates first (the player's GameObject or GameObjects under it).";
         return false;
     }
-    anim::normalizeAvatarMask(out, nullptr);
+    anim::normalizeMask(out, nullptr);
     return true;
 }
 
-anim::ControllerData animlayersui::controllerFromClips(const AnimationPlayerComponent& player){
-    anim::ControllerData data;
-    const std::vector<AnimationPlayerLayer> layers = anim::playerLayers(player);
-    const std::vector<std::string> names = anim::playerStateNames(player.clips);
-    for (const AnimationPlayerLayer& source : layers){
-        anim::ControllerLayer layer;
-        layer.name = source.name;
-        layer.weight = source.weight;
-        layer.blend = source.blend;
-        layer.mask = source.mask;
-        layer.maskGuid = source.maskGuid;
-        layer.hasAnyStatePosition = true;
-        layer.anyStatePosition[0] = 40.0f;
-        layer.anyStatePosition[1] = 40.0f;
-        data.layers.push_back(layer);
-    }
-    std::vector<int> counts(data.layers.size(), 0);
-    for (size_t i = 0; i < player.clips.size(); i++){
-        const AnimationPlayerClip& entry = player.clips[i];
-        const size_t l = entry.layer >= 0 && (size_t)entry.layer < data.layers.size() ? (size_t)entry.layer : 0;
-        anim::ControllerState state;
-        state.name = names[i];
-        state.clip = entry.clip;
-        state.clipGuid = entry.guid;
-        state.wrap = entry.wrap;
-        const int k = counts[l]++;
-        state.hasPosition = true;
-        state.position[0] = 260.0f + 220.0f * (float)(k % 4);
-        state.position[1] = 120.0f + 100.0f * (float)(k / 4);
-        data.layers[l].states.push_back(state);
-    }
-    // the default clip's state is the base layer's default (else its first)
-    const std::string defaultState = player.defaultClip.empty() ? (names.empty() ? std::string() : names[0]) : player.defaultClip;
-    for (anim::ControllerLayer& layer : data.layers){
-        if (layer.findState(defaultState) >= 0) layer.defaultState = defaultState;
-    }
+anim::ControllerDef animlayersui::controllerFromClips(const AnimationPlayerComponent& player){
+    anim::ControllerDef data;
+    appendPlayerStates(data, player);
     anim::normalizeController(data, nullptr);
     return data;
 }
@@ -269,7 +243,7 @@ bool animlayersui::createMaskFromSelection(Project* project, uint32_t sceneId, E
     if (layer < 0 || (size_t)layer >= layers.size()) return fail(error, "no layer " + std::to_string(layer));
     std::string maskPath = maskPathIn;
     if (!checkNewAssetPath(project, maskPath, Util::isAvatarMaskFile, ".mask", error)) return false;
-    anim::AvatarMaskData data;
+    anim::AvatarMaskDef data;
     std::string why;
     if (!maskFromSelection(scene, entity, selection, data, &why)) return fail(error, why);
     data.guid = anim::generateClipGuid();
@@ -287,7 +261,7 @@ bool animlayersui::createMaskFromSelection(Project* project, uint32_t sceneId, E
         commands.push_back(new PropertyCmd<std::string>(project, sceneId, entity, ComponentType::AnimationPlayerComponent, prefix + ".maskGuid", data.guid));
     }
     ClipActionResult result;
-    return ClipSceneActions::runStep(project, sceneId, {{maskPath, anim::writeAvatarMask(data)}}, std::move(commands), NULL_ENTITY, result, error);
+    return ClipSceneActions::runStep(project, sceneId, {{maskPath, anim::writeMask(data)}}, std::move(commands), NULL_ENTITY, result, error);
 }
 
 bool animlayersui::createControllerFromClips(Project* project, uint32_t sceneId, Entity entity, const std::string& controllerPath, std::string& error){
@@ -295,47 +269,54 @@ bool animlayersui::createControllerFromClips(Project* project, uint32_t sceneId,
     if (!sceneProject || !sceneProject->scene) return fail(error, "no scene");
     const AnimationPlayerComponent* player = sceneProject->scene->findComponent<AnimationPlayerComponent>(entity);
     if (!player) return fail(error, "the GameObject has no Animation Player");
-    anim::ControllerData data = controllerFromClips(*player);
+    anim::ControllerDef data = controllerFromClips(*player);
     data.guid = anim::generateClipGuid();
     return createControllerFile(project, sceneId, entity, controllerPath, data, error);
 }
 
 bool animlayersui::createControllerFile(Project* project, uint32_t sceneId, Entity entity, const std::string& controllerPathIn,
-                                        const anim::ControllerData& input, std::string& error){
+                                        const anim::ControllerDef& input, std::string& error){
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene || !sceneProject->scene->findComponent<AnimationPlayerComponent>(entity)){
         return fail(error, "the GameObject has no Animation Player");
     }
+    Scene* scene = sceneProject->scene;
     std::string controllerPath = controllerPathIn;
     if (!checkNewAssetPath(project, controllerPath, Util::isAnimatorControllerFile, ".controller", error)) return false;
-    anim::ControllerData data = input;
+    anim::ControllerDef data = input;
     if (data.guid.empty()) data.guid = anim::generateClipGuid();
+    const AnimationPlayerComponent& player = scene->getComponent<AnimationPlayerComponent>(entity);
+    const AnimatorComponent* existing = scene->findComponent<AnimatorComponent>(entity);
     std::vector<Command*> commands;
-    commands.push_back(new PropertyCmd<std::string>(project, sceneId, entity, ComponentType::AnimationPlayerComponent, "controller",
-                                                    storedForm(project, controllerPath)));
-    commands.push_back(new PropertyCmd<std::string>(project, sceneId, entity, ComponentType::AnimationPlayerComponent, "controllerGuid", data.guid));
+    if (!existing) commands.push_back(new AddComponentCmd(project, sceneId, entity, ComponentType::AnimatorComponent));
+    AssetRef ref(storedForm(project, controllerPath));
+    ref.guid = Guid::parse(data.guid);
+    commands.push_back(new PropertyCmd<AssetRef>(project, sceneId, entity, ComponentType::AnimatorComponent, "controller", ref));
+    // the Animator plays as the player did (its checkbox); the player hands over to it
+    commands.push_back(new PropertyCmd<bool>(project, sceneId, entity, ComponentType::AnimatorComponent, "enabled", player.enabled));
+    if (player.enabled) commands.push_back(new PropertyCmd<bool>(project, sceneId, entity, ComponentType::AnimationPlayerComponent, "enabled", false));
     ClipActionResult result;
     return ClipSceneActions::runStep(project, sceneId, {{controllerPath, anim::writeController(data)}}, std::move(commands), NULL_ENTITY, result, error);
 }
 
 // ---- coverage ----
 
-animlayersui::MaskCoverage animlayersui::maskCoverage(Scene* scene, Entity root, const anim::AvatarMask& mask, const std::vector<Entity>& targets){
+animlayersui::MaskCoverage animlayersui::maskCoverage(Scene* scene, Entity root, const anim::AvatarMaskDef& mask, const std::vector<Entity>& targets){
     MaskCoverage coverage;
     anim::HumanoidSlots slots;
-    if (mask.hasHumanoid()){
+    if (mask.usesHumanoid()){
         slots = anim::resolveHumanoidSlots(scene, root);
         if (!slots.valid){
             coverage.humanoidWithoutRig = true;
             coverage.rigError = slots.error;
         }
     }
-    const std::vector<Entity> entries = mask.bindTransforms(scene, root);
+    const std::vector<Entity> entries = anim::bindMaskPaths(mask, scene, root);
     std::set<Entity> seen;
     for (Entity target : targets){
         if (target == NULL_ENTITY || !seen.insert(target).second) continue;
         coverage.total++;
-        if (mask.weightOf(scene, root, target, entries, slots.valid ? &slots : nullptr).weight > 0.0f) coverage.covered++;
+        if (anim::maskWeightOf(mask, scene, root, target, entries, slots.valid ? &slots : nullptr).weight > 0.0f) coverage.covered++;
     }
     return coverage;
 }

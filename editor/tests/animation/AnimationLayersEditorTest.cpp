@@ -1,14 +1,13 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The editor plumbing of Animation Player layers, Avatar Masks and Animator Controllers (anim
-// layers spec 6.3, 9, 10, 11.4-11.6, 14 editor tests): Stream round trip of layers, entry layers,
-// masks and the controller with their GUIDs (an old scene stays byte-identical), Catalog
-// properties and their copies, the prefab override of layers[1].weight, the C++ the exporter
-// emits (compiled here as written), the layer edits as one undo step (a reorder moves the entries
-// with their layer, L8), set_properties values and refusals, the mask and controller documents
-// (create, commit, undo, redo, outside reload), the asset database GUIDs and references that
-// follow them, the scene resources, and the controller references a clip rename rewrites.
+// The editor plumbing of Animation Player layers and Avatar Masks (upstream anim layers spec 6.3,
+// 9, 10; docs/specs/S21-animation.md "Upstream absorption"): the scene codec of layers and masks
+// with their GUIDs (an old scene stays byte-identical; upstream's controller key is the
+// migration's), the reflected properties (S08: Catalog, prefab overrides per field, the C++ export
+// with their layer, L8), set_properties values and refusals, the S21 mask and controller documents
+// (create, commit, undo, outside edits, users), the references a rename or an outside move updates,
+// and the scene resources.
 
 #include <gtest/gtest.h>
 
@@ -20,7 +19,9 @@
 #include "Project.h"
 #include "Scene.h"
 #include "Stream.h"
-#include "animation/AnimAssetDocument.h"
+#include "animation/AnimatorAssetDocument.h"
+#include "animation/AnimatorAssetIO.h"
+#include "animation/AnimatorAssetUsers.h"
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/AnimationClipDocument.h"
 #include "command/CommandHandle.h"
@@ -28,7 +29,8 @@
 #include "command/type/PlayerLayerActions.h"
 #include "command/type/RenameFileCmd.h"
 #include "mcp/McpValues.h"
-#include "pool/AvatarMaskPool.h"
+#include "component/AnimatorComponent.h"
+#include "pool/AnimatorAssetPool.h"
 #include "project/ProjectPrefabInternal.h"
 
 #include <unistd.h>
@@ -51,7 +53,6 @@ namespace fs = std::filesystem;
 namespace {
 
     const char* const MASK_GUID = "11112222333344445555666677778888";
-    const char* const CONTROLLER_GUID = "aaaabbbbccccddddeeeeffff00001111";
 
     AnimationPlayerClip clipEntry(const std::string& clip, int layer = 0) {
         AnimationPlayerClip entry;
@@ -76,8 +77,6 @@ namespace {
         player.clips = {clipEntry("anim/walk.anim"), clipEntry("anim/hold.anim", 1), clipEntry("anim/nod.anim", 2)};
         player.layers = {layerOf("Base Layer"), layerOf("Holding", 0.0f, AnimationLayerBlend::Override, "anim/arm.mask", MASK_GUID),
                          layerOf("Hit", 0.5f, AnimationLayerBlend::Additive)};
-        player.controller = "anim/granjero.controller";
-        player.controllerGuid = CONTROLLER_GUID;
         return player;
     }
 
@@ -92,7 +91,7 @@ namespace {
 
 // ---- Stream --------------------------------------------------------------------------------
 
-TEST(AnimationLayersEditor, StreamRoundTripOfLayersMasksAndTheController) {
+TEST(AnimationLayersEditor, StreamRoundTripOfLayersAndMasks) {
     const AnimationPlayerComponent player = layeredPlayer();
     const YAML::Node node = Stream::encodeAnimationPlayerComponent(player);
     EXPECT_FALSE(node["clips"][0]["layer"]) << "layer 0 is not written";
@@ -106,22 +105,25 @@ TEST(AnimationLayersEditor, StreamRoundTripOfLayersMasksAndTheController) {
     EXPECT_EQ(node["layers"][1]["mask"].as<std::string>(), "anim/arm.mask");
     EXPECT_EQ(node["layers"][1]["maskGuid"].as<std::string>(), MASK_GUID);
     EXPECT_EQ(node["layers"][2]["blend"].as<std::string>(), "additive");
-    EXPECT_EQ(node["controller"].as<std::string>(), "anim/granjero.controller");
-    EXPECT_EQ(node["controllerGuid"].as<std::string>(), CONTROLLER_GUID);
+    EXPECT_FALSE(node["controller"]) << "a controller plays on an Animator";
 
     const AnimationPlayerComponent decoded = Stream::decodeAnimationPlayerComponent(node);
     EXPECT_EQ(decoded.clips, player.clips);
     EXPECT_EQ(decoded.layers, player.layers);
-    EXPECT_EQ(decoded.controller, player.controller);
-    EXPECT_EQ(decoded.controllerGuid, player.controllerGuid);
     EXPECT_EQ(YAML::Dump(Stream::encodeAnimationPlayerComponent(decoded)), YAML::Dump(node));
+
+    // upstream's controller key in a current file is not read (the scene migration moved the
+    // older files' to an Animator): said once
+    YAML::Node withController = YAML::Clone(node);
+    withController["controller"] = "anim/granjero.controller";
+    const AnimationPlayerComponent ignored = Stream::decodeAnimationPlayerComponent(withController);
+    EXPECT_EQ(ignored.layers, player.layers);
 
     // decoding a player without the keys over a layered one clears them (a missing key is the default)
     AnimationPlayerComponent plain;
     plain.clips = {clipEntry("anim/walk.anim")};
     AnimationPlayerComponent over = Stream::decodeAnimationPlayerComponent(Stream::encodeAnimationPlayerComponent(plain), &player);
     EXPECT_TRUE(over.layers.empty());
-    EXPECT_TRUE(over.controller.empty());
     EXPECT_TRUE(over.needsLoad);
 
     // lenient: a bad blend is override, a weight is clamped, a scalar is a name
@@ -169,7 +171,7 @@ TEST(AnimationLayersEditor, CatalogProperties) {
     AnimationPlayerComponent& player = scene.getComponent<AnimationPlayerComponent>(entity);
 
     const PropertyData layers = Catalog::findProperty(&scene, entity, type, "layers");
-    EXPECT_EQ(layers.type, PropertyType::Custom);
+    EXPECT_EQ(layers.type, Catalog::findProperty(&scene, entity, type, "clips").type) << "a whole list, like the clips";
     EXPECT_EQ(layers.ref, &player.layers);
     EXPECT_TRUE(layers.updateFlags & UpdateFlags_AnimationPlayer_Reload);
     EXPECT_EQ(Catalog::findProperty(&scene, entity, type, "layers[1].name").ref, &player.layers[1].name);
@@ -185,12 +187,11 @@ TEST(AnimationLayersEditor, CatalogProperties) {
     const PropertyData layer = Catalog::findProperty(&scene, entity, type, "clips[1].layer");
     EXPECT_EQ(layer.type, PropertyType::Int);
     EXPECT_EQ(layer.ref, &player.clips[1].layer);
-    EXPECT_EQ(Catalog::findProperty(&scene, entity, type, "controller").ref, &player.controller);
-    EXPECT_EQ(Catalog::findProperty(&scene, entity, type, "controllerGuid").ref, &player.controllerGuid);
+    EXPECT_FALSE(Catalog::findProperty(&scene, entity, type, "controller").ref) << "an Animator's property";
 
     const std::map<std::string, PropertyData> templates = Catalog::getProperties(type, nullptr);
     for (const char* name : {"layers", "layers[].name", "layers[].weight", "layers[].blend", "layers[].mask", "layers[].maskGuid",
-                             "clips[].layer", "controller", "controllerGuid"}) {
+                             "clips[].layer"}) {
         EXPECT_TRUE(templates.count(name)) << name;
     }
 
@@ -255,7 +256,6 @@ namespace {
         animationplayer.layers[1].weight = 0.500000f;
         animationplayer.layers[1].blend = AnimationLayerBlend::Additive;
         animationplayer.layers[1].mask = "anim/arm.mask";
-        animationplayer.controller = "anim/granjero.controller";
         animationplayer.playAutomatically = true;
         animationplayer.speed = 1.000000f;
         animationplayer.defaultFadeTime = 0.250000f;
@@ -274,7 +274,6 @@ namespace {
         "animationplayer.layers[1].weight = 0.500000f;\n"
         "animationplayer.layers[1].blend = AnimationLayerBlend::Additive;\n"
         "animationplayer.layers[1].mask = \"anim/arm.mask\";\n"
-        "animationplayer.controller = \"anim/granjero.controller\";\n"
         "animationplayer.playAutomatically = true;\n"
         "animationplayer.speed = 1.000000f;\n"
         "animationplayer.defaultFadeTime = 0.250000f;\n"
@@ -282,18 +281,15 @@ namespace {
 
 }
 
-TEST(AnimationLayersEditor, FactoryEmitsLayersAndTheController) {
+TEST(AnimationLayersEditor, FactoryEmitsLayers) {
     AnimationPlayerComponent player;
     player.clips = {clipEntry("anim/walk.anim"), clipEntry("anim/hold.anim", 1)};
     player.layers = {layerOf("Base Layer"), layerOf("Holding", 0.5f, AnimationLayerBlend::Additive, "anim/arm.mask", MASK_GUID)};
-    player.controller = "anim/granjero.controller";
-    player.controllerGuid = CONTROLLER_GUID;
     Scene scene;
     const Entity entity = playerEntity(scene, player);
     const std::string code = Factory::createComponent(0, &scene, entity, ComponentType::AnimationPlayerComponent, "", "scene", "entity");
     EXPECT_EQ(code, EMITTED_LAYERED_PLAYER);
     EXPECT_EQ(code.find(MASK_GUID), std::string::npos) << "the editor's GUIDs stay out of the build";
-    EXPECT_EQ(code.find(CONTROLLER_GUID), std::string::npos);
 
     Scene built;
     const Entity builtEntity = built.createUserEntity();
@@ -303,7 +299,6 @@ TEST(AnimationLayersEditor, FactoryEmitsLayersAndTheController) {
     AnimationPlayerComponent expected = player;
     for (AnimationPlayerLayer& layer : expected.layers) layer.maskGuid.clear();
     EXPECT_EQ(result.layers, expected.layers);
-    EXPECT_EQ(result.controller, player.controller);
 }
 
 // ---- layer edits ---------------------------------------------------------------------------
@@ -436,11 +431,11 @@ namespace {
     }
 
     std::string maskText(const std::string& guid) {
-        anim::AvatarMaskData data;
+        anim::AvatarMaskDef data;
         data.guid = guid;
         data.defaultWeight = 0.0f;
-        data.transforms.push_back({"Arm", 1.0f, true});
-        return anim::writeAvatarMask(data);
+        data.paths.push_back({"Arm", 1.0f, true});
+        return anim::writeMask(data);
     }
 
     const char* const CONTROLLER_TEXT = R"({"format": "jasperengine.controller", "version": 1,
@@ -471,14 +466,13 @@ TEST(AnimationLayersEditor, SetPropertiesValuesAndRefusals) {
     EXPECT_EQ(layers[1]["mask"], "assets/anim/arm.mask");
     EXPECT_EQ(layers[1]["blend"], "override");
 
-    // one field; an entry's layer; the controller
+    // one field; an entry's layer
     ASSERT_TRUE(apply(s, Json{{"animationplayer", {{"layers[1].blend", "additive"}, {"clips[0].layer", 1}}}}, error)) << error;
     EXPECT_EQ(s.player().layers[1].blend, AnimationLayerBlend::Additive);
     EXPECT_EQ(s.player().clips[0].layer, 1);
     EXPECT_EQ(read(s, "layers[1].blend"), "additive");
-    ASSERT_TRUE(apply(s, Json{{"animationplayer", {{"controller", "assets/anim/granjero.controller"}}}}, error)) << error;
-    EXPECT_EQ(s.player().controller, "anim/granjero.controller");
-    EXPECT_EQ(read(s, "controller"), "assets/anim/granjero.controller");
+    // upstream's player controller: the Animator's now
+    EXPECT_FALSE(apply(s, Json{{"animationplayer", {{"controller", "assets/anim/granjero.controller"}}}}, error));
 
     // refusals, with the reason
     EXPECT_FALSE(apply(s, Json{{"animationplayer", {{"layers[0].blend", "additive"}}}}, error));
@@ -501,8 +495,6 @@ TEST(AnimationLayersEditor, SetPropertiesValuesAndRefusals) {
 TEST(AnimationLayersEditor, ALayerReorderIsOneUndoStep) {
     ASSERT_TRUE(headless().ready);
     PlayerScene s = playerScene(layeredPlayer());
-    s.player().controller.clear();
-    s.player().controllerGuid.clear();
     const AnimationPlayerComponent before = s.player();
     std::string error;
     ASSERT_TRUE(PlayerLayerActions::moveLayer(project(), s.sceneProject->id, s.entity, 2, 1, &error)) << error;
@@ -523,77 +515,104 @@ TEST(AnimationLayersEditor, ALayerReorderIsOneUndoStep) {
 TEST(AnimationLayersEditor, MaskAndControllerDocuments) {
     ASSERT_TRUE(headless().ready);
     fs::remove(assets() / "anim/new.mask");
-    anim::AvatarMaskData initial;
-    initial.transforms.push_back({"Arm", 1.0f, true});
     std::string error;
-    std::shared_ptr<AvatarMaskDocument> mask = AvatarMaskDocument::create(project(), "assets/anim/new.mask", initial, &error);
+    std::shared_ptr<AnimatorAssetDocument> mask =
+        AnimatorAssetDocument::create(project(), "assets/anim/new.mask", AnimatorAssetDocument::Kind::Mask, "Create Avatar Mask", &error);
     ASSERT_TRUE(mask) << error;
-    EXPECT_TRUE(anim::isClipGuid(mask->data().guid)) << "a new file gets a GUID";
-    const std::string guid = mask->data().guid;
+    EXPECT_TRUE(anim::isClipGuid(mask->mask().guid)) << "a new file gets a GUID";
+    const std::string guid = mask->mask().guid;
+    EXPECT_EQ(mask->mask().defaultWeight, 1.0f) << "a new mask passes everything";
+    EXPECT_FALSE(AnimatorAssetDocument::create(project(), "assets/anim/new.mask", AnimatorAssetDocument::Kind::Mask, "", &error)) << "it exists";
+    EXPECT_EQ(AnimatorAssetDocument::open(project(), "anim/new.mask", &error), mask) << "one document per path (asset-relative form too)";
+    anim::AvatarMaskDef initial = mask->mask();
+    initial.paths.push_back({"Arm", 1.0f, true});
+    ASSERT_TRUE(mask->commit(initial, "Edit Mask", "", &error)) << error;
+    project()->refreshAssetDatabase(true);
     EXPECT_EQ(project()->getAssetDatabase().getGuid(assets() / "anim/new.mask"), guid) << "the asset database tracks it";
-    EXPECT_FALSE(AvatarMaskDocument::create(project(), "assets/anim/new.mask", initial, &error)) << "it exists";
-    EXPECT_EQ(AvatarMaskDocument::open(project(), "anim/new.mask", &error), mask) << "one document per path (asset-relative form too)";
 
-    // a player using it reloads on every revision
+    // a player using it reloads it on every revision (the pool's generation)
     AnimationPlayerComponent user;
     user.layers = {layerOf("Base Layer"), layerOf("Upper", 1.0f, AnimationLayerBlend::Override, "anim/new.mask", guid)};
     PlayerScene s = playerScene(user);
-    s.player().needsLoad = false;
-    anim::AvatarMaskData edited = mask->data();
+    AnimatorAssetPool::mask("anim/new.mask");
+    const uint64_t generation = AnimatorAssetPool::getGeneration("anim/new.mask");
+    anim::AvatarMaskDef edited = mask->mask();
     edited.defaultWeight = 0.25f;
     edited.guid = "ffffffffffffffffffffffffffffffff";
     const uint64_t revision = mask->revision();
     ASSERT_TRUE(mask->commit(edited, "Edit Mask", "", &error)) << error;
     EXPECT_GT(mask->revision(), revision);
-    EXPECT_EQ(mask->data().defaultWeight, 0.25f);
-    EXPECT_EQ(mask->data().guid, guid) << "a commit never changes the GUID";
-    EXPECT_TRUE(s.player().needsLoad);
-    EXPECT_EQ(readAll(assets() / "anim/new.mask"), anim::writeAvatarMask(mask->data()));
+    EXPECT_EQ(mask->mask().defaultWeight, 0.25f);
+    EXPECT_EQ(mask->mask().guid, guid) << "a commit never changes the GUID";
+    AnimatorAssetPool::mask("anim/new.mask");
+    EXPECT_NE(AnimatorAssetPool::getGeneration("anim/new.mask"), generation) << "the players' layers load it again";
+    EXPECT_EQ(readAll(assets() / "anim/new.mask"), anim::writeMask(mask->mask()));
+    EXPECT_NE(readAll(assets() / "anim/new.mask").find("\"version\": 2"), std::string::npos);
 
     // undo and redo reach the document
     ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
-    EXPECT_EQ(mask->data().defaultWeight, 1.0f);
+    EXPECT_EQ(mask->mask().defaultWeight, 1.0f);
     ASSERT_TRUE(project()->getProjectCommandHistory()->redo());
-    EXPECT_EQ(mask->data().defaultWeight, 0.25f);
+    EXPECT_EQ(mask->mask().defaultWeight, 0.25f);
 
-    // an outside edit reloads; a broken one keeps the last good data with a warning
+    // an outside edit reloads (the animation documents' broadcast); a broken one keeps the last
+    // good data with the error
     edited.defaultWeight = 0.5f;
-    writeAll(assets() / "anim/new.mask", anim::writeAvatarMask(edited));
+    writeAll(assets() / "anim/new.mask", anim::writeMask(edited));
     AnimationClipDocument::filesChanged({assets() / "anim/new.mask"}, project());
-    EXPECT_EQ(mask->data().defaultWeight, 0.5f);
+    EXPECT_EQ(mask->mask().defaultWeight, 0.5f);
     writeAll(assets() / "anim/new.mask", "{\"format\": \"jasperengine.mask\",\n \"version\": 1,,}");
     AnimationClipDocument::filesChanged({assets() / "anim/new.mask"}, project());
-    EXPECT_EQ(mask->data().defaultWeight, 0.5f);
-    ASSERT_FALSE(mask->loadWarnings().empty());
-    EXPECT_NE(mask->loadWarnings()[0].message.find("2:"), std::string::npos) << mask->loadWarnings()[0].message;
+    EXPECT_EQ(mask->mask().defaultWeight, 0.5f);
+    EXPECT_NE(mask->loadError().find("2:"), std::string::npos) << mask->loadError();
+    writeAll(assets() / "anim/new.mask", anim::writeMask(edited));
+    AnimationClipDocument::checkDiskChanges(project());
+    EXPECT_TRUE(mask->loadError().empty()) << "fixed on disk: read again";
 
-    const std::vector<AnimAssetUser> users = findMaskUsers(project(), "assets/anim/new.mask");
+    const std::vector<AnimatorAssetUser> users = findMaskUsers(project(), "assets/anim/new.mask");
     ASSERT_EQ(users.size(), 1u);
     EXPECT_EQ(users[0].entity, s.entity);
     EXPECT_EQ(users[0].layer, 1);
     EXPECT_EQ(findMaskUsers(project(), guid).size(), 1u) << "by GUID too";
 
-    // a controller document: create, the users of a controller
+    // a controller document: create, the users of a controller (Animators)
     fs::remove(assets() / "anim/new.controller");
-    anim::ControllerData controllerData;
-    controllerData.layers.push_back(anim::ControllerLayer());
-    controllerData.layers[0].name = anim::BASE_LAYER_NAME;
-    std::shared_ptr<AnimatorControllerDocument> controller = AnimatorControllerDocument::create(project(), "assets/anim/new.controller", controllerData, &error);
+    std::shared_ptr<AnimatorAssetDocument> controller =
+        AnimatorAssetDocument::create(project(), "assets/anim/new.controller", AnimatorAssetDocument::Kind::Controller, "", &error);
     ASSERT_TRUE(controller) << error;
-    anim::ControllerData withState = controller->data();
-    withState.layers[0].states.push_back(anim::ControllerState());
-    withState.layers[0].states[0].name = "Idle";
+    anim::ControllerDef withState = controller->controller();
+    anim::StateDef idle;
+    idle.name = "Idle";
+    withState.layers[0].machine.states.push_back(idle);
     ASSERT_TRUE(controller->commit(withState, "Add State", "", &error)) << error;
-    EXPECT_EQ(controller->data().layers[0].states.size(), 1u);
+    EXPECT_EQ(controller->controller().layers[0].machine.states.size(), 1u);
     ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
-    EXPECT_TRUE(controller->data().layers[0].states.empty());
-    s.player().controller = "anim/new.controller";
-    s.player().controllerGuid = controller->data().guid;
+    EXPECT_TRUE(controller->controller().layers[0].machine.states.empty());
+    AnimatorComponent animator;
+    animator.controller = AssetRef("anim/new.controller", Guid::parse(controller->controller().guid));
+    s.sceneProject->scene->addComponent<AnimatorComponent>(s.entity, animator);
     EXPECT_EQ(findControllerUsers(project(), "assets/anim/new.controller").size(), 1u);
-    EXPECT_FALSE(AvatarMaskDocument::open(project(), "assets/anim/new.controller", &error)) << "the wrong type";
+    EXPECT_FALSE(AnimatorAssetDocument::open(project(), "assets/anim/new.txt", &error)) << "not an Animator asset";
     writeAll(assets() / "anim/unity.mask", "%YAML 1.1\n--- !u!319 &31900000\nAvatarMask:\n");
-    EXPECT_FALSE(AvatarMaskDocument::open(project(), "assets/anim/unity.mask", &error));
+    EXPECT_FALSE(AnimatorAssetDocument::open(project(), "assets/anim/unity.mask", &error));
     EXPECT_NE(error.find("Unity .mask"), std::string::npos) << error;
+
+    // an upstream version 1 mask: read converted, written as version 2 on the next commit
+    writeAll(assets() / "anim/upstream.mask", R"({"format": "jasperengine.mask", "version": 1, "default": 0,
+      "humanoid": {"right_arm": 1}, "transforms": [{"path": "Arm", "weight": 0.5}]})");
+    std::shared_ptr<AnimatorAssetDocument> upstream = AnimatorAssetDocument::open(project(), "assets/anim/upstream.mask", &error);
+    ASSERT_TRUE(upstream) << error;
+    EXPECT_TRUE(upstream->converted());
+    EXPECT_EQ(upstream->dialect(), anim::AnimatorFileDialect::UpstreamVersion1);
+    EXPECT_EQ(upstream->mask().partWeight(AvatarBodyPart::RightHand), 1.0f);
+    ASSERT_TRUE(upstream->commit(upstream->mask(), "Save Mask", "", &error)) << error;
+    EXPECT_FALSE(upstream->converted());
+    const anim::MaskParseResult saved = anim::parseMask(readAll(assets() / "anim/upstream.mask"));
+    ASSERT_TRUE(saved.ok);
+    EXPECT_EQ(saved.dialect, anim::AnimatorFileDialect::Current);
+    ASSERT_EQ(saved.data.paths.size(), 1u);
+    EXPECT_TRUE(saved.data.paths[0].children);
+    EXPECT_FLOAT_EQ(saved.data.paths[0].weight, 0.5f);
 }
 
 TEST(AnimationLayersEditor, ReferencesFollowRenamesAndScenesPreloadThem) {
@@ -607,28 +626,27 @@ TEST(AnimationLayersEditor, ReferencesFollowRenamesAndScenesPreloadThem) {
 
     AnimationPlayerComponent user;
     user.layers = {layerOf("Base Layer"), layerOf("Upper", 1.0f, AnimationLayerBlend::Override, "anim/arm.mask")};
-    user.controller = "anim/granjero.controller";
     PlayerScene s = playerScene(user);
+    AnimatorComponent animator;
+    animator.controller = AssetRef("anim/granjero.controller");
+    s.sceneProject->scene->addComponent<AnimatorComponent>(s.entity, animator);
     // a reference without a GUID gets it filled in (silently: where it points did not change)
     project()->resolveRegistryClipRefs(s.sceneProject->scene);
     EXPECT_EQ(s.player().layers[1].maskGuid, MASK_GUID);
-    EXPECT_EQ(s.player().controllerGuid, controllerGuid);
 
-    // the scene's resources: the controller, the masks, the clips (and models) it names
-    // (the generated scene source preloads them; a controller owns the states: its own clips)
+    // the scene's resources: the masks, the controller and the clips (and models) it names
     ASSERT_TRUE(project()->saveSceneToPath(s.sceneProject->id, "Layers.scene"));
     const fs::path source = project()->getProjectInternalPath() / "generated" /
                             (Factory::sceneToFileName(s.sceneProject->id, s.sceneProject->name) + ".cpp");
     const std::string code = readAll(source);
     const size_t at = code.find("SceneResources resources_");
     ASSERT_NE(at, std::string::npos) << source;
-    const std::string resources = code.substr(at);
-    EXPECT_NE(resources.find("    resources.models.push_back(\"models/hero.gltf\");\n"
-                             "    resources.clips.push_back(\"anim/walk.anim\");\n"
-                             "    resources.clips.push_back(\"models/hero.gltf#Hit\");\n"
-                             "    resources.masks.push_back(\"anim/arm.mask\");\n"
-                             "    resources.controllers.push_back(\"anim/granjero.controller\");\n"
-                             "    return resources;"), std::string::npos) << resources.substr(0, 800);
+    const std::string resources = code.substr(at, code.find("return resources;", at) - at);
+    for (const char* line : {"resources.models.push_back(\"models/hero.gltf\");", "resources.clips.push_back(\"anim/walk.anim\");",
+                             "resources.clips.push_back(\"models/hero.gltf#Hit\");", "resources.masks.push_back(\"anim/arm.mask\");",
+                             "resources.controllers.push_back(\"anim/granjero.controller\");"}) {
+        EXPECT_NE(resources.find(line), std::string::npos) << line << "\n" << resources.substr(0, 800);
+    }
     EXPECT_NE(code.find("animationplayer.layers[1].mask = \"anim/arm.mask\";"), std::string::npos);
     EXPECT_EQ(code.find(MASK_GUID), std::string::npos) << "GUIDs stay in the scene file";
 
@@ -636,17 +654,19 @@ TEST(AnimationLayersEditor, ReferencesFollowRenamesAndScenesPreloadThem) {
     RenameFileCmd rename(project(), "arm.mask", "arm2.mask", (assets() / "anim").string());
     ASSERT_TRUE(rename.execute());
     EXPECT_EQ(s.player().layers[1].mask, "anim/arm2.mask");
-    EXPECT_NE(readAll(assets() / "anim/granjero.controller").find("\"mask\": \"anim/arm2.mask\""), std::string::npos);
+    anim::ControllerParseResult renamed = anim::parseController(readAll(assets() / "anim/granjero.controller"));
+    ASSERT_TRUE(renamed.ok);
+    EXPECT_EQ(renamed.data.layers[1].mask.path, "anim/arm2.mask");
     rename.undo();
     EXPECT_EQ(s.player().layers[1].mask, "anim/arm.mask");
-    EXPECT_NE(readAll(assets() / "anim/granjero.controller").find("\"mask\": \"anim/arm.mask\""), std::string::npos);
+    EXPECT_EQ(readAll(assets() / "anim/granjero.controller").find("arm2"), std::string::npos);
 }
 
 // A clip and a mask moved outside the editor: the controllers naming them by GUID follow (the
-// GUID first, anim layers spec 6.3), and an open controller document reloads
+// GUID first, anim layers spec 6.3), and an open controller document reloads; upstream's
+// version 1 controller is read converted and written as version 2
 TEST(AnimationLayersEditor, ControllersFollowClipsAndMasksMovedOutsideTheEditor) {
     ASSERT_TRUE(headless().ready);
-    // (GUIDs of their own: another test's anim/arm.mask holds MASK_GUID)
     const char* const clipGuid = "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1";
     const char* const maskGuid = "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1";
     writeAll(assets() / "relink/arm.mask", maskText(maskGuid));
@@ -660,7 +680,7 @@ TEST(AnimationLayersEditor, ControllersFollowClipsAndMasksMovedOutsideTheEditor)
       "parameters": [{"name": "Speed", "type": "float"}]})");
     project()->refreshAssetDatabase(true);
     std::string error;
-    std::shared_ptr<AnimatorControllerDocument> document = AnimatorControllerDocument::open(project(), "assets/relink/hero.controller", &error);
+    std::shared_ptr<AnimatorAssetDocument> document = AnimatorAssetDocument::open(project(), "assets/relink/hero.controller", &error);
     ASSERT_TRUE(document) << error;
 
     fs::create_directories(assets() / "relink/moved");
@@ -669,10 +689,12 @@ TEST(AnimationLayersEditor, ControllersFollowClipsAndMasksMovedOutsideTheEditor)
     project()->refreshAssetDatabase(true);
 
     anim::ControllerParseResult parsed = anim::parseController(readAll(assets() / "relink/hero.controller"));
-    ASSERT_TRUE(parsed.ok()) << parsed.error.toString();
-    EXPECT_EQ(parsed.data->layers[0].states[0].clip, "relink/moved/run.anim") << "a state's clip";
-    EXPECT_EQ(parsed.data->layers[0].states[1].blendTree.children[0].clip, "relink/moved/run.anim") << "a blend-tree child";
-    EXPECT_EQ(parsed.data->layers[1].mask, "relink/moved/arm.mask") << "a layer's mask";
-    EXPECT_EQ(parsed.data->layers[1].maskGuid, maskGuid) << "the GUIDs stay";
-    EXPECT_EQ(document->data().layers[1].mask, "relink/moved/arm.mask") << "the open document reloaded";
+    ASSERT_TRUE(parsed.ok) << parsed.error.toString();
+    EXPECT_EQ(parsed.dialect, anim::AnimatorFileDialect::Current) << "rewritten as version 2";
+    const anim::StateMachineDef& machine = parsed.data.layers[0].machine;
+    EXPECT_EQ(machine.states[0].motion.clip.path, "relink/moved/run.anim") << "a state's clip";
+    EXPECT_EQ(machine.states[1].motion.tree[0].children[0].motion.clip.path, "relink/moved/run.anim") << "a blend-tree child";
+    EXPECT_EQ(parsed.data.layers[1].mask.path, "relink/moved/arm.mask") << "a layer's mask";
+    EXPECT_EQ(parsed.data.layers[1].mask.guid, maskGuid) << "the GUIDs stay";
+    EXPECT_EQ(document->controller().layers[1].mask.path, "relink/moved/arm.mask") << "the open document reloaded";
 }

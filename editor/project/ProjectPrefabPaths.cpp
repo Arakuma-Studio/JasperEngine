@@ -13,6 +13,7 @@
 #include "DocumentFile.h"
 #include "StreamPreserved.h"
 #include "animation/AnimationClipDocument.h"
+#include "animation/AnimatorAssetDocument.h"
 #include "animation/ModelSubClips.h"
 #include "vat/VatAssetFiles.h"
 #include "vat/VatDocument.h"
@@ -498,11 +499,10 @@ bool editor::Project::resolveRegistryClipRefs(EntityRegistry* registry, bool may
         for (AnimationPlayerClip& entry : player.clips) {
             playerChanged |= resolveClipReference(entry, mayImport);
         }
-        // layer masks and the controller follow their GUIDs the same way (anim layers spec 6.3)
+        // layer masks follow their GUIDs the same way (anim layers spec 6.3)
         for (AnimationPlayerLayer& layer : player.layers) {
             playerChanged |= resolveAssetReference(layer.mask, layer.maskGuid, mayImport);
         }
-        playerChanged |= resolveAssetReference(player.controller, player.controllerGuid, mayImport);
         if (playerChanged) {
             player.needsLoad = true;
             changed = true;
@@ -580,7 +580,7 @@ void editor::Project::applyClipAssetChanges(const std::vector<AssetDatabase::Cha
                         changed = true;
                     }
                 }
-                // a layer's mask and the controller (anim layers spec 6.3, L6)
+                // a layer's mask (anim layers spec 6.3, L6)
                 auto relinkPath = [&](std::string& path, const std::string& guid) {
                     if (guid != change.guid) {
                         return;
@@ -594,7 +594,6 @@ void editor::Project::applyClipAssetChanges(const std::vector<AssetDatabase::Cha
                 for (AnimationPlayerLayer& layer : player.layers) {
                     relinkPath(layer.mask, layer.maskGuid);
                 }
-                relinkPath(player.controller, player.controllerGuid);
             }
             auto animators = registry->getComponentArray<VertexAnimatorComponent>();
             for (size_t i = 0; i < animators->size(); i++) {
@@ -625,8 +624,8 @@ void editor::Project::applyClipAssetChanges(const std::vector<AssetDatabase::Cha
             relink(prefab.registry.get());
         }
     }
-    // (their documents reload there)
-    // SYNC4-ABSORB(animator): upstream relinked its .controller files' clip GUIDs here (relinkControllerGuids)
+    // the controllers and montages naming them by GUID (their documents reload there)
+    AnimatorAssetDocument::relinkGuids(this, relinked);
     AnimationClipDocument::filesChanged(touched, this);
     // Vertex Animations: their documents reload, the pool drops them, their animators reload
     VatDocument::filesChanged(touched, this);
