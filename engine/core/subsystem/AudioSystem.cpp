@@ -64,6 +64,46 @@ namespace {
 
     enum EventKind { EventStart, EventPause, EventStop };
 
+    // Where a scene's camera hears from, in its own world: its position (a perspective camera), or
+    // the centre of its view (an orthographic or UI camera, whose view spans [leftClip, rightClip]
+    // x [bottomClip, topClip] from its position: 0 to the canvas by default, so a sound at the
+    // centre of the screen is centred). forward / right / up: the camera's basis, unshaken
+    // (steadyWorldUp: a Camera Shaker never turns what the player hears)
+    struct CameraPose {
+        bool valid = false;
+        bool perspective = false;
+        Vector3 position;
+        Vector3 view;
+        Vector3 worldUp;
+        Vector3 forward = Vector3(0, 0, -1);
+        Vector3 right = Vector3(1, 0, 0);
+        Vector3 up = Vector3(0, 1, 0);
+    };
+
+    CameraPose cameraPose(Scene& scene) {
+        CameraPose pose;
+        const Entity entity = scene.getCamera();
+        const CameraComponent* camera = scene.findComponent<CameraComponent>(entity);
+        const Transform* transform = scene.findComponent<Transform>(entity);
+        if (!camera || !transform) return pose;
+        pose.valid = true;
+        pose.perspective = camera->type == CameraType::CAMERA_PERSPECTIVE;
+        pose.position = transform->worldPosition;
+        pose.view = camera->worldTarget - pose.position;
+        pose.worldUp = camera->steadyWorldUp;
+        const Vector3 side = pose.view.crossProduct(pose.worldUp);
+        if (pose.view.squaredLength() > 1e-12f && side.squaredLength() > 1e-12f) {
+            pose.forward = pose.view.normalized();
+            pose.right = side.normalized();
+            pose.up = pose.right.crossProduct(pose.forward);
+        }
+        if (!pose.perspective) {
+            pose.position += pose.right * ((camera->leftClip + camera->rightClip) * 0.5f) +
+                             pose.up * ((camera->bottomClip + camera->topClip) * 0.5f);
+        }
+        return pose;
+    }
+
     // 0 for a voice that could not start
     void registerVoice(unsigned int handle, Scene* owner, const std::string& groupId, int priority, bool isProtected) {
         if (handle == 0) return;
@@ -1242,11 +1282,10 @@ void AudioSystem::update(double dt){
 }
 
 void AudioSystem::placeListener(Scene& listenerScene){
-    const CameraComponent& camera = listenerScene.getComponent<CameraComponent>(listenerScene.getCamera());
-    const Transform& cameraTransform = listenerScene.getComponent<Transform>(listenerScene.getCamera());
-    const Vector3 position = cameraTransform.worldPosition;
-    const Vector3 view = camera.worldTarget - position;
-    const Vector3 up = camera.steadyWorldUp;  // unshaken (Camera Shaker)
+    const CameraPose pose = cameraPose(listenerScene);
+    const Vector3& position = pose.position;
+    const Vector3& view = pose.view;
+    const Vector3& up = pose.worldUp;
     const Vector3 velocity = cameraLastPosition - position;
     getSoloud().set3dListenerParameters(position.x, position.y, position.z, view.x, view.y, view.z,
                                         up.x, up.y, up.z, velocity.x, velocity.y, velocity.z);
