@@ -20,6 +20,7 @@
 #include "input/InputControlNames.h"
 #include "input/InputControlPath.h"
 #include "input/InputManagerFormat.h"
+#include "log/Logger.h"
 
 #include "json.hpp"
 
@@ -977,6 +978,8 @@ TEST_F(InputActionsTest, UnknownNameLogsOnceAndReadsZero) {
     EXPECT_FALSE(InputActions::getButtonDown("Fire4"));
     EXPECT_FALSE(InputActions::getButton("Fire4"));
     end();
+    // the logger writes on its own thread: what it was given is out before the capture ends
+    Logger::flush();
     fflush(stdout);
     const std::string logged = testing::internal::GetCapturedStderr() + testing::internal::GetCapturedStdout() + loggedSince(mark);
     EXPECT_EQ(count(logged, "Input action \"Fire4\" does not exist (Project Settings > Input)"), 1u) << logged;
