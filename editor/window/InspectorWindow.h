@@ -457,6 +457,8 @@ namespace jasperengine::editor{
         void openNewScriptDialog(SceneProject* sceneProject, const std::vector<Entity>& entities);
         // Add Tag... / Add Layer... asked for Project Settings > Tags and Layers
         bool tagsAndLayersRequested = false;
+        // a parameter row's link popup asked for Project Settings > Graphics (Shader Globals)
+        bool shaderGlobalsRequested = false;
         // layer picked for GameObjects with children, waiting for the Change Layer answer
         uint32_t pendingLayerSceneId = NULL_PROJECT_SCENE;
         std::vector<Entity> pendingLayerEntities;
@@ -512,7 +514,9 @@ namespace jasperengine::editor{
         void drawShaderUniformRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const ShaderUniformRows& rows);
         // one member row: a label for engine-written and non-editable members, else a
         // drag field; true with newValue when it changed
-        bool drawShaderUniformRow(const ShaderUniform& uniform, const ShaderUniformValues& values, const std::string& idPrefix, Vector4& newValue);
+        // reserveRight: room left after the field (a link button drawn on the same line)
+        bool drawShaderUniformRow(const ShaderUniform& uniform, const ShaderUniformValues& values, const std::string& idPrefix, Vector4& newValue,
+                                  float reserveRight = 0.0f);
         // Under a Stochastic Tiling Rotation row (a material's, a terrain layer's): when the rotation is
         // on and the normal map's average normal leans (util/NormalMapTilt), a warning and a button that
         // sets rotationProperty to 0 on every entity in one undo step
@@ -520,6 +524,16 @@ namespace jasperengine::editor{
                                            const std::string& rotationProperty, float rotation, const Texture& normalTexture,
                                            const std::function<void()>& onValueChanged);
         void drawShaderUniformWarnings(const std::vector<std::string>& warnings);
+        // ---- global shader values (shader globals spec 6.6, InspectorShaderLibrary.cpp) ----
+        // The link button closing a shader parameter row's value cell (on the same line, after
+        // it): its popup binds the member to a global of its kind (components: the member's, 1-4; a
+        // colour and a vector4 take each other) or unbinds it, through `set` (one undo step)
+        void drawGlobalLinkButton(const std::string& member, int components, const ShaderGlobalBindings& bindings,
+                                  const std::function<void(const ShaderGlobalBindings&)>& set);
+        // The value cell of a bound row: @Global and the global's current value, read-only, in
+        // `width` (the cell less the link button)
+        void drawBoundGlobalValue(const std::string& global, int components, bool color, float width);
+        float getGlobalLinkButtonWidth() const;
         // ---- shader library (InspectorShaderLibrary.cpp) ----
         // The Shader picker: the built-in shader, the library shaders of `type` grouped by
         // @category (with @description tooltips) and "Custom file..." (the Edit Shader Files
@@ -541,7 +555,7 @@ namespace jasperengine::editor{
         // fields. True with `edited` when it changed; `continuous` false for a one-click change
         // (its own undo step) and true while dragging (merged until released)
         bool drawShaderPropertyValue(const ShaderManifestProperty& property, const std::string& id, const Vector4& value,
-                                     Vector4& edited, bool& continuous);
+                                     Vector4& edited, bool& continuous, float itemWidth = -1.0f);
         // A submesh material's Shader row and manifest rows; true when the built-in PBR rows
         // apply (built-in Lit or a fork)
         bool drawMaterialShaderRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
@@ -733,6 +747,8 @@ namespace jasperengine::editor{
         void requestAddComponent();
         // true once after Add Tag... or Add Layer...: the App opens Project Settings on Tags and Layers
         bool consumeTagsAndLayersRequest();
+        // true once after a link popup's "Shader Globals...": the App opens Project Settings on Graphics
+        bool consumeShaderGlobalsRequest();
 
         // ---- Record sources (animation clips 9.R5; the rows and the window test hook call them) ----
 

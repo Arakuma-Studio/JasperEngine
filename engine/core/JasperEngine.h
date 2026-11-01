@@ -226,6 +226,7 @@
 #include "script/ScriptRuntime.h"
 
 #include "shader/ShaderData.h"
+#include "shader/ShaderGlobals.h"
 #include "shader/ShaderDataSerializer.h"
 
 #include "subsystem/ActionSystem.h"

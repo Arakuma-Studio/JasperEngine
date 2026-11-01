@@ -22,6 +22,7 @@
 #include "json.hpp"
 
 #include <set>
+#include <stdexcept>
 #include "System.h"
 #include "registry/PhysicsLayers.h"
 #include "math/Ray.h"
@@ -47,6 +48,8 @@
 #include "shader/ShaderVariantCollection.h"
 #include "shader/ShaderManifest.h"
 #include "shader/ShaderUniforms.h"
+#include "shader/ShaderGlobals.h"
+#include "util/Color.h"
 #include "object/EntityHandle.h"
 
 using namespace jasperengine;
@@ -254,6 +257,280 @@ namespace{
         lua_pushboolean(L, 0);
         lua_pushstring(L, error.c_str());
         return 2;
+    }
+
+}
+
+// Shader: global shader values (Unity's Shader.SetGlobal* / PropertyToID). A global is named
+// by a string or by the integer Shader.propertyToID gave; setters return false (and log once)
+// when the global is of another kind (a matrix, an array, a texture)
+namespace{
+
+    // a binding's global argument: a name, or nil to unbind (anything else is an error)
+    std::string luaBindingGlobal(const luabridge::LuaRef& global, const char* function){
+        if (global.isNil())
+            return std::string();
+        if (global.isString())
+            return global.unsafe_cast<std::string>();
+        throw std::runtime_error(std::string(function) + ": the global is a name (a string), or nil to unbind");
+    }
+
+    // the global argument 1 names: a string (made on first use by a setter), or an id
+    int luaGlobalArg(lua_State* L, const char* function, bool create){
+        if (lua_type(L, 1) == LUA_TNUMBER){
+            if (!lua_isinteger(L, 1))
+                luaL_error(L, "Shader.%s: an id must be an integer (Shader.propertyToID)", function);
+            const int id = (int)lua_tointeger(L, 1);
+            if (ShaderGlobals::nameOf(id).empty())
+                luaL_error(L, "Shader.%s: %d is not an id Shader.propertyToID gave", function, id);
+            return id;
+        }
+        if (lua_type(L, 1) != LUA_TSTRING)
+            luaL_error(L, "Shader.%s: argument 1 must be a global's name or id", function);
+        const std::string name = lua_tostring(L, 1);
+        std::string error;
+        if (create && !ShaderGlobals::isValidName(name, &error))
+            luaL_error(L, "Shader.%s: %s", function, error.c_str());
+        return create ? ShaderGlobals::propertyToID(name) : ShaderGlobals::findID(name);
+    }
+
+    // a value of a registered class, nil when it cannot be pushed
+    template<typename T>
+    void luaPushValue(lua_State* L, const T& value){
+        if (!luabridge::push(L, value))
+            lua_pushnil(L);
+    }
+
+    // a Vector4, Vector3 (w = wFill) or Vector2 at index
+    bool luaVectorArg(lua_State* L, int index, Vector4& out, float wFill, bool allowVector2){
+        if (luabridge::isInstance<Vector4>(L, index)){
+            auto value = luabridge::get<Vector4>(L, index);
+            if (value){ out = *value; return true; }
+        }else if (luabridge::isInstance<Vector3>(L, index)){
+            auto value = luabridge::get<Vector3>(L, index);
+            if (value){ const Vector3 v = *value; out = Vector4(v.x, v.y, v.z, wFill); return true; }
+        }else if (allowVector2 && luabridge::isInstance<Vector2>(L, index)){
+            auto value = luabridge::get<Vector2>(L, index);
+            if (value){ const Vector2 v = *value; out = Vector4(v.x, v.y, 0.0f, 0.0f); return true; }
+        }
+        return false;
+    }
+
+    int luaShaderPropertyToID(lua_State* L){
+        const std::string name = luaL_checkstring(L, 1);
+        std::string error;
+        if (!ShaderGlobals::isValidName(name, &error))
+            return luaL_error(L, "Shader.propertyToID: %s", error.c_str());
+        lua_pushinteger(L, ShaderGlobals::propertyToID(name));
+        return 1;
+    }
+
+    int luaShaderSetGlobalFloat(lua_State* L){
+        const int id = luaGlobalArg(L, "setGlobalFloat", true);
+        if (!lua_isnumber(L, 2))
+            return luaL_error(L, "Shader.setGlobalFloat: argument 2 must be a number");
+        lua_pushboolean(L, ShaderGlobals::setFloat(id, (float)lua_tonumber(L, 2)) ? 1 : 0);
+        return 1;
+    }
+
+    // Unity's SetGlobalInt stores a float
+    int luaShaderSetGlobalInt(lua_State* L){
+        const int id = luaGlobalArg(L, "setGlobalInt", true);
+        if (!lua_isnumber(L, 2))
+            return luaL_error(L, "Shader.setGlobalInt: argument 2 must be an integer");
+        lua_pushboolean(L, ShaderGlobals::setFloat(id, (float)(lua_Integer)lua_tonumber(L, 2)) ? 1 : 0);
+        return 1;
+    }
+
+    int luaShaderSetGlobalVector(lua_State* L){
+        const int id = luaGlobalArg(L, "setGlobalVector", true);
+        Vector4 value;
+        if (!luaVectorArg(L, 2, value, 0.0f, true))
+            return luaL_error(L, "Shader.setGlobalVector: argument 2 must be a Vector4, Vector3 or Vector2");
+        lua_pushboolean(L, ShaderGlobals::setVector(id, value) ? 1 : 0);
+        return 1;
+    }
+
+    int luaShaderSetGlobalColor(lua_State* L){
+        const int id = luaGlobalArg(L, "setGlobalColor", true);
+        Vector4 value;
+        if (!luaVectorArg(L, 2, value, 1.0f, false))
+            return luaL_error(L, "Shader.setGlobalColor: argument 2 must be a Vector4 or Vector3 (sRGB)");
+        lua_pushboolean(L, ShaderGlobals::setColor(id, value) ? 1 : 0);
+        return 1;
+    }
+
+    int luaShaderSetGlobalMatrix(lua_State* L){
+        const int id = luaGlobalArg(L, "setGlobalMatrix", true);
+        if (!luabridge::isInstance<Matrix4>(L, 2))
+            return luaL_error(L, "Shader.setGlobalMatrix: argument 2 must be a Matrix4");
+        auto value = luabridge::get<Matrix4>(L, 2);
+        lua_pushboolean(L, value && ShaderGlobals::setMatrix(id, *value) ? 1 : 0);
+        return 1;
+    }
+
+    int luaShaderSetGlobalFloatArray(lua_State* L){
+        const int id = luaGlobalArg(L, "setGlobalFloatArray", true);
+        luaL_checktype(L, 2, LUA_TTABLE);
+        const lua_Integer count = (lua_Integer)lua_rawlen(L, 2);
+        if (count < 1)
+            return luaL_error(L, "Shader.setGlobalFloatArray: the table needs 1 to %d numbers", (int)ShaderGlobals::MAX_ARRAY_SIZE);
+        std::vector<float> values;
+        for (lua_Integer i = 1; i <= count; i++){
+            lua_rawgeti(L, 2, i);
+            if (!lua_isnumber(L, -1))
+                return luaL_error(L, "Shader.setGlobalFloatArray: element %d must be a number", (int)i);
+            values.push_back((float)lua_tonumber(L, -1));
+            lua_pop(L, 1);
+        }
+        lua_pushboolean(L, ShaderGlobals::setFloatArray(id, values.data(), values.size()) ? 1 : 0);
+        return 1;
+    }
+
+    int luaShaderSetGlobalVectorArray(lua_State* L){
+        const int id = luaGlobalArg(L, "setGlobalVectorArray", true);
+        luaL_checktype(L, 2, LUA_TTABLE);
+        const lua_Integer count = (lua_Integer)lua_rawlen(L, 2);
+        if (count < 1)
+            return luaL_error(L, "Shader.setGlobalVectorArray: the table needs 1 to %d vectors", (int)ShaderGlobals::MAX_ARRAY_SIZE);
+        std::vector<Vector4> values;
+        for (lua_Integer i = 1; i <= count; i++){
+            lua_rawgeti(L, 2, i);
+            Vector4 value;
+            if (!luaVectorArg(L, lua_gettop(L), value, 0.0f, true))
+                return luaL_error(L, "Shader.setGlobalVectorArray: element %d must be a Vector4, Vector3 or Vector2", (int)i);
+            values.push_back(value);
+            lua_pop(L, 1);
+        }
+        lua_pushboolean(L, ShaderGlobals::setVectorArray(id, values.data(), values.size()) ? 1 : 0);
+        return 1;
+    }
+
+    // a Texture, an image path, a Framebuffer (a camera's render texture); nil: the default again
+    int luaShaderSetGlobalTexture(lua_State* L){
+        const int id = luaGlobalArg(L, "setGlobalTexture", true);
+        if (lua_isnoneornil(L, 2)){
+            lua_pushboolean(L, ShaderGlobals::clearTexture(id) ? 1 : 0);
+            return 1;
+        }
+        Texture texture;
+        if (lua_type(L, 2) == LUA_TSTRING){
+            texture.setPath(lua_tostring(L, 2));
+        }else if (luabridge::isInstance<Texture>(L, 2)){
+            auto value = luabridge::get<Texture>(L, 2);
+            if (value) texture = *value;
+        }else if (luabridge::isInstance<Framebuffer>(L, 2)){
+            auto value = luabridge::get<Framebuffer*>(L, 2);
+            if (value && *value) texture.setFramebuffer(*value);
+        }else{
+            return luaL_error(L, "Shader.setGlobalTexture: argument 2 must be a Texture, an image path, a Framebuffer or nil");
+        }
+        lua_pushboolean(L, ShaderGlobals::setTexture(id, texture) ? 1 : 0);
+        return 1;
+    }
+
+    // the value of the global argument 1 names: false when it does not exist or is a texture
+    bool luaGlobalValue(lua_State* L, const char* function, ShaderGlobalValue& value){
+        const int id = luaGlobalArg(L, function, false);
+        return ShaderGlobals::get(id, value) && !ShaderGlobals::isTexture(value.type) && !value.values.empty();
+    }
+
+    // its first slot (a float in .x); false for a matrix too
+    bool luaGlobalLeading(lua_State* L, const char* function, Vector4& out){
+        ShaderGlobalValue value;
+        if (!luaGlobalValue(L, function, value) || value.type == ShaderGlobalType::Matrix4)
+            return false;
+        out = value.values[0];
+        return true;
+    }
+
+    int luaShaderGetGlobalFloat(lua_State* L){
+        Vector4 value;
+        if (luaGlobalLeading(L, "getGlobalFloat", value)) lua_pushnumber(L, value.x);
+        else lua_pushnil(L);
+        return 1;
+    }
+
+    int luaShaderGetGlobalInt(lua_State* L){
+        Vector4 value;
+        if (luaGlobalLeading(L, "getGlobalInt", value)) lua_pushinteger(L, (lua_Integer)value.x);
+        else lua_pushnil(L);
+        return 1;
+    }
+
+    int luaShaderGetGlobalVector(lua_State* L){
+        Vector4 value;
+        if (luaGlobalLeading(L, "getGlobalVector", value)) luaPushValue(L, value);
+        else lua_pushnil(L);
+        return 1;
+    }
+
+    // as sRGB (alpha as is)
+    int luaShaderGetGlobalColor(lua_State* L){
+        Vector4 value;
+        if (luaGlobalLeading(L, "getGlobalColor", value)) luaPushValue(L, Color::linearTosRGB(value));
+        else lua_pushnil(L);
+        return 1;
+    }
+
+    int luaShaderGetGlobalMatrix(lua_State* L){
+        ShaderGlobalValue value;
+        if (!luaGlobalValue(L, "getGlobalMatrix", value) || value.type != ShaderGlobalType::Matrix4 || value.values.size() < 4){
+            lua_pushnil(L);
+            return 1;
+        }
+        Matrix4 matrix;
+        for (unsigned int c = 0; c < 4; c++)
+            matrix.setColumn(c, value.values[c]);
+        luaPushValue(L, matrix);
+        return 1;
+    }
+
+    int luaShaderGetGlobalArray(lua_State* L, const char* function, bool vectors){
+        ShaderGlobalValue value;
+        if (!luaGlobalValue(L, function, value) || !ShaderGlobals::isArray(value.type)){
+            lua_pushnil(L);
+            return 1;
+        }
+        lua_createtable(L, (int)value.values.size(), 0);
+        for (size_t i = 0; i < value.values.size(); i++){
+            if (vectors)
+                luaPushValue(L, value.values[i]);
+            else
+                lua_pushnumber(L, value.values[i].x);
+            lua_rawseti(L, -2, (lua_Integer)i + 1);
+        }
+        return 1;
+    }
+    int luaShaderGetGlobalFloatArray(lua_State* L){ return luaShaderGetGlobalArray(L, "getGlobalFloatArray", false); }
+    int luaShaderGetGlobalVectorArray(lua_State* L){ return luaShaderGetGlobalArray(L, "getGlobalVectorArray", true); }
+
+    // the Texture a texture global holds (nil for none, its default unset, or another kind)
+    int luaShaderGetGlobalTexture(lua_State* L){
+        ShaderGlobalValue value;
+        const int id = luaGlobalArg(L, "getGlobalTexture", false);
+        if (!ShaderGlobals::get(id, value) || !ShaderGlobals::isTexture(value.type) || value.texture.empty()){
+            lua_pushnil(L);
+            return 1;
+        }
+        luaPushValue(L, value.texture);
+        return 1;
+    }
+
+    int luaShaderHasGlobal(lua_State* L){
+        const int id = luaGlobalArg(L, "hasGlobal", false);
+        lua_pushboolean(L, ShaderGlobals::exists(id) ? 1 : 0);
+        return 1;
+    }
+
+    int luaShaderGetGlobalNames(lua_State* L){
+        const std::vector<std::string> names = ShaderGlobals::getNames();
+        lua_createtable(L, (int)names.size(), 0);
+        for (size_t i = 0; i < names.size(); i++){
+            lua_pushstring(L, names[i].c_str());
+            lua_rawseti(L, -2, (lua_Integer)i + 1);
+        }
+        return 1;
     }
 
 }
@@ -829,6 +1106,34 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("isRuntimeCompilationSupported", &ShaderPool::isRuntimeCompilationSupported)
         .addStaticProperty("runtimeCompilation", &ShaderPool::isRuntimeCompilationEnabled, &ShaderPool::setRuntimeCompilationEnabled)
         .addStaticProperty("asyncCompilation", &ShaderPool::isAsyncCompilation, &ShaderPool::setAsyncCompilation)
+        .endClass();
+
+    // global shader values (Unity's Shader.SetGlobal*): read by every shader declaring them in
+    // its u_vs_globals / u_fs_globals block (texture globals: a texture uniform of the name),
+    // Project Settings > Graphics > Shader Globals declares them with their defaults
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ShaderGlobals>("Shader")
+        .addStaticFunction("propertyToID", &luaShaderPropertyToID)
+        .addStaticFunction("setGlobalFloat", &luaShaderSetGlobalFloat)
+        .addStaticFunction("setGlobalInt", &luaShaderSetGlobalInt)
+        .addStaticFunction("setGlobalVector", &luaShaderSetGlobalVector)
+        .addStaticFunction("setGlobalColor", &luaShaderSetGlobalColor)
+        .addStaticFunction("setGlobalMatrix", &luaShaderSetGlobalMatrix)
+        .addStaticFunction("setGlobalFloatArray", &luaShaderSetGlobalFloatArray)
+        .addStaticFunction("setGlobalVectorArray", &luaShaderSetGlobalVectorArray)
+        .addStaticFunction("setGlobalTexture", &luaShaderSetGlobalTexture)
+        .addStaticFunction("getGlobalFloat", &luaShaderGetGlobalFloat)
+        .addStaticFunction("getGlobalInt", &luaShaderGetGlobalInt)
+        .addStaticFunction("getGlobalVector", &luaShaderGetGlobalVector)
+        .addStaticFunction("getGlobalColor", &luaShaderGetGlobalColor)
+        .addStaticFunction("getGlobalMatrix", &luaShaderGetGlobalMatrix)
+        .addStaticFunction("getGlobalFloatArray", &luaShaderGetGlobalFloatArray)
+        .addStaticFunction("getGlobalVectorArray", &luaShaderGetGlobalVectorArray)
+        .addStaticFunction("getGlobalTexture", &luaShaderGetGlobalTexture)
+        .addStaticFunction("hasGlobal", &luaShaderHasGlobal)
+        .addStaticFunction("getGlobalNames", &luaShaderGetGlobalNames)
+        // back to the Project Settings defaults; the globals scripts made are dropped
+        .addStaticFunction("resetGlobals", +[]() { ShaderGlobals::resetToDefaults(); })
         .endClass();
 
     // diagnostics: the pipelines renderable objects made and did not destroy yet
@@ -1576,6 +1881,15 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("removeShaderParam", +[](Material* self, const std::string& name) -> bool {
             return ShaderUniforms::remove(self->shaderParams, name);
         })
+        // a @property member that follows a global shader value (Shader.setGlobal*) instead of
+        // its own value; nil unbinds (then mesh:setMaterial(m))
+        .addFunction("setShaderGlobalBinding", +[](Material* self, const std::string& member, luabridge::LuaRef global) -> bool {
+            return ShaderGlobals::setBinding(self->shaderGlobalBindings, member, luaBindingGlobal(global, "Material.setShaderGlobalBinding"));
+        })
+        .addFunction("getShaderGlobalBinding", +[](const Material* self, const std::string& member, lua_State* L) -> luabridge::LuaRef {
+            const std::string global = ShaderGlobals::getBinding(self->shaderGlobalBindings, member);
+            return global.empty() ? luabridge::LuaRef(L) : luabridge::LuaRef(L, global);
+        })
         // the texture of a @texture uniform by path ("" removes it: the manifest default binds)
         .addFunction("setShaderTexture", +[](Material* self, const std::string& name, const std::string& path) {
             ShaderLibraryValues::setTexture(self->shaderTextures, name, path);
@@ -1757,6 +2071,14 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             luabridge::overload<unsigned int, const std::string&, float>(&Scene::setPostProcessUniform))
         .addFunction("getPostProcessUniform", &Scene::getPostProcessUniform)
         .addFunction("removePostProcessUniform", &Scene::removePostProcessUniform)
+        // a pass's u_fs_postParams member that follows a global shader value; nil unbinds
+        .addFunction("setPostProcessGlobalBinding", +[](Scene* self, unsigned int index, const std::string& member, luabridge::LuaRef global) -> bool {
+            return self->setPostProcessGlobalBinding(index, member, luaBindingGlobal(global, "Scene.setPostProcessGlobalBinding"));
+        })
+        .addFunction("getPostProcessGlobalBinding", +[](const Scene* self, unsigned int index, const std::string& member, lua_State* L) -> luabridge::LuaRef {
+            const std::string global = self->getPostProcessGlobalBinding(index, member);
+            return global.empty() ? luabridge::LuaRef(L) : luabridge::LuaRef(L, global);
+        })
         .addFunction("setPostProcessPassEnabled", &Scene::setPostProcessPassEnabled)
         .addFunction("isPostProcessPassEnabled", &Scene::isPostProcessPassEnabled)
         .addFunction("canReceiveUIEvents", &Scene::canReceiveUIEvents)
