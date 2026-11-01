@@ -3365,7 +3365,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("boundsMax", &CameraFollow::getBoundsMax, &CameraFollow::setBoundsMax)
         .addProperty("unscaledTime", &CameraFollow::isUnscaledTime, &CameraFollow::setUnscaledTime)
         .addProperty("enabled", &CameraFollow::isEnabled, &CameraFollow::setEnabled)
-        })
+        .endClass();
+
     // Unity's VideoPlayer enums (docs/mcp/guide/video.md)
     luabridge::getGlobalNamespace(L)
         .beginNamespace("VideoPlayerSource")
