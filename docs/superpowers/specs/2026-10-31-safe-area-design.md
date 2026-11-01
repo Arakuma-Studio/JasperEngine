@@ -570,7 +570,7 @@ spec was silent, ambiguous or did not fit the code:
     `AnimationClipContractTest`. (The ECS `Signature` limit of 64 types was raised to 128 on `main`.)
 20. **Verification** (tree merged with `main` at `dbd8a23f3`: platform-services, shader-globals and
     everything before them), box 2203: editor and tests build with 0 warnings; unit suite 1438 passed,
-    9 skipped, 0 failed (`SafeArea*` 21 of them); full MCP suite 884 passed, 15 failed: the 10 baseline
+    9 skipped, 0 failed (24 of them in `SafeAreaTest.cpp`); full MCP suite 884 passed, 15 failed: the 10 baseline
     failures (test_animation_assets x5, test_lattice_scene x5), `test_stochastic_tiling` resave (the
     ui-canvas-group regression on `main`, LEDGER 2026-11-01), and four timing failures of the loaded box
     that pass alone (test_pose_runtime, test_render_perf x2, test_shader_library's 30-minute matrix);
