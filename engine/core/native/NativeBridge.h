@@ -159,8 +159,8 @@ namespace jasperengine {
         static void emit(const std::string& plugin, const std::string& event, NativeJson payload);
         // Main thread. An id > 0; with an owner the handler goes with it.
         static uint64_t on(const std::string& plugin, const std::string& event, EventHandler handler, AsyncOwner owner = {});
-        // unknown id: no-op
-        static void off(uint64_t id);
+        // unknown handlerId: no-op
+        static void off(uint64_t handlerId);
 
         // ---- engine pause while a full-screen native view is shown (ads); any thread
 
@@ -183,7 +183,7 @@ namespace jasperengine {
 
         // A platform call started by callAsync ended (id = NativeCall::id()); an unknown or
         // cancelled id is ignored. error null or with an empty code: success.
-        static void completeFromPlatform(uint64_t id, NativeJson result, const NativeError* error);
+        static void completeFromPlatform(uint64_t callId, NativeJson result, const NativeError* error);
 
         // ---- editor / builds
 

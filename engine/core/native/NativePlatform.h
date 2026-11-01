@@ -36,12 +36,12 @@ namespace jasperengine {
         // exception, unsupported_type, invalid_utf8, async_only, not_ready).
         virtual NativeJson call(const std::string& plugin, const std::string& method, const NativeJson& args, NativeError& err) = 0;
         // Starts an async call; returns at once. The platform completes it later, exactly once,
-        // with NativeBridge::completeFromPlatform(id, ...) (from any thread). background: a
+        // with NativeBridge::completeFromPlatform(callId, ...) (from any thread). background: a
         // worker thread instead of the UI/main thread.
-        virtual void callAsync(uint64_t id, const std::string& plugin, const std::string& method, const NativeJson& args, bool background) = 0;
-        // The call `id` was cancelled (by the caller, its owner, a timeout, Play stop): native
+        virtual void callAsync(uint64_t callId, const std::string& plugin, const std::string& method, const NativeJson& args, bool background) = 0;
+        // The call `callId` was cancelled (by the caller, its owner, a timeout, Play stop): native
         // code sees isCancelled() from now on. A completion that still comes is ignored.
-        virtual void cancel(uint64_t id) = 0;
+        virtual void cancel(uint64_t callId) = 0;
         // Play stop / engine shutdown (after every pending call was cancelled)
         virtual void shutdown() {}
         // NativeBridge::initPlugins: init hooks of plugin code loaded since the last call

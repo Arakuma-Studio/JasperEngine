@@ -292,14 +292,14 @@ namespace {
             }
         }
 
-        void callAsync(uint64_t id, const std::string& plugin, const std::string& method, const NativeJson& args, bool background) override{
+        void callAsync(uint64_t callId, const std::string& plugin, const std::string& method, const NativeJson& args, bool background) override{
             NSArray* arguments = (NSArray*)toFoundation(args);
             NSString* pluginName = toNSString(plugin);
             NSString* methodName = toNSString(method);
-            JasperNativeCall* call = [[JasperNativeCall alloc] initWithId:id plugin:pluginName method:methodName args:arguments];
+            JasperNativeCall* call = [[JasperNativeCall alloc] initWithId:callId plugin:pluginName method:methodName args:arguments];
             {
                 std::lock_guard<std::mutex> lock(callsMutex);
-                calls[id] = call;
+                calls[callId] = call;
             }
             const bool noArgs = args.empty();
             dispatch_block_t run = ^{
@@ -347,11 +347,11 @@ namespace {
             dispatch_async(background ? dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0) : dispatch_get_main_queue(), run);
         }
 
-        void cancel(uint64_t id) override{
+        void cancel(uint64_t callId) override{
             JasperNativeCall* call = nil;
             {
                 std::lock_guard<std::mutex> lock(callsMutex);
-                auto it = calls.find(id);
+                auto it = calls.find(callId);
                 if (it == calls.end()) return;
                 call = it->second;
                 calls.erase(it);

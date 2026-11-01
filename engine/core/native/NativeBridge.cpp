@@ -809,8 +809,8 @@ uint64_t NativeBridge::on(const std::string& plugin, const std::string& event, E
     return id;
 }
 
-void NativeBridge::off(uint64_t id){
-    NativeBridgeCore::instance().removeHandler(id);
+void NativeBridge::off(uint64_t handlerId){
+    NativeBridgeCore::instance().removeHandler(handlerId);
 }
 
 void NativeBridge::pauseEngine(){
@@ -842,12 +842,12 @@ int NativeBridge::getPauseCount(){
     return NativeBridgeCore::instance().pauseCount.load();
 }
 
-void NativeBridge::completeFromPlatform(uint64_t id, NativeJson result, const NativeError* error){
+void NativeBridge::completeFromPlatform(uint64_t callId, NativeJson result, const NativeError* error){
     NativeBridgeCore& core = NativeBridgeCore::instance();
     std::shared_ptr<NativeCallState> state;
     {
         std::lock_guard<std::mutex> lock(core.callMutex);
-        auto it = core.pending.find(id);
+        auto it = core.pending.find(callId);
         if (it != core.pending.end()) state = it->second;
     }
     // cancelled, timed out or never started here: nobody waits for it
