@@ -1764,8 +1764,8 @@ Json playersJson(Project* project, SceneProject* scene, Entity entity) {
                  {"play_automatically", player.playAutomatically}, {"speed", player.speed}, {"enabled", player.enabled},
                  {"bindings", bindings}};
     if (root != entity) item["plays"] = McpRefs::entityJson(scene, entity);
-    // layers (live weights and queues in play), the masks' coverage, the controller (anim layers spec 10, 11.5)
-    // SYNC4-ABSORB(animator): upstream's layers, masks' coverage and controller (animator_tools::addPlayerLayers)
+    // layers (live weights and queues in play), the masks' coverage, the Animator it hands over to
+    animator_tools::addPlayerLayers(project, scene, root, item);
     out.push_back(item);
     return out;
 }
@@ -1804,12 +1804,6 @@ bool previewPlayer(const CallPtr& call, SceneProject* scene, Entity entity) {
     if (names.empty()) {
         call->fail("\"" + engineScene->getEntityName(root) + "\"'s Animation Player has no clips: add one with set_properties "
                    "{animationplayer: {clips: [{clip: \"assets/anim/<name>.anim\"}]}}.");
-        return true;
-    }
-    const AnimationPlayerComponent& playerComponent = engineScene->getComponent<AnimationPlayerComponent>(root);
-    if (!playerComponent.controller.empty()) {
-        call->fail("\"" + engineScene->getEntityName(root) + "\" plays an Animator Controller: preview its clips by state with "
-                   "preview_animation on a GameObject without one, or play the scene (play_scene) and drive parameters with eval_lua.");
         return true;
     }
     if (args.contains("state") && args["state"].is_string()) {

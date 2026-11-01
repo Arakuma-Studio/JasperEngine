@@ -516,3 +516,101 @@ Unit tests in `engine/tests/core/animation/` (`Animator*.cpp`), editor tests in
   expects an older shader message; the fluid / UI-effect "no notice" exports get S18's
   unconditional `licenses/OpenEngine-LICENSE.txt`), or are flaky (`test_animation_assets`
   autosync and `test_post_processing_review_fixes` LUT: pass and fail across three reruns).
+
+## 12. Upstream absorption (sync 4)
+
+Upstream (origin/main, "anim layers", `docs/superpowers/specs/2026-10-31-anim-layers-design.md`)
+built Animation Player layers with Avatar Masks, and Animator Controllers played by the Animation
+Player itself, with their own `.controller` / `.mask` readers, Animator window and MCP tool
+(`edit_animator`). S21 is the main implementation; upstream's unique parts were absorbed onto it.
+
+**What was kept from upstream, on S21's runtime.**
+- Animation Player layers (`AnimationPlayerComponent::layers`, `clips[].layer`; weight, mask,
+  override / additive, per-layer `play` / `crossFade` / `queue`, `setLayerWeight(name, w, fade)`,
+  `PlayMode.STOP_ALL`, events only from weighted layers) with upstream's semantics, composed with
+  S21's per-element maths (`poseBlendRotation` / `poseAdditive*`, the scalar lanes of the SIMD
+  kernels) and S21's masks (`AvatarMaskWeights.h`). The Inspector's Layers table, clip Layer combo,
+  Create Mask from Selection, mask coverage in Bindings, the Animation window's Preview over and
+  masked rows, MCP `set_properties` of layers, `get_animation {entity}` layers and coverage,
+  `get_animation {mask, root}` and `{controller}`.
+- Upstream's Inspector parts: the Avatar Mask figure (fractional parts, Default, Root
+  Hierarchy, Preview Model, Users), the controller asset's validation (`validateController`: clips
+  that do not load, mistyped parameters, dead ends, unreachable states, transitions never taken,
+  unused parameters, non-Lua names), "Create Animator Controller from Clips" (an Animator added,
+  the player disabled, one scene step). The Animator window gained upstream's behaviours: renames
+  that follow their references, Copy / Paste, typed paths checked, a Problems strip whose click
+  selects the item, the current layer followed by name across layer list changes (a stale
+  selection dropped), parameter removal taking its conditions (MCP too), state removal taking the
+  transitions into it (MCP too), out-of-range numbers refused by `edit_animator_controller`, whose
+  result now carries `warnings` and `users`.
+- Upstream's controller-on-player API, as a **handover**: a disabled Animation Player on a
+  GameObject with an Animator forwards `play` / `crossFade` / `stop` / `isPlaying` / `setEnabled`,
+  the parameters, the state reads (`ControllerStateInfo`), `playInLayer` / `crossFadeInLayer`,
+  layer weights and its `onStateEnter` / `onStateExit` / `onEvent` to the Animator
+  (`object/AnimationPlayer.h`). `GameObject:getAnimator()` returns the Animator (the player without
+  one); the Animator's Lua class also answers upstream's names (`getCurrentStateName`,
+  `getCurrentStateInfo`, `getNextStateInfo`, `isInTransition([layer])`, `playInLayer`,
+  `crossFadeInLayer`, `hasController`, `hasParameter`, layer weights by name).
+
+**Formats.** `.controller` and `.mask` are version 2 (`CONTROLLER_VERSION`, `MASK_VERSION`); both
+dialects wrote `"version": 1` with the same header, so a version 1 file is told apart by its
+members (`AnimatorAssetIO.cpp`, `AnimatorFileDialect`): a controller is upstream's when a layer has
+upstream's members (`states`, `transitions`, `blend`, `default_state`, `any_state` as an object,
+`mask_guid`, a string `mask`) and none has S21's (`state_machine`, `blending`, `slot`); a mask is
+upstream's when it has upstream's members (`default`, `humanoid`, `transforms`, `preview`) and no
+S21 member, or upstream's are informative and S21's are not. Upstream's files are read by
+`UpstreamAnimFormats` and converted losslessly: every member lands in an S21 member or in the
+unknown keys of the matching S21 object (unknown keys are kept at every level now, and written
+back; an unknown key colliding with an S21 member is kept as `upstream_<key>`). Controller: flat
+states and transitions nest into each layer's state machine (`from: "any"` -> Any State),
+`blend` -> `blending`, string references + `*_guid` -> `{path, guid}`, `interruption` ->
+`interruption_source`, upstream's defaults made explicit (`has_exit_time` true,
+`can_transition_to_self` true on Any State), `wrap` -> `loop` (new `ping_pong`, `clamp_forever`,
+`repeat`), additive reference -> `clip` (new: the .anim's own `additive_reference`), a child's
+`speed` -> `time_scale`, `mirror` / `foot_ik` / `retarget` / `automate_thresholds` kept as unknown
+keys, positions kept (a grid for states without one). Mask: `default` -> default, `humanoid` ->
+`body_parts` (upstream's arm also weighs the hand; fingers are parts of their own now), `transforms`
+-> `paths` (with their `children`, upstream's default true), `preview.model`, `root_hierarchy`
+true. S21's version 1 masks convert too (default = the body's weight, every part set, a hand's
+part also below it, paths exact). Readers report `version`, `dialect` and `converted()`; the
+editor, MCP (`read_as`) and `check --anims` note a converted file, and the next save writes version
+2. A save never drops data: the conversion tests read, save and re-read every upstream member.
+
+**Mask rule (version 2).** A GameObject's weight: its `paths` entry, else its nearest ancestor's
+entry with `children`; else (a humanoid rig) its body part (slot bones by slot: body, head,
+shoulder to forearm `<side>_arm`, the hand bone `<side>_hand`, legs; a non-slot bone takes its
+nearest slot ancestor's part, below a hand `<side>_fingers`; with `root_hierarchy` the root and
+what is between it and the hips: `root`); a part not set weighs `default`; else `default`. Root
+motion weighs the root part. Animator layers and Animation Player layers use the same function.
+
+**Migrations.** Scene version 5 -> 6 and prefab 6 -> 7 (`StreamMigrations.cpp`
+`moveAnimationPlayerControllers`): a player's `controller` / `controllerGuid` become an
+`animator` component on the same entity playing that controller (enabled as the player was,
+`retarget: off` as upstream played it), and the player is disabled so it hands over; prefab
+instance overrides of a player's controller become an added Animator. Players with layers load
+unchanged (the codec writes `layers` and `clips[].layer`, `StreamComponents.cpp`); a `controller`
+key left in a current file is not read (a warning).
+
+**Deviations from upstream (S21's and Unity's rules win).**
+1. A destination's `onStateEnter` fires when its transition starts, the source's `onStateExit`
+   when it ends (upstream: both at the end).
+2. An interrupted transition freezes the blended pose and fades it out under the new one.
+3. A blend tree state's length is the weighted average of its children's; `normalizedTime`
+   excludes the cycle offset.
+4. A transition with neither conditions nor exit time is never taken (validated), not taken at
+   once.
+5. A controller with no layers has none (upstream added a Base Layer on read).
+6. Parameter names that are not Lua identifiers are kept and warned about (scripts pass names as
+   strings), not refused.
+7. Morph-weight and lattice channels on entities that are not bones follow the layer's mask like
+   bones.
+8. The last layer of a controller cannot be removed; the base layer may move (Unity's rule).
+
+**Tests.** Core: `AnimatorUpstreamFiles` (written red first: an upstream controller read as empty
+layers and a save wiped it, an upstream mask let every bone through; then the conversion member
+by member, the converted file playing like the upstream one, the humanoid mask conversion, S21's
+version 1 files), `Layers` (upstream's layer tests), `Controllers` (upstream's controller tests
+through the handover). Editor: `AnimationLayersEditor`, `AnimationLayersUi`, `AnimationLayersFigure`,
+`AnimatorWindow` (upstream's window tests on S21's window), `StreamMigrations.SceneV5ToV6*`. MCP:
+`test_animation_layers.py`, `test_animator_controller.py`, `test_animator_window.py`,
+`test_checks.py` (`--anims`).

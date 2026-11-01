@@ -1,11 +1,14 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Animation Player layers, masks and mixing transforms (anim layers spec 14, tests 1-12): the
-// v1 fast path, Override and Additive layers with numeric pose checks, fractional masks,
-// per-layer play / queue / stop, events gated by the layer weight, mixing transforms, humanoid
-// masks on the T-pose rig, the .mask format, layer runtime kept across reloads, the layered
-// edit-mode preview, the Lua API, and the mobile performance budget (spec 13).
+// Animation Player layers, masks and mixing transforms (upstream anim layers spec 14, tests 1-12;
+// docs/specs/S21-animation.md "Upstream absorption"): the v1 fast path, Override and Additive
+// layers with numeric pose checks, fractional masks, per-layer play / queue / stop, events gated
+// by the layer weight, mixing transforms, humanoid masks on the T-pose rig, upstream's .mask
+// format read as S21's version 2, layer runtime kept across reloads, the layered edit-mode
+// preview, the Lua API, and the mobile performance budget (spec 13). The masks are S21's
+// (AvatarMaskWeights.h) and the layers blend with S21's pose maths: a fractional rotation blend
+// is an nlerp (anim::poseBlendRotation), where upstream slerped.
 
 #include <gtest/gtest.h>
 
@@ -17,10 +20,12 @@
 #include "animation/AnimationClip.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimationPlayerRuntime.h"
-#include "animation/AvatarMask.h"
+#include "animation/AnimatorAssetIO.h"
+#include "animation/AnimatorPose.h"
+#include "animation/AvatarMaskWeights.h"
 #include "object/AnimationPlayer.h"
 #include "pool/AnimationClipPool.h"
-#include "pool/AvatarMaskPool.h"
+#include "pool/AnimatorAssetPool.h"
 #include "script/LuaBinding.h"
 #include "subsystem/ActionSystem.h"
 
@@ -101,7 +106,7 @@ namespace {
             static int run = 0;
             prefix = "layers/r" + std::to_string(run++) + "/";
             AnimationClipPool::clear();
-            AvatarMaskPool::clear();
+            AnimatorAssetPool::clear();
             root = scene.createEntity();
             scene.setEntityName(root, "Hero");
             scene.addComponent<Transform>(root, {});
@@ -112,7 +117,7 @@ namespace {
         }
         void TearDown() override {
             AnimationClipPool::clear();
-            AvatarMaskPool::clear();
+            AnimatorAssetPool::clear();
         }
 
         Entity child(Entity parent, const std::string& name, Vector3 position = Vector3(0, 0, 0)){
@@ -130,15 +135,15 @@ namespace {
             return prefix + name + ".anim";
         }
 
-        std::string mask(const std::string& name, const anim::AvatarMaskData& data){
-            animtest::writeAsset(prefix + name + ".mask", anim::writeAvatarMask(data));
+        std::string mask(const std::string& name, const anim::AvatarMaskDef& data){
+            animtest::writeAsset(prefix + name + ".mask", anim::writeMask(data));
             return prefix + name + ".mask";
         }
 
-        anim::AvatarMaskData armMask(float weight = 1.0f){
-            anim::AvatarMaskData data;
+        anim::AvatarMaskDef armMask(float weight = 1.0f){
+            anim::AvatarMaskDef data;
             data.defaultWeight = 0.0f;
-            data.transforms.push_back({"Arm", weight, true});
+            data.paths.push_back({"Arm", weight, true});
             return data;
         }
 
@@ -238,7 +243,8 @@ TEST_F(Layers, OverrideLayerWithAMaskOwnsTheMaskedBones){
     EXPECT_NEAR(transform(hand).position.y, 1.0f, 1e-5f);
 }
 
-// Test 3: layer weight 0.5 slerps the arm halfway; the leg is the base's
+// Test 3: layer weight 0.5 blends the arm halfway (an nlerp: at 0.5 the slerp's midpoint); the
+// leg is the base's
 TEST_F(Layers, LayerWeightBlendsWithTheLayersBelow){
     const std::string armPath = mask("arm", armMask());
     AnimationPlayer object = player({{"walk", walk(), 0}, {"hold", hold(), 1}},
@@ -246,8 +252,9 @@ TEST_F(Layers, LayerWeightBlendsWithTheLayersBelow){
     object.play("walk");
     object.play("hold");
     step(0.25, 2);
-    const Quaternion expected = Quaternion::slerp(0.5f, rotation(45, 0, 0, 1), rotation(45, 1, 0, 0), true);
+    const Quaternion expected = anim::poseBlendRotation(rotation(45, 0, 0, 1), rotation(45, 1, 0, 0), 0.5f);
     EXPECT_GT(quatDot(transform(arm).rotation, expected), 1.0f - 1e-5f);
+    EXPECT_GT(quatDot(expected, Quaternion::slerp(0.5f, rotation(45, 0, 0, 1), rotation(45, 1, 0, 0), true)), 1.0f - 1e-6f);
     EXPECT_NEAR(transform(leg).position.x, 1.0f, 1e-5f);
     // Hand: rest y 7, only the layer animates it: lerp(7, 1, 0.5)
     EXPECT_NEAR(transform(hand).position.y, 4.0f, 1e-5f);
@@ -255,7 +262,7 @@ TEST_F(Layers, LayerWeightBlendsWithTheLayersBelow){
     EXPECT_NEAR(object.getLayerWeight(0), 1.0f, 1e-6f);
 }
 
-// Test 4: a fractional mask weight is a partial override
+// Test 4: a fractional mask weight is a partial override (S21's nlerp at weight * mask)
 TEST_F(Layers, FractionalMaskWeightIsAPartialOverride){
     const std::string armPath = mask("arm", armMask(0.25f));
     AnimationPlayer object = player({{"walk", walk(), 0}, {"hold", hold(), 1}},
@@ -263,7 +270,7 @@ TEST_F(Layers, FractionalMaskWeightIsAPartialOverride){
     object.play("walk");
     object.play("hold");
     step(0.25, 2);
-    const Quaternion expected = Quaternion::slerp(0.25f, rotation(45, 0, 0, 1), rotation(45, 1, 0, 0), true);
+    const Quaternion expected = anim::poseBlendRotation(rotation(45, 0, 0, 1), rotation(45, 1, 0, 0), 0.25f);
     EXPECT_GT(quatDot(transform(arm).rotation, expected), 1.0f - 1e-5f);
     EXPECT_NEAR(transform(leg).position.x, 1.0f, 1e-5f);
 }
@@ -351,7 +358,7 @@ TEST_F(Layers, EventsNeedALayerWeight){
     holdEvents.events = {event(0.25f, "onHold")};
     ClipData walkEvents = walk();
     walkEvents.events = {event(0.25f, "onStep")};
-    anim::AvatarMaskData none;
+    anim::AvatarMaskDef none;
     none.defaultWeight = 0.0f;
     const std::string nonePath = mask("none", none);
     AnimationPlayer object = player({{"walk", walkEvents, 0}, {"hold", holdEvents, 1}},
@@ -419,12 +426,12 @@ TEST_F(Layers, HumanoidMasksCoverBodyParts){
 
     anim::HumanoidSlots slots = anim::humanoidSlotsByName(&human, character, rig.expected.bones);
     ASSERT_TRUE(slots.valid);
-    anim::AvatarMaskData data;
+    // upstream's right_arm (which held the hand bone) is right_arm + right_hand here
+    anim::AvatarMaskDef data;
     data.defaultWeight = 0.0f;
-    data.hasHumanoid = true;
-    data.parts[(size_t)anim::AvatarMaskPart::RightArm] = 1.0f;
-    std::shared_ptr<const anim::AvatarMask> mask = anim::AvatarMask::build(data);
-    auto weight = [&](Entity e){ return mask->weightOf(&human, character, e, &slots); };
+    data.bodyParts[(int)AvatarBodyPart::RightArm] = 1.0f;
+    data.bodyParts[(int)AvatarBodyPart::RightHand] = 1.0f;
+    auto weight = [&](Entity e){ return anim::maskWeightOf(data, &human, character, e, &slots); };
     for (const char* name : {"mixamorig:RightShoulder", "mixamorig:RightArm", "mixamorig:RightForeArm", "mixamorig:RightHand"}){
         EXPECT_EQ(weight(bone(name)), 1.0f) << name;
     }
@@ -434,49 +441,56 @@ TEST_F(Layers, HumanoidMasksCoverBodyParts){
     EXPECT_EQ(weight(bone("mixamorig:LeftHand")), 0.0f);
     EXPECT_EQ(weight(bone("mixamorig:Spine")), 0.0f);
 
-    anim::AvatarMaskData rootOnly;
+    anim::AvatarMaskDef rootOnly;
     rootOnly.defaultWeight = 0.0f;
-    rootOnly.parts[(size_t)anim::AvatarMaskPart::Root] = 1.0f;
-    rootOnly.parts[(size_t)anim::AvatarMaskPart::RightFingers] = 0.5f;
-    std::shared_ptr<const anim::AvatarMask> rootMask = anim::AvatarMask::build(rootOnly);
-    const anim::AvatarMaskWeight armature = rootMask->weightOf(&human, character, bone("Armature"), {}, &slots);
-    EXPECT_EQ(armature.weight, 1.0f) << "root covers the glTF root node above the hips";
-    EXPECT_EQ(armature.ruleName(), "humanoid:root");
-    EXPECT_EQ(rootMask->weightOf(&human, character, character, &slots), 1.0f);
-    EXPECT_EQ(rootMask->weightOf(&human, character, bone("mixamorig:Hips"), &slots), 0.0f);
-    EXPECT_EQ(rootMask->weightOf(&human, character, bone("mixamorig:RightHandThumb2"), &slots), 0.5f);
+    rootOnly.rootHierarchy = true;
+    rootOnly.bodyParts[(int)AvatarBodyPart::Root] = 1.0f;
+    rootOnly.bodyParts[(int)AvatarBodyPart::RightFingers] = 0.5f;
+    const anim::MaskWeight armature = anim::maskWeightOf(rootOnly, &human, character, bone("Armature"), {}, &slots);
+    EXPECT_EQ(armature.weight, 1.0f) << "root (root_hierarchy) covers the glTF root node above the hips";
+    EXPECT_EQ(armature.ruleName(), "body_part:root");
+    EXPECT_EQ(anim::maskWeightOf(rootOnly, &human, character, character, &slots), 1.0f);
+    EXPECT_EQ(anim::maskWeightOf(rootOnly, &human, character, bone("mixamorig:Hips"), &slots), 0.0f);
+    EXPECT_EQ(anim::maskWeightOf(rootOnly, &human, character, bone("mixamorig:RightHandThumb2"), &slots), 0.5f);
+    rootOnly.rootHierarchy = false;
+    EXPECT_EQ(anim::maskWeightOf(rootOnly, &human, character, bone("Armature"), &slots), 0.0f) << "S21's rule: above the hips is the default";
+    EXPECT_EQ(anim::maskRootMotionWeight(rootOnly), 1.0f) << "the root part weighs root motion";
 
-    // a transform entry wins over the body part
-    data.transforms.push_back({"Armature/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:RightShoulder/mixamorig:RightArm", 0.3f, false});
-    mask = anim::AvatarMask::build(data);
-    const anim::AvatarMaskWeight upper = mask->weightOf(&human, character, bone("mixamorig:RightArm"), mask->bindTransforms(&human, character), &slots);
+    // a path entry wins over the body part
+    data.paths.push_back({"Armature/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:RightShoulder/mixamorig:RightArm", 0.3f, false});
+    const anim::MaskWeight upper = anim::maskWeightOf(data, &human, character, bone("mixamorig:RightArm"), anim::bindMaskPaths(data, &human, character), &slots);
     EXPECT_FLOAT_EQ(upper.weight, 0.3f);
-    EXPECT_EQ(upper.ruleName(), "transform");
+    EXPECT_EQ(upper.ruleName(), "path");
     EXPECT_EQ(weight(twist), 1.0f) << "children: false: the twist bone falls back to the body part";
 
     // L9: without a rig, the humanoid part is skipped
     anim::HumanoidSlots none;
-    EXPECT_EQ(mask->weightOf(&human, character, bone("mixamorig:RightHand"), &none), 0.0f);
+    EXPECT_EQ(anim::maskWeightOf(data, &human, character, bone("mixamorig:RightHand"), &none), 0.0f);
 }
 
-// Test 11: the .mask format
-TEST(AvatarMaskIO, CanonicalLenientAndRefusesUnityYaml){
+// Test 11: upstream's .mask format (version 1), read as S21's version 2 (UpstreamAnimFormats.h)
+TEST(AvatarMaskIO, UpstreamMaskReadsAsVersion2LenientAndRefusesUnityYaml){
     const std::string text =
         "{\"format\": \"jasperengine.mask\", \"version\": 1, \"default\": false,\n"
         " \"humanoid\": {\"right_arm\": true, \"right_fingers\": 0.5, \"left_hand_ik\": 1, \"tail\": 1},\n"
         " \"transforms\": [{\"path\": \"Hero/Can\", \"weight\": 2}, {\"weight\": 1}, {\"path\": \"A\", \"children\": false}],\n"
         " \"preview\": {\"model\": \"models/hero.glb\"}, \"custom\": {\"x\": 1}}";
-    anim::AvatarMaskParseResult parsed = anim::parseAvatarMask(text);
-    ASSERT_TRUE(parsed.ok()) << parsed.error.toString();
-    const anim::AvatarMaskData& data = *parsed.data;
+    anim::MaskParseResult parsed = anim::parseMask(text);
+    ASSERT_TRUE(parsed.ok) << parsed.error.toString();
+    EXPECT_EQ(parsed.dialect, anim::AnimatorFileDialect::UpstreamVersion1);
+    const anim::AvatarMaskDef& data = parsed.data;
     EXPECT_EQ(data.defaultWeight, 0.0f);
-    EXPECT_EQ(data.partWeight(anim::AvatarMaskPart::RightArm), 1.0f);
-    EXPECT_EQ(data.partWeight(anim::AvatarMaskPart::RightFingers), 0.5f);
-    EXPECT_EQ(data.partWeight(anim::AvatarMaskPart::Head), 0.0f) << "unset parts take default";
-    ASSERT_EQ(data.transforms.size(), 2u);
-    EXPECT_EQ(data.transforms[0].path, "A");
-    EXPECT_FALSE(data.transforms[0].children);
-    EXPECT_EQ(data.transforms[1].weight, 1.0f) << "clamped";
+    EXPECT_EQ(data.partWeight(AvatarBodyPart::RightArm), 1.0f);
+    EXPECT_EQ(data.partWeight(AvatarBodyPart::RightHand), 1.0f) << "upstream's arm held the hand bone";
+    EXPECT_EQ(data.partWeight(AvatarBodyPart::RightFingers), 0.5f);
+    EXPECT_EQ(data.partWeight(AvatarBodyPart::Head), 0.0f) << "unset parts take default";
+    EXPECT_FALSE(data.hasPart(AvatarBodyPart::Head));
+    EXPECT_TRUE(data.rootHierarchy) << "upstream's root part covered the hierarchy above the hips";
+    ASSERT_EQ(data.paths.size(), 2u);
+    EXPECT_EQ(data.paths[0].path, "A");
+    EXPECT_FALSE(data.paths[0].children);
+    EXPECT_TRUE(data.paths[1].children) << "upstream's default: children";
+    EXPECT_EQ(data.paths[1].weight, 1.0f) << "clamped";
     EXPECT_EQ(data.previewModel, "models/hero.glb");
     auto warned = [&](const std::string& path){
         for (const ClipWarning& warning : parsed.warnings){
@@ -489,20 +503,23 @@ TEST(AvatarMaskIO, CanonicalLenientAndRefusesUnityYaml){
     EXPECT_TRUE(warned("humanoid.tail"));
     EXPECT_TRUE(warned("transforms[0].weight"));
 
-    const std::string canonical = anim::writeAvatarMask(data);
-    anim::AvatarMaskParseResult again = anim::parseAvatarMask(canonical);
-    ASSERT_TRUE(again.ok());
-    EXPECT_EQ(anim::writeAvatarMask(*again.data), canonical) << "canonical round trip";
+    // saved as version 2, and canonical from there
+    const std::string canonical = anim::writeMask(data);
+    EXPECT_NE(canonical.find("\"version\": 2"), std::string::npos) << canonical;
+    anim::MaskParseResult again = anim::parseMask(canonical);
+    ASSERT_TRUE(again.ok);
+    EXPECT_EQ(again.dialect, anim::AnimatorFileDialect::Current);
+    EXPECT_EQ(anim::writeMask(again.data), canonical) << "canonical round trip";
     EXPECT_NE(canonical.find("\"custom\": {\"x\":1}"), std::string::npos) << canonical;
 
-    anim::AvatarMaskParseResult unity = anim::parseAvatarMask("%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n--- !u!319 &31900000\nAvatarMask:\n");
-    EXPECT_FALSE(unity.ok());
+    anim::MaskParseResult unity = anim::parseMask("%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n--- !u!319 &31900000\nAvatarMask:\n");
+    EXPECT_FALSE(unity.ok);
     EXPECT_EQ(unity.error.message, anim::unityYamlMaskRefusal());
-    anim::AvatarMaskParseResult broken = anim::parseAvatarMask("{\"format\": \"jasperengine.mask\",\n \"version\": 1,,}");
-    EXPECT_FALSE(broken.ok());
+    anim::MaskParseResult broken = anim::parseMask("{\"format\": \"jasperengine.mask\",\n \"version\": 1,,}");
+    EXPECT_FALSE(broken.ok);
     EXPECT_EQ(broken.error.line, 2);
-    EXPECT_FALSE(anim::parseAvatarMask("{\"format\": \"jasperengine.mask\", \"version\": 2}").ok());
-    EXPECT_FALSE(anim::parseAvatarMask("{\"format\": \"jasperengine.anim\", \"version\": 1}").ok());
+    EXPECT_FALSE(anim::parseMask("{\"format\": \"jasperengine.mask\", \"version\": 3}").ok) << "a newer version";
+    EXPECT_FALSE(anim::parseMask("{\"format\": \"jasperengine.anim\", \"version\": 1}").ok);
 }
 
 TEST(ClipAdditiveReference, ReadWrittenAndClamped){
@@ -640,16 +657,27 @@ TEST_F(Layers, LuaApi){
     luabridge::setGlobal(L, luabridge::LuaRef(L), "layersPlayer");
 }
 
-// Spec 13 (host check): 40 characters x 65 bones, each with an Animator Controller of two layers
-// (the upper one an Override layer masked to half the bones) and a crossfade on the base: under
-// 0.6 ms per frame for the whole ActionSystem update (Release)
+// Spec 13 (host check): 40 characters x 65 bones, each with two player layers (the upper one an
+// Override layer masked to half the bones) and a crossfade on the base: under 0.6 ms per frame
+// for the whole ActionSystem update (Release). (Upstream measured its controller on the player;
+// controllers play on S21's Animator, whose budgets are je-bench-anim's.)
 TEST_F(Layers, PerformanceBudget){
-#ifdef NDEBUG
+    // Release: the budget; Debug and sanitizer builds (5-50x slower): a short run against a loose
+    // bound (as SchedulerTest), so the workload still runs there
+#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__) || !defined(NDEBUG)
+    constexpr double BUDGET_MS = 60.0;
+    constexpr int BATCHES = 1;
+    constexpr int FRAMES = 5;
+#else
+    constexpr double BUDGET_MS = 0.6;
+    constexpr int BATCHES = 8;
+    constexpr int FRAMES = 30;
+#endif
     constexpr int CHARACTERS = 40;
     constexpr int BONES = 65;
     ClipData walkData, runData, holdData;
     walkData.wrap = runData.wrap = holdData.wrap = ClipWrapMode::Loop;
-    anim::AvatarMaskData maskData;
+    anim::AvatarMaskDef maskData;
     maskData.defaultWeight = 0.0f;
     std::string chain;
     for (int b = 0; b < BONES; b++){
@@ -660,17 +688,10 @@ TEST_F(Layers, PerformanceBudget){
         if (b >= 32){
             holdData.tracks.push_back(track(chain, ClipChannel::Rotation, {key(0, axisAngle(20, 0, 1, 0)), key(1, axisAngle(25, 0, 1, 0))}));
         }
-        if (b == 32) maskData.transforms.push_back({chain, 1.0f, true});
+        if (b == 32) maskData.paths.push_back({chain, 1.0f, true});
     }
     const std::string walkPath = clip("pwalk", walkData), runPath = clip("prun", runData), holdPath = clip("phold", holdData);
     const std::string maskPath = mask("pmask", maskData);
-    const std::string controllerText = std::string("{\"format\": \"jasperengine.controller\", \"version\": 1, ") +
-        "\"parameters\": [{\"name\": \"Speed\", \"type\": \"float\"}], \"layers\": [" +
-        "{\"name\": \"Base Layer\", \"states\": [{\"name\": \"Walk\", \"clip\": \"" + walkPath + "\"}, {\"name\": \"Run\", \"clip\": \"" + runPath + "\"}], " +
-        "\"transitions\": [{\"from\": \"Walk\", \"to\": \"Run\", \"conditions\": [{\"parameter\": \"Speed\", \"mode\": \"greater\", \"threshold\": 0.5}], " +
-        "\"has_exit_time\": false, \"duration\": 100}]}, " +
-        "{\"name\": \"Holding\", \"mask\": \"" + maskPath + "\", \"states\": [{\"name\": \"Hold\", \"clip\": \"" + holdPath + "\"}]}]}";
-    animtest::writeAsset(prefix + "perf.controller", controllerText);
     std::vector<AnimationPlayer> players;
     for (int c = 0; c < CHARACTERS; c++){
         Entity character = scene.createEntity();
@@ -678,37 +699,51 @@ TEST_F(Layers, PerformanceBudget){
         Entity parent = character;
         for (int b = 0; b < BONES; b++) parent = child(parent, "B" + std::to_string(b));
         AnimationPlayer object(&scene, character);
-        object.setController(prefix + "perf.controller");
+        AnimationPlayerComponent& component = scene.getComponent<AnimationPlayerComponent>(character);
+        AnimationPlayerClip walkEntry, runEntry, holdEntry;
+        walkEntry.clip = walkPath;
+        walkEntry.name = "Walk";
+        runEntry.clip = runPath;
+        runEntry.name = "Run";
+        holdEntry.clip = holdPath;
+        holdEntry.name = "Hold";
+        holdEntry.layer = 1;
+        component.clips = {walkEntry, runEntry, holdEntry};
+        component.layers = {layer(anim::BASE_LAYER_NAME), layer("Holding", 1.0f, AnimationLayerBlend::Override, maskPath)};
+        component.playAutomatically = false;
+        component.needsLoad = true;
         players.push_back(object);
     }
     step(1.0 / 60.0, 3);
     for (AnimationPlayer& object : players){
-        object.setFloat("Speed", 1.0f);
+        object.play("Walk");
+        object.play("Hold");
         ASSERT_EQ(object.getLayerCount(), 2);
     }
     step(1.0 / 60.0, 3);
-    ASSERT_TRUE(players[0].isInTransition());
+    for (AnimationPlayer& object : players) object.crossFade("Run", 100.0f);
+    step(1.0 / 60.0, 3);
+    ASSERT_GT(players[0].getStateInfo("Run").weight, 0.0f);
+    ASSERT_LT(players[0].getStateInfo("Run").weight, 1.0f);
     // the best of a few batches: the host is shared with other builds
     double ms = 1e9;
-    for (int batch = 0; batch < 8; batch++){
-        const int frames = 30;
+    for (int batch = 0; batch < BATCHES; batch++){
+        const int frames = FRAMES;
         const auto start = std::chrono::steady_clock::now();
         step(1.0 / 60.0, frames);
         ms = std::min(ms, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / frames);
     }
-    ASSERT_TRUE(players[0].isInTransition());
-    std::printf("[ perf ] 40 characters x 65 bones, controller, masked layer, crossfade: %.3f ms per frame\n", ms);
-    // the budget is the update's cost, not an overloaded host's scheduling (as CanvasGroupTest)
+    ASSERT_LT(players[0].getStateInfo("Run").weight, 1.0f);
+    std::printf("[ perf ] 40 characters x 65 bones, masked layer, crossfade: %.3f ms per frame\n", ms);
+    // the budget is the update's cost, not an overloaded host's scheduling (as CanvasGroupTest):
+    // over it on an overloaded host says nothing (skipped); under it passes whatever the load
 #if defined(__unix__) || defined(__APPLE__)
     double load[1] = {0.0};
-    if (getloadavg(load, 1) == 1 && load[0] > (double)std::thread::hardware_concurrency()){
+    if (ms >= BUDGET_MS && getloadavg(load, 1) == 1 && load[0] > (double)std::thread::hardware_concurrency()){
         GTEST_SKIP() << "load average " << load[0] << " above " << std::thread::hardware_concurrency() << " cores (measured " << ms << " ms)";
     }
 #endif
-    EXPECT_LT(ms, 0.6) << ms << " ms per frame";
-#else
-    GTEST_SKIP() << "timing needs a Release build";
-#endif
+    EXPECT_LT(ms, BUDGET_MS) << ms << " ms per frame";
 }
 
 TEST_F(Layers, RemovingALayerShiftsRuntimeMoves){
@@ -745,6 +780,8 @@ TEST_F(Layers, OcclusionMatchesTheFullComposition){
     const Quaternion composed = transform(arm).rotation;
     EXPECT_GT(quatDot(occluded, composed), 1.0f - 1e-5f);
     const Quaternion expected = Quaternion::slerp(0.4f, rotation(45, 1, 0, 0), rotation(-30, 0, 1, 0), true);
+    EXPECT_GT(quatDot(occluded, anim::poseBlendRotation(rotation(45, 1, 0, 0), rotation(-30, 0, 1, 0), 0.4f)), 1.0f - 1e-5f)
+        << "the states' weights inside a layer are a normalized sum: S21's nlerp";
     EXPECT_GT(quatDot(occluded, expected), 1.0f - 1e-3f) << "weights 0.6 / 0.4 inside the layer (normalized sum ~ slerp)";
     EXPECT_NEAR(transform(leg).position.x, 1.0f, 1e-5f) << "the base still owns the leg";
 }
@@ -760,8 +797,8 @@ TEST_F(Layers, ALayerWithoutItsMaskContributesNothing){
     EXPECT_GT(quatDot(transform(arm).rotation, rotation(45, 0, 0, 1)), 1.0f - 1e-5f) << "a mask that does not parse: the walk shows";
     EXPECT_NEAR(transform(hand).position.y, 7.0f, 1e-5f);
     // fixed on disk: the layer takes effect after the retry (1 s) once the pool reloads it
-    animtest::writeAsset(broken, anim::writeAvatarMask(armMask()));
-    AvatarMaskPool::invalidate(broken);
+    animtest::writeAsset(broken, anim::writeMask(armMask()));
+    AnimatorAssetPool::invalidate(broken);
     step(0.6, 2);
     EXPECT_NEAR(transform(hand).position.y, 1.0f, 1e-5f);
 }

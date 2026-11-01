@@ -233,18 +233,9 @@ namespace jasperengine{
 		// scratch.layerInputs, composed bottom-up, every composed slot added to the pose blend
 		// with weight 1; `written` (optional) gets the (entity, channel) entries written
 		void composePlayerLayers(anim::PlayerPoseScratch& scratch, std::vector<std::pair<Entity, ClipChannel>>* written);
-		// AvatarMaskPool::revision() seen by the last player update
+		// AnimatorAssetPool::revision() seen by the last player update (layer masks)
 		uint64_t playerMaskPoolRevision = 0;
 		bool playerMaskPoolChanged = false;
-		// The Animator Controller driver (anim layers spec 11.2; ActionSystemController.cpp):
-		// advancePlayer calls it instead of the fades and queues for a player with a controller
-		void driveController(Entity entity, AnimationPlayerComponent& player, float dt);
-		// AnimatorControllerPool::revision() seen by the last player update
-		uint64_t playerControllerPoolRevision = 0;
-		bool playerControllerPoolChanged = false;
-		std::vector<float> controllerWeights;
-		std::vector<float> controllerThresholds;
-		std::vector<int> controllerConsumed;
 
 	public:
 		ActionSystem(Scene* scene);
@@ -308,7 +299,7 @@ namespace jasperengine{
 		struct PlayerPreviewLayer {
 			float weight = 1.0f;		// ignored for layer 0
 			AnimationLayerBlend blend = AnimationLayerBlend::Override;
-			std::string mask;			// asset-relative .mask (AvatarMaskPool), "" = none
+			std::string mask;			// asset-relative .mask (AnimatorAssetPool::mask), "" = none
 		};
 		struct PlayerPreview {
 			std::vector<PlayerPreviewState> states;

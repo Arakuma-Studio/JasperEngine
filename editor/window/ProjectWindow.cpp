@@ -45,7 +45,6 @@
 #include "animation/AnimationClipAppHooks.h"
 #include "animation/AnimationClipController.h"
 #include "animation/AnimationClipDocument.h"
-#include "animation/AnimAssetDocument.h"
 #include "animation/AnimationClipInspectorHooks.h"
 #include "vat/VatAppHooks.h"
 #include "vat/VatAssetFiles.h"
@@ -4423,21 +4422,6 @@ void editor::ProjectWindow::assetsCreatePoseAnimation() {
     selectedFiles.clear();
     selectedFiles.insert(fileName);
     lastSelectedFile = fileName;
-}
-
-// a new animation asset (a controller or a mask) in the current folder as one project undo
-// step, selected and renamed like a new clip
-template<class Document, class Data>
-static bool createAnimAsset(editor::Project* project, const fs::path& relative, const Data& initial, const char* what){
-    std::string error;
-    const uint64_t clock = editor::AnimationClipController::clipCommitClock(project);
-    if (!Document::create(project, relative.generic_string(), initial, &error)) {
-        editor::Backend::getApp().registerAlert(what, error);
-        return false;
-    }
-    // an animation asset write of the editor UI: Ctrl+Z undoes it from any window (9.R5c)
-    editor::AnimationClipController::markClipCommit(clock);
-    return true;
 }
 
 void editor::ProjectWindow::assetsCreateAnimationClip() {

@@ -11,6 +11,11 @@
 #include "component/AnimationPlayerComponent.h"
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/ModelSubClips.h"
+#include "animation/AnimatorInstance.h"
+#include "animation/CompiledController.h"
+#include "component/AnimatorComponent.h"
+#include "object/AnimationPlayer.h"
+#include "subsystem/AnimatorSystem.h"
 
 #include <algorithm>
 
@@ -22,36 +27,41 @@ static AnimationPlayerComponent* findModelPlayer(Scene* scene, Entity entity){
     return scene->isEntityCreated(entity) ? scene->findComponent<AnimationPlayerComponent>(entity) : nullptr;
 }
 
-// the player's states in list order (none with an Animator Controller: its states have no index)
-static std::vector<std::string> playerIndexedStates(const AnimationPlayerComponent& player){
-    return player.controller.empty() ? anim::playerStateNames(player.clips) : std::vector<std::string>();
+// upstream's controller players: a disabled Animation Player beside an Animator hands over to
+// it (object/AnimationPlayer.h); the Animator's states have no index
+static bool playerHandsOver(Scene* scene, Entity entity, const AnimationPlayerComponent& player){
+    return !player.enabled && scene->findComponent<AnimatorComponent>(entity) != nullptr;
 }
 
-static bool playerHasState(AnimationPlayerComponent& player, const std::string& name, const std::string& who){
-    if (!player.controller.empty()){
+// the player's states in list order (none when it hands over to an Animator)
+static std::vector<std::string> playerIndexedStates(Scene* scene, Entity entity, const AnimationPlayerComponent& player){
+    return playerHandsOver(scene, entity, player) ? std::vector<std::string>() : anim::playerStateNames(player.clips);
+}
+
+static bool playerHasState(Scene* scene, Entity entity, AnimationPlayerComponent& player, const std::string& name){
+    if (playerHandsOver(scene, entity, player)){
         // a controller's state ("Layer.State" or "State")
-        int layer = -1, state = -1;
-        return anim::ensureController(player, who, 0.0f, false) &&
-               anim::findControllerState(anim::playerRuntime(player), name, -1, layer, state);
+        anim::AnimatorInstance* instance = scene->getSystem<AnimatorSystem>()->instance(entity);
+        return instance && instance->controller && instance->controller->findState(name, -1) >= 0;
     }
     std::vector<std::string> names = anim::playerStateNames(player.clips);
     return std::find(names.begin(), names.end(), name) != names.end();
 }
 
-// plays a player state with a fade: a controller transitions to it (CrossFadeInFixedTime)
-static void playPlayerState(AnimationPlayerComponent& player, const std::string& name, float fadeTime, const std::string& who){
-    if (!player.controller.empty()){
-        if (fadeTime > 0.0f) anim::controllerCrossFade(player, name, fadeTime, -1, who);
-        else anim::controllerPlay(player, name, -1, 0.0f, who);
+// plays a player state with a fade: an Animator transitions to it (CrossFadeInFixedTime)
+static void playPlayerState(Scene* scene, Entity entity, AnimationPlayerComponent& player, const std::string& name, float fadeTime,
+                            const std::string& who){
+    if (playerHandsOver(scene, entity, player)){
+        AnimationPlayer(scene, entity).play(name, fadeTime);
         return;
     }
     anim::playState(player, name, fadeTime, who);
 }
 
-// the player gives way to the model's entity animations (a controller stops)
-static void fadeOutPlayer(AnimationPlayerComponent& player, float fadeTime){
-    if (!player.controller.empty()){
-        anim::controllerStop(player);
+// the player gives way to the model's entity animations (an Animator it hands over to stops)
+static void fadeOutPlayer(Scene* scene, Entity entity, AnimationPlayerComponent& player, float fadeTime){
+    if (playerHandsOver(scene, entity, player)){
+        AnimationPlayer(scene, entity).stop();
         return;
     }
     anim::fadeOutStates(player, fadeTime);
@@ -228,9 +238,9 @@ void Model::playAnimation(int index, float fadeTime){
     // with an Animation Player an index is one of its states first (as a name is); an index past
     // its states is the entity animation of that index, which the player's states make room for
     if (AnimationPlayerComponent* player = findModelPlayer(scene, entity)){
-        std::vector<std::string> names = playerIndexedStates(*player);
+        std::vector<std::string> names = playerIndexedStates(scene, entity, *player);
         if (index >= 0 && index < (int)names.size()){
-            playPlayerState(*player, names[(size_t)index], fadeTime, getName());
+            playPlayerState(scene, entity, *player, names[(size_t)index], fadeTime, getName());
             fadeOutModelAnimations(scene, model, NULL_ENTITY, fadeTime);
             return;
         }
@@ -238,7 +248,7 @@ void Model::playAnimation(int index, float fadeTime){
             Log::error("Playing non-existent animation: '%s' has no Animation Player state or animation %i", getName().c_str(), index);
             return;
         }
-        fadeOutPlayer(*player, fadeTime);
+        fadeOutPlayer(scene, entity, *player, fadeTime);
     }
 
     playModelEntityAnimation(scene, model, index, fadeTime);
@@ -246,7 +256,7 @@ void Model::playAnimation(int index, float fadeTime){
 
 void Model::playAnimation(int index){
     AnimationPlayerComponent* player = findModelPlayer(scene, entity);
-    if (player && index >= 0 && index < (int)playerIndexedStates(*player).size()){
+    if (player && index >= 0 && index < (int)playerIndexedStates(scene, entity, *player).size()){
         playAnimation(index, player->defaultFadeTime);
         return;
     }
@@ -271,8 +281,8 @@ void Model::playAnimation(const std::string& name, float fadeTime){
     // a state of the Animation Player first; else the entity animation of that name, which the
     // player's states then make room for
     AnimationPlayerComponent* player = findModelPlayer(scene, entity);
-    if (player && playerHasState(*player, name, getName())){
-        playPlayerState(*player, name, fadeTime, getName());
+    if (player && playerHasState(scene, entity, *player, name)){
+        playPlayerState(scene, entity, *player, name, fadeTime, getName());
         fadeOutModelAnimations(scene, model, NULL_ENTITY, fadeTime);
         return;
     }
@@ -280,7 +290,7 @@ void Model::playAnimation(const std::string& name, float fadeTime){
     int index = findModelAnimationIndex(scene, model, name);
     if (index >= 0){
         if (player){
-            fadeOutPlayer(*player, fadeTime);
+            fadeOutPlayer(scene, entity, *player, fadeTime);
         }
         playModelEntityAnimation(scene, model, index, fadeTime);
         return;
@@ -293,7 +303,7 @@ void Model::playAnimation(const std::string& name){
     ModelComponent& model = getComponent<ModelComponent>();
 
     AnimationPlayerComponent* player = findModelPlayer(scene, entity);
-    if (player && playerHasState(*player, name, getName())){
+    if (player && playerHasState(scene, entity, *player, name)){
         playAnimation(name, player->defaultFadeTime);
         return;
     }
@@ -302,7 +312,7 @@ void Model::playAnimation(const std::string& name){
     if (index >= 0){
         const float fadeTime = scene->getComponent<AnimationComponent>(model.animations[index]).defaultFadeTime;
         if (player){
-            fadeOutPlayer(*player, fadeTime);
+            fadeOutPlayer(scene, entity, *player, fadeTime);
         }
         playModelEntityAnimation(scene, model, index, fadeTime);
         return;
@@ -315,7 +325,7 @@ void Model::stopAnimations(float fadeTime){
     ModelComponent& model = getComponent<ModelComponent>();
 
     if (AnimationPlayerComponent* player = findModelPlayer(scene, entity)){
-        fadeOutPlayer(*player, fadeTime);
+        fadeOutPlayer(scene, entity, *player, fadeTime);
     }
 
     for (Entity animEntity : model.animations){

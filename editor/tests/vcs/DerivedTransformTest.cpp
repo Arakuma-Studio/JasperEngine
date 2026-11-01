@@ -114,10 +114,11 @@ TEST(Stream, DerivedTransformNotWritten) {
     // what was authored survives: the child's local position under its scaled parent
     EXPECT_NE(resaved.find("position: [0, 1, 0]"), std::string::npos);
     EXPECT_NE(resaved.find("scale: [2, 2, 2]"), std::string::npos);
-    // the format version moved on, with the migration that drops them (then S18's identity 4 -> 5)
-    EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Scene), 5);
-    EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Prefab), 6);
-    EXPECT_EQ(Prefab::FILE_VERSION, 6);
+    // the format version moved on, with the migration that drops them (then S18's identity 4 -> 5
+    // and the Animation Player controllers' move to Animators, 5 -> 6 / prefab 6 -> 7)
+    EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Scene), 6);
+    EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Prefab), 7);
+    EXPECT_EQ(Prefab::FILE_VERSION, 7);
     YAML::Node root = YAML::Load(old);
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     ASSERT_EQ(result.applied.size(), 2u);

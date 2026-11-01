@@ -4,8 +4,8 @@
 #include "AnimationClipController.h"
 #include "util/FileUtils.h"
 
-#include "animation/AnimAssetDocument.h"
-#include "animation/AvatarMask.h"
+#include "animation/AnimatorAssetDocument.h"
+#include "animation/AvatarMaskWeights.h"
 
 #include "Out.h"
 #include "Project.h"
@@ -813,10 +813,6 @@ std::vector<std::string> AnimationClipController::previewOverChoices() const{
 
 std::vector<std::string> AnimationClipController::maskedTracks() const{
     std::vector<std::string> masked;
-    // SYNC4-ABSORB(animator): upstream's layer masks (an Animation Player layer's .mask through AvatarMaskDocument,
-    // AnimAssetDocument.cpp, out of the build): no track is masked until the Animator absorption
-    return masked;
-#if 0
     if (!document || !hasPlayer()) return masked;
     const size_t trackCount = document->data().tracks.size();
     const int layer = getStateLayer();
@@ -826,8 +822,8 @@ std::vector<std::string> AnimationClipController::maskedTracks() const{
     const std::vector<AnimationPlayerLayer> layers = anim::playerLayers(player);
     if (layer < 0 || (size_t)layer >= layers.size() || layers[(size_t)layer].mask.empty()) return masked;
     std::string error;
-    std::shared_ptr<AvatarMaskDocument> maskDocument = AvatarMaskDocument::open(project, layers[(size_t)layer].mask, &error);
-    if (!maskDocument) return masked;
+    std::shared_ptr<AnimatorAssetDocument> maskDocument = AnimatorAssetDocument::open(project, layers[(size_t)layer].mask, &error);
+    if (!maskDocument || !maskDocument->loadError().empty()) return masked;
     // computed again when the clip, the mask, the hierarchy or the state change (at most twice a second)
     const std::string key = std::to_string(document->revision()) + ":" + std::to_string(maskDocument->revision()) + ":" +
                             std::to_string(scene->hierarchyRevision()) + ":" + std::to_string(sceneId) + ":" + std::to_string(root) + ":" +
@@ -836,21 +832,20 @@ std::vector<std::string> AnimationClipController::maskedTracks() const{
     if (key == maskedKey && maskedCache.size() == trackCount && now - maskedAt < 0.5) return maskedCache;
     maskedKey = key;
     maskedAt = now;
-    std::shared_ptr<const anim::AvatarMask> mask = anim::AvatarMask::build(maskDocument->data());
+    const anim::AvatarMaskDef& mask = maskDocument->mask();
     anim::HumanoidSlots slots;
-    if (mask->hasHumanoid()) slots = anim::resolveHumanoidSlots(scene, root);
-    const std::vector<Entity> entries = mask->bindTransforms(scene, root);
+    if (mask.usesHumanoid()) slots = anim::resolveHumanoidSlots(scene, root);
+    const std::vector<Entity> entries = anim::bindMaskPaths(mask, scene, root);
     const std::string reason = "masked out by " + fs::u8path(layers[(size_t)layer].mask).filename().string() + " on layer " + layers[(size_t)layer].name;
     masked.assign(trackCount, std::string());
     for (size_t t = 0; t < trackCount; t++){
         const std::string& path = document->data().tracks[t].path;
         const Entity target = path.empty() ? root : anim::resolvePath(scene, root, path);
         if (target == NULL_ENTITY) continue;
-        if (mask->weightOf(scene, root, target, entries, slots.valid ? &slots : nullptr).weight <= 0.0f) masked[t] = reason;
+        if (anim::maskWeightOf(mask, scene, root, target, entries, slots.valid ? &slots : nullptr).weight <= 0.0f) masked[t] = reason;
     }
     maskedCache = masked;
     return masked;
-#endif
 }
 
 bool AnimationClipController::isReadOnly() const{

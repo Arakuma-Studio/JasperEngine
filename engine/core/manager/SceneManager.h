@@ -32,8 +32,8 @@ namespace jasperengine {
         // .vat.glb meshes are Models, in `models`
         std::vector<std::string> vats;
         // Avatar Masks (.mask) and Animator Controllers (.controller), asset-relative, loaded into
-        // AvatarMaskPool / AnimatorControllerPool; a controller's clips and masks are listed in
-        // `clips` and `masks` too (anim layers spec 11.6)
+        // AnimatorAssetPool (S21); a controller's clips and masks are listed in `clips` and
+        // `masks` too
         std::vector<std::string> masks;
         std::vector<std::string> controllers;
     };

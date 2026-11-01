@@ -108,7 +108,7 @@ namespace jasperengine::editor{
         static void filesMoved(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
         // Forgets every open document (the project closed)
         // (filesChanged, filesMoved, checkDiskChanges, closeAll and setFilesWrittenHook also
-        // reach the Avatar Mask and Animator Controller documents: AnimAssetDocument.h)
+        // reach the Animator's documents: AnimatorAssetDocument.h)
         static void closeAll();
         // Called after a WriteFilesCmd of a document ran, was undone or redone (the MCP server
         // sets it to its file sync: asset database, Project window, McpAutoSync stamps)

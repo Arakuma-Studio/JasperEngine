@@ -17,8 +17,9 @@
 #include "io/AtomicFile.h"
 #include "subsystem/PhysicsSystem.h"
 #include "animation/AnimationClipDocument.h"
-#include "animation/AnimatorController.h"
-#include "pool/AnimatorControllerPool.h"
+#include "animation/CompiledController.h"
+#include "component/AnimatorComponent.h"
+#include "pool/AnimatorAssetPool.h"
 #include "vat/VatDocument.h"
 #include "animation/ModelSubClips.h"
 #include "pose/PoseAnimationDocument.h"
@@ -510,7 +511,7 @@ bool editor::Project::visitClipPathsInRegistry(EntityRegistry* registry, const s
                 playerChanged = true;
             }
         }
-        // layer masks and the controller: the path hint (the GUID stays); a deleted file keeps it
+        // layer masks: the path hint (the GUID stays); a deleted file keeps it
         auto follow = [&](std::string& reference) {
             std::string path = reference;
             if (!reference.empty() && transform(path) && !path.empty() && path != reference) {
@@ -521,7 +522,6 @@ bool editor::Project::visitClipPathsInRegistry(EntityRegistry* registry, const s
         for (AnimationPlayerLayer& layer : player.layers) {
             follow(layer.mask);
         }
-        follow(player.controller);
         if (playerChanged) {
             player.needsLoad = true;
             changed = true;
@@ -669,30 +669,30 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
             }
             addFile(resources.clips, clip);
         };
-        if (!player.controller.empty()) {
-            // a controller owns the states: its clips and masks (anim layers spec 11.6)
-            addFile(resources.controllers, player.controller);
-            // (read through the engine's file API, as the build will: the pool caches it)
-            if (std::shared_ptr<const anim::AnimatorController> controller = AnimatorControllerPool::getOrLoad(player.controller)) {
-                {
-                    for (const anim::ControllerLayer& layer : controller->getData().layers) {
-                        addFile(resources.masks, layer.mask);
-                        for (const anim::ControllerState& state : layer.states) {
-                            if (!state.clip.empty()) addClip(state.clip);
-                            for (const anim::BlendTreeChild& child : state.blendTree.children) {
-                                if (!child.clip.empty()) addClip(child.clip);
-                            }
-                        }
-                    }
-                }
-            }
-            return;
-        }
         for (const AnimationPlayerClip& entry : player.clips) {
             addClip(entry.clip);
         }
         for (const AnimationPlayerLayer& layer : player.layers) {
             addFile(resources.masks, layer.mask);
+        }
+    });
+
+    // Animator Controllers (AnimatorAssetPool): the controller, its clips and its layers' masks
+    // (read through the engine's file API, as the build will: the pool caches it)
+    visitComponents(registry->getComponentArray<AnimatorComponent>(), [&](AnimatorComponent& animator) {
+        if (animator.controller.path.empty()) return;
+        addFile(resources.controllers, animator.controller.path);
+        std::shared_ptr<const anim::CompiledController> controller = AnimatorAssetPool::controller(animator.controller.path);
+        if (!controller) return;
+        for (const anim::CompiledLayer& layer : controller->layers) {
+            addFile(resources.masks, layer.mask.path);
+        }
+        for (const anim::AnimatorAssetRef& clip : controller->clips) {
+            anim::SubClipReference reference;
+            if (anim::parseSubClipReference(clip.path, reference)) {
+                addFile(resources.models, reference.model);
+            }
+            addFile(resources.clips, clip.path);
         }
     });
 

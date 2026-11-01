@@ -289,7 +289,7 @@ namespace {
 
     constexpr const EnumDesc* kEnums[] = {
         &enums::kActionState, &enums::kAnchorPreset, &enums::kAtmosphereQualityOverride, &enums::kAudioSourceAttenuation,
-        &enums::kAudioSourceState, &enums::kBodyType, &enums::kBuoyancyColumns, &enums::kCameraType, &enums::kClipWrapMode, &enums::kAnimatorUpdateMode, &enums::kAnimatorCullingMode, &enums::kAnimatorWriteBones,
+        &enums::kAudioSourceState, &enums::kBodyType, &enums::kBuoyancyColumns, &enums::kCameraType, &enums::kClipWrapMode, &enums::kAnimationLayerBlend, &enums::kAnimatorUpdateMode, &enums::kAnimatorCullingMode, &enums::kAnimatorWriteBones,
         &enums::kAnimatorEventMode, &enums::kAnimatorRetarget, &enums::kAnimatorIKType, &enums::kCascadeSplitMode, &enums::kCloudsPreset,
         &enums::kCloudsRendering, &enums::kCollider2DType, &enums::kCollider3DSource, &enums::kCollider3DType, &enums::kCullingMode,
         &enums::kEaseType, &enums::kFogColorMode, &enums::kFogType, &enums::kFogVolumeFalloff, &enums::kFogVolumeShape,

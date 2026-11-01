@@ -96,9 +96,12 @@ TEST(AnimatorGpu, ThreeControllerPosesAndARetargetedWalk){
     base.machine.states = {state("Idle", idle), state("Walk", walk), blend};
     def.layers.push_back(base);
     anim::AvatarMaskDef mask;
-    for (bool& part : mask.bodyParts) part = false;
-    mask.bodyParts[(int)AvatarBodyPart::LeftArm] = mask.bodyParts[(int)AvatarBodyPart::RightArm] = true;
-    mask.bodyParts[(int)AvatarBodyPart::LeftHand] = mask.bodyParts[(int)AvatarBodyPart::RightHand] = true;
+    // the arms and hands, fingers included (version 1's hand part held them)
+    mask.defaultWeight = 0.0f;
+    for (std::optional<float>& part : mask.bodyParts) part = 0.0f;
+    mask.bodyParts[(int)AvatarBodyPart::LeftArm] = mask.bodyParts[(int)AvatarBodyPart::RightArm] = 1.0f;
+    mask.bodyParts[(int)AvatarBodyPart::LeftHand] = mask.bodyParts[(int)AvatarBodyPart::RightHand] = 1.0f;
+    mask.bodyParts[(int)AvatarBodyPart::LeftFingers] = mask.bodyParts[(int)AvatarBodyPart::RightFingers] = 1.0f;
     const std::string maskPath = animtest::writeAsset("animator/gpu/arms.mask", anim::writeMask(mask));
     anim::LayerDef upper;
     upper.name = "Upper";

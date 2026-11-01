@@ -88,6 +88,23 @@
 
 using namespace jasperengine;
 
+namespace{
+
+    // upstream's state info (Animator:getCurrentStateInfo, upstream's name) from S21's
+    jasperengine::ControllerStateInfo toControllerStateInfo(const jasperengine::AnimatorStateInfo& info){
+        jasperengine::ControllerStateInfo out;
+        out.isValid = info.valid;
+        out.name = info.name;
+        out.fullName = info.fullPath;
+        out.normalizedTime = info.normalizedTime;
+        out.length = info.length;
+        out.speed = info.speed;
+        out.loop = info.loop;
+        return out;
+    }
+
+}
+
 // The contact callbacks' values (physics-contacts): what they name may be gone since (nil then)
 namespace {
 
@@ -1004,8 +1021,6 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             }
             return AnimationPlayer(scene, self->getEntity());
         })
-        // SYNC4-ABSORB(Animator): upstream's GameObject:getAnimator() returned the Animation Player
-        // (with an Animator Controller); S21's getAnimator (the Animator component, below) wins
         .addFunction("hasAnimationPlayer", +[](GameObject* self) -> bool {
             Scene* scene = self->getScene();
             return scene && scene->isEntityCreated(self->getEntity()) &&
@@ -1025,14 +1040,15 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             return scene && scene->isEntityCreated(self->getEntity()) &&
                    scene->findComponent<VertexAnimatorComponent>(self->getEntity()) != nullptr;
         })
-        // the Animator of the GameObject, nil when it has none (Animator(scene, entity) adds one)
-        .addFunction("getAnimator", +[](GameObject* self) -> std::optional<Animator> {
+        // the Animator of the GameObject; without one its Animation Player (upstream's
+        // getAnimator, an alias of getAnimationPlayer: players with layers keep working); nil when
+        // it has neither (Animator(scene, entity) adds one)
+        .addFunction("getAnimator", +[](GameObject* self, lua_State* L) -> luabridge::LuaRef {
             Scene* scene = self->getScene();
-            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
-                !scene->findComponent<AnimatorComponent>(self->getEntity())){
-                return std::nullopt;
-            }
-            return Animator(scene, self->getEntity());
+            if (!scene || !scene->isEntityCreated(self->getEntity())) return luabridge::LuaRef(L);
+            if (scene->findComponent<AnimatorComponent>(self->getEntity())) return luabridge::LuaRef(L, Animator(scene, self->getEntity()));
+            if (scene->findComponent<AnimationPlayerComponent>(self->getEntity())) return luabridge::LuaRef(L, AnimationPlayer(scene, self->getEntity()));
+            return luabridge::LuaRef(L);
         })
         .addFunction("hasAnimator", +[](GameObject* self) -> bool {
             Scene* scene = self->getScene();
@@ -2924,20 +2940,18 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("clearMixingTransforms", &AnimationState::clearMixingTransforms)
         .endClass();
 
-    // SYNC4-ABSORB(Animator): upstream's AnimatorStateInfo Lua class (AnimationPlayer's copy of
-    // an Animator Controller state) collides with S21's (Animator.h, registered below)
-#if 0
+    // upstream's AnimatorStateInfo of the Animation Player (AnimationPlayer:getCurrentStateInfo):
+    // ControllerStateInfo here, AnimatorStateInfo is the Animator's (registered below)
     luabridge::getGlobalNamespace(L)
-        .beginClass<AnimatorStateInfo>("AnimatorStateInfo")
-        .addProperty("isValid", &AnimatorStateInfo::isValid)
-        .addProperty("name", &AnimatorStateInfo::name)
-        .addProperty("fullName", &AnimatorStateInfo::fullName)
-        .addProperty("normalizedTime", &AnimatorStateInfo::normalizedTime)
-        .addProperty("length", &AnimatorStateInfo::length)
-        .addProperty("speed", &AnimatorStateInfo::speed)
-        .addProperty("loop", &AnimatorStateInfo::loop)
+        .beginClass<ControllerStateInfo>("ControllerStateInfo")
+        .addProperty("isValid", &ControllerStateInfo::isValid)
+        .addProperty("name", &ControllerStateInfo::name)
+        .addProperty("fullName", &ControllerStateInfo::fullName)
+        .addProperty("normalizedTime", &ControllerStateInfo::normalizedTime)
+        .addProperty("length", &ControllerStateInfo::length)
+        .addProperty("speed", &ControllerStateInfo::speed)
+        .addProperty("loop", &ControllerStateInfo::loop)
         .endClass();
-#endif
 
     // Unity's PlayMode: what play / crossFade stop
     luabridge::getGlobalNamespace(L)
@@ -3001,38 +3015,62 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, float>(&AnimationPlayer::addLayer),
             luabridge::overload<const std::string&, float, const std::string&>(&AnimationPlayer::addLayer),
             luabridge::overload<const std::string&, float, const std::string&, const std::string&>(&AnimationPlayer::addLayer))
-        .addFunction("removeLayer",
-            luabridge::overload<int>(&AnimationPlayer::removeLayer),
-            luabridge::overload<const std::string&>(&AnimationPlayer::removeLayer))
-        .addFunction("setLayerWeight",
-            luabridge::overload<int, float>(&AnimationPlayer::setLayerWeight),
-            luabridge::overload<int, float, float>(&AnimationPlayer::setLayerWeight),
-            luabridge::overload<const std::string&, float>(&AnimationPlayer::setLayerWeight),
-            luabridge::overload<const std::string&, float, float>(&AnimationPlayer::setLayerWeight))
-        .addFunction("getLayerWeight",
-            luabridge::constOverload<int>(&AnimationPlayer::getLayerWeight),
-            luabridge::constOverload<const std::string&>(&AnimationPlayer::getLayerWeight))
-        .addFunction("setLayerMask",
-            luabridge::overload<int, const std::string&>(&AnimationPlayer::setLayerMask),
-            luabridge::overload<const std::string&, const std::string&>(&AnimationPlayer::setLayerMask))
-        .addFunction("getLayerMask",
-            luabridge::constOverload<int>(&AnimationPlayer::getLayerMask),
-            luabridge::constOverload<const std::string&>(&AnimationPlayer::getLayerMask))
-        .addFunction("setLayerBlendMode",
-            luabridge::overload<int, const std::string&>(&AnimationPlayer::setLayerBlendMode),
-            luabridge::overload<const std::string&, const std::string&>(&AnimationPlayer::setLayerBlendMode))
-        .addFunction("getLayerBlendMode",
-            luabridge::constOverload<int>(&AnimationPlayer::getLayerBlendMode),
-            luabridge::constOverload<const std::string&>(&AnimationPlayer::getLayerBlendMode))
-        .addFunction("stopLayer",
-            luabridge::overload<int>(&AnimationPlayer::stopLayer),
-            luabridge::overload<int, float>(&AnimationPlayer::stopLayer),
-            luabridge::overload<const std::string&>(&AnimationPlayer::stopLayer),
-            luabridge::overload<const std::string&, float>(&AnimationPlayer::stopLayer))
-        // SYNC4-ABSORB(Animator): upstream's Animator Controller on the Animation Player
-        // (controller, parameters, state info, onStateEnter / onStateExit); S21's Animator has these
-#if 0
-        // Animator Controller (Unity's Animator): the controller asset and its parameters
+        // a layer by index or by name, dispatched by hand (LuaBridge's overload sets leak a failed
+        // attempt's error text: LeakSanitizer)
+        .addFunction("removeLayer", +[](AnimationPlayer* self, lua_State* L) -> bool {
+            if (lua_type(L, 2) == LUA_TSTRING) return self->removeLayer(std::string(lua_tostring(L, 2)));
+            return self->removeLayer((int)luaL_checkinteger(L, 2));
+        })
+        .addFunction("setLayerWeight", +[](AnimationPlayer* self, lua_State* L) {
+            const float weight = (float)luaL_checknumber(L, 3);
+            const bool faded = lua_isnumber(L, 4);
+            const float fade = faded ? (float)lua_tonumber(L, 4) : 0.0f;
+            if (lua_type(L, 2) == LUA_TSTRING){
+                const std::string layer = lua_tostring(L, 2);
+                if (faded) self->setLayerWeight(layer, weight, fade);
+                else self->setLayerWeight(layer, weight);
+                return;
+            }
+            const int layer = (int)luaL_checkinteger(L, 2);
+            if (faded) self->setLayerWeight(layer, weight, fade);
+            else self->setLayerWeight(layer, weight);
+        })
+        .addFunction("getLayerWeight", +[](const AnimationPlayer* self, lua_State* L) -> float {
+            if (lua_type(L, 2) == LUA_TSTRING) return self->getLayerWeight(std::string(lua_tostring(L, 2)));
+            return self->getLayerWeight((int)luaL_checkinteger(L, 2));
+        })
+        .addFunction("setLayerMask", +[](AnimationPlayer* self, lua_State* L) {
+            const std::string mask = luaL_checkstring(L, 3);
+            if (lua_type(L, 2) == LUA_TSTRING) self->setLayerMask(std::string(lua_tostring(L, 2)), mask);
+            else self->setLayerMask((int)lua_tointeger(L, 2), mask);
+        })
+        .addFunction("getLayerMask", +[](const AnimationPlayer* self, lua_State* L) -> std::string {
+            if (lua_type(L, 2) == LUA_TSTRING) return self->getLayerMask(std::string(lua_tostring(L, 2)));
+            return self->getLayerMask((int)luaL_checkinteger(L, 2));
+        })
+        .addFunction("setLayerBlendMode", +[](AnimationPlayer* self, lua_State* L) {
+            const std::string mode = luaL_checkstring(L, 3);
+            if (lua_type(L, 2) == LUA_TSTRING) self->setLayerBlendMode(std::string(lua_tostring(L, 2)), mode);
+            else self->setLayerBlendMode((int)lua_tointeger(L, 2), mode);
+        })
+        .addFunction("getLayerBlendMode", +[](const AnimationPlayer* self, lua_State* L) -> std::string {
+            if (lua_type(L, 2) == LUA_TSTRING) return self->getLayerBlendMode(std::string(lua_tostring(L, 2)));
+            return self->getLayerBlendMode((int)luaL_checkinteger(L, 2));
+        })
+        .addFunction("stopLayer", +[](AnimationPlayer* self, lua_State* L) {
+            const bool faded = lua_isnumber(L, 3);
+            const float fade = faded ? (float)lua_tonumber(L, 3) : 0.0f;
+            if (lua_type(L, 2) == LUA_TSTRING){
+                const std::string layer = lua_tostring(L, 2);
+                if (faded) self->stopLayer(layer, fade);
+                else self->stopLayer(layer);
+                return;
+            }
+            const int layer = (int)luaL_checkinteger(L, 2);
+            if (faded) self->stopLayer(layer, fade);
+            else self->stopLayer(layer);
+        })
+        // upstream's Animator Controller calls: the GameObject's Animator (object/AnimationPlayer.h)
         .addProperty("controller", &AnimationPlayer::getController, &AnimationPlayer::setController)
         .addFunction("hasController", &AnimationPlayer::hasController)
         .addFunction("setFloat",
@@ -3047,22 +3085,23 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("resetTrigger", &AnimationPlayer::resetTrigger)
         .addFunction("hasParameter", &AnimationPlayer::hasParameter)
         .addFunction("getParameterType", &AnimationPlayer::getParameterType)
-        .addFunction("getCurrentStateName",
-            luabridge::constOverload<>(&AnimationPlayer::getCurrentStateName),
-            luabridge::constOverload<int>(&AnimationPlayer::getCurrentStateName))
-        .addFunction("getCurrentStateInfo",
-            luabridge::constOverload<>(&AnimationPlayer::getCurrentStateInfo),
-            luabridge::constOverload<int>(&AnimationPlayer::getCurrentStateInfo))
-        .addFunction("getNextStateInfo",
-            luabridge::constOverload<>(&AnimationPlayer::getNextStateInfo),
-            luabridge::constOverload<int>(&AnimationPlayer::getNextStateInfo))
-        .addFunction("isInTransition",
-            luabridge::constOverload<>(&AnimationPlayer::isInTransition),
-            luabridge::constOverload<int>(&AnimationPlayer::isInTransition))
+        // an optional layer read by hand (LuaBridge's overload resolution of () / (int) leaks the
+        // failed attempt's error text: LeakSanitizer)
+        .addFunction("getCurrentStateName", +[](const AnimationPlayer* self, lua_State* L) -> std::string {
+            return lua_isnumber(L, 2) ? self->getCurrentStateName((int)lua_tointeger(L, 2)) : self->getCurrentStateName();
+        })
+        .addFunction("getCurrentStateInfo", +[](const AnimationPlayer* self, lua_State* L) -> ControllerStateInfo {
+            return lua_isnumber(L, 2) ? self->getCurrentStateInfo((int)lua_tointeger(L, 2)) : self->getCurrentStateInfo();
+        })
+        .addFunction("getNextStateInfo", +[](const AnimationPlayer* self, lua_State* L) -> ControllerStateInfo {
+            return lua_isnumber(L, 2) ? self->getNextStateInfo((int)lua_tointeger(L, 2)) : self->getNextStateInfo();
+        })
+        .addFunction("isInTransition", +[](const AnimationPlayer* self, lua_State* L) -> bool {
+            return lua_isnumber(L, 2) ? self->isInTransition((int)lua_tointeger(L, 2)) : self->isInTransition();
+        })
         // functions called with (layer, state name) when a controller state is entered / exited
         .addProperty("onStateEnter", [] (AnimationPlayer* self, lua_State*) { return &self->getOnStateEnter(); }, [] (AnimationPlayer* self, lua_State* L) { self->getOnStateEnter() = L; })
         .addProperty("onStateExit", [] (AnimationPlayer* self, lua_State*) { return &self->getOnStateExit(); }, [] (AnimationPlayer* self, lua_State* L) { self->getOnStateExit() = L; })
-#endif
         // a function called with an AnimationEvent when a clip event fires
         .addProperty("onEvent", [] (AnimationPlayer* self, lua_State*) { return &self->getOnEvent(); }, [] (AnimationPlayer* self, lua_State* L) { self->getOnEvent() = L; })
         // a function called with the state name when a once state ends (or a clamp_forever one first reaches its end)
@@ -3165,6 +3204,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("normalizedTime", &AnimatorStateInfo::normalizedTime)
         .addProperty("length", &AnimatorStateInfo::length)
         .addProperty("loop", &AnimatorStateInfo::loop)
+        .addProperty("speed", &AnimatorStateInfo::speed)
         .endClass();
 
     // Unity's Animator: an Animator Controller's parameters, states, layers, montages, IK and root motion
@@ -3200,12 +3240,44 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, float, int, float>(&Animator::crossFadeInFixedTime))
         .addFunction("getCurrentState", &Animator::getCurrentState)
         .addFunction("getNextState", &Animator::getNextState)
-        .addFunction("isInTransition", &Animator::isInTransition)
+        // the layer is optional (0: the base layer), as upstream's controller calls had it
+        .addFunction("isInTransition", +[](const Animator* self, lua_State* L) -> bool {
+            return self->isInTransition(lua_isnumber(L, 2) ? (int)lua_tointeger(L, 2) : 0);
+        })
+        // upstream's controller calls (its getAnimator returned the Animation Player that played
+        // the controller; getAnimator now returns this Animator): kept so its scripts run as
+        // they were written (docs/specs/S21-animation.md "Upstream absorption")
+        .addFunction("getCurrentStateName", +[](const Animator* self, lua_State* L) -> std::string {
+            return self->getCurrentState(lua_isnumber(L, 2) ? (int)lua_tointeger(L, 2) : 0).name;
+        })
+        .addFunction("getCurrentStateInfo", +[](const Animator* self, lua_State* L) -> ControllerStateInfo {
+            return toControllerStateInfo(self->getCurrentState(lua_isnumber(L, 2) ? (int)lua_tointeger(L, 2) : 0));
+        })
+        .addFunction("getNextStateInfo", +[](const Animator* self, lua_State* L) -> ControllerStateInfo {
+            return toControllerStateInfo(self->getNextState(lua_isnumber(L, 2) ? (int)lua_tointeger(L, 2) : 0));
+        })
+        .addFunction("playInLayer", +[](Animator* self, const std::string& name, int layer, lua_State* L) {
+            if (lua_isnumber(L, 4)) self->play(name, layer, (float)lua_tonumber(L, 4));
+            else self->play(name, layer);
+        })
+        .addFunction("crossFadeInLayer", +[](Animator* self, const std::string& name, float seconds, int layer) { self->crossFade(name, seconds, layer); })
+        .addFunction("hasController", +[](const Animator* self) -> bool { return !self->getController().empty(); })
+        .addFunction("hasParameter", +[](const Animator* self, const std::string& name) -> bool { return self->getParameterIndex(name) >= 0; })
         .addFunction("getLayerCount", &Animator::getLayerCount)
         .addFunction("getLayerName", &Animator::getLayerName)
         .addFunction("getLayerIndex", &Animator::getLayerIndex)
-        .addFunction("setLayerWeight", &Animator::setLayerWeight)
-        .addFunction("getLayerWeight", &Animator::getLayerWeight)
+        // a layer by index or by name (upstream's player-controller scripts name it), an optional
+        // fade in seconds
+        .addFunction("setLayerWeight", +[](Animator* self, lua_State* L) {
+            const int layer = lua_type(L, 2) == LUA_TSTRING ? self->getLayerIndex(lua_tostring(L, 2)) : (int)luaL_checkinteger(L, 2);
+            const float weight = (float)luaL_checknumber(L, 3);
+            if (lua_isnumber(L, 4)) self->setLayerWeight(layer, weight, (float)lua_tonumber(L, 4));
+            else self->setLayerWeight(layer, weight);
+        })
+        .addFunction("getLayerWeight", +[](const Animator* self, lua_State* L) -> float {
+            const int layer = lua_type(L, 2) == LUA_TSTRING ? self->getLayerIndex(lua_tostring(L, 2)) : (int)luaL_checkinteger(L, 2);
+            return self->getLayerWeight(layer);
+        })
         .addFunction("playMontage",
             luabridge::overload<const std::string&>(&Animator::playMontage),
             luabridge::overload<const std::string&, float>(&Animator::playMontage),

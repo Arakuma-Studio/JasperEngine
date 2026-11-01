@@ -276,23 +276,29 @@ must exist and parse). Each clip entry plays on `clips[i].layer` (default 0).
   `setLayerBlendMode`, `stopLayer`, `play(name, fade, PlayMode.STOP_ALL)`; `play` / `crossFade` /
   `queue` act on the target's layer only. Events fire only on layers with weight > 0.
 
-An Avatar Mask is a `.mask` JSON file; write it with `write_file` (it refuses unreadable text
-with `line:col`, Unity YAML too, and returns the lenient reader's warnings):
+An Avatar Mask is a `.mask` JSON file (version 2, the Animator's: `jasper://docs/animator`, "Masks
+and montages"): make it with `edit_avatar_mask` or `write_file` (it refuses unreadable text with
+`line:col`, Unity YAML too, and returns the lenient reader's warnings):
 
 ```json
-{"format": "jasperengine.mask", "version": 1, "default": 0,
- "humanoid": {"right_arm": 1, "right_fingers": 1},
- "transforms": [{"path": "Granjero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:RightShoulder/Can", "weight": 1, "children": true}]}
+{"format": "jasperengine.mask", "version": 2, "default": 0,
+ "body_parts": {"right_arm": 1, "right_hand": 1, "right_fingers": 1},
+ "paths": [{"path": "Granjero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:RightShoulder/Can", "weight": 1, "children": true}]}
 ```
 
 - `default`: the weight of what no rule covers (1 if absent: an empty mask passes all).
-- `transforms[]`: clip-grammar paths from the player's GameObject; the entry of a bone, else its
+- `paths[]`: clip-grammar paths from the player's GameObject; the entry of a bone, else its
   nearest ancestor's with `children: true`, wins.
-- `humanoid`: `root`, `body`, `head`, `left_leg`, `right_leg`, `left_arm`, `right_arm`,
-  `left_fingers`, `right_fingers` (0..1 or true/false; unlisted parts take `default`); used when
-  the GameObject has a humanoid rig (Mixamo, VRM... names), checked after the transforms.
-- Check it: `get_animation {mask, root}` lists `coverage: [{path, weight, rule: transform |
-  humanoid:<part> | default}]` for the entities the root's player binds (200 at most,
+- `body_parts`: `root`, `body`, `head`, `left_arm` / `right_arm` (shoulder to forearm),
+  `left_hand` / `right_hand`, `left_fingers` / `right_fingers`, `left_leg` / `right_leg` (0..1;
+  unset parts take `default`); used when the GameObject has a humanoid rig (Mixamo, VRM...
+  names), checked after the paths. `root_hierarchy: true` puts the GameObject and what is above
+  the hips in the `root` part.
+- Upstream's version 1 masks (`humanoid`, `transforms`) still load, converted (its arm also
+  weighs the hand; its transforms' `children` default true); `read_as: "upstream_v1"` says so and
+  the next edit saves version 2.
+- Check it: `get_animation {mask, root}` lists `coverage: [{path, weight, rule: path |
+  body_part:<part> | default}]` for the entities the root's player binds (200 at most,
   `coverage_total`), `humanoid_rig` false when the body parts can't apply, and `users`.
   `get_animation {entity}` has `players[0].layers` (`live_weight` and `queue` in play) and
   `mask_coverage: [{layer, covered, total, warnings}]`.
@@ -302,62 +308,22 @@ with `line:col`, Unity YAML too, and returns the lenient reader's warnings):
 
 ## Animator Controllers
 
-A `.controller` (Unity's Animator Controller) owns a player's states when set:
-`set_properties {animationplayer: {controller: "assets/anim/hero.controller"}}` (the clip list and
-layers are then ignored). Build it with `edit_animator {controller, create?, ops}`: all ops apply
-or none, one undo step; the result is the summary (indices, defaults) with `warnings` (clips that
-do not load, missing or mistyped parameters, dead ends, unreachable states, transitions that fire
-at once, unused parameters) and `users`. `create: {}` starts with a Base Layer;
-`create: {from_entity}` makes one state per clip entry of that player (its layers too) and sets it
-as the player's controller (a scene step). Read one: `get_animation {controller}`.
+A `.controller` (Unity's Animator Controller) plays on an **Animator** component, not on the
+Animation Player: `jasper://docs/animator` (build it with `edit_animator_controller`, assign it
+with `add_component {component: "animator", values: {animator: {controller}}}`, read it with
+`get_animation {controller}` or `get_animator`). `edit_animator_controller {path, create: true,
+from_player: <entity>}` makes one state per clip entry of that player (its layers too) and, on a
+GameObject without an Animator, adds one playing it and disables the player: one scene step.
 
-Ops (`layer` is an index or a name, default 0; states are named per layer):
-- `add_parameter {name, type: float|int|bool|trigger, default}`, `update_parameter {name, rename?,
-  type?, default?}` (a rename follows into conditions, blend trees, speed parameters),
-  `remove_parameter {name}` (its conditions go).
-- `add_layer {name, weight, blend, mask}`, `update_layer {layer, name?, weight?, blend?, mask?}`,
-  `remove_layer {layer}`, `move_layer {layer, to}` (the base layer stays first).
-- `add_state {layer, name, clip | blend_tree, speed, speed_parameter, wrap, cycle_offset,
-  position}` (neither clip nor tree: an empty state; positions default to a grid);
-  `blend_tree: {parameter, children: [{clip, threshold, speed?}], automate_thresholds?}` (1D;
-  children blend linearly between neighbouring thresholds and play in step; only the heaviest
-  fires events). `update_state {layer, state, rename?, ...}`, `remove_state {layer, state}` (its
-  transitions go), `set_default_state {layer, state}`.
-- `add_transition {layer, from (a state or "any"), to, conditions: [{parameter, mode, threshold}],
-  has_exit_time (true), exit_time (0.75, normalized), duration (0.25), fixed_duration (true:
-  seconds), offset (0), interruption (none|current_state|next_state), can_transition_to_self
-  (Any State only, true)}`; `update_transition {layer, index, ...}`, `remove_transition {layer,
-  index}` (indices from the summary; list order is priority). Modes: `greater`/`less` (float,
-  int), `equals`/`not_equal` (int), `if`/`if_not` (bool; a trigger uses `if`).
-
-Rules (Unity's): each update a layer checks its Any State transitions, then the current state's,
-and takes the first whose conditions hold and (with exit time) whose source crossed `exit_time`;
-the triggers it read reset. A transition blends linearly over its duration; while it runs only its
-interruption source can start another. On the first update every layer enters its default state.
-Errors name the op and field: `ops[2].to: no state "Run" in layer "Base Layer" (states: ...)`.
-
-Example, the Garden farmer (two layers, a float):
-
-```json
-{"controller": "assets/anim/granjero.controller", "create": {}, "ops": [
- {"op": "add_parameter", "name": "Speed", "type": "float"},
- {"op": "add_state", "name": "Idle", "clip": "assets/models/granjero.glb#Happy Idle", "wrap": "loop"},
- {"op": "add_state", "name": "Running", "clip": "assets/models/granjero.glb#Running", "wrap": "loop"},
- {"op": "add_transition", "from": "Idle", "to": "Running", "has_exit_time": false, "duration": 0.15,
-  "conditions": [{"parameter": "Speed", "mode": "greater", "threshold": 0.01}]},
- {"op": "add_transition", "from": "Running", "to": "Idle", "has_exit_time": false, "duration": 0.15,
-  "conditions": [{"parameter": "Speed", "mode": "less", "threshold": 0.01}]},
- {"op": "add_layer", "name": "Holding", "weight": 0, "mask": "assets/anim/arm.mask"},
- {"op": "add_state", "layer": "Holding", "name": "Hold", "clip": "assets/anim/holding.anim"}]}
-```
-
-Drive it in play: `eval_lua "GameObject(scene, id):getAnimator():setFloat('Speed', 2)"`, then
-`get_animation {entity}`: `players[0].controller` has `parameters` and per layer `current`,
-`normalized_time` and `transition: {to, progress}`. Lua also has `setBool`, `setInteger`,
-`setTrigger`, `resetTrigger`, `getCurrentStateInfo(layer)`, `isInTransition`,
-`playInLayer(state, layer, normalizedTime)`, `crossFadeInLayer(state, seconds, layer)`, and
-per-object script methods `onStateEnter(layer, name)` / `onStateExit(layer, name)`. A type
-mismatch (`setBool` on a trigger) warns once and converts. Parameter names are Lua identifiers.
+Scenes and prefabs saved with upstream's `animationplayer.controller` load with an Animator
+playing that controller and the player disabled (scene version 6, prefab version 7). A disabled
+player beside an Animator hands over to it, so scripts written for upstream keep working:
+`getAnimationPlayer():setFloat('Speed', 2)`, `play`, `crossFade`, `getCurrentStateName(layer)`,
+`getCurrentStateInfo(layer)` (a `ControllerStateInfo`), `isInTransition`, `playInLayer`,
+`crossFadeInLayer`, `onStateEnter(layer, name)` / `onStateExit(layer, name)` all reach the Animator;
+`GameObject:getAnimator()` returns the Animator, which answers the same names. A type mismatch
+(`setBool` on a float) warns once and converts. Upstream's version 1 `.controller` files (flat
+`states` / `transitions`, `"from": "any"`) load converted; the next edit saves version 2.
 
 ## edit_animation: clip mode and scene mode
 
@@ -463,8 +429,8 @@ the actions end), `autoplay`, `speed` set the Animation. One scene undo step per
   `event.args`).
 - A layer at weight 0 shows nothing (and fires no events): raise it with `setLayerWeight` or
   `layers[i].weight`; a layer whose mask is missing or broken contributes nothing (the Console says why).
-- Setting `clips` on a player that has a `controller`: the controller owns the states; edit it with
-  `edit_animator`.
+- Editing the `clips` of a disabled player beside an Animator: it hands over, the Animator's
+  controller owns the states; edit it with `edit_animator_controller`.
 - Forgetting `preview_animation stop`: the scene keeps showing the previewed pose until then
   (saves and Play restore it). `set_properties` during the preview writes the scene value (kept
   after the preview, also when equal to the previewed one).

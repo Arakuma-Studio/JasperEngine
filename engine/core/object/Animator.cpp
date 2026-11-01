@@ -6,6 +6,7 @@
 #include "Log.h"
 #include "Scene.h"
 #include "animation/AnimatorInstance.h"
+#include "animation/CompiledController.h"
 #include "component/Transform.h"
 #include "subsystem/AnimatorSystem.h"
 
@@ -55,9 +56,40 @@ bool Animator::isLoaded() const{
     return instance && instance->controller && instance->bound;
 }
 
+namespace{
+
+    const char* parameterKindName(AnimatorParameterType type){
+        switch (type){
+            case AnimatorParameterType::Float: return "float";
+            case AnimatorParameterType::Int: return "int";
+            case AnimatorParameterType::Bool: return "bool";
+            case AnimatorParameterType::Trigger: return "trigger";
+        }
+        return "";
+    }
+
+}
+
+void Animator::mismatch(const std::string& name, AnimatorParameterType as) const{
+    anim::AnimatorInstance* instance = runtime();
+    if (!instance || !instance->controller) return;
+    const int index = instance->controller->findParameter(name);
+    if (index < 0) return;
+    const AnimatorParameterType type = instance->controller->parameters[(size_t)index].type;
+    // a float set as an int (and back) is a number either way; a bool or trigger is not
+    const bool numbers = (type == AnimatorParameterType::Float || type == AnimatorParameterType::Int) &&
+                         (as == AnimatorParameterType::Float || as == AnimatorParameterType::Int);
+    if (type == as || numbers) return;
+    const std::string message = "'" + name + "' is a " + parameterKindName(type) + ", set as a " + parameterKindName(as);
+    if (instance->warnOnce(message)){
+        Log::warn("Animator '%s': %s (converted)", scene->getEntityName(entity).c_str(), message.c_str());
+    }
+}
+
 void Animator::setFloat(const std::string& name, float value){
     anim::AnimatorInstance* instance = runtime();
     if (!instance || !instance->setFloat(name, value)) unknown("parameter", name);
+    else mismatch(name, AnimatorParameterType::Float);
 }
 
 void Animator::setFloat(const std::string& name, float value, float dampTime, float deltaTime){
@@ -77,6 +109,7 @@ float Animator::getFloat(const std::string& name) const{
 void Animator::setInteger(const std::string& name, int value){
     anim::AnimatorInstance* instance = runtime();
     if (!instance || !instance->setInteger(name, value)) unknown("parameter", name);
+    else mismatch(name, AnimatorParameterType::Int);
 }
 
 int Animator::getInteger(const std::string& name) const{
@@ -86,6 +119,7 @@ int Animator::getInteger(const std::string& name) const{
 void Animator::setBool(const std::string& name, bool value){
     anim::AnimatorInstance* instance = runtime();
     if (!instance || !instance->setBool(name, value)) unknown("parameter", name);
+    else mismatch(name, AnimatorParameterType::Bool);
 }
 
 bool Animator::getBool(const std::string& name) const{
@@ -95,6 +129,7 @@ bool Animator::getBool(const std::string& name) const{
 void Animator::setTrigger(const std::string& name){
     anim::AnimatorInstance* instance = runtime();
     if (!instance || !instance->setTrigger(name)) unknown("parameter", name);
+    else mismatch(name, AnimatorParameterType::Trigger);
 }
 
 void Animator::resetTrigger(const std::string& name){
@@ -168,6 +203,7 @@ namespace{
         out.normalizedTime = info.normalizedTime;
         out.length = info.length;
         out.loop = info.loop;
+        out.speed = info.speed;
         return out;
     }
 
@@ -207,6 +243,11 @@ int Animator::getLayerIndex(const std::string& name) const{
 void Animator::setLayerWeight(int layer, float weight){
     anim::AnimatorInstance* instance = runtime();
     if (instance) instance->setLayerWeight(layer, weight);
+}
+
+void Animator::setLayerWeight(int layer, float weight, float fade){
+    anim::AnimatorInstance* instance = runtime();
+    if (instance) instance->setLayerWeight(layer, weight, fade);
 }
 
 float Animator::getLayerWeight(int layer) const{

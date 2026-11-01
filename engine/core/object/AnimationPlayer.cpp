@@ -5,7 +5,13 @@
 
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimationPlayerRuntime.h"
+#include "animation/AnimatorAssetIO.h"
+#include "animation/AnimatorInstance.h"
+#include "animation/CompiledController.h"
+#include "component/AnimatorComponent.h"
+#include "object/Animator.h"
 #include "subsystem/ActionSystem.h"
+#include "subsystem/AnimatorSystem.h"
 #include "Scene.h"
 #include "Log.h"
 
@@ -195,47 +201,87 @@ AnimationPlayer& AnimationPlayer::operator=(AnimationPlayer&& rhs) noexcept = de
 
 namespace {
 
-    // blend and queue have no controller form (spec 11.2): said once per player and call
-    bool refusedByController(AnimationPlayerComponent& player, const char* call, const std::string& who){
-        if (player.controller.empty()) return false;
+    // Upstream's Animation Player with a Controller (docs/specs/S21-animation.md "Upstream
+    // absorption"): the controller plays on the GameObject's Animator. A player that is not
+    // enabled on a GameObject with an Animator hands its playback calls to it (what the scene
+    // migration makes of upstream's controller players); the controller calls always go to it.
+    AnimatorComponent* animatorOf(Scene* scene, Entity entity){
+        return scene && scene->isEntityCreated(entity) ? scene->findComponent<AnimatorComponent>(entity) : nullptr;
+    }
+
+    bool handsOver(Scene* scene, Entity entity, const AnimationPlayerComponent& player){
+        return !player.enabled && animatorOf(scene, entity) != nullptr;
+    }
+
+    void warnOnce(AnimationPlayerComponent& player, const std::string& key, const std::string& message){
         anim::AnimationPlayerRuntime& runtime = anim::playerRuntime(player);
-        const std::string key = std::string("controller:") + call;
         if (std::find(runtime.warnedLayers.begin(), runtime.warnedLayers.end(), key) == runtime.warnedLayers.end()){
             runtime.warnedLayers.push_back(key);
-            Log::warn("Animation Player '%s': %s is not available with an Animator Controller (use parameters, play or crossFade)", who.c_str(), call);
+            Log::warn("%s", message.c_str());
         }
+    }
+
+    // the Animator a controller call goes to; null (warned once per call) without one
+    AnimatorComponent* controllerAnimator(Scene* scene, Entity entity, AnimationPlayerComponent& player, const char* call, const std::string& who){
+        AnimatorComponent* animator = animatorOf(scene, entity);
+        if (!animator){
+            warnOnce(player, std::string("animator:") + call, "Animation Player '" + who + "': " + call +
+                     " needs an Animator Controller: add an Animator with a controller (or setController)");
+        }
+        return animator;
+    }
+
+    // a handed-over play: the Animator plays again after a stop()
+    void resumeAnimator(Scene* scene, Entity entity){
+        if (AnimatorComponent* animator = animatorOf(scene, entity)) animator->enabled = true;
+    }
+
+    // blend and queue have no controller form: said once per player and call
+    bool refusedByController(Scene* scene, Entity entity, AnimationPlayerComponent& player, const char* call, const std::string& who){
+        if (!handsOver(scene, entity, player)) return false;
+        warnOnce(player, std::string("controller:") + call, "Animation Player '" + who + "': " + call +
+                 " is not available with an Animator Controller (use parameters, play or crossFade)");
         return true;
+    }
+
+    // a state name of the Animator's controller ("Layer.State" or "State") plays (current or next)
+    bool animatorStatePlaying(Scene* scene, Entity entity, const std::string* name){
+        AnimatorComponent* animator = animatorOf(scene, entity);
+        if (!animator || !animator->enabled) return false;
+        anim::AnimatorInstance* instance = scene->getSystem<AnimatorSystem>()->instance(entity);
+        if (!instance || !instance->controller) return false;
+        if (!name) return true;
+        for (size_t l = 0; l < instance->layers.size(); l++){
+            for (const anim::AnimatorInstance::StateInfo& info : {instance->currentState((int)l), instance->nextState((int)l)}){
+                if (info.state >= 0 && (info.name == *name || info.fullPath == *name)) return true;
+            }
+        }
+        return false;
     }
 
 }
 
 void AnimationPlayer::play(const std::string& name){
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
-    if (!player.controller.empty()){
-        anim::controllerPlay(player, name, -1, 0.0f, getName());
+    if (handsOver(scene, entity, player)){
+        resumeAnimator(scene, entity);
+        Animator(scene, entity).play(name);
         return;
     }
     anim::playState(player, name, 0.0f, getName());
 }
 
 void AnimationPlayer::play(const std::string& name, float fade){
-    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
-    if (!player.controller.empty()){
-        // the same meaning as without a controller: a fade crossfades (the layer and
-        // normalized-time form is playInLayer)
-        if (fade > 0.0f) anim::controllerCrossFade(player, name, fade, -1, getName());
-        else anim::controllerPlay(player, name, -1, 0.0f, getName());
-        return;
-    }
-    anim::playState(player, name, fade, getName());
+    play(name, fade, PlayMode::StopSameLayer);
 }
 
 void AnimationPlayer::play(const std::string& name, float fade, PlayMode mode){
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
-    if (!player.controller.empty()){
-        // a controller has no play modes: a fade crossfades, else an instant switch
-        if (fade > 0.0f) anim::controllerCrossFade(player, name, fade, -1, getName());
-        else anim::controllerPlay(player, name, -1, 0.0f, getName());
+    if (handsOver(scene, entity, player)){
+        // a controller has no play modes: a fade crossfades (in seconds), else an instant switch
+        resumeAnimator(scene, entity);
+        if (fade > 0.0f) Animator(scene, entity).crossFadeInFixedTime(name, fade);
+        else Animator(scene, entity).play(name);
         return;
     }
     anim::playState(player, name, fade, getName(), mode == PlayMode::StopAll ? PlayMode::StopAll : PlayMode::StopSameLayer);
@@ -247,80 +293,69 @@ void AnimationPlayer::playInLayer(const std::string& name, int layer){
 
 void AnimationPlayer::playInLayer(const std::string& name, int layer, float normalizedTime){
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
-    if (player.controller.empty()){
-        // without a controller the layer is the state's own: a plain play from normalizedTime
-        if (anim::playState(player, name, 0.0f, getName())){
-            getState(name).setNormalizedTime(normalizedTime);
-        }
+    if (handsOver(scene, entity, player)){
+        resumeAnimator(scene, entity);
+        Animator(scene, entity).play(name, layer, normalizedTime);
         return;
     }
-    anim::controllerPlay(player, name, layer, normalizedTime, getName());
+    // without a controller the layer is the state's own: a plain play from normalizedTime
+    if (anim::playState(player, name, 0.0f, getName())){
+        getState(name).setNormalizedTime(normalizedTime);
+    }
 }
 
 void AnimationPlayer::crossFade(const std::string& name, float fade, PlayMode mode){
-    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
-    if (!player.controller.empty()){
-        anim::controllerCrossFade(player, name, fade, -1, getName());
-        return;
-    }
-    anim::playState(player, name, fade, getName(), mode == PlayMode::StopAll ? PlayMode::StopAll : PlayMode::StopSameLayer);
+    play(name, fade > 0.0f ? fade : 0.0f, mode);
 }
 
 void AnimationPlayer::crossFadeInLayer(const std::string& name, float seconds, int layer){
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
-    if (player.controller.empty()){
-        anim::playState(player, name, seconds, getName());
+    if (handsOver(scene, entity, player)){
+        resumeAnimator(scene, entity);
+        Animator(scene, entity).crossFadeInFixedTime(name, seconds, layer);
         return;
     }
-    anim::controllerCrossFade(player, name, seconds, layer, getName());
+    anim::playState(player, name, seconds, getName());
 }
 
 void AnimationPlayer::crossFade(const std::string& name){
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
-    if (!player.controller.empty()){
-        anim::controllerCrossFade(player, name, player.defaultFadeTime, -1, getName());
-        return;
-    }
-    anim::playState(player, name, player.defaultFadeTime, getName());
+    crossFade(name, player.defaultFadeTime, PlayMode::StopSameLayer);
 }
 
 void AnimationPlayer::crossFade(const std::string& name, float fade){
-    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
-    if (!player.controller.empty()){
-        anim::controllerCrossFade(player, name, fade, -1, getName());
-        return;
-    }
-    anim::playState(player, name, fade, getName());
+    crossFade(name, fade, PlayMode::StopSameLayer);
 }
 
 void AnimationPlayer::blend(const std::string& name, float weight){
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
-    if (refusedByController(player, "blend", getName())) return;
+    if (refusedByController(scene, entity, player, "blend", getName())) return;
     anim::blendState(player, name, weight, player.defaultFadeTime, getName());
 }
 
 void AnimationPlayer::blend(const std::string& name, float weight, float fade){
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
-    if (refusedByController(player, "blend", getName())) return;
+    if (refusedByController(scene, entity, player, "blend", getName())) return;
     anim::blendState(player, name, weight, fade, getName());
 }
 
 void AnimationPlayer::queue(const std::string& name){
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
-    if (refusedByController(player, "queue", getName())) return;
+    if (refusedByController(scene, entity, player, "queue", getName())) return;
     anim::queueState(player, name, 0.0f, getName());
 }
 
 void AnimationPlayer::queue(const std::string& name, float fade){
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
-    if (refusedByController(player, "queue", getName())) return;
+    if (refusedByController(scene, entity, player, "queue", getName())) return;
     anim::queueState(player, name, fade, getName());
 }
 
 void AnimationPlayer::stop(){
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
-    if (!player.controller.empty()){
-        anim::controllerStop(player);
+    if (handsOver(scene, entity, player)){
+        // upstream's controller stop(): nothing plays until a play() (or an enable)
+        if (AnimatorComponent* animator = animatorOf(scene, entity)) animator->enabled = false;
         return;
     }
     anim::stopStates(player, nullptr, getName());
@@ -328,8 +363,8 @@ void AnimationPlayer::stop(){
 
 void AnimationPlayer::stop(const std::string& name){
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
-    if (!player.controller.empty()){
-        anim::controllerStop(player);
+    if (handsOver(scene, entity, player)){
+        if (AnimatorComponent* animator = animatorOf(scene, entity)) animator->enabled = false;
         return;
     }
     anim::stopStates(player, &name, getName());
@@ -349,19 +384,15 @@ void AnimationPlayer::sample(){
 }
 
 bool AnimationPlayer::isPlaying() const{
-    return anim::isStatePlaying(getComponent<AnimationPlayerComponent>(), nullptr);
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    if (handsOver(scene, entity, player)) return animatorStatePlaying(scene, entity, nullptr);
+    return anim::isStatePlaying(player, nullptr);
 }
 
 bool AnimationPlayer::isPlaying(const std::string& name) const{
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
-    if (!player.controller.empty()){
-        // a controller state ("<Layer>.<State>" or "<State>") plays while it has weight
-        anim::AnimationPlayerRuntime& runtime = anim::playerRuntime(player);
-        int layer = -1, state = -1;
-        if (!runtime.controller || !anim::findControllerState(runtime, name, -1, layer, state)) return false;
-        const anim::ControllerLayerRuntime& layerRuntime = runtime.controller->layers[(size_t)layer];
-        return layerRuntime.started && (size_t)state < layerRuntime.groups.size() && layerRuntime.groups[(size_t)state].active;
-    }
+    // a controller state ("<Layer>.<State>" or "<State>") plays while it is current or next
+    if (handsOver(scene, entity, player)) return animatorStatePlaying(scene, entity, &name);
     return anim::isStatePlaying(player, &name);
 }
 
@@ -476,17 +507,30 @@ bool AnimationPlayer::isPlayAutomatically() const{
 }
 
 void AnimationPlayer::setEnabled(bool enabled){
-    getComponent<AnimationPlayerComponent>().enabled = enabled;
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    if (handsOver(scene, entity, player)){
+        // the Animator's checkbox; enabled again it starts from its default states (Unity's
+        // Animator, upstream's controller player)
+        AnimatorComponent* animator = animatorOf(scene, entity);
+        if (enabled && !animator->enabled){
+            if (anim::AnimatorInstance* instance = scene->getSystem<AnimatorSystem>()->instance(entity)) instance->restart();
+        }
+        animator->enabled = enabled;
+        return;
+    }
+    player.enabled = enabled;
 }
 
 bool AnimationPlayer::isEnabled() const{
-    return getComponent<AnimationPlayerComponent>().enabled;
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    if (handsOver(scene, entity, player)) return animatorOf(scene, entity)->enabled;
+    return player.enabled;
 }
 
 bool AnimationPlayer::isLoaded() const{
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    if (handsOver(scene, entity, player)) return Animator(scene, entity).isLoaded();
     if (!player.runtime || player.needsLoad) return false;
-    if (!player.controller.empty() && (!player.runtime->controller || !player.runtime->controller->controller)) return false;
     for (const anim::PlayerStateRuntime& state : player.runtime->states){
         if (!state.bindings.clip || !state.bindings.resolved) return false;
     }
@@ -497,25 +541,30 @@ bool AnimationPlayer::isLoaded() const{
 
 namespace {
 
-    // the runtime with its layers known (a controller's load when it has one)
     anim::AnimationPlayerRuntime& layeredRuntime(AnimationPlayerComponent& player, const std::string& who){
-        if (!player.controller.empty()) anim::ensureController(player, who, 0.0f, false);
+        (void)who;
         return anim::playerRuntime(player);
     }
 
 }
 
 int AnimationPlayer::getLayerCount() const{
-    return (int)layeredRuntime(getComponent<AnimationPlayerComponent>(), getName()).layers.size();
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    if (handsOver(scene, entity, player)) return Animator(scene, entity).getLayerCount();
+    return (int)layeredRuntime(player, getName()).layers.size();
 }
 
 std::string AnimationPlayer::getLayerName(int index) const{
-    const anim::AnimationPlayerRuntime& runtime = layeredRuntime(getComponent<AnimationPlayerComponent>(), getName());
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    if (handsOver(scene, entity, player)) return Animator(scene, entity).getLayerName(index);
+    const anim::AnimationPlayerRuntime& runtime = layeredRuntime(player, getName());
     return index >= 0 && (size_t)index < runtime.layers.size() ? runtime.layers[(size_t)index].name : std::string();
 }
 
 int AnimationPlayer::getLayerIndex(const std::string& name) const{
-    return layeredRuntime(getComponent<AnimationPlayerComponent>(), getName()).findLayer(name);
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    if (handsOver(scene, entity, player)) return Animator(scene, entity).getLayerIndex(name);
+    return layeredRuntime(player, getName()).findLayer(name);
 }
 
 int AnimationPlayer::addLayer(const std::string& name){
@@ -559,6 +608,10 @@ void AnimationPlayer::setLayerWeight(int layer, float weight){
 
 void AnimationPlayer::setLayerWeight(int layer, float weight, float fade){
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    if (handsOver(scene, entity, player)){
+        Animator(scene, entity).setLayerWeight(layer, weight, fade);
+        return;
+    }
     const int index = anim::layerIndex(player, layer, getName());
     if (index >= 0) anim::setLayerWeight(player, index, weight, fade, getName());
 }
@@ -569,18 +622,30 @@ void AnimationPlayer::setLayerWeight(const std::string& layer, float weight){
 
 void AnimationPlayer::setLayerWeight(const std::string& layer, float weight, float fade){
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    if (handsOver(scene, entity, player)){
+        Animator animator(scene, entity);
+        const int index = animator.getLayerIndex(layer);
+        if (index >= 0) animator.setLayerWeight(index, weight, fade);
+        else warnOnce(player, "animator:layer:" + layer, "Animation Player '" + getName() + "': the Animator has no layer named '" + layer + "'");
+        return;
+    }
     const int index = anim::layerIndex(player, layer, getName());
     if (index >= 0) anim::setLayerWeight(player, index, weight, fade, getName());
 }
 
 float AnimationPlayer::getLayerWeight(int layer) const{
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    if (handsOver(scene, entity, player)) return Animator(scene, entity).getLayerWeight(layer);
     const int index = anim::layerIndex(player, layer, getName());
     return index >= 0 ? player.runtime->layerWeight(index) : 0.0f;
 }
 
 float AnimationPlayer::getLayerWeight(const std::string& layer) const{
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    if (handsOver(scene, entity, player)){
+        Animator animator(scene, entity);
+        return animator.getLayerWeight(animator.getLayerIndex(layer));
+    }
     const int index = anim::layerIndex(player, layer, getName());
     return index >= 0 ? player.runtime->layerWeight(index) : 0.0f;
 }
@@ -659,74 +724,94 @@ void AnimationPlayer::stopLayer(const std::string& layer, float fade){
     if (index >= 0) anim::stopLayer(player, index, fade);
 }
 
-// Animator Controller
+// Animator Controller (upstream's player API, on the GameObject's Animator)
 
 void AnimationPlayer::setController(const std::string& controller){
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
-    if (player.controller == controller) return;
-    player.controller = controller;
-    player.controllerGuid.clear();
-    player.needsLoad = true;
+    AnimatorComponent* animator = animatorOf(scene, entity);
+    if (controller.empty()){
+        // the clip list plays again
+        if (animator && handsOver(scene, entity, player)){
+            player.enabled = animator->enabled;
+            animator->controller = std::string();
+            animator->needsLoad = true;
+        }
+        return;
+    }
+    // the Animator plays the controller (added when missing); the player hands over to it
+    const bool wasEnabled = handsOver(scene, entity, player) ? animator->enabled : player.enabled;
+    Animator(scene, entity).setController(controller);
+    animatorOf(scene, entity)->enabled = wasEnabled;
+    player.enabled = false;
 }
 
 std::string AnimationPlayer::getController() const{
-    return getComponent<AnimationPlayerComponent>().controller;
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    return handsOver(scene, entity, player) ? animatorOf(scene, entity)->controller.path : std::string();
 }
 
 bool AnimationPlayer::hasController() const{
-    return !getComponent<AnimationPlayerComponent>().controller.empty();
+    return !getController().empty();
 }
 
 void AnimationPlayer::setFloat(const std::string& name, float value){
-    anim::setControllerParameter(getComponent<AnimationPlayerComponent>(), name, anim::ControllerParameterType::Float, value, 0.0f, getName());
+    if (controllerAnimator(scene, entity, getComponent<AnimationPlayerComponent>(), "setFloat", getName())) Animator(scene, entity).setFloat(name, value);
 }
 
 void AnimationPlayer::setFloat(const std::string& name, float value, float dampTime){
-    anim::setControllerParameter(getComponent<AnimationPlayerComponent>(), name, anim::ControllerParameterType::Float, value, dampTime, getName());
+    if (!controllerAnimator(scene, entity, getComponent<AnimationPlayerComponent>(), "setFloat", getName())) return;
+    // upstream's damping: toward the value once per update until another set
+    anim::AnimatorInstance* instance = scene->getSystem<AnimatorSystem>()->instance(entity);
+    if (!instance || !instance->setFloatTarget(name, value, dampTime)) Animator(scene, entity).setFloat(name, value);
 }
 
 float AnimationPlayer::getFloat(const std::string& name) const{
-    return anim::getControllerParameter(getComponent<AnimationPlayerComponent>(), name, anim::ControllerParameterType::Float, getName());
+    return controllerAnimator(scene, entity, getComponent<AnimationPlayerComponent>(), "getFloat", getName()) ? Animator(scene, entity).getFloat(name) : 0.0f;
 }
 
 void AnimationPlayer::setInteger(const std::string& name, int value){
-    anim::setControllerParameter(getComponent<AnimationPlayerComponent>(), name, anim::ControllerParameterType::Int, (float)value, 0.0f, getName());
+    if (controllerAnimator(scene, entity, getComponent<AnimationPlayerComponent>(), "setInteger", getName())) Animator(scene, entity).setInteger(name, value);
 }
 
 int AnimationPlayer::getInteger(const std::string& name) const{
-    return (int)anim::getControllerParameter(getComponent<AnimationPlayerComponent>(), name, anim::ControllerParameterType::Int, getName());
+    return controllerAnimator(scene, entity, getComponent<AnimationPlayerComponent>(), "getInteger", getName()) ? Animator(scene, entity).getInteger(name) : 0;
 }
 
 void AnimationPlayer::setBool(const std::string& name, bool value){
-    anim::setControllerParameter(getComponent<AnimationPlayerComponent>(), name, anim::ControllerParameterType::Bool, value ? 1.0f : 0.0f, 0.0f, getName());
+    if (controllerAnimator(scene, entity, getComponent<AnimationPlayerComponent>(), "setBool", getName())) Animator(scene, entity).setBool(name, value);
 }
 
 bool AnimationPlayer::getBool(const std::string& name) const{
-    return anim::getControllerParameter(getComponent<AnimationPlayerComponent>(), name, anim::ControllerParameterType::Bool, getName()) != 0.0f;
+    return controllerAnimator(scene, entity, getComponent<AnimationPlayerComponent>(), "getBool", getName()) && Animator(scene, entity).getBool(name);
 }
 
 void AnimationPlayer::setTrigger(const std::string& name){
-    anim::setControllerParameter(getComponent<AnimationPlayerComponent>(), name, anim::ControllerParameterType::Trigger, 1.0f, 0.0f, getName());
+    if (controllerAnimator(scene, entity, getComponent<AnimationPlayerComponent>(), "setTrigger", getName())) Animator(scene, entity).setTrigger(name);
 }
 
 void AnimationPlayer::resetTrigger(const std::string& name){
-    anim::setControllerParameter(getComponent<AnimationPlayerComponent>(), name, anim::ControllerParameterType::Trigger, 0.0f, 0.0f, getName());
+    if (controllerAnimator(scene, entity, getComponent<AnimationPlayerComponent>(), "resetTrigger", getName())) Animator(scene, entity).resetTrigger(name);
+}
+
+namespace {
+
+    const anim::CompiledController* controllerOf(Scene* scene, Entity entity){
+        if (!animatorOf(scene, entity)) return nullptr;
+        anim::AnimatorInstance* instance = scene->getSystem<AnimatorSystem>()->instance(entity);
+        return instance && instance->controller ? instance->controller.get() : nullptr;
+    }
+
 }
 
 bool AnimationPlayer::hasParameter(const std::string& name) const{
-    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
-    if (player.controller.empty()) return false;
-    anim::ensureController(player, getName(), 0.0f, false);
-    return anim::findControllerParameter(player, name) >= 0;
+    const anim::CompiledController* controller = controllerOf(scene, entity);
+    return controller && controller->findParameter(name) >= 0;
 }
 
 std::string AnimationPlayer::getParameterType(const std::string& name) const{
-    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
-    if (player.controller.empty()) return "";
-    anim::ensureController(player, getName(), 0.0f, false);
-    const int index = anim::findControllerParameter(player, name);
-    if (index < 0) return "";
-    return anim::parameterTypeName(player.runtime->controller->controller->getData().parameters[(size_t)index].type);
+    const anim::CompiledController* controller = controllerOf(scene, entity);
+    const int index = controller ? controller->findParameter(name) : -1;
+    return index >= 0 ? anim::parameterTypeName(controller->parameters[(size_t)index].type) : "";
 }
 
 std::string AnimationPlayer::getCurrentStateName() const{
@@ -739,18 +824,17 @@ std::string AnimationPlayer::getCurrentStateName(int layer) const{
 
 namespace {
 
-    ControllerStateInfo stateInfoOf(AnimationPlayerComponent& player, int layer, bool next, const std::string& who){
+    ControllerStateInfo stateInfoOf(Scene* scene, Entity entity, int layer, bool next){
         ControllerStateInfo info;
-        if (player.controller.empty()) return info;
-        anim::ensureController(player, who, 0.0f, false);
-        const anim::ControllerStateView view = anim::controllerStateInfo(player, layer, next);
-        info.isValid = view.valid;
-        info.name = view.name;
-        info.fullName = view.fullName;
-        info.normalizedTime = view.normalizedTime;
-        info.length = view.length;
-        info.speed = view.speed;
-        info.loop = view.loop;
+        if (!animatorOf(scene, entity)) return info;
+        const AnimatorStateInfo state = next ? Animator(scene, entity).getNextState(layer) : Animator(scene, entity).getCurrentState(layer);
+        info.isValid = state.valid;
+        info.name = state.name;
+        info.fullName = state.fullPath;
+        info.normalizedTime = state.normalizedTime;
+        info.length = state.length;
+        info.speed = state.speed;
+        info.loop = state.loop;
         return info;
     }
 
@@ -761,7 +845,7 @@ ControllerStateInfo AnimationPlayer::getCurrentStateInfo() const{
 }
 
 ControllerStateInfo AnimationPlayer::getCurrentStateInfo(int layer) const{
-    return stateInfoOf(getComponent<AnimationPlayerComponent>(), layer, false, getName());
+    return stateInfoOf(scene, entity, layer, false);
 }
 
 ControllerStateInfo AnimationPlayer::getNextStateInfo() const{
@@ -769,7 +853,7 @@ ControllerStateInfo AnimationPlayer::getNextStateInfo() const{
 }
 
 ControllerStateInfo AnimationPlayer::getNextStateInfo(int layer) const{
-    return stateInfoOf(getComponent<AnimationPlayerComponent>(), layer, true, getName());
+    return stateInfoOf(scene, entity, layer, true);
 }
 
 bool AnimationPlayer::isInTransition() const{
@@ -777,7 +861,7 @@ bool AnimationPlayer::isInTransition() const{
 }
 
 bool AnimationPlayer::isInTransition(int layer) const{
-    return anim::controllerInTransition(getComponent<AnimationPlayerComponent>(), layer);
+    return animatorOf(scene, entity) && Animator(scene, entity).isInTransition(layer);
 }
 
 FunctionSubscribe<void(int, const std::string&)>& AnimationPlayer::getOnStateEnter(){

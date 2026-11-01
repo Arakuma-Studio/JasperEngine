@@ -1585,7 +1585,7 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | `getRay(direction)` | method | Ray from world position |
 | `getAnimationPlayer()` | method | the GameObject's `AnimationPlayer` (4.8.2), `nil` when it has none (it never adds one) |
 | `hasAnimationPlayer()` | method | bool |
-| `getAnimator()` | method | Unity's Animator: the same as `getAnimationPlayer()` (with or without an Animator Controller) |
+| `getAnimator()` | method | the GameObject's `Animator` (4.8.4); without one its `AnimationPlayer`; `nil` without either |
 | `getVertexAnimator()` | method | the GameObject's `VertexAnimator` (4.8.3), `nil` when it has none (it never adds one) |
 | `hasVertexAnimator()` | method | bool |
 | `GameObject.instantiate`, `GameObject.destroy`, `GameObject.destroyImmediate` | static | section 2.6 |
@@ -1802,19 +1802,19 @@ on the next frame. User guide: `docs/animation-clips.md`; agents: `jasper://docs
 | `setLayerMask(layer, path)`, `getLayerMask(layer)` | runtime Avatar Mask (`""` clears it); a layer whose mask is missing contributes nothing |
 | `setLayerBlendMode(layer, mode)`, `getLayerBlendMode(layer)` | runtime `"override"` / `"additive"` (layer 0: always override) |
 | `stopLayer(layer [, fade])` | fades every state of the layer out (instant without a fade) and clears its queue |
-| `controller` | rw, the Animator Controller (asset-relative `.controller`, `""` = none); setting it reloads |
-| `hasController()` | bool |
+| `controller` | rw, the controller of the GameObject's Animator (asset-relative `.controller`, `""` = none); setting one adds an Animator playing it and disables the player, which then hands over |
+| `hasController()` | bool: the player hands over to an Animator with a controller |
 | `setFloat(name, v [, dampTime])`, `getFloat(name)` | a controller parameter; `dampTime` > 0 eases toward `v` with SmoothDamp, a set without it snaps |
 | `setInteger(name, v)`, `getInteger(name)`, `setBool(name, b)`, `getBool(name)` | the other parameter types; a wrong type warns once and converts (`setBool` on a trigger sets it, `setFloat` on an int rounds) |
 | `setTrigger(name)`, `resetTrigger(name)` | a trigger stays set until a transition reading it fires |
 | `hasParameter(name)`, `getParameterType(name)` | bool; `"float"`, `"int"`, `"bool"`, `"trigger"` (`""` when unknown) |
 | `getCurrentStateName([layer])` | the layer's current state, without the layer prefix (`""` when none) |
-| `getCurrentStateInfo([layer])`, `getNextStateInfo([layer])` | an `AnimatorStateInfo` (below); the next state is valid only during a transition |
+| `getCurrentStateInfo([layer])`, `getNextStateInfo([layer])` | a `ControllerStateInfo` (below); the next state is valid only during a transition |
 | `isInTransition([layer])` | bool |
 | `playInLayer(name, layer [, normalizedTime])` | Unity's `Animator.Play`: with a controller, jumps to `name` (`"Layer.State"` or `"State"`) on `layer` (-1: any) at `normalizedTime` (default 0); without one, plays the clip state from that normalized time |
 | `crossFadeInLayer(name, seconds, layer)` | Unity's `CrossFadeInFixedTime`: a transition of `seconds` to `name` on `layer` (-1: any) |
 | `onStateEnter`, `onStateExit` | rw, functions called with `(layer, name)` when a controller state is entered / exited |
-| `getAnimationPlayerComponent()` | the ECS component: `enabled`, `defaultClip`, `playAutomatically`, `speed`, `defaultFadeTime`, `needsLoad`, `controller`, `onEvent`, `onFinish`, `onStateEnter`, `onStateExit` |
+| `getAnimationPlayerComponent()` | the ECS component: `enabled`, `defaultClip`, `playAutomatically`, `speed`, `defaultFadeTime`, `needsLoad`, `onEvent`, `onFinish`, `onStateEnter`, `onStateExit` |
 
 `layer` arguments are a 0-based index or a layer name; an unknown layer warns once and does
 nothing (getters return 0, `""` or -1). Layers (Unity's animation layers): each clip entry plays on
@@ -1822,16 +1822,17 @@ one; a layer has a weight, a blend (Override replaces what is below as much as i
 Additive adds the clip's change from its `additive_reference` time, default its first frame) and an
 optional Avatar Mask (`.mask`). Events fire only on layers with weight > 0 (the base always fires).
 
-With an **Animator Controller** (`controller` set; anim layers guide in `docs/animation-clips.md`)
-the controller owns the states and layers (the entries and layers are ignored): `play(name)` jumps
-to a state (`"Layer.State"` or `"State"`), `play(name, fade)` and `crossFade(name, seconds)` are a
-transition of that many seconds (a `PlayMode` has no effect), `playInLayer` / `crossFadeInLayer` add
-the layer and the normalized start time, `stop()` stops it until the next `play`
-or until the player is enabled again, `blend` and `queue` warn once and do nothing, `isPlaying(name)`
-takes controller state names. The parameter calls need a controller (without one they warn once
-and return defaults). The controller enters its default states on the first update
-(`playAutomatically` does not apply). After the frame's pose is written, `onStateEnter(layer,
-name)` / `onStateExit(layer, name)` call the subscribers, then the methods of those names on the
+**Handover to an Animator.** A *disabled* player on a GameObject with an Animator (what a scene
+saved when the player played Animator Controllers loads as, and what Create Animator Controller
+from Clips makes) forwards to the Animator: `play(name)` jumps to a state (`"Layer.State"` or
+`"State"`), `play(name, fade)` and `crossFade(name, seconds)` are a transition of that many seconds
+(a `PlayMode` has no effect), `playInLayer` / `crossFadeInLayer` add the layer and the normalized
+start time, `stop()` stops it until the next `play` or until the player is enabled again, `blend`
+and `queue` warn once and do nothing, `isPlaying(name)` takes controller state names, and
+`setEnabled` / the layer weights / the parameter calls / the state reads are the Animator's (an
+Animator without a controller: the parameter calls warn once and return defaults). After the
+frame's pose is written, `onStateEnter(layer, name)` / `onStateExit(layer, name)` (the state name
+without its layer) call the player's subscribers, then the methods of those names on the
 GameObject's Lua scripts.
 
 A `once` state that reaches its end fires `onFinish`, stops advancing and **holds its last pose**
@@ -1852,8 +1853,9 @@ unknown name reads defaults and writes nothing.
 
 `PlayMode`: `PlayMode.STOP_SAME_LAYER` (0), `PlayMode.STOP_ALL` (1).
 
-`AnimatorStateInfo` (a copy, Unity's): `isValid`, `name`, `fullName` (`"Layer.State"`),
-`normalizedTime` (whole loops counted), `length` (seconds), `speed`, `loop`.
+`ControllerStateInfo` (a copy, the player's and the Animator's `getCurrentStateInfo`): `isValid`,
+`name`, `fullName` (`"Layer.State"`), `normalizedTime` (whole loops counted), `length` (seconds),
+`speed`, `loop`.
 
 `AnimationEvent` (a copy): `functionName`, `state`, `time` (seconds in the clip), `args` (a
 1-based table of numbers, strings and booleans), `getArgCount()`, `getArgType(i)` (`"number"`,
@@ -1976,8 +1978,8 @@ end
 Unity's Animator: plays an Animator Controller (`.controller`: parameters, layers, state
 machines, blend trees, transitions) on the clips of the Animation Player's kinds (`.anim`, model
 clips), with Avatar Masks, montages (`.montage`), an IK stack and root motion. `Animator(scene,
-entity)` adds the component when missing; `GameObject:getAnimator()` returns `nil` without one;
-`GameObject:hasAnimator()`. It runs in play mode and in games. Calls before the controller loads
+entity)` adds the component when missing; `GameObject:getAnimator()` returns it (the Animation
+Player without one, `nil` without either); `GameObject:hasAnimator()`. It runs in play mode and in games. Calls before the controller loads
 are kept. User guide: `docs/animator.md`; agents: `jasper://docs/animator`. Names that the
 controller does not have warn once and do nothing.
 
@@ -1990,9 +1992,12 @@ controller does not have warn once and do nothing.
 | `getParameterIndex(name)`, `getParameterCount()`, `getParameterName(i)` | 0-based; -1 / `""` when unknown |
 | `play(state [, layer, normalizedTime])` | at once; `state` a name or `"Layer.Machine.State"`; `normalizedTime` < 0 keeps the current time when it is the current state |
 | `crossFade(state, duration [, layer, offset])` | `duration` in the current state's lengths; `crossFadeInFixedTime` in seconds |
-| `getCurrentState(layer)`, `getNextState(layer)` | an `AnimatorStateInfo`: `valid`, `name`, `fullPath`, `tag`, `normalizedTime` (laps + fraction), `length` (s), `loop` |
-| `isInTransition(layer)` | |
-| `getLayerCount()`, `getLayerName(i)`, `getLayerIndex(name)`, `setLayerWeight(i, w)`, `getLayerWeight(i)` | the first layer always weighs 1 |
+| `getCurrentState(layer)`, `getNextState(layer)` | an `AnimatorStateInfo`: `valid`, `name`, `fullPath`, `tag`, `normalizedTime` (laps + fraction), `length` (s), `loop`, `speed` |
+| `isInTransition([layer])` | layer 0 by default |
+| `getLayerCount()`, `getLayerName(i)`, `getLayerIndex(name)`, `setLayerWeight(layer, w [, fade])`, `getLayerWeight(layer)` | `layer` an index or a name; `fade` seconds to reach `w`; the first layer always weighs 1 |
+| `getCurrentStateName([layer])`, `getCurrentStateInfo([layer])`, `getNextStateInfo([layer])` | the names of the Animation Player's controller calls (scripts written for them run as they are): the state's name, a `ControllerStateInfo` |
+| `playInLayer(state, layer [, normalizedTime])`, `crossFadeInLayer(state, seconds, layer)` | `play` and `crossFadeInFixedTime` by those names |
+| `hasController()`, `hasParameter(name)` | bool |
 | `playMontage(path [, rate, section])`, `stopMontage([blendOut])`, `isMontagePlaying()`, `getMontage()`, `getMontageSection()` | a montage plays on the layer whose slot it names, blending in and out |
 | `montageJumpToSection(name)`, `montageSetNextSection(from, to)` | |
 | `setIKTarget(constraint, position [, weight])`, `clearIKTarget(constraint)`, `setIKWeight(constraint, w)` | world space; a script target wins over the constraint's GameObject |

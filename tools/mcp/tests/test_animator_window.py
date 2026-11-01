@@ -1,17 +1,18 @@
-"""The anim layers windows driven like a human (anim layers spec 9, 11.4, 14), with xdotool in the harness's Xvfb on
-a scratch copy of tools/fixtures/pose-animation:
+"""The anim layers windows driven like a human (upstream anim layers spec 9, 11.4, 14, on S21's Animator window and
+asset Inspector: docs/specs/S21-animation.md "Upstream absorption"), with xdotool in the harness's Xvfb on a
+scratch copy of tools/fixtures/pose-animation:
 
 - the Inspector's Layers table: + Add Layer, the weight slider and a clip row's Layer combo, each one scene undo step;
-- the Avatar Mask asset Inspector: a .mask clicked in the Project window, a body part clicked on the figure writes
-  the file (a project undo step restores it);
-- the Animator window (focus_window animator) on a player whose controller edit_animator made: right-click the
-  canvas -> Create State > Empty, Make Transition to another state, + Condition in the right panel, Ctrl+Z / Ctrl+Y
-  with the file checked through get_animation {controller}; a state drag is one undo step; in play mode a
-  parameter's checkbox changes the runtime (get_animation {entity}) and not the file.
+- the Avatar Mask asset Inspector: upstream's version 1 .mask clicked in the Project window, a body part clicked on
+  the figure writes the file as version 2 (a project undo step restores the original text);
+- the Animator window (focus_window animator) on an Animator whose controller edit_animator_controller made:
+  right-click the canvas -> Create State > Empty, Make Transition to another state, + Condition in the Inspector,
+  Ctrl+Z / Ctrl+Y with the file checked through get_animation {controller}; a state drag is one undo step; in play
+  mode a parameter's checkbox changes the runtime (get_animator) and not the file.
 
-Widgets are found through the UI probe (Editor(ui_probe=True), editor/util/UIProbe.h); the Project window has no
-probe names: its tree and grid are clicked at the fixed positions of the harness's 1600x900 layout (as
-test_animation_inspector.py does). Screenshots go to $JASPER_SHOTS_DIR when set (else the scratch directory).
+Widgets are found through the UI probe (Editor(ui_probe=True), editor/util/UIProbe.h), the Project window's
+files by their "project.file.<name>" rects (as test_physics_2d_inspector.py does). Screenshots go to
+$JASPER_SHOTS_DIR when set (else the scratch directory).
 """
 
 from __future__ import annotations
@@ -83,6 +84,21 @@ class Ui:
             self.xdo("click", "5" if down else "4")
         await asyncio.sleep(0.3)
 
+    async def project_file(self, name: str, folders=("assets", "aaa_masks")):
+        """a file of the Project window (its probe rect), opening the folders on the way"""
+        await self.ed.call("focus_window", window="project")
+        for _ in range(12):
+            await self.frames(4)
+            items = self.ed.ui_items()
+            rect = items.get("project.file." + name)
+            if rect:
+                return rect
+            for folder in reversed(folders):
+                if "project.file." + folder in items:
+                    await self.click(*center(items["project.file." + folder]), double=True)
+                    break
+        self.ed.fail(f"the Project window never lists {name}: {sorted(self.ed.ui_items())}")
+
     async def frames(self, n: int = 3):
         await self.ed.call("wait", frames=n)
 
@@ -152,12 +168,25 @@ async def controller(ed: Editor) -> dict:
     return await ed.call("get_animation", controller=CONTROLLER)
 
 
+def controller_states(got: dict) -> list:
+    return got["layers"][0]["state_machine"]["states"]
+
+
+def transitions(got: dict) -> list:
+    """(from, to) of the base layer's state transitions, by source state"""
+    return [(s["name"], t["to"]) for s in controller_states(got) for t in s["transitions"]]
+
+
+def transition(got: dict, source: str, index: int = 0) -> dict:
+    return next(s for s in controller_states(got) if s["name"] == source)["transitions"][index]
+
+
 async def test_setup(ed: Editor):
     for name, x in (("win_idle", 0.0), ("win_run", 0.4)):
         r = await ed.call_raw("edit_animation", {"clip": f"assets/anim/{name}.anim", "create": {}, "wrap": "loop", "tracks": [
             {"path": "Hero/mixamorig:Hips", "channel": "position", "keys": [{"time": 0, "value": [0, 0.9, 0]}, {"time": 1, "value": [x, 0.9, 0]}]}]})
         ed.check(not r.is_error, r.text[:400])
-    r = await ed.call_raw("edit_animator", {"controller": CONTROLLER, "create": {}, "ops": [
+    r = await ed.call_raw("edit_animator_controller", {"path": CONTROLLER, "create": True, "ops": [
         {"op": "add_parameter", "name": "Speed", "type": "float"},
         {"op": "add_parameter", "name": "Go", "type": "bool"},
         {"op": "add_state", "name": "Idle", "clip": "assets/anim/win_idle.anim", "position": [300, 60]},
@@ -168,8 +197,8 @@ async def test_setup(ed: Editor):
     await ed.call("set_model", path="assets/models/hero_animated.gltf", create={"name": "Layered", "position": [2, 0, 0]})
     await ed.call("add_component", entity="Layered", component="animationplayer", values={"animationplayer": {
         "clips": [{"clip": "assets/anim/win_idle.anim", "name": "Idle"}, {"clip": "assets/anim/win_run.anim", "name": "Run"}]}})
-    # the Animator window's player: the controller
-    await ed.call("add_component", entity="Hero", component="animationplayer", values={"animationplayer": {"controller": CONTROLLER}})
+    # the Animator window's Animator: the controller
+    await ed.call("add_component", entity="Hero", component="animator", values={"animator": {"controller": CONTROLLER}})
     # a mask alone in the first folder of the assets (the Project window is clicked at fixed places)
     r = await ed.call_raw("write_file", {"path": MASK, "content": json.dumps(
         {"format": "jasperengine.mask", "version": 1, "default": 0, "humanoid": {"right_arm": 1}})})
@@ -220,25 +249,24 @@ async def test_mask_asset_inspector(ed: Editor):
     await ed.call("wait", frames=5)
     mask = ed.project / MASK
     before = mask.read_text()
-    # the tree's assets, the grid's first folder (aaa_masks), its first file (arm.mask)
+    # the mask in the Project window (its probe rect): a click shows it in the Inspector
     for _ in range(4):
-        await ui.click(85, 691)
-        await ed.call("wait", frames=5)
-        await ui.click(247, 715, double=True)
+        rect = await ui.project_file("arm.mask")
+        await ui.click(*center(rect))
         await ed.call("wait", frames=10)
-        await ui.click(247, 715)
-        await ed.call("wait", frames=10)
-        if "mask.figure" in ed.ui_items():
+        if "asset.mask.figure" in ed.ui_items():
             break
-    ed.check("mask.figure" in ed.ui_items(), f"the Avatar Mask Inspector: {sorted(ed.ui_items())}")
+    ed.check("asset.mask.figure" in ed.ui_items(), f"the Avatar Mask Inspector: {sorted(ed.ui_items())}")
     await shot(ed, "04-mask-inspector")
-    head = ed.ui_items().get("mask.part.head")
+    head = ed.ui_items().get("asset.mask.part.head")
     ed.check(head, f"the figure's head: {sorted(ed.ui_items())}")
     await ui.click(*center(head))
     await ed.call("wait", frames=5)
     data = json.loads(mask.read_text())
-    ed.check_eq(data["humanoid"].get("head"), 1, f"the head toggled on: {data}")
-    ed.check_eq(data["humanoid"].get("right_arm"), 1, "the other parts stay")
+    ed.check_eq(data["version"], 2, f"saved as version 2: {data}")
+    ed.check_eq(data["body_parts"].get("head"), 1, f"the head toggled on: {data}")
+    ed.check_eq((data["body_parts"].get("right_arm"), data["body_parts"].get("right_hand")), (1, 1),
+                "the other parts stay (upstream's arm also weighs the hand)")
     await shot(ed, "05-mask-head-on")
     await ed.call("undo", scope="project")
     await ed.call("wait", frames=5)
@@ -283,11 +311,8 @@ async def test_animator_window_edits(ed: Editor):
     await shot(ed, "07-create-state-menu")
     await ui.click(*center(empty))
     got = await controller(ed)
-    names = [s["name"] for s in got["layers"][0]["states"]]
+    names = [s["name"] for s in controller_states(got)]
     ed.check_eq(names, ["Idle", "Run", "New State"], f"Create State > Empty: {names}")
-    # A frames every state (the new one may sit at the canvas's edge)
-    await ui.move(*spot)
-    await ui.key("a")
 
     # right-click the new state -> Make Transition, then click Idle
     new_state = await ui.item("animator.state.2")
@@ -297,40 +322,42 @@ async def test_animator_window_edits(ed: Editor):
     idle = await ui.item("animator.state.0")
     await ui.click(*center(idle))
     got = await controller(ed)
-    transitions = [(t["from"], t["to"]) for t in got["layers"][0]["transitions"]]
-    ed.check_eq(transitions, [("Idle", "Run"), ("New State", "Idle")], f"Make Transition: {transitions}")
+    made = transitions(got)
+    ed.check_eq(made, [("Idle", "Run"), ("New State", "Idle")], f"Make Transition: {made}")
 
-    # the new transition is selected: + Condition in the right panel
+    # the new transition is selected: + Condition in the Inspector
+    await ed.call("focus_window", window="inspector")
     add = await ui.scroll_to("animator.transition.add_condition", "animator.transition.title")
     await shot(ed, "08-transition-panel")
     await ui.click(*center(add))
     got = await controller(ed)
-    conditions = got["layers"][0]["transitions"][1]["conditions"]
+    conditions = transition(got, "New State")["conditions"]
     ed.check_eq([c["parameter"] for c in conditions], ["Speed"], f"a condition on the first parameter: {conditions}")
     text = (ed.project / CONTROLLER).read_text()
     ed.check('"parameter": "Speed"' in text, "the file has it")
 
     # Ctrl+Z / Ctrl+Y with the window focused: the project history
+    await ed.call("focus_window", window="animator")
     await ui.move(*spot)
     await ui.key("ctrl+z")
     got = await controller(ed)
-    ed.check_eq(got["layers"][0]["transitions"][1]["conditions"], [], "Ctrl+Z removes the condition")
+    ed.check_eq(transition(got, "New State")["conditions"], [], "Ctrl+Z removes the condition")
     await ui.key("ctrl+z")
     got = await controller(ed)
-    ed.check_eq(len(got["layers"][0]["transitions"]), 1, "Ctrl+Z again removes the transition")
+    ed.check_eq(len(transitions(got)), 1, "Ctrl+Z again removes the transition")
     await ui.key("ctrl+y")
     await ui.key("ctrl+y")
     ed.check_eq((ed.project / CONTROLLER).read_text(), text, "Ctrl+Y twice gives the file back")
 
     # a state drag is one undo step
     run = await ui.item("animator.state.1")
-    start = next(s["position"] for s in (await controller(ed))["layers"][0]["states"] if s["name"] == "Run")
+    start = next(s["position"] for s in controller_states(await controller(ed)) if s["name"] == "Run")
     await ui.drag(center(run), (center(run)[0] + 60, center(run)[1] + 30))
-    moved = next(s["position"] for s in (await controller(ed))["layers"][0]["states"] if s["name"] == "Run")
+    moved = next(s["position"] for s in controller_states(await controller(ed)) if s["name"] == "Run")
     ed.check(moved != start, f"the drag moved Run: {start} -> {moved}")
     await shot(ed, "09-dragged")
     await ui.key("ctrl+z")
-    back = next(s["position"] for s in (await controller(ed))["layers"][0]["states"] if s["name"] == "Run")
+    back = next(s["position"] for s in controller_states(await controller(ed)) if s["name"] == "Run")
     ed.check_eq(back, start, "one Ctrl+Z puts it back")
     S["text"] = (ed.project / CONTROLLER).read_text()
     ed.check(path, "the header names the controller")
@@ -343,15 +370,28 @@ async def test_animator_window_live_parameters(ed: Editor):
         await ed.call("wait", game_seconds=0.3)
         await ed.call("select_entities", entities=["Hero"])
         await ed.call("focus_window", window="animator")
-        tab = await ui.item("animator.tab.parameters")
-        await ui.click(*center(tab))
-        go = await ui.item("animator.parameter.1.value")
+        await ui.focus_x()
+        # the Parameters tab (a click on an unfocused window may only focus it: again until it shows)
+        for _ in range(3):
+            tab = await ui.item("animator.tab.parameters")
+            await ui.click(*center(tab))
+            await ui.frames(6)
+            if "animator.parameter.1.value" in ed.ui_items():
+                break
+        # the running value's checkbox (drawn once the window has the running Animator)
+        go = await ui.item("animator.parameter.1.live")
         await shot(ed, "10-live-parameters")
-        await ui.click(*center(go))
-        await ed.call("wait", game_seconds=0.3)
-        live = (await ed.call("get_animation", entity="Hero"))["players"][0]["controller"]
-        ed.check(live["parameters"]["Go"] in (True, 1), f"the checkbox set the runtime's Go: {live['parameters']}")
-        ed.check_eq(live["layers"][0]["current"], "Run", f"Go moved Idle to Run: {live}")
+        # (the first click on the checkbox may only give the window the mouse: one more if the
+        # running value did not change)
+        for attempt in range(2):
+            await ui.click(*center(await ui.item("animator.parameter.1.live")))
+            await ed.call("wait", game_seconds=0.3)
+            live = (await ed.call("get_animator", entity="Hero"))["live"]
+            if live["parameters"]["Go"] in (True, 1):
+                break
+        ed.check(live["parameters"]["Go"] in (True, 1), f"the checkbox set the runtime's Go: {live['parameters']} "
+                 f"(file unchanged: {(ed.project / CONTROLLER).read_text() == S['text']})")
+        ed.check_eq(live["layers"][0]["state"], "Base Layer.Run", f"Go moved Idle to Run: {live}")
         await shot(ed, "11-live-run")
         ed.check_eq((ed.project / CONTROLLER).read_text(), S["text"], "the file is unchanged")
     finally:

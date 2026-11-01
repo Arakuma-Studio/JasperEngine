@@ -2404,6 +2404,17 @@ std::string editor::Factory::createAnimationPlayerComponent(int indentSpaces, En
         code << ind << target << ".clip = " << formatString(entry.clip) << ";\n";
         if (!entry.name.empty()) code << ind << target << ".name = " << formatString(entry.name) << ";\n";
         if (entry.wrap != ClipWrapMode::Default) code << ind << target << ".wrap = " << formatClipWrapMode(entry.wrap) << ";\n";
+        if (entry.layer != 0) code << ind << target << ".layer = " << entry.layer << ";\n";
+    }
+    // the layers (upstream anim layers spec 6.3): masks load by path, their GUIDs are the editor's
+    if (!player.layers.empty()) code << ind << "animationplayer.layers.resize(" << player.layers.size() << ");\n";
+    for (size_t i = 0; i < player.layers.size(); i++) {
+        const AnimationPlayerLayer& layer = player.layers[i];
+        const std::string target = "animationplayer.layers[" + std::to_string(i) + "]";
+        code << ind << target << ".name = " << formatString(layer.name) << ";\n";
+        if (layer.weight != 1.0f) code << ind << target << ".weight = " << formatFloat(layer.weight) << ";\n";
+        if (layer.blend == AnimationLayerBlend::Additive) code << ind << target << ".blend = AnimationLayerBlend::Additive;\n";
+        if (!layer.mask.empty()) code << ind << target << ".mask = " << formatString(layer.mask) << ";\n";
     }
     if (!player.defaultClip.empty()) code << ind << "animationplayer.defaultClip = " << formatString(player.defaultClip) << ";\n";
     code << ind << "animationplayer.playAutomatically = " << formatBool(player.playAutomatically) << ";\n";

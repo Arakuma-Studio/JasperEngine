@@ -3,22 +3,31 @@
 
 #pragma once
 
-// The MCP side of animation layers, Avatar Masks and Animator Controllers (anim layers spec 10,
-// 11.5): the edit_animator tool (AnimatorTools.cpp registers it), get_animation's {mask} and
-// {controller} modes and the layer / controller parts of get_animation {entity}, the write_file
-// checks of .mask and .controller text, and the edit_animator op logic (applyOps: pure, tested).
-// Main thread.
+// The MCP side of S21's Animator assets that other tool modules use (docs/specs/S21-animation.md
+// D17 and "Upstream absorption"): upstream's get_animation {mask[, root]} and {controller}
+// reads, the layer / mask coverage parts of get_animation {entity} for Animation Players, the
+// write_file checks of .mask and .controller text, and get_animator's controller summary
+// (validation, users, the dialect read). AnimatorTools.cpp registers the animation group's
+// tools. Main thread.
 
 #include "mcp/McpCall.h"
 #include "mcp/McpJson.h"
 
-#include "animation/AnimatorController.h"
 #include "ecs/Entity.h"
 
 #include <string>
 #include <vector>
 
+namespace jasperengine {
+    struct ClipWarning;
+}
+
+namespace jasperengine::anim {
+    struct ControllerDef;
+}
+
 namespace jasperengine::editor {
+    class AnimatorAssetDocument;
     class Project;
     struct SceneProject;
 }
@@ -32,30 +41,32 @@ namespace jasperengine::editor::mcp {
 
 namespace jasperengine::editor::mcp::animator_tools {
 
-    // get_animation {mask[, root]}: the mask, its warnings and users; with root the weight every
-    // entity the root's player binds (or every descendant) gets, with its rule
+    // get_animation {mask[, root]}: the mask (default, body_parts, root_hierarchy, paths,
+    // preview_model), its warnings and users; with root the weight of every entity the root's
+    // Animation Player or Animator binds (or every descendant), with its rule
     void getMask(const CallPtr& call);
-    // get_animation {controller}: edit_animator's summary of the file
+    // get_animation {controller}: get_animator {controller}'s summary
     void getController(const CallPtr& call);
 
-    // get_animation {entity}'s player additions: `layers` (index, name, weight, blend, mask,
-    // states; play mode: live weight and queue), `mask_coverage` and `controller`
+    // get_animation {entity}'s Animation Player additions: `layers` (index, name, weight, blend,
+    // mask, states; play mode: live weight, mask, blend and queue), `mask_coverage`, and
+    // `animator` when the player hands over to the GameObject's Animator
     void addPlayerLayers(Project* project, SceneProject* scene, Entity root, Json& player);
 
     // write_file of a .mask / .controller: false + error when the text can't be read (not JSON,
-    // another format or version, Unity YAML); `warnings` the lenient reader's ("path: message"),
-    // and for a controller its validation
+    // another format, a newer version, Unity YAML); `warnings` the lenient reader's ("path:
+    // message"), a note for a version 1 file (converted when the editor saves it), and for a
+    // controller its validation
     bool checkMaskText(const std::string& text, std::vector<std::string>& warnings, std::string& error);
     bool checkControllerText(Project* project, const std::string& text, std::vector<std::string>& warnings, std::string& error);
 
-    // edit_animator's ops on a controller (all or nothing): false + error naming the op
-    // ("ops[2].to: ...") at the first refusal, `data` then unchanged. Paths are MCP's
-    // (project-relative) and are stored asset-relative with their GUIDs.
-    bool applyOps(Project* project, const Json& ops, anim::ControllerData& data, std::string& error);
-
-    // the summary edit_animator returns: {controller, guid, parameters, layers: [{index, name,
-    // weight, blend, mask, default_state, states, transitions}], warnings, users}
-    Json controllerSummary(Project* project, const std::string& path, const anim::ControllerData& data,
-                           const std::vector<ClipWarning>& loadWarnings);
+    // a controller's summary: path, read_as (a converted version 1 file), parameters, layers,
+    // diagnostics (the compiler's), warnings (the validation), load_warnings, users (Animators)
+    Json controllerSummary(Project* project, const AnimatorAssetDocument& document);
+    // the validation of a controller (validateController with the clips through their
+    // documents) and the users (Animators, controllers) of an Animator asset, as JSON
+    std::vector<ClipWarning> controllerWarnings(Project* project, const anim::ControllerDef& def);
+    Json controllerUsers(Project* project, const std::string& controllerPath);
+    std::string controllerSummaryText(const AnimatorAssetDocument& document, const Json& summary);
 
 }

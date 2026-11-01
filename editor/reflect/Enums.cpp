@@ -378,6 +378,12 @@ namespace {
         {v(ClipWrapMode::ClampForever), "clamp_forever", "Clamp Forever", "ClipWrapMode::ClampForever"},
     };
 
+    // an Animation Player layer's blending (upstream anim layers): "override" / "additive"
+    constexpr EnumItem kAnimationLayerBlendItems[] = {
+        {v(AnimationLayerBlend::Override), "override", "Override", "AnimationLayerBlend::Override"},
+        {v(AnimationLayerBlend::Additive), "additive", "Additive", "AnimationLayerBlend::Additive"},
+    };
+
     // the Animator's (S21): YAML names snake_case like the controller files
     constexpr EnumItem kAnimatorUpdateModeItems[] = {
         {v(AnimatorUpdateMode::Normal), "normal", "Normal", "AnimatorUpdateMode::Normal"},
@@ -715,6 +721,7 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kJointSwingType{"JointSwingType", kJointSwingTypeItems, v(JointSwingType::CONE)};
     const EnumDesc kAlphaTweenTarget{"AlphaTweenTarget", kAlphaTweenTargetItems, v(AlphaTweenTarget::AUTO)};
     const EnumDesc kClipWrapMode{"ClipWrapMode", kClipWrapModeItems, v(ClipWrapMode::Default)};
+    const EnumDesc kAnimationLayerBlend{"AnimationLayerBlend", kAnimationLayerBlendItems, v(AnimationLayerBlend::Override)};
     const EnumDesc kAnimatorUpdateMode{"AnimatorUpdateMode", kAnimatorUpdateModeItems, v(AnimatorUpdateMode::Normal)};
     const EnumDesc kAnimatorCullingMode{"AnimatorCullingMode", kAnimatorCullingModeItems, v(AnimatorCullingMode::AlwaysAnimate)};
     const EnumDesc kAnimatorWriteBones{"AnimatorWriteBones", kAnimatorWriteBonesItems, v(AnimatorWriteBones::All)};

@@ -199,6 +199,13 @@ template<> struct Codec<AnimationPlayerClip> {
 template<> struct TextureVisit<AnimationPlayerClip> {
     static void visit(AnimationPlayerClip& value, const TextureVisitor& f);
 };
+template<> struct Codec<AnimationPlayerLayer> {
+    static void write(Writer& w, const AnimationPlayerLayer& value);
+    static void read(Reader& r, AnimationPlayerLayer& value);
+};
+template<> struct TextureVisit<AnimationPlayerLayer> {
+    static void visit(AnimationPlayerLayer& value, const TextureVisitor& f);
+};
 template<> struct Codec<spline::SplineKnot> {
     static void write(Writer& w, const spline::SplineKnot& value);
     static void read(Reader& r, spline::SplineKnot& value);
@@ -675,11 +682,24 @@ const FieldEntry kStruct_AnimationPlayerClip_fields[] = {
     JE_RF(AnimationPlayerClip, guid, 0xeac00e5du, String),
     JE_RF(AnimationPlayerClip, name, 0x48cd5093u, String),
     JE_RF(AnimationPlayerClip, wrap, 0x26b48f64u, Enum),
+    JE_RF(AnimationPlayerClip, layer, 0x4df90275u, Int),
 };
 const StructTable kStruct_AnimationPlayerClip{"AnimationPlayerClip", kStruct_AnimationPlayerClip_fields, std::size(kStruct_AnimationPlayerClip_fields)};
 void Codec<AnimationPlayerClip>::write(Writer& w, const AnimationPlayerClip& value) { writeStruct(w, kStruct_AnimationPlayerClip, &value); }
 void Codec<AnimationPlayerClip>::read(Reader& r, AnimationPlayerClip& value) { readStruct(r, kStruct_AnimationPlayerClip, &value); }
 void TextureVisit<AnimationPlayerClip>::visit(AnimationPlayerClip& value, const TextureVisitor& f) { visitStructTextures(kStruct_AnimationPlayerClip, &value, f); }
+
+const FieldEntry kStruct_AnimationPlayerLayer_fields[] = {
+    JE_RF(AnimationPlayerLayer, name, 0x6dcb3052u, String),
+    JE_RF(AnimationPlayerLayer, weight, 0x2ccc532du, Float),
+    JE_RF(AnimationPlayerLayer, blend, 0x527aec04u, Enum),
+    JE_RF(AnimationPlayerLayer, mask, 0xb6a887b5u, String),
+    JE_RF(AnimationPlayerLayer, maskGuid, 0x64d378fcu, String),
+};
+const StructTable kStruct_AnimationPlayerLayer{"AnimationPlayerLayer", kStruct_AnimationPlayerLayer_fields, std::size(kStruct_AnimationPlayerLayer_fields)};
+void Codec<AnimationPlayerLayer>::write(Writer& w, const AnimationPlayerLayer& value) { writeStruct(w, kStruct_AnimationPlayerLayer, &value); }
+void Codec<AnimationPlayerLayer>::read(Reader& r, AnimationPlayerLayer& value) { readStruct(r, kStruct_AnimationPlayerLayer, &value); }
+void TextureVisit<AnimationPlayerLayer>::visit(AnimationPlayerLayer& value, const TextureVisitor& f) { visitStructTextures(kStruct_AnimationPlayerLayer, &value, f); }
 
 const FieldEntry kStruct_spline__SplineKnot_fields[] = {
     JE_RF(spline::SplineKnot, position, 0x33bfcea4u, Vector3),
@@ -1829,6 +1849,7 @@ const StructTable kBody_PoseAnimatorComponent{"poseanimator", kBody_PoseAnimator
 const FieldEntry kBody_AnimationPlayerComponent_fields[] = {
     JE_RF(AnimationPlayerComponent, enabled, 0x0905c1efu, Bool),
     JE_RF(AnimationPlayerComponent, clips, 0xfb9972e5u, Array),
+    JE_RF(AnimationPlayerComponent, layers, 0x075b6c74u, Array),
     JE_RF(AnimationPlayerComponent, defaultClip, 0xb4831349u, String),
     JE_RF(AnimationPlayerComponent, playAutomatically, 0x002276c5u, Bool),
     JE_RF(AnimationPlayerComponent, speed, 0xa82cb315u, Float),

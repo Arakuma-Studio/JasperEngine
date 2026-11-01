@@ -118,7 +118,7 @@ async def test_build_controller(ed: Editor):
     # the file: canonical JSON with its format, version and GUID
     text = (ed.project / CONTROLLER).read_text()
     data = json.loads(text)
-    ed.check_eq((data["format"], data["version"]), ("jasperengine.controller", 1), "format and version")
+    ed.check_eq((data["format"], data["version"]), ("jasperengine.controller", 2), "format and version")
     ed.check(re.fullmatch(r"[0-9a-f]{32}", data.get("guid", "")), f"a GUID: {data.get('guid')}")
     S["guid"] = data["guid"]
     S["text"] = text
@@ -199,8 +199,10 @@ async def test_mask_and_montage(ed: Editor):
     out = await ed.call("edit_avatar_mask", path=MASK, create=True, body_parts={"left_leg": False, "right_leg": False, "root": False},
                         paths={"mixamorig:Hips/mixamorig:Spine": 0.5})
     data = file_json(ed, MASK)
-    ed.check_eq((data["format"], data["version"]), ("jasperengine.mask", 1), "the mask's format")
-    ed.check(data["body_parts"]["left_leg"] is False and data["body_parts"]["head"] is True, f"body parts: {data['body_parts']}")
+    ed.check_eq((data["format"], data["version"]), ("jasperengine.mask", 2), "the mask's format")
+    # version 2: the parts set (false is 0), the others weigh the default (1)
+    ed.check(data["body_parts"]["left_leg"] == 0 and "head" not in data["body_parts"] and data["default"] == 1,
+             f"body parts: {data['body_parts']}")
     await ed.call("edit_avatar_mask", path=MASK, paths={"mixamorig:Hips/mixamorig:Spine": None})
     ed.check_eq(file_json(ed, MASK).get("paths", []), [], "null removes a path")
     # an upper-body layer with the mask and the montage slot

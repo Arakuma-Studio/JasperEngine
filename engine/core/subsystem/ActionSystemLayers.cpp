@@ -1,13 +1,17 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// ActionSystem's layered evaluator (anim layers spec 7.3): the Animation Players that are not
-// default-layered compose their layers here. Per layer, the sampled states accumulate into the
-// player's scratch (one element per slot element: value sum, weight sum, rotation reference) with
-// weight `state weight * track mask`; the layer then composes bottom-up into the running value R:
+// ActionSystem's layered evaluator (anim layers spec 7.3, docs/specs/S21-animation.md "Upstream
+// absorption"): the Animation Players that are not default-layered compose their layers here.
+// The masks are S21's Avatar Masks (AnimatorAssetPool, AvatarMaskWeights.h's rule) and the
+// layers blend with S21's pose maths (AnimatorPose.h's per-element forms of poseBlend /
+// poseAdditive). Per layer, the sampled states accumulate into the player's scratch (one
+// element per slot element: value sum, weight sum, rotation reference) with weight `state
+// weight * track mask`; the layer then composes bottom-up into the running value R:
 // - base layer (Override): R = lerp(rest, avg, min(1, S)), exactly the R1 rest fill;
-// - Override above it: R = lerp(R ?? rest, avg, λ·min(1, S)) (rotations: shortest slerp);
-// - Additive: R = (R ?? rest) ⊕ λ·min(1, S)·avgΔ, Δ measured from the clip's additive_reference.
+// - Override above it: R = poseBlend(R ?? rest, avg, λ·min(1, S)) (rotations: nlerp);
+// - Additive: R = poseAdditive(R ?? rest, avgΔ, λ·min(1, S)), Δ measured from the clip's
+//   additive_reference.
 // Every composed element then joins the shared pose blend with weight 1 and no rest flags, so
 // flushPoseBlend writes it unchanged.
 
@@ -18,12 +22,12 @@
 #include "Log.h"
 
 #include "animation/AnimationPlayerRuntime.h"
-#include "animation/AvatarMask.h"
+#include "animation/AnimatorPose.h"
+#include "animation/AvatarMaskWeights.h"
 #include "animation/ClipBinding.h"
 #include "animation/KeyframeSampling.h"
 #include "lattice/LatticeSolver.h"
-#include "pool/AvatarMaskPool.h"
-#include "pose/PoseAnimatorRuntime.h"
+#include "pool/AnimatorAssetPool.h"
 
 #include <algorithm>
 #include <cmath>
@@ -252,7 +256,7 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
             continue;
         }
         bool fetch = !layer.mask;
-        if (!fetch && playerMaskPoolChanged && AvatarMaskPool::getGeneration(layer.maskPath) != layer.maskGeneration) fetch = true;
+        if (!fetch && playerMaskPoolChanged && AnimatorAssetPool::getGeneration(layer.maskPath) != layer.maskGeneration) fetch = true;
         if (fetch && layer.maskFailed){
             layer.maskRetry += dt;
             if (layer.maskRetry < MASK_RETRY_SECONDS) fetch = false;
@@ -260,7 +264,7 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
         }
         if (fetch){
             std::string error;
-            std::shared_ptr<const anim::AvatarMask> mask = AvatarMaskPool::getOrLoad(layer.maskPath, &error);
+            std::shared_ptr<const anim::AvatarMaskDef> mask = AnimatorAssetPool::mask(layer.maskPath, &error);
             layer.maskLoading = false;
             if (!mask){
                 layer.mask.reset();
@@ -274,14 +278,14 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
             }else{
                 if (mask != layer.mask) layer.maskEntitiesValid = false;
                 layer.mask = mask;
-                layer.maskGeneration = AvatarMaskPool::getGeneration(layer.maskPath);
+                layer.maskGeneration = AnimatorAssetPool::getGeneration(layer.maskPath);
                 layer.maskFailed = false;
                 layer.maskErrorLogged = false;
                 layer.maskError.clear();
                 layer.maskRetry = 0.0f;
             }
         }
-        if (layer.mask && layer.mask->hasHumanoid()) humanoidNeeded = true;
+        if (layer.mask && layer.mask->usesHumanoid()) humanoidNeeded = true;
     }
 
     // the humanoid rig of the root (spec 6.2 rule 2): when a mask needs it, again after a reload
@@ -332,7 +336,7 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
     // the masks' transform entries on the root (with the bindings)
     for (anim::LayerRuntime& layer : runtime.layers){
         if (layer.mask && !layer.maskEntitiesValid){
-            layer.maskEntities = layer.mask->bindTransforms(scene, entity);
+            layer.maskEntities = anim::bindMaskPaths(*layer.mask, scene, entity);
             layer.maskEntitiesValid = true;
             layer.maskEntitiesSerial++;
         }
@@ -344,7 +348,7 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
         if (!state.bindings.clip) continue;
         const int layerIndex = runtime.stateLayer(state);
         anim::LayerRuntime& layer = runtime.layers[(size_t)layerIndex];
-        const anim::AvatarMask* mask = layer.mask.get();
+        const anim::AvatarMaskDef* mask = layer.mask.get();
         anim::PlayerStateRuntime::MaskStamp stamp;
         stamp.mask = mask;
         stamp.maskEntities = mask ? layer.maskEntitiesSerial : 0;
@@ -371,7 +375,7 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
                 for (size_t i = 0; i < tracks.size() && i < state.bindings.targets.size(); i++){
                     const Entity target = state.bindings.targets[i];
                     if (target == NULL_ENTITY) continue;
-                    float weight = mask ? mask->weightOf(scene, entity, target, layer.maskEntities, humanoid).weight : 1.0f;
+                    float weight = mask ? anim::maskWeightOf(*mask, scene, entity, target, layer.maskEntities, humanoid).weight : 1.0f;
                     if (!state.mixing.empty()){
                         bool covered = false;
                         Entity current = target;
@@ -617,40 +621,26 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
                 float base[4];
                 for (int k = 0; k < 4; k++) base[k] = e.hasResult ? e.result[k] : rest[k];
                 const float inverse = 1.0f / S;
+                // S21's maths (AnimatorPose.h): nlerp blends, alpha 1 the layer's value exactly
+                // (what the occlusion relies on), alpha 0 the value below exactly
                 if (!additive){
                     if (rotation){
                         float avg[4];
                         normalizeOr(e.sum, base, avg);
-                        // a full override (the common case) needs no slerp
-                        if (alpha >= 1.0f){
-                            for (int k = 0; k < 4; k++) e.result[k] = avg[k];
-                        }else{
-                            setQuat(e.result, pose::slerpShortest(getQuat(base), getQuat(avg), alpha));
-                        }
-                    }else if (alpha >= 1.0f){
-                        // a full override is the layer's value exactly (what the occlusion relies on)
-                        for (int k = 0; k < 4; k++) e.result[k] = e.sum[k] * inverse;
+                        setQuat(e.result, anim::poseBlendRotation(getQuat(base), getQuat(avg), alpha));
                     }else{
-                        for (int k = 0; k < 4; k++) e.result[k] = base[k] + (e.sum[k] * inverse - base[k]) * alpha;
+                        for (int k = 0; k < 4; k++) e.result[k] = anim::poseBlendValue(base[k], e.sum[k] * inverse, alpha);
                     }
                 }else if (rotation){
                     static const float identity[4] = {1.0f, 0.0f, 0.0f, 0.0f};
                     float delta[4];
                     normalizeOr(e.sum, identity, delta);
-                    const Quaternion scaled = alpha >= 1.0f ? getQuat(delta) : pose::slerpShortest(Quaternion(), getQuat(delta), alpha);
-                    // base * scaled (w x y z)
-                    const float bw = base[0], bx = base[1], by = base[2], bz = base[3];
-                    const float product[4] = {
-                        bw * scaled.w - bx * scaled.x - by * scaled.y - bz * scaled.z,
-                        bw * scaled.x + bx * scaled.w + by * scaled.z - bz * scaled.y,
-                        bw * scaled.y - bx * scaled.z + by * scaled.w + bz * scaled.x,
-                        bw * scaled.z + bx * scaled.y - by * scaled.x + bz * scaled.w};
-                    normalizeOr(product, base, e.result);
+                    setQuat(e.result, anim::poseAdditiveRotation(getQuat(base), getQuat(delta), alpha));
                 }else if (slot.channel == ClipChannel::Scale){
-                    for (int k = 0; k < 3; k++) e.result[k] = base[k] * (1.0f + alpha * (e.sum[k] * inverse - 1.0f));
+                    for (int k = 0; k < 3; k++) e.result[k] = anim::poseAdditiveScale(base[k], e.sum[k] * inverse, alpha);
                     e.result[3] = 0.0f;
                 }else{
-                    for (int k = 0; k < 4; k++) e.result[k] = base[k] + alpha * (e.sum[k] * inverse);
+                    for (int k = 0; k < 4; k++) e.result[k] = anim::poseAdditiveValue(base[k], e.sum[k] * inverse, alpha);
                 }
                 e.hasResult = true;
             }
@@ -762,7 +752,7 @@ void ActionSystem::previewLayers(Entity root, const PlayerPreview& preview, anim
     const size_t layerCount = std::max<size_t>(1, preview.layers.size());
 
     // the layers' masks (the pool caches them; one that does not load contributes nothing)
-    std::vector<std::shared_ptr<const anim::AvatarMask>> masks(layerCount);
+    std::vector<std::shared_ptr<const anim::AvatarMaskDef>> masks(layerCount);
     bool humanoidNeeded = false;
     scratch.layerInputs.assign(layerCount, anim::PoseLayerInput());
     for (size_t l = 0; l < layerCount; l++){
@@ -773,9 +763,9 @@ void ActionSystem::previewLayers(Entity root, const PlayerPreview& preview, anim
             input.blend = l == 0 ? AnimationLayerBlend::Override : layer.blend;
             input.skip = l > 0 && !(input.weight > 0.0f);
             if (!layer.mask.empty()){
-                masks[l] = AvatarMaskPool::getOrLoad(layer.mask);
+                masks[l] = AnimatorAssetPool::mask(layer.mask);
                 if (!masks[l]) input.skip = true;
-                else if (masks[l]->hasHumanoid()) humanoidNeeded = true;
+                else if (masks[l]->usesHumanoid()) humanoidNeeded = true;
             }
         }
     }
@@ -796,7 +786,7 @@ void ActionSystem::previewLayers(Entity root, const PlayerPreview& preview, anim
 
     std::vector<std::vector<Entity>> maskEntities(layerCount);
     for (size_t l = 0; l < layerCount; l++){
-        if (masks[l]) maskEntities[l] = masks[l]->bindTransforms(scene, root);
+        if (masks[l]) maskEntities[l] = anim::bindMaskPaths(*masks[l], scene, root);
     }
     scratch.stateInputs.clear();
     for (size_t i = 0; i < states.size(); i++){
@@ -809,7 +799,7 @@ void ActionSystem::previewLayers(Entity root, const PlayerPreview& preview, anim
             session.trackMasks[i].assign(tracks.size(), 1.0f);
             for (size_t t = 0; t < tracks.size() && t < binding.targets.size(); t++){
                 if (binding.targets[t] == NULL_ENTITY) continue;
-                session.trackMasks[i][t] = masks[layer]->weightOf(scene, root, binding.targets[t], maskEntities[layer], session.humanoid.get()).weight;
+                session.trackMasks[i][t] = anim::maskWeightOf(*masks[layer], scene, root, binding.targets[t], maskEntities[layer], session.humanoid.get()).weight;
             }
         }
         anim::PoseStateInput input;

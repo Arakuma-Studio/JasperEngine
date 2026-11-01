@@ -1,27 +1,34 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The Inspector and Animation window parts of animation layers (anim layers spec 9, 11.4, 14
-// editor tests), through the functions their clicks run: the Avatar Mask figure (a click on the
-// right arm writes right_arm, undo puts it back), the layer edits and the clip Layer combo with
-// undo, Create Mask from Selection and Create Controller from Clips (one scene step each, with
-// the new file), the mask coverage line, the preview hierarchy of a model (humanoid detection for
-// the "Not humanoid" note), and the Animation window's Preview over (the arm from the layer
-// through its mask, the leg from the base) and its masked-out rows.
+// The Inspector and Animation window parts of animation layers (upstream anim layers spec 9,
+// 11.4, 14 editor tests; docs/specs/S21-animation.md "Upstream absorption"), through the
+// functions their clicks run, on S21's masks (AvatarMaskDef) and documents
+// (AnimatorAssetDocument): the Avatar Mask figure (a click on the right arm writes right_arm,
+// undo puts it back), the layer edits and the clip Layer combo with undo, Create Mask from
+// Selection and Create Animator Controller from Clips (one scene step each, with the new file;
+// the controller plays on an Animator the player hands over to), the mask coverage line, the
+// preview hierarchy of a model (humanoid detection for the "Not humanoid" note), and the
+// Animation window's Preview over (the arm from the layer through its mask, the leg from the
+// base) and its masked-out rows.
 
 #include <gtest/gtest.h>
+
+#include "support/EditorTestSupport.h"
 
 #include "AppSettings.h"
 #include "EditorHost.h"
 #include "Engine.h"
 #include "Platform.h"
 #include "Project.h"
-#include "animation/AnimAssetDocument.h"
+#include "animation/AnimatorAssetDocument.h"
+#include "animation/AnimatorAssetIO.h"
 #include "animation/AnimationClipAppHooks.h"
 #include "animation/AnimationClipController.h"
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimationPlayerRuntime.h"
 #include "command/CommandHandle.h"
+#include "component/AnimatorComponent.h"
 #include "command/type/PlayerLayerActions.h"
 #include "command/type/PropertyCmd.h"
 #include "window/InspectorAnimLayers.h"
@@ -57,7 +64,6 @@ namespace {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
-        std::unique_ptr<editor::Platform> platform;
     };
 
     Headless& headless() {
@@ -73,15 +79,15 @@ namespace {
             std::ofstream(out.dir / "project.yaml") << "name: layersui\nassetsDir: assets\n";
             AppSettings::initialize();
             out.project.reset(new Project());
-            out.platform.reset(new editor::Platform(out.project.get()));
-            static char arg0[] = "jasperengine-editor-tests";
-            static char* argv[] = {arg0, nullptr};
-            Engine::systemInit(1, argv, out.platform.get());
+            // the test binary's TestSystem stays the engine's System (a second
+            // Engine::systemInit would break its log capture): the project's paths go in
+            editor::test::useProjectPaths(out.project.get());
             Engine::pauseGameEvents(true);
             Engine::setAsyncLoading(false);
             out.ready = out.project->loadProject(out.dir, false);
             return out;
         }();
+        if (h.project) editor::test::useProjectPaths(h.project.get());
         return h;
     }
 
@@ -139,10 +145,10 @@ namespace {
                        track("Leg", ClipChannel::Position, {key(0, {9, 0, 0}), key(1, {9, 0, 0})})};
         writeAll(assets() / "layers/walk.anim", AnimationClipDocument::fileText(walk));
         writeAll(assets() / "layers/hold.anim", AnimationClipDocument::fileText(hold));
-        anim::AvatarMaskData arm;
+        anim::AvatarMaskDef arm;
         arm.defaultWeight = 0.0f;
-        arm.transforms.push_back({"Arm", 1.0f, true});
-        writeAll(assets() / "layers/arm.mask", anim::writeAvatarMask(arm));
+        arm.paths.push_back({"Arm", 1.0f, true});
+        writeAll(assets() / "layers/arm.mask", anim::writeMask(arm));
         AnimationClipDocument::checkDiskChanges(project());
     }
 
@@ -221,45 +227,56 @@ namespace {
 }
 
 TEST(AnimationLayersFigure, EveryPartIsClickableAtItsCentre) {
-    for (int p = 0; p < anim::AVATAR_MASK_PART_COUNT; p++){
+    for (int p = 0; p < AVATAR_BODY_PART_COUNT; p++){
         float x = 0, y = 0;
-        animlayersui::figurePartCenter((anim::AvatarMaskPart)p, x, y);
-        EXPECT_EQ(animlayersui::figurePartAt(x, y), p) << animlayersui::partLabel((anim::AvatarMaskPart)p);
+        animlayersui::figurePartCenter((AvatarBodyPart)p, x, y);
+        EXPECT_EQ(animlayersui::figurePartAt(x, y), p) << animlayersui::partLabel((AvatarBodyPart)p);
     }
     EXPECT_EQ(animlayersui::figurePartAt(0.02f, 0.02f), -1) << "outside the figure";
-    EXPECT_STREQ(animlayersui::partLabel(anim::AvatarMaskPart::RightFingers), "Right Fingers");
+    EXPECT_STREQ(animlayersui::partLabel(AvatarBodyPart::RightFingers), "Right Fingers");
+    EXPECT_STREQ(animlayersui::partLabel(AvatarBodyPart::RightHand), "Right Hand");
 }
 
 TEST_F(AnimationLayersUi, AFigureClickWritesThePartAndUndoPutsItBack) {
-    anim::AvatarMaskData initial;
-    initial.hasHumanoid = true;
-    for (auto& part : initial.parts) part = 1.0f;
     std::string error;
-    std::shared_ptr<AvatarMaskDocument> document = AvatarMaskDocument::create(project(), "assets/layers/figure.mask", initial, &error);
+    std::shared_ptr<AnimatorAssetDocument> document =
+        AnimatorAssetDocument::create(project(), "assets/layers/figure.mask", AnimatorAssetDocument::Kind::Mask, "Create Avatar Mask", &error);
     ASSERT_TRUE(document) << error;
+    anim::AvatarMaskDef initial = document->mask();
+    for (auto& part : initial.bodyParts) part = 1.0f;
+    ASSERT_TRUE(document->commit(initial, "Edit Avatar Mask", "", &error)) << error;
     // the click: the part under the right arm's centre, toggled, committed
     float x = 0, y = 0;
-    animlayersui::figurePartCenter(anim::AvatarMaskPart::RightArm, x, y);
+    animlayersui::figurePartCenter(AvatarBodyPart::RightArm, x, y);
     const int part = animlayersui::figurePartAt(x, y);
-    ASSERT_EQ(part, (int)anim::AvatarMaskPart::RightArm);
-    ASSERT_TRUE(document->commit(animlayersui::togglePart(document->data(), (anim::AvatarMaskPart)part), "Edit Avatar Mask", "", &error)) << error;
-    EXPECT_EQ(document->data().partWeight(anim::AvatarMaskPart::RightArm), 0.0f);
-    EXPECT_EQ(document->data().partWeight(anim::AvatarMaskPart::LeftArm), 1.0f);
-    EXPECT_NE(readAll(assets() / "layers/figure.mask").find("\"right_arm\": 0"), std::string::npos);
+    ASSERT_EQ(part, (int)AvatarBodyPart::RightArm);
+    ASSERT_TRUE(document->commit(animlayersui::togglePart(document->mask(), (AvatarBodyPart)part), "Edit Avatar Mask", "", &error)) << error;
+    EXPECT_EQ(document->mask().partWeight(AvatarBodyPart::RightArm), 0.0f);
+    EXPECT_EQ(document->mask().partWeight(AvatarBodyPart::RightHand), 1.0f) << "the hand is a part of its own";
+    EXPECT_EQ(document->mask().partWeight(AvatarBodyPart::LeftArm), 1.0f);
+    const anim::MaskParseResult written = anim::parseMask(readAll(assets() / "layers/figure.mask"));
+    ASSERT_TRUE(written.ok) << written.error.toString();
+    ASSERT_TRUE(written.data.hasPart(AvatarBodyPart::RightArm));
+    EXPECT_EQ(written.data.partWeight(AvatarBodyPart::RightArm), 0.0f);
     ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
-    EXPECT_EQ(document->data().partWeight(anim::AvatarMaskPart::RightArm), 1.0f);
-    // a fraction toggles to 1
-    anim::AvatarMaskData half = document->data();
-    half.parts[(size_t)anim::AvatarMaskPart::Head] = 0.5f;
-    EXPECT_EQ(animlayersui::togglePart(half, anim::AvatarMaskPart::Head).partWeight(anim::AvatarMaskPart::Head), 1.0f);
+    EXPECT_EQ(document->mask().partWeight(AvatarBodyPart::RightArm), 1.0f);
+    // a fraction toggles to 1, a part that is not set (the default) toggles from what it weighs
+    anim::AvatarMaskDef half = document->mask();
+    half.bodyParts[(size_t)AvatarBodyPart::Head] = 0.5f;
+    EXPECT_EQ(animlayersui::togglePart(half, AvatarBodyPart::Head).partWeight(AvatarBodyPart::Head), 1.0f);
+    anim::AvatarMaskDef unset;
+    unset.defaultWeight = 0.0f;
+    EXPECT_EQ(animlayersui::togglePart(unset, AvatarBodyPart::Head).partWeight(AvatarBodyPart::Head), 1.0f);
+    EXPECT_TRUE(animlayersui::togglePart(unset, AvatarBodyPart::Head).hasPart(AvatarBodyPart::Head));
 
     // Shift-click in the transform tree: a subtree on, then off
     const std::vector<std::string> paths = {"Arm", "Arm/Hand", "Arm/Hand/Finger", "Leg"};
-    anim::AvatarMaskData tree = animlayersui::setTransform(anim::AvatarMaskData(), "Arm", true, true, paths);
-    ASSERT_EQ(tree.transforms.size(), 3u);
-    EXPECT_EQ(tree.findTransform("Leg"), -1);
+    anim::AvatarMaskDef tree = animlayersui::setTransform(anim::AvatarMaskDef(), "Arm", true, true, paths);
+    ASSERT_EQ(tree.paths.size(), 3u);
+    EXPECT_EQ(tree.findPath("Leg"), -1);
+    EXPECT_TRUE(tree.paths[(size_t)tree.findPath("Arm")].children);
     tree = animlayersui::setTransform(tree, "Arm/Hand", false, true, paths);
-    EXPECT_EQ(tree.transforms.size(), 1u);
+    EXPECT_EQ(tree.paths.size(), 1u);
 }
 
 TEST_F(AnimationLayersUi, LayerEditsAndTheClipLayerComboAreSceneSteps) {
@@ -293,16 +310,17 @@ TEST_F(AnimationLayersUi, CreateMaskFromSelectionIsOneStepWithItsFile) {
     ASSERT_TRUE(animlayersui::createMaskFromSelection(project(), s.id, s.hero, 1, "assets/layers/upper.mask", {s.arm, s.leg}, error)) << error;
     const fs::path file = assets() / "layers/upper.mask";
     ASSERT_TRUE(fs::exists(file));
-    anim::AvatarMaskParseResult parsed = anim::parseAvatarMask(readAll(file));
-    ASSERT_TRUE(parsed.ok());
-    ASSERT_EQ(parsed.data->transforms.size(), 2u);
-    EXPECT_EQ(parsed.data->transforms[0].path, "Arm");
-    EXPECT_TRUE(parsed.data->transforms[0].children);
-    EXPECT_EQ(parsed.data->transforms[1].path, "Leg");
-    EXPECT_EQ(parsed.data->defaultWeight, 0.0f);
+    anim::MaskParseResult parsed = anim::parseMask(readAll(file));
+    ASSERT_TRUE(parsed.ok) << parsed.error.toString();
+    EXPECT_EQ(parsed.dialect, anim::AnimatorFileDialect::Current);
+    ASSERT_EQ(parsed.data.paths.size(), 2u);
+    EXPECT_EQ(parsed.data.paths[0].path, "Arm");
+    EXPECT_TRUE(parsed.data.paths[0].children);
+    EXPECT_EQ(parsed.data.paths[1].path, "Leg");
+    EXPECT_EQ(parsed.data.defaultWeight, 0.0f);
     EXPECT_EQ(s.player().layers[1].mask, "layers/upper.mask");
-    EXPECT_EQ(s.player().layers[1].maskGuid, parsed.data->guid);
-    EXPECT_EQ(project()->getAssetDatabase().getGuid(file), parsed.data->guid) << "the asset database knows the new file";
+    EXPECT_EQ(s.player().layers[1].maskGuid, parsed.data.guid);
+    EXPECT_EQ(project()->getAssetDatabase().getGuid(file), parsed.data.guid) << "the asset database knows the new file";
     ASSERT_TRUE(CommandHandle::get(s.id)->undo());
     EXPECT_EQ(s.player().layers[1].mask, "layers/arm.mask");
     EXPECT_FALSE(fs::exists(file)) << "one step: the file goes with the undo";
@@ -332,7 +350,8 @@ TEST_F(AnimationLayersUi, CreatedMasksAndControllersStayInTheAssetsFolder) {
     EXPECT_FALSE(animlayersui::createControllerFromClips(project(), s.id, s.hero, "loose.controller", error));
     EXPECT_NE(error.find("outside the assets folder"), std::string::npos) << error;
     EXPECT_EQ(s.player().layers[1].mask, "layers/arm.mask") << "nothing changed";
-    EXPECT_TRUE(s.player().controller.empty());
+    EXPECT_FALSE(s.scene->findComponent<AnimatorComponent>(s.hero));
+    EXPECT_TRUE(s.player().enabled);
 }
 
 TEST_F(AnimationLayersUi, CreateControllerFromClips) {
@@ -341,40 +360,59 @@ TEST_F(AnimationLayersUi, CreateControllerFromClips) {
     ASSERT_TRUE(animlayersui::createControllerFromClips(project(), s.id, s.hero, "assets/layers/hero.controller", error)) << error;
     const fs::path file = assets() / "layers/hero.controller";
     anim::ControllerParseResult parsed = anim::parseController(readAll(file));
-    ASSERT_TRUE(parsed.ok()) << parsed.error.toString();
-    const anim::ControllerData& data = *parsed.data;
+    ASSERT_TRUE(parsed.ok) << parsed.error.toString();
+    EXPECT_EQ(parsed.dialect, anim::AnimatorFileDialect::Current);
+    const anim::ControllerDef& data = parsed.data;
     ASSERT_EQ(data.layers.size(), 2u);
     EXPECT_EQ(data.layers[0].name, anim::BASE_LAYER_NAME);
-    ASSERT_EQ(data.layers[0].states.size(), 1u);
-    EXPECT_EQ(data.layers[0].states[0].name, "walk");
-    EXPECT_EQ(data.layers[0].states[0].clip, "layers/walk.anim");
-    EXPECT_EQ(data.layers[0].defaultStateIndex(), 0);
+    ASSERT_EQ(data.layers[0].machine.states.size(), 1u);
+    EXPECT_EQ(data.layers[0].machine.states[0].name, "walk");
+    EXPECT_EQ(data.layers[0].machine.states[0].motion.clip.path, "layers/walk.anim");
+    EXPECT_EQ(data.layers[0].machine.defaultState, "walk");
     EXPECT_EQ(data.layers[1].name, "Holding");
     EXPECT_FLOAT_EQ(data.layers[1].weight, 0.5f);
-    EXPECT_EQ(data.layers[1].mask, "layers/arm.mask");
-    ASSERT_EQ(data.layers[1].states.size(), 1u);
-    EXPECT_EQ(data.layers[1].states[0].name, "hold");
-    EXPECT_TRUE(data.layers[0].transitions.empty());
-    EXPECT_EQ(s.player().controller, "layers/hero.controller");
-    EXPECT_EQ(s.player().controllerGuid, data.guid);
+    EXPECT_EQ(data.layers[1].blending, AnimatorLayerBlending::Override);
+    EXPECT_EQ(data.layers[1].mask.path, "layers/arm.mask");
+    ASSERT_EQ(data.layers[1].machine.states.size(), 1u);
+    EXPECT_EQ(data.layers[1].machine.states[0].name, "hold");
+    EXPECT_TRUE(data.layers[0].machine.states[0].transitions.empty());
+    EXPECT_TRUE(data.layers[0].machine.anyState.empty());
+    EXPECT_TRUE(data.parameters.empty());
+
+    // an Animator plays it; the player is disabled (it hands over to the Animator), its clips and
+    // layers kept
+    const AnimatorComponent* animator = s.scene->findComponent<AnimatorComponent>(s.hero);
+    ASSERT_TRUE(animator);
+    EXPECT_EQ(animator->controller.path, "layers/hero.controller");
+    EXPECT_EQ(animator->controller.guid, Guid::parse(data.guid));
+    EXPECT_FALSE(s.player().enabled);
+    EXPECT_EQ(s.player().clips.size(), 2u);
+    EXPECT_EQ(s.player().layers.size(), 2u);
+
+    // one step: the undo takes the Animator, the player's state and the file
     ASSERT_TRUE(CommandHandle::get(s.id)->undo());
-    EXPECT_TRUE(s.player().controller.empty());
+    EXPECT_FALSE(s.scene->findComponent<AnimatorComponent>(s.hero));
+    EXPECT_TRUE(s.player().enabled);
     EXPECT_FALSE(fs::exists(file));
+    ASSERT_TRUE(CommandHandle::get(s.id)->redo());
+    EXPECT_TRUE(fs::exists(file));
+    ASSERT_TRUE(s.scene->findComponent<AnimatorComponent>(s.hero));
+    EXPECT_FALSE(s.player().enabled);
 }
 
 TEST_F(AnimationLayersUi, MaskCoverageCountsTheLayersBoundEntities) {
     LayerScene s = layerScene();
-    anim::AvatarMaskData data;
+    anim::AvatarMaskDef data;
     data.defaultWeight = 0.0f;
-    data.transforms.push_back({"Arm", 1.0f, true});
-    std::shared_ptr<const anim::AvatarMask> mask = anim::AvatarMask::build(data);
-    const animlayersui::MaskCoverage coverage = animlayersui::maskCoverage(s.scene, s.hero, *mask, {s.arm, s.leg, s.arm, s.hand});
+    data.paths.push_back({"Arm", 1.0f, true});
+    const animlayersui::MaskCoverage coverage = animlayersui::maskCoverage(s.scene, s.hero, data, {s.arm, s.leg, s.arm, s.hand});
     EXPECT_EQ(coverage.total, 3u);
     EXPECT_EQ(coverage.covered, 2u) << "the arm and its hand";
     EXPECT_FALSE(coverage.humanoidWithoutRig);
-    data.hasHumanoid = true;
-    data.parts[(size_t)anim::AvatarMaskPart::RightArm] = 1.0f;
-    EXPECT_TRUE(animlayersui::maskCoverage(s.scene, s.hero, *anim::AvatarMask::build(data), {s.arm}).humanoidWithoutRig);
+    data.paths[0].children = false;
+    EXPECT_EQ(animlayersui::maskCoverage(s.scene, s.hero, data, {s.arm, s.hand}).covered, 1u) << "the arm alone";
+    data.bodyParts[(size_t)AvatarBodyPart::RightArm] = 1.0f;
+    EXPECT_TRUE(animlayersui::maskCoverage(s.scene, s.hero, data, {s.arm}).humanoidWithoutRig);
 }
 
 TEST_F(AnimationLayersUi, ThePreviewHierarchyOfAModelKnowsItsHumanoidRig) {
@@ -387,17 +425,21 @@ TEST_F(AnimationLayersUi, ThePreviewHierarchyOfAModelKnowsItsHumanoidRig) {
     ASSERT_TRUE(animlayersui::previewHierarchyFromModel(project(), "layers/hero.gltf", preview)) << preview.error;
     EXPECT_FALSE(preview.paths.empty());
     EXPECT_TRUE(preview.humanoid.valid) << preview.humanoid.error;
-    // a right arm mask covers the right hand, not the left
-    anim::AvatarMaskData data;
+    // a right arm and hand mask covers the right hand, not the left; the arm part alone stops at
+    // the wrist (the hand is a part of its own, upstream's arm masks convert to both)
+    anim::AvatarMaskDef data;
     data.defaultWeight = 0.0f;
-    data.hasHumanoid = true;
-    data.parts[(size_t)anim::AvatarMaskPart::RightArm] = 1.0f;
-    std::shared_ptr<const anim::AvatarMask> mask = anim::AvatarMask::build(data);
+    data.bodyParts[(size_t)AvatarBodyPart::RightArm] = 1.0f;
     const Entity rightHand = preview.humanoid.entities[(size_t)pose::HumanBone::RightHand];
+    const Entity rightForearm = preview.humanoid.entities[(size_t)pose::HumanBone::RightLowerArm];
     const Entity leftHand = preview.humanoid.entities[(size_t)pose::HumanBone::LeftHand];
     ASSERT_NE(rightHand, NULL_ENTITY);
-    EXPECT_EQ(mask->weightOf(preview.registry.get(), preview.root, rightHand, &preview.humanoid), 1.0f);
-    EXPECT_EQ(mask->weightOf(preview.registry.get(), preview.root, leftHand, &preview.humanoid), 0.0f);
+    ASSERT_NE(rightForearm, NULL_ENTITY);
+    EXPECT_EQ(anim::maskWeightOf(data, preview.registry.get(), preview.root, rightForearm, &preview.humanoid), 1.0f);
+    EXPECT_EQ(anim::maskWeightOf(data, preview.registry.get(), preview.root, rightHand, &preview.humanoid), 0.0f);
+    data.bodyParts[(size_t)AvatarBodyPart::RightHand] = 1.0f;
+    EXPECT_EQ(anim::maskWeightOf(data, preview.registry.get(), preview.root, rightHand, &preview.humanoid), 1.0f);
+    EXPECT_EQ(anim::maskWeightOf(data, preview.registry.get(), preview.root, leftHand, &preview.humanoid), 0.0f);
 
     // a GameObject without a rig: no humanoid (the "Not humanoid" note)
     LayerScene s = layerScene();

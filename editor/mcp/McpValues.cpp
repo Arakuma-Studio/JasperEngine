@@ -35,8 +35,7 @@
 #include "component/AnimationPlayerComponent.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimationPlayerRuntime.h"
-#include "animation/AnimatorController.h"
-#include "animation/AvatarMask.h"
+#include "animation/AnimatorAssetIO.h"
 #include "animation/ModelSubClips.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
@@ -257,11 +256,6 @@ bool isPlayerMaskProperty(ComponentType component, const std::string& propertyNa
 bool isPlayerMaskGuidProperty(ComponentType component, const std::string& propertyName) {
     return component == ComponentType::AnimationPlayerComponent && propertyName.compare(0, 7, "layers[") == 0 &&
            endsWith(propertyName, "].maskGuid");
-}
-
-// controller: a .controller (controllerGuid follows it, read-only over MCP)
-bool isPlayerControllerProperty(ComponentType component, const std::string& propertyName) {
-    return component == ComponentType::AnimationPlayerComponent && propertyName == "controller";
 }
 
 // A Vertex Animator's animation: a .vat (its GUID follows it, read-only over MCP)
@@ -1116,7 +1110,7 @@ bool animAssetPathFromJson(Project* project, const std::string& text, bool mask,
     guid.clear();
     if (text.empty()) return true;
     const char* example = mask ? ".mask file, e.g. assets/anim/arm.mask (write one with write_file)"
-                               : ".controller file, e.g. assets/anim/granjero.controller (create one with edit_animator)";
+                               : ".controller file, e.g. assets/anim/granjero.controller (create one with edit_animator_controller)";
     std::string why;
     if (!storedAssetPathFromJson(project, text, stored, why)) {
         error = std::string("must be a ") + example + ": " + why;
@@ -1136,8 +1130,8 @@ bool animAssetPathFromJson(Project* project, const std::string& text, bool mask,
         return false;
     }
     const std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    const anim::ClipParseError parseError = mask ? anim::parseAvatarMask(content).error : anim::parseControllerFile(content).error;
-    if (!parseError.empty()) {
+    const anim::AnimatorParseError parseError = mask ? anim::parseMask(content).error : anim::parseController(content).error;
+    if (!parseError.message.empty()) {
         error = text + " does not load: " + parseError.toString();
         stored.clear();
         return false;
@@ -3107,9 +3101,9 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                 multi->addPropertyCmd<std::string>(project, sceneId, entity, component, "guid", guid);
                 return multi;
             }
-            if (isPlayerMaskProperty(component, propertyName) || isPlayerControllerProperty(component, propertyName)) {
+            if (isPlayerMaskProperty(component, propertyName)) {
                 // the path and the GUID it names change together: the GUID wins when the scene loads
-                const bool mask = isPlayerMaskProperty(component, propertyName);
+                const bool mask = true;
                 std::string stored, guid, why;
                 if (!animAssetPathFromJson(project, text, mask, stored, guid, why)) {
                     error = propertyName + " " + why;
@@ -3120,7 +3114,7 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                 multi->addPropertyCmd<std::string>(project, sceneId, entity, component, propertyName + "Guid", guid);
                 return multi;
             }
-            if (isPlayerMaskGuidProperty(component, propertyName) || (component == ComponentType::AnimationPlayerComponent && propertyName == "controllerGuid")) {
+            if (isPlayerMaskGuidProperty(component, propertyName)) {
                 error = propertyName + " is read-only: set " + propertyName.substr(0, propertyName.size() - 4) + ", its GUID follows the file.";
                 return nullptr;
             }

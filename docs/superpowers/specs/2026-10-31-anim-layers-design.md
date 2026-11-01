@@ -1,5 +1,10 @@
 # Animation layers, avatar masks and Animator Controllers (`anim-layers`, ledger #10)
 
+> **Absorbed into S21** (sync 4, `docs/specs/S21-animation.md` section 12): the Animation Player
+> layers and masks below play on S21's runtime with S21's version 2 masks; Animator Controllers
+> play on S21's Animator (a disabled player hands over to it); upstream's version 1 `.controller`
+> and `.mask` files load converted. Where this design and S21 differ, S21's section 12 lists it.
+
 Status: specced 2026-10-31. Branch `gaps/anim-layers`. Two phases on one branch. Phase 1 is
 **layers + masks** in the Animation Player. Phase 2 is the **Animator Controller**: a data-driven
 state machine asset with an editor window. Phase 2 starts only when phase 1 is complete, tested

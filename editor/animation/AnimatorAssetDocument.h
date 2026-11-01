@@ -55,6 +55,16 @@ namespace jasperengine::editor{
         // reload the documents of these files (undo, redo, outside edits); listeners notified
         static void filesChanged(const std::vector<std::filesystem::path>& paths);
         static void closeAll();
+        // a file or directory was renamed or moved in the editor: the documents under it follow
+        static void filesMoved(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
+        // every open document whose file differs from what it read reloads (outside edits)
+        static void checkDiskChanges();
+        // clips and masks moved outside the editor (GUID -> new absolute path): the controllers
+        // and montages that name them by GUID get the new path hint; returns the files rewritten
+        static std::vector<std::filesystem::path> relinkGuids(Project* project, const std::map<std::string, std::filesystem::path>& moved);
+        // called with the files a commit (or its undo / redo) wrote: the MCP file sync
+        // (AnimationClipDocument::setFilesWrittenHook sets it for every animation document)
+        static void setFilesWrittenHook(std::function<void(const std::vector<std::filesystem::path>&)> hook);
         // the kind of a path by its extension; false when none
         static bool kindOf(const std::string& path, Kind& out);
         static const char* kindName(Kind kind);
@@ -70,6 +80,10 @@ namespace jasperengine::editor{
         // the last reload's error (the file stopped parsing); empty when it holds `data`
         const std::string& loadError() const { return error; }
         const std::string& guid() const;
+        // the file is an older version or upstream's dialect (read converted; the next commit
+        // writes the current version: "converted" notes in the Inspector and MCP)
+        anim::AnimatorFileDialect dialect() const { return fileDialect; }
+        bool converted() const { return fileDialect != anim::AnimatorFileDialect::Current; }
 
         const anim::ControllerDef& controller() const { return controllerData; }
         const anim::AvatarMaskDef& mask() const { return maskData; }
@@ -95,6 +109,7 @@ namespace jasperengine::editor{
         std::string text;
         std::string error;
         uint64_t documentRevision = 0;
+        anim::AnimatorFileDialect fileDialect = anim::AnimatorFileDialect::Current;
         std::vector<ClipWarning> loadWarnings;
         anim::ControllerDef controllerData;
         anim::AvatarMaskDef maskData;

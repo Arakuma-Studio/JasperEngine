@@ -208,7 +208,7 @@ TEST(AnimatorAssetIO, LenientReadsWarnWithJsonPaths){
 
 TEST(AnimatorAssetIO, RefusesOtherFormatsNewerVersionsAndBadJson){
     EXPECT_FALSE(parseController("{\"format\": \"jasperengine.anim\", \"version\": 1}").ok);
-    ControllerParseResult newer = parseController("{\"format\": \"jasperengine.controller\", \"version\": 2}");
+    ControllerParseResult newer = parseController("{\"format\": \"jasperengine.controller\", \"version\": 3}");
     EXPECT_FALSE(newer.ok);
     EXPECT_NE(newer.error.message.find("newer JasperEngine"), std::string::npos) << newer.error.message;
     ControllerParseResult broken = parseController("{\"format\": \"jasperengine.controller\",\n  \"version\": 1,,}");
@@ -246,9 +246,12 @@ TEST(AnimatorAssetIO, NamesAreMadeUnique){
 TEST(AnimatorAssetIO, MaskRoundTrip){
     AvatarMaskDef mask;
     mask.guid = "abcdefabcdefabcdefabcdefabcdef12";
-    mask.bodyParts[(int)AvatarBodyPart::LeftLeg] = false;
-    mask.bodyParts[(int)AvatarBodyPart::Root] = false;
-    mask.paths = {{"Hero/Hips/Spine", 0.5f}, {"Hero/Hips", 2.0f}};
+    mask.bodyParts[(int)AvatarBodyPart::LeftLeg] = 0.0f;
+    mask.bodyParts[(int)AvatarBodyPart::Root] = 0.25f;
+    mask.defaultWeight = 0.5f;
+    mask.rootHierarchy = true;
+    mask.previewModel = "models/hero.gltf";
+    mask.paths = {{"Hero/Hips/Spine", 0.5f, true}, {"Hero/Hips", 2.0f, false}};
     std::vector<ClipWarning> warnings;
     normalizeMask(mask, &warnings);
     EXPECT_EQ(mask.paths[0].path, "Hero/Hips");
@@ -257,8 +260,17 @@ TEST(AnimatorAssetIO, MaskRoundTrip){
     MaskParseResult parsed = parseMask(first);
     ASSERT_TRUE(parsed.ok) << parsed.error.toString();
     EXPECT_EQ(writeMask(parsed.data), first);
-    EXPECT_FALSE(parsed.data.bodyParts[(int)AvatarBodyPart::LeftLeg]);
-    EXPECT_TRUE(parsed.data.bodyParts[(int)AvatarBodyPart::Head]);
+    EXPECT_EQ(parsed.dialect, AnimatorFileDialect::Current);
+    EXPECT_EQ(parsed.data.partWeight(AvatarBodyPart::LeftLeg), 0.0f);
+    EXPECT_EQ(parsed.data.partWeight(AvatarBodyPart::Root), 0.25f);
+    EXPECT_FALSE(parsed.data.hasPart(AvatarBodyPart::Head));
+    EXPECT_EQ(parsed.data.partWeight(AvatarBodyPart::Head), 0.5f) << "an unset part takes the default";
+    EXPECT_TRUE(parsed.data.rootHierarchy);
+    EXPECT_EQ(parsed.data.previewModel, "models/hero.gltf");
+    ASSERT_EQ(parsed.data.paths.size(), 2u);
+    EXPECT_FALSE(parsed.data.paths[0].children);
+    EXPECT_TRUE(parsed.data.paths[1].children);
+    EXPECT_NE(first.find("\"version\": 2"), std::string::npos) << first;
     EXPECT_EQ(animatorAssetKind(first), "mask");
     EXPECT_EQ(readAnimatorAssetGuid(first), mask.guid);
 }

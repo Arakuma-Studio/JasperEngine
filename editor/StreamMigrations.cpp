@@ -319,6 +319,153 @@ namespace {
         (void)log;
     }
 
+
+    // ---------------------------------------------------------------- Animation Player controllers
+
+    std::string scalarOf(const YAML::Node& node){
+        return node && node.IsScalar() ? node.Scalar() : std::string();
+    }
+
+    bool hasName(const YAML::Node& list, const std::string& name){
+        if (!list || !list.IsSequence()) return false;
+        for (const YAML::Node& item : list){
+            if (item.IsScalar() && item.Scalar() == name) return true;
+        }
+        return false;
+    }
+
+    void removeName(YAML::Node list, const std::string& name){
+        if (!list || !list.IsSequence()) return;
+        YAML::Node kept(YAML::NodeType::Sequence);
+        for (const YAML::Node& item : list){
+            if (!(item.IsScalar() && item.Scalar() == name)) kept.push_back(item);
+        }
+        list = kept;
+    }
+
+    // the Animator an upstream controller player becomes: its controller, the player's checkbox,
+    // and no retargeting (upstream's controllers never retargeted)
+    YAML::Node migratedAnimator(const std::string& controller, const std::string& guid, bool enabled){
+        YAML::Node animator(YAML::NodeType::Map);
+        animator["enabled"] = enabled;
+        animator["controller"] = controller;
+        if (!guid.empty()) animator["controllerGuid"] = guid;
+        animator["retarget"] = "off";
+        return animator;
+    }
+
+    bool enabledOf(const YAML::Node& player){
+        const std::string text = scalarOf(player["enabled"]);
+        return !(text == "false" || text == "0");
+    }
+
+    // an entity's (or prefab member's) components: an animationplayer with upstream's controller
+    // becomes an Animator playing it beside the player, which is disabled (its clips and layers
+    // were unused while the controller owned the states; kept as they were, playing nothing)
+    int moveEntityController(YAML::Node components, MigrationLog& log){
+        YAML::Node player = components["animationplayer"];
+        if (!player || !player.IsMap() || !player["controller"]) return 0;
+        const std::string controller = scalarOf(player["controller"]);
+        const std::string guid = scalarOf(player["controllerGuid"]);
+        player.remove("controller");
+        player.remove("controllerGuid");
+        if (controller.empty()) return 0;
+        if (components["animator"]){
+            log.info("An Animation Player's controller " + controller + " was dropped: its GameObject has an Animator with its own");
+            return 0;
+        }
+        components["animator"] = migratedAnimator(controller, guid, enabledOf(player));
+        player["enabled"] = false;
+        return 1;
+    }
+
+    // a prefab instance's override of a player's controller: an added Animator (its values the
+    // controller) and the player's enabled overridden off; cleared (""): the Animator the base
+    // got from its own migration removed and the player enabled
+    int moveOverrideController(YAML::Node entry){
+        YAML::Node properties = entry["properties"];
+        if (!properties || !properties.IsMap()) return 0;
+        YAML::Node names = properties["animationplayer"];
+        if (!hasName(names, "controller") && !hasName(names, "controllerGuid")) return 0;
+        YAML::Node components = entry["components"];
+        YAML::Node player = components && components.IsMap() ? components["animationplayer"] : YAML::Node();
+        const std::string controller = player && player.IsMap() ? scalarOf(player["controller"]) : std::string();
+        const std::string guid = player && player.IsMap() ? scalarOf(player["controllerGuid"]) : std::string();
+        const bool enabled = player && player.IsMap() ? enabledOf(player) : true;
+        removeName(names, "controller");
+        removeName(names, "controllerGuid");
+        if (player && player.IsMap()){
+            player.remove("controller");
+            player.remove("controllerGuid");
+        }
+        if (!components || !components.IsMap()){
+            entry["components"] = YAML::Node(YAML::NodeType::Map);
+            components = entry["components"];
+        }
+        if (!components["animationplayer"] || !components["animationplayer"].IsMap()) components["animationplayer"] = YAML::Node(YAML::NodeType::Map);
+        if (!hasName(names, "enabled")){
+            if (!names || !names.IsSequence()){
+                properties["animationplayer"] = YAML::Node(YAML::NodeType::Sequence);
+                names = properties["animationplayer"];
+            }
+            names.push_back("enabled");
+        }
+        if (controller.empty()){
+            components["animationplayer"]["enabled"] = enabled;
+            if (!hasName(entry["removedComponents"], "animator")){
+                if (!entry["removedComponents"]) entry["removedComponents"] = YAML::Node(YAML::NodeType::Sequence);
+                entry["removedComponents"].push_back("animator");
+            }
+            return 1;
+        }
+        components["animationplayer"]["enabled"] = false;
+        components["animator"] = migratedAnimator(controller, guid, enabled);
+        if (!hasName(entry["addedComponents"], "animator")){
+            if (!entry["addedComponents"]) entry["addedComponents"] = YAML::Node(YAML::NodeType::Sequence);
+            entry["addedComponents"].push_back("animator");
+        }
+        return 1;
+    }
+
+    int moveAnimationPlayerControllers(YAML::Node node, MigrationLog& log){
+        int moved = 0;
+        if (node.IsMap()){
+            YAML::Node components = node["components"];
+            if (components && components.IsMap()){
+                if (node["registryEntity"] && node["properties"]) moved += moveOverrideController(node);
+                else moved += moveEntityController(components, log);
+            }
+            for (auto it = node.begin(); it != node.end(); ++it){
+                if (it->first.IsScalar() && it->first.Scalar() == "components") continue;
+                moved += moveAnimationPlayerControllers(it->second, log);
+            }
+        }else if (node.IsSequence()){
+            for (YAML::Node child : node){
+                moved += moveAnimationPlayerControllers(child, log);
+            }
+        }
+        return moved;
+    }
+
+    void logMovedControllers(int moved, MigrationLog& log){
+        if (moved > 0){
+            log.info("Animation Player controllers play on Animators now: " + std::to_string(moved) +
+                     (moved == 1 ? " player" : " players") + " got an Animator with its controller and hand over to it (disabled; docs/animator.md)");
+        }
+    }
+
+    // Scene 5 -> 6 (S21 absorbs upstream's anim-layers): an Animation Player's `controller` /
+    // `controllerGuid` (upstream's controller on the player) move to an Animator on the same
+    // GameObject; the player's layers and clip layers are read as they are (new optional keys)
+    void sceneV5ToV6(YAML::Node& root, MigrationLog& log){
+        logMovedControllers(moveAnimationPlayerControllers(root["entities"], log), log);
+    }
+
+    // Prefab 6 -> 7: the same for its members and the instances nested in them
+    void prefabV6ToV7(YAML::Node& root, MigrationLog& log){
+        logMovedControllers(moveAnimationPlayerControllers(root["members"], log), log);
+    }
+
 }
 
 const char* StreamMigrations::versionKey(DocumentKind kind){
@@ -327,11 +474,11 @@ const char* StreamMigrations::versionKey(DocumentKind kind){
 
 int StreamMigrations::currentVersion(DocumentKind kind){
     switch (kind){
-        case DocumentKind::Scene: return 5;
+        case DocumentKind::Scene: return 6;
         case DocumentKind::Project: return 1;
         case DocumentKind::Material: return 1;
         // Prefab::FILE_VERSION
-        case DocumentKind::Prefab: return 6;
+        case DocumentKind::Prefab: return 7;
     }
     return 0;
 }
@@ -369,6 +516,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {2, 3, "particle systems to effects on their targets", sceneV2ToV3},
         {3, 4, "derived transform values no longer written", sceneV3ToV4},
         {4, 5, "splines (identity: an older scene has none)", sceneV4ToV5},
+        {5, 6, "Animation Player controllers to Animators", sceneV5ToV6},
     };
     static const std::vector<Migration> project = {
         {0, 1, "stamp the project format version", projectV0ToV1},
@@ -381,6 +529,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {3, 4, "shadow bias in shadow texels", prefabV3ToV4},
         {4, 5, "particle systems to effects on their targets", prefabV4ToV5},
         {5, 6, "derived transform values no longer written", prefabV5ToV6},
+        {6, 7, "Animation Player controllers to Animators", prefabV6ToV7},
     };
 
     switch (kind){
