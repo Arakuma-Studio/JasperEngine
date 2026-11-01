@@ -43,6 +43,12 @@ using namespace jasperengine;
 // deprecations are not warnings here.
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
+// the Objective-C objects here (assets, readers, outputs, NSError) are ARC's: CMSampleBuffers from
+// copyNextSampleBuffer (Core Foundation) are released by hand
+#if !__has_feature(objc_arc)
+#error "AVFoundationBackend.mm is compiled with ARC (-fobjc-arc)"
+#endif
+
 namespace {
 
     std::string fourccOf(FourCharCode code){
