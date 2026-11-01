@@ -788,6 +788,8 @@ TEST_F(InputTest, PointersOutsideTheCanvasFocusLossAndPauseReleaseControls){
 TEST_F(InputTest, ComponentUIPointersOutsideTheCanvasFocusLossAndPauseAreCancelled){
     InputActions::loadDefaults();
     InputActions::resetRuntimeState();
+    // a pause before (the previous test) leaves the focus lost (systemResume does not give it back)
+    Engine::systemFocus(true);
     // where the document has nothing: x 500..620, y 180..300 (centre (560, 240), radius 60)
     OnScreenStick& stick = fixture->add<OnScreenStick>();
     stick.setPosition(500, 180);
