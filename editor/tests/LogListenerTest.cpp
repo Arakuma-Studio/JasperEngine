@@ -4,7 +4,11 @@
 // The log's buffer, listeners and thread rules, its Lua API, the debug overlay's commands and
 // stats, and what the overlay costs when it is off (feature debug-overlay, spec 10, tests 1-6,
 // 12, 13 and the off-cost targets of 9). The overlay's document (GPU) is tested by
-// engine/tests/htmlui/TestDebugOverlay.cpp.
+// engine/tests/htmlui/TestDebugOverlay.cpp. The buffer and listeners are S09's "buffer" sink
+// (Log.cpp): every line goes through the Logger, so a flood of one call site meets its rate
+// limit (200 a second, S09 R9); the floods here log distinct texts through "%s", which the
+// limit keys by text. engine/tests/core/log/LogBufferSinkTest.cpp checks the sink against the
+// Logger's other sinks.
 
 #include <gtest/gtest.h>
 
@@ -13,8 +17,11 @@
 #include "Engine.h"
 #include "Input.h"
 #include "Log.h"
+#include "log/LogSinks.h"
+#include "log/Logger.h"
 #include "debug/DebugOverlay.h"
 #include "debug/DebugStats.h"
+#include "profiler/FrameTimes.h"
 #include "script/LuaBinding.h"
 #include "util/FunctionSubscribe.h"
 
@@ -23,6 +30,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdarg>
+#include <cstdio>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -32,7 +40,25 @@
 
 using namespace jasperengine;
 
+#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
+    #define JE_LOG_TEST_SANITIZED 1
+#elif defined(__has_feature)
+    #if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
+        #define JE_LOG_TEST_SANITIZED 1
+    #endif
+#endif
+#ifndef JE_LOG_TEST_SANITIZED
+    #define JE_LOG_TEST_SANITIZED 0
+#endif
+
 namespace {
+
+    // one distinct line through a pass-through format: the rate limit keys it by its text
+    void printDistinct(const char* prefix, int i){
+        char text[96];
+        snprintf(text, sizeof(text), "%s %d", prefix, i);
+        Log::print("%s", text);
+    }
 
     // a System that keeps the platform log quiet (the cost test logs 10,000 lines)
     class QuietSystem : public scriptdata::TestSystem {
@@ -53,6 +79,9 @@ namespace {
             L = scriptdata::engineLua();
             ASSERT_NE(L, nullptr);
             system.root = (std::filesystem::temp_directory_path() / ("jasper-log-test-" + std::to_string(::getpid()))).string();
+            // the Logger's drain thread writes to the System (PlatformSink): what it holds goes
+            // out before the System is swapped (and again in TearDown)
+            Logger::flush();
             previous = SystemTestAccess::swap(&system);
             bufferSize = Log::getBufferSize();
             stackTraces = Log::getStackTraces();
@@ -67,6 +96,7 @@ namespace {
             Log::setStackTraces(stackTraces);
             Log::clearEntries();
             DebugOverlay::shutdown();
+            Logger::flush();
             SystemTestAccess::swap(previous);
             lua_settop(L, 0);
         }
@@ -226,8 +256,10 @@ TEST_F(LogListenerTest, RemoveListenerWaitsForRunningCalls) {
     for (int w = 0; w < 4; w++) {
         workers.emplace_back([&stop, w]() {
             int i = 0;
+            char prefix[32];
+            snprintf(prefix, sizeof(prefix), "worker %d line", w);
             while (!stop.load())
-                Log::print("worker %d line %d", w, i++);
+                printDistinct(prefix, i++);
         });
     }
     for (int round = 0; round < 200; round++) {
@@ -385,7 +417,7 @@ TEST_F(LogListenerTest, PendingQueueOverflowIsReported) {
     const LogListenerId id = Log::addListener([&got](const LogEntry& entry) { got.push_back(entry.message); });
     std::thread([]() {
         for (int i = 0; i < 1100; i++)
-            Log::print("flood %d", i);
+            printDistinct("flood", i);
     }).join();
     EXPECT_EQ(Log::getPendingCount(), 1000u);
     Log::dispatchPending();
@@ -638,12 +670,22 @@ TEST_F(LogListenerTest, LuaCommandsGoWithTheirScript) {
 }
 
 // 13. stats: the history ring, the snapshot, getStats from Lua
+// (the frame times are S15's frame-time ring: FrameTimes, fed here sample by sample)
 TEST_F(LogListenerTest, Stats) {
-    DebugStats::reset();
+    FrameTimes::clear();
+    const size_t before = DebugStats::recordedFrames();
     for (int i = 0; i < 300; i++)
-        DebugStats::recordFrame(i % 10 == 0 ? 0.05 : 0.016);
+        FrameTimes::recordSample(i % 10 == 0 ? 50.0f : 16.0f);
     EXPECT_EQ(DebugStats::frameHistory().size(), DebugStats::historySize);
-    EXPECT_EQ(DebugStats::recordedFrames(), 300u);
+    EXPECT_EQ(DebugStats::recordedFrames(), before + 300u);
+    EXPECT_FLOAT_EQ(DebugStats::frameHistory().back(), 16.0f);
+    EXPECT_FLOAT_EQ(DebugStats::frameHistory().back(), FrameTimes::latest().frameMs) << "one ring: S15's";
+    // a stall is shown as 1 s
+    FrameTimes::recordSample(5000.0f);
+    EXPECT_FLOAT_EQ(DebugStats::frameHistory().back(), 1000.0f);
+    FrameTimes::clear();
+    for (int i = 0; i < 300; i++)
+        FrameTimes::recordSample(i % 10 == 0 ? 50.0f : 16.0f);
     const DebugStatsSnapshot s = DebugStats::sample();
     EXPECT_GT(s.fps, 0.0f);
     EXPECT_NEAR(s.frameMsMin, 16.0f, 0.01f);
@@ -668,16 +710,19 @@ TEST_F(LogListenerTest, CostsNothingWhenOff) {
     DebugOverlay::showConsole();   // warned, a no-op
     EXPECT_FALSE(DebugOverlay::isConsoleVisible());
 
+    // every line the whole way (the Logger, its queue, the buffer's sink): distinct texts, past
+    // the rate limit's reach
     const auto lineStart = std::chrono::steady_clock::now();
     for (int i = 0; i < 10000; i++)
-        Log::print("line %d of the cost test", i);
+        printDistinct("line of the cost test", i);
     const double lineUs = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - lineStart).count() / 10000.0;
-    EXPECT_LT(lineUs, 5.0) << lineUs << " us per line";
+    if (!JE_LOG_TEST_SANITIZED) {
+        EXPECT_LT(lineUs, 5.0) << lineUs << " us per line";
+    }
 
     // what a frame and its input cost the overlay: the frame-time ring, the update check, the hooks
     const auto frameStart = std::chrono::steady_clock::now();
     for (int frame = 0; frame < 1000; frame++) {
-        DebugStats::recordFrame(1.0 / 60.0);
         if (DebugOverlay::needsUpdate()) DebugOverlay::update(1.0 / 60.0);
         DebugOverlay::handleKey(D_KEY_GRAVE_ACCENT, 0, true, false);
         DebugOverlay::handleTouch(0, 10.0f, 10.0f, 0);
@@ -689,7 +734,64 @@ TEST_F(LogListenerTest, CostsNothingWhenOff) {
         DebugOverlay::handleTouch(2, 10.0f, 10.0f, 2);
     }
     const double frameMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frameStart).count() / 1000.0;
-    EXPECT_LT(frameMs, 0.01) << frameMs << " ms per frame";
+    if (!JE_LOG_TEST_SANITIZED) {
+        EXPECT_LT(frameMs, 0.01) << frameMs << " ms per frame";
+    }
     EXPECT_FALSE(DebugOverlay::isConsoleVisible());
     EXPECT_EQ(DebugOverlay::getScene(), nullptr);
+}
+
+// S09 absorption: Lua's Log.* are S09 records (category lua, the chunk and line as the source,
+// no native backtrace) and the buffer gets them with their category, as every other record
+TEST_F(LogListenerTest, LuaLinesAreLoggerRecordsWithTheirSource) {
+    Log::setStackTraces(LogStackTraces::Errors);
+    std::mutex mutex;
+    std::vector<std::pair<std::string, uint32_t>> sources;
+    std::vector<uint32_t> flags;
+    const Logger::SinkId sink = Logger::addSink(std::make_unique<CallbackSink>("lua-source", [&](const LogRecord& record) {
+        if (record.text.find("from lua") == std::string_view::npos) return;
+        std::lock_guard<std::mutex> lock(mutex);
+        sources.push_back({std::string(record.file), record.line});
+        flags.push_back(record.flags);
+    }, LogSink::Delivery::Inline));
+    ASSERT_EQ(run("\n\nLog.warn('from lua', 2)\nLog.error('from lua', 'with a trace')"), "");
+    Logger::removeSink(sink);
+    ASSERT_EQ(sources.size(), 2u);
+    EXPECT_EQ(sources[0].first, "test");
+    EXPECT_EQ(sources[0].second, 3u);
+    EXPECT_EQ(sources[1].second, 4u);
+    for (uint32_t f : flags) {
+        EXPECT_TRUE(f & LogFlagLua);
+        EXPECT_TRUE(f & LogFlagNoBacktrace);
+    }
+    const std::vector<LogEntry> entries = Log::getEntries(2);
+    ASSERT_EQ(entries.size(), 2u);
+    EXPECT_EQ(entries[0].message, "from lua\t2");
+    EXPECT_EQ(entries[0].stackTrace, "") << "Errors: a warning gets none";
+    EXPECT_EQ(entries[1].message, "from lua\twith a trace");
+    EXPECT_EQ(entries[1].stackTrace.rfind("stack traceback:", 0), 0u) << entries[1].stackTrace;
+    ASSERT_NE(entries[1].category, nullptr);
+    EXPECT_STREQ(entries[1].category->name, "lua");
+
+    // C++'s JE_LOG_* reach Lua's Log.getEntries with their category
+    JE_LOG_WARN(logCategoryRender(), "a render warning %d", 7);
+    std::vector<std::string> results;
+    ASSERT_EQ(run("local e = Log.getEntries(1)[1] return e.category, e.message, e.level == LogLevel.WARN", &results), "");
+    EXPECT_EQ(results, (std::vector<std::string>{"render", "a render warning 7", "true"}));
+    // the one LogLevel: TRACE is VERBOSE, FATAL counts
+    ASSERT_EQ(run("return LogLevel.TRACE == LogLevel.VERBOSE, LogLevel.FATAL, Log.count(LogLevel.FATAL)", &results), "");
+    EXPECT_EQ(results, (std::vector<std::string>{"true", "5", "0"}));
+}
+
+// a line gated out by its category never reaches the buffer (S09 R3: not even formatted)
+TEST_F(LogListenerTest, GatedLinesAreNotBuffered) {
+    const LogLevel previous = Logger::categoryLevel(logCategoryEngine());
+    Logger::setCategoryLevel(logCategoryEngine(), LogLevel::Warn);
+    const uint64_t last = Log::getLastId();
+    Log::print("held back");
+    EXPECT_EQ(Log::getLastId(), last);
+    Log::warn("let through");
+    EXPECT_GT(Log::getLastId(), last);
+    EXPECT_EQ(Log::getEntries(1)[0].message, "let through");
+    Logger::setCategoryLevel(logCategoryEngine(), previous);
 }

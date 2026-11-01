@@ -743,6 +743,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/Properties.cpp
     ${EDITOR_DIR}/reflect/PostProcessingReflect.cpp
     ${EDITOR_DIR}/reflect/ShaderCreationReflect.cpp
+    ${EDITOR_DIR}/reflect/DebugReflect.cpp
     ${EDITOR_DIR}/reflect/components/AnimationReflect.cpp
     ${EDITOR_DIR}/reflect/components/CameraAudioReflect.cpp
     ${EDITOR_DIR}/reflect/components/LightingReflect.cpp

@@ -2519,14 +2519,6 @@ void ProjectSettingsWindow::drawScriptingSettings() {
     });
 }
 
-// a combo of the names of an enum (their order is the enum's), the labels shown
-template <typename T>
-static void drawEnumSetting(const char* label, const char* id, const char* const* labels, int count, T& value, T defaultValue, const char* tooltip) {
-    int index = static_cast<int>(value);
-    drawComboSetting(label, id, labels, count, index, static_cast<int>(defaultValue), tooltip);
-    value = static_cast<T>(std::clamp(index, 0, count - 1));
-}
-
 // a key of the debug overlay: none or a key name (InputControlNames)
 static void drawDebugKeySetting(const char* label, const char* id, std::string& key, const std::string& defaultKey, const char* tooltip) {
     if (projectBeginSettingsRow(label, key != defaultKey)) {
@@ -2547,76 +2539,48 @@ static void drawDebugKeySetting(const char* label, const char* id, std::string& 
     endSettingsRow(tooltip);
 }
 
+// Project Settings > Debug: the rows of its reflection table (editor/reflect/DebugReflect.cpp:
+// labels, tooltips, the choices of the enums, the buffer size's range), in its groups
 void ProjectSettingsWindow::drawDebugSettings() {
     if (beginSettingsPanel("##DebugSettingsPanel")) {
         drawSectionNote("The on-device debug overlay: a log console (filters, search, collapse, stack traces, copy, save, "
             "commands) and an FPS / stats panel, in the editor's Play and in exported games. Scripts turn it on in any "
             "build with DebugOverlay.enabled = true (a remote switch for one tester).");
 
-        const DebugSettings defaults;
+        DebugSettings defaults;
         DebugSettings& debug = m_debugSettings;
 
-        if (settingsFoldout("Overlay", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##DebugOverlayTable")) {
-            static const char* const modes[] = {"Never", "Development Builds", "Always"};
-            if (settingsui::beginRow("debug.overlay")) {
-                drawEnumSetting("Overlay", "##DebugOverlayMode", modes, 3, debug.overlay, defaults.overlay,
-                    "Development Builds: the editor's Play and exports built with the Debug build type (Engine.isDevelopmentBuild). "
-                    "Never: off unless a script sets DebugOverlay.enabled.");
-            }
-            if (settingsui::beginRow("debug.overlay_toggle_key")) {
-                drawDebugKeySetting("Toggle Key", "##DebugToggleKey", debug.toggleKey, defaults.toggleKey,
-                    "Opens and closes the console (the backquote key, as Unity's IngameDebugConsole). The game still gets the key.");
-            }
-            if (settingsui::beginRow("debug.overlay_stats_key")) {
-                drawDebugKeySetting("Stats Key", "##DebugStatsKey", debug.statsKey, defaults.statsKey,
-                    "Cycles the stats panel: off, FPS, full.");
-            }
-            static const char* const gestures[] = {"Three Fingers Held", "Four Finger Tap", "None"};
-            if (settingsui::beginRow("debug.overlay_gesture")) {
-                drawEnumSetting("Gesture", "##DebugGesture", gestures, 3, debug.gesture, defaults.gesture,
-                    "The touch gesture that opens and closes the console: three fingers held 0.75 s, or four fingers tapped.");
-            }
-            static const char* const popups[] = {"Never", "Touch Devices", "Always"};
-            if (settingsui::beginRow("debug.overlay_popup")) {
-                drawEnumSetting("Popup", "##DebugPopup", popups, 3, debug.popup, defaults.popup,
-                    "A small bubble at the right edge with the warning and error counts; tap it to open the console.");
-            }
-            if (settingsui::beginRow("debug.overlay_open_on_error")) {
-                if (projectBeginSettingsRow("Open on Error", debug.openOnError != defaults.openOnError)) {
-                    debug.openOnError = defaults.openOnError;
+        for (const char* group : {"Overlay", "Log"}) {
+            const std::string tableId = std::string("##Debug") + group + "Table";
+            if (!settingsFoldout(group, ImGuiTreeNodeFlags_DefaultOpen) || !beginSettingsTable(tableId.c_str())) continue;
+            for (const DebugSettingsNames::SettingKey& entry : DebugSettingsNames::settingKeys()) {
+                const reflect::FieldDesc* field = reflect::debugSettingsField(entry.field);
+                if (!field || !field->group || std::string(field->group) != group || !settingsui::beginRow(entry.key)) continue;
+                const std::string id = std::string("##Debug_") + field->name;
+                const char* tooltip = field->tooltip ? field->tooltip : "";
+                void* value = field->ref(&debug);
+                void* base = field->ref(&defaults);
+                if (field->enumDesc) {
+                    std::vector<const char*> labels;
+                    for (const reflect::EnumItem& item : field->enumDesc->items) labels.push_back(item.label);
+                    int index = reflect::readEnum(*field, value);
+                    drawComboSetting(field->label, id.c_str(), labels.data(), static_cast<int>(labels.size()), index,
+                                     reflect::readEnum(*field, base), tooltip);
+                    reflect::writeEnum(*field, value, std::clamp(index, 0, static_cast<int>(labels.size()) - 1));
+                } else if (field->drawer && std::string(field->drawer) == "key") {
+                    drawDebugKeySetting(field->label, id.c_str(), *static_cast<std::string*>(value), *static_cast<std::string*>(base), tooltip);
+                } else if (field->kind == reflect::Kind::Bool) {
+                    bool& b = *static_cast<bool*>(value);
+                    if (projectBeginSettingsRow(field->label, b != *static_cast<bool*>(base))) b = *static_cast<bool*>(base);
+                    ImGui::Checkbox(id.c_str(), &b);
+                    endSettingsRow(tooltip);
+                } else {
+                    unsigned int& u = *static_cast<unsigned int*>(value);
+                    int number = static_cast<int>(u);
+                    drawIntSetting(field->label, id.c_str(), number, static_cast<int>(*static_cast<unsigned int*>(base)),
+                                   static_cast<int>(field->min), tooltip);
+                    u = static_cast<unsigned int>(std::clamp(number, static_cast<int>(field->min), static_cast<int>(field->max)));
                 }
-                ImGui::Checkbox("##DebugOpenOnError", &debug.openOnError);
-                endSettingsRow("The first error opens the console.");
-            }
-            static const char* const stats[] = {"Off", "FPS", "Full"};
-            if (settingsui::beginRow("debug.overlay_stats")) {
-                drawEnumSetting("Initial Stats", "##DebugStats", stats, 3, debug.stats, defaults.stats,
-                    "The stats panel at start: FPS and a frame-time graph, or full (draw calls, memory, audio, physics, entities...).");
-            }
-            static const char* const corners[] = {"Top Left", "Top Right", "Bottom Left", "Bottom Right"};
-            if (settingsui::beginRow("debug.overlay_stats_corner")) {
-                drawEnumSetting("Stats Corner", "##DebugStatsCorner", corners, 4, debug.statsCorner, defaults.statsCorner,
-                    "Where the stats panel sits. Taps go through it to the game.");
-            }
-            static const char* const allowLua[] = {"Development Builds", "Always", "Never"};
-            if (settingsui::beginRow("debug.overlay_allow_lua")) {
-                drawEnumSetting("Allow Lua Commands", "##DebugAllowLua", allowLua, 3, debug.allowLua, defaults.allowLua,
-                    "The console's `lua <code>` command runs Lua typed on the device.");
-            }
-            ImGui::EndTable();
-        }
-
-        if (settingsFoldout("Log", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##DebugLogTable")) {
-            if (settingsui::beginRow("debug.log_buffer_size")) {
-                int bufferSize = static_cast<int>(debug.logBufferSize);
-                drawIntSetting("Log Buffer Size", "##DebugLogBufferSize", bufferSize, static_cast<int>(defaults.logBufferSize), 0,
-                    "Lines the log keeps for the console and Log.getEntries (0 keeps none). Every build keeps them, from the first line.");
-                debug.logBufferSize = static_cast<unsigned int>(std::clamp(bufferSize, 0, static_cast<int>(DebugSettings::maxLogBufferSize)));
-            }
-            static const char* const traces[] = {"None", "Errors", "Warnings and Errors", "All"};
-            if (settingsui::beginRow("debug.log_stack_traces")) {
-                drawEnumSetting("Log Stack Traces", "##DebugLogStackTraces", traces, 4, debug.logStackTraces, defaults.logStackTraces,
-                    "Which Log.* lines of Lua scripts carry a Lua stack trace (Lua errors always do).");
             }
             ImGui::EndTable();
         }

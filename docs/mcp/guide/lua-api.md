@@ -670,14 +670,15 @@ single-threaded, so scripts never submit jobs; these only report.
 `ThreadPoolManager` is deprecated (one release): `ThreadPoolManager.getInstance():getQueueSize()`
 returns the Background lane's queue; `initialize` and `shutdown` warn once and do nothing.
 
-### 2.3 Log (static, one string argument each) and DebugOverlay
+### 2.3 Log (static) and DebugOverlay
 
-`Log.print(s)` (= `Log.info(s)`), `Log.verbose(s)` (trace), `Log.debug(s)` (debug builds
-only), `Log.warn(s)`, `Log.error(s)`.
-Pass ONE string: `Log.print("score " .. tostring(n))` or `Log.print(string.format("%d", n))`.
-Plain Lua `print(...)` goes to the engine log too, as an info line (the editor's Console, in
-Play and at edit time; a game's platform log in an exported build): it takes any number of
-values of any type and joins them with tabs, like standard Lua. `Log.*` add the levels.
+`Log.print(...)` (= `Log.info(...)`), `Log.verbose(...)` (trace), `Log.debug(...)` (debug builds
+only), `Log.warn(...)`, `Log.error(...)`: any values, joined with tabs (`tostring`), like Lua's
+`print`, which logs an info line too. Every line goes to the engine log: the editor's Console (Play
+and edit time), the platform log of an exported game (logcat, the terminal), the on-device console
+and its ring buffer. Lines of Lua carry a Lua traceback per Project Settings > Debug > Log Stack
+Traces (default: warnings and errors); a Lua error's `stack traceback:` is split off into
+`stackTrace`.
 
 Lua's records are in the `lua` category and carry the chunk and line they were logged from
 (the Console's details pane, `read_console`'s `source`). More than 200 identical messages a
@@ -688,9 +689,20 @@ second are held back and summed up in one `suppressed N similar messages` line.
   `net:warn("lag")`). The Console filters by category.
 - `Log.setLevel(level [, category])`: the lowest level logged (`"trace"`, `"debug"`, `"info"`,
   `"warn"`, `"error"`, `"fatal"`, `"off"`) for `lua` or the named category; false for an
-  unknown level name. `Log.getLevel([category])` reads it back.
+  unknown level name. `Log.getLevel([category])` reads it back. A line below it reaches nothing,
+  the buffer included.
 
-<!-- SYNC4-ABSORB(log-overlay): upstream's Lua log plumbing (Log.* taking any values, Lua tracebacks on warn/error, Log.onMessageReceived, Log.getEntries/count/clear/bufferSize, LogLevel) waits for the log-overlay absorption onto S09's Logger -->
+The buffer and its listeners see every record of the engine log (C++ `JE_LOG_*` and `Log::*` of
+any category too, from any thread):
+
+| Name | Kind | Notes |
+|---|---|---|
+| `Log.onMessageReceived` | event | Unity's `Application.logMessageReceived`: `RegisterEvent(self, Log.onMessageReceived, "onLog")`, `function M:onLog(message, stackTrace, level)`; main thread (worker-thread lines at the next frame start); lines logged inside a handler are not re-dispatched |
+| `Log.getEntries([maxCount [, levels]])` | fn | buffered lines, oldest first (the newest `maxCount`; `levels` a list of `LogLevel`): `{id, category, level, message, stackTrace, time, frame, mainThread, fromLua}` |
+| `Log.count(level)` | fn | lines of that level since the last clear |
+| `Log.clear()` | fn | empties the buffer and the counts |
+| `Log.bufferSize` | rw | lines kept (default 500, Project Settings > Debug; 0 = none, at most 100000) |
+| `LogLevel.TRACE` (= `VERBOSE`), `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL` | enum | 0 - 5, the engine log's one level scale: compare with the names, not numbers |
 
 `DebugOverlay` (static), the on-device console and stats overlay (Unity's IngameDebugConsole and
 Graphy), details in `jasper://docs/debugging`:

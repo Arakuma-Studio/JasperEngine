@@ -9,6 +9,7 @@
 #include "Engine.h"
 #include "Input.h"
 #include "Log.h"
+#include "log/LogSinks.h"
 #include "Scene.h"
 #include "Screen.h"
 #include "System.h"
@@ -207,24 +208,39 @@ namespace {
         return text;
     }
 
+    // S09's levels (log/LogCategory.h); Fatal counts and filters with the errors
     const char* levelName(LogLevel level){
         switch (level){
-            case LogLevel::Trace: return "VERBOSE";
+            case LogLevel::Trace: return "TRACE";
             case LogLevel::Debug: return "DEBUG";
             case LogLevel::Warn: return "WARN";
             case LogLevel::Error: return "ERROR";
+            case LogLevel::Fatal: return "FATAL";
             default: return "INFO";
         }
     }
 
     const char* levelClass(LogLevel level){
         switch (level){
-            case LogLevel::Trace: return "lvl-verbose";
+            case LogLevel::Trace: return "lvl-trace";
             case LogLevel::Debug: return "lvl-debug";
             case LogLevel::Warn: return "lvl-warn";
-            case LogLevel::Error: return "lvl-error";
+            case LogLevel::Error:
+            case LogLevel::Fatal: return "lvl-error";
             default: return "lvl-info";
         }
+    }
+
+    size_t errorCount(){
+        return Log::getCount(LogLevel::Error) + Log::getCount(LogLevel::Fatal);
+    }
+
+    // a line's text as the console lists it: the category first where S09's text output names
+    // it (logShowsCategory: not engine, editor, lua or build), "[render] draws dropped"
+    std::string shownMessage(const LogEntry& entry){
+        if (entry.category && logShowsCategory(*entry.category))
+            return std::string("[") + entry.category->name + "] " + entry.message;
+        return entry.message;
     }
 
     // mm:ss.mmm since the app started
@@ -275,7 +291,7 @@ namespace {
     }
 
     std::string entryText(const LogEntry& entry){
-        std::string text = "[" + formatTime(entry.time) + "] " + levelName(entry.level) + " " + entry.message;
+        std::string text = "[" + formatTime(entry.time) + "] " + levelName(entry.level) + " " + shownMessage(entry);
         if (!entry.stackTrace.empty())
             text += "\n" + entry.stackTrace;
         return text;
@@ -399,7 +415,7 @@ namespace {
         uint32_t mask = 0;
         if (s.showInfo) mask |= logLevelBit(LogLevel::Info) | logLevelBit(LogLevel::Trace) | logLevelBit(LogLevel::Debug);
         if (s.showWarn) mask |= logLevelBit(LogLevel::Warn);
-        if (s.showError) mask |= logLevelBit(LogLevel::Error);
+        if (s.showError) mask |= logLevelBit(LogLevel::Error) | logLevelBit(LogLevel::Fatal);
         return mask;
     }
 
@@ -407,7 +423,7 @@ namespace {
         const std::string& search = state().search;
         if (search.empty())
             return true;
-        return lower(entry.message).find(search) != std::string::npos || lower(entry.stackTrace).find(search) != std::string::npos;
+        return lower(shownMessage(entry)).find(search) != std::string::npos || lower(entry.stackTrace).find(search) != std::string::npos;
     }
 
     // ---- console rows
@@ -633,7 +649,7 @@ namespace {
             return false;
         std::string key;
         if (s.collapse){
-            key = collapseKey(entry.level, entry.message, entry.stackTrace);
+            key = collapseKey(entry.level, shownMessage(entry), entry.stackTrace);
             auto found = s.collapsedRows.find(key);
             if (found != s.collapsedRows.end()){
                 Row& row = *found->second;
@@ -650,7 +666,7 @@ namespace {
         row->id = entry.id;
         row->lastId = entry.id;
         row->level = entry.level;
-        row->message = entry.message;
+        row->message = shownMessage(entry);
         row->stackTrace = entry.stackTrace;
         row->time = entry.time;
         Row* added = row.get();
@@ -889,13 +905,13 @@ namespace {
     void updateCounts(){
         setText("count-info", countText(Log::getCount(LogLevel::Info) + Log::getCount(LogLevel::Trace) + Log::getCount(LogLevel::Debug)));
         setText("count-warn", countText(Log::getCount(LogLevel::Warn)));
-        setText("count-error", countText(Log::getCount(LogLevel::Error)));
+        setText("count-error", countText(errorCount()));
     }
 
     void updatePopup(){
         OverlayState& s = state();
         const size_t warnings = Log::getCount(LogLevel::Warn);
-        const size_t errors = Log::getCount(LogLevel::Error);
+        const size_t errors = errorCount();
         // a clear since the last open
         if (warnings < s.warnAtOpen) s.warnAtOpen = 0;
         if (errors < s.errorAtOpen) s.errorAtOpen = 0;
@@ -1408,7 +1424,7 @@ void DebugOverlay::updateSettings(const DebugOverlaySettings& settings){
         resetGestures();
     // turned on now: the errors from before do not count
     if (settings.openOnError && !before.openOnError){
-        s.errorsAtEnable = Log::getCount(LogLevel::Error);
+        s.errorsAtEnable = errorCount();
         s.openedOnError = false;
     }
     if (settings.enabled != before.enabled)
@@ -1423,7 +1439,7 @@ const DebugOverlaySettings& DebugOverlay::getSettings(){
 void DebugOverlay::setEnabled(bool enabled){
     OverlayState& s = state();
     if (enabled && !s.enabled){
-        s.errorsAtEnable = Log::getCount(LogLevel::Error);
+        s.errorsAtEnable = errorCount();
         s.openedOnError = false;
         s.loadFailed = false;
     }
@@ -1449,7 +1465,7 @@ void DebugOverlay::showConsole(){
     if (!s.consoleVisible){
         s.consoleVisible = true;
         s.warnAtOpen = Log::getCount(LogLevel::Warn);
-        s.errorAtOpen = Log::getCount(LogLevel::Error);
+        s.errorAtOpen = errorCount();
         s.stickToBottom = true;
         s.scrollToBottom = true;
         s.layoutChanged = true;
@@ -1738,7 +1754,7 @@ void DebugOverlay::update(double unscaledDelta){
     }
 
     // the first error opens the console
-    if (s.settings.openOnError && !s.openedOnError && Log::getCount(LogLevel::Error) > s.errorsAtEnable){
+    if (s.settings.openOnError && !s.openedOnError && errorCount() > s.errorsAtEnable){
         s.openedOnError = true;
         showConsole();
     }

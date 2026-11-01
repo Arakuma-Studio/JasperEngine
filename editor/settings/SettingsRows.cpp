@@ -595,35 +595,6 @@ Setting debugSetting(const std::string& key, const std::string& type, const std:
     return s;
 }
 
-template <typename T>
-Setting debugEnumSetting(const std::string& key, const std::string& description, const std::vector<std::string>& names, T DebugSettings::*field) {
-    return debugSetting(key, "enum", description, names,
-        [field](const DebugSettings& d) { return Json(DebugSettingsNames::name(d.*field)); },
-        [field, names](DebugSettings& d, const Json& value, std::string& error) {
-            if (!value.is_string() || !DebugSettingsNames::parse(value.get<std::string>(), d.*field)) {
-                error = "must be one of:";
-                for (const std::string& name : names) error += " " + name;
-                return false;
-            }
-            return true;
-        });
-}
-
-Setting debugKeySetting(const std::string& key, const std::string& description, std::string DebugSettings::*field) {
-    return debugSetting(key, "string", description + " A key name (backquote, f3, f12, escape, a...) or \"\" for none.", {},
-        [field](const DebugSettings& d) { return Json(d.*field); },
-        [field](DebugSettings& d, const Json& value, std::string& error) {
-            std::string text;
-            if (!readString(value, text, error, 64)) return false;
-            if (!DebugSettingsNames::isKeyName(text)) {
-                error = "is not a key name (backquote, f3, f12, escape, a...)";
-                return false;
-            }
-            d.*field = text;
-            return true;
-        });
-}
-
 // "mainThreadBudgetMs" -> "main_thread_budget_ms"
 std::string snakeCase(const char* name) {
     std::string out;
@@ -670,6 +641,85 @@ void addShaderCreationSettings(const std::function<void(Setting)>& add) {
             return true;
         };
         add(s);
+    }
+}
+
+const DebugSettingsNames::SettingKey* debugSettingKey(const std::string& key) {
+    for (const DebugSettingsNames::SettingKey& entry : DebugSettingsNames::settingKeys()) {
+        if (key == entry.key) return &entry;
+    }
+    return nullptr;
+}
+
+// One row per field: its type, values, help and range are the table's; a change is one undoable
+// step (DebugSettingsCmd)
+void addDebugSettings(const std::function<void(Setting)>& add) {
+    for (const DebugSettingsNames::SettingKey& entry : DebugSettingsNames::settingKeys()) {
+        const reflect::FieldDesc* field = reflect::debugSettingsField(entry.field);
+        if (!field) continue;
+        const std::string description = field->tooltip ? field->tooltip : "";
+        if (field->enumDesc) {
+            std::vector<std::string> names;
+            for (const reflect::EnumItem& item : field->enumDesc->items) names.push_back(item.token);
+            add(debugSetting(entry.key, "enum", description, names,
+                [field](const DebugSettings& d) {
+                    const reflect::EnumItem* item = reflect::enumItem(*field->enumDesc, reflect::readEnum(*field, field->ref(const_cast<DebugSettings*>(&d))));
+                    return Json(item ? item->token : "");
+                },
+                [field, names](DebugSettings& d, const Json& value, std::string& error) {
+                    const reflect::EnumItem* item = value.is_string() ? reflect::enumItemByToken(*field->enumDesc, value.get<std::string>()) : nullptr;
+                    if (!item) {
+                        error = "must be one of:";
+                        for (const std::string& name : names) error += " " + name;
+                        return false;
+                    }
+                    reflect::writeEnum(*field, field->ref(&d), item->value);
+                    return true;
+                }));
+        } else if (field->kind == reflect::Kind::Bool) {
+            add(debugSetting(entry.key, "bool", description, {},
+                [field](const DebugSettings& d) { return Json(*static_cast<const bool*>(field->ref(const_cast<DebugSettings*>(&d)))); },
+                [field](DebugSettings& d, const Json& value, std::string& error) {
+                    return readBool(value, *static_cast<bool*>(field->ref(&d)), error);
+                }));
+        } else if (field->drawer && std::string(field->drawer) == "key") {
+            add(debugSetting(entry.key, "string", description + " A key name (backquote, f3, f12, escape, a...) or \"\" for none.", {},
+                [field](const DebugSettings& d) { return Json(*static_cast<const std::string*>(field->ref(const_cast<DebugSettings*>(&d)))); },
+                [field](DebugSettings& d, const Json& value, std::string& error) {
+                    std::string text;
+                    if (!readString(value, text, error, 64)) return false;
+                    if (!DebugSettingsNames::isKeyName(text)) {
+                        error = "is not a key name (backquote, f3, f12, escape, a...)";
+                        return false;
+                    }
+                    *static_cast<std::string*>(field->ref(&d)) = text;
+                    return true;
+                }));
+        } else {
+            add(debugSetting(entry.key, "int", description, {},
+                [field](const DebugSettings& d) { return Json(*static_cast<const unsigned int*>(field->ref(const_cast<DebugSettings*>(&d)))); },
+                [field](DebugSettings& d, const Json& value, std::string& error) {
+                    long long v;
+                    if (!readInt(value, static_cast<long long>(field->min), static_cast<long long>(field->max), v, error)) return false;
+                    *static_cast<unsigned int*>(field->ref(&d)) = static_cast<unsigned int>(v);
+                    return true;
+                }));
+        }
+    }
+}
+
+std::string titleCase(const std::string& key);
+
+// the Debug page's rows: section (the table's group), label and help the table's
+void debugRowPlacement(const std::string& key, SettingRow& row) {
+    row.page = "Debug";
+    row.label = titleCase(key);
+    const DebugSettingsNames::SettingKey* entry = debugSettingKey(key);
+    if (!entry) return;
+    row.keywords = entry->keywords;
+    if (const reflect::FieldDesc* field = reflect::debugSettingsField(entry->field)) {
+        if (field->group) row.section = field->group;
+        if (field->label) row.label = field->label;
     }
 }
 
@@ -2166,32 +2216,9 @@ std::vector<Setting> mcpSettingsTable() {
             });
         }
 
-        // ---- debug: the on-device console and stats overlay, the log (jasper://docs/debugging)
-        add(debugEnumSetting("debug.overlay", "The debug overlay: development (the editor's Play and Debug-type exports), "
-                             "always, or never (DebugOverlay.enabled = true still turns it on).", DebugSettingsNames::modes(), &DebugSettings::overlay));
-        add(debugKeySetting("debug.overlay_toggle_key", "Opens and closes the console.", &DebugSettings::toggleKey));
-        add(debugKeySetting("debug.overlay_stats_key", "Cycles the stats panel (off, fps, full).", &DebugSettings::statsKey));
-        add(debugEnumSetting("debug.overlay_gesture", "Touch gesture that toggles the console (three fingers held 0.75 s).",
-                             DebugSettingsNames::gestures(), &DebugSettings::gesture));
-        add(debugEnumSetting("debug.overlay_popup", "The bubble with the warning/error counts that opens the console.",
-                             DebugSettingsNames::popups(), &DebugSettings::popup));
-        add(debugSetting("debug.overlay_open_on_error", "bool", "The first error opens the console.", {},
-            [](const DebugSettings& d) { return Json(d.openOnError); },
-            [](DebugSettings& d, const Json& value, std::string& error) { return readBool(value, d.openOnError, error); }));
-        add(debugEnumSetting("debug.overlay_stats", "The stats panel at start.", DebugSettingsNames::stats(), &DebugSettings::stats));
-        add(debugEnumSetting("debug.overlay_stats_corner", "Where the stats panel sits.", DebugSettingsNames::corners(), &DebugSettings::statsCorner));
-        add(debugEnumSetting("debug.overlay_allow_lua", "The console's `lua <code>` command: in development builds, always or never.",
-                             DebugSettingsNames::allowLua(), &DebugSettings::allowLua));
-        add(debugSetting("debug.log_buffer_size", "int", "Log lines kept for the console and Log.getEntries (0 = none).", {},
-            [](const DebugSettings& d) { return Json(d.logBufferSize); },
-            [](DebugSettings& d, const Json& value, std::string& error) {
-                long long v;
-                if (!readInt(value, 0, DebugSettings::maxLogBufferSize, v, error)) return false;
-                d.logBufferSize = static_cast<unsigned int>(v);
-                return true;
-            }));
-        add(debugEnumSetting("debug.log_stack_traces", "Which Lua Log.* lines carry a Lua traceback (Lua errors always do).",
-                             DebugSettingsNames::stackTraces(), &DebugSettings::logStackTraces));
+        // ---- debug: the on-device console and stats overlay, the log (jasper://docs/debugging),
+        // from the reflection table
+        addDebugSettings(add);
 
         // ---- tags and layers
         {
@@ -2686,18 +2713,6 @@ const Placement placements[] = {
     {"scripting.lua_dir", "Scripting", "", "Lua Directory", "lua"},
     {"scripting.script_dirs", "Scripting", "", "Script Directories", "c++ cpp"},
     {"scripting.cxx_standard", "Scripting", "", "C++ Standard", "cpp c++17 c++20 c++23"},
-    // Project Settings > Debug
-    {"debug.overlay", "Debug", "Overlay", "Overlay", "debug overlay console development builds"},
-    {"debug.overlay_toggle_key", "Debug", "Overlay", "Toggle Key", "console key backquote"},
-    {"debug.overlay_stats_key", "Debug", "Overlay", "Stats Key", "stats fps key"},
-    {"debug.overlay_gesture", "Debug", "Overlay", "Gesture", "touch fingers console"},
-    {"debug.overlay_popup", "Debug", "Overlay", "Popup", "bubble warnings errors counts"},
-    {"debug.overlay_open_on_error", "Debug", "Overlay", "Open on Error", "console errors"},
-    {"debug.overlay_stats", "Debug", "Overlay", "Initial Stats", "stats fps frame time graph"},
-    {"debug.overlay_stats_corner", "Debug", "Overlay", "Stats Corner", "stats position corner"},
-    {"debug.overlay_allow_lua", "Debug", "Overlay", "Allow Lua Commands", "lua console commands"},
-    {"debug.log_buffer_size", "Debug", "Log", "Log Buffer Size", "log lines buffer entries"},
-    {"debug.log_stack_traces", "Debug", "Log", "Log Stack Traces", "stack trace traceback lua log"},
     {"editor.version_control_files", "Editor", "Version Control", "Version Control Files", "git gitignore gitattributes vcs"},
     {"editor.vcs.provider", "Editor", "Version Control", "Provider", "git svn subversion vcs repository"},
     {"editor.vcs.lfs", "Editor", "Version Control", "Git LFS", "lfs large files lockable binaries"},
@@ -2914,6 +2929,8 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
             textureRowPlacement(setting.key, row);
         } else if (setting.key.rfind("shader_creation.", 0) == 0) {
             shaderCreationRowPlacement(setting.key, row);
+        } else if (setting.key.rfind("debug.", 0) == 0) {
+            debugRowPlacement(setting.key, row);
         } else {
             row.page = setting.preference ? "General" : "Editor";
             row.label = titleCase(setting.key);

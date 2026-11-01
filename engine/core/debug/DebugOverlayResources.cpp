@@ -130,7 +130,7 @@ input:focus { background-color: #ffffff22; }
 .row.expanded { background-color: #ffffff12; }
 .row.lvl-warn { border-left-color: #ffcc55; }
 .row.lvl-error { border-left-color: #ff6b6b; }
-.row.lvl-verbose, .row.lvl-debug { border-left-color: #4d5466; }
+.row.lvl-trace, .row.lvl-debug { border-left-color: #4d5466; }
 .row.lvl-warn { color: #ffe3a3; }
 .row.lvl-error { color: #ffb3b3; }
 .time { color: #7d8496; margin-right: 0.4615rem; }

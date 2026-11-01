@@ -18,6 +18,7 @@
 #include <climits>
 #include <cmath>
 #include "Log.h"
+#include "util/SubscriptionOwnerIndex.h"
 #include "debug/DebugOverlay.h"
 #include "debug/DebugStats.h"
 #include "Scene.h"
@@ -97,9 +98,22 @@ namespace {
         LogCategory* category;
     };
 
+    // a Lua traceback per Project Settings > Debug > Log Stack Traces (from the caller of the
+    // logging function), "" when that level gets none
+    std::string luaLogTraceback(lua_State* L, LogLevel level) {
+        if (!Log::wantsStackTrace(level)) return std::string();
+        luaL_traceback(L, L, nullptr, 1);
+        size_t length = 0;
+        const char* trace = lua_tolstring(L, -1, &length);
+        std::string text(trace ? trace : "", trace ? length : 0);
+        lua_pop(L, 1);
+        return text;
+    }
+
     void luaLog(lua_State* L, LogLevel level, const LogCategory& category, const char* text) {
         if (!Logger::shouldLog(level, category)) return;
-        LuaBinding::logFromLua(L, level, category, text ? std::string_view(text) : std::string_view("(nil)"));
+        LuaBinding::logFromLua(L, level, category, text ? std::string_view(text) : std::string_view("(nil)"),
+                               luaLogTraceback(L, level));
     }
 }
 
@@ -1122,12 +1136,13 @@ namespace {
 
     struct LogLevelNames {};
 
-#if 0 // SYNC4-ABSORB(log-overlay): upstream's Log.print... (tab-joined values, a traceback per
-      // Project Settings > Debug) wait for the log-overlay absorption; S09's Log.* (category
-      // lua, chunk and line) stay the Lua Log functions meanwhile
-    // Log.print/verbose/debug/warn/error(...): the values joined with tabs (tostring), a Lua
-    // traceback per Project Settings > Debug > Log Stack Traces
+    // Log.print/info/verbose/debug/warn/error(...): category lua, the values joined with tabs
+    // (tostring), the calling chunk and line as the source (S09 R5) and a Lua traceback per
+    // Project Settings > Debug > Log Stack Traces. Gated first: a filtered call builds nothing.
     int luaLogLine(lua_State* L, LogLevel level){
+        LogCategory& category = logCategoryLua();
+        if (!Logger::shouldLog(level, category))
+            return 0;
         const int count = lua_gettop(L);
         luaL_Buffer buffer;
         luaL_buffinit(L, &buffer);
@@ -1151,17 +1166,24 @@ namespace {
             const std::string messageText(message, messageLength);
             const std::string traceText(trace, traceLength);
             lua_pop(L, 2);
-            Log::emitEntry(level, messageText, traceText, true);
+            LuaBinding::logFromLua(L, level, category, messageText, traceText);
         }
         return 0;
     }
 
     int luaLogPrint(lua_State* L){ return luaLogLine(L, LogLevel::Info); }
     int luaLogVerbose(lua_State* L){ return luaLogLine(L, LogLevel::Trace); }
-    int luaLogDebug(lua_State* L){ return luaLogLine(L, LogLevel::Debug); }
+    // compiled out of release builds, as Log::debug
+    int luaLogDebug(lua_State* L){
+    #ifndef NDEBUG
+        return luaLogLine(L, LogLevel::Debug);
+    #else
+        (void)L;
+        return 0;
+    #endif
+    }
     int luaLogWarn(lua_State* L){ return luaLogLine(L, LogLevel::Warn); }
     int luaLogError(lua_State* L){ return luaLogLine(L, LogLevel::Error); }
-#endif
 
     // Log.getEntries([maxCount [, levels]]): the buffered lines, newest last
     int luaLogGetEntries(lua_State* L){
@@ -1181,8 +1203,8 @@ namespace {
                 int isNumber = 0;
                 const lua_Integer value = lua_tointegerx(L, -1, &isNumber);
                 lua_pop(L, 1);
-                if (!isNumber || value < 0 || value > static_cast<lua_Integer>(LogLevel::Error))
-                    return luaL_argerror(L, 2, "a list of LogLevel values (LogLevel.INFO .. LogLevel.ERROR)");
+                if (!isNumber || value < 0 || value > static_cast<lua_Integer>(LogLevel::Fatal))
+                    return luaL_argerror(L, 2, "a list of LogLevel values (LogLevel.TRACE .. LogLevel.FATAL)");
                 mask |= logLevelBit(static_cast<LogLevel>(value));
             }
         }
@@ -1190,9 +1212,11 @@ namespace {
         lua_createtable(L, static_cast<int>(entries.size()), 0);
         for (size_t i = 0; i < entries.size(); i++){
             const LogEntry& entry = entries[i];
-            lua_createtable(L, 0, 8);
+            lua_createtable(L, 0, 9);
             lua_pushinteger(L, static_cast<lua_Integer>(entry.id));
             lua_setfield(L, -2, "id");
+            lua_pushstring(L, entry.category ? entry.category->name : "engine");
+            lua_setfield(L, -2, "category");
             lua_pushinteger(L, static_cast<lua_Integer>(entry.level));
             lua_setfield(L, -2, "level");
             lua_pushlstring(L, entry.message.data(), entry.message.size());
@@ -1215,8 +1239,8 @@ namespace {
     // Log.count(level)
     int luaLogCount(lua_State* L){
         const lua_Integer level = luaL_checkinteger(L, 1);
-        if (level < 0 || level > static_cast<lua_Integer>(LogLevel::Error))
-            return luaL_argerror(L, 1, "a LogLevel value (LogLevel.INFO .. LogLevel.ERROR)");
+        if (level < 0 || level > static_cast<lua_Integer>(LogLevel::Fatal))
+            return luaL_argerror(L, 1, "a LogLevel value (LogLevel.TRACE .. LogLevel.FATAL)");
         lua_pushinteger(L, static_cast<lua_Integer>(Log::getCount(static_cast<LogLevel>(level))));
         return 1;
     }
@@ -1296,6 +1320,24 @@ namespace {
         return self;
     }
 
+    // The console commands of a script go when it is released (LuaBinding::removeScriptSubscriptions:
+    // SubscriptionOwnerIndex::releaseOwner): one entry per owner, its key the owner's, whose removal
+    // drops the commands tagged "_<key>_"
+    class DebugCommandOwners : public detail::SlotStateBase {
+    public:
+        bool removeSlot(uint64_t ownerKey) override {
+            const std::string tag = "_" + std::to_string(ownerKey) + "_";
+            const size_t before = DebugOverlay::getCommands().size();
+            DebugOverlay::removeCommandsByTag(tag);
+            return DebugOverlay::getCommands().size() != before;
+        }
+    };
+
+    const std::shared_ptr<DebugCommandOwners>& debugCommandOwners(){
+        static const std::shared_ptr<DebugCommandOwners> owners = std::make_shared<DebugCommandOwners>();
+        return owners;
+    }
+
     // DebugOverlay.addCommand(name, description, fn [, owner]): fn(args) gets the words after the
     // name. The owner (a script table; by default the `self` of the calling method) takes the
     // command with it when it is released
@@ -1339,6 +1381,8 @@ namespace {
                         Log::error("Lua Error: console command '%s': %s", commandName.c_str(), error.c_str());
                     }
                 }, ownerTag);
+            if (added && owner)
+                SubscriptionOwnerIndex::add(ownerKeyOf(owner), debugCommandOwners(), ownerKeyOf(owner));
         }
         lua_pushboolean(L, added);
         return 1;
@@ -3260,22 +3304,17 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         })
         .endClass();
 
-    // Log.*: category lua, with the calling chunk and line. debug is compiled out of release
-    // builds as before; Log.category(name) gives a category's own trace...error
+    // Log.*(...): category lua, any values (tab-joined), with the calling chunk and line and a
+    // traceback per Log Stack Traces (luaLogLine). debug is compiled out of release builds as
+    // before; Log.category(name) gives a category's own trace...error
     luabridge::getGlobalNamespace(L)
         .beginClass<Log>("Log")
-        .addStaticFunction("print", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Info, logCategoryLua(), text); })
-        .addStaticFunction("info", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Info, logCategoryLua(), text); })
-        .addStaticFunction("verbose", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Trace, logCategoryLua(), text); })
-        .addStaticFunction("debug", [] (const char* text, lua_State* L) {
-        #ifndef NDEBUG
-            luaLog(L, LogLevel::Debug, logCategoryLua(), text);
-        #else
-            (void)text; (void)L;
-        #endif
-        })
-        .addStaticFunction("warn", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Warn, logCategoryLua(), text); })
-        .addStaticFunction("error", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Error, logCategoryLua(), text); })
+        .addStaticFunction("print", &luaLogPrint)
+        .addStaticFunction("info", &luaLogPrint)
+        .addStaticFunction("verbose", &luaLogVerbose)
+        .addStaticFunction("debug", &luaLogDebug)
+        .addStaticFunction("warn", &luaLogWarn)
+        .addStaticFunction("error", &luaLogError)
         // false (and a warning) for an unknown level name
         .addStaticFunction("setLevel", [] (const std::string& level, std::optional<std::string> category, lua_State* L) {
             LogLevel value;
@@ -3308,11 +3347,14 @@ void LuaBinding::registerCoreClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .beginNamespace("LogLevel")
-        .addVariable("INFO", LogLevel::Info)
+        // the Logger's one LogLevel (S09 R1): TRACE and VERBOSE are the same level
+        .addVariable("TRACE", LogLevel::Trace)
         .addVariable("VERBOSE", LogLevel::Trace)
         .addVariable("DEBUG", LogLevel::Debug)
+        .addVariable("INFO", LogLevel::Info)
         .addVariable("WARN", LogLevel::Warn)
         .addVariable("ERROR", LogLevel::Error)
+        .addVariable("FATAL", LogLevel::Fatal)
         .endNamespace();
 
     // Log.onMessageReceived's event: (message, stackTrace, level)
