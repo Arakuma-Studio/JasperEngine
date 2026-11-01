@@ -91,7 +91,10 @@ three runs (median, range): the reference stack 3.50 ms on 1 thread (3.49-3.52, 
 0.15 ms projected (budget 0.5), parallel efficiency 0.82, SIMD 64 x and the Noise kernel 78 x,
 render prep 1.35 ms (sorted, 1 thread: 2.96 ms), `trails_10k` 0.47 ms, `collision_world_10k`
 0.23 ms, `many_small_1000x100` 1.33 ms, no allocation in the steady state: every budget holds
-(`check_bench.py`), the new fields cost nothing when they are off.
+(`check_bench.py`), the new fields cost nothing when they are off. Rerun after the total-velocity
+stretch channels (ChAnimVel*) went in: 3.49 ms on 1 thread, 0.65 ms projected, without Noise
+0.81 ms, SIMD 66 x, Noise 81 x, prep 1.41 ms, `many_small_1000x100` 1.44 ms, no allocation: every
+budget holds.
 
 ### Web
 
