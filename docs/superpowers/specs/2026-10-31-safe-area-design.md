@@ -574,10 +574,12 @@ spec was silent, ambiguous or did not fit the code:
 18b. **Nested Safe Areas lag one UI update** behind a moving parent: a nested panel's reference rect is
     read in world axes from the parent's model matrix, which the transform update of the same frame
     refreshes after the UI layout. A root panel (the usual setup, the spec's port) has no lag.
-18c. **Static folds outside math functions.** Rewrites that read a value token by token or write
-    decorator arguments (transform, box-shadow, gradients...) get env()'s variable from
-    `Session::staticVar`, which folds it to 0px and makes the declaration report "env(safe-area-inset-*)
-    is 0 here (static value)" (Info); properties written as they are read keep the live variable.
+18c. **Static folds outside math functions.** With the fork's features, transform, box-shadow and
+    gradients are written for the fork with the live variable in them (it substitutes var() at runtime);
+    where a rewrite must read a value token by token or write compat decorator arguments (a fork
+    without those features), `Session::staticVar` folds env()'s variable to 0px and the declaration
+    reports "env(safe-area-inset-*) is 0 here (static value)" (Info). No declaration is dropped
+    (`SafeAreaEnv.TokenRewrites`).
 19. **Merge note:** `ComponentType::SafeAreaComponent` is appended last (prefab override masks use the
     ordinal): a branch appending another type at the same place conflicts there and in
     `AnimationClipContractTest`. (The ECS `Signature` limit of 64 types was raised to 128 on `main`.)

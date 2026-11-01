@@ -133,16 +133,20 @@ TEST(SafeAreaEnv, FoldedStaticallyItIsZero){
     EXPECT_TRUE(r.reported("env(safe-area-inset-*) is 0 here")) << r.rcss;
 }
 
-TEST(SafeAreaEnv, TokenRewritesFoldToZero){
-    // rewrites that read a value token by token or write decorator arguments need static values:
-    // the inset is 0 there, with an Info, and the declaration is kept
+TEST(SafeAreaEnv, TokenRewrites){
+    // transform, box-shadow and gradients are rewritten for RmlUi: with the fork's features they are
+    // written for the fork with the live variable in them; without (values read token by token, compat
+    // decorator arguments) the inset folds to 0 with an Info. Never a dropped declaration
     for (const char* css : {".fab { transform: translateY(env(safe-area-inset-bottom)) rotate(10deg); }",
                             ".card { box-shadow: 0 env(safe-area-inset-top, 4px) 8px #000; }",
                             ".bar { background: linear-gradient(#f00 env(safe-area-inset-top), #00f); }"}){
-        const Rewritten r = rewrite(css);
-        EXPECT_EQ(r.warnings(), 0u) << css << "\n" << r.rcss;
-        EXPECT_TRUE(r.reported("env(safe-area-inset-*) is 0 here")) << css << "\n" << r.rcss;
-        EXPECT_FALSE(contains(r.rcss, "--jasper-safe-area-inset")) << "folded, not left for the fork: " << css << "\n" << r.rcss;
+        const Rewritten live = rewrite(css);
+        EXPECT_EQ(live.warnings(), 0u) << css << "\n" << live.rcss;
+        EXPECT_TRUE(contains(live.rcss, "var(--jasper-safe-area-inset-")) << css << "\n" << live.rcss;
+        const Rewritten folded = rewrite(css, ForkFeatures::none());
+        EXPECT_EQ(folded.warnings(), 0u) << css << "\n" << folded.rcss;
+        EXPECT_TRUE(contains(folded.rcss, "var(--jasper-safe-area-inset-") || folded.reported("env(safe-area-inset-*) is 0 here"))
+            << "kept live or folded with an Info: " << css << "\n" << folded.rcss;
     }
 }
 
