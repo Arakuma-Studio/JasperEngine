@@ -520,3 +520,22 @@ Decisions taken while implementing (2026-10-31), where the spec was silent, ambi
   passes run alone); full MCP suite (`-j3`) 925 passed, 21 skipped, 11 failed: the 10 baseline failures and
   `test_budget`, run with main's limit before TOTAL_LIMIT was set (it passes with it); tool budget 154 tools,
   112708 (TOTAL_LIMIT); TOOLS.md regenerated from this build.
+- **Bug fixes after the merge (BF14, from a comparison with the unmerged `snd/sound-layer` branch).** SoLoud
+  local patches, listed in `engine/libs/soloud/CMakeLists.txt`: SoLoud's own `stb_vorbis.c` is the one linked
+  (WavStream hands it a SoLoud `File*`; the stock copy took it for a `FILE*` and every streamed Ogg aborted),
+  `WavStreamInstance::seek` lands on its frame in every format (it handed WAV/FLAC/MP3 decoders to
+  `stb_vorbis_seek` at each loop wrap), `Wav`'s loaders stay within the clip, a voice plays its last block
+  to the end, and a bus with autostop off (the mixer's buses) never reads ahead of its voices (a voice
+  through a group started up to 511 frames late). `AudioFileCheck` (engine/core/audio) refuses, before SoLoud
+  decodes, what its decoders would trust and must not (more than 8 channels, gigabyte headers) and makes a
+  pipe-written WAV's sizes its bytes; SoundPool and EngineWavStream run it. The null pump mixes the time
+  it was given without a rounding per frame and leaves a Recorder capture (which now builds the mixer's
+  buses) to its own mixing. Clocked voices start on `AudioMixer::getClockTime()` (the frames' unscaled
+  time), not the frame's delta. `--headless` / `--silent-audio` open the null driver (S30 R17) instead of
+  muting. The platform's pause has its own flag (`AudioMixer::setPlatformPaused`), so returning from the
+  background keeps a game's `pauseAll`. Play start and stop put `AudioSystem.globalVolume` back at 1; an
+  exported source saved Paused is Paused. 3D: one listener, the main scene's camera, hears every scene
+  (a layer scene's sources are mapped from its own camera's view); an orthographic or UI camera hears
+  from the centre of its view; velocities are units a second (a teleport has none, speeds stay under half
+  the speed of sound over the Doppler factor), Doppler only under perspective cameras, a still source
+  loses its shift; `setPan` is for 2D voices only.
