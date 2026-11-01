@@ -102,6 +102,9 @@ namespace jasperengine{
         static std::string getAsyncModelLoadKey(const Scene* scene, const std::string& filename);
         std::string getAsyncModelLoadKey(const std::string& filename) const;
         static std::shared_ptr<AsyncModelLoadResult> pollOrStartAsyncModelLoad(const Scene* scene, const std::string& filename, bool obj);
+        // Test hook: each asynchronous parse of a model file waits this long first, so a load is still
+        // running when a test acts (0, the default: none)
+        static void setModelLoadDelayForTest(int milliseconds);
         static void cancelAsyncModelLoadByKey(const std::string& key);
         // A finished load of this scene that nobody took for UNCLAIMED_LOAD_FRAMES updates in a
         // row (its GameObject names another file now, or found the parse in ModelPool): dropped,

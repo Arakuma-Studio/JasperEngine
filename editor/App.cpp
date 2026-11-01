@@ -3015,6 +3015,13 @@ void editor::App::engineInit(int argc, char** argv) {
 
     Engine::setAsyncLoading(true);
 
+    // Test hook: the harness holds model parses back on their worker, so a save while a load still
+    // runs is not left to timing (test_save_determinism.py)
+    if (const char* delay = std::getenv("JASPER_TEST_MODEL_LOAD_DELAY_MS")) {
+        const long ms = std::strtol(delay, nullptr, 10);
+        if (ms > 0) MeshSystem::setModelLoadDelayForTest(static_cast<int>(std::min(ms, 60000L)));
+    }
+
     // Before the project loads, so an MCP client's initialize is answered at once;
     // its tool calls wait in the main-thread queue until the project is ready.
     mcp::McpServer::get().start(*this);
