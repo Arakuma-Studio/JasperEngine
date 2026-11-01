@@ -3,9 +3,11 @@
 
 #include "AnimatorEdits.h"
 
+#include "animation/AnimationClipIO.h"
 #include "animation/AnimationPlayerRuntime.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <map>
@@ -105,9 +107,17 @@ std::string animator::uniqueStateName(const anim::ControllerLayer& layer, const 
 }
 
 std::string animator::uniqueParameterName(const anim::ControllerData& data, const std::string& base){
-    std::vector<std::string> names;
-    for (const anim::ControllerParameter& parameter : data.parameters) names.push_back(parameter.name);
-    return uniqueName(names, base);
+    // a Lua identifier: the number joins without a space ("Speed2")
+    auto taken = [&](const std::string& name){ return data.findParameter(name) >= 0; };
+    const std::string root = base.empty() ? std::string("Param") : base;
+    if (!taken(root)) return root;
+    size_t end = root.size();
+    while (end > 0 && std::isdigit((unsigned char)root[end - 1])) end--;
+    const std::string stem = end > 0 ? root.substr(0, end) : root;
+    for (int k = 1;; k++){
+        const std::string name = stem + std::to_string(k);
+        if (!taken(name)) return name;
+    }
 }
 
 std::string animator::uniqueLayerName(const anim::ControllerData& data, const std::string& base){
@@ -207,10 +217,12 @@ void animator::removeTransitions(anim::ControllerData& data, int layer, std::vec
 }
 
 int animator::addParameter(anim::ControllerData& data, anim::ControllerParameterType type, const std::string& name){
+    // parameter names are Lua identifiers (the engine drops others)
+    if (!name.empty() && !anim::isLuaIdentifier(name)) return -1;
     anim::ControllerParameter parameter;
     parameter.type = type;
-    const char* base = type == anim::ControllerParameterType::Float ? "New Float" : type == anim::ControllerParameterType::Int ? "New Int" :
-                       type == anim::ControllerParameterType::Bool ? "New Bool" : "New Trigger";
+    const char* base = type == anim::ControllerParameterType::Float ? "NewFloat" : type == anim::ControllerParameterType::Int ? "NewInt" :
+                       type == anim::ControllerParameterType::Bool ? "NewBool" : "NewTrigger";
     parameter.name = uniqueParameterName(data, name.empty() ? std::string(base) : name);
     data.parameters.push_back(parameter);
     return (int)data.parameters.size() - 1;
@@ -225,6 +237,10 @@ bool animator::renameParameter(anim::ControllerData& data, int parameter, const 
     if (name == old) return true;
     if (name.empty()){
         if (error) *error = "a parameter needs a name";
+        return false;
+    }
+    if (!anim::isLuaIdentifier(name)){
+        if (error) *error = "\"" + name + "\" is not a valid parameter name: letters, digits and _, not starting with a digit (a Lua identifier)";
         return false;
     }
     if (data.findParameter(name) >= 0){

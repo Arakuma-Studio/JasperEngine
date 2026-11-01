@@ -44,8 +44,8 @@ namespace jasperengine::editor::animator{
 
     // ---- names ----
 
-    // `base`, else "base 1", "base 2"... that the layer (states), controller (parameters, layers)
-    // does not have
+    // `base`, else "base 1", "base 2"... that the layer (states) or controller (layers) does not
+    // have; parameters: "base1", "base2" (Lua identifiers)
     std::string uniqueStateName(const anim::ControllerLayer& layer, const std::string& base);
     std::string uniqueParameterName(const anim::ControllerData& data, const std::string& base);
     std::string uniqueLayerName(const anim::ControllerData& data, const std::string& base);
@@ -65,9 +65,11 @@ namespace jasperengine::editor::animator{
     int addTransition(anim::ControllerData& data, int layer, int from, int to);
     void removeTransitions(anim::ControllerData& data, int layer, std::vector<int> transitions);
 
-    // a parameter of `type` (a taken name gets a number); its index
+    // a parameter of `type` (a taken name gets a number: "Speed1"); its index, -1 when `name` is
+    // not a Lua identifier (parameter names are; the engine drops others)
     int addParameter(anim::ControllerData& data, anim::ControllerParameterType type, const std::string& name);
-    // updates the conditions, blend trees and speed parameters that read it
+    // updates the conditions, blend trees and speed parameters that read it; refuses a name that is
+    // not a Lua identifier
     bool renameParameter(anim::ControllerData& data, int parameter, const std::string& name, std::string* error);
     // drops the conditions that read it, clears the blend trees and speed parameters that do
     void removeParameter(anim::ControllerData& data, int parameter);

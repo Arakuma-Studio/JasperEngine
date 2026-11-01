@@ -65,6 +65,9 @@ namespace jasperengine::editor{
         bool openController(const std::string& controller, uint32_t sceneId, Entity entity, std::string* error);
         // binds to the selected GameObject when it (or an ancestor) has a player with a controller
         void followSelection();
+        // the bound player's controller field changed (the Inspector, MCP, an undo): its new
+        // controller is opened, or "no controller" shown (show() calls it every frame)
+        void followBoundController();
         // before a save, Play, a scene switch: the preview restores the scene
         void stopTransientPreviews();
         void clearSceneState(uint32_t sceneId);
@@ -167,6 +170,10 @@ namespace jasperengine::editor{
         uint32_t followedScene = 0;
         std::vector<Entity> followedSelection;
         int layer = 0;
+        std::string currentLayerName;
+        std::vector<std::string> layerNames;    // the layer list syncLayers last saw
+        // the bound player's controller field when the window opened it
+        std::string boundControllerField;
         animator::Item selected;
         std::vector<int> selectedStateList;
         animator::Clipboard clipboard;
@@ -215,6 +222,8 @@ namespace jasperengine::editor{
         void setNotice(const std::string& text, bool isError);
         void close();
         void attach(const std::shared_ptr<AnimatorControllerDocument>& document);
+        // after any change of the layer list: the current layer kept by name, a stale selection cleared
+        void syncLayers();
         bool commit(anim::ControllerData data, const std::string& undoName, const std::string& mergeKey = "");
         const anim::ControllerLayer* currentLayerData() const;
         SceneProject* boundSceneProject() const;
