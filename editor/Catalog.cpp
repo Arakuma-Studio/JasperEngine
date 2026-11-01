@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "Catalog.h"
+#include "particles/ParticleFields.h"
+#include "action/ParticleSystem.h"
+#include "subsystem/ActionSystem.h"
 #include "script/ScriptRuntime.h"
 
 #include "Stream.h"
@@ -432,6 +435,44 @@ namespace {
         makeFastProperty<ScrollbarComponent, int, &ScrollbarComponent::barMarginBottom>("barMarginBottom", PropertyType::Int, UpdateFlags_None),
     };
 
+    // ui-multitouch: the on-screen controls (the runtime state is not a property)
+    static const FastPropertyDescriptor kOnScreenStickProperties[] = {
+        makeFastProperty<OnScreenStickComponent, bool, &OnScreenStickComponent::enabled>("enabled", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, OnScreenStickMode, &OnScreenStickComponent::mode>("mode", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, Entity, &OnScreenStickComponent::background>("background", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, Entity, &OnScreenStickComponent::handle>("handle", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, float, &OnScreenStickComponent::handleRange>("handleRange", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, float, &OnScreenStickComponent::deadZone>("deadZone", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, float, &OnScreenStickComponent::moveThreshold>("moveThreshold", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, OnScreenStickAxes, &OnScreenStickComponent::axes>("axes", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, bool, &OnScreenStickComponent::snapX>("snapX", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, bool, &OnScreenStickComponent::snapY>("snapY", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, bool, &OnScreenStickComponent::hideWhenReleased>("hideWhenReleased", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, bool, &OnScreenStickComponent::clampToArea>("clampToArea", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, std::string, &OnScreenStickComponent::horizontalAction>("horizontalAction", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, std::string, &OnScreenStickComponent::verticalAction>("verticalAction", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, OnScreenVisibility, &OnScreenStickComponent::visibility>("visibility", PropertyType::Enum, UpdateFlags_None),
+    };
+
+    static const FastPropertyDescriptor kOnScreenButtonProperties[] = {
+        makeFastProperty<OnScreenButtonComponent, bool, &OnScreenButtonComponent::enabled>("enabled", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenButtonComponent, std::string, &OnScreenButtonComponent::action>("action", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<OnScreenButtonComponent, float, &OnScreenButtonComponent::value>("value", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<OnScreenButtonComponent, bool, &OnScreenButtonComponent::pressWhenPointerEnters>("pressWhenPointerEnters", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenButtonComponent, bool, &OnScreenButtonComponent::releaseWhenPointerLeaves>("releaseWhenPointerLeaves", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenButtonComponent, OnScreenVisibility, &OnScreenButtonComponent::visibility>("visibility", PropertyType::Enum, UpdateFlags_None),
+    };
+
+    static const FastPropertyDescriptor kTouchAreaProperties[] = {
+        makeFastProperty<TouchAreaComponent, bool, &TouchAreaComponent::enabled>("enabled", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TouchAreaComponent, std::string, &TouchAreaComponent::horizontalAction>("horizontalAction", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<TouchAreaComponent, std::string, &TouchAreaComponent::verticalAction>("verticalAction", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<TouchAreaComponent, float, &TouchAreaComponent::sensitivity>("sensitivity", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<TouchAreaComponent, bool, &TouchAreaComponent::invertX>("invertX", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TouchAreaComponent, bool, &TouchAreaComponent::invertY>("invertY", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TouchAreaComponent, OnScreenVisibility, &TouchAreaComponent::visibility>("visibility", PropertyType::Enum, UpdateFlags_None),
+    };
+
     static const FastPropertyDescriptor kProgressbarProperties[] = {
         makeFastProperty<ProgressbarComponent, Entity, &ProgressbarComponent::fill>("fill", PropertyType::Entity, UpdateFlags_None),
         makeFastProperty<ProgressbarComponent, ProgressbarType, &ProgressbarComponent::type>("type", PropertyType::Enum, UpdateFlags_None),
@@ -768,6 +809,38 @@ namespace {
         makeFastProperty<LatticeFollowerComponent, float, &LatticeFollowerComponent::weight>("weight", PropertyType::Float, UpdateFlags_None),
     };
 
+    // read by CameraControlSystem every frame (no update flag needed); runtime is not a property
+    static const FastPropertyDescriptor kCameraShakerProperties[] = {
+        makeFastProperty<CameraShakerComponent, bool, &CameraShakerComponent::global>("global", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, bool, &CameraShakerComponent::unscaledTime>("unscaledTime", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, CameraShakeMode, &CameraShakerComponent::mode>("mode", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, float, &CameraShakerComponent::positionScale>("positionScale", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, float, &CameraShakerComponent::rotationScale>("rotationScale", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, std::string, &CameraShakerComponent::startPreset>("startPreset", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, float, &CameraShakerComponent::traumaDecay>("traumaDecay", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, float, &CameraShakerComponent::traumaPower>("traumaPower", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, Vector3, &CameraShakerComponent::traumaMaxOffset>("traumaMaxOffset", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, Vector3, &CameraShakerComponent::traumaMaxAngle>("traumaMaxAngle", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, float, &CameraShakerComponent::traumaFrequency>("traumaFrequency", PropertyType::Float, UpdateFlags_None),
+    };
+
+    // read by CameraControlSystem every frame; the runtime fields (velocity...) are not properties
+    static const FastPropertyDescriptor kCameraFollowProperties[] = {
+        makeFastProperty<CameraFollowComponent, Entity, &CameraFollowComponent::target>("target", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, Vector3, &CameraFollowComponent::offset>("offset", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, FollowOffsetSpace, &CameraFollowComponent::offsetSpace>("offsetSpace", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, Vector3, &CameraFollowComponent::damping>("damping", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, float, &CameraFollowComponent::maxSpeed>("maxSpeed", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, bool, &CameraFollowComponent::lookAt>("lookAt", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, Vector3, &CameraFollowComponent::lookAtOffset>("lookAtOffset", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, float, &CameraFollowComponent::rotationDamping>("rotationDamping", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, Vector2, &CameraFollowComponent::deadZone>("deadZone", PropertyType::Vector2, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, bool, &CameraFollowComponent::useBounds>("useBounds", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, Vector3, &CameraFollowComponent::boundsMin>("boundsMin", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, Vector3, &CameraFollowComponent::boundsMax>("boundsMax", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, bool, &CameraFollowComponent::unscaledTime>("unscaledTime", PropertyType::Bool, UpdateFlags_None),
+    };
+
     static const FastPropertyDescriptor kLatticeTracksProperties[] = {
         makeFastProperty<LatticeTracksComponent, std::vector<int>, &LatticeTracksComponent::points>("points", PropertyType::Custom, UpdateFlags_None),
         makeFastProperty<LatticeTracksComponent, std::vector<std::vector<Vector3>>, &LatticeTracksComponent::values>("values", PropertyType::Custom, UpdateFlags_None),
@@ -786,10 +859,14 @@ namespace {
 
     // enabled is the shared component checkbox (findEnabledGetter). The clip list is `clips`
     // (Custom: the whole list, what a prefab override of the list holds) plus
-    // clips[i].clip/guid/name/wrap (resolveAnimationPlayerPropertyFast); the runtime fields are
+    // clips[i].clip/guid/name/wrap/layer, layers[i].name/weight/blend/mask/maskGuid
+    // (resolveAnimationPlayerPropertyFast); the runtime fields are
     // not properties. The settings are read by the player when it plays (no update flag).
     static const FastPropertyDescriptor kAnimationPlayerProperties[] = {
         makeFastProperty<AnimationPlayerComponent, std::vector<AnimationPlayerClip>, &AnimationPlayerComponent::clips>("clips", PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload),
+        makeFastProperty<AnimationPlayerComponent, std::vector<AnimationPlayerLayer>, &AnimationPlayerComponent::layers>("layers", PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload),
+        makeFastProperty<AnimationPlayerComponent, std::string, &AnimationPlayerComponent::controller>("controller", PropertyType::String, UpdateFlags_AnimationPlayer_Reload),
+        makeFastProperty<AnimationPlayerComponent, std::string, &AnimationPlayerComponent::controllerGuid>("controllerGuid", PropertyType::String, UpdateFlags_AnimationPlayer_Reload),
         makeFastProperty<AnimationPlayerComponent, std::string, &AnimationPlayerComponent::defaultClip>("defaultClip", PropertyType::String, UpdateFlags_None),
         makeFastProperty<AnimationPlayerComponent, bool, &AnimationPlayerComponent::playAutomatically>("playAutomatically", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<AnimationPlayerComponent, float, &AnimationPlayerComponent::speed>("speed", PropertyType::Float, UpdateFlags_None),
@@ -1712,6 +1789,18 @@ namespace {
         return resolveDirectProperties(static_cast<ScrollbarComponent*>(comp), propertyName, kScrollbarProperties);
     }
 
+    PropertyData resolveOnScreenStickPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<OnScreenStickComponent*>(comp), propertyName, kOnScreenStickProperties);
+    }
+
+    PropertyData resolveOnScreenButtonPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<OnScreenButtonComponent*>(comp), propertyName, kOnScreenButtonProperties);
+    }
+
+    PropertyData resolveTouchAreaPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<TouchAreaComponent*>(comp), propertyName, kTouchAreaProperties);
+    }
+
     PropertyData resolveProgressbarPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<ProgressbarComponent*>(comp), propertyName, kProgressbarProperties);
     }
@@ -2100,6 +2189,14 @@ namespace {
         return PropertyData();
     }
 
+    PropertyData resolveCameraShakerPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<CameraShakerComponent*>(comp), propertyName, kCameraShakerProperties);
+    }
+
+    PropertyData resolveCameraFollowPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<CameraFollowComponent*>(comp), propertyName, kCameraFollowProperties);
+    }
+
     PropertyData resolveLatticeFollowerPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<LatticeFollowerComponent*>(comp), propertyName, kLatticeFollowerProperties);
     }
@@ -2161,6 +2258,28 @@ namespace {
                 if (fieldName == ".wrap") {
                     return {PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.wrap, (void*)&entry.wrap};
                 }
+                if (fieldName == ".layer") {
+                    return {PropertyType::Int, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.layer, (void*)&entry.layer};
+                }
+            }
+        }
+
+        // layers[i].name / .weight / .mask / .maskGuid; .blend is an AnimationLayerBlend, one
+        // byte: Custom like clips[i].wrap (anim layers spec 6.3)
+        if (propertyName.compare(0, 7, "layers[") == 0) {
+            size_t pos = 7;
+            size_t index = 0;
+            if (!parseIndex(propertyName, pos, index)) return PropertyData();
+            if (pos + 1 >= propertyName.length() || propertyName[pos] != ']') return PropertyData();
+            if (index < comp->layers.size()) {
+                static AnimationPlayerLayer defLayer;
+                AnimationPlayerLayer& layer = comp->layers[index];
+                const std::string fieldName = propertyName.substr(pos + 1);
+                if (fieldName == ".name") return {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.name, (void*)&layer.name};
+                if (fieldName == ".weight") return {PropertyType::Float, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.weight, (void*)&layer.weight};
+                if (fieldName == ".blend") return {PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.blend, (void*)&layer.blend};
+                if (fieldName == ".mask") return {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.mask, (void*)&layer.mask};
+                if (fieldName == ".maskGuid") return {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.maskGuid, (void*)&layer.maskGuid};
             }
         }
 
@@ -2257,9 +2376,38 @@ namespace {
         return getRigidbodyPropertyFast(static_cast<RigidbodyComponent*>(comp), propertyName);
     }
 
+    // a version 2 module field (particles/ParticleFields) as a property
+    PropertyData particleFieldProperty(const particles::FieldInfo& field, ParticleSystemComponent* comp, ParticleSystemComponent& def) {
+        PropertyType type = PropertyType::Custom;
+        switch (field.type) {
+            case particles::FieldType::Bool: type = PropertyType::Bool; break;
+            case particles::FieldType::Int: type = PropertyType::Int; break;
+            case particles::FieldType::UInt: type = PropertyType::UInt; break;
+            case particles::FieldType::Float: type = PropertyType::Float; break;
+            case particles::FieldType::Vector2: type = PropertyType::Vector2; break;
+            case particles::FieldType::Vector3: type = PropertyType::Vector3; break;
+            case particles::FieldType::Curve: type = PropertyType::MinMaxCurve; break;
+            case particles::FieldType::Gradient: type = PropertyType::MinMaxGradient; break;
+            case particles::FieldType::Enum: type = PropertyType::Enum; break;
+            case particles::FieldType::String: type = PropertyType::String; break;
+            case particles::FieldType::Bursts:
+            case particles::FieldType::IntList: type = PropertyType::Custom; break;
+        }
+        const uint64_t flags = field.path() == "renderer.mesh" ? (uint64_t)UpdateFlags_Particle_Mesh : (uint64_t)UpdateFlags_None;
+        return {type, flags, field.get(def), comp ? field.get(*comp) : nullptr};
+    }
+
     PropertyData getParticlesPropertyFast(ParticleSystemComponent* comp, const std::string& propertyName) {
         ParticleSystemComponent& def = getDefaultComponent<ParticleSystemComponent>();
         if (!comp) return PropertyData();
+
+        // the model (1 legacy, 2 modules) and the time it runs on
+        if (propertyName == "version") return {PropertyType::Int, UpdateFlags_None, &def.version, &comp->version};
+        if (propertyName == "useUnscaledTime") return {PropertyType::Bool, UpdateFlags_None, &def.useUnscaledTime, &comp->useUnscaledTime};
+        // version 2: "module.field"
+        if (const particles::FieldInfo* field = particles::findField(propertyName)) {
+            return particleFieldProperty(*field, comp, def);
+        }
 
         // Top-level properties
         if (propertyName == "maxParticles") return {PropertyType::UInt, UpdateFlags_None, &def.maxParticles, &comp->maxParticles};
@@ -3035,6 +3183,18 @@ namespace {
         enumerateFromDescriptors(comp, ps, kScrollbarProperties);
     }
 
+    void enumerateOnScreenStickProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kOnScreenStickProperties);
+    }
+
+    void enumerateOnScreenButtonProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kOnScreenButtonProperties);
+    }
+
+    void enumerateTouchAreaProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kTouchAreaProperties);
+    }
+
     void enumerateProgressbarProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kProgressbarProperties);
     }
@@ -3230,6 +3390,14 @@ namespace {
         }
     }
 
+    void enumerateCameraShakerProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kCameraShakerProperties);
+    }
+
+    void enumerateCameraFollowProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kCameraFollowProperties);
+    }
+
     void enumerateLatticeFollowerProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kLatticeFollowerProperties);
     }
@@ -3269,6 +3437,17 @@ namespace {
             ps[prefix + ".guid"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.guid, entry ? (void*)&entry->guid : nullptr};
             ps[prefix + ".name"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.name, entry ? (void*)&entry->name : nullptr};
             ps[prefix + ".wrap"] = {PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.wrap, entry ? (void*)&entry->wrap : nullptr};
+            ps[prefix + ".layer"] = {PropertyType::Int, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.layer, entry ? (void*)&entry->layer : nullptr};
+        }
+        static AnimationPlayerLayer defLayer;
+        for (size_t i = 0; i < (compRef ? comp->layers.size() : 1); i++) {
+            const std::string prefix = "layers[" + (compRef ? std::to_string(i) : std::string()) + "]";
+            AnimationPlayerLayer* layer = compRef ? &comp->layers[i] : nullptr;
+            ps[prefix + ".name"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.name, layer ? (void*)&layer->name : nullptr};
+            ps[prefix + ".weight"] = {PropertyType::Float, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.weight, layer ? (void*)&layer->weight : nullptr};
+            ps[prefix + ".blend"] = {PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.blend, layer ? (void*)&layer->blend : nullptr};
+            ps[prefix + ".mask"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.mask, layer ? (void*)&layer->mask : nullptr};
+            ps[prefix + ".maskGuid"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.maskGuid, layer ? (void*)&layer->maskGuid : nullptr};
         }
     }
 
@@ -3532,6 +3711,16 @@ namespace {
     void enumerateParticlesProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
         ParticleSystemComponent* comp = static_cast<ParticleSystemComponent*>(compRef);
         ParticleSystemComponent& def = getDefaultComponent<ParticleSystemComponent>();
+
+        ps["version"] = {PropertyType::Int, UpdateFlags_None, &def.version, comp ? &comp->version : nullptr};
+        ps["useUnscaledTime"] = {PropertyType::Bool, UpdateFlags_None, &def.useUnscaledTime, comp ? &comp->useUnscaledTime : nullptr};
+        // a system lists the fields of its model: the modules (version 2) or the legacy ones
+        if (!comp || comp->version >= 2) {
+            for (const particles::FieldInfo& field : particles::fields()) {
+                ps[field.path()] = particleFieldProperty(field, comp, def);
+            }
+            if (comp) return;
+        }
 
         ps["maxParticles"] = {PropertyType::UInt, UpdateFlags_None, &def.maxParticles, comp ? &comp->maxParticles : nullptr};
         ps["emitter"] = {PropertyType::Bool, UpdateFlags_None, &def.emitter, comp ? &comp->emitter : nullptr};
@@ -4036,9 +4225,14 @@ namespace {
         {ComponentType::AnimationPlayerComponent, &findComponentPtr<AnimationPlayerComponent>, &resolveAnimationPlayerPropertyFast, &enumerateAnimationPlayerProperties},
         {ComponentType::VertexAnimatorComponent, &findComponentPtr<VertexAnimatorComponent>, &resolveVertexAnimatorPropertyFast, &enumerateVertexAnimatorProperties},
         {ComponentType::CanvasGroupComponent, &findComponentPtr<CanvasGroupComponent>, &resolveCanvasGroupPropertyFast, &enumerateCanvasGroupProperties},
+        {ComponentType::OnScreenStickComponent, &findComponentPtr<OnScreenStickComponent>, &resolveOnScreenStickPropertyFast, &enumerateOnScreenStickProperties},
+        {ComponentType::OnScreenButtonComponent, &findComponentPtr<OnScreenButtonComponent>, &resolveOnScreenButtonPropertyFast, &enumerateOnScreenButtonProperties},
+        {ComponentType::TouchAreaComponent, &findComponentPtr<TouchAreaComponent>, &resolveTouchAreaPropertyFast, &enumerateTouchAreaProperties},
         {ComponentType::Light2DComponent, &findComponentPtr<Light2DComponent>, &resolveLight2DPropertyFast, &enumerateLight2DProperties},
         {ComponentType::ShadowCaster2DComponent, &findComponentPtr<ShadowCaster2DComponent>, &resolveShadowCaster2DPropertyFast, &enumerateShadowCaster2DProperties},
         {ComponentType::CameraComponent, &findComponentPtr<CameraComponent>, &resolveCameraPropertyFast, &enumerateCameraProperties},
+        {ComponentType::CameraShakerComponent, &findComponentPtr<CameraShakerComponent>, &resolveCameraShakerPropertyFast, &enumerateCameraShakerProperties},
+        {ComponentType::CameraFollowComponent, &findComponentPtr<CameraFollowComponent>, &resolveCameraFollowPropertyFast, &enumerateCameraFollowProperties},
         {ComponentType::AudioSourceComponent, &findComponentPtr<AudioSourceComponent>, &resolveAudioPropertyFast, &enumerateAudioProperties},
         {ComponentType::SkyboxComponent, &findComponentPtr<SkyboxComponent>, &resolveSkyPropertyFast, &enumerateSkyProperties},
         {ComponentType::TextComponent, &findComponentPtr<TextComponent>, &resolveTextPropertyFast, &enumerateTextProperties},
@@ -4115,6 +4309,11 @@ namespace {
             case ComponentType::AnimationPlayerComponent: return &getEnabledRef<AnimationPlayerComponent>;
             case ComponentType::VertexAnimatorComponent: return &getEnabledRef<VertexAnimatorComponent>;
             case ComponentType::CanvasGroupComponent: return &getEnabledRef<CanvasGroupComponent>;
+            case ComponentType::OnScreenStickComponent: return &getEnabledRef<OnScreenStickComponent>;
+            case ComponentType::OnScreenButtonComponent: return &getEnabledRef<OnScreenButtonComponent>;
+            case ComponentType::TouchAreaComponent: return &getEnabledRef<TouchAreaComponent>;
+            case ComponentType::CameraShakerComponent: return &getEnabledRef<CameraShakerComponent>;
+            case ComponentType::CameraFollowComponent: return &getEnabledRef<CameraFollowComponent>;
             default: return nullptr;
         }
     }
@@ -4270,6 +4469,16 @@ std::string computeComponentName(editor::ComponentType component){
         name = "TrailRendererComponent";
     }else if(component == ComponentType::CanvasGroupComponent){
         name = "CanvasGroupComponent";
+    }else if(component == ComponentType::OnScreenStickComponent){
+        name = "OnScreenStickComponent";
+    }else if(component == ComponentType::OnScreenButtonComponent){
+        name = "OnScreenButtonComponent";
+    }else if(component == ComponentType::TouchAreaComponent){
+        name = "TouchAreaComponent";
+    }else if(component == ComponentType::CameraShakerComponent){
+        name = "CameraShakerComponent";
+    }else if(component == ComponentType::CameraFollowComponent){
+        name = "CameraFollowComponent";
     }else if(component == ComponentType::Light2DComponent){
         name = "Light2DComponent";
     }else if(component == ComponentType::ShadowCaster2DComponent){
@@ -4406,6 +4615,9 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::SpriteComponent: return "Sprite Renderer";
         case ComponentType::TextComponent: return "Text";
         case ComponentType::InputFieldComponent: return "Input Field";
+        case ComponentType::OnScreenStickComponent: return "On-Screen Stick";
+        case ComponentType::OnScreenButtonComponent: return "On-Screen Button";
+        case ComponentType::TouchAreaComponent: return "Touch Area";
         case ComponentType::TilemapComponent: return "Tilemap";
         case ComponentType::TranslateTracksComponent: return "Position Tracks";
         case ComponentType::LayoutGroupComponent: return "Layout Group";
@@ -4423,6 +4635,8 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::PoseAnimatorComponent: return "Pose Animator";
         case ComponentType::AnimationPlayerComponent: return "Animation Player";
         case ComponentType::VertexAnimatorComponent: return "Vertex Animator";
+        case ComponentType::CameraShakerComponent: return "Camera Shaker";
+        case ComponentType::CameraFollowComponent: return "Camera Follow";
     }
     return getComponentName(component);
 }
@@ -4476,6 +4690,9 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::SpriteComponent: return ICON_FA_IMAGE;
         case ComponentType::TextComponent: return ICON_FA_FONT;
         case ComponentType::InputFieldComponent: return ICON_FA_KEYBOARD;
+        case ComponentType::OnScreenStickComponent: return ICON_FA_GAMEPAD;
+        case ComponentType::OnScreenButtonComponent: return ICON_FA_CIRCLE_DOT;
+        case ComponentType::TouchAreaComponent: return ICON_FA_HAND_POINTER;
         case ComponentType::TilemapComponent: return ICON_FA_BORDER_ALL;
         case ComponentType::TranslateTracksComponent: return ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT;
         case ComponentType::LayoutGroupComponent: return ICON_FA_TABLE_CELLS;
@@ -4493,6 +4710,8 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::PoseAnimatorComponent: return ICON_FA_PERSON_RUNNING;
         case ComponentType::AnimationPlayerComponent: return ICON_FA_FILM;
         case ComponentType::VertexAnimatorComponent: return ICON_FA_PEOPLE_GROUP;
+        case ComponentType::CameraShakerComponent: return ICON_FA_BURST;
+        case ComponentType::CameraFollowComponent: return ICON_FA_LOCATION_CROSSHAIRS;
     }
     return ICON_FA_PUZZLE_PIECE;
 }
@@ -4558,6 +4777,16 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<AnimationPlayerComponent>();
         case ComponentType::VertexAnimatorComponent:
             return registry->getComponentId<VertexAnimatorComponent>();
+        case ComponentType::OnScreenStickComponent:
+            return registry->getComponentId<OnScreenStickComponent>();
+        case ComponentType::OnScreenButtonComponent:
+            return registry->getComponentId<OnScreenButtonComponent>();
+        case ComponentType::TouchAreaComponent:
+            return registry->getComponentId<TouchAreaComponent>();
+        case ComponentType::CameraShakerComponent:
+            return registry->getComponentId<CameraShakerComponent>();
+        case ComponentType::CameraFollowComponent:
+            return registry->getComponentId<CameraFollowComponent>();
         case ComponentType::Light2DComponent:
             return registry->getComponentId<Light2DComponent>();
         case ComponentType::ShadowCaster2DComponent:
@@ -4688,6 +4917,10 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::VertexAnimatorComponent;
     }else if(normalizedName == "canvasgroup"){
         return ComponentType::CanvasGroupComponent;
+    }else if(normalizedName == "camerashaker"){
+        return ComponentType::CameraShakerComponent;
+    }else if(normalizedName == "camerafollow"){
+        return ComponentType::CameraFollowComponent;
     }else if(normalizedName == "light2d"){
         return ComponentType::Light2DComponent;
     }else if(normalizedName == "shadowcaster2d"){
@@ -4754,6 +4987,12 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::TextComponent;
     }else if(normalizedName == "inputfield"){
         return ComponentType::InputFieldComponent;
+    }else if(normalizedName == "onscreenstick"){
+        return ComponentType::OnScreenStickComponent;
+    }else if(normalizedName == "onscreenbutton"){
+        return ComponentType::OnScreenButtonComponent;
+    }else if(normalizedName == "toucharea"){
+        return ComponentType::TouchAreaComponent;
     }else if(normalizedName == "tilemap"){
         return ComponentType::TilemapComponent;
     }else if(normalizedName == "tween"){
@@ -4919,6 +5158,12 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     if (registry->findComponent<CanvasGroupComponent>(entity)){
         ret.push_back(ComponentType::CanvasGroupComponent);
     }
+    if (registry->findComponent<CameraShakerComponent>(entity)){
+        ret.push_back(ComponentType::CameraShakerComponent);
+    }
+    if (registry->findComponent<CameraFollowComponent>(entity)){
+        ret.push_back(ComponentType::CameraFollowComponent);
+    }
     if (registry->findComponent<MorphTracksComponent>(entity)){
         ret.push_back(ComponentType::MorphTracksComponent);
     }
@@ -4975,6 +5220,15 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<InputFieldComponent>(entity)){
         ret.push_back(ComponentType::InputFieldComponent);
+    }
+    if (registry->findComponent<OnScreenStickComponent>(entity)){
+        ret.push_back(ComponentType::OnScreenStickComponent);
+    }
+    if (registry->findComponent<OnScreenButtonComponent>(entity)){
+        ret.push_back(ComponentType::OnScreenButtonComponent);
+    }
+    if (registry->findComponent<TouchAreaComponent>(entity)){
+        ret.push_back(ComponentType::TouchAreaComponent);
     }
     if (registry->findComponent<TilemapComponent>(entity)){
         ret.push_back(ComponentType::TilemapComponent);
@@ -5143,6 +5397,12 @@ uint64_t editor::Catalog::getChangedUpdateFlags(ComponentType compType, void* ol
                 break;
             case PropertyType::Gradient:
                 changed = *static_cast<Gradient*>(oldProp.ref) != *static_cast<Gradient*>(newProp.ref);
+                break;
+            case PropertyType::MinMaxCurve:
+                changed = *static_cast<MinMaxCurve*>(oldProp.ref) != *static_cast<MinMaxCurve*>(newProp.ref);
+                break;
+            case PropertyType::MinMaxGradient:
+                changed = *static_cast<MinMaxGradient*>(oldProp.ref) != *static_cast<MinMaxGradient*>(newProp.ref);
                 break;
             case PropertyType::Custom:
                 // Conservative: assume changed for complex types
@@ -5589,6 +5849,14 @@ uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Mat
 }
 
 void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint64_t updateFlags){
+    if (updateFlags & UpdateFlags_Particle_Mesh){
+        // the Mesh render mode's primitive, drawn by the system's target
+        Scene* scene = dynamic_cast<Scene*>(registry);
+        const ParticleSystemComponent* ps = registry->findComponent<ParticleSystemComponent>(entity);
+        if (scene && ps && ps->version >= 2){
+            ParticleSystem::applyRendererMesh(scene, scene->getSystem<ActionSystem>()->particleTarget(entity), ps->renderer.mesh);
+        }
+    }
     if (updateFlags & UpdateFlags_CanvasGroup){
         // alpha in [0, 1] at once (a NaN keeps the value UISystem last saw)
         if (CanvasGroupComponent* group = registry->findComponent<CanvasGroupComponent>(entity)){
@@ -5993,6 +6261,24 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             break;
         }
 
+        case ComponentType::OnScreenStickComponent: {
+            YAML::Node encoded = Stream::encodeOnScreenStickComponent(sourceRegistry->getComponent<OnScreenStickComponent>(sourceEntity));
+            targetRegistry->getComponent<OnScreenStickComponent>(targetEntity) = Stream::decodeOnScreenStickComponent(encoded);
+            break;
+        }
+
+        case ComponentType::OnScreenButtonComponent: {
+            YAML::Node encoded = Stream::encodeOnScreenButtonComponent(sourceRegistry->getComponent<OnScreenButtonComponent>(sourceEntity));
+            targetRegistry->getComponent<OnScreenButtonComponent>(targetEntity) = Stream::decodeOnScreenButtonComponent(encoded);
+            break;
+        }
+
+        case ComponentType::TouchAreaComponent: {
+            YAML::Node encoded = Stream::encodeTouchAreaComponent(sourceRegistry->getComponent<TouchAreaComponent>(sourceEntity));
+            targetRegistry->getComponent<TouchAreaComponent>(targetEntity) = Stream::decodeTouchAreaComponent(encoded);
+            break;
+        }
+
         case ComponentType::PanelComponent: {
             YAML::Node encoded = Stream::encodePanelComponent(sourceRegistry->getComponent<PanelComponent>(sourceEntity));
             targetRegistry->getComponent<PanelComponent>(targetEntity) = Stream::decodePanelComponent(encoded);
@@ -6139,6 +6425,21 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             YAML::Node encoded = Stream::encodeVertexAnimatorComponent(sourceRegistry->getComponent<VertexAnimatorComponent>(sourceEntity));
             VertexAnimatorComponent& target = targetRegistry->getComponent<VertexAnimatorComponent>(targetEntity);
             target = Stream::decodeVertexAnimatorComponent(encoded, &target);
+            break;
+        }
+
+        case ComponentType::CameraShakerComponent: {
+            // the target's shakes keep playing (only the settings are copied)
+            YAML::Node encoded = Stream::encodeCameraShakerComponent(sourceRegistry->getComponent<CameraShakerComponent>(sourceEntity));
+            CameraShakerComponent& target = targetRegistry->getComponent<CameraShakerComponent>(targetEntity);
+            target = Stream::decodeCameraShakerComponent(encoded, &target);
+            break;
+        }
+
+        case ComponentType::CameraFollowComponent: {
+            YAML::Node encoded = Stream::encodeCameraFollowComponent(sourceRegistry->getComponent<CameraFollowComponent>(sourceEntity));
+            CameraFollowComponent& target = targetRegistry->getComponent<CameraFollowComponent>(targetEntity);
+            target = Stream::decodeCameraFollowComponent(encoded, &target);
             break;
         }
 
@@ -6455,8 +6756,28 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             if (source && target) *target = *source;
             break;
         }
+        case PropertyType::MinMaxCurve: {
+            MinMaxCurve* source = Catalog::getPropertyRef<MinMaxCurve>(sourceRegistry, sourceEntity, compType, property);
+            MinMaxCurve* target = Catalog::getPropertyRef<MinMaxCurve>(targetRegistry, targetEntity, compType, property);
+            if (source && target) *target = *source;
+            break;
+        }
+        case PropertyType::MinMaxGradient: {
+            MinMaxGradient* source = Catalog::getPropertyRef<MinMaxGradient>(sourceRegistry, sourceEntity, compType, property);
+            MinMaxGradient* target = Catalog::getPropertyRef<MinMaxGradient>(targetRegistry, targetEntity, compType, property);
+            if (source && target) *target = *source;
+            break;
+        }
         case PropertyType::Custom:
-            if (compType == ComponentType::ScriptComponent) {
+            if (compType == ComponentType::ParticleSystemComponent && property == "emission.bursts") {
+                auto* source = Catalog::getPropertyRef<std::vector<ParticleEmissionBurst>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<ParticleEmissionBurst>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::ParticleSystemComponent && property == "textureSheetAnimation.sprites") {
+                auto* source = Catalog::getPropertyRef<std::vector<int>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<int>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::ScriptComponent) {
                 copyComponent(sourceRegistry, sourceEntity, targetRegistry, targetEntity, compType);
             } else if (compType == ComponentType::TerrainComponent && property == "foliageLayers") {
                 auto* source = Catalog::getPropertyRef<std::vector<TerrainFoliageLayer>>(sourceRegistry, sourceEntity, compType, property);
@@ -6529,6 +6850,14 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             } else if (compType == ComponentType::AnimationPlayerComponent && property.compare(0, 6, "clips[") == 0 && endsWith(property, "].wrap")) {
                 auto* source = Catalog::getPropertyRef<ClipWrapMode>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<ClipWrapMode>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::AnimationPlayerComponent && property == "layers") {
+                auto* source = Catalog::getPropertyRef<std::vector<AnimationPlayerLayer>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<AnimationPlayerLayer>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::AnimationPlayerComponent && property.compare(0, 7, "layers[") == 0 && endsWith(property, "].blend")) {
+                auto* source = Catalog::getPropertyRef<AnimationLayerBlend>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<AnimationLayerBlend>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
             } else if (compType == ComponentType::LatticeTracksComponent && property == "points") {
                 auto* source = Catalog::getPropertyRef<std::vector<int>>(sourceRegistry, sourceEntity, compType, property);

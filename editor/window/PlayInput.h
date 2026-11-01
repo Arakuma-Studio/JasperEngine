@@ -26,6 +26,11 @@ namespace jasperengine::editor {
         // Same for mouse buttons, which stop being forwarded as soon as the pointer
         // leaves the view, well before the button comes up.
         std::set<int> pressedMouseButtons;
+        // Simulate Touch (ui-multitouch): the finger the left button drives (0, or 1 while finger
+        // 0 is pinned), and finger 0 pinned by an Alt release: it stays down until Alt goes up
+        int touchFinger = 0;
+        bool fingerPinned = false;
+        ImVec2 pinnedPos = ImVec2(0, 0);
         uint32_t mouseSceneId = 0;
         ImVec2 mousePos = ImVec2(0, 0);
 

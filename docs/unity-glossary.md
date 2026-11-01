@@ -43,6 +43,8 @@ Projects made before the rename are migrated once with
 | none: Unity has no pose-to-pose animation (the closest is keyframing a humanoid clip in the Animation window) | none (new): Pose Animation (Window > Animation > Pose Animation; `.poseanim` assets and templates), played by the Pose Animator or baked to an Animation Clip or an Animation; see [pose-animation.md](pose-animation.md) |
 | Avatar (Rig > Animation Type Humanoid, Configure Avatar) | none (new): the humanoid map, bones mapped to body parts from their names; fixes in the Pose Animation window's Map Bones... popup, stored in a `<model>.humanoid` file next to the model |
 | none: Unity has no vertex animation textures built in (they come from Asset Store packages or Houdini's exporter, played by a custom material) | none (new): Vertex Animation (a `.vat` asset and its generated `.vat.glb`; Window > Animation > Vertex Animation Baker, the `.vat` Inspector's Rebake and Create Crowd...), baked from model clips, Animation Clips, Animation Players, pose animations and lattices, or imported from Houdini Labs VAT 3 and OpenVAT exports; see [vertex-animation.md](vertex-animation.md) |
+| Animator Controller (`.controller`; Assets > Create > Animator Controller; the Animator window with layers, parameters, states, Any State, transitions, 1D blend trees) | none (new): Animator Controller, a JSON `.controller` (`{"format": "jasperengine.controller"}`, not Unity's YAML, which is refused) played by an Animation Player's **Controller** field and edited in Window > Animation > Animator (`Ctrl+7`) or with MCP `edit_animator`; see [animation-clips.md](animation-clips.md#animator-controllers) |
+| Avatar Mask (`.mask`; Assets > Create > Avatar Mask; Humanoid body parts and Transform paths) | none (new): Avatar Mask, a JSON `.mask` (humanoid body parts in Unity's names without the IK goals, transform paths with a weight and a children flag), set on an Animation Player layer; see [animation-clips.md](animation-clips.md#avatar-masks) |
 
 ## Scripting API (Lua and C++)
 
@@ -64,7 +66,11 @@ Projects made before the rename are migrated once with
 | `AnimationCurve`, `Keyframe` (`time`, `value`, `inTangent`, `outTangent`), `WrapMode` of a curve | `AnimationCurve`, `CurveKey`, `CurveWrap` (`Clamp`, `Loop`, `PingPong`); keys 1-based in Lua |
 | `Gradient`, `GradientColorKey`, `GradientAlphaKey`, `GradientMode` (`Blend`, `Fixed`) | same names; colours sRGB in Lua, stored linear |
 | A line's `material` (Default-Line, a shader with a sprite-sheet flipbook) | the built-in line shader with `texture` (u_baseTexture), or a `lines` library shader such as `library:line_flipbook` |
-| `ParticleSystem` / `ParticleSystemComponent` | `Particles` / `ParticlesComponent` |
+| `ParticleSystem` / `ParticleSystemComponent` (the module model: `main`, `emission`, `shape`, ..., `renderer`; `Play`, `Stop`, `Pause`, `Clear`, `Emit`, `Simulate`, `isPlaying`, `particleCount`; one GameObject drawing its own quads) | `Particles` / `ParticlesComponent`; the version 1 Particle System (rates and initializers/modifiers drawing on another GameObject) still loads and plays: `upgrade()` converts it (jasper://docs/particles) |
+| `ParticleSystem.MainModule`, `EmissionModule`, `ShapeModule`, `VelocityOverLifetimeModule`, `LimitVelocityOverLifetimeModule`, `InheritVelocityModule`, `ForceOverLifetimeModule`, `ColorOverLifetimeModule`, `ColorBySpeedModule`, `SizeOverLifetimeModule`, `SizeBySpeedModule`, `RotationOverLifetimeModule`, `RotationBySpeedModule`, `NoiseModule`, `TextureSheetAnimationModule`, `ParticleSystemRenderer` | same names and fields (`ps.main.startSpeed`, `ps.shape.shapeType`, `ps.renderer.renderMode`; MCP `main.startSpeed`); radians in code, degrees in the Inspector; sub emitters, collision, triggers, lights, trails and custom data are not supported |
+| `ParticleSystem.MinMaxCurve` (`Constant`, `Curve`, `TwoCurves`, `TwoConstants`), `ParticleSystem.MinMaxGradient` (`Color`, `Gradient`, `TwoColors`, `TwoGradients`, `RandomColor`), `ParticleSystem.Burst` | `MinMaxCurve`, `MinMaxGradient` (colours sRGB in Lua, stored linear), bursts `{time, count, cycles, interval, probability}` (`setBursts`, `getBurst(i)` 0-based) |
+| `ParticleSystemStopBehavior`, `ParticleSystemStopAction` (`None`, `Disable`, `Destroy`, `Callback` -> `OnParticleSystemStopped`) | same names; Callback calls a Lua script's `onParticleSystemStopped` |
+| Importing a Unity particle prefab or scene (no Unity equivalent) | Assets > Import Unity Particle System..., MCP `import_unity_particles`, CLI `import-unity-particles`: engine prefabs and a report (jasper://docs/particles) |
 | `RectTransform` / `RectTransformComponent` | `UILayout` / `UILayoutComponent` |
 | `LayoutGroup` / `LayoutGroupComponent` | `Container` / `UIContainerComponent` |
 | `InputField` / `InputFieldComponent` | `TextEdit` / `TextEditComponent` |
@@ -91,6 +97,10 @@ Projects made before the rename are migrated once with
 | `AudioSourceState`, `AudioSourceAttenuation` | `SoundState`, `SoundAttenuation` |
 | `LayoutGroupType`, `ShadowCaster2DShape` | `ContainerType`, `Occluder2DShape` |
 | Legacy `Animation` component (`Play`, `CrossFade`, `Blend`, `PlayQueued`, `AnimationState`, Animation Events) | none (new): `AnimationPlayer` / `AnimationPlayerComponent` (Add Component > Animation > Animation Player; `gameObject:getAnimationPlayer()`, nil without one): `play`, `crossFade`, `blend`, `queue`, `getState` (an `AnimationState`), `onEvent` (one `AnimationEvent`), `onFinish` |
+| `Animator` (a GameObject's Animator with its Animator Controller) | none (new): the Animation Player with a **Controller** (`gameObject:getAnimator()` is `getAnimationPlayer()`); there is no separate Animator component |
+| Animator layers / legacy `AnimationState.layer`, layer weight (`Animator.SetLayerWeight`, `GetLayerWeight`), blending (Override / Additive), legacy `PlayMode.StopSameLayer` / `StopAll` | none (new): Animation Player layers (the Inspector's Layers table; `player:setLayerWeight(layer, w[, fade])`, `getLayerWeight`, `setLayerBlendMode("override" / "additive")`, `setLayerMask`, `state.layer`, `play(name, fade, PlayMode.STOP_ALL)`) |
+| `AnimationState.AddMixingTransform`, `RemoveMixingTransform` | none (new): `AnimationState:addMixingTransform(path[, recursive])`, `removeMixingTransform`, `clearMixingTransforms` |
+| `Animator.SetFloat` (with a damp time), `SetInteger`, `SetBool`, `SetTrigger`, `ResetTrigger`, `GetFloat`..., `Play(name, layer, normalizedTime)`, `CrossFadeInFixedTime`, `GetCurrentAnimatorStateInfo`, `GetNextAnimatorStateInfo`, `IsInTransition`, `StateMachineBehaviour.OnStateEnter` / `OnStateExit` | none (new): `AnimationPlayer:setFloat(name, v[, dampTime])`, `setInteger`, `setBool`, `setTrigger`, `resetTrigger`, `getFloat`..., `playInLayer(name, layer[, normalizedTime])`, `crossFadeInLayer(name, seconds, layer)`, `getCurrentStateInfo([layer])` / `getNextStateInfo([layer])` (an `AnimatorStateInfo`), `isInTransition([layer])`, and `onStateEnter(layer, name)` / `onStateExit(layer, name)` (player callbacks and Lua script methods) |
 | none: the old JasperEngine name, kept | `Animation` / `AnimationComponent` (Add Component > Animation > Animation) is not Unity's Animation component: it is JasperEngine's entity sequence of actions (keyframe tracks targeting scene GameObjects, tweens, sprite animations, particles, nested animations). Unity's legacy Animation component is the Animation Player |
 | none: Unity has no live pose-to-pose player (the closest is an Animator with a humanoid Avatar, its `Animator.speed` and layer weight) | none (new): `PoseAnimator` / `PoseAnimatorComponent` (Add Component > Animation > Pose Animator; `model:getPoseAnimator()`) plays a `.poseanim` pose animation live on a humanoid Model |
 | none: Unity has no built-in vertex animation player | none (new): `VertexAnimator` / `VertexAnimatorComponent` (Add Component > Animation > Vertex Animator; `gameObject:getVertexAnimator()`, nil without one) plays a `.vat` on the GameObject and on each instance of its Instanced Mesh: `play`, `crossFade`, `blend`, `queue`, `playInstance`, `crossFadeInstance`, `playAll`, `getSocketPose`, `onEvent`, `onFinish`, `onInstanceEvent` |
@@ -100,7 +110,16 @@ Projects made before the rename are migrated once with
 | `Touch` (`fingerId`, `phase`, `position`, `deltaPosition`, `deltaTime`, `tapCount`), `TouchPhase`, `Input.touches`, `touchCount`, `GetTouch`, `multiTouchEnabled`, `touchSupported` | `Input.getTouches()` returned `{pointer, position}` tables; now `Touch` (same fields plus `startPosition`; `pointer` kept as the old name of `fingerId`), `TouchPhase`, `Input.touches`, `touchCount`, `getTouch`, `getTouchById`, `multiTouchEnabled`, `touchSupported` |
 | `Input.simulateMouseWithTouches` | `Engine.callMouseInTouchEvent` |
 | Input System: on-screen controls, `InputAction`, rebinding (`PerformInteractiveRebinding`, `SaveBindingOverridesAsJson`, `LoadBindingOverridesFromJson`) | none (new): virtual sources (`Input.simulateButton`, `simulateAxis`, `addAxisDelta`, `InputActions::setSourceValue` in C++), `Input.getPressedControl`, `Input.setBindings`, `exportBindings`, `importBindings` |
+| EventSystem interfaces (`IPointerDownHandler`, `IPointerUpHandler`, `IPointerClickHandler`, `IPointerEnterHandler`, `IPointerExitHandler`, `IInitializePotentialDragHandler`, `IBeginDragHandler`, `IDragHandler`, `IEndDragHandler`, `IDropHandler`, `IScrollHandler`) | none (new): script methods `onPointerDown(e)`, `onPointerUp`, `onPointerClick`, `onPointerEnter`, `onPointerExit`, `onInitializePotentialDrag`, `onBeginDrag`, `onDrag`, `onEndDrag`, `onDrop`, `onScroll` (lua-api 1.7); the legacy `UIComponent.onPointerDown(x, y)` events stay |
+| `PointerEventData` (`pointerId`, `position`, `delta`, `pressPosition`, `button`, `clickCount`, `dragging`, `pointerPress`, `pointerDrag`, `useDragThreshold`, `Use()`) | none (new): `PointerEventData` (same names, `use()`) |
+| `EventSystem.current.IsPointerOverGameObject([pointerId])` | none (new): `Input.isPointerOverUI([pointerId])` (component UI and HTML content) |
+| Input System `OnScreenStick`, `OnScreenButton`; Joystick Pack `FixedJoystick` / `FloatingJoystick` / `VariableJoystick` / `DynamicJoystick` | none (new): On-Screen Stick (`OnScreenStick`, `mode` `FIXED` / `FLOATING` / `DYNAMIC`; Joystick Pack's Variable = Dynamic), On-Screen Button (`OnScreenButton`), Touch Area (`TouchArea`, a drag feeding `Mouse X` / `Mouse Y`); HTML `<onscreen-stick>`, `<onscreen-button>`, `<touch-area>`. They write input actions instead of control paths |
 | `Physics` / `Physics2D` (`ignoreLayerCollision`, `getIgnoreLayerCollision`, `getLayerCollisionMask`, `setLayerCollisionMask`, `raycast`, `raycastAll`, `ALL_LAYERS`, `DEFAULT_RAYCAST_LAYERS`, `IGNORE_RAYCAST_LAYER`) | none (new) |
+| `OnCollisionEnter/Stay/Exit(Collision)`, `OnTriggerEnter/Stay/Exit(Collider)`, and the `...2D` ones -> `onCollisionEnter/Stay/Exit`, `onTriggerEnter/Stay/Exit`, `onCollisionEnter2D/Stay2D/Exit2D`, `onTriggerEnter2D/Stay2D/Exit2D` (Lua methods called by name, also on disabled scripts; C++ `ScriptBase` overrides); after the fixed step, on the main thread ([physics.md](mcp/guide/physics.md)) | global events only (`beginContact2D`, `onContactAdded3D` on Jolt's job threads) |
+| `Collision` (`gameObject`, `collider`, `rigidbody`, `contactCount`, `GetContact(i)`, `contacts`, `impulse`, `relativeVelocity`), `ContactPoint` (`point`, `normal`, `separation`, `impulse`, `thisCollider`, `otherCollider`), `ContactPoint2D` -> the same names lowerCamelCase (`getContact(i)` 0-based), plus `thisCollider` / `thisRigidbody` | none (new) |
+| `Collision2D.otherCollider` / `otherRigidbody` (Unity: **this** side) -> the same (this side), plus the plain `thisCollider` / `thisRigidbody`; `collider` / `rigidbody` / `gameObject` are the other side's | none (new) |
+| A child GameObject's collider with its own script -> a collider of the body whose `receiver` (Inspector "Send Callbacks To") is that GameObject | none (new) |
+| `Physics.IgnoreCollision(a, b, ignore)` / `Physics2D.IgnoreCollision` (colliders) -> `Physics.ignoreCollision(a, b [, ignore])` / `Physics2D.ignoreCollision` on bodies (GameObjects or Rigidbodies): every collider of the pair | none (new) |
 | `Shader.SetGlobalFloat`, `SetGlobalInt`, `SetGlobalVector`, `SetGlobalColor`, `SetGlobalMatrix`, `SetGlobalFloatArray`, `SetGlobalVectorArray`, `SetGlobalTexture`, `GetGlobal*`, `Shader.PropertyToID` | none (new): `Shader.setGlobalFloat`, `setGlobalInt`, ..., `getGlobal*`, `Shader.propertyToID`, plus `hasGlobal`, `getGlobalNames`, `resetGlobals`; shaders read them as members of a `u_vs_globals` / `u_fs_globals` block (or a texture uniform of the name); C++ `ShaderGlobals` ([shaders guide, Global values](mcp/guide/shaders.md#global-values)) |
 | A material property a global feeds (Unity: the global applies when the material does not define the property) | none (new): an explicit binding, the Inspector's link button on a shader parameter row (`shaderGlobalBindings`, Lua `material:setShaderGlobalBinding(member, global)`) |
 | `Shader.EnableKeyword` (global keywords) | not supported: shader features are per material (`setShaderFeature`) |
@@ -145,6 +164,47 @@ New: the engine had none of these. Unity's members became `System`, `Screen`, `E
 | `Handheld.Vibrate()` | `System.vibrate([ms])`; iOS-style feedback: `System.hapticFeedback(HapticFeedback.*)` |
 | Player > Default Orientation, Allowed Orientations for Auto Rotation | Project Settings > Player > Resolution and Presentation (`player.default_orientation`, `player.allowed_orientations`; shared by Android and iOS) |
 | Device Simulator (orientation, language, `SystemInfo.deviceModel`) | the Game view's Device menu (device, Rotate, Language) |
+
+## Coroutines, timers and time
+
+Rules and the frame order: [lua-api.md](mcp/guide/lua-api.md) 2.13 (Time) and 2.14 (coroutines
+and timers); C++ timers: [cpp-scripting.md](mcp/guide/cpp-scripting.md).
+
+| Unity term | JasperEngine name |
+|---|---|
+| `StartCoroutine(IEnumerator)` / `StartCoroutine("Name")` | `self:startCoroutine(fn, ...)` / `self:startCoroutine("name", ...)` (returns a `Coroutine`; `Coroutine.start(fn)` for code that is not a script) |
+| `StopCoroutine(c)` / `StopCoroutine("Name")`, `StopAllCoroutines()` | `self:stopCoroutine(co)` / `self:stopCoroutine("name")` (or `co:stop()`), `self:stopAllCoroutines()` |
+| `IEnumerator Start()` | `self:startCoroutine` from `init` (or `start`, which may wait, with the script lifecycle) |
+| `yield return null` | `Coroutine.nextFrame()` (or `coroutine.yield()`) |
+| `yield return new WaitForSeconds(t)` | `Coroutine.wait(t)` (game time; returns the seconds that passed) |
+| `yield return new WaitForSecondsRealtime(t)` | `Coroutine.waitRealtime(t)` (unscaled; unlike Unity it stops while the app or the editor's Play is paused) |
+| `yield return new WaitForFixedUpdate()`, `WaitForEndOfFrame()` | `Coroutine.waitForFixedUpdate()`, `Coroutine.waitForEndOfFrame()` |
+| `yield return new WaitUntil(f)`, `WaitWhile(f)` | `Coroutine.waitUntil(f [, timeout])`, `Coroutine.waitWhile(f [, timeout])` (a timeout returns false) |
+| `yield return StartCoroutine(x)`, `yield return www` / `yield return request.SendWebRequest()` | `Coroutine.waitFor(self:startCoroutine(x))` (true and its results), `Coroutine.waitFor(handle)` for anything with `isDone()`; or call `self:x()` directly (Lua yields through calls) |
+| `Invoke("M", t)`, `InvokeRepeating("M", t, r)`, `CancelInvoke(["M"])`, `IsInvoking(["M"])` | `self:invoke("m", t)`, `self:invokeRepeating("m", t, r)`, `self:cancelInvoke(["m" or timer])`, `self:isInvoking([...])` (also with a function; `unscaled` flag); C++ `ScriptBase::invoke(fn, t)`, `invokeRepeating`, `cancelInvoke(id)` |
+| `LeanTween.delayedCall(t, fn)`, DOTween `DOVirtual.DelayedCall` | `self:invoke(fn, t)` or `Timer.after(t, fn [, {owner = self, unscaled = true}])`; repeating `Timer.every(r, fn)`; C++ `jasperengine::Timer::after` |
+| `Time.deltaTime`, `unscaledDeltaTime`, `fixedDeltaTime`, `fixedUnscaledDeltaTime` | `Time.deltaTime`, `Time.unscaledDeltaTime`, `Time.fixedDeltaTime`, `Time.fixedUnscaledDeltaTime` (also `Engine.deltatime`, `Engine.unscaledDeltatime`, `Engine.updateTime`) |
+| `Time.time`, `fixedTime`, `unscaledTime`, `realtimeSinceStartup`, `timeSinceLevelLoad`, `frameCount` | the same names on `Time` (`Engine.gameTime`, `Engine.frameCount`) |
+| `Time.timeScale`, `maximumDeltaTime`, `captureDeltaTime`, `smoothDeltaTime`, `inFixedTimeStep` | the same names on `Time` (`Engine.timeScale`, `Engine.maxDeltatime`, `Engine.fixedDeltatime`: a fixed frame delta, not the fixed step) |
+
+## Camera shake and camera follow
+
+Rules, presets and the frame order: [camera.md](mcp/guide/camera.md) (users:
+[docs/camera.md](camera.md)); Lua: [lua-api.md](mcp/guide/lua-api.md) 4.9.1.
+
+| Unity term | JasperEngine name |
+|---|---|
+| MilkShake `Shaker` (component) | Camera Shaker component (`camerashaker`; Lua `CameraShaker`, `go:getCameraShaker()`): on a camera a view offset, the Transform never written |
+| MilkShake `Shaker.ShakeAll(preset)`, `GlobalShakers`, `addToGlobalShakers` | `CameraShake.shake(preset)` on every shaker with `global` on (default on) |
+| MilkShake `shaker.Shake(preset, seed)`, `ShakeFromPoint(point, maxDistance, preset)` | `shaker:shake(preset, {seed = s})`, `shaker:shakeAt(point, radius, preset)` / `CameraShake.shakeAt` |
+| MilkShake `ShakePreset` (asset), `ShakeParameters` | Shake Preset: a `.shake` file (Assets > Create > Shake Preset) or a built-in name (`CameraShake.getPresetNames()`), or a Lua table |
+| MilkShake `ShakeInstance`: `Stop(fade, true)`, `Pause(fade)`, `Resume(fade)`, `StrengthScale`, `RoughnessScale`, `State`, `IsFinished` | `ShakeInstance`: `stop([fade])`, `pause([fade])`, `resume([fade])`, `strengthScale`, `roughnessScale`, `state`, `isFinished()` (plus `isValid()`) |
+| EZ Camera Shake `CameraShakePresets.Bump / HandheldCamera / Vibration` | built-ins `bump`, `handheld`, `vibration` (strength = magnitude / 2) |
+| Trauma shake ("Juicing Your Cameras With Math") | `CameraShake.addTrauma(x)`, `traumaPower`, `traumaDecay`, `traumaMaxOffset`, `traumaMaxAngle` |
+| Cinemachine Impulse Source (`GenerateImpulse`) / Impulse Listener (gain) | `CameraShake.shake` / `shakeAt` (distance falloff only, no propagation speed) / Camera Shaker (`positionScale`, `rotationScale`; `mode` "2d") |
+| Cinemachine virtual camera follow (Transposer / Framing Transposer + Composer), simple cases | Camera Follow component (`camerafollow`): `target`, `offset` (`offsetSpace`), `damping`, `lookAt`, `deadZone` (2D), bounds; no blending, priorities or collision |
+| `Mathf.SmoothDamp` in a hand-written follow script | Camera Follow `damping` (the same formula, per world axis) and `maxSpeed` |
+| `transform.localPosition = shake` on a child camera (MilkShake's setup) | not needed: the shake is a view offset, put the Camera Shaker on the camera itself |
 
 ## Saves and data
 

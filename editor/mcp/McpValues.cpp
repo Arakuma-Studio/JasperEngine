@@ -1,7 +1,11 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "util/ProjectChecks.h"
+#include "camera/ShakePresets.h"
+#include "camera/ShakePreset.h"
 #include "McpValues.h"
+#include "particles/ParticleFields.h"
 #include "shader/ShaderGlobals.h"
 
 #include "McpRefs.h"
@@ -30,6 +34,9 @@
 #include "component/LatticeModifierComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/AnimationPlayerRuntime.h"
+#include "animation/AnimatorController.h"
+#include "animation/AvatarMask.h"
 #include "animation/ModelSubClips.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
@@ -46,6 +53,7 @@
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 #include "util/Util.h"
+#include "util/YamlNumbers.h"
 
 #include <algorithm>
 #include <limits>
@@ -146,6 +154,28 @@ bool isPlayerWrapProperty(ComponentType component, const std::string& propertyNa
            endsWith(propertyName, "].wrap");
 }
 
+// layers[N].blend: an AnimationLayerBlend (Catalog: Custom, one byte), "override" / "additive"
+bool isPlayerLayerBlendProperty(ComponentType component, const std::string& propertyName) {
+    return component == ComponentType::AnimationPlayerComponent && propertyName.compare(0, 7, "layers[") == 0 &&
+           endsWith(propertyName, "].blend");
+}
+
+// layers[N].mask: a .mask (its GUID, layers[N].maskGuid, follows it and is read-only over MCP)
+bool isPlayerMaskProperty(ComponentType component, const std::string& propertyName) {
+    return component == ComponentType::AnimationPlayerComponent && propertyName.compare(0, 7, "layers[") == 0 &&
+           endsWith(propertyName, "].mask");
+}
+
+bool isPlayerMaskGuidProperty(ComponentType component, const std::string& propertyName) {
+    return component == ComponentType::AnimationPlayerComponent && propertyName.compare(0, 7, "layers[") == 0 &&
+           endsWith(propertyName, "].maskGuid");
+}
+
+// controller: a .controller (controllerGuid follows it, read-only over MCP)
+bool isPlayerControllerProperty(ComponentType component, const std::string& propertyName) {
+    return component == ComponentType::AnimationPlayerComponent && propertyName == "controller";
+}
+
 // A Vertex Animator's animation: a .vat (its GUID follows it, read-only over MCP)
 bool isVertexAnimationProperty(ComponentType component, const std::string& propertyName) {
     return component == ComponentType::VertexAnimatorComponent && propertyName == "animation";
@@ -154,6 +184,11 @@ bool isVertexAnimationProperty(ComponentType component, const std::string& prope
 // String properties holding an asset reference instead of plain text: stored relative to the
 // assets folder, project-relative over MCP (a model's or document's filename, a Pose Animator's
 // animation, an Animation Player's clip, a Vertex Animator's animation)
+// a Camera Shaker's start preset naming a .shake file (a built-in name is no path)
+bool isShakePresetPathProperty(ComponentType component, const std::string& propertyName, const std::string& value) {
+    return component == ComponentType::CameraShakerComponent && propertyName == "startPreset" && Util::isShakePresetFile(value);
+}
+
 // A Rigidbody 2D's or one of its colliders' physics material (a .physicsmaterial)
 bool isPhysicsMaterialProperty(ComponentType component, const std::string& propertyName) {
     return (component == ComponentType::Rigidbody2DComponent || component == ComponentType::RigidbodyComponent) &&
@@ -163,6 +198,7 @@ bool isPhysicsMaterialProperty(ComponentType component, const std::string& prope
 bool isAssetPathProperty(ComponentType component, const std::string& propertyName) {
     return propertyName == "filename" || (component == ComponentType::PoseAnimatorComponent && propertyName == "animation") ||
            isPlayerClipProperty(component, propertyName) || isVertexAnimationProperty(component, propertyName) ||
+           isPlayerMaskProperty(component, propertyName) || isPlayerControllerProperty(component, propertyName) ||
            isPhysicsMaterialProperty(component, propertyName);
 }
 
@@ -312,6 +348,32 @@ const EnumOptions& orientationOptions() {
     return options;
 }
 
+const EnumOptions& stickModeOptions() {
+    static const EnumOptions options = {
+        {(int)OnScreenStickMode::FIXED, "fixed", "Fixed"},
+        {(int)OnScreenStickMode::FLOATING, "floating", "Floating"},
+        {(int)OnScreenStickMode::DYNAMIC, "dynamic", "Dynamic"}
+    };
+    return options;
+}
+
+const EnumOptions& stickAxesOptions() {
+    static const EnumOptions options = {
+        {(int)OnScreenStickAxes::BOTH, "both", "Both"},
+        {(int)OnScreenStickAxes::HORIZONTAL, "horizontal", "Horizontal"},
+        {(int)OnScreenStickAxes::VERTICAL, "vertical", "Vertical"}
+    };
+    return options;
+}
+
+const EnumOptions& onScreenVisibilityOptions() {
+    static const EnumOptions options = {
+        {(int)OnScreenVisibility::ALWAYS, "always", "Always"},
+        {(int)OnScreenVisibility::TOUCH_DEVICES_ONLY, "touch_devices_only", "Touch Devices Only"}
+    };
+    return options;
+}
+
 const EnumOptions& actionStateOptions() {
     static const EnumOptions options = {
         {(int)ActionState::Running, "running", "Running"},
@@ -342,6 +404,24 @@ const EnumOptions& cullingModeOptions() {
     static const EnumOptions options = {
         {(int)CullingMode::BACK, "back", "Back"},
         {(int)CullingMode::FRONT, "front", "Front"}
+    };
+    return options;
+}
+
+const EnumOptions& cameraShakeModeOptions() {
+    static const EnumOptions options = {
+        {(int)CameraShakeMode::Auto, "auto", "Auto"},
+        {(int)CameraShakeMode::Mode3D, "3d", "3D"},
+        {(int)CameraShakeMode::Mode2D, "2d", "2D"}
+    };
+    return options;
+}
+
+const EnumOptions& followOffsetSpaceOptions() {
+    static const EnumOptions options = {
+        {(int)FollowOffsetSpace::World, "world", "World"},
+        {(int)FollowOffsetSpace::Target, "target", "Target"},
+        {(int)FollowOffsetSpace::TargetYaw, "target_yaw", "Target Yaw"}
     };
     return options;
 }
@@ -854,6 +934,40 @@ const EnumOptions& collider3DSourceOptions() {
     return options;
 }
 
+// a version 2 module enum (particles/ParticleFields): Unity's value names as snake_case
+// ("ConeVolume" -> "cone_volume"), labelled with spaces ("Cone Volume")
+const EnumOptions& particleEnumOptions(const particles::FieldInfo& field) {
+    static std::map<const std::vector<std::string>*, std::pair<std::vector<std::string>, EnumOptions>> tables;
+    auto it = tables.find(field.enumNames);
+    if (it != tables.end()) return it->second.second;
+    auto& entry = tables[field.enumNames];
+    std::vector<std::string>& strings = entry.first;
+    // names and labels kept alive next to the options that point at them
+    strings.reserve(field.enumNames->size() * 2);
+    for (const std::string& unity : *field.enumNames) {
+        std::string snake, label;
+        for (size_t i = 0; i < unity.size(); i++) {
+            const char c = unity[i];
+            const bool upper = std::isupper((unsigned char)c);
+            const bool prevLower = i > 0 && (std::islower((unsigned char)unity[i - 1]) || std::isdigit((unsigned char)unity[i - 1]));
+            const bool nextLower = i + 1 < unity.size() && std::islower((unsigned char)unity[i + 1]);
+            const bool prevUpper = i > 0 && std::isupper((unsigned char)unity[i - 1]);
+            if (upper && i > 0 && (prevLower || (prevUpper && nextLower))) {
+                snake += '_';
+                label += ' ';
+            }
+            snake += (char)std::tolower((unsigned char)c);
+            label += c;
+        }
+        strings.push_back(snake);
+        strings.push_back(label);
+    }
+    for (size_t i = 0; i < field.enumNames->size(); i++) {
+        entry.second.push_back({(int)i, strings[i * 2].c_str(), strings[i * 2 + 1].c_str()});
+    }
+    return entry.second;
+}
+
 const EnumOptions& emitterShapeOptions() {
     static const EnumOptions options = {
         {(int)ParticleEmitterShape::Box, "box", "Box"},
@@ -1055,6 +1169,8 @@ std::string McpValues::propertyTypeName(PropertyType type) {
         case PropertyType::EntityReference: return "entity_reference";
         case PropertyType::Curve: return "curve";
         case PropertyType::Gradient: return "gradient";
+        case PropertyType::MinMaxCurve: return "min_max_curve";
+        case PropertyType::MinMaxGradient: return "min_max_gradient";
     }
     return "unknown";
 }
@@ -1127,6 +1243,8 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"rigidbody_interpolation", &rigidbodyInterpolationOptions()},
         {"light_type", &lightTypeOptions()},
         {"camera_type", &cameraTypeOptions()},
+        {"camera_shake_mode", &cameraShakeModeOptions()},
+        {"follow_offset_space", &followOffsetSpaceOptions()},
         {"lattice_interpolation", &latticeInterpolationOptions()},
         {"lattice_outside", &latticeOutsideOptions()},
         {"lattice_jiggle_anchor", &latticeJiggleAnchorOptions()},
@@ -1151,6 +1269,15 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
         case ComponentType::ScrollbarComponent:
         case ComponentType::ProgressbarComponent:
             if (name == "type") return &orientationOptions();
+            break;
+        case ComponentType::OnScreenStickComponent:
+            if (name == "mode") return &stickModeOptions();
+            if (name == "axes") return &stickAxesOptions();
+            if (name == "visibility") return &onScreenVisibilityOptions();
+            break;
+        case ComponentType::OnScreenButtonComponent:
+        case ComponentType::TouchAreaComponent:
+            if (name == "visibility") return &onScreenVisibilityOptions();
             break;
         case ComponentType::SpriteComponent:
             if (name == "pivotPreset") return &pivotPresetOptions();
@@ -1201,6 +1328,12 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
         case ComponentType::LatticeModifierComponent:
             if (name == "bindings[].stage") return &latticeStageOptions();
             if (name == "bindings[].mask") return &latticeMaskOptions();
+            break;
+        case ComponentType::CameraShakerComponent:
+            if (name == "mode") return &cameraShakeModeOptions();
+            break;
+        case ComponentType::CameraFollowComponent:
+            if (name == "offsetSpace") return &followOffsetSpaceOptions();
             break;
         case ComponentType::CameraComponent:
             if (name == "type") return &cameraTypeOptions();
@@ -1273,6 +1406,9 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             break;
         case ComponentType::ParticleSystemComponent:
             if (name == "positionInitializer.shape") return &emitterShapeOptions();
+            if (const particles::FieldInfo* field = particles::findField(name)) {
+                if (field->type == particles::FieldType::Enum) return &particleEnumOptions(*field);
+            }
             break;
         default:
             break;
@@ -1676,9 +1812,63 @@ Json playerClipsToJson(Project* project, const std::vector<AnimationPlayerClip>&
     for (const AnimationPlayerClip& entry : clips) {
         Json item{{"clip", clipPathToJson(project, entry.clip)}, {"name", entry.name}, {"wrap", anim::wrapName(entry.wrap)}};
         if (!entry.guid.empty()) item["guid"] = entry.guid;
+        if (entry.layer != 0) item["layer"] = entry.layer;
         list.push_back(item);
     }
     return list;
+}
+
+// The layers as get_entity shows them (anim layers spec 10): the effective list (one Base Layer
+// when none is authored), masks project-relative
+Json playerLayersToJson(Project* project, const std::vector<AnimationPlayerLayer>& layers) {
+    Json list = Json::array();
+    AnimationPlayerComponent player;
+    player.layers = layers;
+    for (const AnimationPlayerLayer& layer : anim::playerLayers(player)) {
+        Json item{{"name", layer.name}, {"weight", layer.weight}, {"blend", anim::layerBlendName(layer.blend)},
+                  {"mask", layer.mask.empty() ? std::string() : McpValues::assetPathToJson(project, layer.mask)}};
+        if (!layer.maskGuid.empty()) item["maskGuid"] = layer.maskGuid;
+        list.push_back(item);
+    }
+    return list;
+}
+
+// A .mask or .controller as MCP sets it (project-relative, or the stored form of an existing
+// file): the stored path and its GUID; the file must exist and parse. Empty clears it.
+bool animAssetPathFromJson(Project* project, const std::string& text, bool mask, std::string& stored, std::string& guid, std::string& error) {
+    stored.clear();
+    guid.clear();
+    if (text.empty()) return true;
+    const char* example = mask ? ".mask file, e.g. assets/anim/arm.mask (write one with write_file)"
+                               : ".controller file, e.g. assets/anim/granjero.controller (create one with edit_animator)";
+    std::string why;
+    if (!storedAssetPathFromJson(project, text, stored, why)) {
+        error = std::string("must be a ") + example + ": " + why;
+        stored.clear();
+        return false;
+    }
+    if (mask ? !Util::isAvatarMaskFile(stored) : !Util::isAnimatorControllerFile(stored)) {
+        error = std::string("must be a ") + example + ".";
+        stored.clear();
+        return false;
+    }
+    const fs::path full = project->resolveAssetPath(stored);
+    std::ifstream file(full, std::ios::binary);
+    if (!file) {
+        error = text + " does not exist: a " + example + ".";
+        stored.clear();
+        return false;
+    }
+    const std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    const anim::ClipParseError parseError = mask ? anim::parseAvatarMask(content).error : anim::parseController(content).error;
+    if (!parseError.empty()) {
+        error = text + " does not load: " + parseError.toString();
+        stored.clear();
+        return false;
+    }
+    guid = project->getAssetDatabase().getGuid(full);
+    if (guid.empty()) guid = anim::readClipGuid(content);
+    return true;
 }
 
 // The clip list an edit through the component's encoding left (clips set, an entry inserted,
@@ -1752,8 +1942,8 @@ bool normalizePlayerClips(Project* project, const AnimationPlayerComponent* curr
             for (auto it = item.begin(); it != item.end(); ++it) {
                 const std::string key = it->first.as<std::string>();
                 // guid: as get_entity shows it, so a list read back is taken; its value is ignored
-                if (key != "clip" && key != "guid" && key != "name" && key != "wrap") {
-                    error = at + ": unknown key \"" + key + "\" (an entry is {clip, name, wrap}; its guid follows the clip).";
+                if (key != "clip" && key != "guid" && key != "name" && key != "wrap" && key != "layer") {
+                    error = at + ": unknown key \"" + key + "\" (an entry is {clip, name, wrap, layer}; its guid follows the clip).";
                     return false;
                 }
                 if (!it->second.IsScalar() && !it->second.IsNull()) {
@@ -1798,13 +1988,157 @@ bool normalizePlayerClips(Project* project, const AnimationPlayerComponent* curr
                 return false;
             }
         }
+        if (constEntry["layer"]) {
+            int layer = 0;
+            const std::string text = constEntry["layer"].Scalar();
+            if (!YamlNumbers::readPlain(text, layer) || layer < 0) {
+                error = at + ".layer must be a layer index (0 is the base layer).";
+                return false;
+            }
+            if (layer == 0) entry.remove("layer");
+        }
         rebuilt.push_back(entry);
     }
     value["clips"] = rebuilt;
     return true;
 }
 
+// The layers an edit through the component's encoding left (anim layers spec 10): unique names,
+// the base layer's weight and blend fixed, masks that exist and parse (stored with their GUID; a
+// layer naming the mask it holds keeps it, a missing one stays missing). Entries on a layer the
+// list does not have are refused.
+bool normalizePlayerLayers(Project* project, const AnimationPlayerComponent* current, YAML::Node value, std::string& error) {
+    const YAML::Node& constValue = value;
+    const YAML::Node layers = constValue["layers"];
+    const char* const shape = "layers must be a list of {name, weight, blend, mask}, e.g. [{\"name\": \"Base Layer\"}, "
+                              "{\"name\": \"Holding\", \"weight\": 1, \"mask\": \"assets/anim/arm.mask\"}].";
+    size_t count = 1;
+    if (layers && !layers.IsNull()){
+        if (!layers.IsSequence()) {
+            error = shape;
+            return false;
+        }
+        YAML::Node rebuilt(YAML::NodeType::Sequence);
+        std::set<std::string> names;
+        for (size_t i = 0; i < layers.size(); i++) {
+            const YAML::Node item = layers[i];
+            const std::string at = "layers[" + std::to_string(i) + "]";
+            YAML::Node entry(YAML::NodeType::Map);
+            if (item.IsScalar()) {
+                entry["name"] = item.Scalar();
+            } else if (item.IsMap()) {
+                for (auto it = item.begin(); it != item.end(); ++it) {
+                    const std::string key = it->first.as<std::string>();
+                    if (key != "name" && key != "weight" && key != "blend" && key != "mask" && key != "maskGuid") {
+                        error = at + ": unknown key \"" + key + "\" (a layer is {name, weight, blend, mask}; its maskGuid follows the mask).";
+                        return false;
+                    }
+                    if (!it->second.IsScalar() && !it->second.IsNull()) {
+                        error = at + "." + key + " must be a " + (key == "weight" ? "number" : "string") + ".";
+                        return false;
+                    }
+                    if (key != "maskGuid") entry[key] = it->second.IsScalar() ? it->second.Scalar() : std::string();
+                }
+            } else {
+                error = at + ": " + shape;
+                return false;
+            }
+            const YAML::Node& constEntry = entry;
+            const std::string name = constEntry["name"] ? constEntry["name"].Scalar() : std::string();
+            if (name.empty()) {
+                error = at + ".name is required (layers are addressed by name in Lua).";
+                return false;
+            }
+            if (!names.insert(name).second) {
+                error = at + ".name \"" + name + "\" is already a layer: names are unique.";
+                return false;
+            }
+            if (constEntry["weight"]) {
+                float weight = 1.0f;
+                if (!YamlNumbers::readPlain(constEntry["weight"].Scalar(), weight) || !std::isfinite(weight) || weight < 0.0f || weight > 1.0f) {
+                    error = at + ".weight must be a number from 0 to 1.";
+                    return false;
+                }
+                if (i == 0 && weight != 1.0f) {
+                    error = at + ".weight: the base layer (index 0) always has weight 1; give the weight to a layer above it.";
+                    return false;
+                }
+            }
+            if (constEntry["blend"]) {
+                AnimationLayerBlend blend = AnimationLayerBlend::Override;
+                const std::string text = constEntry["blend"].Scalar();
+                if (!text.empty() && !anim::layerBlendFromName(text, blend)) {
+                    error = at + ".blend \"" + text + "\" is not a blend mode (override, additive).";
+                    return false;
+                }
+                if (i == 0 && blend != AnimationLayerBlend::Override) {
+                    error = at + ".blend: the base layer (index 0) always blends as override; add an additive layer above it.";
+                    return false;
+                }
+            }
+            const std::string mask = constEntry["mask"] ? constEntry["mask"].Scalar() : std::string();
+            const AnimationPlayerLayer* same = nullptr;
+            if (current && !mask.empty()) {
+                for (const AnimationPlayerLayer& held : current->layers) {
+                    if (!held.mask.empty() && (held.mask == mask || McpValues::assetPathToJson(project, held.mask) == mask)) {
+                        same = &held;
+                        break;
+                    }
+                }
+            }
+            if (same) {
+                entry["mask"] = same->mask;
+                if (!same->maskGuid.empty()) entry["maskGuid"] = same->maskGuid;
+            } else if (!mask.empty()) {
+                std::string stored, guid, why;
+                if (!animAssetPathFromJson(project, mask, true, stored, guid, why)) {
+                    error = at + ".mask " + why;
+                    return false;
+                }
+                entry["mask"] = stored;
+                if (!guid.empty()) entry["maskGuid"] = guid;
+            } else {
+                entry.remove("mask");
+            }
+            rebuilt.push_back(entry);
+        }
+        value["layers"] = rebuilt;
+        count = std::max<size_t>(1, rebuilt.size());
+    }
+    const YAML::Node clips = constValue["clips"];
+    if (clips && clips.IsSequence()) {
+        for (size_t i = 0; i < clips.size(); i++) {
+            const YAML::Node layer = clips[i].IsMap() ? clips[i]["layer"] : YAML::Node();
+            int index = 0;
+            if (layer && layer.IsScalar() && YamlNumbers::readPlain(layer.Scalar(), index) && index >= 0 && (size_t)index >= count) {
+                error = "clips[" + std::to_string(i) + "].layer " + std::to_string(index) + ": the player has " + std::to_string(count) +
+                        " layer" + (count == 1 ? "" : "s") + " (0 to " + std::to_string(count - 1) + "): add the layer first.";
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 } // namespace
+
+bool McpValues::clipReferenceFromJson(Project* project, const std::string& text, std::string& stored, std::string& guid, std::string& error) {
+    if (!clipPathFromJson(project, text, stored, guid, error)) {
+        // without the "clip: " prefix (the caller names its field)
+        if (error.compare(0, 6, "clip: ") == 0) error = error.substr(6);
+        return false;
+    }
+    return true;
+}
+
+bool McpValues::animAssetReferenceFromJson(Project* project, const std::string& text, bool mask, std::string& stored, std::string& guid,
+                                           std::string& error) {
+    return animAssetPathFromJson(project, text, mask, stored, guid, error);
+}
+
+std::string McpValues::clipReferenceToJson(Project* project, const std::string& stored) {
+    return clipPathToJson(project, stored);
+}
 
 Json McpValues::entityToJson(SceneProject* scene, Entity entity) {
     if (entity == NULL_ENTITY) return nullptr;
@@ -2107,6 +2441,248 @@ bool McpValues::gradientFromJson(const Json& value, Gradient& out, std::string& 
         }
     }
     out.normalize();
+    return true;
+}
+
+Json McpValues::minMaxCurveToJson(const MinMaxCurve& curve) {
+    switch (curve.mode) {
+        case ParticleSystemCurveMode::Constant:
+            return number(curve.constant);
+        case ParticleSystemCurveMode::TwoConstants:
+            return Json{{"mode", "two_constants"}, {"min", number(curve.constantMin)}, {"max", number(curve.constant)}};
+        case ParticleSystemCurveMode::Curve:
+            return Json{{"mode", "curve"}, {"multiplier", number(curve.constant)}, {"curve", curveToJson(curve.curve)}};
+        case ParticleSystemCurveMode::TwoCurves:
+            return Json{{"mode", "two_curves"}, {"multiplier", number(curve.constant)}, {"min", curveToJson(curve.curveMin)},
+                        {"max", curveToJson(curve.curve)}};
+    }
+    return number(curve.constant);
+}
+
+bool McpValues::minMaxCurveFromJson(const Json& value, MinMaxCurve& out, std::string& error) {
+    const char* shape = "a number (constant), {\"mode\": \"two_constants\", \"min\", \"max\"}, {\"mode\": \"curve\", "
+                        "\"multiplier\", \"curve\"} or {\"mode\": \"two_curves\", \"multiplier\", \"min\", \"max\"} (curves: "
+                        "[[time, value], ...] or {\"keys\": ...})";
+    if (value.is_number()) {
+        const float constant = value.get<float>();
+        if (!std::isfinite(constant)) {
+            error = "a constant must be a finite number.";
+            return false;
+        }
+        out = MinMaxCurve(constant);
+        return true;
+    }
+    if (!value.is_object() || !value.contains("mode") || !value["mode"].is_string()) {
+        error = std::string("expected ") + shape + ".";
+        return false;
+    }
+    const std::string mode = value["mode"].get<std::string>();
+    auto finite = [&](const char* key, float fallback, float& result) -> bool {
+        if (!value.contains(key)) {
+            result = fallback;
+            return true;
+        }
+        if (!value[key].is_number() || !std::isfinite(value[key].get<float>())) {
+            error = std::string("\"") + key + "\" must be a finite number.";
+            return false;
+        }
+        result = value[key].get<float>();
+        return true;
+    };
+    auto allowOnly = [&](std::initializer_list<const char*> keys) -> bool {
+        for (auto it = value.begin(); it != value.end(); ++it) {
+            bool known = false;
+            for (const char* key : keys) known = known || it.key() == key;
+            if (!known) {
+                error = "unknown key \"" + it.key() + "\" for mode " + mode + "; expected " + shape + ".";
+                return false;
+            }
+        }
+        return true;
+    };
+    if (mode == "constant") {
+        float v = 0.0f;
+        if (!allowOnly({"mode", "value", "constant"})) return false;
+        if (!finite(value.contains("value") ? "value" : "constant", out.constant, v)) return false;
+        out = MinMaxCurve(v);
+        return true;
+    }
+    if (mode == "two_constants") {
+        float lo = 0.0f, hi = 0.0f;
+        if (!allowOnly({"mode", "min", "max"})) return false;
+        if (!value.contains("min") || !value.contains("max")) {
+            error = "two_constants needs \"min\" and \"max\".";
+            return false;
+        }
+        if (!finite("min", 0.0f, lo) || !finite("max", 0.0f, hi)) return false;
+        out = MinMaxCurve::between(lo, hi);
+        return true;
+    }
+    if (mode == "curve" || mode == "two_curves") {
+        float multiplier = 1.0f;
+        if (!allowOnly({"mode", "multiplier", "curve", "min", "max"})) return false;
+        if (!finite("multiplier", 1.0f, multiplier)) return false;
+        std::string why;
+        if (mode == "curve") {
+            AnimationCurve curve;
+            if (!value.contains("curve") || !curveFromJson(value["curve"], curve, why)) {
+                error = "\"curve\": " + (why.empty() ? std::string("missing") : why);
+                return false;
+            }
+            out = MinMaxCurve::fromCurve(curve, multiplier);
+            return true;
+        }
+        AnimationCurve lo, hi;
+        if (!value.contains("min") || !curveFromJson(value["min"], lo, why)) {
+            error = "\"min\": " + (why.empty() ? std::string("missing") : why);
+            return false;
+        }
+        if (!value.contains("max") || !curveFromJson(value["max"], hi, why)) {
+            error = "\"max\": " + (why.empty() ? std::string("missing") : why);
+            return false;
+        }
+        out = MinMaxCurve::between(lo, hi, multiplier);
+        return true;
+    }
+    error = "\"mode\" must be constant, two_constants, curve or two_curves.";
+    return false;
+}
+
+Json McpValues::minMaxGradientToJson(const MinMaxGradient& gradient) {
+    auto color = [](const Vector4& linear) {
+        const YAML::Node encoded = Stream::encodeColorValue(linear);
+        if (encoded.IsScalar()) return Json(encoded.as<std::string>());
+        return Json::array({number(linear.x), number(linear.y), number(linear.z), number(linear.w)});
+    };
+    switch (gradient.mode) {
+        case ParticleSystemGradientMode::Color:
+            return color(gradient.color);
+        case ParticleSystemGradientMode::TwoColors:
+            return Json{{"mode", "two_colors"}, {"min", color(gradient.colorMin)}, {"max", color(gradient.color)}};
+        case ParticleSystemGradientMode::Gradient:
+            return Json{{"mode", "gradient"}, {"gradient", gradientToJson(gradient.gradient)}};
+        case ParticleSystemGradientMode::RandomColor:
+            return Json{{"mode", "random_color"}, {"gradient", gradientToJson(gradient.gradient)}};
+        case ParticleSystemGradientMode::TwoGradients:
+            return Json{{"mode", "two_gradients"}, {"min", gradientToJson(gradient.gradientMin)}, {"max", gradientToJson(gradient.gradient)}};
+    }
+    return color(gradient.color);
+}
+
+bool McpValues::minMaxGradientFromJson(const Json& value, MinMaxGradient& out, std::string& error) {
+    const char* shape = "a colour (\"#RRGGBB[AA]\" sRGB or [r, g, b(, a)] linear), {\"mode\": \"gradient\", \"gradient\"}, "
+                        "{\"mode\": \"two_colors\", \"min\", \"max\"}, {\"mode\": \"two_gradients\", \"min\", \"max\"} or "
+                        "{\"mode\": \"random_color\", \"gradient\"}";
+    Vector4 single;
+    bool hasAlpha = false;
+    if (gradientColorFromJson(value, single, hasAlpha)) {
+        out = MinMaxGradient::fromColor(single);
+        return true;
+    }
+    if (!value.is_object() || !value.contains("mode") || !value["mode"].is_string()) {
+        error = std::string("expected ") + shape + ".";
+        return false;
+    }
+    const std::string mode = value["mode"].get<std::string>();
+    std::string why;
+    auto colorAt = [&](const char* key, Vector4& result) -> bool {
+        bool alpha = false;
+        if (!value.contains(key) || !gradientColorFromJson(value[key], result, alpha)) {
+            error = std::string("\"") + key + "\" must be a colour (\"#RRGGBB[AA]\" or [r, g, b(, a)] linear).";
+            return false;
+        }
+        return true;
+    };
+    auto gradientAt = [&](const char* key, Gradient& result) -> bool {
+        if (!value.contains(key) || !gradientFromJson(value[key], result, why)) {
+            error = std::string("\"") + key + "\": " + (why.empty() ? std::string("missing") : why);
+            return false;
+        }
+        return true;
+    };
+    if (mode == "color") {
+        Vector4 c;
+        if (!colorAt("color", c)) return false;
+        out = MinMaxGradient::fromColor(c);
+        return true;
+    }
+    if (mode == "two_colors") {
+        Vector4 lo, hi;
+        if (!colorAt("min", lo) || !colorAt("max", hi)) return false;
+        out = MinMaxGradient::between(lo, hi);
+        return true;
+    }
+    if (mode == "gradient" || mode == "random_color") {
+        Gradient g;
+        if (!gradientAt("gradient", g)) return false;
+        out = MinMaxGradient::fromGradient(g);
+        if (mode == "random_color") out.mode = ParticleSystemGradientMode::RandomColor;
+        return true;
+    }
+    if (mode == "two_gradients") {
+        Gradient lo, hi;
+        if (!gradientAt("min", lo) || !gradientAt("max", hi)) return false;
+        out = MinMaxGradient::between(lo, hi);
+        return true;
+    }
+    error = "\"mode\" must be color, gradient, two_colors, two_gradients or random_color.";
+    return false;
+}
+
+Json McpValues::particleBurstsToJson(const std::vector<ParticleEmissionBurst>& bursts) {
+    Json list = Json::array();
+    for (const ParticleEmissionBurst& burst : bursts) {
+        list.push_back(Json{{"time", number(burst.time)}, {"count", minMaxCurveToJson(burst.count)}, {"cycles", burst.cycles},
+                            {"interval", number(burst.interval)}, {"probability", number(burst.probability)}});
+    }
+    return list;
+}
+
+bool McpValues::particleBurstsFromJson(const Json& value, std::vector<ParticleEmissionBurst>& out, std::string& error) {
+    out.clear();
+    if (!value.is_array()) {
+        error = "expected [{\"time\", \"count\", \"cycles\" (0 = forever), \"interval\", \"probability\"}, ...].";
+        return false;
+    }
+    for (size_t i = 0; i < value.size(); i++) {
+        const Json& item = value[i];
+        const std::string where = "bursts[" + std::to_string(i) + "]";
+        if (!item.is_object()) {
+            error = where + " must be {\"time\", \"count\", \"cycles\", \"interval\", \"probability\"}.";
+            return false;
+        }
+        ParticleEmissionBurst burst;
+        for (auto it = item.begin(); it != item.end(); ++it) {
+            const std::string& key = it.key();
+            const Json& v = it.value();
+            if (key == "count") {
+                std::string why;
+                if (!minMaxCurveFromJson(v, burst.count, why)) {
+                    error = where + ".count: " + why;
+                    return false;
+                }
+            } else if (key == "time" || key == "interval" || key == "probability") {
+                if (!v.is_number() || !std::isfinite(v.get<float>())) {
+                    error = where + "." + key + " must be a number.";
+                    return false;
+                }
+                const float number = v.get<float>();
+                if (key == "time") burst.time = std::max(0.0f, number);
+                if (key == "interval") burst.interval = std::max(0.0001f, number);
+                if (key == "probability") burst.probability = std::min(1.0f, std::max(0.0f, number));
+            } else if (key == "cycles") {
+                if (!isIntegral(v) || integralValue(v) < 0) {
+                    error = where + ".cycles must be an integer >= 0 (0 = forever).";
+                    return false;
+                }
+                burst.cycles = (int)integralValue(v);
+            } else {
+                error = where + ": unknown key \"" + key + "\" (time, count, cycles, interval, probability).";
+                return false;
+            }
+        }
+        out.push_back(burst);
+    }
     return true;
 }
 
@@ -2688,7 +3264,11 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
     void* ref = readDefault ? property.def : property.ref;
     if (property.type == PropertyType::Custom) {
         // an Animation Player entry's wrap has a default ("default"), like an enum
-        if (readDefault) return ref && isPlayerWrapProperty(ctx.component, name) ? Json(anim::wrapName(*static_cast<ClipWrapMode*>(ref))) : Json(nullptr);
+        if (readDefault){
+            if (ref && isPlayerWrapProperty(ctx.component, name)) return Json(anim::wrapName(*static_cast<ClipWrapMode*>(ref)));
+            if (ref && isPlayerLayerBlendProperty(ctx.component, name)) return Json(anim::layerBlendName(*static_cast<AnimationLayerBlend*>(ref)));
+            return Json(nullptr);
+        }
         if (ref && name == "shaderUniforms") {
             return shaderUniformsToJson(*static_cast<ShaderUniformValues*>(ref));
         }
@@ -2723,6 +3303,19 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         if (ref && isPlayerWrapProperty(ctx.component, name)) {
             return anim::wrapName(*static_cast<ClipWrapMode*>(ref));
         }
+        if (ref && ctx.component == ComponentType::AnimationPlayerComponent && name == "layers") {
+            return playerLayersToJson(ctx.project, *static_cast<std::vector<AnimationPlayerLayer>*>(ref));
+        }
+        if (ref && isPlayerLayerBlendProperty(ctx.component, name)) {
+            return anim::layerBlendName(*static_cast<AnimationLayerBlend*>(ref));
+        }
+        // a version 2 Particle System's bursts and sprite frames
+        if (ref && ctx.component == ComponentType::ParticleSystemComponent && name == "emission.bursts") {
+            return particleBurstsToJson(*static_cast<std::vector<ParticleEmissionBurst>*>(ref));
+        }
+        if (ref && ctx.component == ComponentType::ParticleSystemComponent && name == "textureSheetAnimation.sprites") {
+            return Json(*static_cast<std::vector<int>*>(ref));
+        }
         bool found = false;
         return readYamlProperty(ctx, name, found);
     }
@@ -2733,6 +3326,7 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         case PropertyType::String: {
             const std::string& value = *static_cast<std::string*>(ref);
             if (isPlayerClipProperty(ctx.component, name)) return clipPathToJson(ctx.project, value);
+            if (isShakePresetPathProperty(ctx.component, name, value)) return assetPathToJson(ctx.project, value);
             return isAssetPathProperty(ctx.component, name) ? assetPathToJson(ctx.project, value) : value;
         }
         case PropertyType::Float:
@@ -2781,6 +3375,10 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
             return curveToJson(*static_cast<AnimationCurve*>(ref));
         case PropertyType::Gradient:
             return gradientToJson(*static_cast<Gradient*>(ref));
+        case PropertyType::MinMaxCurve:
+            return minMaxCurveToJson(*static_cast<MinMaxCurve*>(ref));
+        case PropertyType::MinMaxGradient:
+            return minMaxGradientToJson(*static_cast<MinMaxGradient*>(ref));
         case PropertyType::Material: {
             std::string linked;
             unsigned int submesh = 0;
@@ -2890,6 +3488,39 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 "which resamples the offsets so the shape stays.";
         return nullptr;
     }
+    // one field of a layer: the checks of a whole list (normalizePlayerLayers) that apply to it.
+    // The base layer's weight is always 1 (anim layers spec 5.2)
+    if (component == ComponentType::AnimationPlayerComponent && propertyName.compare(0, 7, "layers[") == 0) {
+        if (propertyName == "layers[0].weight") {
+            error = "layers[0].weight: the base layer always has weight 1; give a layer above it a weight (layers[1].weight).";
+            return nullptr;
+        }
+        const size_t close = propertyName.find(']');
+        size_t index = 0;
+        const bool indexed = close != std::string::npos && YamlNumbers::readPlain(propertyName.substr(7, close - 7), index);
+        const std::string field = close == std::string::npos ? std::string() : propertyName.substr(close + 1);
+        if (indexed && field == ".name" && value.is_string()) {
+            const std::string name = value.get<std::string>();
+            if (name.empty()) {
+                error = propertyName + " is required (layers are addressed by name in Lua).";
+                return nullptr;
+            }
+            const AnimationPlayerComponent* player = scene->scene->findComponent<AnimationPlayerComponent>(entity);
+            for (size_t i = 0; player && i < player->layers.size(); i++) {
+                if (i != index && player->layers[i].name == name) {
+                    error = propertyName + " \"" + name + "\" is already a layer (layers[" + std::to_string(i) + "]): names are unique.";
+                    return nullptr;
+                }
+            }
+        }
+        if (indexed && field == ".weight" && value.is_number()) {
+            const double weight = value.get<double>();
+            if (!std::isfinite(weight) || weight < 0.0 || weight > 1.0) {
+                error = propertyName + " must be a number from 0 to 1.";
+                return nullptr;
+            }
+        }
+    }
     const std::string typeName = propertyTypeName(property.type);
     auto expect = [&](const std::string& what) -> Command* {
         error = "Property " + propertyName + " is " + typeName + ": value must be " + what + ".";
@@ -2963,6 +3594,23 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 multi->addPropertyCmd<std::string>(project, sceneId, entity, component, "guid", guid);
                 return multi;
             }
+            if (isPlayerMaskProperty(component, propertyName) || isPlayerControllerProperty(component, propertyName)) {
+                // the path and the GUID it names change together: the GUID wins when the scene loads
+                const bool mask = isPlayerMaskProperty(component, propertyName);
+                std::string stored, guid, why;
+                if (!animAssetPathFromJson(project, text, mask, stored, guid, why)) {
+                    error = propertyName + " " + why;
+                    return nullptr;
+                }
+                auto* multi = new MultiPropertyCmd();
+                multi->addPropertyCmd<std::string>(project, sceneId, entity, component, propertyName, stored, onChanged);
+                multi->addPropertyCmd<std::string>(project, sceneId, entity, component, propertyName + "Guid", guid);
+                return multi;
+            }
+            if (isPlayerMaskGuidProperty(component, propertyName) || (component == ComponentType::AnimationPlayerComponent && propertyName == "controllerGuid")) {
+                error = propertyName + " is read-only: set " + propertyName.substr(0, propertyName.size() - 4) + ", its GUID follows the file.";
+                return nullptr;
+            }
             if (component == ComponentType::VertexAnimatorComponent && propertyName == "guid") {
                 error = "guid is read-only: set animation, its GUID follows the file.";
                 return nullptr;
@@ -2972,6 +3620,31 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 error = propertyName + " is read-only: set " + propertyName.substr(0, propertyName.size() - 5) +
                         ".clip, its GUID follows the file.";
                 return nullptr;
+            }
+            if (component == ComponentType::CameraShakerComponent && propertyName == "startPreset" && !text.empty()) {
+                // a built-in name, or a .shake that exists and reads (project-relative, or its stored form)
+                if (!Util::isShakePresetFile(text)) {
+                    if (!camera::findBuiltinShakePreset(text)) {
+                        std::string names;
+                        for (const std::string& name : camera::builtinShakePresetNames()) names += (names.empty() ? "" : ", ") + name;
+                        error = "startPreset: '" + text + "' is no built-in preset (" + names + ") and no .shake path.";
+                        return nullptr;
+                    }
+                } else {
+                    std::string stored;
+                    if (!storedAssetPathFromJson(project, text, stored, error)) return nullptr;
+                    std::string content;
+                    if (!ProjectChecks::readFile(project->resolveAssetPath(stored), content)) {
+                        error = "startPreset: " + text + " does not exist (write it first: write_file with a .shake).";
+                        return nullptr;
+                    }
+                    camera::ShakeParseResult parsed = camera::parseShakePreset(content);
+                    if (!parsed.ok()) {
+                        error = "startPreset: " + text + " is no shake preset: " + parsed.errorText();
+                        return nullptr;
+                    }
+                    text = stored;
+                }
             }
             if (isAssetPathProperty(component, propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
             // a foliage layer's FBX mesh loads from its import, created here the first time
@@ -3009,6 +3682,19 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
         }
         case PropertyType::Float: {
             if (!value.is_number()) return expect("a number");
+            // camera shake spec 10: the Camera Shaker's and Camera Follow's ranges
+            if (component == ComponentType::CameraShakerComponent || component == ComponentType::CameraFollowComponent) {
+                const double number = value.get<double>();
+                if (component == ComponentType::CameraShakerComponent && propertyName == "traumaPower" &&
+                        !(number >= 1.0 && number <= 4.0)) {
+                    error = "traumaPower must be 1 to 4 (shake = trauma ^ power; 2 by default).";
+                    return nullptr;
+                }
+                if (!(number >= 0.0) || !std::isfinite(number)) {
+                    error = propertyName + " must be 0 or more.";
+                    return nullptr;
+                }
+            }
             // as the scene file reads it back (Stream clamps a negative fade to none)
             if (component == ComponentType::AnimationPlayerComponent && propertyName == "defaultFadeTime" &&
                     !(value.get<double>() >= 0.0)) {
@@ -3030,11 +3716,19 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
         case PropertyType::Vector2: {
             Vector2 v = property.ref ? *static_cast<Vector2*>(property.ref) : Vector2::ZERO;
             if (!parseVector2(value, v)) return expect("[x,y]");
+            if (component == ComponentType::CameraFollowComponent && propertyName == "deadZone" && (v.x < 0.0f || v.y < 0.0f)) {
+                error = "deadZone is a width and a height: both 0 or more.";
+                return nullptr;
+            }
             return new PropertyCmd<Vector2>(project, sceneId, entity, component, propertyName, v, onChanged);
         }
         case PropertyType::Vector3: {
             Vector3 v = property.ref ? *static_cast<Vector3*>(property.ref) : Vector3::ZERO;
             if (!parseVector3(value, v)) return expect("[x,y,z] (or \"#RRGGBB\")");
+            if (component == ComponentType::CameraFollowComponent && propertyName == "damping" && (v.x < 0.0f || v.y < 0.0f || v.z < 0.0f)) {
+                error = "damping is a smooth time in seconds per axis: 0 (rigid) or more.";
+                return nullptr;
+            }
             return new PropertyCmd<Vector3>(project, sceneId, entity, component, propertyName, v, onChanged);
         }
         case PropertyType::Vector4: {
@@ -3216,6 +3910,24 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
             }
             return new PropertyCmd<Gradient>(project, sceneId, entity, component, propertyName, gradient, onChanged);
         }
+        case PropertyType::MinMaxCurve: {
+            MinMaxCurve curve;
+            std::string why;
+            if (!minMaxCurveFromJson(value, curve, why)) {
+                error = "Property " + propertyName + " is a MinMaxCurve: " + why;
+                return nullptr;
+            }
+            return new PropertyCmd<MinMaxCurve>(project, sceneId, entity, component, propertyName, curve, onChanged);
+        }
+        case PropertyType::MinMaxGradient: {
+            MinMaxGradient gradient;
+            std::string why;
+            if (!minMaxGradientFromJson(value, gradient, why)) {
+                error = "Property " + propertyName + " is a MinMaxGradient: " + why;
+                return nullptr;
+            }
+            return new PropertyCmd<MinMaxGradient>(project, sceneId, entity, component, propertyName, gradient, onChanged);
+        }
         case PropertyType::Material: {
             unsigned int submesh = 0;
             const bool linkable = component == ComponentType::MeshComponent && submeshMaterialIndex(propertyName, submesh);
@@ -3286,6 +3998,18 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                     return nullptr;
                 }
                 return new PropertyCmd<ClipWrapMode>(project, sceneId, entity, component, propertyName, wrap, onChanged);
+            }
+            if (isPlayerLayerBlendProperty(component, propertyName)) {
+                AnimationLayerBlend blend = AnimationLayerBlend::Override;
+                if (!value.is_string() || !anim::layerBlendFromName(value.get<std::string>(), blend)) {
+                    error = "Property " + propertyName + " is a blend mode: override or additive.";
+                    return nullptr;
+                }
+                if (propertyName.compare(0, 9, "layers[0]") == 0 && blend != AnimationLayerBlend::Override) {
+                    error = "layers[0].blend: the base layer always blends as override; add an additive layer above it.";
+                    return nullptr;
+                }
+                return new PropertyCmd<AnimationLayerBlend>(project, sceneId, entity, component, propertyName, blend, onChanged);
             }
             if (isScriptPrefabProperty(scene->scene, entity, component, propertyName)) {
                 PrefabAsset prefab;
@@ -3378,6 +4102,28 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 }
                 if (!cmd) error = "Property " + propertyName + ": " + why;
                 return cmd;
+            }
+            if (component == ComponentType::ParticleSystemComponent && propertyName == "emission.bursts") {
+                std::vector<ParticleEmissionBurst> bursts;
+                std::string why;
+                if (!particleBurstsFromJson(value, bursts, why)) {
+                    error = "Property " + propertyName + ": " + why;
+                    return nullptr;
+                }
+                return new PropertyCmd<std::vector<ParticleEmissionBurst>>(project, sceneId, entity, component, propertyName, bursts, onChanged);
+            }
+            if (component == ComponentType::ParticleSystemComponent && propertyName == "textureSheetAnimation.sprites") {
+                std::vector<int> frames;
+                bool ok = value.is_array();
+                for (size_t i = 0; ok && i < value.size(); i++) {
+                    ok = isIntegral(value[i]) && integralValue(value[i]) >= 0 && integralValue(value[i]) < MAX_SPRITE_FRAMES;
+                    if (ok) frames.push_back((int)integralValue(value[i]));
+                }
+                if (!ok) {
+                    error = "Property " + propertyName + " is a list of sprite frame ids (0.." + std::to_string(MAX_SPRITE_FRAMES - 1) + ").";
+                    return nullptr;
+                }
+                return new PropertyCmd<std::vector<int>>(project, sceneId, entity, component, propertyName, frames, onChanged);
             }
             error = "Property " + propertyName + " is custom: set it with set_properties (component encoding).";
             return nullptr;
@@ -3650,14 +4396,79 @@ static bool isWholeValueProperty(Scene* scene, Entity entity, ComponentType comp
             endsWith(property, "shaderFeatures") || endsWith(property, "shaderGlobalBindings"));
 }
 
+// A player without authored layers plays one Base Layer (playerLayers), which has no layers[0].*
+// property: its field edits become one edit of the whole effective list, which then holds them
+// (as the Inspector's layer fields do), checked like any list
+static std::vector<McpValues::Change> withPlayerLayerList(Project* project, Scene* scene, Entity entity,
+                                                          const std::vector<McpValues::Change>& changes) {
+    const AnimationPlayerComponent* player = scene->findComponent<AnimationPlayerComponent>(entity);
+    if (!player || !player->layers.empty()) return changes;
+    auto isBaseField = [](const McpValues::Change& change) {
+        return change.component == ComponentType::AnimationPlayerComponent && change.op == "set" &&
+               (change.property == "layers[0].name" || change.property == "layers[0].weight" ||
+                change.property == "layers[0].blend" || change.property == "layers[0].mask");
+    };
+    bool fields = false;
+    for (const McpValues::Change& change : changes) {
+        if (change.component == ComponentType::AnimationPlayerComponent && change.property == "layers") return changes;
+        fields = fields || isBaseField(change);
+    }
+    if (!fields) return changes;
+    Json list = Json::array();
+    for (const AnimationPlayerLayer& layer : anim::playerLayers(*player)) {
+        Json item = {{"name", layer.name}, {"weight", layer.weight}, {"blend", anim::layerBlendName(layer.blend)}};
+        if (!layer.mask.empty()) item["mask"] = McpValues::assetPathToJson(project, layer.mask);
+        list.push_back(item);
+    }
+    std::vector<McpValues::Change> out;
+    size_t at = 0;
+    for (const McpValues::Change& change : changes) {
+        if (!isBaseField(change)) {
+            out.push_back(change);
+            continue;
+        }
+        if (at == 0) {
+            out.push_back({ComponentType::AnimationPlayerComponent, "layers", "set", Json(), -1});
+            at = out.size();
+        }
+        list[0][change.property.substr(10)] = change.value;
+    }
+    out[at - 1].value = list;
+    return out;
+}
+
 bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, const std::vector<Entity>& entities,
-                                     const std::vector<Change>& changes, MultiPropertyCmd& multi, std::string& error) {
+                                     const std::vector<Change>& allChanges, MultiPropertyCmd& multi, std::string& error) {
     if (!scene || !scene->scene) {
         error = "The scene is not loaded.";
         return false;
     }
     for (Entity entity : entities) {
         const std::string label = "GameObject " + std::to_string(entity) + " \"" + scene->scene->getEntityName(entity) + "\"";
+        const std::vector<Change> changes = withPlayerLayerList(project, scene->scene, entity, allChanges);
+        // an entry's layer is one of the player's layers after this edit (anim layers spec 10)
+        if (const AnimationPlayerComponent* player = scene->scene->findComponent<AnimationPlayerComponent>(entity)) {
+            int layers = (int)anim::playerLayers(*player).size();
+            for (const Change& change : changes) {
+                if (change.component == ComponentType::AnimationPlayerComponent && change.property == "layers" && change.op == "set" &&
+                    change.value.is_array()) {
+                    layers = std::max<int>(1, (int)change.value.size());
+                }
+            }
+            for (const Change& change : changes) {
+                const std::string& name = change.property;
+                if (change.component != ComponentType::AnimationPlayerComponent || name.compare(0, 6, "clips[") != 0 || name.size() <= 12 ||
+                    name.compare(name.size() - 6, 6, ".layer") != 0 || !change.value.is_number_integer()) {
+                    continue;
+                }
+                const int layer = change.value.get<int>();
+                if (layer < 0 || layer >= layers) {
+                    error = "animationplayer." + name + " on " + label + ": " + std::to_string(layer) + " is not a layer of this player (it has " +
+                            std::to_string(layers) + "); add the layer first (layers, e.g. [{\"name\": \"Base Layer\"}, {\"name\": \"Upper\"}]).";
+                    return false;
+                }
+            }
+        }
         // components in order of first appearance
         std::vector<ComponentType> order;
         for (const Change& change : changes) {
@@ -3798,7 +4609,7 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                      endsWith(change.property, "shaderFeatures") || endsWith(change.property, "shaderGlobalBindings") ||
                      change.property == "stencil" ||
                      endsWith(change.property, ".stencil") || endsWith(change.property, "material.extraPass") ||
-                     isPlayerWrapProperty(component, change.property) ||
+                     isPlayerWrapProperty(component, change.property) || isPlayerLayerBlendProperty(component, change.property) ||
                      isScriptPrefabProperty(scene->scene, entity, component, change.property));
                 if (typedProperty) {
                     std::string why;
@@ -3851,7 +4662,8 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                 }
                 if (component == ComponentType::AnimationPlayerComponent) {
                     std::string why;
-                    if (!normalizePlayerClips(project, scene->scene->findComponent<AnimationPlayerComponent>(entity), value, why)) {
+                    const AnimationPlayerComponent* current = scene->scene->findComponent<AnimationPlayerComponent>(entity);
+                    if (!normalizePlayerClips(project, current, value, why) || !normalizePlayerLayers(project, current, value, why)) {
                         error = componentLabel + " on " + label + ": " + why;
                         return false;
                     }

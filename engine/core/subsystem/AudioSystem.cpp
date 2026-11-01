@@ -1148,7 +1148,7 @@ void AudioSystem::placeListener(Scene& listenerScene){
     const Transform& cameraTransform = listenerScene.getComponent<Transform>(listenerScene.getCamera());
     const Vector3 position = cameraTransform.worldPosition;
     const Vector3 view = camera.worldTarget - position;
-    const Vector3 up = camera.worldUp;
+    const Vector3 up = camera.steadyWorldUp;  // unshaken (Camera Shaker)
     const Vector3 velocity = cameraLastPosition - position;
     getSoloud().set3dListenerParameters(position.x, position.y, position.z, view.x, view.y, view.z,
                                         up.x, up.y, up.z, velocity.x, velocity.y, velocity.z);

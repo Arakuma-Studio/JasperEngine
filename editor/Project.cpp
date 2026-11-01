@@ -4,6 +4,8 @@
 #include "Project.h"
 #include "subsystem/PhysicsSystem.h"
 #include "animation/AnimationClipDocument.h"
+#include "animation/AnimatorController.h"
+#include "pool/AnimatorControllerPool.h"
 #include "vat/VatDocument.h"
 #include "animation/ModelSubClips.h"
 #include "pose/PoseAnimationDocument.h"
@@ -60,10 +62,12 @@
 #include "audio/AudioMixer.h"
 #include "audio/AudioMixerDocument.h"
 #include "subsystem/TrailSystem.h"
+#include "subsystem/CameraControlSystem.h"
 #include "pose/ModelRig.h"
 #include "pose/PoseAnimatorRuntime.h"
 #include "animation/ModelSubClips.h"
 #include "htmlui/anim/AnimEngine.h"
+#include "script/ScriptScheduler.h"
 #include "net/Http.h"
 #include "thread/MainThreadQueue.h"
 #include "command/CommandHandle.h"
@@ -706,6 +710,18 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
                 playerChanged = true;
             }
         }
+        // layer masks and the controller: the path hint (the GUID stays); a deleted file keeps it
+        auto follow = [&](std::string& reference) {
+            std::string path = reference;
+            if (!reference.empty() && transform(path) && !path.empty() && path != reference) {
+                reference = path;
+                playerChanged = true;
+            }
+        };
+        for (AnimationPlayerLayer& layer : player.layers) {
+            follow(layer.mask);
+        }
+        follow(player.controller);
         if (playerChanged) {
             player.needsLoad = true;
             changed = true;
@@ -722,6 +738,18 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
         if (transform(path) && !path.empty() && path != animator.animation) {
             animator.animation = path;
             animator.needsLoad = true;
+            changed = true;
+        }
+    });
+
+    // Camera Shaker: a start preset that is a .shake file (a built-in name is no path)
+    visitComponents(registry->getComponentArray<CameraShakerComponent>(), [&](CameraShakerComponent& shaker) {
+        if (shaker.startPreset.size() <= 6 || shaker.startPreset.compare(shaker.startPreset.size() - 6, 6, ".shake") != 0) {
+            return;
+        }
+        std::string path = shaker.startPreset;
+        if (transform(path) && !path.empty() && path != shaker.startPreset) {
+            shaker.startPreset = path;
             changed = true;
         }
     });
@@ -873,12 +901,37 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
     // Animation Player clips (AnimationClipPool); a model sub-clip is built once its model is
     // loaded, so the model is preloaded too
     visitComponents(registry->getComponentArray<AnimationPlayerComponent>(), [&](AnimationPlayerComponent& player) {
-        for (const AnimationPlayerClip& entry : player.clips) {
+        auto addClip = [&](const std::string& clip) {
             anim::SubClipReference reference;
-            if (anim::parseSubClipReference(entry.clip, reference)) {
+            if (anim::parseSubClipReference(clip, reference)) {
                 addFile(resources.models, reference.model);
             }
-            addFile(resources.clips, entry.clip);
+            addFile(resources.clips, clip);
+        };
+        if (!player.controller.empty()) {
+            // a controller owns the states: its clips and masks (anim layers spec 11.6)
+            addFile(resources.controllers, player.controller);
+            // (read through the engine's file API, as the build will: the pool caches it)
+            if (std::shared_ptr<const anim::AnimatorController> controller = AnimatorControllerPool::getOrLoad(player.controller)) {
+                {
+                    for (const anim::ControllerLayer& layer : controller->getData().layers) {
+                        addFile(resources.masks, layer.mask);
+                        for (const anim::ControllerState& state : layer.states) {
+                            if (!state.clip.empty()) addClip(state.clip);
+                            for (const anim::BlendTreeChild& child : state.blendTree.children) {
+                                if (!child.clip.empty()) addClip(child.clip);
+                            }
+                        }
+                    }
+                }
+            }
+            return;
+        }
+        for (const AnimationPlayerClip& entry : player.clips) {
+            addClip(entry.clip);
+        }
+        for (const AnimationPlayerLayer& layer : player.layers) {
+            addFile(resources.masks, layer.mask);
         }
     });
 
@@ -5795,6 +5848,16 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
         trails->setPaused(pause);
         if (!pause) trails->clearPreviews();
     }
+    // Camera Follow and the Camera Shakers hold in edit mode (the Inspector's shake preview runs)
+    scene->getSystem<CameraControlSystem>()->setPaused(pause);
+}
+
+void editor::Project::stopCameraShakePreviews() {
+    for (SceneProject* sceneProject : getScenesAndPrefabStages()) {
+        if (sceneProject && sceneProject->scene && sceneProject->playState == ScenePlayState::STOPPED) {
+            sceneProject->scene->getSystem<CameraControlSystem>()->stopPreview();
+        }
+    }
 }
 
 void editor::Project::stopVertexAnimatorPreviews() {
@@ -6144,6 +6207,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         sceneProject->scene->getSystem<ActionSystem>()->resetPlayers();
         // and the Vertex Animators (vertex animation spec 3.4)
         sceneProject->scene->getSystem<VertexAnimatorSystem>()->resetAnimators();
+        // and the camera shakes (their view offsets) and the followers' motion
+        sceneProject->scene->getSystem<CameraControlSystem>()->resetAll();
 
         // The copy goes with Stop, so its id does too: after the prefab instances the game
         // made in it went (their destroyer finds the copy by that id), before the copy is
@@ -7150,6 +7215,7 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
 
     editor::getEditorHost().stopTransientPreviews();
     stopVertexAnimatorPreviews();
+    stopCameraShakePreviews();
 
     sceneProject->playState = ScenePlayState::SAVING;
     fs::path savePath = path;
@@ -7189,6 +7255,7 @@ void editor::Project::saveAllScenes(std::function<void(bool)> callback) {
     // first: a physics gesture that settles now commits, and its scene counts as changed below
     editor::getEditorHost().stopTransientPreviews();
     stopVertexAnimatorPreviews();
+    stopCameraShakePreviews();
 
     std::vector<uint32_t> sceneIds;
     // the prefab stages first: the scenes saved after them hold their assets' new state
@@ -8655,6 +8722,8 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
         }
 
         cleanupPlaySession(session);
+        // what the scripts that ran started (Coroutine.start, Timer.after)
+        ScriptScheduler::clear();
         SceneManager::clearAll();
         PrefabManager::clearAll();
         ObjectManager::clearAll();
@@ -9390,6 +9459,8 @@ void editor::Project::start(uint32_t sceneId) {
     editor::getEditorHost().stopTransientPreviews();
     // a previewing Vertex Animator plays from its start
     stopVertexAnimatorPreviews();
+    // a shake previewed in the Game view does not carry into the game
+    stopCameraShakePreviews();
 
     // Exit any editor camera preview before starting: covers the owned-runtime path
     // where the source scene's render never enters play mode, so stopping wouldn't
@@ -9589,6 +9660,8 @@ void editor::Project::stop(uint32_t sceneId) {
 
             // anime: every animation of the play, and its script callbacks, before the scripts go
             AnimEngine::instance().reset();
+            // every coroutine and timer of the play (unowned ones too), before the scripts go
+            ScriptScheduler::clear();
             // HTTP requests of the play end without their callbacks (nothing waits for a
             // transfer); what worker threads posted for the game is dropped
             Http::shutdown();

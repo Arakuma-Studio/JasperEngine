@@ -1682,6 +1682,8 @@
 		48544D4C00000000000001D3 /* URL.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D1 /* URL.cpp */; };
 		48544D4C00000000000001D5 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
 		48544D4C00000000000001D6 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
+		524D4C55B75762B8FB50E4A0 /* ContextPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */; };
+		524D4C55BAE4061CA1A51C86 /* ContextPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */; };
 		524D4C554044E87D2818FC4D /* LineClampEllipsis.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55D59A80B61DED31AC /* LineClampEllipsis.cpp */; };
 		524D4C556D598CE64B555B31 /* LineClampEllipsis.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55D59A80B61DED31AC /* LineClampEllipsis.cpp */; };
 		524D4C551FF1B7571B423E99 /* TextJustification.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C557D0A034BDBCAD8B7 /* TextJustification.cpp */; };
@@ -3388,6 +3390,46 @@
 		4A534E471ECC1F0F8A111EDB /* TrailRenderer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D1A59D898AF8B4BB /* TrailRenderer.h */; };
 		4A534E478F589171F02F0B63 /* LineRibbonBuilder.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47197C345843945889 /* LineRibbonBuilder.h */; };
 		4A534E47212823E1E8889FB7 /* TrailSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D89F43391B4A415F /* TrailSystem.h */; };
+		4A534E479F3BE7035D7F4D90 /* EngineTime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4797747B82CF011898 /* EngineTime.cpp */; };
+		4A534E472A1484C39C524E8C /* EngineTime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4797747B82CF011898 /* EngineTime.cpp */; };
+		4A534E47048BE5CDF2664DF4 /* CameraShake.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D0853CFF5E642C5C /* CameraShake.cpp */; };
+		4A534E47074A94244F2B20FB /* CameraShake.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D0853CFF5E642C5C /* CameraShake.cpp */; };
+		4A534E4746EC17F97BB42ED1 /* ShakeInstance.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476152A9BE611CA36E /* ShakeInstance.cpp */; };
+		4A534E47725D6230B1B873F3 /* ShakeInstance.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476152A9BE611CA36E /* ShakeInstance.cpp */; };
+		4A534E47D9D7FAB57F144485 /* ShakePreset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F38859BB0988A617 /* ShakePreset.cpp */; };
+		4A534E4784D1DA85F005B40D /* ShakePreset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F38859BB0988A617 /* ShakePreset.cpp */; };
+		4A534E477D68B797CADBE48E /* ShakePresets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474055D2D3C55D7617 /* ShakePresets.cpp */; };
+		4A534E47596A1290685F8DCB /* ShakePresets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474055D2D3C55D7617 /* ShakePresets.cpp */; };
+		4A534E478D983354706E9325 /* ShakerRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473AF067139F43BD5E /* ShakerRuntime.cpp */; };
+		4A534E47638384C30E26EFE7 /* ShakerRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473AF067139F43BD5E /* ShakerRuntime.cpp */; };
+		4A534E47C26B54EF4E5BDC09 /* CameraFollow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475622761E30F06B44 /* CameraFollow.cpp */; };
+		4A534E4725CB54339B6279C7 /* CameraFollow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475622761E30F06B44 /* CameraFollow.cpp */; };
+		4A534E47BADBC140AE5B070C /* CameraShaker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A0C142BC14B4F575 /* CameraShaker.cpp */; };
+		4A534E4707E0059A2D9869E3 /* CameraShaker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A0C142BC14B4F575 /* CameraShaker.cpp */; };
+		4A534E4739799404EF91B066 /* ShakePresetPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4715AC7BEF8A4014B1 /* ShakePresetPool.cpp */; };
+		4A534E475B2541096B24D6E9 /* ShakePresetPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4715AC7BEF8A4014B1 /* ShakePresetPool.cpp */; };
+		4A534E479DE1B0E1D1CEB86B /* ScriptScheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471A684BB3C1D35FD3 /* ScriptScheduler.cpp */; };
+		4A534E4758155DCB1F5F3A3C /* ScriptScheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471A684BB3C1D35FD3 /* ScriptScheduler.cpp */; };
+		4A534E47E6723A34FDEBCB89 /* CoroutineClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4702DFA525BC1A4494 /* CoroutineClassesLua.cpp */; };
+		4A534E4719BB138CE097F966 /* CoroutineClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4702DFA525BC1A4494 /* CoroutineClassesLua.cpp */; };
+		4A534E47ACA96965B76DFE3C /* CameraControlSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472D5BDDA43BAF777F /* CameraControlSystem.cpp */; };
+		4A534E47D024053B56F36067 /* CameraControlSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472D5BDDA43BAF777F /* CameraControlSystem.cpp */; };
+		4A534E474A9B15BC1B4DACFB /* EngineTime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477CEC3CA5610A4AFB /* EngineTime.h */; };
+		4A534E4762CBD67A870F694C /* CameraShake.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B5AA4757EB461A19 /* CameraShake.h */; };
+		4A534E47F2C776DE753EF7DC /* ShakeInstance.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473E2FABFF3DFC25B1 /* ShakeInstance.h */; };
+		4A534E47B52C287852EA96A5 /* ShakePreset.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471EDC920A8DCBF993 /* ShakePreset.h */; };
+		4A534E47BE2C756D9CCE7E22 /* ShakePresets.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4775CFE4EABC3BFB73 /* ShakePresets.h */; };
+		4A534E474047CEFF2E9BF559 /* ShakerRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470967CFAF401F9620 /* ShakerRuntime.h */; };
+		4A534E47ABFEE84C719133EE /* CameraFollowComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476F1D7EA86CAA5EA6 /* CameraFollowComponent.h */; };
+		4A534E471E1D2C7A5EC6A0F9 /* CameraShakerComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4755A896E2EFAC63FB /* CameraShakerComponent.h */; };
+		4A534E47F7F5B092AAE26B95 /* Noise.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472114016401F2D894 /* Noise.h */; };
+		4A534E47ED1D3D47390E6782 /* CameraFollow.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4752CF16E633DF8695 /* CameraFollow.h */; };
+		4A534E474F36FD3C48FFD8B5 /* CameraShaker.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E25A1D2272719AB1 /* CameraShaker.h */; };
+		4A534E4702AEE79808235DC3 /* ShakePresetPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476CC2911518D3103A /* ShakePresetPool.h */; };
+		4A534E47F95594DF4FF074F3 /* ScriptScheduler.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475934CD286A02336B /* ScriptScheduler.h */; };
+		4A534E47F6A4FDB2A0324746 /* Timer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47038A75D31A53C3F5 /* Timer.h */; };
+		4A534E47CE1FCBE31631EF08 /* CameraControlSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47433C8BF3A3471BA4 /* CameraControlSystem.h */; };
+		4A534E47759C736B9546FF1B /* CanvasGroupTracks.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CB75CAA034603A13 /* CanvasGroupTracks.h */; };
 		4A534E47AC37D409692AA7D7 /* Http.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4787C9BCF72092DFEE /* Http.cpp */; };
 		4A534E47947208F6A52C0D79 /* Http.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4787C9BCF72092DFEE /* Http.cpp */; };
 		4A534E4707D0FB4D966D8BE5 /* HttpUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F788CC244AA03377 /* HttpUtil.cpp */; };
@@ -3400,7 +3442,6 @@
 		4A534E47265BB2DD7CEE9EEA /* MainThreadQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C9ACB5FAD8A291B0 /* MainThreadQueue.cpp */; };
 		4A534E476582D52ED841837C /* HttpBackendApple.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */; };
 		4A534E47D3ECA820EEE9216B /* HttpBackendApple.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */; };
-		4A534E47759C736B9546FF1B /* CanvasGroupTracks.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CB75CAA034603A13 /* CanvasGroupTracks.h */; };
 		4A534E47C85979F7504AB7AC /* CurlApi.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4746F0372B5BDC60B0 /* CurlApi.h */; };
 		4A534E472BD874B8DCF6E3EC /* Http.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4702C5166EB52DF781 /* Http.h */; };
 		4A534E475B9A526F84177777 /* HttpBackend.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4713FE339C7A9F7A0B /* HttpBackend.h */; };
@@ -3418,6 +3459,77 @@
 		4A534E47D4879777C388C7A3 /* EdgeInsets.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477A428FAA7908B6A0 /* EdgeInsets.h */; };
 		4A534E471041FDE4DF7EF626 /* FrameLimiter.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47DB493E51DF771D1F /* FrameLimiter.h */; };
 		4A534E4777DAA850BCD6D5EA /* PlatformRules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47778D99DE934432D4 /* PlatformRules.h */; };
+		4A534E47333DA2358C0F9F36 /* Collision.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A23CBF68A1C3D56F /* Collision.cpp */; };
+		4A534E47BFEFFBC47D55365D /* Collision.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A23CBF68A1C3D56F /* Collision.cpp */; };
+		4A534E47AB9CC6E5C6D9F2FB /* Collision2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CF04B7CA635BF1EA /* Collision2D.cpp */; };
+		4A534E470BBAB467919681F6 /* Collision2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CF04B7CA635BF1EA /* Collision2D.cpp */; };
+		4A534E4791F8F1B509D23D29 /* ContactTracker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470DE923DCD3B67E77 /* ContactTracker.cpp */; };
+		4A534E47A30D915728D13D43 /* ContactTracker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470DE923DCD3B67E77 /* ContactTracker.cpp */; };
+		4A534E476C5FB9A5FFF8B365 /* PhysicsSystemContacts.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FC33E0E52A92BE03 /* PhysicsSystemContacts.cpp */; };
+		4A534E47298606EA1E9962DE /* PhysicsSystemContacts.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FC33E0E52A92BE03 /* PhysicsSystemContacts.cpp */; };
+		4A534E474269687D105CA51D /* Collision.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4733724F6EEF14DB82 /* Collision.h */; };
+		4A534E471B213535798BF4BE /* Collision2D.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474FA579066E077C7A /* Collision2D.h */; };
+		4A534E474A7C68D81C25A4F3 /* ContactTracker.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E00F9DE4AB0805F0 /* ContactTracker.h */; };
+		4A534E47DCB3649B76DF662D /* MinMax.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AEEF734FC9A1DE06 /* MinMax.cpp */; };
+		4A534E473B31CA976C874AE9 /* MinMax.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AEEF734FC9A1DE06 /* MinMax.cpp */; };
+		4A534E470BB68EBC69A7983C /* ParticleFields.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DB3BE228C037C932 /* ParticleFields.cpp */; };
+		4A534E47FF513E8087E55C99 /* ParticleFields.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DB3BE228C037C932 /* ParticleFields.cpp */; };
+		4A534E47BF2A3508605C2AA6 /* ParticleModules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47851D966449DCE973 /* ParticleModules.cpp */; };
+		4A534E47882646202CB563DB /* ParticleModules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47851D966449DCE973 /* ParticleModules.cpp */; };
+		4A534E47BEFC2B7543B83919 /* ParticleNoise.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4771A1933E13DF24F7 /* ParticleNoise.cpp */; };
+		4A534E47676AFE1161B8D47F /* ParticleNoise.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4771A1933E13DF24F7 /* ParticleNoise.cpp */; };
+		4A534E47BB623145D4A66BBD /* ParticleShapes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478E98CE2FBA02618E /* ParticleShapes.cpp */; };
+		4A534E47A342B7B089A7F257 /* ParticleShapes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478E98CE2FBA02618E /* ParticleShapes.cpp */; };
+		4A534E47160DFF77DA91001C /* ParticleSimulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E03698B4E85B5BAA /* ParticleSimulation.cpp */; };
+		4A534E4748581C624395D4BB /* ParticleSimulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E03698B4E85B5BAA /* ParticleSimulation.cpp */; };
+		4A534E473F24882C1A62997B /* ParticleUpgrade.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D6C732341EF9921D /* ParticleUpgrade.cpp */; };
+		4A534E4715A1589DC34790B4 /* ParticleUpgrade.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D6C732341EF9921D /* ParticleUpgrade.cpp */; };
+		4A534E476DACC88BC9C47409 /* ParticleClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */; };
+		4A534E4738981FC54EBE9280 /* ParticleClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */; };
+		4A534E47BAC7D2CEF29CFFE6 /* ActionSystemParticles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471CF047A32835BE30 /* ActionSystemParticles.cpp */; };
+		4A534E4734884D6ECAFA0459 /* ActionSystemParticles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471CF047A32835BE30 /* ActionSystemParticles.cpp */; };
+		4A534E4757FF1BC3B82F464F /* ParticleSystemModule.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4725212AA03130A5CA /* ParticleSystemModule.h */; };
+		4A534E4791220744CF917054 /* MinMax.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475C7CE6EBA1324928 /* MinMax.h */; };
+		4A534E471D0E2F3B1D9AD1CA /* ParticleFields.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474699FAACECE71F31 /* ParticleFields.h */; };
+		4A534E473D0B6F9ADA26A270 /* ParticleModules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D160C40D539EF9BF /* ParticleModules.h */; };
+		4A534E475F7D54762B94FFF7 /* ParticleNoise.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4796D6D84AD719B630 /* ParticleNoise.h */; };
+		4A534E47F6EA5152103D82BF /* ParticleRandom.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4710DB6BC9F6220645 /* ParticleRandom.h */; };
+		4A534E47F3B27EF73B48BF8A /* ParticleShapes.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47030B69308A26E830 /* ParticleShapes.h */; };
+		4A534E47F8F6648CDEE6113A /* ParticleSimulation.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47336D59CB877901B4 /* ParticleSimulation.h */; };
+		4A534E4771B3412C33904150 /* ParticleUpgrade.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478AFD9A93AB71B6C7 /* ParticleUpgrade.h */; };
+		4A534E47CE4DDDD5406DCD9F /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47884A25441D62340D /* OnScreenControls.cpp */; };
+		4A534E472B759C831029D9FF /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47884A25441D62340D /* OnScreenControls.cpp */; };
+		4A534E475734202A34670B36 /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */; };
+		4A534E4775C989A97F7DAD2F /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */; };
+		4A534E476A7F8F86DF73A561 /* UISystemPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */; };
+		4A534E475C8615BE887AD90C /* UISystemPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */; };
+		4A534E47A2DD8B4564147CDE /* OnScreenControlComponents.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E52435C695296268 /* OnScreenControlComponents.h */; };
+		4A534E470DA75CBE9CCA66E2 /* OnScreenControls.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A3734219166C9A6F /* OnScreenControls.h */; };
+		4A534E471B6DA2DDED262F16 /* OnScreenControls.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477650920F4D670D0F /* OnScreenControls.h */; };
+		4A534E47786C4C82C1A31AFB /* PointerEventData.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AD6F5BB381B88CCB /* PointerEventData.h */; };
+		4A534E47C2EB8733EFA6A703 /* AnimJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4740DBAA4CDAA5F839 /* AnimJson.cpp */; };
+		4A534E47B883AB58AE96516A /* AnimJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4740DBAA4CDAA5F839 /* AnimJson.cpp */; };
+		4A534E4762ADCF900A1EE759 /* AvatarMask.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47996AB1821448E1AE /* AvatarMask.cpp */; };
+		4A534E479157A9898502F849 /* AvatarMask.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47996AB1821448E1AE /* AvatarMask.cpp */; };
+		4A534E473B6F76E6926344CF /* AnimatorController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475C33BEC4EEB71F20 /* AnimatorController.cpp */; };
+		4A534E474769C0AF2E2ADF1C /* AnimatorController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475C33BEC4EEB71F20 /* AnimatorController.cpp */; };
+		4A534E473B7ADBFE51472A17 /* AnimatorControllerPlayback.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C840674BC8E739BE /* AnimatorControllerPlayback.cpp */; };
+		4A534E473C3FBE3B58C8E61A /* AnimatorControllerPlayback.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C840674BC8E739BE /* AnimatorControllerPlayback.cpp */; };
+		4A534E473471AEDD7E75E664 /* AvatarMaskPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FF975B0B4DF4353A /* AvatarMaskPool.cpp */; };
+		4A534E479511A0CC70AEAA36 /* AvatarMaskPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FF975B0B4DF4353A /* AvatarMaskPool.cpp */; };
+		4A534E4792CE3E8DF5963EC5 /* AnimatorControllerPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470F6780B5E26BAA01 /* AnimatorControllerPool.cpp */; };
+		4A534E4784007B7DE713386D /* AnimatorControllerPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470F6780B5E26BAA01 /* AnimatorControllerPool.cpp */; };
+		4A534E47DC0E92FD3966E7E3 /* ActionSystemLayers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470FE648ABDB388822 /* ActionSystemLayers.cpp */; };
+		4A534E47B6383C70AF9337CE /* ActionSystemLayers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470FE648ABDB388822 /* ActionSystemLayers.cpp */; };
+		4A534E470D249A6CD7FD5DDC /* ActionSystemController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4714F69319B4C8EADD /* ActionSystemController.cpp */; };
+		4A534E4765A4B02E89DDFB2A /* ActionSystemController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4714F69319B4C8EADD /* ActionSystemController.cpp */; };
+		4A534E4760E68158A46EE9E7 /* AnimJson.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D659E046BA39D1C5 /* AnimJson.h */; };
+		4A534E47F140524B37ABEF43 /* AnimatorController.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E8C82FBFE31A0756 /* AnimatorController.h */; };
+		4A534E477173DC4F901A839F /* AvatarMask.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4785CD3820E9AA2297 /* AvatarMask.h */; };
+		4A534E4780DBE4298C5B38E0 /* AnimatorControllerPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476874CEB8B84CDC87 /* AnimatorControllerPool.h */; };
+		4A534E474B028A49F22E7413 /* AvatarMaskPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */; };
+		4A534E4790F1AB4DDB5485FE /* JsonAssetPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */; };
+		4A534E47658965B013EA1310 /* ActionSystemPlayersDetail.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -5638,6 +5750,7 @@
 		48544D4C00000000000001CE /* TypeConverter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TypeConverter.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D1 /* URL.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = URL.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D4 /* Variant.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Variant.cpp; sourceTree = "<group>"; };
+		524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ContextPointer.cpp; sourceTree = "<group>"; };
 		524D4C55D59A80B61DED31AC /* LineClampEllipsis.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LineClampEllipsis.cpp; sourceTree = "<group>"; };
 		524D4C557D0A034BDBCAD8B7 /* TextJustification.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextJustification.cpp; sourceTree = "<group>"; };
 		524D4C559EFCFA10D282503B /* PropertyIdSet.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyIdSet.cpp; sourceTree = "<group>"; };
@@ -6847,13 +6960,40 @@
 		4A534E47D1A59D898AF8B4BB /* TrailRenderer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TrailRenderer.h; sourceTree = "<group>"; };
 		4A534E47197C345843945889 /* LineRibbonBuilder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LineRibbonBuilder.h; sourceTree = "<group>"; };
 		4A534E47D89F43391B4A415F /* TrailSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TrailSystem.h; sourceTree = "<group>"; };
+		4A534E4797747B82CF011898 /* EngineTime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EngineTime.cpp; sourceTree = "<group>"; };
+		4A534E47D0853CFF5E642C5C /* CameraShake.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CameraShake.cpp; sourceTree = "<group>"; };
+		4A534E476152A9BE611CA36E /* ShakeInstance.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShakeInstance.cpp; sourceTree = "<group>"; };
+		4A534E47F38859BB0988A617 /* ShakePreset.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShakePreset.cpp; sourceTree = "<group>"; };
+		4A534E474055D2D3C55D7617 /* ShakePresets.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShakePresets.cpp; sourceTree = "<group>"; };
+		4A534E473AF067139F43BD5E /* ShakerRuntime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShakerRuntime.cpp; sourceTree = "<group>"; };
+		4A534E475622761E30F06B44 /* CameraFollow.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CameraFollow.cpp; sourceTree = "<group>"; };
+		4A534E47A0C142BC14B4F575 /* CameraShaker.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CameraShaker.cpp; sourceTree = "<group>"; };
+		4A534E4715AC7BEF8A4014B1 /* ShakePresetPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShakePresetPool.cpp; sourceTree = "<group>"; };
+		4A534E471A684BB3C1D35FD3 /* ScriptScheduler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptScheduler.cpp; sourceTree = "<group>"; };
+		4A534E4702DFA525BC1A4494 /* CoroutineClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CoroutineClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E472D5BDDA43BAF777F /* CameraControlSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CameraControlSystem.cpp; sourceTree = "<group>"; };
+		4A534E477CEC3CA5610A4AFB /* EngineTime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EngineTime.h; sourceTree = "<group>"; };
+		4A534E47B5AA4757EB461A19 /* CameraShake.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraShake.h; sourceTree = "<group>"; };
+		4A534E473E2FABFF3DFC25B1 /* ShakeInstance.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ShakeInstance.h; sourceTree = "<group>"; };
+		4A534E471EDC920A8DCBF993 /* ShakePreset.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ShakePreset.h; sourceTree = "<group>"; };
+		4A534E4775CFE4EABC3BFB73 /* ShakePresets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ShakePresets.h; sourceTree = "<group>"; };
+		4A534E470967CFAF401F9620 /* ShakerRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ShakerRuntime.h; sourceTree = "<group>"; };
+		4A534E476F1D7EA86CAA5EA6 /* CameraFollowComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraFollowComponent.h; sourceTree = "<group>"; };
+		4A534E4755A896E2EFAC63FB /* CameraShakerComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraShakerComponent.h; sourceTree = "<group>"; };
+		4A534E472114016401F2D894 /* Noise.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Noise.h; sourceTree = "<group>"; };
+		4A534E4752CF16E633DF8695 /* CameraFollow.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraFollow.h; sourceTree = "<group>"; };
+		4A534E47E25A1D2272719AB1 /* CameraShaker.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraShaker.h; sourceTree = "<group>"; };
+		4A534E476CC2911518D3103A /* ShakePresetPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ShakePresetPool.h; sourceTree = "<group>"; };
+		4A534E475934CD286A02336B /* ScriptScheduler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScriptScheduler.h; sourceTree = "<group>"; };
+		4A534E47038A75D31A53C3F5 /* Timer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Timer.h; sourceTree = "<group>"; };
+		4A534E47433C8BF3A3471BA4 /* CameraControlSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraControlSystem.h; sourceTree = "<group>"; };
+		4A534E47CB75CAA034603A13 /* CanvasGroupTracks.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CanvasGroupTracks.h; sourceTree = "<group>"; };
 		4A534E4787C9BCF72092DFEE /* Http.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Http.cpp; sourceTree = "<group>"; };
 		4A534E47F788CC244AA03377 /* HttpUtil.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HttpUtil.cpp; sourceTree = "<group>"; };
 		4A534E47C1EA7EEF9E302A12 /* AsyncOwner.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AsyncOwner.cpp; sourceTree = "<group>"; };
 		4A534E47C7032EFC250E9A0E /* NetClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NetClassesLua.cpp; sourceTree = "<group>"; };
 		4A534E47C9ACB5FAD8A291B0 /* MainThreadQueue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MainThreadQueue.cpp; sourceTree = "<group>"; };
 		4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = HttpBackendApple.mm; sourceTree = "<group>"; };
-		4A534E47CB75CAA034603A13 /* CanvasGroupTracks.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CanvasGroupTracks.h; sourceTree = "<group>"; };
 		4A534E4746F0372B5BDC60B0 /* CurlApi.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CurlApi.h; sourceTree = "<group>"; };
 		4A534E4702C5166EB52DF781 /* Http.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Http.h; sourceTree = "<group>"; };
 		4A534E4713FE339C7A9F7A0B /* HttpBackend.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HttpBackend.h; sourceTree = "<group>"; };
@@ -6868,6 +7008,53 @@
 		4A534E477A428FAA7908B6A0 /* EdgeInsets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EdgeInsets.h; sourceTree = "<group>"; };
 		4A534E47DB493E51DF771D1F /* FrameLimiter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FrameLimiter.h; sourceTree = "<group>"; };
 		4A534E47778D99DE934432D4 /* PlatformRules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlatformRules.h; sourceTree = "<group>"; };
+		4A534E47A23CBF68A1C3D56F /* Collision.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Collision.cpp; sourceTree = "<group>"; };
+		4A534E47CF04B7CA635BF1EA /* Collision2D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Collision2D.cpp; sourceTree = "<group>"; };
+		4A534E470DE923DCD3B67E77 /* ContactTracker.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ContactTracker.cpp; sourceTree = "<group>"; };
+		4A534E47FC33E0E52A92BE03 /* PhysicsSystemContacts.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsSystemContacts.cpp; sourceTree = "<group>"; };
+		4A534E4733724F6EEF14DB82 /* Collision.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Collision.h; sourceTree = "<group>"; };
+		4A534E474FA579066E077C7A /* Collision2D.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Collision2D.h; sourceTree = "<group>"; };
+		4A534E47E00F9DE4AB0805F0 /* ContactTracker.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ContactTracker.h; sourceTree = "<group>"; };
+		4A534E47AEEF734FC9A1DE06 /* MinMax.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MinMax.cpp; sourceTree = "<group>"; };
+		4A534E47DB3BE228C037C932 /* ParticleFields.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleFields.cpp; sourceTree = "<group>"; };
+		4A534E47851D966449DCE973 /* ParticleModules.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleModules.cpp; sourceTree = "<group>"; };
+		4A534E4771A1933E13DF24F7 /* ParticleNoise.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleNoise.cpp; sourceTree = "<group>"; };
+		4A534E478E98CE2FBA02618E /* ParticleShapes.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleShapes.cpp; sourceTree = "<group>"; };
+		4A534E47E03698B4E85B5BAA /* ParticleSimulation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleSimulation.cpp; sourceTree = "<group>"; };
+		4A534E47D6C732341EF9921D /* ParticleUpgrade.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleUpgrade.cpp; sourceTree = "<group>"; };
+		4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E471CF047A32835BE30 /* ActionSystemParticles.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ActionSystemParticles.cpp; sourceTree = "<group>"; };
+		4A534E4725212AA03130A5CA /* ParticleSystemModule.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleSystemModule.h; sourceTree = "<group>"; };
+		4A534E475C7CE6EBA1324928 /* MinMax.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MinMax.h; sourceTree = "<group>"; };
+		4A534E474699FAACECE71F31 /* ParticleFields.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleFields.h; sourceTree = "<group>"; };
+		4A534E47D160C40D539EF9BF /* ParticleModules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleModules.h; sourceTree = "<group>"; };
+		4A534E4796D6D84AD719B630 /* ParticleNoise.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleNoise.h; sourceTree = "<group>"; };
+		4A534E4710DB6BC9F6220645 /* ParticleRandom.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleRandom.h; sourceTree = "<group>"; };
+		4A534E47030B69308A26E830 /* ParticleShapes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleShapes.h; sourceTree = "<group>"; };
+		4A534E47336D59CB877901B4 /* ParticleSimulation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleSimulation.h; sourceTree = "<group>"; };
+		4A534E478AFD9A93AB71B6C7 /* ParticleUpgrade.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleUpgrade.h; sourceTree = "<group>"; };
+		4A534E47884A25441D62340D /* OnScreenControls.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = OnScreenControls.cpp; sourceTree = "<group>"; };
+		4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = OnScreenControls.cpp; sourceTree = "<group>"; };
+		4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UISystemPointer.cpp; sourceTree = "<group>"; };
+		4A534E47E52435C695296268 /* OnScreenControlComponents.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnScreenControlComponents.h; sourceTree = "<group>"; };
+		4A534E47A3734219166C9A6F /* OnScreenControls.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnScreenControls.h; sourceTree = "<group>"; };
+		4A534E477650920F4D670D0F /* OnScreenControls.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnScreenControls.h; sourceTree = "<group>"; };
+		4A534E47AD6F5BB381B88CCB /* PointerEventData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PointerEventData.h; sourceTree = "<group>"; };
+		4A534E4740DBAA4CDAA5F839 /* AnimJson.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimJson.cpp; sourceTree = "<group>"; };
+		4A534E47996AB1821448E1AE /* AvatarMask.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AvatarMask.cpp; sourceTree = "<group>"; };
+		4A534E475C33BEC4EEB71F20 /* AnimatorController.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorController.cpp; sourceTree = "<group>"; };
+		4A534E47C840674BC8E739BE /* AnimatorControllerPlayback.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorControllerPlayback.cpp; sourceTree = "<group>"; };
+		4A534E47FF975B0B4DF4353A /* AvatarMaskPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AvatarMaskPool.cpp; sourceTree = "<group>"; };
+		4A534E470F6780B5E26BAA01 /* AnimatorControllerPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorControllerPool.cpp; sourceTree = "<group>"; };
+		4A534E470FE648ABDB388822 /* ActionSystemLayers.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ActionSystemLayers.cpp; sourceTree = "<group>"; };
+		4A534E4714F69319B4C8EADD /* ActionSystemController.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ActionSystemController.cpp; sourceTree = "<group>"; };
+		4A534E47D659E046BA39D1C5 /* AnimJson.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimJson.h; sourceTree = "<group>"; };
+		4A534E47E8C82FBFE31A0756 /* AnimatorController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorController.h; sourceTree = "<group>"; };
+		4A534E4785CD3820E9AA2297 /* AvatarMask.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AvatarMask.h; sourceTree = "<group>"; };
+		4A534E476874CEB8B84CDC87 /* AnimatorControllerPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorControllerPool.h; sourceTree = "<group>"; };
+		4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AvatarMaskPool.h; sourceTree = "<group>"; };
+		4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JsonAssetPool.h; sourceTree = "<group>"; };
+		4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ActionSystemPlayersDetail.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -7283,8 +7470,10 @@
 				414E494D4500000000000044 /* HtmlUIAnimeLua.cpp */,
 				505645430000000000000178 /* HtmlUIVectorLua.cpp */,
 				4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */,
+				4A534E4702DFA525BC1A4494 /* CoroutineClassesLua.cpp */,
 				4A534E47C7032EFC250E9A0E /* NetClassesLua.cpp */,
 				4A534E47C4CB6F074423D782 /* NetClassesLua.h */,
+				4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -7989,6 +8178,7 @@
 				71451BCD270CA17F00712643 /* SpriteAnimation.h */,
 				71451BC4270CA17F00712643 /* Tween.cpp */,
 				71451BD0270CA17F00712643 /* Tween.h */,
+				4A534E4725212AA03130A5CA /* ParticleSystemModule.h */,
 			);
 			path = action;
 			sourceTree = "<group>";
@@ -8131,6 +8321,8 @@
 				4A534E47B943DF5AE8C89137 /* JoltSurfaceMaterial.h */,
 				4A534E4732D16258C9BD3B20 /* PhysicsDebugLines.h */,
 				4A534E475211D61462BB9014 /* RagdollBuilder.h */,
+				4A534E470DE923DCD3B67E77 /* ContactTracker.cpp */,
+				4A534E47E00F9DE4AB0805F0 /* ContactTracker.h */,
 			);
 			path = physics;
 			sourceTree = "<group>";
@@ -8158,6 +8350,13 @@
 				4A534E47AD5E53AFFD11DDEA /* VertexAnimation.h */,
 				4A534E472C320572A975C725 /* VertexAnimatorRuntime.h */,
 				4A534E47CB75CAA034603A13 /* CanvasGroupTracks.h */,
+				4A534E4740DBAA4CDAA5F839 /* AnimJson.cpp */,
+				4A534E47996AB1821448E1AE /* AvatarMask.cpp */,
+				4A534E475C33BEC4EEB71F20 /* AnimatorController.cpp */,
+				4A534E47C840674BC8E739BE /* AnimatorControllerPlayback.cpp */,
+				4A534E47D659E046BA39D1C5 /* AnimJson.h */,
+				4A534E47E8C82FBFE31A0756 /* AnimatorController.h */,
+				4A534E4785CD3820E9AA2297 /* AvatarMask.h */,
 			);
 			path = animation;
 			sourceTree = "<group>";
@@ -8189,6 +8388,23 @@
 			path = input;
 			sourceTree = "<group>";
 		};
+		4A534E47BC91C4E5E4FDA2FC /* camera */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E47D0853CFF5E642C5C /* CameraShake.cpp */,
+				4A534E476152A9BE611CA36E /* ShakeInstance.cpp */,
+				4A534E47F38859BB0988A617 /* ShakePreset.cpp */,
+				4A534E474055D2D3C55D7617 /* ShakePresets.cpp */,
+				4A534E473AF067139F43BD5E /* ShakerRuntime.cpp */,
+				4A534E47B5AA4757EB461A19 /* CameraShake.h */,
+				4A534E473E2FABFF3DFC25B1 /* ShakeInstance.h */,
+				4A534E471EDC920A8DCBF993 /* ShakePreset.h */,
+				4A534E4775CFE4EABC3BFB73 /* ShakePresets.h */,
+				4A534E470967CFAF401F9620 /* ShakerRuntime.h */,
+			);
+			path = camera;
+			sourceTree = "<group>";
+		};
 		4A534E47325562508AC85529 /* net */ = {
 			isa = PBXGroup;
 			children = (
@@ -8200,6 +8416,28 @@
 				4A534E47FF3619E3F9DCCE88 /* HttpJson.h */,
 			);
 			path = net;
+			sourceTree = "<group>";
+		};
+		4A534E477B5E3DD34ED6FF19 /* particles */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E47AEEF734FC9A1DE06 /* MinMax.cpp */,
+				4A534E47DB3BE228C037C932 /* ParticleFields.cpp */,
+				4A534E47851D966449DCE973 /* ParticleModules.cpp */,
+				4A534E4771A1933E13DF24F7 /* ParticleNoise.cpp */,
+				4A534E478E98CE2FBA02618E /* ParticleShapes.cpp */,
+				4A534E47E03698B4E85B5BAA /* ParticleSimulation.cpp */,
+				4A534E47D6C732341EF9921D /* ParticleUpgrade.cpp */,
+				4A534E475C7CE6EBA1324928 /* MinMax.h */,
+				4A534E474699FAACECE71F31 /* ParticleFields.h */,
+				4A534E47D160C40D539EF9BF /* ParticleModules.h */,
+				4A534E4796D6D84AD719B630 /* ParticleNoise.h */,
+				4A534E4710DB6BC9F6220645 /* ParticleRandom.h */,
+				4A534E47030B69308A26E830 /* ParticleShapes.h */,
+				4A534E47336D59CB877901B4 /* ParticleSimulation.h */,
+				4A534E478AFD9A93AB71B6C7 /* ParticleUpgrade.h */,
+			);
+			path = particles;
 			sourceTree = "<group>";
 		};
 		7162FC2A25962A0E0075B97D /* core */ = {
@@ -8243,10 +8481,14 @@
 				4A534E472AD0C1A658CC6825 /* physics */,
 				4A534E477E49C8CF16ED0963 /* animation */,
 				4A534E47BC50EC83811560AA /* input */,
+				4A534E4797747B82CF011898 /* EngineTime.cpp */,
+				4A534E47BC91C4E5E4FDA2FC /* camera */,
+				4A534E477CEC3CA5610A4AFB /* EngineTime.h */,
 				4A534E472E7375E332BCF49F /* audio */,
 				4A534E47325562508AC85529 /* net */,
 				4A534E4730D9EC2E29E781C3 /* Screen.cpp */,
 				4A534E471F33544BB442A466 /* Screen.h */,
+				4A534E477B5E3DD34ED6FF19 /* particles */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -8432,6 +8674,9 @@
 				4A534E47C782824D41EC527F /* PhysicsCommon.h */,
 				4A534E47ECB20D024971B61A /* RagdollComponent.h */,
 				4A534E471E4D971B8C73A691 /* TrailRendererComponent.h */,
+				4A534E47E52435C695296268 /* OnScreenControlComponents.h */,
+				4A534E476F1D7EA86CAA5EA6 /* CameraFollowComponent.h */,
+				4A534E4755A896E2EFAC63FB /* CameraShakerComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -8469,6 +8714,7 @@
 				4A534E47B61DB73C5C1B6ABF /* AnimationCurve.h */,
 				4A534E475BFC5BBB38279DB9 /* Gradient.h */,
 				4A534E477A428FAA7908B6A0 /* EdgeInsets.h */,
+				4A534E472114016401F2D894 /* Noise.h */,
 			);
 			path = math;
 			sourceTree = "<group>";
@@ -8526,6 +8772,10 @@
 				4A534E47E1D001E6946218B1 /* VertexAnimator.h */,
 				4A534E4759A335399714FD33 /* TrailRenderer.cpp */,
 				4A534E47D1A59D898AF8B4BB /* TrailRenderer.h */,
+				4A534E475622761E30F06B44 /* CameraFollow.cpp */,
+				4A534E47A0C142BC14B4F575 /* CameraShaker.cpp */,
+				4A534E4752CF16E633DF8695 /* CameraFollow.h */,
+				4A534E47E25A1D2272719AB1 /* CameraShaker.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -8584,6 +8834,14 @@
 				4A534E4709DE150BBF04619D /* PhysicsSystemDebugDraw.cpp */,
 				4A534E47B38E42BA45359570 /* TrailSystem.cpp */,
 				4A534E47D89F43391B4A415F /* TrailSystem.h */,
+				4A534E47FC33E0E52A92BE03 /* PhysicsSystemContacts.cpp */,
+				4A534E471CF047A32835BE30 /* ActionSystemParticles.cpp */,
+				4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */,
+				4A534E470FE648ABDB388822 /* ActionSystemLayers.cpp */,
+				4A534E4714F69319B4C8EADD /* ActionSystemController.cpp */,
+				4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */,
+				4A534E472D5BDDA43BAF777F /* CameraControlSystem.cpp */,
+				4A534E47433C8BF3A3471BA4 /* CameraControlSystem.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -9631,6 +9889,9 @@
 				48544D4C00000000000002B4 /* UIElementInternal.h */,
 				48544D4C00000000000002B6 /* UIEvent.h */,
 				48544D4C00000000000002B8 /* UIValue.h */,
+				4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */,
+				4A534E477650920F4D670D0F /* OnScreenControls.h */,
+				4A534E47AD6F5BB381B88CCB /* PointerEventData.h */,
 			);
 			path = ui;
 			sourceTree = "<group>";
@@ -9747,6 +10008,9 @@
 				4A534E47752AE757CAFC728C /* ScriptRuntime.cpp */,
 				4A534E473B9ADEBA91C10EBA /* ScriptEvent.h */,
 				4A534E4700754C227C4F1876 /* ScriptRuntime.h */,
+				4A534E471A684BB3C1D35FD3 /* ScriptScheduler.cpp */,
+				4A534E475934CD286A02336B /* ScriptScheduler.h */,
+				4A534E47038A75D31A53C3F5 /* Timer.h */,
 				4A534E47C1EA7EEF9E302A12 /* AsyncOwner.cpp */,
 				4A534E4740FD2A72CFB10C16 /* AsyncOwner.h */,
 			);
@@ -9780,6 +10044,13 @@
 				4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */,
 				4A534E4734D6776EE9983E2C /* PhysicsMaterialPool.cpp */,
 				4A534E47366B4EA887EC0288 /* PhysicsMaterialPool.h */,
+				4A534E47FF975B0B4DF4353A /* AvatarMaskPool.cpp */,
+				4A534E470F6780B5E26BAA01 /* AnimatorControllerPool.cpp */,
+				4A534E476874CEB8B84CDC87 /* AnimatorControllerPool.h */,
+				4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */,
+				4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */,
+				4A534E4715AC7BEF8A4014B1 /* ShakePresetPool.cpp */,
+				4A534E476CC2911518D3103A /* ShakePresetPool.h */,
 			);
 			path = pool;
 			sourceTree = "<group>";
@@ -9977,6 +10248,10 @@
 				71651FE92AA804B4008D9BF5 /* Manifold2D.h */,
 				4A534E47DB3E31A582F73622 /* Ragdoll.cpp */,
 				4A534E47E115EBAE7A897293 /* Ragdoll.h */,
+				4A534E47A23CBF68A1C3D56F /* Collision.cpp */,
+				4A534E47CF04B7CA635BF1EA /* Collision2D.cpp */,
+				4A534E4733724F6EEF14DB82 /* Collision.h */,
+				4A534E474FA579066E077C7A /* Collision2D.h */,
 			);
 			path = physics;
 			sourceTree = "<group>";
@@ -10406,6 +10681,15 @@
 			path = media;
 			sourceTree = "<group>";
 		};
+		4A534E47535074DEA48446A6 /* controls */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E47884A25441D62340D /* OnScreenControls.cpp */,
+				4A534E47A3734219166C9A6F /* OnScreenControls.h */,
+			);
+			path = controls;
+			sourceTree = "<group>";
+		};
 		48544D4C0000000000000047 /* htmlui */ = {
 			isa = PBXGroup;
 			children = (
@@ -10449,6 +10733,7 @@
 				434F4D50564A0EBD33D8D4B9 /* compat */,
 				434F4D50147CAC73EC41A50D /* effects */,
 				564944458116A96C5CD0F039 /* media */,
+				4A534E47535074DEA48446A6 /* controls */,
 			);
 			path = htmlui;
 			sourceTree = "<group>";
@@ -10637,6 +10922,7 @@
 				524D4C559EFCFA10D282503B /* PropertyIdSet.cpp */,
 				524D4C557D0A034BDBCAD8B7 /* TextJustification.cpp */,
 				524D4C55D59A80B61DED31AC /* LineClampEllipsis.cpp */,
+				524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */,
 			);
 			name = Core;
 			path = Source/Core;
@@ -12258,6 +12544,21 @@
 				4A534E471ECC1F0F8A111EDB /* TrailRenderer.h in Headers */,
 				4A534E478F589171F02F0B63 /* LineRibbonBuilder.h in Headers */,
 				4A534E47212823E1E8889FB7 /* TrailSystem.h in Headers */,
+				4A534E474A9B15BC1B4DACFB /* EngineTime.h in Headers */,
+				4A534E4762CBD67A870F694C /* CameraShake.h in Headers */,
+				4A534E47F2C776DE753EF7DC /* ShakeInstance.h in Headers */,
+				4A534E47B52C287852EA96A5 /* ShakePreset.h in Headers */,
+				4A534E47BE2C756D9CCE7E22 /* ShakePresets.h in Headers */,
+				4A534E474047CEFF2E9BF559 /* ShakerRuntime.h in Headers */,
+				4A534E47ABFEE84C719133EE /* CameraFollowComponent.h in Headers */,
+				4A534E471E1D2C7A5EC6A0F9 /* CameraShakerComponent.h in Headers */,
+				4A534E47F7F5B092AAE26B95 /* Noise.h in Headers */,
+				4A534E47ED1D3D47390E6782 /* CameraFollow.h in Headers */,
+				4A534E474F36FD3C48FFD8B5 /* CameraShaker.h in Headers */,
+				4A534E4702AEE79808235DC3 /* ShakePresetPool.h in Headers */,
+				4A534E47F95594DF4FF074F3 /* ScriptScheduler.h in Headers */,
+				4A534E47F6A4FDB2A0324746 /* Timer.h in Headers */,
+				4A534E47CE1FCBE31631EF08 /* CameraControlSystem.h in Headers */,
 				4A534E47759C736B9546FF1B /* CanvasGroupTracks.h in Headers */,
 				4A534E47C85979F7504AB7AC /* CurlApi.h in Headers */,
 				4A534E472BD874B8DCF6E3EC /* Http.h in Headers */,
@@ -12270,6 +12571,29 @@
 				4A534E47D4879777C388C7A3 /* EdgeInsets.h in Headers */,
 				4A534E471041FDE4DF7EF626 /* FrameLimiter.h in Headers */,
 				4A534E4777DAA850BCD6D5EA /* PlatformRules.h in Headers */,
+				4A534E474269687D105CA51D /* Collision.h in Headers */,
+				4A534E471B213535798BF4BE /* Collision2D.h in Headers */,
+				4A534E474A7C68D81C25A4F3 /* ContactTracker.h in Headers */,
+				4A534E4757FF1BC3B82F464F /* ParticleSystemModule.h in Headers */,
+				4A534E4791220744CF917054 /* MinMax.h in Headers */,
+				4A534E471D0E2F3B1D9AD1CA /* ParticleFields.h in Headers */,
+				4A534E473D0B6F9ADA26A270 /* ParticleModules.h in Headers */,
+				4A534E475F7D54762B94FFF7 /* ParticleNoise.h in Headers */,
+				4A534E47F6EA5152103D82BF /* ParticleRandom.h in Headers */,
+				4A534E47F3B27EF73B48BF8A /* ParticleShapes.h in Headers */,
+				4A534E47F8F6648CDEE6113A /* ParticleSimulation.h in Headers */,
+				4A534E4771B3412C33904150 /* ParticleUpgrade.h in Headers */,
+				4A534E47A2DD8B4564147CDE /* OnScreenControlComponents.h in Headers */,
+				4A534E470DA75CBE9CCA66E2 /* OnScreenControls.h in Headers */,
+				4A534E471B6DA2DDED262F16 /* OnScreenControls.h in Headers */,
+				4A534E47786C4C82C1A31AFB /* PointerEventData.h in Headers */,
+				4A534E4760E68158A46EE9E7 /* AnimJson.h in Headers */,
+				4A534E47F140524B37ABEF43 /* AnimatorController.h in Headers */,
+				4A534E477173DC4F901A839F /* AvatarMask.h in Headers */,
+				4A534E4780DBE4298C5B38E0 /* AnimatorControllerPool.h in Headers */,
+				4A534E474B028A49F22E7413 /* AvatarMaskPool.h in Headers */,
+				4A534E4790F1AB4DDB5485FE /* JsonAssetPool.h in Headers */,
+				4A534E47658965B013EA1310 /* ActionSystemPlayersDetail.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14343,6 +14667,18 @@
 				4A534E47CB7C331EE90C2019 /* TrailRenderer.cpp in Sources */,
 				4A534E474FD048B43C95AA02 /* LineRibbonBuilder.cpp in Sources */,
 				4A534E47C826FA60D57B648C /* TrailSystem.cpp in Sources */,
+				4A534E479F3BE7035D7F4D90 /* EngineTime.cpp in Sources */,
+				4A534E47048BE5CDF2664DF4 /* CameraShake.cpp in Sources */,
+				4A534E4746EC17F97BB42ED1 /* ShakeInstance.cpp in Sources */,
+				4A534E47D9D7FAB57F144485 /* ShakePreset.cpp in Sources */,
+				4A534E477D68B797CADBE48E /* ShakePresets.cpp in Sources */,
+				4A534E478D983354706E9325 /* ShakerRuntime.cpp in Sources */,
+				4A534E47C26B54EF4E5BDC09 /* CameraFollow.cpp in Sources */,
+				4A534E47BADBC140AE5B070C /* CameraShaker.cpp in Sources */,
+				4A534E4739799404EF91B066 /* ShakePresetPool.cpp in Sources */,
+				4A534E479DE1B0E1D1CEB86B /* ScriptScheduler.cpp in Sources */,
+				4A534E47E6723A34FDEBCB89 /* CoroutineClassesLua.cpp in Sources */,
+				4A534E47ACA96965B76DFE3C /* CameraControlSystem.cpp in Sources */,
 				4A534E47AC37D409692AA7D7 /* Http.cpp in Sources */,
 				4A534E4707D0FB4D966D8BE5 /* HttpUtil.cpp in Sources */,
 				4A534E4768DDBB2353D5C83D /* AsyncOwner.cpp in Sources */,
@@ -14352,6 +14688,30 @@
 				4A534E478DC0E7CF8FAFBECF /* Screen.cpp in Sources */,
 				4A534E47A03D72D8121AA453 /* FrameLimiter.cpp in Sources */,
 				4A534E471F031487F33960F3 /* PlatformRules.cpp in Sources */,
+				4A534E47333DA2358C0F9F36 /* Collision.cpp in Sources */,
+				4A534E47AB9CC6E5C6D9F2FB /* Collision2D.cpp in Sources */,
+				4A534E4791F8F1B509D23D29 /* ContactTracker.cpp in Sources */,
+				4A534E476C5FB9A5FFF8B365 /* PhysicsSystemContacts.cpp in Sources */,
+				4A534E47DCB3649B76DF662D /* MinMax.cpp in Sources */,
+				4A534E470BB68EBC69A7983C /* ParticleFields.cpp in Sources */,
+				4A534E47BF2A3508605C2AA6 /* ParticleModules.cpp in Sources */,
+				4A534E47BEFC2B7543B83919 /* ParticleNoise.cpp in Sources */,
+				4A534E47BB623145D4A66BBD /* ParticleShapes.cpp in Sources */,
+				4A534E47160DFF77DA91001C /* ParticleSimulation.cpp in Sources */,
+				4A534E473F24882C1A62997B /* ParticleUpgrade.cpp in Sources */,
+				4A534E476DACC88BC9C47409 /* ParticleClassesLua.cpp in Sources */,
+				4A534E47BAC7D2CEF29CFFE6 /* ActionSystemParticles.cpp in Sources */,
+				4A534E47CE4DDDD5406DCD9F /* OnScreenControls.cpp in Sources */,
+				4A534E475734202A34670B36 /* OnScreenControls.cpp in Sources */,
+				4A534E476A7F8F86DF73A561 /* UISystemPointer.cpp in Sources */,
+				4A534E47C2EB8733EFA6A703 /* AnimJson.cpp in Sources */,
+				4A534E4762ADCF900A1EE759 /* AvatarMask.cpp in Sources */,
+				4A534E473B6F76E6926344CF /* AnimatorController.cpp in Sources */,
+				4A534E473B7ADBFE51472A17 /* AnimatorControllerPlayback.cpp in Sources */,
+				4A534E473471AEDD7E75E664 /* AvatarMaskPool.cpp in Sources */,
+				4A534E4792CE3E8DF5963EC5 /* AnimatorControllerPool.cpp in Sources */,
+				4A534E47DC0E92FD3966E7E3 /* ActionSystemLayers.cpp in Sources */,
+				4A534E470D249A6CD7FD5DDC /* ActionSystemController.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14804,6 +15164,18 @@
 				4A534E47666B66B24871AAA0 /* TrailRenderer.cpp in Sources */,
 				4A534E47F807A7F7B7DC0936 /* LineRibbonBuilder.cpp in Sources */,
 				4A534E479399C2E0EAF5A3C3 /* TrailSystem.cpp in Sources */,
+				4A534E472A1484C39C524E8C /* EngineTime.cpp in Sources */,
+				4A534E47074A94244F2B20FB /* CameraShake.cpp in Sources */,
+				4A534E47725D6230B1B873F3 /* ShakeInstance.cpp in Sources */,
+				4A534E4784D1DA85F005B40D /* ShakePreset.cpp in Sources */,
+				4A534E47596A1290685F8DCB /* ShakePresets.cpp in Sources */,
+				4A534E47638384C30E26EFE7 /* ShakerRuntime.cpp in Sources */,
+				4A534E4725CB54339B6279C7 /* CameraFollow.cpp in Sources */,
+				4A534E4707E0059A2D9869E3 /* CameraShaker.cpp in Sources */,
+				4A534E475B2541096B24D6E9 /* ShakePresetPool.cpp in Sources */,
+				4A534E4758155DCB1F5F3A3C /* ScriptScheduler.cpp in Sources */,
+				4A534E4719BB138CE097F966 /* CoroutineClassesLua.cpp in Sources */,
+				4A534E47D024053B56F36067 /* CameraControlSystem.cpp in Sources */,
 				4A534E47947208F6A52C0D79 /* Http.cpp in Sources */,
 				4A534E47271657C6F28FFA0A /* HttpUtil.cpp in Sources */,
 				4A534E47951C64628BDACD07 /* AsyncOwner.cpp in Sources */,
@@ -14813,6 +15185,30 @@
 				4A534E471D112E5B5C5C529F /* Screen.cpp in Sources */,
 				4A534E47B6B13162C6157931 /* FrameLimiter.cpp in Sources */,
 				4A534E474B3E5336B343B76E /* PlatformRules.cpp in Sources */,
+				4A534E47BFEFFBC47D55365D /* Collision.cpp in Sources */,
+				4A534E470BBAB467919681F6 /* Collision2D.cpp in Sources */,
+				4A534E47A30D915728D13D43 /* ContactTracker.cpp in Sources */,
+				4A534E47298606EA1E9962DE /* PhysicsSystemContacts.cpp in Sources */,
+				4A534E473B31CA976C874AE9 /* MinMax.cpp in Sources */,
+				4A534E47FF513E8087E55C99 /* ParticleFields.cpp in Sources */,
+				4A534E47882646202CB563DB /* ParticleModules.cpp in Sources */,
+				4A534E47676AFE1161B8D47F /* ParticleNoise.cpp in Sources */,
+				4A534E47A342B7B089A7F257 /* ParticleShapes.cpp in Sources */,
+				4A534E4748581C624395D4BB /* ParticleSimulation.cpp in Sources */,
+				4A534E4715A1589DC34790B4 /* ParticleUpgrade.cpp in Sources */,
+				4A534E4738981FC54EBE9280 /* ParticleClassesLua.cpp in Sources */,
+				4A534E4734884D6ECAFA0459 /* ActionSystemParticles.cpp in Sources */,
+				4A534E472B759C831029D9FF /* OnScreenControls.cpp in Sources */,
+				4A534E4775C989A97F7DAD2F /* OnScreenControls.cpp in Sources */,
+				4A534E475C8615BE887AD90C /* UISystemPointer.cpp in Sources */,
+				4A534E47B883AB58AE96516A /* AnimJson.cpp in Sources */,
+				4A534E479157A9898502F849 /* AvatarMask.cpp in Sources */,
+				4A534E474769C0AF2E2ADF1C /* AnimatorController.cpp in Sources */,
+				4A534E473C3FBE3B58C8E61A /* AnimatorControllerPlayback.cpp in Sources */,
+				4A534E479511A0CC70AEAA36 /* AvatarMaskPool.cpp in Sources */,
+				4A534E4784007B7DE713386D /* AnimatorControllerPool.cpp in Sources */,
+				4A534E47B6383C70AF9337CE /* ActionSystemLayers.cpp in Sources */,
+				4A534E4765A4B02E89DDFB2A /* ActionSystemController.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -15393,6 +15789,7 @@
 				48544D4C00000000000001CF /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D2 /* URL.cpp in Sources */,
 				48544D4C00000000000001D5 /* Variant.cpp in Sources */,
+				524D4C55B75762B8FB50E4A0 /* ContextPointer.cpp in Sources */,
 				524D4C554044E87D2818FC4D /* LineClampEllipsis.cpp in Sources */,
 				524D4C551FF1B7571B423E99 /* TextJustification.cpp in Sources */,
 				524D4C55280D970116FCD657 /* PropertyIdSet.cpp in Sources */,
@@ -15647,6 +16044,7 @@
 				48544D4C00000000000001D0 /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D3 /* URL.cpp in Sources */,
 				48544D4C00000000000001D6 /* Variant.cpp in Sources */,
+				524D4C55BAE4061CA1A51C86 /* ContextPointer.cpp in Sources */,
 				524D4C556D598CE64B555B31 /* LineClampEllipsis.cpp in Sources */,
 				524D4C555F4819C5AB209F97 /* TextJustification.cpp in Sources */,
 				524D4C55D86EF33DDCE0322D /* PropertyIdSet.cpp in Sources */,

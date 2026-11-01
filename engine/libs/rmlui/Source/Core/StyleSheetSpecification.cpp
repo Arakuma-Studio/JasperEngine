@@ -1057,6 +1057,9 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::WebkitLineClamp, "-webkit-line-clamp", "none", false, true).AddParser("keyword", "none").AddParser("positive_integer");
 	RegisterProperty(PropertyId::WebkitBoxOrient, "-webkit-box-orient", "horizontal", false, true)
 		.AddParser("keyword", "horizontal, vertical");
+	// Pointer Events (fork, engine-gaps G5-4): 'auto | none | pan-x | pan-y | pan-x pan-y | manipulation', not inherited;
+	// the context reads it from a touch's target up to its scroll container when the touch starts.
+	RegisterProperty(PropertyId::TouchAction, "touch-action", "auto", false, false).AddParser("string");
 
 	// -- Values (p3-values), continued: the logical shorthands, which name the physical properties and shorthands of
 	// the other packages (border-<side> of p3-paint) --

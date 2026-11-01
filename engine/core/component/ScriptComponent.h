@@ -34,7 +34,7 @@ namespace jasperengine{
         // ScriptBase::inheritedMessages). The lifecycle state of the instance (init ran, enabled
         // latch, started...) is ScriptRuntime's, keyed by `instance`.
         ScriptBase* cppScript = nullptr;
-        uint32_t cppMessageMask = 0;
+        uint64_t cppMessageMask = 0;  // ScriptMessageMask
     };
 
     struct JASPERENGINE_API ScriptComponent {

@@ -311,6 +311,13 @@ namespace jasperengine::editor {
         // texture (a hairline has no texture coordinates), "trail-zero-time" where a trail's
         // Time is 0 (it keeps no point: nothing is drawn)
         static std::vector<Finding> lineTrailFindings(Project* project);
+
+        // Particle Systems of the loaded scenes (particles spec 6.8): "particles-points-render-mode"
+        // (warning: a version 2 system drawn as GL points with a render mode other than Billboard:
+        // drawn as billboards), "particles-max-exceeded-budget" (warning: more than 5000 max
+        // particles, past the mobile budget), "particles-legacy" (info: a version 1 system can be
+        // upgraded to the module model)
+        static std::vector<Finding> particleFindings(Project* project);
     };
 
 }

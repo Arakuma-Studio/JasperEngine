@@ -12,6 +12,10 @@
 #include "pool/TextureDataPool.h"
 #include "pool/SoundPool.h"
 #include "pool/AnimationClipPool.h"
+#include "pool/AnimatorControllerPool.h"
+#include "pool/AvatarMaskPool.h"
+#include "animation/AnimatorController.h"
+#include "animation/AvatarMask.h"
 #include "animation/AnimationClip.h"
 #include "animation/ModelSubClips.h"
 #include "animation/VertexAnimation.h"
@@ -188,6 +192,8 @@ void SceneManager::runFactory(uint32_t id) {
     }
 
     currentId = id;
+    // Time.timeSinceLevelLoad counts from this load
+    Engine::markLevelLoad();
     const bool nested = factoryRunning;
     factoryRunning = true;
     std::vector<Scene*> nestedUnloading = std::move(unloadingScenes);
@@ -419,6 +425,7 @@ bool SceneManager::isCoveredByLoading(Scene* scene) {
 void SceneManager::setCurrentScene(uint32_t id) {
     pendingId.reset();
     currentId = id;
+    Engine::markLevelLoad();
     loadingState = LoadingState::Loading;
     resetLoadProgress();
 }
@@ -467,7 +474,8 @@ float SceneManager::getPreloadProgress(uint32_t id) {
     if (preload->total == 0) return 1.0f;
 
     const SceneResources& pending = preload->pending;
-    size_t remaining = pending.textures.size() + pending.sounds.size() + pending.models.size() + pending.clips.size() + pending.vats.size();
+    size_t remaining = pending.textures.size() + pending.sounds.size() + pending.models.size() + pending.clips.size() + pending.vats.size() +
+                       pending.masks.size() + pending.controllers.size();
     return (float)(preload->total - remaining) / (float)preload->total;
 }
 
@@ -487,6 +495,8 @@ void SceneManager::cancelPreload(uint32_t id) {
         preload->pending.sounds.clear();
         preload->pending.clips.clear();
         preload->pending.vats.clear();
+        preload->pending.masks.clear();
+        preload->pending.controllers.clear();
     }
 }
 
@@ -532,13 +542,20 @@ void SceneManager::startPreload(uint32_t id) {
         for (const std::string& vat : resources.vats) {
             addFile(pending.vats, vat);
         }
+        for (const std::string& mask : resources.masks) {
+            addFile(pending.masks, mask);
+        }
+        for (const std::string& controller : resources.controllers) {
+            addFile(pending.controllers, controller);
+        }
     }
 
     preload = findPreload(id);
     if (!preload) return;
 
     preload->started = true;
-    preload->total = pending.textures.size() + pending.sounds.size() + pending.models.size() + pending.clips.size() + pending.vats.size();
+    preload->total = pending.textures.size() + pending.sounds.size() + pending.models.size() + pending.clips.size() + pending.vats.size() +
+                       pending.masks.size() + pending.controllers.size();
     preload->pending = std::move(pending);
 }
 
@@ -662,8 +679,32 @@ void SceneManager::updatePreloads() {
             if (oneFile) return;
         }
 
+        // Avatar Masks and Animator Controllers: small JSON files, read on this thread
+        for (auto it = pending.masks.begin(); it != pending.masks.end();) {
+            const std::string mask = *it;
+            std::string error;
+            std::shared_ptr<const anim::AvatarMask> loaded = AvatarMaskPool::getOrLoad(mask, &error);
+            if (!loaded) {
+                Log::warn("Preload of avatar mask %s failed: %s", mask.c_str(), error.c_str());
+            }
+            keep(std::const_pointer_cast<anim::AvatarMask>(loaded), []() { AvatarMaskPool::clearUnused(); });
+            it = pending.masks.erase(it);
+            if (oneFile) return;
+        }
+        for (auto it = pending.controllers.begin(); it != pending.controllers.end();) {
+            const std::string controller = *it;
+            std::string error;
+            std::shared_ptr<const anim::AnimatorController> loaded = AnimatorControllerPool::getOrLoad(controller, &error);
+            if (!loaded) {
+                Log::warn("Preload of animator controller %s failed: %s", controller.c_str(), error.c_str());
+            }
+            keep(std::const_pointer_cast<anim::AnimatorController>(loaded), []() { AnimatorControllerPool::clearUnused(); });
+            it = pending.controllers.erase(it);
+            if (oneFile) return;
+        }
+
         const bool inFlight = !pending.textures.empty() || !pending.sounds.empty() || !pending.models.empty() || !pending.clips.empty() ||
-                              !pending.vats.empty();
+                              !pending.vats.empty() || !pending.masks.empty() || !pending.controllers.empty();
         if (preload.cancelled && !inFlight) {
             releasePreload(preload);
             preloads.erase(preloads.begin() + i);
@@ -813,6 +854,14 @@ uint32_t SceneManager::getSceneId(const std::string& name) {
 std::string SceneManager::getSceneName(uint32_t id) {
     const SceneEntry* entry = findEntry(id);
     return entry ? entry->name : "";
+}
+
+std::string SceneManager::getSceneNameOf(const Scene* scene) {
+    if (!scene) return "";
+    for (const auto& [id, ptr] : scenePtrs) {
+        if (ptr == scene) return getSceneName(id);
+    }
+    return "";
 }
 
 std::vector<std::string> SceneManager::getSceneNames() {

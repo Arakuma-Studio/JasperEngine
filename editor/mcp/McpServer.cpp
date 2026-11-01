@@ -186,6 +186,7 @@ void McpServer::registerAllTools() {
     registerDocsTools(reg);
     registerBuildTools(reg);
     registerWorldTools(reg);
+    registerAnimatorTools(reg);
     registerLatticeTools(reg);
     registerPlacementTools(reg);
     registerVatTools(reg);

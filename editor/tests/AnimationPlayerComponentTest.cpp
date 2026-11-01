@@ -289,7 +289,7 @@ TEST(AnimationPlayerComponent, PrefabOverrideOfTheClipList) {
     const Entity moreRoot = playerEntity(instance, more);
     // (and the new entry's own fields, which the prefab does not have)
     EXPECT_EQ(prefabinternal::diffComponentProperties(&asset, assetRoot, &instance, moreRoot, type),
-              (std::vector<std::string>{"clips", "clips[1].clip", "clips[1].guid", "clips[1].name", "clips[1].wrap"}));
+              (std::vector<std::string>{"clips", "clips[1].clip", "clips[1].guid", "clips[1].layer", "clips[1].name", "clips[1].wrap"}));
 
     // one entry's wrap: the list and that field (the Overrides list shows both, as for other lists)
     AnimationPlayerComponent looping = assetPlayer;

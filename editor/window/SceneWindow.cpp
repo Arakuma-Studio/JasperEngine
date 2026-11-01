@@ -41,6 +41,8 @@
 #include "util/FluidEditorTools.h"
 #include "util/UIProbe.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/CameraFollowComponent.h"
+#include "subsystem/CameraControlSystem.h"
 
 #include "math/Vector2.h"
 #include "util/Angle.h"
@@ -49,6 +51,64 @@
 #include <cmath>
 
 using namespace jasperengine;
+
+namespace {
+
+    // A selected Camera Follow's Bounds (a box) and, on an orthographic or UI camera, its Dead Zone
+    // (the rectangle around where it looks, in the target's plane), over the Scene view image
+    void drawCameraFollowGizmos(jasperengine::editor::Project* project, jasperengine::editor::SceneProject& sceneProject,
+                                const std::function<bool(const jasperengine::Vector3&, ImVec2&)>& toScreen){
+        using namespace jasperengine;
+        if (!sceneProject.scene) return;
+        Scene* scene = sceneProject.scene;
+        std::shared_ptr<CameraControlSystem> system = scene->findSystem<CameraControlSystem>();
+        if (!system) return;
+        ImDrawList* draw = ImGui::GetWindowDrawList();
+        auto line = [&](const Vector3& a, const Vector3& b, ImU32 color){
+            ImVec2 sa, sb;
+            if (toScreen(a, sa) && toScreen(b, sb)) draw->AddLine(sa, sb, color, editor::Theme::dpi(1.5f));
+        };
+        for (Entity entity : project->getSelectedEntities(sceneProject.id)){
+            const CameraFollowComponent* follow = scene->findComponent<CameraFollowComponent>(entity);
+            if (!follow) continue;
+            if (follow->useBounds){
+                const ImU32 color = IM_COL32(120, 200, 255, 220);
+                const Vector3 lo(std::min(follow->boundsMin.x, follow->boundsMax.x), std::min(follow->boundsMin.y, follow->boundsMax.y),
+                                 std::min(follow->boundsMin.z, follow->boundsMax.z));
+                const Vector3 hi(std::max(follow->boundsMin.x, follow->boundsMax.x), std::max(follow->boundsMin.y, follow->boundsMax.y),
+                                 std::max(follow->boundsMin.z, follow->boundsMax.z));
+                const Vector3 c[8] = {Vector3(lo.x, lo.y, lo.z), Vector3(hi.x, lo.y, lo.z), Vector3(hi.x, hi.y, lo.z), Vector3(lo.x, hi.y, lo.z),
+                                      Vector3(lo.x, lo.y, hi.z), Vector3(hi.x, lo.y, hi.z), Vector3(hi.x, hi.y, hi.z), Vector3(lo.x, hi.y, hi.z)};
+                for (int k = 0; k < 4; k++){
+                    line(c[k], c[(k + 1) % 4], color);
+                    line(c[4 + k], c[4 + (k + 1) % 4], color);
+                    line(c[k], c[4 + k], color);
+                }
+            }
+            const CameraComponent* camera = scene->findComponent<CameraComponent>(entity);
+            const bool orthographic = camera && (camera->type == CameraType::CAMERA_ORTHO || camera->type == CameraType::CAMERA_UI);
+            if (orthographic && (follow->deadZone.x > 0.0f || follow->deadZone.y > 0.0f)){
+                const ImU32 color = IM_COL32(255, 200, 80, 230);
+                const Vector3 cameraWorld = system->computeWorldNow(entity).position;
+                float z = cameraWorld.z;
+                if (system->targetAlive(*follow, entity)){
+                    z = CameraControlSystem::computeWorldNow(system->targetSceneOf(*follow), follow->target).position.z;
+                }
+                // what the camera centres (its position minus the offset), as the system's dead zone
+                const Vector3 focus(cameraWorld.x - follow->offset.x, cameraWorld.y - follow->offset.y, z);
+                const float hx = follow->deadZone.x * 0.5f, hy = follow->deadZone.y * 0.5f;
+                const Vector3 a(focus.x - hx, focus.y - hy, z), b(focus.x + hx, focus.y - hy, z);
+                const Vector3 cc(focus.x + hx, focus.y + hy, z), d(focus.x - hx, focus.y + hy, z);
+                line(a, b, color);
+                line(b, cc, color);
+                line(cc, d, color);
+                line(d, a, color);
+            }
+        }
+    }
+
+}
+
 
 namespace {
 
@@ -2784,6 +2844,19 @@ void editor::SceneWindow::show() {
                     // Black until the first render creates the framebuffer.
                     const ImVec2 canvasMin = ImGui::GetCursorScreenPos();
                     Widgets::image(previewTex, canvasAvail, IM_COL32(0, 0, 0, 255));
+                    drawParticleOverlay(&sceneProject, canvasMin, canvasAvail);
+
+                    // Camera Follow: the selected followers' Bounds and Dead Zone
+                    {
+                        const ImVec2 engineScale = canvasEngineScale(sceneProject.id);
+                        SceneRender* sceneRender = sceneProject.sceneRender;
+                        drawCameraFollowGizmos(project, sceneProject, [&](const Vector3& world, ImVec2& screen) {
+                            Vector2 engine;
+                            if (!sceneRender->worldToScreen(world, engine)) return false;
+                            screen = ImVec2(canvasMin.x + engine.x / engineScale.x, canvasMin.y + engine.y / engineScale.y);
+                            return true;
+                        });
+                    }
 
                     // Physics: the HUD, and the labels at their objects
                     if (PhysicsPlacementWindow* physics = Backend::getApp().getPhysicsPlacementWindow()) {

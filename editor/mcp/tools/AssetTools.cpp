@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 // W4: assets, import, materials, shaders, text files, placeholder art
+#include "camera/ShakePreset.h"
+#include "camera/ShakeInstance.h"
 #include "McpTools.h"
 #include "util/ShaderGlobalsJson.h"
 #include "shader/ShaderGlobals.h"
 #include "W4Shared.h"
 #include "AnimationClipTools.h"
+#include "AnimatorTools.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -60,6 +63,7 @@
 #include "window/ProjectWindow.h"
 
 #include "stb_image.h"
+#include "unity/UnityParticleImport.h"
 #include "stb_image_resize2.h"
 #include "stb_image_write.h"
 #include "yaml-cpp/yaml.h"
@@ -903,6 +907,32 @@ void getAssetInfoTool(const CallPtr& call) {
     } else if (kind == "vertex_animation") {
         // a .vat: mode, clips, layout, stats, staleness against its recipe, the Vertex Animators using it
         vatAssetInfo(project, file, data, text);
+    } else if (kind == "shake") {
+        // a .shake: its values and the peaks of its graph (the Inspector's: 60 Hz, seed 0)
+        std::string source;
+        ProjectChecks::readFile(file, source);
+        const camera::ShakeParseResult parsed = camera::parseShakePreset(source);
+        if (!parsed.ok()) {
+            data["error"] = parsed.errorText();
+            text += "; not a valid shake preset: " + parsed.errorText();
+        } else {
+            const camera::ShakePreset& preset = parsed.file->preset;
+            const float duration = camera::shakePreviewDuration(preset);
+            const camera::ShakeOffset peaks = camera::shakeOffsetPeaks(camera::sampleShakePreset(preset, duration, 60.0f, 0));
+            data["shake"] = {{"type", camera::shakeTypeName(preset.type)}, {"strength", McpValues::number(preset.strength)},
+                             {"roughness", McpValues::number(preset.roughness)}, {"fade_in", McpValues::number(preset.fadeIn)},
+                             {"fade_out", McpValues::number(preset.fadeOut)},
+                             {"position_influence", McpValues::toJson(preset.positionInfluence)},
+                             {"rotation_influence", McpValues::toJson(preset.rotationInfluence)}};
+            data["peak"] = {{"position", McpValues::toJson(peaks.position)}, {"rotation", McpValues::toJson(peaks.rotation)},
+                            {"duration", McpValues::number(duration)}};
+            if (!parsed.warnings.empty()) data["warnings"] = parsed.warnings;
+            char summary[160];
+            std::snprintf(summary, sizeof(summary), "; %s shake, strength %g, roughness %g; peak rotation %.2f deg",
+                          camera::shakeTypeName(preset.type), preset.strength, preset.roughness,
+                          std::max(peaks.rotation.x, std::max(peaks.rotation.y, peaks.rotation.z)));
+            text += summary;
+        }
     }
     if (kind == "model" && rel.size() > 8 && Util::isVertexAnimationFile(rel.substr(0, rel.size() - 4))) {
         // "<stem>.vat.glb": the baked mesh and payload of the .vat next to it
@@ -1155,6 +1185,30 @@ void writeFileTool(const CallPtr& call) {
             return;
         }
     }
+    // Avatar Masks and Animator Controllers must stay loadable (layers and players read them): content problems
+    // (and a controller's validation) are warnings
+    std::vector<std::string> animWarnings;
+    if (Util::isAvatarMaskFile(rel) || Util::isAnimatorControllerFile(rel)) {
+        std::string why;
+        const bool mask = Util::isAvatarMaskFile(rel);
+        if (mask ? !animator_tools::checkMaskText(content, animWarnings, why) : !animator_tools::checkControllerText(project, content, animWarnings, why)) {
+            call->fail(std::string(mask ? "Not a valid Avatar Mask: " : "Not a valid Animator Controller: ") + why +
+                       (mask ? ". The format: jasper://docs/animation (Layers and masks)." : ". Prefer edit_animator (jasper://docs/animation)."));
+            return;
+        }
+    }
+    // Shake Presets must stay readable (the shakers load them): content problems are warnings
+    std::vector<std::string> shakeWarnings;
+    if (Util::isShakePresetFile(rel)) {
+        const camera::ShakeParseResult parsed = camera::parseShakePreset(content);
+        if (!parsed.ok()) {
+            call->fail("Not a valid shake preset: " + parsed.errorText() + ". The format: {\"format\": \"jasperengine.shake\", "
+                       "\"version\": 1, \"type\", \"strength\", \"roughness\", \"fade_in\", \"fade_out\", \"position_influence\", "
+                       "\"rotation_influence\"} (jasper://docs/camera).");
+            return;
+        }
+        shakeWarnings = parsed.warnings;
+    }
     // Vertex Animations must stay loadable: generated fields are the baker's (rebake), the rest are warnings
     std::vector<std::string> vatWarnings;
     if (Util::isVertexAnimationFile(rel)) {
@@ -1188,6 +1242,17 @@ void writeFileTool(const CallPtr& call) {
         text += vatWarnings.empty() ? std::string(" Valid Vertex Animation (its animators reload).")
                                     : " Vertex Animation loads with " + std::to_string(vatWarnings.size()) + " warning(s) (the bad parts are dropped):";
         for (size_t i = 0; i < vatWarnings.size() && i < 8; i++) text += "\n" + vatWarnings[i];
+    } else if (Util::isAvatarMaskFile(rel) || Util::isAnimatorControllerFile(rel)) {
+        data["warnings"] = animWarnings;
+        const char* kind = Util::isAvatarMaskFile(rel) ? "Avatar Mask" : "Animator Controller";
+        text += animWarnings.empty() ? std::string(" Valid ") + kind + " (its players reload)."
+                                     : std::string(" ") + kind + " loads with " + std::to_string(animWarnings.size()) + " warning(s):";
+        for (size_t i = 0; i < animWarnings.size() && i < 8; i++) text += "\n" + animWarnings[i];
+    } else if (Util::isShakePresetFile(rel)) {
+        data["warnings"] = shakeWarnings;
+        text += shakeWarnings.empty() ? std::string(" Valid shake preset.") : " Shake preset loads with " + std::to_string(shakeWarnings.size()) +
+                                                                            " warning(s) (bad values repaired):";
+        for (size_t i = 0; i < shakeWarnings.size() && i < 8; i++) text += "\n" + shakeWarnings[i];
     } else if (Util::isAnimationClipFile(rel)) {
         data["warnings"] = clipWarnings;
         text += clipWarnings.empty() ? std::string(" Valid clip.") : " Clip loads with " + std::to_string(clipWarnings.size()) + " warning(s) (the bad parts are dropped):";
@@ -1326,7 +1391,7 @@ public:
         for (const fs::path& copied : {to, pairTo}) {
             if (copied.empty()) continue;
             project->cleanupPrefabFilePath(copied);
-            if (isDir || Util::isAnimationClipFile(copied.string()) || Util::isVertexAnimationFile(copied.string())) {
+            if (isDir || Util::isGuidJsonAssetFile(copied.string())) {
                 project->cleanupClipFilePath(copied);
             }
             project->cleanupInspectedAsset(copied);
@@ -2980,6 +3045,8 @@ void checkShaderTool(const CallPtr& call) {
             std::vector<ProjectChecks::Finding> sceneFindings = ProjectChecks::stochasticTilingFindings(project);
             const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(project);
             sceneFindings.insert(sceneFindings.end(), lines.begin(), lines.end());
+            const std::vector<ProjectChecks::Finding> particleChecks = ProjectChecks::particleFindings(project);
+            sceneFindings.insert(sceneFindings.end(), particleChecks.begin(), particleChecks.end());
             std::string text = "No custom shader is used by the loaded scenes.";
             Json findings = Json::array();
             for (const ProjectChecks::Finding& finding : sceneFindings) {
@@ -3000,6 +3067,9 @@ void checkShaderTool(const CallPtr& call) {
         // Line and Trail Renderers: a hairline sampling a texture, a trail with Time 0
         const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(project);
         stateFindings.insert(stateFindings.end(), lines.begin(), lines.end());
+        // Particle Systems: legacy ones, points with a render mode, the mobile budget
+        const std::vector<ProjectChecks::Finding> particleChecks = ProjectChecks::particleFindings(project);
+        stateFindings.insert(stateFindings.end(), particleChecks.begin(), particleChecks.end());
     }
     checkShadersWithFindings(call, forks, [call, stateFindings](Json results, Json findings) {
         for (const ProjectChecks::Finding& finding : stateFindings) findings.push_back(ProjectChecks::toJson(finding));
@@ -3248,6 +3318,51 @@ void placeholderArtTool(const CallPtr& call) {
 // ------------------------------------------------------------------ search_files
 
 // Searches the project's text files (what read_file reads): literal or ECMAScript regex, per line
+// import_unity_particles: a Unity .prefab / .unity (absolute path) as engine prefabs (particles spec 6.10)
+void importUnityParticlesTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    if (!args.contains("path") || !args["path"].is_string() || args["path"].get<std::string>().empty()) {
+        call->fail("path is required: the absolute path of a .prefab or .unity file inside a Unity project.");
+        return;
+    }
+    unity::ImportOptions options;
+    options.file = fs::u8path(args["path"].get<std::string>()).lexically_normal();
+    if (!options.file.is_absolute()) {
+        call->fail("path must be absolute (the Unity project is outside the engine project).");
+        return;
+    }
+    if (args.contains("object") && args["object"].is_string()) options.object = args["object"].get<std::string>();
+    if (args.contains("dest") && args["dest"].is_string()) options.dest = args["dest"].get<std::string>();
+    if (args.contains("unity_project") && args["unity_project"].is_string()) {
+        options.unityProject = fs::u8path(args["unity_project"].get<std::string>()).lexically_normal();
+    }
+    options.dryRun = args.value("dry_run", false);
+    options.overwrite = args.value("overwrite", false);
+    // the output folder: inside the project once links are resolved
+    fs::path dest;
+    std::string error;
+    if (!McpRefs::resolveProjectWritePath(project, options.dest, dest, error, false)) {
+        call->fail(error);
+        return;
+    }
+    const unity::ImportResult result = unity::importParticlesIntoProject(project, options);
+    if (!result.ok) {
+        call->fail(result.error);
+        return;
+    }
+    int notes = 0;
+    for (const Json& system : result.report["systems"]) notes += (int)system["notes"].size();
+    notes += (int)result.report["warnings"].size();
+    std::string message = std::string(options.dryRun ? "Would import " : "Imported ") + std::to_string(result.report["systems"].size()) +
+                          " particle system(s) into " + std::to_string(result.prefabs.size()) + " prefab(s)";
+    message += notes ? " with " + std::to_string(notes) + " note(s) (see report)." : ".";
+    if (!options.dryRun) message += " Instantiate a prefab with instantiate_prefab; undo removes the files.";
+    Json data = {{"prefabs", result.prefabs}, {"report", result.report}};
+    if (!result.reportFile.empty()) data["report_file"] = result.reportFile;
+    call->ok(message, data);
+}
+
 void searchFilesTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -3402,7 +3517,7 @@ void searchFilesTool(const CallPtr& call) {
 void registerAssetTools(McpRegistry& registry) {
     using namespace schema;
 
-    const std::vector<std::string> types = {"any", "texture", "model", "audio", "font", "html", "css", "script", "scene", "prefab", "material", "shader", "animation", "vertex_animation", "folder", "other"};
+    const std::vector<std::string> types = {"any", "texture", "model", "audio", "font", "html", "css", "script", "scene", "prefab", "material", "shader", "animation", "vertex_animation", "shake", "folder", "other"};
 
     {
         ToolDef tool;
@@ -3821,6 +3936,27 @@ void registerAssetTools(McpRegistry& registry) {
             {"overwrite", withDefault(boolean(""), false)}
         }, {"path"});
         tool.handler = placeholderArtTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "import_unity_particles";
+        tool.title = "Import Unity Particles";
+        tool.description =
+            "Import the ParticleSystems of a Unity .prefab/.unity (absolute path; the Unity project is only read) as "
+            "engine prefabs with materials and textures. Returns the prefabs and a report (per module imported/"
+            "approximated/unsupported, notes). jasper://docs/particles";
+        tool.inputSchema = object({
+            {"path", string("Absolute .prefab or .unity path.")},
+            {"object", string("GameObject path, e.g. \"Player/Camera/EndParticles\".")},
+            {"dest", withDefault(assetPath(""), "assets/fx")},
+            {"unity_project", string("Default: found from path.")},
+            {"dry_run", withDefault(boolean(""), false)},
+            {"overwrite", withDefault(boolean(""), false)}
+        }, {"path"});
+        tool.annotations.openWorld = true;
+        tool.handler = importUnityParticlesTool;
         registry.addTool(std::move(tool));
     }
 

@@ -844,6 +844,21 @@ void UIElement::click(){
     element->Click();
 }
 
+bool UIElement::setPointerCapture(int pointerId){
+    HTMLUI_ELEMENT(false)
+    return element->SetPointerCapture(pointerId);
+}
+
+bool UIElement::releasePointerCapture(int pointerId){
+    HTMLUI_ELEMENT(false)
+    return element->ReleasePointerCapture(pointerId);
+}
+
+bool UIElement::hasPointerCapture(int pointerId) const{
+    HTMLUI_ELEMENT(false)
+    return element->HasPointerCapture(pointerId);
+}
+
 void UIElement::scrollIntoView(bool alignToTop){
     HTMLUI_ELEMENT()
     element->ScrollIntoView(alignToTop);

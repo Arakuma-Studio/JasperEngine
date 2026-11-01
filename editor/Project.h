@@ -2321,6 +2321,9 @@ namespace jasperengine::editor{
         uint32_t getPlaySessionSceneId() const;
         // Camera the game renders through: the main camera, else the scene default
         Entity getGameCamera(uint32_t sceneId) const;
+        // the Camera Shaker Inspector's edit-mode shake preview (CameraControlSystem::stopPreview) of every
+        // stopped scene: Play, a save
+        void stopCameraShakePreviews();
         void waitForPlaySessionToFinish();
 
         std::vector<Scene*> getRunningRuntimeLayers(uint32_t sceneId);

@@ -35,6 +35,7 @@
 #include "window/DeviceProfiles.h"
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
+#include "window/AnimatorWindow.h"
 #include "window/PoseAnimationWindow.h"
 #include "window/SceneWindow.h"
 #include "pose/PoseAnimationDocument.h"
@@ -1144,6 +1145,10 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "animation") {
         ctx.animationWindow()->setOpen(true);
         imguiName = AnimationWindow::WINDOW_NAME;
+    } else if (window == "animator") {
+        // it shows the selected GameObject's controller (or the .controller opened last)
+        app.getAnimatorWindow()->setOpen(true);
+        imguiName = AnimatorWindow::WINDOW_NAME;
     } else if (window == "terrain") {
         ctx.terrainEditWindow()->setOpen(true);
         imguiName = TerrainEditWindow::WINDOW_NAME;
@@ -1164,7 +1169,7 @@ void focusWindowTool(const CallPtr& call) {
         app.getSpriteNormalsWindow()->open();
         imguiName = SpriteNormalsWindow::WINDOW_NAME;
     } else {
-        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, pose_animation, terrain, "
+        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, animator, pose_animation, terrain, "
                    "mcp, texture_synthesis, vertex_animation_baker, sprite_normals.");
         return;
     }
@@ -1435,7 +1440,7 @@ void registerViewTools(McpRegistry& registry) {
         tool.description =
             "Show a panel (not needed for screenshot). pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
-            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "pose_animation",
+            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "animator", "pose_animation",
                                        "terrain", "mcp", "texture_synthesis", "vertex_animation_baker", "sprite_normals"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"pose", {{"type", "object"}}}
