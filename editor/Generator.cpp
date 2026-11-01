@@ -2372,6 +2372,10 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         case Scaling::NATIVE:    mainContent += "    Engine::setScalingMode(Scaling::NATIVE);\n"; break;
     }
 
+    // the Canvas Scaler's project default (absent: Follow Game Canvas, the engine default)
+    if (uiScale != CanvasScalerSettings())
+        mainContent += "    Engine::setDefaultCanvasScaler(" + Factory::formatCanvasScaler(uiScale) + ");\n";
+
     // Texture strategy
     switch (textureStrategy) {
         case TextureStrategy::FIT:    mainContent += "    Engine::setTextureStrategy(TextureStrategy::FIT);\n"; break;

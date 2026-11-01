@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Factory.h"
+#include "particles/ParticleFields.h"
 
 #include "Scene.h"
 #include "Catalog.h"
@@ -223,6 +224,24 @@ std::string editor::Factory::toIdentifier(const std::string& name) {
     }
 
     return out;
+}
+
+std::string editor::Factory::formatCanvasScaler(const CanvasScalerSettings& settings) {
+    static const char* const modes[] = {"UIScaleMode::FollowGameCanvas", "UIScaleMode::ConstantPixelSize",
+                                        "UIScaleMode::ScaleWithScreenSize", "UIScaleMode::ConstantPhysicalSize"};
+    static const char* const matchModes[] = {"ScreenMatchMode::MatchWidthOrHeight", "ScreenMatchMode::Expand", "ScreenMatchMode::Shrink"};
+    static const char* const units[] = {"PhysicalUnit::Centimeters", "PhysicalUnit::Millimeters", "PhysicalUnit::Inches",
+                                        "PhysicalUnit::Points", "PhysicalUnit::Picas"};
+    const CanvasScalerSettings d;
+    std::string out = "[](){ CanvasScalerSettings s;";
+    if (settings.mode != d.mode) out += std::string(" s.mode = ") + modes[(int)settings.mode] + ";";
+    if (settings.scaleFactor != d.scaleFactor) out += " s.scaleFactor = " + formatFloat(settings.scaleFactor) + ";";
+    if (settings.referenceResolution != d.referenceResolution) out += " s.referenceResolution = " + formatVector2(settings.referenceResolution) + ";";
+    if (settings.screenMatchMode != d.screenMatchMode) out += std::string(" s.screenMatchMode = ") + matchModes[(int)settings.screenMatchMode] + ";";
+    if (settings.matchWidthOrHeight != d.matchWidthOrHeight) out += " s.matchWidthOrHeight = " + formatFloat(settings.matchWidthOrHeight) + ";";
+    if (settings.physicalUnit != d.physicalUnit) out += std::string(" s.physicalUnit = ") + units[(int)settings.physicalUnit] + ";";
+    if (settings.fallbackScreenDPI != d.fallbackScreenDPI) out += " s.fallbackScreenDPI = " + formatFloat(settings.fallbackScreenDPI) + ";";
+    return out + " return s; }()";
 }
 
 std::string editor::Factory::formatVector2(const Vector2& v) {
@@ -815,6 +834,39 @@ std::string editor::Factory::formatGradient(const Gradient& gradient) {
     }
     code << "}, " << (gradient.mode == GradientMode::Fixed ? "GradientMode::Fixed" : "GradientMode::Blend") << ")";
     return code.str();
+}
+
+std::string editor::Factory::formatMinMaxCurve(const MinMaxCurve& curve) {
+    switch (curve.mode) {
+        case ParticleSystemCurveMode::Constant:
+            return "MinMaxCurve(" + formatFloat(curve.constant) + ")";
+        case ParticleSystemCurveMode::TwoConstants:
+            return "MinMaxCurve::between(" + formatFloat(curve.constantMin) + ", " + formatFloat(curve.constant) + ")";
+        case ParticleSystemCurveMode::Curve:
+            return "MinMaxCurve::fromCurve(" + formatCurve(curve.curve) + ", " + formatFloat(curve.constant) + ")";
+        case ParticleSystemCurveMode::TwoCurves:
+            return "MinMaxCurve::between(" + formatCurve(curve.curveMin) + ", " + formatCurve(curve.curve) + ", " + formatFloat(curve.constant) + ")";
+    }
+    return "MinMaxCurve(" + formatFloat(curve.constant) + ")";
+}
+
+std::string editor::Factory::formatMinMaxGradient(const MinMaxGradient& gradient) {
+    switch (gradient.mode) {
+        case ParticleSystemGradientMode::Color:
+            return "MinMaxGradient::fromColor(" + formatVector4(gradient.color) + ")";
+        case ParticleSystemGradientMode::TwoColors:
+            return "MinMaxGradient::between(" + formatVector4(gradient.colorMin) + ", " + formatVector4(gradient.color) + ")";
+        case ParticleSystemGradientMode::Gradient:
+            return "MinMaxGradient::fromGradient(" + formatGradient(gradient.gradient) + ")";
+        case ParticleSystemGradientMode::TwoGradients:
+            return "MinMaxGradient::between(" + formatGradient(gradient.gradientMin) + ", " + formatGradient(gradient.gradient) + ")";
+        case ParticleSystemGradientMode::RandomColor: {
+            // a gradient read at a random point
+            return "[]{ MinMaxGradient g = MinMaxGradient::fromGradient(" + formatGradient(gradient.gradient) +
+                   "); g.mode = ParticleSystemGradientMode::RandomColor; return g; }()";
+        }
+    }
+    return "MinMaxGradient::fromColor(" + formatVector4(gradient.color) + ")";
 }
 
 std::string editor::Factory::formatPositiveFloat(float value) {
@@ -1589,6 +1641,86 @@ std::string editor::Factory::createProgressbarComponent(int indentSpaces, Entity
     return code.str();
 }
 
+namespace {
+    const char* stickModeCode(OnScreenStickMode mode) {
+        switch (mode) {
+            case OnScreenStickMode::FLOATING: return "OnScreenStickMode::FLOATING";
+            case OnScreenStickMode::DYNAMIC: return "OnScreenStickMode::DYNAMIC";
+            default: return "OnScreenStickMode::FIXED";
+        }
+    }
+    const char* stickAxesCode(OnScreenStickAxes axes) {
+        switch (axes) {
+            case OnScreenStickAxes::HORIZONTAL: return "OnScreenStickAxes::HORIZONTAL";
+            case OnScreenStickAxes::VERTICAL: return "OnScreenStickAxes::VERTICAL";
+            default: return "OnScreenStickAxes::BOTH";
+        }
+    }
+    const char* visibilityCode(OnScreenVisibility visibility) {
+        return visibility == OnScreenVisibility::TOUCH_DEVICES_ONLY ? "OnScreenVisibility::TOUCH_DEVICES_ONLY" : "OnScreenVisibility::ALWAYS";
+    }
+}
+
+std::string editor::Factory::createOnScreenStickComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<OnScreenStickComponent>(entity)) return "";
+    const OnScreenStickComponent& stick = scene->getComponent<OnScreenStickComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "OnScreenStickComponent stick;\n";
+    code << ind << "stick.enabled = " << formatBool(stick.enabled) << ";\n";
+    code << ind << "stick.mode = " << stickModeCode(stick.mode) << ";\n";
+    code << ind << "stick.background = " << formatEntity(stick.background, entityVarNames) << ";\n";
+    code << ind << "stick.handle = " << formatEntity(stick.handle, entityVarNames) << ";\n";
+    code << ind << "stick.handleRange = " << formatFloat(stick.handleRange) << ";\n";
+    code << ind << "stick.deadZone = " << formatFloat(stick.deadZone) << ";\n";
+    code << ind << "stick.moveThreshold = " << formatFloat(stick.moveThreshold) << ";\n";
+    code << ind << "stick.axes = " << stickAxesCode(stick.axes) << ";\n";
+    code << ind << "stick.snapX = " << formatBool(stick.snapX) << ";\n";
+    code << ind << "stick.snapY = " << formatBool(stick.snapY) << ";\n";
+    code << ind << "stick.hideWhenReleased = " << formatBool(stick.hideWhenReleased) << ";\n";
+    code << ind << "stick.clampToArea = " << formatBool(stick.clampToArea) << ";\n";
+    code << ind << "stick.horizontalAction = " << formatString(stick.horizontalAction) << ";\n";
+    code << ind << "stick.verticalAction = " << formatString(stick.verticalAction) << ";\n";
+    code << ind << "stick.visibility = " << visibilityCode(stick.visibility) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "OnScreenStickComponent", "stick", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createOnScreenButtonComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    (void)entityVarNames;
+    if (!scene->findComponent<OnScreenButtonComponent>(entity)) return "";
+    const OnScreenButtonComponent& button = scene->getComponent<OnScreenButtonComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "OnScreenButtonComponent onscreenbutton;\n";
+    code << ind << "onscreenbutton.enabled = " << formatBool(button.enabled) << ";\n";
+    code << ind << "onscreenbutton.action = " << formatString(button.action) << ";\n";
+    code << ind << "onscreenbutton.value = " << formatFloat(button.value) << ";\n";
+    code << ind << "onscreenbutton.pressWhenPointerEnters = " << formatBool(button.pressWhenPointerEnters) << ";\n";
+    code << ind << "onscreenbutton.releaseWhenPointerLeaves = " << formatBool(button.releaseWhenPointerLeaves) << ";\n";
+    code << ind << "onscreenbutton.visibility = " << visibilityCode(button.visibility) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "OnScreenButtonComponent", "onscreenbutton", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createTouchAreaComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    (void)entityVarNames;
+    if (!scene->findComponent<TouchAreaComponent>(entity)) return "";
+    const TouchAreaComponent& area = scene->getComponent<TouchAreaComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "TouchAreaComponent toucharea;\n";
+    code << ind << "toucharea.enabled = " << formatBool(area.enabled) << ";\n";
+    code << ind << "toucharea.horizontalAction = " << formatString(area.horizontalAction) << ";\n";
+    code << ind << "toucharea.verticalAction = " << formatString(area.verticalAction) << ";\n";
+    code << ind << "toucharea.sensitivity = " << formatFloat(area.sensitivity) << ";\n";
+    code << ind << "toucharea.invertX = " << formatBool(area.invertX) << ";\n";
+    code << ind << "toucharea.invertY = " << formatBool(area.invertY) << ";\n";
+    code << ind << "toucharea.visibility = " << visibilityCode(area.visibility) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "TouchAreaComponent", "toucharea", assignExisting);
+    return code.str();
+}
+
 std::string editor::Factory::createInputFieldComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<InputFieldComponent>(entity)) return "";
     InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
@@ -1756,7 +1888,58 @@ std::string editor::Factory::createTextComponent(int indentSpaces, EntityRegistr
     code << ind << "text.fixedHeight = " << formatBool(text.fixedHeight) << ";\n";
     code << ind << "text.pivotBaseline = " << formatBool(text.pivotBaseline) << ";\n";
     code << ind << "text.pivotCentered = " << formatBool(text.pivotCentered) << ";\n";
+    // outline, shadow and visible characters only when set
+    const TextComponent d;
+    if (text.outlineWidth != d.outlineWidth) code << ind << "text.outlineWidth = " << formatFloat(text.outlineWidth) << ";\n";
+    if (text.outlineColor != d.outlineColor) code << ind << "text.outlineColor = " << formatVector4(text.outlineColor) << ";\n";
+    if (text.shadowEnabled != d.shadowEnabled) code << ind << "text.shadowEnabled = " << formatBool(text.shadowEnabled) << ";\n";
+    if (text.shadowColor != d.shadowColor) code << ind << "text.shadowColor = " << formatVector4(text.shadowColor) << ";\n";
+    if (text.shadowOffset != d.shadowOffset) code << ind << "text.shadowOffset = " << formatVector2(text.shadowOffset) << ";\n";
+    if (text.shadowSoftness != d.shadowSoftness) code << ind << "text.shadowSoftness = " << formatFloat(text.shadowSoftness) << ";\n";
+    if (text.shadowDilate != d.shadowDilate) code << ind << "text.shadowDilate = " << formatFloat(text.shadowDilate) << ";\n";
+    if (text.visibleCharacters != d.visibleCharacters) code << ind << "text.visibleCharacters = " << text.visibleCharacters << ";\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "TextComponent", "text", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createTextEffectComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<TextEffectComponent>(entity)) return "";
+    TextEffectComponent& effect = scene->getComponent<TextEffectComponent>(entity);
+    static const char* const types[] = {"None", "Wave", "Bounce", "Shake", "Pulse", "Typewriter", "FadeIn", "Grow", "Unfold", "Rainbow", "Gradient"};
+    static const char* const mixes[] = {"Multiply", "Add", "Replace"};
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    const TextEffectComponent d;
+    const TextEffectLayer dl;
+    code << ind << "TextEffectComponent textEffect;\n";
+    if (effect.enabled != d.enabled) code << ind << "textEffect.enabled = " << formatBool(effect.enabled) << ";\n";
+    for (size_t i = 0; i < effect.layers.size(); i++){
+        const TextEffectLayer& l = effect.layers[i];
+        if (l == dl) continue;
+        const std::string layer = "textEffect.layers[" + std::to_string(i) + "]";
+        code << ind << layer << ".type = TextEffectType::" << types[std::min((size_t)l.type, (size_t)10)] << ";\n";
+        if (l.enabled != dl.enabled) code << ind << layer << ".enabled = " << formatBool(l.enabled) << ";\n";
+        if (l.amplitude != dl.amplitude) code << ind << layer << ".amplitude = " << formatFloat(l.amplitude) << ";\n";
+        if (l.duration != dl.duration) code << ind << layer << ".duration = " << formatFloat(l.duration) << ";\n";
+        if (l.spread != dl.spread) code << ind << layer << ".spread = " << formatFloat(l.spread) << ";\n";
+        if (l.phaseStep != dl.phaseStep) code << ind << layer << ".phaseStep = " << formatFloat(l.phaseStep) << ";\n";
+        if (l.frequency != dl.frequency) code << ind << layer << ".frequency = " << formatFloat(l.frequency) << ";\n";
+        if (l.charactersPerSecond != dl.charactersPerSecond) code << ind << layer << ".charactersPerSecond = " << formatFloat(l.charactersPerSecond) << ";\n";
+        if (l.fadeTime != dl.fadeTime) code << ind << layer << ".fadeTime = " << formatFloat(l.fadeTime) << ";\n";
+        for (const TextEffectGradientStop& stop : l.gradient){
+            code << ind << layer << ".gradient.push_back(TextEffectGradientStop{" << formatVector4(stop.color) << ", " << formatFloat(stop.position) << "});\n";
+        }
+        if (l.mix != dl.mix) code << ind << layer << ".mix = TextEffectMix::" << mixes[std::min((size_t)l.mix, (size_t)2)] << ";\n";
+        if (l.saturation != dl.saturation) code << ind << layer << ".saturation = " << formatFloat(l.saturation) << ";\n";
+        if (l.lightness != dl.lightness) code << ind << layer << ".lightness = " << formatFloat(l.lightness) << ";\n";
+    }
+    if (effect.autoPlay != d.autoPlay) code << ind << "textEffect.autoPlay = " << formatBool(effect.autoPlay) << ";\n";
+    if (effect.loop != d.loop) code << ind << "textEffect.loop = " << formatBool(effect.loop) << ";\n";
+    if (effect.useUnscaledTime != d.useUnscaledTime) code << ind << "textEffect.useUnscaledTime = " << formatBool(effect.useUnscaledTime) << ";\n";
+    if (effect.startIndex != d.startIndex) code << ind << "textEffect.startIndex = " << effect.startIndex << ";\n";
+    if (effect.length != d.length) code << ind << "textEffect.length = " << effect.length << ";\n";
+    if (!effect.forWords.empty()) code << ind << "textEffect.forWords = " << formatString(effect.forWords) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "TextEffectComponent", "textEffect", assignExisting);
     return code.str();
 }
 
@@ -2062,6 +2245,14 @@ static const char* formatClipWrapMode(ClipWrapMode wrap) {
     return "ClipWrapMode::Default";
 }
 
+// the C++ of one authored layer (anim layers spec 6.3): `target` is the layer's expression
+static void emitAnimationPlayerLayer(std::ostringstream& code, const std::string& ind, const std::string& target, const AnimationPlayerLayer& layer) {
+    code << ind << target << ".name = " << editor::Factory::formatString(layer.name) << ";\n";
+    if (layer.weight != 1.0f) code << ind << target << ".weight = " << editor::Factory::formatFloat(layer.weight) << ";\n";
+    if (layer.blend == AnimationLayerBlend::Additive) code << ind << target << ".blend = AnimationLayerBlend::Additive;\n";
+    if (!layer.mask.empty()) code << ind << target << ".mask = " << editor::Factory::formatString(layer.mask) << ";\n";
+}
+
 std::string editor::Factory::createAnimationPlayerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<AnimationPlayerComponent>(entity)) return "";
     AnimationPlayerComponent& player = scene->getComponent<AnimationPlayerComponent>(entity);
@@ -2077,7 +2268,14 @@ std::string editor::Factory::createAnimationPlayerComponent(int indentSpaces, En
         code << ind << target << ".clip = " << formatString(entry.clip) << ";\n";
         if (!entry.name.empty()) code << ind << target << ".name = " << formatString(entry.name) << ";\n";
         if (entry.wrap != ClipWrapMode::Default) code << ind << target << ".wrap = " << formatClipWrapMode(entry.wrap) << ";\n";
+        if (entry.layer != 0) code << ind << target << ".layer = " << entry.layer << ";\n";
     }
+    if (!player.layers.empty()) code << ind << "animationplayer.layers.resize(" << player.layers.size() << ");\n";
+    for (size_t i = 0; i < player.layers.size(); i++) {
+        emitAnimationPlayerLayer(code, ind, "animationplayer.layers[" + std::to_string(i) + "]", player.layers[i]);
+    }
+    // the controller (and its masks and clips) load by path from the exported assets
+    if (!player.controller.empty()) code << ind << "animationplayer.controller = " << formatString(player.controller) << ";\n";
     if (!player.defaultClip.empty()) code << ind << "animationplayer.defaultClip = " << formatString(player.defaultClip) << ";\n";
     code << ind << "animationplayer.playAutomatically = " << formatBool(player.playAutomatically) << ";\n";
     code << ind << "animationplayer.speed = " << formatFloat(player.speed) << ";\n";
@@ -3313,6 +3511,56 @@ std::string editor::Factory::createLatticeModifierComponent(int indentSpaces, En
     return code.str();
 }
 
+std::string editor::Factory::createCameraShakerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    (void)entityVarNames;
+    if (!scene->findComponent<CameraShakerComponent>(entity)) return "";
+    const CameraShakerComponent& shaker = scene->getComponent<CameraShakerComponent>(entity);
+    const CameraShakerComponent defaults;
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "CameraShakerComponent camerashaker;\n";
+    if (!shaker.enabled) code << ind << "camerashaker.enabled = false;\n";
+    if (shaker.global != defaults.global) code << ind << "camerashaker.global = " << formatBool(shaker.global) << ";\n";
+    if (shaker.unscaledTime != defaults.unscaledTime) code << ind << "camerashaker.unscaledTime = " << formatBool(shaker.unscaledTime) << ";\n";
+    if (shaker.mode == CameraShakeMode::Mode3D) code << ind << "camerashaker.mode = CameraShakeMode::Mode3D;\n";
+    if (shaker.mode == CameraShakeMode::Mode2D) code << ind << "camerashaker.mode = CameraShakeMode::Mode2D;\n";
+    code << ind << "camerashaker.positionScale = " << formatFloat(shaker.positionScale) << ";\n";
+    code << ind << "camerashaker.rotationScale = " << formatFloat(shaker.rotationScale) << ";\n";
+    if (!shaker.startPreset.empty()) code << ind << "camerashaker.startPreset = " << formatString(shaker.startPreset) << ";\n";
+    code << ind << "camerashaker.traumaDecay = " << formatFloat(shaker.traumaDecay) << ";\n";
+    code << ind << "camerashaker.traumaPower = " << formatFloat(shaker.traumaPower) << ";\n";
+    code << ind << "camerashaker.traumaMaxOffset = " << formatVector3(shaker.traumaMaxOffset) << ";\n";
+    code << ind << "camerashaker.traumaMaxAngle = " << formatVector3(shaker.traumaMaxAngle) << ";\n";
+    code << ind << "camerashaker.traumaFrequency = " << formatFloat(shaker.traumaFrequency) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "CameraShakerComponent", "camerashaker", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createCameraFollowComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<CameraFollowComponent>(entity)) return "";
+    const CameraFollowComponent& follow = scene->getComponent<CameraFollowComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "CameraFollowComponent camerafollow;\n";
+    if (!follow.enabled) code << ind << "camerafollow.enabled = false;\n";
+    code << ind << "camerafollow.target = " << formatEntity(follow.target, entityVarNames) << ";\n";
+    code << ind << "camerafollow.offset = " << formatVector3(follow.offset) << ";\n";
+    if (follow.offsetSpace == FollowOffsetSpace::Target) code << ind << "camerafollow.offsetSpace = FollowOffsetSpace::Target;\n";
+    if (follow.offsetSpace == FollowOffsetSpace::TargetYaw) code << ind << "camerafollow.offsetSpace = FollowOffsetSpace::TargetYaw;\n";
+    code << ind << "camerafollow.damping = " << formatVector3(follow.damping) << ";\n";
+    code << ind << "camerafollow.maxSpeed = " << formatFloat(follow.maxSpeed) << ";\n";
+    code << ind << "camerafollow.lookAt = " << formatBool(follow.lookAt) << ";\n";
+    code << ind << "camerafollow.lookAtOffset = " << formatVector3(follow.lookAtOffset) << ";\n";
+    code << ind << "camerafollow.rotationDamping = " << formatFloat(follow.rotationDamping) << ";\n";
+    code << ind << "camerafollow.deadZone = " << formatVector2(follow.deadZone) << ";\n";
+    code << ind << "camerafollow.useBounds = " << formatBool(follow.useBounds) << ";\n";
+    code << ind << "camerafollow.boundsMin = " << formatVector3(follow.boundsMin) << ";\n";
+    code << ind << "camerafollow.boundsMax = " << formatVector3(follow.boundsMax) << ";\n";
+    code << ind << "camerafollow.unscaledTime = " << formatBool(follow.unscaledTime) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "CameraFollowComponent", "camerafollow", assignExisting);
+    return code.str();
+}
+
 std::string editor::Factory::createLatticeFollowerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<LatticeFollowerComponent>(entity)) return "";
     LatticeFollowerComponent& follower = scene->getComponent<LatticeFollowerComponent>(entity);
@@ -3363,6 +3611,9 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::ScrollbarComponent: return createScrollbarComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ProgressbarComponent: return createProgressbarComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::InputFieldComponent: return createInputFieldComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::OnScreenStickComponent: return createOnScreenStickComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::OnScreenButtonComponent: return createOnScreenButtonComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::TouchAreaComponent: return createTouchAreaComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::PanelComponent: return createPanelComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::PolygonComponent: return createPolygonComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::MeshPolygonComponent: return createMeshPolygonComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
@@ -3370,6 +3621,7 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::LayoutGroupComponent: return createLayoutGroupComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::CanvasGroupComponent: return createCanvasGroupComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::TextComponent: return createTextComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::TextEffectComponent: return createTextEffectComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ImageComponent: return createImageComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::SpriteComponent: return createSpriteComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::TilemapComponent: return createTilemapComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
@@ -3385,6 +3637,8 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::PoseAnimatorComponent: return createPoseAnimatorComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::AnimationPlayerComponent: return createAnimationPlayerComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::VertexAnimatorComponent: return createVertexAnimatorComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::CameraShakerComponent: return createCameraShakerComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::CameraFollowComponent: return createCameraFollowComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::CameraComponent: return createCameraComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::AudioSourceComponent: return createAudioSourceComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ScriptComponent: return createScriptComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
@@ -3831,6 +4085,11 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     out << ind2 << "scene->setGravity3D(" << formatVector3(scene->getGravity3D()) << ");\n";
     if (scene->isPhysicsInterpolation() != SceneSettings().physicsInterpolation)
         out << ind2 << "scene->setPhysicsInterpolation(" << formatBool(scene->isPhysicsInterpolation()) << ");\n";
+    // the scene's own Canvas Scaler (it uses the project default otherwise)
+    if (scene->getCanvasScaler() != CanvasScalerSettings())
+        out << ind2 << "scene->setCanvasScaler(" << formatCanvasScaler(scene->getCanvasScaler()) << ");\n";
+    if (!scene->isCanvasScalerUseProjectDefault())
+        out << ind2 << "scene->setCanvasScalerUseProjectDefault(false);\n";
     if (scene->getPhysics2DSubSteps() != SceneSettings().physics2DSubSteps)
         out << ind2 << "scene->setPhysics2DSubSteps(" << scene->getPhysics2DSubSteps() << ");\n";
     out << ind2 << "scene->setLightState(" << formatLightState(scene->getLightState()) << ");\n";
@@ -3907,6 +4166,12 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     }
     for (const std::string& vat : resources.vats) {
         out << ind2 << "resources.vats.push_back(" << formatString(vat) << ");\n";
+    }
+    for (const std::string& mask : resources.masks) {
+        out << ind2 << "resources.masks.push_back(" << formatString(mask) << ");\n";
+    }
+    for (const std::string& controller : resources.controllers) {
+        out << ind2 << "resources.controllers.push_back(" << formatString(controller) << ");\n";
     }
     out << ind2 << "return resources;\n";
     out << ind << "}\n";
@@ -4220,6 +4485,47 @@ std::string editor::Factory::createParticleSystemComponent(int indentSpaces, Ent
     std::ostringstream code;
     const std::string ind = indentation(indentSpaces);
     code << ind << "ParticleSystemComponent particles;\n";
+    if (p.useUnscaledTime) code << ind << "particles.useUnscaledTime = true;\n";
+
+    // version 2: the modules' non-default fields (particles/ParticleFields)
+    if (p.version >= 2) {
+        code << ind << "particles.version = " << formatInt(p.version) << ";\n";
+        for (const particles::FieldInfo& field : particles::fields()) {
+            if (particles::isDefault(field, p)) continue;
+            const std::string target = "particles." + field.path();
+            const void* value = field.get(p);
+            switch (field.type) {
+                case particles::FieldType::Bool: code << ind << target << " = " << formatBool(*static_cast<const bool*>(value)) << ";\n"; break;
+                case particles::FieldType::Int: code << ind << target << " = " << formatInt(*static_cast<const int*>(value)) << ";\n"; break;
+                case particles::FieldType::UInt: code << ind << target << " = " << formatUInt(*static_cast<const unsigned int*>(value)) << ";\n"; break;
+                case particles::FieldType::Float: code << ind << target << " = " << formatFloat(*static_cast<const float*>(value)) << ";\n"; break;
+                case particles::FieldType::Vector2: code << ind << target << " = " << formatVector2(*static_cast<const Vector2*>(value)) << ";\n"; break;
+                case particles::FieldType::Vector3: code << ind << target << " = " << formatVector3(*static_cast<const Vector3*>(value)) << ";\n"; break;
+                case particles::FieldType::Curve: code << ind << target << " = " << formatMinMaxCurve(*static_cast<const MinMaxCurve*>(value)) << ";\n"; break;
+                case particles::FieldType::Gradient: code << ind << target << " = " << formatMinMaxGradient(*static_cast<const MinMaxGradient*>(value)) << ";\n"; break;
+                case particles::FieldType::Enum:
+                    code << ind << target << " = (" << field.enumType << ")" << formatInt(*static_cast<const int*>(value)) << ";\n";
+                    break;
+                case particles::FieldType::String: code << ind << target << " = " << formatString(*static_cast<const std::string*>(value)) << ";\n"; break;
+                case particles::FieldType::IntList:
+                    for (int frame : *static_cast<const std::vector<int>*>(value)) {
+                        code << ind << target << ".push_back(" << formatInt(frame) << ");\n";
+                    }
+                    break;
+                case particles::FieldType::Bursts:
+                    for (const ParticleEmissionBurst& burst : *static_cast<const std::vector<ParticleEmissionBurst>*>(value)) {
+                        code << ind << "{ ParticleEmissionBurst b; b.time = " << formatFloat(burst.time) << "; b.count = " << formatMinMaxCurve(burst.count)
+                             << "; b.cycles = " << formatInt(burst.cycles) << "; b.interval = " << formatFloat(burst.interval)
+                             << "; b.probability = " << formatFloat(burst.probability) << "; " << target << ".push_back(b); }\n";
+                    }
+                    break;
+            }
+        }
+        if (!p.enabled) code << ind << "particles.enabled = false;\n";
+        addComponentCode(code, ind, sceneName, entityName, entity, "ParticleSystemComponent", "particles", assignExisting);
+        return code.str();
+    }
+
     code << ind << "particles.maxParticles = " << formatUInt(p.maxParticles) << ";\n";
     code << ind << "particles.emitter = " << formatBool(p.emitter) << ";\n";
     code << ind << "particles.loop = " << formatBool(p.loop) << ";\n";

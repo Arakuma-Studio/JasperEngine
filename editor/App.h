@@ -18,6 +18,7 @@
 #include "window/CodeEditor.h"
 #include "window/AnimationWindow.h"
 #include "window/PoseAnimationWindow.h"
+#include "window/AnimatorWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
@@ -176,6 +177,7 @@ namespace jasperengine::editor{
         ImageViewerWindow* imageViewerWindow;
         AnimationWindow* animationWindow;
         PoseAnimationWindow* poseAnimationWindow;
+        AnimatorWindow* animatorWindow = nullptr;
         TerrainEditWindow* terrainEditWindow;
         TextureSynthesisWindow* textureSynthesisWindow;
         VertexAnimationBakerWindow* vertexAnimationBakerWindow;
@@ -382,6 +384,9 @@ namespace jasperengine::editor{
         void requestScenePlayFocus(uint32_t sceneId) override;
         std::string backgroundWorkConflict(const std::string& action) const override;
 
+        // Assets > Import Unity Particle System...: a .prefab / .unity picked, imported into assets/fx (one undo step)
+        void importUnityParticles();
+
         void registerAlert(std::string title, std::string message) override;
         void registerAlert(std::string title, std::string message, std::string note); // note is rendered highlighted below the message
         // A file is only referenceable from inside the assets root
@@ -436,6 +441,7 @@ namespace jasperengine::editor{
         ProjectWindow* getProjectWindow() const;
         AnimationWindow* getAnimationWindow() const;
         PoseAnimationWindow* getPoseAnimationWindow() const;
+        AnimatorWindow* getAnimatorWindow() const;
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
         TextureSynthesisWindow* getTextureSynthesisWindow() const;

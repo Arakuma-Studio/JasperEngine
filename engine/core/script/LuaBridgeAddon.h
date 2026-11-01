@@ -5,6 +5,8 @@
 #define LuaBridgeAddon_h
 
 #include "Scene.h"
+#include "util/CanvasScaler.h"
+#include "util/TextEffects.h"
 #include "Input.h"
 #include "FileData.h"
 #include "thread/ResourceProgress.h"
@@ -79,6 +81,7 @@ namespace luabridge
 
     template<> struct Stack<FogType> : EnumWrapper<FogType>{};
     template<> struct Stack<CameraType> : EnumWrapper<CameraType>{};
+    template<> struct Stack<PlayMode> : EnumWrapper<PlayMode>{};
     template<> struct Stack<FrustumPlane> : EnumWrapper<FrustumPlane>{};
     template<> struct Stack<LightType> : EnumWrapper<LightType>{};
     template<> struct Stack<LightShading> : EnumWrapper<LightShading>{};
@@ -100,6 +103,12 @@ namespace luabridge
     // Canvas Groups (ui canvas group spec 7.6)
     template<> struct Stack<CanvasGroupRenderMode> : EnumWrapper<CanvasGroupRenderMode>{};
     template<> struct Stack<AlphaTweenTarget> : EnumWrapper<AlphaTweenTarget>{};
+    // ui-scaling-text: the Canvas Scaler and Text Effect enums
+    template<> struct Stack<UIScaleMode> : EnumWrapper<UIScaleMode>{};
+    template<> struct Stack<ScreenMatchMode> : EnumWrapper<ScreenMatchMode>{};
+    template<> struct Stack<PhysicalUnit> : EnumWrapper<PhysicalUnit>{};
+    template<> struct Stack<TextEffectType> : EnumWrapper<TextEffectType>{};
+    template<> struct Stack<TextEffectMix> : EnumWrapper<TextEffectMix>{};
     template<> struct Stack<PivotPreset> : EnumWrapper<PivotPreset>{};
 
     template<> struct Stack<ScrollbarType> : EnumWrapper<ScrollbarType>{};
@@ -122,6 +131,23 @@ namespace luabridge
     template<> struct Stack<ReflectionProbeMode> : EnumWrapper<ReflectionProbeMode>{};
     template<> struct Stack<ReflectionProbeUpdateMode> : EnumWrapper<ReflectionProbeUpdateMode>{};
     template<> struct Stack<ParticleEmitterShape> : EnumWrapper<ParticleEmitterShape>{};
+    // version 2 Particle Systems (particles spec 6.6)
+    template<> struct Stack<ParticleSystemSimulationSpace> : EnumWrapper<ParticleSystemSimulationSpace>{};
+    template<> struct Stack<ParticleSystemScalingMode> : EnumWrapper<ParticleSystemScalingMode>{};
+    template<> struct Stack<ParticleSystemStopAction> : EnumWrapper<ParticleSystemStopAction>{};
+    template<> struct Stack<ParticleSystemEmitterVelocityMode> : EnumWrapper<ParticleSystemEmitterVelocityMode>{};
+    template<> struct Stack<ParticleSystemGravitySource> : EnumWrapper<ParticleSystemGravitySource>{};
+    template<> struct Stack<ParticleSystemStopBehavior> : EnumWrapper<ParticleSystemStopBehavior>{};
+    template<> struct Stack<ParticleSystemShapeType> : EnumWrapper<ParticleSystemShapeType>{};
+    template<> struct Stack<ParticleSystemShapeMultiModeValue> : EnumWrapper<ParticleSystemShapeMultiModeValue>{};
+    template<> struct Stack<ParticleSystemInheritVelocityMode> : EnumWrapper<ParticleSystemInheritVelocityMode>{};
+    template<> struct Stack<ParticleSystemAnimationMode> : EnumWrapper<ParticleSystemAnimationMode>{};
+    template<> struct Stack<ParticleSystemAnimationType> : EnumWrapper<ParticleSystemAnimationType>{};
+    template<> struct Stack<ParticleSystemAnimationRowMode> : EnumWrapper<ParticleSystemAnimationRowMode>{};
+    template<> struct Stack<ParticleSystemAnimationTimeMode> : EnumWrapper<ParticleSystemAnimationTimeMode>{};
+    template<> struct Stack<ParticleSystemRenderMode> : EnumWrapper<ParticleSystemRenderMode>{};
+    template<> struct Stack<ParticleSystemSortMode> : EnumWrapper<ParticleSystemSortMode>{};
+    template<> struct Stack<ParticleSystemRenderSpace> : EnumWrapper<ParticleSystemRenderSpace>{};
     template<> struct Stack<RigidbodyMotionQuality> : EnumWrapper<RigidbodyMotionQuality>{};
     template<> struct Stack<Joint3DType> : EnumWrapper<Joint3DType>{};
     template<> struct Stack<ShaderType> : EnumWrapper<ShaderType>{};

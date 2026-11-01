@@ -17,6 +17,8 @@
 #include "action/ScaleTween.h"
 #include "action/Animation.h"
 #include "action/ParticleSystem.h"
+#include "action/ParticleSystemModule.h"
+#include "particles/ParticleFields.h"
 #include "action/SpriteAnimation.h"
 #include "action/Ease.h"
 #include "action/keyframe/KeyframeTracks.h"
@@ -27,6 +29,38 @@
 #include "action/keyframe/TranslateTracks.h"
 
 using namespace jasperengine;
+
+namespace {
+
+    ParticleSystemModule moduleOf(const ParticleSystem* self, const char* module){
+        ParticleSystemModule view;
+        view.scene = self->getScene();
+        view.entity = self->getEntity();
+        const auto& names = particles::moduleNames();
+        for (size_t i = 0; i < names.size(); i++){
+            if (names[i] == module) view.module = (int)i;
+        }
+        return view;
+    }
+
+    luabridge::LuaRef upgradeReportToLua(lua_State* L, const particles::UpgradeReport& report){
+        luabridge::LuaRef table = luabridge::newTable(L);
+        table["upgraded"] = report.upgraded;
+        luabridge::LuaRef items = luabridge::newTable(L);
+        int i = 1;
+        for (const particles::UpgradeItem& item : report.items){
+            luabridge::LuaRef entry = luabridge::newTable(L);
+            entry["field"] = item.field;
+            entry["status"] = std::string(particles::upgradeStatusName(item.status));
+            entry["message"] = item.message;
+            entry["maxError"] = item.maxError;
+            items[i++] = entry;
+        }
+        table["items"] = items;
+        return table;
+    }
+
+}
 
 void LuaBinding::registerActionClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
@@ -152,9 +186,63 @@ void LuaBinding::registerActionClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<ParticleSystem, Action>("ParticleSystem")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        // ParticleSystem(scene): version 1 (legacy); ParticleSystem(scene, true): version 2 (modules)
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, bool), void (*) (Scene*, Entity)> ()
         .addProperty("enabled", &ParticleSystem::isEnabled, &ParticleSystem::setEnabled)
         .addFunction("reset", &ParticleSystem::reset)
+        // ---- version 2: Unity's control (particles spec 6.6); version 1 keeps start/stop/pause
+        .addFunction("play",
+            luabridge::overload<ParticleSystem*>(+[](ParticleSystem* self) { self->play(true); }),
+            luabridge::overload<ParticleSystem*, bool>(+[](ParticleSystem* self, bool withChildren) { self->play(withChildren); }))
+        .addFunction("stop",
+            luabridge::overload<ParticleSystem*>(+[](ParticleSystem* self) { self->stop(true, ParticleSystemStopBehavior::StopEmitting); }),
+            luabridge::overload<ParticleSystem*, bool>(+[](ParticleSystem* self, bool withChildren) { self->stop(withChildren, ParticleSystemStopBehavior::StopEmitting); }),
+            luabridge::overload<ParticleSystem*, bool, ParticleSystemStopBehavior>(+[](ParticleSystem* self, bool withChildren, ParticleSystemStopBehavior behavior) { self->stop(withChildren, behavior); }))
+        .addFunction("pause",
+            luabridge::overload<ParticleSystem*>(+[](ParticleSystem* self) { self->pause(true); }),
+            luabridge::overload<ParticleSystem*, bool>(+[](ParticleSystem* self, bool withChildren) { self->pause(withChildren); }))
+        .addFunction("clear",
+            luabridge::overload<ParticleSystem*>(+[](ParticleSystem* self) { self->clear(true); }),
+            luabridge::overload<ParticleSystem*, bool>(+[](ParticleSystem* self, bool withChildren) { self->clear(withChildren); }))
+        .addFunction("emit", &ParticleSystem::emit)
+        .addFunction("simulate",
+            luabridge::overload<ParticleSystem*, float>(+[](ParticleSystem* self, float t) { self->simulate(t, true, true); }),
+            luabridge::overload<ParticleSystem*, float, bool>(+[](ParticleSystem* self, float t, bool withChildren) { self->simulate(t, withChildren, true); }),
+            luabridge::overload<ParticleSystem*, float, bool, bool>(+[](ParticleSystem* self, float t, bool withChildren, bool restart) { self->simulate(t, withChildren, restart); }))
+        .addFunction("isPlaying", &ParticleSystem::isPlaying)
+        .addFunction("isPaused", &ParticleSystem::isPaused)
+        .addFunction("isStopped", &ParticleSystem::isStopped)
+        .addFunction("isEmitting", &ParticleSystem::isEmitting)
+        .addFunction("isAlive",
+            luabridge::overload<const ParticleSystem*>(+[](const ParticleSystem* self) -> bool { return self->isAlive(true); }),
+            luabridge::overload<const ParticleSystem*, bool>(+[](const ParticleSystem* self, bool withChildren) -> bool { return self->isAlive(withChildren); }))
+        .addProperty("particleCount", &ParticleSystem::getParticleCount)
+        .addProperty("time", &ParticleSystem::getTime, &ParticleSystem::setTime)
+        .addProperty("randomSeed", &ParticleSystem::getRandomSeed, &ParticleSystem::setRandomSeed)
+        .addProperty("useAutoRandomSeed", &ParticleSystem::getUseAutoRandomSeed, &ParticleSystem::setUseAutoRandomSeed)
+        .addProperty("useUnscaledTime", &ParticleSystem::getUseUnscaledTime, &ParticleSystem::setUseUnscaledTime)
+        .addProperty("version", &ParticleSystem::getVersion, &ParticleSystem::setVersion)
+        // the upgrade report: {upgraded, items = {{field, status, message, maxError}, ...}}
+        .addFunction("upgrade",
+            luabridge::overload<ParticleSystem*, lua_State*>(+[](ParticleSystem* self, lua_State* L) -> luabridge::LuaRef { return upgradeReportToLua(L, self->upgrade(false)); }),
+            luabridge::overload<ParticleSystem*, bool, lua_State*>(+[](ParticleSystem* self, bool force, lua_State* L) -> luabridge::LuaRef { return upgradeReportToLua(L, self->upgrade(force)); }))
+        // the modules (live views: `local e = ps.emission; e.rateOverTime = 0` changes the system)
+        .addProperty("main", +[](const ParticleSystem* self) -> ParticleSystemModule { return moduleOf(self, "main"); })
+        .addProperty("emission", +[](const ParticleSystem* self) -> ParticleSystemModule { return moduleOf(self, "emission"); })
+        .addProperty("shape", +[](const ParticleSystem* self) -> ParticleSystemModule { return moduleOf(self, "shape"); })
+        .addProperty("velocityOverLifetime", +[](const ParticleSystem* self) -> ParticleSystemModule { return moduleOf(self, "velocityOverLifetime"); })
+        .addProperty("limitVelocityOverLifetime", +[](const ParticleSystem* self) -> ParticleSystemModule { return moduleOf(self, "limitVelocityOverLifetime"); })
+        .addProperty("inheritVelocity", +[](const ParticleSystem* self) -> ParticleSystemModule { return moduleOf(self, "inheritVelocity"); })
+        .addProperty("forceOverLifetime", +[](const ParticleSystem* self) -> ParticleSystemModule { return moduleOf(self, "forceOverLifetime"); })
+        .addProperty("colorOverLifetime", +[](const ParticleSystem* self) -> ParticleSystemModule { return moduleOf(self, "colorOverLifetime"); })
+        .addProperty("colorBySpeed", +[](const ParticleSystem* self) -> ParticleSystemModule { return moduleOf(self, "colorBySpeed"); })
+        .addProperty("sizeOverLifetime", +[](const ParticleSystem* self) -> ParticleSystemModule { return moduleOf(self, "sizeOverLifetime"); })
+        .addProperty("sizeBySpeed", +[](const ParticleSystem* self) -> ParticleSystemModule { return moduleOf(self, "sizeBySpeed"); })
+        .addProperty("rotationOverLifetime", +[](const ParticleSystem* self) -> ParticleSystemModule { return moduleOf(self, "rotationOverLifetime"); })
+        .addProperty("rotationBySpeed", +[](const ParticleSystem* self) -> ParticleSystemModule { return moduleOf(self, "rotationBySpeed"); })
+        .addProperty("noise", +[](const ParticleSystem* self) -> ParticleSystemModule { return moduleOf(self, "noise"); })
+        .addProperty("textureSheetAnimation", +[](const ParticleSystem* self) -> ParticleSystemModule { return moduleOf(self, "textureSheetAnimation"); })
+        .addProperty("renderer", +[](const ParticleSystem* self) -> ParticleSystemModule { return moduleOf(self, "renderer"); })
         .addProperty("rate", &ParticleSystem::getRate, &ParticleSystem::setRate)
         .addProperty("maxPerUpdate", &ParticleSystem::getMaxPerUpdate, &ParticleSystem::setMaxPerUpdate)
         .addProperty("emitter", &ParticleSystem::isEmitter, &ParticleSystem::setEmitter)

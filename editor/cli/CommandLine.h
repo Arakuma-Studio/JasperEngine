@@ -45,6 +45,9 @@ namespace jasperengine::editor {
         // Bakes or imports a Vertex Animation (.vat + .vat.glb), no window (editor/vat/VatCli.h)
         static int runBakeVatCommand(int argc, char** argv, const char* executableName);
 
+        // Imports Unity Particle Systems (.prefab / .unity) as engine prefabs, no window (editor/unity/UnityParticleImport.h)
+        static int runImportUnityParticlesCommand(int argc, char** argv, const char* executableName);
+
         // Generates sprite normal maps (sprites, sheets, GIF/APNG, tiles), no window (editor/spritenormals/SpriteNormalsCli.h)
         static int runGenerateSpriteNormalsCommand(int argc, char** argv, const char* executableName);
 

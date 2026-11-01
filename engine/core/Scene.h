@@ -42,10 +42,14 @@ namespace jasperengine{
 
         UIEventState uiEventState;
 
+        // the Canvas Scaler's last result (updateCanvasScale)
+        CanvasScalerResult canvasScale;
+
         std::vector<std::pair<std::string, std::shared_ptr<SubSystem>>> systems;
 
         // Alive from construction to the start of the destructor (see getLifetime)
         std::shared_ptr<char> lifetime;
+        bool tearingDown = false;
 
         void init();
         Entity createDefaultCamera();
@@ -102,6 +106,11 @@ namespace jasperengine{
         // lua_close at shutdown). The scene destroys all its entities, so nothing leaks.
         std::weak_ptr<char> getLifetime() const;
 
+        // Being deleted (set first thing in the destructor): what goes with it sends no
+        // callbacks (physics contact Exits...). Not Scene::destroy, which also runs when a
+        // view is recreated.
+        bool isTearingDown() const { return tearingDown; }
+
         void load();
         void destroy();
         void draw();
@@ -110,7 +119,35 @@ namespace jasperengine{
 
         void removeSubscriptionsByTag(const std::string& substring);
 
+        // the Canvas Scaler of the current view, then the camera: a UI scene's camera spans the
+        // UI size, any other the game canvas (Engine::systemViewChanged, includeScene, setCamera)
         void updateCameraSize();
+
+        // Canvas Scaler (the UI's own space). The scene's settings, used unless
+        // useProjectDefault (then Engine::getDefaultCanvasScaler()); a change applies at once
+        // when the view exists (the next frame lays the UI out in it)
+        void setCanvasScaler(const CanvasScalerSettings& settings);
+        const CanvasScalerSettings& getCanvasScaler() const;
+        void setCanvasScalerUseProjectDefault(bool useProjectDefault);
+        bool isCanvasScalerUseProjectDefault() const;
+        // what applies to this scene: its own settings or the project default
+        const CanvasScalerSettings& getEffectiveCanvasScaler() const;
+        // Recomputes the result for a view of viewWidth x viewHeight physical pixels showing a
+        // game canvas of canvasWidth x canvasHeight (updateCameraSize passes the Engine's; the
+        // editor passes the Game view's for the Scene view)
+        void updateCanvasScale(float viewWidth, float viewHeight, float canvasWidth, float canvasHeight, float screenDpi);
+        // {uiWidth, uiHeight, scaleFactor} of the current view (the safe-area contract);
+        // scaled is false under FollowGameCanvas
+        const CanvasScalerResult& getCanvasScale() const;
+        // the native UI of this scene lays out in the scaled UI size: a scaler other than
+        // FollowGameCanvas and a UI camera (CAMERA_UI)
+        bool isUIScaled() const;
+        // the screen HTML UI documents lay out in the scaled UI size (a scaler other than
+        // FollowGameCanvas, whatever the camera)
+        bool isDocumentScaled() const;
+        // game canvas pixels <-> this scene's UI units (identity when not scaled)
+        Vector2 canvasToUI(const Vector2& canvasPoint) const;
+        Vector2 uiToCanvas(const Vector2& uiPoint) const;
 
         void setCamera(Camera* camera);
         void setCamera(Entity camera);

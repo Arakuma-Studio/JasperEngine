@@ -90,6 +90,7 @@ void Workspace::clear() {
     physicsPlacementSettings = PhysicsPlacementSettings();
     spriteNormalsSettings = SpriteNormalsWindowSettings();
     simulateTouch = false;
+    customResolutions.clear();
     sceneStates.clear();
     adoptedLegacy = false;
 }
@@ -159,6 +160,19 @@ void Workspace::load(const fs::path& projectPath) {
     readSection("touch simulation", source, [&]() {
         if (!root["simulateTouch"]) return;
         simulateTouch = root["simulateTouch"].as<bool>();
+    });
+
+    readSection("the Game view resolutions", source, [&]() {
+        if (!root["gameResolutions"] || !root["gameResolutions"].IsSequence()) return;
+        for (const YAML::Node& entry : root["gameResolutions"]) {
+            GameResolution resolution;
+            resolution.name = entry["name"] ? entry["name"].as<std::string>() : std::string();
+            resolution.width = entry["width"] ? entry["width"].as<int>() : 0;
+            resolution.height = entry["height"] ? entry["height"].as<int>() : 0;
+            resolution.dpi = entry["dpi"] ? entry["dpi"].as<float>() : 0.0f;
+            if (!resolution.name.empty() && isValidGameResolution(resolution.width, resolution.height, resolution.dpi))
+                customResolutions.push_back(resolution);
+        }
     });
 
     if (root["scenes"] && root["scenes"].IsMap()) {
@@ -280,6 +294,18 @@ bool Workspace::save(const Project* project) {
     root["physicsPlacement"] = Stream::encodePhysicsPlacementSettings(project->getPhysicsPlacementSettings());
     root["spriteNormals"] = Stream::encodeSpriteNormalsSettings(project->getSpriteNormalsSettings());
     root["simulateTouch"] = project->isSimulateTouch();
+    if (!project->getCustomResolutions().empty()) {
+        YAML::Node resolutions(YAML::NodeType::Sequence);
+        for (const GameResolution& resolution : project->getCustomResolutions()) {
+            YAML::Node entry;
+            entry["name"] = resolution.name;
+            entry["width"] = resolution.width;
+            entry["height"] = resolution.height;
+            if (resolution.dpi > 0.0f) entry["dpi"] = resolution.dpi;
+            resolutions.push_back(entry);
+        }
+        root["gameResolutions"] = resolutions;
+    }
 
     YAML::Node scenesNode(YAML::NodeType::Map);
     for (const SceneProject& sceneProject : project->getScenes()) {

@@ -59,6 +59,10 @@ editor::SceneRender2D::~SceneRender2D(){
         delete pair.second;
     }
 
+    for (auto& pair : stickLines) {
+        delete pair.second;
+    }
+
     for (auto& pair : bodyLines) {
         delete pair.second;
     }
@@ -134,6 +138,34 @@ void editor::SceneRender2D::createOrUpdateLight2DLines(Entity entity, const Tran
     float markSize = overlayPx(6.0f) * zoom;
     lightLinesObj->addLine(center + Vector3(-markSize, 0.0f, 0.0f), center + Vector3(markSize, 0.0f, 0.0f), lightColor);
     lightLinesObj->addLine(center + Vector3(0.0f, -markSize, 0.0f), center + Vector3(0.0f, markSize, 0.0f), lightColor);
+}
+
+// the circles the knob travels in (handle range) and reads 0 in (dead zone), on the base
+void editor::SceneRender2D::createOrUpdateStickLines(Entity entity, const OnScreenStickComponent& stick, bool visible){
+    LineRenderer* linesObj = stickLines[entity];
+    linesObj->clearLines();
+
+    const Transform* transform = scene->findComponent<Transform>(stick.background);
+    const RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(stick.background);
+    const bool shown = visible && transform && layout;
+    linesObj->setVisible(shown);
+    if (!shown){
+        return;
+    }
+
+    const Vector3 center = transform->modelMatrix * Vector3(layout->width / 2.0f, layout->height / 2.0f, 0.0f);
+    const Vector3 edge = transform->modelMatrix * Vector3(static_cast<float>(layout->width), layout->height / 2.0f, 0.0f);
+    const float radius = (edge - center).length();
+    if (radius <= 0.0f){
+        return;
+    }
+    LineDrawUtils::addCircle2D(linesObj, center, radius * stick.handleRange, Vector4(0.3f, 0.8f, 1.0f, 0.9f), 48);
+    if (stick.deadZone > 0.0f){
+        LineDrawUtils::addCircle2D(linesObj, center, radius * stick.deadZone, Vector4(1.0f, 0.5f, 0.3f, 0.9f), 32);
+    }
+    if (stick.mode == OnScreenStickMode::DYNAMIC){
+        LineDrawUtils::addCircle2D(linesObj, center, radius * stick.moveThreshold, Vector4(0.3f, 0.8f, 1.0f, 0.4f), 48);
+    }
 }
 
 void editor::SceneRender2D::createOrUpdateShadowCaster2DLines(Entity entity, const Transform& transform, const ShadowCaster2DComponent& occluder, bool visible, bool highlighted){
@@ -758,6 +790,7 @@ void editor::SceneRender2D::dropGoneGizmos(){
     dropGoneGizmos(linePointLines, render);
     dropGoneGizmos(polygonPointLines, render);
     dropGoneGizmos(trackLines, render);
+    dropGoneGizmos(stickLines, render);
     dropGoneGizmos(cameraObjects, render, &CameraObjects::icon, &CameraObjects::lines);
     dropGoneGizmos(soundObjects, render, &SoundObjects::icon);
     dropGoneGizmos(light2DObjects, render, &Light2DObjects::icon);
@@ -780,6 +813,9 @@ void editor::SceneRender2D::hideAllGizmos(){
         pair.second->setVisible(false);
     }
     for (auto& pair : light2DLines) {
+        pair.second->setVisible(false);
+    }
+    for (auto& pair : stickLines) {
         pair.second->setVisible(false);
     }
     for (auto& pair : shadowCaster2DLines) {
@@ -871,8 +907,10 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
     std::set<Entity> currentBodies;
     std::set<Entity> currentJoints;
     std::set<Entity> currentLights2D;
+    std::set<Entity> currentSticks;
     std::set<Entity> currentOccluders2D;
     std::set<Entity> currentLinePoints;
+    std::set<Entity> currentParticleShapes;
     std::set<Entity> currentPolygonPoints;
     std::set<Entity> currentTrackLines;
     std::set<Entity> currentCameras;
@@ -949,6 +987,12 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             createOrUpdateBodyLines(entity, transform, body, isVisible, highlighted);
         }
 
+        if (signature.test(scene->getComponentId<OnScreenStickComponent>())){
+            currentSticks.insert(entity);
+            ensureOverlayLines(stickLines, entity);
+            createOrUpdateStickLines(entity, scene->getComponent<OnScreenStickComponent>(entity), isDescendantSelected(entity));
+        }
+
         if (signature.test(scene->getComponentId<Light2DComponent>()) && signature.test(scene->getComponentId<Transform>())){
             Light2DComponent& light2d = scene->getComponent<Light2DComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
@@ -985,6 +1029,10 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             bool highlighted = isDescendantSelected(entity);
 
             createOrUpdateShadowCaster2DLines(entity, transform, shadowcaster2d, highlighted, highlighted);
+        }
+
+        if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
+            updateParticleShapeLines(entity, selectedEntities.find(entity) != selectedEntities.end(), currentParticleShapes);
         }
 
         if (signature.test(scene->getComponentId<LineRendererComponent>()) && signature.test(scene->getComponentId<Transform>())){
@@ -1205,6 +1253,15 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
         }
     }
 
+    for (auto it = stickLines.begin(); it != stickLines.end();) {
+        if (currentSticks.find(it->first) == currentSticks.end()) {
+            delete it->second;
+            it = stickLines.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
     auto itLight2D = light2DLines.begin();
     while (itLight2D != light2DLines.end()) {
         if (currentLights2D.find(itLight2D->first) == currentLights2D.end()) {
@@ -1234,6 +1291,8 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             ++itShadowCaster2D;
         }
     }
+
+    dropParticleShapeLines(currentParticleShapes);
 
     auto itLinePoints = linePointLines.begin();
     while (itLinePoints != linePointLines.end()) {

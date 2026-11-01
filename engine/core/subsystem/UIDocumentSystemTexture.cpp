@@ -198,6 +198,8 @@ Rml::ElementDocument* UIDocumentSystem::textureLoadDocument(Entity entity, UIDoc
         // p1-lua: DOM change events, and the data models this document's scripts made
         Rml::Context* rmlContext = entry.context->getRmlContext();
         HtmlUIEventNames::installChangeSynthesizer(rmlContext);
+        // its elements find the scene too (<particle-system> makes its prefab there)
+        contextScenes()[rmlContext] = scene;
         if (scriptState){
             for (auto& pair : scriptState->models){
                 if (pair.second->owner == entity)
@@ -271,6 +273,7 @@ void UIDocumentSystem::textureRemoveEntity(Entity entity){
     }
     HtmlUIElementRegistry::freeContext(rmlContext);
     HtmlUIFileLog::forgetRenderer(&entry.context->getRenderer());
+    contextScenes().erase(rmlContext);
 
     // the target object stays (consumers may still point at it), its GPU texture goes
     if (entry.target)
@@ -479,6 +482,21 @@ void UIDocumentSystem::textureMouseLeave(){
     }
 }
 
+void UIDocumentSystem::textureCancelAll(){
+    if (!textureState)
+        return;
+
+    // ui-multitouch D6: every finger and the mouse of every texture document end without a click
+    for (auto& pair : textureState->entries){
+        HtmlUIContext& context = *pair.second.context;
+        const std::vector<int> touches = context.getTouches();
+        for (int pointer : touches)
+            context.processTouchCancel(pointer);
+        context.processMouseCancel();
+    }
+    textureState->captured.clear();
+}
+
 bool UIDocumentSystem::dispatchWorldPointer(int pointer, int button, float canvasX, float canvasY, int mods, PointerPhase phase, bool touch, bool covered){
     if (!textureState || textureState->entries.empty())
         return false;
@@ -517,15 +535,15 @@ bool UIDocumentSystem::dispatchWorldPointer(int pointer, int button, float canva
                 case PointerPhase::UP: consumed = context.processTouchEnd(pointer, point, rmlMods); break;
                 case PointerPhase::CANCEL: context.processTouchCancel(pointer); break;
             }
+        }else if (phase == PointerPhase::CANCEL){
+            // ui-multitouch D6: the held buttons let go without a click
+            context.processMouseCancel();
         }else{
             consumed = context.processMouseMove(point, rmlMods);
             if (phase == PointerPhase::DOWN){
                 consumed = context.processMouseButtonDown(rmlButton, rmlMods);
             }else if (phase == PointerPhase::UP){
                 consumed = context.processMouseButtonUp(rmlButton, rmlMods) || consumed;
-            }else if (phase == PointerPhase::CANCEL){
-                context.processMouseLeave();
-                consumed = false;
             }
         }
         entry.hovered = (phase != PointerPhase::CANCEL) && !(touch && phase == PointerPhase::UP);

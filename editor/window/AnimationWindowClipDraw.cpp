@@ -223,6 +223,25 @@ void AnimationWindowClip::drawToolbar(SceneProject* sceneProject){
 
     drawClipCombo(sceneProject);
 
+    // Preview over (anim layers spec 9): for a state above the base layer, a base state under it
+    if (c.getStateLayer() > 0){
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Preview over");
+        ImGui::SameLine();
+        const std::string over = c.getPreviewOver();
+        ImGui::SetNextItemWidth(std::max(Theme::dpi(90.0f), ImGui::CalcTextSize(over.c_str()).x + ImGui::GetFrameHeight() * 2.0f));
+        if (ImGui::BeginCombo("##clip_preview_over", over.empty() ? "None" : over.c_str())){
+            if (ImGui::Selectable("None", over.empty())) c.setPreviewOver("");
+            for (const std::string& state : c.previewOverChoices()){
+                if (ImGui::Selectable((state + "##over").c_str(), state == over)) c.setPreviewOver(state);
+            }
+            ImGui::EndCombo();
+        }
+        UIProbe::item("clip.previewOver");
+        ImGui::SetItemTooltip("Preview this clip on its layer (with its mask) over a base layer state at the playhead, as in the game");
+    }
+
     if (doc){
         ImGui::SameLine();
         ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
@@ -279,20 +298,30 @@ void AnimationWindowClip::drawToolbar(SceneProject* sceneProject){
 void AnimationWindowClip::drawClipCombo(SceneProject* sceneProject){
     AnimationClipController& c = controller();
     std::shared_ptr<AnimationClipDocument> doc = document();
+    // a player with layers: its states grouped by layer ("Holding ▸ Hold", anim layers spec 9)
+    const std::vector<std::pair<std::string, std::vector<std::string>>> groups = c.getStatesByLayer();
+    const bool layered = groups.size() > 1;
     std::string current = !c.getStateName().empty() ? c.getStateName()
                         : doc ? fs::u8path(doc->path()).filename().u8string() : std::string("(No Clip)");
+    if (layered && !c.getStateName().empty()) current = c.getLayerName(c.getStateLayer()) + " \xe2\x96\xb8 " + current;
     if (doc && doc->isReadOnly()) current = ICON_FA_LOCK " " + current;
     const float width = std::max(Theme::dpi(150.0f), ImGui::CalcTextSize(current.c_str()).x + ImGui::GetFrameHeight() * 2.0f);
     ImGui::SetNextItemWidth(width);
     if (ImGui::BeginCombo("##clip_combo", current.c_str())){
-        const std::vector<std::string> states = c.getStateNames();
-        for (size_t i = 0; i < states.size(); i++){
-            ImGui::PushID((int)i);
-            if (ImGui::Selectable(states[i].c_str(), states[i] == c.getStateName())){
-                std::string error;
-                if (!openState(states[i], &error)) setNotice(error, true);
+        int id = 0;
+        for (const auto& group : groups){
+            if (layered){
+                ImGui::SeparatorText(group.first.c_str());
             }
-            ImGui::PopID();
+            for (const std::string& state : group.second){
+                ImGui::PushID(id++);
+                const std::string label = layered ? group.first + " \xe2\x96\xb8 " + state : state;
+                if (ImGui::Selectable(label.c_str(), state == c.getStateName())){
+                    std::string error;
+                    if (!openState(state, &error)) setNotice(error, true);
+                }
+                ImGui::PopID();
+            }
         }
         // the entity Animations targeting the root stay reachable (R31)
         SceneProject* bound = boundScene();
@@ -610,6 +639,7 @@ void AnimationWindowClip::drawRowLabel(const Row& row, size_t index, ImVec2 pos,
             selectKeys(keys, io.KeyShift || io.KeyCtrl);
         }
         if (!row.message.empty()) ImGui::SetItemTooltip("%s\n%s", row.label.c_str(), row.message.c_str());
+        else if (!row.masked.empty()) ImGui::SetItemTooltip("%s\n%s", row.label.c_str(), row.masked.c_str());
         else ImGui::SetItemTooltip("%s", row.label.c_str());
         ImGui::PopID();
         // the leaf name, elided in its middle; " : Channel" and the missing mark always show
@@ -620,14 +650,17 @@ void AnimationWindowClip::drawRowLabel(const Row& row, size_t index, ImVec2 pos,
         const float room = labelEnd - x - ImGui::CalcTextSize((icon + suffix).c_str()).x;
         const std::string shown = icon + elideMiddle(name, std::max(room, ImGui::CalcTextSize("...").x)) + suffix;
         drawList->PushClipRect(pos, ImVec2(labelEnd, pos.y + height), true);
-        drawList->AddText(ImVec2(x, textY), row.missing ? color(Theme::Colors::WarningText) : ImGui::GetColorU32(ImGuiCol_Text), shown.c_str());
+        // a track the layer's mask hides is dimmed (anim layers spec 9)
+        drawList->AddText(ImVec2(x, textY), row.missing ? color(Theme::Colors::WarningText) :
+                          !row.masked.empty() ? ImGui::GetColorU32(ImGuiCol_TextDisabled) : ImGui::GetColorU32(ImGuiCol_Text), shown.c_str());
         drawList->PopClipRect();
         return;
     }
     // a component row (x / y / z, a blend shape, the lattice point count)
     drawList->PushClipRect(pos, ImVec2(labelEnd, pos.y + height), true);
     drawList->AddText(ImVec2(pos.x + m.indent * 2.0f + 4.0f * m.s, textY),
-                      row.missing ? color(Theme::Colors::WarningText) : color(Theme::Colors::SubtleText), row.label.c_str());
+                      row.missing ? color(Theme::Colors::WarningText) :
+                      !row.masked.empty() ? ImGui::GetColorU32(ImGuiCol_TextDisabled) : color(Theme::Colors::SubtleText), row.label.c_str());
     drawList->PopClipRect();
 }
 

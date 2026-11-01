@@ -720,7 +720,21 @@ void editor::InspectorWindow::drawRigidbody2DComponent(ComponentType cpType, Sce
             if (!shape.sensor){
                 propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".sensorEvents", "Sensor Events", sceneProject, entities);
             }
+            // Box2D's broad phase never pairs a kinematic sensor with static or kinematic bodies
+            if (shape.sensor && bodyRef.type == BodyType::KINEMATIC){
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::TextUnformatted("Note");
+                ImGui::TableSetColumnIndex(1);
+                ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 196, 64, 255));
+                ImGui::TextWrapped("Box2D never pairs kinematic sensors with static or kinematic bodies: make the other body dynamic (gravity scale 0) to detect it");
+                ImGui::PopStyleColor();
+            }
         }
+        // physics-contacts D9: the collider's onCollision*2D / onTrigger*2D also go to this GameObject
+        RowSettings receiverSettings;
+        receiverSettings.help = "Its contact callbacks (onCollisionEnter2D, onTriggerEnter2D...) also go to this GameObject's scripts (Unity: a child collider's own scripts)";
+        propertyRow(RowPropertyType::LocalEntity, cpType, shapeKey + ".receiver", "Send Callbacks To", sceneProject, entities, receiverSettings);
         if (shape.type == Collider2DType::POLYGON){
             ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubtleText);
             propertyHeader("Reset Collider");
@@ -761,6 +775,11 @@ void editor::InspectorWindow::drawRigidbody2DComponent(ComponentType cpType, Sce
             }
         }
         endTable();
+    }
+
+    // Play: what the body touches, and the contact callbacks its scripts define
+    if (playing && entities.size() == 1){
+        drawPhysicsContacts(sceneProject, entities[0], true);
     }
 }
 

@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include <cmath>
 #include <unordered_map>
 #include "LuaBinding.h"
 #include "script/AsyncOwner.h"
@@ -16,8 +17,10 @@
 #include "manager/ObjectManager.h"
 #include "component/ScriptComponent.h"
 #include "ScriptProperty.h"
+#include "ScriptScheduler.h"
 #include "ScriptEvent.h"
 #include "ScriptMessages.h"
+#include "util/FunctionSubscribe.h"
 #include "ScriptRuntime.h"
 #include "object/EntityHandle.h"
 #include "object/GameObject.h"
@@ -54,6 +57,7 @@
 #include "object/ui/Scrollbar.h"
 #include "object/ui/Progressbar.h"
 #include "object/ui/InputField.h"
+#include "object/ui/OnScreenControls.h"
 #include "object/ui/UIDocument.h"
 #include "subsystem/UIDocumentSystem.h"
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -302,6 +306,15 @@ lua_State* LuaBinding::getLuaState(){
     return luastate;
 }
 
+lua_State* LuaBinding::mainThread(lua_State* L){
+    if (!L) return nullptr;
+    lua_rawgeti(L, LUA_REGISTRYINDEX, LUA_RIDX_MAINTHREAD);
+    lua_State* main = lua_tothread(L, -1);
+    lua_pop(L, 1);
+    return main ? main : L;
+}
+
+
 std::string LuaBinding::getLuaStackErrorString(lua_State* L, int index) {
     if (lua_isstring(L, index)) {
         size_t len = 0;
@@ -386,6 +399,24 @@ void LuaBinding::configureProjectLuaLoader() {
     lua_rawseti(L, -2, 1);
 
     lua_pop(L, 1);
+}
+
+// ui-multitouch D4: a method named like an EventSystem callback (onPointerDown, onDrag...)
+// subscribed to a UIComponent pointer event (x, y) is the old pattern: the engine does not
+// also call it with a PointerEventData while that subscription lives
+static void noteUIPointerSubscription(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag) {
+    ScriptMessage message;
+    if (!methodName || !tag || !ScriptMessages::fromMethodName(methodName, message) || message < ScriptMessage::PointerDown) {
+        return;
+    }
+    if (!luabridge::isInstance<FunctionSubscribe<void(float,float)>>(L, eventIndex)) {
+        return;
+    }
+    auto event = luabridge::get<FunctionSubscribe<void(float,float)>*>(L, eventIndex);
+    if (!event || !event.value()) {
+        return;
+    }
+    ScriptMessages::noteLegacySubscription(lua_topointer(L, selfIndex), methodName, event.value()->subscriptionProbe(tag));
 }
 
 // Common implementation for event registration
@@ -490,6 +521,7 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
         return lua_error(L);
     }
 
+    noteUIPointerSubscription(L, eventIndex, selfIndex, methodName, lua_tostring(L, tagIndex));
     return 0;
 }
 
@@ -714,6 +746,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerCoreClasses(L);
     registerGameObjectClasses(L);
     registerActionClasses(L);
+    registerParticleClasses(L);
     registerECSClasses(L);
     registerIOClasses(L);
     registerMathClasses(L); 
@@ -725,6 +758,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerHtmlUIAnimeClasses(L);
     registerHtmlUIVectorClasses(L);
     registerHtmlUIMediaClasses(L);
+    registerCoroutineClasses(L);
     registerScriptClasses(L);
 
 #endif //DISABLE_LUA_BINDINGS
@@ -788,6 +822,8 @@ namespace {
 }
 
 void LuaBinding::cleanup(){
+    // no coroutine thread or timer reference may outlive the state
+    ScriptScheduler::clear();
     clearScriptChunks(luastate);
     if (luastate) {
         lua_close(luastate);
@@ -881,6 +917,9 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
     DISPATCH_TYPE(Scrollbar, "scrollbar");
     DISPATCH_TYPE(Progressbar, "progressbar");
     DISPATCH_TYPE(InputField, "inputfield");
+    DISPATCH_TYPE(OnScreenStick, "onscreenstick");
+    DISPATCH_TYPE(OnScreenButton, "onscreenbutton");
+    DISPATCH_TYPE(TouchArea, "toucharea");
     DISPATCH_TYPE(UIDocument, "uidocument");
     DISPATCH_TYPE(Bone, "bone");
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -994,6 +1033,8 @@ void LuaBinding::pushScriptInstanceBase(lua_State* L) {
         {nullptr, nullptr}
     };
     luaL_setfuncs(L, methods, 0);
+    // self:startCoroutine, stopCoroutine, stopAllCoroutines, invoke, invokeRepeating, cancelInvoke, isInvoking
+    ScriptSchedulerLua::addInstanceMethods(L, -1);
     lua_pushvalue(L, -1);
     lua_setfield(L, LUA_REGISTRYINDEX, SCRIPT_INSTANCE_BASE);
 }
@@ -1378,15 +1419,19 @@ void LuaBinding::resolveLuaScriptReferences(lua_State* L, Scene* scene, ScriptEn
     lua_pop(L, 1);
 }
 
-bool LuaBinding::callLuaScriptMethod(Scene* scene, Entity entity, const std::string& method, const std::vector<AnimationEventArg>& args) {
-    return ScriptMessages::sendNamed(scene, entity, method, args);
+bool LuaBinding::callLuaScriptMethod(Scene* scene, Entity entity, const std::string& method, const std::vector<AnimationEventArg>& args,
+                                     bool integers) {
+    return ScriptMessages::sendNamed(scene, entity, method, args, integers);
 }
 
 void LuaBinding::releaseLuaScriptInstance(Scene* scene, ScriptEntry& scriptEntry) {
     // async work owned by the instance (HTTP requests with owner = self) ends without its
-    // callbacks; coroutines' ScriptScheduler::cancelOwner goes next to this
+    // callbacks
     AsyncOwners::scriptInstanceReleased(scriptEntry.instance);
     int ref = static_cast<int>(reinterpret_cast<intptr_t>(scriptEntry.instance));
+    // its coroutines and timers end with it (destroy, scene unload, Play stop), while the
+    // instance still exists for their to-be-closed variables
+    ScriptScheduler::cancelOwner(scriptEntry.instance);
     Entity entity = NULL_ENTITY;
     if (luastate) {
         // Event listeners it owns go, `enabled` assignments to it are ignored
@@ -1407,6 +1452,8 @@ void LuaBinding::releaseLuaScriptInstance(Scene* scene, ScriptEntry& scriptEntry
                 lua_setfield(luastate, -2, "isActiveAndEnabled");
             }
             lua_pop(luastate, 1);
+            // D4's notes of the instance (ui-multitouch): its table address can be reused
+            ScriptMessages::forgetLegacySubscriptions(lua_topointer(luastate, -1));
             // the Event listeners it owns go now, so nothing keeps it alive
             ScriptEvent::releaseOwner(luastate, -1);
         }

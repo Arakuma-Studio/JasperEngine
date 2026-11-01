@@ -76,8 +76,7 @@ bool editor::RenameFileCmd::renameFile(const fs::path& sourceFs, const fs::path&
             }
             // clips and Vertex Animations (their GUIDs follow) and models (their sub-clips): open
             // documents follow, players and animators reload
-            if (isDir || Util::isAnimationClipFile(extension) || Util::isAnimationClipFile(destFs.extension().string()) ||
-                Util::isVertexAnimationFile(extension) || Util::isVertexAnimationFile(destFs.extension().string()) ||
+            if (isDir || Util::isGuidJsonAssetFile(extension) || Util::isGuidJsonAssetFile(destFs.extension().string()) ||
                 Util::isModelFile(extension)) {
                 project->remapClipFilePath(sourceFs, destFs);
             }

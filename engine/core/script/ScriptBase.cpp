@@ -86,7 +86,33 @@ ScriptBase::ScriptBase(Scene* scene, Entity entity)
 }
 
 ScriptBase::~ScriptBase() {
+    ScriptScheduler::cancelOwner(this);
     AsyncOwners::scriptInstanceReleased(this);
+}
+
+TaskId ScriptBase::invoke(std::function<void()> fn, float delay, TimeMode mode) {
+    return ScriptScheduler::after(delay, std::move(fn), mode, this);
+}
+
+TaskId ScriptBase::invokeRepeating(std::function<void()> fn, float delay, float interval, TimeMode mode) {
+    return ScriptScheduler::every(delay, interval, std::move(fn), mode, this);
+}
+
+bool ScriptBase::cancelInvoke(TaskId id) {
+    if (!isInvoking(id)) return false;
+    return ScriptScheduler::cancel(id);
+}
+
+void ScriptBase::cancelAllInvokes() {
+    ScriptScheduler::cancelTimersOf(this);
+}
+
+bool ScriptBase::isInvoking() const {
+    return ScriptScheduler::timerCountOf(this) > 0;
+}
+
+bool ScriptBase::isInvoking(TaskId id) const {
+    return ScriptScheduler::isPending(id) && ScriptScheduler::timerOwner(id) == this;
 }
 
 Scene* ScriptBase::getScene() const {
@@ -171,11 +197,28 @@ void ScriptBase::onJointBreak2D(Joint2D& joint) {
     inherited(*this, ScriptMessage::JointBreak2D);
 }
 
+void ScriptBase::onParticleSystemStopped() {
+    inherited(*this, ScriptMessage::ParticleSystemStopped);
+}
+
 void ScriptBase::onJointBreak(float force, Joint3D& joint) {
     (void)force;
     (void)joint;
     inherited(*this, ScriptMessage::JointBreak);
 }
+
+void ScriptBase::onCollisionEnter(const Collision&) { inherited(*this, ScriptMessage::CollisionEnter); }
+void ScriptBase::onCollisionStay(const Collision&) { inherited(*this, ScriptMessage::CollisionStay); }
+void ScriptBase::onCollisionExit(const Collision&) { inherited(*this, ScriptMessage::CollisionExit); }
+void ScriptBase::onTriggerEnter(const ColliderRef&) { inherited(*this, ScriptMessage::TriggerEnter); }
+void ScriptBase::onTriggerStay(const ColliderRef&) { inherited(*this, ScriptMessage::TriggerStay); }
+void ScriptBase::onTriggerExit(const ColliderRef&) { inherited(*this, ScriptMessage::TriggerExit); }
+void ScriptBase::onCollisionEnter2D(const Collision2D&) { inherited(*this, ScriptMessage::CollisionEnter2D); }
+void ScriptBase::onCollisionStay2D(const Collision2D&) { inherited(*this, ScriptMessage::CollisionStay2D); }
+void ScriptBase::onCollisionExit2D(const Collision2D&) { inherited(*this, ScriptMessage::CollisionExit2D); }
+void ScriptBase::onTriggerEnter2D(const ColliderRef2D&) { inherited(*this, ScriptMessage::TriggerEnter2D); }
+void ScriptBase::onTriggerStay2D(const ColliderRef2D&) { inherited(*this, ScriptMessage::TriggerStay2D); }
+void ScriptBase::onTriggerExit2D(const ColliderRef2D&) { inherited(*this, ScriptMessage::TriggerExit2D); }
 
 void ScriptBase::init() { inherited(*this, ScriptMessage::Init); }
 void ScriptBase::start() { inherited(*this, ScriptMessage::Start); }
@@ -185,3 +228,15 @@ void ScriptBase::onDestroy() { inherited(*this, ScriptMessage::Destroy); }
 void ScriptBase::onApplicationPause(bool paused) { (void)paused; inherited(*this, ScriptMessage::ApplicationPause); }
 void ScriptBase::onApplicationFocus(bool focused) { (void)focused; inherited(*this, ScriptMessage::ApplicationFocus); }
 void ScriptBase::onApplicationQuit() { inherited(*this, ScriptMessage::ApplicationQuit); }
+
+void ScriptBase::onPointerDown(PointerEventData&) { inherited(*this, ScriptMessage::PointerDown); }
+void ScriptBase::onPointerUp(PointerEventData&) { inherited(*this, ScriptMessage::PointerUp); }
+void ScriptBase::onPointerClick(PointerEventData&) { inherited(*this, ScriptMessage::PointerClick); }
+void ScriptBase::onPointerEnter(PointerEventData&) { inherited(*this, ScriptMessage::PointerEnter); }
+void ScriptBase::onPointerExit(PointerEventData&) { inherited(*this, ScriptMessage::PointerExit); }
+void ScriptBase::onInitializePotentialDrag(PointerEventData&) { inherited(*this, ScriptMessage::InitializePotentialDrag); }
+void ScriptBase::onBeginDrag(PointerEventData&) { inherited(*this, ScriptMessage::BeginDrag); }
+void ScriptBase::onDrag(PointerEventData&) { inherited(*this, ScriptMessage::Drag); }
+void ScriptBase::onEndDrag(PointerEventData&) { inherited(*this, ScriptMessage::EndDrag); }
+void ScriptBase::onDrop(PointerEventData&) { inherited(*this, ScriptMessage::Drop); }
+void ScriptBase::onScroll(PointerEventData&) { inherited(*this, ScriptMessage::Scroll); }

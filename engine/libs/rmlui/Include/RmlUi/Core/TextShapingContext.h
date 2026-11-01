@@ -40,6 +40,13 @@ struct TextShapingContext {
 	// character, only at the first code point of a grapheme cluster; empty when the string is not justified). A font engine
 	// applies it in GetStringWidth and GenerateString.
 	Span<const JustificationSpacing> justification = {};
+	// A per-character text animation (fork, T21-2): the state the engine's text effect provider gave the text (null: none,
+	// see ElementText::SetTextEffectProvider), and the index of the first visible character (not white space) of the string
+	// in the text's inline formatting context, so an effect runs on across elements and lines.
+	const void* text_effect = nullptr;
+	int glyph_index_base = 0;
+	// The string is a text-shadow of the text: the effect moves and fades its glyphs, its colour stays the shadow's.
+	bool text_effect_shadow = false;
 };
 
 } // namespace Rml

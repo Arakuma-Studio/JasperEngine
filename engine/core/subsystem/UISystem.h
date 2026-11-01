@@ -9,13 +9,18 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
+#include <memory>
+#include <unordered_map>
 #include <vector>
 
 #include "component/RectTransformComponent.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/TextComponent.h"
+#include "component/TextEffectComponent.h"
 #include "component/ImageComponent.h"
 #include "component/UIComponent.h"
+#include "util/STBText.h"
 #include "component/ButtonComponent.h"
 #include "component/PanelComponent.h"
 #include "component/ScrollbarComponent.h"
@@ -24,6 +29,10 @@
 #include "component/InputFieldComponent.h"
 #include "component/Transform.h"
 #include "component/CameraComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "PointerEventData.h"
+#include "Input.h"
+
 #include "component/CanvasGroupComponent.h"
 #include "component/PointsComponent.h"
 
@@ -45,24 +54,83 @@ namespace jasperengine{
         uint64_t visited = 0;           // entities walked by both
     };
 
+    enum class ScriptMessage : uint8_t;   // script/ScriptMessages.h
+
+    // One pointer of the component UI's EventSystem (ui-multitouch spec 7.1): the mouse (one
+    // state per button: -1 left, -2 right, -3 middle) or a finger (its fingerId). A finger's
+    // state lives from its down to its up; the mouse's left state from its first move.
+    struct UIPointerState {
+        int pointerId = -1;
+        bool touch = false;
+        int button = 0;                       // D_MOUSE_BUTTON_* (a finger: left)
+        bool down = false;
+        // the UI holds this press: its moves and up are consumed (the left button or a finger
+        // on an element; the other buttons when a script handler took them)
+        bool captured = false;
+        Vector2 position = Vector2(0, 0);     // canvas px
+        Vector2 delta = Vector2(0, 0);
+        Vector2 pressPosition = Vector2(0, 0);
+        Entity hit = NULL_ENTITY;             // the raycast target of the last event
+        std::vector<Entity> enterChain;       // hit and its ancestors: the receivers of enter / exit
+        // Unity's PointerEventData targets
+        Entity rawPress = NULL_ENTITY;
+        Entity press = NULL_ENTITY;
+        Entity drag = NULL_ENTITY;
+        bool dragging = false;
+        bool eligibleForClick = false;
+        bool useDragThreshold = true;
+        bool used = false;
+        int clickCount = 0;
+        double clickTime = 0.0;
+        // the legacy callbacks and the built-in widgets: the element pressed (left button or a
+        // finger), what of it this pointer holds, and the element it hovers
+        Entity widget = NULL_ENTITY;
+        Entity hover = NULL_ENTITY;
+        Entity buttonPressed = NULL_ENTITY;   // a Button this pointer holds pressed
+        Entity panelGesture = NULL_ENTITY;    // a Panel this pointer moves or resizes
+        Entity scrollbar = NULL_ENTITY;       // a Scrollbar this pointer drags
+        Entity inputFieldSelecting = NULL_ENTITY;
+        bool legacyDragging = false;
+        bool internalGesture = false;         // panel move / resize, scrollbar: no legacy drag, no click
+        Vector2 panelSizeAcc = Vector2(0, 0); // float to int accumulation of a resize
+        Entity control = NULL_ENTITY;         // the on-screen control this pointer holds
+        // an On-Screen Button (pressWhenPointerEnters) a finger that holds another control (or
+        // went down elsewhere on the UI) slid onto: pressed by this pointer besides its control,
+        // released when it leaves (releaseWhenPointerLeaves), on the up or the cancel
+        Entity enteredButton = NULL_ENTITY;
+    };
+
     class JASPERENGINE_API UISystem : public SubSystem {
 
     private:
 
-        Entity lastUIFromPointer;
-        Entity lastUIFromPointerHover;
-        Entity lastUIFromClick;
-        Entity lastPanelFromPointer;
-        Entity inputFieldSelecting;
-        Vector2 lastPointerDownPos;
-        Vector2 lastPointerPos;
-        Vector2 panelSizeAcc; // to add accumulation from float to int
-        bool pointerDragging;
-        bool pointerInternalGesture; // gesture captured by a built-in widget (panel move/resize, scrollbar)
+        // ---- the EventSystem (UISystemPointer.cpp)
+        std::map<int, UIPointerState> pointers;
+        // the last click of each pointer id (clickCount; outlives a finger's state)
+        struct ClickRecord { Entity element = NULL_ENTITY; double time = -1.0; int count = 0; };
+        std::map<int, ClickRecord> clickRecords;
+        // the event being delivered to a legacy callback (UIComponent:getPointerEventData); one
+        // for every scene: events are delivered one at a time on the main thread
+        static const PointerEventData* currentLegacyEvent;
+        // the owner keys of the on-screen controls' input sources (stable addresses)
+        std::unordered_map<Entity, std::unique_ptr<uint8_t>> controlOwners;
+
+        Entity lastUIFromClick; // the legacy onDoubleClick
         double lastClickTime; // monotonic wall-clock seconds (Engine::getSystemTime)
 
-        int anchorReferenceWidth;
-        int anchorReferenceHeight;
+        static bool reducedMotion;
+
+        bool textEffectsHeld = false;
+        double lastTextEffectsTime = 0.0;
+
+        // Text Effects after the layout: time, the glyphs from their base, events
+        void updateTextEffects(double dt);
+        // writes the effect (or the plain text when !effect.playing) into the text's vertices;
+        // revealed characters go to `revealedEvents`, a completed cycle sets `completed`
+        void applyTextEffect(Entity entity, TextEffectComponent& effect, TextComponent& text, UIComponent& ui,
+                             std::vector<int>& revealedEvents, bool& completed);
+        float anchorReferenceWidth;
+        float anchorReferenceHeight;
 
         bool pendingImages; // an image waited for its texture in the last update
 
@@ -107,7 +175,13 @@ namespace jasperengine{
         void processInteractabilityLost();
         void processCanvasGroupFades();
         void finishCanvasGroupFade(CanvasGroupFade fade, bool runCompletion);
-        Entity raycastHit(float x, float y);
+        // The hit test of every pointer event, in one place (UISystemPointer.cpp; raycast() is
+        // it after syncCanvasGroups): the last element in RectTransform order (children after
+        // their parents) that is visible, active in hierarchy with an enabled UIComponent, has
+        // an Image, contains the point (clipped to its panel), does not ignore events and whose
+        // Canvas Groups block raycasts. panelHit: the panel the press brings to front (the
+        // element's panel, or a Panel it is in).
+        Entity raycastHit(const Vector2& point, Entity* panelHit = nullptr) const;
 
         void createOrUpdateUiComponent(RectTransformComponent& layout, Entity entity, Signature signature);
         void getPanelEdges(const PanelComponent& panel, const RectTransformComponent& layout, const Transform& transform, const RectTransformComponent& headerlayout,  Rect& edgeRight, Rect& edgeRightBottom, Rect& edgeBottom, Rect& edgeLeftBottom, Rect& edgeLeft);
@@ -118,7 +192,9 @@ namespace jasperengine{
         bool createImagePatches(ImageComponent& img, UIComponent& ui, RectTransformComponent& layout);
 
         // Text
-        std::string getFontId(const TextComponent& text) const;
+        // outline/shadow shader parameters of an SDF text (UIComponent::textParams)
+        void updateTextShaderParams(TextComponent& text, UIComponent& ui);
+        void hideTextGlyphsAfter(TextComponent& text, UIComponent& ui, size_t count);
         std::string getFontTextureId(const TextComponent& text) const;
         bool isFontAtlasStale(const TextComponent& text) const;
         void syncFontAtlas(TextComponent& text, UIComponent& ui);
@@ -167,9 +243,49 @@ namespace jasperengine{
         // Active in hierarchy with an enabled UIComponent (when it has one): drawn and interactive
         bool isUIActive(Entity entity, Signature signature) const;
 
-        void pointerDownOnUI(Entity entity, float x, float y);
-        void pointerMoveOnUI(Entity entity, float x, float y, Vector2 pointerDiff, CursorType& cursor);
+        // ---- UISystemPointer.cpp
+        UIPointerState* findPointer(int pointerId);
+        PointerEventData makeEventData(const UIPointerState& state, Entity target) const;
+        Vector2 toLocal(Entity entity, const Vector2& point) const;
+        // ExecuteEvents.GetEventHandler: scripts defining the message, or a built-in receiver (the
+        // on-screen controls take down, drag and up)
+        Entity findPointerHandler(Entity from, ScriptMessage m) const;
+        Entity executeHierarchy(int pointerId, Entity from, ScriptMessage m,
+                                const std::function<void(PointerEventData&)>& adjust = nullptr);
+        // ExecuteEvents.Execute: the scripts of `target`; returns whether any handled it
+        bool sendPointerMessage(UIPointerState& state, Entity target, ScriptMessage m,
+                                const std::function<void(PointerEventData&)>& adjust = nullptr);
+        void updateEnterChain(UIPointerState& state, Entity newHit);
+        void setLegacyHover(UIPointerState& state, Entity entity);
+        bool isHoveredByOtherPointer(Entity entity, int pointerId) const;
+        void refreshButtonPressed(Entity entity);
+        void validatePointers();
+        // the end of a press: release (true) or cancel; then the touch's exit and its state
+        void endPress(int pointerId, bool released);
+        void legacyPointerDown(UIPointerState& state);
+        void legacyPointerMove(UIPointerState& state, CursorType& cursor);
+        void legacyPointerUp(UIPointerState& state, bool released, bool overWidget);
+        void callLegacy(FunctionSubscribe<void(float, float)> UIComponent::* event, Entity entity, const UIPointerState& state);
         void applyScrollbarPointerPosition(Entity entity, float x, float y);
+        bool isWidgetGestureOwned(Entity entity, int exceptPointer) const;
+
+        // ---- on-screen controls (UISystemPointer.cpp)
+        bool controlTakesPointers(Entity entity, Signature signature) const;
+        Entity findControl(Entity from) const;
+        uintptr_t controlOwner(Entity entity);
+        void controlDown(UIPointerState& state, Entity entity);
+        void controlMove(UIPointerState& state);
+        void controlUp(UIPointerState& state);
+        void stickUpdate(Entity entity, OnScreenStickComponent& stick, const Vector2& pointer, bool first);
+        // callbacks false: the state, sources and visuals only (a scene being removed)
+        void stickRelease(Entity entity, bool callbacks = true);
+        void buttonControlPress(Entity entity, int pointerId);
+        void buttonControlRelease(Entity entity, int pointerId);
+        void touchAreaRelease(Entity entity);
+        void setElementOffset(Entity entity, const Vector2& rest, const Vector2& offsetCanvas);
+        Vector2 getElementRest(Entity entity) const;
+        void updateControls();
+        void clearControlSources(Entity entity);
 
         bool isCoordInside(float x, float y, Transform& transform, RectTransformComponent& layout);
 
@@ -188,7 +304,15 @@ namespace jasperengine{
 
         bool isEntityChild(Entity child, Entity parent) const;
 
+        // game canvas pixels (pointer events) to this scene's UI units
+        void toUISpace(float& x, float& y) const;
+
     public:
+        // the atlas a text needs now: its raster scale (Canvas Scaler) and, with an outline or a
+        // shadow, an SDF padding
+        STBTextOptions getTextOptions(const TextComponent& text) const;
+        std::string getFontId(const TextComponent& text) const;
+        std::string getFontId(const TextComponent& text, const STBTextOptions& options) const;
         // An anchored element's offset is measured in its nearest layout parent's space,
         // its position in its own parent's space
         Vector2 parentToLayoutSpace(Entity entity, const Vector2& point) const;
@@ -199,10 +323,26 @@ namespace jasperengine{
 
         Rect getAnchorReferenceRect(const RectTransformComponent& layout, const Transform& transform, bool worldPosition);
 
-        void setAnchorReferenceSize(int width, int height);
+        // the editor lays a scene out at a size of its choosing (0 = none set)
+        void setAnchorReferenceSize(float width, float height);
         void clearAnchorReferenceSize();
-        int getAnchorReferenceWidth() const;
-        int getAnchorReferenceHeight() const;
+        float getAnchorReferenceWidth() const;
+        float getAnchorReferenceHeight() const;
+        // The size root elements anchor to, in UI units: the reference size above when set,
+        // else the scene's Canvas Scaler UI size (Scene::isUIScaled), else the Engine canvas
+        Vector2 getCanvasSize() const;
+        // the scale glyphs rasterize at: view pixels per UI unit when the Canvas Scaler
+        // scales this scene (crisp text), else 1 (the text's own pixel size, as before)
+        float getTextRasterScale() const;
+
+        // UI.reducedMotion: Text Effects skip their motion layers (wave, bounce, shake, pulse,
+        // grow, unfold) and keep colour and reveal ones. Global, default false.
+        static void setReducedMotion(bool reducedMotion);
+        static bool isReducedMotion();
+
+        // the editor's edit mode: Text Effects hold still unless the Inspector previews them
+        void setTextEffectsHeld(bool held);
+        bool isTextEffectsHeld() const;
 
         bool isInputFieldFocused();
 
@@ -211,16 +351,48 @@ namespace jasperengine{
 
         Vector2 getTextMinSize(TextComponent& text);
 
+        // The scene leaves the layers: every pointer state goes without callbacks, buttons
+        // unpress, the on-screen controls release and clear their input sources
         void resetButtonStates();
 
         bool eventOnCharInput(wchar_t codepoint);
         bool eventOnKeyDown(int key, bool repeat, int mods);
-        bool eventOnPointerDown(float x, float y);
-        bool eventOnPointerUp(float x, float y);
-        bool eventOnPointerMove(float x, float y);
-        // the last pointer event was over a UI element (hovered or pressed): documents on
-        // meshes behind it do not get the pointer (HTML UI, Engine::systemMouseMove)
-        bool isPointerOverUI() const;
+
+        // ---- pointers (ui-multitouch spec 7.1). pointerId: the mouse -1 / -2 / -3 (its left,
+        // right and middle button), a finger its fingerId; positions in canvas px. Each returns
+        // whether the UI consumed the event (the pointer pressed a UI element).
+        bool eventOnPointerDown(int pointerId, int button, float x, float y, bool touch);
+        bool eventOnPointerUp(int pointerId, int button, float x, float y, bool touch);
+        // the mouse moves -1 (and its other held buttons); a finger its own state
+        bool eventOnPointerMove(int pointerId, float x, float y, bool touch);
+        // a touch cancelled, focus loss: the press ends without a click (D6)
+        bool eventOnPointerCancel(int pointerId);
+        // the mouse left the window: its hover goes (the press stays)
+        void eventOnPointerLeave(int pointerId);
+        // the wheel over the mouse's element: onScroll up the hierarchy; true when a script took it
+        bool eventOnScroll(float dx, float dy);
+        // every pointer's press ends with callbacks (app pause, Input::releaseAll)
+        void cancelAllPointers();
+        // C++ callers of the one-pointer API: the mouse's left button
+        bool eventOnPointerDown(float x, float y) { return eventOnPointerDown(-1, D_MOUSE_BUTTON_LEFT, x, y, false); }
+        bool eventOnPointerUp(float x, float y) { return eventOnPointerUp(-1, D_MOUSE_BUTTON_LEFT, x, y, false); }
+        bool eventOnPointerMove(float x, float y) { return eventOnPointerMove(-1, x, y, false); }
+
+
+        // D15: that pointer (or, with INT_MIN, the mouse or any finger) is over a UI element that
+        // takes events, or presses one. The last processed event of the pointer counts.
+        bool isPointerOverUI(int pointerId) const;
+        bool isPointerOverUI() const { return isPointerOverUI(-1); }
+        // the pointer pressed a UI element and holds it (its moves and up are the UI's)
+        bool isPointerCaptured(int pointerId) const;
+        // the pointer states (tests, MCP)
+        const std::map<int, UIPointerState>& getPointers() const { return pointers; }
+        // the PointerEventData of the legacy callback being called, else null
+        static const PointerEventData* getCurrentLegacyEvent() { return currentLegacyEvent; }
+
+        // on-screen controls: the stick's value for its knob position and the axes options
+        // (Joystick Pack: dead zone, normalised past 1, snap); input = (pointer - centre) / radius, y down
+        static Vector2 stickInput(const OnScreenStickComponent& stick, Vector2 input);
 
         // The topmost element under the point a pointer event hits: the last Image in Hierarchy
         // order that contains it, is visible, active, not ignoreEvents and whose Canvas Groups
@@ -254,6 +426,8 @@ namespace jasperengine{
         // basic UIs
         bool createOrUpdatePolygon(PolygonComponent& polygon, UIComponent& ui, RectTransformComponent& layout);
         bool createOrUpdateImage(ImageComponent& img, UIComponent& ui, RectTransformComponent& layout);
+        // the canvas scale or the outline/shadow asks for another atlas: flags its rebuild
+        void checkTextAtlasOptions(TextComponent& text, UIComponent& ui);
         bool createOrUpdateText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout);
 
         // advanced UIs

@@ -9,6 +9,7 @@
 //   eval_lua              run Lua in the game's Lua state, results as JSON
 //   list_runtime_entities / get_runtime_entity / set_runtime_property   live GameObjects
 //   send_input            keyboard / text / mouse / touch / gamepad sequences across frames
+#include "camera/ShakerRuntime.h"
 #include "object/physics/Joint3D.h"
 #include "object/physics/Rigidbody.h"
 #include "McpTools.h"
@@ -44,6 +45,7 @@
 #include "object/physics/Rigidbody2D.h"
 #include "subsystem/PhysicsSystem.h"
 #include "script/LuaBinding.h"
+#include "script/ScriptScheduler.h"
 #include "script/ScriptRuntime.h"
 #include "manager/SceneManager.h"
 #include "util/EntityPath.h"
@@ -690,6 +692,9 @@ Json playStateJson(McpContext& ctx) {
     if (s.last.serial != 0) out["last_session"] = sessionJson(s.last);
     if (!s.held.empty()) out["held_input"] = heldInputJson();
     if (playId != NULL_PROJECT_SCENE && s.current.active) out["input"] = playInputJson();
+    // script coroutines and pending timers of the game (get_runtime_entity lists them per script)
+    out["coroutines"] = ScriptScheduler::coroutineCount();
+    out["timers"] = ScriptScheduler::timerCount();
     return out;
 }
 
@@ -1079,8 +1084,11 @@ Json luaToJson(Project* project, lua_State* L, int index, int maxDepth, size_t m
 
 namespace {
 
+// The call's context, through a box (a full userdata) the call empties when it returns: a
+// function eval_lua defined can outlive it (a coroutine it started, a callback), and then has none
 LuaEvalContext* evalContext(lua_State* L) {
-    return static_cast<LuaEvalContext*>(lua_touserdata(L, lua_upvalueindex(1)));
+    LuaEvalContext** box = static_cast<LuaEvalContext**>(lua_touserdata(L, lua_upvalueindex(1)));
+    return box ? *box : nullptr;
 }
 
 // Lua is built as C: lua_error longjmps past C++ destructors, so every helper below raises
@@ -1088,6 +1096,13 @@ LuaEvalContext* evalContext(lua_State* L) {
 
 int luaEvalPrint(lua_State* L) {
     LuaEvalContext* ctx = evalContext(L);
+    if (!ctx) {
+        // the eval_lua call ended (a coroutine or callback it started prints): the game's print
+        lua_getglobal(L, "print");
+        lua_insert(L, 1);
+        lua_call(L, lua_gettop(L) - 1, 0);
+        return 0;
+    }
     const int n = lua_gettop(L);
     for (int i = 1; i <= n; i++) {
         if (i > 1) lua_pushliteral(L, "\t");
@@ -1118,6 +1133,11 @@ bool helperRef(lua_State* L, int argIndex, Json& out) {
 // The scene a helper works on: its optional scene argument, else the eval's scene
 bool helperScene(lua_State* L, int argIndex, SceneProject*& out) {
     LuaEvalContext* ctx = evalContext(L);
+    if (!ctx) {
+        lua_pushliteral(L, "eval_lua's entity/script/object/getScene helpers work only during the eval_lua call "
+                           "(this runs later, in a coroutine or callback it started): keep the values in locals");
+        return false;
+    }
     out = ctx->scene;
     if (lua_gettop(L) < argIndex || lua_isnil(L, argIndex)) return true;
     Json ref;
@@ -1272,11 +1292,17 @@ LuaEvalResult runLua(Project* project, SceneProject* scene, const std::string& c
         {"print", luaEvalPrint}, {"entity", luaEvalEntity}, {"script", luaEvalScript},
         {"object", luaEvalObject}, {"getScene", luaEvalGetScene}
     };
+    LuaEvalContext** contextBox = static_cast<LuaEvalContext**>(lua_newuserdatauv(L, sizeof(LuaEvalContext*), 0));
+    *contextBox = &context;
+    // anchored while the call runs: the box is emptied after it, whatever the collector did
+    lua_pushvalue(L, -1);
+    const int contextBoxRef = luaL_ref(L, LUA_REGISTRYINDEX);
     for (const auto& [name, fn] : helpers) {
-        lua_pushlightuserdata(L, &context);
+        lua_pushvalue(L, -1);
         lua_pushcclosure(L, fn, 1);
-        lua_setfield(L, -2, name);
+        lua_setfield(L, -3, name);
     }
+    lua_pop(L, 1);
     lua_newtable(L);
     lua_pushglobaltable(L);
     lua_setfield(L, -2, "__index");
@@ -1295,6 +1321,8 @@ LuaEvalResult runLua(Project* project, SceneProject* scene, const std::string& c
     status = LuaBinding::pcallWithTraceback(L, 0, LUA_MULTRET);
 
     lua_sethook(L, oldHook, oldMask, oldCount);
+    *contextBox = nullptr;
+    luaL_unref(L, LUA_REGISTRYINDEX, contextBoxRef);
 
     if (status != LUA_OK) {
         result.error = LuaBinding::getLuaStackErrorString(L, -1);
@@ -1865,6 +1893,8 @@ void getPlayStateTool(const CallPtr& call) {
         text += " Session: " + std::to_string((int)secondsSince(s.current.startTime)) + " s, " +
                 std::to_string(s.current.errors) + " error(s) logged.";
         if (!s.current.crash.empty()) text += " CRASHED: " + s.current.crash;
+        text += " Script coroutines: " + std::to_string(data.value("coroutines", 0)) + ", timers: " +
+                std::to_string(data.value("timers", 0)) + ".";
     } else if (s.last.serial != 0) {
         text += " Last session: " + sessionSummaryText(s.last);
     }
@@ -2059,6 +2089,27 @@ Json cppMemberJson(Project* project, SceneProject* sp, const ScriptProperty& pro
     return nullptr;
 }
 
+// what a script's coroutines wait for and its pending timers (ScriptScheduler)
+Json coroutinesJson(const void* owner) {
+    Json list = Json::array();
+    for (const ScriptCoroutineInfo& co : ScriptScheduler::coroutinesOf(owner)) {
+        Json item = {{"id", co.id}, {"status", co.status}, {"origin", co.origin}};
+        if (!co.waiting.empty()) item["waiting"] = co.waiting;
+        if (!co.method.empty()) item["method"] = co.method;
+        list.push_back(item);
+    }
+    return list;
+}
+
+Json timersJson(const void* owner) {
+    Json list = Json::array();
+    for (const ScriptTimerInfo& timer : ScriptScheduler::timersOf(owner)) {
+        list.push_back({{"id", timer.id}, {"remaining", round3(timer.remaining)}, {"interval", round3(timer.interval)},
+                        {"unscaled", timer.unscaled}, {"callback", timer.callback}});
+    }
+    return list;
+}
+
 Json scriptStateJson(Project* project, SceneProject* sp, Entity entity, int maxDepth) {
     Json scripts = Json::array();
     ScriptComponent* component = sp->scene->findComponent<ScriptComponent>(entity);
@@ -2082,6 +2133,8 @@ Json scriptStateJson(Project* project, SceneProject* sp, Entity entity, int maxD
             }
             item["state"] = fields;
             lua_settop(L, top);
+            item["coroutines"] = coroutinesJson(entry.instance);
+            item["timers"] = timersJson(entry.cppScript ? static_cast<const void*>(entry.cppScript) : entry.instance);
         } else if (entry.type == ScriptType::CPP && entry.instance) {
             // C++ has no reflection: the DPROPERTY members (what the Inspector shows)
             Json fields = Json::object();
@@ -2089,10 +2142,46 @@ Json scriptStateJson(Project* project, SceneProject* sp, Entity entity, int maxD
                 if (prop.memberPtr) fields[prop.name] = cppMemberJson(project, sp, prop);
             }
             item["state"] = fields;
+            // ScriptBase::invoke timers (owner: the script object)
+            item["timers"] = timersJson(entry.instance);
         }
         scripts.push_back(item);
     }
     return scripts;
+}
+
+// camera shake spec 10: a Camera Shaker's play state and a Camera Follow's motion (read only)
+Json shakerRuntimeJson(const CameraShakerComponent& shaker) {
+    Json instances = Json::array();
+    float trauma = 0.0f;
+    Vector3 position(0, 0, 0), rotation(0, 0, 0);
+    if (const camera::ShakerRuntime* runtime = shaker.runtime.get()) {
+        for (const camera::ShakerInstanceEntry& entry : runtime->instances) {
+            const char* state = "stopped";
+            switch (entry.instance.getState()) {
+                case camera::ShakeState::FadingIn: state = "fading_in"; break;
+                case camera::ShakeState::Sustained: state = "sustained"; break;
+                case camera::ShakeState::FadingOut: state = "fading_out"; break;
+                default: break;
+            }
+            if (entry.instance.isPaused() && !entry.instance.isFinished()) state = "paused";
+            instances.push_back({{"preset", entry.presetName}, {"state", state},
+                                 {"strength", McpValues::number(entry.instance.getCurrentStrength())}});
+        }
+        trauma = runtime->trauma.trauma;
+        position = runtime->offsetPosition;
+        rotation = runtime->offsetRotation;
+    }
+    return {{"instances", instances}, {"trauma", McpValues::number(trauma)},
+            {"offset_position", McpValues::toJson(position)}, {"offset_rotation", McpValues::toJson(rotation)}};
+}
+
+Json followRuntimeJson(const CameraFollowComponent& follow) {
+    Json runtime = {{"velocity", McpValues::toJson(follow.velocity)}, {"desired", McpValues::toJson(follow.desired)},
+                    {"placed", follow.placed}};
+    if (follow.foreignWriteDetected) runtime["foreign_write"] = true;
+    if (follow.targetPersistent) runtime["target_persistent"] = true;
+    return runtime;
 }
 
 // the live state of a 2D joint (Unity's read-outs): forces N, torques N m, points, engine angle units
@@ -2128,6 +2217,44 @@ Json rigidbody2DReadoutsJson(Scene* scene, Entity entity) {
     return Json{{"live", true}, {"mass", body.getMass()}, {"inertia", body.getRotationalInertia()},
                 {"center_of_mass", {center.x, center.y}}, {"linear_velocity", {velocity.x, velocity.y}},
                 {"angular_velocity", body.getAngularVelocity()}, {"awake", body.isAwake()}, {"collider_shapes", pieces}};
+}
+
+// physics.contacts [{other, other_path, collider, other_collider, trigger, since_step, asleep}]
+// and physics.callbacks (the contact methods its scripts define), for bodies and listeners
+Json physicsContactsJson(SceneProject* sp, Entity entity) {
+    Json out = Json::object();
+    Scene* scene = sp->scene;
+    std::vector<ContactSummary> contacts;
+    std::shared_ptr<PhysicsSystem> physics = scene->getSystem<PhysicsSystem>();
+    bool hasBody = false;
+#ifdef JASPERENGINE_PHYSICS_2D
+    if (scene->findComponent<Rigidbody2DComponent>(entity)) {
+        hasBody = true;
+        contacts = physics->getContactSummary2D(entity);
+    }
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+    if (scene->findComponent<RigidbodyComponent>(entity)) {
+        hasBody = true;
+        const std::vector<ContactSummary> contacts3D = physics->getContactSummary3D(entity);
+        contacts.insert(contacts.end(), contacts3D.begin(), contacts3D.end());
+    }
+#endif
+    const std::vector<std::string> callbacks = ScriptMessages::describeReceivers(scene, entity, PhysicsCallbacks::ALL_3D | PhysicsCallbacks::ALL_2D);
+    if (!hasBody && callbacks.empty()) return out;
+    if (hasBody) {
+        Json list = Json::array();
+        for (const ContactSummary& contact : contacts) {
+            Json item = {{"other", contact.other}, {"collider", contact.collider}, {"other_collider", contact.otherCollider},
+                         {"trigger", contact.trigger}, {"asleep", contact.asleep}};
+            if (scene->isEntityCreated(contact.other)) item["other_path"] = EntityPath::of(scene, contact.other);
+            item["since_step"] = contact.sinceStep > 0 ? Json(contact.sinceStep) : Json(nullptr);
+            list.push_back(item);
+        }
+        out["contacts"] = list;
+    }
+    out["callbacks"] = callbacks;
+    return out;
 }
 
 Json vec3Json(const Vector3& v) {
@@ -2220,6 +2347,11 @@ void getRuntimeEntityTool(const CallPtr& call) {
                 }
             }
         }
+        if (type == ComponentType::CameraShakerComponent) {
+            props["runtime"] = shakerRuntimeJson(sp->scene->getComponent<CameraShakerComponent>(entity));
+        } else if (type == ComponentType::CameraFollowComponent) {
+            props["runtime"] = followRuntimeJson(sp->scene->getComponent<CameraFollowComponent>(entity));
+        }
         components[componentNameOf(type)] = props;
     }
 
@@ -2252,6 +2384,11 @@ void getRuntimeEntityTool(const CallPtr& call) {
     if ((only.empty() || only.count(ComponentType::RigidbodyComponent)) && sp->scene->findComponent<RigidbodyComponent>(entity)) {
         data["rigidbody"] = rigidbody3DReadoutsJson(sp->scene, entity);
     }
+    // physics-contacts: what the body touches now and the contact callbacks its scripts define
+    {
+        const Json physics = physicsContactsJson(sp, entity);
+        if (!physics.empty()) data["physics"] = physics;
+    }
     if (args.value("include_script_state", true)) {
         data["scripts"] = scriptStateJson(project, sp, entity, std::clamp(args.value("max_depth", 2), 1, 8));
     }
@@ -2262,6 +2399,7 @@ void getRuntimeEntityTool(const CallPtr& call) {
     if (data.contains("canvas_group_state")) text += "\ncanvas_group_state: " + data["canvas_group_state"].dump();
     if (data.contains("joint2d")) text += "\njoint2d: " + data["joint2d"].dump();
     if (data.contains("rigidbody2d")) text += "\nrigidbody2d: " + data["rigidbody2d"].dump();
+    if (data.contains("physics")) text += "\nphysics: " + data["physics"].dump();
     if (data.contains("joint3d")) text += "\njoint3d: " + data["joint3d"].dump();
     if (data.contains("rigidbody")) text += "\nrigidbody: " + data["rigidbody"].dump();
     if (text.size() > 12000) text = text.substr(0, 12000) + " ... (see structuredContent)";
@@ -3641,8 +3779,8 @@ void registerPlayTools(McpRegistry& registry) {
         tool.description =
             "Play state: played and running scenes (child scenes run as copies with own ids), the session (time, "
             "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), "
-            "console_cursor, the clock (time_scale, fixed_fps, auto_pause, held), platform (lifecycle, orientation, "
-            "opened_urls...), http (request counts, last failures); stopped: play_would_start.";
+            "console_cursor, script coroutines and timers (counts), the clock (time_scale, fixed_fps, auto_pause, held), "
+            "platform (lifecycle, orientation, opened_urls...), http (request counts, last failures); stopped: play_would_start.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -3729,8 +3867,9 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "get_runtime_entity";
         tool.title = "Get Runtime GameObject";
         tool.description =
-            "Live values of a GameObject in the running game (runtime-spawned too): component properties this frame "
-            "and script state (Lua instance fields, C++ DPROPERTY members). Only while playing.";
+            "Live values of a running GameObject (runtime-spawned too): components this frame, script state (Lua "
+            "fields, C++ DPROPERTY members; coroutines with their waits, timers), physics contacts and callbacks. "
+            "Only while playing.";
         tool.inputSchema = object({
             {"scene", runtimeScene},
             {"entity", entityRef()},

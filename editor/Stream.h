@@ -12,9 +12,11 @@
 #include "math/Quaternion.h"
 #include "math/Matrix4.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/TextEffectComponent.h"
 #include "component/TrailRendererComponent.h"
 #include "math/AnimationCurve.h"
 #include "math/Gradient.h"
+#include "particles/ParticleFields.h"
 
 #include <filesystem>
 #include <set>
@@ -277,6 +279,10 @@ namespace jasperengine::editor {
         static YAML::Node encodeScriptProperty(const ScriptProperty& prop);
         static ScriptProperty decodeScriptProperty(const YAML::Node& node);
 
+        // a version 2 Particle System field (particles/ParticleFields) in the scene encoding
+        static YAML::Node encodeParticleField(const particles::FieldInfo& field, const ParticleSystemComponent& component);
+        static void decodeParticleField(const particles::FieldInfo& field, const YAML::Node& node, ParticleSystemComponent& component);
+
         // the Line and Trail Renderer settings both have (Stream.cpp)
         template<typename T>
         static void encodeRibbonFields(YAML::Node& node, const T& component, const T& defaults);
@@ -284,6 +290,10 @@ namespace jasperengine::editor {
         static void decodeRibbonFields(const YAML::Node& node, T& component, const T& defaults);
 
     public:
+        // the Canvas Scaler: only the fields that differ from the defaults (project.yaml uiScale,
+        // a scene's canvasScaler); decode starts from the defaults
+        static YAML::Node encodeCanvasScaler(const CanvasScalerSettings& settings);
+        static CanvasScalerSettings decodeCanvasScaler(const YAML::Node& node);
         // custom-block members that follow a global shader value: {member: global}
         static YAML::Node encodeShaderGlobalBindings(const ShaderGlobalBindings& bindings);
         static ShaderGlobalBindings decodeShaderGlobalBindings(const YAML::Node& node);
@@ -450,6 +460,14 @@ namespace jasperengine::editor {
         static YAML::Node encodeInputFieldComponent(const InputFieldComponent& inputfield);
         static InputFieldComponent decodeInputFieldComponent(const YAML::Node& node, const InputFieldComponent* oldInputField = nullptr);
 
+        // ui-multitouch: the on-screen controls (their runtime state is never written)
+        static YAML::Node encodeOnScreenStickComponent(const OnScreenStickComponent& stick);
+        static OnScreenStickComponent decodeOnScreenStickComponent(const YAML::Node& node, const OnScreenStickComponent* oldStick = nullptr);
+        static YAML::Node encodeOnScreenButtonComponent(const OnScreenButtonComponent& button);
+        static OnScreenButtonComponent decodeOnScreenButtonComponent(const YAML::Node& node, const OnScreenButtonComponent* oldButton = nullptr);
+        static YAML::Node encodeTouchAreaComponent(const TouchAreaComponent& area);
+        static TouchAreaComponent decodeTouchAreaComponent(const YAML::Node& node, const TouchAreaComponent* oldArea = nullptr);
+
         static YAML::Node encodePanelComponent(const PanelComponent& panel);
         static PanelComponent decodePanelComponent(const YAML::Node& node, const PanelComponent* oldPanel = nullptr);
 
@@ -463,6 +481,11 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeTextComponent(const TextComponent& text);
         static TextComponent decodeTextComponent(const YAML::Node& node, const TextComponent* oldText = nullptr);
+        // only what differs from the defaults (old scenes re-save byte-identical)
+        static YAML::Node encodeTextEffectComponent(const TextEffectComponent& effect);
+        static TextEffectComponent decodeTextEffectComponent(const YAML::Node& node, const TextEffectComponent* oldEffect = nullptr);
+        static YAML::Node encodeTextEffectLayer(const TextEffectLayer& layer);
+        static TextEffectLayer decodeTextEffectLayer(const YAML::Node& node);
 
         static YAML::Node encodeImageComponent(const ImageComponent& image);
         static ImageComponent decodeImageComponent(const YAML::Node& node, const ImageComponent* oldImage = nullptr);
@@ -525,6 +548,13 @@ namespace jasperengine::editor {
         // written when empty), attachments[] are {socket, entity}. Decoding never loads; over an
         // old component everything it played is reset (the system starts it again) except the
         // editor's Preview toggle, and the callbacks are cleared.
+        // camera shake spec 7.1: the authored fields (each written; a missing key decodes to its
+        // default); decoding over an existing component keeps its runtime (the shakes play on)
+        static YAML::Node encodeCameraShakerComponent(const CameraShakerComponent& shaker);
+        static CameraShakerComponent decodeCameraShakerComponent(const YAML::Node& node, const CameraShakerComponent* oldShaker = nullptr);
+        static YAML::Node encodeCameraFollowComponent(const CameraFollowComponent& follow);
+        static CameraFollowComponent decodeCameraFollowComponent(const YAML::Node& node, const CameraFollowComponent* oldFollow = nullptr);
+
         static YAML::Node encodeVertexAnimatorComponent(const VertexAnimatorComponent& animator);
         static VertexAnimatorComponent decodeVertexAnimatorComponent(const YAML::Node& node, const VertexAnimatorComponent* oldAnimator = nullptr);
 
@@ -649,7 +679,24 @@ namespace jasperengine::editor {
         static YAML::Node encodeLatticeTracksComponent(const LatticeTracksComponent& tracks);
         static LatticeTracksComponent decodeLatticeTracksComponent(const YAML::Node& node, const LatticeTracksComponent* oldTracks = nullptr);
 
+        // Particle System: version 1 writes its legacy keys (as before version 2 existed);
+        // version 2 writes `version: 2` and a map per module of its non-default fields
+        // (particles spec 6.7, particles/ParticleFields)
         static YAML::Node encodeParticleSystemComponent(const ParticleSystemComponent& particles);
+        // Unity's MinMaxCurve / MinMaxGradient (particles spec 6.1): a curve is a number
+        // (Constant), {mode: curve, multiplier, curve}, {mode: two_constants, min, max} or {mode:
+        // two_curves, multiplier, min, max} (min/max: curves); a gradient a colour ("#RRGGBB[AA]"
+        // sRGB or [r, g, b, a] linear: Color), {mode: gradient, gradient}, {mode: two_colors,
+        // min, max}, {mode: two_gradients, min, max} or {mode: random_color, gradient}
+        static YAML::Node encodeMinMaxCurve(const MinMaxCurve& curve);
+        static MinMaxCurve decodeMinMaxCurve(const YAML::Node& node, const MinMaxCurve& fallback = MinMaxCurve());
+        static YAML::Node encodeMinMaxGradient(const MinMaxGradient& gradient);
+        static MinMaxGradient decodeMinMaxGradient(const YAML::Node& node, const MinMaxGradient& fallback = MinMaxGradient());
+        // a colour as "#RRGGBB" / "#RRGGBBAA" when its linear value is exactly that 8-bit sRGB
+        // value, else [r, g, b, a] (linear)
+        static YAML::Node encodeColorValue(const Vector4& linear);
+        static YAML::Node encodeParticleBursts(const std::vector<ParticleEmissionBurst>& bursts);
+        static std::vector<ParticleEmissionBurst> decodeParticleBursts(const YAML::Node& node);
         static ParticleSystemComponent decodeParticleSystemComponent(const YAML::Node& node, const ParticleSystemComponent* oldParticles = nullptr);
 
         static YAML::Node encodeInstancedMeshComponent(const InstancedMeshComponent& instmesh);

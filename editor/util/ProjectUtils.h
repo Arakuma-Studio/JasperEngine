@@ -26,6 +26,8 @@
 
 namespace jasperengine::editor {
 
+    class MultiPropertyCmd;
+
 // ProjectUtils::makeUniqueEntityName for many names in a row, each then taken. Remembers,
 // per base name, the run of numbered names found taken, so naming a thousand copies of
 // "Sprite 1".."Sprite 1000" does not rescan the run for each: same names, linear time.
@@ -67,6 +69,15 @@ public:
     // the editor's new Trail Renderer: width 0.2 (8 in a 2D scene, whose minimum vertex
     // distance is 2 pixels), thinning (1 -> 0) and fading out (alpha 1 -> 0) to the tail
     static void setupNewTrailRenderer(TrailRendererComponent& trail, bool scene2D);
+        // A new version 2 Particle System (the menu, create_particles): Unity's defaults (a cone of
+        // 25 degrees, radius 1, 10 a second, lifetime 5, speed 5, size 1, the white soft particle)
+        // on the GameObject's own quad renderer; a 2D scene's in pixels (x 40) under 2D gravity
+        static void setupNewParticleSystem(Scene* scene, Entity entity, bool scene2D);
+        // Adds to `multi` a property command for every version 2 field (and the version) where
+        // `values` differs from the GameObject's Particle System: one undo step that makes it
+        // `values` (the upgrade, a preset, create_particles)
+        static void addParticleSystemValues(MultiPropertyCmd& multi, Project* project, uint32_t sceneId, Scene* scene, Entity entity,
+                                            const ParticleSystemComponent& values);
 
 
     static Entity getLockedEntityParent(Scene* scene, Entity entity);
@@ -84,6 +95,14 @@ public:
     static Entity getEffectiveParent(Scene* scene, Entity entity);
     static bool canMoveLockedEntityOrder(Scene* scene, Entity source, Entity target, InsertionType type, std::string* reason = nullptr);
     static std::string makeUniqueEntityName(const std::string& baseName, const std::unordered_set<std::string>& existingNames);
+    // the soft round particle image the UI Particle System starts with ("ui/particle_soft.png"
+    // in the assets, made once); its project-relative path ("assets/ui/particle_soft.png", as
+    // Texture paths are), "" when it cannot be written
+    static std::string ensureSoftParticleTexture(Project* project);
+    // The on-screen controls' circle images (ui-multitouch), written once into the project's
+    // assets as assets/ui/onscreen/stick_base.png and stick_knob.png (generated, not bundled);
+    // the assets-relative path a Texture stores, "" when it could not be written
+    static std::string ensureOnScreenControlTexture(const std::filesystem::path& assetsPath, bool knob);
     static std::string makeUniqueEntityName(Scene* scene, const std::vector<Entity>& entities, const std::string& baseName, const std::unordered_set<Entity>& ignoredEntities = {});
 
     static size_t getTransformIndex(EntityRegistry* registry, Entity entity);

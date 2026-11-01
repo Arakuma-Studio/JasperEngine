@@ -128,6 +128,30 @@ function Good:init()
     GameState = { level = 1 }  -- the game's own global table
     GameState.level = "boss"
     Log.print("frames " .. tostring(Engine.frameCount) .. " " .. tostring(Engine.gameTime))
+    -- coroutines, timers and Time (the wait helpers are async: fine inside the coroutine's function)
+    local co = self:startCoroutine(function()
+        local elapsed = Coroutine.wait(0.5) + Coroutine.waitRealtime(0.1)
+        Coroutine.nextFrame()
+        Coroutine.waitFrames(2)
+        local ok = Coroutine.waitUntil(function() return self.counter > 3 end, 2.0, true)
+        local done, value = Coroutine.waitFor(Timer.after(1, function() end))
+        Coroutine.waitForFixedUpdate()
+        Coroutine.waitForEndOfFrame()
+        print(elapsed, ok, done, value, Time.deltaTime, Time.unscaledDeltaTime, Time.fixedDeltaTime)
+    end)
+    print(co.status, co:isDone(), co.error, co.owner, co.id)
+    self:startCoroutine("onUpdate")
+    self:stopCoroutine(co)
+    self:stopAllCoroutines()
+    self:invokeRepeating("onUpdate", 1, 0.5)
+    local timer = self:invoke(function() print("later") end, 2, true)
+    print(timer.remaining, timer.interval, timer.unscaled, timer:isDone(), self:isInvoking(timer), self:isInvoking())
+    self:cancelInvoke("onUpdate")
+    Timer.every(0.5, function(t) return t.remaining > 0 end, {count = 3, unscaled = true, owner = self, delay = 0})
+    Coroutine.start(function() Coroutine.wait(1) end)
+    Time.timeScale = 0.5
+    Time.captureDeltaTime = 0
+    print(Engine.unscaledDeltatime, Engine.unscaledTime, Engine.maxDeltatime, Coroutine.running(), Coroutine.isInside())
 end
 
 function Good:onContact(bodyA, shapeA, bodyB, shapeB)

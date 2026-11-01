@@ -231,6 +231,104 @@ bool editor::CreateEntityCmd::execute(){
         progressbarComp.value = 0.5f;
         progressbarComp.needUpdateProgressbar = true;
 
+    }else if (type == EntityCreationType::ONSCREEN_STICK_FIXED || type == EntityCreationType::ONSCREEN_STICK_FLOATING ||
+              type == EntityCreationType::ONSCREEN_STICK_DYNAMIC){
+
+        // the area a press may start in (transparent), its base circle and the knob inside it
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<RectTransformComponent>(entity, {});
+        scene->addComponent<UIComponent>(entity, {});
+        scene->addComponent<ImageComponent>(entity, {});
+        scene->addComponent<OnScreenStickComponent>(entity, {});
+
+        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+        layout.width = 300;
+        layout.height = 300;
+        layout.anchorPreset = AnchorPreset::BOTTOM_LEFT;
+        layout.usingAnchors = true;
+        scene->getComponent<UIComponent>(entity).color = Vector4(1.0f, 1.0f, 1.0f, 0.0f);
+
+        const std::string baseTexture = ProjectUtils::ensureOnScreenControlTexture(project->getAssetsPath(), false);
+        const std::string knobTexture = ProjectUtils::ensureOnScreenControlTexture(project->getAssetsPath(), true);
+        auto addCircle = [&](Entity parent, const char* name, unsigned int size, const std::string& texture){
+            Entity child = scene->createEntity();
+            scene->addComponent<Transform>(child, {});
+            scene->addComponent<RectTransformComponent>(child, {});
+            scene->addComponent<UIComponent>(child, {});
+            scene->addComponent<ImageComponent>(child, {});
+            scene->addEntityChild(parent, child, false);
+            RectTransformComponent& childLayout = scene->getComponent<RectTransformComponent>(child);
+            childLayout.width = size;
+            childLayout.height = size;
+            childLayout.anchorPreset = AnchorPreset::CENTER;
+            childLayout.usingAnchors = true;
+            if (!texture.empty())
+                scene->getComponent<UIComponent>(child).texture.setPath(texture);
+            scene->setEntityName(child, name);
+            registerChildEntity(child, parent);
+            return child;
+        };
+        const Entity background = addCircle(entity, "Background", 160, baseTexture);
+        const Entity handle = addCircle(background, "Handle", 64, knobTexture);
+
+        OnScreenStickComponent& stick = scene->getComponent<OnScreenStickComponent>(entity);
+        stick.background = background;
+        stick.handle = handle;
+        stick.mode = (type == EntityCreationType::ONSCREEN_STICK_FLOATING) ? OnScreenStickMode::FLOATING
+                   : (type == EntityCreationType::ONSCREEN_STICK_DYNAMIC) ? OnScreenStickMode::DYNAMIC
+                   : OnScreenStickMode::FIXED;
+
+    }else if (type == EntityCreationType::ONSCREEN_BUTTON){
+
+        // a round Button (its visuals follow the press of any finger) with the control
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<RectTransformComponent>(entity, {});
+        scene->addComponent<UIComponent>(entity, {});
+        scene->addComponent<ButtonComponent>(entity, {});
+        scene->addComponent<ImageComponent>(entity, {});
+        scene->addComponent<OnScreenButtonComponent>(entity, {});
+
+        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+        layout.width = 120;
+        layout.height = 120;
+        layout.anchorPreset = AnchorPreset::BOTTOM_RIGHT;
+        layout.usingAnchors = true;
+
+        const std::string baseTexture = ProjectUtils::ensureOnScreenControlTexture(project->getAssetsPath(), false);
+        if (!baseTexture.empty())
+            scene->getComponent<UIComponent>(entity).texture.setPath(baseTexture);
+
+        ButtonComponent& buttonComp = scene->getComponent<ButtonComponent>(entity);
+        buttonComp.colorPressed = Vector4(0.6f, 0.6f, 0.6f, 1.0f);
+        scene->getSystem<UISystem>()->createButtonObjects(entity, buttonComp);
+        registerChildEntity(buttonComp.label, entity);
+        scene->setEntityName(buttonComp.label, "Label");
+
+        TextComponent& textComp = scene->getComponent<TextComponent>(buttonComp.label);
+        textComp.text = "Fire";
+        textComp.needUpdateText = true;
+        scene->getComponent<UIComponent>(buttonComp.label).color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+
+    }else if (type == EntityCreationType::TOUCH_AREA){
+
+        // the right half of the screen, transparent: drags there look around (Mouse X / Mouse Y)
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<RectTransformComponent>(entity, {});
+        scene->addComponent<UIComponent>(entity, {});
+        scene->addComponent<ImageComponent>(entity, {});
+        scene->addComponent<TouchAreaComponent>(entity, {});
+
+        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+        layout.width = 100;
+        layout.height = 100;
+        layout.usingAnchors = true;
+        layout.anchorPreset = AnchorPreset::NONE;
+        layout.anchorPointLeft = 0.5f;
+        layout.anchorPointRight = 1.0f;
+        layout.anchorPointTop = 0.0f;
+        layout.anchorPointBottom = 1.0f;
+        scene->getComponent<UIComponent>(entity).color = Vector4(1.0f, 1.0f, 1.0f, 0.0f);
+
     }else if (type == EntityCreationType::INPUT_FIELD){
 
         scene->addComponent<Transform>(entity, {});
@@ -659,11 +757,71 @@ bool editor::CreateEntityCmd::execute(){
 
     }else if (type == EntityCreationType::PARTICLE_SYSTEM){
 
+        // Unity's new Particle System: one GameObject with its quad renderer (particles spec 6.8)
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<ActionComponent>(entity, {});
+        scene->addComponent<ParticleSystemComponent>(entity, {});
+        ProjectUtils::setupNewParticleSystem(scene, entity, sceneProject->sceneType != SceneType::SCENE_3D);
+
+    }else if (type == EntityCreationType::PARTICLE_SYSTEM_POINTS){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<PointsComponent>(entity, {});
+        scene->addComponent<ActionComponent>(entity, {});
+        scene->addComponent<ParticleSystemComponent>(entity, {});
+        ProjectUtils::setupNewParticleSystem(scene, entity, sceneProject->sceneType != SceneType::SCENE_3D);
+
+    }else if (type == EntityCreationType::PARTICLE_SYSTEM_LEGACY){
+
         scene->addComponent<ActionComponent>(entity, {});
         scene->addComponent<ParticleSystemComponent>(entity, {});
         if (parent != NULL_ENTITY){
             scene->getComponent<ActionComponent>(entity).target = parent;
         }
+
+    }else if (type == EntityCreationType::UI_PARTICLE_SYSTEM){
+
+        // the emitter draws between its siblings, in UI units, clipped by the nearest panel
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<PointsComponent>(entity, {});
+        const std::string softTexture = ProjectUtils::ensureSoftParticleTexture(project);
+        if (!softTexture.empty()) {
+            scene->getComponent<PointsComponent>(entity).texture = Texture(softTexture);
+        }
+
+        Entity system = scene->createUserEntity();
+        scene->addComponent<Transform>(system, {});
+        scene->addEntityChild(entity, system, false);
+        scene->setEntityName(system, "Particle System");
+        scene->addComponent<ActionComponent>(system, {});
+        scene->addComponent<ParticleSystemComponent>(system, {});
+        ActionComponent& action = scene->getComponent<ActionComponent>(system);
+        action.target = entity;
+        action.state = ActionState::Running;
+
+        // a soft sparkle rising and falling (UI is y down), at time scale 0 too
+        ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(system);
+        particles.useUnscaledTime = true;
+        particles.localSpace = true;
+        particles.maxParticles = 100;
+        particles.rate = 25;
+        particles.lifeInitializer.minLife = 0.8f;
+        particles.lifeInitializer.maxLife = 1.6f;
+        particles.positionInitializer.shape = ParticleEmitterShape::Box;
+        particles.positionInitializer.minPosition = Vector3(-20.0f, -5.0f, 0.0f);
+        particles.positionInitializer.maxPosition = Vector3(20.0f, 5.0f, 0.0f);
+        particles.velocityInitializer.minVelocity = Vector3(-60.0f, -220.0f, 0.0f);
+        particles.velocityInitializer.maxVelocity = Vector3(60.0f, -120.0f, 0.0f);
+        particles.accelerationInitializer.minAcceleration = Vector3(0.0f, 240.0f, 0.0f);
+        particles.accelerationInitializer.maxAcceleration = Vector3(0.0f, 240.0f, 0.0f);
+        particles.sizeInitializer.minSize = 16.0f;
+        particles.sizeInitializer.maxSize = 28.0f;
+        particles.alphaModifier.fromTime = 0.0f;
+        particles.alphaModifier.toTime = 1.6f;
+        particles.alphaModifier.fromAlpha = 1.0f;
+        particles.alphaModifier.toAlpha = 0.0f;
+
+        registerChildEntity(system, entity);
 
     }else if (type == EntityCreationType::POINTS){
 

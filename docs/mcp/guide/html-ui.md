@@ -133,7 +133,7 @@ return Terminal
   from the scene's camera; the nearest texture document whose surface it hits gets it at the
   hit's texture coordinate, with the usual rules (an element, or a page with a background,
   takes it; a transparent page passes it on). A press keeps the pointer until the release
-  (drags); touch works per finger; the wheel goes to the document under the mouse; keys go to
+  (drags); every finger is its own pointer (Pointer Events); the wheel goes to the document under the mouse; keys go to
   the document that took the last press. The hit test reads the mesh's CPU geometry
   (primitives, sprites, imported models), ignores other objects in front of the surface and
   tests skinned or morph-target meshes in their bind pose. The mouse cursor shape follows
@@ -548,6 +548,39 @@ colour is multiplied by the element's `opacity`):
 Each blurred shadow, glow or blur of a text draws through an offscreen layer: fine for titles
 and counters, not for long body text.
 
+### Animated text: `text-effect`
+
+The engine's `text-effect` (inherited) animates each character, with the formulas of the native
+Text Effect component (`jasper://docs/ui`): a comma list of functions, applied in order, omitted
+trailing arguments taking their defaults:
+
+| Function | Arguments (defaults) |
+|---|---|
+| `wave()` | amplitude `<length>` (0.15em), period `<time>` (1.5s), phase step `<angle>` (0.3rad) |
+| `bounce()` | `<length>` (0.3em), `<time>` (1s), spread 0..1 (0.5) |
+| `shake()` | `<length>` (0.05em), frequency Hz (12) |
+| `pulse()` | scale change (0.15), `<time>` (1s), spread (0.5) |
+| `typewriter()` | characters per second (30), fade `<time>` (0s) |
+| `fade-in()` | `<time>` (0.5s), spread (0.5): one-shot |
+| `grow()`, `unfold()` | `<time>` (0.5s), spread (0.5), amplitude (1: the whole change, TMP's Amplitude): one-shot |
+| `rainbow()` | `<time>` (2s), hue step `<angle>` (20deg), saturation `%` (80%), lightness `%` (60%) |
+| `gradient()` | `<time>` (1.5s), `multiply` / `add` / `replace` (multiply), colour stops `<color> [<percentage>]` |
+
+```css
+h1 { text-effect: wave(0.12em 1.5s), gradient(1.5s add #ffffff, #ffd040); }
+.dialog p { text-effect: typewriter(40 0.05s); text-effect-iteration: 1; }
+```
+
+The index runs on across elements (`Hello <b>World</b>` waves as one text) and lines; outlines and
+shadows (`font-effect`, `text-shadow`) follow each glyph. `text-effect-iteration: infinite |
+<integer>` repeats the one-shot functions (typewriter, fade-in, grow, unfold), then `texteffectend`
+(bubbles) fires at the element that declares the effect; `text-effect-time: ui` (default, unscaled:
+runs at `Engine.timeScale = 0`) or `game`. `doc:setReducedMotion(true)` holds the motion functions
+still (wave, bounce, shake, pulse, grow, unfold; an effect of only those still ends). Lua:
+`el.style.textEffect = "bounce()"` (set, changed or `none` at runtime; new content types again, a
+new line wrap does not), `el:restartTextEffect()` (on any element of the effect: all of it). An animating text regenerates its glyphs each frame (never its layout):
+cheap for titles and dialog lines.
+
 ### CSS units, fonts and icons
 
 - `px` is a canvas pixel; `vw`/`vh` (and `dvh`, `svh`, `lvh`) are the canvas, which has one
@@ -616,7 +649,9 @@ get no input). Create elements with `createElement` or `innerHTML`, then `append
 
 | DOM name | Fired by |
 |---|---|
-| `click`, `dblclick`, `mousedown`, `mouseup`, `mousemove`, `mouseover`, `mouseout` | the pointer (mouse and touch) |
+| `pointerdown`, `pointermove`, `pointerup`, `pointercancel`, `pointerover`, `pointerout` (bubble), `pointerenter`, `pointerleave` (do not bubble) | every pointer: the mouse (`pointerId` 1, every button) and each finger (`pointerType` `"touch"`, `pointerId` = `fingerId` + 2); "Pointer events" below |
+| `gotpointercapture`, `lostpointercapture` | `setPointerCapture` and the end of a capture |
+| `click`, `dblclick`, `mousedown`, `mouseup`, `mousemove`, `mouseover`, `mouseout`, `mouseenter`, `mouseleave` | every pointer too (compatibility events, with its `pointerId`): each finger clicks on its own |
 | `wheel` | the mouse wheel (`deltaX`, `deltaY` in steps, positive down/right) |
 | `keydown`, `keyup` | the keyboard and gamepads, to the focused element ("Input and focus") |
 | `textinput` | typed text, to the focused element |
@@ -631,16 +666,18 @@ get no input). Create elements with `createElement` or `innerHTML`, then `append
 | `play`, `pause`, `loop`, `complete`, `error`, `load` | `<lottie>` (they do not bubble) |
 | any other name | `dispatchEvent` |
 
-`mouseenter`, `mouseleave`, `pointer*`, `touch*`, `contextmenu`, `beforeinput` and
-`composition*` never reach documents: `addEventListener` logs a warning listing the supported
-events (use `mouseover`/`mouseout` and `mousedown`).
+`touch*` (Touch Events: use the pointer events, `pointerType == "touch"`), `contextmenu`,
+`beforeinput` and `composition*` never reach documents: `addEventListener` logs a warning
+listing the supported events.
 
 A listener gets a `UIEvent`: `type`, `target`, `currentTarget`, `eventPhase` (1 capture,
 2 target, 3 bubble), `button` (0 left, 1 middle, 2 right), `clientX`/`clientY` (document px),
 `deltaX`/`deltaY`, `ctrlKey`, `shiftKey`, `altKey`, `metaKey`, `key` (browser key names:
 `"Enter"`, `"Escape"`, `"ArrowUp"`, `"a"`), `code` (`"KeyA"`; a gamepad's `"GamepadA"`, ...),
 `keyCode` (`Input.KEY_*`), `repeat` (`event["repeat"]`), `gamepad` (the pad's id, -1 for the
-keyboard), `data` (`textinput`), `animationName`, `propertyName`,
+keyboard), `pointerId`, `pointerType` (`"mouse"`, `"touch"`, `"pen"`), `isPrimary`, `buttons` (1
+left, 2 right, 4 middle), `pressure` (0.5 while pressed), `width`, `height`, `fingerId` (the
+`Input` finger id, -1 for the mouse), `data` (`textinput`), `animationName`, `propertyName`,
 `elapsedTime`, `detail` (a copy of the `dispatchEvent` detail), `defaultPrevented`, and
 `stopPropagation()`, `stopImmediatePropagation()`, `preventDefault()`. The event is valid only
 while the listener runs. `preventDefault()` skips the element's own action (a checkbox does not
@@ -680,7 +717,9 @@ script runs after every load and reload **while the game plays** (never in edit 
 own environment (globals readable, its definitions local; `_G.x = 1` shares a value) with
 `document` and `anime` bound. Its listeners go with the old elements on reload, so a handler
 runs once however often the file was saved; what it started outside its elements (an
-`anime.createTimer`, globals) is not undone: guard it. Errors point at the HTML line
+`anime.createTimer`, a `Timer.after` / `Coroutine.start`, globals) is not undone: guard it. The
+document script is no script instance: `self:invoke` / `self:startCoroutine` do not exist
+there, `Timer.after` and `Coroutine.start` do (unowned: they end at Play stop, lua-api 2.14). Errors point at the HTML line
 (`ui/menu.html:45: ... [HTMLUI-HTML-0022]`).
 
 ```html
@@ -1171,6 +1210,36 @@ exact command to run; a failed conversion gives `HTMLUI-IMP-0011`. By hand:
   `HTMLUI-HTML-0028`), picture-in-picture, `preservesPitch` (pitch follows `playbackRate`),
   `::-webkit-media-controls-*`, HDR (8-bit SDR is shown; 10-bit is decoded and rounded).
 
+### Particles: `<particle-system>`
+
+`<particle-system src="fx/confetti.prefab" autoplay loop time="ui" scale="1">` plays a prefab's
+Particle System (a prefab whose GameObjects have a Particle System and its Points emitter: texture,
+sprite frames, blending) and draws its particles in document order: above what comes before it,
+below what comes after, inside the element's clip (`overflow: hidden`) and transform. The emitter
+is at the centre of its content box (0 x 0 by default: give it a size or position it), one prefab
+unit is `scale` CSS px, y up. `time="ui"` (default) plays while the game is paused, `game` follows
+`Engine.timeScale`; `loop="false"` plays once (the prefab's own setting otherwise); without
+`autoplay` it waits for `el:play()`.
+
+```html
+<div class="panel" style="overflow: hidden">
+  <particle-system id="confetti" src="fx/confetti.prefab" autoplay scale="40" style="position: absolute; left: 50%; top: 30%"></particle-system>
+  <button id="again">Play again</button>
+</div>
+```
+
+Lua: `el:play()`, `el:pause()`, `el:stop()`, `el:clear()`, `el:isPlaying()`,
+`el:getParticleSystem()` (the system of its hidden GameObject: every `ParticleSystem` API works;
+`nil` until the element's first update made the prefab, e.g. in `onLoad`, in edit mode, or when its
+`src` failed); event `complete` when a system that does not loop stops. `play()` / `pause()` /
+`stop()` before the prefab exists are queued (the last one applies, over `autoplay`). The prefab is
+made on a hidden GameObject of the document's scene (not in the Hierarchy, not saved; none of its
+renderers draws) and goes, with all its children, with the element, its document or a new `src`.
+Screen and texture-mode (world) documents both work. Prefabs exist in Play and in exported games: in
+edit mode the element is empty. A `src` that names no prefab with a Particle System logs
+`HTMLUI-HTML-0029` and adds it to the document's diagnostics (`inspect_ui`). Keep a system under
+about 1000 particles (one mesh is rebuilt each frame).
+
 ### Fonts
 
 - Built in: Roboto and Noto Sans Arabic; every generic family maps to them.
@@ -1332,11 +1401,63 @@ form control or `tabindex="0"`) has the focus, the gamepad drives the document l
 
 ### Touch, text fields and the cursor
 
-**Touch.** Every finger is a pointer; taps are clicks. Hover-only affordances do not exist on
-touch: show them by default or on `:focus`/`:active`, or use `@media (hover: hover)`, evaluated
-once at load (false on touch devices). Each pressed element gets `:active`, but lifting any
-finger clears it on all of them, and only the last pressed element can be clicked. Linux
-desktops have no multi-touch.
+**Touch.** Every finger is a pointer of its own: its own `:hover` (only while it is down),
+`:active`, capture, drag and click. Two fingers press two buttons; lifting one releases and
+clicks only its own. Hover-only affordances do not exist on touch: show them by default or on
+`:focus`/`:active`, or use `@media (hover: hover)`, evaluated once at load (false on touch
+devices). A finger that starts on a scrollable box pans it once it moves past a few pixels,
+where `touch-action` allows (then it gets `pointercancel` and loses `:active`); on-screen
+controls and game surfaces use `touch-action: none`. Linux desktops have no multi-touch: the
+Game view's Simulate Touch with an Alt-pinned finger and `send_input` cover testing.
+
+**Pointer events.** As in a browser (W3C Pointer Events 3): per pointer `pointerover` →
+`pointerenter` → `pointerdown` → `pointermove`s → `pointerup` → `click` → `pointerout` →
+`pointerleave` (a finger leaves with its release), and the compatibility mouse events after the
+pointer event of the same moment (`mousedown` after `pointerdown`). `preventDefault()` on
+`pointerdown` suppresses the `mousedown` and the focus change. A finger is captured by the
+element it pressed (implicit capture): its moves, up and cancel go there wherever it is, while
+`:hover` follows what is under it. `el:setPointerCapture(event.pointerId)` captures the mouse
+or a finger for a drag (a custom slider, a joystick); `el:releasePointerCapture(id)`,
+`el:hasPointerCapture(id)`; `gotpointercapture` / `lostpointercapture` fire before the
+pointer's next event, and the capture ends with the release. Deviation from browsers: the
+compatibility mouse events fire for every finger, not only the first (the engine's earlier
+advice was `mousedown` for touch, which keeps working with two fingers). `touch-action`: `auto`
+(default), `none`, `pan-x`, `pan-y`, `pan-x pan-y`, `manipulation` (= auto: no zoom here); not
+inherited, the effective value is the intersection from the touched element up to its scroll
+box. Gestures (pinch, rotate) are two pointers: keep each `pointerId`'s position.
+
+```lua
+-- a custom slider: the knob follows the finger or mouse that grabbed it
+knob:addEventListener("pointerdown", function(e)
+    knob:setPointerCapture(e.pointerId)
+end)
+knob:addEventListener("pointermove", function(e)
+    if knob:hasPointerCapture(e.pointerId) then setValue(e.clientX) end
+end)
+```
+
+**On-screen controls.** `<onscreen-stick>`, `<onscreen-button>` and `<touch-area>` feed the
+input actions (`jasper://docs/input` 4.1), so `Input.getAxis("Horizontal")` reads the stick and
+mouse-look code reading `Mouse X`/`Mouse Y` works with the touch area. Each takes the first
+pointer that presses it; three fingers on three controls work at once.
+
+```html
+<onscreen-stick mode="floating" dead-zone="0.1" horizontal-action="Horizontal" vertical-action="Vertical"></onscreen-stick>
+<touch-area sensitivity="0.1" invert-y></touch-area>
+<onscreen-button action="Jump" value="1" press-on-enter>Jump</onscreen-button>
+```
+
+| Element | Attributes (defaults) | State and events |
+|---|---|---|
+| `onscreen-stick` | `mode` (`fixed`, `floating`: the base appears under the finger, `dynamic`: it follows past `move-threshold`), `handle-range` (1), `dead-zone` (0), `move-threshold` (1), `axes` (`both`, `horizontal`, `vertical`), `snap-x`, `snap-y`, `horizontal-action` (`Horizontal`), `vertical-action` (`Vertical`), `visibility` (`always`, `touch-devices-only`) | `data-pressed`, `data-x`, `data-y` (-1..1, y up); `:active` while held; `stickstart`, `stickmove`, `stickend` (`event.detail.x` / `.y`) |
+| `onscreen-button` | `action` (`Fire1`), `value` (1; -1 on an axis), `press-on-enter`, `release-on-leave`, `visibility` | `data-pressed`, `:active`; the usual pointer and click events |
+| `touch-area` | `horizontal-action` (`Mouse X`), `vertical-action` (`Mouse Y`), `sensitivity` (0.1), `invert-x`, `invert-y`, `visibility` | `data-pressed`; `areadrag` (`event.detail.dx` / `.dy`, document px) |
+
+A stick without children gets `<div class="stick-base"><div class="stick-knob"></div></div>`
+(a 160 px translucent circle and a 64 px knob from the UA sheet; give your own children these
+classes to restyle). The stick maths is Joystick Pack's in document px: the base's half width is
+the radius; the knob moves with `transform: translate(...)`. Released, removed, hidden with
+`display: none`, or with its document hidden or unloaded, a control clears what it wrote.
 
 **Text fields.** Focusing one opens the virtual keyboard (Android, iOS, Web) and places the IME
 window at the caret. Composition shows inside the field on Windows, macOS, iOS, Android and
@@ -1384,6 +1505,17 @@ The page is the canvas, so responsiveness is about the canvas size:
   [1920, 1080], [1024, 768], [720, 1280]]}` runs every check at each size, and
   `inspect_ui {"viewport": [720, 1280]}` returns the tree laid out at that size (both restore
   the real size). For a screenshot at another aspect, `configure_game_view {"aspect": "9:16"}`.
+
+### UI scaling (Canvas Scaler)
+
+Screen documents lay out in the scene's **UI size** when a Canvas Scaler scales it
+(`graphics.ui_scale`, the scene setting `canvas_scaler`; modes and formulas: `jasper://docs/ui`),
+the canvas above otherwise (the default, Follow Game Canvas). With Scale With Screen Size 1920 x
+1080 and `match_mode: expand`, `100vw` x `100vh` is 1920 x 1440 on a 4:3 screen and 2400 x 1080 on
+a 20:9 one: design for the reference, let flex and `%` take the extra room. Text is rasterized at
+the screen's pixels either way. Preview real devices with `configure_game_view {"resolution":
+"2400x1080"}` (or a preset, `"WxH@dpi"`, `"free"`), then `screenshot`; `getBoundingClientRect()`
+of `body` is the UI size.
 
 ## The loop in detail
 
@@ -1534,8 +1666,8 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 | `doc.getElementById("x")`, `el.classList.add("x")` | colon calls: `doc:getElementById("x")`, `el.classList:add("x")` | LuaLS `param-type-mismatch` / `missing-parameter` |
 | `el.innerText = "x"`, `el.onclick = fn` | `el.textContent = "x"`, `el:addEventListener("click", fn)` | LuaLS `inject-field` |
 | `getElementByID`, other misspelt members | the DOM names (`getElementById`) | LuaLS `undefined-field` |
-| `addEventListener("onclick")`, `"mouseenter"`, `"pointerdown"` | `"click"`, `"mouseover"`/`"mouseout"`, `"mousedown"` | LuaLS `param-type-mismatch` (`UIEventType`); a warning at run time |
-| `setTimeout`, `setInterval`, `requestAnimationFrame` | `anime.createTimer({ duration = 2000, onComplete = fn })`, or `RegisterEngineEvent(self, "onUpdate")` | none (Lua has no such globals) |
+| `addEventListener("onclick")`, `"touchstart"` | `"click"`, `"pointerdown"` (`event.pointerType == "touch"`) | LuaLS `param-type-mismatch` (`UIEventType`); a warning at run time |
+| `setTimeout`, `setInterval`, `requestAnimationFrame` | `anime.createTimer({ duration = 2000, onComplete = fn })` (UI clock, milliseconds), gameplay `Timer.after(2, fn)` / `Timer.every(0.5, fn)` (seconds, game time; `{unscaled = true}`), `Coroutine.start(function() Coroutine.wait(2) ... end)`, or `RegisterEngineEvent(self, "onUpdate")` | none (Lua has no such globals) |
 | `fetch`, `XMLHttpRequest` | call Lua `Http` (`jasper://docs/networking`): in the document's `<script type="text/lua">` `Http.get(url, {owner = document}, function(res) ... end)` (no `self` there; the document's GameObject owns it), in the GameObject's script `{owner = self}`; documents themselves load nothing from the network | none |
 | `localStorage` | `UserSettings.setStringForKey(key, value)` / `getStringForKey` | none |
 | `alert()`, `confirm()` | a `<dialog>` with `showModal()`, or a modal element | `HTMLUI-HTML-0006` (inside JavaScript) |

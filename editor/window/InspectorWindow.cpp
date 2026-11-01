@@ -3,9 +3,11 @@
 
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
+#include "window/CanvasScalerFields.h"
 #include "shader/ShaderGlobals.h"
 #include "window/widget/CurveField.h"
 #include "window/widget/GradientField.h"
+#include "window/widget/MinMaxFields.h"
 #include "SceneWindow.h"
 #include "script/ScriptRuntime.h"
 
@@ -14,6 +16,7 @@
 #include "util/Util.h"
 #include "util/UIUtils.h"
 #include "util/FileDialogs.h"
+#include "script/ScriptScheduler.h"
 #include "util/FileUtils.h"
 #include "window/CodeEditor.h"
 #include "subsystem/UIDocumentSystem.h"
@@ -3558,9 +3561,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
 
         bool inputChanged = false;
+        const bool suggestions = settings.stringSuggestions && type == RowPropertyType::String;
         if (type == RowPropertyType::MultilineString){
             inputChanged = ImGui::InputTextMultiline(("##input_string_"+id).c_str(), buffer.data(), buffer.size(), ImVec2(0, ImGui::GetTextLineHeight() * 6));
         }else{
+            if (suggestions)
+                ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemInnerSpacing.x));
             inputChanged = ImGui::InputText(("##input_string_"+id).c_str(), buffer.data(), buffer.size());
         }
 
@@ -3572,6 +3578,27 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         }
         if (dif)
             ImGui::PopStyleColor();
+
+        if (suggestions){
+            ImGui::SameLine(0, ImGui::GetStyle().ItemInnerSpacing.x);
+            const std::string popupId = "string_suggestions_" + id;
+            if (ImGui::ArrowButton(("##suggest_" + id).c_str(), ImGuiDir_Down))
+                ImGui::OpenPopup(popupId.c_str());
+            if (ImGui::BeginPopup(popupId.c_str())){
+                if (settings.stringSuggestions->empty() && settings.suggestionsEmpty)
+                    ImGui::TextDisabled("%s", settings.suggestionsEmpty);
+                for (const std::string& option : *settings.stringSuggestions){
+                    if (ImGui::Selectable(option.c_str(), !dif && option == newValue)){
+                        for (Entity& entity : entities){
+                            cmd = new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, id, option, settings.onValueChanged);
+                            CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                        }
+                        finishProperty = true;
+                    }
+                }
+                ImGui::EndPopup();
+            }
+        }
 
     }else if (type == RowPropertyType::Bool){
         bool* value = nullptr;
@@ -4212,7 +4239,8 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (dif)
             ImGui::PopStyleColor();
 
-    }else if (type == RowPropertyType::Curve || type == RowPropertyType::Gradient){
+    }else if (type == RowPropertyType::Curve || type == RowPropertyType::Gradient ||
+              type == RowPropertyType::MinMaxCurve || type == RowPropertyType::MinMaxGradient){
         // Unity AnimationCurve / Gradient: an inline preview that opens its editor popup;
         // every frame of a drag is one merged command, the edit's end its own undo step
         auto valueRow = [&](auto sample, auto drawField){
@@ -4251,6 +4279,14 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         auto fieldWidth = [&](){ return std::max(ImGui::GetFontSize() * 4.0f, ImGui::GetContentRegionAvail().x - helpWidth); };
         if (type == RowPropertyType::Curve){
             valueRow(AnimationCurve(), [&](AnimationCurve& value, bool mixed){ return curveField(("##curve_" + id).c_str(), value, mixed, fieldWidth()); });
+        }else if (type == RowPropertyType::MinMaxCurve){
+            valueRow(MinMaxCurve(), [&](MinMaxCurve& value, bool mixed){
+                return minMaxCurveField(("##minmax_" + id).c_str(), value, mixed, fieldWidth(), settings.displayScale, settings.format, settings.stepSize);
+            });
+        }else if (type == RowPropertyType::MinMaxGradient){
+            valueRow(MinMaxGradient(), [&](MinMaxGradient& value, bool mixed){
+                return minMaxGradientField(("##minmaxgradient_" + id).c_str(), value, mixed, fieldWidth());
+            });
         }else{
             valueRow(jasperengine::Gradient(), [&](jasperengine::Gradient& value, bool mixed){ return gradientField(("##gradient_" + id).c_str(), value, mixed, fieldWidth()); });
         }
@@ -7914,6 +7950,161 @@ void editor::InspectorWindow::drawProgressbarComponent(ComponentType cpType, Sce
     endTable();
 }
 
+namespace {
+    // the project's Input action names, axes first (the stick's and touch area's dropdowns)
+    std::vector<std::string> inputActionNames(const editor::Project* project, bool axesFirst){
+        std::vector<std::string> names;
+        for (int pass = 0; pass < 2; pass++){
+            for (const InputAction& action : project->getInputActions()){
+                const bool axis = action.type == InputActionType::Axis;
+                if ((pass == 0) == (axis == axesFirst) && std::find(names.begin(), names.end(), action.name) == names.end())
+                    names.push_back(action.name);
+            }
+        }
+        return names;
+    }
+
+    const char* const noInputActions = "No actions: Project Settings > Input";
+}
+
+void editor::InspectorWindow::drawOnScreenStickComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    static std::vector<editor::EnumEntry> entriesMode = {
+        { (int)OnScreenStickMode::FIXED, "Fixed" },
+        { (int)OnScreenStickMode::FLOATING, "Floating" },
+        { (int)OnScreenStickMode::DYNAMIC, "Dynamic" }
+    };
+    static std::vector<editor::EnumEntry> entriesAxes = {
+        { (int)OnScreenStickAxes::BOTH, "Both" },
+        { (int)OnScreenStickAxes::HORIZONTAL, "Horizontal" },
+        { (int)OnScreenStickAxes::VERTICAL, "Vertical" }
+    };
+    static std::vector<editor::EnumEntry> entriesVisibility = {
+        { (int)OnScreenVisibility::ALWAYS, "Always" },
+        { (int)OnScreenVisibility::TOUCH_DEVICES_ONLY, "Touch Devices Only" }
+    };
+    const std::vector<std::string> actions = inputActionNames(project, true);
+
+    RowSettings settings;
+    RowSettings settingsMode;
+    settingsMode.enumEntries = &entriesMode;
+    settingsMode.help = "Fixed: the base stays. Floating: it appears under the finger. Dynamic: it also follows the finger past Move Threshold (Joystick Pack).";
+    RowSettings settingsAxes;
+    settingsAxes.enumEntries = &entriesAxes;
+    RowSettings settingsVisibility;
+    settingsVisibility.enumEntries = &entriesVisibility;
+    settingsVisibility.help = "Touch Devices Only hides it where System.isTouchDevice() is false (the Game view's Simulate Touch counts as touch).";
+    RowSettings settingsRange;
+    settingsRange.stepSize = 0.01f;
+    settingsRange.secondColSize = 6 * ImGui::GetFontSize();
+    RowSettings settingsDead = settingsRange;
+    settingsDead.help = "|input| at or below this reads 0 (in radii of the base).";
+    RowSettings settingsThreshold = settingsRange;
+    settingsThreshold.help = "Dynamic: the base follows the finger once it is this far out (radii).";
+    RowSettings settingsAction;
+    settingsAction.stringSuggestions = &actions;
+    settingsAction.suggestionsEmpty = noInputActions;
+    RowSettings settingsEntity;
+    settingsEntity.entityFilter.set(sceneProject->scene->getComponentId<ImageComponent>());
+
+    beginTable(cpType, getLabelSize("Horizontal Action"));
+    propertyRow(RowPropertyType::Enum, cpType, "mode", "Mode", sceneProject, entities, settingsMode);
+    propertyRow(RowPropertyType::LocalEntity, cpType, "background", "Background", sceneProject, entities, settingsEntity);
+    propertyRow(RowPropertyType::LocalEntity, cpType, "handle", "Handle", sceneProject, entities, settingsEntity);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "handleRange", "Handle Range", sceneProject, entities, settingsRange);
+    propertyRow(RowPropertyType::Float_0_1, cpType, "deadZone", "Dead Zone", sceneProject, entities, settingsDead);
+    propertyRow(RowPropertyType::Enum, cpType, "axes", "Axis Options", sceneProject, entities, settingsAxes);
+    propertyRow(RowPropertyType::Bool, cpType, "snapX", "Snap X", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::Bool, cpType, "snapY", "Snap Y", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "moveThreshold", "Move Threshold", sceneProject, entities, settingsThreshold);
+    propertyRow(RowPropertyType::Bool, cpType, "hideWhenReleased", "Hide Released", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::Bool, cpType, "clampToArea", "Clamp To Area", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::String, cpType, "horizontalAction", "Horizontal Action", sceneProject, entities, settingsAction);
+    propertyRow(RowPropertyType::String, cpType, "verticalAction", "Vertical Action", sceneProject, entities, settingsAction);
+    propertyRow(RowPropertyType::Enum, cpType, "visibility", "Visibility", sceneProject, entities, settingsVisibility);
+    endTable();
+
+    // live state while playing
+    if (entities.size() == 1 && project->isAnyScenePlaying()){
+        if (const OnScreenStickComponent* stick = sceneProject->scene->findComponent<OnScreenStickComponent>(entities[0])){
+            ImGui::TextDisabled("Value (%.2f, %.2f)  %s", stick->value.x, stick->value.y,
+                                stick->pressed ? ("held by pointer " + std::to_string(stick->pointerId)).c_str() : "released");
+        }
+    }
+}
+
+void editor::InspectorWindow::drawOnScreenButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    static std::vector<editor::EnumEntry> entriesVisibility = {
+        { (int)OnScreenVisibility::ALWAYS, "Always" },
+        { (int)OnScreenVisibility::TOUCH_DEVICES_ONLY, "Touch Devices Only" }
+    };
+    const std::vector<std::string> actions = inputActionNames(project, false);
+
+    RowSettings settings;
+    RowSettings settingsAction;
+    settingsAction.stringSuggestions = &actions;
+    settingsAction.suggestionsEmpty = noInputActions;
+    settingsAction.help = "The Input action it presses (Input.getButton(\"Fire1\")); on an axis it adds Value.";
+    RowSettings settingsValue;
+    settingsValue.stepSize = 0.01f;
+    settingsValue.floatMin = -1.0f;
+    settingsValue.floatMax = 1.0f;
+    settingsValue.secondColSize = 6 * ImGui::GetFontSize();
+    RowSettings settingsEnters;
+    settingsEnters.help = "A finger already down that slides onto it presses it.";
+    RowSettings settingsLeaves;
+    settingsLeaves.help = "A finger that slides off it releases it.";
+    RowSettings settingsVisibility;
+    settingsVisibility.enumEntries = &entriesVisibility;
+
+    beginTable(cpType, getLabelSize("Release On Leave"));
+    propertyRow(RowPropertyType::String, cpType, "action", "Action", sceneProject, entities, settingsAction);
+    propertyRow(RowPropertyType::Float, cpType, "value", "Value", sceneProject, entities, settingsValue);
+    propertyRow(RowPropertyType::Bool, cpType, "pressWhenPointerEnters", "Press On Enter", sceneProject, entities, settingsEnters);
+    propertyRow(RowPropertyType::Bool, cpType, "releaseWhenPointerLeaves", "Release On Leave", sceneProject, entities, settingsLeaves);
+    propertyRow(RowPropertyType::Enum, cpType, "visibility", "Visibility", sceneProject, entities, settingsVisibility);
+    endTable();
+
+    if (entities.size() == 1 && project->isAnyScenePlaying()){
+        if (const OnScreenButtonComponent* control = sceneProject->scene->findComponent<OnScreenButtonComponent>(entities[0])){
+            ImGui::TextDisabled("%s", control->pressed ? ("Pressed by " + std::to_string(control->pointers.size()) + " pointer(s)").c_str() : "Released");
+        }
+    }
+}
+
+void editor::InspectorWindow::drawTouchAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    static std::vector<editor::EnumEntry> entriesVisibility = {
+        { (int)OnScreenVisibility::ALWAYS, "Always" },
+        { (int)OnScreenVisibility::TOUCH_DEVICES_ONLY, "Touch Devices Only" }
+    };
+    const std::vector<std::string> actions = inputActionNames(project, true);
+
+    RowSettings settings;
+    RowSettings settingsAction;
+    settingsAction.stringSuggestions = &actions;
+    settingsAction.suggestionsEmpty = noInputActions;
+    RowSettings settingsSensitivity;
+    settingsSensitivity.stepSize = 0.01f;
+    settingsSensitivity.secondColSize = 6 * ImGui::GetFontSize();
+    settingsSensitivity.help = "Canvas pixels to action units; 0.1 is the default Mouse X/Y sensitivity, so a drag feels like the mouse.";
+    RowSettings settingsVisibility;
+    settingsVisibility.enumEntries = &entriesVisibility;
+
+    beginTable(cpType, getLabelSize("Horizontal Action"));
+    propertyRow(RowPropertyType::String, cpType, "horizontalAction", "Horizontal Action", sceneProject, entities, settingsAction);
+    propertyRow(RowPropertyType::String, cpType, "verticalAction", "Vertical Action", sceneProject, entities, settingsAction);
+    propertyRow(RowPropertyType::Float, cpType, "sensitivity", "Sensitivity", sceneProject, entities, settingsSensitivity);
+    propertyRow(RowPropertyType::Bool, cpType, "invertX", "Invert X", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::Bool, cpType, "invertY", "Invert Y", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::Enum, cpType, "visibility", "Visibility", sceneProject, entities, settingsVisibility);
+    endTable();
+
+    if (entities.size() == 1 && project->isAnyScenePlaying()){
+        if (const TouchAreaComponent* area = sceneProject->scene->findComponent<TouchAreaComponent>(entities[0])){
+            ImGui::TextDisabled("%s", area->pressed ? ("Dragged by pointer " + std::to_string(area->pointerId)).c_str() : "Released");
+        }
+    }
+}
+
 void editor::InspectorWindow::drawInputFieldComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settings;
     settings.onValueChanged = [sceneProject, entities](){
@@ -8051,10 +8242,247 @@ void editor::InspectorWindow::drawTextComponent(ComponentType cpType, SceneProje
     propertyRow(RowPropertyType::Bool, cpType, "pivotCentered", "Center", sceneProject, entities);
     endTable();
 
+    // TMP's outline and underlay: signed-distance glyphs while either is on
+    TextComponent* firstText = sceneProject->scene->findComponent<TextComponent>(entities[0]);
+
+    RowSettings settingsWidth;
+    settingsWidth.stepSize = 0.1f;
+    settingsWidth.secondColSize = 6 * ImGui::GetFontSize();
+    settingsWidth.help = "UI units drawn outside the glyph edge. 0: no outline.";
+
+    if (Theme::foldoutHeader("Outline##text_outline", (firstText && firstText->outlineWidth > 0.0f) ? ImGuiTreeNodeFlags_DefaultOpen : 0)) {
+        beginTable(cpType, getLabelSize("Width"), "text_settings_outline");
+        propertyRow(RowPropertyType::FloatPositive, cpType, "outlineWidth", "Width", sceneProject, entities, settingsWidth);
+        propertyRow(RowPropertyType::Color4L, cpType, "outlineColor", "Color", sceneProject, entities);
+        endTable();
+    }
+
+    if (Theme::foldoutHeader("Shadow##text_shadow", (firstText && firstText->shadowEnabled) ? ImGuiTreeNodeFlags_DefaultOpen : 0)) {
+        RowSettings settingsOffset;
+        settingsOffset.stepSize = 0.5f;
+        settingsOffset.help = "UI units, right and down.";
+        RowSettings settingsSoft;
+        settingsSoft.stepSize = 0.1f;
+        settingsSoft.secondColSize = 6 * ImGui::GetFontSize();
+        settingsSoft.help = "Blur radius in UI units.";
+        RowSettings settingsDilate = settingsSoft;
+        settingsDilate.help = "UI units the shadow's shape grows.";
+
+        beginTable(cpType, getLabelSize("Softness"), "text_settings_shadow");
+        propertyRow(RowPropertyType::Bool, cpType, "shadowEnabled", "Enabled", sceneProject, entities);
+        if (firstText && firstText->shadowEnabled) {
+            propertyRow(RowPropertyType::Color4L, cpType, "shadowColor", "Color", sceneProject, entities);
+            propertyRow(RowPropertyType::Vector2, cpType, "shadowOffset", "Offset", sceneProject, entities, settingsOffset);
+            propertyRow(RowPropertyType::FloatPositive, cpType, "shadowSoftness", "Softness", sceneProject, entities, settingsSoft);
+            propertyRow(RowPropertyType::FloatPositive, cpType, "shadowDilate", "Dilate", sceneProject, entities, settingsDilate);
+        }
+        endTable();
+    }
+
     ImGui::SeparatorText("Advanced settings");
-    beginTable(cpType, getLabelSize("Max. text size"), "text_settings_size");
+    RowSettings settingsVisible;
+    settingsVisible.stepSize = 1.0f;
+    settingsVisible.secondColSize = 6 * ImGui::GetFontSize();
+    settingsVisible.intMin = -1;
+    settingsVisible.intMax = 1000000;
+    settingsVisible.help = "Characters drawn from the start (TMP maxVisibleCharacters); the rest keep their place. -1: all.";
+    beginTable(cpType, getLabelSize("Visible Characters"), "text_settings_size");
     propertyRow(RowPropertyType::UInt, cpType, "maxTextSize", "Max. text size", sceneProject, entities, settingsInt);
+    propertyRow(RowPropertyType::Int, cpType, "visibleCharacters", "Visible Characters", sceneProject, entities, settingsVisible);
     endTable();
+}
+
+void editor::InspectorWindow::drawTextEffectComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    static std::vector<editor::EnumEntry> entriesType = {
+        { (int)TextEffectType::None, "None" },
+        { (int)TextEffectType::Wave, "Wave" },
+        { (int)TextEffectType::Bounce, "Bounce" },
+        { (int)TextEffectType::Shake, "Shake" },
+        { (int)TextEffectType::Pulse, "Pulse" },
+        { (int)TextEffectType::Typewriter, "Typewriter" },
+        { (int)TextEffectType::FadeIn, "Fade In" },
+        { (int)TextEffectType::Grow, "Grow" },
+        { (int)TextEffectType::Unfold, "Unfold" },
+        { (int)TextEffectType::Rainbow, "Rainbow" },
+        { (int)TextEffectType::Gradient, "Gradient" }
+    };
+    static std::vector<editor::EnumEntry> entriesMix = {
+        { (int)TextEffectMix::Multiply, "Multiply" },
+        { (int)TextEffectMix::Add, "Add" },
+        { (int)TextEffectMix::Replace, "Replace" }
+    };
+
+    Scene* scene = sceneProject->scene;
+    const Entity entity = entities[0];
+    TextEffectComponent* effect = scene->findComponent<TextEffectComponent>(entity);
+    if (!effect) return;
+
+    if (!scene->findComponent<TextComponent>(entity)) {
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " Needs a Text on this GameObject");
+    }
+
+    // preview in edit mode (TMP Effect runs in the editor), the UI clock
+    if (sceneProject->playState == ScenePlayState::STOPPED && entities.size() == 1) {
+        if (ImGui::Button(effect->previewInEditor ? ICON_FA_STOP " Stop Preview" : ICON_FA_PLAY " Preview")) {
+            effect->previewInEditor = !effect->previewInEditor;
+            effect->playing = effect->previewInEditor;
+            effect->needRestart = effect->previewInEditor;
+            effect->wasActive = false;
+            effect->needApply = true;
+            sceneProject->needUpdateRender = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_FA_ROTATE_LEFT " Restart")) {
+            effect->previewInEditor = true;
+            effect->playing = true;
+            effect->needRestart = true;
+            effect->wasActive = false;
+            sceneProject->needUpdateRender = true;
+        }
+        if (effect->previewInEditor)
+            sceneProject->needUpdateRender = true;
+    }
+
+    RowSettings settingsInt;
+    settingsInt.stepSize = 1.0f;
+    settingsInt.secondColSize = 6 * ImGui::GetFontSize();
+    RowSettings settingsLength = settingsInt;
+    settingsLength.intMin = -1;
+    settingsLength.intMax = 1000000;
+    settingsLength.help = "Characters from Start Index; -1 to the end.";
+    RowSettings settingsStart = settingsInt;
+    settingsStart.intMin = 0;
+    settingsStart.intMax = 1000000;
+    RowSettings settingsWords;
+    settingsWords.help = "Whole words to animate, separated by spaces (TMP ForWords). Overrides the range.";
+    RowSettings settingsUnscaled;
+    settingsUnscaled.help = "Runs while Engine.timeScale is 0 (pause menus), on the UI clock. Off: game time.";
+    RowSettings settingsLoop;
+    settingsLoop.help = "One-shot layers (typewriter, fade in, grow, unfold) start again once they all finished.";
+
+    beginTable(cpType, getLabelSize("Unscaled Time"), "text_effect_settings");
+    propertyRow(RowPropertyType::Bool, cpType, "autoPlay", "Auto Play", sceneProject, entities);
+    propertyRow(RowPropertyType::Bool, cpType, "loop", "Loop", sceneProject, entities, settingsLoop);
+    propertyRow(RowPropertyType::Bool, cpType, "useUnscaledTime", "Unscaled Time", sceneProject, entities, settingsUnscaled);
+    propertyRow(RowPropertyType::Int, cpType, "startIndex", "Start Index", sceneProject, entities, settingsStart);
+    propertyRow(RowPropertyType::Int, cpType, "length", "Length", sceneProject, entities, settingsLength);
+    propertyRow(RowPropertyType::String, cpType, "forWords", "For Words", sceneProject, entities, settingsWords);
+    endTable();
+
+    // every layer up to the last one in use, and the next empty one (empty layers between
+    // used ones stay shown: MCP and Lua may fill any slot)
+    int lastUsed = -1;
+    for (int i = 0; i < MAX_TEXT_EFFECT_LAYERS; i++) {
+        if (effect->layers[i].type != TextEffectType::None) lastUsed = i;
+    }
+    for (int i = 0; i < MAX_TEXT_EFFECT_LAYERS && i <= lastUsed + 1; i++) {
+        const std::string prefix = "layers[" + std::to_string(i) + "].";
+        TextEffectLayer& layer = effect->layers[i];
+
+        ImGui::PushID(i);
+        ImGui::SeparatorText(("Layer " + std::to_string(i + 1)).c_str());
+
+        RowSettings settingsType;
+        settingsType.enumEntries = &entriesType;
+        RowSettings settingsF;
+        settingsF.stepSize = 0.01f;
+        settingsF.secondColSize = 6 * ImGui::GetFontSize();
+
+        beginTable(cpType, getLabelSize("Chars Per Second"), ("text_effect_layer_" + std::to_string(i)).c_str());
+        propertyRow(RowPropertyType::Enum, cpType, prefix + "type", "Type", sceneProject, entities, settingsType);
+        const TextEffectType type = layer.type;
+        if (type != TextEffectType::None) {
+            propertyRow(RowPropertyType::Bool, cpType, prefix + "enabled", "Enabled", sceneProject, entities);
+
+            RowSettings amplitude = settingsF;
+            amplitude.help = (type == TextEffectType::Pulse) ? "Scale change (0.15 = 15% bigger and smaller)."
+                           : (type == TextEffectType::Grow || type == TextEffectType::Unfold) ? "Share of the change (TMP Effect's Amplitude): 1 = the whole glyph, above overshoots."
+                           : "Font sizes (em).";
+            if (type == TextEffectType::Wave || type == TextEffectType::Bounce || type == TextEffectType::Shake || type == TextEffectType::Pulse ||
+                type == TextEffectType::Grow || type == TextEffectType::Unfold)
+                propertyRow(RowPropertyType::Float, cpType, prefix + "amplitude", "Amplitude", sceneProject, entities, amplitude);
+
+            RowSettings duration = settingsF;
+            duration.help = TextEffects::isOneShot(type) ? "Seconds the effect takes over the whole text." : "Seconds of one period.";
+            if (type != TextEffectType::Shake && !(type == TextEffectType::Typewriter && layer.charactersPerSecond > 0.0f))
+                propertyRow(RowPropertyType::FloatPositive, cpType, prefix + "duration", "Duration", sceneProject, entities, duration);
+
+            RowSettings spread = settingsF;
+            spread.help = "0: one character after the other; 1: all at once (TMP Character Duration Ratio).";
+            if (type == TextEffectType::Bounce || type == TextEffectType::Pulse || type == TextEffectType::FadeIn ||
+                type == TextEffectType::Grow || type == TextEffectType::Unfold || type == TextEffectType::Gradient)
+                propertyRow(RowPropertyType::Float_0_1, cpType, prefix + "spread", "Spread", sceneProject, entities, spread);
+
+            RowSettings phase = settingsF;
+            phase.help = "Radians between two characters (Rainbow: of the hue circle).";
+            if (type == TextEffectType::Wave || type == TextEffectType::Rainbow)
+                propertyRow(RowPropertyType::Float, cpType, prefix + "phaseStep", "Phase Step", sceneProject, entities, phase);
+
+            if (type == TextEffectType::Shake)
+                propertyRow(RowPropertyType::FloatPositive, cpType, prefix + "frequency", "Frequency", sceneProject, entities, settingsF);
+
+            if (type == TextEffectType::Typewriter) {
+                RowSettings cps = settingsF;
+                cps.help = "Characters a second; 0: the whole text over Duration.";
+                propertyRow(RowPropertyType::FloatPositive, cpType, prefix + "charactersPerSecond", "Chars Per Second", sceneProject, entities, cps);
+                RowSettings fade = settingsF;
+                fade.help = "Seconds each character fades in.";
+                propertyRow(RowPropertyType::FloatPositive, cpType, prefix + "fadeTime", "Fade Time", sceneProject, entities, fade);
+            }
+
+            if (type == TextEffectType::Rainbow || type == TextEffectType::Gradient) {
+                RowSettings mix;
+                mix.enumEntries = &entriesMix;
+                mix.help = "How the colour combines with the text's: Multiply, Add (TMP Effect Add), Replace.";
+                propertyRow(RowPropertyType::Enum, cpType, prefix + "mix", "Mix", sceneProject, entities, mix);
+            }
+            if (type == TextEffectType::Rainbow) {
+                propertyRow(RowPropertyType::Float_0_1, cpType, prefix + "saturation", "Saturation", sceneProject, entities, settingsF);
+                propertyRow(RowPropertyType::Float_0_1, cpType, prefix + "lightness", "Lightness", sceneProject, entities, settingsF);
+            }
+        }
+        endTable();
+
+        // the gradient's stops (sRGB), one undo step per edit
+        if (type == TextEffectType::Gradient && entities.size() == 1) {
+            std::vector<TextEffectGradientStop> stops = layer.gradient;
+            bool changed = false;
+            bool finished = false;
+            int remove = -1;
+            for (size_t s = 0; s < stops.size(); s++) {
+                ImGui::PushID((int)s);
+                ImGui::SetNextItemWidth(ImGui::GetFontSize() * 4.0f);
+                if (ImGui::ColorEdit4("##stopColor", &stops[s].color.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf)) changed = true;
+                finished |= ImGui::IsItemDeactivatedAfterEdit();
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8.0f);
+                if (ImGui::SliderFloat("##stopPosition", &stops[s].position, 0.0f, 1.0f, "at %.2f")) changed = true;
+                finished |= ImGui::IsItemDeactivatedAfterEdit();
+                ImGui::SameLine();
+                if (ImGui::SmallButton(ICON_FA_XMARK)) remove = (int)s;
+                ImGui::PopID();
+            }
+            if (remove >= 0) {
+                stops.erase(stops.begin() + remove);
+                changed = finished = true;
+            }
+            if (ImGui::SmallButton(ICON_FA_PLUS " Add Color")) {
+                TextEffectGradientStop stop;
+                stop.position = stops.empty() ? 0.0f : 1.0f;
+                stops.push_back(stop);
+                changed = finished = true;
+            }
+            if (changed) {
+                cmd = new editor::PropertyCmd<std::vector<TextEffectGradientStop>>(project, sceneProject->id, entity, cpType, prefix + "gradient", stops);
+                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+            }
+            if (finished && cmd) {
+                cmd->setNoMerge();
+                cmd = nullptr;
+            }
+        }
+        ImGui::PopID();
+    }
 }
 
 void editor::InspectorWindow::drawRectTransformComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
@@ -10899,6 +11327,22 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
 
             ImGui::PopStyleVar();
 
+            // during Play: what the script started and is still running (coroutines, timers)
+            if (entities.size() == 1 && script.instance) {
+                // the owner: a Lua instance's ref, a C++ script's ScriptBase
+                const void* owner = script.type == ScriptType::CPP && script.cppScript ? static_cast<const void*>(script.cppScript) : script.instance;
+                const size_t coroutines = ScriptScheduler::coroutineCountOf(owner);
+                const size_t timers = ScriptScheduler::timerCountOf(owner);
+                if (coroutines > 0 || timers > 0) {
+                    propertyHeader("Running");
+                    ImGui::TextDisabled("Coroutines: %zu, Timers: %zu", coroutines, timers);
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("Started by this script (self:startCoroutine, self:invoke): coroutines stop when the "
+                                          "GameObject is deactivated, timers when it is destroyed");
+                    }
+                }
+            }
+
             endTable();
 
             // Display script properties if available
@@ -11180,7 +11624,7 @@ void editor::InspectorWindow::drawInstancedMeshComponent(ComponentType cpType, S
     }
 }
 
-void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawParticleSystemLegacy(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsFloat;
     settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
 
@@ -11192,6 +11636,33 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
     propertyRow(RowPropertyType::Bool, cpType, "emitter", "Emitter", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "loop", "Loop", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "localSpace", "Local Space", sceneProject, entities);
+    {
+        RowSettings settingsUnscaled;
+        settingsUnscaled.help = "Advance on the unscaled frame time: plays while Engine.timeScale is 0 (a pause menu). "
+                                "UI particles usually want it.";
+        propertyRow(RowPropertyType::Bool, cpType, "useUnscaledTime", "Unscaled Time", sceneProject, entities, settingsUnscaled);
+    }
+    // particles in a UI: drawn in Hierarchy order, clipped by panels, in UI units
+    if (entities.size() == 1) {
+        Scene* uiScene = sceneProject->scene;
+        const ActionComponent* uiAction = uiScene->findComponent<ActionComponent>(entities[0]);
+        const ParticleSystemComponent* uiParticles = uiScene->findComponent<ParticleSystemComponent>(entities[0]);
+        bool inUI = false;
+        for (Entity e = uiAction ? uiAction->target : NULL_ENTITY; e != NULL_ENTITY && !inUI;) {
+            const Transform* tf = uiScene->findComponent<Transform>(e);
+            e = tf ? tf->parent : NULL_ENTITY;
+            inUI = e != NULL_ENTITY && uiScene->findComponent<RectTransformComponent>(e) != nullptr;
+        }
+        if (inUI && uiParticles) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(1);
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextDisabled(uiParticles->useUnscaledTime
+                ? "UI particles: drawn between their siblings, clipped by panels, sizes in UI units."
+                : "UI particles: turn on Unscaled Time so they play in a paused game (menus).");
+            ImGui::PopTextWrapPos();
+        }
+    }
     propertyRow(RowPropertyType::Int, cpType, "rate", "Rate", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Int, cpType, "maxPerUpdate", "Max Per Update", sceneProject, entities, settingsInt);
     endTable();
@@ -12346,7 +12817,7 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
 
         std::string shapeKey = "colliders[" + std::to_string(s) + "]";
 
-        beginTable(cpType, getLabelSize("Bottom Radius"), "rigidbody_collider");
+        beginTable(cpType, getLabelSize("Send Callbacks To"), "rigidbody_collider");
 
         PropertyData shapeTypeProp = Catalog::getProperty(sceneProject->scene, entities[0], cpType, shapeKey + ".type");
         int* shapeTypeDef = static_cast<int*>(shapeTypeProp.def);
@@ -12722,6 +13193,54 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
         settingsReceiver.help = "Another GameObject that also gets this collider's contact callbacks";
         propertyRow(RowPropertyType::LocalEntity, cpType, shapeKey + ".receiver", "Send Callbacks To", sceneProject, entities, settingsReceiver);
         endTable();
+    }
+
+    // Play: what the body touches, and the contact callbacks its scripts define
+    if (sceneProject->playState != ScenePlayState::STOPPED && entities.size() == 1){
+        drawPhysicsContacts(sceneProject, entities[0], false);
+    }
+}
+
+void editor::InspectorWindow::drawPhysicsContacts(SceneProject* sceneProject, Entity entity, bool is2D){
+    Scene* scene = sceneProject->scene;
+    // read again at most 10 times a second
+    PhysicsContactsView& view = physicsContactsViews[{sceneProject->id, entity, is2D}];
+    const double now = ImGui::GetTime();
+    if (view.readAt < 0.0 || now - view.readAt >= 0.1){
+        view.readAt = now;
+        std::shared_ptr<PhysicsSystem> physics = scene->getSystem<PhysicsSystem>();
+        view.contacts.clear();
+#ifdef JASPERENGINE_PHYSICS_2D
+        if (is2D && scene->findComponent<Rigidbody2DComponent>(entity)) view.contacts = physics->getContactSummary2D(entity);
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+        if (!is2D && scene->findComponent<RigidbodyComponent>(entity)) view.contacts = physics->getContactSummary3D(entity);
+#endif
+        view.callbacks = ScriptMessages::describeReceivers(scene, entity, is2D ? PhysicsCallbacks::ALL_2D : PhysicsCallbacks::ALL_3D);
+    }
+
+    ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubtleText);
+    std::string callbacks;
+    for (const std::string& name : view.callbacks){
+        callbacks += (callbacks.empty() ? "" : ", ") + name;
+    }
+    ImGui::TextWrapped("Callbacks: %s", callbacks.empty() ? "none (define onCollisionEnter / onTriggerEnter on a script)" : callbacks.c_str());
+    ImGui::PopStyleColor();
+
+    const std::string title = "Contacts (" + std::to_string(view.contacts.size()) + ")##physics_contacts_" + std::string(is2D ? "2d" : "3d");
+    if (ImGui::TreeNode(title.c_str())){
+        if (view.contacts.empty()){
+            ImGui::TextDisabled("Touching nothing");
+        }
+        for (const ContactSummary& contact : view.contacts){
+            const std::string other = scene->isEntityCreated(contact.other) ? scene->getEntityName(contact.other) : ("#" + std::to_string(contact.other));
+            std::string line = other + "  collider " + std::to_string(contact.collider) + " / " + std::to_string(contact.otherCollider);
+            if (contact.trigger) line += "  trigger";
+            if (contact.sinceStep > 0) line += "  since step " + std::to_string(contact.sinceStep);
+            if (contact.asleep) line += "  asleep";
+            ImGui::BulletText("%s", line.c_str());
+        }
+        ImGui::TreePop();
     }
 }
 
@@ -16201,6 +16720,8 @@ void editor::InspectorWindow::show(){
         stopSoundPreview();
         stopActionPreviewIfActive();
         stopVertexAnimatorPreview();
+        // a .shake's Test preview belongs to the inspected asset
+        syncCameraShakePreview(project->getSelectedScene(), {});
         ImGui::End();
         return;
     }
@@ -16225,6 +16746,8 @@ void editor::InspectorWindow::show(){
             && entities[0] == actionPreviewEntity;
     // the Vertex Animator preview belongs to the shown GameObject too
     syncVertexAnimatorPreview(sceneProject, entities);
+    // and the Camera Shaker's Test preview
+    syncCameraShakePreview(sceneProject, entities);
     if (actionPreviewing && !previewSelectionMatches) {
         stopActionPreviewIfActive();
     }
@@ -16313,6 +16836,12 @@ void editor::InspectorWindow::show(){
                     drawProgressbarComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::InputFieldComponent){
                     drawInputFieldComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::OnScreenStickComponent){
+                    drawOnScreenStickComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::OnScreenButtonComponent){
+                    drawOnScreenButtonComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::TouchAreaComponent){
+                    drawTouchAreaComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::PanelComponent){
                     drawPanelComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::PolygonComponent){
@@ -16321,6 +16850,8 @@ void editor::InspectorWindow::show(){
                     drawMeshPolygonComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::TextComponent){
                     drawTextComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::TextEffectComponent){
+                    drawTextEffectComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::RectTransformComponent){
                     drawRectTransformComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::LayoutGroupComponent){
@@ -16355,6 +16886,10 @@ void editor::InspectorWindow::show(){
                     drawAnimationPlayerComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::VertexAnimatorComponent){
                     drawVertexAnimatorComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::CameraShakerComponent){
+                    drawCameraShakerComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::CameraFollowComponent){
+                    drawCameraFollowComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::CameraComponent){
                     drawCameraComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::AudioSourceComponent){
@@ -16715,6 +17250,69 @@ void editor::InspectorWindow::show(){
 
                     ImGui::EndTable();
                 }
+            }
+
+            // the UI's own space: a UI scene's native UI and every scene's screen HTML documents
+            ImGui::SeparatorText("Canvas Scaler");
+
+            if (ImGui::BeginTable("scene_canvas_scaler_table", 2, tableFlags)) {
+                ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Reference Resolution"));
+                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+                using jasperengine::editor::SceneCanvasScaler;
+                const SceneCanvasScaler scaler = jasperengine::editor::Catalog::getSceneProperty<SceneCanvasScaler>(sceneProject->scene, "canvas_scaler");
+
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted("Use Project Default");
+                ImGui::SetItemTooltip("Project Settings > Graphics > UI Scale applies. Off: this scene's own Canvas Scaler.");
+                ImGui::TableSetColumnIndex(1);
+                bool useDefault = scaler.useProjectDefault;
+                if (ImGui::Checkbox("##canvas_scaler_default", &useDefault)) {
+                    SceneCanvasScaler changed = scaler;
+                    changed.useProjectDefault = useDefault;
+                    // the scene's own settings start from the project's
+                    if (!useDefault && scaler.settings == CanvasScalerSettings())
+                        changed.settings = project->getUIScale();
+                    Command* cmd = new ScenePropertyCmd<SceneCanvasScaler>(project, sceneProject->id, "canvas_scaler", changed);
+                    CommandHandle::get(sceneProject->id)->addCommandNoMerge(cmd);
+                }
+                if (useDefault) {
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("%s", canvasScalerModeLabel(project->getUIScale().mode));
+                } else {
+                    CanvasScalerSettings edited = scaler.settings;
+                    bool editFinished = false;
+                    if (drawCanvasScalerFields("##scene_canvas_scaler", edited, &editFinished)) {
+                        SceneCanvasScaler changed = scaler;
+                        changed.settings = edited;
+                        cmd = new ScenePropertyCmd<SceneCanvasScaler>(project, sceneProject->id, "canvas_scaler", changed);
+                        CommandHandle::get(sceneProject->id)->addCommand(cmd);
+                    }
+                    // a drag is one undo step
+                    if (editFinished && cmd) {
+                        cmd->setNoMerge();
+                        cmd = nullptr;
+                    }
+                }
+
+                const CanvasScalerSettings& effective = useDefault ? project->getUIScale() : scaler.settings;
+                if (effective.mode != UIScaleMode::FollowGameCanvas) {
+                    float viewWidth = 0.0f, viewHeight = 0.0f, dpi = 0.0f;
+                    project->getEditViewSize(viewWidth, viewHeight, dpi);
+                    int gameCanvasWidth = 0, gameCanvasHeight = 0;
+                    Rect viewRect;
+                    Engine::computeViewLayout((int)viewWidth, (int)viewHeight, (int)project->getCanvasWidth(), (int)project->getCanvasHeight(),
+                                              project->getScalingMode(), gameCanvasWidth, gameCanvasHeight, viewRect);
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(1);
+                    ImGui::TextDisabled("%s", canvasScalerPreview(effective, viewRect.getWidth(), viewRect.getHeight(),
+                                                                  (float)gameCanvasWidth, (float)gameCanvasHeight, dpi).c_str());
+                    ImGui::SetItemTooltip("For the Game view's current resolution; the Scene view lays the UI out at this size.");
+                }
+
+                ImGui::EndTable();
             }
 
             ImGui::SeparatorText("Fixed Resolution");

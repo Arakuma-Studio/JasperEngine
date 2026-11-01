@@ -38,6 +38,9 @@ namespace jasperengine::htmlui::compat {
         StrokeLinecap,       // stroke-linecap: butt | round | square
         StrokeLinejoin,      // stroke-linejoin: miter | round | bevel | miter-clip | arcs
         StrokeDasharray,     // stroke-dasharray: none | the list as a string
+        TextEffect,          // text-effect: none | <function>#, per-character animation (HtmlTextEffects)
+        TextEffectIteration, // text-effect-iteration: infinite | <integer>
+        TextEffectTime,      // text-effect-time: ui | game
         Count
     };
 

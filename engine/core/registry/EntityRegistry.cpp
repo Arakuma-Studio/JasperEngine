@@ -77,6 +77,13 @@ EntityRegistry::EntityRegistry() {
     registerComponent<VertexAnimatorComponent>();
     registerComponent<TrailRendererComponent>();
     registerComponent<CanvasGroupComponent>();
+    registerComponent<OnScreenStickComponent>();
+    registerComponent<OnScreenButtonComponent>();
+    registerComponent<TouchAreaComponent>();
+    // camera shake spec 7.1
+    registerComponent<CameraShakerComponent>();
+    registerComponent<CameraFollowComponent>();
+    registerComponent<TextEffectComponent>();
 }
 
 EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {

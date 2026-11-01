@@ -504,9 +504,12 @@ std::vector<AnimationWindowClip::Row> AnimationWindowClip::buildRows() const{
     for (const TrackReport& entry : report.tracks){
         if (entry.track < reports.size()) reports[entry.track] = &entry;
     }
+    // tracks the state's layer mask hides (dimmed)
+    const std::vector<std::string> masked = controller().maskedTracks();
     for (size_t t = 0; t < data.tracks.size(); t++){
         const ClipTrackData& track = data.tracks[t];
         Row row;
+        if (t < masked.size()) row.masked = masked[t];
         row.kind = Row::Kind::Track;
         row.track = (int)t;
         row.label = (track.path.empty() ? rootName : track.path) + " : " + channelLabel(track.channel);
@@ -538,6 +541,7 @@ std::vector<AnimationWindowClip::Row> AnimationWindowClip::buildRows() const{
                 component.label = labels[c];
                 component.leaf = labels[c];
                 component.missing = row.missing;
+                component.masked = row.masked;
                 rows.push_back(component);
             }
         }

@@ -4,6 +4,7 @@
 #include "ActionSystem.h"
 
 #include "Scene.h"
+#include "Engine.h"
 #include "util/Color.h"
 #include "util/Angle.h"
 #include "animation/KeyframeSampling.h"
@@ -315,6 +316,12 @@ void ActionSystem::actionStart(Entity entity, bool newRun){
         }
     }
 
+    // a version 2 Particle System draws on its target or, without one, on its own GameObject
+    if (ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity); ps && ps->version >= 2){
+        particleSystemStart(entity, *ps);
+        return;
+    }
+
     if (target != NULL_ENTITY && scene->isEntityCreated(target)){
         Signature targetSignature = scene->getSignature(target);
 
@@ -387,6 +394,15 @@ void ActionSystem::actionStop(Entity entity){
         animcomp->stopOnFadeOut = false;
     }
 
+    // a version 2 Particle System stops and clears first: onStop sees it stopped
+    if (isParticleSystemV2(entity)){
+        particleSystemHardStop(entity);
+        action = scene->findComponent<ActionComponent>(entity);
+        if (!action){
+            return;
+        }
+    }
+
     actionComponentStop(*action);
     animationStopChildren(animationChildren);
 
@@ -433,6 +449,10 @@ void ActionSystem::actionPause(Entity entity){
     std::vector<Entity> animationChildren;
     if (AnimationComponent* animcomp = scene->findComponent<AnimationComponent>(entity)){
         animationChildren = animationChildEntities(*animcomp);
+    }
+
+    if (ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity); ps && ps->version >= 2){
+        particles::pause(*ps);
     }
 
     actionComponentPause(*action);
@@ -1264,6 +1284,11 @@ void ActionSystem::particleActionReset(Entity entity){
     action->stopTrigger = false;
     action->pauseTrigger = false;
 
+    if (particles->version >= 2){
+        particleSystemReset(entity);
+        return;
+    }
+
     particles->particles.clear();
     particles->newParticlesCount = 0.0f;
     particles->lastUsedParticle = 0;
@@ -1614,7 +1639,16 @@ void ActionSystem::latticeTracksUpdate(KeyframeTracksComponent& keyframe, Lattic
 }
 
 void ActionSystem::clearPoseBlend(){
-    transformBlend.clear();
+    // the nodes stay for the next frame (no allocation per animated entity and frame); the
+    // entries of destroyed entities go
+    for (auto it = transformBlend.begin(); it != transformBlend.end();){
+        if (!scene->isEntityCreated(it->first)){
+            it = transformBlend.erase(it);
+        }else{
+            it->second.reset();
+            ++it;
+        }
+    }
     morphBlend.clear();
     for (auto it = latticeBlend.begin(); it != latticeBlend.end();){
         if (!scene->isEntityCreated(it->first)){
@@ -1630,9 +1664,16 @@ void ActionSystem::clearPoseBlend(){
 }
 
 void ActionSystem::flushPoseBlend(){
-    for (auto& entry : transformBlend){
-        Entity target = entry.first;
-        TransformBlendAccum& accum = entry.second;
+    for (auto it = transformBlend.begin(); it != transformBlend.end();){
+        // kept from an earlier frame, nothing this one: dropped (the nodes of what animates
+        // every frame stay; the rest does not cost later frames)
+        if (it->second.empty()){
+            it = transformBlend.erase(it);
+            continue;
+        }
+        Entity target = it->first;
+        TransformBlendAccum& accum = it->second;
+        ++it;
 
         // one lookup: a destroyed entity has no components
         Transform* transform = scene->findComponent<Transform>(target);
@@ -1965,21 +2006,31 @@ void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponen
         }
     }
 
-    //Particles (a disabled Particle System holds its particles until enabled again)
+    //Particles (a disabled Particle System holds its particles until enabled again); version 2
+    //systems step in updateParticleSystems
     if (signature.test(scene->getComponentId<ParticleSystemComponent>()) &&
-            scene->getComponent<ParticleSystemComponent>(entity).enabled){
+            scene->getComponent<ParticleSystemComponent>(entity).enabled &&
+            scene->getComponent<ParticleSystemComponent>(entity).version < 2){
         ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
+
+        // useUnscaledTime: the frame's delta before Engine.timeScale (dt is the scaled one, or a
+        // preview's own step in the editor at time scale 1)
+        double particleDt = dt;
+        if (particles.useUnscaledTime){
+            const double timeScale = Engine::getTimeScale();
+            particleDt = (timeScale > 0.0) ? dt / timeScale : (double)Engine::getUnscaledDeltatime();
+        }
 
         if (targetSignature.test(scene->getComponentId<InstancedMeshComponent>())){
             InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(action.target);
 
-            particlesActionUpdate(dt, entity, action.target, action, particles, instmesh);
+            particlesActionUpdate(particleDt, entity, action.target, action, particles, instmesh);
             if (action.state != ActionState::Running) return;
         }
         if (targetSignature.test(scene->getComponentId<PointsComponent>())){
             PointsComponent& points = scene->getComponent<PointsComponent>(action.target);
 
-            particlesActionUpdate(dt, entity, action.target, action, particles, points);
+            particlesActionUpdate(particleDt, entity, action.target, action, particles, points);
             if (action.state != ActionState::Running) return;
         }
     }
@@ -2229,6 +2280,13 @@ void ActionSystem::updateActionPreview(double dt, Entity entity){
         return;
     }
 
+    // a version 2 Particle System steps whatever its action's state (emitted particles live
+    // on a stopped system); the preview never runs its stop action
+    if (isParticleSystemV2(entity)){
+        updateParticlePreview(dt, {entity});
+        return;
+    }
+
     ActionComponent* action = actionStateChange(entity, scene->getComponent<ActionComponent>(entity));
 
     if (action && action->state == ActionState::Running){
@@ -2241,13 +2299,16 @@ void ActionSystem::updateActionPreview(double dt, Entity entity){
 // The unscaled frame delta of an update given the scaled one. While the time scale is above 0
 // it is dt / timeScale (the frame delta before the scale, exact for any dt a caller steps
 // with); at time scale 0 it is the frame delta the engine measured (the fixed frame delta
-// when set, else the last frame's, capped like Engine::deltatime).
-// TODO(coroutines): Engine::getUnscaledDeltatime() replaces the time scale 0 case when the
-// coroutines feature (which adds it) is on main.
+// when set, else the last frame's, capped like Engine::deltatime): Engine::getUnscaledDeltatime(),
+// or, for an update stepped outside an engine frame, the same value worked out here.
 double ActionSystem::unscaledDeltatime(double dt){
     const double timeScale = Engine::getTimeScale();
     if (timeScale > 0.0){
         return dt / timeScale;
+    }
+    const double frameUnscaled = Engine::getUnscaledDeltatime();
+    if (frameUnscaled > 0.0){
+        return frameUnscaled;
     }
     if (Engine::getFixedDeltatime() > 0.0){
         return Engine::getFixedDeltatime();
@@ -2310,6 +2371,9 @@ void ActionSystem::update(double dt){
 
 	}
 
+    // version 2 Particle Systems (playOnAwake, stepping, their stop)
+    updateParticleSystems(dt);
+
     // Animation Players add their states to the same blend
     updatePlayers(dt);
 
@@ -2319,6 +2383,10 @@ void ActionSystem::update(double dt){
 
     // clip events and onFinish, after the pose is written
     dispatchPlayerCallbacks();
+
+    // Particle System stop actions (disable, destroy, onParticleSystemStopped): after the
+    // passes, which they would change under them
+    runParticleStopActions();
 }
 
 void ActionSystem::onComponentAdded(Entity entity, ComponentId componentId) {
@@ -2345,7 +2413,8 @@ void ActionSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
 			}
 		}
 
-		if (ownedTarget && target != NULL_ENTITY && scene->isEntityCreated(target)) {
+		// (a system drawing on its own GameObject owns no other)
+		if (ownedTarget && target != NULL_ENTITY && target != entity && scene->isEntityCreated(target)) {
 			scene->destroyEntity(target);
 		}
 	} else if (componentId == scene->getComponentId<AnimationComponent>()) {

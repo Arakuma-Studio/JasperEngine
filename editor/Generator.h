@@ -141,6 +141,8 @@ namespace jasperengine::editor {
         std::future<void> buildFuture;
         std::atomic<bool> lastBuildSucceeded;
         CommandRunner commandRunner;
+        // the project's UI Scale, emitted by configure (setUIScale before it)
+        CanvasScalerSettings uiScale;
 
         static fs::path getGeneratedPath(const fs::path& projectInternalPath);
         static std::string getEditorPluginAbiCheck();
@@ -220,6 +222,8 @@ namespace jasperengine::editor {
         void clearSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath);
         bool hasSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath) const;
         void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const std::string& inputActionsJson = "", bool allowInsecureHttp = false, const std::vector<ShaderGlobalDecl>& shaderGlobals = {}, const PlayerSettings& playerSettings = PlayerSettings());
+        // the Canvas Scaler project default the next configure() writes into the generated main
+        void setUIScale(const CanvasScalerSettings& settings) { uiScale = settings; }
         // main.cpp's init line of Project Settings > Input: InputActions::loadJson of the project's
         // actions in a raw string literal (a delimiter the JSON does not hold), "" for the defaults
         static std::string inputActionsInitSource(const std::string& inputActionsJson);
