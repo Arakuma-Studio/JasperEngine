@@ -1,0 +1,330 @@
+id: 2411570675
+name: HUD
+scene:
+  backgroundColor: [0.525, 0.525, 0.525, 1]
+  shadowQuality: low
+  meshLodEnabled: false
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: off
+  globalIlluminationIntensity: 0.1
+  globalIlluminationColor: [1, 1, 1]
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_ui
+mainCamera: 0
+maxValues:
+  maxSubmeshes: 0
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 0
+  maxSpriteFrames: 0
+  maxBones: 0
+  maxColliders2D: 0
+  maxColliderPoints2D: 0
+  maxColliders3D: 0
+  maxColliderVertices3D: 0
+  maxColliderIndices3D: 0
+shaderKeys:
+  - type: points
+    properties: 4
+  - type: points
+    properties: 5
+  - type: points
+    properties: 13
+  - type: mesh
+    properties: 1025
+  - type: ui
+    properties: 2
+  - type: ui
+    properties: 8
+  - type: ui
+    properties: 9
+  - type: blit
+entities:
+  - type: Entity
+    entity: 1001
+    name: HUDRoot
+    components:
+      transform:
+        position: [16, 16, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [16, 16, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [16, 16, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [16, 16, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      recttransform:
+        width: 320
+        height: 90
+        anchorPointLeft: 0
+        anchorPointTop: 0
+        anchorPointRight: 0
+        anchorPointBottom: 0
+        anchorOffsetLeft: 0
+        anchorOffsetTop: 0
+        anchorOffsetRight: 320
+        anchorOffsetBottom: 90
+        positionOffset: [16, 16]
+        pivot: [0, 0]
+        anchorPreset: TOP_LEFT
+        usingAnchors: true
+        panel: 0
+        containerBoxIndex: -1
+        scissor: [0, 0, 0, 0]
+        ignoreScissor: false
+        ignoreEvents: false
+      script:
+        scripts:
+          - type: lua
+            path: LegacyHud.lua
+            className: LegacyHud
+            enabled: true
+            properties:
+              - name: label
+                displayName: Score Label
+                type: EntityReference
+                ptrTypeName: Text
+                value: 1002
+                defaultValue: 0
+              - name: timeBar
+                displayName: Time Bar
+                type: EntityReference
+                ptrTypeName: Progressbar
+                value: 1003
+                defaultValue: 0
+              - name: duration
+                displayName: Duration (frames)
+                type: Int
+                value: 360
+                defaultValue: 360
+    children:
+      - type: Entity
+        entity: 1002
+        name: ScoreLabel
+        components:
+          transform:
+            position: [0, 0, 0]
+            rotation: [1, 0, 0, 0]
+            scale: [1, 1, 1]
+            worldPosition: [16, 16, 0]
+            worldRotation: [1, 0, 0, 0]
+            worldScale: [1, 1, 1]
+            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [16, 16, 0, 1]]
+            normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false
+          ui:
+            enabled: true
+            primitiveType: triangles
+            vertexCount: 42
+            aabb:
+              min: [0, 0, 0]
+              max: [80, 23.166666, 0]
+            worldAABB:
+              min: [16, 16, 0]
+              max: [96, 39.166664, 0]
+            texture:
+              textureType: 2D
+              source: id
+              id: font|28#9
+              minFilter: linear
+              magFilter: linear
+              wrapU: repeat
+              wrapV: repeat
+              releaseDataAfterLoad: false
+            color: [1, 1, 1, 1]
+            automaticFlipY: true
+            flipY: false
+            pointerMoved: false
+            focused: false
+          recttransform:
+            width: 300
+            height: 36
+            anchorPointLeft: 0
+            anchorPointTop: 0
+            anchorPointRight: 0
+            anchorPointBottom: 0
+            anchorOffsetLeft: 0
+            anchorOffsetTop: 0
+            anchorOffsetRight: 300
+            anchorOffsetBottom: 36
+            positionOffset: [0, 0]
+            pivot: [0, 0]
+            anchorPreset: TOP_LEFT
+            usingAnchors: true
+            panel: 0
+            containerBoxIndex: -1
+            scissor: [0, 0, 0, 0]
+            ignoreScissor: false
+            ignoreEvents: false
+          text:
+            font: []
+            text: Score 0
+            fontSize: 28
+            multiline: true
+            maxTextSize: 100
+            fixedWidth: true
+            fixedHeight: true
+            pivotBaseline: false
+            pivotCentered: false
+      - type: Entity
+        entity: 1003
+        name: TimeBar
+        components:
+          transform:
+            position: [0, 48, 0]
+            rotation: [1, 0, 0, 0]
+            scale: [1, 1, 1]
+            worldPosition: [16, 64, 0]
+            worldRotation: [1, 0, 0, 0]
+            worldScale: [1, 1, 1]
+            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 48, 0, 1]]
+            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [16, 64, 0, 1]]
+            normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false
+          ui:
+            enabled: true
+            primitiveType: triangles
+            vertexCount: 54
+            aabb:
+              min: [0, 0, 0]
+              max: [300, 20, 0]
+            worldAABB:
+              min: [16, 64, 0]
+              max: [316, 84, 0]
+            texture: ~
+            color: [1, 1, 1, 1]
+            automaticFlipY: true
+            flipY: false
+            pointerMoved: false
+            focused: false
+          progressbar:
+            fill: 1004
+            type: horizontal
+            value: 0
+            fillMarginLeft: 0
+            fillMarginRight: 0
+            fillMarginTop: 0
+            fillMarginBottom: 0
+          recttransform:
+            width: 300
+            height: 20
+            anchorPointLeft: 0
+            anchorPointTop: 0
+            anchorPointRight: 0
+            anchorPointBottom: 0
+            anchorOffsetLeft: 0
+            anchorOffsetTop: 0
+            anchorOffsetRight: 300
+            anchorOffsetBottom: 20
+            positionOffset: [0, 48]
+            pivot: [0, 0]
+            anchorPreset: TOP_LEFT
+            usingAnchors: true
+            panel: 0
+            containerBoxIndex: -1
+            scissor: [66.00001, 114, 300.00003, 20]
+            ignoreScissor: false
+            ignoreEvents: false
+          image:
+            patchMarginLeft: 0
+            patchMarginRight: 0
+            patchMarginTop: 0
+            patchMarginBottom: 0
+            textureScaleFactor: 0
+        children:
+          - type: Entity
+            entity: 1004
+            name: Fill
+            components:
+              transform:
+                position: [0, 0, 0]
+                rotation: [1, 0, 0, 0]
+                scale: [1, 1, 1]
+                worldPosition: [16, 64, 0]
+                worldRotation: [1, 0, 0, 0]
+                worldScale: [1, 1, 1]
+                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [16, 64, 0, 1]]
+                normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                visible: true
+                billboardRotation: [1, 0, 0, 0]
+                billboard: false
+                fakeBillboard: false
+                cylindricalBillboard: false
+              ui:
+                enabled: true
+                primitiveType: triangles
+                vertexCount: 54
+                aabb:
+                  min: [0, 0, 0]
+                  max: [1, 20, 0]
+                worldAABB:
+                  min: [16, 64, 0]
+                  max: [17, 84, 0]
+                texture: ~
+                color: [0.3, 0.7, 0.4, 1]
+                automaticFlipY: true
+                flipY: false
+                pointerMoved: false
+                focused: false
+              recttransform:
+                width: 1
+                height: 20
+                anchorPointLeft: 0
+                anchorPointTop: 0
+                anchorPointRight: 0
+                anchorPointBottom: 1
+                anchorOffsetLeft: 0
+                anchorOffsetTop: 0
+                anchorOffsetRight: 0
+                anchorOffsetBottom: 0
+                positionOffset: [0, 0]
+                pivot: [0, 0]
+                anchorPreset: NONE
+                usingAnchors: true
+                panel: 0
+                containerBoxIndex: -1
+                scissor: [66.00001, 114, 1.0000076, 20]
+                ignoreScissor: false
+                ignoreEvents: true
+              image:
+                patchMarginLeft: 0
+                patchMarginRight: 0
+                patchMarginTop: 0
+                patchMarginBottom: 0
+                textureScaleFactor: 0

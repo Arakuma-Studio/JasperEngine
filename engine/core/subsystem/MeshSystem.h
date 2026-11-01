@@ -103,6 +103,13 @@ namespace jasperengine{
         std::string getAsyncModelLoadKey(const std::string& filename) const;
         static std::shared_ptr<AsyncModelLoadResult> pollOrStartAsyncModelLoad(const Scene* scene, const std::string& filename, bool obj);
         static void cancelAsyncModelLoadByKey(const std::string& key);
+        // A finished load of this scene that nobody took for UNCLAIMED_LOAD_FRAMES updates in a
+        // row (its GameObject names another file now, or found the parse in ModelPool): dropped,
+        // its build closed. A waiting GameObject or editor command takes a result on the frame
+        // it is ready, so only abandoned ones get that old.
+        void collectUnclaimedAsyncModelLoads();
+        static constexpr int UNCLAIMED_LOAD_FRAMES = 60;
+        std::unordered_map<std::string, int> unclaimedLoadFrames;
         bool isAsyncModelLoadPending(const std::string& filename) const;
         static bool isAsyncModelLoadPending(const Scene* scene, const std::string& filename);
         static bool isModelPreloading(const std::string& filename);

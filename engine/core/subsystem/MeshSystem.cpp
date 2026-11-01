@@ -1436,6 +1436,37 @@ void MeshSystem::cancelAsyncModelLoadByKey(const std::string& key){
     }
 }
 
+void MeshSystem::collectUnclaimedAsyncModelLoads(){
+    const std::string scenePrefix = getAsyncModelLoadScenePrefix(scene);
+    std::vector<std::string> unclaimed;
+    {
+        std::lock_guard<std::mutex> lock(getAsyncModelMutex());
+        auto& pendingModelLoads = getPendingModelLoads();
+        // counts restart for a load taken (or cancelled) and started again
+        for (auto it = unclaimedLoadFrames.begin(); it != unclaimedLoadFrames.end();) {
+            auto pending = pendingModelLoads.find(it->first);
+            if (pending == pendingModelLoads.end() || !pending->second.isReady()) {
+                it = unclaimedLoadFrames.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        for (const auto& [key, task] : pendingModelLoads) {
+            if (key.rfind(scenePrefix, 0) != 0 || !task.isReady()) {
+                continue;
+            }
+            if (++unclaimedLoadFrames[key] >= UNCLAIMED_LOAD_FRAMES) {
+                unclaimed.push_back(key);
+            }
+        }
+    }
+    for (const std::string& key : unclaimed) {
+        unclaimedLoadFrames.erase(key);
+        Log::debug("Model load nobody waits for any more dropped: %s", key.substr(scenePrefix.size()).c_str());
+        cancelAsyncModelLoadByKey(key);
+    }
+}
+
 // Decodes one image that SetImagesAsIs left still encoded in image.image.
 void MeshSystem::decodeGLTFImage(tinygltf::Image& image, size_t index, int maxDimension) {
     if (image.image.empty()) {
@@ -6974,6 +7005,9 @@ void MeshSystem::destroy(){
 }
 
 void MeshSystem::update(double dt){
+    // before the pause: a paused scene's abandoned load closes its build too
+    collectUnclaimedAsyncModelLoads();
+
     if (paused) {
         return;
     }

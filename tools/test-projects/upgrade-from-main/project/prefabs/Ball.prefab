@@ -1,0 +1,120 @@
+type: Prefab
+version: 3
+guid: 16cc275eff03aecf8ca89c0b6925694c
+nextEntity: 1002
+root: 1001
+members:
+  - type: Entity
+    entity: 1001
+    name: Ball
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: assets/sprites/ball.png
+                minFilter: linear
+                magFilter: linear
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: false
+            textureShadow: true
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        aabb:
+          min: [0, 0, 0]
+          max: [48, 48, 0]
+        verticesAABB:
+          min: [0, 0, 0]
+          max: [48, 48, 0]
+        worldAABB:
+          min: [0, 0, 0]
+          max: [48, 48, 0]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: true
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 48
+        height: 48
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: bottom_left
+      rigidbody2d:
+        enabled: true
+        type: dynamic
+        numColliders: 1
+        colliders:
+          - type: circle
+            pointA: [24, 24]
+            pointB: [0, 0]
+            radius: 24
+            loop: false
+            density: 1
+            friction: 0.6
+            restitution: 0.5
+            sensor: false
+            enableHitEvents: false
+            contactEvents: true
+            preSolveEvents: false
+            sensorEvents: false
+            categoryBits: 1
+            maskBits: 65535
+            groupIndex: 0
+            vertices: ~

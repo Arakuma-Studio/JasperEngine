@@ -21,6 +21,7 @@
 #endif
 
 #include <algorithm>
+#include <tuple>
 #include <cmath>
 
 
@@ -579,6 +580,108 @@ bool PhysicsSystem::isSteppingWorld3D() const{
 
 std::recursive_mutex& PhysicsSystem::getCallbackMutex3D(){
     return callbackMutex3D;
+}
+
+void PhysicsSystem::queueContact3D(uint8_t kind, Entity body1, Entity body2, unsigned long collider1, unsigned long collider2, const Contact3D& contact){
+    std::lock_guard<std::recursive_mutex> lock(callbackMutex3D);
+    PendingContact3D pending;
+    pending.kind = kind;
+    pending.body1 = body1;
+    pending.body2 = body2;
+    pending.collider1 = collider1;
+    pending.collider2 = collider2;
+    pending.contact = contact;
+    pendingContacts3D.push_back(std::move(pending));
+}
+
+void PhysicsSystem::queueActivation3D(Entity body, bool activated){
+    std::lock_guard<std::recursive_mutex> lock(callbackMutex3D);
+    pendingActivations3D.emplace_back(body, activated);
+}
+
+void PhysicsSystem::applyContactOverride3D(const ContactPairKey3D& key, JPH::ContactSettings& settings){
+    if (!hasContactOverrides3D.load(std::memory_order_acquire)){
+        return;
+    }
+    std::lock_guard<std::recursive_mutex> lock(callbackMutex3D);
+    auto it = contactOverrides3D.find(key);
+    if (it == contactOverrides3D.end()){
+        return;
+    }
+    if (it->second.hasFriction) settings.mCombinedFriction = it->second.friction;
+    if (it->second.hasRestitution) settings.mCombinedRestitution = it->second.restitution;
+    if (it->second.hasSensor) settings.mIsSensor = it->second.sensor;
+}
+
+void PhysicsSystem::forgetContact3D(const ContactPairKey3D& key){
+    if (!hasContactOverrides3D.load(std::memory_order_acquire)){
+        return;
+    }
+    std::lock_guard<std::recursive_mutex> lock(callbackMutex3D);
+    contactOverrides3D.erase(key);
+    hasContactOverrides3D.store(!contactOverrides3D.empty(), std::memory_order_release);
+}
+
+void PhysicsSystem::setContactFriction3D(const ContactPairKey3D& key, float friction){
+    std::lock_guard<std::recursive_mutex> lock(callbackMutex3D);
+    ContactOverride3D& entry = contactOverrides3D[key];
+    entry.hasFriction = true;
+    entry.friction = friction;
+    hasContactOverrides3D.store(true, std::memory_order_release);
+}
+
+void PhysicsSystem::setContactRestitution3D(const ContactPairKey3D& key, float restitution){
+    std::lock_guard<std::recursive_mutex> lock(callbackMutex3D);
+    ContactOverride3D& entry = contactOverrides3D[key];
+    entry.hasRestitution = true;
+    entry.restitution = restitution;
+    hasContactOverrides3D.store(true, std::memory_order_release);
+}
+
+void PhysicsSystem::setContactSensor3D(const ContactPairKey3D& key, bool sensor){
+    std::lock_guard<std::recursive_mutex> lock(callbackMutex3D);
+    ContactOverride3D& entry = contactOverrides3D[key];
+    entry.hasSensor = true;
+    entry.sensor = sensor;
+    hasContactOverrides3D.store(true, std::memory_order_release);
+}
+
+void PhysicsSystem::deliverEvents3D(){
+    std::vector<PendingContact3D> contacts;
+    std::vector<std::pair<Entity, bool>> activations;
+    {
+        std::lock_guard<std::recursive_mutex> lock(callbackMutex3D);
+        contacts.swap(pendingContacts3D);
+        activations.swap(pendingActivations3D);
+    }
+    if (contacts.empty() && activations.empty()){
+        return;
+    }
+    // Jolt's job threads reported them in whatever order they ran: delivered in one order (the
+    // kind, then the bodies and colliders), the same on every run
+    std::stable_sort(contacts.begin(), contacts.end(), [](const PendingContact3D& a, const PendingContact3D& b){
+        return std::tie(a.kind, a.body1, a.body2, a.collider1, a.collider2) < std::tie(b.kind, b.body1, b.body2, b.collider1, b.collider2);
+    });
+    std::stable_sort(activations.begin(), activations.end());
+
+    for (const PendingContact3D& pending : contacts){
+        const Rigidbody body1(scene, pending.body1);
+        const Rigidbody body2(scene, pending.body2);
+        if (pending.kind == 0){
+            onContactAdded3D(body1, body2, pending.contact);
+        }else if (pending.kind == 1){
+            onContactPersisted3D(body1, body2, pending.contact);
+        }else{
+            onContactRemoved3D(body1, body2, pending.collider1, pending.collider2);
+        }
+    }
+    for (const auto& [entity, activated] : activations){
+        if (activated){
+            onBodyActivated3D(Rigidbody(scene, entity));
+        }else{
+            onBodyDeactivated3D(Rigidbody(scene, entity));
+        }
+    }
 }
 
 void PhysicsSystem::flushPendingDestroys3D(){
@@ -3204,9 +3307,13 @@ void PhysicsSystem::fixedUpdate(double dt){
 
 		StepScope stepScope(this);
 		// the contact listener runs on Jolt's threads, serialized by getCallbackMutex3D, while
-		// this one waits: what its callbacks destroy goes after the step
+		// this one waits: what its callbacks destroy goes after the step. Its contact and
+		// activation events are queued and delivered after the step (deliverEvents3D); a
+		// shouldCollide3D answers inside it, so with subscribers the step runs every job on this
+		// thread (a Lua filter runs on the Lua thread only)
 		StructuralDeferScope deferScope(*scene, true);
-		world3D.Update(fixedStep, cCollisionSteps, temp_allocator, job_system);
+		JPH::JobSystem* jobs = shouldCollide3D.hasSubscribers() ? &JoltShapeBuilder::callingThreadPhysicsJobSystem() : job_system;
+		world3D.Update(fixedStep, cCollisionSteps, temp_allocator, jobs);
 	}
 
     // layers and filter bits changed by callbacks inside the step
@@ -3230,6 +3337,13 @@ void PhysicsSystem::fixedUpdate(double dt){
         }
 
         updateTransformFromRigidbody(entity, body, 1.0f);
+    }
+
+    {
+        // the step's contact and activation events, on this thread, the bodies where it put
+        // them (as 2D's after its step): what they destroy goes after the last of them
+        StructuralDeferScope deferScope(*scene);
+        deliverEvents3D();
     }
 
     // the characters ride what moved, see what is under them now and take their root motion

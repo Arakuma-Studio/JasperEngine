@@ -74,6 +74,9 @@ namespace jasperengine {
         // like Jolt's Factory.
         static JPH::TempAllocatorImpl& sharedPhysicsTempAllocator();
         static JPH::JobSystem& sharedPhysicsJobSystem();
+        // A job system that runs every job on the thread updating the world: for a step whose
+        // callbacks must answer on it (a Lua shouldCollide3D runs on the Lua thread only)
+        static JPH::JobSystem& callingThreadPhysicsJobSystem();
 
         // The builders return null and set *error (when there is something to say) on failure.
         // hullTolerance: how far a point may lie outside the hull Jolt builds (its default 1 mm,

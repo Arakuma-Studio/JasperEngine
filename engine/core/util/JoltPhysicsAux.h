@@ -265,30 +265,27 @@ namespace jasperengine{
 
 	class JoltActivationListener : public JPH::BodyActivationListener{
 	private:
-        Scene* scene;
         PhysicsSystem* physicsSystem;
 	public:
-        JoltActivationListener(Scene* scene, PhysicsSystem* physicsSystem){
-            this->scene = scene;
+        JoltActivationListener(Scene*, PhysicsSystem* physicsSystem){
             this->physicsSystem = physicsSystem;
         }
 
-		// Jolt calls these from its job threads: subscribers run one at a time (see
-		// PhysicsSystem::getCallbackMutex3D), and not at all when there are none
+		// Jolt calls these from its job threads: the events are queued and delivered on the main
+		// thread after the step (PhysicsSystem::deliverEvents3D), and not at all when there are
+		// no subscribers
 		virtual void OnBodyActivated(const JPH::BodyID &inBodyID, uint64_t inBodyUserData) override{
 			if (!physicsSystem->onBodyActivated3D.hasSubscribers()){
 				return;
 			}
-			std::lock_guard<std::recursive_mutex> lock(physicsSystem->getCallbackMutex3D());
-			physicsSystem->onBodyActivated3D(Rigidbody(scene, inBodyUserData));
+			physicsSystem->queueActivation3D(static_cast<Entity>(inBodyUserData), true);
 		}
 
 		virtual void OnBodyDeactivated(const JPH::BodyID &inBodyID, uint64_t inBodyUserData) override{
 			if (!physicsSystem->onBodyDeactivated3D.hasSubscribers()){
 				return;
 			}
-			std::lock_guard<std::recursive_mutex> lock(physicsSystem->getCallbackMutex3D());
-			physicsSystem->onBodyDeactivated3D(Rigidbody(scene, inBodyUserData));
+			physicsSystem->queueActivation3D(static_cast<Entity>(inBodyUserData), false);
 		}
 	};
 
@@ -303,6 +300,19 @@ namespace jasperengine{
         bool hidden(const JPH::Body& body1, const JPH::Body& body2) const{
             const bool inner = physicsSystem->isCharacterInnerBody(body1.GetID()) || physicsSystem->isCharacterInnerBody(body2.GetID());
             return inner && !body1.IsSensor() && !body2.IsSensor();
+        }
+
+        void report(uint8_t kind, const JPH::Body& body1, const JPH::Body& body2, const JPH::ContactManifold& manifold,
+                    JPH::ContactSettings& settings, bool subscribed){
+            const ContactPairKey3D key{body1.GetID().GetIndexAndSequenceNumber(), body2.GetID().GetIndexAndSequenceNumber(),
+                                       manifold.mSubShapeID1.GetValue(), manifold.mSubShapeID2.GetValue()};
+            physicsSystem->applyContactOverride3D(key, settings);
+            if (!subscribed || hidden(body1, body2)){
+                return;
+            }
+            const Contact3D contact(scene, &body1, &body2, &manifold, &settings);
+            physicsSystem->queueContact3D(kind, static_cast<Entity>(body1.GetUserData()), static_cast<Entity>(body2.GetUserData()),
+                                          (unsigned long)contact.getColliderIndex1(), (unsigned long)contact.getColliderIndex2(), contact);
         }
 	public:
         JoltContactListener(Scene* scene, PhysicsSystem* physicsSystem){
@@ -331,37 +341,21 @@ namespace jasperengine{
 			return JPH::ValidateResult::AcceptAllContactsForThisBodyPair;
 		}
 
+		// Added and persisted contacts: the settings a script changed on this contact apply
+		// first; the event is queued (a copy of the contact) and delivered after the step
 		virtual void OnContactAdded(const JPH::Body &inBody1, const JPH::Body &inBody2, const JPH::ContactManifold &inManifold, JPH::ContactSettings &ioSettings) override{
-			if (!physicsSystem->onContactAdded3D.hasSubscribers() || hidden(inBody1, inBody2)){
-				return;
-			}
-			std::lock_guard<std::recursive_mutex> lock(physicsSystem->getCallbackMutex3D());
-
-			Entity entity1 = inBody1.GetUserData();
-			Rigidbody body1(scene, entity1);
-
-			Entity entity2 = inBody2.GetUserData();
-			Rigidbody body2(scene, entity2);
-
-			physicsSystem->onContactAdded3D(body1, body2, Contact3D(scene, &inBody1, &inBody2, &inManifold, &ioSettings));
+			report(0, inBody1, inBody2, inManifold, ioSettings, physicsSystem->onContactAdded3D.hasSubscribers());
 		}
 
 		virtual void OnContactPersisted(const JPH::Body &inBody1, const JPH::Body &inBody2, const JPH::ContactManifold &inManifold, JPH::ContactSettings &ioSettings) override{
-			if (!physicsSystem->onContactPersisted3D.hasSubscribers() || hidden(inBody1, inBody2)){
-				return;
-			}
-			std::lock_guard<std::recursive_mutex> lock(physicsSystem->getCallbackMutex3D());
-
-			Entity entity1 = inBody1.GetUserData();
-			Rigidbody body1(scene, entity1);
-
-			Entity entity2 = inBody2.GetUserData();
-			Rigidbody body2(scene, entity2);
-
-			physicsSystem->onContactPersisted3D(body1, body2, Contact3D(scene, &inBody1, &inBody2, &inManifold, &ioSettings));
+			report(1, inBody1, inBody2, inManifold, ioSettings, physicsSystem->onContactPersisted3D.hasSubscribers());
 		}
 
 		virtual void OnContactRemoved(const JPH::SubShapeIDPair &inSubShapePair) override{
+			// a setting a script changed on the contact ends with it
+			physicsSystem->forgetContact3D(ContactPairKey3D{inSubShapePair.GetBody1ID().GetIndexAndSequenceNumber(),
+			                                                inSubShapePair.GetBody2ID().GetIndexAndSequenceNumber(),
+			                                                inSubShapePair.GetSubShapeID1().GetValue(), inSubShapePair.GetSubShapeID2().GetValue()});
 			if (!physicsSystem->onContactRemoved3D.hasSubscribers()){
 				return;
 			}
@@ -402,8 +396,7 @@ namespace jasperengine{
 			size_t shapeIndex1 = shape1->GetSubShapeUserData(inSubShapePair.GetSubShapeID1());
 			size_t shapeIndex2 = shape2->GetSubShapeUserData(inSubShapePair.GetSubShapeID2());
 
-			std::lock_guard<std::recursive_mutex> lock(physicsSystem->getCallbackMutex3D());
-			physicsSystem->onContactRemoved3D(Rigidbody(scene, entity1), Rigidbody(scene, entity2), (unsigned long)shapeIndex1, (unsigned long)shapeIndex2);
+			physicsSystem->queueContact3D(2, entity1, entity2, (unsigned long)shapeIndex1, (unsigned long)shapeIndex2, Contact3D());
 		}
 	};
 
