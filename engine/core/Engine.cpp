@@ -742,10 +742,6 @@ float Engine::getSmoothDeltatime(){
     return smoothDeltatime;
 }
 
-float Engine::getUnscaledDeltatime(){
-    return (float)unscaledDeltatime;
-}
-
 double Engine::getSystemTime(){
     return stm_sec(stm_now());
 }
