@@ -122,8 +122,8 @@ LIMITS.update({"create_ragdoll": 900})
 # input, physics-2d, script-lifecycle): 150 tools measured 106807, the limit set to it
 # merged by the lead (ui-canvas-group, physics-3d, http): 151 tools measured 107626 on the merged tree
 # physics-contacts: get_runtime_entity's physics contacts / callbacks paid by a shorter description
-# (edit_colliders' receiver is in the guide); merged with main: MEASURED
-TOTAL_LIMIT = 107626
+# (edit_colliders' receiver is in the guide); merged with main (+ http): 151 tools measured 107624
+TOTAL_LIMIT = 107624
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

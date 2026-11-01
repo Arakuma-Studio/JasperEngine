@@ -1023,7 +1023,7 @@ Run Lua in the running game: the values as JSON (handles as {type, entity, name,
 
 Hints: read-only, idempotent
 
-Play state: played and running scenes (child scenes run as copies with own ids), the session (time, frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), console_cursor, the clock (time_scale, fixed_fps, auto_pause, held); stopped: play_would_start.
+Play state: played and running scenes (child scenes run as copies with own ids), the session (time, frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), console_cursor, the clock (time_scale, fixed_fps, auto_pause, held), http (request counts, last failures); stopped: play_would_start.
 
 No parameters.
 
@@ -1165,6 +1165,7 @@ Read (no arguments) or change the Game view toolbar settings (editor preferences
 |---|---|---|---|
 | `aspect` | `"free"` \| `"project"` \| `"16:9"` \| `"16:10"` \| `"4:3"` \| `"9:16"` |  |  |
 | `maximize_on_play` | boolean |  |  |
+| `network` | `"online"` \| `"offline"` |  | offline: Http to non-localhost fails with "offline". Works while playing. |
 | `physics_debug` | boolean |  | Collider/joint wireframes in Play. |
 | `physics_debug_contacts` | boolean |  |  |
 | `scale` | number (1..5) |  |  |
