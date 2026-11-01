@@ -74,8 +74,8 @@ namespace jasperengine::player {
         // test support: forget everything
         static void reset();
         // test support: what tells whether shaders and pipelines are still being made (compiled
-        // at runtime, or created off the render thread: the screenshot waits for them); null:
-        // ShaderPool::isCreationIdle
+        // at runtime, or created off the render thread) or textures still loading: the
+        // screenshot waits for them; null: ShaderPool::isCreationIdle and no texture load
         static void setGpuCreationIdleProbe(bool (*probe)());
     };
 

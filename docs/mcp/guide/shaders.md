@@ -470,9 +470,11 @@ exact one replaces it once it is ready. A pipeline being created is not drawn fo
 - `get_render_stats.shader_creation`: `mode` (`worker`, `parallel`, `deferred`, `thread`, `metal`,
   `sync`), `pending_shaders` / `pending_pipelines` / `pending_warm_draws`, `last_frame_main_ms`,
   `max_main_ms` (the render thread's creation work), and `warmup` {recording, shaders, pipelines}.
-- `screenshot` (and tools that return one) waits up to 30 s for every `pending_*` to be 0, then
-  captures. Other readings (`get_render_stats`, picking) do not wait: poll `pending_*` first. A
-  stand-in frame is correct but not final.
+- `screenshot` (and tools that return one, and `sample_view_color`) waits for every `pending_*` to
+  be 0 and no texture to be loading, up to its `timeout_seconds`, then captures; past it the call
+  fails and names what is still loading. It never shows a stand-in. Other readings
+  (`get_render_stats`, picking) do not wait: poll `pending_*` first. A stand-in frame is correct
+  but not final.
 - Settings (`set_project_settings`): `shader_creation.async_creation`,
   `shader_creation.main_thread_budget_ms`, `shader_creation.gl_warm_draws`, and for the warm-up
   list `shader_creation.record_during_play`, `include_in_builds`, `hold_first_scene`.

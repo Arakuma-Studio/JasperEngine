@@ -58,6 +58,8 @@ the picking suites a second time with `scalar`); `MeshPose.MatchesGpuSkinning` i
 CPU pose against the skinned shaders, glcore and Vulkan). `JASPER_PICK_BUILD_DELAY_MS=<ms>` holds
 every background mesh BVH build pending that long: the MCP tests use it to see the Scene view's
 waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
+`JASPER_TEXTURE_LOAD_DELAY_MS=<ms>` holds every async texture decode that long: a screenshot must
+then wait for the texture, never show its stand-in (`tools/mcp/tests/test_screenshot_waits.py`).
 
 ### HTML UI, MCP, smoke, web
 
@@ -434,6 +436,10 @@ hides real regressions behind re-runs. So (BF12):
   `test_lattice_anim.py` sampled clip time 0.3 to 0.5 s, which 4 fps stepped over. A player:
   `run_build` with `after_ready`, `fixed_fps` and `quit_after` (or `screenshot_frame`) captures
   the player's own frame N frames after it got ready, not a window N seconds after the launch.
+- **A screenshot is of loaded content.** The editor's `screenshot`, the player's `--screenshot`
+  and the readiness line wait for shaders being made and textures loading (a frame drawn while a
+  texture loads shows a stand-in for it) and fail naming them past their timeout, so a golden
+  comparison never meets a stand-in.
 - **Make preconditions explicit.** Background work a test relies on finishes first:
   `HotReloadServiceTests.ExternalRenameKeepsTheGuidThroughTheWatcher` calls
   `AssetDatabase::waitForBackgroundWork()` before the rename, because R5 matches a file moved

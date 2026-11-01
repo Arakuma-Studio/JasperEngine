@@ -1274,7 +1274,7 @@ void TextureDataPool::update(){
 
     // main-thread Basis transcodes: everything while the scenes load, then a slice of each frame
     if (!basisJobs.empty()){
-        const bool unlimited = !Engine::areScenesLoaded();
+        const bool unlimited = !Engine::areScenesLoaded(false);
         const auto sliceStart = std::chrono::steady_clock::now();
         auto sliceLeft = [&](){
             return unlimited || std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - sliceStart).count() < kBasisFrameSliceMs;
@@ -1412,6 +1412,31 @@ std::vector<TextureResidentInfo> TextureDataPool::getResidentTextures(){
 size_t TextureDataPool::pendingWorkCount(){
     std::lock_guard<std::mutex> lock(cacheMutex);
     return backgroundBuilds.size() + basisJobs.size() + poolPlannedReloads.size();
+}
+
+size_t TextureDataPool::getLoadingCount(){
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    size_t count = basisJobs.size();
+    for (const auto* builds : {&pendingBuilds, &backgroundBuilds}){
+        for (const auto& [id, pending] : *builds){
+            if (!pending.task.isReady()) count++;
+        }
+    }
+    return count;
+}
+
+std::vector<std::string> TextureDataPool::getLoadingIds(size_t max){
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    std::vector<std::string> out;
+    for (const auto* builds : {&pendingBuilds, &backgroundBuilds}){
+        for (const auto& [id, pending] : *builds){
+            if (out.size() < max && !pending.task.isReady()) out.push_back(id);
+        }
+    }
+    for (const auto& job : basisJobs){
+        if (out.size() < max) out.push_back(job->id);
+    }
+    return out;
 }
 
 void TextureDataPool::quiescePending(bool cancel) {
