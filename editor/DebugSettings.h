@@ -6,13 +6,16 @@
 #include "Log.h"
 #include "debug/DebugOverlay.h"
 
+#include <functional>
+#include <span>
 #include <string>
 #include <vector>
 
 namespace jasperengine::editor {
 
     // Project Settings > Debug: the on-device debug overlay and the log (project.yaml `debug:`,
-    // MCP keys debug.*, the generated init of exports, the editor's Play)
+    // MCP keys debug.*, the generated init of exports, the editor's Play), described by its
+    // reflection table (editor/reflect/DebugReflect.cpp: keys, names, labels, tooltips)
     struct DebugSettings {
         enum class Mode { Never, Development, AllBuilds };
         enum class AllowLua { Development, AllBuilds, Never };
@@ -35,12 +38,17 @@ namespace jasperengine::editor {
         bool operator==(const DebugSettings& other) const;
         bool operator!=(const DebugSettings& other) const { return !(*this == other); }
 
+        // after a decode (a hand-edited project.yaml): a key that is no key name goes back to its
+        // default (rejected is told), the buffer size into 0 .. maxLogBufferSize
+        void sanitize(const std::function<void(const std::string& key, const std::string& value)>& rejected = {});
+
         // what the engine starts with: the overlay enabled per the mode and the build type
         DebugOverlaySettings toOverlaySettings(bool developmentBuild) const;
     };
 
-    // The names of the values in project.yaml, MCP and the Project Settings window (the
-    // labels are their human forms). Parsing is case-insensitive and takes '-' or ' ' for '_'.
+    // The names of the values in project.yaml, MCP and the Project Settings window: the tokens
+    // of the reflection table's enums (their labels are the human forms). Parsing is
+    // case-insensitive and takes '-' or ' ' for '_'.
     namespace DebugSettingsNames {
         const std::vector<std::string>& modes();         // never, development, always
         const std::vector<std::string>& gestures();      // three_finger_hold, four_finger_tap, none
@@ -68,6 +76,17 @@ namespace jasperengine::editor {
 
         // a key name the overlay takes: "" (none) or one InputControlNames::parseKey knows
         bool isKeyName(const std::string& text);
+
+        // The settings rows (MCP's debug.* keys, upstream's names) of the reflection table's
+        // fields, in the order of the Project Settings window, with their search words
+        struct SettingKey {
+            const char* key;        // "debug.overlay_toggle_key"
+            const char* field;      // "toggleKey" (reflect::debugSettingsField)
+            const char* keywords;
+        };
+        std::span<const SettingKey> settingKeys();
+        // the row key of a field, "" if none
+        std::string settingKeyOf(const char* field);
     }
 
 }
