@@ -9,6 +9,8 @@
 #include "window/PlayInput.h"
 #include "window/DeviceProfiles.h"
 
+#include <set>
+
 namespace jasperengine::editor {
 
     // Unity-style Game view. While a scene plays the game renders here: the engine
@@ -55,6 +57,9 @@ namespace jasperengine::editor {
         };
         SafeAreaPush safeAreaPushed;
         uint64_t editSafeAreaRevision = 0;
+        // scenes whose Scene view was hidden when the safe area changed: they redraw once shown
+        // (a hidden view left dirty would keep the Game view's preview drawing every frame)
+        std::set<uint32_t> safeAreaRedrawPending;
         ImVec2 engineScale = ImVec2(1.0f, 1.0f);
 
         // Scene drawn by the edit-mode pass and whether it needs drawing again

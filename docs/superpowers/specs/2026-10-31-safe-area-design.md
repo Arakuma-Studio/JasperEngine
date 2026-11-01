@@ -580,6 +580,11 @@ spec was silent, ambiguous or did not fit the code:
     without those features), `Session::staticVar` folds env()'s variable to 0px and the declaration
     reports "env(safe-area-inset-*) is 0 here (static value)" (Info). No declaration is dropped
     (`SafeAreaEnv.TokenRewrites`).
+18d. **Edit-mode redraws on a safe-area change** go to the Scene views that are shown and to the
+    Game view's preview; a Scene view behind another tab redraws when it comes forward
+    (`GameWindow::safeAreaRedrawPending`). Marking a hidden selected scene dirty would keep the Game
+    view's preview drawing every frame (the hidden view never clears the flag), and the editor would
+    not idle after a Play (`test_runtime_regressions.py::test_idle_editor_does_not_spin`).
 19. **Merge note:** `ComponentType::SafeAreaComponent` is appended last (prefab override masks use the
     ordinal): a branch appending another type at the same place conflicts there and in
     `AnimationClipContractTest`. (The ECS `Signature` limit of 64 types was raised to 128 on `main`.)

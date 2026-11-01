@@ -159,9 +159,17 @@ void editor::GameWindow::syncSafeArea() {
             editSafeAreaRevision = revision;
             // Safe Area panels move: the Scene views and the edit pass draw again
             for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
-                if (sceneProject) sceneProject->needUpdateRender = true;
+                if (sceneProject) safeAreaRedrawPending.insert(sceneProject->id);
             }
             editPassDirty = true;
+        }
+    }
+    // a Scene view draws only when shown: one behind another tab redraws when it comes forward
+    if (!safeAreaRedrawPending.empty()) {
+        for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
+            if (sceneProject && sceneProject->isVisible && safeAreaRedrawPending.erase(sceneProject->id)) {
+                sceneProject->needUpdateRender = true;
+            }
         }
     }
 }
