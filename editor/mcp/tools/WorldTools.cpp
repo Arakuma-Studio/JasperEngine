@@ -5210,14 +5210,26 @@ void createParticlesTool(const CallPtr& call) {
     auto failWith = [&](const std::string& message) { step.fail(call, message); };
     bool created = false;
     const bool is2D = target.scene->sceneType != SceneType::SCENE_3D;
-    const std::string renderer = lowerText(stringOr(args, "renderer", "quads"));
+    // particles of a UI scene or under a UI element (ui-scaling-text): GL points (drawn between their
+    // siblings, clipped by the nearest panel), unscaled time (they play in a paused game), turned
+    // y down as the UI is, the soft round image
+    Entity parent = NULL_ENTITY;
+    if (system == NULL_ENTITY && has(args, "parent") && (parent = resolveRef(target.scene, args["parent"], error)) == NULL_ENTITY) {
+        call->fail("parent: " + error);
+        return;
+    }
+    bool inUI = target.scene->sceneType == SceneType::SCENE_UI;
+    for (Entity e = parent; e != NULL_ENTITY && !inUI;) {
+        if (scene->findComponent<RectTransformComponent>(e)) inUI = true;
+        Transform* tf = scene->findComponent<Transform>(e);
+        e = tf ? tf->parent : NULL_ENTITY;
+    }
+    const std::string renderer = lowerText(stringOr(args, "renderer", (inUI && system == NULL_ENTITY) ? "points" : "quads"));
     if (renderer != "quads" && renderer != "points") {
         call->fail("renderer must be quads (instanced billboard quads, the default) or points (GL points: billboards only).");
         return;
     }
     if (system == NULL_ENTITY) {
-        Entity parent = NULL_ENTITY;
-        if (has(args, "parent") && (parent = resolveRef(target.scene, args["parent"], error)) == NULL_ENTITY) { failWith("parent: " + error); return; }
         const EntityCreationType type = renderer == "points" ? EntityCreationType::PARTICLE_SYSTEM_POINTS : EntityCreationType::PARTICLE_SYSTEM;
         auto* create = parent != NULL_ENTITY
             ? new CreateEntityCmd(target.project, target.sceneId(), stringOr(args, "name", "Particle System"), type, parent)
@@ -5225,6 +5237,8 @@ void createParticlesTool(const CallPtr& call) {
         Vector3 position;
         if (!readVec3(args, "position", position, error)) { delete create; failWith(error); return; }
         if (has(args, "position")) create->addProperty<Vector3>(ComponentType::Transform, "position", position);
+        // the UI is y down: what rises in the world rises on screen (local simulation space)
+        if (inUI) create->addProperty<Quaternion>(ComponentType::Transform, "rotation", Quaternion(180.0f, Vector3(1.0f, 0.0f, 0.0f)));
         if (!step.add(create)) { failWith("Could not create the Particle System."); return; }
         system = create->getEntity();
         created = true;
@@ -5241,6 +5255,10 @@ void createParticlesTool(const CallPtr& call) {
             return;
         }
         values.main.playOnAwake = playOnAwake;
+    }
+    if (created && inUI) {
+        values.useUnscaledTime = true;
+        values.main.simulationSpace = ParticleSystemSimulationSpace::Local;
     }
     if (!applyParticleOverridesV2(args, values, error)) { failWith(error); return; }
 
@@ -5266,6 +5284,13 @@ void createParticlesTool(const CallPtr& call) {
         !addCatalogProperties(target.project, target.scene, system, ComponentType::MeshComponent, Json{{"submeshes[0].material.blendMode", "additive"}}, *multi, error)) {
         failWith(error);
         return;
+    }
+    if (created && inUI && !quads && !has(args, "texture")) {
+        const std::string soft = ProjectUtils::ensureSoftParticleTexture(target.project);
+        if (!soft.empty() && !addCatalogProperties(target.project, target.scene, system, ComponentType::PointsComponent, Json{{"texture", soft}}, *multi, error)) {
+            failWith("texture: " + error);
+            return;
+        }
     }
     if (has(args, "texture")) {
         const Json props = quads ? Json{{"submeshes[0].material.shaderTextures", Json{{"u_baseTexture", args["texture"]}}}} : Json{{"texture", args["texture"]}};

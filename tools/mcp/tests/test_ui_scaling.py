@@ -154,13 +154,14 @@ async def test_ui_particles_play_while_paused(ed: Editor):
     made = await ed.call("create_particles", scene=s["scene"], parent="Backdrop", preset="magic")
     system = made.get("entity") or made.get("particle_system") or made
     ed.check(system is not None, f"created: {made}")
+    ed.check_eq(made.get("renderer"), "points", f"GL points under a UI element (clipped by panels): {made}")
     await ed.call("play", action="start", scene=s["scene"])
     try:
         unscaled = (await lua(ed, "for _, ps in ipairs({object('Particle System', 'ParticleSystem')}) do return ps.useUnscaledTime end"))[0]
         ed.check_eq(unscaled, True, "UI particles run on unscaled time")
         await lua(ed, "Engine.timeScale = 0")
         await ed.call("wait", seconds=0.5)
-        count = (await lua(ed, "local ps = object('Particle System', 'ParticleSystem'); return ps:getParticleSystemComponent().lastUsedParticle"))[0]
+        count = (await lua(ed, "return object('Particle System', 'ParticleSystem').particleCount"))[0]
         ed.check(count and count > 0, f"particles spawned at time scale 0: {count}")
     finally:
         await lua(ed, "Engine.timeScale = 1")
