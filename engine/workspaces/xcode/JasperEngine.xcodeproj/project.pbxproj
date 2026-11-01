@@ -11162,7 +11162,6 @@
 				EA199B0F796D9E777176C601 /* MemoryDebug.h */,
 				716803CC2DF75EA200ED71BE /* ThreadPoolManager.h */,
 				4A534E47BE01A205C9521034 /* ThreadPoolManagerLua.h */,
-				716803CD2DF75EA200ED71BE /* ThreadPoolManager.cpp */,
 				4A534E47C9ACB5FAD8A291B0 /* MainThreadQueue.cpp */,
 				4A534E4743499EE7BE02622E /* MainThreadQueue.h */,
 			);
@@ -22871,7 +22870,6 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 				USE_HEADERMAP = NO;
 				VALIDATE_PRODUCT = YES;
-				USE_HEADERMAP = NO;
 			};
 			name = Release;
 		};
