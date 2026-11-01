@@ -119,6 +119,14 @@ namespace {
         return velocity;
     }
 
+    // x' = p_L + B_L B_S^T (x - p_S), B = [right up forward]: a point of a scene seen by its camera
+    // S as the listener camera L would see it at the same place in its view
+    Vector3 mapToListener(const Vector3& position, const CameraPose& own, const CameraPose& listener) {
+        const Vector3 offset = position - own.position;
+        return listener.position + listener.right * own.right.dotProduct(offset) +
+               listener.up * own.up.dotProduct(offset) + listener.forward * own.forward.dotProduct(offset);
+    }
+
     // 0 for a voice that could not start
     void registerVoice(unsigned int handle, Scene* owner, const std::string& groupId, int priority, bool isProtected) {
         if (handle == 0) return;
@@ -851,7 +859,7 @@ void AudioSystem::playClipAtPoint(const std::string& filename, const Vector3& po
     pendingPointVoices.push_back(pending);
 }
 
-void AudioSystem::updatePointVoices(double unscaledDt){
+void AudioSystem::updatePointVoices(double unscaledDt, bool hasListener, const std::function<Vector3(const Vector3&)>& heard){
     if (inited) {
         for (size_t i = 0; i < pointVoices.size();) {
             if (!getSoloud().isValidVoiceHandle(pointVoices[i].handle)) {
@@ -868,8 +876,6 @@ void AudioSystem::updatePointVoices(double unscaledDt){
         }
     }
 
-    const bool hasListener = listenerEnabled && scene->findComponent<CameraComponent>(scene->getCamera()) &&
-                             scene->findComponent<Transform>(scene->getCamera());
     for (size_t i = 0; i < pendingPointVoices.size();) {
         PendingPointVoice& pending = pendingPointVoices[i];
         SoundLoadResult result = SoundPool::loadClip(pending.filename, AudioLoadType::Auto);
@@ -897,13 +903,14 @@ void AudioSystem::updatePointVoices(double unscaledDt){
         }
         // Unity's PlayClipAtPoint: a 3D source with a logarithmic rolloff
         defaults.attenuationModel = AudioSourceAttenuation::INVERSE_DISTANCE;
-        const unsigned int handle = startVoice(defaults, *result.data, shot.volume, hasListener, shot.position, false);
+        const Vector3 position = heard(shot.position);
+        const unsigned int handle = startVoice(defaults, *result.data, shot.volume, hasListener, position, false);
         if (handle == 0) continue;
         PointVoice voice;
         voice.handle = handle;
         voice.sample = result.data;
         voice.is3D = hasListener;
-        voice.position = shot.position;
+        voice.position = position;
         voice.paused = paused || listenerPaused;
         if (voice.paused) getSoloud().setPause(handle, true);
         pointVoices.push_back(voice);
@@ -1034,23 +1041,44 @@ void AudioSystem::update(double dt){
         init();
     }
 
-    // 3D sources are placed against the main camera, so without one they play in 2D. The
-    // persistent scene's (DontDestroyOnLoad) are heard by the loaded main scene's camera: their
-    // positions are world positions too
+    // nothing to place: the next frame's speeds start afresh
+    if (audios->size() == 0 && pendingPointVoices.empty() && pointVoices.empty()) {
+        motionFresh = false;
+        listenerTracked = false;
+        return;
+    }
+
+    // One listener, the main scene's camera, hears every scene's 3D sources, so without a camera
+    // they play in 2D. The persistent scene's (DontDestroyOnLoad) positions are world positions
+    // of the main scene. A layer scene (a HUD, a scene drawn over another) is seen through its own
+    // camera: its sources are heard where they are in that camera's view, mapped into the main
+    // camera's (a layer without the main scene, or over a main scene without a camera, hears
+    // through its own)
     const bool persistent = scene == SceneManager::getPersistentScene();
-    Scene* listenerScene = persistent ? Engine::getMainScene() : scene;
-    const bool hasListener = listenerScene && listenerScene->findComponent<CameraComponent>(listenerScene->getCamera()) &&
-                             listenerScene->findComponent<Transform>(listenerScene->getCamera());
-    // Doppler under a perspective camera only: 2D and UI scenes move in pixels, where everyday
+    Scene* mainScene = Engine::getMainScene();
+    Scene* listenerScene = scene;
+    if (persistent) {
+        listenerScene = mainScene;
+    } else if (mainScene && mainScene != scene && cameraPose(*mainScene).valid) {
+        listenerScene = mainScene;
+    }
+    const bool mapped = !persistent && listenerScene != scene;
+    const CameraPose listenerPose = listenerScene ? cameraPose(*listenerScene) : CameraPose();
+    const CameraPose ownPose = mapped ? cameraPose(*scene) : listenerPose;
+    const bool hasListener = listenerPose.valid && ownPose.valid;
+    auto heard = [&](const Vector3& position) {
+        return mapped ? mapToListener(position, ownPose, listenerPose) : position;
+    };
+    // Doppler under perspective cameras only: 2D and UI scenes move in pixels, where everyday
     // speeds are near the speed of sound (343.3 units a second)
-    const bool doppler = hasListener && cameraPose(*listenerScene).perspective;
+    const bool doppler = hasListener && listenerPose.perspective && ownPose.perspective;
     bool any3D = false;
 
     // the listener's velocity: where it heard from last frame to where it hears now, in units a
     // second (none for its first frame, another camera, or a frame after the system held)
     listenerVelocity = Vector3(0, 0, 0);
     if (hasListener) {
-        const Vector3 position = cameraPose(*listenerScene).position;
+        const Vector3 position = listenerPose.position;
         const Entity cameraEntity = listenerScene->getCamera();
         if (doppler && motionFresh && listenerTracked && listenerTrackedScene == listenerScene && listenerTrackedCamera == cameraEntity) {
             listenerVelocity = dopplerVelocity(cameraLastPosition, position, unscaledDt, 1.0f);
@@ -1063,10 +1091,10 @@ void AudioSystem::update(double dt){
         listenerTracked = false;
     }
 
-    // The persistent scene's 3D sounds are heard by the loaded main scene's camera every frame
+    // The persistent and layer scenes' 3D sounds are heard by the main scene's camera every frame
     // (the main scene's own system places it only when it plays 3D voices), before they are
     // placed against it
-    if (persistent && hasListener && listenerEnabled){
+    if (listenerScene != scene && hasListener && listenerEnabled){
         bool playing3D = false;
         for (int i = 0; i < audios->size() && !playing3D; i++){
             const AudioSourceComponent& audio = audios->getComponentFromIndex(i);
@@ -1088,11 +1116,12 @@ void AudioSystem::update(double dt){
         Signature signature = scene->getSignature(entity);
         bool use3DAudio = hasListener && signature.test(scene->getComponentId<Transform>());
 
+        // where the listener hears it (its world position, or mapped from a layer's camera)
         Vector3 worldPosition = Vector3(0, 0, 0);
         if (use3DAudio){
             Transform& transform = scene->getComponent<Transform>(entity);
 
-            worldPosition = transform.worldPosition;
+            worldPosition = heard(transform.worldPosition);
         }
 
         // no clip: nothing of its own plays (its one-shots still do, Unity's PlayOneShot needs no clip)
@@ -1319,7 +1348,7 @@ void AudioSystem::update(double dt){
     // the next frame's velocities measure from this one's positions
     motionFresh = true;
 
-    updatePointVoices(unscaledDt);
+    updatePointVoices(unscaledDt, hasListener, heard);
     for (const PointVoice& voice : pointVoices) any3D = any3D || voice.is3D;
 
     // the listener at the camera, once a frame while a 3D voice plays (the persistent scene's

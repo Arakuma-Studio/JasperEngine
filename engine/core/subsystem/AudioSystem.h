@@ -8,6 +8,7 @@
 
 #include "component/AudioSourceComponent.h"
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -62,7 +63,7 @@ namespace jasperengine{
 		Vector3 listenerVelocity;
 		// the sources' and the listener's last positions are last frame's (false after the system held)
 		bool motionFresh = false;
-		// the 3D listener at that scene's camera (the persistent scene's system, every frame)
+		// the 3D listener at that scene's camera (the main scene's, for every scene's system)
 		void placeListener(Scene& listenerScene);
 		bool outputRequested = false;
 		// off while the scheduler skips the system (Systems window): its sounds hold too
@@ -70,8 +71,8 @@ namespace jasperengine{
 
 		// the scene's sounds paused or resumed as setPaused, the scheduler and the listener say
 		void applySoundPause();
-		// 3D voices are placed against this scene's camera (the persistent scene of feature
-		// persistence leaves the listener to the main scene: setListenerEnabled(false))
+		// this system places the 3D listener (always the main scene's camera) when it plays 3D voices;
+		// off, it leaves that to the others (setListenerEnabled(false))
 		bool listenerEnabled = true;
 
 		// AudioSource.playClipAtPoint voices: they belong to this scene and stop with it
@@ -105,7 +106,8 @@ namespace jasperengine{
 		void applyPause(AudioSourceComponent& audio);
 		const std::string& resolveGroup(AudioSourceComponent& audio, Entity entity);
 		void startPendingOneShots(AudioSourceComponent& audio, bool use3D, const Vector3& position, double unscaledDt);
-		void updatePointVoices(double unscaledDt);
+		// hasListener: 3D against the frame's listener; heard: where it hears a world position
+		void updatePointVoices(double unscaledDt, bool hasListener, const std::function<Vector3(const Vector3&)>& heard);
 		void updateFade(AudioSourceComponent& audio, double scaledDt, double unscaledDt, std::vector<std::pair<Entity, int>>& events, Entity entity);
 
 	public:
