@@ -716,8 +716,9 @@ TEST_F(LogListenerTest, CostsNothingWhenOff) {
     for (int i = 0; i < 10000; i++)
         printDistinct("line of the cost test", i);
     const double lineUs = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - lineStart).count() / 10000.0;
-    if (!JE_LOG_TEST_SANITIZED)
+    if (!JE_LOG_TEST_SANITIZED) {
         EXPECT_LT(lineUs, 5.0) << lineUs << " us per line";
+    }
 
     // what a frame and its input cost the overlay: the frame-time ring, the update check, the hooks
     const auto frameStart = std::chrono::steady_clock::now();
@@ -733,8 +734,9 @@ TEST_F(LogListenerTest, CostsNothingWhenOff) {
         DebugOverlay::handleTouch(2, 10.0f, 10.0f, 2);
     }
     const double frameMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frameStart).count() / 1000.0;
-    if (!JE_LOG_TEST_SANITIZED)
+    if (!JE_LOG_TEST_SANITIZED) {
         EXPECT_LT(frameMs, 0.01) << frameMs << " ms per frame";
+    }
     EXPECT_FALSE(DebugOverlay::isConsoleVisible());
     EXPECT_EQ(DebugOverlay::getScene(), nullptr);
 }

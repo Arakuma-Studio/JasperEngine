@@ -50,7 +50,7 @@ TEST(DebugReflect, EveryFieldIsADebugRow){
         EXPECT_EQ(row->section, field->group) << entry.key;
         EXPECT_EQ(row->label, field->label) << entry.key;
         EXPECT_TRUE(row->mcp && row->get && row->set) << entry.key;
-        if (field->enumDesc) EXPECT_EQ(row->values.size(), field->enumDesc->items.size()) << entry.key;
+        if (field->enumDesc) { EXPECT_EQ(row->values.size(), field->enumDesc->items.size()) << entry.key; }
         EXPECT_EQ(DebugSettingsNames::settingKeyOf(entry.field), entry.key);
     }
     EXPECT_EQ(fields.size(), reflect::debugSettingsStruct().fields.size()) << "a field without a row";
