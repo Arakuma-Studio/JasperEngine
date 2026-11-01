@@ -12,6 +12,10 @@ class JasperEngineWin {
 public:
 
     static int init(int argc, char **argv);
+
+    // Engine.vSyncCount: the presenter's swap interval (wglSwapIntervalEXT, the D3D11 sync
+    // interval, the Vulkan present mode); before the context exists it is read when it is made
+    static void applySwapInterval(int interval);
 };
 
 #endif /* JasperEngineWin_h */

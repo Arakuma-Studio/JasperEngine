@@ -7,6 +7,7 @@
 #include "Log.h"
 #include "Scene.h"
 #include "Input.h"
+#include "Screen.h"
 #include "io/UserSettings.h"
 #include "input/InputActions.h"
 #include "render/SystemRender.h"
@@ -14,6 +15,7 @@
 #include "script/ScriptRuntime.h"
 #include "lua.hpp"
 #include "manager/SceneManager.h"
+#include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -23,6 +25,8 @@
 #include "htmlui/anim/AnimEngine.h"
 #include "util/StringUtils.h"
 #include "util/Utf16Combiner.h"
+#include "util/PlatformRules.h"
+#include "component/ScriptComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/UIComponent.h"
 #include "component/PanelComponent.h"
@@ -117,12 +121,23 @@ double Engine::timeScale = 1.0;
 double Engine::fixedDeltatime = 0.0;
 double Engine::gameTime = 0.0;
 uint64_t Engine::gameFrames = 0;
+double Engine::unscaledDeltatime = 0.0;
 std::atomic<bool> Engine::simulationHeld = false;
 bool Engine::clampNextDelta = false;
 
 std::atomic<bool> Engine::viewLoaded = false;
 std::atomic<bool> Engine::paused = false;
-bool Engine::focused = true;
+std::atomic<bool> Engine::focused = true;
+int Engine::targetFrameRate = -1;
+// the project's VSync setting in builds (the generated init() sets it too)
+#if defined(JASPERENGINE_VSYNC_ENABLED)
+int Engine::vSyncCount = JASPERENGINE_VSYNC_ENABLED ? 1 : 0;
+#else
+int Engine::vSyncCount = 1;
+#endif
+FramePacing Engine::framePacing;
+int Engine::lastOrientation = 0;
+double Engine::orientationPendingSince = 0.0;
 std::atomic<bool> Engine::asyncLoading = false;
 bool Engine::frameRunning = false;
 
@@ -146,6 +161,8 @@ FunctionSubscribe<void()> Engine::onPause;
 FunctionSubscribe<void()> Engine::onResume;
 FunctionSubscribe<void()> Engine::onShutdown;
 FunctionSubscribe<void(bool)> Engine::onFocus;
+FunctionSubscribe<void(int)> Engine::onOrientationChanged;
+FunctionSubscribe<void()> Engine::onLowMemory;
 FunctionSubscribe<void()> Engine::onSceneLoaded;
 FunctionSubscribe<void(int,float,float)> Engine::onTouchStart;
 FunctionSubscribe<void(int,float,float)> Engine::onTouchEnd;
@@ -671,6 +688,10 @@ void Engine::setMaxDeltatime(float seconds){
         maxDeltatime = seconds;
 }
 
+float Engine::getUnscaledDeltatime(){
+    return (float)unscaledDeltatime;
+}
+
 double Engine::getSystemTime(){
     return stm_sec(stm_now());
 }
@@ -980,6 +1001,8 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     onResume.removeByTagSubstring(substring);
     onShutdown.removeByTagSubstring(substring);
     onFocus.removeByTagSubstring(substring);
+    onOrientationChanged.removeByTagSubstring(substring);
+    onLowMemory.removeByTagSubstring(substring);
     onSceneLoaded.removeByTagSubstring(substring);
 
     // a released script instance's tag is "_<address>_": the input sources it owned go too
@@ -1033,6 +1056,8 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
         onResume.clear();
         onShutdown.clear();
         onFocus.clear();
+        onOrientationChanged.clear();
+        onLowMemory.clear();
     }
 }
 
@@ -1226,6 +1251,9 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
     updateTimeCount = 0;
     viewLoaded = false;
     paused = false;
+    focused = true;
+    lastOrientation = 0;
+    orientationPendingSince = 0.0;
 
     drawSemaphore.release();
 
@@ -1233,6 +1261,9 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
     
     std::vector<std::string> args(argv, argv + argc);
     System::instance().args = args;
+
+    // the platform's defaults until init() (the generated main, a script) changes them
+    applyFramePacing();
 
     LuaBinding::createLuaState();
 
@@ -1260,6 +1291,11 @@ void Engine::systemViewLoaded(){
     }
 
     getAsyncThreadDepthStorage() = 0;
+
+    // what init() asked for before the view existed: the swap interval needs the context,
+    // the orientation and screen sleep a window
+    applyFramePacing();
+    Screen::applyToPlatform();
 
     // systemViewDestroyed stopped async loads; a recreated view needs them again
     SoundPool::cancelShutdown();
@@ -1307,6 +1343,9 @@ void Engine::systemViewChanged(){
     }
 
     onViewChanged.call();
+
+    // a resize can be a rotation: onOrientationChanged comes after onCanvasChanged
+    systemOrientationChanged();
 }
 
 // With JASPERENGINE_READY_SIGNAL set (tools/smoke-test.sh sets it), logs once the frame
@@ -1352,8 +1391,13 @@ void Engine::signalReadyOnce(){
         if (frameStats){
             frames++;
             const uint64_t after = frames - signalledFrame;
-            if (frameStatsAll || after == 2 || after == 30 || after == 90)
+            // the particle simulation of this frame (particles spec 8: the CPU budget)
+            size_t alive = 0;
+            const double particleMs = ActionSystem::takeParticleSimMs(&alive);
+            if (frameStatsAll || after == 2 || after == 30 || after == 90){
                 SystemRender::logFrameStats(frames);
+                if (alive > 0) Log::print("Frame %llu particles_sim_ms %.3f (%zu particles)", (unsigned long long)frames, particleMs, alive);
+            }
         }
         return;
     }
@@ -1392,6 +1436,11 @@ void Engine::systemUpdate(){
 void Engine::runFrame(bool draw){
     const int MAX_UPDATES_PER_FRAME = 100;
 
+    // a quarter turn waiting for its view size (systemOrientationChanged's timeout)
+    if (orientationPendingSince > 0.0){
+        systemOrientationChanged();
+    }
+
     //Deltatime in seconds
     double rawDelta = stm_sec(stm_laptime(&lastTime));
     framerate = (rawDelta > 0.0) ? (float)(1.0 / rawDelta) : 0.0f;
@@ -1410,6 +1459,7 @@ void Engine::runFrame(bool draw){
         frameTime = fixedDeltatime;
     }
     deltatime = simulationHeld ? 0.0 : frameTime * timeScale;
+    unscaledDeltatime = (paused || simulationHeld) ? 0.0 : frameTime;
     // the UI clock runs on the unscaled delta (a pause menu animates at time scale 0) and
     // stops with the updates: a held simulation or a paused app
     HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);
@@ -1675,38 +1725,135 @@ void Engine::systemShutdown(){
 }
 
 void Engine::systemPause(){
+    if (paused) return;
+    // leaving: the focus goes first (Unity: OnApplicationFocus(false), then OnApplicationPause(true))
+    systemFocus(false);
+    paused = true;
     AudioSystem::pauseAll();
     ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 1); return 1; },
         [](ScriptBase& script) { script.onApplicationPause(true); });
     Engine::onPause.call();
-    paused = true;
+
     // the key and button ups of a paused app never come: the first frame after resume sees them
+    // (systemFocus(false) released them already unless the focus was gone before)
     Input::releaseAll();
 
-    // a paused app may be killed without another call
+    // a paused app may be killed without another call (after the handlers, which may set some)
     UserSettings::save();
 }
 
 void Engine::systemResume(){
+    if (!paused) return;
+    paused = false;
     AudioSystem::resumeAll();
     ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 0); return 1; },
         [](ScriptBase& script) { script.onApplicationPause(false); });
     Engine::onResume.call();
-    paused = false;
 }
 
 void Engine::systemFocus(bool hasFocus){
-    if (focused == hasFocus){
-        return;
+    if (hasFocus == focused) return;
+    // coming back: the resume goes first (OnApplicationPause(false), then OnApplicationFocus(true))
+    if (hasFocus && paused){
+        systemResume();
     }
     focused = hasFocus;
-    Engine::onFocus.call(hasFocus);
+    // the key and button ups after a focus loss go to another window: the next frame sees them
+    if (!hasFocus){
+        Input::releaseAll();
+    }
     ScriptRuntime::broadcast(ScriptMessage::ApplicationFocus, [hasFocus](lua_State* L) { lua_pushboolean(L, hasFocus ? 1 : 0); return 1; },
         [hasFocus](ScriptBase& script) { script.onApplicationFocus(hasFocus); });
+    Engine::onFocus.call(hasFocus);
+}
+
+void Engine::systemOrientationChanged(){
+    if (!System::hasInstance()) return;
+    const int orientation = (int)Screen::getOrientation();
+    if (orientation == lastOrientation){
+        orientationPendingSince = 0.0;
+        return;
+    }
+    // the first one is where the view starts, not a change
+    if (lastOrientation == 0){
+        lastOrientation = orientation;
+        return;
+    }
+    // A quarter turn is reported before the new view size on some platforms (Android's display
+    // rotation, the web's screen.orientation): it waits for the size to flip, so onCanvasChanged
+    // comes first (systemViewChanged calls this again), or ORIENTATION_SIZE_TIMEOUT seconds (a view
+    // that keeps its shape, e.g. a fixed canvas in a page). A half turn changes no size: at once.
+    auto landscape = [](int o){
+        return o == (int)ScreenOrientation::LandscapeLeft || o == (int)ScreenOrientation::LandscapeRight;
+    };
+    if (landscape(orientation) != landscape(lastOrientation)){
+        const int width = System::instance().getScreenWidth();
+        const int height = System::instance().getScreenHeight();
+        const bool sizeFlipped = width == height || landscape(orientation) == (width > height);
+        const double now = getSystemTime();
+        if (!sizeFlipped){
+            if (orientationPendingSince <= 0.0) orientationPendingSince = now;
+            if (now - orientationPendingSince < ORIENTATION_SIZE_TIMEOUT) return;
+        }
+    }
+    orientationPendingSince = 0.0;
+    lastOrientation = orientation;
+    Engine::onOrientationChanged.call(orientation);
+}
+
+void Engine::systemLowMemory(){
+    Engine::onLowMemory.call();
+}
+
+void Engine::resetApplicationState(){
+    if (paused){
+        paused = false;
+        AudioSystem::resumeAll();
+    }
+    focused = true;
+    lastOrientation = 0;
+    orientationPendingSince = 0.0;
+    targetFrameRate = -1;
+    applyFramePacing();
 }
 
 bool Engine::isFocused(){
     return focused;
+}
+
+bool Engine::isPaused(){
+    return paused;
+}
+
+void Engine::setTargetFrameRate(int fps){
+    targetFrameRate = fps <= 0 ? -1 : std::min(fps, 1000);
+    applyFramePacing();
+}
+
+int Engine::getTargetFrameRate(){
+    return targetFrameRate;
+}
+
+void Engine::setVSyncCount(int count){
+    vSyncCount = std::clamp(count, 0, 4);
+    applyFramePacing();
+}
+
+int Engine::getVSyncCount(){
+    return vSyncCount;
+}
+
+const FramePacing& Engine::getFramePacing(){
+    return framePacing;
+}
+
+void Engine::applyFramePacing(){
+    if (!System::hasInstance()) return;
+    System& system = System::instance();
+    framePacing = PlatformRules::computeFramePacing(getPlatform(), targetFrameRate, vSyncCount,
+                                                    system.getRefreshRate(), system.getMaxSwapInterval(),
+                                                    system.canDisableVSync());
+    system.applyFramePacing(framePacing);
 }
 
 // Scenes below a loading scene only get pointer-up, so nothing stays pressed

@@ -15,6 +15,7 @@
 #include "component/TrailRendererComponent.h"
 #include "math/AnimationCurve.h"
 #include "math/Gradient.h"
+#include "particles/ParticleFields.h"
 
 #include <filesystem>
 #include <set>
@@ -277,6 +278,10 @@ namespace jasperengine::editor {
         static YAML::Node encodeScriptProperty(const ScriptProperty& prop);
         static ScriptProperty decodeScriptProperty(const YAML::Node& node);
 
+        // a version 2 Particle System field (particles/ParticleFields) in the scene encoding
+        static YAML::Node encodeParticleField(const particles::FieldInfo& field, const ParticleSystemComponent& component);
+        static void decodeParticleField(const particles::FieldInfo& field, const YAML::Node& node, ParticleSystemComponent& component);
+
         // the Line and Trail Renderer settings both have (Stream.cpp)
         template<typename T>
         static void encodeRibbonFields(YAML::Node& node, const T& component, const T& defaults);
@@ -371,6 +376,8 @@ namespace jasperengine::editor {
         // The workspace supplies the per-user half of the project (tabs, cameras,
         // viewport toggles); project.yaml no longer carries it. See Workspace.h.
         static void decodeProject(Project* project, const YAML::Node& node, const Workspace& workspace);
+        // android.orientation of an older project.yaml as the shared Player orientation (false: none)
+        static bool migrateAndroidOrientation(const std::string& value, PresentationSettings& presentation);
 
         // Per-user state, written to .jasperengine/user/workspace.yaml. Kept here so the
         // reader that still accepts them from an old project.yaml and the writer
@@ -647,7 +654,24 @@ namespace jasperengine::editor {
         static YAML::Node encodeLatticeTracksComponent(const LatticeTracksComponent& tracks);
         static LatticeTracksComponent decodeLatticeTracksComponent(const YAML::Node& node, const LatticeTracksComponent* oldTracks = nullptr);
 
+        // Particle System: version 1 writes its legacy keys (as before version 2 existed);
+        // version 2 writes `version: 2` and a map per module of its non-default fields
+        // (particles spec 6.7, particles/ParticleFields)
         static YAML::Node encodeParticleSystemComponent(const ParticleSystemComponent& particles);
+        // Unity's MinMaxCurve / MinMaxGradient (particles spec 6.1): a curve is a number
+        // (Constant), {mode: curve, multiplier, curve}, {mode: two_constants, min, max} or {mode:
+        // two_curves, multiplier, min, max} (min/max: curves); a gradient a colour ("#RRGGBB[AA]"
+        // sRGB or [r, g, b, a] linear: Color), {mode: gradient, gradient}, {mode: two_colors,
+        // min, max}, {mode: two_gradients, min, max} or {mode: random_color, gradient}
+        static YAML::Node encodeMinMaxCurve(const MinMaxCurve& curve);
+        static MinMaxCurve decodeMinMaxCurve(const YAML::Node& node, const MinMaxCurve& fallback = MinMaxCurve());
+        static YAML::Node encodeMinMaxGradient(const MinMaxGradient& gradient);
+        static MinMaxGradient decodeMinMaxGradient(const YAML::Node& node, const MinMaxGradient& fallback = MinMaxGradient());
+        // a colour as "#RRGGBB" / "#RRGGBBAA" when its linear value is exactly that 8-bit sRGB
+        // value, else [r, g, b, a] (linear)
+        static YAML::Node encodeColorValue(const Vector4& linear);
+        static YAML::Node encodeParticleBursts(const std::vector<ParticleEmissionBurst>& bursts);
+        static std::vector<ParticleEmissionBurst> decodeParticleBursts(const YAML::Node& node);
         static ParticleSystemComponent decodeParticleSystemComponent(const YAML::Node& node, const ParticleSystemComponent* oldParticles = nullptr);
 
         static YAML::Node encodeInstancedMeshComponent(const InstancedMeshComponent& instmesh);

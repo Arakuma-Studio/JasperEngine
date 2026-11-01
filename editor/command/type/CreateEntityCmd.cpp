@@ -659,6 +659,22 @@ bool editor::CreateEntityCmd::execute(){
 
     }else if (type == EntityCreationType::PARTICLE_SYSTEM){
 
+        // Unity's new Particle System: one GameObject with its quad renderer (particles spec 6.8)
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<ActionComponent>(entity, {});
+        scene->addComponent<ParticleSystemComponent>(entity, {});
+        ProjectUtils::setupNewParticleSystem(scene, entity, sceneProject->sceneType != SceneType::SCENE_3D);
+
+    }else if (type == EntityCreationType::PARTICLE_SYSTEM_POINTS){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<PointsComponent>(entity, {});
+        scene->addComponent<ActionComponent>(entity, {});
+        scene->addComponent<ParticleSystemComponent>(entity, {});
+        ProjectUtils::setupNewParticleSystem(scene, entity, sceneProject->sceneType != SceneType::SCENE_3D);
+
+    }else if (type == EntityCreationType::PARTICLE_SYSTEM_LEGACY){
+
         scene->addComponent<ActionComponent>(entity, {});
         scene->addComponent<ParticleSystemComponent>(entity, {});
         if (parent != NULL_ENTITY){

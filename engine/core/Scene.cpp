@@ -64,6 +64,7 @@ void Scene::init(){
 }
 
 Scene::~Scene(){
+    tearingDown = true;
     // async work owned by the scene or its GameObjects ends without its callbacks
     AsyncOwners::sceneDestroyed(this);
     // first: handles that own entities of this scene and go during (or after) its teardown

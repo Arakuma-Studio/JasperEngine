@@ -77,7 +77,7 @@ defines them (no registration):
 | `onDisable(self)` | the script stops being active and enabled: `self.enabled = false`, its GameObject or a parent deactivated, destroy, scene unload, Play stop; always before `onDestroy` | `OnDisable` |
 | `onDestroy(self)` | once: `GameObject.destroy` (end of frame) / `destroyImmediate`, scene unload (a `SceneManager.loadScene`), Play stop / application quit; only if `init` ran | `OnDestroy` |
 | `onApplicationPause(self, paused)` | the app goes to the background (`true`) and returns (`false`); scripts of active GameObjects, enabled or not | `OnApplicationPause` |
-| `onApplicationFocus(self, focused)` | the app lost / gained the focus (platforms that report it) | `OnApplicationFocus` |
+| `onApplicationFocus(self, focused)` | the app lost / gained the focus (platforms that report it). Order: focus `false` before pause `true`, pause `false` before focus `true`; the same moments as `Engine.onFocus` / `onPause` / `onResume` ([platform-services.md](platform-services.md)) | `OnApplicationFocus` |
 | `onApplicationQuit(self)` | Play stop / app shutdown, before `onDisable`/`onDestroy` | `OnApplicationQuit` |
 
 Order, deterministic: a scene load runs all `init` (parents before children, siblings in order,
@@ -105,7 +105,17 @@ GameObject that defines it gets the call, enabled or not, after the fixed step t
 
 | Method | When |
 |---|---|
+| `onCollisionEnter(self, collision)`, `onCollisionStay`, `onCollisionExit` | a collider of this GameObject's Rigidbody started / keeps / stopped touching another (`Collision`, seen from this side; 4.14.1) |
+| `onTriggerEnter(self, other)`, `onTriggerStay`, `onTriggerExit` | a trigger pair (either side a trigger / sensor): `other` is the other `Collider` |
+| `onCollisionEnter2D(self, collision)`, `...Stay2D`, `...Exit2D`, `onTriggerEnter2D(self, other)`, `...Stay2D`, `...Exit2D` | the same for Rigidbody 2D (`Collision2D`, `Collider2D`; 4.13.2) |
 | `onJointBreak2D(self, joint)` | a `Joint2D` of this GameObject, or whose bodyA is it, broke (its `breakForce` / `breakTorque` passed; `joint` still exists during the call, its `breakAction` decides what follows) |
+| `onParticleSystemStopped(self)` | a version 2 `ParticleSystem` of this GameObject with `main.stopAction = ParticleSystemStopAction.Callback` finished (stopped and its last particle gone; never in an editor preview) |
+
+The contact callbacks come once per fixed step that steps (2D first, then 3D; triggers, then
+collisions; Enter, Stay, Exit), only while the GameObject is active; a collider's `receiver`
+("Send Callbacks To") also gets them. Sleeping bodies get no Stay and no Exit; when the other side
+is destroyed, deactivated or its collider removed you still get the Exit. Rules and data:
+`jasper://docs/physics` (Collision and trigger callbacks). They cannot yield.
 
 Every instance also has (Unity's MonoBehaviour members):
 
@@ -236,7 +246,10 @@ Engine events (names valid for `RegisterEngineEvent`; handler arguments in order
 | `onViewLoaded` | none | view ready |
 | `onCanvasChanged` | none | view/canvas size changed (C++ name is onViewChanged; Lua name is `onCanvasChanged`) |
 | `onViewDestroyed` | none | view destroyed |
-| `onPause`, `onResume`, `onShutdown` | none | application lifecycle |
+| `onPause`, `onResume`, `onShutdown` | none | application lifecycle (pause = to the background; idempotent) |
+| `onFocus` | `hasFocus` | the app gained or lost focus (a dialog, the notification shade, another window); `onFocus(false)` comes before `onPause`, `onFocus(true)` after `onResume` |
+| `onOrientationChanged` | `orientation` (`ScreenOrientation`) | the interface rotated, after `onCanvasChanged` |
+| `onLowMemory` | none | the system is short of memory (Android, iOS) |
 | `onSceneLoaded` | none | a scene loaded by SceneManager is ready |
 | `onKeyDown`, `onKeyUp` | `key, isRepeat, mods` | key event (`key` is an `Input.KEY_*` value) |
 | `onCharInput` | `codepoint` | text char typed |
@@ -279,8 +292,13 @@ RegisterEvent(self, self.scene:getPhysicsSystem().beginContact2D, "onBeginContac
 | same | `onBodyActivated3D`, `onBodyDeactivated3D` | `body` (Rigidbody) |
 | same | `shouldCollide3D` (return false to skip) | `bodyA, bodyB, baseOffset (Vector3), result (CollideShapeResult3D)` |
 
-Physics events are scene-wide: they fire for ANY pair of bodies. Filter in the handler, e.g.
-`if bodyA.entity == self.entity or bodyB.entity == self.entity then ... end`.
+Prefer the per-object callbacks (`onCollisionEnter`, `onTriggerEnter2D`..., 1.1): they come only
+to the GameObjects involved. These physics events are scene-wide: they fire for ANY pair of
+bodies. Filter in the handler, e.g.
+`if bodyA.entity == self.entity or bodyB.entity == self.entity then ... end`. They run on the main
+thread after the step (2D: also `stayContact2D`, `staySensorContact2D`, same arguments as the
+begin ones); 3D gets a `Contact3D` snapshot whose setters do nothing, unless
+`physicsSystem.synchronousContactEvents3D = true` (a Lua `shouldCollide3D` turns it on).
 2D contact events need "Contact Events" (sensor events: sensor + "Sensor Events", hit: "Hit
 Events") enabled on the Collider 2D (Inspector, or `body.shapeContactEvents = true`,
 `body.shapeSensorEvents = true`, `body.shapeEnableHitEvents = true`).
@@ -418,7 +436,10 @@ Mass: `self.body:getMass()` (method, kg). To get a target acceleration `a` in po
 | `gameTime` | ro | scaled seconds the update loop has run since start (not while paused or held) |
 | `frameCount` | ro | frames the update loop has run since start (not while paused or held) |
 | `interpolationAlpha` | ro | fixed-step interpolation factor: how far the frame is between the last fixed step and the next (bodies are drawn this far from their pose before the last step) |
-| `framerate` | ro | fps |
+| `framerate` | ro | fps (measured) |
+| `targetFrameRate` | rw | Unity's `Application.targetFrameRate`: -1 (default) = the platform's rate (60 on mobile, every animation frame on the web, vsync-paced on desktops); desktops and the editor ignore it while `vSyncCount > 0`. Kept across scene loads |
+| `vSyncCount` | rw | Unity's `QualitySettings.vSyncCount` 0..4 (present every Nth vblank); starts from the project's VSync; mobile and web ignore it |
+| `isFocused` | ro | Unity's `Application.isFocused` (true at start) |
 | `systemTime` | ro | |
 | `canvasWidth`, `canvasHeight` | ro | current canvas; can be 0 in `init()` of exported builds |
 | `preferredCanvasWidth`, `preferredCanvasHeight` | ro | project canvas size; safe in `init()` |
@@ -462,6 +483,7 @@ Functions:
 | `Input.getTouches()` | list of `Touch`: the fingers down now (`touch.pointer` is the old name of `fingerId`) |
 | `Input.isGamepadConnected(id)`, `Input.getGamepadName(id)`, `Input.isGamepadButtonPressed(id, button)`, `Input.getGamepadAxis(id, axis)`, `Input.numGamepads()`, `Input.getGamepadId(index)` | gamepad |
 | `Input.getModifiers()` | bitmask of `Input.MODIFIER_*` |
+| `Input.deviceOrientation` (property) | `DeviceOrientation.*`: how the device is held; `Unknown` on desktops and flat Android devices |
 
 Unity-style polling with edges, touches and input actions (details: `jasper://docs/input`).
 `key` is an `Input.KEY_*` code or a control name (`"space"`, `"a"`, `"left_shift"`,
@@ -685,6 +707,36 @@ export compiles Google Mobile Ads in only with the project settings `android.adm
 `gameplayStartCrazyGames()`, `gameplayStopCrazyGames()`, `loadingStartCrazyGames()`,
 `loadingStopCrazyGames()`.
 
+Platform services ([platform-services.md](platform-services.md) has the per-platform details):
+
+| Function | Returns |
+|---|---|
+| `System.openURL(url)` | bool: the system took it (browser, store, `mailto:`); `javascript:`/`data:`/`file:`/`vbscript:` and scheme-less URLs refused. Web: a blocked popup opens on the next click (false) |
+| `System.getSystemLanguage()` | `SystemLanguage.*` (Unity's `Application.systemLanguage`) |
+| `System.getLanguageCode()`, `getRegionCode()`, `getLocale()` | `"es"`, `"MX"` (the platform's region setting first; `""` unknown), `"es-MX"` |
+| `System.getPreferredLanguages()` | `{"es-MX", "en-US"}` (BCP 47, most preferred first) |
+| `System.getAppVersion()`, `getAppBuild()`, `getAppIdentifier()`, `getAppName()` | Player version, build (integer: Android versionCode, iOS `CFBundleVersion`), identifier, name of the running app |
+| `System.getOperatingSystem()` | Unity's `SystemInfo.operatingSystem` format (`"Android OS 14 / API-34 (...)"`, `"iOS 17.1"`) |
+| `System.getOperatingSystemVersion()`, `getAndroidApiLevel()` | `"14"`, 34 (0 off Android) |
+| `System.getDeviceModel()`, `getDeviceType()` | `"Google Pixel 8"`, `DeviceType.*` |
+| `System.getSystemMemorySize()`, `getProcessorCount()` | MiB (0 unknown), logical processors |
+| `System.isEditor()` | true only in the editor's Play mode |
+| `System.getInternetReachability()` | `NetworkReachability.*` (a network is there, not that a server answers; not every frame) |
+| `System.vibrate([ms])` | bool; 400 ms by default, iOS ignores the length |
+| `System.hapticFeedback(HapticFeedback.*)` | bool |
+
+### 2.5.1 Screen (static)
+
+| Name | Kind | Notes |
+|---|---|---|
+| `Screen.orientation` | rw | `ScreenOrientation.*`: get = how the interface is shown now (never `AutoRotation`); set = a fixed orientation or `AutoRotation` |
+| `Screen.autorotateToPortrait`, `autorotateToPortraitUpsideDown`, `autorotateToLandscapeLeft`, `autorotateToLandscapeRight` | rw | bools: where `AutoRotation` may turn (the last one cannot be turned off) |
+| `Screen.sleepTimeout` | rw | `SleepTimeout.NeverSleep` (-1, keeps the screen on) or `SleepTimeout.SystemSetting` (-2) |
+| `Screen.dpi`, `Screen.refreshRate` | ro | dots per inch (0 unknown), Hz |
+
+The pixel size is `System.getScreenWidth()` / `getScreenHeight()`; the canvas `Engine.canvasWidth` /
+`canvasHeight`. `LandscapeLeft` = the device turned counter-clockwise from portrait.
+
 Files (for saves prefer `File.readText` / `File.writeText` / `Json.readFile`, 2.4.2):
 `File()` / `File(path, write)` with `:open`, `:flush`, `:close`, `:readString()`,
 `:writeString(s)`, `:read8/16/32()`, `:eof()`, `:length()`, `:seek(n)`, `:pos()`;
@@ -883,6 +935,7 @@ Entities are plain integers (`0` = none).
 | `Physics2D.raycastAll(...)` | same args -> table of `RayReturn` |
 | `Physics.raycast(scene, origin, direction, maxDistance [, mask])`, `Physics.raycastAll(...)` | 3D, Vector3 origin/dir |
 | `ignoreLayerCollision(l1, l2 [, ignore=true])`, `getIgnoreLayerCollision(l1, l2)`, `getLayerCollisionMask(l)`, `setLayerCollisionMask(l, mask)`, `resetLayerCollisionMatrix()` | on both `Physics` and `Physics2D` |
+| `ignoreCollision(a, b [, ignore=true])`, `getIgnoreCollision(a, b)` | on both: two GameObjects / bodies (3D: Rigidbody, 2D: Rigidbody 2D) of one scene never collide; runtime only. Error if one has no body of that dimension |
 | `ALL_LAYERS`, `DEFAULT_RAYCAST_LAYERS`, `IGNORE_RAYCAST_LAYER` | static props on both |
 | `Physics.debugDraw`, `Physics.debugDrawContacts` | rw static bools: draw the colliders and joints (and contact points) of every playing scene, 3D and 2D (the Game view's Physics toggle) |
 
@@ -1695,6 +1748,22 @@ joint.maxMotorTorque = 10000
 function Car:onJointBreak2D(joint) Log.print("snap") end
 ```
 
+### 4.13.2 Collision2D, ContactPoint2D, Collider2D (the 2D callbacks' values, read-only)
+
+| Class | Members |
+|---|---|
+| `Collision2D` | `gameObject`, `collider`, `rigidbody` (the other side's), `thisCollider`, `thisRigidbody`, `otherCollider` / `otherRigidbody` (**this** side: Unity's names), `relativeVelocity` (Vector2, points/s, other minus this; Enter: before the step), `enabled`, `contactCount`, `getContact(i)`, `contacts` |
+| `ContactPoint2D` | `point`, `normal` (toward this one), `separation` (points), `normalImpulse`, `tangentImpulse`, `relativeVelocity`, `thisCollider`, `otherCollider` |
+| `Collider2D` | `gameObject`, `rigidbody` / `attachedRigidbody`, `index`, `type` (`Collider2DType`), `isTrigger` (sensor), `tag`, `compareTag(tag)`, `receiver`, `isValid()` |
+
+```lua
+function UpsideDown:onCollisionEnter2D(c)
+    if c.gameObject.tag == "Ground" and c.thisCollider.index == self.detectorCollider then
+        self.game:gameOver()
+    end
+end
+```
+
 ### 4.14 Rigidbody (EntityHandle) - 3D physics (Jolt)
 
 | Member | Kind | Notes |
@@ -1724,9 +1793,20 @@ function Car:onJointBreak2D(joint) Log.print("snap") end
 | `setAllowedDOFsAll()`, `setAllowedDOFs2DPlane()`, `setAllowedDOFs(...)`, `setOverrideMassAndInertia(...)` | methods | |
 | `getPointVelocity(p)`, `getAccumulatedForce()`, `getCenterOfMassPosition()` | methods | |
 
-`Contact3D`: `getWorldSpaceNormal()`, `getPenetrationDepth()`, `getBaseOffset()`,
-`getColliderIndex1()`, `getColliderIndex2()`, rw `combinedFriction`,
+`Contact3D` (global events): `getWorldSpaceNormal()`, `getPenetrationDepth()`, `getBaseOffset()`,
+`getColliderIndex1()`, `getColliderIndex2()`, `getRelativeContactPointsOnA(i)` / `OnB(i)`,
+`numContactPoints`, `snapshot` (true after the step: setters do nothing), rw `combinedFriction`,
 `combinedRestitution`, `sensor`.
+
+### 4.14.1 Collision, ContactPoint, Collider (the 3D callbacks' values, read-only)
+
+| Class | Members |
+|---|---|
+| `Collision` | `gameObject`, `rigidbody`, `collider` (the other side's), `thisCollider`, `thisRigidbody`, `impulse` (Vector3, estimated N s on this body), `relativeVelocity` (Vector3, other minus this), `contactCount`, `getContact(i)` (0-based, error out of range), `contacts` (new 1-based table each read) |
+| `ContactPoint` | `point`, `normal` (from the other collider toward this one), `separation` (< 0 penetrating), `impulse`, `thisCollider`, `otherCollider` |
+| `Collider` | `gameObject`, `rigidbody` / `attachedRigidbody`, `index`, `type` (`Collider3DType`), `isTrigger`, `tag`, `compareTag(tag)`, `receiver` (GameObject or nil), `isValid()`; `==` compares GameObject and index |
+
+Values are copies taken at the step (safe to keep); a GameObject gone since reads as nil.
 
 **Joint3D** (EntityHandle; `go:getJoint3D()`, `Joint3D(scene, entity)`, `Joint3D(scene)` a new
 GameObject): rw `enabled`, `type` (`Joint3DType.*`), `bodyA`, `bodyB` (alias `connectedBody`;
@@ -1815,7 +1895,66 @@ offsets (`relative` does not apply to it).
 `Ease(EaseType.X)` / `Ease.linear(t)`, `Ease.easeInQuad(t)`, `Ease.easeOutQuad(t)`,
 `Ease.easeInOutQuad(t)`, ... `Ease.easeOutBounce(t)` (static helpers, t in 0..1).
 
-### 4.16 ParticleSystem (Action) - partial
+### 4.16 ParticleSystem (Action)
+
+Unity's ParticleSystem (version 2, the module model; [particles.md](particles.md) has the
+modules, render modes, costs and the Unity importer). `GameObject > Effects > Particle System`,
+`create_particles` and the importer make version 2 systems; older scenes keep version 1 (the
+legacy model, below) until upgraded.
+
+```lua
+local ps = self.gameObject:getParticleSystem()   -- nil without one (GetComponent<ParticleSystem>)
+ps.emission.rateOverTime = 0                     -- the modules are live views
+local main = ps.main
+main.startLifetime = MinMaxCurve(0.8, 1.0)       -- random between two constants
+main.startColor = MinMaxGradient(Vector4(1, 0.5, 0, 1))   -- colours sRGB, as the pickers
+ps:play()                                        -- with children (play(false): only this one)
+ps:emit(10)                                      -- now, also while stopped
+if ps:isPlaying() then print(ps.particleCount, ps.time) end
+ps:stop(true, ParticleSystemStopBehavior.StopEmittingAndClear)
+```
+
+Control (children included unless `withChildren` is false; a version 1 system keeps the Action
+behaviour): `play([withChildren])`, `stop([withChildren], [ParticleSystemStopBehavior])`
+(`StopEmitting`: the particles live out, `StopEmittingAndClear`: gone now), `pause([withChildren])`,
+`clear([withChildren])`, `emit(count)` -> spawned, `simulate(t, [withChildren], [restart=true])`
+(advances t seconds, then paused, as Unity's Simulate), `isPlaying()`, `isPaused()`,
+`isStopped()`, `isEmitting()`, `isAlive([withChildren])` (methods, as Action's; Unity's are
+properties). rw `time` (the clock in the cycle), `randomSeed`, `useAutoRandomSeed`,
+`useUnscaledTime`, `version` (1 -> 2 upgrades); r `particleCount`. `upgrade([force])` converts a
+version 1 system and returns `{upgraded, items = {{field, status, message, maxError}, ...}}`
+(status `exact`, `approximated` or `dropped`). `ParticleSystem(scene)` makes a version 1 system,
+`ParticleSystem(scene, true)` a version 2 one on a new GameObject with the default quad.
+`play()` and `stop()` change the system at once; `onStart` / `onStop` of the Action follow at the
+next update. `GameObject:getParticleSystemsInChildren()` lists the GameObject's and its
+children's systems in hierarchy order. A script method `onParticleSystemStopped()` on the
+system's GameObject runs when it stops with `main.stopAction = ParticleSystemStopAction.Callback`.
+
+Modules (`ps.main`, `ps.emission`, `ps.shape`, `ps.velocityOverLifetime`,
+`ps.limitVelocityOverLifetime`, `ps.inheritVelocity`, `ps.forceOverLifetime`,
+`ps.colorOverLifetime`, `ps.colorBySpeed`, `ps.sizeOverLifetime`, `ps.sizeBySpeed`,
+`ps.rotationOverLifetime`, `ps.rotationBySpeed`, `ps.noise`, `ps.textureSheetAnimation`,
+`ps.renderer`): every field by its Unity name (the full list: [particles.md](particles.md#fields)).
+A MinMaxCurve field takes a number, a `MinMaxCurve` or an `AnimationCurve`; reading gives a
+`MinMaxCurve` copy (assign it back after editing). `<field>Multiplier` (`rateOverTimeMultiplier`,
+`startLifetimeMultiplier`, ...) reads and writes the constant / multiplier. A colour field takes
+a `Vector4` / `Vector3` (sRGB), a `Gradient` or a `MinMaxGradient`. Enum fields take the enum
+values (`ParticleSystemShapeType.Cone`) or their names (`"Cone"`). Angles and angular speeds
+are radians. Bursts: `ps.emission:setBursts({{time = 0, count = 10, cycles = 1, interval = 0.01,
+probability = 1}, ...})`, `getBurst(i)` / `setBurst(i, burst)` (0-based, as Unity), `burstCount`.
+Writing a module field of a version 1 system is an error naming `upgrade()`.
+
+`MinMaxCurve(v)`, `MinMaxCurve(min, max)`, `MinMaxCurve(multiplier, curve)`,
+`MinMaxCurve(multiplier, curveMin, curveMax)`: rw `mode` (`ParticleSystemCurveMode.Constant`,
+`Curve`, `TwoCurves`, `TwoConstants`), `constant`, `constantMin`, `constantMax`, `curve`,
+`curveMin`, `curveMax`, `curveMultiplier`; `evaluate(t [, random01])`.
+`MinMaxGradient(color)`, `MinMaxGradient(colorMin, colorMax)`, `MinMaxGradient(gradient)`,
+`MinMaxGradient(gradientMin, gradientMax)` (colours sRGB): rw `mode`
+(`ParticleSystemGradientMode.Color`, `Gradient`, `TwoColors`, `TwoGradients`, `RandomColor`),
+`color`, `colorMin`, `colorMax` (sRGB), `gradient`, `gradientMin`, `gradientMax`;
+`evaluate(t [, random01])` (linear RGBA).
+
+#### Version 1 (legacy)
 
 rw: `enabled`, `rate`, `maxPerUpdate`, `emitter`, `loop`, `localSpace`, `emitterShape`
 (`ParticleEmitterShape.*`). Methods: `reset()`, `addBurst(time, count)` / `addBurst(time, minCount, maxCount)`,
@@ -1826,6 +1965,9 @@ rw: `enabled`, `rate`, `maxPerUpdate`, `emitter`, `loop`, `localSpace`, `emitter
 `setSizeInitializer(...)`, `setRotationInitializer(...)`, `setScaleInitializer(...)`, and
 `set*Modifier(fromTime, toTime, from, to [, EaseType])` for Position/Velocity/Acceleration/
 Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause()`.
+On a version 2 system these legacy setters set the module fields they map to (as the upgrade
+does), with one deprecation warning each; the position modifier and `emitter` /
+`maxPerUpdate` have no module equivalent and do nothing there.
 Component: `getParticleSystemComponent()` (the old misspelt `getParticlesomponent()` still works, deprecated).
 
 ### 4.17 FluidSimulation (GameObject)
@@ -2065,6 +2207,21 @@ use the methods. Physics colliders keep the rest shape.
 | `AlphaTweenTarget` | `AUTO`, `COLOR`, `CANVAS_GROUP` |
 | `ScrollbarType`, `ProgressbarType` | `VERTICAL`, `HORIZONTAL` |
 | `ParticleEmitterShape` | `Box`, `Sphere`, `Hemisphere`, `Circle`, `Cone` |
+| `ParticleSystemShapeType` | `Sphere`, `Hemisphere`, `Cone`, `ConeVolume`, `Box`, `BoxShell`, `BoxEdge`, `Circle`, `Edge`, `Rectangle`, `Donut` |
+| `ParticleSystemCurveMode` | `Constant`, `Curve`, `TwoCurves`, `TwoConstants` |
+| `ParticleSystemGradientMode` | `Color`, `Gradient`, `TwoColors`, `TwoGradients`, `RandomColor` |
+| `ParticleSystemSimulationSpace` | `Local`, `World` |
+| `ParticleSystemScalingMode` | `Hierarchy`, `Local`, `Shape` |
+| `ParticleSystemStopAction` | `None`, `Disable`, `Destroy`, `Callback` |
+| `ParticleSystemStopBehavior` | `StopEmittingAndClear`, `StopEmitting` |
+| `ParticleSystemRenderMode` | `Billboard`, `Stretch`, `HorizontalBillboard`, `VerticalBillboard`, `Mesh` |
+| `ParticleSystemSortMode` | `None`, `Distance`, `OldestInFront`, `YoungestInFront` |
+| `ParticleSystemRenderSpace` | `View`, `World`, `Local`, `Facing`, `Velocity` |
+| `ParticleSystemShapeMultiModeValue` | `Random`, `Loop`, `PingPong`, `BurstSpread` |
+| `ParticleSystemInheritVelocityMode` | `Initial`, `Current` |
+| `ParticleSystemAnimationMode` / `Type` / `RowMode` / `TimeMode` | `Grid`, `Sprites` / `WholeSheet`, `SingleRow` / `Custom`, `Random` / `Lifetime`, `Speed`, `FPS` |
+| `ParticleSystemGravitySource` | `Physics3D`, `Physics2D` |
+| `ParticleSystemEmitterVelocityMode` | `Transform`, `Rigidbody` |
 | `FogType` | `LINEAR`, `EXPONENTIAL`, `EXPONENTIALSQUARED` |
 | `RotationOrder` | `XYZ`, `XZY`, `YXZ`, `YZX`, `ZXY`, `ZYX` |
 | `RayFilter` | `BODY_2D`, `BODY_3D`, `BOUNDS` |
@@ -2101,6 +2258,13 @@ use the methods. Physics colliders keep the rest shape.
 | `FrustumPlane` | `FRUSTUM_PLANE_NEAR`, `_FAR`, `_LEFT`, `_RIGHT`, `_TOP`, `_BOTTOM` |
 | `GraphicBackend` | `GLCORE`, `GLES3`, `D3D11`, `METAL`, `WGPU` |
 | `AdMobRating` | `General`, `ParentalGuidance`, `Teen`, `MatureAudience` |
+| `SystemLanguage` | Unity's names and values: `Afrikaans` (0), `Arabic`, `Basque`, `Belarusian`, `Bulgarian`, `Catalan`, `Chinese`, `Czech`, `Danish`, `Dutch`, `English` (10), `Estonian`, `Faroese`, `Finnish`, `French`, `German`, `Greek`, `Hebrew`, `Hungarian`, `Icelandic`, `Indonesian`, `Italian`, `Japanese`, `Korean`, `Latvian`, `Lithuanian`, `Norwegian`, `Polish`, `Portuguese`, `Romanian`, `Russian`, `SerboCroatian`, `Slovak`, `Slovenian`, `Spanish` (34), `Swedish`, `Thai`, `Turkish`, `Ukrainian`, `Vietnamese`, `ChineseSimplified` (40), `ChineseTraditional`, `Unknown` (42), `Hindi` |
+| `ScreenOrientation` | `Portrait` (1), `PortraitUpsideDown` (2), `LandscapeLeft` (3), `LandscapeRight` (4), `AutoRotation` (5) |
+| `DeviceOrientation` | `Unknown` (0), `Portrait`, `PortraitUpsideDown`, `LandscapeLeft`, `LandscapeRight`, `FaceUp`, `FaceDown` |
+| `DeviceType` | `Unknown`, `Handheld`, `Console`, `Desktop` |
+| `NetworkReachability` | `NotReachable`, `ReachableViaCarrierDataNetwork`, `ReachableViaLocalAreaNetwork` |
+| `HapticFeedback` | `Light`, `Medium`, `Heavy`, `Selection`, `Success`, `Warning`, `Error` |
+| `SleepTimeout` | `NeverSleep` (-1), `SystemSetting` (-2) |
 | `ResourceLoadState` | `NotStarted`, `Loading`, `Finished`, `Failed` |
 | `LatticeInterpolation` | `SHARP`, `SMOOTH`, `CUBIC` |
 | `LatticeOutside` | `EXTEND`, `FADE` |
@@ -2170,8 +2334,11 @@ Rigidbody wrappers by index.
     state; "pressed this frame" is `Input.getKeyDown`, `getMouseButtonDown`, `getButtonDown`
     (read edges in `onUpdate`: every fixed step of a frame sees them). Prefer input actions
     (`Input.getAxis("Horizontal")`) to raw keys: they add the gamepad and on-screen controls.
-16. **Physics events are global** for the scene: compare `bodyA.entity` / `bodyB.entity`
-    with `self.entity`. 2D contact events require the per-collider event flags.
+16. **Per-object contact callbacks** (`onCollisionEnter`, `onTriggerEnter2D`...) need no flag and
+    come only to the GameObjects involved; the global events (`beginContact2D`,
+    `onContactAdded3D`...) fire for every pair of the scene (compare `bodyA.entity` /
+    `bodyB.entity` with `self.entity`) and 2D ones need the collider's event flags. A filter that
+    was a Lua `shouldCollide3D` is `Physics.ignoreCollision(a, b)` (or layers) now.
 17. **Unassigned references are `nil`**: an entity-reference or Prefab property not set in
     the Inspector is `nil`; guard (`if self.target then ... end`).
 18. **Scripts by class name, not `getComponent`**: `go:getScript("Enemy")` (same GameObject:

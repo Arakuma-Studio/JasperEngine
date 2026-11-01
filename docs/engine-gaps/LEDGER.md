@@ -184,3 +184,17 @@ origin/main).
   test (91e646d41). video-mp4 review: 4 confirmed high defects (exports without 3D physics fail to link; video
   render textures by raw pointer; persistent players lose their output; a regex stack overflow in the Android
   export) + platform issues; fixes in progress.
+- 2026-11-01: verification of 91e646d41 (ui-canvas-group, physics-3d, http, physics3DWorld fix) on box 2201: 0
+  warnings, unit 1354 passed + ConvexDecomposition.ConcurrentRequests (load flake: passes 5/5 alone, added to the
+  known flakes), full MCP 862 passed with only the 10 baseline failures + test_stochastic_tiling resave (the
+  ui-canvas-group regression, fix in progress). platform-services merged locally (cbf8f65a9; lead resolved
+  Generator::configure taking both shaderGlobals and playerSettings). Known load flakes: test_autosync::
+  test_external_property_picked_up, ConvexDecomposition.ConcurrentRequests, CanvasGroupTest.PerformanceBudgets
+  (being made robust).
+- 2026-11-01: rule change: agents merge main ONCE at handoff and do not chase it; the lead merges later main changes
+  and verifies combined trees in batches. video-mp4 review fixes done (18 defects + spec items; unit 1436, htmlui
+  3114, MCP only baseline + the known canvas resave). It found a merge-blocker on local main: physics-3d sources
+  compile even with JASPERENGINE_PHYSICS_3D=OFF, which the Exporter sets for projects without 3D physics (every
+  2D-only export would fail) -> physics-3d agent fixing, also checking PHYSICS_2D=OFF and both OFF. audio-mixer
+  review: 2 high (live mixer edits reallocating SoLoud voice buffers -> dropouts; voice limit beyond SoLoud's 255
+  -> audio-thread overflow / Windows break), fixes in progress.

@@ -382,6 +382,9 @@ namespace jasperengine::editor{
         void requestScenePlayFocus(uint32_t sceneId) override;
         std::string backgroundWorkConflict(const std::string& action) const override;
 
+        // Assets > Import Unity Particle System...: a .prefab / .unity picked, imported into assets/fx (one undo step)
+        void importUnityParticles();
+
         void registerAlert(std::string title, std::string message) override;
         void registerAlert(std::string title, std::string message, std::string note); // note is rendered highlighted below the message
         // A file is only referenceable from inside the assets root

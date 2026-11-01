@@ -577,6 +577,27 @@ std::string editor::InspectorWindow::formatPrefabValue(EntityRegistry* registry,
             const Gradient& gradient = *static_cast<Gradient*>(prop.ref);
             return "Gradient (" + std::to_string(gradient.colorKeys.size()) + " colour, " + std::to_string(gradient.alphaKeys.size()) + " alpha keys)";
         }
+        case PropertyType::MinMaxCurve: {
+            const MinMaxCurve& curve = *static_cast<MinMaxCurve*>(prop.ref);
+            switch (curve.mode) {
+                case ParticleSystemCurveMode::Constant: return std::to_string(curve.constant);
+                case ParticleSystemCurveMode::TwoConstants: return "Random " + std::to_string(curve.constantMin) + " .. " + std::to_string(curve.constant);
+                case ParticleSystemCurveMode::Curve: return "Curve x " + std::to_string(curve.constant);
+                case ParticleSystemCurveMode::TwoCurves: return "Two curves x " + std::to_string(curve.constant);
+            }
+            return "(value)";
+        }
+        case PropertyType::MinMaxGradient: {
+            const MinMaxGradient& gradient = *static_cast<MinMaxGradient*>(prop.ref);
+            switch (gradient.mode) {
+                case ParticleSystemGradientMode::Color: return "Colour";
+                case ParticleSystemGradientMode::Gradient: return "Gradient";
+                case ParticleSystemGradientMode::TwoColors: return "Random between two colours";
+                case ParticleSystemGradientMode::TwoGradients: return "Random between two gradients";
+                case ParticleSystemGradientMode::RandomColor: return "Random colour";
+            }
+            return "(value)";
+        }
         case PropertyType::Custom:
             return "(value)";
         default:

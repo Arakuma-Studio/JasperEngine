@@ -66,7 +66,11 @@ Projects made before the rename are migrated once with
 | `AnimationCurve`, `Keyframe` (`time`, `value`, `inTangent`, `outTangent`), `WrapMode` of a curve | `AnimationCurve`, `CurveKey`, `CurveWrap` (`Clamp`, `Loop`, `PingPong`); keys 1-based in Lua |
 | `Gradient`, `GradientColorKey`, `GradientAlphaKey`, `GradientMode` (`Blend`, `Fixed`) | same names; colours sRGB in Lua, stored linear |
 | A line's `material` (Default-Line, a shader with a sprite-sheet flipbook) | the built-in line shader with `texture` (u_baseTexture), or a `lines` library shader such as `library:line_flipbook` |
-| `ParticleSystem` / `ParticleSystemComponent` | `Particles` / `ParticlesComponent` |
+| `ParticleSystem` / `ParticleSystemComponent` (the module model: `main`, `emission`, `shape`, ..., `renderer`; `Play`, `Stop`, `Pause`, `Clear`, `Emit`, `Simulate`, `isPlaying`, `particleCount`; one GameObject drawing its own quads) | `Particles` / `ParticlesComponent`; the version 1 Particle System (rates and initializers/modifiers drawing on another GameObject) still loads and plays: `upgrade()` converts it (jasper://docs/particles) |
+| `ParticleSystem.MainModule`, `EmissionModule`, `ShapeModule`, `VelocityOverLifetimeModule`, `LimitVelocityOverLifetimeModule`, `InheritVelocityModule`, `ForceOverLifetimeModule`, `ColorOverLifetimeModule`, `ColorBySpeedModule`, `SizeOverLifetimeModule`, `SizeBySpeedModule`, `RotationOverLifetimeModule`, `RotationBySpeedModule`, `NoiseModule`, `TextureSheetAnimationModule`, `ParticleSystemRenderer` | same names and fields (`ps.main.startSpeed`, `ps.shape.shapeType`, `ps.renderer.renderMode`; MCP `main.startSpeed`); radians in code, degrees in the Inspector; sub emitters, collision, triggers, lights, trails and custom data are not supported |
+| `ParticleSystem.MinMaxCurve` (`Constant`, `Curve`, `TwoCurves`, `TwoConstants`), `ParticleSystem.MinMaxGradient` (`Color`, `Gradient`, `TwoColors`, `TwoGradients`, `RandomColor`), `ParticleSystem.Burst` | `MinMaxCurve`, `MinMaxGradient` (colours sRGB in Lua, stored linear), bursts `{time, count, cycles, interval, probability}` (`setBursts`, `getBurst(i)` 0-based) |
+| `ParticleSystemStopBehavior`, `ParticleSystemStopAction` (`None`, `Disable`, `Destroy`, `Callback` -> `OnParticleSystemStopped`) | same names; Callback calls a Lua script's `onParticleSystemStopped` |
+| Importing a Unity particle prefab or scene (no Unity equivalent) | Assets > Import Unity Particle System..., MCP `import_unity_particles`, CLI `import-unity-particles`: engine prefabs and a report (jasper://docs/particles) |
 | `RectTransform` / `RectTransformComponent` | `UILayout` / `UILayoutComponent` |
 | `LayoutGroup` / `LayoutGroupComponent` | `Container` / `UIContainerComponent` |
 | `InputField` / `InputFieldComponent` | `TextEdit` / `TextEditComponent` |
@@ -107,6 +111,11 @@ Projects made before the rename are migrated once with
 | `Input.simulateMouseWithTouches` | `Engine.callMouseInTouchEvent` |
 | Input System: on-screen controls, `InputAction`, rebinding (`PerformInteractiveRebinding`, `SaveBindingOverridesAsJson`, `LoadBindingOverridesFromJson`) | none (new): virtual sources (`Input.simulateButton`, `simulateAxis`, `addAxisDelta`, `InputActions::setSourceValue` in C++), `Input.getPressedControl`, `Input.setBindings`, `exportBindings`, `importBindings` |
 | `Physics` / `Physics2D` (`ignoreLayerCollision`, `getIgnoreLayerCollision`, `getLayerCollisionMask`, `setLayerCollisionMask`, `raycast`, `raycastAll`, `ALL_LAYERS`, `DEFAULT_RAYCAST_LAYERS`, `IGNORE_RAYCAST_LAYER`) | none (new) |
+| `OnCollisionEnter/Stay/Exit(Collision)`, `OnTriggerEnter/Stay/Exit(Collider)`, and the `...2D` ones -> `onCollisionEnter/Stay/Exit`, `onTriggerEnter/Stay/Exit`, `onCollisionEnter2D/Stay2D/Exit2D`, `onTriggerEnter2D/Stay2D/Exit2D` (Lua methods called by name, also on disabled scripts; C++ `ScriptBase` overrides); after the fixed step, on the main thread ([physics.md](mcp/guide/physics.md)) | global events only (`beginContact2D`, `onContactAdded3D` on Jolt's job threads) |
+| `Collision` (`gameObject`, `collider`, `rigidbody`, `contactCount`, `GetContact(i)`, `contacts`, `impulse`, `relativeVelocity`), `ContactPoint` (`point`, `normal`, `separation`, `impulse`, `thisCollider`, `otherCollider`), `ContactPoint2D` -> the same names lowerCamelCase (`getContact(i)` 0-based), plus `thisCollider` / `thisRigidbody` | none (new) |
+| `Collision2D.otherCollider` / `otherRigidbody` (Unity: **this** side) -> the same (this side), plus the plain `thisCollider` / `thisRigidbody`; `collider` / `rigidbody` / `gameObject` are the other side's | none (new) |
+| A child GameObject's collider with its own script -> a collider of the body whose `receiver` (Inspector "Send Callbacks To") is that GameObject | none (new) |
+| `Physics.IgnoreCollision(a, b, ignore)` / `Physics2D.IgnoreCollision` (colliders) -> `Physics.ignoreCollision(a, b [, ignore])` / `Physics2D.ignoreCollision` on bodies (GameObjects or Rigidbodies): every collider of the pair | none (new) |
 | `Shader.SetGlobalFloat`, `SetGlobalInt`, `SetGlobalVector`, `SetGlobalColor`, `SetGlobalMatrix`, `SetGlobalFloatArray`, `SetGlobalVectorArray`, `SetGlobalTexture`, `GetGlobal*`, `Shader.PropertyToID` | none (new): `Shader.setGlobalFloat`, `setGlobalInt`, ..., `getGlobal*`, `Shader.propertyToID`, plus `hasGlobal`, `getGlobalNames`, `resetGlobals`; shaders read them as members of a `u_vs_globals` / `u_fs_globals` block (or a texture uniform of the name); C++ `ShaderGlobals` ([shaders guide, Global values](mcp/guide/shaders.md#global-values)) |
 | A material property a global feeds (Unity: the global applies when the material does not define the property) | none (new): an explicit binding, the Inspector's link button on a shader parameter row (`shaderGlobalBindings`, Lua `material:setShaderGlobalBinding(member, global)`) |
 | `Shader.EnableKeyword` (global keywords) | not supported: shader features are per material (`setShaderFeature`) |
@@ -122,6 +131,35 @@ New, with no Unity counterpart: `FluidSimulation` / `FluidSimulationComponent`
 (GameObject > Effects > Fluid Simulation, Pavel Dobryakov's WebGL fluid). Unity has no
 built-in fluid component; there it takes a Custom Render Texture or compute-shader
 solver of your own, or a package.
+
+## Platform services (Application, SystemInfo, Screen, Handheld)
+
+New: the engine had none of these. Unity's members became `System`, `Screen`, `Engine` and
+`Input` ones (details: [platform-services.md](mcp/guide/platform-services.md)).
+
+| Unity term | JasperEngine |
+|---|---|
+| `Application.OpenURL(url)` | `System.openURL(url)` (returns whether the system took it) |
+| `Application.systemLanguage` | `System.getSystemLanguage()` (`SystemLanguage.*`, same names and values); codes: `System.getLanguageCode()`, `getRegionCode()`, `getLocale()`, `getPreferredLanguages()` |
+| `Application.targetFrameRate` | `Engine.targetFrameRate` (Project Settings > Player > Target Frame Rate) |
+| `QualitySettings.vSyncCount` | `Engine.vSyncCount` (starts from Quality > VSync) |
+| `Screen.orientation`, `Screen.autorotateToPortrait` / `PortraitUpsideDown` / `LandscapeLeft` / `LandscapeRight` | `Screen.orientation`, `Screen.autorotateTo*` (`ScreenOrientation.*`) |
+| `Screen.sleepTimeout`, `SleepTimeout.NeverSleep` / `SystemSetting` | `Screen.sleepTimeout`, `SleepTimeout.*` |
+| `Screen.dpi`, `Screen.currentResolution.refreshRateRatio` | `Screen.dpi`, `Screen.refreshRate` |
+| `Screen.width`, `Screen.height` | `System.getScreenWidth()`, `getScreenHeight()` (pixels), or `Engine.canvasWidth` / `canvasHeight` (canvas units) |
+| `Input.deviceOrientation` | `Input.deviceOrientation` (`DeviceOrientation.*`) |
+| `OnApplicationFocus(bool)` | the `onApplicationFocus(focused)` script method, or `RegisterEngineEvent(self, "onFocus")` |
+| `OnApplicationPause(true / false)` | the `onApplicationPause(paused)` script method, or `onPause` / `onResume` engine events |
+| `Application.isFocused` | `Engine.isFocused` |
+| `Application.lowMemory` | `Engine.onLowMemory` |
+| `Application.version`, `Application.identifier`, `Application.productName` | `System.getAppVersion()`, `getAppIdentifier()`, `getAppName()` |
+| Android `versionCode`, iOS `CFBundleVersion` | `System.getAppBuild()` (an integer) |
+| `SystemInfo.operatingSystem`, `deviceModel`, `deviceType`, `systemMemorySize`, `processorCount` | `System.getOperatingSystem()` (Unity's format), `getDeviceModel()`, `getDeviceType()`, `getSystemMemorySize()`, `getProcessorCount()`; also `getOperatingSystemVersion()`, `getAndroidApiLevel()` |
+| `Application.isEditor` | `System.isEditor()` |
+| `Application.internetReachability` | `System.getInternetReachability()` (`NetworkReachability.*`) |
+| `Handheld.Vibrate()` | `System.vibrate([ms])`; iOS-style feedback: `System.hapticFeedback(HapticFeedback.*)` |
+| Player > Default Orientation, Allowed Orientations for Auto Rotation | Project Settings > Player > Resolution and Presentation (`player.default_orientation`, `player.allowed_orientations`; shared by Android and iOS) |
+| Device Simulator (orientation, language, `SystemInfo.deviceModel`) | the Game view's Device menu (device, Rotate, Language) |
 
 ## Saves and data
 

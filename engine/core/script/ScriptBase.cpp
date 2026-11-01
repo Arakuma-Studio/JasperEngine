@@ -171,11 +171,28 @@ void ScriptBase::onJointBreak2D(Joint2D& joint) {
     inherited(*this, ScriptMessage::JointBreak2D);
 }
 
+void ScriptBase::onParticleSystemStopped() {
+    inherited(*this, ScriptMessage::ParticleSystemStopped);
+}
+
 void ScriptBase::onJointBreak(float force, Joint3D& joint) {
     (void)force;
     (void)joint;
     inherited(*this, ScriptMessage::JointBreak);
 }
+
+void ScriptBase::onCollisionEnter(const Collision&) { inherited(*this, ScriptMessage::CollisionEnter); }
+void ScriptBase::onCollisionStay(const Collision&) { inherited(*this, ScriptMessage::CollisionStay); }
+void ScriptBase::onCollisionExit(const Collision&) { inherited(*this, ScriptMessage::CollisionExit); }
+void ScriptBase::onTriggerEnter(const ColliderRef&) { inherited(*this, ScriptMessage::TriggerEnter); }
+void ScriptBase::onTriggerStay(const ColliderRef&) { inherited(*this, ScriptMessage::TriggerStay); }
+void ScriptBase::onTriggerExit(const ColliderRef&) { inherited(*this, ScriptMessage::TriggerExit); }
+void ScriptBase::onCollisionEnter2D(const Collision2D&) { inherited(*this, ScriptMessage::CollisionEnter2D); }
+void ScriptBase::onCollisionStay2D(const Collision2D&) { inherited(*this, ScriptMessage::CollisionStay2D); }
+void ScriptBase::onCollisionExit2D(const Collision2D&) { inherited(*this, ScriptMessage::CollisionExit2D); }
+void ScriptBase::onTriggerEnter2D(const ColliderRef2D&) { inherited(*this, ScriptMessage::TriggerEnter2D); }
+void ScriptBase::onTriggerStay2D(const ColliderRef2D&) { inherited(*this, ScriptMessage::TriggerStay2D); }
+void ScriptBase::onTriggerExit2D(const ColliderRef2D&) { inherited(*this, ScriptMessage::TriggerExit2D); }
 
 void ScriptBase::init() { inherited(*this, ScriptMessage::Init); }
 void ScriptBase::start() { inherited(*this, ScriptMessage::Start); }

@@ -56,7 +56,8 @@ namespace jasperengine{
         GRAY,
         NORMAL, // flat tangent-space normal (0.5, 0.5, 1)
         RIPPLES, // a seamless ripple normal map (library:water's, Water::makeRipplesTexture)
-        NOISE    // seamless grey value noise (Water::makeNoiseTexture)
+        NOISE,   // seamless grey value noise (Water::makeNoiseTexture)
+        PARTICLE // a white soft disc fading to transparent (particles::makeParticleTexture)
     };
 
     // vertex inputs of @require: forced on when the mesh has them, and the varyings

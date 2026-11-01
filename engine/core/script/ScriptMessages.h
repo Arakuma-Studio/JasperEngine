@@ -34,6 +34,8 @@ namespace jasperengine {
         JointBreak, JointBreak2D,
         // script-lifecycle
         Init, Start, Enable, Disable, Destroy, ApplicationPause, ApplicationFocus, ApplicationQuit,
+        // particles: a version 2 Particle System with stopAction Callback finished
+        ParticleSystemStopped,
         Count
     };
     static_assert(static_cast<int>(ScriptMessage::Count) <= 32, "ScriptMessageMask holds 32 messages");
@@ -89,6 +91,10 @@ namespace jasperengine {
         static bool invoke(Scene* scene, Entity entity, size_t scriptIndex, ScriptMessage m,
                            const std::function<int(lua_State*)>& pushArgs,
                            const std::function<void(ScriptBase&)>& callCpp);
+
+        // The messages of `filter` each script of the GameObject defines, as
+        // "onTriggerEnter (Coin)" (the Inspector's Callbacks line, get_runtime_entity)
+        static std::vector<std::string> describeReceivers(Scene* scene, Entity entity, ScriptMessageMask filter);
 
         // Told when receivers(scene, entity) may have changed
         using ReceiversChanged = void (*)(Scene* scene, Entity entity);

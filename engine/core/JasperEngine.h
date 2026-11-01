@@ -15,6 +15,7 @@
 #include "PrefabAsset.h"
 #include "ObjectManager.h"
 #include "System.h"
+#include "Screen.h"
 
 #include "action/Action.h"
 #include "action/AlphaTween.h"
@@ -121,6 +122,10 @@
 
 #include "math/AnimationCurve.h"
 #include "math/Gradient.h"
+#include "particles/MinMax.h"
+#include "particles/ParticleModules.h"
+#include "particles/ParticleSimulation.h"
+#include "particles/ParticleUpgrade.h"
 #include "math/AABB.h"
 #include "math/Matrix3.h"
 #include "math/Matrix4.h"
@@ -261,6 +266,8 @@
 #include "util/Color.h"
 #include "util/SpriteFrameData.h"
 #include "util/FunctionSubscribe.h"
+#include "util/FrameLimiter.h"
+#include "util/PlatformRules.h"
 #include "util/StringUtils.h"
 #include "util/ThreadUtils.h"
 #include "util/UniqueToken.h"

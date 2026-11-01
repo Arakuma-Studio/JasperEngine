@@ -18,6 +18,7 @@
 #include "imgui.h"
 #include "yaml-cpp/yaml.h"
 #include "ecs/Signature.h"
+#include "subsystem/PhysicsSystem.h"
 #include "soloud.h"
 #include "soloud_wav.h"
 
@@ -26,6 +27,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <tuple>
 
 namespace jasperengine::editor{
 
@@ -80,7 +82,10 @@ namespace jasperengine::editor{
         LayerMask,  // unsigned int culling mask: Unity's Nothing / Everything / per-layer dropdown
         // Unity AnimationCurve / Gradient (widget/CurveField.h, widget/GradientField.h)
         Curve,
-        Gradient
+        Gradient,
+        // Unity's MinMaxCurve / MinMaxGradient (widget/MinMaxFields.h)
+        MinMaxCurve,
+        MinMaxGradient
     };
 
     struct EnumEntry {
@@ -106,6 +111,9 @@ namespace jasperengine::editor{
         bool indent = false;
         std::string help = "";
         const char *format = "%.2f";
+        // MinMaxCurve rows: what the numbers show is the stored value times this (57.29578:
+        // degrees of a value stored in radians)
+        float displayScale = 1.0f;
         bool showColors = true;
         std::vector<EnumEntry>* enumEntries = nullptr;
         std::vector<int>* sliderValues = nullptr;
@@ -509,6 +517,15 @@ namespace jasperengine::editor{
         void endTable();
         bool propertyHeader(std::string label, float secondColSize = -1, bool defChanged = false, bool child = false, bool indent = false);
         bool propertyRow(RowPropertyType type, ComponentType cpType, std::string id, std::string label, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings = RowSettings());
+        // Play mode, under a Rigidbody (2D): the pairs it touches and the contact callbacks its
+        // scripts define (physics-contacts 6.3)
+        void drawPhysicsContacts(SceneProject* sceneProject, Entity entity, bool is2D);
+        struct PhysicsContactsView{
+            double readAt = -1.0;
+            std::vector<ContactSummary> contacts;
+            std::vector<std::string> callbacks;
+        };
+        std::map<std::tuple<uint32_t, Entity, bool>, PhysicsContactsView> physicsContactsViews;
         bool propertyRowWithAutoButton(RowPropertyType propType, ComponentType cpType, std::string id, std::string label, std::string autoId, std::string autoLabel, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings = RowSettings());
         void setParticleFrames(ComponentType cpType, const std::string& propertyId, SceneProject* sceneProject, Entity entity, const std::vector<int>& frames);
         void setParticleBursts(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::vector<ParticleBurst>& bursts);
@@ -700,6 +717,16 @@ namespace jasperengine::editor{
         void drawAudioComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawSkyboxComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawParticleSystemComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // Particle Systems (InspectorParticles.cpp): version 1 keeps its legacy rows under the
+        // Upgrade to modules banner; version 2 shows Unity's modules
+        void drawParticleSystemLegacy(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawParticleUpgradeBanner(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawParticleModules(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawParticleModuleRows(const std::string& module, ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                    const ParticleSystemComponent& first);
+        void drawParticleBursts(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        // the upgrade popup's report and its force choice
+        bool particleUpgradeForce = false;
         void drawLineRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // Line and Trail Renderers (InspectorLinesTrails.cpp)
         void drawLineSegmentsList(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

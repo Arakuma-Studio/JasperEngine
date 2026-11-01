@@ -13,11 +13,10 @@ const char* mcpServerInstructions() {
 R"JE(# JasperEngine editor (MCP)
 
 You are driving a running JasperEngine editor: a C++ game engine with a Unity-style editor
-and Lua or C++ gameplay scripts. Every tool edit is an undoable editor command, shown live to a human.
+and Lua or C++ gameplay scripts. Every tool edit is an undoable command, shown live to a human.
 Build scenes with tools, write code with your own file tools, verify by playing, screenshots
-and the Console. tools/list is authoritative for tool names and arguments; read a
-tool's description before first use. Deeper reference: resources jasper://docs/... (Lua API,
-C++ scripting, physics, shaders, prefabs, HTML/CSS UI, Unity glossary).
+and the Console. tools/list is authoritative; read a tool's description before first use.
+Deeper reference: jasper://docs/... (Lua API, physics, shaders, UI, glossary...).
 
 ## Unity names -> engine names
 Use Unity terms in prose; tools, component names and script APIs use the engine names.
@@ -161,11 +160,12 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - wait: run for seconds, game_seconds or frames, or until a Lua condition is truthy; input
   sends send_input events while it waits.
 - run_build runs an exported desktop player (input events, screenshots_at seconds); returns
-  its errors and the log tail.
+  its errors (Lua too) and the log tail.
+- Simulated focus, pause, rotation, language, URLs: jasper://docs/platform-services.
 
 ## 2D and 3D
 - 2D: sprites, tilemaps, UI; units are points (canvas pixels, y up), 64 per Box2D meter
-  (pointsToMeterScale). Light 2D adds to the 2D ambient (lower ambient_light_2d_intensity to see it); Shadow Caster 2D needs the
+  (pointsToMeterScale). Light 2D adds to the 2D ambient (lower ambient_light_2d_intensity); Shadow Caster 2D needs the
   light's shadows on; normal maps (generate_sprite_normals, jasper://docs/sprite-normals) need
   its height > 0.
 - 3D: meshes (box, sphere, plane, model files), lights, skybox, fog, terrain. Cameras look at
@@ -185,21 +185,20 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with
-  body_type + add). A Rigidbody without a Collider does not collide. Dynamic: actors;
-  static: floors, level geometry; kinematic: scripted movers.
+  body_type + add); a Rigidbody without a Collider does not collide. Dynamic: actors;
+  static: floors, levels; kinematic: scripted movers.
 - Collider sizes are mesh-local, scaled by the GameObject's scale: never pre-scale them; omit
   sizes to fit the mesh bounds (never guess).
 - Mass = collider volume/area x density (default 1000 in 3D, 1 in 2D) unless set explicitly.
   Size forces as mass x acceleration; if huge, lower density.
 - Joints (set_joint, 2D/3D): Unity's set, local anchors, motors, springs, limits, breaking;
   ragdolls: create_ragdoll; collider wireframes in Play: configure_game_view physics_debug.
-- Continuous forces and torques go in onFixedUpdate, never onUpdate, NOT multiplied by deltatime.
+- Continuous forces / torques go in onFixedUpdate (not onUpdate), NOT multiplied by deltatime.
   3D and 2D APIs differ (2D calls take a wake flag), concave 2D polygons: jasper://docs/physics.
-- Never move a body by writing its GameObject's transform from onFixedUpdate (silently
-  overwritten). Teleport with body.position (and body.rotation / body.angle), velocity with
-  body.linearVelocity. One-shot impulses fire once per press, not every held frame.
-- Layer Collision Matrix (project settings, per backend) gates contacts; raycasts take a
-  layer mask. Drop or settle objects: place_with_physics.
+- Never write a body's transform in onFixedUpdate (overwritten): teleport with body.position
+  (rotation / angle), set body.linearVelocity. One-shot impulses: once per press.
+- Collisions: onCollisionEnter / onTriggerEnter(2D) on the script; filters: Layer Collision
+  Matrix, Physics.ignoreCollision; raycasts take a layer mask. Settle: place_with_physics.
 
 ## Prefabs
 - An edit on a prefab instance is an override of that instance only. Push it to the asset
@@ -231,6 +230,7 @@ Textures from examples: synthesize_texture
 (jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
 (jasper://docs/fluid). Bend/squash: edit_lattice (jasper://docs/lattice). Thick lines, lasers,
 bullet trails: line_renderer / trail_renderer, curves and gradients (jasper://docs/lines-trails).
+Particles: create_particles; Unity ones: import_unity_particles (jasper://docs/particles).
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export

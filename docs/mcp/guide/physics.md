@@ -37,8 +37,8 @@ mesh bounds in 3D) unless `fit: false`; sizes you pass win.
 
 | | shapes and their fields | also |
 |---|---|---|
-| 2D | `box` (`size`, `center`), `circle` (`radius`), `capsule` (`radius`, `point_a`, `point_b`), `segment` (`point_a`, `point_b`), `polygon` (`points`: any number, 3 or more, concave allowed), `chain` (`points`: 2 or more, `loop`); sizes in points before the GameObject's scale; any number of colliders per body | `density`, `friction`, `restitution`, `material` (a `.physicsmaterial` path or null), `sensor` (alias `is_trigger`), `hit_events`, `contact_events`, `pre_solve_events`, `sensor_events`, `category_bits`, `mask_bits`, `group_index`, `center`, `offset` |
-| 3D | `box` (`size`), `sphere` (`radius`), `capsule` / `cylinder` (`radius`, `half_height`), `tapered_capsule` (`top_radius`, `bottom_radius`, `half_height`), `convex_hull` / `mesh` (from the GameObject's mesh, or `source`; or raw `vertices` [[x,y,z]...] and, for a mesh, `indices`: any number), `heightfield` (a terrain's, `samples_size`); any number of colliders per body | `density`, `center`, `rotation`, `is_trigger`, `material` (a `.physicsmaterial` path or null); `friction` and `restitution` without a material are per body (they go to the Rigidbody) |
+| 2D | `box` (`size`, `center`), `circle` (`radius`), `capsule` (`radius`, `point_a`, `point_b`), `segment` (`point_a`, `point_b`), `polygon` (`points`: any number, 3 or more, concave allowed), `chain` (`points`: 2 or more, `loop`); sizes in points before the GameObject's scale; any number of colliders per body | `density`, `friction`, `restitution`, `material` (a `.physicsmaterial` path or null), `sensor` (alias `is_trigger`), `hit_events`, `contact_events`, `pre_solve_events`, `sensor_events`, `category_bits`, `mask_bits`, `group_index`, `center`, `offset`, `receiver` |
+| 3D | `box` (`size`), `sphere` (`radius`), `capsule` / `cylinder` (`radius`, `half_height`), `tapered_capsule` (`top_radius`, `bottom_radius`, `half_height`), `convex_hull` / `mesh` (from the GameObject's mesh, or `source`; or raw `vertices` [[x,y,z]...] and, for a mesh, `indices`: any number), `heightfield` (a terrain's, `samples_size`); any number of colliders per body | `density`, `center`, `rotation`, `is_trigger`, `material` (a `.physicsmaterial` path or null), `receiver`; `friction` and `restitution` without a material are per body (they go to the Rigidbody) |
 
 ## Mass
 
@@ -367,6 +367,76 @@ float: Jolt has no volume for them; use convex shapes), the mass from their dens
 it. Scripts read the surface with `Water.getHeight(scene, x, z)` / `Water.getNormal` /
 `Water.isUnderwater(scene, point)` (Lua API 2.10.1).
 
+## Collision and trigger callbacks
+
+Define the Unity methods on a script of the body's GameObject; no registration, no flag:
+
+```lua
+function Coin:onTriggerEnter2D(other)            -- other: Collider2D
+    if other:compareTag("Player") then GameObject.destroy(self.gameObject) end
+end
+function Car:onCollisionEnter2D(c)               -- c: Collision2D
+    if c.gameObject.tag == "Ground" and c.thisCollider.index == 1 then self.game:gameOver() end
+end
+function Shell:onCollisionEnter(c)               -- c: Collision (3D)
+    local body = Rigidbody(self.scene, self.entity)
+    body.linearVelocity = body.linearVelocity:reflect(c:getContact(0).normal)
+end
+```
+
+| 3D | 2D | gets |
+|---|---|---|
+| `onCollisionEnter/Stay/Exit` | `onCollisionEnter2D/Stay2D/Exit2D` | `Collision` / `Collision2D`, seen from this side |
+| `onTriggerEnter/Stay/Exit` | `onTriggerEnter2D/Stay2D/Exit2D` | the other `Collider` / `Collider2D` |
+
+C++ `ScriptBase` scripts override the virtuals of the same names (`onCollisionEnter(const
+Collision&)`, `onTriggerEnter2D(const ColliderRef2D&)`...).
+
+**When.** On the main thread, right after the fixed step that caused them (Unity: after
+FixedUpdate and the step): 2D first, then 3D; triggers then collisions; Enter, Stay, Exit; pairs
+in GameObject order. Once per fixed step (several steps in a frame: several rounds; time scale 0
+or paused physics: none). Every script of the GameObject that defines the method gets it, **enabled
+or not** (Unity), while the GameObject is active in hierarchy. A collider's `receiver` (Inspector
+"Send Callbacks To", `edit_colliders` `receiver`) also gets that collider's callbacks: Unity's child
+colliders with their own scripts. Collisions need a dynamic body on one side (or a kinematic one
+with `collideKinematicVsNonDynamic`); triggers (a 2D collider's `sensor`, a 3D collider's `isTrigger` or body `sensor`) also
+fire with kinematic and static bodies in 3D. One callback per collider pair: a trigger and a
+solid collider of one body touching the same collider give both.
+
+**The rules.**
+- Sleeping does not end a contact: no Exit when bodies fall asleep, no Stay while they sleep (2D:
+  Stay while either body is awake); a pair that no longer touches when it wakes gets its Exit then.
+- Rebuilding a body (a collider edit, a scale change) gives no Exit / Enter while it still touches.
+- When the other side goes, you always get the Exit: destroyed (`GameObject.destroy` at the end of
+  the frame, `destroyImmediate`, Rigidbody removed) at once, while it still exists
+  (`other.gameObject` is valid and named); deactivated, body disabled, collider removed, layers or
+  `ignoreCollision` changed: at the end of the next step. The departing object gets nothing. Scene
+  unload and Play stop send nothing.
+- `GameObject.destroy` in a callback lets the step's other callbacks reach the object;
+  `destroyImmediate` ends them. Changes made in a callback (teleports, colliders, layers) apply at
+  the next step.
+- An error in a callback is logged (once a second per script and method) and the others still run.
+  Callbacks cannot yield: start a coroutine for waits.
+
+**The data** is a copy taken at the step, safe to keep:
+
+| class | members |
+|---|---|
+| `Collision` | `gameObject`, `rigidbody`, `collider` (the other's), `thisCollider`, `thisRigidbody`, `impulse` (Vector3, N s, Jolt's estimate), `relativeVelocity` (other minus this: a ball landing sees +y), `contactCount`, `getContact(i)` (0-based), `contacts` (a new table each read: prefer `getContact`) |
+| `ContactPoint` | `point`, `normal` (from the other collider toward this one: `v:reflect(normal)` bounces), `separation` (< 0 penetrating), `impulse`, `thisCollider`, `otherCollider` |
+| `Collision2D` | `gameObject`, `collider`, `rigidbody` (the other's), `thisCollider`, `thisRigidbody`, Unity's `otherCollider` / `otherRigidbody` (**this** side, as in Unity), `relativeVelocity` (points/s; Enter: before the step), `enabled`, `contactCount`, `getContact(i)`, `contacts` |
+| `ContactPoint2D` | `point`, `normal`, `separation` (points), `normalImpulse`, `tangentImpulse`, `relativeVelocity`, `thisCollider`, `otherCollider` |
+| `Collider` / `Collider2D` | `gameObject`, `rigidbody` (`attachedRigidbody`), `index`, `type`, `isTrigger`, `tag`, `compareTag(tag)`, `receiver`, `isValid()` (false once its GameObject or collider is gone; `gameObject` is then nil, or still there for a removed collider) |
+
+At most 4 contact points per 3D manifold and 2 per Box2D shape pair, 8 per collider pair (a mesh
+collider or a concave polygon merges its pieces'). 2D impulses are Box2D's of the step; 3D ones
+are estimates. A contact disabled by `preSolve2D` is not touching (Exit, then Enter when enabled).
+
+**Cost.** Only bodies whose scripts (or receivers) define a method are recorded; the rest are
+never recorded (one mask test per contact on Jolt's job threads). Agents: `get_runtime_entity` lists `physics.contacts` (other, collider indices, trigger,
+`since_step`, asleep) and `physics.callbacks` (the methods found, with their scripts); the
+Inspector shows the same under each body in Play.
+
 ## Layers, contacts and queries
 
 - Each backend has a Layer Collision Matrix (Project Settings > Physics / Physics 2D), saved in
@@ -374,14 +444,29 @@ it. Scripts read the surface with `Water.getHeight(scene, x, z)` / `Water.getNor
   allows still need matching collider category/mask bits (`setBitsFilter`, 2D group index).
 - `Physics.ignoreLayerCollision` / `Physics2D.ignoreLayerCollision` change it at runtime (in the
   editor, until Play stops). Changing a GameObject's layer re-filters its body.
+- `Physics.ignoreCollision(a, b [, ignore = true])` / `Physics2D.ignoreCollision` (GameObjects or
+  bodies of one scene): those two bodies never collide, at run time (Unity
+  `Physics.IgnoreCollision`); `getIgnoreCollision(a, b)`. Resting pairs are woken. The replacement
+  for a Lua `shouldCollide3D` filter.
 - Ray casts: `Physics.raycast(scene, ray [, layerMask])`,
   `Physics.raycast(scene, origin, direction, maxDistance [, layerMask])`, `raycastAll`, and the
   `Physics2D` ones with `Vector2`. Masks from `LayerMask.getMask(...)`, `Physics.ALL_LAYERS`;
   default is every layer but Ignore Raycast. With a `Ray`, distance is a fraction of
   `ray.direction`; with origin/direction/distance it is in world units.
-- Contacts in Lua: `RegisterEvent(self, self.scene:getPhysicsSystem().beginContact2D, "onHit")`
-  fires for every contacting pair in the scene (filter by body) whose collider has
-  `contactEvents` on (the default for new colliders).
+- **Global contact events** (every pair of the scene: filter by body; the per-object callbacks
+  above are simpler): 2D `beginContact2D`, `endContact2D`, `stayContact2D` (once a
+  step per touching shape pair, from the step after its begin, while a body is awake), `hitContact2D`,
+  `beginSensorContact2D`, `endSensorContact2D`, `staySensorContact2D` fire for colliders with
+  `contactEvents` on (the default for new colliders; sensors always), `preSolve2D` / `shouldCollide2D`
+  inside the step. 3D `onContactAdded3D`, `onContactPersisted3D`, `onContactRemoved3D`,
+  `onBodyActivated3D`, `onBodyDeactivated3D` run on the main thread after the step, with a
+  `Contact3D` snapshot (its setters warn and do nothing). `physicsSystem.synchronousContactEvents3D
+  = true` steps the scene's 3D world on the main thread and calls them inside the step with live,
+  settable contacts (slower: one thread). A Lua `shouldCollide3D` turns that on by itself, since it
+  must run inside the step (prefer `Physics.ignoreCollision` or layers). C++ contact modification
+  (conveyor-belt friction): `PhysicsSystem::onContactModify3D`, on Jolt's job threads.
+- 2D limitation (Box2D): a kinematic sensor never pairs with static or kinematic bodies, and two
+  sensors never pair; make the other body dynamic (gravity scale 0) to detect it.
 
 ## Placing objects with physics (`place_with_physics`)
 

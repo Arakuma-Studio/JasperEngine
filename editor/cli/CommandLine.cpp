@@ -72,6 +72,7 @@
 #include "shader/ShaderLibraryDoc.h"
 #include "shader/ShaderManifest.h"
 #include "shader/ShaderVariantCompiler.h"
+#include "unity/UnityParticleImport.h"
 
 #include <algorithm>
 #include <cctype>
@@ -266,6 +267,7 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " synthesize-texture [options]  Synthesize a texture (tileable, inpainted, ...) from examples.\n"
         << "  " << commandName << " place-physics [options]  Drop, separate or move GameObjects with edit-time physics.\n"
         << "  " << commandName << " bake-vat [options]       Bake a Vertex Animation (.vat) from a model, clips or GameObject, or import one.\n"
+        << "  " << commandName << " import-unity-particles <file> [options]  Import Unity Particle Systems as engine prefabs.\n"
         << "  " << commandName << " generate-sprite-normals [options]  Normal maps for sprites, sheets, GIF/APNG animations and tiles.\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
@@ -2475,6 +2477,9 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
             // Line and Trail Renderers drawing nothing or reading no texture coordinates
             const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(&project);
             run.findings.insert(run.findings.end(), lines.begin(), lines.end());
+            // Particle Systems: legacy ones, points with a render mode, the mobile budget
+            const std::vector<ProjectChecks::Finding> particleChecks = ProjectChecks::particleFindings(&project);
+            run.findings.insert(run.findings.end(), particleChecks.begin(), particleChecks.end());
         }
         run.checked.push_back({"shaders", forks.size()});
     }
@@ -2971,6 +2976,114 @@ int CommandLine::runSynthesizeTextureCommand(int argc, char** argv, const char* 
 int CommandLine::runBakeVatCommand(int argc, char** argv, const char* executableName) {
     attachHostConsoleIfNeeded();
     return vat::runBakeVat(argc, argv, getCommandName(executableName), std::cout, std::cerr);
+}
+
+static void printImportUnityParticlesUsage(const std::string& commandName) {
+    std::cout
+        << "Usage:\n"
+        << "  " << commandName << " import-unity-particles <file.prefab|file.unity> --project <engine project> [options]\n\n"
+        << "Imports the Unity ParticleSystems of a prefab or scene as engine prefabs (version 2 Particle\n"
+        << "Systems), with their materials and textures, and writes a report of what was imported,\n"
+        << "approximated or not supported. The Unity project is only read.\n\n"
+        << "Options:\n"
+        << "  -p, --project <path>        The engine project (directory or project.yaml) the files go into.\n"
+        << "      --object <path>         A GameObject path (\"Player/Camera/EndParticles\"); default: every root\n"
+        << "                              GameObject with a ParticleSystem in itself or its children.\n"
+        << "      --dest <folder>         Project-relative output folder (default assets/fx).\n"
+        << "      --unity-project <dir>   The Unity project (default: the nearest folder holding Assets/ and\n"
+        << "                              ProjectSettings/ around the file).\n"
+        << "      --report <file.json>    Also write the report there.\n"
+        << "      --overwrite             Replace existing prefabs, materials and textures (default: a numbered\n"
+        << "                              prefab name, existing materials and textures kept).\n"
+        << "      --dry-run               Print the report, write nothing.\n"
+        << "  -h, --help                  Show this help.\n\n"
+        << "Exit code: 0 imported, 1 error, 2 imported with notes (approximations, unsupported modules).\n";
+}
+
+int CommandLine::runImportUnityParticlesCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    const std::string commandName = getCommandName(executableName);
+    unity::ImportOptions options;
+    fs::path reportPath;
+    std::string file;
+    for (int i = 1; i < argc; i++) {
+        const std::string arg = argv[i];
+        auto value = [&](std::string& out) -> bool {
+            if (i + 1 >= argc) {
+                std::cerr << "error: " << arg << " needs a value\n";
+                return false;
+            }
+            out = argv[++i];
+            return true;
+        };
+        std::string v;
+        if (arg == "-h" || arg == "--help") {
+            printImportUnityParticlesUsage(commandName);
+            return 0;
+        } else if (arg == "-p" || arg == "--project") {
+            if (!value(v)) return 1;
+            options.engineProject = projectArgPath(v);
+        } else if (arg == "--object") {
+            if (!value(v)) return 1;
+            options.object = v;
+        } else if (arg == "--dest") {
+            if (!value(v)) return 1;
+            options.dest = v;
+        } else if (arg == "--unity-project") {
+            if (!value(v)) return 1;
+            options.unityProject = absoluteArgPath(v);
+        } else if (arg == "--report") {
+            if (!value(v)) return 1;
+            reportPath = absoluteArgPath(v);
+        } else if (arg == "--overwrite") {
+            options.overwrite = true;
+        } else if (arg == "--dry-run") {
+            options.dryRun = true;
+        } else if (!arg.empty() && arg[0] == '-') {
+            std::cerr << "error: unknown option " << arg << "\n";
+            printImportUnityParticlesUsage(commandName);
+            return 1;
+        } else if (file.empty()) {
+            file = arg;
+        } else {
+            std::cerr << "error: one file at a time (" << file << ", " << arg << ")\n";
+            return 1;
+        }
+    }
+    if (file.empty()) {
+        std::cerr << "error: give the .prefab or .unity file to import\n";
+        printImportUnityParticlesUsage(commandName);
+        return 1;
+    }
+    if (options.engineProject.empty()) {
+        std::cerr << "error: --project is required (the engine project the files go into)\n";
+        return 1;
+    }
+    std::error_code ec;
+    if (!fs::is_regular_file(options.engineProject / "project.yaml", ec)) {
+        std::cerr << "error: not an engine project (no project.yaml): " << options.engineProject.string() << "\n";
+        return 1;
+    }
+    options.file = absoluteArgPath(file);
+
+    const unity::ImportResult result = unity::importParticles(options);
+    if (!result.ok) {
+        std::cerr << "error: " << result.error << "\n";
+        return 1;
+    }
+    std::cout << result.report.dump(2) << "\n";
+    if (!reportPath.empty()) {
+        std::ofstream out(reportPath, std::ios::binary | std::ios::trunc);
+        out << result.report.dump(2) << "\n";
+        if (!out) {
+            std::cerr << "error: cannot write the report to " << reportPath.string() << "\n";
+            return 1;
+        }
+    }
+    for (const std::string& prefab : result.prefabs) {
+        std::cerr << (options.dryRun ? "would write " : "wrote ") << prefab << "\n";
+    }
+    return result.hasWarnings ? 2 : 0;
 }
 
 int CommandLine::runGenerateSpriteNormalsCommand(int argc, char** argv, const char* executableName) {

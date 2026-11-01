@@ -315,6 +315,12 @@ void ActionSystem::actionStart(Entity entity, bool newRun){
         }
     }
 
+    // a version 2 Particle System draws on its target or, without one, on its own GameObject
+    if (ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity); ps && ps->version >= 2){
+        particleSystemStart(entity, *ps);
+        return;
+    }
+
     if (target != NULL_ENTITY && scene->isEntityCreated(target)){
         Signature targetSignature = scene->getSignature(target);
 
@@ -387,6 +393,15 @@ void ActionSystem::actionStop(Entity entity){
         animcomp->stopOnFadeOut = false;
     }
 
+    // a version 2 Particle System stops and clears first: onStop sees it stopped
+    if (isParticleSystemV2(entity)){
+        particleSystemHardStop(entity);
+        action = scene->findComponent<ActionComponent>(entity);
+        if (!action){
+            return;
+        }
+    }
+
     actionComponentStop(*action);
     animationStopChildren(animationChildren);
 
@@ -433,6 +448,10 @@ void ActionSystem::actionPause(Entity entity){
     std::vector<Entity> animationChildren;
     if (AnimationComponent* animcomp = scene->findComponent<AnimationComponent>(entity)){
         animationChildren = animationChildEntities(*animcomp);
+    }
+
+    if (ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity); ps && ps->version >= 2){
+        particles::pause(*ps);
     }
 
     actionComponentPause(*action);
@@ -1264,6 +1283,11 @@ void ActionSystem::particleActionReset(Entity entity){
     action->stopTrigger = false;
     action->pauseTrigger = false;
 
+    if (particles->version >= 2){
+        particleSystemReset(entity);
+        return;
+    }
+
     particles->particles.clear();
     particles->newParticlesCount = 0.0f;
     particles->lastUsedParticle = 0;
@@ -1981,9 +2005,11 @@ void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponen
         }
     }
 
-    //Particles (a disabled Particle System holds its particles until enabled again)
+    //Particles (a disabled Particle System holds its particles until enabled again); version 2
+    //systems step in updateParticleSystems
     if (signature.test(scene->getComponentId<ParticleSystemComponent>()) &&
-            scene->getComponent<ParticleSystemComponent>(entity).enabled){
+            scene->getComponent<ParticleSystemComponent>(entity).enabled &&
+            scene->getComponent<ParticleSystemComponent>(entity).version < 2){
         ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
 
         if (targetSignature.test(scene->getComponentId<InstancedMeshComponent>())){
@@ -2245,6 +2271,13 @@ void ActionSystem::updateActionPreview(double dt, Entity entity){
         return;
     }
 
+    // a version 2 Particle System steps whatever its action's state (emitted particles live
+    // on a stopped system); the preview never runs its stop action
+    if (isParticleSystemV2(entity)){
+        updateParticlePreview(dt, {entity});
+        return;
+    }
+
     ActionComponent* action = actionStateChange(entity, scene->getComponent<ActionComponent>(entity));
 
     if (action && action->state == ActionState::Running){
@@ -2326,6 +2359,9 @@ void ActionSystem::update(double dt){
 
 	}
 
+    // version 2 Particle Systems (playOnAwake, stepping, their stop)
+    updateParticleSystems(dt);
+
     // Animation Players add their states to the same blend
     updatePlayers(dt);
 
@@ -2335,6 +2371,10 @@ void ActionSystem::update(double dt){
 
     // clip events and onFinish, after the pose is written
     dispatchPlayerCallbacks();
+
+    // Particle System stop actions (disable, destroy, onParticleSystemStopped): after the
+    // passes, which they would change under them
+    runParticleStopActions();
 }
 
 void ActionSystem::onComponentAdded(Entity entity, ComponentId componentId) {
@@ -2361,7 +2401,8 @@ void ActionSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
 			}
 		}
 
-		if (ownedTarget && target != NULL_ENTITY && scene->isEntityCreated(target)) {
+		// (a system drawing on its own GameObject owns no other)
+		if (ownedTarget && target != NULL_ENTITY && target != entity && scene->isEntityCreated(target)) {
 			scene->destroyEntity(target);
 		}
 	} else if (componentId == scene->getComponentId<AnimationComponent>()) {

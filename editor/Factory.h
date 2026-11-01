@@ -167,6 +167,9 @@ namespace jasperengine::editor{
         // AnimationCurve::STEP
         static std::string formatCurve(const AnimationCurve& curve);
         static std::string formatGradient(const Gradient& gradient);
+        // Unity's MinMaxCurve / MinMaxGradient literals (particles spec 6.7)
+        static std::string formatMinMaxCurve(const MinMaxCurve& curve);
+        static std::string formatMinMaxGradient(const MinMaxGradient& gradient);
         // {{"member", "global"}, ...} and a ShaderGlobalDecl{...} literal (shader globals spec 6.5)
         static std::string formatShaderGlobalBindings(const ShaderGlobalBindings& bindings);
         static std::string formatShaderGlobalDecl(const ShaderGlobalDecl& decl);

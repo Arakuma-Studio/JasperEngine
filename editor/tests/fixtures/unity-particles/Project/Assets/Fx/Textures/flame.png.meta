@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 000000000000000000000000a11ce003
+TextureImporter:
+  serializedVersion: 12
+  alphaIsTransparency: 1
+  platformSettings:
+  - serializedVersion: 3
+    buildTarget: DefaultTexturePlatform
+    textureFormat: 1

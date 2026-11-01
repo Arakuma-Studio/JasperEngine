@@ -124,13 +124,25 @@ LIMITS.update({"create_ragdoll": 900})
 # shader globals (spec 2026-10-31-shader-globals 6.7): no new tool; get_shader_uniforms names the globals a
 # shader reads and its global_bindings (+51); merged with main (persistence, ui-canvas-group, physics-3d,
 # http): 151 tools measured 107680, the limit set to it
-TOTAL_LIMIT = 107680
+# platform services (spec 6.9): send_input's `app` events, configure_game_view's device,
+# orientation and language, get_play_state's platform (+468 on its branch); merged with main
+# (ui-canvas-group, physics-3d, http): 151 tools measured 108094 (tool_budget.py), the limit set to it
+# merged by the lead (shader-globals + platform-services): provisional sum, re-measured on the merged tree
+# physics-contacts: get_runtime_entity's physics contacts / callbacks paid by a shorter description
+# (edit_colliders' receiver is in the guide); merged with main (shader-globals): 151 tools measured 107678
+# merged by the lead (platform-services + physics-contacts): provisional, re-measured on the merged tree
+# particles: the new import_unity_particles (Unity ParticleSystem prefabs and scenes) and create_particles'
+# version 2 arguments (renderer, modules, upgrade, force, duration, speed)
+# particles merged with main (shader-globals, persistence, ui-canvas-group, physics-3d, http): 152 tools, total
+# 108637 (tool_budget.py on the merged tree)
+# merged by the lead (+ particles): provisional, re-measured on the merged tree
+TOTAL_LIMIT = 108800
 # anim layers (spec 10, 11.4, 11.5): get_animation 670 -> 815 (mask, controller: +145) and
 # preview_animation 654 -> 721 (over: +67), phase 1 +212 (under its 600); edit_animator 2290 (under its
 # 3500; the op fields are in jasper://docs/animation); focus_window's "animator" (+11): +2513 in all, the
-# limits raised by them (152 tools; re-measured on the tree merged with main below)
+# limits raised by them (re-measured on the tree merged with main below)
 LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 2400})
-TOTAL_LIMIT = 107680 + 2513
+TOTAL_LIMIT = 108800 + 2513
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

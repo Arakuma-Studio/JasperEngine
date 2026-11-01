@@ -1037,6 +1037,9 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
     }else if (signature.test(scene->getComponentId<FluidSimulationComponent>())){
         // before the Sprite or Mesh it is drawn on: the fluid is what the object is
         return ICON_FA_DROPLET;
+    }else if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
+        // before the Mesh it draws with (a version 2 system's own quad)
+        return ICON_FA_FIRE;
     }else if (signature.test(scene->getComponentId<TilemapComponent>())){
         return ICON_FA_BORDER_ALL;
     }else if (signature.test(scene->getComponentId<SpriteComponent>())){

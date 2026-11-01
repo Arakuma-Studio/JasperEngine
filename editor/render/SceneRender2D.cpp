@@ -873,6 +873,7 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
     std::set<Entity> currentLights2D;
     std::set<Entity> currentOccluders2D;
     std::set<Entity> currentLinePoints;
+    std::set<Entity> currentParticleShapes;
     std::set<Entity> currentPolygonPoints;
     std::set<Entity> currentTrackLines;
     std::set<Entity> currentCameras;
@@ -985,6 +986,10 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             bool highlighted = isDescendantSelected(entity);
 
             createOrUpdateShadowCaster2DLines(entity, transform, shadowcaster2d, highlighted, highlighted);
+        }
+
+        if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
+            updateParticleShapeLines(entity, selectedEntities.find(entity) != selectedEntities.end(), currentParticleShapes);
         }
 
         if (signature.test(scene->getComponentId<LineRendererComponent>()) && signature.test(scene->getComponentId<Transform>())){
@@ -1234,6 +1239,8 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             ++itShadowCaster2D;
         }
     }
+
+    dropParticleShapeLines(currentParticleShapes);
 
     auto itLinePoints = linePointLines.begin();
     while (itLinePoints != linePointLines.end()) {
