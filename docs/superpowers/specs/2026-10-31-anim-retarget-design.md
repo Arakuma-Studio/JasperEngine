@@ -524,9 +524,9 @@ report marks `bound_by_name`.
     - Unmapped bones key generic tracks.
     - Without a humanoid rig, Record on a humanoid clip is disabled. The status line says "bind a
       humanoid character to record this humanoid clip".
-- **Pose Animation window**, Bake menu: **Bake to Humanoid Clip** writes `E` for every slot directly
-  from the pose frames. The hips offset and foot goals come from the realised frames on the preview
-  rig. Like the existing Bake to Animation Clip, it is one scene step: the file plus a player entry.
+- **Pose Animation window**, Bake menu: **Bake to Humanoid Clip** writes `E` for every slot from the
+  baked frames (the final bone locals after Foot IK and grounding), through the model's own rig:
+  E = jointRotationFromLocal(local). The hips offset and foot goals come from the same frames. Like the existing Bake to Animation Clip, it is one scene step: the file plus a player entry.
 
 ## 10. MCP and agent surfaces
 
@@ -840,8 +840,9 @@ the `gaps/anim-retarget` branch (based on `gaps/anim-layers`).
   (there is no GameObject value to preview in pink). Slots show joint angles, extra bones Euler
   degrees; twist unwraps by whole turns along the curves.
 - **`get_animation` realised** lists every slot the target has (the robot fixture has no upper
-  chest: 21 slots, the MCP test checks at least 21) and the mapped extra bones the clip animates;
-  `realised` is `[{time, bones: [...], hips_local_position}]`.
+  chest: 21 slots, the MCP test checks at least 21) and the mapped extra bones the clip animates
+  in the root's entry's Mirror state (mirrored: the mirrors of those); `realised` is
+  `[{time, bones: [...], hips_local_position}]`.
 - **`set_humanoid` without `path`** (only set_humanoid ops) writes the sidecars as one project step
   through ProjectFileWrites (their `filesChanged` invalidates the models' clips); the result has
   `sidecars` and `avatars`.
@@ -862,12 +863,17 @@ the `gaps/anim-retarget` branch (based on `gaps/anim-layers`).
 
 ### Review fixes (2026-11-01)
 
-- **Mirror and one-sided extra bones (H1)**: a humanoid binding outputs the clip's extra bones and
-  their mirror counterparts; a bone the (mirrored) sample has no value for is written at its rest
-  (E = identity), never a stale scratch value. Unmirrored, the counterpart is therefore held at
-  its rest by the clip (Unity's default muscle value for a curve a humanoid clip lacks): a
-  right-hand-only clip on an Override layer keeps the left fingers at rest too. Test:
-  `MirroredRightHandCurlDrivesTheLeftHand` (hero rig).
+- **Mirror and one-sided extra bones (H1, second review M-1)**: a humanoid binding outputs the
+  clip's extra bones and their mirror counterparts, each with whether it is live unmirrored and
+  mirrored (`HumanoidOutput::liveUnmirrored` / `liveMirrored`, `anim::isLive`): an extra bone
+  writes only while the (mirrored) sample has a value for it. A bone that is not live neither
+  covers its slot nor touches it (the layered evaluator's cover and accumulate passes, the v1
+  path, the previews and get_animation skip it), so the clip's old rule holds: a right-hand-only
+  clip leaves the left hand to the other layers and clips; mirrored, it drives the left hand and
+  leaves the right one alone. The realisation never leaves a stale scratch value (a bone without a
+  value is computed at its rest, not written). Tests: `MirroredRightHandCurlDrivesTheLeftHand`,
+  `OneSidedHandClipLeavesTheOtherHandToTheIdle` (an Override layer over an idle that curls both
+  hands, unmirrored and mirrored).
 - **One rule for bad hands and head overrides (H2)**: `pose::resolveHumanoid` with the extra bones
   fails only on the body map; invalid `extra_bones` fall back to auto-detect
   (`resolveExtraBonesOrAuto`, shared by PoseRigCache, the humanoid source rigs and
@@ -928,3 +934,28 @@ the `gaps/anim-retarget` branch (based on `gaps/anim-layers`).
   failures only the baseline test_animation_assets x5. Tool texts unchanged (153 tools, budget
   as before); TOOLS.md regenerated from the clean 7f2c6d8d1 build. Web: em++ -fsyntax-only of the
   12 changed engine sources clean.
+
+### Second review fixes (2026-11-01)
+
+- **M-1**: extra bones are live only while the (mirrored) clip has them (see "Mirror and one-sided
+  extra bones" above); docs/animation-clips.md and the MCP animation guide say so.
+- **M-2**: Map Bones (Apply disabled, applyMapping refuses), the Rig foldout
+  (`PoseRigProvider::setAnimationType`) and the Avatar window's Apply refuse a sidecar that exists
+  but does not read ("fix or delete the file first"); the window takes it again once it reads.
+- **M-3**: the Avatar test clip of the window's own model is the generic clip itself (a sub-clip
+  straight from the model, not the pool's humanoid conversion of an Animation Type: Humanoid
+  model) converted with the working copy, edited or not, once per working copy (a failure too);
+  another model's clip reloads when the pool changes.
+- **Lows**: a failed Apply in the close / open prompt keeps the prompt; dropped scale tracks compare
+  with the node's own rest scale (`HumanoidSource::restScale`); the editor previews keep their
+  humanoid rig (and bindings) when the pool changed but the rig did not
+  (`playerdetail::refreshHumanoidSlots`, shared with the player); `retarget_report.entry` names the
+  entry whose Mirror and Foot IK apply (the root's first entry playing the clip); a fractional
+  `layer` option is refused; tests: the Rig foldout's helper on an unreadable sidecar, Mirror alone
+  in the MCP check, one warning per rig build, the scale rest.
+- **Verification** (host `build/host`, -j3: box 2203 was at load ~25 from other agents, 2202 too):
+  0 warnings; anim-tests 204/204, pose-tests 219/219; editor unit suite 1648 passed, 8 skipped, 0
+  failed; MCP test_animation_retarget 4/4 and the animation, pose, test_html_ui_tools,
+  test_docs, test_html_ui_docs and test_stubs files 219 passed, 7 skipped, 5 failed (the
+  test_animation_assets baseline). Tool texts unchanged (153 tools); TOOLS.md from the clean
+  4edf79f64 build.

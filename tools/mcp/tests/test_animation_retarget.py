@@ -103,6 +103,8 @@ async def test_play_matches_the_realisation(ed: Editor):
         ed.check_eq(info, [True, False, True, False], "the state is humanoid, its Foot IK overridden then reset")
         r = await ed.call_raw("eval_lua", {"code": "object('Robot'):getAnimationPlayer():addClip('anim/x.anim', nil, {mirror = 1})"})
         ed.check(r.is_error and "mirror is true or false" in r.text, f"addClip options are type-checked: {r.text[:300]}")
+        r = await ed.call_raw("eval_lua", {"code": "object('Robot'):getAnimationPlayer():addClip('anim/x.anim', nil, {layer = 1.5})"})
+        ed.check(r.is_error and "whole number" in r.text, f"a fractional layer is refused: {r.text[:300]}")
         await ed.call("wait", game_seconds=0.2)
         thigh = rotation_of(await ed.call("get_runtime_entity", entity="thigh.L", components=["transform"], include_script_state=False))
         ed.check(quat_degrees(thigh, S["rest"]) > 1.0, f"the thigh moved: {thigh}")
@@ -184,13 +186,22 @@ async def test_avatar(ed: Editor):
              f"avatar after: {json.dumps(info['avatar'])[:400]}")
     # the model's clips are humanoid now (Animation Type: Humanoid): the robot plays the walk
     # without retarget, get_animation realises it there and gives no retarget advice
-    await ed.call("set_properties", entity="Robot", values={"animationplayer": {"clips[0].retarget": False, "clips[0].mirror": True}})
+    await ed.call("set_properties", entity="Robot", values={"animationplayer": {"clips[0].retarget": False}})
     r = await ed.call("get_animation", clip=WALK, root="Robot", times=[0.5])
     ed.check(isinstance(r.get("realised"), list) and r["realised"][0]["bones"], f"realised on the robot: {json.dumps(r)[:600]}")
-    ed.check(r["retarget_report"].get("mirror") is True, f"the entry's Mirror: {r['retarget_report']}")
+    report = r["retarget_report"]
+    ed.check(report.get("mirror") is False and report.get("entry") == 0, f"the entry's Mirror and index: {report}")
     ed.check("rig_mismatch" not in (r.get("bindings") or {}), f"no retarget advice: {json.dumps(r.get('bindings'))[:600]}")
-    mirrored = {b["bone"]: b for b in r["realised"][0]["bones"]}["left_upper_leg"]["local_rotation"]["quat"]
-    ed.check(quat_degrees(mirrored, S["thigh"]) > 1.0, "Mirror changes the realised thigh")
+    plain = {b["bone"]: b for b in r["realised"][0]["bones"]}
+    # Mirror alone (everything else the same): the left thigh takes the right thigh's motion
+    await ed.call("set_properties", entity="Robot", values={"animationplayer": {"clips[0].mirror": True}})
+    r = await ed.call("get_animation", clip=WALK, root="Robot", times=[0.5])
+    ed.check(r["retarget_report"].get("mirror") is True, f"the entry's Mirror: {r['retarget_report']}")
+    mirrored = {b["bone"]: b for b in r["realised"][0]["bones"]}
+    left, right = mirrored["left_upper_leg"]["angles"], plain["right_upper_leg"]["angles"]
+    ed.check(quat_degrees(mirrored["left_upper_leg"]["local_rotation"]["quat"], plain["left_upper_leg"]["local_rotation"]["quat"]) > 1.0,
+             "Mirror changes the realised left thigh")
+    ed.check(abs(left["forward"] - right["forward"]) < 0.5, f"mirrored: the left thigh swings as the right did: {left} vs {right}")
     await ed.call("set_properties", entity="Robot", values={"animationplayer": {"clips[0].mirror": False}})
     await refused(ed, "edit_pose_animation", {"ops": [{"op": "set_humanoid", "model": "assets/models/hero_animated.gltf",
                                                        "extra_bones": {"left_pinky_proximal": "x"}}]}, "unknown bone")

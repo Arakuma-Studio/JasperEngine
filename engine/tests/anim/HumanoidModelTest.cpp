@@ -31,6 +31,7 @@
 #include "subsystem/ActionSystem.h"
 #include "subsystem/MeshSystem.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <fstream>
@@ -231,11 +232,159 @@ TEST_F(HumanoidModel, MirroredRightHandCurlDrivesTheLeftHand){
         const anim::HumanoidOutput* left = outputOf(binding, leftIndex);
         const anim::HumanoidOutput* rightOut = outputOf(binding, rightIndex);
         ASSERT_TRUE(left && rightOut) << "both index fingers are outputs, mirrored or not";
+        // the live one curls; the other hand's index is not the clip's (it writes nothing there)
         const anim::HumanoidOutput* curledOut = mirror ? left : rightOut;
-        const anim::HumanoidOutput* restOut = mirror ? rightOut : left;
+        const anim::HumanoidOutput* otherOut = mirror ? rightOut : left;
+        EXPECT_TRUE(anim::isLive(binding, *curledOut)) << "mirror " << mirror;
+        EXPECT_FALSE(anim::isLive(binding, *otherOut)) << "mirror " << mirror;
         EXPECT_NEAR(degreesBetween(curledOut->rotation, mirror ? leftRest : rightRest), 35.0, 0.05) << "mirror " << mirror;
-        EXPECT_LT(degreesBetween(restOut->rotation, mirror ? rightRest : leftRest), 1e-3) << "mirror " << mirror;
     }
+}
+
+// ---- a one-sided hand clip on an Override layer over an idle (review M-1) ----
+
+TEST_F(HumanoidModel, OneSidedHandClipLeavesTheOtherHandToTheIdle){
+    const Entity entity = load(hero);
+    std::shared_ptr<const anim::HumanoidSource> source;
+    std::string error;
+    ASSERT_TRUE(anim::HumanoidSourceCache::get(hero, source, &error)) << error;
+    const HumanExtraBone curledBones[] = {HumanExtraBone::LeftIndexProximal, HumanExtraBone::LeftMiddleProximal,
+                                          HumanExtraBone::RightIndexProximal, HumanExtraBone::RightMiddleProximal};
+    auto turned = [&](HumanExtraBone bone, double degrees){
+        const int b = source->extraBones[(size_t)extraIndex(bone)];
+        return (Quatd(source->restRotation[(size_t)b]) * axisAngleRad(Vec3d(0, 0, 1), degToRad(degrees))).normalized().toQuaternion();
+    };
+    // the idle (generic, base layer): both hands' index and middle fingers curled 25 degrees
+    ClipData idle;
+    idle.wrap = ClipWrapMode::Loop;
+    for (HumanExtraBone bone : curledBones){
+        const int b = source->extraBones[(size_t)extraIndex(bone)];
+        ASSERT_GE(b, 0);
+        ClipTrackData track;
+        track.path = source->bonePaths[(size_t)b];
+        track.channel = ClipChannel::Rotation;
+        ClipKey key;
+        const Quaternion q = turned(bone, 25.0);
+        key.value = {q.x, q.y, q.z, q.w};
+        track.keys = {key};
+        idle.tracks.push_back(track);
+    }
+    animtest::writeAsset(dir + "idle.anim", anim::writeClip(idle));
+    // the point (humanoid, Override layer without a mask): the right index alone, 50 degrees
+    ClipData point;
+    point.wrap = ClipWrapMode::Loop;
+    {
+        const int b = source->extraBones[(size_t)extraIndex(HumanExtraBone::RightIndexProximal)];
+        ClipTrackData track;
+        track.path = source->bonePaths[(size_t)b];
+        track.channel = ClipChannel::Rotation;
+        ClipKey key;
+        const Quaternion q = turned(HumanExtraBone::RightIndexProximal, 50.0);
+        key.value = {q.x, q.y, q.z, q.w};
+        track.keys = {key};
+        point.tracks.push_back(track);
+    }
+    ClipData converted;
+    std::vector<ClipWarning> warnings;
+    ASSERT_TRUE(anim::convertToHumanoid(point, *source, converted, warnings, &error)) << error;
+    // the point's fingers only (a hand-pose clip): no body slots
+    converted.tracks.erase(std::remove_if(converted.tracks.begin(), converted.tracks.end(), [](const ClipTrackData& t){
+        return !(t.channel == ClipChannel::Humanoid && t.humanBone >= HUMAN_BONE_COUNT);
+    }), converted.tracks.end());
+    ASSERT_EQ(converted.tracks.size(), 1u);
+    animtest::writeAsset(dir + "point.anim", anim::writeClip(converted));
+
+    scene.addComponent<AnimationPlayerComponent>(entity, AnimationPlayerComponent());
+    AnimationPlayerComponent& component = scene.getComponent<AnimationPlayerComponent>(entity);
+    AnimationPlayerLayer base;
+    base.name = "Base Layer";
+    AnimationPlayerLayer hand;
+    hand.name = "Hand";
+    component.layers = {base, hand};
+    AnimationPlayerClip idleEntry;
+    idleEntry.clip = dir + "idle.anim";
+    AnimationPlayerClip pointEntry;
+    pointEntry.clip = dir + "point.anim";
+    pointEntry.layer = 1;
+    component.clips = {idleEntry, pointEntry};
+    component.playAutomatically = false;
+    AnimationPlayer player(&scene, entity);
+    player.play("idle");
+    player.play("point");
+    step(0.0);
+    step(0.1);
+    ASSERT_TRUE(player.isLoaded()) << player.getStateInfo("point").error;
+    ASSERT_TRUE(player.getState("point").isHumanoid());
+
+    const anim::HumanoidSlots slots = anim::resolveHumanoidSlots(&scene, entity);
+    ASSERT_TRUE(slots.target);
+    auto local = [&](HumanExtraBone bone){
+        return scene.getComponent<Transform>(slots.target->extraEntities[(size_t)extraIndex(bone)]).rotation;
+    };
+    // unmirrored: the right index points, the left hand is the idle's
+    EXPECT_NEAR(degreesBetween(local(HumanExtraBone::RightIndexProximal), turned(HumanExtraBone::RightIndexProximal, 0.0)), 50.0, 0.05);
+    EXPECT_LT(degreesBetween(local(HumanExtraBone::LeftIndexProximal), turned(HumanExtraBone::LeftIndexProximal, 25.0)), 0.05)
+        << "the left index keeps the idle's curl (not snapped to rest)";
+    EXPECT_LT(degreesBetween(local(HumanExtraBone::LeftMiddleProximal), turned(HumanExtraBone::LeftMiddleProximal, 25.0)), 0.05);
+    EXPECT_LT(degreesBetween(local(HumanExtraBone::RightMiddleProximal), turned(HumanExtraBone::RightMiddleProximal, 25.0)), 0.05);
+
+    // mirrored: the left index points (by 50 degrees from its rest), the right hand is the idle's
+    player.getState("point").setMirror(true);
+    step(0.1);
+    const Quaternion leftRest = scene.getComponent<BoneComponent>(slots.target->extraEntities[(size_t)extraIndex(HumanExtraBone::LeftIndexProximal)]).bindRotation;
+    EXPECT_NEAR(degreesBetween(local(HumanExtraBone::LeftIndexProximal), leftRest), 50.0, 0.05) << "the mirrored point drives the left hand";
+    EXPECT_LT(degreesBetween(local(HumanExtraBone::RightIndexProximal), turned(HumanExtraBone::RightIndexProximal, 25.0)), 0.05)
+        << "the right index is the idle's again";
+    EXPECT_LT(degreesBetween(local(HumanExtraBone::LeftMiddleProximal), turned(HumanExtraBone::LeftMiddleProximal, 25.0)), 0.05);
+}
+
+// ---- a bad hands-and-head override (review H2, L-6) ----
+
+TEST_F(HumanoidModel, BadExtraOverrideKeepsTheRigWithOneWarningPerBuild){
+    // the left index forced onto the hips bone (a body slot's): the rig stays, fingers auto-detect
+    animtest::writeAsset(hero + ".humanoid", "{\"format\": \"jasperengine.humanoid\", \"version\": 2, \"bones\": {}, "
+                                            "\"extra_bones\": {\"left_index_proximal\": \"mixamorig:Hips\"}}");
+    const Entity entity = load(hero);
+    animtest::takeWarnings();
+    const anim::HumanoidSlots first = anim::resolveHumanoidSlots(&scene, entity);
+    ASSERT_TRUE(first.target) << first.error;
+    EXPECT_NE(first.target->extra.bones[(size_t)extraIndex(HumanExtraBone::LeftIndexProximal)], "mixamorig:Hips");
+    EXPECT_GE(first.target->extra.mappedCount(0, HUMAN_FINGER_BONE_COUNT), 12) << "auto-detected fingers";
+    for (int i = 0; i < 3; i++) EXPECT_TRUE(anim::resolveHumanoidSlots(&scene, entity).target);
+    size_t warned = 0;
+    for (const std::string& line : animtest::takeWarnings()) warned += line.find("auto-detected instead") != std::string::npos ? 1 : 0;
+    EXPECT_EQ(warned, 1u) << "one warning per rig build (the cached rig says nothing)";
+}
+
+// ---- dropped scale tracks of mapped bones (review L-2) ----
+
+TEST_F(HumanoidModel, ScaleOfMappedBonesAtTheNodeRestIsDroppedQuietly){
+    std::shared_ptr<const anim::HumanoidSource> source;
+    std::string error;
+    ASSERT_TRUE(anim::HumanoidSourceCache::get(hero, source, &error)) << error;
+    const int hips = source->rig->boneIndex(HumanBone::Hips);
+    ASSERT_GE(hips, 0);
+    ASSERT_EQ(source->restScale.size(), source->bonePaths.size());
+    auto convert = [&](const Vector3& scale){
+        ClipData generic;
+        ClipTrackData track;
+        track.path = source->bonePaths[(size_t)hips];
+        track.channel = ClipChannel::Scale;
+        ClipKey key;
+        key.value = {scale.x, scale.y, scale.z};
+        track.keys = {key};
+        generic.tracks.push_back(track);
+        ClipData converted;
+        std::vector<ClipWarning> warnings;
+        EXPECT_TRUE(anim::convertToHumanoid(generic, *source, converted, warnings, &error)) << error;
+        EXPECT_LT(converted.findTrack(source->bonePaths[(size_t)hips], ClipChannel::Scale), 0) << "never copied onto a same-named bone";
+        bool warned = false;
+        for (const ClipWarning& warning : warnings) warned = warned || warning.message.find("(scale)") != std::string::npos;
+        return warned;
+    };
+    // the node's own rest scale (not the skeleton's, which folds in Mixamo's 0.01 Armature)
+    EXPECT_FALSE(convert(source->restScale[(size_t)hips]));
+    EXPECT_TRUE(convert(Vector3(2, 2, 2)));
 }
 
 // ---- test 11: the pool ----

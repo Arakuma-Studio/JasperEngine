@@ -93,6 +93,7 @@ namespace jasperengine::editor{
         void autoMapAll();
         void clearOverrides();
         // writes the sidecar (one project undo step); false + error when the write fails
+        // (also when the sidecar on disk cannot be read: fix or delete it first)
         bool apply(std::string* error);
         void discard();
         bool isDirty() const { return edited != saved; }
@@ -156,6 +157,7 @@ namespace jasperengine::editor{
         // the sidecar as last read or written (stat first, bytes when it moved)
         std::string sidecarBytes;
         bool sidecarExists = false;
+        std::string sidecarProblem;         // the sidecar exists but does not read: Apply refuses
         std::filesystem::file_time_type sidecarTime{};
         uintmax_t sidecarSize = 0;
         bool pendingOpen = false;
@@ -179,8 +181,9 @@ namespace jasperengine::editor{
         // a generic test clip of this model: converted with the working copy while it has edits
         std::shared_ptr<const AnimationClip> testBase;
         std::string testSourceModel;
-        std::shared_ptr<const AnimationClip> testLocal;
+        std::shared_ptr<const AnimationClip> testLocal;     // null after a failed conversion (kept for testLocalWith)
         std::optional<pose::HumanoidOverrides> testLocalWith;
+        uint64_t testPoolRevision = 0;      // AnimationClipPool::revision() testLoaded was loaded at
         std::string testError;
         float testTime = 0.0f;
         bool testPlaying = false;

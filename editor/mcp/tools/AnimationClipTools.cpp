@@ -2089,11 +2089,15 @@ void getClip(const CallPtr& call) {
     if (root != NULL_ENTITY) {
         std::shared_ptr<const AnimationClip> humanoidClip = document->clip()->isHumanoid() ? document->clip() : nullptr;
         const AnimationPlayerComponent* player = scene->scene->findComponent<AnimationPlayerComponent>(root);
+        // the root's first entry with this clip gives Mirror and Foot IK (reported as `entry`)
         const AnimationPlayerClip* playing = nullptr;
+        size_t playingIndex = 0;
         if (player) {
-            for (const AnimationPlayerClip& entry : player->clips) {
+            for (size_t e = 0; e < player->clips.size(); e++) {
+                const AnimationPlayerClip& entry = player->clips[e];
                 if (entry.clip.empty() || AnimationClipDocument::open(project, entryClipJson(project, entry.clip), nullptr) != document) continue;
                 playing = &entry;
+                playingIndex = e;
                 break;
             }
         }
@@ -2137,6 +2141,7 @@ void getClip(const CallPtr& call) {
                 if (info.humanScale > 0.0f) report["scale_ratio"] = r6(targetScale / info.humanScale);
                 report["mirror"] = entryMirror;
                 report["foot_ik"] = entryFootIK;
+                if (playing) report["entry"] = playingIndex;
                 report["folded"] = binding.folded;
                 report["missing_on_target"] = binding.missingOnTarget;
                 // generic tracks that bind neither by path nor by unique bone name on this rig (the
@@ -2162,6 +2167,7 @@ void getClip(const CallPtr& call) {
                         Json bones = Json::array();
                         Json hips = nullptr;
                         for (const anim::HumanoidOutput& output : binding.outputs) {
+                            if (!anim::isLive(binding, output)) continue;
                             std::string path;
                             anim::relativePath(scene->scene, root, output.entity, path);
                             if (output.kind == anim::HumanoidOutput::Kind::Hips) {

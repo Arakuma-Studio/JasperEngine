@@ -58,6 +58,7 @@ namespace {
             source.bonePaths.push_back(bone.name);
             source.restRotation.push_back(bone.rotation);
             source.restPosition.push_back(bone.position);
+            source.restScale.push_back(bone.scale);
         }
         for (int x = 0; x < HUMAN_EXTRA_BONE_COUNT; x++) source.extraBones.push_back(findSkeletonBone(skeleton, source.extra.bones[(size_t)x]));
         return source;

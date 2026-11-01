@@ -11,6 +11,7 @@
 #include "pose/ModelRig.h"
 #include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
+#include "util/ProjectFileWrites.h"
 
 using namespace jasperengine;
 
@@ -163,4 +164,21 @@ std::shared_ptr<const editor::PoseRigInfo> editor::PoseRigProvider::forSceneMode
 
 void editor::PoseRigProvider::clear(){
     cache().clear();
+}
+
+std::string editor::PoseRigProvider::unreadableSidecarRefusal(const std::string& sidecarError){
+    return sidecarError + " (fix or delete the file first: rewriting it would lose its Avatar)";
+}
+
+bool editor::PoseRigProvider::setAnimationType(Project* project, const fs::path& model, pose::AnimationType type, std::string& error){
+    const std::shared_ptr<const PoseRigInfo> info = forModelFile(project, model);
+    if (!info->sidecarError.empty()){
+        error = unreadableSidecarRefusal(info->sidecarError);
+        return false;
+    }
+    if (info->overrides.isHumanoid() == (type == pose::AnimationType::Humanoid)) return true;
+    pose::HumanoidOverrides changed = info->overrides;
+    if (type == pose::AnimationType::Humanoid) changed.animationType = type;
+    else changed.animationType.reset();
+    return ProjectFileWrites::writeUndoable(project, {{sidecarOf(model.lexically_normal()), pose::writeHumanoidOverrides(changed)}}, error);
 }

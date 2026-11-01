@@ -30,6 +30,22 @@ using playerdetail::completeRest;
 using playerdetail::sampleTimeOf;
 
 // the scene value of the channels of `entity` (R2) that have none yet
+bool playerdetail::refreshHumanoidSlots(Scene* scene, Entity root, std::shared_ptr<anim::HumanoidSlots>& current){
+    auto again = std::make_shared<anim::HumanoidSlots>(anim::resolveHumanoidSlots(scene, root));
+    if (current){
+        const pose::PoseRig* before = current->target ? current->target->rig.get() : nullptr;
+        const pose::PoseRig* after = again->target ? again->target->rig.get() : nullptr;
+        const std::array<Entity, pose::HUMAN_EXTRA_BONE_COUNT>* beforeExtra = current->target ? &current->target->extraEntities : nullptr;
+        const std::array<Entity, pose::HUMAN_EXTRA_BONE_COUNT>* afterExtra = again->target ? &again->target->extraEntities : nullptr;
+        if (before == after && again->valid == current->valid && again->entities == current->entities &&
+            (beforeExtra == nullptr) == (afterExtra == nullptr) && (!beforeExtra || *beforeExtra == *afterExtra)){
+            return false;
+        }
+    }
+    current = again;
+    return true;
+}
+
 void playerdetail::completeRest(Scene* scene, Entity entity, anim::ChannelRest& rest, ClipChannel channel){
     switch (channel){
         case ClipChannel::Position:
@@ -382,13 +398,7 @@ namespace {
             runtime.humanoid = std::make_shared<anim::HumanoidSlots>(anim::resolveHumanoidSlots(scene, entity));
             runtime.humanoidRevision++;
         }else if (poolChanged){
-            auto again = std::make_shared<anim::HumanoidSlots>(anim::resolveHumanoidSlots(scene, entity));
-            const pose::PoseRig* before = runtime.humanoid->target ? runtime.humanoid->target->rig.get() : nullptr;
-            const pose::PoseRig* after = again->target ? again->target->rig.get() : nullptr;
-            if (before != after || again->valid != runtime.humanoid->valid || again->entities != runtime.humanoid->entities){
-                runtime.humanoid = again;
-                runtime.humanoidRevision++;
-            }
+            if (playerdetail::refreshHumanoidSlots(scene, entity, runtime.humanoid)) runtime.humanoidRevision++;
         }
     }
 
@@ -664,6 +674,7 @@ void ActionSystem::accumulateClip(const AnimationClip& clip, anim::ClipBindings&
         anim::HumanoidBinding& humanoid = *bindings.humanoid;
         anim::sampleHumanoidBinding(clip, humanoid, clipTime, &bindings.cursors);
         for (const anim::HumanoidOutput& output : humanoid.outputs){
+            if (!anim::isLive(humanoid, output)) continue;
             anim::ChannelRest& channelRest = rest[output.entity];
             completeRest(scene, output.entity, channelRest, output.channel);
             if (!channelRest.hasTransform) continue;
@@ -1300,7 +1311,8 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
         if (clip->isHumanoid()){
             if (!session.humanoid || session.humanoidRevision != scene->hierarchyRevision() ||
                 session.humanoidPool != AnimationClipPool::revision()){
-                session.humanoid = std::make_shared<anim::HumanoidSlots>(anim::resolveHumanoidSlots(scene, root));
+                // kept when the rig is the same (a clip insert changes the pool revision too)
+                playerdetail::refreshHumanoidSlots(scene, root, session.humanoid);
                 session.humanoidRevision = scene->hierarchyRevision();
                 session.humanoidPool = AnimationClipPool::revision();
             }

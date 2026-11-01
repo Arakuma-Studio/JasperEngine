@@ -61,6 +61,7 @@ namespace jasperengine::anim{
         std::vector<std::string> bonePaths;         // per skeleton bone: its path from the model root
         std::vector<Quaternion> restRotation;       // per skeleton bone: the Transform-local rest rotation
         std::vector<Vector3> restPosition;          // per skeleton bone: the Transform-local rest position
+        std::vector<Vector3> restScale;             // per skeleton bone: the Transform-local rest scale
         std::vector<std::string> notes;             // the humanoid and extra auto-detect notes
     };
 
@@ -158,8 +159,8 @@ namespace jasperengine::anim{
     // slot (the fold for slots the target lacks, neutral for slots the clip lacks), the hips local
     // position (the neutral one without a body offset), Mirror, then Foot IK (both legs to their
     // goals, the feet keeping their world rotation), and the local rotation of every mapped extra
-    // bone (its rest when the mirrored sample has no value for it). Rotations are skeleton locals
-    // (before the bridge).
+    // bone the sample has a value for (the others: their rest, which the outputs do not write:
+    // isLive). Rotations are skeleton locals (before the bridge).
     JASPERENGINE_API void realiseHumanoid(const HumanoidTarget& target, const HumanoidSample& sample, bool mirror, bool footIK,
                                           pose::HumanPose& out, std::array<Quaternion, pose::HUMAN_EXTRA_BONE_COUNT>& extraLocal);
 
@@ -180,6 +181,12 @@ namespace jasperengine::anim{
         ClipChannel channel = ClipChannel::Rotation;    // Rotation (slots, extras) or Position (hips)
         Kind kind = Kind::Slot;
         uint8_t index = 0;                              // slot or extra index
+        // extra bones: whether the output writes its bone unmirrored / mirrored (isLive). An extra
+        // bone writes only while the (mirrored) sample has a value for it: a right-hand-only
+        // clip leaves the left hand alone, and mirrored it drives the left hand and leaves the
+        // right one alone (slots and the hips: always live)
+        bool liveUnmirrored = true;
+        bool liveMirrored = true;
         Quaternion rotation;                            // the Transform-local value of the last sample
         Vector3 position = Vector3(0, 0, 0);
     };
@@ -189,8 +196,8 @@ namespace jasperengine::anim{
         // per clip track: the sample field it feeds (-1 none): 0..54 slot / extra, 100 + k a position
         std::vector<int16_t> trackField;
         // what the clip writes on the target: every present slot (when the clip has slot tracks),
-        // the hips position (when it has a body offset), the mapped extra bones it has and their
-        // mirror counterparts (at rest unless mirrored)
+        // the hips position (when it has a body offset), the mapped extra bones it has and the
+        // mirror counterparts of those (each live only in the state that gives it a value)
         std::vector<HumanoidOutput> outputs;
         // playback options of the state, set by its owner before sampling
         bool mirror = false;
@@ -204,6 +211,13 @@ namespace jasperengine::anim{
         pose::HumanPose pose;
         std::array<Quaternion, pose::HUMAN_EXTRA_BONE_COUNT> extraLocal;
     };
+
+    // whether `output` writes its bone in the binding's current Mirror state (an extra bone the
+    // (mirrored) clip has no value for neither covers nor writes it). Every consumer of the
+    // outputs (players, previews, reports) asks.
+    inline bool isLive(const HumanoidBinding& binding, const HumanoidOutput& output){
+        return binding.mirror ? output.liveMirrored : output.liveUnmirrored;
+    }
 
     // Binds a humanoid clip to a target: false (out empty) when the clip is not humanoid or the
     // target has no rig
