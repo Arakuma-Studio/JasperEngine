@@ -38,6 +38,11 @@ namespace jasperengine::editor {
         char m_windowTitleBuffer[256] = {0};
         std::string m_windowTitleOriginal;
         fs::path m_windowIcon;
+        // Player > Resolution and Presentation
+        int m_defaultOrientationIndex = 4;
+        uint8_t m_allowedOrientations = PresentationSettings{}.allowedOrientations;
+        bool m_keepScreenOn = true;
+        int m_targetFrameRate = -1;
         char m_applicationNameBuffer[256] = {0};
         char m_applicationIdentifierBuffer[256] = {0};
         char m_applicationVersionBuffer[64] = {0};
@@ -97,7 +102,6 @@ namespace jasperengine::editor {
         char m_androidVersionCodeBuffer[16] = {0};
         int m_androidMinSdk = 21;
         int m_androidTargetSdk = 33;
-        int m_androidOrientationIndex = 0;
         bool m_androidAbiArmeabiV7a = true;
         bool m_androidAbiArm64V8a = true;
         bool m_androidAbiX86 = true;
@@ -106,7 +110,6 @@ namespace jasperengine::editor {
         int m_androidInternetAccessIndex = 0;
         bool m_androidAllowBackup = true;
         bool m_androidFullscreen = true;
-        bool m_androidKeepScreenOn = false;
         bool m_androidAdmobEnabled = false;
         char m_androidAdmobAppIdBuffer[128] = {0};
 
@@ -156,6 +159,8 @@ namespace jasperengine::editor {
 
         void drawSettings();
         void drawPlayerSettings();
+        // Default Orientation, Allowed Orientations, Keep Screen On, Target Frame Rate (rows of the open table)
+        void drawPresentationSettings();
         void drawGraphicsSettings();
         void drawShaderGlobals();
         // the default (or, in Play, the live value) of a global: a field per type; matrices and

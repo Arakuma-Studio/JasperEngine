@@ -371,6 +371,8 @@ namespace jasperengine::editor {
         // The workspace supplies the per-user half of the project (tabs, cameras,
         // viewport toggles); project.yaml no longer carries it. See Workspace.h.
         static void decodeProject(Project* project, const YAML::Node& node, const Workspace& workspace);
+        // android.orientation of an older project.yaml as the shared Player orientation (false: none)
+        static bool migrateAndroidOrientation(const std::string& value, PresentationSettings& presentation);
 
         // Per-user state, written to .jasperengine/user/workspace.yaml. Kept here so the
         // reader that still accepts them from an old project.yaml and the writer

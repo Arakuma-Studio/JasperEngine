@@ -53,10 +53,16 @@ struct GameViewSettings {
     float scale = 1.0f;          // zoom of the game image
     bool maximizeOnPlay = false;
     bool showStats = false;
+    // device simulation (window/DeviceProfiles.h): a profile id ("" = none), how it is turned
+    // (ScreenOrientation) and the simulated language (BCP 47, "" = the system's)
+    std::string device;
+    int orientation = 1;
+    std::string language;
 
     bool operator==(const GameViewSettings& other) const {
         return aspect == other.aspect && scale == other.scale
-            && maximizeOnPlay == other.maximizeOnPlay && showStats == other.showStats;
+            && maximizeOnPlay == other.maximizeOnPlay && showStats == other.showStats
+            && device == other.device && orientation == other.orientation && language == other.language;
     }
     bool operator!=(const GameViewSettings& other) const { return !(*this == other); }
 };

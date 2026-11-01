@@ -167,26 +167,57 @@ namespace {
         return backends;
     }
 
-    std::string androidOrientationToString(editor::AndroidOrientation orientation) {
-        switch (orientation) {
-            case editor::AndroidOrientation::Portrait: return "portrait";
-            case editor::AndroidOrientation::Landscape: return "landscape";
-            case editor::AndroidOrientation::SensorPortrait: return "sensorPortrait";
-            case editor::AndroidOrientation::SensorLandscape: return "sensorLandscape";
-            case editor::AndroidOrientation::FullSensor: return "fullSensor";
-            case editor::AndroidOrientation::Unspecified:
-            default: return "unspecified";
+    // presentation.allowedOrientations: the names of the set, Portrait first
+    YAML::Node orientationMaskToNode(uint8_t mask) {
+        YAML::Node node(YAML::NodeType::Sequence);
+        for (ScreenOrientation orientation : {ScreenOrientation::Portrait, ScreenOrientation::PortraitUpsideDown,
+                                              ScreenOrientation::LandscapeLeft, ScreenOrientation::LandscapeRight}) {
+            if (mask & PlatformRules::orientationBit(orientation)) node.push_back(PlatformRules::orientationName(orientation));
         }
+        return node;
     }
 
-    editor::AndroidOrientation stringToAndroidOrientation(const std::string& value) {
-        if (value == "portrait") return editor::AndroidOrientation::Portrait;
-        if (value == "landscape") return editor::AndroidOrientation::Landscape;
-        if (value == "sensorPortrait") return editor::AndroidOrientation::SensorPortrait;
-        if (value == "sensorLandscape") return editor::AndroidOrientation::SensorLandscape;
-        if (value == "fullSensor") return editor::AndroidOrientation::FullSensor;
-        return editor::AndroidOrientation::Unspecified;
+    uint8_t nodeToOrientationMask(const YAML::Node& node, uint8_t fallback) {
+        if (!node || !node.IsSequence()) return fallback;
+        uint8_t mask = 0;
+        for (const auto& item : node) {
+            ScreenOrientation orientation;
+            if (item.IsScalar() && PlatformRules::parseOrientationName(item.as<std::string>(), orientation) &&
+                PlatformRules::isFixedOrientation(orientation)) {
+                mask |= PlatformRules::orientationBit(orientation);
+            }
+        }
+        return mask ? mask : fallback;
     }
+}
+
+// Projects written before Player > Resolution and Presentation kept an Android-only
+// orientation (android.orientation, the manifest's screenOrientation): its value as the shared
+// default and allowed orientations. False for "unspecified" or an unknown value (the defaults stay).
+bool editor::Stream::migrateAndroidOrientation(const std::string& value, PresentationSettings& presentation) {
+    const uint8_t P = PlatformRules::orientationBit(ScreenOrientation::Portrait);
+    const uint8_t PU = PlatformRules::orientationBit(ScreenOrientation::PortraitUpsideDown);
+    const uint8_t LL = PlatformRules::orientationBit(ScreenOrientation::LandscapeLeft);
+    const uint8_t LR = PlatformRules::orientationBit(ScreenOrientation::LandscapeRight);
+    if (value == "portrait") {
+        presentation.defaultOrientation = ScreenOrientation::Portrait;
+        presentation.allowedOrientations = P;
+    } else if (value == "landscape") {
+        presentation.defaultOrientation = ScreenOrientation::LandscapeLeft;
+        presentation.allowedOrientations = LL;
+    } else if (value == "sensorPortrait") {
+        presentation.defaultOrientation = ScreenOrientation::AutoRotation;
+        presentation.allowedOrientations = P | PU;
+    } else if (value == "sensorLandscape") {
+        presentation.defaultOrientation = ScreenOrientation::AutoRotation;
+        presentation.allowedOrientations = LL | LR;
+    } else if (value == "fullSensor") {
+        presentation.defaultOrientation = ScreenOrientation::AutoRotation;
+        presentation.allowedOrientations = P | PU | LL | LR;
+    } else {
+        return false;
+    }
+    return true;
 }
 
 std::string editor::Stream::makeEmbeddedTextureId(){
@@ -3166,6 +3197,22 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     }
 
     {
+        // Player > Resolution and Presentation (non-defaults only)
+        const PresentationSettings& presentation = project->getPresentationSettings();
+        const PresentationSettings defaults;
+        YAML::Node presentationNode;
+        if (presentation.defaultOrientation != defaults.defaultOrientation) {
+            presentationNode["defaultOrientation"] = PlatformRules::orientationName(presentation.defaultOrientation);
+        }
+        if (presentation.allowedOrientations != defaults.allowedOrientations) {
+            presentationNode["allowedOrientations"] = orientationMaskToNode(presentation.allowedOrientations);
+        }
+        if (presentation.keepScreenOn != defaults.keepScreenOn) presentationNode["keepScreenOn"] = presentation.keepScreenOn;
+        if (presentation.targetFrameRate != defaults.targetFrameRate) presentationNode["targetFrameRate"] = presentation.targetFrameRate;
+        if (presentationNode.size() != 0) root["presentation"] = presentationNode;
+    }
+
+    {
         const ApplicationSettings& application = project->getApplicationSettings();
         const ApplicationSettings defaultApplication;
         YAML::Node applicationNode;
@@ -3263,7 +3310,6 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         }
         if (android.minSdk != defaults.minSdk) androidNode["minSdk"] = android.minSdk;
         if (android.targetSdk != defaults.targetSdk) androidNode["targetSdk"] = android.targetSdk;
-        if (android.orientation != defaults.orientation) androidNode["orientation"] = androidOrientationToString(android.orientation);
 
         YAML::Node abiNode;
         if (android.abiArmeabiV7a != defaults.abiArmeabiV7a) abiNode["armeabi-v7a"] = android.abiArmeabiV7a;
@@ -3283,7 +3329,6 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
 
         if (android.allowBackup != defaults.allowBackup) androidNode["allowBackup"] = android.allowBackup;
         if (android.fullscreen != defaults.fullscreen) androidNode["fullscreen"] = android.fullscreen;
-        if (android.keepScreenOn != defaults.keepScreenOn) androidNode["keepScreenOn"] = android.keepScreenOn;
         if (android.admobEnabled != defaults.admobEnabled) androidNode["admobEnabled"] = android.admobEnabled;
         if (!android.admobAppId.empty()) androidNode["admobAppId"] = android.admobAppId;
         if (androidNode.size()) root["android"] = androidNode;
@@ -3632,6 +3677,26 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
     }
 
+    // a project saved with Player > Resolution and Presentation no longer has android.orientation
+    const bool hasPresentationOrientation = node["presentation"] && node["presentation"].IsMap() &&
+        (node["presentation"]["defaultOrientation"] || node["presentation"]["allowedOrientations"]);
+    if (node["presentation"] && node["presentation"].IsMap()) {
+        const YAML::Node& presentationNode = node["presentation"];
+        PresentationSettings& presentation = project->getPresentationSettings();
+        if (presentationNode["defaultOrientation"]) {
+            ScreenOrientation orientation;
+            if (PlatformRules::parseOrientationName(presentationNode["defaultOrientation"].as<std::string>(), orientation)) {
+                presentation.defaultOrientation = orientation;
+            }
+        }
+        presentation.allowedOrientations = nodeToOrientationMask(presentationNode["allowedOrientations"], presentation.allowedOrientations);
+        if (presentationNode["keepScreenOn"].IsDefined()) presentation.keepScreenOn = YamlNumbers::as<bool>(presentationNode["keepScreenOn"]);
+        if (presentationNode["targetFrameRate"].IsDefined()) {
+            const int fps = YamlNumbers::as<int>(presentationNode["targetFrameRate"]);
+            presentation.targetFrameRate = fps <= 0 ? -1 : std::min(fps, 1000);
+        }
+    }
+
     if (node["application"] && node["application"].IsMap()) {
         const YAML::Node& applicationNode = node["application"];
         ApplicationSettings& application = project->getApplicationSettings();
@@ -3709,7 +3774,11 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (androidNode["adaptiveIconBackground"]) android.adaptiveIconBackground = androidNode["adaptiveIconBackground"].as<std::string>();
         if (androidNode["minSdk"]) android.minSdk = std::max(1u, YamlNumbers::as<unsigned int>(androidNode["minSdk"]));
         if (androidNode["targetSdk"]) android.targetSdk = std::max(android.minSdk, YamlNumbers::as<unsigned int>(androidNode["targetSdk"]));
-        if (androidNode["orientation"]) android.orientation = stringToAndroidOrientation(androidNode["orientation"].as<std::string>());
+        // the Android-only orientation of older projects becomes the shared one, unless the project
+        // already has it; written back as presentation on the next save
+        if (androidNode["orientation"] && !hasPresentationOrientation) {
+            migrateAndroidOrientation(androidNode["orientation"].as<std::string>(), project->getPresentationSettings());
+        }
 
         if (androidNode["architectures"] && androidNode["architectures"].IsMap()) {
             const YAML::Node& abiNode = androidNode["architectures"];
@@ -3732,7 +3801,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         if (androidNode["allowBackup"].IsDefined()) android.allowBackup = YamlNumbers::as<bool>(androidNode["allowBackup"]);
         if (androidNode["fullscreen"].IsDefined()) android.fullscreen = YamlNumbers::as<bool>(androidNode["fullscreen"]);
-        if (androidNode["keepScreenOn"].IsDefined()) android.keepScreenOn = YamlNumbers::as<bool>(androidNode["keepScreenOn"]);
+        // android.keepScreenOn is dropped: exported games always kept the screen on (the native
+        // window flag), which presentation.keepScreenOn (default true) keeps doing
         if (androidNode["admobEnabled"].IsDefined()) android.admobEnabled = YamlNumbers::as<bool>(androidNode["admobEnabled"]);
         if (androidNode["admobAppId"]) android.admobAppId = androidNode["admobAppId"].as<std::string>();
     }

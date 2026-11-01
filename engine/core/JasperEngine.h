@@ -15,6 +15,7 @@
 #include "PrefabAsset.h"
 #include "ObjectManager.h"
 #include "System.h"
+#include "Screen.h"
 
 #include "action/Action.h"
 #include "action/AlphaTween.h"
@@ -261,6 +262,8 @@
 #include "util/Color.h"
 #include "util/SpriteFrameData.h"
 #include "util/FunctionSubscribe.h"
+#include "util/FrameLimiter.h"
+#include "util/PlatformRules.h"
 #include "util/StringUtils.h"
 #include "util/ThreadUtils.h"
 #include "util/UniqueToken.h"

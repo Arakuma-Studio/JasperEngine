@@ -5,6 +5,7 @@
 
 #include "App.h"
 #include "renderer/Renderer.h"
+#include "util/FrameLimiter.h"
 
 #include <string>
 
@@ -29,6 +30,8 @@ namespace jasperengine::editor{
             double lastActivityTime = 0.0;
             // when the next unfocused or minimized frame is due
             double frameDeadline = 0.0;
+            // Engine.targetFrameRate while a game plays without vsync
+            FrameLimiter playLimiter;
 
             bool detectActivity(bool& redrawRequested);
 

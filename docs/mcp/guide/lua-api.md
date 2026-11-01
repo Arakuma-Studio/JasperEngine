@@ -77,7 +77,7 @@ defines them (no registration):
 | `onDisable(self)` | the script stops being active and enabled: `self.enabled = false`, its GameObject or a parent deactivated, destroy, scene unload, Play stop; always before `onDestroy` | `OnDisable` |
 | `onDestroy(self)` | once: `GameObject.destroy` (end of frame) / `destroyImmediate`, scene unload (a `SceneManager.loadScene`), Play stop / application quit; only if `init` ran | `OnDestroy` |
 | `onApplicationPause(self, paused)` | the app goes to the background (`true`) and returns (`false`); scripts of active GameObjects, enabled or not | `OnApplicationPause` |
-| `onApplicationFocus(self, focused)` | the app lost / gained the focus (platforms that report it) | `OnApplicationFocus` |
+| `onApplicationFocus(self, focused)` | the app lost / gained the focus (platforms that report it). Order: focus `false` before pause `true`, pause `false` before focus `true`; the same moments as `Engine.onFocus` / `onPause` / `onResume` ([platform-services.md](platform-services.md)) | `OnApplicationFocus` |
 | `onApplicationQuit(self)` | Play stop / app shutdown, before `onDisable`/`onDestroy` | `OnApplicationQuit` |
 
 Order, deterministic: a scene load runs all `init` (parents before children, siblings in order,
@@ -237,7 +237,10 @@ Engine events (names valid for `RegisterEngineEvent`; handler arguments in order
 | `onViewLoaded` | none | view ready |
 | `onCanvasChanged` | none | view/canvas size changed (C++ name is onViewChanged; Lua name is `onCanvasChanged`) |
 | `onViewDestroyed` | none | view destroyed |
-| `onPause`, `onResume`, `onShutdown` | none | application lifecycle |
+| `onPause`, `onResume`, `onShutdown` | none | application lifecycle (pause = to the background; idempotent) |
+| `onFocus` | `hasFocus` | the app gained or lost focus (a dialog, the notification shade, another window); `onFocus(false)` comes before `onPause`, `onFocus(true)` after `onResume` |
+| `onOrientationChanged` | `orientation` (`ScreenOrientation`) | the interface rotated, after `onCanvasChanged` |
+| `onLowMemory` | none | the system is short of memory (Android, iOS) |
 | `onSceneLoaded` | none | a scene loaded by SceneManager is ready |
 | `onKeyDown`, `onKeyUp` | `key, isRepeat, mods` | key event (`key` is an `Input.KEY_*` value) |
 | `onCharInput` | `codepoint` | text char typed |
@@ -421,7 +424,10 @@ Mass: `self.body:getMass()` (method, kg). To get a target acceleration `a` in po
 | `gameTime` | ro | scaled seconds the update loop has run since start (not while paused or held) |
 | `frameCount` | ro | frames the update loop has run since start (not while paused or held) |
 | `interpolationAlpha` | ro | fixed-step interpolation factor: how far the frame is between the last fixed step and the next (bodies are drawn this far from their pose before the last step) |
-| `framerate` | ro | fps |
+| `framerate` | ro | fps (measured) |
+| `targetFrameRate` | rw | Unity's `Application.targetFrameRate`: -1 (default) = the platform's rate (60 on mobile, every animation frame on the web, vsync-paced on desktops); desktops and the editor ignore it while `vSyncCount > 0`. Kept across scene loads |
+| `vSyncCount` | rw | Unity's `QualitySettings.vSyncCount` 0..4 (present every Nth vblank); starts from the project's VSync; mobile and web ignore it |
+| `isFocused` | ro | Unity's `Application.isFocused` (true at start) |
 | `systemTime` | ro | |
 | `canvasWidth`, `canvasHeight` | ro | current canvas; can be 0 in `init()` of exported builds |
 | `preferredCanvasWidth`, `preferredCanvasHeight` | ro | project canvas size; safe in `init()` |
@@ -465,6 +471,7 @@ Functions:
 | `Input.getTouches()` | list of `Touch`: the fingers down now (`touch.pointer` is the old name of `fingerId`) |
 | `Input.isGamepadConnected(id)`, `Input.getGamepadName(id)`, `Input.isGamepadButtonPressed(id, button)`, `Input.getGamepadAxis(id, axis)`, `Input.numGamepads()`, `Input.getGamepadId(index)` | gamepad |
 | `Input.getModifiers()` | bitmask of `Input.MODIFIER_*` |
+| `Input.deviceOrientation` (property) | `DeviceOrientation.*`: how the device is held; `Unknown` on desktops and flat Android devices |
 
 Unity-style polling with edges, touches and input actions (details: `jasper://docs/input`).
 `key` is an `Input.KEY_*` code or a control name (`"space"`, `"a"`, `"left_shift"`,
@@ -687,6 +694,36 @@ export compiles Google Mobile Ads in only with the project settings `android.adm
 `initializeCrazyGamesSDK()`, `showCrazyGamesAd(type)`, `happytimeCrazyGames()`,
 `gameplayStartCrazyGames()`, `gameplayStopCrazyGames()`, `loadingStartCrazyGames()`,
 `loadingStopCrazyGames()`.
+
+Platform services ([platform-services.md](platform-services.md) has the per-platform details):
+
+| Function | Returns |
+|---|---|
+| `System.openURL(url)` | bool: the system took it (browser, store, `mailto:`); `javascript:`/`data:`/`file:`/`vbscript:` and scheme-less URLs refused. Web: a blocked popup opens on the next click (false) |
+| `System.getSystemLanguage()` | `SystemLanguage.*` (Unity's `Application.systemLanguage`) |
+| `System.getLanguageCode()`, `getRegionCode()`, `getLocale()` | `"es"`, `"MX"` (the platform's region setting first; `""` unknown), `"es-MX"` |
+| `System.getPreferredLanguages()` | `{"es-MX", "en-US"}` (BCP 47, most preferred first) |
+| `System.getAppVersion()`, `getAppBuild()`, `getAppIdentifier()`, `getAppName()` | Player version, build (integer: Android versionCode, iOS `CFBundleVersion`), identifier, name of the running app |
+| `System.getOperatingSystem()` | Unity's `SystemInfo.operatingSystem` format (`"Android OS 14 / API-34 (...)"`, `"iOS 17.1"`) |
+| `System.getOperatingSystemVersion()`, `getAndroidApiLevel()` | `"14"`, 34 (0 off Android) |
+| `System.getDeviceModel()`, `getDeviceType()` | `"Google Pixel 8"`, `DeviceType.*` |
+| `System.getSystemMemorySize()`, `getProcessorCount()` | MiB (0 unknown), logical processors |
+| `System.isEditor()` | true only in the editor's Play mode |
+| `System.getInternetReachability()` | `NetworkReachability.*` (a network is there, not that a server answers; not every frame) |
+| `System.vibrate([ms])` | bool; 400 ms by default, iOS ignores the length |
+| `System.hapticFeedback(HapticFeedback.*)` | bool |
+
+### 2.5.1 Screen (static)
+
+| Name | Kind | Notes |
+|---|---|---|
+| `Screen.orientation` | rw | `ScreenOrientation.*`: get = how the interface is shown now (never `AutoRotation`); set = a fixed orientation or `AutoRotation` |
+| `Screen.autorotateToPortrait`, `autorotateToPortraitUpsideDown`, `autorotateToLandscapeLeft`, `autorotateToLandscapeRight` | rw | bools: where `AutoRotation` may turn (the last one cannot be turned off) |
+| `Screen.sleepTimeout` | rw | `SleepTimeout.NeverSleep` (-1, keeps the screen on) or `SleepTimeout.SystemSetting` (-2) |
+| `Screen.dpi`, `Screen.refreshRate` | ro | dots per inch (0 unknown), Hz |
+
+The pixel size is `System.getScreenWidth()` / `getScreenHeight()`; the canvas `Engine.canvasWidth` /
+`canvasHeight`. `LandscapeLeft` = the device turned counter-clockwise from portrait.
 
 Files (for saves prefer `File.readText` / `File.writeText` / `Json.readFile`, 2.4.2):
 `File()` / `File(path, write)` with `:open`, `:flush`, `:close`, `:readString()`,
@@ -2174,6 +2211,13 @@ use the methods. Physics colliders keep the rest shape.
 | `FrustumPlane` | `FRUSTUM_PLANE_NEAR`, `_FAR`, `_LEFT`, `_RIGHT`, `_TOP`, `_BOTTOM` |
 | `GraphicBackend` | `GLCORE`, `GLES3`, `D3D11`, `METAL`, `WGPU` |
 | `AdMobRating` | `General`, `ParentalGuidance`, `Teen`, `MatureAudience` |
+| `SystemLanguage` | Unity's names and values: `Afrikaans` (0), `Arabic`, `Basque`, `Belarusian`, `Bulgarian`, `Catalan`, `Chinese`, `Czech`, `Danish`, `Dutch`, `English` (10), `Estonian`, `Faroese`, `Finnish`, `French`, `German`, `Greek`, `Hebrew`, `Hungarian`, `Icelandic`, `Indonesian`, `Italian`, `Japanese`, `Korean`, `Latvian`, `Lithuanian`, `Norwegian`, `Polish`, `Portuguese`, `Romanian`, `Russian`, `SerboCroatian`, `Slovak`, `Slovenian`, `Spanish` (34), `Swedish`, `Thai`, `Turkish`, `Ukrainian`, `Vietnamese`, `ChineseSimplified` (40), `ChineseTraditional`, `Unknown` (42), `Hindi` |
+| `ScreenOrientation` | `Portrait` (1), `PortraitUpsideDown` (2), `LandscapeLeft` (3), `LandscapeRight` (4), `AutoRotation` (5) |
+| `DeviceOrientation` | `Unknown` (0), `Portrait`, `PortraitUpsideDown`, `LandscapeLeft`, `LandscapeRight`, `FaceUp`, `FaceDown` |
+| `DeviceType` | `Unknown`, `Handheld`, `Console`, `Desktop` |
+| `NetworkReachability` | `NotReachable`, `ReachableViaCarrierDataNetwork`, `ReachableViaLocalAreaNetwork` |
+| `HapticFeedback` | `Light`, `Medium`, `Heavy`, `Selection`, `Success`, `Warning`, `Error` |
+| `SleepTimeout` | `NeverSleep` (-1), `SystemSetting` (-2) |
 | `ResourceLoadState` | `NotStarted`, `Loading`, `Finished`, `Failed` |
 | `LatticeInterpolation` | `SHARP`, `SMOOTH`, `CUBIC` |
 | `LatticeOutside` | `EXTEND`, `FADE` |

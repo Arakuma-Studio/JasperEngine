@@ -3395,6 +3395,16 @@
 		4A534E4798EE0D734C9C55E0 /* AsyncOwner.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4740FD2A72CFB10C16 /* AsyncOwner.h */; };
 		4A534E47D07D96EA20FAA7F1 /* NetClassesLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C4CB6F074423D782 /* NetClassesLua.h */; };
 		4A534E470B01A240FA439C2A /* MainThreadQueue.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4743499EE7BE02622E /* MainThreadQueue.h */; };
+		4A534E478DC0E7CF8FAFBECF /* Screen.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730D9EC2E29E781C3 /* Screen.cpp */; };
+		4A534E471D112E5B5C5C529F /* Screen.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730D9EC2E29E781C3 /* Screen.cpp */; };
+		4A534E47A03D72D8121AA453 /* FrameLimiter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */; };
+		4A534E47B6B13162C6157931 /* FrameLimiter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */; };
+		4A534E471F031487F33960F3 /* PlatformRules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */; };
+		4A534E474B3E5336B343B76E /* PlatformRules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */; };
+		4A534E4792C92F90213540FE /* Screen.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471F33544BB442A466 /* Screen.h */; };
+		4A534E47D4879777C388C7A3 /* EdgeInsets.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477A428FAA7908B6A0 /* EdgeInsets.h */; };
+		4A534E471041FDE4DF7EF626 /* FrameLimiter.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47DB493E51DF771D1F /* FrameLimiter.h */; };
+		4A534E4777DAA850BCD6D5EA /* PlatformRules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47778D99DE934432D4 /* PlatformRules.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6832,6 +6842,13 @@
 		4A534E4740FD2A72CFB10C16 /* AsyncOwner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AsyncOwner.h; sourceTree = "<group>"; };
 		4A534E47C4CB6F074423D782 /* NetClassesLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NetClassesLua.h; sourceTree = "<group>"; };
 		4A534E4743499EE7BE02622E /* MainThreadQueue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MainThreadQueue.h; sourceTree = "<group>"; };
+		4A534E4730D9EC2E29E781C3 /* Screen.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Screen.cpp; sourceTree = "<group>"; };
+		4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FrameLimiter.cpp; sourceTree = "<group>"; };
+		4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PlatformRules.cpp; sourceTree = "<group>"; };
+		4A534E471F33544BB442A466 /* Screen.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Screen.h; sourceTree = "<group>"; };
+		4A534E477A428FAA7908B6A0 /* EdgeInsets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EdgeInsets.h; sourceTree = "<group>"; };
+		4A534E47DB493E51DF771D1F /* FrameLimiter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FrameLimiter.h; sourceTree = "<group>"; };
+		4A534E47778D99DE934432D4 /* PlatformRules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlatformRules.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -8195,6 +8212,8 @@
 				4A534E477E49C8CF16ED0963 /* animation */,
 				4A534E47BC50EC83811560AA /* input */,
 				4A534E47325562508AC85529 /* net */,
+				4A534E4730D9EC2E29E781C3 /* Screen.cpp */,
+				4A534E471F33544BB442A466 /* Screen.h */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -8254,6 +8273,10 @@
 				505645430000000000000177 /* ThorVGRuntime.cpp */,
 				4A534E47951BAE2F6DCE875F /* PostColorLut.cpp */,
 				4A534E47BE2CA7B811737252 /* PostColorLut.h */,
+				4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */,
+				4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */,
+				4A534E47DB493E51DF771D1F /* FrameLimiter.h */,
+				4A534E47778D99DE934432D4 /* PlatformRules.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -8412,6 +8435,7 @@
 				4A534E47CE6A27D093FF30CD /* Gradient.cpp */,
 				4A534E47B61DB73C5C1B6ABF /* AnimationCurve.h */,
 				4A534E475BFC5BBB38279DB9 /* Gradient.h */,
+				4A534E477A428FAA7908B6A0 /* EdgeInsets.h */,
 			);
 			path = math;
 			sourceTree = "<group>";
@@ -12188,6 +12212,10 @@
 				4A534E4798EE0D734C9C55E0 /* AsyncOwner.h in Headers */,
 				4A534E47D07D96EA20FAA7F1 /* NetClassesLua.h in Headers */,
 				4A534E470B01A240FA439C2A /* MainThreadQueue.h in Headers */,
+				4A534E4792C92F90213540FE /* Screen.h in Headers */,
+				4A534E47D4879777C388C7A3 /* EdgeInsets.h in Headers */,
+				4A534E471041FDE4DF7EF626 /* FrameLimiter.h in Headers */,
+				4A534E4777DAA850BCD6D5EA /* PlatformRules.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14266,6 +14294,9 @@
 				4A534E4765A452A70993BC50 /* NetClassesLua.cpp in Sources */,
 				4A534E47D5FBC9D2B84C3EF4 /* MainThreadQueue.cpp in Sources */,
 				4A534E476582D52ED841837C /* HttpBackendApple.mm in Sources */,
+				4A534E478DC0E7CF8FAFBECF /* Screen.cpp in Sources */,
+				4A534E47A03D72D8121AA453 /* FrameLimiter.cpp in Sources */,
+				4A534E471F031487F33960F3 /* PlatformRules.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14723,6 +14754,9 @@
 				4A534E4704BBC250AA4EB0AC /* NetClassesLua.cpp in Sources */,
 				4A534E47265BB2DD7CEE9EEA /* MainThreadQueue.cpp in Sources */,
 				4A534E47D3ECA820EEE9216B /* HttpBackendApple.mm in Sources */,
+				4A534E471D112E5B5C5C529F /* Screen.cpp in Sources */,
+				4A534E47B6B13162C6157931 /* FrameLimiter.cpp in Sources */,
+				4A534E474B3E5336B343B76E /* PlatformRules.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

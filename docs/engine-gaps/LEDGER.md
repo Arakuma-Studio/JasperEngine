@@ -184,3 +184,10 @@ origin/main).
   test (91e646d41). video-mp4 review: 4 confirmed high defects (exports without 3D physics fail to link; video
   render textures by raw pointer; persistent players lose their output; a regex stack overflow in the Android
   export) + platform issues; fixes in progress.
+- 2026-11-01: verification of 91e646d41 (ui-canvas-group, physics-3d, http, physics3DWorld fix) on box 2201: 0
+  warnings, unit 1354 passed + ConvexDecomposition.ConcurrentRequests (load flake: passes 5/5 alone, added to the
+  known flakes), full MCP 862 passed with only the 10 baseline failures + test_stochastic_tiling resave (the
+  ui-canvas-group regression, fix in progress). platform-services merged locally (cbf8f65a9; lead resolved
+  Generator::configure taking both shaderGlobals and playerSettings). Known load flakes: test_autosync::
+  test_external_property_picked_up, ConvexDecomposition.ConcurrentRequests, CanvasGroupTest.PerformanceBudgets
+  (being made robust).

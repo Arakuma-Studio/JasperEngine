@@ -117,6 +117,35 @@ New, with no Unity counterpart: `FluidSimulation` / `FluidSimulationComponent`
 built-in fluid component; there it takes a Custom Render Texture or compute-shader
 solver of your own, or a package.
 
+## Platform services (Application, SystemInfo, Screen, Handheld)
+
+New: the engine had none of these. Unity's members became `System`, `Screen`, `Engine` and
+`Input` ones (details: [platform-services.md](mcp/guide/platform-services.md)).
+
+| Unity term | JasperEngine |
+|---|---|
+| `Application.OpenURL(url)` | `System.openURL(url)` (returns whether the system took it) |
+| `Application.systemLanguage` | `System.getSystemLanguage()` (`SystemLanguage.*`, same names and values); codes: `System.getLanguageCode()`, `getRegionCode()`, `getLocale()`, `getPreferredLanguages()` |
+| `Application.targetFrameRate` | `Engine.targetFrameRate` (Project Settings > Player > Target Frame Rate) |
+| `QualitySettings.vSyncCount` | `Engine.vSyncCount` (starts from Quality > VSync) |
+| `Screen.orientation`, `Screen.autorotateToPortrait` / `PortraitUpsideDown` / `LandscapeLeft` / `LandscapeRight` | `Screen.orientation`, `Screen.autorotateTo*` (`ScreenOrientation.*`) |
+| `Screen.sleepTimeout`, `SleepTimeout.NeverSleep` / `SystemSetting` | `Screen.sleepTimeout`, `SleepTimeout.*` |
+| `Screen.dpi`, `Screen.currentResolution.refreshRateRatio` | `Screen.dpi`, `Screen.refreshRate` |
+| `Screen.width`, `Screen.height` | `System.getScreenWidth()`, `getScreenHeight()` (pixels), or `Engine.canvasWidth` / `canvasHeight` (canvas units) |
+| `Input.deviceOrientation` | `Input.deviceOrientation` (`DeviceOrientation.*`) |
+| `OnApplicationFocus(bool)` | the `onApplicationFocus(focused)` script method, or `RegisterEngineEvent(self, "onFocus")` |
+| `OnApplicationPause(true / false)` | the `onApplicationPause(paused)` script method, or `onPause` / `onResume` engine events |
+| `Application.isFocused` | `Engine.isFocused` |
+| `Application.lowMemory` | `Engine.onLowMemory` |
+| `Application.version`, `Application.identifier`, `Application.productName` | `System.getAppVersion()`, `getAppIdentifier()`, `getAppName()` |
+| Android `versionCode`, iOS `CFBundleVersion` | `System.getAppBuild()` (an integer) |
+| `SystemInfo.operatingSystem`, `deviceModel`, `deviceType`, `systemMemorySize`, `processorCount` | `System.getOperatingSystem()` (Unity's format), `getDeviceModel()`, `getDeviceType()`, `getSystemMemorySize()`, `getProcessorCount()`; also `getOperatingSystemVersion()`, `getAndroidApiLevel()` |
+| `Application.isEditor` | `System.isEditor()` |
+| `Application.internetReachability` | `System.getInternetReachability()` (`NetworkReachability.*`) |
+| `Handheld.Vibrate()` | `System.vibrate([ms])`; iOS-style feedback: `System.hapticFeedback(HapticFeedback.*)` |
+| Player > Default Orientation, Allowed Orientations for Auto Rotation | Project Settings > Player > Resolution and Presentation (`player.default_orientation`, `player.allowed_orientations`; shared by Android and iOS) |
+| Device Simulator (orientation, language, `SystemInfo.deviceModel`) | the Game view's Device menu (device, Rotate, Language) |
+
 ## Coroutines, timers and time
 
 Rules and the frame order: [lua-api.md](mcp/guide/lua-api.md) 2.13 (Time) and 2.14 (coroutines
