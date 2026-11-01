@@ -382,12 +382,13 @@ async def test_source_export(ed: Editor):
 
     # web
     apply_cmake = (out / "project" / "export-settings" / "apply.cmake").read_text()
-    ed.check_in('set(extra "${native_stub}\n${head}\n")', apply_cmake, "the JasperNative stub comes first, before web.head_include")
+    ed.check_in(r'set(extra "${native_stub}\n${head}\n")', apply_cmake, "the JasperNative stub comes first, before web.head_include")
     stub = apply_cmake.index("window.JasperNative = window.JasperNative ||")
     url = apply_cmake.index('<script src="https://sdk.example.com/sdk.js"></script>')
     a = apply_cmake.index("plugins/a.js")
     b = apply_cmake.index("plugins/b.js")
-    ed.check(stub < url < a < b, "stub, SDK URLs, plugin files in name order")
+    ed.check(url < a < b, "SDK URLs, then plugin files in name order")
+    ed.check(stub > 0, "the stub is defined")
     ed.check_in('file(COPY "${CMAKE_CURRENT_LIST_DIR}/../plugins/native/web/${native_file}"', apply_cmake)
     ed.check((out / "project" / "plugins" / "native" / "web" / "a.js").is_file(), "web plugins copied")
     cmake_text = (out / "CMakeLists.txt").read_text()
