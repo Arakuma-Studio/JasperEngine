@@ -8669,6 +8669,10 @@ YAML::Node editor::Stream::encodeAnimationPlayerComponent(const AnimationPlayerC
         if (!entry.name.empty()) entryNode["name"] = entry.name;
         if (entry.wrap != ClipWrapMode::Default) entryNode["wrap"] = anim::wrapName(entry.wrap);
         if (entry.layer != 0) entryNode["layer"] = entry.layer;
+        // humanoid playback (anim-retarget 7.1): written only when set
+        if (entry.retarget) entryNode["retarget"] = YamlNumbers::text(true);
+        if (entry.mirror) entryNode["mirror"] = YamlNumbers::text(true);
+        if (entry.footIK) entryNode["footIK"] = YamlNumbers::text(true);
         clipsNode.push_back(entryNode);
     }
     node["clips"] = clipsNode;
@@ -8765,6 +8769,20 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
                     int layer = 0;
                     if (YamlNumbers::readPlain(layerNode.Scalar(), layer) && layer >= 0) entry.layer = layer;
                 }
+                auto flag = [&entryNode](const char* key) {
+                    const YAML::Node value = entryNode[key];
+                    if (!value || !value.IsScalar() || value.Scalar().empty()) return false;
+                    bool result = false;
+                    if (YamlNumbers::readPlain(value.Scalar(), result)) return result;
+                    try {
+                        return value.as<bool>();
+                    } catch (const YAML::Exception&) {
+                        return false;
+                    }
+                };
+                entry.retarget = flag("retarget");
+                entry.mirror = flag("mirror");
+                entry.footIK = flag("footIK");
             } else {
                 // a list, or a map whose clip is not a path
                 continue;

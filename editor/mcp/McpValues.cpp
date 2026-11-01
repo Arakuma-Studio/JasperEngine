@@ -1912,6 +1912,10 @@ Json playerClipsToJson(Project* project, const std::vector<AnimationPlayerClip>&
         Json item{{"clip", clipPathToJson(project, entry.clip)}, {"name", entry.name}, {"wrap", anim::wrapName(entry.wrap)}};
         if (!entry.guid.empty()) item["guid"] = entry.guid;
         if (entry.layer != 0) item["layer"] = entry.layer;
+        // humanoid playback (anim-retarget): only when set
+        if (entry.retarget) item["retarget"] = true;
+        if (entry.mirror) item["mirror"] = true;
+        if (entry.footIK) item["footIK"] = true;
         list.push_back(item);
     }
     return list;
@@ -2041,8 +2045,9 @@ bool normalizePlayerClips(Project* project, const AnimationPlayerComponent* curr
             for (auto it = item.begin(); it != item.end(); ++it) {
                 const std::string key = it->first.as<std::string>();
                 // guid: as get_entity shows it, so a list read back is taken; its value is ignored
-                if (key != "clip" && key != "guid" && key != "name" && key != "wrap" && key != "layer") {
-                    error = at + ": unknown key \"" + key + "\" (an entry is {clip, name, wrap, layer}; its guid follows the clip).";
+                if (key != "clip" && key != "guid" && key != "name" && key != "wrap" && key != "layer" && key != "retarget" &&
+                    key != "mirror" && key != "footIK") {
+                    error = at + ": unknown key \"" + key + "\" (an entry is {clip, name, wrap, layer, retarget, mirror, footIK}; its guid follows the clip).";
                     return false;
                 }
                 if (!it->second.IsScalar() && !it->second.IsNull()) {
@@ -2095,6 +2100,18 @@ bool normalizePlayerClips(Project* project, const AnimationPlayerComponent* curr
                 return false;
             }
             if (layer == 0) entry.remove("layer");
+        }
+        for (const char* flag : {"retarget", "mirror", "footIK"}) {
+            if (!constEntry[flag]) continue;
+            bool on = false;
+            const std::string text = constEntry[flag].Scalar();
+            if (text != "true" && text != "false" && !YamlNumbers::readPlain(text, on)) {
+                error = at + "." + flag + " must be true or false.";
+                return false;
+            }
+            if (text == "true") on = true;
+            if (on) entry[flag] = "true";
+            else entry.remove(flag);
         }
         rebuilt.push_back(entry);
     }

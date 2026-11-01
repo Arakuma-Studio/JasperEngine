@@ -1985,6 +1985,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, float>(&Model::setMorphWeight))
         .addFunction("resetToBindPose", &Model::resetToBindPose)
         .addFunction("getPoseAnimator", &Model::getPoseAnimator)
+        .addFunction("getHumanoidInfo", +[](const Model* self, lua_State* L) -> luabridge::LuaRef {
+            const ModelHumanoidInfo info = self->getHumanoidInfo();
+            if (!info.valid) return luabridge::LuaRef(L);
+            luabridge::LuaRef table = luabridge::newTable(L);
+            table["humanoid"] = info.humanoid;
+            table["animationType"] = info.animationType;
+            table["humanScale"] = info.humanScale;
+            luabridge::LuaRef missing = luabridge::newTable(L);
+            for (size_t i = 0; i < info.missing.size(); i++) missing[(int)i + 1] = info.missing[i];
+            table["missing"] = missing;
+            table["extraMapped"] = info.extraMapped;
+            if (!info.error.empty()) table["error"] = info.error;
+            return table;
+        })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -3029,6 +3043,16 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, bool>(&AnimationState::addMixingTransform))
         .addFunction("removeMixingTransform", &AnimationState::removeMixingTransform)
         .addFunction("clearMixingTransforms", &AnimationState::clearMixingTransforms)
+        // humanoid clips: plays left and right swapped (overrides the entry's Mirror; resetMirror() goes back)
+        .addProperty("mirror", &AnimationState::getMirror, &AnimationState::setMirror)
+        // humanoid clips: the legs reach the clip's foot goals (overrides the entry's Foot IK; resetFootIK() goes back)
+        .addProperty("footIK", &AnimationState::getFootIK, &AnimationState::setFootIK)
+        // mirror back to the entry's (or the controller state's) Mirror
+        .addFunction("resetMirror", &AnimationState::resetMirror)
+        // footIK back to the entry's (or the controller state's) Foot IK
+        .addFunction("resetFootIK", &AnimationState::resetFootIK)
+        // a humanoid clip, or a generic clip being retargeted
+        .addProperty("isHumanoid", &AnimationState::isHumanoid)
         .endClass();
 
     // Unity's AnimatorStateInfo (a copy): AnimationPlayer:getCurrentStateInfo / getNextStateInfo
@@ -3086,7 +3110,43 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getState", &AnimationPlayer::getState)
         .addFunction("addClip",
             luabridge::overload<const std::string&>(&AnimationPlayer::addClip),
-            luabridge::overload<const std::string&, const std::string&>(&AnimationPlayer::addClip))
+            luabridge::overload<const std::string&, const std::string&>(&AnimationPlayer::addClip),
+            // addClip(path, name | nil, {retarget, mirror, footIK, layer})
+            luabridge::overload<AnimationPlayer*, const std::string&, const luabridge::LuaRef&, const luabridge::LuaRef&>(
+                +[](AnimationPlayer* self, const std::string& path, const luabridge::LuaRef& name, const luabridge::LuaRef& options){
+                    AnimationClipOptions values;
+                    if (!name.isNil() && !name.isString()){
+                        throw std::runtime_error("AnimationPlayer:addClip: the name is a string, or nil for the clip's own");
+                    }
+                    if (!options.isNil() && !options.isTable()){
+                        throw std::runtime_error("AnimationPlayer:addClip: the options are a table {retarget, mirror, footIK, layer}");
+                    }
+                    if (options.isTable()){
+                        for (luabridge::Iterator it(options); !it.isNil(); ++it){
+                            const luabridge::LuaRef key = it.key();
+                            const std::string field = key.isString() ? key.unsafe_cast<std::string>() : std::string();
+                            if (field != "retarget" && field != "mirror" && field != "footIK" && field != "layer"){
+                                throw std::runtime_error("AnimationPlayer:addClip: unknown option '" + (field.empty() ? key.tostring() : field) +
+                                                         "' (options are retarget, mirror, footIK, layer)");
+                            }
+                        }
+                        auto flag = [&](const char* field, bool& out){
+                            const luabridge::LuaRef value = options[field];
+                            if (value.isNil()) return;
+                            if (!value.isBool()) throw std::runtime_error(std::string("AnimationPlayer:addClip: ") + field + " is true or false");
+                            out = value.unsafe_cast<bool>();
+                        };
+                        flag("retarget", values.retarget);
+                        flag("mirror", values.mirror);
+                        flag("footIK", values.footIK);
+                        const luabridge::LuaRef layer = options["layer"];
+                        if (!layer.isNil()){
+                            if (!layer.isNumber()) throw std::runtime_error("AnimationPlayer:addClip: layer is a layer index (0 is the base layer)");
+                            values.layer = layer.unsafe_cast<int>();
+                        }
+                    }
+                    return self->addClip(path, name.isString() ? name.unsafe_cast<std::string>() : std::string(), values);
+                }))
         .addFunction("removeClip", &AnimationPlayer::removeClip)
         .addFunction("getClipCount", &AnimationPlayer::getClipCount)
         .addFunction("getClipName", &AnimationPlayer::getClipName)

@@ -223,6 +223,7 @@ Read the page before using these tools:
   Animation Player (jasper://docs/animation).
 - Humanoid poses (.poseanim): get/edit/render_pose_animation, mirror_pose; degrees from
   standing, arms down (jasper://docs/pose-animation).
+- Clip on another humanoid rig: clips[i].retarget or create.humanoid (jasper://docs/animation).
 - Crowds: bake_vertex_animation (preview, then output) -> .vat on a Vertex Animator
   (jasper://docs/vertex-animation).
 - Particles: create_particles, import_unity_particles (jasper://docs/particles).

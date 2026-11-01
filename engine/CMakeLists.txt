@@ -936,10 +936,12 @@ set(JASPERENGINE_SRCS
     core/animation/AnimationPlayerRuntime.cpp
     core/animation/VertexAnimatorRuntime.cpp
     core/animation/ClipBinding.cpp
+    core/animation/HumanoidClip.cpp
     core/animation/KeyframeSampling.cpp
     core/animation/ModelSubClips.cpp
     core/animation/VertexAnimation.cpp
     core/pose/HumanBones.cpp
+    core/pose/HumanExtraBones.cpp
     core/pose/HumanoidMap.cpp
     core/pose/HumanoidMapIO.cpp
     core/pose/ModelRig.cpp

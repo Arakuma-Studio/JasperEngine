@@ -3570,6 +3570,12 @@
 		4A534E47766E97E690F9992C /* soloud_robotizefilter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475EE4DADC8D381D5C /* soloud_robotizefilter.cpp */; };
 		4A534E47FDEBC9A378326DE3 /* soloud_waveshaperfilter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FB7488F31A755FCA /* soloud_waveshaperfilter.cpp */; };
 		4A534E47EA536909FC636853 /* soloud_waveshaperfilter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FB7488F31A755FCA /* soloud_waveshaperfilter.cpp */; };
+		4A534E47B147FA03588D0AE2 /* HumanoidClip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471EF2CC7F3BB65A35 /* HumanoidClip.cpp */; };
+		4A534E47C7A26584A6ACC6A0 /* HumanoidClip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471EF2CC7F3BB65A35 /* HumanoidClip.cpp */; };
+		4A534E47124F8CA0124BC33E /* HumanExtraBones.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4772A93B1FA0AF6499 /* HumanExtraBones.cpp */; };
+		4A534E4794030AE855D1E3B1 /* HumanExtraBones.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4772A93B1FA0AF6499 /* HumanExtraBones.cpp */; };
+		4A534E47925B19D3B1F178D4 /* HumanoidClip.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D21FB37D2CD0BAC9 /* HumanoidClip.h */; };
+		4A534E47C2AEB0877A0DF737 /* HumanExtraBones.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47052B91DAD5A0DE85 /* HumanExtraBones.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -7119,6 +7125,10 @@
 		4A534E470FBCF0FE39908889 /* soloud_lofifilter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = soloud_lofifilter.cpp; sourceTree = "<group>"; };
 		4A534E475EE4DADC8D381D5C /* soloud_robotizefilter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = soloud_robotizefilter.cpp; sourceTree = "<group>"; };
 		4A534E47FB7488F31A755FCA /* soloud_waveshaperfilter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = soloud_waveshaperfilter.cpp; sourceTree = "<group>"; };
+		4A534E471EF2CC7F3BB65A35 /* HumanoidClip.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HumanoidClip.cpp; sourceTree = "<group>"; };
+		4A534E4772A93B1FA0AF6499 /* HumanExtraBones.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HumanExtraBones.cpp; sourceTree = "<group>"; };
+		4A534E47D21FB37D2CD0BAC9 /* HumanoidClip.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HumanoidClip.h; sourceTree = "<group>"; };
+		4A534E47052B91DAD5A0DE85 /* HumanExtraBones.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HumanExtraBones.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -8363,6 +8373,8 @@
 				4A534E47E5073D8D758390C4 /* PoseRealisation.cpp */,
 				4A534E47D99278DD57537FE0 /* PoseMetrics.h */,
 				4A534E47137B26983B17AF0F /* PoseRealisation.h */,
+				4A534E4772A93B1FA0AF6499 /* HumanExtraBones.cpp */,
+				4A534E47052B91DAD5A0DE85 /* HumanExtraBones.h */,
 			);
 			path = pose;
 			sourceTree = "<group>";
@@ -8421,6 +8433,8 @@
 				4A534E47D659E046BA39D1C5 /* AnimJson.h */,
 				4A534E47E8C82FBFE31A0756 /* AnimatorController.h */,
 				4A534E4785CD3820E9AA2297 /* AvatarMask.h */,
+				4A534E471EF2CC7F3BB65A35 /* HumanoidClip.cpp */,
+				4A534E47D21FB37D2CD0BAC9 /* HumanoidClip.h */,
 			);
 			path = animation;
 			sourceTree = "<group>";
@@ -12698,6 +12712,8 @@
 				4A534E4745BC31F5DF7490B9 /* CanvasScalerRef.h in Headers */,
 				4A534E4748DA23385687367C /* TextEffects.h in Headers */,
 				4A534E470113400EA26A0D56 /* CanvasScaler.h in Headers */,
+				4A534E47925B19D3B1F178D4 /* HumanoidClip.h in Headers */,
+				4A534E47C2AEB0877A0DF737 /* HumanExtraBones.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14820,6 +14836,8 @@
 				4A534E470D249A6CD7FD5DDC /* ActionSystemController.cpp in Sources */,
 				4A534E47C144534CF4FEA79E /* TextEffects.cpp in Sources */,
 				4A534E4724C240F5D9AD0E03 /* CanvasScaler.cpp in Sources */,
+				4A534E47B147FA03588D0AE2 /* HumanoidClip.cpp in Sources */,
+				4A534E47124F8CA0124BC33E /* HumanExtraBones.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -15321,6 +15339,8 @@
 				4A534E4765A4B02E89DDFB2A /* ActionSystemController.cpp in Sources */,
 				4A534E4702A81B13C975CC0E /* TextEffects.cpp in Sources */,
 				4A534E47361DD5D17268777C /* CanvasScaler.cpp in Sources */,
+				4A534E47C7A26584A6ACC6A0 /* HumanoidClip.cpp in Sources */,
+				4A534E4794030AE855D1E3B1 /* HumanExtraBones.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

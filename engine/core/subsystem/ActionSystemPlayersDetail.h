@@ -29,9 +29,12 @@ namespace jasperengine::playerdetail{
     struct PoseSlotSource{
         anim::ClipBindings* bindings = nullptr;
         std::vector<uint32_t>* slots = nullptr;
+        // a humanoid clip: the slot of each HumanoidBinding output (anim-retarget)
+        std::vector<uint32_t>* humanoidSlots = nullptr;
     };
     // The scratch's slot table for these bindings (one slot per bound (target, channel), rest
-    // pointers into `rest`); fills every source's per-track slot indices (ActionSystemLayers.cpp)
+    // pointers into `rest`); fills every source's per-track slot indices and per humanoid output
+    // slot indices (ActionSystemLayers.cpp)
     void buildPoseSlots(Scene* scene, anim::PlayerPoseScratch& scratch, const std::vector<PoseSlotSource>& sources, anim::RestMap& rest);
 
 }

@@ -164,7 +164,13 @@ LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 
 # parameters in jasper://docs/audio) and get_play_state's audio block; merged with main 9c8c6c584:
 # 154 tools, total 112708 (tool_budget.py on the merged tree), the limit set to it
 # lead: main with camera-shake + ui-scaling-text + audio-mixer: provisional (112276 + audio-mixer's +799), re-measured on the merged tree
-TOTAL_LIMIT = 113075
+# anim-retarget (spec 10): edit_animation's humanoid tracks and create.humanoid (3654), get_animation's
+# retarget_report / realised (862), edit_pose_animation's Avatar-only set_humanoid (1247): the limits
+# raised to them; measured on the tree merged with main 5762bb259 (anim-layers): 153 tools, total 112266
+# (tool_budget.py), the limit set to it
+LIMITS.update({"edit_animation": 3700, "get_animation": 870, "edit_pose_animation": 1250})
+# lead: + anim-retarget (+365 over main 111901): provisional 113440, re-measured on the merged tree
+TOTAL_LIMIT = 113440
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

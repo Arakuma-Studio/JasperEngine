@@ -114,10 +114,17 @@ namespace jasperengine::anim{
 
     // The humanoid slots of a player root: the entity of each slot (NULL_ENTITY: unmapped).
     // `valid` false when the root has no humanoid rig.
+    struct HumanoidTarget;
     struct JASPERENGINE_API HumanoidSlots{
         bool valid = false;
         std::array<Entity, pose::HUMAN_BONE_COUNT> entities{};
         std::string error;          // why there is no rig (not valid)
+        // anim-retarget: the rig humanoid clips realise on (its model, bone entities, bridges);
+        // null for slots made by name (humanoidSlotsByName)
+        std::shared_ptr<const HumanoidTarget> target;
+        // the rig's model, else the first skinned Model on or under the root (also when it is no
+        // valid humanoid: what Map Bones... opens); NULL_ENTITY when none
+        Entity model = NULL_ENTITY;
 
         HumanoidSlots(){ entities.fill(NULL_ENTITY); }
     };

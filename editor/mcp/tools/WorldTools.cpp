@@ -5933,20 +5933,22 @@ void registerWorldTools(McpRegistry& registry) {
         "(bindings); a project undo step (from an Animation, or a model clip with root: scene). Without clip: an entity Animation (creates one under target), tweens, "
         "actions; a scene step. tracks: keys {time, value|points, ease} of local position/scale, rotation, "
         "morph weights or lattice points; the same "
-        "path|target+channel replaces or merges. "
+        "path|target+channel replaces or merges. Humanoid: create.humanoid {model?} converts from; tracks {channel: "
+        "humanoid|humanoid_position, bone, keys}. "
         "Guide: jasper://docs/animation.",
         object({
             {"scene", sceneRef()},
             {"clip", assetPath("")},
-            {"create", object({{"from", any("")}, {"remove_tracks", boolean("")}})},
+            {"create", object({{"from", any("")}, {"remove_tracks", boolean("")}, {"humanoid", object({{"model", assetPath("")}})}})},
             {"root", entityRef("")},
             {"animation", entityRef("")},
             {"target", entityRef("Required to create.")},
             {"name", string("")},
             {"tracks", array(object({
-                {"channel", stringEnum("", {"position", "rotation", "scale", "morph", "lattice"})},
+                {"channel", stringEnum("", {"position", "rotation", "scale", "morph", "lattice", "humanoid", "humanoid_position"})},
                 {"keys", array(openKeyItem, "")},
                 {"path", string("")},
+                {"bone", string("")},
                 {"target", entityRef("Default: target.")},
                 {"start_time", number("")},
                 {"mode", withDefault(stringEnum("", {"replace", "merge"}), "replace")},
@@ -5985,7 +5987,8 @@ void registerWorldTools(McpRegistry& registry) {
         "entity: an Animation's timeline (loop, duration, autoplay, target, actions with kind, keys or tween "
         "values), or for another GameObject the animations targeting it or its children (model clips too) and "
         "the Animation Player playing it (states, layers, controller, bindings; live in play). clip (.anim or "
-        "\"model.gltf#Walk\"): settings, tracks, events, users; times: values sampled there; root: bindings. "
+        "\"model.gltf#Walk\"): settings, tracks, events, users; times: values sampled there; root: bindings (humanoid: "
+        "retarget_report, realised at times). "
         "mask (.mask; root: coverage) or controller (.controller summary).",
         object({
             {"scene", sceneRef()},

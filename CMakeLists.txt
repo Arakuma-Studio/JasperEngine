@@ -781,6 +781,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorWindowClips.cpp
     ${EDITOR_DIR}/window/InspectorWindowAnimLayers.cpp
     ${EDITOR_DIR}/window/InspectorAnimLayers.cpp
+    ${EDITOR_DIR}/window/InspectorModelRig.cpp
     ${EDITOR_DIR}/window/InspectorWindowVat.cpp
     ${EDITOR_DIR}/window/InspectorPhysics2D.cpp
     ${EDITOR_DIR}/window/InspectorWindowSpriteNormals.cpp
@@ -809,6 +810,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/CodeEditor.cpp
     ${EDITOR_DIR}/window/AnimationWindow.cpp
     ${EDITOR_DIR}/window/AnimatorWindow.cpp
+    ${EDITOR_DIR}/window/AvatarWindow.cpp
+    ${EDITOR_DIR}/window/HumanoidConvertDialog.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipSheet.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipEvents.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipCurves.cpp

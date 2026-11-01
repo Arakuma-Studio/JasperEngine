@@ -7612,6 +7612,8 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
 
     endTable();
 
+    if (entities.size() == 1) drawModelRig(cpType, sceneProject, entities[0]);
+
     if (entities.size() != 1) {
         ImGui::SeparatorText("Animations");
         ImGui::TextDisabled("Select a single GameObject to edit animations");

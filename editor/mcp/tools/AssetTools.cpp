@@ -863,6 +863,18 @@ void getAssetInfoTool(const CallPtr& call) {
                 text += ", " + std::to_string(info["meshes"].size()) + " mesh(es), " + std::to_string(info["materials"].size()) +
                         " material(s), " + std::to_string(info["animations"].size()) + " animation(s)";
             }
+            // the Avatar of a skinned model (anim-retarget): its humanoid map and Animation Type
+            if (info.contains("skins") && info["skins"].get<size_t>() > 0) {
+                const Json avatar = clip_tools::avatarJson(project, file);
+                if (!avatar.is_null() && !avatar.contains("humanoid")) {
+                    data["avatar"] = avatar;
+                    text += ", avatar: " + avatar["error"].get<std::string>();
+                } else if (!avatar.is_null()) {
+                    data["avatar"] = avatar;
+                    text += std::string(", ") + (avatar["humanoid"].get<bool>() ? "humanoid" : "not a humanoid") + " (Animation Type " +
+                            avatar["animation_type"].get<std::string>() + ")";
+                }
+            }
         }
     } else if (kind == "audio") {
         if (extensionOf(file) == ".wav") {

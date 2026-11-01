@@ -12,6 +12,13 @@
 // a button shows once its hook is set. Owner: T2c.
 
 #include "InspectorWindow.h"
+#include "window/HumanoidConvertDialog.h"
+#include "pose/PoseRigProvider.h"
+#include "App.h"
+#include "Backend.h"
+#include "animation/AvatarMask.h"
+#include "animation/HumanoidClip.h"
+#include "pool/AnimationClipPool.h"
 #include "util/PhysicsMaterialAssets.h"
 #include "InspectorWindowClips.h"
 #include "InspectorVatBake.h"
@@ -104,6 +111,12 @@ const char* inspectorclips::wrapLabel(ClipWrapMode wrap){
     return "Default";
 }
 
+std::string inspectorclips::formatRatio(float ratio){
+    char text[32];
+    std::snprintf(text, sizeof(text), "%.2f", std::isfinite(ratio) ? ratio : 0.0f);
+    return text;
+}
+
 const char* inspectorclips::channelLabel(ClipChannel channel){
     switch (channel){
         case ClipChannel::Position: return "Position";
@@ -112,6 +125,8 @@ const char* inspectorclips::channelLabel(ClipChannel channel){
         case ClipChannel::Morph: return clipui::channelLabel(channel);
         case ClipChannel::Lattice: return "Lattice";
         case ClipChannel::Property: return "Property";
+        case ClipChannel::Humanoid:
+        case ClipChannel::HumanoidPosition: return clipui::channelLabel(channel);
     }
     return "";
 }
@@ -427,6 +442,20 @@ namespace jasperengine::editor{
         std::string playerError;
         std::string assetError;
         std::string modelAssetClip;         // the model asset section's selected sub-clip
+        // the Bindings report's humanoid rig of the inspected player (anim-retarget)
+        std::shared_ptr<anim::HumanoidSlots> humanoidRig;
+        Entity humanoidRoot = NULL_ENTITY;
+        uint64_t humanoidRevision = 0;
+        uint64_t humanoidPool = 0;
+        // a retarget entry's conversion ("<clip>@humanoid"): polled, never a blocking build in
+        // the draw; a failure is kept until the pool changes or a second passed
+        struct ConversionEntry{
+            std::shared_ptr<const AnimationClip> clip;
+            uint64_t pool = 0;
+            double retryAt = 0.0;
+            bool loading = false;
+        };
+        std::map<std::string, ConversionEntry> conversions;
 
         // a clip setting being dragged: committed once when the drag ends
         bool editingFrameRate = false;
@@ -986,6 +1015,9 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
                 if (subClip && hooks.extractSubClip && ImGui::MenuItem("Extract to .anim...", nullptr, false, exists && stopped)){
                     hooks.extractSubClip(project, sceneProject->id, entity, entry.clip);
                 }
+                if (ImGui::MenuItem("Convert to Humanoid Clip...", nullptr, false, exists && stopped)){
+                    HumanoidConvertDialog::open(project, entry.clip, sceneProject->id, entity, i);
+                }
                 if (ImGui::MenuItem("Show in Project", nullptr, false, exists)){
                     anim::SubClipReference reference;
                     const std::string file = anim::parseSubClipReference(entry.clip, reference) ? reference.model : entry.clip;
@@ -1038,6 +1070,45 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
                 ImGui::EndCombo();
             }
             ImGui::SetItemTooltip("How this state wraps: Default uses the clip's own wrap mode");
+
+            // humanoid playback (anim-retarget 9): Retarget for a generic clip; Mirror and Foot IK
+            // for a humanoid (or retargeted) one, with its badge
+            bool humanoidClip = false;
+            if (exists){
+                if (std::shared_ptr<AnimationClipDocument> document = findClipDocument(project, state, entry.clip, nullptr)){
+                    humanoidClip = document->data().isHumanoid();
+                }
+                anim::SubClipReference reference;
+                if (!humanoidClip && anim::parseSubClipReference(entry.clip, reference)){
+                    humanoidClip = PoseRigProvider::forModelFile(project, project->resolveAssetPath(fs::u8path(reference.model)).lexically_normal())->overrides.isHumanoid();
+                }
+            }
+            auto flagRow = [&](const char* label, const char* field, bool value, const char* tooltip){
+                prefabRowProperty = prefix + field;
+                if (propertyHeader(label, -1, value, false, true)){
+                    CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
+                        new PropertyCmd<bool>(project, sceneProject->id, entity, cpType, prefix + field, false));
+                }
+                bool checked = value;
+                ImGui::BeginDisabled(!stopped);
+                if (ImGui::Checkbox((std::string("##") + field).c_str(), &checked)){
+                    CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
+                        new PropertyCmd<bool>(project, sceneProject->id, entity, cpType, prefix + field, checked));
+                }
+                ImGui::EndDisabled();
+                ImGui::SetItemTooltip("%s", tooltip);
+            };
+            if (!humanoidClip){
+                flagRow("Retarget", ".retarget", entry.retarget, "Play as a humanoid clip, retargeted from its source model");
+            }
+            if (humanoidClip || entry.retarget){
+                ImGui::SameLine();
+                ImGui::TextColored(Theme::Colors::PrefabText, ICON_FA_PERSON " Humanoid");
+                ImGui::SetItemTooltip(humanoidClip ? "A humanoid clip: it plays on this character's humanoid rig"
+                                                   : "Retargeted: converted from its source model's rig at load");
+                flagRow("Mirror", ".mirror", entry.mirror, "Left and right swapped (humanoid clips)");
+                flagRow("Foot IK", ".footIK", entry.footIK, "The feet reach the clip's foot goals: no sliding on other leg proportions");
+            }
 
             ImGui::PopID();
         }
@@ -1334,6 +1405,55 @@ void editor::InspectorWindow::drawAnimationPlayerBindings(SceneProject* scenePro
             }
             if (hidden > 0){
                 ImGui::TextDisabled("... and %zu more", hidden);
+            }
+            // a humanoid (or retargeted) state: the rig it plays on (anim-retarget 9)
+            std::shared_ptr<const AnimationClip> humanoidClip;
+            if (row.document->data().isHumanoid()) humanoidClip = row.document->clip();
+            else if (clips[i].retarget){
+                const std::string key = anim::retargetPoolKey(clips[i].clip, true);
+                InspectorClipState::ConversionEntry& conversion = state.conversions[key];
+                const double now = ImGui::GetTime();
+                if (conversion.loading || conversion.pool != AnimationClipPool::revision() || (!conversion.clip && now >= conversion.retryAt)){
+                    bool loading = false;
+                    conversion.clip = AnimationClipPool::pollOrLoad(key, loading);
+                    conversion.loading = loading;
+                    conversion.pool = AnimationClipPool::revision();
+                    conversion.retryAt = now + CLIP_RETRY_SECONDS;
+                }
+                if (state.conversions.size() > 256) state.conversions.clear();
+                else humanoidClip = conversion.clip;
+            }
+            if (humanoidClip && humanoidClip->isHumanoid()){
+                if (!state.humanoidRig || state.humanoidRoot != entity || state.humanoidRevision != sceneProject->scene->hierarchyRevision() ||
+                    state.humanoidPool != AnimationClipPool::revision()){
+                    state.humanoidRig = std::make_shared<anim::HumanoidSlots>(anim::resolveHumanoidSlots(sceneProject->scene, entity));
+                    state.humanoidRoot = entity;
+                    state.humanoidRevision = sceneProject->scene->hierarchyRevision();
+                    state.humanoidPool = AnimationClipPool::revision();
+                }
+                if (!state.humanoidRig->target){
+                    ImGui::TextColored(warning, ICON_FA_TRIANGLE_EXCLAMATION " Humanoid clip, but not a humanoid: %s", state.humanoidRig->error.c_str());
+                    // the skinned model under the player (it may be a child of the player's GameObject)
+                    const Entity model = state.humanoidRig->model;
+                    ImGui::BeginDisabled(model == NULL_ENTITY);
+                    if (ImGui::SmallButton("Map Bones...")) Backend::getApp().openAvatarWindow(sceneProject->id, model);
+                    ImGui::EndDisabled();
+                    if (model == NULL_ENTITY) ImGui::SetItemTooltip("No skinned Model on or under this GameObject");
+                }else{
+                    anim::HumanoidBinding binding;
+                    anim::bindHumanoidClip(*humanoidClip, state.humanoidRig->target, binding);
+                    const float scale = state.humanoidRig->target->rig->humanScale();
+                    const float source = humanoidClip->getHumanoidInfo().humanScale;
+                    ImGui::TextColored(Theme::Colors::SubtleText, ICON_FA_PERSON " Humanoid on %s (human scale %.3f%s)",
+                                       fs::u8path(state.humanoidRig->target->modelPath).filename().u8string().c_str(), scale,
+                                       source > 0.0f ? (", " + inspectorclips::formatRatio(scale / source) + "x the source's").c_str() : "");
+                    for (const std::string& line : binding.folded) ImGui::TextColored(Theme::Colors::SubtleText, "%s", line.c_str());
+                    if (!binding.missingOnTarget.empty()){
+                        std::string list;
+                        for (const std::string& bone : binding.missingOnTarget) list += (list.empty() ? "" : ", ") + bone;
+                        ImGui::TextColored(Theme::Colors::SubtleText, "The rig lacks: %s", list.c_str());
+                    }
+                }
             }
             ImGui::Unindent();
         }
@@ -1653,6 +1773,18 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
             ImGui::SetItemTooltip("Write the clip to an editable .anim file (keeps its source)");
         }
         ImGui::EndDisabled();
+    }
+    // Convert to Humanoid Clip (anim-retarget 9): a generic clip as a clip any humanoid plays
+    if (!data.isHumanoid()){
+        ImGui::BeginDisabled(playing);
+        if (ImGui::Button(ICON_FA_PERSON " Convert to Humanoid Clip...##clip_asset_humanoid", ImVec2(ImGui::GetContentRegionAvail().x, 0))){
+            HumanoidConvertDialog::open(project, reference);
+        }
+        ImGui::SetItemTooltip("A humanoid clip (rotations relative to the neutral pose) that plays on any humanoid character");
+        ImGui::EndDisabled();
+    }else{
+        ImGui::TextColored(Theme::Colors::PrefabText, ICON_FA_PERSON " Humanoid clip%s%s", data.humanoid.sourceModel.empty() ? "" : " (made on ",
+                           data.humanoid.sourceModel.empty() ? "" : (data.humanoid.sourceModel + ")").c_str());
     }
     if (readOnly){
         ImGui::TextDisabled(ICON_FA_LOCK " Read-only: a clip of %s", data.source.path.empty() ? "a model" : data.source.path.c_str());

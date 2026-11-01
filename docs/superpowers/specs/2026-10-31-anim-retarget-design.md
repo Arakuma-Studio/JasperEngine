@@ -742,3 +742,189 @@ Engine pose and anim tests (`engine/tests/pose` `jasperengine-pose-tests`, `engi
   converted clips are copied unchanged. Both features append to `ClipChannel`; property is already
   present, so there is no conflict. The `.anim` version bump to 2 is owned by this feature alone.
 - **`physics-3d` (#9) ragdoll** is independent. A disabled player hands bones over to physics.
+
+## Implementation notes
+
+Decisions taken where the spec was silent or ambiguous, and deviations. Code references are to
+the `gaps/anim-retarget` branch (based on `gaps/anim-layers`).
+
+### Format and maths
+
+- **Conversion is key for key, not resampled** (7.2). A slot's `E = left^-1 * bridge * q * N^-1`
+  and an extra bone's `d = W * rest^-1 * bridge * q * W^-1` are fixed linear maps of the source
+  quaternion `q`, which commute with slerp, Hermite curves, eases and normalization; the body
+  offset is an affine map of the hips translation. So every slot, extra and hips track keeps the
+  source's key times, eases and (mapped) tangents and reproduces the source exactly on its own rig
+  (no keyframe reduction is needed there). Only the foot goals depend on several tracks: they are
+  sampled with FK on the union of the leg tracks' key times and a frame grid (clip rate, at least
+  30 Hz) and reduced within 1e-4 humanScale. A mapped slot without a track gets one key from its
+  rest; the hips position always gets a track (one key without a translation track).
+- **Dropped source tracks**: rotation or translation tracks of non-slot bones *between* slots (an
+  ancestor of a slot bone, e.g. twist bones, an unmapped spine bone, a root bone above the hips)
+  and translations of mapped bones other than the hips are dropped with one warning listing them;
+  scale tracks and every other bone (props, leaf bones, unmapped fingers) are copied unchanged.
+- **Extra bones use the neutral pose's frame** (7.2 step 3, 7.3): `W_x` is the bone's canonical
+  world rotation in the rig's *neutral* pose (FK of the neutral slots, the fingers at rest), not in
+  its rest pose. With the rest frame a T-pose source's finger curl would land on an A-pose target
+  about a world axis that is not its finger's; with the neutral frame both hands point the same way
+  first. `PoseRig::restWorldCanonical` exists as specified (and is tested through the rig), the
+  realisation uses the neutral frame.
+- **Twist corrections** rotate `N_b` about the slot's neutral direction in the canonical *world*
+  frame (`N_b <- axisAngle(dir, t) * N_b`, which keeps the direction; the spec's
+  `neutral_b * axisAngle(...)` would rotate about a bone-local axis). Carried children (the hand
+  under a twisted forearm) turn with it, so a forearm correction also fixes the wrist. Applied in
+  `PoseRig::build` (a new optional argument), so pose animations (PoseRigCache and the editor's
+  PoseRigProvider) and humanoid clips see the same neutral pose.
+- **Slots the clip lacks are written neutral** (decision 4): a humanoid clip with slot tracks writes
+  every present slot of the target (`E = I` when no clip slot is on its chain), as Unity's muscle
+  clips write every muscle; use a mask (or a layer) to animate part of the body. The hips position
+  is written only when the clip has a body offset track (the converter always writes one).
+- **Version 2** is written only for clips with humanoid tracks; the `humanoid` top-level info is
+  written when set. A humanoid track found with a `path` is dropped (the parser's warning names
+  `tracks[i].path`); hand-built data with a path keeps the track with the path cleared (normalize).
+  `ClipData::findTrack` / `AnimationClip::findTrack` with a humanoid channel take the bone name as
+  the path: the editor's (path, channel) key identities work unchanged for humanoid rows.
+- **Sidecar version 2**: `animation_type: generic` is never written (reset to absent), and a twist
+  of 0 clears the entry, so going back to a bones-only Avatar gives the version 1 bytes again.
+  An `extra_bones` override that names a missing bone, a slot's bone, or a finger outside its
+  hand fails `resolveHumanoid` like a bad `bones` override; the editor's PoseRigProvider then
+  falls back to auto-detect for the extra bones (the body map still poses) and reports
+  `extra_error`.
+
+### Runtime
+
+- **Shared evaluator changes are additive**: humanoid tracks never get a path target; a
+  `HumanoidBinding` on `ClipBindings` lists its outputs (bone entity, Rotation or Position), which
+  `buildPoseSlots` registers as ordinary transform slots (`PoseSlotSource::humanoidSlots`), the
+  mask stamp masks like any bone (`humanoidMask`), the occlusion pass covers, and one block per
+  state in `composePlayerLayers` adds the realised values (additive: their delta from the
+  realisation at `additive_reference`, `humanoidReference`). The v1 path (`accumulateClip`) adds
+  the same contributions with rest flags. Property slots (anim-properties) are untouched.
+- **Rig lookup**: `AnimationPlayerRuntime::humanoid` (HumanoidSlots, now with a `HumanoidTarget`:
+  rig, bone entities, bridges, extra entities and frames, fold chains) is resolved by
+  `refreshHumanoidRig` in `preparePlayer` when a humanoid clip, a retarget entry or a humanoid mask
+  needs it; again after a model reload, when one of its bone entities is gone, and on a pool change
+  (a sidecar edit invalidates the model's clips) when the rig changed. A state rebinds when
+  `humanoidRevision` moved. `preparePlayerLayers` is now called with `modelsReloaded = false`
+  (the reset happened in `preparePlayer`).
+- **Pool**: `"<ref>@humanoid"` entries are cached under `"<entry key>@humanoid"`; `invalidate` of
+  the clip drops its conversion, `invalidateModel` drops sub-clip conversions with the model and
+  `.anim` conversions whose source is that model (`humanoidSources`), and the HumanoidSourceCache
+  entry. A humanoid-typed model's sub-clip that fails to convert (not a valid humanoid) is served
+  generic with a warning instead of failing. The source rig is built from a full parse of the model
+  (the pooled glTF when loaded): the trimmed sub-clip parse has no skins or meshes, and the skin
+  sample makes the source rig equal to the scene rig of the same model (exact round trip).
+- **Mirror** of a blend tree child flips its state's (XOR). Controller states' `retarget`,
+  `mirror` and `foot_ik` become the player states' flags; the Animator window's state inspector
+  has the three checkboxes (a blend tree child's mirror is edited with `edit_animator`).
+- **Lua** `addClip(path, name | nil, options)`: `name` may be nil in the three-argument form.
+
+### Editor and MCP
+
+- **Avatar Configuration window** (`editor/window/AvatarWindow.{h,cpp}`) is a floating window
+  opened from Inspector > Model > Rig > Configure Avatar..., the Pose window's new **Avatar...**
+  button beside Map Bones..., and the Bindings report's Map Bones... of a humanoid state on a
+  root without a rig. **Auto Map All** puts every body and hand bone back to auto-detect;
+  **Clear Overrides** also clears the twists (the Animation Type stays). The test clip is any clip
+  played through `"@humanoid"` (a generic one converts from its source model) on the working
+  copy's rig, so unsaved mapping and twist edits preview.
+- **Convert to Humanoid Clip...** is one dialog (`HumanoidConvertDialog`) for the Project window's
+  `.anim` menu, the clip asset Inspector (`.anim` and model clips, in the model asset view too) and
+  a player entry's clip menu (**Use in this player**: `ClipSceneActions::convertToHumanoid`, one
+  scene step with the file; the entry's `retarget` is cleared since the file is humanoid).
+- **Map Bones... keeps the Avatar fields**: the Pose window's mapping popup now writes the bones
+  into the sidecar as read (it used to write a bones-only sidecar, which would drop
+  `animation_type`, `extra_bones` and `twist`).
+- **Humanoid rows in the Animation window**: the value column shows the bound rig's current value
+  while previewing (else the clip's), and editing a humanoid component keys it at the playhead
+  (there is no GameObject value to preview in pink). Slots show joint angles, extra bones Euler
+  degrees; twist unwraps by whole turns along the curves.
+- **`get_animation` realised** lists every slot the target has (the robot fixture has no upper
+  chest: 21 slots, the MCP test checks at least 21) and the mapped extra bones the clip animates;
+  `realised` is `[{time, bones: [...], hips_local_position}]`.
+- **`set_humanoid` without `path`** (only set_humanoid ops) writes the sidecars as one project step
+  through ProjectFileWrites (their `filesChanged` invalidates the models' clips); the result has
+  `sidecars` and `avatars`.
+
+### Verification (tree merged with main 5762bb259)
+
+- Engine: anim-tests 193/193, pose-tests 219/219 (numeric pose tests 1-12 of section 14 in
+  `HumanoidRetargetTest.cpp` / `HumanoidModelTest.cpp`). Measured on the host: converting a 3 s
+  clip 0.61 ms; 30 humanoid states with Foot IK 0.160 ms per frame.
+- Editor unit suite: 1640 passed, 9 skipped, 0 failed. MCP suite: 921 passed, 21 skipped,
+  10 failed (the baseline: test_animation_assets x5, test_lattice_scene x5);
+  `test_animation_retarget.py` 4/4. Tool budget 153 tools, 112266.
+- Built on the host fallback (`build/host`, -j3): build box 2203 was overloaded. Web: emcc
+  `-fsyntax-only` of the changed engine sources is clean. Xcode project synced
+  (`tools/xcode_sync_engine.py`).
+- Not verified: Android / Apple / Windows builds (no platform code changed), an exported Linux build
+  playing the hero walk on the robot, device performance, the Avatar window and Rig foldout by eye.
+
+### Review fixes (2026-11-01)
+
+- **Mirror and one-sided extra bones (H1)**: a humanoid binding outputs the clip's extra bones and
+  their mirror counterparts; a bone the (mirrored) sample has no value for is written at its rest
+  (E = identity), never a stale scratch value. Unmirrored, the counterpart is therefore held at
+  its rest by the clip (Unity's default muscle value for a curve a humanoid clip lacks): a
+  right-hand-only clip on an Override layer keeps the left fingers at rest too. Test:
+  `MirroredRightHandCurlDrivesTheLeftHand` (hero rig).
+- **One rule for bad hands and head overrides (H2)**: `pose::resolveHumanoid` with the extra bones
+  fails only on the body map; invalid `extra_bones` fall back to auto-detect
+  (`resolveExtraBonesOrAuto`, shared by PoseRigCache, the humanoid source rigs and
+  PoseRigProvider; a note, `ModelRigInfo::extraError` and one `Log::warn` per rig build). The
+  Avatar window's Apply and `set_humanoid` refuse such overrides with what is wrong and how to fix
+  it.
+- **Rig info keeps the Avatar (H3)**: PoseRigProvider sets `overrides` as soon as the sidecar reads
+  (also for a body map that does not validate) and `sidecarError` when it does not read; the Rig
+  foldout's Animation Type refuses to rewrite an unreadable sidecar, `get_asset_info` reports its
+  error as `avatar.error`.
+- **The Avatar preview is a PreviewOwner (H4)**: acquired in setPreview(true) (another owner of the
+  root, a delete, copy or prefab step restores it first), released in stopPreview.
+- **Avatar window and the project (M1, M2)**: `syncWithProject` every frame (and before a
+  preview): another model file on the GameObject reopens, a hierarchy change rebinds the bones
+  when they changed (edits kept, the preview restarted on the new bones), a sidecar changed on
+  disk (stat first, bytes when it moved) becomes the saved copy and, without edits, the working
+  copy (with edits: a status line, Discard takes the file). Configure Avatar... runs
+  `requestOpen`: the bound model keeps its edits, another model with edits asks Apply / Discard /
+  Cancel first.
+- **Caches (M3, M4)**: the Animation window's and the editor preview's humanoid rigs are keyed on
+  AnimationClipPool::revision() too; the Inspector polls a retarget entry's conversion
+  (pollOrLoad) and keeps a failure for a second or until the pool changes.
+- **controllerFromClips (M5)** copies Retarget, Mirror and Foot IK into the states.
+- **get_animation (M6, M7)**: a clip of an Animation Type: Humanoid model is realised from the
+  pool's humanoid clip (and its bindings validated against it: no retarget advice); the realisation
+  uses the root's entry Mirror and Foot IK (`retarget_report.mirror`, `foot_ik`).
+  `unmapped_source_bones` applies the player's unique-name fallback (`anim::uniqueNamesUnder`).
+- **MCP humanoid keys (M9 and Lows)**: a key value may be the output form `{quat, angles}` (both
+  must agree within 0.05 degrees), `{angles: [a, b, c]}` or `{angles: {dof: degrees}}`; errors name
+  the slot's DOF order; `in` / `out` tangents are accepted; a quaternion off unit length is
+  normalized, not refused. `get_asset_info` on a humanoid .anim lists its tracks by `bone`.
+- **Conversion (Lows)**: scale tracks of slot, extra and in-between bones are dropped (the target
+  maps those bones by role, not name; spec 7.2 said "scale copied"), and a dropped track whose keys
+  all sit at the bone's rest gives no warning.
+- **Lua (Lows)**: addClip's name and options are type-checked (unknown option, a non-boolean flag,
+  a non-number layer are errors); `AnimationState:resetMirror()` / `resetFootIK()` go back to the
+  entry's values; the stub docs of `mirror`, `footIK` and `getHumanoidInfo` are fixed;
+  `getHumanoidInfo().missing` follows the sidecar's overrides.
+- **Others (Lows)**: solveLimbIK uses thread-local scratch (no allocation per leg per frame); an
+  additive humanoid reference is realised again when Lua changes the state's Mirror or Foot IK;
+  the Bindings report's Map Bones... opens the skinned model under the player; the Avatar window's
+  test clip, when it is a generic clip of this very model, converts with the working copy (both
+  sides show unsaved mapping and twist edits).
+- **Rejected: Bake to Humanoid Clip writing E "from the pose frames"**. The baked frames are the
+  final bone locals (after Foot IK, grounding and the hips offset), not the pose keys' angles; the
+  conversion maps each of those locals with E = jointRotationFromLocal(local) on the model's own
+  rig (the file's rig equals the scene's, test 1), which is exactly the E of the frame. Writing E
+  from the pose keys would drop what the bake adds.
+- **Tests (M8, M10, M11)**: the MCP test compares rotations by angle (0.05 degrees); test 12 checks
+  the walk's left thigh (which the walk animates and the wave's realisation does not match); the
+  Record test expects independent values (the neutral pose keys E = identity, a 40 degree turn
+  from it keys a 40 degree E); the Avatar test checks Redo's bytes; Convert's Use in this player
+  and the undo of both forms are tested.
+- **Verification after the review fixes** (host build `build/host`, -j3, 0 warnings): anim-tests
+  201/201, pose-tests 219/219, editor unit suite 1647 passed, 8 skipped, 0 failed;
+  test_animation_retarget 4/4; the animation, pose, tool budget (test_html_ui_tools), docs and
+  stubs MCP files 214 passed + test_animation_clip 32/32 after its known-words fix, 7 skipped,
+  failures only the baseline test_animation_assets x5. Tool texts unchanged (153 tools, budget
+  as before); TOOLS.md regenerated from the clean 7f2c6d8d1 build. Web: em++ -fsyntax-only of the
+  12 changed engine sources clean.
