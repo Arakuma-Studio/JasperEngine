@@ -1310,6 +1310,8 @@ void AnimatorWindow::drawParameters(){
                     if (ImGui::RadioButton("##live", value != 0.0f)) live->setTrigger(p.name);
                     ImGui::SetItemTooltip("Set the trigger");
                 }
+                // (UI tests: the running value's widget, not the default's)
+                UIProbe::item("animator.parameter." + std::to_string(i) + ".live");
             }
         }else{
             ControllerDef full = def;

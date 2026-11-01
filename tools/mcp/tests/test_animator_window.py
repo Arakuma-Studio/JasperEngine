@@ -378,7 +378,8 @@ async def test_animator_window_live_parameters(ed: Editor):
             await ui.frames(6)
             if "animator.parameter.1.value" in ed.ui_items():
                 break
-        go = await ui.item("animator.parameter.1.value")
+        # the running value's checkbox (drawn once the window has the running Animator)
+        go = await ui.item("animator.parameter.1.live")
         await shot(ed, "10-live-parameters")
         await ui.click(*center(go))
         await ed.call("wait", game_seconds=0.3)
