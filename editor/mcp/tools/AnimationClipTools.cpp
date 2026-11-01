@@ -2309,10 +2309,22 @@ void getClip(const CallPtr& call) {
                 }
             }
         }
+        // what plays: the humanoid clip itself, or a Retarget entry's generic clip read through its
+        // source model (the one retarget path); the bindings list the clip as Convert writes it
+        std::shared_ptr<const AnimationClip> playClip = humanoidClip;
+        std::shared_ptr<const anim::RetargetSource> playSource;
         if (!humanoidClip && playing && playing->retarget) {
             std::string convertError;
-            humanoidClip = AnimationClipPool::getOrLoad(anim::retargetPoolKey(playing->clip, true), &convertError);
-            if (!humanoidClip) out["retarget_report"] = {{"error", convertError}};
+            playSource = anim::clipRetargetSource(*document->clip(), playing->clip, &convertError);
+            ClipData converted;
+            std::vector<ClipWarning> convertWarnings;
+            if (playSource && anim::convertToHumanoid(document->clip()->toData(), *playSource, converted, convertWarnings, &convertError)) {
+                humanoidClip = AnimationClip::build(converted, convertWarnings, nullptr);
+                playClip = document->clip();
+            } else {
+                out["retarget_report"] = {{"error", convertError}};
+                playSource.reset();
+            }
             retargeted = humanoidClip;
         }
         if (humanoidClip) {
@@ -2323,7 +2335,7 @@ void getClip(const CallPtr& call) {
                                   "): map its model's bones (edit_pose_animation op set_humanoid); the clip's other tracks still play";
             } else {
                 anim::HumanoidBinding binding;
-                anim::bindHumanoidClip(*humanoidClip, slots.target, binding);
+                anim::bindHumanoidClip(*playClip, slots.target, binding, playSource);
                 binding.mirror = entryMirror;
                 binding.footIK = entryFootIK;
                 const ClipHumanoidInfo& info = humanoidClip->getHumanoidInfo();
@@ -2355,7 +2367,7 @@ void getClip(const CallPtr& call) {
                 if (!humanoidTimes.empty()) {
                     Json realised = Json::array();
                     for (float t : humanoidTimes) {
-                        anim::sampleHumanoidBinding(*humanoidClip, binding, anim::wrapClipTime(t, humanoidClip->getLength(), humanoidWrap), nullptr);
+                        anim::sampleHumanoidBinding(*playClip, binding, anim::wrapClipTime(t, playClip->getLength(), humanoidWrap), nullptr);
                         Json bones = Json::array();
                         Json hips = nullptr;
                         for (const anim::HumanoidOutput& output : binding.outputs) {

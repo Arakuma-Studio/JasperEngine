@@ -159,6 +159,7 @@ Log::print, never printf or std::cout. Angles are DEGREES. Build settings go in 
 - Crowds: bake_vertex_animation (preview, then output): a .vat a Vertex Animator plays on the
   GPU (jasper://docs/vertex-animation).
 - Animator (.controller): edit_animator_controller, control_animator (jasper://docs/animator).
+- Another humanoid's clip: Animators retarget it; clips[i].retarget; create.humanoid converts.
 - Lines, lasers, trails: create_entity type line_renderer / trail_renderer (jasper://docs/lines-trails).
 
 ## Atmosphere
@@ -227,10 +228,7 @@ Calls time out: get_editor_health (answers mid-hang) tells hung from slow; get_c
 Scenes in Build order and the start scene live in project.yaml (project tools).
 build_project: a game per platform or a CMake project; ship: jasper://docs/shipping.
 Before exporting: scenes saved, Console clean in play, the start scene right.
-)JE"
-// SYNC4-ABSORB(retarget): upstream's guide line "Clip on another humanoid rig: clips[i].retarget
-// or create.humanoid" waits for the retarget absorption
-R"JE(
+
 ## HTML/CSS UI
 Menus, HUDs and dialogs in standard HTML + CSS, logic in Lua (no JavaScript): create_ui_document
 (template: blank, main_menu, hud, inventory, settings, shop...) adds the GameObject and writes

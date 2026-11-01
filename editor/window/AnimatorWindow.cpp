@@ -3,6 +3,7 @@
 
 #include "AnimatorWindow.h"
 
+#include "App.h"
 #include "Backend.h"
 #include "Project.h"
 #include "animation/AnimationClipIO.h"
@@ -175,19 +176,16 @@ namespace{
 
 }
 
-AnimatorWindow::AnimatorWindow(Project* project, PoseAnimationWindow* poseWindow): project(project), poseWindow(poseWindow){
+AnimatorWindow::AnimatorWindow(Project* project, PoseAnimationWindow*): project(project){
     animatorEditorHooks().openController = [this](Project*, uint32_t scene, Entity target, const std::string& path){
         openController(path, scene, target);
         setOpen(true);
         requestFocus();
     };
-    animatorEditorHooks().configureAvatar = [this](Project*, uint32_t scene, Entity model){
-        if (!this->poseWindow) return;
-        std::string error;
-        this->poseWindow->setOpen(true);
-        if (!this->poseWindow->bindCharacter(scene, model, &error) || !this->poseWindow->openMappingFor(&error)){
-            if (!error.empty()) status = "Configure Avatar: " + error;
-        }
+    // the Avatar Configuration window (upstream's anim-retarget: bones, fingers, eyes and jaw,
+    // twist corrections, a retargeted test clip), the one the Model Inspector's Rig foldout opens
+    animatorEditorHooks().configureAvatar = [](Project*, uint32_t scene, Entity model){
+        Backend::getApp().openAvatarWindow(scene, model);
     };
     animatorEditorHooks().drawSelection = [this](){ return drawSelectionInspector(); };
 }
@@ -1867,7 +1865,19 @@ void AnimatorWindow::drawStateInspector(ControllerDef& def, StateDef& state){
             changed |= ImGui::DragFloat("Reference Time", &state.additiveTime, 0.01f, 0.0f, 600.0f, "%.2f s");
         }
     }
-    // SYNC4-ABSORB(retarget): upstream's state Retarget / Mirror / Foot IK checkboxes (its old state inspector, deleted here) wait for the retarget absorption
+    // humanoid playback (the one retarget path, S21 §12): Unity's state Mirror and Foot IK, and
+    // upstream's Retarget (its clips retargeted whatever the Animator's Retarget)
+    if (ImGui::Checkbox("Retarget", &state.retarget)) changed = true;
+    UIProbe::item("animator.state.retarget");
+    ImGui::SetItemTooltip("Play its clips retargeted from their source model, even with the Animator's Retarget Off");
+    ImGui::SameLine();
+    if (ImGui::Checkbox("Mirror", &state.mirror)) changed = true;
+    UIProbe::item("animator.state.mirror");
+    ImGui::SetItemTooltip("Humanoid playback: left and right swapped (needs a humanoid avatar)");
+    ImGui::SameLine();
+    if (ImGui::Checkbox("Foot IK", &state.footIK)) changed = true;
+    UIProbe::item("animator.state.footIK");
+    ImGui::SetItemTooltip("Humanoid playback: the feet reach the clip's foot goals (needs a humanoid avatar)");
     ImGui::SeparatorText("Transitions");
     for (size_t t = 0; t < state.transitions.size(); t++){
         ImGui::PushID((int)t);
@@ -1930,13 +1940,14 @@ bool AnimatorWindow::drawBlendTree(ControllerDef& def, BlendTreeDef& tree, int d
     std::vector<float> weights(compiled->trees.empty() ? 0 : compiled->trees[0].childCount, 0.0f);
     if (!compiled->trees.empty() && !parameters.empty()) blendTreeWeights(*compiled, compiled->trees[0], parameters.data(), weights.data());
 
-    if (ImGui::BeginTable("##children", tree.type == BlendTreeType::Simple1D || tree.type == BlendTreeType::Direct ? 4 : 5,
+    if (ImGui::BeginTable("##children", tree.type == BlendTreeType::Simple1D || tree.type == BlendTreeType::Direct ? 5 : 6,
                           ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchProp)){
         ImGui::TableSetupColumn("Motion");
         if (tree.type == BlendTreeType::Simple1D) ImGui::TableSetupColumn("Threshold");
         else if (tree.type == BlendTreeType::Direct) ImGui::TableSetupColumn("Parameter");
         else { ImGui::TableSetupColumn("Pos X"); ImGui::TableSetupColumn("Pos Y"); }
         ImGui::TableSetupColumn("Speed");
+        ImGui::TableSetupColumn("Mirror");
         ImGui::TableSetupColumn("");
         ImGui::TableHeadersRow();
         for (size_t c = 0; c < tree.children.size(); c++){
@@ -1974,6 +1985,9 @@ bool AnimatorWindow::drawBlendTree(ControllerDef& def, BlendTreeDef& tree, int d
             ImGui::TableNextColumn();
             ImGui::SetNextItemWidth(-1);
             changed |= ImGui::DragFloat("##speed", &child.timeScale, 0.01f, 0.01f, 10.0f);
+            ImGui::TableNextColumn();
+            changed |= ImGui::Checkbox("##mirror", &child.mirror);
+            ImGui::SetItemTooltip("Flips the state's Mirror for this motion (humanoid playback)");
             ImGui::TableNextColumn();
             if (ImGui::SmallButton(ICON_FA_XMARK)){
                 tree.children.erase(tree.children.begin() + (long)c);

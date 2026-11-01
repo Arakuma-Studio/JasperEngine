@@ -5732,9 +5732,8 @@ void registerWorldTools(McpRegistry& registry) {
         "entity: an Animation's timeline (loop, duration, autoplay, target, actions with kind, keys or tween "
         "values), or for another GameObject the animations targeting it or its children (model clips too) and "
         "the Animation Player playing it (states, layers, mask coverage, bindings; live in play). clip (.anim or "
-        // SYNC4-ABSORB(retarget): upstream's "(humanoid: retarget_report, realised at times)" after root: bindings
-        // waits for the retarget absorption
-        "\"model.gltf#Walk\"): settings, tracks, events, users; times: values sampled there; root: bindings; "
+        "\"model.gltf#Walk\"): settings, tracks, events, users; times: values sampled there; root: bindings (humanoid: "
+        "retarget_report, realised at times); "
         "root + list_properties (a path): its animatable properties. "
         "mask (.mask; root: coverage) or controller (.controller summary).",
         object({

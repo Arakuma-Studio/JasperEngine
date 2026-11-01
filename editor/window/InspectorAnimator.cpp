@@ -239,7 +239,7 @@ void editor::InspectorWindow::drawAnimatorComponent(ComponentType cpType, SceneP
         }
         ImGui::EndDisabled();
         UIProbe::item("animator.configureAvatar");
-        ImGui::SetItemTooltip("Map the model's bones to the humanoid slots (the model's .humanoid file) in the Pose Animation window");
+        ImGui::SetItemTooltip("The model's Avatar (its .humanoid file): bone mapping, fingers, eyes and jaw, twist corrections, a test clip");
     }
 
     // problems and the running states

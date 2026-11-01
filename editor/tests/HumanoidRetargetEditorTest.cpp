@@ -673,11 +673,13 @@ TEST_F(HumanoidEditorTest, ControllerFromClipsKeepsTheHumanoidFlags) {
     flagged.mirror = true;
     flagged.footIK = true;
     player.clips = {plain, flagged};
-    const anim::ControllerData data = animlayersui::controllerFromClips(player);
+    // S21's controller: the entries' flags on its states (the one retarget path plays them)
+    const anim::ControllerDef data = animlayersui::controllerFromClips(player);
     ASSERT_EQ(data.layers.size(), 1u);
-    ASSERT_EQ(data.layers[0].states.size(), 2u);
-    EXPECT_FALSE(data.layers[0].states[0].retarget || data.layers[0].states[0].mirror || data.layers[0].states[0].footIK);
-    EXPECT_TRUE(data.layers[0].states[1].retarget);
-    EXPECT_TRUE(data.layers[0].states[1].mirror);
-    EXPECT_TRUE(data.layers[0].states[1].footIK);
+    const std::vector<anim::StateDef>& states = data.layers[0].machine.states;
+    ASSERT_EQ(states.size(), 2u);
+    EXPECT_FALSE(states[0].retarget || states[0].mirror || states[0].footIK);
+    EXPECT_TRUE(states[1].retarget);
+    EXPECT_TRUE(states[1].mirror);
+    EXPECT_TRUE(states[1].footIK);
 }
