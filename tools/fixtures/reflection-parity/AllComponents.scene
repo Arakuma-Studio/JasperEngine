@@ -2579,3 +2579,142 @@ entities:
         defaultFadeTime: 1.5
         instanceEvents: true
         attachments: []
+  - type: Entity
+    entity: 1080
+    name: TrailRendererComponent
+    components:
+      transform:
+        position: [79, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      trailrenderer:
+        enabled: false
+        time: 6.8
+        minVertexDistance: 7.9
+        widthMultiplier: 7.8
+        emitting: false
+        autodestruct: true
+        widthUnit: pixels
+        numCornerVertices: 5
+        numCapVertices: 2
+        alignment: transform_z
+        textureMode: repeat_per_segment
+        textureScale: [6.8, 3]
+        blendMode: MULTIPLY
+        depthWrite: DISABLED
+  - type: Entity
+    entity: 1081
+    name: CanvasGroupComponent
+    components:
+      transform:
+        position: [80, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      canvasgroup:
+        enabled: false
+        alpha: 0.5
+        interactable: false
+        blocksRaycasts: false
+        ignoreParentGroups: true
+        renderMode: FLATTEN
+  - type: Entity
+    entity: 1082
+    name: OnScreenStickComponent
+    components:
+      transform:
+        position: [81, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      onscreenstick:
+        enabled: false
+        mode: dynamic
+        background: 0
+        handle: 0
+        handleRange: 2.2
+        deadZone: 1.1
+        moveThreshold: 8.4
+        axes: vertical
+        snapX: true
+        snapY: true
+        hideWhenReleased: false
+        clampToArea: false
+        horizontalAction: Reflection parity
+        verticalAction: "text: [1, 2]"
+        visibility: touch_devices_only
+  - type: Entity
+    entity: 1083
+    name: OnScreenButtonComponent
+    components:
+      transform:
+        position: [82, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      onscreenbutton:
+        enabled: false
+        action: Reflection parity
+        value: 1.8
+        pressWhenPointerEnters: true
+        releaseWhenPointerLeaves: true
+        visibility: touch_devices_only
+  - type: Entity
+    entity: 1084
+    name: TouchAreaComponent
+    components:
+      transform:
+        position: [83, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      toucharea:
+        enabled: false
+        horizontalAction: "text: [1, 2]"
+        verticalAction: "text: [1, 2]"
+        sensitivity: 8.9
+        invertX: true
+        invertY: true
+        visibility: touch_devices_only
+  - type: Entity
+    entity: 1085
+    name: RagdollComponent
+    components:
+      transform:
+        position: [84, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ragdoll:
+        enabled: false
+        simulated: true
+        root: 0
+        animator: 0
+        inheritVelocity: false
+        selfCollision: false
+        totalMass: 8.1

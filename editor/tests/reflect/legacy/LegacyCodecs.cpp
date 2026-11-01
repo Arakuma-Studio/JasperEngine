@@ -6,6 +6,7 @@
 #include "reflect/legacy/LegacyCodecs.h"
 #include "util/LightPhotometry.h"
 
+#include "Stream.h"
 #include "StreamSchema.h"
 #include "pool/SoundPool.h"
 #include "util/YamlNumbers.h"
@@ -1233,6 +1234,8 @@ YAML::Node LegacyCodecs::encodeTweenComponent(const TweenComponent& timed) {
     node["loop"] = timed.loop;
     node["pingPong"] = timed.pingPong;
     node["function"] = encodeEase(timed.function);
+    // (upstream's codec since SYNC#4) written when set: older files stay byte-identical
+    if (timed.useUnscaledTime) node["useUnscaledTime"] = true;
 
     return node;
 }
@@ -1251,6 +1254,9 @@ TweenComponent LegacyCodecs::decodeTweenComponent(const YAML::Node& node, const 
     if (node["loop"]) timed.loop = YamlNumbers::as<bool>(node["loop"]);
     if (node["pingPong"]) timed.pingPong = YamlNumbers::as<bool>(node["pingPong"]);
     if (node["function"]) timed.function = decodeEase(node["function"], oldTimed ? &oldTimed->function : nullptr);
+    // written only when set, so absent reads as false (the tables' OmitIfDefault rule; upstream's
+    // decode kept the base's value)
+    timed.useUnscaledTime = node["useUnscaledTime"] ? YamlNumbers::as<bool>(node["useUnscaledTime"]) : false;
 
     return timed;
 }
@@ -1358,6 +1364,8 @@ YAML::Node LegacyCodecs::encodeAlphaTweenComponent(const AlphaTweenComponent& al
 
     node["endAlpha"] = alphaTween.endAlpha;
     node["startAlpha"] = alphaTween.startAlpha;
+    // (upstream's codec since SYNC#4) written when not AUTO: older files stay byte-identical
+    if (alphaTween.alphaTarget != AlphaTweenTarget::AUTO) node["alphaTarget"] = editor::Stream::alphaTweenTargetToString(alphaTween.alphaTarget);
 
     return node;
 }
@@ -1371,6 +1379,9 @@ AlphaTweenComponent LegacyCodecs::decodeAlphaTweenComponent(const YAML::Node& no
 
     if (node["endAlpha"]) alphaTween.endAlpha = YamlNumbers::as<float>(node["endAlpha"]);
     if (node["startAlpha"]) alphaTween.startAlpha = YamlNumbers::as<float>(node["startAlpha"]);
+    // written only away from AUTO, so absent reads as AUTO (the tables' OmitIfDefault rule)
+    alphaTween.alphaTarget = node["alphaTarget"] ? editor::Stream::stringToAlphaTweenTarget(node["alphaTarget"].as<std::string>())
+                                                 : AlphaTweenTarget::AUTO;
 
     return alphaTween;
 }

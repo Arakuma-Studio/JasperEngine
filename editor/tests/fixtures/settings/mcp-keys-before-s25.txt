@@ -1,16 +1,17 @@
 # The keys get_project_settings listed before S25 (oe-port 2510b5069, editor/mcp/tools/ProjectTools.cpp
 # settingsTable): SettingsRegistry.CoversMcpKeys checks each is still a wired MCP row.
 # (plus S28's player.crash.* keys, which its branch had before merging S25)
+# (less android.keep_screen_on and android.orientation: upstream renamed them in SYNC#4, to
+# player.keep_screen_on and player.default_orientation / player.allowed_orientations; ProjectTools'
+# renamedSettings tells an agent asking for the old keys)
 android.abis
 android.adaptive_icon_background
 android.adaptive_icon_foreground
 android.allow_backup
 android.application_name
 android.fullscreen
-android.keep_screen_on
 android.launcher_icon
 android.min_sdk
-android.orientation
 android.package_name
 android.permissions
 android.target_sdk
