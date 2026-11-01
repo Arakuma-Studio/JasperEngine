@@ -55,9 +55,7 @@ android {
                     abiFilters(*onlyAbis.split(","))
                 }
 
-                // the C++ runtime linked into the one engine library (docs/specs/S34-player-size.md R12):
-                // its release link keeps only what the engine uses, and no libc++_shared.so ships
-                arguments "-DANDROID_STL=c++_static"
+                arguments "-DANDROID_STL=c++_shared"
                 if (jasperPlayer) {
                     // 16 KB pages (Android 15): the editor's zipalign -P 16 keeps the alignment
                     arguments "-DJASPERENGINE_PLAYER=ON", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"

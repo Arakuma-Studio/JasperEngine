@@ -356,3 +356,37 @@ and 3D physics are next; 2D physics and navigation are small. Release variants:
 | lite2d | physics2d, navigation | 11.6 / 7.7 / 6.7 |
 
 Navigation stays in every variant (its Project Settings switch keeps deciding the Compile build).
+
+**M6. `-Os`/`-Oz` against the benchmarks** (D8): Clang 18 (the compiler family of Android and the
+web) on server E's four quiet cores, the core benchmarks (`je-bench-anim`, `-particles`,
+`-picking`, `-nav`, `-splines`, `-jobs`, `-memory` and the `*Bench*` suites of
+`jasperengine-core-tests`), the medians of three rounds, against `-O2` (Android's level, CMake's
+`RelWithDebInfo` in the NDK):
+
+| bench | -O2 | -O3 | -Os | -Oz |
+|---|---|---|---|---|
+| Animator crowd of 200, serial p50 (ms) | 3.67 | 3.54 (-3 %) | 4.33 (+18 %) | 5.16 (+41 %) |
+| two-pose blend, 128 bones (us) | 0.570 | 0.572 (+1 %) | 0.634 (+11 %) | 0.753 (+32 %) |
+| input actions, 100 actions / 300 bindings (us) | 9.70 | 9.82 (+1 %) | 13.6 (+40 %) | 15.8 (+63 %) |
+| shadow cascade fit + slot keys (us) | 1.08 | 1.01 (-7 %) | 1.22 (+13 %) | 1.44 (+33 %) |
+| 10 character controllers + the physics step (ms) | 0.255 | 0.249 (-2 %) | 0.267 (+5 %) | 0.328 (+29 %) |
+| particles, 100k prep (ms) | 0.999 | 1.012 (+1 %) | 1.110 (+11 %) | 1.318 (+32 %) |
+| navmesh city bake (s) | 0.197 | 0.192 (-2 %) | 0.219 (+11 %) | 0.239 (+22 %) |
+| spline evaluate (ns) | 21.8 | 22.0 (+1 %) | 38.3 (+75 %) | 42.8 (+96 %) |
+| BVH build (Mtris/s, more is better) | 2.51 | 2.59 (+3 %) | 2.13 (-15 %) | 2.01 (-20 %) |
+| UASTC chain to BC7 (ms) | 28.9 | 30.1 (+4 %) | 34.1 (+18 %) | 36.2 (+25 %) |
+| code (`.text` of the test binary, MB) | 41.7 | 45.0 | 31.0 (-26 %) | 25.5 (-39 %) |
+
+`-Os` and `-Oz` take a quarter to two fifths of the code and cost 5 to 96 % on the hot paths, so
+neither is adopted for a whole target; `-O3` against `-O2` is within ±7 % either way, so the
+targets keep their levels. What is cold by construction gets the size optimisation without a
+cost: LuaBridge's registration functions (D6, `cold`).
+
+**M7. The Lua bindings** (`LuaBindingBench`, ns per call on E, medians of six interleaved runs
+of two builds of this branch, without and with D6): Vector3 constructor and `+` 568 / 562,
+`length` 103 / 103, a property get and set 126 / 126, `dotProduct` 142 / 140,
+`GameObject:setPosition` 346 / 351, `go:getWorldPosition()` 318 / 309, `go.position` 265 / 210,
+`isEntityCreated` 209 / 206, `Engine.deltatime` 123 / 123: no cost (the spread of one case between
+runs is larger than any difference). With functor userdata without a `__gc` metatable (dropped
+from D6) `go:getWorldPosition()` took 317-408 ns and `go.position` 467-577 ns in every run,
+against 203-212 ns for both before.
