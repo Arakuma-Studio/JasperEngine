@@ -48,12 +48,25 @@ namespace jasperengine::editor{
     // Catalog.h
     enum class ComponentType : int;
 
+    // An animatable property as a track names it (anim-properties spec 5.1): the Catalog
+    // component key ("ui", "light"), "gameobject" or "script:<Class>", and the whole property
+    // (no swizzle)
+    struct ClipPropertyKey{
+        std::string component;
+        std::string property;
+        bool empty() const { return component.empty(); }
+        bool operator==(const ClipPropertyKey& other) const { return component == other.component && property == other.property; }
+        bool operator!=(const ClipPropertyKey& other) const { return !(*this == other); }
+    };
+
     // A value as Record writes it: the channel's flattened key value (ClipKey::value layout:
-    // position/scale 3, rotation 4 x y z w, morph one per target, lattice 3 per point of `points`)
+    // position/scale 3, rotation 4 x y z w, morph one per target, lattice 3 per point of `points`;
+    // a property its whole value in key space: sRGB colours, cone degrees, bools 0/1)
     struct ClipRecordValue{
         ClipChannel channel = ClipChannel::Position;
         std::vector<float> value;
         std::vector<int> points;            // lattice only: the flat indices `value` lists
+        ClipPropertyKey property;           // channel Property only
     };
 
     struct ClipRecordListener{
@@ -64,7 +77,13 @@ namespace jasperengine::editor{
         // (T3c) the open clip has a track for this channel of this entity (the Inspector tints
         // animated rows stronger than rows Record would only start keying); optional
         std::function<bool(uint32_t sceneId, Entity entity, ClipChannel channel)> animates;
+        // the same for an animatable property (channel Property): record() gets its values
+        std::function<bool(uint32_t sceneId, Entity entity, const ClipPropertyKey& property)> claimsProperty;
+        std::function<bool(uint32_t sceneId, Entity entity, const ClipPropertyKey& property)> animatesProperty;
     };
+
+    // a scene write of an animatable property (PropertyCmd, the active and enabled checkboxes)
+    using PropertyWriteListener = std::function<void(uint32_t sceneId, Entity entity, const ClipPropertyKey& property)>;
 
     // (T3c) who holds a record gesture: each source owns its own, so one source's open gesture
     // never merges (or records) another source's edits
@@ -103,8 +122,28 @@ namespace jasperengine::editor{
 
         // The channels a component write touches (implemented): Transform "position" / "rotation"
         // / "scale" that one, "" (the whole component) all three, other Transform properties none;
-        // LatticeComponent "offsets" or "" Lattice; MeshComponent "" or "morphWeights[i]" Morph; anything else none
+        // LatticeComponent "offsets" or "" Lattice; MeshComponent "" or "morphWeights[i]" Morph;
+        // a property of the animatable registry (anim-properties: "ui" "color", "light"
+        // "intensity", "enabled" of a component with the checkbox) Property; anything else none
         static std::vector<ClipChannel> channelsOf(ComponentType type, const std::string& property);
+        // The animatable property a Catalog (component, property) write is (propertyOf), false
+        // when none: the registry name (submesh material rows "submeshes[N]...", shader-library
+        // members) or "enabled"; script properties go through scriptPropertyOf
+        static bool propertyOf(ComponentType type, const std::string& property, ClipPropertyKey& out);
+        // A Lua script's declared property, "script:<Class>" "<name>"
+        static ClipPropertyKey scriptPropertyOf(const std::string& className, const std::string& name);
+        static ClipPropertyKey activeProperty();    // "gameobject" "active"
+
+        // ---- property record and writes (anim-properties spec 10) ----
+
+        static bool claimsProperty(uint32_t sceneId, Entity entity, const ClipPropertyKey& property);
+        static bool claimsAnyProperty(uint32_t sceneId, const std::vector<Entity>& entities, const ClipPropertyKey& property);
+        static bool animatesProperty(uint32_t sceneId, Entity entity, const ClipPropertyKey& property);
+        static Id addBeforePropertyWrite(PropertyWriteListener listener);
+        static Id addAfterPropertyWrite(PropertyWriteListener listener);
+        // (removed with removeChannelWriteListener)
+        static void beforePropertyWrite(uint32_t sceneId, Entity entity, const ClipPropertyKey& property);
+        static void afterPropertyWrite(uint32_t sceneId, Entity entity, const ClipPropertyKey& property);
         // before/afterChannelWrite for every channel of channelsOf (the command call sites)
         static void beforeComponentWrite(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property);
         static void afterComponentWrite(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property);

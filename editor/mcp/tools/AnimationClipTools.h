@@ -27,6 +27,9 @@ namespace jasperengine::editor::mcp::clip_tools {
     void editClip(const CallPtr& call);
     // get_animation with `clip`: the file (or a model sub-clip), `times` sampled, `root` bindings
     void getClip(const CallPtr& call);
+    // get_animation {root, list_properties: "<path>"}: what a property track can animate on that
+    // GameObject [{component, property, kind, label, group, value, discrete?}] (anim-properties)
+    void listProperties(const CallPtr& call);
 
     // The arguments one mode refuses with a fix-it message (two-way table of 9.R29); "" when
     // none. `fileMode`: the call has `clip`.

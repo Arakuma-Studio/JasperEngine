@@ -37,12 +37,13 @@ namespace jasperengine::editor{
         Ok,
         MissingPath,            // no entity at the path (`nearest` suggests)
         DuplicateSiblingName,   // resolved, but a segment without "#N" names several siblings
-        MissingComponent,       // no Transform / no morph targets / no LatticeComponent
+        MissingComponent,       // no Transform / no morph targets / no LatticeComponent / no property target
         LatticeIndexOutOfRange, // points outside the bound cage (`badPoints`)
         MorphIndexOutOfRange,   // more weights than the mesh has morph targets
         LegacyModelLayout,      // under a model loaded without its node hierarchy (R3)
         UnaddressableName,      // a name on the way has '/' or ends in "#<digits>"
-        NotSampled,             // a reserved property track
+        NotSampled,             // (unused since property tracks play: kept for the tools' names)
+        UnknownProperty,        // a property track of a (component, property) that is not animatable
         Unchecked               // no root given
     };
 
@@ -56,6 +57,10 @@ namespace jasperengine::editor{
         size_t track = 0;
         std::string path;
         ClipChannel channel = ClipChannel::Position;
+        // property tracks: "component.property" ("ui.color.a", "script:Torch.glow"); the binding's
+        // reason when it does not bind ("no 'light' component", "did you mean 'intensity'?")
+        std::string property;
+        std::string reason;
         TrackBindingStatus status = TrackBindingStatus::Unchecked;
         Entity entity = NULL_ENTITY;            // the bound entity when resolved
         std::vector<std::string> nearest;       // MissingPath: existing paths, nearest first
@@ -108,7 +113,7 @@ namespace jasperengine::editor{
         static std::vector<std::string> scriptFunctions(Project* project, SceneProject* scene, Entity entity);
         // existing paths under `root` nearest to `path` by edit distance, at most `max`
         static std::vector<std::string> nearestPaths(EntityRegistry* registry, Entity root, const std::string& path, size_t max = 3);
-        // "Arm/Hand : Position" (window rows, tool texts)
+        // "Arm/Hand : Position", "Panel : ui.color" (window rows, tool texts)
         static std::string trackLabel(const ClipTrackData& track);
         // The side a bone name says, 'L' or 'R' (0 when none or both), from the last path segment's
         // words: split at separators (. _ - space :) and camelCase boundaries, a word "Left" /

@@ -235,7 +235,7 @@ TEST(PropertyClipIO, EveryKindParsesAndWritesCanonically){
     const ClipTrackData& alpha = data.tracks[3];
     EXPECT_EQ(alpha.width, 1u);
     EXPECT_EQ(alpha.swizzle, 3);
-    EXPECT_EQ(alpha.keys[0].tangentMode, TangentMode::Auto);
+    EXPECT_EQ(alpha.keys[0].tangentMode, ClipTangentMode::Auto);
     const ClipTrackData& lamp = data.tracks[4];
     ASSERT_EQ(lamp.keys[0].value.size(), 3u);
     EXPECT_NEAR(lamp.keys[0].value[1], 128.0f / 255.0f, 1e-6f);
@@ -310,15 +310,15 @@ TEST(PropertyClipIO, TangentModesRoundTripOnEveryChannel){
     ClipKey first = key(0, {0, 0, 0});
     first.inTangent = {0, 0, 0};
     first.outTangent = {1, 0, 0};
-    first.tangentMode = TangentMode::Free;
+    first.tangentMode = ClipTangentMode::Free;
     ClipKey second = key(1, {1, 0, 0});
     second.inTangent = {1, 0, 0};
     second.outTangent = {1, 0, 0};
-    second.tangentMode = TangentMode::Broken;
+    second.tangentMode = ClipTangentMode::Broken;
     position.keys = {first, second};
     data.tracks.push_back(position);
     ClipKey linear = key(0.5f, {2, 0, 0});
-    linear.tangentMode = TangentMode::Linear;  // no tangents: not written
+    linear.tangentMode = ClipTangentMode::Linear;  // no tangents: not written
     data.tracks.push_back(position);
     data.tracks.back().channel = ClipChannel::Scale;
     data.tracks.back().keys.push_back(linear);
@@ -327,8 +327,8 @@ TEST(PropertyClipIO, TangentModesRoundTripOnEveryChannel){
     EXPECT_NE(text.find("\"tangent_mode\": \"broken\""), std::string::npos);
     anim::ClipParseResult parsed = anim::parseClip(text);
     ASSERT_TRUE(parsed.ok());
-    EXPECT_EQ(parsed.data->tracks[0].keys[0].tangentMode, TangentMode::Free);
-    EXPECT_EQ(parsed.data->tracks[0].keys[1].tangentMode, TangentMode::Broken);
+    EXPECT_EQ(parsed.data->tracks[0].keys[0].tangentMode, ClipTangentMode::Free);
+    EXPECT_EQ(parsed.data->tracks[0].keys[1].tangentMode, ClipTangentMode::Broken);
     EXPECT_EQ(anim::writeClip(*parsed.data), text);
 }
 

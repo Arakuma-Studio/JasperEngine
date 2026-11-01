@@ -447,7 +447,7 @@ namespace{
                     key.inTangent.clear();
                     key.outTangent.clear();
                 }
-                key.tangentMode = TangentMode::None;
+                key.tangentMode = ClipTangentMode::None;
                 if (key.ease != EaseType::LINEAR && key.ease != EaseType::STEP && !easeWarned){
                     easeWarned = true;
                     warn(warnings, member(keyPath, "ease"), std::string("ignored: ") + anim::kindName(track.kind) + " properties step");
@@ -614,7 +614,8 @@ namespace{
             if (key.ease == EaseType::CUSTOM){
                 key.ease = EaseType::LINEAR;
             }
-            if (key.hasTangents() && key.ease != EaseType::LINEAR){
+            // (a step stays: Unity's Constant tangent, its segment holds the key's value)
+            if (key.hasTangents() && key.ease != EaseType::LINEAR && key.ease != EaseType::STEP){
                 warn(warnings, member(keyPath, "ease"), "tangents win over the ease: ease ignored");
                 key.ease = EaseType::LINEAR;
             }
@@ -700,8 +701,8 @@ namespace{
             }
             key.inTangent = k > 0 ? before : after;
             key.outTangent = k + 1 < track.keys.size() ? after : before;
-            // tangents win over the ease
-            if (key.ease != EaseType::LINEAR){
+            // tangents win over the ease (a step stays: a Constant segment)
+            if (key.ease != EaseType::LINEAR && key.ease != EaseType::STEP){
                 warn(warnings, member(origin.keys[k], "ease"), "ignored: the track uses tangents");
                 key.ease = EaseType::LINEAR;
             }
@@ -854,7 +855,7 @@ namespace{
             completeTangents(track, origin, warnings);
             // the editor hint only on keys with tangents
             for (ClipKey& key : track.keys){
-                if (!key.hasTangents()) key.tangentMode = TangentMode::None;
+                if (!key.hasTangents()) key.tangentMode = ClipTangentMode::None;
             }
         }
         data.tracks = std::move(tracks);
@@ -1116,7 +1117,7 @@ namespace{
         ParsedValue in;
         ParsedValue out;
         bool tangents = false;
-        TangentMode tangentMode = TangentMode::None;
+        ClipTangentMode tangentMode = ClipTangentMode::None;
         size_t origin = 0;
     };
 
@@ -1191,7 +1192,7 @@ namespace{
             if (tangentMode->is_string()){
                 for (size_t i = 1; i < sizeof(tangentModeNames) / sizeof(tangentModeNames[0]); i++){
                     if (tangentMode->get<std::string>() == tangentModeNames[i]){
-                        key.tangentMode = (TangentMode)i;
+                        key.tangentMode = (ClipTangentMode)i;
                         found = true;
                     }
                 }
@@ -1490,7 +1491,7 @@ namespace{
             if (key.ease != EaseType::LINEAR) text += std::string(", \"ease\": ") + quote(anim::easeName(key.ease));
             text += ", \"in\": " + valueText(track, key.inTangent, true) + ", \"out\": " + valueText(track, key.outTangent, true);
             const size_t mode = (size_t)key.tangentMode;
-            if (key.tangentMode != TangentMode::None && mode < sizeof(tangentModeNames) / sizeof(tangentModeNames[0])){
+            if (key.tangentMode != ClipTangentMode::None && mode < sizeof(tangentModeNames) / sizeof(tangentModeNames[0])){
                 text += std::string(", \"tangent_mode\": ") + quote(tangentModeNames[mode]);
             }
             return text + "}";

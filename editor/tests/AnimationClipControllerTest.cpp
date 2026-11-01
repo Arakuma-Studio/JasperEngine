@@ -44,6 +44,24 @@
 #include "util/EntityClipboard.h"
 #include "window/InspectorWindowClips.h"
 #include "animation/ClipEditorUtil.h"
+#include "animation/ClipPropertyNames.h"
+#include "animation/ClipTangents.h"
+#include "animation/PropertyBindings.h"
+#include "component/AudioSourceComponent.h"
+#include "component/ButtonComponent.h"
+#include "component/CameraComponent.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/FogComponent.h"
+#include "component/ImageComponent.h"
+#include "component/Light2DComponent.h"
+#include "component/LightComponent.h"
+#include "component/ProgressbarComponent.h"
+#include "component/RectTransformComponent.h"
+#include "component/SkyboxComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/UIComponent.h"
+#include "util/Color.h"
+#include "window/InspectorWindow.h"
 
 #include "imgui.h"
 #include "component/ModelComponent.h"
@@ -1941,4 +1959,287 @@ TEST_F(AnimationClipControllerTest, HermiteRotationEditsKeepTheKeySideAndDoNotFl
     anim::alignQuaternionKey(flipped, {0, -0.6f, 0, -0.8f});
     EXPECT_EQ(flipped, (std::vector<float>{0, -0.6f, 0, -0.8f}));
     EXPECT_EQ(clipui::alignedRotationKeyValue(turn, 1.0f, {0, 0.6f, 0, 0.8f}), (std::vector<float>{0, -0.6f, 0, -0.8f}));
+}
+
+// ---- property tracks in the editor (anim-properties spec 15, editor tests) -----------------
+
+namespace {
+
+    bool compatibleType(PropertyKind kind, PropertyType type){
+        switch (kind){
+            case PropertyKind::Bool: return type == PropertyType::Bool;
+            case PropertyKind::Int: return type == PropertyType::Int || type == PropertyType::UInt;
+            case PropertyKind::Float: return type == PropertyType::Float || type == PropertyType::Double;
+            case PropertyKind::Vector2: return type == PropertyType::Vector2;
+            case PropertyKind::Vector3:
+            case PropertyKind::Color3: return type == PropertyType::Vector3;
+            case PropertyKind::Vector4:
+            case PropertyKind::Color4: return type == PropertyType::Vector4;
+            default: return false;
+        }
+    }
+
+    // a UI hierarchy under the clip scene's Hero: Panel (Image) > Label (Text)
+    Entity addImage(ClipScene& s, const std::string& name, Entity parent, const Vector4& srgb){
+        const Entity entity = addObject(s, name, parent, Vector3(0, 0, 0));
+        UIComponent ui;
+        ui.color = Color::sRGBToLinear(srgb);
+        s.scene->addComponent<UIComponent>(entity, ui);
+        s.scene->addComponent<RectTransformComponent>(entity, {});
+        s.scene->addComponent<ImageComponent>(entity, {});
+        return entity;
+    }
+
+}
+
+// decision 2: every registry row is a Catalog property of a compatible type, by the same name
+TEST(PropertyRegistryCatalog, EveryRowIsACatalogPropertyOfACompatibleType){
+    Scene scene;
+    const Entity e = scene.createEntity();
+    scene.addComponent<Transform>(e, {});
+    scene.addComponent<UIComponent>(e, {});
+    scene.addComponent<ButtonComponent>(e, {});
+    scene.addComponent<RectTransformComponent>(e, {});
+    scene.addComponent<CanvasGroupComponent>(e, {});
+    scene.addComponent<ProgressbarComponent>(e, {});
+    MeshComponent mesh;
+    mesh.numSubmeshes = 1;
+    scene.addComponent<MeshComponent>(e, mesh);
+    scene.addComponent<SpriteComponent>(e, {});
+    scene.addComponent<LightComponent>(e, {});
+    scene.addComponent<Light2DComponent>(e, {});
+    scene.addComponent<CameraComponent>(e, {});
+    scene.addComponent<AudioSourceComponent>(e, {});
+    scene.addComponent<FogComponent>(e, {});
+    scene.addComponent<SkyboxComponent>(e, {});
+    size_t checked = 0;
+    for (const anim::AnimatableProperty& row : anim::animatableProperties()){
+        const std::string component = row.component;
+        std::string property = row.property;
+        // pseudo rows (GameObject active, the sprite frame) and shader members (from manifests)
+        if (component == "gameobject" || (component == "sprite" && property == "frame") || row.kind == PropertyKind::None) continue;
+        const size_t n = property.find("[N]");
+        if (n != std::string::npos) property.replace(n, 3, "[0]");
+        ComponentType type = ComponentType::Transform;
+        bool found = false;
+        for (int i = 0; i < ComponentTypeCount && !found; i++){
+            if (Catalog::getComponentName(static_cast<ComponentType>(i), true) == component){
+                type = static_cast<ComponentType>(i);
+                found = true;
+            }
+        }
+        ASSERT_TRUE(found) << "a Catalog component key: " << component;
+        if (property == "enabled"){
+            EXPECT_TRUE(Catalog::hasEnabledProperty(type)) << component;
+            EXPECT_NE(type, ComponentType::AnimationPlayerComponent);
+            checked++;
+            continue;
+        }
+        // (the canvas group's and the shadow casters' own rows are checked where they live)
+        if (type == ComponentType::CanvasGroupComponent && property != "alpha" && property != "interactable") continue;
+        const PropertyData typed = Catalog::findProperty(&scene, e, type, property);
+        ASSERT_TRUE(typed.ref) << "the Catalog has " << component << "." << property;
+        EXPECT_TRUE(compatibleType(row.kind, typed.type)) << component << "." << property << " is a " << anim::kindName(row.kind);
+        checked++;
+    }
+    EXPECT_GT(checked, 60u);
+    EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::UIComponent, "color"), (std::vector<ClipChannel>{ClipChannel::Property}));
+    EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::LightComponent, "intensity"), (std::vector<ClipChannel>{ClipChannel::Property}));
+    EXPECT_TRUE(ClipRecordHooks::channelsOf(ComponentType::MeshComponent, "castShadows").empty()) << "not animatable";
+    EXPECT_TRUE(ClipRecordHooks::channelsOf(ComponentType::AnimationPlayerComponent, "enabled").empty());
+}
+
+// test 13: Clamped Auto, and the tangent edits of the curves view
+TEST(ClipTangents, ClampedAutoModesAndSides){
+    EXPECT_FLOAT_EQ(cliptangents::clampedAutoSlope(0, 0, 1, 1, 2, 0.5f, true, true), 0.0f) << "a local extremum is flat";
+    EXPECT_FLOAT_EQ(cliptangents::clampedAutoSlope(0, 0, 1, 1, 2, 2, true, true), 1.0f);
+    EXPECT_FLOAT_EQ(cliptangents::clampedAutoSlope(0, 0, 1, 1, 2, 2, false, true), 0.0f) << "an end key is flat";
+    EXPECT_FLOAT_EQ(cliptangents::clampedAutoSlope(0, 0, 1, 0.1f, 1.1f, 1.1f, true, true), 0.3f) << "limited: no overshoot";
+
+    ClipTrackData track;
+    track.channel = ClipChannel::Property;
+    track.component = "light";
+    track.property = "intensity";
+    track.keys = {key(0, {0}), key(1, {1}), key(2, {2})};
+    ClipData data;
+    data.tracks = {track};
+    anim::normalize(data, nullptr);
+    ClipTrackData& t = data.tracks[0];
+    ASSERT_TRUE(cliptangents::editable(t));
+    cliptangents::setMode(t, 1, ClipTangentMode::Auto);
+    for (const ClipKey& k : t.keys) ASSERT_TRUE(k.hasTangents()) << "the track's other keys got linear tangents";
+    EXPECT_FLOAT_EQ(t.keys[1].inTangent[0], 1.0f);
+    EXPECT_FLOAT_EQ(t.keys[1].outTangent[0], 1.0f);
+    EXPECT_EQ(t.keys[1].tangentMode, ClipTangentMode::Auto);
+    // Auto follows when a neighbour moves
+    t.keys[2].value = {1};
+    cliptangents::refresh(t);
+    EXPECT_FLOAT_EQ(t.keys[1].outTangent[0], 0.0f) << "now a plateau: flat";
+    // Broken keeps the sides independent; a handle of a smooth key is mirrored
+    cliptangents::setMode(t, 1, ClipTangentMode::Free);
+    cliptangents::setSlope(t, 1, 0, cliptangents::Side::Right, 2.0f);
+    EXPECT_FLOAT_EQ(t.keys[1].inTangent[0], 2.0f) << "mirrored";
+    cliptangents::setMode(t, 1, ClipTangentMode::Broken);
+    cliptangents::setSlope(t, 1, 0, cliptangents::Side::Left, -1.0f);
+    EXPECT_FLOAT_EQ(t.keys[1].inTangent[0], -1.0f);
+    EXPECT_FLOAT_EQ(t.keys[1].outTangent[0], 2.0f) << "broken: the other side stays";
+    // Constant: the right side is the key's step, the left the previous key's
+    cliptangents::setSide(t, 1, cliptangents::Side::Right, cliptangents::SideType::Constant);
+    EXPECT_EQ(t.keys[1].ease, EaseType::STEP);
+    cliptangents::setSide(t, 1, cliptangents::Side::Left, cliptangents::SideType::Constant);
+    EXPECT_EQ(t.keys[0].ease, EaseType::STEP);
+    cliptangents::setSide(t, 1, cliptangents::Side::Both, cliptangents::SideType::Linear);
+    EXPECT_EQ(t.keys[1].tangentMode, ClipTangentMode::Linear);
+    EXPECT_EQ(t.keys[1].ease, EaseType::LINEAR);
+    EXPECT_EQ(t.keys[0].ease, EaseType::LINEAR);
+    // a step with tangents survives the format (a Constant segment)
+    cliptangents::setSide(t, 0, cliptangents::Side::Right, cliptangents::SideType::Constant);
+    anim::ClipParseResult reread = anim::parseClip(anim::writeClip(data));
+    ASSERT_TRUE(reread.ok());
+    EXPECT_EQ(reread.data->tracks[0].keys[0].ease, EaseType::STEP);
+    EXPECT_TRUE(reread.data->tracks[0].keys[0].hasTangents());
+    // rotations and stepped properties are not tangent curves
+    ClipTrackData rotation;
+    rotation.channel = ClipChannel::Rotation;
+    EXPECT_FALSE(cliptangents::editable(rotation));
+    ClipTrackData active;
+    active.channel = ClipChannel::Property;
+    active.known = true;
+    active.discrete = true;
+    EXPECT_FALSE(cliptangents::editable(active));
+}
+
+TEST_F(AnimationClipControllerTest, AddPropertyListsAndNamesUiProperties) {
+    ClipScene s = clipScene();
+    const Entity panel = addImage(s, "Panel", s.hero, Vector4(1, 0.5f, 0.2f, 1));
+    const std::vector<anim::AnimatablePropertyInfo> listed = anim::listAnimatableProperties(s.scene, panel);
+    auto find = [&](const std::string& component, const std::string& property) -> const anim::AnimatablePropertyInfo* {
+        for (const anim::AnimatablePropertyInfo& info : listed){
+            if (info.component == component && info.property == property) return &info;
+        }
+        return nullptr;
+    };
+    ASSERT_TRUE(find("gameobject", "active")) << "GameObject : Active";
+    const anim::AnimatablePropertyInfo* colour = find("ui", "color");
+    ASSERT_TRUE(colour);
+    EXPECT_EQ(colour->label, "Color");
+    EXPECT_EQ(colour->kind, PropertyKind::Color4) << "the popup offers its Alpha only (color.a)";
+    EXPECT_TRUE(find("ui", "enabled"));
+    EXPECT_TRUE(find("recttransform", "positionOffset"));
+    EXPECT_FALSE(find("light", "intensity")) << "only the components it has";
+    EXPECT_EQ(ClipPropertyNames::groupLabel(s.scene, panel, "ui"), "Image");
+    EXPECT_EQ(ClipPropertyNames::propertyLabel("ui", "color.a"), "Color (Alpha)");
+    EXPECT_EQ(ClipPropertyNames::propertyLabel("recttransform", "positionOffset"), "Anchored Position");
+    std::string component, property, error;
+    ASSERT_TRUE(ClipPropertyNames::resolve("Image", "color", component, property, error)) << error;
+    EXPECT_EQ(component, "ui") << "an Inspector name resolves to the Catalog key";
+    EXPECT_FALSE(ClipPropertyNames::resolve("light", "fooBar", component, property, error));
+    EXPECT_NE(error.find("did you mean"), std::string::npos) << error;
+    EXPECT_NE(error.find("intensity"), std::string::npos) << "the component's animatable properties are listed: " << error;
+
+    // Add Property keys the current value (sRGB) at the playhead
+    AnimationClipController& c = controller();
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    c.setTime(0.5f);
+    size_t track = 0;
+    ASSERT_TRUE(c.addPropertyTrack("Panel", "ui", "color.a", &track, &error)) << error;
+    const ClipTrackData& added = c.getDocument()->data().tracks[track];
+    EXPECT_EQ(added.property, "color.a");
+    ASSERT_EQ(added.keys.size(), 1u);
+    EXPECT_NEAR(added.keys[0].value[0], 1.0f, 1e-5f);
+    EXPECT_FALSE(c.addPropertyTrack("Panel", "ui", "color.a", nullptr, &error)) << "already animated";
+    EXPECT_FALSE(c.addPropertyTrack("Panel", "light", "intensity", nullptr, &error)) << "no Light on Panel";
+    EXPECT_FALSE(s.sceneProject->isModified);
+}
+
+TEST_F(AnimationClipControllerTest, RecordKeysPropertiesInKeySpaceAndThePreviewRestores) {
+    ClipScene s = clipScene();
+    const Entity panel = addImage(s, "Panel", s.hero, Vector4(1, 0.5f, 0.2f, 1));
+    const Vector4 restColour = s.scene->getComponent<UIComponent>(panel).color;
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    c.setTime(0.5f);
+    c.setRecording(true);
+    ASSERT_TRUE(c.isRecording());
+    const ClipPropertyKey colourKey{"ui", "color"};
+    EXPECT_TRUE(ClipRecordHooks::claimsProperty(s.id, panel, colourKey));
+    EXPECT_FALSE(ClipRecordHooks::claimsProperty(s.id, s.prop, ClipRecordHooks::activeProperty())) << "not under the root";
+    EXPECT_FALSE(ClipRecordHooks::animatesProperty(s.id, panel, colourKey)) << "Record would start keying it";
+
+    // an Inspector colour edit: the row's command (a linear value), recorded instead of run
+    const size_t projectSteps = project()->getProjectCommandHistory()->position();
+    const size_t sceneSteps = CommandHandle::get(s.id)->position();
+    ImGuiContext* previous = ImGui::GetCurrentContext();
+    ImGuiContext* context = ImGui::CreateContext();
+    ImGui::SetCurrentContext(context);
+    {
+        InspectorWindow inspector(project());
+        PropertyCmd<Vector4> command(project(), s.id, panel, ComponentType::UIComponent, "color", Color::sRGBToLinear(Vector4(0.2f, 0.4f, 0.6f, 0.5f)));
+        ASSERT_TRUE(inspector.recordPropertyCommand(s.sceneProject, ComponentType::UIComponent, "color", &command));
+        inspector.finishRecordRow();
+        // the GameObject's active checkbox keys a bool
+        ASSERT_TRUE(inspector.recordPropertyToggle(s.sceneProject, {panel}, ComponentType::Transform, ClipRecordHooks::activeProperty(), false));
+    }
+    ImGui::DestroyContext(context);
+    ImGui::SetCurrentContext(previous);
+    EXPECT_EQ(CommandHandle::get(s.id)->position(), sceneSteps) << "no scene command";
+    EXPECT_EQ(project()->getProjectCommandHistory()->position(), projectSteps + 2) << "project steps";
+    EXPECT_FALSE(s.sceneProject->isModified);
+    const ClipData& data = c.getDocument()->data();
+    const int colourTrack = data.findPropertyTrack("Panel", "ui", "color");
+    ASSERT_GE(colourTrack, 0);
+    const ClipKey& colourKeyed = data.tracks[(size_t)colourTrack].keys[0];
+    EXPECT_NEAR(colourKeyed.time, 0.5f, 1e-6f) << "at the playhead";
+    EXPECT_NEAR(colourKeyed.value[0], 0.2f, 1e-4f) << "keyed in sRGB";
+    EXPECT_NEAR(colourKeyed.value[2], 0.6f, 1e-4f);
+    EXPECT_NEAR(colourKeyed.value[3], 0.5f, 1e-5f);
+    const int activeTrack = data.findPropertyTrack("Panel", "gameobject", "active");
+    ASSERT_GE(activeTrack, 0);
+    EXPECT_EQ(data.tracks[(size_t)activeTrack].kind, PropertyKind::Bool);
+    EXPECT_EQ(data.tracks[(size_t)activeTrack].keys[0].value, std::vector<float>{0.0f});
+    EXPECT_FALSE(s.scene->isEntityActive(panel)) << "the live value shows";
+    EXPECT_TRUE(ClipRecordHooks::animatesProperty(s.id, panel, colourKey));
+    // undo is a project step
+    ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
+    EXPECT_LT(c.getDocument()->data().findPropertyTrack("Panel", "gameobject", "active"), 0) << "the active key undone";
+
+    // stop: the scene is back (active and colour), unmodified
+    c.stopPreview();
+    EXPECT_TRUE(s.scene->isEntityActive(panel));
+    const Vector4 now = s.scene->getComponent<UIComponent>(panel).color;
+    EXPECT_FLOAT_EQ(now.x, restColour.x);
+    EXPECT_FLOAT_EQ(now.w, restColour.w);
+    EXPECT_FALSE(s.sceneProject->isModified);
+}
+
+TEST_F(AnimationClipControllerTest, TangentEditsAreClipStepsAndAHandleDragIsOne) {
+    ClipScene s = clipScene();
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    // the Arm's position: keys at 0 and 1 (linear)
+    const int arm = c.getDocument()->data().findTrack("Arm", ClipChannel::Position);
+    ASSERT_GE(arm, 0);
+    const size_t start = project()->getProjectCommandHistory()->position();
+    ASSERT_TRUE(c.setTangentMode({{(size_t)arm, 1}}, ClipTangentMode::Auto, &error)) << error;
+    const ClipTrackData& track = c.getDocument()->data().tracks[(size_t)arm];
+    ASSERT_TRUE(track.keys[1].hasTangents());
+    EXPECT_EQ(track.keys[1].tangentMode, ClipTangentMode::Auto);
+    EXPECT_FLOAT_EQ(track.keys[1].outTangent[1], 0.0f) << "an end key's Auto is flat";
+    EXPECT_TRUE(track.keys[0].hasTangents()) << "the other key got its linear slope";
+    EXPECT_FLOAT_EQ(track.keys[0].outTangent[1], 2.0f);
+    // a handle drag: several updates, one undo step
+    const std::string merge = "tangent#test";
+    ASSERT_TRUE(c.setTangentSlope({(size_t)arm, 0}, 1, cliptangents::Side::Right, 1.0f, merge, &error)) << error;
+    ASSERT_TRUE(c.setTangentSlope({(size_t)arm, 0}, 1, cliptangents::Side::Right, 3.0f, merge, &error)) << error;
+    EXPECT_FLOAT_EQ(c.getDocument()->data().tracks[(size_t)arm].keys[0].outTangent[1], 3.0f);
+    EXPECT_EQ(project()->getProjectCommandHistory()->position(), start + 2) << "the mode, then one step for the drag";
+    ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
+    EXPECT_FLOAT_EQ(c.getDocument()->data().tracks[(size_t)arm].keys[0].outTangent[1], 2.0f) << "the whole drag undone";
+    // a rotation track has no tangent edits
+    const int hand = c.getDocument()->data().findTrack("Arm/Hand", ClipChannel::Scale);
+    ASSERT_GE(hand, 0);
+    EXPECT_TRUE(c.setTangentMode({{(size_t)hand, 0}}, ClipTangentMode::Flat, &error)) << "scale is a scalar curve: " << error;
+    EXPECT_FALSE(s.sceneProject->isModified);
 }

@@ -58,7 +58,7 @@ namespace jasperengine{
 
     // Unity's key tangent modes (anim-properties spec 10, The Curves view), an editor hint of
     // keys with tangents ("tangent_mode"): the runtime uses the tangents only
-    enum class TangentMode : uint8_t {
+    enum class ClipTangentMode : uint8_t {
         None,       // no hint (tangents as given)
         Auto,       // Clamped Auto: recomputed when the key or a neighbour moves
         Free,       // Free Smooth: in = out, kept

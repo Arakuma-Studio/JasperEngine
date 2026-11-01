@@ -21,7 +21,8 @@
 //     track's widest key (padded with 0, at most MAX_MORPHTARGETS), lattice 3 per entry of
 //     `points` (the union of the keys' points; a key lacking one holds 0);
 //   * tangents are empty or the value's width, on both sides (in and out); tangents win over
-//     the ease (which the loader then resets to linear, with a warning);
+//     the ease (which the loader then resets to linear, with a warning), except a step (a
+//     Constant segment: it holds the key's value);
 //   * wrap is never ClipWrapMode::Default (that value only appears in player clip entries);
 //   * events sorted by (time, function); at most MAX_ANIMATION_EVENT_ARGS args each.
 //   Editors that build ClipData by hand keep these (AnimationClipIO::normalize restores them).
@@ -70,7 +71,7 @@ namespace jasperengine{
         std::vector<float> outTangent;
         // editor hint of keys with tangents (file "tangent_mode"; anim-properties spec 6): Auto
         // and Linear tangents are computed again when the key or a neighbour moves
-        TangentMode tangentMode = TangentMode::None;
+        ClipTangentMode tangentMode = ClipTangentMode::None;
 
         bool hasTangents() const { return !inTangent.empty() && inTangent.size() == outTangent.size(); }
     };
@@ -143,6 +144,11 @@ namespace jasperengine{
         float effectiveLength() const;
         // index into tracks, -1 when none (property tracks are not found by this)
         int findTrack(const std::string& path, ClipChannel channel) const;
+        // a property track by its identity (path, component, property), -1 when none
+        int findPropertyTrack(const std::string& path, const std::string& component, const std::string& property) const;
+        // the track with the identity of `like`: (path, channel), and (component, property) for
+        // a property track; -1 when none
+        int findTrack(const ClipTrackData& like) const;
 
         // floats per key value: position/scale 3, rotation 4, morph `morphCount`, lattice
         // 3 * `pointCount`, property `propertyWidth` (ClipTrackData::width)

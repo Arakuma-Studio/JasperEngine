@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "animation/ClipRecordHooks.h"
+
 #include "command/Command.h"
 #include "Project.h"
 #include "command/PrefabEditUndo.h"
@@ -48,7 +50,13 @@ namespace jasperengine::editor{
 
         void write(Scene* scene, Entity entity, const EntityStateValue& value) const{
             switch (field){
-                case EntityStateField::Active: scene->setEntityActive(entity, value.active); break;
+                case EntityStateField::Active:
+                    // a clip preview showing gameobject.active puts its rest back first and takes
+                    // the new value as its rest after (anim-properties, R6)
+                    ClipRecordHooks::beforePropertyWrite(sceneId, entity, ClipRecordHooks::activeProperty());
+                    scene->setEntityActive(entity, value.active);
+                    ClipRecordHooks::afterPropertyWrite(sceneId, entity, ClipRecordHooks::activeProperty());
+                    break;
                 case EntityStateField::Tag: scene->setEntityTag(entity, value.tag); break;
                 case EntityStateField::Layer: scene->setEntityLayer(entity, value.layer); break;
             }
@@ -106,6 +114,8 @@ namespace jasperengine::editor{
                 if (!sceneProject->scene->isEntityCreated(entity)){
                     continue;
                 }
+                // (a previewed active state reads its rest: the undo puts that back)
+                if (field == EntityStateField::Active) ClipRecordHooks::beforePropertyWrite(sceneId, entity, ClipRecordHooks::activeProperty());
                 oldValue = read(sceneProject->scene, entity);
                 prefabUndo.capture(project, sceneId, entity);
                 write(sceneProject->scene, entity, newValue);

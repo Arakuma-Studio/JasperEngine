@@ -40,18 +40,28 @@ AI agents edit the same files through the MCP tools `edit_animation`, `get_anima
      just opened. With nothing selected the clip opens on its own (you edit the file).
 3. **Add properties.** **+ Add Property** opens a searchable tree of the bound GameObject's
    hierarchy. Pick **Position**, **Rotation** or **Scale** of any child, **Blend Shapes** of a mesh
-   with morph targets, or **Lattice** of a lattice cage. The new row gets a key at the playhead
-   that holds the current value. A row reads `Name : Channel` (for example `Hero : Position`;
-   deeper paths start with `…/`, as in `…/mixamorig:Spine : Rotation`). Hover a row to see its
-   full path, and open its foldout to see x/y/z, the blend shape names (that mesh's own: two
-   meshes of a model can name their targets differently) or the lattice point count.
+   with morph targets, or **Lattice** of a lattice cage. Under them come the GameObject's
+   [component properties](#property-tracks): **GameObject ▸ Active**, then one group per component
+   with its Inspector name (Image, Light, Camera, Rect Transform, Audio Source, Canvas Group,
+   Button...) holding **Enabled** and what it can animate ("Color", "Intensity", "Y FOV",
+   "Anchored Position"...), a mesh's **Material [N]** values, a sprite's **Sprite Renderer ▸
+   Color** and its frame, and each Lua script's declared fields (**Torch (Script) ▸ glow**). A
+   colour also offers **Alpha only**. A property already in the clip is greyed out. The new row
+   gets a key at the playhead that holds the current value. A row reads `Name : Channel` (for
+   example `Hero : Position`, `Panel : Image.Color`; deeper paths start with `…/`, as in
+   `…/mixamorig:Spine : Rotation`). Hover a row to see its full path, and open its foldout to see
+   x/y/z, a colour's r/g/b/a, the blend shape names (that mesh's own: two meshes of a model can
+   name their targets differently) or the lattice point count.
 4. **Key it, one of two ways:**
    - **Record** (the red circle, or `R`): the timeline turns red (the curves view gets a red
      frame). Moving the bound GameObject or its children keys the clip at the playhead, on the
      nearest frame (a playing preview pauses there). This works with the Scene view's Move, Rotate
      and Scale tools (rotating or scaling a selection about its centre also keys the moved
-     positions), the Inspector's Transform and Blend Shapes rows and its lattice point Offset, and
-     dragging lattice points. One drag is one key edit.
+     positions), the Inspector's Transform and Blend Shapes rows and its lattice point Offset,
+     dragging lattice points, and every Inspector row of an animatable component property (a
+     colour picker, Intensity, a Lua script's fields...), the GameObject's active checkbox and the
+     components' enable checkboxes (the edit is keyed and previewed, it is not a scene edit). One
+     drag is one key edit.
      The Inspector tints the rows of animated properties red, and rows Record would start keying a
      fainter red. While Record is on the window keeps its clip whatever you select. Leaving Record
      goes back to how it was before: it stops the preview Record started (the scene is put back as it
@@ -122,8 +132,17 @@ tangents of imported clips. Rotations are shown as continuous Euler angles.
 - The wheel zooms the values at the mouse, `Ctrl`+wheel zooms time, `Shift`+wheel pans time, and the
   middle button pans both. `F` frames the selected keys (time and values), and `A` frames every
   visible curve.
-- Selected keys with tangents (imported glTF CUBICSPLINE clips) show their stored tangent handles.
-  The handles are read-only: free tangent editing is not part of this version.
+- **Tangents** (Unity's key tangents, on every scalar curve: position, scale, blend shapes,
+  lattice offsets and continuous properties). Right-click a key for **Auto** (Clamped Auto: smooth,
+  flat at a peak, never overshooting its neighbours, and computed again when the key or a
+  neighbour moves), **Free Smooth**, **Flat**, **Broken**, and **Left / Right / Both Tangents ▸
+  Free / Linear / Constant** (Constant right holds the key's value until the next key; left, the
+  previous key's). Selected keys show their handles: drag one to set that side's slope (the other
+  side follows unless the key is Broken); each drag is one undo step. Giving tangents to one key
+  of a track gives its other keys their linear slopes, so the rest of the curve does not change.
+  Rotations keep the Interpolation presets; their handles (imported glTF CUBICSPLINE tangents)
+  are read-only.
+- Stepped properties (bools, ints, sprite frames) draw as steps and move in time only.
 - All curves share one value axis (rotations in degrees, positions in units, weights 0 to 1): hide
   curves or click a property name to frame the ones you work on. The axis shows `°` while only
   rotations are visible. Dense keys are drawn thinned; every key still selects and drags.
@@ -174,6 +193,76 @@ Click a `.anim` file in the Project window and the Inspector shows the **clip as
 
 Edits there are project undo steps: `Ctrl/Cmd+Z` right after one undoes it, as in the Animation
 window (see [Undo](#undo)). Double-clicking the file opens it in the Animation window.
+
+## Property tracks
+
+A property track animates a component value of a GameObject under the root, as Unity's clips
+animate `m_IsActive`, `m_Enabled`, `m_Color`, material and MonoBehaviour fields. It is named by the
+path, the component (its Catalog key, the one `set_properties` uses, or `gameobject` /
+`script:<Class>`) and the property (the Catalog name, optionally with one component: `.r .g .b .a`
+on colours, `.x .y .z .w` on vectors). Keys use the Inspector's units: colours in sRGB (as the
+colour pickers show them), spot cones in degrees (the full angle, as the Inspector shows it),
+everything else as stored. Values interpolate in those units (Unity's colour curves do too).
+
+| component | properties | Unity |
+|---|---|---|
+| `gameobject` | `active` (bool) | `m_IsActive` |
+| any component with the enable checkbox (`ui`, `mesh`, `sprite`, `light`, `camera`, `audiosource`, `canvasgroup`, `rigidbody`...) | `enabled` (bool; physics bodies apply on their next step) | `m_Enabled` |
+| `ui` (Image, Text, Button graphic, any UI element) | `color` (Color4), `shaderUniforms.<member>` | `m_Color`, TMP `m_fontColor` |
+| `button` | `colorNormal`, `colorHovered`, `colorPressed`, `colorDisabled` (Color4), `disabled` (bool) | `m_Colors.*` |
+| `canvasgroup` | `alpha` (float, 0 to 1), `interactable`, `blocksRaycasts`, `ignoreParentGroups` (bool) | `m_Alpha`... |
+| `recttransform` | `positionOffset` (Vector2, the anchored position), `width`, `height`, `anchorOffsetLeft/Top/Right/Bottom` (ints that interpolate and round), `pivot` (Vector2), `anchorPointLeft/Top/Right/Bottom` (float) | `m_AnchoredPosition`, `m_SizeDelta`, `m_Pivot`, `m_AnchorMin/Max` |
+| `mesh` (meshes, sprites, model meshes, tilemaps) | `submeshes[N].material.baseColorFactor` (Color4; a sprite's colour is submesh 0's), `.emissiveFactor` (Color3), `.metallicFactor`, `.roughnessFactor`, `.alphaCutoff` (float), `submeshes[N].textureRect` (offset x y, scale x y), `submeshes[N].material.shaderParams.<member>` | `material._Color`... |
+| `sprite` | `frame` (the frame index, stepped) | `m_Sprite` (sprite swap) |
+| `light` | `color` (Color3), `intensity`, `range` (float), `innerConeCos`, `outerConeCos` (keyed in degrees) | `m_Intensity`, `m_SpotAngle` |
+| `light2d` | `color`, `intensity`, `range`, `falloff`, `height` | |
+| `camera` | `yfov` (radians), `near`, `far`, `left`, `right`, `bottom`, `top` | field of view, clip planes, orthographic size |
+| `audiosource` | `volume`, `speed` (pitch), `pan` | `m_Volume`, `m_Pitch` |
+| `fog` | `color`, `density`, `linearStart`, `linearEnd` | |
+| `skybox` | `color` (Color4) | |
+| `progressbar` | `value` | |
+| `linerenderer`, `points`, `skybox` | `shaderUniforms.<member>` | |
+| `script:<Class>` | a declared Lua `properties` field of type bool, int, float, vector2/3/4 or color3/4, or `enabled` (the script's checkbox: onEnable / onDisable) | MonoBehaviour fields |
+
+```json
+{"path": "Panel/Stats/puntaje", "channel": "property", "component": "gameobject", "property": "active",
+ "keys": [[0, false], [0.5, true]]},
+{"path": "Fade", "channel": "property", "component": "ui", "property": "color.a",
+ "keys": [{"time": 0, "value": 0, "in": 0, "out": 0, "tangent_mode": "auto"}, {"time": 1.5, "value": 1, "in": 0, "out": 0, "tangent_mode": "auto"}]},
+{"path": "", "channel": "property", "component": "canvasgroup", "property": "alpha", "keys": [[0, 0], [0.333, 1]]},
+{"path": "", "channel": "property", "component": "script:Torch", "property": "glow", "keys": [[0, 0.2], [0.5, 1, "sine_in_out"]]},
+{"path": "Ship", "channel": "property", "component": "sprite", "property": "frame", "keys": [[0, 0], [0.083, 1], [0.166, 2]]}
+```
+
+- **Stepped and smooth values.** Bools, ints and sprite frames step: the value is the key at or
+  before the time (at a key's time, that key's value); an ease on them is ignored with a warning.
+  Everything else uses the eases and tangents. In a blend or crossfade a smooth value is the
+  weighted average (the scene value fills what the states leave), a stepped one is the value of the
+  contributor with the most weight (the scene value counts with 1 - the states' weight; ties go to
+  the later state, so a crossfade flips at its middle). Additive layers skip stepped tracks.
+  Avatar masks and mixing transforms select transforms only: property tracks always apply.
+- **A whole value and one of its components** (`color` and `color.a`) can be in one clip: the
+  component track wins for its component (the Inspector warns).
+- **GameObject active.** The flush applies active changes last, parents first, so the
+  `onEnable` / `onDisable` they run never interrupt the player; clip events run after the values
+  are written. A child the clip turns off keeps being animated (it can be turned on again). A clip
+  that turns off its own root stops its player (an inactive GameObject's player waits), as in Unity.
+- **A Button** writes its graphic's `ui.color` from its state colours every frame: animate
+  `button.colorNormal` instead (the binding report says so).
+- **Lua fields.** The clip sets the instance field `self.<name>` (a fresh Vector for vectors) of the
+  first enabled script of that class on the GameObject, and the Inspector shows the live value.
+  Read it in `onUpdate`; a value a script writes there is overwritten by the clip in the same
+  frame's animation update, as in Unity (a write in `onPostUpdate` wins for that frame).
+- **Missing components** (or a submesh, a shader member, a script field that is not there) leave
+  the track unbound, reported as `missing_component`; a component added at runtime binds within a
+  quarter of a second. Untouched values keep their scene value, and when the last state animating
+  a property stops, the value stays as written.
+- **The preview** shows property tracks like the others (an `active` key toggles the real flag) and
+  puts every value back when it stops; nothing of it is saved.
+- **Porting Unity clips.** `m_IsActive` steps are `gameobject.active` keys; Image `m_Color` and
+  TMP `m_fontColor` are `ui.color` (keys in sRGB, as the colour pickers show them); a CanvasGroup's
+  `m_Alpha` is `canvasgroup.alpha`; `m_AnchoredPosition.y` is `recttransform.positionOffset.y`; a
+  sprite swap (`m_Sprite` PPtr curve) is `sprite.frame` keys of the frame indices.
 
 ## Events
 
@@ -263,7 +352,9 @@ return Hero
   changes.
 - `addClip(path[, name])` (asset-relative `.anim` or `model#clip`; false when the name is taken),
   `removeClip(name)`, `getClipCount()`, `getClipName(i)` (0-based); properties `speed`,
-  `defaultClip`, `defaultFadeTime`, `playAutomatically`, `enabled`; `isLoaded()`.
+  `defaultClip`, `defaultFadeTime`, `playAutomatically`, `enabled`; `isLoaded()`;
+  `getAnimatedProperties(name)` (the state's bound property tracks as `"path:component.property"`,
+  for debugging).
 - `Model:playAnimation(name[, fade])` uses the model's Animation Player first: it crossfades to that
   state (over Default Fade when no fade is given) and fades out the model's entity animations. An
   index addresses the player's states in list order (0-based); an index past them is the model's
@@ -645,22 +736,27 @@ Channels and values:
 | `rotation` | a quaternion `[x, y, z, w]`, or `{"euler": [x, y, z]}` in degrees (read, written back as a quaternion). Between two Euler keys more than 180 degrees apart on an axis, add a middle key (the loader warns). Keys are written on the side of the key before them (the same rotation); a track with tangents keeps its signs, since its curve depends on them |
 | `morph` | `[w0, w1, ...]`, one weight per morph target. Shorter arrays mean 0 for the rest; at most 8 targets |
 | `lattice` | `{"points": [[flatIndex, [x, y, z]], ...]}` offsets of the cage points. A point a key omits holds 0 (warning). The path is the cage GameObject |
+| `property` | a component property: the track also names `component` and `property` (see [Property tracks](#property-tracks)); the value is `true` / `false`, an integer, a number, or an array of 2 to 4 numbers (colours `[r, g, b(, a)]` in sRGB, or `"#RRGGBB[AA]"`) |
 
 - A key is `[time, value]` or `[time, value, ease]`. `ease` is the easing of the segment that
   starts at that key: `linear` (default), `step`, or
   `<quad|cubic|quart|quint|sine|expo|circ|back|elastic|bounce>_<in|out|in_out>`. A `step` segment
   holds its first key's value; at exactly the next key's time the value is that key's own (Unity's
   rule, the same in entity Animations). The object form
-  `{"time", "value", "ease", "in", "out"}` carries Hermite tangents (glTF CUBICSPLINE, value units
-  per second). Tangents win over an ease, and a track in which only some keys have tangents gives
-  the others linear ones (warning).
+  `{"time", "value", "ease", "in", "out", "tangent_mode"}` carries Hermite tangents (glTF
+  CUBICSPLINE, value units per second). Tangents win over an ease (except `step`: a Constant
+  segment), and a track in which only some keys have tangents gives the others linear ones
+  (warning). `tangent_mode` (`auto`, `free`, `flat`, `broken`, `linear`) is the editor's hint of
+  how the curves view made them; the engine plays the tangents.
 - `relative`: position adds to the target's rest (scene) value; rotation and scale multiply it, so
   `[1, 1, 1]` is "unchanged" for a relative scale.
 - Everything but `format`/`version` is lenient. A bad key, track or event is dropped with a warning
   that carries its JSON path (`tracks[3].keys[2].value: expected [x, y, z]`), and the rest loads.
   Keys out of order are sorted, keys closer than a microsecond collapse (the later wins), and
-  duplicate (path, channel) tracks merge. Unknown top-level keys are kept when the editor rewrites
-  the file. A `"channel": "property"` track is kept but not played (reserved for a later version).
+  duplicate (path, channel) tracks merge (property tracks: the later of two with the same
+  component and property wins). Unknown top-level keys are kept when the editor rewrites the file.
+  A property track of a component or property this engine cannot animate is kept as it is and not
+  played (the warning names the nearest animatable property).
 - The load warnings show in the clip asset Inspector, in `jasperengine-editor check --anims`, and to
   agents in `external_changes.problems`.
 
@@ -776,9 +872,10 @@ selected GameObject.
 
 Animator sub-state machines, 2D and direct blend trees, synced layers, IK in masks, Animator
 Override Controllers and importing Unity `.controller` / `.mask` files (they are refused with a
-message), humanoid (muscle) clips, curves of other component properties (light intensity, material
-colours: the format reserves `"channel": "property"`), root motion and animating layer weights from
-clips (use Lua). Also: sprite-swap, active and colour/alpha curves (2D games keep sprite animations
-and tweens), importer clip ranges and per-model-clip events, a preview pane in the clip asset
-Inspector, event object parameters, free tangent editing, and re-syncing an extracted clip from its
-model.
+message), humanoid (muscle) clips, root motion and animating layer weights from clips (use Lua).
+Property tracks do not animate strings, textures, fonts or meshes (only sprite frames swap),
+C++ script fields, properties that rebuild GPU state when they change (shader, blend mode, cast
+shadows, font size, shadow map size), physics body values other than Enabled, or the Animation
+Player's own Enabled. Also: importing Unity curves, tangent editing of rotations (they keep the
+Interpolation presets), importer clip ranges and per-model-clip events, a preview pane in the clip
+asset Inspector, event object parameters, and re-syncing an extracted clip from its model.

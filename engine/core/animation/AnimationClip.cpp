@@ -45,6 +45,19 @@ int ClipData::findTrack(const std::string& path, ClipChannel channel) const{
     return -1;
 }
 
+int ClipData::findPropertyTrack(const std::string& path, const std::string& component, const std::string& property) const{
+    for (size_t i = 0; i < tracks.size(); i++){
+        const ClipTrackData& track = tracks[i];
+        if (track.channel == ClipChannel::Property && track.path == path && track.component == component && track.property == property) return (int)i;
+    }
+    return -1;
+}
+
+int ClipData::findTrack(const ClipTrackData& like) const{
+    if (like.channel == ClipChannel::Property) return findPropertyTrack(like.path, like.component, like.property);
+    return findTrack(like.path, like.channel);
+}
+
 size_t ClipData::valueWidth(ClipChannel channel, size_t morphCount, size_t pointCount, size_t propertyWidth){
     switch (channel){
         case ClipChannel::Position:

@@ -73,8 +73,35 @@ namespace jasperengine::editor::clipui{
 
     // (channelLabel, lastSegment: animation/ClipEditorUtil.h, shared with the Inspector)
 
+    // a property track's (component, property) as one string ("ui.color.a"), "" for the others
+    inline std::string propertyId(const ClipTrackData& track){
+        return track.channel == ClipChannel::Property ? track.component + "." + track.property : std::string();
+    }
+
+    // a track's identity: path and channel, and a property track's component and property
     inline std::string rowKey(const ClipTrackData& track){
-        return track.path + "|" + anim::channelName(track.channel);
+        const std::string key = track.path + "|" + anim::channelName(track.channel);
+        return track.channel == ClipChannel::Property ? key + "|" + propertyId(track) : key;
+    }
+
+    // the track of an identity (path, channel, propertyId), -1 when none
+    inline int findTrackById(const ClipData& data, const std::string& path, ClipChannel channel, const std::string& property){
+        if (channel != ClipChannel::Property) return data.findTrack(path, channel);
+        // "component.property": a component key (or script:<Class>) has no '.'
+        const size_t dot = property.find('.');
+        if (dot == std::string::npos) return -1;
+        return data.findPropertyTrack(path, property.substr(0, dot), property.substr(dot + 1));
+    }
+
+    // the built clip's track of a data track (the same identity), -1 when none
+    inline int builtTrack(const AnimationClip& clip, const ClipTrackData& track){
+        if (track.channel != ClipChannel::Property) return clip.findTrack(track.path, track.channel);
+        const std::vector<AnimationClip::Track>& tracks = clip.getTracks();
+        for (size_t i = 0; i < tracks.size(); i++){
+            if (tracks[i].channel == ClipChannel::Property && tracks[i].path == track.path && tracks[i].component == track.component &&
+                tracks[i].property == track.property) return (int)i;
+        }
+        return -1;
     }
 
     inline std::string lower(std::string s){
@@ -111,14 +138,13 @@ namespace jasperengine::editor::clipui{
                 return out;
             }
             case ClipChannel::Morph:
+            case ClipChannel::Property:
                 return sample.weights;
             case ClipChannel::Lattice: {
                 std::vector<float> out;
                 for (const Vector3& v : sample.offsets) out.insert(out.end(), {v.x, v.y, v.z});
                 return out;
             }
-            case ClipChannel::Property:
-                break;
         }
         return {};
     }

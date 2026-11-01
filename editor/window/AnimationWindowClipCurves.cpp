@@ -18,6 +18,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "Project.h"
 #include "animation/AnimationClipDocument.h"
+#include "animation/ClipTangents.h"
 #include "animation/KeyframeSampling.h"
 
 #include <algorithm>
@@ -45,7 +46,8 @@ size_t clipcurves::componentCount(const ClipTrackData& track){
         case ClipChannel::Lattice:
             return track.points.size() * 3;
         case ClipChannel::Property:
-            break;
+            // a property's components (a swizzle track: its one); unknown properties none
+            return track.known ? track.width : 0;
     }
     return 0;
 }
@@ -65,8 +67,12 @@ std::string clipcurves::componentLabel(const ClipTrackData& track, size_t compon
             const int index = point < track.points.size() ? track.points[point] : (int)point;
             return "Point " + std::to_string(index) + " " + axes[component % 3];
         }
-        case ClipChannel::Property:
-            break;
+        case ClipChannel::Property: {
+            static const char* const colors[4] = {"r", "g", "b", "a"};
+            static const char* const vectors[4] = {"x", "y", "z", "w"};
+            if (track.width <= 1 || component >= 4) return track.property;
+            return (track.kind == PropertyKind::Color3 || track.kind == PropertyKind::Color4) ? colors[component] : vectors[component];
+        }
     }
     return std::string();
 }
@@ -110,7 +116,7 @@ bool clipcurves::sampleCurves(const AnimationClip::Track& runtime, const ClipTra
 bool clipcurves::sampleCurvesFlat(const AnimationClip::Track& runtime, const ClipTrackData& track, const std::vector<Vector3>& eulers,
                                   const std::vector<float>& times, std::vector<float>& out){
     out.clear();
-    if (track.channel == ClipChannel::Property || track.keys.empty() || !runtime.isSampled()) return false;
+    if (track.keys.empty() || !runtime.isSampled()) return false;
     const bool rotation = track.channel == ClipChannel::Rotation;
     if (rotation && eulers.size() != track.keys.size()) return false;
     const size_t count = componentCount(track);
@@ -155,6 +161,7 @@ bool clipcurves::sampleCurvesFlat(const AnimationClip::Track& runtime, const Cli
                 break;
             }
             case ClipChannel::Morph:
+            case ClipChannel::Property:
                 for (size_t c = 0; c < count && c < sample.weights.size(); c++) row[c] = sample.weights[c];
                 break;
             case ClipChannel::Lattice:
@@ -163,8 +170,6 @@ bool clipcurves::sampleCurvesFlat(const AnimationClip::Track& runtime, const Cli
                     row[p * 3 + 1] = sample.offsets[p].y;
                     row[p * 3 + 2] = sample.offsets[p].z;
                 }
-                break;
-            case ClipChannel::Property:
                 break;
         }
     }
@@ -214,8 +219,13 @@ namespace {
         return rowKey(track) + "#" + std::to_string(component);
     }
 
-    // x red, y green, z blue; blend shapes cycle through the Theme's accents
+    // x red, y green, z blue; blend shapes cycle through the Theme's accents; a property's
+    // r g b (x y z) the same and its a (w) light grey, one value the accent of its kind
     ImVec4 curveColor(const ClipTrackData& track, size_t component){
+        if (track.channel == ClipChannel::Property){
+            if (track.width <= 1) return track.discrete ? Theme::Colors::WarningText : Theme::Colors::ChildSceneText;
+            if (component == 3) return ImVec4(0.85f, 0.85f, 0.85f, 1.0f);
+        }
         if (track.channel == ClipChannel::Morph){
             const ImVec4 palette[] = {Theme::Colors::WarningText, Theme::Colors::ChildSceneText, Theme::Colors::SubSelectionText,
                                       Theme::Colors::PrefabText, Theme::Colors::PhysicsAccent, Theme::Colors::ErrorText,
@@ -350,7 +360,7 @@ void AnimationWindowClip::refreshCurveCache(float from, float to, float stepTime
         }
         entry.times.clear();
         entry.values.clear();
-        const int index = clip ? clip->findTrack(track.path, track.channel) : -1;
+        const int index = clip ? builtTrack(*clip, track) : -1;
         if (!entry.anyVisible || index < 0 || track.keys.empty()) continue;
         // the grid, plus the keys' own times while keys are sparser than the grid (dense keys:
         // the 2 px grid already follows the curve)
@@ -382,7 +392,7 @@ void AnimationWindowClip::refreshCurveSelection(){
     curveSelectedKeys.clear();
     const ClipData& data = doc->data();
     for (const CurveKeyId& point : curveSelection){
-        const int track = data.findTrack(point.key.path, point.key.channel);
+        const int track = findTrackById(data, point.key.path, point.key.channel, point.key.property);
         if (track < 0) continue;
         const std::vector<ClipKey>& keys = data.tracks[(size_t)track].keys;
         auto it = std::lower_bound(keys.begin(), keys.end(), point.key.time - kKeyEpsilon,
@@ -464,7 +474,7 @@ void AnimationWindowClip::frameCurveValues(bool selectedOnly){
         std::vector<float> flat;
         for (size_t t = 0; t < data.tracks.size() && clip; t++){
             const ClipTrackData& track = data.tracks[t];
-            const int index = clip->findTrack(track.path, track.channel);
+            const int index = builtTrack(*clip, track);
             if (index < 0) continue;
             const size_t count = clipcurves::componentCount(track);
             std::vector<char> visible(count);
@@ -550,6 +560,8 @@ bool AnimationWindowClip::updateCurveDrag(float rawTimeDelta, float valueDelta, 
             const AnimationClipController::KeyRef& ref = curveDragRefs[i];
             if (curveDragComponents[i].empty() || ref.track >= base.tracks.size() || ref.key >= base.tracks[ref.track].keys.size()) continue;
             const ClipTrackData& track = base.tracks[ref.track];
+            // stepped properties move in time only (their values are bools, ints, frames)
+            if (track.channel == ClipChannel::Property && track.discrete) continue;
             AnimationClipController::KeyDragValue entry;
             entry.dragIndex = i;
             if (track.channel == ClipChannel::Rotation){
@@ -630,7 +642,7 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
         if (ImGui::Selectable(row.leaf.c_str(), false)){
             // the property's keys (as a click on a dopesheet label), its curves framed
             std::vector<KeyId> ids;
-            for (const ClipKey& key : track.keys) ids.push_back({track.path, track.channel, key.time});
+            for (const ClipKey& key : track.keys) ids.push_back(keyIdOf(track, key.time));
             selectKeys(ids, io.KeyShift || io.KeyCtrl);
             frameCurveValues(true);
         }
@@ -718,6 +730,7 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
 
     // the curves and key points from the cache
     std::vector<CurvePoint> points;
+    curveHandles.clear();
     const float keyRadius = 4.0f * m.s;
     const ImVec4 selectedColour = selectedKeyColor();
     std::vector<ImVec2> line;
@@ -762,13 +775,27 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
                     drawList->AddRectFilled(ImVec2(x - r, y - r), ImVec2(x + r, y + r), color(colour, readOnly ? 0.6f : 1.0f));
                 }
                 points.push_back({t, key, (int)k, track.keys[key].time, value});
-                // tangents (read-only) of selected keys that carry them: the stored tangents
-                // (value units per second); a rotation's from its sampled curve
-                if (!selected || !track.keys[key].hasTangents()) continue;
+                // the tangents of selected keys: editable handles on scalar curves (anim-properties:
+                // Unity's tangent editing; a key without tangents shows its linear slopes), a
+                // rotation's read-only from its sampled curve
+                const bool editableTangents = !readOnly && cliptangents::editable(track);
+                if (!selected || (!track.keys[key].hasTangents() && !editableTangents)) continue;
                 float inSlope = 0.0f, outSlope = 0.0f;
-                if (track.channel == ClipChannel::Rotation){
+                if (!track.keys[key].hasTangents()){
+                    const ClipKey& keyed = track.keys[key];
+                    if (key > 0 && k < keyed.value.size() && k < track.keys[key - 1].value.size()){
+                        const float dt = keyed.time - track.keys[key - 1].time;
+                        if (dt > 0.0f) inSlope = (keyed.value[k] - track.keys[key - 1].value[k]) / dt;
+                    }
+                    if (key + 1 < track.keys.size() && k < keyed.value.size() && k < track.keys[key + 1].value.size()){
+                        const float dt = track.keys[key + 1].time - keyed.time;
+                        if (dt > 0.0f) outSlope = (track.keys[key + 1].value[k] - keyed.value[k]) / dt;
+                    }
+                    if (key == 0) inSlope = outSlope;
+                    if (key + 1 >= track.keys.size()) outSlope = inSlope;
+                }else if (track.channel == ClipChannel::Rotation){
                     std::shared_ptr<const AnimationClip> clip = doc->clip();
-                    const int index = clip ? clip->findTrack(track.path, track.channel) : -1;
+                    const int index = clip ? builtTrack(*clip, track) : -1;
                     const float h = 0.25f / fps;
                     std::vector<float> around;
                     if (index < 0 || !clipcurves::sampleCurvesFlat(clip->getTracks()[(size_t)index], track, entry.eulers,
@@ -786,8 +813,16 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
                     const ImVec2 dir(side, -slope * pixelsPerValue / pixelsPerSecond * side);
                     const float norm = std::sqrt(dir.x * dir.x + dir.y * dir.y);
                     const ImVec2 tip(x + dir.x / norm * length, y + dir.y / norm * length);
-                    drawList->AddLine(ImVec2(x, y), tip, color(Theme::Colors::SubtleText, 0.9f), 1.0f * m.s);
-                    drawList->AddCircle(tip, 2.5f * m.s, color(Theme::Colors::SubtleText, 0.9f));
+                    const bool dragged = drag == Drag::CurveHandle && draggedHandle.track == t && draggedHandle.key == key &&
+                                         draggedHandle.component == (int)k && draggedHandle.side == (int)side;
+                    const ImVec4 handleColour = editableTangents ? (dragged ? selectedColour : ImVec4(0.9f, 0.9f, 0.9f, 1.0f)) : Theme::Colors::SubtleText;
+                    drawList->AddLine(ImVec2(x, y), tip, color(handleColour, 0.9f), 1.0f * m.s);
+                    if (editableTangents){
+                        drawList->AddCircleFilled(tip, 3.0f * m.s, color(handleColour, 0.95f));
+                        curveHandles.push_back({t, key, (int)k, (int)side, ImVec2(x, y), tip});
+                    }else{
+                        drawList->AddCircle(tip, 2.5f * m.s, color(handleColour, 0.9f));
+                    }
                 };
                 if (key > 0) handle(inSlope, -1.0f);
                 if (key + 1 < track.keys.size()) handle(outSlope, 1.0f);
@@ -814,9 +849,25 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
     }
     auto pointId = [&](const CurvePoint& point){
         const ClipTrackData& track = data.tracks[point.track];
-        return CurveKeyId{KeyId{track.path, track.channel, point.time}, point.component};
+        return CurveKeyId{keyIdOf(track, point.time), point.component};
     };
-    if (ImGui::IsItemActivated() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)){
+    // a tangent handle under the mouse (before the key points: a handle tip lies off its key)
+    int hoveredHandle = -1;
+    float bestHandle = m.keyHit * m.keyHit;
+    for (size_t i = 0; i < curveHandles.size() && hovered; i++){
+        const float dx = curveHandles[i].tip.x - io.MousePos.x;
+        const float dy = curveHandles[i].tip.y - io.MousePos.y;
+        if (dx * dx + dy * dy <= bestHandle){
+            bestHandle = dx * dx + dy * dy;
+            hoveredHandle = (int)i;
+        }
+    }
+    if (ImGui::IsItemActivated() && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && hoveredHandle >= 0){
+        // a handle drag: that side's slope, one undo step per drag
+        draggedHandle = curveHandles[(size_t)hoveredHandle];
+        handleMergeKey = "tangent#" + std::to_string(++handleSerial);
+        drag = Drag::CurveHandle;
+    }else if (ImGui::IsItemActivated() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)){
         const bool additive = io.KeyShift || io.KeyCtrl;
         dragStart = io.MousePos;
         if (hoveredPoint >= 0){
@@ -863,6 +914,26 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
             dragAdditive = additive;
             drag = Drag::CurveBox;
         }
+    }
+    if (active && ImGui::IsMouseDown(ImGuiMouseButton_Left) && drag == Drag::CurveHandle){
+        // the slope from the key point to the mouse, on the handle's side
+        float dx = io.MousePos.x - draggedHandle.origin.x;
+        const float dy = io.MousePos.y - draggedHandle.origin.y;
+        const float minimum = 2.0f * m.s;
+        if (draggedHandle.side < 0) dx = std::min(dx, -minimum);
+        else dx = std::max(dx, minimum);
+        const float slope = -(dy / pixelsPerValue) / (dx / pixelsPerSecond);
+        std::string error;
+        const cliptangents::Side side = draggedHandle.side < 0 ? cliptangents::Side::Left : cliptangents::Side::Right;
+        if (!c.setTangentSlope({draggedHandle.track, draggedHandle.key}, (size_t)draggedHandle.component, side, slope, handleMergeKey, &error)){
+            setNotice(error, true);
+            drag = Drag::None;
+        }
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+    }
+    if (drag == Drag::CurveHandle && ImGui::IsMouseReleased(ImGuiMouseButton_Left)){
+        drag = Drag::None;
+        handleMergeKey.clear();
     }
     if (active && ImGui::IsMouseDown(ImGuiMouseButton_Left)){
         const ImVec2 moved(io.MousePos.x - dragStart.x, io.MousePos.y - dragStart.y);
@@ -911,7 +982,7 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
                         for (size_t k = 0; k < entry.components; k++){
                             if (!entry.visible[k]) continue;
                             const float y = yAt(entry.keyValues[key * entry.components + k]);
-                            if (y >= a.y && y <= b.y) found.push_back({KeyId{track.path, track.channel, it->time}, (int)k});
+                            if (y >= a.y && y <= b.y) found.push_back({keyIdOf(track, it->time), (int)k});
                         }
                     }
                 }
@@ -940,7 +1011,7 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
             for (size_t t = 0; t < data.tracks.size() && t < curveCache.tracks.size(); t++){
                 const ClipTrackData& track = data.tracks[t];
                 const CurveTrackCache& entry = curveCache.tracks[t];
-                const int index = clip->findTrack(track.path, track.channel);
+                const int index = builtTrack(*clip, track);
                 if (!entry.anyVisible || index < 0 || track.keys.size() < 2 || time < track.keys.front().time || time > track.keys.back().time) continue;
                 if (!clipcurves::sampleCurvesFlat(clip->getTracks()[(size_t)index], track, entry.eulers, {time}, sample)) continue;
                 bool near = false;
@@ -951,7 +1022,7 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
                 const auto after = std::upper_bound(track.keys.begin(), track.keys.end(), time,
                                                     [](float value, const ClipKey& k){ return value < k.time; });
                 const size_t segmentKey = (size_t)std::max<long>(0, (long)(after - track.keys.begin()) - 1);
-                selectKeys({KeyId{track.path, track.channel, track.keys[segmentKey].time}}, false);
+                selectKeys({keyIdOf(track, track.keys[segmentKey].time)}, false);
                 contextRow = rowOfTrack(t);
                 break;
             }

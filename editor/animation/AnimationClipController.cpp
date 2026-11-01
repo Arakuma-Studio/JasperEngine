@@ -16,6 +16,7 @@
 #include "animation/ClipEditorUtil.h"
 #include "animation/KeyframeSampling.h"
 #include "animation/ModelSubClips.h"
+#include "animation/PropertyBindings.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/MeshComponent.h"
@@ -373,14 +374,13 @@ namespace{
                 return out;
             }
             case ClipChannel::Morph:
+            case ClipChannel::Property:
                 return sample.weights;
             case ClipChannel::Lattice: {
                 std::vector<float> out;
                 for (const Vector3& offset : sample.offsets) out.insert(out.end(), {offset.x, offset.y, offset.z});
                 return out;
             }
-            case ClipChannel::Property:
-                break;
         }
         return {};
     }
@@ -522,6 +522,78 @@ namespace{
         return out;
     }
 
+    // ---- property tracks (anim-properties spec 8, 10) ----
+
+    // how a property track binds on `entity`
+    anim::PropertyBinding propertyBindingOf(Scene* scene, Entity entity, const std::string& component, const std::string& property, size_t keyWidth){
+        anim::PropertyRef ref;
+        anim::parsePropertyRef(component, property, ref);
+        return anim::bindProperty(scene, entity, ref, keyWidth);
+    }
+
+    // a property track's key value now: its property read in key space (a swizzle track its
+    // component)
+    bool currentPropertyValue(Scene* scene, Entity entity, const ClipTrackData& track, std::vector<float>& out){
+        out.clear();
+        const anim::PropertyBinding binding = propertyBindingOf(scene, entity, track.component, track.property, track.width);
+        if (binding.status != anim::PropertyBindStatus::Bound) return false;
+        float value[4] = {0, 0, 0, 0};
+        if (!anim::readPropertyKeySpace(scene, entity, binding, value)) return false;
+        if (binding.swizzle >= 0) out = {value[binding.swizzle]};
+        else out.assign(value, value + binding.width);
+        // stored values come back with float noise: whole numbers stay whole (ints, bools, frames)
+        if (binding.discrete || binding.interpolateInt){
+            for (float& v : out) v = std::round(v);
+        }
+        return true;
+    }
+
+    // the rest of a previewed property (taken the first time; its binding every time)
+    anim::PropertyRest* takePropertyRest(Scene* scene, Entity entity, anim::ChannelRest& rest, const anim::PropertyBinding& binding){
+        if (binding.status != anim::PropertyBindStatus::Bound) return nullptr;
+        anim::PropertyRest& property = rest.properties[binding.key];
+        if (!property.has){
+            float value[4] = {0, 0, 0, 0};
+            if (!anim::readPropertyKeySpace(scene, entity, binding, value)) return nullptr;
+            property.has = true;
+            for (int k = 0; k < 4; k++) property.value[k] = value[k];
+            property.hasSnapshot = anim::snapshotProperty(scene, entity, binding, property.snapshot);
+        }
+        property.binding = binding;
+        // the binding of the whole property (a swizzle track's component is written as part of it)
+        property.binding.swizzle = -1;
+        return &property;
+    }
+
+    // the identity of a key (property tracks: their component and property)
+    template<typename Identity>
+    Identity identityOf(const ClipTrackData& track, float time){
+        Identity identity;
+        identity.path = track.path;
+        identity.channel = track.channel;
+        identity.time = time;
+        identity.component = track.component;
+        identity.property = track.property;
+        return identity;
+    }
+
+    template<typename Identity>
+    int trackOf(const ClipData& data, const Identity& identity){
+        if (identity.channel == ClipChannel::Property) return data.findPropertyTrack(identity.path, identity.component, identity.property);
+        return data.findTrack(identity.path, identity.channel);
+    }
+
+    // the built clip's track of a data track (the same identity)
+    int builtTrackOf(const AnimationClip& clip, const ClipTrackData& track){
+        if (track.channel != ClipChannel::Property) return clip.findTrack(track.path, track.channel);
+        const std::vector<AnimationClip::Track>& tracks = clip.getTracks();
+        for (size_t i = 0; i < tracks.size(); i++){
+            if (tracks[i].channel == ClipChannel::Property && tracks[i].path == track.path && tracks[i].component == track.component &&
+                tracks[i].property == track.property) return (int)i;
+        }
+        return -1;
+    }
+
     std::string readOnlyError(const AnimationClipDocument& document){
         return "'" + document.path() + "' is a model's animation (read-only): Extract to .anim to edit it";
     }
@@ -544,6 +616,13 @@ AnimationClipController::AnimationClipController(Project* project): project(proj
         return isPreviewing() && id == previewSceneId &&
                std::find(session.written.begin(), session.written.end(), entry) != session.written.end();
     });
+    // the same for previewed properties (anim-properties: an Inspector field, set_properties)
+    beforePropertyListener = ClipRecordHooks::addBeforePropertyWrite([this](uint32_t id, Entity entity, const ClipPropertyKey& property){
+        beforePropertySceneWrite(id, entity, property);
+    });
+    afterPropertyListener = ClipRecordHooks::addAfterPropertyWrite([this](uint32_t id, Entity entity, const ClipPropertyKey& property){
+        afterPropertySceneWrite(id, entity, property);
+    });
 }
 
 AnimationClipController::~AnimationClipController(){
@@ -551,6 +630,8 @@ AnimationClipController::~AnimationClipController(){
     ClipRecordHooks::removeChannelWriteListener(beforeWriteListener);
     ClipRecordHooks::removeChannelWriteListener(afterWriteListener);
     ClipRecordHooks::removeChannelWriteListener(previewQuery);
+    ClipRecordHooks::removeChannelWriteListener(beforePropertyListener);
+    ClipRecordHooks::removeChannelWriteListener(afterPropertyListener);
     ClipRecordHooks::removeRecordListener(recordListener);
     PreviewOwner::release(ownerToken);
     if (document && documentListener) document->removeListener(documentListener);
@@ -1145,6 +1226,11 @@ bool AnimationClipController::apply(){
             writeRest(entry.first, entry.second);
         }
     }
+    for (const std::pair<Entity, uint32_t>& entry : session.writtenProperties){
+        if (std::find(result.properties.begin(), result.properties.end(), entry) == result.properties.end()){
+            writePropertyRest(entry.first, entry.second);
+        }
+    }
     unresolved = result.unresolved;
     // the unkeyed values stay over the clip while the playhead stays
     if (!pending.empty()){
@@ -1163,6 +1249,17 @@ void AnimationClipController::writeRest(Entity entity, ClipChannel channel){
     std::vector<float> value;
     if (!restValue(sceneProject->scene, entity, it->second, channel, value)) return;
     anim::writeChannelValue(sceneProject->scene, entity, channel, {}, value);
+}
+
+void AnimationClipController::writePropertyRest(Entity entity, uint32_t key){
+    SceneProject* sceneProject = sceneProjectOf(previewSceneId);
+    if (!sceneProject || !sceneProject->scene->isEntityCreated(entity)) return;
+    auto it = session.rest.find(entity);
+    if (it == session.rest.end()) return;
+    auto property = it->second.properties.find(key);
+    if (property == it->second.properties.end() || !property->second.has) return;
+    anim::writePropertyKeySpace(sceneProject->scene, entity, property->second.binding, property->second.value);
+    if (property->second.hasSnapshot) anim::restoreProperty(sceneProject->scene, entity, property->second.binding, property->second.snapshot);
 }
 
 void AnimationClipController::takeSnapshot(SceneProject* sceneProject){
@@ -1265,6 +1362,29 @@ std::vector<AnimationClipController::BoundTransform> AnimationClipController::sa
         bound.position = transform->position;
         bound.rotation = transform->rotation;
         bound.scale = transform->scale;
+        out.push_back(bound);
+    }
+    return out;
+}
+
+std::vector<AnimationClipController::BoundProperty> AnimationClipController::sampledBoundProperties(size_t max) const{
+    std::vector<BoundProperty> out;
+    if (!document) return out;
+    SceneProject* sceneProject = nullptr;
+    const Entity target = valueRoot(&sceneProject);
+    if (target == NULL_ENTITY || !sceneProject) return out;
+    Scene* scene = sceneProject->scene;
+    for (const ClipTrackData& track : document->data().tracks){
+        if (out.size() >= max) break;
+        if (track.channel != ClipChannel::Property || !track.known) continue;
+        const Entity entity = anim::resolvePath(scene, target, track.path);
+        BoundProperty bound;
+        if (entity == NULL_ENTITY || !currentPropertyValue(scene, entity, track, bound.value)) continue;
+        bound.path = track.path;
+        bound.entity = entity;
+        bound.component = track.component;
+        bound.property = track.property;
+        bound.kind = track.kind;
         out.push_back(bound);
     }
     return out;
@@ -1375,6 +1495,39 @@ void AnimationClipController::afterSceneWrite(uint32_t id, Entity entity, ClipCh
     takeRest(sceneProject->scene, entity, it->second, channel, true);
 }
 
+void AnimationClipController::beforePropertySceneWrite(uint32_t id, Entity entity, const ClipPropertyKey& property){
+    if (!isPreviewing() || id != previewSceneId) return;
+    SceneProject* sceneProject = sceneProjectOf(previewSceneId);
+    if (!sceneProject || sceneProject->playState != ScenePlayState::STOPPED || !sceneProject->scene->isEntityCreated(entity)) return;
+    const anim::PropertyBinding binding = propertyBindingOf(sceneProject->scene, entity, property.component, property.property, 0);
+    if (binding.status != anim::PropertyBindStatus::Bound) return;
+    // the command reads and edits the rest, not the previewed value
+    const std::pair<Entity, uint32_t> entry(entity, binding.key);
+    if (std::find(session.writtenProperties.begin(), session.writtenProperties.end(), entry) != session.writtenProperties.end()){
+        writePropertyRest(entity, binding.key);
+    }
+}
+
+void AnimationClipController::afterPropertySceneWrite(uint32_t id, Entity entity, const ClipPropertyKey& property){
+    if (!isPreviewing() || id != previewSceneId) return;
+    SceneProject* sceneProject = sceneProjectOf(previewSceneId);
+    if (!sceneProject || sceneProject->playState != ScenePlayState::STOPPED || !sceneProject->scene->isEntityCreated(entity)) return;
+    auto it = session.rest.find(entity);
+    if (it == session.rest.end()) return;
+    const anim::PropertyBinding binding = propertyBindingOf(sceneProject->scene, entity, property.component, property.property, 0);
+    if (binding.status != anim::PropertyBindStatus::Bound) return;
+    auto rest = it->second.properties.find(binding.key);
+    if (rest == it->second.properties.end() || !rest->second.has) return;
+    // the value the command wrote (a named value: the new rest even when equal to what was
+    // shown); the preview shows again on the next update
+    float value[4] = {0, 0, 0, 0};
+    if (anim::readPropertyKeySpace(sceneProject->scene, entity, rest->second.binding, value)){
+        for (int k = 0; k < 4; k++) rest->second.value[k] = value[k];
+        rest->second.hasSnapshot = anim::snapshotProperty(sceneProject->scene, entity, rest->second.binding, rest->second.snapshot);
+    }
+    needsApply = true;
+}
+
 // ---- keying ----
 
 bool AnimationClipController::editable(std::string* error) const{
@@ -1391,7 +1544,11 @@ bool AnimationClipController::commitEdit(const ClipData& data, const std::string
     std::shared_ptr<AnimationClipDocument> edited = document;
     const uint64_t clockBefore = clipCommitClock(project);
     std::vector<ClipWarning> warnings;
-    if (!edited->commit(data, undoName, mergeKey, error, &warnings)) return false;
+    // Auto, Linear and Flat keys follow their neighbours (anim-properties: a moved key keeps
+    // its mode's meaning)
+    ClipData refreshed = data;
+    for (ClipTrackData& track : refreshed.tracks) cliptangents::refresh(track);
+    if (!edited->commit(refreshed, undoName, mergeKey, error, &warnings)) return false;
     lastWarnings = warnings;
     // the preview shows the new revision through the document's listener; the project step it
     // made (or merged into) is a clip commit (R5b)
@@ -1456,10 +1613,11 @@ bool AnimationClipController::currentTrackValue(const ClipTrackData& track, std:
     out.clear();
     SceneProject* sceneProject = nullptr;
     const Entity target = valueRoot(&sceneProject);
-    if (target == NULL_ENTITY || !sceneProject || track.channel == ClipChannel::Property) return false;
+    if (target == NULL_ENTITY || !sceneProject) return false;
     Scene* scene = sceneProject->scene;
     const Entity entity = anim::resolvePath(scene, target, track.path);
     if (entity == NULL_ENTITY) return false;
+    if (track.channel == ClipChannel::Property) return currentPropertyValue(scene, entity, track, out);
     if (!anim::readChannelValue(scene, entity, track.channel, track.points, out)) return false;
     if (track.channel == ClipChannel::Morph) out = morphValue(track, out);
     if (!track.relative) return true;
@@ -1497,9 +1655,50 @@ bool AnimationClipController::currentTrackValue(const ClipTrackData& track, std:
     return true;
 }
 
+bool AnimationClipController::addPropertyTrack(const std::string& path, const std::string& component, const std::string& property,
+                                               size_t* newTrack, std::string* error){
+    if (!editable(error)) return false;
+    std::vector<anim::PathSegment> segments;
+    if (!anim::parsePath(path, segments)) return fail(error, "'" + path + "' is not a valid path");
+    anim::PropertyRef ref;
+    if (!anim::parsePropertyRef(component, property, ref)) return fail(error, ref.error);
+    ClipData data = document->data();
+    if (data.findPropertyTrack(path, component, property) >= 0){
+        return fail(error, "the clip already animates " + path + " : " + component + "." + property);
+    }
+    SceneProject* sceneProject = nullptr;
+    const Entity at = valueRoot(&sceneProject);
+    if (at == NULL_ENTITY || !sceneProject) return fail(error, "no GameObject is bound to read the current value from");
+    const Entity entity = anim::resolvePath(sceneProject->scene, at, path);
+    if (entity == NULL_ENTITY) return fail(error, "no GameObject at '" + path + "' under the bound root");
+    if (legacyModelPart(sceneProject->scene, at, entity)){
+        return fail(error, "'" + (path.empty() ? sceneProject->scene->getEntityName(entity) : path) + "' " + LEGACY_PART_REASON);
+    }
+    const anim::PropertyBinding binding = propertyBindingOf(sceneProject->scene, entity, component, property, 0);
+    if (binding.status != anim::PropertyBindStatus::Bound) return fail(error, binding.message);
+    ClipTrackData track;
+    track.path = path;
+    track.channel = ClipChannel::Property;
+    track.component = component;
+    track.property = property;
+    // a script field or shader member keeps its bound kind (normalize takes it from the keys)
+    track.kind = binding.swizzle >= 0 ? PropertyKind::Float : binding.kind;
+    track.width = binding.swizzle >= 0 ? 1 : binding.width;
+    std::vector<float> value;
+    if (!currentPropertyValue(sceneProject->scene, entity, track, value)) return fail(error, "the current value can't be read");
+    setKeyAt(track, time, value);
+    data.tracks.push_back(track);
+    if (!commitEdit(data, "Add Property", "", error)) return false;
+    if (newTrack){
+        const int index = document->data().findPropertyTrack(path, component, property);
+        *newTrack = index >= 0 ? (size_t)index : 0;
+    }
+    return true;
+}
+
 bool AnimationClipController::addProperty(const std::string& path, ClipChannel channel, size_t* newTrack, std::string* error){
     if (!editable(error)) return false;
-    if (channel == ClipChannel::Property) return fail(error, "component properties can't be animated yet");
+    if (channel == ClipChannel::Property) return fail(error, "a property track needs its component and property (addPropertyTrack)");
     std::vector<anim::PathSegment> segments;
     if (!anim::parsePath(path, segments)) return fail(error, "'" + path + "' is not a valid path");
     ClipData data = document->data();
@@ -1549,25 +1748,29 @@ bool AnimationClipController::keyTracks(const std::vector<size_t>& tracks, float
     if (indices.empty()){
         for (size_t i = 0; i < data.tracks.size(); i++) indices.push_back(i);
     }
-    std::vector<std::pair<std::string, ClipChannel>> written;
+    std::vector<DragIdentity> written;
     for (size_t index : indices){
         if (index >= data.tracks.size()) return fail(error, "no track " + std::to_string(index));
         ClipTrackData& track = data.tracks[index];
         std::vector<float> value;
         if (!currentTrackValue(track, value)) continue;
         setKeyAt(track, atTime, value);
-        written.push_back({track.path, track.channel});
+        written.push_back(identityOf<DragIdentity>(track, atTime));
     }
     if (written.empty()) return fail(error, "no bound track to key (missing bindings are skipped)");
     if (!commitEdit(data, "Add Key", mergeKey, error)) return false;
     // the keyed values are the clip's now: nothing pending for those tracks
     pending.erase(std::remove_if(pending.begin(), pending.end(), [&written](const PendingValue& value){
-        return std::find(written.begin(), written.end(), std::make_pair(value.path, value.channel)) != written.end();
+        return std::any_of(written.begin(), written.end(), [&value](const DragIdentity& identity){
+            return identity.path == value.path && identity.channel == value.channel && identity.component == value.component &&
+                   identity.property == value.property;
+        });
     }), pending.end());
     if (keyed){
-        for (const auto& identity : written){
+        for (const DragIdentity& identity : written){
+            const int track = trackOf(document->data(), identity);
             KeyRef ref;
-            if (findKey(document->data(), identity.first, identity.second, atTime, ref)) keyed->push_back(ref);
+            if (track >= 0 && findKey(document->data(), document->data().tracks[(size_t)track], atTime, ref)) keyed->push_back(ref);
         }
     }
     return true;
@@ -1597,7 +1800,7 @@ bool AnimationClipController::keyModified(float atTime, std::vector<KeyRef>* key
         const ClipTrackData& track = data.tracks[i];
         std::vector<float> value;
         if (!currentTrackValue(track, value)) continue;
-        const int built = clip->findTrack(track.path, track.channel);
+        const int built = builtTrackOf(*clip, track);
         if (built < 0 || (size_t)built >= samples.size() || !samples[(size_t)built].valid){
             changed.push_back(i);
             continue;
@@ -1616,7 +1819,7 @@ bool AnimationClipController::setKeyValue(const KeyRef& key, const std::vector<f
     for (float v : value){
         if (!finite(v)) return fail(error, "key values must be finite numbers");
     }
-    size_t width = ClipData::valueWidth(track.channel, value.size(), track.points.size());
+    size_t width = ClipData::valueWidth(track.channel, value.size(), track.points.size(), track.width);
     if (track.channel == ClipChannel::Morph){
         if (value.empty() || value.size() > MAX_MORPHTARGETS){
             return fail(error, "a blend shape key holds 1 to " + std::to_string(MAX_MORPHTARGETS) + " weights");
@@ -1674,14 +1877,14 @@ bool AnimationClipController::moveKeys(const std::vector<KeyRef>& keys, float de
     for (const KeyRef& ref : keys){
         if (ref.track >= data.tracks.size() || ref.key >= data.tracks[ref.track].keys.size()) return fail(error, "no such key");
         const ClipTrackData& track = data.tracks[ref.track];
-        identities.push_back({track.path, track.channel, std::max(0.0f, track.keys[ref.key].time + deltaTime)});
+        identities.push_back(identityOf<DragIdentity>(track, std::max(0.0f, track.keys[ref.key].time + deltaTime)));
     }
     if (!moveKeyData(data, keys, deltaTime, nullptr, error)) return false;
     if (!commitEdit(data, "Move Keys", mergeKey, error)) return false;
     if (moved){
         moved->clear();
         for (const DragIdentity& identity : identities){
-            const int track = document->data().findTrack(identity.path, identity.channel);
+            const int track = trackOf(document->data(), identity);
             if (track < 0) continue;
             const int key = nearestKey(document->data().tracks[(size_t)track], identity.time, 1e-4f);
             if (key < 0) continue;
@@ -1703,7 +1906,7 @@ bool AnimationClipController::beginKeyDrag(const std::vector<KeyRef>& keys, std:
     for (const KeyRef& ref : keys){
         if (ref.track >= data.tracks.size() || ref.key >= data.tracks[ref.track].keys.size()) return fail(error, "no such key");
         const ClipTrackData& track = data.tracks[ref.track];
-        identities.push_back({track.path, track.channel, track.keys[ref.key].time});
+        identities.push_back(identityOf<DragIdentity>(track, track.keys[ref.key].time));
     }
     dragging = true;
     dragBase = data;
@@ -1735,7 +1938,7 @@ bool AnimationClipController::updateKeyDrag(float totalDeltaTime, const std::vec
     if (moved){
         moved->clear();
         for (const DragIdentity& identity : dragIdentities){
-            const int track = document->data().findTrack(identity.path, identity.channel);
+            const int track = trackOf(document->data(), identity);
             if (track < 0) continue;
             const int key = nearestKey(document->data().tracks[(size_t)track], std::max(0.0f, identity.time + totalDeltaTime), 1e-4f);
             if (key < 0) continue;
@@ -1795,7 +1998,7 @@ bool AnimationClipController::updateKeyDrag(float totalDeltaTime, const std::vec
     if (moved){
         moved->clear();
         for (const DragIdentity& identity : dragIdentities){
-            const int track = document->data().findTrack(identity.path, identity.channel);
+            const int track = trackOf(document->data(), identity);
             if (track < 0) continue;
             const int key = nearestKey(document->data().tracks[(size_t)track], std::max(0.0f, identity.time + totalDeltaTime), 1e-4f);
             if (key < 0) continue;
@@ -1822,6 +2025,21 @@ void AnimationClipController::endKeyDrag(){
 
 bool AnimationClipController::isDraggingKeys() const{
     return dragging;
+}
+
+bool AnimationClipController::findKey(const ClipData& data, const ClipTrackData& like, float time, KeyRef& out){
+    const int track = data.findTrack(like);
+    if (track < 0) return false;
+    const std::vector<ClipKey>& keys = data.tracks[(size_t)track].keys;
+    for (size_t k = 0; k < keys.size(); k++){
+        const float difference = keys[k].time - time;
+        if (difference <= anim::ANIM_TIME_EPSILON && difference >= -anim::ANIM_TIME_EPSILON){
+            out.track = (size_t)track;
+            out.key = k;
+            return true;
+        }
+    }
+    return false;
 }
 
 bool AnimationClipController::findKey(const ClipData& data, const std::string& path, ClipChannel channel, float time, KeyRef& out){
@@ -1877,6 +2095,46 @@ bool AnimationClipController::setEase(const std::vector<KeyRef>& keys, EaseType 
     return commitEdit(data, "Set Interpolation", "", error);
 }
 
+bool AnimationClipController::setTangentMode(const std::vector<KeyRef>& keys, ClipTangentMode mode, std::string* error){
+    if (!editable(error)) return false;
+    ClipData data = document->data();
+    size_t edited = 0;
+    for (const KeyRef& ref : keys){
+        if (ref.track >= data.tracks.size() || ref.key >= data.tracks[ref.track].keys.size()) return fail(error, "no such key");
+        if (!cliptangents::editable(data.tracks[ref.track])) continue;
+        cliptangents::setMode(data.tracks[ref.track], ref.key, mode);
+        edited++;
+    }
+    if (edited == 0) return fail(error, "rotations and stepped properties have no tangents to edit (use Interpolation)");
+    return commitEdit(data, "Set Tangents", "", error);
+}
+
+bool AnimationClipController::setSideTangent(const std::vector<KeyRef>& keys, cliptangents::Side side, cliptangents::SideType type,
+                                             std::string* error){
+    if (!editable(error)) return false;
+    ClipData data = document->data();
+    size_t edited = 0;
+    for (const KeyRef& ref : keys){
+        if (ref.track >= data.tracks.size() || ref.key >= data.tracks[ref.track].keys.size()) return fail(error, "no such key");
+        if (!cliptangents::editable(data.tracks[ref.track])) continue;
+        cliptangents::setSide(data.tracks[ref.track], ref.key, side, type);
+        edited++;
+    }
+    if (edited == 0) return fail(error, "rotations and stepped properties have no tangents to edit (use Interpolation)");
+    return commitEdit(data, "Set Tangents", "", error);
+}
+
+bool AnimationClipController::setTangentSlope(const KeyRef& key, size_t component, cliptangents::Side side, float slope,
+                                              const std::string& mergeKey, std::string* error){
+    if (!editable(error)) return false;
+    if (!finite(slope)) return fail(error, "the slope must be a finite number");
+    ClipData data = document->data();
+    if (key.track >= data.tracks.size() || key.key >= data.tracks[key.track].keys.size()) return fail(error, "no such key");
+    if (!cliptangents::editable(data.tracks[key.track])) return fail(error, "rotations and stepped properties have no tangents to edit");
+    cliptangents::setSlope(data.tracks[key.track], key.key, component, side, slope);
+    return commitEdit(data, "Drag Tangent", mergeKey, error);
+}
+
 bool AnimationClipController::removeTrack(size_t track, std::string* error){
     if (!editable(error)) return false;
     ClipData data = document->data();
@@ -1893,9 +2151,12 @@ bool AnimationClipController::retargetTrack(size_t track, const std::string& new
     if (!anim::parsePath(newPath, segments)) return fail(error, "'" + newPath + "' is not a valid path");
     ClipTrackData& edited = data.tracks[track];
     if (edited.path == newPath) return true;
-    const int other = data.findTrack(newPath, edited.channel);
+    ClipTrackData moved = edited;
+    moved.path = newPath;
+    const int other = data.findTrack(moved);
     if (other >= 0 && (size_t)other != track){
-        return fail(error, "the clip already animates " + newPath + " : " + anim::channelName(edited.channel));
+        return fail(error, "the clip already animates " + newPath + " : " +
+                    (edited.channel == ClipChannel::Property ? edited.component + "." + edited.property : std::string(anim::channelName(edited.channel))));
     }
     edited.path = newPath;
     return commitEdit(data, "Retarget Property", "", error);
@@ -1920,6 +2181,12 @@ void AnimationClipController::setRecording(bool on){
             recordValue(id, entity, value, mergeKey);
         };
         listener.animates = [this](uint32_t id, Entity entity, ClipChannel channel){ return recordAnimates(id, entity, channel); };
+        listener.claimsProperty = [this](uint32_t id, Entity entity, const ClipPropertyKey& property){
+            return recordClaimsProperty(id, entity, property);
+        };
+        listener.animatesProperty = [this](uint32_t id, Entity entity, const ClipPropertyKey& property){
+            return recordAnimatesProperty(id, entity, property);
+        };
         recordListener = ClipRecordHooks::addRecordListener(listener);
         return;
     }
@@ -1967,7 +2234,124 @@ bool AnimationClipController::recordAnimates(uint32_t id, Entity entity, ClipCha
     return document->data().findTrack(path, channel) >= 0;
 }
 
+bool AnimationClipController::recordClaimsProperty(uint32_t id, Entity entity, const ClipPropertyKey& property) const{
+    if (!recording || !isPreviewing() || id != previewSceneId || property.empty()) return false;
+    if (!document || document->isReadOnly() || !document->exists()) return false;
+    SceneProject* sceneProject = sceneProjectOf(previewSceneId);
+    if (!sceneProject || !sceneProject->scene->isEntityCreated(entity)) return false;
+    std::string path;
+    if (!anim::relativePath(sceneProject->scene, previewRoot, entity, path)) return false;
+    if (legacyModelPart(sceneProject->scene, previewRoot, entity)) return false;
+    return propertyBindingOf(sceneProject->scene, entity, property.component, property.property, 0).status == anim::PropertyBindStatus::Bound;
+}
+
+bool AnimationClipController::recordAnimatesProperty(uint32_t id, Entity entity, const ClipPropertyKey& property) const{
+    if (!recordClaimsProperty(id, entity, property)) return false;
+    SceneProject* sceneProject = sceneProjectOf(previewSceneId);
+    std::string path;
+    if (!sceneProject || !anim::relativePath(sceneProject->scene, previewRoot, entity, path)) return false;
+    // the whole property or one of its components
+    for (const ClipTrackData& track : document->data().tracks){
+        if (track.channel != ClipChannel::Property || track.path != path || track.component != property.component) continue;
+        if (track.property == property.property || track.property.compare(0, property.property.size() + 1, property.property + ".") == 0) return true;
+    }
+    return false;
+}
+
+void AnimationClipController::recordPropertyValue(uint32_t id, Entity entity, const ClipRecordValue& value, const std::string& mergeKey){
+    SceneProject* sceneProject = sceneProjectOf(previewSceneId);
+    if (!sceneProject || !recordClaimsProperty(id, entity, value.property)) return;
+    {
+        const float fps = std::isfinite(document->data().frameRate) && document->data().frameRate >= 1.0f ? document->data().frameRate : 30.0f;
+        const float snapped = std::max(0.0f, std::round(time * fps) / fps);
+        playing = false;
+        if (std::fabs(snapped - time) > 1e-6f) setTime(snapped);
+    }
+    Scene* scene = sceneProject->scene;
+    std::string path;
+    if (!anim::relativePath(scene, previewRoot, entity, path)) return;
+    const anim::PropertyBinding binding = propertyBindingOf(scene, entity, value.property.component, value.property.property, 0);
+    if (binding.status != anim::PropertyBindStatus::Bound || value.value.size() < binding.width) return;
+
+    // the rest is the scene's value before the first live write (stop puts it back)
+    float before[4] = {0, 0, 0, 0};
+    anim::readPropertyKeySpace(scene, entity, binding, before);
+    if (!takePropertyRest(scene, entity, session.rest[entity], binding)) return;
+    const std::pair<Entity, uint32_t> entry(entity, binding.key);
+    if (std::find(session.writtenProperties.begin(), session.writtenProperties.end(), entry) == session.writtenProperties.end()){
+        session.writtenProperties.push_back(entry);
+    }
+    std::vector<float> keyValue(value.value.begin(), value.value.begin() + binding.width);
+    if (binding.discrete || binding.interpolateInt){
+        for (float& v : keyValue) v = std::round(v);
+    }
+    anim::writePropertyKeySpace(scene, entity, binding, keyValue.data());
+
+    // the whole property's track; with only component tracks of it (color.a), those, and new
+    // ones for the components this edit changed
+    ClipData data = document->data();
+    const std::string& component = value.property.component;
+    const std::string& property = value.property.property;
+    int whole = data.findPropertyTrack(path, component, property);
+    std::vector<size_t> parts;
+    for (size_t i = 0; i < data.tracks.size(); i++){
+        const ClipTrackData& track = data.tracks[i];
+        if (track.channel == ClipChannel::Property && track.path == path && track.component == component &&
+            track.property.size() == property.size() + 2 && track.property.compare(0, property.size() + 1, property + ".") == 0){
+            parts.push_back(i);
+        }
+    }
+    if (whole >= 0 || parts.empty()){
+        if (whole < 0){
+            ClipTrackData track;
+            track.path = path;
+            track.channel = ClipChannel::Property;
+            track.component = component;
+            track.property = property;
+            track.kind = binding.kind;
+            track.width = binding.width;
+            data.tracks.push_back(track);
+            whole = (int)data.tracks.size() - 1;
+        }
+        setKeyAt(data.tracks[(size_t)whole], time, keyValue);
+    }else{
+        std::vector<bool> keyed(binding.width, false);
+        for (size_t i : parts){
+            anim::PropertyRef ref;
+            anim::parsePropertyRef(component, data.tracks[i].property, ref);
+            if (ref.swizzle < 0 || (size_t)ref.swizzle >= binding.width) continue;
+            setKeyAt(data.tracks[i], time, {keyValue[(size_t)ref.swizzle]});
+            keyed[(size_t)ref.swizzle] = true;
+        }
+        static const char* const vectorLetters = "xyzw";
+        static const char* const colorLetters = "rgba";
+        const bool colour = binding.kind == PropertyKind::Color3 || binding.kind == PropertyKind::Color4;
+        for (size_t k = 0; k < binding.width; k++){
+            if (keyed[k] || std::fabs(keyValue[k] - before[k]) <= 1e-6f) continue;
+            ClipTrackData track;
+            track.path = path;
+            track.channel = ClipChannel::Property;
+            track.component = component;
+            track.property = property + "." + (colour ? colorLetters[k] : vectorLetters[k]);
+            track.kind = PropertyKind::Float;
+            track.width = 1;
+            setKeyAt(track, time, {keyValue[k]});
+            data.tracks.push_back(track);
+        }
+    }
+    std::string error;
+    if (commitEdit(data, "Record", mergeKey, &error)) return;
+    if (!mergeKey.empty() && mergeKey == failedRecordKey) return;
+    failedRecordKey = mergeKey;
+    Out::warning("Record: %s", error.c_str());
+    ClipRecordHooks::note("Record could not key this edit: " + error);
+}
+
 void AnimationClipController::recordValue(uint32_t id, Entity entity, const ClipRecordValue& value, const std::string& mergeKey){
+    if (value.channel == ClipChannel::Property){
+        recordPropertyValue(id, entity, value, mergeKey);
+        return;
+    }
     SceneProject* sceneProject = sceneProjectOf(previewSceneId);
     if (!recordClaims(id, entity, value.channel) || !sceneProject) return;
     // keys land on the Samples grid (T3c review I5); a playing preview pauses there first, so
@@ -2067,11 +2451,11 @@ bool AnimationClipController::setPendingValue(size_t track, const std::vector<fl
     const ClipData& data = document->data();
     if (track >= data.tracks.size()) return fail(error, "no track " + std::to_string(track));
     const ClipTrackData& target = data.tracks[track];
-    if (target.channel == ClipChannel::Property) return fail(error, "component properties can't be animated yet");
+    if (target.channel == ClipChannel::Property && !target.known) return fail(error, "'" + target.component + "." + target.property + "' is not animatable");
     for (float v : value){
         if (!finite(v)) return fail(error, "values must be finite numbers");
     }
-    size_t width = ClipData::valueWidth(target.channel, value.size(), target.points.size());
+    size_t width = ClipData::valueWidth(target.channel, value.size(), target.points.size(), target.width);
     if (target.channel == ClipChannel::Morph){
         if (value.empty() || value.size() > MAX_MORPHTARGETS){
             return fail(error, "a blend shape value holds 1 to " + std::to_string(MAX_MORPHTARGETS) + " weights");
@@ -2086,7 +2470,10 @@ bool AnimationClipController::setPendingValue(size_t track, const std::vector<fl
     if (!sceneProject) return fail(error, "the previewed scene is gone");
     const Entity entity = anim::resolvePath(sceneProject->scene, previewRoot, target.path);
     std::vector<float> current;
-    if (entity == NULL_ENTITY || !anim::readChannelValue(sceneProject->scene, entity, target.channel, target.points, current)){
+    const bool bound = entity != NULL_ENTITY && (target.channel == ClipChannel::Property
+        ? currentPropertyValue(sceneProject->scene, entity, target, current)
+        : anim::readChannelValue(sceneProject->scene, entity, target.channel, target.points, current));
+    if (!bound){
         return fail(error, "'" + target.path + "' is not bound: nothing shows the value");
     }
     if (pendingTime != time) pending.clear();
@@ -2096,8 +2483,10 @@ bool AnimationClipController::setPendingValue(size_t track, const std::vector<fl
     entry.channel = target.channel;
     entry.points = target.points;
     entry.value = value;
+    entry.component = target.component;
+    entry.property = target.property;
     pending.erase(std::remove_if(pending.begin(), pending.end(), [&entry](const PendingValue& other){
-        return other.path == entry.path && other.channel == entry.channel;
+        return other.path == entry.path && other.channel == entry.channel && other.component == entry.component && other.property == entry.property;
     }), pending.end());
     pending.push_back(entry);
     writePending();
@@ -2109,7 +2498,7 @@ bool AnimationClipController::hasPendingValue(size_t track) const{
     if (!document || track >= document->data().tracks.size()) return false;
     const ClipTrackData& target = document->data().tracks[track];
     return std::any_of(pending.begin(), pending.end(), [&target](const PendingValue& value){
-        return value.path == target.path && value.channel == target.channel;
+        return value.path == target.path && value.channel == target.channel && value.component == target.component && value.property == target.property;
     });
 }
 
@@ -2126,6 +2515,27 @@ void AnimationClipController::writePending(){
     for (const PendingValue& value : pending){
         const Entity entity = anim::resolvePath(scene, previewRoot, value.path);
         if (entity == NULL_ENTITY) continue;
+        if (value.channel == ClipChannel::Property){
+            // the whole property with the pending components (key space)
+            anim::PropertyBinding binding = propertyBindingOf(scene, entity, value.component, value.property, value.value.size());
+            if (binding.status != anim::PropertyBindStatus::Bound) continue;
+            float whole[4] = {0, 0, 0, 0};
+            if (!anim::readPropertyKeySpace(scene, entity, binding, whole)) continue;
+            if (!takePropertyRest(scene, entity, session.rest[entity], binding)) continue;
+            if (binding.swizzle >= 0){
+                if (value.value.empty()) continue;
+                whole[binding.swizzle] = value.value[0];
+            }else{
+                for (size_t k = 0; k < binding.width && k < value.value.size(); k++) whole[k] = value.value[k];
+            }
+            binding.swizzle = -1;
+            const std::pair<Entity, uint32_t> entry(entity, binding.key);
+            if (std::find(session.writtenProperties.begin(), session.writtenProperties.end(), entry) == session.writtenProperties.end()){
+                session.writtenProperties.push_back(entry);
+            }
+            anim::writePropertyKeySpace(scene, entity, binding, whole);
+            continue;
+        }
         // the rest is what the scene had before (stop puts it back)
         takeRest(scene, entity, session.rest[entity], value.channel, false);
         const std::pair<Entity, ClipChannel> entry(entity, value.channel);
