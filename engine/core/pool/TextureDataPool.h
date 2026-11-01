@@ -216,6 +216,13 @@ namespace jasperengine{
         static std::vector<TextureResidentInfo> getResidentTextures();
         // loads waiting on a progressive swap, a transcode or a budget reload
         static size_t pendingWorkCount();
+        // The texture loads still running: a frame drawn now shows a stand-in for each (an empty
+        // texture while it reads and decodes, a progressive load's small tail while the rest
+        // reads, a transcode waiting for the main thread). Readiness and screenshots wait for
+        // none to be left; a finished load the next draw adopts is not counted.
+        static size_t getLoadingCount();
+        // their ids (the texture paths), at most `max`
+        static std::vector<std::string> getLoadingIds(size_t max);
     };
 }
 

@@ -143,9 +143,9 @@ Every player takes the same options (the web from its URL query, `?quit-after=30
 |---|---|
 | `--headless` | no window (Linux still needs an X server: Xvfb in CI) |
 | `--quit-after N` | quit after N frames |
-| `--after-ready` | count the frames from "Engine ready:" |
+| `--after-ready` | count the frames from "Engine ready:" (every scene loaded, no shader being made, no texture loading) |
 | `--fixed-fps F` | a fixed time step of 1/F seconds |
-| `--screenshot file.png` / `--screenshot-frame N` | write that frame (the last one by default) |
+| `--screenshot file.png` / `--screenshot-frame N` | write that frame (the last one by default); a frame drawn with shaders still being made or textures still loading waits for them (the game held), up to 120 s, then exits 4 naming them |
 | `--fail-on-error` | exit 3 when an error is logged |
 | `--ready-timeout S` | exit 6 when not ready after S seconds |
 | `--resolution WxH`, `--scene <name\|id>`, `--content <dir>`, `--verify-content`, `--silent-audio`, `--log-level` | |
