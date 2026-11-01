@@ -6,6 +6,7 @@
 
 #include "Action.h"
 #include "Ease.h"
+#include "math/Curve.h"
 
 namespace jasperengine{
     class JASPERENGINE_API Tween: public Action{
@@ -18,6 +19,9 @@ namespace jasperengine{
         Tween(Scene* scene, Entity entity);
 
         void setFunctionType(EaseType functionType);
+        // eases along `curve` (time 0 to 1): the ease type becomes EaseType::CURVE
+        void setCurve(const Curve& curve);
+        Curve getCurve() const;
 
         float getValue() const;
         float getTime() const;

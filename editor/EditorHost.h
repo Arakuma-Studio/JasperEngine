@@ -76,6 +76,8 @@ namespace jasperengine::editor {
         virtual void flushSceneMaterialWrites(uint32_t sceneId);
         virtual void saveAllCodeEditors();
         virtual void requestScenePlayFocus(uint32_t sceneId);
+        // Play is about to start (Project::start): the Recorder's Record on Play arms here
+        virtual void playStarting(uint32_t sceneId);
         // Why a human action can't start now because background work holds what it needs
         // (an MCP agent's export or C++ script build job); empty when it can.
         // action: "play" or "export".

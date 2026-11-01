@@ -17,6 +17,7 @@
 #include "util/Angle.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cmath>
 #include <cstring>
 #include <span>
@@ -273,6 +274,14 @@ void RenderSystem::planShadowSlots(int numLights){
     limits.maxResolution = tier.slotResolution;
     limits.minResolution = MIN_SHADOW_RESOLUTION;
     limits.memoryBytes = tier.memoryBytes;
+    // JASPERENGINE_SHADOW_MEMORY_MB=<n>: the tier's memory row replaced, for budget investigations
+    // (docs/rendering/shadow-budgets.md: what a static layer saves on a device)
+    static const uint64_t memoryOverride = [](){
+        const char* value = std::getenv("JASPERENGINE_SHADOW_MEMORY_MB");
+        return value ? (uint64_t)std::max(0, std::atoi(value)) * 1024ull * 1024ull : 0ull;
+    }();
+    if (memoryOverride > 0)
+        limits.memoryBytes = memoryOverride;
     shadowPlan = shadowPlanner.plan(shadowRequests, limits, shadowFrame);
 
     for (size_t r = 0; r < shadowRequests.size(); r++){

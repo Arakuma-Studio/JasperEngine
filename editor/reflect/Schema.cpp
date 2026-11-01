@@ -11,6 +11,7 @@
 
 #include "StreamMigrations.h"
 #include "mcp/McpValues.h"
+#include "stream/CurveCodec.h"
 
 #include <cmath>
 #include <cstring>
@@ -128,6 +129,10 @@ Json reflect::detail::easeSchema(const FieldDesc&) {
     Json tokens = Json::array();
     for (const auto& option : mcp::McpValues::easeOptions()) tokens.push_back(option.name);
     return Json{{"type", "string"}, {"enum", tokens}};
+}
+
+Json reflect::detail::curveSchema(const FieldDesc&) {
+    return curvecodec::curveSchema();
 }
 
 Json reflect::detail::entitySchema(const FieldDesc&) {

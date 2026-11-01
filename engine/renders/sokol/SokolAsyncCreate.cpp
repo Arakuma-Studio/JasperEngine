@@ -257,9 +257,23 @@ namespace {
         return allowed;
     }
 
-    // GL warm draws (spec S32 R4): asked for, in worker mode
+    // GLES (Android): warm draws wait for a run on Adreno/Mali (the GPU campaign verified desktop
+    // GL on NVIDIA only); JASPER_GL_WARM_DRAWS=1 allows them there, for driver investigations
+    bool glesWarmDrawsAllowed(){
+#if defined(SOKOL_GLES3)
+        static const bool allowed = [](){
+            const char* value = std::getenv("JASPER_GL_WARM_DRAWS");
+            return value && std::string(value) == "1";
+        }();
+        return allowed;
+#else
+        return true;
+#endif
+    }
+
+    // GL warm draws (spec S32 R4): asked for, in worker mode, on a hardware desktop GL
     bool warmOn(const State& s){
-        if (s.mode != GpuCreationMode::GlWorker || !s.settings.glWarmDraws)
+        if (s.mode != GpuCreationMode::GlWorker || !s.settings.glWarmDraws || !glesWarmDrawsAllowed())
             return false;
         return !s.caps.gl_software || softwareWorkerAllowed();
     }
@@ -656,7 +670,18 @@ namespace {
             return GpuCreationMode::GlDeferred;
         if (forced == "parallel" && !s.caps.gl_parallel_compile)
             Log::warn("[gpu] JASPER_ASYNC_SHADERS=parallel: KHR_parallel_shader_compile is not available");
-        return s.caps.gl_parallel_compile ? GpuCreationMode::GlParallel : GpuCreationMode::GlDeferred;
+        if (!s.caps.gl_parallel_compile)
+            return GpuCreationMode::GlDeferred;
+        // the driver's compile threads: the extension leaves their initial count to the driver, and
+        // NVIDIA's is none (its glLinkProgram then returns once linked, 2.1 s for a Lit lobe variant
+        // on an RTX 3080 Ti, and COMPLETION_STATUS is always true). Only in this mode: with a worker
+        // context the setting makes the worker's links return early and the render thread's first
+        // draw wait for them (docs/perf/gpu-campaign.md, S32). Not on a software GL: llvmpipe's
+        // compile was complete at once without them (the CI reference), and with them a lazily
+        // made shader can finish after the frame a test or an export check reads
+        if (!s.caps.gl_software)
+            sgj_gl_enable_compile_threads();
+        return GpuCreationMode::GlParallel;
     }
 
 }

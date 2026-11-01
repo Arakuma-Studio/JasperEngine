@@ -19,6 +19,10 @@
 #include <thread>
 #include <vector>
 
+#if defined(__linux__) || defined(__APPLE__)
+#include <time.h>
+#endif
+
 namespace jasperengine::test::compat {
 
     // a shared, loaded build host (several agents compiling) slows every timing down: the
@@ -29,18 +33,41 @@ namespace jasperengine::test::compat {
         return factor > 0.0 ? factor : 1.0;
     }
 
-    // One measurement: the median CPU time of the process over 20 samples of `repeat` runs,
-    // after 3 warm-up runs (the work is single-threaded: wall time on a shared host mostly
+    // The calling thread's CPU time in ms; the process's where the platform has no thread clock.
+    // The step runs on this thread: the process's clock also counts the binary's other threads
+    // (job workers, threads an earlier test left running), whatever they do meanwhile.
+    inline double threadCpuMs(){
+#if defined(__linux__) || defined(__APPLE__)
+        timespec ts;
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
+        return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1.0e6;
+#else
+        return 1000.0 * (double)std::clock() / (double)CLOCKS_PER_SEC;
+#endif
+    }
+
+    // For a budget near the step's own cost on a build server (MarkdownHtml.Perf20KB: 1.3 ms of its
+    // 2 ms there alone, 0.27 ms on the benchmark server): the factor it is enforced with, only when
+    // the run sets JASPER_HTMLUI_PERF_SLACK (the benchmark run on server E: 1; CI: 3), else 0 and the
+    // time is only printed. A shared host's load inflates even the least CPU time past such a budget.
+    inline double benchmarkPerfSlack(){
+        const char* value = std::getenv("JASPER_HTMLUI_PERF_SLACK");
+        const double factor = value ? std::atof(value) : 0.0;
+        return factor > 0.0 ? factor : 0.0;
+    }
+
+    // One measurement: the median CPU time of the calling thread over 20 samples of `repeat`
+    // runs, after 3 warm-up runs (the work is single-threaded: wall time on a shared host mostly
     // measures the other processes; `repeat` is for the clock's resolution).
     inline double medianCpuMs(const std::function<void()>& work, int repeat){
         for (int i = 0; i < 3; i++)
             work();
         std::vector<double> times;
         for (int i = 0; i < 20; i++){
-            const std::clock_t start = std::clock();
+            const double start = threadCpuMs();
             for (int r = 0; r < repeat; r++)
                 work();
-            times.push_back(1000.0 * (double)(std::clock() - start) / (double)CLOCKS_PER_SEC / (double)repeat);
+            times.push_back((threadCpuMs() - start) / (double)repeat);
         }
         std::sort(times.begin(), times.end());
         return times[times.size() / 2];

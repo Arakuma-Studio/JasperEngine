@@ -38,6 +38,9 @@ namespace jasperengine::editor {
         int width = 0;
         int height = 0;
         ImVec2 engineScale = ImVec2(1.0f, 1.0f);
+        // the Recorder's output size (S27 R27): the game renders at it, shown scaled to fit
+        int overrideWidth = 0;
+        int overrideHeight = 0;
 
         // Scene drawn by the edit-mode pass and whether it needs drawing again
         uint32_t editPassSceneId = NULL_PROJECT_SCENE;
@@ -85,6 +88,9 @@ namespace jasperengine::editor {
         // size the game renders at: the laid out one, or the project canvas before any
         int getRenderWidth() const;
         int getRenderHeight() const;
+        // the game renders at exactly w x h (the Recorder), the view showing it scaled to fit;
+        // 0, 0 goes back to the view's own size
+        void setRenderSizeOverride(int w, int h);
         bool isGameCursorInView() const;
         // The game image has keyboard focus (keys go to the game while playing)
         bool hasKeyboardFocus() const;

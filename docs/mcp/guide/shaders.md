@@ -476,8 +476,8 @@ exact one replaces it once it is ready. A pipeline being created is not drawn fo
 - Settings (`set_project_settings`): `shader_creation.async_creation`,
   `shader_creation.main_thread_budget_ms`, `shader_creation.gl_warm_draws`, and for the warm-up
   list `shader_creation.record_during_play`, `include_in_builds`, `hold_first_scene`.
-  `shader_creation.gl_warm_draws` is off by default and never runs on a software GL (llvmpipe),
-  which also has no worker context (`mode` is `parallel` or `deferred` there). The list's entry
+  `shader_creation.gl_warm_draws` is on by default for desktop GL on a GPU, off on GLES, and never
+  runs on a software GL (llvmpipe), which also has no worker context (`mode` is `parallel` or `deferred` there). The list's entry
   count is a Project Settings row (`get_project_settings` `search` finds
   `shader_creation.warmup_entries`; the file is `ShaderWarmup.json`).
 - The warm-up list (`ShaderWarmup.json` next to `project.yaml`): turn on Record During Play, play

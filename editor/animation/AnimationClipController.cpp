@@ -1755,7 +1755,7 @@ bool AnimationClipController::deleteKeys(const std::vector<KeyRef>& keys, std::s
 
 bool AnimationClipController::setEase(const std::vector<KeyRef>& keys, EaseType ease, std::string* error){
     if (!editable(error)) return false;
-    if (ease == EaseType::CUSTOM) return fail(error, "a custom ease can't be stored in a clip");
+    if (ease == EaseType::CUSTOM || ease == EaseType::CURVE) return fail(error, "a custom or curve ease can't be stored in a clip");
     ClipData data = document->data();
     std::set<size_t> tracks;
     for (const KeyRef& ref : keys){

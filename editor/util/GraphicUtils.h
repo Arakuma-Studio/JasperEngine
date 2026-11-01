@@ -41,6 +41,11 @@ namespace jasperengine::editor {
         // thread, after the draw. False when the framebuffer is not created or the readback fails.
         static bool readFramebufferRGBA(Framebuffer* framebuffer, std::vector<uint8_t>& out);
 
+        // A part of the framebuffer's colour, width * height RGBA8 rows top first: the
+        // eyedropper's exact viewport texel (S27 R4) without reading the whole target. Same
+        // synchronous readback and row order as readFramebufferRGBA; false outside it.
+        static bool readFramebufferRect(Framebuffer* framebuffer, int x, int y, int width, int height, std::vector<uint8_t>& rgba);
+
         static Vector2 getRectTransformCenter(Scene* scene, Entity entity, const RectTransformComponent& layout);
     };
 }

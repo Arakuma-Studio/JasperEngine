@@ -11,6 +11,8 @@
 //   tree <pid file>    starts a grandchild that sleeps, writes both pids to the file, sleeps
 //   sleep <ms>         sleeps
 //   exit <code>        exits with that code
+//   lines <n>          writes "line <i>" lines to stdout and "progress <i>%" to stderr, ending
+//                      them with \r (as git and FFmpeg draw progress) on stderr (S27 ProcessStream)
 // With JE_VCS_HELPER_MARKER set it first creates that file, whatever the mode: a copy planted as
 // `git` in a project shows whether it ran.
 
@@ -85,7 +87,18 @@ int main(int argc, char* argv[]) {
         // no wait for the parent: exits right after the write
         std::_Exit(0);
     }
-    if (mode == "stdin") {
+    if (mode == "lines" && argc >= 3) {
+        const int count = std::atoi(argv[2]);
+        for (int i = 0; i < count; i++) {
+            const std::string out = "line " + std::to_string(i) + "\n";
+            writeAll(out.data(), out.size());
+            const std::string err = "progress " + std::to_string(i) + "%\r";
+            std::fwrite(err.data(), 1, err.size(), stderr);
+            std::fflush(stderr);
+        }
+        return 0;
+    }
+        if (mode == "stdin") {
         size_t total = 0;
         char buffer[4096];
         size_t n = 0;

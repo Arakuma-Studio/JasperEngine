@@ -380,7 +380,7 @@ The patches in `sokol_gfx.h`:
 struct ShaderCreationSettings {        // S08-reflected (editor) and set by the exported main
     bool asyncCreation = true;
     float mainThreadBudgetMs = 2.0f;
-    bool glWarmDraws = false;
+    bool glWarmDraws = true;     // desktop GL (GPU campaign); GLES and software GL never
 };
 struct AsyncCreateStats { const char* mode; size_t pendingShaders, pendingPipelines, pendingWarmDraws;
     uint64_t createdShaders, createdPipelines; size_t internedPipelines; double lastFrameMainMs, maxMainMs; };
@@ -451,7 +451,8 @@ public:
     warmed state never overlap (`SokolAsyncCreate::beginFirstDraw`): that first draw waits
     while the worker draws the program, and a program first drawn in a frame is not warmed
     until the next `update()`.
-  - **Off by default, and never on a software GL** (`sgj_async_caps.gl_software`: llvmpipe,
+  - **On by default on desktop GL since the GPU campaign (off on GLES until a device run), and
+    never on a software GL** (`sgj_async_caps.gl_software`: llvmpipe,
     softpipe, SwiftShader; `JASPER_GL_WARM_DRAWS=1` overrides for driver investigations). On
     llvmpipe the render thread crashed in the driver drawing programs the worker had drawn
     (`AtmosphereGpu.ScreenCloudsHideFarTerrain`, deterministic). Isolated on D: with the
@@ -463,7 +464,10 @@ public:
     compiles at draw time (llvmpipe: measured in §7 AC13). Warm draws stay for the GPU campaign
     (§8).
 - **parallel**: `sgj_gl_shader_issue` on the main context (the compile and link calls only,
-  shader objects kept for the log). `update()` polls `GL_COMPLETION_STATUS_KHR`, which does not
+  shader objects kept for the log). On a hardware GL the mode first sets
+  `glMaxShaderCompilerThreadsKHR(0xFFFFFFFF)` (the extension leaves the initial count to the driver;
+  NVIDIA's is none, so without it the link blocks and the status is always complete; GPU campaign).
+  Not on a software GL: llvmpipe keeps its at-once completion, the CI reference. `update()` polls `GL_COMPLETION_STATUS_KHR`, which does not
   block. When it is true, `sgj_shader_create` adopts the program (patch 1) and checks the link
   status (no wait now). On failure the shader logs are read. There are no warm draws.
 - **deferred**: as parallel, but the program counts as "complete" 2 frames after the issue. At
@@ -696,9 +700,12 @@ public:
      on one thread only (the worker's from its creation thread until `release()`); the worker
      never touches sokol's GL state cache (`_sg_gl_create_shader` reads the bound program with
      `glGetIntegerv` and restores it).
-   - Warm draws need the worker, so they do not run on a software GL either; elsewhere the
-     setting `shader_creation.gl_warm_draws` defaults to off until the GPU campaign verifies
-     them. So on llvmpipe the GLSL link and a program's first-draw compile stay on the render
+   - Warm draws need the worker, so they do not run on a software GL either. **GPU campaign
+     (NVIDIA RTX 3080 Ti, driver 595.99, GLX):** the worker context and warm draws run without a
+     crash or hang over every bench run, and a warm draw takes the driver's first-draw compile of
+     a new variant (about 8 ms) off the render thread, so `shader_creation.gl_warm_draws` now
+     defaults to **on** for desktop GL. GLES (Android EGL) keeps them off until an Adreno/Mali run
+     (`JASPER_GL_WARM_DRAWS=1` allows them there); see Progress. So on llvmpipe the GLSL link and a program's first-draw compile stay on the render
      thread (spread by `parallel`'s completion polling); R21/R22 are measured on E with that
      cost included (Progress).
 7. **A variant switch makes the new pipelines first** (R8, §6.4, added): the loaded object makes
@@ -761,6 +768,49 @@ public:
 - **For the GPU campaign (§8):** GL worker mode and warm draws on real drivers (Linux Mesa
   radeonsi/iris, NVIDIA, Windows WGL, macOS, Android EGL); R21/R22 on GPU drivers; Metal and
   D3D11 creation at runtime (they compile here only by reading: not built on the servers).
+- **GPU campaign (2026-10-31; RTX 3080 Ti, driver 595.99.02, GLX on a headless Xorg and Vulkan;
+  docs/perf/gpu-campaign.md).** `tools/perf/async_shaders_bench.py --runs 5` (10 toggles; the
+  drivers' disk caches off; the editor focused and its vsync off, so the idle frame is the real
+  1.1 ms and not a 16.7 ms pacing period), medians of 5:
+
+  | RTX 3080 Ti | R21 max_main_ms (<= 4) | R22 worst_frame_ratio (<= 2) | worst frame |
+  |---|---|---|---|
+  | GL `worker`, warm draws on (the new default) | **0.014 ok** | 16.4 FAIL | 11-18.7 ms |
+  | GL `worker`, warm draws off | 0.015 ok | 15.7 FAIL | 12-18.5 ms |
+  | GL `parallel` (after the compile-thread fix) | 8.83 FAIL | 10.6 FAIL | 11-25 ms |
+  | GL `sync` (red control) | 2192 | 1477 | 2.2 s |
+  | GL `worker`, the same edits between two built variants (no creation: control) | 0.011 | 8.7 | 9.8-10.7 ms |
+  | Vulkan `thread` | **0.227 ok** | 3.9 FAIL | 3.7 ms (one run 10.2) |
+  | Vulkan `sync` (red control) | 799 | 838 | 0.8 s |
+
+  - The worker context and warm draws work on NVIDIA: no crash or hang in any run; the mode is
+    `worker` (R5's Auto). A Lit lobe variant's cold compile and link is **2.1 s** on this driver
+    (llvmpipe: 0.39 s); on the worker the render thread pays 0.01 ms for it.
+  - **Fixed: `parallel` did nothing on NVIDIA.** The extension leaves the initial compiler thread
+    count to the driver and NVIDIA's is none, so `glLinkProgram` blocked for the 2.1 s and
+    `COMPLETION_STATUS` was always true (2187 ms in "GPU create submit"). The mode now calls
+    `glMaxShaderCompilerThreadsKHR(0xFFFFFFFF)` on a hardware GL: 2187 -> 8.8 ms (the GLSL front end stays on the
+    calling thread, so R21 still fails in this fallback mode). Only in `parallel`: with a worker
+    context the setting reaches its share group, the worker's links return before the program is
+    built and the render thread's first draw waited the 2.1 s (measured, then excluded).
+  - R22 is not met. The worst frames come from the driver, not from our creation work: while the
+    worker's NVIDIA GLSL front end runs (about 8 ms per new variant) the render thread's GL calls in
+    `drawCameras` wait (isolated with temporary scopes: not in any mesh draw, pipeline apply or
+    load); a first draw with a new state compiles another ~8 ms on the render thread when it was not
+    warmed. Over 4-toggle probes warm draws took the worst frame from 18 to 10 ms; over the full
+    runs the max per run is 11-18.7 ms either way (a toggle's front-end wait and a frame's
+    first draw can fall in one frame). The control without any creation (the same edits between
+    built variants) already has 10 ms frames (8.7x): against a 1.1 ms GPU idle frame the 2x
+    bound is 2.2 ms, under what one edit costs the editor. At a 60 Hz pace every worst frame on
+    both backends fits in the 16.7 ms period (none is dropped); the uncapped ratio stays the
+    reported R22.
+  - Defaults chosen on real drivers: GL `Auto` = `worker` (unchanged); **warm draws on for desktop
+    GL** (`shader_creation.gl_warm_draws`, was off: safe on NVIDIA, and they remove the
+    render-thread first-draw compile when it does not coincide with the front-end wait), off on
+    GLES until an Adreno/Mali run (`JASPER_GL_WARM_DRAWS=1`), never on a software GL; `parallel`
+    with the driver's compile threads.
+  - Pending: Metal and D3D11 at runtime, AMD/Intel (Mesa radeonsi/iris), Android EGL (Adreno,
+    Mali) and the WebGL2 browsers (no such devices here).
 - **Older notes:**
 
 - Spec written at oe-port 0c22d3b91 (branch `feat/s32-async-shaders`). The GL probe numbers in
@@ -824,4 +874,5 @@ with `ShaderPool::setShaderBuilder`), and the GPU creation idle. Test:
 frame without the variant was captured). `run_build`'s timed window grab
 (`screenshot_after_seconds`, `screenshots_at`) cannot see the player's creations and does not
 wait; `test_html_ui_effects_export.py::test_desktop_player_draws_the_effects` caught the effects'
-stand-ins that way with H at load 60 and now uses the player's own capture (`screenshot_frame`).
+stand-ins that way with H at load 60 and now uses the player's own capture, which waits (BF12's
+`after_ready` + `fixed_fps` + `quit_after`, merged from oe-port in place of BF4's `screenshot_frame` one).

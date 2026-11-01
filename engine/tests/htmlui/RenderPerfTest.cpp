@@ -41,6 +41,7 @@
 #include "htmlui/compat/ImportManifest.h"
 #include "htmlui/widgets/ItemsViewElement.h"
 #include "render/RenderBackendTime.h"
+#include "render/SystemRender.h"
 
 #include "json.hpp"
 
@@ -126,6 +127,17 @@ namespace {
     BenchRun measure(FixtureRunner& runner, int warm = 30, int measured = 120, const std::function<void(int)>& perFrame = {}){
         double clock = runner.time();
         RenderBackendTime::setEnabled(true);
+        // the document's shaders and pipelines first (S32 creates them asynchronously: until they
+        // are ready a draw is skipped, and the benchmark measured frames of no draws at all; found
+        // in the GPU campaign, failing alike on llvmpipe)
+        // (idle over 5 frames in a row: a frame can still ask for what the last one did not draw)
+        for (int i = 0, idleFrames = 0; i < 600 && idleFrames < 5; i++){
+            clock += 1.0 / 60.0;
+            runner.frameAt(clock, true);
+            const bool idle = SystemRender::waitGpuCreationIdle(100.0);
+            // (a document that draws nothing at all is idle after 30 frames)
+            idleFrames = (idle && (runner.renderer()->getStats().drawCalls > 0 || i >= 30)) ? idleFrames + 1 : 0;
+        }
         BenchRun run;
         std::vector<double> engines, frames, gathers, updates, records, replays;
         for (int i = 0; i < warm + measured; i++){

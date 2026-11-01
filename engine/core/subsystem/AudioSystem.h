@@ -20,6 +20,8 @@ namespace jasperengine{
 		static bool inited;
 		// set when opening the output failed: it is not tried again
 		static bool outputUnavailable;
+		// the Recorder's capture holds SoLoud on its null driver
+		static bool offlineCapture;
 
 		static void deInit();
 
@@ -51,6 +53,16 @@ namespace jasperengine{
 
 		static void setGlobalVolume(float volume);
 		static float getGlobalVolume();
+
+		// Offline capture (the editor's Recorder, docs/specs/S27-editor-tools.md R29): SoLoud
+		// on its null driver at `sampleRate` x `channels`, nothing reaches the device; the
+		// caller mixes it in step with the game's fixed timestep. endOfflineCapture() drops
+		// it: the device output opens again on the next sound.
+		static bool beginOfflineCapture(unsigned int sampleRate, unsigned int channels);
+		static void endOfflineCapture();
+		static bool isOfflineCapture();
+		// the next `frames` sample frames of the mix, interleaved floats (frames x channels)
+		static void mixOffline(float* out, unsigned int frames);
 
         bool loadSound(AudioSourceComponent& audio);
 		void destroySound(AudioSourceComponent& audio);

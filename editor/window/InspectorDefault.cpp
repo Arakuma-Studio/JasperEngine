@@ -52,6 +52,7 @@ namespace {
         {"po2Slider", RowPropertyType::UIntSlider},
         {"textureCube", RowPropertyType::TextureCube},
         {"modelEntity", RowPropertyType::LocalEntity},
+        {"curve", RowPropertyType::Curve},
     };
 
     bool drawsColor(const reflect::FieldDesc& field) {
@@ -156,6 +157,12 @@ namespace {
         }
         if (field.enumDesc) settings.enumEntries = InspectorWindow::enumEntries(*field.enumDesc, field.enumMask);
         if (type == RowPropertyType::UIntSlider) settings.sliderValues = &InspectorWindow::powerOfTwoSizes;
+        settings.colorHdr = (field.flags & reflect::Hdr) != 0;
+        settings.colorSrgb = (field.flags & reflect::ColorSRGB) != 0;
+        if (type == RowPropertyType::Curve && std::isfinite(field.uiMin) && std::isfinite(field.uiMax) && field.uiMin < field.uiMax) {
+            settings.curveValueMin = field.uiMin;
+            settings.curveValueMax = field.uiMax;
+        }
         return settings;
     }
 

@@ -63,7 +63,8 @@ waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
 
 - `tools/build.sh htmlui-tests`: about 3,300 tests, 74 of them skipped on purpose (the gate allows
   exactly those). `HTMLUI_TEST_ARGS` filters, `JASPER_HTMLUI_PERF_SLACK` relaxes the performance
-  targets on a loaded host (CI uses 3).
+  targets on a loaded host (CI uses 3); `MarkdownHtml.Perf20KB` is enforced only when it is set
+  (below, Writing load-robust tests).
 - The HTML UI rendering suites of S16 (`docs/specs/S16-ui-render-text.md`): `RenderBatch.*`,
   `RenderClip.*`, `RenderPrimitive.*`, `TextSharpness.*`, `TestFontEngine.AtlasBudget*` and, in
   Release builds, the benchmark `HtmlUIRenderPerf.*` (`fixtures/bench/`; results in
@@ -415,6 +416,45 @@ it only from an editor without S13's changes.
 - Keep the XML: CI uploads `build/test-results/` from every job.
 - The first tests of an area are characterization tests: they pin today's behaviour. A change
   that alters that behaviour on purpose updates those tests in the same commit and says so.
+
+## Writing load-robust tests
+
+The suites run on shared build servers, next to builds and other suites (`-j 3`): there a frame
+of a software-rendered editor or player takes 0.1 to 0.3 s, a background job seconds, the main
+thread misses a 1 s watchdog threshold on its own. A test that passes only on a quiet machine
+hides real regressions behind re-runs. So (BF12):
+
+- **Wait for the state, not for time.** Ask for the condition until it holds; the deadline is only
+  a hang guard, never the expected duration. `test_crash.py::test_health_off_main` asks
+  `get_editor_health` until it reports the hang, where a fixed sleep missed its start.
+- **Game time, not wall time.** In Play, `play start` with `fixed_fps` and `auto_pause` runs the
+  game only inside `wait` / `send_input`, each frame exactly 1/N s, and
+  `wait {"until": ..., "frames": cap}` bounds it in frames. A probe that samples a window of game
+  time narrower than a frame step skips it at a low frame rate (Engine caps a frame at 0.25 s):
+  `test_lattice_anim.py` sampled clip time 0.3 to 0.5 s, which 4 fps stepped over. A player:
+  `run_build` with `after_ready`, `fixed_fps` and `quit_after` (or `screenshot_frame`) captures
+  the player's own frame N frames after it got ready, not a window N seconds after the launch.
+- **Make preconditions explicit.** Background work a test relies on finishes first:
+  `HotReloadServiceTests.ExternalRenameKeepsTheGuidThroughTheWatcher` calls
+  `AssetDatabase::waitForBackgroundWork()` before the rename, because R5 matches a file moved
+  without its meta by the content hash the background hasher computes.
+- **Pick records by what identifies them.** A loaded machine produces real events of its own (a
+  stall past the threshold is a real hang report): find the debug hang's report by its phase, not
+  as the first or the newest.
+- **Keep random parts out of assertions.** Match file names, not full paths under a random temp
+  folder (`FileWatcherTests`: `je-watch-<random>` holds "4913", vim's probe name, one time in 600).
+- **A budget is a benchmark.** MCP tests report wall-clock budgets with `harness.over_budget`,
+  units with `perfSlack()` (`JASPER_TEST_PERF_SLACK`); both are enforced by the benchmark run on
+  server E. The HTML UI gates take the least of several CPU-time measurements of the calling
+  thread (`PerfFixtures.h`: `gatedCpuMs`); one whose budget is near the step's cost on a build
+  server (`MarkdownHtml.Perf20KB`: 1.3 ms of 2 there, 0.27 ms on E) is enforced only when
+  `JASPER_HTMLUI_PERF_SLACK` is set (`benchmarkPerfSlack()`):
+  `rb.sh E env JASPER_HTMLUI_PERF_SLACK=1 HTMLUI_TEST_ARGS='--gtest_filter=MarkdownHtml.Perf20KB' tools/build.sh htmlui-tests`.
+  Scaling a timeout with a load factor is the last resort, and a test never asserts less to pass.
+- **Prove it under load.** Run the test where it failed, under deliberate load, before and after:
+  `--gtest_repeat=50` for a unit test, 20 runs for an MCP test, in parallel lanes next to busy
+  loops in the image (`rb.sh G --img '...'`; the container's `--cpus` keeps the load off the
+  other jobs) or next to a full build. The run on the unchanged branch is the red control.
 
 ## How a spec adds tests
 

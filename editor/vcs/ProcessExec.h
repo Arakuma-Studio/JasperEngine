@@ -19,6 +19,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -66,6 +68,42 @@ namespace jasperengine::editor::vcs {
     // How a Windows command line carries one argument so CommandLineToArgvW (and the C runtime)
     // parse it back unchanged (exposed for the tests; POSIX never quotes)
     std::string quoteWindowsArgument(std::string_view arg);
+
+    // ---- a process fed while it runs (docs/specs/S27-editor-tools.md R33)
+
+    // A child whose stdin is written while it runs (the Recorder streams frames to FFmpeg) and
+    // whose stdout and stderr lines reach callbacks on a reader thread (Git import's progress).
+    // The same argv-only spawn as runProcess: an absolute executable, no shell, a session (a job
+    // object on Windows) of its own that kill() ends with all its children. spec.stdinData,
+    // timeoutMs and cancel are not used: the caller writes, waits and kills. Any thread; the
+    // writes block when the child reads slower (frames are never dropped).
+    class ProcessStream {
+    public:
+        struct Callbacks {
+            std::function<void(const std::string&)> stdoutLine;
+            std::function<void(const std::string&)> stderrLine;
+        };
+
+        ProcessStream();
+        ~ProcessStream();   // a child still running is killed
+        ProcessStream(const ProcessStream&) = delete;
+        ProcessStream& operator=(const ProcessStream&) = delete;
+
+        bool start(const ProcessSpec& spec, Callbacks callbacks, std::string& error);
+        // every byte written, or false (the child closed its stdin or ended)
+        bool writeStdin(const void* data, size_t size);
+        void closeStdin();
+        // true with the exit code (128 + signal) once the child ended within timeoutMs (< 0:
+        // no limit); the reader thread has delivered every line by then
+        bool wait(int timeoutMs, int& exitCode);
+        // the child and its whole tree
+        void kill();
+        bool running() const;
+
+    private:
+        struct State;
+        std::unique_ptr<State> state;
+    };
 
     // ---- executable resolution (R3)
 

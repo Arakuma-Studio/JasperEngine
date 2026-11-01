@@ -379,7 +379,7 @@ function LatticeAnimProbe:init()
     out("targetA", self.trackA.target == cage.entity)
 
     self.animA:start()
-    RegisterEngineEvent(self, "onUpdate")
+    RegisterEngineEvent(self, "onPostUpdate")
 end
 
 function LatticeAnimProbe:next(phase)
@@ -389,15 +389,16 @@ function LatticeAnimProbe:next(phase)
 end
 
 -- The phases wait on the animations' own clocks, not on the summed frame deltas: an animation
--- advances once it runs (its start takes a frame or two, each up to Engine's 0.25 s cap on a
--- loaded machine), and the offsets lag their clock by up to two frames. A phase's state held for three updates
--- in a row is reached (20 s of frames: given up, its values go out as they are).
+-- advances once it runs (its start takes a frame or two). The probe reads after the frame's update
+-- (onPostUpdate), so the offsets it reads come from the clocks and weights it reads with them. A
+-- phase's state held for three updates in a row is reached (20 s of frames: given up, its values
+-- go out as they are).
 function LatticeAnimProbe:reached(condition)
     self.settled = condition and (self.settled or 0) + 1 or 0
     return self.settled >= 3 or self.phaseTime >= 20
 end
 
-function LatticeAnimProbe:onUpdate()
+function LatticeAnimProbe:onPostUpdate()
     local dt = Engine.deltatime
     self.phaseTime = self.phaseTime + dt
     local cage = self.cage
@@ -452,20 +453,24 @@ async def test_lua_tracks_and_crossfade(ed: Editor):
     await ed.call("create_script", kind="lua", name="LatticeAnimProbe", content=PROBE, scene=sid, entity=driver)
     await ed.call("save_scene", scene=sid)
     await ed.console_since(None, limit=1)
-    started = await ed.call("play", action="start", scene=sid)
+    # fixed_fps + auto_pause: the game runs only inside wait, each frame exactly 1/30 s, so the probe
+    # sees the same frames however slowly a loaded machine draws them (on the wall clock's frame
+    # deltas, up to Engine's 0.25 s cap, a crossfade moved its weights a quarter between two reads).
+    # The wait is bounded in frames: the probe ends by itself within 3 x 20 s of game time.
+    started = await ed.call("play", action="start", scene=sid, fixed_fps=30, auto_pause=True)
     ed.check_eq(started["state"], "playing", "play starts")
     try:
-        waited = await ed.call_raw("wait", {"until": "latticeAnimDone == true", "timeout_seconds": 60})
+        waited = await ed.call_raw("wait", {"until": "latticeAnimDone == true", "frames": 2000})
         ed.check(not waited.is_error, f"the probe finished: {waited.text[:1500]}")
         entries = await ed.console_since(None, limit=1000)
     finally:
-        await ed.call("play", action="stop")
+        await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
     v = lines(entries, "LATANIM")
     errors = [e.get("message", "") for e in entries if e.get("type") == "error"]
     ed.check(not errors, f"no errors (the out-of-range point is ignored silently): {errors}")
 
     ed.check_eq(v.get("targetA"), True, "addActionFrame set the track's target")
-    # onUpdate may run before the actions of its frame: the offsets lag the time by up to two frames
+    # (read after the update: the offsets are the time's; the lower bound allows two frames of lag)
     tc, dt, y = v.get("sampleA", [0, 0, -1])
     ed.check(0.6 * max(0.0, tc - 2.5 * dt) - 1e-4 <= y <= 0.6 * tc + 1e-4 and y > 0, f"clip A mid-segment: {v.get('sampleA')}")
     check_close(ed, v.get("aHeld4"), [0, 0.3, 0], "clip A holds point 4 at its key")

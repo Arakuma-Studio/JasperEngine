@@ -1089,9 +1089,8 @@ void editor::Project::importFbxModels() {
     std::error_code ec;
     for (fs::recursive_directory_iterator it(getAssetsPath(), fs::directory_options::skip_permission_denied, ec), end;
          !ec && it != end; it.increment(ec)) {
-        // Hidden and build directories hold no assets
-        const std::string name = FileUtils::pathToUtf8(it->path().filename());
-        if (it->is_directory(ec) && (name.empty() || name[0] == '.' || name == "build")) {
+        // Hidden, build, Recordings and EditorSettings directories hold no assets (S27 R31)
+        if (it->is_directory(ec) && isNonAssetDir(it->path())) {
             it.disable_recursion_pending();
             continue;
         }
@@ -1988,8 +1987,7 @@ bool editor::Project::visitMaterialFiles(const std::function<bool(Material&)>& v
          it != fs::recursive_directory_iterator(); ++it){
         const auto& entry = *it;
 
-        const std::string name = entry.path().filename().string();
-        if (entry.is_directory() && !name.empty() && (name[0] == '.' || name == "build")){
+        if (entry.is_directory() && isNonAssetDir(entry.path())){
             it.disable_recursion_pending();
             continue;
         }
@@ -4682,6 +4680,17 @@ bool editor::Project::saveSceneNow(uint32_t sceneId, const fs::path& pathIfUntit
     return true;
 }
 
+bool editor::Project::isNonAssetTopLevelDir(const std::string& name) {
+    return name.empty() || name[0] == '.' || name == "build" || name == "Recordings" || name == "EditorSettings";
+}
+
+bool editor::Project::isNonAssetDir(const fs::path& dir) const {
+    const std::string name = FileUtils::pathToUtf8(dir.filename());
+    if (name.empty() || name[0] == '.' || name == "build") return true;
+    std::error_code ec;
+    return (name == "Recordings" || name == "EditorSettings") && fs::equivalent(dir.parent_path(), projectPath, ec);
+}
+
 bool editor::Project::createProjectAt(const fs::path& dir, const std::string& name, std::string* error) {
     NonInteractiveScope scope(nonInteractiveDepth);
     if (isAnyScenePlaying()) {
@@ -5948,6 +5957,9 @@ const char* versionControlIgnore =
     "# Build output.\n"
     "build/\n"
     "\n"
+    "# The Recorder's movies and image sequences.\n"
+    "Recordings/\n"
+    "\n"
     "# Per-developer IDE configuration.\n"
     ".vscode/\n"
     ".idea/\n"
@@ -6134,6 +6146,7 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
     }
 
     if (!isTempProject()){
+        AppSettings::addToRecentProjects(path, false, getName());
         AppSettings::setLastProjectPath(path);
     }
     editor::getEditorHost().updateResourcesPath();
@@ -6262,8 +6275,9 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
 
         editor::getEditorHost().updateResourcesPath();
 
-        // Save this as the last opened project
+        // Save this as the last opened project (the Project Hub's record gets its name, S27 R21)
         if (updateLastOpened && !isTempProject()) {
+            AppSettings::addToRecentProjects(projectPath, false, getName());
             AppSettings::setLastProjectPath(projectPath);
         }
 
@@ -8495,9 +8509,10 @@ std::vector<std::filesystem::path> editor::Project::findProjectFiles(const std::
          it != end && !ec; it.increment(ec)) {
         const fs::directory_entry& entry = *it;
 
-        // '.jasperengine' holds the engine copy and the generated resources, 'build' the artifacts
+        // '.jasperengine' holds the engine copy and the generated resources, 'build' the artifacts,
+        // Recordings and EditorSettings no assets either (S27 R31)
         const std::string filename = entry.path().filename().string();
-        if (filename.rfind('.', 0) == 0 || filename == "build") {
+        if (filename.rfind('.', 0) == 0 || filename == "build" || (entry.is_directory(ec) && isNonAssetDir(entry.path()))) {
             if (entry.is_directory(ec)) it.disable_recursion_pending();
             continue;
         }
@@ -9278,6 +9293,7 @@ void editor::Project::start(uint32_t sceneId) {
         Out::error("Failed to find scene %u to start", sceneId);
         return;
     }
+    editor::getEditorHost().playStarting(sceneId);
     // Play's main-thread startup steps (saving, the script build hand-off, scene copies)
     const diag::BusyScope busy("Starting Play", 120'000);
 

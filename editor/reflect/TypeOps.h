@@ -15,6 +15,7 @@
 
 #include "action/Ease.h"
 #include "component/TextComponent.h"
+#include "math/Curve.h"
 #include "math/Matrix4.h"
 #include "math/Quaternion.h"
 #include "math/Rect.h"
@@ -135,6 +136,8 @@ namespace jasperengine::editor::reflect {
         bool layerMaskFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
         YAML::Node easeToYaml(const FieldDesc&, const void*, const EncodeContext&);
         bool easeFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
+        YAML::Node curveToYaml(const FieldDesc&, const void*, const EncodeContext&);
+        bool curveFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
         YAML::Node textureToYaml(const FieldDesc&, const void*, const EncodeContext&);
         bool textureFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
         void assetRefEncodeKey(const FieldDesc&, const void*, YAML::Node&, const std::string&, const EncodeContext&);
@@ -163,6 +166,7 @@ namespace jasperengine::editor::reflect {
         std::string stringLiteral(const FieldDesc&, const void*, const CodegenContext&);
         std::string layerMaskLiteral(const FieldDesc&, const void*, const CodegenContext&);
         std::string easeLiteral(const FieldDesc&, const void*, const CodegenContext&);
+        std::string curveLiteral(const FieldDesc&, const void*, const CodegenContext&);
         std::string entityLiteral(const FieldDesc&, const void*, const CodegenContext&);
         std::string assetRefLiteral(const FieldDesc&, const void*, const CodegenContext&);
         std::string enumLiteral(const FieldDesc&, const void*, const CodegenContext&);
@@ -182,6 +186,7 @@ namespace jasperengine::editor::reflect {
         Json stringSchema(const FieldDesc&);
         Json enumSchema(const FieldDesc&);
         Json easeSchema(const FieldDesc&);
+        Json curveSchema(const FieldDesc&);
         Json entitySchema(const FieldDesc&);
         Json entityReferenceSchema(const FieldDesc&);
         Json textureSchema(const FieldDesc&);
@@ -300,6 +305,11 @@ namespace jasperengine::editor::reflect {
         inline constexpr TypeOps Ease{"Ease", Kind::Ease, PropertyType::Ease, sizeof(jasperengine::Ease),
             &detail::construct<jasperengine::Ease>, &detail::destroy<jasperengine::Ease>, &detail::copy<jasperengine::Ease>, &detail::equalEase,
             &detail::easeToYaml, &detail::easeFromYaml, nullptr, nullptr, nullptr, false, &detail::easeLiteral, &detail::easeSchema};
+        // an animation curve: the one curve encoding (editor/stream/CurveCodec.h)
+        inline constexpr TypeOps Curve{"Curve", Kind::Custom, PropertyType::Curve, sizeof(jasperengine::Curve),
+            &detail::construct<jasperengine::Curve>, &detail::destroy<jasperengine::Curve>, &detail::copy<jasperengine::Curve>,
+            &detail::equalByOperator<jasperengine::Curve>, &detail::curveToYaml, &detail::curveFromYaml, nullptr, nullptr, nullptr, false,
+            &detail::curveLiteral, &detail::curveSchema};
         // a GameObject of the same scene (its id)
         inline constexpr TypeOps Entity = detail::withScalar(TypeOps{"Entity", Kind::Entity, PropertyType::Entity, sizeof(jasperengine::Entity),
             &detail::construct<jasperengine::Entity>, &detail::destroy<jasperengine::Entity>, &detail::copy<jasperengine::Entity>,
@@ -563,6 +573,7 @@ namespace jasperengine::editor::reflect {
     template<> struct ReflectTraits<jasperengine::Rect> { static constexpr const TypeOps* ops = &ops::Rect; };
     template<> struct ReflectTraits<std::string> { static constexpr const TypeOps* ops = &ops::String; };
     template<> struct ReflectTraits<jasperengine::Ease> { static constexpr const TypeOps* ops = &ops::Ease; };
+    template<> struct ReflectTraits<jasperengine::Curve> { static constexpr const TypeOps* ops = &ops::Curve; };
     template<> struct ReflectTraits<jasperengine::EntityReference> { static constexpr const TypeOps* ops = &ops::EntityReference; };
     template<> struct ReflectTraits<jasperengine::Texture> { static constexpr const TypeOps* ops = &ops::Texture; };
     template<> struct ReflectTraits<FontArray> { static constexpr const TypeOps* ops = &ops::Font; };

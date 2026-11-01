@@ -356,6 +356,11 @@ TEST_F(HotReloadServiceTests, ExternalRenameKeepsTheGuidThroughTheWatcher) {
     writeSolidPng(folder / "hero.png", 10, 20, 30);
     writeSolidPng(folder / "villain.png", 40, 50, 60);
     project.refreshAssetDatabase(true);
+    // R5 gives the orphan meta to the renamed file by the content hash the index has of the old
+    // one (without a hash it needs the same file name, which a rename never keeps). The hashes
+    // are computed in the background after the refresh: a loaded machine had not done the
+    // villain's yet when it was renamed, and the villain got a new identity.
+    database.waitForBackgroundWork();
     const std::string hero = database.getGuid("assets/hr/hero.png");
     const std::string villain = database.getGuid("assets/hr/villain.png");
     ASSERT_FALSE(hero.empty());

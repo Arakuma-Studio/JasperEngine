@@ -14,7 +14,7 @@ reference is `docs/rendering/shadows.md`.
 | Receiver GPU, full-screen sun, Soft | ≤ 1.0 ms | ≤ 1.5 ms | ≤ 0.6 ms | ≤ 1.2 ms |
 | Shadow pass GPU, static scene and camera, cached | ≤ 0.05 ms | ≤ 0.05 ms | ≤ 0.05 ms | ≤ 0.05 ms |
 | Shadow pass GPU, walking camera (5 m/s), cached + 20 dynamic | ≤ 1.5 ms | ≤ 2.0 ms | ≤ 1.0 ms | ≤ 1.5 ms |
-| Shadow memory (atlases + static cache) | ≤ 16 MB | ≤ 48 MB | ≤ 96 MB | ≤ 288 MB |
+| Shadow memory (atlases + static cache) | ≤ 16 MB | ≤ 48 MB | ≤ 192 MB | ≤ 576 MB |
 
 CPU (R26): the cascade fit and the cache keys of a camera ≤ 30 µs; the caster registry's update
 of 10,000 casters with 1 % moving ≤ 0.2 ms; a frame with nothing changed issues no shadow draw
@@ -90,3 +90,37 @@ numbers to revisit once the reference-device measurements exist.
 **Memory (AC16)**: `ShadowSlotPlanner.MemoryBudgetDropsStaticLayersThenHalves` plans the bench
 scene's lights at every tier within the tier's row; `test_shadows.py::test_shadow_goldens` checks
 `memory_bytes ≤ memory_budget_bytes` at every tier through `get_shadow_stats`.
+
+## Measured on a GPU (AC14, the GPU campaign)
+
+NVIDIA GeForce RTX 3080 Ti, driver 595.99.02, OpenGL 4.6 (GLX on a headless Xorg) and Vulkan,
+October 2026 (`docs/perf/gpu-campaign.md`): `tools/perf/gpu_campaign.py shadows --runs 5` plays the
+bench fixture in the editor with the Game view sized to the tier's resolution (desktop 2560x1440,
+web and mobile 1920x1080) and reads the S15 GPU pass timers over 300 frames; medians of 5 runs.
+The shadow passes are `shadow`, `point shadow`, `shadow static` and `point shadow static`; the
+receiver row is the camera pass of the ground alone under the sun, soft against no shadow
+(`SHADOWS_STATIC=0 SHADOWS_LIGHTS=sun SHADOWS_SUN=soft|none`).
+
+| OpenGL, RTX 3080 Ti | Receiver, sun soft | Budget | Static scene and camera, cached | Budget | Walking, cached + 20 dynamic | Budget |
+|---|---|---|---|---|---|---|
+| Low, 1080p | 0.061 ms | ≤ 1.0 | 0.000 | ≤ 0.05 | 1.209 | ≤ 1.5 |
+| Medium, 1080p | 0.095 | ≤ 1.5 | 0.000 | ≤ 0.05 | 0.664 | ≤ 2.0 |
+| High, 1440p | 0.183 | ≤ 0.6 | 0.000 | ≤ 0.05 | **0.328** (was 7.174) | ≤ 1.0 |
+| Ultra, 1440p | 0.233 | ≤ 1.2 | 0.000 | ≤ 0.05 | **0.527** (was 8.789) | ≤ 1.5 |
+
+- **High and Ultra missed the walking row 7-6x** with this document's first table (fit freeze off,
+  memory 96 / 288 MB): the bench's D32 atlases nearly filled the memory row (High: 92 of 96 MB), so
+  no static layer fitted, and every frame the 20 moving casters made each slot they crossed redraw
+  all 2,000 static casters (`shadow` 7.0 ms at High). With room for the static layers alone
+  (`JASPERENGINE_SHADOW_MEMORY_MB=192`) High went to 1.1 ms, the rest being the static layers
+  redrawn as the walking camera's refitted cascades moved (`shadow static` 0.59 ms; Ultra's 4096
+  cascades refitted every frame: 7.9 ms). **Fix:** High and Ultra now freeze their fits (R5, as
+  Low and Medium) and their memory rows are twice their atlases, 192 and 576 MB, the change the
+  spec's risks left for after AC14. A frozen fit costs up to its guard band in texel density
+  (6-12 %).
+- The receiver row was first measured on the full bench (2,000 pillars over the ground): about
+  1.5 ms at every tier and resolution, which is per draw, not per pixel: each shadowed draw
+  uploads its shadow uniform blocks (about 6 KB; the camera pass of the still bench is 2.4 ms with
+  shadows, 0.5 ms without). That is outside the receiver row, and not changed here.
+- These numbers are a card 4-5x a GTX 1660 (the desktop reference); the web (Iris Xe) and mobile
+  (Adreno 640 / Mali-G76) rows stay to be measured on those devices.
