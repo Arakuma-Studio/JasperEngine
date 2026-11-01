@@ -12,6 +12,7 @@
 #include "ecs/Entity.h"
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace jasperengine{
@@ -22,6 +23,10 @@ namespace jasperengine::playerdetail{
 
     // the scene value of the channels of `entity` (R2) that have none yet
     void completeRest(Scene* scene, Entity entity, anim::ChannelRest& rest, ClipChannel channel);
+    // The root's humanoid rig resolved again (anim-retarget): `current` replaced only when the
+    // rig (the cached PoseRig), its validity or its slot entities changed, so a pool change that
+    // left the rig alone (any clip insert) keeps the bindings made on it. True when replaced.
+    bool refreshHumanoidSlots(Scene* scene, Entity root, std::shared_ptr<anim::HumanoidSlots>& current);
     // the time a state is sampled at this update, in its clip
     float sampleTimeOf(const AnimationPlayerComponent& player, const anim::PlayerStateRuntime& state);
 

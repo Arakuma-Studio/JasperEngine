@@ -9,12 +9,14 @@
 #include "animation/AnimationClip.h"
 #include "animation/ClipConverters.h"
 #include "animation/KeyframeSampling.h"
+#include "animation/ModelSubClips.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
 #include "external/IconsFontAwesome6.h"
 #include "imgui.h"
 #include "pool/AnimationClipPool.h"
 #include "pose/ModelRig.h"
+#include "pose/PoseRigProvider.h"
 #include "pose/PoseDofs.h"
 #include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
@@ -125,7 +127,7 @@ bool editor::AvatarWindow::openModel(uint32_t id, Entity target, std::string* er
     pendingOpen = false;
     std::string problem;
     if (!readSaved(&problem)){
-        status = "the sidecar cannot be read (" + problem + "): Apply writes a new one";
+        status = "the sidecar cannot be read (" + problem + "): fix or delete it, then Apply";
         statusError = true;
     }
     edited = saved;
@@ -163,6 +165,7 @@ bool editor::AvatarWindow::requestOpen(uint32_t id, Entity target, std::string* 
 bool editor::AvatarWindow::readSaved(std::string* problem){
     saved = pose::HumanoidOverrides();
     sidecarBytes.clear();
+    sidecarProblem.clear();
     std::error_code ec;
     sidecarExists = fs::is_regular_file(sidecar, ec);
     sidecarTime = sidecarExists ? fs::last_write_time(sidecar, ec) : fs::file_time_type{};
@@ -172,6 +175,7 @@ bool editor::AvatarWindow::readSaved(std::string* problem){
     std::string why;
     if (!ProjectChecks::readFile(sidecar, sidecarBytes) || !pose::parseHumanoidOverrides(sidecarBytes, saved, warnings, &why)){
         saved = pose::HumanoidOverrides();
+        sidecarProblem = ProjectChecks::projectRelative(project->getProjectPath(), sidecar) + ": " + (why.empty() ? std::string("cannot be read") : why);
         if (problem) *problem = why.empty() ? std::string("cannot be read") : why;
         return false;
     }
@@ -321,6 +325,14 @@ bool editor::AvatarWindow::apply(std::string* error){
         if (error) *error = "no model";
         return false;
     }
+    if (!sidecarProblem.empty()){
+        // the edits started from nothing: writing them would wipe the Avatar on disk
+        const std::string why = PoseRigProvider::unreadableSidecarRefusal(sidecarProblem);
+        if (error) *error = why;
+        status = why;
+        statusError = true;
+        return false;
+    }
     if (!current.extraError.empty()){
         // the runtime would drop these overrides (auto-detect instead): fixed here, not saved
         const std::string why = "Hands & Head: " + current.extraError + " (set the row to Auto or pick a bone under its hand / the head)";
@@ -412,7 +424,20 @@ void editor::AvatarWindow::setTestClip(const std::string& clip){
     if (clip.empty()) return;
     // played retargeted: a generic clip converts from its source model (anim-retarget 7.4)
     testLoaded = AnimationClipPool::getOrLoad(clip + "@humanoid", &testError);
-    if (!testLoaded) return;
+    testPoolRevision = AnimationClipPool::revision();
+    // the generic clip itself: a model's sub-clip straight from the model (the pool serves the
+    // clips of an Animation Type: Humanoid model converted with the saved sidecar)
+    anim::SubClipReference sub;
+    if (anim::parseSubClipReference(clip, sub)){
+        ClipData data;
+        std::vector<ClipWarning> warnings;
+        std::string error;
+        if (anim::buildModelSubClip(clip, data, warnings, &error)){
+            testBase = AnimationClip::build(data, warnings, nullptr);
+            testSourceModel = sub.model;
+        }
+        return;
+    }
     std::shared_ptr<const AnimationClip> base = AnimationClipPool::getOrLoad(clip);
     if (base && !base->isHumanoid()){
         testBase = base;
@@ -423,10 +448,20 @@ void editor::AvatarWindow::setTestClip(const std::string& clip){
 std::shared_ptr<const AnimationClip> editor::AvatarWindow::previewClip(){
     // a clip of this very model converts with the working copy (the pool's conversion has the
     // saved sidecar): mapping and twist edits show on the source side too
+    // (whether edited or not: after an Apply or its undo the pool's copy is the old one)
     const bool own = testBase && !testSourceModel.empty() && current.rig &&
                      fs::path(testSourceModel).lexically_normal() == fs::path(model).lexically_normal();
-    if (!own || !isDirty()) return testLoaded;
-    if (testLocal && testLocalWith && *testLocalWith == edited) return testLocal;
+    if (!own){
+        // another model's clip: again when the pool changed (its source model or sidecar)
+        if (!testClip.empty() && testPoolRevision != AnimationClipPool::revision()){
+            testPoolRevision = AnimationClipPool::revision();
+            std::string error;
+            if (std::shared_ptr<const AnimationClip> again = AnimationClipPool::getOrLoad(testClip + "@humanoid", &error)) testLoaded = again;
+        }
+        return testLoaded;
+    }
+    // converted once per working copy; a failure too (kept until the next edit)
+    if (testLocalWith && *testLocalWith == edited) return testLocal ? testLocal : testLoaded;
     testLocal.reset();
     testLocalWith = edited;
     std::shared_ptr<const anim::HumanoidSource> cached;
@@ -480,7 +515,7 @@ void editor::AvatarWindow::updatePreview(){
         transform->needUpdate = true;
     }
     for (const anim::HumanoidOutput& output : outputs){
-        if (output.kind != anim::HumanoidOutput::Kind::Extra) continue;
+        if (output.kind != anim::HumanoidOutput::Kind::Extra || !(mirror ? output.liveMirrored : output.liveUnmirrored)) continue;
         if (Transform* transform = sceneptr->findComponent<Transform>(output.entity)){
             transform->rotation = output.rotation;
             transform->needUpdate = true;
@@ -619,7 +654,7 @@ void editor::AvatarWindow::drawHeader(){
         ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " Hands & Head: %s", current.extraError.c_str());
         ImGui::SetItemTooltip("These overrides do not validate: auto-detect is used, and Apply refuses them");
     }
-    ImGui::BeginDisabled(!isDirty());
+    ImGui::BeginDisabled(!isDirty() || !sidecarProblem.empty());
     if (ImGui::Button("Apply")){
         std::string error;
         apply(&error);
@@ -722,15 +757,16 @@ void editor::AvatarWindow::drawPose(){
         ImGui::EndDragDropTarget();
     }
     if (!testError.empty()) ImGui::TextColored(Theme::Colors::ErrorText, "%s", testError.c_str());
-    if (testLoaded){
+    const std::shared_ptr<const AnimationClip> playing = testLoaded ? testLoaded : testBase;
+    if (playing){
         if (ImGui::Button(testPlaying ? ICON_FA_PAUSE : ICON_FA_PLAY)) testPlaying = !testPlaying;
         ImGui::SameLine();
         float time = testTime;
         ImGui::SetNextItemWidth(Theme::dpi(220.0f));
-        if (ImGui::SliderFloat("##TestTime", &time, 0.0f, std::max(0.01f, testLoaded->getLength()), "%.2f s")) setTestTime(time);
+        if (ImGui::SliderFloat("##TestTime", &time, 0.0f, std::max(0.01f, playing->getLength()), "%.2f s")) setTestTime(time);
         if (testPlaying){
             testTime += ImGui::GetIO().DeltaTime;
-            if (testTime > testLoaded->getLength()) testTime = 0.0f;
+            if (testTime > playing->getLength()) testTime = 0.0f;
         }
         ImGui::SameLine();
         ImGui::Checkbox("Mirror", &mirror);
@@ -795,10 +831,14 @@ void editor::AvatarWindow::drawClosePrompt(){
                 setOpen(false);
             }
         };
+        // a failed Apply keeps the prompt (and the pending open) with its reason; Discard or Cancel
+        if (statusError && !status.empty()) ImGui::TextColored(Theme::Colors::ErrorText, "%s", status.c_str());
         if (ImGui::Button("Apply")){
             std::string error;
-            if (apply(&error)) next();
-            ImGui::CloseCurrentPopup();
+            if (apply(&error)){
+                next();
+                ImGui::CloseCurrentPopup();
+            }
         }
         ImGui::SameLine();
         if (ImGui::Button("Discard")){

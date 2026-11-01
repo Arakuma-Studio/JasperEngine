@@ -533,7 +533,7 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
                 const std::vector<anim::HumanoidOutput>& outputs = state.bindings->humanoid->outputs;
                 for (size_t o = 0; o < outputs.size(); o++){
                     const uint32_t slotIndex = state.humanoidSlots[o];
-                    if (slotIndex == NO_SLOT) continue;
+                    if (slotIndex == NO_SLOT || !anim::isLive(*state.bindings->humanoid, outputs[o])) continue;
                     const float w = state.weight * (state.humanoidMask ? state.humanoidMask[o] : 1.0f);
                     if (!(w > 0.0f)) continue;
                     const uint32_t index = scratch.slots[slotIndex].first;
@@ -668,12 +668,14 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
                 bool needed = false;
                 for (size_t o = 0; o < outputs.size() && !needed; o++){
                     const uint32_t slotIndex = state.humanoidSlots[o];
-                    needed = slotIndex != NO_SLOT && !(scratch.elements[scratch.slots[slotIndex].first].occluder > (int)l);
+                    needed = slotIndex != NO_SLOT && anim::isLive(humanoid, outputs[o]) &&
+                             !(scratch.elements[scratch.slots[slotIndex].first].occluder > (int)l);
                 }
                 if (needed) anim::sampleHumanoidBinding(*state.clip, humanoid, state.time, &bindings.cursors);
                 for (size_t o = 0; needed && o < outputs.size(); o++){
                     const uint32_t slotIndex = state.humanoidSlots[o];
-                    if (slotIndex == NO_SLOT) continue;
+                    // a conditional counterpart, unmirrored: not this clip's bone (no touch either)
+                    if (slotIndex == NO_SLOT || !anim::isLive(humanoid, outputs[o])) continue;
                     const anim::PoseSlot& slot = scratch.slots[slotIndex];
                     if (scratch.elements[slot.first].occluder > (int)l) continue;
                     anim::ChannelRest& rest = *slot.rest;
@@ -904,7 +906,7 @@ void ActionSystem::previewLayers(Entity root, const PlayerPreview& preview, anim
     }
     if (humanoidNeeded && (!session.humanoid || session.humanoidRevision != scene->hierarchyRevision() ||
                            session.humanoidPool != AnimationClipPool::revision())){
-        session.humanoid = std::make_shared<anim::HumanoidSlots>(anim::resolveHumanoidSlots(scene, root));
+        playerdetail::refreshHumanoidSlots(scene, root, session.humanoid);
         session.humanoidRevision = scene->hierarchyRevision();
         session.humanoidPool = AnimationClipPool::revision();
     }

@@ -449,7 +449,8 @@ set:
   unmapped slots, fingers and dropped bones.
 
 `clips[i].mirror` (left/right swapped) and `clips[i].footIK` (legs reach the foot goals) apply to
-humanoid clips; Lua `state.mirror` / `state.footIK` override them at runtime (`state:resetMirror()`
+humanoid clips (a body slot the clip lacks is neutral; a finger, eye or jaw it lacks is left to
+other clips and layers: a one-hand pose leaves the other hand, mirrored it poses that hand instead); Lua `state.mirror` / `state.footIK` override them at runtime (`state:resetMirror()`
 / `resetFootIK()` go back). The target rig is the
 first model on or under the player root whose bones map as a humanoid (`get_asset_info` on a
 model: its `avatar` with animation_type, humanoid, mapped, missing, extra_mapped, twist and
@@ -457,8 +458,9 @@ human_scale).
 
 Verify numerically: `get_animation {clip, root: "Robot", times: [0.5]}` on a humanoid clip (a clip
 of an Animation Type: Humanoid model, or one the root's entry retargets) adds `retarget_report
-{target {model, human_scale}, source, scale_ratio, mirror, foot_ik (the root's entry's), folded,
-missing_on_target, unmapped_source_bones}` and `realised: [{time, bones: [{bone, entity,
+{target {model, human_scale}, source, scale_ratio, mirror, foot_ik, entry (Mirror and Foot IK of
+the root's first entry playing the clip, its index), folded, missing_on_target,
+unmapped_source_bones}` and `realised: [{time, bones: [{bone, entity,
 path, local_rotation {quat, euler}, angles}], hips_local_position}]`: compare `angles` with the
 source's, or `local_rotation` with `get_runtime_entity` in play. `folded` lists slots the target
 lacks whose rotation moved to the next slot ("chest folded into spine"); a slot the clip lacks

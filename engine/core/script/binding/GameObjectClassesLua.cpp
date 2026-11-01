@@ -53,6 +53,7 @@
 #include "OnScreenControls.h"
 
 #include <algorithm>
+#include <cmath>
 #include "LayoutGroup.h"
 #include "object/ui/CanvasGroup.h"
 #include "AudioSource.h"
@@ -2709,8 +2710,11 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
                         flag("footIK", values.footIK);
                         const luabridge::LuaRef layer = options["layer"];
                         if (!layer.isNil()){
-                            if (!layer.isNumber()) throw std::runtime_error("AnimationPlayer:addClip: layer is a layer index (0 is the base layer)");
-                            values.layer = layer.unsafe_cast<int>();
+                            const double index = layer.isNumber() ? layer.unsafe_cast<double>() : -1.0;
+                            if (!layer.isNumber() || index != std::floor(index) || index < 0.0 || index > 1e6){
+                                throw std::runtime_error("AnimationPlayer:addClip: layer is a layer index, a whole number (0 is the base layer)");
+                            }
+                            values.layer = (int)index;
                         }
                     }
                     return self->addClip(path, name.isString() ? name.unsafe_cast<std::string>() : std::string(), values);

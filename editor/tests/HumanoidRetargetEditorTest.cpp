@@ -22,6 +22,9 @@
 #include "animation/AvatarMask.h"
 #include "animation/ClipRecordHooks.h"
 #include "animation/HumanoidClip.h"
+#include "animation/KeyframeSampling.h"
+#include "animation/ModelSubClips.h"
+#include "animation/ClipBinding.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "command/type/ClipSceneActions.h"
@@ -579,10 +582,84 @@ TEST_F(HumanoidEditorTest, TheRigInfoKeepsTheAvatarOfAnInvalidBodyMap) {
     EXPECT_TRUE(info->overrides.isHumanoid()) << "the Animation Type is read even when the map does not validate";
     EXPECT_EQ(info->overrides, overrides) << "what the Inspector's Animation Type combo rewrites from";
     EXPECT_TRUE(info->sidecarError.empty());
-    // an unreadable sidecar: said, so no writer rebuilds it from nothing
+    // the Rig foldout's Animation Type rewrites the sidecar as read (the Avatar kept)
+    std::string error;
+    ASSERT_TRUE(PoseRigProvider::setAnimationType(project(), assets() / "models/invalid/hero.gltf", pose::AnimationType::Generic, error)) << error;
+    pose::HumanoidOverrides generic = overrides;
+    generic.animationType.reset();
+    EXPECT_EQ(readAll(sidecar), pose::writeHumanoidOverrides(generic)) << "only animation_type changed";
+    ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
+    EXPECT_EQ(readAll(sidecar), pose::writeHumanoidOverrides(overrides));
+
+    // an unreadable sidecar: said, and no writer rebuilds it from nothing
     std::ofstream(sidecar) << "{ not json";
     info = PoseRigProvider::forModelFile(project(), assets() / "models/invalid/hero.gltf");
     EXPECT_FALSE(info->sidecarError.empty());
+    EXPECT_FALSE(PoseRigProvider::setAnimationType(project(), assets() / "models/invalid/hero.gltf", pose::AnimationType::Humanoid, error));
+    EXPECT_NE(error.find("fix or delete the file first"), std::string::npos) << error;
+    EXPECT_EQ(readAll(sidecar), "{ not json") << "the Rig foldout left it alone";
+    // the Avatar window's Apply too
+    ModelScene s = modelScene("models/invalid/hero.gltf", "InvalidHero");
+    AvatarWindow window(project());
+    ASSERT_TRUE(window.openModel(s.id, s.model, &error)) << error;
+    window.setTwist(pose::HumanBone::LeftLowerArm, 10.0f);
+    EXPECT_FALSE(window.apply(&error));
+    EXPECT_NE(error.find("fix or delete the file first"), std::string::npos) << error;
+    EXPECT_EQ(readAll(sidecar), "{ not json") << "Apply left it alone";
+    // fixed on disk: the window reads it again and Apply works
+    fs::remove(sidecar);
+    window.syncWithProject();
+    window.setTwist(pose::HumanBone::LeftLowerArm, 10.0f);
+    EXPECT_TRUE(window.apply(&error)) << error;
+    fs::remove(sidecar);
+}
+
+TEST_F(HumanoidEditorTest, AvatarTestClipOfItsOwnModelUsesTheWorkingCopyOnBothSides) {
+    copyFixture("hero_animated.gltf", "models/testclip/hero.gltf");
+    const fs::path sidecar = assets() / "models/testclip/hero.gltf.humanoid";
+    // Animation Type: Humanoid (the pool serves its clips converted with the saved sidecar)
+    pose::HumanoidOverrides humanoid;
+    humanoid.animationType = pose::AnimationType::Humanoid;
+    std::ofstream(sidecar) << pose::writeHumanoidOverrides(humanoid);
+    AnimationClipDocument::checkDiskChanges(project());
+    ModelScene s = modelScene("models/testclip/hero.gltf", "TestClipHero");
+    AvatarWindow window(project());
+    std::string error;
+    ASSERT_TRUE(window.openModel(s.id, s.model, &error)) << error;
+    const anim::HumanoidSlots slots = anim::resolveHumanoidSlots(s.scene, s.model);
+    ASSERT_TRUE(slots.target) << slots.error;
+    const Entity arm = slots.target->slotEntities[(size_t)pose::boneIndex(pose::HumanBone::LeftUpperArm)];
+    // the generic walk's arm at 0.5 s: what the round trip on its own rig gives back, whatever the
+    // twist (both sides twisted alike)
+    ClipData generic;
+    std::vector<ClipWarning> warnings;
+    ASSERT_TRUE(anim::buildModelSubClip("models/testclip/hero.gltf#Walk", generic, warnings, &error)) << error;
+    std::shared_ptr<const AnimationClip> walk = AnimationClip::build(generic, warnings, nullptr);
+    std::string armPath;
+    ASSERT_TRUE(anim::relativePath(s.scene, s.model, arm, armPath));
+    const int track = walk->findTrack(armPath, ClipChannel::Rotation);
+    ASSERT_GE(track, 0);
+    std::vector<anim::TrackSample> samples;
+    anim::sampleClipTracks(*walk, 0.5f, samples);
+    const Quaternion expected = samples[(size_t)track].rotation;
+
+    window.setTestClip("models/testclip/hero.gltf#Walk");
+    window.setTestTime(0.5f);
+    window.setPreview(true);
+    ASSERT_TRUE(window.isPreviewing());
+    EXPECT_LT(degreesBetween(s.scene->getComponent<Transform>(arm).rotation, expected), 0.1) << "saved Avatar";
+    window.setTwist(pose::HumanBone::LeftUpperArm, 30.0f);
+    window.updatePreview();
+    EXPECT_LT(degreesBetween(s.scene->getComponent<Transform>(arm).rotation, expected), 0.1)
+        << "an unsaved twist on both sides (the source's conversion too)";
+    ASSERT_TRUE(window.apply(&error)) << error;
+    window.updatePreview();
+    EXPECT_LT(degreesBetween(s.scene->getComponent<Transform>(arm).rotation, expected), 0.1) << "after Apply";
+    ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
+    window.syncWithProject();
+    window.updatePreview();
+    EXPECT_LT(degreesBetween(s.scene->getComponent<Transform>(arm).rotation, expected), 0.1) << "after its undo";
+    window.stopPreview();
     fs::remove(sidecar);
 }
 

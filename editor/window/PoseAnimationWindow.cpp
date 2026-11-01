@@ -2411,6 +2411,11 @@ void editor::PoseAnimationWindow::applyMapping(){
     if (!sceneProject || !sceneProject->scene) return;
     ModelComponent* model = sceneProject->scene->findComponent<ModelComponent>(mappingEntity);
     if (!model) return;
+    if (mappingInfo && !mappingInfo->sidecarError.empty()){
+        // the bones are written into the sidecar as read: an unreadable one is not rewritten
+        mappingError = PoseRigProvider::unreadableSidecarRefusal(mappingInfo->sidecarError);
+        return;
+    }
     const fs::path sidecar = project->resolveAssetPath(FileUtils::pathFromUtf8(pose::humanoidSidecarPath(model->filename)));
     // the bones only: the Avatar's Animation Type, extra bones and twists stay
     pose::HumanoidOverrides overrides = mappingSidecar;
@@ -2538,14 +2543,19 @@ void editor::PoseAnimationWindow::drawMappingPopup(){
         }
         ImGui::EndTable();
     }
+    const bool unreadable = !mappingInfo->sidecarError.empty();
     if (!mappingError.empty()){
         ImGui::TextColored(Theme::Colors::ErrorText, "%s", mappingError.c_str());
+    }else if (unreadable){
+        ImGui::TextColored(Theme::Colors::ErrorText, "%s", PoseRigProvider::unreadableSidecarRefusal(mappingInfo->sidecarError).c_str());
     }else if (!mappingInfo->error.empty()){
         ImGui::TextColored(Theme::Colors::WarningText, "%s", mappingInfo->error.c_str());
     }else{
         ImGui::NewLine();
     }
+    ImGui::BeginDisabled(unreadable);
     if (ImGui::Button("Apply")) applyMapping();
+    ImGui::EndDisabled();
     ImGui::SameLine();
     if (ImGui::Button("Cancel")){
         mappingOpen = false;

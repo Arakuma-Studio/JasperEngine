@@ -229,9 +229,9 @@ bool anim::buildHumanoidSource(const tinygltf::Model& gltf, const std::string& m
     }
     out.restRotation.resize(boneNodes.size());
     out.restPosition.resize(boneNodes.size());
+    out.restScale.resize(boneNodes.size());
     for (size_t i = 0; i < boneNodes.size(); i++){
-        Vector3 scale;
-        gltfNodeLocal(gltf, boneNodes[i], out.restPosition[i], out.restRotation[i], scale);
+        gltfNodeLocal(gltf, boneNodes[i], out.restPosition[i], out.restRotation[i], out.restScale[i]);
     }
     return true;
 }
@@ -349,7 +349,9 @@ bool anim::convertToHumanoid(const ClipData& generic, const HumanoidSource& sour
         auto drop = [&](const std::string& what){
             const Vector3 restPosition = (size_t)bone < source.restPosition.size() ? source.restPosition[(size_t)bone] : Vector3(0, 0, 0);
             const Quaternion restRotation = (size_t)bone < source.restRotation.size() ? source.restRotation[(size_t)bone] : Quaternion();
-            if (!trackAtRest(track, restPosition, restRotation, skeleton.bones[(size_t)bone].scale, 1e-5 * rig.humanScale())){
+            // the node's own rest scale (the skeleton's folds non-bone parents in, as Mixamo's 0.01 Armature)
+            const Vector3 restScale = (size_t)bone < source.restScale.size() ? source.restScale[(size_t)bone] : Vector3(1, 1, 1);
+            if (!trackAtRest(track, restPosition, restRotation, restScale, 1e-5 * rig.humanScale())){
                 dropped.insert(what);
             }
         };
@@ -805,8 +807,10 @@ bool anim::bindHumanoidClip(const AnimationClip& clip, const std::shared_ptr<con
         output.kind = HumanoidOutput::Kind::Hips;
         out.outputs.push_back(output);
     }
-    // the clip's extra bones and their mirror counterparts (Mirror can turn on at any time: a
-    // right-hand-only curl mirrored drives the left hand, the right one back to its rest)
+    // the clip's extra bones and their mirror counterparts (Mirror can turn on at any time), each
+    // live only while the (mirrored) sample has a value for it: a right-hand-only curl leaves the
+    // left hand to the other layers and clips, mirrored it drives the left hand and leaves the
+    // right one alone
     std::bitset<HUMAN_EXTRA_BONE_COUNT> driven;
     for (int x = 0; x < HUMAN_EXTRA_BONE_COUNT; x++){
         if (!clipExtra[(size_t)x]) continue;
@@ -824,6 +828,8 @@ bool anim::bindHumanoidClip(const AnimationClip& clip, const std::shared_ptr<con
         output.channel = ClipChannel::Rotation;
         output.kind = HumanoidOutput::Kind::Extra;
         output.index = (uint8_t)x;
+        output.liveUnmirrored = clipExtra[(size_t)x];
+        output.liveMirrored = clipExtra[(size_t)extraIndex(humanExtraBoneInfo(extraAt(x)).mirror)];
         out.outputs.push_back(output);
     }
     out.pose = rig.neutralPose();

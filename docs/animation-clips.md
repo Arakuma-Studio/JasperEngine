@@ -345,7 +345,9 @@ The Bindings report lists, per humanoid state, the rig it plays on with its huma
 ratio to the source's, the slots a missing one was folded into ("chest folded into spine": a rig
 without a chest bone gets the chest's rotation on its next bone), and the clip bones the rig lacks.
 Fingers, eyes and the jaw play when both rigs map them; a slot the clip lacks stays in the neutral
-pose. Props and bones that aren't humanoid stay normal tracks: they bind by path, or by a unique
+pose, while a finger, eye or jaw bone the clip lacks is left to the other clips and layers (a
+right-hand pose on an Override layer keeps the idle's left hand; with **Mirror** it poses the left
+hand and leaves the right one). Props and bones that aren't humanoid stay normal tracks: they bind by path, or by a unique
 bone name on another rig.
 
 Humanoid clips blend with generic clips, layers, masks (a humanoid mask's body parts apply to their

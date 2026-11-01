@@ -66,6 +66,14 @@ namespace jasperengine::editor{
         static std::shared_ptr<const PoseRigInfo> forSceneModel(Project* project, Scene* scene, Entity model);
         // Drops every cached rig (project closed)
         static void clear();
+
+        // What a sidecar writer says when the sidecar exists but cannot be read: rewriting it from
+        // what was read would wipe its Avatar (the Rig foldout, Map Bones, the Avatar window)
+        static std::string unreadableSidecarRefusal(const std::string& sidecarError);
+        // The Rig foldout's Animation Type: the model's sidecar as read with its animation_type
+        // set (generic: not written), one project undo step. False + error when the sidecar
+        // cannot be read or the write fails; true without a write when it is that type already.
+        static bool setAnimationType(Project* project, const std::filesystem::path& model, pose::AnimationType type, std::string& error);
     };
 
 }
