@@ -782,6 +782,9 @@ Decisions taken while implementing (branch `gaps/camera-shake`, both phases):
       or persistent scene is. The engine code is unchanged.
     - The lifecycle-start coroutine test added for the review waits 4 frames before it checks
       that `start` has not resumed yet, and 10 more before it checks that it has.
-21. **A failure that comes from `main`.** `test_stochastic_tiling::test_old_scene_resaves_byte_identical`
-    fails the same way on plain `main` (acba2fadf, built on the box): the re-saved scene gains an
-    `htmluipost` shader key. It passes on the ui-canvas-group worktree build. It is left to `main`.
+21. **Final merge with main (5762bb259).** Main's final coroutines code is kept wherever this
+    branch had an older copy, including the two coroutine tests of note 20, which main now carries.
+    The camera components come after the on-screen controls (ui-multitouch): the Camera Shaker is
+    TouchArea + 1, and the on-screen controls test no longer requires TouchArea to be last. The
+    shake/follow line of the agent guide is under "Feature guides". The stochastic-tiling re-save
+    failure seen on the earlier main (acba2fadf) passes on this merge.
