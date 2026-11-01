@@ -8269,15 +8269,19 @@ AudioSourceComponent editor::Stream::decodeAudioSourceComponent(const YAML::Node
     if (node["attenuationModel"]) audio.attenuationModel = stringToAudioSourceAttenuation(node["attenuationModel"].as<std::string>());
     if (node["attenuationRolloffFactor"]) audio.attenuationRolloffFactor = decodeFinite(node["attenuationRolloffFactor"], audio.attenuationRolloffFactor);
     if (node["dopplerFactor"]) audio.dopplerFactor = decodeFinite(node["dopplerFactor"], audio.dopplerFactor);
-    if (node["outputGroup"]) audio.outputGroup = node["outputGroup"].as<std::string>();
-    if (node["outputGroupName"]) audio.outputGroupName = node["outputGroupName"].as<std::string>();
+    // the mixer fields are written only when not their default: a key that is not there IS the
+    // default, also over an existing component (an undo, a prefab instance's whole-component override)
+    const AudioSourceComponent defaults;
+    audio.outputGroup = node["outputGroup"] ? node["outputGroup"].as<std::string>() : defaults.outputGroup;
+    audio.outputGroupName = node["outputGroupName"] ? node["outputGroupName"].as<std::string>() : defaults.outputGroupName;
+    audio.loadType = defaults.loadType;
     if (node["loadType"]) {
         AudioLoadType loadType;
         if (SoundPool::loadTypeFromName(node["loadType"].as<std::string>(), loadType)) audio.loadType = loadType;
     }
-    if (node["priority"]) audio.priority = std::clamp(YamlNumbers::as<int>(node["priority"]), 0, 256);
-    if (node["maxVoices"]) audio.maxVoices = std::clamp(YamlNumbers::as<int>(node["maxVoices"]), 1, 64);
-    if (node["ignoreListenerPause"]) audio.ignoreListenerPause = YamlNumbers::as<bool>(node["ignoreListenerPause"]);
+    audio.priority = node["priority"] ? std::clamp(YamlNumbers::as<int>(node["priority"]), 0, 256) : defaults.priority;
+    audio.maxVoices = node["maxVoices"] ? std::clamp(YamlNumbers::as<int>(node["maxVoices"]), 1, 64) : defaults.maxVoices;
+    audio.ignoreListenerPause = node["ignoreListenerPause"] ? YamlNumbers::as<bool>(node["ignoreListenerPause"]) : defaults.ignoreListenerPause;
 
     bool keepLoadedSample = oldAudio && oldFilename == audio.filename && oldAudio->sample && oldAudio->loaded &&
                             oldAudio->loadType == audio.loadType;

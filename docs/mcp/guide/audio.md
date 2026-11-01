@@ -106,8 +106,8 @@ Every effect also has `wet` (0..1, default 1; 0 = dry) and `bypass`. Values are 
   and logs once (`hasParameter`, `getParameterNames` list them).
 - **remember: true**: what scripts set is saved to UserSettings (`audio.mixer.<name>`) at the end
   of the frame and comes back when the mixer loads, before any sound plays. Settings toggles become
-  zero code. `clearFloat` forgets it; `AudioMixer.saveParameters()` / `loadParameters()` write and
-  read them on demand. `user_settings` lists them.
+  zero code. `clearFloat` forgets it; `AudioMixer.saveParameters()` writes the ones scripts set now (and
+  forgets the others), `loadParameters()` reads them again. `user_settings` lists them.
 - **Snapshots** hold a value for every parameter. `transitionTo(snapshot, seconds)` moves every
   parameter there (volumes linearly in dB, frequencies along log2(Hz): the 22000 -> 525 Hz sweep is
   at ~3398 Hz half way, other values linearly); `transitionToSnapshots(names, weights, seconds)`
@@ -145,7 +145,7 @@ Snapshot `values` keys: an exposed name (`"lowPassCutoff"`), `"<group>/volume"`
 target. A new snapshot holds every parameter's current value (the faders), with `values` on top.
 
 Project Settings over MCP: `audio.mixer` (the .mixer path), `audio.max_real_voices` (32: voices
-mixed at once, the quietest others are virtualised), `audio.max_voices` (256: voices playing at
+mixed at once, the quietest others are virtualised; at most 255 minus the mixer's groups), `audio.max_voices` (256: voices playing at
 all), `audio.sample_rate` (`auto`, 22050, 44100, 48000), `audio.default_output_group` (the group
 new Audio Sources get).
 
@@ -169,7 +169,9 @@ new Audio Sources get).
   DecompressOnLoad (Auto does it for small files).
 - **The voice budget**: past Max Voices (Project Settings > Audio) the playing voice with the
   highest priority number stops (the oldest of them first); a new voice less important than every
-  playing one does not start. Protected voices (`protectVoice`) are never stolen nor virtualised.
+  playing one does not start. Protected voices (`protectVoice`) are never stolen by the budget nor dropped when
+  SoLoud runs out of voice slots; like any voice they are virtualised (silent until loud enough
+  again) when more than Max Real Voices play.
 - **Fades**: `fadeIn(seconds)` plays from silence to the current volume (starting it if needed),
   `fadeOut(seconds [, {pause = true}])` goes to silence then stops (or pauses) and puts the volume
   back for the next `play()`, `fadeTo(volume, seconds)` changes `volume`. Scaled time unless

@@ -1479,9 +1479,12 @@ void ProjectSettingsWindow::drawAudioSettings() {
                 audio.maxRealVoices = defaults.maxRealVoices;
             }
             ImGui::SetNextItemWidth(-helpMarkerWidth());
-            ImGui::DragInt("##AudioMaxRealVoices", &audio.maxRealVoices, 1.0f, 1, 255);
-            audio.maxRealVoices = std::clamp(audio.maxRealVoices, 1, 255);
-            endSettingsRow("Voices mixed at once. Past it the quietest are virtualised (silent until they are loud enough again).");
+            // SoLoud mixes at most 255 voices at once, the mixer's group buses among them
+            const int realVoicesLimit = std::max(1, (int)AudioMixer::maxActiveVoices - (int)AudioMixer::getGroupNames().size());
+            ImGui::DragInt("##AudioMaxRealVoices", &audio.maxRealVoices, 1.0f, 1, realVoicesLimit);
+            audio.maxRealVoices = std::clamp(audio.maxRealVoices, 1, realVoicesLimit);
+            endSettingsRow("Voices mixed at once. Past it the quietest are virtualised (silent until they are loud enough again). "
+                           "At most 255 minus the mixer's groups (each group is a voice too).");
 
             if (beginSettingsRow("Max Voices", audio.maxVoices != defaults.maxVoices)) {
                 audio.maxVoices = defaults.maxVoices;

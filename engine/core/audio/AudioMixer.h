@@ -161,7 +161,8 @@ namespace jasperengine {
 
         // ---- remembered parameters (exposed with remember: UserSettings "audio.mixer.<name>")
 
-        // the remembered parameters' current values to UserSettings now (and saved)
+        // the remembered parameters a script set to UserSettings now (and saved); the keys of the
+        // others are removed (they follow the snapshots)
         static void saveRemembered();
         // the remembered values in UserSettings set again (as script values)
         static void loadRemembered();
@@ -197,6 +198,12 @@ namespace jasperengine {
         // pauses everything at the Master bus (app pause; spec A13)
         static void setMasterPaused(bool paused);
         static bool isMasterPaused();
+        // SoLoud mixes at most this many voices at once, the buses included (Project Settings >
+        // Audio's Max Real Voices + the mixer's groups are clamped to it)
+        static constexpr unsigned int maxActiveVoices = 255;
+        // tests: how often the voice limit was set (each reallocates SoLoud's voice buffers) and
+        // effect filters were made
+        static void getDebugCounters(unsigned int& voiceLimitChanges, unsigned int& filterBuilds);
     };
 
 }

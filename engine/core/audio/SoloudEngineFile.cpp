@@ -67,18 +67,37 @@ bool EngineWavStream::open(const std::string& filePath, SoLoud::result* result) 
     return true;
 }
 
+namespace {
+
+    // a voice of a stream whose file went away: silent, and over at once
+    class EndedInstance : public SoLoud::AudioSourceInstance {
+    public:
+        unsigned int getAudio(float* buffer, unsigned int, unsigned int bufferSize) override {
+            for (unsigned int i = 0; i < bufferSize * mChannels; i++) buffer[i] = 0.0f;
+            return 0;
+        }
+        bool hasEnded() override { return true; }
+    };
+
+}
+
 SoLoud::AudioSourceInstance* EngineWavStream::createInstance() {
-    // WavStreamInstance reads mStreamFile when it is made: this voice gets a file of its own,
-    // which it deletes when it ends (its file is not mStreamFile any more by then)
+    // every voice reads a file of its own (openInstanceFile; the parsed file is never shared, so
+    // no voice reads over another's position and none deletes another's file)
     auto* own = new SoloudEngineFile(path);
     if (!own->isOpen()) {
-        // the file went away since it was parsed: SoLoud's own way, the parsed file shared
         delete own;
-        return new SoLoud::WavStreamInstance(this);
+        return new EndedInstance();
     }
-    SoLoud::File* shared = mStreamFile;
-    mStreamFile = own;
+    pendingFile = own;
     auto* instance = new SoLoud::WavStreamInstance(this);
-    mStreamFile = shared;
+    // taken by the instance (or deleted by it when its decoder did not open)
+    pendingFile = nullptr;
     return instance;
+}
+
+SoLoud::File* EngineWavStream::openInstanceFile() {
+    SoLoud::File* file = pendingFile;
+    pendingFile = nullptr;
+    return file;
 }

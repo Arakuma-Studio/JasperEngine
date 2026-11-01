@@ -38,12 +38,15 @@ namespace jasperengine {
     // each other)
     class EngineWavStream : public SoLoud::WavStream {
         std::string path;
-        SoloudEngineFile* parsed = nullptr;   // the file parse read (SoLoud's mStreamFile)
+        SoloudEngineFile* parsed = nullptr;   // the file parse read (SoLoud's mStreamFile), never read by a voice
+        SoLoud::File* pendingFile = nullptr;
     public:
         ~EngineWavStream() override;
         // false when the file does not open or is not audio (SoLoud's result in `result`)
         bool open(const std::string& path, SoLoud::result* result = nullptr);
         SoLoud::AudioSourceInstance* createInstance() override;
+        // the file createInstance opened for the voice it is making (the WavStreamInstance takes it)
+        SoLoud::File* openInstanceFile() override;
     };
 
 }

@@ -99,6 +99,8 @@ namespace {
         bool built = false;
         bool masterPaused = false;
         double frameUnscaled = 0.0;
+        unsigned int voiceLimitChanges = 0;
+        unsigned int filterBuilds = 0;
         float sampleRate = 44100.0f;
         std::set<std::string> warnedNames;
         std::set<std::string> rememberDirty;
@@ -239,6 +241,7 @@ namespace {
     // ---- SoLoud filters
 
     std::unique_ptr<SoLoud::Filter> makeFilter(const AudioMixerEffectDef& def, EffectState& effect) {
+        state().filterBuilds++;
         auto param = [&def](const char* name) {
             const AudioEffectParamInfo* info = AudioEffects::findParam(def.type, name);
             return info ? AudioMixerIO::effectParam(def, *info) : 0.0f;
@@ -399,7 +402,10 @@ namespace {
             const AudioMixerEffectDef* def = effectDef(effect.id);
             if (!def || !effect.filter) continue;
             std::vector<float> attrs = effectAttributes(*def);
-            if (def->type == AudioEffectType::Echo && attrs.size() > 1 && attrs[1] > effect.echoDelay + 1e-4f) {
+            // (not while a timed change moves it: once, where it ends; meanwhile SoLoud keeps the delay
+            // within the buffer it has)
+            if (def->type == AudioEffectType::Echo && attrs.size() > 1 && attrs[1] > effect.echoDelay + 1e-4f &&
+                !paramMoving(AudioMixerIO::paramTarget(effect.id, "delay"))) {
                 // the echo's buffer is as long as its delay was: a longer one needs a new filter
                 rebuildFilter(group, index);
                 writeSlots(group);
@@ -474,8 +480,15 @@ namespace {
 
     void updateVoiceLimit() {
         if (!AudioSystem::isInited()) return;
-        const unsigned int count = (unsigned int)AudioSystem::getConfig().maxRealVoices + (unsigned int)state().groups.size();
-        AudioSystem::getSoloud().setMaxActiveVoiceCount(std::min(count, (unsigned int)VOICE_COUNT - 1));
+        // SoLoud mixes at most 255 voices at once (its active-voice map); the buses count
+        const unsigned int count = std::min(AudioMixer::maxActiveVoices,
+            (unsigned int)AudioSystem::getConfig().maxRealVoices + (unsigned int)state().groups.size());
+        // only when it changes: SoLoud reallocates every voice's resample buffers (a dropout)
+        SoLoud::Soloud& soloud = AudioSystem::getSoloud();
+        if (soloud.getMaxActiveVoiceCount() != count) {
+            soloud.setMaxActiveVoiceCount(count);
+            state().voiceLimitChanges++;
+        }
     }
 
     // groups, effects and their buses as the def says, keeping what stays (spec 7.1 apply)
@@ -485,6 +498,21 @@ namespace {
 
         std::vector<std::unique_ptr<GroupState>> previous = std::move(s.groups);
         s.groups.clear();
+        // another mixer (or a file whose Master has another id): the Master bus stays, under the new
+        // id, so what plays through it (sources, video, the Inspector preview) goes on
+        if (const AudioMixerGroupDef* newMaster = def.master()) {
+            bool kept = false;
+            for (auto& old : previous) kept = kept || (old && old->id == newMaster->id);
+            if (!kept) {
+                for (auto& old : previous) {
+                    if (old && old->parentId.empty()) {
+                        AudioSystem::moveGroupVoices(old->id, newMaster->id);
+                        old->id = newMaster->id;
+                        break;
+                    }
+                }
+            }
+        }
         std::vector<std::unique_ptr<GroupState>> removed;
         std::vector<EffectState> droppedEffects;
 
@@ -1044,7 +1072,10 @@ void AudioMixer::saveRemembered(){
         auto it = s.params.find(exposed.target);
         if (it == s.params.end()) continue;
         const std::string key = rememberedKey(exposed.name);
-        UserSettings::setFloatForKey(key.c_str(), it->second.finalValue());
+        // what a script set (as the end-of-frame writes); the others follow their snapshots, so
+        // nothing of them is kept
+        if (it->second.overridden) UserSettings::setFloatForKey(key.c_str(), it->second.finalValue());
+        else UserSettings::removeKey(key.c_str());
     }
     s.rememberDirty.clear();
     UserSettings::save();
@@ -1202,6 +1233,11 @@ void AudioMixer::setMasterPaused(bool paused){
     if (GroupState* master = masterState()) {
         if (master->handle) AudioSystem::getSoloud().setPause(master->handle, paused);
     }
+}
+
+void AudioMixer::getDebugCounters(unsigned int& voiceLimitChanges, unsigned int& filterBuilds){
+    voiceLimitChanges = state().voiceLimitChanges;
+    filterBuilds = state().filterBuilds;
 }
 
 bool AudioMixer::isMasterPaused(){

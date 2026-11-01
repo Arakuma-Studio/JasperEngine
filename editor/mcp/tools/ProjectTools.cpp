@@ -1560,7 +1560,23 @@ const std::vector<Setting>& settingsTable() {
             };
             add(s);
         };
-        audioInt("audio.max_real_voices", "Voices mixed at once (default 32); the quietest others are virtualised.", 1, 255, &AudioSettings::maxRealVoices);
+        audioInt("audio.max_real_voices", "Voices mixed at once (default 32); the quietest others are virtualised. At most 255 minus "
+                 "the mixer's groups.", 1, 255, &AudioSettings::maxRealVoices);
+        {
+            // SoLoud mixes at most 255 voices at once, the mixer's buses among them
+            Setting& s = t.back();
+            auto inner = s.set;
+            s.set = [inner](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                const long long groups = (long long)AudioMixer::getGroupNames().size();
+                const long long limit = (long long)AudioMixer::maxActiveVoices - groups;
+                if (value.is_number_integer() && value.get<long long>() > limit) {
+                    error = "must be at most " + std::to_string(limit) + " (255 voices at once, the mixer's " +
+                            std::to_string(groups) + " group(s) included)";
+                    return false;
+                }
+                return inner(ctx, value, apply, error);
+            };
+        }
         audioInt("audio.max_voices", "Voices playing at all (default 256); past it the least important (AudioSource priority) stops.", 1, 1000, &AudioSettings::maxVoices);
         {
             Setting s;

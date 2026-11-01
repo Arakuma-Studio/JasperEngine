@@ -108,7 +108,8 @@ Binding conventions: [AGENT-BRIEF.md](../../engine-gaps/AGENT-BRIEF.md). Gap: [G
 - **A11. Global voice budget**: Project Settings > Audio `maxRealVoices` (32, SoLoud active voices + one per group)
   and `maxVoices` (256): starting a voice past `maxVoices` stops the playing voice with the highest `priority`
   number (least important), oldest first; if the new voice is the least important it does not start. Protected
-  voices (`protectVoice`) are never virtualised by SoLoud nor stolen.
+  voices (`protectVoice`) are never stolen by the budget nor killed when SoLoud's voice slots run out
+  (they can be virtualised like any other; corrected in implementation).
 - **A12. Fades are volume animations** of the source's `volume` (`fadeTo` changes `volume`; `fadeIn` plays from 0 to
   the current `volume`; `fadeOut` goes to 0, then stops (or pauses with `{pause=true}`) and restores `volume` so the
   next `play()` is at the authored level). Scaled time by default (A7), `{unscaled=true}` option. Implemented on the
@@ -487,3 +488,17 @@ Decisions taken while implementing (2026-10-31), where the spec was silent, ambi
   108425 (TOTAL_LIMIT set to it); TOOLS.md regenerated from this build. The changed engine sources (audio, SoLoud's
   wavstream / nosound / null, AudioSystem, EntityCloner, bindings) compile with emsdk (Web) and the Android NDK
   (arm64-v8a) on this merged tree.
+- **Review fixes** (independent review): SoLoud's voice limit is set only when it changes (setting it reallocates
+  every voice's resample buffers: a fader drag crackled) and never above 255 (Max Real Voices + the mixer's groups;
+  the Project Settings field and `audio.max_real_voices` stop at 255 minus the groups); a mixer whose Master has
+  another id keeps the Master bus (re-homed under the new id), so what plays through it, the HTML UI video and the
+  Inspector preview included, goes on; a scene or prefab node without a mixer key restores that field's default
+  over an existing component (undo, whole-component prefab overrides); `saveParameters` keeps only what scripts
+  set and removes the other keys; `play()` over a `fadeOut` cuts the fade and restores the volume; clocked voices
+  start held when the source, the listener or the scene is paused; a streamed clip's voices never share the
+  parsed file (a vendored SoLoud hook, `WavStream::openInstanceFile`, gives each voice its own engine file, no
+  swap of `mStreamFile`), a voice whose file cannot open again ends at once (an ended instance), and a
+  `WavStreamInstance` whose decoder did not open reports itself ended (vendored `hasEnded` patch) instead of
+  playing silence for ever; a timed echo `delay` rebuilds the echo once, where the change ends. The wording of A11
+  about protected voices is corrected (they are not stolen nor killed when SoLoud's slots run out; they can be
+  virtualised).

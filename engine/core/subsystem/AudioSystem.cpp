@@ -626,8 +626,9 @@ unsigned int AudioSystem::startVoice(AudioSourceComponent& audio, SoLoud::AudioS
     }
     registerVoice(handle, scene, audio.resolvedGroup, audio.priority, audio.protectVoice);
 
+    // started paused, except a clocked voice (SoLoud has no paused clocked play): held at once
     const bool pause = desiredPause(audio);
-    if (!pause) getSoloud().setPause(handle, false);
+    getSoloud().setPause(handle, pause);
     return handle;
 }
 
@@ -1023,6 +1024,13 @@ void AudioSystem::update(double dt){
             if (pendingStart){
                 const bool resume = audio.state == AudioSourceState::Paused && audio.handle != 0 && audio.startTrigger;
                 audio.startTrigger = false;
+
+                // a play() over a fadeOut: the fade is cut (it would stop or pause the new start)
+                // and the authored volume comes back
+                if (audio.fade.active && audio.fade.end != AudioFadeEnd::None) {
+                    if (audio.fade.restore) audio.volume = audio.fade.restoreVolume;
+                    audio.fade = AudioFade();
+                }
 
                 if (resume) {
                     audio.state = AudioSourceState::Playing;

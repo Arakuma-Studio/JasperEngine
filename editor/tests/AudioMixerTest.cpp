@@ -13,6 +13,7 @@
 
 #include "Generator.h"
 #include "Scene.h"
+#include "Stream.h"
 #include "audio/AudioMixer.h"
 #include "audio/AudioMixerIO.h"
 #include "io/UserSettings.h"
@@ -757,6 +758,204 @@ TEST_F(AudioSourceTest, MovedVoicesFollowTheirSourceToAnotherScene) {
     EXPECT_TRUE(soloud().isValidVoiceHandle(handle));
     other.getSystem<AudioSystem>()->stopSceneSounds();
     EXPECT_FALSE(soloud().isValidVoiceHandle(handle));
+}
+
+// ================================================================== review regressions
+
+TEST_F(AudioMixerRuntimeTest, ALiveEditKeepsTheVoiceBuffersWhenTheVoiceLimitStays) {
+    loadMusicMixer();
+    AudioSource music = source("tone.wav", "Music");
+    music.setLooping(true);
+    music.play();
+    run(0.1);
+    unsigned int limitChanges = 0, builds = 0;
+    AudioMixer::getDebugCounters(limitChanges, builds);
+    float** buffers = soloud().mResampleData;
+    // a fader drag: the same groups, another volume, every frame
+    for (int i = 0; i < 10; i++) {
+        AudioMixerDef def = AudioMixer::getDef();
+        def.findGroup("Music")->volumeDb = -1.0f * i;
+        AudioMixer::apply(def);
+        step(0.01);
+    }
+    unsigned int limitChangesAfter = 0;
+    AudioMixer::getDebugCounters(limitChangesAfter, builds);
+    EXPECT_EQ(limitChangesAfter, limitChanges) << "SoLoud's voice limit set again (its buffers reallocated: a dropout)";
+    EXPECT_EQ(soloud().mResampleData, buffers);
+    // another group: one more bus, the limit follows once
+    AudioMixerDef def = AudioMixer::getDef();
+    AudioMixerGroupDef ui;
+    ui.id = "0000aaaa";
+    ui.name = "UI";
+    ui.parentId = def.master()->id;
+    def.groups.push_back(ui);
+    AudioMixer::apply(def);
+    AudioMixer::getDebugCounters(limitChangesAfter, builds);
+    EXPECT_EQ(limitChangesAfter, limitChanges + 1);
+    EXPECT_EQ(soloud().getMaxActiveVoiceCount(), 32u + 4u);
+}
+
+TEST_F(AudioMixerRuntimeTest, TheVoiceLimitStaysWithinSoLoudsMaximum) {
+    AudioConfig config;
+    config.maxRealVoices = 255;
+    AudioSystem::configure(config);
+    loadMusicMixer();
+    AudioSource music = source("tone.wav", "Music");
+    music.play();
+    run(0.1);
+    EXPECT_EQ(soloud().getMaxActiveVoiceCount(), AudioMixer::maxActiveVoices) << "255 real voices + 3 buses, clamped";
+    EXPECT_TRUE(music.isPlaying());
+    EXPECT_GT(AudioMixer::getMeterDb("Music"), -20.0f);
+}
+
+TEST_F(AudioMixerRuntimeTest, AnotherMixerWithAnotherMasterIdKeepsMastersVoices) {
+    loadMusicMixer();
+    AudioSource sfx = source("tone.wav");
+    sfx.setLooping(true);
+    sfx.play();
+    run(0.1);
+    const unsigned int handle = sfx.getComponent<AudioSourceComponent>().handle;
+    // a voice the engine does not register (the HTML UI video's, the Inspector preview's)
+    SoLoud::Wav loose;
+    writeTone(root / "assets" / "loose.wav", 1.0);
+    ASSERT_EQ(loose.load((root / "assets" / "loose.wav").string().c_str()), SoLoud::SO_NO_ERROR);
+    loose.setLooping(true);
+    const unsigned int looseHandle = AudioMixer::play("", loose, false, Vector3(0, 0, 0), 1.0f, false, 0.0);
+    ASSERT_NE(looseHandle, 0u);
+    soloud().setPause(looseHandle, false);
+
+    loadMixer(R"({"format": "jasperengine.mixer", "groups": [{"id": "abcdef01", "name": "Master"},
+        {"id": "abcdef02", "name": "Dialogue", "parent": "abcdef01"}]})");
+    run(0.1);
+    EXPECT_TRUE(soloud().isValidVoiceHandle(handle)) << "the source on Master plays on";
+    EXPECT_TRUE(soloud().isValidVoiceHandle(looseHandle)) << "so does a voice the engine does not track";
+    EXPECT_GT(AudioMixer::getMeterDb("Master"), -20.0f);
+    soloud().stop(looseHandle);
+}
+
+TEST_F(AudioMixerRuntimeTest, SaveParametersKeepsOnlyWhatScriptsSet) {
+    nlohmann::json json = nlohmann::json::parse(exampleMixer);
+    json["exposed"][1]["remember"] = true;   // lowPassCutoff
+    json["snapshots"].push_back({{"name", "Gameplay"}, {"values", {{"c4f00d01/cutoff", 525}}}});
+    loadMixer(json.dump());
+    ASSERT_TRUE(AudioMixer::setFloat("MusicVolume", -20.0f));
+    AudioMixer::saveRemembered();
+    EXPECT_TRUE(UserSettings::hasKey("audio.mixer.MusicVolume"));
+    EXPECT_FALSE(UserSettings::hasKey("audio.mixer.lowPassCutoff")) << "not set by a script: not pinned";
+    // the next launch: the cutoff still follows the snapshots
+    AudioMixer::unload();
+    loadMixer(json.dump());
+    EXPECT_FALSE(AudioMixer::isOverridden("lowPassCutoff"));
+    ASSERT_TRUE(AudioMixer::transitionTo("Gameplay", 0.0f));
+    float cutoff = 0.0f;
+    ASSERT_TRUE(AudioMixer::getFloat("lowPassCutoff", cutoff));
+    EXPECT_FLOAT_EQ(cutoff, 525.0f);
+    float volume = 0.0f;
+    ASSERT_TRUE(AudioMixer::getFloat("MusicVolume", volume));
+    EXPECT_FLOAT_EQ(volume, -20.0f);
+}
+
+TEST_F(AudioMixerRuntimeTest, ATimedEchoDelayRebuildsTheEchoOnceAtTheEnd) {
+    loadMixer(R"({"format": "jasperengine.mixer", "groups": [{"id": "00000001", "name": "Master",
+        "effects": [{"id": "0000ec40", "type": "echo", "params": {"delay": 0.2}}]}]})");
+    AudioSource sound = source();
+    sound.setLooping(true);
+    sound.play();
+    run(0.05);
+    unsigned int limits = 0, before = 0, after = 0;
+    AudioMixer::getDebugCounters(limits, before);
+    ASSERT_TRUE(AudioMixer::setTarget("0000ec40/delay", 1.0f, 0.5f));
+    run(0.4);
+    AudioMixer::getDebugCounters(limits, after);
+    EXPECT_EQ(after, before) << "no rebuild while the delay moves";
+    run(0.3);
+    AudioMixer::getDebugCounters(limits, after);
+    EXPECT_EQ(after, before + 1) << "one, where it ends";
+    float delay = 0.0f;
+    ASSERT_TRUE(AudioMixer::getTarget("0000ec40/delay", delay));
+    EXPECT_FLOAT_EQ(delay, 1.0f);
+}
+
+TEST_F(AudioSourceTest, PlayOverAFadeOutCutsTheFade) {
+    AudioSource sound = source();
+    sound.setLooping(true);
+    sound.setVolume(0.7);
+    sound.play();
+    run(0.05);
+    sound.fadeOut(0.2);
+    run(0.1);
+    EXPECT_LT(sound.getVolume(), 0.7);
+    sound.play();
+    run(0.3);
+    EXPECT_TRUE(sound.isPlaying()) << "the old fade does not stop the new start";
+    EXPECT_FALSE(sound.isFading());
+    EXPECT_NEAR(sound.getVolume(), 0.7, 1e-6) << "at the authored level";
+
+    sound.fadeOut(0.2, true);
+    run(0.1);
+    sound.play();
+    run(0.3);
+    EXPECT_TRUE(sound.isPlaying()) << "nor pauses it";
+    EXPECT_NEAR(sound.getVolume(), 0.7, 1e-6);
+}
+
+TEST_F(AudioSourceTest, AClockedVoiceStartsHeldWhileTheListenerIsPaused) {
+    AudioSystem::setListenerPaused(true);
+    AudioSource sound = source();
+    sound.setClockedSound(true);
+    sound.play();
+    step(0.02);
+    const unsigned int handle = sound.getComponent<AudioSourceComponent>().handle;
+    ASSERT_NE(handle, 0u);
+    EXPECT_TRUE(soloud().getPause(handle));
+    AudioSystem::setListenerPaused(false);
+    step(0.02);
+    EXPECT_FALSE(soloud().getPause(handle));
+}
+
+TEST_F(AudioSourceTest, AStreamWhoseFileWentAwayEndsItsNewVoices) {
+    AudioSource music = source("tone.wav");
+    music.setLoadType(AudioLoadType::Streaming);
+    music.play();
+    run(0.05);
+    ASSERT_TRUE(music.isPlaying());
+    fs::remove(root / "assets" / "tone.wav");
+    // the sample is parsed and cached: a new voice cannot open the file
+    music.playOneShot("tone.wav");
+    music.play();
+    run(0.1);
+    EXPECT_FALSE(music.isPlaying()) << "over at once, not silent for ever";
+    EXPECT_EQ(music.getVoiceCount(), 0);
+    EXPECT_TRUE(music.isStopped());
+}
+
+TEST(AudioSourceSerializationTest, AbsentMixerKeysAreTheirDefaultsOverAnExistingComponent) {
+    AudioSourceComponent edited;
+    edited.filename = "music.ogg";
+    edited.outputGroup = "9b51c0de";
+    edited.outputGroupName = "Music";
+    edited.loadType = AudioLoadType::Streaming;
+    edited.priority = 10;
+    edited.maxVoices = 3;
+    edited.ignoreListenerPause = true;
+    // an undo (or a prefab instance's whole-component override) back to a source with the defaults
+    AudioSourceComponent plain;
+    plain.filename = "music.ogg";
+    const YAML::Node node = Stream::encodeAudioSourceComponent(plain);
+    EXPECT_FALSE(node["outputGroup"]) << "defaults are not written";
+    EXPECT_FALSE(node["priority"]);
+    const AudioSourceComponent restored = Stream::decodeAudioSourceComponent(node, &edited);
+    EXPECT_EQ(restored.outputGroup, "");
+    EXPECT_EQ(restored.outputGroupName, "") << "back to Master";
+    EXPECT_EQ(restored.loadType, AudioLoadType::Auto);
+    EXPECT_EQ(restored.priority, 128);
+    EXPECT_EQ(restored.maxVoices, 8);
+    EXPECT_FALSE(restored.ignoreListenerPause);
+    // and the other way
+    const AudioSourceComponent again = Stream::decodeAudioSourceComponent(Stream::encodeAudioSourceComponent(edited), &plain);
+    EXPECT_EQ(again.outputGroupName, "Music");
+    EXPECT_EQ(again.priority, 10);
+    EXPECT_EQ(again.loadType, AudioLoadType::Streaming);
 }
 
 // ================================================================== AudioLuaTest
