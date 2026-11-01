@@ -121,9 +121,9 @@ LIMITS.update({"create_ragdoll": 900})
 # http: configure_game_view's network and get_play_state's http block; merged with main (script-data,
 # input, physics-2d, script-lifecycle): 150 tools measured 106807, the limit set to it
 # merged by the lead (ui-canvas-group, physics-3d, http): 151 tools measured 107626 on the merged tree
-TOTAL_LIMIT = 107626
 # debug overlay: no new tool; get_project_settings' category list (+ "debug") and get_play_state's
-# debug_overlay block (+16 chars); re-measured on the tree merged with main
+# debug_overlay block; measured on the tree merged with main: 151 tools, 107648, the limit set to it
+TOTAL_LIMIT = 107648
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
