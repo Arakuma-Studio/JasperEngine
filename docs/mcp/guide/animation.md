@@ -476,6 +476,62 @@ changed it (else the file stays and the console says so).
   `.anim` shows its settings, tracks, events, warnings and users; `move_asset` keeps the players
   pointing at a moved clip (GUID), `delete_asset` leaves them a Missing reference (undo relinks).
 
+## Humanoid clips and retargeting
+
+A generic clip plays absolute bone rotations: on another rig (other bone names, rest pose or
+proportions) it looks wrong (`rest_mismatch`). A **humanoid clip** plays on any humanoid: per slot
+it stores the joint rotation from the rig's neutral pose (the pose system's DOFs), plus the body
+offset and foot goals in human-scale units, and the player realises them on its own rig (hips
+height and stride scale, feet planted with Foot IK). Nothing is retargeted unless one of these is
+set:
+
+- the source model's Animation Type is Humanoid: `edit_pose_animation {ops: [{op: "set_humanoid",
+  model: "assets/models/hero.gltf", animation_type: "humanoid"}]}` (no `path`: an Avatar-only edit,
+  one project step). Every `hero.gltf#Clip` then plays retargeted;
+- a player entry's `retarget`: `set_properties {entity: "Robot", values: {animationplayer:
+  {"clips[0].retarget": true}}}` converts that clip at load from its source model (a model clip's
+  model, an `.anim`'s `source.path` or `preview.model`; without one the state fails with "the clip
+  names no source model");
+- a converted file: `edit_animation {clip: "assets/anim/wave_h.anim", create: {from:
+  "assets/anim/wave.anim", humanoid: {model?: "assets/models/hero.gltf"}}}` (the rig it was made
+  on; default its model, source or preview model). The result's `humanoid` lists mapped and
+  unmapped slots, fingers and dropped bones.
+
+`clips[i].mirror` (left/right swapped) and `clips[i].footIK` (legs reach the foot goals) apply to
+humanoid clips (a body slot the clip lacks is neutral; a finger, eye or jaw it lacks is left to
+other clips and layers: a one-hand pose leaves the other hand, mirrored it poses that hand instead); Lua `state.mirror` / `state.footIK` override them at runtime (`state:resetMirror()`
+/ `resetFootIK()` go back). The target rig is the
+first model on or under the player root whose bones map as a humanoid (`get_asset_info` on a
+model: its `avatar` with animation_type, humanoid, mapped, missing, extra_mapped, twist and
+human_scale).
+
+Verify numerically: `get_animation {clip, root: "Robot", times: [0.5]}` on a humanoid clip (a clip
+of an Animation Type: Humanoid model, or one the root's entry retargets) adds `retarget_report
+{target {model, human_scale}, source, scale_ratio, mirror, foot_ik, entry (Mirror and Foot IK of
+the root's first entry playing the clip, its index), folded, missing_on_target,
+unmapped_source_bones}` and `realised: [{time, bones: [{bone, entity,
+path, local_rotation {quat, euler}, angles}], hips_local_position}]`: compare `angles` with the
+source's, or `local_rotation` with `get_runtime_entity` in play. `folded` lists slots the target
+lacks whose rotation moved to the next slot ("chest folded into spine"); a slot the clip lacks
+stays neutral.
+
+Humanoid tracks in edit_animation (no `path`):
+
+```json
+{"channel": "humanoid", "bone": "left_upper_arm", "keys": [
+  {"time": 0, "value": {"angles": [12, 5, 0]}}, {"time": 1, "value": {"quat": [0.26, 0, 0, 0.97]}}]}
+{"channel": "humanoid_position", "bone": "hips", "keys": [{"time": 0, "value": [0, -0.02, 0.15]}]}
+```
+
+`bone` is a slot (`hips` ... `right_toes`), a finger (`left_index_proximal`), `left_eye`,
+`right_eye` or `jaw`; `humanoid_position` takes `hips`, `left_foot`, `right_foot`. `angles` are
+the slot's DOFs in degrees (jasper://docs/pose-animation), stored as the quaternion: `[a, b, c]` in
+the slot's DOF order or `{dof: degrees}` by name (`{"bend": 30}`, the others 0). Results list
+humanoid keys as `{quat, angles}`, and that form (with `in` / `out` tangents) goes back in as it
+is. A wrong bone gets a did-you-mean. Fix a bad mapping with
+`set_humanoid` (`bones`, `extra_bones` for fingers, eyes and jaw, `twist` (slot: degrees) to turn
+a slot's neutral pose about its direction); twists change the model's pose animations too.
+
 ## Scene mode: entity Animations and tweens
 
 Without `clip`, edit_animation edits an Animation GameObject (`animation`, or `target` to create

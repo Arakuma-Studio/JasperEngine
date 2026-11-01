@@ -36,7 +36,16 @@
 #include "Model.h"
 #include "PoseAnimator.h"
 #include "AnimationPlayer.h"
+#include <cstdio>
+
+#include "Log.h"
+
 #include "VertexAnimator.h"
+#include "CameraShaker.h"
+#include "CameraFollow.h"
+#include "camera/CameraShake.h"
+#include "camera/ShakePreset.h"
+#include "VideoPlayer.h"
 #include "animation/AnimationEvent.h"
 #include "MeshPolygon.h"
 #include "Points.h"
@@ -44,6 +53,7 @@
 #include "TrailRenderer.h"
 #include "Sprite.h"
 #include "object/ui/Text.h"   // by path: lexbor has a dom/interfaces/text.h (Xcode header maps ignore case)
+#include "object/ui/TextEffect.h"
 #include "Image.h"
 #include "Button.h"
 #include "Panel.h"
@@ -53,6 +63,7 @@
 #include "object/ui/OnScreenControls.h"
 
 #include <algorithm>
+#include <cmath>
 #include "LayoutGroup.h"
 #include "object/ui/CanvasGroup.h"
 #include "AudioSource.h"
@@ -140,6 +151,70 @@ static void setLuaCullingMask(T* self, lua_Integer mask){
 
 // ---- GameObject.instantiate / destroy / destroyImmediate (Unity's Object.Instantiate...) ----
 
+// AudioSource (audio-mixer spec 8): the calls with option tables read the Lua stack themselves
+namespace {
+
+    AudioSource* luaAudioSelf(lua_State* L){
+        AudioSource* self = luabridge::detail::Userdata::get<AudioSource>(L, 1, false);
+        if (!self) luaL_error(L, "AudioSource: call with ':' on an AudioSource");
+        return self;
+    }
+
+    bool luaAudioOpt(lua_State* L, int index, const char* field){
+        if (!lua_istable(L, index)) return false;
+        lua_getfield(L, index, field);
+        const bool value = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
+        return value;
+    }
+
+    // sound:playOneShot(path [, volumeScale])
+    int luaAudioPlayOneShot(lua_State* L){
+        AudioSource* self = luaAudioSelf(L);
+        self->playOneShot(luaL_checkstring(L, 2), (float)luaL_optnumber(L, 3, 1.0));
+        return 0;
+    }
+
+    // sound:fadeIn(seconds [, opts])
+    int luaAudioFadeIn(lua_State* L){
+        AudioSource* self = luaAudioSelf(L);
+        self->fadeIn(luaL_checknumber(L, 2), luaAudioOpt(L, 3, "unscaled"));
+        return 0;
+    }
+
+    // sound:fadeOut(seconds [, opts]): opts.pause pauses instead of stopping
+    int luaAudioFadeOut(lua_State* L){
+        AudioSource* self = luaAudioSelf(L);
+        self->fadeOut(luaL_checknumber(L, 2), luaAudioOpt(L, 3, "pause"), luaAudioOpt(L, 3, "unscaled"));
+        return 0;
+    }
+
+    // sound:fadeTo(volume, seconds [, opts])
+    int luaAudioFadeTo(lua_State* L){
+        AudioSource* self = luaAudioSelf(L);
+        self->fadeTo(luaL_checknumber(L, 2), luaL_checknumber(L, 3), luaAudioOpt(L, 4, "unscaled"));
+        return 0;
+    }
+
+    // AudioSource.playClipAtPoint(scene, path, position [, volume [, group]])
+    int luaAudioPlayClipAtPoint(lua_State* L){
+        Scene* scene = nullptr;
+        if (luabridge::isInstance<Scene*>(L, 1)){
+            auto result = luabridge::get<Scene*>(L, 1);
+            if (result) scene = result.value();
+        }
+        if (!scene) return luaL_error(L, "AudioSource.playClipAtPoint: argument 1 must be a Scene");
+        const std::string path = luaL_checkstring(L, 2);
+        auto position = luabridge::get<Vector3>(L, 3);
+        if (!position) return luaL_error(L, "AudioSource.playClipAtPoint: argument 3 must be a Vector3");
+        const float volume = (float)luaL_optnumber(L, 4, 1.0);
+        const std::string group = lua_isstring(L, 5) ? lua_tostring(L, 5) : "";
+        AudioSource::playClipAtPoint(scene, path, position.value(), volume, group);
+        return 0;
+    }
+
+}
+
 namespace {
     // a binding's global argument: a name, or nil to unbind (anything else is an error)
     std::string luaBindingGlobal(const luabridge::LuaRef& global, const char* function){
@@ -150,6 +225,35 @@ namespace {
         throw std::runtime_error(std::string(function) + ": the global is a name (a string), or nil to unbind");
     }
 
+
+bool luaObjectArg(lua_State* L, int index, Scene*& scene, Entity& entity, std::string* scriptClass);
+
+// An entity field of a component shown to Lua (the Video Player's targets): a GameObject, nil
+// for none
+std::optional<GameObject> gameObjectOrNil(Scene* scene, Entity entity){
+    if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity))
+        return std::nullopt;
+    return GameObject(scene, entity);
+}
+
+// ... set from a GameObject (any handle, a script instance), an entity number or nil
+Entity entityOf(const luabridge::LuaRef& value, const char* field){
+    if (value.isNil())
+        return NULL_ENTITY;
+    if (value.isNumber())
+        return (Entity)value.unsafe_cast<lua_Integer>();
+    lua_State* L = value.state();
+    value.push(L);
+    Scene* scene = nullptr;
+    Entity entity = NULL_ENTITY;
+    const bool ok = luaObjectArg(L, -1, scene, entity, nullptr);
+    lua_pop(L, 1);
+    if (!ok){
+        Log::error("VideoPlayer.%s takes a GameObject or nil", field);
+        return NULL_ENTITY;
+    }
+    return entity;
+}
 
 // A GameObject argument: any GameObject handle (EntityHandle and what derives from it), or
 // a Lua script instance (its self: a table with scene and entity), whose class is returned
@@ -517,6 +621,189 @@ namespace {
         Scene* scene = self->getScene();
         return (shader.empty() && scene) ? scene->getDefaultCustomShader(type) : shader;
     }
+}
+
+// ---- Camera Shake (camera shake spec 8): preset and options arguments ----
+
+namespace {
+
+// The error of a camera shake argument, formatted for luaL_error once the C++ objects are gone
+struct ShakeArgError{
+    char text[320] = {0};
+
+    bool set(const char* function, const char* format, const char* detail = ""){
+        char what[256];
+        std::snprintf(what, sizeof(what), format, detail);
+        std::snprintf(text, sizeof(text), "%s: %s", function, what);
+        return false;
+    }
+};
+
+// a number field of the table at `index`: absent (nil) leaves `out` and returns true; another
+// type is an error
+bool luaShakeNumberField(lua_State* L, int index, const char* key, float& out, const char* function, ShakeArgError& error){
+    lua_getfield(L, index, key);
+    const int type = lua_type(L, -1);
+    bool ok = true;
+    if (type == LUA_TNUMBER){
+        out = (float)lua_tonumber(L, -1);
+    }else if (type != LUA_TNIL){
+        ok = error.set(function, "%s must be a number", key);
+    }
+    lua_pop(L, 1);
+    return ok;
+}
+
+bool luaShakeVectorField(lua_State* L, int index, const char* key, Vector3& out, const char* function, ShakeArgError& error){
+    lua_getfield(L, index, key);
+    bool ok = true;
+    if (!lua_isnil(L, -1) && !luaValueArg<Vector3>(L, -1, out)){
+        ok = error.set(function, "%s must be a Vector3", key);
+    }
+    lua_pop(L, 1);
+    return ok;
+}
+
+// preset: a built-in name or a .shake path, or a table {type = "one_shot"|"sustained", strength,
+// roughness, fadeIn, fadeOut, positionInfluence = Vector3, rotationInfluence = Vector3} whose
+// missing keys take the .shake defaults
+bool luaShakeSourceArg(lua_State* L, int index, ShakeSource& out, const char* function, ShakeArgError& error){
+    index = lua_absindex(L, index);
+    if (lua_type(L, index) == LUA_TSTRING){
+        out = ShakeSource(std::string(lua_tostring(L, index)));
+        return true;
+    }
+    if (!lua_istable(L, index)){
+        return error.set(function, "the preset must be a built-in name, a .shake path or a table, got %s", luaL_typename(L, index));
+    }
+    camera::ShakePreset preset;
+    lua_getfield(L, index, "type");
+    if (lua_type(L, -1) == LUA_TSTRING){
+        if (!camera::shakeTypeFromName(lua_tostring(L, -1), preset.type)){
+            lua_pop(L, 1);
+            return error.set(function, "preset type must be \"one_shot\" or \"sustained\"");
+        }
+    }else if (!lua_isnil(L, -1)){
+        lua_pop(L, 1);
+        return error.set(function, "preset type must be \"one_shot\" or \"sustained\"");
+    }
+    lua_pop(L, 1);
+    if (!luaShakeNumberField(L, index, "strength", preset.strength, function, error) ||
+        !luaShakeNumberField(L, index, "roughness", preset.roughness, function, error) ||
+        !luaShakeNumberField(L, index, "fadeIn", preset.fadeIn, function, error) ||
+        !luaShakeNumberField(L, index, "fadeOut", preset.fadeOut, function, error) ||
+        !luaShakeVectorField(L, index, "positionInfluence", preset.positionInfluence, function, error) ||
+        !luaShakeVectorField(L, index, "rotationInfluence", preset.rotationInfluence, function, error)){
+        return false;
+    }
+    out = ShakeSource(preset);
+    return true;
+}
+
+// options: nil or {strength, roughness, seed, unscaled, fadeIn, fadeOut}
+bool luaShakeOptionsArg(lua_State* L, int index, ShakeOptions& out, const char* function, ShakeArgError& error){
+    index = lua_absindex(L, index);
+    if (lua_isnoneornil(L, index)) return true;
+    if (!lua_istable(L, index)){
+        return error.set(function, "options must be a table, got %s", luaL_typename(L, index));
+    }
+    if (!luaShakeNumberField(L, index, "strength", out.strength, function, error) ||
+        !luaShakeNumberField(L, index, "roughness", out.roughness, function, error) ||
+        !luaShakeNumberField(L, index, "fadeIn", out.fadeIn, function, error) ||
+        !luaShakeNumberField(L, index, "fadeOut", out.fadeOut, function, error)){
+        return false;
+    }
+    lua_getfield(L, index, "seed");
+    if (lua_isinteger(L, -1)){
+        out.hasSeed = true;
+        out.seed = (int)lua_tointeger(L, -1);
+    }else if (!lua_isnil(L, -1)){
+        lua_pop(L, 1);
+        return error.set(function, "seed must be an integer");
+    }
+    lua_pop(L, 1);
+    lua_getfield(L, index, "unscaled");
+    if (lua_isboolean(L, -1)){
+        out.unscaled = lua_toboolean(L, -1) ? 1 : 0;
+    }else if (!lua_isnil(L, -1)){
+        lua_pop(L, 1);
+        return error.set(function, "unscaled must be a boolean");
+    }
+    lua_pop(L, 1);
+    return true;
+}
+
+void luaPushShakeInstance(lua_State* L, const ShakeInstanceHandle& handle){
+    if (!luabridge::push(L, handle)){
+        lua_pushnil(L);
+    }
+}
+
+// shake(preset [, options]) / shakeAt(position, radius, preset [, options]), on every global
+// shaker (`shaker` null) or on one; `first` is the stack index of the first argument
+int luaShakeCall(lua_State* L, CameraShaker* shaker, int first, bool fromPoint, const char* function){
+    ShakeArgError error;
+    const bool ok = [&]() -> bool {
+        Vector3 position;
+        float radius = 0.0f;
+        int next = first;
+        if (fromPoint){
+            if (!luaValueArg<Vector3>(L, next, position)){
+                return error.set(function, "position must be a Vector3");
+            }
+            if (lua_type(L, next + 1) != LUA_TNUMBER){
+                return error.set(function, "radius must be a number");
+            }
+            radius = (float)lua_tonumber(L, next + 1);
+            next += 2;
+        }
+        ShakeSource source;
+        ShakeOptions options;
+        if (!luaShakeSourceArg(L, next, source, function, error) || !luaShakeOptionsArg(L, next + 1, options, function, error)){
+            return false;
+        }
+        ShakeInstanceHandle handle;
+        if (shaker){
+            handle = fromPoint ? shaker->shakeAt(position, radius, source, options) : shaker->shake(source, options);
+        }else{
+            handle = fromPoint ? CameraShake::shakeAt(position, radius, source, options) : CameraShake::shake(source, options);
+        }
+        luaPushShakeInstance(L, handle);
+        return true;
+    }();
+    if (!ok){
+        return luaL_error(L, "%s", error.text);
+    }
+    return 1;
+}
+
+// the CameraShaker of a method call (argument 1), null when it is not one
+CameraShaker* luaShakerSelf(lua_State* L){
+    if (!luabridge::isInstance<CameraShaker>(L, 1)) return nullptr;
+    auto self = luabridge::get<CameraShaker*>(L, 1);
+    return self ? self.value() : nullptr;
+}
+
+int luaCameraShakeShake(lua_State* L){
+    return luaShakeCall(L, nullptr, 1, false, "CameraShake.shake");
+}
+
+int luaCameraShakeShakeAt(lua_State* L){
+    return luaShakeCall(L, nullptr, 1, true, "CameraShake.shakeAt");
+}
+
+int luaCameraShakerShake(lua_State* L){
+    CameraShaker* self = luaShakerSelf(L);
+    if (!self) return luaL_error(L, "CameraShaker.shake: call it with a colon on a CameraShaker (shaker:shake(preset))");
+    return luaShakeCall(L, self, 2, false, "CameraShaker.shake");
+}
+
+int luaCameraShakerShakeAt(lua_State* L){
+    CameraShaker* self = luaShakerSelf(L);
+    if (!self) return luaL_error(L, "CameraShaker.shakeAt: call it with a colon on a CameraShaker (shaker:shakeAt(position, radius, preset))");
+    return luaShakeCall(L, self, 2, true, "CameraShaker.shakeAt");
+}
+
 }
 
 namespace {
@@ -1029,6 +1316,48 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
                 scene->findComponent<CanvasGroupComponent>(self->getEntity())){
                 scene->removeComponent<CanvasGroupComponent>(self->getEntity());
             }
+        })
+        // the Camera Shaker of the GameObject (MilkShake's Shaker), nil when it has none
+        .addFunction("getCameraShaker", +[](GameObject* self) -> std::optional<CameraShaker> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<CameraShakerComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return CameraShaker(scene, self->getEntity());
+        })
+        .addFunction("hasCameraShaker", +[](GameObject* self) -> bool {
+            Scene* scene = self->getScene();
+            return scene && scene->isEntityCreated(self->getEntity()) &&
+                   scene->findComponent<CameraShakerComponent>(self->getEntity()) != nullptr;
+        })
+        // the Camera Follow of the GameObject, nil when it has none
+        .addFunction("getCameraFollow", +[](GameObject* self) -> std::optional<CameraFollow> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<CameraFollowComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return CameraFollow(scene, self->getEntity());
+        })
+        .addFunction("hasCameraFollow", +[](GameObject* self) -> bool {
+            Scene* scene = self->getScene();
+            return scene && scene->isEntityCreated(self->getEntity()) &&
+                   scene->findComponent<CameraFollowComponent>(self->getEntity()) != nullptr;
+        })
+        // the Video Player of the GameObject, nil when it has none (Unity's GetComponent<VideoPlayer>)
+        .addFunction("getVideoPlayer", +[](GameObject* self) -> std::optional<VideoPlayer> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<VideoPlayerComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return VideoPlayer(scene, self->getEntity());
+        })
+        .addFunction("hasVideoPlayer", +[](GameObject* self) -> bool {
+            Scene* scene = self->getScene();
+            return scene && scene->isEntityCreated(self->getEntity()) &&
+                   scene->findComponent<VideoPlayerComponent>(self->getEntity()) != nullptr;
         })
         .endClass();
 
@@ -1701,6 +2030,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, float>(&Model::setMorphWeight))
         .addFunction("resetToBindPose", &Model::resetToBindPose)
         .addFunction("getPoseAnimator", &Model::getPoseAnimator)
+        .addFunction("getHumanoidInfo", +[](const Model* self, lua_State* L) -> luabridge::LuaRef {
+            const ModelHumanoidInfo info = self->getHumanoidInfo();
+            if (!info.valid) return luabridge::LuaRef(L);
+            luabridge::LuaRef table = luabridge::newTable(L);
+            table["humanoid"] = info.humanoid;
+            table["animationType"] = info.animationType;
+            table["humanScale"] = info.humanScale;
+            luabridge::LuaRef missing = luabridge::newTable(L);
+            for (size_t i = 0; i < info.missing.size(); i++) missing[(int)i + 1] = info.missing[i];
+            table["missing"] = missing;
+            table["extraMapped"] = info.extraMapped;
+            if (!info.error.empty()) table["error"] = info.error;
+            return table;
+        })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -2239,8 +2582,156 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("colorWrite", &Text::getColorWrite, &Text::setColorWrite)
         .addProperty("pivotBaseline", &Text::isPivotBaseline, &Text::setPivotBaseline)
         .addProperty("pivotCentered", &Text::isPivotCentered, &Text::setPivotCentered)
+        .addProperty("outlineWidth", &Text::getOutlineWidth, &Text::setOutlineWidth)
+        .addProperty("outlineColor", &Text::getOutlineColor, &Text::setOutlineColor)
+        .addProperty("shadowEnabled", &Text::isShadowEnabled, &Text::setShadowEnabled)
+        .addProperty("shadowColor", &Text::getShadowColor, &Text::setShadowColor)
+        .addProperty("shadowOffset", &Text::getShadowOffset, &Text::setShadowOffset)
+        .addProperty("shadowSoftness", &Text::getShadowSoftness, &Text::setShadowSoftness)
+        .addProperty("shadowDilate", &Text::getShadowDilate, &Text::setShadowDilate)
+        .addProperty("visibleCharacters", &Text::getVisibleCharacters, &Text::setVisibleCharacters)
         .addFunction("getAABB", &Text::getAABB)
         .addFunction("getWorldAABB", &Text::getWorldAABB)
+        .endClass();
+
+    // Text Effect (per-character animation of a Text): enums, a layer's values, the component's
+    // script interface
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TextEffectType")
+        .addVariable("None", TextEffectType::None)
+        .addVariable("Wave", TextEffectType::Wave)
+        .addVariable("Bounce", TextEffectType::Bounce)
+        .addVariable("Shake", TextEffectType::Shake)
+        .addVariable("Pulse", TextEffectType::Pulse)
+        .addVariable("Typewriter", TextEffectType::Typewriter)
+        .addVariable("FadeIn", TextEffectType::FadeIn)
+        .addVariable("Grow", TextEffectType::Grow)
+        .addVariable("Unfold", TextEffectType::Unfold)
+        .addVariable("Rainbow", TextEffectType::Rainbow)
+        .addVariable("Gradient", TextEffectType::Gradient)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TextEffectMix")
+        .addVariable("Multiply", TextEffectMix::Multiply)
+        .addVariable("Add", TextEffectMix::Add)
+        .addVariable("Replace", TextEffectMix::Replace)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<TextEffectGradientStop>("TextEffectGradientStop")
+        .addConstructor<void(*)()>()
+        .addProperty("color", &TextEffectGradientStop::color, &TextEffectGradientStop::color)
+        .addProperty("position", &TextEffectGradientStop::position, &TextEffectGradientStop::position)
+        .endClass();
+
+    // a layer as values (TextEffectLayer(), then textEffect:setLayer(i, layer))
+    luabridge::getGlobalNamespace(L)
+        .beginClass<TextEffectLayer>("TextEffectLayer")
+        .addConstructor<void(*)()>()
+        // (a type's default amplitude follows: 1 for Grow and Unfold)
+        .addProperty("type", [] (const TextEffectLayer* self) -> TextEffectType { return self->type; },
+                             [] (TextEffectLayer* self, TextEffectType type) { TextEffects::setType(*self, type); })
+        .addProperty("enabled", &TextEffectLayer::enabled, &TextEffectLayer::enabled)
+        .addProperty("amplitude", &TextEffectLayer::amplitude, &TextEffectLayer::amplitude)
+        .addProperty("duration", &TextEffectLayer::duration, &TextEffectLayer::duration)
+        .addProperty("spread", &TextEffectLayer::spread, &TextEffectLayer::spread)
+        .addProperty("phaseStep", &TextEffectLayer::phaseStep, &TextEffectLayer::phaseStep)
+        .addProperty("frequency", &TextEffectLayer::frequency, &TextEffectLayer::frequency)
+        .addProperty("charactersPerSecond", &TextEffectLayer::charactersPerSecond, &TextEffectLayer::charactersPerSecond)
+        .addProperty("fadeTime", &TextEffectLayer::fadeTime, &TextEffectLayer::fadeTime)
+        .addProperty("gradient", &TextEffectLayer::gradient, &TextEffectLayer::gradient)
+        .addProperty("mix", &TextEffectLayer::mix, &TextEffectLayer::mix)
+        .addProperty("saturation", &TextEffectLayer::saturation, &TextEffectLayer::saturation)
+        .addProperty("lightness", &TextEffectLayer::lightness, &TextEffectLayer::lightness)
+        .endClass();
+
+    // a running effect's layer (textEffect:getLayer(i)): writes change the effect
+    luabridge::getGlobalNamespace(L)
+        .beginClass<TextEffectLayerRef>("TextEffectLayerRef")
+        .addProperty("type", &TextEffectLayerRef::getType, &TextEffectLayerRef::setType)
+        .addProperty("enabled", &TextEffectLayerRef::isEnabled, &TextEffectLayerRef::setEnabled)
+        .addProperty("amplitude", &TextEffectLayerRef::getAmplitude, &TextEffectLayerRef::setAmplitude)
+        .addProperty("duration", &TextEffectLayerRef::getDuration, &TextEffectLayerRef::setDuration)
+        .addProperty("spread", &TextEffectLayerRef::getSpread, &TextEffectLayerRef::setSpread)
+        .addProperty("phaseStep", &TextEffectLayerRef::getPhaseStep, &TextEffectLayerRef::setPhaseStep)
+        .addProperty("frequency", &TextEffectLayerRef::getFrequency, &TextEffectLayerRef::setFrequency)
+        .addProperty("charactersPerSecond", &TextEffectLayerRef::getCharactersPerSecond, &TextEffectLayerRef::setCharactersPerSecond)
+        .addProperty("fadeTime", &TextEffectLayerRef::getFadeTime, &TextEffectLayerRef::setFadeTime)
+        .addProperty("gradient", &TextEffectLayerRef::getGradient, &TextEffectLayerRef::setGradient)
+        .addProperty("mix", &TextEffectLayerRef::getMix, &TextEffectLayerRef::setMix)
+        .addProperty("saturation", &TextEffectLayerRef::getSaturation, &TextEffectLayerRef::setSaturation)
+        .addProperty("lightness", &TextEffectLayerRef::getLightness, &TextEffectLayerRef::setLightness)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<TextEffect>("TextEffect")
+        .addConstructor<void(*)(Scene*, Entity)>()
+        .addProperty("enabled", &TextEffect::isEnabled, &TextEffect::setEnabled)
+        .addProperty("autoPlay", &TextEffect::isAutoPlay, &TextEffect::setAutoPlay)
+        .addProperty("loop", &TextEffect::isLoop, &TextEffect::setLoop)
+        .addProperty("useUnscaledTime", &TextEffect::isUseUnscaledTime, &TextEffect::setUseUnscaledTime)
+        .addProperty("startIndex", &TextEffect::getStartIndex, &TextEffect::setStartIndex)
+        .addProperty("length", &TextEffect::getLength, &TextEffect::setLength)
+        .addProperty("forWords", &TextEffect::getForWords, &TextEffect::setForWords)
+        .addProperty("entity", &TextEffect::getEntity)
+        .addFunction("getLayer", &TextEffect::getLayer)
+        // a TextEffectLayer, or a table of its fields ({type = TextEffectType.Wave, amplitude = 0.12})
+        .addFunction("setLayer", [] (TextEffect* self, int index, luabridge::LuaRef value) {
+            TextEffectLayer layer;
+            if (value.isInstance<TextEffectLayer>()){
+                layer = value.cast<TextEffectLayer>().value();
+            }else if (value.isTable()){
+                auto number = [&](const char* key, float& target){
+                    luabridge::LuaRef field = value[key];
+                    if (field.isNumber()) target = field.unsafe_cast<float>();
+                };
+                luabridge::LuaRef type = value["type"];
+                // (a type's default amplitude: 1 for Grow and Unfold)
+                if (type.isNumber()) TextEffects::setType(layer, (TextEffectType)type.unsafe_cast<int>());
+                luabridge::LuaRef enabled = value["enabled"];
+                if (enabled.isBool()) layer.enabled = enabled.unsafe_cast<bool>();
+                number("amplitude", layer.amplitude);
+                number("duration", layer.duration);
+                number("spread", layer.spread);
+                number("phaseStep", layer.phaseStep);
+                number("frequency", layer.frequency);
+                number("charactersPerSecond", layer.charactersPerSecond);
+                number("fadeTime", layer.fadeTime);
+                number("saturation", layer.saturation);
+                number("lightness", layer.lightness);
+                luabridge::LuaRef mix = value["mix"];
+                if (mix.isNumber()) layer.mix = (TextEffectMix)mix.unsafe_cast<int>();
+                luabridge::LuaRef gradient = value["gradient"];
+                if (gradient.isTable()){
+                    for (int i = 1; i <= gradient.length(); i++){
+                        luabridge::LuaRef stop = gradient[i];
+                        if (stop.isInstance<TextEffectGradientStop>()){
+                            layer.gradient.push_back(stop.cast<TextEffectGradientStop>().value());
+                        }else if (stop.isTable()){
+                            TextEffectGradientStop entry;
+                            luabridge::LuaRef color = stop["color"];
+                            if (color.isInstance<Vector4>()) entry.color = color.cast<Vector4>().value();
+                            luabridge::LuaRef position = stop["position"];
+                            if (position.isNumber()) entry.position = position.unsafe_cast<float>();
+                            layer.gradient.push_back(entry);
+                        }
+                    }
+                }
+            }else{
+                Log::warn("TextEffect.setLayer: expects a TextEffectLayer or a table of its fields");
+                return;
+            }
+            self->setLayer(index, layer);
+        })
+        .addFunction("play", &TextEffect::play)
+        .addFunction("stop", &TextEffect::stop)
+        .addFunction("finish", &TextEffect::finish)
+        .addFunction("restart", &TextEffect::restart)
+        .addFunction("isFinished", &TextEffect::isFinished)
+        .addFunction("isPlaying", &TextEffect::isPlaying)
+        .addProperty("onComplete", [] (TextEffect* self, lua_State*) { return &self->getOnComplete(); }, [] (TextEffect* self, lua_State* L) { self->getOnComplete() = L; })
+        .addProperty("onCharacterRevealed", [] (TextEffect* self, lua_State*) { return &self->getOnCharacterRevealed(); }, [] (TextEffect* self, lua_State* L) { self->getOnCharacterRevealed() = L; })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -2597,6 +3088,16 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, bool>(&AnimationState::addMixingTransform))
         .addFunction("removeMixingTransform", &AnimationState::removeMixingTransform)
         .addFunction("clearMixingTransforms", &AnimationState::clearMixingTransforms)
+        // humanoid clips: plays left and right swapped (overrides the entry's Mirror; resetMirror() goes back)
+        .addProperty("mirror", &AnimationState::getMirror, &AnimationState::setMirror)
+        // humanoid clips: the legs reach the clip's foot goals (overrides the entry's Foot IK; resetFootIK() goes back)
+        .addProperty("footIK", &AnimationState::getFootIK, &AnimationState::setFootIK)
+        // mirror back to the entry's (or the controller state's) Mirror
+        .addFunction("resetMirror", &AnimationState::resetMirror)
+        // footIK back to the entry's (or the controller state's) Foot IK
+        .addFunction("resetFootIK", &AnimationState::resetFootIK)
+        // a humanoid clip, or a generic clip being retargeted
+        .addProperty("isHumanoid", &AnimationState::isHumanoid)
         .endClass();
 
     // Unity's AnimatorStateInfo (a copy): AnimationPlayer:getCurrentStateInfo / getNextStateInfo
@@ -2655,7 +3156,46 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getAnimatedProperties", &AnimationPlayer::getAnimatedProperties)
         .addFunction("addClip",
             luabridge::overload<const std::string&>(&AnimationPlayer::addClip),
-            luabridge::overload<const std::string&, const std::string&>(&AnimationPlayer::addClip))
+            luabridge::overload<const std::string&, const std::string&>(&AnimationPlayer::addClip),
+            // addClip(path, name | nil, {retarget, mirror, footIK, layer})
+            luabridge::overload<AnimationPlayer*, const std::string&, const luabridge::LuaRef&, const luabridge::LuaRef&>(
+                +[](AnimationPlayer* self, const std::string& path, const luabridge::LuaRef& name, const luabridge::LuaRef& options){
+                    AnimationClipOptions values;
+                    if (!name.isNil() && !name.isString()){
+                        throw std::runtime_error("AnimationPlayer:addClip: the name is a string, or nil for the clip's own");
+                    }
+                    if (!options.isNil() && !options.isTable()){
+                        throw std::runtime_error("AnimationPlayer:addClip: the options are a table {retarget, mirror, footIK, layer}");
+                    }
+                    if (options.isTable()){
+                        for (luabridge::Iterator it(options); !it.isNil(); ++it){
+                            const luabridge::LuaRef key = it.key();
+                            const std::string field = key.isString() ? key.unsafe_cast<std::string>() : std::string();
+                            if (field != "retarget" && field != "mirror" && field != "footIK" && field != "layer"){
+                                throw std::runtime_error("AnimationPlayer:addClip: unknown option '" + (field.empty() ? key.tostring() : field) +
+                                                         "' (options are retarget, mirror, footIK, layer)");
+                            }
+                        }
+                        auto flag = [&](const char* field, bool& out){
+                            const luabridge::LuaRef value = options[field];
+                            if (value.isNil()) return;
+                            if (!value.isBool()) throw std::runtime_error(std::string("AnimationPlayer:addClip: ") + field + " is true or false");
+                            out = value.unsafe_cast<bool>();
+                        };
+                        flag("retarget", values.retarget);
+                        flag("mirror", values.mirror);
+                        flag("footIK", values.footIK);
+                        const luabridge::LuaRef layer = options["layer"];
+                        if (!layer.isNil()){
+                            const double index = layer.isNumber() ? layer.unsafe_cast<double>() : -1.0;
+                            if (!layer.isNumber() || index != std::floor(index) || index < 0.0 || index > 1e6){
+                                throw std::runtime_error("AnimationPlayer:addClip: layer is a layer index, a whole number (0 is the base layer)");
+                            }
+                            values.layer = (int)index;
+                        }
+                    }
+                    return self->addClip(path, name.isString() ? name.unsafe_cast<std::string>() : std::string(), values);
+                }))
         .addFunction("removeClip", &AnimationPlayer::removeClip)
         .addFunction("getClipCount", &AnimationPlayer::getClipCount)
         .addFunction("getClipName", &AnimationPlayer::getClipName)
@@ -2824,6 +3364,255 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getVertexAnimatorComponent", &VertexAnimator::getComponent<VertexAnimatorComponent>)
         .endClass();
 
+    // The instances one shake call started (MilkShake's ShakeInstance): one per shaker it reached.
+    // Gone instances drop out; with none left it is invalid and its calls do nothing
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ShakeInstanceHandle>("ShakeInstance")
+        // Fades out over `fade` seconds (default: the preset's fade_out; 0: now)
+        .addFunction("stop",
+            luabridge::overload<>(&ShakeInstanceHandle::stop),
+            luabridge::overload<float>(&ShakeInstanceHandle::stop))
+        // The noise slows to a stop over `fade` seconds (default 0: at once)
+        .addFunction("pause",
+            luabridge::overload<>(&ShakeInstanceHandle::pause),
+            luabridge::overload<float>(&ShakeInstanceHandle::pause))
+        .addFunction("resume",
+            luabridge::overload<>(&ShakeInstanceHandle::resume),
+            luabridge::overload<float>(&ShakeInstanceHandle::resume))
+        .addFunction("isPaused", &ShakeInstanceHandle::isPaused)
+        // Nothing of it plays any more (finished, or its shakers are gone)
+        .addFunction("isFinished", &ShakeInstanceHandle::isFinished)
+        .addFunction("isValid", &ShakeInstanceHandle::isValid)
+        // Multiplies the strength (on every shaker it reached)
+        .addProperty("strengthScale", &ShakeInstanceHandle::getStrengthScale, &ShakeInstanceHandle::setStrengthScale)
+        // Multiplies the noise speed
+        .addProperty("roughnessScale", &ShakeInstanceHandle::getRoughnessScale, &ShakeInstanceHandle::setRoughnessScale)
+        // "fading_in", "sustained", "fading_out", "paused" or "stopped"
+        .addProperty("state", &ShakeInstanceHandle::getState)
+        // The live instances (one per shaker)
+        .addProperty("count", &ShakeInstanceHandle::getCount)
+        .addFunction("__tostring", &ShakeInstanceHandle::toString)
+        .endClass();
+
+    // Shakes every global Camera Shaker (MilkShake's Shaker.ShakeAll): enabled, active, Global on,
+    // in every running scene. Presets: CameraShake.getPresetNames(), a .shake path or a table
+    luabridge::getGlobalNamespace(L)
+        .beginClass<CameraShake>("CameraShake")
+        .addStaticFunction("shake", &luaCameraShakeShake)
+        .addStaticFunction("shakeAt", &luaCameraShakeShakeAt)
+        // Adds trauma (0..1, clamped) to every global shaker: shake = trauma^power, decaying linearly
+        .addStaticFunction("addTrauma", &CameraShake::addTrauma)
+        .addStaticFunction("stopAll",
+            luabridge::overload<>(&CameraShake::stopAll),
+            luabridge::overload<float>(&CameraShake::stopAll))
+        // The built-in preset names
+        .addStaticFunction("getPresetNames", &CameraShake::getPresetNames)
+        .endClass();
+
+    // Shakes its GameObject (MilkShake's Shaker): a camera through a view offset (its Transform is
+    // never written), any other GameObject additively through its Transform
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<CameraShaker, EntityHandle>("CameraShaker")
+        .addConstructor <void (*) (Scene*, Entity)> ()
+        .addFunction("shake", &luaCameraShakerShake)
+        .addFunction("shakeAt", &luaCameraShakerShakeAt)
+        // Adds trauma (0..1, clamped): shake = trauma^power, decaying traumaDecay per second
+        .addFunction("addTrauma", &CameraShaker::addTrauma)
+        .addFunction("stopAll",
+            luabridge::overload<>(&CameraShaker::stopAll),
+            luabridge::overload<float>(&CameraShaker::stopAll))
+        .addFunction("getInstanceCount", &CameraShaker::getInstanceCount)
+        // 0..1
+        .addProperty("trauma", &CameraShaker::getTrauma, &CameraShaker::setTrauma)
+        .addProperty("enabled", &CameraShaker::isEnabled, &CameraShaker::setEnabled)
+        // Receives the CameraShake.* calls
+        .addProperty("global", &CameraShaker::isGlobal, &CameraShaker::setGlobal)
+        .addProperty("unscaledTime", &CameraShaker::isUnscaledTime, &CameraShaker::setUnscaledTime)
+        .addProperty("mode", &CameraShaker::getMode, &CameraShaker::setMode)
+        .addProperty("positionScale", &CameraShaker::getPositionScale, &CameraShaker::setPositionScale)
+        .addProperty("rotationScale", &CameraShaker::getRotationScale, &CameraShaker::setRotationScale)
+        // A built-in name or a .shake path played on each enable ("" = none)
+        .addProperty("startPreset", &CameraShaker::getStartPreset, &CameraShaker::setStartPreset)
+        .addProperty("traumaDecay", &CameraShaker::getTraumaDecay, &CameraShaker::setTraumaDecay)
+        .addProperty("traumaPower", &CameraShaker::getTraumaPower, &CameraShaker::setTraumaPower)
+        .addProperty("traumaMaxOffset", &CameraShaker::getTraumaMaxOffset, &CameraShaker::setTraumaMaxOffset)
+        // degrees
+        .addProperty("traumaMaxAngle", &CameraShaker::getTraumaMaxAngle, &CameraShaker::setTraumaMaxAngle)
+        .addProperty("traumaFrequency", &CameraShaker::getTraumaFrequency, &CameraShaker::setTraumaFrequency)
+        // The position offset applied this frame
+        .addProperty("offsetPosition", &CameraShaker::getOffsetPosition)
+        // The rotation offset applied this frame (Euler degrees)
+        .addProperty("offsetRotation", &CameraShaker::getOffsetRotation)
+        .endClass();
+
+    // Keeps its GameObject at an offset from a target with Unity's SmoothDamp, aiming at it; owns
+    // the Transform while enabled
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<CameraFollow, EntityHandle>("CameraFollow")
+        .addConstructor <void (*) (Scene*, Entity)> ()
+        // Places it on the next update without damping
+        .addFunction("snap", &CameraFollow::snap)
+        // The GameObject followed (this scene's, or a persistent DontDestroyOnLoad one), or nil
+        .addProperty("target",
+            +[](const CameraFollow* self, lua_State* L) -> luabridge::LuaRef {
+                Scene* scene = self->getTargetScene();
+                const Entity target = self->getTarget();
+                if (!scene || target == NULL_ENTITY || !scene->isEntityCreated(target)){
+                    return luabridge::LuaRef(L);
+                }
+                return luabridge::LuaRef(L, GameObject(scene, target));
+            },
+            +[](CameraFollow* self, lua_State* L){
+                // the assigned value is on the top of the stack
+                const int index = lua_gettop(L);
+                if (lua_isnil(L, index)){
+                    self->setTarget(NULL_ENTITY);
+                    return;
+                }
+                Scene* scene = nullptr;
+                Entity entity = NULL_ENTITY;
+                if (!luaObjectArg(L, index, scene, entity)){
+                    Log::warn("CameraFollow.target: a GameObject (of this scene or the persistent one), or nil");
+                    return;
+                }
+                self->setTarget(scene, entity);
+            })
+        .addProperty("offset", &CameraFollow::getOffset, &CameraFollow::setOffset)
+        .addProperty("offsetSpace", &CameraFollow::getOffsetSpace, &CameraFollow::setOffsetSpace)
+        // SmoothDamp smooth time per world axis, seconds (0 = rigid)
+        .addProperty("damping", &CameraFollow::getDamping, &CameraFollow::setDamping)
+        // Units per second (0 = unlimited)
+        .addProperty("maxSpeed", &CameraFollow::getMaxSpeed, &CameraFollow::setMaxSpeed)
+        .addProperty("lookAt", &CameraFollow::isLookAt, &CameraFollow::setLookAt)
+        .addProperty("lookAtOffset", &CameraFollow::getLookAtOffset, &CameraFollow::setLookAtOffset)
+        // Seconds to cover 99% of a turn (0 = rigid)
+        .addProperty("rotationDamping", &CameraFollow::getRotationDamping, &CameraFollow::setRotationDamping)
+        // Width and height (world x / y) where target moves don't move an orthographic camera
+        .addProperty("deadZone", &CameraFollow::getDeadZone, &CameraFollow::setDeadZone)
+        .addProperty("useBounds", &CameraFollow::isUseBounds, &CameraFollow::setUseBounds)
+        .addProperty("boundsMin", &CameraFollow::getBoundsMin, &CameraFollow::setBoundsMin)
+        .addProperty("boundsMax", &CameraFollow::getBoundsMax, &CameraFollow::setBoundsMax)
+        .addProperty("unscaledTime", &CameraFollow::isUnscaledTime, &CameraFollow::setUnscaledTime)
+        .addProperty("enabled", &CameraFollow::isEnabled, &CameraFollow::setEnabled)
+        .endClass();
+
+    // Unity's VideoPlayer enums (docs/mcp/guide/video.md)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("VideoPlayerSource")
+        .addVariable("CLIP", VideoPlayerSource::CLIP)
+        .addVariable("URL", VideoPlayerSource::URL)
+        .endNamespace()
+        .beginNamespace("VideoTimeUpdateMode")
+        .addVariable("GAME_TIME", VideoTimeUpdateMode::GAME_TIME)
+        .addVariable("UNSCALED_GAME_TIME", VideoTimeUpdateMode::UNSCALED_GAME_TIME)
+        .endNamespace()
+        .beginNamespace("VideoRenderMode")
+        .addVariable("CAMERA_FAR_PLANE", VideoRenderMode::CAMERA_FAR_PLANE)
+        .addVariable("CAMERA_NEAR_PLANE", VideoRenderMode::CAMERA_NEAR_PLANE)
+        .addVariable("RENDER_TEXTURE", VideoRenderMode::RENDER_TEXTURE)
+        .addVariable("MATERIAL_OVERRIDE", VideoRenderMode::MATERIAL_OVERRIDE)
+        .addVariable("API_ONLY", VideoRenderMode::API_ONLY)
+        .endNamespace()
+        .beginNamespace("VideoAspectRatio")
+        .addVariable("NO_SCALING", VideoAspectRatio::NO_SCALING)
+        .addVariable("FIT_VERTICALLY", VideoAspectRatio::FIT_VERTICALLY)
+        .addVariable("FIT_HORIZONTALLY", VideoAspectRatio::FIT_HORIZONTALLY)
+        .addVariable("FIT_INSIDE", VideoAspectRatio::FIT_INSIDE)
+        .addVariable("FIT_OUTSIDE", VideoAspectRatio::FIT_OUTSIDE)
+        .addVariable("STRETCH", VideoAspectRatio::STRETCH)
+        .endNamespace()
+        .beginNamespace("VideoAudioOutputMode")
+        .addVariable("NONE", VideoAudioOutputMode::NONE)
+        .addVariable("AUDIO_SOURCE", VideoAudioOutputMode::AUDIO_SOURCE)
+        .addVariable("DIRECT", VideoAudioOutputMode::DIRECT)
+        .endNamespace();
+
+    // Unity's VideoPlayer: plays a clip or a URL into its render texture, a material, a camera
+    // plane or nowhere (API only); its sound directly or through an AudioSource
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<VideoPlayer, EntityHandle>("VideoPlayer")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &VideoPlayer::isEnabled, &VideoPlayer::setEnabled)
+        .addProperty("source", &VideoPlayer::getSource, &VideoPlayer::setSource)
+        .addProperty("clip", &VideoPlayer::getClip, &VideoPlayer::setClip)
+        .addProperty("url", &VideoPlayer::getUrl, &VideoPlayer::setUrl)
+        .addProperty("playOnAwake", &VideoPlayer::isPlayOnAwake, &VideoPlayer::setPlayOnAwake)
+        .addProperty("waitForFirstFrame", &VideoPlayer::isWaitForFirstFrame, &VideoPlayer::setWaitForFirstFrame)
+        .addProperty("isLooping", &VideoPlayer::isLooping, &VideoPlayer::setLooping)
+        .addProperty("skipOnDrop", &VideoPlayer::isSkipOnDrop, &VideoPlayer::setSkipOnDrop)
+        .addProperty("playbackSpeed", &VideoPlayer::getPlaybackSpeed, &VideoPlayer::setPlaybackSpeed)
+        .addProperty("timeUpdateMode", &VideoPlayer::getTimeUpdateMode, &VideoPlayer::setTimeUpdateMode)
+        .addProperty("renderMode", &VideoPlayer::getRenderMode, &VideoPlayer::setRenderMode)
+        // a GameObject with a Camera, nil: the main camera
+        .addProperty("targetCamera",
+            [](const VideoPlayer* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getTargetCamera()); },
+            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetCamera(entityOf(value, "targetCamera")); })
+        .addProperty("targetCameraAlpha", &VideoPlayer::getTargetCameraAlpha, &VideoPlayer::setTargetCameraAlpha)
+        .addProperty("aspectRatio", &VideoPlayer::getAspectRatio, &VideoPlayer::setAspectRatio)
+        // a GameObject with a Mesh, Sprite or Image, nil: this one
+        .addProperty("targetMaterialRenderer",
+            [](const VideoPlayer* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getTargetMaterialRenderer()); },
+            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetMaterialRenderer(entityOf(value, "targetMaterialRenderer")); })
+        // "baseColorTexture" (default), "emissiveTexture", ... or a shader @texture uniform
+        .addProperty("targetMaterialProperty", &VideoPlayer::getTargetMaterialProperty, &VideoPlayer::setTargetMaterialProperty)
+        // -1: every submesh
+        .addProperty("targetSubmesh", &VideoPlayer::getTargetSubmesh, &VideoPlayer::setTargetSubmesh)
+        .addProperty("renderTextureWidth", &VideoPlayer::getRenderTextureWidth, &VideoPlayer::setRenderTextureWidth)
+        .addProperty("renderTextureHeight", &VideoPlayer::getRenderTextureHeight, &VideoPlayer::setRenderTextureHeight)
+        .addProperty("audioOutputMode", &VideoPlayer::getAudioOutputMode, &VideoPlayer::setAudioOutputMode)
+        .addProperty("directVolume", &VideoPlayer::getDirectVolume, &VideoPlayer::setDirectVolume)
+        .addProperty("directMute", &VideoPlayer::isDirectMute, &VideoPlayer::setDirectMute)
+        // a GameObject with an AudioSource, nil: this one
+        .addProperty("targetAudioSource",
+            [](const VideoPlayer* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getTargetAudioSource()); },
+            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetAudioSource(entityOf(value, "targetAudioSource")); })
+        .addProperty("time", &VideoPlayer::getTime, &VideoPlayer::setTime)
+        .addProperty("canSetTime", &VideoPlayer::canSetTime)
+        .addProperty("frame", &VideoPlayer::getFrame, &VideoPlayer::setFrame)
+        .addProperty("frameCount", &VideoPlayer::getFrameCount)
+        .addProperty("frameRate", &VideoPlayer::getFrameRate)
+        // seconds
+        .addProperty("length", &VideoPlayer::getLength)
+        .addProperty("width", &VideoPlayer::getWidth)
+        .addProperty("height", &VideoPlayer::getHeight)
+        .addProperty("isPrepared", &VideoPlayer::isPrepared)
+        .addProperty("isPlaying", &VideoPlayer::isPlaying)
+        .addProperty("isPaused", &VideoPlayer::isPaused)
+        // 0..1: the download of a URL, then the opening
+        .addProperty("prepareProgress", &VideoPlayer::getPrepareProgress)
+        .addProperty("texture", &VideoPlayer::getTexture)
+        .addProperty("backend", &VideoPlayer::getBackend)
+        .addProperty("videoCodec", &VideoPlayer::getVideoCodec)
+        .addProperty("audioCodec", &VideoPlayer::getAudioCodec)
+        // the last error ("" when none)
+        .addProperty("error", &VideoPlayer::getError)
+        .addFunction("prepare", &VideoPlayer::prepare)
+        .addFunction("play", &VideoPlayer::play)
+        .addFunction("pause", &VideoPlayer::pause)
+        .addFunction("stop", &VideoPlayer::stop)
+        // paused: the next frame
+        .addFunction("stepForward", &VideoPlayer::stepForward)
+        .addFunction("getFramebuffer", &VideoPlayer::getFramebuffer)
+        .addStaticFunction("canPlay", &VideoPlayer::canPlay)
+        // deletes the media cache's files (of one URL, or all); the number removed
+        .addStaticFunction("clearCache",
+            luabridge::overload<>(+[]() -> int { return VideoPlayer::clearCache(); }),
+            luabridge::overload<const std::string&>(+[](const std::string& url) -> int { return VideoPlayer::clearCache(url); }))
+        // function(player) when it can play
+        .addProperty("onPrepareCompleted", [] (VideoPlayer* self, lua_State*) { return &self->getOnPrepareCompleted(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnPrepareCompleted() = L; })
+        // function(player) when the first frame of a play shows
+        .addProperty("onStarted", [] (VideoPlayer* self, lua_State*) { return &self->getOnStarted(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnStarted() = L; })
+        // function(player) at each loop and at the end of a play that does not loop
+        .addProperty("onLoopPointReached", [] (VideoPlayer* self, lua_State*) { return &self->getOnLoopPointReached(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnLoopPointReached() = L; })
+        // function(player, message)
+        .addProperty("onErrorReceived", [] (VideoPlayer* self, lua_State*) { return &self->getOnErrorReceived(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnErrorReceived() = L; })
+        // function(player) when a seek's frame shows
+        .addProperty("onSeekCompleted", [] (VideoPlayer* self, lua_State*) { return &self->getOnSeekCompleted(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnSeekCompleted() = L; })
+        // function(player, frameIndex) each frame shown (a call per frame: set it only when needed)
+        .addProperty("onFrameReady", [] (VideoPlayer* self, lua_State*) { return &self->getOnFrameReady(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnFrameReady() = L; })
+        .addFunction("getVideoPlayerComponent", (VideoPlayerComponent&(VideoPlayer::*)() const)&VideoPlayer::getComponent)
+        .endClass();
+
     luabridge::getGlobalNamespace(L)
         .deriveClass<AudioSource, EntityHandle>("AudioSource")
         .addProperty("enabled", &AudioSource::isEnabled, &AudioSource::setEnabled)
@@ -2856,6 +3645,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("attenuationModel", &AudioSource::getAttenuationModel, &AudioSource::setAttenuationModel)
         .addProperty("attenuationRolloffFactor", &AudioSource::getAttenuationRolloffFactor, &AudioSource::setAttenuationRolloffFactor)
         .addProperty("dopplerFactor", &AudioSource::getDopplerFactor, &AudioSource::setDopplerFactor)
+        .addProperty("outputGroup", &AudioSource::getOutputGroup, &AudioSource::setOutputGroup)
+        .addProperty("loadType", &AudioSource::getLoadType, &AudioSource::setLoadType)
+        .addFunction("getResolvedLoadType", &AudioSource::getResolvedLoadType)
+        .addProperty("priority", &AudioSource::getPriority, &AudioSource::setPriority)
+        .addProperty("maxVoices", &AudioSource::getMaxVoices, &AudioSource::setMaxVoices)
+        .addProperty("ignoreListenerPause", &AudioSource::isIgnoreListenerPause, &AudioSource::setIgnoreListenerPause)
+        .addProperty("pitch", &AudioSource::getPitch, &AudioSource::setPitch)
+        .addFunction("playOneShot", &luaAudioPlayOneShot)
+        .addFunction("fadeIn", &luaAudioFadeIn)
+        .addFunction("fadeOut", &luaAudioFadeOut)
+        .addFunction("fadeTo", &luaAudioFadeTo)
+        .addFunction("isFading", &AudioSource::isFading)
+        .addFunction("getVoiceCount", &AudioSource::getVoiceCount)
+        .addStaticFunction("playClipAtPoint", &luaAudioPlayClipAtPoint)
         .addFunction("getAudioSourceComponent", &AudioSource::getComponent<AudioSourceComponent>)
         .endClass();
 

@@ -42,13 +42,15 @@ namespace jasperengine{
         static std::mutex cacheMutex;
         static std::atomic<bool> shutdownRequested;
 
-        static bool hasTexturePixels(const std::shared_ptr<std::array<TextureData,6>>& data, size_t numFaces);
         static size_t getTextureFaces(std::array<TextureData,6>& data);
 
         static std::array<TextureData,6> loadTextureInternal(const std::string& id, const std::array<std::string, 6>& paths, size_t numFaces, bool fixAlphaBorder, bool trackProgress);
         static std::string validateTextureFaces(std::array<TextureData,6>& data, size_t numFaces);
 
     public:
+        // whether the first numFaces faces all have pixels (what get(id, data) keeps instead of data)
+        static bool hasTexturePixels(const std::shared_ptr<std::array<TextureData,6>>& data, size_t numFaces);
+
         static std::shared_ptr<std::array<TextureData,6>> get(const std::string& id);
         static std::shared_ptr<std::array<TextureData,6>> get(const std::string& id, std::array<TextureData,6> data);
         // Inserts an already-built face array without copying it (used to hand pre-decoded model

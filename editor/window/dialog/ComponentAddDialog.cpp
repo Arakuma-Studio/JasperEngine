@@ -64,6 +64,8 @@ ComponentAddDialog::ComponentAddDialog() {
         }},
         {"Rendering", ICON_FA_CAMERA, {
             {ComponentType::CameraComponent, "Renders the scene to the screen or a texture"},
+            {ComponentType::CameraShakerComponent, "Shakes the camera (or this GameObject) from presets and trauma, never fighting what moves it"},
+            {ComponentType::CameraFollowComponent, "Follows a target with damping, look-at, a 2D dead zone and bounds"},
             {ComponentType::LightComponent, "Directional, point or spot light"},
             {ComponentType::SpriteComponent, "Draws a 2D sprite"},
             {ComponentType::TilemapComponent, "Grid of tiles from a texture atlas"},
@@ -93,11 +95,15 @@ ComponentAddDialog::ComponentAddDialog() {
         {"Audio", ICON_FA_VOLUME_HIGH, {
             {ComponentType::AudioSourceComponent, "Plays an audio clip"},
         }},
+        {"Video", ICON_FA_FILM, {
+            {ComponentType::VideoPlayerComponent, "Plays a video (MP4, WebM) or a URL into a texture, a material or a camera plane"},
+        }},
         {"UI", ICON_FA_WINDOW_RESTORE, {
             {ComponentType::RectTransformComponent, "Size, anchors and pivot of a UI element"},
             {ComponentType::UIComponent, "Draws a UI element"},
             {ComponentType::ImageComponent, "Displays an image"},
             {ComponentType::TextComponent, "Displays text"},
+            {ComponentType::TextEffectComponent, "Animates a Text per character: wave, typewriter, gradient..."},
             {ComponentType::ButtonComponent, "Clickable button"},
             {ComponentType::InputFieldComponent, "Editable text field"},
             {ComponentType::PanelComponent, "Movable, resizable window"},

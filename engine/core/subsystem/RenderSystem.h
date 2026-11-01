@@ -637,16 +637,17 @@ namespace jasperengine{
 		bool hasFog;
 		bool hasIBL;
 		bool hasReflectionProbes;
-		bool hasMultipleCameras;
-		// extra cameras the last frame drew, to catch the switch back to main only
-		bool lastMultiCameraDraw;
+		bool hasMultipleCameras = false;
+		// extra cameras the last frame drew, to catch the switch back to main only (these
+		// defaults: update() runs before load() while no view is loaded, a headless scene)
+		bool lastMultiCameraDraw = false;
 		bool capturingReflectionProbe;
 		// batch order currently baked into the shared points/instance arrays
-		bool lastBatchSort;
+		bool lastBatchSort = true;
 		// scene mesh LOD switch the levels were built (or freed) for
 		bool lastMeshLodEnabled = false;
 		// pipelines the objects were loaded with, to catch a destination change
-		uint16_t loadedPipelines;
+		uint16_t loadedPipelines = 0;
 
 		// Projected spotlight masks share one horizontal R8 atlas of SPOT_MASK_ATLAS_TILES
 		// fixed-size tiles, given to the masked spot lights in scene order
@@ -848,6 +849,8 @@ namespace jasperengine{
 		struct CameraPass{
 			CameraComponent* camera = nullptr;
 			Transform* cameraTransform = nullptr;
+			// the camera's entity (NULL_ENTITY: a mirror's or a view's own camera)
+			Entity entity = NULL_ENTITY;
 			// the view camera: culled instances, detail levels, SSAO, SSR, post-process, fixed resolution
 			bool isMain = false;
 			// draws into camera->framebuffer
@@ -1167,7 +1170,7 @@ namespace jasperengine{
 		// to keep 3D lights out, but 2D lights must still work there.
 		bool hasLights2D;
 		bool hasShadows2D;
-		int numLights2D;
+		int numLights2D = 0;
 
 		// Directional + spot atlas keeps up to 3x3 logical slots, but its physical
 		// grid is compacted to the slots used by the current light set.

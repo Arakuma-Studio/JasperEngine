@@ -27,6 +27,9 @@
 //     target's layer. A layer is a 0-based index or a name: an unknown one warns once and does
 //     nothing (getters return 0, "" or -1). Layer weight, mask and blend setters are runtime
 //     (not saved); addLayer / removeLayer are authored (the next update reloads).
+//   * humanoid clips (anim-retarget 8): addClip(path, name, options) with options.retarget plays
+//     a generic clip retargeted from its source model; AnimationState mirror / footIK override
+//     the entry's flags at runtime (not saved); isHumanoid tells a humanoid or retargeted state.
 //   * with an Animator Controller (anim layers spec 11.2-11.3): the controller owns the states.
 //     play(name) jumps to "<Layer>.<State>" or "<State>" instantly (play(name, layer,
 //     normalizedTime)), crossFade(name, seconds) is a transition in seconds, blend and queue warn
@@ -64,6 +67,21 @@ namespace jasperengine{
         bool queued = false;
         size_t boundTracks = 0;         // tracks whose path resolved
         size_t trackCount = 0;
+        // humanoid playback (anim-retarget): a humanoid clip, or a generic one retargeted; its
+        // effective Mirror / Foot IK; the bones it drives on the root's rig (0: no humanoid rig)
+        bool humanoid = false;
+        bool retarget = false;
+        bool mirror = false;
+        bool footIK = false;
+        size_t humanoidBones = 0;
+    };
+
+    // AnimationPlayer:addClip options (anim-retarget 8; layer: anim layers spec 8)
+    struct JASPERENGINE_API AnimationClipOptions{
+        bool retarget = false;          // play a generic clip as a humanoid clip, retargeted from its source model
+        bool mirror = false;
+        bool footIK = false;
+        int layer = 0;
     };
 
     // Unity's AnimatorStateInfo: a copy of an Animator Controller layer's current (or next) state
@@ -119,6 +137,14 @@ namespace jasperengine{
         void addMixingTransform(const std::string& path, bool recursive);
         bool removeMixingTransform(const std::string& path);
         void clearMixingTransforms();
+
+        void setMirror(bool mirror);
+        bool getMirror() const;
+        void setFootIK(bool footIK);
+        bool getFootIK() const;
+        void resetMirror();
+        void resetFootIK();
+        bool isHumanoid() const;
     };
 
     class JASPERENGINE_API AnimationPlayer: public EntityHandle{
@@ -162,6 +188,7 @@ namespace jasperengine{
         // the state name is taken.
         bool addClip(const std::string& path);
         bool addClip(const std::string& path, const std::string& name);
+        bool addClip(const std::string& path, const std::string& name, const AnimationClipOptions& options);
         bool removeClip(const std::string& name);
         int getClipCount() const;
         // 0-based state name ("" out of range)

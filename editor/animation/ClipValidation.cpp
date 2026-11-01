@@ -9,6 +9,7 @@
 #include "animation/ClipEditorUtil.h"
 #include "animation/PropertyBindings.h"
 #include "component/ButtonComponent.h"
+#include "animation/HumanoidClip.h"
 #include "component/LatticeComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
@@ -516,8 +517,43 @@ ClipValidationReport ClipValidation::validate(const ClipData& data, EntityRegist
             continue;
         }
         report.total++;
+        track.humanBone = clipTrack.humanBone;
         if (!bound){
             track.status = TrackBindingStatus::Unchecked;
+            report.tracks.push_back(track);
+            continue;
+        }
+
+        // humanoid tracks (anim-retarget): realised on the root's humanoid rig, not bound by path
+        if (isHumanoidChannel(clipTrack.channel)){
+            const anim::HumanoidSlots* humanoid = options.humanoid.get();
+            if (!humanoid || !humanoid->valid || !humanoid->target){
+                track.status = TrackBindingStatus::HumanoidNoRig;
+                track.message = label + ": " + entityLabel(registry, root) + " has no humanoid rig" +
+                                (humanoid && !humanoid->error.empty() ? " (" + humanoid->error + ")" : std::string()) +
+                                ": map its model's bones (Configure Avatar...); the clip's other tracks still play";
+                report.tracks.push_back(track);
+                continue;
+            }
+            const anim::HumanoidTarget& target = *humanoid->target;
+            if (clipTrack.channel == ClipChannel::Humanoid && clipTrack.humanBone < pose::HUMAN_BONE_COUNT){
+                track.entity = target.slotEntities[(size_t)clipTrack.humanBone];
+                if (track.entity == NULL_ENTITY){
+                    // folded into its next present descendant slot (anim-retarget 7.3)
+                    track.message = label + ": the rig has no " + anim::humanoidTrackBoneName(clipTrack.channel, clipTrack.humanBone) +
+                                    ": its rotation is folded into the next slot below it";
+                }
+            }else if (clipTrack.channel == ClipChannel::Humanoid){
+                track.entity = target.extraEntities[(size_t)(clipTrack.humanBone - pose::HUMAN_BONE_COUNT)];
+                if (track.entity == NULL_ENTITY){
+                    track.message = label + ": the rig has no " + anim::humanoidTrackBoneName(clipTrack.channel, clipTrack.humanBone) +
+                                    " (not played; map it in Configure Avatar...)";
+                }
+            }else if (clipTrack.humanBone == HUMANOID_POSITION_HIPS){
+                track.entity = target.slotEntities[0];
+            }
+            track.status = TrackBindingStatus::Ok;
+            report.resolved++;
             report.tracks.push_back(track);
             continue;
         }
@@ -652,6 +688,9 @@ ClipValidationReport ClipValidation::validate(const ClipData& data, EntityRegist
                 }
                 break;
             }
+            case ClipChannel::Humanoid:
+            case ClipChannel::HumanoidPosition:
+                break;
         }
         if (!failed){
             if (resolution.duplicateSibling){
@@ -815,6 +854,9 @@ ClipValidationReport ClipValidation::validateInScene(Project* project, SceneProj
                 if (entry.type == ScriptType::CPP) options.hasCppScript = true;
             }
         }
+        if (data.isHumanoid()){
+            options.humanoid = std::make_shared<anim::HumanoidSlots>(anim::resolveHumanoidSlots(scene->scene, root));
+        }
     }
     return validate(data, scene->scene, root, options);
 }
@@ -852,5 +894,6 @@ std::vector<std::string> ClipValidation::nearestPaths(EntityRegistry* registry, 
 
 std::string ClipValidation::trackLabel(const ClipTrackData& track){
     if (track.channel == ClipChannel::Property) return track.path + " : " + track.component + "." + track.property;
+    if (isHumanoidChannel(track.channel)) return clipui::humanoidTrackLabel(track.channel, track.humanBone);
     return track.path + " : " + anim::channelName(track.channel);
 }

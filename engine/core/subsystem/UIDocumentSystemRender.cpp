@@ -101,13 +101,11 @@ void UIDocumentSystem::drawComposite(CameraComponent& camera, Transform& cameraT
     // RectTransform UI lives, through the camera, so a panned or zoomed view (the editor's
     // Scene view) shows the document in place. The document's top edge is at y = 0 under a
     // UI camera (y down) and at y = height under an orthographic one (y up, UI flipped)
-    int width = 0, height = 0;
-    getLayoutSize(width, height);
-    if (width <= 0 || height <= 0)
+    float w = 0.0f, h = 0.0f;
+    getFrameSize(w, h);
+    if (w <= 0.0f || h <= 0.0f)
         return;
 
-    const float w = (float)width;
-    const float h = (float)height;
     const float ySign = (camera.type == CameraType::CAMERA_UI) ? -1.0f : 1.0f;
     // quad corners (-1,1) top-left .. (1,-1) bottom-right to world
     const Matrix4 worldFromQuad(0.5f * w, 0.0f, 0.0f, 0.5f * w,

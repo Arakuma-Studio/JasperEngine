@@ -154,6 +154,37 @@ int AnimationState::getLayer() const{
     return scene->getComponent<AnimationPlayerComponent>(entity).runtime->stateLayer(*state);
 }
 
+void AnimationState::setMirror(bool mirror){
+    if (anim::PlayerStateRuntime* state = findState(scene, entity, name)) state->mirrorOverride = mirror ? 1 : 0;
+}
+
+bool AnimationState::getMirror() const{
+    const anim::PlayerStateRuntime* state = findState(scene, entity, name);
+    return state && anim::stateMirror(*state);
+}
+
+void AnimationState::setFootIK(bool footIK){
+    if (anim::PlayerStateRuntime* state = findState(scene, entity, name)) state->footIKOverride = footIK ? 1 : 0;
+}
+
+bool AnimationState::getFootIK() const{
+    const anim::PlayerStateRuntime* state = findState(scene, entity, name);
+    return state && anim::stateFootIK(*state);
+}
+
+void AnimationState::resetMirror(){
+    if (anim::PlayerStateRuntime* state = findState(scene, entity, name)) state->mirrorOverride = -1;
+}
+
+void AnimationState::resetFootIK(){
+    if (anim::PlayerStateRuntime* state = findState(scene, entity, name)) state->footIKOverride = -1;
+}
+
+bool AnimationState::isHumanoid() const{
+    const anim::PlayerStateRuntime* state = findState(scene, entity, name);
+    return state && anim::stateIsHumanoid(*state);
+}
+
 void AnimationState::addMixingTransform(const std::string& path){
     addMixingTransform(path, true);
 }
@@ -413,9 +444,14 @@ AnimationStateInfo AnimationPlayer::getStateInfo(const std::string& name) const{
     info.boundTracks = state.bindings.resolvedCount;
     if (state.bindings.clip){
         for (const AnimationClip::Track& track : state.bindings.clip->getTracks()){
-            if (track.isSampled()) info.trackCount++;
+            if (track.isSampled() && !isHumanoidChannel(track.channel)) info.trackCount++;
         }
     }
+    info.humanoid = anim::stateIsHumanoid(state);
+    info.retarget = state.retarget;
+    info.mirror = anim::stateMirror(state);
+    info.footIK = anim::stateFootIK(state);
+    info.humanoidBones = state.bindings.humanoid ? state.bindings.humanoid->outputs.size() : 0;
     return info;
 }
 
@@ -426,10 +462,18 @@ bool AnimationPlayer::addClip(const std::string& path){
 }
 
 bool AnimationPlayer::addClip(const std::string& path, const std::string& name){
+    return addClip(path, name, AnimationClipOptions());
+}
+
+bool AnimationPlayer::addClip(const std::string& path, const std::string& name, const AnimationClipOptions& options){
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
     AnimationPlayerClip entry;
     entry.clip = path;
     entry.name = name;
+    entry.retarget = options.retarget;
+    entry.mirror = options.mirror;
+    entry.footIK = options.footIK;
+    entry.layer = options.layer;
     std::vector<std::string> names = anim::playerStateNames(player.clips);
     if (std::find(names.begin(), names.end(), anim::defaultStateName(entry)) != names.end()) return false;
     player.clips.push_back(entry);

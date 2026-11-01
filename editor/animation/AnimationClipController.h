@@ -157,7 +157,8 @@ namespace jasperengine::editor{
 
         // ---- keying (each one commit; `mergeKey` "" = its own undo step) ----
 
-        // a track for `path` : `channel` with a key at the playhead holding the current value;
+        // a track for `path` : `channel` with a key at the playhead holding the current value
+        // (a humanoid channel: `path` is the bone name, the value from the bound humanoid rig);
         // `newTrack` (optional) receives its index after the commit
         bool addProperty(const std::string& path, ClipChannel channel, size_t* newTrack, std::string* error);
         // the same for an animatable property (anim-properties spec 10, Add Property): `component`
@@ -403,8 +404,19 @@ namespace jasperengine::editor{
         // the root key values are read on (the preview root while previewing, else the bound root)
         Entity valueRoot(SceneProject** sceneProject) const;
         // the key value of `track` now: the bound entity's current value (relative tracks: its
-        // offset from the preview rest); false when the track's path does not resolve
+        // offset from the preview rest); false when the track's path does not resolve. A humanoid
+        // track's (anim-retarget 9): the value of the bound root's humanoid rig's current pose
+        // (false without a humanoid rig)
         bool currentTrackValue(const ClipTrackData& track, std::vector<float>& out) const;
+    public:
+        // the bound root's humanoid rig (Record and Key on humanoid tracks; null without one),
+        // looked up again when the hierarchy changes
+        std::shared_ptr<const anim::HumanoidSlots> boundHumanoid() const;
+    private:
+        mutable std::shared_ptr<const anim::HumanoidSlots> humanoidCache;
+        mutable Entity humanoidCacheRoot = NULL_ENTITY;
+        mutable uint64_t humanoidCacheRevision = 0;
+        mutable uint64_t humanoidCachePool = 0;     // AnimationClipPool::revision(): an Avatar edit rebuilds it
         bool editable(std::string* error) const;
         bool commitEdit(const ClipData& data, const std::string& undoName, const std::string& mergeKey, std::string* error);
     };

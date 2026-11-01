@@ -962,11 +962,18 @@ TEST_F(PhysicsContactsTest, ContactProcessingCostIsSmall) {
         // the job-thread side is inside the step: the numbers of both runs for the notes
         std::printf("[cost] %d listeners: step %.3f ms, after the step %.3f ms (60 steps, best of 5)\n",
                     listeners, step * 1000.0, contacts * 1000.0);
+        // the ratios are not asserted under the sanitizers (they slow the engine's allocating
+        // contact code far more than the physics step)
+#if defined(__SANITIZE_ADDRESS__)
+        const double budget = 1e9;
+#else
+        const double budget = 1.0;
+#endif
         if (listeners) {
-            EXPECT_LT(contacts, step * 0.05) << "step " << step << " s, contacts " << contacts << " s";
+            EXPECT_LT(contacts, step * 0.05 * budget) << "step " << step << " s, contacts " << contacts << " s";
             EXPECT_GE(number("stays"), 10.0 * 300) << "10 listeners, a Stay each step";
         } else {
-            EXPECT_LT(contacts, step * 0.01) << "step " << step << " s, contacts " << contacts << " s";
+            EXPECT_LT(contacts, step * 0.01 * budget) << "step " << step << " s, contacts " << contacts << " s";
             EXPECT_EQ(physics()->getContactTracker3D().recordedCount(), 0u);
         }
     }

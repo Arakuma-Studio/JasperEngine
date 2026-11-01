@@ -34,6 +34,9 @@ option(JASPERENGINE_ANIM_TESTS "Build jasperengine-anim-tests" OFF)
 # googletest suite of the vertex animation asset (engine/tests/vat): .vat IO, payload addressing,
 # playback math, the .vat.glb reader and the pool against the engine library; no GPU or window
 option(JASPERENGINE_VAT_TESTS "Build jasperengine-vat-tests" OFF)
+# googletest suite of camera shake and camera follow (engine/tests/camera): the shake maths,
+# presets, the shakers and followers of a headless scene and the view offset; no GPU or window
+option(JASPERENGINE_CAMERA_TESTS "Build jasperengine-camera-tests" OFF)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -892,6 +895,10 @@ set(JASPERENGINE_SRCS
     core/EngineTime.cpp
     core/Input.cpp
     core/input/InputActions.cpp
+    core/audio/AudioEffects.cpp
+    core/audio/AudioMixer.cpp
+    core/audio/AudioMixerIO.cpp
+    core/audio/SoloudEngineFile.cpp
     core/input/InputControlNames.cpp
     core/Log.cpp
     core/Scene.cpp
@@ -920,15 +927,22 @@ set(JASPERENGINE_SRCS
     core/animation/AvatarMask.cpp
     core/animation/AnimatorController.cpp
     core/animation/AnimatorControllerPlayback.cpp
+    core/camera/CameraShake.cpp
+    core/camera/ShakeInstance.cpp
+    core/camera/ShakePreset.cpp
+    core/camera/ShakePresets.cpp
+    core/camera/ShakerRuntime.cpp
     core/animation/AnimationEvent.cpp
     core/animation/AnimationPlayerRuntime.cpp
     core/animation/VertexAnimatorRuntime.cpp
     core/animation/ClipBinding.cpp
     core/animation/PropertyBindings.cpp
+    core/animation/HumanoidClip.cpp
     core/animation/KeyframeSampling.cpp
     core/animation/ModelSubClips.cpp
     core/animation/VertexAnimation.cpp
     core/pose/HumanBones.cpp
+    core/pose/HumanExtraBones.cpp
     core/pose/HumanoidMap.cpp
     core/pose/HumanoidMapIO.cpp
     core/pose/ModelRig.cpp
@@ -953,6 +967,8 @@ set(JASPERENGINE_SRCS
     core/ecs/ComponentManager.cpp
     core/htmlui/HtmlUI.cpp
     core/htmlui/HtmlUIClock.cpp
+    core/htmlui/HtmlTextEffects.cpp
+    core/htmlui/UIParticleSystemElement.cpp
     core/htmlui/HtmlUIContext.cpp
     core/htmlui/HtmlUIContextRender.cpp
     core/htmlui/HtmlUIDependencies.cpp
@@ -984,17 +1000,24 @@ set(JASPERENGINE_SRCS
     core/htmlui/vector/UIElementLottie.cpp
     core/htmlui/vector/UILottieElement.cpp
     core/htmlui/controls/OnScreenControls.cpp
-    core/htmlui/media/Av1Decoder.cpp
+    core/media/Av1Decoder.cpp
+    core/media/GrowingFileReader.cpp
+    core/media/MediaByteSource.cpp
+    core/media/MediaCache.cpp
+    core/media/Mp4Probe.cpp
+    core/media/OpusAudioDecoder.cpp
+    core/media/PlatformVideoSource.cpp
+    core/media/VideoAudio.cpp
+    core/media/VideoColorConvert.cpp
+    core/media/VideoDemuxer.cpp
+    core/media/VideoFormats.cpp
+    core/media/VideoPlayback.cpp
+    core/media/VideoSourceFactory.cpp
+    core/media/VideoStream.cpp
+    core/media/VideoTextureConverter.cpp
     core/htmlui/media/UIElementVideo.cpp
-    core/htmlui/media/OpusAudioDecoder.cpp
     core/htmlui/media/UIVideoControls.cpp
     core/htmlui/media/UIVideoElement.cpp
-    core/htmlui/media/VideoAudio.cpp
-    core/htmlui/media/VideoColorConvert.cpp
-    core/htmlui/media/VideoDemuxer.cpp
-    core/htmlui/media/VideoFormats.cpp
-    core/htmlui/media/VideoPlayback.cpp
-    core/htmlui/media/VideoStream.cpp
     core/htmlui/HtmlUIInspector.cpp
     core/htmlui/HtmlUIAssertions.cpp
     core/htmlui/effects/BuiltinEffectManifests.gen.cpp
@@ -1016,6 +1039,7 @@ set(JASPERENGINE_SRCS
     core/manager/PrefabAsset.cpp
     core/manager/PrefabManager.cpp
     core/manager/SceneManager.cpp
+    core/native/NativeBridge.cpp
     core/net/Http.cpp
     core/net/HttpUtil.cpp
     core/io/UserSettings.cpp
@@ -1043,12 +1067,15 @@ set(JASPERENGINE_SRCS
     core/particles/ParticleUpgrade.cpp
     core/object/Bone.cpp
     core/object/Camera.cpp
+    core/object/CameraFollow.cpp
+    core/object/CameraShaker.cpp
     core/object/EntityHandle.cpp
     core/object/Light.cpp
     core/object/Light2D.cpp
     core/object/LineRenderer.cpp
     core/object/TrailRenderer.cpp
     core/object/Mesh.cpp
+    core/object/VideoPlayer.cpp
     core/object/MeshPolygon.cpp
     core/object/Mirror.cpp
     core/object/FluidSimulation.cpp
@@ -1099,6 +1126,7 @@ set(JASPERENGINE_SRCS
     core/pool/AnimationClipPool.cpp
     core/pool/AvatarMaskPool.cpp
     core/pool/AnimatorControllerPool.cpp
+    core/pool/ShakePresetPool.cpp
     core/pool/PhysicsMaterialPool.cpp
     core/pool/VertexAnimationPool.cpp
     core/object/physics/Collision.cpp
@@ -1132,6 +1160,7 @@ set(JASPERENGINE_SRCS
     core/script/ScriptBase.cpp
     core/script/ScriptScheduler.cpp
     core/script/ScriptEvent.cpp
+    core/script/ScriptScheduler.cpp
     core/script/ScriptMessages.cpp
     core/script/ScriptProperty.cpp
     core/script/ScriptRuntime.cpp
@@ -1140,6 +1169,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/ECSClassesLua.cpp
     core/script/binding/IOClassesLua.cpp
     core/script/binding/MathClassesLua.cpp
+    core/script/binding/NativeClassesLua.cpp
     core/script/binding/NetClassesLua.cpp
     core/script/binding/ParticleClassesLua.cpp
     core/script/binding/GameObjectClassesLua.cpp
@@ -1167,7 +1197,9 @@ set(JASPERENGINE_SRCS
     core/subsystem/PoseAnimatorSystem.cpp
     core/subsystem/VertexAnimatorSystem.cpp
     core/subsystem/TrailSystem.cpp
+    core/subsystem/CameraControlSystem.cpp
     core/subsystem/FluidSystem.cpp
+    core/subsystem/VideoPlayerSystem.cpp
     core/fluid/FluidSimulator.cpp
     core/fluid/FluidPresets.cpp
     core/subsystem/AudioSystem.cpp
@@ -1204,6 +1236,8 @@ set(JASPERENGINE_SRCS
     core/util/FontFace.cpp
     core/util/FontRegistry.cpp
     core/util/FrameLimiter.cpp
+    core/util/CanvasScaler.cpp
+    core/util/TextEffects.cpp
     core/util/GlyphAtlas.cpp
     core/util/LunaSVGRuntime.cpp
     core/util/PlatformRules.cpp
@@ -1234,6 +1268,47 @@ else()
     set(JASPERENGINE_HTTP_BACKEND core/net/HttpBackendCurl.cpp)
 endif()
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_HTTP_BACKEND})
+
+# The video decoders of MP4 and other non-AV1 video (core/media/PlatformVideoBackend.h): each
+# platform's own (docs/superpowers/specs/2026-10-31-video-mp4-design.md §6.6). Outside the list
+# above like the HTTP backend: the Xcode workspace compiles platform/apple/AVFoundationBackend.mm.
+if(EMSCRIPTEN)
+    # the browser's <video> (its JavaScript inline, EM_JS, as the engine's other Web code)
+    set(JASPERENGINE_VIDEO_BACKEND platform/emscripten/WebVideoSource.cpp)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    set(JASPERENGINE_VIDEO_BACKEND platform/android/MediaCodecBackend.cpp)
+elseif(WIN32)
+    set(JASPERENGINE_VIDEO_BACKEND platform/win/MediaFoundationBackend.cpp)
+elseif(APPLE)
+    set(JASPERENGINE_VIDEO_BACKEND platform/apple/AVFoundationBackend.mm)
+    set_source_files_properties(platform/apple/AVFoundationBackend.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+else()
+    # Linux and FreeBSD: the system FFmpeg through dlopen, one translation unit per ABI major,
+    # each compiled against its vendored headers only (-isystem: ahead of a system FFmpeg's)
+    set(JASPERENGINE_VIDEO_BACKEND platform/linux/FFmpegBackend.cpp)
+    foreach(major 58 59 60 61 62)
+        list(APPEND JASPERENGINE_VIDEO_BACKEND platform/linux/FFmpegBackend${major}.cpp)
+        set_source_files_properties(platform/linux/FFmpegBackend${major}.cpp PROPERTIES
+            COMPILE_OPTIONS "-isystem;${CMAKE_CURRENT_SOURCE_DIR}/libs/ffmpeg-headers/${major}")
+    endforeach()
+endif()
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_VIDEO_BACKEND})
+# The native bridge's platform layer (core/native/NativePlatform.h): Java/Kotlin through JNI,
+# Objective-C/Swift through the runtime, JavaScript through EM_JS; none elsewhere (C++ plugins
+# and Lua mocks only). Outside JASPERENGINE_SRCS like the HTTP backend: the Xcode workspace
+# compiles the Apple files in its engine targets (tools/xcode_sync_engine.py).
+if(EMSCRIPTEN)
+    set(JASPERENGINE_NATIVE_PLATFORM platform/emscripten/NativePlatformWeb.cpp)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    set(JASPERENGINE_NATIVE_PLATFORM platform/android/NativePlatformAndroid.cpp)
+elseif(APPLE)
+    # JasperNative.m: the helper API plugin code calls (JasperNative.h)
+    set(JASPERENGINE_NATIVE_PLATFORM platform/apple/NativePlatformApple.mm platform/apple/JasperNative.m)
+    set_source_files_properties(platform/apple/NativePlatformApple.mm platform/apple/JasperNative.m PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+else()
+    set(JASPERENGINE_NATIVE_PLATFORM core/native/NativePlatformNone.cpp)
+endif()
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NATIVE_PLATFORM})
 
 # HTML/CSS compatibility layer (phase 2): globbed per directory
 include(core/htmlui/compat/CompatSources.cmake)
@@ -1308,14 +1383,19 @@ target_compile_definitions(jasperengine
 find_package(Threads REQUIRED)
 target_link_libraries(jasperengine PRIVATE Threads::Threads)
 
-# The HTTP backends' system libraries
+# The HTTP and video backends' system libraries
 if(WIN32)
-    # iphlpapi: whether a network is up at all ("offline")
-    target_link_libraries(jasperengine PRIVATE winhttp iphlpapi)
+    # iphlpapi: whether a network is up at all ("offline"). Media Foundation (the video decoders):
+    # mfplat.dll and mfreadwrite.dll are loaded at run time (Windows N editions lack them without
+    # the Media Feature Pack, platform/win/MediaFoundationBackend.cpp); mfuuid is static GUIDs
+    target_link_libraries(jasperengine PRIVATE winhttp iphlpapi mfuuid ole32)
 elseif(APPLE)
-    target_link_libraries(jasperengine PRIVATE "-framework Foundation")
-elseif(NOT EMSCRIPTEN AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
-    # dlopen of libcurl
+    target_link_libraries(jasperengine PRIVATE "-framework Foundation" "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    # NDK media (API 21; the API 28 custom data source is looked up with dlsym)
+    target_link_libraries(jasperengine PRIVATE mediandk)
+elseif(NOT EMSCRIPTEN)
+    # dlopen of libcurl and of FFmpeg
     target_link_libraries(jasperengine PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
@@ -1454,6 +1534,14 @@ endif()
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
     file(GLOB_RECURSE PROJECT_SOURCE ${PROJECT_ROOT}/*.cpp)
+    # the native plugins' platform folders belong to Gradle / Xcode (and the macOS block the
+    # export adds); plugins/native/cpp ships as a script root under scripts/
+    foreach(native_source IN LISTS PROJECT_SOURCE)
+        string(FIND "${native_source}" "${PROJECT_ROOT}/plugins/native/" native_at)
+        if(native_at EQUAL 0)
+            list(REMOVE_ITEM PROJECT_SOURCE "${native_source}")
+        endif()
+    endforeach()
 
     # Embed the exported icon into the Windows executable (Explorer, taskbar
     # and window icon). Other platforms set the window icon at runtime instead.
@@ -1585,4 +1673,8 @@ endif()
 
 if(JASPERENGINE_VAT_TESTS)
     add_subdirectory(tests/vat)
+endif()
+
+if(JASPERENGINE_CAMERA_TESTS)
+    add_subdirectory(tests/camera)
 endif()

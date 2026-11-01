@@ -71,6 +71,7 @@ struct InspectEffect {
 // and the rectangles of its default controls (non-DOM parts: send_input targets)
 struct InspectMedia {
     std::string currentSrc;
+    std::string backend;            // "webm", "ffmpeg", ... (IVideoSource::backendName)
     double currentTime = 0, duration = 0, playbackRate = 1;   // duration: -1 before the metadata
     bool paused = true, ended = false, seeking = false, loop = false, muted = false, showingPoster = false;
     float volume = 1;

@@ -423,7 +423,7 @@ namespace {
 
 bool editor::PoseBaker::bakeToClip(Project* project, uint32_t sceneId, Entity model, PoseAnimationDocument& document,
                                    const std::string& requestedName, const std::string& clipPath, PoseClipBakeResult& result,
-                                   std::string& error){
+                                   std::string& error, bool humanoid){
     namespace fs = std::filesystem;
     result = PoseClipBakeResult();
     BakeFrames baked;
@@ -443,6 +443,16 @@ bool editor::PoseBaker::bakeToClip(Project* project, uint32_t sceneId, Entity mo
     clip.source.path = document.path();
     clip.source.name = name;
     clip.previewModel = scene->getComponent<ModelComponent>(model).filename;
+    if (humanoid){
+        // on the model's own rig the conversion gives each slot exactly the pose's E (local =
+        // left * E * neutral), and the realised frames' hips offset and foot goals
+        ClipData converted;
+        std::vector<ClipWarning> warnings;
+        if (!ClipConverters::convertToHumanoid(clip, clip.previewModel, converted, warnings, &error)) return false;
+        converted.source = clip.source;
+        clip = converted;
+    }
+    const std::string fileName = humanoid ? name + " (Humanoid)" : name;
 
     // where: next to the pose animation, or the given path
     std::string path = clipPath;
@@ -452,11 +462,11 @@ bool editor::PoseBaker::bakeToClip(Project* project, uint32_t sceneId, Entity mo
         const size_t slash = document.path().find_last_of('/');
         const std::string directory = slash == std::string::npos ? std::string() : document.path().substr(0, slash);
         // the sanitized file name (no project: never numbered)
-        path = ClipConverters::uniqueClipPath(nullptr, directory, name);
+        path = ClipConverters::uniqueClipPath(nullptr, directory, fileName);
         const fs::path existing = project->getProjectPath() / fs::u8path(path);
         if (fs::exists(existing, ec)){
             rewrite = bakedFrom(existing, document.path());
-            if (!rewrite) path = ClipConverters::uniqueClipPath(project, directory, name);
+            if (!rewrite) path = ClipConverters::uniqueClipPath(project, directory, fileName);
         }
     }else{
         const fs::path given = fs::u8path(path);

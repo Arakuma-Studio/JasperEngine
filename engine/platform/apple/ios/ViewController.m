@@ -4,6 +4,7 @@
 #import "ViewController.h"
 #import "Renderer.h"
 #import "EngineView.h"
+#import "JasperNative.h"
 
 @implementation ViewController
 {
@@ -34,6 +35,9 @@
         self.view = [[UIView alloc] initWithFrame:self.view.frame];
         return;
     }
+
+    // native plugins' +jasperInit (SDK setup) before the engine and its Lua start
+    [JasperNative dispatchInit];
 
     _renderer = [[Renderer alloc] initWithMetalKitView:_view withArgs:args];
 

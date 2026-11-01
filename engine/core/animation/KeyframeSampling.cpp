@@ -241,11 +241,13 @@ bool anim::sampleTrack(const AnimationClip::Track& track, float clipTime, TrackS
     switch (track.channel){
         case ClipChannel::Position:
         case ClipChannel::Scale:
+        case ClipChannel::HumanoidPosition:
             out.vector = sampleVector3(at, track.vectors + base,
                                        cubic ? track.inVectors + base : nullptr,
                                        cubic ? track.outVectors + base : nullptr);
             break;
         case ClipChannel::Rotation:
+        case ClipChannel::Humanoid:
             out.rotation = sampleQuaternion(at, track.rotations + base,
                                             cubic ? track.inRotations + base : nullptr,
                                             cubic ? track.outRotations + base : nullptr);

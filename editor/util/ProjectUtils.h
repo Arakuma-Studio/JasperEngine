@@ -95,6 +95,10 @@ public:
     static Entity getEffectiveParent(Scene* scene, Entity entity);
     static bool canMoveLockedEntityOrder(Scene* scene, Entity source, Entity target, InsertionType type, std::string* reason = nullptr);
     static std::string makeUniqueEntityName(const std::string& baseName, const std::unordered_set<std::string>& existingNames);
+    // the soft round particle image the UI Particle System starts with ("ui/particle_soft.png"
+    // in the assets, made once); its project-relative path ("assets/ui/particle_soft.png", as
+    // Texture paths are), "" when it cannot be written
+    static std::string ensureSoftParticleTexture(Project* project);
     // The on-screen controls' circle images (ui-multitouch), written once into the project's
     // assets as assets/ui/onscreen/stick_base.png and stick_knob.png (generated, not bundled);
     // the assets-relative path a Texture stores, "" when it could not be written

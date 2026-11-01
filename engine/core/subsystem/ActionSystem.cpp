@@ -4,6 +4,7 @@
 #include "ActionSystem.h"
 
 #include "Scene.h"
+#include "Engine.h"
 #include "util/Color.h"
 #include "util/Angle.h"
 #include "animation/AnimationPlayerRuntime.h"
@@ -2128,16 +2129,24 @@ void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponen
             scene->getComponent<ParticleSystemComponent>(entity).version < 2){
         ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
 
+        // useUnscaledTime: the frame's delta before Engine.timeScale (dt is the scaled one, or a
+        // preview's own step in the editor at time scale 1)
+        double particleDt = dt;
+        if (particles.useUnscaledTime){
+            const double timeScale = Engine::getTimeScale();
+            particleDt = (timeScale > 0.0) ? dt / timeScale : (double)Engine::getUnscaledDeltatime();
+        }
+
         if (targetSignature.test(scene->getComponentId<InstancedMeshComponent>())){
             InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(action.target);
 
-            particlesActionUpdate(dt, entity, action.target, action, particles, instmesh);
+            particlesActionUpdate(particleDt, entity, action.target, action, particles, instmesh);
             if (action.state != ActionState::Running) return;
         }
         if (targetSignature.test(scene->getComponentId<PointsComponent>())){
             PointsComponent& points = scene->getComponent<PointsComponent>(action.target);
 
-            particlesActionUpdate(dt, entity, action.target, action, particles, points);
+            particlesActionUpdate(particleDt, entity, action.target, action, particles, points);
             if (action.state != ActionState::Running) return;
         }
     }

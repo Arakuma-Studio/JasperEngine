@@ -58,13 +58,21 @@
 #include "fluid/FluidSimulator.h"
 #include "subsystem/PoseAnimatorSystem.h"
 #include "subsystem/VertexAnimatorSystem.h"
+#include "pool/SoundPool.h"
+#include "audio/AudioMixer.h"
+#include "audio/AudioMixerDocument.h"
+#include "subsystem/VideoPlayerSystem.h"
 #include "subsystem/TrailSystem.h"
+#include "subsystem/CameraControlSystem.h"
 #include "pose/ModelRig.h"
 #include "pose/PoseAnimatorRuntime.h"
 #include "animation/ModelSubClips.h"
 #include "htmlui/anim/AnimEngine.h"
+#include "native/NativeBridge.h"
 #include "script/ScriptScheduler.h"
 #include "net/Http.h"
+#include "media/MediaCache.h"
+#include "util/NativePlugins.h"
 #include "thread/MainThreadQueue.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
@@ -81,6 +89,7 @@
 
 #include "texture/Texture.h"
 #include "component/UIDocumentComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "Engine.h"
 #include "io/UserSettings.h"
 #include "io/UserSettingsStore.h"
@@ -738,6 +747,18 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
         }
     });
 
+    // Camera Shaker: a start preset that is a .shake file (a built-in name is no path)
+    visitComponents(registry->getComponentArray<CameraShakerComponent>(), [&](CameraShakerComponent& shaker) {
+        if (shaker.startPreset.size() <= 6 || shaker.startPreset.compare(shaker.startPreset.size() - 6, 6, ".shake") != 0) {
+            return;
+        }
+        std::string path = shaker.startPreset;
+        if (transform(path) && !path.empty() && path != shaker.startPreset) {
+            shaker.startPreset = path;
+            changed = true;
+        }
+    });
+
     // the document itself; references inside its HTML/CSS are not rewritten (phase 4)
     visitComponents(registry->getComponentArray<UIDocumentComponent>(), [&](UIDocumentComponent& document) {
         if (!document.filename.empty() && transform(document.filename)) {
@@ -874,7 +895,12 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
     });
 
     visitComponents(registry->getComponentArray<AudioSourceComponent>(), [&](AudioSourceComponent& sound) {
-        addFile(resources.sounds, sound.filename);
+        // the source's Load Type rides along (SoundPool::parseClipRef): Auto is the plain file
+        if (sound.filename.empty() || sound.loadType == AudioLoadType::Auto) {
+            addFile(resources.sounds, sound.filename);
+        } else {
+            addFile(resources.sounds, sound.filename + "#" + SoundPool::loadTypeName(sound.loadType));
+        }
     });
 
     // Animation Player clips (AnimationClipPool); a model sub-clip is built once its model is
@@ -2268,19 +2294,25 @@ editor::SceneRender* editor::Project::createSceneRender(SceneType type, Scene* s
     }
 
     pauseEngineScene(scene, true);
-    scene->getSystem<UISystem>()->setAnchorReferenceSize(canvasWidth, canvasHeight);
-    scene->getSystem<UIDocumentSystem>()->setReferenceSize(canvasWidth, canvasHeight);
 
+    SceneRender* sceneRender = nullptr;
     switch (type) {
-        case SceneType::SCENE_3D:
-            return new SceneRender3D(scene);
         case SceneType::SCENE_2D:
-            return new SceneRender2D(scene, canvasWidth, canvasHeight, false);
+            sceneRender = new SceneRender2D(scene, canvasWidth, canvasHeight, false);
+            break;
         case SceneType::SCENE_UI:
-            return new SceneRender2D(scene, canvasWidth, canvasHeight, true);
+            sceneRender = new SceneRender2D(scene, canvasWidth, canvasHeight, true);
+            break;
+        case SceneType::SCENE_3D:
         default:
-            return new SceneRender3D(scene);
+            sceneRender = new SceneRender3D(scene);
+            break;
     }
+
+    // the UI size of the scene's Canvas Scaler for the Game view (the canvas when it follows it)
+    applyEditCanvasScale(scene, type, sceneRender);
+
+    return sceneRender;
 }
 
 Entity editor::Project::createDefaultCamera(SceneType type, Scene* scene) const {
@@ -2360,10 +2392,9 @@ void editor::Project::setCanvasSize(unsigned int width, unsigned int height){
             continue;
         }
 
-        sceneProject.scene->getSystem<UISystem>()->setAnchorReferenceSize(width, height);
-        sceneProject.scene->getSystem<UIDocumentSystem>()->setReferenceSize(width, height);
-
-        if (sceneProject.sceneRender && sceneProject.sceneType != SceneType::SCENE_3D) {
+        if (sceneProject.playState == ScenePlayState::STOPPED) {
+            applyEditCanvasScale(sceneProject.scene, sceneProject.sceneType, sceneProject.sceneRender);
+        } else if (sceneProject.sceneRender && sceneProject.sceneType != SceneType::SCENE_3D) {
             static_cast<SceneRender2D*>(sceneProject.sceneRender)->setCanvasFrameSize(width, height);
         }
 
@@ -2385,6 +2416,80 @@ void editor::Project::setScalingMode(Scaling scalingMode){
 
 Scaling editor::Project::getScalingMode() const{
     return scalingMode;
+}
+
+void editor::Project::setUIScale(const CanvasScalerSettings& uiScale){
+    this->uiScale = uiScale;
+    // the Engine's default is what edit-mode scenes on the project default resolve to as well
+    Engine::setDefaultCanvasScaler(uiScale);
+    applyEditCanvasScaleToAll();
+}
+
+const CanvasScalerSettings& editor::Project::getUIScale() const{
+    return uiScale;
+}
+
+void editor::Project::setEditViewSize(float width, float height, float dpi){
+    if (width == editViewWidth && height == editViewHeight && dpi == editViewDpi)
+        return;
+    editViewWidth = width;
+    editViewHeight = height;
+    editViewDpi = dpi;
+    applyEditCanvasScaleToAll();
+}
+
+void editor::Project::getEditViewSize(float& width, float& height, float& dpi) const{
+    width = (editViewWidth > 0.0f) ? editViewWidth : (float)canvasWidth;
+    height = (editViewHeight > 0.0f) ? editViewHeight : (float)canvasHeight;
+    dpi = editViewDpi;
+}
+
+void editor::Project::applyEditCanvasScale(Scene* scene, SceneType type, SceneRender* sceneRender) const{
+    if (!scene)
+        return;
+
+    // the Canvas Scaler as the Game view's game would compute it: its view and the game
+    // canvas the scaling mode gives that view. Edit mode lays out the project canvas, as before,
+    // unless the scaler changes the UI size.
+    float viewWidth, viewHeight, dpi;
+    getEditViewSize(viewWidth, viewHeight, dpi);
+    int gameCanvasWidth = (int)canvasWidth, gameCanvasHeight = (int)canvasHeight;
+    Rect viewRect;
+    Engine::computeViewLayout((int)std::lround(viewWidth), (int)std::lround(viewHeight), (int)canvasWidth, (int)canvasHeight, scalingMode,
+                              gameCanvasWidth, gameCanvasHeight, viewRect);
+    scene->updateCanvasScale(viewRect.getWidth(), viewRect.getHeight(), (float)gameCanvasWidth, (float)gameCanvasHeight, dpi);
+
+    const CanvasScalerResult& scale = scene->getCanvasScale();
+    const bool uiScaled = scale.scaled && type == SceneType::SCENE_UI;
+    const float frameWidth = uiScaled ? scale.uiWidth : (float)canvasWidth;
+    const float frameHeight = uiScaled ? scale.uiHeight : (float)canvasHeight;
+
+    scene->getSystem<UISystem>()->setAnchorReferenceSize(frameWidth, frameHeight);
+
+    UIDocumentSystem* documents = scene->getSystem<UIDocumentSystem>().get();
+    if (scale.scaled){
+        documents->setReferenceSize(std::max(1, (int)std::lround(scale.uiWidth)), std::max(1, (int)std::lround(scale.uiHeight)));
+        documents->setFrameSize(frameWidth, frameHeight);
+    }else{
+        documents->setReferenceSize((int)canvasWidth, (int)canvasHeight);
+        documents->setFrameSize(0.0f, 0.0f);
+    }
+
+    if (sceneRender && type != SceneType::SCENE_3D){
+        static_cast<SceneRender2D*>(sceneRender)->setCanvasFrameSize((unsigned int)std::lround(frameWidth), (unsigned int)std::lround(frameHeight));
+    }
+}
+
+void editor::Project::applyEditCanvasScaleToAll(){
+    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
+        SceneProject& sceneProject = *sceneProjectPtr;
+        // a playing scene lays out in the Engine's view
+        if (!sceneProject.scene || sceneProject.playState != ScenePlayState::STOPPED) {
+            continue;
+        }
+        applyEditCanvasScale(sceneProject.scene, sceneProject.sceneType, sceneProject.sceneRender);
+        sceneProject.needUpdateRender = true;
+    }
 }
 
 void editor::Project::setTextureStrategy(TextureStrategy textureStrategy){
@@ -2531,6 +2636,26 @@ void editor::Project::setScriptDirs(std::vector<std::filesystem::path> scriptDir
 
 const std::vector<std::filesystem::path>& editor::Project::getScriptDirs() const{
     return scriptDirs;
+}
+
+std::vector<std::filesystem::path> editor::Project::getBuildScriptDirs() const{
+    std::vector<std::filesystem::path> dirs = scriptDirs;
+    const std::filesystem::path nativeCpp = NativePlugins::relativeRoot() / "cpp";
+    std::error_code ec;
+    if (!std::filesystem::is_directory(getProjectPath() / nativeCpp, ec)) return dirs;
+    const std::filesystem::path nativeAbsolute = (getProjectPath() / nativeCpp).lexically_normal();
+    for (const std::filesystem::path& dir : dirs) {
+        const std::filesystem::path absolute = (dir.is_absolute() ? dir : getProjectPath() / dir).lexically_normal();
+        // a user root that is (or holds) the folder compiles it already
+        const std::filesystem::path inside = nativeAbsolute.lexically_relative(absolute);
+        if (!inside.empty() && *inside.begin() != "..") return dirs;
+    }
+    dirs.push_back(nativeCpp);
+    return dirs;
+}
+
+bool editor::Project::hasNativeCppPlugins() const{
+    return !NativePlugins::scan(getProjectPath()).filesWith("cpp", {".cpp", ".cc", ".cxx", ".c"}).empty();
 }
 
 void editor::Project::setCxxStandard(int standard){
@@ -3498,6 +3623,86 @@ editor::LoadingSettings& editor::Project::getLoadingSettings(){
     return loadingSettings;
 }
 
+const editor::AudioSettings& editor::Project::getAudioSettings() const{
+    return audioSettings;
+}
+
+void editor::Project::setAudioSettings(const AudioSettings& settings){
+    const bool mixerChanged = settings.mixer != audioSettings.mixer;
+    audioSettings = settings;
+    audioSettings.maxRealVoices = std::clamp(audioSettings.maxRealVoices, 1, 255);
+    audioSettings.maxVoices = std::clamp(audioSettings.maxVoices, 1, 1000);
+    if (audioSettings.sampleRate < 0) audioSettings.sampleRate = 0;
+    AudioSystem::configure({audioSettings.maxRealVoices, audioSettings.maxVoices, audioSettings.sampleRate});
+    AudioMixerDocument::setDefaultOutputGroup(audioSettings.defaultOutputGroup);
+    if (mixerChanged || AudioMixer::getPath() != audioSettings.mixer) {
+        applyAudioMixer();
+    }
+}
+
+std::filesystem::path editor::Project::getAudioMixerFile() const{
+    if (audioSettings.mixer.empty()) return {};
+    return resolveAssetPath(FileUtils::pathFromUtf8(audioSettings.mixer)).lexically_normal();
+}
+
+bool editor::Project::applyAudioMixer(std::string* error){
+    if (audioSettings.mixer.empty()) {
+        if (AudioMixer::hasAsset()) AudioMixer::unload();
+        return true;
+    }
+    const fs::path file = getAudioMixerFile();
+    std::string text;
+    std::error_code ec;
+    auto readText = [](const fs::path& path, std::string& out) {
+        std::ifstream in(path, std::ios::binary);
+        if (!in) return false;
+        out.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        return true;
+    };
+    if (!fs::is_regular_file(file, ec) || !readText(file, text)) {
+        // created on first use (the Audio Mixer window, MCP audio_mixer edit)
+        if (AudioMixer::hasAsset()) AudioMixer::unload();
+        if (error) *error = "'" + audioSettings.mixer + "' does not exist";
+        return false;
+    }
+    AudioMixerDef def;
+    std::string parseError;
+    std::vector<std::string> warnings;
+    if (!AudioMixerIO::parse(text, def, &parseError, &warnings)) {
+        Out::error("Audio mixer '%s': %s (the implicit Master plays)", audioSettings.mixer.c_str(), parseError.c_str());
+        if (error) *error = parseError;
+        return false;
+    }
+    for (const std::string& warning : warnings) {
+        Out::warning("Audio mixer '%s': %s", audioSettings.mixer.c_str(), warning.c_str());
+    }
+    const bool fresh = AudioMixer::getPath() != audioSettings.mixer;
+    AudioMixer::apply(def);
+    AudioMixer::setAssetPath(audioSettings.mixer);
+    // another mixer: the asset's values, not what the last one moved
+    if (fresh && !isAnyScenePlaying()) AudioMixer::resetRuntime(false);
+    return true;
+}
+
+void editor::Project::audioFilesChanged(const std::vector<std::filesystem::path>& changed){
+    const fs::path mixer = getAudioMixerFile();
+    if (mixer.empty()) return;
+    for (const fs::path& path : changed) {
+        std::error_code ec;
+        if (path.lexically_normal() == mixer || fs::equivalent(path, mixer, ec)) {
+            applyAudioMixer();
+            return;
+        }
+    }
+}
+
+void editor::Project::resetPlayAudio(bool starting) const{
+    AudioSystem::setListenerPaused(false);
+    AudioMixer::setMasterPaused(false);
+    AudioMixer::resetRuntime(starting);
+    if (starting) AudioMixer::loadRemembered();
+}
+
 const editor::LoadingSettings& editor::Project::getLoadingSettings() const{
     return loadingSettings;
 }
@@ -3528,6 +3733,14 @@ const editor::SpriteNormalsWindowSettings& editor::Project::getSpriteNormalsSett
 
 bool editor::Project::isSimulateTouch() const{
     return simulateTouch;
+}
+
+const std::vector<editor::GameResolution>& editor::Project::getCustomResolutions() const{
+    return customResolutions;
+}
+
+void editor::Project::setCustomResolutions(const std::vector<GameResolution>& resolutions){
+    customResolutions = resolutions;
 }
 
 void editor::Project::setSimulateTouch(bool simulateTouch){
@@ -4135,6 +4348,11 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     // Canvas Groups composite their FLATTEN layers with the HTML UI passthrough
     if (scene->isComponentRegistered<CanvasGroupComponent>() && scene->getComponentArray<CanvasGroupComponent>()->size() > 0) {
         insertKeys(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH), 0);
+    }
+    // Video Players convert their frames (HTMLUI_POST Yuv) and blit camera planes (Passthrough)
+    if (scene->isComponentRegistered<VideoPlayerComponent>() && scene->getComponentArray<VideoPlayerComponent>()->size() > 0) {
+        for (const auto& variant : ShaderPool::getVideoPlayerVariants())
+            insertKeys(variant.first, variant.second, 0);
     }
 
     // 2D lights with shadows render occluder segments through the shadow2d
@@ -5569,6 +5787,8 @@ void editor::Project::deleteSceneProject(SceneProject* sceneProject){
 
 void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     Engine::setScalingMode(Scaling::NATIVE);
+    // edit-mode scenes on the project default resolve it through the Engine
+    Engine::setDefaultCanvasScaler(uiScale);
     Engine::setTextureStrategy(textureStrategy);
     Engine::setMouseCursor(CursorType::ARROW);
     Engine::setMouseMode(MouseMode::NORMAL);
@@ -5629,6 +5849,8 @@ void editor::Project::resetConfigs() {
     canvasWidth = defaultCanvasWidth;
     canvasHeight = defaultCanvasHeight;
     scalingMode = defaultScalingMode;
+    uiScale = CanvasScalerSettings();
+    Engine::setDefaultCanvasScaler(uiScale);
     textureStrategy = defaultTextureStrategy;
     vsyncEnabled = defaultVSyncEnabled;
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
@@ -5675,6 +5897,7 @@ void editor::Project::resetConfigs() {
     physicsPlacementSettings = {};
     spriteNormalsSettings = {};
     simulateTouch = false;
+    customResolutions.clear();
     projectPath.clear();
     assetDatabase.close();
     pendingAssetChanges.clear();
@@ -5742,10 +5965,24 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<LatticeSystem>()->setPaused(pause);
     // Vertex Animators hold still in edit mode unless their Preview is on
     scene->getSystem<VertexAnimatorSystem>()->setPaused(pause);
+    // and Text Effects unless the Inspector previews them
+    scene->getSystem<UISystem>()->setTextEffectsHeld(pause);
+    // Video Players play nothing in edit mode (playOnAwake waits for Play)
+    if (auto videos = scene->findSystem<VideoPlayerSystem>()) videos->setPaused(pause);
     // trails keep no point in edit mode but a dragged GameObject's (TrailSystem's preview)
     if (auto trails = scene->findSystem<TrailSystem>()){
         trails->setPaused(pause);
         if (!pause) trails->clearPreviews();
+    }
+    // Camera Follow and the Camera Shakers hold in edit mode (the Inspector's shake preview runs)
+    scene->getSystem<CameraControlSystem>()->setPaused(pause);
+}
+
+void editor::Project::stopCameraShakePreviews() {
+    for (SceneProject* sceneProject : getScenesAndPrefabStages()) {
+        if (sceneProject && sceneProject->scene && sceneProject->playState == ScenePlayState::STOPPED) {
+            sceneProject->scene->getSystem<CameraControlSystem>()->stopPreview();
+        }
     }
 }
 
@@ -5765,7 +6002,7 @@ void editor::Project::copyEngineApiToProject() {
     // Written even when the engine folder is missing or the copy fails: the stubs are built
     // into the editor.
     auto writeTooling = [this]() {
-        Generator::writeEditorTooling(getProjectPath(), getProjectInternalPath(), getCxxStandard(), getScriptDirs());
+        Generator::writeEditorTooling(getProjectPath(), getProjectInternalPath(), getCxxStandard(), getBuildScriptDirs());
         Generator::writeLuaScriptStubs(getProjectPath(), getProjectInternalPath());
     };
     try {
@@ -5937,9 +6174,11 @@ std::vector<Entity> editor::Project::getPlayCreatedEntities(const SceneProject* 
 
     const std::set<Entity> keep = getPlayKeptEntities(sceneProject);
 
+    // what its documents made for themselves (a <particle-system>'s prefab) is not the game's
+    UIDocumentSystem* documents = sceneProject->scene->findSystem<UIDocumentSystem>().get();
     std::vector<Entity> created;
     for (Entity entity : sceneProject->scene->getEntityList()) {
-        if (entity > EntityManager::lastSystemEntity() && keep.count(entity) == 0) {
+        if (entity > EntityManager::lastSystemEntity() && keep.count(entity) == 0 && !(documents && documents->isRuntimeEntity(entity))) {
             created.push_back(entity);
         }
     }
@@ -6082,8 +6321,7 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         }
 
         pauseEngineScene(sceneProject->scene, true);
-        sceneProject->scene->getSystem<UISystem>()->setAnchorReferenceSize(canvasWidth, canvasHeight);
-        sceneProject->scene->getSystem<UIDocumentSystem>()->setReferenceSize(canvasWidth, canvasHeight);
+        applyEditCanvasScale(sceneProject->scene, sceneProject->sceneType, sceneProject->sceneRender);
 
         // GameObject.destroy calls still pending; what the game made goes with the snapshot
         ObjectManager::forgetScene(sceneProject->scene);
@@ -6096,6 +6334,10 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         sceneProject->scene->getSystem<ActionSystem>()->resetPlayers();
         // and the Vertex Animators (vertex animation spec 3.4)
         sceneProject->scene->getSystem<VertexAnimatorSystem>()->resetAnimators();
+        // and the camera shakes (their view offsets) and the followers' motion
+        sceneProject->scene->getSystem<CameraControlSystem>()->resetAll();
+        // and the Video Players: their sources close, playOnAwake runs again at the next Play
+        if (auto videos = sceneProject->scene->findSystem<VideoPlayerSystem>()) videos->resetPlayers();
 
         // The copy goes with Stop, so its id does too: after the prefab instances the game
         // made in it went (their destroyer finds the copy by that id), before the copy is
@@ -6133,6 +6375,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
 
         // Restore snapshot if present
         const bool restoredFromSnapshot = restorePlaySnapshot(sceneProject);
+        // the restored scene's own Canvas Scaler (a script may have changed it while playing)
+        applyEditCanvasScale(sceneProject->scene, sceneProject->sceneType, sceneProject->sceneRender);
         // the fluids too: back to the edit-mode start, not the game's last frame
         restartFluids(sceneProject->scene);
 
@@ -7048,7 +7292,9 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings());
+    generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
+    generator.setUIScale(uiScale);
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings());
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -7102,6 +7348,7 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
 
     editor::getEditorHost().stopTransientPreviews();
     stopVertexAnimatorPreviews();
+    stopCameraShakePreviews();
 
     sceneProject->playState = ScenePlayState::SAVING;
     fs::path savePath = path;
@@ -7141,6 +7388,7 @@ void editor::Project::saveAllScenes(std::function<void(bool)> callback) {
     // first: a physics gesture that settles now commits, and its scene counts as changed below
     editor::getEditorHost().stopTransientPreviews();
     stopVertexAnimatorPreviews();
+    stopCameraShakePreviews();
 
     std::vector<uint32_t> sceneIds;
     // the prefab stages first: the scenes saved after them hold their assets' new state
@@ -8751,13 +8999,16 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings());
+    generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
+    generator.setUIScale(uiScale);
+    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings());
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
     }
 
     result.shaderKeys = collectStandaloneShaderKeys();
-    result.hasCppScripts = !mergedCppScripts.empty();
+    // the C++ native plugins (plugins/native/cpp) live in the Play library too
+    result.hasCppScripts = !mergedCppScripts.empty() || hasNativeCppPlugins();
     result.status = PlayStartupPrepared::Status::Ready;
     return result;
 }
@@ -8925,10 +9176,18 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 // the plain-HTTP policy of the exported game (its generated main sets it before
                 // any scene), before the first script's init can send a request
                 Http::setInsecureHttpAllowed(applicationSettings.allowInsecureHttp);
+                // native plugins of other platforms fail with "unavailable" here (the generated
+                // main sets the same per platform)
+                NativeBridge::setPlatformOnlyPlugins(NativePlugins::platformOnlyPlugins(
+                    NativePlugins::listPlugins(NativePlugins::scan(getProjectPath())), NativePlugins::editorPlatform()));
+                // the init hooks of native plugin code the Play library brought (Objective-C on a Mac)
+                NativeBridge::initPlugins();
+                NativePlugins::warnStaleObjectiveC(getProjectPath());
 
                 // Apply project display settings before scripts read the canvas size.
                 Engine::setCanvasSize(canvasWidth, canvasHeight);
                 Engine::setScalingMode(scalingMode);
+                Engine::setDefaultCanvasScaler(uiScale);
                 Engine::setTextureStrategy(textureStrategy);
                 Engine::systemViewChanged();
 
@@ -9344,6 +9603,8 @@ void editor::Project::start(uint32_t sceneId) {
     editor::getEditorHost().stopTransientPreviews();
     // a previewing Vertex Animator plays from its start
     stopVertexAnimatorPreviews();
+    // a shake previewed in the Game view does not carry into the game
+    stopCameraShakePreviews();
 
     // Exit any editor camera preview before starting: covers the owned-runtime path
     // where the source scene's render never enters play mode, so stopping wouldn't
@@ -9358,6 +9619,8 @@ void editor::Project::start(uint32_t sceneId) {
     applyLayerCollisionMatrices();
     // and from clean input (Project Settings > Input, no runtime rebinding)
     resetPlayInput();
+    // and audio: the mixer's start snapshot and remembered values, the listener unpaused
+    resetPlayAudio(true);
     // and from the declared global shader values (Project Settings > Graphics > Shader Globals)
     resetPlayShaderGlobals();
     CommandHandle::get(sceneId)->beginPlaySession();
@@ -9546,6 +9809,11 @@ void editor::Project::stop(uint32_t sceneId) {
             // HTTP requests of the play end without their callbacks (nothing waits for a
             // transfer); what worker threads posted for the game is dropped
             Http::shutdown();
+            // the URL videos' downloads of the play (their .part files stay for a resume)
+            MediaCache::shutdown();
+            // native calls end without their callbacks, Native.on handlers and mocks go (the
+            // C++ plugins of the Play library go with it, Conector::disconnect)
+            NativeBridge::shutdown();
             MainThreadQueue::clear();
 
             const bool libraryConnected = conector.isLibraryConnected();
@@ -9597,6 +9865,8 @@ void editor::Project::stop(uint32_t sceneId) {
             applyLayerCollisionMatrices();
             // so do held input, rebinding overrides and simulated input sources
             resetPlayInput();
+            // and the mixer values scripts set (the remembered ones stay in UserSettings)
+            resetPlayAudio(false);
             // and the global shader values scripts set (Shader.setGlobal*)
             resetPlayShaderGlobals();
 

@@ -125,6 +125,7 @@
 #define MAX_BROADPHASELAYER_3D 6
 #endif
 
+#include "util/CanvasScaler.h"
 #include "Export.h"
 #include "System.h"
 #include "util/FunctionSubscribe.h"
@@ -323,6 +324,8 @@ namespace jasperengine {
         static Rect viewRect;
 
         static Scaling scalingMode;
+        // the project's Canvas Scaler (Project Settings > Graphics > UI Scale)
+        static CanvasScalerSettings defaultCanvasScaler;
         static TextureStrategy textureStrategy;
         
         static bool callMouseInTouchEvent;
@@ -363,6 +366,10 @@ namespace jasperengine {
 
         static std::atomic<bool> viewLoaded;
         static std::atomic<bool> paused;
+        // the two holds of `paused` (main thread)
+        static bool osPaused;
+        static bool nativePaused;
+        static void applyPause();
         static std::atomic<bool> focused;
 
         // Engine.targetFrameRate / vSyncCount and the pacing the platform applies
@@ -461,6 +468,12 @@ namespace jasperengine {
         
         static void setScalingMode(Scaling scalingMode);
         static Scaling getScalingMode();
+
+        // The UI's own space, the project default each scene uses unless it overrides it
+        // (Scene::setCanvasScaler). FollowGameCanvas (the default) lays the UI out in the game
+        // canvas above. A change recomputes every running scene's UI size.
+        static void setDefaultCanvasScaler(const CanvasScalerSettings& settings);
+        static const CanvasScalerSettings& getDefaultCanvasScaler();
 
         static void setTextureStrategy(TextureStrategy textureStrategy);
         static TextureStrategy getTextureStrategy();
@@ -649,11 +662,16 @@ namespace jasperengine {
         // The app goes to the background (pause) and comes back (resume). Idempotent: a
         // second pause or resume in a row does nothing. Leaving, a focused app loses focus
         // first (onFocus(false), then onPause); onResume always comes before onFocus(true).
+        // The engine is paused while the OS or a native SDK (setNativePause) holds it: one
+        // onPause when the first hold starts, one onResume when the last ends.
         static void systemPause();
         static void systemResume();
+        // A native SDK's full-screen view (NativeBridge::pauseEngine/resumeEngine, applied
+        // each frame by NativeBridge::update); false at Play stop. Idempotent.
+        static void setNativePause(bool held);
         // The app became frontmost and gets input (true), or something covers it: a system
         // dialog, the notification shade, another window (false). Idempotent; gaining focus
-        // while paused resumes first. Fires onFocus.
+        // while the OS holds the pause resumes first. Fires onFocus.
         static void systemFocus(bool hasFocus);
         // After a rotation or resize: fires onOrientationChanged when Screen::getOrientation()
         // differs from the last one seen. systemViewChanged calls it after onCanvasChanged; a
@@ -663,8 +681,9 @@ namespace jasperengine {
         static constexpr double ORIENTATION_SIZE_TIMEOUT = 0.5;
         // The system is short of memory: onLowMemory, before the platform frees its own caches
         static void systemLowMemory();
-        // Play stop / start in the editor: focused, not paused, no orientation seen yet, and the
-        // default frame pacing again, without any event (nothing listens any more)
+        // Play stop / start in the editor: focused, not paused (neither hold), no orientation
+        // seen yet, and the default frame pacing again, without any event (nothing listens any
+        // more)
         static void resetApplicationState();
 
         //-----Frame pacing and application state-----

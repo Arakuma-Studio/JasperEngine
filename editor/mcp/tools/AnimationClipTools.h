@@ -49,6 +49,10 @@ namespace jasperengine::editor::mcp::clip_tools {
     // a readable clip.
     bool clipAssetInfo(Project* project, const std::filesystem::path& file, Json& data, std::string& text);
 
+    // get_asset_info's `avatar` of a model (anim-retarget 10): {animation_type, humanoid, mapped,
+    // missing, extra_mapped, twist, human_scale, notes}; null for a model without bones
+    Json avatarJson(Project* project, const std::filesystem::path& model);
+
     // write_file of an .anim: false + error when the text can't be read as a clip (not JSON,
     // another format or version, Unity YAML); `warnings` the lenient reader's ("path: message")
     bool checkClipText(const std::string& text, std::vector<std::string>& warnings, std::string& error);

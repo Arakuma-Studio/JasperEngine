@@ -36,6 +36,7 @@
 #include "subsystem/FluidSystem.h"
 #include "subsystem/TrailSystem.h"
 #include "shader/ShaderGlobals.h"
+#include "subsystem/VideoPlayerSystem.h"
 #include "render/LineRibbonBuilder.h"
 #include <cstddef>
 #include <memory>
@@ -3557,19 +3558,23 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
 
     // as loadUI, loadPoints, loadLines and loadSky pick them
     if (UIComponent* ui = scene->findComponent<UIComponent>(entity)){
-        const bool isText = scene->findComponent<TextComponent>(entity) != nullptr;
+        const TextComponent* text = scene->findComponent<TextComponent>(entity);
+        const bool isText = text != nullptr;
         bool hasTexture = false;
         bool hasFontAtlasTexture = false;
         bool vertexColorVec4 = true;
+        // a text with outline or shadow draws SDF glyphs, one with a Text Effect a vertex colour
+        bool fontAtlasSdf = false;
         if (!ui->texture.empty()){
             if (isText){
-                vertexColorVec4 = false;
+                vertexColorVec4 = text->vertexColor || scene->findComponent<TextEffectComponent>(entity) != nullptr;
                 hasFontAtlasTexture = true;
+                fontAtlasSdf = (std::isfinite(text->outlineWidth) && text->outlineWidth > 0.0f) || text->shadowEnabled;
             }else{
                 hasTexture = true;
             }
         }
-        add(ShaderType::UI, ShaderPool::getUIProperties(hasTexture, hasFontAtlasTexture, false, vertexColorVec4),
+        add(ShaderType::UI, ShaderPool::getUIProperties(hasTexture, hasFontAtlasTexture, false, vertexColorVec4, fontAtlasSdf),
             shaderId(ui->customShader, ShaderType::UI, ui->shaderFeatures, ui->blendMode));
     }
     if (PointsComponent* points = scene->findComponent<PointsComponent>(entity)){
@@ -3597,6 +3602,11 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
     // script can switch it to FLATTEN)
     if (scene->findComponent<CanvasGroupComponent>(entity)){
         add(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH), 0);
+    }
+    // a Video Player: its frames' YUV conversion and its camera-plane blit (VideoTextureConverter)
+    if (scene->isComponentRegistered<VideoPlayerComponent>() && scene->findComponent<VideoPlayerComponent>(entity)){
+        for (const auto& variant : ShaderPool::getVideoPlayerVariants())
+            add(variant.first, variant.second, 0);
     }
 }
 
@@ -10470,16 +10480,19 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     bool p_hasTexture = false;
     bool p_vertexColorVec4 = true;
     bool p_hasFontAtlasTexture = false;
+    bool p_fontAtlasSdf = false;
     if (hasUITexture){
         if (isText){
-            p_vertexColorVec4 = false;
+            // a text's buffer has a colour only for a Text Effect
+            p_vertexColorVec4 = ui.buffer.getAttribute(AttributeType::COLOR) != nullptr;
             p_hasFontAtlasTexture = true;
+            p_fontAtlasSdf = ui.textSdf;
         }else{
             p_hasTexture = true;
         }
     }
 
-    ui.shaderProperties = ShaderPool::getUIProperties(p_hasTexture, p_hasFontAtlasTexture, false, p_vertexColorVec4);
+    ui.shaderProperties = ShaderPool::getUIProperties(p_hasTexture, p_hasFontAtlasTexture, false, p_vertexColorVec4, p_fontAtlasSdf);
     const std::string& uiShaderBase = ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader;
     const std::string uiShaderSrc = getComponentShaderReference(uiShaderBase, ui.shaderFeatures, ui.blendMode);
     ui.customShaderId = ShaderPool::registerCustomShader(uiShaderSrc);
@@ -10500,6 +10513,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
 
     ui.slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::UI_VS_PARAMS);
     ui.slotFSParams = shaderData.getUniformBlockIndex(UniformBlockType::UI_FS_PARAMS);
+    ui.slotFSTextParams = p_fontAtlasSdf ? shaderData.getUniformBlockIndex(UniformBlockType::UI_FS_TEXT_PARAMS) : -1;
     // the manifest of the shader it draws with (none for the built-in fallback)
     ui.shaderManifest = (ui.customShaderId != 0) ? findManifest(uiShaderBase) : nullptr;
     ui.customVSParams.resolve(shaderData, "u_vs_customParams");
@@ -10625,9 +10639,14 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
             return false;
         }
         render.applyUniformBlock(ui.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
-        //Color, faded by the element's Canvas Groups
-        Vector4 drawColor = uiDrawColor(ui.color, inCanvasLayer ? ui.groupLayerAlpha : ui.groupAlpha, ui.drawBlendMode);
+        //Color, faded by the element's Canvas Groups (a Text Effect writes each glyph's colour in its
+        // vertices: then only the alpha here)
+        const Vector4 baseColor = ui.vertexColorAbsolute ? Vector4(1.0f, 1.0f, 1.0f, ui.color.w) : ui.color;
+        Vector4 drawColor = uiDrawColor(baseColor, inCanvasLayer ? ui.groupLayerAlpha : ui.groupAlpha, ui.drawBlendMode);
         render.applyUniformBlock(ui.slotFSParams, sizeof(float) * 4, &drawColor);
+        if (ui.slotFSTextParams >= 0){
+            render.applyUniformBlock(ui.slotFSTextParams, sizeof(float) * 16, ui.textParams);
+        }
         applyComponentUniforms(render, ui.customVSParams, ui.customFSParams, ui.shaderUniforms, ui.shaderManifest.get(), ui.needUpdateShaderUniforms,
                                ui.shaderGlobalBindings, ui.globalsVersionSeen, frameTime, passResolution);
         applyFrameBlock(render, ui.libraryBindings);
@@ -10676,6 +10695,7 @@ void RenderSystem::destroyUI(Entity entity, UIComponent& ui){
     //Shaders uniforms
     ui.slotVSParams = -1;
     ui.slotFSParams = -1;
+    ui.slotFSTextParams = -1;
     ui.customVSParams.clear();
     ui.customFSParams.clear();
     ui.libraryBindings.clear();
@@ -12103,6 +12123,16 @@ void RenderSystem::updateCamera(CameraComponent& camera, Transform& transform){
     // projection above still comes from the copied perspective params
     if (camera.hasCustomViewMatrix){
         camera.viewMatrix = camera.customViewMatrix;
+    }
+    camera.steadyWorldUp = Vector3(camera.viewMatrix[0][1], camera.viewMatrix[1][1], camera.viewMatrix[2][1]);
+    if (!camera.hasCustomViewMatrix && camera.hasViewOffset){
+        // a Camera Shaker's offset, a local pose O = T(p) * T(c) * R * T(-c) in camera space:
+        // view = O^-1 * view (camera shake spec 5.1)
+        const Vector3& p = camera.viewOffsetPosition;
+        const Vector3& c = camera.viewOffsetPivot;
+        Matrix4 inverseOffset = Matrix4::translateMatrix(c) * camera.viewOffsetRotation.inverse().getRotationMatrix();
+        inverseOffset.translateInPlace(-c.x - p.x, -c.y - p.y, -c.z - p.z);
+        camera.viewMatrix = inverseOffset * camera.viewMatrix;
     }
 
     camera.worldRight = Vector3(camera.viewMatrix[0][0], camera.viewMatrix[1][0], camera.viewMatrix[2][0]);
@@ -15466,6 +15496,9 @@ void RenderSystem::drawFramePasses(){
     frameFluids = scene->findSystem<FluidSystem>().get();
     if (frameFluids)
         frameFluids->renderFluids();
+    // the Video Players' frames of this update into their textures, before anything samples them
+    if (std::shared_ptr<VideoPlayerSystem> videos = scene->findSystem<VideoPlayerSystem>())
+        videos->processConversions();
 
     // Runtime-captured probes share a strict budget: one cubemap face total per
     // frame. Static probes without an authored cubemap capture once; dynamic
@@ -15852,6 +15885,7 @@ void RenderSystem::drawCameras(bool includeMain){
         CameraPass pass;
         pass.camera = &camera;
         pass.cameraTransform = cameraTransformPtr;
+        pass.entity = cameraEntity;
         pass.isMain = isMainCamera;
         pass.renderToTexture = camera.renderToTexture;
         pass.terrainView = terrainView;
@@ -16435,6 +16469,29 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
     }
 
+    //---------Video Players on this camera's planes (Unity's CameraFarPlane / CameraNearPlane)----------
+    // the far plane replaces the background (after the clear and the sky, under the opaque
+    // queue: no depth test or write); the near one goes over the scene, under the UI. Game
+    // cameras only (not the editor's Scene view)
+    VideoPlayerSystem* videoPlanes = scene->findSystem<VideoPlayerSystem>().get();
+    const Entity videoCamera = pass.entity != NULL_ENTITY ? pass.entity : (isMainCamera ? scene->getCamera() : NULL_ENTITY);
+    bool videoPlanesAllowed = videoPlanes && videoCamera != NULL_ENTITY;
+#ifdef JASPERENGINE_EDITOR
+    videoPlanesAllowed = videoPlanesAllowed && !passDrawsOverlays;
+#endif
+    // the picture's first row at the top: GL's destinations stored bottom row first take it flipped
+    const bool videoFlipY = Engine::isOpenGL() && !isRenderingFlipped(camera);
+    if (videoPlanesAllowed && videoPlanes->hasCameraPlanes(true)){
+        videoPlanes->drawCameraPlanes(videoCamera, true, targetFormatFor(colorPip, passMsaa), camera.render, colorPassViewport, videoFlipY);
+    }
+    bool videoNearPending = videoPlanesAllowed && videoPlanes->hasCameraPlanes(false);
+    auto drawVideoNearPlanes = [&](){
+        if (!videoNearPending)
+            return;
+        videoNearPending = false;
+        videoPlanes->drawCameraPlanes(videoCamera, false, targetFormatFor(colorPip, passMsaa), camera.render, colorPassViewport, videoFlipY);
+    };
+
     if (distanceSort){
         for (const OpaqueRenderData& opaque : opaqueRenders){
             // (a transparent mesh here is split: its opaque submeshes)
@@ -16528,9 +16585,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         const bool canvasSkipped = canvasSkipping;
 
         // (a UI element this pass draws: not one hidden, inactive or culled)
-        if (screenFluidsPending && signature.test(scene->getComponentId<UIComponent>()) && transform.visible &&
+        if ((screenFluidsPending || videoNearPending) && signature.test(scene->getComponentId<UIComponent>()) && transform.visible &&
                 isRenderActive(entity, signature) && isLayerVisible(entity, cullingMask) &&
                 !samplesCameraTarget(camera, scene->getComponent<UIComponent>(entity).texture)){
+            drawVideoNearPlanes();
             drawScreenFluids();
         }
 
@@ -16558,6 +16616,23 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         if (signature.test(scene->getComponentId<RectTransformComponent>())){
             if (applyPassScissor(entity, signature, transform, camera.render, colorPassViewport, hasActiveScissor))
                 continue;
+        }else if (transform.parent != NULL_ENTITY &&
+                  signature.test(scene->getComponentId<PointsComponent>())){
+            // Points under UI (UI particles): clipped by the nearest ancestor RectTransform's
+            // scissor, like its UI children; they set none of their own
+            Entity ancestor = transform.parent;
+            while (ancestor != NULL_ENTITY && !scene->getSignature(ancestor).test(scene->getComponentId<RectTransformComponent>())){
+                ancestor = scene->getComponent<Transform>(ancestor).parent;
+            }
+            if (ancestor != NULL_ENTITY){
+                PassScissor parent = passScissor(scene->getComponent<Transform>(ancestor), scene->getComponent<RectTransformComponent>(ancestor));
+                if (*parent.active){
+                    if (parent.rect->getWidth() <= 0 || parent.rect->getHeight() <= 0)
+                        continue; // an empty rect would leak a pixel (see above)
+                    camera.render.applyScissor(*parent.rect);
+                    hasActiveScissor = true;
+                }
+            }
         }
 
         if (signature.test(scene->getComponentId<MeshComponent>())){
@@ -16661,7 +16736,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
     }
 
-    //---------Draw SCREEN fluid simulations, if no UI element came first----------
+    //---------Draw near-plane videos and SCREEN fluid simulations, if no UI element came first----------
+    drawVideoNearPlanes();
     drawScreenFluids();
 
     //---------Draw HTML UI documents (in front of everything, including component UI)----------

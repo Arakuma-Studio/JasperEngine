@@ -350,6 +350,14 @@ namespace jasperengine::editor{
         void clearVertexAnimatorPreviewScene(uint32_t sceneId);
         // the inspected .vat (Project window click)
         void drawVatAsset(const std::filesystem::path& asset);
+        // InspectorWindowCamera.cpp (camera shake spec 9)
+        void drawCameraShakerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawCameraFollowComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawShakePresetAsset(const std::filesystem::path& asset);
+        // the Test strip's edit-mode preview stops once its GameObject (or .shake) is not shown
+        void syncCameraShakePreview(SceneProject* shown, const std::vector<Entity>& selection);
+        // a selected .mixer: groups, exposed parameters, snapshots; Use as Project Mixer, Open in Audio Mixer
+        void drawAudioMixerAsset(const std::filesystem::path& asset);
         // a .physicsmaterial: friction, bounciness and their combine modes (InspectorPhysics2D.cpp)
         void drawPhysicsMaterialAsset(const std::filesystem::path& asset);
         // a .physicsmaterial path field (drop from the Project window, pick, clear) with undo
@@ -419,6 +427,7 @@ namespace jasperengine::editor{
         void applyCameraTexture(Entity cameraEntity, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged);
         // a texture slot showing a FluidSimulation's output ("fluid|<entity>", FluidTextureLink)
         void applyFluidTexture(Entity fluidEntity, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged);
+        void applyVideoTexture(Entity videoEntity, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged);
         void drawTextureSettingsPopup(const char* popupId, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged);
         void dragDropResourcesTextureCube(ComponentType cpType, const std::string& id, const ImVec2& rectMin, const ImVec2& rectMax, SceneProject* sceneProject, const std::vector<Entity>& entities, int faceIndex = -1);
 
@@ -661,6 +670,13 @@ namespace jasperengine::editor{
         // preview bar (FluidSystem::setPreview), the Scene view's Paint Dye toggle and the stats
         // readOnly: the property rows disabled, the preview bar and the stats still work
         void drawFluidSimulationComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities, bool readOnly);
+        // InspectorVideo.cpp: the Video Player (Unity's order), its codec support per platform and
+        // its playback in Play; the asset view of a video file (probe, platform matrix, fast start,
+        // a preview)
+        void drawVideoPlayerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities, bool readOnly);
+        void drawVideoAsset(const std::filesystem::path& asset);
+        // the asset preview's decoder goes once the asset is not shown any more
+        void closeIdleVideoPreview();
         // why the fluid draws nothing (device, simulator error, no surface for Material)
         void drawFluidStatus(SceneProject* sceneProject, const std::vector<Entity>& entities);
         void drawFluidPreviewBar(SceneProject* sceneProject, const std::vector<Entity>& entities);
@@ -693,6 +709,9 @@ namespace jasperengine::editor{
         // the morph target weights of a mesh with blend shapes (names from its model)
         void drawBlendShapes(SceneProject* sceneProject, const std::vector<Entity>& entities);
         void drawModelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the Model's Rig foldout (anim-retarget 9): Animation Type, the Avatar's status, Configure
+        // Avatar..., human scale (InspectorModelRig.cpp)
+        void drawModelRig(ComponentType cpType, SceneProject* sceneProject, Entity entity);
         void drawUIComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawScrollbarComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -703,6 +722,7 @@ namespace jasperengine::editor{
         void drawTouchAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPanelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawTextEffectComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawRectTransformComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLayoutGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCanvasGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

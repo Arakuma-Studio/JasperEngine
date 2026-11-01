@@ -74,8 +74,16 @@ namespace jasperengine::pose {
 
     }
 
-    bool PoseRig::build(const Skeleton& skeleton, const HumanoidMap& humanoid, std::string* error){
+    bool PoseRig::build(const Skeleton& skeleton, const HumanoidMap& humanoid, std::string* error,
+                        const std::array<float, HUMAN_BONE_COUNT>* twistDegrees){
         built = false;
+        twists.fill(0.0f);
+        if (twistDegrees){
+            for (int s = 0; s < HUMAN_BONE_COUNT; s++){
+                const float value = (*twistDegrees)[(size_t)s];
+                twists[(size_t)s] = std::isfinite(value) ? std::min(std::max(value, -180.0f), 180.0f) : 0.0f;
+            }
+        }
         std::string validation;
         if (!validateHumanoid(skeleton, humanoid, &validation)){
             if (error) *error = validation;
@@ -130,6 +138,10 @@ namespace jasperengine::pose {
         const Vec3d forwardM = leftM.cross(up);
         character = fromColumns(leftM, up, forwardM);
         const Quatd characterInv = character.inverse();
+        restCanonical.resize(count);
+        for (int i = 0; i < count; i++){
+            restCanonical[i] = (characterInv * restRot[i]).normalized();
+        }
 
         // hips parent transform
         const int hipsBone = slots[0].bone;
@@ -193,6 +205,10 @@ namespace jasperengine::pose {
                 }
                 break;
             }
+            // the twist correction about the neutral direction (before the children use it)
+            if (twists[(size_t)s] != 0.0f){
+                slot.neutral = (axisAngleRad(Vec3d(boneDofInfo(bone).neutralDirection), degToRad(twists[(size_t)s])) * slot.neutral).normalized();
+            }
         }
 
         neutral = HumanPose();
@@ -250,6 +266,10 @@ namespace jasperengine::pose {
     }
 
     bool PoseRig::valid() const{ return built; }
+
+    float PoseRig::twist(HumanBone bone) const{
+        return bone == HumanBone::Count ? 0.0f : twists[(size_t)slotIndex(bone)];
+    }
 
     bool PoseRig::has(HumanBone bone) const{
         return built && bone != HumanBone::Count && slots[slotIndex(bone)].bone >= 0;
@@ -342,6 +362,35 @@ namespace jasperengine::pose {
     Quatd PoseRig::boneE(HumanBone bone, const Quatd& local) const{
         const Slot& slot = slots[slotIndex(bone)];
         return slot.left.inverse() * local * slot.neutral.inverse();
+    }
+
+    Quatd PoseRig::jointRotationFromLocal(HumanBone bone, const Quatd& local) const{
+        if (!has(bone)){
+            return Quatd();
+        }
+        return boneE(bone, local.normalized()).normalized();
+    }
+
+    Quatd PoseRig::localFromJointRotationPrecise(HumanBone bone, const Quatd& rotation) const{
+        if (!has(bone)){
+            return Quatd();
+        }
+        const Slot& slot = slots[slotIndex(bone)];
+        return (slot.left * rotation * slot.neutral).normalized();
+    }
+
+    Quaternion PoseRig::localFromJointRotation(HumanBone bone, const Quatd& rotation) const{
+        if (!has(bone)){
+            return Quaternion();
+        }
+        return localFromJointRotationPrecise(bone, rotation).toQuaternion();
+    }
+
+    Quatd PoseRig::restWorldCanonical(int skeletonBone) const{
+        if (!built || skeletonBone < 0 || (size_t)skeletonBone >= restCanonical.size()){
+            return Quatd();
+        }
+        return restCanonical[(size_t)skeletonBone];
     }
 
     void PoseRig::anglesFromLocal(HumanBone bone, const Quaternion& local, float angles[DOFS_PER_BONE]) const{

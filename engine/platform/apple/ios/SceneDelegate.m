@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #import "SceneDelegate.h"
+#import "JasperNative.h"
 
 // One for the app's life, so a reconnected scene doesn't start another engine
 static UIViewController *engineViewController(void) {
@@ -20,6 +21,19 @@ static UIViewController *engineViewController(void) {
     self.window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];
     self.window.rootViewController = engineViewController();
     [self.window makeKeyAndVisible];
+
+    // a URL that launched the app reaches native plugins' observers (JasperNative.h)
+    [self scene:scene openURLContexts:connectionOptions.URLContexts];
+}
+
+- (void)scene:(UIScene *)scene openURLContexts:(NSSet<UIOpenURLContext *> *)URLContexts {
+    for (UIOpenURLContext *context in URLContexts) {
+        NSMutableDictionary *options = [NSMutableDictionary dictionary];
+        if (context.options.sourceApplication) options[UIApplicationOpenURLOptionsSourceApplicationKey] = context.options.sourceApplication;
+        if (context.options.annotation) options[UIApplicationOpenURLOptionsAnnotationKey] = context.options.annotation;
+        options[UIApplicationOpenURLOptionsOpenInPlaceKey] = @(context.options.openInPlace);
+        [JasperNative dispatchOpenURL:context.URL options:options];
+    }
 }
 
 - (void)sceneDidDisconnect:(UIScene *)scene {

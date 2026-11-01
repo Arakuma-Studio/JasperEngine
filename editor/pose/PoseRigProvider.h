@@ -13,7 +13,9 @@
 
 #include "ecs/Entity.h"
 #include "math/Matrix4.h"
+#include "pose/HumanExtraBones.h"
 #include "pose/HumanoidMap.h"
+#include "pose/HumanoidMapIO.h"
 #include "pose/PoseRig.h"
 
 #include <cstdint>
@@ -43,6 +45,16 @@ namespace jasperengine::editor{
         // scene rigs: per skeleton bone, the non-bone ancestors folded into its rest TRS
         // (skeleton local = bridge * Transform local; ModelRig's buildSkeleton)
         std::vector<Matrix4> bridges;
+        // the Avatar (anim-retarget): the sidecar as read, the extra bones (auto-detect +
+        // overrides; `extraError` when an override did not validate: auto-detect is used)
+        // `overrides` is set whenever the sidecar reads (also when the body map does not
+        // validate); `sidecarError` when the sidecar exists but cannot be read (writers refuse
+        // then: rewriting it from `overrides` would wipe the Avatar)
+        pose::HumanoidOverrides overrides;
+        std::string sidecarError;
+        pose::HumanExtraMap extra;
+        std::string extraError;
+        pose::Skeleton skeleton;                // the model's skeleton (empty when it has none)
     };
 
     class PoseRigProvider{
@@ -54,6 +66,14 @@ namespace jasperengine::editor{
         static std::shared_ptr<const PoseRigInfo> forSceneModel(Project* project, Scene* scene, Entity model);
         // Drops every cached rig (project closed)
         static void clear();
+
+        // What a sidecar writer says when the sidecar exists but cannot be read: rewriting it from
+        // what was read would wipe its Avatar (the Rig foldout, Map Bones, the Avatar window)
+        static std::string unreadableSidecarRefusal(const std::string& sidecarError);
+        // The Rig foldout's Animation Type: the model's sidecar as read with its animation_type
+        // set (generic: not written), one project undo step. False + error when the sidecar
+        // cannot be read or the write fails; true without a write when it is that type already.
+        static bool setAnimationType(Project* project, const std::filesystem::path& model, pose::AnimationType type, std::string& error);
     };
 
 }

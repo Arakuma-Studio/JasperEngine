@@ -24,6 +24,7 @@
 #pragma once
 
 #include "animation/AnimationClip.h"
+#include "animation/HumanoidClip.h"
 #include "component/AnimationPlayerComponent.h"
 #include "ecs/Entity.h"
 
@@ -77,6 +78,18 @@ namespace jasperengine::editor{
         // Model sub-clip ("<model>#<clip>") -> editable clip data
         static bool extractModelSubClip(const std::string& reference, ClipData& out,
                                         std::vector<ClipWarning>& warnings, std::string* error);
+        // Convert to Humanoid Clip (anim-retarget 9, 10): `source` converted on the rig of
+        // `modelAsset` (asset-relative .gltf/.glb/.fbx: its .humanoid sidecar applies); the result
+        // keeps the source's settings, events and generic tracks, gets a new GUID and the model as
+        // its preview when it has none. `report` (optional): what was mapped and dropped.
+        static bool convertToHumanoid(const ClipData& source, const std::string& modelAsset, ClipData& out,
+                                      std::vector<ClipWarning>& warnings, std::string* error,
+                                      anim::HumanoidConversionReport* report = nullptr);
+        // the source model a clip converts from: the model of a sub-clip reference, else the
+        // clip's source (kind model), else its preview model; "" when it names none
+        static std::string humanoidSourceModel(const std::string& reference, const ClipData& data);
+        // the .humanoid sidecar of `modelAsset` says Animation Type: Humanoid
+        static bool isHumanoidModel(const std::string& modelAsset);
 
         static bool planUseAnimationPlayer(Scene* scene, Entity model, UseAnimationPlayerPlan& out, std::string* error);
 

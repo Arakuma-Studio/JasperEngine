@@ -12,6 +12,7 @@
 #include "ecs/Entity.h"
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace jasperengine{
@@ -26,6 +27,10 @@ namespace jasperengine::playerdetail{
     // bound through every time: what the flush and a preview restore write through); null when
     // the binding is not Bound
     anim::PropertyRest* completePropertyRest(Scene* scene, Entity entity, anim::ChannelRest& rest, const anim::PropertyBinding& binding);
+    // The root's humanoid rig resolved again (anim-retarget): `current` replaced only when the
+    // rig (the cached PoseRig), its validity or its slot entities changed, so a pool change that
+    // left the rig alone (any clip insert) keeps the bindings made on it. True when replaced.
+    bool refreshHumanoidSlots(Scene* scene, Entity root, std::shared_ptr<anim::HumanoidSlots>& current);
     // the time a state is sampled at this update, in its clip
     float sampleTimeOf(const AnimationPlayerComponent& player, const anim::PlayerStateRuntime& state);
 
@@ -33,9 +38,12 @@ namespace jasperengine::playerdetail{
     struct PoseSlotSource{
         anim::ClipBindings* bindings = nullptr;
         std::vector<uint32_t>* slots = nullptr;
+        // a humanoid clip: the slot of each HumanoidBinding output (anim-retarget)
+        std::vector<uint32_t>* humanoidSlots = nullptr;
     };
     // The scratch's slot table for these bindings (one slot per bound (target, channel), rest
-    // pointers into `rest`); fills every source's per-track slot indices (ActionSystemLayers.cpp)
+    // pointers into `rest`); fills every source's per-track slot indices and per humanoid output
+    // slot indices (ActionSystemLayers.cpp)
     void buildPoseSlots(Scene* scene, anim::PlayerPoseScratch& scratch, const std::vector<PoseSlotSource>& sources, anim::RestMap& rest);
 
 }

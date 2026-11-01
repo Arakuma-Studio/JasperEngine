@@ -13,6 +13,7 @@
 #include "Engine.h"
 #include "Input.h"
 #include "Out.h"
+#include "PhysicsTestScene.h"
 #include "input/InputActions.h"
 #include "input/InputControlNames.h"
 
@@ -273,6 +274,9 @@ TEST_F(InputEdgesTest, ReleaseAllGivesTheUps) {
 TEST_F(InputEdgesTest, AnAppPauseStillLetsThePlatformCancelReachScripts) {
     // review fix: Engine::systemPause released everything, so the platform's systemTouchCancel
     // found no finger and onTouchCancel (and the documents' cancel) never came
+    // (systemPause saves the user settings through System::instance(): one must be set, also
+    // when this suite runs on its own)
+    if (!System::hasInstance()) physicstest::installTestSystem();
     std::vector<int> cancelled;
     struct Listener {
         std::vector<int>* log;

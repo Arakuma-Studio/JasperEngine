@@ -496,6 +496,10 @@ namespace {
         size_t entry = SIZE_MAX;
         bool driven = false;
         bool hidden = false;
+        // humanoid playback (anim-retarget 7.1)
+        bool retarget = false;
+        bool mirror = false;
+        bool footIK = false;
     };
 
     // the controller's states: "<Layer>.<State>" per clip state, "<Layer>.<State>#<i>" per
@@ -507,11 +511,15 @@ namespace {
             const ControllerLayer& layer = data.layers[l];
             for (const ControllerState& state : layer.states){
                 const std::string name = layer.name + "." + state.name;
+                // the state's mirror / foot_ik / retarget (anim-retarget); a blend tree child's mirror
+                // flips its state's
                 if (!state.clip.empty()){
-                    specs.push_back({name, state.clip, state.wrap, (int)l, SIZE_MAX, true, false});
+                    specs.push_back({name, state.clip, state.wrap, (int)l, SIZE_MAX, true, false, state.retarget, state.mirror, state.footIK});
                 }else if (state.hasBlendTree){
                     for (size_t c = 0; c < state.blendTree.children.size(); c++){
-                        specs.push_back({name + "#" + std::to_string(c), state.blendTree.children[c].clip, state.wrap, (int)l, SIZE_MAX, true, true});
+                        const BlendTreeChild& child = state.blendTree.children[c];
+                        specs.push_back({name + "#" + std::to_string(c), child.clip, state.wrap, (int)l, SIZE_MAX, true, true,
+                                         state.retarget, state.mirror != child.mirror, state.footIK});
                     }
                 }
             }
@@ -591,6 +599,9 @@ anim::AnimationPlayerRuntime& anim::playerRuntime(AnimationPlayerComponent& play
                 spec.name = names[i];
                 spec.clip = entry.clip;
                 spec.wrap = entry.wrap;
+                spec.retarget = entry.retarget;
+                spec.mirror = entry.mirror;
+                spec.footIK = entry.footIK;
                 spec.entry = i;
                 spec.layer = entry.layer;
                 if (entry.layer < 0 || entry.layer >= layerCount){
@@ -608,10 +619,11 @@ anim::AnimationPlayerRuntime& anim::playerRuntime(AnimationPlayerComponent& play
         for (size_t i = 0; i < specs.size(); i++){
             const StateSpec& spec = specs[i];
             PlayerStateRuntime& state = states[i];
+            const std::string poolKey = retargetPoolKey(spec.clip, spec.retarget);
             int old = runtime.findState(spec.name);
             if (old >= 0){
                 state = runtime.states[(size_t)old];
-                if (state.clip != spec.clip){
+                if (state.poolKey != poolKey){
                     state.bindings = ClipBindings();
                     state.loadFailed = false;
                     state.retryTimer = 0.0f;
@@ -622,6 +634,10 @@ anim::AnimationPlayerRuntime& anim::playerRuntime(AnimationPlayerComponent& play
             state.name = spec.name;
             state.entry = spec.entry;
             state.clip = spec.clip;
+            state.poolKey = poolKey;
+            state.retarget = spec.retarget;
+            state.mirror = spec.mirror;
+            state.footIK = spec.footIK;
             state.entryWrap = spec.wrap;
             state.layer = spec.layer;
             state.driven = spec.driven;
@@ -652,6 +668,22 @@ anim::AnimationPlayerRuntime& anim::playerRuntime(AnimationPlayerComponent& play
         runtime.warnedLayers.clear();
     }
     return runtime;
+}
+
+std::string anim::retargetPoolKey(const std::string& clip, bool retarget){
+    return retarget && !clip.empty() ? clip + "@humanoid" : clip;
+}
+
+bool anim::stateMirror(const PlayerStateRuntime& state){
+    return state.mirrorOverride >= 0 ? state.mirrorOverride != 0 : state.mirror;
+}
+
+bool anim::stateFootIK(const PlayerStateRuntime& state){
+    return state.footIKOverride >= 0 ? state.footIKOverride != 0 : state.footIK;
+}
+
+bool anim::stateIsHumanoid(const PlayerStateRuntime& state){
+    return state.retarget || (state.bindings.clip && state.bindings.clip->isHumanoid());
 }
 
 ClipWrapMode anim::stateWrap(const PlayerStateRuntime& state){

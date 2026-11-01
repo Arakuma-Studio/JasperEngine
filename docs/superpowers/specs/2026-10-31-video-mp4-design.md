@@ -526,3 +526,147 @@ Acceptance:
 - **`coroutines` (#16)**: Unity's `WaitUntil(() => isPrepared)` maps to `waitUntil(function() return vp.isPrepared end)`.
 - **`persistence` (#20)**: a persistent VideoPlayer keeps playing across scene loads (its target texture link stays
   valid; camera targets re-resolve to the new main camera).
+
+## Implementation notes
+
+What the implementation does differently from the text above, and why.
+
+**Files and structure**
+- Platform directories are the engine's existing ones: `engine/platform/win/MediaFoundationBackend.cpp`,
+  `engine/platform/emscripten/WebVideoSource.cpp`, `engine/platform/apple/AVFoundationBackend.mm` (no `.h`:
+  every backend is reached through the `platformvideo::` hooks of `media/PlatformVideoBackend.h`, defined once per
+  platform: backendName, isAvailable, createBackend, supports, readsContainer, supportsGrowingSources,
+  unsupportedHint; on the Web also createBrowserSource and browserSupports).
+- The Web's JavaScript is `EM_JS` inside `WebVideoSource.cpp`, not a separate `jasper_video.js` passed with
+  `--js-library`: nothing to add to the link flags or the Web export.
+- One backend instance per stream (one for the video track, one for the audio track, both reading the same
+  `MediaByteSource`), so the backend interface is `open(bytes, stream, found, error)` / `seek` / `decodeNext`
+  of one stream instead of §6.3's combined video+audio `decodeNext`. The two decode independently on the
+  source's one worker thread; seeking and looping each keep their own position.
+- FFmpeg majors supported: avcodec 58 to 62 (FFmpeg 4.x to 8.x; 8.0 was released after the spec was written),
+  one translation unit each (`FFmpegBackend58.cpp` ... `62.cpp`) compiled with `-isystem` on its vendored headers
+  (`engine/libs/ffmpeg-headers/<major>/`, the closure of the headers used, about 4 MB).
+  `JASPERENGINE_FFMPEG_DIR` points the loader at a directory for tests.
+- The unit tests are in `editor/tests` (`VideoMp4Test.cpp`: probe, growing files, FFmpeg backend, factory,
+  media cache; `VideoPlayerTest.cpp`: the system with a fake source, Catalog, Stream, links, cloning), run by
+  `jasperengine-editor-tests`, not in a new `jasperengine-media-tests` target: the editor test binary already
+  has the test HTTP server, the engine and the editor's serialization. They need FFmpeg and are excluded on
+  Windows/Apple builds of the tests (the backends there are not FFmpeg).
+- The clips are 160x90 as specified; `h264_rotated_160x90.mp4` (a 90 degree display matrix) was added for
+  the rotation tests. They are each under 16 KB.
+
+**Behaviour**
+- Rotation is applied to the planes on the worker thread (`VideoFramePlanes::rotate`), not by the converter:
+  every consumer (UI `<video>`, the component, the CPU preview) gets upright frames and `width/height`.
+- Material Override sets the renderer's texture slot to the player's texture while it has a picture and
+  restores the slot's own texture when the player stops, is disabled or removed (the saved texture is kept by
+  the system, not serialized).
+- The **Web follows the engine's clock**, contrary to decision 5: the browser element plays at the
+  engine's playback rate and is paused/seeked when the engine's clock is (`IVideoSource::setClock`), so
+  `timeUpdateMode`, `timeScale`, `pause()` and the UI clock behave as on the other platforms; frames are
+  whatever the element shows (`isFrameExact` false). `renderTextureWidth/Height` are not applied on the Web
+  (the element's frames are uploaded at the video's size). Volume: a WebAudio GainNode where the context allows
+  it, else the element's `volume`; no 3D panning there.
+- `audioOutputMode = AudioSource` takes the AudioSource's volume and 3D position/attenuation; there is no mixer
+  bus yet (`audio-mixer` #6 has not landed on this branch's base; the bus follows when it does).
+- Importing (import_files, the Project window): an MP4/MOV some platform plays is copied as it is; a WebM of
+  another codec than AV1 (VP9) is still converted to AV1 + Opus as in phase 6, since Apple decodes no VP9.
+- A VP9 + Opus WebM on a platform without a VP9 decoder plays its sound only (as before this feature, through
+  the software path), with the video error reported; the spec did not cover this mixed case.
+- `get_entity` / `get_runtime_entity` add `video` once the player opened something (prepared, preparing or
+  failed): an idle player in edit mode has no block. It also has `preparing`, `paused`, `frameRate`, `width`,
+  `height` and `buffered` beyond §6.10's list.
+- MCP aliases: `create_entity type video` / `videoplayer` -> `video_player`, `video_camera_background` ->
+  `video_background`; component alias `video` -> `videoplayer`.
+- The guide is `docs/mcp/guide/video.md`, served as `jasper://docs/video`.
+- The editor reuses the edit-time Scene for Play, so `VideoPlayerSystem` is paused with the other systems in
+  edit mode (nothing plays, `playOnAwake` waits) and `resetPlayers()` at Play stop closes every source and
+  arms `playOnAwake` for the next Play.
+- `prepare()` / `play()` right after a new `clip`/`url` (`vp.url = x; vp:prepare()`, the ad flow) open the new
+  source at once; a new value alone still stops the player without `playOnAwake` starting it again.
+- Progressive start probes the growing download first at 32 bytes, then each time a quarter more (at least
+  4 KiB) arrived, until the `moov` box is complete or known to follow the media data.
+- The agent guide's line is "Video Player (texture video|<id>), MP4, WebM: jasper://docs/video." (shorter
+  than §6.10's: the guide is at its 16 KB limit after the merges).
+
+- The render texture's Framebuffer is held by a `std::shared_ptr` (as the fluid's output), so every
+  Texture showing it (`image:setTexture(player:getFramebuffer())`, links) keeps the object alive
+  after the player is gone (its GPU side freed: the texture draws its fallback).
+- A player moved to another scene (`EntityCloner::move`, `DontDestroyOnLoad`) keeps its converter,
+  its listeners and its playback (`VideoPlayerSystem::handOver`), §11.
+- `skipOnDrop = false` does not block the main thread: the clock stalls until the decoder has the
+  frame (Unity's "slow down instead of skipping"). Only frame-exact play (fixed time steps) waits for
+  a frame, at most 1 s, then the clock waits.
+- `prepare()`/`play()` after an error drop the failed source and open it again.
+- Packed assets (the resource pack) are read in parts (`ResourcePack::RangeReader`), never whole;
+  a WebM's codecs are probed from its first MiB (its headers), so the software path reads the file
+  as before.
+- Android: an output wait of 10 ms when no input was queued (no busy loop), the first frame waited
+  for up to 2 s (a download: as long as it takes), "no free decoder instance" told apart from "no
+  decoder", and a reclaimed or dead codec is recreated (twice at most) and resumes at the last output.
+- iOS: a reader stopped by the app going to the background (AVErrorOperationInterrupted) or a media
+  services reset restarts after the last sample given out; AVFoundation's decoder-not-found,
+  format-not-recognized and decode-failed errors get the codec hint. A file without a known
+  extension (a media cache file of an extensionless URL) is opened through a link named by its
+  container.
+- Windows: `mfplat.dll` and `mfreadwrite.dll` are loaded at run time (LoadLibrary / GetProcAddress),
+  so games and the editor start on N editions without the Media Feature Pack (MP4 then fails with
+  the hint). 10-bit decoders that give no NV12 are asked for P010.
+- Web: a hidden tab or a paused game pauses the element; the clock's time reaches audio-only
+  sources; the first-gesture unlock unmutes only elements made with sound and stays armed until the
+  page's audio runs; no drift seek while the element buffers (the player waits) or after its end;
+  frame steps while paused seek by half a frame; failures after READY, CORS refusals and a blocked
+  autoplay reach `onErrorReceived`; a frame is uploaded only when the element has a new one; the
+  frame rate of a URL comes from `requestVideoFrameCallback`.
+- `set_runtime_property component videoplayer` also takes `state` (`play`, `pause`, `stop`,
+  `prepare`), `time` and `frame` (§6.10).
+
+**Editor, exports, tools**
+- Apple frameworks (AVFoundation, CoreMedia, CoreVideo): in the Xcode project the `.mm`'s `#import`s of the
+  framework headers are module imports (`CLANG_ENABLE_MODULES = YES`), which autolink them;
+  `tools/xcode_sync_engine.py` adds the source file only. CMake Apple builds link them explicitly.
+- Android's INTERNET permission is also added for a Lua or C++ script that sets a Video Player's url
+  (or its source to URL) and for an HTML `<video>`/`<source>` of an http(s) URL: a script may build any
+  url, so setting one at all counts. The scene check parses the YAML (no regex over long lines).
+- Android's `noCompress 'mp4', 'm4v', 'mov', 'webm'` is in the Gradle template
+  (`engine/workspaces/androidstudio/app/build.gradle`, `androidResources`), which every Android export copies,
+  rather than written by the Exporter. The INTERNET permission comes from `Exporter::videoUrlScene()` (a scene
+  or prefab with a Video Player whose `url` is http(s)).
+- `jasperengine-editor check --videos` (in the default set) reports `video-codec-unsupported-on-target` for
+  each of the six platforms where the clip plays `no` (the project has no list of target platforms to narrow
+  it), `video-not-faststart-url` (info) and `video-missing` (a clip or local url that is not in the project).
+  The check is offline: an http(s) url (any case of its scheme) is judged by the project's file of the
+  same name (the one uploaded there), when there is exactly one.
+- The Inspector's preview of a video asset is CPU-converted (`VideoColorConvert::toRgba` into an ImGui
+  texture) rather than going through the engine's `VideoTextureConverter` (the editor's ImGui renderer is not
+  a scene render target).
+- Linux exports have no README in this engine (the exporter writes none), so the FFmpeg runtime note is in the
+  guide (`jasper://docs/video`, Linux) and in the error message a player gets without FFmpeg.
+- The HTML UI test binary (`jasperengine-htmlui-tests`) runs with the platform decoders off
+  (`VideoSourceFactory::setPlatformDecodersEnabledForTesting(false)`), so its WebM goldens and its "MP4 is not
+  supported" expectations keep testing the software path; MP4 in `<video>` is tested by
+  `tools/mcp/tests/test_video_player.py` and `VideoMp4Test`. `test_html_ui_video.py` uses an `.avi` for its
+  unsupported-source case (an MP4 now plays).
+- Windows: the `IMFByteStream` exposes its `IMFAttributes` (content type, for the source resolver) through a
+  separate attributes object returned by `QueryInterface`, not by deriving from both interfaces.
+- The factory's platform enum is `VideoSourceFactory::Platform { Linux, Windows, MacOS, IOS, Android, Web }`
+  (CamelCase: the Android toolchain defines `ANDROID`).
+
+**Not verified here**
+- The Apple (AVFoundation) and Windows (Media Foundation) backends cannot be built on this host: they are
+  written against the documented APIs and re-read, not compiled.
+- No Android device or emulator run (the Android backend is compiled by the Gradle build only); no mobile
+  performance measurement (§8's budget is unmeasured).
+
+**Verification (on the tree merged with main: lines-trails, ui-canvas-group, physics-3d, http)**
+- Built on the host (shared ccache; build box 2204 was cold and ran at about one object a minute):
+  editor, unit tests, HTML UI editor tests, 0 warnings. Unit suite 1401 tests: 1392 passed, 9 skipped.
+  `jasperengine-htmlui-tests` (glcore, the WebM path): 3114 tests, 3106 passed, 8 skipped.
+  `jasperengine-htmlui-editor-tests`: 65 of 68 passed; `VideoImporterTest.ConvertsWithFfmpeg` and
+  `EncoderPreference` fail on main's unchanged code too (they expect an unquoted command line).
+- MCP suite (-j2): 867 passed, 11 failed, 18 skipped: the known baseline (test_animation_assets x5,
+  test_lattice_scene x5) and `test_stochastic_tiling::test_old_scene_resaves_byte_identical`, which
+  main's ui-canvas-group causes (its HTMLUI_POST passthrough key is added to every scene).
+  `test_video_player.py`: 5/5.
+- Android `assembleDebug` (arm64-v8a, MediaCodec backend) and the Web engine build (emsdk): built,
+  0 warnings. Apple and Windows backends: not compiled (no toolchain here).

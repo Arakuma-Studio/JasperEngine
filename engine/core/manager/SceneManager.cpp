@@ -613,9 +613,14 @@ void SceneManager::updatePreloads() {
         }
 
         for (auto it = pending.sounds.begin(); it != pending.sounds.end();) {
-            const std::string name = *it;
-            auto release = [name]() { SoundPool::remove(name); };
-            it = finished(SoundPool::loadFromFile(name, name), release) ? pending.sounds.erase(it) : it + 1;
+            // "<file>" or "<file>#<load type>" (a source's Load Type other than Auto)
+            std::string file;
+            AudioLoadType loadType = AudioLoadType::Auto;
+            SoundPool::parseClipRef(*it, file, loadType);
+            const SoundLoadResult result = SoundPool::loadClip(file, loadType);
+            const std::string id = result.id;
+            auto release = [id]() { SoundPool::remove(id); };
+            it = finished(result, release) ? pending.sounds.erase(it) : it + 1;
             if (oneFile) return;
         }
 

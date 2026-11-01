@@ -387,6 +387,10 @@ namespace jasperengine{
 			float weight = 1.0f;
 			// layered previews: the index into PlayerPreview::layers it plays on
 			int layer = 0;
+			// humanoid clips (anim-retarget): -1 the entry's Mirror / Foot IK (an explicit clip:
+			// off), else 0 / 1; a named state of a Retarget entry plays its clip retargeted
+			int mirror = -1;
+			int footIK = -1;
 		};
 		// one layer of a layered preview (anim layers spec 7.5): the Animation window's "Preview
 		// over", MCP preview_animation `over`
@@ -417,6 +421,8 @@ namespace jasperengine{
 			std::vector<std::pair<Entity, uint32_t>> properties;
 			// paths of tracks that did not resolve (unique)
 			std::vector<std::string> unresolved;
+			// a humanoid clip whose humanoid tracks did not play: why (no humanoid rig on the root)
+			std::string humanoidError;
 		};
 		// Its own clear/flush scope (like updateAnimationPreview), runs while the system is paused.
 		// Rest values come from `session.rest`: on the first write of an entity's channel the

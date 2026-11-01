@@ -7,6 +7,8 @@
 
 #include "NativeEngine.h"
 #include "HttpBackendAndroid.h"
+#include "MediaCodecBackend.h"
+#include "NativePlatformAndroid.h"
 
 #include <game-activity/native_app_glue/android_native_app_glue.h>
 #include <android/log.h>
@@ -924,6 +926,9 @@ void NativeEngine::setupJNI(){
 
     // the HTTP client's Java side (JasperHttp) and its native callbacks
     jasperengine::httpAndroidSetup(env, mJniData.gameActivityObjRef);
+    jasperengine::mediaCodecSetAssetManager(getAssetManager());
+    // the native bridge's Java side (JasperNative) and its natives
+    jasperengine::nativeBridgeAndroidSetup(env, mJniData.gameActivityObjRef);
     setupPlatformJNI(env);
 }
 

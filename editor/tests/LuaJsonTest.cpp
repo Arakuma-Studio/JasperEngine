@@ -361,7 +361,12 @@ TEST_F(LuaJsonTest, DecodesAMegabyteQuickly) {
     const auto start = std::chrono::steady_clock::now();
     EXPECT_EQ(eval("return #Json.decode(bigText)"), "16000");
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    // the sanitizers slow everything several times: the bound means nothing there
+#if !defined(__SANITIZE_ADDRESS__)
     EXPECT_LT(ms, 300.0);
+#else
+    (void)ms;
+#endif
     EXPECT_EQ(eval("return tostring(Json.encode(Json.decode(bigText)) == Json.encode(Json.decode(Json.encode(Json.decode(bigText)))))"), "true");
     lua_pushnil(L);
     lua_setglobal(L, "bigText");

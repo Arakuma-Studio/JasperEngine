@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Generator.h"
+#include "util/NativePlugins.h"
 #include "Factory.h"
 #include "App.h"
 #include "EditorVersion.h"
@@ -1213,7 +1214,11 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "if(NOT JASPERENGINE_LIB)\n";
     cmakeContent += "    message(FATAL_ERROR \"JasperEngine library not found in ${JASPERENGINE_LIB_DIR}\")\n";
     cmakeContent += "endif()\n\n";
-    cmakeContent += "target_link_libraries(" + libName + " PRIVATE ${JASPERENGINE_LIB} ${PLATFORM_LIBS})\n\n";
+    cmakeContent += "target_link_libraries(" + libName + " PRIVATE ${JASPERENGINE_LIB} ${PLATFORM_LIBS})\n";
+    // macOS: the Objective-C native plugins run in the Play library and desktop builds too
+    cmakeContent += NativePlugins::macosCMake(NativePlugins::scan(projectPath), libName, "${CMAKE_CURRENT_SOURCE_DIR}/plugins/native",
+                                              macOSFrameworks, engineApiPathStr + "/platform/apple");
+    cmakeContent += "\n";
     cmakeContent += "# Set compile options based on compiler and platform\n";
     cmakeContent += "if(MSVC)\n";
     cmakeContent += "    # C4251/C4275: exported engine classes (JASPERENGINE_API -> dllimport) expose STL\n";
@@ -1651,7 +1656,8 @@ void editor::Generator::writeClaudeFile(const fs::path& projectPath) {
 
 const std::vector<std::string>& editor::Generator::engineApiIncludeDirs() {
     static const std::vector<std::string> dirs = {
-        "", "libs/sokol", "libs/box2d/include", "libs/joltphysics", "renders",
+        // libs/json: core/native/NativeBridge.h (NativeJson) and script/LuaJson.h
+        "", "libs/sokol", "libs/json", "libs/box2d/include", "libs/joltphysics", "renders",
         "core", "core/action", "core/action/keyframe", "core/buffer", "core/component", "core/ecs",
         "core/io", "core/manager", "core/math", "core/object", "core/object/sound", "core/object/ui",
         "core/object/environment", "core/object/physics", "core/pool", "core/registry", "core/render",
@@ -2167,7 +2173,7 @@ bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& scen
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const std::string& inputActionsJson, bool allowInsecureHttp, const std::vector<ShaderGlobalDecl>& shaderGlobals, const PlayerSettings& playerSettings){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const std::string& inputActionsJson, bool allowInsecureHttp, const std::vector<ShaderGlobalDecl>& shaderGlobals, const PlayerSettings& playerSettings, const AudioSettings& audioSettings){
     // the generated sources (main.cpp, scene and prefab factories) live in the editor's internal
     // folder, which an MCP call's deny-by-default guard refuses otherwise (util/SafeWrite.h)
     safewrite::EditorInternal ownInternal(projectInternalPath);
@@ -2366,6 +2372,10 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         case Scaling::NATIVE:    mainContent += "    Engine::setScalingMode(Scaling::NATIVE);\n"; break;
     }
 
+    // the Canvas Scaler's project default (absent: Follow Game Canvas, the engine default)
+    if (uiScale != CanvasScalerSettings())
+        mainContent += "    Engine::setDefaultCanvasScaler(" + Factory::formatCanvasScaler(uiScale) + ");\n";
+
     // Texture strategy
     switch (textureStrategy) {
         case TextureStrategy::FIT:    mainContent += "    Engine::setTextureStrategy(TextureStrategy::FIT);\n"; break;
@@ -2377,6 +2387,36 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     mainContent += "    UIDocumentSystem::setPreferredSampleCount(" + std::to_string(htmlUiMsaaSamples) + ");\n";
     // Project Settings > Player > Allow Insecure HTTP: the same policy as the editor's Play
     mainContent += std::string("    Http::setInsecureHttpAllowed(") + (allowInsecureHttp ? "true" : "false") + ");\n";
+    // The native plugins of plugins/native that the platform being built cannot run: a call to
+    // one fails with "unavailable" and says where it runs (the editor's Play does the same)
+    {
+        const std::vector<NativePlugins::PluginInfo> plugins = NativePlugins::listPlugins(NativePlugins::scan(projectPath));
+        auto platformOnlyCall = [&plugins](const std::string& running) {
+            const std::map<std::string, std::string> only = NativePlugins::platformOnlyPlugins(plugins, running);
+            std::string call = "    NativeBridge::setPlatformOnlyPlugins({";
+            bool first = true;
+            for (const auto& [name, message] : only) {
+                call += std::string(first ? "" : ", ") + "{\"" + name + "\", \"" + message + "\"}";
+                first = false;
+            }
+            return only.empty() ? std::string() : call + "});\n";
+        };
+        const std::string android = platformOnlyCall("android");
+        const std::string ios = platformOnlyCall("ios");
+        const std::string macos = platformOnlyCall("macos");
+        const std::string macosCMake = platformOnlyCall("macos-cmake");
+        const std::string web = platformOnlyCall("web");
+        const std::string desktop = platformOnlyCall("desktop");
+        if (!android.empty() || !ios.empty() || !macos.empty() || !macosCMake.empty() || !web.empty() || !desktop.empty()) {
+            mainContent += "#if defined(__ANDROID__)\n" + android;
+            mainContent += "#elif defined(__EMSCRIPTEN__)\n" + web;
+            mainContent += "#elif defined(__APPLE__)\n";
+            mainContent += "#include <TargetConditionals.h>\n";
+            mainContent += "#if TARGET_OS_IPHONE\n" + ios + "#elif defined(JASPERENGINE_MACOS_CMAKE)\n" + macosCMake + "#else\n" + macos + "#endif\n";
+            mainContent += "#else\n" + desktop;
+            mainContent += "#endif\n";
+        }
+    }
 
     // Player > Resolution and Presentation (before any script, which may change them) and
     // what System.getAppName / getAppVersion... return where there is no package to ask
@@ -2438,6 +2478,10 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
 
     // Project Settings > Input (the engine starts with Unity's defaults), before any script reads it
     mainContent += inputActionsInitSource(inputActionsJson);
+
+    // Project Settings > Audio: the voices, then the mixer (its remembered values come back
+    // before any sound plays)
+    mainContent += audioInitSource(audioSettings);
 
     // Project Settings > Graphics > Shader Globals, declared with their defaults before any scene draws
     mainContent += shaderGlobalsInitSource(shaderGlobals);
@@ -2545,6 +2589,20 @@ std::string editor::Generator::inputActionsInitSource(const std::string& inputAc
         literal += (literal.empty() ? "" : "\n        ") + std::string("R\"") + delimiter + "(" + piece + ")" + delimiter + "\"";
     }
     return "    InputActions::loadJson(" + literal + ", nullptr);\n";
+}
+
+std::string editor::Generator::audioInitSource(const AudioSettings& audioSettings) {
+    std::string source;
+    const AudioSettings defaults;
+    if (audioSettings.maxRealVoices != defaults.maxRealVoices || audioSettings.maxVoices != defaults.maxVoices ||
+        audioSettings.sampleRate != defaults.sampleRate) {
+        source += "    AudioSystem::configure({" + std::to_string(audioSettings.maxRealVoices) + ", " +
+                  std::to_string(audioSettings.maxVoices) + ", " + std::to_string(audioSettings.sampleRate) + "});\n";
+    }
+    if (!audioSettings.mixer.empty()) {
+        source += "    AudioMixer::load(" + Factory::formatString(audioSettings.mixer) + ");\n";
+    }
+    return source;
 }
 
 std::string editor::Generator::resolveCMakePath(const std::string& userPath) {

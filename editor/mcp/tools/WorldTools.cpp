@@ -5,6 +5,7 @@
 // tilemaps, sprite sheets and sprite animations, keyframe animations and tweens, physics
 // colliders and joints, UI widget trees and rect layouts, particle systems, models, and the
 // point lists of polygons / shadow casters / line renderers.
+#include "util/ProjectUtils.h"
 #include "McpTools.h"
 #include "AnimationClipTools.h"
 #include "AnimatorTools.h"
@@ -4030,8 +4031,7 @@ float layoutParentHeight(Scene* scene, Entity entity) {
         parent = ptf ? ptf->parent : NULL_ENTITY;
     }
     UISystem* ui = scene->getSystem<UISystem>().get();
-    const int height = ui ? ui->getAnchorReferenceHeight() : 0;
-    return static_cast<float>(height != 0 ? height : Engine::getCanvasHeight());
+    return ui ? ui->getCanvasSize().y : static_cast<float>(Engine::getCanvasHeight());
 }
 
 // RectTransform layout: absolute (position + size), an anchor preset (+ size, offset), or
@@ -4288,6 +4288,32 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
         return false;
     }
     if (has(node, "multiline") && textEntity != NULL_ENTITY) addProp<bool>(*multi, target, textEntity, tc, "multiline", boolOr(node, "multiline", true));
+    // TMP outline {width, color} and underlay shadow {offset, color, softness, dilate} (UI units, colours linear)
+    if (has(node, "outline")) {
+        const Json& outline = node["outline"];
+        Vector4 outlineColor(0.0f, 0.0f, 0.0f, 1.0f);
+        if (textEntity == NULL_ENTITY || !outline.is_object() || (outline.contains("color") && !parseColor4(outline["color"], outlineColor))) {
+            error = where + ".outline must be {width, color} on an element with text.";
+            return false;
+        }
+        addProp<float>(*multi, target, textEntity, tc, "outlineWidth", std::max(0.0f, (float)numberOr(outline, "width", 2.0f)));
+        addProp<Vector4>(*multi, target, textEntity, tc, "outlineColor", outlineColor);
+    }
+    if (has(node, "shadow")) {
+        const Json& shadow = node["shadow"];
+        Vector4 shadowColor(0.0f, 0.0f, 0.0f, 0.5f);
+        Vector2 offset(2.0f, 2.0f);
+        if (textEntity == NULL_ENTITY || !shadow.is_object() || (shadow.contains("color") && !parseColor4(shadow["color"], shadowColor)) ||
+            (shadow.contains("offset") && !McpValues::parseVector2(shadow["offset"], offset))) {
+            error = where + ".shadow must be {offset: [x, y], color, softness, dilate} on an element with text.";
+            return false;
+        }
+        addProp<bool>(*multi, target, textEntity, tc, "shadowEnabled", true);
+        addProp<Vector4>(*multi, target, textEntity, tc, "shadowColor", shadowColor);
+        addProp<Vector2>(*multi, target, textEntity, tc, "shadowOffset", offset);
+        addProp<float>(*multi, target, textEntity, tc, "shadowSoftness", std::max(0.0f, (float)numberOr(shadow, "softness", 0.0f)));
+        addProp<float>(*multi, target, textEntity, tc, "shadowDilate", std::max(0.0f, (float)numberOr(shadow, "dilate", 0.0f)));
+    }
     Vector4 color;
     if (has(node, "text_color")) {
         if (textEntity == NULL_ENTITY || !parseColor4(node["text_color"], color)) {
@@ -4791,6 +4817,15 @@ void createParticlesLegacyTool(const CallPtr& call) {
         created = true;
     }
 
+    // particles of a UI scene or under a UI element: UI units, y down, unscaled time, local space
+    // (they play in a paused game and follow their element)
+    bool inUI = target.scene->sceneType == SceneType::SCENE_UI;
+    for (Entity e = emitter; e != NULL_ENTITY && !inUI;) {
+        Transform* tf = scene->findComponent<Transform>(e);
+        e = tf ? tf->parent : NULL_ENTITY;
+        if (e != NULL_ENTITY && scene->findComponent<RectTransformComponent>(e)) inUI = true;
+    }
+
     ParticleSettings settings;
     const std::string preset = lowerText(stringOr(args, "preset", created ? "fire" : ""));
     auto* multi = new MultiPropertyCmd();
@@ -4824,9 +4859,28 @@ void createParticlesLegacyTool(const CallPtr& call) {
                 // y is up in 2D too; flat emitters keep z at 0
                 settings.minPosition.z = settings.maxPosition.z = 0.0f;
             }
+            if (inUI) {
+                // the UI is y down: what rises in the world rises on screen
+                auto flipY = [](Vector3& a, Vector3& b) { const float low = -b.y, high = -a.y; a.y = low; b.y = high; };
+                flipY(settings.minPosition, settings.maxPosition);
+                flipY(settings.minVelocity, settings.maxVelocity);
+                flipY(settings.minAcceleration, settings.maxAcceleration);
+            }
         }
         if (!applyParticleOverrides(args, settings, error)) { failWith(error); return; }
         addParticleWrites(*multi, target, system, settings);
+    }
+    if (created && inUI) {
+        addProp<bool>(*multi, target, system, ComponentType::ParticleSystemComponent, "useUnscaledTime", true);
+        addProp<bool>(*multi, target, system, ComponentType::ParticleSystemComponent, "localSpace", true);
+        if (!has(args, "texture") && scene->findComponent<PointsComponent>(emitter)) {
+            const std::string soft = ProjectUtils::ensureSoftParticleTexture(target.project);
+            if (!soft.empty() && !addCatalogProperties(target.project, target.scene, emitter, ComponentType::PointsComponent,
+                                                       Json{{"texture", soft}}, *multi, error)) {
+                failWith("texture: " + error);
+                return;
+            }
+        }
     }
     if (has(args, "texture") && emitter != NULL_ENTITY && scene->findComponent<PointsComponent>(emitter) &&
         !addCatalogProperties(target.project, target.scene, emitter, ComponentType::PointsComponent, Json{{"texture", args["texture"]}}, *multi, error)) {
@@ -5160,14 +5214,26 @@ void createParticlesTool(const CallPtr& call) {
     auto failWith = [&](const std::string& message) { step.fail(call, message); };
     bool created = false;
     const bool is2D = target.scene->sceneType != SceneType::SCENE_3D;
-    const std::string renderer = lowerText(stringOr(args, "renderer", "quads"));
+    // particles of a UI scene or under a UI element (ui-scaling-text): GL points (drawn between their
+    // siblings, clipped by the nearest panel), unscaled time (they play in a paused game), turned
+    // y down as the UI is, the soft round image
+    Entity parent = NULL_ENTITY;
+    if (system == NULL_ENTITY && has(args, "parent") && (parent = resolveRef(target.scene, args["parent"], error)) == NULL_ENTITY) {
+        call->fail("parent: " + error);
+        return;
+    }
+    bool inUI = target.scene->sceneType == SceneType::SCENE_UI;
+    for (Entity e = parent; e != NULL_ENTITY && !inUI;) {
+        if (scene->findComponent<RectTransformComponent>(e)) inUI = true;
+        Transform* tf = scene->findComponent<Transform>(e);
+        e = tf ? tf->parent : NULL_ENTITY;
+    }
+    const std::string renderer = lowerText(stringOr(args, "renderer", (inUI && system == NULL_ENTITY) ? "points" : "quads"));
     if (renderer != "quads" && renderer != "points") {
         call->fail("renderer must be quads (instanced billboard quads, the default) or points (GL points: billboards only).");
         return;
     }
     if (system == NULL_ENTITY) {
-        Entity parent = NULL_ENTITY;
-        if (has(args, "parent") && (parent = resolveRef(target.scene, args["parent"], error)) == NULL_ENTITY) { failWith("parent: " + error); return; }
         const EntityCreationType type = renderer == "points" ? EntityCreationType::PARTICLE_SYSTEM_POINTS : EntityCreationType::PARTICLE_SYSTEM;
         auto* create = parent != NULL_ENTITY
             ? new CreateEntityCmd(target.project, target.sceneId(), stringOr(args, "name", "Particle System"), type, parent)
@@ -5175,6 +5241,8 @@ void createParticlesTool(const CallPtr& call) {
         Vector3 position;
         if (!readVec3(args, "position", position, error)) { delete create; failWith(error); return; }
         if (has(args, "position")) create->addProperty<Vector3>(ComponentType::Transform, "position", position);
+        // the UI is y down: what rises in the world rises on screen (local simulation space)
+        if (inUI) create->addProperty<Quaternion>(ComponentType::Transform, "rotation", Quaternion(180.0f, Vector3(1.0f, 0.0f, 0.0f)));
         if (!step.add(create)) { failWith("Could not create the Particle System."); return; }
         system = create->getEntity();
         created = true;
@@ -5191,6 +5259,10 @@ void createParticlesTool(const CallPtr& call) {
             return;
         }
         values.main.playOnAwake = playOnAwake;
+    }
+    if (created && inUI) {
+        values.useUnscaledTime = true;
+        values.main.simulationSpace = ParticleSystemSimulationSpace::Local;
     }
     if (!applyParticleOverridesV2(args, values, error)) { failWith(error); return; }
 
@@ -5216,6 +5288,13 @@ void createParticlesTool(const CallPtr& call) {
         !addCatalogProperties(target.project, target.scene, system, ComponentType::MeshComponent, Json{{"submeshes[0].material.blendMode", "additive"}}, *multi, error)) {
         failWith(error);
         return;
+    }
+    if (created && inUI && !quads && !has(args, "texture")) {
+        const std::string soft = ProjectUtils::ensureSoftParticleTexture(target.project);
+        if (!soft.empty() && !addCatalogProperties(target.project, target.scene, system, ComponentType::PointsComponent, Json{{"texture", soft}}, *multi, error)) {
+            failWith("texture: " + error);
+            return;
+        }
     }
     if (has(args, "texture")) {
         const Json props = quads ? Json{{"submeshes[0].material.shaderTextures", Json{{"u_baseTexture", args["texture"]}}}} : Json{{"texture", args["texture"]}};
@@ -5858,22 +5937,24 @@ void registerWorldTools(McpRegistry& registry) {
         "(bindings); a project undo step (from an Animation, or a model clip with root: scene). Without clip: an entity Animation (creates one under target), tweens, "
         "actions; a scene step. tracks: keys {time, value|points, ease} of local position/scale, rotation, "
         "morph weights, lattice points or a component property (channel property: component, property); the same "
-        "path|target+channel replaces or merges. "
+        "path|target+channel replaces or merges. Humanoid: create.humanoid {model?} converts from; tracks {channel: "
+        "humanoid|humanoid_position, bone, keys}. "
         "Guide: jasper://docs/animation.",
         object({
             {"scene", sceneRef()},
             {"clip", assetPath("")},
-            {"create", object({{"from", any("")}, {"remove_tracks", boolean("")}})},
+            {"create", object({{"from", any("")}, {"remove_tracks", boolean("")}, {"humanoid", object({{"model", assetPath("")}})}})},
             {"root", entityRef("")},
             {"animation", entityRef("")},
             {"target", entityRef("Required to create.")},
             {"name", string("")},
             {"tracks", array(object({
-                {"channel", stringEnum("", {"position", "rotation", "scale", "morph", "lattice", "property"})},
+                {"channel", stringEnum("", {"position", "rotation", "scale", "morph", "lattice", "property", "humanoid", "humanoid_position"})},
                 {"keys", array(openKeyItem, "")},
                 {"path", string("")},
                 {"component", string("")},
                 {"property", string("")},
+                {"bone", string("")},
                 {"target", entityRef("Default: target.")},
                 {"start_time", number("")},
                 {"mode", withDefault(stringEnum("", {"replace", "merge"}), "replace")},
@@ -5912,8 +5993,8 @@ void registerWorldTools(McpRegistry& registry) {
         "entity: an Animation's timeline (loop, duration, autoplay, target, actions with kind, keys or tween "
         "values), or for another GameObject the animations targeting it or its children (model clips too) and "
         "the Animation Player playing it (states, layers, controller, bindings; live in play). clip (.anim or "
-        "\"model.gltf#Walk\"): settings, tracks, events, users; times: values sampled there; root: bindings. "
-        "root + list_properties (a path): its animatable properties. "
+        "\"model.gltf#Walk\"): settings, tracks, events, users; times: values sampled there; root: bindings (humanoid: "
+        "retarget_report, realised at times); root + list_properties (a path): its animatable properties. "
         "mask (.mask; root: coverage) or controller (.controller summary).",
         object({
             {"scene", sceneRef()},
@@ -5945,8 +6026,9 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- UI
     add("create_ui", "Create UI",
-        "Build a UI tree from one root node {type, name, layout, text, font_size, font, text_color, color, "
-        "colors, texture, value, placeholder, direction, multiline, properties, children}. Types: panel (text "
+        "Build a UI tree from one root node {type, name, layout, text, font_size, font, text_color, outline {width, "
+        "color}, shadow {offset, color, softness}, color, colors, texture, value, placeholder, direction, multiline, "
+        "properties, children}. Types: panel (text "
         "= title), image, text, button (text = label), input_field, progress_bar (value 0-1), scrollbar, "
         "layout_group (direction), container, polygon; touch controls feeding Input actions: onscreen_stick "
         "(mode fixed|floating|dynamic, actions [h, v]), onscreen_button (action, value, text), touch_area "

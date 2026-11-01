@@ -39,8 +39,28 @@ float ClipData::effectiveLength() const{
 
 int ClipData::findTrack(const std::string& path, ClipChannel channel) const{
     if (channel == ClipChannel::Property) return -1;
+    // a humanoid track by its bone name (its identity in editors and tools)
+    if (isHumanoidChannel(channel)){
+        int bone = -1;
+        return anim::humanoidTrackBoneFromName(channel, path, bone) ? findHumanoidTrack(channel, bone) : -1;
+    }
     for (size_t i = 0; i < tracks.size(); i++){
         if (tracks[i].channel == channel && tracks[i].path == path) return (int)i;
+    }
+    return -1;
+}
+
+bool ClipData::isHumanoid() const{
+    for (const ClipTrackData& track : tracks){
+        if (isHumanoidChannel(track.channel)) return true;
+    }
+    return false;
+}
+
+int ClipData::findHumanoidTrack(ClipChannel channel, int humanBone) const{
+    if (!isHumanoidChannel(channel)) return -1;
+    for (size_t i = 0; i < tracks.size(); i++){
+        if (tracks[i].channel == channel && tracks[i].humanBone == humanBone) return (int)i;
     }
     return -1;
 }
@@ -55,6 +75,7 @@ int ClipData::findPropertyTrack(const std::string& path, const std::string& comp
 
 int ClipData::findTrack(const ClipTrackData& like) const{
     if (like.channel == ClipChannel::Property) return findPropertyTrack(like.path, like.component, like.property);
+    if (isHumanoidChannel(like.channel)) return findHumanoidTrack(like.channel, like.humanBone);
     return findTrack(like.path, like.channel);
 }
 
@@ -62,8 +83,10 @@ size_t ClipData::valueWidth(ClipChannel channel, size_t morphCount, size_t point
     switch (channel){
         case ClipChannel::Position:
         case ClipChannel::Scale:
+        case ClipChannel::HumanoidPosition:
             return 3;
         case ClipChannel::Rotation:
+        case ClipChannel::Humanoid:
             return 4;
         case ClipChannel::Morph:
             return morphCount;
@@ -112,6 +135,7 @@ std::shared_ptr<const AnimationClip> AnimationClip::buildNormalized(const ClipDa
     clip->guid = data.guid;
     clip->previewModel = data.previewModel;
     clip->source = data.source;
+    clip->humanoid = data.humanoid;
     clip->unknownKeys = data.unknownKeys;
     clip->warnings = std::move(clipWarnings);
     clip->events = data.events;
@@ -127,9 +151,11 @@ std::shared_ptr<const AnimationClip> AnimationClip::buildNormalized(const ClipDa
         switch (track.channel){
             case ClipChannel::Position:
             case ClipChannel::Scale:
+            case ClipChannel::HumanoidPosition:
                 vectors += keys * copies;
                 break;
             case ClipChannel::Rotation:
+            case ClipChannel::Humanoid:
                 rotations += keys * copies;
                 break;
             case ClipChannel::Morph:
@@ -155,6 +181,8 @@ std::shared_ptr<const AnimationClip> AnimationClip::buildNormalized(const ClipDa
         track.channel = source.channel;
         track.relative = source.relative;
         track.loop = source.loop;
+        track.humanBone = isHumanoidChannel(source.channel) ? source.humanBone : -1;
+        if (isHumanoidChannel(source.channel)) clip->humanoidTracks++;
         track.component = source.component;
         track.property = source.property;
         track.preserved = source.preserved;
@@ -182,7 +210,7 @@ std::shared_ptr<const AnimationClip> AnimationClip::buildNormalized(const ClipDa
             clip->easingStorage.push_back(track.discrete ? EaseType::STEP : key.ease);
         }
 
-        if (source.channel == ClipChannel::Position || source.channel == ClipChannel::Scale){
+        if (isVectorChannel(source.channel)){
             auto append = [&](const std::vector<float> ClipKey::* member){
                 const Vector3* start = clip->vectorStorage.data() + clip->vectorStorage.size();
                 for (const ClipKey& key : source.keys){
@@ -196,7 +224,7 @@ std::shared_ptr<const AnimationClip> AnimationClip::buildNormalized(const ClipDa
                 track.inVectors = append(&ClipKey::inTangent);
                 track.outVectors = append(&ClipKey::outTangent);
             }
-        }else if (source.channel == ClipChannel::Rotation){
+        }else if (isRotationChannel(source.channel)){
             auto append = [&](const std::vector<float> ClipKey::* member){
                 const Quaternion* start = clip->rotationStorage.data() + clip->rotationStorage.size();
                 for (const ClipKey& key : source.keys){
@@ -272,6 +300,7 @@ ClipData AnimationClip::toData() const{
     data.events = events;
     data.previewModel = previewModel;
     data.source = source;
+    data.humanoid = humanoid;
     data.unknownKeys = unknownKeys;
     for (const Track& track : tracks){
         ClipTrackData out;
@@ -279,6 +308,7 @@ ClipData AnimationClip::toData() const{
         out.channel = track.channel;
         out.relative = track.relative;
         out.loop = track.loop;
+        out.humanBone = track.humanBone;
         out.component = track.component;
         out.property = track.property;
         out.preserved = track.preserved;
@@ -312,6 +342,7 @@ ClipData AnimationClip::toData() const{
             switch (track.channel){
                 case ClipChannel::Position:
                 case ClipChannel::Scale:
+                case ClipChannel::HumanoidPosition:
                     vectorRow(track.vectors, 1, key.value);
                     if (track.inVectors){
                         vectorRow(track.inVectors, 1, key.inTangent);
@@ -326,6 +357,7 @@ ClipData AnimationClip::toData() const{
                     }
                     break;
                 case ClipChannel::Rotation:
+                case ClipChannel::Humanoid:
                     rotation(track.rotations, key.value);
                     if (track.inRotations){
                         rotation(track.inRotations, key.inTangent);
@@ -348,8 +380,21 @@ ClipData AnimationClip::toData() const{
     return data;
 }
 
+int AnimationClip::findHumanoidTrack(ClipChannel channel, int humanBone) const{
+    if (!isHumanoidChannel(channel)) return -1;
+    for (size_t i = 0; i < tracks.size(); i++){
+        if (tracks[i].channel == channel && tracks[i].humanBone == humanBone) return (int)i;
+    }
+    return -1;
+}
+
 int AnimationClip::findTrack(const std::string& path, ClipChannel channel) const{
     if (channel == ClipChannel::Property) return -1;
+    // a humanoid track by its bone name (its identity in editors and tools)
+    if (isHumanoidChannel(channel)){
+        int bone = -1;
+        return anim::humanoidTrackBoneFromName(channel, path, bone) ? findHumanoidTrack(channel, bone) : -1;
+    }
     for (size_t i = 0; i < tracks.size(); i++){
         if (tracks[i].channel == channel && tracks[i].path == path) return (int)i;
     }

@@ -104,7 +104,10 @@ namespace SoLoud
 		else
 		if (aParent->mStreamFile)
 		{
-			mFile = aParent->mStreamFile;
+			// JasperEngine: a voice may read a file of its own (WavStream::openInstanceFile), which
+			// it deletes like the files it opens itself (it is not mStreamFile)
+			File *own = aParent->openInstanceFile();
+			mFile = own ? own : aParent->mStreamFile;
 			mFile->seek(0); // stb_vorbis assumes file offset to be at start of ogg
 		}
 		else
@@ -394,6 +397,11 @@ namespace SoLoud
 
 	bool WavStreamInstance::hasEnded()
 	{
+		// JasperEngine: a voice whose file or decoder did not open is over (it would play silence forever)
+		if (mFile == NULL)
+		{
+			return 1;
+		}
 		if (mOffset >= mParent->mSampleCount)
 		{
 			return 1;

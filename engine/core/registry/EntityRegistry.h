@@ -26,9 +26,11 @@
 #include "component/ReflectionProbeComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "component/PoseAnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/VertexAnimatorComponent.h"
+#include "component/TextEffectComponent.h"
 #include "component/ImageComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/LayoutGroupComponent.h"
@@ -77,6 +79,8 @@
 #include "component/RagdollComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/PrefabComponent.h"
+#include "component/CameraShakerComponent.h"
+#include "component/CameraFollowComponent.h"
 
 namespace jasperengine {
 

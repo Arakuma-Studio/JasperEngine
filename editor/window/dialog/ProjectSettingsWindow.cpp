@@ -3,6 +3,8 @@
 
 #include "ProjectSettingsWindow.h"
 #include "util/FileDialogs.h"
+#include "util/FileUtils.h"
+#include "util/NativePlugins.h"
 #include "Backend.h"
 #include "App.h"
 #include "util/Util.h"
@@ -10,18 +12,27 @@
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "SettingsCategoryList.h"
+#include "window/CanvasScalerFields.h"
 #include "window/PlayInput.h"
 #include "imgui_internal.h"
 #include "command/type/InputActionsCmd.h"
+#include "command/type/AudioSettingsCmd.h"
+#include "audio/AudioMixer.h"
+#include "subsystem/AudioSystem.h"
+#include "EditorHost.h"
+#include "util/FileUtils.h"
+#include "util/Util.h"
 #include "command/type/ShaderGlobalsCmd.h"
 #include "util/Color.h"
 #include "input/InputActions.h"
 #include "input/InputControlNames.h"
 
 #include <algorithm>
+#include <set>
 #include <cmath>
 #include <cctype>
 #include <cfloat>
+#include <cstdlib>
 #include <cstring>
 
 namespace jasperengine::editor {
@@ -136,8 +147,10 @@ enum class ProjectCategory {
     Physics,
     Physics2D,
     Input,
+    Audio,
     Scripting,
     TagsAndLayers,
+    NativePlugins,
     Editor,
     Count
 };
@@ -158,8 +171,12 @@ static const settingsui::Category projectCategories[] = {
     {"Physics 2D", "", "2d physics box2d rigidbody 2d"},
     {"Input", "", "input manager axes actions buttons keys keyboard mouse gamepad joystick bindings horizontal vertical "
                   "jump fire submit cancel gravity sensitivity dead snap invert rebinding"},
+    {"Audio", "", "audio mixer groups voices real voices sample rate output group sound music volume"},
     {"Scripting", "", "lua directory script directories c++ standard"},
     {"Tags and Layers", "", "tags layers"},
+    {"Native Plugins", "", "native plugins android java kotlin ios macos objective-c swift web javascript c++ gradle dependencies "
+                           "repositories maven properties permissions manifest xml application info.plist plist frameworks cocoapods "
+                           "pods swift packages spm entitlements deployment target script urls sdk"},
     {"Editor", "", "version control files assets directory"},
 };
 static constexpr int projectCategoryCount = static_cast<int>(ProjectCategory::Count);
@@ -864,6 +881,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_canvasWidth = project->getCanvasWidth();
     m_canvasHeight = project->getCanvasHeight();
     m_scalingModeIndex = findScalingIndex(project->getScalingMode());
+    m_uiScale = project->getUIScale();
     m_textureStrategyIndex = findTextureStrategyIndex(project->getTextureStrategy());
     m_vsyncEnabled = project->isVSyncEnabled();
     m_htmlUiMsaaIndex = findHtmlUiMsaaIndex(project->getHtmlUiMsaaSamples());
@@ -973,6 +991,9 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     }
 
     m_loadingSettings = project->getLoadingSettings();
+    m_audioSettings = project->getAudioSettings();
+    snprintf(m_audioMixerBuffer, sizeof(m_audioMixerBuffer), "%s", m_audioSettings.mixer.c_str());
+    snprintf(m_audioDefaultGroupBuffer, sizeof(m_audioDefaultGroupBuffer), "%s", m_audioSettings.defaultOutputGroup.c_str());
 
     m_packNativeResources = project->shouldPackNativeResources();
     m_versionControlMetadata = project->hasVersionControlMetadata();
@@ -984,6 +1005,27 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
 
     m_layerCollision3D = project->getLayerCollisionMatrix3D();
     m_layerCollision2D = project->getLayerCollisionMatrix2D();
+
+    const AndroidProjectSettings& nativeAndroid = project->getAndroidProjectSettings();
+    m_gradleDependencies = nativeAndroid.gradleDependencies;
+    m_gradleRepositories = nativeAndroid.gradleRepositories;
+    m_gradleProperties = nativeAndroid.gradleProperties;
+    m_extraPermissions = nativeAndroid.extraPermissions;
+    m_manifestXml = nativeAndroid.manifestXml;
+    m_manifestApplicationXml = nativeAndroid.manifestApplicationXml;
+    const IOSProjectSettings& nativeIOS = project->getIOSProjectSettings();
+    m_iosPlistEntries.assign(nativeIOS.plistEntries.begin(), nativeIOS.plistEntries.end());
+    m_iosPlistXml = nativeIOS.plistXml;
+    m_iosFrameworks = nativeIOS.frameworks;
+    m_iosCocoapods = nativeIOS.cocoapods;
+    m_iosSwiftPackages = nativeIOS.swiftPackages;
+    m_iosEntitlementsXml = nativeIOS.entitlementsXml;
+    m_iosDeploymentTarget = nativeIOS.deploymentTarget;
+    const MacOSProjectSettings& nativeMacOS = project->getMacOSProjectSettings();
+    m_macosPlistEntries.assign(nativeMacOS.plistEntries.begin(), nativeMacOS.plistEntries.end());
+    m_macosFrameworks = nativeMacOS.frameworks;
+    m_webScriptUrls = project->getWebProjectSettings().scriptUrls;
+    m_nativeSummary.clear();
 
     m_inputActions = project->getInputActions();
     m_inputCommitted = m_inputActions;
@@ -1057,8 +1099,10 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::Physics: drawPhysicsSettings(); break;
         case ProjectCategory::Physics2D: drawPhysics2DSettings(); break;
         case ProjectCategory::Input: drawInputSettings(); break;
+        case ProjectCategory::Audio: drawAudioSettings(); break;
         case ProjectCategory::Scripting: drawScriptingSettings(); break;
         case ProjectCategory::TagsAndLayers: drawTagsAndLayersSettings(); break;
+        case ProjectCategory::NativePlugins: drawNativePluginsSettings(); break;
         case ProjectCategory::Editor: drawEditorSettings(); break;
         default: break;
     }
@@ -1430,6 +1474,40 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
         ImGui::Spacing();
         drawScalingPreview(scalingModeValues[m_scalingModeIndex], m_canvasWidth, m_canvasHeight);
 
+        // the Canvas Scaler's project default: the UI's own space, apart from the game canvas
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Spacing();
+        ImGui::TextUnformatted("UI Scale");
+        ImGui::SameLine();
+        if (m_uiScale != CanvasScalerSettings()) {
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+            if (ImGui::SmallButton(ICON_FA_ROTATE_LEFT "##resetUIScale"))
+                m_uiScale = CanvasScalerSettings();
+            ImGui::SetItemTooltip("Restore default (Follow Game Canvas)");
+            ImGui::PopStyleColor(2);
+            ImGui::PopStyleVar();
+        }
+        ImGui::TableSetColumnIndex(1);
+        ImGui::Spacing();
+        ImGui::TextDisabled("Canvas Scaler of the UI scenes and HTML UI documents (a scene can override it)");
+        drawCanvasScalerFields("##UIScale", m_uiScale);
+        if (m_uiScale.mode != UIScaleMode::FollowGameCanvas && m_canvasWidth > 0 && m_canvasHeight > 0) {
+            float viewWidth = 0.0f, viewHeight = 0.0f, dpi = 0.0f;
+            m_project->getEditViewSize(viewWidth, viewHeight, dpi);
+            int gameCanvasWidth = m_canvasWidth, gameCanvasHeight = m_canvasHeight;
+            Rect viewRect;
+            Engine::computeViewLayout((int)viewWidth, (int)viewHeight, m_canvasWidth, m_canvasHeight, scalingModeValues[m_scalingModeIndex],
+                                      gameCanvasWidth, gameCanvasHeight, viewRect);
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextDisabled("%s", canvasScalerPreview(m_uiScale, viewRect.getWidth(), viewRect.getHeight(),
+                                                          (float)gameCanvasWidth, (float)gameCanvasHeight, dpi).c_str());
+            ImGui::SetItemTooltip("For the Game view's current resolution; pick another in its resolution menu.");
+        }
+
         drawComboSetting("Texture Strategy", "##TextureStrategy", textureStrategyNames, textureStrategyCount, m_textureStrategyIndex, findTextureStrategyIndex(Project::defaultTextureStrategy),
             "Only very old GPUs need power-of-two textures. Resize blurs the edges of atlas tiles. The editor applies a change when the project is reopened.");
 
@@ -1503,6 +1581,101 @@ void ProjectSettingsWindow::drawPhysicsSettings() {
                 "Scripts change it with Physics.ignoreLayerCollision; collider category and mask bits still apply to the checked pairs.");
             drawLayerCollisionMatrix("##LayerCollisionMatrix3D", m_layerCollision3D);
         }
+    }
+    endSettingsPanel();
+}
+
+void ProjectSettingsWindow::drawAudioSettings() {
+    if (beginSettingsPanel("##AudioSettingsPanel")) {
+        if (beginSettingsTable("##AudioSettingsTable")) {
+            const AudioSettings defaults;
+            AudioSettings& audio = m_audioSettings;
+
+            if (beginSettingsRow("Audio Mixer", m_audioMixerBuffer[0] != '\0')) {
+                m_audioMixerBuffer[0] = '\0';
+            }
+            const float buttonWidth = ImGui::CalcTextSize(ICON_FA_FOLDER_OPEN).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+            ImGui::SetNextItemWidth(-helpMarkerWidth() - buttonWidth - ImGui::GetStyle().ItemSpacing.x);
+            ImGui::InputTextWithHint("##AudioMixer", "None (an implicit Master)", m_audioMixerBuffer, sizeof(m_audioMixerBuffer));
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
+                    std::vector<std::string> files = Util::getStringsFromPayload(payload);
+                    if (!files.empty()) {
+                        const fs::path relative = m_project->normalizeToAssetsRelative(m_project->resolveAssetPath(FileUtils::pathFromUtf8(files[0])));
+                        if (relative.extension() == ".mixer") {
+                            snprintf(m_audioMixerBuffer, sizeof(m_audioMixerBuffer), "%s", FileUtils::pathToGenericUtf8(relative).c_str());
+                        }
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_FOLDER_OPEN "##AudioMixerPick")) {
+                const std::string picked = FileDialogs::openFileDialog(m_project->getAssetsPath().string(), FILE_DIALOG_AUDIO_MIXER);
+                if (!picked.empty()) {
+                    const fs::path relative = m_project->normalizeToAssetsRelative(FileUtils::pathFromUtf8(picked));
+                    snprintf(m_audioMixerBuffer, sizeof(m_audioMixerBuffer), "%s", FileUtils::pathToGenericUtf8(relative).c_str());
+                }
+            }
+            endSettingsRow("The .mixer the game plays through (assets-relative). Window > Audio > Audio Mixer edits it and "
+                           "makes audio/Main.mixer when none is set. Empty: every sound plays through an implicit Master at 0 dB.");
+
+            if (beginSettingsRow("Default Output Group", m_audioDefaultGroupBuffer[0] != '\0')) {
+                m_audioDefaultGroupBuffer[0] = '\0';
+            }
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            const std::vector<std::string> groups = AudioMixer::getGroupNames();
+            if (ImGui::BeginCombo("##AudioDefaultGroup", m_audioDefaultGroupBuffer[0] ? m_audioDefaultGroupBuffer : (groups.empty() ? "Master" : groups[0].c_str()))) {
+                for (size_t i = 0; i < groups.size(); i++) {
+                    const char* value = i == 0 ? "" : groups[i].c_str();
+                    if (ImGui::Selectable(groups[i].c_str(), strcmp(value, m_audioDefaultGroupBuffer) == 0)) {
+                        snprintf(m_audioDefaultGroupBuffer, sizeof(m_audioDefaultGroupBuffer), "%s", value);
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            endSettingsRow("The mixer group new Audio Sources play through.");
+
+            if (beginSettingsRow("Max Real Voices", audio.maxRealVoices != defaults.maxRealVoices)) {
+                audio.maxRealVoices = defaults.maxRealVoices;
+            }
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            // SoLoud mixes at most 255 voices at once, the mixer's group buses among them
+            const int realVoicesLimit = std::max(1, (int)AudioMixer::maxActiveVoices - (int)AudioMixer::getGroupNames().size());
+            ImGui::DragInt("##AudioMaxRealVoices", &audio.maxRealVoices, 1.0f, 1, realVoicesLimit);
+            audio.maxRealVoices = std::clamp(audio.maxRealVoices, 1, realVoicesLimit);
+            endSettingsRow("Voices mixed at once. Past it the quietest are virtualised (silent until they are loud enough again). "
+                           "At most 255 minus the mixer's groups (each group is a voice too).");
+
+            if (beginSettingsRow("Max Voices", audio.maxVoices != defaults.maxVoices)) {
+                audio.maxVoices = defaults.maxVoices;
+            }
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            ImGui::DragInt("##AudioMaxVoices", &audio.maxVoices, 1.0f, 1, 1000);
+            audio.maxVoices = std::clamp(audio.maxVoices, 1, 1000);
+            endSettingsRow("Voices playing at all. Past it the least important (the highest Audio Source Priority, the oldest first) "
+                           "is stopped, or the new one does not start when it is the least important.");
+
+            if (beginSettingsRow("Sample Rate", audio.sampleRate != defaults.sampleRate)) {
+                audio.sampleRate = defaults.sampleRate;
+            }
+            static const int rates[] = {0, 22050, 44100, 48000};
+            static const char* rateNames[] = {"Auto (the device's)", "22050 Hz", "44100 Hz", "48000 Hz"};
+            int rateIndex = 0;
+            for (int i = 0; i < 4; i++) if (rates[i] == audio.sampleRate) rateIndex = i;
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            if (ImGui::Combo("##AudioSampleRate", &rateIndex, rateNames, 4)) audio.sampleRate = rates[rateIndex];
+            endSettingsRow("The output's sample rate. It applies the next time the audio opens (exports: at start).");
+
+            ImGui::EndTable();
+        }
+
+        ImGui::Spacing();
+        if (ImGui::Button(ICON_FA_SLIDERS " Open Audio Mixer")) {
+            editor::getEditorHost().openAudioMixerWindow(m_audioMixerBuffer[0] ? m_project->resolveAssetPath(FileUtils::pathFromUtf8(m_audioMixerBuffer)) : fs::path());
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", AudioSystem::isInited() ? (std::string("Output: ") + (AudioSystem::isOutputAvailable() ? AudioSystem::getBackendName() : "none (" + AudioSystem::getBackendName() + ")")).c_str() : "");
     }
     endSettingsPanel();
 }
@@ -2160,6 +2333,153 @@ void ProjectSettingsWindow::drawAndroidSettings() {
     ImGui::EndDisabled();
 }
 
+// ---- Native Plugins
+
+namespace {
+
+    // A text field over a std::string (grows with the text)
+    int growString(ImGuiInputTextCallbackData* data) {
+        if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
+            auto* text = static_cast<std::string*>(data->UserData);
+            text->resize(static_cast<size_t>(data->BufTextLen));
+            data->Buf = text->data();
+        }
+        return 0;
+    }
+
+    bool inputString(const char* id, std::string& text, const char* hint = nullptr) {
+        if (hint) return ImGui::InputTextWithHint(id, hint, text.data(), text.capacity() + 1, ImGuiInputTextFlags_CallbackResize, growString, &text);
+        return ImGui::InputText(id, text.data(), text.capacity() + 1, ImGuiInputTextFlags_CallbackResize, growString, &text);
+    }
+
+    bool inputMultiline(const char* id, std::string& text, float height) {
+        return ImGui::InputTextMultiline(id, text.data(), text.capacity() + 1, ImVec2(-1.0f, Theme::dpi(height)),
+                                         ImGuiInputTextFlags_CallbackResize, growString, &text);
+    }
+
+    std::string trimmed(const std::string& text) {
+        const size_t start = text.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos) return std::string();
+        return text.substr(start, text.find_last_not_of(" \t\r\n") - start + 1);
+    }
+
+    std::vector<std::string> splitList(const std::string& text) {
+        std::vector<std::string> items;
+        size_t start = 0;
+        while (start <= text.size()) {
+            const size_t comma = text.find(',', start);
+            const std::string item = trimmed(text.substr(start, comma == std::string::npos ? std::string::npos : comma - start));
+            if (!item.empty()) items.push_back(item);
+            if (comma == std::string::npos) break;
+            start = comma + 1;
+        }
+        return items;
+    }
+
+    std::string joinList(const std::vector<std::string>& items) {
+        std::string text;
+        for (const std::string& item : items) text += (text.empty() ? "" : ", ") + item;
+        return text;
+    }
+
+    void xmlWarning(const std::string& xml) {
+        const std::string error = NativePlugins::xmlFragmentError(xml);
+        if (!error.empty()) ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.3f, 1.0f), "%s (the export stops on it)", error.c_str());
+    }
+
+    // one text row per entry, - removes, + adds
+    void drawStringList(const char* label, const char* id, std::vector<std::string>& items, const char* hint, const char* tooltip) {
+        beginSettingsRow(label);
+        ImGui::PushID(id);
+        int remove = -1;
+        for (size_t i = 0; i < items.size(); i++) {
+            ImGui::PushID(static_cast<int>(i));
+            ImGui::SetNextItemWidth(-ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x);
+            inputString("##item", items[i], hint);
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_MINUS, ImVec2(ImGui::GetFrameHeight(), 0.0f))) remove = static_cast<int>(i);
+            ImGui::PopID();
+        }
+        if (remove >= 0) items.erase(items.begin() + remove);
+        if (ImGui::SmallButton(ICON_FA_PLUS)) items.emplace_back();
+        ImGui::PopID();
+        endSettingsRow(tooltip);
+    }
+
+    const char* const plistKinds[] = {"String", "Boolean", "Integer", "Real", "String list"};
+
+    void drawPlistEntries(const char* id, std::vector<std::pair<std::string, NativePlistValue>>& entries, const char* tooltip) {
+        beginSettingsRow("Info.plist Entries");
+        ImGui::PushID(id);
+        int remove = -1;
+        std::set<std::string> keys;
+        bool duplicate = false;
+        for (size_t i = 0; i < entries.size(); i++) {
+            auto& [key, value] = entries[i];
+            ImGui::PushID(static_cast<int>(i));
+            const float keyWidth = ImGui::GetContentRegionAvail().x * 0.4f;
+            ImGui::SetNextItemWidth(keyWidth);
+            inputString("##key", key, "NSUserTrackingUsageDescription");
+            if (!trimmed(key).empty() && !keys.insert(trimmed(key)).second) duplicate = true;
+            ImGui::SameLine();
+            int kind = static_cast<int>(value.kind);
+            ImGui::SetNextItemWidth(Theme::dpi(100.0f));
+            if (ImGui::Combo("##kind", &kind, plistKinds, 5)) value.kind = static_cast<NativePlistValue::Kind>(kind);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(-ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x);
+            switch (value.kind) {
+                case NativePlistValue::Kind::String: inputString("##value", value.text); break;
+                case NativePlistValue::Kind::Bool: ImGui::Checkbox("##value", &value.flag); break;
+                case NativePlistValue::Kind::Integer: {
+                    ImS64 v = static_cast<ImS64>(value.integer);
+                    if (ImGui::InputScalar("##value", ImGuiDataType_S64, &v)) value.integer = static_cast<long long>(v);
+                    break;
+                }
+                case NativePlistValue::Kind::Real: ImGui::InputDouble("##value", &value.real); break;
+                case NativePlistValue::Kind::StringArray: {
+                    std::string text = joinList(value.items);
+                    if (inputString("##value", text, "fetch, remote-notification")) value.items = splitList(text);
+                    break;
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_MINUS, ImVec2(ImGui::GetFrameHeight(), 0.0f))) remove = static_cast<int>(i);
+            ImGui::PopID();
+        }
+        if (remove >= 0) entries.erase(entries.begin() + remove);
+        if (ImGui::SmallButton(ICON_FA_PLUS)) entries.emplace_back();
+        if (duplicate) ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "A key is listed twice: the last one wins.");
+        ImGui::PopID();
+        endSettingsRow(tooltip);
+    }
+
+    void drawXmlSetting(const char* label, const char* id, std::string& xml, float height, const char* tooltip) {
+        beginSettingsRow(label);
+        ImGui::PushID(id);
+        inputMultiline("##xml", xml, height);
+        xmlWarning(xml);
+        ImGui::PopID();
+        endSettingsRow(tooltip);
+    }
+
+    std::map<std::string, NativePlistValue> plistMap(const std::vector<std::pair<std::string, NativePlistValue>>& entries) {
+        std::map<std::string, NativePlistValue> map;
+        for (const auto& [key, value] : entries) {
+            if (!trimmed(key).empty()) map[trimmed(key)] = value;
+        }
+        return map;
+    }
+
+    std::vector<std::string> nonEmpty(const std::vector<std::string>& items) {
+        std::vector<std::string> out;
+        for (const std::string& item : items) {
+            if (!trimmed(item).empty()) out.push_back(trimmed(item));
+        }
+        return out;
+    }
+
+}
+
 // ---- Input (Project Settings > Input): the input actions
 
 namespace {
@@ -2216,6 +2536,160 @@ namespace {
         return changed;
     }
 
+}
+
+void ProjectSettingsWindow::refreshNativeSummary() {
+    // what plugins/native holds
+    const NativePlugins::Scan scan = NativePlugins::scan(m_project->getProjectPath());
+    std::string summary;
+    static const char* const labels[] = {"Android", "Apple", "iOS", "macOS", "Web", "C++"};
+    const auto& platforms = NativePlugins::platformNames();
+    for (size_t i = 0; i < platforms.size(); i++) {
+        const size_t count = scan.count(platforms[i]);
+        if (count) summary += (summary.empty() ? "" : ", ") + std::string(labels[i]) + " " + std::to_string(count);
+    }
+    const size_t plugins = NativePlugins::listPlugins(scan).size();
+    const size_t mocks = NativePlugins::listMocks(m_project->getLuaPath()).size();
+    m_nativeSummary = scan.exists
+        ? "plugins/native: " + std::to_string(plugins) + " plugin(s) (" + (summary.empty() ? std::string("no files") : summary + " files") +
+          "), " + std::to_string(mocks) + " Lua mock(s). Lua calls them with Native.call / callAsync."
+        : "No plugins/native folder yet. Create Plugin writes one plugin for the chosen platforms and its Lua mock; "
+          "Lua calls it with Native.call / callAsync (jasper://docs/native-bridge).";
+}
+
+void ProjectSettingsWindow::drawNativePluginsSettings() {
+    if (beginSettingsPanel("##NativePluginsPanel")) {
+        if (m_nativeSummary.empty()) refreshNativeSummary();
+        drawSectionNote(m_nativeSummary.c_str());
+        if (ImGui::Button(ICON_FA_FOLDER_OPEN " Open Folder")) {
+            const fs::path root = NativePlugins::root(m_project->getProjectPath());
+            std::error_code ec;
+            fs::create_directories(root, ec);
+            auto openInShell = ImGui::GetPlatformIO().Platform_OpenInShellFn;
+            const std::string rootUtf8 = FileUtils::pathToUtf8(root);
+            if (!openInShell || !openInShell(ImGui::GetCurrentContext(), rootUtf8.c_str())) {
+                Backend::getApp().registerAlert("Open in File Manager", "Could not open " + rootUtf8);
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_FA_PLUS " Create Plugin...")) m_nativePluginDialog.open(m_project);
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_FA_ROTATE " Refresh")) refreshNativeSummary();
+        const bool wasOpen = m_nativePluginDialog.isOpen();
+        m_nativePluginDialog.show();
+        if (wasOpen && !m_nativePluginDialog.isOpen()) refreshNativeSummary();
+        ImGui::Spacing();
+
+        if (Theme::foldoutHeader("Android", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##NativeAndroidTable")) {
+            drawStringList("Gradle Dependencies", "##GradleDependencies", m_gradleDependencies, "com.example:sdk:1.2.3",
+                "group:name:version becomes api \"...\" in the nativeplugins module; other text is a dependencies line as is "
+                "(implementation platform('...bom:33.0.0')).");
+            drawStringList("Maven Repositories", "##GradleRepositories", m_gradleRepositories, "https://maven.example.com/releases",
+                "maven { url \"...\" } in allprojects.repositories.");
+            drawStringList("Gradle Properties", "##GradleProperties", m_gradleProperties, "android.enableJetifier=true",
+                "key=value lines of gradle.properties (replacing a key already there).");
+            drawStringList("Extra Permissions", "##ExtraPermissions", m_extraPermissions, "com.google.android.gms.permission.AD_ID",
+                "<uses-permission> by full name (the Player permissions list takes the common ones).");
+            drawXmlSetting("Manifest XML", "##ManifestXml", m_manifestXml, 70.0f,
+                "Raw XML inside <manifest>, before <application> (<queries>, <uses-feature>, tools:node=\"remove\" entries).");
+            drawXmlSetting("Application XML", "##ManifestApplicationXml", m_manifestApplicationXml, 70.0f,
+                "Raw XML inside <application> (an SDK's <meta-data>, <activity>, <provider>).");
+            ImGui::EndTable();
+        }
+
+        if (Theme::foldoutHeader("iOS", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##NativeIOSTable")) {
+            drawPlistEntries("##IOSPlist", m_iosPlistEntries, "Info.plist keys, replacing the export's (NSUserTrackingUsageDescription, GADApplicationIdentifier...).");
+            drawXmlSetting("Info.plist XML", "##IOSPlistXml", m_iosPlistXml, 70.0f,
+                "Raw <key>..</key><value> pairs appended to the top dictionary (dictionaries, SKAdNetworkItems).");
+            drawStringList("Frameworks", "##IOSFrameworks", m_iosFrameworks, "StoreKit", "System frameworks linked; Name? links it weakly.");
+
+            beginSettingsRow("CocoaPods");
+            {
+                ImGui::PushID("##Pods");
+                int remove = -1;
+                for (size_t i = 0; i < m_iosCocoapods.size(); i++) {
+                    ImGui::PushID(static_cast<int>(i));
+                    const float width = (ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight()) / 3.0f - ImGui::GetStyle().ItemSpacing.x;
+                    ImGui::SetNextItemWidth(width);
+                    inputString("##name", m_iosCocoapods[i].name, "Pod name");
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(width);
+                    inputString("##version", m_iosCocoapods[i].version, "~> 1.0");
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(width);
+                    inputString("##source", m_iosCocoapods[i].source, "spec repository (optional)");
+                    ImGui::SameLine();
+                    if (ImGui::Button(ICON_FA_MINUS, ImVec2(ImGui::GetFrameHeight(), 0.0f))) remove = static_cast<int>(i);
+                    ImGui::PopID();
+                }
+                if (remove >= 0) m_iosCocoapods.erase(m_iosCocoapods.begin() + remove);
+                if (ImGui::SmallButton(ICON_FA_PLUS)) m_iosCocoapods.emplace_back();
+                ImGui::PopID();
+            }
+            endSettingsRow("workspaces/xcode/Podfile: run pod install there and open JasperEngine.xcworkspace.");
+
+            beginSettingsRow("Swift Packages");
+            {
+                ImGui::PushID("##Packages");
+                int remove = -1;
+                for (size_t i = 0; i < m_iosSwiftPackages.size(); i++) {
+                    NativeSwiftPackage& package = m_iosSwiftPackages[i];
+                    ImGui::PushID(static_cast<int>(i));
+                    const float avail = ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x * 3.0f;
+                    ImGui::SetNextItemWidth(avail * 0.5f);
+                    inputString("##url", package.url, "https://github.com/...");
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(avail * 0.2f);
+                    inputString("##version", package.version, "1.0.0");
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(avail * 0.3f);
+                    std::string products = joinList(package.products);
+                    if (inputString("##products", products, "Product, Other")) package.products = splitList(products);
+                    ImGui::SameLine();
+                    if (ImGui::Button(ICON_FA_MINUS, ImVec2(ImGui::GetFrameHeight(), 0.0f))) remove = static_cast<int>(i);
+                    ImGui::PopID();
+                }
+                if (remove >= 0) m_iosSwiftPackages.erase(m_iosSwiftPackages.begin() + remove);
+                if (ImGui::SmallButton(ICON_FA_PLUS)) m_iosSwiftPackages.emplace_back();
+                ImGui::PopID();
+            }
+            endSettingsRow("Repository URL, minimum version (up to the next major), the products linked (comma-separated).");
+
+            drawXmlSetting("Entitlements", "##IOSEntitlements", m_iosEntitlementsXml, 60.0f,
+                "The <key>..</key><value> pairs of ios/JasperEngine.entitlements (CODE_SIGN_ENTITLEMENTS).");
+            const IOSProjectSettings iosDefaults;
+            if (beginSettingsRow("Deployment Target", m_iosDeploymentTarget != iosDefaults.deploymentTarget)) {
+                m_iosDeploymentTarget = iosDefaults.deploymentTarget;
+            }
+            ImGui::SetNextItemWidth(Theme::dpi(100.0f));
+            inputString("##IOSDeploymentTarget", m_iosDeploymentTarget);
+            endSettingsRow("IPHONEOS_DEPLOYMENT_TARGET of every target: 15.0 or later.");
+            const bool validTarget = m_iosDeploymentTarget.find_first_not_of("0123456789.") == std::string::npos &&
+                                     std::count(m_iosDeploymentTarget.begin(), m_iosDeploymentTarget.end(), '.') == 1 &&
+                                     m_iosDeploymentTarget.front() != '.' && m_iosDeploymentTarget.back() != '.' &&
+                                     std::atof(m_iosDeploymentTarget.c_str()) >= 15.0;
+            if (!validTarget) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TableNextColumn();
+                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Use a version like 15.0 or 16.4 (at least 15.0); the export uses 15.0.");
+            }
+            ImGui::EndTable();
+        }
+
+        if (Theme::foldoutHeader("macOS") && beginSettingsTable("##NativeMacOSTable")) {
+            drawPlistEntries("##MacOSPlist", m_macosPlistEntries, "Info.plist keys of the macOS app, replacing the export's.");
+            drawStringList("Frameworks", "##MacOSFrameworks", m_macosFrameworks, "GameKit", "System frameworks linked; Name? links it weakly.");
+            ImGui::EndTable();
+        }
+
+        if (Theme::foldoutHeader("Web") && beginSettingsTable("##NativeWebTable")) {
+            drawStringList("Script URLs", "##WebScriptUrls", m_webScriptUrls, "https://sdk.example.com/sdk.js",
+                "Each a <script src> in the page <head>, before plugins/native/web/*.js.");
+            ImGui::EndTable();
+        }
+    }
+    endSettingsPanel();
 }
 
 std::string ProjectSettingsWindow::inputError() const {
@@ -2755,6 +3229,8 @@ bool ProjectSettingsWindow::applySettings() {
 
     m_project->setCanvasSize(m_canvasWidth, m_canvasHeight);
     m_project->setScalingMode(scalingModeValues[m_scalingModeIndex]);
+    if (m_project->getUIScale() != m_uiScale)
+        m_project->setUIScale(m_uiScale);
     m_project->setTextureStrategy(textureStrategyValues[m_textureStrategyIndex]);
     m_project->setVSyncEnabled(m_vsyncEnabled);
     m_project->setHtmlUiMsaaSamples(htmlUiMsaaValues[m_htmlUiMsaaIndex]);
@@ -2813,6 +3289,7 @@ bool ProjectSettingsWindow::applySettings() {
     applyTextBuffer(web.headInclude, m_webHeadIncludeBuffer);
     web.resizeCanvasToWindow = m_webResizeCanvasToWindow;
     web.hideEmscriptenUI = m_webHideEmscriptenUI;
+    web.scriptUrls = nonEmpty(m_webScriptUrls);
 
     LinuxProjectSettings& linuxSettings = m_project->getLinuxProjectSettings();
     applyOverride(linuxSettings.applicationName, m_linuxApplicationNameBuffer, inheritedName);
@@ -2847,6 +3324,8 @@ bool ProjectSettingsWindow::applySettings() {
     applyAppleVersion(macOS.buildNumber, m_macOSBuildNumberBuffer, inheritedBuild, isAppleBuildValid);
     macOS.icon = m_macOSIcon;
     macOS.highDpi = m_macOSHighDpi;
+    macOS.plistEntries = plistMap(m_macosPlistEntries);
+    macOS.frameworks = nonEmpty(m_macosFrameworks);
 
     IOSProjectSettings& ios = m_project->getIOSProjectSettings();
     applyOverride(ios.applicationName, m_iosApplicationNameBuffer, inheritedName);
@@ -2854,6 +3333,24 @@ bool ProjectSettingsWindow::applySettings() {
     applyAppleVersion(ios.versionName, m_iosVersionNameBuffer, inheritedVersion, isAppleVersionValid);
     applyAppleVersion(ios.buildNumber, m_iosBuildNumberBuffer, inheritedBuild, isAppleBuildValid);
     ios.icon = m_iosIcon;
+    ios.plistEntries = plistMap(m_iosPlistEntries);
+    ios.plistXml = m_iosPlistXml;
+    ios.frameworks = nonEmpty(m_iosFrameworks);
+    ios.cocoapods.clear();
+    for (NativeCocoaPod pod : m_iosCocoapods) {
+        pod.name = trimmed(pod.name);
+        pod.version = trimmed(pod.version);
+        pod.source = trimmed(pod.source);
+        if (!pod.name.empty()) ios.cocoapods.push_back(pod);
+    }
+    ios.swiftPackages.clear();
+    for (NativeSwiftPackage package : m_iosSwiftPackages) {
+        package.url = trimmed(package.url);
+        package.version = trimmed(package.version);
+        if (!package.url.empty()) ios.swiftPackages.push_back(package);
+    }
+    ios.entitlementsXml = m_iosEntitlementsXml;
+    ios.deploymentTarget = trimmed(m_iosDeploymentTarget).empty() ? IOSProjectSettings().deploymentTarget : trimmed(m_iosDeploymentTarget);
     ios.hideStatusBar = m_iosHideStatusBar;
     ios.hideHomeIndicator = m_iosHideHomeIndicator;
     ios.supportsHighRefreshRate = m_iosSupportsHighRefreshRate;
@@ -2881,6 +3378,12 @@ bool ProjectSettingsWindow::applySettings() {
     android.abiX86_64 = m_androidAbiX86_64;
     android.permissions = m_androidPermissions;
     android.internetAccess = m_androidInternetAccessIndex == 1 ? AndroidInternetAccess::Require : AndroidInternetAccess::Auto;
+    android.gradleDependencies = nonEmpty(m_gradleDependencies);
+    android.gradleRepositories = nonEmpty(m_gradleRepositories);
+    android.gradleProperties = nonEmpty(m_gradleProperties);
+    android.extraPermissions = nonEmpty(m_extraPermissions);
+    android.manifestXml = m_manifestXml;
+    android.manifestApplicationXml = m_manifestApplicationXml;
     android.allowBackup = m_androidAllowBackup;
     android.fullscreen = m_androidFullscreen;
     android.admobEnabled = m_androidAdmobEnabled;
@@ -2906,6 +3409,23 @@ bool ProjectSettingsWindow::applySettings() {
     // GameObjects keep a removed tag, as in Unity; scripts then see it as not defined
     m_project->setTagsAndLayers(tags, m_layerNames);
     m_project->setLayerCollisionMatrices(m_layerCollision3D, m_layerCollision2D);
+
+    // Audio: one undoable step too
+    {
+        AudioSettings audio = m_audioSettings;
+        audio.mixer = FileUtils::pathToGenericUtf8(FileUtils::pathFromUtf8(m_audioMixerBuffer));
+        while (!audio.mixer.empty() && audio.mixer.back() == ' ') audio.mixer.pop_back();
+        // "assets/audio/Main.mixer" typed as the Project window shows it
+        if (audio.mixer.rfind("assets/", 0) == 0 && !std::filesystem::exists(m_project->resolveAssetPath(FileUtils::pathFromUtf8(audio.mixer)))) {
+            audio.mixer = audio.mixer.substr(7);
+        }
+        audio.defaultOutputGroup = m_audioDefaultGroupBuffer;
+        if (audio != m_project->getAudioSettings()) {
+            auto* command = new AudioSettingsCmd(m_project, m_project->getAudioSettings(), audio);
+            command->setNoMerge();
+            m_project->getProjectCommandHistory()->addCommand(command);
+        }
+    }
 
     // Input: one undoable step of the project history (Edit > Undo with the Project window
     // focused, MCP undo scope project)

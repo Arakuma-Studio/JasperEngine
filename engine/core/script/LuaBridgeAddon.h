@@ -5,6 +5,8 @@
 #define LuaBridgeAddon_h
 
 #include "Scene.h"
+#include "util/CanvasScaler.h"
+#include "util/TextEffects.h"
 #include "Input.h"
 #include "FileData.h"
 #include "thread/ResourceProgress.h"
@@ -12,6 +14,7 @@
 #include "component/UIDocumentComponent.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/LineRendererComponent.h"
+#include "component/VideoPlayerComponent.h"
 
 using namespace jasperengine;
 
@@ -90,6 +93,7 @@ namespace luabridge
     template<> struct Stack<MonochromeMode> : EnumWrapper<MonochromeMode>{};
     template<> struct Stack<AudioSourceState> : EnumWrapper<AudioSourceState>{};
     template<> struct Stack<AudioSourceAttenuation> : EnumWrapper<AudioSourceAttenuation>{};
+    template<> struct Stack<AudioLoadType> : EnumWrapper<AudioLoadType>{};
 
     template<> struct Stack<EaseType> : EnumWrapper<EaseType>{};
     template<> struct Stack<ActionState> : EnumWrapper<ActionState>{};
@@ -101,6 +105,12 @@ namespace luabridge
     // Canvas Groups (ui canvas group spec 7.6)
     template<> struct Stack<CanvasGroupRenderMode> : EnumWrapper<CanvasGroupRenderMode>{};
     template<> struct Stack<AlphaTweenTarget> : EnumWrapper<AlphaTweenTarget>{};
+    // ui-scaling-text: the Canvas Scaler and Text Effect enums
+    template<> struct Stack<UIScaleMode> : EnumWrapper<UIScaleMode>{};
+    template<> struct Stack<ScreenMatchMode> : EnumWrapper<ScreenMatchMode>{};
+    template<> struct Stack<PhysicalUnit> : EnumWrapper<PhysicalUnit>{};
+    template<> struct Stack<TextEffectType> : EnumWrapper<TextEffectType>{};
+    template<> struct Stack<TextEffectMix> : EnumWrapper<TextEffectMix>{};
     template<> struct Stack<PivotPreset> : EnumWrapper<PivotPreset>{};
 
     template<> struct Stack<ScrollbarType> : EnumWrapper<ScrollbarType>{};
@@ -118,6 +128,11 @@ namespace luabridge
     template<> struct Stack<PhysicsMaterialCombine> : EnumWrapper<PhysicsMaterialCombine>{};
     template<> struct Stack<UIDocumentRenderMode> : EnumWrapper<UIDocumentRenderMode>{};
     template<> struct Stack<FluidOutput> : EnumWrapper<FluidOutput>{};
+    template<> struct Stack<VideoPlayerSource> : EnumWrapper<VideoPlayerSource>{};
+    template<> struct Stack<VideoTimeUpdateMode> : EnumWrapper<VideoTimeUpdateMode>{};
+    template<> struct Stack<VideoRenderMode> : EnumWrapper<VideoRenderMode>{};
+    template<> struct Stack<VideoAspectRatio> : EnumWrapper<VideoAspectRatio>{};
+    template<> struct Stack<VideoAudioOutputMode> : EnumWrapper<VideoAudioOutputMode>{};
     // bound enums that had none: LuaBridge pushed them as unregistered userdata (an error
     // reading probe.mode) and took no integer for them
     template<> struct Stack<ReflectionProbeMode> : EnumWrapper<ReflectionProbeMode>{};

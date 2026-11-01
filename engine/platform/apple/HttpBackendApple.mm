@@ -87,7 +87,7 @@ namespace {
 
         bool available(std::string&) override{ return true; }
         void start(const std::shared_ptr<HttpTransfer>& transfer) override;
-        void cancel(uint64_t id) override;
+        void cancel(uint64_t requestId) override;
         void shutdown() override;
 
         // the delegate's queue
@@ -331,11 +331,11 @@ void AppleBackend::start(const std::shared_ptr<HttpTransfer>& transfer){
     [task resume];
 }
 
-void AppleBackend::cancel(uint64_t id){
+void AppleBackend::cancel(uint64_t requestId){
     NSURLSessionDataTask* task = nil;
     {
         std::lock_guard<std::mutex> lock(mutex);
-        auto it = byId.find(id);
+        auto it = byId.find(requestId);
         if (it != byId.end()) task = it->second->task;
     }
     [task cancel];
@@ -353,7 +353,7 @@ void AppleBackend::shutdown(){
         left.swap(byId);
         byTask.clear();
     }
-    for (auto& [id, job] : left) job->transfer->finish("cancelled");
+    for (auto& [requestId, job] : left) job->transfer->finish("cancelled");
 }
 
 HttpBackend* jasperengine::createPlatformHttpBackend(){

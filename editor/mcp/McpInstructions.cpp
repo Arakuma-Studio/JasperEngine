@@ -224,13 +224,22 @@ Read the page before using these tools:
   Property tracks (active, colours...): channel property; get_animation list_properties.
 - Humanoid poses (.poseanim): get/edit/render_pose_animation, mirror_pose; degrees from
   standing, arms down (jasper://docs/pose-animation).
+- Clip on another humanoid rig: clips[i].retarget or create.humanoid (jasper://docs/animation).
 - Crowds: bake_vertex_animation (preview, then output) -> .vat on a Vertex Animator
   (jasper://docs/vertex-animation).
 - Particles: create_particles, import_unity_particles (jasper://docs/particles).
+- Sound: audio_mixer (jasper://docs/audio).
+- Shake/follow: camerashaker, CameraShake.shake("explosion"); camerafollow (jasper://docs/camera).
+- UI scale (Canvas Scaler: scene setting canvas_scaler, graphics.ui_scale), text outline,
+  shadow and effects (TextEffect), UI particles; Game view resolutions: configure_game_view
+  (jasper://docs/ui).
 - Lines, lasers, trails: line_renderer / trail_renderer (jasper://docs/lines-trails).
+- Video: type video_player / video_background, texture video|<id>; MP4 and WebM
+  (jasper://docs/video).
 - Bend/squash: edit_lattice (jasper://docs/lattice). GPU fluid: type fluid_simulation
   (jasper://docs/fluid). Textures from examples: synthesize_texture
   (jasper://docs/texture-synthesis).
+- Native SDKs: Native.call/callAsync/on; plugins: native_plugins (jasper://docs/native-bridge).
 
 ## HTML/CSS UI
 Menus, HUDs and dialogs in standard HTML + CSS, logic in Lua (no JavaScript):

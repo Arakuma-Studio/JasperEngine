@@ -14,6 +14,7 @@
 
 #include "external/IconsFontAwesome6.h"
 #include "command/CommandHandle.h"
+#include "command/type/AddComponentCmd.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/RemoveChildSceneCmd.h"
@@ -32,6 +33,7 @@
 
 #include "EditorVersion.h"
 #include "Out.h"
+#include "window/HumanoidConvertDialog.h"
 #include "AppSettings.h"
 #include "Theme.h"
 #include "resources/fonts/fa-solid-900_ttf.h"
@@ -139,6 +141,7 @@ editor::App::App(){
     animationWindow = new AnimationWindow(&project);
     poseAnimationWindow = new PoseAnimationWindow(&project);
     animatorWindow = new AnimatorWindow(&project);
+    avatarWindow = new AvatarWindow(&project);
     // the Inspector's Controller field, the Project window's double-click and MCP open it
     animationClipAppHooks().openAnimator = [this](Project*, const std::string& controller, uint32_t sceneId, Entity entity){
         animatorWindow->setOpen(true);
@@ -147,6 +150,7 @@ editor::App::App(){
     };
     terrainEditWindow = new TerrainEditWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
+    audioMixerWindow = new AudioMixerWindow(&project);
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
@@ -290,6 +294,7 @@ enum class AppMenuCommand : uint32_t {
     ToggleAnimator,
     ToggleTerrain,
     ToggleTextureSynthesis,
+    ToggleAudioMixer,
     ToggleSpriteNormals,
     ToggleVertexAnimationBaker,
     TogglePhysicsPlacement,
@@ -314,10 +319,14 @@ enum class AppMenuCommand : uint32_t {
     AssetsCreateFolder,
     AssetsCreateLuaScript,
     AssetsCreateHtmlDocument,
+    AssetsCreateAudioMixer,
     AssetsCreatePoseAnimation,
+    AssetsCreateNativePlugin,
     AssetsCreateAnimationClip,      // shown only once AnimationClipAppHooks::createClipAsset is set
     AssetsCreateAnimatorController, // (createControllerAsset)
     AssetsCreateAvatarMask,         // (createMaskAsset)
+    AssetsCreateShakePreset,
+    AddCameraShakerToMainCamera,
     AssetsCreateCppScript,
     AssetsShowInFileManager,
     AssetsOpen,
@@ -614,7 +623,11 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuSeparator(),
         menuCommand(AppMenuCommand::AssetsCreateHtmlDocument, "HTML Document"),
         menuSeparator(),
-        menuCommand(AppMenuCommand::AssetsCreatePoseAnimation, "Pose Animation")
+        menuCommand(AppMenuCommand::AssetsCreateAudioMixer, "Audio Mixer"),
+        menuSeparator(),
+        menuCommand(AppMenuCommand::AssetsCreatePoseAnimation, "Pose Animation"),
+        menuSeparator(),
+        menuCommand(AppMenuCommand::AssetsCreateNativePlugin, "Native Plugin...", !isProjectBusy)
     };
     // Animation Clip: once the clip asset task set its hook
     if (animationClipAppHooks().createClipAsset) {
@@ -626,6 +639,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     if (animationClipAppHooks().createMaskAsset) {
         assetsCreateItems.push_back(menuCommand(AppMenuCommand::AssetsCreateAvatarMask, "Avatar Mask"));
     }
+    assetsCreateItems.push_back(menuCommand(AppMenuCommand::AssetsCreateShakePreset, "Shake Preset"));
     assetsCreateItems.push_back(menuSeparator());
     assetsCreateItems.push_back(menuSubmenu("Scene", newSceneItems(), !isProjectBusy));
 
@@ -645,8 +659,16 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuCommand(AppMenuCommand::ClearTrash, "Empty Trash...", !isProjectBusy)
     }));
 
-    menu.menus.push_back(menuSubmenu("GameObject",
-        gameObjectMenuItems(selectedScene, canCreate, canCreateChild)));
+    // Camera Shaker on the scene's main camera (camera shake spec 9), after the create items
+    std::vector<PlatformMenuItem> gameObjectItems = gameObjectMenuItems(selectedScene, canCreate, canCreateChild);
+    {
+        const Entity mainCamera = hasSelectedScene ? project.getGameCamera(selectedSceneId) : NULL_ENTITY;
+        const bool canAddShaker = hasSelectedScene && !isProjectBusy && mainCamera != NULL_ENTITY && selectedScene->scene &&
+                                  !selectedScene->scene->findComponent<CameraShakerComponent>(mainCamera);
+        gameObjectItems.push_back(menuSeparator());
+        gameObjectItems.push_back(menuCommand(AppMenuCommand::AddCameraShakerToMainCamera, "Add Camera Shaker to Main Camera", canAddShaker));
+    }
+    menu.menus.push_back(menuSubmenu("GameObject", std::move(gameObjectItems)));
 
     menu.menus.push_back(menuSubmenu("Component", {
         menuShortcut(AppMenuCommand::AddComponent, "Add...", "Ctrl+Shift+A", canAddComponent)
@@ -666,6 +688,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuShortcut(AppMenuCommand::ToggleAnimator, windowMenuLabel(AnimatorWindow::WINDOW_NAME), "Ctrl+7"),
             menuCommand(AppMenuCommand::TogglePoseAnimation, windowMenuLabel(PoseAnimationWindow::WINDOW_NAME)),
             menuCommand(AppMenuCommand::ToggleVertexAnimationBaker, windowMenuLabel(VertexAnimationBakerWindow::WINDOW_NAME))
+        }),
+        menuSubmenu("Audio", {
+            menuCommand(AppMenuCommand::ToggleAudioMixer, windowMenuLabel(AudioMixerWindow::WINDOW_NAME))
         }),
         menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         menuCommand(AppMenuCommand::ToggleTextureSynthesis, windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
@@ -869,6 +894,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleTextureSynthesis:
             textureSynthesisWindow->open();
             break;
+        case AppMenuCommand::ToggleAudioMixer:
+            audioMixerWindow->open();
+            break;
         case AppMenuCommand::ToggleSpriteNormals:
             spriteNormalsWindow->open();
             break;
@@ -920,6 +948,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             animatorWindow->setOpen(false);
             terrainEditWindow->setOpen(false);
             textureSynthesisWindow->setOpen(false);
+            audioMixerWindow->setOpen(false);
             spriteNormalsWindow->setOpen(false);
             vertexAnimationBakerWindow->setOpen(false);
             physicsPlacementWindow->setOpen(false);
@@ -1028,8 +1057,28 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AssetsCreateHtmlDocument:
             projectWindow->assetsCreateHtmlDocument();
             break;
+        case AppMenuCommand::AssetsCreateAudioMixer:
+            projectWindow->assetsCreateAudioMixer();
+            break;
         case AppMenuCommand::AssetsCreatePoseAnimation:
             projectWindow->assetsCreatePoseAnimation();
+            break;
+        case AppMenuCommand::AssetsCreateShakePreset:
+            projectWindow->assetsCreateShakePreset();
+            break;
+        case AppMenuCommand::AddCameraShakerToMainCamera: {
+            SceneProject* scene = project.getSelectedScene();
+            const Entity mainCamera = scene ? project.getGameCamera(scene->id) : NULL_ENTITY;
+            if (scene && scene->scene && !project.isAnyScenePlaying() && mainCamera != NULL_ENTITY &&
+                !scene->scene->findComponent<CameraShakerComponent>(mainCamera)) {
+                CommandHandle::get(scene->id)->addCommandNoMerge(
+                    new AddComponentCmd(&project, scene->id, mainCamera, ComponentType::CameraShakerComponent));
+                project.setSelectedEntity(scene->id, mainCamera);
+            }
+            break;
+        }
+        case AppMenuCommand::AssetsCreateNativePlugin:
+            nativePluginDialog.open(&project);
             break;
         case AppMenuCommand::AssetsCreateAnimationClip:
             if (animationClipAppHooks().createClipAsset) {
@@ -1619,6 +1668,8 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow("Game", dock_id_middle_top);
     // Texture Synthesis is mostly a preview: a tab next to the Scene and Game views
     ImGui::DockBuilderDockWindow(TextureSynthesisWindow::WINDOW_NAME, dock_id_middle_top);
+    // the Audio Mixer's strips want the width of the views
+    ImGui::DockBuilderDockWindow(AudioMixerWindow::WINDOW_NAME, dock_id_middle_top);
     // the baker too (its preview), so the Inspector entries that open it stay in view
     ImGui::DockBuilderDockWindow(VertexAnimationBakerWindow::WINDOW_NAME, dock_id_middle_top);
     // the Sprite Normal Map window: a preview too
@@ -2453,6 +2504,13 @@ void editor::App::show(){
     editorSettingsWindow.show();
     aboutWindow.show();
     projectSettingsWindow.show();
+    nativePluginDialog.show();
+    // a native plugin was made (either dialog): its Lua mock opens in the code editor
+    for (const fs::path& created : {nativePluginDialog.consumeCreatedFile(), projectSettingsWindow.consumeCreatedFile()}) {
+        if (created.empty()) continue;
+        projectWindow->refreshCurrentDirectory();
+        codeEditor->openFile(created.string());
+    }
     prefabsWindow.show();
     scenesWindow.show();
 
@@ -2466,11 +2524,14 @@ void editor::App::show(){
     consoleWindow->show();
     animationWindow->show();
     animatorWindow->show();
+    avatarWindow->show();
+    HumanoidConvertDialog::draw(&project);
     poseAnimationWindow->show();
     // the Scene views posing its character: a selection elsewhere leaves posing, ghosts go
     PoseViewport::frame(&project);
     terrainEditWindow->show();
     textureSynthesisWindow->show();
+    audioMixerWindow->show();
     // also the tick of its Shift-click generations (with the window closed)
     spriteNormalsWindow->show();
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
@@ -3405,8 +3466,23 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
     Engine::computeViewLayout(width, height, (int)project.getCanvasWidth(), (int)project.getCanvasHeight(), project.getScalingMode(),
                               canvasWidth, canvasHeight, viewRect);
 
+    // a UI scene's camera covers its Canvas Scaler UI size (what it is laid out at), any other the canvas
+    auto layerCanvas = [&](SceneProject* layerScene, Entity layerCamera, float& layerWidth, float& layerHeight) {
+        layerWidth = (float)canvasWidth;
+        layerHeight = (float)canvasHeight;
+        CameraComponent* camera = layerScene->scene->findComponent<CameraComponent>(layerCamera);
+        if (layerScene->sceneType == SceneType::SCENE_UI && layerScene->scene->getCanvasScale().scaled &&
+            camera && camera->type == CameraType::CAMERA_UI) {
+            const Vector2 ui = layerScene->scene->getSystem<UISystem>()->getCanvasSize();
+            layerWidth = ui.x;
+            layerHeight = ui.y;
+        }
+    };
+
     std::vector<Engine::ViewLayer> layers;
-    layers.push_back({sceneProject.scene, cameraEntity, viewRect, false, true, false, (float)canvasWidth, (float)canvasHeight});
+    float mainCanvasWidth = 0.0f, mainCanvasHeight = 0.0f;
+    layerCanvas(&sceneProject, cameraEntity, mainCanvasWidth, mainCanvasHeight);
+    layers.push_back({sceneProject.scene, cameraEntity, viewRect, false, true, false, mainCanvasWidth, mainCanvasHeight});
 
     for (const ChildSceneRef& childSceneRef : sceneProject.childScenes) {
         SceneProject* childScene = project.getScene(childSceneRef.id);
@@ -3421,7 +3497,9 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
             childScene->scene->getSystem<UIDocumentSystem>()->update(0);
             childScene->scene->getSystem<RenderSystem>()->update(0);
         }
-        layers.push_back({childScene->scene, childCamera, viewRect, false, false, false, (float)canvasWidth, (float)canvasHeight});
+        float childCanvasWidth = 0.0f, childCanvasHeight = 0.0f;
+        layerCanvas(childScene, childCamera, childCanvasWidth, childCanvasHeight);
+        layers.push_back({childScene->scene, childCamera, viewRect, false, false, false, childCanvasWidth, childCanvasHeight});
     }
 
     Engine::drawView(GAME_VIEW_ID, target, layers);
@@ -3808,6 +3886,10 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
         animatorWindow->clearSceneState(sceneId);
     }
 
+    if (avatarWindow) {
+        avatarWindow->clearSceneState(sceneId);
+    }
+
     if (lastActivatedScene == sceneId) {
         resetLastActivatedScene();
     }
@@ -3817,6 +3899,8 @@ void editor::App::prepareForProjectSwitch() {
     // the posed bones go back while their scenes still exist
     poseAnimationWindow->prepareForProjectSwitch();
     animatorWindow->projectClosed();
+    avatarWindow->stopPreview();
+    avatarWindow->projectClosed();
     // and the clip previews (documents and the shared clip controller are released)
     if (animationClipAppHooks().projectClosed) {
         animationClipAppHooks().projectClosed();
@@ -3824,6 +3908,7 @@ void editor::App::prepareForProjectSwitch() {
     imageViewerWindow->closeAll();
     // a synthesis started in this project is cancelled and never written into the next one
     textureSynthesisWindow->resetForProjectSwitch();
+    audioMixerWindow->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
     spriteNormalsWindow->resetForProjectSwitch();
     spriteNormalsWatcher->reset();
@@ -3941,6 +4026,9 @@ void editor::App::stopTransientPreviews() {
     }
     if (animatorWindow) {
         animatorWindow->stopTransientPreviews();
+    }
+    if (avatarWindow) {
+        avatarWindow->stopTransientPreviews();
     }
     // and the Animation window's previewed targets to their snapshots (animation clips 9.R6):
     // the entity-sequence mode, then the clip mode
@@ -4326,6 +4414,18 @@ editor::AnimatorWindow* editor::App::getAnimatorWindow() const{
     return animatorWindow;
 }
 
+editor::AvatarWindow* editor::App::getAvatarWindow() const{
+    return avatarWindow;
+}
+
+void editor::App::openAvatarWindow(uint32_t sceneId, Entity entity){
+    std::string error;
+    // the bound model keeps its edits; another one asks about unsaved edits first
+    if (!avatarWindow->requestOpen(sceneId, entity, &error)){
+        Out::warning("Configure Avatar: %s", error.c_str());
+    }
+}
+
 editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{
     return terrainEditWindow;
 }
@@ -4387,6 +4487,10 @@ void editor::App::openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, un
 
 editor::MainToolbar* editor::App::getMainToolbar() const{
     return mainToolbar;
+}
+
+void editor::App::openAudioMixerWindow(const std::filesystem::path& mixer){
+    audioMixerWindow->open(mixer);
 }
 
 void editor::App::openTextureSynthesis(const std::filesystem::path& image, bool editRecipe){
@@ -4612,6 +4716,7 @@ void editor::App::applyPanelVisibilitySettings() {
     animatorWindow->setOpen(visibility.animator);
     terrainEditWindow->setOpen(visibility.terrain);
     textureSynthesisWindow->setOpen(visibility.textureSynthesis);
+    audioMixerWindow->setOpen(visibility.audioMixer);
     spriteNormalsWindow->setOpen(visibility.spriteNormals);
     vertexAnimationBakerWindow->setOpen(visibility.vertexAnimationBaker);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
@@ -4630,6 +4735,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.animator = animatorWindow->isOpen();
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.textureSynthesis = textureSynthesisWindow->isOpen();
+    visibility.audioMixer = audioMixerWindow->isOpen();
     visibility.spriteNormals = spriteNormalsWindow->isOpen();
     visibility.vertexAnimationBaker = vertexAnimationBakerWindow->isOpen();
     visibility.physicsPlacement = physicsPlacementWindow->isOpen();

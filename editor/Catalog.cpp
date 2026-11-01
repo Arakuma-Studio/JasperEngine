@@ -12,9 +12,11 @@
 #include "util/CameraTextureLink.h"
 #include "subsystem/RenderSystem.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "lattice/LatticeTypes.h"
 #include "pose/PoseAnimatorRuntime.h"
+#include "audio/AudioMixer.h"
 
 #include <algorithm>
 #include <cctype>
@@ -733,6 +735,33 @@ namespace {
     // Sizes and the look need no flag: FluidSimulator recreates its targets and reads every
     // value each frame; what the start depends on (the seed, the start burst) restarts the
     // fluid (UpdateFlags_Fluid_Reset).
+    // A Video Player (video-mp4 spec 6.4): every serialized field. A new clip/url stops the player
+    // by itself (VideoPlayerSystem compares what it opened), so no flag is needed
+    static const FastPropertyDescriptor kVideoPlayerProperties[] = {
+        makeFastProperty<VideoPlayerComponent, VideoPlayerSource, &VideoPlayerComponent::source>("source", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, std::string, &VideoPlayerComponent::clip>("clip", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, std::string, &VideoPlayerComponent::url>("url", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, bool, &VideoPlayerComponent::playOnAwake>("playOnAwake", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, bool, &VideoPlayerComponent::waitForFirstFrame>("waitForFirstFrame", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, bool, &VideoPlayerComponent::isLooping>("isLooping", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, bool, &VideoPlayerComponent::skipOnDrop>("skipOnDrop", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, float, &VideoPlayerComponent::playbackSpeed>("playbackSpeed", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, VideoTimeUpdateMode, &VideoPlayerComponent::timeUpdateMode>("timeUpdateMode", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, VideoRenderMode, &VideoPlayerComponent::renderMode>("renderMode", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, Entity, &VideoPlayerComponent::targetCamera>("targetCamera", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, float, &VideoPlayerComponent::targetCameraAlpha>("targetCameraAlpha", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, VideoAspectRatio, &VideoPlayerComponent::aspectRatio>("aspectRatio", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, Entity, &VideoPlayerComponent::targetMaterialRenderer>("targetMaterialRenderer", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, std::string, &VideoPlayerComponent::targetMaterialProperty>("targetMaterialProperty", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, int, &VideoPlayerComponent::targetSubmesh>("targetSubmesh", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, unsigned int, &VideoPlayerComponent::renderTextureWidth>("renderTextureWidth", PropertyType::UInt, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, unsigned int, &VideoPlayerComponent::renderTextureHeight>("renderTextureHeight", PropertyType::UInt, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, VideoAudioOutputMode, &VideoPlayerComponent::audioOutputMode>("audioOutputMode", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, float, &VideoPlayerComponent::directVolume>("directVolume", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, bool, &VideoPlayerComponent::directMute>("directMute", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, Entity, &VideoPlayerComponent::targetAudioSource>("targetAudioSource", PropertyType::Entity, UpdateFlags_None),
+    };
+
     static const FastPropertyDescriptor kFluidSimulationProperties[] = {
         makeFastProperty<FluidSimulationComponent, FluidOutput, &FluidSimulationComponent::output>("output", PropertyType::Enum, UpdateFlags_None),
         makeFastProperty<FluidSimulationComponent, bool, &FluidSimulationComponent::interactive>("interactive", PropertyType::Bool, UpdateFlags_None),
@@ -806,6 +835,38 @@ namespace {
         makeFastProperty<LatticeFollowerComponent, bool, &LatticeFollowerComponent::applyRotation>("applyRotation", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<LatticeFollowerComponent, bool, &LatticeFollowerComponent::applyScale>("applyScale", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<LatticeFollowerComponent, float, &LatticeFollowerComponent::weight>("weight", PropertyType::Float, UpdateFlags_None),
+    };
+
+    // read by CameraControlSystem every frame (no update flag needed); runtime is not a property
+    static const FastPropertyDescriptor kCameraShakerProperties[] = {
+        makeFastProperty<CameraShakerComponent, bool, &CameraShakerComponent::global>("global", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, bool, &CameraShakerComponent::unscaledTime>("unscaledTime", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, CameraShakeMode, &CameraShakerComponent::mode>("mode", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, float, &CameraShakerComponent::positionScale>("positionScale", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, float, &CameraShakerComponent::rotationScale>("rotationScale", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, std::string, &CameraShakerComponent::startPreset>("startPreset", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, float, &CameraShakerComponent::traumaDecay>("traumaDecay", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, float, &CameraShakerComponent::traumaPower>("traumaPower", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, Vector3, &CameraShakerComponent::traumaMaxOffset>("traumaMaxOffset", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, Vector3, &CameraShakerComponent::traumaMaxAngle>("traumaMaxAngle", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, float, &CameraShakerComponent::traumaFrequency>("traumaFrequency", PropertyType::Float, UpdateFlags_None),
+    };
+
+    // read by CameraControlSystem every frame; the runtime fields (velocity...) are not properties
+    static const FastPropertyDescriptor kCameraFollowProperties[] = {
+        makeFastProperty<CameraFollowComponent, Entity, &CameraFollowComponent::target>("target", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, Vector3, &CameraFollowComponent::offset>("offset", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, FollowOffsetSpace, &CameraFollowComponent::offsetSpace>("offsetSpace", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, Vector3, &CameraFollowComponent::damping>("damping", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, float, &CameraFollowComponent::maxSpeed>("maxSpeed", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, bool, &CameraFollowComponent::lookAt>("lookAt", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, Vector3, &CameraFollowComponent::lookAtOffset>("lookAtOffset", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, float, &CameraFollowComponent::rotationDamping>("rotationDamping", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, Vector2, &CameraFollowComponent::deadZone>("deadZone", PropertyType::Vector2, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, bool, &CameraFollowComponent::useBounds>("useBounds", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, Vector3, &CameraFollowComponent::boundsMin>("boundsMin", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, Vector3, &CameraFollowComponent::boundsMax>("boundsMax", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, bool, &CameraFollowComponent::unscaledTime>("unscaledTime", PropertyType::Bool, UpdateFlags_None),
     };
 
     static const FastPropertyDescriptor kLatticeTracksProperties[] = {
@@ -948,6 +1009,12 @@ namespace {
         makeFastProperty<AudioSourceComponent, AudioSourceAttenuation, &AudioSourceComponent::attenuationModel>("attenuationModel", PropertyType::Enum, UpdateFlags_AudioSource),
         makeFastProperty<AudioSourceComponent, float, &AudioSourceComponent::attenuationRolloffFactor>("attenuationRolloffFactor", PropertyType::Float, UpdateFlags_AudioSource),
         makeFastProperty<AudioSourceComponent, float, &AudioSourceComponent::dopplerFactor>("dopplerFactor", PropertyType::Float, UpdateFlags_AudioSource),
+        // the mixer group by name ("" = Master); the update below resolves its id (AudioSourceComponent::outputGroup)
+        makeFastProperty<AudioSourceComponent, std::string, &AudioSourceComponent::outputGroupName>("outputGroup", PropertyType::String, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, AudioLoadType, &AudioSourceComponent::loadType>("loadType", PropertyType::Enum, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, int, &AudioSourceComponent::priority>("priority", PropertyType::Int, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, int, &AudioSourceComponent::maxVoices>("maxVoices", PropertyType::Int, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, bool, &AudioSourceComponent::ignoreListenerPause>("ignoreListenerPause", PropertyType::Bool, UpdateFlags_AudioSource),
         makeFastPropertyNoDefault<AudioSourceComponent, double, &AudioSourceComponent::length>("length", PropertyType::Double, UpdateFlags_None),
         makeFastPropertyNoDefault<AudioSourceComponent, double, &AudioSourceComponent::playingTime>("playingTime", PropertyType::Double, UpdateFlags_None),
     };
@@ -974,6 +1041,25 @@ namespace {
         makeFastProperty<TextComponent, bool, &TextComponent::fixedHeight>("fixedHeight", PropertyType::Bool, UpdateFlags_Text),
         makeFastProperty<TextComponent, bool, &TextComponent::pivotBaseline>("pivotBaseline", PropertyType::Bool, UpdateFlags_Text),
         makeFastProperty<TextComponent, bool, &TextComponent::pivotCentered>("pivotCentered", PropertyType::Bool, UpdateFlags_Text),
+        // the colours and offsets reach the shader each frame; widths may need another atlas padding
+        makeFastProperty<TextComponent, float, &TextComponent::outlineWidth>("outlineWidth", PropertyType::Float, UpdateFlags_Text),
+        makeFastProperty<TextComponent, Vector4, &TextComponent::outlineColor>("outlineColor", PropertyType::Vector4, UpdateFlags_None),
+        makeFastProperty<TextComponent, bool, &TextComponent::shadowEnabled>("shadowEnabled", PropertyType::Bool, UpdateFlags_Text),
+        makeFastProperty<TextComponent, Vector4, &TextComponent::shadowColor>("shadowColor", PropertyType::Vector4, UpdateFlags_None),
+        makeFastProperty<TextComponent, Vector2, &TextComponent::shadowOffset>("shadowOffset", PropertyType::Vector2, UpdateFlags_None),
+        makeFastProperty<TextComponent, float, &TextComponent::shadowSoftness>("shadowSoftness", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<TextComponent, float, &TextComponent::shadowDilate>("shadowDilate", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<TextComponent, int, &TextComponent::visibleCharacters>("visibleCharacters", PropertyType::Int, UpdateFlags_Text),
+    };
+
+    static const FastPropertyDescriptor kTextEffectProperties[] = {
+        makeFastProperty<TextEffectComponent, bool, &TextEffectComponent::enabled>("enabled", PropertyType::Bool, UpdateFlags_TextEffect),
+        makeFastProperty<TextEffectComponent, bool, &TextEffectComponent::autoPlay>("autoPlay", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TextEffectComponent, bool, &TextEffectComponent::loop>("loop", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TextEffectComponent, bool, &TextEffectComponent::useUnscaledTime>("useUnscaledTime", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TextEffectComponent, int, &TextEffectComponent::startIndex>("startIndex", PropertyType::Int, UpdateFlags_TextEffect),
+        makeFastProperty<TextEffectComponent, int, &TextEffectComponent::length>("length", PropertyType::Int, UpdateFlags_TextEffect),
+        makeFastProperty<TextEffectComponent, std::string, &TextEffectComponent::forWords>("forWords", PropertyType::String, UpdateFlags_TextEffect),
     };
 
     // R: the joint is made again; P: applied to the live joint (motors, springs, limits, breaking)
@@ -2078,6 +2164,10 @@ namespace {
         return resolveDirectProperties(static_cast<UIDocumentComponent*>(comp), propertyName, kUIDocumentProperties);
     }
 
+    PropertyData resolveVideoPlayerPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<VideoPlayerComponent*>(comp), propertyName, kVideoPlayerProperties);
+    }
+
     PropertyData resolveFluidSimulationPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<FluidSimulationComponent*>(comp), propertyName, kFluidSimulationProperties);
     }
@@ -2150,6 +2240,14 @@ namespace {
         return PropertyData();
     }
 
+    PropertyData resolveCameraShakerPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<CameraShakerComponent*>(comp), propertyName, kCameraShakerProperties);
+    }
+
+    PropertyData resolveCameraFollowPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<CameraFollowComponent*>(comp), propertyName, kCameraFollowProperties);
+    }
+
     PropertyData resolveLatticeFollowerPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<LatticeFollowerComponent*>(comp), propertyName, kLatticeFollowerProperties);
     }
@@ -2213,6 +2311,16 @@ namespace {
                 }
                 if (fieldName == ".layer") {
                     return {PropertyType::Int, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.layer, (void*)&entry.layer};
+                }
+                // humanoid playback (anim-retarget 7.1)
+                if (fieldName == ".retarget") {
+                    return {PropertyType::Bool, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.retarget, (void*)&entry.retarget};
+                }
+                if (fieldName == ".mirror") {
+                    return {PropertyType::Bool, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.mirror, (void*)&entry.mirror};
+                }
+                if (fieldName == ".footIK") {
+                    return {PropertyType::Bool, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.footIK, (void*)&entry.footIK};
                 }
             }
         }
@@ -2285,6 +2393,46 @@ namespace {
 
     PropertyData resolveTextPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<TextComponent*>(comp), propertyName, kTextProperties);
+    }
+
+    // a Text Effect layer's field ("type", "amplitude", ...); def is a default layer's
+    PropertyData getTextEffectLayerPropertyFast(TextEffectLayer& layer, const std::string& field) {
+        static TextEffectLayer d;
+        const uint64_t flags = UpdateFlags_TextEffect;
+        if (field == "type") return {PropertyType::Enum, flags, &d.type, &layer.type};
+        if (field == "enabled") return {PropertyType::Bool, flags, &d.enabled, &layer.enabled};
+        if (field == "amplitude") return {PropertyType::Float, flags, &d.amplitude, &layer.amplitude};
+        if (field == "duration") return {PropertyType::Float, flags, &d.duration, &layer.duration};
+        if (field == "spread") return {PropertyType::Float, flags, &d.spread, &layer.spread};
+        if (field == "phaseStep") return {PropertyType::Float, flags, &d.phaseStep, &layer.phaseStep};
+        if (field == "frequency") return {PropertyType::Float, flags, &d.frequency, &layer.frequency};
+        if (field == "charactersPerSecond") return {PropertyType::Float, flags, &d.charactersPerSecond, &layer.charactersPerSecond};
+        if (field == "fadeTime") return {PropertyType::Float, flags, &d.fadeTime, &layer.fadeTime};
+        if (field == "gradient") return {PropertyType::Custom, flags, &d.gradient, &layer.gradient};
+        if (field == "mix") return {PropertyType::Enum, flags, &d.mix, &layer.mix};
+        if (field == "saturation") return {PropertyType::Float, flags, &d.saturation, &layer.saturation};
+        if (field == "lightness") return {PropertyType::Float, flags, &d.lightness, &layer.lightness};
+        return PropertyData();
+    }
+
+    const char* const kTextEffectLayerFields[] = {"type", "enabled", "amplitude", "duration", "spread", "phaseStep", "frequency",
+                                                 "charactersPerSecond", "fadeTime", "gradient", "mix", "saturation", "lightness"};
+
+    PropertyData resolveTextEffectPropertyFast(void* compRef, const std::string& propertyName) {
+        TextEffectComponent* comp = static_cast<TextEffectComponent*>(compRef);
+        if (!comp) return PropertyData();
+
+        PropertyData result = resolveDirectProperties(comp, propertyName, kTextEffectProperties);
+        if (result.ref) return result;
+
+        // layers[N].<field>
+        size_t index = 0;
+        size_t fieldPos = 0;
+        if (parseIndexedProperty(propertyName, "layers[", comp->layers.size(), index, fieldPos) && fieldPos != std::string::npos) {
+            return getTextEffectLayerPropertyFast(comp->layers[index], propertyName.substr(fieldPos));
+        }
+
+        return PropertyData();
     }
 
     PropertyData resolveJoint2DPropertyFast(void* comp, const std::string& propertyName) {
@@ -3310,6 +3458,10 @@ namespace {
         enumerateFromDescriptors(comp, ps, kUIDocumentProperties);
     }
 
+    void enumerateVideoPlayerProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kVideoPlayerProperties);
+    }
+
     void enumerateFluidSimulationProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kFluidSimulationProperties);
     }
@@ -3341,6 +3493,14 @@ namespace {
                 ps[prefix + field] = property;
             }
         }
+    }
+
+    void enumerateCameraShakerProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kCameraShakerProperties);
+    }
+
+    void enumerateCameraFollowProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kCameraFollowProperties);
     }
 
     void enumerateLatticeFollowerProperties(void* comp, std::map<std::string, PropertyData>& ps) {
@@ -3383,6 +3543,9 @@ namespace {
             ps[prefix + ".name"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.name, entry ? (void*)&entry->name : nullptr};
             ps[prefix + ".wrap"] = {PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.wrap, entry ? (void*)&entry->wrap : nullptr};
             ps[prefix + ".layer"] = {PropertyType::Int, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.layer, entry ? (void*)&entry->layer : nullptr};
+            ps[prefix + ".retarget"] = {PropertyType::Bool, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.retarget, entry ? (void*)&entry->retarget : nullptr};
+            ps[prefix + ".mirror"] = {PropertyType::Bool, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.mirror, entry ? (void*)&entry->mirror : nullptr};
+            ps[prefix + ".footIK"] = {PropertyType::Bool, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.footIK, entry ? (void*)&entry->footIK : nullptr};
         }
         static AnimationPlayerLayer defLayer;
         for (size_t i = 0; i < (compRef ? comp->layers.size() : 1); i++) {
@@ -3436,6 +3599,23 @@ namespace {
 
     void enumerateTextProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kTextProperties);
+    }
+
+    void enumerateTextEffectProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
+        TextEffectComponent* comp = static_cast<TextEffectComponent*>(compRef);
+
+        enumerateFromDescriptors(compRef, ps, kTextEffectProperties);
+
+        static TextEffectLayer defLayer;
+        for (size_t i = 0; i < (size_t)MAX_TEXT_EFFECT_LAYERS; i++) {
+            const std::string prefix = "layers[" + std::to_string(i) + "].";
+            TextEffectLayer& layer = compRef ? comp->layers[i] : defLayer;
+            for (const char* field : kTextEffectLayerFields) {
+                PropertyData property = getTextEffectLayerPropertyFast(layer, field);
+                if (!compRef) property.ref = nullptr;
+                ps[prefix + field] = property;
+            }
+        }
     }
 
     void enumerateJoint2DProperties(void* comp, std::map<std::string, PropertyData>& ps) {
@@ -4173,12 +4353,16 @@ namespace {
         {ComponentType::OnScreenStickComponent, &findComponentPtr<OnScreenStickComponent>, &resolveOnScreenStickPropertyFast, &enumerateOnScreenStickProperties},
         {ComponentType::OnScreenButtonComponent, &findComponentPtr<OnScreenButtonComponent>, &resolveOnScreenButtonPropertyFast, &enumerateOnScreenButtonProperties},
         {ComponentType::TouchAreaComponent, &findComponentPtr<TouchAreaComponent>, &resolveTouchAreaPropertyFast, &enumerateTouchAreaProperties},
+        {ComponentType::VideoPlayerComponent, &findComponentPtr<VideoPlayerComponent>, &resolveVideoPlayerPropertyFast, &enumerateVideoPlayerProperties},
         {ComponentType::Light2DComponent, &findComponentPtr<Light2DComponent>, &resolveLight2DPropertyFast, &enumerateLight2DProperties},
         {ComponentType::ShadowCaster2DComponent, &findComponentPtr<ShadowCaster2DComponent>, &resolveShadowCaster2DPropertyFast, &enumerateShadowCaster2DProperties},
         {ComponentType::CameraComponent, &findComponentPtr<CameraComponent>, &resolveCameraPropertyFast, &enumerateCameraProperties},
+        {ComponentType::CameraShakerComponent, &findComponentPtr<CameraShakerComponent>, &resolveCameraShakerPropertyFast, &enumerateCameraShakerProperties},
+        {ComponentType::CameraFollowComponent, &findComponentPtr<CameraFollowComponent>, &resolveCameraFollowPropertyFast, &enumerateCameraFollowProperties},
         {ComponentType::AudioSourceComponent, &findComponentPtr<AudioSourceComponent>, &resolveAudioPropertyFast, &enumerateAudioProperties},
         {ComponentType::SkyboxComponent, &findComponentPtr<SkyboxComponent>, &resolveSkyPropertyFast, &enumerateSkyProperties},
         {ComponentType::TextComponent, &findComponentPtr<TextComponent>, &resolveTextPropertyFast, &enumerateTextProperties},
+        {ComponentType::TextEffectComponent, &findComponentPtr<TextEffectComponent>, &resolveTextEffectPropertyFast, &enumerateTextEffectProperties},
         {ComponentType::ScriptComponent, &findComponentPtr<ScriptComponent>, &resolveScriptPropertyFast, &enumerateScriptProperties},
         {ComponentType::Joint2DComponent, &findComponentPtr<Joint2DComponent>, &resolveJoint2DPropertyFast, &enumerateJoint2DProperties},
         {ComponentType::Joint3DComponent, &findComponentPtr<Joint3DComponent>, &resolveJoint3DPropertyFast, &enumerateJoint3DProperties},
@@ -4255,6 +4439,10 @@ namespace {
             case ComponentType::OnScreenStickComponent: return &getEnabledRef<OnScreenStickComponent>;
             case ComponentType::OnScreenButtonComponent: return &getEnabledRef<OnScreenButtonComponent>;
             case ComponentType::TouchAreaComponent: return &getEnabledRef<TouchAreaComponent>;
+            case ComponentType::CameraShakerComponent: return &getEnabledRef<CameraShakerComponent>;
+            case ComponentType::CameraFollowComponent: return &getEnabledRef<CameraFollowComponent>;
+            case ComponentType::TextEffectComponent: return &getEnabledRef<TextEffectComponent>;
+            case ComponentType::VideoPlayerComponent: return &getEnabledRef<VideoPlayerComponent>;
             default: return nullptr;
         }
     }
@@ -4416,6 +4604,14 @@ std::string computeComponentName(editor::ComponentType component){
         name = "OnScreenButtonComponent";
     }else if(component == ComponentType::TouchAreaComponent){
         name = "TouchAreaComponent";
+    }else if(component == ComponentType::CameraShakerComponent){
+        name = "CameraShakerComponent";
+    }else if(component == ComponentType::CameraFollowComponent){
+        name = "CameraFollowComponent";
+    }else if(component == ComponentType::TextEffectComponent){
+        name = "TextEffectComponent";
+    }else if(component == ComponentType::VideoPlayerComponent){
+        name = "VideoPlayerComponent";
     }else if(component == ComponentType::Light2DComponent){
         name = "Light2DComponent";
     }else if(component == ComponentType::ShadowCaster2DComponent){
@@ -4572,6 +4768,10 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::PoseAnimatorComponent: return "Pose Animator";
         case ComponentType::AnimationPlayerComponent: return "Animation Player";
         case ComponentType::VertexAnimatorComponent: return "Vertex Animator";
+        case ComponentType::CameraShakerComponent: return "Camera Shaker";
+        case ComponentType::CameraFollowComponent: return "Camera Follow";
+        case ComponentType::TextEffectComponent: return "Text Effect";
+        case ComponentType::VideoPlayerComponent: return "Video Player";
     }
     return getComponentName(component);
 }
@@ -4645,6 +4845,10 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::PoseAnimatorComponent: return ICON_FA_PERSON_RUNNING;
         case ComponentType::AnimationPlayerComponent: return ICON_FA_FILM;
         case ComponentType::VertexAnimatorComponent: return ICON_FA_PEOPLE_GROUP;
+        case ComponentType::CameraShakerComponent: return ICON_FA_BURST;
+        case ComponentType::CameraFollowComponent: return ICON_FA_LOCATION_CROSSHAIRS;
+        case ComponentType::TextEffectComponent: return ICON_FA_WAND_MAGIC_SPARKLES;
+        case ComponentType::VideoPlayerComponent: return ICON_FA_FILM;
     }
     return ICON_FA_PUZZLE_PIECE;
 }
@@ -4716,6 +4920,14 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<OnScreenButtonComponent>();
         case ComponentType::TouchAreaComponent:
             return registry->getComponentId<TouchAreaComponent>();
+        case ComponentType::CameraShakerComponent:
+            return registry->getComponentId<CameraShakerComponent>();
+        case ComponentType::CameraFollowComponent:
+            return registry->getComponentId<CameraFollowComponent>();
+        case ComponentType::TextEffectComponent:
+            return registry->getComponentId<TextEffectComponent>();
+        case ComponentType::VideoPlayerComponent:
+            return registry->getComponentId<VideoPlayerComponent>();
         case ComponentType::Light2DComponent:
             return registry->getComponentId<Light2DComponent>();
         case ComponentType::ShadowCaster2DComponent:
@@ -4846,6 +5058,14 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::VertexAnimatorComponent;
     }else if(normalizedName == "canvasgroup"){
         return ComponentType::CanvasGroupComponent;
+    }else if(normalizedName == "camerashaker"){
+        return ComponentType::CameraShakerComponent;
+    }else if(normalizedName == "camerafollow"){
+        return ComponentType::CameraFollowComponent;
+    }else if(normalizedName == "texteffect"){
+        return ComponentType::TextEffectComponent;
+    }else if(normalizedName == "videoplayer"){
+        return ComponentType::VideoPlayerComponent;
     }else if(normalizedName == "light2d"){
         return ComponentType::Light2DComponent;
     }else if(normalizedName == "shadowcaster2d"){
@@ -5083,6 +5303,15 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     if (registry->findComponent<CanvasGroupComponent>(entity)){
         ret.push_back(ComponentType::CanvasGroupComponent);
     }
+    if (registry->findComponent<CameraShakerComponent>(entity)){
+        ret.push_back(ComponentType::CameraShakerComponent);
+    }
+    if (registry->findComponent<CameraFollowComponent>(entity)){
+        ret.push_back(ComponentType::CameraFollowComponent);
+    }
+    if (registry->isComponentRegistered<VideoPlayerComponent>() && registry->findComponent<VideoPlayerComponent>(entity)){
+        ret.push_back(ComponentType::VideoPlayerComponent);
+    }
     if (registry->findComponent<MorphTracksComponent>(entity)){
         ret.push_back(ComponentType::MorphTracksComponent);
     }
@@ -5136,6 +5365,9 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<TextComponent>(entity)){
         ret.push_back(ComponentType::TextComponent);
+    }
+    if (registry->findComponent<TextEffectComponent>(entity)){
+        ret.push_back(ComponentType::TextEffectComponent);
     }
     if (registry->findComponent<InputFieldComponent>(entity)){
         ret.push_back(ComponentType::InputFieldComponent);
@@ -5920,6 +6152,22 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             }
         }
     }
+    if (updateFlags & UpdateFlags_TextEffect){
+        if (TextEffectComponent* effect = registry->findComponent<TextEffectComponent>(entity)){
+            effect->needApply = true;
+            // a type changed: an amplitude left at the old type's default takes the new one's
+            // (Grow and Unfold use TMP's Amplitude, 1 = the whole change)
+            for (size_t i = 0; i < effect->layers.size(); i++){
+                TextEffectLayer& layer = effect->layers[i];
+                if (layer.type != effect->editedTypes[i]){
+                    const TextEffectType type = layer.type;
+                    layer.type = effect->editedTypes[i];
+                    TextEffects::setType(layer, type);
+                    effect->editedTypes[i] = type;
+                }
+            }
+        }
+    }
     if (updateFlags & (UpdateFlags_Text | UpdateFlags_Text_Atlas)){
         if (TextComponent* text = registry->findComponent<TextComponent>(entity)){
             if (updateFlags & UpdateFlags_Text)
@@ -6060,6 +6308,17 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
     if (updateFlags & UpdateFlags_AudioSource){
         if (AudioSourceComponent* audio = registry->findComponent<AudioSourceComponent>(entity)){
             audio->needUpdate = true;
+            audio->priority = std::clamp(audio->priority, 0, 256);
+            audio->maxVoices = std::clamp(audio->maxVoices, 1, 64);
+            // the group is set by name: its id follows (a name not in the mixer keeps the last id,
+            // the runtime then finds the group by name, else plays through Master)
+            if (audio->outputGroupName.empty()) {
+                audio->outputGroup.clear();
+            } else {
+                const std::string id = AudioMixer::findGroupId(audio->outputGroupName);
+                if (!id.empty()) audio->outputGroup = id;
+            }
+            audio->groupWarned = false;
         }
     }
     if (updateFlags & UpdateFlags_Fluid_Reset){
@@ -6229,6 +6488,14 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             break;
         }
 
+        case ComponentType::TextEffectComponent: {
+            // over the target's own: it keeps playing where it was
+            YAML::Node encoded = Stream::encodeTextEffectComponent(sourceRegistry->getComponent<TextEffectComponent>(sourceEntity));
+            TextEffectComponent& target = targetRegistry->getComponent<TextEffectComponent>(targetEntity);
+            target = Stream::decodeTextEffectComponent(encoded, &target);
+            break;
+        }
+
         case ComponentType::SpriteComponent: {
             YAML::Node encoded = Stream::encodeSpriteComponent(sourceRegistry->getComponent<SpriteComponent>(sourceEntity));
             targetRegistry->getComponent<SpriteComponent>(targetEntity) = Stream::decodeSpriteComponent(encoded);
@@ -6328,11 +6595,34 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             break;
         }
 
+        case ComponentType::VideoPlayerComponent: {
+            // decoded over the target's own: its render texture (and every texture showing it) stays
+            YAML::Node encoded = Stream::encodeVideoPlayerComponent(sourceRegistry->getComponent<VideoPlayerComponent>(sourceEntity));
+            VideoPlayerComponent& target = targetRegistry->getComponent<VideoPlayerComponent>(targetEntity);
+            target = Stream::decodeVideoPlayerComponent(encoded, &target);
+            break;
+        }
+
         case ComponentType::VertexAnimatorComponent: {
             // decoded over the target's own: what it plays stays unless the animation changes
             YAML::Node encoded = Stream::encodeVertexAnimatorComponent(sourceRegistry->getComponent<VertexAnimatorComponent>(sourceEntity));
             VertexAnimatorComponent& target = targetRegistry->getComponent<VertexAnimatorComponent>(targetEntity);
             target = Stream::decodeVertexAnimatorComponent(encoded, &target);
+            break;
+        }
+
+        case ComponentType::CameraShakerComponent: {
+            // the target's shakes keep playing (only the settings are copied)
+            YAML::Node encoded = Stream::encodeCameraShakerComponent(sourceRegistry->getComponent<CameraShakerComponent>(sourceEntity));
+            CameraShakerComponent& target = targetRegistry->getComponent<CameraShakerComponent>(targetEntity);
+            target = Stream::decodeCameraShakerComponent(encoded, &target);
+            break;
+        }
+
+        case ComponentType::CameraFollowComponent: {
+            YAML::Node encoded = Stream::encodeCameraFollowComponent(sourceRegistry->getComponent<CameraFollowComponent>(sourceEntity));
+            CameraFollowComponent& target = targetRegistry->getComponent<CameraFollowComponent>(targetEntity);
+            target = Stream::decodeCameraFollowComponent(encoded, &target);
             break;
         }
 
@@ -6523,14 +6813,17 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
     auto sourceProperties = Catalog::findEntityProperties(sourceRegistry, sourceEntity, compType);
     auto propIt = sourceProperties.find(property);
     PropertyType propType;
+    uint64_t updateFlags;
     if (propIt != sourceProperties.end()) {
         propType = propIt->second.type;
+        updateFlags = propIt->second.updateFlags;
     } else {
         const PropertyData found = Catalog::findProperty(sourceRegistry, sourceEntity, compType, property);
         if (!found.ref || !Catalog::findProperty(targetRegistry, targetEntity, compType, property).ref) {
             return; // Property not found
         }
         propType = found.type;
+        updateFlags = found.updateFlags;
     }
 
     // Copy based on property type
@@ -6812,8 +7105,9 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
         }
     }
 
-    // Apply any update flags that are associated with this property
-    updateEntity(targetRegistry, targetEntity, propIt->second.updateFlags);
+    // Apply any update flags that are associated with this property (a looked-up name's too:
+    // propIt is end() for those)
+    updateEntity(targetRegistry, targetEntity, updateFlags);
 }
 
 editor::PropertyData editor::Catalog::findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName){

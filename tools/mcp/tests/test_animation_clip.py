@@ -1094,7 +1094,13 @@ async def test_guide_names_exist(ed: Editor):
               "automate_thresholds", "left_arm", "right_arm", "left_leg", "right_leg", "left_fingers", "right_fingers",
               # property tracks (test_animation_properties): a status, the tangent key member and
               # preview_animation's count of previewed properties
-              "unknown_property", "tangent_mode", "properties_total"}
+              "unknown_property", "tangent_mode", "properties_total",
+              # humanoid clips (test_animation_retarget): get_animation's realisation and report, the Avatar
+              # (get_asset_info, set_humanoid) and the humanoid bone names
+              "retarget_report", "scale_ratio", "foot_ik", "missing_on_target", "unmapped_source_bones", "hips_local_position",
+              "local_rotation", "set_humanoid", "animation_type", "extra_mapped", "human_scale", "extra_bones",
+              "humanoid_position", "left_upper_arm", "left_index_proximal", "left_eye", "right_eye", "right_toes",
+              "left_foot", "right_foot"}
     words = set(re.findall(r"(?<![\w./:-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w(])", text))
     unknown = sorted(w for w in words if w not in known)
     ed.check(not unknown, f"the guide names unknown things: {unknown}")

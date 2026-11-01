@@ -76,6 +76,9 @@ namespace jasperengine::editor{
         PARTICLE_SYSTEM_LEGACY,
         // a version 2 Particle System drawn as GL points on its own GameObject (billboards only)
         PARTICLE_SYSTEM_POINTS,
+        // a Points emitter in UI units under a UI element and its Particle System child
+        // (unscaled time, local space): particles drawn in canvas order, clipped by panels
+        UI_PARTICLE_SYSTEM,
         POINTS,
         LINE_RENDERER,
         TRAIL_RENDERER,
@@ -85,6 +88,10 @@ namespace jasperengine::editor{
         UI_DOCUMENT,
         WATER,
         FLUID_SIMULATION,
+        // a Video Player into its render texture (video|<entity>), and one on the main
+        // camera's far plane (a looping background)
+        VIDEO_PLAYER,
+        VIDEO_BACKGROUND,
         // a unit lattice (Transform + LatticeComponent); the menus create one through
         // LatticeEditorOps::createLattice, which fits and binds it around the selection
         LATTICE,

@@ -27,7 +27,9 @@ namespace jasperengine::editor{
         FILE_DIALOG_VERTEX_ANIMATION = 1 << 11,
         FILE_DIALOG_UNITY_PREFAB_SCENE = 1 << 12,
         FILE_DIALOG_AVATAR_MASK = 1 << 13,
-        FILE_DIALOG_ANIMATOR_CONTROLLER = 1 << 14
+        FILE_DIALOG_ANIMATOR_CONTROLLER = 1 << 14,
+        FILE_DIALOG_AUDIO_MIXER = 1 << 15,
+        FILE_DIALOG_VIDEO = 1 << 16
     };
 
     class FileDialogs{
@@ -47,6 +49,9 @@ namespace jasperengine::editor{
             if (filterFlags & FILE_DIALOG_AUDIO) {
                 filterItems.push_back({ "Sound files", "wav,ogg,mp3,flac" });
             }
+            if (filterFlags & FILE_DIALOG_VIDEO) {
+                filterItems.push_back({ "Video files", "mp4,m4v,mov,webm,mkv" });
+            }
             if (filterFlags & FILE_DIALOG_SHADER) {
                 filterItems.push_back({ "Shader files", "vert,frag" });
             }
@@ -55,6 +60,9 @@ namespace jasperengine::editor{
             }
             if (filterFlags & FILE_DIALOG_PREFAB) {
                 filterItems.push_back({ "Prefabs", "prefab" });
+            }
+            if (filterFlags & FILE_DIALOG_AUDIO_MIXER) {
+                filterItems.push_back({ "Audio mixers", "mixer" });
             }
             if (filterFlags & FILE_DIALOG_MATERIAL) {
                 filterItems.push_back({ "Material files", "material" });
