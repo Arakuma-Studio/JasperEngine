@@ -236,6 +236,8 @@ bool AudioSystem::beginOfflineCapture(unsigned int sampleRate, unsigned int chan
     getSoloud().setGlobalVolume(globalVolume);
     inited = true;
     offlineCapture = true;
+    // the mixer's buses, as init() makes them: the capture hears the groups, their effects and mutes
+    AudioMixer::onAudioInit();
     return true;
 }
 
