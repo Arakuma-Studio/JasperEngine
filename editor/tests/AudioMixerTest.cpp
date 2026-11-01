@@ -1182,17 +1182,26 @@ TEST_F(AudioMixerRuntimeTest, AVoiceThroughGroupBusesIsHeardFromTheNextMix) {
     loadMusicMixer();
     writeLevel(root / "assets" / "level.wav", 1.0);
     AudioSource music = source("level.wav", "Music");
-    ASSERT_TRUE(AudioSystem::init());
-    EXPECT_FALSE(soloud().getAutoStop(AudioMixer::getBusHandle("Master"))) << "a bus never ends by itself";
-    EXPECT_FALSE(soloud().getAutoStop(AudioMixer::getBusHandle("Music")));
-    // a mix of 300 frames: each bus read a 512-frame block and kept 212 of them
-    std::vector<float> out(2048 * 2);
-    soloud().mix(out.data(), 300);
-    music.play();
-    scene->getSystem<AudioSystem>()->update(0.0);
-    soloud().mix(out.data(), 735);
-    out.resize(735 * 2);
-    EXPECT_EQ(onsetOf(out, 0), 0) << "Master > Music > voice: no bus mixes a block it read ahead";
+    // the onset of a voice played after a first mix of `first` frames (each bus read a 512-frame
+    // block of it and kept the rest)
+    auto onsetAfter = [&](unsigned int first) {
+        AudioSystem::close();
+        EXPECT_TRUE(AudioSystem::init());
+        EXPECT_FALSE(soloud().getAutoStop(AudioMixer::getBusHandle("Master"))) << "a bus never ends by itself";
+        EXPECT_FALSE(soloud().getAutoStop(AudioMixer::getBusHandle("Music")));
+        std::vector<float> out(2048 * 2);
+        soloud().mix(out.data(), first);
+        music.play();
+        scene->getSystem<AudioSystem>()->update(0.0);
+        soloud().mix(out.data(), 735);
+        out.resize(735 * 2);
+        return onsetOf(out, 0);
+    };
+    const int atABlock = onsetAfter(512);
+    ASSERT_GE(atABlock, 0);
+    EXPECT_LE(atABlock, 3) << "SoLoud's linear resampler: a frame a level (Master > Music > voice)";
+    EXPECT_EQ(onsetAfter(300), atABlock) << "no bus mixes a block it read ahead";
+    EXPECT_EQ(onsetAfter(735), atABlock);
 }
 
 // ---- S-7: the null pump keeps in step with the frames -------------------------------------------

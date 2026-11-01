@@ -287,12 +287,13 @@ TEST(SoloudMix, AVoicePlaysItsLastBlockToTheEnd) {
 
 TEST(SoloudBus, AVoiceQueuedIntoABusIsMixedInTheNextCall) {
     // A bus reads its children's mix in 512-frame blocks and keeps what a call does not take: a
-    // voice queued after a 300-frame call was first heard 212 frames into the next one
+    // voice queued after a 300-frame call was first heard 212 frames later than one queued at a
+    // block's start (SoLoud's linear resampler itself puts a frame between a block and its output)
     std::vector<unsigned char> bytes = wavBytes(1, kRate, [](unsigned int, unsigned int) { return 0.5f; });
     SoLoud::Wav clip;
     ASSERT_EQ(clip.loadMem(bytes.data(), (unsigned int)bytes.size(), true, false), SoLoud::SO_NO_ERROR);
-    for (unsigned int first : {300u, 735u, 1000u}) {
-        SCOPED_TRACE(first);
+    // the onset of the clip queued into a bus after a first mix call of `first` frames
+    auto onsetAfter = [&clip](unsigned int first) {
         NullSoloud mixer;
         SoLoud::Bus bus;
         // the engine's buses (AudioMixer): never stopped by their end
@@ -301,7 +302,12 @@ TEST(SoloudBus, AVoiceQueuedIntoABusIsMixedInTheNextCall) {
         mixer.soloud.setPanAbsolute(busVoice, 1.0f, 1.0f);
         mixer.mix(first, first);
         bus.play(clip);
-        const std::vector<float> out = mixer.mix(2048, 735);
-        EXPECT_EQ(onset(out), 0) << "heard from the first frame of the next call";
+        return onset(mixer.mix(2048, 735));
+    };
+    const int atABlock = onsetAfter(512);
+    ASSERT_GE(atABlock, 0);
+    EXPECT_LE(atABlock, 2);
+    for (unsigned int first : {300u, 735u, 1000u}) {
+        EXPECT_EQ(onsetAfter(first), atABlock) << "after a first call of " << first << " frames";
     }
 }
