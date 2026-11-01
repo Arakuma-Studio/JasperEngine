@@ -127,6 +127,10 @@ namespace jasperengine {
         EntityRegistry();
         EntityRegistry(EntityPool defaultPool);
         virtual ~EntityRegistry();
+        // not copyable (EntityManager owns its signature pages; MSVC instantiates the copies
+        // of an exported class)
+        EntityRegistry(const EntityRegistry&) = delete;
+        EntityRegistry& operator=(const EntityRegistry&) = delete;
 
         //Entity methods
 

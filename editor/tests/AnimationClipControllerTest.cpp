@@ -395,6 +395,9 @@ namespace {
             fs::remove_all(assets() / "pose");
             writeClip("anim/arm.anim", armClip());
             AnimationClipDocument::checkDiskChanges(project());
+            // the headless project is shared by the tests: an earlier test's clip commits must
+            // not be the newest undoable step of this one (the undo routing, R5b)
+            project()->getProjectCommandHistory()->clear();
         }
 
         void TearDown() override {
@@ -694,7 +697,7 @@ TEST_F(AnimationClipControllerTest, RecordKeysEditsOfTheBoundHierarchyAndRestore
     EXPECT_TRUE(ClipRecordHooks::claims(s.id, s.hand, ClipChannel::Rotation));
     EXPECT_FALSE(ClipRecordHooks::claims(s.id, s.prop, ClipChannel::Position)) << "not under the root";
     EXPECT_FALSE(ClipRecordHooks::claims(s.id + 1000, s.hand, ClipChannel::Position));
-    EXPECT_TRUE(animationClipAppHooks().ownsUndo()) << "Record routes the Scene view's undo to the project";
+    EXPECT_FALSE(animationClipAppHooks().ownsUndo()) << "Record alone makes no step: the undo stays the scene's (R5b)";
 
     // a gizmo drag of the Hand: two record calls of one drag, one project step, no scene step
     const size_t start = project()->getProjectCommandHistory()->position();
@@ -708,6 +711,7 @@ TEST_F(AnimationClipControllerTest, RecordKeysEditsOfTheBoundHierarchyAndRestore
     ASSERT_TRUE(ClipRecordHooks::record(s.id, s.hand, value, drag));
     ClipRecordHooks::endDrag();
     expectNear(s.transform(s.hand).position, Vector3(0, 4, 0), "the live value");
+    EXPECT_TRUE(animationClipAppHooks().ownsUndo()) << "the recorded key is the newest step: the Scene view's undo goes to the project";
     EXPECT_EQ(project()->getProjectCommandHistory()->position(), start + 1);
     EXPECT_EQ(CommandHandle::get(s.id)->position(), sceneSteps);
     AnimationClipController::KeyRef keyed;
