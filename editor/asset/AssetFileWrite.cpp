@@ -5,6 +5,8 @@
 
 #include "io/AtomicFile.h"
 #include "io/watch/FileWatchService.h"
+#include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 
 #include <fstream>
 #include <sstream>
@@ -79,11 +81,25 @@ bool assetio::renameFile(const fs::path& from, const fs::path& to, std::string* 
         return false;
     }
     if (!to.parent_path().empty()) {
-        fs::create_directories(to.parent_path(), ec);
+        FileUtils::createDirectories(to.parent_path(), ec);
     }
     ec.clear();
     // the editor's own move: the file watcher does not report it back (S05 R10)
     ScopedExpectedWrite expected(to);
+    // inside a write scope (an MCP call, a step it made: util/SafeWrite.h) the rename goes
+    // beneath the scope's root, never through a link planted on the way
+    if (const FileUtils::ScopedOps* ops = FileUtils::scopedOps()) {
+        const int scoped = ops->rename(from, to, ec);
+        if (scoped == 0) {
+            if (error) *error = safewrite::lastScopedError().empty() ? ec.message() : safewrite::lastScopedError();
+            return false;
+        }
+        if (scoped == 1) {
+            expected.reportedMoved(from, to);
+            return true;
+        }
+        ec.clear();
+    }
     if (!io::renameWithRetry(from, to, ec)) {
         if (error) *error = ec.message();
         return false;

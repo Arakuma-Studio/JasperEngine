@@ -4,8 +4,6 @@
 #include "CopyFileCmd.h"
 #include "util/FileUtils.h"
 #include "io/AtomicFile.h"
-
-#include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 
 #include "util/Util.h"
@@ -74,8 +72,19 @@ namespace {
 
     // source's bytes replace target's atomically: copied next to it, then published (S03)
     bool replaceFile(const fs::path& source, const fs::path& target, std::string& error) {
-        const fs::path temp = io::makeTemporarySiblingPath(target);
         std::error_code ec;
+        // inside a write scope (util/SafeWrite.h): one copy beneath its root, never through a
+        // link planted on the way
+        if (const editor::FileUtils::ScopedOps* ops = editor::FileUtils::scopedOps()) {
+            const int scoped = ops->copy(source, target, true, ec);
+            if (scoped == 0) {
+                error = editor::safewrite::lastScopedError().empty() ? ec.message() : editor::safewrite::lastScopedError();
+                return false;
+            }
+            if (scoped == 1) return true;
+            ec.clear();
+        }
+        const fs::path temp = io::makeTemporarySiblingPath(target);
         if (!fs::copy_file(source, temp, ec) || ec) {
             fs::remove(temp, ec);
             error = ec ? ec.message() : "copy failed";
@@ -141,9 +150,59 @@ std::vector<editor::Command::Touched> editor::CopyFileCmd::touchedPaths(bool und
 
 // Moves and copies go through AssetOps: files and metas together, GUIDs kept by moves and
 // new (the same again on a redo) for copies, references refreshed in memory
+// Without a project (file operations of a folder that is none: the tests of the write scope),
+// the files alone: copied under a free name or moved, in the write scope beneath its root
+bool editor::CopyFileCmd::executeFiles(){
+    for (size_t i = 0; i < files.size(); i++) {
+        FileCopyData& fdata = files[i];
+        const fs::path source = fdata.sourceDirectory / fdata.filename;
+        std::error_code ec;
+        if (!fs::exists(source, ec)) {
+            continue;
+        }
+        bool done;
+        if (copy) {
+            if (fdata.destination.empty()) fdata.destination = freeCopyName(fdata.targetDirectory / fdata.filename);
+            done = FileUtils::copyPath(source, fdata.destination, false, ec);
+        } else {
+            fdata.destination = fdata.targetDirectory / fdata.filename;
+            done = fs::exists(fdata.destination, ec) ? false : FileUtils::renamePath(source, fdata.destination, ec);
+        }
+        if (!done) {
+            const std::string why = !safewrite::lastScopedError().empty() ? safewrite::lastScopedError()
+                                  : ec ? ec.message() : fdata.destination.generic_string() + " already exists";
+            Out::error("Couldn't %s \"%s\": %s", copy ? "copy" : "move", fdata.filename.string().c_str(), why.c_str());
+            for (size_t back = i; back-- > 0;) {
+                const FileCopyData& earlier = files[back];
+                std::error_code ignored;
+                if (copy) FileUtils::removeAll(earlier.destination, ignored);
+                else FileUtils::renamePath(earlier.destination, earlier.sourceDirectory / earlier.filename, ignored);
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
+void editor::CopyFileCmd::undoFiles(){
+    for (auto it = files.rbegin(); it != files.rend(); ++it) {
+        const FileCopyData& fdata = *it;
+        std::error_code ec;
+        if (fdata.destination.empty() || !fs::exists(fdata.destination, ec)) {
+            continue;
+        }
+        const bool done = copy ? FileUtils::removeAll(fdata.destination, ec)
+                               : FileUtils::renamePath(fdata.destination, fdata.sourceDirectory / fdata.filename, ec);
+        if (!done) {
+            Out::error("Couldn't undo the %s of \"%s\": %s", copy ? "copy" : "move", fdata.filename.string().c_str(),
+                       safewrite::lastScopedError().empty() ? ec.message().c_str() : safewrite::lastScopedError().c_str());
+        }
+    }
+}
+
 bool editor::CopyFileCmd::execute(){
     if (!project) {
-        return false;
+        return executeFiles();
     }
     // what went (moved or copied): the Vertex Animation meshes among it name their textures again
     std::vector<std::pair<fs::path, fs::path>> went;
@@ -160,13 +219,15 @@ bool editor::CopyFileCmd::execute(){
             // replaced in place: the file keeps its meta and GUID, so its references still find it
             fdata.destination = target;
             fdata.backup = AssetOps::uniqueTrashPath(project->getProjectPath() / ".trash", target);
-            fs::create_directories(fdata.backup.parent_path(), ec);
+            // the editor's own .trash (the deny-by-default guard of an MCP call's scope)
+            safewrite::EditorInternal ownTrash(fdata.backup.parent_path());
+            FileUtils::createDirectories(fdata.backup.parent_path(), ec);
             // the backup path is new (uniqueTrashPath): nothing is overwritten
             std::string error;
-            if (!fs::copy_file(target, fdata.backup, ec) || ec) {
+            if (!FileUtils::copyPath(target, fdata.backup, false, ec)) {
                 error = ec ? ec.message() : "backup failed";
             } else if (!replaceFile(source, target, error)) {
-                fs::remove(fdata.backup, ec);
+                FileUtils::removePath(fdata.backup, ec);
             }
             if (!error.empty()) {
                 fdata.backup.clear();
@@ -251,6 +312,7 @@ bool editor::CopyFileCmd::execute(){
 
 void editor::CopyFileCmd::undo(){
     if (!project) {
+        undoFiles();
         return;
     }
     restoreClipHints(project, clipHintEdits);
@@ -264,11 +326,12 @@ void editor::CopyFileCmd::undo(){
         if (!fdata.backup.empty()) {
             // the replaced content comes back, the file kept its identity throughout
             std::string error;
+            safewrite::EditorInternal ownTrash(fdata.backup.parent_path());   // read back out of .trash
             if (!replaceFile(fdata.backup, fdata.destination, error)) {
                 Out::error("Couldn't restore \"%s\": %s", fdata.filename.string().c_str(), error.c_str());
                 continue;
             }
-            fs::remove(fdata.backup, ec);
+            FileUtils::removePath(fdata.backup, ec);
             fdata.backup.clear();
             project->onAssetFilesChanged(project->getAssetDatabase().importAssets(fdata.destination));
             continue;

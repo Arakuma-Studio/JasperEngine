@@ -36,7 +36,20 @@ editor::RenameFileCmd::RenameFileCmd(Project* project, std::string oldName, std:
 
 bool editor::RenameFileCmd::renameFile(const fs::path& sourceFs, const fs::path& destFs){
     if (!project) {
-        return false;
+        // no project (a folder that is none: the tests of the write scope): the file alone, in
+        // the write scope beneath its root
+        std::error_code ec;
+        if (!fs::exists(sourceFs, ec) || fs::exists(destFs, ec)) {
+            Out::error("Couldn't rename \"%s\": %s", sourceFs.filename().string().c_str(),
+                       fs::exists(destFs, ec) ? "the new name is taken" : "it does not exist");
+            return false;
+        }
+        if (!FileUtils::renamePath(sourceFs, destFs, ec)) {
+            Out::error("Couldn't rename \"%s\": %s", sourceFs.filename().string().c_str(),
+                       safewrite::lastScopedError().empty() ? ec.message().c_str() : safewrite::lastScopedError().c_str());
+            return false;
+        }
+        return true;
     }
     const AssetOps::Result result = AssetOps::move(*project, sourceFs, destFs);
     if (!result.ok) {

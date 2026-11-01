@@ -8,6 +8,7 @@
 #include "asset/AssetFileWrite.h"
 #include "asset/AssetTypes.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "util/Util.h"
 #include "pose/HumanoidMapIO.h"
 
@@ -198,13 +199,14 @@ Result AssetOps::copy(Project& project, const fs::path& from, const fs::path& to
     }
     // the metas go along (their import settings and labels); the copies get new GUIDs below
     for (const auto& [source, target] : withMeta(from, to)) {
-        if (target.has_parent_path()) fs::create_directories(target.parent_path(), ec);
-        fs::copy(source, target, fs::copy_options::recursive, ec);
-        if (ec) {
-            result.error = "cannot copy " + source.string() + ": " + ec.message();
+        // in a write scope (util/SafeWrite.h) beneath its root, never through a planted link
+        if (target.has_parent_path()) FileUtils::createDirectories(target.parent_path(), ec);
+        if (!FileUtils::copyPath(source, target, false, ec)) {
+            const std::string why = safewrite::lastScopedError().empty() ? ec.message() : safewrite::lastScopedError();
+            result.error = "cannot copy " + source.string() + ": " + why;
             std::error_code ignored;
-            fs::remove_all(to, ignored);
-            fs::remove(AssetTypes::metaPathFor(to), ignored);
+            FileUtils::removeAll(to, ignored);
+            FileUtils::removePath(AssetTypes::metaPathFor(to), ignored);
             return result;
         }
         // the editor's own copy: the file watcher does not report it back (S05 R10)
@@ -224,7 +226,7 @@ Result AssetOps::removeCopy(Project& project, const fs::path& path) {
     std::error_code ec;
     const bool shaders = isShaderOrDirectory(path);
     for (const auto& [source, target] : withMeta(path, path)) {
-        fs::remove_all(source, ec);
+        FileUtils::removeAll(source, ec);
         FileUtils::reportRemoved(source);
     }
     result.changes = project.getAssetDatabase().removeAssets(path);
@@ -248,7 +250,9 @@ Result AssetOps::remove(Project& project, const fs::path& path, fs::path& trashP
     result.textReferencesBroken = textReferencesInto(project, path);
     const bool shaders = isShaderOrDirectory(path);
     const fs::path trashDir = project.getProjectPath() / ".trash";
-    fs::create_directories(trashDir, ec);
+    // the editor's own .trash: named for the deny-by-default guard of an MCP call's scope
+    safewrite::EditorInternal ownTrash(trashDir);
+    FileUtils::createDirectories(trashDir, ec);
     trashPath = uniqueTrashPath(trashDir, path);
     const auto pairs = withMeta(path, trashPath);
     for (size_t i = 0; i < pairs.size(); i++) {
@@ -282,6 +286,8 @@ Result AssetOps::restore(Project& project, const fs::path& trashPath, const fs::
         result.error = original.string() + " already exists";
         return result;
     }
+    // out of the editor's own .trash (the deny-by-default guard of an MCP call's scope)
+    safewrite::EditorInternal ownTrash(trashPath.parent_path());
     const auto pairs = withMeta(trashPath, original);
     for (size_t i = 0; i < pairs.size(); i++) {
         if (!assetio::renameFile(pairs[i].first, pairs[i].second, &result.error)) {

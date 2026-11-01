@@ -45,6 +45,8 @@ namespace jasperengine::editor{
 
         // the other file of each Vertex Animation pair (".vat" + ".vat.glb") joins the list
         void addVatPairs();
+        bool executeFiles();   // no project: the files alone
+        void undoFiles();
     public:
         // Every file operation of this command (execute, undo, redo) stays beneath `root` when it
         // happens (util/SafeWrite.h: resolved inside it first, no link planted on the way since
