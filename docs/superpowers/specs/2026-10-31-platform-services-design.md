@@ -308,7 +308,7 @@ and `isNaturalPortrait()` (rotation 0/180 with height > width, or 90/270 with wi
 0 Portrait, 90 LandscapeLeft, 180 PortraitUpsideDown, 270 LandscapeRight. Queried on surface size
 change (`NativeEngine::doFrame`, `:1090-1097`) and `APP_CMD_CONFIG_CHANGED`; cached.
 Device orientation: Java `OrientationEventListener` in `MainActivity` (enabled in `onResume`,
-disabled in `onPause`), degrees with natural-orientation adjustment `d' = naturalPortrait ? d : (d + 90) % 360`,
+disabled in `onPause`), degrees with natural-orientation adjustment `d' = naturalPortrait ? d : (d + 270) % 360`,
 buckets with 20 degree hysteresis: around 0 Portrait, 90 LandscapeRight, 180 PortraitUpsideDown,
 270 LandscapeLeft; `ORIENTATION_UNKNOWN` (flat) -> `Unknown`; stored in a `volatile int` read via JNI.
 Manifest `configChanges` (`Exporter.cpp:3093`) becomes
@@ -567,3 +567,150 @@ wake lock), Apple/Windows by review (APIs listed with their availability guards)
   helpers) and `ViewController.m`: keep the forwarding hooks of native-bridge intact.
 - **coroutines**: unscaled timers for `InternetChecker`-style polling; `onFocus` is a plain event.
 - **audio-mixer**: may react to `onFocus` (the game mutes on focus loss) — no coupling needed.
+
+## Implementation notes
+
+Decisions taken while implementing (branch `gaps/platform-services`), where the spec was silent,
+ambiguous or did not fit the code:
+
+1. **`openURL` checks first, then the platform.** `System::openURL` is non-virtual: it applies the
+   URL rules of decision 8 (`UrlRules::check`, scheme required, `javascript:`/`data:`/`file:`/
+   `vbscript:` and control characters refused, an error logged) on every platform, then calls the
+   protected virtual `platformOpenURL` (the engine's `platformFopen`/`platformLog` naming). The spec's
+   `virtual bool openURL` would have let a platform skip the check.
+2. **Desktop host code is shared.** `engine/platform/common/HostServices.h` with one implementation
+   per desktop OS (`linux/HostServicesLinux.cpp`, `win/HostServicesWin.cpp`, `mac/HostServicesMac.mm`)
+   serves both the desktop `System`s and the editor's `Platform` ("host" in table 6.7), so Play and
+   a desktop build report the same OS string, model, locales, dpi and refresh rate. The Xcode macOS
+   app (`JasperEngineApple.mm`) has its own Foundation/AppKit code (the Xcode project lists its sources
+   by hand). Linux reads XRandR through `dlopen` (games need not link it); Windows links `ole32`,
+   `uuid`, `advapi32`.
+3. **Apple reachability without a framework.** `nw_path_monitor` needs Network.framework, which the
+   hand-kept Xcode project does not link; `getifaddrs` gives the same answer Unity's does (a routable
+   address on `en*` = local area network, on `pdp_ip*` = carrier) with no project change. macOS keeps
+   the display awake with `NSProcessInfo beginActivityWithOptions:NSActivityIdleDisplaySleepDisabled`
+   instead of an IOKit power assertion (same effect, no IOKit).
+4. **iOS orientations: the app delegate allows all.** `application:supportedInterfaceOrientationsForWindow:`
+   returns every orientation and the view controller returns Screen's mask, so the Info.plist list
+   (Player settings, default first) only chooses the launch orientation, as in Unity: a project with a
+   fixed default can still switch to `AutoRotation` at runtime. The spec's "intersect with the bundle's
+   orientations and warn" would have broken that common pattern (`AutoRotate.cs`). `UIRequiresFullScreen`
+   is set unless all four are allowed, as specified.
+5. **Focus/pause order is enforced in `Engine`, not by each platform.** `systemPause()` on a focused
+   app calls `systemFocus(false)` first, `systemFocus(true)` on a paused app calls `systemResume()`
+   first, and both are idempotent. Every platform therefore produces decision 6's order whatever order
+   its OS reports (Android's `APP_CMD_PAUSE`/`LOST_FOCUS` order varies by version; iOS sends
+   `DidActivate` after `WillEnterForeground`). iOS resumes on `UISceneWillEnterForegroundNotification`
+   and gains focus on `DidActivate` (6.3).
+6. **Script messages `onApplicationFocus` / `onApplicationPause`.** The shared `Engine::systemFocus`
+   (section 12) must broadcast `onApplicationFocus`; until `script-lifecycle` lands its `ScriptRuntime`
+   broadcast, `Engine.cpp` has one small `broadcastApplicationMessage` that calls the method by name on
+   the Lua scripts of the running scenes' active GameObjects (the existing `callLuaScriptMethod` path),
+   for focus and pause alike, message before the engine event. `script-lifecycle` replaces that one
+   function with its broadcast (C++ scripts included) when it merges.
+7. **`systemOrientationChanged` runs at the end of every `systemViewChanged`.** That gives rule 7.5's
+   order (`onCanvasChanged` then `onOrientationChanged`) on every platform with one call site; platforms
+   call it directly only for a half turn, which changes no size (Android polls the display rotation a
+   `DisplayListener` keeps, iOS calls it after the rotation transition, the web on
+   `screen.orientation`'s `change`, the editor every frame). The first orientation seen is a baseline,
+   not an event.
+8. **Frame pacing details.** `System::getMaxSwapInterval()` (GL and D3D11: 4; Vulkan, Metal, the
+   editor: 1) and `System::canDisableVSync()` (false for the macOS MTKView app) feed
+   `computeFramePacing`, so "backends that can't present at an interval > 1" is a property of each
+   platform's System, not a backend table. `Engine::getFramePacing()` is what the loops read for the
+   limiter. The macOS Xcode app and iOS apply pacing as the MTKView's `preferredFramesPerSecond`; the
+   native macOS backend skips frames of its 240 Hz timer (`FrameLimiter::isDue`), like the web's
+   `requestAnimationFrame`. An unfocused editor never runs a Play limiter faster than its unfocused rate.
+9. **Editor Play applies the Player settings before scripts run**, not in `finalizeStart` (which runs
+   after the scripts' `init`): `Project::applyPresentationSettings()` is called where Play applies the
+   canvas settings, so a script's `Engine.targetFrameRate = 30` in `init()` is not overwritten, as in an
+   export whose generated `init()` sets them before the first scene loads. Play stop resets focus,
+   pause, the frame rate and the simulated rotation (`Engine::resetApplicationState`,
+   `Platform::endPlaySimulation`).
+10. **Device simulation shared with `safe-area`.** This branch adds `editor/window/DeviceProfiles.{h,cpp}`
+    (the safe-area spec's preset table, insets and cutouts included, plus each device's model, dpi and
+    whether it turns upside down) and `engine/core/math/EdgeInsets.h` (header only; safe-area binds it to
+    Lua), the Game view's Device menu (device list, Language submenu with Custom..., a Rotate button) and
+    `GameViewSettings.device/orientation/language`. The overlay drawing, the Custom device, the insets
+    pushed to `Screen` and the screenshot overlay are safe-area's. Simulated values: the device and
+    language are Game view preferences (kept like the aspect, so a chosen phone stays chosen); what the
+    game does to them (a script's rotation, simulated focus/pause) ends with the Play (rule 7.8).
+11. **Rotate and MCP rotations stay within what the game allows.** The simulated device shows one
+    orientation (no separate "device held sideways, screen locked" state), so Rotate, `configure_game_view
+    orientation` and `send_input {type: "app", action: "orientation"}` refuse an orientation the playing
+    game excludes, with the allowed list in the message. iPhone profiles never turn upside down.
+12. **Headless openURL answers true.** In an MCP `--headless` run (or Linux without a display) the URL is
+    recorded and `System.openURL` returns true, as a device would after handing the URL to a browser, so
+    game flows behave as on device; `opened_urls[].launched` is false.
+13. **`HapticFeedback`'s C++ enumerators** are `NotificationSuccess/Warning/Error` (X11's `Success`
+    macro breaks any enumerator of that name in files that include Xlib); Lua keeps `HapticFeedback.Success`,
+    `Warning`, `Error`.
+14. **Not done here, by dependency.** The editor's "network offline" reachability belongs to `http`
+    (its Game view network toggle is not merged); `get_play_state.platform` reports reachability-free
+    state. The permission scan is a small name scan in `Exporter.cpp` (`ExportFeatureScan` is `http`'s and
+    not merged): `System.vibrate` adds `VIBRATE`, `getInternetReachability` adds `ACCESS_NETWORK_STATE`,
+    logged in the export log; `http` can fold it into its scanner.
+15. **Project Settings has no undo.** The Project Settings dialog applies its edits on OK and Cancel drops
+    them (the existing pattern of every other Player setting); the Game view settings are editor
+    preferences, not undoable, as the aspect and scale were.
+16. **Editor focus.** The editor window's OS focus reaches the game only as changes during a Play and
+    never in headless MCP runs, so a Play always starts focused (Xvfb gives no focus to anything).
+17. **A simulated pause stops the updates, not the tools.** `send_input {type: "app", action: "pause"}`
+    is `Engine::systemPause` itself: the game stops updating (as on a device; the engine's frame skips
+    its update while paused) and its audio pauses, while `send_input` keeps counting the editor's frames
+    so a later `resume` step runs; `wait` stalled on a paused app says so.
+
+### Review fixes (independent review of the branch)
+
+18. **URL rules:** a one-letter scheme is a Windows drive (`C:\Windows\System32\calc.exe` would run
+    through `ShellExecuteW("open")`), so schemes need two characters or more on every platform; Windows
+    protocol handlers that start programs, installers, Office documents or searches of local files
+    (`ms-msdt:`, `search-ms:`, `search:`, `shell:`, `ms-appinstaller:`, `ms-officecmd:`, `ms-word:` and
+    the other Office ones, `ms-cxh:`, `ms-distribution:`, `ms-quick-assist:`, `msi:`, `hcp:`, `its:`/`mk:`/
+    `ms-its:`, `mhtml:`, `jar:`, `ldap:`...) are refused everywhere (`UrlRules::check`).
+19. **Generated project CMake:** `Generator::getPlatformCMakeConfig` (Play with C++ scripts, desktop
+    builds of the project) lists the `HostServices*` sources and links `ole32 uuid advapi32` on Windows; a
+    unit test checks that every source of `platform/linux|win|mac` is in that list.
+20. **Android device degrees on natural-landscape tablets** use `(d + 270) % 360` (the listener's degrees
+    turn clockwise, `Display.getRotation` counter-clockwise; 6.5 corrected); a test checks the interface
+    and device orientations agree for every rotation on phones and tablets.
+21. **Quarter turns wait for the view size** (rule 7.5 on Android and the web, which learn the rotation
+    before the surface or canvas resizes): `Engine::systemOrientationChanged` fires a portrait/landscape
+    change only once the screen size has flipped (`systemViewChanged` calls it after `onCanvasChanged`),
+    or after `Engine::ORIENTATION_SIZE_TIMEOUT` (0.5 s, checked every frame) for a view that keeps its
+    shape; a half turn fires at once.
+22. **Vulkan vsync changes are pending until the next `beginFrame`**, which recreates the swapchain before
+    acquiring (a mid-frame change left an acquired image's semaphores unsignaled).
+23. **Android without Swappy** (`SwappyGL_isEnabled()` false): `eglSwapInterval(round(refresh / fps))`,
+    applied in the frame with the context current, plus the frame limiter when no interval gives the rate.
+24. **Web wake lock:** one request at a time (a pending flag), and a lock that resolves after
+    `NeverSleep` was turned off is released.
+25. **Lead decision A, screen sleep is a mobile setting:** `player.keep_screen_on` sets the initial
+    `Screen.sleepTimeout` on Android and iOS only (`Screen::isMobileSleepPolicy`); desktops and the web
+    start at `SystemSetting` and keep the display awake only when a script sets `NeverSleep`. Editor Play
+    follows the simulated device when the Game view has one, else the desktop rule.
+26. **Lead decision B, iPad:** `UIRequiresFullScreen` is true only for restricted orientations and false
+    when all four are allowed (unchanged from the first implementation, now documented).
+27. **Lead decision C:** the export changes for older projects are listed in the guide's "Upgrading"
+    section (`docs/mcp/guide/platform-services.md`).
+28. **Merge with input and script-data:** `Engine::systemFocus(false)` calls `Input::releaseAll()`
+    (the input spec's hook for this feature); `systemPause` keeps both features' steps (audio,
+    `onApplicationPause`, `onPause`, then `Input::releaseAll()` and `UserSettings::save()`, after the
+    handlers so their settings are saved). Web: script-data starts the project after the IndexedDB
+    restore, so a visibility or focus change before that is remembered and applied at the start
+    (a pause would save `PlayerPrefs` over the ones not restored yet); the hidden-tab file sync of
+    script-data runs in the same visibility callback, after the pause.
+29. **Merge with script-lifecycle:** its `ScriptRuntime::broadcast` (Lua and C++ scripts) now sends
+    `onApplicationFocus` / `onApplicationPause`, replacing this feature's Lua-only broadcast; this
+    feature's `systemFocus` / `systemPause` / `systemResume` (idempotent, focus lost before the
+    pause, resume before the focus comes back, input released) are the ones kept, and the
+    script-lifecycle test expects that order (`focusfalse` before `pausetrue`).
+30. **Merge with http, physics-3d, ui-canvas-group:** the Android manifest takes this feature's
+    permission scan (VIBRATE, ACCESS_NETWORK_STATE for `System.getInternetReachability`) and http's
+    INTERNET scan together, each permission once (with INTERNET, ACCESS_NETWORK_STATE is written by
+    http's block); `Generator::configure` takes `allowInsecureHttp` then `playerSettings`; the
+    Windows project libraries list both features' (winhttp iphlpapi, ole32 uuid advapi32); the
+    editor's Play applies the presentation settings and http's plain-HTTP policy before scripts;
+    `configure_game_view` keeps physics_debug / network and device / orientation / language;
+    `get_play_state` reports both `platform` and `http`. The generated-sources test skips the HTTP
+    backends (the engine library compiles them).

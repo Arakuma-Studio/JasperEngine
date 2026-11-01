@@ -68,10 +68,13 @@
 		175DCE6B30255343008C19EC /* CharExtent.h in Headers */ = {isa = PBXBuildFile; fileRef = 175DCE6930255343008C19EC /* CharExtent.h */; };
 		175DCE6C30255343008C19EC /* DefaultFontArabic.h in Headers */ = {isa = PBXBuildFile; fileRef = 175DCE6A30255343008C19EC /* DefaultFontArabic.h */; };
 		1776226C3058741F00F220CC /* ShaderUniforms.h in Headers */ = {isa = PBXBuildFile; fileRef = 1776226A3058741F00F220CC /* ShaderUniforms.h */; };
+		5B6C1A033058741F00F220CC /* ShaderGlobals.h in Headers */ = {isa = PBXBuildFile; fileRef = 5B6C1A013058741F00F220CC /* ShaderGlobals.h */; };
 		17A1C0A33058741F00F220CC /* ShaderManifest.h in Headers */ = {isa = PBXBuildFile; fileRef = 17A1C0A13058741F00F220CC /* ShaderManifest.h */; };
 		1776226D3058741F00F220CC /* ShaderUniforms.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1776226B3058741F00F220CC /* ShaderUniforms.cpp */; };
+		5B6C1A043058741F00F220CC /* ShaderGlobals.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5B6C1A023058741F00F220CC /* ShaderGlobals.cpp */; };
 		17A1C0A43058741F00F220CC /* ShaderManifest.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 17A1C0A23058741F00F220CC /* ShaderManifest.cpp */; };
 		1776226E3058741F00F220CC /* ShaderUniforms.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1776226B3058741F00F220CC /* ShaderUniforms.cpp */; };
+		5B6C1A053058741F00F220CC /* ShaderGlobals.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5B6C1A023058741F00F220CC /* ShaderGlobals.cpp */; };
 		17A1C0A53058741F00F220CC /* ShaderManifest.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 17A1C0A23058741F00F220CC /* ShaderManifest.cpp */; };
 		1787AD8E2F673CE000DB1D75 /* PrefabComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 1787AD8D2F673CE000DB1D75 /* PrefabComponent.h */; };
 		1787AD942F6C333300DB1D75 /* SceneManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1787AD922F6C333300DB1D75 /* SceneManager.cpp */; };
@@ -3386,6 +3389,16 @@
 		4A534E4798EE0D734C9C55E0 /* AsyncOwner.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4740FD2A72CFB10C16 /* AsyncOwner.h */; };
 		4A534E47D07D96EA20FAA7F1 /* NetClassesLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C4CB6F074423D782 /* NetClassesLua.h */; };
 		4A534E470B01A240FA439C2A /* MainThreadQueue.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4743499EE7BE02622E /* MainThreadQueue.h */; };
+		4A534E478DC0E7CF8FAFBECF /* Screen.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730D9EC2E29E781C3 /* Screen.cpp */; };
+		4A534E471D112E5B5C5C529F /* Screen.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730D9EC2E29E781C3 /* Screen.cpp */; };
+		4A534E47A03D72D8121AA453 /* FrameLimiter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */; };
+		4A534E47B6B13162C6157931 /* FrameLimiter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */; };
+		4A534E471F031487F33960F3 /* PlatformRules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */; };
+		4A534E474B3E5336B343B76E /* PlatformRules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */; };
+		4A534E4792C92F90213540FE /* Screen.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471F33544BB442A466 /* Screen.h */; };
+		4A534E47D4879777C388C7A3 /* EdgeInsets.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477A428FAA7908B6A0 /* EdgeInsets.h */; };
+		4A534E471041FDE4DF7EF626 /* FrameLimiter.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47DB493E51DF771D1F /* FrameLimiter.h */; };
+		4A534E4777DAA850BCD6D5EA /* PlatformRules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47778D99DE934432D4 /* PlatformRules.h */; };
 		4A534E4799074761EB73275F /* DebugOverlay.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C33063FE6F38230 /* DebugOverlay.cpp */; };
 		4A534E47616F1F38DEA04615 /* DebugOverlay.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C33063FE6F38230 /* DebugOverlay.cpp */; };
 		4A534E47363D69401D2B349E /* DebugOverlayResources.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474C923828D7422271 /* DebugOverlayResources.cpp */; };
@@ -3841,8 +3854,10 @@
 		175DCE6930255343008C19EC /* CharExtent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CharExtent.h; sourceTree = "<group>"; };
 		175DCE6A30255343008C19EC /* DefaultFontArabic.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DefaultFontArabic.h; sourceTree = "<group>"; };
 		1776226A3058741F00F220CC /* ShaderUniforms.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShaderUniforms.h; sourceTree = "<group>"; };
+		5B6C1A013058741F00F220CC /* ShaderGlobals.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShaderGlobals.h; sourceTree = "<group>"; };
 		17A1C0A13058741F00F220CC /* ShaderManifest.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShaderManifest.h; sourceTree = "<group>"; };
 		1776226B3058741F00F220CC /* ShaderUniforms.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ShaderUniforms.cpp; sourceTree = "<group>"; };
+		5B6C1A023058741F00F220CC /* ShaderGlobals.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ShaderGlobals.cpp; sourceTree = "<group>"; };
 		17A1C0A23058741F00F220CC /* ShaderManifest.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ShaderManifest.cpp; sourceTree = "<group>"; };
 		1787AD8D2F673CE000DB1D75 /* PrefabComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PrefabComponent.h; sourceTree = "<group>"; };
 		1787AD8F2F6C333300DB1D75 /* PrefabManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PrefabManager.h; sourceTree = "<group>"; };
@@ -6826,6 +6841,13 @@
 		4A534E4740FD2A72CFB10C16 /* AsyncOwner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AsyncOwner.h; sourceTree = "<group>"; };
 		4A534E47C4CB6F074423D782 /* NetClassesLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NetClassesLua.h; sourceTree = "<group>"; };
 		4A534E4743499EE7BE02622E /* MainThreadQueue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MainThreadQueue.h; sourceTree = "<group>"; };
+		4A534E4730D9EC2E29E781C3 /* Screen.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Screen.cpp; sourceTree = "<group>"; };
+		4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FrameLimiter.cpp; sourceTree = "<group>"; };
+		4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PlatformRules.cpp; sourceTree = "<group>"; };
+		4A534E471F33544BB442A466 /* Screen.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Screen.h; sourceTree = "<group>"; };
+		4A534E477A428FAA7908B6A0 /* EdgeInsets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EdgeInsets.h; sourceTree = "<group>"; };
+		4A534E47DB493E51DF771D1F /* FrameLimiter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FrameLimiter.h; sourceTree = "<group>"; };
+		4A534E47778D99DE934432D4 /* PlatformRules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlatformRules.h; sourceTree = "<group>"; };
 		4A534E479C33063FE6F38230 /* DebugOverlay.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DebugOverlay.cpp; sourceTree = "<group>"; };
 		4A534E474C923828D7422271 /* DebugOverlayResources.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DebugOverlayResources.cpp; sourceTree = "<group>"; };
 		4A534E47C62C3BED7646C817 /* DebugStats.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DebugStats.cpp; sourceTree = "<group>"; };
@@ -8207,6 +8229,8 @@
 				4A534E477E49C8CF16ED0963 /* animation */,
 				4A534E47BC50EC83811560AA /* input */,
 				4A534E47325562508AC85529 /* net */,
+				4A534E4730D9EC2E29E781C3 /* Screen.cpp */,
+				4A534E471F33544BB442A466 /* Screen.h */,
 				4A534E47B1D2BFA5C64803C4 /* debug */,
 			);
 			path = core;
@@ -8267,6 +8291,10 @@
 				505645430000000000000177 /* ThorVGRuntime.cpp */,
 				4A534E47951BAE2F6DCE875F /* PostColorLut.cpp */,
 				4A534E47BE2CA7B811737252 /* PostColorLut.h */,
+				4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */,
+				4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */,
+				4A534E47DB493E51DF771D1F /* FrameLimiter.h */,
+				4A534E47778D99DE934432D4 /* PlatformRules.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -8425,6 +8453,7 @@
 				4A534E47CE6A27D093FF30CD /* Gradient.cpp */,
 				4A534E47B61DB73C5C1B6ABF /* AnimationCurve.h */,
 				4A534E475BFC5BBB38279DB9 /* Gradient.h */,
+				4A534E477A428FAA7908B6A0 /* EdgeInsets.h */,
 			);
 			path = math;
 			sourceTree = "<group>";
@@ -9744,8 +9773,10 @@
 				1789660A2F1D764600E89E52 /* ShaderDataSerializer.h */,
 				1789660B2F1D764600E89E52 /* ShaderDataSerializer.cpp */,
 				1776226A3058741F00F220CC /* ShaderUniforms.h */,
+				5B6C1A013058741F00F220CC /* ShaderGlobals.h */,
 				17A1C0A13058741F00F220CC /* ShaderManifest.h */,
 				1776226B3058741F00F220CC /* ShaderUniforms.cpp */,
+				5B6C1A023058741F00F220CC /* ShaderGlobals.cpp */,
 				17A1C0A23058741F00F220CC /* ShaderManifest.cpp */,
 				7DC000A92E7A0100C91BA0C0 /* RuntimeShaderCompiler.h */,
 				7DC000AA2E7A0100C91BA0C0 /* RuntimeShaderCompiler.cpp */,
@@ -11923,6 +11954,7 @@
 				71BE622225B1DB83006D6E02 /* TextureData.h in Headers */,
 				717AD98A292118EF007D7DB5 /* LayoutGroupComponent.h in Headers */,
 				1776226C3058741F00F220CC /* ShaderUniforms.h in Headers */,
+				5B6C1A033058741F00F220CC /* ShaderGlobals.h in Headers */,
 				17A1C0A33058741F00F220CC /* ShaderManifest.h in Headers */,
 				7105A55A28B305910092EA05 /* Color.h in Headers */,
 				71ABBD342783C8BB001CE3AF /* Image.h in Headers */,
@@ -12195,6 +12227,10 @@
 				4A534E4798EE0D734C9C55E0 /* AsyncOwner.h in Headers */,
 				4A534E47D07D96EA20FAA7F1 /* NetClassesLua.h in Headers */,
 				4A534E470B01A240FA439C2A /* MainThreadQueue.h in Headers */,
+				4A534E4792C92F90213540FE /* Screen.h in Headers */,
+				4A534E47D4879777C388C7A3 /* EdgeInsets.h in Headers */,
+				4A534E471041FDE4DF7EF626 /* FrameLimiter.h in Headers */,
+				4A534E4777DAA850BCD6D5EA /* PlatformRules.h in Headers */,
 				4A534E4700C2B06C425C31F7 /* DebugOverlay.h in Headers */,
 				4A534E47EBF20FD2B6EA0602 /* DebugOverlayResources.h in Headers */,
 				4A534E47CA764B3433135B26 /* DebugStats.h in Headers */,
@@ -13881,6 +13917,7 @@
 				175DCCB8300FA1F2008C19EC /* ReflectionProbe.cpp in Sources */,
 				71ABBD0F277A313C001CE3AF /* AlphaTween.cpp in Sources */,
 				1776226E3058741F00F220CC /* ShaderUniforms.cpp in Sources */,
+				5B6C1A053058741F00F220CC /* ShaderGlobals.cpp in Sources */,
 				17A1C0A53058741F00F220CC /* ShaderManifest.cpp in Sources */,
 				716803CF2DF75EA200ED71BE /* ThreadPoolManager.cpp in Sources */,
 				716803D02DF75EA200ED71BE /* ResourceProgress.cpp in Sources */,
@@ -14272,6 +14309,9 @@
 				4A534E4765A452A70993BC50 /* NetClassesLua.cpp in Sources */,
 				4A534E47D5FBC9D2B84C3EF4 /* MainThreadQueue.cpp in Sources */,
 				4A534E476582D52ED841837C /* HttpBackendApple.mm in Sources */,
+				4A534E478DC0E7CF8FAFBECF /* Screen.cpp in Sources */,
+				4A534E47A03D72D8121AA453 /* FrameLimiter.cpp in Sources */,
+				4A534E471F031487F33960F3 /* PlatformRules.cpp in Sources */,
 				4A534E4799074761EB73275F /* DebugOverlay.cpp in Sources */,
 				4A534E47363D69401D2B349E /* DebugOverlayResources.cpp in Sources */,
 				4A534E4775EA0FE24B50FD95 /* DebugStats.cpp in Sources */,
@@ -14338,6 +14378,7 @@
 				175DCCB7300FA1F2008C19EC /* ReflectionProbe.cpp in Sources */,
 				71ABBD0E277A313C001CE3AF /* AlphaTween.cpp in Sources */,
 				1776226D3058741F00F220CC /* ShaderUniforms.cpp in Sources */,
+				5B6C1A043058741F00F220CC /* ShaderGlobals.cpp in Sources */,
 				17A1C0A43058741F00F220CC /* ShaderManifest.cpp in Sources */,
 				716803D12DF75EA200ED71BE /* ThreadPoolManager.cpp in Sources */,
 				716803D22DF75EA200ED71BE /* ResourceProgress.cpp in Sources */,
@@ -14729,6 +14770,9 @@
 				4A534E4704BBC250AA4EB0AC /* NetClassesLua.cpp in Sources */,
 				4A534E47265BB2DD7CEE9EEA /* MainThreadQueue.cpp in Sources */,
 				4A534E47D3ECA820EEE9216B /* HttpBackendApple.mm in Sources */,
+				4A534E471D112E5B5C5C529F /* Screen.cpp in Sources */,
+				4A534E47B6B13162C6157931 /* FrameLimiter.cpp in Sources */,
+				4A534E474B3E5336B343B76E /* PlatformRules.cpp in Sources */,
 				4A534E47616F1F38DEA04615 /* DebugOverlay.cpp in Sources */,
 				4A534E47880AD33FCC731DA0 /* DebugOverlayResources.cpp in Sources */,
 				4A534E470E64957D3C296FB5 /* DebugStats.cpp in Sources */,

@@ -16,6 +16,7 @@
 #endif
 
 #include "Engine.h"
+#include "util/FrameLimiter.h"
 
 #include <chrono>
 #include <cmath>
@@ -23,10 +24,6 @@
 
 #ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
 #define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
-#endif
-
-#ifndef JASPERENGINE_VSYNC_ENABLED
-#define JASPERENGINE_VSYNC_ENABLED 1
 #endif
 
 // 0 = windowed, 1 = maximized, 2 = fullscreen
@@ -75,11 +72,15 @@ HGLRC glContext = nullptr;
 
 GamepadWin gamepads;
 WinInputRouter inputRouter;
+// Engine.targetFrameRate without vsync (Engine::getFramePacing().limiterFps)
+FrameLimiter frameLimiter;
 
 bool shouldClose = false;
+bool contextReady = false;
 bool inSizeMove = false;
 
 void drawFrame();
+void setSwapInterval(int interval);
 
 #if defined(SOKOL_GLCORE)
 template <typename T>
@@ -146,6 +147,10 @@ LRESULT CALLBACK windowProc(HWND handle, UINT message,
         case WM_KILLFOCUS:
             WindowWin::handleFocusLost();
             break;
+        case WM_ACTIVATE:
+            // the game window is in front and gets input, or another window took over
+            Engine::systemFocus(LOWORD(wParam) != WA_INACTIVE);
+            break;
         case WM_SETCURSOR:
             if (LOWORD(lParam) == HTCLIENT && WindowWin::isCursorHidden()) {
                 SetCursor(nullptr);
@@ -177,11 +182,18 @@ bool createContext() {
     VulkanContextConfig config;
     config.surfaceExtension = VK_KHR_WIN32_SURFACE_EXTENSION_NAME;
     config.createSurface = createWindowSurface;
-    config.vsync = JASPERENGINE_VSYNC_ENABLED != 0;
-    return VulkanContext::create(config);
+    config.vsync = Engine::getFramePacing().swapInterval > 0;
+    contextReady = VulkanContext::create(config);
+    return contextReady;
+}
+
+void setSwapInterval(int interval) {
+    // FIFO presents every vblank; longer intervals come from the limiter (getMaxSwapInterval)
+    VulkanContext::setVSync(interval > 0);
 }
 
 void destroyContext() {
+    contextReady = false;
     VulkanContext::destroy();
 }
 
@@ -197,11 +209,17 @@ void endFrame() {
 
 bool createContext() {
     D3D11ContextConfig config;
-    config.vsync = JASPERENGINE_VSYNC_ENABLED != 0;
-    return D3D11Context::create(config);
+    config.swapInterval = Engine::getFramePacing().swapInterval;
+    contextReady = D3D11Context::create(config);
+    return contextReady;
+}
+
+void setSwapInterval(int interval) {
+    D3D11Context::setSwapInterval(interval);
 }
 
 void destroyContext() {
+    contextReady = false;
     D3D11Context::destroy();
 }
 
@@ -272,12 +290,19 @@ bool createContext() {
         return false;
     }
 
-    const auto swapIntervalEXT = wglProc<SwapIntervalProc>("wglSwapIntervalEXT");
-    if (swapIntervalEXT) swapIntervalEXT(JASPERENGINE_VSYNC_ENABLED ? 1 : 0);
+    contextReady = true;
+    setSwapInterval(Engine::getFramePacing().swapInterval);
     return true;
 }
 
+void setSwapInterval(int interval) {
+    if (!glContext) return;
+    const auto swapIntervalEXT = wglProc<SwapIntervalProc>("wglSwapIntervalEXT");
+    if (swapIntervalEXT) swapIntervalEXT(interval);
+}
+
 void destroyContext() {
+    contextReady = false;
     if (glContext) {
         wglMakeCurrent(nullptr, nullptr);
         wglDeleteContext(glContext);
@@ -305,6 +330,10 @@ void drawFrame() {
     beginFrame();
     Engine::systemDraw();
     endFrame();
+
+    // not while the modal resize loop draws from its timer
+    if (!inSizeMove)
+        frameLimiter.wait(Engine::getFramePacing().limiterFps);
 }
 
 double monotonicSeconds() {
@@ -325,6 +354,10 @@ void waitForMessage(double timeout) {
         MsgWaitForMultipleObjectsEx(0, nullptr, static_cast<DWORD>(timeout * 1000.0), QS_ALLINPUT, MWMO_INPUTAVAILABLE);
 }
 
+}
+
+void JasperEngineWin::applySwapInterval(int interval) {
+    if (contextReady) setSwapInterval(interval);
 }
 
 int JasperEngineWin::init(int argc, char **argv) {

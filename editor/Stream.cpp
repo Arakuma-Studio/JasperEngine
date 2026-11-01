@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Stream.h"
+#include "util/ShaderGlobalsJson.h"
 #include "AppSettings.h"
 #include "EditorHost.h"
 #include "Out.h"
@@ -167,26 +168,57 @@ namespace {
         return backends;
     }
 
-    std::string androidOrientationToString(editor::AndroidOrientation orientation) {
-        switch (orientation) {
-            case editor::AndroidOrientation::Portrait: return "portrait";
-            case editor::AndroidOrientation::Landscape: return "landscape";
-            case editor::AndroidOrientation::SensorPortrait: return "sensorPortrait";
-            case editor::AndroidOrientation::SensorLandscape: return "sensorLandscape";
-            case editor::AndroidOrientation::FullSensor: return "fullSensor";
-            case editor::AndroidOrientation::Unspecified:
-            default: return "unspecified";
+    // presentation.allowedOrientations: the names of the set, Portrait first
+    YAML::Node orientationMaskToNode(uint8_t mask) {
+        YAML::Node node(YAML::NodeType::Sequence);
+        for (ScreenOrientation orientation : {ScreenOrientation::Portrait, ScreenOrientation::PortraitUpsideDown,
+                                              ScreenOrientation::LandscapeLeft, ScreenOrientation::LandscapeRight}) {
+            if (mask & PlatformRules::orientationBit(orientation)) node.push_back(PlatformRules::orientationName(orientation));
         }
+        return node;
     }
 
-    editor::AndroidOrientation stringToAndroidOrientation(const std::string& value) {
-        if (value == "portrait") return editor::AndroidOrientation::Portrait;
-        if (value == "landscape") return editor::AndroidOrientation::Landscape;
-        if (value == "sensorPortrait") return editor::AndroidOrientation::SensorPortrait;
-        if (value == "sensorLandscape") return editor::AndroidOrientation::SensorLandscape;
-        if (value == "fullSensor") return editor::AndroidOrientation::FullSensor;
-        return editor::AndroidOrientation::Unspecified;
+    uint8_t nodeToOrientationMask(const YAML::Node& node, uint8_t fallback) {
+        if (!node || !node.IsSequence()) return fallback;
+        uint8_t mask = 0;
+        for (const auto& item : node) {
+            ScreenOrientation orientation;
+            if (item.IsScalar() && PlatformRules::parseOrientationName(item.as<std::string>(), orientation) &&
+                PlatformRules::isFixedOrientation(orientation)) {
+                mask |= PlatformRules::orientationBit(orientation);
+            }
+        }
+        return mask ? mask : fallback;
     }
+}
+
+// Projects written before Player > Resolution and Presentation kept an Android-only
+// orientation (android.orientation, the manifest's screenOrientation): its value as the shared
+// default and allowed orientations. False for "unspecified" or an unknown value (the defaults stay).
+bool editor::Stream::migrateAndroidOrientation(const std::string& value, PresentationSettings& presentation) {
+    const uint8_t P = PlatformRules::orientationBit(ScreenOrientation::Portrait);
+    const uint8_t PU = PlatformRules::orientationBit(ScreenOrientation::PortraitUpsideDown);
+    const uint8_t LL = PlatformRules::orientationBit(ScreenOrientation::LandscapeLeft);
+    const uint8_t LR = PlatformRules::orientationBit(ScreenOrientation::LandscapeRight);
+    if (value == "portrait") {
+        presentation.defaultOrientation = ScreenOrientation::Portrait;
+        presentation.allowedOrientations = P;
+    } else if (value == "landscape") {
+        presentation.defaultOrientation = ScreenOrientation::LandscapeLeft;
+        presentation.allowedOrientations = LL;
+    } else if (value == "sensorPortrait") {
+        presentation.defaultOrientation = ScreenOrientation::AutoRotation;
+        presentation.allowedOrientations = P | PU;
+    } else if (value == "sensorLandscape") {
+        presentation.defaultOrientation = ScreenOrientation::AutoRotation;
+        presentation.allowedOrientations = LL | LR;
+    } else if (value == "fullSensor") {
+        presentation.defaultOrientation = ScreenOrientation::AutoRotation;
+        presentation.allowedOrientations = P | PU | LL | LR;
+    } else {
+        return false;
+    }
+    return true;
 }
 
 std::string editor::Stream::makeEmbeddedTextureId(){
@@ -2010,6 +2042,25 @@ ShaderUniformValues editor::Stream::decodeShaderUniforms(const YAML::Node& node)
     return uniforms;
 }
 
+// {member: global}, written only when not empty
+YAML::Node editor::Stream::encodeShaderGlobalBindings(const ShaderGlobalBindings& bindings) {
+    YAML::Node node(YAML::NodeType::Map);
+    for (const auto& binding : bindings) node[binding.first] = binding.second;
+    return node;
+}
+
+ShaderGlobalBindings editor::Stream::decodeShaderGlobalBindings(const YAML::Node& node) {
+    ShaderGlobalBindings bindings;
+    if (!node || !node.IsMap()) return bindings;
+    for (const auto& binding : node) {
+        if (!binding.second.IsScalar()) continue;
+        const std::string member = binding.first.as<std::string>();
+        const std::string global = binding.second.as<std::string>();
+        if (!member.empty() && !global.empty()) bindings.push_back({member, global});
+    }
+    return bindings;
+}
+
 YAML::Node editor::Stream::encodeQuaternion(const Quaternion& quat) {
     YAML::Node node;
     node.SetStyle(YAML::EmitterStyle::Flow);
@@ -2734,6 +2785,31 @@ nlohmann::json yamlToJson(const YAML::Node& node) {
     return text;
 }
 
+// JSON -> YAML with numbers written as their shortest float text ("0.1", not 0.10000000000000001)
+YAML::Node shaderGlobalsJsonToYaml(const nlohmann::json& j) {
+    if (j.is_number_float()) {
+        char text[32];
+        snprintf(text, sizeof(text), "%.17g", j.get<double>());
+        // the shortest that reads back the same (the values are float-exact doubles)
+        for (int digits = 6; digits <= 17; digits++) {
+            snprintf(text, sizeof(text), "%.*g", digits, j.get<double>());
+            if (std::strtod(text, nullptr) == j.get<double>()) break;
+        }
+        return YAML::Node(std::string(text));
+    }
+    if (j.is_object()) {
+        YAML::Node node(YAML::NodeType::Map);
+        for (auto it = j.begin(); it != j.end(); ++it) node[it.key()] = shaderGlobalsJsonToYaml(it.value());
+        return node;
+    }
+    if (j.is_array()) {
+        YAML::Node node(YAML::NodeType::Sequence);
+        for (const nlohmann::json& v : j) node.push_back(shaderGlobalsJsonToYaml(v));
+        return node;
+    }
+    return jsonToYaml(j);
+}
+
 const char* spriteNormalsViewName(int view) {
     switch (view) {
         case 0: return "color";
@@ -3065,14 +3141,24 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         }
     }
 
-    // Project Settings > Physics > 3D World Capacity: only when it differs from the defaults
+    // Project Settings > Graphics > Shader Globals: {name, type, arraySize (arrays), default}
+    if (!project->getShaderGlobals().empty()) {
+        YAML::Node globals = shaderGlobalsJsonToYaml(ShaderGlobalsJson::listToJson(project->getShaderGlobals(), "arraySize"));
+        for (YAML::Node global : globals) {
+            if (global["default"] && global["default"].IsSequence()) global["default"].SetStyle(YAML::EmitterStyle::Flow);
+        }
+        root["shaderGlobals"] = globals;
+    }
+
+    // Project Settings > Physics > 3D World Capacity: only when it differs from the defaults (its own key:
+    // physics3D is the 3D physics on/off switch)
     if (project->getPhysics3DWorldSettings() != Physics3DWorldSettings()) {
         const Physics3DWorldSettings& world = project->getPhysics3DWorldSettings();
         YAML::Node physicsNode;
         physicsNode["maxBodies"] = world.maxBodies;
         physicsNode["maxBodyPairs"] = world.maxBodyPairs;
         physicsNode["maxContactConstraints"] = world.maxContactConstraints;
-        root["physics3D"] = physicsNode;
+        root["physics3DWorld"] = physicsNode;
     }
 
     // Project Settings > Input: only once edited (an old project reads Unity's defaults)
@@ -3109,6 +3195,22 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (exportNode.size() != 0) {
             root["export"] = exportNode;
         }
+    }
+
+    {
+        // Player > Resolution and Presentation (non-defaults only)
+        const PresentationSettings& presentation = project->getPresentationSettings();
+        const PresentationSettings defaults;
+        YAML::Node presentationNode;
+        if (presentation.defaultOrientation != defaults.defaultOrientation) {
+            presentationNode["defaultOrientation"] = PlatformRules::orientationName(presentation.defaultOrientation);
+        }
+        if (presentation.allowedOrientations != defaults.allowedOrientations) {
+            presentationNode["allowedOrientations"] = orientationMaskToNode(presentation.allowedOrientations);
+        }
+        if (presentation.keepScreenOn != defaults.keepScreenOn) presentationNode["keepScreenOn"] = presentation.keepScreenOn;
+        if (presentation.targetFrameRate != defaults.targetFrameRate) presentationNode["targetFrameRate"] = presentation.targetFrameRate;
+        if (presentationNode.size() != 0) root["presentation"] = presentationNode;
     }
 
     {
@@ -3209,7 +3311,6 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         }
         if (android.minSdk != defaults.minSdk) androidNode["minSdk"] = android.minSdk;
         if (android.targetSdk != defaults.targetSdk) androidNode["targetSdk"] = android.targetSdk;
-        if (android.orientation != defaults.orientation) androidNode["orientation"] = androidOrientationToString(android.orientation);
 
         YAML::Node abiNode;
         if (android.abiArmeabiV7a != defaults.abiArmeabiV7a) abiNode["armeabi-v7a"] = android.abiArmeabiV7a;
@@ -3229,7 +3330,6 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
 
         if (android.allowBackup != defaults.allowBackup) androidNode["allowBackup"] = android.allowBackup;
         if (android.fullscreen != defaults.fullscreen) androidNode["fullscreen"] = android.fullscreen;
-        if (android.keepScreenOn != defaults.keepScreenOn) androidNode["keepScreenOn"] = android.keepScreenOn;
         if (android.admobEnabled != defaults.admobEnabled) androidNode["admobEnabled"] = android.admobEnabled;
         if (!android.admobAppId.empty()) androidNode["admobAppId"] = android.admobAppId;
         if (androidNode.size()) root["android"] = androidNode;
@@ -3509,15 +3609,41 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     {
+        // Project Settings > Graphics > Shader Globals; an entry that cannot be read is left out
+        // (with an error), the others are kept
+        std::vector<ShaderGlobalDecl> globals;
+        const YAML::Node globalsNode = node["shaderGlobals"];
+        if (globalsNode && globalsNode.IsSequence()) {
+            for (const YAML::Node& entry : globalsNode) {
+                ShaderGlobalDecl decl;
+                std::string error;
+                std::vector<ShaderGlobalDecl> candidate = globals;
+                if (ShaderGlobalsJson::declFromJson(yamlToJson(entry), decl, error)) {
+                    candidate.push_back(decl);
+                    error = ShaderGlobals::validate(candidate);
+                }
+                if (!error.empty()) {
+                    Out::error("Project Settings > Graphics > Shader Globals: %s (left out)", error.c_str());
+                    continue;
+                }
+                globals = candidate;
+            }
+        } else if (globalsNode && !globalsNode.IsNull()) {
+            Out::error("Project Settings > Graphics > Shader Globals: shaderGlobals in project.yaml is not a list (ignored)");
+        }
+        project->setShaderGlobals(globals);
+    }
+
+    {
         // Project Settings > Physics > 3D World Capacity; missing: the defaults
         Physics3DWorldSettings world;
-        const YAML::Node physicsNode = node["physics3D"];
+        const YAML::Node physicsNode = node["physics3DWorld"];
         if (physicsNode && physicsNode.IsMap()) {
             if (physicsNode["maxBodies"]) world.maxBodies = YamlNumbers::as<unsigned int>(physicsNode["maxBodies"]);
             if (physicsNode["maxBodyPairs"]) world.maxBodyPairs = YamlNumbers::as<unsigned int>(physicsNode["maxBodyPairs"]);
             if (physicsNode["maxContactConstraints"]) world.maxContactConstraints = YamlNumbers::as<unsigned int>(physicsNode["maxContactConstraints"]);
         } else if (physicsNode) {
-            Out::warning("Ignoring physics3D in project settings: not a map");
+            Out::warning("Ignoring physics3DWorld in project settings: not a map");
         }
         project->setPhysics3DWorldSettings(world);
     }
@@ -3568,6 +3694,26 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
                     desktop.graphicBackendConfigured = true;
                 }
             }
+        }
+    }
+
+    // a project saved with Player > Resolution and Presentation no longer has android.orientation
+    const bool hasPresentationOrientation = node["presentation"] && node["presentation"].IsMap() &&
+        (node["presentation"]["defaultOrientation"] || node["presentation"]["allowedOrientations"]);
+    if (node["presentation"] && node["presentation"].IsMap()) {
+        const YAML::Node& presentationNode = node["presentation"];
+        PresentationSettings& presentation = project->getPresentationSettings();
+        if (presentationNode["defaultOrientation"]) {
+            ScreenOrientation orientation;
+            if (PlatformRules::parseOrientationName(presentationNode["defaultOrientation"].as<std::string>(), orientation)) {
+                presentation.defaultOrientation = orientation;
+            }
+        }
+        presentation.allowedOrientations = nodeToOrientationMask(presentationNode["allowedOrientations"], presentation.allowedOrientations);
+        if (presentationNode["keepScreenOn"].IsDefined()) presentation.keepScreenOn = YamlNumbers::as<bool>(presentationNode["keepScreenOn"]);
+        if (presentationNode["targetFrameRate"].IsDefined()) {
+            const int fps = YamlNumbers::as<int>(presentationNode["targetFrameRate"]);
+            presentation.targetFrameRate = fps <= 0 ? -1 : std::min(fps, 1000);
         }
     }
 
@@ -3648,7 +3794,11 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (androidNode["adaptiveIconBackground"]) android.adaptiveIconBackground = androidNode["adaptiveIconBackground"].as<std::string>();
         if (androidNode["minSdk"]) android.minSdk = std::max(1u, YamlNumbers::as<unsigned int>(androidNode["minSdk"]));
         if (androidNode["targetSdk"]) android.targetSdk = std::max(android.minSdk, YamlNumbers::as<unsigned int>(androidNode["targetSdk"]));
-        if (androidNode["orientation"]) android.orientation = stringToAndroidOrientation(androidNode["orientation"].as<std::string>());
+        // the Android-only orientation of older projects becomes the shared one, unless the project
+        // already has it; written back as presentation on the next save
+        if (androidNode["orientation"] && !hasPresentationOrientation) {
+            migrateAndroidOrientation(androidNode["orientation"].as<std::string>(), project->getPresentationSettings());
+        }
 
         if (androidNode["architectures"] && androidNode["architectures"].IsMap()) {
             const YAML::Node& abiNode = androidNode["architectures"];
@@ -3671,7 +3821,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         if (androidNode["allowBackup"].IsDefined()) android.allowBackup = YamlNumbers::as<bool>(androidNode["allowBackup"]);
         if (androidNode["fullscreen"].IsDefined()) android.fullscreen = YamlNumbers::as<bool>(androidNode["fullscreen"]);
-        if (androidNode["keepScreenOn"].IsDefined()) android.keepScreenOn = YamlNumbers::as<bool>(androidNode["keepScreenOn"]);
+        // android.keepScreenOn is dropped: exported games always kept the screen on (the native
+        // window flag), which presentation.keepScreenOn (default true) keeps doing
         if (androidNode["admobEnabled"].IsDefined()) android.admobEnabled = YamlNumbers::as<bool>(androidNode["admobEnabled"]);
         if (androidNode["admobAppId"]) android.admobAppId = androidNode["admobAppId"].as<std::string>();
     }
@@ -4291,6 +4442,8 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         }
         if (pass.scale != 1.0f)
             passNode["scale"] = pass.scale;
+        if (!pass.shaderGlobalBindings.empty())
+            passNode["shaderGlobalBindings"] = encodeShaderGlobalBindings(pass.shaderGlobalBindings);
         sceneNode["postProcess"].push_back(passNode);
     }
 
@@ -4491,6 +4644,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
             pass.uniforms = decodeShaderUniforms(passNode["uniforms"]);
             pass.textures = decodeShaderTextures(passNode["textures"]);
             pass.scale = decodeFinite(passNode["scale"], 1.0f);
+            pass.shaderGlobalBindings = decodeShaderGlobalBindings(passNode["shaderGlobalBindings"]);
             postProcess.push_back(pass);
         }
     }
@@ -4986,6 +5140,7 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
         if (textures.size() > 0) node["shaderTextures"] = textures;
     }
     if (!material.shaderFeatures.empty()) node["shaderFeatures"] = encodeShaderFeatures(material.shaderFeatures);
+    if (!material.shaderGlobalBindings.empty()) node["shaderGlobalBindings"] = encodeShaderGlobalBindings(material.shaderGlobalBindings);
     if (material.blendMode != MaterialBlendMode::AUTO) node["blendMode"] = materialBlendModeToString(material.blendMode);
     if (material.cullMode != MaterialCullMode::AUTO) node["cullMode"] = materialCullModeToString(material.cullMode);
     if (material.depthWrite != MaterialDepthWrite::AUTO) node["depthWrite"] = materialDepthWriteToString(material.depthWrite);
@@ -5050,6 +5205,7 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     material.shaderParams = decodeShaderUniforms(node["shaderParams"]);
     material.shaderTextures = decodeShaderTextures(node["shaderTextures"]);
     material.shaderFeatures = decodeShaderFeatures(node["shaderFeatures"]);
+    material.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
     material.blendMode = node["blendMode"] ? stringToMaterialBlendMode(node["blendMode"].as<std::string>()) : MaterialBlendMode::AUTO;
     material.cullMode = node["cullMode"] ? stringToMaterialCullMode(node["cullMode"].as<std::string>()) : MaterialCullMode::AUTO;
     material.depthWrite = node["depthWrite"] ? stringToMaterialDepthWrite(node["depthWrite"].as<std::string>()) : MaterialDepthWrite::AUTO;
@@ -6538,6 +6694,8 @@ YAML::Node editor::Stream::encodeUIComponent(const UIComponent& ui, bool encodeB
         node["customShader"] = ui.customShader;
     if (!ui.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(ui.shaderUniforms);
+    if (!ui.shaderGlobalBindings.empty())
+        node["shaderGlobalBindings"] = encodeShaderGlobalBindings(ui.shaderGlobalBindings);
     encodeComponentShaderLibrary(node, ui.shaderTextures, ui.shaderFeatures, &ui.blendMode, &ui.depthWrite, embedTextureData);
     encodeStencilAndColorWrite(node, ui.stencil, ui.colorWrite);
 
@@ -6574,6 +6732,7 @@ UIComponent editor::Stream::decodeUIComponent(const YAML::Node& node, const UICo
 
     if (node["customShader"]) ui.customShader = node["customShader"].as<std::string>();
     ui.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
+    ui.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
     ui.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, ui.shaderTextures, ui.shaderFeatures, &ui.blendMode, &ui.depthWrite);
     decodeStencilAndColorWrite(node, ui.stencil, ui.colorWrite);
@@ -8407,6 +8566,8 @@ YAML::Node editor::Stream::encodeSkyboxComponent(const SkyboxComponent& sky) {
         node["customShader"] = sky.customShader;
     if (!sky.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(sky.shaderUniforms);
+    if (!sky.shaderGlobalBindings.empty())
+        node["shaderGlobalBindings"] = encodeShaderGlobalBindings(sky.shaderGlobalBindings);
     encodeComponentShaderLibrary(node, sky.shaderTextures, sky.shaderFeatures, nullptr, nullptr, true);
 
     return node;
@@ -8442,6 +8603,7 @@ SkyboxComponent editor::Stream::decodeSkyboxComponent(const YAML::Node& node, co
 
     if (node["customShader"]) sky.customShader = node["customShader"].as<std::string>();
     sky.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
+    sky.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
     sky.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, sky.shaderTextures, sky.shaderFeatures, nullptr, nullptr);
 
@@ -10673,6 +10835,8 @@ YAML::Node editor::Stream::encodePointsComponent(const PointsComponent& points) 
         node["customShader"] = points.customShader;
     if (!points.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(points.shaderUniforms);
+    if (!points.shaderGlobalBindings.empty())
+        node["shaderGlobalBindings"] = encodeShaderGlobalBindings(points.shaderGlobalBindings);
     encodeComponentShaderLibrary(node, points.shaderTextures, points.shaderFeatures, &points.blendMode, &points.depthWrite, true);
     encodeStencilAndColorWrite(node, points.stencil, points.colorWrite);
 
@@ -10714,6 +10878,7 @@ PointsComponent editor::Stream::decodePointsComponent(const YAML::Node& node, co
 
     if (node["customShader"]) points.customShader = node["customShader"].as<std::string>();
     points.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
+    points.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
     points.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, points.shaderTextures, points.shaderFeatures, &points.blendMode, &points.depthWrite);
     decodeStencilAndColorWrite(node, points.stencil, points.colorWrite);
@@ -10849,11 +11014,8 @@ YAML::Node editor::Stream::encodeTrailRendererComponent(const TrailRendererCompo
         node["shaderUniforms"] = encodeShaderUniforms(trail.shaderUniforms);
     encodeComponentShaderLibrary(node, trail.shaderTextures, trail.shaderFeatures, &trail.blendMode, &trail.depthWrite, true);
     encodeStencilAndColorWrite(node, trail.stencil, trail.colorWrite);
-    if (!trail.shaderGlobalBindings.empty()) {
-        YAML::Node bindings(YAML::NodeType::Map);
-        for (const auto& binding : trail.shaderGlobalBindings) bindings[binding.first] = binding.second;
-        node["shaderGlobalBindings"] = bindings;
-    }
+    if (!trail.shaderGlobalBindings.empty())
+        node["shaderGlobalBindings"] = encodeShaderGlobalBindings(trail.shaderGlobalBindings);
     return node;
 }
 
@@ -10874,12 +11036,7 @@ TrailRendererComponent editor::Stream::decodeTrailRendererComponent(const YAML::
     trail.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, trail.shaderTextures, trail.shaderFeatures, &trail.blendMode, &trail.depthWrite);
     decodeStencilAndColorWrite(node, trail.stencil, trail.colorWrite);
-    trail.shaderGlobalBindings.clear();
-    if (node["shaderGlobalBindings"] && node["shaderGlobalBindings"].IsMap()) {
-        for (const auto& binding : node["shaderGlobalBindings"]) {
-            trail.shaderGlobalBindings.push_back({binding.first.as<std::string>(), binding.second.as<std::string>()});
-        }
-    }
+    trail.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
 
     // the runtime starts again: no points, nothing loaded
     trail.points.reset();
@@ -10928,6 +11085,8 @@ YAML::Node editor::Stream::encodeLineRendererComponent(const LineRendererCompone
         node["customShader"] = lines.customShader;
     if (!lines.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(lines.shaderUniforms);
+    if (!lines.shaderGlobalBindings.empty())
+        node["shaderGlobalBindings"] = encodeShaderGlobalBindings(lines.shaderGlobalBindings);
     encodeComponentShaderLibrary(node, lines.shaderTextures, lines.shaderFeatures, &lines.blendMode, &lines.depthWrite, true);
     encodeStencilAndColorWrite(node, lines.stencil, lines.colorWrite);
 
@@ -10961,6 +11120,7 @@ LineRendererComponent editor::Stream::decodeLineRendererComponent(const YAML::No
 
     if (node["customShader"]) lines.customShader = node["customShader"].as<std::string>();
     lines.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
+    lines.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
     lines.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, lines.shaderTextures, lines.shaderFeatures, &lines.blendMode, &lines.depthWrite);
     decodeStencilAndColorWrite(node, lines.stencil, lines.colorWrite);

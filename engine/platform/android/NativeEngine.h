@@ -10,6 +10,7 @@
 #include <android/asset_manager.h>
 #include <game-activity/GameActivity.h>
 #include <string>
+#include "util/FrameLimiter.h"
 
 struct NativeEngineSavedState {
     bool mHasFocus;
@@ -57,6 +58,32 @@ struct JniData{
     // null when the activity does not provide them (the System base clipboard is used)
     jmethodID setClipboardText;
     jmethodID getClipboardText;
+
+    // JasperPlatform's static helpers (platform services); null when the class is missing
+    jclass platformClsRef;
+    jmethodID platformOpenURL;
+    jmethodID platformGetPreferredLocales;
+    jmethodID platformGetRegion;
+    jmethodID platformGetAppVersion;
+    jmethodID platformGetAppBuild;
+    jmethodID platformGetAppIdentifier;
+    jmethodID platformGetAppName;
+    jmethodID platformGetOsRelease;
+    jmethodID platformGetApiLevel;
+    jmethodID platformGetBuildDisplay;
+    jmethodID platformGetBuildIncremental;
+    jmethodID platformGetDeviceModel;
+    jmethodID platformGetSystemMemorySize;
+    jmethodID platformGetInternetReachability;
+    jmethodID platformVibrate;
+    jmethodID platformHapticFeedback;
+    jmethodID platformGetScreenDpi;
+    jmethodID platformGetRefreshRate;
+    jmethodID platformIsNaturalPortrait;
+    jmethodID platformSetOrientationPolicy;
+    // the volatile fields its listeners keep (display rotation, device orientation degrees)
+    jfieldID platformDisplayRotation;
+    jfieldID platformDeviceDegrees;
 };
 
 class NativeEngine {
@@ -83,6 +110,17 @@ private:
 
     int mSurfWidth, mSurfHeight;
     std::string mInternalDataPath;
+
+    // Display.getRotation() in degrees as last read, and whether rotation 0 is portrait
+    int mDisplayRotation;
+    bool mNaturalPortrait;
+
+    // Engine.targetFrameRate where Swappy is not enabled: the EGL swap interval and a limiter
+    // (0: none) after each swap
+    int mFallbackSwapInterval;
+    double mFallbackLimiterFps;
+    int mAppliedSwapInterval;
+    jasperengine::FrameLimiter mFrameLimiter;
 
     JNIEnv *mJniEnv;
     JniData mJniData;
@@ -112,6 +150,9 @@ private:
     void handleGameActivityInput();
 
     void setupJNI();
+    void setupPlatformJNI(JNIEnv* env);
+    // reads JasperPlatform.displayRotation; true when it changed since the last read
+    bool refreshDisplayRotation();
 
 public:
     NativeEngine(struct android_app *app);
@@ -130,6 +171,13 @@ public:
 
     int getSurfWidth();
     int getSurfHeight();
+    // the cached Display.getRotation() degrees and the natural orientation of the device
+    int getDisplayRotation();
+    bool isNaturalPortrait();
+    // OrientationEventListener degrees, -1 when unknown or flat
+    int getDeviceDegrees();
+    // frame pacing without Swappy: applied at the next frame (the context is current there)
+    void setFallbackPacing(int swapInterval, double limiterFps);
     void showSoftInput(std::wstring text);
     void hideSoftInput();
 

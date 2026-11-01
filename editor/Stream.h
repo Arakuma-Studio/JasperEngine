@@ -284,6 +284,9 @@ namespace jasperengine::editor {
         static void decodeRibbonFields(const YAML::Node& node, T& component, const T& defaults);
 
     public:
+        // custom-block members that follow a global shader value: {member: global}
+        static YAML::Node encodeShaderGlobalBindings(const ShaderGlobalBindings& bindings);
+        static ShaderGlobalBindings decodeShaderGlobalBindings(const YAML::Node& node);
         // Unity AnimationCurve and Gradient (lines and trails spec 6.1). A curve:
         // {keys: [[time, value], [time, value, inTangent, outTangent]...], pre: clamp|loop|
         // ping_pong, post: ...} (wraps written when not clamp, tangents when not flat, .inf
@@ -368,6 +371,8 @@ namespace jasperengine::editor {
         // The workspace supplies the per-user half of the project (tabs, cameras,
         // viewport toggles); project.yaml no longer carries it. See Workspace.h.
         static void decodeProject(Project* project, const YAML::Node& node, const Workspace& workspace);
+        // android.orientation of an older project.yaml as the shared Player orientation (false: none)
+        static bool migrateAndroidOrientation(const std::string& value, PresentationSettings& presentation);
 
         // Per-user state, written to .jasperengine/user/workspace.yaml. Kept here so the
         // reader that still accepts them from an old project.yaml and the writer

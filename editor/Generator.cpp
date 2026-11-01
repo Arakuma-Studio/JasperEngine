@@ -576,11 +576,13 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/JasperEngineWin.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/WindowWin.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/SystemWin.cpp\n";
+    content += "            ${JASPERENGINE_PLATFORM_DIR}/win/HostServicesWin.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/WinInputRouter.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/GamepadWin.cpp\n";
     content += "        )\n";
-    content += "        # winhttp, iphlpapi: the HTTP client's backend (platform/win/HttpBackendWin.cpp)\n";
-    content += "        list(APPEND PLATFORM_LIBS gdi32 user32 shell32 imm32 winhttp iphlpapi)\n";
+    content += "        # winhttp, iphlpapi: the HTTP client's backend (platform/win/HttpBackendWin.cpp);\n";
+    content += "        # ole32, uuid, advapi32: platform services (platform/win/HostServicesWin.cpp)\n";
+    content += "        list(APPEND PLATFORM_LIBS gdi32 user32 shell32 imm32 winhttp iphlpapi ole32 uuid advapi32)\n";
     content += "        if(JASPERENGINE_GRAPHIC_BACKEND STREQUAL \"vulkan\")\n";
     content += "            add_definitions(\"-DSOKOL_VULKAN\")\n";
     content += "            add_definitions(\"-DVK_USE_PLATFORM_WIN32_KHR\")\n";
@@ -599,6 +601,7 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/JasperEngineMac.mm\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/WindowMac.mm\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/SystemMac.mm\n";
+    content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/HostServicesMac.mm\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/MacInputRouter.mm\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/MacTextInputClient.mm\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/main.mm\n";
@@ -626,6 +629,7 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/JasperEngineLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/WindowLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/SystemLinux.cpp\n";
+    content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/HostServicesLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/LinuxInputRouter.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/GamepadLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/GamepadDB.cpp\n";
@@ -2163,7 +2167,7 @@ bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& scen
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const std::string& inputActionsJson, bool allowInsecureHttp, const DebugSettings& debugSettings){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const std::string& inputActionsJson, bool allowInsecureHttp, const std::vector<ShaderGlobalDecl>& shaderGlobals, const PlayerSettings& playerSettings, const DebugSettings& debugSettings){
     // the generated sources (main.cpp, scene and prefab factories) live in the editor's internal
     // folder, which an MCP call's deny-by-default guard refuses otherwise (util/SafeWrite.h)
     safewrite::EditorInternal ownInternal(projectInternalPath);
@@ -2374,6 +2378,32 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     // Project Settings > Player > Allow Insecure HTTP: the same policy as the editor's Play
     mainContent += std::string("    Http::setInsecureHttpAllowed(") + (allowInsecureHttp ? "true" : "false") + ");\n";
 
+    // Player > Resolution and Presentation (before any script, which may change them) and
+    // what System.getAppName / getAppVersion... return where there is no package to ask
+    {
+        static const char* orientationNames[] = {"", "Portrait", "PortraitUpsideDown", "LandscapeLeft", "LandscapeRight", "AutoRotation"};
+        const int orientation = std::clamp((int)playerSettings.defaultOrientation, 1, 5);
+        char mask[8];
+        snprintf(mask, sizeof(mask), "0x%02X", (unsigned int)playerSettings.allowedOrientations);
+        mainContent += "    Engine::setVSyncCount(" + std::string(vsyncEnabled ? "1" : "0") + ");\n";
+        mainContent += "    Engine::setTargetFrameRate(" + std::to_string(playerSettings.targetFrameRate) + ");\n";
+        mainContent += "    Screen::initialize(ScreenOrientation::" + std::string(orientationNames[orientation]) + ", " + mask + ", " +
+            (playerSettings.keepScreenOn ? "true" : "false") + ");\n";
+        auto appInfo = [](const ApplicationInfo& info) {
+            return "System::setApplicationInfo({" + Factory::formatString(info.name) + ", " + Factory::formatString(info.identifier) + ", " +
+                Factory::formatString(info.version) + ", " + std::to_string((long long)info.build) + "});\n";
+        };
+        mainContent += "#if defined(_WIN32)\n";
+        mainContent += "    " + appInfo(playerSettings.windowsApp);
+        mainContent += "#elif defined(__EMSCRIPTEN__)\n";
+        mainContent += "    " + appInfo(playerSettings.webApp);
+        mainContent += "#elif defined(__APPLE__)\n";
+        mainContent += "    " + appInfo(playerSettings.macosApp);
+        mainContent += "#else\n";
+        mainContent += "    " + appInfo(playerSettings.linuxApp);
+        mainContent += "#endif\n";
+    }
+
     // Tags and Layers, before any scene or script can ask for them
     if (!tagsAndLayers.tags.empty()) {
         mainContent += "    TagManager::setTags({";
@@ -2408,6 +2438,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
 
     // Project Settings > Input (the engine starts with Unity's defaults), before any script reads it
     mainContent += inputActionsInitSource(inputActionsJson);
+
+    // Project Settings > Graphics > Shader Globals, declared with their defaults before any scene draws
+    mainContent += shaderGlobalsInitSource(shaderGlobals);
 
     // Project Settings > Debug, before the first scene (its scripts may read DebugOverlay)
     mainContent += debugInitSource(debugSettings);
@@ -2482,6 +2515,15 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
 
     writeSourceFiles(projectPath, projectInternalPath, libName, scriptFiles, scenes, prefabs, vsyncEnabled, windowSettings, assetsPath, luaPath, scriptDirs, cxxStandard);
 }
+
+std::string editor::Generator::shaderGlobalsInitSource(const std::vector<ShaderGlobalDecl>& shaderGlobals) {
+    if (shaderGlobals.empty()) return "";
+    std::string source = "    ShaderGlobals::declare({\n";
+    for (size_t i = 0; i < shaderGlobals.size(); i++) {
+        source += "        " + Factory::formatShaderGlobalDecl(shaderGlobals[i]) + (i + 1 < shaderGlobals.size() ? ",\n" : "\n");
+    }
+    source += "    });\n";
+    return source;
 
 std::string editor::Generator::debugInitSource(const DebugSettings& debug) {
     const DebugSettings defaults;
