@@ -18,7 +18,6 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
-#include <deque>
 #include <memory>
 #include <mutex>
 #include <stdarg.h>
@@ -36,6 +35,63 @@ namespace {
     // reported once (as a warning line) when the queue has room again
     constexpr size_t pendingLimit = 1000;
     constexpr size_t levelCount = 7;   // Trace .. Off
+    // the text a slot of the rings holds without allocating (S09 R28: no heap allocation per
+    // record): reserved up front, a longer line grows its slot once
+    constexpr size_t slotReserve = 160;
+
+    // A ring of LogEntry slots that keep their strings' capacity: a line is copied into the
+    // oldest slot, so a full ring takes lines without allocating
+    class EntryRing {
+    public:
+        explicit EntryRing(size_t capacity = 0){ reset(capacity); }
+
+        void reset(size_t capacity){
+            slots.clear();
+            slots.resize(capacity);
+            for (LogEntry& slot : slots)
+                slot.message.reserve(slotReserve);
+            head = 0;
+            count = 0;
+        }
+        // the newest lines kept, in a ring of another capacity
+        void resize(size_t capacity){
+            if (capacity == slots.size())
+                return;
+            EntryRing resized(capacity);
+            const size_t kept = std::min(count, capacity);
+            for (size_t i = count - kept; i < count; i++)
+                resized.pushSlot() = at(i);
+            *this = std::move(resized);
+        }
+        size_t capacity() const { return slots.size(); }
+        size_t size() const { return count; }
+        bool empty() const { return count == 0; }
+        // the slot of a new line: the oldest one's when full (capacity > 0)
+        LogEntry& pushSlot(){
+            const size_t index = (head + count) % slots.size();
+            if (count == slots.size())
+                head = (head + 1) % slots.size();
+            else
+                count++;
+            return slots[index];
+        }
+        // 0: the oldest
+        LogEntry& at(size_t i){ return slots[(head + i) % slots.size()]; }
+        const LogEntry& at(size_t i) const { return slots[(head + i) % slots.size()]; }
+        void popFront(){
+            head = (head + 1) % slots.size();
+            count--;
+        }
+        void clear(){
+            head = 0;
+            count = 0;
+        }
+
+    private:
+        std::vector<LogEntry> slots;
+        size_t head = 0;
+        size_t count = 0;
+    };
 
     struct Listener {
         LogListenerId id;
@@ -53,9 +109,9 @@ namespace {
     // from copies of the list, never under it
     struct LogState {
         std::mutex mutex;
-        std::deque<LogEntry> buffer;
+        EntryRing buffer{defaultBufferSize};
         size_t bufferSize = defaultBufferSize;
-        std::deque<LogEntry> pending;
+        EntryRing pending{pendingLimit};
         size_t pendingDropped = 0;
         uint64_t lastId = 0;
         size_t counts[levelCount] = {0, 0, 0, 0, 0, 0, 0};
@@ -101,10 +157,19 @@ namespace {
     }
 
     // What the sink's write() leaves for its afterWrite() on this thread: the lines to hand to
-    // the listeners (in id order) and a report of the worker lines the pending queue dropped
+    // the listeners (in id order; slots reused, no allocation per line) and a report of the
+    // worker lines the pending queue dropped
     struct ThreadDispatch {
-        std::vector<LogEntry> entries;
+        std::vector<LogEntry> slots;
+        size_t count = 0;
         size_t droppedReport = 0;
+        bool running = false;     // afterWrite is handing them out: a nested one adds, the outer one hands out
+
+        LogEntry& next(){
+            if (count == slots.size())
+                slots.emplace_back();
+            return slots[count++];
+        }
     };
 
     ThreadDispatch& threadDispatch(){
@@ -130,24 +195,50 @@ namespace {
         return index < levelCount ? index : static_cast<size_t>(LogLevel::Info);
     }
 
-    std::string trimmed(std::string_view text){
+    std::string_view trimmed(std::string_view text){
         size_t start = 0;
         size_t end = text.size();
         while (start < end && (text[start] == ' ' || text[start] == '\t' || text[start] == '\n' || text[start] == '\r')) start++;
         while (end > start && (text[end - 1] == ' ' || text[end - 1] == '\t' || text[end - 1] == '\n' || text[end - 1] == '\r')) end--;
-        return std::string(text.substr(start, end - start));
+        return text.substr(start, end - start);
     }
 
+    // a line's message and stack trace, views of its text
+    struct LineParts {
+        std::string_view message;
+        std::string_view stackTrace;
+    };
+
     // Lua errors end with "stack traceback:" and the frames (LuaBinding::handleLuaError)
-    void splitStackTrace(std::string_view text, std::string& message, std::string& stackTrace){
+    LineParts splitStackTrace(std::string_view text){
         const size_t at = text.find("stack traceback:");
-        if (at == std::string_view::npos){
-            message.assign(text.data(), text.size());
-            stackTrace.clear();
-            return;
-        }
-        message = trimmed(text.substr(0, at));
-        stackTrace = trimmed(text.substr(at));
+        if (at == std::string_view::npos)
+            return LineParts{text, std::string_view()};
+        return LineParts{trimmed(text.substr(0, at)), trimmed(text.substr(at))};
+    }
+
+    // a line into a slot (its strings' capacity reused)
+    struct LineFields {
+        uint64_t id;
+        LogLevel level;
+        const LogCategory* category;
+        LineParts parts;
+        double time;
+        uint64_t frame;
+        bool mainThread;
+        bool fromLua;
+    };
+
+    void fill(LogEntry& entry, const LineFields& line){
+        entry.id = line.id;
+        entry.level = line.level;
+        entry.category = line.category;
+        entry.message.assign(line.parts.message.data(), line.parts.message.size());
+        entry.stackTrace.assign(line.parts.stackTrace.data(), line.parts.stackTrace.size());
+        entry.time = line.time;
+        entry.frame = line.frame;
+        entry.mainThread = line.mainThread;
+        entry.fromLua = line.fromLua;
     }
 
     // One call, counted while it runs. The count goes up before `removed` is read, and
@@ -208,79 +299,72 @@ namespace {
         }
 
         void write(const LogRecord& record) override {
-            LogEntry entry;
-            entry.id = record.id;
-            entry.level = record.level;
-            entry.category = record.category;
             const GivenParts* given = givenParts();
             const bool givenTrace = given && record.text.data() == given->text && !given->stackTrace->empty();
-            if (givenTrace){
-                entry.message = *given->message;
-                entry.stackTrace = *given->stackTrace;
-            }else{
-                splitStackTrace(record.text, entry.message, entry.stackTrace);
-            }
-            entry.time = std::chrono::duration<double>(std::chrono::steady_clock::now() - startTime).count();
-            entry.frame = Engine::getGameFrames();
-            entry.mainThread = Log::isMainThread();
+            LineFields line;
+            line.id = record.id;
+            line.level = record.level;
+            line.category = record.category;
+            line.parts = givenTrace ? LineParts{*given->message, *given->stackTrace} : splitStackTrace(record.text);
+            line.time = std::chrono::duration<double>(std::chrono::steady_clock::now() - startTime).count();
+            line.frame = Engine::getGameFrames();
+            line.mainThread = Log::isMainThread();
             // a Lua error's traceback came with its message (LuaBinding's "Lua Error: ..." lines)
-            entry.fromLua = (record.flags & LogFlagLua) != 0 || (!givenTrace && !entry.stackTrace.empty());
+            line.fromLua = (record.flags & LogFlagLua) != 0 || (!givenTrace && !line.parts.stackTrace.empty());
 
             const bool dispatch = !insideListener();
             ThreadDispatch& out = threadDispatch();
             {
                 LogState& s = state();
                 std::lock_guard<std::mutex> lock(s.mutex);
-                s.lastId = std::max(s.lastId, entry.id);
-                s.counts[levelIndex(entry.level)]++;
-                if (s.bufferSize > 0){
-                    s.buffer.push_back(entry);
-                    while (s.buffer.size() > s.bufferSize)
-                        s.buffer.pop_front();
-                }
-                if (dispatch && !entry.mainThread){
+                s.lastId = std::max(s.lastId, line.id);
+                s.counts[levelIndex(line.level)]++;
+                if (s.bufferSize > 0)
+                    fill(s.buffer.pushSlot(), line);
+                if (dispatch && !line.mainThread){
                     if (s.pending.size() < pendingLimit){
                         if (s.pendingDropped > 0){
                             out.droppedReport += s.pendingDropped;
                             s.pendingDropped = 0;
                         }
-                        s.pending.push_back(entry);
+                        fill(s.pending.pushSlot(), line);
                     }else{
                         s.pendingDropped++;
                     }
                 }
             }
             if (dispatch)
-                out.entries.push_back(std::move(entry));
+                fill(out.next(), line);
         }
 
         // the Logger's lock released: the listeners of what write() got on this thread
         void afterWrite() override {
             ThreadDispatch& out = threadDispatch();
+            // a line logged while they are handed out (the drop report) joins the outer loop
+            if (out.running)
+                return;
+            out.running = true;
             if (out.droppedReport > 0){
                 const size_t dropped = out.droppedReport;
                 out.droppedReport = 0;
                 Log::warn("Log: %zu lines logged by other threads were not given to the log listeners (more than %zu waited for a frame)",
                           dropped, pendingLimit);
             }
-            if (out.entries.empty())
-                return;
-            // taken first: a listener's own lines are recorded into the list of this thread
-            std::vector<LogEntry> entries;
-            entries.swap(out.entries);
-            const std::shared_ptr<const ListenerList> listeners = currentListeners();
-            for (const LogEntry& entry : entries){
-                {
-                    ListenerScope scope;
-                    callListeners(listeners, entry, LogDelivery::AnyThread);
+            if (out.count > 0){
+                const std::shared_ptr<const ListenerList> listeners = currentListeners();
+                // a listener's own lines are recorded, not added here (no slot moves meanwhile)
+                for (size_t i = 0; i < out.count; i++){
+                    const LogEntry& entry = out.slots[i];
+                    {
+                        ListenerScope scope;
+                        callListeners(listeners, entry, LogDelivery::AnyThread);
+                    }
+                    if (entry.mainThread)
+                        dispatchOnMainThread(entry);
                 }
-                if (entry.mainThread)
-                    dispatchOnMainThread(entry);
+                out.count = 0;
             }
-            // the storage back for the next line (no allocation per line)
-            entries.clear();
-            if (out.entries.empty())
-                out.entries.swap(entries);
+            out.running = false;
         }
 
         Delivery delivery() const override { return Delivery::Inline; }
@@ -429,8 +513,9 @@ void Log::dispatchPending(){
             std::lock_guard<std::mutex> lock(s.mutex);
             if (s.pending.empty())
                 return;
-            entry = std::move(s.pending.front());
-            s.pending.pop_front();
+            // copied, so the slot keeps its capacity
+            entry = s.pending.at(0);
+            s.pending.popFront();
         }
         dispatchOnMainThread(entry);
     }
@@ -447,12 +532,13 @@ std::vector<LogEntry> Log::getEntries(size_t maxCount, uint32_t levelMask, uint6
     LogState& s = state();
     std::lock_guard<std::mutex> lock(s.mutex);
     // newest first, then reversed: maxCount keeps the newest
-    for (auto it = s.buffer.rbegin(); it != s.buffer.rend(); ++it){
-        if (it->id <= afterId)
+    for (size_t i = s.buffer.size(); i-- > 0;){
+        const LogEntry& entry = s.buffer.at(i);
+        if (entry.id <= afterId)
             break;
-        if (!(levelMask & logLevelBit(it->level)))
+        if (!(levelMask & logLevelBit(entry.level)))
             continue;
-        entries.push_back(*it);
+        entries.push_back(entry);
         if (maxCount > 0 && entries.size() >= maxCount)
             break;
     }
@@ -472,8 +558,8 @@ void Log::setBufferSize(size_t entries){
     LogState& s = state();
     std::lock_guard<std::mutex> lock(s.mutex);
     s.bufferSize = std::min(entries, maxBufferSize);
-    while (s.buffer.size() > s.bufferSize)
-        s.buffer.pop_front();
+    // the slots of the new size (reserved here, not per line); the newest lines stay
+    s.buffer.resize(s.bufferSize);
 }
 
 size_t Log::getBufferSize(){
@@ -497,7 +583,7 @@ uint64_t Log::getLastId(){
 uint64_t Log::getFirstBufferedId(){
     LogState& s = state();
     std::lock_guard<std::mutex> lock(s.mutex);
-    return s.buffer.empty() ? s.lastId + 1 : s.buffer.front().id;
+    return s.buffer.empty() ? s.lastId + 1 : s.buffer.at(0).id;
 }
 
 void Log::setStackTraces(LogStackTraces mode){

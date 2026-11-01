@@ -79,6 +79,9 @@ namespace {
             L = scriptdata::engineLua();
             ASSERT_NE(L, nullptr);
             system.root = (std::filesystem::temp_directory_path() / ("jasper-log-test-" + std::to_string(::getpid()))).string();
+            // the Logger's drain thread writes to the System (PlatformSink): what it holds goes
+            // out before the System is swapped (and again in TearDown)
+            Logger::flush();
             previous = SystemTestAccess::swap(&system);
             bufferSize = Log::getBufferSize();
             stackTraces = Log::getStackTraces();
@@ -93,6 +96,7 @@ namespace {
             Log::setStackTraces(stackTraces);
             Log::clearEntries();
             DebugOverlay::shutdown();
+            Logger::flush();
             SystemTestAccess::swap(previous);
             lua_settop(L, 0);
         }
