@@ -110,7 +110,7 @@ namespace {
     }
 
     std::string fileStem(const std::string& path){
-        const fs::path p = fs::u8path(path);
+        const fs::path p = editor::FileUtils::pathFromUtf8(path);
         return editor::FileUtils::pathToUtf8(p.stem());
     }
 
@@ -344,9 +344,9 @@ bool editor::PoseAnimationWindow::bindCharacter(uint32_t sceneId, Entity entity,
 bool editor::PoseAnimationWindow::openAnimation(const std::string& path, std::string* error){
     std::string failure;
     bool opened = session.open(path, &failure);
-    if (!opened && !fs::u8path(path).is_absolute()){
+    if (!opened && !editor::FileUtils::pathFromUtf8(path).is_absolute()){
         // an assets-relative path (as components and preview_model store them)
-        const fs::path inAssets = project->getAssetsPath() / fs::u8path(path);
+        const fs::path inAssets = project->getAssetsPath() / editor::FileUtils::pathFromUtf8(path);
         std::string second;
         opened = session.open(editor::FileUtils::pathToUtf8(inAssets), &second);
     }
@@ -372,7 +372,7 @@ std::string editor::PoseAnimationWindow::createAsset(Project* project, const fs:
     fs::path target;
     for (int n = 0; n < 1000; n++){
         const std::string name = n == 0 ? base : base + " " + std::to_string(n);
-        target = directory / fs::u8path(name + ".poseanim");
+        target = directory / editor::FileUtils::pathFromUtf8(name + ".poseanim");
         std::error_code ec;
         if (!fs::exists(target, ec)) break;
     }
@@ -880,7 +880,7 @@ void editor::PoseAnimationWindow::updateThumbnails(){
     if (session.bound() && session.rigInfo()){
         const std::shared_ptr<const PoseRigInfo>& info = session.rigInfo();
         // absolute: PoseRender resolves relative paths against the assets folder
-        const std::string modelFile = (project->getProjectPath() / fs::u8path(info->model)).string();
+        const std::string modelFile = (project->getProjectPath() / editor::FileUtils::pathFromUtf8(info->model)).string();
         thumbnails.setModel(modelFile, session.rig(), info->bridges);
         liveThumbnails.setModel(modelFile, session.rig(), info->bridges);
     }else{

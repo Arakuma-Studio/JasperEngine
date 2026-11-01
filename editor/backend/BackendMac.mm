@@ -9,6 +9,10 @@
 #include "JasperEngineGameController.h"
 #include "Engine.h"
 #include "WindowMac.h"
+#include "profiler/FrameTimes.h"
+#include "profiler/Profile.h"
+#include "render/SystemRender.h"
+#include "shader/ShaderWarmup.h"
 
 #include "imgui_impl_metal.h"
 #include "imgui_impl_osx.h"
@@ -989,7 +993,7 @@ int editor::Backend::init(int argc, char* argv[]) {
         while (!backend->shouldClose) {
             @autoreleasepool {
                 const double frameStart = monotonicSeconds();
-                const bool idleFrame =
+                const bool idleFrame = !app.isBenchmarkMode() && !app.wantsContinuousFrames() &&
                     frameStart - lastActivityTime > IDLE_ENTER_DELAY;
                 NSDate* deadline = idleFrame
                     ? [NSDate dateWithTimeIntervalSinceNow:app.idleWaitSeconds(IDLE_WAIT_TIMEOUT)]
@@ -1021,12 +1025,32 @@ int editor::Backend::init(int argc, char* argv[]) {
                     currentFrameSync = desiredFrameSync;
                 }
 
+                // as EditorFrame::run (the other backends' loop): a frame asked for, a text field's
+                // caret, the shaders and pipelines still being created off the render thread
+                // (spec S32) and a due Auto Save backup (it runs in a frame) keep it drawing
+                const bool frameRequest = app.consumeFrameRequest();
+                const bool textFocused = ImGui::GetIO().WantTextInput;
                 const bool renderRequested = playSessionActive || !idleFrame ||
                     backend->redrawRequested ||
-                    app.hasPendingMainThreadTasks();
+                    app.hasPendingMainThreadTasks() || frameRequest || textFocused ||
+                    !SystemRender::isGpuCreationIdle() || activeProject->isAutosaveDue();
+                const bool frameReady = visible && renderRequested;
 
-                if (visible && renderRequested)
+                if (frameReady)
                     acquireMainWindowDrawable();
+
+                // The per-frame work of EditorFrame::run, which this loop had none of: the shaders
+                // and pipelines created off the render thread were never published (a Lines
+                // object waited forever for its shader, so no view finished loading and no
+                // screenshot completed), no profiler frame was marked and editor_status counted
+                // no frame
+                if (frameReady){
+                    FrameTimes::beginFrame();
+                    JE_PROFILE_FRAME();
+                    Engine::latchShaderTime();
+                    SystemRender::updateGpuCreation();
+                    ShaderWarmup::update();
+                }
 
                 backend->frameInProgress = true;
                 ImGui_ImplMetal_NewFrame(backend->frameDescriptor);
@@ -1036,7 +1060,7 @@ int editor::Backend::init(int argc, char* argv[]) {
                 applyRelativeMouseData();
                 ImGui::NewFrame();
 
-                if (visible && renderRequested) app.engineRender();
+                if (frameReady) app.engineRender();
                 else app.processMainThreadTasks();
                 app.show();
 
@@ -1058,6 +1082,8 @@ int editor::Backend::init(int argc, char* argv[]) {
                 if (activity) lastActivityTime = monotonicSeconds();
 
                 ImGui::Render();
+                if (frameReady)
+                    FrameTimes::endFrameWork();
                 if (visible && (renderRequested || activity))
                     renderMainWindow(ImGui::GetDrawData());
 
@@ -1067,6 +1093,8 @@ int editor::Backend::init(int argc, char* argv[]) {
                         ImGui::RenderPlatformWindowsDefault();
                 }
                 backend->frameInProgress = false;
+                if (frameReady)
+                    app.recordFrameTime((monotonicSeconds() - frameStart) * 1000.0);
 
                 if (!focused || minimized) {
                     const double remaining = backend->framePeriod -

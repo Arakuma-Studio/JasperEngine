@@ -375,7 +375,7 @@ namespace{
             const std::filesystem::path folder = std::filesystem::path(mainFile).parent_path();
             for (const tinygltf::Buffer& buffer : parsed->buffers){
                 if (buffer.uri.empty() || buffer.uri.rfind("data:", 0) == 0 || buffer.uri.find('%') != std::string::npos) continue;
-                const std::string file = (folder / std::filesystem::u8path(buffer.uri)).lexically_normal().generic_string();
+                const std::string file = (folder / std::filesystem::path(std::u8string(buffer.uri.begin(), buffer.uri.end()))).lexically_normal().generic_string();
                 std::error_code ec;
                 const std::filesystem::file_time_type written = std::filesystem::last_write_time(file, ec);
                 if (!ec && written >= parseStart) cacheable = false;

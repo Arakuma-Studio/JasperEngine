@@ -713,7 +713,7 @@ TextureDataPool::PendingTexture TextureDataPool::startAsyncLoad(const std::strin
         };
         const uint32_t firstLevel = firstLevels[f];
         faces.push_back(AssetIOService::instance().submitRead(request,
-            [id, path, f, files, numFaces, fixAlphaBorder, isSingleFileCube, buildId, decoded, isCooked, entry, firstLevel, support, lowMemory, deferBasis](std::vector<uint8_t>&& bytes) {
+            [id, path, f, files, numFaces, isSingleFileCube, buildId, decoded, isCooked, entry, firstLevel, support, lowMemory, deferBasis](std::vector<uint8_t>&& bytes) {
                 LoadResult result;
                 std::array<TextureData,6>& data = result.data;
                 if (shutdownRequested.load()) {

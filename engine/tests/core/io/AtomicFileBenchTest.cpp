@@ -48,7 +48,14 @@ TEST(AtomicFileBench, CacheWriteNearPlainWrite) {
     // a plain write replaces the file in place; the atomic one a temp, a mode copy and a rename
     double plain = 0, atomic = 0;
     for (int attempt = 0; attempt < 3; attempt++) {
+#if defined(__APPLE__)
+        // APFS makes a new file 2-4x slower than it overwrites one (BF4, macOS 26.2), and an
+        // atomic write needs a new file however it publishes: the plain write there makes a new
+        // file too, so the bound is what the atomic write adds beyond that
+        plain = medianMs(41, [&](int i) { plainWrite(dir / ("plain-new" + std::to_string(attempt * 41 + i)), bytes); });
+#else
         plain = medianMs(41, [&](int i) { plainWrite(dir / ("plain" + std::to_string(i % 4)), bytes); });
+#endif
         atomic = medianMs(41, [&](int i) { io::writeFileAtomic(dir / ("atomic" + std::to_string(i % 4)), bytes, cache); });
         if (atomic <= plain * 1.5 + 0.05) break;
     }

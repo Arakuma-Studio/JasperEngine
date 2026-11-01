@@ -81,7 +81,9 @@ TEST(ExpectedWriteLedgerTests, ASameSizeRewriteIsNotAnEcho) {
     const fs::file_time_type before = fs::last_write_time(file);
     writeText(file, "bbbb");
     fs::last_write_time(file, before + std::chrono::seconds(1));
-    ASSERT_NE(fs::last_write_time(file), before);
+    // clock ticks: gtest would print time points with C++20 chrono formatting, unavailable
+    // below macOS 13.3 (the engine's deployment target is 12.0)
+    ASSERT_NE(fs::last_write_time(file).time_since_epoch().count(), before.time_since_epoch().count());
     ASSERT_EQ(fs::file_size(file), 4u);
     EXPECT_FALSE(f.ledger.isEchoOfOurWrite(file));
 }

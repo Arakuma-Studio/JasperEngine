@@ -31,7 +31,7 @@ namespace {
                          "--port-file", portFile.string(), "--log", logFile.string(), "--users", "alice,bob"};
             spec.timeoutMs = 0;
             spec.cancel = &stop;
-            thread = std::thread([this, spec]() { runProcess(spec); });
+            thread = std::thread([spec]() { runProcess(spec); });
             const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
             while (!fs::exists(portFile) && std::chrono::steady_clock::now() < deadline) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));

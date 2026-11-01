@@ -314,7 +314,8 @@ change: add it and rebuild. Test data goes in `engine/tests/core/fixtures/` or
 - Files are `<Subject>Test.cpp`. Suites are `<Subject>`, tests `TEST(Subject, VerbPhrase)` or
   `TEST_F(SubjectTest, VerbPhrase)` in CamelCase: `TEST(Quaternion, SlerpReturnsTheEndPoints)`.
 - A suite that needs a GPU ends in `Gpu` (`RenderGpu`) and starts each test with
-  `JASPER_REQUIRE_GPU()`: without a device it fails, it never skips. GPU suites run on Linux;
+  `JASPER_REQUIRE_GPU()`: without a device it fails, it never skips. GPU suites run on Linux
+  (Xvfb) and on macOS (the default Metal device: `HeadlessContextMetal.mm`, `ReadbackMetal.mm`);
   Windows and macOS CI run the CPU suites with `--gtest_filter=-*Gpu*`.
 - A suite whose tests take more than 5 s each ends in `Slow`. Any other test stays under 1 s, and
   both binaries' CPU suites together under 60 s on 4 cores.

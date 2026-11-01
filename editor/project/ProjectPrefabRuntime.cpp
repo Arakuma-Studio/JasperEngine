@@ -318,7 +318,10 @@ void editor::Project::registerPrefabManager() {
             list.erase(std::remove_if(list.begin(), list.end(), [&gone](Entity entity) { return gone.count(entity) != 0; }), list.end());
             return list.size() != before;
         };
-        if (drop(sceneProject->entities) | drop(sceneProject->selectedEntities)) {
+        // both lists lose the destroyed entities
+        const bool entitiesChanged = drop(sceneProject->entities);
+        const bool selectionChanged = drop(sceneProject->selectedEntities);
+        if (entitiesChanged || selectionChanged) {
             sceneProject->structureVersion++;
         }
         sceneProject->needUpdateRender = true;

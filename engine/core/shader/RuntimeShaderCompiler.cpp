@@ -36,6 +36,9 @@ struct Variant {
     std::string log;
     // reported once, when the variant is first handed over
     bool reported = false;
+    // the frame a worker (or beginFrame) settled it in, for getPendingCount; none when settled
+    // where it was asked for
+    uint64_t settledFrame = UINT64_MAX;
     bool fromDisk = false;
     bool cacheWritten = false;
     double milliseconds = 0.0;
@@ -180,6 +183,7 @@ void compileOnStrand(const Job& job){
         return;
     if (variant.cacheWritten)
         s.fileSystemSyncPending = true;
+    variant.settledFrame = s.frame;
     s.variants[job.key] = std::move(variant);
 }
 
@@ -341,7 +345,10 @@ size_t RuntimeShaderCompiler::getPendingCount(){
     std::lock_guard<std::mutex> lock(s.mutex);
     size_t pending = 0;
     for (const auto& entry : s.variants){
-        if (entry.second.state == ResourceLoadState::Loading)
+        // and one settled off the draws this frame, not handed over yet: the next frame's draw
+        // takes it (its GPU creation is counted from then), so a screenshot of this frame waits
+        const Variant& variant = entry.second;
+        if (variant.state == ResourceLoadState::Loading || (!variant.reported && variant.settledFrame == s.frame))
             pending++;
     }
     return pending;
@@ -373,6 +380,7 @@ void RuntimeShaderCompiler::beginFrame(){
 
         if (variant.cacheWritten)
             s.fileSystemSyncPending = true;
+        variant.settledFrame = s.frame;
         s.variants[job.key] = std::move(variant);
     }
 }

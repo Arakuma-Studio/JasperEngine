@@ -26,9 +26,12 @@ using namespace jasperengine;
 
 namespace {
 
+#if defined(__linux__) && defined(__x86_64__)
+    // the pinned hashes (IsDeterministic) are of Linux x86-64's output
     std::string_view view(const std::vector<uint8_t>& bytes){
         return std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size());
     }
+#endif
 
     // What the test's thread (the main thread of the bake) does inside the job system while the
     // bake runs, counted by the jobs profiler hooks: a job it runs, or a wait it enters

@@ -17,6 +17,7 @@
 #include "publish/PayloadValidator.h"
 
 #include "json.hpp"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <chrono>
@@ -101,7 +102,7 @@ namespace {
     }
 
     fs::path under(const fs::path& base, const std::string& value) {
-        const fs::path path = fs::u8path(value);
+        const fs::path path = editor::FileUtils::pathFromUtf8(value);
         return (path.is_absolute() ? path : base / path).lexically_normal();
     }
 
@@ -515,7 +516,7 @@ namespace {
     // manifest names them)
     void copyBuildSymbols(const std::string& dir, const fs::path& symbols, std::vector<std::string>& warnings) {
         std::error_code ec;
-        const fs::path from = fs::u8path(dir);
+        const fs::path from = editor::FileUtils::pathFromUtf8(dir);
         if (dir.empty() || !fs::is_directory(from, ec)) {
             warnings.push_back("W-BUILD-SYMBOLS: the build's symbols are not at " + (dir.empty() ? std::string("(none recorded)") : dir) +
                                " (a Debug build keeps them in the binary; else build again): its crashes cannot be symbolicated");
@@ -585,7 +586,7 @@ bool publish::prepareRelease(const PrepareRequest& request, const PublishTools& 
         std::vector<std::string> findings;
         validatePayload(source, validationTarget(target.platform, target.arch, target.backend, target.executable), findings);
         for (const std::string& file : target.requiredFiles)
-            if (!fs::exists(source / fs::u8path(file), ec)) findings.push_back("missing required file " + file);
+            if (!fs::exists(source / editor::FileUtils::pathFromUtf8(file), ec)) findings.push_back("missing required file " + file);
         for (const std::string& finding : findings) problems.push_back(name + ": " + finding);
     }
     if (!problems.empty()) return false;

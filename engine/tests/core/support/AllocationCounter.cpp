@@ -186,7 +186,7 @@ namespace testsupport {
 
     AllocationCountScope::AllocationCountScope(): start(0){}
     AllocationCountScope::~AllocationCountScope() = default;
-    uint64_t AllocationCountScope::count() const{ return 0; }
+    uint64_t AllocationCountScope::count() const{ return start; }   // 0: nothing is counted
     uint64_t totalAllocations(){ return 0; }
     bool countsAllocations(){ return false; }
     uint64_t threadAllocations(){ return 0; }

@@ -76,6 +76,8 @@ namespace jasperengine{
         void sendTrigger(Entity entity, const std::string& name);
 
         bool isPlaying(Entity entity);
+        // the scheduler's pause of the whole system stays visible beside the per-entity one
+        using SubSystem::isPaused;
         bool isPaused(Entity entity);
         bool isEmitting(Entity entity);
         uint32_t getParticleCount(Entity entity);

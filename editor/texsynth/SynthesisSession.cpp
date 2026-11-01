@@ -68,7 +68,7 @@ namespace jasperengine::editor::texsynth {
         }
 
         bool isPng(const std::string& path) {
-            return lower(FileUtils::pathToUtf8(fs::u8path(path).extension())) == ".png";
+            return lower(FileUtils::pathToUtf8(editor::FileUtils::pathFromUtf8(path).extension())) == ".png";
         }
 
         void add(std::vector<Problem>& problems, const std::string& field, const std::string& message) {
@@ -184,7 +184,7 @@ namespace jasperengine::editor::texsynth {
             error = "no path given";
             return false;
         }
-        const fs::path given = fs::u8path(rel);
+        const fs::path given = editor::FileUtils::pathFromUtf8(rel);
         if (given.is_absolute() || given.has_root_name() || given.has_root_directory()) {
             error = "\"" + rel + "\" is absolute: give a project-relative path (e.g. \"assets/rock_albedo.png\")";
             return false;
@@ -206,18 +206,18 @@ namespace jasperengine::editor::texsynth {
     }
 
     std::string defaultOutputPath(const std::string& examplePath, Mode mode) {
-        const fs::path example = fs::u8path(examplePath);
+        const fs::path example = editor::FileUtils::pathFromUtf8(examplePath);
         const std::string suffix = isTileableMode(mode) ? "_tile.png" : "_synth.png";
         // rock_albedo.png -> rock_tile.png, so the companions follow as rock_tile_normal.png
         // (the naming rule appends their suffix to the output's stem); rock.png -> rock_tile.png
         std::string stem = baseOf(FileUtils::pathToUtf8(example.stem()));
         if (stem.empty()) stem = FileUtils::pathToUtf8(example.stem());
-        return FileUtils::pathToGenericUtf8((example.parent_path() / fs::u8path(stem + suffix)));
+        return FileUtils::pathToGenericUtf8((example.parent_path() / editor::FileUtils::pathFromUtf8(stem + suffix)));
     }
 
     std::string paintedMaskPath(const std::string& output) {
-        const fs::path out = fs::u8path(output);
-        return FileUtils::pathToGenericUtf8((out.parent_path() / fs::u8path(FileUtils::pathToUtf8(out.stem()) + "_inpaint_mask.png")));
+        const fs::path out = editor::FileUtils::pathFromUtf8(output);
+        return FileUtils::pathToGenericUtf8((out.parent_path() / editor::FileUtils::pathFromUtf8(FileUtils::pathToUtf8(out.stem()) + "_inpaint_mask.png")));
     }
 
     std::vector<CompanionCandidate> findCompanions(const fs::path& projectDir, const std::string& examplePath) {
@@ -313,10 +313,10 @@ namespace jasperengine::editor::texsynth {
             std::string path = c.output;
             if (path.empty() && !spec.examples.empty() && !c.paths.empty()) {
                 path = FileUtils::pathToGenericUtf8(
-                    companionOutputPath(fs::u8path(spec.output), fs::u8path(spec.examples.front().path), fs::u8path(c.paths.front())));
+                    companionOutputPath(editor::FileUtils::pathFromUtf8(spec.output), editor::FileUtils::pathFromUtf8(spec.examples.front().path), editor::FileUtils::pathFromUtf8(c.paths.front())));
                 if (path.empty()) {
-                    const fs::path out = fs::u8path(spec.output);
-                    path = FileUtils::pathToGenericUtf8((out.parent_path() / fs::u8path(FileUtils::pathToUtf8(out.stem()) + "_" + c.name + ".png")));
+                    const fs::path out = editor::FileUtils::pathFromUtf8(spec.output);
+                    path = FileUtils::pathToGenericUtf8((out.parent_path() / editor::FileUtils::pathFromUtf8(FileUtils::pathToUtf8(out.stem()) + "_" + c.name + ".png")));
                 }
             }
             outputs.push_back({c.name, path});
@@ -648,7 +648,7 @@ namespace jasperengine::editor::texsynth {
         auto rel = [&](const json& entry) -> std::string {
             const std::string recordedText = jsonString(entry, "path");
             if (recordedText.empty()) return std::string();
-            const fs::path recorded = fs::u8path(recordedText);
+            const fs::path recorded = editor::FileUtils::pathFromUtf8(recordedText);
             return projectRelative(projectDir, recorded.is_absolute() ? recorded : base / recorded);
         };
         if (recipe.contains("params")) {
@@ -701,7 +701,7 @@ namespace jasperengine::editor::texsynth {
         auto outputPath = [&](const std::string& role) -> std::string {
             const std::string recordedText = jsonString(outputs, role.c_str());
             if (recordedText.empty()) return std::string();
-            const fs::path recorded = fs::u8path(recordedText);
+            const fs::path recorded = editor::FileUtils::pathFromUtf8(recordedText);
             return projectRelative(projectDir, recorded.is_absolute() ? recorded : base / recorded);
         };
         spec.output = outputPath("primary");

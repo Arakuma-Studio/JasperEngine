@@ -26,7 +26,7 @@
 
 namespace jasperengine{
 
-    class TerrainComponent;
+    struct TerrainComponent;
     struct Transform;
 
     // What a generator found wrong (the Extrude and Instantiate inspectors, build_spline; S18

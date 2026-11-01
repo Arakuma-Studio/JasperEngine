@@ -426,7 +426,7 @@ namespace {
             std::replace(relative.begin(), relative.end(), '.', '/');
             relative += ".lua";
             for (const std::string& candidate : {relative, "lua/" + relative}){
-                const std::filesystem::path path = project->resolveLuaPath(std::filesystem::u8path(candidate));
+                const std::filesystem::path path = project->resolveLuaPath(editor::FileUtils::pathFromUtf8(candidate));
                 std::string moduleSource;
                 if (!readText(path, moduleSource)) continue;
                 collectLuaMethods(project, path, moduleSource, luaReturnedTable(stripLuaComments(moduleSource)), out, visited, depth + 1);

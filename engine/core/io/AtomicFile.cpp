@@ -250,7 +250,11 @@ namespace {
         return {};
 #else
     #if defined(__APPLE__)
-        if (publish && targetExists(to)){
+        // never with a directory: APFS swaps a file with one, which would put the directory
+        // (and what is in it) at the temporary name and report the write done; rename(2)
+        // refuses it (EISDIR), as everywhere else (WriteFileReplacing.AFailedRenameKeepsTheTarget)
+        std::error_code statError;
+        if (publish && targetExists(to) && !fs::is_directory(fs::symlink_status(to, statError))){
             if (::renamex_np(from.c_str(), to.c_str(), RENAME_SWAP) == 0){
                 ::unlink(from.c_str());
                 return {};

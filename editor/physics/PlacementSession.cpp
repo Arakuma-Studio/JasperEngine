@@ -37,7 +37,6 @@ using nlohmann::json;
 namespace {
 
     constexpr double kPi = 3.14159265358979323846;
-    constexpr float kRadToDeg = static_cast<float>(180.0 / kPi);
     constexpr float kDegToRad = static_cast<float>(kPi / 180.0);
 
     // Wall time of stepping the interactive world gets per editor frame

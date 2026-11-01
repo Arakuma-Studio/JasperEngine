@@ -270,7 +270,7 @@ TEST(ParticleModules, BurstRandomCountsAreUniform){
     b.count = MinMaxCurve::twoConstants(5.0f, 15.0f);
     d.emission.bursts = {b};
     const auto effect = compileOrFail(d);
-    double sum = 0.0, sumSq = 0.0;
+    double sum = 0.0;
     uint32_t lo = 1000, hi = 0;
     const int seeds = 1000;
     for (int s = 1; s <= seeds; s++){
@@ -285,7 +285,6 @@ TEST(ParticleModules, BurstRandomCountsAreUniform){
         lo = std::min(lo, n);
         hi = std::max(hi, n);
         sum += n;
-        sumSq += (double)n * n;
     }
     EXPECT_EQ(lo, 5u);
     EXPECT_EQ(hi, 15u);

@@ -313,7 +313,7 @@ namespace jasperengine::editor::texsynth {
         char separator = '_';
         const std::string suffix = companionSuffix(FileUtils::pathToUtf8(example.stem()), FileUtils::pathToUtf8(companion.stem()), separator);
         if (suffix.empty()) return std::filesystem::path();
-        return primaryOut.parent_path() / std::filesystem::u8path(FileUtils::pathToUtf8(primaryOut.stem()) + separator + suffix + ".png");
+        return primaryOut.parent_path() / editor::FileUtils::pathFromUtf8(FileUtils::pathToUtf8(primaryOut.stem()) + separator + suffix + ".png");
     }
 
     Result synthesize(Request& request, const Control& control) {

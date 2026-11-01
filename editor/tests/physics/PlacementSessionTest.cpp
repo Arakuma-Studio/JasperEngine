@@ -789,9 +789,7 @@ TEST(PhysicsPlacementSim, SameArgumentsSameHashWhateverTheSlices) {
 
     PlacementRun sliced;
     ASSERT_TRUE(sliced.start(project(), spec));
-    int slices = 0;
     while (!sliced.advance(0.3)) {
-        slices++;
         EXPECT_LT(sliced.progress(), 1.0f);
     }
     EXPECT_EQ(sliced.result().stateHash, straight.stateHash);

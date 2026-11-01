@@ -22,8 +22,11 @@ using namespace jasperengine;
 namespace {
 
     constexpr char PACK_MAGIC[] = {'D', 'X', 'P', 'K', '1'};
+#ifndef JASPERENGINE_EDITOR
+    // the editor reads its projects' files, never a pack
     constexpr const char* PACK_FILENAME = "resources.pak";
     constexpr const char* CONTENT_PACK_FILENAME = "content.jpak";
+#endif
 
 #ifdef _WIN32
     typedef __int64 pack_offset_t;
