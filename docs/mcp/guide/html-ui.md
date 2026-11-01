@@ -74,7 +74,8 @@ page written for Chrome at the canvas size looks the same.
 
 Parity stops at:
 
-- **No JavaScript, no network at run time, no `<canvas>` or `<iframe>`** (by design).
+- **No JavaScript, no network access from documents, no `<canvas>` or `<iframe>`** (by design;
+  Lua's `Http` makes requests, `jasper://docs/networking`).
   `<video>` plays AV1 + Opus WebM only (see "Video"). Remote fonts, images and videos are
   imported into the project by the editor.
 - **The unsupported CSS** listed under "CSS that differs": container queries, blend modes,
@@ -424,6 +425,11 @@ Native or exactly rewritten, as in Chrome:
   (several, blurred: a glow), `-webkit-text-stroke` (drawn outside the glyphs), soft hyphens
   (`&shy;`) and zero-width spaces as break opportunities, right-to-left text with
   `direction: rtl` (Arabic shaping built in).
+- **Native Canvas Groups compared** (`jasper://docs/ui`): CSS `opacity` composites the element
+  and its children as one layer (a native group does that only in its `FLATTEN` mode; the default
+  fades each element, as Unity), and a child can undo `pointer-events: none` with `auto`, while
+  a native child re-enables blocking only with a group of its own with `ignoreParentGroups`. A
+  UI Document under a Canvas Group is not affected by it.
 - **Details that match Chrome** and surprise people: `opacity: 0` still receives the mouse
   (use `visibility: hidden` or `pointer-events: none`); `outline` paints above the element's
   content but below its positioned children; `will-change: transform` (or `opacity`, `filter`)
@@ -1530,7 +1536,7 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 | `getElementByID`, other misspelt members | the DOM names (`getElementById`) | LuaLS `undefined-field` |
 | `addEventListener("onclick")`, `"mouseenter"`, `"pointerdown"` | `"click"`, `"mouseover"`/`"mouseout"`, `"mousedown"` | LuaLS `param-type-mismatch` (`UIEventType`); a warning at run time |
 | `setTimeout`, `setInterval`, `requestAnimationFrame` | `anime.createTimer({ duration = 2000, onComplete = fn })`, or `RegisterEngineEvent(self, "onUpdate")` | none (Lua has no such globals) |
-| `fetch`, `XMLHttpRequest` | no network at run time: ship data as Lua modules (`require`) or files | none |
+| `fetch`, `XMLHttpRequest` | call Lua `Http` (`jasper://docs/networking`): in the document's `<script type="text/lua">` `Http.get(url, {owner = document}, function(res) ... end)` (no `self` there; the document's GameObject owns it), in the GameObject's script `{owner = self}`; documents themselves load nothing from the network | none |
 | `localStorage` | `UserSettings.setStringForKey(key, value)` / `getStringForKey` | none |
 | `alert()`, `confirm()` | a `<dialog>` with `showModal()`, or a modal element | `HTMLUI-HTML-0006` (inside JavaScript) |
 | JS animation libraries (GSAP, anime.js `<script>`) | the Lua `anime` API | `HTMLUI-HTML-0007` |

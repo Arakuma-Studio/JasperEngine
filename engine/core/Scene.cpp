@@ -4,6 +4,7 @@
 #include "manager/ObjectManager.h"
 #include "script/ScriptRuntime.h"
 #include "Scene.h"
+#include "script/AsyncOwner.h"
 
 #include "object/Camera.h"
 #include "Engine.h"
@@ -62,6 +63,8 @@ void Scene::init(){
 }
 
 Scene::~Scene(){
+    // async work owned by the scene or its GameObjects ends without its callbacks
+    AsyncOwners::sceneDestroyed(this);
     // first: handles that own entities of this scene and go during (or after) its teardown
     // leave them to it
     lifetime.reset();
@@ -184,6 +187,17 @@ void Scene::setCamera(Entity camera){
 
 Entity Scene::getCamera() const{
     return camera;
+}
+
+void Scene::useDefaultCamera(){
+    if (defaultCamera == NULL_ENTITY || !isEntityCreated(defaultCamera)){
+        defaultCamera = createDefaultCamera();
+    }
+    camera = defaultCamera;
+    if (CameraComponent* cameracomp = findComponent<CameraComponent>(camera)){
+        cameracomp->needUpdate = true;
+    }
+    updateCameraSize();
 }
 
 Entity Scene::createDefaultCamera(){

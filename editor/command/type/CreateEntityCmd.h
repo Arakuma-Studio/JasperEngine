@@ -35,6 +35,7 @@ namespace jasperengine::editor{
         PANEL,
         POLYGON,
         LAYOUT_GROUP,
+        CANVAS_GROUP,
         POINT_LIGHT,
         DIRECTIONAL_LIGHT,
         SPOT_LIGHT,
@@ -74,7 +75,9 @@ namespace jasperengine::editor{
         FLUID_SIMULATION,
         // a unit lattice (Transform + LatticeComponent); the menus create one through
         // LatticeEditorOps::createLattice, which fits and binds it around the selection
-        LATTICE
+        LATTICE,
+        // not a GameObject: the Hierarchy's "3D Object > Ragdoll..." opens the wizard on the selection
+        RAGDOLL_WIZARD
     };
 
     class CreateEntityCmd: public Command{

@@ -40,7 +40,9 @@
 
 #include "Jolt/Physics/Body/BodyCreationSettings.h"
 #include "Jolt/Physics/Body/BodyActivationListener.h"
+#include "Jolt/Physics/Collision/GroupFilter.h"
 #include "Jolt/Physics/Collision/GroupFilterTable.h"
+#include "Jolt/Physics/Collision/Shape/OffsetCenterOfMassShape.h"
 
 #include "Jolt/Physics/Constraints/FixedConstraint.h"
 #include "Jolt/Physics/Constraints/DistanceConstraint.h"
@@ -59,10 +61,12 @@
 #include "Jolt/Physics/Collision/CollisionCollectorImpl.h"
 #include "Jolt/Physics/Collision/TransformedShape.h"
 
+#include "physics/JoltSurfaceMaterial.h"
 #include "registry/PhysicsLayers.h"
 
 #include <mutex>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace jasperengine{
@@ -229,6 +233,133 @@ namespace jasperengine{
 		}
 	};
 
+	// Body pairs that must not collide (physics-3d 6.1.6), the group filter of every body of a
+	// scene's world: CollisionGroup(filter, group id, sub group id = the body's entity).
+	// - Two bodies with the same valid group id never collide (Rigidbody::setCollisionGroupID).
+	// - An entity pair in `ignored` never collides; its value holds the reasons: the count of
+	//   joints between the pair with enableCollision off (low 16 bits), SCRIPT
+	//   (Physics.ignoreCollision, physics-contacts) and RAGDOLL (a ragdoll's selfCollision off).
+	// - Changed only on the main thread between steps; Jolt's job threads read it in a step.
+	class JoltPairFilter3D : public JPH::GroupFilter{
+	public:
+		static constexpr uint32_t JOINT_COUNT_MASK = 0xFFFFu;
+		static constexpr uint32_t SCRIPT = 1u << 16;
+		static constexpr uint32_t RAGDOLL = 1u << 17;
+
+	private:
+		std::unordered_map<uint64_t, uint32_t> ignored;
+
+		static uint64_t pairKey(Entity a, Entity b){
+			if (a > b) std::swap(a, b);
+			return ((uint64_t)a << 32) | (uint64_t)b;
+		}
+
+	public:
+		virtual bool CanCollide(const JPH::CollisionGroup& inGroup1, const JPH::CollisionGroup& inGroup2) const override{
+			const JPH::CollisionGroup::GroupID group1 = inGroup1.GetGroupID();
+			if (group1 != JPH::CollisionGroup::cInvalidGroup && group1 == inGroup2.GetGroupID()){
+				return false;
+			}
+			// a body and the sensor body of its own trigger colliders (same GameObject)
+			if (inGroup1.GetSubGroupID() == inGroup2.GetSubGroupID()){
+				return false;
+			}
+			if (ignored.empty()){
+				return true;
+			}
+			return ignored.find(pairKey((Entity)inGroup1.GetSubGroupID(), (Entity)inGroup2.GetSubGroupID())) == ignored.end();
+		}
+
+		// a joint between the pair with enableCollision off made (add) or gone (remove)
+		void addJoint(Entity a, Entity b){
+			ignored[pairKey(a, b)]++;
+		}
+		void removeJoint(Entity a, Entity b){
+			auto found = ignored.find(pairKey(a, b));
+			if (found == ignored.end() || (found->second & JOINT_COUNT_MASK) == 0){
+				return;
+			}
+			if (--found->second == 0){
+				ignored.erase(found);
+			}
+		}
+		// SCRIPT or RAGDOLL on or off for the pair
+		void setReason(Entity a, Entity b, uint32_t reason, bool on){
+			const uint64_t key = pairKey(a, b);
+			auto found = ignored.find(key);
+			if (on){
+				ignored[key] |= reason;
+			}else if (found != ignored.end()){
+				found->second &= ~reason;
+				if (found->second == 0){
+					ignored.erase(found);
+				}
+			}
+		}
+		uint32_t getReasons(Entity a, Entity b) const{
+			auto found = ignored.find(pairKey(a, b));
+			return found == ignored.end() ? 0u : found->second;
+		}
+		bool isIgnored(Entity a, Entity b) const{
+			return getReasons(a, b) != 0;
+		}
+		// every pair with one of these entities (a body gone for good)
+		void forgetEntity(Entity entity){
+			for (auto it = ignored.begin(); it != ignored.end();){
+				if ((Entity)(it->first >> 32) == entity || (Entity)(it->first & 0xFFFFFFFFu) == entity){
+					it = ignored.erase(it);
+				}else{
+					++it;
+				}
+			}
+		}
+		void clear(){
+			ignored.clear();
+		}
+	};
+
+	// The surface of one side of a contact: its collider's material when it has one, else the
+	// body's legacy friction / restitution (no mode)
+	inline void contactSurface3D(const JPH::Body& body, const JPH::SubShapeID& subShape, bool friction, float& value, PhysicsMaterialCombine& mode){
+		const JoltSurfaceMaterial* surface = JoltSurfaceMaterial::of(body.GetShape()->GetMaterial(subShape));
+		if (surface && surface->hasMaterial()){
+			value = friction ? surface->friction : surface->restitution;
+			mode = friction ? surface->frictionCombine : surface->bounceCombine;
+		}else{
+			value = friction ? body.GetFriction() : body.GetRestitution();
+			mode = PhysicsMaterialCombine::NONE;
+		}
+	}
+
+	// Jolt's combine functions (ContactConstraintManager::CombineFunction), called from its job
+	// threads for every contact, cached ones included: two colliders without a material combine
+	// as Jolt always did (geometric mean friction, maximum restitution)
+	inline float combineFriction3D(const JPH::Body& body1, const JPH::SubShapeID& subShape1, const JPH::Body& body2, const JPH::SubShapeID& subShape2){
+		float a, b;
+		PhysicsMaterialCombine modeA, modeB;
+		contactSurface3D(body1, subShape1, true, a, modeA);
+		contactSurface3D(body2, subShape2, true, b, modeB);
+		return combineSurface(a, modeA, b, modeB, PhysicsMaterialCombine::GEOMETRIC_MEAN);
+	}
+
+	inline float combineRestitution3D(const JPH::Body& body1, const JPH::SubShapeID& subShape1, const JPH::Body& body2, const JPH::SubShapeID& subShape2){
+		float a, b;
+		PhysicsMaterialCombine modeA, modeB;
+		contactSurface3D(body1, subShape1, false, a, modeA);
+		contactSurface3D(body2, subShape2, false, b, modeB);
+		return combineSurface(a, modeA, b, modeB, PhysicsMaterialCombine::MAXIMUM);
+	}
+
+	// A contact with a trigger collider on either side is a sensor contact (Unity isTrigger)
+	inline bool isTriggerContact3D(const JPH::Body& body1, const JPH::Body& body2, const JPH::ContactManifold& manifold){
+		const JoltSurfaceMaterial* surface1 = JoltSurfaceMaterial::of(body1.GetShape()->GetMaterial(manifold.mSubShapeID1));
+		if (surface1 && surface1->isTrigger){
+			return true;
+		}
+		const JoltSurfaceMaterial* surface2 = JoltSurfaceMaterial::of(body2.GetShape()->GetMaterial(manifold.mSubShapeID2));
+		return surface2 && surface2->isTrigger;
+	}
+
 	class OnlyStaticBodyFilter : public JPH::BodyFilter{
 	private:
 		bool onlyStatic;
@@ -276,7 +407,7 @@ namespace jasperengine{
 		// Jolt calls these from its job threads: subscribers run one at a time (see
 		// PhysicsSystem::getCallbackMutex3D), and not at all when there are none
 		virtual void OnBodyActivated(const JPH::BodyID &inBodyID, uint64_t inBodyUserData) override{
-			if (!physicsSystem->onBodyActivated3D.hasSubscribers()){
+			if (!physicsSystem->onBodyActivated3D.hasSubscribers() || physicsSystem->isTriggerCompanion3D(inBodyID)){
 				return;
 			}
 			std::lock_guard<std::recursive_mutex> lock(physicsSystem->getCallbackMutex3D());
@@ -284,7 +415,7 @@ namespace jasperengine{
 		}
 
 		virtual void OnBodyDeactivated(const JPH::BodyID &inBodyID, uint64_t inBodyUserData) override{
-			if (!physicsSystem->onBodyDeactivated3D.hasSubscribers()){
+			if (!physicsSystem->onBodyDeactivated3D.hasSubscribers() || physicsSystem->isTriggerCompanion3D(inBodyID)){
 				return;
 			}
 			std::lock_guard<std::recursive_mutex> lock(physicsSystem->getCallbackMutex3D());
@@ -324,6 +455,11 @@ namespace jasperengine{
 		}
 
 		virtual void OnContactAdded(const JPH::Body &inBody1, const JPH::Body &inBody2, const JPH::ContactManifold &inManifold, JPH::ContactSettings &ioSettings) override{
+			// per-collider triggers first (Jolt sets the settings up again for every call)
+			if (isTriggerContact3D(inBody1, inBody2, inManifold)){
+				ioSettings.mIsSensor = true;
+			}
+			physicsSystem->recordDebugContact3D(inManifold);
 			if (!physicsSystem->onContactAdded3D.hasSubscribers()){
 				return;
 			}
@@ -339,6 +475,10 @@ namespace jasperengine{
 		}
 
 		virtual void OnContactPersisted(const JPH::Body &inBody1, const JPH::Body &inBody2, const JPH::ContactManifold &inManifold, JPH::ContactSettings &ioSettings) override{
+			if (isTriggerContact3D(inBody1, inBody2, inManifold)){
+				ioSettings.mIsSensor = true;
+			}
+			physicsSystem->recordDebugContact3D(inManifold);
 			if (!physicsSystem->onContactPersisted3D.hasSubscribers()){
 				return;
 			}

@@ -2000,6 +2000,24 @@ OVERRIDES.update({
     ('Event', '__tostring'): {
         'doc': [],
         'overloads': [([], 'string')]},
+    # persistence (DontDestroyOnLoad)
+    ('GameObject', 'dontDestroyOnLoad'): {
+        'doc': ["Unity's DontDestroyOnLoad (also the global `DontDestroyOnLoad`): the root GameObject of `obj` (a",
+                "script instance or a GameObject), with its children and running state, moves to the persistent",
+                "scene and survives every SceneManager.loadScene. False (warning) for a GameObject with a parent."],
+        'overloads': [([('obj', 'EntityHandle|ScriptInstance')], 'boolean')]},
+    ('GameObject', 'isPersistent'): {
+        'doc': ["In the persistent scene, or marked to move there (DontDestroyOnLoad)."],
+        'overloads': [([('obj', 'EntityHandle|ScriptInstance')], 'boolean')]},
+    ('GameObject', 'persistSingleton'): {
+        'doc': ["The surviving instance of `self`'s class: another one already persistent is returned (and `self`'s",
+                "GameObject destroyed at the end of the frame), else `self` is made persistent and returned.",
+                "In init: `if GameObject.persistSingleton(self) ~= self then return end`."],
+        'overloads': [([('self', 'ScriptInstance')], 'any')]},
+    ('SceneManager', 'moveGameObjectToScene'): {
+        'doc': ["Unity's MoveGameObjectToScene: a root GameObject goes to a running scene or the persistent scene",
+                "(at the next safe point, with its running state). False (logged) when the scene is not loaded."],
+        'overloads': [([('obj', 'EntityHandle|ScriptInstance'), ('scene', 'Scene')], 'boolean')]},
 })
 
 # Line and Trail Renderers (lines and trails spec 6.6): the points by 0-based index (Unity's
@@ -2051,6 +2069,22 @@ OVERRIDES.update({
         'doc': ['Removes the simulated values of `source` (without one: of every script).'],
         'overloads': [([('source?', _INPUT_SOURCE)], '')]},
 })
+
+# Canvas Group fades (ui canvas group spec 7.6): AlphaTweens on the group from its current alpha
+OVERRIDES[('CanvasGroup', 'fadeTo')] = {
+    'doc': ['Fades the group from its current alpha to `alpha` in `duration` seconds (LeanTween.alphaCanvas,',
+            'DOTween DOFade); a new fade stops the previous one. Returns the running AlphaTween.',
+            '`group:fadeTo(0, 0.25, {deactivate = true, onComplete = function() ... end})`'],
+    'overloads': [([('alpha', 'number'), ('duration', 'number'), ('options?', 'CanvasGroupFadeOptions')], 'AlphaTween')]}
+OVERRIDES[('CanvasGroup', 'fadeIn')] = {
+    'doc': ['fadeTo(1, duration, options).'],
+    'overloads': [([('duration', 'number'), ('options?', 'CanvasGroupFadeOptions')], 'AlphaTween')]}
+OVERRIDES[('CanvasGroup', 'fadeOut')] = {
+    'doc': ['fadeTo(0, duration, options); with `deactivate = true` the GameObject is deactivated at the end.'],
+    'overloads': [([('duration', 'number'), ('options?', 'CanvasGroupFadeOptions')], 'AlphaTween')]}
+OVERRIDES[('CanvasGroup', 'stopFade')] = {
+    'doc': ['Stops the running fade; `jumpToEnd` writes its end alpha and completes it now (onComplete, deactivate).'],
+    'overloads': [([('jumpToEnd?', 'boolean')], '')]}
 
 # Mesh:getMaterial and Mesh.material push the Material copy themselves (a LuaRef: the copy
 # remembers the shader its submesh draws with, LuaBinding::setMaterialDrawnShader)
@@ -2148,6 +2182,68 @@ OVERRIDES.update({
         'overloads': [([('key', 'string'), ('value', 'string')], '')]},
 })
 
+# http (NetClassesLua.cpp): the request functions are lua_CFunctions (positional options and
+# callback, either may be left out); HttpOptions / HttpRequestOptions are in
+# engine/core/script/binding/stubs/Http.lua
+_HTTP_CB = 'fun(response: HttpResponse)'
+_HTTP_OPTS = 'HttpOptions'
+def _http_overloads(head):
+    return [
+        (head, 'HttpRequest'),
+        (head + [('callback', _HTTP_CB)], 'HttpRequest'),
+        (head + [('options', _HTTP_OPTS), ('callback?', _HTTP_CB)], 'HttpRequest'),
+    ]
+OVERRIDES.update({
+    ('Http', 'get'): {
+        'doc': ['GET `url` (UnityWebRequest.Get). The callback runs once on the main thread, before onUpdate, with',
+                'the response: `if res.ok then ... else print(res.errorCode, res.error) end`. Pass `owner = self` in',
+                'per-scene scripts: the request then ends (no callback) when the script goes.'],
+        'overloads': _http_overloads([('url', 'string')])},
+    ('Http', 'head'): {
+        'doc': ['HEAD `url`: the status and headers, no body (a connectivity check).'],
+        'overloads': _http_overloads([('url', 'string')])},
+    ('Http', 'delete'): {
+        'doc': ['DELETE `url`.'],
+        'overloads': _http_overloads([('url', 'string')])},
+    ('Http', 'post'): {
+        'doc': ['POST `body` to `url`: a string is sent as is (Content-Type: application/octet-stream unless options.headers',
+                'set one), a table as JSON (Content-Type: application/json), nil sends an empty body.'],
+        'overloads': _http_overloads([('url', 'string'), ('body', 'string|table|nil')])},
+    ('Http', 'put'): {
+        'doc': ['PUT `body` to `url` (body rules of Http.post).'],
+        'overloads': _http_overloads([('url', 'string'), ('body', 'string|table|nil')])},
+    ('Http', 'patch'): {
+        'doc': ['PATCH `body` to `url` (body rules of Http.post).'],
+        'overloads': _http_overloads([('url', 'string'), ('body', 'string|table|nil')])},
+    ('Http', 'request'): {
+        'doc': ['The full form: options.url (required), options.method (default "GET"), options.onComplete and every',
+                'other option.'],
+        'overloads': [([('options', 'HttpRequestOptions')], 'HttpRequest')]},
+    ('Http', 'download'): {
+        'doc': ['GET `url` into the file `path` (data://ads/x.mp4, or an absolute path inside System.getUserDataPath();',
+                'folders are made). Streamed to <path>.part and renamed on success: a failed or cancelled download',
+                'leaves an existing file as it was. response.file is the path.'],
+        'overloads': _http_overloads([('url', 'string'), ('path', 'string')])},
+    ('Http', 'getTexture'): {
+        'doc': ['GET an image (PNG, JPEG, BMP, TGA, GIF) and decode it off the main thread: response.textureData,',
+                'for image:setTexture(response.url, response.textureData). Not an image: errorCode "decode".'],
+        'overloads': _http_overloads([('url', 'string')])},
+    ('Http', 'encodeUrl'): {
+        'doc': ['Percent-encodes `text` (RFC 3986: letters, digits and -._~ stay): "a b&c" -> "a%20b%26c".'],
+        'overloads': [([('text', 'string')], 'string')]},
+    ('Http', 'decodeUrl'): {
+        'doc': ['Decodes %XX escapes, and "+" as a space.'],
+        'overloads': [([('text', 'string')], 'string')]},
+    ('HttpResponse', 'json'): {
+        'doc': ['Json.decode of the body: the value, or nil and the message.'],
+        'overloads': [([], 'JsonValue?, string?')]},
+    ('HttpResponse', 'header'): {
+        'doc': ['The header `name` (any case), or nil.'],
+        'overloads': [([('name', 'string')], 'string?')]},
+})
+
+# Properties whose getter returns a LuaRef: (Lua type, a copy)
+
 # Properties whose getter returns a LuaRef, or whose lambda's return type is not inferred:
 # (Lua type, a copy)
 PROPERTY_OVERRIDES = {
@@ -2156,10 +2252,19 @@ PROPERTY_OVERRIDES = {
     ('Mesh', 'material'): ('Material', True),
     # AnimationEvent.args builds a 1-based table of the event's arguments
     ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
+    ('HttpRequest', 'response'): ('HttpResponse|nil', False),
+    ('HttpResponse', 'headers'): ('table<string, string>', True),
+    ('HttpResponse', 'body'): ('string', False),
+    ('HttpResponse', 'data'): ('JsonValue', False),
+    ('HttpResponse', 'textureData'): ('TextureData|nil', True),
+
     # the joint's bodies (std::optional<GameObject> lambdas): nil = the world
     ('Joint2D', 'bodyA'): ('GameObject|nil', False),
     ('Joint2D', 'bodyB'): ('GameObject|nil', False),
     ('Joint2D', 'connectedBody'): ('GameObject|nil', False),
+    ('Joint3D', 'bodyA'): ('GameObject|nil', False),
+    ('Joint3D', 'bodyB'): ('GameObject|nil', False),
+    ('Joint3D', 'connectedBody'): ('GameObject|nil', False),
 }
 
 for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
@@ -2386,6 +2491,7 @@ def html_ui_types_file():
 _PARAM_TYPE_OVERRIDES = {
     # 2D physics materials: a .physicsmaterial path, a PhysicsMaterial or nil (none)
     ('Rigidbody2D', 'setColliderMaterial', 'value'): 'string|PhysicsMaterial|nil',
+    ('Rigidbody', 'setColliderMaterial', 'value'): 'string|PhysicsMaterial|nil',
     ('PhysicsMaterial', 'new', 'params'): '{friction?: number, bounciness?: number, frictionCombine?: PhysicsMaterialCombine, bounceCombine?: PhysicsMaterialCombine}|nil',
 }
 # anime (engine/core/script/binding/HtmlUIAnimeLua.cpp, phase-1 p1-anim): the parameter tables
@@ -3164,6 +3270,13 @@ class Emitter:
             '---@param methodName string',
             '---@param tag? string',
             'function RegisterEvent(self, event, methodName, tag) end',
+            '',
+            '---Unity\'s DontDestroyOnLoad (same as GameObject.dontDestroyOnLoad): the root GameObject of `obj`, with',
+            '---its children, scripts\' state, sounds and bodies, survives every SceneManager.loadScene in the',
+            '---persistent scene ("DontDestroyOnLoad"). Root GameObjects only (else a warning and false); nil is ignored.',
+            '---@param obj EntityHandle|ScriptInstance|nil # a script instance (`self`) or a GameObject',
+            '---@return boolean',
+            'function DontDestroyOnLoad(obj) end',
             '',
             '---Removes what `RegisterEngineEvent(self, methodName [, tag])` subscribed (same tag); true if it was',
             '---subscribed. Unity\'s `-=` for an engine event, typically in onDisable.',

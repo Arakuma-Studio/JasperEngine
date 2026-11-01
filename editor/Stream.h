@@ -166,6 +166,10 @@ namespace jasperengine::editor {
 
         static std::string layoutGroupTypeToString(LayoutGroupType type);
         static LayoutGroupType stringToLayoutGroupType(const std::string& str);
+        static std::string canvasGroupRenderModeToString(CanvasGroupRenderMode mode);
+        static CanvasGroupRenderMode stringToCanvasGroupRenderMode(const std::string& str);
+        static std::string alphaTweenTargetToString(AlphaTweenTarget target);
+        static AlphaTweenTarget stringToAlphaTweenTarget(const std::string& str);
 
         static std::string scrollbarTypeToString(ScrollbarType type);
         static ScrollbarType stringToScrollbarType(const std::string& str);
@@ -451,6 +455,8 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeLayoutGroupComponent(const LayoutGroupComponent& container);
         static LayoutGroupComponent decodeLayoutGroupComponent(const YAML::Node& node, const LayoutGroupComponent* oldContainer = nullptr);
+        static YAML::Node encodeCanvasGroupComponent(const CanvasGroupComponent& group);
+        static CanvasGroupComponent decodeCanvasGroupComponent(const YAML::Node& node, const CanvasGroupComponent* oldGroup = nullptr);
 
         static YAML::Node encodeTextComponent(const TextComponent& text);
         static TextComponent decodeTextComponent(const YAML::Node& node, const TextComponent* oldText = nullptr);
@@ -558,6 +564,10 @@ namespace jasperengine::editor {
 
         static std::string joint3DTypeToString(Joint3DType type);
         static Joint3DType stringToJoint3DType(const std::string& str);
+        static std::string jointMotionToString(JointMotion motion);
+        static JointMotion stringToJointMotion(const std::string& str);
+        static std::string rigidbodyInterpolationToString(RigidbodyInterpolation interpolation);
+        static RigidbodyInterpolation stringToRigidbodyInterpolation(const std::string& str);
 
         static YAML::Node encodeRigidbody2DComponent(const Rigidbody2DComponent& body);
         static Rigidbody2DComponent decodeRigidbody2DComponent(const YAML::Node& node, const Rigidbody2DComponent* oldBody = nullptr);
@@ -570,6 +580,9 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeJoint3DComponent(const Joint3DComponent& joint);
         static Joint3DComponent decodeJoint3DComponent(const YAML::Node& node, const Joint3DComponent* oldJoint = nullptr);
+
+        static YAML::Node encodeRagdollComponent(const RagdollComponent& ragdoll);
+        static RagdollComponent decodeRagdollComponent(const YAML::Node& node, const RagdollComponent* oldRagdoll = nullptr);
 
         static std::string actionStateToString(ActionState state);
         static ActionState stringToActionState(const std::string& str);
