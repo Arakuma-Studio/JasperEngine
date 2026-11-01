@@ -845,3 +845,17 @@ the `gaps/anim-retarget` branch (based on `gaps/anim-layers`).
 - **`set_humanoid` without `path`** (only set_humanoid ops) writes the sidecars as one project step
   through ProjectFileWrites (their `filesChanged` invalidates the models' clips); the result has
   `sidecars` and `avatars`.
+
+### Verification (tree merged with main 5762bb259)
+
+- Engine: anim-tests 193/193, pose-tests 219/219 (numeric pose tests 1-12 of section 14 in
+  `HumanoidRetargetTest.cpp` / `HumanoidModelTest.cpp`). Measured on the host: converting a 3 s
+  clip 0.61 ms; 30 humanoid states with Foot IK 0.160 ms per frame.
+- Editor unit suite: 1640 passed, 9 skipped, 0 failed. MCP suite: 921 passed, 21 skipped,
+  10 failed (the baseline: test_animation_assets x5, test_lattice_scene x5);
+  `test_animation_retarget.py` 4/4. Tool budget 153 tools, 112266.
+- Built on the host fallback (`build/host`, -j3): build box 2203 was overloaded. Web: emcc
+  `-fsyntax-only` of the changed engine sources is clean. Xcode project synced
+  (`tools/xcode_sync_engine.py`).
+- Not verified: Android / Apple / Windows builds (no platform code changed), an exported Linux build
+  playing the hero walk on the robot, device performance, the Avatar window and Rig foldout by eye.
