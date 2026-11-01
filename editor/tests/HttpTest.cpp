@@ -107,6 +107,7 @@ namespace {
             // the transfers of this test end before the next one starts
             waitFor([] { return HttpTesting::runningTransfers() == 0; }, 5.0);
             server.reset();
+            ::jasperengine::Logger::flush();   // nothing is delivered to the capture after it goes
             SystemTestAccess::swap(previous);
             lua_settop(L, 0);
             std::error_code ec;

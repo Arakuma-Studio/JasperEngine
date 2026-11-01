@@ -33,6 +33,38 @@ namespace jasperengine {
     };
 }
 
+namespace headlesssystem {
+
+    // A suite with its own headless project (the editor's Platform as System::instance(), the
+    // binary's engine being TestMain's: a second Engine::systemInit would restart its jobs and
+    // logger) swaps its System in for each of its tests; the binary's own System is back after
+    // every test (its log capture: other suites read it)
+    inline jasperengine::System* previousSystem = nullptr;
+    inline bool systemSwapped = false;
+
+    struct RestoreSystem : ::testing::EmptyTestEventListener {
+        void OnTestEnd(const ::testing::TestInfo&) override {
+            if (systemSwapped) {
+                jasperengine::SystemTestAccess::swap(previousSystem);
+                systemSwapped = false;
+            }
+        }
+    };
+
+    inline void use(jasperengine::System* system) {
+        static const bool listening = []() {
+            ::testing::UnitTest::GetInstance()->listeners().Append(new RestoreSystem());
+            return true;
+        }();
+        (void)listening;
+        if (jasperengine::System::hasInstance() && &jasperengine::System::instance() == system) return;
+        jasperengine::System* previous = jasperengine::SystemTestAccess::swap(system);
+        if (!systemSwapped) previousSystem = previous;
+        systemSwapped = true;
+    }
+
+}
+
 namespace scriptdata {
 
     namespace fs = std::filesystem;

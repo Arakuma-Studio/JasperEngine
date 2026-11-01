@@ -74,6 +74,10 @@ jasperengine_add_test_target(jasperengine-editor-tests
         # whether this build compiles V-HACD (engine/CMakeLists.txt): the test of the build without
         # it is registered only there, not skipped here (S02 R11, no skipped editor test)
         JASPER_TEST_CONVEX_DECOMPOSITION=$<BOOL:${JASPERENGINE_CONVEX_DECOMPOSITION}>
+        # the engine's include directories and definitions, and the compiler (the flags file is
+        # generated below): LineRendererStreamTest compiles Factory's component code
+        JASPER_EDITOR_TEST_ENGINE_FLAGS="${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt"
+        JASPER_EDITOR_TEST_CXX="${CMAKE_CXX_COMPILER}"
 )
 add_dependencies(jasperengine-editor-tests jasperengine-editor je_log_crash_helper je_vcs_process_helper)
 
@@ -114,6 +118,3 @@ endif()
 # headers, with the compiler that builds the tests)
 file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt CONTENT
 "$<JOIN:$<TARGET_PROPERTY:jasperengine,INCLUDE_DIRECTORIES>,\n>\n#defines\n$<JOIN:$<TARGET_PROPERTY:jasperengine,COMPILE_DEFINITIONS>,\n>\n")
-target_compile_definitions(jasperengine-editor-tests PRIVATE
-    JASPER_EDITOR_TEST_ENGINE_FLAGS="${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt"
-    JASPER_EDITOR_TEST_CXX="${CMAKE_CXX_COMPILER}")

@@ -179,7 +179,33 @@ TEST_F(UserSettingsTest, NumbersAreWrittenTheSameInEveryLocale) {
             applied = std::setlocale(LC_NUMERIC, "de_DE.UTF-8");
         }
     }
-    if (!applied) GTEST_SKIP() << "no locale with a decimal comma available";
+    if (!applied && fs::exists("/usr/bin/localedef")) {
+        // no locale sources either (the build image): a locale of nothing but a decimal comma,
+        // over an ASCII character map, compiled here (no skipped editor test)
+        const fs::path sources = root / "locale-sources";
+        if (generated.empty()) generated = root / "locales";
+        fs::create_directories(sources);
+        fs::create_directories(generated);
+        std::ofstream(sources / "comma") << "LC_NUMERIC\ndecimal_point \"<U002C>\"\nthousands_sep \"\"\ngrouping -1\nEND LC_NUMERIC\n";
+        {
+            std::ofstream charmap(sources / "ascii");
+            charmap << "<code_set_name> JASPER_TEST_ASCII\n<comment_char> %\n<escape_char> /\n<mb_cur_max> 1\nCHARMAP\n";
+            char line[32];
+            for (int c = 0; c < 128; c++) {
+                std::snprintf(line, sizeof(line), "<U%04X> /x%02x\n", c, c);
+                charmap << line;
+            }
+            charmap << "END CHARMAP\n";
+        }
+        const std::string command = "/usr/bin/localedef -c -i '" + (sources / "comma").string() + "' -f '" + (sources / "ascii").string() +
+                                    "' '" + (generated / "de_TEST").string() + "' >/dev/null 2>&1";
+        // -c: written despite the categories it leaves out (its status says so: setlocale decides)
+        const int made = std::system(command.c_str());
+        (void)made;
+        setenv("LOCPATH", generated.c_str(), 1);
+        applied = std::setlocale(LC_NUMERIC, "de_TEST");
+    }
+    ASSERT_TRUE(applied) << "no locale with a decimal comma (nor localedef to make one)";
     char printed[32];
     std::snprintf(printed, sizeof(printed), "%g", 0.5);
     ASSERT_STREQ(printed, "0,5") << "the locale under test uses a decimal comma";

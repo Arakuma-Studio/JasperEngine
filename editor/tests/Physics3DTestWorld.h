@@ -43,7 +43,10 @@ namespace jasperengine::physics3dtest {
             physicstest::installTestSystem();
             previous = SystemTestAccess::swap(&system);
         }
-        ~LogCapture() { SystemTestAccess::swap(previous); }
+        ~LogCapture() {
+            ::jasperengine::Logger::flush();   // nothing is delivered to the capture after it goes
+            SystemTestAccess::swap(previous);
+        }
 
         const std::vector<std::string>& lines() const { ::jasperengine::Logger::flush(); return system.lines; }
         size_t count(const std::string& text) const {

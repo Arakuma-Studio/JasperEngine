@@ -177,7 +177,7 @@ TEST(GeneratedScenes, CanvasGroupFactoryCodeCompiles){
     fs::create_directories(dir);
     const fs::path file = dir / "generated.cpp";
     std::ofstream(file) << source.str();
-    const std::string command = std::string("'") + JASPER_EDITOR_TEST_CXX + "' -std=gnu++17 -fsyntax-only" + flags +
+    const std::string command = std::string("'") + JASPER_EDITOR_TEST_CXX + "' -std=gnu++20 -fsyntax-only" + flags +
                                 " '" + file.string() + "' > '" + (dir / "log.txt").string() + "' 2>&1";
     const int status = std::system(command.c_str());
     std::ifstream log(dir / "log.txt");

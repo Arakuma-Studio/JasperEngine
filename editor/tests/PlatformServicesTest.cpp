@@ -12,6 +12,7 @@
 #include "Engine.h"
 #include "Screen.h"
 #include "System.h"
+#include "log/Logger.h"
 #include "util/FrameLimiter.h"
 #include "util/PlatformRules.h"
 
@@ -104,6 +105,7 @@ namespace {
             Engine::resetApplicationState();
             Engine::setVSyncCount(1);
             Screen::initialize(ScreenOrientation::AutoRotation, PlatformRules::DEFAULT_ALLOWED_ORIENTATIONS, true);
+            ::jasperengine::Logger::flush();   // nothing is delivered to this System after it goes
             SystemTestAccess::swap(previous);
         }
     };

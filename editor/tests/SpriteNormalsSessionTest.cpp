@@ -14,6 +14,7 @@
 #include "JasperEngine.h"
 #include "Platform.h"
 #include "Project.h"
+#include "ScriptDataTestSupport.h"
 #include "App.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
@@ -83,9 +84,9 @@ namespace {
             AppSettings::initialize();
             out.project.reset(new Project());
             out.platform.reset(new editor::Platform(out.project.get()));
-            static char arg0[] = "jasperengine-editor-tests";
-            static char* argv[] = {arg0, nullptr};
-            Engine::systemInit(1, argv, out.platform.get());
+            // the editor's Platform as System::instance() for this suite's tests (the binary's engine
+            // is TestMain's: a second Engine::systemInit would restart its jobs and logger)
+            headlesssystem::use(out.platform.get());
             Engine::pauseGameEvents(true);
             Engine::setAsyncLoading(false);
             out.ready = out.project->loadProject(out.dir, false);
@@ -93,9 +94,7 @@ namespace {
             return out;
         }();
         // another test file's project may have taken the engine's Platform since
-        static char arg0[] = "jasperengine-editor-tests";
-        static char* argv[] = {arg0, nullptr};
-        if (&System::instance() != h.platform.get()) Engine::systemInit(1, argv, h.platform.get());
+        headlesssystem::use(h.platform.get());
         return h;
     }
 
@@ -917,9 +916,9 @@ namespace {
         App& app = Backend::getApp();
         Project* p = app.getProject();
         editor::Platform platform(p);
-        static char arg0[] = "jasperengine-editor-tests";
-        static char* argv[] = {arg0, nullptr};
-        Engine::systemInit(1, argv, &platform);
+        // the test binary's engine is TestMain's (a second Engine::systemInit would restart its jobs
+        // and logger): this System is swapped in
+        jasperengine::SystemTestAccess::swap(&platform);
         if (!p->loadProject(dir, false)) std::exit(2);
         // no MCP server: the undoable write needs none (ProjectFileWrites)
         if (mcp::McpServer::get().isStarted()) std::exit(20);
@@ -973,9 +972,9 @@ namespace {
         App& app = Backend::getApp();
         Project* p = app.getProject();
         editor::Platform platform(p);
-        static char arg0[] = "jasperengine-editor-tests";
-        static char* argv[] = {arg0, nullptr};
-        Engine::systemInit(1, argv, &platform);
+        // the test binary's engine is TestMain's (a second Engine::systemInit would restart its jobs
+        // and logger): this System is swapped in
+        jasperengine::SystemTestAccess::swap(&platform);
         if (!p->loadProject(dir, false)) std::exit(2);
         // no MCP server: the undoable write needs none (ProjectFileWrites)
         if (mcp::McpServer::get().isStarted()) std::exit(20);

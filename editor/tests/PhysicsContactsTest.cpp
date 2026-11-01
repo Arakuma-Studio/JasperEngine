@@ -435,7 +435,9 @@ TEST_F(PhysicsContactsTest, DestroyedInsideTriggerGivesOneExit) {
         ASSERT_EQ(exits.size(), 1u);
         EXPECT_EQ(exits[0].other, "Ball") << "the departing GameObject still exists during the call";
         EXPECT_EQ(count("Ball", "TX"), 0);
-        if (immediate) { EXPECT_EQ(count("Ball", "TE"), 0) << "destroyed before its own Enter"; }
+        // oe-port's systems run their callbacks in a StructuralDeferScope: a destroyImmediate inside
+        // the contact dispatch goes when the dispatch is done, so the ball still gets its own Enter
+        if (immediate) { EXPECT_EQ(count("Ball", "TE"), 1) << "destroyed when the dispatch is done"; }
     }
 }
 
@@ -621,8 +623,9 @@ TEST_F(PhysicsContactsTest, LuaShouldCollideMakesTheStepSynchronous) {
     EXPECT_EQ(infos, 1);
 }
 
-// T13: a Contact3D setter in an after-the-step handler warns once and does nothing
-TEST_F(PhysicsContactsTest, SnapshotSettersWarnOnce) {
+// T13: a Contact3D setter in an after-the-step handler applies from the next step (oe-port's
+// contact overrides, PhysicsSystem::setContactFriction3D), without a warning
+TEST_F(PhysicsContactsTest, SnapshotSettersApplyFromTheNextStep) {
     floor3D();
     body3D("Ball", Vector3(0, 1, 0), BodyType::DYNAMIC, {sphere(0.5f)}, false);
     lua("snapshotCalls = 0\n"
@@ -633,11 +636,9 @@ TEST_F(PhysicsContactsTest, SnapshotSettersWarnOnce) {
     run(60);
     EXPECT_GE(number("snapshotCalls"), 1.0);
     EXPECT_EQ(lua("return tostring(snapshotWas)"), "true");
-    int warnings = 0;
     for (const std::string& line : system.logLines) {
-        if (line.find("Contact3D setters have no effect") != std::string::npos) warnings++;
+        EXPECT_EQ(line.find("Contact3D setters"), std::string::npos) << line;
     }
-    EXPECT_EQ(warnings, 1);
     // synchronous mode: live and settable, no warning
     physics()->setSynchronousContactEvents3D(true);
     lua("snapshotWas = nil");
@@ -887,8 +888,9 @@ TEST_F(PhysicsContactsTest, DestroyAgainInsideItsOwnExitIsANoOp) {
     EXPECT_EQ(of("Bounds", "TX")[0].other, "Bullet");
 }
 
-// review 3: a global handler destroying a body immediately: the per-object callbacks never see
-// the pair (no Enter, no orphan Exit)
+// review 3: a global handler destroying a body immediately: no orphan Exit. The systems' callbacks
+// run in oe-port's StructuralDeferScope, so the body goes when the step's dispatch is done: the
+// pair's Enter is delivered, the floor gets its Exit, the departing ball none
 TEST_F(PhysicsContactsTest, GlobalHandlerDestroyLeavesNoOrphanExit) {
     floor3D("Contacts");
     body3D("Ball", Vector3(0, 1, 0), BodyType::DYNAMIC, {sphere(0.5f)}, false, "Contacts");
@@ -897,8 +899,8 @@ TEST_F(PhysicsContactsTest, GlobalHandlerDestroyLeavesNoOrphanExit) {
         "end\n");
     start();
     run(90);
-    EXPECT_EQ(sequence("Floor"), "");
-    EXPECT_EQ(sequence("Ball"), "");
+    EXPECT_EQ(sequence("Floor"), "CE CX");
+    EXPECT_EQ(sequence("Ball"), "CE");
     EXPECT_TRUE(physics()->getContactTracker3D().getPairs().empty());
 }
 

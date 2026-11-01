@@ -112,6 +112,7 @@ namespace jasperengine::scripttest {
                 if (i == 0) Engine::setScene(previousScenes[i]);
                 else Engine::addSceneLayer(previousScenes[i]);
             }
+            ::jasperengine::Logger::flush();   // nothing is delivered to the capture after it goes
             SystemTestAccess::swap(previousSystem);
             std::error_code ec;
             std::filesystem::remove_all(dir, ec);

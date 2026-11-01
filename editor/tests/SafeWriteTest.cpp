@@ -8,6 +8,9 @@
 
 #include <gtest/gtest.h>
 
+#include <cerrno>
+#include <cstring>
+
 #include "command/CommandHistory.h"
 #include "command/type/CopyFileCmd.h"
 #include "command/type/CreateDirCmd.h"
@@ -110,12 +113,32 @@ TEST(SafeWrite, WritesNewAndReplacesKeepingPermissions) {
 }
 
 TEST(SafeWrite, ReadOnlyFilesAreRefused) {
-    if (::geteuid() == 0) GTEST_SKIP() << "root ignores file permissions";
     Dirs d("readonly");
     writeText(d.root / "ro.txt", "keep");
     fs::permissions(d.root / "ro.txt", fs::perms::owner_read, fs::perm_options::replace);
     std::string error;
+    const bool root = ::geteuid() == 0;
+#if defined(__linux__)
+    {
+        // root ignores file permissions (the build containers run the tests as root): the write is
+        // tried as an unprivileged user (nobody, real and effective: the check is faccessat's, of
+        // the real user), owning the folder and the read-only file as a user would. Not skipped
+        // (no skipped editor test).
+        if (root) {
+            ASSERT_EQ(::chown(d.root.c_str(), 65534, 65534), 0) << std::strerror(errno);
+            ASSERT_EQ(::chown((d.root / "ro.txt").c_str(), 65534, 65534), 0) << std::strerror(errno);
+        }
+        const bool dropped = root && ::setresuid(65534, 65534, 0) == 0;
+        ASSERT_TRUE(!root || dropped) << "setresuid(nobody) failed: " << std::strerror(errno);
+        EXPECT_FALSE(sw::writeFileBeneath(d.root, d.root / "ro.txt", "new", error));
+        if (dropped) {
+            ASSERT_EQ(::setresuid(0, 0, 0), 0) << std::strerror(errno);
+        }
+    }
+#else
+    if (root) GTEST_SKIP() << "root ignores file permissions";
     EXPECT_FALSE(sw::writeFileBeneath(d.root, d.root / "ro.txt", "new", error));
+#endif
     EXPECT_NE(error.find("read-only"), std::string::npos) << error;
     EXPECT_EQ(readAll(d.root / "ro.txt"), "keep");
     fs::permissions(d.root / "ro.txt", fs::perms::owner_all, fs::perm_options::replace);

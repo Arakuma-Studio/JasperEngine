@@ -21,6 +21,7 @@
 #include "JasperEngine.h"
 #include "Platform.h"
 #include "Project.h"
+#include "ScriptDataTestSupport.h"
 #include "Stream.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
@@ -301,9 +302,9 @@ namespace {
         w.p = app.getProject();
         static editor::Platform* platform = nullptr;
         platform = new editor::Platform(w.p);
-        static char arg0[] = "jasperengine-editor-tests";
-        static char* argv[] = {arg0, nullptr};
-        Engine::systemInit(1, argv, platform);
+        // the test binary's engine is TestMain's (a second Engine::systemInit would restart its jobs
+        // and logger): this System is swapped in
+        jasperengine::SystemTestAccess::swap(platform);
         w.platform = platform;
         Engine::pauseGameEvents(true);
         Engine::setAsyncLoading(false);
@@ -883,8 +884,9 @@ TEST(SpriteNormalsWindowDeathTest, ShiftClickRegeneratesOrOpensTheWindow) {
         EXPECT_EQ(w.p->getSpriteNormalsSettings().settings.preset, sn::Preset::Soft);
         writeBytes(w.file("assets/other_normal.png"), {1, 2, 3});
         const std::string otherBefore = readAll(w.file("assets/other_normal.png"));
-        // modify the source: the regeneration differs, with the recipe's settings
-        writePng(w.file("assets/hero.png"), disk(32, 32, 1));
+        // modify the source: the regeneration differs, with the recipe's settings (two disks: the
+        // same image again would write the same bytes, a no-op step oe-port's history drops)
+        writePng(w.file("assets/hero.png"), disk(32, 32, 2));
         SpriteNormalsWindow quick(w.p);
         const size_t before = w.projectHistory()->position();
         ASSERT_TRUE(quick.openForEntity(w.sceneId, w.hero, 0, true, error)) << error;
@@ -1574,10 +1576,10 @@ TEST(SpriteNormalsWindowDeathTest, JobWorkersNeverTouchTheSystem) {
         // the System is one that notes every asset-path read made off this thread (the project's
         // assets directory the main thread may be changing): the workers make none, the checks
         // run here
-        static char arg0[] = "jasperengine-editor-tests";
-        static char* argv[] = {arg0, nullptr};
+        // the test binary's engine is TestMain's (a second Engine::systemInit would restart its jobs
+        // and logger): this System is swapped in
         CountingPlatform counting(w.p);
-        Engine::systemInit(1, argv, &counting);
+        jasperengine::SystemTestAccess::swap(&counting);
         ASSERT_TRUE(window.startRegenerate(w.file("assets/hero_normal.png"), error)) << error;
         EXPECT_EQ(window.regenerateOutcome(w.file("assets/hero_normal.png")).message, "Regenerating hero_normal.png...");
         ASSERT_TRUE(window.openForEntity(w.sceneId, w.walker, 0, true, error)) << error;
@@ -1585,7 +1587,7 @@ TEST(SpriteNormalsWindowDeathTest, JobWorkersNeverTouchTheSystem) {
         EXPECT_EQ(counting.offMainThread.load(), 0) << "a worker read the System's asset path";
         ASSERT_TRUE(settle(window));
         EXPECT_EQ(counting.offMainThread.load(), 0);
-        Engine::systemInit(1, argv, w.platform);
+        jasperengine::SystemTestAccess::swap(w.platform);
         EXPECT_NE(readAll(w.file("assets/hero_normal.png")), before);
         EXPECT_TRUE(window.regenerateOutcome(w.file("assets/hero_normal.png")).ok);
         EXPECT_EQ(w.material(w.walker).normalTexture.getPath(), "assets/walk_normal.png");

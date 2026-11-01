@@ -18,6 +18,7 @@
 #include "JasperEngine.h"
 #include "Platform.h"
 #include "Project.h"
+#include "ScriptDataTestSupport.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "command/type/CreateEntityCmd.h"
@@ -169,9 +170,9 @@ namespace {
         w.p = app.getProject();
         static editor::Platform* platform = nullptr;
         platform = new editor::Platform(w.p);
-        static char arg0[] = "jasperengine-editor-tests";
-        static char* argv[] = {arg0, nullptr};
-        Engine::systemInit(1, argv, platform);
+        // the test binary's engine is TestMain's (a second Engine::systemInit would restart its jobs
+        // and logger): this System is swapped in
+        jasperengine::SystemTestAccess::swap(platform);
         Engine::pauseGameEvents(true);
         Engine::setAsyncLoading(false);
         if (!w.p->loadProject(w.dir, false)) std::exit(90);

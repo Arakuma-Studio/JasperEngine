@@ -97,6 +97,7 @@ namespace {
             Engine::setTimeScale(1.0f);
             Engine::setUpdateTime(1.0f / 60.0f);
             run("TestLog = nil; Kept = nil; collectgarbage('collect')");
+            ::jasperengine::Logger::flush();   // nothing is delivered to the capture after it goes
             jasperengine::SystemTestAccess::swap(swapped);
             ScriptDataTest::TearDown();
         }
@@ -936,13 +937,13 @@ TEST_F(CoroutineTest, ErrorsNameTheScriptGameObjectOriginAndCarryTheCoroutineTra
     frames(1);
     EXPECT_EQ(eval("return Kept.status"), "error");
     const std::string text = logged();
-    // (Lua names a script chunk [string "<path>"] in its own messages; the origin is the plain path)
-    EXPECT_NE(text.find("Lua coroutine error in Spawner (GameObject 'Spawner'), started at Spawner.lua:6: [string \"Spawner.lua\"]:3: boom"),
+    // (oe-port loads a script as the chunk "@<path>": Lua's own messages name the plain path too)
+    EXPECT_NE(text.find("Lua coroutine error in Spawner (GameObject 'Spawner'), started at Spawner.lua:6: Spawner.lua:3: boom"),
               std::string::npos) << text;
     EXPECT_NE(text.find("stack traceback:"), std::string::npos) << text;
     EXPECT_NE(text.find("in upvalue 'deeper'"), std::string::npos) << text;
-    EXPECT_NE(text.find("[string \"Spawner.lua\"]:4: in function"), std::string::npos) << text;
-    EXPECT_NE(text.find("started at Spawner.lua:7: [string \"Spawner.lua\"]:7: first segment"), std::string::npos) << text;
+    EXPECT_NE(text.find("Spawner.lua:4: in function"), std::string::npos) << text;
+    EXPECT_NE(text.find("started at Spawner.lua:7: Spawner.lua:7: first segment"), std::string::npos) << text;
     EXPECT_NE(eval("return Kept.error"), "nil");
     EXPECT_NE(eval("return tostring(Kept)").find("Coroutine("), std::string::npos);
     EXPECT_NE(eval("return tostring(Kept)").find("error, Spawner.lua:6)"), std::string::npos);

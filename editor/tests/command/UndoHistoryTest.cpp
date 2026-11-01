@@ -104,15 +104,18 @@ TEST_F(CommandHistoryTests, TrimByCountAndBytes) {
     EXPECT_EQ(a.getTrimmedCount(), 2u);
     EXPECT_EQ(a.entries().front()->name(), "a2");
 
-    // bytes over both histories: the lowest id of any goes
+    // bytes over both histories: the lowest id of any goes. (The limit counts every live
+    // history: the headless projects other suites of this binary keep hold their newest steps,
+    // which no trim takes; their bytes are added to the limit.)
+    const size_t others = CommandHistory::totalBytes() - 10 * 64;
     CommandHistory::maxEntries = 1000;
-    CommandHistory::memoryLimit = 1000;
+    CommandHistory::memoryLimit = others + 1000;
     state.deleted.clear();
     auto* big = make("b0", 100);
     big->bytes = 500;
     b.addCommand(big);
     // a holds 10 x 64 = 640, b 500: 1140 > 1000, so a's oldest steps go, b's newest stays
-    EXPECT_LE(CommandHistory::totalBytes(), 1000u);
+    EXPECT_LE(CommandHistory::totalBytes(), others + 1000u);
     EXPECT_FALSE(state.deleted.empty());
     EXPECT_EQ(state.deleted.front(), "a2");
     ASSERT_NE(b.top(), nullptr);
