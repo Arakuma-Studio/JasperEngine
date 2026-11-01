@@ -3687,7 +3687,14 @@ const editor::DebugSettings& editor::Project::getDebugSettings() const{
 }
 
 void editor::Project::setDebugSettings(const DebugSettings& settings){
+    const bool changed = settings != debugSettings;
     debugSettings = settings;
+    // a running Play takes them at once: what changed applies, the console stays as it is
+    if (changed && debugSettingsInPlay){
+        Log::setBufferSize(debugSettings.logBufferSize);
+        Log::setStackTraces(debugSettings.logStackTraces);
+        DebugOverlay::updateSettings(debugSettings.toOverlaySettings(true));
+    }
 }
 
 void editor::Project::applyDebugSettingsForPlay() const{
@@ -3696,6 +3703,7 @@ void editor::Project::applyDebugSettingsForPlay() const{
     Log::setBufferSize(debugSettings.logBufferSize);
     Log::setStackTraces(debugSettings.logStackTraces);
     DebugOverlay::configure(debugSettings.toOverlaySettings(true));
+    debugSettingsInPlay = true;
 }
 
 editor::TerrainEditorSettings& editor::Project::getTerrainEditorSettings(){
@@ -9783,6 +9791,7 @@ void editor::Project::stop(uint32_t sceneId) {
             ScriptScheduler::clear();
             // the debug overlay and the console commands of the scripts, before the scripts go
             DebugOverlay::shutdown();
+            debugSettingsInPlay = false;
             // HTTP requests of the play end without their callbacks (nothing waits for a
             // transfer); what worker threads posted for the game is dropped
             Http::shutdown();

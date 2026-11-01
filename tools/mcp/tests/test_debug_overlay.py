@@ -167,6 +167,43 @@ async def test_never_mode(ed: Editor):
         await ed.call("set_project_settings", values={"debug.overlay": "development"})
 
 
+async def test_settings_apply_during_play(ed: Editor):
+    """Project Settings > Debug changed while the game runs apply at once; the console stays open."""
+    await start(ed)
+    try:
+        await lua(ed, "DebugOverlay.showConsole()")
+        await ed.call("set_project_settings", values={"debug.overlay_stats": "fps"})
+        await ed.call("set_project_settings", values={"debug.log_buffer_size": 300})
+        await ed.call("wait", frames=2)
+        state = (await ed.call("get_play_state"))["debug_overlay"]
+        ed.check_eq(state, {"enabled": True, "console_visible": True, "stats": "fps"}, "the stats changed, the console stays")
+        ed.check_eq(await lua(ed, "return Log.bufferSize"), [300], "the buffer size applies at once")
+        await ed.call("undo", scope="project")
+        await ed.call("undo", scope="project")
+        ed.check_eq(await lua(ed, "return Log.bufferSize, DebugOverlay.statsMode"), [200, 0], "undone in the running game")
+
+        # a stats mode that is none is refused, and get_play_state keeps working
+        got = await lua(ed, "local ok, err = pcall(function() DebugOverlay.statsMode = 3 end) return ok, tostring(err), DebugOverlay.statsMode")
+        ed.check(got[0] is False and "STATS_OFF" in got[1], f"statsMode = 3 refused: {got}")
+        ed.check_eq(got[2], 0, "unchanged")
+        ed.check_eq((await ed.call("get_play_state"))["debug_overlay"]["stats"], "off", "get_play_state")
+        ed.check_eq(await lua(ed, "Log.bufferSize = 5000000 return Log.bufferSize"), [100000], "the buffer size is capped")
+
+        # the stats' voices are the game's (not the audio mixer's buses), as get_play_state's
+        voices = await lua(ed, "return DebugOverlay.getStats().audioVoices")
+        state = await ed.call("get_play_state")
+        ed.check_eq(voices[0], state["audio"]["voices"], f"audio voices: {state['audio']}")
+
+        await ed.call("set_project_settings", values={"debug.overlay": "never"})
+        ed.check_eq(await lua(ed, "return DebugOverlay.enabled"), [False], "turned off in the running game")
+        await ed.call("undo", scope="project")
+        ed.check_eq(await lua(ed, "return DebugOverlay.enabled, DebugOverlay.consoleVisible"), [True, False], "on again, closed")
+    finally:
+        await stop(ed)
+    settings = (await ed.call("get_project_settings", keys=["debug.overlay", "debug.overlay_stats", "debug.log_buffer_size"]))["settings"]
+    ed.check_eq(settings, {"debug.overlay": "development", "debug.overlay_stats": "off", "debug.log_buffer_size": 200}, "as before")
+
+
 EXPORT_PROBE = """local OverlayExport = { properties = {} }
 
 function OverlayExport:init()

@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -33,6 +34,8 @@ namespace {
         std::function<void(const LogEntry&)> function;
         // removed: a dispatch holding an older list skips it
         std::atomic<bool> removed{false};
+        // calls running now, on any thread: removeListener waits for them
+        std::atomic<int> calls{0};
     };
     using ListenerList = std::vector<std::shared_ptr<Listener>>;
 
@@ -48,6 +51,9 @@ namespace {
         // copied on write: a dispatch holds the list it started with
         std::shared_ptr<const ListenerList> listeners = std::make_shared<ListenerList>();
         LogListenerId lastListenerId = 0;
+        // a call of a removed listener ended (removeListener waits on it)
+        std::mutex callsMutex;
+        std::condition_variable callsDone;
     };
 
     // never destroyed: threads and static destructors may still log while the process exits
@@ -74,6 +80,13 @@ namespace {
         ListenerScope() : previous(insideListener()) { insideListener() = true; }
         ~ListenerScope() { insideListener() = previous; }
     };
+
+    // the listener calls this thread is inside: a listener that removes itself does not wait
+    // for its own call
+    std::vector<const void*>& callsOnThisThread(){
+        thread_local std::vector<const void*> calls;
+        return calls;
+    }
 
     size_t levelIndex(LogLevel level){
         const size_t index = static_cast<size_t>(level);
@@ -160,11 +173,32 @@ namespace {
         fprintf(stderr, "%s\n", text.c_str());
     }
 
+    // One call, counted while it runs. The count goes up before `removed` is read, and
+    // removeListener sets `removed` before it reads the count (both sequentially consistent):
+    // either the call sees the removal and skips, or the removal sees the call and waits.
+    struct CountedCall {
+        Listener& listener;
+        explicit CountedCall(Listener& listener) : listener(listener) {
+            listener.calls.fetch_add(1);
+            callsOnThisThread().push_back(&listener);
+        }
+        ~CountedCall() {
+            callsOnThisThread().pop_back();
+            if (listener.calls.fetch_sub(1) == 1 && listener.removed.load()){
+                LogState& s = state();
+                std::lock_guard<std::mutex> lock(s.callsMutex);
+                s.callsDone.notify_all();
+            }
+        }
+    };
+
     void callListeners(const std::shared_ptr<const ListenerList>& listeners, const LogEntry& entry, LogDelivery delivery){
         for (const std::shared_ptr<Listener>& listener : *listeners){
-            if (listener->delivery != delivery || listener->removed.load(std::memory_order_acquire))
+            if (listener->delivery != delivery)
                 continue;
-            listener->function(entry);
+            CountedCall call(*listener);
+            if (!listener->removed.load())
+                listener->function(entry);
         }
     }
 
@@ -308,16 +342,28 @@ LogListenerId Log::addListener(std::function<void(const LogEntry&)> listener, Lo
 
 void Log::removeListener(LogListenerId id){
     LogState& s = state();
-    std::lock_guard<std::mutex> lock(s.mutex);
-    auto list = std::make_shared<ListenerList>(*s.listeners);
-    for (auto it = list->begin(); it != list->end(); ++it){
-        if ((*it)->id == id){
-            (*it)->removed.store(true, std::memory_order_release);
-            list->erase(it);
-            break;
+    std::shared_ptr<Listener> removed;
+    {
+        std::lock_guard<std::mutex> lock(s.mutex);
+        auto list = std::make_shared<ListenerList>(*s.listeners);
+        for (auto it = list->begin(); it != list->end(); ++it){
+            if ((*it)->id == id){
+                removed = *it;
+                removed->removed.store(true);
+                list->erase(it);
+                break;
+            }
         }
+        s.listeners = list;
     }
-    s.listeners = list;
+    if (!removed)
+        return;
+    // the calls of it running on other threads end first; this thread's own (a listener that
+    // removes itself) cannot
+    const std::vector<const void*>& here = callsOnThisThread();
+    const int own = static_cast<int>(std::count(here.begin(), here.end(), static_cast<const void*>(removed.get())));
+    std::unique_lock<std::mutex> lock(s.callsMutex);
+    s.callsDone.wait(lock, [&removed, own](){ return removed->calls.load() <= own; });
 }
 
 void Log::dispatchPending(){
@@ -371,7 +417,7 @@ void Log::clearEntries(){
 void Log::setBufferSize(size_t entries){
     LogState& s = state();
     std::lock_guard<std::mutex> lock(s.mutex);
-    s.bufferSize = entries;
+    s.bufferSize = std::min(entries, maxBufferSize);
     while (s.buffer.size() > s.bufferSize)
         s.buffer.pop_front();
 }

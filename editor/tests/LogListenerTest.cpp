@@ -209,6 +209,103 @@ TEST_F(LogListenerTest, RemovedListenerStopsAtOnce) {
     EXPECT_EQ(calls, 0);
 }
 
+// removeListener waits for a call running on another thread: once it returns, what the
+// listener uses can go. Workers log while the main thread adds and removes listeners.
+TEST_F(LogListenerTest, RemoveListenerWaitsForRunningCalls) {
+    struct Probe {
+        std::atomic<bool> alive{true};
+    };
+    static std::atomic<int> callsAfterRemoval{0};
+    static std::atomic<int> calls{0};
+    callsAfterRemoval = 0;
+    calls = 0;
+    std::atomic<bool> stop{false};
+    std::vector<std::thread> workers;
+    for (int w = 0; w < 4; w++) {
+        workers.emplace_back([&stop, w]() {
+            int i = 0;
+            while (!stop.load())
+                Log::print("worker %d line %d", w, i++);
+        });
+    }
+    for (int round = 0; round < 200; round++) {
+        Probe* probe = new Probe();
+        const LogListenerId any = Log::addListener([probe](const LogEntry&) {
+            calls++;
+            if (!probe->alive.load()) callsAfterRemoval++;
+            // a slow listener: the removal comes while calls run
+            std::this_thread::sleep_for(std::chrono::microseconds(20));
+            if (!probe->alive.load()) callsAfterRemoval++;
+        }, LogDelivery::AnyThread);
+        const LogListenerId main = Log::addListener([probe](const LogEntry&) {
+            if (!probe->alive.load()) callsAfterRemoval++;
+        });
+        std::this_thread::sleep_for(std::chrono::microseconds(200));
+        Log::dispatchPending();
+        Log::removeListener(any);
+        Log::removeListener(main);
+        probe->alive = false;
+        delete probe;
+    }
+    stop = true;
+    for (std::thread& worker : workers)
+        worker.join();
+    // the flood's report of the lines the queue dropped comes with the next worker line
+    std::thread([]() { Log::print("flushed"); }).join();
+    Log::dispatchPending();
+    EXPECT_GT(calls.load(), 0);
+    EXPECT_EQ(callsAfterRemoval.load(), 0);
+}
+
+// a listener that removes itself from inside its call does not wait for itself
+TEST_F(LogListenerTest, ListenerRemovesItselfInsideItsCall) {
+    std::atomic<int> calls{0};
+    std::atomic<LogListenerId> id{0};
+    id = Log::addListener([&calls, &id](const LogEntry&) {
+        calls++;
+        Log::removeListener(id.load());
+    }, LogDelivery::AnyThread);
+    std::thread([]() { Log::print("one"); Log::print("two"); }).join();
+    EXPECT_EQ(calls.load(), 1);
+
+    int mainCalls = 0;
+    LogListenerId mainId = 0;
+    mainId = Log::addListener([&mainCalls, &mainId](const LogEntry&) {
+        mainCalls++;
+        Log::removeListener(mainId);
+    });
+    Log::print("three");
+    Log::print("four");
+    EXPECT_EQ(mainCalls, 1);
+    Log::dispatchPending();
+}
+
+// past 1,000 lines waiting for the main thread, worker lines are counted and reported once
+TEST_F(LogListenerTest, PendingQueueOverflowIsReported) {
+    std::vector<std::string> got;
+    const LogListenerId id = Log::addListener([&got](const LogEntry& entry) { got.push_back(entry.message); });
+    std::thread([]() {
+        for (int i = 0; i < 1100; i++)
+            Log::print("flood %d", i);
+    }).join();
+    EXPECT_EQ(Log::getPendingCount(), 1000u);
+    Log::dispatchPending();
+    ASSERT_EQ(got.size(), 1000u);
+    EXPECT_EQ(got.front(), "flood 0");
+    EXPECT_EQ(got.back(), "flood 999");
+
+    // the next worker line has room again: the report comes with it
+    got.clear();
+    std::thread([]() { Log::print("after the flood"); }).join();
+    Log::dispatchPending();
+    ASSERT_EQ(got.size(), 2u);
+    EXPECT_EQ(got[0], "after the flood");
+    EXPECT_NE(got[1].find("100 lines logged by other threads were not given to the log listeners"), std::string::npos) << got[1];
+    // every line is in the buffer and counted, dispatched or not
+    EXPECT_EQ(Log::getCount(LogLevel::Info), 1101u);
+    Log::removeListener(id);
+}
+
 // 5. Lua: RegisterEvent on Log.onMessageReceived, a traceback with warnings; the script released, no more calls
 TEST_F(LogListenerTest, LuaListenerGetsMessageTraceAndLevel) {
     Log::setStackTraces(LogStackTraces::Warnings);
@@ -302,6 +399,50 @@ TEST_F(LogListenerTest, LuaBufferApi) {
     EXPECT_EQ(results[1], "7");
     EXPECT_NE(run("Log.getEntries(-1)"), "");
     EXPECT_NE(run("Log.getEntries(1, {99})"), "");
+    // at most Log::maxBufferSize
+    ASSERT_EQ(run("Log.bufferSize = 5000000 return Log.bufferSize", &results), "");
+    EXPECT_EQ(results[0], std::to_string(Log::maxBufferSize));
+}
+
+// DebugOverlay.statsMode takes the three modes only; get_play_state never sees another
+TEST_F(LogListenerTest, InvalidStatsModeIsRefused) {
+    DebugOverlay::setStatsMode(DebugOverlaySettings::Stats::Fps);
+    const std::string error = run("DebugOverlay.statsMode = 3");
+    EXPECT_NE(error.find("DebugOverlay.statsMode takes DebugOverlay.STATS_OFF, STATS_FPS or STATS_FULL"), std::string::npos) << error;
+    EXPECT_NE(run("DebugOverlay.statsMode = 1.5"), "");
+    EXPECT_NE(run("DebugOverlay.statsMode = 'full'"), "");
+    EXPECT_EQ(DebugOverlay::getStatsMode(), DebugOverlaySettings::Stats::Fps);
+    std::vector<std::string> results;
+    ASSERT_EQ(run("DebugOverlay.statsMode = DebugOverlay.STATS_FULL return DebugOverlay.statsMode", &results), "");
+    EXPECT_EQ(results[0], "2");
+    // from C++ too (a cast from a bad int)
+    DebugOverlay::setStatsMode(static_cast<DebugOverlaySettings::Stats>(7));
+    EXPECT_EQ(DebugOverlay::getStatsMode(), DebugOverlaySettings::Stats::Full);
+    EXPECT_NE(Log::getEntries(1, logLevelBit(LogLevel::Warn))[0].message.find("7 is not a stats mode"), std::string::npos);
+}
+
+// settings changed while the game runs: what changed applies, the console and stats stay
+TEST_F(LogListenerTest, UpdateSettingsKeepsTheState) {
+    DebugOverlaySettings settings;
+    settings.enabled = true;
+    DebugOverlay::configure(settings);
+    DebugOverlay::showConsole();
+    DebugOverlay::setStatsMode(DebugOverlaySettings::Stats::Full);
+    settings.openOnError = true;
+    DebugOverlay::updateSettings(settings);
+    EXPECT_TRUE(DebugOverlay::isConsoleVisible());
+    EXPECT_EQ(DebugOverlay::getStatsMode(), DebugOverlaySettings::Stats::Full);
+    EXPECT_TRUE(DebugOverlay::getSettings().openOnError);
+    settings.stats = DebugOverlaySettings::Stats::Fps;
+    DebugOverlay::updateSettings(settings);
+    EXPECT_EQ(DebugOverlay::getStatsMode(), DebugOverlaySettings::Stats::Fps);
+    settings.toggleKey = "f12";
+    DebugOverlay::updateSettings(settings);
+    DebugOverlay::handleKey(D_KEY_F12, 0, true, false);
+    EXPECT_FALSE(DebugOverlay::isConsoleVisible());
+    settings.enabled = false;
+    DebugOverlay::updateSettings(settings);
+    EXPECT_FALSE(DebugOverlay::isEnabled());
 }
 
 // 12. commands: words to the function; unknown names; `lua` only with allowLua

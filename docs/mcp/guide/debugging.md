@@ -40,7 +40,12 @@ are not sampled. The log buffer always works (`Log.getEntries` in a release buil
 
 Keys and gestures are never taken from the game: it still gets them. Only taps and clicks on the
 overlay's own panels (the console, the popup) are consumed; taps go through the stats panel. Keys and
-text go to the overlay only while its search or command field has the focus.
+text go to the overlay only while its search or command field has the focus. While a text field of the
+game has the keyboard, the toggle and stats keys type into it and do not toggle anything.
+
+The overlay keeps its own size whatever the Canvas Scaler (`graphics.ui_scale`): 13 px text of
+`min(width, height) / 720` px on desktop; on touch screens 1/160 inch from the screen's DPI (at most
+`min(width, height) / 400`, which is also used when the DPI is unknown).
 
 ## 3. The console
 
@@ -56,7 +61,8 @@ text go to the overlay only while its search or command field has the focus.
   `log saved to <path>`.
 - **Clear** empties the log buffer and the counts (`Log.clear()`).
 - **Stats** cycles the stats panel; **Full / Half** sizes the console; **Close** hides it.
-- The list follows the newest line unless you scroll up.
+- The list follows the newest line unless you scroll up; every buffered line scrolls (only the rows
+  in view are made, so a buffer of 100,000 costs the same); a burst of lines updates it at 10 Hz.
 
 The overlay keeps working while the game is frozen (`Engine.timeScale = 0`, the editor's hold, a Lua
 error every frame): it updates on its own unscaled clock. It never pauses the game or changes the
@@ -114,7 +120,8 @@ adds a table. Initial mode: `debug.overlay_stats`; corner: `debug.overlay_stats_
 | `coroutines`, `timers` | engine coroutines (running or waiting) and pending timers (`self:startCoroutine`, `self:invoke`, `Timer.after/every`) |
 | `htmlUiDrawCalls` | HTML UI draw calls of the last frame |
 
-`DebugOverlay.statsMode` reads and sets the panel: `DebugOverlay.STATS_OFF`, `STATS_FPS`, `STATS_FULL`.
+`DebugOverlay.statsMode` reads and sets the panel: `DebugOverlay.STATS_OFF`, `STATS_FPS`, `STATS_FULL` (another
+value raises an error).
 
 ## 6. The log from scripts
 
@@ -131,7 +138,7 @@ Log.clear()
 - `Log.getEntries([maxCount [, levels]])`: the buffered lines, oldest first (the newest `maxCount`),
   each `{id, level, message, stackTrace, time, frame, mainThread, fromLua}`.
 - `Log.count(level)`: lines of that level since the last clear. `Log.bufferSize` (rw): the lines kept
-  (Project Settings > Debug > Log Buffer Size, default 500; 0 keeps none).
+  (Project Settings > Debug > Log Buffer Size, default 500; 0 keeps none; at most 100000).
 - **Stack traces**: a Lua error's message is split at `stack traceback:` (the trace goes to
   `stackTrace`). `Log.*` lines of Lua get a traceback per **Log Stack Traces**
   (`debug.log_stack_traces`: `none`, `errors`, `warnings` (default: warnings and errors), `all`).
@@ -171,13 +178,16 @@ DebugStatsSnapshot stats = DebugStats::sample();
 `MainThread` listeners (the default) follow the Lua rule above; `AnyThread` listeners run on the
 thread that logs, at once (Unity's `logMessageReceivedThreaded`). Listeners are never called with the
 log's lock held. Logs other threads make wait in a queue of 1,000 lines for the next frame; past it
-they are counted and reported once.
+they are counted and reported once. `Log::removeListener` returns once a call of that listener
+running on another thread has ended (so what it uses can go); from inside the listener itself it does
+not wait for that call.
 
 ## 8. Agents (MCP)
 
 - Settings: `get_project_settings` category `debug`, `set_project_settings` with the `debug.*` keys
-  above (undoable, undo scope project). `get_play_state` shows `debug_overlay: {enabled,
-  console_visible, stats}` while playing.
+  above (undoable, undo scope project). A change during Play applies to the running game at once
+  (the console stays open, a stats mode picked stays unless `debug.overlay_stats` changed).
+  `get_play_state` shows `debug_overlay: {enabled, console_visible, stats}` while playing.
 - In Play: `eval_lua "return DebugOverlay.getStats()"` reads FPS and draw calls;
   `eval_lua "return Log.getEntries(20, {LogLevel.ERROR})"` reads errors with their traces;
   `eval_lua "DebugOverlay.showConsole()"` then `screenshot` shows the console; `send_input` with the

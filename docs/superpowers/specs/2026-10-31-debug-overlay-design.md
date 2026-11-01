@@ -402,12 +402,15 @@ the code:
    through `DebugOverlay::getScene()` instead of a `setOverlayScene` setter. Its document loads
    synchronously (`UIDocumentSystem::loadDocumentNow`) so a load failure turns the overlay off at
    once (one error). The overlay's draw calls are excluded from `Engine::getFrameStats` (the game's).
-5. **Layout scale**: one overlay px is `max(1, min(viewW, viewH) / 720)` view pixels on desktop and
-   `/ 400` on touch devices (spec: 720 for all), so buttons stay finger-sized on phones; text is
-   13 overlay px. The document is laid out in the game's canvas (the context of the overlay's
-   Scene is the canvas, which the composite maps onto the view) with every length of the sheet in
-   `rem`, and the body's font size set to 13 overlay px in canvas px: the overlay looks the same
-   whatever the canvas setting, and its text rasterizes at the view's resolution.
+5. **Layout scale**: one overlay px is `max(1, min(viewW, viewH) / 720)` view pixels on desktop
+   (spec: 720 for all); on touch devices `max(1, min(dpi / 160, min(viewW, viewH) / 400))` (1/160
+   inch, Android's dp, so a 264-dpi iPad is 1.65 rather than 5; the shorter side / 400 when the DPI
+   is unknown or implausible; the Web's DPI is `devicePixelRatio * 96`, so `dpi / 80` there), so
+   buttons stay finger-sized on phones; text is 13 overlay px. The document is laid out in the
+   game's canvas (the overlay Scene has its own `FollowGameCanvas` Canvas Scaler, not the project
+   default) with every length of the sheet in `rem`, and the body's font size set to 13 overlay px
+   in canvas px: the overlay looks the same whatever the canvas and Canvas Scaler settings, and its
+   text rasterizes at the view's resolution.
 6. **Input**: `Engine::getInputScenes` puts the overlay Scene on top of the input snapshot for
    pointer events and, for keys, text and IME, only while the console's search or command field
    has the focus; `canSendDocumentEvents/canSendUIEvents` never treat it as covered by the
@@ -435,7 +438,9 @@ the code:
     Windows `K32GetProcessMemoryInfo` working set, Apple `TASK_VM_INFO` `phys_footprint`, Web
     `emscripten_get_heap_size`) instead of in each platform's System subclass, so the editor and
     every export get it. Entities and bodies are summed over `Engine::getSceneLayers()`.
-    `AudioSystem::getVoiceCounts`, `EntityRegistry::getEntityCount` added.
+    `AudioSystem::getVoiceCounts` (the engine's voices, `getVoiceCount`, as get_play_state's
+    `audio.voices`: SoLoud's own count has the audio mixer's group buses),
+    `EntityRegistry::getEntityCount` added.
 12. **Cross-feature hooks** (record what to wire when they merge):
     - **coroutines** (merged): `DebugStats::sample` reads `ScriptScheduler::coroutineCount()` and
       `timerCount()` directly.
@@ -468,7 +473,50 @@ the code:
     `DebugOverlaySettings::Gesture::Off`, `Popup::AllDevices`; the editor's `DebugSettings` uses
     `AllBuilds`. The names in project.yaml, MCP and Lua stay `none`, `always`... (found by the
     Release export test).
-17. **Verification** (box 2203, branch merged with `main` `dce634fb7`, audio-mixer, camera-shake and
+17. **Review fixes** (independent review after the first handoff):
+    - The console's list is **virtual** rather than capped (the review asked for the newest
+      500-1000 rows and an "N older lines" note): every row the filters let through scrolls, but
+      only those in view and 8 above and below have elements; spacers stand for the rest (rows
+      measured after layout, an expanded row its own height). Measured on box 2203: a capped list of
+      500 row elements cost ~6 ms of RmlUi layout on every line added and 15-23 ms to rebuild; the
+      window rebuilds 500 rows in 0.9 ms and adds a line in 0.7 ms with the layout, whatever the
+      buffer (the test scrolls 12,000). A burst (more than 20 lines waiting) updates the list at
+      most every 0.1 s. Collapsed rows keep the ids of their buffered lines, so a count drops (and
+      the row goes) as lines leave the buffer. A row is a border (the level), a time span, a text
+      node and a count span past 1. `Log::maxBufferSize` (100000) caps `Log::setBufferSize`,
+      Lua's `Log.bufferSize` and the editor's setting.
+    - `Log::removeListener` waits for calls of that listener running on other threads (a count per
+      listener; `removed` and the count are sequentially consistent, so a call either sees the
+      removal or is waited for); from inside the listener itself it does not wait for that call.
+      Two listeners removing each other from inside their calls on two threads would deadlock
+      (documented in `Log.h`).
+    - `DebugOverlay.statsMode` refuses values other than the three modes (`luaL_argerror`), and
+      `DebugOverlay::setStatsMode` warns and ignores them; get_play_state bounds-checks.
+    - Gestures: `Engine::systemTouchCancel(pointer)` hands the cancel to the overlay before the
+      Input check (fingers outside the canvas), and `cancelAllUIPointers` (cancel of all touches,
+      pause, focus loss) resets the gestures (`DebugOverlay::cancelGestures`). A mouse or touch
+      press on the popup clears a drag whose click never came. The toggle and stats keys do
+      nothing while a text field of the game has the keyboard (`Engine::isTextInputFocused`; the
+      console's own fields still close it).
+    - The Vulkan composite counts the overlay as a layer only while it draws (`isDrawn`).
+    - `PSAPI_VERSION 2` before `<psapi.h>`.
+    - Project Settings > Debug changed during the editor's Play apply at once
+      (`Project::setDebugSettings` while `applyDebugSettingsForPlay` has run for the running Play:
+      the buffer size, stack traces and `DebugOverlay::updateSettings`, which applies what changed
+      and keeps the console and a picked stats mode).
+    - Tests added: the Canvas Scaler (`ScaleWithScreenSize` 1920x1080 does not change
+      `#stats-line`'s rendered height), the touch scale by DPI, the row window (scrolling 12,000
+      rows), its throttle, a timed rebuild of 500 rows and a line added, collapsed counts with the
+      buffer, the popup (counts, drag, the tap after a drag ending off it), the four-finger tap,
+      Open On Error, the keys while the game types, gestures across focus loss, pause and cancel,
+      spec test 14 above a loading scene (`SceneManager` with a held loading scene); in
+      LogListenerTest the removal stress test (4 workers logging, 200 add/remove rounds), a
+      listener removing itself, the pending-queue overflow report, invalid `statsMode`,
+      `updateSettings`; in MCP the settings changed during Play, `statsMode = 3`, the buffer cap
+      and the audio voices against get_play_state.
+    - The safe-area hook (`setSafeAreaInsetsProvider`) still has no caller: whichever of
+      debug-overlay and safe-area merges second wires it (12).
+18. **Verification** (box 2203, branch merged with `main` `dce634fb7`, audio-mixer, camera-shake and
     ui-scaling-text included): editor and tests build with 0 compiler warnings; `jasperengine-editor-tests`
     1748 tests, 1739 passed, 9 skipped, 0 failed. Full MCP suite (`run-tests.sh -j3`): 935 passed, 22
     skipped (slow exports, missing LuaLS/clangd/xev/ImageMagick), 10 failed, all the known baseline

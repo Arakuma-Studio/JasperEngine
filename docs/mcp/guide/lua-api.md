@@ -615,7 +615,7 @@ into `stackTrace`. `Log.debug` is compiled out of release builds of the engine.
 | `Log.getEntries([maxCount [, levels]])` | fn | buffered lines, oldest first (the newest `maxCount`; `levels` a list of `LogLevel`): `{id, level, message, stackTrace, time, frame, mainThread, fromLua}` |
 | `Log.count(level)` | fn | lines of that level since the last clear |
 | `Log.clear()` | fn | empties the buffer and the counts |
-| `Log.bufferSize` | rw | lines kept (default 500, Project Settings > Debug; 0 = none) |
+| `Log.bufferSize` | rw | lines kept (default 500, Project Settings > Debug; 0 = none, at most 100000) |
 | `LogLevel.INFO`, `VERBOSE`, `DEBUG`, `WARN`, `ERROR` | enum | 0 - 4 |
 
 `DebugOverlay` (static), the on-device console and stats overlay (Unity's IngameDebugConsole and
@@ -626,7 +626,7 @@ Graphy), details in `jasper://docs/debugging`:
 | `enabled` | rw | master switch (initial value: Project Settings > Debug > Overlay and the build type); works in any build |
 | `showConsole()`, `hideConsole()`, `toggleConsole()` | fn | no-ops (warned once) while not enabled |
 | `consoleVisible` | ro | |
-| `statsMode` | rw | `DebugOverlay.STATS_OFF`, `STATS_FPS`, `STATS_FULL` |
+| `statsMode` | rw | `DebugOverlay.STATS_OFF`, `STATS_FPS`, `STATS_FULL` (another value raises an error) |
 | `getStats()` | fn | `{fps, frameMs, frameMsAvg, frameMsMin, frameMsMax, frameMs1PercentLow, drawCalls, instances, triangles, processMemoryBytes, luaMemoryBytes, audioVoices, audioVoicesMax, bodies2D, bodies3D, entities, scenes, coroutines, timers, htmlUiDrawCalls}`; works while not enabled |
 | `addCommand(name, description, fn [, owner])` | fn | console command `name args...`: `fn(args)` gets a list of strings; `[a-z0-9_-]+`; removed with its script (`owner`, default the calling method's `self`) |
 | `removeCommand(name)`, `executeCommand(line)` | fn | |

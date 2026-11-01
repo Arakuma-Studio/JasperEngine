@@ -992,8 +992,8 @@ void Engine::beginCompositeFramebuffer(){
 // per commit, so stacked scenes draw offscreen and are presented once. The other
 // backends draw them straight to the swapchain (re-check when sokol_gfx is updated)
 #if defined(SOKOL_VULKAN)
-    // the debug overlay's Scene is drawn as one more layer
-    if (framebuffer || scenes.size() + (DebugOverlay::getScene() ? 1 : 0) <= 1)
+    // the debug overlay's Scene is drawn as one more layer (while it draws anything)
+    if (framebuffer || scenes.size() + (DebugOverlay::isDrawn() ? 1 : 0) <= 1)
         return;
 
     if (ensureCompositeFramebuffer())
@@ -2490,6 +2490,8 @@ void Engine::cancelUIPointer(int pointerOrButton, bool touch){
 }
 
 void Engine::cancelAllUIPointers(){
+    // the debug overlay's gestures too: no finger stays held across a pause or a focus loss
+    DebugOverlay::cancelGestures();
     for (Scene* scene : getInputScenes(false)){
         scene->getSystem<UIDocumentSystem>()->cancelAllPointers();
         scene->getSystem<UISystem>()->cancelAllPointers();
@@ -2500,15 +2502,18 @@ void Engine::systemTouchCancel(){
     std::vector<Touch> cancelled = Input::getTouches();
     for (const Touch& touch : cancelled)
         systemTouchCancel(touch.fingerId);
+    // the debug overlay's fingers outside the canvas, which Input never had
+    DebugOverlay::cancelGestures();
 }
 
 void Engine::systemTouchCancel(int pointer){
+    // the debug overlay sees every finger, also those outside the canvas that Input never had
+    DebugOverlay::handleTouch(pointer, 0.0f, 0.0f, 3);
     // Drop this finger only. Pointer-up would release the control and can click it.
     size_t index = Input::findTouchIndex(pointer);
     if (index == -1)
         return;
     Vector2 pos = Input::getTouchPosition(pointer);
-    DebugOverlay::handleTouch(pointer, pos.x, pos.y, 3);
     // an interrupted finger that simulated the mouse lets go of it (no mouse up: not a release)
     if (Engine::isCallMouseInTouchEvent() && Input::isTouchVisible(pointer))
         Input::releaseMousePressed(D_MOUSE_BUTTON_1);

@@ -29,7 +29,8 @@ namespace jasperengine::editor {
         unsigned int logBufferSize = 500;
         LogStackTraces logStackTraces = LogStackTraces::Warnings;
 
-        static constexpr unsigned int maxLogBufferSize = 100000;
+        // the engine's cap (Log::setBufferSize clamps to it)
+        static constexpr unsigned int maxLogBufferSize = static_cast<unsigned int>(Log::maxBufferSize);
 
         bool operator==(const DebugSettings& other) const;
         bool operator!=(const DebugSettings& other) const { return !(*this == other); }

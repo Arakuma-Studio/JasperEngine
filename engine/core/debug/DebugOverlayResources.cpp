@@ -40,7 +40,7 @@ namespace {
             <div id="close" class="btn">Close</div>
         </div>
         <div id="searchbar"><input type="text" id="search" placeholder="Search messages and traces"/></div>
-        <div id="list"></div>
+        <div id="list-box"><div id="list"><div id="list-top"></div><div id="list-rows"></div><div id="list-bottom"></div></div></div>
         <div id="empty" class="hidden">No messages</div>
         <div id="commandbar"><input type="text" id="command" placeholder="Command (type help)"/></div>
     </div>
@@ -112,20 +112,29 @@ input {
     background-color: #ffffff12; border-radius: 0.3077rem; color: #ffffff; font-size: 1rem; cursor: text;
 }
 input:focus { background-color: #ffffff22; }
-#list { flex: 1 1 0px; overflow-y: auto; padding: 0px 0.3077rem; }
+/* the list's box takes the console's free height; the list is absolute in it, so a row added
+   lays out the list alone, not the console's flex box around it */
+#list-box { flex: 1 1 0px; position: relative; }
+#list { position: absolute; left: 0px; top: 0px; right: 0px; bottom: 0px; overflow-y: auto; padding: 0px 0.3077rem; }
 #empty { flex: 0 0 auto; padding: 0.4615rem 0.7692rem; color: #7d8496; }
-.row { padding: 0.2308rem 0.3077rem; border-bottom: 0.0769rem #ffffff0d; }
+#list-top, #list-bottom { height: 0px; }
+/* a row: its level as the left border, then the time, the message and a count (few elements;
+   the list makes only the rows in view, DebugOverlay.cpp's syncWindow; its height estimate
+   follows these lengths) */
+.row {
+    padding: 0.2308rem 0.3077rem 0.2308rem 0.4615rem; border-left: 0.4615rem #7d8496; border-bottom: 0.0769rem #ffffff0d;
+    white-space: nowrap; overflow: hidden; height: 1.3077rem;
+}
+.row.expanded { height: auto; }
 .row:hover { background-color: #ffffff0a; }
 .row.expanded { background-color: #ffffff12; }
-.line { white-space: nowrap; overflow: hidden; height: 1.3077rem; }
-.mark { display: inline-block; width: 0.4615rem; height: 0.9231rem; margin-right: 0.4615rem; border-radius: 0.1538rem; background-color: #7d8496; }
-.lvl-warn .mark { background-color: #ffcc55; }
-.lvl-error .mark { background-color: #ff6b6b; }
-.lvl-verbose .mark, .lvl-debug .mark { background-color: #4d5466; }
-.time { display: inline-block; color: #7d8496; margin-right: 0.4615rem; }
-.lvl-warn .msg { color: #ffe3a3; }
-.lvl-error .msg { color: #ffb3b3; }
-.count { display: inline-block; margin-left: 0.4615rem; padding: 0px 0.3846rem; border-radius: 0.4615rem; background-color: #ffffff22; color: #ffffff; }
+.row.lvl-warn { border-left-color: #ffcc55; }
+.row.lvl-error { border-left-color: #ff6b6b; }
+.row.lvl-verbose, .row.lvl-debug { border-left-color: #4d5466; }
+.row.lvl-warn { color: #ffe3a3; }
+.row.lvl-error { color: #ffb3b3; }
+.time { color: #7d8496; margin-right: 0.4615rem; }
+.count { margin-left: 0.4615rem; padding: 0px 0.3846rem; border-radius: 0.4615rem; background-color: #ffffff22; color: #ffffff; }
 .detail { padding: 0.3077rem 0.3077rem 0.3077rem 1.3846rem; white-space: pre-wrap; word-break: break-word; color: #cfd3dc; }
 .trace { color: #9aa3b5; margin-top: 0.2308rem; }
 

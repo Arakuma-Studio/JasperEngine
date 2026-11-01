@@ -15,6 +15,10 @@
     #ifndef NOMINMAX
         #define NOMINMAX
     #endif
+    // K32GetProcessMemoryInfo under its own name, whatever the target Windows version
+    #ifndef PSAPI_VERSION
+        #define PSAPI_VERSION 2
+    #endif
     #include <windows.h>
     #include <psapi.h>
 #elif defined(__APPLE__)

@@ -5,7 +5,10 @@
 // nothing exists while it is off; the backquote key and the three-finger hold toggle the
 // console, loaded from engine:// with no project file; filters, search, collapse and row
 // expansion; copy and save; the stats panel; the overlay drawn above the game and offered
-// input first, consuming only taps on its own panels. The log and commands are tested by
+// input first, consuming only taps on its own panels (also above a loading scene); the Canvas
+// Scaler and the DPI scale; the row window and its throttle; the popup, the four-finger tap,
+// Open On Error; the keys while the game types; gestures reset on focus loss, pause and
+// cancel. The log and commands are tested by
 // editor/tests/LogListenerTest.cpp.
 
 #include "InspectorTestCommon.h"
@@ -16,6 +19,9 @@
 #include "debug/DebugOverlay.h"
 #include "debug/DebugStats.h"
 #include "harness/Readback.h"
+#include "manager/SceneManager.h"
+#include "subsystem/RenderSystem.h"
+#include "util/CanvasScaler.h"
 
 #include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Element.h>
@@ -23,6 +29,8 @@
 #include <RmlUi/Core/Elements/ElementFormControl.h>
 
 #include <array>
+#include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -53,6 +61,9 @@ namespace {
         }
 
         void TearDown() override{
+            TestSystem::get().touchDevice = false;
+            TestSystem::get().screenDpi = 0.0f;
+            Engine::setDefaultCanvasScaler(CanvasScalerSettings());
             Engine::onTouchStart.remove(callbackTag);
             Engine::onKeyDown.remove(callbackTag);
             Engine::systemTouchCancel();
@@ -86,9 +97,25 @@ namespace {
             return element && element->GetComputedValues().display() != Rml::Style::Display::None;
         }
 
+        // the rows the filters let through (the list makes elements for those in view only)
         int rows(){
             Rml::Element* list = byId("list");
-            return list ? list->GetNumChildren() : -1;
+            if (!list)
+                return -1;
+            return list->GetAttribute<int>("data-rows", rows_unset);
+        }
+        static constexpr int rows_unset = -2;
+
+        // the k-th row with an element (the window's first is the oldest in view); -1 = the last
+        Rml::Element* shownRow(int k){
+            Rml::Element* box = byId("list-rows");
+            if (!box || box->GetNumChildren() == 0)
+                return nullptr;
+            return box->GetChild(k < 0 ? box->GetNumChildren() - 1 : k);
+        }
+        std::string shownRowText(int k){
+            Rml::Element* row = shownRow(k);
+            return row ? row->GetInnerRML() : std::string("(no row)");
         }
 
         void key(int code){
@@ -106,6 +133,43 @@ namespace {
         void tap(float x, float y, int pointer = 0){
             Engine::systemTouchStart(pointer, x, y);
             Engine::systemTouchEnd(pointer, x, y);
+        }
+
+        void fingers(int count, int phase, float y = 600.0f){
+            for (int i = 0; i < count; i++){
+                const float x = 100.0f + 100.0f * i;
+                if (phase == 0) Engine::systemTouchStart(i, x, y);
+                else Engine::systemTouchEnd(i, x, y);
+            }
+        }
+
+        // an element's height on screen in canvas px (its layout px times the canvas px of one)
+        float renderedHeight(const char* id){
+            Rml::Element* element = byId(id);
+            Scene* scene = DebugOverlay::getScene();
+            if (!element || !scene)
+                return -1.0f;
+            const float canvasPerLayout = scene->isDocumentScaled() ? (float)Engine::getCanvasWidth() / scene->getCanvasScale().uiWidth : 1.0f;
+            return element->GetOffsetHeight() * canvasPerLayout;
+        }
+
+        float bodyFontSize(){
+            Rml::Element* body = byId("overlay-body");
+            return body ? body->GetComputedValues().font_size() : -1.0f;
+        }
+
+        std::string text(const char* id){
+            Rml::Element* element = byId(id);
+            return element ? element->GetInnerRML() : std::string();
+        }
+
+        // the centre of an element, in view px (the canvas is the view here)
+        void centre(const char* id, float& x, float& y){
+            Rml::Element* element = byId(id);
+            ASSERT_NE(element, nullptr) << id;
+            const Rml::Vector2f at = element->GetAbsoluteOffset(Rml::BoxArea::Border);
+            x = at.x + element->GetOffsetWidth() * 0.5f;
+            y = at.y + element->GetOffsetHeight() * 0.5f;
         }
 
         void search(const std::string& text){
@@ -265,7 +329,7 @@ TEST_F(DebugOverlayTest, FiltersSearchCollapseAndTraces){
     EXPECT_EQ(rows(), 2);
     click("collapse");
     EXPECT_EQ(rows(), 1);
-    Rml::Element* row = byId("list")->GetChild(0);
+    Rml::Element* row = shownRow(0);
     EXPECT_NE(row->GetInnerRML().find("gamma error"), std::string::npos);
     EXPECT_NE(row->GetInnerRML().find(">2<"), std::string::npos) << row->GetInnerRML();
     click("collapse");
@@ -286,10 +350,10 @@ TEST_F(DebugOverlayTest, FiltersSearchCollapseAndTraces){
     EXPECT_EQ(rows(), 6);
 
     // a row expanded shows the trace
-    Rml::Element* errorRow = byId("list")->GetChild(2);
+    Rml::Element* errorRow = shownRow(2);
     errorRow->Click();
     GpuEnvironment::drawFrames(1);
-    errorRow = byId("list")->GetChild(2);
+    errorRow = shownRow(2);
     EXPECT_TRUE(errorRow->IsClassSet("expanded"));
     EXPECT_NE(errorRow->GetInnerRML().find("game.lua:12"), std::string::npos) << errorRow->GetInnerRML();
 
@@ -318,7 +382,7 @@ TEST_F(DebugOverlayTest, CopyAndSave){
     EXPECT_NE(copied.find("] ERROR gamma error\nstack traceback:\n\tgame.lua:12"), std::string::npos) << copied;
 
     // only the expanded row when one is
-    byId("list")->GetChild(1)->Click();
+    shownRow(1)->Click();
     GpuEnvironment::drawFrames(1);
     click("copy");
     EXPECT_EQ(System::instance().getClipboardText().find("alpha"), std::string::npos);
@@ -399,4 +463,441 @@ TEST_F(DebugOverlayTest, AboveTheGameAndOfferedInputFirst){
     Engine::systemTouchStart(0, 640, 300);
     EXPECT_TRUE(gameDocuments.hasPointerCapture(0, D_MOUSE_BUTTON_1, true));
     Engine::systemTouchEnd(0, 640, 300);
+}
+
+// the project's Canvas Scaler scales the game's UI, not the overlay: its own FollowGameCanvas
+TEST_F(DebugOverlayTest, CanvasScalerDoesNotScaleTheOverlay){
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    DebugOverlaySettings settings;
+    settings.stats = DebugOverlaySettings::Stats::Fps;
+    enable(settings);
+    GpuEnvironment::drawFrames(3);
+    ASSERT_NE(byId("stats-line"), nullptr);
+    const float height = renderedHeight("stats-line");
+    const float fontSize = bodyFontSize();
+    ASSERT_GT(height, 10.0f);
+    DebugOverlay::shutdown();
+
+    // the game being ported: 1920x1080, matching the height
+    CanvasScalerSettings scaler;
+    scaler.mode = UIScaleMode::ScaleWithScreenSize;
+    scaler.referenceResolution = Vector2(1920, 1080);
+    scaler.matchWidthOrHeight = 1.0f;
+    Engine::setDefaultCanvasScaler(scaler);
+    GpuEnvironment::drawFrames(1);
+    EXPECT_TRUE(fixture->getScene().isDocumentScaled()) << "the game's documents follow the scaler";
+    enable(settings);
+    GpuEnvironment::drawFrames(3);
+    ASSERT_NE(DebugOverlay::getScene(), nullptr);
+    EXPECT_FALSE(DebugOverlay::getScene()->isDocumentScaled());
+    EXPECT_NEAR(renderedHeight("stats-line"), height, 0.5f);
+    EXPECT_NEAR(bodyFontSize(), fontSize, 0.01f);
+
+    // changed while it shows
+    scaler.referenceResolution = Vector2(640, 360);
+    Engine::setDefaultCanvasScaler(scaler);
+    GpuEnvironment::drawFrames(3);
+    EXPECT_FALSE(DebugOverlay::getScene()->isDocumentScaled());
+    EXPECT_NEAR(renderedHeight("stats-line"), height, 0.5f);
+}
+
+// touch screens: 1/160 inch from the DPI, at most the shorter side / 400 (also without a DPI)
+TEST_F(DebugOverlayTest, TouchScaleFollowsTheDpi){
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    DebugOverlaySettings settings;
+    settings.stats = DebugOverlaySettings::Stats::Fps;
+    enable(settings);
+    GpuEnvironment::drawFrames(3);
+    const Rect view = Engine::getViewRect();
+    ASSERT_GT(view.getWidth(), 0.0f);
+    const float canvasPerView = (float)Engine::getCanvasWidth() / view.getWidth();
+    const float shorter = std::min(view.getWidth(), view.getHeight());
+    EXPECT_NEAR(bodyFontSize(), 13.0f * std::max(1.0f, shorter / 720.0f) * canvasPerView, 0.01f) << "desktop";
+
+    TestSystem::get().touchDevice = true;
+    TestSystem::get().screenDpi = 264.0f;   // an iPad
+    GpuEnvironment::drawFrames(2);
+    EXPECT_NEAR(bodyFontSize(), 13.0f * std::max(1.0f, std::min(264.0f / 160.0f, shorter / 400.0f)) * canvasPerView, 0.01f) << "by the DPI";
+    TestSystem::get().screenDpi = 640.0f;   // a dense phone: capped
+    GpuEnvironment::drawFrames(2);
+    EXPECT_NEAR(bodyFontSize(), 13.0f * std::max(1.0f, shorter / 400.0f) * canvasPerView, 0.01f) << "capped";
+    TestSystem::get().screenDpi = 0.0f;     // unknown
+    GpuEnvironment::drawFrames(2);
+    EXPECT_NEAR(bodyFontSize(), 13.0f * std::max(1.0f, shorter / 400.0f) * canvasPerView, 0.01f) << "no DPI";
+}
+
+// every row scrolls, only those in view have elements (a few dozen whatever the buffer); a
+// burst of lines updates the list at 10 Hz; a rebuild is quick; collapsed counts drop as lines
+// leave the buffer
+TEST_F(DebugOverlayTest, RowWindowThrottleAndTheBuffer){
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    Engine::setFixedDeltatime(0.05);
+    Log::setBufferSize(20000);
+    enable();
+    DebugOverlay::showConsole();
+    GpuEnvironment::drawFrames(2);
+    Log::clearEntries();
+    for (int i = 0; i < 12000; i++)
+        Log::print("line %d", i);
+    GpuEnvironment::drawFrames(4);
+    ASSERT_EQ(rows(), 12000);
+    Rml::Element* box = byId("list-rows");
+    ASSERT_NE(box, nullptr);
+    EXPECT_GT(box->GetNumChildren(), 5);
+    EXPECT_LT(box->GetNumChildren(), 60) << "the rows in view and a margin";
+    EXPECT_NE(shownRowText(-1).find("line 11999"), std::string::npos) << "follows the newest";
+    Rml::Element* list = byId("list");
+    EXPECT_GT(list->GetScrollHeight(), 12000.0f * 15.0f) << "every row scrolls";
+
+    // scrolled to the top: the oldest rows get the elements
+    list->SetScrollTop(0.0f);
+    GpuEnvironment::drawFrames(2);
+    EXPECT_NE(shownRowText(0).find("line 0"), std::string::npos) << shownRowText(0);
+    // in the middle
+    list->SetScrollTop(list->GetScrollHeight() / 2.0f);
+    GpuEnvironment::drawFrames(2);
+    const std::string middle = shownRowText(10);
+    const size_t at = middle.find("line ");
+    ASSERT_NE(at, std::string::npos) << middle;
+    const int number = std::atoi(middle.c_str() + at + 5);
+    EXPECT_GT(number, 5000) << middle;
+    EXPECT_LT(number, 7000) << middle;
+    // a new line does not pull the list down while reading
+    Log::print("while reading");
+    GpuEnvironment::drawFrames(2);
+    EXPECT_EQ(shownRowText(10), middle);
+    // back at the bottom it follows again
+    list->SetScrollTop(list->GetScrollHeight());
+    GpuEnvironment::drawFrames(3);
+    EXPECT_NE(shownRowText(-1).find("while reading"), std::string::npos) << shownRowText(-1);
+
+    // a burst: the list takes it now, the next one 0.1 s later
+    for (int i = 0; i < 50; i++)
+        Log::print("burst a %d", i);
+    GpuEnvironment::drawFrames(1);
+    EXPECT_NE(shownRowText(-1).find("burst a 49"), std::string::npos) << shownRowText(-1);
+    for (int i = 0; i < 50; i++)
+        Log::print("burst b %d", i);
+    GpuEnvironment::drawFrames(1);
+    EXPECT_NE(shownRowText(-1).find("burst a 49"), std::string::npos) << "throttled";
+    GpuEnvironment::drawFrames(3);
+    EXPECT_NE(shownRowText(-1).find("burst b 49"), std::string::npos);
+    // a few lines come at once
+    Log::print("single");
+    GpuEnvironment::drawFrames(1);
+    EXPECT_NE(shownRowText(-1).find("single"), std::string::npos);
+
+    // collapse of 12102 rows
+    click("collapse");
+    EXPECT_EQ(rows(), 12102);
+    click("collapse");
+
+    // the spec's budget: a full rebuild of 500 rows < 5 ms (here with its layout), a line added too
+    Log::clearEntries();
+    Log::setBufferSize(500);
+    for (int i = 0; i < 500; i++)
+        Log::print("row %d", i);
+    GpuEnvironment::drawFrames(3);
+    ASSERT_EQ(rows(), 500);
+    byId("filter-warn")->Click();
+    auto start = std::chrono::steady_clock::now();
+    DebugOverlay::update(0.0);
+    const double rebuildMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    EXPECT_EQ(rows(), 500);
+    GpuEnvironment::drawFrames(1);
+    Log::print("one more");
+    start = std::chrono::steady_clock::now();
+    DebugOverlay::update(0.0);
+    const double addMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    printf("[debug overlay] rebuild of 500 rows with its layout: %.2f ms, a line added: %.2f ms\n", rebuildMs, addMs);
+    EXPECT_LT(rebuildMs, 5.0);
+    EXPECT_LT(addMs, 5.0);
+    click("filter-warn");
+    click("collapse");
+
+    // collapsed: a row's count is its buffered lines
+    Log::clearEntries();
+    Log::setBufferSize(10);
+    for (int i = 0; i < 6; i++)
+        Log::warn("same warning");
+    for (int i = 0; i < 4; i++)
+        Log::print("other %d", i);
+    GpuEnvironment::drawFrames(1);
+    ASSERT_EQ(rows(), 5);
+    EXPECT_NE(shownRowText(0).find(">6<"), std::string::npos) << shownRowText(0);
+    for (int i = 0; i < 3; i++)
+        Log::print("new %d", i);
+    GpuEnvironment::drawFrames(1);
+    ASSERT_EQ(rows(), 8);
+    EXPECT_NE(shownRowText(0).find(">3<"), std::string::npos) << shownRowText(0);
+    for (int i = 0; i < 3; i++)
+        Log::print("more %d", i);
+    GpuEnvironment::drawFrames(1);
+    EXPECT_EQ(rows(), 10);
+    EXPECT_EQ(shownRowText(0).find("same warning"), std::string::npos) << "gone with its last line";
+
+    // an expanded row is measured: the rows after it keep their place
+    shownRow(0)->Click();
+    GpuEnvironment::drawFrames(3);
+    EXPECT_TRUE(shownRow(0)->IsClassSet("expanded"));
+    EXPECT_EQ(byId("list-rows")->GetNumChildren(), 10);
+}
+
+// the popup: the counts since the console was last open, a tap opens it, a drag moves it (also
+// one that ends off it does not eat the next tap)
+TEST_F(DebugOverlayTest, PopupCountsTapAndDrag){
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    DebugOverlaySettings settings;
+    settings.popup = DebugOverlaySettings::Popup::AllDevices;
+    enable(settings);
+    GpuEnvironment::drawFrames(2);
+    ASSERT_TRUE(shown("popup"));
+    Log::warn("w1");
+    Log::error("e1");
+    Log::error("e2");
+    TestSystem::get().clearLogs();
+    GpuEnvironment::drawFrames(1);
+    EXPECT_EQ(text("popup-warn"), "1");
+    EXPECT_EQ(text("popup-error"), "2");
+
+    // dragged down past its lowest place: the pointer ends off it, no click
+    float x = 0.0f, y = 0.0f;
+    centre("popup", x, y);
+    const float top = byId("popup")->GetAbsoluteOffset(Rml::BoxArea::Border).y;
+    Engine::systemMouseMove(x, y, 0);
+    Engine::systemMouseDown(D_MOUSE_BUTTON_1, x, y, 0);
+    GpuEnvironment::drawFrames(1);
+    for (float at = y + 20.0f; at < 719.0f; at += 20.0f){
+        Engine::systemMouseMove(x, at, 0);
+        GpuEnvironment::drawFrames(1);
+    }
+    Engine::systemMouseMove(x, 719.0f, 0);
+    Engine::systemMouseUp(D_MOUSE_BUTTON_1, x, 719.0f, 0);
+    GpuEnvironment::drawFrames(2);
+    EXPECT_GT(byId("popup")->GetAbsoluteOffset(Rml::BoxArea::Border).y, top + 100.0f) << "moved";
+    EXPECT_FALSE(DebugOverlay::isConsoleVisible()) << "a drag is no tap";
+
+    // the next tap opens the console
+    centre("popup", x, y);
+    Engine::systemMouseMove(x, y, 0);
+    Engine::systemMouseDown(D_MOUSE_BUTTON_1, x, y, 0);
+    Engine::systemMouseUp(D_MOUSE_BUTTON_1, x, y, 0);
+    GpuEnvironment::drawFrames(2);
+    EXPECT_TRUE(DebugOverlay::isConsoleVisible());
+    EXPECT_FALSE(shown("popup")) << "the console replaces it";
+
+    // closed: the counts start again from there
+    DebugOverlay::hideConsole();
+    Log::warn("w2");
+    GpuEnvironment::drawFrames(2);
+    EXPECT_EQ(text("popup-warn"), "1");
+    EXPECT_EQ(text("popup-error"), "0");
+}
+
+// four fingers down and up within 0.5 s toggle the console; slower, or three, do not
+TEST_F(DebugOverlayTest, FourFingerTap){
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    DebugOverlaySettings settings;
+    settings.gesture = DebugOverlaySettings::Gesture::FourFingerTap;
+    enable(settings);
+    Engine::setFixedDeltatime(0.1);
+    GpuEnvironment::drawFrames(1);
+
+    fingers(4, 0);
+    GpuEnvironment::drawFrames(1);
+    fingers(4, 2);
+    EXPECT_TRUE(DebugOverlay::isConsoleVisible());
+    GpuEnvironment::drawFrames(1);
+    fingers(4, 0);
+    GpuEnvironment::drawFrames(1);
+    fingers(4, 2);
+    EXPECT_FALSE(DebugOverlay::isConsoleVisible());
+
+    // held too long
+    fingers(4, 0);
+    GpuEnvironment::drawFrames(7);
+    fingers(4, 2);
+    EXPECT_FALSE(DebugOverlay::isConsoleVisible());
+    // three fingers: neither a tap nor (with this gesture) a hold
+    fingers(3, 0);
+    GpuEnvironment::drawFrames(10);
+    fingers(3, 2);
+    EXPECT_FALSE(DebugOverlay::isConsoleVisible());
+}
+
+// Open On Error: the first error after the overlay is on opens the console, once
+TEST_F(DebugOverlayTest, OpenOnError){
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    Log::error("before the overlay");
+    TestSystem::get().clearLogs();
+    DebugOverlaySettings settings;
+    settings.openOnError = true;
+    enable(settings);
+    GpuEnvironment::drawFrames(2);
+    EXPECT_FALSE(DebugOverlay::isConsoleVisible()) << "an error from before";
+    Log::warn("a warning");
+    GpuEnvironment::drawFrames(1);
+    EXPECT_FALSE(DebugOverlay::isConsoleVisible());
+    Log::error("the first error");
+    TestSystem::get().clearLogs();
+    GpuEnvironment::drawFrames(2);
+    EXPECT_TRUE(DebugOverlay::isConsoleVisible());
+    EXPECT_TRUE(shown("console"));
+
+    DebugOverlay::hideConsole();
+    Log::error("another error");
+    TestSystem::get().clearLogs();
+    GpuEnvironment::drawFrames(2);
+    EXPECT_FALSE(DebugOverlay::isConsoleVisible()) << "once";
+}
+
+// the toggle and stats keys while a text field of the game has the keyboard: typed, not toggled
+TEST_F(DebugOverlayTest, KeysIgnoredWhileTheGameTypes){
+    page("form", "", "<input type=\"text\" id=\"name\"/>");
+    UIDocument form = fixture->addDocument("ui/form.html", 0);
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    enable();
+    GpuEnvironment::drawFrames(1);
+    Rml::ElementDocument* game = fixture->getScene().getSystem<UIDocumentSystem>()->getDocument(form.getEntity());
+    ASSERT_NE(game, nullptr);
+    Rml::Element* field = game->GetElementById("name");
+    ASSERT_NE(field, nullptr);
+    field->Focus();
+    ASSERT_TRUE(Engine::isTextInputFocused());
+    key(D_KEY_GRAVE_ACCENT);
+    key(D_KEY_F3);
+    EXPECT_FALSE(DebugOverlay::isConsoleVisible());
+    EXPECT_EQ(DebugOverlay::getStatsMode(), DebugOverlaySettings::Stats::Off);
+
+    field->Blur();
+    key(D_KEY_GRAVE_ACCENT);
+    EXPECT_TRUE(DebugOverlay::isConsoleVisible());
+    GpuEnvironment::drawFrames(2);
+    // the console's own command field: the key still closes it
+    ASSERT_NE(byId("command"), nullptr);
+    byId("command")->Focus();
+    ASSERT_TRUE(DebugOverlay::hasTextFocus());
+    key(D_KEY_GRAVE_ACCENT);
+    EXPECT_FALSE(DebugOverlay::isConsoleVisible());
+}
+
+// no finger stays held for the gestures across a focus loss, a pause or a cancel of all touches
+// (also fingers outside the canvas, which Input never had)
+TEST_F(DebugOverlayTest, GesturesResetOnFocusLossPauseAndCancel){
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    enable();
+    Engine::setFixedDeltatime(0.1);
+    GpuEnvironment::drawFrames(1);
+
+    fingers(3, 0);
+    GpuEnvironment::drawFrames(3);
+    Engine::systemFocus(false);
+    GpuEnvironment::drawFrames(10);
+    Engine::systemFocus(true);
+    GpuEnvironment::drawFrames(5);
+    EXPECT_FALSE(DebugOverlay::isConsoleVisible()) << "focus loss";
+    fingers(3, 2);
+
+    fingers(3, 0);
+    GpuEnvironment::drawFrames(3);
+    Engine::systemPause();
+    Engine::systemResume();
+    Engine::systemFocus(true);
+    GpuEnvironment::drawFrames(10);
+    EXPECT_FALSE(DebugOverlay::isConsoleVisible()) << "pause";
+    fingers(3, 2);
+
+    // outside the canvas: the overlay saw them, Input did not
+    DebugOverlay::handleTouch(7, -50.0f, 100.0f, 0);
+    DebugOverlay::handleTouch(8, -50.0f, 200.0f, 0);
+    DebugOverlay::handleTouch(9, -50.0f, 300.0f, 0);
+    GpuEnvironment::drawFrames(3);
+    Engine::systemTouchCancel();
+    GpuEnvironment::drawFrames(10);
+    EXPECT_FALSE(DebugOverlay::isConsoleVisible()) << "cancel all";
+    // one finger cancelled: the hold needs three again
+    DebugOverlay::handleTouch(7, -50.0f, 100.0f, 0);
+    DebugOverlay::handleTouch(8, -50.0f, 200.0f, 0);
+    DebugOverlay::handleTouch(9, -50.0f, 300.0f, 0);
+    Engine::systemTouchCancel(9);
+    GpuEnvironment::drawFrames(10);
+    EXPECT_FALSE(DebugOverlay::isConsoleVisible()) << "one cancelled";
+    DebugOverlay::cancelGestures();
+
+    // and a hold still works after all that
+    fingers(3, 0);
+    GpuEnvironment::drawFrames(9);
+    EXPECT_TRUE(DebugOverlay::isConsoleVisible());
+    fingers(3, 2);
+}
+
+// 14 with a loading scene in the stack: the overlay is drawn above it and offered a tap first;
+// a tap outside its panels reaches the loading scene's document (the game below it is covered)
+TEST_F(DebugOverlayTest, AboveTheLoadingScene){
+    page("game", "html, body { margin: 0; }\n#full { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; background: #ff0000; }\n",
+         "<div id=\"full\"></div>");
+    page("loading", "html, body { margin: 0; }\n#full { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; background: #0000ff; }\n",
+         "<div id=\"full\"></div>");
+    fixture->addDocument("ui/game.html", 0);
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+
+    std::unique_ptr<Scene> loading(new Scene());
+    std::unique_ptr<Camera> loadingCamera(new Camera(loading.get()));
+    loadingCamera->setType(CameraType::CAMERA_UI);
+    loadingCamera->activate();
+    std::unique_ptr<UIDocument> loadingDocument(new UIDocument(loading.get()));
+    loadingDocument->setFilename("ui/loading.html");
+
+    Scene* game = &fixture->getScene();
+    SceneManager::registerScene(1, "Game", [game](){ Engine::setScene(game); });
+    SceneManager::registerScene(2, "Loading", [](){}, [&loading](){ SceneManager::setScenePtr(2, loading.get()); }, {2});
+    struct Cleanup {
+        Scene* game;
+        Scene* loading;
+        ~Cleanup(){
+            SceneManager::releaseLoading();
+            SceneManager::clearAll();
+            Engine::removeScene(loading);
+            Engine::setScene(game);
+        }
+    } cleanup{game, loading.get()};
+    ASSERT_TRUE(SceneManager::setLoadingScene("Loading"));
+    ASSERT_TRUE(SceneManager::loadScene("Game"));
+    SceneManager::holdLoading();
+    ASSERT_TRUE(GpuEnvironment::runFrames([&loading, game](){
+        return SceneManager::isCoveredByLoading(game) && loading->getSystem<RenderSystem>()->isAllLoaded() &&
+               loading->getSystem<UIDocumentSystem>()->isAllLoaded();
+    }, 300));
+    GpuEnvironment::drawFrames(3);
+    ASSERT_TRUE(SceneManager::isLoading());
+    ASSERT_TRUE(SceneManager::isCoveredByLoading(game)) << "the loading scene is up";
+    const std::array<int, 4> covered = pixel(640, 600);
+    ASSERT_GT(covered[2], 200) << "the loading page: " << covered[0] << "," << covered[1] << "," << covered[2];
+
+    enable();
+    DebugOverlay::showConsole();
+    GpuEnvironment::drawFrames(3);
+    ASSERT_NE(document(), nullptr);
+    const std::vector<Scene*> layers = Engine::getSceneLayers();
+    ASSERT_FALSE(layers.empty());
+    EXPECT_EQ(layers.back(), loading.get()) << "the loading scene is the top layer of the game";
+    const std::array<int, 4> console = pixel(640, 300);
+    const std::array<int, 4> below = pixel(640, 600);
+    // the console's #0b0d12ee over the blue page
+    EXPECT_LT(console[0], 30) << console[0] << "," << console[1] << "," << console[2];
+    EXPECT_LT(console[2], 60) << "drawn over the loading page";
+    EXPECT_GT(below[2], 200) << below[2];
+
+    UIDocumentSystem& loadingDocuments = *loading->getSystem<UIDocumentSystem>();
+    UIDocumentSystem& gameDocuments = *game->getSystem<UIDocumentSystem>();
+    tap(640, 300);
+    EXPECT_FALSE(loadingDocuments.hasPointerCapture(0, D_MOUSE_BUTTON_1, true)) << "the overlay's tap";
+    Engine::systemTouchStart(0, 640, 600);
+    EXPECT_TRUE(loadingDocuments.hasPointerCapture(0, D_MOUSE_BUTTON_1, true)) << "below the console: the loading scene's";
+    EXPECT_FALSE(gameDocuments.hasPointerCapture(0, D_MOUSE_BUTTON_1, true)) << "the covered game gets nothing";
+    Engine::systemTouchEnd(0, 640, 600);
+
+    // the overlay's buttons work over a loading scene
+    click("close");
+    EXPECT_FALSE(DebugOverlay::isConsoleVisible());
 }

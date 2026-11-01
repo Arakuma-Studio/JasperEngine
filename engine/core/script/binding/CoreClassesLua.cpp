@@ -901,6 +901,15 @@ namespace {
         return 1;
     }
 
+    // DebugOverlay.statsMode = DebugOverlay.STATS_OFF / STATS_FPS / STATS_FULL (no other value)
+    int luaDebugOverlaySetStatsMode(lua_State* L){
+        if (!lua_isinteger(L, 1) || lua_tointeger(L, 1) < static_cast<lua_Integer>(DebugOverlaySettings::Stats::Off) ||
+            lua_tointeger(L, 1) > static_cast<lua_Integer>(DebugOverlaySettings::Stats::Full))
+            return luaL_argerror(L, 1, "DebugOverlay.statsMode takes DebugOverlay.STATS_OFF, STATS_FPS or STATS_FULL (0, 1 or 2)");
+        DebugOverlay::setStatsMode(static_cast<DebugOverlaySettings::Stats>(lua_tointeger(L, 1)));
+        return 0;
+    }
+
     // DebugOverlay.getStats(): DebugStatsSnapshot's fields, camelCase
     int luaDebugOverlayGetStats(lua_State* L){
         const DebugStatsSnapshot s = DebugStats::sample();
@@ -2614,6 +2623,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("clear", &Log::clearEntries)
         .addStaticFunction("count", &luaLogCount)
         .addStaticProperty("bufferSize", [] () -> int { return (int)std::min<size_t>(Log::getBufferSize(), INT32_MAX); },
+                           // 0 .. Log::maxBufferSize (100000), clamped
                            [] (int size) { Log::setBufferSize(size > 0 ? (size_t)size : 0); })
         .endClass();
 
@@ -2625,7 +2635,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("hideConsole", &DebugOverlay::hideConsole)
         .addStaticFunction("toggleConsole", &DebugOverlay::toggleConsole)
         .addStaticProperty("consoleVisible", &DebugOverlay::isConsoleVisible)
-        .addStaticProperty("statsMode", &DebugOverlay::getStatsMode, &DebugOverlay::setStatsMode)
+        .addStaticProperty("statsMode", &DebugOverlay::getStatsMode, static_cast<lua_CFunction>(&luaDebugOverlaySetStatsMode))
         .addStaticProperty("STATS_OFF", [] () -> int { return (int)DebugOverlaySettings::Stats::Off; })
         .addStaticProperty("STATS_FPS", [] () -> int { return (int)DebugOverlaySettings::Stats::Fps; })
         .addStaticProperty("STATS_FULL", [] () -> int { return (int)DebugOverlaySettings::Stats::Full; })

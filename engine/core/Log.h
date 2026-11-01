@@ -66,7 +66,10 @@ namespace jasperengine {
         static void emitEntry(LogLevel level, const std::string& message, const std::string& stackTrace, bool fromLua);
 
         static LogListenerId addListener(std::function<void(const LogEntry&)> listener, LogDelivery delivery = LogDelivery::MainThread);
-        // stops at once (a line being dispatched does not reach it any more)
+        // Stops at once: a line being dispatched does not reach it any more, and a call of it
+        // running on another thread (AnyThread) has ended when this returns, so what the
+        // listener uses can go. From inside the listener itself it does not wait for that call.
+        // Two listeners that remove each other from inside their calls on two threads deadlock.
         static void removeListener(LogListenerId id);
         // the lines other threads logged since the last call, to the MainThread listeners and
         // onMessageReceived, in order (Engine::runFrame, first thing of a frame)
@@ -79,7 +82,8 @@ namespace jasperengine {
         static std::vector<LogEntry> getEntries(size_t maxCount = 0, uint32_t levelMask = LOG_LEVELS_ALL, uint64_t afterId = 0);
         // empties the buffer and the counts
         static void clearEntries();
-        // lines the buffer keeps (default 500; 0 = none, the oldest go first)
+        // lines the buffer keeps (default 500; 0 = none, the oldest go first; at most maxBufferSize)
+        static constexpr size_t maxBufferSize = 100000;
         static void setBufferSize(size_t entries);
         static size_t getBufferSize();
         // lines of that level logged since the last clearEntries (buffered or not)

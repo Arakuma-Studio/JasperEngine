@@ -10,6 +10,7 @@
 #include "Input.h"
 #include "Log.h"
 #include "Scene.h"
+#include "Screen.h"
 #include "System.h"
 #include "component/Transform.h"
 #include "component/UIDocumentComponent.h"
@@ -19,6 +20,7 @@
 #include "math/Rect.h"
 #include "script/LuaBinding.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "util/CanvasScaler.h"
 
 #include "lua.hpp"
 
@@ -38,6 +40,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <unordered_map>
 
 using namespace jasperengine;
 
@@ -54,9 +57,12 @@ namespace {
     constexpr float graphMaxMs = 50.0f;
     constexpr size_t rowTextLimit = 300;        // characters of a message's first line in its row
     constexpr float remPx = 13.0f;              // overlay px of 1rem (the sheet's lengths are in rem)
+    constexpr size_t windowMargin = 8;          // rows made above and below those in view
+    constexpr double rowsInterval = 0.1;        // a burst of lines updates the list at 10 Hz
+    constexpr uint64_t burstLines = 20;         // more lines than this waiting is a burst
 
-    const Rml::EventId capturedEvents[] = {Rml::EventId::Change, Rml::EventId::Scroll, Rml::EventId::Dragstart,
-                                           Rml::EventId::Drag, Rml::EventId::Dragend};
+    const Rml::EventId capturedEvents[] = {Rml::EventId::Change, Rml::EventId::Scroll, Rml::EventId::Mousedown,
+                                           Rml::EventId::Dragstart, Rml::EventId::Drag, Rml::EventId::Dragend};
 
     struct Command {
         std::string name;
@@ -66,7 +72,8 @@ namespace {
         bool builtIn = false;
     };
 
-    // one row of the console list: a line of the log, or (collapsed) every line with its text
+    // one row of the console list: a line of the log, or (collapsed) every buffered line with
+    // its text. Every row the filters let through is kept; those in view have an element.
     struct Row {
         uint64_t id = 0;            // the (first) line's id
         uint64_t lastId = 0;        // the newest line it stands for
@@ -75,9 +82,10 @@ namespace {
         std::string stackTrace;
         double time = 0.0;
         size_t count = 1;
+        // the buffered lines it stands for (id, time), oldest first: they leave with the buffer
+        std::deque<std::pair<uint64_t, double>> lines;
         bool expanded = false;
-        Rml::Element* element = nullptr;
-        Rml::Element* countElement = nullptr;
+        float height = 0.0f;        // expanded: its measured height (layout px)
     };
 
     class OverlayListener : public Rml::EventListener {
@@ -110,7 +118,19 @@ namespace {
         bool fullHeight = false;
         std::string search;             // lower case
         std::deque<Row> rows;
+        // collapsed: the row of each text (rows are not moved while it is used: a deque keeps
+        // its elements in place on push_back / pop_front; an erase in the middle rebuilds it)
+        std::unordered_map<std::string, Row*> collapsedRows;
         uint64_t lastSeenId = 0;        // the newest line the list has looked at
+        uint64_t trimmedBefore = 0;     // the oldest buffered line the rows were trimmed to
+        double nextRowsUpdate = 0.0;
+        // the window: rows [windowFrom, windowTo) have the elements shownElements (in order)
+        std::vector<Rml::Element*> shownElements;
+        size_t windowFrom = 0, windowTo = 0;
+        bool windowDirty = true;
+        float rowHeight = 0.0f;             // a row's measured height (layout px), 0 until then
+        float estimatedRowHeight = 24.0f;   // from the font size until measured
+        std::string appliedTopSpacer, appliedBottomSpacer;
         bool rebuild = true;
         bool stickToBottom = true;
         bool scrollToBottom = false;
@@ -363,27 +383,22 @@ namespace {
 
     // ---- console rows
 
-    void fillRow(Row& row){
+    // As few elements as can be: the level is the row's border (its class), the time a span,
+    // the message's first line a text node, the count a span only past 1
+    void fillRow(const Row& row, Rml::Element* element){
         OverlayState& s = state();
-        Rml::Element* element = row.element;
         while (element->GetNumChildren() > 0)
             element->RemoveChild(element->GetChild(0));
         element->SetClassNames(std::string("row ") + levelClass(row.level) + (row.expanded ? " expanded" : ""));
-
-        Rml::Element* line = element->AppendChild(s.document->CreateElement("div"));
-        line->SetClass("line", true);
-        line->AppendChild(s.document->CreateElement("span"))->SetClass("mark", true);
-        Rml::Element* time = line->AppendChild(s.document->CreateElement("span"));
+        Rml::Element* time = element->AppendChild(s.document->CreateElement("span"));
         time->SetClass("time", true);
         time->AppendChild(s.document->CreateTextNode(formatTime(row.time)));
-        Rml::Element* message = line->AppendChild(s.document->CreateElement("span"));
-        message->SetClass("msg", true);
-        message->AppendChild(s.document->CreateTextNode(firstLine(row.message)));
-        row.countElement = line->AppendChild(s.document->CreateElement("span"));
-        row.countElement->SetClass("count", true);
-        row.countElement->SetClass("hidden", row.count <= 1);
-        row.countElement->AppendChild(s.document->CreateTextNode(countText(row.count)));
-
+        element->AppendChild(s.document->CreateTextNode(firstLine(row.message)));
+        if (row.count > 1){
+            Rml::Element* count = element->AppendChild(s.document->CreateElement("span"));
+            count->SetClass("count", true);
+            count->AppendChild(s.document->CreateTextNode(countText(row.count)));
+        }
         if (row.expanded){
             Rml::Element* detail = element->AppendChild(s.document->CreateElement("div"));
             detail->SetClass("detail", true);
@@ -396,57 +411,155 @@ namespace {
         }
     }
 
-    void appendRow(Row row){
-        OverlayState& s = state();
-        Rml::Element* list = byId("list");
-        if (!list)
-            return;
-        row.element = list->AppendChild(s.document->CreateElement("div"));
-        row.element->SetAttribute("data-id", std::to_string(row.id));
-        s.rows.push_back(std::move(row));
-        fillRow(s.rows.back());
+    // ---- the list's window: every row the filters let through scrolls (spacers stand for the
+    // rows out of view), only the rows in view and a margin have elements, so a rebuild or a
+    // line added lays out a few dozen rows whatever the buffer size
+
+    // a row's height in layout px: measured (an expanded one its own), estimated until then
+    float rowHeight(const Row& row){
+        const OverlayState& s = state();
+        if (row.expanded && row.height > 0.0f)
+            return row.height;
+        return s.rowHeight > 0.0f ? s.rowHeight : s.estimatedRowHeight;
     }
 
-    void removeFirstRow(){
+    void setSpacer(const char* id, double height, std::string& applied){
+        char text[32];
+        snprintf(text, sizeof(text), "%.1fpx", std::max(0.0, height));
+        if (applied == text)
+            return;
+        applied = text;
+        if (Rml::Element* spacer = byId(id))
+            spacer->SetProperty("height", text);
+    }
+
+    void clearWindow(){
+        OverlayState& s = state();
+        if (Rml::Element* box = byId("list-rows")){
+            while (box->GetNumChildren() > 0)
+                box->RemoveChild(box->GetChild(box->GetNumChildren() - 1));
+        }
+        s.shownElements.clear();
+        s.windowFrom = s.windowTo = 0;
+        s.windowDirty = true;
+    }
+
+    // The rows in view (the list's scroll, or its end when it follows the newest line) get their
+    // elements, the spacers the height of the rest. Made anew when the range or the rows change.
+    void syncWindow(){
         OverlayState& s = state();
         Rml::Element* list = byId("list");
-        if (list && s.rows.front().element)
-            list->RemoveChild(s.rows.front().element);
-        s.rows.pop_front();
+        Rml::Element* box = byId("list-rows");
+        if (!list || !box)
+            return;
+        const size_t count = s.rows.size();
+        double total = 0.0;
+        for (const Row& row : s.rows)
+            total += rowHeight(row);
+        const double client = std::max<double>(list->GetClientHeight(), rowHeight(Row()));
+        const double viewTop = s.scrollToBottom ? std::max(0.0, total - client) : std::max(0.0, (double)list->GetScrollTop());
+
+        size_t first = 0;
+        double offset = 0.0;
+        while (first < count && offset + rowHeight(s.rows[first]) <= viewTop){
+            offset += rowHeight(s.rows[first]);
+            first++;
+        }
+        size_t from = first;
+        double fromOffset = offset;
+        for (size_t i = 0; i < windowMargin && from > 0; i++){
+            from--;
+            fromOffset -= rowHeight(s.rows[from]);
+        }
+        size_t to = first;
+        double end = offset;
+        while (to < count && end < viewTop + client){
+            end += rowHeight(s.rows[to]);
+            to++;
+        }
+        for (size_t i = 0; i < windowMargin && to < count; i++)
+            end += rowHeight(s.rows[to++]);
+
+        setSpacer("list-top", fromOffset, s.appliedTopSpacer);
+        setSpacer("list-bottom", total - end, s.appliedBottomSpacer);
+        if (!s.windowDirty && from == s.windowFrom && to == s.windowTo)
+            return;
+        while (box->GetNumChildren() > 0)
+            box->RemoveChild(box->GetChild(box->GetNumChildren() - 1));
+        s.shownElements.clear();
+        for (size_t i = from; i < to; i++){
+            Rml::Element* element = box->AppendChild(s.document->CreateElement("div"));
+            element->SetAttribute("data-id", std::to_string(s.rows[i].id));
+            fillRow(s.rows[i], element);
+            s.shownElements.push_back(element);
+        }
+        s.windowFrom = from;
+        s.windowTo = to;
+        s.windowDirty = false;
+        list->SetAttribute("data-rows", std::to_string(count));
+    }
+
+    // after the layout: the heights the window used, measured (a change moves the spacers next)
+    void measureWindow(){
+        OverlayState& s = state();
+        for (size_t k = 0; k < s.shownElements.size() && s.windowFrom + k < s.rows.size(); k++){
+            Row& row = s.rows[s.windowFrom + k];
+            const float height = s.shownElements[k]->GetOffsetHeight();
+            if (height <= 0.0f)
+                continue;
+            if (row.expanded){
+                if (std::fabs(row.height - height) > 0.5f){
+                    row.height = height;
+                    s.windowDirty = true;
+                }
+            }else if (std::fabs(s.rowHeight - height) > 0.5f){
+                s.rowHeight = height;
+                s.windowDirty = true;
+            }
+        }
     }
 
     void clearRows(){
         OverlayState& s = state();
-        Rml::Element* list = byId("list");
-        // the DOM children only: the scrollbars stay
-        if (list){
-            while (list->GetNumChildren() > 0)
-                list->RemoveChild(list->GetChild(0));
-        }
+        clearWindow();
         s.rows.clear();
+        s.collapsedRows.clear();
     }
 
-    Row* findCollapsed(const LogEntry& entry){
-        for (Row& row : state().rows){
-            if (row.level == entry.level && row.message == entry.message && row.stackTrace == entry.stackTrace)
-                return &row;
-        }
-        return nullptr;
+    std::string collapseKey(LogLevel level, const std::string& message, const std::string& stackTrace){
+        std::string key;
+        key.reserve(message.size() + stackTrace.size() + 2);
+        key += static_cast<char>('0' + static_cast<int>(level));
+        key += message;
+        key += '\0';
+        key += stackTrace;
+        return key;
     }
 
-    void addEntry(const LogEntry& entry){
+    void indexCollapsedRows(){
+        OverlayState& s = state();
+        s.collapsedRows.clear();
+        if (!s.collapse)
+            return;
+        for (Row& row : s.rows)
+            s.collapsedRows[collapseKey(row.level, row.message, row.stackTrace)] = &row;
+    }
+
+    // a line into the rows; true when it is listed (the window is made again)
+    bool addEntry(const LogEntry& entry){
         OverlayState& s = state();
         if (!(levelMask() & logLevelBit(entry.level)) || !matchesSearch(entry))
-            return;
+            return false;
+        std::string key;
         if (s.collapse){
-            if (Row* row = findCollapsed(entry)){
-                row->count++;
-                row->lastId = entry.id;
-                if (row->countElement){
-                    row->countElement->SetClass("hidden", false);
-                    setText(row->countElement, countText(row->count));
-                }
-                return;
+            key = collapseKey(entry.level, entry.message, entry.stackTrace);
+            auto found = s.collapsedRows.find(key);
+            if (found != s.collapsedRows.end()){
+                Row& row = *found->second;
+                row.lines.push_back({entry.id, entry.time});
+                row.count = row.lines.size();
+                row.lastId = entry.id;
+                return true;
             }
         }
         Row row;
@@ -456,7 +569,52 @@ namespace {
         row.message = entry.message;
         row.stackTrace = entry.stackTrace;
         row.time = entry.time;
-        appendRow(std::move(row));
+        row.lines.push_back({entry.id, entry.time});
+        s.rows.push_back(std::move(row));
+        if (s.collapse)
+            s.collapsedRows[std::move(key)] = &s.rows.back();
+        return true;
+    }
+
+    // Lines that left the buffer (trimmed, Log.clear) leave the rows: a row goes with its last
+    // line, a collapsed row's count drops with each. True when a row went or changed.
+    bool trimRows(uint64_t firstBuffered){
+        OverlayState& s = state();
+        if (firstBuffered <= s.trimmedBefore)
+            return false;
+        s.trimmedBefore = firstBuffered;
+        bool changed = false;
+        if (!s.collapse){
+            // one line a row, in order
+            while (!s.rows.empty() && s.rows.front().lastId < firstBuffered){
+                s.rows.pop_front();
+                changed = true;
+            }
+            return changed;
+        }
+        bool erased = false;
+        for (auto it = s.rows.begin(); it != s.rows.end();){
+            Row& row = *it;
+            if (row.lines.empty() || row.lines.front().first >= firstBuffered){
+                ++it;
+                continue;
+            }
+            while (!row.lines.empty() && row.lines.front().first < firstBuffered)
+                row.lines.pop_front();
+            changed = true;
+            if (row.lines.empty()){
+                it = s.rows.erase(it);
+                erased = true;
+                continue;
+            }
+            row.count = row.lines.size();
+            row.id = row.lines.front().first;
+            row.time = row.lines.front().second;
+            ++it;
+        }
+        if (erased)
+            indexCollapsedRows();
+        return changed;
     }
 
     bool listAtBottom(Rml::Element* list){
@@ -469,8 +627,8 @@ namespace {
         if (!list)
             return;
 
-        const uint64_t firstBuffered = Log::getFirstBufferedId();
         if (s.rebuild){
+            const uint64_t firstBuffered = Log::getFirstBufferedId();
             std::set<uint64_t> expanded;
             for (const Row& row : s.rows){
                 if (row.expanded) expanded.insert(row.id);
@@ -479,29 +637,33 @@ namespace {
             const std::vector<LogEntry> entries = Log::getEntries();
             for (const LogEntry& entry : entries)
                 addEntry(entry);
-            for (Row& row : s.rows){
-                if (expanded.count(row.id)){
-                    row.expanded = true;
-                    fillRow(row);
-                }
+            if (!expanded.empty()){
+                for (Row& row : s.rows)
+                    row.expanded = expanded.count(row.id) > 0;
             }
             // a line another thread logs meanwhile comes with the next update
             s.lastSeenId = entries.empty() ? firstBuffered - 1 : entries.back().id;
+            s.trimmedBefore = firstBuffered;
             s.rebuild = false;
             s.scrollToBottom = s.stickToBottom;
+            s.nextRowsUpdate = s.clock + rowsInterval;
         }else{
-            // lines that left the buffer (trimmed, Log.clear) leave the list; a collapsed row
-            // stays while a line of its text is still buffered
+            // a burst of lines: the list follows at 10 Hz, not every frame
+            if (Log::getLastId() - s.lastSeenId > burstLines && s.clock < s.nextRowsUpdate)
+                return;
             const bool atBottom = listAtBottom(list);
-            while (!s.rows.empty() && s.rows.front().lastId < firstBuffered)
-                removeFirstRow();
+            bool changed = trimRows(Log::getFirstBufferedId());
             const std::vector<LogEntry> added = Log::getEntries(0, LOG_LEVELS_ALL, s.lastSeenId);
             for (const LogEntry& entry : added)
-                addEntry(entry);
-            if (!added.empty())
+                changed = addEntry(entry) || changed;
+            if (changed)
+                s.windowDirty = true;
+            if (!added.empty()){
                 s.lastSeenId = added.back().id;
-            if (!added.empty() && (atBottom || s.stickToBottom))
-                s.scrollToBottom = true;
+                s.nextRowsUpdate = s.clock + rowsInterval;
+                if (atBottom || s.stickToBottom)
+                    s.scrollToBottom = true;
+            }
         }
         setHidden(byId("empty"), !s.rows.empty());
     }
@@ -687,6 +849,10 @@ namespace {
         if (applied == s.appliedInsets)
             return;
         s.appliedInsets = applied;
+        // a row: its line (1.3077rem), padding (0.4615rem) and border (0.0769rem)
+        s.estimatedRowHeight = remPx * scale * canvasPerView * 1.8461f;
+        s.rowHeight = 0.0f;
+        s.windowDirty = true;
         if (Rml::Element* body = byId("overlay-body")){
             body->SetProperty("font-size", fontSize);
             body->SetProperty("left", px(left));
@@ -696,12 +862,27 @@ namespace {
         }
     }
 
-    // view pixels per overlay px: text of 13 overlay px stays legible on any screen
+    // View pixels per overlay px: text of 13 overlay px stays legible on any screen. Desktop:
+    // the shorter side of the view / 720. Touch: 1/160 inch (Android's dp) from the screen's
+    // DPI, at most the shorter side / 400 (also when the DPI is unknown or implausible), so a
+    // tablet's larger screen shows more, not larger. The Web's DPI is devicePixelRatio * 96
+    // (CSS px, not physical): 1.2 CSS px there.
     float overlayScale(){
         const Rect view = Engine::getViewRect();
         const float shorter = std::min(view.getWidth(), view.getHeight());
         const bool touch = System::hasInstance() && System::instance().isTouchDevice();
-        return std::max(1.0f, shorter / (touch ? 400.0f : 720.0f));
+        if (!touch)
+            return std::max(1.0f, shorter / 720.0f);
+        const float bySize = shorter / 400.0f;
+        const float dpi = Screen::getDpi();
+        if (!(dpi >= 50.0f && dpi <= 1200.0f))
+            return std::max(1.0f, bySize);
+#if defined(__EMSCRIPTEN__)
+        const float byDpi = dpi / 80.0f;
+#else
+        const float byDpi = dpi / 160.0f;
+#endif
+        return std::max(1.0f, std::min(byDpi, bySize));
     }
 
     // ---- the Scene
@@ -719,6 +900,12 @@ namespace {
         s.bars.clear();
         s.statValues.clear();
         s.rows.clear();
+        s.collapsedRows.clear();
+        s.shownElements.clear();
+        s.windowFrom = s.windowTo = 0;
+        s.windowDirty = true;
+        s.appliedTopSpacer.clear();
+        s.appliedBottomSpacer.clear();
         s.rebuild = true;
         s.entity = NULL_ENTITY;
         s.scene.reset();
@@ -734,6 +921,10 @@ namespace {
         document.filename = EngineResources::overlayDocument;
         document.sortOrder = 1000;
         scene.addComponent<UIDocumentComponent>(s.entity, document);
+        // laid out in the game canvas whatever the project's Canvas Scaler (applyScale sizes it
+        // in canvas px): its own FollowGameCanvas, not the project default
+        scene.setCanvasScaler(CanvasScalerSettings());
+        scene.setCanvasScalerUseProjectDefault(false);
         // its default UI camera, sized to the canvas (Engine::systemViewChanged keeps it so); the
         // systems load with the view
         scene.load();
@@ -920,12 +1111,16 @@ namespace {
         state().stickToBottom = true;
     }
 
-    Row* rowOf(Rml::Element* element){
+    // the row of an element of the window (the rows do not change between two updates)
+    Row* rowOf(Rml::Element* element, Rml::Element*& rowElement){
+        OverlayState& s = state();
         for (Rml::Element* at = element; at; at = at->GetParentNode()){
             if (at->IsClassSet("row")){
-                for (Row& row : state().rows){
-                    if (row.element == at)
-                        return &row;
+                for (size_t k = 0; k < s.shownElements.size(); k++){
+                    if (s.shownElements[k] == at && s.windowFrom + k < s.rows.size()){
+                        rowElement = at;
+                        return &s.rows[s.windowFrom + k];
+                    }
                 }
                 return nullptr;
             }
@@ -976,9 +1171,10 @@ namespace {
                     s.fullHeight = !s.fullHeight;
                 }else if (button == "close"){
                     DebugOverlay::hideConsole();
-                }else if (Row* row = rowOf(target)){
+                }else if (Rml::Element* rowElement = nullptr; Row* row = rowOf(target, rowElement)){
                     row->expanded = !row->expanded;
-                    fillRow(*row);
+                    fillRow(*row, rowElement);
+                    s.windowDirty = true;
                     // reading an old line: the list stays where it is
                     s.stickToBottom = false;
                 }
@@ -1002,6 +1198,13 @@ namespace {
             case Rml::EventId::Scroll: {
                 if (target && target->GetId() == "list")
                     s.stickToBottom = listAtBottom(target);
+                break;
+            }
+            case Rml::EventId::Mousedown: {
+                // a press starts afresh: a drag before (one whose click never came) does not
+                // eat this tap
+                if (buttonOf(target) == "popup")
+                    s.popupDragged = false;
                 break;
             }
             case Rml::EventId::Dragstart: {
@@ -1073,6 +1276,24 @@ void DebugOverlay::configure(const DebugOverlaySettings& settings){
     s.warnedDisabled = false;
     s.layoutChanged = true;
     setEnabled(settings.enabled);
+}
+
+void DebugOverlay::updateSettings(const DebugOverlaySettings& settings){
+    OverlayState& s = state();
+    const DebugOverlaySettings before = s.settings;
+    s.settings = settings;
+    if (settings.toggleKey != before.toggleKey)
+        s.toggleKey = parseKeySetting(settings.toggleKey, "the toggle key");
+    if (settings.statsKey != before.statsKey)
+        s.statsKey = parseKeySetting(settings.statsKey, "the stats key");
+    // what the game or the console changed stays, unless that setting changed
+    if (settings.stats != before.stats)
+        setStatsMode(settings.stats);
+    if (settings.gesture != before.gesture)
+        resetGestures();
+    if (settings.enabled != before.enabled)
+        setEnabled(settings.enabled);
+    s.layoutChanged = true;
 }
 
 const DebugOverlaySettings& DebugOverlay::getSettings(){
@@ -1152,6 +1373,10 @@ bool DebugOverlay::isConsoleVisible(){
 
 void DebugOverlay::setStatsMode(DebugOverlaySettings::Stats mode){
     OverlayState& s = state();
+    if (mode != Stats::Off && mode != Stats::Fps && mode != Stats::Full){
+        Log::warn("DebugOverlay::setStatsMode: %d is not a stats mode (Off, Fps or Full)", static_cast<int>(mode));
+        return;
+    }
     if (s.statsMode != mode){
         s.statsMode = mode;
         s.layoutChanged = true;
@@ -1288,12 +1513,20 @@ void DebugOverlay::removeOwnedCommands(){
 void DebugOverlay::handleKey(int key, int mods, bool down, bool repeat){
     (void)mods;
     OverlayState& s = state();
-    if (!s.enabled || !down || repeat || key == D_KEY_UNKNOWN)
+    if (!s.enabled || !down || repeat || key == D_KEY_UNKNOWN || (key != s.toggleKey && key != s.statsKey))
+        return;
+    // typed into a text field of the game: its character, not the overlay's key (the console's
+    // own fields still close it with the key)
+    if (!hasTextFocus() && Engine::isTextInputFocused())
         return;
     if (key == s.toggleKey)
         toggleConsole();
-    else if (key == s.statsKey)
+    else
         cycleStatsMode();
+}
+
+void DebugOverlay::cancelGestures(){
+    resetGestures();
 }
 
 void DebugOverlay::handleTouch(int pointer, float x, float y, int phase){
@@ -1418,6 +1651,7 @@ void DebugOverlay::update(double unscaledDelta){
     applyScale(overlayScale());
     if (s.consoleVisible){
         updateRows();
+        syncWindow();
         updateCounts();
     }
     if (popupWanted())
@@ -1434,6 +1668,8 @@ void DebugOverlay::update(double unscaledDelta){
     }
 
     s.scene->update(unscaledDelta);
+    if (s.consoleVisible)
+        measureWindow();
 
     // after the layout: the newest line in view
     if (s.consoleVisible && s.scrollToBottom){
@@ -1443,9 +1679,14 @@ void DebugOverlay::update(double unscaledDelta){
     }
 }
 
+bool DebugOverlay::isDrawn(){
+    const OverlayState& s = state();
+    return s.scene && s.enabled && anythingVisible();
+}
+
 void DebugOverlay::draw(){
     OverlayState& s = state();
-    if (s.scene && s.enabled && anythingVisible())
+    if (isDrawn())
         s.scene->draw();
 }
 

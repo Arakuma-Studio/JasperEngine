@@ -198,7 +198,9 @@ void AudioSystem::getVoiceCounts(uint32_t& active, uint32_t& max){
     max = 0;
     if (!inited)
         return;
-    active = getSoloud().getActiveVoiceCount();
+    // the engine's voices (sources, one-shots), as get_play_state's audio.voices: SoLoud's own
+    // count has the mixer's group buses too
+    active = getVoiceCount();
     max = getSoloud().getMaxActiveVoiceCount();
 }
 

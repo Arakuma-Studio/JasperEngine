@@ -713,8 +713,9 @@ Json playStateJson(McpContext& ctx) {
         out["input"] = playInputJson();
         // the on-device console and stats overlay (Project Settings > Debug, DebugOverlay)
         static const char* const statsModes[] = {"off", "fps", "full"};
+        const int statsMode = static_cast<int>(DebugOverlay::getStatsMode());
         out["debug_overlay"] = {{"enabled", DebugOverlay::isEnabled()}, {"console_visible", DebugOverlay::isConsoleVisible()},
-                                {"stats", statsModes[static_cast<int>(DebugOverlay::getStatsMode())]}};
+                                {"stats", statsMode >= 0 && statsMode < 3 ? statsModes[statsMode] : "off"}};
     }
     if (playId != NULL_PROJECT_SCENE && s.current.active) out["audio"] = playAudioJson();
     // script coroutines and pending timers of the game (get_runtime_entity lists them per script)

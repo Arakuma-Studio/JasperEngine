@@ -48,7 +48,11 @@ namespace jasperengine {
     // Main thread only.
     class JASPERENGINE_API DebugOverlay {
     public:
+        // the settings a game starts with: the console closed, the stats as set
         static void configure(const DebugOverlaySettings& settings);
+        // Settings changed while the game runs (the editor's Project Settings during Play): what
+        // changed applies, the rest of the state (console open, stats picked) stays
+        static void updateSettings(const DebugOverlaySettings& settings);
         static const DebugOverlaySettings& getSettings();
 
         static void setEnabled(bool enabled);
@@ -60,6 +64,7 @@ namespace jasperengine {
         static void toggleConsole();
         static bool isConsoleVisible();
 
+        // Off, Fps or Full (another value is refused with a warning)
         static void setStatsMode(DebugOverlaySettings::Stats mode);
         static DebugOverlaySettings::Stats getStatsMode();
         // off -> fps -> full -> off
@@ -83,21 +88,29 @@ namespace jasperengine {
         static void removeOwnedCommands();
 
         // The insets the panels keep clear of, in canvas px (left, top, right, bottom): feature
-        // safe-area gives Screen's safe area insets here; null = none
+        // safe-area gives Screen's safe area insets here (whichever of the two merges second
+        // wires it: Engine's startup sets a function reading Screen::getSafeAreaInsets()
+        // converted to canvas px); null = none
         using InsetsFunction = void (*)(float& left, float& top, float& right, float& bottom);
         static void setSafeAreaInsetsProvider(InsetsFunction provider);
 
         // ---- engine hooks
-        // Engine::systemKeyDown/Up and systemTouch*, before anything else; never consume.
+        // Engine::systemKeyDown/Up and systemTouch*, before anything else; never consume. The
+        // keys do nothing while a text field of the game has the keyboard.
         // phase: 0 down, 1 move, 2 up, 3 cancel (screen pixels, as the platform gives them)
         static void handleKey(int key, int mods, bool down, bool repeat);
         static void handleTouch(int pointer, float x, float y, int phase);
+        // every finger the gestures track lets go (Engine::cancelAllUIPointers: all touches
+        // cancelled, pause, focus loss)
+        static void cancelGestures();
         // Engine::runFrame, after the scenes updated (also while the game is paused by the time
         // scale or held by the editor), with the unscaled frame time; cheap when not active
         static bool needsUpdate();
         static void update(double unscaledDelta);
         // Engine::runFrame, after every scene drew (inside the composite target)
         static void draw();
+        // something of it is drawn this frame (the Vulkan composite counts it as a layer then)
+        static bool isDrawn();
         // the overlay Scene (null when not shown or not enabled)
         static Scene* getScene();
         // the document entity of the overlay Scene (NULL_ENTITY without one)
