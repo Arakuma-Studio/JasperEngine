@@ -23,6 +23,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstdarg>
+#include <functional>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -280,6 +282,103 @@ TEST_F(LogListenerTest, ListenerRemovesItselfInsideItsCall) {
     Log::dispatchPending();
 }
 
+namespace {
+    // runs `scenario` on its own thread; false when it has not ended within the timeout (a hang:
+    // the thread is left behind, the test fails instead of hanging)
+    bool endsWithin(std::function<void()> scenario, std::chrono::seconds timeout) {
+        auto done = std::make_shared<std::atomic<bool>>(false);
+        std::thread runner([scenario, done]() {
+            scenario();
+            done->store(true);
+        });
+        const auto until = std::chrono::steady_clock::now() + timeout;
+        while (!done->load() && std::chrono::steady_clock::now() < until)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        if (!done->load()) {
+            runner.detach();
+            return false;
+        }
+        runner.join();
+        return true;
+    }
+
+    // waits (bounded) for a condition another thread makes true
+    void waitFor(const std::function<bool()>& condition) {
+        const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (!condition() && std::chrono::steady_clock::now() < until)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
+
+// a listener removing itself while another thread is inside it too: no wait, no hang; no new
+// call starts
+TEST_F(LogListenerTest, SelfRemovalWithAnotherCallRunning) {
+    // shared with threads a hang would leave behind: never freed
+    struct Shared {
+        std::atomic<int> inside{0};
+        std::atomic<int> calls{0};
+        std::atomic<LogListenerId> id{0};
+    };
+    Shared* shared = new Shared();
+    shared->id = Log::addListener([shared](const LogEntry& entry) {
+        shared->calls++;
+        shared->inside++;
+        // both workers are inside before either goes on
+        waitFor([shared]() { return shared->inside.load() >= 2; });
+        if (entry.message == "remover")
+            Log::removeListener(shared->id.load());
+        else
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        shared->inside--;
+    }, LogDelivery::AnyThread);
+    const bool ended = endsWithin([]() {
+        std::thread remover([]() { Log::print("remover"); });
+        std::thread other([]() { Log::print("other"); });
+        remover.join();
+        other.join();
+    }, std::chrono::seconds(10));
+    ASSERT_TRUE(ended) << "removeListener from inside the listener hung";
+    EXPECT_EQ(shared->calls.load(), 2);
+    std::thread([]() { Log::print("after the removal"); }).join();
+    EXPECT_EQ(shared->calls.load(), 2) << "no call after the removal";
+    Log::dispatchPending();
+}
+
+// two listeners removing each other from inside their calls on two threads: no deadlock
+TEST_F(LogListenerTest, CrossRemovalDoesNotDeadlock) {
+    struct Shared {
+        std::atomic<bool> inA{false}, inB{false};
+        std::atomic<LogListenerId> a{0}, b{0};
+        std::atomic<int> calls{0};
+    };
+    Shared* shared = new Shared();
+    shared->a = Log::addListener([shared](const LogEntry& entry) {
+        if (entry.message != "a") return;
+        shared->calls++;
+        shared->inA = true;
+        waitFor([shared]() { return shared->inB.load(); });
+        Log::removeListener(shared->b.load());
+    }, LogDelivery::AnyThread);
+    shared->b = Log::addListener([shared](const LogEntry& entry) {
+        if (entry.message != "b") return;
+        shared->calls++;
+        shared->inB = true;
+        waitFor([shared]() { return shared->inA.load(); });
+        Log::removeListener(shared->a.load());
+    }, LogDelivery::AnyThread);
+    const bool ended = endsWithin([]() {
+        std::thread first([]() { Log::print("a"); });
+        std::thread second([]() { Log::print("b"); });
+        first.join();
+        second.join();
+    }, std::chrono::seconds(10));
+    ASSERT_TRUE(ended) << "two listeners removing each other deadlocked";
+    EXPECT_EQ(shared->calls.load(), 2);
+    std::thread([]() { Log::print("a"); Log::print("b"); }).join();
+    EXPECT_EQ(shared->calls.load(), 2) << "both removed";
+    Log::dispatchPending();
+}
+
 // past 1,000 lines waiting for the main thread, worker lines are counted and reported once
 TEST_F(LogListenerTest, PendingQueueOverflowIsReported) {
     std::vector<std::string> got;
@@ -410,11 +509,16 @@ TEST_F(LogListenerTest, InvalidStatsModeIsRefused) {
     const std::string error = run("DebugOverlay.statsMode = 3");
     EXPECT_NE(error.find("DebugOverlay.statsMode takes DebugOverlay.STATS_OFF, STATS_FPS or STATS_FULL"), std::string::npos) << error;
     EXPECT_NE(run("DebugOverlay.statsMode = 1.5"), "");
+    EXPECT_NE(run("DebugOverlay.statsMode = -1"), "");
     EXPECT_NE(run("DebugOverlay.statsMode = 'full'"), "");
     EXPECT_EQ(DebugOverlay::getStatsMode(), DebugOverlaySettings::Stats::Fps);
     std::vector<std::string> results;
     ASSERT_EQ(run("DebugOverlay.statsMode = DebugOverlay.STATS_FULL return DebugOverlay.statsMode", &results), "");
     EXPECT_EQ(results[0], "2");
+    // an integral float is a mode
+    ASSERT_EQ(run("DebugOverlay.statsMode = 1.0 local fps = DebugOverlay.statsMode DebugOverlay.statsMode = 2.0 "
+                  "return fps, DebugOverlay.statsMode", &results), "");
+    EXPECT_EQ(results, (std::vector<std::string>{"1", "2"}));
     // from C++ too (a cast from a bad int)
     DebugOverlay::setStatsMode(static_cast<DebugOverlaySettings::Stats>(7));
     EXPECT_EQ(DebugOverlay::getStatsMode(), DebugOverlaySettings::Stats::Full);
@@ -443,6 +547,21 @@ TEST_F(LogListenerTest, UpdateSettingsKeepsTheState) {
     settings.enabled = false;
     DebugOverlay::updateSettings(settings);
     EXPECT_FALSE(DebugOverlay::isEnabled());
+}
+
+// Open On Error turned on while the game runs: the errors from before do not open the console
+TEST_F(LogListenerTest, OpenOnErrorTurnedOnLater) {
+    DebugOverlaySettings settings;
+    settings.enabled = true;
+    DebugOverlay::configure(settings);
+    Log::error("an error before");
+    settings.openOnError = true;
+    DebugOverlay::updateSettings(settings);
+    DebugOverlay::update(1.0 / 60.0);
+    EXPECT_FALSE(DebugOverlay::isConsoleVisible());
+    Log::error("the first error since");
+    DebugOverlay::update(1.0 / 60.0);
+    EXPECT_TRUE(DebugOverlay::isConsoleVisible());
 }
 
 // 12. commands: words to the function; unknown names; `lua` only with allowLua

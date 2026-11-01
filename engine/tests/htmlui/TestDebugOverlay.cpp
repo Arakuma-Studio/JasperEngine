@@ -178,7 +178,35 @@ namespace {
             ASSERT_NE(control, nullptr);
             control->SetValue(text);
             control->DispatchEvent(Rml::EventId::Change, Rml::Dictionary());
-            GpuEnvironment::drawFrames(1);
+            // applied once typing pauses (0.15 s)
+            const double fixed = Engine::getFixedDeltatime();
+            Engine::setFixedDeltatime(0.05);
+            GpuEnvironment::drawFrames(5);
+            Engine::setFixedDeltatime(fixed);
+        }
+
+        // the element's rect in layout px (left, top, right, bottom)
+        std::array<float, 4> rect(const char* id){
+            Rml::Element* element = byId(id);
+            if (!element)
+                return {0, 0, 0, 0};
+            const Rml::Vector2f at = element->GetAbsoluteOffset(Rml::BoxArea::Border);
+            return {at.x, at.y, at.x + element->GetOffsetWidth(), at.y + element->GetOffsetHeight()};
+        }
+
+        // the first row whose top is in the list's view
+        std::string firstVisibleRowText(){
+            Rml::Element* list = byId("list");
+            Rml::Element* box = byId("list-rows");
+            if (!list || !box)
+                return "(no list)";
+            const float top = list->GetAbsoluteOffset(Rml::BoxArea::Content).y;
+            for (int i = 0; i < box->GetNumChildren(); i++){
+                Rml::Element* row = box->GetChild(i);
+                if (row->GetAbsoluteOffset(Rml::BoxArea::Border).y + 0.5f >= top)
+                    return row->GetInnerRML();
+            }
+            return "(none in view)";
         }
 
         // after a clear: the lines the fixture's loads logged are not in the list
@@ -952,4 +980,146 @@ TEST_F(DebugOverlayTest, PanelsKeepClearOfTheSafeArea){
     Screen::setPlatformSafeArea(EdgeInsets());
     GpuEnvironment::drawFrames(3);
     EXPECT_NEAR(stats->GetAbsoluteOffset(Rml::BoxArea::Border).x, 4.0f, 1.0f);
+}
+
+// the stats panel in a top corner goes under the open console, in portrait and in landscape
+// (`top: 50%` is a share of the height), and stays on the screen
+TEST_F(DebugOverlayTest, StatsBelowTheConsoleInPortraitAndLandscape){
+    struct View { int width, height; };
+    for (const View view : {View{720, 1280}, View{2400, 1080}}){
+        SCOPED_TRACE(std::to_string(view.width) + "x" + std::to_string(view.height));
+        GpuEnvironment::setView(view.width, view.height, view.width, view.height, Scaling::FITWIDTH);
+        fixture.reset(new SceneFixture());
+        ASSERT_TRUE(fixture->waitUntilLoaded());
+        for (DebugOverlaySettings::Corner corner : {DebugOverlaySettings::Corner::TopLeft, DebugOverlaySettings::Corner::TopRight}){
+            DebugOverlaySettings settings;
+            settings.stats = DebugOverlaySettings::Stats::Full;
+            settings.statsCorner = corner;
+            enable(settings);
+            DebugOverlay::showConsole();
+            GpuEnvironment::drawFrames(4);
+            ASSERT_NE(document(), nullptr);
+            const std::array<float, 4> console = rect("console");
+            const std::array<float, 4> stats = rect("stats");
+            EXPECT_GT(stats[3] - stats[1], 20.0f);
+            EXPECT_GE(stats[1], console[3]) << "below the console: stats top " << stats[1] << ", console bottom " << console[3];
+            EXPECT_GE(stats[0], 0.0f);
+            EXPECT_LE(stats[2], (float)Engine::getCanvasWidth());
+            EXPECT_LE(stats[3], (float)Engine::getCanvasHeight()) << "on the screen";
+            // closed: back at the top
+            DebugOverlay::hideConsole();
+            GpuEnvironment::drawFrames(2);
+            EXPECT_LT(rect("stats")[1], 20.0f);
+            DebugOverlay::shutdown();
+        }
+        fixture.reset();
+    }
+    GpuEnvironment::setView(1280, 720, 1280, 720, Scaling::FITWIDTH);
+    fixture.reset(new SceneFixture());
+}
+
+// reading older lines while the buffer is full and a line comes every frame: the rows in view
+// stay (the trimmed rows above them move the scroll up by as much)
+TEST_F(DebugOverlayTest, ListStaysWhileReadingAFullBuffer){
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    // the overlay's clock: a burst of lines waits 0.1 s of it
+    Engine::setFixedDeltatime(0.05);
+    Log::setBufferSize(500);
+    enable();
+    DebugOverlay::showConsole();
+    GpuEnvironment::drawFrames(2);
+    Log::clearEntries();
+    for (int i = 0; i < 500; i++)
+        Log::print("line %d", i);
+    GpuEnvironment::drawFrames(4);
+    ASSERT_EQ(rows(), 500);
+    Rml::Element* list = byId("list");
+    ASSERT_NE(list, nullptr);
+    list->SetScrollTop(list->GetScrollHeight() / 2.0f);
+    GpuEnvironment::drawFrames(2);
+    const std::string reading = firstVisibleRowText();
+    ASSERT_NE(reading.find("line 2"), std::string::npos) << reading;
+    for (int frame = 0; frame < 60; frame++){
+        Log::print("new %d", frame);
+        GpuEnvironment::drawFrames(1);
+    }
+    GpuEnvironment::drawFrames(1);
+    EXPECT_EQ(firstVisibleRowText(), reading) << "the row read stays in view";
+    EXPECT_EQ(rows(), 500);
+
+    // an expanded row above the view does not move it either
+    list->SetScrollTop(0.0f);
+    GpuEnvironment::drawFrames(2);
+    ASSERT_NE(shownRow(0), nullptr);
+    shownRow(0)->Click();
+    GpuEnvironment::drawFrames(1);
+    list->SetScrollTop(list->GetScrollHeight() / 2.0f);
+    GpuEnvironment::drawFrames(3);
+    const std::string middle = firstVisibleRowText();
+    for (int frame = 0; frame < 10; frame++){
+        Log::print("more %d", frame);
+        GpuEnvironment::drawFrames(1);
+    }
+    GpuEnvironment::drawFrames(1);
+    EXPECT_EQ(firstVisibleRowText(), middle);
+}
+
+// collapse on, a full 100,000-line buffer of distinct lines: a line added costs little (the
+// rows that go are found at the front, no index rebuilt)
+TEST_F(DebugOverlayTest, CollapsedFullBufferLineCost){
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    Engine::setFixedDeltatime(0.05);
+    Log::setBufferSize(100000);
+    enable();
+    DebugOverlay::showConsole();
+    GpuEnvironment::drawFrames(2);
+    click("collapse");
+    Log::clearEntries();
+    for (int i = 0; i < 100000; i++)
+        Log::print("distinct %d", i);
+    GpuEnvironment::drawFrames(4);
+    ASSERT_EQ(rows(), 100000);
+    double worst = 0.0, total = 0.0;
+    const int lines = 50;
+    for (int i = 0; i < lines; i++){
+        Log::print("more %d", i);
+        const auto start = std::chrono::steady_clock::now();
+        DebugOverlay::update(0.0);
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        worst = std::max(worst, ms);
+        total += ms;
+    }
+    printf("[debug overlay] collapsed, 100,000 rows: a line %.3f ms (worst %.3f ms) with its layout\n", total / lines, worst);
+    EXPECT_LT(total / lines, 0.5);
+    EXPECT_EQ(rows(), 100000);
+    EXPECT_NE(shownRowText(-1).find("more 49"), std::string::npos) << shownRowText(-1);
+}
+
+// the safe area with the game's UI on ScaleWithScreenSize: the overlay (its own scaler) still
+// keeps clear of the insets, in its own px
+TEST_F(DebugOverlayTest, SafeAreaWithTheGameScaled){
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    struct Restore { ~Restore(){ Screen::setPlatformSafeArea(EdgeInsets()); } } restore;
+    CanvasScalerSettings scaler;
+    scaler.mode = UIScaleMode::ScaleWithScreenSize;
+    scaler.referenceResolution = Vector2(1920, 1080);
+    scaler.matchWidthOrHeight = 1.0f;
+    Engine::setDefaultCanvasScaler(scaler);
+    Screen::setPlatformSafeArea(EdgeInsets(88.0f, 24.0f, 40.0f, 21.0f));
+    DebugOverlaySettings settings;
+    settings.stats = DebugOverlaySettings::Stats::Fps;
+    enable(settings);
+    DebugOverlay::showConsole();
+    GpuEnvironment::drawFrames(3);
+    ASSERT_NE(document(), nullptr);
+    ASSERT_TRUE(fixture->getScene().isDocumentScaled());
+    ASSERT_FALSE(DebugOverlay::getScene()->isDocumentScaled());
+    const EdgeInsets insets = Screen::getSafeAreaInsets();
+    const std::array<float, 4> console = rect("console");
+    EXPECT_NEAR(console[0], insets.left, 0.5f);
+    EXPECT_NEAR(console[1], insets.top, 0.5f);
+    EXPECT_NEAR(console[2], (float)Engine::getCanvasWidth() - insets.right, 0.5f);
+    const std::array<float, 4> stats = rect("stats");
+    EXPECT_GE(stats[0], insets.left);
+    EXPECT_GE(stats[1], console[3]);
 }

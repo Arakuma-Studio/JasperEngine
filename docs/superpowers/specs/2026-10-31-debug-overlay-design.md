@@ -486,14 +486,24 @@ the code:
       buffer (the test scrolls 12,000). A burst (more than 20 lines waiting) updates the list at
       most every 0.1 s. Collapsed rows keep the ids of their buffered lines, so a count drops (and
       the row goes) as lines leave the buffer. A row is a border (the level), a time span, a text
-      node and a count span past 1. `Log::maxBufferSize` (100000) caps `Log::setBufferSize`,
+      node and a count span past 1. After the second review: rows are owned (`unique_ptr`, never
+      moved); collapsed, a queue of (line id, row) in id order finds the rows of the lines that
+      leave at its front and only an emptied row's key leaves the index (a line costs ~0.1 ms with
+      a full 100,000-line buffer of distinct lines); the per-line list exists only while collapsed;
+      the window keeps the elements of unchanged rows (a line added makes one element); rows
+      above the view that go, or are measured or expanded, move the scroll by as much while the
+      list does not follow the newest line, so what is read stays in view; the search applies
+      0.15 s after the last keystroke. `Log::maxBufferSize` (100000) caps `Log::setBufferSize`,
       Lua's `Log.bufferSize` and the editor's setting.
     - `Log::removeListener` waits for calls of that listener running on other threads (a count per
       listener; `removed` and the count are sequentially consistent, so a call either sees the
-      removal or is waited for); from inside the listener itself it does not wait for that call.
-      Two listeners removing each other from inside their calls on two threads would deadlock
-      (documented in `Log.h`).
-    - `DebugOverlay.statsMode` refuses values other than the three modes (`luaL_argerror`), and
+      removal or is waited for; every call of a removed listener that ends wakes the waiter).
+      Called from inside any listener call (lead's decision after the second review: a self-removal
+      waited for itself when another thread was inside the same listener), it does not wait: only
+      no new call starts. That also rules out two listeners removing each other on two threads.
+      Waiting, it must not hold a lock the listener takes (`Log.h`).
+    - `DebugOverlay.statsMode` refuses values other than the three modes (`luaL_argerror`; an
+      integral float such as `2.0` is a mode), and
       `DebugOverlay::setStatsMode` warns and ignores them; get_play_state bounds-checks.
     - Gestures: `Engine::systemTouchCancel(pointer)` hands the cancel to the overlay before the
       Input check (fingers outside the canvas), and `cancelAllUIPointers` (cancel of all touches,
@@ -502,11 +512,16 @@ the code:
       nothing while a text field of the game has the keyboard (`Engine::isTextInputFocused`; the
       console's own fields still close it).
     - The Vulkan composite counts the overlay as a layer only while it draws (`isDrawn`).
+    - The stats panel under the open console uses `top: 50%` (a share of the height; the first
+      fix's `margin-top: 50%` was a share of the width: behind the console in portrait, off the
+      screen in landscape).
     - `PSAPI_VERSION 2` before `<psapi.h>`.
     - Project Settings > Debug changed during the editor's Play apply at once
       (`Project::setDebugSettings` while `applyDebugSettingsForPlay` has run for the running Play:
       the buffer size, stack traces and `DebugOverlay::updateSettings`, which applies what changed
-      and keeps the console and a picked stats mode). That is the Project Settings window's path
+      and keeps the console and a picked stats mode; only changed log settings are set again, so
+      a `Log.bufferSize` the game set stays; Open On Error turned on counts errors from then on).
+      That is the Project Settings window's path
       (OK and its undo); MCP's `set_project_settings` is refused during Play, as for every tool
       that edits the project, so agents change them before Play.
     - Tests added: the Canvas Scaler (`ScaleWithScreenSize` 1920x1080 does not change
@@ -521,6 +536,16 @@ the code:
       undo); in MCP `statsMode = 3`, the buffer cap and the audio voices against get_play_state.
     - The safe area is wired (12), with a GPU test: platform insets (a notch) move the console
       and the stats panel clear of them.
+    - Tests added after the second review: in LogListenerTest a listener removing itself while
+      another thread is inside it, and two listeners removing each other on two threads (each run
+      with a 10 s timeout, so a hang fails), `statsMode = 2.0`, Open On Error turned on later; in
+      DebugSettingsTest a game's `Log.bufferSize` kept when another Debug setting changes; GPU: the
+      stats panel under the console in 720x1280 and 2400x1080 (both top corners, on the screen),
+      the rows in view staying while a full 500-line buffer takes a line a frame (and with an
+      expanded row above), collapse with a full 100,000-line buffer of distinct lines (a line
+      0.26 ms with its layout, under 0.5 ms), the safe area with the game on ScaleWithScreenSize;
+      MCP: the stats' voices against get_play_state with a mixer's Music and SFX buses playing a
+      tone (1 voice).
 18. **Verification** (box 2203, the review fixes on the tree merged with `main` `fa4eeed50`:
     anim-retarget, video-mp4, native-bridge, xcode26-dav1d, asan-sweep, safe-area): the editor and
     its tests (a full build, 2335 steps) and `jasperengine-htmlui-tests` (543 steps) build with 0
@@ -541,3 +566,12 @@ the code:
     `xcode_sync_effects.py`). Apple: the owner's Mac compiled the branch before this merge for
     macOS and iOS (reported by the lead; not rebuilt after the merge). Windows not built
     (`PSAPI_VERSION 2` and `K32GetProcessMemoryInfo` written against the headers).
+19. **Verification of the second review's fixes** (box 2203, on top of the merged tree above, no
+    new merge): editor, tests and `jasperengine-htmlui-tests` rebuilt (980 and 400 steps) with 0
+    compiler warnings. `jasperengine-editor-tests`: 1865 tests, 1856 passed, 9 skipped, 0 failed.
+    GPU suite: 3177 of 3177 passed (`DebugOverlay*` 21; a rebuild of 500 rows 0.73 ms, a line
+    added 0.53 ms, a line into a collapsed full 100,000-line buffer 0.26 ms, each with its
+    layout). MCP `test_debug_overlay` (with the slow Release export), `test_html_ui_tools`
+    (155 tools, 114892 chars, unchanged) and `test_docs`: 46 passed, 0 failed. Web and Android
+    compile the 9 changed engine sources with no diagnostics; `xcode_sync_engine.py --check`
+    passes (no source added).

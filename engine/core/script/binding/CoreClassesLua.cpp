@@ -11,6 +11,7 @@
 #include "Engine.h"
 
 #include <climits>
+#include <cmath>
 #include "Log.h"
 #include "debug/DebugOverlay.h"
 #include "debug/DebugStats.h"
@@ -926,10 +927,12 @@ namespace {
 
     // DebugOverlay.statsMode = DebugOverlay.STATS_OFF / STATS_FPS / STATS_FULL (no other value)
     int luaDebugOverlaySetStatsMode(lua_State* L){
-        if (!lua_isinteger(L, 1) || lua_tointeger(L, 1) < static_cast<lua_Integer>(DebugOverlaySettings::Stats::Off) ||
-            lua_tointeger(L, 1) > static_cast<lua_Integer>(DebugOverlaySettings::Stats::Full))
+        // a number with an integral value (2 and 2.0), 0 .. 2
+        const lua_Number mode = lua_type(L, 1) == LUA_TNUMBER ? lua_tonumber(L, 1) : -1.0;
+        if (mode != std::floor(mode) || mode < static_cast<lua_Number>(DebugOverlaySettings::Stats::Off) ||
+            mode > static_cast<lua_Number>(DebugOverlaySettings::Stats::Full))
             return luaL_argerror(L, 1, "DebugOverlay.statsMode takes DebugOverlay.STATS_OFF, STATS_FPS or STATS_FULL (0, 1 or 2)");
-        DebugOverlay::setStatsMode(static_cast<DebugOverlaySettings::Stats>(lua_tointeger(L, 1)));
+        DebugOverlay::setStatsMode(static_cast<DebugOverlaySettings::Stats>(static_cast<int>(mode)));
         return 0;
     }
 
