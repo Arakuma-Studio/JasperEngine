@@ -1096,7 +1096,8 @@ later animation features plug into. Code references are to the `gaps/anim-layers
   arithmetic, bit-identical results; test 1 still matches main's hash).
 - **Measured** (`Layers.PerformanceBudget`: 40 characters × 65 bones, a controller each with a
   base crossfade and a masked Override layer, the whole `ActionSystem::update`, best of 8 × 30
-  frames): 0.52–0.56 ms on the 8-core host under heavy load; 0.597–0.608 ms on the shared 2.0 GHz
+  frames): **0.361–0.375 ms on the idle 8-core host (load average 3)**, i.e. 38% under the 0.6 ms
+  budget; 0.52–0.56 ms on the same host under heavy load; 0.597–0.614 ms on the shared 2.0 GHz
   EPYC build box (load 20–30, beside an MCP suite). Like `CanvasGroupTest.PerformanceBudgets`, the
   0.6 ms assertion is skipped when the load average exceeds the core count (the time is still
   printed); on the box it sits at the line, which main's own Canvas Group budget test also
