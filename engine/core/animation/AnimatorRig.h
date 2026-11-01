@@ -11,6 +11,13 @@
 //   value, rotation: rest * value, scale: rest * value), a track whose path does not resolve is
 //   skipped, the root itself ("") is bone 0 of the rig when a track animates it (`rootBone`).
 //   Anchored UI layouts are not animated through the Animator (no layout offset correction).
+// - Property tracks (anim-properties) bind with the Animation Player's registry
+//   (PropertyBindings.h) on the entity their path names ("" the root): each bound (entity,
+//   property) is `width` float channels of the rig in key space, blended like morph weights
+//   (layer masks pass them: masks select transforms). The Animator writes them after the pose
+//   (AnimatorSystem::writePose): discrete properties rounded to the nearest value (the heavier
+//   side of a two-way blend), only when the value changed, deferred rows (GameObject active, a
+//   script's enabled) after every other write. A property track's entity is not a bone.
 // - Rest values are taken from the scene before the Animator first writes an entity and kept in
 //   the AnimatorRestMap across rebinds (the upstream rest rule).
 // - The rig holds every ancestor of a bound entity below the root, so bones with parent -1 are
@@ -25,6 +32,7 @@
 #include "animation/AnimationClip.h"
 #include "animation/AnimatorPose.h"
 #include "animation/KeyframeSampling.h"
+#include "animation/PropertyBindings.h"
 #include "ecs/Entity.h"
 #include "math/Matrix4.h"
 
@@ -47,12 +55,35 @@ namespace jasperengine::anim{
         Entity parentEntity = NULL_ENTITY;  // its Transform parent at build
     };
 
-    // a float channel of the rig: one morph weight, or one axis of one lattice point offset
+    // a float channel of the rig: one morph weight, one axis of one lattice point offset, or one
+    // component of a property (key space)
     struct JASPERENGINE_API RigChannel{
         Entity entity = NULL_ENTITY;
         ClipChannel kind = ClipChannel::Morph;
-        int index = 0;              // morph target, or flat lattice point
-        int axis = 0;               // lattice: 0..2
+        int index = 0;              // morph target, flat lattice point, or AnimatorRig::properties index
+        int axis = 0;               // lattice: 0..2; property: its component
+    };
+
+    // a property track the rig must hold (one per track of the loaded clips)
+    struct JASPERENGINE_API RigPropertyRequest{
+        std::string path;           // relative to the root ("" the root)
+        std::string component;
+        std::string property;       // with its swizzle, as the track names it
+        size_t keyWidth = 0;
+    };
+
+    // a bound (entity, property): `binding.width` channels from `firstChannel` (the whole
+    // property: swizzle tracks key one of them)
+    struct JASPERENGINE_API RigProperty{
+        Entity entity = NULL_ENTITY;
+        PropertyBinding binding;    // swizzle -1
+        int firstChannel = -1;
+    };
+
+    // a property's value before the Animator first wrote it (key space)
+    struct JASPERENGINE_API RigPropertyRest{
+        PropertyBinding binding;
+        std::vector<float> values;
     };
 
     // A ModelSkinBinding whose joints are all rig bones: its skin matrices come from the pose
@@ -77,6 +108,7 @@ namespace jasperengine::anim{
         Vector3 scale = Vector3(1, 1, 1);
         std::vector<float> morph;           // MAX_MORPHTARGETS when taken
         std::vector<Vector3> lattice;
+        std::unordered_map<uint32_t, RigPropertyRest> properties;   // by internPropertyKey
     };
     using AnimatorRestMap = std::unordered_map<Entity, RigRest>;
 
@@ -88,6 +120,7 @@ namespace jasperengine::anim{
         Pose rest;                          // local rest TRS and channel rest values
         bool rootBone = false;              // bones[0] is the root itself
         std::vector<RigSkin> skins;
+        std::vector<RigProperty> properties;
         size_t unresolved = 0;              // requested paths that did not resolve at build
 
         // every bone still exists under the same parent with the same name (what a hierarchy
@@ -102,13 +135,17 @@ namespace jasperengine::anim{
         Entity channelEntity(const std::string& path) const;
         // morph slots of an entity (0 when none)
         int morphWidth(Entity entity) const;
+        // the properties index of (entity, internPropertyKey), -1 when not bound
+        int findProperty(Entity entity, uint32_t key) const;
         bool empty() const { return bones.empty() && channels.empty(); }
 
         // Builds the rig of `root` from the paths it must hold (tracks of every clip, mask and IK
         // paths) and the skins of the ModelComponents on or under the root (their joints become
-        // bones). Rest values come from `rest` (filled from the scene for new entities).
+        // bones), with the property tracks' properties that bind. Rest values come from `rest`
+        // (filled from the scene for new entities and properties).
         void build(Scene* scene, Entity root, const std::vector<std::string>& paths,
-                   const std::vector<std::pair<std::string, std::pair<ClipChannel, int>>>& channelPaths, AnimatorRestMap& rest);
+                   const std::vector<std::pair<std::string, std::pair<ClipChannel, int>>>& channelPaths, AnimatorRestMap& rest,
+                   const std::vector<RigPropertyRequest>& propertyPaths = {});
 
     private:
         std::unordered_map<std::string, int> byPath;
@@ -116,6 +153,7 @@ namespace jasperengine::anim{
         std::unordered_map<uint64_t, int> channelSlots;
         std::unordered_map<std::string, Entity> channelPathEntities;
         std::unordered_map<Entity, int> morphWidths;
+        std::unordered_map<uint64_t, int> propertySlots;
     };
 
     // One clip's tracks resolved on a rig (D4): tracks with the same key times, easings and loop
@@ -126,9 +164,15 @@ namespace jasperengine::anim{
             bool relative = false;
             // bone (TRS), first morph slot, or the first of `width` entries of latticeSlots; -1 unbound
             int index = -1;
-            int width = 0;              // morph / lattice values
+            int width = 0;              // morph / lattice / property values
             int group = 0;              // key-time group
             size_t track = 0;           // index into clip.getTracks()
+            // property: a discrete property keyed with values that interpolate steps; the
+            // components a swizzle track of the clip keys instead; the alpha channel RGB keys of
+            // a Color4 make opaque (-1 none)
+            bool stepped = false;
+            uint8_t overridden = 0;
+            int alpha = -1;
         };
         struct Group{
             size_t track = 0;           // the track whose times/easings the group uses
@@ -140,6 +184,7 @@ namespace jasperengine::anim{
         size_t boundCount = 0;
         size_t trackCount = 0;          // sampled tracks of the clip
 
+        // main thread (property keys are interned)
         void bind(const std::shared_ptr<const AnimationClip>& clip, const AnimatorRig& rig);
     };
 

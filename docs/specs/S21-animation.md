@@ -591,6 +591,20 @@ instance overrides of a player's controller become an added Animator. Players wi
 unchanged (the codec writes `layers` and `clips[].layer`, `StreamComponents.cpp`); a `controller`
 key left in a current file is not read (a warning).
 
+**Clip property tracks on the Animator (anim-properties, sync 4 with origin/main 27d562a6b).**
+Upstream's property tracks (`ClipChannel::Property`: Catalog component properties, GameObject
+active, enabled checkboxes, Lua script fields) play on the Animator as they play on the Animation
+Player: the same bindings (`PropertyBindings.h`, bound on the entity the path names, `""` the
+root) and key space. Each bound (entity, property) is `width` float channels of the rig
+(`AnimatorRig::properties`), sampled by `sampleClip` (swizzle tracks key one component, a whole
+track the components no swizzle track keys, RGB keys of a Color4 an opaque alpha, a discrete
+binding of interpolating keys stepped) and blended like morph weights by states, transitions and
+layers; layer masks pass them (masks select transforms). `AnimatorSystem::writePose` writes the
+values that changed, a discrete property rounded to the nearest value (the heavier side of a
+two-way blend), deferred rows (GameObject active, a script's enabled) after the other writes; the
+rest is taken before the first write and put back by the preview's restore. An entity keyed only by
+property tracks is not a bone. Test: `AnimatorSystemTest.PropertyTracksPlayOnTheAnimator`.
+
 **Deviations from upstream (S21's and Unity's rules win).**
 1. A destination's `onStateEnter` fires when its transition starts, the source's `onStateExit`
    when it ends (upstream: both at the end).

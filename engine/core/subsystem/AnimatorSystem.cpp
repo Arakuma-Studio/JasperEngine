@@ -218,7 +218,8 @@ void AnimatorSystem::pollClips(Entity entity, AnimatorComponent& component, anim
                             inRig = false;
                             break;
                         }
-                        if (track.channel == ClipChannel::Morph || track.channel == ClipChannel::Lattice) inRig = false;
+                        if (track.channel == ClipChannel::Morph || track.channel == ClipChannel::Lattice ||
+                            track.channel == ClipChannel::Property) inRig = false;
                     }
                 }
                 if (inRig) instance.bindClip(i, component);
@@ -457,6 +458,26 @@ void AnimatorSystem::writePose(const AnimatorComponent& component, anim::Animato
                 lattice->offsets[(size_t)channel.index] = value;
                 lattice->revision++;
             }
+        }
+    }
+    // properties (anim-properties): the blended key-space values, a discrete one rounded (the
+    // heavier side of a two-way blend), written when they changed; deferred rows (GameObject
+    // active, a script's enabled: user callbacks) after every other write
+    for (int pass = 0; pass < 2; pass++){
+        for (const anim::RigProperty& property : rig.properties){
+            if (property.binding.deferred != (pass == 1)) continue;
+            const size_t width = property.binding.width;
+            if (width == 0 || width > 16 || !scene->isEntityCreated(property.entity)) continue;
+            if (anim::scriptBindingStale(scene, property.entity, property.binding)) continue;
+            float values[16];
+            float current[16];
+            for (size_t k = 0; k < width; k++){
+                const float value = channels[(size_t)property.firstChannel + k];
+                values[k] = property.binding.discrete ? std::floor(value + 0.5f) : value;
+            }
+            if (anim::readPropertyKeySpace(scene, property.entity, property.binding, current) &&
+                std::equal(values, values + width, current)) continue;
+            anim::writePropertyKeySpace(scene, property.entity, property.binding, values);
         }
     }
     // skin matrices: inv(mesh in rig space) * joint in rig space * inverse bind (D7)
@@ -768,6 +789,18 @@ void AnimatorSystem::restorePreview(Entity entity){
             if (LatticeComponent* lattice = scene->findComponent<LatticeComponent>(entry.first)){
                 lattice->offsets = rest.lattice;
                 lattice->revision++;
+            }
+        }
+    }
+    // properties after the transforms, deferred rows (GameObject active, enabled) last
+    for (int pass = 0; pass < 2; pass++){
+        for (const auto& entry : instance.rest){
+            if (!scene->isEntityCreated(entry.first)) continue;
+            for (const auto& property : entry.second.properties){
+                const anim::RigPropertyRest& rest = property.second;
+                if (rest.binding.deferred != (pass == 1) || rest.values.size() != rest.binding.width) continue;
+                if (anim::scriptBindingStale(scene, entry.first, rest.binding)) continue;
+                anim::writePropertyKeySpace(scene, entry.first, rest.binding, rest.values.data());
             }
         }
     }

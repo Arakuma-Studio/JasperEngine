@@ -228,9 +228,11 @@ void anim::AnimatorInstance::resetLayer(size_t layer){
 }
 
 void anim::AnimatorInstance::rigRequests(const AnimatorComponent& component, std::vector<std::string>& paths,
-                                         std::vector<std::pair<std::string, std::pair<ClipChannel, int>>>& channelPaths) const{
+                                         std::vector<std::pair<std::string, std::pair<ClipChannel, int>>>& channelPaths,
+                                         std::vector<RigPropertyRequest>* propertyPaths) const{
     paths.clear();
     channelPaths.clear();
+    if (propertyPaths) propertyPaths->clear();
     for (const AnimatorClipSlot& slot : clips){
         if (!slot.clip) continue;
         // a clip that will be retargeted binds to the source's paths, not to this hierarchy
@@ -243,6 +245,9 @@ void anim::AnimatorInstance::rigRequests(const AnimatorComponent& component, std
             if (track.channel == ClipChannel::Morph) channelPaths.push_back({track.path, {ClipChannel::Morph, (int)track.width}});
             else if (track.channel == ClipChannel::Lattice){
                 for (size_t n = 0; n < track.width && track.points; n++) channelPaths.push_back({track.path, {ClipChannel::Lattice, track.points[n]}});
+            }else if (track.channel == ClipChannel::Property){
+                // its entity is not a bone: the property is a rig channel
+                if (propertyPaths) propertyPaths->push_back({track.path, track.component, track.property, track.width});
             }else paths.push_back(track.path);
         }
     }
@@ -273,8 +278,9 @@ void anim::AnimatorInstance::bind(Scene* scene, Entity root, const AnimatorCompo
                                   const std::vector<std::shared_ptr<const AvatarMaskDef>>& masks){
     std::vector<std::string> paths;
     std::vector<std::pair<std::string, std::pair<ClipChannel, int>>> channelPaths;
-    rigRequests(component, paths, channelPaths);
-    rig.build(scene, root, paths, channelPaths, rest);
+    std::vector<RigPropertyRequest> propertyPaths;
+    rigRequests(component, paths, channelPaths, &propertyPaths);
+    rig.build(scene, root, paths, channelPaths, rest, propertyPaths);
     humanoid.build(rig, modelPath);
     hierarchyRevision = scene->hierarchyRevision();
 
@@ -325,7 +331,9 @@ void anim::AnimatorInstance::bind(Scene* scene, Entity root, const AnimatorCompo
             run.mask[b] = maskWeightOf(*mask, scene, root, rig.bones[b].entity, pathEntities, &slots).weight;
         }
         for (size_t c = 0; c < channelCount; c++){
-            run.channelMask[c] = maskWeightOf(*mask, scene, root, rig.channels[c].entity, pathEntities, &slots).weight;
+            // masks select transforms: property tracks always pass (the player's rule)
+            run.channelMask[c] = rig.channels[c].kind == ClipChannel::Property
+                ? 1.0f : maskWeightOf(*mask, scene, root, rig.channels[c].entity, pathEntities, &slots).weight;
         }
     }
 

@@ -274,7 +274,8 @@ namespace jasperengine::anim{
         void applyOverrides(const std::vector<AnimatorClipOverride>& overrides);
         // every path the rig must hold for the loaded clips, masks and IK of `component`
         void rigRequests(const AnimatorComponent& component, std::vector<std::string>& paths,
-                         std::vector<std::pair<std::string, std::pair<ClipChannel, int>>>& channelPaths) const;
+                         std::vector<std::pair<std::string, std::pair<ClipChannel, int>>>& channelPaths,
+                         std::vector<RigPropertyRequest>* propertyPaths = nullptr) const;
         // builds the rig and binds every loaded clip, the masks and the IK constraints
         void bind(Scene* scene, Entity root, const AnimatorComponent& component,
                   const std::vector<std::shared_ptr<const AvatarMaskDef>>& masks);

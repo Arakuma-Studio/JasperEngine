@@ -98,17 +98,25 @@ int anim::AnimatorRig::morphWidth(Entity entity) const{
     return it == morphWidths.end() ? 0 : it->second;
 }
 
+int anim::AnimatorRig::findProperty(Entity entity, uint32_t key) const{
+    auto it = propertySlots.find(((uint64_t)entity << 32) | key);
+    return it == propertySlots.end() ? -1 : it->second;
+}
+
 int anim::AnimatorRig::findChannel(Entity entity, ClipChannel kind, int index) const{
     auto it = channelSlots.find(channelKey(entity, kind, index));
     return it == channelSlots.end() ? -1 : it->second;
 }
 
 void anim::AnimatorRig::build(Scene* scene, Entity root, const std::vector<std::string>& paths,
-                              const std::vector<std::pair<std::string, std::pair<ClipChannel, int>>>& channelPaths, AnimatorRestMap& restMap){
+                              const std::vector<std::pair<std::string, std::pair<ClipChannel, int>>>& channelPaths, AnimatorRestMap& restMap,
+                              const std::vector<RigPropertyRequest>& propertyPaths){
     bones.clear();
     parents.clear();
     channels.clear();
     skins.clear();
+    properties.clear();
+    propertySlots.clear();
     byPath.clear();
     byEntity.clear();
     channelSlots.clear();
@@ -233,6 +241,30 @@ void anim::AnimatorRig::build(Scene* scene, Entity root, const std::vector<std::
             for (int axis = 0; axis < 3; axis++) channels.push_back({entry.first, ClipChannel::Lattice, point, axis});
         }
     }
+    // properties: whole-property tracks first (a property without a declared width takes the
+    // width of its whole track, not a swizzle track's 1)
+    for (int pass = 0; pass < 2; pass++){
+        for (const RigPropertyRequest& request : propertyPaths){
+            PropertyRef ref;
+            if (!parsePropertyRef(request.component, request.property, ref)) continue;
+            if ((ref.swizzle >= 0) != (pass == 1)) continue;
+            const Entity entity = request.path.empty() ? root : resolvePath(scene, root, request.path);
+            if (entity == NULL_ENTITY) continue;
+            PropertyBinding binding = bindProperty(scene, entity, ref, ref.swizzle >= 0 ? 1 : request.keyWidth);
+            if (binding.status != PropertyBindStatus::Bound || binding.key == 0 || binding.width == 0) continue;
+            channelPathEntities[request.path] = entity;
+            const uint64_t slot = ((uint64_t)entity << 32) | binding.key;
+            if (propertySlots.count(slot)) continue;
+            binding.swizzle = -1;
+            RigProperty property;
+            property.entity = entity;
+            property.binding = binding;
+            property.firstChannel = (int)channels.size();
+            propertySlots[slot] = (int)properties.size();
+            for (int k = 0; k < (int)binding.width; k++) channels.push_back({entity, ClipChannel::Property, (int)properties.size(), k});
+            properties.push_back(std::move(property));
+        }
+    }
 
     // rest values
     rest.resize(bones.size(), channels.size());
@@ -255,6 +287,15 @@ void anim::AnimatorRig::build(Scene* scene, Entity root, const std::vector<std::
                 }
             }
             channelRest[c] = channel.index < (int)value.morph.size() ? value.morph[channel.index] : 0.0f;
+        }else if (channel.kind == ClipChannel::Property){
+            const RigProperty& property = properties[(size_t)channel.index];
+            RigPropertyRest& propertyRest = value.properties[property.binding.key];
+            if (propertyRest.values.size() != property.binding.width){
+                propertyRest.binding = property.binding;
+                propertyRest.values.assign(property.binding.width, 0.0f);
+                readPropertyKeySpace(scene, channel.entity, property.binding, propertyRest.values.data());
+            }
+            channelRest[c] = propertyRest.values[(size_t)channel.axis];
         }else{
             if (value.lattice.empty()){
                 if (LatticeComponent* lattice = scene->findComponent<LatticeComponent>(channel.entity)){
@@ -335,6 +376,27 @@ void anim::RigClipBinding::bind(const std::shared_ptr<const AnimationClip>& newC
                     latticeSlots.push_back(rig.findChannel(entity, ClipChannel::Lattice, track.points[n]));
                 }
                 target.width = (int)track.width;
+            }
+        }else if (track.channel == ClipChannel::Property){
+            const Entity entity = rig.channelEntity(track.path);
+            PropertyRef ref;
+            if (entity != NULL_ENTITY && parsePropertyRef(track.component, track.property, ref)){
+                const int slot = rig.findProperty(entity, internPropertyKey(track.component, ref));
+                if (slot >= 0){
+                    const RigProperty& property = rig.properties[(size_t)slot];
+                    if (ref.swizzle >= 0){
+                        if (ref.swizzle < (int)property.binding.width){
+                            target.index = property.firstChannel + ref.swizzle;
+                            target.width = 1;
+                        }
+                    }else{
+                        target.index = property.firstChannel;
+                        target.width = (int)std::min(track.width, (size_t)property.binding.width);
+                        target.overridden = track.overridden;
+                        if (keysOpaqueAlpha(property.binding, track.width)) target.alpha = property.firstChannel + 3;
+                    }
+                    target.stepped = property.binding.discrete && !track.discrete;
+                }
             }
         }
         // key-time groups: the same times, easings and loop
@@ -449,8 +511,28 @@ void anim::sampleClip(const RigClipBinding& binding, const AnimatorRig& rig, flo
                 }
                 break;
             }
-            case ClipChannel::Property:
+            case ClipChannel::Property: {
+                // key space, as the player samples it; a discrete binding of interpolating keys steps
+                const size_t width = track.width;
+                const size_t previous = base + (at.index > 0 ? at.index - 1 : 0);
+                const size_t next = base + at.index;
+                const size_t count = std::min((size_t)target.width, std::min(width, (size_t)4));
+                float values[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+                if (target.stepped){
+                    const size_t row = (at.index > 0 && at.interpolation < 1.0f) ? previous : next;
+                    for (size_t n = 0; n < count; n++) values[n] = track.weights[row * width + n];
+                }else{
+                    sampleFloatRow(at, track.weights + previous * width, track.weights + next * width, count,
+                                   cubic ? track.outWeights + previous * width : nullptr,
+                                   cubic ? track.inWeights + next * width : nullptr, values);
+                }
+                for (size_t n = 0; n < count; n++){
+                    if (target.overridden & (1u << n)) continue;
+                    channels[i + n] = values[n];
+                }
+                if (target.alpha >= 0 && !(target.overridden & 8u)) channels[(size_t)target.alpha] = 1.0f;
                 break;
+            }
             // SYNC4-ABSORB(retarget): humanoid clip tracks (anim-retarget) play on the Animator
             // once the retarget absorption puts them on S21's one retarget path
             case ClipChannel::Humanoid:
