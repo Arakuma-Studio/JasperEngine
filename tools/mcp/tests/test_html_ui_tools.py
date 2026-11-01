@@ -110,15 +110,24 @@ LIMITS.update({"user_settings": 550})
 # 106621, the limit set to it
 # lines and trails: no new tool; create_entity's type "trail_renderer" paid by a shorter create_entity
 # description, set_shape_points' line text reworded; measured on the merged tree: total 106692 (106687 before)
+# ui-canvas-group: create_ui's canvas_group node option (the rules in jasper://docs/ui) and
+# create_entity's canvas_group type; merged with main (lines-trails): 150 tools measured 106771
+# physics-3d: create_ragdoll (506, capped at 900), set_joint's 3D arguments (cone_half_angle and the
+# no-body_b wording), edit_colliders' 3D vertices / indices / is_trigger / material, configure_game_view's
+# physics_debug / physics_debug_contacts; measured on the tree merged with main (script-lifecycle,
+# lines-trails) and gaps/physics-2d: 151 tools, total 107295 (tool_budget.py), the limit set to it
+LIMITS.update({"create_ragdoll": 900})
+# merged by the lead (ui-canvas-group + physics-3d): provisional sum of both increments, re-measured below
+# http: configure_game_view's network and get_play_state's http block; merged with main (script-data,
+# input, physics-2d, script-lifecycle): 150 tools measured 106807, the limit set to it
+# merged by the lead (ui-canvas-group, physics-3d, http): 151 tools measured 107626 on the merged tree
 # platform services (spec 6.9): send_input's `app` events, configure_game_view's device,
-# orientation and language, get_play_state's platform (+468 on its branch); measured on the tree
-# merged with script-data and input: total 107155; merged again (physics-2d, script-lifecycle,
-# lines-trails): 150 tools measured 107094, the limit set to it
+# orientation and language, get_play_state's platform (+468 on its branch); merged with main
+# (ui-canvas-group, physics-3d, http): 151 tools measured 108094 (tool_budget.py), the limit set to it
 # safe area (spec 6.7): configure_game_view's device_overlay, safe_area_outline, custom_device and
 # safe_area, screenshot's device_overlay / safe_area_in_image, create_ui / create_entity safe_area,
-# get_play_state's safe_area (+390); measured on the tree merged with platform-services (physics-2d,
-# script-lifecycle, lines-trails): 150 tools, total 107484
-TOTAL_LIMIT = 107490
+# get_play_state's safe_area (+390 on its branch); measured on the merged tree below
+TOTAL_LIMIT = 108500
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

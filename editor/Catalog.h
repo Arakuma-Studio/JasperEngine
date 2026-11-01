@@ -85,6 +85,15 @@ namespace jasperengine::editor{
         // a Trail Renderer's ribbon settings (width, colour, joints, caps, texture layout): its
         // ribbon is built again (values clamped: widths and time >= 0, vertex counts 0..90)
         UpdateFlags_Trail               = (uint64_t)1 << 47,
+        // a Canvas Group field: its alpha is clamped to [0, 1] (UISystem sees the change itself)
+        UpdateFlags_CanvasGroup         = (uint64_t)1 << 48,
+        // a Rigidbody's type, damping, mass fields...: applied to the live body (a type switch,
+        // the mass again), no rebuild
+        UpdateFlags_Rigidbody_Params    = (uint64_t)1 << 49,
+        // a 3D joint's motor, spring, limit, friction or break field: applied to the live joint
+        UpdateFlags_Joint3D_Params      = (uint64_t)1 << 50,
+        // a Ragdoll's root or animator: its parts are collected again
+        UpdateFlags_Ragdoll             = (uint64_t)1 << 51,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -119,6 +128,7 @@ namespace jasperengine::editor{
         InstancedMeshComponent,
         Joint2DComponent,
         Joint3DComponent,
+        RagdollComponent,
         KeyframeTracksComponent,
         MeshPolygonComponent,
         MorphTracksComponent,
@@ -158,6 +168,8 @@ namespace jasperengine::editor{
         VertexAnimatorComponent,
         // Unity's Trail Renderer (lines and trails spec 6.4)
         TrailRendererComponent,
+        // Unity's CanvasGroup: group alpha, interactable, blocks raycasts (ui canvas group spec 7.5)
+        CanvasGroupComponent,
         // drives a RectTransform to Screen.safeArea (safe-area spec 6.3)
         SafeAreaComponent
     };

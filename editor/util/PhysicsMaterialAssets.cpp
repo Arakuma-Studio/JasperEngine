@@ -4,7 +4,11 @@
 #include "PhysicsMaterialAssets.h"
 
 #include "Project.h"
+#include "command/CommandHandle.h"
+#include "command/type/MultiPropertyCmd.h"
 #include "command/type/WriteFilesCmd.h"
+#include "component/RigidbodyComponent.h"
+#include "component/Rigidbody2DComponent.h"
 #include "pool/PhysicsMaterialPool.h"
 #include "util/FileUtils.h"
 #include "util/ProjectFileWrites.h"
@@ -93,4 +97,37 @@ fs::path PhysicsMaterialAssets::create(Project* project, const fs::path& directo
         return fs::path();
     }
     return file;
+}
+
+bool PhysicsMaterialAssets::applyToObject(Project* project, uint32_t sceneId, Entity entity, const std::string& assetPath, std::string& error){
+    SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
+    if (!sceneProject || !sceneProject->scene){
+        error = "No such scene.";
+        return false;
+    }
+    Scene* scene = sceneProject->scene;
+    MultiPropertyCmd* multi = new MultiPropertyCmd();
+    size_t count = 0;
+    if (const RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity)){
+        for (size_t i = 0; i < body->colliders.size(); i++){
+            multi->addPropertyCmd<std::string>(project, sceneId, entity, ComponentType::RigidbodyComponent,
+                                               "colliders[" + std::to_string(i) + "].material", assetPath);
+            count++;
+        }
+    }
+    if (const Rigidbody2DComponent* body = scene->findComponent<Rigidbody2DComponent>(entity)){
+        for (size_t i = 0; i < body->colliders.size(); i++){
+            multi->addPropertyCmd<std::string>(project, sceneId, entity, ComponentType::Rigidbody2DComponent,
+                                               "colliders[" + std::to_string(i) + "].material", assetPath);
+            count++;
+        }
+    }
+    if (count == 0){
+        delete multi;
+        error = "The GameObject has no Rigidbody or Rigidbody 2D colliders to give the material to.";
+        return false;
+    }
+    multi->setNoMerge();
+    CommandHandle::get(sceneId)->addCommand(multi);
+    return true;
 }

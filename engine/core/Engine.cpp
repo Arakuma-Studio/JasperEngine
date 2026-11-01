@@ -47,6 +47,8 @@
 #include "pool/PhysicsMaterialPool.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
+#include "net/Http.h"
+#include "thread/MainThreadQueue.h"
 #ifndef NO_THREAD_SUPPORT
     #include "thread/ThreadPoolManager.h"
 #endif
@@ -217,8 +219,15 @@ void Engine::setScene(Scene* scene){
 
 Scene* Engine::getScene(){
     std::lock_guard<std::mutex> lock(sceneListMutex);
-    // none before the first scene is set (a scene's scripts start before it is)
-    return Engine::scenes.empty() ? nullptr : Engine::scenes[0];
+    // none before the first scene is set (a scene's scripts start before it is); never the
+    // persistent scene (DontDestroyOnLoad), first while a load builds its new scenes
+    Scene* persistent = SceneManager::getPersistentScene();
+    for (Scene* scene : Engine::scenes) {
+        if (scene != persistent) {
+            return scene;
+        }
+    }
+    return nullptr;
 }
 
 std::vector<Scene*> Engine::getScenesSnapshot(){
@@ -1219,6 +1228,8 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
     #endif
 
     System::setSystemInstance(system);
+    // the thread that delivers async results (MainThreadQueue)
+    MainThreadQueue::setMainThread();
 
     Engine::setCanvasSize(1000,480);
 
@@ -1463,6 +1474,10 @@ void Engine::runFrame(bool draw){
 
     frameRunning = true;
 
+    // what DontDestroyOnLoad / MoveGameObjectToScene asked for between frames (input
+    // callbacks, the editor's tools), at this frame's first safe point
+    SceneManager::flushPersistentMoves();
+
     // a transition requested during the last frame; one requested by its factory waits again
     SceneManager::applyPendingLoad();
 
@@ -1518,6 +1533,11 @@ void Engine::runFrame(bool draw){
 
         // 2) Variable-timestep phase. Runs exactly once per frame with the real frame delta.
         //    Used for animation, input, UI, and any subsystem overriding update().
+        // What other threads finished (HTTP responses, native callbacks) reaches the game here,
+        // right before onUpdate, while game events run (not in the editor outside Play)
+        if (Engine::onUpdate.isEnabled()) {
+            MainThreadQueue::drain();
+        }
         Engine::onUpdate.call();
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->update(frameDelta);
@@ -1677,6 +1697,13 @@ void Engine::systemShutdown(){
 
     // anime's Lua references go while the Lua state still exists
     AnimEngine::instance().reset();
+    // the persistent scene's scripts (their onDestroy ran above) are released, and it goes
+    SceneManager::destroyPersistentScene();
+
+    // HTTP requests end without their callbacks and the HTTP stack's threads stop; what other
+    // threads posted for the game is dropped
+    Http::terminate();
+    MainThreadQueue::clear();
     LuaBinding::cleanup();
 
     removeAllSceneLayers(true);

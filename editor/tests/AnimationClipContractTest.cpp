@@ -48,9 +48,9 @@ namespace {
 
 TEST(AnimationClipContract, CatalogKnowsTheAnimationPlayer){
     // appended after it (prefab override masks use the ordinal): the Vertex Animator, then the
-    // Trail Renderer, then the Safe Area (safe-area spec 6.3), which is last
+    // Trail Renderer, Canvas Group, then the Safe Area (safe-area spec 6.3), which is last
     EXPECT_EQ(static_cast<int>(ComponentType::VertexAnimatorComponent), static_cast<int>(ComponentType::AnimationPlayerComponent) + 1);
-    EXPECT_EQ(static_cast<int>(ComponentType::SafeAreaComponent), static_cast<int>(ComponentType::TrailRendererComponent) + 1);
+    EXPECT_EQ(static_cast<int>(ComponentType::SafeAreaComponent), static_cast<int>(ComponentType::CanvasGroupComponent) + 1);
     EXPECT_EQ(LastComponentType, ComponentType::SafeAreaComponent);
     EXPECT_EQ(ComponentTypeCount, static_cast<int>(ComponentType::SafeAreaComponent) + 1);
     EXPECT_EQ(Catalog::getComponentType("animationplayer"), ComponentType::AnimationPlayerComponent);

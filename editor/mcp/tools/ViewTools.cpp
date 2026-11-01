@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // W3: screenshots, Scene view camera, window focus, Game view settings
+#include "registry/PhysicsLayers.h"
 #include "McpTools.h"
 #include "PlayViewCommon.h"
 
@@ -18,10 +19,12 @@
 #include "Screen.h"
 #include "Platform.h"
 #include "Project.h"
+#include "net/Http.h"
 #include "mcp/McpActivityWindow.h"
 #include "render/SceneRender.h"
 #include "render/SceneRender2D.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "object/ui/UIDocument.h"
@@ -1304,6 +1307,26 @@ void configureGameViewTool(const CallPtr& call) {
         if (!args.contains("device")) settings.device = "custom";
         changed.push_back("custom_device");
     }
+    // the runtime collider / joint wireframes (Physics.debugDraw): every scene, Play and exports
+    if (args.contains("physics_debug")) {
+        Physics::setDebugDraw(args.value("physics_debug", false));
+        changed.push_back("physics_debug");
+    }
+    if (args.contains("physics_debug_contacts")) {
+        Physics::setDebugDrawContacts(args.value("physics_debug_contacts", false));
+        changed.push_back("physics_debug_contacts");
+    }
+    if (args.contains("network")) {
+        const std::string network = args.value("network", "");
+        if (network != "online" && network != "offline") {
+            call->fail("network must be online or offline (simulated: Http requests to hosts other than localhost fail with "
+                       "errorCode \"offline\").");
+            return;
+        }
+        Http::setOfflineSimulated(network == "offline");
+        changed.push_back("network");
+    }
+
     if (args.contains("device")) {
         const std::string device = args["device"].is_string() ? args["device"].get<std::string>() : std::string();
         if (device == "none" || device.empty()) {
@@ -1336,6 +1359,7 @@ void configureGameViewTool(const CallPtr& call) {
         settings.language = tag;
         changed.push_back("language");
     }
+
     if (!changed.empty()) gw->applySettings(settings);
 
     if (args.contains("orientation")) {
@@ -1387,12 +1411,23 @@ void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& 
         return Json::array({r(rect.getX()), r(rect.getY()), r(rect.getWidth()), r(rect.getHeight())});
     };
 
+    // the lines the playing scenes drew last frame (0 until a frame is drawn after turning it on)
+    size_t physicsDebugLines = 0;
+    for (const SceneProject& sceneProject : project->getScenes()) {
+        if (sceneProject.playState == ScenePlayState::STOPPED || !sceneProject.scene) continue;
+        if (auto physics = sceneProject.scene->getSystem<PhysicsSystem>()) physicsDebugLines += physics->getDebugLineCount();
+    }
+
     Json data = {
         {"aspect", aspectNames()[std::clamp(settings.aspect, 0, (int)aspectNames().size() - 1)]},
         {"scale", settings.scale},
         {"maximize_on_play", settings.maximizeOnPlay},
         {"show_stats", settings.showStats},
         {"simulate_touch", project->isSimulateTouch()},
+        {"physics_debug", Physics::isDebugDraw()},
+        {"physics_debug_contacts", Physics::isDebugDrawContacts()},
+        {"physics_debug_lines", physicsDebugLines},
+        {"network", Http::isOfflineSimulated() ? "offline" : "online"},
         {"open", gw->isOpen()},
         {"visible", gw->isVisible()},
         {"view_size", {gw->getWidth(), gw->getHeight()}},
@@ -1530,6 +1565,9 @@ void registerViewTools(McpRegistry& registry) {
             {"maximize_on_play", boolean("")},
             {"show_stats", boolean("")},
             {"simulate_touch", boolean("Mouse = one finger. Not while playing.")},
+            {"physics_debug", boolean("Collider/joint wireframes in Play.")},
+            {"physics_debug_contacts", boolean("")},
+            {"network", stringEnum("offline: Http to non-localhost fails with \"offline\". Works while playing.", {"online", "offline"})},
             {"device", string("An id of devices, custom, or none.")},
             {"orientation", stringEnum("", {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"})},
             {"language", string("es-MX..., or system.")},

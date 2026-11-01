@@ -84,6 +84,7 @@ ComponentAddDialog::ComponentAddDialog() {
         {"Physics", ICON_FA_CUBE, {
             {ComponentType::RigidbodyComponent, "Rigidbody with colliders, simulated by Jolt"},
             {ComponentType::Joint3DComponent, "Connects two Rigidbodies"},
+            {ComponentType::RagdollComponent, "Switches a character's bone bodies between animated and simulated"},
         }},
         {"Physics 2D", ICON_FA_CIRCLE, {
             {ComponentType::Rigidbody2DComponent, "2D Rigidbody with colliders, simulated by Box2D"},
@@ -103,6 +104,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::ScrollbarComponent, "Scroll control"},
             {ComponentType::ProgressbarComponent, "Progress indicator"},
             {ComponentType::LayoutGroupComponent, "Arranges child elements in a row, column or grid"},
+            {ComponentType::CanvasGroupComponent, "Fades, disables or makes click-through a UI subtree"},
             {ComponentType::SafeAreaComponent, "Fits the RectTransform to the screen's safe area (notch, rounded corners, banner)"},
             {ComponentType::PolygonComponent, "Filled UI polygon"},
             {ComponentType::UIDocumentComponent, "HTML/CSS document rendered by the engine"},

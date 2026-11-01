@@ -312,6 +312,18 @@ bool editor::CreateEntityCmd::execute(){
         polygonComp.points.push_back({Vector3(100, 100, 0), Vector4(1.0f, 1.0f, 1.0f, 1.0f)});
         polygonComp.needUpdatePolygon = true;
 
+    }else if (type == EntityCreationType::CANVAS_GROUP){
+
+        // a container stretched over its parent with a Canvas Group (Unity: add the children
+        // to fade, disable or make click-through together)
+        scene->addComponent<Transform>(entity, {});
+        RectTransformComponent layout;
+        layout.width = 100;
+        layout.height = 100;
+        layout.anchorPreset = AnchorPreset::FULL_LAYOUT;
+        layout.usingAnchors = true;
+        scene->addComponent<RectTransformComponent>(entity, layout);
+        scene->addComponent<CanvasGroupComponent>(entity, {});
     }else if (type == EntityCreationType::SAFE_AREA){
 
         scene->addComponent<Transform>(entity, {});
@@ -432,7 +444,14 @@ bool editor::CreateEntityCmd::execute(){
 
     }else if (type == EntityCreationType::JOINT3D){
 
-        scene->addComponent<Joint3DComponent>(entity, {});
+        // as 2D: a Transform so it can live under its body; made under a Rigidbody, the joint
+        // is on that body (local anchors, Unity's default)
+        scene->addComponent<Transform>(entity, {});
+        Joint3DComponent joint = makeJoint3D(Joint3DType::FIXED);
+        if (parent != NULL_ENTITY && scene->findComponent<RigidbodyComponent>(parent)){
+            joint.bodyA = parent;
+        }
+        scene->addComponent<Joint3DComponent>(entity, joint);
 
     }else if (type == EntityCreationType::RIGIDBODY2D){
 

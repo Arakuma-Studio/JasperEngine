@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "EntityRegistry.h"
+#include "script/AsyncOwner.h"
 
 #include <unordered_set>
 
@@ -60,6 +61,7 @@ EntityRegistry::EntityRegistry() {
 #ifdef JASPERENGINE_PHYSICS_3D
     registerComponent<RigidbodyComponent>();
     registerComponent<Joint3DComponent>();
+    registerComponent<RagdollComponent>();
 #endif
     registerComponent<InstancedMeshComponent>();
     registerComponent<PrefabComponent>();
@@ -74,6 +76,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<AnimationPlayerComponent>();
     registerComponent<VertexAnimatorComponent>();
     registerComponent<TrailRendererComponent>();
+    registerComponent<CanvasGroupComponent>();
     registerComponent<SafeAreaComponent>();
 }
 
@@ -266,6 +269,8 @@ void EntityRegistry::destroyEntity(Entity entity) {
         logHierarchyChange(destroyedLog, entity);
     }
     onEntityDestroyed(entity, entityManager.getSignature(entity));
+    // async work it owns (HTTP requests...) ends without its callbacks
+    AsyncOwners::entityDestroyed(this, entity);
 
     componentManager.entityDestroyed(entity);
     entityManager.destroy(entity);
@@ -299,6 +304,9 @@ void EntityRegistry::destroyEntities(const std::vector<Entity>& entities) {
     }
     if (doomed.empty()) {
         return;
+    }
+    for (Entity entity : doomed) {
+        AsyncOwners::entityDestroyed(this, entity);
     }
     componentManager.entitiesDestroyed(doomed);
     for (Entity entity : doomed) {

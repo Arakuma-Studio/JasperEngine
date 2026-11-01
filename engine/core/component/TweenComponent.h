@@ -15,6 +15,8 @@ namespace jasperengine{
         float duration = 0;
         bool loop = false;
         bool pingPong = false; // plays forward and then back, in twice the duration
+        // advances with the unscaled frame delta: runs at Engine time scale 0 (a pause menu fade)
+        bool useUnscaledTime = false;
 
         Ease function;
     };

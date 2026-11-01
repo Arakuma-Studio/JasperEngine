@@ -35,6 +35,7 @@ namespace jasperengine::editor{
         PANEL,
         POLYGON,
         LAYOUT_GROUP,
+        CANVAS_GROUP,
         POINT_LIGHT,
         DIRECTIONAL_LIGHT,
         SPOT_LIGHT,
@@ -75,6 +76,8 @@ namespace jasperengine::editor{
         // a unit lattice (Transform + LatticeComponent); the menus create one through
         // LatticeEditorOps::createLattice, which fits and binds it around the selection
         LATTICE,
+        // not a GameObject: the Hierarchy's "3D Object > Ragdoll..." opens the wizard on the selection
+        RAGDOLL_WIZARD,
         // a full-stretch RectTransform the Safe Area component drives (GameObject > UI > Safe Area)
         SAFE_AREA
     };
