@@ -1251,7 +1251,9 @@ TEST_F(AudioSourceTest, ARecorderCaptureHearsTheMixer) {
     for (int i = 0; i < 10; i++) {
         step(1.0 / 30.0);
         AudioSystem::mixOffline(out.data(), 1600);
-        for (float v : out) peak = std::max(peak, std::fabs(v));
+        // (SoLoud ramps a volume change over the mix call that takes it: the group's mute, set
+        // before the first, ramps in the first)
+        if (i > 0) for (float v : out) peak = std::max(peak, std::fabs(v));
     }
     EXPECT_TRUE(music.isPlaying());
     EXPECT_FLOAT_EQ(peak, 0.0f) << "a muted group is muted in the capture too";
@@ -1284,25 +1286,26 @@ TEST_F(AudioSourceTest, AHeadlessRunPlaysItsSoundsAsANormalRunDoes) {
 
 TEST_F(AudioSourceTest, ClockedVoicesStartAsFarApartAsTheFramesThatPlayedThem) {
     ASSERT_TRUE(AudioSystem::beginOfflineCapture(44100, 2));
-    writeLevel(root / "assets" / "level.wav", 1.0);
-    AudioSource left = source("level.wav");
-    AudioSource right = source("level.wav");
-    left.setClockedSound(true);
-    right.setClockedSound(true);
-    left.setPan(-1.0f);
-    right.setPan(1.0f);
+    writeLevel(root / "assets" / "level.wav", 1.0, 0.25);
+    AudioSource first = source("level.wav");
+    AudioSource second = source("level.wav");
+    first.setClockedSound(true);
+    second.setClockedSound(true);
     // two frames of 1/60 s, one sound each, before the output takes its next buffer
     step(kFrame60);
-    left.play();
+    first.play();
     scene->getSystem<AudioSystem>()->update(kFrame60);
     step(kFrame60);
-    right.play();
+    second.play();
     scene->getSystem<AudioSystem>()->update(kFrame60);
     std::vector<float> out(4096 * 2);
     AudioSystem::mixOffline(out.data(), 4096);
-    const int a = onsetOf(out, 0);
-    const int b = onsetOf(out, 1);
+    // the first is one level, both are twice it: the second starts where the level doubles
+    const int a = onsetOf(out, 0, 0.01f);
     ASSERT_GE(a, 0);
+    const float one = std::fabs(out[(a + 100) * 2]);
+    ASSERT_GT(one, 0.05f);
+    const int b = onsetOf(out, 0, one * 1.5f);
     ASSERT_GE(b, 0);
     EXPECT_NEAR(b - a, 735, 1) << "a frame of 1/60 s apart (enableClocked)";
     AudioSystem::endOfflineCapture();
