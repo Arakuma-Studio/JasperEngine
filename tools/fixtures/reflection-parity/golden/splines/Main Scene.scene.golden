@@ -46,9 +46,6 @@ maxValues:
   maxColliderVertices3D: 0
   maxColliderIndices3D: 0
 shaderKeys:
-  - type: mesh
-    properties: 1352
-  - type: depth
   - type: blit
 entities:
   - type: Entity
