@@ -2271,11 +2271,11 @@ inline long long hufLength(long long code) { return code & 63; }
 
 inline long long hufCode(long long code) { return code >> 6; }
 
-inline void outputBits(int nBits, long long bits, long long &c, int &lc,
+// JasperEngine local patch: the encoder's bit buffer c is unsigned, as OpenEXR's Int64 is (signed,
+// its shifts past the top bit were undefined behaviour, reported by UBSan from a PIZ write)
+inline void outputBits(int nBits, long long bits, unsigned long long &c, int &lc,
                        char *&out) {
-  // JasperEngine local patch: shifted unsigned (only the low lc bits are kept; a signed shift
-  // past the top is undefined behaviour, reported by UBSan from hufPackEncTable)
-  c = static_cast<long long>(static_cast<unsigned long long>(c) << nBits);
+  c <<= nBits;
   lc += nBits;
 
   c |= bits;
@@ -2560,7 +2560,7 @@ static void hufPackEncTable(
     char **pcode)            //  o: ptr to packed table (updated)
 {
   char *p = *pcode;
-  long long c = 0;
+  unsigned long long c = 0;
   int lc = 0;
 
   for (; im <= iM; im++) {
@@ -2781,12 +2781,12 @@ static void hufFreeDecTable(HufDec *hdecod)  // io: Decoding table
 // ENCODING
 //
 
-inline void outputCode(long long code, long long &c, int &lc, char *&out) {
+inline void outputCode(long long code, unsigned long long &c, int &lc, char *&out) {
   outputBits(hufLength(code), hufCode(code), c, lc, out);
 }
 
 inline void sendCode(long long sCode, int runCount, long long runCode,
-                     long long &c, int &lc, char *&out) {
+                     unsigned long long &c, int &lc, char *&out) {
   //
   // Output a run of runCount instances of the symbol sCount.
   // Output the symbols explicitly, or if that is shorter, output
@@ -2815,7 +2815,7 @@ static int hufEncode            // return: output size (in bits)
      char *out)                 //  o: compressed output buffer
 {
   char *outStart = out;
-  long long c = 0;  // bits not yet written to out
+  unsigned long long c = 0;  // bits not yet written to out
   int lc = 0;       // number of valid bits in c (LSB)
   int s = in[0];
   int cs = 0;
