@@ -551,6 +551,14 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
         result["method_used"] = buildMethodName(report.methodUsed);
         result["compile_reasons"] = report.compileReasons;
         result["player_id"] = report.playerId;
+        // S34: the engine modules the build ships, and the first reason of each
+        result["modules"] = report.modules;
+        for (const std::string& module : report.modules)
+            for (const ModuleEvidence& item : report.moduleEvidence)
+                if (item.module == module) {
+                    result["module_reasons"][module] = item.where + ": " + item.what;
+                    break;
+                }
         if (!report.contentManifest.empty()) result["content_manifest"] = FileUtils::pathToGenericUtf8(report.contentManifest);
         for (const BuildWarning& warning : report.warnings) result["warnings"].push_back({{"code", warning.code}, {"message", warning.message}});
         if (!report.notes.empty()) result["notes"] = report.notes;

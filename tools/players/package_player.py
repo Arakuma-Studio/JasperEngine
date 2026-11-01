@@ -2,12 +2,15 @@
 """Packages a built jasperengine-player into a player runtime (docs/specs/S30-shipping.md R8, D4).
 
     python3 tools/players/package_player.py --platform linux --arch x64 --backend glcore \\
-        --flavour release --build build/players-build/linux-x64-glcore-release --out build/players [--zip DIR]
+        --flavour release [--variant lite3d] --build build/players-build/linux-x64-glcore-release --out build/players [--zip DIR]
 
-A runtime is a directory named by its id (<platform>-<arch>-<backend>-<flavour>):
+A runtime is a directory named by its id (<platform>-<arch>-<backend>-<flavour>[-<variant>]: a
+release variant of engine/player/variants.json, docs/specs/S34-player-size.md R4; the full player
+has the plain id):
 
     player-info.json          schema 1: id, engineVersion, gitSha, contentFormatVersion, capacities,
-                              features, notices, executables {path: sha256}, executable
+                              features (the variant's modules), variant, notices,
+                              executables {path: sha256}, executable
     files/                    what a build stages as it is (the executable; the web's two players
                               and page; a macOS bundle)
     android/ | ios/           the platform template (R13, R14)
@@ -48,8 +51,16 @@ ANDROID_TEMPLATE = REPO / "engine/platform/android/player"
 CAPACITIES = ("MAX_SUBMESHES", "MAX_TILEMAP_TILESRECT", "MAX_TILEMAP_TILES", "MAX_SPRITE_FRAMES", "MAX_EXTERNAL_BUFFERS",
               "MAX_BONES", "MAX_COLLIDERS_2D", "MAX_COLLIDER_POINTS_2D", "MAX_COLLIDERS_3D", "MAX_COLLIDER_VERTICES_3D",
               "MAX_COLLIDER_INDICES_3D")
-# what every prebuilt player is built with (engine/CMakeLists.txt defaults); tracy only in development
-FEATURES = ["physics2d", "physics3d", "navigation", "runtimeshaders"]
+VARIANTS = REPO / "engine/player/variants.json"
+
+
+def variant_of(name: str) -> dict:
+    """A variant of engine/player/variants.json: {name, suffix, modules}."""
+    variants = json.loads(VARIANTS.read_text(encoding="utf-8"))["variants"]
+    for variant in variants:
+        if variant["name"] == name:
+            return variant
+    raise SystemExit(f"--variant {name} is not in {VARIANTS} ({', '.join(v['name'] for v in variants)})")
 
 
 def sha256(path: Path) -> str:
@@ -200,7 +211,10 @@ def stage(args: argparse.Namespace, runtime: Path) -> tuple[dict[str, str], str]
 
 
 def package(args: argparse.Namespace) -> Path:
-    runtime_id = f"{args.platform}-{args.arch}-{args.backend}-{args.flavour}"
+    variant = variant_of(args.variant)
+    if variant["suffix"] and args.flavour != "release":
+        raise SystemExit(f"--variant {args.variant}: a development player is always the full one")
+    runtime_id = f"{args.platform}-{args.arch}-{args.backend}-{args.flavour}" + (f"-{variant['suffix']}" if variant["suffix"] else "")
     out = Path(args.out)
     runtime = out / runtime_id
     temp = out / f".{runtime_id}.packaging"
@@ -208,7 +222,8 @@ def package(args: argparse.Namespace) -> Path:
     temp.mkdir(parents=True)
     try:
         binaries, executable = stage(args, temp)
-        features = list(FEATURES) + (["tracy"] if args.flavour == "development" else [])
+        # the modules the player was built with (the variant's); tracy only in development
+        features = list(variant["modules"]) + (["tracy"] if args.flavour == "development" else [])
         libraries, manifest, third_party = notices(features)
         for source, name in manifest:
             copy_file(source, temp / "licenses" / name)
@@ -225,6 +240,7 @@ def package(args: argparse.Namespace) -> Path:
             "contentFormatVersion": content_format_version(),
             "capacities": capacities(),
             "features": features,
+            "variant": variant["name"],
             "notices": libraries,
             "executables": binaries,
             "executable": executable,
@@ -269,6 +285,7 @@ def main() -> int:
     parser.add_argument("--arch", required=True)
     parser.add_argument("--backend", required=True)
     parser.add_argument("--flavour", required=True, choices=["release", "development"])
+    parser.add_argument("--variant", default="full", help="the release variant the player was built for (engine/player/variants.json)")
     parser.add_argument("--build", help="the player's CMake build tree")
     parser.add_argument("--build-mt", help="web: the pthreads player's build tree")
     parser.add_argument("--android-dir", help="android: the collected Gradle outputs")

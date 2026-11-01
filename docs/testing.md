@@ -127,7 +127,7 @@ takes about a second. So an MCP test compiles only when the compile path is what
   | Test | Why it compiles |
   |---|---|
   | `test_build.py::test_desktop_build_and_run` | the compile path end to end (CMake, the engine, the link, a player that runs), and a broken C++ source's errors parsed as `file:line` (only a compiler produces them) |
-  | `test_html_ui_effects_export.py::test_desktop_player_draws_the_effects` | `graphics.runtime_shaders: false`: only a compiled game ships without the runtime shader compiler (every prebuilt runtime has it), so only it shows the exported UI effect variants are all the game needs |
+  | `test_html_ui_effects_export.py::test_desktop_player_draws_the_effects` | `graphics.runtime_shaders: false`: a compiled game ships without the runtime shader compiler whatever its scripts do (a prebuilt variant leaves it out only when no script can need it, S34), so it shows the exported UI effect variants are all the game needs |
   | `test_build.py::test_cancel_desktop_build`, `test_busy.py::test_export_job_refusals` | a compile runs long enough to cancel, and to refuse other tools while it runs (a prebuilt build ends first); both are cancelled within seconds |
 
 - **(b) Prebuilt** (`method="prebuilt"`, and it checks `method_used` and the `player_id` it
@@ -344,7 +344,8 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
   enforced with: `JASPER_TEST_PERF_SLACK`, unset (0) by default and under a sanitizer, where the
   budgets are only printed. `*Bench` suites (`LoggerBench`, `SchedulerBench`, `SignalBench`, S10's
   `ShadowBench`), `SchedulerTest.Process10kUnder2ms` and S12's `AtmosphereNoise` bake budgets check
-  their budgets that way and print `[bench]` lines; the
+  their budgets that way and print `[bench]` lines (S34's `LuaBindingBench` prints the cost of a call
+  through the Lua bindings, with no budget: builds are compared with it on E); the
   editor suite's `editor::test::perfSlack()` does the same for `CommandHistoryBench` (S24),
   `AutosaveEncodeBench` (S03), `VcsBench` (S29: status poll, snapshot swap, scene diff; the
   main-thread encode is reported) and `ReflectCodecBench`/`ReflectResolveBench` (S08; its MCP R19 frame

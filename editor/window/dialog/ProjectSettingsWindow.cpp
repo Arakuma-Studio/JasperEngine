@@ -1048,6 +1048,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_versionControlMetadata = project->hasVersionControlMetadata();
     m_buildMethodIndex = indexOfName(buildMethodNames, project->getBuildMethod());
     m_packContent = project->isPackContent();
+    m_stripEngineCode = project->isStripEngineCode();
     m_vcs = project->getVcsProjectSettings();
 
     m_tags = project->getTags();
@@ -1583,6 +1584,13 @@ void ProjectSettingsWindow::drawPlayerSettings() {
                 ImGui::Checkbox("##PackContent", &m_packContent);
                 endSettingsRow("Prebuilt builds keep their content in one content.jpak next to the player instead of loose files "
                                "(the web always packs it).");
+            }
+            if (settingsui::beginRow("player.strip_engine_code")) {
+                if (projectBeginSettingsRow("Strip Engine Code", !m_stripEngineCode)) m_stripEngineCode = true;
+                ImGui::Checkbox("##StripEngineCode", &m_stripEngineCode);
+                endSettingsRow("Builds leave out the engine modules nothing in the project uses (HTML UI, video, the runtime shader "
+                               "compiler, 3D or 2D physics): a smaller player that behaves the same. Build Settings shows what is kept and "
+                               "why. Turn it off for a script that builds engine names at runtime from pieces.");
             }
 
             ImGui::EndTable();
@@ -3099,6 +3107,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setVersionControlMetadata(m_versionControlMetadata);
     m_project->setBuildMethod(buildMethodNames[std::clamp(m_buildMethodIndex, 0, 2)]);
     m_project->setPackContent(m_packContent);
+    m_project->setStripEngineCode(m_stripEngineCode);
     m_project->setVcsProjectSettings(m_vcs);
 
     // a name typed into New Tag Name but not added yet is kept rather than lost

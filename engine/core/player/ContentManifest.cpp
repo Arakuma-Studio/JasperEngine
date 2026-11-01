@@ -3,7 +3,10 @@
 
 #include "ContentManifest.h"
 
+#include "PlayerModules.h"
 #include "serialization/CookedScene.h"
+
+#include <algorithm>
 
 using namespace jasperengine;
 using namespace jasperengine::player;
@@ -28,6 +31,7 @@ json ContentManifest::toJson() const {
     out["packs"] = json::array();
     for (const ManifestPack& pack : packs) out["packs"].push_back({{"file", pack.file}, {"sha256", pack.sha256}, {"entries", pack.entries}});
     out["notices"] = notices;
+    if (hasModules) out["modules"] = modules;
     out["allowPlayerMismatch"] = allowPlayerMismatch;
     if (!symbols.empty()) out["symbols"] = symbols;
     return out;
@@ -63,6 +67,8 @@ bool ContentManifest::fromJson(const json& in, ContentManifest& out, std::string
         for (const json& pack : in.value("packs", json::array()))
             manifest.packs.push_back({pack.value("file", ""), pack.value("sha256", ""), pack.value("entries", uint64_t(0))});
         manifest.notices = in.value("notices", std::vector<std::string>{});
+        manifest.hasModules = in.contains("modules");
+        manifest.modules = in.value("modules", std::vector<std::string>{});
         manifest.allowPlayerMismatch = in.value("allowPlayerMismatch", false);
         manifest.symbols = in.value("symbols", std::string());
         out = std::move(manifest);
@@ -82,8 +88,16 @@ bool ContentManifest::parse(const std::string& text, ContentManifest& out, std::
     return fromJson(parsed, out, error);
 }
 
+std::vector<std::string> player::missingModules(const ContentManifest& manifest, const std::vector<std::string>& available) {
+    const std::vector<std::string>& needed = manifest.hasModules ? manifest.modules : allModules();
+    std::vector<std::string> missing;
+    for (const std::string& module : needed)
+        if (std::find(available.begin(), available.end(), module) == available.end()) missing.push_back(module);
+    return missing;
+}
+
 bool player::checkContent(const ContentManifest& manifest, const std::string& playerId, const ContentAccess& access, bool verifyHashes,
-                          std::vector<std::string>& problems) {
+                          std::vector<std::string>& problems, const std::vector<std::string>* playerModules) {
     const std::string major = manifest.contentFormatVersion.substr(0, manifest.contentFormatVersion.find('.'));
     if (major != std::to_string(cook::FORMAT_MAJOR)) {
         problems.push_back("content format " + manifest.contentFormatVersion + ", this player reads " + cook::contentFormatVersion() +
@@ -92,6 +106,16 @@ bool player::checkContent(const ContentManifest& manifest, const std::string& pl
     if (!playerId.empty() && manifest.playerId != playerId && !manifest.allowPlayerMismatch) {
         problems.push_back("the content was built for player " + manifest.playerId + ", this is " + playerId +
                            ": build it again for this player");
+    }
+    // a player variant leaves modules out: the content's must all be in (a Compile build has the
+    // modules it was configured with, which are the content's)
+    if (!playerId.empty()) {
+        const std::vector<std::string> missing = missingModules(manifest, playerModules ? *playerModules : builtModules());
+        if (!missing.empty()) {
+            std::string names;
+            for (const std::string& module : missing) names += (names.empty() ? "" : ", ") + moduleDisplayName(module) + " (" + module + ")";
+            problems.push_back("the content needs " + names + ", which this player leaves out: build it again (the editor picks a player with them)");
+        }
     }
     const std::string startFile = "scenes/" + std::to_string(manifest.startScene) + ".jscn";
     if (manifest.method == "prebuilt" && !access.exists(startFile)) problems.push_back("the start scene " + startFile + " is missing");

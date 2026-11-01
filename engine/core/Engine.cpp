@@ -22,7 +22,9 @@
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/HtmlUIClock.h"
+#if JASPERENGINE_HTMLUI
 #include "htmlui/anim/AnimEngine.h"
+#endif
 #include "util/StringUtils.h"
 #include "util/Utf16Combiner.h"
 #include "component/ButtonComponent.h"
@@ -2239,7 +2241,9 @@ void Engine::systemShutdown(){
     Engine::onShutdown.call();
 
     // anime's, the timers' and the input actions' Lua references go while the Lua state still exists
+#if JASPERENGINE_HTMLUI
     AnimEngine::instance().reset();
+#endif
     Scheduler::game().clear();
     InputActions::unload();
     LuaBinding::cleanup();
