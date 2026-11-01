@@ -19,6 +19,7 @@
 #include "io/UserSettings.h"
 #include "object/sound/AudioSource.h"
 #include "pool/SoundPool.h"
+#include "reflect/Reflect.h"
 #include "subsystem/AudioSystem.h"
 
 #include "LuaBridge.h"
@@ -34,6 +35,20 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
+
+namespace {
+    // the Audio Source through its S08 codec (what Stream writes and reads); decoded over `old`
+    // (an undo, a prefab instance's whole-component override)
+    YAML::Node encodeAudioSource(const AudioSourceComponent& value){
+        return reflect::encode(*reflect::find(ComponentType::AudioSourceComponent), &value, reflect::EncodeContext{});
+    }
+    AudioSourceComponent decodeAudioSource(const YAML::Node& node, const AudioSourceComponent* old){
+        AudioSourceComponent out = old ? *old : AudioSourceComponent();
+        reflect::DecodeReport report;
+        reflect::decode(*reflect::find(ComponentType::AudioSourceComponent), YAML::Load(YAML::Dump(node)), &out, reflect::DecodeContext{}, report);
+        return out;
+    }
+}
 
 namespace {
 
@@ -945,10 +960,10 @@ TEST(AudioSourceSerializationTest, AbsentMixerKeysAreTheirDefaultsOverAnExisting
     // an undo (or a prefab instance's whole-component override) back to a source with the defaults
     AudioSourceComponent plain;
     plain.filename = "music.ogg";
-    const YAML::Node node = Stream::encodeAudioSourceComponent(plain);
+    const YAML::Node node = encodeAudioSource(plain);
     EXPECT_FALSE(node["outputGroup"]) << "defaults are not written";
     EXPECT_FALSE(node["priority"]);
-    const AudioSourceComponent restored = Stream::decodeAudioSourceComponent(node, &edited);
+    const AudioSourceComponent restored = decodeAudioSource(node, &edited);
     EXPECT_EQ(restored.outputGroup, "");
     EXPECT_EQ(restored.outputGroupName, "") << "back to Master";
     EXPECT_EQ(restored.loadType, AudioLoadType::Auto);
@@ -956,7 +971,7 @@ TEST(AudioSourceSerializationTest, AbsentMixerKeysAreTheirDefaultsOverAnExisting
     EXPECT_EQ(restored.maxVoices, 8);
     EXPECT_FALSE(restored.ignoreListenerPause);
     // and the other way
-    const AudioSourceComponent again = Stream::decodeAudioSourceComponent(Stream::encodeAudioSourceComponent(edited), &plain);
+    const AudioSourceComponent again = decodeAudioSource(encodeAudioSource(edited), &plain);
     EXPECT_EQ(again.outputGroupName, "Music");
     EXPECT_EQ(again.priority, 10);
     EXPECT_EQ(again.loadType, AudioLoadType::Streaming);
@@ -1046,7 +1061,8 @@ TEST(GeneratorAudioTest, InitConfiguresTheVoicesAndLoadsTheMixer) {
     const std::vector<SceneBuildInfo> scenes = {SceneBuildInfo{1, "Level", {1}, {1}, true}};
     generator.configure(scenes, "test", {}, {}, project, internal, project / "assets", project / "lua", {}, 17,
                         Scaling::FITWIDTH, TextureStrategy::NONE, 1280, 720, true, WindowSettings(), LoadingSettings(),
-                        TagsAndLayers(), 4, "", false, {}, PlayerSettings(), settings);
+                        TagsAndLayers(), 4, ThreadingProjectSettings(), HtmlUiRenderSettings(), PbrTier::REDUCED,
+                        ShaderCreationProjectSettings(), false, {}, PlayerSettings(), settings);
     const std::string mainCpp = scriptdata::readFile(internal / "generated" / "main.cpp");
     const size_t load = mainCpp.find("AudioMixer::load(\"audio/Main.mixer\")");
     ASSERT_NE(load, std::string::npos);

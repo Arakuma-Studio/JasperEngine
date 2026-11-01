@@ -24,6 +24,7 @@
 #include "Factory.h"
 #include "Catalog.h"
 #include "pool/FontPool.h"
+#include "reflect/Reflect.h"
 #include "component/ParticleSystemComponent.h"
 
 #include <algorithm>
@@ -31,6 +32,19 @@
 #include <vector>
 
 using namespace jasperengine;
+
+namespace {
+    // the Text component through its S08 codec (what Stream writes and reads), decoded over `old`
+    // when given (play restore, undo)
+    TextComponent textRoundTrip(const TextComponent& value, const TextComponent* old = nullptr){
+        const editor::reflect::ComponentDesc& desc = *editor::reflect::find(editor::ComponentType::TextComponent);
+        TextComponent out = old ? *old : TextComponent();
+        editor::reflect::DecodeReport report;
+        editor::reflect::decode(desc, YAML::Load(YAML::Dump(editor::reflect::encode(desc, &value, editor::reflect::EncodeContext{}))), &out,
+                                editor::reflect::DecodeContext{}, report);
+        return out;
+    }
+}
 
 namespace {
 
@@ -463,7 +477,7 @@ TEST(TextEffectStreamTest, AbsentFieldsResetOverAnOldComponent){
     old.outlineWidth = 3.0f;
     old.shadowEnabled = true;
     old.visibleCharacters = 4;
-    const TextComponent plain = editor::Stream::decodeTextComponent(editor::Stream::encodeTextComponent(TextComponent()), &old);
+    const TextComponent plain = textRoundTrip(TextComponent(), &old);
     EXPECT_EQ(plain.outlineWidth, TextComponent().outlineWidth);
     EXPECT_FALSE(plain.shadowEnabled);
     EXPECT_EQ(plain.visibleCharacters, TextComponent().visibleCharacters);
@@ -483,7 +497,7 @@ TEST(TextEffectStreamTest, AbsentFieldsResetOverAnOldComponent){
     outlined.outlineWidth = 2.0f;
     outlined.shadowEnabled = true;
     outlined.shadowOffset = Vector2(3.0f, -1.0f);
-    const TextComponent back = editor::Stream::decodeTextComponent(editor::Stream::encodeTextComponent(outlined));
+    const TextComponent back = textRoundTrip(outlined);
     EXPECT_EQ(back.outlineWidth, 2.0f);
     EXPECT_TRUE(back.shadowEnabled);
     EXPECT_EQ(back.shadowOffset, Vector2(3.0f, -1.0f));
@@ -600,7 +614,7 @@ TEST(TextEffectStreamTest, NonDefaultFieldsRoundTrip){
     text.shadowSoftness = 4.0f;
     text.shadowDilate = 1.5f;
     text.visibleCharacters = 7;
-    const TextComponent back = editor::Stream::decodeTextComponent(editor::Stream::encodeTextComponent(text));
+    const TextComponent back = textRoundTrip(text);
     EXPECT_FLOAT_EQ(back.outlineWidth, 2.5f);
     EXPECT_EQ(back.outlineColor, text.outlineColor);
     EXPECT_TRUE(back.shadowEnabled);

@@ -121,7 +121,7 @@ TEST_F(CommandHistoryTests, TrimByCountAndBytes) {
         // a holds 10 x 64 = 640, b 500: 1140 > 1000, so a's oldest steps go, b's newest stays
         EXPECT_LE(CommandHistory::totalBytes(), 1000u);
         EXPECT_FALSE(state.deleted.empty());
-        if (!state.deleted.empty()) EXPECT_EQ(state.deleted.front(), "a2");
+        if (!state.deleted.empty()) { EXPECT_EQ(state.deleted.front(), "a2"); }
         EXPECT_TRUE(b.top() && b.top()->name() == "b0");
         std::fflush(nullptr);
         std::_Exit(::testing::Test::HasFailure() ? 1 : 0);

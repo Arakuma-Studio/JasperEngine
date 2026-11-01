@@ -251,7 +251,13 @@ TEST(LineRendererStreamTest, TrailRegistrationAndCatalog){
     EXPECT_NE(std::find(found.begin(), found.end(), ComponentType::LineRendererComponent), found.end());
 
     TrailRendererComponent& trail = scene.getComponent<TrailRendererComponent>(entity);
-    // SYNC4-ABSORB(curve): widthCurve / colorGradient become properties with S27's Curve and Gradient
+    // the width curve and colour gradient are properties of S27's Curve and Gradient
+    const PropertyData curve = Catalog::findProperty(&scene, entity, type, "widthCurve");
+    EXPECT_EQ(curve.type, PropertyType::Curve);
+    EXPECT_EQ(curve.ref, &trail.widthCurve);
+    const PropertyData gradient = Catalog::findProperty(&scene, entity, type, "colorGradient");
+    EXPECT_EQ(gradient.type, PropertyType::Gradient);
+    EXPECT_EQ(gradient.ref, &trail.colorGradient);
     for (const char* name : {"time", "minVertexDistance", "widthMultiplier", "widthUnit", "numCornerVertices", "numCapVertices",
                              "alignment", "textureMode", "textureScale", "emitting", "autodestruct", "sortPriority", "customShader",
                              "shaderUniforms", "shaderTextures", "shaderFeatures", "blendMode", "depthWrite", "stencil", "colorWrite", "enabled"}){
@@ -292,11 +298,11 @@ TEST(LineRendererStreamTest, LineCatalogPositionsAndFlags){
     EXPECT_EQ(position.ref, &lines.positions[2]);
     EXPECT_FALSE(Catalog::findProperty(&scene, entity, type, "positions[3]").ref);
     EXPECT_EQ(Catalog::findProperty(&scene, entity, type, "positions").ref, &lines.positions);
-    // SYNC4-ABSORB(curve): widthCurve / colorGradient become properties with S27's Curve and Gradient
+    EXPECT_EQ(Catalog::findProperty(&scene, entity, type, "widthCurve").type, PropertyType::Curve);
+    EXPECT_EQ(Catalog::findProperty(&scene, entity, type, "colorGradient").type, PropertyType::Gradient);
     EXPECT_TRUE(Catalog::findProperty(&scene, entity, type, "widthMultiplier").updateFlags & UpdateFlags_Lines);
     const std::map<std::string, PropertyData> all = Catalog::findEntityProperties(&scene, entity, type);
-    // (SYNC4-ABSORB(curve): widthCurve joins the list with S27's Curve)
-    for (const char* name : {"positions[0]", "positions[2]", "mode", "loop", "lines", "maxLines"}){
+    for (const char* name : {"positions[0]", "positions[2]", "mode", "loop", "widthCurve", "lines", "maxLines"}){
         EXPECT_TRUE(all.count(name)) << name;
     }
 
