@@ -505,3 +505,10 @@ Decisions taken while implementing (2026-10-31), where the spec was silent, ambi
   when it was removed (SoLoud's `BusInstance` destructor stops the voices whose bus handle is its own, which SoLoud
   learns only on a first play: 0, the core's), so the bus is told its handle when it starts; and an echo made again
   takes the delay heard now, not the asset's (it was rebuilt every frame after a timed delay change).
+- **Verification after the review fixes** (merged with main at shader-globals / platform-services, box 2203): 0
+  warnings; unit 1449 passed, 9 skipped, 0 failed (35 audio tests, 9 new for the review); full MCP suite 888
+  passed, 19 skipped, 11 failed (the 10 baseline failures and `test_stochastic_tiling` resave, see above); the
+  exported Linux player run (`JASPER_SLOW_BUILD=1 test_build.py`, 12 passed) logs "Audio mixer loaded:
+  audio/Main.mixer (2 groups)" and the mixer's groups and exposed parameter from Lua; agent guide 16352 bytes;
+  tool budget 152 tools, 108947 (TOTAL_LIMIT); Web (emsdk) and Android (NDK arm64) compile checks of the changed
+  engine and SoLoud sources pass.
