@@ -597,6 +597,10 @@ void AudioSystem::resumeAll(){
     AudioMixer::setMasterPaused(false);
 }
 
+void AudioSystem::setPlatformPaused(bool paused){
+    AudioMixer::setPlatformPaused(paused);
+}
+
 void AudioSystem::checkActive(){
     if (inited) {
         // the mixer's own buses do not keep the audio open

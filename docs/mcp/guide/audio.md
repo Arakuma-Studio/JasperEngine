@@ -179,7 +179,9 @@ new Audio Sources get).
 - **Pause**: `AudioListener.pause = true` holds every source but the `ignoreListenerPause` ones
   (a pause menu), and only those it paused come back. The app going to the background holds the
   Master bus: the sources keep their own pause, so a source the game paused stays paused after the
-  app returns. `AudioSystem.pauseAll()` / `resumeAll()` do the same as the app.
+  app returns. `AudioSystem.pauseAll()` / `resumeAll()` hold and release the Master bus for the
+  game, apart from the app's pause: returning from the background keeps a `pauseAll`, and
+  `resumeAll` in the background waits for the app to return.
 - **Events** (`getAudioSourceComponent().onStart / onPause / onStop`): onStart when it starts
   playing (play, play on awake, a resume), onPause on pause, onStop on `stop()`, `fadeOut`, the end
   of a non-looping clip, or a voice stolen by the budget. On the main thread, after the audio update.

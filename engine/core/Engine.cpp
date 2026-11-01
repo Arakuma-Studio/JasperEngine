@@ -2635,13 +2635,13 @@ void Engine::applyPause(){
     // a backgrounded app expects no heartbeat; resume re-arms on the next frame
     diag::watchdog::setPaused(want);
     if (!want){
-        AudioSystem::resumeAll();
+        AudioSystem::setPlatformPaused(false);
         ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 0); return 1; },
             [](ScriptBase& script) { script.onApplicationPause(false); });
         Engine::onResume.call();
         return;
     }
-    AudioSystem::pauseAll();
+    AudioSystem::setPlatformPaused(true);
     ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 1); return 1; },
         [](ScriptBase& script) { script.onApplicationPause(true); });
     Engine::onPause.call();
@@ -2746,7 +2746,7 @@ void Engine::resetApplicationState(){
     nativePaused = false;
     if (paused){
         paused = false;
-        AudioSystem::resumeAll();
+        AudioSystem::setPlatformPaused(false);
     }
     focused = true;
     lastOrientation = 0;

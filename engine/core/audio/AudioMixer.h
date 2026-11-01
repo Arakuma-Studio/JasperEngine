@@ -198,9 +198,14 @@ namespace jasperengine {
         // groups + their meters: how many SoLoud voices the mixer itself holds
         static unsigned int getBusVoiceCount();
         static bool isBusHandle(unsigned int handle);
-        // pauses everything at the Master bus (app pause; spec A13)
+        // pauses everything at the Master bus: the game's AudioSystem.pauseAll / resumeAll (spec A13)
         static void setMasterPaused(bool paused);
         static bool isMasterPaused();
+        // the platform's pause of the Master bus (the app in the background, a native SDK's hold):
+        // apart from the game's, so a resume never lifts a pause menu's pauseAll, nor a game's
+        // resumeAll the background's
+        static void setPlatformPaused(bool paused);
+        static bool isPlatformPaused();
         // SoLoud mixes at most this many voices at once, the buses included (Project Settings >
         // Audio's Max Real Voices + the mixer's groups are clamped to it)
         static constexpr unsigned int maxActiveVoices = 255;

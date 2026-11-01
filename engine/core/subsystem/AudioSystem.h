@@ -125,9 +125,13 @@ namespace jasperengine{
 		static void mixManually(double seconds);
 
 		static void stopAll();
-		// app pause / resume: the Master bus (every routed voice holds; the sources keep their own pause)
+		// the game's pause of everything (Lua AudioSystem.pauseAll / resumeAll): the Master bus (every
+		// routed voice holds; the sources keep their own pause)
 		static void pauseAll();
 		static void resumeAll();
+		// the platform's (Engine::applyPause: the app in the background): the Master bus too, on its
+		// own flag, so returning from the background leaves the game's pauseAll in place
+		static void setPlatformPaused(bool paused);
 		static void checkActive();
 
 		// AudioListener.volume (SoLoud's global volume, outside the mixer)
