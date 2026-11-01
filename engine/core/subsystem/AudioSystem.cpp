@@ -666,14 +666,17 @@ void AudioSystem::apply3dParameters(AudioSourceComponent& audio, unsigned int ha
 void AudioSystem::applyVoiceParameters(AudioSourceComponent& audio, unsigned int handle, bool mainVoice, bool use3D){
     SoLoud::Soloud& soloud = getSoloud();
     soloud.setRelativePlaySpeed(handle, audio.speed > 0.0f ? audio.speed : 0.0001f);
-    soloud.setPan(handle, audio.pan);
+    // a 3D voice's pan is SoLoud's (play3d, update3dAudio): a 2D pan here would centre its channel
+    // volumes until the frame's 3D pass, and a block mixed in between ramps it toward the centre
+    if (!use3D) {
+        soloud.setPan(handle, audio.pan);
+    }
     if (mainVoice) {
         soloud.setLooping(handle, audio.looping);
         soloud.setLoopPoint(handle, audio.loopingPoint);
     }
     soloud.setProtectVoice(handle, audio.protectVoice);
     soloud.setInaudibleBehavior(handle, audio.inaudibleBehaviorMustTick, audio.inaudibleBehaviorKill);
-    (void)use3D;
 }
 
 unsigned int AudioSystem::startVoice(AudioSourceComponent& audio, SoLoud::AudioSource& sample, float volume, bool use3D,
