@@ -214,7 +214,7 @@ everything else as stored. Values interpolate in those units (Unity's colour cur
 | `recttransform` | `positionOffset` (Vector2, the anchored position), `width`, `height`, `anchorOffsetLeft/Top/Right/Bottom` (ints that interpolate and round), `pivot` (Vector2), `anchorPointLeft/Top/Right/Bottom` (float) | `m_AnchoredPosition`, `m_SizeDelta`, `m_Pivot`, `m_AnchorMin/Max` |
 | `mesh` (meshes, sprites, model meshes, tilemaps) | `submeshes[N].material.baseColorFactor` (Color4; a sprite's colour is submesh 0's), `.emissiveFactor` (Color3), `.metallicFactor`, `.roughnessFactor`, `.alphaCutoff` (float), `submeshes[N].textureRect` (offset x y, scale x y), `submeshes[N].material.shaderParams.<member>` | `material._Color`... |
 | `sprite` | `frame` (the frame index, stepped) | `m_Sprite` (sprite swap) |
-| `light` | `color` (Color3), `intensity`, `range` (float), `innerConeCos`, `outerConeCos` (keyed in degrees) | `m_Intensity`, `m_SpotAngle` |
+| `light` | `color` (Color3), `intensity`, `range` (float), `innerConeCos`, `outerConeCos` (keyed as the full cone angle in degrees, Unity's Spot Angle: not the cosine, not the half angle) | `m_Intensity`, `m_SpotAngle` |
 | `light2d` | `color`, `intensity`, `range`, `falloff`, `height` | |
 | `camera` | `yfov` (radians), `near`, `far`, `left`, `right`, `bottom`, `top` | field of view, clip planes, orthographic size |
 | `audiosource` | `volume`, `speed` (pitch), `pan` | `m_Volume`, `m_Pitch` |
@@ -261,8 +261,13 @@ everything else as stored. Values interpolate in those units (Unity's colour cur
   puts every value back when it stops; nothing of it is saved.
 - **Porting Unity clips.** `m_IsActive` steps are `gameobject.active` keys; Image `m_Color` and
   TMP `m_fontColor` are `ui.color` (keys in sRGB, as the colour pickers show them); a CanvasGroup's
-  `m_Alpha` is `canvasgroup.alpha`; `m_AnchoredPosition.y` is `recttransform.positionOffset.y`; a
-  sprite swap (`m_Sprite` PPtr curve) is `sprite.frame` keys of the frame indices.
+  `m_Alpha` is `canvasgroup.alpha`; a sprite swap (`m_Sprite` PPtr curve) is `sprite.frame` keys
+  of the frame indices. The UI's layout space is y-down where Unity's is y-up, so the y values
+  convert: `m_AnchoredPosition.y` v is `recttransform.positionOffset.y` -v (Unity's keys 150, -70,
+  0 are -150, 70, 0 here), `m_Pivot.y` v is `pivot.y` 1 - v,
+  `m_AnchorMin.y` v is `anchorPointBottom` 1 - v and `m_AnchorMax.y` v is `anchorPointTop` 1 - v
+  (min and max swap: Unity's bottom anchor is the larger y here), and `m_OffsetMin.y` /
+  `m_OffsetMax.y` v are `anchorOffsetBottom` / `anchorOffsetTop` -v. x values port unchanged.
 
 ## Events
 

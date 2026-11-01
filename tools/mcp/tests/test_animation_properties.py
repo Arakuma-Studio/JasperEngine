@@ -104,11 +104,11 @@ async def test_build_the_game_stats_port(ed: Editor):
     sid = await scene(ed)
     tracks = [{"path": BASE + n, "channel": "property", "component": "gameobject", "property": "active",
                "keys": [{"time": 0, "value": False}, {"time": t, "value": True}]} for n, t in TIMES.items()]
-    # GameOverMenu / go: the CanvasGroup alpha 0 -> 1 and the anchored position y; EarnAnim's text colour
+    # GameOverMenu / go: the CanvasGroup alpha 0 -> 1 and the anchored position y (Unity 150 -> -70 -> 0, y-up, negated for the y-down layout); EarnAnim's text colour
     tracks.append({"path": "", "channel": "property", "component": "Canvas Group", "property": "alpha",
                    "keys": [{"time": 0, "value": 0}, {"time": 0.333, "value": 1}]})
     tracks.append({"path": "", "channel": "property", "component": "recttransform", "property": "positionOffset.y",
-                   "keys": [{"time": 0, "value": 150}, {"time": 0.333, "value": -70}, {"time": 0.583, "value": 0}]})
+                   "keys": [{"time": 0, "value": -150}, {"time": 0.333, "value": 70}, {"time": 0.583, "value": 0}]})
     tracks.append({"path": BASE + "Money", "channel": "property", "component": "Text", "property": "color",
                    "keys": [{"time": 0, "value": "#FFFFFF"}, {"time": 0.5, "value": [0, 1, 0, 1], "ease": "step"}]})
     events = [{"time": 0.5, "function": "CountThisGameScore"}, {"time": 1.3333334, "function": "CheckHighscore"},
@@ -177,6 +177,8 @@ async def test_preview_shows_properties_and_restores(ed: Editor):
     props = {p["path"] + ":" + p["component"] + "." + p["property"]: p["value"] for p in got.get("properties", [])}
     ed.check(props.get(BASE + "puntaje:gameobject.active") is True, f"the preview shows puntaje on at 0.5: {props!r}")
     ed.check(props.get(BASE + "record:gameobject.active") is False, f"record still off: {props!r}")
+    ed.check(got.get("properties_total") == len(got.get("properties", [])) and got["properties_total"] >= 9,
+             f"properties_total counts every previewed property: {got.get('properties_total')!r}")
     await ed.call("preview_animation", scene=sid, animation="GameOverMenu", action="stop")
     found = await ed.call("find_entities", scene=sid, name="puntaje", active=False)
     ed.check(found["count"] == 1, f"stop restored the inactive stat: {json.dumps(found)[:400]}")

@@ -204,7 +204,7 @@ List what a GameObject has with `get_animation {root, list_properties: "Panel/St
 | `recttransform` | `positionOffset` (anchored position), `width`, `height`, `pivot`, `anchorPointLeft/Top/Right/Bottom`, `anchorOffsetLeft/Top/Right/Bottom` |
 | `mesh` | `submeshes[N].material.baseColorFactor` (a sprite's colour: N = 0), `.emissiveFactor`, `.metallicFactor`, `.roughnessFactor`, `.alphaCutoff`, `submeshes[N].textureRect`, `submeshes[N].material.shaderParams.<member>` |
 | `sprite` | `frame` (index, stepped: Unity's sprite swap) |
-| `light` | `color`, `intensity`, `range`, `innerConeCos`, `outerConeCos` (keys in degrees) |
+| `light` | `color`, `intensity`, `range`, `innerConeCos`, `outerConeCos` (keys: the full cone angle in degrees, Unity's Spot Angle; not a cosine, not the half angle) |
 | `light2d` | `color`, `intensity`, `range`, `falloff`, `height` |
 | `camera` | `yfov`, `near`, `far`, `left`, `right`, `bottom`, `top` |
 | `audiosource` | `volume`, `speed` (pitch), `pan` |
@@ -213,7 +213,7 @@ List what a GameObject has with `get_animation {root, list_properties: "Panel/St
 | `ui`, `linerenderer`, `points`, `skybox` | `shaderUniforms.<member>` |
 | `script:<Class>` | its declared bool/int/float/vector/color `properties`, `enabled` |
 
-- Keys are in the Inspector's units: sRGB colours, cone degrees. Bools, ints and frames step (an
+- Keys are in the Inspector's units: sRGB colours, full cone angles in degrees. Bools, ints and frames step (an
   ease is ignored with a warning); the rest interpolate. Results and `times` samples return the
   same units (bools as JSON bools).
 - `active` changes apply after the other values, parents first; events run after the values (a
@@ -221,11 +221,14 @@ List what a GameObject has with `get_animation {root, list_properties: "Panel/St
   its player until something turns it on.
 - A Button overwrites `ui.color` from its state colours: animate `button.colorNormal`.
 - Bindings report `missing_component` (no such component, submesh, shader member or script field
-  on the GameObject) and `unknown_property`. `preview_animation` lists `properties` (the previewed
-  values); `get_runtime_entity` shows them in play.
+  on the GameObject) and `unknown_property`. `preview_animation` lists `properties` (the first
+  16 previewed values; `properties_total` counts them all); `get_runtime_entity` shows them in play.
 - Unity ports: `m_IsActive` -> `gameobject.active`; Image `m_Color` / TMP `m_fontColor` ->
-  `ui.color`; CanvasGroup `m_Alpha` -> `canvasgroup.alpha`; `m_AnchoredPosition.y` ->
-  `recttransform.positionOffset.y`; a sprite swap -> `sprite.frame` keys.
+  `ui.color`; CanvasGroup `m_Alpha` -> `canvasgroup.alpha`; a sprite swap -> `sprite.frame` keys.
+  The UI's layout space is y-down (Unity's is y-up): `m_AnchoredPosition.y` v -> `positionOffset.y`
+  -v; `m_Pivot.y` v -> `pivot.y` 1 - v; `m_AnchorMin.y` v -> `anchorPointBottom` 1 - v and
+  `m_AnchorMax.y` v -> `anchorPointTop` 1 - v; `m_OffsetMin.y` / `m_OffsetMax.y` v ->
+  `anchorOffsetBottom` / `anchorOffsetTop` -v (x values port as they are).
 
 ## Events and Lua scripts
 
