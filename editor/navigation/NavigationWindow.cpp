@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "NavigationWindow.h"
+#include "widget/ColorField.h"
 
 #include "Out.h"
 #include "Project.h"
@@ -171,12 +172,17 @@ void NavigationWindow::drawAreas() {
         if (ImGui::IsItemDeactivatedAfterEdit()) commit("Change Area Cost");
         ImGui::EndDisabled();
         ImGui::TableNextColumn();
-        float color[4] = {area.color.x, area.color.y, area.color.z, area.color.w};
-        if (ImGui::ColorEdit4("##color", color, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel)) {
-            area.color = Vector4(color[0], color[1], color[2], color[3]);
+        ui::ColorFieldOptions colorOptions;
+        colorOptions.linearStorage = false;
+        colorOptions.label = "Area Colour";
+        Vector4 color = area.color;
+        const ui::EditPhase colorPhase = ui::colorField("##color", color, colorOptions);
+        if (colorPhase == ui::EditPhase::Changing || colorPhase == ui::EditPhase::Cancelled) {
+            area.color = color;
             dirty = true;
         }
-        if (ImGui::IsItemDeactivatedAfterEdit()) commit("Change Area Colour");
+        // the window's session is one Navigation settings step (a cancel restores, adding none)
+        if (colorPhase == ui::EditPhase::Committed || colorPhase == ui::EditPhase::Cancelled) commit("Change Area Colour");
         ImGui::PopID();
     }
     ImGui::EndTable();

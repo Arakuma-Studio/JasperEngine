@@ -93,7 +93,8 @@ namespace jasperengine::editor{
         ExternalEntity,
         Font,
         Asset,      // an asset file reference (AssetRef): path, drop target, missing state
-        LayerMask  // unsigned int culling mask: Unity's Nothing / Everything / per-layer dropdown
+        LayerMask,  // unsigned int culling mask: Unity's Nothing / Everything / per-layer dropdown
+        Curve       // an animation curve: the Curve field (S27, widget/CurveField.h)
     };
 
     struct EnumEntry {
@@ -120,6 +121,13 @@ namespace jasperengine::editor{
         std::string help = "";
         const char *format = "%.2f";
         bool showColors = true;
+        // Color3L / Color4L (S27 R1): HDR (an Intensity in the Color window), and a colour stored
+        // as shown (S08 ColorSRGB) instead of linear
+        bool colorHdr = false;
+        bool colorSrgb = false;
+        // Curve: the field's view of values (time 0 to 1)
+        float curveValueMin = 0.0f;
+        float curveValueMax = 1.0f;
         std::vector<EnumEntry>* enumEntries = nullptr;
         std::vector<int>* sliderValues = nullptr;
         std::function<void()> onValueChanged = nullptr;

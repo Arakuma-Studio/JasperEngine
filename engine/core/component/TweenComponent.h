@@ -5,6 +5,7 @@
 #define TWEEN_COMPONENT_H
 
 #include "action/Ease.h"
+#include "math/Curve.h"
 
 namespace jasperengine{
 
@@ -17,6 +18,8 @@ namespace jasperengine{
         bool pingPong = false; // plays forward and then back, in twice the duration
 
         Ease function;
+        // the ease when function is EaseType::CURVE: value = curve.evaluate(time)
+        Curve curve = Curve::linear(0.0f, 0.0f, 1.0f, 1.0f);
     };
 
 }

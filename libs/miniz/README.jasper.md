@@ -5,4 +5,6 @@
 `miniz.c`, `miniz.h` and `LICENSE`, unmodified.
 
 The editor uses it for zip archives (the prebuilt player runtimes it installs, the Android
-packages it assembles; docs/specs/S30-shipping.md D8). Shipped games never link it.
+packages it assembles; docs/specs/S30-shipping.md D8) and for the Project Hub's zip import
+(`editor/hub/ProjectImporter.cpp`, docs/specs/S27-editor-tools.md R22). Shipped games never
+link it.

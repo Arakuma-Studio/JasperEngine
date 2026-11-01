@@ -7,6 +7,7 @@
 
 #include "ParticleEffectCodec.h"
 
+#include "math/CurveJson.h"
 #include "particles/ParticleModules.h"
 
 #include <cmath>
@@ -41,10 +42,6 @@ namespace {
 
     Json jf(float value){
         return Json(ParticleEffectCodec::jsonFloat(value));
-    }
-
-    Json jtangent(float value){
-        return std::isfinite(value) ? jf(value) : Json(nullptr);
     }
 
     bool readFloat(const Json& j, float& out){
@@ -105,97 +102,39 @@ namespace {
 
     // ---------------------------------------------------------------- curves and gradients
 
-    Json curveToJson(const Curve& curve){
-        Json keys = Json::array();
-        for (const CurveKey& k : curve.keys){
-            keys.push_back(Json::array({jf(k.time), jf(k.value), jtangent(k.inTangent), jtangent(k.outTangent)}));
-        }
-        return keys;
-    }
+    // the shared encoding (math/CurveJson.h), its issues as this file's diagnostics
 
-    bool curveFromJson(const Json& j, Curve& curve, const std::string& path, std::vector<Diagnostic>& out){
-        if (!j.is_array()){
-            error(out, path, "a curve is an array of [time, value, inTangent, outTangent] keys");
-            return false;
-        }
-        curve.keys.clear();
-        for (size_t i = 0; i < j.size(); i++){
-            const Json& k = j[i];
-            CurveKey key;
-            bool ok = k.is_array() && (k.size() == 2 || k.size() == 4) && readFloat(k[0], key.time) && readFloat(k[1], key.value);
-            if (ok && k.size() == 4){
-                // null: an infinite (step) tangent
-                key.inTangent = k[2].is_null() ? INFINITY : 0.0f;
-                key.outTangent = k[3].is_null() ? INFINITY : 0.0f;
-                ok = (k[2].is_null() || readFloat(k[2], key.inTangent)) && (k[3].is_null() || readFloat(k[3], key.outTangent));
-            }
-            if (!ok){
-                error(out, indexed(path, i), "a key is [time, value] or [time, value, inTangent, outTangent] (null: a step)");
-                return false;
-            }
-            curve.keys.push_back(key);
-        }
-        return true;
-    }
-
-    Json gradientToJson(const Gradient& g){
-        Json j = Json::object();
-        Json colors = Json::array();
-        for (const GradientColorKey& k : g.colorKeys){
-            colors.push_back(Json::array({jf(k.time), jf(k.color.x), jf(k.color.y), jf(k.color.z)}));
-        }
-        Json alphas = Json::array();
-        for (const GradientAlphaKey& k : g.alphaKeys){
-            alphas.push_back(Json::array({jf(k.time), jf(k.alpha)}));
-        }
-        j["colorKeys"] = colors;
-        j["alphaKeys"] = alphas;
-        if (g.mode != GradientMode::Blend)
-            j["mode"] = optionName(ParticleModules::gradientBlendModes(), (uint8_t)g.mode);
-        if (g.linear)
-            j["linear"] = true;
-        return j;
-    }
-
-    bool gradientFromJson(const Json& j, Gradient& g, const std::string& path, std::vector<Diagnostic>& out){
-        if (!j.is_object()){
-            error(out, path, "a gradient is {colorKeys: [[time, r, g, b]], alphaKeys: [[time, a]]}");
-            return false;
-        }
-        g = Gradient();
+    bool reportIssues(std::vector<Diagnostic>& out, const std::string& path, const std::vector<curvejson::Issue>& issues){
         bool ok = true;
-        for (auto it = j.begin(); it != j.end(); ++it){
-            const std::string& key = it.key();
-            const std::string at = join(path, key);
-            if (key == "colorKeys"){
-                if (!it->is_array()){ error(out, at, "colorKeys is an array of [time, r, g, b]"); ok = false; continue; }
-                for (size_t i = 0; i < it->size(); i++){
-                    float v[4];
-                    if (!readFloats((*it)[i], v)){ error(out, indexed(at, i), "a colour key is [time, r, g, b] (sRGB)"); ok = false; break; }
-                    g.colorKeys.push_back({v[0], Vector3(v[1], v[2], v[3])});
-                }
-            }else if (key == "alphaKeys"){
-                if (!it->is_array()){ error(out, at, "alphaKeys is an array of [time, alpha]"); ok = false; continue; }
-                for (size_t i = 0; i < it->size(); i++){
-                    float v[2];
-                    if (!readFloats((*it)[i], v)){ error(out, indexed(at, i), "an alpha key is [time, alpha]"); ok = false; break; }
-                    g.alphaKeys.push_back({v[0], v[1]});
-                }
-            }else if (key == "mode"){
-                uint8_t mode = 0;
-                if (!optionValue(ParticleModules::gradientBlendModes(), *it, mode)){
-                    error(out, at, "mode is one of " + optionList(ParticleModules::gradientBlendModes()));
-                    ok = false;
-                }
-                g.mode = (GradientMode)mode;
-            }else if (key == "linear"){
-                if (!it->is_boolean()){ error(out, at, "linear is true or false"); ok = false; continue; }
-                g.linear = it->get<bool>();
+        for (const curvejson::Issue& issue : issues){
+            if (issue.error){
+                error(out, path + issue.path, issue.message);
+                ok = false;
             }else{
-                warn(out, at, "unknown gradient key");
+                warn(out, path + issue.path, issue.message);
             }
         }
         return ok;
+    }
+
+    Json curveToJson(const Curve& curve){
+        return curvejson::curveToJson(curve);
+    }
+
+    bool curveFromJson(const Json& j, Curve& curve, const std::string& path, std::vector<Diagnostic>& out){
+        std::vector<curvejson::Issue> issues;
+        const bool read = curvejson::curveFromJson(j, curve, issues);
+        return reportIssues(out, path, issues) && read;
+    }
+
+    Json gradientToJson(const Gradient& g){
+        return curvejson::gradientToJson(g);
+    }
+
+    bool gradientFromJson(const Json& j, Gradient& g, const std::string& path, std::vector<Diagnostic>& out){
+        std::vector<curvejson::Issue> issues;
+        const bool read = curvejson::gradientFromJson(j, g, issues);
+        return reportIssues(out, path, issues) && read;
     }
 
     // ---------------------------------------------------------------- MinMaxCurve
@@ -707,17 +646,24 @@ namespace {
 
 }
 
+Json ParticleEffectCodec::minMaxCurveToJson(const MinMaxCurve& value){
+    return curveValueToJson(value);
+}
+
+bool ParticleEffectCodec::minMaxCurveFromJson(const Json& json, MinMaxCurve& value, std::vector<Diagnostic>& diagnostics){
+    return curveValueFromJson(json, value, "", diagnostics);
+}
+
+Json ParticleEffectCodec::minMaxGradientToJson(const MinMaxGradient& value){
+    return gradientValueToJson(value);
+}
+
+bool ParticleEffectCodec::minMaxGradientFromJson(const Json& json, MinMaxGradient& value, std::vector<Diagnostic>& diagnostics){
+    return gradientValueFromJson(json, value, "", diagnostics);
+}
+
 double ParticleEffectCodec::jsonFloat(float value){
-    if (!std::isfinite(value))
-        return 0.0;
-    char text[32];
-    for (int precision = 1; precision <= 9; precision++){
-        std::snprintf(text, sizeof(text), "%.*g", precision, (double)value);
-        const double parsed = std::strtod(text, nullptr);
-        if ((float)parsed == value)
-            return parsed;
-    }
-    return (double)value;
+    return curvejson::jsonFloat(value);
 }
 
 Json ParticleEffectCodec::toJson(const ParticleEffectDocument& document){

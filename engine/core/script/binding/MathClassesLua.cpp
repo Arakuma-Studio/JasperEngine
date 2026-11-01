@@ -22,6 +22,10 @@
 #include "Plane.h"
 #include "AABB.h"
 #include "OBB.h"
+#include "Curve.h"
+#include "particles/ParticleValues.h"
+
+#include <optional>
 
 using namespace jasperengine;
 
@@ -34,6 +38,12 @@ namespace luabridge
     template<> struct Stack<OBB::CornerEnum> : EnumWrapper<OBB::CornerEnum>{};
     
     template<> struct Stack<RayFilter> : EnumWrapper<RayFilter>{};
+
+    template<> struct Stack<CurveWrapMode> : EnumWrapper<CurveWrapMode>{};
+    template<> struct Stack<CurveTangentMode> : EnumWrapper<CurveTangentMode>{};
+    template<> struct Stack<GradientMode> : EnumWrapper<GradientMode>{};
+    template<> struct Stack<particles::CurveMode> : EnumWrapper<particles::CurveMode>{};
+    template<> struct Stack<particles::GradientValueMode> : EnumWrapper<particles::GradientValueMode>{};
 }
 
 // constants are returned as copies: bound by pointer, LuaBridge hands out a writable reference to them
@@ -106,6 +116,220 @@ static void addNumberFirst(lua_State* L, const char* metamethod){
         lua_setfield(L, -2, metamethod);
         lua_pop(L, 1);
     }
+}
+
+// ---- curves and gradients (docs/specs/S27-editor-tools.md R43): Unity's names, 1-based key
+// indices (C++ and MCP are 0-based). Lua is compiled as C, so nothing here raises a Lua error:
+// a bad index gives nil, false or -1.
+
+namespace {
+
+    bool keyIndex(const Curve& curve, int index){
+        return index >= 1 && (size_t)index <= curve.keys.size();
+    }
+
+    // the 1-based index of a 0-based one, -1 kept
+    int luaIndex(int index){
+        return index < 0 ? -1 : index + 1;
+    }
+
+    // a key table entry of a Gradient's colorKeys / alphaKeys argument, skipped when it is not one
+    template <class T>
+    std::vector<T> keyList(const luabridge::LuaRef& table){
+        std::vector<T> keys;
+        if (!table.isTable())
+            return keys;
+        const int count = table.length();
+        for (int i = 1; i <= count && keys.size() < Gradient::kMaxKeys; i++){
+            const luabridge::LuaRef entry = table[i];
+            if (!entry.isInstance<T>())
+                continue;
+            const auto key = entry.cast<T>();
+            if (key)
+                keys.push_back(*key);
+        }
+        return keys;
+    }
+
+    template <class T>
+    luabridge::LuaRef keyTable(lua_State* L, const std::vector<T>& keys){
+        luabridge::LuaRef table = luabridge::newTable(L);
+        for (size_t i = 0; i < keys.size(); i++){
+            table[(int)i + 1] = keys[i];
+        }
+        return table;
+    }
+
+    void registerCurveClasses(lua_State* L){
+        luabridge::getGlobalNamespace(L)
+            .beginNamespace("WrapMode")
+            .addVariable("Clamp", CurveWrapMode::Clamp)
+            .addVariable("ClampForever", CurveWrapMode::Clamp)
+            .addVariable("Constant", CurveWrapMode::Clamp)
+            .addVariable("Loop", CurveWrapMode::Loop)
+            .addVariable("PingPong", CurveWrapMode::PingPong)
+            .addVariable("Linear", CurveWrapMode::Linear)
+            .addVariable("LoopWithOffset", CurveWrapMode::LoopWithOffset)
+            .addVariable("CycleWithOffset", CurveWrapMode::LoopWithOffset)
+            .endNamespace();
+
+        luabridge::getGlobalNamespace(L)
+            .beginNamespace("TangentMode")
+            .addVariable("Free", CurveTangentMode::Free)
+            .addVariable("Auto", CurveTangentMode::Auto)
+            .addVariable("Linear", CurveTangentMode::Linear)
+            .addVariable("Constant", CurveTangentMode::Constant)
+            .addVariable("ClampedAuto", CurveTangentMode::ClampedAuto)
+            .endNamespace();
+
+        luabridge::getGlobalNamespace(L)
+            .beginNamespace("GradientMode")
+            .addVariable("Blend", GradientMode::Blend)
+            .addVariable("Fixed", GradientMode::Fixed)
+            .endNamespace();
+
+        luabridge::getGlobalNamespace(L)
+            .beginNamespace("MinMaxCurveMode")
+            .addVariable("Constant", particles::CurveMode::Constant)
+            .addVariable("TwoConstants", particles::CurveMode::TwoConstants)
+            .addVariable("Curve", particles::CurveMode::Curve)
+            .addVariable("TwoCurves", particles::CurveMode::TwoCurves)
+            .endNamespace();
+
+        luabridge::getGlobalNamespace(L)
+            .beginNamespace("MinMaxGradientMode")
+            .addVariable("Color", particles::GradientValueMode::Color)
+            .addVariable("Gradient", particles::GradientValueMode::Gradient)
+            .addVariable("TwoColors", particles::GradientValueMode::TwoColors)
+            .addVariable("TwoGradients", particles::GradientValueMode::TwoGradients)
+            .endNamespace();
+
+        luabridge::getGlobalNamespace(L)
+            .beginClass<CurveKey>("Keyframe")
+            .addConstructor(
+                [](void* ptr) { return new (ptr) CurveKey(); },
+                [](void* ptr, float time, float value) { return new (ptr) CurveKey{time, value, 0.0f, 0.0f}; },
+                [](void* ptr, float time, float value, float inTangent, float outTangent) {
+                    return new (ptr) CurveKey{time, value, inTangent, outTangent}; })
+            .addProperty("time", &CurveKey::time, &CurveKey::time)
+            .addProperty("value", &CurveKey::value, &CurveKey::value)
+            .addProperty("inTangent", &CurveKey::inTangent, &CurveKey::inTangent)
+            .addProperty("outTangent", &CurveKey::outTangent, &CurveKey::outTangent)
+            .addProperty("inTangentMode", &CurveKey::inMode, &CurveKey::setInMode)
+            .addProperty("outTangentMode", &CurveKey::outMode, &CurveKey::setOutMode)
+            .addProperty("broken", &CurveKey::broken, &CurveKey::setBroken)
+            .addFunction("__eq", &equalsLua<CurveKey>)
+            .endClass();
+
+        luabridge::getGlobalNamespace(L)
+            .beginClass<Curve>("AnimationCurve")
+            .addConstructor<void()>()
+            .addStaticFunction("linear", [](float timeStart, float valueStart, float timeEnd, float valueEnd) -> Curve {
+                return Curve::linear(timeStart, valueStart, timeEnd, valueEnd); })
+            .addStaticFunction("easeInOut", &Curve::easeInOut)
+            .addStaticFunction("constant", [](float timeStart, float timeEnd, float value) -> Curve {
+                return Curve::constant(timeStart, timeEnd, value); })
+            .addFunction("evaluate", &Curve::evaluate)
+            .addFunction("addKey",
+                [](Curve& curve, float time, float value) -> int { return luaIndex(curve.addKey(time, value)); },
+                [](Curve& curve, const CurveKey& key) -> int { return luaIndex(curve.addKey(key)); })
+            .addFunction("removeKey", [](Curve& curve, int index) -> bool {
+                if (!keyIndex(curve, index)) return false;
+                curve.removeKey((size_t)index - 1);
+                return true; })
+            .addFunction("moveKey", [](Curve& curve, int index, const CurveKey& key) -> int {
+                if (!keyIndex(curve, index)) return -1;
+                return luaIndex(curve.moveKey((size_t)index - 1, key)); })
+            .addFunction("getKey", [](const Curve& curve, int index) -> std::optional<CurveKey> {
+                if (!keyIndex(curve, index)) return std::nullopt;
+                return curve.keys[(size_t)index - 1]; })
+            .addFunction("smoothTangents", [](Curve& curve, int index, float weight) -> bool {
+                if (!keyIndex(curve, index)) return false;
+                curve.smoothTangents((size_t)index - 1, weight);
+                return true; })
+            .addProperty("length", [](const Curve* curve) -> int { return (int)curve->keys.size(); })
+            .addProperty("preWrapMode", &Curve::preWrapMode, &Curve::preWrapMode)
+            .addProperty("postWrapMode", &Curve::postWrapMode, &Curve::postWrapMode)
+            .addFunction("__eq", &equalsLua<Curve>)
+            .endClass();
+
+        luabridge::getGlobalNamespace(L)
+            .beginClass<GradientColorKey>("GradientColorKey")
+            .addConstructor(
+                [](void* ptr) { return new (ptr) GradientColorKey(); },
+                [](void* ptr, Vector3 color, float time) { return new (ptr) GradientColorKey{time, color}; })
+            .addProperty("color", &GradientColorKey::color, &GradientColorKey::color)
+            .addProperty("time", &GradientColorKey::time, &GradientColorKey::time)
+            .endClass();
+
+        luabridge::getGlobalNamespace(L)
+            .beginClass<GradientAlphaKey>("GradientAlphaKey")
+            .addConstructor(
+                [](void* ptr) { return new (ptr) GradientAlphaKey(); },
+                [](void* ptr, float alpha, float time) { return new (ptr) GradientAlphaKey{time, alpha}; })
+            .addProperty("alpha", &GradientAlphaKey::alpha, &GradientAlphaKey::alpha)
+            .addProperty("time", &GradientAlphaKey::time, &GradientAlphaKey::time)
+            .endClass();
+
+        luabridge::getGlobalNamespace(L)
+            .beginClass<Gradient>("Gradient")
+            .addConstructor<void()>()
+            .addFunction("evaluate", &Gradient::evaluate)
+            .addFunction("setKeys", [](Gradient& gradient, const luabridge::LuaRef& colorKeys, const luabridge::LuaRef& alphaKeys) -> void {
+                gradient.colorKeys = keyList<GradientColorKey>(colorKeys);
+                gradient.alphaKeys = keyList<GradientAlphaKey>(alphaKeys);
+                gradient.sortKeys(); })
+            .addProperty("colorKeys", [](const Gradient* gradient, lua_State* L) -> luabridge::LuaRef {
+                return keyTable(L, gradient->colorKeys); })
+            .addProperty("alphaKeys", [](const Gradient* gradient, lua_State* L) -> luabridge::LuaRef {
+                return keyTable(L, gradient->alphaKeys); })
+            .addProperty("mode", &Gradient::mode, &Gradient::mode)
+            .addProperty("linear", &Gradient::linear, &Gradient::linear)
+            .addFunction("__eq", &equalsLua<Gradient>)
+            .endClass();
+
+        luabridge::getGlobalNamespace(L)
+            .beginClass<particles::MinMaxCurve>("MinMaxCurve")
+            .addConstructor(
+                [](void* ptr) { return new (ptr) particles::MinMaxCurve(); },
+                [](void* ptr, float value) { return new (ptr) particles::MinMaxCurve(value); })
+            .addStaticFunction("twoConstants", &particles::MinMaxCurve::twoConstants)
+            .addStaticFunction("fromCurve", [](const Curve& curve, float multiplier) -> particles::MinMaxCurve {
+                return particles::MinMaxCurve::fromCurve(curve, multiplier); })
+            .addStaticFunction("twoCurves", [](const Curve& curveMin, const Curve& curveMax, float multiplier) -> particles::MinMaxCurve {
+                particles::MinMaxCurve value = particles::MinMaxCurve::fromCurve(curveMin, multiplier);
+                value.mode = particles::CurveMode::TwoCurves;
+                value.curveMax = curveMax;
+                return value; })
+            .addFunction("evaluate", [](const particles::MinMaxCurve& value, float time, std::optional<float> random) -> float {
+                return value.evaluate(time, random.value_or(0.0f)); })
+            .addProperty("mode", &particles::MinMaxCurve::mode, &particles::MinMaxCurve::mode)
+            .addProperty("constant", &particles::MinMaxCurve::constant, &particles::MinMaxCurve::constant)
+            .addProperty("constantMin", &particles::MinMaxCurve::constant, &particles::MinMaxCurve::constant)
+            .addProperty("constantMax", &particles::MinMaxCurve::constantMax, &particles::MinMaxCurve::constantMax)
+            .addProperty("curve", &particles::MinMaxCurve::curve, &particles::MinMaxCurve::curve)
+            .addProperty("curveMin", &particles::MinMaxCurve::curve, &particles::MinMaxCurve::curve)
+            .addProperty("curveMax", &particles::MinMaxCurve::curveMax, &particles::MinMaxCurve::curveMax)
+            .addProperty("multiplier", &particles::MinMaxCurve::multiplier, &particles::MinMaxCurve::multiplier)
+            .endClass();
+
+        luabridge::getGlobalNamespace(L)
+            .beginClass<particles::MinMaxGradient>("MinMaxGradient")
+            .addConstructor(
+                [](void* ptr) { return new (ptr) particles::MinMaxGradient(); },
+                [](void* ptr, Vector4 color) { return new (ptr) particles::MinMaxGradient(color); })
+            .addFunction("evaluate", [](const particles::MinMaxGradient& value, float time, std::optional<float> random) -> Vector4 {
+                return value.evaluate(time, random.value_or(0.0f)); })
+            .addProperty("mode", &particles::MinMaxGradient::mode, &particles::MinMaxGradient::mode)
+            .addProperty("color", &particles::MinMaxGradient::color, &particles::MinMaxGradient::color)
+            .addProperty("colorMin", &particles::MinMaxGradient::color, &particles::MinMaxGradient::color)
+            .addProperty("colorMax", &particles::MinMaxGradient::colorMax, &particles::MinMaxGradient::colorMax)
+            .addProperty("gradient", &particles::MinMaxGradient::gradient, &particles::MinMaxGradient::gradient)
+            .addProperty("gradientMin", &particles::MinMaxGradient::gradient, &particles::MinMaxGradient::gradient)
+            .addProperty("gradientMax", &particles::MinMaxGradient::gradientMax, &particles::MinMaxGradient::gradientMax)
+            .endClass();
+    }
+
 }
 
 void LuaBinding::registerMathClasses(lua_State *L){
@@ -692,6 +916,8 @@ void LuaBinding::registerMathClasses(lua_State *L){
 #endif
         )
         .endClass();
+
+    registerCurveClasses(L);
 
     addNumberFirst<Vector2, &numberTimes<Vector2>>(L, "__mul");
     addNumberFirst<Vector2, &numberDividedBy<Vector2>>(L, "__div");

@@ -1341,11 +1341,11 @@ void editor::InspectorWindow::drawKeyframeTracksComponent(ComponentType cpType, 
     }
 
     if (keyframeEasingsExpanded){
-        // CUSTOM is omitted here: per-segment easings store only the EaseType.
+        // CUSTOM and CURVE are omitted here: per-segment easings store only the EaseType.
         std::vector<const char*> easeNames;
         std::vector<EaseType> easeValues;
         for (const auto& entry : (*enumEntries(reflect::enums::kEaseType))){
-            if (entry.value == (int)EaseType::CUSTOM){
+            if (entry.value == (int)EaseType::CUSTOM || entry.value == (int)EaseType::CURVE){
                 continue;
             }
             easeNames.push_back(entry.name);

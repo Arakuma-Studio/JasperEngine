@@ -174,9 +174,12 @@ bool editor::ProjectChecks::isSkippedDir(const fs::path& dir) {
 
 bool editor::ProjectChecks::isInSkippedDir(const fs::path& relative) {
     const fs::path parent = relative.lexically_normal().parent_path();
+    bool top = true;
     for (const fs::path& part : parent) {
         if (part == ".") continue;
-        if (isSkippedDir(part)) return true;
+        // at the project's top Recordings and EditorSettings hold no assets either (S27 R31)
+        if (top ? Project::isNonAssetTopLevelDir(part.string()) : isSkippedDir(part)) return true;
+        top = false;
     }
     return false;
 }

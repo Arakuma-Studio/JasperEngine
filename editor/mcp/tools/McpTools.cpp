@@ -26,6 +26,7 @@ struct ToolModule {
 const ToolModule TOOL_MODULES[] = {
     {registerCoreTools, "Core", ""},
     {registerProjectTools, "Project", ""},
+    {registerHubTools, "Project", ""},   // S27: templates and imports
     {registerSceneTools, "Scenes", ""},
     {registerEntityTools, "GameObjects and selection", ""},
     {registerComponentTools, "Components and properties", ""},
@@ -60,6 +61,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerGraphTools, "Graphs", "scripting"},   // S23
     {registerGameplayTools, "Gameplay: input, character controller, water", "gameplay"},   // S22
     {registerSplineTools, "Splines: roads, walls, placement, terrain and water", "splines"},   // S18
+    {registerEditorToolsTools, "Editor tools: recorder, colour sampling, swatches, curves", "editor_tools"},   // S27
     {registerParticleTools, "Particles: effects and playback", "particles"},   // S20
     {registerOrganisationTools, "Search, shortcuts, layouts, labels, saved searches and bookmarks", "organisation"},   // S25
     {registerNavigationTools, "Navigation: navmeshes, agents, crowds and grids", "navigation"},   // S19

@@ -90,7 +90,8 @@ TEST(AppSettings, MergeConcurrent) {
     const YAML::Node saved = YAML::LoadFile(file.string());
     EXPECT_EQ(saved["window"]["width"].as<int>(), 1600);
     std::vector<std::string> recent;
-    for (const auto& entry : saved["recent_projects"]) recent.push_back(entry.as<std::string>());
+    // records since S27 R21: {path, name, last_opened, ...}
+    for (const auto& entry : saved["recent_projects"]) recent.push_back(fs::path(entry["path"].as<std::string>()).string());
     EXPECT_NE(std::find(recent.begin(), recent.end(), projectA.string()), recent.end());
     EXPECT_NE(std::find(recent.begin(), recent.end(), projectB.string()), recent.end());
     // and A's view now has B's project too

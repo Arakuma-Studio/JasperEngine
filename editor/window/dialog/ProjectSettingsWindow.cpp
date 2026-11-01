@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectSettingsWindow.h"
+#include "widget/ColorMath.h"
+#include "widget/ColorField.h"
 #include "shortcuts/CommandCatalog.h"
 #include "settings/SettingsRegistry.h"
 #include "reflect/Reflect.h"
@@ -2385,18 +2387,27 @@ void ProjectSettingsWindow::drawAssetLabelsSettings() {
         ImGui::PushID(label.name.c_str());
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
-        float color[3] = {0.5f, 0.5f, 0.5f};
+        Vector3 color(0.5f, 0.5f, 0.5f);
         if (AssetLabels::isColor(label.color)) {
             const unsigned int value = static_cast<unsigned int>(std::strtoul(label.color.c_str() + 1, nullptr, 16));
-            color[0] = ((value >> 16) & 0xFF) / 255.0f;
-            color[1] = ((value >> 8) & 0xFF) / 255.0f;
-            color[2] = (value & 0xFF) / 255.0f;
+            color = Vector3(((value >> 16) & 0xFF) / 255.0f, ((value >> 8) & 0xFF) / 255.0f, (value & 0xFF) / 255.0f);
         }
-        ImGui::ColorEdit3("##LabelColor", color, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
-        if (ImGui::IsItemDeactivatedAfterEdit()) {
-            char hex[8];
-            std::snprintf(hex, sizeof(hex), "#%02X%02X%02X", static_cast<int>(color[0] * 255.0f + 0.5f),
-                          static_cast<int>(color[1] * 255.0f + 0.5f), static_cast<int>(color[2] * 255.0f + 0.5f));
+        const auto preview = m_labelColorPreview.find(label.name);
+        if (preview != m_labelColorPreview.end()) color = preview->second;
+        ui::ColorFieldOptions colorOptions;
+        colorOptions.alpha = false;
+        colorOptions.linearStorage = false;
+        colorOptions.label = "Label Color";
+        colorOptions.width = ImGui::GetFrameHeight() * 1.5f;
+        const ui::EditPhase colorPhase = ui::colorField("##LabelColor", color, colorOptions);
+        if (colorPhase == ui::EditPhase::Changing) {
+            m_labelColorPreview[label.name] = color;
+        } else if (colorPhase == ui::EditPhase::Cancelled) {
+            m_labelColorPreview.erase(label.name);
+        } else if (colorPhase == ui::EditPhase::Committed && preview != m_labelColorPreview.end()) {
+            // the label file is written once, with the colour the window closed on
+            const std::string hex = "#" + colormath::toHex(Vector4(preview->second, 1.0f), false);
+            m_labelColorPreview.erase(preview);
             const LabelOperations::Result result = LabelOperations::setColor(m_project, label.name, hex);
             if (!result.ok) Out::warning("Asset Labels: %s", result.error.c_str());
         }

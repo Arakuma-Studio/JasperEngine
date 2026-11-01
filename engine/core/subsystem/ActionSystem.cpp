@@ -520,7 +520,7 @@ bool ActionSystem::tweenUpdate(double dt, Entity entity, ActionComponent& action
         finished = !tween.loop;
     }
 
-    tween.value = tween.function.call(tween.time);
+    tween.value = tween.function.getType() == EaseType::CURVE ? tween.curve.evaluate(tween.time) : tween.function.call(tween.time);
 
     return finished;
 }

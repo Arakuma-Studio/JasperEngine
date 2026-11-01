@@ -4052,6 +4052,9 @@
 		4A534E47A4AFF745E6C79336 /* AnimatorAssetPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475859F759CDED73BC /* AnimatorAssetPool.h */; };
 		4A534E4719ED4496CD61367E /* AnimatorSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C7892946585F9415 /* AnimatorSystem.h */; };
 		4A534E47285F526FD30A8918 /* CustomCodecs.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476ED3B894B5F99179 /* CustomCodecs.h */; };
+		4A534E477F1D537B5FCAB48A /* CurveJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4729A27E0419671047 /* CurveJson.cpp */; };
+		4A534E47EDF76759E42FAB79 /* CurveJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4729A27E0419671047 /* CurveJson.cpp */; };
+		4A534E4771F369477A4B22CC /* CurveJson.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4707AEFC0DB5C2DC02 /* CurveJson.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8039,6 +8042,8 @@
 		4A534E4773258A6672E9EEE2 /* sokol_gpu_timer_impl.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = sokol_gpu_timer_impl.h; sourceTree = "<group>"; };
 		4A534E472653CC6B20761400 /* sokol_log.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = sokol_log.h; sourceTree = "<group>"; };
 		4A534E476ED3B894B5F99179 /* CustomCodecs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CustomCodecs.h; sourceTree = "<group>"; };
+		4A534E4729A27E0419671047 /* CurveJson.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CurveJson.cpp; sourceTree = "<group>"; };
+		4A534E4707AEFC0DB5C2DC02 /* CurveJson.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CurveJson.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -9976,6 +9981,8 @@
 				50525443E95B1EF1C96FB278 /* Curve.h */,
 				505254438EF836CC55EC97D4 /* noise */,
 				5052544363B9DB11876D3881 /* simd */,
+				4A534E4729A27E0419671047 /* CurveJson.cpp */,
+				4A534E4707AEFC0DB5C2DC02 /* CurveJson.h */,
 			);
 			path = math;
 			sourceTree = "<group>";
@@ -14288,6 +14295,7 @@
 				4A534E47A4AFF745E6C79336 /* AnimatorAssetPool.h in Headers */,
 				4A534E4719ED4496CD61367E /* AnimatorSystem.h in Headers */,
 				4A534E47285F526FD30A8918 /* CustomCodecs.h in Headers */,
+				4A534E4771F369477A4B22CC /* CurveJson.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -16696,6 +16704,7 @@
 				4A534E4744F07FF600222B55 /* Animator.cpp in Sources */,
 				4A534E47143B4D85C7260C54 /* AnimatorAssetPool.cpp in Sources */,
 				4A534E47B21F9A6344B4CC05 /* AnimatorSystem.cpp in Sources */,
+				4A534E477F1D537B5FCAB48A /* CurveJson.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -17396,6 +17405,7 @@
 				4A534E47218C442183265D7F /* Animator.cpp in Sources */,
 				4A534E479173156330A35D24 /* AnimatorAssetPool.cpp in Sources */,
 				4A534E475068D6F918B554F4 /* AnimatorSystem.cpp in Sources */,
+				4A534E47EDF76759E42FAB79 /* CurveJson.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

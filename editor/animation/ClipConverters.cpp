@@ -180,7 +180,7 @@ namespace {
     EaseType easeAt(const KeyframeTracksComponent& keyframe, size_t key){
         if (key >= keyframe.easings.size()) return EaseType::LINEAR;
         const EaseType ease = keyframe.easings[key];
-        return ease == EaseType::CUSTOM ? EaseType::LINEAR : ease;
+        return ease == EaseType::CUSTOM || ease == EaseType::CURVE ? EaseType::LINEAR : ease;
     }
 
     // a time or speed in messages ("0.25"): the editor's one short form (clipui)
@@ -825,7 +825,7 @@ bool ClipConverters::bakeChannels(Scene* scene, Entity root, const std::vector<B
             ClipKey key;
             key.time = channel.times[k];
             key.value = channel.values[k];
-            key.ease = channel.ease == EaseType::CUSTOM ? EaseType::LINEAR : channel.ease;
+            key.ease = channel.ease == EaseType::CUSTOM || channel.ease == EaseType::CURVE ? EaseType::LINEAR : channel.ease;
             track.keys.push_back(key);
         }
         out.tracks.push_back(track);

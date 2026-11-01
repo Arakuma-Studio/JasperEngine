@@ -15,6 +15,7 @@
 #include "htmlui/VideoImporter.h"
 #include <fstream>
 #include <algorithm>
+#include <chrono>
 #include <cerrno>
 #include <cmath>
 #include <cstdlib>
@@ -133,7 +134,7 @@ YAML::Node AppSettings::settingsData;
 YAML::Node AppSettings::loadedSettings;
 bool AppSettings::autosaveEnabled = true;
 int AppSettings::autosaveIntervalSeconds = AppSettings::defaultAutosaveInterval;
-std::vector<std::filesystem::path> AppSettings::recentProjects;
+std::vector<hub::RecentProject> AppSettings::recentProjects;
 std::filesystem::path AppSettings::lastProjectPath;
 std::string AppSettings::lastCMakeCCompiler;
 std::string AppSettings::lastCMakeCxxCompiler;
@@ -156,6 +157,8 @@ float AppSettings::codeEditorFontSize = AppSettings::defaultCodeEditorFontSize;
 bool AppSettings::multiViewportEnabled = false;
 bool AppSettings::poseDockGrown = false;
 bool AppSettings::editorVSyncEnabled = true;
+bool AppSettings::projectHubAlways = false;
+std::filesystem::path AppSettings::hubLastLocation;
 float AppSettings::uiScale = 1.0f;
 PanelVisibilitySettings AppSettings::panelVisibility;
 GameViewSettings AppSettings::gameViewSettings;
@@ -380,16 +383,9 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             defaultExportDirectory = settingsData["export"]["default_dir"].as<std::string>();
         }
 
-        // Load recent projects
-        recentProjects.clear();
-        if (settingsData["recent_projects"]) {
-            for (const auto& path : settingsData["recent_projects"]) {
-                std::string pathStr = path.as<std::string>();
-                if (!pathStr.empty() && std::filesystem::exists(pathStr)) {
-                    recentProjects.push_back(std::filesystem::path(pathStr));
-                }
-            }
-        }
+        // Load recent projects: records, or the old list of paths (S27 R21); missing projects
+        // stay listed (the Project Hub offers Locate... and Remove from List)
+        recentProjects = hub::recent::fromYaml(settingsData["recent_projects"]);
         
         // Load window settings
         if (settingsData["window"]) {
@@ -447,6 +443,12 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             }
             if (editorNode["vsync"]) {
                 editorVSyncEnabled = editorNode["vsync"].as<bool>();
+            }
+            if (editorNode["project_hub_at_startup"] && editorNode["project_hub_at_startup"].IsScalar()) {
+                projectHubAlways = editorNode["project_hub_at_startup"].as<std::string>() == "always";
+            }
+            if (editorNode["hub_last_location"] && editorNode["hub_last_location"].IsScalar()) {
+                hubLastLocation = FileUtils::pathFromUtf8(editorNode["hub_last_location"].as<std::string>());
             }
             if (editorNode["autosave"]) {
                 auto autosaveNode = editorNode["autosave"];
@@ -645,11 +647,7 @@ bool AppSettings::saveSettings() {
             settingsData.remove("last_project_path");
         }
         
-        YAML::Node recentProjectsNode;
-        for (const auto& path : recentProjects) {
-            recentProjectsNode.push_back(path.string());
-        }
-        settingsData["recent_projects"] = recentProjectsNode;
+        settingsData["recent_projects"] = hub::recent::toYaml(recentProjects);
 
         // Last compiler kit
         if (!lastCMakeCCompiler.empty() || !lastCMakeCxxCompiler.empty() || !lastCMakeGenerator.empty()) {
@@ -738,6 +736,8 @@ bool AppSettings::saveSettings() {
         editorNode["multi_viewport"] = multiViewportEnabled;
         editorNode["pose_dock_grown"] = poseDockGrown;
         editorNode["vsync"] = editorVSyncEnabled;
+        editorNode["project_hub_at_startup"] = projectHubAlways ? "always" : "when_no_project";
+        if (!hubLastLocation.empty()) editorNode["hub_last_location"] = FileUtils::pathToGenericUtf8(hubLastLocation);
         YAML::Node autosaveNode;
         autosaveNode["enabled"] = autosaveEnabled;
         autosaveNode["interval_seconds"] = autosaveIntervalSeconds;
@@ -917,22 +917,14 @@ bool AppSettings::writeMerged() {
             }
         }
     }
-    // recent projects: an ordered union, this process's first
-    YAML::Node recent(YAML::NodeType::Sequence);
-    std::vector<std::string> seen;
-    auto addRecent = [&](const YAML::Node& list) {
-        if (!list || !list.IsSequence()) return;
-        for (const auto& entry : list) {
-            const std::string path = entry.as<std::string>();
-            if (std::find(seen.begin(), seen.end(), path) == seen.end()) {
-                seen.push_back(path);
-                recent.push_back(path);
-            }
-        }
-    };
-    addRecent(settingsData["recent_projects"]);
-    addRecent(current["recent_projects"]);
-    merged["recent_projects"] = recent;
+    // recent projects: an ordered union, this process's records first
+    std::vector<hub::RecentProject> recent = hub::recent::fromYaml(settingsData["recent_projects"]);
+    for (hub::RecentProject& other : hub::recent::fromYaml(current["recent_projects"])) {
+        const bool seen = std::any_of(recent.begin(), recent.end(), [&](const hub::RecentProject& p) { return p.path == other.path; });
+        if (!seen) recent.push_back(std::move(other));
+    }
+    hub::recent::enforceCap(recent);
+    merged["recent_projects"] = hub::recent::toYaml(recent);
 
     io::AtomicWriteOptions options;
     options.durability = io::Durability::Document;
@@ -1026,34 +1018,30 @@ void AppSettings::setDefaultExportDirectory(const std::filesystem::path& path) {
 }
 
 std::vector<std::filesystem::path> AppSettings::getRecentProjects() {
+    std::vector<std::filesystem::path> paths;
+    std::error_code ec;
+    for (const hub::RecentProject& p : recentProjects) {
+        if (paths.size() >= hub::recent::kMenuCount) break;
+        if (std::filesystem::exists(p.path, ec)) paths.push_back(p.path);
+    }
+    return paths;
+}
+
+const std::vector<hub::RecentProject>& AppSettings::getRecentProjectRecords() {
     return recentProjects;
 }
 
-void AppSettings::addToRecentProjects(const std::filesystem::path& path, bool needSave) {
+void AppSettings::setRecentProjectRecords(const std::vector<hub::RecentProject>& records) {
+    recentProjects = records;
+    hub::recent::enforceCap(recentProjects);
+    saveSettings();
+}
+
+void AppSettings::addToRecentProjects(const std::filesystem::path& path, bool needSave, const std::string& name) {
     if (path.empty() || !std::filesystem::exists(path)) {
         return;
     }
-    
-    // Check if path already exists
-    auto it = std::find_if(recentProjects.begin(), recentProjects.end(),
-        [&path](const std::filesystem::path& p) {
-            return p == path;
-        });
-    
-    // If found, remove it (to add it to the front)
-    if (it != recentProjects.end()) {
-        recentProjects.erase(it);
-    }
-    
-    // Add to the front
-    recentProjects.insert(recentProjects.begin(), path);
-    
-    // Keep only the most recent 10 projects
-    if (recentProjects.size() > 10) {
-        recentProjects.resize(10);
-    }
-    
-    // Save changes
+    hub::recent::touch(recentProjects, path, name, hub::recent::iso(std::chrono::system_clock::now()));
     if (needSave)
         saveSettings();
 }
@@ -1350,6 +1338,23 @@ bool AppSettings::getEditorVSyncEnabled() {
 
 void AppSettings::setEditorVSyncEnabled(bool enabled) {
     editorVSyncEnabled = enabled;
+}
+
+bool AppSettings::getProjectHubAlways() {
+    return projectHubAlways;
+}
+
+void AppSettings::setProjectHubAlways(bool always) {
+    projectHubAlways = always;
+}
+
+std::filesystem::path AppSettings::getHubLastLocation() {
+    return hubLastLocation;
+}
+
+void AppSettings::setHubLastLocation(const std::filesystem::path& location) {
+    hubLastLocation = location;
+    saveSettings();
 }
 
 float AppSettings::getUiScale() {

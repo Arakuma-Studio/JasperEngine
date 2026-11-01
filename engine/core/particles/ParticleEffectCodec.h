@@ -43,6 +43,14 @@ namespace jasperengine { namespace particles {
         // result replaces it. A module set to null is removed (hidden); a module object adds it.
         static bool applyMergePatch(ParticleEffectDocument& document, const nlohmann::ordered_json& patch, std::vector<Diagnostic>& diagnostics);
 
+        // One MinMaxCurve / MinMaxGradient value in the effect's field form (a plain constant is a
+        // number, else {mode, ...} with the members its mode uses): the editor's fields and MCP
+        // (docs/specs/S27-editor-tools.md R41)
+        static nlohmann::ordered_json minMaxCurveToJson(const MinMaxCurve& value);
+        static bool minMaxCurveFromJson(const nlohmann::ordered_json& json, MinMaxCurve& value, std::vector<Diagnostic>& diagnostics);
+        static nlohmann::ordered_json minMaxGradientToJson(const MinMaxGradient& value);
+        static bool minMaxGradientFromJson(const nlohmann::ordered_json& json, MinMaxGradient& value, std::vector<Diagnostic>& diagnostics);
+
         // A float as the double its shortest round-trip decimal names, so JSON shows 0.1, not
         // 0.10000000149011612, and reading it back gives the same float
         static double jsonFloat(float value);

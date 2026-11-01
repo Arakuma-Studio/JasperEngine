@@ -4,18 +4,44 @@
 #ifndef MATH_CURVE_H
 #define MATH_CURVE_H
 
-// Animation curves and colour gradients with Unity semantics (docs/specs/S20-particles.md D5):
-// the particle effects' MinMaxCurve and MinMaxGradient values are made of them, and a curve
-// editor edits them. Runtime code bakes them into lookup tables (particles/ParticleLut.h).
+// Animation curves and colour gradients with Unity semantics (docs/specs/S20-particles.md D5,
+// docs/specs/S27-editor-tools.md R6-R8): the particle effects' MinMaxCurve and MinMaxGradient
+// values are made of them, tweens ease along a Curve (EaseType::CURVE), Lua names them
+// AnimationCurve / Keyframe / Gradient, and the editor's curve and gradient fields edit them.
+// Runtime code bakes them into lookup tables (particles/ParticleLut.h, Curve::bake).
 
 #include "Export.h"
 #include "math/Vector3.h"
 #include "math/Vector4.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <span>
 #include <vector>
 
 namespace jasperengine {
+
+    enum class EaseType;
+
+    // How the editor sets one side's tangent of a key (Unity's AnimationUtility.TangentMode).
+    // Evaluation reads only the tangents: a mode is what recomputes them when keys move.
+    enum class CurveTangentMode : uint8_t {
+        Free,           // as set (dragged or typed)
+        Auto,           // smooth through the neighbours (may overshoot)
+        Linear,         // towards the neighbour on that side
+        Constant,       // a step: infinite tangent, the segment holds its left value
+        ClampedAuto     // smooth, flat at extremes and never overshooting the neighbours
+    };
+
+    // What a curve does before its first key (pre) and after its last (post): Unity's WrapMode
+    enum class CurveWrapMode : uint8_t {
+        Clamp,          // the end key's value (Unity "Clamp" / "Clamp Forever")
+        Loop,
+        PingPong,
+        Linear,         // the end key's tangent continued as a line
+        LoopWithOffset  // Loop, each cycle offset by the last key's value minus the first's
+    };
 
     // A key of a Curve: tangents are slopes (value units per time unit) on each side of the key.
     // An infinite tangent makes the segment it starts or ends a step (held at the left value).
@@ -24,24 +50,45 @@ namespace jasperengine {
         float value = 0.0f;
         float inTangent = 0.0f;
         float outTangent = 0.0f;
+        // the tangent modes: bits 0-2 the in side's CurveTangentMode, 3-5 the out side's, bit 6
+        // "broken" (the sides move independently). 0: Free on both sides, as every key read
+        // without a mode, so its tangents stay as stored
+        uint8_t mode = 0;
+
+        static constexpr uint8_t kBroken = 1u << 6;
+
+        CurveTangentMode inMode() const { return (CurveTangentMode)(mode & 7u); }
+        CurveTangentMode outMode() const { return (CurveTangentMode)((mode >> 3) & 7u); }
+        bool broken() const { return (mode & kBroken) != 0; }
+        void setInMode(CurveTangentMode m) { mode = (uint8_t)((mode & ~7u) | ((uint8_t)m & 7u)); }
+        void setOutMode(CurveTangentMode m) { mode = (uint8_t)((mode & ~(7u << 3)) | (((uint8_t)m & 7u) << 3)); }
+        void setBroken(bool b) { mode = (uint8_t)(b ? (mode | kBroken) : (mode & ~kBroken)); }
+        // both sides, joined (Auto, Clamped Auto, Free Smooth: Unity's key menu)
+        void setBothModes(CurveTangentMode m) { mode = 0; setInMode(m); setOutMode(m); }
 
         bool operator==(const CurveKey& other) const {
-            return time == other.time && value == other.value && inTangent == other.inTangent && outTangent == other.outTangent;
+            return time == other.time && value == other.value && inTangent == other.inTangent && outTangent == other.outTangent &&
+                   mode == other.mode;
         }
         bool operator!=(const CurveKey& other) const { return !(*this == other); }
     };
 
     // Keys sorted by time, cubic Hermite between neighbours (the left key's out tangent and the
-    // right key's in tangent), held flat before the first key and after the last. No key is 0.
+    // right key's in tangent); outside the keys the wrap modes apply (Clamp: held flat). Evaluation
+    // is pure and allocation-free. No key is 0.
     struct JASPERENGINE_API Curve {
         std::vector<CurveKey> keys;
+        CurveWrapMode preWrapMode = CurveWrapMode::Clamp;
+        CurveWrapMode postWrapMode = CurveWrapMode::Clamp;
 
         Curve() = default;
         explicit Curve(std::vector<CurveKey> keys): keys(std::move(keys)) {}
 
         float evaluate(float time) const;
-        // the slope at `time` (0 outside the keys)
+        // the slope at `time` (outside the keys: the wrap's, 0 when clamped)
         float derivative(float time) const;
+        // out[i] = evaluate(t0 + (t1 - t0) * i / (out.size() - 1)); one entry: evaluate(t0)
+        void bake(std::span<float> out, float t0, float t1) const;
 
         bool empty() const { return keys.empty(); }
         // Sorts the keys by time (stable for equal times)
@@ -49,18 +96,59 @@ namespace jasperengine {
         // smallest and largest value the curve takes between its first and last key
         void valueRange(float& lo, float& hi) const;
 
+        // ---- key editing (Unity's AnimationCurve API). Indices are 0-based.
+
+        // A key at (time, value), its tangents smoothed (Clamped Auto) with its neighbours'
+        // modes applied; -1 when a key already sits at that time
+        int addKey(float time, float value);
+        // `key` inserted in time order (its tangents as given unless its modes recompute them);
+        // -1 when a key already sits at that time
+        int addKey(const CurveKey& key);
+        // Replaces key `index` by `key` and returns its new index. When another key sits at
+        // key.time, the old key's time is kept (Unity's MoveKey). -1 for a bad index.
+        int moveKey(size_t index, const CurveKey& key);
+        void removeKey(size_t index);
+        // Unity's SmoothTangents: in = out = the slopes to the neighbours blended by `weight`
+        // (-1 the left one, 0 their mean, 1 the right one); the end keys point at their neighbour
+        void smoothTangents(size_t index, float weight);
+        // Recomputes the tangents its modes set for key `index` and its two neighbours (whose
+        // Auto and Linear sides depend on it)
+        void updateTangents(size_t index);
+        void updateAllTangents();
+
+        // ---- constructors
+
         // one key: the value everywhere
         static Curve constant(float value);
+        // Unity's AnimationCurve.Constant: keys at timeStart and timeEnd with `value`, flat
+        static Curve constant(float timeStart, float timeEnd, float value);
         // a line from (0, from) to (1, to)
         static Curve linear(float from, float to);
+        // Unity's AnimationCurve.Linear: a line from (timeStart, valueStart) to (timeEnd, valueEnd)
+        static Curve linear(float timeStart, float valueStart, float timeEnd, float valueEnd);
         // linear segments through (time, value) points, tangents along the segments
         static Curve polyline(const std::vector<std::pair<float, float>>& points);
         // the ease-in-out of Unity's AnimationCurve.EaseInOut: flat tangents at both ends
         static Curve easeInOut(float timeStart, float valueStart, float timeEnd, float valueEnd);
+        // An ease over [0, 1] as keys (the ends, then a key where the curve is furthest from the
+        // ease, each with the ease's slopes on both sides; a jump becomes a step): `keys` keys,
+        // and more (up to 64) while the curve is further than 0.005 from the ease anywhere (the
+        // elastic eases need about 24). LINEAR is two keys; CUSTOM and CURVE have no function of
+        // their own (a linear curve).
+        static Curve fromEase(EaseType type, int keys = 16);
+        // fromEase's sampler over any function of [0, 1]: exactly `keys` keys (fewer when it is
+        // exact sooner), then more up to `maxKeys` while the error is above `tolerance` (0: none)
+        static Curve fromFunction(const std::function<float(float)>& f, int keys = 16, float tolerance = 0.0f, int maxKeys = 64);
 
-        bool operator==(const Curve& other) const { return keys == other.keys; }
-        bool operator!=(const Curve& other) const { return keys != other.keys; }
+        bool operator==(const Curve& other) const {
+            return keys == other.keys && preWrapMode == other.preWrapMode && postWrapMode == other.postWrapMode;
+        }
+        bool operator!=(const Curve& other) const { return !(*this == other); }
     };
+
+    // Unity's names (C++ and Lua)
+    using AnimationCurve = Curve;
+    using Keyframe = CurveKey;
 
     enum class GradientMode : uint8_t {
         Blend,  // linear between keys
@@ -94,8 +182,10 @@ namespace jasperengine {
         GradientMode mode = GradientMode::Blend;
         bool linear = false;
 
-        // linear RGB, alpha
+        // linear RGB, alpha (allocation-free)
         Vector4 evaluate(float time) const;
+        // out[i] = evaluate(i / (out.size() - 1)); one entry: evaluate(0)
+        void bake(std::span<Vector4> out) const;
         // the colour as it is blended (sRGB unless linear) before the conversion to linear
         Vector3 evaluateEncoded(float time) const;
         float evaluateAlpha(float time) const;

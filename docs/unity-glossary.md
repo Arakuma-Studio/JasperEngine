@@ -41,6 +41,10 @@ Projects made before the rename are migrated once with
 | Animator Controller (`.controller`), Animator window (Window > Animation > Animator: Layers, Parameters, state machine graph, blend trees), Avatar Mask (`.mask`), Animation Montage (Unreal's montages, `.montage`), Avatar / Configure Avatar | none (new): Assets > Create > Animator Controller / Avatar Mask / Animation Montage; the Avatar is the model's `.humanoid` map |
 | none: Unity has no pose-to-pose animation (the closest is keyframing a humanoid clip in the Animation window) | none (new): Pose Animation (Window > Animation > Pose Animation; `.poseanim` assets and templates), played by the Pose Animator or baked to an Animation Clip or an Animation; see [pose-animation.md](pose-animation.md) |
 | Avatar (Rig > Animation Type Humanoid, Configure Avatar) | none (new): the humanoid map, bones mapped to body parts from their names; fixes in the Pose Animation window's Map Bones... popup, stored in a `<model>.humanoid` file next to the model |
+| Color picker (the Color window: Hexadecimal, Intensity, the eyedropper, Swatches and `.colors` libraries) | ImGui's colour popup (no eyedropper, swatches or HDR Intensity); see [editor/color-picker.md](editor/color-picker.md) |
+| Curve Editor, Gradient Editor, curve presets (`.curves`), Wrap Mode (Clamp, Loop, Ping Pong), tangent modes (Clamped Auto, Auto, Free Smooth, Flat, Broken; Free, Linear, Constant) | the Particle System's key tables; see [editor/curves.md](editor/curves.md) |
+| Unity Hub (projects, templates, Add project from disk) | none (new): the Project Hub (File > Project Hub..., Shift at launch, `--hub`), with zip and Git import; the editor used to open a temporary project; see [editor/project-hub.md](editor/project-hub.md) |
+| Unity Recorder (Window > General > Recorder: Image Sequence and Movie recorders, Recording Mode, Take, Exit Play Mode) | none (new): movies go through the user's FFmpeg; see [editor/recorder.md](editor/recorder.md) |
 | none: Unity has no vertex animation textures built in (they come from Asset Store packages or Houdini's exporter, played by a custom material) | none (new): Vertex Animation (a `.vat` asset and its generated `.vat.glb`; Window > Animation > Vertex Animation Baker, the `.vat` Inspector's Rebake and Create Crowd...), baked from model clips, Animation Clips, Animation Players, pose animations and lattices, or imported from Houdini Labs VAT 3 and OpenVAT exports; see [vertex-animation.md](vertex-animation.md) |
 
 ## Scripting API (Lua and C++)
@@ -57,6 +61,10 @@ Projects made before the rename are migrated once with
 | `ShadowCaster2D` / `ShadowCaster2DComponent` | `Occluder2D` / `Occluder2DComponent` |
 | `LineRenderer` / `LineRendererComponent` | `Lines` / `LinesComponent` |
 | `ParticleSystem` / `ParticleSystemComponent` | `Particles` / `ParticlesComponent` |
+| `AnimationCurve`, `Keyframe`, `WrapMode`, `TangentMode` (`AnimationCurve.Linear`, `Constant`, `EaseInOut`; `Evaluate`, `AddKey`, `MoveKey`, `RemoveKey`, `SmoothTangents`; `preWrapMode`/`postWrapMode`) | none (new): `AnimationCurve.linear`, `constant`, `easeInOut`; `evaluate`, `addKey`, `moveKey`, `removeKey`, `smoothTangents` with **1-based** key indices in Lua; C++ `Curve` / `CurveKey` (`AnimationCurve` and `Keyframe` are aliases); no weighted keys |
+| `Gradient`, `GradientColorKey`, `GradientAlphaKey`, `GradientMode` (`Evaluate`, `SetKeys`) | none (new in Lua): `Gradient:evaluate(t)` (a `Vector4`), `setKeys(colorKeys, alphaKeys)`, `mode` |
+| `ParticleSystem.MinMaxCurve`, `MinMaxGradient`, `ParticleSystemCurveMode`, `ParticleSystemGradientMode` | `MinMaxCurve`, `MinMaxGradient`, `MinMaxCurveMode`, `MinMaxGradientMode` (Lua) |
+| DOTween's ease with an `AnimationCurve` (`SetEase(curve)`) | the Tween's Ease "Curve" (`EaseType.CURVE`, `TweenComponent.curve`, `tween.curve`) |
 | `RectTransform` / `RectTransformComponent` | `UILayout` / `UILayoutComponent` |
 | `LayoutGroup` / `LayoutGroupComponent` | `Container` / `UIContainerComponent` |
 | `InputField` / `InputFieldComponent` | `TextEdit` / `TextEditComponent` |

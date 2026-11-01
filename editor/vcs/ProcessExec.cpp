@@ -841,3 +841,399 @@ bool versionAtLeast(std::string_view versionText, std::string_view minimum, std:
 }
 
 }
+
+// ---- ProcessStream (docs/specs/S27-editor-tools.md R33)
+
+namespace jasperengine::editor::vcs {
+
+namespace {
+
+    // splits a pipe's bytes into lines (\n, a trailing \r dropped) for a callback
+    struct LineSplitter {
+        std::string pending;
+        void feed(const char* data, size_t size, const std::function<void(const std::string&)>& line) {
+            for (size_t i = 0; i < size; i++) {
+                const char c = data[i];
+                // FFmpeg and git draw progress with \r: a carriage return ends a line too
+                if (c == '\n' || c == '\r') {
+                    if (line && !pending.empty()) line(pending);
+                    pending.clear();
+                } else {
+                    pending.push_back(c);
+                }
+            }
+        }
+        void finish(const std::function<void(const std::string&)>& line) {
+            if (line && !pending.empty()) line(pending);
+            pending.clear();
+        }
+    };
+
+}
+
+#ifndef _WIN32
+
+struct ProcessStream::State {
+    pid_t pid = -1;
+    int inFd = -1;
+    // the reader thread's own: it closes them at their end of file
+    int outFd = -1;
+    int errFd = -1;
+    Callbacks callbacks;
+    std::thread reader;
+    std::atomic<bool> readerDone{false};
+    std::mutex mutex;
+    std::atomic<bool> exited{false};
+    int exitCode = -1;
+};
+
+ProcessStream::ProcessStream() = default;
+
+ProcessStream::~ProcessStream() {
+    if (!state) return;
+    if (running()) kill();
+    int code = 0;
+    wait(-1, code);
+}
+
+bool ProcessStream::start(const ProcessSpec& spec, Callbacks callbacks, std::string& error) {
+    if (state) {
+        error = "the stream already runs a process";
+        return false;
+    }
+    if (spec.exe.empty() || !spec.exe.is_absolute()) {
+        error = "not an absolute executable path: " + spec.exe.string();
+        return false;
+    }
+    (jobs::isMainThread() ? mainThreadSpawns : otherThreadSpawns)++;
+    const std::string exe = spec.exe.string();
+    std::vector<std::string> argStorage{exe};
+    for (const std::string& arg : spec.args) argStorage.push_back(arg);
+    std::vector<char*> argv;
+    for (std::string& arg : argStorage) argv.push_back(arg.data());
+    argv.push_back(nullptr);
+    std::vector<std::string> envStorage = buildEnvironment(spec);
+    std::vector<char*> envp;
+    for (std::string& entry : envStorage) envp.push_back(entry.data());
+    envp.push_back(nullptr);
+
+    int inPipe[2] = {-1, -1}, outPipe[2] = {-1, -1}, errPipe[2] = {-1, -1};
+    auto fail = [&](const std::string& what) {
+        closeFd(inPipe[0]); closeFd(inPipe[1]);
+        closeFd(outPipe[0]); closeFd(outPipe[1]);
+        closeFd(errPipe[0]); closeFd(errPipe[1]);
+        error = what;
+        return false;
+    };
+    if (!makePipe(inPipe) || !makePipe(outPipe) || !makePipe(errPipe)) return fail(std::string("pipe: ") + std::strerror(errno));
+
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_adddup2(&actions, inPipe[0], 0);
+    posix_spawn_file_actions_adddup2(&actions, outPipe[1], 1);
+    posix_spawn_file_actions_adddup2(&actions, errPipe[1], 2);
+    const std::string cwd = spec.cwd.string();
+    if (!cwd.empty()) posix_spawn_file_actions_addchdir_np(&actions, cwd.c_str());
+    posix_spawnattr_t attr;
+    posix_spawnattr_init(&attr);
+    short flags = POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF;
+#if defined(POSIX_SPAWN_SETSID)
+    flags |= POSIX_SPAWN_SETSID;
+#else
+    flags |= POSIX_SPAWN_SETPGROUP;
+    posix_spawnattr_setpgroup(&attr, 0);
+#endif
+#if defined(__APPLE__)
+    flags |= POSIX_SPAWN_CLOEXEC_DEFAULT;
+#endif
+    posix_spawnattr_setflags(&attr, flags);
+    sigset_t noSignals;
+    sigemptyset(&noSignals);
+    posix_spawnattr_setsigmask(&attr, &noSignals);
+    sigset_t defaults;
+    sigemptyset(&defaults);
+    for (int signal : {SIGPIPE, SIGINT, SIGQUIT, SIGTERM, SIGHUP, SIGCHLD, SIGALRM, SIGUSR1, SIGUSR2}) sigaddset(&defaults, signal);
+    posix_spawnattr_setsigdefault(&attr, &defaults);
+    pid_t pid = -1;
+    const int spawned = posix_spawn(&pid, exe.c_str(), &actions, &attr, argv.data(), envp.data());
+    posix_spawn_file_actions_destroy(&actions);
+    posix_spawnattr_destroy(&attr);
+    closeFd(inPipe[0]);
+    closeFd(outPipe[1]);
+    closeFd(errPipe[1]);
+    if (spawned != 0) return fail(exe + ": " + std::strerror(spawned));
+
+    state = std::make_unique<State>();
+    state->pid = pid;
+    state->inFd = inPipe[1];
+    state->outFd = outPipe[0];
+    state->errFd = errPipe[0];
+    state->callbacks = std::move(callbacks);
+    State* s = state.get();
+    s->reader = std::thread([s]() {
+        LineSplitter out, err;
+        char buffer[16 * 1024];
+        while (s->outFd >= 0 || s->errFd >= 0) {
+            pollfd fds[2];
+            nfds_t count = 0;
+            int outIndex = -1, errIndex = -1;
+            if (s->outFd >= 0) { outIndex = (int)count; fds[count++] = {s->outFd, POLLIN, 0}; }
+            if (s->errFd >= 0) { errIndex = (int)count; fds[count++] = {s->errFd, POLLIN, 0}; }
+            if (poll(fds, count, 100) <= 0) continue;
+            auto drain = [&](int index, int& fd, LineSplitter& lines, const std::function<void(const std::string&)>& callback) {
+                if (index < 0 || !(fds[index].revents & (POLLIN | POLLHUP | POLLERR))) return;
+                const ssize_t n = read(fd, buffer, sizeof(buffer));
+                if (n > 0) {
+                    lines.feed(buffer, (size_t)n, callback);
+                } else if (n == 0 || (errno != EINTR && errno != EAGAIN)) {
+                    lines.finish(callback);
+                    closeFd(fd);
+                }
+            };
+            drain(outIndex, s->outFd, out, s->callbacks.stdoutLine);
+            drain(errIndex, s->errFd, err, s->callbacks.stderrLine);
+        }
+        s->readerDone = true;
+    });
+    return true;
+}
+
+bool ProcessStream::writeStdin(const void* data, size_t size) {
+    if (!state || state->inFd < 0) return false;
+    SigpipeGuard sigpipe;
+    const char* bytes = static_cast<const char*>(data);
+    size_t written = 0;
+    while (written < size) {
+        const ssize_t n = write(state->inFd, bytes + written, size - written);
+        if (n > 0) {
+            written += (size_t)n;
+        } else if (n < 0 && errno == EINTR) {
+            continue;
+        } else {
+            return false;   // EPIPE: the child stopped reading
+        }
+    }
+    return true;
+}
+
+void ProcessStream::closeStdin() {
+    if (state) closeFd(state->inFd);
+}
+
+bool ProcessStream::wait(int timeoutMs, int& exitCode) {
+    if (!state) return false;
+    const Clock::time_point start = Clock::now();
+    while (true) {
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            if (state->exited) break;
+            int status = 0;
+            const pid_t waited = waitpid(state->pid, &status, WNOHANG);
+            if (waited == state->pid) {
+                state->exited = true;
+                state->exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : (WIFSIGNALED(status) ? 128 + WTERMSIG(status) : -1);
+                break;
+            }
+            if (waited < 0 && errno != EINTR) {
+                state->exited = true;
+                break;
+            }
+        }
+        if (timeoutMs >= 0 && Clock::now() - start >= std::chrono::milliseconds(timeoutMs)) return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    // the lines of a grandchild still holding the pipes do not keep the wait alive: its group goes
+    if (state->reader.joinable()) {
+        const Clock::time_point exitAt = Clock::now();
+        while (!state->readerDone && Clock::now() - exitAt < std::chrono::milliseconds(kExitDrainMs)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        if (!state->readerDone) ::kill(-state->pid, SIGKILL);
+        state->reader.join();
+    }
+    closeFd(state->inFd);
+    exitCode = state->exitCode;
+    return true;
+}
+
+void ProcessStream::kill() {
+    if (!state || state->exited) return;
+    // the group only: the pid is not reaped before wait(), so it cannot have been reused
+    ::kill(-state->pid, SIGKILL);
+    ::kill(state->pid, SIGKILL);
+}
+
+bool ProcessStream::running() const {
+    return state && !state->exited;
+}
+
+#else // _WIN32
+
+struct ProcessStream::State {
+    HANDLE process = nullptr;
+    HANDLE job = nullptr;
+    HANDLE inWrite = nullptr;
+    HANDLE outRead = nullptr;
+    HANDLE errRead = nullptr;
+    Callbacks callbacks;
+    std::thread outReader;
+    std::thread errReader;
+    std::atomic<bool> exited{false};
+    int exitCode = -1;
+};
+
+ProcessStream::ProcessStream() = default;
+
+ProcessStream::~ProcessStream() {
+    if (!state) return;
+    if (running()) kill();
+    int code = 0;
+    wait(-1, code);
+}
+
+bool ProcessStream::start(const ProcessSpec& spec, Callbacks callbacks, std::string& error) {
+    if (state) {
+        error = "the stream already runs a process";
+        return false;
+    }
+    if (spec.exe.empty() || !spec.exe.is_absolute()) {
+        error = "not an absolute executable path: " + spec.exe.string();
+        return false;
+    }
+    (jobs::isMainThread() ? mainThreadSpawns : otherThreadSpawns)++;
+    std::wstring commandLine = L"\"" + spec.exe.wstring() + L"\"";
+    for (const std::string& arg : spec.args) commandLine += L" " + widen(quoteWindowsArgument(arg));
+    std::wstring environment = buildEnvironmentBlock(spec);
+
+    SECURITY_ATTRIBUTES inherit{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
+    HANDLE inRead = nullptr, inWrite = nullptr, outRead = nullptr, outWrite = nullptr, errRead = nullptr, errWrite = nullptr;
+    HANDLE job = nullptr;
+    auto fail = [&](const std::string& what) {
+        closeHandle(inRead); closeHandle(inWrite);
+        closeHandle(outRead); closeHandle(outWrite);
+        closeHandle(errRead); closeHandle(errWrite);
+        closeHandle(job);
+        error = what;
+        return false;
+    };
+    if (!CreatePipe(&inRead, &inWrite, &inherit, 0) || !CreatePipe(&outRead, &outWrite, &inherit, 0) ||
+        !CreatePipe(&errRead, &errWrite, &inherit, 0)) {
+        return fail(lastErrorText("CreatePipe"));
+    }
+    SetHandleInformation(inWrite, HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(outRead, HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(errRead, HANDLE_FLAG_INHERIT, 0);
+    HANDLE inherited[3] = {inRead, outWrite, errWrite};
+    SIZE_T attributeSize = 0;
+    InitializeProcThreadAttributeList(nullptr, 1, 0, &attributeSize);
+    std::vector<unsigned char> attributeStorage(attributeSize);
+    auto* attributes = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attributeStorage.data());
+    if (!InitializeProcThreadAttributeList(attributes, 1, 0, &attributeSize) ||
+        !UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherited, sizeof(inherited), nullptr, nullptr)) {
+        return fail(lastErrorText("handle list"));
+    }
+    STARTUPINFOEXW startup{};
+    startup.StartupInfo.cb = sizeof(startup);
+    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    startup.StartupInfo.hStdInput = inRead;
+    startup.StartupInfo.hStdOutput = outWrite;
+    startup.StartupInfo.hStdError = errWrite;
+    startup.lpAttributeList = attributes;
+    job = CreateJobObjectW(nullptr, nullptr);
+    if (!job) return fail(lastErrorText("CreateJobObject"));
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits));
+    const std::wstring application = spec.exe.wstring();
+    const std::wstring cwd = spec.cwd.wstring();
+    PROCESS_INFORMATION process{};
+    const BOOL created = CreateProcessW(application.c_str(), commandLine.data(), nullptr, nullptr, TRUE,
+                                        CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT,
+                                        environment.data(), cwd.empty() ? nullptr : cwd.c_str(), &startup.StartupInfo, &process);
+    DeleteProcThreadAttributeList(attributes);
+    closeHandle(inRead);
+    closeHandle(outWrite);
+    closeHandle(errWrite);
+    if (!created) return fail(lastErrorText(spec.exe.string().c_str()));
+    AssignProcessToJobObject(job, process.hProcess);
+    ResumeThread(process.hThread);
+    closeHandle(process.hThread);
+
+    state = std::make_unique<State>();
+    state->process = process.hProcess;
+    state->job = job;
+    state->inWrite = inWrite;
+    state->outRead = outRead;
+    state->errRead = errRead;
+    state->callbacks = std::move(callbacks);
+    auto reader = [](HANDLE pipe, std::function<void(const std::string&)> callback) {
+        LineSplitter lines;
+        char buffer[16 * 1024];
+        DWORD read = 0;
+        while (ReadFile(pipe, buffer, sizeof(buffer), &read, nullptr) && read > 0) lines.feed(buffer, read, callback);
+        lines.finish(callback);
+    };
+    state->outReader = std::thread(reader, outRead, state->callbacks.stdoutLine);
+    state->errReader = std::thread(reader, errRead, state->callbacks.stderrLine);
+    return true;
+}
+
+bool ProcessStream::writeStdin(const void* data, size_t size) {
+    if (!state || !state->inWrite) return false;
+    const char* bytes = static_cast<const char*>(data);
+    size_t written = 0;
+    while (written < size) {
+        DWORD n = 0;
+        const DWORD chunk = static_cast<DWORD>(std::min<size_t>(size - written, 1u << 20));
+        if (!WriteFile(state->inWrite, bytes + written, chunk, &n, nullptr) || n == 0) return false;
+        written += n;
+    }
+    return true;
+}
+
+void ProcessStream::closeStdin() {
+    if (state) closeHandle(state->inWrite);
+}
+
+bool ProcessStream::wait(int timeoutMs, int& exitCode) {
+    if (!state) return false;
+    if (!state->exited) {
+        if (WaitForSingleObject(state->process, timeoutMs < 0 ? INFINITE : (DWORD)timeoutMs) != WAIT_OBJECT_0) return false;
+        DWORD code = 1;
+        GetExitCodeProcess(state->process, &code);
+        state->exitCode = (int)code;
+        state->exited = true;
+    }
+    // what is left of the tree goes; the pipes then close and the readers return
+    const Clock::time_point exitAt = Clock::now();
+    while (Clock::now() - exitAt < std::chrono::milliseconds(kExitDrainMs)) {
+        DWORD available = 0;
+        if (!PeekNamedPipe(state->outRead, nullptr, 0, nullptr, &available, nullptr) &&
+            !PeekNamedPipe(state->errRead, nullptr, 0, nullptr, &available, nullptr)) break;
+        Sleep(5);
+    }
+    TerminateJobObject(state->job, 1);
+    if (state->outReader.joinable()) state->outReader.join();
+    if (state->errReader.joinable()) state->errReader.join();
+    closeHandle(state->inWrite);
+    closeHandle(state->outRead);
+    closeHandle(state->errRead);
+    closeHandle(state->process);
+    closeHandle(state->job);
+    exitCode = state->exitCode;
+    return true;
+}
+
+void ProcessStream::kill() {
+    if (!state || state->exited) return;
+    TerminateJobObject(state->job, 1);
+}
+
+bool ProcessStream::running() const {
+    if (!state || state->exited || !state->process) return false;
+    return WaitForSingleObject(state->process, 0) == WAIT_TIMEOUT;
+}
+
+#endif
+
+}

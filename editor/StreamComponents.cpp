@@ -16,6 +16,7 @@
 #include "lattice/LatticeTypes.h"
 #include "Out.h"
 #include "particles/ParticleEffectCodec.h"
+#include "stream/CurveCodec.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/ModelSubClips.h"
 
@@ -1726,18 +1727,9 @@ YAML::Node editor::Stream::encodeForceFieldComponent(const ForceFieldComponent& 
     node["turbulence"] = field.turbulence;
     node["pulseFrequency"] = field.pulseFrequency;
     node["frequency"] = field.frequency;
-    // [time, value, inTangent, outTangent] per key (a step tangent is .inf)
-    YAML::Node keys(YAML::NodeType::Sequence);
-    for (const CurveKey& key : field.falloff.keys){
-        YAML::Node k(YAML::NodeType::Sequence);
-        k.SetStyle(YAML::EmitterStyle::Flow);
-        k.push_back(key.time);
-        k.push_back(key.value);
-        k.push_back(key.inTangent);
-        k.push_back(key.outTangent);
-        keys.push_back(k);
-    }
-    node["falloff"] = keys;
+    // [time, value, inTangent, outTangent(, mode)] per key, a step tangent ~ (the one curve
+    // encoding, stream/CurveCodec.h; older files wrote it .inf, read the same)
+    node["falloff"] = curvecodec::curveToYaml(field.falloff);
     node["layers"] = field.layers;
     return node;
 }
@@ -1754,17 +1746,11 @@ ForceFieldComponent editor::Stream::decodeForceFieldComponent(const YAML::Node& 
     if (node["turbulence"]) field.turbulence = YamlNumbers::as<float>(node["turbulence"]);
     if (node["pulseFrequency"]) field.pulseFrequency = YamlNumbers::as<float>(node["pulseFrequency"]);
     if (node["frequency"]) field.frequency = YamlNumbers::as<float>(node["frequency"]);
-    if (node["falloff"] && node["falloff"].IsSequence()){
-        field.falloff.keys.clear();
-        for (const YAML::Node& k : node["falloff"]){
-            if (!k.IsSequence() || k.size() < 4) continue;
-            CurveKey key;
-            key.time = YamlNumbers::as<float>(k[0]);
-            key.value = YamlNumbers::as<float>(k[1]);
-            key.inTangent = YamlNumbers::as<float>(k[2]);
-            key.outTangent = YamlNumbers::as<float>(k[3]);
-            field.falloff.keys.push_back(key);
-        }
+    if (node["falloff"]){
+        Curve falloff;
+        std::string reason;
+        if (curvecodec::curveFromYaml(node["falloff"], falloff, reason)) field.falloff = std::move(falloff);
+        else Out::warning("Force Field falloff not read (%s): the curve is kept", reason.c_str());
     }
     if (node["layers"]) field.layers = YamlNumbers::as<uint32_t>(node["layers"]);
     return field;
