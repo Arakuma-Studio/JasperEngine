@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "ScriptMessages.h"
+
+#include <cmath>
 #include "LuaBinding.h"
 #include "ScriptRuntime.h"
 #include "Scene.h"
@@ -384,7 +386,8 @@ bool ScriptMessages::sendTo(Scene* scene, Entity entity, size_t scriptIndex, Scr
     return invoke(scene, entity, scriptIndex, m, pushArgs, callCpp);
 }
 
-bool ScriptMessages::sendNamed(Scene* scene, Entity entity, const std::string& method, const std::vector<AnimationEventArg>& args) {
+bool ScriptMessages::sendNamed(Scene* scene, Entity entity, const std::string& method, const std::vector<AnimationEventArg>& args,
+                               bool integers) {
     lua_State* L = LuaBinding::getLuaState();
     if (!L || !scene || method.empty() || !scene->isEntityCreated(entity)) {
         return false;
@@ -412,7 +415,8 @@ bool ScriptMessages::sendNamed(Scene* scene, Entity entity, const std::string& m
         lua_insert(L, -2); // method, self
         for (const AnimationEventArg& arg : args) {
             if (const double* number = std::get_if<double>(&arg)) {
-                lua_pushnumber(L, *number);
+                if (integers && std::floor(*number) == *number && std::fabs(*number) < 9.0e15) lua_pushinteger(L, (lua_Integer)*number);
+                else lua_pushnumber(L, *number);
             } else if (const std::string* text = std::get_if<std::string>(&arg)) {
                 lua_pushlstring(L, text->data(), text->size());
             } else {

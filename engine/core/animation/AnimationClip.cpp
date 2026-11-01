@@ -6,6 +6,7 @@
 #include "animation/AnimationClipIO.h"
 
 #include <algorithm>
+#include <cmath>
 
 using namespace jasperengine;
 
@@ -93,6 +94,7 @@ std::shared_ptr<const AnimationClip> AnimationClip::buildNormalized(const ClipDa
     clip->wrap = data.wrap;
     clip->length = data.effectiveLength();
     clip->explicitLength = data.hasExplicitLength();
+    clip->additiveReference = std::isfinite(data.additiveReference) ? std::min(std::max(data.additiveReference, 0.0f), clip->length) : 0.0f;
     clip->guid = data.guid;
     clip->previewModel = data.previewModel;
     clip->source = data.source;
@@ -232,6 +234,7 @@ ClipData AnimationClip::toData() const{
     data.frameRate = frameRate;
     data.wrap = wrap;
     data.length = explicitLength ? length : -1.0f;
+    data.additiveReference = additiveReference;
     data.events = events;
     data.previewModel = previewModel;
     data.source = source;

@@ -144,7 +144,16 @@ LIMITS.update({"create_ragdoll": 900})
 # coroutines (spec 2026-10-31-coroutines 7): get_play_state names its coroutines/timers counts and
 # get_runtime_entity the scripts' coroutines and timers (+83); merged with main (platform-services): 108160 + 83
 # merged by the lead (+ coroutines): provisional, re-measured on the merged tree
-TOTAL_LIMIT = 109200
+# re-measured on main 66fb7f0dd (everything above merged; guide-headroom adds no tool text): 152 tools
+# 109388 (test_budget / tool_budget.py), the limit set to it
+# anim layers (spec 10, 11.4, 11.5): get_animation 670 -> 815 (mask, controller: +145) and
+# preview_animation 654 -> 721 (over: +67), phase 1 +212 (under its 600); edit_animator 2290 (under its
+# 3500; the op fields are in jasper://docs/animation); focus_window's "animator" (+11): +2513 in all, the
+# limits raised by them; measured on the tree merged with main (particles, physics-contacts,
+# platform-services, shader-globals): 153 tools, total 111616 (tool_budget.py), the limit set to it
+LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 2400})
+# merged by the lead (guide-headroom + anim-layers): provisional, re-measured on the merged tree
+TOTAL_LIMIT = 112100
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

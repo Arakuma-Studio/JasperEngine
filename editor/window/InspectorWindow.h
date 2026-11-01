@@ -35,6 +35,10 @@ namespace jasperengine::editor{
     class ForkShaderCmd;
     class MultiPropertyCmd;
     class AnimationClipDocument;
+    struct InspectorLayerState;
+    struct InspectorLayerStateDeleter{
+        void operator()(InspectorLayerState* state) const;
+    };
     struct InspectorClipState;
     struct InspectorClipStateDeleter{
         void operator()(InspectorClipState* state) const;
@@ -308,6 +312,25 @@ namespace jasperengine::editor{
         void drawModelClipRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::vector<std::string>& shownInRows);
         std::vector<std::string> modelSubClipNames(const std::string& model);
         void drawAnimationClipButtons(SceneProject* sceneProject, Entity entity);
+
+        // ---- animation layers, masks and controllers (InspectorWindowAnimLayers.cpp; anim layers spec 9, 11.4) ----
+        std::unique_ptr<InspectorLayerState, InspectorLayerStateDeleter> layerStatePtr;
+        InspectorLayerState& layerState();
+        // the Controller field (Open, Create Controller from Clips; with one: what it ignores, its problems)
+        void drawAnimationPlayerController(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        // the Layers table (one scene step per edit, PlayerLayerActions)
+        void drawAnimationPlayerLayers(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        void setPlayerLayerMask(SceneProject* sceneProject, Entity entity, int layer, const std::string& mask);
+        // a clip entry's Layer combo
+        void drawPlayerClipLayerRow(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index);
+        // Bindings: "mask: N/M bound entities covered" per masked layer, the masks' warnings
+        void drawPlayerMaskCoverage(SceneProject* sceneProject, Entity entity);
+        // play mode: a layer's header in the States panel (live weight slider) and a controller's state
+        void drawPlayerLayerStatesHeader(SceneProject* sceneProject, Entity entity, int layer);
+        void drawControllerPlayState(SceneProject* sceneProject, Entity entity);
+        // the inspected .mask / .controller
+        void drawAvatarMaskAsset(const std::filesystem::path& asset);
+        void drawControllerAsset(const std::filesystem::path& asset);
 
         // ---- vertex animation (InspectorWindowVat.cpp; vertex animation spec 3.6, 5.2, 5.4) ----
         std::unique_ptr<InspectorVatState, InspectorVatStateDeleter> vatStatePtr;

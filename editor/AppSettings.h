@@ -18,6 +18,7 @@ struct PanelVisibilitySettings {
     bool console = true;
     bool animation = true;
     bool poseAnimation = false;
+    bool animator = false;
     bool terrain = false;
     bool textureSynthesis = false;
     bool vertexAnimationBaker = false;
@@ -33,6 +34,7 @@ struct PanelVisibilitySettings {
             && console == other.console
             && animation == other.animation
             && poseAnimation == other.poseAnimation
+            && animator == other.animator
             && terrain == other.terrain
             && textureSynthesis == other.textureSynthesis
             && vertexAnimationBaker == other.vertexAnimationBaker

@@ -48,6 +48,8 @@ namespace jasperengine::editor {
         HUMANOID,           // .humanoid bone-mapping sidecar (plain data)
         ANIMATION_CLIP,     // .anim (the Animation window; an icon, no thumbnail)
         VERTEX_ANIMATION,   // .vat (the Inspector's asset view / the baker; an icon, no thumbnail)
+        ANIMATOR_CONTROLLER,    // .controller (the Animator window; the Inspector's asset view)
+        AVATAR_MASK,        // .mask (the Inspector's asset view)
         PHYSICS_MATERIAL    // .physicsmaterial (the Inspector's asset view; an icon)
     };
 
@@ -389,6 +391,12 @@ namespace jasperengine::editor {
         // one project undo step (AnimationClipDocument::create), then renamed in place (the
         // App's createClipAsset hook, set by this window)
         void assetsCreateAnimationClip();
+        // Assets > Create > Animator Controller ("New Animator Controller.controller": a Base
+        // Layer, no states) and Avatar Mask ("New Avatar Mask.mask": every part 1, default 1), in
+        // the current folder as one project undo step (the App's createControllerAsset /
+        // createMaskAsset hooks, set by this window)
+        void assetsCreateAnimatorController();
+        void assetsCreateAvatarMask();
         // Unity's Create > Physics Material / Physics Material 2D (the 2D preset: friction 0.4,
         // geometric mean / maximum)
         void assetsCreatePhysicsMaterial(bool preset2D);
