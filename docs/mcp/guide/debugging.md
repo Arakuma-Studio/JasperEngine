@@ -180,9 +180,9 @@ DebugStatsSnapshot stats = DebugStats::sample();
 `MainThread` listeners (the default) follow the Lua rule above; `AnyThread` listeners run on the
 thread that logs, at once (Unity's `logMessageReceivedThreaded`). Listeners are never called with the
 log's lock held. Logs other threads make wait in a queue of 1,000 lines for the next frame; past it
-they are counted and reported once. `Log::removeListener` returns once a call of that listener
-running on another thread has ended (so what it uses can go); from inside the listener itself it does
-not wait for that call.
+they are counted and reported once. `Log::removeListener` returns once every running call of that
+listener has ended (so what it uses can go), unless it is called from inside a listener call: then it
+does not wait, and only no new call starts. Do not hold a lock the listener takes while removing it.
 
 ## 8. Agents (MCP)
 

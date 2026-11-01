@@ -3712,12 +3712,15 @@ const editor::DebugSettings& editor::Project::getDebugSettings() const{
 }
 
 void editor::Project::setDebugSettings(const DebugSettings& settings){
-    const bool changed = settings != debugSettings;
+    const DebugSettings before = debugSettings;
     debugSettings = settings;
-    // a running Play takes them at once: what changed applies, the console stays as it is
-    if (changed && debugSettingsInPlay){
-        Log::setBufferSize(debugSettings.logBufferSize);
-        Log::setStackTraces(debugSettings.logStackTraces);
+    // a running Play takes what changed at once (what the game set itself, Log.bufferSize, the
+    // console open, stays unless that setting changed)
+    if (debugSettingsInPlay && settings != before){
+        if (settings.logBufferSize != before.logBufferSize)
+            Log::setBufferSize(debugSettings.logBufferSize);
+        if (settings.logStackTraces != before.logStackTraces)
+            Log::setStackTraces(debugSettings.logStackTraces);
         DebugOverlay::updateSettings(debugSettings.toOverlaySettings(true));
     }
 }

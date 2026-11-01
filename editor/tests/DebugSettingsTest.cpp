@@ -211,6 +211,17 @@ TEST(DebugSettingsTest, ChangesApplyDuringPlay) {
     Log::setBufferSize(500);
     Log::setStackTraces(LogStackTraces::Warnings);
 
+    // what the game set itself stays when another setting changes
+    project.applyDebugSettingsForPlay();
+    Log::setBufferSize(42);   // Log.bufferSize = 42 in a script
+    DebugSettings popup = project.getDebugSettings();
+    popup.popup = DebugOverlaySettings::Popup::AllDevices;
+    project.setDebugSettings(popup);
+    EXPECT_EQ(Log::getBufferSize(), 42u);
+    EXPECT_EQ(DebugOverlay::getSettings().popup, DebugOverlaySettings::Popup::AllDevices);
+    DebugOverlay::shutdown();
+    Log::setBufferSize(500);
+
     // not playing: the engine keeps what it has
     Project idle;
     idle.setDebugSettings(changed);

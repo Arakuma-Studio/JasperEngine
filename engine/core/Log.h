@@ -66,10 +66,13 @@ namespace jasperengine {
         static void emitEntry(LogLevel level, const std::string& message, const std::string& stackTrace, bool fromLua);
 
         static LogListenerId addListener(std::function<void(const LogEntry&)> listener, LogDelivery delivery = LogDelivery::MainThread);
-        // Stops at once: a line being dispatched does not reach it any more, and a call of it
-        // running on another thread (AnyThread) has ended when this returns, so what the
-        // listener uses can go. From inside the listener itself it does not wait for that call.
-        // Two listeners that remove each other from inside their calls on two threads deadlock.
+        // Stops the listener. When this returns, no new call of it starts (a line being
+        // dispatched does not reach it any more), and:
+        //  - called outside any listener call: every call of it that was running (on any
+        //    thread) has ended, so what the listener uses can go;
+        //  - called from inside a listener call (that listener's or another's, on this thread):
+        //    it does not wait, so calls running on other threads may still be finishing.
+        // Waiting, it must not hold a lock the listener also takes (the listener would never end).
         static void removeListener(LogListenerId id);
         // the lines other threads logged since the last call, to the MainThread listeners and
         // onMessageReceived, in order (Engine::runFrame, first thing of a frame)

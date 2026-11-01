@@ -184,7 +184,9 @@ namespace {
         }
         ~CountedCall() {
             callsOnThisThread().pop_back();
-            if (listener.calls.fetch_sub(1) == 1 && listener.removed.load()){
+            // every call of a removed listener that ends wakes the removal (it waits for none left)
+            listener.calls.fetch_sub(1);
+            if (listener.removed.load()){
                 LogState& s = state();
                 std::lock_guard<std::mutex> lock(s.callsMutex);
                 s.callsDone.notify_all();
@@ -356,14 +358,13 @@ void Log::removeListener(LogListenerId id){
         }
         s.listeners = list;
     }
-    if (!removed)
+    // From inside a listener call (any listener's, on this thread) no waiting: its own call,
+    // or two listeners removing each other on two threads, would never end. No new call starts.
+    if (!removed || !callsOnThisThread().empty())
         return;
-    // the calls of it running on other threads end first; this thread's own (a listener that
-    // removes itself) cannot
-    const std::vector<const void*>& here = callsOnThisThread();
-    const int own = static_cast<int>(std::count(here.begin(), here.end(), static_cast<const void*>(removed.get())));
+    // the calls of it running on other threads end first
     std::unique_lock<std::mutex> lock(s.callsMutex);
-    s.callsDone.wait(lock, [&removed, own](){ return removed->calls.load() <= own; });
+    s.callsDone.wait(lock, [&removed](){ return removed->calls.load() == 0; });
 }
 
 void Log::dispatchPending(){

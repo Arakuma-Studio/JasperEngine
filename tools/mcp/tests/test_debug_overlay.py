@@ -6,7 +6,9 @@ commands, and Log.onMessageReceived in a script.
 """
 
 import asyncio
+import math
 import os
+import struct
 import time
 
 import yaml
@@ -37,6 +39,15 @@ return LogProbe
 
 # the console's panel colour (#0b0d12ee over the game)
 CONSOLE = (12, 14, 19)
+
+
+def write_tone(path, seconds=2.0, frequency=440.0, amplitude=0.3, rate=44100):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    samples = int(seconds * rate)
+    data = b"".join(struct.pack("<h", int(round(amplitude * 32767 * math.sin(2 * math.pi * frequency * i / rate))))
+                    for i in range(samples))
+    header = b"RIFF" + struct.pack("<I", 36 + len(data)) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16)
+    path.write_bytes(header + b"data" + struct.pack("<I", len(data)) + data)
 
 
 async def lua(ed: Editor, code: str):
@@ -169,8 +180,17 @@ async def test_never_mode(ed: Editor):
 
 async def test_checked_values_in_play(ed: Editor):
     """A stats mode that is none is refused (get_play_state keeps working), the buffer size is capped,
-    the stats' audio voices are get_play_state's. (Project Settings changed during Play apply at once:
-    the dialog's; MCP's set_project_settings waits for Play to stop. DebugSettingsTest covers it.)"""
+    the stats' audio voices are get_play_state's with the audio mixer's group buses playing (SoLoud counts
+    those as voices). (Project Settings changed during Play apply at once: the dialog's; MCP's
+    set_project_settings waits for Play to stop. DebugSettingsTest covers it.)"""
+    write_tone(ed.project / "tone.wav")
+    r = await ed.call_raw("audio_mixer", {"action": "edit", "ops": [{"op": "add_group", "name": "Music"},
+                                                                    {"op": "add_group", "name": "SFX"}]})
+    ed.check(not r.is_error, f"mixer: {r.text[:300]}")
+    await ed.call("create_entity", name="Tone", type="audio_source")
+    await ed.call("set_properties", entity="Tone", values={"audiosource": {"filename": "tone.wav", "looping": True,
+                                                                           "state": "playing", "outputGroup": "Music"}})
+    await ed.call("save_project", untitled_scene_dir="scenes")
     await start(ed)
     try:
         got = await lua(ed, "local ok, err = pcall(function() DebugOverlay.statsMode = 3 end) return ok, tostring(err), DebugOverlay.statsMode")
@@ -179,12 +199,17 @@ async def test_checked_values_in_play(ed: Editor):
         ed.check_eq((await ed.call("get_play_state"))["debug_overlay"]["stats"], "off", "get_play_state")
         ed.check_eq(await lua(ed, "Log.bufferSize = 5000000 return Log.bufferSize"), [100000], "the buffer size is capped")
 
-        # the stats' voices are the game's (not the audio mixer's buses), as get_play_state's
+        # the stats' voices are the game's (the tone; not the audio mixer's buses), as get_play_state's
+        await ed.call("wait", frames=10)
         voices = await lua(ed, "return DebugOverlay.getStats().audioVoices")
         state = await ed.call("get_play_state")
-        ed.check_eq(voices[0], state["audio"]["voices"], f"audio voices: {state['audio']}")
+        ed.check_in("Music", state["audio"]["mixer_meters"], f"the mixer runs: {state['audio']}")
+        ed.check_eq(state["audio"]["voices"], 1, f"the tone plays: {state['audio']}")
+        ed.check_eq(voices[0], state["audio"]["voices"], f"audio voices: {voices} vs {state['audio']}")
     finally:
         await stop(ed)
+        await ed.call("delete_entities", entities=["Tone"])
+        await ed.call("save_project")
 
 
 EXPORT_PROBE = """local OverlayExport = { properties = {} }
