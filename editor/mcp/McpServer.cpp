@@ -17,6 +17,7 @@
 #include "AppSettings.h"
 #include "EditorVersion.h"
 #include "Out.h"
+#include "thread/ResourceProgress.h"
 
 #include <algorithm>
 #include <chrono>
@@ -1266,7 +1267,19 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
             return !appPtr->getOpenDialog(open) || open.kind != "progress";
         }, 120000, [this, call, waiting](bool timedOut) {
             if (timedOut) {
-                call->fail("The editor's builds (\"Loading\") did not finish within 120 s; the edit was not run. Retry.");
+                // the builds still open, named: one that never ends is a bug, not a slow build
+                std::string open;
+                Json builds = Json::array();
+                const auto now = std::chrono::steady_clock::now();
+                for (const jasperengine::ResourceBuildInfo& build : jasperengine::ResourceProgress::getAllActiveBuilds()) {
+                    const long seconds = (long)std::chrono::duration_cast<std::chrono::seconds>(now - build.startTime).count();
+                    const std::string type = jasperengine::ResourceProgress::getResourceTypeName(build.type);
+                    if (builds.size() < 8) open += (open.empty() ? "" : ", ") + type + " " + build.name + " (" + std::to_string(seconds) + " s)";
+                    builds.push_back({{"type", type}, {"name", build.name}, {"progress", build.progress}, {"seconds", seconds}});
+                }
+                call->fail("The editor's builds (\"Loading\") did not finish within 120 s" +
+                           (open.empty() ? std::string() : ": " + open) + "; the edit was not run. Retry.",
+                           Json{{"busy", {{"builds", builds}}}});
                 return;
             }
             execute(call, *waiting);
