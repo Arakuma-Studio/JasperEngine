@@ -492,6 +492,6 @@ TEST(SpriteNormalsPaintSessionDeathTest, UndoOfTheWriteRestoresThePreviousPaint)
     fs::remove_all(dir);
     fs::create_directories(dir / ".jasperengine");
     std::ofstream(dir / "project.yaml") << "name: undo\n";
-    EXPECT_EXIT(undoRestoresThePreviousPaint(dir), ::testing::ExitedWithCode(0), "");
+    GTEST_FLAG_SET(death_test_style, "threadsafe"); EXPECT_EXIT(undoRestoresThePreviousPaint(dir), ::testing::ExitedWithCode(0), "");
     fs::remove_all(dir);
 }

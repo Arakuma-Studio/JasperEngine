@@ -98,7 +98,7 @@ an exported build's shutdown): `onApplicationQuit` to every script, then `onDisa
 | References | After all instances of the scene exist, entity-reference properties are resolved (second pass). So in `init()` all references are valid, but the referenced script's own `init()` may not have run yet. |
 | Lifecycle | `init`, `onEnable`, `start`, ... as above. Register events in `init` (or `onEnable`, unregistering in `onDisable`). |
 | Events | Methods registered with `RegisterEngineEvent` / `RegisterEvent` are called by the engine. |
-| Coroutines, timers | `self:startCoroutine(fn)` and `self:invoke(...)` belong to the instance: deactivating the GameObject stops its coroutines (not its timers), destroying it or unloading its scene ends both (2.14). |
+| Coroutines, timers | `self:startCoroutine(fn)` and `self:invoke(...)` belong to the instance: deactivating the GameObject stops its coroutines (not its timers), destroying it or unloading its scene ends both (2.17). |
 | Release | After `onDestroy` (or for a GameObject never active, without it): subscriptions made through `RegisterEngineEvent`/`RegisterEvent` and `Event` listeners the instance owns are removed. |
 
 Script messages besides the lifecycle (defined methods, no registration; every script of the
@@ -488,7 +488,7 @@ return Slot
 
 | Name | Kind | Notes |
 |---|---|---|
-| `deltatime` | ro | seconds since last frame (clamped, times `timeScale`). Same value inside `onFixedUpdate` (`Time.deltaTime` gives the fixed step there, 2.13). |
+| `deltatime` | ro | seconds since last frame (clamped, times `timeScale`). Same value inside `onFixedUpdate` (`Time.deltaTime` gives the fixed step there, 2.16). |
 | `unscaledDeltatime`, `unscaledTime` | ro | the frame delta before `timeScale` (0 while paused or held) and its sum: `Time.unscaledDeltaTime` / `Time.unscaledTime` |
 | `maxDeltatime` | rw | cap of a frame's delta (default 0.25 s; values <= 0 are ignored with a warning): `Time.maximumDeltaTime` |
 | `updateTime` | rw | fixed step in seconds (default 1/60), Unity's `Time.fixedDeltaTime`. Also `Engine.setUpdateTimeMS(ms)` |
@@ -1187,7 +1187,8 @@ or `(r,g,b,a)`.
 
 ```lua
 local h = Timer.after(2.0, function() self:explode() end, { owner = self })   -- once, in 2 s of game time
-Timer.every(0.5, function() self:blink() end, { count = 10, owner = self })    -- 10 times
+Timer.every(0.5, function(t) self:blink() end, { count = 10, owner = self })   -- 10 times (fn gets the Timer)
+Timer.every(1, function(t) return self.alive end, { delay = 0, unscaled = true }) -- false stops it
 Timer.nextFrame(fn --[[, opts]]);  Timer.afterFrames(3, fn --[[, opts]]);  Timer.afterFixedSteps(1, fn --[[, opts]])
 local co = Timer.run(function()              -- a coroutine the scheduler drives
     Timer.wait(1.0)                          -- game seconds (or the run's clock)
@@ -1196,13 +1197,21 @@ local co = Timer.run(function()              -- a coroutine the scheduler drives
     Timer.waitFixedStep()                    -- one fixed update
     Timer.waitUntil(function() return self.ready end)   -- checked once per frame
 end, { owner = self })
-h:cancel(); h:isActive(); co:cancel(); co:isActive(); Timer.cancelAll(self)
+h:cancel(); h:isActive(); h:isDone(); h.remaining; h.interval; h.unscaled; h.id
+co:cancel(); co:isActive(); Timer.cancelAll(self)
 ```
 
-- Options: `owner` (cancelled when that script goes away), `clock` (`"game"`: scaled by
-  `Engine.timeScale`, the default; `"unscaled"`; `"real"`), `count` (every), `catchUp` (every:
-  after a stall, up to 8 missed periods at once; by default a repeat fires at most once a frame
-  and keeps its phase).
+- Options: `owner` (a script instance, `self`: cancelled when that script goes away), `clock`
+  (`"game"`: scaled by `Time.timeScale`, the default; `"unscaled"`; `"real"`), `unscaled = true`
+  (the same as `clock = "unscaled"`), `count` (every: how many calls), `delay` (every: the first
+  call's delay, the interval by default), `catchUp` (every: after a stall, up to 8 missed periods
+  at once; by default a repeat fires at most once a frame and keeps its phase).
+- The callback gets the timer; a repeating one returning `false` stops (`isDone()` then true).
+- A timer: `cancel()` (true when it stopped it), `isActive()`, `isDone()`, read-only `id`,
+  `remaining` (seconds to the next call, 0 when done), `interval` (0 for a one-shot), `unscaled`;
+  `tostring` gives `Timer(5, 0.75 s left, every 0.50 s)`. `Coroutine.waitFor(timer)` waits for it
+  (true when it ran out, false when cancelled; a repeating timer without a count raises).
+  `self:invoke` / `invokeRepeating` (2.17) return timers with the same fields.
 - The game and unscaled clocks run only while the game runs: not in the editor's Pause (Step
   advances one frame), not while loading or held. Timers run after the scenes' update, before
   `onPostUpdate`; fixed-step ones after each fixed update.
@@ -1256,7 +1265,7 @@ Crash.markHandled("20261026T143200Z-4242")       -- the same by id (false: unkno
 - Pending means from an earlier session and not handled yet; the current session's reports
   appear at the next start.
 - Editor Play reads the editor's own reports (docs/crash-diagnostics.md).
-### 2.13 Time (static, Unity's Time)
+### 2.16 Time (static, Unity's Time)
 
 The game clocks under their Unity names. `Engine.deltatime` and the other `Engine` names stay;
 prefer `Time` in new code: its names are Unity's and they avoid the `Engine.updateTime` /
@@ -1292,7 +1301,7 @@ prefer `Time` in new code: its names are Unity's and they avoid the `Engine.upda
 | `Engine.maxDeltatime` | `Time.maximumDeltaTime` |
 | `Engine.systemTime` | `Time.realtimeSinceStartup` (from engine start, not an absolute clock) |
 
-### 2.14 Coroutines and timers (Coroutine, Timer, self:startCoroutine, self:invoke)
+### 2.17 Coroutines and invoke (Coroutine, self:startCoroutine, self:invoke)
 
 Engine coroutines are Lua functions the engine resumes: a wait helper suspends the running one
 until its condition holds, then it continues on a later frame (Unity's `StartCoroutine` /
@@ -1356,16 +1365,13 @@ script instance or nil), `id`, `isDone()`, `stop()`. Lua's own `coroutine` libra
 and the engine ends it. Two coroutines waiting for each other (`waitFor`) raise "they would wait for
 each other forever".
 
-Timers outside scripts: `Timer.after(delay, fn [, opts])` and `Timer.every(interval, fn [, opts])`,
-`opts = {unscaled = bool, owner = self, delay = firstDelay (every), count = n (every)}`; `every`
-passes the Timer to `fn` and returning `false` cancels it. A `Timer`: `cancel()`, `isDone()`,
-`remaining` (seconds to the next call), `interval` (0 for a one-shot), `unscaled`, `id`. Timers
-count seconds (scaled by default), fire at most once a frame (a late repeat is rescheduled from
-now, no catch-up burst) and run after `onUpdate`. HTML UI animation timing stays
-`anime.createTimer` (milliseconds, the UI clock); for gameplay use `self:invoke` / `Timer.after`.
+Timers outside scripts: the global `Timer` (2.13: `Timer.after`, `Timer.every`, the frame and
+fixed-step timers, `Timer.run`), on the engine's scheduler (`list_timers` shows them). HTML UI
+animation timing stays `anime.createTimer` (milliseconds, the UI clock); for gameplay use
+`self:invoke` / `Timer.after`.
 
 Frame order: fixed steps (`onFixedUpdate`, physics, then the coroutines waiting
-`waitForFixedUpdate`), `onUpdate`, then timers and the coroutines whose wait is over (seconds,
+`waitForFixedUpdate`), `onUpdate`, then `invoke` timers and the coroutines whose wait is over (seconds,
 frames, predicates, `waitFor`; in the order they were started), the scenes' update,
 `onPostUpdate`, destroys, the draw, then the coroutines waiting `waitForEndOfFrame`. Every wait
 resumes on a later frame, except `waitForEndOfFrame` (same frame) and a `waitFor` of an ended
@@ -1388,7 +1394,7 @@ on to its next wait, which ends it. Errors read `Lua coroutine error in Spawner 
 error in an event callback ("Script crash" in the Console). MCP `get_runtime_entity` lists each
 script's coroutines (what each waits for) and timers; `get_play_state` has the totals.
 
-### 2.13 Http (static, HTTP(S) requests)
+### 2.18 Http (static, HTTP(S) requests)
 
 Full reference, options, error codes, platform notes and examples: `jasper://docs/networking`.
 The callback runs once, on the main thread, right before `onUpdate` of a later frame; errors are

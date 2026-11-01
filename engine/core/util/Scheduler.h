@@ -130,6 +130,9 @@ namespace jasperengine {
 
         bool cancel(TimerHandle handle) noexcept;
         bool isActive(TimerHandle handle) const noexcept;
+        // Owner thread: what a pending task is (its clock, due time, period, runs left); false
+        // when it is done or cancelled
+        bool info(TimerHandle handle, TimerInfo& out) const;
         // Owner thread: every task of the owner; returns how many
         size_t cancelOwner(uint64_t ownerKey);
 

@@ -228,6 +228,9 @@ namespace {
         JE_FIELD(Collider2D, contactEvents, .updateFlags = kBody2D),
         JE_FIELD(Collider2D, preSolveEvents, .updateFlags = kBody2D),
         JE_FIELD(Collider2D, sensorEvents, .updateFlags = kBody2D),
+        // upstream (physics-2d / physics-contacts): its .physicsmaterial and its callbacks' receiver
+        JE_FIELD(Collider2D, material, .updateFlags = kBody2D),
+        JE_FIELD(Collider2D, receiver, .ops = &ops::Entity, .updateFlags = kBody2D),
     };
 
     constexpr uint64_t kBody3D = UpdateFlags_Rigidbody;
@@ -249,6 +252,10 @@ namespace {
         JE_FIELD(Collider3D, samplesSize, .updateFlags = kBody3D),
         // upstream (physics-3d): the mesh / convex points and indices are lists without counts
         JE_FIELD(Collider3D, vertices, .flags = ListElements | ListTemplate, .updateFlags = kBody3D),
+        // upstream (physics-3d / physics-contacts): per-collider trigger, material, receiver
+        JE_FIELD(Collider3D, isTrigger, .updateFlags = kBody3D),
+        JE_FIELD(Collider3D, material, .updateFlags = kBody3D),
+        JE_FIELD(Collider3D, receiver, .ops = &ops::Entity, .updateFlags = kBody3D),
     };
 
 }
@@ -263,6 +270,20 @@ namespace {
     constexpr FieldDesc kRigidbody2DFields[] = {
         JE_FIELD(Rigidbody2DComponent, enabled),
         JE_FIELD(Rigidbody2DComponent, type, .enumDesc = &enums::kBodyType, .updateFlags = kBody2D),
+        // upstream (physics-2d): Unity's Rigidbody2D body settings, applied to the live body
+        JE_FIELD(Rigidbody2DComponent, gravityScale, .updateFlags = UpdateFlags_Rigidbody2D_Params),
+        JE_FIELD(Rigidbody2DComponent, linearDamping, .updateFlags = UpdateFlags_Rigidbody2D_Params, .min = 0.0f),
+        JE_FIELD(Rigidbody2DComponent, angularDamping, .updateFlags = UpdateFlags_Rigidbody2D_Params, .min = 0.0f),
+        JE_FIELD(Rigidbody2DComponent, fixedRotation, .updateFlags = UpdateFlags_Rigidbody2D_Params),
+        JE_FIELD(Rigidbody2DComponent, collisionDetection, .enumDesc = &enums::kCollisionDetection2D, .updateFlags = UpdateFlags_Rigidbody2D_Params),
+        JE_FIELD(Rigidbody2DComponent, sleepingMode, .enumDesc = &enums::kSleepMode2D, .updateFlags = UpdateFlags_Rigidbody2D_Params),
+        JE_FIELD(Rigidbody2DComponent, useAutoMass, .updateFlags = UpdateFlags_Rigidbody2D_Params),
+        JE_FIELD(Rigidbody2DComponent, mass, .updateFlags = UpdateFlags_Rigidbody2D_Params, .min = 0.0f),
+        JE_FIELD(Rigidbody2DComponent, autoCenterOfMass, .updateFlags = UpdateFlags_Rigidbody2D_Params),
+        JE_FIELD(Rigidbody2DComponent, centerOfMass, .updateFlags = UpdateFlags_Rigidbody2D_Params),
+        JE_FIELD(Rigidbody2DComponent, autoInertia, .updateFlags = UpdateFlags_Rigidbody2D_Params),
+        JE_FIELD(Rigidbody2DComponent, inertia, .updateFlags = UpdateFlags_Rigidbody2D_Params, .min = 0.0f),
+        JE_FIELD(Rigidbody2DComponent, material, .updateFlags = kBody2D),
         // upstream: a body's colliders are a list without a count limit (the files still write
         // numColliders, which the codec reads): the whole list is one property (a prefab override
         // when the count changes), each collider's members too
@@ -284,6 +305,23 @@ namespace {
         JE_FIELD(RigidbodyComponent, overrideMassProperties, .updateFlags = kBody3D),
         JE_FIELD(RigidbodyComponent, solidBoxSize, .updateFlags = kBody3D),
         JE_FIELD(RigidbodyComponent, solidBoxDensity, .updateFlags = kBody3D, .min = 0.0f),
+        // upstream (physics-3d): Unity's Rigidbody body settings, applied to the live body
+        JE_FIELD(RigidbodyComponent, material, .updateFlags = UpdateFlags_Rigidbody_Params),
+        JE_FIELD(RigidbodyComponent, linearDamping, .updateFlags = UpdateFlags_Rigidbody_Params, .min = 0.0f),
+        JE_FIELD(RigidbodyComponent, angularDamping, .updateFlags = UpdateFlags_Rigidbody_Params, .min = 0.0f),
+        JE_FIELD(RigidbodyComponent, maxLinearVelocity, .updateFlags = UpdateFlags_Rigidbody_Params, .min = 0.0f),
+        JE_FIELD(RigidbodyComponent, maxAngularVelocity, .updateFlags = UpdateFlags_Rigidbody_Params, .min = 0.0f),
+        JE_FIELD(RigidbodyComponent, automaticMass, .updateFlags = UpdateFlags_Rigidbody_Params),
+        JE_FIELD(RigidbodyComponent, mass, .updateFlags = UpdateFlags_Rigidbody_Params, .min = 0.0f),
+        JE_FIELD(RigidbodyComponent, automaticCenterOfMass, .updateFlags = UpdateFlags_Rigidbody_Params),
+        JE_FIELD(RigidbodyComponent, centerOfMass, .updateFlags = UpdateFlags_Rigidbody_Params),
+        JE_FIELD(RigidbodyComponent, automaticInertiaTensor, .updateFlags = UpdateFlags_Rigidbody_Params),
+        JE_FIELD(RigidbodyComponent, inertiaTensor, .updateFlags = UpdateFlags_Rigidbody_Params),
+        JE_FIELD(RigidbodyComponent, inertiaTensorRotation, .updateFlags = UpdateFlags_Rigidbody_Params),
+        JE_FIELD(RigidbodyComponent, allowSleeping, .updateFlags = UpdateFlags_Rigidbody_Params),
+        JE_FIELD(RigidbodyComponent, collideKinematicVsNonDynamic, .updateFlags = UpdateFlags_Rigidbody_Params),
+        // read when the body is drawn
+        JE_FIELD(RigidbodyComponent, interpolation, .enumDesc = &enums::kRigidbodyInterpolation),
         JE_FIELD(RigidbodyComponent, colliders, .flags = ListWhole | ListEachElement | ListTemplate, .updateFlags = kBody3D),
     };
 

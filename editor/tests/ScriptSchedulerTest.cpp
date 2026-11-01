@@ -22,6 +22,7 @@
 #include "script/ScriptBase.h"
 #include "script/ScriptRuntime.h"
 #include "script/ScriptScheduler.h"
+#include "util/Scheduler.h"
 #include "script/Timer.h"
 
 #include "lua.hpp"
@@ -34,6 +35,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "log/Logger.h"
 
 using namespace jasperengine;
 
@@ -74,6 +76,8 @@ namespace {
             Engine::setTimeScale(1.0f);
             Engine::setUpdateTime(1.0f / 60.0f);
             ScriptScheduler::clear();
+            // the global Timer's timers (the C++ Scheduler)
+            Scheduler::game().clear();
             LuaBinding::clearLoadedProjectModules();
             scene = std::make_unique<Scene>();
             ASSERT_EQ(run("TestLog = {}; BaseFrame = Engine.frameCount\n"
@@ -83,6 +87,7 @@ namespace {
 
         void TearDown() override {
             ScriptScheduler::clear();
+            Scheduler::game().clear();
             AnimEngine::instance().reset();
             if (scene) LuaBinding::cleanupLuaScripts(scene.get());
             scene.reset();
@@ -140,7 +145,16 @@ namespace {
         }
 
         std::string logged() {
+            ::jasperengine::Logger::flush();   // the engine's logger delivers on its own thread
             return capture.text;
+        }
+
+        // the global Timer's pending timers (Timer.after / every... on the C++ Scheduler)
+        size_t luaTimersPending() {
+            size_t count = 0;
+            for (const TimerInfo& info : Scheduler::game().pending(nullptr, 100000))
+                if (info.debugName.rfind("Timer.", 0) == 0) count++;
+            return count;
         }
 
         void* instanceOf(Entity entity) {
@@ -744,7 +758,8 @@ TEST_F(CoroutineTest, TimerEveryCountFalseAndUnscaled) {
     // counted: frames 1, 3, 6 (delay 0, then every 0.05 s); every: 3, 6
     EXPECT_EQ(log(), "counted unscaled3 every1 counted every2 counted");
     EXPECT_EQ(eval("return tostring(Kept:isDone())"), "true");
-    EXPECT_EQ(ScriptScheduler::timerCount(), 1u);   // the scaled one at time scale 0
+    // the scaled one waits at time scale 0 (the global Timer's timers are the C++ Scheduler's)
+    EXPECT_EQ(luaTimersPending(), 1u);
 }
 
 TEST_F(CoroutineTest, AnErrorInARepeatingTimerIsLoggedAndItContinues) {
@@ -1395,4 +1410,65 @@ TEST_F(CoroutineTest, CoroutinesAndTimersFollowAGameObjectMovedToAnotherScene) {
     EXPECT_EQ(eval("return Kept.status"), "stopped");
     LuaBinding::cleanupLuaScripts(&other);
     EXPECT_EQ(ScriptScheduler::timerCountOf(owner), 0u);
+}
+
+// ================================================================== one Lua Timer: oe-port's and upstream's scripts
+
+// The global Timer is oe-port's (the C++ Scheduler: clock, catchUp, frame and fixed-step timers,
+// Timer.run) with upstream's coroutine-era API on the same calls and handles (unscaled, delay,
+// the callback's timer and its false, id / remaining / interval / unscaled / isDone, waitFor)
+TEST_F(CoroutineTest, TheGlobalTimerRunsOePortAndUpstreamScripts) {
+    Engine::setTimeScale(0.0f);
+    ASSERT_EQ(run(R"(
+        -- oe-port's scripts
+        Old = Timer.after(0.05, function() Log("clock") end, {clock = "unscaled"})
+        Timer.afterFrames(2, function() Log("frames" .. F()) end)
+        Timer.nextFrame(function() Log("next" .. F()) end)
+        Run = Timer.run(function() Timer.waitFrames(2) Log("run" .. F()) end)
+        -- upstream's scripts
+        New = Timer.after(0.05, function(t) Log("unscaled" .. tostring(t == New)) end, {unscaled = true})
+        Scaled = Timer.after(0.05, function() Log("scaled") end)
+    )"), "");
+    EXPECT_EQ(eval("return tostring(Old:isActive()) .. tostring(New:isDone()) .. tostring(New.unscaled) .. tostring(Old.unscaled)"),
+              "truefalsetruetrue");
+    frames(6);
+    EXPECT_NE(log().find("next1"), std::string::npos) << log();
+    EXPECT_NE(log().find("frames2"), std::string::npos) << log();
+    EXPECT_NE(log().find("run2"), std::string::npos) << log();
+    EXPECT_NE(log().find("clock"), std::string::npos) << log();
+    EXPECT_NE(log().find("unscaledtrue"), std::string::npos) << log();
+    EXPECT_EQ(log().find("scaled "), std::string::npos) << log();
+    EXPECT_EQ(eval("return tostring(Old:isActive()) .. tostring(Old:isDone()) .. tostring(Run:isActive()) .. tostring(Scaled:isActive())"),
+              "falsetruefalsetrue");
+    // a cancelled timer: isDone, cancel() says it stopped it once
+    EXPECT_EQ(eval("return tostring(Scaled:cancel()) .. tostring(Scaled:cancel()) .. tostring(Scaled:isDone())"), "truefalsetrue");
+    EXPECT_NE(eval("return tostring(Scaled)").find("cancelled"), std::string::npos);
+    // either family's option errors
+    EXPECT_NE(eval("return select(2, pcall(Timer.after, 1, function() end, {clock = 'moon'}))").find("clock must be"), std::string::npos);
+    EXPECT_NE(eval("return select(2, pcall(Timer.after, 1, function() end, {delay = 1}))").find("opts.delay is for Timer.every"),
+              std::string::npos);
+    run("Old = nil New = nil Scaled = nil Run = nil");
+}
+
+// a coroutine waits for either family's timer handle; an owned timer ends with its script
+TEST_F(CoroutineTest, WaitForAGlobalTimerAndOwnedTimersEndWithTheScript) {
+    addScript("Owner", R"(
+        local M = {}
+        function M:init()
+            Timer.every(0.0001, function() Log("tick") end, {owner = self})
+            self:startCoroutine(function()
+                local ok = Coroutine.waitFor(Timer.after(0.02, function() end, {clock = "game"}))
+                Log("waited" .. tostring(ok))
+            end)
+        end
+        return M
+    )");
+    start();
+    frames(3);
+    EXPECT_NE(log().find("waitedtrue"), std::string::npos) << log();
+    LuaBinding::cleanupLuaScripts(scene.get());
+    clearLog();
+    frames(2);
+    EXPECT_EQ(log(), "");
+    EXPECT_EQ(luaTimersPending(), 0u);
 }

@@ -12,10 +12,14 @@
 #include "util/Color.h"
 #include "util/CrashHook.h"
 #include "util/Scheduler.h"
+#include "script/ScriptScheduler.h"
 #include "LuaReload.h"
 #include "LuaWatchdog.h"
 #include "util/SubscriptionOwnerIndex.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -70,15 +74,44 @@ namespace je_lua_timer {
         uint32_t count = 0;
         bool catchUp = false;
         uint64_t owner = 0;
+        // Timer.every: the first call's delay (upstream's opts.delay); negative: the interval
+        double delay = -1.0;
     };
 
-    // the options table at index (absent or nil: defaults)
-    TimerOptions readOptions(lua_State* L, int index) {
+    // a live script instance (upstream's coroutines' rule for opts.owner): the table the
+    // instance registry holds under its __scriptRef
+    bool isScriptInstance(lua_State* L, int index) {
+        index = lua_absindex(L, index);
+        if (!lua_istable(L, index)) return false;
+        lua_pushliteral(L, "__scriptRef");
+        lua_rawget(L, index);
+        const int ref = lua_isinteger(L, -1) ? static_cast<int>(lua_tointeger(L, -1)) : 0;
+        lua_pop(L, 1);
+        if (ref <= 0) return false;
+        lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+        const bool same = lua_rawequal(L, -1, index) != 0;
+        lua_pop(L, 1);
+        return same;
+    }
+
+    // The options table at index (absent or nil: defaults). One API for both families of
+    // scripts: oe-port's {owner, clock, count, catchUp} and upstream's {owner, unscaled, count,
+    // delay} (delay: Timer.every only)
+    TimerOptions readOptions(lua_State* L, int index, const char* function = "Timer", bool every = false) {
         TimerOptions options;
         if (lua_isnoneornil(L, index)) return options;
-        luaL_checktype(L, index, LUA_TTABLE);
+        if (!lua_istable(L, index)) {
+            luaL_error(L, "%s: opts must be a table ({owner, clock, unscaled, count, delay, catchUp}), got %s", function,
+                       luaL_typename(L, index));
+        }
         lua_getfield(L, index, "owner");
-        if (!lua_isnil(L, -1)) options.owner = ownerKeyOf(lua_topointer(L, -1));
+        if (!lua_isnil(L, -1)) {
+            if (!isScriptInstance(L, -1)) luaL_error(L, "%s: opts.owner must be a live script instance (self)", function);
+            options.owner = ownerKeyOf(lua_topointer(L, -1));
+        }
+        lua_pop(L, 1);
+        lua_getfield(L, index, "unscaled");
+        if (lua_toboolean(L, -1)) options.clock = TimeDomain::Unscaled;
         lua_pop(L, 1);
         lua_getfield(L, index, "clock");
         if (!lua_isnil(L, -1)) {
@@ -87,18 +120,26 @@ namespace je_lua_timer {
             if (std::strcmp(clock, "game") == 0) options.clock = TimeDomain::Game;
             else if (std::strcmp(clock, "unscaled") == 0) options.clock = TimeDomain::Unscaled;
             else if (std::strcmp(clock, "real") == 0) options.clock = TimeDomain::Real;
-            else luaL_error(L, "Timer: clock must be \"game\", \"unscaled\" or \"real\" (got \"%s\")", clock);
+            else luaL_error(L, "%s: clock must be \"game\", \"unscaled\" or \"real\" (got \"%s\")", function, clock);
         }
         lua_pop(L, 1);
         lua_getfield(L, index, "count");
         if (!lua_isnil(L, -1)) {
-            const lua_Integer count = luaL_checkinteger(L, -1);
-            if (count < 1) luaL_error(L, "Timer: count must be 1 or more");
-            options.count = static_cast<uint32_t>(count);
+            if (!lua_isinteger(L, -1) || lua_tointeger(L, -1) < 1)
+                luaL_error(L, "%s: opts.count must be an integer of 1 or more", function);
+            options.count = static_cast<uint32_t>(lua_tointeger(L, -1));
         }
         lua_pop(L, 1);
         lua_getfield(L, index, "catchUp");
         options.catchUp = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
+        lua_getfield(L, index, "delay");
+        if (!lua_isnil(L, -1)) {
+            if (!every) luaL_error(L, "%s: opts.delay is for Timer.every (the first argument is the delay)", function);
+            if (lua_type(L, -1) != LUA_TNUMBER || !std::isfinite(lua_tonumber(L, -1)) || lua_tonumber(L, -1) < 0.0)
+                luaL_error(L, "%s: opts.delay must be a number of seconds (0 or more)", function);
+            options.delay = lua_tonumber(L, -1);
+        }
         lua_pop(L, 1);
         return options;
     }
@@ -120,44 +161,81 @@ namespace je_lua_timer {
         }
     }
 
-    // A timer's function: errors cancel the timer (a repeating one stops)
-    struct TimerCall {
-        LuaRef function;
-        const char* name;
-        // the chunk generation of the function: a hot reload of its script ends the timer
-        std::shared_ptr<lua_reload::CallbackRecord> record;
+    // What a Lua timer handle reads (upstream's Timer object: id, remaining, interval, unscaled,
+    // isDone; oe-port's handle: cancel, isActive). `current` is the scheduler task now (a
+    // Timer.every with its own first delay is a one-shot, then the repeat)
+    struct TimerState {
+        uint64_t id = 0;
+        uint64_t current = 0;
+        double interval = 0.0;     // 0: once
+        TimeDomain clock = TimeDomain::Game;
+        uint32_t count = 0;        // runs in all (0: until cancelled; a one-shot: 1)
+        uint32_t runs = 0;
+        bool cancelled = false;
+        bool finished = false;     // its last call ran, or the callback returned false
 
-        void operator()() {
-            lua_State* L = LuaBinding::getLuaState();
-            if (!L) return;
-            if (record && record->dropped()) {
-                Scheduler::game().current().cancel();
-                return;
-            }
-            lua_rawgeti(L, LUA_REGISTRYINDEX, function.ref);
-            if (LuaBinding::pcallWithTraceback(L, 0, 0) != LUA_OK) {
-                const std::string error = LuaBinding::getLuaStackErrorString(L, -1);
-                lua_pop(L, 1);
-                Scheduler::game().current().cancel();
-                reportError(name, error);
-            }
-        }
+        TimerHandle handle() const { return TimerHandle{&Scheduler::game(), current}; }
+        bool active() const { return !cancelled && !finished && Scheduler::game().isActive(handle()); }
     };
+    using TimerStatePtr = std::shared_ptr<TimerState>;
 
-    struct TimerHandleUserdata {
-        uint64_t id;
-    };
-
-    void pushHandle(lua_State* L, TimerHandle handle) {
-        auto* data = static_cast<TimerHandleUserdata*>(lua_newuserdatauv(L, sizeof(TimerHandleUserdata), 0));
-        data->id = handle.id;
+    // the userdata holds the state (a shared_ptr, destroyed by __gc)
+    void pushHandle(lua_State* L, const TimerStatePtr& state) {
+        void* memory = lua_newuserdatauv(L, sizeof(TimerStatePtr), 0);
+        new (memory) TimerStatePtr(state);
         luaL_setmetatable(L, TIMER_HANDLE_META);
     }
 
-    TimerHandle checkHandle(lua_State* L, int index) {
-        auto* data = static_cast<TimerHandleUserdata*>(luaL_checkudata(L, index, TIMER_HANDLE_META));
-        return TimerHandle{&Scheduler::game(), data->id};
+    TimerStatePtr checkHandle(lua_State* L, int index) {
+        return *static_cast<TimerStatePtr*>(luaL_checkudata(L, index, TIMER_HANDLE_META));
     }
+
+    // A timer's function: called with its handle (upstream's `function(t)`); returning false
+    // stops a repeating one; an error cancels the timer (a repeating one stops)
+    struct TimerCallData {
+        LuaRef function{LUA_NOREF};
+        const char* name = "Timer";
+        // the chunk generation of the function: a hot reload of its script ends the timer
+        std::shared_ptr<lua_reload::CallbackRecord> record;
+        TimerStatePtr state;
+    };
+
+    struct TimerCall {
+        std::shared_ptr<TimerCallData> data;
+
+        void operator()() const {
+            lua_State* L = LuaBinding::getLuaState();
+            TimerState& state = *data->state;
+            if (!L || state.cancelled || state.finished) {
+                Scheduler::game().current().cancel();
+                return;
+            }
+            if (data->record && data->record->dropped()) {
+                state.finished = true;
+                Scheduler::game().current().cancel();
+                return;
+            }
+            state.runs++;
+            const bool last = state.count > 0 && state.runs >= state.count;
+            if (last) state.finished = true;
+            lua_rawgeti(L, LUA_REGISTRYINDEX, data->function.ref);
+            pushHandle(L, data->state);
+            if (LuaBinding::pcallWithTraceback(L, 1, 1) != LUA_OK) {
+                const std::string error = LuaBinding::getLuaStackErrorString(L, -1);
+                lua_pop(L, 1);
+                state.finished = true;
+                Scheduler::game().current().cancel();
+                reportError(data->name, error);
+                return;
+            }
+            const bool stop = lua_isboolean(L, -1) && !lua_toboolean(L, -1);
+            lua_pop(L, 1);
+            if (stop) {
+                state.finished = true;
+                Scheduler::game().current().cancel();
+            }
+        }
+    };
 
     std::shared_ptr<lua_reload::CallbackRecord> functionRecord(lua_State* L, int index) {
         lua_pushvalue(L, index);
@@ -166,61 +244,106 @@ namespace je_lua_timer {
         return record;
     }
 
-    int functionRef(lua_State* L, int index) {
-        luaL_checktype(L, index, LUA_TFUNCTION);
+    int functionRef(lua_State* L, int index, const char* function) {
+        if (!lua_isfunction(L, index)) luaL_error(L, "%s: fn must be a function, got %s", function, luaL_typename(L, index));
         lua_pushvalue(L, index);
         return luaL_ref(L, LUA_REGISTRYINDEX);
     }
 
+    TimerCall makeCall(lua_State* L, int fnIndex, const char* name, const TimerStatePtr& state) {
+        TimerCall call;
+        call.data = std::make_shared<TimerCallData>();
+        call.data->function = LuaRef(functionRef(L, fnIndex, name));
+        call.data->name = name;
+        call.data->record = functionRecord(L, fnIndex);
+        call.data->state = state;
+        return call;
+    }
+
+    double secondsArg(lua_State* L, int index, const char* function, const char* what) {
+        if (lua_type(L, index) != LUA_TNUMBER || !std::isfinite(lua_tonumber(L, index)))
+            luaL_error(L, "%s: %s must be a number of seconds, got %s", function, what, luaL_typename(L, index));
+        return lua_tonumber(L, index);
+    }
+
     int luaTimerAfter(lua_State* L) {
-        const double delay = luaL_checknumber(L, 1);
-        const TimerOptions options = readOptions(L, 3);
-        const int ref = functionRef(L, 2);
-        auto record = functionRecord(L, 2);
-        pushHandle(L, Scheduler::game().after(delay, TimerCall{LuaRef(ref), "Timer.after", record}, options.clock,
-                                              schedulerOptions(options, "Timer.after")));
+        const double delay = secondsArg(L, 1, "Timer.after", "delay");
+        const TimerOptions options = readOptions(L, 3, "Timer.after");
+        auto state = std::make_shared<TimerState>();
+        state->clock = options.clock;
+        state->count = 1;
+        TimerCall call = makeCall(L, 2, "Timer.after", state);
+        TimerOptions once = options;
+        once.count = 0;
+        const TimerHandle handle = Scheduler::game().after(delay, call, options.clock, schedulerOptions(once, "Timer.after"));
+        state->id = state->current = handle.id;
+        pushHandle(L, state);
         return 1;
     }
 
     int luaTimerEvery(lua_State* L) {
-        const double period = luaL_checknumber(L, 1);
-        if (!(period > 0.0)) return luaL_error(L, "Timer.every: the period must be more than 0");
-        const TimerOptions options = readOptions(L, 3);
-        const int ref = functionRef(L, 2);
-        auto record = functionRecord(L, 2);
-        pushHandle(L, Scheduler::game().every(period, TimerCall{LuaRef(ref), "Timer.every", record}, options.clock,
-                                              schedulerOptions(options, "Timer.every")));
+        const double period = secondsArg(L, 1, "Timer.every", "interval");
+        if (!(period > 0.0)) return luaL_error(L, "Timer.every: interval must be > 0, got %f", period);
+        const TimerOptions options = readOptions(L, 3, "Timer.every", true);
+        auto state = std::make_shared<TimerState>();
+        state->clock = options.clock;
+        state->interval = period;
+        state->count = options.count;
+        TimerCall call = makeCall(L, 2, "Timer.every", state);
+        TimerHandle handle;
+        if (options.delay >= 0.0 && options.delay != period) {
+            // upstream's opts.delay: the first call after `delay`, then every `period`
+            TimerOptions first = options;
+            first.count = 0;
+            handle = Scheduler::game().after(options.delay, [call, state, options, period]() {
+                call();
+                if (state->cancelled || state->finished) return;
+                TimerOptions rest = options;
+                if (rest.count > 0) rest.count -= state->runs;
+                const TimerHandle repeat = Scheduler::game().every(period, call, options.clock, schedulerOptions(rest, "Timer.every"));
+                state->current = repeat.id;
+            }, options.clock, schedulerOptions(first, "Timer.every"));
+        } else {
+            handle = Scheduler::game().every(period, call, options.clock, schedulerOptions(options, "Timer.every"));
+        }
+        state->id = state->current = handle.id;
+        pushHandle(L, state);
+        return 1;
+    }
+
+    // the frame and fixed-step timers (once)
+    template <typename Schedule>
+    int scheduleOnce(lua_State* L, int fnIndex, int optsIndex, const char* name, Schedule&& schedule) {
+        const TimerOptions options = readOptions(L, optsIndex, name);
+        auto state = std::make_shared<TimerState>();
+        state->count = 1;
+        TimerCall call = makeCall(L, fnIndex, name, state);
+        const TimerHandle handle = schedule(call, schedulerOptions(options, name));
+        state->id = state->current = handle.id;
+        pushHandle(L, state);
         return 1;
     }
 
     int luaTimerNextFrame(lua_State* L) {
-        const TimerOptions options = readOptions(L, 2);
-        const int ref = functionRef(L, 1);
-        auto record = functionRecord(L, 1);
-        pushHandle(L, Scheduler::game().nextFrame(TimerCall{LuaRef(ref), "Timer.nextFrame", record}, schedulerOptions(options, "Timer.nextFrame")));
-        return 1;
+        return scheduleOnce(L, 1, 2, "Timer.nextFrame", [](const TimerCall& call, TimerOpts opts) {
+            return Scheduler::game().nextFrame(call, opts);
+        });
     }
 
     int luaTimerAfterFrames(lua_State* L) {
         const lua_Integer frames = luaL_checkinteger(L, 1);
         if (frames < 1) return luaL_error(L, "Timer.afterFrames: frames must be 1 or more");
-        const TimerOptions options = readOptions(L, 3);
-        const int ref = functionRef(L, 2);
-        auto record = functionRecord(L, 2);
-        pushHandle(L, Scheduler::game().afterFrames(static_cast<uint32_t>(frames), TimerCall{LuaRef(ref), "Timer.afterFrames", record},
-                                                    schedulerOptions(options, "Timer.afterFrames")));
-        return 1;
+        return scheduleOnce(L, 2, 3, "Timer.afterFrames", [frames](const TimerCall& call, TimerOpts opts) {
+            return Scheduler::game().afterFrames(static_cast<uint32_t>(frames), call, opts);
+        });
     }
 
     int luaTimerAfterFixedSteps(lua_State* L) {
         const lua_Integer steps = luaL_checkinteger(L, 1);
         if (steps < 1) return luaL_error(L, "Timer.afterFixedSteps: steps must be 1 or more");
-        const TimerOptions options = readOptions(L, 3);
-        const int ref = functionRef(L, 2);
-        auto record = functionRecord(L, 2);
-        pushHandle(L, Scheduler::game().afterFixedSteps(static_cast<uint32_t>(steps), TimerCall{LuaRef(ref), "Timer.afterFixedSteps", record},
-                                                        schedulerOptions(options, "Timer.afterFixedSteps")));
-        return 1;
+        return scheduleOnce(L, 2, 3, "Timer.afterFixedSteps", [steps](const TimerCall& call, TimerOpts opts) {
+            return Scheduler::game().afterFixedSteps(static_cast<uint32_t>(steps), call, opts);
+        });
     }
 
     int luaTimerCancelAll(lua_State* L) {
@@ -230,12 +353,90 @@ namespace je_lua_timer {
     }
 
     int luaHandleCancel(lua_State* L) {
-        lua_pushboolean(L, checkHandle(L, 1).cancel());
+        TimerStatePtr state = checkHandle(L, 1);
+        const bool was = state->active();
+        if (was) {
+            state->cancelled = true;
+            state->handle().cancel();
+        }
+        lua_pushboolean(L, was);
         return 1;
     }
 
     int luaHandleIsActive(lua_State* L) {
-        lua_pushboolean(L, checkHandle(L, 1).active());
+        lua_pushboolean(L, checkHandle(L, 1)->active());
+        return 1;
+    }
+
+    int luaHandleIsDone(lua_State* L) {
+        lua_pushboolean(L, !checkHandle(L, 1)->active());
+        return 1;
+    }
+
+    double remainingOf(const TimerState& state) {
+        TimerInfo info;
+        if (!state.active() || !Scheduler::game().info(state.handle(), info)) return 0.0;
+        return std::max(0.0, info.remaining);
+    }
+
+    std::string formatSeconds(double seconds) {
+        char text[32];
+        std::snprintf(text, sizeof(text), "%.2f", seconds);
+        return text;
+    }
+
+    // "Timer(5, 0.75 s left, every 0.50 s)", "Timer(5, cancelled)", "Timer(5, done)"
+    int luaHandleToString(lua_State* L) {
+        TimerStatePtr state = checkHandle(L, 1);
+        std::string text = "Timer(" + std::to_string(state->id) + ", ";
+        if (state->active()) text += formatSeconds(remainingOf(*state)) + " s left";
+        else text += state->cancelled ? "cancelled" : "done";
+        if (state->interval > 0.0) text += ", every " + formatSeconds(state->interval) + " s";
+        text += ")";
+        lua_pushlstring(L, text.data(), text.size());
+        return 1;
+    }
+
+    // methods (cancel, isActive, isDone) and upstream's read-only fields (id, remaining,
+    // interval, unscaled)
+    int luaHandleIndex(lua_State* L) {
+        TimerStatePtr state = checkHandle(L, 1);
+        const char* key = lua_tostring(L, 2);
+        if (!key) return 0;
+        if (std::strcmp(key, "cancel") == 0) lua_pushcfunction(L, luaHandleCancel);
+        else if (std::strcmp(key, "isActive") == 0) lua_pushcfunction(L, luaHandleIsActive);
+        else if (std::strcmp(key, "isDone") == 0) lua_pushcfunction(L, luaHandleIsDone);
+        else if (std::strcmp(key, "id") == 0) lua_pushinteger(L, static_cast<lua_Integer>(state->id));
+        else if (std::strcmp(key, "remaining") == 0) lua_pushnumber(L, remainingOf(*state));
+        else if (std::strcmp(key, "interval") == 0) lua_pushnumber(L, state->interval);
+        else if (std::strcmp(key, "unscaled") == 0) lua_pushboolean(L, state->clock == TimeDomain::Unscaled);
+        else lua_pushnil(L);
+        return 1;
+    }
+
+    int luaHandleGc(lua_State* L) {
+        auto* state = static_cast<TimerStatePtr*>(luaL_checkudata(L, 1, TIMER_HANDLE_META));
+        state->~TimerStatePtr();
+        return 0;
+    }
+
+    // Coroutine.waitFor(handle) (ScriptScheduler::setTimerAwaitable)
+    bool awaitableIs(lua_State* L, int index) {
+        return luaL_testudata(L, index, TIMER_HANDLE_META) != nullptr;
+    }
+
+    int awaitableStatus(lua_State* L, int index) {
+        auto* state = static_cast<TimerStatePtr*>(luaL_testudata(L, index, TIMER_HANDLE_META));
+        if (!state) return 0;
+        const TimerState& timer = **state;
+        if (timer.active()) return (timer.interval > 0.0 && timer.count == 0) ? -2 : -1;
+        return timer.cancelled ? 0 : 1;
+    }
+
+    int luaHandleEq(lua_State* L) {
+        TimerStatePtr a = checkHandle(L, 1);
+        TimerStatePtr b = checkHandle(L, 2);
+        lua_pushboolean(L, a == b);
         return 1;
     }
 
@@ -466,13 +667,15 @@ namespace je_lua_timer {
 
     void registerTimer(lua_State* L) {
         luaL_newmetatable(L, TIMER_HANDLE_META);
-        lua_newtable(L);
-        lua_pushcfunction(L, luaHandleCancel);
-        lua_setfield(L, -2, "cancel");
-        lua_pushcfunction(L, luaHandleIsActive);
-        lua_setfield(L, -2, "isActive");
+        lua_pushcfunction(L, luaHandleIndex);
         lua_setfield(L, -2, "__index");
-        lua_pushstring(L, "TimerHandle");
+        lua_pushcfunction(L, luaHandleToString);
+        lua_setfield(L, -2, "__tostring");
+        lua_pushcfunction(L, luaHandleGc);
+        lua_setfield(L, -2, "__gc");
+        lua_pushcfunction(L, luaHandleEq);
+        lua_setfield(L, -2, "__eq");
+        lua_pushstring(L, "Timer");
         lua_setfield(L, -2, "__name");
         lua_pop(L, 1);
 
@@ -512,6 +715,7 @@ void LuaBinding::registerUtilClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
 
     registerTimer(L);
+    ScriptScheduler::setTimerAwaitable({&awaitableIs, &awaitableStatus});
 
     luabridge::getGlobalNamespace(L)
         .beginClass<Angle>("Angle")

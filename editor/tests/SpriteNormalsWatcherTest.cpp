@@ -34,6 +34,7 @@
 #include <vector>
 
 #include "SymlinkSupport.h"
+#include "ScriptDataTestSupport.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -83,6 +84,32 @@ namespace {
         std::unique_ptr<editor::Platform> platform;
     };
 
+    // System::instance() is the Platform while a test of this file runs, the test binary's own
+    // System again after it (its log capture: other suites read it)
+    System* previousSystem = nullptr;
+    bool systemSwapped = false;
+
+    struct RestoreSystem : ::testing::EmptyTestEventListener {
+        void OnTestEnd(const ::testing::TestInfo&) override {
+            if (systemSwapped) {
+                jasperengine::SystemTestAccess::swap(previousSystem);
+                systemSwapped = false;
+            }
+        }
+    };
+
+    void useHeadlessSystem(System* system) {
+        static const bool listening = []() {
+            ::testing::UnitTest::GetInstance()->listeners().Append(new RestoreSystem());
+            return true;
+        }();
+        (void)listening;
+        if (&System::instance() == system) return;
+        System* previous = jasperengine::SystemTestAccess::swap(system);
+        if (!systemSwapped) previousSystem = previous;
+        systemSwapped = true;
+    }
+
     Headless& headless() {
         static Headless h = []() {
             Headless out;
@@ -96,18 +123,16 @@ namespace {
             AppSettings::initialize();
             out.project.reset(new Project());
             out.platform.reset(new editor::Platform(out.project.get()));
-            static char arg0[] = "jasperengine-editor-tests";
-            static char* argv[] = {arg0, nullptr};
-            Engine::systemInit(1, argv, out.platform.get());
+            // the editor's Platform as System::instance() for this suite's tests (the binary's engine
+            // is TestMain's: a second Engine::systemInit would restart its jobs and logger)
+            useHeadlessSystem(out.platform.get());
             Engine::pauseGameEvents(true);
             Engine::setAsyncLoading(false);
             out.project->loadProject(out.dir, false);
             Engine::setAsyncLoading(false);
             return out;
         }();
-        static char arg0[] = "jasperengine-editor-tests";
-        static char* argv[] = {arg0, nullptr};
-        if (&System::instance() != h.platform.get()) Engine::systemInit(1, argv, h.platform.get());
+        useHeadlessSystem(h.platform.get());
         return h;
     }
 

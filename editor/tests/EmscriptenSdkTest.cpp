@@ -92,7 +92,7 @@ TEST(EmscriptenSdk, DetectsTheLayoutAndConfigWithoutEmcmake) {
     const std::string path = CommandRunner::variable(env, "PATH");
     EXPECT_EQ(path.rfind(sdk.root.string() + ":" + sdk.emscripten.string() + ":", 0), 0u) << path;
     const char* ownPath = std::getenv("PATH");
-    if (ownPath && *ownPath) EXPECT_NE(path.find(ownPath), std::string::npos);
+    if (ownPath && *ownPath) { EXPECT_NE(path.find(ownPath), std::string::npos); }
     EXPECT_EQ(CommandRunner::variable(env, "EMSDK"), sdk.root.string());
     EXPECT_EQ(CommandRunner::variable(env, "EM_CONFIG"), (sdk.root / ".emscripten").string());
     EXPECT_EQ(CommandRunner::variable(env, "EMSDK_NODE"), sdk.node.string());

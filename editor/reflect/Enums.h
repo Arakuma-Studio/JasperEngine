@@ -49,6 +49,9 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kOnScreenStickAxes;
     extern const EnumDesc kOnScreenVisibility;
     extern const EnumDesc kJointAnchorSpace;
+    extern const EnumDesc kCollisionDetection2D;
+    extern const EnumDesc kSleepMode2D;
+    extern const EnumDesc kRigidbodyInterpolation;
     extern const EnumDesc kJointBreakAction;
     extern const EnumDesc kJointMotion;
     extern const EnumDesc kJointSwingType;

@@ -58,6 +58,9 @@ namespace {
 
     const ComponentCodec kTrailRendererCodec = JE_STREAM_CODEC(TrailRendererComponent, encodeTrailRendererComponent, decodeTrailRendererComponent);
 
+    // upstream's name of the component (Catalog::getComponentType("trail"))
+    constexpr const char* kTrailRendererAliases[] = {"trail"};
+
     constexpr const char* kTrailRendererKnownKeys[] = {"alignment", "autodestruct", "blendMode", "colorGradient", "colorWrite", "customShader",
         "depthWrite", "emitting", "enabled", "minVertexDistance", "numCapVertices", "numCornerVertices", "shaderFeatures", "shaderGlobalBindings",
         "shaderTextures", "shaderUniforms", "sortPriority", "stencil", "textureMode", "textureScale", "time", "widthCurve", "widthMultiplier",
@@ -160,6 +163,7 @@ const ComponentDesc kTrailRendererDesc{
     .body = JE_STRUCT_DESC(TrailRendererComponent, "TrailRendererComponent", kTrailRendererFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(TrailRendererComponent),
     .codec = &kTrailRendererCodec,
+    .keyAliases = kTrailRendererAliases,
     .decodeApply = DecodeApply::MarkOnly,
     // upstream's code (the curve and gradient included)
     .codegen = JE_FACTORY_CODEGEN(createTrailRendererComponent),
@@ -174,7 +178,7 @@ const ComponentDesc kCanvasGroupDesc{
     .codec = &kCanvasGroupCodec,
     .structuralUpdateFlags = kCanvasGroup,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegenVar = "canvasGroup",
+    .codegenVar = "canvasgroup",
     .extraKeys = kCanvasGroupKnownKeys,
 };
 

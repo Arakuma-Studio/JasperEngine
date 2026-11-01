@@ -7,6 +7,7 @@
 // them; Physics.ignoreCollision.
 
 #include "PhysicsSystem.h"
+#include "component/CharacterControllerComponent.h"
 #include "Scene.h"
 #include "Log.h"
 #include "script/ScriptMessages.h"
@@ -900,7 +901,16 @@ void PhysicsSystem::processContacts3D(){
                 continue;
             }
             FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)>& event = (raw.kind == RawContact3D::Added) ? onContactAdded3D : onContactPersisted3D;
-            if (!event.hasSubscribers() || !rigidbodyOf(scene, raw.entity1) || !rigidbodyOf(scene, raw.entity2)){
+            if (!event.hasSubscribers()){
+                continue;
+            }
+            // two bodies; or a trigger and a Character Controller's inner body (no Rigidbody: its
+            // wrapper is invalid), whose contacts with solid bodies stay unreported (oe-port's rule)
+            const bool bodies = rigidbodyOf(scene, raw.entity1) && rigidbodyOf(scene, raw.entity2);
+            auto bodyOrController = [this](Entity entity){
+                return rigidbodyOf(scene, entity) || scene->findComponent<CharacterControllerComponent>(entity);
+            };
+            if (!bodies && !(raw.sensor && bodyOrController(raw.entity1) && bodyOrController(raw.entity2))){
                 continue;
             }
             event(Rigidbody(scene, raw.entity1), Rigidbody(scene, raw.entity2), Contact3D(scene, raw.snapshot()));

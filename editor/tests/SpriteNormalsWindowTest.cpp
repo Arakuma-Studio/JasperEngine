@@ -346,14 +346,14 @@ namespace {
 #define IN_EDITOR(name, ...)                                                    \
     do {                                                                        \
         auto inEditor = [&](World& w) __VA_ARGS__;                              \
-        EXPECT_EXIT(runInEditor(name, inEditor), ::testing::ExitedWithCode(0), ""); \
+        GTEST_FLAG_SET(death_test_style, "threadsafe"); EXPECT_EXIT(runInEditor(name, inEditor), ::testing::ExitedWithCode(0), ""); \
     } while (0)
 
 // ... with the MCP server started
 #define IN_EDITOR_WITH_MCP(name, ...)                                           \
     do {                                                                        \
         auto inEditor = [&](World& w) __VA_ARGS__;                              \
-        EXPECT_EXIT(runInEditor(name, inEditor, true), ::testing::ExitedWithCode(0), ""); \
+        GTEST_FLAG_SET(death_test_style, "threadsafe"); EXPECT_EXIT(runInEditor(name, inEditor, true), ::testing::ExitedWithCode(0), ""); \
     } while (0)
 
     // the window's runs (and Save All, Shift-click jobs) to their end; the debounce clock moved past

@@ -257,6 +257,9 @@ namespace {
     // a step whose redo fails (its execute changes nothing and says so)
     class FailingRedoCmd : public Command {
     public:
+        // S24's step label and type name
+        std::string describe() const override { return "FailingRedoCmd"; }
+        const char* typeName() const override { return "FailingRedoCmd"; }
         int executions = 0;
         bool execute() override { return ++executions == 1; }
         void undo() override {}
@@ -452,6 +455,9 @@ namespace {
     // a step whose redo finds nothing to do (its GameObjects are gone) and says nothing
     class NothingToRedoCmd : public Command {
     public:
+        // S24's step label and type name
+        std::string describe() const override { return "NothingToRedoCmd"; }
+        const char* typeName() const override { return "NothingToRedoCmd"; }
         int executions = 0;
         bool execute() override { return ++executions == 1; }
         void undo() override {}
@@ -460,6 +466,9 @@ namespace {
     // a step writing one file through FileUtils (in its write scope: beneath the root)
     class ScopedFileCmd : public Command {
     public:
+        // S24's step label and type name
+        std::string describe() const override { return "ScopedFileCmd"; }
+        const char* typeName() const override { return "ScopedFileCmd"; }
         explicit ScopedFileCmd(fs::path file) : file(std::move(file)) {}
         bool execute() override { return FileUtils::writeFileReplacing(file, "made"); }
         void undo() override {
