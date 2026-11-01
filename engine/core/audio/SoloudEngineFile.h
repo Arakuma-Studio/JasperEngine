@@ -42,8 +42,9 @@ namespace jasperengine {
         SoLoud::File* pendingFile = nullptr;
     public:
         ~EngineWavStream() override;
-        // false when the file does not open or is not audio (SoLoud's result in `result`)
-        bool open(const std::string& path, SoLoud::result* result = nullptr);
+        // false when the file does not open or is not audio (SoLoud's result in `result`), or when
+        // AudioFileCheck refuses it (FILE_LOAD_FAILED, its reason in `problem`)
+        bool open(const std::string& path, SoLoud::result* result = nullptr, std::string* problem = nullptr);
         SoLoud::AudioSourceInstance* createInstance() override;
         // the file createInstance opened for the voice it is making (the WavStreamInstance takes it)
         SoLoud::File* openInstanceFile() override;

@@ -8,12 +8,14 @@
 
 #include <gtest/gtest.h>
 
+#include "audio/AudioFileCheck.h"
 #include "pool/SoundPool.h"
 
 #include "soloud.h"
 #include "soloud_wav.h"
 #include "soloud_wavstream.h"
 
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -202,4 +204,58 @@ TEST(AudioFileLoads, AnOggCommentHeaderBeyondItsPacketIsRefused) {
         EXPECT_EXIT(std::exit(loadInChild(id, path.string(), false)), ::testing::ExitedWithCode(0), "");
     }
     fs::remove(path);
+}
+
+// ---- AudioFileCheck itself -------------------------------------------------------------------------
+
+TEST(AudioFileCheck, ReadsWhatSoLoudWillDecode) {
+    const std::vector<unsigned char> bytes = readBytes(fixture("spaceEngineLow_003.ogg"));
+    AudioFileFormat format;
+    std::string error;
+    ASSERT_TRUE(AudioFileCheck::check(bytes.data(), bytes.size(), AudioDecode::Whole, format, error)) << error;
+    EXPECT_EQ(format.codec, "ogg");
+    EXPECT_EQ(format.channels, 1u);
+    EXPECT_EQ(format.sampleRate, kRate);
+    EXPECT_EQ(format.frames, 220500u) << "the last page's granule (stb_vorbis decodes past it)";
+
+    for (const char* name : {"sweep.flac", "sweep.mp3"}) {
+        const std::vector<unsigned char> file = readBytes(fixture(name));
+        ASSERT_TRUE(AudioFileCheck::check(file.data(), file.size(), AudioDecode::Stream, format, error)) << name << ": " << error;
+        EXPECT_EQ(format.channels, 1u);
+        EXPECT_EQ(format.sampleRate, kRate);
+    }
+    std::vector<unsigned char> wav = wavBytes(2, 1000);
+    ASSERT_TRUE(AudioFileCheck::check(wav.data(), wav.size(), AudioDecode::Whole, format, error)) << error;
+    EXPECT_EQ(format.codec, "wav");
+    EXPECT_EQ(format.frames, 1000u);
+    EXPECT_FALSE(AudioFileCheck::wavSizesNeedClamping(wav.data(), wav.size())) << "a WAV already right is left alone";
+}
+
+TEST(AudioFileCheck, RefusesWithAReason) {
+    AudioFileFormat format;
+    std::string error;
+    std::vector<unsigned char> twelve = wavBytes(12, 64);
+    EXPECT_FALSE(AudioFileCheck::check(twelve.data(), twelve.size(), AudioDecode::Stream, format, error));
+    EXPECT_EQ(error, "12 channels (1-8 are supported)");
+
+    std::vector<unsigned char> comments = oggWithCommentCount(0x7FFFFFFFu);
+    EXPECT_FALSE(AudioFileCheck::check(comments.data(), comments.size(), AudioDecode::Whole, format, error));
+    EXPECT_NE(error.find("comment header is damaged"), std::string::npos) << error;
+
+    const unsigned char empty = 0;
+    EXPECT_FALSE(AudioFileCheck::check(&empty, 0, AudioDecode::Whole, format, error));
+    EXPECT_EQ(error, "the file is empty");
+}
+
+TEST(AudioFileCheck, AWavsSizesBecomeTheBytesItHolds) {
+    std::vector<unsigned char> bytes = wavBytes(1, 1000);
+    putU32(bytes, 4, 0xFFFFFFFFu);
+    putU32(bytes, 40, 0xFFFFFFFFu);
+    ASSERT_TRUE(AudioFileCheck::wavSizesNeedClamping(bytes.data(), bytes.size()));
+    AudioFileFormat format;
+    std::string error;
+    ASSERT_TRUE(AudioFileCheck::prepare(bytes.data(), bytes.size(), AudioDecode::Whole, format, error)) << error;
+    EXPECT_EQ(format.frames, 1000u);
+    EXPECT_EQ(bytes[40] | (bytes[41] << 8) | (bytes[42] << 16) | ((uint32_t)bytes[43] << 24), 2000u) << "the data chunk";
+    EXPECT_EQ(bytes[4] | (bytes[5] << 8) | (bytes[6] << 16) | ((uint32_t)bytes[7] << 24), (uint32_t)bytes.size() - 8) << "the RIFF size";
 }

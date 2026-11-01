@@ -4365,6 +4365,9 @@
 		4A534E47CA764B3433135B26 /* DebugStats.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47FC23B0CE0C82B758 /* DebugStats.h */; };
 		4A534E4717686508ED60F26E /* stb_vorbis.c in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47957C5B63CD85BC46 /* stb_vorbis.c */; };
 		4A534E4756E99FCB5680B71F /* stb_vorbis.c in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47957C5B63CD85BC46 /* stb_vorbis.c */; };
+		4A534E47C9D7644B70C96ACD /* AudioFileCheck.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E1B079449B612515 /* AudioFileCheck.cpp */; };
+		4A534E4787F0A52BE790720B /* AudioFileCheck.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E1B079449B612515 /* AudioFileCheck.cpp */; };
+		4A534E47DCCC477D777CF233 /* AudioFileCheck.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478C2A964FA571E181 /* AudioFileCheck.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8560,6 +8563,8 @@
 		4A534E47C029F7456AC311E6 /* DebugOverlayResources.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DebugOverlayResources.h; sourceTree = "<group>"; };
 		4A534E47FC23B0CE0C82B758 /* DebugStats.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DebugStats.h; sourceTree = "<group>"; };
 		4A534E47957C5B63CD85BC46 /* stb_vorbis.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = stb_vorbis.c; sourceTree = "<group>"; };
+		4A534E47E1B079449B612515 /* AudioFileCheck.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioFileCheck.cpp; sourceTree = "<group>"; };
+		4A534E478C2A964FA571E181 /* AudioFileCheck.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioFileCheck.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10042,6 +10047,8 @@
 				4A534E47221DD7C3FB4713BD /* AudioMixer.h */,
 				4A534E478A9FB7B8585D977C /* AudioMixerIO.h */,
 				4A534E47797D7C3F52743130 /* SoloudEngineFile.h */,
+				4A534E47E1B079449B612515 /* AudioFileCheck.cpp */,
+				4A534E478C2A964FA571E181 /* AudioFileCheck.h */,
 			);
 			path = audio;
 			sourceTree = "<group>";
@@ -15218,6 +15225,7 @@
 				4A534E4700C2B06C425C31F7 /* DebugOverlay.h in Headers */,
 				4A534E47EBF20FD2B6EA0602 /* DebugOverlayResources.h in Headers */,
 				4A534E47CA764B3433135B26 /* DebugStats.h in Headers */,
+				4A534E47DCCC477D777CF233 /* AudioFileCheck.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -17713,6 +17721,7 @@
 				4A534E47363D69401D2B349E /* DebugOverlayResources.cpp in Sources */,
 				4A534E4775EA0FE24B50FD95 /* DebugStats.cpp in Sources */,
 				4A534E47A6F7345580E0D892 /* ProcessMemory.cpp in Sources */,
+				4A534E47C9D7644B70C96ACD /* AudioFileCheck.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18502,6 +18511,7 @@
 				4A534E47880AD33FCC731DA0 /* DebugOverlayResources.cpp in Sources */,
 				4A534E470E64957D3C296FB5 /* DebugStats.cpp in Sources */,
 				4A534E4702E0F1BB649CA319 /* ProcessMemory.cpp in Sources */,
+				4A534E4787F0A52BE790720B /* AudioFileCheck.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

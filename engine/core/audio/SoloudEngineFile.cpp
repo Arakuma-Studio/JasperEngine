@@ -3,7 +3,11 @@
 
 #include "SoloudEngineFile.h"
 
+#include "audio/AudioFileCheck.h"
 #include "io/FileData.h"
+
+#include <cstdint>
+#include <vector>
 
 using namespace jasperengine;
 
@@ -42,7 +46,7 @@ EngineWavStream::~EngineWavStream() {
     delete parsed;
 }
 
-bool EngineWavStream::open(const std::string& filePath, SoLoud::result* result) {
+bool EngineWavStream::open(const std::string& filePath, SoLoud::result* result, std::string* problem) {
     stop();
     mStreamFile = nullptr;
     delete parsed;
@@ -55,6 +59,21 @@ bool EngineWavStream::open(const std::string& filePath, SoLoud::result* result) 
         if (result) *result = SoLoud::FILE_NOT_FOUND;
         return false;
     }
+
+    // AudioFileCheck reads the whole file once (Ogg pages, the last FLAC frame, ADPCM blocks): what
+    // SoLoud's decoders would trust and must not is refused before they open it
+    std::vector<unsigned char> bytes(file->length());
+    const bool read = bytes.empty() || file->read(bytes.data(), (unsigned int)bytes.size()) == bytes.size();
+    file->seek(0);
+    AudioFileFormat format;
+    std::string reason = read ? "" : "it can't be read";
+    if (!read || !AudioFileCheck::prepare(bytes.data(), bytes.size(), AudioDecode::Stream, format, reason)) {
+        delete file;
+        if (result) *result = SoLoud::FILE_LOAD_FAILED;
+        if (problem) *problem = reason;
+        return false;
+    }
+
     SoLoud::result res = loadFile(file);
     if (res != SoLoud::SO_NO_ERROR) {
         mStreamFile = nullptr;
@@ -62,6 +81,10 @@ bool EngineWavStream::open(const std::string& filePath, SoLoud::result* result) 
         if (result) *result = res;
         return false;
     }
+    // a WAV written to a pipe says 0xFFFFFFFF for its sizes, which dr_wav takes for the length (a
+    // 1 s file streamed for 12 hours): the stream is the frames the file holds (prepare clamped
+    // the copy's sizes; the voices read the file itself, whose reads end there)
+    if ((uint64_t)mSampleCount > format.frames) mSampleCount = (unsigned int)format.frames;
     parsed = file;
     if (result) *result = SoLoud::SO_NO_ERROR;
     return true;
