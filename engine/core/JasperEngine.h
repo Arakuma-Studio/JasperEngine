@@ -97,6 +97,9 @@
 #include "component/ShadowCaster2DComponent.h"
 #include "component/PanelComponent.h"
 #include "component/ParticleSystemComponent.h"
+#include "particles/ParticleEffect.h"
+#include "particles/ParticleModules.h"
+#include "particles/ParticleValues.h"
 #include "component/ForceFieldComponent.h"
 #include "component/PointsComponent.h"
 #include "component/PolygonComponent.h"
@@ -140,11 +143,8 @@
 #include "io/File.h"
 #include "io/UserSettings.h"
 
-// SYNC4-ABSORB(Curve, Particles): upstream's math/AnimationCurve.h and math/Gradient.h collide
-// with S27's math/Curve.h (Tween, ForceField and particle values include it), and upstream's
-// particles/MinMax, ParticleModules, ParticleSimulation and ParticleUpgrade with S20's: left
-// out of the umbrella header until the absorption ports what scripts need from them
 #include "math/AABB.h"
+#include "math/Curve.h"
 #include "math/Matrix3.h"
 #include "math/Matrix4.h"
 #include "math/OBB.h"

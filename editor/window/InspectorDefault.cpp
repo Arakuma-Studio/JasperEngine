@@ -53,6 +53,7 @@ namespace {
         {"textureCube", RowPropertyType::TextureCube},
         {"modelEntity", RowPropertyType::LocalEntity},
         {"curve", RowPropertyType::Curve},
+        {"gradient", RowPropertyType::Gradient},
     };
 
     bool drawsColor(const reflect::FieldDesc& field) {
@@ -396,6 +397,7 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::ParticleSystemComponent: return &InspectorWindow::drawParticleSystemComponent;
         case ComponentType::ForceFieldComponent: return &InspectorWindow::drawForceFieldComponent;
         case ComponentType::LineRendererComponent: return &InspectorWindow::drawLineRendererComponent;
+        case ComponentType::TrailRendererComponent: return &InspectorWindow::drawTrailRendererComponent;
         case ComponentType::PolygonComponent: return &InspectorWindow::drawPolygonComponent;
         case ComponentType::MeshPolygonComponent: return &InspectorWindow::drawMeshPolygonComponent;
         case ComponentType::PointsComponent: return &InspectorWindow::drawPointsComponent;

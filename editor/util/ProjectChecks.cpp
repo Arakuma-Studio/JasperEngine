@@ -6,6 +6,9 @@
 #include "component/ActionComponent.h"
 #include "component/PointsComponent.h"
 #include "component/ParticleSystemComponent.h"
+#include "particles/ParticleEffectCodec.h"
+#include "particles/ParticleWorld.h"
+#include "util/ParticleEffectEdit.h"
 #include "shader/ShaderGlobals.h"
 #include "util/FileUtils.h"
 
@@ -2097,30 +2100,29 @@ std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::particleFindi
             const ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity);
             if (!ps) continue;
             const std::string name = "GameObject '" + scene->getEntityName(entity) + "'";
-#if 0 // SYNC4-ABSORB(particles): upstream's version 2 Particle System checks
-            if (ps->version < 2) {
-                findings.push_back({"particles", path, 0, 0, "info",
-                    name + ": its Particle System uses the legacy model (version 1)", "particles-legacy",
-                    "upgrade it to Unity's modules: the Inspector's Upgrade to modules, create_particles {entity, upgrade: true} or Lua ps:upgrade()"});
+            // the effect it plays: its asset, or the inline one
+            particles::ParticleEffectDocument document;
+            std::vector<particles::Diagnostic> readDiagnostics;
+            if (!ParticleEffectEdit::read(*ps, document, &readDiagnostics)) {
+                findings.push_back({"particles", path, 0, 0, "error",
+                    name + ": its Particle System's effect " + ps->effect.path + " cannot be read (" +
+                    particles::ParticleEffectCodec::format(readDiagnostics) + "): it draws nothing", "particles-effect-invalid",
+                    "fix or reassign the effect (get_particle_effect lists its diagnostics)"});
                 continue;
             }
-            const ActionComponent* action = scene->findComponent<ActionComponent>(entity);
-            const Entity target = (action && action->target != NULL_ENTITY && scene->isEntityCreated(action->target)) ? action->target : entity;
-            if (scene->findComponent<PointsComponent>(target) && ps->renderer.renderMode != ParticleSystemRenderMode::Billboard) {
-                findings.push_back({"particles", path, 0, 0, "warning",
-                    name + ": its Particle System draws as points, which are billboards only: its render mode " +
-                    particles::enumName(*particles::findField("renderer.renderMode"), (int)ps->renderer.renderMode) + " is drawn as Billboard",
-                    "particles-points-render-mode",
-                    "draw it with the quad renderer (create_particles renderer: quads, or GameObject > Effects > Particle System) or set renderer.renderMode Billboard"});
+            std::vector<particles::Diagnostic> diagnostics;
+            if (!particles::ParticleEffectCodec::validate(document, diagnostics)) {
+                findings.push_back({"particles", path, 0, 0, "error",
+                    name + ": its Particle System's effect does not compile (" + particles::ParticleEffectCodec::format(diagnostics) + "): it draws nothing",
+                    "particles-effect-invalid", "edit_particle_effect with the fields the diagnostics name"});
+                continue;
             }
-            if (ps->main.maxParticles > 5000) {
+            if (document.maxParticles > particles::kBudgetMobile) {
                 findings.push_back({"particles", path, 0, 0, "warning",
-                    name + ": its Particle System allows " + std::to_string(ps->main.maxParticles) +
-                    " particles, past the mobile budget of 5000 (the simulation runs on the CPU)", "particles-max-exceeded-budget",
-                    "lower main.maxParticles (and the emission rate), or keep the system off mobile builds"});
+                    name + ": its Particle System allows " + std::to_string(document.maxParticles) + " particles, past a mobile build's " +
+                    "world budget of " + std::to_string(particles::kBudgetMobile) + " (its emission is thinned there)",
+                    "particles-max-exceeded-budget", "lower maxParticles (and the emission rate), or keep the system off mobile builds"});
             }
-#endif
-            (void)ps; (void)name; (void)path;
         }
     }
     return findings;

@@ -14,8 +14,7 @@
 #include "component/FluidSimulationComponent.h"
 #include "particles/LegacyParticleSystem.h"
 #include "component/TrailRendererComponent.h"
-#include "math/AnimationCurve.h"
-#include "math/Gradient.h"
+#include "math/Curve.h"
 
 #include <filesystem>
 #include <set>
@@ -302,24 +301,15 @@ namespace jasperengine::editor {
         // custom-block members that follow a global shader value: {member: global}
         static YAML::Node encodeShaderGlobalBindings(const ShaderGlobalBindings& bindings);
         static ShaderGlobalBindings decodeShaderGlobalBindings(const YAML::Node& node);
-        // Unity AnimationCurve and Gradient (lines and trails spec 6.1; the Trail Renderer's until it
-        // moves onto S27's Curve). A curve: {keys: [[time, value], [time, value, inTangent,
-        // outTangent]...], pre: clamp|loop|ping_pong, post: ...} (wraps written when not clamp,
-        // tangents when not flat, .inf steps); a bare number reads as a constant curve. A gradient:
-        // {mode: blend|fixed, colors: [[time, colour]...], alphas: [[time, alpha]...]}, a colour
-        // "#RRGGBB" (sRGB, written when the linear value is exactly an 8-bit one) or [r, g, b]
-        // (linear); a single colour ("#RRGGBB[AA]", [r, g, b(, a)]) reads as a constant gradient
-        static YAML::Node encodeCurve(const upcurve::AnimationCurve& curve);
-        static upcurve::AnimationCurve decodeCurve(const YAML::Node& node, const upcurve::AnimationCurve& fallback = upcurve::AnimationCurve::constant(1.0f));
-        static YAML::Node encodeGradient(const upcurve::Gradient& gradient);
-        static upcurve::Gradient decodeGradient(const YAML::Node& node, const upcurve::Gradient& fallback = upcurve::Gradient());
-        static std::string curveWrapToString(upcurve::CurveWrap wrap);
-        static upcurve::CurveWrap stringToCurveWrap(const std::string& str);
-        // "#RRGGBB" / "#RRGGBBAA" (the # optional) as 0..1 sRGB values; false for other text
-        static bool parseHexColor(const std::string& text, Vector4& srgb, bool& hasAlpha);
-        // a colour value of the YAML/JSON forms: a hex string (sRGB, converted) or [r, g, b(, a)]
-        // (linear) as linear RGBA
-        static bool decodeColorValue(const YAML::Node& node, Vector4& linear, bool& hasAlpha);
+        // The Line and Trail Renderers' width curve and colour gradient: S27's one curve encoding
+        // (stream/CurveCodec.h). The reader also takes upstream's (lines and trails) form, so its
+        // files read without loss: {keys, pre, post} curves, numbers, "#RRGGBB" / linear colours
+        // and {mode, colors, alphas} gradients (math/CurveJson.h); a value that reads as neither
+        // gives `fallback` with a warning
+        static YAML::Node encodeCurve(const Curve& curve);
+        static Curve decodeCurve(const YAML::Node& node, const Curve& fallback = Curve::constant(1.0f));
+        static YAML::Node encodeGradient(const Gradient& gradient);
+        static Gradient decodeGradient(const YAML::Node& node, const Gradient& fallback = Gradient());
 
         // upstream's components without a reflection field table of their own yet: their codecs
         // (the descriptors in editor/reflect/components/UpstreamReflect.cpp use them)
@@ -607,24 +597,6 @@ namespace jasperengine::editor {
         static VertexAnimatorComponent decodeVertexAnimatorComponent(const YAML::Node& node, const VertexAnimatorComponent* oldAnimator = nullptr);
 
         static YAML::Node encodeParticleSystemComponent(const ParticleSystemComponent& particles);
-        // Unity's MinMaxCurve / MinMaxGradient (particles spec 6.1): a curve is a number
-        // (Constant), {mode: curve, multiplier, curve}, {mode: two_constants, min, max} or {mode:
-        // two_curves, multiplier, min, max} (min/max: curves); a gradient a colour ("#RRGGBB[AA]"
-        // sRGB or [r, g, b, a] linear: Color), {mode: gradient, gradient}, {mode: two_colors,
-        // min, max}, {mode: two_gradients, min, max} or {mode: random_color, gradient}
-#if 0 // SYNC4-ABSORB(particles)
-        static YAML::Node encodeMinMaxCurve(const MinMaxCurve& curve);
-        static MinMaxCurve decodeMinMaxCurve(const YAML::Node& node, const MinMaxCurve& fallback = MinMaxCurve());
-        static YAML::Node encodeMinMaxGradient(const MinMaxGradient& gradient);
-        static MinMaxGradient decodeMinMaxGradient(const YAML::Node& node, const MinMaxGradient& fallback = MinMaxGradient());
-#endif
-        // a colour as "#RRGGBB" / "#RRGGBBAA" when its linear value is exactly that 8-bit sRGB
-        // value, else [r, g, b, a] (linear)
-        static YAML::Node encodeColorValue(const Vector4& linear);
-#if 0 // SYNC4-ABSORB(particles)
-        static YAML::Node encodeParticleBursts(const std::vector<ParticleEmissionBurst>& bursts);
-        static std::vector<ParticleEmissionBurst> decodeParticleBursts(const YAML::Node& node);
-#endif
         static ParticleSystemComponent decodeParticleSystemComponent(const YAML::Node& node, const ParticleSystemComponent* oldParticles = nullptr);
         // a scene's particle system as written before S20 (the scene migration reads it)
         static LegacyParticleSystem decodeLegacyParticleSystem(const YAML::Node& node);

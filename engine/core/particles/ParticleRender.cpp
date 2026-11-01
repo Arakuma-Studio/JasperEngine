@@ -131,6 +131,12 @@ namespace {
             const uint32_t flipXKey = ctx.seed ^ randomSalt((uint32_t)ModuleId::Renderer, 2);
             const uint32_t flipYKey = ctx.seed ^ randomSalt((uint32_t)ModuleId::Renderer, 3);
             const bool flipX = rp.flip[0] > 0.0f && !rp.mesh, flipY = rp.flip[1] > 0.0f && !rp.mesh;
+            // the Texture Sheet's Flip U / V: the frame mirrored on the quad (another mirror of it,
+            // so the two compose)
+            const uint32_t flipUKey = ctx.seed ^ randomSalt((uint32_t)ModuleId::TextureSheetAnimation, 5);
+            const uint32_t flipVKey = ctx.seed ^ randomSalt((uint32_t)ModuleId::TextureSheetAnimation, 6);
+            const bool flipU = rp.flipU > 0.0f && !rp.mesh && rp.sheet != SheetKind::None;
+            const bool flipV = rp.flipV > 0.0f && !rp.mesh && rp.sheet != SheetKind::None;
             for (uint32_t i = begin; i < end; i += 4){
                 typename K::Lane L(ctx, i);
                 const uint32_t valid = end - i >= 4 ? 0xfu : ((1u << (end - i)) - 1u);
@@ -151,7 +157,13 @@ namespace {
                     L.age = B::max(B::sub(L.age, back), B::zero());
                     L.normAge = B::mul(L.age, L.invLife);
                 }
-                const f4 vx = K::ld(ctx.ch[ChVelX], i), vy = K::ld(ctx.ch[ChVelY], i), vz = K::ld(ctx.ch[ChVelZ], i);
+                f4 vx = K::ld(ctx.ch[ChVelX], i), vy = K::ld(ctx.ch[ChVelY], i), vz = K::ld(ctx.ch[ChVelZ], i);
+                if (ctx.ch[ChAnimVelX]){
+                    // along the total velocity (Velocity over Lifetime and Noise included)
+                    vx = B::add(vx, K::ld(ctx.ch[ChAnimVelX], i));
+                    vy = B::add(vy, K::ld(ctx.ch[ChAnimVelY], i));
+                    vz = B::add(vz, K::ld(ctx.ch[ChAnimVelZ], i));
+                }
 
                 // size
                 f4 sx, sy, sz;
@@ -187,6 +199,10 @@ namespace {
                     sx = B::select(B::cmplt(K::rand01(flipXKey, L.spawn), K::k(rp.flip[0])), B::neg(sx), sx);
                 if (flipY)
                     sy = B::select(B::cmplt(K::rand01(flipYKey, L.spawn), K::k(rp.flip[1])), B::neg(sy), sy);
+                if (flipU)
+                    sx = B::select(B::cmplt(K::rand01(flipUKey, L.spawn), K::k(rp.flipU)), B::neg(sx), sx);
+                if (flipV)
+                    sy = B::select(B::cmplt(K::rand01(flipVKey, L.spawn), K::k(rp.flipV)), B::neg(sy), sy);
 
                 // colour
                 u4 color;
@@ -329,6 +345,7 @@ namespace {
                         M::sincos(B::mul(rot, K::k(0.5f)), s, c);
                         qx = B::zero(); qy = B::zero(); qz = s; qw = c;
                     }
+                    alignMesh(job, rp, px, py, pz, qx, qy, qz, qw);
                     B::storeu4(qa, pair(snorm16(qx), snorm16(qy)));
                     B::storeu4(qb, pair(snorm16(qz), snorm16(qw)));
                 }
@@ -386,6 +403,81 @@ namespace {
                 }
             }
             return written - outBegin;
+        }
+
+        // Mesh particles' Render Alignment (Simulation and Velocity need nothing here: the shader
+        // turns Velocity's): View, World and Local put the view's rotation in front of the
+        // particle's; Facing turns each to the camera position (+Z towards it, up the camera's)
+        static void alignMesh(const PackJob& job, const RenderParams& rp, f4 px, f4 py, f4 pz, f4& qx, f4& qy, f4& qz, f4& qw){
+            switch (rp.meshAlignment){
+                case MeshAlignment::View:
+                case MeshAlignment::World:
+                case MeshAlignment::Local:
+                    K::quatMulUniform(job.view->alignQuat, qx, qy, qz, qw);
+                    break;
+                case MeshAlignment::Facing: {
+                    const RenderView& v = *job.view;
+                    alignas(16) float x[4], y[4], z[4], out[4][4];
+                    B::storeu(x, px); B::storeu(y, py); B::storeu(z, pz);
+                    for (int l = 0; l < 4; l++){
+                        float f[3] = {v.position[0] - x[l], v.position[1] - y[l], v.position[2] - z[l]};
+                        float fl = std::sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
+                        if (fl < 1.0e-6f){ f[0] = -v.forward[0]; f[1] = -v.forward[1]; f[2] = -v.forward[2]; fl = 1.0f; }
+                        for (float& c : f) c /= fl;
+                        // right = up x forward, up' = forward x right
+                        float r[3] = {v.up[1] * f[2] - v.up[2] * f[1], v.up[2] * f[0] - v.up[0] * f[2], v.up[0] * f[1] - v.up[1] * f[0]};
+                        float rl = std::sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]);
+                        if (rl < 1.0e-6f){
+                            const float helper[3] = {std::fabs(f[1]) < 0.99f ? 0.0f : 1.0f, std::fabs(f[1]) < 0.99f ? 1.0f : 0.0f, 0.0f};
+                            r[0] = helper[1] * f[2] - helper[2] * f[1]; r[1] = helper[2] * f[0] - helper[0] * f[2]; r[2] = helper[0] * f[1] - helper[1] * f[0];
+                            rl = std::sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]);
+                        }
+                        for (float& c : r) c /= rl;
+                        const float u[3] = {f[1] * r[2] - f[2] * r[1], f[2] * r[0] - f[0] * r[2], f[0] * r[1] - f[1] * r[0]};
+                        quatFromAxes(r, u, f, out[l]);
+                    }
+                    const f4 ax = B::set(out[0][0], out[1][0], out[2][0], out[3][0]);
+                    const f4 ay = B::set(out[0][1], out[1][1], out[2][1], out[3][1]);
+                    const f4 az = B::set(out[0][2], out[1][2], out[2][2], out[3][2]);
+                    const f4 aw = B::set(out[0][3], out[1][3], out[2][3], out[3][3]);
+                    K::quatMulLanes(ax, ay, az, aw, qx, qy, qz, qw);
+                    break;
+                }
+                case MeshAlignment::Simulation:
+                case MeshAlignment::Velocity:
+                default:
+                    break;
+            }
+        }
+
+        // the quaternion (x, y, z, w) of the rotation whose columns are the unit axes x, y, z
+        static void quatFromAxes(const float x[3], const float y[3], const float z[3], float q[4]){
+            const float trace = x[0] + y[1] + z[2];
+            if (trace > 0.0f){
+                const float s = std::sqrt(trace + 1.0f) * 2.0f;
+                q[3] = 0.25f * s;
+                q[0] = (y[2] - z[1]) / s;
+                q[1] = (z[0] - x[2]) / s;
+                q[2] = (x[1] - y[0]) / s;
+            }else if (x[0] > y[1] && x[0] > z[2]){
+                const float s = std::sqrt(1.0f + x[0] - y[1] - z[2]) * 2.0f;
+                q[3] = (y[2] - z[1]) / s;
+                q[0] = 0.25f * s;
+                q[1] = (y[0] + x[1]) / s;
+                q[2] = (z[0] + x[2]) / s;
+            }else if (y[1] > z[2]){
+                const float s = std::sqrt(1.0f + y[1] - x[0] - z[2]) * 2.0f;
+                q[3] = (z[0] - x[2]) / s;
+                q[0] = (y[0] + x[1]) / s;
+                q[1] = 0.25f * s;
+                q[2] = (z[1] + y[2]) / s;
+            }else{
+                const float s = std::sqrt(1.0f + z[2] - x[0] - y[1]) * 2.0f;
+                q[3] = (x[1] - y[0]) / s;
+                q[0] = (z[0] + x[2]) / s;
+                q[1] = (z[1] + y[2]) / s;
+                q[2] = 0.25f * s;
+            }
         }
 
         // the 16-bit back-to-front keys of four particles: far first, the key falls as the metric grows

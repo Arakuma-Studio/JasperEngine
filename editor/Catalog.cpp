@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "Catalog.h"
-#include "particles/ParticleFields.h"
 #include "object/ParticleSystem.h"
 #include "subsystem/ActionSystem.h"
 #include "script/ScriptRuntime.h"
@@ -471,20 +470,9 @@ uint64_t editor::Catalog::getChangedUpdateFlags(ComponentType compType, void* ol
                 changed = static_cast<EntityReference*>(oldProp.ref)->entity != static_cast<EntityReference*>(newProp.ref)->entity ||
                           static_cast<EntityReference*>(oldProp.ref)->sceneId != static_cast<EntityReference*>(newProp.ref)->sceneId;
                 break;
-#if 0 // SYNC4-ABSORB(curve): upstream's AnimationCurve / Gradient / MinMax property types
-            case PropertyType::Curve:
-                changed = *static_cast<AnimationCurve*>(oldProp.ref) != *static_cast<AnimationCurve*>(newProp.ref);
-                break;
             case PropertyType::Gradient:
                 changed = *static_cast<Gradient*>(oldProp.ref) != *static_cast<Gradient*>(newProp.ref);
                 break;
-            case PropertyType::MinMaxCurve:
-                changed = *static_cast<MinMaxCurve*>(oldProp.ref) != *static_cast<MinMaxCurve*>(newProp.ref);
-                break;
-            case PropertyType::MinMaxGradient:
-                changed = *static_cast<MinMaxGradient*>(oldProp.ref) != *static_cast<MinMaxGradient*>(newProp.ref);
-                break;
-#endif
             case PropertyType::Custom:
                 // Conservative: assume changed for complex types
                 changed = true;
@@ -704,7 +692,7 @@ std::string editor::Catalog::getShaderReferenceForProperty(Scene* scene, Entity 
             break;
         case ComponentType::TrailRendererComponent:
             if (TrailRendererComponent* trail = scene->findComponent<TrailRendererComponent>(entity))
-                return trail->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : trail->customShader;
+                return trail->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : trail->customShader.path;
             break;
         case ComponentType::SkyboxComponent:
             if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity))
@@ -917,13 +905,6 @@ uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Mat
 }
 
 void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint64_t updateFlags){
-    if (updateFlags & UpdateFlags_Particle_Mesh){
-        // the Mesh render mode's primitive, drawn by the system's target
-        Scene* scene = dynamic_cast<Scene*>(registry);
-        const ParticleSystemComponent* ps = registry->findComponent<ParticleSystemComponent>(entity);
-        // SYNC4-ABSORB(particles): upstream's version 2 Mesh render mode (ParticleSystem::applyRendererMesh)
-        (void)scene; (void)ps;
-    }
     if (updateFlags & UpdateFlags_CanvasGroup){
         // alpha in [0, 1] at once (a NaN keeps the value UISystem last saw)
         if (CanvasGroupComponent* group = registry->findComponent<CanvasGroupComponent>(entity)){
@@ -1487,34 +1468,13 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             if (source && target) *target = *source;
             break;
         }
-#if 0 // SYNC4-ABSORB(curve): upstream's AnimationCurve / Gradient / MinMax property types
-        case PropertyType::Curve: {
-            AnimationCurve* source = Catalog::getPropertyRef<AnimationCurve>(sourceRegistry, sourceEntity, compType, property);
-            AnimationCurve* target = Catalog::getPropertyRef<AnimationCurve>(targetRegistry, targetEntity, compType, property);
-            if (source && target) *target = *source;
-            break;
-        }
         case PropertyType::Gradient: {
             Gradient* source = Catalog::getPropertyRef<Gradient>(sourceRegistry, sourceEntity, compType, property);
             Gradient* target = Catalog::getPropertyRef<Gradient>(targetRegistry, targetEntity, compType, property);
             if (source && target) *target = *source;
             break;
         }
-        case PropertyType::MinMaxCurve: {
-            MinMaxCurve* source = Catalog::getPropertyRef<MinMaxCurve>(sourceRegistry, sourceEntity, compType, property);
-            MinMaxCurve* target = Catalog::getPropertyRef<MinMaxCurve>(targetRegistry, targetEntity, compType, property);
-            if (source && target) *target = *source;
-            break;
-        }
-        case PropertyType::MinMaxGradient: {
-            MinMaxGradient* source = Catalog::getPropertyRef<MinMaxGradient>(sourceRegistry, sourceEntity, compType, property);
-            MinMaxGradient* target = Catalog::getPropertyRef<MinMaxGradient>(targetRegistry, targetEntity, compType, property);
-            if (source && target) *target = *source;
-            break;
-        }
-#endif
         case PropertyType::Custom:
-            // SYNC4-ABSORB(particles): upstream's version 2 "emission.bursts" / "textureSheetAnimation.sprites" copies
             // upstream's collider lists: their authored data, no live shape (copyCollider2D / 3D)
             if (compType == ComponentType::RigidbodyComponent && property == "colliders") {
                 auto* source = Catalog::getPropertyRef<std::vector<Collider3D>>(sourceRegistry, sourceEntity, compType, property);

@@ -67,9 +67,6 @@ void ActionSystem::actionStart(Entity entity, bool newRun){
         }
     }
 
-    // SYNC4-ABSORB(Particles): upstream's version 2 Particle Systems started here
-    // (particleSystemStart); S20's ParticleSubsystem drives its own systems
-
     if (target != NULL_ENTITY && scene->isEntityCreated(target)){
         Signature targetSignature = scene->getSignature(target);
 
@@ -1004,9 +1001,10 @@ float ActionSystem::getDuration(Entity entity, int depth) {
         // else until its last particle dies
         if (isParticleController(entity, *action)) {
             if (const particles::ParticleEffectDocument* effect = ParticleSubsystem::getDocument(scene->getComponent<ParticleSystemComponent>(action->target))) {
-                float lifetimeLo = 0.0f, lifetimeHi = 0.0f;
+                float lifetimeLo = 0.0f, lifetimeHi = 0.0f, delayLo = 0.0f, delayHi = 0.0f;
                 effect->main.startLifetime.range(lifetimeLo, lifetimeHi);
-                duration = effect->startDelay + effect->duration + (effect->looping ? 0.0f : lifetimeHi);
+                effect->startDelay.range(delayLo, delayHi);
+                duration = std::max(delayHi, 0.0f) + effect->duration + (effect->looping ? 0.0f : lifetimeHi);
             }
         }
     }

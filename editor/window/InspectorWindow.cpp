@@ -9,6 +9,7 @@
 #include "util/EditorScripts.h"
 #include "widget/ColorPickerWindow.h"
 #include "widget/CurveField.h"
+#include "widget/GradientField.h"
 #include "util/NumericExpression.h"
 #include "profiler/Profile.h"
 #include "command/PlayChangeReview.h"
@@ -4412,64 +4413,47 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (dif)
             ImGui::PopStyleColor();
 
-#if 0 // SYNC4-ABSORB(curve, particles): upstream's AnimationCurve / Gradient / MinMax rows
-    }else if (type == RowPropertyType::Curve || type == RowPropertyType::Gradient ||
-              type == RowPropertyType::MinMaxCurve || type == RowPropertyType::MinMaxGradient){
-        // Unity AnimationCurve / Gradient: an inline preview that opens its editor popup;
-        // every frame of a drag is one merged command, the edit's end its own undo step
-        auto valueRow = [&](auto sample, auto drawField){
-            using T = decltype(sample);
-            std::map<Entity, T> eValue;
-            const T* defValue = nullptr;
-            bool dif = false;
+    }else if (type == RowPropertyType::Gradient){
+        // a colour gradient (S27 R12): the Gradient field, each Gradient Editor gesture one undo step
+        Gradient* value = nullptr;
+        std::map<Entity, Gradient> eValue;
+        bool dif = false;
+        const Gradient* defValue = nullptr;
+        for (Entity& entity : entities){
+            PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, cpType, id);
+            defValue = static_cast<const Gradient*>(prop.def);
+            eValue[entity] = *static_cast<Gradient*>(prop.ref);
+            if (value && *value != eValue[entity])
+                dif = true;
+            value = &eValue[entity];
+        }
+        const bool defChanged = defValue && value && *value != *defValue;
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent) && defValue){
             for (Entity& entity : entities){
-                PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, cpType, id);
-                defValue = static_cast<const T*>(prop.def);
-                eValue[entity] = *static_cast<T*>(prop.ref);
-                if (eValue[entity] != eValue[entities[0]])
-                    dif = true;
-            }
-            T newValue = eValue[entities[0]];
-            const bool defChanged = defValue && newValue != *defValue;
-            if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent) && defValue){
-                for (Entity& entity : entities){
-                    cmd = new PropertyCmd<T>(project, sceneProject->id, entity, cpType, id, *defValue, settings.onValueChanged);
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                }
+                cmd = new PropertyCmd<Gradient>(project, sceneProject->id, entity, cpType, id, *defValue, settings.onValueChanged);
+                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
                 finishProperty = true;
             }
-            const auto edit = drawField(newValue, dif);
-            if (edit.changed){
-                for (Entity& entity : entities){
-                    cmd = new PropertyCmd<T>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                }
+        }
+        ui::GradientFieldOptions gradientOptions;
+        gradientOptions.label = label.c_str();
+        gradientOptions.mixed = dif;
+        Gradient newValue = value ? *value : Gradient();
+        const ui::EditPhase gradientPhase = ui::gradientField(("##gradient_" + id).c_str(), newValue, gradientOptions);
+        if (gradientPhase == ui::EditPhase::Begin){
+            ui::beginFieldEdit(CommandHandle::get(project->getSelectedSceneId()), label.c_str());
+        }else if (gradientPhase == ui::EditPhase::Changing || gradientPhase == ui::EditPhase::Applied){
+            for (Entity& entity : entities){
+                cmd = new PropertyCmd<Gradient>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
+                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
             }
-            if (edit.finished)
-                finishProperty = true;
-        };
-        // the field leaves room for the help marker after it
-        const float helpWidth = settings.help.empty() ? 0.0f : ImGui::CalcTextSize("(?)").x + ImGui::GetStyle().ItemSpacing.x;
-        auto fieldWidth = [&](){ return std::max(ImGui::GetFontSize() * 4.0f, ImGui::GetContentRegionAvail().x - helpWidth); };
-        if (type == RowPropertyType::Curve){
-            valueRow(AnimationCurve(), [&](AnimationCurve& value, bool mixed){ return curveField(("##curve_" + id).c_str(), value, mixed, fieldWidth()); });
-        }else if (type == RowPropertyType::MinMaxCurve){
-            valueRow(MinMaxCurve(), [&](MinMaxCurve& value, bool mixed){
-                return minMaxCurveField(("##minmax_" + id).c_str(), value, mixed, fieldWidth(), settings.displayScale, settings.format, settings.stepSize);
-            });
-        }else if (type == RowPropertyType::MinMaxGradient){
-            valueRow(MinMaxGradient(), [&](MinMaxGradient& value, bool mixed){
-                return minMaxGradientField(("##minmaxgradient_" + id).c_str(), value, mixed, fieldWidth());
-            });
-        }else{
-            valueRow(jasperengine::Gradient(), [&](jasperengine::Gradient& value, bool mixed){ return gradientField(("##gradient_" + id).c_str(), value, mixed, fieldWidth()); });
+            if (gradientPhase == ui::EditPhase::Applied) finishProperty = true;
         }
         if (!settings.help.empty()){
             ImGui::SameLine();
             helpMarker(settings.help);
         }
 
-#endif
     }else if (type == RowPropertyType::Font){
         FontArray* value = nullptr;
         std::map<Entity, FontArray> eValue;
@@ -9834,6 +9818,7 @@ const char* editor::InspectorWindow::rowPropertyTypeName(RowPropertyType type){
         case RowPropertyType::Asset: return "Asset";
         case RowPropertyType::LayerMask: return "LayerMask";
         case RowPropertyType::Curve: return "Curve";
+        case RowPropertyType::Gradient: return "Gradient";
     }
     return "Custom";
 }
@@ -9871,6 +9856,7 @@ namespace {
             case PropertyType::Asset: return static_cast<AssetRef*>(a.ref)->path != static_cast<AssetRef*>(b.ref)->path;
             case PropertyType::Shader: return static_cast<ShaderRef*>(a.ref)->path != static_cast<ShaderRef*>(b.ref)->path;
             case PropertyType::Curve: return *static_cast<Curve*>(a.ref) != *static_cast<Curve*>(b.ref);
+            case PropertyType::Gradient: return *static_cast<Gradient*>(a.ref) != *static_cast<Gradient*>(b.ref);
             case PropertyType::Texture: return *static_cast<Texture*>(a.ref) != *static_cast<Texture*>(b.ref);
             case PropertyType::Font: return *static_cast<FontArray*>(a.ref) != *static_cast<FontArray*>(b.ref);
             case PropertyType::Ease: return *static_cast<Ease*>(a.ref) != *static_cast<Ease*>(b.ref);

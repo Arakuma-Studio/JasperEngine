@@ -16,7 +16,8 @@
 //
 // Render modes (particlesParams.mode.x, the Renderer module's): 0 Billboard (the camera
 // plane), 1 Facing Camera Position, 2 Stretched (STRETCH), 3 Horizontal, 4 Vertical, 5 World
-// oriented, 6 Local oriented, 7 Mesh (PARTICLE_MESH). Rotation is clockwise as seen.
+// oriented, 6 Local oriented, 7 Mesh (PARTICLE_MESH), 9 Velocity aligned (8, None, draws no
+// particles). Rotation is clockwise as seen.
 
 #define FRAME_VS
 #include "includes/frame.glsl"
@@ -30,6 +31,7 @@ uniform u_vs_particlesParams {
     vec4 pivot;           // xyz the pivot, in particle sizes; w 1 when the trail is in world space
     vec4 screenSize;      // x min, y max screen size (fractions of the view height), z perspective (1) or ortho (0), w view height of one unit at depth 1 (2 tan(fov/2), ortho: the view height)
     vec4 cameraVelocity;  // xyz the camera's velocity (world, per second)
+    vec4 tiling;          // the texture's UVs: xy scale, zw offset (the Renderer's Tiling and Offset)
     #if defined(LIT) || defined(SIXWAY)
         vec4 lightPosition[MAX_PARTICLE_LIGHTS];  // xyz world position, w range (0: no light)
         vec4 lightColor[MAX_PARTICLE_LIGHTS];     // rgb colour times intensity (linear)
@@ -112,11 +114,11 @@ void particleFrameUVs(vec2 local, float frame01){
     float frame = frame01 * frames;
     float first = floor(frame);
     vec4 rect = particleFrameRect(first);
-    v_uv = rect.xy + local * rect.zw;
+    v_uv = (rect.xy + local * rect.zw) * particlesParams.tiling.xy + particlesParams.tiling.zw;
     #ifdef FRAME_BLEND
         float next = mod(first + 1.0, frames);
         vec4 nextRect = particleFrameRect(next);
-        v_uvNext = nextRect.xy + local * nextRect.zw;
+        v_uvNext = (nextRect.xy + local * nextRect.zw) * particlesParams.tiling.xy + particlesParams.tiling.zw;
         v_frameBlend = frame - first;
     #endif
 }
@@ -278,6 +280,13 @@ void main() {
         // local oriented: the emitter's XY plane
         right = particleSafeNormalize(mat3(particlesParams.modelMatrix) * vec3(1.0, 0.0, 0.0), cameraRight);
         up = particleSafeNormalize(mat3(particlesParams.modelMatrix) * vec3(0.0, 1.0, 0.0), cameraUp);
+    }else if (mode == 9){
+        // velocity aligned: the quad across the velocity (its normal along it), up turned from
+        // the world's Y (Unity's Velocity render alignment)
+        vec3 forward = particleSafeNormalize(mat3(particlesParams.modelMatrix) * i_particleVelocity.xyz, toCamera);
+        vec3 helper = abs(forward.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+        right = particleSafeNormalize(cross(helper, forward), cameraRight);
+        up = cross(forward, right);
     }
 
     #ifdef STRETCH

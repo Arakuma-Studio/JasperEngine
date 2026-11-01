@@ -755,6 +755,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/StreamUpstream.cpp
     ${EDITOR_DIR}/StreamPrefab.cpp
     ${EDITOR_DIR}/StreamMigrations.cpp
+    ${EDITOR_DIR}/stream/UpstreamParticles.cpp
     ${EDITOR_DIR}/StreamSchema.cpp
     ${EDITOR_DIR}/StreamPreserved.cpp
     ${EDITOR_DIR}/LoadReport.cpp
@@ -1060,9 +1061,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorRenderers.cpp
     ${EDITOR_DIR}/window/InspectorLattice.cpp
     ${EDITOR_DIR}/window/InspectorAnimator.cpp
-    # SYNC4-ABSORB(curve): upstream's Line/Trail Renderer Inspector (InspectorLinesTrails.cpp, on upstream's
-    # CurveField/GradientField) waits for the Curve absorption; S20's InspectorParticles.cpp is in the
-    # particles list
+    ${EDITOR_DIR}/window/InspectorLinesTrails.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/InspectorVcs.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
@@ -1134,8 +1133,10 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/vat/import/HoudiniVat3.cpp
     ${EDITOR_DIR}/vat/import/OpenVat.cpp
     ${EDITOR_DIR}/vat/VatImportWrite.cpp
-    # SYNC4-ABSORB(particles): upstream's Unity ParticleSystem importer (editor/unity: UnityYaml.cpp,
-    # UnityProject.cpp, UnityParticleImport.cpp) writes version 2 systems; S20 takes it over
+    # the Unity ParticleSystem importer (S20 systems)
+    ${EDITOR_DIR}/unity/UnityYaml.cpp
+    ${EDITOR_DIR}/unity/UnityProject.cpp
+    ${EDITOR_DIR}/unity/UnityParticleImport.cpp
     ${EDITOR_DIR}/window/VertexAnimationBakerWindow.cpp
     ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
     ${EDITOR_DIR}/window/SpriteNormalsWindow.cpp
@@ -1156,10 +1157,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/dialog/PrefabsWindow.cpp
     ${EDITOR_DIR}/window/dialog/AboutWindow.cpp
     ${EDITOR_DIR}/window/dialog/ScenesWindow.cpp
-    # SYNC4-ABSORB(curve): upstream's window/widget CurveField / CurveFieldLogic / MinMaxFields /
-    # GradientField collide with S27's editor/widget ones (window/ files including "widget/CurveField.h"
-    # found them first): parked in editor/sync4-absorb/window/widget/, not built; the Curve absorption
-    # moves their users
     ${EDITOR_DIR}/window/widget/CustomTextEditor.cpp
     ${EDITOR_DIR}/window/widget/GraphCanvas.cpp
     ${EDITOR_DIR}/window/widget/HtmlCssLexer.cpp
@@ -1178,7 +1175,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/render/gizmo/Object2DGizmo.cpp
     ${EDITOR_DIR}/render/gizmo/AnchorGizmo.cpp
     ${EDITOR_DIR}/render/gizmo/ViewportGizmo.cpp
-    # SYNC4-ABSORB(particles): upstream's ParticleShapeGizmo.cpp (version 2 shapes)
     ${EDITOR_DIR}/render/preview/MaterialRender.cpp
     ${EDITOR_DIR}/render/preview/MeshPreviewRender.cpp
     ${EDITOR_DIR}/render/preview/DirectionRender.cpp

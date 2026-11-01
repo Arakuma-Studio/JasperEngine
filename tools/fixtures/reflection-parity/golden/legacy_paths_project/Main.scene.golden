@@ -1,4 +1,4 @@
-formatVersion: 5
+formatVersion: 6
 guid: 0a0a075220cf4d05f700ac24562aab37
 id: 1
 name: Main
@@ -151,7 +151,7 @@ entities:
         path: prefabs/Lamp.prefab
         guid: 30aeaad93c80be96b89030fe283e7a8b
     prefabInstance:
-      version: 6
+      version: 7
       overrides:
         - registryEntity: 1001
           removedComponents:

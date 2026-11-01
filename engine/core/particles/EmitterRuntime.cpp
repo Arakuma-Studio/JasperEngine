@@ -3,6 +3,7 @@
 
 #include "EmitterRuntime.h"
 
+#include "Log.h"
 #include "jobs/JobSystem.h"
 #include "particles/ParticleCompiler.h"
 #include "particles/ParticleEval.h"
@@ -182,6 +183,7 @@ void EmitterRuntime::bind(std::shared_ptr<const CompiledEffect> effect, uint32_t
     collisions.reserve(prog->maxCollisionEvents);
     deaths.reserve(kMaxDeathEvents);
     subEmits.reserve(64);
+    burstGroups.reserve(kMaxBursts * 8);
     collisionContacts = false;
     for (const Op& op : prog->updateOps){
         if (op.code == OpCode::Collision && prog->param<CollisionParams>(op.params).events)
@@ -275,7 +277,11 @@ void EmitterRuntime::reset(uint32_t newSeed){
     spawnCounter = 0;
     ticks = 0;
     elapsed = 0.0;
-    cycleTime = prog ? -(double)prog->startDelay : 0.0;
+    cycleTime = prog ? -pickStartDelay() : 0.0;
+    arcPhase = radiusPhase = arcRate = radiusRate = 0.0f;
+    noiseScroll = 0.0f;
+    for (int c = 0; c < 3; c++){ lastTickVelocity[c] = 0.0f; tickVelocityDelta[c] = 0.0f; }
+    spreadBase = spreadCount = 0;
     burstCheckedTo = -1.0;
     loopIndex = 0;
     accumulator = 0.0;
@@ -298,6 +304,12 @@ void EmitterRuntime::reset(uint32_t newSeed){
     for (size_t i = 0; i < children.size(); i++){
         if (children[i]) children[i]->reset(childSeed(newSeed, (uint32_t)i));
     }
+}
+
+double EmitterRuntime::pickStartDelay() const{
+    ScalarDriver d;
+    d.seed = seed;
+    return std::max(0.0, (double)curveScalar(*prog, prog->startDelay, d));
 }
 
 // ---------------------------------------------------------------- playback
@@ -336,6 +348,18 @@ void EmitterRuntime::stop(bool clear){
     if (clear){
         reset(seed);
         playState = PlayState::Stopped;
+    }
+}
+
+void EmitterRuntime::clear(){
+    channels.count = 0;
+    if (trailStore.ringCount() > 0) trailStore.clear();
+    boundsValid = false;
+    collisions.clear();
+    deaths.clear();
+    subEmits.clear();
+    for (auto& child : children){
+        if (child) child->clear();
     }
 }
 
@@ -470,6 +494,13 @@ void EmitterRuntime::setFrameTransforms(const EmitterInput& input, double fracti
     float moved[3] = {tickTransform[12] - lastTickTransform[12], tickTransform[13] - lastTickTransform[13], tickTransform[14] - lastTickTransform[14]};
     tickDistance = std::sqrt(moved[0] * moved[0] + moved[1] * moved[1] + moved[2] * moved[2]);
     for (int c = 0; c < 3; c++) emitterVelocity[c] = moved[c] / dtc;
+    if (input.hasVelocity && prog->emitterVelocityMode == EmitterVelocityMode::Rigidbody){
+        // the body's velocity: what Inherit Velocity takes and Rate over Distance counts
+        for (int c = 0; c < 3; c++) emitterVelocity[c] = input.velocity[c];
+        tickDistance = std::sqrt(input.velocity[0] * input.velocity[0] + input.velocity[1] * input.velocity[1] +
+                                 input.velocity[2] * input.velocity[2]) * tickDt;
+    }
+    for (int c = 0; c < 3; c++) tickVelocityDelta[c] = started ? emitterVelocity[c] - lastTickVelocity[c] : 0.0f;
 
     // force fields and collision planes into simulation space
     fieldsSim.clear();
@@ -566,6 +597,18 @@ bool EmitterRuntime::simRay(const void* context, const float from[3], const floa
 void EmitterRuntime::beginTick(const EmitterInput& input, uint32_t index){
     currentInput = &input;
     tickDt = (float)frameTick;
+    if (prog->shapePhases || prog->noiseScroll){
+        // the speeds over the emitter time, one pick per play (spawn index 0 of the seed)
+        ScalarDriver d;
+        d.seed = seed;
+        d.emitterTime = prog->duration > 0.0f ? (float)std::clamp(cycleTime / prog->duration, 0.0, 1.0) : 0.0f;
+        if (prog->shapePhases){
+            arcRate = curveScalar(*prog, prog->arcSpeed, d);
+            radiusRate = curveScalar(*prog, prog->radiusSpeed, d);
+        }
+        if (prog->noiseScroll)
+            noiseScroll += curveScalar(*prog, prog->noiseScrollSpeed, d) * tickDt;
+    }
     double fraction = 1.0;
     if (frameScaled > 0.0){
         fraction = prog->tickRate > 0 ? ((double)(index + 1) * frameTick - frameCarried) / frameScaled
@@ -631,6 +674,15 @@ void EmitterRuntime::fillContext(KernelContext& ctx, const EmitterInput* input) 
     float vel[3];
     dir3(ctx.worldToSimDir, emitterVelocity, vel);
     std::memcpy(ctx.emitterVelocity, vel, sizeof(vel));
+    dir3(ctx.worldToSimDir, tickVelocityDelta, vel);
+    std::memcpy(ctx.emitterVelocityDelta, vel, sizeof(vel));
+    ctx.arcPhase = arcPhase;
+    ctx.arcRate = arcRate;
+    ctx.radiusPhase = radiusPhase;
+    ctx.radiusRate = radiusRate;
+    ctx.spreadBase = spreadBase;
+    ctx.spreadCount = spreadCount;
+    ctx.noiseScroll = noiseScroll;
     ctx.sizeScale = input ? input->sizeScale : 1.0f;
     ctx.fields = fieldsSim.data();
     ctx.fieldCount = (uint32_t)fieldsSim.size();
@@ -711,6 +763,9 @@ void EmitterRuntime::finishTick(const EmitterInput& input){
 
     lastTick = tickDt;
     elapsed += tickDt;
+    arcPhase += arcRate * tickDt;
+    radiusPhase += radiusRate * tickDt;
+    std::memcpy(lastTickVelocity, emitterVelocity, sizeof(lastTickVelocity));
     if (emitting){
         // the cycle wraps after the tick that starts at or past its end (the old system's
         // order: its bursts at the start come on the next tick), then the clock moves
@@ -961,6 +1016,9 @@ void EmitterRuntime::emissionStage(const EmitterInput& input){
     }
 
     const bool emitsNow = emitting && cycleTime >= 0.0 && (prog->looping || cycleTime < prog->duration) && prog->emission.enabled;
+    // the last tick of an effect that does not loop fires the bursts up to its end too (a burst
+    // at the duration itself: Unity fires it once; origin/main's rule)
+    const double burstUntil = (!prog->looping && cycleTime + tickDt >= prog->duration) ? std::max(cycleTime, (double)prog->duration) : cycleTime;
     if (emitsNow && budget > 0){
         ScalarDriver d;
         d.seed = seed;
@@ -970,12 +1028,13 @@ void EmitterRuntime::emissionStage(const EmitterInput& input){
         // (checked, cycle time]), a burst at the very end of a looping cycle included; a cycle
         // that wraps fires its early bursts on the next tick
         uint32_t burstCount = 0;
+        burstGroups.clear();
         for (size_t b = 0; b < em.bursts.size(); b++){
             const BurstParam& bp = em.bursts[b];
             const uint32_t cycles = bp.cycles <= 0 ? 0xffffffffu : (uint32_t)bp.cycles;
             for (uint32_t c = 0; c < cycles; c++){
                 const double t = bp.time + (double)c * bp.interval;
-                if ((prog->looping && t > prog->duration + 1e-9) || t > cycleTime + 1e-9)
+                if ((prog->looping && t > prog->duration + 1e-9) || t > burstUntil + 1e-9)
                     break;
                 if (t <= burstCheckedTo + 1e-9)
                     continue;
@@ -984,30 +1043,58 @@ void EmitterRuntime::emissionStage(const EmitterInput& input){
                 if (bp.probability < 1.0f && random01(key, draw) >= bp.probability)
                     continue;
                 uint32_t n;
-                if (bp.countMax > bp.countMin)
+                if (bp.countCurve){
+                    // a count over the emitter's duration, read at the burst's time
+                    ScalarDriver bd;
+                    bd.seed = seed;
+                    bd.spawn = draw;
+                    bd.emitterTime = prog->duration > 0.0f ? (float)std::clamp(t / prog->duration, 0.0, 1.0) : 0.0f;
+                    n = rint32(std::max(0.0f, curveScalar(*prog, bp.count, bd)));
+                }else if (bp.countMax > bp.countMin){
                     n = std::min((uint32_t)std::floor(bp.countMin + (bp.countMax - bp.countMin + 1.0f) * random01(key ^ 0x51ed270bu, draw)), rint32(bp.countMax));
-                else
+                }else{
                     n = rint32(bp.countMin);
+                }
                 n = (uint32_t)std::floor(n * input.emissionScale + 0.5f);
-                burstCount += n;
+                if (n){
+                    burstGroups.push_back(n);
+                    burstCount += n;
+                }
             }
         }
         burstCount = std::min(burstCount, budget);
         if (burstCount){
             growTo(channels.count + burstCount);
-            for (uint32_t done = 0; done < burstCount;){
-                const uint32_t n = std::min(burstCount - done, kSpawnBatch);
-                spawnBatch(input, n, nullptr, nullptr, nullptr, nullptr);
-                done += n;
+            // each burst its own spawns (Burst Spread spreads one burst's particles over the shape)
+            uint32_t left = burstCount;
+            for (uint32_t group : burstGroups){
+                const uint32_t total = std::min(group, left);
+                for (uint32_t done = 0; done < total;){
+                    const uint32_t n = std::min(total - done, kSpawnBatch);
+                    spreadBase = done;
+                    spreadCount = total;
+                    spawnBatch(input, n, nullptr, nullptr, nullptr, nullptr);
+                    done += n;
+                }
+                left -= total;
+                if (!left) break;
             }
+            spreadBase = spreadCount = 0;
             budget -= burstCount;
         }
         // the rate (and over distance): fractions spread over the tick, pre-advanced to its end
         const float rate = std::max(0.0f, curveScalar(*prog, em.rate, d, (uint32_t)ticks * 0x2f6b9c1du));
         rateAccumulator += (double)rate * tickDt * input.emissionScale;
         if (!em.rateOverDistance.isZero()){
-            const float perUnit = std::max(0.0f, curveScalar(*prog, em.rateOverDistance, d));
-            distanceAccumulator += (double)perUnit * tickDistance * input.emissionScale;
+            if (tickDistance > kTeleportDistance){
+                if (!teleportWarned){
+                    Log::warn("[Particles] the emitter jumped %.1f units in one tick: Rate over Distance spawned nothing for it", tickDistance);
+                    teleportWarned = true;
+                }
+            }else{
+                const float perUnit = std::max(0.0f, curveScalar(*prog, em.rateOverDistance, d));
+                distanceAccumulator += (double)perUnit * tickDistance * input.emissionScale;
+            }
         }
         uint32_t n = (uint32_t)std::floor(rateAccumulator) + (uint32_t)std::floor(distanceAccumulator);
         rateAccumulator -= std::floor(rateAccumulator);
@@ -1033,7 +1120,7 @@ void EmitterRuntime::emissionStage(const EmitterInput& input){
     }
 
     if (emitsNow)
-        burstCheckedTo = cycleTime;
+        burstCheckedTo = burstUntil;
 
     // emit() calls
     for (const PendingEmit& e : pendingEmits){
@@ -1101,6 +1188,8 @@ void EmitterRuntime::spawnBatch(const EmitterInput& input, uint32_t n, const flo
         std::memcpy(ctx.prevEmitterToSim, ctx.emitterToSim, sizeof(ctx.emitterToSim));
         std::memcpy(ctx.prevEmitterToSimDir, ctx.emitterToSimDir, sizeof(ctx.emitterToSimDir));
     }
+    // the spawn ops' scratch (Align to Direction keeps the shape's directions there)
+    ctx.scratch = &threadScratch().chunk;
     const KernelTable& kernels = activeKernels();
     for (const Op& op : prog->spawnOps)
         kernels.spawn(ctx, op, 0, n);
@@ -1545,6 +1634,10 @@ void EmitterRuntime::saveCheckpoint(Checkpoint& out) const{
     out.burstCheckedTo = burstCheckedTo;
     out.rateAccumulator = rateAccumulator;
     out.distanceAccumulator = distanceAccumulator;
+    out.arcPhase = arcPhase;
+    out.radiusPhase = radiusPhase;
+    out.noiseScroll = noiseScroll;
+    std::memcpy(out.lastTickVelocity, lastTickVelocity, sizeof(lastTickVelocity));
     out.ticks = ticks;
     out.spawnCounter = spawnCounter;
     out.loopIndex = loopIndex;
@@ -1573,6 +1666,10 @@ void EmitterRuntime::restoreCheckpoint(const Checkpoint& in){
     burstCheckedTo = in.burstCheckedTo;
     rateAccumulator = in.rateAccumulator;
     distanceAccumulator = in.distanceAccumulator;
+    arcPhase = in.arcPhase;
+    radiusPhase = in.radiusPhase;
+    noiseScroll = in.noiseScroll;
+    std::memcpy(lastTickVelocity, in.lastTickVelocity, sizeof(lastTickVelocity));
     ticks = in.ticks;
     spawnCounter = in.spawnCounter;
     loopIndex = in.loopIndex;

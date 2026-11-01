@@ -903,10 +903,11 @@ void LuaBinding::registerClasses(lua_State *L){
     registerCoreClasses(L);
     registerGameObjectClasses(L);
     registerActionClasses(L);
-    // SYNC4-ABSORB(particles): upstream's version 2 Particle System Lua classes (registerParticleClasses)
     registerECSClasses(L);
     registerIOClasses(L);
-    registerMathClasses(L); 
+    registerMathClasses(L);
+    // after the GameObject and math classes: the module proxies on ParticleSystem (MinMaxCurve values)
+    registerParticleClasses(L);
     registerNetClasses(L);
     // before the util classes: their global Timer (oe-port's Scheduler timers) wins over the
     // coroutines' ScriptTimer class of the same name, whose instances keep their methods

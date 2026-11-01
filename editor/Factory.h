@@ -7,6 +7,7 @@
 #include "SceneManager.h"
 #include "Catalog.h"
 #include "action/Ease.h"
+#include "math/Curve.h"
 #include "shader/ShaderGlobals.h"
 #include <functional>
 #include <memory>
@@ -164,15 +165,10 @@ namespace jasperengine::editor{
         // C++ string literal of the value, quotes included
         static std::string formatString(const std::string& value);
         static std::string formatFloat(float value);
-        // AnimationCurve / Gradient literals (lines and trails spec 6.1): a step tangent is
-        // AnimationCurve::STEP (SYNC4-ABSORB(curve): upstream's types, upcurve::)
-        static std::string formatCurve(const upcurve::AnimationCurve& curve);
-        static std::string formatGradient(const upcurve::Gradient& gradient);
-#if 0 // SYNC4-ABSORB(particles): upstream's MinMax literals
-        // Unity's MinMaxCurve / MinMaxGradient literals (particles spec 6.7)
-        static std::string formatMinMaxCurve(const MinMaxCurve& curve);
-        static std::string formatMinMaxGradient(const MinMaxGradient& gradient);
-#endif
+        // Curve / Gradient literals (the Line and Trail Renderers' width curve and colour
+        // gradient): stream/CurveCodec's C++ forms
+        static std::string formatCurve(const Curve& curve);
+        static std::string formatGradient(const Gradient& gradient);
         // {{"member", "global"}, ...} and a ShaderGlobalDecl{...} literal (shader globals spec 6.5)
         static std::string formatShaderGlobalBindings(const ShaderGlobalBindings& bindings);
         static std::string formatShaderGlobalDecl(const ShaderGlobalDecl& decl);

@@ -312,11 +312,10 @@ namespace jasperengine::editor {
         // Time is 0 (it keeps no point: nothing is drawn)
         static std::vector<Finding> lineTrailFindings(Project* project);
 
-        // Particle Systems of the loaded scenes (particles spec 6.8): "particles-points-render-mode"
-        // (warning: a version 2 system drawn as GL points with a render mode other than Billboard:
-        // drawn as billboards), "particles-max-exceeded-budget" (warning: more than 5000 max
-        // particles, past the mobile budget), "particles-legacy" (info: a version 1 system can be
-        // upgraded to the module model)
+        // Particle Systems of the loaded scenes (docs/specs/S20-particles.md, Upstream absorption):
+        // "particles-max-exceeded-budget" (warning: an effect whose Max Particles is past a mobile
+        // build's world particle budget, which thins its emission there), "particles-effect-invalid"
+        // (error: an effect that does not compile, so the system draws nothing)
         static std::vector<Finding> particleFindings(Project* project);
     };
 

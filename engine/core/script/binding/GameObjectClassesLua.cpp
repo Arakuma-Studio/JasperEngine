@@ -1053,8 +1053,40 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             return scene && scene->isEntityCreated(self->getEntity()) &&
                    scene->findComponent<TrailRendererComponent>(self->getEntity()) != nullptr;
         })
-        // SYNC4-ABSORB(Particles): upstream's getParticleSystem / getParticleSystemsInChildren
-        // (Unity's GetComponent<ParticleSystem>, the legacy action-target layout) are S20's to add
+        // Unity's GetComponent<ParticleSystem>: the GameObject's Particle System, nil when it has
+        // none (an old controller action whose target has one: that target's)
+        .addFunction("getParticleSystem", +[](GameObject* self) -> std::optional<ParticleSystem> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()))
+                return std::nullopt;
+            if (scene->findComponent<ParticleSystemComponent>(self->getEntity()))
+                return ParticleSystem(scene, self->getEntity());
+            const ActionComponent* action = scene->findComponent<ActionComponent>(self->getEntity());
+            if (action && action->target != NULL_ENTITY && scene->isEntityCreated(action->target) &&
+                scene->findComponent<ParticleSystemComponent>(action->target))
+                return ParticleSystem(scene, action->target);
+            return std::nullopt;
+        })
+        // Unity's GetComponentsInChildren<ParticleSystem>: its own and every one below it, in
+        // hierarchy order (a 1-based table)
+        .addFunction("getParticleSystemsInChildren", +[](GameObject* self, lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef list = luabridge::newTable(L);
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()))
+                return list;
+            int n = 0;
+            auto add = [&](Entity e){
+                if (scene->findComponent<ParticleSystemComponent>(e)) list[++n] = ParticleSystem(scene, e);
+            };
+            add(self->getEntity());
+            auto transforms = scene->getComponentArray<Transform>();
+            if (transforms->hasEntity(self->getEntity())){
+                const size_t start = transforms->getIndex(self->getEntity());
+                const size_t last = scene->findBranchLastIndex(self->getEntity());
+                for (size_t i = start + 1; i <= last && i < transforms->size(); i++) add(transforms->getEntity(i));
+            }
+            return list;
+        })
         // Unity's AddComponent<TrailRenderer>(): its Trail Renderer, added when it has none
         .addFunction("addTrailRenderer", +[](GameObject* self) -> std::optional<TrailRenderer> {
             Scene* scene = self->getScene();
@@ -1833,12 +1865,28 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<ParticleSystem, GameObject>("ParticleSystem")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        // ParticleSystem(scene, true): origin/main's "a version 2 system on its own GameObject",
+        // which every new S20 system is (false gave its legacy model: an S20 one too)
+        .addConstructor(
+            [](void* memory, Scene* scene) { return new (memory) ParticleSystem(scene); },
+            [](void* memory, Scene* scene, Entity entity) { return new (memory) ParticleSystem(scene, entity); },
+            [](void* memory, Scene* scene, bool) { return new (memory) ParticleSystem(scene); })
         .addProperty("enabled", &ParticleSystem::isEnabled, &ParticleSystem::setEnabled)
-        .addFunction("play", &ParticleSystem::play)
-        .addFunction("pause", &ParticleSystem::pause)
+        // Unity's Play / Pause (withChildren = true): the Particle Systems below it too
+        .addFunction("play", +[](ParticleSystem* self, lua_State* L) {
+            self->play(lua_gettop(L) < 2 || lua_isnil(L, 2) || lua_toboolean(L, 2) != 0);
+        })
+        .addFunction("pause", +[](ParticleSystem* self, lua_State* L) {
+            self->pause(lua_gettop(L) < 2 || lua_isnil(L, 2) || lua_toboolean(L, 2) != 0);
+        })
+        // stop(clear?) stops emitting (clear: the particles go too); Unity's stop(withChildren,
+        // ParticleSystemStopBehavior) the same with its children chosen
         .addFunction("stop", +[](ParticleSystem* self, lua_State* L) {
-            self->stop(lua_gettop(L) >= 2 && lua_toboolean(L, 2) != 0);
+            if (lua_gettop(L) >= 3 && !lua_isnil(L, 3)){
+                self->stop(lua_toboolean(L, 2) != 0, lua_tointeger(L, 3) == 0);
+                return;
+            }
+            self->stop(true, lua_gettop(L) >= 2 && lua_toboolean(L, 2) != 0);
         })
         .addFunction("restart", &ParticleSystem::restart)
         // emit(count [, {position = Vector3, velocity = Vector3, size = n, color = Vector4, lifetime = n}])

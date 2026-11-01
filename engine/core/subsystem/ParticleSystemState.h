@@ -103,6 +103,8 @@ namespace jasperengine{
             uint64_t effectVersion = 0;      // the asset's version it was compiled from
             std::vector<Diagnostic> diagnostics;
             bool started = false;            // Play On Awake ran (or a script played it)
+            // it was playing (or paused) after the last frame: its stop action runs when it is not
+            bool running = false;
             uint32_t seed = 1;               // the seed of this play
             CullState cull;
             uint64_t visibleFrame = 0;       // the last frame a camera saw its bounds

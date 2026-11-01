@@ -135,6 +135,10 @@ Json reflect::detail::curveSchema(const FieldDesc&) {
     return curvecodec::curveSchema();
 }
 
+Json reflect::detail::gradientSchema(const FieldDesc&) {
+    return curvecodec::gradientSchema();
+}
+
 Json reflect::detail::entitySchema(const FieldDesc&) {
     return Json{{"type", {"object", "null"}}, {"properties", Json{{"id", Json{{"type", "integer"}}}, {"name", Json{{"type", "string"}}},
                 {"path", Json{{"type", "string"}}}}}};

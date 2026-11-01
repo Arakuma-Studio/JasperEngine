@@ -341,6 +341,14 @@ bool reflect::detail::curveFromYaml(const FieldDesc&, const YAML::Node& node, vo
     return curvecodec::curveFromYaml(node, *static_cast<jasperengine::Curve*>(value), reason);
 }
 
+YAML::Node reflect::detail::gradientToYaml(const FieldDesc&, const void* value, const EncodeContext&) {
+    return curvecodec::gradientToYaml(*static_cast<const jasperengine::Gradient*>(value));
+}
+
+bool reflect::detail::gradientFromYaml(const FieldDesc&, const YAML::Node& node, void* value, const DecodeContext&, std::string& reason) {
+    return curvecodec::gradientFromYaml(node, *static_cast<jasperengine::Gradient*>(value), reason);
+}
+
 YAML::Node reflect::detail::textureToYaml(const FieldDesc&, const void* value, const EncodeContext& ctx) {
     return Stream::encodeTexture(*static_cast<const jasperengine::Texture*>(value), ctx.embedTextureData);
 }
@@ -502,6 +510,10 @@ std::string reflect::detail::easeLiteral(const FieldDesc&, const void* value, co
 
 std::string reflect::detail::curveLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
     return curvecodec::curveCppLiteral(*static_cast<const jasperengine::Curve*>(value));
+}
+
+std::string reflect::detail::gradientLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
+    return curvecodec::gradientCppLiteral(*static_cast<const jasperengine::Gradient*>(value));
 }
 
 std::string reflect::detail::entityLiteral(const FieldDesc&, const void* value, const CodegenContext& ctx) {

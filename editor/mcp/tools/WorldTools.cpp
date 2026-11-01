@@ -58,6 +58,7 @@
 #include "component/PanelComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "particles/LegacyParticleConverter.h"
+#include "particles/ParticleEffectCodec.h"
 #include "util/ParticleEffectEdit.h"
 #include "mcp/tools/ParticleShared.h"
 #include "util/Color.h"
@@ -4777,7 +4778,49 @@ ParticleSettings fromLegacy(const LegacyParticleSystem& c) {
 bool hasParticleSettings(const Json& args, const std::string& preset) {
     return !preset.empty() || has(args, "max_particles") || has(args, "rate") || has(args, "life") || has(args, "size") ||
            has(args, "velocity") || has(args, "acceleration") || has(args, "color") || has(args, "gradient") || has(args, "bursts") ||
-           has(args, "emitter") || has(args, "loop") || has(args, "size_over_life") || has(args, "alpha_over_life");
+           has(args, "emitter") || has(args, "loop") || has(args, "size_over_life") || has(args, "alpha_over_life") ||
+           has(args, "duration") || has(args, "speed") || has(args, "modules");
+}
+
+// The arguments that set the effect itself, after the preset and its overrides: duration, speed
+// (the Start Speed along the shape: a number or [min, max]) and modules (a merge patch of the
+// effect's modules, the keyed form edit_particle_effect patches: {"emission": {"rateOverTime": 60}})
+bool applyEffectArgs(const Json& args, particles::ParticleEffectDocument& document, std::string& error) {
+    if (has(args, "duration")) {
+        if (!args["duration"].is_number()) { error = "duration is a number of seconds."; return false; }
+        document.duration = std::max(0.05f, args["duration"].get<float>());
+    }
+    if (has(args, "speed")) {
+        const Json& speed = args["speed"];
+        if (speed.is_number()) {
+            document.main.startSpeed = particles::MinMaxCurve(speed.get<float>());
+        } else if (speed.is_array() && speed.size() == 2 && speed[0].is_number() && speed[1].is_number()) {
+            document.main.startSpeed = particles::MinMaxCurve::twoConstants(speed[0].get<float>(), speed[1].get<float>());
+        } else {
+            error = "speed is a number or [min, max] (the Start Speed, along the shape).";
+            return false;
+        }
+    }
+    if (has(args, "modules")) {
+        if (!args["modules"].is_object()) {
+            error = "modules is a merge patch of the effect's modules: {\"main\": {\"startSpeed\": 4}, \"emission\": {\"rateOverTime\": 60}}.";
+            return false;
+        }
+        nlohmann::ordered_json patch = nlohmann::ordered_json::object();
+        patch["modules"] = nlohmann::ordered_json::parse(args["modules"].dump());
+        std::vector<particles::Diagnostic> diagnostics;
+        if (!particles::ParticleEffectCodec::applyMergePatch(document, patch, diagnostics)) {
+            for (const particles::Diagnostic& d : diagnostics) {
+                if (d.severity == particles::Diagnostic::Severity::Error) {
+                    error = "modules: " + (d.path.empty() ? d.message : d.path + ": " + d.message);
+                    return false;
+                }
+            }
+            error = "modules: the patch was refused.";
+            return false;
+        }
+    }
+    return true;
 }
 
 // The settings of a preset (scaled for 2D) with the call's overrides
@@ -4843,13 +4886,20 @@ void createParticlesTool(const CallPtr& call) {
             }
             toLegacy(settings, legacy);
             const bool setTexture = has(args, "texture");
+            // the effect arguments checked before the edit is built (its lambda cannot report why)
+            {
+                particles::ParticleEffectDocument check = document;
+                particles::LegacyParticleConverter::apply(legacy, check);
+                if (!applyEffectArgs(args, check, error)) { failWith(error); return; }
+            }
             Command* edit = ParticleEffectEdit::build(target.project, target.sceneId(), {system}, [&](particles::ParticleEffectDocument& doc) {
                 particles::LegacyParticleConverter::apply(legacy, doc);
                 if (setTexture) {
                     doc.renderer.texture = texture;
                     doc.renderer.textureGuid = texture.empty() ? std::string() : target.project->makeAssetRef(texture, AssetPathBase::Assets).guid.str();
                 }
-                return true;
+                std::string ignored;
+                return applyEffectArgs(args, doc, ignored);
             });
             if (edit) multi->addCommand(std::unique_ptr<Command>(edit));
         }
@@ -4898,6 +4948,7 @@ void createParticlesTool(const CallPtr& call) {
         particles::ParticleEffectDocument document = particles::LegacyParticleConverter::convert(legacy, legacyTarget);
         // a new effect draws Unity's soft particle without a texture (the converter keeps the old squares)
         document.renderer.untexturedShape = particles::UntexturedShape::Disc;
+        if (!applyEffectArgs(args, document, error)) { failWith(error); return; }
         addProp<particles::ParticleEffectDocument>(*multi, target, system, ComponentType::ParticleSystemComponent, "inlineEffect", document);
     }
 
@@ -4925,393 +4976,6 @@ void createParticlesTool(const CallPtr& call) {
                   {"gradient_stops", view.colorGradient.stops.size()}, {"autoplay", c.playOnAwake}});
 }
 
-// ------------------------------------------------------------------ version 2 (modules)
-
-// SYNC4-ABSORB(particles): upstream's create_particles for version 2 systems (presets, module
-// overrides, upgrade of version 1); S20's create_particles (below, the inline effect) is the tool
-#if 0
-// A preset as module values (particles spec 6.9): 3D in meters; 2D scenes scaled by `k` pixels
-// a unit, flat (z 0), under the 2D gravity. Additive presets return true.
-bool particlePresetV2(const std::string& name, ParticleSystemComponent& ps, float k, bool flat, bool& additive) {
-    additive = false;
-    ParticleSystemComponent fresh;
-    fresh.version = 2;
-    fresh.useUnscaledTime = ps.useUnscaledTime;
-    ps = fresh;
-    auto fade = [](std::vector<GradientColorKey> colors, float startAlpha) {
-        return MinMaxGradient::fromGradient(Gradient(std::move(colors), {GradientAlphaKey(0.0f, startAlpha), GradientAlphaKey(1.0f, 0.0f)}));
-    };
-    auto srgb = [](float r, float g, float b) { return Color::sRGBToLinear(Vector3(r, g, b)); };
-    auto curve01 = [](float from, float to) { return MinMaxCurve::fromCurve(AnimationCurve::linear(0.0f, from, 1.0f, to), 1.0f); };
-    if (name == "fire") {
-        ps.main.maxParticles = 200; ps.emission.rateOverTime = MinMaxCurve(60.0f);
-        ps.main.startLifetime = MinMaxCurve::between(0.5f, 1.0f); ps.main.startSpeed = MinMaxCurve::between(1.0f, 2.0f);
-        ps.main.startSize = MinMaxCurve::between(0.35f, 0.5f);
-        ps.shape.shapeType = ParticleSystemShapeType::Cone; ps.shape.angle = 8.0f; ps.shape.radius = 0.25f;
-        ps.sizeOverLifetime.enabled = true; ps.sizeOverLifetime.size = curve01(1.0f, 0.1f);
-        ps.colorOverLifetime.enabled = true;
-        ps.colorOverLifetime.color = fade({GradientColorKey(0.0f, srgb(1.0f, 0.9f, 0.4f)), GradientColorKey(0.4f, srgb(1.0f, 0.45f, 0.1f)),
-                                           GradientColorKey(1.0f, srgb(0.35f, 0.08f, 0.03f))}, 1.0f);
-        additive = true;
-    } else if (name == "smoke") {
-        ps.main.maxParticles = 120; ps.emission.rateOverTime = MinMaxCurve(15.0f);
-        ps.main.startLifetime = MinMaxCurve::between(2.5f, 4.0f); ps.main.startSpeed = MinMaxCurve::between(0.5f, 1.0f);
-        ps.main.startSize = MinMaxCurve::between(0.5f, 0.8f);
-        ps.main.startRotation = MinMaxCurve::between(0.0f, 6.2831853f);
-        ps.shape.shapeType = ParticleSystemShapeType::Cone; ps.shape.angle = 15.0f; ps.shape.radius = 0.3f;
-        ps.forceOverLifetime.enabled = true; ps.forceOverLifetime.x = MinMaxCurve(0.05f); ps.forceOverLifetime.y = MinMaxCurve(0.1f);
-        ps.forceOverLifetime.space = ParticleSystemSimulationSpace::World;
-        ps.sizeOverLifetime.enabled = true; ps.sizeOverLifetime.size = curve01(1.0f, 3.0f);
-        ps.rotationOverLifetime.enabled = true; ps.rotationOverLifetime.z = MinMaxCurve::between(-0.5f, 0.5f);
-        ps.colorOverLifetime.enabled = true;
-        ps.colorOverLifetime.color = fade({GradientColorKey(0.0f, srgb(0.55f, 0.55f, 0.55f)), GradientColorKey(1.0f, srgb(0.25f, 0.25f, 0.25f))}, 0.6f);
-    } else if (name == "sparks") {
-        ps.main.maxParticles = 300; ps.emission.rateOverTime = MinMaxCurve(80.0f);
-        ps.main.startLifetime = MinMaxCurve::between(0.3f, 0.8f); ps.main.startSpeed = MinMaxCurve::between(2.0f, 5.0f);
-        ps.main.startSize = MinMaxCurve::between(0.05f, 0.1f); ps.main.gravityModifier = MinMaxCurve(1.0f);
-        ps.shape.shapeType = ParticleSystemShapeType::Hemisphere; ps.shape.radius = 0.05f;
-        ps.renderer.renderMode = ParticleSystemRenderMode::Stretch; ps.renderer.lengthScale = 1.0f; ps.renderer.velocityScale = 0.05f;
-        ps.colorOverLifetime.enabled = true;
-        ps.colorOverLifetime.color = fade({GradientColorKey(0.0f, srgb(1.0f, 1.0f, 0.8f)), GradientColorKey(0.5f, srgb(1.0f, 0.75f, 0.2f)),
-                                           GradientColorKey(1.0f, srgb(1.0f, 0.3f, 0.05f))}, 1.0f);
-        additive = true;
-    } else if (name == "explosion") {
-        ps.main.maxParticles = 250; ps.main.looping = false; ps.main.duration = 1.0f;
-        ps.emission.rateOverTime = MinMaxCurve(0.0f);
-        ParticleEmissionBurst burst;
-        burst.count = MinMaxCurve::between(160.0f, 200.0f);
-        ps.emission.bursts = {burst};
-        ps.main.startLifetime = MinMaxCurve::between(0.5f, 1.2f); ps.main.startSpeed = MinMaxCurve::between(2.0f, 6.0f);
-        ps.main.startSize = MinMaxCurve::between(0.4f, 0.8f);
-        ps.shape.shapeType = ParticleSystemShapeType::Sphere; ps.shape.radius = 0.2f;
-        ps.limitVelocityOverLifetime.enabled = true; ps.limitVelocityOverLifetime.limit = MinMaxCurve(1000.0f);
-        ps.limitVelocityOverLifetime.drag = MinMaxCurve(2.0f);
-        ps.limitVelocityOverLifetime.multiplyDragByParticleSize = false; ps.limitVelocityOverLifetime.multiplyDragByParticleVelocity = false;
-        ps.sizeOverLifetime.enabled = true; ps.sizeOverLifetime.size = curve01(1.0f, 2.5f);
-        ps.colorOverLifetime.enabled = true;
-        ps.colorOverLifetime.color = fade({GradientColorKey(0.0f, srgb(1.0f, 1.0f, 0.6f)), GradientColorKey(0.3f, srgb(1.0f, 0.45f, 0.1f)),
-                                           GradientColorKey(1.0f, srgb(0.2f, 0.2f, 0.2f))}, 1.0f);
-        ps.main.stopAction = ParticleSystemStopAction::None;
-    } else if (name == "snow") {
-        ps.main.maxParticles = 400; ps.emission.rateOverTime = MinMaxCurve(40.0f);
-        ps.main.startLifetime = MinMaxCurve::between(6.0f, 8.0f); ps.main.startSpeed = MinMaxCurve(0.0f);
-        ps.main.startSize = MinMaxCurve::between(0.05f, 0.12f);
-        ps.shape.shapeType = ParticleSystemShapeType::Box; ps.shape.position = Vector3(0.0f, 8.0f, 0.0f); ps.shape.scale = Vector3(20.0f, 0.0f, 20.0f);
-        ps.velocityOverLifetime.enabled = true; ps.velocityOverLifetime.space = ParticleSystemSimulationSpace::World;
-        ps.velocityOverLifetime.x = MinMaxCurve::between(-0.3f, 0.3f); ps.velocityOverLifetime.y = MinMaxCurve::between(-1.2f, -0.8f);
-        ps.velocityOverLifetime.z = MinMaxCurve::between(-0.3f, 0.3f);
-        ps.noise.enabled = true; ps.noise.strength = MinMaxCurve(0.3f); ps.noise.frequency = 0.3f;
-    } else if (name == "rain") {
-        ps.main.maxParticles = 800; ps.emission.rateOverTime = MinMaxCurve(250.0f);
-        ps.main.startLifetime = MinMaxCurve::between(1.0f, 1.2f); ps.main.startSpeed = MinMaxCurve(0.0f);
-        ps.main.startSize = MinMaxCurve::between(0.03f, 0.04f);
-        ps.main.startColor = MinMaxGradient::fromColor(Vector4(srgb(0.7f, 0.8f, 1.0f).x, srgb(0.7f, 0.8f, 1.0f).y, srgb(0.7f, 0.8f, 1.0f).z, 0.6f));
-        ps.shape.shapeType = ParticleSystemShapeType::Box; ps.shape.position = Vector3(0.0f, 10.0f, 0.0f); ps.shape.scale = Vector3(20.0f, 0.0f, 20.0f);
-        ps.velocityOverLifetime.enabled = true; ps.velocityOverLifetime.space = ParticleSystemSimulationSpace::World;
-        ps.velocityOverLifetime.y = MinMaxCurve::between(-15.0f, -12.0f);
-        ps.renderer.renderMode = ParticleSystemRenderMode::Stretch; ps.renderer.lengthScale = 1.0f; ps.renderer.velocityScale = 0.03f;
-    } else if (name == "magic") {
-        ps.main.maxParticles = 150; ps.emission.rateOverTime = MinMaxCurve(30.0f);
-        ps.main.startLifetime = MinMaxCurve::between(1.0f, 2.0f); ps.main.startSpeed = MinMaxCurve::between(0.2f, 0.8f);
-        ps.main.startSize = MinMaxCurve::between(0.08f, 0.15f);
-        ps.shape.shapeType = ParticleSystemShapeType::Sphere; ps.shape.radius = 0.5f;
-        ps.noise.enabled = true; ps.noise.strength = MinMaxCurve(0.5f); ps.noise.frequency = 1.0f;
-        ps.sizeOverLifetime.enabled = true; ps.sizeOverLifetime.size = curve01(1.0f, 0.0f);
-        ps.colorOverLifetime.enabled = true;
-        ps.colorOverLifetime.color = fade({GradientColorKey(0.0f, srgb(0.4f, 0.9f, 1.0f)), GradientColorKey(1.0f, srgb(0.7f, 0.3f, 1.0f))}, 1.0f);
-        additive = true;
-    } else if (name != "none") {
-        return false;
-    }
-    if (k != 1.0f || flat) {
-        auto scale = [k](MinMaxCurve& c) { c.constant *= k; c.constantMin *= k; };
-        scale(ps.main.startSpeed); scale(ps.main.startSize);
-        ps.shape.radius *= k; ps.shape.length *= k; ps.shape.position = ps.shape.position * k;
-        ps.shape.scale = Vector3(ps.shape.scale.x * k, ps.shape.scale.y * k, flat ? 0.0f : ps.shape.scale.z * k);
-        if (flat) ps.shape.position.z = 0.0f;
-        scale(ps.velocityOverLifetime.x); scale(ps.velocityOverLifetime.y); scale(ps.velocityOverLifetime.z);
-        scale(ps.forceOverLifetime.x); scale(ps.forceOverLifetime.y); scale(ps.forceOverLifetime.z);
-        if (flat) ps.velocityOverLifetime.z = MinMaxCurve(0.0f);
-        ps.noise.strength.constant *= k; ps.noise.frequency /= k;
-        if (flat) ps.main.gravitySource = ParticleSystemGravitySource::Physics2D;
-    }
-    return true;
-}
-
-// the create_particles arguments as module values (they keep their meaning: spec 6.9)
-bool applyParticleOverridesV2(const Json& args, ParticleSystemComponent& ps, std::string& error) {
-    auto range = [](const Vector2& r) { return r.x == r.y ? MinMaxCurve(r.x) : MinMaxCurve::between(r.x, r.y); };
-    if (has(args, "max_particles")) ps.main.maxParticles = static_cast<unsigned int>(std::clamp(intOr(args, "max_particles", 1000), 1, 100000));
-    if (has(args, "rate")) ps.emission.rateOverTime = MinMaxCurve((float)std::max(0, intOr(args, "rate", 10)));
-    if (has(args, "loop")) ps.main.looping = boolOr(args, "loop", true);
-    if (has(args, "duration")) ps.main.duration = std::max(0.05f, numberOr(args, "duration", 5.0f));
-    Vector2 r;
-    if (has(args, "life")) {
-        if (!readRange(args["life"], r)) { error = "life is seconds: a number or [min, max]."; return false; }
-        ps.main.startLifetime = range(r);
-    }
-    if (has(args, "speed")) {
-        if (!readRange(args["speed"], r)) { error = "speed is a number or [min, max] (along the shape)."; return false; }
-        ps.main.startSpeed = range(r);
-    }
-    if (has(args, "size")) {
-        if (!readRange(args["size"], r)) { error = "size is a number or [min, max]."; return false; }
-        ps.main.startSize = range(r);
-    }
-    Vector3 lo, hi;
-    if (has(args, "velocity")) {
-        if (!readMinMax3(args["velocity"], lo, hi, error, "velocity")) return false;
-        ps.velocityOverLifetime.enabled = true;
-        ps.velocityOverLifetime.x = range(Vector2(lo.x, hi.x));
-        ps.velocityOverLifetime.y = range(Vector2(lo.y, hi.y));
-        ps.velocityOverLifetime.z = range(Vector2(lo.z, hi.z));
-        // the old meaning: the velocity is the particle's, not added to a start speed
-        if (!has(args, "speed")) ps.main.startSpeed = MinMaxCurve(0.0f);
-    }
-    if (has(args, "acceleration")) {
-        if (!readMinMax3(args["acceleration"], lo, hi, error, "acceleration")) return false;
-        ps.forceOverLifetime.enabled = true;
-        ps.forceOverLifetime.x = range(Vector2(lo.x, hi.x));
-        ps.forceOverLifetime.y = range(Vector2(lo.y, hi.y));
-        ps.forceOverLifetime.z = range(Vector2(lo.z, hi.z));
-    }
-    if (has(args, "color")) {
-        Vector3 a(1, 1, 1), b(1, 1, 1);
-        if (args["color"].is_object() && has(args["color"], "min")) {
-            if (!parseColor3(args["color"]["min"], a) || !parseColor3(args["color"]["max"], b)) { error = "color is [r, g, b] or {min, max} (sRGB 0-1)."; return false; }
-        } else if (parseColor3(args["color"], a)) {
-            b = a;
-        } else {
-            error = "color is [r, g, b] or {min, max} (sRGB 0-1).";
-            return false;
-        }
-        const Vector3 la = Color::sRGBToLinear(a), lb = Color::sRGBToLinear(b);
-        ps.main.startColor = a == b ? MinMaxGradient::fromColor(Vector4(la.x, la.y, la.z, 1.0f))
-                                    : MinMaxGradient::between(Vector4(la.x, la.y, la.z, 1.0f), Vector4(lb.x, lb.y, lb.z, 1.0f));
-        if (!has(args, "gradient")) ps.colorOverLifetime.enabled = has(args, "alpha_over_life");
-    }
-    Gradient over = ps.colorOverLifetime.color.mode == ParticleSystemGradientMode::Gradient ? ps.colorOverLifetime.color.gradient : Gradient();
-    bool overChanged = false;
-    if (has(args, "gradient")) {
-        if (!args["gradient"].is_array() || args["gradient"].empty() || args["gradient"].size() > Gradient::MAX_KEYS) {
-            error = "gradient is [[time 0-1, [r, g, b]], ...] (up to 8 stops, sRGB).";
-            return false;
-        }
-        over.colorKeys.clear();
-        for (const Json& stop : args["gradient"]) {
-            Vector3 color;
-            if (!stop.is_array() || stop.size() != 2 || !stop[0].is_number() || !parseColor3(stop[1], color)) {
-                error = "gradient is [[time 0-1, [r, g, b]], ...] (up to 8 stops, sRGB).";
-                return false;
-            }
-            over.colorKeys.push_back(GradientColorKey(std::clamp(stop[0].get<float>(), 0.0f, 1.0f), Color::sRGBToLinear(color)));
-        }
-        overChanged = true;
-    }
-    if (has(args, "alpha_over_life")) {
-        if (!McpValues::parseVector2(args["alpha_over_life"], r)) { error = "alpha_over_life is [from, to] (0-1)."; return false; }
-        over.alphaKeys = {GradientAlphaKey(0.0f, r.x), GradientAlphaKey(1.0f, r.y)};
-        overChanged = true;
-    }
-    if (overChanged) {
-        over.normalize();
-        ps.colorOverLifetime.enabled = true;
-        ps.colorOverLifetime.color = MinMaxGradient::fromGradient(over);
-    }
-    if (has(args, "size_over_life")) {
-        if (!McpValues::parseVector2(args["size_over_life"], r)) { error = "size_over_life is [from, to] (multipliers of the start size)."; return false; }
-        ps.sizeOverLifetime.enabled = true;
-        ps.sizeOverLifetime.separateAxes = false;
-        ps.sizeOverLifetime.size = MinMaxCurve::fromCurve(AnimationCurve::linear(0.0f, r.x, 1.0f, r.y), 1.0f);
-    }
-    if (has(args, "bursts")) {
-        if (!args["bursts"].is_array()) { error = "bursts is [{time, count, cycles?, interval?, probability?}] (count a number or [min, max])."; return false; }
-        ps.emission.bursts.clear();
-        for (const Json& b : args["bursts"]) {
-            ParticleEmissionBurst burst;
-            burst.time = std::max(0.0f, numberOr(b, "time", 0.0f));
-            if (!has(b, "count")) { error = "bursts[].count is a number or [min, max]."; return false; }
-            Vector2 count;
-            if (readRange(b["count"], count)) {
-                burst.count = count.x == count.y ? MinMaxCurve(count.x) : MinMaxCurve::between(count.x - 0.4999f, count.y + 0.4999f);
-            } else {
-                std::string why;
-                if (!McpValues::minMaxCurveFromJson(b["count"], burst.count, why)) { error = "bursts[].count: " + why; return false; }
-            }
-            burst.cycles = std::max(0, intOr(b, "cycles", 1));
-            burst.interval = std::max(0.0001f, numberOr(b, "interval", 0.01f));
-            burst.probability = std::clamp(numberOr(b, "probability", 1.0f), 0.0f, 1.0f);
-            ps.emission.bursts.push_back(burst);
-        }
-    }
-    if (has(args, "emitter")) {
-        const Json& e = args["emitter"];
-        static const std::vector<std::pair<const char*, ParticleSystemShapeType>> shapes = {
-            {"box", ParticleSystemShapeType::Box}, {"sphere", ParticleSystemShapeType::Sphere}, {"hemisphere", ParticleSystemShapeType::Hemisphere},
-            {"circle", ParticleSystemShapeType::Circle}, {"cone", ParticleSystemShapeType::Cone}, {"cone_volume", ParticleSystemShapeType::ConeVolume},
-            {"edge", ParticleSystemShapeType::Edge}, {"rectangle", ParticleSystemShapeType::Rectangle}, {"donut", ParticleSystemShapeType::Donut}};
-        ps.shape.enabled = true;
-        if (has(e, "shape") && !pickName(shapes, stringOr(e, "shape", ""), ps.shape.shapeType, "emitter.shape", error)) return false;
-        if (has(e, "min") || has(e, "max")) {
-            Vector3 mn, mx;
-            if (!readVec3(e, "min", mn, error) || !readVec3(e, "max", mx, error)) return false;
-            ps.shape.position = (mn + mx) * 0.5f;
-            ps.shape.scale = Vector3(std::fabs(mx.x - mn.x), std::fabs(mx.y - mn.y), std::fabs(mx.z - mn.z));
-        }
-        if (has(e, "radius")) ps.shape.radius = std::max(0.0f, numberOr(e, "radius", 1.0f));
-        if (has(e, "inner_radius") && ps.shape.radius > 0.0f) ps.shape.radiusThickness = std::clamp(1.0f - numberOr(e, "inner_radius", 0.0f) / ps.shape.radius, 0.0f, 1.0f);
-        if (has(e, "thickness")) ps.shape.radiusThickness = std::clamp(numberOr(e, "thickness", 1.0f), 0.0f, 1.0f);
-        if (has(e, "cone_angle") || has(e, "angle")) ps.shape.angle = std::clamp(numberOr(e, has(e, "angle") ? "angle" : "cone_angle", 25.0f), 0.0f, 89.9f);
-        if (has(e, "cone_height") || has(e, "length")) ps.shape.length = std::max(0.0f, numberOr(e, has(e, "length") ? "length" : "cone_height", 5.0f));
-        if (has(e, "arc")) ps.shape.arc = std::clamp(numberOr(e, "arc", 360.0f), 0.0f, 360.0f);
-    }
-    if (has(args, "autoplay")) ps.main.playOnAwake = boolOr(args, "autoplay", true);
-    return true;
-}
-
-// the upgrade of a version 1 system (create_particles {entity, upgrade: true}), one undo step
-void upgradeParticlesTool(const CallPtr& call, Target& target, Entity system) {
-    Scene* scene = target.engineScene();
-    const ParticleSystemComponent& legacy = scene->getComponent<ParticleSystemComponent>(system);
-    const Entity drawTarget = scene->getSystem<ActionSystem>()->particleTarget(system);
-    const particles::UpgradeResult result = particles::upgradeLegacy(legacy, ParticleSystem::legacyTargetOf(scene, drawTarget),
-                                                                    boolOr(call->args(), "force", false));
-    Json items = Json::array();
-    for (const particles::UpgradeItem& item : result.report.items) {
-        Json entry = {{"field", item.field}, {"status", particles::upgradeStatusName(item.status)}, {"message", item.message}};
-        if (item.status == particles::UpgradeStatus::Approximated) entry["max_error"] = McpValues::number(item.maxError);
-        items.push_back(entry);
-    }
-    if (!result.report.upgraded) {
-        call->fail("Not upgraded: something has no module equivalent (pass force: true to drop it). Report: " + items.dump());
-        return;
-    }
-    UndoStep step(target.sceneId());
-    auto* multi = new MultiPropertyCmd();
-    ProjectUtils::addParticleSystemValues(*multi, target.project, target.sceneId(), scene, system, result.component);
-    if (!step.add(multi)) { step.fail(call, "The editor rejected the upgrade."); return; }
-    step.commit();
-    call->ok("Upgraded \"" + scene->getEntityName(system) + "\" to the module model (version 2); undo restores it.",
-             Json{{"particle_system", entityJson(target, system)}, {"version", 2}, {"report", items}});
-}
-
-void createParticlesTool(const CallPtr& call) {
-    Target target;
-    if (!resolveSceneArg(call, target) || !sceneStopped(call, target)) return;
-    const Json& args = call->args();
-    Scene* scene = target.engineScene();
-    std::string error;
-
-    // the legacy layout (drawing on an existing GameObject) and version 1 systems keep their path
-    if (has(args, "emitter_entity")) {
-        createParticlesLegacyTool(call);
-        return;
-    }
-    Entity system = NULL_ENTITY;
-    if (has(args, "entity")) {
-        system = resolveRef(target.scene, args["entity"], error);
-        ParticleSystemComponent* existing = system != NULL_ENTITY ? scene->findComponent<ParticleSystemComponent>(system) : nullptr;
-        if (!existing) {
-            call->fail(system == NULL_ENTITY ? error : "\"" + scene->getEntityName(system) + "\" has no Particle System component.");
-            return;
-        }
-        if (existing->version < 2) {
-            if (boolOr(args, "upgrade", false)) {
-                upgradeParticlesTool(call, target, system);
-            } else {
-                createParticlesLegacyTool(call);
-            }
-            return;
-        }
-        if (boolOr(args, "upgrade", false)) {
-            call->fail("\"" + scene->getEntityName(system) + "\" is version 2 already (the module model).");
-            return;
-        }
-    }
-
-    UndoStep step(target.sceneId());
-    auto failWith = [&](const std::string& message) { step.fail(call, message); };
-    bool created = false;
-    const bool is2D = target.scene->sceneType != SceneType::SCENE_3D;
-    const std::string renderer = lowerText(stringOr(args, "renderer", "quads"));
-    if (renderer != "quads" && renderer != "points") {
-        call->fail("renderer must be quads (instanced billboard quads, the default) or points (GL points: billboards only).");
-        return;
-    }
-    if (system == NULL_ENTITY) {
-        Entity parent = NULL_ENTITY;
-        if (has(args, "parent") && (parent = resolveRef(target.scene, args["parent"], error)) == NULL_ENTITY) { failWith("parent: " + error); return; }
-        const EntityCreationType type = renderer == "points" ? EntityCreationType::PARTICLE_SYSTEM_POINTS : EntityCreationType::PARTICLE_SYSTEM;
-        auto* create = parent != NULL_ENTITY
-            ? new CreateEntityCmd(target.project, target.sceneId(), stringOr(args, "name", "Particle System"), type, parent)
-            : new CreateEntityCmd(target.project, target.sceneId(), stringOr(args, "name", "Particle System"), type);
-        Vector3 position;
-        if (!readVec3(args, "position", position, error)) { delete create; failWith(error); return; }
-        if (has(args, "position")) create->addProperty<Vector3>(ComponentType::Transform, "position", position);
-        if (!step.add(create)) { failWith("Could not create the Particle System."); return; }
-        system = create->getEntity();
-        created = true;
-    }
-
-    ParticleSystemComponent values = scene->getComponent<ParticleSystemComponent>(system);
-    const std::string preset = lowerText(stringOr(args, "preset", created ? "fire" : ""));
-    bool additive = false;
-    if (!preset.empty()) {
-        const float k = numberOr(args, "scale", is2D ? 40.0f : 1.0f);
-        const bool playOnAwake = values.main.playOnAwake;
-        if (!particlePresetV2(preset, values, k, is2D, additive)) {
-            failWith("preset must be fire, smoke, sparks, explosion, snow, rain, magic or none.");
-            return;
-        }
-        values.main.playOnAwake = playOnAwake;
-    }
-    if (!applyParticleOverridesV2(args, values, error)) { failWith(error); return; }
-
-    auto* multi = new MultiPropertyCmd();
-    std::unique_ptr<MultiPropertyCmd> guard(multi);
-    ProjectUtils::addParticleSystemValues(*multi, target.project, target.sceneId(), scene, system, values);
-    // the module fields as set_properties takes them: {"main": {"startLifetime": ...}, ...}
-    if (has(args, "modules")) {
-        if (!args["modules"].is_object()) { failWith("modules is {\"main\": {\"startLifetime\": ...}, \"shape\": {...}, ...}."); return; }
-        Json flat = Json::object();
-        for (auto it = args["modules"].begin(); it != args["modules"].end(); ++it) {
-            if (!it.value().is_object()) { failWith("modules." + it.key() + " must be an object of its fields."); return; }
-            for (auto field = it.value().begin(); field != it.value().end(); ++field) flat[it.key() + "." + field.key()] = field.value();
-        }
-        if (!addCatalogProperties(target.project, target.scene, system, ComponentType::ParticleSystemComponent, flat, *multi, error)) { failWith("modules: " + error); return; }
-    }
-    if (has(args, "properties") && !addCatalogProperties(target.project, target.scene, system, ComponentType::ParticleSystemComponent, args["properties"], *multi, error)) {
-        failWith("properties: " + error);
-        return;
-    }
-    const bool quads = scene->findComponent<MeshComponent>(system) != nullptr;
-    if (created && additive && quads &&
-        !addCatalogProperties(target.project, target.scene, system, ComponentType::MeshComponent, Json{{"submeshes[0].material.blendMode", "additive"}}, *multi, error)) {
-        failWith(error);
-        return;
-    }
-    if (has(args, "texture")) {
-        const Json props = quads ? Json{{"submeshes[0].material.shaderTextures", Json{{"u_baseTexture", args["texture"]}}}} : Json{{"texture", args["texture"]}};
-        if (!addCatalogProperties(target.project, target.scene, system, quads ? ComponentType::MeshComponent : ComponentType::PointsComponent, props, *multi, error)) {
-            failWith("texture: " + error);
-            return;
-        }
-    }
-    if (!step.add(guard.release())) { failWith("The editor rejected the particle settings."); return; }
-    step.commit();
-
-    const ParticleSystemComponent& c = scene->getComponent<ParticleSystemComponent>(system);
-    call->ok(std::string(created ? "Created" : "Updated") + " particle system \"" + scene->getEntityName(system) + "\" (version 2, modules)" +
-             (preset.empty() ? std::string() : " (" + preset + ")") + ". It plays on awake in Play (main.playOnAwake) or when a script calls play().",
-             Json{{"particle_system", entityJson(target, system)}, {"version", c.version}, {"created", created},
-                  {"renderer", quads ? "quads" : "points"},
-                  {"max_particles", c.main.maxParticles}, {"rate_over_time", McpValues::minMaxCurveToJson(c.emission.rateOverTime)},
-                  {"looping", c.main.looping}, {"duration", McpValues::number(c.main.duration)},
-                  {"start_lifetime", McpValues::minMaxCurveToJson(c.main.startLifetime)},
-                  {"shape", particles::enumName(*particles::findField("shape.shapeType"), (int)c.shape.shapeType)},
-                  {"bursts", c.emission.bursts.size()}, {"play_on_awake", c.main.playOnAwake}});
-}
-#endif
 
 
 // ================================================================== models
@@ -5602,25 +5266,27 @@ void setShapePointsTool(const CallPtr& call) {
             addProp<std::vector<Vector3>>(*multi, target, target.entity, lineType, "positions", positions);
             addProp<bool>(*multi, target, target.entity, lineType, "loop", boolOr(args, "closed", false));
             if (has(args, "colors")) {
-                if (colors.size() > upcurve::Gradient::MAX_KEYS) {
-                    call->fail("colors: a polyline's gradient takes at most " + std::to_string(upcurve::Gradient::MAX_KEYS) +
+                if (colors.size() > Gradient::kMaxKeys) {
+                    call->fail("colors: a polyline's gradient takes at most " + std::to_string(Gradient::kMaxKeys) +
                                " keys (one per point); set colorGradient with set_properties for more points.");
                     return;
                 }
-                // a key per point, at its share of the length
+                // a key per point, at its share of the length (the colours are linear; the
+                // gradient's keys sRGB-encoded)
                 std::vector<float> at(points.size(), 0.0f);
                 for (size_t i = 1; i < points.size(); i++) at[i] = at[i - 1] + points[i - 1].distance(points[i]);
                 const float total = at.back();
-                upcurve::Gradient gradient({}, {});
+                Gradient gradient;
                 for (size_t i = 0; i < points.size(); i++) {
                     const float t = total > 0.0f ? at[i] / total : (float)i / (float)(points.size() - 1);
-                    gradient.colorKeys.push_back(upcurve::GradientColorKey(t, Vector3(colors[i].x, colors[i].y, colors[i].z)));
-                    gradient.alphaKeys.push_back(upcurve::GradientAlphaKey(t, colors[i].w));
+                    gradient.colorKeys.push_back(GradientColorKey{t, Color::linearTosRGB(Vector3(colors[i].x, colors[i].y, colors[i].z))});
+                    gradient.alphaKeys.push_back(GradientAlphaKey{t, colors[i].w});
                 }
                 gradient.normalize();
-                addProp<upcurve::Gradient>(*multi, target, target.entity, lineType, "colorGradient", gradient);
+                addProp<Gradient>(*multi, target, target.entity, lineType, "colorGradient", gradient);
             } else if (has(args, "color")) {
-                addProp<upcurve::Gradient>(*multi, target, target.entity, lineType, "colorGradient", upcurve::Gradient::constant(color));
+                addProp<Gradient>(*multi, target, target.entity, lineType, "colorGradient",
+                                  Gradient::constant(Color::linearTosRGB(Vector3(color.x, color.y, color.z)), color.w));
             }
             written = points.size();
         }
@@ -6069,12 +5735,11 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- particles
     add("create_particles", "Create / Configure Particles",
-        "Create a Particle System GameObject (an inline effect) from a preset, or reconfigure one (entity: its "
-        "effect or asset). 3D presets in meters; 2D ones scaled by scale (px per unit). emitter {shape: "
-        "box|sphere|hemisphere|circle|cone, min, max, radius, inner_radius, cone_angle, cone_height}; "
-        "velocity/acceleration/color: value or {min, max}; gradient = color over life; bursts [{time, count}]. "
-        "Plays in play (autoplay = Play On Awake). emitter_entity: put it on that GameObject (a Mesh one emits its mesh). "
-        "edit_particle_effect edits every module.",
+        "Create a Particle System GameObject from a preset, or reconfigure one (entity). 3D presets "
+        "in meters; 2D scaled by scale (px/unit). emitter {shape: box|sphere|hemisphere|circle|cone, min, max, radius, "
+        "inner_radius, cone_angle, cone_height}; velocity/acceleration/color: value or {min, max}; gradient: color over "
+        "life; bursts [{time, count}]; modules: a merge patch (edit_particle_effect's). autoplay = "
+        "Play On Awake. emitter_entity: on that GameObject (emits its mesh).",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("")},
@@ -6082,7 +5747,6 @@ void registerWorldTools(McpRegistry& registry) {
             {"parent", entityRef()},
             {"position", vec3("Local.")},
             {"emitter_entity", entityRef()},
-            {"renderer", stringEnum("", {"quads", "points"})},
             {"preset", stringEnum("", {"fire", "smoke", "sparks", "explosion", "snow", "rain", "magic", "none"})},
             {"scale", number("Default 1 (3D), 40 (2D).")},
             {"max_particles", integer("", 1, 100000)},
@@ -6091,7 +5755,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"duration", number("")},
             {"life", any("Seconds or [min, max].")},
             {"speed", any("Or [min, max].")},
-            {"emitter", anyObject("{shape, radius, angle, length, arc, min, max, ...}")},
+            {"emitter", anyObject("")},
             {"velocity", any("")},
             {"acceleration", any("")},
             {"size", any("Or [min, max].")},
@@ -6103,9 +5767,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"texture", assetPath("")},
             {"modules", anyObject("")},
             {"properties", anyObject("")},
-            {"autoplay", boolean("")},
-            {"upgrade", boolean("")},
-            {"force", boolean("")}
+            {"autoplay", boolean("")}
         }),
         createParticlesTool, false, false);
 

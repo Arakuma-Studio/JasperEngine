@@ -138,6 +138,8 @@ namespace jasperengine::editor::reflect {
         bool easeFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
         YAML::Node curveToYaml(const FieldDesc&, const void*, const EncodeContext&);
         bool curveFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
+        YAML::Node gradientToYaml(const FieldDesc&, const void*, const EncodeContext&);
+        bool gradientFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
         YAML::Node textureToYaml(const FieldDesc&, const void*, const EncodeContext&);
         bool textureFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
         void assetRefEncodeKey(const FieldDesc&, const void*, YAML::Node&, const std::string&, const EncodeContext&);
@@ -167,6 +169,7 @@ namespace jasperengine::editor::reflect {
         std::string layerMaskLiteral(const FieldDesc&, const void*, const CodegenContext&);
         std::string easeLiteral(const FieldDesc&, const void*, const CodegenContext&);
         std::string curveLiteral(const FieldDesc&, const void*, const CodegenContext&);
+        std::string gradientLiteral(const FieldDesc&, const void*, const CodegenContext&);
         std::string entityLiteral(const FieldDesc&, const void*, const CodegenContext&);
         std::string assetRefLiteral(const FieldDesc&, const void*, const CodegenContext&);
         std::string enumLiteral(const FieldDesc&, const void*, const CodegenContext&);
@@ -187,6 +190,7 @@ namespace jasperengine::editor::reflect {
         Json enumSchema(const FieldDesc&);
         Json easeSchema(const FieldDesc&);
         Json curveSchema(const FieldDesc&);
+        Json gradientSchema(const FieldDesc&);
         Json entitySchema(const FieldDesc&);
         Json entityReferenceSchema(const FieldDesc&);
         Json textureSchema(const FieldDesc&);
@@ -310,6 +314,11 @@ namespace jasperengine::editor::reflect {
             &detail::construct<jasperengine::Curve>, &detail::destroy<jasperengine::Curve>, &detail::copy<jasperengine::Curve>,
             &detail::equalByOperator<jasperengine::Curve>, &detail::curveToYaml, &detail::curveFromYaml, nullptr, nullptr, nullptr, false,
             &detail::curveLiteral, &detail::curveSchema};
+        // a colour gradient (math/Curve.h): the same encoding's gradient form
+        inline constexpr TypeOps Gradient{"Gradient", Kind::Custom, PropertyType::Gradient, sizeof(jasperengine::Gradient),
+            &detail::construct<jasperengine::Gradient>, &detail::destroy<jasperengine::Gradient>, &detail::copy<jasperengine::Gradient>,
+            &detail::equalByOperator<jasperengine::Gradient>, &detail::gradientToYaml, &detail::gradientFromYaml, nullptr, nullptr, nullptr, false,
+            &detail::gradientLiteral, &detail::gradientSchema};
         // a GameObject of the same scene (its id)
         inline constexpr TypeOps Entity = detail::withScalar(TypeOps{"Entity", Kind::Entity, PropertyType::Entity, sizeof(jasperengine::Entity),
             &detail::construct<jasperengine::Entity>, &detail::destroy<jasperengine::Entity>, &detail::copy<jasperengine::Entity>,
@@ -574,6 +583,7 @@ namespace jasperengine::editor::reflect {
     template<> struct ReflectTraits<std::string> { static constexpr const TypeOps* ops = &ops::String; };
     template<> struct ReflectTraits<jasperengine::Ease> { static constexpr const TypeOps* ops = &ops::Ease; };
     template<> struct ReflectTraits<jasperengine::Curve> { static constexpr const TypeOps* ops = &ops::Curve; };
+    template<> struct ReflectTraits<jasperengine::Gradient> { static constexpr const TypeOps* ops = &ops::Gradient; };
     template<> struct ReflectTraits<jasperengine::EntityReference> { static constexpr const TypeOps* ops = &ops::EntityReference; };
     template<> struct ReflectTraits<jasperengine::Texture> { static constexpr const TypeOps* ops = &ops::Texture; };
     template<> struct ReflectTraits<FontArray> { static constexpr const TypeOps* ops = &ops::Font; };

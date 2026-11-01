@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Writes engine/core/script/binding/stubs/ParticleSystemModules.lua: the LuaLS classes of the
-Particle System module views (ps.main, ps.emission, ... ps.renderer; particles spec 6.6). The Lua
-binding answers their fields from one table (engine/core/particles/ParticleFields.cpp), which
-generate_lua_stubs.py cannot read, so this script reads that table and the module structs
-(engine/core/particles/ParticleModules.h) and writes the fragment the stub generator joins.
+Particle System module views (ps.main, ps.emission, ... ps.renderer; docs/specs/S20-particles.md,
+Upstream absorption). The Lua binding (script/binding/ParticleClassesLua.cpp) answers their
+fields from S20's module table (engine/core/particles/ParticleModules.cpp), which the stub
+generator (tools/lua_api) cannot read, so this script reads that table and writes the fragment
+the stub generator joins.
 
-Run it after changing a module field: python3 tools/gen_particle_stubs.py (test_stubs.py checks
-the fragment is current).
+Run it after changing a module field: python3 tools/gen_particle_stubs.py (--check exits 1 when
+the fragment is stale).
 """
 
 from __future__ import annotations
@@ -16,98 +17,112 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-FIELDS = ROOT / "engine" / "core" / "particles" / "ParticleFields.cpp"
-MODULES = ROOT / "engine" / "core" / "particles" / "ParticleModules.h"
+MODULES = ROOT / "engine" / "core" / "particles" / "ParticleModules.cpp"
 OUT = ROOT / "engine" / "core" / "script" / "binding" / "stubs" / "ParticleSystemModules.lua"
 
-STRUCTS = {
-    "ParticleMainModule": "main", "ParticleEmissionModule": "emission", "ParticleShapeModule": "shape",
-    "ParticleVelocityOverLifetimeModule": "velocityOverLifetime",
-    "ParticleLimitVelocityOverLifetimeModule": "limitVelocityOverLifetime",
-    "ParticleInheritVelocityModule": "inheritVelocity", "ParticleForceOverLifetimeModule": "forceOverLifetime",
-    "ParticleColorOverLifetimeModule": "colorOverLifetime", "ParticleColorBySpeedModule": "colorBySpeed",
-    "ParticleSizeOverLifetimeModule": "sizeOverLifetime", "ParticleSizeBySpeedModule": "sizeBySpeed",
-    "ParticleRotationOverLifetimeModule": "rotationOverLifetime", "ParticleRotationBySpeedModule": "rotationBySpeed",
-    "ParticleNoiseModule": "noise", "ParticleTextureSheetAnimationModule": "textureSheetAnimation",
-    "ParticleRendererModule": "renderer",
-}
+# the proxies ParticleSystem has (ParticleClassesLua.cpp): Lua name -> the module key
+PROXIES = [
+    ("main", "main"), ("emission", "emission"), ("shape", "shape"), ("velocityOverLifetime", "velocityOverLifetime"),
+    ("limitVelocityOverLifetime", "limitVelocity"), ("inheritVelocity", None), ("forceOverLifetime", "forceOverLifetime"),
+    ("noise", "noise"), ("colorOverLifetime", "colorOverLifetime"), ("colorBySpeed", "colorBySpeed"),
+    ("sizeOverLifetime", "sizeOverLifetime"), ("sizeBySpeed", "sizeBySpeed"), ("rotationOverLifetime", "rotationOverLifetime"),
+    ("rotationBySpeed", "rotationBySpeed"), ("textureSheetAnimation", "textureSheetAnimation"), ("collision", "collision"),
+    ("trails", "trails"), ("customData", "customData"), ("externalForces", "externalForces"), ("renderer", "renderer"),
+]
 
 TYPES = {
-    "Bool": "boolean", "Int": "integer", "UInt": "integer", "Float": "number", "Vector2": "Vector2",
-    "Vector3": "Vector3", "Curve": "MinMaxCurve|number", "Gradient": "MinMaxGradient|Vector4|Vector3|Gradient",
-    "Bursts": "{time: number, count: MinMaxCurve|number, cycles: integer, interval: number, probability: number}[]",
-    "IntList": "integer[]", "String": "string",
+    "Bool": "boolean", "Int": "integer", "UInt": "integer", "Mask": "integer", "Float": "number", "Enum": "string",
+    "Vector2": "Vector2", "Vector3": "Vector3", "Vector4": "Vector4", "Color": "Vector4", "String": "string",
+    "MinMaxCurve": "MinMaxCurve|number|{min: number, max: number}", "MinMaxGradient": "MinMaxGradient|Vector4|Gradient",
 }
 
-# Unity's names a field also answers to (script/binding/ParticleClassesLua.cpp aliasOf)
-ALIASES = {
-    "main": [("startSizeX", "startSize"), ("startRotationZ", "startRotation")],
-    "noise": [("strengthX", "strength")],
-    "sizeOverLifetime": [("x", "size")],
-    "sizeBySpeed": [("x", "size")],
-}
+# the effect's own fields Unity puts in Main (ParticleClassesLua.cpp pathOf)
+MAIN_EFFECT_FIELDS = ["duration", "looping", "prewarm", "startDelay", "maxParticles", "simulationSpace", "simulationSpeed",
+                      "scalingMode", "useUnscaledTime", "stopAction", "emitterVelocityMode"]
+
+# Unity's names a field also answers to: (proxy, alias, field)
+ALIASES = [
+    ("main", "startSizeX", "startSize"), ("main", "startRotationZ", "startRotation"), ("noise", "strengthX", "strength"),
+    ("sizeOverLifetime", "x", "size"), ("sizeOverLifetime", "y", "sizeY"), ("sizeOverLifetime", "z", "sizeZ"),
+    ("sizeBySpeed", "x", "size"), ("sizeBySpeed", "y", "sizeY"), ("sizeBySpeed", "z", "sizeZ"),
+    ("rotationOverLifetime", "x", "angularVelocityX"), ("rotationOverLifetime", "y", "angularVelocityY"),
+    ("rotationOverLifetime", "z", "angularVelocity"), ("rotationBySpeed", "x", "angularVelocityX"),
+    ("rotationBySpeed", "y", "angularVelocityY"), ("rotationBySpeed", "z", "angularVelocity"),
+    ("limitVelocityOverLifetime", "limitX", "limit"), ("textureSheetAnimation", "numTilesX", "tilesX"),
+    ("textureSheetAnimation", "numTilesY", "tilesY"), ("velocityOverLifetime", "orbitalOffsetX", "offsetX"),
+    ("velocityOverLifetime", "orbitalOffsetY", "offsetY"), ("velocityOverLifetime", "orbitalOffsetZ", "offsetZ"),
+]
+
+FIELD = re.compile(r'(?<![A-Za-z_])(field|enumField|arrayField<[^>]*>)\("(\w+)", "[^"]*", (?:FieldType::(\w+))?')
 
 
-def class_name(module: str) -> str:
-    return "ParticleSystem" + module[0].upper() + module[1:] + "Module"
-
-
-def enum_types() -> dict:
-    """(module, member) -> the C++ enum type of the module structs' enum members."""
+def parse() -> tuple[dict, list]:
+    """module key -> [(name, type)] in the table's order; and the document's own fields."""
     text = MODULES.read_text(encoding="utf-8")
-    out = {}
-    for struct, module in STRUCTS.items():
-        m = re.search(r"struct JASPERENGINE_API " + struct + r" \{(.*?)\n    \};", text, re.S)
-        if not m:
-            sys.exit(f"gen_particle_stubs: struct {struct} not found in {MODULES}")
-        for line in m.group(1).splitlines():
-            d = re.match(r"\s+(ParticleSystem\w+) (\w+)\s*=", line)
-            if d:
-                out[(module, d.group(2))] = d.group(1)
-    return out
-
-
-def fields() -> list:
-    text = FIELDS.read_text(encoding="utf-8")
-    out = []
-    for m in re.finditer(r"PS_(FIELD|ENUM)\((\w+), (\w+), (\w+)\)", text):
-        kind, module, member, arg = m.groups()
-        if module == "MODULE":
+    modules: dict = {}
+    document: list = []
+    for body in re.split(r"\n    (?=(?:ModuleDesc|StructDesc) make\w+\(\)\{)", text)[1:]:
+        head = re.match(r"(ModuleDesc|StructDesc) make(\w+)\(\)\{", body)
+        if not head:
             continue
-        out.append((module, member, "Enum" if kind == "ENUM" else arg))
-    return out
+        body = body.split("\n    }\n", 1)[0]
+        key = re.search(r'module<\w+>\(ModuleId::\w+, "(\w+)"', body) or re.search(r'd\.key = "(\w+)";', body)
+        fields = []
+        for m in FIELD.finditer(body):
+            kind, name, ftype = m.groups()
+            fields.append((name, "Enum" if kind == "enumField" else ("Array" if kind.startswith("arrayField") else ftype)))
+        if head.group(2) == "Document":
+            document = fields
+        elif key:
+            modules[key.group(1)] = fields
+    return modules, document
+
+
+def lua_type(kind: str) -> str:
+    return TYPES.get(kind, "any")
+
+
+def class_name(proxy: str) -> str:
+    return "ParticleSystem" + proxy[0].upper() + proxy[1:] + "Module"
 
 
 def main() -> int:
-    enums = enum_types()
-    by_module: dict = {}
-    for module, member, kind in fields():
-        by_module.setdefault(module, []).append((member, kind))
+    modules, document = parse()
+    if not modules or not document:
+        sys.exit(f"gen_particle_stubs: no module table in {MODULES}")
+    by_name = dict(document)
     lines = ["---@meta _", "",
-             "-- Generated by tools/gen_particle_stubs.py from engine/core/particles/ParticleFields.cpp. Do not edit.", ""]
-    for module in STRUCTS.values():
-        if module not in by_module:
-            sys.exit(f"gen_particle_stubs: module {module} has no field in {FIELDS}")
-        lines.append(f"---The {module} module of a Particle System (ps.{module}): a live view, its fields read and write the")
-        lines.append("---system now (Unity's names). Writing needs a version 2 system (ps:upgrade()).")
-        lines.append(f"---@class {class_name(module)}: ParticleSystemModule")
-        for member, kind in by_module[module]:
-            lua = TYPES.get(kind)
-            if kind == "Enum":
-                lua = enums.get((module, member), "integer") + "|string"
-            lines.append(f"---@field {member} {lua}")
-            if kind == "Curve":
-                lines.append(f"---@field {member}Multiplier number")
-        for alias, field in ALIASES.get(module, []):
-            kind = dict(by_module[module]).get(field)
-            lines.append(f"---@field {alias} {TYPES.get(kind, 'any')}")
-            if kind == "Curve":
+             "-- Generated by tools/gen_particle_stubs.py from engine/core/particles/ParticleModules.cpp. Do not edit.", ""]
+    for proxy, key in PROXIES:
+        lines.append(f"---The {proxy} module of a Particle System (ps.{proxy}): a live view of its effect (an inline one;")
+        lines.append("---an asset is copied inline first), its fields read and write it now with Unity's names (angles in")
+        lines.append("---radians, as Unity's).")
+        lines.append(f"---@class {class_name(proxy)}: ParticleSystemModule")
+        if proxy == "inheritVelocity":
+            fields = [("curve", "MinMaxCurve"), ("mode", "Enum")]
+        else:
+            fields = [f for f in modules.get(key, []) if f[1] != "Array"]
+            if key != "main" and key != "renderer":
+                lines.append("---@field enabled boolean")
+        if proxy == "main":
+            fields = fields + [(n, by_name[n]) for n in MAIN_EFFECT_FIELDS if n in by_name] + [("randomSeed", "UInt")]
+        known = dict(fields)
+        for name, kind in fields:
+            lines.append(f"---@field {name} {lua_type(kind)}")
+            if kind == "MinMaxCurve":
+                lines.append(f"---@field {name}Multiplier number")
+        for alias_proxy, alias, target in ALIASES:
+            if alias_proxy != proxy or target not in known:
+                continue
+            lines.append(f"---@field {alias} {lua_type(known[target])}")
+            if known[target] == "MinMaxCurve":
                 lines.append(f"---@field {alias}Multiplier number")
-        if module == "emission":
+        if proxy == "emission":
             lines.append("---@field burstCount integer")
-        if module == "main":
-            lines.append("---@field useUnscaledTime boolean")
         lines.append("")
+    lines.append("---@class ParticleSystem")
+    for proxy, _ in PROXIES:
+        lines.append(f"---@field {proxy} {class_name(proxy)}")
     text = "\n".join(lines).rstrip("\n") + "\n"
     if "--check" in sys.argv:
         current = OUT.read_text(encoding="utf-8") if OUT.exists() else ""

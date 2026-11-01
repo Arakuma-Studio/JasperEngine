@@ -205,25 +205,6 @@ namespace luabridge
     template<> struct Stack<ReflectionProbeMode> : EnumWrapper<ReflectionProbeMode>{};
     template<> struct Stack<ReflectionProbeUpdateMode> : EnumWrapper<ReflectionProbeUpdateMode>{};
     template<> struct Stack<ParticleEmitterShape> : EnumWrapper<ParticleEmitterShape>{};
-#if 0 // SYNC4-ABSORB(particles): upstream's version 2 Particle System enums
-    // version 2 Particle Systems (particles spec 6.6)
-    template<> struct Stack<ParticleSystemSimulationSpace> : EnumWrapper<ParticleSystemSimulationSpace>{};
-    template<> struct Stack<ParticleSystemScalingMode> : EnumWrapper<ParticleSystemScalingMode>{};
-    template<> struct Stack<ParticleSystemStopAction> : EnumWrapper<ParticleSystemStopAction>{};
-    template<> struct Stack<ParticleSystemEmitterVelocityMode> : EnumWrapper<ParticleSystemEmitterVelocityMode>{};
-    template<> struct Stack<ParticleSystemGravitySource> : EnumWrapper<ParticleSystemGravitySource>{};
-    template<> struct Stack<ParticleSystemStopBehavior> : EnumWrapper<ParticleSystemStopBehavior>{};
-    template<> struct Stack<ParticleSystemShapeType> : EnumWrapper<ParticleSystemShapeType>{};
-    template<> struct Stack<ParticleSystemShapeMultiModeValue> : EnumWrapper<ParticleSystemShapeMultiModeValue>{};
-    template<> struct Stack<ParticleSystemInheritVelocityMode> : EnumWrapper<ParticleSystemInheritVelocityMode>{};
-    template<> struct Stack<ParticleSystemAnimationMode> : EnumWrapper<ParticleSystemAnimationMode>{};
-    template<> struct Stack<ParticleSystemAnimationType> : EnumWrapper<ParticleSystemAnimationType>{};
-    template<> struct Stack<ParticleSystemAnimationRowMode> : EnumWrapper<ParticleSystemAnimationRowMode>{};
-    template<> struct Stack<ParticleSystemAnimationTimeMode> : EnumWrapper<ParticleSystemAnimationTimeMode>{};
-    template<> struct Stack<ParticleSystemRenderMode> : EnumWrapper<ParticleSystemRenderMode>{};
-    template<> struct Stack<ParticleSystemSortMode> : EnumWrapper<ParticleSystemSortMode>{};
-    template<> struct Stack<ParticleSystemRenderSpace> : EnumWrapper<ParticleSystemRenderSpace>{};
-#endif
     template<> struct Stack<RigidbodyMotionQuality> : EnumWrapper<RigidbodyMotionQuality>{};
     template<> struct Stack<Joint3DType> : EnumWrapper<Joint3DType>{};
     template<> struct Stack<ShaderType> : EnumWrapper<ShaderType>{};

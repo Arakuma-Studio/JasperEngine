@@ -48,6 +48,9 @@ namespace jasperengine { namespace particles {
         ChPlaneNX, ChPlaneNY, ChPlaneNZ, ChPlaneD,   // the cached contact plane (world collision)
         ChPlaneTick,                  // uint32: the tick the plane was found (0: none)
         ChTrailSlot,                  // uint32: the trail ring of the particle (~0: none)
+        // the last tick's animated velocity (Velocity over Lifetime, Noise): stretched and
+        // velocity-aligned particles follow the total velocity, as Unity's (origin/main's) did
+        ChAnimVelX, ChAnimVelY, ChAnimVelZ,
         ChCount
     };
     static_assert(ChCount <= 64, "the channel mask is 64 bits");
@@ -131,7 +134,13 @@ namespace jasperengine { namespace particles {
     struct ShapeParams {
         SpawnShapeKind kind = SpawnShapeKind::Point;
         ShapeEmitFrom emitFrom = ShapeEmitFrom::Volume;
-        uint8_t pad[2] = {0, 0};
+        ShapeMultiMode arcMode = ShapeMultiMode::Random;
+        ShapeMultiMode radiusMode = ShapeMultiMode::Random;
+        float arcSpread = 0.0f;        // 0..1 of the arc (0: continuous)
+        float radiusSpread = 0.0f;
+        float arcDegrees = 360.0f;     // the arc, for the Loop / Ping-Pong phase (degrees)
+        uint8_t alignToDirection = 0;  // the start rotation turned to the direction (ChQuat* / ChStartRotation)
+        uint8_t pad[3] = {0, 0, 0};
         float radius = 1.0f;
         float innerRatio = 0.0f;       // inner radius / radius (1 - radius thickness)
         float tanAngle = 0.0f;
@@ -183,7 +192,10 @@ namespace jasperengine { namespace particles {
         uint8_t initRotation = 0;      // ChRotation = start rotation
         uint8_t initAngularVelocity = 0;
         uint8_t initFrame = 0;
-        uint8_t pad[2] = {0, 0};
+        // Align to Direction: the start rotation turned by the shape's direction (SpawnShape left it
+        // in the scratch's ax, ay, az): the quaternion, else the roll
+        uint8_t alignToDirection = 0;
+        uint8_t pad = 0;
         CurveParam angularVelocity, angularVelocityX, angularVelocityY;   // radians/s at birth (3D)
         CurveParam accelX, accelY, accelZ;
         uint8_t accelWorld = 0;
@@ -223,9 +235,11 @@ namespace jasperengine { namespace particles {
         uint8_t forceWorld = 0;
         uint8_t forcePerTick = 0;
         uint8_t ownAcceleration = 0;   // ChAccel* (replaces Force over Lifetime)
-        uint8_t pad[3] = {0, 0, 0};
+        uint8_t inheritCurrent = 0;    // Inherit Velocity's Current mode: the emitter's change of velocity
+        uint8_t pad[2] = {0, 0};
         CurveParam gravityModifier;
         CurveParam fx, fy, fz;
+        CurveParam inherit;            // the share of it, over the particle's life
     };
 
     struct AnimatedVelocityParams {
@@ -237,7 +251,10 @@ namespace jasperengine { namespace particles {
         uint8_t pad[3] = {0, 0, 0};
         CurveParam vx, vy, vz;
         CurveParam ox, oy, oz;        // radians per second
+        uint8_t offsetConst = 1;      // the centre's offset is the same for every particle (offset[])
+        uint8_t pad2[3] = {0, 0, 0};
         float offset[3] = {0, 0, 0};  // emitter space
+        CurveParam offX, offY, offZ;  // the offset over the life (emitter space), when not constant
         CurveParam radialSpeed;
         CurveParam speed;
     };
@@ -261,7 +278,9 @@ namespace jasperengine { namespace particles {
         CurveParam strengthX, strengthY, strengthZ;
         float frequency = 0.5f;
         float strengthScale = 1.0f;   // Damping: 1 / frequency
-        float scrollSpeed = 0.0f;
+        float scrollSpeed = 0.0f;     // a constant scroll speed (scrollAccumulated: the emitter's sum)
+        uint8_t scrollAccumulated = 0;
+        uint8_t pad2[3] = {0, 0, 0};
         float octaveMultiplier = 0.5f;
         float octaveScale = 2.0f;
         uint32_t seed = 0;
@@ -277,8 +296,11 @@ namespace jasperengine { namespace particles {
         uint8_t dragBySize = 0;
         uint8_t dragByVelocity = 0;
         uint8_t ticksRotation = 0;
-        uint8_t pad[3] = {0, 0, 0};
+        uint8_t limitAxes = 0;         // a limit per axis (limitSpeed is X)
+        uint8_t limitWorld = 0;        // ... in world axes (else the emitter's)
+        uint8_t pad = 0;
         CurveParam limitSpeed;
+        CurveParam limitY, limitZ;
         float dampen = 0.0f;           // per 1/30 s
         float logKeep = 0.0f;          // ln(1 - dampen)
         CurveParam dragLinear;
@@ -289,8 +311,9 @@ namespace jasperengine { namespace particles {
         uint8_t rotationBySpeed = 0;
         uint8_t angularVelocity = 0;   // Rotation over Lifetime with a ticked rotation channel
         uint8_t angularVelocity3D = 0; // ChAngVel* turn ChQuat*
-        uint8_t pad = 0;
+        uint8_t rotationBySpeed3D = 0; // Rotation by Speed turns ChQuat* (Z, and X / Y with separate axes)
         CurveParam rotationSpeed;      // radians/s by speed (driver: speed)
+        CurveParam rotationSpeedX, rotationSpeedY;
         CurveParam angular;            // radians/s over age
     };
 
@@ -330,6 +353,9 @@ namespace jasperengine { namespace particles {
     struct BurstParam {
         float time = 0.0f;
         float countMin = 0.0f, countMax = 0.0f;
+        uint8_t countCurve = 0;        // count read from `count` at the burst's time
+        uint8_t pad[3] = {0, 0, 0};
+        CurveParam count;
         int cycles = 1;
         float interval = 0.01f;
         float probability = 1.0f;
@@ -391,13 +417,14 @@ namespace jasperengine { namespace particles {
         uint8_t freezeInView = 0;
         uint8_t verticalEmitter = 0;
         uint8_t meshSelection = 0;
-        uint8_t alignToVelocity = 0;
+        MeshAlignment meshAlignment = MeshAlignment::Simulation;
         uint32_t meshCount = 0;
         float pivot[3] = {0, 0, 0};
         float flip[3] = {0, 0, 0};
         float minScreenSize = 0.0f, maxScreenSize = 0.5f;
         float sortingFudge = 0.0f;
         float emissive = 0.0f;
+        float flipU = 0.0f, flipV = 0.0f;  // the texture sheet's shares mirrored
     };
 
     // ---------------------------------------------------------------- trails
@@ -431,7 +458,7 @@ namespace jasperengine { namespace particles {
         bool looping = true;
         bool prewarm = false;
         bool prewarmSync = false;
-        float startDelay = 0.0f;
+        CurveParam startDelay;         // seconds, picked per play (a range: by the seed)
         SimulationSpace space = SimulationSpace::Local;
         int tickRate = 30;
         bool interpolate = true;
@@ -439,6 +466,17 @@ namespace jasperengine { namespace particles {
         uint32_t seed = 0;
         ScalingMode scalingMode = ScalingMode::Local;
         float simulationSpeed = 1.0f;
+        bool useUnscaledTime = false;
+        StopAction stopAction = StopAction::None;
+        EmitterVelocityMode emitterVelocityMode = EmitterVelocityMode::Transform;
+        GravitySource gravitySource = GravitySource::Physics3D;
+        // the shape's Loop / Ping-Pong speeds (over the emitter time, one pick per play), and the
+        // noise scroll speed when it is not a constant
+        bool shapePhases = false;
+        CurveParam arcSpeed;           // degrees per second
+        CurveParam radiusSpeed;        // radius lengths per second
+        bool noiseScroll = false;
+        CurveParam noiseScrollSpeed;
         CullingMode cullingMode = CullingMode::Automatic;
         BoundsMode boundsMode = BoundsMode::Computed;
         float boundsCenter[3] = {0, 0, 0};

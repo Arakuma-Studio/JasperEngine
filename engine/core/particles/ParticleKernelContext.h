@@ -155,7 +155,18 @@ namespace jasperengine { namespace particles {
         float prevEmitterToSim[12] = {1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0};
         float prevEmitterToSimDir[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
         float emitterVelocity[3] = {0, 0, 0};  // simulation space, units per second
+        // the change of the emitter's velocity over this tick (Inherit Velocity's Current mode)
+        float emitterVelocityDelta[3] = {0, 0, 0};
         bool preAdvance = false;               // the update ops run over just-spawned particles
+        // the shape's Loop / Ping-Pong phases at the tick's start and their rates over it: arc
+        // in degrees (one arc length a wrap), radius in radius lengths
+        float arcPhase = 0.0f, arcRate = 0.0f;
+        float radiusPhase = 0.0f, radiusRate = 0.0f;
+        // a burst being spawned: the batch's first particle's index in it and its size (0: not a
+        // burst, Burst Spread picks at random)
+        uint32_t spreadBase = 0, spreadCount = 0;
+        // the noise field's scroll so far (a scroll speed that is not a constant)
+        float noiseScroll = 0.0f;
     };
 
     // The kernels of one back end (ParticleKernels.h instantiates them per back end)

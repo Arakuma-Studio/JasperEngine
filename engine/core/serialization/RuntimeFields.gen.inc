@@ -843,6 +843,20 @@ const FieldEntry kBody_LineRendererComponent_fields[] = {
     JE_RF(LineRendererComponent, stencil, 0xacd33d7eu, Struct),
     JE_RF(LineRendererComponent, colorWrite, 0xae89533cu, Int),
     JE_RF(LineRendererComponent, lines, 0x61414c29u, Array),
+    JE_RF(LineRendererComponent, mode, 0xd8f19359u, Enum),
+    JE_RF(LineRendererComponent, positions, 0x715317dau, Array),
+    JE_RF(LineRendererComponent, loop, 0x0748baf0u, Bool),
+    JE_RF(LineRendererComponent, useWorldSpace, 0xf95da83fu, Bool),
+    JE_RF(LineRendererComponent, widthMultiplier, 0x558a2611u, Float),
+    JE_RF(LineRendererComponent, widthCurve, 0x90a99201u, Custom),
+    JE_RF(LineRendererComponent, widthUnit, 0x8bd316d8u, Enum),
+    JE_RF(LineRendererComponent, colorGradient, 0xe18f3805u, Custom),
+    JE_RF(LineRendererComponent, numCornerVertices, 0x48d88474u, UInt),
+    JE_RF(LineRendererComponent, numCapVertices, 0x502764a9u, UInt),
+    JE_RF(LineRendererComponent, alignment, 0x88155b87u, Enum),
+    JE_RF(LineRendererComponent, textureMode, 0x8b33d972u, Enum),
+    JE_RF(LineRendererComponent, textureScale, 0xe66b6f51u, Vector2),
+    JE_RF(LineRendererComponent, sortPriority, 0xe9e4b626u, Int),
 };
 const StructTable kBody_LineRendererComponent{"linerenderer", kBody_LineRendererComponent_fields, std::size(kBody_LineRendererComponent_fields)};
 
@@ -992,6 +1006,7 @@ const FieldEntry kBody_TweenComponent_fields[] = {
     JE_RF(TweenComponent, loop, 0x3229150cu, Bool),
     JE_RF(TweenComponent, pingPong, 0x894b309cu, Bool),
     JE_RF(TweenComponent, function, 0xfa10436au, Ease),
+    JE_RF(TweenComponent, useUnscaledTime, 0x6cd06689u, Bool),
     JE_RF(TweenComponent, curve, 0xd238e139u, Custom),
 };
 const StructTable kBody_TweenComponent{"tween", kBody_TweenComponent_fields, std::size(kBody_TweenComponent_fields)};
@@ -999,6 +1014,7 @@ const StructTable kBody_TweenComponent{"tween", kBody_TweenComponent_fields, std
 const FieldEntry kBody_AlphaTweenComponent_fields[] = {
     JE_RF(AlphaTweenComponent, endAlpha, 0x2c3b1b63u, Float),
     JE_RF(AlphaTweenComponent, startAlpha, 0x5a79d8a8u, Float),
+    JE_RF(AlphaTweenComponent, alphaTarget, 0xc697d195u, Enum),
 };
 const StructTable kBody_AlphaTweenComponent{"alphatween", kBody_AlphaTweenComponent_fields, std::size(kBody_AlphaTweenComponent_fields)};
 
@@ -1186,6 +1202,37 @@ const FieldEntry kBody_Joint2DComponent_fields[] = {
     JE_RF(Joint2DComponent, target, 0x3f8fc900u, Vector2),
     JE_RF(Joint2DComponent, autoAnchors, 0x3fbfc6b4u, Bool),
     JE_RF(Joint2DComponent, rope, 0x6685c1d5u, Bool),
+    JE_RF(Joint2DComponent, anchorSpace, 0xb37fa9a2u, Enum),
+    JE_RF(Joint2DComponent, enableCollision, 0x5ccdfca6u, Bool),
+    JE_RF(Joint2DComponent, breakForce, 0x70dd83c3u, Float),
+    JE_RF(Joint2DComponent, breakTorque, 0x6ab86dbeu, Float),
+    JE_RF(Joint2DComponent, breakAction, 0xc39bc08au, Enum),
+    JE_RF(Joint2DComponent, useLimits, 0xca0e37c4u, Bool),
+    JE_RF(Joint2DComponent, lowerAngle, 0x4799aad1u, Float),
+    JE_RF(Joint2DComponent, upperAngle, 0xeeec55c6u, Float),
+    JE_RF(Joint2DComponent, lowerTranslation, 0xf890286du, Float),
+    JE_RF(Joint2DComponent, upperTranslation, 0xca4cc986u, Float),
+    JE_RF(Joint2DComponent, useMotor, 0x3630988du, Bool),
+    JE_RF(Joint2DComponent, motorSpeed, 0xff34918du, Float),
+    JE_RF(Joint2DComponent, maxMotorTorque, 0x04b4a28cu, Float),
+    JE_RF(Joint2DComponent, maxMotorForce, 0xdbe6e78du, Float),
+    JE_RF(Joint2DComponent, enableSpring, 0x4b99ef13u, Bool),
+    JE_RF(Joint2DComponent, frequency, 0xab302b29u, Float),
+    JE_RF(Joint2DComponent, dampingRatio, 0xf1034c9cu, Float),
+    JE_RF(Joint2DComponent, length, 0x1a1a367du, Float),
+    JE_RF(Joint2DComponent, autoLength, 0x0eb92afau, Bool),
+    JE_RF(Joint2DComponent, minLength, 0xb1d9615fu, Float),
+    JE_RF(Joint2DComponent, maxLength, 0x422d84d9u, Float),
+    JE_RF(Joint2DComponent, linearFrequency, 0x2a6b3136u, Float),
+    JE_RF(Joint2DComponent, angularFrequency, 0xcceba55du, Float),
+    JE_RF(Joint2DComponent, linearDampingRatio, 0x270747d5u, Float),
+    JE_RF(Joint2DComponent, angularDampingRatio, 0xef0d9160u, Float),
+    JE_RF(Joint2DComponent, linearOffset, 0x04b6dd7bu, Vector2),
+    JE_RF(Joint2DComponent, angularOffset, 0xdbea6e4eu, Float),
+    JE_RF(Joint2DComponent, autoOffset, 0xcfdd6c89u, Bool),
+    JE_RF(Joint2DComponent, maxForce, 0x71645500u, Float),
+    JE_RF(Joint2DComponent, maxTorque, 0x2761bc0fu, Float),
+    JE_RF(Joint2DComponent, correctionFactor, 0x07a63ef2u, Float),
 };
 const StructTable kBody_Joint2DComponent{"joint2d", kBody_Joint2DComponent_fields, std::size(kBody_Joint2DComponent_fields)};
 #endif // JASPERENGINE_PHYSICS_2D
@@ -1226,6 +1273,50 @@ const FieldEntry kBody_Joint3DComponent_fields[] = {
     JE_RF(Joint3DComponent, pathPosition, 0x6e11ece6u, Vector3),
     JE_RF(Joint3DComponent, isLooping, 0x19db435cu, Bool),
     JE_RF(Joint3DComponent, autoAnchors, 0x11092a6du, Bool),
+    JE_RF(Joint3DComponent, anchorSpace, 0x614397afu, Enum),
+    JE_RF(Joint3DComponent, enableCollision, 0x9949e5dbu, Bool),
+    JE_RF(Joint3DComponent, breakForce, 0x27ca6148u, Float),
+    JE_RF(Joint3DComponent, breakTorque, 0x37474e87u, Float),
+    JE_RF(Joint3DComponent, breakAction, 0x2f0aa1cbu, Enum),
+    JE_RF(Joint3DComponent, useLimits, 0xbb57d8d5u, Bool),
+    JE_RF(Joint3DComponent, limitsSpringFrequency, 0x586fa92bu, Float),
+    JE_RF(Joint3DComponent, limitsSpringDamping, 0xf9ea7267u, Float),
+    JE_RF(Joint3DComponent, useMotor, 0x0efc0fa2u, Bool),
+    JE_RF(Joint3DComponent, motorTargetVelocity, 0xf5f0a80du, Float),
+    JE_RF(Joint3DComponent, motorMaxForce, 0x60b507feu, Float),
+    JE_RF(Joint3DComponent, useSpring, 0x4a95a99cu, Bool),
+    JE_RF(Joint3DComponent, springStiffness, 0xcdf2ae94u, Float),
+    JE_RF(Joint3DComponent, springDamper, 0xf52330b6u, Float),
+    JE_RF(Joint3DComponent, springTargetPosition, 0x8ce219ddu, Float),
+    JE_RF(Joint3DComponent, maxFriction, 0xf49ea5b6u, Float),
+    JE_RF(Joint3DComponent, minDistance, 0xcf56bc3du, Float),
+    JE_RF(Joint3DComponent, maxDistance, 0x9fb5ebcfu, Float),
+    JE_RF(Joint3DComponent, coneHalfAngle, 0xc3eccb33u, Float),
+    JE_RF(Joint3DComponent, swingType, 0xa3e5df94u, Enum),
+    JE_RF(Joint3DComponent, motorTargetRotation, 0x98852fc4u, Quat),
+    JE_RF(Joint3DComponent, motorSpringFrequency, 0x1ac72fa4u, Float),
+    JE_RF(Joint3DComponent, motorSpringDamping, 0xad8d0fb4u, Float),
+    JE_RF(Joint3DComponent, xMotion, 0xedb2d2fcu, Enum),
+    JE_RF(Joint3DComponent, yMotion, 0xabb10fdbu, Enum),
+    JE_RF(Joint3DComponent, zMotion, 0xc7784b9au, Enum),
+    JE_RF(Joint3DComponent, angularXMotion, 0x19073872u, Enum),
+    JE_RF(Joint3DComponent, angularYMotion, 0x8ef0e451u, Enum),
+    JE_RF(Joint3DComponent, angularZMotion, 0x7771edb4u, Enum),
+    JE_RF(Joint3DComponent, linearLimitMin, 0x80111f0au, Vector3),
+    JE_RF(Joint3DComponent, linearLimitMax, 0x8a24b680u, Vector3),
+    JE_RF(Joint3DComponent, angularLimitMin, 0xed60bb8du, Vector3),
+    JE_RF(Joint3DComponent, angularLimitMax, 0xd74d1133u, Vector3),
+    JE_RF(Joint3DComponent, useDrive, 0x7fb55667u, Bool),
+    JE_RF(Joint3DComponent, driveStiffness, 0xe00cf3afu, Float),
+    JE_RF(Joint3DComponent, driveDamping, 0x5bbb15f0u, Float),
+    JE_RF(Joint3DComponent, angularDriveStiffness, 0x3c22503du, Float),
+    JE_RF(Joint3DComponent, angularDriveDamping, 0xdfb7a306u, Float),
+    JE_RF(Joint3DComponent, driveMaxForce, 0x2e21d28bu, Float),
+    JE_RF(Joint3DComponent, driveMaxTorque, 0x5f1bb976u, Float),
+    JE_RF(Joint3DComponent, targetPosition, 0xb82473b0u, Vector3),
+    JE_RF(Joint3DComponent, targetRotation, 0x8892e49du, Quat),
+    JE_RF(Joint3DComponent, targetVelocity, 0x48d64d54u, Vector3),
+    JE_RF(Joint3DComponent, targetAngularVelocity, 0x7ea021d8u, Vector3),
 };
 const StructTable kBody_Joint3DComponent{"joint3d", kBody_Joint3DComponent_fields, std::size(kBody_Joint3DComponent_fields)};
 #endif // JASPERENGINE_PHYSICS_3D
@@ -1954,6 +2045,96 @@ const FieldEntry kBody_VertexAnimatorComponent_fields[] = {
 };
 const StructTable kBody_VertexAnimatorComponent{"vertexanimator", kBody_VertexAnimatorComponent_fields, std::size(kBody_VertexAnimatorComponent_fields)};
 
+const FieldEntry kBody_TrailRendererComponent_fields[] = {
+    JE_RF(TrailRendererComponent, enabled, 0xb61f7783u, Bool),
+    JE_RF(TrailRendererComponent, time, 0x9e80328fu, Float),
+    JE_RF(TrailRendererComponent, minVertexDistance, 0x935ae8dbu, Float),
+    JE_RF(TrailRendererComponent, widthMultiplier, 0x630b6155u, Float),
+    JE_RF(TrailRendererComponent, widthCurve, 0xaa6b9f25u, Custom),
+    JE_RF(TrailRendererComponent, widthUnit, 0x513c6a04u, Enum),
+    JE_RF(TrailRendererComponent, colorGradient, 0xdfc60e11u, Custom),
+    JE_RF(TrailRendererComponent, numCornerVertices, 0x90d62240u, UInt),
+    JE_RF(TrailRendererComponent, numCapVertices, 0x653e8765u, UInt),
+    JE_RF(TrailRendererComponent, alignment, 0xd68032dbu, Enum),
+    JE_RF(TrailRendererComponent, textureMode, 0xf1c26956u, Enum),
+    JE_RF(TrailRendererComponent, textureScale, 0x30ad608du, Vector2),
+    JE_RF(TrailRendererComponent, emitting, 0xd733dd59u, Bool),
+    JE_RF(TrailRendererComponent, autodestruct, 0x07628c03u, Bool),
+    JE_RF(TrailRendererComponent, sortPriority, 0xa529dd3au, Int),
+    JE_RF(TrailRendererComponent, customShader, 0x1fd5ec80u, AssetPath),
+    JE_RF(TrailRendererComponent, shaderUniforms, 0x04ea570eu, Custom),
+    JE_RF(TrailRendererComponent, shaderTextures, 0x187d06d7u, Custom),
+    JE_RF(TrailRendererComponent, shaderFeatures, 0x2a966cb0u, Custom),
+    JE_RF(TrailRendererComponent, blendMode, 0x34832302u, Enum),
+    JE_RF(TrailRendererComponent, depthWrite, 0x56f6d5d2u, Enum),
+    JE_RF(TrailRendererComponent, stencil, 0x17742a5au, Struct),
+    JE_RF(TrailRendererComponent, colorWrite, 0x52395460u, Int),
+};
+const StructTable kBody_TrailRendererComponent{"trailrenderer", kBody_TrailRendererComponent_fields, std::size(kBody_TrailRendererComponent_fields)};
+
+const FieldEntry kBody_CanvasGroupComponent_fields[] = {
+    JE_RF(CanvasGroupComponent, enabled, 0xa30c925fu, Bool),
+    JE_RF(CanvasGroupComponent, alpha, 0x6cae478au, Float),
+    JE_RF(CanvasGroupComponent, interactable, 0x0bc08f3cu, Bool),
+    JE_RF(CanvasGroupComponent, blocksRaycasts, 0xe93a62ccu, Bool),
+    JE_RF(CanvasGroupComponent, ignoreParentGroups, 0x6152b0e4u, Bool),
+    JE_RF(CanvasGroupComponent, renderMode, 0xe13ad77du, Enum),
+};
+const StructTable kBody_CanvasGroupComponent{"canvasgroup", kBody_CanvasGroupComponent_fields, std::size(kBody_CanvasGroupComponent_fields)};
+
+const FieldEntry kBody_OnScreenStickComponent_fields[] = {
+    JE_RF(OnScreenStickComponent, enabled, 0x402d067bu, Bool),
+    JE_RF(OnScreenStickComponent, mode, 0x78d43605u, Enum),
+    JE_RF_ENTITY(OnScreenStickComponent, background, 0x594a5e16u, Entity),
+    JE_RF_ENTITY(OnScreenStickComponent, handle, 0x2275b848u, Entity),
+    JE_RF(OnScreenStickComponent, handleRange, 0x9fbfcb5du, Float),
+    JE_RF(OnScreenStickComponent, deadZone, 0x0ec0328au, Float),
+    JE_RF(OnScreenStickComponent, moveThreshold, 0x2aad9426u, Float),
+    JE_RF(OnScreenStickComponent, axes, 0x3c674177u, Enum),
+    JE_RF(OnScreenStickComponent, snapX, 0x6f246fa6u, Bool),
+    JE_RF(OnScreenStickComponent, snapY, 0x70247139u, Bool),
+    JE_RF(OnScreenStickComponent, hideWhenReleased, 0xffb2d6a9u, Bool),
+    JE_RF(OnScreenStickComponent, clampToArea, 0x583d3205u, Bool),
+    JE_RF(OnScreenStickComponent, horizontalAction, 0xf400bc50u, String),
+    JE_RF(OnScreenStickComponent, verticalAction, 0xe613cb86u, String),
+    JE_RF(OnScreenStickComponent, visibility, 0x9b50fa0eu, Enum),
+};
+const StructTable kBody_OnScreenStickComponent{"onscreenstick", kBody_OnScreenStickComponent_fields, std::size(kBody_OnScreenStickComponent_fields)};
+
+const FieldEntry kBody_OnScreenButtonComponent_fields[] = {
+    JE_RF(OnScreenButtonComponent, enabled, 0x37351c17u, Bool),
+    JE_RF(OnScreenButtonComponent, action, 0x2886bf78u, String),
+    JE_RF(OnScreenButtonComponent, value, 0xf26d89c3u, Float),
+    JE_RF(OnScreenButtonComponent, pressWhenPointerEnters, 0x40bba5fdu, Bool),
+    JE_RF(OnScreenButtonComponent, releaseWhenPointerLeaves, 0xc1380238u, Bool),
+    JE_RF(OnScreenButtonComponent, visibility, 0xe1a42402u, Enum),
+};
+const StructTable kBody_OnScreenButtonComponent{"onscreenbutton", kBody_OnScreenButtonComponent_fields, std::size(kBody_OnScreenButtonComponent_fields)};
+
+const FieldEntry kBody_TouchAreaComponent_fields[] = {
+    JE_RF(TouchAreaComponent, enabled, 0xf9ac0c16u, Bool),
+    JE_RF(TouchAreaComponent, horizontalAction, 0xea01a4f3u, String),
+    JE_RF(TouchAreaComponent, verticalAction, 0xf2b4be71u, String),
+    JE_RF(TouchAreaComponent, sensitivity, 0xe90f3054u, Float),
+    JE_RF(TouchAreaComponent, invertX, 0xe7e620c3u, Bool),
+    JE_RF(TouchAreaComponent, invertY, 0xe6e61f30u, Bool),
+    JE_RF(TouchAreaComponent, visibility, 0xe4940fedu, Enum),
+};
+const StructTable kBody_TouchAreaComponent{"toucharea", kBody_TouchAreaComponent_fields, std::size(kBody_TouchAreaComponent_fields)};
+
+#ifdef JASPERENGINE_PHYSICS_3D
+const FieldEntry kBody_RagdollComponent_fields[] = {
+    JE_RF(RagdollComponent, enabled, 0xdcc2941fu, Bool),
+    JE_RF(RagdollComponent, simulated, 0x53ec9664u, Bool),
+    JE_RF_ENTITY(RagdollComponent, root, 0x26178be6u, Entity),
+    JE_RF_ENTITY(RagdollComponent, animator, 0xd349bca3u, Entity),
+    JE_RF(RagdollComponent, inheritVelocity, 0xc1ac436eu, Bool),
+    JE_RF(RagdollComponent, selfCollision, 0xd98a8efcu, Bool),
+    JE_RF(RagdollComponent, totalMass, 0xa3b513b4u, Float),
+};
+const StructTable kBody_RagdollComponent{"ragdoll", kBody_RagdollComponent_fields, std::size(kBody_RagdollComponent_fields)};
+#endif // JASPERENGINE_PHYSICS_3D
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2046,6 +2227,14 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(SplineAnimateComponent, "splineanimate", 0x9d69db6bu),
     JE_RF_COMPONENT(AnimatorComponent, "animator", 0x754dee14u),
     JE_RF_COMPONENT(VertexAnimatorComponent, "vertexanimator", 0x3269d22au),
+    JE_RF_COMPONENT(TrailRendererComponent, "trailrenderer", 0x57cc223cu),
+    JE_RF_COMPONENT(CanvasGroupComponent, "canvasgroup", 0x182dec08u),
+    JE_RF_COMPONENT(OnScreenStickComponent, "onscreenstick", 0xb4445724u),
+    JE_RF_COMPONENT(OnScreenButtonComponent, "onscreenbutton", 0x2889a9f0u),
+    JE_RF_COMPONENT(TouchAreaComponent, "toucharea", 0x598a9af1u),
+#ifdef JASPERENGINE_PHYSICS_3D
+    JE_RF_COMPONENT(RagdollComponent, "ragdoll", 0x1e7f8548u),
+#endif // JASPERENGINE_PHYSICS_3D
     JE_RF_COMPONENTS_END
 };
 

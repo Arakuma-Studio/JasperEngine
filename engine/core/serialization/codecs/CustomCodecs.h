@@ -6,7 +6,7 @@
 // The cooked encodings of the values whose S08 field is Custom (a codec of its own in the
 // editor's reflection tables, editor/reflect/components/*): scripts and their properties, a
 // particle system's exposed values and inline effect, lattice poses, nav-grid tile areas,
-// curves, and the OutOfLineValue wrapper. One file for the writer (the editor's SceneCooker) and
+// curves, gradients, and the OutOfLineValue wrapper. One file for the writer (the editor's SceneCooker) and
 // the reader (the player), so the two never disagree (docs/specs/S30-shipping.md R4).
 
 #include "serialization/CookCodecs.h"
@@ -81,6 +81,48 @@ namespace jasperengine::cook {
             c.preWrapMode = static_cast<CurveWrapMode>(r.u8());
             c.postWrapMode = static_cast<CurveWrapMode>(r.u8());
             for (CurveKey& k : c.keys) k.mode = r.u8();
+        }
+    };
+
+    // a colour gradient (the Line and Trail Renderers' colorGradient): its colour keys (time,
+    // sRGB rgb), alpha keys (time, alpha), then the mode and the linear flag
+    template<>
+    struct Codec<GradientColorKey> {
+        static void write(Writer& w, const GradientColorKey& k) {
+            w.f32(k.time);
+            Codec<Vector3>::write(w, k.color);
+        }
+        static void read(Reader& r, GradientColorKey& k) {
+            k.time = r.f32();
+            Codec<Vector3>::read(r, k.color);
+        }
+    };
+
+    template<>
+    struct Codec<GradientAlphaKey> {
+        static void write(Writer& w, const GradientAlphaKey& k) {
+            w.f32(k.time);
+            w.f32(k.alpha);
+        }
+        static void read(Reader& r, GradientAlphaKey& k) {
+            k.time = r.f32();
+            k.alpha = r.f32();
+        }
+    };
+
+    template<>
+    struct Codec<Gradient> {
+        static void write(Writer& w, const Gradient& g) {
+            Codec<std::vector<GradientColorKey>>::write(w, g.colorKeys);
+            Codec<std::vector<GradientAlphaKey>>::write(w, g.alphaKeys);
+            w.u8(static_cast<uint8_t>(g.mode));
+            w.u8(g.linear ? 1 : 0);
+        }
+        static void read(Reader& r, Gradient& g) {
+            Codec<std::vector<GradientColorKey>>::read(r, g.colorKeys);
+            Codec<std::vector<GradientAlphaKey>>::read(r, g.alphaKeys);
+            g.mode = static_cast<GradientMode>(r.u8());
+            g.linear = r.u8() != 0;
         }
     };
 

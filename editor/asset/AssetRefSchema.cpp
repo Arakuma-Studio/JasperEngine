@@ -9,6 +9,7 @@
 #include "component/ButtonComponent.h"
 #include "component/LightComponent.h"
 #include "component/LineRendererComponent.h"
+#include "component/TrailRendererComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/PointsComponent.h"
@@ -148,6 +149,8 @@ namespace {
 
         row(C::LineRendererComponent, "customShader", Shape::Shader, AssetType::Shader, Base::Project);
         row(C::LineRendererComponent, "shaderTextures{}", Shape::Texture, AssetType::Texture, Base::Assets);
+        row(C::TrailRendererComponent, "customShader", Shape::Shader, AssetType::Shader, Base::Project);
+        row(C::TrailRendererComponent, "shaderTextures{}", Shape::Texture, AssetType::Texture, Base::Assets);
 
         row(C::ModelComponent, "filename", Shape::Asset, AssetType::Model, Base::Assets);
         row(C::AudioSourceComponent, "filename", Shape::Asset, AssetType::Audio, Base::Assets);
@@ -612,6 +615,13 @@ namespace {
             if (visit.shader(lines.customShader, componentRow(C::LineRendererComponent, "customShader"), "customShader") |
                 visit.textureMap(lines.shaderTextures, componentRow(C::LineRendererComponent, "shaderTextures{}"), "shaderTextures.")) {
                 lines.needReload = true;
+            }
+        });
+
+        eachComponent<TrailRendererComponent>(registry, only, visit, C::TrailRendererComponent, [&](TrailRendererComponent& trail) {
+            if (visit.shader(trail.customShader, componentRow(C::TrailRendererComponent, "customShader"), "customShader") |
+                visit.textureMap(trail.shaderTextures, componentRow(C::TrailRendererComponent, "shaderTextures{}"), "shaderTextures.")) {
+                trail.needReload = true;
             }
         });
 

@@ -104,6 +104,13 @@ namespace {
     const EnumOption kCullingModes[] = {{"automatic", "Automatic", 0}, {"pause", "Pause", 1}, {"pauseAndCatchUp", "Pause and Catch-up", 2}, {"alwaysSimulate", "Always Simulate", 3}};
     const EnumOption kBoundsModes[] = {{"computed", "Computed", 0}, {"authored", "Authored", 1}};
     const EnumOption kValueSpaces[] = {{"local", "Local", 0}, {"world", "World", 1}};
+    const EnumOption kStopActions[] = {{"none", "None", 0}, {"disable", "Disable", 1}, {"destroy", "Destroy", 2}, {"callback", "Callback", 3}};
+    const EnumOption kEmitterVelocityModes[] = {{"transform", "Transform", 0}, {"rigidbody", "Rigidbody", 1}};
+    const EnumOption kGravitySources[] = {{"physics3D", "3D Physics", 0}, {"physics2D", "2D Physics", 1}};
+    const EnumOption kInheritModes[] = {{"initial", "Initial", 0}, {"current", "Current", 1}};
+    const EnumOption kShapeMultiModes[] = {{"random", "Random", 0}, {"loop", "Loop", 1}, {"pingPong", "Ping-Pong", 2}, {"burstSpread", "Burst Spread", 3}};
+    const EnumOption kMeshAlignments[] = {{"simulation", "Simulation Space", 0}, {"view", "View", 1}, {"world", "World", 2},
+                                          {"local", "Local", 3}, {"facing", "Facing", 4}, {"velocity", "Velocity", 5}};
     const EnumOption kShapeTypes[] = {{"sphere", "Sphere", 0}, {"hemisphere", "Hemisphere", 1}, {"cone", "Cone", 2}, {"box", "Box", 3},
                                       {"circle", "Circle", 4}, {"donut", "Donut", 5}, {"edge", "Edge", 6}, {"rectangle", "Rectangle", 7}, {"mesh", "Mesh", 8}};
     const EnumOption kEmitFrom[] = {{"volume", "Volume", 0}, {"shell", "Shell", 1}, {"edge", "Edge", 2}, {"base", "Base", 3}, {"vertex", "Vertex", 4}, {"triangle", "Triangle", 5}};
@@ -122,7 +129,8 @@ namespace {
     const EnumOption kRenderModes[] = {{"billboard", "Billboard", 0}, {"facingCameraPosition", "Facing Camera Position", 1},
                                        {"stretchedBillboard", "Stretched Billboard", 2}, {"horizontalBillboard", "Horizontal Billboard", 3},
                                        {"verticalBillboard", "Vertical Billboard", 4}, {"worldOriented", "World Oriented", 5},
-                                       {"localOriented", "Local Oriented", 6}, {"mesh", "Mesh", 7}, {"none", "None", 8}};
+                                       {"localOriented", "Local Oriented", 6}, {"mesh", "Mesh", 7}, {"none", "None", 8},
+                                       {"velocityAligned", "Velocity Aligned", 9}};
     const EnumOption kVerticalLocks[] = {{"world", "World Y", 0}, {"emitter", "Emitter Y", 1}};
     const EnumOption kMeshSelections[] = {{"random", "Random", 0}, {"index", "By Spawn Index", 1}};
     const EnumOption kUntexturedShapes[] = {{"disc", "Soft Disc", 0}, {"square", "Square", 1}};
@@ -259,7 +267,12 @@ namespace {
         f.push_back(ranged(field("flipRotation", "Flip Rotation", FieldType::Float, JE_ACC(MainModule, flipRotation)), 0.0f, 1.0f));
         f.push_back(field("startColor", "Start Color", FieldType::MinMaxGradient, JE_ACC(MainModule, startColor)));
         f.push_back(field("gravityModifier", "Gravity Modifier", FieldType::MinMaxCurve, JE_ACC(MainModule, gravityModifier)));
-        f.push_back(field("inheritVelocity", "Inherit Velocity", FieldType::MinMaxCurve, JE_ACC(MainModule, inheritVelocity), FieldFlag_None, "share of the emitter's velocity a particle starts with"));
+        f.push_back(enumField("gravitySource", "Gravity Source", JE_ACC(MainModule, gravitySource), kGravitySources, FieldFlag_None,
+                              "the gravity Gravity Modifier scales: the 3D world's, or the 2D world's (in the scene's units)"));
+        f.push_back(field("inheritVelocity", "Inherit Velocity", FieldType::MinMaxCurve, JE_ACC(MainModule, inheritVelocity), FieldFlag_None, "share of the emitter's velocity a particle takes"));
+        f.push_back(shownIf(enumField("inheritVelocityMode", "Inherit Mode", JE_ACC(MainModule, inheritVelocityMode), kInheritModes, FieldFlag_None,
+                                      "Initial: at birth; Current: the emitter's change of velocity every tick (particles keep moving with it)"),
+                            JE_IF(MainModule, !m.inheritVelocity.isZero())));
         f.push_back(field("startSizeFromTexture", "Start Size from Texture", FieldType::Bool, JE_ACC(MainModule, startSizeFromTexture), FieldFlag_Hidden));
         return d;
     }
@@ -284,10 +297,32 @@ namespace {
                             JE_IF(ShapeModule, m.shape != ShapeType::Box && m.shape != ShapeType::Rectangle && m.shape != ShapeType::Mesh)));
         f.push_back(shownIf(ranged(field("radiusThickness", "Radius Thickness", FieldType::Float, JE_ACC(ShapeModule, radiusThickness)), 0.0f, 1.0f),
                             JE_IF(ShapeModule, m.shape != ShapeType::Box && m.shape != ShapeType::Rectangle && m.shape != ShapeType::Mesh && m.shape != ShapeType::Edge)));
+        auto radial = JE_IF(ShapeModule, m.shape == ShapeType::Sphere || m.shape == ShapeType::Hemisphere || m.shape == ShapeType::Cone ||
+                                         m.shape == ShapeType::Circle || m.shape == ShapeType::Donut || m.shape == ShapeType::Edge);
+        f.push_back(shownIf(enumField("radiusMode", "Radius Mode", JE_ACC(ShapeModule, radiusMode), kShapeMultiModes, FieldFlag_None,
+                                      "where along the radius (the Edge's length) particles are born: at random, moving at Speed, or a burst spread evenly"),
+                            radial));
+        f.push_back(shownIf(ranged(field("radiusSpread", "Radius Spread", FieldType::Float, JE_ACC(ShapeModule, radiusSpread), FieldFlag_None,
+                                         "positions only at multiples of it (0: anywhere)"), 0.0f, 1.0f), radial));
+        f.push_back(shownIf(field("radiusSpeed", "Radius Speed", FieldType::MinMaxCurve, JE_ACC(ShapeModule, radiusSpeed), FieldFlag_None,
+                                  "radius lengths per second (Loop, Ping-Pong), over the emitter time"),
+                            JE_IF(ShapeModule, (m.radiusMode == ShapeMultiMode::Loop || m.radiusMode == ShapeMultiMode::PingPong) &&
+                                               (m.shape == ShapeType::Sphere || m.shape == ShapeType::Hemisphere || m.shape == ShapeType::Cone ||
+                                                m.shape == ShapeType::Circle || m.shape == ShapeType::Donut || m.shape == ShapeType::Edge))));
         f.push_back(shownIf(ranged(field("angle", "Angle", FieldType::Float, JE_ACC(ShapeModule, angle), FieldFlag_Degrees), 0.0f, 90.0f), JE_IF(ShapeModule, m.shape == ShapeType::Cone)));
         f.push_back(shownIf(ranged(field("length", "Length", FieldType::Float, JE_ACC(ShapeModule, length)), 0.0f, 1.0e6f), JE_IF(ShapeModule, m.shape == ShapeType::Cone)));
-        f.push_back(shownIf(ranged(field("arc", "Arc", FieldType::Float, JE_ACC(ShapeModule, arc), FieldFlag_Degrees), 0.0f, 360.0f),
-                            JE_IF(ShapeModule, m.shape == ShapeType::Cone || m.shape == ShapeType::Circle || m.shape == ShapeType::Donut || m.shape == ShapeType::Sphere || m.shape == ShapeType::Hemisphere)));
+        auto arced = JE_IF(ShapeModule, m.shape == ShapeType::Cone || m.shape == ShapeType::Circle || m.shape == ShapeType::Donut || m.shape == ShapeType::Sphere || m.shape == ShapeType::Hemisphere);
+        f.push_back(shownIf(ranged(field("arc", "Arc", FieldType::Float, JE_ACC(ShapeModule, arc), FieldFlag_Degrees), 0.0f, 360.0f), arced));
+        f.push_back(shownIf(enumField("arcMode", "Arc Mode", JE_ACC(ShapeModule, arcMode), kShapeMultiModes, FieldFlag_None,
+                                      "where on the arc particles are born: at random, moving around it at Speed, or a burst spread evenly"),
+                            arced));
+        f.push_back(shownIf(ranged(field("arcSpread", "Arc Spread", FieldType::Float, JE_ACC(ShapeModule, arcSpread), FieldFlag_None,
+                                         "angles only at multiples of this share of the arc (0: any)"), 0.0f, 1.0f), arced));
+        f.push_back(shownIf(field("arcSpeed", "Arc Speed", FieldType::MinMaxCurve, JE_ACC(ShapeModule, arcSpeed), FieldFlag_None,
+                                  "turns of the arc per second (Loop, Ping-Pong), over the emitter time"),
+                            JE_IF(ShapeModule, (m.arcMode == ShapeMultiMode::Loop || m.arcMode == ShapeMultiMode::PingPong) &&
+                                               (m.shape == ShapeType::Cone || m.shape == ShapeType::Circle || m.shape == ShapeType::Donut ||
+                                                m.shape == ShapeType::Sphere || m.shape == ShapeType::Hemisphere))));
         f.push_back(shownIf(ranged(field("donutRadius", "Donut Radius", FieldType::Float, JE_ACC(ShapeModule, donutRadius)), 0.0f, 1.0e6f), JE_IF(ShapeModule, m.shape == ShapeType::Donut)));
         f.push_back(shownIf(field("boxThickness", "Box Thickness", FieldType::Vector3, JE_ACC(ShapeModule, boxThickness)), JE_IF(ShapeModule, m.shape == ShapeType::Box)));
         f.push_back(shownIf(structField("mesh", "Mesh", JE_ACC(ShapeModule, mesh), &meshSourceDesc()), JE_IF(ShapeModule, m.shape == ShapeType::Mesh)));
@@ -297,6 +332,8 @@ namespace {
         f.push_back(ranged(field("randomizeDirection", "Randomize Direction", FieldType::Float, JE_ACC(ShapeModule, randomizeDirection)), 0.0f, 1.0f));
         f.push_back(ranged(field("spherizeDirection", "Spherize Direction", FieldType::Float, JE_ACC(ShapeModule, spherizeDirection)), 0.0f, 1.0f));
         f.push_back(ranged(field("randomizePosition", "Randomize Position", FieldType::Float, JE_ACC(ShapeModule, randomizePosition)), 0.0f, 1.0e6f));
+        f.push_back(field("alignToDirection", "Align to Direction", FieldType::Bool, JE_ACC(ShapeModule, alignToDirection), FieldFlag_None,
+                          "particles start turned with their up axis along the direction they leave the shape in"));
         return d;
     }
 
@@ -321,7 +358,10 @@ namespace {
         f.push_back(field("orbitalX", "Orbital X", FieldType::MinMaxCurve, JE_ACC(VelocityOverLifetimeModule, orbitalX), FieldFlag_Degrees));
         f.push_back(field("orbitalY", "Orbital Y", FieldType::MinMaxCurve, JE_ACC(VelocityOverLifetimeModule, orbitalY), FieldFlag_Degrees));
         f.push_back(field("orbitalZ", "Orbital Z", FieldType::MinMaxCurve, JE_ACC(VelocityOverLifetimeModule, orbitalZ), FieldFlag_Degrees));
-        f.push_back(field("offset", "Offset", FieldType::Vector3, JE_ACC(VelocityOverLifetimeModule, offset)));
+        f.push_back(field("offsetX", "Orbital Offset X", FieldType::MinMaxCurve, JE_ACC(VelocityOverLifetimeModule, offsetX), FieldFlag_None,
+                          "the orbit's centre from the emitter, over the particle's life"));
+        f.push_back(field("offsetY", "Orbital Offset Y", FieldType::MinMaxCurve, JE_ACC(VelocityOverLifetimeModule, offsetY)));
+        f.push_back(field("offsetZ", "Orbital Offset Z", FieldType::MinMaxCurve, JE_ACC(VelocityOverLifetimeModule, offsetZ)));
         f.push_back(field("radial", "Radial", FieldType::MinMaxCurve, JE_ACC(VelocityOverLifetimeModule, radial)));
         f.push_back(field("speedModifier", "Speed Modifier", FieldType::MinMaxCurve, JE_ACC(VelocityOverLifetimeModule, speedModifier)));
         return d;
@@ -331,7 +371,12 @@ namespace {
         ModuleDesc d = module<LimitVelocityModule>(ModuleId::LimitVelocity, "limitVelocity", "Limit Velocity over Lifetime", JE_DOC(limitVelocity),
                                                    "Speed limit and drag, after every force");
         auto& f = d.fields.fields;
-        f.push_back(ranged(field("limit", "Speed", FieldType::MinMaxCurve, JE_ACC(LimitVelocityModule, limit)), 0.0f, 1.0e6f));
+        f.push_back(field("separateAxes", "Separate Axes", FieldType::Bool, JE_ACC(LimitVelocityModule, separateAxes), FieldFlag_None,
+                          "a limit per axis (in Space) instead of one on the speed"));
+        f.push_back(ranged(field("limit", "Speed", FieldType::MinMaxCurve, JE_ACC(LimitVelocityModule, limit), FieldFlag_None, "the speed limit (X with Separate Axes)"), 0.0f, 1.0e6f));
+        f.push_back(shownIf(ranged(field("limitY", "Speed Y", FieldType::MinMaxCurve, JE_ACC(LimitVelocityModule, limitY)), 0.0f, 1.0e6f), JE_IF(LimitVelocityModule, m.separateAxes)));
+        f.push_back(shownIf(ranged(field("limitZ", "Speed Z", FieldType::MinMaxCurve, JE_ACC(LimitVelocityModule, limitZ)), 0.0f, 1.0e6f), JE_IF(LimitVelocityModule, m.separateAxes)));
+        f.push_back(shownIf(enumField("space", "Space", JE_ACC(LimitVelocityModule, space), kValueSpaces), JE_IF(LimitVelocityModule, m.separateAxes)));
         f.push_back(ranged(field("dampen", "Dampen", FieldType::Float, JE_ACC(LimitVelocityModule, dampen), FieldFlag_None, "share of the speed above the limit removed per 1/30 s"), 0.0f, 1.0f));
         f.push_back(ranged(field("drag", "Drag", FieldType::MinMaxCurve, JE_ACC(LimitVelocityModule, drag)), 0.0f, 1.0e6f));
         f.push_back(ranged(field("quadraticDrag", "Quadratic Drag", FieldType::Float, JE_ACC(LimitVelocityModule, quadraticDrag)), 0.0f, 1.0e6f));
@@ -361,9 +406,10 @@ namespace {
         f.push_back(shownIf(field("strengthY", "Strength Y", FieldType::MinMaxCurve, JE_ACC(NoiseModule, strengthY)), JE_IF(NoiseModule, m.separateAxes)));
         f.push_back(shownIf(field("strengthZ", "Strength Z", FieldType::MinMaxCurve, JE_ACC(NoiseModule, strengthZ)), JE_IF(NoiseModule, m.separateAxes)));
         f.push_back(ranged(field("frequency", "Frequency", FieldType::Float, JE_ACC(NoiseModule, frequency)), 0.0001f, 1000.0f));
-        f.push_back(field("scrollSpeed", "Scroll Speed", FieldType::Float, JE_ACC(NoiseModule, scrollSpeed)));
+        f.push_back(field("scrollSpeed", "Scroll Speed", FieldType::MinMaxCurve, JE_ACC(NoiseModule, scrollSpeed), FieldFlag_None,
+                          "how fast the field moves through the particles, over the emitter time"));
         f.push_back(field("damping", "Damping", FieldType::Bool, JE_ACC(NoiseModule, damping), FieldFlag_None, "the strength scales with 1 / frequency"));
-        f.push_back(ranged(field("octaves", "Octaves", FieldType::Int, JE_ACC(NoiseModule, octaves)), 1, 3));
+        f.push_back(ranged(field("octaves", "Octaves", FieldType::Int, JE_ACC(NoiseModule, octaves)), 1, 4));
         f.push_back(shownIf(ranged(field("octaveMultiplier", "Octave Multiplier", FieldType::Float, JE_ACC(NoiseModule, octaveMultiplier)), 0.0f, 1.0f), JE_IF(NoiseModule, m.octaves > 1)));
         f.push_back(shownIf(ranged(field("octaveScale", "Octave Scale", FieldType::Float, JE_ACC(NoiseModule, octaveScale)), 1.0f, 4.0f), JE_IF(NoiseModule, m.octaves > 1)));
         f.push_back(enumField("quality", "Quality", JE_ACC(NoiseModule, quality), kNoiseQualities, FieldFlag_None,
@@ -448,6 +494,10 @@ namespace {
     ModuleDesc makeRotationBySpeed(){
         ModuleDesc d = module<RotationBySpeedModule>(ModuleId::RotationBySpeed, "rotationBySpeed", "Rotation by Speed", JE_DOC(rotationBySpeed), "Angular velocity from the particle's speed");
         auto& f = d.fields.fields;
+        f.push_back(field("separateAxes", "Separate Axes", FieldType::Bool, JE_ACC(RotationBySpeedModule, separateAxes), FieldFlag_None,
+                          "a speed per axis (X and Y turn Mesh particles)"));
+        f.push_back(shownIf(field("angularVelocityX", "Angular Velocity X", FieldType::MinMaxCurve, JE_ACC(RotationBySpeedModule, angularVelocityX), FieldFlag_Degrees), JE_IF(RotationBySpeedModule, m.separateAxes)));
+        f.push_back(shownIf(field("angularVelocityY", "Angular Velocity Y", FieldType::MinMaxCurve, JE_ACC(RotationBySpeedModule, angularVelocityY), FieldFlag_Degrees), JE_IF(RotationBySpeedModule, m.separateAxes)));
         f.push_back(field("angularVelocity", "Angular Velocity", FieldType::MinMaxCurve, JE_ACC(RotationBySpeedModule, angularVelocity), FieldFlag_Degrees));
         f.push_back(field("speedRange", "Speed Range", FieldType::Vector2, JE_ACC(RotationBySpeedModule, speedRange)));
         return d;
@@ -476,6 +526,10 @@ namespace {
                             JE_IF(TextureSheetAnimationModule, m.timeMode == TextureSheetTimeMode::Speed)));
         f.push_back(field("startFrame", "Start Frame", FieldType::MinMaxCurve, JE_ACC(TextureSheetAnimationModule, startFrame)));
         f.push_back(ranged(field("cycles", "Cycles", FieldType::Float, JE_ACC(TextureSheetAnimationModule, cycles)), 0.0f, 1000.0f));
+        f.push_back(ranged(field("flipU", "Flip U", FieldType::Float, JE_ACC(TextureSheetAnimationModule, flipU), FieldFlag_None,
+                                 "the share of particles whose frames are mirrored horizontally"), 0.0f, 1.0f));
+        f.push_back(ranged(field("flipV", "Flip V", FieldType::Float, JE_ACC(TextureSheetAnimationModule, flipV), FieldFlag_None,
+                                 "the share of particles whose frames are mirrored vertically"), 0.0f, 1.0f));
         f.push_back(field("frameBlending", "Frame Blending", FieldType::Bool, JE_ACC(TextureSheetAnimationModule, frameBlending), FieldFlag_None,
                           "cross-fades each frame into the next (FRAME_BLEND shader feature)"));
         f.push_back(intArrayField("startFrameList", "Start Frames", JE_ACC(TextureSheetAnimationModule, startFrameList), (uint32_t)kMaxSpriteFrames, FieldFlag_Hidden));
@@ -562,7 +616,9 @@ namespace {
         auto mesh = JE_IF(RendererModule, m.renderMode == RenderMode::Mesh);
         f.push_back(shownIf(arrayField<std::vector<MeshSource>>("meshes", "Meshes", JE_ACC(RendererModule, meshes), &meshSourceDesc(), (uint32_t)kMaxRendererMeshes), mesh));
         f.push_back(shownIf(enumField("meshSelection", "Mesh Distribution", JE_ACC(RendererModule, meshSelection), kMeshSelections), mesh));
-        f.push_back(shownIf(field("alignToVelocity", "Align Z to Velocity", FieldType::Bool, JE_ACC(RendererModule, alignToVelocity)), mesh));
+        f.push_back(shownIf(enumField("meshAlignment", "Render Alignment", JE_ACC(RendererModule, meshAlignment), kMeshAlignments, FieldFlag_None,
+                                      "how meshes turn: in the simulation space, to the camera plane or position, in world or emitter axes, or +Z along the velocity"),
+                            mesh));
         f.push_back(field("pivot", "Pivot", FieldType::Vector3, JE_ACC(RendererModule, pivot)));
         f.push_back(field("flip", "Flip", FieldType::Vector3, JE_ACC(RendererModule, flip)));
         f.push_back(field("shader", "Shader", FieldType::String, JE_ACC(RendererModule, shader), FieldFlag_None, "library:particles, or a fork of it"));
@@ -571,6 +627,9 @@ namespace {
         f.push_back(arrayField<std::vector<ShaderTexture>>("shaderTextures", "Shader Textures", JE_ACC(RendererModule, shaderTextures), &shaderTextureDesc(), 16));
         f.push_back(field("texture", "Texture", FieldType::String, JE_ACC(RendererModule, texture), FieldFlag_AssetPath));
         f.push_back(field("textureGuid", "Texture GUID", FieldType::String, JE_ACC(RendererModule, textureGuid), FieldFlag_Guid | FieldFlag_Hidden));
+        f.push_back(shownIf(field("textureTiling", "Tiling and Offset", FieldType::Vector4, JE_ACC(RendererModule, textureTiling), FieldFlag_None,
+                                  "the texture's UVs scaled by X and Y, then offset by Z and W (a material's tiling and offset)"),
+                            JE_IF(RendererModule, !m.texture.empty())));
         f.push_back(shownIf(enumField("untexturedShape", "Without Texture", JE_ACC(RendererModule, untexturedShape), kUntexturedShapes, FieldFlag_Advanced,
                                       "what a billboard draws without a texture: a soft disc (Unity's default particle) or a square (the old points)"),
                             JE_IF(RendererModule, m.texture.empty())));
@@ -617,7 +676,8 @@ namespace {
         f.push_back(shownIf(field("prewarmSync", "Prewarm at Play", FieldType::Bool, JE_ACC(ParticleEffectDocument, prewarmSync), FieldFlag_Advanced,
                                   "simulates the prewarm in one go when the system plays instead of over the first frames"),
                             JE_IF(ParticleEffectDocument, m.looping && m.prewarm)));
-        f.push_back(ranged(field("startDelay", "Start Delay", FieldType::Float, JE_ACC(ParticleEffectDocument, startDelay)), 0.0f, 1.0e5f));
+        f.push_back(ranged(field("startDelay", "Start Delay", FieldType::MinMaxCurve, JE_ACC(ParticleEffectDocument, startDelay), FieldFlag_None,
+                                 "seconds before it emits; a random range picks one each play"), 0.0f, 1.0e5f));
         f.push_back(enumField("simulationSpace", "Simulation Space", JE_ACC(ParticleEffectDocument, simulationSpace), kSimulationSpaces));
         f.push_back(ranged(field("tickRate", "Tick Rate", FieldType::Int, JE_ACC(ParticleEffectDocument, tickRate), FieldFlag_None,
                                  "simulation ticks per second; 0 follows the frames in bounded steps"), 0, 240));
@@ -626,6 +686,13 @@ namespace {
         f.push_back(field("seed", "Random Seed", FieldType::UInt, JE_ACC(ParticleEffectDocument, seed), FieldFlag_None, "0: every Particle System picks its own"));
         f.push_back(enumField("scalingMode", "Scaling Mode", JE_ACC(ParticleEffectDocument, scalingMode), kScalingModes));
         f.push_back(ranged(field("simulationSpeed", "Simulation Speed", FieldType::Float, JE_ACC(ParticleEffectDocument, simulationSpeed)), 0.0f, 100.0f));
+        f.push_back(field("useUnscaledTime", "Unscaled Time", FieldType::Bool, JE_ACC(ParticleEffectDocument, useUnscaledTime), FieldFlag_None,
+                          "ticks with the unscaled frame time: Time.timeScale does not slow it (UI, pause menus)"));
+        f.push_back(enumField("stopAction", "Stop Action", JE_ACC(ParticleEffectDocument, stopAction), kStopActions, FieldFlag_None,
+                              "when it has finished (not looping, its last particle gone): nothing, deactivate or destroy its GameObject, or "
+                              "call its scripts' onParticleSystemStopped"));
+        f.push_back(enumField("emitterVelocityMode", "Emitter Velocity", JE_ACC(ParticleEffectDocument, emitterVelocityMode), kEmitterVelocityModes,
+                              FieldFlag_None, "the velocity Inherit Velocity and Rate over Distance read: the Transform's motion, or its Rigidbody's"));
         f.push_back(enumField("cullingMode", "Culling Mode", JE_ACC(ParticleEffectDocument, cullingMode), kCullingModes));
         f.push_back(enumField("boundsMode", "Bounds", JE_ACC(ParticleEffectDocument, boundsMode), kBoundsModes, FieldFlag_Advanced));
         f.push_back(shownIf(field("boundsCenter", "Bounds Center", FieldType::Vector3, JE_ACC(ParticleEffectDocument, boundsCenter), FieldFlag_Advanced),
@@ -850,7 +917,8 @@ const std::vector<EnumOption>& ParticleModules::curveModes(){
 
 const std::vector<EnumOption>& ParticleModules::gradientModes(){
     static const std::vector<EnumOption> v = {{"color", "Color", 0}, {"gradient", "Gradient", 1},
-                                              {"twoColors", "Random Between Two Colors", 2}, {"twoGradients", "Random Between Two Gradients", 3}};
+                                              {"twoColors", "Random Between Two Colors", 2}, {"twoGradients", "Random Between Two Gradients", 3},
+                                              {"randomColor", "Random Color", 4}};
     return v;
 }
 

@@ -1,4 +1,4 @@
--- Particle System benchmark (particles spec 8): four version 2 systems of 500 alive particles
+-- Particle System benchmark (particles spec 8): four S20 systems (made with origin/main's ParticleSystem(scene, true)) of 500 alive particles
 -- each (2000 in all) with six modules on (colour, size and rotation over lifetime, velocity
 -- over lifetime, limit velocity, noise), drawn as billboards in front of a perspective camera.
 --
