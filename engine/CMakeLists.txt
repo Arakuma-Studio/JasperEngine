@@ -1367,6 +1367,7 @@ set(JASPERENGINE_SRCS
     core/io/ScopedFileLock.cpp
     core/math/AABB.cpp
     core/math/Curve.cpp
+    core/math/CurveJson.cpp
     core/math/Matrix3.cpp
     core/math/Matrix4.cpp
     core/math/OBB.cpp

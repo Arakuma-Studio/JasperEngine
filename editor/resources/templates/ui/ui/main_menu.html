@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<!--
+  Main menu: a title screen.
+  Shows: a full-bleed backdrop of layered radial gradients with blurred blobs drifting on CSS
+  keyframes, a logo with letter-spacing and text-shadow, icon buttons (built-in Lucide icons)
+  with hover and :focus-visible transitions, ::before accents, keyboard navigation and a
+  settings panel that slides in when Lua toggles its "open" class. MainMenuUI.lua binds the
+  buttons and plays the entrance with an anime timeline and stagger.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Main menu</title>
+  <link rel="stylesheet" href="main_menu.css">
+</head>
+<body>
+  <div class="backdrop" aria-hidden="true">
+    <div class="blob blob-a"></div>
+    <div class="blob blob-b"></div>
+    <div class="blob blob-c"></div>
+    <div class="grain"></div>
+  </div>
+
+  <main class="screen">
+    <header class="brand" id="brand">
+      <img class="emblem" src="main_menu_assets/logo.svg" alt="">
+      <h1 class="logo">Starfall</h1>
+      <p class="tagline">Chronicles of the Outer Rim</p>
+    </header>
+
+    <nav class="menu" aria-label="Main menu">
+      <button class="menu-button primary" id="play">
+        <i data-lucide="play"></i><span class="label">Play</span><span class="hint">Chapter 3</span>
+      </button>
+      <button class="menu-button" id="settings">
+        <i data-lucide="sliders-horizontal"></i><span class="label">Settings</span>
+      </button>
+      <button class="menu-button" id="credits">
+        <i data-lucide="scroll-text"></i><span class="label">Credits</span>
+      </button>
+      <button class="menu-button danger" id="quit">
+        <i data-lucide="log-out"></i><span class="label">Quit</span>
+      </button>
+    </nav>
+
+    <p class="keys"><kbd><i data-lucide="arrow-up"></i></kbd><kbd><i data-lucide="arrow-down"></i></kbd> navigate <kbd>Enter</kbd> select</p>
+  </main>
+
+  <aside class="settings-panel" id="settings-panel" aria-label="Settings">
+    <h2><i data-lucide="sliders-horizontal"></i> Settings</h2>
+    <dl class="quick">
+      <div class="quick-row"><dt>Master volume</dt><dd><span class="bar" style="--value: 80%"></span></dd></div>
+      <div class="quick-row"><dt>Display</dt><dd>Fullscreen</dd></div>
+      <div class="quick-row"><dt>Language</dt><dd>English</dd></div>
+      <div class="quick-row"><dt>Subtitles</dt><dd>On</dd></div>
+    </dl>
+    <button class="back" id="settings-back"><i data-lucide="arrow-left"></i> Back</button>
+  </aside>
+
+  <footer class="version">v1.0.3 &middot; build 2611</footer>
+</body>
+</html>

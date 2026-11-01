@@ -44,6 +44,8 @@
 #include "util/NearestName.h"
 #include "util/FbxImporter.h"
 #include "util/FileUtils.h"
+#include "util/Color.h"
+#include "stream/CurveCodec.h"
 #include "util/Util.h"
 #include "reflect/Enums.h"
 #include "reflect/Reflect.h"
@@ -122,6 +124,88 @@ bool parseHexColor(const Json& value, float* out, int& count) {
     for (int i = 0; i < count; i++) {
         out[i] = static_cast<float>(std::stoi(text.substr(i * 2, 2), nullptr, 16)) / 255.0f;
     }
+    return true;
+}
+
+// The reflection flags of a colour property (ColorLinear / ColorSRGB / Hdr); 0 when the
+// property is not a reflected field
+uint32_t colorFieldFlags(ComponentType component, const std::string& propertyName) {
+    const reflect::ComponentDesc* desc = reflect::find(component);
+    const reflect::FieldDesc* field = desc ? reflect::findField(*desc, propertyName) : nullptr;
+    return field ? field->flags : 0u;
+}
+
+// "#RRGGBB[AA]", {"srgb": [...]}, {"linear": [...]}, {"hex": "...", "intensity": stops}
+bool isColorForm(const Json& value) {
+    if (value.is_string()) return true;
+    return value.is_object() && (value.contains("srgb") || value.contains("linear") || value.contains("hex"));
+}
+
+// A colour form as the field stores it (S27 R41): sRGB forms converted to linear on a ColorLinear
+// field, a linear form to sRGB on any other; an intensity (stops, HDR fields only) scales the
+// linear colour by 2^stops. `rgba` keeps its alpha when the form has none.
+bool parseFieldColor(const Json& value, uint32_t flags, bool alpha, Vector4& rgba, std::string& why) {
+    const bool storedLinear = (flags & reflect::ColorLinear) != 0;
+    float v[4] = {rgba.x, rgba.y, rgba.z, rgba.w};
+    bool srgb = true;
+    float intensity = 0.0f;
+    auto readList = [&](const Json& list) {
+        if (!list.is_array() || list.size() < 3 || list.size() > 4) return false;
+        for (size_t i = 0; i < list.size(); i++) {
+            if (!list[i].is_number()) return false;
+            v[i] = list[i].get<float>();
+            if (!std::isfinite(v[i])) return false;
+        }
+        return true;
+    };
+    int count = 0;
+    if (value.is_string()) {
+        if (!parseHexColor(value, v, count)) {
+            why = "a colour is \"#RRGGBB\" or \"#RRGGBBAA\" (sRGB), [r,g,b(,a)], {\"srgb\":[...]} or {\"linear\":[...]}";
+            return false;
+        }
+        if (count == 3) v[3] = rgba.w;
+    } else {
+        if (value.contains("hex")) {
+            if (!parseHexColor(value["hex"], v, count)) {
+                why = "\"hex\" is \"#RRGGBB\" or \"#RRGGBBAA\"";
+                return false;
+            }
+            if (count == 3) v[3] = rgba.w;
+        } else if (value.contains("srgb")) {
+            if (!readList(value["srgb"])) {
+                why = "\"srgb\" is [r,g,b] or [r,g,b,a] (0-1)";
+                return false;
+            }
+        } else if (!readList(value["linear"])) {
+            why = "\"linear\" is [r,g,b] or [r,g,b,a]";
+            return false;
+        } else {
+            srgb = false;
+        }
+        if (value.contains("intensity")) {
+            if (!(flags & reflect::Hdr)) {
+                why = "\"intensity\" is for HDR colours only";
+                return false;
+            }
+            if (!value["intensity"].is_number() || !std::isfinite(value["intensity"].get<float>())) {
+                why = "\"intensity\" is a number of stops (-10 to 10)";
+                return false;
+            }
+            intensity = std::clamp(value["intensity"].get<float>(), -10.0f, 10.0f);
+        }
+    }
+    Vector3 rgb(v[0], v[1], v[2]);
+    if (srgb && storedLinear) rgb = Color::sRGBToLinear(rgb);
+    if (!srgb && !storedLinear) rgb = Color::linearTosRGB(rgb);
+    if (intensity != 0.0f) {
+        // the intensity scales the light (linear) value
+        Vector3 linear = storedLinear ? rgb : Color::sRGBToLinear(rgb);
+        const float scale = std::exp2(intensity);
+        linear = Vector3(linear.x * scale, linear.y * scale, linear.z * scale);
+        rgb = storedLinear ? linear : Color::linearTosRGB(linear);
+    }
+    rgba = Vector4(rgb, alpha ? v[3] : rgba.w);
     return true;
 }
 
@@ -493,6 +577,7 @@ std::string McpValues::propertyTypeName(PropertyType type) {
         case PropertyType::EntityReference: return "entity_reference";
         case PropertyType::Asset: return "asset";
         case PropertyType::Shader: return "shader";
+        case PropertyType::Curve: return "curve";
     }
     return "unknown";
 }
@@ -500,7 +585,8 @@ std::string McpValues::propertyTypeName(PropertyType type) {
 // ==================================================================== enums
 
 const McpValues::EnumOptions& McpValues::easeOptions() {
-    // a custom curve is a script's function: MCP offers the named eases only
+    // a custom ease is a script's function: MCP offers the named eases and "curve" (the
+    // tween's own curve, TweenComponent.curve)
     return tableOptions(reflect::enums::kEaseType, ~reflect::enums::bit((int)EaseType::CUSTOM));
 }
 
@@ -1928,6 +2014,8 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         }
         case PropertyType::Shader:
             return static_cast<ShaderRef*>(ref)->path;
+        case PropertyType::Curve:
+            return curvecodec::curveToJson(*static_cast<Curve*>(ref));
         case PropertyType::Float:
             return number(*static_cast<float*>(ref));
         case PropertyType::Double:
@@ -2296,13 +2384,41 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
         }
         case PropertyType::Vector3: {
             Vector3 v = property.ref ? *static_cast<Vector3*>(property.ref) : Vector3::ZERO;
-            if (!parseVector3(value, v)) return expect("[x,y,z] (or \"#RRGGBB\")");
+            // a colour in any of its forms (S27 R41): hex and {"srgb"} converted to the field's space
+            if (isColorForm(value)) {
+                Vector4 c(v, 1.0f);
+                std::string why;
+                if (!parseFieldColor(value, colorFieldFlags(component, propertyName), false, c, why)) {
+                    error = "Property " + propertyName + ": " + why;
+                    return nullptr;
+                }
+                return new PropertyCmd<Vector3>(project, sceneId, entity, component, propertyName, Vector3(c.x, c.y, c.z), onChanged);
+            }
+            if (!parseVector3(value, v)) return expect("[x,y,z] (or \"#RRGGBB\", {\"srgb\":[r,g,b]}, {\"linear\":[r,g,b]})");
             return new PropertyCmd<Vector3>(project, sceneId, entity, component, propertyName, v, onChanged);
         }
         case PropertyType::Vector4: {
             Vector4 v = property.ref ? *static_cast<Vector4*>(property.ref) : Vector4::ZERO;
-            if (!parseVector4(value, v)) return expect("[x,y,z,w] ([r,g,b] keeps alpha; \"#RRGGBB[AA]\")");
+            if (isColorForm(value)) {
+                std::string why;
+                if (!parseFieldColor(value, colorFieldFlags(component, propertyName), true, v, why)) {
+                    error = "Property " + propertyName + ": " + why;
+                    return nullptr;
+                }
+                return new PropertyCmd<Vector4>(project, sceneId, entity, component, propertyName, v, onChanged);
+            }
+            if (!parseVector4(value, v)) return expect("[x,y,z,w] ([r,g,b] keeps alpha; \"#RRGGBB[AA]\", {\"srgb\":[...]}, {\"linear\":[...]})");
             return new PropertyCmd<Vector4>(project, sceneId, entity, component, propertyName, v, onChanged);
+        }
+        case PropertyType::Curve: {
+            Curve curve;
+            std::string why;
+            if (!curvecodec::curveFromJson(value, curve, why)) {
+                error = "Property " + propertyName + " is a curve ([[time, value, inTangent, outTangent(, mode)]] or {keys, preWrapMode, "
+                        "postWrapMode}): " + why;
+                return nullptr;
+            }
+            return new PropertyCmd<Curve>(project, sceneId, entity, component, propertyName, curve, onChanged);
         }
         case PropertyType::Quat: {
             Quaternion q = property.ref ? *static_cast<Quaternion*>(property.ref) : Quaternion::IDENTITY;

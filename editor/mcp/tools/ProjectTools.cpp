@@ -51,6 +51,10 @@
 
 namespace jasperengine::editor::mcp {
 
+// S27 (EditorToolsTools.cpp): create_project {template}; true when it took the call
+bool createProjectFromTemplateTool(const CallPtr& call, const std::filesystem::path& path, const std::string& name);
+
+
 namespace {
 
 namespace fs = std::filesystem;
@@ -369,6 +373,8 @@ void switchProjectTool(const CallPtr& call, bool create) {
     }
 
     const std::string name = args.value("name", "");
+    // a project from a Project Hub template (S27 R42)
+    if (create && createProjectFromTemplateTool(call, path, name)) return;
     auto switchState = std::make_shared<SwitchState>();
     app.requestProjectChange([switchState, project, path, name, create]() {
         switchState->ran = true;
@@ -980,10 +986,11 @@ void registerProjectTools(McpRegistry& registry) {
         tool.title = "Create Project";
         tool.description =
             "File > New Project: creates a project in `path` (no project.yaml there yet) with one untitled 3D scene, "
-            "opens it and waits for load. Save the scene (save_project) before building.";
+            "or from a template (list_project_templates: empty, 3d, 2d, ui), opens it and waits for load.";
         tool.inputSchema = object({
             {"path", string("Absolute directory.")},
             {"name", string("Default: directory name.")},
+            {"template", string("A Project Hub template id.")},
             {"unsaved", unsavedSchema},
             {"timeout_seconds", loadTimeout}
         }, {"path"});

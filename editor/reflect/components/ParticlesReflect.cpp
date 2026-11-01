@@ -67,7 +67,7 @@ namespace {
         JE_FIELD(ForceFieldComponent, pulseFrequency, .unit = Unit::Hertz),
         JE_FIELD(ForceFieldComponent, frequency),
         // strength over the distance from the centre (0) to the edge (1)
-        JE_FIELD(ForceFieldComponent, falloff, .ops = &ops::Opaque<Curve>, .flags = NoDefault),
+        JE_FIELD(ForceFieldComponent, falloff, .flags = NoDefault),
         JE_FIELD(ForceFieldComponent, layers, .ops = &ops::LayerMask),
     };
 

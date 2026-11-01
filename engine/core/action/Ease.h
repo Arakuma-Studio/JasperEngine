@@ -44,7 +44,10 @@ namespace jasperengine {
         BOUNCE_OUT,
         BOUNCE_IN_OUT,
         STEP,
-        CUSTOM
+        CUSTOM,
+        // the owner's Curve (TweenComponent::curve, docs/specs/S27-editor-tools.md R13): the
+        // Ease itself evaluates as LINEAR, its owner evaluates the curve instead
+        CURVE
     };
 
     class Ease: public FunctionSubscribe<float(float)> {

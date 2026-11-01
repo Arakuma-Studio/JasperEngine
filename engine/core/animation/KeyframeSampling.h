@@ -62,7 +62,7 @@ namespace jasperengine::anim{
         float segmentDuration = 0.0f; // times[index] - times[index-1]; 0 at index 0
     };
 
-    // the eased factor (EaseType::CUSTOM: linear)
+    // the eased factor (EaseType::CUSTOM and CURVE: linear)
     JASPERENGINE_API float applyEase(EaseType ease, float t);
 
     // `easings` may be shorter than the segment count (or null): linear there

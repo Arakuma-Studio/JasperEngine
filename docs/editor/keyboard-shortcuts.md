@@ -82,6 +82,7 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Animation | Ctrl+6 | Editor |
 | Profiler | Ctrl+7 | Editor |
 | Console | Ctrl+Shift+C | Editor |
+| Start Recording | F10 | Global |
 
 ## Help
 

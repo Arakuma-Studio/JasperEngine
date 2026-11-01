@@ -85,50 +85,8 @@ float LegacyParticleConverter::cycleDuration(const LegacyParticleSystem& p){
 Curve LegacyParticleConverter::sampleEase(const Ease& ease){
     if (ease.getType() == EaseType::LINEAR)
         return Curve::linear(0.0f, 1.0f);
-    constexpr int kKeys = 16;
-    constexpr int kSamples = 2048;
-    constexpr float h = 1.0e-4f;
-    auto f = [&](float t){ return const_cast<Ease&>(ease).call(std::clamp(t, 0.0f, 1.0f)); };
-    auto keyAt = [&](float t){
-        CurveKey key;
-        key.time = t;
-        key.value = f(t);
-        // the slopes on each side, from the function (a kink keeps both)
-        key.inTangent = t > 0.0f ? (key.value - f(t - h)) / h : (f(t + h) - key.value) / h;
-        key.outTangent = t < 1.0f ? (f(t + h) - key.value) / h : key.inTangent;
-        return key;
-    };
-    // the ends, then a key where the curve is worst, until there are 16 (kinks and the steep
-    // parts get the keys)
-    Curve curve;
-    curve.keys = {keyAt(0.0f), keyAt(1.0f)};
-    while ((int)curve.keys.size() < kKeys){
-        float worst = 0.0f, worstT = -1.0f;
-        for (int i = 1; i < kSamples; i++){
-            const float t = (float)i / (float)kSamples;
-            const float error = std::fabs(curve.evaluate(t) - f(t));
-            if (error > worst){
-                worst = error;
-                worstT = t;
-            }
-        }
-        if (worstT < 0.0f || worst < 1.0e-7f)
-            break;
-        const CurveKey key = keyAt(worstT);
-        curve.keys.insert(std::upper_bound(curve.keys.begin(), curve.keys.end(), key,
-                                           [](const CurveKey& a, const CurveKey& b){ return a.time < b.time; }), key);
-    }
-    // a jump inside a segment (STEP): hold the left value
-    for (size_t k = 0; k + 1 < curve.keys.size(); k++){
-        CurveKey& a = curve.keys[k];
-        const CurveKey& b = curve.keys[k + 1];
-        const float mid = f(0.5f * (a.time + b.time));
-        if (std::fabs(b.value - a.value) > 1.0e-4f && std::fabs(mid - a.value) < 1.0e-6f && std::fabs(a.outTangent) < 1.0e-3f){
-            a.outTangent = INFINITY;
-            curve.keys[k + 1].inTangent = INFINITY;
-        }
-    }
-    return curve;
+    // the shared sampler (Curve::fromFunction); a custom function is sampled through the Ease
+    return Curve::fromFunction([&ease](float t){ return const_cast<Ease&>(ease).call(t); }, 16);
 }
 
 void LegacyParticleConverter::apply(const LegacyParticleSystem& p, ParticleEffectDocument& d, std::vector<std::string>* notes){

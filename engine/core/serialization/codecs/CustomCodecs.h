@@ -65,10 +65,23 @@ namespace jasperengine::cook {
         }
     };
 
+    // the keys, then (S27) the wrap modes and each key's tangent modes (CurveKey::mode); a curve
+    // cooked before them ends after its keys and reads as clamp, free tangents
     template<>
     struct Codec<Curve> {
-        static void write(Writer& w, const Curve& c) { Codec<std::vector<CurveKey>>::write(w, c.keys); }
-        static void read(Reader& r, Curve& c) { Codec<std::vector<CurveKey>>::read(r, c.keys); }
+        static void write(Writer& w, const Curve& c) {
+            Codec<std::vector<CurveKey>>::write(w, c.keys);
+            w.u8(static_cast<uint8_t>(c.preWrapMode));
+            w.u8(static_cast<uint8_t>(c.postWrapMode));
+            for (const CurveKey& k : c.keys) w.u8(k.mode);
+        }
+        static void read(Reader& r, Curve& c) {
+            Codec<std::vector<CurveKey>>::read(r, c.keys);
+            if (r.atEnd()) return;
+            c.preWrapMode = static_cast<CurveWrapMode>(r.u8());
+            c.postWrapMode = static_cast<CurveWrapMode>(r.u8());
+            for (CurveKey& k : c.keys) k.mode = r.u8();
+        }
     };
 
     // a prefab script property: the GUID and path it names (resolved by the player's PrefabManager)
