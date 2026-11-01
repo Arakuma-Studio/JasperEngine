@@ -227,6 +227,84 @@ Software (E) could not see these (vertex-bound on llvmpipe: every lobe within 1 
 - Tried and not kept: Sheen's view terms once a fragment and a single-evaluation Charlie lambda
   (+24.7 %, slower than +16.0 %); a 3-vec4 lobe block for Specular (no change).
 
+**perf3** (median of 5 runs, 3840x2160, the same scenes, RTX 3080 Ti, driver 595.99.02, GPU clock
+1.74-1.94 GHz in the captures; GL and Vulkan release editors built before (`6a3fafdad`; the
+Vulkan one with the inactive statistics instrumentation below) and after (`d1681c4bc`, WERROR),
+`gpu_campaign.py pbr --qualities standard`); the ratio is the Game view's GPU time over Lit
+Baseline's (Hex Terrain: over Terrain Baseline's):
+
+| Scene | GL before | GL after | Vulkan before | Vulkan after | Budget (R13, desktop GL) |
+|---|---|---|---|---|---|
+| Lit Baseline | 0.645 | 0.647 | 0.948 | 0.952 |  |
+| Lobes Off | 0.645 (+0.0 %) | 0.646 (-0.2 %) | 0.944 (-0.4 %) | 0.949 (-0.3 %) | ≤ +2 % |
+| Lobe Sheen | 0.750 (**+16.3 %**) | 0.732 (**+13.1 %**) | 1.039 (+9.6 %) | 1.024 (+7.6 %) | ≤ +15 % |
+| Lobe Specular | 0.700 (**+8.5 %**) | 0.662 (**+2.3 %**) | 0.985 (+3.9 %) | 0.994 (+4.4 %) | ≤ +3 % |
+| Terrain Baseline | 1.165 | 1.171 | 1.136 | 1.135 |  |
+| Hex Terrain | 3.723 (**3.20x**) | 2.005 (**1.71x**) | 3.330 (2.93x) | 1.565 (1.38x) | ≤ 1.35x |
+
+- **Output:** every scene above, and Lobe Hex, Terrain Baseline with a layer offset (the surface
+  path) and the 4-layer terrain with PBR maps (normal, roughness, occlusion) with and without hex,
+  were captured at 4K before and after: Vulkan 0 pixels differ in all of them; GL 0 pixels, but
+  Lobe Sheen 2 pixels of 8.3 M by 1/255 (the Charlie lambda's operations are the same, their
+  scheduling is the compiler's). The goldens are unchanged: `tools/build.sh unit-tests` on GL
+  (2463 + 1696 passed) and on Vulkan/lavapipe (2461 + 1696), the full MCP run (`MCP_SUITE=all`,
+  -j 3: 1130 passed, 0 failed, 7 slow-build tests skipped; S11's Khronos goldens among them), the
+  `builtin_lit` matrix (51 variants x 6 backends, 0 failed).
+- **How the cost was found:** NVIDIA's per-pipeline statistics (`VK_KHR_pipeline_executable_properties`,
+  enabled in an instrumented editor, not kept) and the NV assembly in the GL program binary
+  (`glGetProgramBinary`). Register counts of the fragment stage, Vulkan:
+
+  | Variant | before | after |
+  |---|---|---|
+  | Lit (`mesh_PucShwNorVc4Shq`), Lobe Specular, Lobe Sheen | 128 | 128 |
+  | Terrain, colour layers (`mesh_Uv1PucShwNorTerShq`) | 128 | 128 |
+  | Terrain, surface layers (`...TerTpbShq`, no hex) | 239 + 48 B spilled | 239 + 48 B (not S11's variant: below) |
+  | Hex terrain (`lit_Th_...TerTpbShq`) | 255 + 80 B spilled | **128** |
+
+- **perf2's "per-variant overhead" is two things, neither of them the variant:** the hex variant
+  with its hex calls removed was still the surface-layer path with Stochastic Tiling's registers
+  (below), and the Specular lobe's cost that did not grow with the pixels was its own f0 chain,
+  latency-bound (below); a builtin:lit variant draws and binds as the plain one does.
+- **Hex terrain.** The surface path the hex variant draws with carried Stochastic Tiling's code:
+  three lattices a layer, held through its colour, surface and normal maps, put the variant at 255
+  registers with spills: half the occupancy of the colour terrain's 128. Removed from the hex
+  variant unless a layer takes Stochastic Tiling (`TERRAIN_HEX_STOCHASTIC`): 3.75 -> 2.72 ms GL,
+  3.31 -> 1.74 ms Vulkan. Then, all exact: the first hex layer's taps and weight powers set up once a
+  fragment and taken by every layer that tiles alike, each map on its own path (a set-up per layer
+  and map cost 0.39 ms per set-up on GL, 0.08 on Vulkan); a tap's gradients rotated at the tap
+  instead of kept in the taps, and the blend weights picked rather than indexed (an array indexed
+  by the loop's counters is local memory on GL): together 164 -> 128 registers on Vulkan; a PBR
+  hex layer no longer fetches the flat surface and normal it overwrites (the 4-layer PBR terrain:
+  hex now 0.72-0.78x the same terrain without hex).
+- **What is left of the hex terrain, measured:** its two extra taps a layer (three trilinear hex
+  taps instead of the near and far bilinear ones) cost 0.28 ms on GL and 0.29 on Vulkan, 25 % of the
+  baseline on their own; mipmaps cost nothing (the colour terrain with mipmapped layers: +0.4 %);
+  the surface path without Stochastic Tiling +8 % on GL, 0 on Vulkan; the rest, by difference,
+  the lattice set-up and the weights: ~0.13 ms on Vulkan, ~0.45 ms on GL. Vulkan reaches 1.38x,
+  GL 1.71x: R13's 1.35x is not met; the revision proposed in
+  `docs/specs/S11-materials-lighting.md` R13 is pending user approval.
+- **Specular.** None of the cost was the draw (the lobe's block and variant shaded as the plain Lit:
+  +0.3 %) nor the generic lobe path (the plain direct and environment code: no change); it was the
+  per-fragment f0 = min(((ior - 1) / (ior + 1))^2 colour, 1) factor: f0 as a constant +2.5 %, its IOR
+  term alone as a constant +3.9 %, as computed +8.4 %. In this 128-register variant (16 warps an
+  SM) a short dependent chain costs far more than its instruction count (inferred: with the sun's
+  shadows off, which takes the High shadow filter's code out, the same lobe costs +0.022 ms
+  against +0.055). f0 (and the IOR's term, for a specular map) is now made once a draw
+  (`MaterialPbr::getUniformBlock`, in the lobe block's free floats). On Vulkan the same change
+  measured no difference (3.9 -> 4.4 %, within the runs' spread; R13 is a desktop GL budget).
+- **Sheen.** The Charlie lambdas' two branches (each side its own pow, reciprocal and exp) became
+  one L a lambda with a select, L(0.5) is made once a draw without a sheen map, and the sheen albedo
+  once a fragment.
+- Tried and not kept: a cache of the hex taps filled inside the layer loop (its state held through
+  the loop: 3.43 ms GL, slower than none); skipping hex taps of a negligible weight (not exact, -3 %
+  only); hex taps with the layer's unrotated gradients (the same mip level where a sampler computes
+  the gradients' lengths, not where it approximates them per component: not exact everywhere);
+  the specular IOR branch as a select (no change).
+- **Follow-up (not S11's variant):** the plain surface-layer terrain (PBR layers, a layer tiling or
+  offset, no hex) has the same 239-register problem: without the Stochastic Tiling code it measured
+  2.70 -> 1.26 ms on GL and 2.41 -> 1.12 ms on Vulkan (the colour terrain's time). It needs a variant for Stochastic Tiling on terrains (the default variant changes), which is the
+  Stochastic Tiling stream's decision.
+
 ### S20 particles (R23)
 
 `gpu_campaign.py particles`: the reference stack (curl noise High, colour and size over lifetime,

@@ -248,6 +248,21 @@ it is unused, so existing scenes, forks and exported games stay byte-for-byte as
   | Hex Lit | ≤ 3× texture taps of the hexed maps |
   | 4-layer hex terrain | ≤ 1.35× terrain pass time |
 
+  - **Proposed revision (GPU campaign perf3, pending user approval; the budget above is unchanged
+    until then):** 4-layer hex terrain ≤ 1.75× the colour-layer terrain's pass time on desktop GL
+    (≤ 1.4× on Vulkan). Evidence on the RTX 3080 Ti at 4K (docs/perf/gpu-campaign.md, S11 perf3),
+    measured 1.71× GL and 1.38× Vulkan (from 3.20× and 2.93×) with the output unchanged:
+    - the reference draws its colour layers with two bilinear taps each from an unmipmapped
+      array (its layers ask for no mipmaps); a hex layer needs the surface-layer path and three
+      trilinear taps (§6.4, R7). Those two extra taps a layer alone cost 0.28 ms on GL and 0.29 on
+      Vulkan, +24-25 % of the reference; the surface path +8 % on GL (0 on Vulkan); mipmaps
+      nothing (+0.4 %). So the method costs ≥ 1.32× on GL before any lattice math;
+    - the lattice set-up (hashes, rotations, weights), once a fragment, costs ~0.45 ms on GL and
+      ~0.13 ms on Vulkan for the same code (by difference; each further set-up measured 0.39 ms on
+      GL, 0.08 on Vulkan): NVIDIA's GL compile of the variant, not the work, makes the difference;
+    - with PBR maps on the layers the hex terrain is now 0.78× (GL) and 0.72× (Vulkan) the same
+      terrain without hex.
+
   On export to Android/iOS/HTML5 the **Mobile PBR tier** (`Reduced` by default, project
   export setting) strips iridescence, anisotropy maps and the coat normal. Stripping is
   decided by one function shared by runtime and exporter.
@@ -363,7 +378,7 @@ them.
 - `ShaderReference::BUILTIN_PREFIX = "builtin:"`. `resolveCustomShaderSources` maps
   `builtin:lit` to the embedded `mesh.vert` / `mesh.frag` with the defines.
 - `getCustomShaderBasename` encodes `builtin:lit` as `lit_` plus 2-letter codes
-  (`Cc Cm Cn Sh Sm An Am Ir Im Tr Tm Vo Sp Sq Hx Th`), always ≤ 40 characters. This keeps
+  (`Cc Cm Cn Sh Sm An Am Ir Im Tr Tm Vo Sp Sq Hx Th Lq Ts`), always ≤ 40 characters. This keeps
   `.sdat` paths short on Windows.
 - `getShaderVariants` and `ShaderVariantCollector` pick these keys up unchanged, so export
   precompiles them.
@@ -375,7 +390,9 @@ them.
 
 Defines:
 - `PBR_CLEARCOAT`, `PBR_SHEEN`, `PBR_ANISOTROPY`, `PBR_IRIDESCENCE`, `PBR_TRANSMISSION`,
-  `PBR_VOLUME`, `PBR_SPECULAR`, `PBR_HEX_TILING`, `TERRAIN_HEX_TILING`;
+  `PBR_VOLUME`, `PBR_SPECULAR`, `PBR_HEX_TILING`, `TERRAIN_HEX_TILING`,
+  `TERRAIN_HEX_STOCHASTIC` (with `TERRAIN_HEX_TILING` only: a layer of the terrain takes
+  Stochastic Tiling, §6.4);
 - map presence: `PBR_CLEARCOAT_MAP`, `PBR_CLEARCOAT_NORMAL_MAP`, `PBR_SHEEN_MAP`,
   `PBR_ANISOTROPY_MAP`, `PBR_IRIDESCENCE_MAP`, `PBR_TRANSMISSION_MAP`, `PBR_SPECULAR_MAP`.
 
@@ -396,14 +413,14 @@ true by construction. The one block is:
 
 ```glsl
 uniform u_fs_pbrExt {          // std140, 8 vec4, declared only if any PBR_* is defined
-  vec4 clearcoat;     // factor, roughness, normalScale, -
+  vec4 clearcoat;     // factor, roughness, normalScale, specular f0.r
   vec4 sheen;         // rgb colour (linear), roughness
-  vec4 anisotropy;    // strength, cos(rot), sin(rot), -
+  vec4 anisotropy;    // strength, cos(rot), sin(rot), specular f0.g
   vec4 iridescence;   // factor, ior, thicknessMin nm, thicknessMax nm
-  vec4 transmission;  // factor, thickness, attenuationDistance, -
-  vec4 attenuation;   // rgb, -
+  vec4 transmission;  // factor, thickness, attenuationDistance, specular f0.b
+  vec4 attenuation;   // rgb, ((ior - 1) / (ior + 1))^2 (1 for ior < 1)
   vec4 specular;      // rgb colour, factor
-  vec4 iorHex;        // ior, hexRotation, hexContrast, -
+  vec4 iorHex;        // ior, hexRotation, hexContrast, sheen L(0.5)
 } pbrExt;
 ```
 
@@ -423,8 +440,16 @@ may `#include` `hex_tiling.glsl` / `specular_aa.glsl` later.
 - `slices[i].w` is the layer's hex rotation, and `< 0` means off. The CPU writes −1 for
   non-hex layers. Inside the variant, each layer branches on it uniformly.
 - Gradients are `R_k · terrainFlatDX/DY`. This is exact, and every sample is `textureGrad`.
-- With hex on, a layer skips the far tiling-break sample.
+- With hex on, a layer skips the far tiling-break sample, and the flat colour, surface and normal
+  samples its hex taps replace.
 - Hex adds no textures.
+- The hex variant compiles Stochastic Tiling's path only when a layer takes it
+  (`TERRAIN_HEX_STOCHASTIC`, emitted beside `TERRAIN_HEX_TILING`; a layer with both takes
+  Stochastic Tiling, as before). Without it the variant held the path's lattices for nothing
+  (255 registers and spills on NVIDIA against the colour terrain's 128: GPU campaign perf3).
+- The first hex layer's taps (and their weight powers) are set up once a fragment; a layer that
+  tiles as it does (scale, offset, rotation) and each of its maps take them, the others set up
+  their own: the same inputs give the same values.
 
 ### 6.5 Photometry
 `engine/core/util/LightPhotometry.h` is header-only and ported from OE:
@@ -713,6 +738,16 @@ with other streams:
     without S11) and the driver's compile at its first draw; S32 "asynchronous shader/pipeline
     creation" (KHR_parallel_shader_compile on GL/WebGL2, off-thread Vulkan pipelines, async
     Metal/D3D11, prewarm) takes it. Measurements: `tools/fixtures/pbr-extended/README.md`.
+19. **Per-draw lobe values in the block's free floats (GPU campaign perf3).** What a lobe derives
+    from its uniforms alone is made once a draw by `MaterialPbr::getUniformBlock` into the `w` the
+    §6.3 block left unused: the Specular & IOR lobe's dielectric f0 (without a specular map) and
+    its IOR term, and the Charlie sheen visibility's L(0.5) (without a sheen map). The block stays
+    8 vec4 (128 bytes). Computed on the CPU the values can differ from the shader's in the last
+    bit (its reciprocal, pow and exp are approximations): on the RTX 3080 Ti at 4K no pixel of the
+    Specular scene changed on GL or Vulkan, Lobe Sheen none on Vulkan and 2 of 8.3 M by 1/255 on
+    GL; the goldens are unchanged.
+20. **`TERRAIN_HEX_STOCHASTIC`** (basename code `Ts`), §6.2 and §6.4: the hex terrain variant
+    compiles Stochastic Tiling's path only for a terrain with a Stochastic Tiling layer.
 - **AC11 on a GPU (GPU campaign, RTX 3080 Ti, GL, 3840x2160, S15 pass timers;
   `tools/fixtures/pbr-extended/README.md`, docs/perf/gpu-campaign.md).** Within R13: Lobes Off
   (-0.2 %), Clearcoat (+21.6 %), Anisotropy (+11.1 %), Iridescence (+27.0 %). Over: Sheen +16.5 %
@@ -730,3 +765,13 @@ with other streams:
   ms at 4K) and half of it stays with the lobe shading removed; the hex variant with every hex call
   removed still takes 2.3x the terrain: a Lit variant with extra defines costs more than the
   default variant with the same code, which is where the rest of R13 is (open).
+- **AC11 in perf3 (the same machine, GL / Vulkan at 4K, 5 runs; docs/perf/gpu-campaign.md S11):**
+  Sheen +16.3 % -> **+13.1 %** GL (+9.6 -> +7.6 % Vulkan), Specular/IOR +8.5 % -> **+2.3 %** GL
+  (+3.9 -> +4.4 % Vulkan), both within R13 on GL; the hex terrain 3.20x -> 1.71x GL, 2.93x ->
+  1.38x Vulkan, over the 1.35x (revision proposed in R13, pending user approval). The output is
+  the same (every scene captured at 4K before and after: Vulkan 0 pixels differ, GL 0 but 2 of
+  8.3 M by 1/255 in Lobe Sheen; goldens unchanged). perf2's per-variant overhead was not the
+  variant: the hex variant held Stochastic Tiling's lattices (255 registers and spills, now 128,
+  Deviation 20), and the Specular lobe's f0 chain is latency-bound in the 128-register Lit
+  variant (now made once a draw, Deviation 19); a lobe variant shaded as the plain Lit costs
+  +0.3 %. Lobes Off -0.2 % (≤ 2 %).
