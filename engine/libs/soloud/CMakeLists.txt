@@ -7,6 +7,9 @@
 # SoLoud's own stb_vorbis.c is compiled here, not the stock copy (stb has none): it reads through SoLoud's
 # File (soloud_file_hack_on.h), which WavStream hands it; the stock one took that File* for a FILE* and
 # every streamed or compressed-in-memory Ogg aborted.
+# WavStreamInstance::seek lands on its frame in every format with the decoder's own seek
+# (src/audiosource/wav/soloud_wavstream.cpp: it tested a union member set for every format and handed
+# WAV, FLAC and MP3 decoders to stb_vorbis_seek at each loop wrap; Ogg dropped the sought frame).
 
 include_directories ("${CMAKE_CURRENT_SOURCE_DIR}/include")
 

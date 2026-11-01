@@ -344,21 +344,66 @@ namespace SoLoud
 
 	result WavStreamInstance::seek(double aSeconds, float* mScratch, unsigned int mScratchSize)
 	{
-		if (mCodec.mOgg)
+		// JasperEngine local patch: a seek lands on its frame, floor(rate x seconds), in every
+		// format, found with the decoder's own seek. Upstream tested mCodec.mOgg, a member of the
+		// decoder union that is set for WAV, FLAC and MP3 too, and handed their decoders to
+		// stb_vorbis_seek (memory corruption at every loop wrap of a streamed WAV, FLAC or MP3); its
+		// Ogg seek decoded the sought frame for stb_vorbis_get_samples_*, which getAudio does not use
+		// (the next stb_vorbis_get_frame_float dropped it), and kept the frame cache from before the
+		// seek, so a streamed Ogg's loop went on from the wrong place.
+		(void)mScratch;
+		(void)mScratchSize;
+		if (mFile == NULL)
+			return INVALID_PARAMETER;
+		double frame = floor(mBaseSamplerate * aSeconds);
+		unsigned int pos = 0;
+		if (frame >= (double)mParent->mSampleCount)
+			pos = mParent->mSampleCount;
+		else if (frame > 0)
+			pos = (unsigned int)frame;
+		bool sought = true;
+		switch (mParent->mFiletype)
 		{
-			int pos = (int)floor(mBaseSamplerate * aSeconds);
-			stb_vorbis_seek(mCodec.mOgg, pos);
-			// Since the position that we just sought to might not be *exactly*
-			// the position we asked for, we're re-calculating the position just
-			// for the sake of correctness.
-			mOffset = stb_vorbis_get_sample_offset(mCodec.mOgg);
-			double newPosition = float(mOffset / mBaseSamplerate);
-			mStreamPosition = newPosition;
-			return 0;
+		case WAVSTREAM_OGG:
+			mOggFrameSize = 0;
+			mOggFrameOffset = 0;
+			if (pos < mParent->mSampleCount)
+			{
+				// the frame that holds pos, decoded, and the offset of pos in it
+				sought = stb_vorbis_seek_frame(mCodec.mOgg, pos) != 0;
+				int start = stb_vorbis_get_sample_offset(mCodec.mOgg);
+				if (sought && start >= 0 && (unsigned int)start <= pos)
+				{
+					int frameSize = stb_vorbis_get_frame_float(mCodec.mOgg, NULL, &mOggOutputs);
+					if (frameSize > 0 && pos - (unsigned int)start < (unsigned int)frameSize)
+					{
+						mOggFrameSize = frameSize;
+						mOggFrameOffset = pos - start;
+					}
+					else
+					{
+						sought = false;
+					}
+				}
+				else
+				{
+					sought = false;
+				}
+			}
+			break;
+		case WAVSTREAM_FLAC:
+			sought = drflac_seek_to_pcm_frame(mCodec.mFlac, pos) != 0;
+			break;
+		case WAVSTREAM_MP3:
+			sought = drmp3_seek_to_pcm_frame(mCodec.mMp3, pos) != 0;
+			break;
+		case WAVSTREAM_WAV:
+			sought = drwav_seek_to_pcm_frame(mCodec.mWav, pos) != 0;
+			break;
 		}
-		else {
-			return AudioSourceInstance::seek(aSeconds, mScratch, mScratchSize);
-		}
+		mOffset = pos;
+		mStreamPosition = pos / mBaseSamplerate;
+		return sought ? SO_NO_ERROR : UNKNOWN_ERROR;
 	}
 
 	result WavStreamInstance::rewind()
