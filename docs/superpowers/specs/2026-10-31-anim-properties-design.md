@@ -751,3 +751,11 @@ Code references are to the `gaps/anim-properties` branch.
   the baseline `test_animation_assets` x5 and `test_lattice_scene` x5). Web: an em++ syntax check of
   the changed engine sources. Not run here: the Apple, Windows and Android builds (no platform code
   changed; the Xcode project lists the new source) and on-device timings.
+- **Verification after the review fixes** (not merged with main again): 0 warnings; editor unit
+  tests 1644 passed, 9 skipped, 0 failed; anim tests 202 passed, 1 skipped (`Layers.PerformanceBudget`
+  under load); MCP `test_animation*`, `test_docs`, `test_stubs`, `test_html_ui_tools`,
+  `test_ui_canvas_group`: only the baseline `test_animation_assets` x5 fail; the exported Linux
+  player (`test_animation_properties_export.py`, `JASPER_SLOW_BUILD=1`) passes: at 1.0 s alpha 1,
+  offset 0, puntaje on and record off; at 0.3 s 48 below its rest on screen; at 3.6 s every stat on
+  and the events saw `score:true|record:true|coins:true`. Web: em++ syntax checks with physics 2D
+  on and off (the Rigidbody 2D enabled row's body calls are guarded).
