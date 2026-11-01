@@ -601,7 +601,7 @@ spec was silent, ambiguous or did not fit the code:
     build with 0 warnings; unit suite 1764 tests: 1753 passed, 10 skipped, 1 failed:
     `PhysicsContactsTest.ContactProcessingCostIsSmall`, a timing test that fails the same way alone
     on this box with other branches' builds (no safe-area code; it passed in the run before), a
-    known load flake; `SafeArea*` 27/27. HTML UI suite 3156/3156 passed (`SafeArea*` 9/9). Full MCP
+    known load flake; `SafeArea*` 26/26. HTML UI suite 3156/3156 passed (`SafeArea*` 9/9). Full MCP
     suite (`run-tests.sh -j3`) 939 passed, 11 failed, 21 skipped: the 10 baseline failures
     (test_animation_assets x5, test_lattice_scene x5) and `test_budget` before TOTAL_LIMIT was set to
     the measured 113752 (154 tools; `test_html_ui_tools.py` 34/34 after it); `test_safe_area.py` and
