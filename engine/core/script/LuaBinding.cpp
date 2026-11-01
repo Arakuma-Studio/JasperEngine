@@ -55,18 +55,20 @@
 #include "object/ui/Scrollbar.h"
 #include "object/ui/Progressbar.h"
 #include "object/ui/InputField.h"
+#if JASPERENGINE_HTMLUI
 #include "object/ui/UIDocument.h"
+#endif
 #include "subsystem/UIDocumentSystem.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "object/physics/Rigidbody2D.h"
 #include "object/physics/Joint2D.h"
 #include "object/physics/CharacterController2D.h"
-#include "object/physics/ControllerColliderHit.h"
-#include "object/physics/CharacterController.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "object/physics/Rigidbody.h"
 #include "object/physics/Joint3D.h"
+#include "object/physics/ControllerColliderHit.h"
+#include "object/physics/CharacterController.h"
 #endif
 #include "action/Action.h"
 #include "action/Tween.h"
@@ -807,11 +809,15 @@ void LuaBinding::registerClasses(lua_State *L){
     registerNavigationClasses(L);
     registerSplineClasses(L);
     registerCrashClasses(L);
+#if JASPERENGINE_HTMLUI
     registerHtmlUIClasses(L);
     registerHtmlUIAnimeClasses(L);
     registerHtmlUIVectorClasses(L);
+#if JASPERENGINE_VIDEO
     registerHtmlUIMediaClasses(L);
+#endif
     registerHtmlUIWidgetClasses(L);
+#endif
 
 #endif //DISABLE_LUA_BINDINGS
 }
@@ -991,7 +997,9 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
     DISPATCH_TYPE(Scrollbar, "scrollbar");
     DISPATCH_TYPE(Progressbar, "progressbar");
     DISPATCH_TYPE(InputField, "inputfield");
+#if JASPERENGINE_HTMLUI
     DISPATCH_TYPE(UIDocument, "uidocument");
+#endif
     DISPATCH_TYPE(Bone, "bone");
 #ifdef JASPERENGINE_PHYSICS_2D
     DISPATCH_TYPE(Rigidbody2D, "rigidbody2d");

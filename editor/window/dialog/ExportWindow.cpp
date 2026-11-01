@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ExportWindow.h"
+#include "player/PlayerModules.h"
 #include "texture/TextureCookReport.h"
 #include "util/FileDialogs.h"
 #include "AppSettings.h"
@@ -1615,6 +1616,21 @@ void ExportWindow::drawProgress() {
             if (result.methodUsed == BuildMethod::Prebuilt) ImGui::TextDisabled("Prebuilt player %s", result.playerId.c_str());
             else ImGui::TextDisabled("Compiled from source%s%s", result.compileReasons.empty() ? "" : ": ",
                                      result.compileReasons.empty() ? "" : result.compileReasons.front().c_str());
+            // S34: the engine modules the game ships (Strip Engine Code), why each, and the rest
+            if (!result.modules.empty() || !result.modulesLeftOut.empty()) {
+                auto joined = [](const std::vector<std::string>& names) {
+                    std::string text;
+                    for (const std::string& name : names) text += (text.empty() ? "" : ", ") + player::moduleDisplayName(name);
+                    return text.empty() ? std::string("none") : text;
+                };
+                ImGui::TextDisabled("Engine modules: %s. Left out: %s.", joined(result.modules).c_str(), joined(result.modulesLeftOut).c_str());
+                if (ImGui::IsItemHovered() && !result.moduleEvidence.empty()) {
+                    ImGui::BeginTooltip();
+                    for (const ModuleEvidence& evidence : result.moduleEvidence)
+                        ImGui::Text("%s: %s: %s", evidence.module.c_str(), evidence.where.c_str(), evidence.what.c_str());
+                    ImGui::EndTooltip();
+                }
+            }
             for (const BuildWarning& warning : result.warnings)
                 ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.2f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " %s: %s", warning.code.c_str(), warning.message.c_str());
             for (const std::string& note : result.notes) ImGui::TextUnformatted(note.c_str());

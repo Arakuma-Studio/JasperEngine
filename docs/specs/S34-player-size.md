@@ -212,7 +212,9 @@ level. We do the same at module granularity, decided by the editor from the proj
   `JASPERENGINE_VIDEO`), which is what the detection reads. HtmlUIClock and the video format rules
   (`VideoFormats`, which the compatibility layer applies to every document) stay.
 - **D4. The Lua scan.** A Lua lexer (comments skipped, identifiers and the words of every string
-  literal kept, `require` of a project module followed). Names come from the Lua API description
+  literal kept: a member reached by its name, `go["getRigidbody"]`; a class name in a string is
+  not, since a global is only reached by a name through a dynamic access). Every `.lua` file of the
+  project is scanned, so `require` of a project module needs no following. Names come from the Lua API description
   the editor embeds (`LuaApiData`); the parser records each binding's module (`modules`) from its
   preprocessor conditions. A module's entry points are its classes, enums and globals, its members
   of classes outside it, and every member of any class whose type names one of its classes; the
@@ -232,6 +234,11 @@ level. We do the same at module granularity, decided by the editor from the proj
 - **D6. Lua thunks.** LuaBridge's thunks keep their structure; their failure paths move out of
   line (`[[noreturn]]` helpers taking the error code or the exception message), so every
   instantiation drops its string building and its unwind cleanups. The messages are byte-identical.
+  `tostring_metamethod`, a template that never used its class parameter, is one function. The
+  registration functions (`Namespace::Class` adders, run once per Lua state) are `cold`: the
+  compiler optimises them for size. A fourth change, functor userdata without a `__gc`
+  metatable, was measured and dropped: on E it made returning a value from a GameObject method
+  1.4-2.3x slower (Lua's collector paced differently; M7).
 - **D7. Linux LTO** with GCC's `-flto=auto`, `gcc-ar`/`gcc-ranlib`, for release games only (as the
   rest of the release link), measured for link time and memory on the build servers.
 - **D8. `-Os`/`-Oz`.** Measured with Clang (the compiler of Android and the web) on E's quiet

@@ -9,6 +9,8 @@
 #include "io/JPak.h"
 #include "platform/AndroidTools.h"
 #include "player/ContentManifest.h"
+#include "player/PlayerModules.h"
+#include "players/PlayerRuntimes.h"
 #include "publish/BinaryInfo.h"
 #include "util/ZipArchive.h"
 
@@ -41,6 +43,17 @@ namespace {
         std::function<bool(const std::string&, std::string&)> read;
     };
 
+    // the modules of a player runtime id: its release variant's (the id's last part), the full
+    // player's when it names none
+    std::vector<std::string> variantModules(const std::string& playerId) {
+        for (const PlayerVariant& variant : PlayerRuntimes::variants()) {
+            if (variant.suffix.empty()) continue;
+            const std::string tail = "-release-" + variant.suffix;
+            if (playerId.size() > tail.size() && playerId.compare(playerId.size() - tail.size(), tail.size(), tail) == 0) return variant.modules;
+        }
+        return PlayerRuntimes::variants().front().modules;
+    }
+
     void checkContent(const Content& content, const std::string& where, std::vector<std::string>& findings) {
         std::string text;
         if (!content.read("content-manifest.json", text)) {
@@ -68,6 +81,13 @@ namespace {
             if (!content.exists("assets/shaders/" + shader)) findings.push_back("missing shader " + where + "assets/shaders/" + shader);
         for (const std::string& library : manifest.notices)
             if (!content.exists("licenses/" + library + "-LICENSE")) findings.push_back("missing notice " + where + "licenses/" + library + "-LICENSE");
+        // S34 R3: a player variant runs only content whose modules it has
+        if (manifest.method == "prebuilt" && !manifest.playerId.empty()) {
+            const std::vector<std::string> missing = player::missingModules(manifest, variantModules(manifest.playerId));
+            for (const std::string& module : missing)
+                findings.push_back("the content needs " + player::moduleDisplayName(module) + " (" + module + "), which the player " + manifest.playerId +
+                                   " leaves out: build it again");
+        }
     }
 
     void checkBinary(const fs::path& path, const std::string& relative, const std::string& wantArch, BuildPlatform platform,

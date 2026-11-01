@@ -157,8 +157,9 @@ namespace {
             "  --ios-simulator          an unsigned simulator .app instead of an archive\n"
             "  --allow-missing-assets   build even when a scene references a missing asset\n"
             "  --json                   the result as JSON\n"
-            "Prints method, compile_reason, player, output, executable, content_manifest, artifact,\n"
-            "warning and note lines; exits 1 when the build fails, 2 on bad arguments.\n",
+            "Prints method, compile_reason, player, modules (the engine modules the build ships), left_out,\n"
+            "module (why one is needed), output, executable, content_manifest, artifact, warning and note\n"
+            "lines; exits 1 when the build fails, 2 on bad arguments.\n",
             executableName);
     }
 
@@ -289,6 +290,12 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
         report["method_used"] = buildMethodName(result.methodUsed);
         report["compile_reasons"] = result.compileReasons;
         report["player_id"] = result.playerId;
+        report["modules"] = result.modules;
+        report["modules_left_out"] = result.modulesLeftOut;
+        ordered_json evidence = ordered_json::array();
+        for (const ModuleEvidence& item : result.moduleEvidence)
+            evidence.push_back({{"module", item.module}, {"where", item.where}, {"what", item.what}});
+        report["module_evidence"] = evidence;
         report["output"] = result.outputDir.string();
         report["executable"] = result.executable.string();
         report["content_manifest"] = result.contentManifest.string();
@@ -306,6 +313,20 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
         for (const std::string& reason : result.compileReasons) std::printf("compile_reason: %s\n", reason.c_str());
         if (ok) {
             if (!result.playerId.empty()) std::printf("player: %s\n", result.playerId.c_str());
+            auto joined = [](const std::vector<std::string>& names) {
+                std::string text;
+                for (const std::string& name : names) text += (text.empty() ? "" : " ") + name;
+                return text.empty() ? std::string("none") : text;
+            };
+            std::printf("modules: %s\n", joined(result.modules).c_str());
+            std::printf("left_out: %s\n", joined(result.modulesLeftOut).c_str());
+            for (const std::string& module : result.modules) {
+                for (const ModuleEvidence& item : result.moduleEvidence) {
+                    if (item.module != module) continue;
+                    std::printf("module: %s: %s: %s\n", module.c_str(), item.where.c_str(), item.what.c_str());
+                    break;
+                }
+            }
             std::printf("output: %s\n", result.outputDir.string().c_str());
             if (!result.executable.empty()) std::printf("executable: %s\n", result.executable.string().c_str());
             if (!result.contentManifest.empty()) std::printf("content_manifest: %s\n", result.contentManifest.string().c_str());

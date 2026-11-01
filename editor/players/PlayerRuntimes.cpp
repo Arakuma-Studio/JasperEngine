@@ -15,6 +15,7 @@
 
 #include "json.hpp"
 
+#include <algorithm>
 #include <chrono>
 
 #include <thread>
@@ -74,6 +75,7 @@ bool PlayerInfo::fromJson(const std::string& text, PlayerInfo& out, std::string&
         info.contentFormatVersion = in.value("contentFormatVersion", "");
         info.capacities = in.value("capacities", std::map<std::string, unsigned int>{});
         info.features = in.value("features", std::vector<std::string>{});
+        info.variant = in.value("variant", std::string("full"));
         info.notices = in.value("notices", std::vector<std::string>{});
         info.executables = in.value("executables", std::map<std::string, std::string>{});
         info.executable = in.value("executable", "");
@@ -98,6 +100,7 @@ std::string PlayerInfo::toJson() const {
     out["contentFormatVersion"] = contentFormatVersion;
     out["capacities"] = capacities;
     out["features"] = features;
+    out["variant"] = variant;
     out["notices"] = notices;
     out["executables"] = executables;
     out["executable"] = executable;
@@ -114,11 +117,76 @@ bool PlayerInfo::load(const fs::path& dir, PlayerInfo& out, std::string& error) 
     if (!fromJson(text, out, error)) return false;
     out.dir = dir;
     out.sizeBytes = directorySize(dir);
+    for (const auto& [binary, sha] : out.executables) {
+        std::error_code ec;
+        const uint64_t size = fs::file_size(dir / binary, ec);
+        if (!ec) out.shippedBytes += size;
+    }
     return true;
 }
 
-std::string PlayerRuntimes::runtimeId(const std::string& platform, const std::string& arch, const std::string& backend, bool development) {
-    return platform + "-" + arch + "-" + backend + "-" + (development ? "development" : "release");
+bool PlayerInfo::hasModules(const std::vector<std::string>& modules) const {
+    for (const std::string& module : modules)
+        if (std::find(features.begin(), features.end(), module) == features.end()) return false;
+    return true;
+}
+
+std::string PlayerRuntimes::runtimeId(const std::string& platform, const std::string& arch, const std::string& backend, bool development,
+                                      const std::string& variantSuffix) {
+    return platform + "-" + arch + "-" + backend + "-" + (development ? "development" : "release") +
+           (variantSuffix.empty() ? std::string() : "-" + variantSuffix);
+}
+
+const std::vector<PlayerVariant>& PlayerRuntimes::variants() {
+    static const std::vector<PlayerVariant> list = []() {
+        std::vector<PlayerVariant> out;
+        std::ifstream in(FileUtils::getEngineDir() / "player" / "variants.json", std::ios::binary);
+        const json parsed = json::parse(std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>()), nullptr, false);
+        if (parsed.is_object() && parsed.contains("variants") && parsed["variants"].is_array()) {
+            for (const json& variant : parsed["variants"]) {
+                if (!variant.is_object()) continue;
+                out.push_back({variant.value("name", std::string()), variant.value("suffix", std::string()),
+                               variant.value("modules", std::vector<std::string>{})});
+            }
+        }
+        std::stable_partition(out.begin(), out.end(), [](const PlayerVariant& v) { return v.suffix.empty(); });
+        if (out.empty() || !out.front().suffix.empty())
+            out.insert(out.begin(), PlayerVariant{"full", "", {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation"}});
+        return out;
+    }();
+    return list;
+}
+
+const PlayerVariant& PlayerRuntimes::variantFor(const std::vector<std::string>& modules) {
+    const PlayerVariant* best = &variants().front();
+    for (const PlayerVariant& variant : variants()) {
+        const bool holds = std::all_of(modules.begin(), modules.end(), [&](const std::string& m) {
+            return std::find(variant.modules.begin(), variant.modules.end(), m) != variant.modules.end();
+        });
+        if (holds && variant.modules.size() < best->modules.size()) best = &variant;
+    }
+    return *best;
+}
+
+std::vector<PlayerInfo> PlayerRuntimes::findVariants(const std::string& baseId, const fs::path& override, bool allowMismatch) {
+    std::vector<PlayerInfo> out;
+    for (const PlayerVariant& variant : variants()) {
+        std::string error;
+        std::optional<PlayerInfo> found = find(variant.suffix.empty() ? baseId : baseId + "-" + variant.suffix, override, allowMismatch, error);
+        if (found) out.push_back(std::move(*found));
+    }
+    return out;
+}
+
+const PlayerInfo* PlayerRuntimes::smallestWith(const std::vector<PlayerInfo>& candidates, const std::vector<std::string>& modules) {
+    const PlayerInfo* best = nullptr;
+    for (const PlayerInfo& candidate : candidates) {
+        if (!candidate.hasModules(modules)) continue;
+        if (!best || candidate.shippedBytes < best->shippedBytes ||
+            (candidate.shippedBytes == best->shippedBytes && candidate.features.size() < best->features.size()))
+            best = &candidate;
+    }
+    return best;
 }
 
 std::string PlayerRuntimes::editorVersion() {

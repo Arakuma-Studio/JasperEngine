@@ -5132,6 +5132,7 @@ void editor::Project::resetConfigs() {
     playerCrash = PlayerCrashSettings();
     buildMethod = "auto";
     packContent = false;
+    stripEngineCode = true;
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setHtmlUiRenderSettings(HtmlUiRenderSettings());
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){

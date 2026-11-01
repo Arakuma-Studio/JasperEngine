@@ -3,19 +3,24 @@
 """lua-api.json: the engine's Lua API as data (S23 R29), from the one parser (parser.py).
 
     {format: "jasper-lua-api", formatVersion: 1, engineVersion, hash,
-     classes: [{name, cpp, base, file, line, doc, conditions, eventObject, constructors[],
+     classes: [{name, cpp, base, file, line, doc, conditions, modules, eventObject, constructors[],
                 methods: [{name, static, overloads: [{params: [{name, type, optional, description?}],
-                           returns: [], vararg?, cpp?}], doc, conditions, unresolved}],
+                           returns: [], vararg?, cpp?}], doc, conditions, modules, unresolved}],
                 properties: [{name, type, readonly, static, copy, event, eventHandler?, eventAssignAdds?,
-                              doc, conditions, cpp?, unresolved}],
+                              doc, conditions, modules, cpp?, unresolved}],
                 operators: [{op, operand?, returns}], callOverloads: [], enumTables: [], cppOnlyMethods: []}],
-     enums: [{name, doc, conditions, computed, values: [{name, value, doc}]}],
+     enums: [{name, doc, conditions, modules, computed, values: [{name, value, doc}]}],
      globals: [{name, value, doc}], events: [{name, args: [{name, type}], returns}],
      unresolved: [], htmlUi: {eventTypes: [[name, what]]}, stubFragments: {file: text},
      manualSymbols: [{parent, name, kind, detail}]}
 
 formatVersion follows SemVer: added keys keep 1, readers ignore keys they do not know. Every
 list is in the bindings' order, so two extractions of one tree are byte-identical.
+
+`modules` names the optional engine modules a binding is compiled under (the #if of
+JASPERENGINE_HTMLUI, JASPERENGINE_VIDEO, JASPERENGINE_PHYSICS_2D/3D around it): the export finds
+what a project's scripts use from these, so a binding added under a module's condition is
+detected with no list to update (docs/specs/S34-player-size.md D4).
 """
 
 import hashlib
@@ -36,6 +41,30 @@ def _cond_notes(cond):
         if cnd in p._PHYSICS_NOTES and p._PHYSICS_NOTES[cnd] not in notes:
             notes.append(p._PHYSICS_NOTES[cnd])
     return notes
+
+
+# the preprocessor condition of each optional module (docs/specs/S34-player-size.md R1), in the
+# forms the bindings use (#if X, #ifdef X, #if defined(X))
+_MODULE_MACROS = {
+    'JASPERENGINE_HTMLUI': 'htmlui',
+    'JASPERENGINE_VIDEO': 'video',
+    'JASPERENGINE_PHYSICS_2D': 'physics2d',
+    'JASPERENGINE_PHYSICS_3D': 'physics3d',
+}
+
+
+def _modules(cond):
+    """The modules a condition stack requires: a label that is one of their macros (not an #else
+    branch, not a negation)."""
+    out = []
+    for cnd in cond or []:
+        label = cnd.strip()
+        if label.startswith('defined(') and label.endswith(')'):
+            label = label[len('defined('):-1].strip()
+        module = _MODULE_MACROS.get(label)
+        if module and module not in out:
+            out.append(module)
+    return out
 
 
 def _param(entry):
@@ -81,6 +110,7 @@ def _class(bd, c, repo_root):
         'line': c.call.line,
         'doc': cls_doc,
         'conditions': conditions,
+        'modules': _modules(c.cond),
         'guide': guide,
         'eventObject': c.name.startswith('FunctionSubscribe_'),
         'constructors': [_sig(s) for s in c.lua_ctors],
@@ -108,7 +138,8 @@ def _class(bd, c, repo_root):
                 t = f'{t}|' + handler
         prop = {'name': m.name, 'type': t, 'readonly': not m.writable, 'static': m.kind == 'StaticProperty',
                 'copy': bool(getattr(m, 'copy', False)), 'event': bool(getattr(m, 'is_event', False)),
-                'doc': list(m.doc), 'conditions': _cond_notes(m.call.cond), 'unresolved': list(m.unresolved)}
+                'doc': list(m.doc), 'conditions': _cond_notes(m.call.cond), 'modules': _modules(m.call.cond),
+                'unresolved': list(m.unresolved)}
         if handler:
             prop['eventHandler'] = handler
         if getattr(m, 'assign_fn', None):
@@ -154,7 +185,8 @@ def _class(bd, c, repo_root):
         cpp_sigs = getattr(m, 'cpp_sigs', [])
         overloads = [_sig(s, cpp_sigs[i] if i < len(cpp_sigs) and len(cpp_sigs) == len(sigs) else None) for i, s in enumerate(sigs)]
         methods.append({'name': m.name, 'static': m.kind == 'StaticMethod', 'overloads': overloads, 'doc': list(m.doc),
-                        'conditions': _cond_notes(m.call.cond), 'unresolved': list(m.unresolved)})
+                        'conditions': _cond_notes(m.call.cond), 'modules': _modules(m.call.cond),
+                        'unresolved': list(m.unresolved)})
     out['methods'] = methods
 
     # the public C++ methods LuaBridge does not bind (C++ scripts only)
@@ -183,7 +215,7 @@ def _enum(bd, en):
                 doc.append(line)
     cpp_docs = {n: d for n, _, d in en.cpp_enum.values} if en.cpp_enum is not None else {}
     values = [{'name': n, 'value': v, 'doc': list(call.doc) + list(cpp_docs.get(n, []))} for n, v, call in en.resolved]
-    return {'name': en.name, 'doc': doc, 'conditions': _cond_notes(en.call.cond),
+    return {'name': en.name, 'doc': doc, 'conditions': _cond_notes(en.call.cond), 'modules': _modules(en.call.cond),
             'computed': all(v is not None for _, v, _ in en.resolved), 'values': values}
 
 

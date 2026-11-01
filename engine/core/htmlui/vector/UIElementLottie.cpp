@@ -11,7 +11,9 @@
 #include "UIElementInternal.h"
 #include "HtmlUIScriptInternal.h"
 #include "UILottieElement.h"
+#if JASPERENGINE_VIDEO
 #include "media/UIVideoElement.h"
+#endif
 
 #include "Log.h"
 
@@ -48,6 +50,8 @@ namespace {
     static std::set<std::string> warnedTags_##method; \
     UILottieElement* lottie = lottieOf(get(), warnedInvalid_##method, warnedTags_##method, #method)
 
+// a build without the video module (docs/specs/S34-player-size.md R1) has no <video> elements
+#if JASPERENGINE_VIDEO
 namespace {
 
     UIVideoElement* asVideo(Rml::Element* element){
@@ -55,22 +59,27 @@ namespace {
     }
 
 }
+#endif
 
 void UIElement::play(){
+#if JASPERENGINE_VIDEO
     if (UIVideoElement* video = asVideo(get())){
         video->play();
         return;
     }
+#endif
     LOTTIE_OF(play);
     if (lottie)
         lottie->play();
 }
 
 void UIElement::pause(){
+#if JASPERENGINE_VIDEO
     if (UIVideoElement* video = asVideo(get())){
         video->pause();
         return;
     }
+#endif
     LOTTIE_OF(pause);
     if (lottie)
         lottie->pause();
@@ -107,10 +116,12 @@ void UIElement::setDirection(int direction){
 }
 
 void UIElement::setLoop(bool loop){
+#if JASPERENGINE_VIDEO
     if (UIVideoElement* video = asVideo(get())){
         video->setLoop(loop);
         return;
     }
+#endif
     LOTTIE_OF(setLoop);
     if (lottie)
         lottie->setLoop(loop);
@@ -135,8 +146,10 @@ void UIElement::setMarker(const std::string& marker){
 }
 
 bool UIElement::isPlaying() const{
+#if JASPERENGINE_VIDEO
     if (UIVideoElement* video = asVideo(get()))
         return !video->isPaused();
+#endif
     LOTTIE_OF(isPlaying);
     return lottie ? lottie->isPlaying() : false;
 }
@@ -152,8 +165,10 @@ float UIElement::getTotalFrames() const{
 }
 
 float UIElement::getDuration() const{
+#if JASPERENGINE_VIDEO
     if (UIVideoElement* video = asVideo(get()))
         return (float)video->getDuration();
+#endif
     LOTTIE_OF(getDuration);
     return lottie ? lottie->getDuration() : 0.0f;
 }

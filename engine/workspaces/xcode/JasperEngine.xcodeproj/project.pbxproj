@@ -4068,6 +4068,11 @@
 		4A534E477F1D537B5FCAB48A /* CurveJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4729A27E0419671047 /* CurveJson.cpp */; };
 		4A534E47EDF76759E42FAB79 /* CurveJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4729A27E0419671047 /* CurveJson.cpp */; };
 		4A534E4771F369477A4B22CC /* CurveJson.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4707AEFC0DB5C2DC02 /* CurveJson.h */; };
+		4A534E4709F8387E7A04C6A8 /* PlayerModules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BFB6BEEE8990A48 /* PlayerModules.cpp */; };
+		4A534E479566A601849C4718 /* PlayerModules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BFB6BEEE8990A48 /* PlayerModules.cpp */; };
+		4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A4609FEFF72DC9EF /* PlayerModules.h */; };
+		4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4760C1D1328627EB69 /* UIDocumentInput.h */; };
+		4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8058,6 +8063,10 @@
 		4A534E476ED3B894B5F99179 /* CustomCodecs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CustomCodecs.h; sourceTree = "<group>"; };
 		4A534E4729A27E0419671047 /* CurveJson.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CurveJson.cpp; sourceTree = "<group>"; };
 		4A534E4707AEFC0DB5C2DC02 /* CurveJson.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CurveJson.h; sourceTree = "<group>"; };
+		4A534E473BFB6BEEE8990A48 /* PlayerModules.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PlayerModules.cpp; sourceTree = "<group>"; };
+		4A534E47A4609FEFF72DC9EF /* PlayerModules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlayerModules.h; sourceTree = "<group>"; };
+		4A534E4760C1D1328627EB69 /* UIDocumentInput.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentInput.h; sourceTree = "<group>"; };
+		4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentSystemNone.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -9640,6 +9649,8 @@
 				4A534E47CB6DD4DE98FB3C90 /* LaunchOptions.h */,
 				4A534E47B90A7E226F42E9D1 /* PlayerConfig.h */,
 				4A534E47C484ACD2846CB3C2 /* RunControl.h */,
+				4A534E473BFB6BEEE8990A48 /* PlayerModules.cpp */,
+				4A534E47A4609FEFF72DC9EF /* PlayerModules.h */,
 			);
 			path = player;
 			sourceTree = "<group>";
@@ -10209,6 +10220,8 @@
 				4A534E474C490B38DD8DB742 /* VertexAnimatorSystem.h */,
 				4A534E47E0260560EBB7D200 /* AnimatorSystem.cpp */,
 				4A534E47C7892946585F9415 /* AnimatorSystem.h */,
+				4A534E4760C1D1328627EB69 /* UIDocumentInput.h */,
+				4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -14316,6 +14329,9 @@
 				4A534E4719ED4496CD61367E /* AnimatorSystem.h in Headers */,
 				4A534E47285F526FD30A8918 /* CustomCodecs.h in Headers */,
 				4A534E4771F369477A4B22CC /* CurveJson.h in Headers */,
+				4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */,
+				4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */,
+				4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -16732,6 +16748,7 @@
 				4A534E47143B4D85C7260C54 /* AnimatorAssetPool.cpp in Sources */,
 				4A534E47B21F9A6344B4CC05 /* AnimatorSystem.cpp in Sources */,
 				4A534E477F1D537B5FCAB48A /* CurveJson.cpp in Sources */,
+				4A534E4709F8387E7A04C6A8 /* PlayerModules.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -17434,6 +17451,7 @@
 				4A534E479173156330A35D24 /* AnimatorAssetPool.cpp in Sources */,
 				4A534E475068D6F918B554F4 /* AnimatorSystem.cpp in Sources */,
 				4A534E47EDF76759E42FAB79 /* CurveJson.cpp in Sources */,
+				4A534E479566A601849C4718 /* PlayerModules.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

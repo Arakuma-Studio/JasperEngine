@@ -96,6 +96,32 @@ class LuaApiJson(unittest.TestCase):
         self.assertTrue(v3['file'].endswith('.cpp'))
         self.assertGreater(v3['line'], 0)
 
+    def test_modules(self):
+        """S34 D4: each binding names the optional modules it is compiled under"""
+        classes = {c['name']: c for c in api()['classes']}
+
+        def member(cls, name):
+            return next(m for m in classes[cls]['methods'] + classes[cls]['properties'] if m['name'] == name)
+
+        self.assertEqual(classes['UIDocument']['modules'], ['htmlui'])
+        self.assertEqual(classes['anime']['modules'], ['htmlui'])
+        self.assertEqual(classes['Rigidbody']['modules'], ['physics3d'])
+        self.assertEqual(classes['Rigidbody2D']['modules'], ['physics2d'])
+        self.assertEqual(classes['Vector3']['modules'], [])
+        self.assertEqual(classes['GameObject']['modules'], [])
+        # members under a module's condition on classes outside it
+        self.assertEqual(member('GameObject', 'getRigidbody')['modules'], ['physics3d'])
+        self.assertEqual(member('InputActions', 'bindVirtualStick')['modules'], ['htmlui'])
+        self.assertEqual(member('UIElement', 'canPlayType')['modules'], ['video'])
+        self.assertEqual(member('GameObject', 'setPosition')['modules'], [])
+        enums = {e['name']: e for e in api()['enums']}
+        self.assertEqual(enums['Joint3DType']['modules'], ['physics3d'])
+        for c in classes.values():
+            for key in ('modules',):
+                self.assertIsInstance(c[key], list)
+                for m in c['methods'] + c['properties']:
+                    self.assertTrue(set(m['modules']) <= {'htmlui', 'video', 'physics2d', 'physics3d'}, m['name'])
+
 
 class Emitters(unittest.TestCase):
 

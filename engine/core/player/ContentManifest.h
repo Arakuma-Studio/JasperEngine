@@ -46,6 +46,10 @@ namespace jasperengine::player {
         std::vector<ManifestPack> packs;
         // the libraries whose licenses/<name>-LICENSE the build carries (R27)
         std::vector<std::string> notices;
+        // the optional engine modules the content needs (docs/specs/S34-player-size.md R3);
+        // absent in a manifest of an older editor, whose content needs every module
+        std::vector<std::string> modules;
+        bool hasModules = false;
         bool allowPlayerMismatch = false;
         // a Compile release build's split debug information (absolute; the build's machine): what
         // publish prepare copies into the release's symbols/; empty for a prebuilt build, whose
@@ -60,15 +64,20 @@ namespace jasperengine::player {
     // R21: the checks a player makes at start. `playerId`: this player's runtime id (empty: a
     // Compile build, which has none to compare); `exists` tells whether a content-relative file
     // is there (on disk or in the mounted pack); `verifyHashes` (--verify-content) re-hashes every
-    // loose file, read through `read`. Every problem goes to `problems`; true when there are none.
+    // loose file, read through `read`. `playerModules`: the modules of the player (null: this
+    // build's, player::builtModules), which must hold every module the content needs (S34 R3).
+    // Every problem goes to `problems`; true when there are none.
     struct ContentAccess {
         bool (*exists)(const std::string& relative);
         bool (*sha256)(const std::string& relative, std::string& hex, uint64_t& size);
     };
     JASPERENGINE_API bool checkContent(const ContentManifest& manifest, const std::string& playerId, const ContentAccess& access,
-                                       bool verifyHashes, std::vector<std::string>& problems);
+                                       bool verifyHashes, std::vector<std::string>& problems,
+                                       const std::vector<std::string>* playerModules = nullptr);
+    // the modules the content needs that `available` lacks (every module when the manifest names none)
+    JASPERENGINE_API std::vector<std::string> missingModules(const ContentManifest& manifest, const std::vector<std::string>& available);
 
-    // this player's runtime id, "<platform>-<arch>-<backend>-<flavour>" (empty in a Compile build)
+    // this player's runtime id, "<platform>-<arch>-<backend>-<flavour>[-<variant>]" (empty in a Compile build)
     JASPERENGINE_API std::string runtimePlayerId();
 
 }
