@@ -3088,6 +3088,9 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
         root["imports"] = importsNode;
     }
 
+    // Every GameObject of the scene goes into the node, or nothing does: a save (or an autosave,
+    // a Play snapshot) that would lose one fails, naming them, and the file stays as it was
+    SavedEntitiesCheck check(sceneProject);
     YAML::Node entitiesNode;
     for (Entity entity : sceneProject->entities) {
         // Skip prefab children (they are stored in the prefab file)
@@ -3110,12 +3113,102 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
         }
     }
 
+    const std::vector<Entity> left = check.leftOut(project);
+    if (!left.empty()) {
+        throw Stream::IncompleteSave(check.describe(left, "scene '" + sceneProject->name + "'") +
+            " (an editor fault: please report it); nothing was written");
+    }
+    // Complete, but the order every move and encode reads is broken: said, for a report
+    if (const Entity split = ProjectUtils::findSplitBranch(sceneProject->scene); split != NULL_ENTITY) {
+        Out::warning("Scene '%s': the Transform order splits the branch of '%s' (%u), an editor fault (every GameObject was written)",
+                     sceneProject->name.c_str(), sceneProject->scene->getEntityName(split).c_str(), split);
+    }
+
     root["entities"] = entitiesNode;
 
     // the root keys of the file this editor does not know, after its own
     StreamSave::applyRootKeys(sceneProject->scene, NULL_ENTITY, root);
 
     return root;
+}
+
+namespace {
+    // The innermost check on this thread (a save on another thread has its own)
+    thread_local editor::Stream::SavedEntitiesCheck* savedEntitiesCheck = nullptr;
+}
+
+editor::Stream::SavedEntitiesCheck::SavedEntitiesCheck(const SceneProject* sceneProject):
+        sceneProject(sceneProject), outer(savedEntitiesCheck) {
+    savedEntitiesCheck = this;
+}
+
+editor::Stream::SavedEntitiesCheck::~SavedEntitiesCheck() {
+    savedEntitiesCheck = outer;
+}
+
+void editor::Stream::SavedEntitiesCheck::written(const EntityRegistry* registry, Entity entity) {
+    SavedEntitiesCheck* check = savedEntitiesCheck;
+    if (check && check->sceneProject && check->sceneProject->scene == registry) {
+        check->recorded.insert(entity);
+    }
+}
+
+std::vector<Entity> editor::Stream::SavedEntitiesCheck::leftOut(const Project* project) const {
+    std::vector<Entity> left;
+    if (!sceneProject || !sceneProject->scene) {
+        return left;
+    }
+    const Scene* scene = sceneProject->scene;
+    std::unordered_set<Entity> covered = recorded;
+    if (project) {
+        // An instance whose root is in the file holds its members, a nested instance's root
+        // among them: as deep as the nesting goes
+        std::vector<const Prefab::Instance*> instances;
+        for (const auto& [path, prefab] : project->getPrefabs(sceneProject->id)) {
+            auto it = prefab->instances.find(sceneProject->id);
+            if (it != prefab->instances.end()) {
+                for (const Prefab::Instance& instance : it->second) {
+                    instances.push_back(&instance);
+                }
+            }
+        }
+        std::vector<bool> taken(instances.size(), false);
+        for (bool grew = true; grew;) {
+            grew = false;
+            for (size_t i = 0; i < instances.size(); i++) {
+                if (taken[i] || !covered.count(instances[i]->rootEntity)) {
+                    continue;
+                }
+                taken[i] = true;
+                grew = true;
+                for (const Prefab::EntityMember& member : instances[i]->members) {
+                    covered.insert(member.localEntity);
+                }
+            }
+        }
+    }
+    for (Entity entity : sceneProject->entities) {
+        if (scene->isEntityCreated(entity) && !covered.count(entity)) {
+            left.push_back(entity);
+        }
+    }
+    return left;
+}
+
+std::string editor::Stream::SavedEntitiesCheck::describe(const std::vector<Entity>& left, const std::string& where) const {
+    Scene* scene = sceneProject->scene;
+    std::string names;
+    for (size_t i = 0; i < left.size() && i < 8; i++) {
+        names += (i ? ", '" : "'") + scene->getEntityName(left[i]) + "' " + std::to_string(left[i]);
+    }
+    if (left.size() > 8) {
+        names += ", ...";
+    }
+    std::string text = std::to_string(left.size()) + " GameObject(s) of " + where + " would be left out (" + names + ")";
+    if (const Entity split = ProjectUtils::findSplitBranch(scene); split != NULL_ENTITY) {
+        text += "; the Transform order splits the branch of '" + scene->getEntityName(split) + "' " + std::to_string(split);
+    }
+    return text;
 }
 
 // The C++ scripts a scene file's header lists (what the scene had when saved)
@@ -3792,6 +3885,7 @@ YAML::Node editor::Stream::encodeEntityAux(const Entity entity, const EntityRegi
                 // Prefab root: encode as normal Entity (PrefabComponent carries the path)
                 entityNode["type"] = "Entity";
                 entityNode["entity"] = YamlNumbers::integerText(entity);
+                SavedEntitiesCheck::written(registry, entity);
                 entityNode["name"] = registry->getEntityName(entity);
                 encodeEntityState(entityNode, entity, registry);
 
@@ -3810,6 +3904,7 @@ YAML::Node editor::Stream::encodeEntityAux(const Entity entity, const EntityRegi
         entityNode["type"] = "Entity";
 
         entityNode["entity"] = YamlNumbers::integerText(entity);
+        SavedEntitiesCheck::written(registry, entity);
         entityNode["name"] = registry->getEntityName(entity);
         encodeEntityState(entityNode, entity, registry);
 
@@ -4078,6 +4173,7 @@ std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, E
             store->reset(entity);
         }
         StreamLoad::EntityScope scope(registry, entity);
+        const bool hadTransform = registry->getSignature(entity).test(registry->getComponentId<Transform>());
 
         if (entityNode["components"]){
             // yaml-cpp only names the key it failed on, so point at the entity holding it
@@ -4110,6 +4206,14 @@ std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, E
                 std::vector<Entity> childEntities = decodeEntity(childNode, registry, entities, project, sceneProject, entity, createNewIfExists, removeMissingComponents, entityRemap);
                 std::copy(childEntities.begin(), childEntities.end(), std::back_inserter(allEntities));
             }
+        }
+
+        // Its Transform, new, went to the end of the array, its branch after it: under a parent
+        // whose branch ends elsewhere (a prefab instance imported again, a GameObject put back
+        // below one), the branch goes to the end of the parent's, where every reader of the
+        // array (the moves, the encoders) looks for it. One decoded over a live one keeps its place
+        if (!hadTransform && parent != NULL_ENTITY) {
+            ProjectUtils::keepInParentBranch(registry, entity);
         }
     } else {
         // the next save leaves it out

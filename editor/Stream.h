@@ -15,6 +15,7 @@
 #include "particles/LegacyParticleSystem.h"
 
 #include <filesystem>
+#include <stdexcept>
 #include <set>
 #include <vector>
 #include <unordered_map>
@@ -375,7 +376,41 @@ namespace jasperengine::editor {
         // separates a pre-split file from one that only lists the scene.
         static bool hasSceneDisplaySettings(const YAML::Node& node);
 
+        // Throws std::runtime_error, and writes nothing, when the encode would leave out a GameObject
+        // of the scene (SavedEntitiesCheck): a save, an autosave, a Play snapshot never lose one in
+        // silence (docs/data-safety.md)
         static YAML::Node encodeSceneProject(const Project* project, const SceneProject* sceneProject);
+
+        // What encodeSceneProject and a prefab stage's encode throw for a GameObject they would
+        // leave out (a save refused, S03: the document stays modified)
+        class IncompleteSave : public std::runtime_error {
+        public:
+            using std::runtime_error::runtime_error;
+        };
+
+        // Is a scene's (or prefab stage's) encode complete? While one lives, the encodes made on its
+        // thread record the GameObjects of its scene they write a node for. leftOut() lists the
+        // scene's GameObjects in none of them, but the members of a prefab instance whose root was
+        // written (with the project: the prefab holds them)
+        class SavedEntitiesCheck {
+        public:
+            explicit SavedEntitiesCheck(const SceneProject* sceneProject);
+            ~SavedEntitiesCheck();
+            SavedEntitiesCheck(const SavedEntitiesCheck&) = delete;
+            SavedEntitiesCheck& operator=(const SavedEntitiesCheck&) = delete;
+
+            std::vector<Entity> leftOut(const Project* project) const;
+            // "N GameObject(s) of <where> would be left out ('Name' id, ...)", and the branch the
+            // Transform order splits when one does
+            std::string describe(const std::vector<Entity>& left, const std::string& where) const;
+            // records a node written for entity of registry (encodeEntityAux), into the innermost check
+            static void written(const EntityRegistry* registry, Entity entity);
+
+        private:
+            const SceneProject* sceneProject;
+            std::unordered_set<Entity> recorded;
+            SavedEntitiesCheck* outer;
+        };
         static void decodeSceneProject(SceneProject* sceneProject, const YAML::Node& node, bool loadScene);
         static void decodeSceneCppScripts(SceneProject* sceneProject, const YAML::Node& node);
         // reservedBelow: user ids under it are reserved too and new ones start above it (a

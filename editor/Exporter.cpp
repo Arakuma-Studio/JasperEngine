@@ -1905,8 +1905,11 @@ bool editor::Exporter::loadAndSaveAllScenes() {
             imported = imported && project->prepareFbxModelsForExport(importError);
 
             // Save all scenes to regenerate their .cpp sources; one that did not load completely
-            // stops the export (its save would drop data)
+            // stops the export (its save would drop data). One not saved has its old source (the
+            // save writes it after the file): the export would build what the editor no longer
+            // shows, so it stops too (a save refused for a GameObject it would lose)
             std::string degraded;
+            std::string notSaved;
             for (size_t i = 0; imported && i < scenes.size(); i++) {
                 auto& sceneProject = scenes[i];
                 if (sceneProject.filepath.empty() || !sceneProject.scene) {
@@ -1917,7 +1920,9 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                     continue;
                 }
                 project->warnPreservedNotInBuild(sceneProject);
-                project->saveSceneToPath(sceneProject.id, sceneProject.filepath);
+                if (!project->saveSceneToPath(sceneProject.id, sceneProject.filepath)) {
+                    notSaved += (notSaved.empty() ? "'" : ", '") + sceneProject.name + "'";
+                }
             }
 
             // S30: a prebuilt player's cooked scenes and prefabs, from the scenes as they are
@@ -2016,6 +2021,9 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 }
             }
 
+            if (!notSaved.empty()) {
+                throw std::runtime_error("scene " + notSaved + " could not be saved (see the console)");
+            }
             if (!degraded.empty()) {
                 throw std::runtime_error("these scenes did not load completely and exporting saves them: " + degraded +
                                          ". Save them first (Save Anyway drops what this editor could not read, Save As keeps the original).");

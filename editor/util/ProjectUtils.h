@@ -78,6 +78,16 @@ public:
     static std::string makeUniqueEntityName(Scene* scene, const std::vector<Entity>& entities, const std::string& baseName, const std::unordered_set<Entity>& ignoredEntities = {});
 
     static size_t getTransformIndex(EntityRegistry* registry, Entity entity);
+    // The Transform array holds each branch in one run, a GameObject after its parent and
+    // before the next GameObject outside the parent's branch (findBranchLastIndex, the moves and
+    // the scene and prefab encoders read it so). A GameObject decoded with a Transform under a
+    // parent already placed (a prefab instance imported again, a GameObject put back below one)
+    // is appended at the end of the array: this moves its branch to the end of its parent's
+    // branch, as its last child, when it is not in it. Returns whether it moved.
+    static bool keepInParentBranch(EntityRegistry* registry, Entity entity);
+    // The parent whose branch the Transform array splits (a GameObject of it comes after one
+    // outside it), the first one found; NULL_ENTITY when every branch is in one run
+    static Entity findSplitBranch(EntityRegistry* registry);
     static void sortEntitiesByTransformOrder(EntityRegistry* registry, std::vector<Entity>& entities);
 
     static bool moveEntityOrderByTarget(EntityRegistry* registry, std::vector<Entity>& entities, Entity source, Entity target, InsertionType type, Entity& oldParent, size_t& oldIndex, bool& hasTransform);

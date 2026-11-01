@@ -1534,7 +1534,8 @@ namespace jasperengine::editor{
         static std::function<bool(const std::filesystem::path& file, std::string& why)> documentOpenGuard;
         static std::function<void(const std::filesystem::path& file, std::function<void()> retrySave)> readOnlySaveHandler;
         // What saving an open scene or prefab stage would write (its unsaved edits included): a
-        // scene's encodeSceneProject, a stage's prefab document; undefined for no such document
+        // scene's encodeSceneProject, a stage's prefab document; undefined for no such document,
+        // or one whose encode would leave a GameObject out (Stream::SavedEntitiesCheck)
         YAML::Node encodeDocument(uint32_t sceneId);
 
         ShaderOverrides& getShaderOverrides();
@@ -2605,6 +2606,10 @@ namespace jasperengine::editor{
         // Whether an instance of prefabPath may go into the scene: never into the stage of a
         // prefab it holds (a prefab cannot contain itself)
         bool canInstantiatePrefabIn(uint32_t sceneId, const std::filesystem::path& prefabPath);
+        // Whether a GameObject (with its branch) may go into the prefab at target (add_to_prefab,
+        // an added GameObject applied): not when an instance in the branch is of target or of a
+        // prefab holding it, at any depth (the prefab would contain itself)
+        bool canAddToPrefab(uint32_t sceneId, Entity entity, const std::filesystem::path& target, std::string* reason = nullptr);
         // Once a frame: Auto Save (when the user is not in the middle of an edit), changes the
         // asset got from outside the stage, the stage root kept single, lost contexts
         void updatePrefabStages(bool userEditing);

@@ -6676,6 +6676,15 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
             return false;
         }
         sceneProject->isModified = false;
+    } catch (const Stream::IncompleteSave& e) {
+        // the encode would have lost a GameObject: nothing written, the scene stays modified
+        const std::string message = "Couldn't save \"" + FileUtils::pathToUtf8(relPath) + "\": " + e.what() +
+            ". Your changes are still in the editor.";
+        Out::error(message);
+        editor::getEditorHost().enqueueMainThreadTask([this, message]() {
+            alertUser("Error", message);
+        });
+        return false;
     } catch (const std::exception& e) {
         Out::error("Failed to save scene file: %s", e.what());
         return false;

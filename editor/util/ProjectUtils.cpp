@@ -852,6 +852,62 @@ size_t editor::ProjectUtils::getTransformIndex(EntityRegistry* registry, Entity 
     return 0;
 }
 
+bool editor::ProjectUtils::keepInParentBranch(EntityRegistry* registry, Entity entity) {
+    const ComponentId transformId = registry->getComponentId<Transform>();
+    const Transform* transform = registry->findComponent<Transform>(entity);
+    if (!transform) {
+        return false;
+    }
+    // read before the index queries, which settle the array (and can move its components)
+    const Entity parent = transform->parent;
+    if (parent == NULL_ENTITY || !registry->isEntityCreated(parent) || !registry->getSignature(parent).test(transformId)) {
+        return false;
+    }
+    auto transforms = registry->getComponentArray<Transform>();
+    const size_t index = transforms->getIndex(entity);
+    if (index > transforms->getIndex(parent)) {
+        // The array before it is in order, so it is in its parent's branch when the GameObject
+        // just before it is the parent or below it (a walk up that GameObject's parents, not
+        // along the branch: a decode places each of its children so)
+        Entity before = transforms->getEntity(index - 1);
+        for (size_t depth = 0; before != NULL_ENTITY && depth <= transforms->size(); depth++) {
+            if (before == parent) {
+                return false;
+            }
+            const Transform* beforeTransform = registry->findComponent<Transform>(before);
+            before = beforeTransform ? beforeTransform->parent : NULL_ENTITY;
+        }
+    }
+
+    // the whole branch moves, and the arrays kept in Transform order follow it
+    registry->moveChildToIndex(entity, registry->findBranchLastIndex(parent) + 1);
+    return true;
+}
+
+Entity editor::ProjectUtils::findSplitBranch(EntityRegistry* registry) {
+    const ComponentId transformId = registry->getComponentId<Transform>();
+    auto transforms = registry->getComponentArray<Transform>();
+    // The GameObject just read and its parents, outermost first: in order, the next one's parent
+    // is among them, or it has none
+    std::vector<Entity> path;
+    const size_t count = transforms->size();
+    for (size_t i = 0; i < count; i++) {
+        const Entity parent = transforms->getComponentFromIndex(i).parent;
+        if (parent == NULL_ENTITY || !registry->isEntityCreated(parent) || !registry->getSignature(parent).test(transformId)) {
+            path.clear();
+        } else {
+            while (!path.empty() && path.back() != parent) {
+                path.pop_back();
+            }
+            if (path.empty()) {
+                return parent;
+            }
+        }
+        path.push_back(transforms->getEntity(i));
+    }
+    return NULL_ENTITY;
+}
+
 void editor::ProjectUtils::sortEntitiesByTransformOrder(EntityRegistry* registry, std::vector<Entity>& entities) {
     // Key: Transform index, 0 without a Transform. Stable, so equal keys (the flat
     // GameObjects) keep the order they are listed in.
@@ -899,13 +955,20 @@ bool editor::ProjectUtils::moveEntityOrderByTarget(EntityRegistry* registry, std
 
         auto transforms = registry->getComponentArray<Transform>();
 
-        size_t sourceTransformIndex = transforms->getIndex(source);
-        size_t targetTransformIndex = transforms->getIndex(target);
+        oldIndex = transforms->getIndex(source);
 
-        oldIndex = sourceTransformIndex;
-
-        if (type == InsertionType::AFTER || type == InsertionType::INTO){
-            targetTransformIndex++;
+        // Below its new parent first (that can move its branch, and so the target's place), then
+        // the place read from the target as it is now: after it means after its whole branch, as
+        // a sibling of it. Right after the target itself went between a GameObject with children
+        // and them, which split its branch and lost them from the saved file
+        registry->addEntityChild(newParent, source, true);
+        size_t targetTransformIndex;
+        if (type == InsertionType::AFTER){
+            targetTransformIndex = registry->findBranchLastIndex(target) + 1;
+        }else if (type == InsertionType::INTO){
+            targetTransformIndex = transforms->getIndex(target) + 1;
+        }else{
+            targetTransformIndex = transforms->getIndex(target);
         }
 
         moveEntityOrderByTransform(registry, entities, source, newParent, targetTransformIndex);
