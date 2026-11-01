@@ -624,7 +624,10 @@ S09's; upstream's genuinely new parts sit on top of it.
   categories (`editor`, `build`, `mcp`: `Out::*`, compiler output, the MCP server), so the buffer is
   the game's log as upstream's was (its `Log::*` never saw `Out::*`). `LogEntry` carries the record's `id`
   (S09's, R4), its `category`, its level; `message`/`stackTrace` are split at `stack traceback:` as
-  upstream did. Two small, generic `LogSink` capabilities make this possible:
+  upstream did. The ring and the main thread's pending queue are rings of reused slots (their
+  strings reserved up front, 160 bytes each: about 250 KB for the default 500 lines and the 1,000
+  pending), so a record still costs no heap allocation (R28; `LoggerBench` holds). Two small,
+  generic `LogSink` capabilities make this possible:
   - `resident()`: `Logger::shutdown()` keeps the sink, and records logged before `init()` / after
     `shutdown()` reach it (on the logging thread, with an id, next to the stderr fallback), so
     upstream's "captured from the first line" holds for the whole process;
@@ -667,7 +670,9 @@ S09's; upstream's genuinely new parts sit on top of it.
 - **Tests.** Upstream's `editor/tests/LogListenerTest.cpp`, `editor/tests/DebugSettingsTest.cpp`,
   `engine/tests/htmlui/TestDebugOverlay.cpp` and `tools/mcp/tests/test_debug_overlay.py` run as
   upstream wrote them, adapted where S09 or S15 decide (floods through `"%s"`, frames through
-  `FrameTimes`, the timing budgets of the off-cost test skipped in sanitizer builds).
+  `FrameTimes`, the Async sinks muted during the GPU tests' 100,000-line floods so the queue's
+  drop notice does not join the list, the timing budgets of the off-cost test skipped in sanitizer
+  builds).
   `engine/tests/core/log/LogBufferSinkTest.cpp` checks that the sink gets exactly what another
   Inline sink gets (ids, texts, levels), from six threads at once (each line once, `AnyThread` on its
   own thread, `MainThread` in id order), outside the Logger's lock, before init and after shutdown,

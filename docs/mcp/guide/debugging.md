@@ -214,4 +214,4 @@ does not wait, and only no new call starts. Do not hold a lock the listener take
 | Not enabled | per log line: the log's own cost, then one lock and one copy into the buffer (nothing with a buffer of 0); per frame: a branch per input event (the frame-time ring is the profiler's, recorded anyway) |
 | Enabled, nothing shown | the same; the overlay Scene stays loaded but is neither updated nor drawn |
 | Console open | rows appended as lines come (a full rebuild only when a filter, the search or collapse changes); stats text at 4 Hz and the graph at 10 Hz |
-| Memory | ~500 lines x their length (about 100 KB) plus the overlay document while shown |
+| Memory | the buffer's slots, reserved at start so a line never allocates: about 250 KB for 500 lines and the 1,000 waiting for the main thread (longer lines grow their slot once), plus the overlay document while shown |
