@@ -163,8 +163,11 @@ async def pbr_run(args: argparse.Namespace, run: int) -> tuple[dict, dict]:
     out, dev = {}, {}
     async with Editor(project=Path(args.project).resolve(), label=f"gpu-pbr-{run}", **editor_args(args)) as ed:
         dev = await prepare(ed)
-        for quality in ("standard", "high"):
-            for scene in ["Lit Baseline", *LOBE_BUDGETS, "Lobe Hex", "Terrain Baseline", "Hex Terrain"]:
+        scenes = ["Lit Baseline", *LOBE_BUDGETS, "Lobe Hex", "Terrain Baseline", "Hex Terrain"]
+        if args.scenes:
+            scenes = [scene for scene in scenes if scene in args.scenes.split(",")]
+        for quality in args.qualities.split(","):
+            for scene in scenes:
                 sid = (await ed.call("open_scene", scene=f"{scene}.scene"))["scene"]["id"]
                 await ed.call("set_scene_settings", scene=sid, settings={"lit_quality": quality})
                 got = await play_and_time(ed, f"{scene}.scene", tuple(args.size), args.frames)
@@ -176,11 +179,12 @@ async def pbr_run(args: argparse.Namespace, run: int) -> tuple[dict, dict]:
 def pbr_report(results: dict) -> list[str]:
     rows = ["| Scene | GPU frame, Standard (ms) | vs Lit Baseline | Budget | GPU frame, High (ms) | High / Standard |", "|---|---|---|---|---|---|"]
     base = results.get("standard/Lit Baseline", {}).get("_frame", 0.0)
+    terrain = results.get("standard/Terrain Baseline", {}).get("_frame", 0.0)
     for key in [k for k in results if k.startswith("standard/")]:
         scene = key.split("/", 1)[1]
         std = results[key]["_frame"]
         high = results.get(f"high/{scene}", {}).get("_frame", 0.0)
-        ref = results["standard/Terrain Baseline"]["_frame"] if scene == "Hex Terrain" else base
+        ref = terrain if scene == "Hex Terrain" else base
         ratio = std / ref - 1.0 if ref > 0 else 0.0
         budget = LOBE_BUDGETS.get(scene, 0.35 if scene == "Hex Terrain" else None)
         verdict = "" if budget is None or ratio <= budget else " **over**"
@@ -296,6 +300,8 @@ def main() -> int:
     parser.add_argument("--shadow-memory-mb", type=int, default=0,
                         help="shadows: JASPERENGINE_SHADOW_MEMORY_MB for the editor (the tier's memory row replaced)")
     parser.add_argument("--project", default=str(ROOT / "build" / "pbr-extended"), help="pbr: the generated project")
+    parser.add_argument("--scenes", default="", help="pbr: only these scenes (comma separated names)")
+    parser.add_argument("--qualities", default="standard,high", help="pbr: the Lit qualities")
     parser.add_argument("--size", type=int, nargs=2, default=[1920, 1080], metavar=("W", "H"),
                         help="pbr: the Game view's render size (a bigger one keeps the GPU at its clocks)")
     parser.add_argument("--editor", default="", help="editor binary (default: the harness's)")

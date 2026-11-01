@@ -127,6 +127,9 @@ Json gpuStateJson(const GpuTimingState& state){
         json["reason"] = state.reason;
     if (!state.passReason.empty())
         json["pass_reason"] = state.passReason;
+    // the timer's commits resolved and dropped (and why) since startup: a gap in the times shows here
+    json["commits"] = {{"resolved", state.resolvedCommits}, {"dropped_overflow", state.droppedOverflow},
+                       {"dropped_disjoint", state.droppedDisjoint}, {"dropped_disabled", state.droppedDisabled}};
     return json;
 }
 
@@ -249,7 +252,8 @@ void getFrameTimesTool(const CallPtr& call){
             spikeFrames.push_back(sample.frame);
             if (spikes.size() < 100)
                 spikes.push_back({{"frame", sample.frame}, {"frame_ms", round3(sample.frameMs)}, {"cpu_ms", round3(sample.cpuMs)},
-                                  {"gpu_ms", sample.gpuMs >= 0.0f ? Json(round3(sample.gpuMs)) : Json(nullptr)}});
+                                  {"gpu_ms", sample.gpuMs >= 0.0f ? Json(round3(sample.gpuMs)) : Json(nullptr)},
+                                  {"tool", (sample.flags & FrameTimes::FLAG_HOST_WORK) != 0}});
         }
         std::vector<double> intervals;
         for (size_t i = 1; i < spikeFrames.size(); i++)
@@ -264,7 +268,7 @@ void getFrameTimesTool(const CallPtr& call){
             const FrameTimeSample& sample = samples[i];
             list.push_back({{"frame", sample.frame}, {"frame_ms", round3(sample.frameMs)}, {"cpu_ms", round3(sample.cpuMs)},
                             {"gpu_ms", sample.gpuMs >= 0.0f ? Json(round3(sample.gpuMs)) : Json(nullptr)},
-                            {"draw_calls", sample.drawCalls}});
+                            {"draw_calls", sample.drawCalls}, {"tool", (sample.flags & FrameTimes::FLAG_HOST_WORK) != 0}});
         }
         data["newest"] = list;
     }
@@ -1040,7 +1044,8 @@ void registerProfilerTools(McpRegistry& registry){
         tool.title = "Get Frame Times";
         tool.description =
             "Frame-time history (always on, 600 frames; the editor only counts frames it draws): median/p95/p99/max of frame_ms, "
-            "cpu_ms, gpu_ms, fps over `window`; min_frame_ms lists spikes and spike_interval_frames; `frames` newest samples; "
+            "cpu_ms, gpu_ms, fps over `window`; min_frame_ms lists spikes and spike_interval_frames; `frames` newest samples "
+            "(tool: the frame ran an MCP tool); "
             "`monitors` named series (FPS, Draw calls, VRAM estimated...).";
         tool.inputSchema = object({
             {"window", withDefault(integer("", 1, 600), 300)},

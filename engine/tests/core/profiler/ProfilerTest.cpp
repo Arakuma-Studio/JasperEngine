@@ -296,6 +296,37 @@ TEST_F(Profiler, MonitorsKeepSeries){
     EXPECT_DOUBLE_EQ(series[2], 50.0);
 }
 
+TEST_F(Profiler, GpuTimesOfTheFrameInProgressReachIt){
+    // a light frame's commit can resolve before its frame ends (Vulkan at 1,000+ frames a
+    // second): its times wait for the frame instead of being lost (GPU campaign perf2)
+    nextFrame();
+    const uint64_t current = FrameTimes::currentFrame();
+    profiler::GpuPassSample sample;
+    sample.label = "camera";
+    sample.gpuMs = 0.5;
+    sample.valid = true;
+    profiler::recordGpuFrame(current, 2, 7, &sample, 1, 0.5, true, false);
+    nextFrame();
+    const profiler::Frame* frame = lastFrame();
+    ASSERT_NE(frame, nullptr);
+    ASSERT_EQ(frame->index, current);
+    ASSERT_EQ(frame->gpu.size(), 1u);
+    EXPECT_EQ(frame->gpu[0].label, "camera");
+    EXPECT_EQ(frame->gpu[0].viewTag, 2u);
+    EXPECT_EQ(frame->gpu[0].commit, 7u);
+    EXPECT_DOUBLE_EQ(frame->gpu[0].gpuMs, 0.5);
+
+    // a frame already marked takes its late times as before, and once
+    sample.label = "late";
+    profiler::recordGpuFrame(current, 2, 8, &sample, 1, 0.5, true, false);
+    nextFrame();
+    const profiler::Frame* marked = profiler::findFrame(current);
+    ASSERT_NE(marked, nullptr);
+    ASSERT_EQ(marked->gpu.size(), 2u);
+    EXPECT_EQ(marked->gpu[1].label, "late");
+    EXPECT_TRUE(lastFrame()->gpu.empty());
+}
+
 TEST(FrameTimes, RingKeepsTheNewestFrames){
     FrameTimes::clear();
     for (size_t i = 0; i < FrameTimes::CAPACITY + 10; i++){
@@ -312,6 +343,17 @@ TEST(FrameTimes, RingKeepsTheNewestFrames){
     FrameTimes::setGpuMs(newest.frame, 1.5, true);
     EXPECT_FLOAT_EQ(FrameTimes::latest().gpuMs, 1.5f);
     EXPECT_TRUE(FrameTimes::latest().flags & FrameTimes::FLAG_GPU_SUM);
+}
+
+TEST(FrameTimes, HostWorkMarksItsFrameOnly){
+    // the editor marks the frames an MCP tool ran in (S32 R22 leaves them out)
+    FrameTimes::clear();
+    FrameTimes::beginFrame();
+    FrameTimes::markHostWork();
+    FrameTimes::beginFrame();
+    EXPECT_TRUE(FrameTimes::latest().flags & FrameTimes::FLAG_HOST_WORK);
+    FrameTimes::beginFrame();
+    EXPECT_FALSE(FrameTimes::latest().flags & FrameTimes::FLAG_HOST_WORK);
 }
 
 TEST_F(Profiler, CommandLineCaptureWritesItsFile){

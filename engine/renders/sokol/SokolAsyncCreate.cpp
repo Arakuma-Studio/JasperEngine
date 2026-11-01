@@ -44,6 +44,11 @@ const char* jasperengine::gpuCreationModeName(GpuCreationMode mode){
 }
 
 namespace {
+    // see waitCompileStart (perf2: 5 and 20 ms still overlapped, 60 ms never did)
+    constexpr double COMPILE_START_DELAY_MS = 60.0;
+}
+
+namespace {
 
     using Clock = std::chrono::steady_clock;
 
@@ -143,6 +148,7 @@ namespace {
         uint64_t key = 0;
         uint32_t program = 0;
         sgj_gl_warm_draw draw = {};
+        Clock::time_point start = Clock::now();   // requested (waitCompileStart)
     };
 
     // The worker reaches its job through the task, never through the maps (the render thread
@@ -166,6 +172,8 @@ namespace {
         sgj_async_caps caps = {};
 
         std::unique_ptr<GpuWorkerContext> workerContext;
+        // a creation on the worker starts at least this long after its request (setup)
+        double compileStartDelayMs = 0.0;
         std::thread worker;
         std::mutex mutex;                   // queue, finished and the worker's job fields
         std::condition_variable wake;
@@ -280,6 +288,18 @@ namespace {
 
     // ---------------------------------------------------------------- the worker thread
 
+    // A compile (or warm draw) on the GL worker that starts while the render thread still handles
+    // its request's frames held the render thread's GL calls for ~8-10 ms on NVIDIA, every new
+    // variant; started ~60 ms later it held nothing (GPU campaign perf2, R22 9.1x -> 1.7x:
+    // docs/perf/gpu-campaign.md). A 2 s compile does not notice the wait.
+    void waitCompileStart(const State& s, Clock::time_point requested){
+        if (s.compileStartDelayMs <= 0.0)
+            return;
+        const double waited = msSince(requested);
+        if (waited < s.compileStartDelayMs)
+            std::this_thread::sleep_for(std::chrono::microseconds((int64_t)((s.compileStartDelayMs - waited) * 1000.0)));
+    }
+
     void runTask(State& s, const Task& task){
         JE_PROFILE_SCOPE("GPU create worker");
         if (s.delayMs > 0)
@@ -287,6 +307,7 @@ namespace {
         // the render thread reads the results after the task came back through the mutex
         if (task.kind == Task::Kind::Shader){
             ShaderJob* job = static_cast<ShaderJob*>(task.job);
+            waitCompileStart(s, job->start);
             const Clock::time_point start = Clock::now();
             job->result = sgj_shader_create(job->slot, &job->desc.desc);
             if (s.caps.gl)
@@ -294,11 +315,14 @@ namespace {
             job->createMs = msSince(start);
         }else if (task.kind == Task::Kind::Pipeline){
             PipelineJob* job = static_cast<PipelineJob*>(task.job);
+            waitCompileStart(s, job->start);
             const Clock::time_point start = Clock::now();
             job->result = sgj_pipeline_create(job->slot, &job->desc);
             job->createMs = msSince(start);
         }else{
             const WarmJob* job = static_cast<WarmJob*>(task.job);
+            // a warm draw compiles too (the driver's program for its state): the same wait
+            waitCompileStart(s, job->start);
             {
                 std::unique_lock<std::mutex> lock(s.mutex);
                 // (bounded: a render thread that stopped updating does not hold it forever)
@@ -721,6 +745,12 @@ void SokolAsyncCreate::setup(){
     }
     s.mode = mode;
     s.stats.mode = mode;
+    // GL worker on a hardware GL (measured on NVIDIA; on Vulkan it made no measurable
+    // difference, and software drivers have no such stall); JASPER_GPU_COMPILE_DELAY_MS overrides
+    // (0: none) in any thread mode
+    const char* compileDelay = std::getenv("JASPER_GPU_COMPILE_DELAY_MS");
+    const bool hardwareWorker = mode == GpuCreationMode::GlWorker && !s.caps.gl_software;
+    s.compileStartDelayMs = compileDelay ? std::max(0.0, std::atof(compileDelay)) : (hardwareWorker ? COMPILE_START_DELAY_MS : 0.0);
     s.setUp = true;
     Log::print("[gpu] shader creation: %s", gpuCreationModeName(mode));
     if (s.caps.gl && s.caps.gl_software && mode != GpuCreationMode::GlWorker && mode != GpuCreationMode::Sync)
@@ -1224,22 +1254,46 @@ sg_pipeline SokolAsyncCreate::makePipelineNow(const sg_pipeline_desc& desc){
     return pipeline;
 }
 
+namespace {
+    // a render-thread wait for a creation in flight: in the profile ("GPU create wait") and,
+    // over 20 ms, in the log with what it waited for (a frame stall's cause)
+    void noteWait(const Clock::time_point start, const char* kind, const std::string& label){
+        const double ms = msSince(start);
+        if (ms > 20.0)
+            Log::verbose("[gpu] the render thread waited %.1f ms for %s '%s' being created", ms, kind, label.c_str());
+    }
+}
+
 void SokolAsyncCreate::waitFor(sg_pipeline pipeline){
     State& s = state();
+    if (!(s.setUp && isPending(pipeline)))
+        return;
+    JE_PROFILE_SCOPE("GPU create wait");
+    const Clock::time_point start = Clock::now();
+    auto it = s.pipelines.find(pipeline.id);
+    const std::string label = it != s.pipelines.end() ? it->second->label : std::string();
     while (s.setUp && isPending(pipeline)){
         pump(s, true);
         if (isPending(pipeline))
             std::this_thread::sleep_for(std::chrono::microseconds(200));
     }
+    noteWait(start, "pipeline", label);
 }
 
 void SokolAsyncCreate::waitFor(sg_shader shader){
     State& s = state();
+    if (!(s.setUp && isPending(shader)))
+        return;
+    JE_PROFILE_SCOPE("GPU create wait");
+    const Clock::time_point start = Clock::now();
+    auto it = s.shaders.find(shader.id);
+    const std::string label = (it != s.shaders.end() && it->second->desc.desc.label) ? it->second->desc.desc.label : std::string();
     while (s.setUp && isPending(shader)){
         pump(s, true);
         if (isPending(shader))
             std::this_thread::sleep_for(std::chrono::microseconds(200));
     }
+    noteWait(start, "shader", label);
 }
 
 bool SokolAsyncCreate::isIdle(){

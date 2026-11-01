@@ -57,7 +57,11 @@
     ::jasperengine::profiler::DynScope JE_PROFILE_CONCAT(jeProfileDyn_, __LINE__)(name, __FILE__, (uint32_t)__LINE__, __func__)
 #define JE_PROFILE_THREAD(name) ::jasperengine::profiler::setThreadName(name)
 #define JE_PROFILE_FRAME() do { ::jasperengine::profiler::frameMark(); JE_PROFILE_TRACY_FRAME(); } while (0)
-#define JE_PROFILE_COUNTER(name, value) do { ::jasperengine::profiler::counter(name, (double)(value)); JE_PROFILE_TRACY_PLOT(name, value); } while (0)
+// (the monitor is looked up once per call site: name is a literal; profiler::counter(name, v) for others)
+#define JE_PROFILE_COUNTER(name, value) do { \
+    static const ::jasperengine::profiler::MonitorHandle jeProfileCounter = \
+        ::jasperengine::profiler::monitorHandle(name, ::jasperengine::profiler::MonitorUnit::Quantity); \
+    ::jasperengine::profiler::counter(jeProfileCounter, (double)(value)); JE_PROFILE_TRACY_PLOT(name, value); } while (0)
 #define JE_GPU_ALLOC_SCOPE(category, owner) \
     ::jasperengine::gpumem::Scope JE_PROFILE_CONCAT(jeGpuAlloc_, __LINE__)(::jasperengine::gpumem::Category::category, owner)
 

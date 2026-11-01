@@ -363,6 +363,27 @@ namespace {
         bool hasVram = false;
     };
 
+    struct PendingGpu {
+        uint64_t frame = 0;
+        uint32_t viewTag = 0;
+        uint64_t commit = 0;
+        std::vector<GpuPassSample> passes;
+        double frameGpuMs = 0.0;
+        bool frameValid = false;
+        bool gameFrame = false;
+    };
+
+    void applyGpu(Frame& frame, const PendingGpu& gpu){
+        for (const GpuPassSample& pass : gpu.passes){
+            GpuPassSample sample = pass;
+            sample.viewTag = gpu.viewTag;
+            sample.commit = gpu.commit;
+            frame.gpu.push_back(std::move(sample));
+        }
+        if (gpu.gameFrame && gpu.frameValid)
+            frame.gpuMs = std::max(frame.gpuMs, 0.0) + gpu.frameGpuMs;
+    }
+
     struct State {
         std::deque<Frame> history;
         size_t detailFrames = 300;
@@ -377,6 +398,9 @@ namespace {
         double pairCostNs = 0.0;
         std::string backend;
         std::string device;
+        // GPU times of the frame still being made (a light frame's commit can resolve before
+        // the frame ends, on Vulkan at 1,000+ frames a second): applied when it is marked
+        std::vector<PendingGpu> pendingGpu;
     };
 
     State& state(){
@@ -714,6 +738,21 @@ void profiler::frameMark(){
     frame.cpuMs = timing.cpuMs;
     frame.gpuMs = timing.gpuMs;
     frame.partial = s.partialNext;
+    // the GPU times that arrived while this frame was being made
+    if (!s.pendingGpu.empty()){
+        // (FrameTimes kept the game frame's sum of the same commits: it is added up again here)
+        for (const PendingGpu& gpu : s.pendingGpu){
+            if (gpu.frame == frame.index && gpu.gameFrame && gpu.frameValid)
+                frame.gpuMs = -1.0;
+        }
+        for (const PendingGpu& gpu : s.pendingGpu){
+            if (gpu.frame == frame.index)
+                applyGpu(frame, gpu);
+        }
+        s.pendingGpu.erase(std::remove_if(s.pendingGpu.begin(), s.pendingGpu.end(),
+                                          [&](const PendingGpu& gpu){ return gpu.frame <= frame.index; }),
+                           s.pendingGpu.end());
+    }
     bool exitedAny = false;
     for (ThreadBuffer* buffer : s.drained){
         buffer->intervals.clear();
@@ -797,23 +836,28 @@ void profiler::frameMark(){
 void profiler::recordGpuFrame(uint64_t frameIndex, uint32_t viewTag, uint64_t commit, const GpuPassSample* passes, size_t count,
                               double frameGpuMs, bool frameValid, bool gameFrame){
     State& s = state();
-    auto apply = [&](Frame& frame){
-        for (size_t i = 0; i < count; i++){
-            GpuPassSample sample = passes[i];
-            sample.viewTag = viewTag;
-            sample.commit = commit;
-            frame.gpu.push_back(std::move(sample));
+    PendingGpu gpu;
+    gpu.frame = frameIndex;
+    gpu.viewTag = viewTag;
+    gpu.commit = commit;
+    gpu.passes.assign(passes, passes + count);
+    gpu.frameGpuMs = frameGpuMs;
+    gpu.frameValid = frameValid;
+    gpu.gameFrame = gameFrame;
+    if (s.history.empty() || frameIndex > s.history.back().index){
+        // the frame is not marked yet: its times wait for it (GPU campaign perf2: Vulkan's light
+        // frames resolved in their own frame and were lost, so captures had no Game view)
+        if (s.pendingGpu.size() < 64)
+            s.pendingGpu.push_back(gpu);
+    }else{
+        for (auto it = s.history.rbegin(); it != s.history.rend(); ++it){
+            if (it->index == frameIndex){
+                applyGpu(*it, gpu);
+                break;
+            }
+            if (it->index < frameIndex)
+                break;
         }
-        if (gameFrame && frameValid)
-            frame.gpuMs = std::max(frame.gpuMs, 0.0) + frameGpuMs;
-    };
-    for (auto it = s.history.rbegin(); it != s.history.rend(); ++it){
-        if (it->index == frameIndex){
-            apply(*it);
-            break;
-        }
-        if (it->index < frameIndex)
-            break;
     }
 #if JASPERENGINE_TRACY
     // Tracy: a plot per pass ("GPU/<label>"), no GPU zones; Tracy keeps the name pointers
@@ -834,7 +878,7 @@ void profiler::recordGpuFrame(uint64_t frameIndex, uint32_t viewTag, uint64_t co
             continue;
         for (Frame& frame : capture->frames){
             if (frame.index == frameIndex)
-                apply(frame);
+                applyGpu(frame, gpu);
         }
     }
 }
@@ -1006,6 +1050,7 @@ uint32_t profiler::mainThreadId(){
 void profiler::clearHistory(){
     State& s = state();
     s.history.clear();
+    s.pendingGpu.clear();
     s.partialNext = true;
 }
 

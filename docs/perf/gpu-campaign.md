@@ -83,24 +83,37 @@ why S11 is measured at 4K.
 
 ### S32 asynchronous shaders (R21, R22)
 
-`tools/perf/async_shaders_bench.py --runs 5` (10 toggles, the editor focused and its vsync off).
+`tools/perf/async_shaders_bench.py --runs 5` (10 toggles, the editor focused and its vsync off),
+re-measured in perf2 over every frame of the toggles: the first campaign's capture windows had
+gaps and missed the worst frames, so its GL R22 (16.4x, worst 18.7 ms) was wrong. Frames that ran
+an MCP tool (the edit, the bench's own calls) are apart (`get_frame_times` `tool`). Medians of 5:
 
-| | R21 max main-thread creation (≤ 4 ms) | R22 worst / idle frame (≤ 2) | software (E) |
-|---|---|---|---|
-| GL `worker`, warm draws on (new default) | **0.014 ms** | 16.4 (worst 11-18.7 ms, idle 1.13 ms) | `parallel` 385.7 ms / 10.0 |
-| GL `worker`, warm draws off | 0.015 ms | 15.7 | |
-| GL `parallel` (compile threads fixed) | 8.83 ms | 10.6 | |
-| GL `sync` | 2192 ms | 1477 | 375.5 ms / 12.9 |
-| GL control: the same edits, no creation | 0.011 ms | 8.7 | |
-| Vulkan `thread` | **0.227 ms** | 3.9 (worst 3.7 ms) | 0.105 ms / 16.0 |
-| Vulkan `sync` | 799 ms | 838 | 298.4 ms / 21.3 |
+| | R21 max main-thread creation (≤ 4 ms) | R22 worst / idle frame (≤ 2) |
+|---|---|---|
+| GL `worker`, drivers' shader caches off (every run cold) | **0.016 ms** | 676 (755-828 ms) |
+| GL `worker`, driver cache on (run 1 cold, runs 2-5 warm) | 0.016 ms | **1.69** (a second batch 2.06) |
+| the same before the compile-start delay | 0.014 ms | 9.06 (9-11 ms every toggle) |
+| GL, the same recording with no edit (`--idle`) | | 2.02 |
+| Vulkan `thread` | **0.24 ms** | 3.7 (2.8-4.4 ms) |
+| Vulkan with the GL fix's delay (not kept: no measurable change) | 0.22 ms | 3.0, a second batch 3.7 |
+| Vulkan `--control` / `--idle` | | 1.5 / 2.2 |
+| GL `sync` / Vulkan `sync` (red controls, first campaign) | 2192 / 799 ms | 1477 / 838 |
 
-R21 holds on GL `worker` and Vulkan. R22 does not: on NVIDIA GL the worker's GLSL front end (about
-8 ms per new variant) holds the render thread's GL calls, and an unwarmed first draw compiles
-another ~8 ms; the no-creation control shows that one edit already costs the editor ~10 ms
-against a 1.1 ms idle frame. Fixed: `parallel` mode got no driver compile threads on NVIDIA (a
-2.1 s link on the render thread, now 8.8 ms). Defaults: GL Auto = `worker`, warm draws on for desktop
-GL, off on GLES. Details: `docs/specs/S32-async-shaders.md` (Progress).
+- **NVIDIA GL recompiles every program on the context that first draws it**, ~0.75 s per stage
+  (fragment, then vertex; the driver's debug output: "being recompiled based on GL state ... not
+  found in the disk cache"). Warm draws (on or off), a warm-draw state matched cap for cap,
+  program binaries, `parallel` and `__GL_THREADED_OPTIMIZATIONS` do not avoid it; `sync` pays it
+  inside its 2.1 s link. The driver's disk cache (its default) does: R22 1.69 with it warm.
+- **Fixed: the ~10 ms stall per variant.** A compile or warm draw the GL worker starts within
+  ~50 ms of its request held the render thread's next GL calls for 8-10 ms; the worker now starts
+  it 60 ms after the request (GL 9.06 -> 1.69; hardware GL only).
+- **Vulkan's 3.7** is a few frames per run of 2.5-3.8 ms of main-thread work in the editor's
+  render while the driver compiles a pipeline on the worker; no creation work on the render thread
+  (R21 0.22 ms), the mean frame unchanged, against a noise floor of 2.2 with no edit at all.
+- The 2x bound sits at this machine's own noise at a 1 ms frame (2.0-2.2 with no edit): a revision
+  to max(2x idle, idle + 4 ms) with the driver cache warm is proposed in
+  `docs/specs/S32-async-shaders.md` R22 (pending approval; Vulkan and GL meet it). Details there
+  (Progress, perf2).
 
 ### S10 shadows (AC14)
 
