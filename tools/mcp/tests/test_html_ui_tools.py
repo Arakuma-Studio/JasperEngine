@@ -152,7 +152,7 @@ TOTAL_LIMIT = 108800
 # limits raised by them; measured on the tree merged with main (particles, physics-contacts,
 # platform-services, shader-globals): 153 tools, total 111616 (tool_budget.py), the limit set to it
 LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 2400})
-TOTAL_LIMIT = 111616 + 292  # + ui-multitouch (209) and coroutines (83) from main: provisional, re-measured below
+TOTAL_LIMIT = 111901  # measured on the tree merged with main (94a22289c, + ui-multitouch and coroutines): 153 tools
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
