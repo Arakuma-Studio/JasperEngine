@@ -2609,7 +2609,8 @@ PROPERTY_OVERRIDES = {
     **{('ParticleSystem', _m): ('ParticleSystem' + _m[0].upper() + _m[1:] + 'Module', False) for _m in (
         'main', 'emission', 'shape', 'velocityOverLifetime', 'limitVelocityOverLifetime', 'inheritVelocity',
         'forceOverLifetime', 'colorOverLifetime', 'colorBySpeed', 'sizeOverLifetime', 'sizeBySpeed',
-        'rotationOverLifetime', 'rotationBySpeed', 'noise', 'textureSheetAnimation', 'renderer')},
+        'rotationOverLifetime', 'rotationBySpeed', 'noise', 'textureSheetAnimation', 'collision', 'trails',
+        'customData', 'externalForces', 'renderer')},
     # AnimationEvent.args builds a 1-based table of the event's arguments
     ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
     # ui-multitouch: the GameObjects of a PointerEventData (nil: none)
@@ -2786,6 +2787,21 @@ OVERRIDES[('UIDocument', 'createDataModel')] = {
 OVERRIDES[('UIDocument', 'getDataModel')] = {
     'doc': ['The proxy of a data model this document created, or nil.'],
     'overloads': [([('name', 'string')], 'UIDataModel|nil')]}
+# anim-retarget: addClip's options table, Model:getHumanoidInfo's table (LuaRef in C++)
+OVERRIDES[('AnimationPlayer', 'addClip')] = {
+    'doc': ["Adds a clip entry (an authored change: the next update reloads): an asset-relative .anim or",
+            "\"<model>#<clip>\"; `name` empty or nil = the default state name. `options.retarget` plays a",
+            "generic clip as a humanoid clip, retargeted from its source model; `mirror` / `footIK` apply",
+            "to humanoid clips; `layer` is the entry's layer. False when the state name is taken."],
+    'overloads': [([('path', 'string')], 'boolean'),
+                  ([('path', 'string'), ('name', 'string')], 'boolean'),
+                  ([('path', 'string'), ('name', 'string|nil'),
+                    ('options', '{retarget?: boolean, mirror?: boolean, footIK?: boolean, layer?: integer}')], 'boolean')]}
+OVERRIDES[('Model', 'getHumanoidInfo')] = {
+    'doc': ["The model's humanoid rig (its Avatar): `humanoid` (the bone map is a valid humanoid),",
+            "`animationType` (\"generic\" or \"humanoid\", the .humanoid sidecar's), `humanScale`, the unmapped",
+            "slot names in `missing`, `extraMapped` (fingers, eyes and jaw, of 33) and `error`; nil without bones."],
+    'overloads': [([], '{humanoid: boolean, animationType: string, humanScale: number, missing: string[], extraMapped: integer, error?: string}|nil')]}
 OVERRIDES[('UIClassList', 'add')] = {
     'doc': ['Adds the classes.'], 'overloads': [([('...', 'string')], '')]}
 OVERRIDES[('UIClassList', 'remove')] = {
@@ -3180,6 +3196,9 @@ class Builder:
                             if cn == vname:
                                 v = cv
                                 break
+                if v is None and expr and not qual:
+                    # a literal value (a namespace of plain constants: ParticleSystemStopBehavior)
+                    v = eval_int(expr, {}, self.model)
                 vals.append((name, v, call))
             en.resolved = vals
             en.cpp_enum = cpp_enum
@@ -3201,6 +3220,13 @@ class Builder:
             for call in c.ctors:
                 for targ in call.targs:
                     c.lua_ctors.append(self.ctor_sig(c, targ))
+                # placement lambdas (`[](void* memory, Scene* scene) { return new (memory) T(scene); }`):
+                # the parameters after the memory pointer
+                if not call.targs:
+                    for arg in call.args:
+                        targ = self.lambda_ctor_targ(arg)
+                        if targ is not None:
+                            c.lua_ctors.append(self.ctor_sig(c, targ))
             fs = re.match(r'^FunctionSubscribe<(.*?)\((.*)\)>$', c.cpp) or \
                 re.match(r'^FunctionSubscribe<(.*?)\((.*)\)>$', c.base_cpp or '')
             for m in c.members:
@@ -3211,6 +3237,33 @@ class Builder:
                     self.function_member(c, m)
                 else:
                     self.property_member(c, m)
+
+    @staticmethod
+    def lambda_ctor_targ(arg):
+        # `void (params but the first)` of a placement-new constructor lambda, None for other args
+        if not arg or arg[0].t != '[':
+            return None
+        k = skip_balanced(arg, 0)
+        if k >= len(arg) or arg[k].t != '(':
+            return None
+        e = skip_balanced(arg, k)
+        inner = arg[k + 1:e - 1]
+        depth = 0
+        cut = None
+        for j, tok in enumerate(inner):
+            if tok.t in _OPEN:
+                depth += 1
+            elif tok.t in _CLOSE:
+                depth -= 1
+            elif tok.t == ',' and depth == 0:
+                cut = j
+                break
+        first = inner if cut is None else inner[:cut]
+        if not any(tok.t == 'void' for tok in first) or not any(tok.t == '*' for tok in first):
+            return None
+        rest = [] if cut is None else inner[cut + 1:]
+        line, cond = arg[0].line, arg[0].cond
+        return [Tok('id', 'void', line, cond), Tok('op', '(', line, cond)] + rest + [Tok('op', ')', line, cond)]
 
     def ctor_sig(self, c, targ):
         # `void(A, B)` or `void (*) (A, B)`: the last top-level parenthesized group

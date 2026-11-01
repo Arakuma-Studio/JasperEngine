@@ -4813,52 +4813,52 @@ void SpriteNormalsWindow::handleShortcuts() {
         return;
     }
     if (io.KeyCtrl || io.KeyAlt || io.KeySuper) return;
-    if (ImGui::IsKeyPressed(ImGuiKey_1, false)) setView(View::Color);
-    if (ImGui::IsKeyPressed(ImGuiKey_2, false)) setView(View::Normal);
-    if (ImGui::IsKeyPressed(ImGuiKey_3, false)) setView(View::Lit);
-    if (ImGui::IsKeyPressed(ImGuiKey_4, false)) setView(View::Split);
-    if (ImGui::IsKeyPressed(ImGuiKey_G, false)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_1, false)) setView(View::Color);  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
+    if (ImGui::IsKeyPressed(ImGuiKey_2, false)) setView(View::Normal);  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
+    if (ImGui::IsKeyPressed(ImGuiKey_3, false)) setView(View::Lit);  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
+    if (ImGui::IsKeyPressed(ImGuiKey_4, false)) setView(View::Split);  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
+    if (ImGui::IsKeyPressed(ImGuiKey_G, false)) {  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
         grid = !grid;
         storeSettings();
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_Space, false)) setPlaying(!playing);
+    if (ImGui::IsKeyPressed(ImGuiKey_Space, false)) setPlaying(!playing);  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
     const int count = static_cast<int>(shownCells().size());
-    if (count > 1 && ImGui::IsKeyPressed(ImGuiKey_Comma, true)) setFrame(frame <= 0 ? count - 1 : frame - 1);
-    if (count > 1 && ImGui::IsKeyPressed(ImGuiKey_Period, true)) setFrame((frame + 1) % count);
-    if (ImGui::IsKeyPressed(ImGuiKey_O, false)) setOrbit(!orbit);
-    if (ImGui::IsKeyPressed(ImGuiKey_F, false)) fitRequested = true;
-    if (ImGui::IsKeyPressed(ImGuiKey_0, false)) {
+    if (count > 1 && ImGui::IsKeyPressed(ImGuiKey_Comma, true)) setFrame(frame <= 0 ? count - 1 : frame - 1);  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
+    if (count > 1 && ImGui::IsKeyPressed(ImGuiKey_Period, true)) setFrame((frame + 1) % count);  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
+    if (ImGui::IsKeyPressed(ImGuiKey_O, false)) setOrbit(!orbit);  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
+    if (ImGui::IsKeyPressed(ImGuiKey_F, false)) fitRequested = true;  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
+    if (ImGui::IsKeyPressed(ImGuiKey_0, false)) {  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
         zoom = 1.0f;
         pan = ImVec2(0, 0);
     }
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) pickingRegion = -1;
     // paint: the tools, the fill, mirror, highlight, show, the brush size
-    if (ImGui::IsKeyPressed(ImGuiKey_V, false)) setPaintTool(sn::PaintTool::Navigate);
-    if (ImGui::IsKeyPressed(ImGuiKey_B, false)) setPaintTool(sn::PaintTool::Angle);
-    if (ImGui::IsKeyPressed(ImGuiKey_N, false)) setPaintTool(sn::PaintTool::Flatten);
-    if (ImGui::IsKeyPressed(ImGuiKey_M, false)) setPaintTool(sn::PaintTool::Smooth);
-    if (ImGui::IsKeyPressed(ImGuiKey_E, false)) setPaintTool(sn::PaintTool::Erase);
+    if (ImGui::IsKeyPressed(ImGuiKey_V, false)) setPaintTool(sn::PaintTool::Navigate);  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
+    if (ImGui::IsKeyPressed(ImGuiKey_B, false)) setPaintTool(sn::PaintTool::Angle);  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
+    if (ImGui::IsKeyPressed(ImGuiKey_N, false)) setPaintTool(sn::PaintTool::Flatten);  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
+    if (ImGui::IsKeyPressed(ImGuiKey_M, false)) setPaintTool(sn::PaintTool::Smooth);  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
+    if (ImGui::IsKeyPressed(ImGuiKey_E, false)) setPaintTool(sn::PaintTool::Erase);  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
     sn::PaintBrush b = brush;
     bool brushChanged = false;
-    if (ImGui::IsKeyPressed(ImGuiKey_W, false)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_W, false)) {  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
         b.fill = b.fill == sn::PaintBrush::Fill::Wand ? sn::PaintBrush::Fill::Brush : sn::PaintBrush::Fill::Wand;
         brushChanged = true;
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_X, false)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_X, false)) {  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
         b.mirrorX = !b.mirrorX;
         brushChanged = true;
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_Minus, true)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_Minus, true)) {  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
         b.size--;
         brushChanged = true;
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_Equal, true)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_Equal, true)) {  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
         b.size++;
         brushChanged = true;
     }
     if (brushChanged) setPaintBrush(b);
-    if (ImGui::IsKeyPressed(ImGuiKey_H, false)) highlightPainted = !highlightPainted;
-    if (ImGui::IsKeyPressed(ImGuiKey_P, false)) setShowPaint(!showPaint);
+    if (ImGui::IsKeyPressed(ImGuiKey_H, false)) highlightPainted = !highlightPainted;  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
+    if (ImGui::IsKeyPressed(ImGuiKey_P, false)) setShowPaint(!showPaint);  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
 }
 
 // ====================================================================== show

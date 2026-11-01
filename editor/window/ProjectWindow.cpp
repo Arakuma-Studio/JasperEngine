@@ -12,7 +12,7 @@
 #include "util/PngWriter.h"
 #include "DocumentFile.h"
 #include "audio/AudioMixerDocument.h"
-// SYNC4-ABSORB(retarget): upstream's window/HumanoidConvertDialog.h (Convert to Humanoid Clip) waits for the retarget absorption
+#include "window/HumanoidConvertDialog.h"
 #include "util/BidiText.h"
 
 #include "ImageViewerWindow.h"
@@ -2153,17 +2153,17 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     if (shown) ImGui::Separator();
                 }
 
-#if 0 // SYNC4-ABSORB(retarget): upstream's Convert to Humanoid Clip menu waits for the retarget absorption
                 // a generic .anim as a humanoid clip any humanoid plays (anim-retarget 9; a model's
                 // clips: from its Inspector or a player entry)
                 if (!file.isDirectory && file.type == FileType::ANIMATION_CLIP){
-                    if (ImGui::MenuItem(ICON_FA_PERSON " Convert to Humanoid Clip...")) {
+                    const bool convert = ImGui::MenuItem(ICON_FA_PERSON " Convert to Humanoid Clip...");
+                    uiBuilding.contextMenu.push_back({"Convert to Humanoid Clip...", lastItemRect()});
+                    ImGui::SetItemTooltip("A humanoid clip (rotations relative to the neutral pose) that plays on any humanoid character");
+                    if (convert) {
                         HumanoidConvertDialog::open(project, FileUtils::pathToGenericUtf8((currentPath / file.name).lexically_normal()));
                     }
-                    ImGui::SetItemTooltip("A humanoid clip (rotations relative to the neutral pose) that plays on any humanoid character");
                     ImGui::Separator();
                 }
-#endif
 
                 // a colour LUT: what its double-click does, for the open scene (S13)
                 if (file.type == FileType::COLOR_LUT) {

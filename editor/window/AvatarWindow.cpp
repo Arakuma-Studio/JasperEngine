@@ -422,8 +422,9 @@ void editor::AvatarWindow::setTestClip(const std::string& clip){
     testTime = 0.0f;
     std::snprintf(testClipText, sizeof(testClipText), "%s", clip.c_str());
     if (clip.empty()) return;
-    // played retargeted: a generic clip converts from its source model (anim-retarget 7.4)
-    testLoaded = AnimationClipPool::getOrLoad(clip + "@humanoid", &testError);
+    // played retargeted: a generic clip converts from its source model with the source's maps
+    // (the one retarget path's: what a Retarget entry plays)
+    testLoaded = anim::humanoidClipOf(AnimationClipPool::getOrLoad(clip, &testError), clip, &testError);
     testPoolRevision = AnimationClipPool::revision();
     // the generic clip itself: a model's sub-clip straight from the model (the pool serves the
     // clips of an Animation Type: Humanoid model converted with the saved sidecar)
@@ -456,7 +457,9 @@ std::shared_ptr<const AnimationClip> editor::AvatarWindow::previewClip(){
         if (!testClip.empty() && testPoolRevision != AnimationClipPool::revision()){
             testPoolRevision = AnimationClipPool::revision();
             std::string error;
-            if (std::shared_ptr<const AnimationClip> again = AnimationClipPool::getOrLoad(testClip + "@humanoid", &error)) testLoaded = again;
+            if (std::shared_ptr<const AnimationClip> again = anim::humanoidClipOf(AnimationClipPool::getOrLoad(testClip, &error), testClip, &error)){
+                testLoaded = again;
+            }
         }
         return testLoaded;
     }
@@ -469,13 +472,7 @@ std::shared_ptr<const AnimationClip> editor::AvatarWindow::previewClip(){
     if (!anim::HumanoidSourceCache::get(model, cached, &error) || !cached) return testLoaded;
     // the file's skeleton, bone paths and rest (the sidecar does not change them), the edited rig
     anim::HumanoidSource local = *cached;
-    local.rig = current.rig;
-    local.humanoid = current.humanoid;
-    local.extra = current.extra;
-    local.extraBones.assign(pose::HUMAN_EXTRA_BONE_COUNT, -1);
-    for (int x = 0; x < pose::HUMAN_EXTRA_BONE_COUNT; x++){
-        local.extraBones[(size_t)x] = pose::findSkeletonBone(current.rig->skeleton(), current.extra.bones[(size_t)x]);
-    }
+    anim::setRetargetRig(local, current.rig, current.humanoid, current.extra);
     ClipData converted;
     std::vector<ClipWarning> warnings;
     if (!anim::convertToHumanoid(testBase->toData(), local, converted, warnings, &error)) return testLoaded;

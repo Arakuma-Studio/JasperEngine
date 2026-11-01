@@ -423,8 +423,10 @@ Three ways to get one, nothing is retargeted otherwise (old clips play exactly a
 - **Animation Type: Humanoid** on the source model (Inspector > Model > Rig, stored in its
   `.humanoid` file, Unity's Rig tab). Every `model.glb#Clip` of it is then a humanoid clip, played
   retargeted by any player; Extract to .anim writes the humanoid clip.
-- **Retarget** on a player entry: that generic clip is converted when it loads, from its source
-  model (a model clip's model, or a `.anim`'s source or Preview Model).
+- **Retarget** on a player entry: that generic clip plays retargeted from its source model (a
+  model clip's model, or a `.anim`'s source or Preview Model), read through the source's rig as it
+  plays, exactly as the Animator retargets (one retarget path: the same clip and options give the
+  same pose on both; Animator states have Mirror, Foot IK and Retarget too).
 - **Convert to Humanoid Clip...** (the `.anim`'s Project menu, the clip asset Inspector, a player
   entry's clip menu) writes an editable humanoid `.anim` (`<name> (Humanoid).anim`); from an entry,
   **Use in this player** switches it in the same undo step. The Pose window's **Bake > Bake to
@@ -742,7 +744,7 @@ before every MCP call), and the open window, the Inspector and running players p
 | `tracks[]` | `path`, `channel`, `keys`; optional `relative` (position, rotation, scale only) and `loop` (the track's keys repeat inside a longer clip) |
 | `events[]` | `time`, `function` (a Lua identifier, not a keyword), `args` (at most 8 numbers, strings, booleans) |
 | `preview.model` | editor only: the model or prefab (asset-relative) to preview on when no GameObject is bound |
-| `source` | written by Extract, Convert and Bake (`{"kind": "model" / "entity" / "pose", "path", "name"}`); ignored at runtime, except that a Retarget entry converts a `.anim` from its `source.path` model when `kind` is `model` (else from its `preview.model`) |
+| `source` | written by Extract, Convert and Bake (`{"kind": "model" / "entity" / "pose", "path", "name"}`); ignored at runtime, except that a Retarget entry (or an Animator) retargets a `.anim` from its `source.path` model when `kind` is `model` (else from its `preview.model`) |
 | `humanoid` | humanoid clips: `{"source_model", "human_scale"}` of the rig it was made on (informational: the reports' scale ratio) |
 
 Channels and values:

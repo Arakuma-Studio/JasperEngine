@@ -117,11 +117,23 @@ from scripts (`setIKTarget`). Each constraint has a weight and an optional weigh
 ## Humanoids and retargeting
 
 A model whose bones map to the 22 humanoid slots is a humanoid (the Animator's Avatar section
-shows it; **Configure Avatar...** opens the bone mapping, saved in the model's `.humanoid` file).
-A humanoid clip made on another humanoid model plays **retargeted**: each slot's rotation is moved
-from the source rig's frames to the target's, and the hips' movement is scaled by the rigs'
-sizes, so a Mixamo walk plays on a Rigify robot. Set **Retarget** to Off to bind by bone path
-only.
+shows it; **Configure Avatar...** opens the Avatar Configuration window: the body, finger, eye and
+jaw mapping, twist corrections and a retargeted test clip, saved in the model's `.humanoid` file;
+the Model Inspector's **Rig** foldout opens it too and sets the model's **Animation Type**).
+A clip made on another humanoid model plays **retargeted**: each slot's rotation is moved from the
+source rig's frames to the target's (a slot the target lacks folds into the next one it has), the
+fingers, eyes and jaw follow, and the hips' movement is scaled by the rigs' sizes, so a Mixamo
+walk plays on a Rigify robot. Set **Retarget** to Off to bind by bone path only. **Humanoid clips**
+(`.anim` version 2, from **Convert to Humanoid Clip...**, **Bake to Humanoid Clip** or a model
+whose Animation Type is Humanoid) play on any humanoid Animator.
+
+A state's **Mirror** swaps left and right, **Foot IK** makes the feet reach the clip's foot goals
+(no sliding when the legs are longer or shorter), and **Retarget** retargets its clips even when
+the Animator's Retarget is Off; a blend tree child's Mirror flips its state's. They play the
+state's clips through the humanoid path, so they need a humanoid avatar. The Animation Player's
+Retarget, Mirror and Foot IK entries go through the very same path: one clip with the same options
+gives the same pose on both. (The **Foot IK** IK constraint below is another thing: it grounds the
+feet on colliders after every layer.)
 
 ## Performance
 

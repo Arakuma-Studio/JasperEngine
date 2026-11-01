@@ -1496,6 +1496,8 @@ void registerProjectTools(McpRegistry& registry) {
             {"overwrite", boolean("")}
         }, {"action"});
         tool.handler = nativePluginsTool;
+        // plugins/native is a build input of the players (S31: outside the default listing)
+        tool.group = "shipping";
         registry.addTool(std::move(tool));
     }
 

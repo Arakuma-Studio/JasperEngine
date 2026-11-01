@@ -6,8 +6,10 @@ Mask, a weight), a state machine per layer (states, sub-state machines, Entry / 
 transitions with conditions, exit times and interruption), blend trees (1D, 2D simple
 directional, 2D freeform directional and cartesian, direct), montages on slots, an IK stack and
 root motion. Its clips are the Animation Player's: `.anim` files and model clips
-`assets/models/hero.gltf#Walk` (`jasper://docs/animation`). A humanoid clip made on another
-humanoid model plays retargeted (the models' `.humanoid` maps, `jasper://docs/pose-animation`).
+`assets/models/hero.gltf#Walk` (`jasper://docs/animation`). A clip made on another
+humanoid model plays retargeted, and humanoid clips (`.anim` version 2) play on any humanoid: the
+one retarget path the Animation Player's Retarget entries use too (the models' `.humanoid`
+Avatars, `set_humanoid`; humanoid clips: `jasper://docs/animation`).
 
 The Animation Player stays the simple path (a list of clips played by name, on layers with masks:
 `jasper://docs/animation`); the Animator is the state machine. Both can sit on one GameObject: the
@@ -47,7 +49,7 @@ unknown keys and the undo history).
 |---|---|
 | `add_parameter` / `set_parameter` / `remove_parameter` / `rename_parameter` | `name`, `type` (float, int, bool, trigger), `default`, `new_name` (a rename follows into conditions, trees and state multipliers; a removal takes the conditions reading it and clears the trees and multipliers) |
 | `add_layer` / `set_layer` / `remove_layer` | `name`, `weight`, `blending` (override, additive), `mask` (.mask path or null), `slot` (montage slot); the last layer stays |
-| `add_state` / `set_state` / `remove_state` | `name`, `layer`, `machine` ("Combat/Inner"), `clip` or `blend_tree`, `position`, `speed`, `speed_parameter`, `time_parameter`, `cycle_offset`, `loop` (inherit, loop, once, ping_pong, clamp_forever, repeat), `tag`, `additive_reference` (first_frame, rest, time, clip: the .anim's own), `additive_time`, `default: true`; a removal takes the transitions into it |
+| `add_state` / `set_state` / `remove_state` | `name`, `layer`, `machine` ("Combat/Inner"), `clip` or `blend_tree`, `position`, `speed`, `speed_parameter`, `time_parameter`, `cycle_offset`, `loop` (inherit, loop, once, ping_pong, clamp_forever, repeat), `tag`, `additive_reference` (first_frame, rest, time, clip: the .anim's own), `additive_time`, `mirror`, `foot_ik`, `retarget` (humanoid playback: left/right swapped, the feet to the clip's foot goals, retargeted even with the Animator's retarget off), `default: true`; a removal takes the transitions into it |
 | `add_sub_state_machine` / `remove_sub_state_machine` | `name`, `layer`, `machine`, `position` |
 | `add_transition` / `set_transition` / `remove_transition` | `from` (a state, `Any State`, `Entry`, `Exit:<machine>`), `to` (a state, a sub-state machine, `Exit`, `/State` from the layer root), `index`, `conditions [{parameter, mode, threshold}]`, `has_exit_time`, `exit_time`, `fixed_duration`, `duration`, `offset`, `interruption_source` (none, current, next, current_then_next, next_then_current), `ordered_interruption`, `can_transition_to_self`, `mute` |
 | `set_default_state` | `name`, `layer`, `machine` |
@@ -58,8 +60,8 @@ Condition modes: `if` / `if_not` (bool, trigger), `greater` / `less` (float, int
 
 A blend tree: `{type: "simple_1d", parameter: "Speed", children: [{clip, threshold}, ...]}`;
 2D types take `parameter`, `parameter_y` and children `position: [x, y]`; `direct` children take
-a `direct_parameter` (their weight); `time_scale` per child; a child may be a nested
-`blend_tree`. At most 32 children.
+a `direct_parameter` (their weight); `time_scale` and `mirror` (flips the state's) per child;
+a child may be a nested `blend_tree`. At most 32 children.
 
 `from_player: <entity>` adds a state per clip of that GameObject's Animation Player (its default
 clip the default state, its layers as layers with their weights, blends and masks): the upgrade
@@ -92,7 +94,8 @@ what the root's player or Animator binds.
 **Version 1 files** (S21's earlier masks and controllers, and upstream's anim-layers files, which
 share the header) are read by their members and converted: upstream's flat `states` /
 `transitions` nest into state machines, `humanoid` parts and `transforms` become `body_parts` and
-`paths` (upstream's arm also weighs the hand), members nobody reads are kept. Reads say
+`paths` (upstream's arm also weighs the hand), a state's `mirror` / `foot_ik` / `retarget` and a
+child's `mirror` become the same S21 fields, members nobody reads are kept. Reads say
 `read_as` (`s21_v1`, `upstream_v1`); the next save writes version 2 with every member kept.
 
 `edit_montage {path, create, clip, slot, rate, blend_in {time, ease}, blend_out, sections [{name,

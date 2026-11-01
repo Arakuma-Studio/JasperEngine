@@ -1,24 +1,23 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// SYNC4-ABSORB(retarget): parked here (not built) until the retarget absorption: it needs upstream's
-// AvatarMask / AvatarMaskPool layers (converted onto S21 and deleted); its place is engine/tests/core/animation/
-
 // Humanoid retargeting on the pose-animation fixture models (anim-retarget spec 14, tests 1, 2,
 // 11, 12): the glTF skeleton equals the loaded model's, a converted clip played on its own rig
 // reproduces the source, Animation Type: Humanoid models serve humanoid clips, the robot plays
-// the hero's walk with matching joint angles, "@humanoid" without a source model fails, and a
-// masked humanoid layer over a generic walk.
+// the hero's walk with matching joint angles, a Retarget entry without a source model fails, and
+// a masked humanoid layer over a generic walk. On S21's one retarget path: a Retarget entry reads
+// its generic clip through the source model at play time (no "@humanoid" pool conversion), and
+// the masks are S21's (.mask version 2).
 
 #include <gtest/gtest.h>
 
-#include "../../core/animation/AnimTestEnvironment.h"
+#include "AnimTestEnvironment.h"
 
 #include "Scene.h"
 #include "animation/AnimationClip.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimationPlayerRuntime.h"
-#include "animation/AvatarMask.h"
+#include "animation/AnimatorAssetIO.h"
 #include "animation/ClipBinding.h"
 #include "animation/HumanoidClip.h"
 #include "animation/KeyframeSampling.h"
@@ -28,7 +27,7 @@
 #include "object/AnimationPlayer.h"
 #include "object/Model.h"
 #include "pool/AnimationClipPool.h"
-#include "pool/AvatarMaskPool.h"
+#include "pool/AnimatorAssetPool.h"
 #include "pose/ModelRig.h"
 #include "pose/PoseMath.h"
 #include "subsystem/ActionSystem.h"
@@ -62,14 +61,14 @@ namespace {
             dir = "models/humanoid" + std::to_string(run++) + "/";
             hero = dir + "hero_animated.gltf";
             robot = dir + "robot_apose.gltf";
-            animtest::writeAsset(hero, readFile(std::string(ANIM_POSE_FIXTURE_MODELS_DIR) + "/hero_animated.gltf"));
-            animtest::writeAsset(robot, readFile(std::string(ANIM_POSE_FIXTURE_MODELS_DIR) + "/robot_apose.gltf"));
+            animtest::writeAsset(hero, readFile(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models") + "/hero_animated.gltf"));
+            animtest::writeAsset(robot, readFile(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models") + "/robot_apose.gltf"));
             AnimationClipPool::clear();
-            AvatarMaskPool::clear();
+            AnimatorAssetPool::clear();
         }
         void TearDown() override {
             AnimationClipPool::clear();
-            AvatarMaskPool::clear();
+            AnimatorAssetPool::clear();
         }
 
         Entity load(const std::string& path){
@@ -405,10 +404,8 @@ TEST_F(HumanoidModel, HumanoidModelsServeHumanoidClips){
     ASSERT_TRUE(walk) << error;
     EXPECT_TRUE(walk->isHumanoid());
     EXPECT_EQ(walk->getHumanoidInfo().sourceModel, hero);
-    // "@humanoid" of a humanoid clip is the clip
-    std::shared_ptr<const AnimationClip> again = AnimationClipPool::getOrLoad(hero + "#Walk@humanoid", &error);
-    ASSERT_TRUE(again) << error;
-    EXPECT_TRUE(again->isHumanoid());
+    // a humanoid clip as a humanoid clip is the clip itself
+    EXPECT_EQ(anim::humanoidClipOf(walk, hero + "#Walk", &error), walk);
 
     // the robot plays it: the left upper leg's angles match the hero's (0.1 degree), no NaN
     const Entity heroEntity = load(hero);
@@ -451,23 +448,41 @@ TEST_F(HumanoidModel, RetargetWithoutASourceModelFails){
     data.tracks.push_back(track);
     animtest::writeAsset(dir + "nosource.anim", anim::writeClip(data));
     std::string error;
-    EXPECT_FALSE(AnimationClipPool::getOrLoad(dir + "nosource.anim@humanoid", &error));
+    std::shared_ptr<const AnimationClip> plain = AnimationClipPool::getOrLoad(dir + "nosource.anim", &error);
+    ASSERT_TRUE(plain) << error;
+    EXPECT_FALSE(anim::clipRetargetSource(*plain, dir + "nosource.anim", &error));
     EXPECT_EQ(error, "retarget: the clip names no source model (set its Preview Model)");
 
-    // with a preview model it converts, and an edit of the file drops the conversion
+    // a Retarget entry of it: the state reports it and binds nothing
+    const Entity entity = load(robot);
+    {
+        AnimationPlayer player(&scene, entity);
+        AnimationClipOptions options;
+        options.retarget = true;
+        ASSERT_TRUE(player.addClip(dir + "nosource.anim", "NoSource", options));
+        player.setPlayAutomatically(true);
+        step(0.0);
+        step(0.1);
+        EXPECT_EQ(player.getStateInfo("NoSource").error, "retarget: the clip names no source model (set its Preview Model)");
+    }
+
+    // with a preview model it retargets; its source rig is rebuilt after an edit of the model's sidecar
     data.previewModel = hero;
     animtest::writeAsset(dir + "withsource.anim", anim::writeClip(data));
-    std::shared_ptr<const AnimationClip> converted = AnimationClipPool::getOrLoad(dir + "withsource.anim@humanoid", &error);
+    std::shared_ptr<const AnimationClip> withSource = AnimationClipPool::getOrLoad(dir + "withsource.anim", &error);
+    ASSERT_TRUE(withSource) << error;
+    std::shared_ptr<const anim::RetargetSource> source = anim::clipRetargetSource(*withSource, dir + "withsource.anim", &error);
+    ASSERT_TRUE(source) << error;
+    EXPECT_EQ(anim::clipRetargetSource(*withSource, dir + "withsource.anim", &error), source) << "cached";
+    std::shared_ptr<const AnimationClip> converted = anim::humanoidClipOf(withSource, dir + "withsource.anim", &error);
     ASSERT_TRUE(converted) << error;
     EXPECT_TRUE(converted->isHumanoid());
-    const uint64_t generation = AnimationClipPool::getGeneration(dir + "withsource.anim@humanoid");
-    AnimationClipPool::invalidate(dir + "withsource.anim");
-    EXPECT_NE(AnimationClipPool::getGeneration(dir + "withsource.anim@humanoid"), generation);
-    EXPECT_FALSE(AnimationClipPool::get(dir + "withsource.anim@humanoid"));
-    // and an edit of its source model's sidecar too
-    ASSERT_TRUE(AnimationClipPool::getOrLoad(dir + "withsource.anim@humanoid", &error)) << error;
+    animtest::writeAsset(hero + ".humanoid", "{\"format\": \"jasperengine.humanoid\", \"version\": 2, \"bones\": {}, \"twist\": {\"left_lower_arm\": 10}}");
     AnimationClipPool::invalidateModel(hero);
-    EXPECT_FALSE(AnimationClipPool::get(dir + "withsource.anim@humanoid"));
+    std::shared_ptr<const anim::RetargetSource> again = anim::clipRetargetSource(*withSource, dir + "withsource.anim", &error);
+    ASSERT_TRUE(again) << error;
+    EXPECT_NE(again, source) << "a sidecar edit builds the source rig again";
+    EXPECT_NEAR(again->rig->twist(HumanBone::LeftLowerArm), 10.0f, 1e-4f);
 }
 
 // ---- the player: a retargeted entry, test 12 (layers) ----
@@ -488,13 +503,17 @@ TEST_F(HumanoidModel, RetargetedEntryPlaysOnTheRobot){
     EXPECT_GE(info.humanoidBones, 20u);
     EXPECT_TRUE(player.getState("Walk").isHumanoid());
 
-    // the bones show the realised walk
+    // the bones show the realised walk (the generic walk read through the hero's rig)
     const anim::HumanoidSlots slots = anim::resolveHumanoidSlots(&scene, entity);
     ASSERT_TRUE(slots.target);
-    std::shared_ptr<const AnimationClip> clip = AnimationClipPool::getOrLoad(hero + "#Walk@humanoid");
+    std::shared_ptr<const AnimationClip> clip = AnimationClipPool::getOrLoad(hero + "#Walk");
     ASSERT_TRUE(clip);
+    EXPECT_FALSE(clip->isHumanoid()) << "a Retarget entry loads the clip as it is";
+    std::string sourceError;
+    std::shared_ptr<const anim::RetargetSource> source = anim::retargetSource(hero, &sourceError);
+    ASSERT_TRUE(source) << sourceError;
     anim::HumanoidBinding binding;
-    ASSERT_TRUE(anim::bindHumanoidClip(*clip, slots.target, binding));
+    ASSERT_TRUE(anim::bindHumanoidClip(*clip, slots.target, binding, source));
     anim::sampleHumanoidBinding(*clip, binding, player.getState("Walk").getTime(), nullptr);
     for (const anim::HumanoidOutput& output : binding.outputs){
         const Transform& transform = scene.getComponent<Transform>(output.entity);
@@ -515,11 +534,12 @@ TEST_F(HumanoidModel, RetargetedEntryPlaysOnTheRobot){
 
 TEST_F(HumanoidModel, MaskedHumanoidLayerOverAGenericWalk){
     const Entity entity = load(hero);
-    anim::AvatarMaskData maskData;
+    // upstream's right_arm (which held the hand bone) is right_arm + right_hand on S21's masks
+    anim::AvatarMaskDef maskData;
     maskData.defaultWeight = 0.0f;
-    maskData.hasHumanoid = true;
-    maskData.parts[(size_t)anim::AvatarMaskPart::RightArm] = 1.0f;
-    animtest::writeAsset(dir + "rightarm.mask", anim::writeAvatarMask(maskData));
+    maskData.bodyParts[(int)AvatarBodyPart::RightArm] = 1.0f;
+    maskData.bodyParts[(int)AvatarBodyPart::RightHand] = 1.0f;
+    animtest::writeAsset(dir + "rightarm.mask", anim::writeMask(maskData));
 
     scene.addComponent<AnimationPlayerComponent>(entity, AnimationPlayerComponent());
     AnimationPlayerComponent& component = scene.getComponent<AnimationPlayerComponent>(entity);
@@ -546,10 +566,13 @@ TEST_F(HumanoidModel, MaskedHumanoidLayerOverAGenericWalk){
 
     const anim::HumanoidSlots slots = anim::resolveHumanoidSlots(&scene, entity);
     ASSERT_TRUE(slots.target);
-    std::shared_ptr<const AnimationClip> clip = AnimationClipPool::getOrLoad(hero + "#Wave 2@humanoid");
+    std::shared_ptr<const AnimationClip> clip = AnimationClipPool::getOrLoad(hero + "#Wave 2");
     ASSERT_TRUE(clip);
+    std::string sourceError;
+    std::shared_ptr<const anim::RetargetSource> source = anim::retargetSource(hero, &sourceError);
+    ASSERT_TRUE(source) << sourceError;
     anim::HumanoidBinding binding;
-    ASSERT_TRUE(anim::bindHumanoidClip(*clip, slots.target, binding));
+    ASSERT_TRUE(anim::bindHumanoidClip(*clip, slots.target, binding, source));
     anim::sampleHumanoidBinding(*clip, binding, player.getState("Wave 2").getTime(), nullptr);
     const Entity rightForearm = slots.target->slotEntities[(size_t)boneIndex(HumanBone::RightLowerArm)];
     const Entity leftThigh = slots.target->slotEntities[(size_t)boneIndex(HumanBone::LeftUpperLeg)];
@@ -609,7 +632,10 @@ TEST_F(HumanoidModel, PerformanceBudget){
     ASSERT_TRUE(anim::convertToHumanoid(data, *source, converted, warnings, &error));
     const double convertMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     std::printf("convert a 3 s clip: %.2f ms\n", convertMs);
+#ifdef NDEBUG
+    // timings hold in optimized builds only (the sanitizer builds are Debug)
     EXPECT_LT(convertMs, 5.0);
+#endif
 
     // 30 characters with one humanoid state each and Foot IK: the realisation per frame
     const Entity entity = load(hero);

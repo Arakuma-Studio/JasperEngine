@@ -53,6 +53,7 @@ namespace jasperengine::editor{
     public:
         static constexpr const char* WINDOW_NAME = "Animator";
 
+        // (the Pose Animation window is no longer needed: Configure Avatar... opens the Avatar window)
         AnimatorWindow(Project* project, PoseAnimationWindow* poseWindow);
         ~AnimatorWindow();
 
@@ -152,7 +153,6 @@ namespace jasperengine::editor{
         };
 
         Project* project;
-        PoseAnimationWindow* poseWindow;
         bool windowOpen = false;
         bool windowFocused = false;
         bool focusRequest = false;

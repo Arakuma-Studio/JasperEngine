@@ -216,7 +216,7 @@ bool animlayersui::maskFromSelection(EntityRegistry* registry, Entity root, cons
 
 anim::ControllerDef animlayersui::controllerFromClips(const AnimationPlayerComponent& player){
     anim::ControllerDef data;
-    // SYNC4-ABSORB(retarget): upstream's per-state retarget/mirror/footIK copied from the player entries waits for the retarget absorption (appendPlayerStates)
+    // each state takes its entry's Retarget, Mirror and Foot IK (appendPlayerStates)
     appendPlayerStates(data, player);
     anim::normalizeController(data, nullptr);
     return data;

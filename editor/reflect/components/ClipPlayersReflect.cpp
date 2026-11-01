@@ -58,6 +58,13 @@ namespace {
                  .tooltip = "Default: the clip's own."),
         // the index of its layer in the player's layers (out of range: the base layer)
         JE_FIELD(AnimationPlayerClip, layer, .flags = OmitIfDefault, .updateFlags = kPlayerReload, .tooltip = "The layer this state plays on."),
+        // humanoid playback (upstream's anim-retarget, on S21's one retarget path): written when true
+        JE_FIELD(AnimationPlayerClip, retarget, .flags = OmitIfDefault, .updateFlags = kPlayerReload,
+                 .tooltip = "Play a generic clip retargeted from its source model."),
+        JE_FIELD(AnimationPlayerClip, mirror, .flags = OmitIfDefault, .updateFlags = kPlayerReload,
+                 .tooltip = "Humanoid playback: left and right swapped."),
+        JE_FIELD(AnimationPlayerClip, footIK, .flags = OmitIfDefault, .updateFlags = kPlayerReload, .label = "Foot IK",
+                 .tooltip = "Humanoid playback: the feet reach the clip's foot goals."),
     };
 
     // an authored layer (upstream anim layers spec 6.3, 7.1): layers[0] is the base layer (its

@@ -27,9 +27,10 @@
 //     ordered); upstream's defaults made explicit (has_exit_time true, Any State
 //     can_transition_to_self true); "wrap" -> "loop" (default -> inherit, loop -> repeat,
 //     ping_pong, once, clamp_forever); additive references -> "clip" (the .anim's own
-//     additive_reference, upstream's rule); "speed" of a child -> time_scale; "mirror",
-//     "foot_ik", "retarget" and "automate_thresholds" (read and ignored by upstream's runtime)
-//     -> unknown keys of the state / child / tree; graph positions kept (a state without one
+//     additive_reference, upstream's rule); "speed" of a child -> time_scale; a state's "mirror",
+//     "foot_ik", "retarget" and a child's "mirror" -> S21's state / child fields of the same
+//     names (anim-retarget's humanoid playback, on the one retarget path); "automate_thresholds"
+//     -> an unknown key of the tree; graph positions kept (a state without one
 //     gets a grid place). Names S21 reserves ("Entry", "Exit", "Any State") or with '/' or '.'
 //     are renamed by S21's normalization with a warning.
 //   * mask: "default" -> default; "humanoid" parts -> body_parts (<side>_arm also weighs the

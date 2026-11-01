@@ -126,7 +126,7 @@ TEST_F(AnimatorRetargeting, CrossAxisConvention){
     EXPECT_LE(worst, 5.0f) << "hand and foot directions follow the source";
     // the hips move by the source's offset, scaled by the rigs' sizes
     const AnimatorInstance& r = instance(robot);
-    EXPECT_GT(r.humanoid.rig.humanScale(), 0.0f);
+    EXPECT_GT(r.humanoid.rig->humanScale(), 0.0f);
 }
 
 namespace {

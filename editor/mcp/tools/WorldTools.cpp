@@ -5691,14 +5691,10 @@ void registerWorldTools(McpRegistry& registry) {
     // a key takes the channel-specific keys too (in/out tangents...): free-form, said so (S31)
     openKeyItem["additionalProperties"] = true;
     add("edit_animation", "Edit Animation",
-        "Keyframes in seconds. clip (.anim): a shared clip file, tracks by path from the GameObject whose "
-        "Animation Player plays it; create {from?: entity Animation or \"model.gltf#Walk\"}; root checks paths "
-        "(bindings); a project undo step (from an Animation, or a model clip with root: scene). Without clip: an entity Animation (creates one under target), tweens, "
-        "actions; a scene step. tracks: keys {time, value|points, ease} of local position/scale, rotation, "
-        "morph weights, lattice points or a component property (channel property: component, property); the same "
-        "path|target+channel replaces or merges. Humanoid: create.humanoid {model?} converts from; tracks {channel: "
-        "humanoid|humanoid_position, bone, keys}. "
-        "Guide: jasper://docs/animation.",
+        "Keyframes in seconds (guide: jasper://docs/animation). clip (.anim): tracks by path from the root whose "
+        "Animation Player plays it; create {from?, humanoid {model?}}; one project undo step. No clip: an entity "
+        "Animation under target (tweens, actions; a scene step). tracks: channel + keys {time, value|points, ease}; "
+        "property: component + property; humanoid: bone.",
         object({
             {"scene", sceneRef()},
             {"clip", assetPath("")},
@@ -5714,7 +5710,7 @@ void registerWorldTools(McpRegistry& registry) {
                 {"component", string("")},
                 {"property", string("")},
                 {"bone", string("")},
-                {"target", entityRef("Default: target.")},
+                {"target", entityRef("")},
                 {"start_time", number("")},
                 {"mode", withDefault(stringEnum("", {"replace", "merge"}), "replace")},
                 {"loop", boolean("")},
@@ -5725,23 +5721,23 @@ void registerWorldTools(McpRegistry& registry) {
             {"events_mode", withDefault(stringEnum("", {"replace", "merge"}), "replace")},
             {"wrap", stringEnum("", {"once", "loop", "ping_pong", "clamp_forever"})},
             {"frame_rate", number("")},
-            {"length", number("-1: auto.")},
+            {"length", number("")},
             {"tweens", array(object({
                 {"type", stringEnum("", {"position", "rotation", "scale", "color", "alpha"})},
                 {"from", any("")}, {"to", any("")},
-                {"duration", number("> 0.")}, {"ease", string("")}, {"loop", boolean("")},
+                {"duration", number("")}, {"ease", string("")}, {"loop", boolean("")},
                 {"ping_pong", boolean("")}, {"spin", boolean("")}, {"axis", any("")}, {"angle", number("")},
-                {"start_time", number("")}, {"target", entityRef("Default: target.")},
+                {"start_time", number("")}, {"target", entityRef("")},
                 {"name", string("")}
             }, {"type"}), "")},
             {"add_actions", array(object({{"action", entityRef()}, {"start_time", number("")},
-                                          {"duration", number("0 = own.")}, {"lane", integer("")}}, {"action"}), "")},
+                                          {"duration", number("")}, {"lane", integer("")}}, {"action"}), "")},
             {"set_frames", array(object({{"index", integer("")}, {"start_time", number("")},
-                                         {"duration", number("0 = auto.")}, {"lane", integer("")}}, {"index"}), "")},
+                                         {"duration", number("")}, {"lane", integer("")}}, {"index"}), "")},
             {"remove_actions", array(integerItem, "")},
             {"delete_removed", withDefault(boolean(""), true)},
             {"loop", boolean("")},
-            {"duration", number("-1: until actions end.")},
+            {"duration", number("")},
             {"speed", number("")},
             {"autoplay", boolean("")},
             {"max_keys", withDefault(integer("Per track."), 20)}
@@ -5749,12 +5745,11 @@ void registerWorldTools(McpRegistry& registry) {
         editAnimationTool, false, false);
 
     add("get_animation", "Get Animation",
-        "entity: an Animation's timeline (loop, duration, autoplay, target, actions with kind, keys or tween "
-        "values), or for another GameObject the animations targeting it or its children (model clips too) and "
-        "the Animation Player playing it (states, layers, mask coverage, bindings; live in play). clip (.anim or "
-        // SYNC4-ABSORB(retarget): upstream's "(humanoid: retarget_report, realised at times)" after root: bindings
-        // waits for the retarget absorption
-        "\"model.gltf#Walk\"): settings, tracks, events, users; times: values sampled there; root: bindings; "
+        "entity: an Animation's timeline (loop, duration, autoplay, target, actions with kind, keys/tween "
+        "values), or for a GameObject the animations on it or below (model clips too) and "
+        "its Animation Player (states, layers, mask coverage, bindings; live in play). clip (.anim or "
+        "\"model.gltf#Walk\"): settings, tracks, events, users; times: sampled values; root: bindings (humanoid: "
+        "retarget_report, realised); "
         "root + list_properties (a path): its animatable properties. "
         "mask (.mask; root: coverage) or controller (.controller summary).",
         object({

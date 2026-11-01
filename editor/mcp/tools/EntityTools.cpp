@@ -1228,21 +1228,22 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "create_entity";
         tool.title = "Create Entity";
         tool.description =
-            "GameObject > Create in one step: parent, name, local transform, components, values ({component: "
+            "GameObject > Create in one step: parent, name (default: the type's Unity name), local transform, extra "
+            "components, values ({component: "
             "{property: value}} or set_properties changes). empty: Transform only; bare: "
             "no components (root only); model: a project .gltf/.glb/.obj/.fbx; lattice: fitted and bound to "
             "targets; *_tween/*_tracks: animation actions.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"type", withDefault(stringEnum("", types), "empty")},
-            {"name", string("Default: the type's Unity name.")},
+            {"name", string("")},
             {"parent", entityRef()},
             {"position", vec3("")},
             {"rotation", quat()},
             {"scale", vec3("")},
             {"model", assetPath("")},
             {"targets", entities()},
-            {"components", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}, {"description", "Extra components."}}},
+            {"components", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}}},
             {"values", anyObject("")},
             {"changes", array(anyObject(""), "")},
             {"select", withDefault(boolean(""), true)}

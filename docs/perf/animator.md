@@ -59,6 +59,15 @@ about 0.1 ms of headroom: an earlier batch while E was busy with another job mea
 3.7 ms, so gate it on an idle server. After the S18 / BF8 merge (2026-10-30, five runs): p95 2.37 ms
 (2.33-2.45), serial p95 5.95 ms, 0 allocations; `check_bench.py`: all budgets hold.
 
+After the retarget absorption (2026-11-01, `absorb/retarget`: one retarget path for the Animator
+and the Animation Player, humanoid clips, state Mirror / Foot IK; E idle, five runs, medians with
+the range): Crowd200 p95 2.23 ms (2.18-2.30), p50 2.08 ms, main thread p95 0.28 ms (0.28-0.29),
+serial p95 5.43 ms (4.69-5.65), 0 allocations; one 65-bone clip sample 1.75 µs, the 128-bone
+blend 0.67 µs (40 x scalar), state-machine update 0.04 µs, runtime state 5 000 B;
+`check_bench.py`: all budgets hold in every run. The crowd does not retarget: the absorption's
+only cost on its path is a branch per clip sample (a retargeted clip slot), which the numbers do
+not show.
+
 Where the serial time goes (p50, 4.90 ms in all): the IK about 1.1 ms (the 400 raycasts run on the
 main thread in prepare), the upper and additive layers 0.2 ms, the crossfading quarter 0.4 ms,
 root motion 0.35 ms; the base tree of 5 clips with the rig space, the skins and the writes

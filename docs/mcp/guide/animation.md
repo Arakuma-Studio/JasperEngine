@@ -459,9 +459,11 @@ set:
   model: "assets/models/hero.gltf", animation_type: "humanoid"}]}` (no `path`: an Avatar-only edit,
   one project step). Every `hero.gltf#Clip` then plays retargeted;
 - a player entry's `retarget`: `set_properties {entity: "Robot", values: {animationplayer:
-  {"clips[0].retarget": true}}}` converts that clip at load from its source model (a model clip's
+  {"clips[0].retarget": true}}}` plays that clip retargeted from its source model (a model clip's
   model, an `.anim`'s `source.path` or `preview.model`; without one the state fails with "the clip
-  names no source model");
+  names no source model"), read through the source's rig as it plays: the Animator's path, which
+  retargets another humanoid's clip by itself (its `retarget` auto) and has the same `mirror`,
+  `foot_ik` and `retarget` per state (jasper://docs/animator);
 - a converted file: `edit_animation {clip: "assets/anim/wave_h.anim", create: {from:
   "assets/anim/wave.anim", humanoid: {model?: "assets/models/hero.gltf"}}}` (the rig it was made
   on; default its model, source or preview model). The result's `humanoid` lists mapped and
@@ -507,13 +509,14 @@ a slot's neutral pose about its direction); twists change the model's pose anima
 Without `clip`, edit_animation edits an Animation GameObject (`animation`, or `target` to create
 one): `tracks` as above but with `target` (a GameObject; default `target`) instead of `path` and
 an optional `start_time`; `tweens: [{type, from, to, duration, ease, loop, ping_pong, ...}]`:
-`type` position, rotation, scale, color or alpha; `from` defaults to the target's current value;
+`type` position, rotation, scale, color or alpha; `duration` > 0; `from` defaults to the target's current value;
 `ping_pong` goes there and back in twice the duration; a rotation tween with `spin: true` turns
 `from` by `angle` degrees (default 360) around `axis` (default `[0, 1, 0]`) instead of reaching
 `to` (for turns over 180 degrees, instead of middle keys); a track's `loop` starts it over after
 its last key; a `relative` track there offsets from the target's pose when it starts (an
-anchored UI element moves by its layout offset). `add_actions` nests existing actions;
-`set_frames` / `remove_actions` use the indices before the call; `loop`, `duration` (-1: until
+anchored UI element moves by its layout offset). `add_actions` nests existing actions (`duration`
+0: the action's own); `set_frames` (`duration` 0: automatic) / `remove_actions` use the indices
+before the call; `loop`, `duration` (-1: until
 the actions end), `autoplay`, `speed` set the Animation. One scene undo step per call.
 
 ## Common mistakes

@@ -196,9 +196,9 @@ TEST(ControllerIO, UpstreamControllerConvertsCanonicalAndLenient){
     ASSERT_TRUE(base.states[0].motion.isTree());
     EXPECT_EQ(base.states[0].motion.tree[0].children[0].motion.clip.path, "walk.anim") << "children sorted by threshold";
     EXPECT_EQ(base.states[0].position, Vector2(10, 20));
-    bool footIK = false;
-    for (const auto& kept : base.states[0].unknownKeys) footIK = footIK || (kept.first == "foot_ik" && kept.second == "true");
-    EXPECT_TRUE(footIK) << "upstream's pass-through flags are kept";
+    // upstream's humanoid flags: S21's state fields (the retarget absorption), not unknown keys
+    EXPECT_TRUE(base.states[0].footIK) << "upstream's state flags are kept";
+    for (const auto& kept : base.states[0].unknownKeys) EXPECT_NE(kept.first, "foot_ik");
     EXPECT_EQ(base.states[1].loop, AnimatorStateLoop::Once);
     EXPECT_EQ(base.states[1].speed, 2.0f);
     EXPECT_EQ(base.anyStatePosition, Vector2(1, 2));

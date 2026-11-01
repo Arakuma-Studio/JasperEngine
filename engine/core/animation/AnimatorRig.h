@@ -184,8 +184,9 @@ namespace jasperengine::anim{
         size_t boundCount = 0;
         size_t trackCount = 0;          // sampled tracks of the clip
 
-        // main thread (property keys are interned)
-        void bind(const std::shared_ptr<const AnimationClip>& clip, const AnimatorRig& rig);
+        // main thread (property keys are interned). `include` (per clip track, may be null): only
+        // the tracks it marks (a retargeted clip's generic tracks); humanoid tracks never bind by path
+        void bind(const std::shared_ptr<const AnimationClip>& clip, const AnimatorRig& rig, const std::vector<uint8_t>* include = nullptr);
     };
 
     // A sampling cursor set (one KeyCursor per group of a binding)

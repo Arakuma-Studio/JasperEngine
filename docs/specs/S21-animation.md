@@ -76,7 +76,7 @@ SIMD, the S06 job system). Old scenes play exactly as before.
 
 **Out of scope**
 - GPU/compute animation sampling (README: no compute requirement).
-- Humanoid muscle space, mirroring, sync layers, Unity `.controller`/`.anim` import (README: no
+- Humanoid muscle space (mirroring arrived with upstream's anim-retarget, §12), sync layers, Unity `.controller`/`.anim` import (README: no
   Unity importer), ragdolls, clip compression, property/sprite-frame curves, VRM/KHR humanoid
   extensions, rate LOD by screen height.
 - OpenEngine's graph runtime, editor panels, retarget nodes (README do-not-copy: their editor UI
@@ -166,8 +166,10 @@ gets no entry from this stream.
   parameter; targets settable from Lua/MCP.
 - **R12 Humanoid retargeting.** A clip whose source model (`model#clip`'s model; a `.anim`'s
   `source.path` or `preview.model`) is another humanoid model than the Animator's plays through
-  D12 retargeting (slots + hips). `retarget: Off` disables. Avatar = upstream humanoid detection
-  + `.humanoid` sidecar of the Animator's model.
+  D12 retargeting (slots + hips; with §12: fingers, eyes, jaw, folded slots, humanoid clips,
+  state Mirror / Foot IK). `retarget: Off` disables. Avatar = upstream humanoid detection
+  + `.humanoid` sidecar of the Animator's model. The Animation Player retargets through the same
+  path (§12 "Retargeting").
 - **R13 Modes.** Update: Normal, AnimatePhysics (evaluated in FixedUpdate), UnscaledTime. Culling:
   AlwaysAnimate, CullUpdateTransforms (time, states, events and root motion advance; sampling, IK,
   skinning skipped when none of its meshes was visible last frame), CullCompletely.
@@ -628,3 +630,78 @@ through the handover). Editor: `AnimationLayersEditor`, `AnimationLayersUi`, `An
 `AnimatorWindow` (upstream's window tests on S21's window), `StreamMigrations.SceneV5ToV6*`. MCP:
 `test_animation_layers.py`, `test_animator_controller.py`, `test_animator_window.py`,
 `test_checks.py` (`--anims`).
+
+### Retargeting (anim-retarget)
+
+Upstream's anim-retarget (`docs/superpowers/specs/2026-10-31-anim-retarget-design.md`) made the
+Animation Player retarget through its own path: generic clips converted to humanoid clips in the
+clip pool (`"<clip>@humanoid"`) and realised on the player's rig, with humanoid clips, Avatars,
+Mirror and Foot IK. S21's retargeting wins, and there is **one retarget path** for the Animator
+and the Animation Player: `animation/AnimatorRetarget.{h,cpp}`. A clip becomes a
+`HumanoidSample` (a humanoid clip's tracks, or a generic clip read at play time through its
+source model's `RetargetSource`: D12's source half, `E = A_s * local * B_s`), and
+`realiseHumanoid` poses the target (D12's target half, `left_t * E * neutral_t`), then the
+Animator writes its rig's pose (`writeRealised`) and the player its bone entities
+(`HumanoidBinding` outputs). Nothing else turns clip values into another rig's bones: the pool's
+`@humanoid` form is gone (a Retarget entry loads its clip as it is), and Convert to Humanoid Clip
+writes keys with the very source maps the play-time path applies (a converted clip and its generic
+original play the same, `HumanoidRetargetTest` checks it on every conversion).
+
+**Absorbed from upstream, on that path.**
+- Humanoid clips (`.anim` version 2: `humanoid` / `humanoid_position` tracks, `{"angles"}` keys,
+  the `humanoid` header): the Animator plays them (`AnimatorRig`'s sampler leaves humanoid tracks
+  to the path; their generic tracks bind by path), as does the player.
+- The Avatar (`.humanoid` version 2: `animation_type`, `extra_bones`, `twist`): the Animator's
+  avatar is its model's `RetargetSource` (the skin skeleton of `pose::buildSkeletonFromGltf` with
+  its bridges, the sidecar's bones, extra bones and twist corrections), mapped onto the rig's bones
+  by path (deviation 7), else one built from the rig's own bones. Fingers, eyes and jaw retarget;
+  a slot the target lacks folds into its next present one (S21 dropped it); a slot the clip lacks
+  is neutral; an Animation Type: Humanoid model serves humanoid clips (the pool's conversion).
+- Mirror and Foot IK: S21 state fields `mirror`, `foot_ik` and `retarget` (written when true;
+  upstream's state flags convert into them, no longer unknown keys) and a blend child's `mirror`
+  (it flips its state's). A state with any of them plays its clips through the humanoid path
+  whenever the Animator has an avatar (its own model's clips read through the avatar), so Mirror
+  works on the model's own clips (deviation 9 below); `retarget` retargets whatever the Animator's
+  Retarget (a migrated upstream controller has the Animator's Retarget Off, as upstream played
+  it, and keeps its states' Retarget). A clip used by states that ask for the path and by states
+  that do not gets one clip slot of each (`CompiledController::clipHumanoid`). The Animator
+  window's state inspector has Retarget / Mirror / Foot IK, the blend tree table a Mirror column;
+  "Create Animator Controller from Clips" copies each entry's flags onto its state; MCP
+  `edit_animator_controller` takes `mirror`, `foot_ik`, `retarget` on states and `mirror` on
+  children, `get_animator` lists them; Lua `AnimatorStateInfo.mirror` / `.footIK`.
+- The Avatar Configuration window and the Model Inspector's Rig foldout (upstream's), now also
+  what the Animator drawer's **Configure Avatar...** opens; Convert to Humanoid Clip (the Project
+  window's `.anim` menu too) and Bake to Humanoid Clip; Lua `Model:getHumanoidInfo`; MCP
+  `set_humanoid` Avatar fields, humanoid tracks in `edit_animation`, `get_animation`'s
+  `retarget_report` and `realised` (computed through the play-time binding of the entry).
+
+**Lost in the merge, restored.** The player entries' `retarget` / `mirror` / `footIK` were on
+`AnimationPlayerClip` but not in the scene codec (`StreamComponents.cpp`: an upstream scene's
+flagged entries loaded unflagged and a save dropped them), the S08 tables (`set_properties
+clips[i].retarget` was refused) or the exported Factory code (exported games played them as
+generic entries); `RuntimeFields.gen.inc` and `docs/mcp/TOOLS.md` are regenerated.
+
+**Rules and deviations.**
+9. Mirror and Foot IK apply whenever the Animator has a humanoid avatar (Unity: every clip of a
+   humanoid avatar is humanoid); upstream applied them to humanoid clips and Retarget entries only
+   (its player keeps that rule: a generic entry without Retarget ignores them).
+10. A state's Foot IK solves per sample before blending (upstream's order: the same pose on both
+    players), with the pose system's limb IK; it is not the IK stack's FootIK constraint (ground
+    raycasts after every layer, R11).
+11. A Retarget entry retargets at play time: no conversion wait (H9), the source rig built on the
+    first bind (cached per model and sidecar text) and rebuilt after a sidecar edit; a missing
+    source model fails the state ("retarget: the clip names no source model (set its Preview
+    Model)") and binds nothing.
+12. The Animator binds a retargeted generic clip's generic tracks (props, unmapped leaf bones)
+    by path only; the player also tries a unique bone name (upstream's 7.6).
+
+**Tests.** Core: `AnimatorHumanoid` (written red first, commit "Retarget absorption, red": the
+Animator left the robot at rest on a humanoid clip, on an Animation Type: Humanoid model's clips
+and on upstream's state Mirror / Foot IK / Retarget, ignored the Avatar's twist, dropped the
+hero's upper chest instead of folding it and left the fingers at rest; then each matches the
+Animation Player within 0.05 degrees and 0.1 mm), its lossless-file tests (upstream controllers
+with the flags, the earlier absorption's unknown-key form, `.anim` v2 and `.humanoid` v2 round
+trips), `HumanoidRetargetTest` and `HumanoidModelTest` (upstream's, un-parked: play time and
+conversion agree, S21 masks for the masked humanoid layer, a Retarget entry without a source
+model), `AnimatorRetargeting` (AC7 unchanged). Editor: `AnimatorEditor` (the player's flags on
+the states), upstream's `HumanoidRetargetEditor`. MCP: `test_animation_retarget.py`.

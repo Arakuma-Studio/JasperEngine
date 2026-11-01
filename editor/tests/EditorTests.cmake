@@ -12,9 +12,6 @@ file(GLOB_RECURSE EDITOR_TEST_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_LIST_DIR}/*Test.cpp
     ${CMAKE_CURRENT_LIST_DIR}/support/*.cpp
     ${CMAKE_CURRENT_LIST_DIR}/reflect/legacy/*.cpp)
-# SYNC4-ABSORB: upstream's tests of features still being absorbed wait in sync4-absorb/
-# until their absorption ports them; not built meanwhile
-list(FILTER EDITOR_TEST_SOURCES EXCLUDE REGEX "/sync4-absorb/")
 # the reflection codec's benchmark against the legacy codecs (docs/specs/S08-reflection.md R17)
 list(APPEND EDITOR_TEST_SOURCES ${CMAKE_SOURCE_DIR}/tools/performance/reflect_codec.cpp)
 

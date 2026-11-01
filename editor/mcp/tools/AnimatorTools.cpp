@@ -350,6 +350,13 @@ bool readTree(Project* project, const ControllerDef& def, const Json& value, Ble
             }
             child.timeScale = c.value("time_scale", 1.0f);
             child.directParameter = c.value("direct_parameter", std::string());
+            if (c.contains("mirror")) {
+                if (!c["mirror"].is_boolean()) {
+                    error = "a child's \"mirror\" must be a boolean";
+                    return false;
+                }
+                child.mirror = c["mirror"].get<bool>();
+            }
             tree.children.push_back(std::move(child));
         }
     }
@@ -380,6 +387,7 @@ Json motionJson(const MotionDef& motion) {
             else if (tree.type == BlendTreeType::Direct) c["direct_parameter"] = child.directParameter;
             else c["position"] = {child.position.x, child.position.y};
             if (child.timeScale != 1.0f) c["time_scale"] = child.timeScale;
+            if (child.mirror) c["mirror"] = true;
             children.push_back(c);
         }
         Json out = {{"type", blendTreeTypeName(tree.type)}, {"parameter", tree.parameter}, {"children", children}};
@@ -422,6 +430,9 @@ Json machineJson(const StateMachineDef& machine) {
         if (s.loop != AnimatorStateLoop::Inherit) state["loop"] = stateLoopName(s.loop);
         if (!s.tag.empty()) state["tag"] = s.tag;
         if (s.cycleOffset != 0.0f) state["cycle_offset"] = s.cycleOffset;
+        if (s.mirror) state["mirror"] = true;
+        if (s.footIK) state["foot_ik"] = true;
+        if (s.retarget) state["retarget"] = true;
         states.push_back(state);
     }
     Json subs = Json::array();
@@ -746,6 +757,10 @@ bool applyStateFields(Project* project, const ControllerDef& def, const Json& op
         }
     }
     if (op.contains("additive_time")) s.additiveTime = op["additive_time"].get<float>();
+    // humanoid playback (the one retarget path)
+    if (op.contains("mirror")) s.mirror = op["mirror"].get<bool>();
+    if (op.contains("foot_ik")) s.footIK = op["foot_ik"].get<bool>();
+    if (op.contains("retarget")) s.retarget = op["retarget"].get<bool>();
     return true;
 }
 
@@ -797,7 +812,7 @@ bool checkOpFields(const Json& op, std::string& error) {
         {"loop", Str}, {"tag", Str}, {"additive_reference", Str}, {"additive_time", Num}, {"from", Str}, {"to", Str},
         {"index", Num}, {"conditions", Arr}, {"has_exit_time", Bool}, {"exit_time", Num}, {"fixed_duration", Bool},
         {"duration", Num}, {"offset", Num}, {"interruption_source", Str}, {"ordered_interruption", Bool},
-        {"can_transition_to_self", Bool}, {"mute", Bool}, {"motion", Obj}};
+        {"can_transition_to_self", Bool}, {"mute", Bool}, {"motion", Obj}, {"mirror", Bool}, {"foot_ik", Bool}, {"retarget", Bool}};
     for (auto it = op.begin(); it != op.end(); ++it) {
         auto found = std::find_if(fields.begin(), fields.end(), [&](const auto& f) { return it.key() == f.first; });
         if (found == fields.end()) {

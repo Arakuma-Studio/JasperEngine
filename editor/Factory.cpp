@@ -2509,6 +2509,10 @@ std::string editor::Factory::createAnimationPlayerComponent(int indentSpaces, En
         if (!entry.name.empty()) code << ind << target << ".name = " << formatString(entry.name) << ";\n";
         if (entry.wrap != ClipWrapMode::Default) code << ind << target << ".wrap = " << formatClipWrapMode(entry.wrap) << ";\n";
         if (entry.layer != 0) code << ind << target << ".layer = " << entry.layer << ";\n";
+        // humanoid playback (anim-retarget 7.1): an exported Retarget entry retargets as in the editor
+        if (entry.retarget) code << ind << target << ".retarget = true;\n";
+        if (entry.mirror) code << ind << target << ".mirror = true;\n";
+        if (entry.footIK) code << ind << target << ".footIK = true;\n";
     }
     // the layers (upstream anim layers spec 6.3): masks load by path, their GUIDs are the editor's
     if (!player.layers.empty()) code << ind << "animationplayer.layers.resize(" << player.layers.size() << ");\n";

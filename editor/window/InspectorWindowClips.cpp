@@ -455,13 +455,13 @@ namespace jasperengine::editor{
         Entity humanoidRoot = NULL_ENTITY;
         uint64_t humanoidRevision = 0;
         uint64_t humanoidPool = 0;
-        // a retarget entry's conversion ("<clip>@humanoid"): polled, never a blocking build in
-        // the draw; a failure is kept until the pool changes or a second passed
+        // a Retarget entry's source model rig (the one retarget path reads its clip through it):
+        // looked up once per pool change; a failure is kept until the pool changes or a second passed
         struct ConversionEntry{
-            std::shared_ptr<const AnimationClip> clip;
+            std::shared_ptr<const anim::RetargetSource> source;
+            std::string error;
             uint64_t pool = 0;
             double retryAt = 0.0;
-            bool loading = false;
         };
         std::map<std::string, ConversionEntry> conversions;
 
@@ -1403,22 +1403,29 @@ void editor::InspectorWindow::drawAnimationPlayerBindings(SceneProject* scenePro
             }
             // a humanoid (or retargeted) state: the rig it plays on (anim-retarget 9)
             std::shared_ptr<const AnimationClip> humanoidClip;
+            std::shared_ptr<const anim::RetargetSource> retargetSource;
+            std::string retargetError;
             if (row.document->data().isHumanoid()) humanoidClip = row.document->clip();
-            else if (clips[i].retarget){
-                const std::string key = anim::retargetPoolKey(clips[i].clip, true);
-                InspectorClipState::ConversionEntry& conversion = state.conversions[key];
+            else if (clips[i].retarget && row.document->clip()){
+                InspectorClipState::ConversionEntry& conversion = state.conversions[clips[i].clip];
                 const double now = ImGui::GetTime();
-                if (conversion.loading || conversion.pool != AnimationClipPool::revision() || (!conversion.clip && now >= conversion.retryAt)){
-                    bool loading = false;
-                    conversion.clip = AnimationClipPool::pollOrLoad(key, loading);
-                    conversion.loading = loading;
+                if (conversion.pool != AnimationClipPool::revision() || (!conversion.source && now >= conversion.retryAt)){
+                    conversion.error.clear();
+                    conversion.source = anim::clipRetargetSource(*row.document->clip(), clips[i].clip, &conversion.error);
                     conversion.pool = AnimationClipPool::revision();
                     conversion.retryAt = now + CLIP_RETRY_SECONDS;
                 }
-                if (state.conversions.size() > 256) state.conversions.clear();
-                else humanoidClip = conversion.clip;
+                if (state.conversions.size() > 256){
+                    state.conversions.clear();
+                }else if (conversion.source){
+                    humanoidClip = row.document->clip();
+                    retargetSource = conversion.source;
+                }else{
+                    retargetError = conversion.error;
+                }
             }
-            if (humanoidClip && humanoidClip->isHumanoid()){
+            if (!retargetError.empty()) ImGui::TextColored(warning, ICON_FA_TRIANGLE_EXCLAMATION " %s", retargetError.c_str());
+            if (humanoidClip && (humanoidClip->isHumanoid() || retargetSource)){
                 if (!state.humanoidRig || state.humanoidRoot != entity || state.humanoidRevision != sceneProject->scene->hierarchyRevision() ||
                     state.humanoidPool != AnimationClipPool::revision()){
                     state.humanoidRig = std::make_shared<anim::HumanoidSlots>(anim::resolveHumanoidSlots(sceneProject->scene, entity));
@@ -1436,9 +1443,9 @@ void editor::InspectorWindow::drawAnimationPlayerBindings(SceneProject* scenePro
                     if (model == NULL_ENTITY) ImGui::SetItemTooltip("No skinned Model on or under this GameObject");
                 }else{
                     anim::HumanoidBinding binding;
-                    anim::bindHumanoidClip(*humanoidClip, state.humanoidRig->target, binding);
+                    anim::bindHumanoidClip(*humanoidClip, state.humanoidRig->target, binding, retargetSource);
                     const float scale = state.humanoidRig->target->rig->humanScale();
-                    const float source = humanoidClip->getHumanoidInfo().humanScale;
+                    const float source = retargetSource ? retargetSource->rig->humanScale() : humanoidClip->getHumanoidInfo().humanScale;
                     ImGui::TextColored(Theme::Colors::SubtleText, ICON_FA_PERSON " Humanoid on %s (human scale %.3f%s)",
                                        FileUtils::pathToUtf8(FileUtils::pathFromUtf8(state.humanoidRig->target->modelPath).filename()).c_str(), scale,
                                        source > 0.0f ? (", " + inspectorclips::formatRatio(scale / source) + "x the source's").c_str() : "");
