@@ -2078,6 +2078,82 @@ OVERRIDES.update({
         'overloads': [([('source?', _INPUT_SOURCE)], '')]},
 })
 
+# Shader (CoreClassesLua.cpp): global shader values (Unity's Shader.SetGlobal* / PropertyToID),
+# read by shaders declaring u_vs_globals / u_fs_globals members (or a texture uniform) of the name
+_GLOBAL = 'string|integer'
+OVERRIDES.update({
+    ('Shader', 'propertyToID'): {
+        'doc': ['A stable id of the global `name` for this run (Unity\'s Shader.PropertyToID): pass it instead of the name.'],
+        'overloads': [([('name', 'string')], 'integer')]},
+    ('Shader', 'setGlobalFloat'): {
+        'doc': ['Sets a float global (a vector global takes (value, 0, 0, 0)); false when it is a matrix, array or texture.'],
+        'overloads': [([('name', _GLOBAL), ('value', 'number')], 'boolean')]},
+    ('Shader', 'setGlobalInt'): {
+        'doc': ['As setGlobalFloat: the integer is stored as a float (Unity\'s SetGlobalInt).'],
+        'overloads': [([('name', _GLOBAL), ('value', 'integer')], 'boolean')]},
+    ('Shader', 'setGlobalVector'): {
+        'doc': ['Sets a vector global (missing components 0; a float global takes x).'],
+        'overloads': [([('name', _GLOBAL), ('value', 'Vector4|Vector3|Vector2')], 'boolean')]},
+    ('Shader', 'setGlobalColor'): {
+        'doc': ['Sets a colour global from sRGB (stored linear, alpha as is; a Vector3 is opaque).'],
+        'overloads': [([('name', _GLOBAL), ('color', 'Vector4|Vector3')], 'boolean')]},
+    ('Shader', 'setGlobalMatrix'): {
+        'doc': ['Sets a matrix4 global (only a matrix global takes it).'],
+        'overloads': [([('name', _GLOBAL), ('value', 'Matrix4')], 'boolean')]},
+    ('Shader', 'setGlobalFloatArray'): {
+        'doc': ['Sets the elements of a float array global (1..64; a first set fixes the size, longer ones are truncated).'],
+        'overloads': [([('name', _GLOBAL), ('values', 'number[]')], 'boolean')]},
+    ('Shader', 'setGlobalVectorArray'): {
+        'doc': ['Sets the elements of a vector4 array global (1..64; a first set fixes the size).'],
+        'overloads': [([('name', _GLOBAL), ('values', '(Vector4|Vector3|Vector2)[]')], 'boolean')]},
+    ('Shader', 'setGlobalTexture'): {
+        'doc': ['Sets a texture global: a Texture, an image path or a Framebuffer (a render target); nil restores its default.'],
+        'overloads': [([('name', _GLOBAL), ('texture', 'Texture|string|Framebuffer|nil')], 'boolean')]},
+    ('Shader', 'getGlobalFloat'): {
+        'doc': ['The global\'s value (a vector\'s x); nil when it does not exist or is a matrix or texture.'],
+        'overloads': [([('name', _GLOBAL)], 'number?')]},
+    ('Shader', 'getGlobalInt'): {
+        'doc': ['getGlobalFloat as an integer.'],
+        'overloads': [([('name', _GLOBAL)], 'integer?')]},
+    ('Shader', 'getGlobalVector'): {
+        'doc': ['The global\'s value (an array\'s element 0); nil when it does not exist or is a matrix or texture.'],
+        'overloads': [([('name', _GLOBAL)], 'Vector4?')]},
+    ('Shader', 'getGlobalColor'): {
+        'doc': ['getGlobalVector as sRGB (alpha as is).'],
+        'overloads': [([('name', _GLOBAL)], 'Vector4?')]},
+    ('Shader', 'getGlobalMatrix'): {
+        'doc': ['A matrix4 global\'s value; nil for any other.'],
+        'overloads': [([('name', _GLOBAL)], 'Matrix4?')]},
+    ('Shader', 'getGlobalFloatArray'): {
+        'doc': ['An array global\'s elements (x of each); nil when it is not an array.'],
+        'overloads': [([('name', _GLOBAL)], 'number[]?')]},
+    ('Shader', 'getGlobalVectorArray'): {
+        'doc': ['An array global\'s elements; nil when it is not an array.'],
+        'overloads': [([('name', _GLOBAL)], 'Vector4[]?')]},
+    ('Shader', 'getGlobalTexture'): {
+        'doc': ['The texture a texture global holds; nil for none (its fallback binds) or another kind.'],
+        'overloads': [([('name', _GLOBAL)], 'Texture?')]},
+    ('Shader', 'hasGlobal'): {
+        'doc': ['Whether the global exists (declared in Project Settings, or set by a script).'],
+        'overloads': [([('name', _GLOBAL)], 'boolean')]},
+    ('Shader', 'getGlobalNames'): {
+        'doc': ['The globals that exist: the declared ones first, then the ones scripts made.'],
+        'overloads': [([], 'string[]')]},
+})
+for _owner in ('Material', 'Image', 'Text', 'Polygon', 'Points', 'LineRenderer', 'Skybox', 'TrailRenderer'):
+    OVERRIDES[(_owner, 'setShaderGlobalBinding')] = {
+        'doc': ['Makes the shader parameter `member` follow the global shader value `global` (Shader.setGlobal*),',
+                'over its own value; nil unbinds. False when nothing changed.' + (' Then mesh:setMaterial(m).' if _owner == 'Material' else '')],
+        'overloads': [([('member', 'string'), ('global', 'string|nil')], 'boolean')]}
+    OVERRIDES[(_owner, 'getShaderGlobalBinding')] = {
+        'doc': ['The global `member` follows, nil when it has its own value.'],
+        'overloads': [([('member', 'string')], 'string?')]}
+OVERRIDES[('Scene', 'setPostProcessGlobalBinding')] = {
+    'doc': ['Makes the u_fs_postParams member of pass `index` follow a global shader value; nil unbinds.'],
+    'overloads': [([('index', 'integer'), ('member', 'string'), ('global', 'string|nil')], 'boolean')]}
+OVERRIDES[('Scene', 'getPostProcessGlobalBinding')] = {
+    'doc': ['The global the pass member follows, nil when none.'],
+    'overloads': [([('index', 'integer'), ('member', 'string')], 'string?')]}
 # Canvas Group fades (ui canvas group spec 7.6): AlphaTweens on the group from its current alpha
 OVERRIDES[('CanvasGroup', 'fadeTo')] = {
     'doc': ['Fades the group from its current alpha to `alpha` in `duration` seconds (LeanTween.alphaCanvas,',

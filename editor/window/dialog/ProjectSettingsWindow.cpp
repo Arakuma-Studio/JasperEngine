@@ -4,6 +4,8 @@
 #include "ProjectSettingsWindow.h"
 #include "util/FileDialogs.h"
 #include "Backend.h"
+#include "App.h"
+#include "util/Util.h"
 #include "window/Widgets.h"
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
@@ -11,6 +13,8 @@
 #include "window/PlayInput.h"
 #include "imgui_internal.h"
 #include "command/type/InputActionsCmd.h"
+#include "command/type/ShaderGlobalsCmd.h"
+#include "util/Color.h"
 #include "input/InputActions.h"
 #include "input/InputControlNames.h"
 
@@ -147,7 +151,8 @@ static const settingsui::Category projectCategories[] = {
                    "google admob ads app id other settings network allow insecure http downloads over http cleartext "
                    "internet access permission"},
     {"Graphics", "", "canvas width height scaling mode texture strategy reference resolution runtime shader compilation variants "
-                     "html ui msaa anti-aliasing antialiasing"},
+                     "html ui msaa anti-aliasing antialiasing shader globals global uniforms setglobal property id u_vs_globals "
+                     "u_fs_globals glsl block"},
     {"Quality", "", "vsync"},
     {"Physics", "", "3d physics jolt rigidbody"},
     {"Physics 2D", "", "2d physics box2d rigidbody 2d"},
@@ -989,6 +994,10 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_inputSelected = std::clamp(m_inputSelected, 0, std::max(0, static_cast<int>(m_inputActions.size()) - 1));
     m_inputSearch[0] = '\0';
     m_inputListen = InputListen();
+
+    m_globalsEdit.begin(project);
+    m_shaderGlobalUsesScanned = false;
+    m_shaderGlobalRemove = -1;
 }
 
 void ProjectSettingsWindow::show() {
@@ -1020,6 +1029,10 @@ void ProjectSettingsWindow::show() {
         }
         ImGui::EndPopup();
     }
+
+    // closed without OK: the engine declares the project's shader globals again
+    if (!m_isOpen && m_globalsEdit.isPreviewed())
+        m_globalsEdit.cancel();
 }
 
 void ProjectSettingsWindow::drawSettings() {
@@ -1065,7 +1078,8 @@ void ProjectSettingsWindow::drawSettings() {
     const bool hasAbi = hasAndroidAbiSelection(m_androidAbiArmeabiV7a, m_androidAbiArm64V8a, m_androidAbiX86, m_androidAbiX86_64);
     const std::string tagsAndLayersProblem = tagsAndLayersError();
     const std::string inputProblem = inputError();
-    const bool canSave = hasAbi && tagsAndLayersProblem.empty() && inputProblem.empty();
+    const std::string shaderGlobalsProblem = m_globalsEdit.error();
+    const bool canSave = hasAbi && tagsAndLayersProblem.empty() && inputProblem.empty() && shaderGlobalsProblem.empty();
 
     ImGui::BeginDisabled(!canSave);
     if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
@@ -1080,8 +1094,10 @@ void ProjectSettingsWindow::drawSettings() {
             ImGui::SetTooltip("Select at least one Android architecture (Player > Android).");
         } else if (!tagsAndLayersProblem.empty()) {
             ImGui::SetTooltip("%s (Tags and Layers).", tagsAndLayersProblem.c_str());
-        } else {
+        } else if (!inputProblem.empty()) {
             ImGui::SetTooltip("%s (Input).", inputProblem.c_str());
+        } else {
+            ImGui::SetTooltip("%s (Graphics > Shader Globals).", shaderGlobalsProblem.c_str());
         }
     }
 
@@ -1403,7 +1419,11 @@ void ProjectSettingsWindow::drawPresentationSettings() {
 }
 
 void ProjectSettingsWindow::drawGraphicsSettings() {
-    drawSettingsPanel("##GraphicsSettingsPanel", [this]() {
+    if (!beginSettingsPanel("##GraphicsSettingsPanel")) {
+        endSettingsPanel();
+        return;
+    }
+    if (beginSettingsTable("##SettingsTable")) {
         drawIntSetting("Canvas Width", "##CanvasWidth", m_canvasWidth, (int)Project::defaultCanvasWidth);
         drawIntSetting("Canvas Height", "##CanvasHeight", m_canvasHeight, (int)Project::defaultCanvasHeight);
 
@@ -1425,7 +1445,13 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
         endSettingsRow("Exported builds compile the shader variants they do not ship precompiled, such as those of meshes and materials "
             "that scripts build or change, in the background and cache them on disk. When off, the build carries only the "
             "variants in Build Settings > Shaders and leaves out what draws with any other. Play always compiles.");
-    });
+        ImGui::EndTable();
+    }
+
+    if (Theme::foldoutHeader("Shader Globals", ImGuiTreeNodeFlags_DefaultOpen)) {
+        drawShaderGlobals();
+    }
+    endSettingsPanel();
 }
 
 void ProjectSettingsWindow::drawQualitySettings() {
@@ -2725,6 +2751,9 @@ bool ProjectSettingsWindow::applySettings() {
     if (!inputError().empty()) {
         return false;
     }
+    if (!m_globalsEdit.error().empty()) {
+        return false;
+    }
     // The edit buffer truncates long names. Only write back when the value
     // changed, since setName also rebuilds libName and the window title.
     std::string projectName = m_projectNameBuffer;
@@ -2896,10 +2925,379 @@ bool ProjectSettingsWindow::applySettings() {
         m_project->getProjectCommandHistory()->addCommand(command);
     }
 
+    // Shader Globals: one undoable step too; a renamed global's bindings follow it
+    m_globalsEdit.commit();
+
     // the standalone build's main.cpp bakes these settings in
     m_project->markGeneratedSourcesDirty();
 
     return m_project->saveProjectFile();
+}
+
+
+// ---------------------------------------------------------------------------- Shader Globals
+
+void ProjectSettingsWindow::refreshShaderGlobalUses() {
+    m_shaderGlobalUses = m_project ? ShaderGlobalsUsage::find(m_project) : std::vector<ShaderGlobalsUsage::Use>();
+    m_shaderGlobalUsesScanned = true;
+}
+
+static const ShaderGlobalType shaderGlobalTypes[] = {
+    ShaderGlobalType::Float, ShaderGlobalType::Vector2, ShaderGlobalType::Vector3, ShaderGlobalType::Vector4,
+    ShaderGlobalType::Color, ShaderGlobalType::Matrix4, ShaderGlobalType::FloatArray, ShaderGlobalType::Vector4Array,
+    ShaderGlobalType::Texture2D, ShaderGlobalType::TextureCube};
+static const char* const shaderGlobalTypeLabels[] = {
+    "Float", "Vector2", "Vector3", "Vector4", "Color", "Matrix4", "Float Array", "Vector4 Array", "Texture 2D", "Texture Cube"};
+
+bool ProjectSettingsWindow::drawShaderGlobalValue(const char* id, ShaderGlobalType type, unsigned int arraySize, std::vector<Vector4>& values) {
+    const unsigned int slots = ShaderGlobals::getSlotCount(type, arraySize);
+    if (values.size() < slots) values.resize(slots, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+    bool changed = false;
+    ImGui::PushID(id);
+    ImGui::SetNextItemWidth(-1);
+    switch (type) {
+        case ShaderGlobalType::Float:
+            changed = ImGui::DragFloat("##value", &values[0].x, 0.01f);
+            break;
+        case ShaderGlobalType::Vector2:
+        case ShaderGlobalType::Vector3:
+        case ShaderGlobalType::Vector4: {
+            float fields[4] = {values[0].x, values[0].y, values[0].z, values[0].w};
+            if (ImGui::DragScalarN("##value", ImGuiDataType_Float, fields, ShaderGlobals::getComponentCount(type), 0.01f)) {
+                values[0] = Vector4(fields[0], fields[1], fields[2], fields[3]);
+                changed = true;
+            }
+            break;
+        }
+        case ShaderGlobalType::Color: {
+            // edited as sRGB, stored linear (alpha as is)
+            const Vector4 srgb = Color::linearTosRGB(values[0]);
+            float color[4] = {srgb.x, srgb.y, srgb.z, values[0].w};
+            if (ImGui::ColorEdit4("##value", color, ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf)) {
+                const Vector4 linear = Color::sRGBToLinear(Vector4(color[0], color[1], color[2], color[3]));
+                values[0] = Vector4(linear.x, linear.y, linear.z, color[3]);
+                changed = true;
+            }
+            break;
+        }
+        case ShaderGlobalType::Matrix4:
+        case ShaderGlobalType::FloatArray:
+        case ShaderGlobalType::Vector4Array: {
+            // a summary that opens the grid / element list
+            std::string summary;
+            if (type == ShaderGlobalType::Matrix4) {
+                const bool identity = values[0] == Vector4(1, 0, 0, 0) && values[1] == Vector4(0, 1, 0, 0) &&
+                                      values[2] == Vector4(0, 0, 1, 0) && values[3] == Vector4(0, 0, 0, 1);
+                summary = identity ? "Identity" : "Matrix";
+            } else {
+                summary = std::to_string(slots) + (type == ShaderGlobalType::FloatArray ? " floats" : " vectors");
+            }
+            if (ImGui::Button((summary + "  " ICON_FA_PEN "##edit").c_str(), ImVec2(-1, 0)))
+                ImGui::OpenPopup("##values_popup");
+            if (ImGui::BeginPopup("##values_popup")) {
+                if (type == ShaderGlobalType::Matrix4) {
+                    // rows on screen, stored column-major (values[c] is column c)
+                    ImGui::TextDisabled("Rows of the matrix (stored by column)");
+                    auto at = [&values](int column, int row) -> float& {
+                        Vector4& v = values[column];
+                        return row == 0 ? v.x : row == 1 ? v.y : row == 2 ? v.z : v.w;
+                    };
+                    for (int r = 0; r < 4; r++) {
+                        float row[4] = {at(0, r), at(1, r), at(2, r), at(3, r)};
+                        ImGui::SetNextItemWidth(Theme::dpi(320.0f));
+                        if (ImGui::DragFloat4(("##row" + std::to_string(r)).c_str(), row, 0.01f)) {
+                            for (int c = 0; c < 4; c++) at(c, r) = row[c];
+                            changed = true;
+                        }
+                    }
+                    if (ImGui::Button("Identity")) {
+                        values = {Vector4(1, 0, 0, 0), Vector4(0, 1, 0, 0), Vector4(0, 0, 1, 0), Vector4(0, 0, 0, 1)};
+                        changed = true;
+                    }
+                } else {
+                    ImGui::BeginChild("##elements", ImVec2(Theme::dpi(360.0f), std::min(Theme::dpi(300.0f), ImGui::GetFrameHeightWithSpacing() * slots + 4)));
+                    for (unsigned int e = 0; e < slots; e++) {
+                        ImGui::AlignTextToFramePadding();
+                        ImGui::Text("[%u]", e);
+                        ImGui::SameLine(Theme::dpi(40.0f));
+                        ImGui::SetNextItemWidth(-1);
+                        if (type == ShaderGlobalType::FloatArray) {
+                            changed |= ImGui::DragFloat(("##e" + std::to_string(e)).c_str(), &values[e].x, 0.01f);
+                        } else {
+                            float fields[4] = {values[e].x, values[e].y, values[e].z, values[e].w};
+                            if (ImGui::DragFloat4(("##e" + std::to_string(e)).c_str(), fields, 0.01f)) {
+                                values[e] = Vector4(fields[0], fields[1], fields[2], fields[3]);
+                                changed = true;
+                            }
+                        }
+                    }
+                    ImGui::EndChild();
+                }
+                ImGui::EndPopup();
+            }
+            break;
+        }
+        default:
+            break;
+    }
+    ImGui::PopID();
+    return changed;
+}
+
+bool ProjectSettingsWindow::drawShaderGlobalTexture(const char* id, ShaderGlobalType type, std::string& path) {
+    bool changed = false;
+    ImGui::PushID(id);
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float buttonWidth = ImGui::CalcTextSize(ICON_FA_FOLDER_OPEN).x + style.FramePadding.x * 2.0f;
+    const std::string shown = path.empty() ? (type == ShaderGlobalType::TextureCube ? "Black" : "White") : fs::path(path).filename().string();
+    ImGui::PushStyleColor(ImGuiCol_Text, path.empty() ? style.Colors[ImGuiCol_TextDisabled] : style.Colors[ImGuiCol_Text]);
+    ImGui::Button((shown + "##slot").c_str(), ImVec2(std::max(1.0f, ImGui::GetContentRegionAvail().x - (buttonWidth + style.ItemSpacing.x) * 2.0f), 0));
+    ImGui::PopStyleColor();
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s\nDrop an image here%s", path.empty() ? "No texture: the shader reads the fallback" : path.c_str(),
+                          type == ShaderGlobalType::TextureCube ? " (a cube map: one image with the six faces)" : "");
+    auto assign = [&](const std::string& absolutePath) {
+        if (!m_project->isInsideAssetsPath(absolutePath)) {
+            Backend::getApp().registerOutsideAssetsAlert(absolutePath);
+            return;
+        }
+        path = m_project->normalizeToAssetsRelative(absolutePath).generic_string();
+        changed = true;
+    };
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
+            std::vector<std::string> received = Util::getStringsFromPayload(payload);
+            if (!received.empty() && Util::isImageFile(received[0])) assign(received[0]);
+        }
+        ImGui::EndDragDropTarget();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_FOLDER_OPEN "##pick")) {
+        const std::string selected = FileDialogs::openFileDialog(m_project->getAssetsPath().string(), FILE_DIALOG_IMAGE);
+        if (!selected.empty()) assign(selected);
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(path.empty());
+    if (ImGui::Button(ICON_FA_XMARK "##clear")) {
+        path.clear();
+        changed = true;
+    }
+    ImGui::EndDisabled();
+    ImGui::PopID();
+    return changed;
+}
+
+void ProjectSettingsWindow::drawShaderGlobals() {
+    if (!m_shaderGlobalUsesScanned) refreshShaderGlobalUses();
+    const bool playing = m_project && m_project->isAnyScenePlaying();
+    const ImGuiStyle& style = ImGui::GetStyle();
+
+    drawSectionNote("Values every shader can read: a member of the same name in a u_vs_globals / u_fs_globals block (or a texture "
+                    "uniform of the name), or a library shader parameter bound to it with the link button in the Inspector. Scripts set "
+                    "them with Shader.setGlobal*; Play starts and stops with these defaults.");
+
+    bool edited = false;
+    std::vector<ShaderGlobalsEdit::Row>& shaderGlobalRows = m_globalsEdit.rows();
+    if (ImGui::Button(ICON_FA_PLUS " Add")) {
+        m_globalsEdit.add();
+        edited = true;
+    }
+    ImGui::SameLine();
+    // the declarations to paste into a shader: the selected rows, else all
+    std::vector<std::string> selected;
+    for (const ShaderGlobalsEdit::Row& row : shaderGlobalRows) {
+        if (row.selected) selected.push_back(row.decl.name);
+    }
+    const std::vector<ShaderGlobalDecl> decls = m_globalsEdit.decls();
+    ImGui::BeginDisabled(decls.empty());
+    if (ImGui::Button(ICON_FA_COPY " Copy GLSL: Vertex")) ImGui::SetClipboardText(ShaderGlobals::getGlslBlock(decls, ShaderStageType::VERTEX, selected).c_str());
+    ImGui::SetItemTooltip("The u_vs_globals block of %s, for a .vert", selected.empty() ? "every global" : "the checked globals");
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_COPY " Fragment")) ImGui::SetClipboardText(ShaderGlobals::getGlslBlock(decls, ShaderStageType::FRAGMENT, selected).c_str());
+    ImGui::SetItemTooltip("The u_fs_globals block and texture uniforms of %s, for a .frag", selected.empty() ? "every global" : "the checked globals");
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_ROTATE "##refresh_uses")) refreshShaderGlobalUses();
+    ImGui::SetItemTooltip("Scan the open scenes again for what uses the globals (Used by)");
+    if (playing) {
+        ImGui::SameLine();
+        if (ImGui::Button("Copy Live Values to Defaults")) {
+            for (ShaderGlobalsEdit::Row& row : shaderGlobalRows) {
+                ShaderGlobalValue live;
+                if (ShaderGlobals::isTexture(row.decl.type) || !ShaderGlobals::get(ShaderGlobals::findID(row.decl.name), live)) continue;
+                if (live.type == row.decl.type && live.values.size() == row.decl.defaultValue.size()) row.decl.defaultValue = live.values;
+            }
+            edited = true;
+        }
+        ImGui::SetItemTooltip("The values scripts or the Live column set now become the defaults (saved with OK)");
+    }
+
+    const int columns = playing ? 7 : 6;
+    const ImGuiTableFlags flags = ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_RowBg |
+                                  ImGuiTableFlags_SizingStretchProp;
+    if (!shaderGlobalRows.empty() && ImGui::BeginTable("##ShaderGlobalsTable", columns, flags)) {
+        ImGui::TableSetupColumn("##select", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFrameHeight());
+        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.3f);
+        ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthStretch, 0.9f);
+        ImGui::TableSetupColumn("Default", ImGuiTableColumnFlags_WidthStretch, 1.6f);
+        if (playing) ImGui::TableSetupColumn("Live", ImGuiTableColumnFlags_WidthStretch, 1.6f);
+        ImGui::TableSetupColumn("Used by", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Used by").x + style.CellPadding.x * 2.0f);
+        ImGui::TableSetupColumn("##remove", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFrameHeight());
+        ImGui::TableHeadersRow();
+
+        int removeRow = -1;
+        for (int i = 0; i < (int)shaderGlobalRows.size(); i++) {
+            ShaderGlobalsEdit::Row& row = shaderGlobalRows[i];
+            ImGui::PushID(i);
+            ImGui::TableNextRow();
+
+            ImGui::TableNextColumn();
+            ImGui::Checkbox("##selected", &row.selected);
+            ImGui::SetItemTooltip("In Copy GLSL (none checked: every global)");
+
+            // the name, checked as typed (a GLSL identifier, not u_ / gl_, no duplicates)
+            ImGui::TableNextColumn();
+            std::string nameError;
+            ShaderGlobals::isValidName(row.nameBuffer, &nameError);
+            for (int j = 0; j < (int)shaderGlobalRows.size() && nameError.empty(); j++) {
+                if (j != i && shaderGlobalRows[j].decl.name == row.nameBuffer) nameError = "another global is named '" + std::string(row.nameBuffer) + "'";
+            }
+            if (!nameError.empty()) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.35f, 1.0f));
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::InputText("##name", row.nameBuffer, sizeof(row.nameBuffer), ImGuiInputTextFlags_CharsNoBlank)) {
+                row.decl.name = row.nameBuffer;
+                edited = true;
+            }
+            if (!nameError.empty()) ImGui::PopStyleColor();
+            if (ImGui::IsItemHovered()) {
+                if (!nameError.empty())
+                    ImGui::SetTooltip("%s", nameError.c_str());
+                else if (!row.originalName.empty() && row.originalName != row.decl.name)
+                    ImGui::SetTooltip("Renamed from %s: bindings follow it on OK. Shaders keep their member names: rename them in the GLSL too.",
+                                      row.originalName.c_str());
+                else
+                    ImGui::SetTooltip("The GLSL member (or texture uniform) name shaders declare; Unity's leading _ is fine");
+            }
+
+            ImGui::TableNextColumn();
+            int typeIndex = 0;
+            for (int t = 0; t < (int)std::size(shaderGlobalTypes); t++) {
+                if (shaderGlobalTypes[t] == row.decl.type) typeIndex = t;
+            }
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::Combo("##type", &typeIndex, shaderGlobalTypeLabels, (int)std::size(shaderGlobalTypeLabels)) &&
+                    shaderGlobalTypes[typeIndex] != row.decl.type) {
+                // another type starts from its own default
+                row.decl = ShaderGlobals::makeDecl(row.decl.name, shaderGlobalTypes[typeIndex], 4);
+                edited = true;
+            }
+            if (ShaderGlobals::isArray(row.decl.type)) {
+                int size = (int)row.decl.arraySize;
+                ImGui::SetNextItemWidth(-1);
+                if (ImGui::InputInt("##size", &size)) {
+                    size = std::clamp(size, 1, (int)ShaderGlobals::MAX_ARRAY_SIZE);
+                    if (size != (int)row.decl.arraySize) {
+                        row.decl.arraySize = (unsigned int)size;
+                        row.decl.defaultValue.resize(size, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+                        edited = true;
+                    }
+                }
+                ImGui::SetItemTooltip("Elements (1 to %u)", ShaderGlobals::MAX_ARRAY_SIZE);
+            }
+
+            ImGui::TableNextColumn();
+            if (ShaderGlobals::isTexture(row.decl.type))
+                edited |= drawShaderGlobalTexture("##default", row.decl.type, row.decl.defaultTexture);
+            else
+                edited |= drawShaderGlobalValue("##default", row.decl.type, row.decl.arraySize, row.decl.defaultValue);
+
+            if (playing) {
+                // what scripts set now; an edit here lasts until Play stops
+                ImGui::TableNextColumn();
+                const int id = ShaderGlobals::findID(row.decl.name);
+                ShaderGlobalValue live;
+                if (!ShaderGlobals::get(id, live)) {
+                    ImGui::TextDisabled("(not declared yet)");
+                } else if (ShaderGlobals::isTexture(live.type)) {
+                    const std::string path = live.texture.isFramebuffer() ? std::string("render target") : live.texture.getPath(0);
+                    ImGui::TextDisabled("%s", path.empty() ? "(default)" : path.c_str());
+                } else if (live.type == row.decl.type) {
+                    std::vector<Vector4> values = live.values;
+                    if (drawShaderGlobalValue("##live", live.type, live.arraySize, values)) ShaderGlobals::setValues(id, values);
+                } else {
+                    ImGui::TextDisabled("(set as %s)", ShaderGlobals::getTypeName(live.type));
+                }
+            }
+
+            // what uses it: bindings and loaded shaders
+            ImGui::TableNextColumn();
+            int bindings = 0;
+            int shaders = 0;
+            std::string uses;
+            for (const ShaderGlobalsUsage::Use& use : m_shaderGlobalUses) {
+                if (use.global != row.decl.name && !(use.global == row.originalName && use.binding)) continue;
+                (use.binding ? bindings : shaders)++;
+                if (uses.size() < 2000) uses += "\n" + ShaderGlobalsUsage::describe(use);
+            }
+            if (bindings + shaders == 0) {
+                ImGui::TextDisabled("-");
+            } else {
+                ImGui::Text("%d", bindings + shaders);
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", (bindings + shaders == 0) ? "No binding or loaded shader of the open scenes uses it"
+                                         : (std::to_string(bindings) + " binding(s), " + std::to_string(shaders) + " shader(s):" + uses).c_str());
+
+            ImGui::TableNextColumn();
+            if (ImGui::Button(ICON_FA_TRASH "##remove")) {
+                if (bindings > 0) {
+                    m_shaderGlobalRemove = i;
+                    ImGui::OpenPopup("##remove_global");
+                } else {
+                    removeRow = i;
+                }
+            }
+            ImGui::SetItemTooltip("Remove");
+            if (ImGui::BeginPopup("##remove_global")) {
+                ImGui::Text("%d binding(s) use %s:", bindings, row.decl.name.c_str());
+                for (const ShaderGlobalsUsage::Use& use : m_shaderGlobalUses) {
+                    if (use.binding && (use.global == row.decl.name || use.global == row.originalName))
+                        ImGui::BulletText("%s", ShaderGlobalsUsage::describe(use).c_str());
+                }
+                ImGui::TextDisabled("They stay, reading 0 until a script sets the global (check_shader reports them).");
+                if (ImGui::Button("Remove")) {
+                    removeRow = m_shaderGlobalRemove;
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+                ImGui::EndPopup();
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+        if (removeRow >= 0 && removeRow < (int)shaderGlobalRows.size()) {
+            shaderGlobalRows.erase(shaderGlobalRows.begin() + removeRow);
+            m_shaderGlobalRemove = -1;
+            edited = true;
+        }
+    } else if (shaderGlobalRows.empty()) {
+        ImGui::TextDisabled("No shader globals. Add one, or let scripts make them (Shader.setGlobalColor(\"_Tint\", c)).");
+    }
+
+    const std::string problem = m_globalsEdit.error();
+    if (!problem.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.35f, 1.0f));
+        ImGui::TextWrapped("%s", problem.c_str());
+        ImGui::PopStyleColor();
+    }
+    bool renamed = false;
+    for (const ShaderGlobalsEdit::Row& row : shaderGlobalRows) renamed |= !row.originalName.empty() && row.originalName != row.decl.name;
+    if (renamed) {
+        drawSectionNote("Renamed globals take their Inspector bindings along on OK; shaders are not rewritten: rename the "
+                        "u_vs_globals / u_fs_globals members (and texture uniforms) too.");
+    }
+    if (edited) m_globalsEdit.preview();
 }
 
 } // namespace jasperengine::editor

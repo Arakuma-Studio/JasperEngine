@@ -121,13 +121,17 @@ LIMITS.update({"create_ragdoll": 900})
 # http: configure_game_view's network and get_play_state's http block; merged with main (script-data,
 # input, physics-2d, script-lifecycle): 150 tools measured 106807, the limit set to it
 # merged by the lead (ui-canvas-group, physics-3d, http): 151 tools measured 107626 on the merged tree
+# shader globals (spec 2026-10-31-shader-globals 6.7): no new tool; get_shader_uniforms names the globals a
+# shader reads and its global_bindings (+51); merged with main (persistence, ui-canvas-group, physics-3d,
+# http): 151 tools measured 107680, the limit set to it
 # platform services (spec 6.9): send_input's `app` events, configure_game_view's device,
 # orientation and language, get_play_state's platform (+468 on its branch); merged with main
 # (ui-canvas-group, physics-3d, http): 151 tools measured 108094 (tool_budget.py), the limit set to it
+# merged by the lead (shader-globals + platform-services): provisional sum, re-measured on the merged tree
 # safe area (spec 6.7): configure_game_view's device_overlay, safe_area_outline, custom_device and
 # safe_area, screenshot's device_overlay / safe_area_in_image, create_ui / create_entity safe_area,
 # get_play_state's safe_area (+390 on its branch); measured on the merged tree below
-TOTAL_LIMIT = 108500
+TOTAL_LIMIT = 108700
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

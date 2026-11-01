@@ -247,6 +247,30 @@ std::string editor::Factory::formatShaderUniforms(const ShaderUniformValues& uni
     return out + "}";
 }
 
+std::string editor::Factory::formatShaderGlobalBindings(const ShaderGlobalBindings& bindings) {
+    std::string out = "{";
+    for (size_t i = 0; i < bindings.size(); i++) {
+        if (i > 0)
+            out += ", ";
+        out += "{" + formatString(bindings[i].first) + ", " + formatString(bindings[i].second) + "}";
+    }
+    return out + "}";
+}
+
+std::string editor::Factory::formatShaderGlobalDecl(const ShaderGlobalDecl& decl) {
+    static const char* const typeNames[] = {"Float", "Vector2", "Vector3", "Vector4", "Color", "Matrix4", "FloatArray",
+                                            "Vector4Array", "Texture2D", "TextureCube"};
+    std::string values = "{";
+    for (size_t i = 0; i < decl.defaultValue.size(); i++) {
+        if (i > 0)
+            values += ", ";
+        values += formatVector4(decl.defaultValue[i]);
+    }
+    values += "}";
+    return "ShaderGlobalDecl{" + formatString(decl.name) + ", ShaderGlobalType::" + typeNames[static_cast<int>(decl.type)] + ", " +
+           std::to_string(decl.arraySize) + "u, " + values + ", " + formatString(decl.defaultTexture) + "}";
+}
+
 std::string editor::Factory::formatShaderTextures(int indentSpaces, const std::vector<std::pair<std::string, Texture>>& textures, const std::string& target, const fs::path& projectPath) {
     std::ostringstream code;
     const std::string ind = indentation(indentSpaces);
@@ -411,6 +435,8 @@ std::string editor::Factory::formatMaterialShaderLibrary(int indentSpaces, const
     code << formatShaderTextures(indentSpaces, material.shaderTextures, target + ".shaderTextures", projectPath);
     if (!material.shaderFeatures.empty())
         code << ind << target << ".shaderFeatures = " << formatShaderFeatures(material.shaderFeatures) << ";\n";
+    if (!material.shaderGlobalBindings.empty())
+        code << ind << target << ".shaderGlobalBindings = " << formatShaderGlobalBindings(material.shaderGlobalBindings) << ";\n";
     if (material.blendMode != MaterialBlendMode::AUTO)
         code << ind << target << ".blendMode = " << formatBlendMode(material.blendMode) << ";\n";
     if (material.cullMode != MaterialCullMode::AUTO)
@@ -1483,6 +1509,8 @@ std::string editor::Factory::createUIComponent(int indentSpaces, EntityRegistry*
         code << ind << "ui.customShader = " << formatString(ui.customShader) << ";\n";
     if (!ui.shaderUniforms.empty())
         code << ind << "ui.shaderUniforms = " << formatShaderUniforms(ui.shaderUniforms) << ";\n";
+    if (!ui.shaderGlobalBindings.empty())
+        code << ind << "ui.shaderGlobalBindings = " << formatShaderGlobalBindings(ui.shaderGlobalBindings) << ";\n";
     code << formatComponentShaderLibrary(indentSpaces, ui.shaderTextures, ui.shaderFeatures, &ui.blendMode, &ui.depthWrite, "ui", projectPath);
     code << formatStencilAndColorWrite(indentSpaces, ui.stencil, ui.colorWrite, "ui");
     code << formatTexture(indentSpaces, ui.texture, "ui.texture", projectPath);
@@ -2347,6 +2375,8 @@ std::string editor::Factory::createSkyboxComponent(int indentSpaces, EntityRegis
         code << ind << "sky.customShader = " << formatString(sky.customShader) << ";\n";
     if (!sky.shaderUniforms.empty())
         code << ind << "sky.shaderUniforms = " << formatShaderUniforms(sky.shaderUniforms) << ";\n";
+    if (!sky.shaderGlobalBindings.empty())
+        code << ind << "sky.shaderGlobalBindings = " << formatShaderGlobalBindings(sky.shaderGlobalBindings) << ";\n";
     code << formatComponentShaderLibrary(indentSpaces, sky.shaderTextures, sky.shaderFeatures, nullptr, nullptr, "sky", projectPath);
 
     addComponentCode(code, ind, sceneName, entityName, entity, "SkyboxComponent", "sky", assignExisting);
@@ -3857,6 +3887,8 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
             out << formatShaderTextures(indentSpaces + 8, pass.textures, "postProcess.back().textures", projectPath);
             if (pass.scale != 1.0f)
                 out << ind3 << "postProcess.back().scale = " << formatFloat(pass.scale) << ";\n";
+            if (!pass.shaderGlobalBindings.empty())
+                out << ind3 << "postProcess.back().shaderGlobalBindings = " << formatShaderGlobalBindings(pass.shaderGlobalBindings) << ";\n";
         }
         out << ind3 << "scene->setPostProcessPasses(postProcess);\n";
         out << ind2 << "}\n";
@@ -4374,6 +4406,8 @@ std::string editor::Factory::createPointsComponent(int indentSpaces, EntityRegis
         code << ind << "pointscomp.customShader = " << formatString(p.customShader) << ";\n";
     if (!p.shaderUniforms.empty())
         code << ind << "pointscomp.shaderUniforms = " << formatShaderUniforms(p.shaderUniforms) << ";\n";
+    if (!p.shaderGlobalBindings.empty())
+        code << ind << "pointscomp.shaderGlobalBindings = " << formatShaderGlobalBindings(p.shaderGlobalBindings) << ";\n";
     code << formatComponentShaderLibrary(indentSpaces, p.shaderTextures, p.shaderFeatures, &p.blendMode, &p.depthWrite, "pointscomp", projectPath);
     code << formatStencilAndColorWrite(indentSpaces, p.stencil, p.colorWrite, "pointscomp");
     code << formatTexture(indentSpaces, p.texture, "pointscomp.texture", projectPath);
@@ -4426,6 +4460,8 @@ std::string editor::Factory::createLineRendererComponent(int indentSpaces, Entit
         code << ind << "linescomp.customShader = " << formatString(l.customShader) << ";\n";
     if (!l.shaderUniforms.empty())
         code << ind << "linescomp.shaderUniforms = " << formatShaderUniforms(l.shaderUniforms) << ";\n";
+    if (!l.shaderGlobalBindings.empty())
+        code << ind << "linescomp.shaderGlobalBindings = " << formatShaderGlobalBindings(l.shaderGlobalBindings) << ";\n";
     code << formatComponentShaderLibrary(indentSpaces, l.shaderTextures, l.shaderFeatures, &l.blendMode, &l.depthWrite, "linescomp", fs::path());
     code << formatStencilAndColorWrite(indentSpaces, l.stencil, l.colorWrite, "linescomp");
 
@@ -4482,9 +4518,8 @@ std::string editor::Factory::createTrailRendererComponent(int indentSpaces, Enti
         code << ind << "trailcomp.shaderUniforms = " << formatShaderUniforms(t.shaderUniforms) << ";\n";
     code << formatComponentShaderLibrary(indentSpaces, t.shaderTextures, t.shaderFeatures, &t.blendMode, &t.depthWrite, "trailcomp", fs::path());
     code << formatStencilAndColorWrite(indentSpaces, t.stencil, t.colorWrite, "trailcomp");
-    for (const auto& binding : t.shaderGlobalBindings) {
-        code << ind << "trailcomp.shaderGlobalBindings.push_back({" << formatString(binding.first) << ", " << formatString(binding.second) << "});\n";
-    }
+    if (!t.shaderGlobalBindings.empty())
+        code << ind << "trailcomp.shaderGlobalBindings = " << formatShaderGlobalBindings(t.shaderGlobalBindings) << ";\n";
     if (!t.enabled) code << ind << "trailcomp.enabled = false;\n";
 
     addComponentCode(code, ind, sceneName, entityName, entity, "TrailRendererComponent", "trailcomp", assignExisting);
