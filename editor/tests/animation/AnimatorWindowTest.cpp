@@ -146,6 +146,8 @@ namespace {
 
     // a fresh controller file (one Base Layer) and the window on it
     std::shared_ptr<AnimatorAssetDocument> freshController(AnimatorWindow& window, const std::string& name) {
+        // (the window follows a selected GameObject's Animator: an earlier test's selection goes)
+        if (SceneProject* selected = project()->getSelectedScene()) project()->clearSelectedEntities(selected->id);
         fs::remove(assets() / ("animator/" + name + ".controller"));
         std::string error;
         std::shared_ptr<AnimatorAssetDocument> doc = AnimatorAssetDocument::create(
