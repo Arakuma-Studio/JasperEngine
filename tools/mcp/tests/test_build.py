@@ -395,18 +395,27 @@ async def test_desktop_build_and_run(ed: Editor):
     exe = Path(job["result"]["executable"])
     ed.check(exe.exists(), f"player at {exe}")
 
-    raw = await ed.call_raw("run_build", {"seconds": 8, "screenshot_after_seconds": 6})
+    # the player's own frame, 60 frames of 1/60 s after the one that logs "Engine ready:", not a
+    # window grab 6 s after the launch: how far a loaded machine's player has got by then is
+    # anyone's guess
+    raw = await ed.call_raw("run_build", {"after_ready": True, "fixed_fps": 60, "quit_after": 60})
     ed.check(not raw.is_error, raw.text)
     r = raw.value
     print("[test] run_build:", raw.text[:1500])
     ed.check_eq(Path(r["executable"]).resolve(), exe.resolve())
     ed.check(not r["crashed"], f"the player crashed: {r['fatal_lines']} {r['log'][-20:]}")
-    ed.check(r.get("stopped_by_run_build"), "still running when stopped")
-    ed.check(raw.images, "screenshot")
-    ed.check_in("player window", r["screenshot"]["note"])
+    ed.check_eq(r.get("exit_code"), 0, f"the player got ready and quit after its frames: {r}")
+    ed.check(raw.images, f"screenshot: {raw.text[:2000]}")
+    ed.check_in("player's frame", r["screenshot"]["note"])
     shot = ed.scratch.root / "player.png"
     shot.write_bytes(raw.images[0][0])
     print(f"[test] player screenshot: {shot}")
+    # a player that runs on is stopped at the end of `seconds` (no screenshot: nothing waits on time)
+    raw = await ed.call_raw("run_build", {"seconds": 5, "screenshot": False})
+    ed.check(not raw.is_error, raw.text)
+    r = raw.value
+    ed.check(not r["crashed"], f"the player crashed: {r['fatal_lines']} {r['log'][-20:]}")
+    ed.check(r.get("stopped_by_run_build"), "still running when stopped")
 
     # compile errors come back as file:line: a broken source in a script directory
     (ed.project / "cpp").mkdir(exist_ok=True)
