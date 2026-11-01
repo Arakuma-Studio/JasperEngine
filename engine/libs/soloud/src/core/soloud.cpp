@@ -82,7 +82,10 @@ namespace SoLoud
 
 	void AlignedFloatBuffer::clear()
 	{
-		memset(mData, 0, sizeof(float) * mFloats);
+		// JasperEngine local patch: nothing to clear before init() (the nosound backend clears
+		// its buffer first: memset of a null pointer)
+		if (mData)
+			memset(mData, 0, sizeof(float) * mFloats);
 	}
 
 	AlignedFloatBuffer::~AlignedFloatBuffer()
