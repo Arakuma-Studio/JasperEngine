@@ -2120,6 +2120,9 @@ std::string editor::Factory::createAnimationPlayerComponent(int indentSpaces, En
         if (!entry.name.empty()) code << ind << target << ".name = " << formatString(entry.name) << ";\n";
         if (entry.wrap != ClipWrapMode::Default) code << ind << target << ".wrap = " << formatClipWrapMode(entry.wrap) << ";\n";
         if (entry.layer != 0) code << ind << target << ".layer = " << entry.layer << ";\n";
+        if (entry.retarget) code << ind << target << ".retarget = true;\n";
+        if (entry.mirror) code << ind << target << ".mirror = true;\n";
+        if (entry.footIK) code << ind << target << ".footIK = true;\n";
     }
     if (!player.layers.empty()) code << ind << "animationplayer.layers.resize(" << player.layers.size() << ");\n";
     for (size_t i = 0; i < player.layers.size(); i++) {

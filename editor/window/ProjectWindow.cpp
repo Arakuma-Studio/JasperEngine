@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectWindow.h"
+#include "window/HumanoidConvertDialog.h"
 #include "util/BidiText.h"
 
 #include "ImageViewerWindow.h"
@@ -1955,6 +1956,16 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         shown = true;
                     }
                     if (shown) ImGui::Separator();
+                }
+
+                // a generic .anim as a humanoid clip any humanoid plays (anim-retarget 9; a model's
+                // clips: from its Inspector or a player entry)
+                if (!file.isDirectory && file.type == FileType::ANIMATION_CLIP){
+                    if (ImGui::MenuItem(ICON_FA_PERSON " Convert to Humanoid Clip...")) {
+                        HumanoidConvertDialog::open(project, FileUtils::pathToGenericUtf8((currentPath / file.name).lexically_normal()));
+                    }
+                    ImGui::SetItemTooltip("A humanoid clip (rotations relative to the neutral pose) that plays on any humanoid character");
+                    ImGui::Separator();
                 }
 
                 if (!file.isDirectory && FbxImporter::isFbxFile(file.name)){

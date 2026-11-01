@@ -447,7 +447,9 @@ std::vector<std::string> AnimationWindowClip::componentLabels(size_t trackIndex)
         case ClipChannel::Position:
         case ClipChannel::Scale:
         case ClipChannel::Rotation:
-            return {"x", "y", "z"};
+        case ClipChannel::Humanoid:
+        case ClipChannel::HumanoidPosition:
+            return angleComponentNames(track);
         case ClipChannel::Morph: {
             size_t width = 0;
             for (const ClipKey& key : track.keys) width = std::max(width, key.value.size());
@@ -515,13 +517,19 @@ std::vector<AnimationWindowClip::Row> AnimationWindowClip::buildRows() const{
         row.label = (track.path.empty() ? rootName : track.path) + " : " + channelLabel(track.channel);
         // Unity's form: the leaf GameObject's name (the full path in the tooltip)
         row.leaf = (track.path.empty() ? rootName : lastSegment(track.path)) + " : " + channelLabel(track.channel);
+        if (isHumanoidChannel(track.channel)){
+            // "Humanoid : Left Upper Arm" (anim-retarget 9)
+            row.label = humanoidTrackLabel(track.channel, track.humanBone);
+            row.leaf = row.label;
+        }
         if (const TrackReport* entry = reports[t]){
             const bool bad = entry->status == TrackBindingStatus::MissingPath ||
                              entry->status == TrackBindingStatus::MissingComponent ||
                              entry->status == TrackBindingStatus::LatticeIndexOutOfRange ||
                              entry->status == TrackBindingStatus::MorphIndexOutOfRange ||
                              entry->status == TrackBindingStatus::LegacyModelLayout ||
-                             entry->status == TrackBindingStatus::UnaddressableName;
+                             entry->status == TrackBindingStatus::UnaddressableName ||
+                             entry->status == TrackBindingStatus::HumanoidNoRig;
             row.missing = bad;
             row.message = entry->message;
             if (!entry->nearest.empty() && entry->status == TrackBindingStatus::MissingPath){
@@ -555,7 +563,7 @@ std::vector<float> AnimationWindowClip::sampledValue(size_t trackIndex, float ti
     const ClipTrackData& data = doc->data().tracks[trackIndex];
     std::shared_ptr<const AnimationClip> clip = doc->clip();
     if (!clip) return {};
-    const int index = clip->findTrack(data.path, data.channel);
+    const int index = clipui::findRuntimeTrack(*clip, data);
     if (index < 0) return {};
     anim::TrackSample sample;
     if (!anim::sampleTrack(clip->getTracks()[(size_t)index], time, sample) || !sample.valid) return {};
@@ -1158,6 +1166,31 @@ bool AnimationWindowClip::setComponentValue(size_t trackIndex, int component, fl
     if (track.channel == ClipChannel::Lattice || track.channel == ClipChannel::Property || component < 0){
         if (error) *error = "this row's values are edited in the Scene view";
         return false;
+    }
+    if (isHumanoidChannel(track.channel)){
+        // a humanoid track has no GameObject of its own: the field keys its value at the playhead
+        // (slots in joint angles, converted to E; anim-retarget 9)
+        std::vector<float> current = sampledValue(trackIndex, c.getTime());
+        if (current.size() < (isRotationChannel(track.channel) ? 4u : 3u)){
+            if (error) *error = "the track has no value at the playhead";
+            return false;
+        }
+        if (isRotationChannel(track.channel)){
+            Vector3 angles = (eulerEditTrack == (int)trackIndex) ? eulerEdit : anglesOf(track, current);
+            if (component == 0) angles.x = value;
+            if (component == 1) angles.y = value;
+            if (component == 2) angles.z = value;
+            eulerEdit = angles;
+            current = xyzwOfAngles(track, angles);
+        }else if (component < 3){
+            current[(size_t)component] = value;
+        }
+        if (newEdit || valueMergeKey.empty()) valueMergeKey = "clipvalue#" + std::to_string(++valueEditSerial);
+        ClipData data = doc->data();
+        ClipKey key;
+        key.value = current;
+        upsertKey(data.tracks[trackIndex], snapToFrame(c.getTime()), key);
+        return c.commit(data, "Set Key Value", valueMergeKey, error);
     }
     if (!c.isPreviewing() && !startPreview(project->getSelectedScene(), error)) return false;
     // what the Scene view shows now, with this component changed

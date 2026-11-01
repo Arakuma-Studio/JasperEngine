@@ -2164,6 +2164,16 @@ namespace {
                 if (fieldName == ".layer") {
                     return {PropertyType::Int, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.layer, (void*)&entry.layer};
                 }
+                // humanoid playback (anim-retarget 7.1)
+                if (fieldName == ".retarget") {
+                    return {PropertyType::Bool, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.retarget, (void*)&entry.retarget};
+                }
+                if (fieldName == ".mirror") {
+                    return {PropertyType::Bool, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.mirror, (void*)&entry.mirror};
+                }
+                if (fieldName == ".footIK") {
+                    return {PropertyType::Bool, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.footIK, (void*)&entry.footIK};
+                }
             }
         }
 
@@ -3321,6 +3331,9 @@ namespace {
             ps[prefix + ".name"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.name, entry ? (void*)&entry->name : nullptr};
             ps[prefix + ".wrap"] = {PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.wrap, entry ? (void*)&entry->wrap : nullptr};
             ps[prefix + ".layer"] = {PropertyType::Int, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.layer, entry ? (void*)&entry->layer : nullptr};
+            ps[prefix + ".retarget"] = {PropertyType::Bool, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.retarget, entry ? (void*)&entry->retarget : nullptr};
+            ps[prefix + ".mirror"] = {PropertyType::Bool, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.mirror, entry ? (void*)&entry->mirror : nullptr};
+            ps[prefix + ".footIK"] = {PropertyType::Bool, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.footIK, entry ? (void*)&entry->footIK : nullptr};
         }
         static AnimationPlayerLayer defLayer;
         for (size_t i = 0; i < (compRef ? comp->layers.size() : 1); i++) {

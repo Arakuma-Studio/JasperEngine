@@ -18,9 +18,11 @@
 #pragma once
 
 #include "animation/AnimationClip.h"
+#include "animation/AvatarMask.h"
 #include "ecs/Entity.h"
 
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -43,6 +45,7 @@ namespace jasperengine::editor{
         LegacyModelLayout,      // under a model loaded without its node hierarchy (R3)
         UnaddressableName,      // a name on the way has '/' or ends in "#<digits>"
         NotSampled,             // a reserved property track
+        HumanoidNoRig,          // a humanoid track, but the root has no humanoid rig (anim-retarget)
         Unchecked               // no root given
     };
 
@@ -56,6 +59,7 @@ namespace jasperengine::editor{
         size_t track = 0;
         std::string path;
         ClipChannel channel = ClipChannel::Position;
+        int humanBone = -1;                     // humanoid tracks (anim-retarget)
         TrackBindingStatus status = TrackBindingStatus::Unchecked;
         Entity entity = NULL_ENTITY;            // the bound entity when resolved
         std::vector<std::string> nearest;       // MissingPath: existing paths, nearest first
@@ -93,6 +97,9 @@ namespace jasperengine::editor{
         std::vector<std::string> scriptFunctions;
         // the root has a C++ script: handlers are not checked
         bool hasCppScript = false;
+        // the root's humanoid rig (validateInScene fills it: anim::resolveHumanoidSlots), for the
+        // humanoid tracks of a humanoid clip; null: they are reported without a rig
+        std::shared_ptr<const anim::HumanoidSlots> humanoid;
         bool checkHandlers = true;
     };
 

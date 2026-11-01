@@ -92,9 +92,18 @@ namespace {
             info.error = info.model + ": not a usable humanoid: " + error;
             return;
         }
+        // the Avatar's fingers, eyes and jaw (anim-retarget 6.3; a bad override is said, the body
+        // map still works) and its twist corrections (6.2: they move the neutral pose)
+        info.overrides = overrides;
+        std::string extraError;
+        if (!pose::resolveExtraBones(skeleton, info.humanoid, overrides.extraBones, info.extra, &extraError, &info.notes)){
+            info.extraError = extraError;
+            info.extra = pose::autoDetectExtraBones(skeleton, info.humanoid);
+        }
         auto rig = std::make_shared<pose::PoseRig>();
         rig->setSkin(pose::buildSkin(scene, model, skeleton, info.boneEntities));
-        if (!rig->build(skeleton, info.humanoid, &error)){
+        const std::array<float, pose::HUMAN_BONE_COUNT> twist = overrides.twistDegrees();
+        if (!rig->build(skeleton, info.humanoid, &error, &twist)){
             info.error = info.model + ": " + error;
             return;
         }

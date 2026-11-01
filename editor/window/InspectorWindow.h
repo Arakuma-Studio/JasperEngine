@@ -688,6 +688,9 @@ namespace jasperengine::editor{
         // the morph target weights of a mesh with blend shapes (names from its model)
         void drawBlendShapes(SceneProject* sceneProject, const std::vector<Entity>& entities);
         void drawModelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the Model's Rig foldout (anim-retarget 9): Animation Type, the Avatar's status, Configure
+        // Avatar..., human scale (InspectorModelRig.cpp)
+        void drawModelRig(ComponentType cpType, SceneProject* sceneProject, Entity entity);
         void drawUIComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawScrollbarComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

@@ -1678,6 +1678,24 @@ void editor::AnimatorWindow::drawStateInspector(int state){
         editState(state, [cycle](anim::ControllerState& target){ target.cycleOffset = cycle; }, k);
     }
     if (ImGui::IsItemDeactivated()) key.clear();
+    // humanoid playback (anim-retarget): Unity's state Mirror and Foot IK, and Retarget for a generic clip
+    bool retarget = stateData.retarget;
+    if (ImGui::Checkbox("Retarget", &retarget)){
+        editState(state, [retarget](anim::ControllerState& target){ target.retarget = retarget; });
+    }
+    ImGui::SetItemTooltip("Play its generic clip as a humanoid clip, retargeted from its source model");
+    ImGui::SameLine();
+    bool mirror = stateData.mirror;
+    if (ImGui::Checkbox("Mirror", &mirror)){
+        editState(state, [mirror](anim::ControllerState& target){ target.mirror = mirror; });
+    }
+    ImGui::SetItemTooltip("Humanoid clips: left and right swapped");
+    ImGui::SameLine();
+    bool footIK = stateData.footIK;
+    if (ImGui::Checkbox("Foot IK", &footIK)){
+        editState(state, [footIK](anim::ControllerState& target){ target.footIK = footIK; });
+    }
+    ImGui::SetItemTooltip("Humanoid clips: the feet reach the clip's foot goals");
 
     // the transitions that leave it, in priority order
     ImGui::SeparatorText("Transitions");

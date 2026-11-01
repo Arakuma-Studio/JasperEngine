@@ -1306,7 +1306,9 @@ intervalMs, loop)`, plus Action: `start()`, `pause()`, `stop()`, `isRunning()`,
 `loadModel(path)`, `loadGLTF(path)`, `loadOBJ(path)`, `getAnimation(i)`,
 `findAnimation(name)`, `playAnimation(indexOrName [, fadeTime])`, `stopAnimations(fadeTime)`,
 `getBone(indexOrName)`, `getMorphWeight(indexOrName)`, `setMorphWeight(indexOrName, w)`,
-`resetToBindPose()`, `enabled` (rw), `getPoseAnimator()` (the model's PoseAnimator, added when missing).
+`resetToBindPose()`, `enabled` (rw), `getPoseAnimator()` (the model's PoseAnimator, added when missing),
+`getHumanoidInfo()` (`{humanoid, animationType ("generic"/"humanoid"), humanScale, missing = {slot names},
+extraMapped, error?}`: its Avatar; nil without bones).
 
 With an Animation Player on the Model's GameObject (4.8.2), `playAnimation(name [, fadeTime])`
 crossfades to the player's state of that name (over the player's `defaultFadeTime` when no fade
@@ -1375,7 +1377,7 @@ on the next frame. User guide: `docs/animation-clips.md`; agents: `jasper://docs
 | `sample()` | applies the current times once (e.g. paused) |
 | `isPlaying()`, `isPlaying(name)` | bool; false for a `once` state that ended (held) |
 | `getState(name)` | an `AnimationState` (below) |
-| `addClip(path [, name])` | appends an entry (`name` empty = the file stem / model clip name); false when the name is taken |
+| `addClip(path [, name [, options]])` | appends an entry (`name` empty or nil = the file stem / model clip name); false when the name is taken. `options`: `{retarget = bool (play a generic clip as a humanoid clip, from its source model), mirror = bool, footIK = bool, layer = int}` |
 | `removeClip(name)`, `getClipCount()`, `getClipName(i)` | `getClipName` is 0-based, `""` out of range |
 | `speed`, `defaultClip`, `defaultFadeTime`, `playAutomatically`, `enabled` | rw; `speed` multiplies every state (negative plays backwards); `enabled = false`: time stops, nothing is written |
 | `isLoaded()` | every clip loaded and bound |
@@ -1429,7 +1431,9 @@ calls made inside them take effect next frame.
 `AnimationState` (by player + state name, looked up on every access; works across clip list
 changes): rw `time`, `normalizedTime`, `speed` (the state's own), `weight`, `wrap` (`"once"`,
 `"loop"`, `"ping_pong"`, `"clamp_forever"`; `"default"` = the entry's), `enabled` (false pauses),
-`layer` (a runtime move: time and weight are kept, the tracks re-mask); ro `name`, `clip`, `length`;
+`layer` (a runtime move: time and weight are kept, the tracks re-mask), `mirror` and `footIK` (humanoid
+clips: runtime overrides of the entry's Mirror / Foot IK); ro `name`, `clip`, `length`, `isHumanoid` (a
+humanoid clip, or a generic one retargeted);
 `isValid()`; `addMixingTransform(path [, recursive=true])`, `removeMixingTransform(path)`,
 `clearMixingTransforms()` (Unity's legacy AddMixingTransform: with any, the state animates only
 those paths, below them too unless `recursive` is false; multiplied with the layer's mask). An
