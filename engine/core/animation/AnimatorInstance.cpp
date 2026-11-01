@@ -920,7 +920,10 @@ void anim::AnimatorInstance::startTransition(size_t layer, int index){
     if (t.ownerState >= 0 && t.ownerState == run.current.state && !run.snapshot) sourceLength = run.current.length;
     const float seconds = std::max(0.0f, t.fixedDuration ? t.duration : t.duration * sourceLength);
     if (seconds <= 0.0f){
-        if (run.current.state >= 0 && !run.snapshot) output.states.push_back({false, (int)layer, run.current.state});
+        if (run.current.state >= 0 && !run.snapshot){
+            output.states.push_back({false, (int)layer, run.current.state});
+            if (!interrupting) run.instantSource = run.current;
+        }
         if (interrupting && run.next.state >= 0) output.states.push_back({false, (int)layer, run.next.state});
         output.states.push_back({true, (int)layer, destination.state});
         run.current = destination;
@@ -1105,6 +1108,20 @@ void anim::AnimatorInstance::collectLayer(size_t layer, const AnimatorComponent&
     const bool leaderOnly = component.eventMode == AnimatorEventMode::LeaderOnly;
     float leaderWeight = 0.0f;
     int leader = -1;
+    // a state a 0 s transition left this update: its step's clip events (no pose, no root motion)
+    if (run.instantSource.state >= 0){
+        collectLeaves(run.instantSource, false, 1.0f, leaderOnly, leaderWeight, leader);
+        for (size_t i = 0; i < leafRuns.size(); i++){
+            if (leaderOnly && (int)i != leader) continue;
+            const LeafRun& leaf = leafRuns[i];
+            const ClipWrapMode wrap = leaf.loops ? (leaf.pingPong ? ClipWrapMode::PingPong : ClipWrapMode::Loop) : ClipWrapMode::Once;
+            fireEvents(leaf.slot, wrap, leaf.from, leaf.to, leaf.includeStart, leaf.state, (int)layer);
+        }
+        leafRuns.clear();
+        leaderWeight = 0.0f;
+        leader = -1;
+        run.instantSource = AnimatorStateRun();
+    }
     if (!run.snapshot) collectLeaves(run.current, false, run.transition != -1 ? 1.0f - progress : 1.0f, leaderOnly, leaderWeight, leader);
     if (run.transition != -1) collectLeaves(run.next, true, progress, leaderOnly, leaderWeight, leader);
     const bool additive = controller->layers[layer].blending == AnimatorLayerBlending::Additive && layer > 0;

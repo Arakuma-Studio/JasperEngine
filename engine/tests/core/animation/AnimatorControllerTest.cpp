@@ -746,15 +746,12 @@ TEST_F(Controllers, CallbacksFollowTheStepsClipEvents){
     log.clear();
     step(0.5);
     step(0.5);     // crosses 0.9 (exit) and 0.95 (the event) in one step
-    // the step's clip events first; then (S21's and Unity's order, upstream's deviation in the
-    // S21 spec) the destination's enter when the transition starts, the source's exit when it
-    // ends: a 0 s transition ends in the next update
-    ASSERT_EQ(log.size(), 2u);
-    EXPECT_EQ(log[0], "onLate") << "A plays its whole step";
-    EXPECT_EQ(log[1], "enter B");
-    step(0.1);
+    // the step's clip events first (A plays its whole step), then the state notes: a 0 s
+    // transition leaves A and enters B in this update
     ASSERT_EQ(log.size(), 3u);
-    EXPECT_EQ(log[2], "exit A");
+    EXPECT_EQ(log[0], "onLate");
+    EXPECT_EQ(log[1], "exit A");
+    EXPECT_EQ(log[2], "enter B");
     object.getOnEvent().clear();
     object.getOnStateExit().clear();
     object.getOnStateEnter().clear();

@@ -218,7 +218,9 @@ TEST_F(AnimatorUpstreamFiles, UpstreamControllerConvertsMemberByMember){
     // saved: version 2, and every member upstream wrote is still in the file
     const std::string saved = writeController(def);
     EXPECT_NE(saved.find("\"version\": 2"), std::string::npos);
-    for (const char* kept : {"\"mirror\": true", "\"foot_ik\": true", "\"automate_thresholds\": false", "\"editor_note\": \"root\"",
+    // (upstream's defaults, such as automate_thresholds false, read the same when left out)
+    EXPECT_EQ(saved.find("automate_thresholds"), std::string::npos);
+    for (const char* kept : {"\"mirror\": true", "\"foot_ik\": true", "\"editor_note\": \"root\"",
                              "\"editor_note\": \"layer\"", "\"editor_note\": \"transition\""}){
         EXPECT_NE(saved.find(kept), std::string::npos) << kept << "\n" << saved;
     }
@@ -263,7 +265,9 @@ TEST_F(AnimatorUpstreamFiles, AConvertedControllerPlaysLikeTheUpstreamFile){
     };
     const std::vector<Vector3> upstream = play(upstreamPath);
 
-    // the file an editor saves after opening it (version 2), played from the start
+    // the file an editor saves after opening it (version 2), played from the start by a new
+    // Animator (a controller change keeps the parameters and states of the same names)
+    scene.removeComponent<AnimatorComponent>(root);
     const ControllerParseResult read = parseController(readAssetText(upstreamPath));
     ASSERT_TRUE(read.ok) << read.error.toString();
     animtest::writeAsset(prefix + "saved.controller", writeController(read.data));

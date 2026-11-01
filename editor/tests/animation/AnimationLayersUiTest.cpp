@@ -14,6 +14,8 @@
 
 #include <gtest/gtest.h>
 
+#include "support/EditorTestSupport.h"
+
 #include "AppSettings.h"
 #include "EditorHost.h"
 #include "Engine.h"
@@ -62,7 +64,6 @@ namespace {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
-        std::unique_ptr<editor::Platform> platform;
     };
 
     Headless& headless() {
@@ -78,15 +79,15 @@ namespace {
             std::ofstream(out.dir / "project.yaml") << "name: layersui\nassetsDir: assets\n";
             AppSettings::initialize();
             out.project.reset(new Project());
-            out.platform.reset(new editor::Platform(out.project.get()));
-            static char arg0[] = "jasperengine-editor-tests";
-            static char* argv[] = {arg0, nullptr};
-            Engine::systemInit(1, argv, out.platform.get());
+            // the test binary's TestSystem stays the engine's System (a second
+            // Engine::systemInit would break its log capture): the project's paths go in
+            editor::test::useProjectPaths(out.project.get());
             Engine::pauseGameEvents(true);
             Engine::setAsyncLoading(false);
             out.ready = out.project->loadProject(out.dir, false);
             return out;
         }();
+        if (h.project) editor::test::useProjectPaths(h.project.get());
         return h;
     }
 

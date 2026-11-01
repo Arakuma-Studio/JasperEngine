@@ -102,6 +102,9 @@ namespace jasperengine::anim{
         float elapsed = 0.0f;
         float duration = 0.0f;
         bool snapshot = false;              // current is the frozen pose of an interrupted transition
+        // the state a 0 s transition left in this update: its clip events of the step still fire
+        // (the step's events first, then the state notes)
+        AnimatorStateRun instantSource;
         float weight = 1.0f;
         float targetWeight = 1.0f;          // setLayerWeight with a fade: weight moves toward it
         float weightFadeSpeed = 0.0f;       // per second (0: no fade)
