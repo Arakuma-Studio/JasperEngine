@@ -11,12 +11,24 @@
 // modifiers suppresses the plain binding of the same key; a press the UI consumed does not
 // count for maps that ignore it. Callbacks fire during the evaluation, before the fixed steps.
 // Rebinding writes overrides (binding id -> path) that persist in UserSettings.
+//
+// Unity's Input Manager (docs/specs/S22-gameplay.md "Upstream absorption"): an asset's map named
+// "Input Manager" (InputManagerFormat) holds its virtual axes and buttons, and a project without
+// an actions asset gets Unity's eleven defaults in that map. getAxis / getAxisRaw / getButton /
+// getButtonDown / getButtonUp / getVector read any action by a flat name (the Input Manager
+// map's first, then the first of that name in priority order) or by "Map/Action", with Unity's
+// numbers: Input Manager smoothing per binding, bounded sources summed then clamped, deltas added
+// unclamped, a button held while one of its controls is. Virtual sources (owner-keyed values and
+// deltas: on-screen controls, scripts, MCP agents) feed actions directly.
 
 #include "Export.h"
+#include "Input.h"
 #include "input/InputActionAsset.h"
+#include "input/InputManagerFormat.h"
 #include "math/Vector2.h"
 #include "util/FunctionSubscribe.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -26,6 +38,10 @@ namespace jasperengine {
 
     class InputAction;
     class InputBinding;
+    struct InputActionsRuntime;
+
+    // Who feeds a virtual source: an on-screen control (UI), a script, an agent (MCP send_input)
+    enum class InputSourceKind { Control, Script, Agent };
 
     enum class InputActionPhase : int {
         WAITING = 0,    // at rest
@@ -70,6 +86,22 @@ namespace jasperengine {
         float heldTime = 0.0f;
         InputActionPhase phase = InputActionPhase::WAITING;
         int consumedByMap = -1;     // the map whose use of a control took it this window
+        // the Input Manager's view (getAxis, getButton...): the bindings' bounded sum (smoothed),
+        // their raw sum and their deltas, held while a control holds it, its edges (the frame's
+        // and the fixed window's), and what the virtual sources did since the last evaluation
+        bool enabled = true;
+        float managerBounded = 0.0f;
+        float managerRaw = 0.0f;
+        float managerDelta = 0.0f;
+        bool managerHeld = false;
+        bool managerDown = false;
+        bool managerUp = false;
+        bool managerFixedDown = false;
+        bool managerFixedUp = false;
+        bool sourcePressLatch = false;
+        bool sourceReleaseLatch = false;
+        bool sourceRepressLatch = false;
+        std::string managerName;    // getManagerName's (set when the asset is built)
 
     public:
         float readValue() const;            // BUTTON: 0..1, AXIS: -1..1, VECTOR2: the length
@@ -250,9 +282,111 @@ namespace jasperengine {
         // ---- S25: a control path some binding of an enabled map uses (game shortcuts first)
         static bool isControlBound(const std::string& path);
 
+        // ---- Unity's Input Manager: the defaults and the flat definition (InputManagerFormat)
+        // Unity's eleven defaults as the only map (the asset unloaded): what a game without an
+        // actions asset has, as after unload()
+        static void loadDefaults();
+        static bool usesBuiltInDefaults();
+        // the Input Manager map of what is loaded (the asset's, in memory; or the defaults')
+        // replaced by these actions, added when it has none
+        static void setManagerActions(const std::vector<InputManagerAction>& actions);
+        static std::vector<InputManagerAction> getManagerActions();
+        // the flat JSON ({"version": 1, "actions": [...]} or the bare list) as the Input Manager
+        // map; false + error (nothing changes) when invalid
+        static bool loadJson(const std::string& json, std::string* error);
+        static std::string toJson();
+
+        // ---- the Input Manager's queries. name: an action's flat name (the Input Manager map's
+        // first, then the first action of that name in map priority order) or "Map/Action". An
+        // unknown name logs one error and reads 0 / false. A VECTOR2 action reads its length and
+        // its press state. Edges in a fixed step are the fixed window's (each seen by one step)
+        static float getAxis(const std::string& name);
+        // without smoothing: -1, 0 or 1 for keys
+        static float getAxisRaw(const std::string& name);
+        // held while one of its controls (or a bounded source past the press point) holds it
+        static bool getButton(const std::string& name);
+        static bool getButtonDown(const std::string& name);
+        static bool getButtonUp(const std::string& name);
+        // (getAxis(x), getAxis(y)) of the bounded sources only, length clamped to 1 (Godot's get_vector)
+        static Vector2 getVector(const std::string& xName, const std::string& yName);
+        static bool hasAction(const std::string& name);
+        // the Input Manager map's names, then every other action as "Map/Action"
+        static std::vector<std::string> getActionNames();
+        // the action of a flat name or path, nullptr for none (no error)
+        static InputAction* find(const std::string& name);
+        // the name getActionNames and onButtonDown use for it
+        static std::string getManagerName(const InputAction* action);
+        // a disabled action reads 0 / false and keeps no edges; enabling it starts from rest
+        static void setActionEnabled(const std::string& name, bool enabled);
+        static bool isActionEnabled(const std::string& name);
+
+        // ---- virtual sources (on-screen controls, scripts, MCP agents). An owner is any unique
+        // address (a component, an element, a script instance) or namedSource("mcp"). A source a
+        // script instance owns goes when the instance is released (scene unload): the engine
+        // clears the owner of every released script (Engine::removeSubscriptionsByTag).
+        // A bounded value, clamped to [-1, 1]; 0 removes it. It counts at once in getAxis and from
+        // the next evaluation in the action's state and presses
+        static void setSourceValue(uintptr_t owner, const std::string& action, float value,
+                                   InputSourceKind kind = InputSourceKind::Control);
+        // a delta for this frame only (until Input::endFrame), added to what the owner gave already
+        static void addSourceDelta(uintptr_t owner, const std::string& action, float delta,
+                                   InputSourceKind kind = InputSourceKind::Control);
+        static void clearSource(uintptr_t owner);
+        static void clearSources(InputSourceKind kind);
+        static void clearAllSources();
+        // a stable owner for a name ("mcp", "script", a script's own name): never a real address
+        static uintptr_t namedSource(const std::string& name);
+        static bool isNamedSource(uintptr_t owner);
+        // the action has a binding to mouse movement (an on-screen touch area dragged with the
+        // mouse adds nothing to it: the mouse moves it already)
+        static bool isMouseMotionBound(const std::string& action);
+
+        // ---- the Input Manager's runtime rebinding: an action's bindings replaced (settings
+        // screens), in the flat shape; kept apart from the per-binding overrides above
+        static bool setBindings(const std::string& action, const std::vector<InputManagerBinding>& bindings,
+                                std::string* error = nullptr);
+        // the bindings in use (the replacement, else the asset's)
+        static std::vector<InputManagerBinding> getBindings(const std::string& action);
+        static bool hasBindingOverride(const std::string& action);
+        // "" = every action
+        static void resetBindings(const std::string& action = "");
+        // {"version": 1, "bindings": {"Jump": [...]}}: the replacements only
+        static std::string exportOverrides();
+        // replaces the replacements; actions the game does not have are skipped; false + error
+        // (nothing changes) when the text or a binding is invalid
+        static bool importOverrides(const std::string& json, std::string* error);
+
+        // the Input Manager's runtime state: replacements, enabled flags, sources, smoothing,
+        // edges (resetSession does it too)
+        static void resetRuntimeState();
+
+        // ---- live state (Project Settings > Input during Play, MCP get_play_state)
+        struct State {
+            float value = 0.0f;
+            float raw = 0.0f;
+            bool pressed = false;
+            bool enabled = true;
+        };
+        static bool getState(const std::string& name, State& out);
+
         // ---- Engine only
+        // what the UI takes from the actions of maps that ignore what it consumes (a focused
+        // text field, gamepad navigation): Input::beginFrame(dt) sets it before evaluating
+        static void setSuppression(const InputSuppression& suppression);
+        static const InputSuppression& getSuppression();
         // the frame's evaluation, right after Input::beginFrame(); dt: the unscaled frame time
         static void evaluate(float dt);
+        // the end of the frame (Input::endFrame): the sources' deltas go
+        static void endFrame();
+        // the actions whose Input Manager button went down / up in the last evaluation, by their
+        // getManagerName (Engine.onButtonDown / onButtonUp)
+        static std::vector<std::string> getFrameButtonDowns();
+        static std::vector<std::string> getFrameButtonUps();
+        // the same without a copy (Input::beginFrame fires the events from them: no allocation)
+        static size_t getFrameButtonDownCount();
+        static const std::string& getFrameButtonDown(size_t index);
+        static size_t getFrameButtonUpCount();
+        static const std::string& getFrameButtonUp(size_t index);
         // after each fixed step (Input::endFixedStep)
         static void endFixedStep();
         // Play start and stop: maps back to the asset's state, injections, virtual controls and

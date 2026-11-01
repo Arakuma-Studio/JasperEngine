@@ -1872,32 +1872,60 @@ const editor::Physics3DWorldSettings& editor::Project::getPhysics3DWorldSettings
     return physics3DWorld;
 }
 
-#if 0 // SYNC4-ABSORB(input): upstream's Input Manager actions
-void editor::Project::setInputActions(const std::vector<InputAction>& actions){
-    inputActions = actions;
-    inputActionsCustomized = InputActions::actionsToJson(actions) != InputActions::actionsToJson(InputActions::defaults());
-    unreadableInputNode.clear();
-    applyInputActions();
+std::vector<jasperengine::InputManagerAction> editor::Project::getInputManagerActions() const{
+    if (inputActionsAsset.empty())
+        return InputManagerFormat::defaults();
+    std::string text;
+    InputActionAssetDesc asset;
+    std::string error;
+    if (!readInputActionsAsset(text) || !InputActionAssetDesc::parse(text, asset, error))
+        return {};
+    const InputActionMapDesc* map = asset.findMap(InputManagerFormat::MAP_NAME);
+    return map ? InputManagerFormat::fromMap(*map) : std::vector<InputManagerAction>();
 }
 
-const std::vector<InputAction>& editor::Project::getInputActions() const{
-    return inputActions;
+bool editor::Project::readInputActionsAsset(std::string& text) const{
+    text.clear();
+    if (inputActionsAsset.empty())
+        return false;
+    if (inputMigration.pending && inputMigration.asset == inputActionsAsset){
+        text = inputMigration.text;
+        return true;
+    }
+    std::ifstream file(getProjectPath() / inputActionsAsset, std::ios::binary);
+    if (!file)
+        return false;
+    text.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    return true;
 }
 
-bool editor::Project::hasCustomInputActions() const{
-    return inputActionsCustomized;
+void editor::Project::setInputActionsMigration(const InputActionsMigration& migration){
+    inputMigration = migration;
 }
 
-void editor::Project::resetInputActions(){
-    setInputActions(InputActions::defaults());
+const editor::InputActionsMigration& editor::Project::getInputActionsMigration() const{
+    return inputMigration;
 }
 
-void editor::Project::applyInputActions() const{
-    InputActions::setActions(inputActions);
-}
-
-std::string editor::Project::getInputActionsJsonForBuild() const{
-    return inputActionsCustomized ? InputActions::actionsToJson(inputActions) : std::string();
+bool editor::Project::writeInputActionsMigration(){
+    if (!inputMigration.pending)
+        return true;
+    if (getProjectPath().empty())
+        return false;
+    const std::filesystem::path file = getProjectPath() / inputMigration.asset;
+    std::error_code ec;
+    std::filesystem::create_directories(file.parent_path(), ec);
+    const io::WriteResult result = io::writeFileAtomic(file, inputMigration.text);
+    if (!result.ok()){
+        Out::error("Project Settings > Input: the Input Manager actions of project.yaml could not be written to %s (%s); "
+                   "Play uses them from memory until they can", inputMigration.asset.generic_string().c_str(), result.message.c_str());
+        return false;
+    }
+    inputMigration.pending = false;
+    Out::info("Project Settings > Input: the %zu Input Manager actions of project.yaml are the \"%s\" map of %s now "
+              "(project.yaml points to it once the project is saved)",
+              inputMigration.actions, InputManagerFormat::MAP_NAME, inputMigration.asset.generic_string().c_str());
+    return true;
 }
 
 void editor::Project::setUnreadableInputNode(const std::string& yaml){
@@ -1908,11 +1936,11 @@ const std::string& editor::Project::getUnreadableInputNode() const{
     return unreadableInputNode;
 }
 
-#endif
-
 void editor::Project::resetPlayInput() const{
-    // SYNC4-ABSORB(input): upstream cleared held input, rebinding overrides and simulated sources here
-    // (Input::reset, InputActions::resetRuntimeState); S22 resets its session in Play's own steps
+    // no held key, touch, tap or text of the last Play (or of the editor's own use), and none of
+    // its Input Manager rebinding, disabled actions or simulated sources
+    Input::reset();
+    InputActions::resetRuntimeState();
 }
 
 void editor::Project::setShaderGlobals(const std::vector<ShaderGlobalDecl>& decls){
@@ -5392,7 +5420,8 @@ void editor::Project::resetConfigs() {
     setTagsAndLayers({}, {});
     setLayerCollisionMatrices(allLayersCollide(), allLayersCollide());
     setPhysics3DWorldSettings(Physics3DWorldSettings());
-    // SYNC4-ABSORB(input): upstream reset its Input Manager actions here (resetInputActions)
+    unreadableInputNode.clear();
+    inputMigration = InputActionsMigration();
     setShaderGlobals({});
     packNativeResources = defaultPackNativeResources;
     versionControlMetadata = defaultVersionControlMetadata;
@@ -6137,6 +6166,14 @@ bool editor::Project::saveProjectFile(DegradedSavePolicy policy, SaveResult* out
         return false;
     }
 
+    // project.yaml is about to point to the asset an older editor's Input Manager actions became:
+    // it exists first
+    if (inputMigration.pending && !writeInputActionsMigration()) {
+        Out::error("Project not saved: the actions asset project.yaml would point to (%s) could not be written",
+                   inputMigration.asset.generic_string().c_str());
+        return false;
+    }
+
     if (!saveWorkspaceFile()) {
         // encodeProject() no longer emits the per-user keys, so while project.yaml
         // still holds the only copy of them, writing it now would discard them
@@ -6526,6 +6563,9 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         workspaceMigrationPending = workspace.hasAdoptedLegacyState();
 
         Stream::decodeProject(this, projectNode, workspace);
+        // an older editor's Input Manager actions became an actions asset: a new file in the
+        // assets directory (project.yaml keeps its node until the user saves)
+        writeInputActionsMigration();
         projectReportScope.reset();
         projectLoadReport = std::move(projectReport);
         logLoadReport(projectLoadReport);
@@ -7082,8 +7122,7 @@ void editor::Project::configureGenerator() {
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
-    // SYNC4-ABSORB(input): upstream's inputActionsJson ({}) until the Input absorption; S22 passes its actions asset above
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, {}, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings());
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings());
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -9141,8 +9180,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
-    // SYNC4-ABSORB(input): upstream's inputActionsJson ({}) until the Input absorption; S22 passes its actions asset above
-    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, {}, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings());
+    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings());
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
     }
@@ -9755,7 +9793,11 @@ void editor::Project::start(uint32_t sceneId) {
     InputActions::unload();
     InputActions::setDefaultDeadzone(inputDeadzone);
     if (const std::string actions = getInputActionsEnginePath(); !actions.empty()) {
-        InputActions::loadDefault(actions);
+        // an older editor's Input Manager actions not written yet: from memory
+        if (inputMigration.pending && inputMigration.asset == inputActionsAsset)
+            InputActions::loadFromText(actions, inputMigration.text);
+        else
+            InputActions::loadDefault(actions);
     } else if (!inputActionsAsset.empty()) {
         Out::warning("Project Settings > Input: %s is not in the assets directory, Play starts without it",
                      inputActionsAsset.generic_string().c_str());

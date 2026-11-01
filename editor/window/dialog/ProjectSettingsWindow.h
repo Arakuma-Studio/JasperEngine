@@ -156,14 +156,18 @@ namespace jasperengine::editor {
         LayerCollisionRows m_layerCollision3D = allLayersCollide();
         LayerCollisionRows m_layerCollision2D = allLayersCollide();
 
-#if 0 // SYNC4-ABSORB(input): upstream's Input Manager page (S22 owns Project Settings > Input)
-        // Input actions being edited (Project Settings > Input). The page has its own undo
-        // (Ctrl+Z / Ctrl+Y while it shows); OK makes the whole edit one project history step.
-        std::vector<InputAction> m_inputActions;
-        std::vector<InputAction> m_inputCommitted;      // the state of the last page undo step
+        // Project Settings > Input's Input Manager: the actions asset's "Input Manager" map (Unity's
+        // defaults without an asset) being edited as Unity's virtual axes and buttons. The section
+        // has its own undo (Ctrl+Z / Ctrl+Y while the page shows); OK makes the whole edit one
+        // project history step (InputActionsCmd), which makes an asset when the project has none
+        std::vector<InputManagerAction> m_inputActions;
+        std::vector<InputManagerAction> m_inputOriginal;  // as the dialog opened (or the asset changed)
+        std::filesystem::path m_inputActionsSource;       // the asset those came from
+        bool m_inputManagerReadable = true;               // the asset could be read
+        std::vector<InputManagerAction> m_inputCommitted;      // the state of the last section undo step
         std::string m_inputCommittedJson;
-        std::vector<std::vector<InputAction>> m_inputUndo;
-        std::vector<std::vector<InputAction>> m_inputRedo;
+        std::vector<std::vector<InputManagerAction>> m_inputUndo;
+        std::vector<std::vector<InputManagerAction>> m_inputRedo;
         int m_inputSelected = 0;
         char m_inputSearch[64] = {0};
         char m_inputControlFilter[64] = {0};
@@ -176,7 +180,6 @@ namespace jasperengine::editor {
             int frames = 0;
         };
         InputListen m_inputListen;
-#endif
 
         // Shader Globals being edited (Project Settings > Graphics). Every valid edit is declared to
         // the engine at once, so the Scene and Game views follow it; Cancel declares the project's
@@ -213,10 +216,12 @@ namespace jasperengine::editor {
         // Unity's triangular Layer Collision Matrix over the named layers (as typed in
         // Tags and Layers, not yet applied)
         void drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows);
-#if 0 // SYNC4-ABSORB(input): upstream's Input Manager page (S22 owns Project Settings > Input)
+        // the Input Manager section of the Input page
+        void drawInputManagerSection();
+        void loadInputManagerActions();
         void drawInputActionList();
-        void drawInputActionDetails(InputAction& action, int actionIndex);
-        void drawInputBinding(InputAction& action, int actionIndex, int bindingIndex);
+        void drawInputActionDetails(InputManagerAction& action, int actionIndex);
+        void drawInputBinding(InputManagerAction& action, int actionIndex, int bindingIndex);
         // a binding's control list: names to remove, a picker to add, Listen
         void drawInputControls(const char* id, std::vector<InputControl>& controls, int actionIndex, int bindingIndex, int list);
         void pollInputListen();
@@ -225,7 +230,7 @@ namespace jasperengine::editor {
         void redoInputEdit();
         // First Input problem that blocks OK, "" when there is none
         std::string inputError() const;
-#endif
+
         void drawScriptingSettings();
         void drawTagsAndLayersSettings();
         // Why the New Tag Name field cannot be added ("" when it can)

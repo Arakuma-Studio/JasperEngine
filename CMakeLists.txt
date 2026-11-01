@@ -1229,7 +1229,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/SelectionCmd.cpp
     ${EDITOR_DIR}/command/type/SetAssetMetaCmd.cpp
     ${EDITOR_DIR}/command/type/ShaderGlobalsCmd.cpp
-    # SYNC4-ABSORB(input): upstream's InputActionsCmd.cpp (Project Settings > Input) waits for the Input absorption
+    ${EDITOR_DIR}/command/type/InputActionsCmd.cpp
     ${EDITOR_DIR}/command/type/CopyFileCmd.cpp
     ${EDITOR_DIR}/command/type/RenameFileCmd.cpp
     ${EDITOR_DIR}/command/type/CreateDirCmd.cpp

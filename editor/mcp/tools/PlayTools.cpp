@@ -156,8 +156,12 @@ struct HeldInput {
     std::map<int, std::set<int>> gamepadButtons;
     std::map<int, std::set<int>> gamepadAxes;
     std::set<std::string> actions;      // Input Actions forced down (input_action down)
+    // the Input Manager's actions held and axes set through the "mcp" source (action / axis events)
+    std::set<std::string> managerActions;
+    std::map<std::string, float> axes;
     bool empty() const {
-        if (!keys.empty() || !mouseButtons.empty() || !touches.empty() || !gamepads.empty() || !actions.empty()) return false;
+        if (!keys.empty() || !mouseButtons.empty() || !touches.empty() || !gamepads.empty() || !actions.empty() ||
+            !managerActions.empty() || !axes.empty()) return false;
         for (const auto& [id, buttons] : gamepadButtons) if (!buttons.empty()) return false;
         return true;
     }
@@ -536,9 +540,11 @@ Vector2 clampToView(Vector2 point) {
                    std::clamp(point.y, view.getY(), view.getY() + std::max(0.0f, view.getHeight())));
 }
 
-// SYNC4-ABSORB(input): upstream's send_input action/axis/axis_delta events feed the input actions
-// through a virtual source ("mcp"); S22 forces actions with input_action (InputActions::inject)
-// until the Input absorption brings the virtual sources
+// the owner of what send_input's action / axis / axis_delta events give the input actions (a
+// virtual source, as an on-screen control; input_action forces an action with InputActions::inject)
+uintptr_t mcpInputSource() {
+    return InputActions::namedSource("mcp");
+}
 
 void releaseHeldInput(McpContext& ctx) {
     HeldInput& held = state().held;
@@ -557,6 +563,8 @@ void releaseHeldInput(McpContext& ctx) {
     }
     for (int pad : held.gamepads) Engine::systemGamepadDisconnect(pad);
     for (const std::string& action : held.actions) InputActions::releaseInjected(action);
+    // the Input Manager's actions and axes it held (send_input action / axis / axis_delta)
+    InputActions::clearSource(mcpInputSource());
     held = HeldInput();
     if (PlayInput* input = ctx.playInput()) input->setPointerInjected(false);
 }
@@ -578,7 +586,32 @@ Json heldInputJson() {
     }
     Json actions = Json::array();
     for (const std::string& action : held.actions) actions.push_back(action);
-    return {{"keys", keys}, {"mouse_buttons", buttons}, {"touches", touches}, {"gamepads", pads}, {"input_actions", actions}};
+    Json out = {{"keys", keys}, {"mouse_buttons", buttons}, {"touches", touches}, {"gamepads", pads}, {"input_actions", actions}};
+    if (!held.managerActions.empty()) out["actions"] = held.managerActions;
+    if (!held.axes.empty()) out["axes"] = held.axes;
+    return out;
+}
+
+// What the game's input reads now (get_play_state while playing): the Input Manager's view of
+// the actions that are not at rest (a value, or "pressed" for a button action), the touch count,
+// the keys held
+Json playInputJson() {
+    Json actions = Json::object();
+    for (const std::string& name : InputActions::getActionNames()) {
+        InputActions::State st;
+        const InputAction* action = InputActions::find(name);
+        if (!action || !InputActions::getState(name, st) || !st.enabled) continue;
+        if (action->getType() == InputActionType::BUTTON) {
+            if (st.pressed) actions[name] = "pressed";
+        } else if (std::fabs(st.value) >= 0.0005f) {
+            actions[name] = std::round(st.value * 1000.0f) / 1000.0f;
+        }
+    }
+    Json keys = Json::array();
+    for (int key = 0; key <= D_KEY_LAST && keys.size() < 16; key++) {
+        if (Input::isKeyPressed(key)) keys.push_back(keyName(key));
+    }
+    return {{"actions", actions}, {"touches", Input::getTouchCount()}, {"keys_held", keys}};
 }
 
 } // namespace
@@ -669,7 +702,8 @@ Json playStateJson(McpContext& ctx) {
     for (uint32_t sceneId : PlayChangeReview::get().pendingScenes()) pending += PlayChangeReview::get().pendingCount(sceneId);
     out["pending_play_changes"] = pending;
     if (!s.held.empty()) out["held_input"] = heldInputJson();
-    // SYNC4-ABSORB(input): upstream's "input" block (its actions' state, playInputJson) waits for the Input absorption
+    // what the game's input reads (the Input Manager's actions, touches, keys)
+    if (playId != NULL_PROJECT_SCENE && s.current.active) out["input"] = playInputJson();
     // script coroutines and pending timers of the game (get_runtime_entity lists them per script)
     out["coroutines"] = ScriptScheduler::coroutineCount();
     out["timers"] = ScriptScheduler::timerCount();
@@ -3121,6 +3155,72 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
         return true;
     }
 
+    if (type == "action" || type == "axis" || type == "axis_delta") {
+        // the Input Manager's actions (a flat name or Map/Action), through the virtual source
+        // "mcp" (as an on-screen control)
+        const Json nameValue = event.contains("name") ? event["name"] : (event.contains("action") ? event["action"] : Json());
+        const std::string name = nameValue.is_string() ? nameValue.get<std::string>() : std::string();
+        if (!InputActions::hasAction(name)) {
+            std::string list;
+            for (const std::string& known : InputActions::getActionNames()) list += (list.empty() ? "" : ", ") + known;
+            error = (name.empty() ? std::string("name must be an input action") : "no input action \"" + name + "\"") +
+                    " (Project Settings > Input: " + list + ")";
+            return false;
+        }
+        const uintptr_t source = mcpInputSource();
+        if (type == "action") {
+            const std::string phase = lowerCopy(event.value("phase", "press"));
+            auto down = [name, source]() {
+                InputActions::setSourceValue(source, name, 1.0f, InputSourceKind::Agent);
+                state().held.managerActions.insert(name);
+                return std::string();
+            };
+            auto up = [name, source]() {
+                InputActions::setSourceValue(source, name, 0.0f, InputSourceKind::Agent);
+                state().held.managerActions.erase(name);
+                return std::string();
+            };
+            if (phase == "down") add(down, gapFrames, 0, "action down " + name);
+            else if (phase == "up") add(up, gapFrames, 0, "action up " + name);
+            else if (phase == "press" || phase == "tap") {
+                add(down, holdFrames, holdMs, "action down " + name);
+                add(up, gapFrames, 0, "action up " + name);
+            } else {
+                error = "action phase must be press, down or up";
+                return false;
+            }
+            return true;
+        }
+        const char* key = type == "axis" ? "value" : "delta";
+        if (!event.contains(key) || !event[key].is_number()) {
+            error = std::string(type) + " needs a number " + key;
+            return false;
+        }
+        if (type == "axis_delta") {
+            const float delta = event[key].get<float>();
+            add([name, source, delta]() {
+                InputActions::addSourceDelta(source, name, delta, InputSourceKind::Agent);
+                return std::string();
+            }, gapFrames, 0, "axis delta " + name);
+            return true;
+        }
+        const float value = std::clamp(event[key].get<float>(), -1.0f, 1.0f);
+        auto set = [name, source](float v) {
+            InputActions::setSourceValue(source, name, v, InputSourceKind::Agent);
+            if (v != 0.0f) state().held.axes[name] = v;
+            else state().held.axes.erase(name);
+            return std::string();
+        };
+        // with hold_frames / hold_ms it goes back to 0 after them, else it stays (0 releases)
+        if (value != 0.0f && (event.contains("hold_frames") || event.contains("hold_ms"))) {
+            add([set, value]() { return set(value); }, holdFrames, holdMs, "axis " + name);
+            add([set]() { return set(0.0f); }, gapFrames, 0, "axis release " + name);
+        } else {
+            add([set, value]() { return set(value); }, gapFrames, 0, "axis " + name);
+        }
+        return true;
+    }
+
     // an Input Action forced at top priority (InputActions::inject): press for hold_frames
     // windows (0: pressed and released in one), down until up, up, or a value for hold_frames
     if (type == "input_action") {
@@ -3226,7 +3326,7 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
         return false;
     }
 
-    error = "type must be key, text, ime, ime_commit, ime_cancel, mouse, mouse_leave, mouse_enter, touch, gamepad, input_action, app, wait or release_all";
+    error = "type must be key, text, ime, ime_commit, ime_cancel, mouse, mouse_leave, mouse_enter, touch, gamepad, input_action, action, axis, axis_delta, app, wait or release_all";
     return false;
 }
 
@@ -3333,6 +3433,25 @@ bool cutInputShort(InputRun& run) {
     for (const std::string& name : actions) {
         InputActions::releaseInjected(name);
         held.actions.erase(name);
+    }
+    // the Input Manager's actions it pressed are released, the axes it moved go back to where they were
+    std::vector<std::string> managerActions;
+    for (const std::string& name : held.managerActions) if (!before.managerActions.count(name)) managerActions.push_back(name);
+    for (const std::string& name : managerActions) {
+        InputActions::setSourceValue(mcpInputSource(), name, 0.0f, InputSourceKind::Agent);
+        held.managerActions.erase(name);
+    }
+    std::vector<std::string> axes;
+    for (const auto& [name, value] : held.axes) {
+        auto it = before.axes.find(name);
+        if (it == before.axes.end() || it->second != value) axes.push_back(name);
+    }
+    for (const std::string& name : axes) {
+        auto it = before.axes.find(name);
+        const float value = it == before.axes.end() ? 0.0f : it->second;
+        InputActions::setSourceValue(mcpInputSource(), name, value, InputSourceKind::Agent);
+        if (value != 0.0f) held.axes[name] = value;
+        else held.axes.erase(name);
     }
     return true;
 }
@@ -4088,18 +4207,18 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "send_input";
         tool.title = "Send Input";
         tool.description =
-            "Inject input into the running game over frames (no focus). events in order, each {type, ...} (first "
-            "action = default):\nkey: key (space, a, left, f1, kp_0...), action press|down|up, hold_frames (2; 0 = up "
-            "same frame), hold_ms, mods [shift,ctrl,alt,super]\ntext: text (UTF-8); ime: text, cursor (code points; -1 "
-            "selects); ime_commit: text; ime_cancel\nmouse_leave, mouse_enter\nmouse: action "
-            "click|double_click|down|up|move|drag|scroll, x, y (default: the pointer), button left|right|middle, to "
-            "[x,y] + steps (drag), dx, dy (scroll, or a move without x, y)\ntouch: action tap|start|move|end|cancel|swipe, "
-            "pointer, x, y, to\nmouse/touch: target / to_target = CSS selector of a UI Document element (center; "
-            "document: which)\ngamepad: gamepad (0), button (a, b, dpad_up...) + action, or axis (left_x..right_trigger) "
-            "+ value -1..1\ninput_action: name Map/Action, action press|down|up|value, value\napp: action "
-            "pause|resume|focus_lost|focus_gained|low_memory|orientation (+orientation)\nwait: frames, ms. "
-            "release_all.\nspace: canvas px (Input.getMousePosition), normalized 0..1, view = Game view px. down holds "
-            "until up/release_all/stop. Returns frames, console, play state; auto_pause: only events + frames_after run.";
+            "Input into the running game, over frames. events in order, {type, ...} (first action: default):\nkey: key "
+            "(space, a, f1...), action press|down|up, hold_frames (2; 0: same frame), hold_ms, mods "
+            "[shift,ctrl,alt,super]\ntext: text; ime: text, cursor; ime_commit: text; ime_cancel\n"
+            "mouse_leave, mouse_enter\nmouse: action click|double_click|down|up|move|drag|scroll, x, y (default: "
+            "pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy (scroll; move w/o x, y)\ntouch: action "
+            "tap|start|move|end|cancel|swipe, pointer, x, y, to\ntarget / to_target: UI Document element CSS selector "
+            "(document: which)\ngamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + "
+            "value\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
+            "phase (press|down|up)|value|delta\napp: action pause|resume|focus_lost|focus_gained|low_memory|orientation "
+            "(+orientation)\nwait: frames, ms. release_all.\nspace: canvas px, normalized 0..1, view = Game view px. "
+            "down holds until up/release_all/stop. Returns frames, console, play state (auto_pause: events + "
+            "frames_after only).";
         tool.inputSchema = object({
             {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500}, {"items", eventItem}}},
             {"space", withDefault(stringEnum("", {"canvas", "normalized", "view"}), "canvas")},

@@ -1,4 +1,4 @@
-// (c) JasperDev and contributors
+// (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
 #include "InputControlNames.h"
@@ -253,6 +253,11 @@ int InputControlNames::parseMouseButton(const std::string& raw) {
     if (name == "mouse_left" || name == "left" || name == "mouse" || name == "mouse_button_left") return D_MOUSE_BUTTON_LEFT;
     if (name == "mouse_right" || name == "right" || name == "mouse_button_right") return D_MOUSE_BUTTON_RIGHT;
     if (name == "mouse_middle" || name == "middle" || name == "mouse_button_middle") return D_MOUSE_BUTTON_MIDDLE;
+    // the control paths' "button4".."button8" (1-based: the 4th button)
+    if (name.rfind("button", 0) == 0 && allDigits(name, 6)) {
+        const int n = std::stoi(name.substr(6));
+        return (n >= 4 && n <= D_MOUSE_BUTTON_LAST + 1) ? n - 1 : -1;
+    }
     // Unity: "mouse 0" / KeyCode.Mouse0 is the left button (0-based); ours: mouse_4..mouse_8 (1-based)
     const std::string flat = compact(name);
     if (flat.rfind("mousebutton", 0) == 0 && allDigits(flat, 11)) {
@@ -359,18 +364,50 @@ bool InputControlNames::parse(const std::string& raw, InputControl& out) {
     return false;
 }
 
-std::string InputControlNames::keyName(int key) {
-    if (key >= D_KEY_A && key <= D_KEY_Z) return std::string(1, static_cast<char>('a' + key - D_KEY_A));
-    if (key >= D_KEY_0 && key <= D_KEY_9) return std::string(1, static_cast<char>('0' + key - D_KEY_0));
-    if (key >= D_KEY_F1 && key <= D_KEY_F25) return "f" + std::to_string(key - D_KEY_F1 + 1);
-    if (key >= D_KEY_KP_0 && key <= D_KEY_KP_9) return "kp_" + std::to_string(key - D_KEY_KP_0);
-    for (const KeyEntry& entry : canonicalKeys) {
-        if (entry.key == key) return entry.name;
+namespace {
+
+    // a key's canonical name, "" for a code without one
+    std::string canonicalKeyName(int key) {
+        if (key >= D_KEY_A && key <= D_KEY_Z) return std::string(1, static_cast<char>('a' + key - D_KEY_A));
+        if (key >= D_KEY_0 && key <= D_KEY_9) return std::string(1, static_cast<char>('0' + key - D_KEY_0));
+        if (key >= D_KEY_F1 && key <= D_KEY_F25) return "f" + std::to_string(key - D_KEY_F1 + 1);
+        if (key >= D_KEY_KP_0 && key <= D_KEY_KP_9) return "kp_" + std::to_string(key - D_KEY_KP_0);
+        for (const KeyEntry& entry : canonicalKeys) {
+            if (entry.key == key) return entry.name;
+        }
+        return "";
     }
-    return "";
+
+    const char* const mousePathSegments[] = {"left", "right", "middle", "button4", "button5", "button6", "button7", "button8"};
+
+}
+
+std::string InputControlNames::keyName(int key) {
+    const std::string name = canonicalKeyName(key);
+    // a code without a name stays readable (and unique) in a path
+    return name.empty() ? std::to_string(key) : name;
 }
 
 std::string InputControlNames::mouseButtonName(int button) {
+    if (button >= 0 && button <= D_MOUSE_BUTTON_LAST) return mousePathSegments[button];
+    return std::to_string(button);
+}
+
+std::string InputControlNames::gamepadButtonName(int button) {
+    for (const ButtonEntry& entry : gamepadButtons) {
+        if (entry.button == button) return std::string(entry.name).substr(8);
+    }
+    return std::to_string(button);
+}
+
+std::string InputControlNames::gamepadAxisName(int axis) {
+    for (const ButtonEntry& entry : gamepadAxes) {
+        if (entry.button == axis) return entry.name;
+    }
+    return std::to_string(axis);
+}
+
+std::string InputControlNames::mouseButtonControlName(int button) {
     switch (button) {
         case D_MOUSE_BUTTON_LEFT: return "mouse_left";
         case D_MOUSE_BUTTON_RIGHT: return "mouse_right";
@@ -381,26 +418,24 @@ std::string InputControlNames::mouseButtonName(int button) {
     return "";
 }
 
-std::string InputControlNames::gamepadButtonName(int button) {
+std::string InputControlNames::gamepadButtonControlName(int button) {
     for (const ButtonEntry& entry : gamepadButtons) {
         if (entry.button == button) return entry.name;
     }
     return "";
 }
 
-std::string InputControlNames::gamepadAxisName(int axis) {
-    for (const ButtonEntry& entry : gamepadAxes) {
-        if (entry.button == axis) return entry.name;
-    }
-    return "";
-}
-
 std::string InputControlNames::name(const InputControl& control) {
     switch (control.device) {
-        case InputDevice::Key: return keyName(control.code);
-        case InputDevice::Mouse: return mouseButtonName(control.code);
-        case InputDevice::GamepadButton: return gamepadButtonName(control.code);
-        case InputDevice::GamepadAxis: return gamepadAxisName(control.code);
+        case InputDevice::Key: return canonicalKeyName(control.code);
+        case InputDevice::Mouse: return mouseButtonControlName(control.code);
+        case InputDevice::GamepadButton: return gamepadButtonControlName(control.code);
+        case InputDevice::GamepadAxis: {
+            for (const ButtonEntry& entry : gamepadAxes) {
+                if (entry.button == control.code) return entry.name;
+            }
+            return "";
+        }
     }
     return "";
 }
@@ -418,16 +453,16 @@ const std::vector<std::string>& InputControlNames::keyNames() {
     return names;
 }
 
-const std::vector<std::string>& InputControlNames::mouseButtonNames() {
+const std::vector<std::string>& InputControlNames::mouseButtonControlNames() {
     static const std::vector<std::string> names = [] {
         std::vector<std::string> out;
-        for (int button = 0; button <= D_MOUSE_BUTTON_LAST; button++) out.push_back(mouseButtonName(button));
+        for (int button = 0; button <= D_MOUSE_BUTTON_LAST; button++) out.push_back(mouseButtonControlName(button));
         return out;
     }();
     return names;
 }
 
-const std::vector<std::string>& InputControlNames::gamepadButtonNames() {
+const std::vector<std::string>& InputControlNames::gamepadButtonControlNames() {
     static const std::vector<std::string> names = [] {
         std::vector<std::string> out;
         for (const ButtonEntry& entry : gamepadButtons) out.emplace_back(entry.name);

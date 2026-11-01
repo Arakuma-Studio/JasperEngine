@@ -1,0 +1,89 @@
+name: Upstream Input Fixture
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: fitwidth
+textureStrategy: none
+vsync: true
+htmlUiMsaaSamples: 4
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+luaDir: .
+input:
+  version: 1
+  actions:
+    - name: Horizontal
+      type: axis
+      description: Move left / right
+      bindings:
+        - {kind: buttons, negative: [left, a], positive: [right, d], gravity: 5, sensitivity: 6, dead: 0.001, snap: true}
+        - {kind: gamepad_axis, axis: left_x, gamepad: any, sensitivity: 1, dead: 0.19}
+    - name: Vertical
+      type: axis
+      description: Move down / up
+      bindings:
+        - {kind: buttons, negative: [down, s], positive: [up, w], gravity: 3, sensitivity: 3, dead: 0.001, snap: true}
+        - {kind: gamepad_axis, axis: left_y, gamepad: any, sensitivity: 1, dead: 0.25, invert: true}
+    - name: Fire1
+      type: button
+      bindings:
+        - {kind: buttons, positive: [left_control, mouse_left], gravity: 1000, sensitivity: 1000, dead: 0.001}
+        - {kind: buttons, positive: [gamepad_a], gravity: 1000, sensitivity: 1000, dead: 0.001}
+    - name: Fire2
+      type: button
+      bindings:
+        - {kind: buttons, positive: [left_alt, mouse_right], gravity: 1000, sensitivity: 1000, dead: 0.001}
+        - {kind: buttons, positive: [gamepad_b], gravity: 1000, sensitivity: 1000, dead: 0.001}
+    - name: Fire3
+      type: button
+      bindings:
+        - {kind: buttons, positive: [left_shift, mouse_middle], gravity: 1000, sensitivity: 1000, dead: 0.001}
+        - {kind: buttons, positive: [gamepad_x], gravity: 1000, sensitivity: 1000, dead: 0.001}
+    - name: Jump
+      type: button
+      bindings:
+        - {kind: buttons, positive: [space], gravity: 1000, sensitivity: 1000, dead: 0.001}
+        - {kind: buttons, positive: [gamepad_y], gravity: 1000, sensitivity: 1000, dead: 0.001}
+    - name: Look X
+      type: axis
+      description: Mouse movement, right positive
+      bindings:
+        - {kind: mouse_delta, axis: x, sensitivity: 0.2}
+    - name: Mouse Y
+      type: axis
+      description: Mouse movement, up positive
+      bindings:
+        - {kind: mouse_delta, axis: y, sensitivity: 0.1}
+    - name: Mouse ScrollWheel
+      type: axis
+      description: Mouse wheel, up positive
+      bindings:
+        - {kind: mouse_delta, axis: wheel, sensitivity: 0.1}
+    - name: Submit
+      type: button
+      bindings:
+        - {kind: buttons, positive: [enter, kp_enter, space], gravity: 1000, sensitivity: 1000, dead: 0.001}
+        - {kind: buttons, positive: [gamepad_a], gravity: 1000, sensitivity: 1000, dead: 0.001}
+    - name: Cancel
+      type: button
+      bindings:
+        - {kind: buttons, positive: [escape], gravity: 1000, sensitivity: 1000, dead: 0.001}
+        - {kind: buttons, positive: [gamepad_b], gravity: 1000, sensitivity: 1000, dead: 0.001}
+    - name: Dash
+      type: button
+      description: "quick move: \"dash\""
+      press_point: 0.3
+      bindings:
+        - {kind: buttons, positive: [left_shift, gamepad_right_bumper, mouse_4], gamepad: 1, gravity: 0, sensitivity: 0, dead: 0}
+        - {kind: gamepad_axis, axis: right_trigger, gamepad: 2, sensitivity: 1.5, dead: 0.1}
+    - name: 1
+      type: axis
+      description: true
+      bindings:
+        - {kind: buttons, negative: [kp_1, 0], positive: [2, page_up], gravity: 3, sensitivity: 3, dead: 0.001, snap: true, invert: true}
+        - {kind: mouse_delta, axis: wheel, sensitivity: 0.5, invert: true}
+        - {kind: mouse_delta, axis: y, sensitivity: 0.05}
+        - {kind: gamepad_axis, axis: right_y, gamepad: any, sensitivity: 1, dead: 0.19, invert: true}
+scenes:
+  - filepath: scenes/New Scene.scene

@@ -47,6 +47,7 @@
 #include <limits>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <set>
 #include <stdexcept>
 
@@ -2533,75 +2534,14 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["rotationSnapDegrees"])  ds.rotationSnapDegrees  = decodePositiveFinite(node["rotationSnapDegrees"], ds.rotationSnapDegrees);
 }
 
-#if 0 // SYNC4-ABSORB(input): upstream's Input Manager actions in project.yaml (`input: {version: 1, actions: [...]}`);
-       // S22 keeps `input: {actions: <asset>}`. The Input absorption converts upstream's node.
 namespace {
 
-// ---- Project Settings > Input in project.yaml: `input: {version: 1, actions: [...]}`, the
-// shape InputActions reads as JSON (InputActions::parseActionsJson), each binding a flow map
+// ---- an older editor's Project Settings > Input in project.yaml: `input: {version: 1, actions:
+// [...]}`, Unity's Input Manager as a flat list (the JSON InputManagerFormat reads, each binding a
+// flow map). It becomes the "Input Manager" map of an .inputactions asset
 
-std::string inputNumber(float value) {
-    char text[32];
-    snprintf(text, sizeof(text), "%.6g", static_cast<double>(value));
-    return text;
-}
-
-YAML::Node encodeInputControls(const std::vector<InputControl>& controls) {
-    YAML::Node list(YAML::NodeType::Sequence);
-    for (const InputControl& control : controls) list.push_back(InputControlNames::name(control));
-    list.SetStyle(YAML::EmitterStyle::Flow);
-    return list;
-}
-
-YAML::Node encodeInputActions(const std::vector<InputAction>& actions) {
-    YAML::Node input;
-    input["version"] = 1;
-    YAML::Node list(YAML::NodeType::Sequence);
-    for (const InputAction& action : actions) {
-        YAML::Node node;
-        node["name"] = action.name;
-        node["type"] = InputActions::typeName(action.type);
-        if (!action.description.empty()) node["description"] = action.description;
-        if (action.pressPoint != 0.5f) node["press_point"] = inputNumber(action.pressPoint);
-        YAML::Node bindings(YAML::NodeType::Sequence);
-        for (const InputBinding& binding : action.bindings) {
-            YAML::Node b;
-            b["kind"] = InputActions::kindName(binding.kind);
-            switch (binding.kind) {
-                case InputBindingKind::Buttons:
-                    if (!binding.negative.empty()) b["negative"] = encodeInputControls(binding.negative);
-                    b["positive"] = encodeInputControls(binding.positive);
-                    if (binding.gamepad >= 0) b["gamepad"] = binding.gamepad;
-                    b["gravity"] = inputNumber(binding.gravity);
-                    b["sensitivity"] = inputNumber(binding.sensitivity);
-                    b["dead"] = inputNumber(binding.dead);
-                    if (binding.snap) b["snap"] = true;
-                    break;
-                case InputBindingKind::GamepadAxis:
-                    b["axis"] = InputControlNames::gamepadAxisName(binding.axis);
-                    if (binding.gamepad >= 0) b["gamepad"] = binding.gamepad;
-                    else b["gamepad"] = "any";
-                    b["sensitivity"] = inputNumber(binding.sensitivity);
-                    b["dead"] = inputNumber(binding.dead);
-                    break;
-                case InputBindingKind::MouseDelta:
-                    b["axis"] = InputActions::mouseAxisName(binding.mouseAxis);
-                    b["sensitivity"] = inputNumber(binding.sensitivity);
-                    break;
-            }
-            if (binding.invert) b["invert"] = true;
-            b.SetStyle(YAML::EmitterStyle::Flow);
-            bindings.push_back(b);
-        }
-        node["bindings"] = bindings;
-        list.push_back(node);
-    }
-    input["actions"] = list;
-    return input;
-}
-
-// YAML -> the JSON InputActions reads: names, kinds, axes and control names stay text ("0" is
-// the key 0, an action may be named "1"), the rest reads as numbers and booleans
+// YAML -> the JSON InputManagerFormat reads: names, kinds, axes and control names stay text ("0"
+// is the key 0, an action may be named "1"), the rest reads as numbers and booleans
 nlohmann::json inputYamlToJson(const YAML::Node& node, const std::string& key = "") {
     static const std::set<std::string> textKeys = {"name", "description", "type", "kind", "axis", "positive", "negative"};
     if (node.IsMap()) {
@@ -2630,8 +2570,63 @@ nlohmann::json inputYamlToJson(const YAML::Node& node, const std::string& key = 
     return text;
 }
 
+// the input node is an older editor's: a version, or an actions list (S22 writes a path)
+bool isInputManagerNode(const YAML::Node& input) {
+    if (input.IsSequence()) return true;
+    if (!input.IsMap()) return false;
+    return input["version"].IsDefined() || (input["actions"].IsDefined() && !input["actions"].IsScalar());
 }
-#endif // SYNC4-ABSORB(input)
+
+std::string inputSourceHash(const std::string& json) {
+    uint64_t hash = 14695981039346656037ull;
+    for (unsigned char c : json) {
+        hash ^= c;
+        hash *= 1099511628211ull;
+    }
+    char text[17];
+    snprintf(text, sizeof(text), "%016llx", static_cast<unsigned long long>(hash));
+    return text;
+}
+
+// the asset the actions become: InputManager.inputactions in the assets directory (another name
+// when a file there is not this conversion), or the one an earlier load of the same node wrote
+editor::InputActionsMigration convertInputManagerNode(editor::Project* project, const std::vector<InputManagerAction>& actions) {
+    const std::string hash = inputSourceHash(InputManagerFormat::actionsToJson(actions));
+    InputActionAssetDesc asset;
+    asset.maps.push_back(InputManagerFormat::toMap(actions));
+    nlohmann::ordered_json marker = nlohmann::ordered_json::object();
+    marker["migratedFrom"] = {{"projectYaml", "input"}, {"hash", hash}};
+    asset.passthrough = marker.dump();
+
+    editor::InputActionsMigration migration;
+    migration.actions = actions.size();
+    migration.text = asset.save();
+    migration.pending = true;
+    const fs::path assets = project->getAssetsPath();
+    for (int n = 1;; n++) {
+        const std::string name = n == 1 ? "InputManager.inputactions" : "InputManager " + std::to_string(n) + ".inputactions";
+        const fs::path file = assets / name;
+        fs::path relative = file.lexically_relative(project->getProjectPath());
+        if (relative.empty()) relative = file;
+        migration.asset = relative;
+        std::error_code ec;
+        if (!fs::exists(file, ec))
+            return migration;
+        // written by an earlier load of the same node: kept as it is now (edits made since stay)
+        std::ifstream in(file, std::ios::binary);
+        const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        const nlohmann::json existing = nlohmann::json::parse(text, nullptr, false);
+        if (!existing.is_discarded() && existing.is_object() && existing.contains("migratedFrom") &&
+                existing["migratedFrom"].is_object() && existing["migratedFrom"].value("hash", std::string()) == hash) {
+            migration.pending = false;
+            migration.reused = true;
+            migration.text = text;
+            return migration;
+        }
+    }
+}
+
+}
 
 YAML::Node editor::Stream::encodeProject(Project* project) {
     YAML::Node root;
@@ -2660,6 +2655,13 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (project->getInputDeadzone() != Project::defaultInputDeadzone)
             input["deadzone"] = project->getInputDeadzone();
         root["input"] = input;
+    } else if (!project->getUnreadableInputNode().empty()) {
+        // an older editor's Input Manager node that could not be read: back as it was, until
+        // an actions asset is set
+        try {
+            root["input"] = YAML::Load(project->getUnreadableInputNode());
+        } catch (const YAML::Exception&) {
+        }
     }
     if (!(project->getPlayerLogging() == PlayerLoggingSettings())) {
         const PlayerLoggingSettings& logging = project->getPlayerLogging();
@@ -2823,17 +2825,6 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["physics3DWorld"] = physicsNode;
     }
 
-#if 0 // SYNC4-ABSORB(input)
-    // Project Settings > Input: only once edited (an old project reads Unity's defaults)
-    if (project->hasCustomInputActions()) {
-        root["input"] = encodeInputActions(project->getInputActions());
-    } else if (!project->getUnreadableInputNode().empty()) {
-        try {
-            root["input"] = YAML::Load(project->getUnreadableInputNode());
-        } catch (const YAML::Exception&) {
-        }
-    }
-#endif
 
     {
         YAML::Node exportNode;
@@ -3195,9 +3186,29 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     {
         const YAML::Node input = node["input"];
-        const bool map = input.IsDefined() && input.IsMap();
-        project->setInputActionsAsset(map && input["actions"].IsDefined() ? fs::path(input["actions"].as<std::string>()) : fs::path());
-        project->setInputDeadzone(map && input["deadzone"].IsDefined() ? YamlNumbers::as<float>(input["deadzone"]) : Project::defaultInputDeadzone);
+        project->setUnreadableInputNode("");
+        project->setInputActionsMigration(InputActionsMigration());
+        if (input.IsDefined() && !input.IsNull() && isInputManagerNode(input)) {
+            // an older editor's Input Manager actions: the Input Manager map of an actions asset
+            std::vector<InputManagerAction> actions;
+            std::string error;
+            if (InputManagerFormat::parseActionsJson(inputYamlToJson(input).dump(), actions, &error)) {
+                const InputActionsMigration migration = convertInputManagerNode(project, actions);
+                project->setInputActionsMigration(migration);
+                project->setInputActionsAsset(migration.asset);
+            } else {
+                Out::error("Project Settings > Input could not be read from project.yaml (%s): Unity's default "
+                           "actions are used, and the input node is kept as it is until an actions asset is set",
+                           error.c_str());
+                project->setUnreadableInputNode(YAML::Dump(input));
+                project->setInputActionsAsset(fs::path());
+            }
+            project->setInputDeadzone(Project::defaultInputDeadzone);
+        } else {
+            const bool map = input.IsDefined() && input.IsMap();
+            project->setInputActionsAsset(map && input["actions"].IsDefined() ? fs::path(input["actions"].as<std::string>()) : fs::path());
+            project->setInputDeadzone(map && input["deadzone"].IsDefined() ? YamlNumbers::as<float>(input["deadzone"]) : Project::defaultInputDeadzone);
+        }
     }
 
     {
@@ -3470,24 +3481,6 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setPhysics3DWorldSettings(world);
     }
 
-#if 0 // SYNC4-ABSORB(input): upstream's Input Manager node
-    {
-        // Project Settings > Input; no node: Unity's Input Manager defaults
-        const YAML::Node inputNode = node["input"];
-        std::vector<InputAction> actions = InputActions::defaults();
-        std::string error;
-        if (inputNode && !inputNode.IsNull()) {
-            if (!InputActions::parseActionsJson(inputYamlToJson(inputNode).dump(), actions, &error)) {
-                Out::error("Project Settings > Input could not be read from project.yaml (%s): the default "
-                           "actions are used, and the input node is kept as it is until the actions are edited",
-                           error.c_str());
-                actions = InputActions::defaults();
-            }
-        }
-        project->setInputActions(actions);
-        if (!error.empty()) project->setUnreadableInputNode(YAML::Dump(inputNode));
-    }
-#endif
 
     if (node["export"] && node["export"].IsMap()) {
         const YAML::Node& exportNode = node["export"];

@@ -579,12 +579,14 @@
 		7128CFAD25BA717500965B51 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 7128CFAA25BA717500965B51 /* LaunchScreen.storyboard */; };
 		7128CFAE25BA717500965B51 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 7128CFAB25BA717500965B51 /* Main.storyboard */; };
 		7128D08625BB033D00965B51 /* Input.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7128D08525BB033D00965B51 /* Input.cpp */; };
+		434F4D505351D59BE40A891C /* InputManagerFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5043C1EA59CC88034B /* InputManagerFormat.cpp */; };
 		434F4D504533621485F625C7 /* InputVirtualControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50FF717FBABDEAD7D2 /* InputVirtualControls.cpp */; };
 		434F4D5013A0AB80B4C94403 /* InputRebind.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D506FAF644CD4C6156F /* InputRebind.cpp */; };
 		434F4D5047DE2062B62E1944 /* InputActions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50685CC50B1CBC4DB6 /* InputActions.cpp */; };
 		434F4D50246235CDA4187741 /* InputActionAsset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50D06F100B22C53DA7 /* InputActionAsset.cpp */; };
 		434F4D50312728BAD70188F6 /* InputControlPath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5008747FD51D6BC1D7 /* InputControlPath.cpp */; };
 		7128D08725BB033D00965B51 /* Input.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7128D08525BB033D00965B51 /* Input.cpp */; };
+		434F4D5024FEFFC6A53E3035 /* InputManagerFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5043C1EA59CC88034B /* InputManagerFormat.cpp */; };
 		434F4D50F866BE1250EF4E4C /* InputVirtualControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50FF717FBABDEAD7D2 /* InputVirtualControls.cpp */; };
 		434F4D50627A9C492EAD4705 /* InputRebind.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D506FAF644CD4C6156F /* InputRebind.cpp */; };
 		434F4D50B4EF04DF955434B4 /* InputActions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50685CC50B1CBC4DB6 /* InputActions.cpp */; };
@@ -4089,6 +4091,8 @@
 		4A534E4771F369477A4B22CC /* CurveJson.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4707AEFC0DB5C2DC02 /* CurveJson.h */; };
 		4A534E47D17B678C8F81B040 /* InputActions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730DD301E6ACE24A9 /* InputActions.cpp */; };
 		4A534E47AC81945749605313 /* InputActions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730DD301E6ACE24A9 /* InputActions.cpp */; };
+		4A534E47A988705C5C005E19 /* InputControlNames.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */; };
+		4A534E479968450BA2CEF5BB /* InputControlNames.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */; };
 		4A534E4749E3318561E17181 /* InputActions.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47DA77C1DF72E1D462 /* InputActions.h */; };
 		4A534E47CC9B5D8BFDD75814 /* InputControlNames.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4763010A7AB6271A0C /* InputControlNames.h */; };
 		4A534E471E54C5C8414BD121 /* CanvasGroup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CC52175BD8DE955D /* CanvasGroup.cpp */; };
@@ -5318,6 +5322,7 @@
 		7128CFAB25BA717500965B51 /* Main.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; path = Main.storyboard; sourceTree = "<group>"; };
 		7128D00425BA74A000965B51 /* JasperEngine_macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JasperEngine_macOS.entitlements; sourceTree = "<group>"; };
 		7128D05D25BB02F800965B51 /* Input.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Input.h; sourceTree = "<group>"; };
+		434F4D50334775484E1FB3D7 /* InputManagerFormat.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputManagerFormat.h; sourceTree = "<group>"; };
 		434F4D50C0F0357454135C12 /* InputActionAssetJson.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputActionAssetJson.h; sourceTree = "<group>"; };
 		434F4D505A481C39BEF7784E /* InputVirtualControls.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputVirtualControls.h; sourceTree = "<group>"; };
 		434F4D5060482BAA961FF957 /* InputRebind.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputRebind.h; sourceTree = "<group>"; };
@@ -5325,6 +5330,7 @@
 		434F4D50C26E07633B2E11DF /* InputActionAsset.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputActionAsset.h; sourceTree = "<group>"; };
 		434F4D50E7F57628F40D5CD6 /* InputControlPath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputControlPath.h; sourceTree = "<group>"; };
 		7128D08525BB033D00965B51 /* Input.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Input.cpp; sourceTree = "<group>"; };
+		434F4D5043C1EA59CC88034B /* InputManagerFormat.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = input/InputManagerFormat.cpp; sourceTree = "<group>"; };
 		434F4D50FF717FBABDEAD7D2 /* InputVirtualControls.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = input/InputVirtualControls.cpp; sourceTree = "<group>"; };
 		434F4D506FAF644CD4C6156F /* InputRebind.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = input/InputRebind.cpp; sourceTree = "<group>"; };
 		434F4D50685CC50B1CBC4DB6 /* InputActions.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = input/InputActions.cpp; sourceTree = "<group>"; };
@@ -10055,6 +10061,7 @@
 				175DCCB9300FA22F008C19EC /* Export.h */,
 				F10B0B1E0000000000000005 /* fluid */,
 				7128D05D25BB02F800965B51 /* Input.h */,
+				434F4D50334775484E1FB3D7 /* InputManagerFormat.h */,
 				434F4D50C0F0357454135C12 /* InputActionAssetJson.h */,
 				434F4D505A481C39BEF7784E /* InputVirtualControls.h */,
 				434F4D5060482BAA961FF957 /* InputRebind.h */,
@@ -10062,6 +10069,7 @@
 				434F4D50C26E07633B2E11DF /* InputActionAsset.h */,
 				434F4D50E7F57628F40D5CD6 /* InputControlPath.h */,
 				7128D08525BB033D00965B51 /* Input.cpp */,
+				434F4D5043C1EA59CC88034B /* InputManagerFormat.cpp */,
 				434F4D50FF717FBABDEAD7D2 /* InputVirtualControls.cpp */,
 				434F4D506FAF644CD4C6156F /* InputRebind.cpp */,
 				434F4D50685CC50B1CBC4DB6 /* InputActions.cpp */,
@@ -16779,6 +16787,7 @@
 				1721303B2FB012BD00390DC2 /* SoundPool.cpp in Sources */,
 				715CB118288CD40E0049344B /* Terrain.cpp in Sources */,
 				7128D08725BB033D00965B51 /* Input.cpp in Sources */,
+				434F4D5024FEFFC6A53E3035 /* InputManagerFormat.cpp in Sources */,
 				434F4D50F866BE1250EF4E4C /* InputVirtualControls.cpp in Sources */,
 				434F4D50627A9C492EAD4705 /* InputRebind.cpp in Sources */,
 				434F4D50B4EF04DF955434B4 /* InputActions.cpp in Sources */,
@@ -17259,6 +17268,7 @@
 				4A534E47B21F9A6344B4CC05 /* AnimatorSystem.cpp in Sources */,
 				4A534E477F1D537B5FCAB48A /* CurveJson.cpp in Sources */,
 				4A534E47D17B678C8F81B040 /* InputActions.cpp in Sources */,
+				4A534E47A988705C5C005E19 /* InputControlNames.cpp in Sources */,
 				4A534E47FAB0AB03DCC4FB57 /* PhysicsMaterialPool.cpp in Sources */,
 				4A534E471DFCCEA6BE1F6704 /* PhysicsMaterial.cpp in Sources */,
 				4A534E47E92F88382C9E5395 /* PolygonDecomposition2D.cpp in Sources */,
@@ -17551,6 +17561,7 @@
 				71451BD1270CA17F00712643 /* SpriteAnimation.cpp in Sources */,
 				715CB117288CD40E0049344B /* Terrain.cpp in Sources */,
 				7128D08625BB033D00965B51 /* Input.cpp in Sources */,
+				434F4D505351D59BE40A891C /* InputManagerFormat.cpp in Sources */,
 				434F4D504533621485F625C7 /* InputVirtualControls.cpp in Sources */,
 				434F4D5013A0AB80B4C94403 /* InputRebind.cpp in Sources */,
 				434F4D5047DE2062B62E1944 /* InputActions.cpp in Sources */,
@@ -18014,6 +18025,7 @@
 				4A534E475068D6F918B554F4 /* AnimatorSystem.cpp in Sources */,
 				4A534E47EDF76759E42FAB79 /* CurveJson.cpp in Sources */,
 				4A534E47AC81945749605313 /* InputActions.cpp in Sources */,
+				4A534E479968450BA2CEF5BB /* InputControlNames.cpp in Sources */,
 				4A534E474B176E0554781362 /* PhysicsMaterialPool.cpp in Sources */,
 				4A534E479093D6E5BB6D8523 /* PhysicsMaterial.cpp in Sources */,
 				4A534E472D1D3FE08F50731F /* PolygonDecomposition2D.cpp in Sources */,

@@ -17,18 +17,57 @@
 
 #include "imgui.h"
 
+#include <algorithm>
+#include <filesystem>
+
 using namespace jasperengine;
 
 namespace {
-    // SYNC4-ABSORB(input): upstream listed its Input Manager actions here (axes first); until the
-    // Input absorption maps the on-screen controls onto S22's actions, a control's action names an
-    // S22 virtual control (virtual/<name>, input/InputSourceShim.h): no suggestions
+    // the actions an on-screen control may feed: the Input Manager's (Project Settings > Input:
+    // the actions asset's "Input Manager" map, Unity's defaults without an asset; axes first for
+    // a stick or touch area), then the asset's other actions as Map/Action. The asset is read
+    // again only when it changes
     std::vector<std::string> inputActionNames(const editor::Project* project, bool axesFirst){
-        (void)project; (void)axesFirst;
-        return {};
+        struct Cache {
+            std::filesystem::path asset;
+            std::filesystem::file_time_type written;
+            bool axesFirst = false;
+            bool valid = false;
+            std::vector<std::string> names;
+        };
+        static Cache cache;
+        std::error_code ec;
+        const std::filesystem::path asset = project->getInputActionsAsset();
+        const std::filesystem::file_time_type written = asset.empty() ? std::filesystem::file_time_type()
+            : std::filesystem::last_write_time(project->getProjectPath() / asset, ec);
+        if (cache.valid && cache.asset == asset && cache.written == written && cache.axesFirst == axesFirst)
+            return cache.names;
+
+        std::vector<std::string> names;
+        const std::vector<InputManagerAction> manager = project->getInputManagerActions();
+        for (int pass = 0; pass < 2; pass++){
+            for (const InputManagerAction& action : manager){
+                const bool axis = action.type != InputManagerActionType::Button;
+                if ((pass == 0) == (axis == axesFirst) && std::find(names.begin(), names.end(), action.name) == names.end())
+                    names.push_back(action.name);
+            }
+        }
+        std::string text;
+        InputActionAssetDesc desc;
+        std::string error;
+        if (project->readInputActionsAsset(text) && InputActionAssetDesc::parse(text, desc, error)){
+            for (const InputActionMapDesc& map : desc.maps){
+                if (map.name == InputManagerFormat::MAP_NAME)
+                    continue;
+                for (const InputActionDesc& action : map.actions)
+                    names.push_back(map.name + "/" + action.name);
+            }
+        }
+        cache = Cache{asset, written, axesFirst, true, names};
+        return names;
     }
 
-    const char* const noInputActions = "A virtual control name (Input Actions: virtual/<name>)";
+    const char* const noInputActions = "No actions: Project Settings > Input (Input Manager) or the actions asset";
 }
 
 void editor::InspectorWindow::drawOnScreenStickComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){

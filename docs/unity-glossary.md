@@ -34,7 +34,7 @@ Projects made before the rename are migrated once with
 | Edit > Project Settings... | Project > Project Settings... |
 | Project Settings > Physics / Physics 2D > Layer Collision Matrix | none (new) |
 | none: Unity has no editor list of global shader values (Godot: Project Settings > Shader Globals) | none (new): Project Settings > Graphics > Shader Globals (name, type, default; a Live column in Play) |
-| Project Settings > Input Manager (virtual axes and buttons; the Input System's actions) | none (new): Project Settings > Input, the input actions (see [Input](#input) below) |
+| Project Settings > Input Manager (virtual axes and buttons; the Input System's actions) | Project Settings > Input (the actions asset and its Input Manager map) and Window > Input Actions (see [Input](#input) below) |
 | Window menu | View menu |
 | GameObject, Component, Assets menus | Scene and Project menus, the Structure "+" menu |
 | Animation Clip (`.anim` asset; Assets > Create > Animation Clip) | none (new): keyframe animations lived only inside a scene or prefab as an Animation entity. A JasperEngine clip is JSON (`{"format": "jasperengine.anim"}`, not Unity's YAML), binds tracks by path relative to the GameObject that plays it, and is referenced by GUID; see [animation-clips.md](animation-clips.md) |
@@ -113,7 +113,7 @@ Projects made before the rename are migrated once with
 | EventSystem interfaces (`IPointerDownHandler`, `IPointerUpHandler`, `IPointerClickHandler`, `IPointerEnterHandler`, `IPointerExitHandler`, `IInitializePotentialDragHandler`, `IBeginDragHandler`, `IDragHandler`, `IEndDragHandler`, `IDropHandler`, `IScrollHandler`) | none (new): script methods `onPointerDown(e)`, `onPointerUp`, `onPointerClick`, `onPointerEnter`, `onPointerExit`, `onInitializePotentialDrag`, `onBeginDrag`, `onDrag`, `onEndDrag`, `onDrop`, `onScroll` (lua-api 1.7); the legacy `UIComponent.onPointerDown(x, y)` events stay |
 | `PointerEventData` (`pointerId`, `position`, `delta`, `pressPosition`, `button`, `clickCount`, `dragging`, `pointerPress`, `pointerDrag`, `useDragThreshold`, `Use()`) | none (new): `PointerEventData` (same names, `use()`) |
 | `EventSystem.current.IsPointerOverGameObject([pointerId])` | none (new): `Input.isPointerOverUI([pointerId])` (component UI and HTML content) |
-| Input System `OnScreenStick`, `OnScreenButton`; Joystick Pack `FixedJoystick` / `FloatingJoystick` / `VariableJoystick` / `DynamicJoystick` | none (new): On-Screen Stick (`OnScreenStick`, `mode` `FIXED` / `FLOATING` / `DYNAMIC`; Joystick Pack's Variable = Dynamic), On-Screen Button (`OnScreenButton`), Touch Area (`TouchArea`, a drag feeding `Mouse X` / `Mouse Y`); HTML `<onscreen-stick>`, `<onscreen-button>`, `<touch-area>`. They write input actions instead of control paths |
+| Input System `OnScreenStick`, `OnScreenButton`; Joystick Pack `FixedJoystick` / `FloatingJoystick` / `VariableJoystick` / `DynamicJoystick` | none (new): On-Screen Stick (`OnScreenStick`, `mode` `FIXED` / `FLOATING` / `DYNAMIC`; Joystick Pack's Variable = Dynamic), On-Screen Button (`OnScreenButton`), Touch Area (`TouchArea`, a drag feeding `Mouse X` / `Mouse Y`); HTML `<onscreen-stick>`, `<onscreen-button>`, `<touch-area>`. They write input actions (a flat Input Manager name or `Map/Action`) instead of control paths |
 | `Physics` / `Physics2D` (`ignoreLayerCollision`, `getIgnoreLayerCollision`, `getLayerCollisionMask`, `setLayerCollisionMask`, `raycast`, `raycastAll`, `ALL_LAYERS`, `DEFAULT_RAYCAST_LAYERS`, `IGNORE_RAYCAST_LAYER`) | none (new) |
 | `OnCollisionEnter/Stay/Exit(Collision)`, `OnTriggerEnter/Stay/Exit(Collider)`, and the `...2D` ones -> `onCollisionEnter/Stay/Exit`, `onTriggerEnter/Stay/Exit`, `onCollisionEnter2D/Stay2D/Exit2D`, `onTriggerEnter2D/Stay2D/Exit2D` (Lua methods called by name, also on disabled scripts; C++ `ScriptBase` overrides); after the fixed step, on the main thread ([physics.md](mcp/guide/physics.md)) | global events only (`beginContact2D`, `onContactAdded3D` on Jolt's job threads) |
 | `Collision` (`gameObject`, `collider`, `rigidbody`, `contactCount`, `GetContact(i)`, `contacts`, `impulse`, `relativeVelocity`), `ContactPoint` (`point`, `normal`, `separation`, `impulse`, `thisCollider`, `otherCollider`), `ContactPoint2D` -> the same names lowerCamelCase (`getContact(i)` 0-based), plus `thisCollider` / `thisRigidbody` | none (new) |
@@ -233,14 +233,17 @@ Details: jasper://docs/networking.
 
 ## Input
 
-Project Settings > Input is Unity's Input Manager and the Input System's action list in one:
-named actions with bindings (Key or Mouse Button, Gamepad Axis, Mouse Movement) and Unity's
-knobs (gravity, sensitivity, dead, snap, invert), the same 11 defaults (`Horizontal`,
-`Vertical`, `Fire1`..`Fire3`, `Jump`, `Mouse X`, `Mouse Y`, `Mouse ScrollWheel`, `Submit`,
-`Cancel`), saved in `project.yaml` under `input` once edited. Differences: several bindings of an
-action add up and clamp (Unity takes the largest same-named entry); the joystick dead zone is
-rescaled (Unity clips); `getButton` on an axis is true for both sides; an unknown name logs once
-and reads 0 (Unity throws). On-screen sticks and buttons feed the same actions, so
+Unity's Input System is an `.inputactions` asset here (action maps, actions, bindings,
+composites, control schemes, rebinding: Window > Input Actions, `InputActions.get("Map/Action")`),
+and Unity's Input Manager is that asset's **Input Manager** map: named actions with bindings (Key or
+Mouse Button, Gamepad Axis, Mouse Movement) and Unity's knobs (gravity, sensitivity, dead, snap,
+invert), read by `Input.getAxis` / `getButton*` by name. A project without an asset has the same
+11 defaults (`Horizontal`, `Vertical`, `Fire1`..`Fire3`, `Jump`, `Mouse X`, `Mouse Y`,
+`Mouse ScrollWheel`, `Submit`, `Cancel`); Project Settings > Input edits the map (and makes the
+asset). Differences: several bindings of an action add up and clamp (Unity takes the largest
+same-named entry); the joystick dead zone is rescaled (Unity clips); `getButton` on an axis is
+true for both sides; a click or key the UI consumed does not count; an unknown name logs once and
+reads 0 (Unity throws). On-screen sticks and buttons feed the same actions, so
 `Input.getAxis("Horizontal")` sums keyboard, gamepad and the touch stick. See
 [mcp/guide/input.md](mcp/guide/input.md).
 

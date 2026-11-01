@@ -5,37 +5,11 @@
 #define INPUTCONTROLPATH_H
 
 #include "Export.h"
+#include "input/InputControlNames.h"
 
 #include <string>
 
 namespace jasperengine {
-
-    // The names of the controls, one table for the runtime (InputActions' control paths), the
-    // editor and the MCP tools (send_input, get_input_state). Names are lowercase snake_case:
-    // keys "space", "a", "0", "left_shift", "f1", "kp_0"; mouse buttons "left", "right",
-    // "middle", "button4".."button8"; gamepad buttons "a", "b", "x", "y", "left_bumper",
-    // "start", "dpad_up"...; gamepad axes "left_x", "left_y", "right_x", "right_y",
-    // "left_trigger", "right_trigger".
-    class JASPERENGINE_API InputControlNames {
-    public:
-        // A key's canonical name; parseKey also takes a printable character ("a", ";"),
-        // "key_"/"d_key_" prefixes, spaces or dashes for underscores, any case, and the
-        // aliases ctrl, esc, return, del, pageup, numpad0... D_KEY_UNKNOWN for none.
-        static int parseKey(const std::string& name);
-        static std::string keyName(int key);
-
-        // -1 for none
-        static int parseMouseButton(const std::string& name);
-        static std::string mouseButtonName(int button);
-
-        // -1 for none; also cross, circle, square, triangle, lb, rb, select, ls, rs
-        static int parseGamepadButton(const std::string& name);
-        static std::string gamepadButtonName(int button);
-
-        // -1 for none; also lt, rt
-        static int parseGamepadAxis(const std::string& name);
-        static std::string gamepadAxisName(int axis);
-    };
 
     // What a control path names (R9 of docs/specs/S22-gameplay.md)
     enum class InputControlKind : int {

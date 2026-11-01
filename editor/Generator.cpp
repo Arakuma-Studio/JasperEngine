@@ -2330,7 +2330,7 @@ bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& scen
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const ThreadingProjectSettings& threading, const HtmlUiRenderSettings& htmlUiRender, PbrTier mobilePbrTier, const ShaderCreationProjectSettings& shaderCreation, const std::string& inputActionsJson, bool allowInsecureHttp, const std::vector<ShaderGlobalDecl>& shaderGlobals, const PlayerSettings& playerSettings){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const ThreadingProjectSettings& threading, const HtmlUiRenderSettings& htmlUiRender, PbrTier mobilePbrTier, const ShaderCreationProjectSettings& shaderCreation, bool allowInsecureHttp, const std::vector<ShaderGlobalDecl>& shaderGlobals, const PlayerSettings& playerSettings){
     // the generated sources (main.cpp, scene and prefab factories) live in the editor's internal
     // folder, which an MCP call's deny-by-default guard refuses otherwise (util/SafeWrite.h)
     safewrite::EditorInternal ownInternal(projectInternalPath);
@@ -2576,10 +2576,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
                    qualityName(atmosphereQuality[2]) + ");\n";
 
     // Project Settings > Input: the deadzone, then the default Input Actions asset
-    if (inputDeadzone != 0.15f)
-        mainContent += "    InputActions::setDefaultDeadzone(" + Factory::formatFloat(inputDeadzone) + ");\n";
-    if (!inputActionsAsset.empty())
-        mainContent += "    InputActions::loadDefault(" + Factory::formatString(inputActionsAsset) + ");\n";
+    mainContent += inputSettingsInitSource(inputActionsAsset, inputDeadzone);
     // Project Settings > Navigation: the agent types and areas every navmesh and grid reads
     mainContent += navigationSettingsCode;
     // the texture quality, memory budget and low-memory fallback of the platform group
@@ -2674,9 +2671,6 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
                    std::to_string(tagsAndLayers.maxBodyPairs3D) + ", " + std::to_string(tagsAndLayers.maxContactConstraints3D) + ");\n";
     mainContent += "#endif\n";
 
-    // Project Settings > Input (the engine starts with Unity's defaults), before any script reads it
-    mainContent += inputActionsInitSource(inputActionsJson);
-
     // Project Settings > Graphics > Shader Globals, declared with their defaults before any scene draws
     mainContent += shaderGlobalsInitSource(shaderGlobals);
 
@@ -2759,28 +2753,14 @@ std::string editor::Generator::shaderGlobalsInitSource(const std::vector<ShaderG
     return source;
 }
 
-std::string editor::Generator::inputActionsInitSource(const std::string& inputActionsJson) {
-    if (inputActionsJson.empty()) return "";
-    // a raw string delimiter the JSON does not hold (a description may hold `)jinput"`)
-    std::string delimiter = "jinput";
-    for (int n = 1; inputActionsJson.find(")" + delimiter + "\"") != std::string::npos; n++) {
-        delimiter = "jinput" + std::to_string(n);
-    }
-    // in pieces: MSVC takes string literals of at most 16 KB, adjacent ones are joined
-    constexpr size_t pieceSize = 8000;
-    std::string literal;
-    for (size_t at = 0; at < inputActionsJson.size();) {
-        // a piece ends on a character boundary (an editor shows each literal as valid UTF-8)
-        size_t end = std::min(at + pieceSize, inputActionsJson.size());
-        while (end < inputActionsJson.size() && end > at + 1 &&
-               (static_cast<unsigned char>(inputActionsJson[end]) & 0xC0) == 0x80) {
-            end--;
-        }
-        std::string piece = inputActionsJson.substr(at, end - at);
-        at = end;
-        literal += (literal.empty() ? "" : "\n        ") + std::string("R\"") + delimiter + "(" + piece + ")" + delimiter + "\"";
-    }
-    return "    InputActions::loadJson(" + literal + ", nullptr);\n";
+std::string editor::Generator::inputSettingsInitSource(const std::string& actionsAsset, float deadzone) {
+    std::string source;
+    if (deadzone != 0.15f)
+        source += "    InputActions::setDefaultDeadzone(" + Factory::formatFloat(deadzone) + ");\n";
+    // a project without an actions asset keeps the engine's Unity Input Manager defaults
+    if (!actionsAsset.empty())
+        source += "    InputActions::loadDefault(" + Factory::formatString(actionsAsset) + ");\n";
+    return source;
 }
 
 std::string editor::Generator::resolveCMakePath(const std::string& userPath) {

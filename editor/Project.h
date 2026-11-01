@@ -151,6 +151,18 @@ namespace jasperengine::editor{
         bool operator!=(const Physics3DWorldSettings& other) const { return !(*this == other); }
     };
 
+    // project.yaml held an older editor's Project Settings > Input (Unity's Input Manager as a flat
+    // list, `input: {version: 1, actions: [...]}`): its actions as the Input Manager map of an
+    // .inputactions asset (InputManagerFormat), written into the assets directory when the
+    // project loads; project.yaml points to the asset once it is saved
+    struct InputActionsMigration {
+        bool pending = false;               // the asset is still to be written
+        std::filesystem::path asset;        // project-relative
+        std::string text;                   // the asset's text
+        size_t actions = 0;                 // how many actions it converted
+        bool reused = false;                // an earlier load wrote it already (kept as it is now)
+    };
+
     struct SceneMaxValues {
         unsigned int maxSubmeshes = 0;
         unsigned int maxTilemapTilesRect = 0;
@@ -806,15 +818,11 @@ namespace jasperengine::editor{
         LayerCollisionRows layerCollisionMatrix3D = allLayersCollide();
         LayerCollisionRows layerCollisionMatrix2D = allLayersCollide();
         Physics3DWorldSettings physics3DWorld;
-#if 0 // SYNC4-ABSORB(input): upstream's Input Manager actions (S22 owns Project Settings > Input)
-        // Project Settings > Input; Unity's Input Manager defaults (and nothing in project.yaml)
-        // until edited
-        bool inputActionsCustomized = false;
-        std::vector<InputAction> inputActions = InputActions::defaults();
-        // an input node of project.yaml that could not be read: written back as it was until
-        // the actions are edited, so a typo made by hand does not lose them
+        // an input node of project.yaml that could not be read (an older editor's Input Manager
+        // actions with a typo made by hand): written back as it was until an actions asset is
+        // set, so nothing is lost
         std::string unreadableInputNode;
-#endif
+        InputActionsMigration inputMigration;
         // Project Settings > Graphics > Shader Globals: the global shader values the project
         // declares (name, type, default), applied to the engine's ShaderGlobals
         std::vector<ShaderGlobalDecl> shaderGlobals;
@@ -1550,21 +1558,20 @@ namespace jasperengine::editor{
         void setPhysics3DWorldSettings(const Physics3DWorldSettings& settings);
         const Physics3DWorldSettings& getPhysics3DWorldSettings() const;
 
-#if 0 // SYNC4-ABSORB(input)
-        // Project Settings > Input: the input actions (virtual axes and buttons). Setting them
-        // validates nothing (callers do: InputActions::validate) and applies them to the
-        // engine's InputActions, which Play reads; actions equal to Unity's defaults are
-        // stored as "not customized" (no input node in project.yaml)
-        void setInputActions(const std::vector<InputAction>& actions);
-        const std::vector<InputAction>& getInputActions() const;
-        bool hasCustomInputActions() const;
-        void resetInputActions();
-        void applyInputActions() const;
-        // the actions as InputActions::loadJson reads them; "" for the defaults (exports emit nothing)
-        std::string getInputActionsJsonForBuild() const;
+        // Project Settings > Input, Unity's Input Manager (docs/specs/S22-gameplay.md "Upstream
+        // absorption"): the actions Input.getAxis / getButton read by their flat names, the
+        // actions asset's "Input Manager" map, else (no asset) Unity's eleven defaults
+        std::vector<InputManagerAction> getInputManagerActions() const;
+        // the actions asset's text (the converted one while its migration is pending); false
+        // when the project has none or it cannot be read
+        bool readInputActionsAsset(std::string& text) const;
+        // an older editor's Input Manager node (Stream::decodeProject), and its asset written
+        // (Project::load): false + a Console error when the file cannot be written
+        void setInputActionsMigration(const InputActionsMigration& migration);
+        const InputActionsMigration& getInputActionsMigration() const;
+        bool writeInputActionsMigration();
         void setUnreadableInputNode(const std::string& yaml);
         const std::string& getUnreadableInputNode() const;
-#endif
         // Play starts and stops with clean input: no held keys, touches, rebinding overrides,
         // disabled actions or simulated sources of the last Play
         void resetPlayInput() const;

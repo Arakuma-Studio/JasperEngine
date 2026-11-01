@@ -31,6 +31,21 @@ namespace jasperengine {
         DPAD_2D         // parts up, down, left, right
     };
 
+    // Unity's Input Manager smoothing of a binding (its "Key or Mouse Button" entries): the value
+    // moves to the binding's target at sensitivity/s and back to 0 at gravity/s (<= 0: at once),
+    // a value under dead reads 0, snap jumps through 0 when the target reverses. Runs on the
+    // unscaled frame time (an action works at time scale 0)
+    struct JASPERENGINE_API InputSmoothing {
+        float gravity = 3.0f;
+        float sensitivity = 3.0f;
+        float dead = 0.001f;
+        bool snap = false;
+
+        bool operator==(const InputSmoothing& other) const{
+            return gravity == other.gravity && sensitivity == other.sensitivity && dead == other.dead && snap == other.snap;
+        }
+    };
+
     struct JASPERENGINE_API InputBindingDesc {
         std::string id;                     // 8 hex digits, stable across edits and reorders
         std::string path;                   // a control path (InputControlPath); empty for a composite
@@ -40,9 +55,15 @@ namespace jasperengine {
         int requiredMods = 0;               // D_MODIFIER_* that must be held
         int forbiddenMods = 0;              // D_MODIFIER_* that must not be held
         std::vector<std::string> groups;    // control schemes: "Keyboard&Mouse", "Gamepad", "Touch"
+        // the gamepad its gamepad controls read (0..15), -1: the map's (InputActions::setGamepad)
+        int gamepad = -1;
+        // Input Manager smoothing of its value (none: the value as the control gives it)
+        std::optional<InputSmoothing> smoothing;
         InputCompositeType composite = InputCompositeType::NONE;
         bool normalize = true;              // DPAD_2D: the vector's length is at most 1
-        // a composite's parts, in their order (negative/positive, up/down/left/right)
+        // a composite's parts by role (negative/positive, up/down/left/right), in role order; a
+        // role may have several parts (any of them actuates it: the larger magnitude counts) or
+        // none (it reads 0), as an Input Manager entry's positive and negative button lists
         std::vector<std::pair<std::string, InputBindingDesc>> parts;
         std::string passthrough;            // the unknown keys: a compact JSON object, empty for none
 
@@ -51,7 +72,8 @@ namespace jasperengine {
     };
 
     struct JASPERENGINE_API InputActionDesc {
-        std::string name;
+        std::string name;                   // unique in its map; may hold '/' (an Input Manager name)
+        std::string description;
         InputActionType type = InputActionType::BUTTON;
         float pressPoint = 0.5f;
         float holdTime = 0.0f;              // 0: a plain press; else performed after holding this long (s)
@@ -105,8 +127,10 @@ namespace jasperengine {
     JASPERENGINE_API const char* inputActionTypeName(InputActionType type);
     JASPERENGINE_API bool inputActionTypeFromName(const std::string& name, InputActionType& type);
     JASPERENGINE_API const char* inputCompositeName(InputCompositeType type);
-    // the part names of a composite, in order
+    // the part names (roles) of a composite, in order
     JASPERENGINE_API std::vector<std::string> inputCompositeParts(InputCompositeType type);
+    // a role's index in that order, -1 for none
+    JASPERENGINE_API int inputCompositePartIndex(InputCompositeType type, const std::string& part);
 
 
 }
