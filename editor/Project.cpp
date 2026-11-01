@@ -68,9 +68,11 @@
 #include "pose/PoseAnimatorRuntime.h"
 #include "animation/ModelSubClips.h"
 #include "htmlui/anim/AnimEngine.h"
+#include "native/NativeBridge.h"
 #include "script/ScriptScheduler.h"
 #include "net/Http.h"
 #include "media/MediaCache.h"
+#include "util/NativePlugins.h"
 #include "thread/MainThreadQueue.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
@@ -2634,6 +2636,26 @@ void editor::Project::setScriptDirs(std::vector<std::filesystem::path> scriptDir
 
 const std::vector<std::filesystem::path>& editor::Project::getScriptDirs() const{
     return scriptDirs;
+}
+
+std::vector<std::filesystem::path> editor::Project::getBuildScriptDirs() const{
+    std::vector<std::filesystem::path> dirs = scriptDirs;
+    const std::filesystem::path nativeCpp = NativePlugins::relativeRoot() / "cpp";
+    std::error_code ec;
+    if (!std::filesystem::is_directory(getProjectPath() / nativeCpp, ec)) return dirs;
+    const std::filesystem::path nativeAbsolute = (getProjectPath() / nativeCpp).lexically_normal();
+    for (const std::filesystem::path& dir : dirs) {
+        const std::filesystem::path absolute = (dir.is_absolute() ? dir : getProjectPath() / dir).lexically_normal();
+        // a user root that is (or holds) the folder compiles it already
+        const std::filesystem::path inside = nativeAbsolute.lexically_relative(absolute);
+        if (!inside.empty() && *inside.begin() != "..") return dirs;
+    }
+    dirs.push_back(nativeCpp);
+    return dirs;
+}
+
+bool editor::Project::hasNativeCppPlugins() const{
+    return !NativePlugins::scan(getProjectPath()).filesWith("cpp", {".cpp", ".cc", ".cxx", ".c"}).empty();
 }
 
 void editor::Project::setCxxStandard(int standard){
@@ -5980,7 +6002,7 @@ void editor::Project::copyEngineApiToProject() {
     // Written even when the engine folder is missing or the copy fails: the stubs are built
     // into the editor.
     auto writeTooling = [this]() {
-        Generator::writeEditorTooling(getProjectPath(), getProjectInternalPath(), getCxxStandard(), getScriptDirs());
+        Generator::writeEditorTooling(getProjectPath(), getProjectInternalPath(), getCxxStandard(), getBuildScriptDirs());
         Generator::writeLuaScriptStubs(getProjectPath(), getProjectInternalPath());
     };
     try {
@@ -7270,8 +7292,9 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
+    generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings());
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings());
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -8976,14 +8999,16 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
+    generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);
-    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings());
+    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings());
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
     }
 
     result.shaderKeys = collectStandaloneShaderKeys();
-    result.hasCppScripts = !mergedCppScripts.empty();
+    // the C++ native plugins (plugins/native/cpp) live in the Play library too
+    result.hasCppScripts = !mergedCppScripts.empty() || hasNativeCppPlugins();
     result.status = PlayStartupPrepared::Status::Ready;
     return result;
 }
@@ -9151,6 +9176,13 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 // the plain-HTTP policy of the exported game (its generated main sets it before
                 // any scene), before the first script's init can send a request
                 Http::setInsecureHttpAllowed(applicationSettings.allowInsecureHttp);
+                // native plugins of other platforms fail with "unavailable" here (the generated
+                // main sets the same per platform)
+                NativeBridge::setPlatformOnlyPlugins(NativePlugins::platformOnlyPlugins(
+                    NativePlugins::listPlugins(NativePlugins::scan(getProjectPath())), NativePlugins::editorPlatform()));
+                // the init hooks of native plugin code the Play library brought (Objective-C on a Mac)
+                NativeBridge::initPlugins();
+                NativePlugins::warnStaleObjectiveC(getProjectPath());
 
                 // Apply project display settings before scripts read the canvas size.
                 Engine::setCanvasSize(canvasWidth, canvasHeight);
@@ -9779,6 +9811,9 @@ void editor::Project::stop(uint32_t sceneId) {
             Http::shutdown();
             // the URL videos' downloads of the play (their .part files stay for a resume)
             MediaCache::shutdown();
+            // native calls end without their callbacks, Native.on handlers and mocks go (the
+            // C++ plugins of the Play library go with it, Conector::disconnect)
+            NativeBridge::shutdown();
             MainThreadQueue::clear();
 
             const bool libraryConnected = conector.isLibraryConnected();

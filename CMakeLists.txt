@@ -452,6 +452,8 @@ include_directories (${CMAKE_CURRENT_SOURCE_DIR})
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/sokol)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/json)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/tinygltf)
+# the native plugins export checks XML fragments (util/NativeExportAndroid.cpp, NativeExportApple.cpp)
+include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/tinyxml2)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/lua)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/luabridge3)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/box2d/include)
@@ -692,6 +694,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/EntityClipboard.cpp
     ${EDITOR_DIR}/util/EntityPath.cpp
     ${EDITOR_DIR}/util/ExportFeatureScan.cpp
+    ${EDITOR_DIR}/util/NativeExportAndroid.cpp
+    ${EDITOR_DIR}/util/NativePlugins.cpp
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
     ${EDITOR_DIR}/util/AssetDatabase.cpp
     ${EDITOR_DIR}/util/Prefab.cpp
@@ -858,6 +862,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/dialog/SceneSaveDialog.cpp
     ${EDITOR_DIR}/window/dialog/ComponentAddDialog.cpp
     ${EDITOR_DIR}/window/dialog/ProjectSaveDialog.cpp
+    ${EDITOR_DIR}/window/dialog/NativePluginDialog.cpp
     ${EDITOR_DIR}/window/dialog/ScriptCreateDialog.cpp
     ${EDITOR_DIR}/window/dialog/ShaderForkDialog.cpp
     ${EDITOR_DIR}/window/dialog/TextureSlicerToolDialog.cpp

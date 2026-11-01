@@ -3616,6 +3616,16 @@
 		4A534E47B680A8D906790F30 /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 717AD972290B67B8007D7DB5 /* AudioToolbox.framework */; };
 		4A534E470B0822B0D59AA74F /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A534E47982642CBDC327A37 /* CoreMedia.framework */; };
 		4A534E47F768AC5D2A576E7F /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A534E478AD9CA0DD4CAF8DB /* CoreVideo.framework */; };
+		4A534E473175AEC2C1AD2C44 /* NativeBridge.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477D212C25FAAED034 /* NativeBridge.cpp */; };
+		4A534E478AB0864975A3DCA6 /* NativeBridge.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477D212C25FAAED034 /* NativeBridge.cpp */; };
+		4A534E47896376AB2B980B5A /* NativeClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477E5EE04810DE8E23 /* NativeClassesLua.cpp */; };
+		4A534E47E271DD1B910F97A7 /* NativeClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477E5EE04810DE8E23 /* NativeClassesLua.cpp */; };
+		4A534E4777D5CD339DD84BDE /* NativePlatformApple.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F3801C91FA764C9C /* NativePlatformApple.mm */; };
+		4A534E4777A7BCE6E27D7360 /* NativePlatformApple.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F3801C91FA764C9C /* NativePlatformApple.mm */; };
+		4A534E474B958CA661CDD38F /* JasperNative.m in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4718CF4359AA4E6638 /* JasperNative.m */; };
+		4A534E47AF8E154ADAC11588 /* JasperNative.m in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4718CF4359AA4E6638 /* JasperNative.m */; };
+		4A534E477AADDB20250DF071 /* NativeBridge.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472D37DB0DC4282EA3 /* NativeBridge.h */; };
+		4A534E47C9C2950E74BDB174 /* NativePlatform.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477549737BA275AFB0 /* NativePlatform.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -7193,6 +7203,12 @@
 		4A534E47D88DB63824966935 /* VideoPlayerSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VideoPlayerSystem.h; sourceTree = "<group>"; };
 		4A534E47982642CBDC327A37 /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
 		4A534E478AD9CA0DD4CAF8DB /* CoreVideo.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreVideo.framework; path = System/Library/Frameworks/CoreVideo.framework; sourceTree = SDKROOT; };
+		4A534E477D212C25FAAED034 /* NativeBridge.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NativeBridge.cpp; sourceTree = "<group>"; };
+		4A534E477E5EE04810DE8E23 /* NativeClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NativeClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E47F3801C91FA764C9C /* NativePlatformApple.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = NativePlatformApple.mm; sourceTree = "<group>"; };
+		4A534E4718CF4359AA4E6638 /* JasperNative.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = JasperNative.m; sourceTree = "<group>"; };
+		4A534E472D37DB0DC4282EA3 /* NativeBridge.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NativeBridge.h; sourceTree = "<group>"; };
+		4A534E477549737BA275AFB0 /* NativePlatform.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NativePlatform.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -7620,6 +7636,7 @@
 				4A534E47C7032EFC250E9A0E /* NetClassesLua.cpp */,
 				4A534E47C4CB6F074423D782 /* NetClassesLua.h */,
 				4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */,
+				4A534E477E5EE04810DE8E23 /* NativeClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -8630,6 +8647,16 @@
 			path = media;
 			sourceTree = "<group>";
 		};
+		4A534E476646E8233CC78BAC /* native */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E477D212C25FAAED034 /* NativeBridge.cpp */,
+				4A534E472D37DB0DC4282EA3 /* NativeBridge.h */,
+				4A534E477549737BA275AFB0 /* NativePlatform.h */,
+			);
+			path = native;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -8680,6 +8707,7 @@
 				4A534E471F33544BB442A466 /* Screen.h */,
 				4A534E477B5E3DD34ED6FF19 /* particles */,
 				4A534E470A099A4C30353C59 /* media */,
+				4A534E476646E8233CC78BAC /* native */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -9185,6 +9213,8 @@
 				7158F43E259C2C82006E55D3 /* Renderer.mm */,
 				4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */,
 				4A534E4784634C5A9D868C06 /* AVFoundationBackend.mm */,
+				4A534E47F3801C91FA764C9C /* NativePlatformApple.mm */,
+				4A534E4718CF4359AA4E6638 /* JasperNative.m */,
 			);
 			path = apple;
 			sourceTree = "<group>";
@@ -12830,6 +12860,8 @@
 				4A534E4796B1A6D237E5047D /* VideoTypes.h in Headers */,
 				4A534E4740C9C045E5EA20CA /* VideoPlayer.h in Headers */,
 				4A534E47E561ADFD60E21F7A /* VideoPlayerSystem.h in Headers */,
+				4A534E477AADDB20250DF071 /* NativeBridge.h in Headers */,
+				4A534E47C9C2950E74BDB174 /* NativePlatform.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14964,6 +14996,10 @@
 				4A534E4720664EC386B0A5CE /* VideoPlayer.cpp in Sources */,
 				4A534E4792F11A258CA8A565 /* VideoPlayerSystem.cpp in Sources */,
 				4A534E47AD81333694BBB14E /* AVFoundationBackend.mm in Sources */,
+				4A534E473175AEC2C1AD2C44 /* NativeBridge.cpp in Sources */,
+				4A534E47896376AB2B980B5A /* NativeClassesLua.cpp in Sources */,
+				4A534E4777D5CD339DD84BDE /* NativePlatformApple.mm in Sources */,
+				4A534E474B958CA661CDD38F /* JasperNative.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -15477,6 +15513,10 @@
 				4A534E47F36B81CE674FD681 /* VideoPlayer.cpp in Sources */,
 				4A534E47A10B7A3578EE235B /* VideoPlayerSystem.cpp in Sources */,
 				4A534E471D096D8A6704E583 /* AVFoundationBackend.mm in Sources */,
+				4A534E478AB0864975A3DCA6 /* NativeBridge.cpp in Sources */,
+				4A534E47E271DD1B910F97A7 /* NativeClassesLua.cpp in Sources */,
+				4A534E4777A7BCE6E27D7360 /* NativePlatformApple.mm in Sources */,
+				4A534E47AF8E154ADAC11588 /* JasperNative.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18085,6 +18125,7 @@
 					"OPUS_EXPORT=",
 				);
 				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
 					"$(SRCROOT)/../../core",
 					"$(SRCROOT)/../../renders",
 					"$(SRCROOT)/../../libs",
@@ -18104,6 +18145,7 @@
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
+					"$(SRCROOT)/../../platform/apple",
 				);
 				INFOPLIST_FILE = ios/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -18112,7 +18154,10 @@
 					"@executable_path/Frameworks",
 				);
 				OTHER_CPLUSPLUSFLAGS = "$(OTHER_CFLAGS)";
-				OTHER_LDFLAGS = "-ObjC";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.jaspergameengine.jasperengine;
 				PRODUCT_NAME = JasperEngine;
 				SDKROOT = iphoneos;
@@ -18143,6 +18188,7 @@
 					"OPUS_EXPORT=",
 				);
 				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
 					"$(SRCROOT)/../../core",
 					"$(SRCROOT)/../../renders",
 					"$(SRCROOT)/../../libs",
@@ -18162,6 +18208,7 @@
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
+					"$(SRCROOT)/../../platform/apple",
 				);
 				INFOPLIST_FILE = ios/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -18170,7 +18217,10 @@
 					"@executable_path/Frameworks",
 				);
 				OTHER_CPLUSPLUSFLAGS = "$(OTHER_CFLAGS)";
-				OTHER_LDFLAGS = "-ObjC";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.jaspergameengine.jasperengine;
 				PRODUCT_NAME = JasperEngine;
 				SDKROOT = iphoneos;
@@ -18207,6 +18257,7 @@
 					"OPUS_EXPORT=",
 				);
 				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
 					"$(SRCROOT)/../../core",
 					"$(SRCROOT)/../../renders",
 					"$(SRCROOT)/../../libs",
@@ -18227,6 +18278,7 @@
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
 					"$(SRCROOT)/../../platform/mac",
+					"$(SRCROOT)/../../platform/apple",
 				);
 				INFOPLIST_FILE = macos/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -18267,6 +18319,7 @@
 					"OPUS_EXPORT=",
 				);
 				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
 					"$(SRCROOT)/../../core",
 					"$(SRCROOT)/../../renders",
 					"$(SRCROOT)/../../libs",
@@ -18287,6 +18340,7 @@
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
 					"$(SRCROOT)/../../platform/mac",
+					"$(SRCROOT)/../../platform/apple",
 				);
 				INFOPLIST_FILE = macos/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (

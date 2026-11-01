@@ -40,8 +40,10 @@ ANCHOR_HEADER = "core/subsystem/ActionSystem.h"
 HEADER_DIRECTORIES = ["core/component"]
 
 # platform sources outside JASPERENGINE_SRCS that both Apple engine targets compile (CMake picks
-# them per platform): the HTTP client's NSURLSession backend
-APPLE_ENGINE_SOURCES = ["platform/apple/HttpBackendApple.mm", "platform/apple/AVFoundationBackend.mm"]
+# them per platform): the HTTP client's NSURLSession backend, the video backend, the native bridge's
+# platform layer and its Objective-C helper (JasperNative.h, which plugin code imports)
+APPLE_ENGINE_SOURCES = ["platform/apple/HttpBackendApple.mm", "platform/apple/AVFoundationBackend.mm",
+                        "platform/apple/NativePlatformApple.mm", "platform/apple/JasperNative.m"]
 
 # libraries whose CMake add_library(...) source list the project's targets of the anchor follow:
 # (CMakeLists.txt relative to engine/, the source prefix relative to engine/, the anchor source)
@@ -337,7 +339,8 @@ def main():
             gid = group_for_directory(lines, objects, group_dirs, os.path.dirname(path))
             ref = object_id("ref", path)
             file_type = "sourcecode.c.h" if is_header else ("sourcecode.cpp.objcpp" if path.endswith(".mm") else
-                                                           "sourcecode.c.c" if path.endswith(".c") else "sourcecode.cpp.cpp")
+                                                           "sourcecode.c.c" if path.endswith(".c") else
+                                                           "sourcecode.c.objc" if path.endswith(".m") else "sourcecode.cpp.cpp")
             insert_object(lines, objects, "PBXFileReference",
                           "\t\t%s /* %s */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = %s; path = %s; sourceTree = \"<group>\"; };"
                           % (ref, name, file_type, name))

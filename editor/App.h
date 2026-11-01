@@ -234,6 +234,8 @@ namespace jasperengine::editor{
         ExportWindow exportWindow;
         EditorSettingsWindow editorSettingsWindow;
         ProjectSettingsWindow projectSettingsWindow;
+        // Assets > Create > Native Plugin...
+        NativePluginDialog nativePluginDialog;
         PrefabsWindow prefabsWindow;
         AboutWindow aboutWindow;
         ScenesWindow scenesWindow;

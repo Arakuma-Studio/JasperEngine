@@ -1038,6 +1038,7 @@ set(JASPERENGINE_SRCS
     core/manager/PrefabAsset.cpp
     core/manager/PrefabManager.cpp
     core/manager/SceneManager.cpp
+    core/native/NativeBridge.cpp
     core/net/Http.cpp
     core/net/HttpUtil.cpp
     core/io/UserSettings.cpp
@@ -1167,6 +1168,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/ECSClassesLua.cpp
     core/script/binding/IOClassesLua.cpp
     core/script/binding/MathClassesLua.cpp
+    core/script/binding/NativeClassesLua.cpp
     core/script/binding/NetClassesLua.cpp
     core/script/binding/ParticleClassesLua.cpp
     core/script/binding/GameObjectClassesLua.cpp
@@ -1290,6 +1292,22 @@ else()
     endforeach()
 endif()
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_VIDEO_BACKEND})
+# The native bridge's platform layer (core/native/NativePlatform.h): Java/Kotlin through JNI,
+# Objective-C/Swift through the runtime, JavaScript through EM_JS; none elsewhere (C++ plugins
+# and Lua mocks only). Outside JASPERENGINE_SRCS like the HTTP backend: the Xcode workspace
+# compiles the Apple files in its engine targets (tools/xcode_sync_engine.py).
+if(EMSCRIPTEN)
+    set(JASPERENGINE_NATIVE_PLATFORM platform/emscripten/NativePlatformWeb.cpp)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    set(JASPERENGINE_NATIVE_PLATFORM platform/android/NativePlatformAndroid.cpp)
+elseif(APPLE)
+    # JasperNative.m: the helper API plugin code calls (JasperNative.h)
+    set(JASPERENGINE_NATIVE_PLATFORM platform/apple/NativePlatformApple.mm platform/apple/JasperNative.m)
+    set_source_files_properties(platform/apple/NativePlatformApple.mm platform/apple/JasperNative.m PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+else()
+    set(JASPERENGINE_NATIVE_PLATFORM core/native/NativePlatformNone.cpp)
+endif()
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NATIVE_PLATFORM})
 
 # HTML/CSS compatibility layer (phase 2): globbed per directory
 include(core/htmlui/compat/CompatSources.cmake)
@@ -1515,6 +1533,14 @@ endif()
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
     file(GLOB_RECURSE PROJECT_SOURCE ${PROJECT_ROOT}/*.cpp)
+    # the native plugins' platform folders belong to Gradle / Xcode (and the macOS block the
+    # export adds); plugins/native/cpp ships as a script root under scripts/
+    foreach(native_source IN LISTS PROJECT_SOURCE)
+        string(FIND "${native_source}" "${PROJECT_ROOT}/plugins/native/" native_at)
+        if(native_at EQUAL 0)
+            list(REMOVE_ITEM PROJECT_SOURCE "${native_source}")
+        endif()
+    endforeach()
 
     # Embed the exported icon into the Windows executable (Explorer, taskbar
     # and window icon). Other platforms set the window icon at runtime instead.

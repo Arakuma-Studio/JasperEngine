@@ -301,6 +301,7 @@
 #include "thread/ResourceProgress.h"
 #include "thread/ThreadPoolManager.h"
 
+#include "native/NativeBridge.h"
 #include "net/Http.h"
 #include "script/AsyncOwner.h"
 

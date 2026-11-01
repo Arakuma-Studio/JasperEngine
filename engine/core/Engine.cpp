@@ -55,6 +55,7 @@
 #include "pool/PhysicsMaterialPool.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
+#include "native/NativeBridge.h"
 #include "net/Http.h"
 #include "media/MediaCache.h"
 #include "thread/MainThreadQueue.h"
@@ -141,6 +142,8 @@ bool Engine::clampNextDelta = false;
 
 std::atomic<bool> Engine::viewLoaded = false;
 std::atomic<bool> Engine::paused = false;
+bool Engine::osPaused = false;
+bool Engine::nativePaused = false;
 std::atomic<bool> Engine::focused = true;
 int Engine::targetFrameRate = -1;
 // the project's VSync setting in builds (the generated init() sets it too)
@@ -1340,6 +1343,8 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
     updateTimeCount = 0;
     viewLoaded = false;
     paused = false;
+    osPaused = false;
+    nativePaused = false;
     focused = true;
     lastOrientation = 0;
     orientationPendingSince = 0.0;
@@ -1364,6 +1369,8 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
 void Engine::systemStartProject(){
     #ifndef NO_LUA_INIT
     LuaBinding::init();
+    // native plugins' init hooks (Apple +jasperInit) before any script can call them
+    NativeBridge::initPlugins();
     #endif
     #ifndef NO_CPP_INIT
     getOnInit().call();
@@ -1572,6 +1579,9 @@ void Engine::runFrame(bool draw){
     updateGamepadNavigation();
 
     drawSemaphore.acquire();
+
+    // native SDKs' engine pause requests and native call timeouts (paused frames too)
+    NativeBridge::update();
 
     // async uploads of the last frame, while the scenes that queued them still exist
     SystemRender::executeQueue();
@@ -1839,6 +1849,8 @@ void Engine::systemShutdown(){
     Http::terminate();
     // the media cache's downloads are forgotten (their .part files stay for a resume)
     MediaCache::shutdown();
+    // native calls end without their callbacks, the event handlers go
+    NativeBridge::shutdown();
     MainThreadQueue::clear();
     LuaBinding::cleanup();
 
@@ -1850,10 +1862,35 @@ void Engine::systemShutdown(){
 }
 
 void Engine::systemPause(){
-    if (paused) return;
+    if (osPaused) return;
     // leaving: the focus goes first (Unity: OnApplicationFocus(false), then OnApplicationPause(true))
     systemFocus(false);
-    paused = true;
+    osPaused = true;
+    applyPause();
+}
+
+void Engine::systemResume(){
+    if (!osPaused) return;
+    osPaused = false;
+    applyPause();
+}
+
+void Engine::setNativePause(bool held){
+    nativePaused = held;
+    applyPause();
+}
+
+void Engine::applyPause(){
+    const bool want = osPaused || nativePaused;
+    if (want == paused) return;
+    paused = want;
+    if (!want){
+        AudioSystem::resumeAll();
+        ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 0); return 1; },
+            [](ScriptBase& script) { script.onApplicationPause(false); });
+        Engine::onResume.call();
+        return;
+    }
     AudioSystem::pauseAll();
     ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 1); return 1; },
         [](ScriptBase& script) { script.onApplicationPause(true); });
@@ -1870,19 +1907,10 @@ void Engine::systemPause(){
     UserSettings::save();
 }
 
-void Engine::systemResume(){
-    if (!paused) return;
-    paused = false;
-    AudioSystem::resumeAll();
-    ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 0); return 1; },
-        [](ScriptBase& script) { script.onApplicationPause(false); });
-    Engine::onResume.call();
-}
-
 void Engine::systemFocus(bool hasFocus){
     if (hasFocus == focused) return;
     // coming back: the resume goes first (OnApplicationPause(false), then OnApplicationFocus(true))
-    if (hasFocus && paused){
+    if (hasFocus && osPaused){
         systemResume();
     }
     focused = hasFocus;
@@ -1936,6 +1964,8 @@ void Engine::systemLowMemory(){
 }
 
 void Engine::resetApplicationState(){
+    osPaused = false;
+    nativePaused = false;
     if (paused){
         paused = false;
         AudioSystem::resumeAll();

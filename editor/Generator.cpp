@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Generator.h"
+#include "util/NativePlugins.h"
 #include "Factory.h"
 #include "App.h"
 #include "EditorVersion.h"
@@ -1213,7 +1214,11 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "if(NOT JASPERENGINE_LIB)\n";
     cmakeContent += "    message(FATAL_ERROR \"JasperEngine library not found in ${JASPERENGINE_LIB_DIR}\")\n";
     cmakeContent += "endif()\n\n";
-    cmakeContent += "target_link_libraries(" + libName + " PRIVATE ${JASPERENGINE_LIB} ${PLATFORM_LIBS})\n\n";
+    cmakeContent += "target_link_libraries(" + libName + " PRIVATE ${JASPERENGINE_LIB} ${PLATFORM_LIBS})\n";
+    // macOS: the Objective-C native plugins run in the Play library and desktop builds too
+    cmakeContent += NativePlugins::macosCMake(NativePlugins::scan(projectPath), libName, "${CMAKE_CURRENT_SOURCE_DIR}/plugins/native",
+                                              macOSFrameworks, engineApiPathStr + "/platform/apple");
+    cmakeContent += "\n";
     cmakeContent += "# Set compile options based on compiler and platform\n";
     cmakeContent += "if(MSVC)\n";
     cmakeContent += "    # C4251/C4275: exported engine classes (JASPERENGINE_API -> dllimport) expose STL\n";
@@ -1651,7 +1656,8 @@ void editor::Generator::writeClaudeFile(const fs::path& projectPath) {
 
 const std::vector<std::string>& editor::Generator::engineApiIncludeDirs() {
     static const std::vector<std::string> dirs = {
-        "", "libs/sokol", "libs/box2d/include", "libs/joltphysics", "renders",
+        // libs/json: core/native/NativeBridge.h (NativeJson) and script/LuaJson.h
+        "", "libs/sokol", "libs/json", "libs/box2d/include", "libs/joltphysics", "renders",
         "core", "core/action", "core/action/keyframe", "core/buffer", "core/component", "core/ecs",
         "core/io", "core/manager", "core/math", "core/object", "core/object/sound", "core/object/ui",
         "core/object/environment", "core/object/physics", "core/pool", "core/registry", "core/render",
@@ -2381,6 +2387,36 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     mainContent += "    UIDocumentSystem::setPreferredSampleCount(" + std::to_string(htmlUiMsaaSamples) + ");\n";
     // Project Settings > Player > Allow Insecure HTTP: the same policy as the editor's Play
     mainContent += std::string("    Http::setInsecureHttpAllowed(") + (allowInsecureHttp ? "true" : "false") + ");\n";
+    // The native plugins of plugins/native that the platform being built cannot run: a call to
+    // one fails with "unavailable" and says where it runs (the editor's Play does the same)
+    {
+        const std::vector<NativePlugins::PluginInfo> plugins = NativePlugins::listPlugins(NativePlugins::scan(projectPath));
+        auto platformOnlyCall = [&plugins](const std::string& running) {
+            const std::map<std::string, std::string> only = NativePlugins::platformOnlyPlugins(plugins, running);
+            std::string call = "    NativeBridge::setPlatformOnlyPlugins({";
+            bool first = true;
+            for (const auto& [name, message] : only) {
+                call += std::string(first ? "" : ", ") + "{\"" + name + "\", \"" + message + "\"}";
+                first = false;
+            }
+            return only.empty() ? std::string() : call + "});\n";
+        };
+        const std::string android = platformOnlyCall("android");
+        const std::string ios = platformOnlyCall("ios");
+        const std::string macos = platformOnlyCall("macos");
+        const std::string macosCMake = platformOnlyCall("macos-cmake");
+        const std::string web = platformOnlyCall("web");
+        const std::string desktop = platformOnlyCall("desktop");
+        if (!android.empty() || !ios.empty() || !macos.empty() || !macosCMake.empty() || !web.empty() || !desktop.empty()) {
+            mainContent += "#if defined(__ANDROID__)\n" + android;
+            mainContent += "#elif defined(__EMSCRIPTEN__)\n" + web;
+            mainContent += "#elif defined(__APPLE__)\n";
+            mainContent += "#include <TargetConditionals.h>\n";
+            mainContent += "#if TARGET_OS_IPHONE\n" + ios + "#elif defined(JASPERENGINE_MACOS_CMAKE)\n" + macosCMake + "#else\n" + macos + "#endif\n";
+            mainContent += "#else\n" + desktop;
+            mainContent += "#endif\n";
+        }
+    }
 
     // Player > Resolution and Presentation (before any script, which may change them) and
     // what System.getAppName / getAppVersion... return where there is no package to ask

@@ -12,6 +12,7 @@
 // a button shows once its hook is set. Owner: T2c.
 
 #include "media/VideoFormats.h"
+#include "util/NativePlugins.h"
 #include "InspectorWindow.h"
 #include "window/HumanoidConvertDialog.h"
 #include "pose/PoseRigProvider.h"
@@ -1560,6 +1561,26 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         std::error_code ec;
         if (!fs::is_regular_file(asset, ec)) return false;
         drawVideoAsset(asset);
+        return true;
+    }
+    // a native plugin's file (plugins/native): what it is for, read-only
+    const std::string nativePlatform = NativePlugins::platformOf(project->getProjectPath(), asset);
+    if (!nativePlatform.empty()){
+        std::error_code ec;
+        if (!fs::exists(asset, ec)) return false;
+        static const std::map<std::string, std::string> kinds = {
+            {"android", "Native plugin source (Android)"}, {"apple", "Native plugin source (iOS and macOS)"},
+            {"ios", "Native plugin source (iOS)"}, {"macos", "Native plugin source (macOS)"},
+            {"web", "Native plugin source (Web)"}, {"cpp", "Native plugin source (C++, every platform)"}};
+        drawAssetHeader(ICON_FA_PLUG, asset, kinds.at(nativePlatform).c_str());
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("%s", nativePlatform == "cpp"
+            ? "Compiled into the Play library and every export. Lua calls its JASPERENGINE_NATIVE_PLUGIN by name: Native.call(\"Name\", \"method\", ...)."
+            : "Built into that platform's export only (editor Play answers with the plugin's Lua mock in native_mocks). "
+              "Lua calls it by class or object name: Native.call(\"Name\", \"method\", ...).");
+        ImGui::TextDisabled("Edit it in the code editor or your IDE; Project Settings > Native Plugins lists the SDK settings. "
+                            "Guide: jasper://docs/native-bridge.");
+        ImGui::PopTextWrapPos();
         return true;
     }
     // a physics material: its four fields (InspectorPhysics2D.cpp)

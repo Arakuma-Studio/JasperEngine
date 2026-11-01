@@ -1,0 +1,37 @@
+// The native bridge's Java side (com.jaspergameengine.bridge.JasperNative): the app and the
+// native plugins module (nativeplugins, made by the export) depend on it
+apply plugin: 'com.android.library'
+
+def jasperengineRoot = "../../.."
+def jasperengineRootAbs = file(jasperengineRoot).toString()
+
+android {
+    compileSdk 36
+    defaultConfig {
+        minSdkVersion 21
+        consumerProguardFiles jasperengineRootAbs+'/platform/android/java-bridge/consumer-rules.pro'
+    }
+
+    sourceSets {
+        main {
+            java.srcDirs = [jasperengineRootAbs+'/platform/android/java-bridge/java']
+            manifest.srcFile jasperengineRootAbs+'/platform/android/java-bridge/AndroidManifest.xml'
+        }
+        test {
+            java.srcDirs = [jasperengineRootAbs+'/platform/android/java-bridge/test']
+        }
+    }
+
+    testOptions {
+        // android.* is stubbed on the JVM; NativeReflection does not use it
+        unitTests.returnDefaultValues = true
+    }
+
+    namespace 'com.jaspergameengine.bridge'
+}
+
+dependencies {
+    testImplementation "junit:junit:4.13.2"
+    // the real org.json (Android's is a stub on the JVM)
+    testImplementation "org.json:json:20231013"
+}

@@ -593,3 +593,153 @@ plist helpers (`:392-465`), `createOptionalWrapper` pattern (`MainActivity.java:
 - **safe-area**: `Screen.setExtraInsets` lets a banner SDK wrapper reserve space.
 - **coroutines**: may make `NativeCall` awaitable (same pattern as `HttpRequest`).
 - **debug-overlay**: may show pending native calls (optional).
+
+## Implementation notes
+
+Decisions taken while implementing (branch `gaps/native-bridge`), where the spec was silent,
+ambiguous or in conflict with the code:
+
+1. **Mocks behind C++.** The resolution order is implemented in `NativeBridge` itself, with the Lua
+   layer installed as a `NativeMockProvider` (`core/native/NativePlatform.h`): C++ scripts calling
+   `NativeBridge::call` get the same order (and the mocks) as Lua.
+2. **A C++ plugin missing the method stops resolution** with `no_method` (it does not fall through
+   to the platform plugin of the same name): one name, one implementation. Because C++ answers
+   first everywhere, the scaffold wraps a C++ plugin created together with platform plugins in
+   `#if !(defined(__ANDROID__) || ...)` for the chosen platforms, so it is the desktop answer.
+3. **Async call to a sync method** (C++, Java, Objective-C, mock) runs the method on the requested
+   thread and resolves with its return value; a sync call to an async-only method is `async_only`
+   (the code the spec gave for JavaScript Promises).
+4. **Mock async timing.** An async mock function runs inside `callAsync` (its result is still
+   delivered next frame); a mock that returns `nil, message` without a code fails with `exception`.
+   The mock module is required only when `native_mocks/<Plugin>.lua` exists (checked with the
+   loader's paths), so a missing mock is never an error.
+5. **Pause.** The engine now has two pause holds: the OS's (`Engine::systemPause/systemResume`,
+   idempotent) and the native one (`Engine::setNativePause`, applied each frame by
+   `NativeBridge::update()` from the `pauseEngine`/`resumeEngine` count, paused frames included).
+   The engine is paused while either holds: one `onPause` when the first starts, one `onResume`
+   when the last ends (no onResume while an ad still shows after the app came back). The OS hold
+   keeps platform-services' focus order (focus lost before the pause; gaining focus while the OS
+   holds resumes first, then `onFocus(true)`, even while the native hold keeps the engine paused).
+   Play stop drops both holds (`resetApplicationState`). `NativeBridge::postToGameThread` (JasperNative `runOnGameThread`)
+   tasks run in `update()` too, so a `resumeEngine` from one works while paused; Play stop drops
+   queued tasks, and events emitted before a Play stop never reach the next Play (generation).
+   On Android the natives are registered in `JNI_OnLoad` (MainActivity's `System.loadLibrary`), so
+   `onJasperInit` may already emit and pause.
+6. **Timeouts** are checked in `NativeBridge::update()` (real time) and delivered at the delivery
+   point; the native side sees the call cancelled. A user `cancel()` after the timeout fired but
+   before its delivery still suppresses the callback.
+7. **`NativeCall.isDone()`** in Lua means "the callback ran or the call was cancelled" (so
+   `Coroutine.waitFor` resumes with `result`/`errorCode` final); C++ `NativeCall::isDone()` is the
+   native view (completed or cannot complete) and `isDelivered()` the caller's. A cancelled call's
+   `errorCode` reads `"cancelled"` (no callback runs). `NativeCall` also exposes `plugin`/`method`.
+8. **Unavailable plugins.** `NativeBridge::setPlatformOnlyPlugins` is filled from `plugins/native`
+   by the editor at Play start and by the generated `main.cpp` per platform (`#if` blocks), so editor
+   Play and every build say "Java/Kotlin plugins run only on Android" instead of `not_found`.
+9. **Android layout.** The bridge module's sources are in `java-bridge/java/com/...` and its JVM test
+   in `java-bridge/test/com/...` (not directly under `java-bridge/`): one directory cannot be both a
+   main and a test source root. The module has its own `AndroidManifest.xml` and consumer keep rules.
+   The `nativeplugins` module uses the whole `plugins/native/android` folder as its Java and Kotlin
+   source root (any layout works; listing `java/` and `kotlin/` too would compile files twice).
+   Java registry classes must be `public` (reflection cannot call a package-private class);
+   Kotlin `internal`/`private` ones are left out (a member's `val`/`var`/`fun` ends its modifiers). `JasperLifecycleListener.onCreate` is called right
+   after the plugins' `onJasperInit`, so listeners added there get it. `JasperNative.call` parses the
+   arguments with its own JSON reader (integers as Long, others as Double: org.json's number rules
+   differ between Android and the JVM) and writes results with its own writer (`7.0` stays a float).
+10. **Apple plugins.** A plugin class adopts the `JasperNativePlugin` protocol (the marker:
+    no other class of the app or system answers, so a mock still answers for a name like
+    `NSString`). `+jasperInit` discovery needs no export step: `[JasperNative dispatchInit]` scans
+    the app's own images (`objc_copyImageNames` / `objc_copyClassNamesForImage`, system images
+    skipped) for plugin classes with their own `jasperInit` in the metaclass method list
+    (`class_copyMethodList`: no class gets `+initialize` for it), once per class. It runs from
+    `ViewController.viewDidLoad` (Xcode apps) and from `NativeBridge::initPlugins()` at
+    `Engine::systemInit` and every editor Play start (macOS CMake builds, the macOS editor),
+    picking up classes loaded since. macOS never unloads Objective-C classes: Play warns once that
+    a changed Objective-C plugin needs an editor restart. Lifecycle callbacks come from the app's
+    notifications; `openURL` (SceneDelegate, macOS AppDelegate) and the remote-notification token
+    (AppDelegate) are forwarded by the delegates. Values cross as Foundation objects converted
+    directly from/to JSON; scalar return types are read with matching `objc_msgSend` casts, and a
+    method whose parameters are not objects fails with `bad_args` instead of being called.
+11. **Xcode project.** Swift bridging headers are per target (`JasperNative-Bridging-Header-iOS.h` /
+    `-macOS.h`). Plugin headers are no file references (a project's headers are mapped by name for
+    every target: a plugin `Camera.h` would shadow the engine's): their folders are appended to
+    `HEADER_SEARCH_PATHS`. The template's app targets have `$(SRCROOT)/../../platform/apple` (for
+    `JasperNative.h`, which their own sources import) and `$(inherited)` first in
+    `HEADER_SEARCH_PATHS` / `OTHER_LDFLAGS`, so CocoaPods' xcconfig is not overridden. Swift package
+    versions are padded to x.y.z. macOS entitlements are not a setting (the spec lists iOS only).
+    Plugin folders are copied without following links: links inside `plugins/native` (a
+    framework's `Versions/Current`) stay links, others are left out with a warning. The CMake glob
+    of an exported project skips `project/plugins/native/` (the platform folders' sources belong to
+    Gradle/Xcode). A macOS CMake build defines `JASPERENGINE_MACOS_CMAKE`, so its "unavailable" list
+    leaves out Swift-only Apple plugins. Every Apple export links the engine's own system frameworks
+    explicitly (iOS: AVFoundation, AudioToolbox, CoreGraphics, CoreMedia, CoreVideo, Foundation,
+    GameController, Metal, MetalKit, QuartzCore, UIKit; macOS: the same with AppKit and CoreAudio
+    instead of UIKit), appended to the template's Frameworks phase (what it links already, such as main's
+    APP_FRAMEWORKS, is kept and not repeated), merged with `ios.frameworks`/`macos.frameworks`
+    (one entry per name, strong wins): the engine's C++ and Objective-C++ files import no clang
+    modules, so nothing autolinks them, and an iOS export without AdMob linked AVFoundation (for
+    miniaudio's AVAudioSession) only through the AdMob SDK's module. Swift packages are
+    `upToNextMajorVersion` from the given version (1.1.0 resolves the newest 1.x).
+12. **CocoaPods.** When a pod has a custom `source`, the CocoaPods CDN is listed too (a `source` line
+    hides the trunk otherwise). Swift packages need a version and at least one product.
+13. **Web.** The page stub defines `register` and `emit` (queueing them), not only `_pending`, since
+    plugin scripts call them before the engine starts; it is always the first thing in `<head>`
+    (before `web.head_include`). A bare plugin name is a registered object only; browser globals
+    need a dotted path (`window.localStorage`, `navigator.clipboard`), so a global named like a
+    plugin (`Notification`, `Audio`) never hides its mock. Async JavaScript methods get exactly the Lua
+    arguments (there is no call object on the Web); top-level `undefined` is null, object members
+    that are `undefined` or functions are left out (as `JSON.stringify`), anything else non-JSON is
+    `unsupported_type`. Web plugin files are copied by the build's `apply.cmake` into
+    `<output>/plugins/`.
+14. **XML fragments** are checked by `NativePlugins::xmlFragmentError` (tinyxml2, the fragment wrapped
+    in one element, so `android:`/`tools:` prefixes need no declaration); the Android manifest gets
+    `xmlns:tools` when a fragment uses `tools:`.
+15. **Plist values in project.yaml** are plain YAML scalars/lists; a string that would read back as
+    another type (`"true"`, `"15"`, `""`) is written `{string: ...}`.
+16. **Project Settings > Native Plugins** follows the window's existing OK/Cancel model (edits apply
+    on OK, saved to project.yaml) like every other page: no command-history undo, as the rest of the
+    window.
+17. **Play library.** `Project::getBuildScriptDirs()` (user dirs + `plugins/native/cpp`) feeds the
+    Generator and the Exporter; `getScriptDirs()` stays the setting. `libs/json` joined the engine
+    API include directories (`NativeBridge.h` is in `JasperEngine.h`).
+18. **Agent guide.** The HTTP and native lines share one bullet, and a few Lua-section lines were
+    reworded shorter, to keep the merged guide under 16 KB (16376 bytes after the last main merge).
+
+### Verification (review fixes; merged with gaps/http and main at 2e916ebb9)
+
+- Build box 2201 (`-j5`; 2203 was overloaded): editor and `jasperengine-editor-tests` build with 0
+  errors and 0 warnings (again after the `callId` rename, 956ee4b8e).
+- Unit suite: 1705 passed, 10 skipped, 1 failed: `CameraShakeComponents.RegistrationAndCatalog`
+  expects CameraFollowComponent last, but main's ui-scaling-text appends TextEffectComponent after
+  it (main's Catalog.h and test, unchanged here). The `NativeBridgeTest` and platform-services
+  cases pass, also after the rename.
+- MCP e2e, full suite (`-j3`): 930 passed, 10 failed (the baseline test_animation_assets x5,
+  test_lattice_scene x5), 21 skipped; test_native_bridge 4/4. Tool budget: 154 tools, 113215
+  (TOTAL_LIMIT set to it). Agent guide 15365 bytes (one line under "Feature guides").
+- Apple: the lead's Mac compile check of the engine's Xcode project (956ee4b8e) builds JasperEngine
+  macOS and iOS with 0 errors (it found `uint64_t id` parameters hiding Objective-C's `id` in
+  NativePlatformApple.mm: renamed). Exported test projects (an Objective-C and a Swift plugin in
+  apple/, an iOS-only Swift plugin importing swift-collections through ios.swift_packages, plist
+  entries and system frameworks per platform, a Lua caller) built on the owner's Mac (Xcode 26.6,
+  arm64, dav1d asm off, signing off) once every export links the engine's frameworks explicitly
+  (the first iOS build failed: AVAudioSession undefined without the AdMob SDK): iOS device and
+  simulator and macOS, with plugins and without, exit 0 and 0 errors, against this branch's
+  template and against it with main's APP_FRAMEWORKS phase entries (9d8286d3e); `otool -L` lists
+  AVFoundation, AudioToolbox, CoreMedia, CoreVideo, Metal, MetalKit, QuartzCore, UIKit/AppKit.
+- Android, on the host: the exported test project of `test_source_export` (a Java and a Kotlin
+  plugin, libs/x.jar, a plugin manifest with tools:node="remove", Gradle dependencies, a repository,
+  manifest fragments) **built with `./gradlew assembleDebug`** (AGP 9, arm64 only, 0 warnings): the
+  APK (merged tree, 6m 26s) has com.t.Device, com.t.k.Store, the registry, JasperNative, JasperPlatform, AD_ID and the
+  application meta-data, and no READ_PHONE_STATE. Earlier rounds: `:jasperbridge:testDebugUnitTest`
+  (7 NativeReflectionTest cases), NativePlatformAndroid.cpp with the NDK clang -Wall -Wextra clean,
+  a copy of the generated module layout through `assembleRelease` (R8 kept the plugin classes).
+- Web: `tools/native-bridge/web-smoke/run.sh` (em++ + node, -Wall -Wextra clean): 29 checks pass
+  (registered objects and dotted global paths, bare browser globals not plugins, value types,
+  Promises, rejections with codes, exceptions, unsupported values, cancellation, events and
+  registrations queued before the engine, pause/resume). A full Emscripten build of an exported
+  project was not run.
+- Apple runtime and the macOS CMake path: not run here; written against the iOS 15 /
+  macOS 12 SDK APIs and reviewed (the `JasperNativePlugin` marker, metaclass method lists for
+  `+jasperInit`, typed objc_msgSend casts per return type, object-only parameters, ARC, NSNumber
+  booleans, @try/@catch, bridging header paths, `$(inherited)` and platform/apple in the app
+  targets, pbxproj objects parsed by tools/mcp/pbxproj.py in the export test). Windows: no platform
+  code (C++ plugins and mocks only).

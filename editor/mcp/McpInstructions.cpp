@@ -238,6 +238,7 @@ Read the page before using these tools:
 - Bend/squash: edit_lattice (jasper://docs/lattice). GPU fluid: type fluid_simulation
   (jasper://docs/fluid). Textures from examples: synthesize_texture
   (jasper://docs/texture-synthesis).
+- Native SDKs: Native.call/callAsync/on; plugins: native_plugins (jasper://docs/native-bridge).
 
 ## HTML/CSS UI
 Menus, HUDs and dialogs in standard HTML + CSS, logic in Lua (no JavaScript):

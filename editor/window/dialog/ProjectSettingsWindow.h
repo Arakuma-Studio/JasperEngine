@@ -4,6 +4,7 @@
 #pragma once
 
 #include "Project.h"
+#include "NativePluginDialog.h"
 #include "imgui.h"
 #include "util/ShaderGlobalsEdit.h"
 #include "util/ShaderGlobalsUsage.h"
@@ -117,6 +118,28 @@ namespace jasperengine::editor {
         bool m_androidAdmobEnabled = false;
         char m_androidAdmobAppIdBuffer[128] = {0};
 
+        // Native Plugins being edited (Project Settings > Native Plugins); plist entries as rows
+        std::vector<std::string> m_gradleDependencies;
+        std::vector<std::string> m_gradleRepositories;
+        std::vector<std::string> m_gradleProperties;
+        std::vector<std::string> m_extraPermissions;
+        std::string m_manifestXml;
+        std::string m_manifestApplicationXml;
+        std::vector<std::pair<std::string, NativePlistValue>> m_iosPlistEntries;
+        std::string m_iosPlistXml;
+        std::vector<std::string> m_iosFrameworks;
+        std::vector<NativeCocoaPod> m_iosCocoapods;
+        std::vector<NativeSwiftPackage> m_iosSwiftPackages;
+        std::string m_iosEntitlementsXml;
+        std::string m_iosDeploymentTarget;
+        std::vector<std::pair<std::string, NativePlistValue>> m_macosPlistEntries;
+        std::vector<std::string> m_macosFrameworks;
+        std::vector<std::string> m_webScriptUrls;
+        NativePluginDialog m_nativePluginDialog;
+        // plugins/native as last scanned (open, Refresh, after Create Plugin): not every frame
+        std::string m_nativeSummary;
+        void refreshNativeSummary();
+
         // Tags and Layers being edited: user tags, and user layer names indexed by layer
         // (MAX_LAYERS entries, built-in ones empty)
         std::vector<std::string> m_tags;
@@ -200,6 +223,7 @@ namespace jasperengine::editor {
         // First Tags and Layers problem that blocks OK, "" when there is none
         std::string tagsAndLayersError() const;
         void drawEditorSettings();
+        void drawNativePluginsSettings();
         Texture* findThumbnail(const std::string& path);
 
         // Player's per-platform tabs; each platform draws rows into the table its tab opens.
@@ -224,6 +248,8 @@ namespace jasperengine::editor {
         void open(Project* project, const char* category = nullptr);
         void show();
         bool isOpen() const { return m_isOpen; }
+        // a native plugin's Lua mock the Create Plugin dialog wrote (to open in the code editor); once
+        std::filesystem::path consumeCreatedFile() { return m_nativePluginDialog.consumeCreatedFile(); }
     };
 
 }

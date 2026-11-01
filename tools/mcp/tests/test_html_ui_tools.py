@@ -179,7 +179,11 @@ LIMITS.update({"edit_animation": 3700, "get_animation": 870, "edit_pose_animatio
 # video-mp4 merged with main dce634fb7 (camera-shake, ui-scaling-text): 153 tools measured 112289 (on box
 # 2202), the limit set to it
 # lead: + video-mp4 (+96 over the measured 112193 of main 2e916ebb9): provisional 113536, re-measured on the merged tree
-TOTAL_LIMIT = 113536
+# native-bridge: the native_plugins tool (list / create a plugin for every platform with its Lua mock)
+# measured 1022 on its branch; merged with main 2e916ebb9: 154 tools, total 113215 (tool_budget.py on
+# the merged tree), the limit set to it
+# lead: + native-bridge (+1022 over the measured 112193 of main 2e916ebb9) on main measured 113357 + video's 96: provisional 114475, re-measured on the merged tree
+TOTAL_LIMIT = 114475
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
