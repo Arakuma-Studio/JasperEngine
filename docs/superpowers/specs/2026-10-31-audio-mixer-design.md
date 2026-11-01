@@ -478,3 +478,12 @@ Decisions taken while implementing (2026-10-31), where the spec was silent, ambi
   its exported-player check of the mixer log line is untested). The changed engine sources and the new SoLoud
   sources compile with emsdk (Web) and the Android NDK (arm64-v8a clang); `tools/xcode_sync_engine.py --check`
   passes. Not compiled anywhere: the Xcode project (Apple) and Windows builds.
+- **Final verification** (merged with main at `b6989373c`: persistence, physics-3d, ui-canvas-group, http; box 2203):
+  0 warnings; unit 1379 passed, 9 skipped, 0 failed; full MCP suite 867 passed, 18 skipped, 11 failed: the 10
+  baseline failures (`test_animation_assets` 5, `test_lattice_scene` 5) and
+  `test_stochastic_tiling::test_old_scene_resaves_byte_identical`, which fails because every scene now lists the
+  HTML UI `htmluipost` shader key (ui-canvas-group's "Flatten composite always exported", `ShaderVariantCollector`
+  / `Project.cpp` insertKeys): not audio, it fails the same alone; agent guide 16345 bytes; tool budget 152 tools,
+  108425 (TOTAL_LIMIT set to it); TOOLS.md regenerated from this build. Web (emsdk) and Android (NDK arm64) compile
+  checks of the changed engine sources passed on the tree merged before the last two merges (no engine audio file
+  changed since but `AudioSystem.cpp`, `EntityCloner.cpp`, recompiled on Linux only).
