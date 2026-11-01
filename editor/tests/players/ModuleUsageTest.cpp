@@ -169,6 +169,14 @@ TEST(ModuleUsage, LuaNamesNeedTheirModules) {
     EXPECT_EQ(modules(withLua("print('Light on, press the Button to open the UIDocument')")), "");
     EXPECT_EQ(modules(withLua("-- UIDocument Rigidbody\n--[[ getRigidbody ]] local x = 1")), "");
     EXPECT_EQ(modules(withLua("--[==[ UIDocument ]==] local x = [[ text ]]")), "");
+    // a name on its own is a local or a global, never a member: a local, a function or a table key
+    // named like a member reaches nothing; the same name after . or : (or in a string) does
+    EXPECT_EQ(modules(withLua("local getRigidbody = 3\nlocal t = {getRigidbody = 2, collision = 1}\nlocal function volume() end")), "");
+    EXPECT_EQ(modules(withLua("local go = GameObject(self.scene, self.entity)\nlocal b = go.getRigidbody")), "physics3d");
+    const std::string ui = "local doc = UIDocument(self.scene, self.entity)\n";
+    EXPECT_FALSE(withLua(ui + "local duration = 3\nlocal t = {muted = true}").needs("video"));
+    EXPECT_TRUE(withLua(ui + "local d = el.duration").needs("video"));
+    EXPECT_TRUE(withLua(ui + "local d = el['duration']").needs("video"));
 }
 
 TEST(ModuleUsage, DynamicAccessNeedsEveryModule) {

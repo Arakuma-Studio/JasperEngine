@@ -222,6 +222,9 @@ namespace {
         // the names of classes and enums that are no member of anything: in a string they reach
         // nothing (a global by its name needs _G or the like, a dynamic access)
         std::set<std::string> typeOnlyNames;
+        // the names of classes and enums: the only entry points a name on its own reaches (Lua has
+        // no implicit member scope: a member is reached after . or :, or by a string, as obj[k])
+        std::set<std::string> globalNames;
     };
 
     LuaTables buildTables(const mcp::Json& api) {
@@ -241,10 +244,14 @@ namespace {
         if (api.contains("classes")) {
             for (const mcp::Json& cls : api["classes"]) {
                 tables.typeOnlyNames.insert(cls.value("name", std::string()));
+                tables.globalNames.insert(cls.value("name", std::string()));
                 for (const mcp::Json* member : membersOf(cls)) members.insert(member->value("name", std::string()));
             }
         }
-        for (const mcp::Json& en : api.value("enums", mcp::Json::array())) tables.typeOnlyNames.insert(en.value("name", std::string()));
+        for (const mcp::Json& en : api.value("enums", mcp::Json::array())) {
+            tables.typeOnlyNames.insert(en.value("name", std::string()));
+            tables.globalNames.insert(en.value("name", std::string()));
+        }
         for (const std::string& member : members) tables.typeOnlyNames.erase(member);
         const auto& entry = ModuleUsageDetector::moduleEntryPoints(api);
         if (auto it = entry.find("video"); it != entry.end()) tables.videoNames = it->second;
@@ -348,8 +355,12 @@ namespace {
             for (size_t i = 0; i < tokens.size(); i++) {
                 const LuaToken& token = tokens[i];
                 if (token.kind == LuaToken::Name) {
-                    lookUp(token.text, where(token.line));
-                    if (!afterMember(i)) dynamicAccess(tokens, i, where(token.line));
+                    // a name on its own is a local or a global: of the API, a class or an enum (a
+                    // local or a table key named like a member, `local load`, `{duration = 2}`,
+                    // reaches nothing of the engine)
+                    const bool member = afterMember(i);
+                    if (member || tables.globalNames.count(token.text)) lookUp(token.text, where(token.line));
+                    if (!member) dynamicAccess(tokens, i, where(token.line));
                     if (lower(token.text).find("video") != std::string::npos) addVideo(where(token.line), token.text);
                 } else if (token.kind == LuaToken::String) {
                     for (const std::string& word : wordsOf(token.text)) {

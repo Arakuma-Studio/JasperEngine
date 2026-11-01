@@ -24,12 +24,13 @@ image of docker/runtime.Dockerfile:
   physics-placement (static primitives, no scripts, no physics components, no start scene in its
   project.yaml: no HTML UI, no runtime shader compiler) and the upgrade fixture
   tools/test-projects/upgrade-from-main/project (HTML UI documents without video, physics,
-  scripts) built for Linux glcore get the player variant their modules need (no
-  W-PLAYER-VARIANT), which leaves modules out; physics-placement also with the full player and
-  lite3d alone (it takes lite3d, with no warning: no variant of fewer modules is missing); built
-  with the full player alone they warn W-PLAYER-VARIANT and use it; each variant's build and the
-  full player's run headless to the same frame, pixel for pixel (not atmosphere: its clouds differ
-  between two runs of one player).
+  scripts; its `duration` script property renamed in the copy, as a video member has that name
+  and a name scan keeps video for it) built for Linux glcore get the player variant their modules
+  need (no W-PLAYER-VARIANT), which leaves modules out; physics-placement also with the full
+  player and lite3d alone (it takes lite3d, with no warning: no variant of fewer modules is
+  missing); built with the full player alone they warn W-PLAYER-VARIANT and use it; each
+  variant's build and the full player's run headless to the same frame, pixel for pixel (not
+  atmosphere: its clouds differ between two runs of one player).
 - fallback (AC3): tools/fixtures/prefab-runtime (C++ scripts) reports `method: compile` and
   `compile_reason: C++ scripts (...)`, and here fails with `needs a C++ toolchain`; with
   --method prebuilt it fails listing the reasons.
@@ -282,6 +283,25 @@ def check_variants(args, players: Path, out: Path) -> None:
     sources = {"unified-lighting": FIXTURES / "unified-lighting", "physics-placement": FIXTURES / "physics-placement",
                "upgrade-from-main": REPO / "tools/test-projects/upgrade-from-main/project"}
 
+    def copy(fixture: str, target: Path) -> Path:
+        project = fresh_copy(sources[fixture], target)
+        if fixture == "upgrade-from-main":
+            # its directors' "duration" script property (self.duration, the scenes' values) is also
+            # the name of a video member (UIElement.duration), which a name scan keeps video for:
+            # the same game under another property name
+            renamed = 0
+            for path in list(project.rglob("*.lua")) + list(project.rglob("*.scene")):
+                text = path.read_text(encoding="utf-8")
+                new = text.replace('name = "duration"', 'name = "runFrames"').replace("self.duration", "self.runFrames")
+                new = new.replace("- name: duration\n", "- name: runFrames\n")
+                if new != text:
+                    path.write_text(new, encoding="utf-8")
+                    renamed += 1
+            leftover = [str(p) for p in project.rglob("*.lua") if re.search(r"\bduration\b", p.read_text(encoding="utf-8"))]
+            if renamed == 0 or leftover:
+                raise Failure(f"upgrade-from-main: renaming its duration property: {renamed} files, still in {leftover}")
+        return project
+
     def frame(exe: Path, shot: Path) -> None:
         game = run([exe, "--headless", "--after-ready", "--quit-after", "30", "--fixed-fps", "60", "--screenshot", shot, "--fail-on-error"],
                    cwd=exe.parent, timeout=600, check=False)
@@ -300,7 +320,7 @@ def check_variants(args, players: Path, out: Path) -> None:
 
     with Xvfb():
         for fixture, variants in expected.items():
-            whole = build(args.editor, full_only, fresh_copy(sources[fixture], out / f"full-{fixture}-project"), out / f"full-{fixture}",
+            whole = build(args.editor, full_only, copy(fixture, out / f"full-{fixture}-project"), out / f"full-{fixture}",
                           "linux", "--backend", "glcore")
             first_id = f"{full_id}-{variants[0]}"
             if lines(whole, "player") != [full_id] or f"W-PLAYER-VARIANT: the smaller player {first_id} fits" not in whole.stdout:
@@ -312,7 +332,7 @@ def check_variants(args, players: Path, out: Path) -> None:
                 if not (players / variant_id).is_dir():
                     raise Failure(f"no {variant_id} in {players}: run tools/build.sh players (every release variant)")
                 source_players = players if index == 0 else with_variant(variant_id)
-                project = fresh_copy(sources[fixture], out / f"variant-{fixture}-{variant}-project")
+                project = copy(fixture, out / f"variant-{fixture}-{variant}-project")
                 stripped = build(args.editor, source_players, project, out / f"variant-{fixture}-{variant}", "linux", "--backend", "glcore")
                 if lines(stripped, "player") != [variant_id] or "W-PLAYER-VARIANT" in stripped.stdout:
                     raise Failure(f"{fixture}: expected the player {variant_id}:\n{stripped.stdout}")
