@@ -3823,7 +3823,7 @@ CPU scopes of one frame of a capture (or of the live recording): tree rows {name
 
 Group: `profiling` (listed once `tool_groups` enables it, callable either way). Hints: read-only
 
-Frame-time history (always on, 600 frames; the editor only counts frames it draws): median/p95/p99/max of frame_ms, cpu_ms, gpu_ms, fps over `window`; min_frame_ms lists spikes and spike_interval_frames; `frames` newest samples; `monitors` named series (FPS, Draw calls, VRAM estimated...).
+Frame-time history (always on, 600 frames; the editor only counts frames it draws): median/p95/p99/max of frame_ms, cpu_ms, gpu_ms, fps over `window`; min_frame_ms lists spikes and spike_interval_frames; `frames` newest samples (tool: the frame ran an MCP tool); `monitors` named series (FPS, Draw calls, VRAM estimated...).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

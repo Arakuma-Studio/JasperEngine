@@ -6204,7 +6204,7 @@ void editor::InspectorWindow::drawStochasticRotationWarning(ComponentType cpType
     const std::string path = normalTexture.getPath(0);
     if (path.empty())
         return;
-    const std::filesystem::path file = project->resolveAssetPath(std::filesystem::u8path(path));
+    const std::filesystem::path file = project->resolveAssetPath(editor::FileUtils::pathFromUtf8(path));
     // measured once per file (and modification), off this thread
     const NormalMapTiltResult tilt = NormalMapTilt::request(file);
     if (!tilt.ready || !tilt.valid || tilt.degrees < NormalMapTilt::WARNING_DEGREES)
@@ -11042,7 +11042,7 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
                     RowPropertyType propType = scriptPropertyTypeToRowPropertyType(prop.type);
 
                     RowSettings propSettings;
-                    propSettings.onValueChanged = [this, sceneProject, entities, scriptIdx, propName = prop.name]() {
+                    propSettings.onValueChanged = [sceneProject, entities, scriptIdx, propName = prop.name]() {
                         for (const Entity& e : entities) {
                             ScriptComponent& sc = sceneProject->scene->getComponent<ScriptComponent>(e);
                             if (scriptIdx < sc.scripts.size()) {

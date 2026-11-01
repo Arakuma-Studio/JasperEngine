@@ -526,7 +526,7 @@ bool editor::Exporter::runPrebuilt() {
 bool editor::Exporter::cookScenes() {
     setProgressRaw("Cooking scenes...", 0.75f);
     for (const cook::CookedFileBytes& file : cookedFiles) {
-        const fs::path target = contentDir / fs::u8path(file.relativePath);
+        const fs::path target = contentDir / editor::FileUtils::pathFromUtf8(file.relativePath);
         const io::WriteResult written = io::writeFileAtomic(target, std::string_view(reinterpret_cast<const char*>(file.bytes.data()), file.bytes.size()));
         if (!written.ok()) {
             setError("Failed to write " + target.string() + ": " + io::describeWriteError(written));
@@ -729,7 +729,7 @@ bool editor::Exporter::packContent() {
     std::error_code ec;
     for (const std::string& file : filesBelow(contentDir)) {
         if (std::find(exclude.begin(), exclude.end(), file) != exclude.end()) continue;
-        fs::remove(contentDir / fs::u8path(file), ec);
+        fs::remove(contentDir / editor::FileUtils::pathFromUtf8(file), ec);
     }
     for (const char* dir : {"assets", "lua", "scenes", "prefabs"}) fs::remove_all(contentDir / dir, ec);
     Out::info("Content pack: %u files, %llu bytes", stats.entries, (unsigned long long)stats.bytes);
@@ -832,7 +832,7 @@ bool editor::Exporter::writeContentManifest(bool prebuilt) {
         if (file == "content-manifest.json" || file == "content.jpak") continue;
         player::ManifestFile entry;
         std::string error;
-        if (!sha256File(contentDir / fs::u8path(file), entry.sha256, &error, &entry.size)) {
+        if (!sha256File(contentDir / editor::FileUtils::pathFromUtf8(file), entry.sha256, &error, &entry.size)) {
             setError(error);
             return false;
         }

@@ -7,6 +7,7 @@
 #include "command/CommandHistory.h"
 #include "command/type/WriteFilesCmd.h"
 #include "util/ProjectChecks.h"
+#include "util/FileUtils.h"
 
 #include <cctype>
 
@@ -54,7 +55,7 @@ namespace {
             return fail(error, "no project is open");
         }
         const fs::path root = project->getProjectPath().lexically_normal();
-        fs::path given = fs::u8path(path);
+        fs::path given = editor::FileUtils::pathFromUtf8(path);
         absolute = (given.is_absolute() ? given : root / given).lexically_normal();
         const fs::path rel = absolute.lexically_relative(root);
         if (rel.empty() || *rel.begin() == ".."){

@@ -27,6 +27,18 @@ else()
     set(JASPERENGINE_WERROR_FLAGS -Werror -Wno-error=deprecated-declarations)
 endif()
 
+# Apple's linker (ld-prime, Xcode 15+) warns "ignoring duplicate libraries" when a static
+# archive is named twice on a link line. CMake repeats archives on purpose (link order of
+# static libraries that depend on each other), so the warning says nothing about our code.
+set(JASPERENGINE_WARNING_LINK_FLAGS "")
+if(APPLE)
+    include(CheckLinkerFlag)
+    check_linker_flag(CXX "-Wl,-no_warn_duplicate_libraries" JASPERENGINE_LD_NO_WARN_DUPLICATE_LIBRARIES)
+    if(JASPERENGINE_LD_NO_WARN_DUPLICATE_LIBRARIES)
+        set(JASPERENGINE_WARNING_LINK_FLAGS "-Wl,-no_warn_duplicate_libraries")
+    endif()
+endif()
+
 if(JASPERENGINE_WERROR)
     message(STATUS "Warnings on our targets: on, as errors")
 elseif(JASPERENGINE_WARNINGS)
@@ -34,7 +46,8 @@ elseif(JASPERENGINE_WARNINGS)
 endif()
 
 # jasperengine_target_warnings(<target>...): the warning set on these targets' compiled sources
-# (C, C++, Objective-C/C++: not the .rc resources or the assembler). A no-op unless
+# (C, C++, Objective-C/C++: not the .rc resources or the assembler), and on the links of the
+# executables and shared libraries among them JASPERENGINE_WARNING_LINK_FLAGS. A no-op unless
 # JASPERENGINE_WARNINGS is on.
 function(jasperengine_target_warnings)
     if(NOT JASPERENGINE_WARNINGS)
@@ -48,5 +61,11 @@ function(jasperengine_target_warnings)
         foreach(flag IN LISTS flags)
             target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:${flag}>")
         endforeach()
+        if(JASPERENGINE_WARNING_LINK_FLAGS)
+            get_target_property(type ${target} TYPE)
+            if(type STREQUAL "EXECUTABLE" OR type STREQUAL "SHARED_LIBRARY" OR type STREQUAL "MODULE_LIBRARY")
+                target_link_options(${target} PRIVATE ${JASPERENGINE_WARNING_LINK_FLAGS})
+            endif()
+        endif()
     endforeach()
 endfunction()

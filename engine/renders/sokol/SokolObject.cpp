@@ -80,6 +80,7 @@ SokolObject::SokolObject(){
     loadState = RenderState();
     bindSlotIndex = 0;
     shaderInputs = 0;
+    shaderInputSignature = 0;
     blendOverride = false;
     blendState = BlendState();
     resetPipelines();
@@ -370,9 +371,28 @@ void SokolObject::beginLoad(PrimitiveType primitiveType){
     bindSlotIndex = 0;
     bufferToBindSlot.clear();
     shaderInputs = 0;
+    shaderInputSignature = 0;
 
     blendOverride = false;
     blendState = BlendState();
+}
+
+namespace {
+    // the vertex inputs of a shader, each name at its location (FNV-1a), whatever their order
+    uint64_t vertexInputSignature(const ShaderData& data){
+        uint64_t signature = 0;
+        for (const ShaderStage& stage : data.stages){
+            if (stage.type != ShaderStageType::VERTEX)
+                continue;
+            for (const ShaderAttr& attr : stage.attributes){
+                uint64_t h = 1469598103934665603ull ^ (uint64_t)(uint32_t)attr.location;
+                for (const char c : attr.name)
+                    h = (h ^ (uint8_t)c) * 1099511628211ull;
+                signature += h * 1099511628211ull;
+            }
+        }
+        return signature;
+    }
 }
 
 void SokolObject::setShader(ShaderRender* shader){
@@ -386,6 +406,7 @@ void SokolObject::setShader(ShaderRender* shader){
                 shaderInputs |= (1u << attr.location);
         }
     }
+    shaderInputSignature = vertexInputSignature(shader->shaderData);
 }
 
 void SokolObject::setIndex(BufferRender* buffer, AttributeDataType dataType, size_t offset){
@@ -547,6 +568,13 @@ bool SokolObject::prewarmWith(ShaderRender* shader){
         return true;
     const sg_shader target = shader->backend.get();
     if (target.id == SG_INVALID_ID || target.id == pipeline_desc.shader.id || sg_query_shader_state(target) != SG_RESOURCESTATE_VALID)
+        return true;
+    // A variant with other vertex inputs (the right variant of an object that loaded on a
+    // stand-in: a_tangent where the stand-in had a_color) needs the layout its own load binds.
+    // Made on this one, its pipelines read inputs no buffer feeds: zero on GL, undefined on
+    // Vulkan, and Metal fails them ("Vertex attribute a_color(3) is missing from the vertex
+    // descriptor", SplineGpu.RoadOnTerrain). Nothing to make ahead: the load makes them.
+    if (vertexInputSignature(shader->shaderData) != shaderInputSignature)
         return true;
     // what was made for another variant goes (the shader asked for changed meanwhile)
     for (size_t i = 0; i < prewarmed.size();){

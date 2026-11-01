@@ -41,7 +41,12 @@ target_compile_definitions(basisu_transcoder PRIVATE
     JASPER_BASISD_COMPUTE_DXT1_TABLES=1
     JASPER_BASISD_FAST_TRANSCODE=1)
 target_link_libraries(basisu_transcoder PRIVATE zstd_decompress)
-target_compile_options(basisu_transcoder PRIVATE $<${BASISU_GNU_FE}:-fno-strict-aliasing>)
+# no FP contraction, as the encoder's copy below and wasm (no fused multiply-add): on arm64,
+# where clang fuses a * b + c, UASTC -> BC7 otherwise gave other blocks than the encoder's
+# transcoder (TextureWebTranscode.TrimmedTranscoderMatchesUpstreamOnRandomUastcBlocks)
+target_compile_options(basisu_transcoder PRIVATE
+    $<${BASISU_GNU_FE}:-fno-strict-aliasing -ffp-contract=off>
+    $<$<CXX_COMPILER_ID:MSVC>:/fp:precise>)
 # the web downloads the transcoder and times it (spec S14 R21, R19): -O2 there, 145 KB and the
 # 2048² UASTC -> BC7 in 36 ms; -Os is 110 KB but 49 ms, -O3 168 KB and no faster
 if(EMSCRIPTEN)

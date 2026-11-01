@@ -39,6 +39,10 @@ namespace jasperengine { namespace test {
         // nothing is ever presented
         sg_environment getSokolEnvironment() override;
         sg_swapchain getSokolSwapchain() override;
+#elif defined(SOKOL_METAL) && defined(JASPER_TEST_HAS_GPU)
+        // the headless Metal device; no swapchain pass is ever begun (frames render into the
+        // GpuEnvironment target)
+        sg_environment getSokolEnvironment() override;
 #endif
 
         std::string getAssetPath() override;      // TestPaths::assetDir, or the override

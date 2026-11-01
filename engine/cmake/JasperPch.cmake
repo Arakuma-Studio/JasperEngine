@@ -74,7 +74,12 @@ function(_jasperengine_pch_skip_sources target)
         set(skip OFF)
         cmake_path(IS_PREFIX JASPERENGINE_PCH_ENGINE_LIBS "${source}" NORMALIZE inEngineLibs)
         cmake_path(IS_PREFIX JASPERENGINE_PCH_ROOT_LIBS "${source}" NORMALIZE inRootLibs)
-        if(inEngineLibs OR inRootLibs)
+        # Objective-C(++): where OBJCXX is not enabled (engine/ as the top level) CMake builds a .mm
+        # as CXX, and clang refuses the C++ header there ("Objective-C was disabled in PCH file but
+        # is currently enabled", BF4 on macOS)
+        if(source MATCHES "\\.(m|mm)$")
+            set(skip ON)
+        elseif(inEngineLibs OR inRootLibs)
             set(skip ON)
         else()
             foreach(property COMPILE_OPTIONS COMPILE_FLAGS COMPILE_DEFINITIONS INCLUDE_DIRECTORIES)

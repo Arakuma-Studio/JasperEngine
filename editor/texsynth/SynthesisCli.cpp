@@ -144,7 +144,7 @@ namespace jasperengine::editor::texsynth {
                     o.help = true;
                 } else if (arg == "-p" || arg == "--project") {
                     if (!need()) return false;
-                    o.project = CommandLine::projectArgPath(fs::u8path(value));
+                    o.project = CommandLine::projectArgPath(editor::FileUtils::pathFromUtf8(value));
                 } else if (arg == "--mode") {
                     if (!need()) return false;
                     if (!parseMode(value, o.mode)) {
@@ -154,7 +154,7 @@ namespace jasperengine::editor::texsynth {
                 } else if (arg == "-e" || arg == "--example") {
                     if (!need()) return false;
                     ExampleArg ex;
-                    ex.path = CommandLine::absoluteArgPath(fs::u8path(value));
+                    ex.path = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value));
                     o.examples.push_back(ex);
                 } else if (arg == "--companion") {
                     if (!need()) return false;
@@ -164,29 +164,29 @@ namespace jasperengine::editor::texsynth {
                     std::error_code ec;
                     const size_t eq = value.rfind('=');
                     if (eq != std::string::npos && eq > 0 && eq + 1 < value.size() &&
-                        !fs::exists(CommandLine::absoluteArgPath(fs::u8path(value)), ec)) {
-                        companion.path = CommandLine::absoluteArgPath(fs::u8path(value.substr(0, eq)));
-                        companion.out = CommandLine::absoluteArgPath(fs::u8path(value.substr(eq + 1)));
+                        !fs::exists(CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value)), ec)) {
+                        companion.path = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value.substr(0, eq)));
+                        companion.out = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value.substr(eq + 1)));
                     } else {
-                        companion.path = CommandLine::absoluteArgPath(fs::u8path(value));
+                        companion.path = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value));
                     }
                     ex->companions.push_back(companion);
                 } else if (arg == "--sample-mask") {
                     if (!need()) return false;
                     ExampleArg* ex = lastExample();
                     if (!ex) return false;
-                    ex->sampleMask = CommandLine::absoluteArgPath(fs::u8path(value));
+                    ex->sampleMask = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value));
                 } else if (arg == "--guide") {
                     if (!need()) return false;
                     ExampleArg* ex = lastExample();
                     if (!ex) return false;
-                    ex->guide = CommandLine::absoluteArgPath(fs::u8path(value));
+                    ex->guide = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value));
                 } else if (arg == "--target-guide") {
                     if (!need()) return false;
-                    o.targetGuide = CommandLine::absoluteArgPath(fs::u8path(value));
+                    o.targetGuide = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value));
                 } else if (arg == "--mask") {
                     if (!need()) return false;
-                    o.mask = CommandLine::absoluteArgPath(fs::u8path(value));
+                    o.mask = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value));
                 } else if (arg == "--mask-channel") {
                     if (!need()) return false;
                     if (!parseMaskChannel(value, o.maskChannel)) {
@@ -197,10 +197,10 @@ namespace jasperengine::editor::texsynth {
                     o.invertMask = true;
                 } else if (arg == "-o" || arg == "--out") {
                     if (!need()) return false;
-                    o.out = CommandLine::absoluteArgPath(fs::u8path(value));
+                    o.out = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value));
                 } else if (arg == "--uncertainty-out") {
                     if (!need()) return false;
-                    o.uncertaintyOut = CommandLine::absoluteArgPath(fs::u8path(value));
+                    o.uncertaintyOut = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value));
                 } else if (arg == "--size") {
                     if (!need()) return false;
                     if (!parseSize(value, o.width, o.height)) {
@@ -457,7 +457,7 @@ namespace jasperengine::editor::texsynth {
             if (path.empty()) {
                 char separator = '_';
                 companionSuffix(FileUtils::pathToUtf8(o.examples.front().path.stem()), FileUtils::pathToUtf8(companion.path.stem()), separator);
-                path = o.out.parent_path() / fs::u8path(FileUtils::pathToUtf8(o.out.stem()) + separator + companion.name + ".png");
+                path = o.out.parent_path() / editor::FileUtils::pathFromUtf8(FileUtils::pathToUtf8(o.out.stem()) + separator + companion.name + ".png");
             }
             if (!isPng(path)) {
                 err << prefix << "companion output must be a .png file: " << FileUtils::pathToUtf8(path) << "\n";

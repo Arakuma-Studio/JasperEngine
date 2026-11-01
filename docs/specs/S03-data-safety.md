@@ -672,3 +672,14 @@ Decisions taken while implementing, each the closest correct alternative to the 
   with `--create`/File > New, or the temporary project saved elsewhere, takes the lock at once.
 - `mcp --project` on a locked project exits with code 3 after one frame on the empty temporary
   project (closing before the first frame leaves the render queue waiting on shutdown).
+
+### macOS (BF4, 2026-10-31)
+
+- **R35 on APFS:** a new 64 KB file costs 2-4x an overwrite of an existing one on APFS (macOS 26.2,
+  Apple silicon), and an atomic write needs a new file whatever it publishes with, so a Cache
+  write cannot stay within 1.5x a plain *overwrite* there (measured 0.15-0.19 ms against
+  0.07-0.09 ms; `AtomicFileBench.CacheWriteNearPlainWrite` passed by a few percent or failed).
+  On Apple the bench's plain write makes a new file too: the bound is what the atomic write adds
+  beyond creating it (the swap and the unlink of the old file).
+- **RENAME_SWAP onto a directory** swapped the directory away (APFS allows it); the publish now
+  renames onto a directory, which fails with EISDIR as rename(2) does everywhere else.

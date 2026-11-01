@@ -1227,3 +1227,18 @@ follow-up stream, not S30.
 
   With the fixes back, both pass.
 
+
+### macOS runtime validation (BF4, 2026-10-31)
+
+On macOS 26.2 (Apple silicon, Xcode 26.6): the universal Metal player builds with
+`JASPERENGINE_WERROR` as the players-apple job builds it, is signed ad hoc, packaged
+(`package_player.py --platform macos --arch universal`), and a prebuilt export of
+`tools/fixtures/unified-lighting` stages, re-signs (adhoc, hardened runtime) and runs
+`--headless --after-ready --quit-after 30 --screenshot` (2560x1440, exit 0 in 2.3 s; the lid was
+closed, so nothing was on a display). Two defects were fixed first: the player was a bare
+executable under Ninja (no `jasperengine-player.app` for the job, the packager or the exporter's
+template), and a quit asked for inside a frame deadlocked in `applicationWillTerminate:` (the
+headless run never exited). `LSMinimumSystemVersion` of an export is 12.0, the binaries' target.
+Left: dsymutil skips liblexbor.a members with duplicate names (`tag.c.o`, `error.c.o`), so those
+lexbor objects have no debug information in the player's dSYM; the glcore macOS runtime and the
+iOS xcframework template were not run.

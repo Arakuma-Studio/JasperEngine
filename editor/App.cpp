@@ -2932,7 +2932,8 @@ bool editor::App::consumeBenchmarkExit() {
 void editor::App::engineInit(int argc, char** argv) {
     parseBenchmarkArgs(argc, argv);
     reportLoadingProgress("Initializing engine...");
-    // the editor's loop marks the frames (EditorFrame::run), not each Engine::systemDraw
+    // the editor's loop marks the frames and publishes the off-thread GPU creations (EditorFrame::run,
+    // BackendMac's own loop on macOS), not each Engine::systemDraw
     FrameTimes::setExternalFrames(true);
     // the profiler's command line (--profile, --profile-capture, --profile-frames), wherever it
     // was given (CommandLine::takeProfilerFlags); a benchmark captures its measured frames itself
@@ -3004,7 +3005,7 @@ void editor::App::engineInit(int argc, char** argv) {
     ShaderPool::setShaderBuilder([this](jasperengine::ShaderKey shaderKey) -> jasperengine::ShaderBuildResult {
         static jasperengine::editor::ShaderBuilder builder;  // Make static to reuse
         return builder.buildShader(shaderKey, &project);
-    });
+    }, &jasperengine::editor::ShaderBuilder::getRunningBuildCount);
     // a project UI effect's .frag changed (hot reload, phase 5): its compiled variants go from
     // the builder's cache too, so they compile from the new source (and what draws with a forked
     // shader the registry's reset reached re-binds, as after any shader edit)

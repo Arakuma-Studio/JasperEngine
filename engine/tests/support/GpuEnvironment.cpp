@@ -84,9 +84,13 @@ const char* GpuEnvironment::unavailableReason(){
 #if defined(JASPER_TEST_HAS_GPU)
     if (!engineInitialised)
         return "the engine is not initialised (GpuEnvironment::initEngine)";
-    return "no headless GPU context (needs an X display: run under xvfb-run)";
+#if defined(__APPLE__)
+    return "no headless GPU context (no Metal device)";
 #else
-    return "this test binary has no headless GPU context: GPU suites run in the standalone engine tree on Linux";
+    return "no headless GPU context (needs an X display: run under xvfb-run)";
+#endif
+#else
+    return "this test binary has no headless GPU context: GPU suites run in the standalone engine tree on Linux and macOS";
 #endif
 }
 

@@ -1818,7 +1818,7 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
         // a companion / uncertainty output: its primary output reports the set
         if (files.empty() && role != "primary" && recipe.contains("outputs") && recipe["outputs"].is_object() &&
             recipe["outputs"].contains("primary") && recipe["outputs"]["primary"].is_string()) {
-            const fs::path recorded = fs::u8path(recipe["outputs"]["primary"].get<std::string>());
+            const fs::path recorded = editor::FileUtils::pathFromUtf8(recipe["outputs"]["primary"].get<std::string>());
             const bool fromProject = editor::texsynth::jsonString(recipe, "pathBase", "file") == "project";
             const fs::path primary = recorded.is_absolute() ? recorded : (fromProject ? projectRoot : item.png.parent_path()) / recorded;
             std::error_code ec;
@@ -1855,7 +1855,7 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
     if (files.empty()) {
         for (auto it = cache.pngs.begin(); it != cache.pngs.end();) {
             std::error_code ec;
-            if (!fs::exists(projectRoot / fs::u8path(it.key()), ec)) {
+            if (!fs::exists(projectRoot / editor::FileUtils::pathFromUtf8(it.key()), ec)) {
                 it = cache.pngs.erase(it);
                 cache.dirty = true;
             } else {
@@ -1877,7 +1877,7 @@ namespace {
         if (texture.empty() || texture.isFramebuffer()) return false;
         const std::string path = texture.getPath(0);
         if (path.empty()) return false;
-        file = project->resolveAssetPath(fs::u8path(path));
+        file = project->resolveAssetPath(editor::FileUtils::pathFromUtf8(path));
         const editor::NormalMapTiltResult tilt = editor::NormalMapTilt::measure(file);
         degrees = tilt.degrees;
         return tilt.ready && tilt.valid && tilt.degrees >= editor::NormalMapTilt::WARNING_DEGREES;

@@ -118,7 +118,9 @@ TEST(ParticleSeek, SeekRunsInBudgetedChunks){
 TEST(ParticleSeek, PrewarmShowsTheStateAtTheDuration){
     ParticleEffectDocument d = seekEffect();
     d.prewarm = true;
-    d.duration = 2.0f;
+    // 600 ticks: more than one frame's 1 ms budget on any machine (2 s, 60 ticks, fit in one
+    // frame on Apple silicon, 0.9 ms)
+    d.duration = 20.0f;
     const auto effect = compileOrFail(d);
     EmitterInput input;
     input.seed = 5;
@@ -138,11 +140,11 @@ TEST(ParticleSeek, PrewarmShowsTheStateAtTheDuration){
         ASSERT_LT(frames, 10000);
     }
     EXPECT_GT(frames, 1);
-    // the first visible frame: the state at the duration (60 ticks)
+    // the first visible frame: the state at the duration (600 ticks)
     EmitterRuntime reference;
     reference.bind(effect);
     reference.reset(5);
-    reference.seek(input, 2.0);
+    reference.seek(input, 20.0);
     EXPECT_EQ(prewarmed.tickCount(), reference.tickCount());
     EXPECT_EQ(prewarmed.stateHash(), reference.stateHash());
     std::printf("[bench] ParticleSeek prewarm: %d frames, worst %.3f ms (budget 1 ms + one tick)\n", frames, worstMs);

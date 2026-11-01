@@ -12,7 +12,7 @@
 #include <vector>
 
 namespace jasperengine::editor {
-    class SceneProject;
+    struct SceneProject;
 }
 
 namespace jasperengine::editor::reload {

@@ -366,7 +366,7 @@ static std::shared_ptr<editor::PoseAnimationDocument> animatorDocument(editor::P
         return nullptr;
     }
     // the component stores the path as the runtime loads it: relative to the assets folder
-    const std::filesystem::path file = project->resolveAssetPath(std::filesystem::u8path(animation)).lexically_normal();
+    const std::filesystem::path file = project->resolveAssetPath(editor::FileUtils::pathFromUtf8(animation)).lexically_normal();
 #if defined(__cpp_lib_char8_t)
     const std::u8string utf8 = file.u8string();
     const std::string path(utf8.begin(), utf8.end());
@@ -453,13 +453,13 @@ bool editor::PoseBaker::bakeToClip(Project* project, uint32_t sceneId, Entity mo
         const std::string directory = slash == std::string::npos ? std::string() : document.path().substr(0, slash);
         // the sanitized file name (no project: never numbered)
         path = ClipConverters::uniqueClipPath(nullptr, directory, name);
-        const fs::path existing = project->getProjectPath() / fs::u8path(path);
+        const fs::path existing = project->getProjectPath() / editor::FileUtils::pathFromUtf8(path);
         if (fs::exists(existing, ec)){
             rewrite = bakedFrom(existing, document.path());
             if (!rewrite) path = ClipConverters::uniqueClipPath(project, directory, name);
         }
     }else{
-        const fs::path given = fs::u8path(path);
+        const fs::path given = editor::FileUtils::pathFromUtf8(path);
         const fs::path existing = given.is_absolute() ? given : project->getProjectPath() / given;
         path = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(existing));
         if (fs::exists(existing, ec)){
@@ -470,7 +470,7 @@ bool editor::PoseBaker::bakeToClip(Project* project, uint32_t sceneId, Entity mo
             }
         }
     }
-    const fs::path absolute = (project->getProjectPath() / fs::u8path(path)).lexically_normal();
+    const fs::path absolute = (project->getProjectPath() / editor::FileUtils::pathFromUtf8(path)).lexically_normal();
     std::string extension = absolute.extension().string();
     std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c){ return (char)std::tolower(c); });
     if (extension != ".anim"){

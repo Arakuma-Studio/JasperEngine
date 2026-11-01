@@ -20,6 +20,7 @@
 #include "shader/ShaderBuilder.h"
 
 #include "json.hpp"
+#include "util/FileUtils.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -264,7 +265,7 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
         ShaderPool::setShaderBuilder([projectPtr = &project](ShaderKey shaderKey) -> ShaderBuildResult {
             static ShaderBuilder builder;
             return builder.buildShader(shaderKey, projectPtr);
-        });
+        }, &ShaderBuilder::getRunningBuildCount);
         project.setSkipProjectLock(true);
         if (!project.loadProject(projectPath, false)) {
             error = "cannot load the project " + projectPath.string();
@@ -496,7 +497,7 @@ int ShippingCommands::runPublish(int argc, char** argv, const char* executableNa
         std::error_code ec;
         const fs::path asPath = CommandLine::absoluteArgPath(value);
         if (fs::is_regular_file(asPath / "release.json", ec)) return asPath;
-        const fs::path root = fs::u8path(config.releasesDir).is_absolute() ? fs::u8path(config.releasesDir) : projectDir / fs::u8path(config.releasesDir);
+        const fs::path root = editor::FileUtils::pathFromUtf8(config.releasesDir).is_absolute() ? editor::FileUtils::pathFromUtf8(config.releasesDir) : projectDir / editor::FileUtils::pathFromUtf8(config.releasesDir);
         return root / value;
     };
     const std::string releaseArg = !operands.empty() ? operands.front() : release;

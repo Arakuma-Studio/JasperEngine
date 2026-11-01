@@ -3,7 +3,8 @@
 # (tools/build.sh unit-tests). docs/testing.md has the layout and naming rules: <area>/ mirrors
 # engine/core/<area>/, files are <Subject>Test.cpp, fixtures/ and golden/ hold test data,
 # support/ holds headers shared by this binary's tests.
-# CPU suites build and run on Linux, Windows and macOS; *Gpu suites run on Linux (Xvfb).
+# CPU suites build and run on Linux, Windows and macOS; *Gpu suites run on Linux (Xvfb) and
+# macOS (Metal).
 #
 # je-bench-jobs and je-bench-memory are the job system and allocator benchmarks (S06 R23-R26),
 # je-bench-diag the crash and hang diagnostics' (S28 R26), je-bench-picking the triangle picking
@@ -185,3 +186,11 @@ foreach(target jasperengine-core-tests je-bench-jobs je-bench-memory je-bench-pa
         target_link_options(${target} PRIVATE "-Wl,--wrap=malloc" "-Wl,--wrap=calloc" "-Wl,--wrap=realloc" "-rdynamic")
     endif()
 endforeach()
+# The spline tests build their inputs (grounds, stations) and expected values with the spline
+# core's floating-point flags (core/spline/SplineSources.cmake, S18 R16): with contraction, as
+# clang does on arm64, the bowl ground's heights round differently from x86-64's, and the bit-exact
+# checks (SplineFillMesherTests seams and zero-area triangles) compared other inputs
+file(GLOB CORE_TEST_SPLINE_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/spline/*.cpp)
+if(CORE_TEST_SPLINE_SOURCES AND JASPERENGINE_SPLINE_FLAGS)
+    set_source_files_properties(${CORE_TEST_SPLINE_SOURCES} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_SPLINE_FLAGS}")
+endif()

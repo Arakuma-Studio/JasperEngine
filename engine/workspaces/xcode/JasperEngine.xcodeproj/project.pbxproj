@@ -414,13 +414,7 @@
 		7105CDE52AD61DA6007C91BA /* IslandBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CC052AD61DA5007C91BA /* IslandBuilder.cpp */; };
 		7105CDE62AD61DA6007C91BA /* IslandBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CC052AD61DA5007C91BA /* IslandBuilder.cpp */; };
 		7105CDE82AD61DA6007C91BA /* PhysicsSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CC072AD61DA5007C91BA /* PhysicsSystem.cpp */; };
-		434F4D506F00C842157094F8 /* WaterSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50F7036D2E37823341 /* WaterSystem.cpp */; };
-		434F4D50F32F3D0ED3D2106C /* CharacterControllerSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BA33DD4BEA61D08E /* CharacterControllerSystem.cpp */; };
-		434F4D50EF9EC9F8C196BED9 /* CharacterController2DSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50606BB535DE48BDAB /* CharacterController2DSystem.cpp */; };
 		7105CDE92AD61DA6007C91BA /* PhysicsSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CC072AD61DA5007C91BA /* PhysicsSystem.cpp */; };
-		434F4D509655FC6C7979EC56 /* WaterSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50F7036D2E37823341 /* WaterSystem.cpp */; };
-		434F4D50A8718B883F574821 /* CharacterControllerSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BA33DD4BEA61D08E /* CharacterControllerSystem.cpp */; };
-		434F4D50991F13DE7591A55B /* CharacterController2DSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50606BB535DE48BDAB /* CharacterController2DSystem.cpp */; };
 		7105CDEA2AD61DA6007C91BA /* StateRecorderImpl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CC082AD61DA5007C91BA /* StateRecorderImpl.cpp */; };
 		7105CDEB2AD61DA6007C91BA /* StateRecorderImpl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CC082AD61DA5007C91BA /* StateRecorderImpl.cpp */; };
 		7105CDEC2AD61DA6007C91BA /* PhysicsUpdateContext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CC092AD61DA5007C91BA /* PhysicsUpdateContext.cpp */; };
@@ -1053,9 +1047,7 @@
 		7185BF9128BAFC2000B82865 /* ActionClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7185BF8F28BAFC2000B82865 /* ActionClassesLua.cpp */; };
 		718FDDF52837CA9A00AF314C /* msl21ios.h in Headers */ = {isa = PBXBuildFile; fileRef = 718FDDEF2837CA9A00AF314C /* msl21ios.h */; };
 		718FDDF62837CA9A00AF314C /* glsl300es.h in Headers */ = {isa = PBXBuildFile; fileRef = 718FDDF02837CA9A00AF314C /* glsl300es.h */; };
-		718FDDF72837CA9A00AF314C /* glsl100.h in Headers */ = {isa = PBXBuildFile; fileRef = 718FDDF12837CA9A00AF314C /* glsl100.h */; };
 		718FDDF82837CA9A00AF314C /* msl21macos.h in Headers */ = {isa = PBXBuildFile; fileRef = 718FDDF22837CA9A00AF314C /* msl21macos.h */; };
-		718FDDF92837CA9A00AF314C /* glsl330.h in Headers */ = {isa = PBXBuildFile; fileRef = 718FDDF32837CA9A00AF314C /* glsl330.h */; };
 		718FDDFA2837CA9A00AF314C /* hlsl5.h in Headers */ = {isa = PBXBuildFile; fileRef = 718FDDF42837CA9A00AF314C /* hlsl5.h */; };
 		71A41CB529AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71A41CB329AC3D7C006953D3 /* SokolCmdQueue.cpp */; };
 		503152450000000000000002 /* SokolPipelineCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 503152450000000000000001 /* SokolPipelineCache.cpp */; };
@@ -1411,17 +1403,12 @@
 		71E824902A9C23A600C8E6F2 /* Rigidbody2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71E8248A2A9C23A600C8E6F2 /* Rigidbody2D.cpp */; };
 		71E824912A9C23A600C8E6F2 /* Rigidbody2D.h in Headers */ = {isa = PBXBuildFile; fileRef = 71E8248B2A9C23A600C8E6F2 /* Rigidbody2D.h */; };
 		71E824942A9C242B00C8E6F2 /* PhysicsSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71E824922A9C242B00C8E6F2 /* PhysicsSystem.cpp */; };
-		434F4D5068BD83EDBFE79621 /* WaterSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50F7036D2E37823341 /* WaterSystem.cpp */; };
-		434F4D50F8815683BBB7375C /* CharacterControllerSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BA33DD4BEA61D08E /* CharacterControllerSystem.cpp */; };
-		434F4D50EBE664EDCE408D9E /* CharacterController2DSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50606BB535DE48BDAB /* CharacterController2DSystem.cpp */; };
+		434F4D50F32F3D0ED3D2106C /* CharacterControllerSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BA33DD4BEA61D08E /* CharacterControllerSystem.cpp */; };
+		434F4D50EF9EC9F8C196BED9 /* CharacterController2DSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50606BB535DE48BDAB /* CharacterController2DSystem.cpp */; };
 		71E824952A9C242B00C8E6F2 /* PhysicsSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71E824922A9C242B00C8E6F2 /* PhysicsSystem.cpp */; };
-		434F4D5076C16B09EE60F3FA /* WaterSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50F7036D2E37823341 /* WaterSystem.cpp */; };
-		434F4D50CDC45DD22A274CED /* CharacterControllerSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BA33DD4BEA61D08E /* CharacterControllerSystem.cpp */; };
-		434F4D50887E2D0BA5FF3E27 /* CharacterController2DSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50606BB535DE48BDAB /* CharacterController2DSystem.cpp */; };
+		434F4D50A8718B883F574821 /* CharacterControllerSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BA33DD4BEA61D08E /* CharacterControllerSystem.cpp */; };
+		434F4D50991F13DE7591A55B /* CharacterController2DSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50606BB535DE48BDAB /* CharacterController2DSystem.cpp */; };
 		71E824962A9C242B00C8E6F2 /* PhysicsSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 71E824932A9C242B00C8E6F2 /* PhysicsSystem.h */; };
-		434F4D507DCA5C810A20BFE5 /* WaterSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5085D27159644D1984 /* WaterSystem.h */; };
-		434F4D507B39E15A1EC1D964 /* CharacterControllerSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50F05C9C05EE00D373 /* CharacterControllerSystem.h */; };
-		434F4D50160AF96A60C20170 /* CharacterController2DSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D501ABB136B08B05B1C /* CharacterController2DSystem.h */; };
 		71EA6DA52AE20B8C00CA9A75 /* Contact3D.h in Headers */ = {isa = PBXBuildFile; fileRef = 71EA6DA12AE20B8C00CA9A75 /* Contact3D.h */; };
 		71EA6DA62AE20B8C00CA9A75 /* CollideShapeResult3D.h in Headers */ = {isa = PBXBuildFile; fileRef = 71EA6DA22AE20B8C00CA9A75 /* CollideShapeResult3D.h */; };
 		71EA6DA72AE20B8C00CA9A75 /* CollideShapeResult3D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71EA6DA32AE20B8C00CA9A75 /* CollideShapeResult3D.cpp */; };
@@ -4960,16 +4947,10 @@
 		7105CC052AD61DA5007C91BA /* IslandBuilder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = IslandBuilder.cpp; sourceTree = "<group>"; };
 		7105CC062AD61DA5007C91BA /* EPhysicsUpdateError.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EPhysicsUpdateError.h; sourceTree = "<group>"; };
 		7105CC072AD61DA5007C91BA /* PhysicsSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsSystem.cpp; sourceTree = "<group>"; };
-		434F4D50F7036D2E37823341 /* WaterSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WaterSystem.cpp; sourceTree = "<group>"; };
-		434F4D50BA33DD4BEA61D08E /* CharacterControllerSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CharacterControllerSystem.cpp; sourceTree = "<group>"; };
-		434F4D50606BB535DE48BDAB /* CharacterController2DSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CharacterController2DSystem.cpp; sourceTree = "<group>"; };
 		7105CC082AD61DA5007C91BA /* StateRecorderImpl.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StateRecorderImpl.cpp; sourceTree = "<group>"; };
 		7105CC092AD61DA5007C91BA /* PhysicsUpdateContext.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsUpdateContext.cpp; sourceTree = "<group>"; };
 		7105CC0A2AD61DA5007C91BA /* LargeIslandSplitter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LargeIslandSplitter.cpp; sourceTree = "<group>"; };
 		7105CC0B2AD61DA5007C91BA /* PhysicsSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsSystem.h; sourceTree = "<group>"; };
-		434F4D5085D27159644D1984 /* WaterSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterSystem.h; sourceTree = "<group>"; };
-		434F4D50F05C9C05EE00D373 /* CharacterControllerSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CharacterControllerSystem.h; sourceTree = "<group>"; };
-		434F4D501ABB136B08B05B1C /* CharacterController2DSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CharacterController2DSystem.h; sourceTree = "<group>"; };
 		7105CC0C2AD61DA5007C91BA /* LargeIslandSplitter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LargeIslandSplitter.h; sourceTree = "<group>"; };
 		7105CC0D2AD61DA5007C91BA /* StateRecorder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StateRecorder.h; sourceTree = "<group>"; };
 		7105CC0E2AD61DA5007C91BA /* PhysicsScene.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsScene.h; sourceTree = "<group>"; };
@@ -5543,9 +5524,7 @@
 		7185BF8F28BAFC2000B82865 /* ActionClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ActionClassesLua.cpp; sourceTree = "<group>"; };
 		718FDDEF2837CA9A00AF314C /* msl21ios.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = msl21ios.h; sourceTree = "<group>"; };
 		718FDDF02837CA9A00AF314C /* glsl300es.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glsl300es.h; sourceTree = "<group>"; };
-		718FDDF12837CA9A00AF314C /* glsl100.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glsl100.h; sourceTree = "<group>"; };
 		718FDDF22837CA9A00AF314C /* msl21macos.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = msl21macos.h; sourceTree = "<group>"; };
-		718FDDF32837CA9A00AF314C /* glsl330.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glsl330.h; sourceTree = "<group>"; };
 		718FDDF42837CA9A00AF314C /* hlsl5.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hlsl5.h; sourceTree = "<group>"; };
 		71A41CB329AC3D7C006953D3 /* SokolCmdQueue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SokolCmdQueue.cpp; sourceTree = "<group>"; };
 		503152450000000000000001 /* SokolPipelineCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SokolPipelineCache.cpp; sourceTree = "<group>"; };
@@ -6219,6 +6198,8 @@
 		71E8248A2A9C23A600C8E6F2 /* Rigidbody2D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Rigidbody2D.cpp; sourceTree = "<group>"; };
 		71E8248B2A9C23A600C8E6F2 /* Rigidbody2D.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Rigidbody2D.h; sourceTree = "<group>"; };
 		71E824922A9C242B00C8E6F2 /* PhysicsSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsSystem.cpp; sourceTree = "<group>"; };
+		434F4D50BA33DD4BEA61D08E /* CharacterControllerSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CharacterControllerSystem.cpp; sourceTree = "<group>"; };
+		434F4D50606BB535DE48BDAB /* CharacterController2DSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CharacterController2DSystem.cpp; sourceTree = "<group>"; };
 		71E824932A9C242B00C8E6F2 /* PhysicsSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsSystem.h; sourceTree = "<group>"; };
 		71EA6DA12AE20B8C00CA9A75 /* Contact3D.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Contact3D.h; sourceTree = "<group>"; };
 		71EA6DA22AE20B8C00CA9A75 /* CollideShapeResult3D.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CollideShapeResult3D.h; sourceTree = "<group>"; };
@@ -8060,6 +8041,11 @@
 		4A534E47CAAFBC3B8A6B9358 /* Animator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Animator.h; sourceTree = "<group>"; };
 		4A534E475859F759CDED73BC /* AnimatorAssetPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorAssetPool.h; sourceTree = "<group>"; };
 		4A534E47C7892946585F9415 /* AnimatorSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorSystem.h; sourceTree = "<group>"; };
+		4A534E4725AD97F25CA4382C /* sokol_async.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = sokol_async.h; sourceTree = "<group>"; };
+		4A534E4706DABB108B748B45 /* sokol_async_impl.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = sokol_async_impl.h; sourceTree = "<group>"; };
+		4A534E4718E1195664730F1C /* sokol_gpu_timer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = sokol_gpu_timer.h; sourceTree = "<group>"; };
+		4A534E4773258A6672E9EEE2 /* sokol_gpu_timer_impl.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = sokol_gpu_timer_impl.h; sourceTree = "<group>"; };
+		4A534E472653CC6B20761400 /* sokol_log.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = sokol_log.h; sourceTree = "<group>"; };
 		4A534E476ED3B894B5F99179 /* CustomCodecs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CustomCodecs.h; sourceTree = "<group>"; };
 		4A534E4729A27E0419671047 /* CurveJson.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CurveJson.cpp; sourceTree = "<group>"; };
 		4A534E4707AEFC0DB5C2DC02 /* CurveJson.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CurveJson.h; sourceTree = "<group>"; };
@@ -8869,13 +8855,7 @@
 				7105CB8C2AD61DA5007C91BA /* PhysicsSettings.h */,
 				7105CC0F2AD61DA5007C91BA /* PhysicsStepListener.h */,
 				7105CC072AD61DA5007C91BA /* PhysicsSystem.cpp */,
-				434F4D50F7036D2E37823341 /* WaterSystem.cpp */,
-				434F4D50BA33DD4BEA61D08E /* CharacterControllerSystem.cpp */,
-				434F4D50606BB535DE48BDAB /* CharacterController2DSystem.cpp */,
 				7105CC0B2AD61DA5007C91BA /* PhysicsSystem.h */,
-				434F4D5085D27159644D1984 /* WaterSystem.h */,
-				434F4D50F05C9C05EE00D373 /* CharacterControllerSystem.h */,
-				434F4D501ABB136B08B05B1C /* CharacterController2DSystem.h */,
 				7105CC092AD61DA5007C91BA /* PhysicsUpdateContext.cpp */,
 				7105CBDB2AD61DA5007C91BA /* PhysicsUpdateContext.h */,
 				7105CBE42AD61DA5007C91BA /* Ragdoll */,
@@ -10183,6 +10163,8 @@
 				434F4D505BEF67FC644D1E0D /* NavBakeCollector.h */,
 				434F4D502EADFE33034F27D8 /* GridPathfinder.h */,
 				71E824922A9C242B00C8E6F2 /* PhysicsSystem.cpp */,
+				434F4D50BA33DD4BEA61D08E /* CharacterControllerSystem.cpp */,
+				434F4D50606BB535DE48BDAB /* CharacterController2DSystem.cpp */,
 				71E824932A9C242B00C8E6F2 /* PhysicsSystem.h */,
 				7162FC7025962A0E0075B97D /* RenderSystem.cpp */,
 				3EE6D137C8456E9A9B88598D /* AtmosphereRenderer.cpp */,
@@ -10330,6 +10312,11 @@
 				7162FCA025962A0E0075B97D /* sokol_glue.h */,
 				7162FC9E25962A0E0075B97D /* sokol_time.h */,
 				7162FC9A25962A0E0075B97D /* sokol.cpp */,
+				4A534E4725AD97F25CA4382C /* sokol_async.h */,
+				4A534E4706DABB108B748B45 /* sokol_async_impl.h */,
+				4A534E4718E1195664730F1C /* sokol_gpu_timer.h */,
+				4A534E4773258A6672E9EEE2 /* sokol_gpu_timer_impl.h */,
+				4A534E472653CC6B20761400 /* sokol_log.h */,
 			);
 			path = sokol;
 			sourceTree = "<group>";
@@ -10624,10 +10611,8 @@
 			children = (
 				718FDDEF2837CA9A00AF314C /* msl21ios.h */,
 				718FDDF02837CA9A00AF314C /* glsl300es.h */,
-				718FDDF12837CA9A00AF314C /* glsl100.h */,
 				718FDDF22837CA9A00AF314C /* msl21macos.h */,
 				7DC000B82E7A0100C91BA0C0 /* shaderlib.h */,
-				718FDDF32837CA9A00AF314C /* glsl330.h */,
 				718FDDF42837CA9A00AF314C /* hlsl5.h */,
 			);
 			path = shaders;
@@ -13787,7 +13772,6 @@
 				F10B0B1E0000000000000007 /* FluidPresets.h in Headers */,
 				712675812B65F45D0031089C /* LineRenderer.h in Headers */,
 				71D74957296731F200348AB8 /* EntityHandle.h in Headers */,
-				718FDDF72837CA9A00AF314C /* glsl100.h in Headers */,
 				71E54516284D5BE000C68FAB /* RotateTracksComponent.h in Headers */,
 				172A59A52FC4CF36002FDFCA /* ShaderBuildTypes.h in Headers */,
 				17235AD82FCF546A00AF8D04 /* ObjModelData.h in Headers */,
@@ -13890,10 +13874,6 @@
 				718FDDF52837CA9A00AF314C /* msl21ios.h in Headers */,
 				175DCCC23022C5E9008C19EC /* Mirror.h in Headers */,
 				71E824962A9C242B00C8E6F2 /* PhysicsSystem.h in Headers */,
-				434F4D507DCA5C810A20BFE5 /* WaterSystem.h in Headers */,
-				434F4D507B39E15A1EC1D964 /* CharacterControllerSystem.h in Headers */,
-				434F4D50160AF96A60C20170 /* CharacterController2DSystem.h in Headers */,
-				718FDDF92837CA9A00AF314C /* glsl330.h in Headers */,
 				717AD96A290B6602007D7DB5 /* AudioSource.h in Headers */,
 				71F2254D2C58740F006ED3CA /* Points.h in Headers */,
 				71ABBD382791167A001CE3AF /* UIComponent.h in Headers */,
@@ -15858,9 +15838,6 @@
 				7105CDFC2AD61DA6007C91BA /* PhysicsMaterialSimple.cpp in Sources */,
 				7105CE482AD61DA6007C91BA /* CollideSphereVsTriangles.cpp in Sources */,
 				7105CDE82AD61DA6007C91BA /* PhysicsSystem.cpp in Sources */,
-				434F4D506F00C842157094F8 /* WaterSystem.cpp in Sources */,
-				434F4D50F32F3D0ED3D2106C /* CharacterControllerSystem.cpp in Sources */,
-				434F4D50EF9EC9F8C196BED9 /* CharacterController2DSystem.cpp in Sources */,
 				7105CD8F2AD61DA6007C91BA /* PhysicsScene.cpp in Sources */,
 				7105CE4A2AD61DA6007C91BA /* CollisionDispatch.cpp in Sources */,
 				7105CE342AD61DA6007C91BA /* ConvexHullShape.cpp in Sources */,
@@ -16006,9 +15983,6 @@
 				7105CDFD2AD61DA6007C91BA /* PhysicsMaterialSimple.cpp in Sources */,
 				7105CE492AD61DA6007C91BA /* CollideSphereVsTriangles.cpp in Sources */,
 				7105CDE92AD61DA6007C91BA /* PhysicsSystem.cpp in Sources */,
-				434F4D509655FC6C7979EC56 /* WaterSystem.cpp in Sources */,
-				434F4D50A8718B883F574821 /* CharacterControllerSystem.cpp in Sources */,
-				434F4D50991F13DE7591A55B /* CharacterController2DSystem.cpp in Sources */,
 				7105CD902AD61DA6007C91BA /* PhysicsScene.cpp in Sources */,
 				7105CE4B2AD61DA6007C91BA /* CollisionDispatch.cpp in Sources */,
 				7105CE352AD61DA6007C91BA /* ConvexHullShape.cpp in Sources */,
@@ -16169,9 +16143,8 @@
 				7181A0B12BC8B6CB00AC230B /* Panel.cpp in Sources */,
 				71CC839626B8C4D800EEBB93 /* Light.cpp in Sources */,
 				71E824952A9C242B00C8E6F2 /* PhysicsSystem.cpp in Sources */,
-				434F4D5076C16B09EE60F3FA /* WaterSystem.cpp in Sources */,
-				434F4D50CDC45DD22A274CED /* CharacterControllerSystem.cpp in Sources */,
-				434F4D50887E2D0BA5FF3E27 /* CharacterController2DSystem.cpp in Sources */,
+				434F4D50A8718B883F574821 /* CharacterControllerSystem.cpp in Sources */,
+				434F4D50991F13DE7591A55B /* CharacterController2DSystem.cpp in Sources */,
 				1787AD942F6C333300DB1D75 /* SceneManager.cpp in Sources */,
 				1787AD952F6C333300DB1D75 /* PrefabManager.cpp in Sources */,
 				A6E1266199635F3E1FC4BE40 /* ObjectManager.cpp in Sources */,
@@ -16871,9 +16844,8 @@
 				7181A0B02BC8B6CB00AC230B /* Panel.cpp in Sources */,
 				71CC839526B8C4D800EEBB93 /* Light.cpp in Sources */,
 				71E824942A9C242B00C8E6F2 /* PhysicsSystem.cpp in Sources */,
-				434F4D5068BD83EDBFE79621 /* WaterSystem.cpp in Sources */,
-				434F4D50F8815683BBB7375C /* CharacterControllerSystem.cpp in Sources */,
-				434F4D50EBE664EDCE408D9E /* CharacterController2DSystem.cpp in Sources */,
+				434F4D50F32F3D0ED3D2106C /* CharacterControllerSystem.cpp in Sources */,
+				434F4D50EF9EC9F8C196BED9 /* CharacterController2DSystem.cpp in Sources */,
 				1787AD982F6C333300DB1D75 /* SceneManager.cpp in Sources */,
 				1787AD992F6C333300DB1D75 /* PrefabManager.cpp in Sources */,
 				A6E1BBB0C286C20E302F0AE0 /* ObjectManager.cpp in Sources */,
@@ -21728,6 +21700,7 @@
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				USE_HEADERMAP = NO;
 			};
 			name = Debug;
 		};
@@ -21758,6 +21731,7 @@
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALIDATE_PRODUCT = YES;
+				USE_HEADERMAP = NO;
 			};
 			name = Release;
 		};
@@ -21787,6 +21761,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
+				USE_HEADERMAP = NO;
 			};
 			name = Debug;
 		};
@@ -21816,6 +21791,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
+				USE_HEADERMAP = NO;
 			};
 			name = Release;
 		};

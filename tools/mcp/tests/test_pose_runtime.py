@@ -236,18 +236,25 @@ async def arm_angle(ed: Editor) -> float:
 
 
 async def test_pause_freezes_go_to_pose(ed: Editor):
-    await lua(ed, "object('Hero', 'Model'):getPoseAnimator():goToPose('T', 0.05, 0, 0)")
-    await frames(ed, 0.5)
-    await lua(ed, "local a = object('Hero', 'Model'):getPoseAnimator(); a:goToPose(0, 1.0, 0, 0)")
-    await frames(ed, 0.25)
-    await lua(ed, "object('Hero', 'Model'):getPoseAnimator():pause()")
-    frozen = await hand_y(ed)
-    ed.check(S["down_hand_y"] + 0.05 < frozen < S["edit_hand_y"] - 0.02, f"paused half way down: {frozen}")
-    await frames(ed, 0.5)
-    ed.check(close(await hand_y(ed), frozen, 1e-4), "pause froze the transition")
-    await lua(ed, "object('Hero', 'Model'):getPoseAnimator():goToPose(0, 0.05, 0, 0)")
-    await frames(ed, 0.5)
-    ed.check(await hand_y(ed) < S["edit_hand_y"] - 0.35, "a new goToPose runs again")
+    # fixed_fps + auto_pause: the game runs only inside wait, 1/60 s a frame, so the pause lands a
+    # quarter into the 1 s transition however slowly the machine draws (on the wall clock a loaded
+    # machine's game ran on between the calls and the pause landed anywhere in the transition)
+    await ed.call("play", action="set", fixed_fps=60, auto_pause=True)
+    try:
+        await lua(ed, "object('Hero', 'Model'):getPoseAnimator():goToPose('T', 0.05, 0, 0)")
+        await ed.call("wait", frames=30)
+        await lua(ed, "local a = object('Hero', 'Model'):getPoseAnimator(); a:goToPose(0, 1.0, 0, 0)")
+        await ed.call("wait", frames=15)
+        await lua(ed, "object('Hero', 'Model'):getPoseAnimator():pause()")
+        frozen = await hand_y(ed)
+        ed.check(S["down_hand_y"] + 0.05 < frozen < S["edit_hand_y"] - 0.02, f"paused half way down: {frozen}")
+        await ed.call("wait", frames=30)
+        ed.check(close(await hand_y(ed), frozen, 1e-4), "pause froze the transition")
+        await lua(ed, "object('Hero', 'Model'):getPoseAnimator():goToPose(0, 0.05, 0, 0)")
+        await ed.call("wait", frames=30)
+        ed.check(await hand_y(ed) < S["edit_hand_y"] - 0.35, "a new goToPose runs again")
+    finally:
+        await ed.call("play", action="set", fixed_fps=0, auto_pause=False)
 
 
 async def test_empty_path_restores_the_bones(ed: Editor):

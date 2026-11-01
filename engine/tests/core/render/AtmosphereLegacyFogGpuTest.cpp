@@ -79,13 +79,17 @@ namespace {
 
         // to the bit on glcore, the goldens' backend. Vulkan (lavapipe) rounds a few fogged pixels
         // of the same, unchanged mesh shaders 1/255 the other way (the no-fog scene matches it to
-        // the bit): there a pixel may differ by 1.
+        // the bit): there a pixel may differ by 1. A hardware GPU rounds more of them so (Apple
+        // silicon on Metal: 4.5 % of the linear fog's pixels), each still by 1 at most.
         static CompareOptions exact(){
             CompareOptions options;
             options.pixelThreshold = std::strcmp(HeadlessContext::getBackendName(), "glcore") == 0 ? 0 : 1;
             options.maxBadFraction = 0.0;
             options.maxMeanDiff = options.pixelThreshold == 0 ? 0.0 : 0.01;
-            return options;
+            CompareOptions hardware = options;
+            hardware.pixelThreshold = 1;
+            hardware.maxMeanDiff = 0.1;
+            return hardwareTolerance(hardware, options);
         }
     };
 

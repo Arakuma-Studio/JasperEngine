@@ -64,6 +64,9 @@ namespace jasperengine::editor {
 
         static void requestShutdown();
 
+        // builds started off the main thread and not finished yet (ShaderPool::isCreationIdle)
+        static size_t getRunningBuildCount();
+
         // Serialize ShaderData cache on demand (no disk I/O inside buildShaderInternal).
         static bool saveShaderDataCache(ShaderKey shaderKey, Project* project, const ShaderData& shaderData, std::string* err = nullptr);
 
