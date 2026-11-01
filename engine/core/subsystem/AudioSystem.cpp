@@ -13,6 +13,7 @@
 #include "soloud_wav.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <set>
@@ -42,6 +43,11 @@ namespace {
     }
 
     uint64_t nextSerial = 1;
+    // the Null backend's pump: the frames it mixed and the time it was given since the audio opened.
+    // Each frame mixes up to round(time x rate), so no rounding piles up (144 fps at 44.1 kHz is
+    // 306.25 frames a frame: rounded each time, 48 ms a minute behind the game)
+    double pumpSeconds = 0.0;
+    uint64_t pumpFrames = 0;
     AudioConfig config;
     AudioBackend backend = AudioBackend::Auto;
     bool backendFromEnvironment = false;
@@ -187,12 +193,15 @@ void AudioSystem::mixManually(double seconds){
     if (!inited || getSoloud().getBackendId() != SoLoud::Soloud::NULLDRIVER || !(seconds > 0.0)) return;
     SoLoud::Soloud& soloud = getSoloud();
     const unsigned int channels = std::max(1u, soloud.getBackendChannels());
-    unsigned int samples = (unsigned int)(seconds * soloud.getBackendSamplerate() + 0.5);
+    pumpSeconds += seconds;
+    const uint64_t due = (uint64_t)std::llround(pumpSeconds * soloud.getBackendSamplerate());
+    uint64_t samples = due > pumpFrames ? due - pumpFrames : 0;
+    pumpFrames += samples;
     static std::vector<float> buffer;
     constexpr unsigned int chunk = 1024;
     buffer.resize(chunk * channels);
     while (samples > 0) {
-        const unsigned int now = std::min(samples, chunk);
+        const unsigned int now = (unsigned int)std::min<uint64_t>(samples, chunk);
         soloud.mix(buffer.data(), now);
         samples -= now;
     }
@@ -245,6 +254,8 @@ void AudioSystem::mixOffline(float* out, unsigned int frames){
 }
 
 void AudioSystem::deInit(){
+    pumpSeconds = 0.0;
+    pumpFrames = 0;
     if (inited){
         AudioMixer::onAudioShutdown();
         getSoloud().deinit();
