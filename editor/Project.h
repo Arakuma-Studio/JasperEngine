@@ -1327,6 +1327,8 @@ namespace jasperengine::editor{
         // its GameObjects and every prefab of the build (one a script spawns into it), in every
         // lighting setup they can make (see ShaderVariantCollector)
         void collectRequiredShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& shaderKeys) const;
+        // The shader keys a save writes into the scene file (shaderKeys)
+        void collectSavedShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& shaderKeys) const;
 
         std::string getName() const;
         // The C++ scripts library's name (the project name as an identifier)

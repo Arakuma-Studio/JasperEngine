@@ -3450,6 +3450,15 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     }
 }
 
+void editor::Project::collectSavedShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& keys) const {
+    // What the content needs, the variants the scene drew since its last save (a script's
+    // runtime meshes in Play), and the keys saved before
+    collectRequiredShaderKeys(sceneProject, keys);
+    collectSceneShaderKeys(sceneProject, keys);
+    if (sceneProject)
+        keys.insert(sceneProject->shaderKeys.begin(), sceneProject->shaderKeys.end());
+}
+
 void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& keys) const {
     if (!sceneProject || !sceneProject->scene) {
         return;
@@ -6568,12 +6577,8 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
     updateScenePrefabs(sceneProject);
     updateSceneImports(sceneProject);
 
-    // What the content needs, the variants the scene drew since its last save (a script's
-    // runtime meshes in Play), and the keys saved before
     std::set<ShaderKey> shaderKeys;
-    collectRequiredShaderKeys(sceneProject, shaderKeys);
-    collectSceneShaderKeys(sceneProject, shaderKeys);
-    shaderKeys.insert(sceneProject->shaderKeys.begin(), sceneProject->shaderKeys.end());
+    collectSavedShaderKeys(sceneProject, shaderKeys);
     sceneProject->shaderKeys = std::move(shaderKeys);
 
     // paths assigned since the last save get their assets' GUIDs (S04); a background save
