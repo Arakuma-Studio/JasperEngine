@@ -507,11 +507,11 @@ std::unique_ptr<IVideoSource> platformvideo::createBrowserSource(const std::stri
 platformvideo::Support platformvideo::browserSupports(const std::string& codec, const std::string& container){
     const std::string type = mimeFor(codec, container);
     if (type.empty())
-        return Support::NO;
+        return Support::No;
     switch (jasper_video_can_play(type.c_str())){
-        case 2: return Support::YES;
-        case 1: return Support::MAYBE;
-        default: return Support::NO;
+        case 2: return Support::Yes;
+        case 1: return Support::Maybe;
+        default: return Support::No;
     }
 }
 

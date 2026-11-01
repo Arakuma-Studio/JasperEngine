@@ -78,9 +78,9 @@ namespace {
 
     VideoFormats::CanPlay fromSupport(VideoSourceFactory::Support support){
         switch (support){
-            case VideoSourceFactory::Support::YES: return VideoFormats::CanPlay::PROBABLY;
-            case VideoSourceFactory::Support::MAYBE: return VideoFormats::CanPlay::MAYBE;
-            case VideoSourceFactory::Support::NO: break;
+            case VideoSourceFactory::Support::Yes: return VideoFormats::CanPlay::PROBABLY;
+            case VideoSourceFactory::Support::Maybe: return VideoFormats::CanPlay::MAYBE;
+            case VideoSourceFactory::Support::No: break;
         }
         return VideoFormats::CanPlay::NO;
     }
@@ -217,7 +217,7 @@ namespace {
     void decide(VideoProbe& probe){
         std::string reason;
         const VideoSourceFactory::Support support = VideoSourceFactory::probeSupport(probe, &reason, &probe.backend);
-        if (support != VideoSourceFactory::Support::NO){
+        if (support != VideoSourceFactory::Support::No){
             probe.playable = true;
             probe.error = MediaError();
             return;
@@ -315,7 +315,7 @@ VideoProbe probeMp4(MediaByteSource& source){
     if (probe.playable && !probe.audioCodec.empty()){
         const std::string audio = VideoFormats::decoderName(probe.audioCodecString.empty() ? probe.audioCodec : probe.audioCodecString);
         probe.audioPlayable = VideoSourceFactory::codecSupport(audio.empty() ? probe.audioCodec : audio, probe.container) !=
-                              VideoSourceFactory::Support::NO;
+                              VideoSourceFactory::Support::No;
     }
     return probe;
 }

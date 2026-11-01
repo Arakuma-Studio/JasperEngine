@@ -536,7 +536,7 @@ TEST_F(VideoMp4Test, FactoryPicksThePlatformForMp4){
         void close() override{}
     };
     VideoSourceFactory::setPlatformBackendForTesting([]{ return std::make_unique<Fake>(); }, "fake",
-        [](const std::string& codec){ return codec == "h264" ? VideoSourceFactory::Support::YES : VideoSourceFactory::Support::NO; });
+        [](const std::string& codec){ return codec == "h264" ? VideoSourceFactory::Support::Yes : VideoSourceFactory::Support::No; });
     std::unique_ptr<IVideoSource> faked = VideoSourceFactory::create(clip("h264_aac_160x90.mp4"));
     EXPECT_STREQ(faked->backendName(), "fake");
     // HEVC: the fake has no decoder for it

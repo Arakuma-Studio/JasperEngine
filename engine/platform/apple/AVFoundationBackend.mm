@@ -469,14 +469,14 @@ platformvideo::Support platformvideo::supports(const std::string& codec){
     static const char* const always[] = {"h264", "hevc", "aac", "mp3", "alac", "flac", "ac3", "eac3", "mpeg4"};
     for (const char* name : always){
         if (codec == name)
-            return Support::YES;
+            return Support::Yes;
     }
     if (codec == "av1"){
         if (@available(macOS 14.0, iOS 17.0, *))
-            return Support::MAYBE;
-        return Support::NO;
+            return Support::Maybe;
+        return Support::No;
     }
-    return Support::NO;
+    return Support::No;
 }
 
 bool platformvideo::readsContainer(const std::string& container){

@@ -381,7 +381,7 @@ std::string VideoPlayer::canPlay(const std::string& pathOrUrl){
     if (!probe.playable)
         return "";
     std::string reason;
-    return VideoSourceFactory::probeSupport(probe, &reason) == VideoSourceFactory::Support::YES ? "probably" : "maybe";
+    return VideoSourceFactory::probeSupport(probe, &reason) == VideoSourceFactory::Support::Yes ? "probably" : "maybe";
 }
 
 int VideoPlayer::clearCache(const std::string& url){

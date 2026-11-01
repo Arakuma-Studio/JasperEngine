@@ -33,11 +33,11 @@ namespace {
 
     VideoSourceFactory::Support fromPlatform(platformvideo::Support support){
         switch (support){
-            case platformvideo::Support::YES: return VideoSourceFactory::Support::YES;
-            case platformvideo::Support::MAYBE: return VideoSourceFactory::Support::MAYBE;
-            case platformvideo::Support::NO: break;
+            case platformvideo::Support::Yes: return VideoSourceFactory::Support::Yes;
+            case platformvideo::Support::Maybe: return VideoSourceFactory::Support::Maybe;
+            case platformvideo::Support::No: break;
         }
-        return VideoSourceFactory::Support::NO;
+        return VideoSourceFactory::Support::No;
     }
 
     std::string lower(std::string text){
@@ -256,7 +256,7 @@ namespace {
             }
             check.encrypted = probe.video.encrypted || probe.audio.encrypted;
             std::string reason;
-            if (VideoSourceFactory::probeSupport(check, &reason) == VideoSourceFactory::Support::NO){
+            if (VideoSourceFactory::probeSupport(check, &reason) == VideoSourceFactory::Support::No){
                 error.code = MediaErrorCode::SRC_NOT_SUPPORTED;
                 error.message = "'" + url + "': " + reason;
                 return;
@@ -312,7 +312,7 @@ namespace {
                 std::string backend;
                 std::string reason;
                 if (probe.backend != "webm" && !probe.backend.empty() &&
-                    VideoSourceFactory::probeSupport(probe, &reason, &backend) != VideoSourceFactory::Support::NO && backend != "webm"){
+                    VideoSourceFactory::probeSupport(probe, &reason, &backend) != VideoSourceFactory::Support::No && backend != "webm"){
 #if defined(__EMSCRIPTEN__)
                     return platformvideo::createBrowserSource(path, false, options.audio);
 #else
@@ -338,7 +338,7 @@ namespace {
         }
         check.encrypted = probe.video.encrypted || probe.audio.encrypted;
         std::string reason;
-        if (VideoSourceFactory::probeSupport(check, &reason) == VideoSourceFactory::Support::NO)
+        if (VideoSourceFactory::probeSupport(check, &reason) == VideoSourceFactory::Support::No)
             return failed(MediaErrorCode::SRC_NOT_SUPPORTED, unsupportedMessage(path, reason));
 #if defined(__EMSCRIPTEN__)
         if (!fakeBackend())
@@ -464,16 +464,16 @@ VideoSourceFactory::Support VideoSourceFactory::codecSupport(const std::string& 
     const bool webm = isWebmContainer(container);
     // the engine's own decoders: AV1 and Opus in WebM, everywhere
     if (webm && (name == "av1" || name == "opus"))
-        return Support::YES;
+        return Support::Yes;
     if (!testing().platformEnabled || name.empty())
-        return Support::NO;
+        return Support::No;
     if (fakeBackend())
-        return testing().supports ? testing().supports(name) : Support::YES;
+        return testing().supports ? testing().supports(name) : Support::Yes;
 #if defined(__EMSCRIPTEN__)
     return fromPlatform(platformvideo::browserSupports(name, webm ? "webm" : "mp4"));
 #else
     if (!platformvideo::readsContainer(webm ? "webm" : "mp4") || !platformvideo::isAvailable(nullptr))
-        return Support::NO;
+        return Support::No;
     return fromPlatform(platformvideo::supports(name));
 #endif
 }
@@ -498,7 +498,7 @@ VideoSourceFactory::Support VideoSourceFactory::probeSupport(const VideoProbe& p
             *reason = why;
         if (backend)
             backend->clear();
-        return Support::NO;
+        return Support::No;
     };
     if (probe.encrypted)
         return refuse("the video is encrypted (DRM): the engine plays no protected content");
@@ -512,16 +512,16 @@ VideoSourceFactory::Support VideoSourceFactory::probeSupport(const VideoProbe& p
     if (webm && (probe.videoCodec.empty() || video == "av1") && (probe.audioCodec.empty() || audio == "opus" || video == "av1")){
         if (backend)
             *backend = "webm";
-        return Support::YES;
+        return Support::Yes;
     }
     const char* platform = backendLabel();
     std::string missing;
     if (!platformAvailable(&missing) && !fakeBackend())
         return refuse(missing.empty() ? std::string("this platform has no decoder for it; ") + VideoFormats::conversionHint() : missing);
-    Support result = Support::YES;
+    Support result = Support::Yes;
     if (!probe.videoCodec.empty()){
         const Support support = codecSupport(video.empty() ? probe.videoCodec : video, probe.container);
-        if (support == Support::NO){
+        if (support == Support::No){
             std::string hint;
 #if !defined(__EMSCRIPTEN__)
             if (!fakeBackend())
@@ -531,15 +531,15 @@ VideoSourceFactory::Support VideoSourceFactory::probeSupport(const VideoProbe& p
                 hint = VideoFormats::conversionHint();
             return refuse(VideoFormats::codecName(probe.videoCodec) + " video does not play on " + currentPlatformName() + ": " + hint);
         }
-        if (support == Support::MAYBE)
-            result = Support::MAYBE;
+        if (support == Support::Maybe)
+            result = Support::Maybe;
     }else if (!probe.audioCodec.empty()){
         // sound only: the audio codec decides
         const Support support = codecSupport(audio.empty() ? probe.audioCodec : audio, probe.container);
-        if (support == Support::NO)
+        if (support == Support::No)
             return refuse(VideoFormats::codecName(probe.audioCodec) + " audio does not play on " + currentPlatformName());
-        if (support == Support::MAYBE)
-            result = Support::MAYBE;
+        if (support == Support::Maybe)
+            result = Support::Maybe;
     }else{
         return refuse("the file has no video or audio track");
     }

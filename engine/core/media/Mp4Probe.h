@@ -19,7 +19,7 @@ namespace jasperengine {
     struct JASPERENGINE_API Mp4Track {
         enum class Kind { NONE, VIDEO, AUDIO, OTHER };
         Kind kind = Kind::NONE;
-        uint32_t id = 0;
+        uint32_t trackId = 0;          // (not "id": Objective-C++ includes this header)
         bool enabled = true;
         std::string fourcc;             // the sample entry: "avc1", "avc3", "hvc1", "hev1", "mp4a", "Opus", "vp09", "av01", ...
         std::string codecString;        // RFC 6381 where the probe knows it ("avc1.42E01E", "mp4a.40.2"), else the fourcc

@@ -25,7 +25,8 @@ namespace jasperengine {
     // file, while it grows where the decoders can (fast-start MP4s); the Web streams them itself.
     class JASPERENGINE_API VideoSourceFactory {
     public:
-        enum class Support { NO, MAYBE, YES };
+        // CamelCase: Objective-C defines YES and NO as macros
+        enum class Support { No, Maybe, Yes };
         enum class Platform { Linux, Windows, MacOS, IOS, Android, Web };
         static constexpr int PLATFORM_COUNT = 6;
 

@@ -655,14 +655,14 @@ std::unique_ptr<PlatformDecoderBackend> platformvideo::createBackend(){
 platformvideo::Support platformvideo::supports(const std::string& codec){
     const char* mime = mimeOf(codec);
     if (!mime)
-        return Support::NO;
+        return Support::No;
     std::lock_guard<std::mutex> lock(supportMutex);
     auto it = supportCache.find(codec);
     if (it != supportCache.end())
         return it->second;
     // a decoder of that type can be made (asked once: made and freed)
     AMediaCodec* probe = AMediaCodec_createDecoderByType(mime);
-    const Support support = probe ? Support::YES : Support::NO;
+    const Support support = probe ? Support::Yes : Support::No;
     if (probe)
         AMediaCodec_delete(probe);
     supportCache[codec] = support;

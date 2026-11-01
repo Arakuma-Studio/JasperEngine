@@ -226,7 +226,7 @@ namespace {
                 const uint8_t version = c.u8();
                 const uint32_t flags = ((uint32_t)c.u8() << 16) | ((uint32_t)c.u8() << 8) | c.u8();
                 c.skip(version == 1 ? 16 : 8);
-                current.id = c.u32();
+                current.trackId = c.u32();
                 c.skip(4);
                 c.skip(version == 1 ? 8 : 4);
                 c.skip(8 + 2 + 2 + 2 + 2);

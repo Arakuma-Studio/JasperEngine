@@ -207,8 +207,8 @@ std::unique_ptr<PlatformDecoderBackend> platformvideo::createBackend(){
 
 platformvideo::Support platformvideo::supports(const std::string& codec){
     if (!knownCodec(codec))
-        return Support::NO;
-    return FFmpegBackend::hasDecoder(codec) ? Support::YES : Support::NO;
+        return Support::No;
+    return FFmpegBackend::hasDecoder(codec) ? Support::Yes : Support::No;
 }
 
 bool platformvideo::readsContainer(const std::string& container){

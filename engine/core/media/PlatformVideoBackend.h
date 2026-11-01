@@ -19,7 +19,8 @@ namespace jasperengine::platformvideo {
     // MediaFoundationBackend.cpp; platform/emscripten/WebVideoSource.cpp has none (the browser's
     // element is a source of its own).
 
-    enum class Support { NO, MAYBE, YES };
+    // CamelCase: Objective-C defines YES and NO as macros (AVFoundationBackend.mm)
+    enum class Support { No, Maybe, Yes };
 
     // "ffmpeg", "mediacodec", "avfoundation", "mediafoundation"; "" without one
     JASPERENGINE_API const char* backendName();

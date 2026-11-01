@@ -628,7 +628,7 @@ platformvideo::Support platformvideo::supports(const std::string& codec){
     };
     auto type = types.find(codec);
     if (type == types.end() || !startMediaFoundation())
-        return Support::NO;
+        return Support::No;
     std::lock_guard<std::mutex> lock(supportMutex);
     auto cached = supportCache.find(codec);
     if (cached != supportCache.end())
@@ -644,7 +644,7 @@ platformvideo::Support platformvideo::supports(const std::string& codec){
         activates[i]->Release();
     if (activates)
         CoTaskMemFree(activates);
-    const Support support = SUCCEEDED(hr) && count > 0 ? Support::YES : Support::NO;
+    const Support support = SUCCEEDED(hr) && count > 0 ? Support::Yes : Support::No;
     supportCache[codec] = support;
     return support;
 }
