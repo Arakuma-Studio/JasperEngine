@@ -12,7 +12,9 @@ for a given seed and frame-rate independent.
 - `create_particles {preset: fire|smoke|sparks|explosion|snow|rain|magic|none, position, ...}`
   makes a Particle System GameObject with an inline effect (the overrides `rate`, `life`,
   `size`, `velocity`, `color`, `gradient`, `bursts`, `emitter {shape...}` work as before).
-  Given `entity`, it reconfigures that system's effect.
+  Given `entity`, it reconfigures that system's effect; `emitter_entity` puts the system on that
+  GameObject (a Mesh one emits from its mesh, the MeshComponent disabled); `duration`, `speed` and
+  `modules` (a merge patch of the effect's modules, as edit_particle_effect's) set the effect.
 - `create_particle_effect {path: "assets/fx/fire.particles", preset}` writes an asset;
   `set_particle_effect {entity, effect: "fx/fire.particles"}` plays it (`effect: "inline"` goes
   back to an inline copy).

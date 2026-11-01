@@ -5739,7 +5739,7 @@ void registerWorldTools(McpRegistry& registry) {
         "in meters; 2D scaled by scale (px/unit). emitter {shape: box|sphere|hemisphere|circle|cone, min, max, radius, "
         "inner_radius, cone_angle, cone_height}; velocity/acceleration/color: value or {min, max}; gradient: color over "
         "life; bursts [{time, count}]; modules: a merge patch (edit_particle_effect's). autoplay = "
-        "Play On Awake. emitter_entity: on that GameObject (emits its mesh).",
+        "Play On Awake. emitter_entity: on that GameObject.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("")},
