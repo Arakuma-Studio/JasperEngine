@@ -2426,7 +2426,6 @@ namespace {
         if (propertyName == "emitter") return {PropertyType::Bool, UpdateFlags_None, &def.emitter, &comp->emitter};
         if (propertyName == "loop") return {PropertyType::Bool, UpdateFlags_None, &def.loop, &comp->loop};
         if (propertyName == "localSpace") return {PropertyType::Bool, UpdateFlags_None, &def.localSpace, &comp->localSpace};
-        if (propertyName == "useUnscaledTime") return {PropertyType::Bool, UpdateFlags_None, &def.useUnscaledTime, &comp->useUnscaledTime};
         if (propertyName == "rate") return {PropertyType::Int, UpdateFlags_None, &def.rate, &comp->rate};
         if (propertyName == "maxPerUpdate") return {PropertyType::Int, UpdateFlags_None, &def.maxPerUpdate, &comp->maxPerUpdate};
         if (propertyName == "bursts") return {PropertyType::Custom, UpdateFlags_None, &def.bursts, &comp->bursts};
@@ -3748,7 +3747,6 @@ namespace {
         ps["emitter"] = {PropertyType::Bool, UpdateFlags_None, &def.emitter, comp ? &comp->emitter : nullptr};
         ps["loop"] = {PropertyType::Bool, UpdateFlags_None, &def.loop, comp ? &comp->loop : nullptr};
         ps["localSpace"] = {PropertyType::Bool, UpdateFlags_None, &def.localSpace, comp ? &comp->localSpace : nullptr};
-        ps["useUnscaledTime"] = {PropertyType::Bool, UpdateFlags_None, &def.useUnscaledTime, comp ? &comp->useUnscaledTime : nullptr};
         ps["rate"] = {PropertyType::Int, UpdateFlags_None, &def.rate, comp ? &comp->rate : nullptr};
         ps["maxPerUpdate"] = {PropertyType::Int, UpdateFlags_None, &def.maxPerUpdate, comp ? &comp->maxPerUpdate : nullptr};
         ps["bursts"] = {PropertyType::Custom, UpdateFlags_None, &def.bursts, comp ? &comp->bursts : nullptr};

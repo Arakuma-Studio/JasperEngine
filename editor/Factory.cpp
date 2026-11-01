@@ -4478,8 +4478,6 @@ std::string editor::Factory::createParticleSystemComponent(int indentSpaces, Ent
     code << ind << "particles.emitter = " << formatBool(p.emitter) << ";\n";
     code << ind << "particles.loop = " << formatBool(p.loop) << ";\n";
     code << ind << "particles.localSpace = " << formatBool(p.localSpace) << ";\n";
-    if (p.useUnscaledTime)
-        code << ind << "particles.useUnscaledTime = true;\n";
     code << ind << "particles.rate = " << formatInt(p.rate) << ";\n";
     code << ind << "particles.maxPerUpdate = " << formatInt(p.maxPerUpdate) << ";\n";
 

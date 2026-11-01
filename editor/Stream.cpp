@@ -11202,9 +11202,6 @@ YAML::Node editor::Stream::encodeParticleSystemComponent(const ParticleSystemCom
     scaleMod["function"] = encodeEase(particles.scaleModifier.function);
     node["scaleModifier"] = scaleMod;
 
-    // shared with version 2; written only when set, so older files stay as they were
-    if (particles.useUnscaledTime) node["useUnscaledTime"] = true;
-
     return node;
 }
 
@@ -11216,6 +11213,7 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
     if (node["emitter"]) particles.emitter = YamlNumbers::as<bool>(node["emitter"]);
     if (node["loop"]) particles.loop = YamlNumbers::as<bool>(node["loop"]);
     if (node["localSpace"]) particles.localSpace = YamlNumbers::as<bool>(node["localSpace"]);
+    // (absent: off, also over an old component; version 2 reads it again below)
     particles.useUnscaledTime = node["useUnscaledTime"] ? YamlNumbers::as<bool>(node["useUnscaledTime"]) : false;
     if (node["rate"]) particles.rate = YamlNumbers::as<int>(node["rate"]);
     if (node["maxPerUpdate"]) particles.maxPerUpdate = YamlNumbers::as<int>(node["maxPerUpdate"]);

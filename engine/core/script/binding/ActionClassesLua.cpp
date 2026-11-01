@@ -248,7 +248,6 @@ void LuaBinding::registerActionClasses(lua_State *L){
         .addProperty("emitter", &ParticleSystem::isEmitter, &ParticleSystem::setEmitter)
         .addProperty("loop", &ParticleSystem::isLoop, &ParticleSystem::setLoop)
         .addProperty("localSpace", &ParticleSystem::isLocalSpace, &ParticleSystem::setLocalSpace)
-        .addProperty("useUnscaledTime", &ParticleSystem::isUseUnscaledTime, &ParticleSystem::setUseUnscaledTime)
         .addProperty("emitterShape", &ParticleSystem::getPositionInitializerShape, &ParticleSystem::setPositionInitializerShape)
         .addFunction("setLifeInitializer", 
             luabridge::overload<float>(&ParticleSystem::setLifeInitializer),
