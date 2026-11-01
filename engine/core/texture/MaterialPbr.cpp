@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <limits>
 
 using namespace jasperengine;
@@ -94,12 +95,14 @@ namespace {
         {"PBR_SPECULAR", "Sp"}, {"PBR_SPECULAR_MAP", "Sq"},
         {"PBR_HEX_TILING", "Hx"}, {"TERRAIN_HEX_TILING", "Th"},
         {"USE_LIT_QUALITY", "Lq"},
+        {"TERRAIN_HEX_STOCHASTIC", "Ts"},
     };
 
 }
 
 const char* const MaterialPbr::LIT_QUALITY_DEFINE = "USE_LIT_QUALITY";
 const char* const MaterialPbr::TERRAIN_HEX_DEFINE = "TERRAIN_HEX_TILING";
+const char* const MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE = "TERRAIN_HEX_STOCHASTIC";
 const char* const MaterialPbr::TRANSMISSION_DEFINE = "PBR_TRANSMISSION";
 
 const std::vector<PbrLobeInfo>& MaterialPbr::getLobes(){
@@ -476,6 +479,31 @@ void MaterialPbr::getUniformBlock(const MaterialPbrExtensions& pbr, float out[UN
     out[UNIFORM_IOR_HEX + 0] = pbr.specular.enabled ? pbr.specular.ior : 1.5f;
     out[UNIFORM_IOR_HEX + 1] = pbr.hex.rotation;
     out[UNIFORM_IOR_HEX + 2] = pbr.hex.contrast;
+
+    // The Specular & IOR lobe's dielectric reflectance, f0 = min(((ior - 1) / (ior + 1))^2 *
+    // colour, 1) * factor (IOR under 1, glTF's 0: a full mirror), a function of these values
+    // alone, so it is made once a draw instead of in every fragment, in the vec4s' free last
+    // floats: the IOR's term (attenuation.w) and, for a variant without a specular map,
+    // f0 itself (clearcoat.w, anisotropy.w, transmission.w). Its chain of a division and
+    // products cost the lobe 5.5 of its 8.5 % on an RTX 3080 Ti (GPU campaign perf3)
+    const float ior = out[UNIFORM_IOR_HEX + 0];
+    const float ratio = (ior - 1.0f) / (ior + 1.0f);
+    const float iorF0 = ior < 1.0f ? 1.0f : ratio * ratio;
+    out[UNIFORM_ATTENUATION + 3] = iorF0;
+    out[UNIFORM_CLEARCOAT + 3] = std::min(iorF0 * pbr.specular.color.x, 1.0f) * pbr.specular.factor;
+    out[UNIFORM_ANISOTROPY + 3] = std::min(iorF0 * pbr.specular.color.y, 1.0f) * pbr.specular.factor;
+    out[UNIFORM_TRANSMISSION + 3] = std::min(iorF0 * pbr.specular.color.z, 1.0f) * pbr.specular.factor;
+
+    // The Charlie sheen visibility's L(0.5) at the lobe's roughness (pbrCharlieL, includes/
+    // pbr_ext.glsl), for a variant without a sheen map: per fragment it was a third of the
+    // lambdas' pow, reciprocal and mixes (GPU campaign perf3)
+    const float sheenRoughness = std::clamp(pbr.sheen.roughness, 0.0f, 1.0f);
+    const float alphaG = std::max(sheenRoughness * sheenRoughness, 0.000001f);
+    const float t = (1.0f - alphaG) * (1.0f - alphaG);
+    const auto mix = [t](float x, float y){ return x * (1.0f - t) + y * t; };
+    const float a = mix(21.5473f, 25.3245f), b = mix(3.82987f, 3.32435f), c = mix(0.19823f, 0.16801f);
+    const float d = mix(-1.97760f, -1.27393f), e = mix(-4.32054f, -4.85967f);
+    out[UNIFORM_IOR_HEX + 3] = a / (1.0f + b * std::pow(0.5f, c)) + d * 0.5f + e;
 }
 
 std::string MaterialPbr::getVariantBasename(const std::vector<std::string>& defines){
