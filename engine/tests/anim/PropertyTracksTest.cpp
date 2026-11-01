@@ -23,27 +23,27 @@
 #include "component/LatticeComponent.h"
 #include "component/OnScreenControlComponents.h"
 #include "component/TrailRendererComponent.h"
-#include "component/Joint2DComponent.h"
-#include "component/LatticeComponent.h"
-#include "component/OnScreenControlComponents.h"
 #include "component/LightComponent.h"
 #include "component/MeshComponent.h"
 #include "component/RectTransformComponent.h"
+#include "component/Rigidbody2DComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/SpriteComponent.h"
-#include "component/TrailRendererComponent.h"
 #include "component/UIComponent.h"
 #include "object/AnimationPlayer.h"
 #include "object/Light.h"
 #include "pool/AnimationClipPool.h"
 #include "script/LuaBinding.h"
 #include "script/ScriptRuntime.h"
-#include "script/ScriptRuntime.h"
 #include "subsystem/ActionSystem.h"
+#include "subsystem/PhysicsSystem.h"
 #include "subsystem/UISystem.h"
 #include "util/Color.h"
 
 #include "lua.hpp"
+#ifdef JASPERENGINE_PHYSICS_2D
+#include "box2d/box2d.h"
+#endif
 
 #include <chrono>
 #include <cmath>
@@ -935,6 +935,115 @@ TEST_F(Properties, DeferredActiveWritesRunInHierarchyOrderAndMaySample){
     for (Entity entity : {a, a1, b}) scene.getComponent<ScriptComponent>(entity).scripts.clear();
     for (int ref : refs) luaL_unref(L, LUA_REGISTRYINDEX, ref);
 }
+
+// N1: a runtime rebind (a missing component's 0.25 s retry) keeps the script each track had
+TEST_F(Properties, RebindsKeepTheScriptATrackHad){
+    lua_State* L = LuaBinding::getLuaState();
+    ASSERT_EQ(luaL_dostring(L, "pinA = {}; pinB = {}"), LUA_OK);
+    lua_getglobal(L, "pinA");
+    const int a = luaL_ref(L, LUA_REGISTRYINDEX);
+    lua_getglobal(L, "pinB");
+    const int b = luaL_ref(L, LUA_REGISTRYINDEX);
+    ScriptComponent scripts;
+    for (int ref : {a, b}){
+        ScriptEntry entry;
+        entry.type = ScriptType::LUA;
+        entry.enabled = true;
+        entry.className = "Torch";
+        entry.instance = reinterpret_cast<void*>(static_cast<intptr_t>(ref));
+        scripts.scripts.push_back(entry);
+    }
+    scene.addComponent<ScriptComponent>(root, scripts);
+    ClipData data;
+    data.wrap = ClipWrapMode::Loop;
+    data.length = 2.0f;
+    data.tracks.push_back(property("", "script:Torch", "enabled", {key(0, {0})}));
+    // never binds (no Canvas Group): the player rebinds every 0.25 s
+    data.tracks.push_back(property("", "canvasgroup", "alpha", {key(0, {0.5f})}));
+    AnimationPlayer object = player({{"pin", data}});
+    object.play("pin");
+    step(0.0);
+    animtest::takeWarnings();
+    for (int i = 0; i < 12; i++) step(0.1);
+    const ScriptComponent& now = scene.getComponent<ScriptComponent>(root);
+    EXPECT_FALSE(now.scripts[0].enabled);
+    EXPECT_TRUE(now.scripts[1].enabled) << "the retries rebound the track to the same script, not the next enabled one";
+    scene.getComponent<ScriptComponent>(root).scripts.clear();
+    for (int ref : {a, b}) luaL_unref(L, LUA_REGISTRYINDEX, ref);
+}
+
+// N2 / N3: the bind stamp is the instance's generation (a released registry ref is reused by
+// the next instance), checked every update, a frame that also changes the hierarchy included
+TEST_F(Properties, AnInstanceMadeAgainOnTheSameRefBindsAgain){
+    lua_State* L = LuaBinding::getLuaState();
+    ASSERT_EQ(luaL_dostring(L, "sameRef = {glow = 0}"), LUA_OK);
+    lua_getglobal(L, "sameRef");
+    const int ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    auto torch = [ref](ScriptPropertyType type, uint64_t generation){
+        ScriptEntry entry;
+        entry.type = ScriptType::LUA;
+        entry.enabled = true;
+        entry.className = "Torch";
+        entry.instance = reinterpret_cast<void*>(static_cast<intptr_t>(ref));
+        entry.instanceGeneration = generation;
+        ScriptProperty glow;
+        glow.name = "glow";
+        glow.type = type;
+        if (type == ScriptPropertyType::Int) glow.value = 0;
+        else glow.value = 0.0f;
+        entry.properties = {glow};
+        return entry;
+    };
+    ScriptComponent scripts;
+    scripts.scripts = {torch(ScriptPropertyType::Float, 1)};
+    scene.addComponent<ScriptComponent>(root, scripts);
+    ClipData data;
+    data.wrap = ClipWrapMode::Loop;
+    data.length = 2.0f;
+    data.tracks.push_back(property("", "script:Torch", "glow", {key(0, {0}), key(1, {1})}));
+    AnimationPlayer object = player({{"glow", data}});
+    object.play("glow");
+    step(0.0);
+    step(0.1);
+    // released and made again: the same ref, another generation, glow now declared Int; the
+    // same frame adds a GameObject (the hierarchy changed)
+    ASSERT_EQ(luaL_dostring(L, "sameRef.glow = 0.25"), LUA_OK);
+    scene.getComponent<ScriptComponent>(root).scripts[0] = torch(ScriptPropertyType::Int, 2);
+    child(root, "Spark");
+    object.getState("glow").setTime(0.5f);
+    step(0.0);
+    ASSERT_EQ(luaL_dostring(L, "sameRefResult = math.type(sameRef.glow) .. '|' .. tostring(sameRef.glow)"), LUA_OK);
+    lua_getglobal(L, "sameRefResult");
+    const std::string result = lua_tostring(L, -1) ? lua_tostring(L, -1) : "";
+    lua_pop(L, 1);
+    EXPECT_EQ(result, "integer|0") << "bound again with the declared Int (it steps)";
+    scene.getComponent<ScriptComponent>(root).scripts.clear();
+    luaL_unref(L, LUA_REGISTRYINDEX, ref);
+}
+
+#ifdef JASPERENGINE_PHYSICS_2D
+// the Rigidbody 2D's enabled row takes a loaded body out of the world at once (its setter)
+TEST_F(Properties, Rigidbody2DEnabledAppliesAtOnce){
+    Entity crate = child(root, "Crate");
+    Rigidbody2DComponent body;
+    body.type = BodyType::DYNAMIC;
+    scene.addComponent<Rigidbody2DComponent>(crate, body);
+    ASSERT_TRUE(scene.getSystem<PhysicsSystem>()->ensureRigidbody2DLoaded(crate));
+    const Rigidbody2DComponent& loaded = scene.getComponent<Rigidbody2DComponent>(crate);
+    ASSERT_TRUE(b2Body_IsValid(loaded.body));
+    ASSERT_TRUE(b2Body_IsEnabled(loaded.body));
+    anim::PropertyRef ref;
+    ASSERT_TRUE(anim::parsePropertyRef("rigidbody2d", "enabled", ref));
+    const anim::PropertyBinding binding = anim::bindProperty(&scene, crate, ref, 1);
+    ASSERT_EQ(binding.status, anim::PropertyBindStatus::Bound);
+    float off = 0.0f, on = 1.0f;
+    ASSERT_TRUE(anim::writePropertyKeySpace(&scene, crate, binding, &off));
+    EXPECT_FALSE(loaded.enabled);
+    EXPECT_FALSE(b2Body_IsEnabled(loaded.body)) << "out of the world now, not on the next step";
+    ASSERT_TRUE(anim::writePropertyKeySpace(&scene, crate, binding, &on));
+    EXPECT_TRUE(b2Body_IsEnabled(loaded.body));
+}
+#endif
 
 // ---- the game's GameOverPanel (GameStatsShowing, GameOverMenu, go, EarnAnim, falling.anim) ----
 

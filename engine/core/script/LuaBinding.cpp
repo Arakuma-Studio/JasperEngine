@@ -1354,6 +1354,9 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
 
     int ref = luaL_ref(L, LUA_REGISTRYINDEX);
     scriptEntry.instance = reinterpret_cast<void*>(static_cast<intptr_t>(ref));
+    // the refs are reused: the generation tells this instance from an earlier one (main thread)
+    static uint64_t instanceGenerations = 0;
+    scriptEntry.instanceGeneration = ++instanceGenerations;
 
     // lets RegisterEngineEvent and the instance's members find this entry
     lua_rawgeti(L, LUA_REGISTRYINDEX, ref);

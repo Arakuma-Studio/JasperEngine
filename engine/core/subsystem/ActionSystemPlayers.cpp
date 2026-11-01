@@ -150,7 +150,8 @@ namespace {
                                             const anim::PropertyBinding* previous){
         anim::PropertyRef ref;
         anim::parsePropertyRef(track.component, track.property, ref);
-        anim::PropertyBinding binding = anim::bindProperty(scene, target, ref, track.width);
+        // a rebind keeps the script the track had (two scripts of a class: never the other one)
+        anim::PropertyBinding binding = anim::bindProperty(scene, target, ref, track.width, previous ? previous->scriptIndex : -1);
         const bool changed = !previous || previous->status != binding.status || previous->message != binding.message;
         if (!changed) return binding;
         const std::string who = scene->getEntityName(root);
@@ -848,9 +849,11 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
             resolveBindings(scene, entity, bindings, &runtime.rest);
             bindings.nextUnresolvedRetry = runtime.clock + UNRESOLVED_RETRY_SECONDS;
             resolvedAny = true;
-        }else if (bindings.scriptProperties > 0 && scriptBindingsStale(scene, bindings)){
-            // the bind stamp of script fields (spec P4): a reloaded, removed or reordered script
-            // binds again (its declared type may have changed)
+        }
+        // the bind stamp of script fields (spec P4), every update whatever the checks above did
+        // (a frame that changed the hierarchy too): a reloaded, removed or reordered script binds
+        // again (its declared type may have changed)
+        if (bindings.resolved && bindings.scriptProperties > 0 && scriptBindingsStale(scene, bindings)){
             resolveBindings(scene, entity, bindings, &runtime.rest);
             resolvedAny = true;
         }

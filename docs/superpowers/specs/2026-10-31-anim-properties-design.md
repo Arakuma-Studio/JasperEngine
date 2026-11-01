@@ -643,9 +643,14 @@ Code references are to the `gaps/anim-properties` branch.
   checkbox has one, except the Animation Player).
 - **Script bindings (P4).** A binding picks its script once (the first enabled one of the class,
   else the first) and keeps its index, so with two scripts of a class an `enabled = false` key
-  disables the same one every frame. Its bind stamp is the script instance: a player checks its
-  script bindings every update and binds them again when the instance changed (a reload, a script
-  removed or reordered), so a field whose declared type changed takes the new type. RGB keys
+  disables the same one every frame; a rebind (a missing component's retry, a hierarchy change)
+  passes the previous index to `bindProperty` (`preferredScriptIndex`), which keeps it while it
+  is still a Lua script of the class. Its bind stamp is the script instance and its
+  `ScriptEntry::instanceGeneration` (a new number per Lua instance: the registry refs are reused):
+  a player checks its script bindings every update, on its own (also on frames whose hierarchy
+  changed), and binds them again when either changed (a reload, a script removed or reordered),
+  so a field whose declared type changed takes the new type. A binding made without an index
+  resolves it when it writes `enabled`. RGB keys
   (`"#RRGGBB"`, 3 numbers) of a Color4 key an opaque alpha (1), on script fields as on rows.
 - **Layers.** Property slots in `buildPoseSlots` (one element per component). Continuous
   elements compose with the linear rules (additive `v - v_ref`); discrete elements keep the

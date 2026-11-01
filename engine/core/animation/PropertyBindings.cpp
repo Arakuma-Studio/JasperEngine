@@ -743,13 +743,20 @@ namespace {
     size_t boundScriptIndex(const anim::PropertyBinding& binding){
         return binding.scriptIndex >= 0 ? (size_t)binding.scriptIndex : SIZE_MAX;
     }
-    const ScriptEntry* boundScriptEntry(EntityRegistry* registry, Entity entity, const std::string& className, const anim::PropertyBinding& binding){
-        if (binding.scriptIndex < 0) return findScriptEntry(registry, entity, className);
+    // the script at `index` when it is a `className` Lua script
+    const ScriptEntry* scriptAt(EntityRegistry* registry, Entity entity, const std::string& className, size_t index){
         ScriptComponent* scripts = registry ? registry->findComponent<ScriptComponent>(entity) : nullptr;
-        if (!scripts || (size_t)binding.scriptIndex >= scripts->scripts.size()) return nullptr;
-        const ScriptEntry& entry = scripts->scripts[(size_t)binding.scriptIndex];
+        if (!scripts || index >= scripts->scripts.size()) return nullptr;
+        const ScriptEntry& entry = scripts->scripts[index];
         if (entry.type != ScriptType::LUA || entry.className != className) return nullptr;
         return &entry;
+    }
+    // `index` gets the script's index (a binding made without one picks as bindProperty does)
+    const ScriptEntry* boundScriptEntry(EntityRegistry* registry, Entity entity, const std::string& className, const anim::PropertyBinding& binding,
+                                        size_t* index = nullptr){
+        if (binding.scriptIndex < 0) return findScriptEntry(registry, entity, className, index);
+        if (index) *index = (size_t)binding.scriptIndex;
+        return scriptAt(registry, entity, className, (size_t)binding.scriptIndex);
     }
 
     // ---- interned keys ----
@@ -1031,7 +1038,7 @@ bool anim::parseHexColor(const std::string& text, std::vector<float>& out){
 
 // ---- binding ----
 
-anim::PropertyBinding anim::bindProperty(EntityRegistry* scene, Entity entity, const PropertyRef& ref, size_t keyWidth){
+anim::PropertyBinding anim::bindProperty(EntityRegistry* scene, Entity entity, const PropertyRef& ref, size_t keyWidth, int preferredScriptIndex){
     PropertyBinding binding;
     if (!ref.known){
         binding.status = PropertyBindStatus::UnknownProperty;
@@ -1053,8 +1060,12 @@ anim::PropertyBinding anim::bindProperty(EntityRegistry* scene, Entity entity, c
     binding.deferred = ref.deferred;
 
     if (ref.script){
+        // the script the binding had keeps it while it is still one of the class (a rebind never
+        // moves a track to another instance of it); else the first enabled one, else the first
         size_t scriptIndex = 0;
-        const ScriptEntry* entry = findScriptEntry(scene, entity, ref.params.scriptClass, &scriptIndex);
+        const ScriptEntry* entry = preferredScriptIndex >= 0 ? scriptAt(scene, entity, ref.params.scriptClass, (size_t)preferredScriptIndex) : nullptr;
+        if (entry) scriptIndex = (size_t)preferredScriptIndex;
+        else entry = findScriptEntry(scene, entity, ref.params.scriptClass, &scriptIndex);
         if (!entry){
             binding.status = PropertyBindStatus::MissingComponent;
             binding.message = "no Lua script '" + ref.params.scriptClass + "' on the GameObject";
@@ -1063,6 +1074,7 @@ anim::PropertyBinding anim::bindProperty(EntityRegistry* scene, Entity entity, c
         // one instance for the binding's life (two scripts of a class: always the same one)
         binding.scriptIndex = (int16_t)std::min<size_t>(scriptIndex, INT16_MAX);
         binding.scriptInstance = entry->instance;
+        binding.scriptGeneration = entry->instanceGeneration;
         if (ref.params.member != "enabled"){
             const ScriptProperty* declared = nullptr;
             for (const ScriptProperty& property : entry->properties){
@@ -1184,7 +1196,8 @@ bool anim::scriptBindingStale(EntityRegistry* registry, Entity entity, const Pro
     const PropertyKeyInfo* info = propertyKeyInfo(binding.key);
     if (!info || !info->ref.script) return false;
     const ScriptEntry* entry = boundScriptEntry(registry, entity, info->ref.params.scriptClass, binding);
-    return !entry || entry->instance != binding.scriptInstance;
+    // the ref alone is not enough: a released one is reused by the next instance
+    return !entry || entry->instance != binding.scriptInstance || entry->instanceGeneration != binding.scriptGeneration;
 }
 
 bool anim::readPropertyStored(Scene* scene, Entity entity, const PropertyBinding& binding, float* out){
@@ -1227,10 +1240,12 @@ bool anim::writePropertyStored(Scene* scene, Entity entity, const PropertyBindin
     for (size_t i = 0; i < binding.width && i < 4; i++) values[i] = in[i];
     if (info->ref.script){
         if (info->ref.params.member == "enabled"){
-            const ScriptEntry* entry = boundScriptEntry(scene, entity, info->ref.params.scriptClass, binding);
+            // (a binding without its index resolves it here: setScriptEnabled needs a real one)
+            size_t index = 0;
+            const ScriptEntry* entry = boundScriptEntry(scene, entity, info->ref.params.scriptClass, binding, &index);
             if (!entry) return false;
             const bool enabled = values[0] > 0.5f;
-            if (entry->enabled != enabled) ScriptRuntime::setScriptEnabled(scene, entity, boundScriptIndex(binding), enabled);
+            if (entry->enabled != enabled) ScriptRuntime::setScriptEnabled(scene, entity, index, enabled);
             return true;
         }
         return LuaBinding::setLuaScriptProperty(scene, entity, info->ref.params.scriptClass, info->ref.params.member,

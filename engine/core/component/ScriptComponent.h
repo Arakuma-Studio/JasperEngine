@@ -26,6 +26,10 @@ namespace jasperengine{
         std::vector<ScriptProperty> properties;
 
         void* instance = nullptr; // C++ instance OR Lua handle
+        // Runtime only: a new number each time a Lua instance is made for the entry (a released
+        // registry ref is reused by the next instance, this number is not). With `instance`, the
+        // bind stamp of clip tracks on the script's fields (anim-properties P4)
+        uint64_t instanceGeneration = 0;
 
         // Runtime only, never serialized; a copy (EntityCloner) starts over. Set by the generated
         // factory for a C++ script deriving ScriptBase (null for the GameObject wrapper kind):

@@ -77,6 +77,7 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <iterator>
 #include <memory>
@@ -2343,4 +2344,89 @@ TEST_F(AnimationClipControllerTest, TangentEditsSayWhichEasesBecameLinear) {
     EXPECT_NE(notice.find("1 key's ease became linear tangents"), std::string::npos) << notice;
     ASSERT_TRUE(c.setTangentMode({{(size_t)arm, 0}}, ClipTangentMode::Flat, &error, &notice)) << error;
     EXPECT_TRUE(notice.empty()) << "nothing more to replace: " << notice;
+}
+
+namespace {
+    // a clip of one property track on `path`, keyed `value` over a second
+    void writePropertyClip(const std::function<void(const std::string&, const ClipData&)>& write, const std::string& file,
+                           const std::string& path, const std::string& component, const std::string& property, std::vector<float> value){
+        ClipData data;
+        ClipTrackData track;
+        track.path = path;
+        track.channel = ClipChannel::Property;
+        track.component = component;
+        track.property = property;
+        track.keys = {key(0, value), key(1, value)};
+        data.tracks = {track};
+        write(file, data);
+    }
+}
+
+// Paste Component Values onto a previewed component: the pasted values are the new rest
+TEST_F(AnimationClipControllerTest, PasteComponentValuesDuringAPreviewEditsTheRest) {
+    ClipScene s = clipScene("anim/paste.anim");
+    const Entity panel = addImage(s, "Panel", s.hero, Vector4(1, 0.5f, 0.2f, 1));
+    const Entity donor = addImage(s, "Donor", NULL_ENTITY, Vector4(0, 1, 0, 1));
+    const Vector4 restColour = s.scene->getComponent<UIComponent>(panel).color;
+    const Vector4 donorColour = s.scene->getComponent<UIComponent>(donor).color;
+    writePropertyClip([&](const std::string& f, const ClipData& d){ writeClip(f, d); }, "anim/paste.anim", "Panel", "ui", "color", {0, 0, 0, 1});
+    AnimationClipDocument::checkDiskChanges(project());
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    c.seek(0.5f);
+    ASSERT_TRUE(c.isPreviewing());
+    ASSERT_EQ(s.scene->getComponent<UIComponent>(panel).color.x, 0.0f) << "previewed black";
+    auto clip = std::make_shared<ComponentClip>();
+    clip->project = EntityClipboard::projectKey(project());
+    clip->sceneId = s.id;
+    clip->type = ComponentType::UIComponent;
+    clip->entity = donor;
+    clip->value = EntityClipboard::encodeComponent(s.scene, donor, ComponentType::UIComponent);
+    Command* paste = ComponentValuesCmd::buildPasteValues(project(), s.id, {panel}, ComponentType::UIComponent, clip, &error);
+    ASSERT_TRUE(paste) << error;
+    CommandHistory* history = CommandHandle::get(s.id);
+    ASSERT_TRUE(history->addCommand(paste));
+    c.update(0.0);
+    EXPECT_EQ(s.scene->getComponent<UIComponent>(panel).color.x, 0.0f) << "previewed again";
+    c.stopPreview();
+    EXPECT_FLOAT_EQ(s.scene->getComponent<UIComponent>(panel).color.y, donorColour.y) << "stop keeps the pasted colour";
+    EXPECT_FLOAT_EQ(s.scene->getComponent<UIComponent>(panel).color.x, donorColour.x);
+    ASSERT_TRUE(history->undo());
+    EXPECT_FLOAT_EQ(s.scene->getComponent<UIComponent>(panel).color.x, restColour.x) << "undo writes the rest, not black";
+}
+
+// Reset of a whole Mesh: its submesh rows are previewed properties of it (before: the command
+// recorded the previewed colour, and its undo wrote it into the scene)
+TEST_F(AnimationClipControllerTest, MeshResetDuringAPreviewEditsTheSubmeshRest) {
+    ClipScene s = clipScene("anim/mesh.anim");
+    const Entity cube = addObject(s, "Cube", s.hero, Vector3(0, 0, 0));
+    MeshComponent mesh;
+    mesh.numSubmeshes = 1;
+    mesh.submeshes[0].material.baseColorFactor = Color::sRGBToLinear(Vector4(1, 0.5f, 0.2f, 1));
+    s.scene->addComponent<MeshComponent>(cube, mesh);
+    const Vector4 restColour = s.scene->getComponent<MeshComponent>(cube).submeshes[0].material.baseColorFactor;
+    writePropertyClip([&](const std::string& f, const ClipData& d){ writeClip(f, d); }, "anim/mesh.anim", "Cube", "mesh",
+                      "submeshes[0].material.baseColorFactor", {0, 0, 0, 1});
+    AnimationClipDocument::checkDiskChanges(project());
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    c.seek(0.5f);
+    ASSERT_TRUE(c.isPreviewing());
+    auto colour = [&](){ return s.scene->getComponent<MeshComponent>(cube).submeshes[0].material.baseColorFactor; };
+    ASSERT_EQ(colour().y, 0.0f) << "previewed black";
+    Command* reset = ComponentValuesCmd::buildReset(project(), s.id, {cube}, ComponentType::MeshComponent, &error);
+    ASSERT_TRUE(reset) << error;
+    CommandHistory* history = CommandHandle::get(s.id);
+    ASSERT_TRUE(history->addCommand(reset));
+    const Vector4 resetColour = colour();
+    c.update(0.0);
+    EXPECT_EQ(colour().y, 0.0f) << "previewed again";
+    c.stopPreview();
+    // (a Mesh's Reset keeps its geometry and materials: the colour is the rest the command saw)
+    EXPECT_EQ(colour().y, resetColour.y) << "stop keeps what the Reset left";
+    EXPECT_EQ(resetColour.y, restColour.y) << "the Reset was recorded on the rest, not on the previewed black";
+    ASSERT_TRUE(history->undo());
+    EXPECT_FLOAT_EQ(colour().y, restColour.y) << "undo writes the rest, not the previewed black";
 }

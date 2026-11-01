@@ -206,3 +206,25 @@ async def test_play_matches_unity_timings(ed: Editor):
     finally:
         await ed.call("play", action="stop")
 
+
+
+async def test_preview_lists_16_properties_and_counts_them_all(ed: Editor):
+    sid = await scene(ed)
+    await ed.call("create_ui", scene=sid, root={
+        "type": "container", "name": "Many", "layout": {"anchor": "top_left", "position": [0, 0], "size": [300, 300]},
+        "children": [{"type": "image", "name": f"I{i}", "color": [1, 1, 1, 1],
+                      "layout": {"anchor": "top_left", "position": [0, 30 * i], "size": [20, 20]}} for i in range(6)]})
+    tracks = []
+    for i in range(6):
+        for component, prop, value in (("gameobject", "active", True), ("ui", "enabled", True), ("ui", "color", [1, 0, 0, 1])):
+            tracks.append({"path": f"I{i}", "channel": "property", "component": component, "property": prop,
+                           "keys": [{"time": 0, "value": value}]})
+    await ed.call("edit_animation", scene=sid, clip="assets/anim/many.anim", create={}, root="Many", tracks=tracks, length=1)
+    await ed.call("add_component", scene=sid, entity="Many", component="animationplayer",
+                  values={"animationplayer": {"clips": [{"clip": "assets/anim/many.anim"}], "playAutomatically": False}})
+    got = await ed.call("preview_animation", scene=sid, animation="Many", action="seek", time=0.5)
+    try:
+        ed.check(len(got.get("properties", [])) == 16, f"the first 16 listed: {len(got.get('properties', []))}")
+        ed.check(got.get("properties_total") == 18, f"properties_total counts all 18: {got.get('properties_total')!r}")
+    finally:
+        await ed.call("preview_animation", scene=sid, animation="Many", action="stop")

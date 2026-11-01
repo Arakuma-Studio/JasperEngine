@@ -139,6 +139,7 @@ namespace jasperengine::anim{
         // again); reads and writes fail when that index holds another class
         int16_t scriptIndex = -1;
         const void* scriptInstance = nullptr;
+        uint64_t scriptGeneration = 0;          // ScriptEntry::instanceGeneration then
         std::string message;                    // why it did not bind (one line)
     };
     // keys of `keyWidth` values on this binding give it an opaque alpha: a whole Color4 keyed
@@ -153,9 +154,12 @@ namespace jasperengine::anim{
     // The parse of a property as bound on `entity`: the row's has(), a script's declared field
     // (its declared type wins over the keys': an Int rounds and steps, a Color keys sRGB), a
     // shader member's manifest type when the shader declares one. `keyWidth` is the track's
-    // key width (shader members and script fields without a declaration take it)
-    // (any registry: a scene, a prefab's; main thread)
-    JASPERENGINE_API PropertyBinding bindProperty(EntityRegistry* registry, Entity entity, const PropertyRef& ref, size_t keyWidth);
+    // key width (shader members and script fields without a declaration take it).
+    // `preferredScriptIndex`: a script field binding made again keeps that script while it is
+    // still a Lua script of the class (the previous binding's scriptIndex; -1 picks the first
+    // enabled one, else the first) (any registry: a scene, a prefab's; main thread)
+    JASPERENGINE_API PropertyBinding bindProperty(EntityRegistry* registry, Entity entity, const PropertyRef& ref, size_t keyWidth,
+                                                  int preferredScriptIndex = -1);
 
     // The interned id of a property's identity (component and base property: a swizzle track
     // and the whole-property track of the same property share it), never 0. Main thread.

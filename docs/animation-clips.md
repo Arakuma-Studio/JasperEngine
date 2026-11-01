@@ -139,7 +139,9 @@ tangents of imported clips. Rotations are shown as continuous Euler angles.
   Free / Linear / Constant** (Constant right holds the key's value until the next key; left, the
   previous key's). Selected keys show their handles: drag one to set that side's slope (the other
   side follows unless the key is Broken); each drag is one undo step. Giving tangents to one key
-  of a track gives its other keys their linear slopes, so the rest of the curve does not change.
+  of a track gives its other keys their linear slopes, so the rest of the curve does not change
+  where it was linear: tangents win over eases, so the track's other eases (`cubic_in_out`,
+  `bounce`...) become linear tangents, and the window says how many did (steps stay: Constant).
   Rotations keep the Interpolation presets; their handles (imported glTF CUBICSPLINE tangents)
   are read-only.
 - Stepped properties (bools, ints, sprite frames) draw as steps and move in time only.
@@ -207,7 +209,7 @@ everything else as stored. Values interpolate in those units (Unity's colour cur
 | component | properties | Unity |
 |---|---|---|
 | `gameobject` | `active` (bool) | `m_IsActive` |
-| any component with the enable checkbox (`ui`, `mesh`, `sprite`, `light`, `camera`, `audiosource`, `canvasgroup`, `rigidbody`...) | `enabled` (bool; physics bodies apply on their next step) | `m_Enabled` |
+| any component with the enable checkbox (`ui`, `mesh`, `sprite`, `light`, `camera`, `audiosource`, `canvasgroup`, `rigidbody`, `onscreenstick`...) | `enabled` (bool), applied as the Lua setter does: a Rigidbody 2D leaves or joins the world at once, a 3D body on the physics step; disabling a Trail Renderer clears its points; enabling a broken Joint 2D makes it a fresh joint | `m_Enabled` |
 | `ui` (Image, Text, Button graphic, any UI element) | `color` (Color4), `shaderUniforms.<member>` | `m_Color`, TMP `m_fontColor` |
 | `button` | `colorNormal`, `colorHovered`, `colorPressed`, `colorDisabled` (Color4), `disabled` (bool) | `m_Colors.*` |
 | `canvasgroup` | `alpha` (float, 0 to 1), `interactable`, `blocksRaycasts`, `ignoreParentGroups` (bool) | `m_Alpha`... |
