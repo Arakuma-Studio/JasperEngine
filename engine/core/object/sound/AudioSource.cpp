@@ -3,10 +3,15 @@
 
 #include "AudioSource.h"
 #include "subsystem/AudioSystem.h"
+#include "audio/AudioMixer.h"
 #include "pool/SoundPool.h"
+#include "Scene.h"
+
+#include "soloud.h"
 
 #include "Log.h"
 
+#include <algorithm>
 #include <stdexcept>
 
 
@@ -113,10 +118,19 @@ double AudioSource::getPlayingTime(){
 bool AudioSource::isPlaying(){
     AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
-    if ((audio.length > audio.playingTime) && (audio.playingTime != 0) && (audio.state == AudioSourceState::Playing)) {
+    // a play() not started yet counts (Unity: true right after Play())
+    if (audio.startTrigger && !audio.stopTrigger) {
         return true;
     }
-    return false;
+    if (audio.stopTrigger) {
+        return false;
+    }
+    // the voices: a looping sound plays on past its length, whatever its pitch (spec A15)
+    if (audio.state == AudioSourceState::Playing && audio.handle != 0 && AudioSystem::isInited() &&
+        AudioSystem::getSoloud().isValidVoiceHandle(audio.handle)) {
+        return true;
+    }
+    return scene->getSystem<AudioSystem>()->getPlayingVoiceCount(audio) > 0 && audio.state != AudioSourceState::Paused;
 }
 
 bool AudioSource::isPaused(){
@@ -350,4 +364,102 @@ void AudioSource::setEnabled(bool enabled){
 
 bool AudioSource::isEnabled() const{
     return getComponent<AudioSourceComponent>().enabled;
+}
+
+void AudioSource::setOutputGroup(const std::string& groupName){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
+
+    audio.outputGroupName = groupName;
+    audio.outputGroup = AudioMixer::findGroupId(groupName);
+    audio.groupWarned = false;
+}
+
+std::string AudioSource::getOutputGroup() const{
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
+
+    if (!audio.outputGroup.empty()) {
+        const std::string name = AudioMixer::getGroupName(audio.outputGroup);
+        if (!name.empty()) return name;
+    }
+    return audio.outputGroupName;
+}
+
+void AudioSource::setLoadType(AudioLoadType loadType){
+    getComponent<AudioSourceComponent>().loadType = loadType;
+}
+
+AudioLoadType AudioSource::getLoadType() const{
+    return getComponent<AudioSourceComponent>().loadType;
+}
+
+AudioLoadType AudioSource::getResolvedLoadType() const{
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
+    if (audio.filename.empty()) return audio.loadType;
+    return SoundPool::resolveLoadType(audio.filename, audio.loadType);
+}
+
+void AudioSource::setPriority(int priority){
+    getComponent<AudioSourceComponent>().priority = std::clamp(priority, 0, 256);
+}
+
+int AudioSource::getPriority() const{
+    return getComponent<AudioSourceComponent>().priority;
+}
+
+void AudioSource::setMaxVoices(int maxVoices){
+    getComponent<AudioSourceComponent>().maxVoices = std::clamp(maxVoices, 1, 64);
+}
+
+int AudioSource::getMaxVoices() const{
+    return getComponent<AudioSourceComponent>().maxVoices;
+}
+
+void AudioSource::setIgnoreListenerPause(bool ignore){
+    getComponent<AudioSourceComponent>().ignoreListenerPause = ignore;
+}
+
+bool AudioSource::isIgnoreListenerPause() const{
+    return getComponent<AudioSourceComponent>().ignoreListenerPause;
+}
+
+void AudioSource::setPitch(float pitch){
+    setSpeed(pitch);
+}
+
+float AudioSource::getPitch() const{
+    return getSpeed();
+}
+
+void AudioSource::playOneShot(const std::string& filename, float volumeScale){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
+
+    scene->getSystem<AudioSystem>()->playOneShot(audio, filename, volumeScale);
+}
+
+void AudioSource::fadeIn(double seconds, bool unscaled){
+    scene->getSystem<AudioSystem>()->fadeIn(getComponent<AudioSourceComponent>(), seconds, unscaled);
+}
+
+void AudioSource::fadeOut(double seconds, bool pause, bool unscaled){
+    scene->getSystem<AudioSystem>()->fadeOut(getComponent<AudioSourceComponent>(), seconds, pause, unscaled);
+}
+
+void AudioSource::fadeTo(double volume, double seconds, bool unscaled){
+    scene->getSystem<AudioSystem>()->fadeTo(getComponent<AudioSourceComponent>(), volume, seconds, unscaled);
+}
+
+bool AudioSource::isFading() const{
+    return getComponent<AudioSourceComponent>().fade.active;
+}
+
+int AudioSource::getVoiceCount() const{
+    return scene->getSystem<AudioSystem>()->getPlayingVoiceCount(getComponent<AudioSourceComponent>());
+}
+
+void AudioSource::playClipAtPoint(Scene* scene, const std::string& filename, Vector3 position, float volume, const std::string& group){
+    if (!scene) {
+        Log::error("AudioSource.playClipAtPoint: no scene");
+        return;
+    }
+    scene->getSystem<AudioSystem>()->playClipAtPoint(filename, position, volume, group);
 }

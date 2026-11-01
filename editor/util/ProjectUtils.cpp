@@ -47,6 +47,7 @@
 #include "component/LineRendererComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/AudioSourceComponent.h"
+#include "audio/AudioMixerDocument.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/UIComponent.h"
@@ -1068,7 +1069,7 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
             break;
         case ComponentType::AudioSourceComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<AudioSourceComponent>(entity, {});
+                registry->addComponent<AudioSourceComponent>(entity, AudioMixerDocument::newAudioSource());
             }else{
                 registry->addComponent<AudioSourceComponent>(entity, Stream::decodeAudioSourceComponent(componentNode));
             }

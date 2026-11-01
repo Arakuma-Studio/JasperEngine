@@ -54,6 +54,9 @@ namespace jasperengine::editor {
         std::unordered_map<std::string, Texture> m_thumbnailTextures;
         uint32_t m_startSceneId = NULL_PROJECT_SCENE;
         LoadingSettings m_loadingSettings;
+        AudioSettings m_audioSettings;
+        char m_audioMixerBuffer[512] = {0};
+        char m_audioDefaultGroupBuffer[128] = {0};
         fs::path m_assetsDir;
         fs::path m_luaDir;
         std::vector<fs::path> m_scriptDirs;
@@ -176,6 +179,7 @@ namespace jasperengine::editor {
         // Tags and Layers, not yet applied)
         void drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows);
         void drawInputSettings();
+        void drawAudioSettings();
         void drawInputActionList();
         void drawInputActionDetails(InputAction& action, int actionIndex);
         void drawInputBinding(InputAction& action, int actionIndex, int bindingIndex);

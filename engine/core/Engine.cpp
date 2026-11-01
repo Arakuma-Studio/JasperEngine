@@ -19,6 +19,7 @@
 #include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/CameraControlSystem.h"
+#include "audio/AudioMixer.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
@@ -1555,6 +1556,9 @@ void Engine::runFrame(bool draw){
     // the UI clock: the same, but it keeps running while only the game events are paused (HTML
     // UI documents animate in edit mode and in a paused Play)
     HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);
+    // the audio mixer's snapshot transitions and timed values, once a frame before the scenes
+    // (scaled ones hold at time scale 0; both hold while the app or the simulation is held)
+    AudioMixer::update(paused ? 0.0 : deltatime, (paused || simulationHeld) ? 0.0 : frameTime);
 
     // the input of this frame is over: no low surrogate will follow a pending high one
     flushCharInput();

@@ -355,6 +355,8 @@ namespace jasperengine::editor{
         void drawShakePresetAsset(const std::filesystem::path& asset);
         // the Test strip's edit-mode preview stops once its GameObject (or .shake) is not shown
         void syncCameraShakePreview(SceneProject* shown, const std::vector<Entity>& selection);
+        // a selected .mixer: groups, exposed parameters, snapshots; Use as Project Mixer, Open in Audio Mixer
+        void drawAudioMixerAsset(const std::filesystem::path& asset);
         // a .physicsmaterial: friction, bounciness and their combine modes (InspectorPhysics2D.cpp)
         void drawPhysicsMaterialAsset(const std::filesystem::path& asset);
         // a .physicsmaterial path field (drop from the Project window, pick, clear) with undo

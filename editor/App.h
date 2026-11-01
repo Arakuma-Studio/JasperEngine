@@ -21,6 +21,7 @@
 #include "window/AnimatorWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
+#include "window/AudioMixerWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "window/SpriteNormalsWindow.h"
@@ -180,6 +181,7 @@ namespace jasperengine::editor{
         AnimatorWindow* animatorWindow = nullptr;
         TerrainEditWindow* terrainEditWindow;
         TextureSynthesisWindow* textureSynthesisWindow;
+        AudioMixerWindow* audioMixerWindow;
         VertexAnimationBakerWindow* vertexAnimationBakerWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
         SpriteNormalsWindow* spriteNormalsWindow;
@@ -451,6 +453,7 @@ namespace jasperengine::editor{
         void openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, unsigned submesh, bool now) override;
         MainToolbar* getMainToolbar() const;
         void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe) override;
+        void openAudioMixerWindow(const std::filesystem::path& mixer = {}) override;
         void openVertexAnimationBaker(const std::filesystem::path& path, bool bakeNow) override;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;

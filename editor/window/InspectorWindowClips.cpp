@@ -26,7 +26,9 @@
 #include "animation/ClipValidation.h"
 #include "animation/ModelSubClips.h"
 #include "animation/PreviewOwner.h"
+#include "audio/AudioMixerDocument.h"
 #include "command/CommandHandle.h"
+#include "command/type/AudioSettingsCmd.h"
 #include "command/type/ClipSceneActions.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
@@ -41,6 +43,7 @@
 #include "Out.h"
 #include "Scene.h"
 #include "Theme.h"
+#include "EditorHost.h"
 
 #include "imgui.h"
 
@@ -1424,6 +1427,13 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         drawShakePresetAsset(asset);
         return true;
     }
+    // a .mixer: its summary (audio-mixer spec 9)
+    if (asset.extension() == AudioMixerIO::EXTENSION){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawAudioMixerAsset(asset);
+        return true;
+    }
     // a physics material: its four fields (InspectorPhysics2D.cpp)
     if (PhysicsMaterialAssets::isPhysicsMaterialFile(file)){
         std::error_code ec;
@@ -1458,6 +1468,58 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         return true;
     }
     return false;
+}
+
+void editor::InspectorWindow::drawAudioMixerAsset(const fs::path& asset){
+    drawAssetHeader(ICON_FA_SLIDERS, asset, "Audio Mixer");
+    ImGui::Separator();
+    AudioMixerDef def;
+    std::string error;
+    if (!AudioMixerDocument::read(asset, def, &error)){
+        ImGui::TextWrapped("Does not read: %s", error.c_str());
+        return;
+    }
+    const bool projectMixer = project->getAudioMixerFile() == asset.lexically_normal();
+    if (projectMixer){
+        ImGui::TextDisabled("The project's mixer (Project Settings > Audio)");
+    } else if (ImGui::Button("Use as Project Mixer")){
+        AudioSettings after = project->getAudioSettings();
+        after.mixer = project->normalizeToAssetsRelative(asset).generic_string();
+        auto* command = new AudioSettingsCmd(project, project->getAudioSettings(), after);
+        command->setNoMerge();
+        project->getProjectCommandHistory()->addCommand(command);
+    }
+    if (ImGui::Button(ICON_FA_SLIDERS " Open in Audio Mixer")){
+        editor::getEditorHost().openAudioMixerWindow(asset);
+    }
+    ImGui::SeparatorText("Groups");
+    for (const AudioMixerGroupDef* group : def.treeOrder()){
+        int depth = 0;
+        for (const AudioMixerGroupDef* parent = def.findGroupById(group->parentId); parent && depth < 16; parent = def.findGroupById(parent->parentId)) depth++;
+        std::string effects;
+        for (const AudioMixerEffectDef& effect : group->effects){
+            const AudioEffectInfo* info = AudioEffects::find(effect.type);
+            effects += (effects.empty() ? "" : ", ") + std::string(info ? info->label : effect.typeName.c_str());
+        }
+        ImGui::Text("%*s%s  %.1f dB%s%s", depth * 2, "", group->name.c_str(), group->volumeDb, group->mute ? "  M" : "", group->solo ? "  S" : "");
+        if (!effects.empty()){
+            ImGui::SameLine();
+            ImGui::TextDisabled("[%s]", effects.c_str());
+        }
+    }
+    ImGui::SeparatorText("Exposed Parameters");
+    if (def.exposed.empty()) ImGui::TextDisabled("None");
+    for (const AudioMixerExposedDef& exposed : def.exposed){
+        ImGui::Text("%s", exposed.name.c_str());
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s%s", AudioMixerIO::describeTarget(def, exposed.target).c_str(), exposed.remember ? " (remembered)" : "");
+    }
+    ImGui::SeparatorText("Snapshots");
+    if (def.snapshots.empty()) ImGui::TextDisabled("None");
+    for (const AudioMixerSnapshotDef& snapshot : def.snapshots){
+        ImGui::Text("%s%s", snapshot.name.c_str(), snapshot.name == def.startSnapshot ? "  (start)" : "");
+    }
+    ImGui::TextDisabled("Update mode: %s time", def.unscaled ? "unscaled" : "scaled");
 }
 
 void editor::InspectorWindow::drawAssetHeader(const char* icon, const fs::path& asset, const char* kind){

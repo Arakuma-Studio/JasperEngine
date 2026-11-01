@@ -3565,6 +3565,19 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (loadingNode.size()) root["loading"] = loadingNode;
     }
 
+    // Project Settings > Audio: only what differs from the defaults (old projects have no node)
+    {
+        const AudioSettings& audio = project->getAudioSettings();
+        const AudioSettings defaults;
+        YAML::Node audioNode;
+        if (audio.mixer != defaults.mixer) audioNode["mixer"] = audio.mixer;
+        if (audio.maxRealVoices != defaults.maxRealVoices) audioNode["maxRealVoices"] = audio.maxRealVoices;
+        if (audio.maxVoices != defaults.maxVoices) audioNode["maxVoices"] = audio.maxVoices;
+        if (audio.sampleRate != defaults.sampleRate) audioNode["sampleRate"] = audio.sampleRate;
+        if (audio.defaultOutputGroup != defaults.defaultOutputGroup) audioNode["defaultOutputGroup"] = audio.defaultOutputGroup;
+        if (audioNode.size()) root["audio"] = audioNode;
+    }
+
     if (!project->getStandalonePrefabs().empty()) {
         YAML::Node prefabsNode;
         for (const fs::path& prefabPath : project->getStandalonePrefabs()) {
@@ -4036,6 +4049,20 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         loading.delay = std::max(0.0f, decodeFinite(loadingNode["delay"], loading.delay));
         loading.timeout = std::max(0.0f, decodeFinite(loadingNode["timeout"], loading.timeout));
         if (loadingNode["asyncLoading"]) loading.asyncLoading = YamlNumbers::as<bool>(loadingNode["asyncLoading"]);
+    }
+
+    {
+        AudioSettings audio;
+        if (node["audio"] && node["audio"].IsMap()) {
+            const YAML::Node audioNode = node["audio"];
+            if (audioNode["mixer"]) audio.mixer = audioNode["mixer"].as<std::string>();
+            if (audioNode["maxRealVoices"]) audio.maxRealVoices = YamlNumbers::as<int>(audioNode["maxRealVoices"]);
+            if (audioNode["maxVoices"]) audio.maxVoices = YamlNumbers::as<int>(audioNode["maxVoices"]);
+            if (audioNode["sampleRate"]) audio.sampleRate = YamlNumbers::as<int>(audioNode["sampleRate"]);
+            if (audioNode["defaultOutputGroup"]) audio.defaultOutputGroup = audioNode["defaultOutputGroup"].as<std::string>();
+        }
+        // also without a node: a project opened after another one does not keep its mixer
+        project->setAudioSettings(audio);
     }
 
     if (node["standalonePrefabs"]) {
@@ -9135,6 +9162,15 @@ YAML::Node editor::Stream::encodeAudioSourceComponent(const AudioSourceComponent
     encodeFinite(node, "attenuationRolloffFactor", audio.attenuationRolloffFactor);
     encodeFinite(node, "dopplerFactor", audio.dopplerFactor);
 
+    // audio mixer fields: written only when not their default, so older files stay as they were
+    const AudioSourceComponent defaults;
+    if (!audio.outputGroup.empty()) node["outputGroup"] = audio.outputGroup;
+    if (!audio.outputGroupName.empty()) node["outputGroupName"] = audio.outputGroupName;
+    if (audio.loadType != defaults.loadType) node["loadType"] = SoundPool::loadTypeName(audio.loadType);
+    if (audio.priority != defaults.priority) node["priority"] = audio.priority;
+    if (audio.maxVoices != defaults.maxVoices) node["maxVoices"] = audio.maxVoices;
+    if (audio.ignoreListenerPause != defaults.ignoreListenerPause) node["ignoreListenerPause"] = audio.ignoreListenerPause;
+
     return node;
 }
 
@@ -9163,16 +9199,39 @@ AudioSourceComponent editor::Stream::decodeAudioSourceComponent(const YAML::Node
     if (node["attenuationModel"]) audio.attenuationModel = stringToAudioSourceAttenuation(node["attenuationModel"].as<std::string>());
     if (node["attenuationRolloffFactor"]) audio.attenuationRolloffFactor = decodeFinite(node["attenuationRolloffFactor"], audio.attenuationRolloffFactor);
     if (node["dopplerFactor"]) audio.dopplerFactor = decodeFinite(node["dopplerFactor"], audio.dopplerFactor);
-
-    bool keepLoadedSample = oldAudio && oldFilename == audio.filename && oldAudio->sample && oldAudio->loaded;
-    if (!keepLoadedSample && oldAudio && !oldFilename.empty()) {
-        audio.sample.reset();
-        SoundPool::remove(oldFilename);
+    // the mixer fields are written only when not their default: a key that is not there IS the
+    // default, also over an existing component (an undo, a prefab instance's whole-component override)
+    const AudioSourceComponent defaults;
+    audio.outputGroup = node["outputGroup"] ? node["outputGroup"].as<std::string>() : defaults.outputGroup;
+    audio.outputGroupName = node["outputGroupName"] ? node["outputGroupName"].as<std::string>() : defaults.outputGroupName;
+    audio.loadType = defaults.loadType;
+    if (node["loadType"]) {
+        AudioLoadType loadType;
+        if (SoundPool::loadTypeFromName(node["loadType"].as<std::string>(), loadType)) audio.loadType = loadType;
     }
+    audio.priority = node["priority"] ? std::clamp(YamlNumbers::as<int>(node["priority"]), 0, 256) : defaults.priority;
+    audio.maxVoices = node["maxVoices"] ? std::clamp(YamlNumbers::as<int>(node["maxVoices"]), 1, 64) : defaults.maxVoices;
+    audio.ignoreListenerPause = node["ignoreListenerPause"] ? YamlNumbers::as<bool>(node["ignoreListenerPause"]) : defaults.ignoreListenerPause;
+
+    bool keepLoadedSample = oldAudio && oldFilename == audio.filename && oldAudio->sample && oldAudio->loaded &&
+                            oldAudio->loadType == audio.loadType;
+    if (!keepLoadedSample && oldAudio && !oldAudio->sampleKey.empty()) {
+        audio.sample.reset();
+        SoundPool::remove(oldAudio->sampleKey);
+        audio.sampleKey.clear();
+    }
+    if (!keepLoadedSample) {
+        audio.sample.reset();
+        audio.sampleKey.clear();
+    }
+    // the voices stay with the component (an Inspector edit or an undo in Play does not leave
+    // one playing on its own): the system applies the new values to them, stops them when the
+    // state says Stopped, and when the file changed (no sample) before it loads the new one
+    audio.groupWarned = false;
+    audio.lastVolumeApplied = -1;
     audio.loaded = keepLoadedSample;
     audio.loadFailed = false;
     audio.length = keepLoadedSample ? oldAudio->length : 0;
-    audio.handle = 0;
     audio.playingTime = 0;
     audio.lastPosition = Vector3(0, 0, 0);
     audio.startTrigger = false;

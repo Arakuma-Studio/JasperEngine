@@ -160,7 +160,11 @@ LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 
 # create_ui's outline/shadow text props (+284 on its branch); measured on the tree merged with main
 # 5762bb259 (everything above): 153 tools, total 112185 (tool_budget.py), the limit set to it
 # merged on main with camera-shake (lead, 9c8c6c584 + ui-scaling-text): provisional sum, re-measured below
-TOTAL_LIMIT = 112276
+# audio mixer (spec 2026-10-31-audio-mixer 10): the audio_mixer tool (get / edit with ops; the ops and effect
+# parameters in jasper://docs/audio) and get_play_state's audio block; merged with main 9c8c6c584:
+# 154 tools, total 112708 (tool_budget.py on the merged tree), the limit set to it
+# lead: main with camera-shake + ui-scaling-text + audio-mixer: provisional (112276 + audio-mixer's +799), re-measured on the merged tree
+TOTAL_LIMIT = 113075
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

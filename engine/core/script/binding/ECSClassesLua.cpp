@@ -15,6 +15,7 @@
 
 #include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
+#include "audio/AudioMixer.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -56,6 +57,150 @@ static luabridge::LuaRef pointerEventEntity(lua_State* L, Scene* scene, Entity e
     return luabridge::LuaRef(L, GameObject(scene, entity));
 }
 
+// The audio mixer (audio-mixer spec 8): the functions with option tables ({unscaled = true}) and
+// table results read and push the Lua stack themselves
+namespace {
+
+    struct LuaAudioListener {};
+
+    // opts.unscaled of an optional table at `index`
+    bool luaOptUnscaled(lua_State* L, int index){
+        if (!lua_istable(L, index)) return false;
+        lua_getfield(L, index, "unscaled");
+        const bool unscaled = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
+        return unscaled;
+    }
+
+    void luaPushStrings(lua_State* L, const std::vector<std::string>& values){
+        lua_createtable(L, (int)values.size(), 0);
+        for (size_t i = 0; i < values.size(); i++) {
+            lua_pushstring(L, values[i].c_str());
+            lua_rawseti(L, -2, (int)i + 1);
+        }
+    }
+
+    // AudioMixer.setFloat(name, value [, seconds [, opts]]) -> boolean
+    int luaMixerSetFloat(lua_State* L){
+        const std::string name = luaL_checkstring(L, 1);
+        const float value = (float)luaL_checknumber(L, 2);
+        const float seconds = (float)luaL_optnumber(L, 3, 0.0);
+        lua_pushboolean(L, AudioMixer::setFloat(name, value, seconds, luaOptUnscaled(L, 4)));
+        return 1;
+    }
+
+    // AudioMixer.getFloat(name) -> number | nil
+    int luaMixerGetFloat(lua_State* L){
+        const std::string name = luaL_checkstring(L, 1);
+        float value = 0.0f;
+        if (AudioMixer::getFloat(name, value)) lua_pushnumber(L, value);
+        else lua_pushnil(L);
+        return 1;
+    }
+
+    int luaMixerGetParameterNames(lua_State* L){
+        luaPushStrings(L, AudioMixer::getParameterNames());
+        return 1;
+    }
+
+    // AudioMixer.transitionTo(snapshot, seconds [, opts]) -> boolean
+    int luaMixerTransitionTo(lua_State* L){
+        const std::string name = luaL_checkstring(L, 1);
+        const float seconds = (float)luaL_optnumber(L, 2, 0.0);
+        lua_pushboolean(L, AudioMixer::transitionTo(name, seconds, luaOptUnscaled(L, 3)));
+        return 1;
+    }
+
+    // AudioMixer.transitionToSnapshots(names, weights, seconds [, opts]) -> boolean
+    int luaMixerTransitionToSnapshots(lua_State* L){
+        luaL_checktype(L, 1, LUA_TTABLE);
+        luaL_checktype(L, 2, LUA_TTABLE);
+        std::vector<std::string> names;
+        std::vector<float> weights;
+        const int count = (int)lua_rawlen(L, 1);
+        for (int i = 1; i <= count; i++) {
+            lua_rawgeti(L, 1, i);
+            if (lua_type(L, -1) == LUA_TSTRING) names.push_back(lua_tostring(L, -1));
+            lua_pop(L, 1);
+            lua_rawgeti(L, 2, i);
+            weights.push_back(lua_isnumber(L, -1) ? (float)lua_tonumber(L, -1) : 0.0f);
+            lua_pop(L, 1);
+        }
+        const float seconds = (float)luaL_optnumber(L, 3, 0.0);
+        lua_pushboolean(L, AudioMixer::transitionToSnapshots(names, weights, seconds, luaOptUnscaled(L, 4)));
+        return 1;
+    }
+
+    int luaMixerGetSnapshotNames(lua_State* L){
+        luaPushStrings(L, AudioMixer::getSnapshotNames());
+        return 1;
+    }
+
+    int luaMixerGetGroupNames(lua_State* L){
+        luaPushStrings(L, AudioMixer::getGroupNames());
+        return 1;
+    }
+
+    // AudioMixer.getGroup(name) -> AudioMixerGroup | nil
+    int luaMixerGetGroup(lua_State* L){
+        const std::string id = AudioMixer::findGroupId(luaL_checkstring(L, 1));
+        if (id.empty()) {
+            lua_pushnil(L);
+            return 1;
+        }
+        if (!luabridge::push(L, AudioMixerGroup(id))) lua_pushnil(L);
+        return 1;
+    }
+
+    // AudioMixerGroup:getEffect(indexOrType) -> AudioMixerEffect | nil (index 1-based)
+    int luaGroupGetEffect(lua_State* L){
+        AudioMixerGroup* self = luabridge::detail::Userdata::get<AudioMixerGroup>(L, 1, true);
+        std::string id;
+        if (self) {
+            if (lua_type(L, 2) == LUA_TNUMBER) id = AudioMixer::findEffectId(self->getId(), (int)lua_tointeger(L, 2) - 1);
+            else if (lua_type(L, 2) == LUA_TSTRING) id = AudioMixer::findEffectId(self->getId(), std::string(lua_tostring(L, 2)));
+        }
+        if (id.empty() || !luabridge::push(L, AudioMixerEffect(id))) lua_pushnil(L);
+        return 1;
+    }
+
+    // AudioMixerGroup:setVolume(db [, seconds [, opts]])
+    int luaGroupSetVolume(lua_State* L){
+        AudioMixerGroup* self = luabridge::detail::Userdata::get<AudioMixerGroup>(L, 1, false);
+        const float db = (float)luaL_checknumber(L, 2);
+        if (self) self->setVolumeOver(db, (float)luaL_optnumber(L, 3, 0.0), luaOptUnscaled(L, 4));
+        return 0;
+    }
+
+    // AudioMixerEffect:setParameter(name, value [, seconds [, opts]]) -> boolean
+    int luaEffectSetParameter(lua_State* L){
+        AudioMixerEffect* self = luabridge::detail::Userdata::get<AudioMixerEffect>(L, 1, false);
+        const std::string name = luaL_checkstring(L, 2);
+        const float value = (float)luaL_checknumber(L, 3);
+        const float seconds = (float)luaL_optnumber(L, 4, 0.0);
+        lua_pushboolean(L, self && self->setParameter(name, value, seconds, luaOptUnscaled(L, 5)));
+        return 1;
+    }
+
+    // AudioMixerEffect:getParameter(name) -> number | nil
+    int luaEffectGetParameter(lua_State* L){
+        AudioMixerEffect* self = luabridge::detail::Userdata::get<AudioMixerEffect>(L, 1, true);
+        float value = 0.0f;
+        if (self && self->getParameter(luaL_checkstring(L, 2), value)) lua_pushnumber(L, value);
+        else lua_pushnil(L);
+        return 1;
+    }
+
+    // AudioSystem.preload(path [, loadType]) -> boolean
+    int luaAudioPreload(lua_State* L){
+        const std::string path = luaL_checkstring(L, 1);
+        const AudioLoadType type = lua_isnumber(L, 2) ? (AudioLoadType)lua_tointeger(L, 2) : AudioLoadType::Auto;
+        lua_pushboolean(L, AudioSystem::preload(path, type));
+        return 1;
+    }
+
+}
+
 void LuaBinding::registerECSClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
 
@@ -72,6 +217,14 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addVariable("INVERSE_DISTANCE", AudioSourceAttenuation::INVERSE_DISTANCE)
         .addVariable("LINEAR_DISTANCE", AudioSourceAttenuation::LINEAR_DISTANCE)
         .addVariable("EXPONENTIAL_DISTANCE", AudioSourceAttenuation::EXPONENTIAL_DISTANCE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("AudioLoadType")
+        .addVariable("Auto", AudioLoadType::Auto)
+        .addVariable("DecompressOnLoad", AudioLoadType::DecompressOnLoad)
+        .addVariable("CompressedInMemory", AudioLoadType::CompressedInMemory)
+        .addVariable("Streaming", AudioLoadType::Streaming)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -227,6 +380,64 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addStaticFunction("resumeAll", &AudioSystem::resumeAll)
         .addStaticFunction("checkActive", &AudioSystem::checkActive)
         .addStaticProperty("globalVolume", &AudioSystem::getGlobalVolume,  &AudioSystem::setGlobalVolume)
+        .addStaticFunction("preload", &luaAudioPreload)
+        .addStaticFunction("isOutputAvailable", &AudioSystem::isOutputAvailable)
+        .addStaticFunction("getVoiceCount", &AudioSystem::getVoiceCount)
+        .endClass();
+
+    // Unity AudioListener: the pause of every source but the ignoreListenerPause ones, and the
+    // volume of everything (AudioSystem.globalVolume)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<LuaAudioListener>("AudioListener")
+        .addStaticProperty("pause", &AudioSystem::isListenerPaused, &AudioSystem::setListenerPaused)
+        .addStaticProperty("volume", &AudioSystem::getGlobalVolume, &AudioSystem::setGlobalVolume)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AudioMixerEffect>("AudioMixerEffect")
+        .addProperty("id", &AudioMixerEffect::getId)
+        .addProperty("type", &AudioMixerEffect::getType)
+        .addProperty("bypass", &AudioMixerEffect::getBypass, &AudioMixerEffect::setBypass)
+        .addProperty("wet", &AudioMixerEffect::getWet, &AudioMixerEffect::setWet)
+        .addFunction("isValid", &AudioMixerEffect::isValid)
+        .addFunction("hasParameter", &AudioMixerEffect::hasParameter)
+        .addFunction("setParameter", &luaEffectSetParameter)
+        .addFunction("getParameter", &luaEffectGetParameter)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AudioMixerGroup>("AudioMixerGroup")
+        .addProperty("id", &AudioMixerGroup::getId)
+        .addProperty("name", &AudioMixerGroup::getName)
+        .addProperty("volume", &AudioMixerGroup::getVolume, &AudioMixerGroup::setVolume)
+        .addProperty("mute", &AudioMixerGroup::getMute, &AudioMixerGroup::setMute)
+        .addProperty("solo", &AudioMixerGroup::getSolo, &AudioMixerGroup::setSolo)
+        .addProperty("bypassEffects", &AudioMixerGroup::getBypassEffects, &AudioMixerGroup::setBypassEffects)
+        .addFunction("isValid", &AudioMixerGroup::isValid)
+        .addFunction("setVolume", &luaGroupSetVolume)
+        .addFunction("getEffect", &luaGroupGetEffect)
+        .addFunction("getEffectCount", &AudioMixerGroup::getEffectCount)
+        .addFunction("getMeter", &AudioMixerGroup::getMeter)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AudioMixer>("AudioMixer")
+        .addStaticFunction("setFloat", &luaMixerSetFloat)
+        .addStaticFunction("getFloat", &luaMixerGetFloat)
+        .addStaticFunction("clearFloat", &AudioMixer::clearFloat)
+        .addStaticFunction("hasParameter", &AudioMixer::hasParameter)
+        .addStaticFunction("getParameterNames", &luaMixerGetParameterNames)
+        .addStaticFunction("transitionTo", &luaMixerTransitionTo)
+        .addStaticFunction("transitionToSnapshots", &luaMixerTransitionToSnapshots)
+        .addStaticFunction("getSnapshotNames", &luaMixerGetSnapshotNames)
+        .addStaticFunction("getCurrentSnapshot", &AudioMixer::getCurrentSnapshot)
+        .addStaticFunction("getGroup", &luaMixerGetGroup)
+        .addStaticFunction("getGroupNames", &luaMixerGetGroupNames)
+        .addStaticFunction("getMeter", &AudioMixer::getMeterDb)
+        .addStaticFunction("saveParameters", &AudioMixer::saveRemembered)
+        .addStaticFunction("loadParameters", &AudioMixer::loadRemembered)
+        .addStaticFunction("dbToLinear", &AudioMixer::dbToLinear)
+        .addStaticFunction("linearToDb", &AudioMixer::linearToDb)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -949,6 +1160,12 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("length", &AudioSourceComponent::length)
         .addProperty("playingTime", &AudioSourceComponent::playingTime)
         .addProperty("needUpdate", &AudioSourceComponent::needUpdate, &AudioSourceComponent::needUpdate)
+        .addProperty("outputGroup", &AudioSourceComponent::outputGroup, &AudioSourceComponent::outputGroup)
+        .addProperty("outputGroupName", &AudioSourceComponent::outputGroupName, &AudioSourceComponent::outputGroupName)
+        .addProperty("loadType", &AudioSourceComponent::loadType, &AudioSourceComponent::loadType)
+        .addProperty("priority", &AudioSourceComponent::priority, &AudioSourceComponent::priority)
+        .addProperty("maxVoices", &AudioSourceComponent::maxVoices, &AudioSourceComponent::maxVoices)
+        .addProperty("ignoreListenerPause", &AudioSourceComponent::ignoreListenerPause, &AudioSourceComponent::ignoreListenerPause)
         .endClass();
 
     // the raw fields (no validation: FluidSimulation's setters check their values)

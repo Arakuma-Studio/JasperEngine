@@ -30,6 +30,8 @@ namespace jasperengine::editor::mcp {
     void registerConsoleTools(McpRegistry& registry);
     // DataTools.cpp: user_settings (the UserSettings / PlayerPrefs store)
     void registerDataTools(McpRegistry& registry);
+    // AudioTools.cpp: audio_mixer (the project's Audio Mixer asset)
+    void registerAudioTools(McpRegistry& registry);
     void registerScriptTools(McpRegistry& registry);
     void registerAssetTools(McpRegistry& registry);
     void registerDocsTools(McpRegistry& registry);
