@@ -454,8 +454,12 @@ Bound in `AudioClassesLua.cpp` and `GameObjectClassesLua.cpp` under `#if JASPERE
   access (S34 D4).
 - **Estimated size** (to be measured with `lib_size.py --modules`): 90–140 KB Linux, 50–80 KB
   Android arm64, 45–70 KB wasm (gzip about a third), music and cues included.
-- **Variants**: see Open question Q1 (§9). A Compile build leaves the module out when it is not
-  needed (S34 R6) in any case.
+- **Variants** (resolved Q1, 2026-11-01): `soundlayer` is in **every** prebuilt variant of
+  `engine/player/variants.json` (`full`, `ui`, `core`, `lite3d`, `lite2d`), as S34 keeps
+  navigation in every variant; each release player grows by the measured module size, recorded in
+  S34's M table. A Compile build leaves the module out when the detection says it is unused (S34
+  R6). The detection still runs for prebuilt builds: its evidence is shown, and `content-manifest.json`
+  `modules` lists `soundlayer` when needed (S34 R3).
 
 ## 7. Acceptance criteria
 
@@ -471,7 +475,7 @@ Bound in `AudioClassesLua.cpp` and `GameObjectClassesLua.cpp` under `#if JASPERE
 | AC8 (R14) | With S35: the capture lines carry the event fields; `audio_session report` groups starts by event. |
 | AC9 (R15–R18) | `test_audio_browser_editor.py` (xvfb, isolated editor): Browser search, arrow and Space audition (a preview voice plays, no capture line), Enter imports a library clip with its `.meta`, drag onto a Button adds a `ui_click` source in one undo step; the event view's Audition ×8 shows 8 renditions; Match Levels brings the clips within 1 LU; screenshots in the evidence; `check-hardcoded-shortcuts.py` passes. |
 | AC10 (R20) | `test_audio_edit_event.py`: create, values, null reset, `match_levels`, `audition` with picks equal to the next 8 Play picks under the same seed, problems for a missing clip and an unknown group, one undo step per call; the AC10 group assertion. |
-| AC11 (R24, §6.6) | `test_build.py::test_sound_events_prebuilt` (`JASPER_SLOW_BUILD=1`): a prebuilt Linux player plays an event and a trigger (S35 player capture shows the picks of the editor's capture of the same scene, same seed); `content-manifest.json` `modules` lists `soundlayer`; a project without the features builds without it on a Compile build and its player's `features` match S34. |
+| AC11 (R24, §6.6) | S34's variant test: every entry of `engine/player/variants.json` includes `soundlayer` and every release player's `features` lists it. `test_build.py::test_sound_events_prebuilt` (`JASPER_SLOW_BUILD=1`): a prebuilt Linux player plays an event and a trigger (S35 player capture shows the picks of the editor's capture of the same scene, same seed); `content-manifest.json` `modules` lists `soundlayer`; a project without the features builds without it on a Compile build and its player's `features` match S34. |
 | AC12 (R22) | `engine/tests/core/bench/SoundEventBench.cpp` on server F within R22. |
 | AC13 (§6.1, §6.5) | `test_tool_budget.py`, `test_tool_conventions.py`, `test_tool_coverage.py`, `gen_tool_docs.py --check`, `test_reflection.py` (the new AudioSource fields' schema), S34's module tests (`ModuleUsage` evidence lines for each detection rule). |
 
@@ -481,8 +485,8 @@ Bound in `AudioClassesLua.cpp` and `GameObjectClassesLua.cpp` under `#if JASPERE
   (reflection, drawers, `RuntimeFields.gen.inc` via S30 R4), S23 (`tools/lua_api`), S24, S25
   (catalog, contexts, preferences), S30 (players load data), S31, S34 (module mechanism); S35 M3
   for R14; S36 M2/M7 for R18 (and S36 M3's `ClipSource` for audition with import settings).
-- **Precondition shared with S38:** prebuilt players must load the project's mixer (S38 §3 finding
-  and its Q1); without it an event's `output` group falls back to Master in prebuilt games.
+- **BF14 makes prebuilt players load the project's mixer** (S38 §3; resolved 2026-11-01), so an
+  event's `output` group resolves in prebuilt games as in Play; S37 assumes it.
 - **Blocks.** S39 (playlists use events; `Audio` table), S40 (cues use `startEvent` and free
   voices), S36 M9 (slicing writes events).
 - **Merge hotspots.** `AudioSystem.cpp` (S35, S39, S40, BF14), `AudioSourceComponent.h`,
@@ -499,18 +503,12 @@ Bound in `AudioClassesLua.cpp` and `GameObjectClassesLua.cpp` under `#if JASPERE
 - **A large Browser.** sound-layer's was 6,655 lines; default: the clip detail is S36's Inspector
   view reused, not a copy.
 
-**Open questions for the user**
-- **Q1. Release-player size of the sound runtime** (applies to S36 M3, S37, S39, S40). The
-  `soundlayer` module is estimated at 45–140 KB per player. S34's prebuilt variants are fixed sets;
-  options:
-  (a) put `soundlayer` in **every** prebuilt variant, as S34 did for navigation (0.35–0.51 MB, "stays
-  in every variant"): lite players grow by the module's size even when a game uses none of it;
-  Compile builds still strip it;
-  (b) leave it **out of** `lite2d`/`lite3d`/`core`: no prebuilt player grows, but a small 2D game
-  with one Sound Event is moved to the `ui` variant (+4.7–8.9 MB of HTML UI);
-  (c) add variants with it (`lite2d-sl`, …): doubles the CI's release players.
-  **Recommendation: (a)**, with the measured size recorded in S34's M table; the strict rule then
-  holds for Compile builds and as "below one variant step" for prebuilt ones.
+**Resolved questions**
+- **Q1. Release-player size of the sound runtime** (S36 M3, S37, S39, S40) — **resolved
+  2026-11-01 by the user**: the `soundlayer` module goes into **every** prebuilt player variant,
+  like navigation; Compile builds still strip it when unused (§6.6). The rejected options were
+  leaving it out of the lite variants (a small game with one Sound Event would move to a variant
+  4.7–8.9 MB larger) and doubling the variants.
 
 ## Milestones
 

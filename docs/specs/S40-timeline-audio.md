@@ -1,15 +1,18 @@
-# S40 — Timeline audio: audio cues on animation clips (Animation Player, Animator, montages)
+# S40 — Timeline audio: audio cues on animation clips (Animation Player, Animator, montages) and audio actions on the legacy action timeline
 
 **Wave / Depends on.** Sound wave B (spec-first: implemented after the integration branch lands in
-`main`). Depends on **S37 M2 and M4** (`startEvent`, free voices and handles, the `soundlayer`
+`main`). M5 (the legacy action timeline) follows M2 and shares its start path. Depends on **S37 M2 and M4** (`startEvent`, free voices and handles, the `soundlayer`
 module), **S36 M1 and M2** (waveform cache, the analysis' `peak_ms` and trims for alignment) and
 **S35 M3** (captures prove the sample placement). Runs in parallel with S39. Owner area:
 `engine/core/animation/ClipAudio.*`, `AnimationClipIO.*` (the `audio` key), `KeyframeSampling.*`
 (cue crossing), `engine/core/subsystem/ActionSystemPlayers.cpp` and
 `engine/core/animation/AnimatorInstance.cpp` (firing), `editor/window/AnimationWindowClipAudio.cpp`,
 `editor/animation/AnimationClipDocument.*` (cue edits), `editor/audio/TimelineAudioPreview.*`,
-`editor/mcp/tools/WorldTools.cpp` (`edit_animation`/`get_animation` cue keys), the Timeline audio
-section of `docs/mcp/guide/sound.md` and `docs/animation-clips.md`.
+`editor/mcp/tools/WorldTools.cpp` (`edit_animation`/`get_animation` cue keys), and for the legacy
+action timeline `engine/core/subsystem/ActionSystem.cpp`, the new
+`engine/core/component/AudioSnapshotComponent.h`, `editor/window/AnimationWindow.cpp` (action
+mode) and `editor/command/type/CreateEntityCmd.*`; the Timeline audio section of
+`docs/mcp/guide/sound.md` and `docs/animation-clips.md`.
 
 ## 1. Goal
 
@@ -22,6 +25,13 @@ crossing rules as clip events, placed to the sample inside the frame. The Animat
 the clip's waveform in the lane, aligns a cue's start, peak or end to the playhead, and plays the
 cues in its preview. Agents author cues with `edit_animation`.
 
+The legacy action timeline (an entity **Animation**: `AnimationComponent` frames of action
+entities) gets the same sound: **audio actions** (an action entity with an AudioSource playing a
+clip or a Sound Event) and **Mixer Snapshot actions**, sound-layer phase 6's design, ported
+(user decision of 2026-11-01). Both paths share one start function, one placement rule, the same
+GUID references and the same capture lines, so the same footsteps placed either way produce the
+same samples under S35's deterministic driver.
+
 ## 2. Scope
 
 **In scope**
@@ -30,12 +40,15 @@ cues in its preview. Agents author cues with `edit_animation`.
   placement, stop rules.
 - The Animation window's Audio lane in clip mode, alignment, drag and drop, preview playback, undo.
 - `edit_animation` and `get_animation` cue keys; capture lines.
+- The legacy action timeline (R17–R26): audio actions and Mixer Snapshot actions
+  (`AudioSnapshotComponent`), their pass bookkeeping and sub-frame placement in
+  `ActionSystem::animationUpdate`, the Animation window's action mode, `edit_animation` in
+  entity-Animation mode, Lua, tests.
 
 **Out of scope**
-- The legacy action timeline (`ActionComponent` frames of an `AnimationComponent`, sound-layer
-  phase 6's "audio actions", G-31): see Q1.
-- `AudioSnapshotComponent` (user decision 10's component): snapshot cues need no component, and the
-  256-bit signatures made the slot question moot.
+- `AudioSnapshotComponent` for clip cues: snapshot cues need no component. (The legacy timeline
+  does use it, R18, as user decision 10 accepted; the 256-bit signatures made the slot question
+  moot.)
 - Scrubbing audio (scrubbing stays silent), audio in the Animator window's graph preview, vertex
   animation (`.vat`) and pose animation clips.
 
@@ -61,6 +74,20 @@ cues in its preview. Agents author cues with `edit_animation`.
   events lane (`editor/window/AnimationWindowClipEvents.cpp`); edits go through
   `AnimationClipDocument`. MCP: `edit_animation` (core, `WorldTools.cpp:5673-5729`, at its
   `budget.json` exception of 3,606 characters) and `get_animation` (`:5731`).
+- **The legacy action timeline.** `AnimationComponent::actions` is a list of `ActionFrame
+  {startTime, duration (≤ 0: auto), action, track, started}` (`engine/core/component/AnimationComponent.h:11-17`,
+  reflected in `editor/reflect/components/AnimationReflect.cpp:126-150`); each frame's action
+  entity has an `ActionComponent` (`ActionComponent.h:17-40`). `ActionSystem::animationUpdate`
+  (`engine/core/subsystem/ActionSystem.cpp:231-322`) starts a child when the parent's `timecount`
+  passes its `startTime`, and **starts an ended child again on every later frame** "to hold its
+  last value" (`:269-283`); a loop wraps `timecount` with `fmod` (`:311-320`). `actionStart`,
+  `actionStop`, `actionPause` (`:32`, `:121`, `:186`) and `getDuration`/`getFrameDuration`
+  (`:1008-1100`) have no audio code: an AudioSource on an action entity does nothing.
+  `CreateEntityCmd` creates `ANIMATION` and tween action types, no audio type
+  (`editor/command/type/CreateEntityCmd.h:59-67`). The Animation window's action mode labels and
+  colours blocks in `getActionLabel`/`getFrameColor` (`editor/window/AnimationWindow.cpp:277,
+  2162`) and adds frames from Add Property (`:1977`, `:2320`). `edit_animation` without `clip`
+  edits an entity Animation (`add_actions`, `set_frames`, `remove_actions`; `WorldTools.cpp:5717-5722`).
 - **sound-layer** built timeline audio only on the legacy action timeline (`snd/p6-engine`
   7281b47c7: `ActionSystem` +233, `playFromAction`, sub-frame `actionDelaySamples`), never merged;
   its Animation window Audio track (P6 §2.3) was never built (`snd/p6-timeline` has no ref).
@@ -72,10 +99,11 @@ cues in its preview. Agents author cues with `edit_animation`.
 | Sub-frame start placement | 7281b47c7 (`actionDelaySamples`), P6 §2.2.3 | **Reused**: delay = the crossing's fraction of the frame × the frame's unscaled seconds × the output rate, through `setDelaySamples` (S37 R7). Moved from action frames to clip crossings. |
 | Length from the clip | 7281b47c7 `clipLengthSeconds`, `SoundPool::probeLength` | **Reused** for the lane's block length and "Align End". |
 | Audio track UI: waveform in the block, Align Start/Peak/End to Playhead, preview voices | P6 §2.3.1, §2.3.3, §2.3.4 (`TimelineAudioPreview`) | **Reused as design**, re-hosted on upstream's clip-mode lanes and `AnimationClipDocument`. |
-| Mixer Snapshot actions, `AudioSnapshotComponent` | P6 §2.2.1, decision 10 | **Changed** to `snapshot` cues (`AudioMixer::transitionTo`), no component. |
-| Audio actions on `ActionComponent` frames | P6 §2.2.1-2.2.2, `ActionSystem` hooks | **Dropped** here (Q1). |
+| Mixer Snapshot actions, `AudioSnapshotComponent` | P6 §2.2.1, decision 10, `engine/core/component/AudioSnapshotComponent.h` (sound-layer tip) | Clips: **changed** to `snapshot` cues (no component). Legacy timeline: **reused** (R18), on upstream snapshots (`AudioMixer::transitionTo`, `getCurrentSnapshot`) instead of sound-layer's `AudioSettings::snapshots`. |
+| Audio actions on `ActionComponent` frames | 7281b47c7, P6 §2.2.1-2.2.5 (`playFromAction`, `pauseFromAction`, `stopFromAction`, `clipLengthSeconds`, passes, lookahead, frame end, loop-wrap tolerance) | **Reused** (R17–R26, user decision 2026-11-01): onto target's `ActionSystem` (which now restarts ended children every frame, so the pass rule matters more), with S37's events and groups instead of sound-layer's buses. |
+| Animation window Audio track kind, Add Property > Sound, drop, Align, preview | P6 §2.3.1-2.3.5 | **Reused** for the action mode (R22–R24), with the same commands as the clip lane. |
 | Capture lines (`voice_start` cause `action`, `frame_index`) | P6 §2.2.4 | **Changed** to `cue` lines and cause `animation`. |
-| Tests | `test_audio_timeline.py` (T-1…T-11), `audio-timeline` fixture "Footsteps" | Scenarios reused (four footsteps on predicted samples, loop wraps, speed 2, pause/stop), rewritten for clips. |
+| Tests | `test_audio_timeline.py` (T-1…T-11), `test_audio_timeline_editor.py`, `audio-timeline` fixture "Footsteps" | Scenarios reused (four footsteps on predicted samples, loop wraps, speed 2, pause/stop, snapshot build), for clips and for the legacy timeline; fixture regenerated on target. |
 
 ## 5. Requirements
 
@@ -138,7 +166,7 @@ cues in its preview. Agents author cues with `edit_animation`.
   the frame. Under the deterministic driver the voice's first sample is exactly there
   (`latency_samples` aside, S35 R8); with a device within one device period. Time scale 0 crosses
   nothing; a state's speed and the time scale are already in `f`.
-- **R6. Starting.** `sound` cues go through S37's `Audio::play` path (its limits, RNG, the
+- **R6. Starting.** Every cue start goes through `AudioSystem::playFromTimeline` (shared with R19). `sound` cues go through S37's `Audio::play` path (its limits, RNG, the
   event's own ranges, then the cue's `volume_db`/`pitch_semitones` on top); `source` cues through
   `AudioSource::play()` with the delay; `snapshot` cues call `AudioMixer::transitionTo` in the
   frame (no sub-frame delay: a fade has no use for one). A cue whose sound does not resolve, whose
@@ -194,6 +222,83 @@ cues in its preview. Agents author cues with `edit_animation`.
   shaped by property tracks through a `source` cue, a "build" snapshot), `docs/unity-glossary.md`
   (Timeline Audio Track / animation events playing sounds → audio cues).
 
+### Functional — the legacy action timeline (audio actions; resolved Q1)
+
+- **R17. Audio actions.** An action entity with `ActionComponent` + `AudioSourceComponent` (clip
+  in `filename` or a Sound Event in S37's `event`, both `AssetRef`s resolved by GUID, the same
+  references as R1's `sound`; `state` Stopped; no Transform needed) referenced by an
+  `ActionFrame`. Its playback uses the source's own fields (volume, speed, pan, group, 3D settings,
+  S37's random ranges); a 3D audio action positions the voice at the animation's `target` entity.
+- **R18. Mixer Snapshot actions.** An action entity with `ActionComponent` +
+  `AudioSnapshotComponent` (new, `engine/core/component/AudioSnapshotComponent.h`, registered
+  after the last component in `EntityRegistry.cpp` so no `ComponentType` moves (S08 R33)):
+
+  | Field | Default | Meaning |
+  |---|---|---|
+  | `snapshot` | "" | a snapshot of the project's mixer ("" = none: the action does nothing) |
+  | `seconds` | 0 | transition time (`AudioMixer::transitionTo`) |
+  | `unscaled` | false | unscaled transition (otherwise the mixer's update mode) |
+  | `revert` | true | on stop, return to the snapshot active when it started, only if it is still its own |
+  | `revertSeconds` | -1 | -1: the same as `seconds` |
+  | runtime: `previousSnapshot`, `applied` | | never serialized; cleared by `EntityCloner` |
+
+  Reflected through S08 (`audiosnapshot.*`, all `OmitIfDefault`), cooked through
+  `RuntimeFields.gen.inc` (S30 R4), emitted by `cppAssignments` for Compile builds.
+- **R19. Start, pause, stop.** `ActionSystem::actionStart` of an audio action calls
+  `AudioSystem::playFromTimeline(entity, delayFrames, animation, frameIndex)`, the same function
+  clip cues use (R6), which starts the source's main voice through S37's `startEvent` or
+  upstream's `startVoice` with cause `animation`; a resume from Paused resumes and ignores the
+  delay. `actionPause` pauses it; `actionStop` stops it with a 10 ms fade (reason `cue_exit`), so a
+  stopped or paused Animation stops or pauses its audio (`animationStopChildren`,
+  `animationPauseChildren`). A snapshot action records `previousSnapshot`, transitions and sets
+  `applied` on start; on stop it reverts (R18's rule).
+- **R20. Passes and frame end** (sound-layer P6 §2.2.3, on target's loop): `AnimationComponent`
+  gains a runtime `pass` (incremented at each start and loop wrap) and `ActionFrame` runtime
+  `audioPass` (never serialized). An audio or snapshot child starts **once per pass** when
+  `startTime < T + a` and `T < E` (T the parent's `timecount` at entry, `a` this frame's advance,
+  E = `startTime + frameDuration / childSpeed`); it is **not** restarted every frame as other
+  ended children are (`ActionSystem.cpp:269-283`). It stops when `T ≥ E` (its frame ended) and
+  before a loop wrap; after the wrap, children at the loop's start are placed in the same frame.
+  The loop-end tests gain a 1e-5 s tolerance (a whole number of frames summed in floats must not
+  wrap a frame late).
+- **R21. Placement and durations.** The delay is R5's rule in the timeline's terms:
+  `round((startTime − T) / (action.speed × timeScale) × rate)` output frames, clamped to the
+  frame (0 for a late start, which plays from the sound's start). `getDuration` of an audio action
+  is the sound's played length at speed 1 divided by the source speed (S36's trimmed length; an
+  event: its longest clip, `layer` mode `max(delay + length)`; before loading, a header probe),
+  so an auto-length frame is exactly as long as its sound; a snapshot action's is its `seconds`.
+  The voice's speed is `source.speed × action.speed × parent animation speed` read at the start.
+  A standalone audio action (started directly, not by an Animation) stops itself when its sound
+  ends, so `onStop` fires.
+- **R22. Editor: the action mode** (S25 commands, the same ids as the clip lane where the action is
+  the same): Add Property gains a Sound submenu (`animation.addAudioAction`,
+  `animation.addSoundEventAction`, `animation.addSnapshotAction`; `CreateEntityCmd` types
+  `AUDIO_ACTION`, `SOUND_EVENT_ACTION`, `MIXER_SNAPSHOT_ACTION`, which add the components and the
+  frame in one undo step); dropping an audio file or `.soundevent` on the tracks creates an audio
+  action at the drop time; blocks are labelled `Audio: <stem>`, `Audio: <stem> (event)` or `Mixer
+  Snapshot: <name>`, coloured `AnimationAudio`/`AnimationSnapshot`, and audio blocks show R9's
+  waveform; `animation.alignCueStart`/`alignCuePeak`/`alignCueEnd` work on a selected audio block
+  (R10's formulas on `startTime`); the Inspector shows "Timeline audio: plays when its action
+  starts" on an AudioSource of an action entity and edits `AudioSnapshotComponent` with a snapshot
+  combo ("(missing)" for an unknown name). Every edit is one named undo step (S24).
+- **R23. Preview.** The action mode's playing preview uses R11's `TimelineAudioPreview` (same
+  rules: preview voices outside the mixer, scrubbing silent, off during a capture); snapshot actions
+  do nothing in the preview.
+- **R24. Lua.** `AudioSnapshotComponent` is bound in `ECSClassesLua.cpp` (`snapshot`, `seconds`,
+  `unscaled`, `revert`, `revertSeconds`) and `GameObject:getAudioSnapshotComponent()` as other
+  components; actions are started and stopped with the existing action API. Parsed by
+  `tools/lua_api` (S23).
+- **R25. MCP.** In entity-Animation mode (no `clip`), `edit_animation`'s `audio` array (R12's
+  items, `time` meaning the frame's `start_time`, plus `duration` and `lane`) creates audio and
+  snapshot actions under the animation (one undo step, with `remove_actions` removing them as any
+  action); `sound` and `snapshot` keep their meanings, `path` names the action's target. `get_animation`
+  lists them as `audio[]` with their frame index (result only). The shared key costs ~40
+  characters more than R12 alone (§6.1).
+- **R26. Consistency between the two paths** (one implementation, not two): one start function
+  (`playFromTimeline`), one placement rule, one gain composition (S37 R7), the same references
+  (`AssetRef` by GUID), the same capture lines (R8: `cue` lines carry `timeline: "clip"` or
+  `"actions"`), the same alignment commands and preview. AC10 proves it by sample equality.
+
 ### Performance budgets (server F, Release)
 
 - **R15.** Crossing cues costs nothing for clips without cues (an empty-array check per update);
@@ -215,7 +320,14 @@ cues in its preview. Agents author cues with `edit_animation`.
 - **D3. Placement reuses the event's sub-frame position** (`when(position)`), so events and cues of
   one crossing agree.
 - **D4. Version 3 only with cues**: an older engine cannot silently drop sounds a designer placed.
-- **D5. No Lua surface**: cues are data; scripts already have S37's API.
+- **D5. No Lua surface for cues**: cues are data; scripts already have S37's API. The legacy
+  timeline binds only its new component (R24).
+- **D6. Both timelines, one engine path** (user decision 2026-11-01): the legacy action timeline
+  is kept working for existing content and gets audio through the clip cues' functions, so
+  semantics cannot drift. The one difference is how a voice's span is written: a cue says `stop`;
+  an audio action lives in its frame (an explicit shorter `duration` cuts it, an auto duration is
+  the sound's length, so it ends naturally), which is the action timeline's own rule for every
+  action.
 
 API sketch:
 
@@ -227,6 +339,9 @@ namespace jasperengine {
                         bool spatial = false, followSpeed = false; std::optional<bool> unscaled;
                         float volumeDb = 0, pitchSemitones = 0, seconds = 0; ClipCueStop stop = ClipCueStop::None; };
   // ClipData::audio, AnimationClip::getAudioCues(); anim::collectCrossedCues(...) mirrors collectCrossedEvents
+  struct AudioSnapshotComponent { std::string snapshot; float seconds = 0; bool unscaled = false; bool revert = true; float revertSeconds = -1;
+                                  std::string previousSnapshot; bool applied = false; /* runtime */ };
+  // AudioSystem: void playFromTimeline(Entity source, uint32_t delayFrames, Entity animation, int frame, const TimelineCueRef& cue);
 }
 ```
 
@@ -234,7 +349,7 @@ namespace jasperengine {
 
 | Tool | Group | Change | Estimated listing chars |
 |---|---|---|---|
-| `edit_animation` | core | `audio` array (`time`, `sound`, `source`, `snapshot`, `path`, `spatial`, `volume_db`, `pitch_semitones`, `group`, `stop`, `seconds`); field meanings in `jasper://docs/animation` | +190 (exception 3,606 → 3,800 in `budget.json` with the reason "S40 audio cues"), offset by moving `edit_animation`'s humanoid sentence (~150 characters) to `jasper://docs/animation` when the default listing would pass 100,000 |
+| `edit_animation` | core | `audio` array (`time`, `sound`, `source`, `snapshot`, `path`, `spatial`, `volume_db`, `pitch_semitones`, `group`, `stop`, `seconds`, and for entity Animations `duration`, `lane`); field meanings in `jasper://docs/animation` | +230 (exception 3,606 → 3,840 in `budget.json` with the reason "S40 audio cues and audio actions"), offset by moving `edit_animation`'s humanoid sentence (~150 characters) and its tween key list to `jasper://docs/animation` when the default listing would pass 100,000 |
 | `get_animation` | core | result only | 0 |
 
 Group `audio`: unchanged (S35 §6.1). The instructions' "Clip property tracks" line gains "; audio
@@ -245,6 +360,8 @@ cues: audio (jasper://docs/sound)" (+~35 bytes).
 | File | Format id, version | Codec |
 |---|---|---|
 | `*.anim` | `jasperengine.anim` v3 when it has `audio` cues (v1/v2 otherwise, unchanged) | upstream's `AnimationClipIO` (engine) |
+| `.scene`/`.prefab`: audio actions | existing components only (`ActionComponent`, `AudioSourceComponent` with S37's fields); S03 scene `formatVersion` unchanged | S08 generic YAML codec |
+| `.scene`/`.prefab`: `AudioSnapshotComponent` | new component key `audiosnapshot`, `OmitIfDefault` fields; S03 scene `formatVersion` unchanged (an older editor keeps the unknown component through S03's unknown-data store) | S08 generic YAML codec, `RuntimeFields.gen.inc` (S30 R4), `cppAssignments` |
 
 ### 6.3 Settings
 
@@ -257,19 +374,26 @@ None.
 | `animation.alignCueStart` | Align Start to Playhead | none |
 | `animation.alignCuePeak` | Align Peak to Playhead | Shift+A (`A` is Frame All Keys, `DefaultCommands.cpp:353`) |
 | `animation.alignCueEnd` | Align End to Playhead | none |
-| `animation.addAudioCue` / `addSourceCue` / `addSnapshotCue` | Add Audio / Source / Snapshot Cue | none |
+| `animation.addAudioCue` / `addSourceCue` / `addSnapshotCue` | Add Audio / Source / Snapshot Cue (clip mode) | none |
+| `animation.addAudioAction` / `addSoundEventAction` / `addSnapshotAction` | Add Audio Clip / Sound Event / Mixer Snapshot action (action mode) | none |
+
+The Align commands act on the selected audio block in either mode.
 
 `check-hardcoded-shortcuts.py` passes.
 
 ### 6.5 Lua API
 
-None (R13).
+Clip cues: none (R13). Legacy timeline: `AudioSnapshotComponent` and its five fields,
+`GameObject:getAudioSnapshotComponent()` (R24).
 
 ### 6.6 Player size (S34)
 
 Cue parsing is part of `AnimationClipIO` (core, a few KB); playback is in S37's `soundlayer`
-module (estimated 6–10 KB of it). Detection: a shipped `.anim` with an `audio` array needs the
-module (S37 §6.6). A clip with cues in a build without the module is a build error naming the clip
+module (estimated 6–10 KB of it, plus 4–6 KB for the action hooks and `AudioSnapshotComponent`'s
+system code, under `#if JASPERENGINE_SOUND_LAYER` in `ActionSystem.cpp`). Detection: a shipped
+`.anim` with an `audio` array, or a shipped scene or prefab with an action entity holding an
+`AudioSourceComponent` or `AudioSnapshotComponent`, needs the module (S37 §6.6). The module is in
+every prebuilt variant (S37 Q1, resolved). A clip with cues in a build without the module is a build error naming the clip
 (it cannot happen with detection on; with Strip Engine Code off every module is in).
 
 ## 7. Acceptance criteria
@@ -283,6 +407,10 @@ module (S37 §6.6). A clip with cues in a build without the module is a build er
 | AC5 (R9–R11) | `tools/mcp/tests/test_animation_audio_editor.py` (xvfb, isolated editor): the lane draws a waveform block; drop an event creates a cue at the drop time in one undo step; Align Peak with the playhead at 1.0 s puts the clip's analysed peak on 1.0 s (`get_animation` reads it back); the playing preview creates preview voices and none in a capture; screenshots in the evidence. |
 | AC6 (R12, §6.1) | `test_animation_clip.py::test_edit_audio_cues` (replace/merge, refusal of two kinds in one cue, undo); `test_tool_budget.py` with the raised exception and the default listing ≤ 100,000; `gen_tool_docs.py --check`. |
 | AC7 (R15, R16) | The bench within R15; `test_runtime_regressions.py` and the S21 suites unchanged; old clips re-save byte-identical. |
+| AC8 (R17–R21) | `tools/mcp/tests/test_audio_timeline_actions.py` (S35 deterministic captures, `fixed_fps 60`): a legacy "Footsteps" Animation with four audio actions at 0.1/0.35/0.6/0.85 s: four `voice_start`s on `round(t × 48000) + latency`, each on the sample of its `action_start` marker; a looping Animation starts each once per pass (no restart every frame, red against target's restart rule); pause pauses and stop stops the voices (`cue_exit`); speed 2 halves the times; an auto-length frame equals the sound's length (`get_animation`); a standalone audio action fires `onStop` at its end. |
+| AC9 (R18, R24) | `test_audio_timeline_actions.py::test_snapshot_action`: a Mixer Snapshot action transitions at its start (S35 `mixer` line) and reverts at its stop only when the snapshot is still its own; `AudioSnapshotComponent` round-trips byte-identically, is set from Lua and `set_properties`, and an old scene re-saves unchanged. |
+| AC10 (R26) | `test_audio_timeline_parity.py`: the same four footsteps as clip cues on an Animation Player and as audio actions on a legacy Animation, same scene, seed and `fixed_fps`: identical `voice_start` samples, gains, picks of the same Sound Event and `master.wav` SHA-1 for the overlapping span. |
+| AC11 (R22, R23, R25) | `test_animation_audio_editor.py::test_action_mode` (xvfb): Add Property > Sound creates an audio action and its frame in one undo step; drop of a `.soundevent` on the tracks; Align Peak; the playing preview; `edit_animation` in entity mode creates and removes audio and snapshot actions (one undo step each); `test_tool_budget.py` with §6.1's exception; screenshots in the evidence. |
 
 ## 8. Dependencies & conflicts
 
@@ -290,22 +418,23 @@ module (S37 §6.6). A clip with cues in a build without the module is a build er
   durations), S35 (captures), S21 (Animator, montages, the leader rule), upstream's clip system and
   anim-properties, S04 (edges, Missing panel), S24 (named commands), S25 (catalog), S31 (budget).
 - **Coordination.** S21's owners for `AnimationClipIO`, `AnimatorInstance` and the Animation
-  window (merge hotspots: `AnimationClipIO.cpp`, `KeyframeSampling.*`, `ActionSystemPlayers.cpp`,
+  window, and the owners of the legacy `ActionSystem`/`AnimationComponent` (M5) (merge hotspots: `AnimationClipIO.cpp`, `KeyframeSampling.*`, `ActionSystemPlayers.cpp`,
   `AnimatorInstance.cpp`, `AnimationWindowClip*.cpp`, `WorldTools.cpp`, `budget.json`).
 
 ## 9. Risks & defaults
 
-- **Core listing growth** (+190): default: §6.1's offset keeps the default listing within 100,000.
+- **Core listing growth** (+230): default: §6.1's offset keeps the default listing within 100,000.
+- **Target's restart-every-frame rule for ended actions** would retrigger audio: R20's pass rule
+  exempts audio and snapshot children only; other actions keep today's behaviour.
 - **Many cues in crowds** (200 characters × footsteps): default: S37's instance limit and
   upstream's budget bound voices; R15 bounds the firing cost.
 - **Device-mode jitter** (one device period): default: documented; offline exact.
 
-**Open questions for the user**
-- **Q1. The legacy action timeline.** sound-layer put timeline audio on `ActionComponent` action
-  frames (`AnimationComponent`'s timeline, G-31), which upstream's clips and S21 now supersede for
-  new content. Port those audio actions too? **Recommendation: no**: clips are the Unity-like
-  timeline that the Animator and montages share; a legacy animation can play a sound through an
-  action's Lua or an AnimationEvent, and porting would add a second set of rules and UI.
+**Resolved questions**
+- **Q1. The legacy action timeline** — **resolved 2026-11-01 by the user: yes.** sound-layer's
+  audio actions are ported to the legacy action timeline in addition to the clip cues (R17–R26,
+  milestone M5), with the same playback semantics, the same GUID references and the same
+  deterministic timing (AC10).
 
 ## Milestones
 
@@ -314,6 +443,9 @@ module (S37 §6.6). A clip with cues in a build without the module is a build er
   (R4–R8); AC2–AC4.
 - **M3** The Audio lane, editing, alignment, preview (R9–R11); AC5. Needs S36 M1/M2.
 - **M4** `edit_animation`/`get_animation`, docs, budgets (R12–R16); AC6, AC7.
+- **M5** The legacy action timeline: audio and Mixer Snapshot actions, `AudioSnapshotComponent`,
+  passes and placement, the action mode's UI and preview, Lua, `edit_animation` entity mode,
+  parity with clip cues (R17–R26); AC8–AC11.
 
 ## Deviations
 

@@ -331,8 +331,9 @@ whose scripts never name a music function and whose content has no music needs n
 - **Device-mode quantization** is within one device period (5–20 ms on mobile): default: documented;
   offline it is exact.
 
-**Open questions for the user**
-- None. (The module's release-player question is S37 §9 Q1.)
+**Resolved questions**
+- Release-player size: the `soundlayer` module (which holds the music system) is in every
+  prebuilt variant; Compile builds strip it when unused (S37 §9 Q1, resolved 2026-11-01).
 
 ## Milestones
 

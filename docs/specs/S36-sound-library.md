@@ -445,7 +445,8 @@ None (R29).
 - `ClipSource`, `AudioImport` and the table loader are the only engine code (estimated 18–25 KB
   Linux, 10–14 KB wasm gzip). They are needed only when a project ships import settings: they
   belong to the optional engine module `soundlayer` that S37 defines (S37 §6.6), detected by "the
-  export writes `je-audio-imports.json`". Release players without the module: zero growth.
+  export writes `je-audio-imports.json`". The module is in every prebuilt variant (S37 Q1,
+  resolved 2026-11-01); a Compile build without import settings leaves it out: zero growth.
 - sfxr, analysis, images, search, the essentials (0.44 MiB) and the library (20.9 MiB): editor
   only, zero in players.
 
@@ -466,7 +467,7 @@ None (R29).
 | AC11 (R23, R24) | `test_audio_search.py`: query words, type, filters, `similar_to` ranking (a clip's nearest neighbour is its own variation), `scope`, no network (the harness's network guard); the Search palette lists a library clip and Enter imports it. |
 | AC12 (R25–R27) | `test_audio_clip_inspector.py` (xvfb, isolated editor): the clip view shows the waveform, notes and settings; dragging the trim handle and Apply writes one undo step; thumbnails appear; screenshots in the evidence. |
 | AC13 (R31, R32) | `tools/perf` bench for R31 on server F (before/after table here); editor start time within 2 % of the base. |
-| AC14 (§6.1, §6.6) | `test_tool_budget.py`, `test_tool_conventions.py`, `test_tool_coverage.py`, `gen_tool_docs.py --check`, the AC10 group assertion for the four tools; S34 size tools: release players unchanged for a project without import settings. |
+| AC14 (§6.1, §6.6) | `test_tool_budget.py`, `test_tool_conventions.py`, `test_tool_coverage.py`, `gen_tool_docs.py --check`, the AC10 group assertion for the four tools; S34 size tools: a Compile build without import settings is unchanged; prebuilt players carry the measured `soundlayer` size. |
 
 ## 8. Dependencies & conflicts
 
@@ -495,8 +496,9 @@ None (R29).
 - **A user edits an essential clip in place.** It is a project file like any other; `provenance`
   keeps the source; the credits still list it.
 
-**Open questions for the user**
-- None. (The release-player module question that covers `ClipSource` is S37 §9 Q1.)
+**Resolved questions**
+- Release-player size: `ClipSource` is in the `soundlayer` module, which is in every prebuilt
+  variant; Compile builds strip it when unused (S37 §9 Q1, resolved 2026-11-01).
 
 ## Milestones
 

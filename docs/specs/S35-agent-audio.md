@@ -68,7 +68,9 @@ movie audio becomes a client of the same tap. Everything is built on upstream's 
   (`AudioSystem.cpp:217-230`) de-inits and re-inits SoLoud with NULLDRIVER but never calls
   `AudioMixer::onAudioInit()`, so the mixer is not built (`AudioMixer::getBus` returns null while
   `!built`, `AudioMixer.cpp:1181-1187`) and every voice of a recorded movie bypasses the groups,
-  their effects and faders (found while checking; reported to BF14). `RecorderSession::mixAudio`
+  their effects and faders (found while checking). **BF14 fixes it before main** (the user's
+  decision of 2026-11-01), as it fixes prebuilt players ignoring the mixer (S38 §3); S35 assumes
+  both fixes and still replaces this path with the deterministic driver (R9). `RecorderSession::mixAudio`
   (`editor/recorder/RecorderSession.cpp:230-240`) mixes per game frame with
   `recorder::audioFramesOf` (an exact `llround` accumulator, `RecorderSettings.cpp:323-326`), and
   `AudioMixer::update` mixes the same null driver again (analysis X-1; BF14).
@@ -114,7 +116,8 @@ designs and code are source material; everything is re-hosted on upstream's `Aud
 - **Capture follows upstream's groups, not buses.** Per-group levels come from the existing
   `MeterFilter` slot, so no new SoLoud filter slot and no vendored tap patch are needed (D5).
 - **One pump, one tap.** The Recorder and the capture share the deterministic driver's output,
-  which removes X-1's double mix and the unbuilt-mixer capture by construction (D3).
+  so neither X-1's double mix nor an unbuilt mixer (both fixed by BF14) can come back: there is no
+  second pump and only one init path (D3).
 
 ### 4.3 Dropped
 
@@ -537,11 +540,11 @@ does not fix audio; checks report changed thresholds."
 | AC | Verification |
 |---|---|
 | AC1 (R2, R3) | `engine/tests/core/audio/AudioClockTest.cpp`: 144 fps at 44.1 kHz for 60 s mixes exactly `llround(60 × 44100)` frames; 60 fps at 48 kHz gives 800 per frame; zero and negative deltas mix 0. `DeterministicDriverTest.StartIsInItsFrame`: a voice started in frame k has its first non-zero sample in frame k's chunk at `latency_samples`. |
-| AC2 (R1, R5) | `DeterministicDriverTest.MixerIsBuilt`: under Deterministic a tone through group Music with a low-pass at 200 Hz reads > 12 dB below the bypassed tone on `getMeterDb("Music")` (the mixer is built, unlike today's `beginOfflineCapture`). Red on the base: the same test against `beginOfflineCapture`. |
+| AC2 (R1, R5) | `DeterministicDriverTest.MixerIsBuilt`: under Deterministic a tone through group Music with a low-pass at 200 Hz reads > 12 dB below the bypassed tone on `getMeterDb("Music")` (the mixer is built through the one init path). After BF14 this also holds for `beginOfflineCapture`, so the test guards against a regression when R9 deletes that path. |
 | AC3 (R4, S30 R17) | `tools/ci/test_player_cli.py::test_headless_audio_deterministic`: a fixture player with a looping source and a Lua `onStop` counter, `--headless --fixed-fps 60 --quit-after 300 --audio-capture` twice: identical SHA-1 of `master.wav`, `events.jsonl`, `levels.jsonl`; the Lua log shows `isPlaying` true at frame 60 (red on the base: sources go Stopped under `--headless`). |
 | AC4 (R8) | `tools/mcp/tests/test_audio_capture.py::test_deterministic_twice`: the `audio-qa` fixture's "Jump" scene, `play start fixed_fps 60`, `send_input` space at frames 30 and 90, stop at frame 180, twice: identical file hashes; `latency_samples` equals the value measured by `test_latency_constant` (a single-sample click clip at 48 and 44.1 kHz). |
 | AC5 (R10–R17) | `test_audio_capture.py`: the begin/end lines (`scene_load start` first; every `voice_start` has its `voice_stop`, reason `scene` for those alive at Stop); a script `init` start is captured at sample ≤ 800; `capture_max_seconds 2` truncates `master.wav` at 96,000 frames and keeps events; `capture_keep 2` leaves two sessions; a read-only capture root fails `play start` with the error and plays on; a killed editor leaves a session that `status` reports `aborted` and whose `master.wav` temp decodes up to its last flush. |
-| AC6 (R9) | `tools/mcp/tests/test_recorder.py::test_mp4_audio_matches_capture`: a Recorder movie with audio and an armed capture in one Play: the movie's PCM16 audio equals the capture's `master.wav` quantised the same way, frame for frame; the mixer's effect is audible in the movie (red on the base: the movie bypasses the mixer). `editor/tests/recorder/RecorderSettingsTest.cpp` `FramesMatchAudioClock` for 24/30/60/144 fps. |
+| AC6 (R9) | `tools/mcp/tests/test_recorder.py::test_mp4_audio_matches_capture`: a Recorder movie with audio and an armed capture in one Play: the movie's PCM16 audio equals the capture's `master.wav` quantised the same way, frame for frame; the mixer's effect is audible in the movie (BF14's fix, kept by the tap). `editor/tests/recorder/RecorderSettingsTest.cpp` `FramesMatchAudioClock` for 24/30/60/144 fps. |
 | AC7 (R14) | `tools/mcp/tests/test_audio_markers.py`: `ui_click` before the voice its subscriber starts, same sample; Bounce 2D gives `collision_2d` with `speed`; a 3D drop gives one `collision_3d` per pair per step with `speed` within 5 % of √(2gh); `spawn`/`destroy` carry the prefab GUID; `animation_event` carries the function; with no capture `AudioMarkers::isEnabled()` is false and the counters stay 0. |
 | AC8 (R15, R16) | `test_audio_capture.py::test_levels`: a 1 kHz tone on Music at −12 dBFS reads −12 ± 0.5 dB peak in the 1k band of `groups.Music`, and fader −6 dB moves it by −6 ± 0.2; stems' WAV equals the group signal (correlation > 0.999 with the master when only Music plays). |
 | AC9 (R19, R20) | `tools/mcp/tests/test_audio_session.py`: `status` without sessions; `arm {capture:false}` then a Play has no session; a no-device editor captures by default; `report` loudness equals `tools/mcp/audio_refs.py` (pyloudnorm) on the same `master.wav` within 0.1 LU; `E<n>`/`M<n>` numbering matches the image metadata; `play stop` returns the `audio` object; the image decodes, has the requested width and ≥ 2 % non-background pixels per lane. |
@@ -558,7 +561,8 @@ does not fix audio; checks report changed thresholds."
 - **Depends on.**
   - **BF14** (running): assumed fixed before S35 starts: S-1 (OGG streaming), S-2 (stream seek),
     S-3/S-4 (loader bounds, `AudioFileCheck`), S-5 (last block), S-6 (bus read-ahead), S-7 (null
-    drift), X-1 (Recorder double mix) and the unbuilt mixer in `beginOfflineCapture` (§3), B4
+    drift), X-1 (Recorder double mix), the unbuilt mixer in `beginOfflineCapture` (§3) and the
+    prebuilt players' audio settings (S38 §3; both confirmed for BF14 on 2026-11-01), B4
     (listener, Doppler), B5 (`--headless` → NoSound, which R4 then replaces), B6 (pause layers),
     B9, B11, B13, and decision 9 (centred 2D/UI listener). If one is still open when S35 starts,
     S35 M0 lists it as a precondition for BF14, not as S35 work.
@@ -585,8 +589,10 @@ does not fix audio; checks report changed thresholds."
   marker per pair per step bounds the log.
 - **Determinism across platforms** is not promised (float SIMD paths differ): R8 is per platform.
 
-**Open questions for the user**
-- None specific to S35. (The release-player size question that spans S35–S40 is in S37 §9.)
+**Resolved questions**
+- The Recorder's capture skipping the mixer and prebuilt players ignoring Project Settings > Audio:
+  **resolved 2026-11-01, fixed by BF14**; S35 assumes them and still replaces the Recorder path
+  (R9). The release-player module question is resolved in S37 §9 (Q1).
 
 ## Milestones
 

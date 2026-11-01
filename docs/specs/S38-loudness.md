@@ -65,7 +65,9 @@ through the same new-project mechanism: new projects use the iOS `ambient` audio
   `Exporter::writeGameConfig`, `editor/ExporterPrebuilt.cpp:496`) has no audio fields, and
   `AudioSystem::configure` / `AudioMixer::load` are emitted only into a Compile build's generated
   `main.cpp` (`editor/Generator.cpp:2869-2873`). A prebuilt game (S30 R5's default method) therefore
-  runs with no mixer and default voices. See Q1.
+  runs with no mixer and default voices. **BF14 fixes this before main** (resolved Q1, 2026-11-01):
+  `game.json` gets an audio block `{mixer, maxRealVoices, maxVoices, sampleRate}` that prebuilt
+  players apply as the generated `init()` does. S38 assumes that fix.
 - **iOS session.** The engine sets none: SoLoud's miniaudio backend calls `ma_device_init(NULL, …)`
   (`soloud_miniaudio.cpp:66-74`), so miniaudio's default applies: PlayAndRecord with
   DefaultToSpeaker, else Playback (`miniaudio.h:36495-36510`): the silent switch is ignored and the
@@ -183,7 +185,7 @@ through the same new-project mechanism: new projects use the iOS `ambient` audio
 - **R11. iOS session.** SoLoud's miniaudio backend gets a hook (vendored patch, marked
   `// JasperEngine patch`) that creates its context with `coreaudio.sessionCategory` from
   `AudioConfig` before `ma_device_init`; `default` leaves miniaudio's own choice. Compile builds
-  pass it through `AudioSystem::configure`; prebuilt builds through `game.json` (R14).
+  pass it through `AudioSystem::configure`; prebuilt builds through BF14's `game.json` audio block (R14).
 - **R12. Live loudness in the editor.** `AudioMixer::setLoudnessTap(bool)` (editor only calls it)
   makes the Master group's `MeterFilter` also push its blocks into a lock-free single-producer
   ring (2 s); the editor drains it into an `AudioMeter` stream. The Audio Mixer window's Master
@@ -197,7 +199,7 @@ through the same new-project mechanism: new projects use the iOS `ambient` audio
   every 100 ms) when a limiter exists on any group.
 - **R14. Players.** The output stage and the session category reach every export: Compile builds
   through `AudioConfig` in the generated `AudioSystem::configure`, prebuilt builds through the
-  audio block of `game.json` that Q1 adds (`outputStage`, `iosSessionCategory` beside `mixer`,
+  audio block of `game.json` that BF14 adds (S38 adds `outputStage`, `iosSessionCategory` beside `mixer`,
   `maxRealVoices`, `maxVoices`, `sampleRate`).
 
 ### Platform & backends
@@ -281,7 +283,7 @@ totals: S35 §6.1. Core: +0.
 |---|---|---|
 | `*.mixer` | `jasperengine.mixer` v1, and **v2** only when a limiter sets `lookahead` or `truePeak` (R3) | upstream's `AudioMixerIO`, reading 1–2 |
 | `project.yaml` `audio:` | S03 `formatVersion` unchanged (additive keys, written only when not default) | `editor/Stream.cpp` audio node (`Stream.cpp:2918` pattern) through the registry's getters/setters |
-| `game.json` audio block | `PlayerConfig::SCHEMA_VERSION` 1, additive keys | `PlayerConfig::fromJson` (when Q1's fix lands) |
+| `game.json` audio block | `PlayerConfig::SCHEMA_VERSION` 1, additive keys | `PlayerConfig::fromJson` (BF14's block; S38's two keys) |
 
 ### 6.3 Settings
 
@@ -300,7 +302,7 @@ None new (R19: the effect table already exposes parameters).
 - Always linked: `TruePeak` (48 taps, about 1 KB of tables), the limiter's lookahead path and the
   tap hook: estimated ≤ 6 KB Linux, ≤ 4 KB wasm (gzip ≤ 2 KB). The limiter is part of upstream's
   core mixer (every `.mixer` may name it), so it cannot be a module without splitting an effect;
-  see Q2.
+  accepted by the user (Q2, resolved 2026-11-01).
 - `AudioMeter`: zero in release players (D5); in development players under
   `JASPERENGINE_AUDIO_CAPTURE` (S35).
 
@@ -321,7 +323,8 @@ None new (R19: the effect table already exposes parameters).
 
 ## 8. Dependencies & conflicts
 
-- **Depends on.** BF14 (S-5/S-6, which the limiter's latency test relies on); upstream's mixer;
+- **Depends on.** BF14 (S-5/S-6, which the limiter's latency test relies on, and the prebuilt
+  players' audio block of resolved Q1); upstream's mixer;
   S03, S25, S27 (Hub templates), S30 (game.json), S34.
 - **Blocks.** S35 (M4: `AudioMeter`; `true_peak` check reads R3–R5), S36 M1 (`AudioMeter`).
 - **Coordination.** `.mixer` files have no row in S04's `AssetTypes` (`editor/asset/AssetTypes.cpp:23-54`
@@ -342,19 +345,15 @@ None new (R19: the effect table already exposes parameters).
 - **CPU on low-end Android** (R17): default: the measurement decides; if over budget the
   oversampler gets a NEON path, never a weaker detector.
 
-**Open questions for the user**
-- **Q1. Prebuilt players do not load the project's mixer or audio settings** (§3: `PlayerConfig`
-  has no audio fields; only Compile builds call `AudioMixer::load`). This is an integration bug of
-  the S30 player with upstream's mixer, outside the sound-layer work. Who fixes it?
-  **Recommendation: BF14** (it makes every exported prebuilt game sound different from Play), with
-  the `game.json` audio block `{mixer, maxRealVoices, maxVoices, sampleRate}` of the existing
-  `AudioSettings`; S38 then adds `outputStage` and `iosSessionCategory` to it (R14). If BF14
-  cannot take it, S38 M0 does.
-- **Q2. Always-linked limiter growth.** The true-peak and lookahead code sits inside upstream's
-  core `limiter` effect, ≤ 6 KB in every release player even for games without a limiter. Accept
-  it as below S34's measurement step, or require the limiter's new path to be a separate
-  `soundlayer`-module filter (an effect whose implementation depends on the module)?
-  **Recommendation: accept** (the decision-2 default mixer uses it in every new project anyway).
+**Resolved questions**
+- **Q1. Prebuilt players do not load the project's mixer or audio settings** (§3) — **resolved
+  2026-11-01: BF14 fixes it** (`fix/bf14-audio-bugs`, before main), together with the Recorder's
+  capture that skipped the mixer (S35 §3). There is no S38 M0; S38 assumes both fixes and only adds
+  `outputStage` and `iosSessionCategory` to BF14's `game.json` audio block (R14).
+- **Q2. Always-linked limiter growth** — **resolved 2026-11-01: accepted.** The true-peak and
+  lookahead path stays inside upstream's core `limiter` effect, ≤ 6 KB in every release player
+  (§6.6); new projects get the `linear` output stage (R7, R8); the mixer is written as format
+  version 2 only when the new limiter parameters are used (R3).
 
 ## Milestones
 
@@ -362,7 +361,7 @@ None new (R19: the effect table already exposes parameters).
 - **M2** Limiter parameters and algorithm, gain-reduction readout, output stage (R3–R7); AC2–AC4.
 - **M3** New-project defaults and settings (R8–R10); AC5.
 - **M4** Readouts: tap, Mixer window, `audio_mixer get`, `get_play_state` (R12, R13, R18); AC6.
-- **M5** iOS session hook and the export paths (R11, R14, R15); AC7 (needs Q1's fix for prebuilt).
+- **M5** iOS session hook and the export paths (R11, R14, R15); AC7 (prebuilt through BF14's `game.json` audio block).
 - **M6** Budgets, docs, size (R16, R17, R19–R21); AC8–AC10.
 
 ## Deviations
