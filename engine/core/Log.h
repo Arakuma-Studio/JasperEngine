@@ -7,6 +7,7 @@
 #include "Export.h"
 #include "log/LogCategory.h"
 #include "log/LogFormatCheck.h"
+#include "log/LogRecord.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -19,17 +20,20 @@ namespace jasperengine {
     // FunctionSubscribe.h includes this header: the event type is declared here, defined there
     template<typename T> class FunctionSubscribe;
 
-    // SYNC4-ABSORB(log-overlay): upstream's log buffer and listeners on oe-port's one LogLevel
-    // (log/LogCategory.h: Trace for upstream's Verbose); fed by Log::* only until the
-    // log-overlay absorption makes them an S09 sink (every Logger record)
+    // The log's buffer and listeners (feature debug-overlay) are an S09 sink: the resident
+    // Inline sink "buffer" (Logger, log/LogSink.h) sees every record of the process, the
+    // JE_LOG_* macros, Out::*, Lua and these Log::* calls alike, with the Logger's one LogLevel
+    // (log/LogCategory.h; upstream's Verbose is Trace) and its ids. What the gate, the rate
+    // limit or a full queue holds back never reaches it, as for every sink.
     // the bit of a level in a level mask (Log::getEntries)
     constexpr uint32_t logLevelBit(LogLevel level) { return 1u << static_cast<uint32_t>(level); }
     constexpr uint32_t LOG_LEVELS_ALL = 0x7Fu;   // Trace .. Off
 
     // One line of the log, as the buffer and the listeners get it
     struct LogEntry {
-        uint64_t id = 0;            // increasing from 1, never reused
+        uint64_t id = 0;            // the Logger's record id: increasing from 1, never reused
         LogLevel level = LogLevel::Info;
+        const LogCategory* category = nullptr;   // the record's (engine for Log::*, lua for Lua)
         std::string message;        // the text before "stack traceback:" (trimmed)
         std::string stackTrace;     // from "stack traceback:" on, a Lua traceback of Log.warn/error, or ""
         double time = 0.0;          // seconds since the app started (monotonic)
@@ -49,16 +53,18 @@ namespace jasperengine {
     // (no None / Always enumerators here: X11 headers #define them, and exports include both)
     enum class LogStackTraces { Off, Errors, Warnings, All };
 
-    // The engine's log. Every line goes to the platform log (the editor's Console, logcat, the
-    // terminal), into a bounded ring buffer (the on-device console, Log.getEntries) and to the
-    // listeners (Unity's Application.logMessageReceived / logMessageReceivedThreaded). Safe to
-    // call from any thread; listeners are never called with the log's lock held, and a line
-    // logged inside a listener is recorded but not handed to listeners again (no recursion).
+    // The engine's log, on the S09 Logger (log/Logger.h). Every record goes to the Logger's
+    // sinks (the editor's Console, logcat, the terminal, files) and, through the "buffer" sink,
+    // into a bounded ring buffer (the on-device console, Log.getEntries) and to the listeners
+    // (Unity's Application.logMessageReceived / logMessageReceivedThreaded). Safe to call from
+    // any thread; listeners are never called with the Logger's or the buffer's lock held, and a
+    // line logged inside a listener is recorded but not handed to listeners again (no recursion).
     class JASPERENGINE_API Log {
     public:
         // printf-style, category "engine" (Logger in log/Logger.h has categories, source
         // locations and the JE_LOG_* macros): print is Info, verbose Trace, debug Debug
-        // (compiled out with NDEBUG), warn Warn, error Error
+        // (compiled out with NDEBUG), warn Warn, error Error. Gated before formatting and
+        // rate limited by call site (S09 R3, R9).
         static void print(JE_FORMAT_STRING const char* text, ...) JE_PRINTF_FORMAT(1, 2);
 
         static void verbose(JE_FORMAT_STRING const char* text, ...) JE_PRINTF_FORMAT(1, 2);
@@ -66,9 +72,12 @@ namespace jasperengine {
         static void warn(JE_FORMAT_STRING const char* text, ...) JE_PRINTF_FORMAT(1, 2);
         static void error(JE_FORMAT_STRING const char* text, ...) JE_PRINTF_FORMAT(1, 2);
 
-        // One line with its parts given (the Lua bindings): an empty stackTrace splits one off
-        // the message at "stack traceback:"
-        static void emitEntry(LogLevel level, const std::string& message, const std::string& stackTrace, bool fromLua);
+        // One line with its parts given (the Lua bindings): logged as message, a new line and
+        // stackTrace; the buffer gets the two parts as given (an empty stackTrace splits one off
+        // the message at "stack traceback:"). Category: the one given, else lua for a line from
+        // Lua (flagged LogFlagLua, no native backtrace) and engine otherwise.
+        static void emitEntry(LogLevel level, const std::string& message, const std::string& stackTrace, bool fromLua,
+                              const LogCategory* category = nullptr, const LogSource* source = nullptr);
 
         static LogListenerId addListener(std::function<void(const LogEntry&)> listener, LogDelivery delivery = LogDelivery::MainThread);
         // Stops the listener. When this returns, no new call of it starts (a line being
@@ -85,6 +94,10 @@ namespace jasperengine {
         // lines logged off the main thread that wait for dispatchPending
         static size_t getPendingCount();
 
+        // The buffer's sink is in the Logger (it installs itself on first use of the log and at
+        // the engine library's start); its Logger::SinkId, 0 if it was removed
+        static uint32_t getBufferSinkId();
+
         // The buffered lines, oldest first: the newest maxCount (0 = all) of the levels in
         // levelMask (logLevelBit) whose id is above afterId
         static std::vector<LogEntry> getEntries(size_t maxCount = 0, uint32_t levelMask = LOG_LEVELS_ALL, uint64_t afterId = 0);
@@ -94,9 +107,9 @@ namespace jasperengine {
         static constexpr size_t maxBufferSize = 100000;
         static void setBufferSize(size_t entries);
         static size_t getBufferSize();
-        // lines of that level logged since the last clearEntries (buffered or not)
+        // lines of that level the buffer's sink got since the last clearEntries (buffered or not)
         static size_t getCount(LogLevel level);
-        // the id of the newest line logged (0 = none yet)
+        // the id of the newest line the buffer's sink got (0 = none yet)
         static uint64_t getLastId();
         // the id of the oldest buffered line (getLastId() + 1 when the buffer is empty)
         static uint64_t getFirstBufferedId();

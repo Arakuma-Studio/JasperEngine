@@ -1,9 +1,16 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+// Log::* on the S09 Logger, and the log's buffer and listeners (feature debug-overlay) as one of
+// its sinks: "buffer", Inline and resident (log/LogSink.h). Inline, it sees the records in id
+// order on the thread that logs, under the Logger's lock: there it only copies the record into
+// the ring (and the pending queue of the main thread's listeners). The listeners run from its
+// afterWrite(), on the same thread once the Logger's lock is released, as upstream's Log ran
+// them after its own lock. Resident, it gets the records logged before Logger::init and after
+// Logger::shutdown too, so the buffer holds lines from the process's first one.
+
 #include "Log.h"
 #include "log/Logger.h"
-#include "System.h"
 #include "Engine.h"
 #include "util/FunctionSubscribe.h"
 
@@ -28,6 +35,7 @@ namespace {
     // lines other threads logged that wait for the next frame; past it they are counted, and
     // reported once (as a warning line) when the queue has room again
     constexpr size_t pendingLimit = 1000;
+    constexpr size_t levelCount = 7;   // Trace .. Off
 
     struct Listener {
         LogListenerId id;
@@ -40,7 +48,9 @@ namespace {
     };
     using ListenerList = std::vector<std::shared_ptr<Listener>>;
 
-    // Everything under one mutex; listeners are called from copies of the list, never under it
+    // The buffer, the pending queue, the counts and the listener list under one mutex (taken
+    // inside the Logger's lock by the sink, alone by everything else); listeners are called
+    // from copies of the list, never under it
     struct LogState {
         std::mutex mutex;
         std::deque<LogEntry> buffer;
@@ -48,13 +58,14 @@ namespace {
         std::deque<LogEntry> pending;
         size_t pendingDropped = 0;
         uint64_t lastId = 0;
-        size_t counts[7] = {0, 0, 0, 0, 0, 0, 0};
+        size_t counts[levelCount] = {0, 0, 0, 0, 0, 0, 0};
         // copied on write: a dispatch holds the list it started with
         std::shared_ptr<const ListenerList> listeners = std::make_shared<ListenerList>();
         LogListenerId lastListenerId = 0;
         // a call of a removed listener ended (removeListener waits on it)
         std::mutex callsMutex;
         std::condition_variable callsDone;
+        std::atomic<uint32_t> sinkId{0};
     };
 
     // never destroyed: threads and static destructors may still log while the process exits
@@ -89,70 +100,54 @@ namespace {
         return calls;
     }
 
+    // What the sink's write() leaves for its afterWrite() on this thread: the lines to hand to
+    // the listeners (in id order) and a report of the worker lines the pending queue dropped
+    struct ThreadDispatch {
+        std::vector<LogEntry> entries;
+        size_t droppedReport = 0;
+    };
+
+    ThreadDispatch& threadDispatch(){
+        thread_local ThreadDispatch dispatch;
+        return dispatch;
+    }
+
+    // Log::emitEntry's parts, for the record whose text it is (the text's address tells it from
+    // a record logged meanwhile: a rate-limit summary, a drop notice)
+    struct GivenParts {
+        const char* text;
+        const std::string* message;
+        const std::string* stackTrace;
+    };
+
+    const GivenParts*& givenParts(){
+        thread_local const GivenParts* parts = nullptr;
+        return parts;
+    }
+
     size_t levelIndex(LogLevel level){
         const size_t index = static_cast<size_t>(level);
-        return index < 7 ? index : 0;
+        return index < levelCount ? index : static_cast<size_t>(LogLevel::Info);
     }
 
-    LogLevel levelOfType(int type){
-        switch (type){
-            case D_LOG_VERBOSE: return LogLevel::Trace;
-            case D_LOG_DEBUG: return LogLevel::Debug;
-            case D_LOG_WARN: return LogLevel::Warn;
-            case D_LOG_ERROR: return LogLevel::Error;
-            default: return LogLevel::Info;
-        }
-    }
-
-
-    std::string trimmed(const std::string& text){
+    std::string trimmed(std::string_view text){
         size_t start = 0;
         size_t end = text.size();
         while (start < end && (text[start] == ' ' || text[start] == '\t' || text[start] == '\n' || text[start] == '\r')) start++;
         while (end > start && (text[end - 1] == ' ' || text[end - 1] == '\t' || text[end - 1] == '\n' || text[end - 1] == '\r')) end--;
-        return text.substr(start, end - start);
+        return std::string(text.substr(start, end - start));
     }
 
     // Lua errors end with "stack traceback:" and the frames (LuaBinding::handleLuaError)
-    void splitStackTrace(const std::string& text, std::string& message, std::string& stackTrace){
+    void splitStackTrace(std::string_view text, std::string& message, std::string& stackTrace){
         const size_t at = text.find("stack traceback:");
-        if (at == std::string::npos){
-            message = text;
+        if (at == std::string_view::npos){
+            message.assign(text.data(), text.size());
             stackTrace.clear();
             return;
         }
         message = trimmed(text.substr(0, at));
         stackTrace = trimmed(text.substr(at));
-    }
-
-    // one formatted line: a stack buffer, the heap past 4 KB (a Lua traceback, a long print)
-    std::string format(const char* fmt, va_list args){
-        char stackBuffer[4096];
-        va_list sizeArgs;
-        va_copy(sizeArgs, args);
-        const int size = vsnprintf(stackBuffer, sizeof(stackBuffer), fmt, sizeArgs);
-        va_end(sizeArgs);
-        if (size < 0)
-            return std::string();
-        if (size < static_cast<int>(sizeof(stackBuffer)))
-            return std::string(stackBuffer, static_cast<size_t>(size));
-        std::string text(static_cast<size_t>(size) + 1, '\0');
-        va_list copy;
-        va_copy(copy, args);
-        vsnprintf(&text[0], text.size(), fmt, copy);
-        va_end(copy);
-        text.resize(static_cast<size_t>(size));
-        return text;
-    }
-
-
-    // Through oe-port's Logger (category "engine": its level gate, its sinks: the System's log,
-    // the editor's Console, files), as every Log::* line of oe-port went
-    void toPlatform(LogLevel level, const std::string& text){
-        LogCategory& category = logCategoryEngine();
-        if (Logger::shouldLog(level, category)) {
-            Logger::write(level, category, text);
-        }
     }
 
     // One call, counted while it runs. The count goes up before `removed` is read, and
@@ -186,132 +181,208 @@ namespace {
         }
     }
 
+    std::shared_ptr<const ListenerList> currentListeners(){
+        LogState& s = state();
+        std::lock_guard<std::mutex> lock(s.mutex);
+        return s.listeners;
+    }
+
     // the main thread's listeners and the Lua event
     void dispatchOnMainThread(const LogEntry& entry){
-        std::shared_ptr<const ListenerList> listeners;
-        {
-            std::lock_guard<std::mutex> lock(state().mutex);
-            listeners = state().listeners;
-        }
+        const std::shared_ptr<const ListenerList> listeners = currentListeners();
         ListenerScope scope;
         callListeners(listeners, entry, LogDelivery::MainThread);
         if (Log::onMessageReceived.hasSubscribers())
             Log::onMessageReceived.call(entry.message, entry.stackTrace, static_cast<int>(entry.level));
     }
 
-    void record(LogLevel level, const std::string& text, const std::string& givenTrace, bool fromLua){
-        LogEntry entry;
-        entry.level = level;
-        if (givenTrace.empty()){
-            splitStackTrace(text, entry.message, entry.stackTrace);
-        }else{
-            entry.message = text;
-            entry.stackTrace = givenTrace;
+    // The buffer and the listeners as an S09 sink. Not the editor's own categories (editor,
+    // build, mcp: Out::*, compiler output, the MCP server): the buffer is the game's log, as
+    // upstream's (whose Log::* never saw Out::*); the sink's categoryMask leaves them out
+    class LogBufferSink : public LogSink {
+    public:
+        LogBufferSink(){
+            const uint64_t editorOnly = (1ull << logCategoryEditor().index) | (1ull << logCategoryBuild().index) |
+                                        (1ull << logCategoryMcp().index);
+            categoryMask.store(~editorOnly, std::memory_order_relaxed);
         }
-        entry.time = std::chrono::duration<double>(std::chrono::steady_clock::now() - startTime).count();
-        entry.frame = Engine::getGameFrames();
-        entry.mainThread = Log::isMainThread();
-        // a Lua error's traceback came with its message (LuaBinding's "Lua Error: ..." lines)
-        entry.fromLua = fromLua || (givenTrace.empty() && !entry.stackTrace.empty());
 
-        const bool dispatch = !insideListener();
-        std::shared_ptr<const ListenerList> listeners;
-        size_t droppedReport = 0;
-        {
-            LogState& s = state();
-            std::lock_guard<std::mutex> lock(s.mutex);
-            entry.id = ++s.lastId;
-            s.counts[levelIndex(level)]++;
-            if (s.bufferSize > 0){
-                s.buffer.push_back(entry);
-                while (s.buffer.size() > s.bufferSize)
-                    s.buffer.pop_front();
+        void write(const LogRecord& record) override {
+            LogEntry entry;
+            entry.id = record.id;
+            entry.level = record.level;
+            entry.category = record.category;
+            const GivenParts* given = givenParts();
+            const bool givenTrace = given && record.text.data() == given->text && !given->stackTrace->empty();
+            if (givenTrace){
+                entry.message = *given->message;
+                entry.stackTrace = *given->stackTrace;
+            }else{
+                splitStackTrace(record.text, entry.message, entry.stackTrace);
             }
-            listeners = s.listeners;
-            if (dispatch && !entry.mainThread){
-                if (s.pending.size() < pendingLimit){
-                    if (s.pendingDropped > 0){
-                        droppedReport = s.pendingDropped;
-                        s.pendingDropped = 0;
+            entry.time = std::chrono::duration<double>(std::chrono::steady_clock::now() - startTime).count();
+            entry.frame = Engine::getGameFrames();
+            entry.mainThread = Log::isMainThread();
+            // a Lua error's traceback came with its message (LuaBinding's "Lua Error: ..." lines)
+            entry.fromLua = (record.flags & LogFlagLua) != 0 || (!givenTrace && !entry.stackTrace.empty());
+
+            const bool dispatch = !insideListener();
+            ThreadDispatch& out = threadDispatch();
+            {
+                LogState& s = state();
+                std::lock_guard<std::mutex> lock(s.mutex);
+                s.lastId = std::max(s.lastId, entry.id);
+                s.counts[levelIndex(entry.level)]++;
+                if (s.bufferSize > 0){
+                    s.buffer.push_back(entry);
+                    while (s.buffer.size() > s.bufferSize)
+                        s.buffer.pop_front();
+                }
+                if (dispatch && !entry.mainThread){
+                    if (s.pending.size() < pendingLimit){
+                        if (s.pendingDropped > 0){
+                            out.droppedReport += s.pendingDropped;
+                            s.pendingDropped = 0;
+                        }
+                        s.pending.push_back(entry);
+                    }else{
+                        s.pendingDropped++;
                     }
-                    s.pending.push_back(entry);
-                }else{
-                    s.pendingDropped++;
                 }
             }
+            if (dispatch)
+                out.entries.push_back(std::move(entry));
         }
 
-        // the platform log first: the editor's Console shows a line before what a listener logs
-        // about it. A given trace goes under the message, as a Lua error's does
-        toPlatform(level, givenTrace.empty() ? text : text + "\n" + givenTrace);
-
-        if (droppedReport > 0)
-            Log::warn("Log: %zu lines logged by other threads were not given to the log listeners (more than %zu waited for a frame)",
-                      droppedReport, pendingLimit);
-
-        if (!dispatch)
-            return;
-        {
-            ListenerScope scope;
-            callListeners(listeners, entry, LogDelivery::AnyThread);
+        // the Logger's lock released: the listeners of what write() got on this thread
+        void afterWrite() override {
+            ThreadDispatch& out = threadDispatch();
+            if (out.droppedReport > 0){
+                const size_t dropped = out.droppedReport;
+                out.droppedReport = 0;
+                Log::warn("Log: %zu lines logged by other threads were not given to the log listeners (more than %zu waited for a frame)",
+                          dropped, pendingLimit);
+            }
+            if (out.entries.empty())
+                return;
+            // taken first: a listener's own lines are recorded into the list of this thread
+            std::vector<LogEntry> entries;
+            entries.swap(out.entries);
+            const std::shared_ptr<const ListenerList> listeners = currentListeners();
+            for (const LogEntry& entry : entries){
+                {
+                    ListenerScope scope;
+                    callListeners(listeners, entry, LogDelivery::AnyThread);
+                }
+                if (entry.mainThread)
+                    dispatchOnMainThread(entry);
+            }
+            // the storage back for the next line (no allocation per line)
+            entries.clear();
+            if (out.entries.empty())
+                out.entries.swap(entries);
         }
-        if (entry.mainThread)
-            dispatchOnMainThread(entry);
+
+        Delivery delivery() const override { return Delivery::Inline; }
+        const char* name() const override { return "buffer"; }
+        bool resident() const override { return true; }
+        bool wantsAfterWrite() const override { return true; }
+    };
+
+    // the sink in the Logger, once (the first use of the log, or the library's start)
+    bool installBuffer(){
+        static const bool installed = [](){
+            state().sinkId.store(Logger::addSink(std::make_unique<LogBufferSink>()), std::memory_order_release);
+            return true;
+        }();
+        return installed;
     }
 
-    void emit(int type, const char* fmt, va_list args){
-        record(levelOfType(type), format(fmt, args), std::string(), false);
+    // at the engine library's start: records logged before any Log:: call are buffered too
+    [[maybe_unused]] const bool bufferAtStart = installBuffer();
+
+    void logAt(LogLevel level, const char* fmt, va_list args) JE_PRINTF_FORMAT(2, 0);
+    void logAt(LogLevel level, const char* fmt, va_list args){
+        installBuffer();
+        LogCategory& category = logCategoryEngine();
+        if (Logger::shouldLog(level, category))
+            Logger::vwritef(level, category, nullptr, fmt, args);
     }
 }
 
 void Log::print(const char *fmt, ...) {
     va_list arg_ptr;
     va_start(arg_ptr, fmt);
-    emit(0, fmt, arg_ptr);
+    logAt(LogLevel::Info, fmt, arg_ptr);
     va_end(arg_ptr);
 }
 
 void Log::verbose(const char *fmt, ...) {
-	va_list arg_ptr;
-	va_start(arg_ptr, fmt);
-    emit(D_LOG_VERBOSE, fmt, arg_ptr);
-	va_end(arg_ptr);
+    va_list arg_ptr;
+    va_start(arg_ptr, fmt);
+    logAt(LogLevel::Trace, fmt, arg_ptr);
+    va_end(arg_ptr);
 }
 
 void Log::debug(const char *fmt, ...) {
     #ifndef NDEBUG
     va_list arg_ptr;
     va_start(arg_ptr, fmt);
-    emit(D_LOG_DEBUG, fmt, arg_ptr);
+    logAt(LogLevel::Debug, fmt, arg_ptr);
     va_end(arg_ptr);
+    #else
+    (void)fmt;
     #endif
 }
 
 void Log::warn(const char *fmt, ...) {
     va_list arg_ptr;
     va_start(arg_ptr, fmt);
-    emit(D_LOG_WARN, fmt, arg_ptr);
+    logAt(LogLevel::Warn, fmt, arg_ptr);
     va_end(arg_ptr);
 }
 
 void Log::error(const char *fmt, ...) {
     va_list arg_ptr;
     va_start(arg_ptr, fmt);
-    emit(D_LOG_ERROR, fmt, arg_ptr);
+    logAt(LogLevel::Error, fmt, arg_ptr);
     va_end(arg_ptr);
 }
 
-void Log::emitEntry(LogLevel level, const std::string& message, const std::string& stackTrace, bool fromLua){
+void Log::emitEntry(LogLevel level, const std::string& message, const std::string& stackTrace, bool fromLua,
+                    const LogCategory* category, const LogSource* source){
     #ifdef NDEBUG
     if (level == LogLevel::Debug)
         return;
     #endif
-    record(level, message, stackTrace, fromLua);
+    installBuffer();
+    const LogCategory& target = category ? *category : (fromLua ? logCategoryLua() : logCategoryEngine());
+    if (!Logger::shouldLog(level, target))
+        return;
+    // Lua lines carry their traceback in the text, never native frames
+    const uint32_t flags = fromLua ? (LogFlagLua | LogFlagNoBacktrace) : 0u;
+    if (stackTrace.empty()){
+        Logger::write(level, target, message, source, flags);
+        return;
+    }
+    // the platform log gets the trace under the message, as a Lua error's
+    const std::string text = message + "\n" + stackTrace;
+    const GivenParts parts{text.data(), &message, &stackTrace};
+    const GivenParts* previous = givenParts();
+    givenParts() = &parts;
+    Logger::write(level, target, text, source, flags);
+    givenParts() = previous;
+}
+
+uint32_t Log::getBufferSinkId(){
+    installBuffer();
+    return state().sinkId.load(std::memory_order_acquire);
 }
 
 LogListenerId Log::addListener(std::function<void(const LogEntry&)> listener, LogDelivery delivery){
     if (!listener)
         return 0;
+    installBuffer();
     LogState& s = state();
     std::lock_guard<std::mutex> lock(s.mutex);
     auto added = std::make_shared<Listener>();
@@ -440,8 +511,8 @@ LogStackTraces Log::getStackTraces(){
 bool Log::wantsStackTrace(LogLevel level){
     switch (getStackTraces()){
         case LogStackTraces::All: return true;
-        case LogStackTraces::Warnings: return level == LogLevel::Warn || level == LogLevel::Error;
-        case LogStackTraces::Errors: return level == LogLevel::Error;
+        case LogStackTraces::Warnings: return level >= LogLevel::Warn && level <= LogLevel::Fatal;
+        case LogStackTraces::Errors: return level == LogLevel::Error || level == LogLevel::Fatal;
         default: return false;
     }
 }
