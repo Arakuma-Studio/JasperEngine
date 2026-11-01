@@ -126,8 +126,8 @@ return Player
 - Lifecycle by name: init (Awake: first activation, even disabled), onEnable, start,
   onDisable, onDestroy; self.enabled; obj:getScript("Enemy") (lua-api 1.1). Survive loads:
   DontDestroyOnLoad(self); singleton: if GameObject.persistSingleton(self)~=self then return end
-- Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
-  Engine.deltatime ("attempt to call a nil value": no such method). Check
+- Bound getters are often PROPERTIES: go.position, sprite.width, body.mass, Engine.deltatime
+  ("attempt to call a nil value": no such method). Check
   jasper://docs/lua-api (an index), the Lua stubs or search_engine_api for unseen names.
 - Input.getAxis/getButtonDown('Jump') read Project Settings > Input actions; getKeyDown(key)
   is an edge, isKeyPressed held. Test with send_input action/axis events (jasper://docs/input).
@@ -136,8 +136,8 @@ return Player
   timers: self:invoke. No C++ default args.
 - Saves: PlayerPrefs, Json, File.writeText("data://x") (lua-api 2.4; tool user_settings).
   HTTP: Http.get/post, main-thread callbacks (jasper://docs/networking).
-- Lua has no Dori.Script, getComponent or setProperty. Never put editor property
-  paths (submeshes[0]...) in scripts.
+- No Dori.Script, getComponent or setProperty in Lua; no editor property paths
+  (submeshes[0]...) in scripts.
 
 ## C++ scripts
 Two kinds (create_script): a ScriptBase subclass, or a subclass of the GameObject's own class
