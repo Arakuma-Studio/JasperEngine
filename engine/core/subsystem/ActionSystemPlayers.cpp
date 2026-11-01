@@ -13,6 +13,8 @@
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/ClipBinding.h"
 #include "animation/KeyframeSampling.h"
+#include "animation/PropertyBindings.h"
+#include "component/ButtonComponent.h"
 #include "lattice/LatticeSolver.h"
 #include "pool/AnimationClipPool.h"
 #include "pool/AnimatorControllerPool.h"
@@ -65,6 +67,22 @@ void playerdetail::completeRest(Scene* scene, Entity entity, anim::ChannelRest& 
         case ClipChannel::Property:
             break;
     }
+}
+
+anim::PropertyRest* playerdetail::completePropertyRest(Scene* scene, Entity entity, anim::ChannelRest& rest, const anim::PropertyBinding& binding){
+    if (binding.status != anim::PropertyBindStatus::Bound || binding.key == 0) return nullptr;
+    anim::PropertyRest& property = rest.properties[binding.key];
+    // taken once (R2); again when the property now binds with another width (a script reload)
+    if (!property.has || property.binding.width != binding.width){
+        float value[4] = {0, 0, 0, 0};
+        if (anim::readPropertyKeySpace(scene, entity, binding, value)){
+            property.has = true;
+            for (int k = 0; k < 4; k++) property.value[k] = value[k];
+            property.hasSnapshot = anim::snapshotProperty(scene, entity, binding, property.snapshot);
+        }
+    }
+    property.binding = binding;
+    return property.has ? &property : nullptr;
 }
 
 // the time a state is sampled at this update, in its clip
@@ -131,6 +149,42 @@ namespace {
     // ClipBindings::serial: one number per resolve, process-wide (main thread)
     uint64_t bindSerial = 0;
 
+    // A property track on its path's entity (anim-properties spec 8, Binding); the reasons it
+    // does not bind, and a few runtime caveats, are logged once per change
+    anim::PropertyBinding bindPropertyTrack(Scene* scene, Entity root, Entity target, const AnimationClip::Track& track,
+                                            const anim::PropertyBinding* previous){
+        anim::PropertyRef ref;
+        anim::parsePropertyRef(track.component, track.property, ref);
+        anim::PropertyBinding binding = anim::bindProperty(scene, target, ref, track.width);
+        const bool changed = !previous || previous->status != binding.status || previous->message != binding.message;
+        if (!changed) return binding;
+        const std::string who = scene->getEntityName(root);
+        const std::string name = (track.path.empty() ? std::string("") : track.path + " : ") + track.component + "." + track.property;
+        if (binding.status != anim::PropertyBindStatus::Bound){
+            Log::warn("Animation Player '%s': property track '%s' does not bind: %s", who.c_str(), name.c_str(), binding.message.c_str());
+            return binding;
+        }
+        if (track.component == "ui" && ref.base == "color" && scene->findComponent<ButtonComponent>(target)){
+            Log::warn("Animation Player '%s': '%s' is a Button: it writes ui.color from its state colours (animate button.colorNormal)",
+                      who.c_str(), name.c_str());
+        }
+        if (track.component == "gameobject" && target == root){
+            Log::warn("Animation Player '%s': the clip animates its own active state: the player stops when it turns it off", who.c_str());
+        }
+        if (track.component == "sprite" && ref.base == "frame"){
+            const SpriteComponent* sprite = scene->findComponent<SpriteComponent>(target);
+            int highest = -1;
+            for (size_t k = 0; k < track.keyCount; k++) highest = std::max(highest, (int)std::lround(track.weights[k]));
+            if (sprite && sprite->numFramesRect == 0){
+                Log::warn("Animation Player '%s': '%s': the sprite has no frames (the track does nothing)", who.c_str(), name.c_str());
+            }else if (sprite && highest >= (int)sprite->numFramesRect){
+                Log::warn("Animation Player '%s': '%s': frame %d is outside the sprite's %u frames (skipped)", who.c_str(), name.c_str(),
+                          highest, sprite->numFramesRect);
+            }
+        }
+        return binding;
+    }
+
     // Every track of the bindings' clip resolved again from `root`; the rest of every newly bound
     // channel is taken now, before anything writes it
     void resolveBindings(Scene* scene, Entity root, anim::ClipBindings& bindings, anim::RestMap* rest){
@@ -140,11 +194,27 @@ namespace {
         bindings.targets.assign(count, NULL_ENTITY);
         bindings.cursors.assign(count, anim::KeyCursor());
         bindings.resolvedCount = 0;
+        bindings.unboundProperties = 0;
+        std::vector<anim::PropertyBinding> previous;
+        previous.swap(bindings.properties);
+        if (bindings.clip->hasPropertyTracks()) bindings.properties.assign(count, anim::PropertyBinding());
         std::unordered_map<std::string, Entity> cache;
         for (size_t i = 0; i < count; i++){
             if (!tracks[i].isSampled()) continue;
             Entity target = resolveCached(scene, root, tracks[i].path, cache);
             if (target == NULL_ENTITY) continue;
+            if (tracks[i].channel == ClipChannel::Property){
+                anim::PropertyBinding& binding = bindings.properties[i];
+                binding = bindPropertyTrack(scene, root, target, tracks[i], i < previous.size() ? &previous[i] : nullptr);
+                if (binding.status != anim::PropertyBindStatus::Bound){
+                    bindings.unboundProperties++;
+                    continue;
+                }
+                bindings.targets[i] = target;
+                bindings.resolvedCount++;
+                if (rest) playerdetail::completePropertyRest(scene, target, (*rest)[target], binding);
+                continue;
+            }
             bindings.targets[i] = target;
             bindings.resolvedCount++;
             if (rest) completeRest(scene, target, (*rest)[target], tracks[i].channel);
@@ -442,7 +512,8 @@ namespace {
 
 void ActionSystem::accumulateClip(const AnimationClip& clip, anim::ClipBindings& bindings, float clipTime, float weight,
                                   std::unordered_map<Entity, anim::ChannelRest>& rest,
-                                  std::vector<std::pair<Entity, ClipChannel>>* written){
+                                  std::vector<std::pair<Entity, ClipChannel>>* written,
+                                  std::vector<std::pair<Entity, uint32_t>>* writtenProperties){
     if (!(weight > 0.0f)) return;
     const std::vector<AnimationClip::Track>& tracks = clip.getTracks();
     anim::TrackSample sample;
@@ -565,8 +636,46 @@ void ActionSystem::accumulateClip(const AnimationClip& clip, anim::ClipBindings&
                 }
                 break;
             }
-            case ClipChannel::Property:
+            case ClipChannel::Property: {
+                // anim-properties spec 8: per component in key space (a swizzle track its own
+                // component, a whole track the others), a discrete property's winner
+                if (i >= bindings.properties.size()) continue;
+                const anim::PropertyBinding& binding = bindings.properties[i];
+                anim::PropertyRest* propertyRest = nullptr;
+                auto found = channelRest.properties.find(binding.key);
+                if (found != channelRest.properties.end() && found->second.has && found->second.binding.width == binding.width &&
+                    found->second.binding.kind == binding.kind){
+                    propertyRest = &found->second;
+                }else{
+                    propertyRest = playerdetail::completePropertyRest(scene, target, channelRest, binding);
+                }
+                if (!propertyRest) continue;
+                // a discrete binding of keys that interpolate (a script's Int field keyed with numbers) steps
+                if (binding.discrete && !track.discrete) anim::sampleTrackStepped(track, clipTime, sample);
+                PropertyBlendAccum& accum = propertyAccum(target, binding.key, propertyRest);
+                if (binding.discrete){
+                    accum.total += weight;
+                    if (!sample.weights.empty() && weight >= accum.bestWeight){
+                        accum.bestWeight = weight;
+                        accum.bestValue = sample.weights[0];
+                    }
+                }else{
+                    for (size_t j = 0; j < sample.weights.size(); j++){
+                        const size_t k = binding.swizzle >= 0 ? (size_t)binding.swizzle : j;
+                        if (k >= 4 || k >= binding.width) break;
+                        if (track.overridden & (1u << k)) continue;
+                        accum.sums[k] += sample.weights[j] * weight;
+                        accum.weights[k] += weight;
+                    }
+                }
+                if (writtenProperties){
+                    std::pair<Entity, uint32_t> entry(target, binding.key);
+                    if (std::find(writtenProperties->begin(), writtenProperties->end(), entry) == writtenProperties->end()){
+                        writtenProperties->push_back(entry);
+                    }
+                }
                 continue;
+            }
         }
         if (written){
             std::pair<Entity, ClipChannel> entry(target, track.channel);
@@ -721,6 +830,12 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
             }else{
                 bindings.hierarchyRevision = revision;
             }
+        }else if (bindings.unboundProperties > 0 && runtime.clock >= bindings.nextUnresolvedRetry){
+            // a property's component, script or field may be there now (added at runtime): looked
+            // for again at most 4 times a second
+            resolveBindings(scene, entity, bindings, &runtime.rest);
+            bindings.nextUnresolvedRetry = runtime.clock + UNRESOLVED_RETRY_SECONDS;
+            resolvedAny = true;
         }
         bindings.checkedFrame = playerFrame;
     }
@@ -1081,6 +1196,7 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
     std::vector<LayeredPreviewState> layeredStates;
     std::unordered_map<std::string, float> times;
     std::vector<std::pair<Entity, ClipChannel>> channels;
+    std::vector<std::pair<Entity, uint32_t>> properties;
 
     clearPoseBlend();
     for (size_t s = 0; s < preview.states.size(); s++){
@@ -1144,7 +1260,7 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
         if (preview.layered){
             layeredStates.push_back({(size_t)(bindings - kept.data()), clipTime, state.weight, state.layer});
         }else{
-            accumulateClip(*clip, *bindings, clipTime, state.weight, session.rest, &channels);
+            accumulateClip(*clip, *bindings, clipTime, state.weight, session.rest, &channels, &properties);
         }
 
         if (preview.fireEvents){
@@ -1166,7 +1282,7 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
         times[key] = state.time;
     }
     if (preview.layered && !layeredStates.empty()){
-        previewLayers(root, preview, session, kept, layeredStates, channels);
+        previewLayers(root, preview, session, kept, layeredStates, channels, properties);
     }
     // drop the bindings (and times) of clips this call does not name
     session.bindings = std::move(kept);
@@ -1180,6 +1296,15 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
         }
         if (std::find(session.written.begin(), session.written.end(), entry) == session.written.end()){
             session.written.push_back(entry);
+        }
+    }
+    result.properties = properties;
+    for (const std::pair<Entity, uint32_t>& entry : properties){
+        if (std::find(result.written.begin(), result.written.end(), entry.first) == result.written.end()){
+            result.written.push_back(entry.first);
+        }
+        if (std::find(session.writtenProperties.begin(), session.writtenProperties.end(), entry) == session.writtenProperties.end()){
+            session.writtenProperties.push_back(entry);
         }
     }
 
@@ -1233,6 +1358,34 @@ void ActionSystem::restorePlayerPreview(anim::ClipPreviewSession& session){
                 continue;
         }
         anim::writeChannelValue(scene, entry.first, entry.second, {}, value);
+    }
+    // properties: the rest value, then what the write changed besides it (a sprite's texture
+    // rect, an anchor preset); GameObject active last, parents first (it runs no game code in
+    // edit mode, but it is what the flush does)
+    std::vector<std::pair<size_t, std::pair<Entity, const anim::PropertyRest*>>> deferred;
+    for (const std::pair<Entity, uint32_t>& entry : session.writtenProperties){
+        auto it = session.rest.find(entry.first);
+        if (it == session.rest.end() || !scene->isEntityCreated(entry.first)) continue;
+        auto property = it->second.properties.find(entry.second);
+        if (property == it->second.properties.end() || !property->second.has) continue;
+        const anim::PropertyRest& rest = property->second;
+        if (rest.binding.deferred){
+            size_t depth = 0;
+            for (Entity parent = entry.first; depth < 1024; depth++){
+                Transform* transform = scene->findComponent<Transform>(parent);
+                if (!transform || transform->parent == NULL_ENTITY) break;
+                parent = transform->parent;
+            }
+            deferred.push_back({depth, {entry.first, &rest}});
+            continue;
+        }
+        anim::writePropertyKeySpace(scene, entry.first, rest.binding, rest.value);
+        if (rest.hasSnapshot) anim::restoreProperty(scene, entry.first, rest.binding, rest.snapshot);
+    }
+    std::stable_sort(deferred.begin(), deferred.end(), [](const auto& a, const auto& b){ return a.first < b.first; });
+    for (const auto& entry : deferred){
+        if (!scene->isEntityCreated(entry.second.first)) continue;
+        anim::writePropertyKeySpace(scene, entry.second.first, entry.second.second->binding, entry.second.second->value);
     }
     session.reset();
 }

@@ -373,6 +373,22 @@ AnimationState AnimationPlayer::getState(const std::string& name) const{
     return AnimationState(scene, entity, name);
 }
 
+std::vector<std::string> AnimationPlayer::getAnimatedProperties(const std::string& name) const{
+    std::vector<std::string> out;
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    anim::AnimationPlayerRuntime& runtime = anim::playerRuntime(player);
+    const int index = runtime.findState(name);
+    if (index < 0) return out;
+    const anim::ClipBindings& bindings = runtime.states[(size_t)index].bindings;
+    if (!bindings.clip) return out;
+    const std::vector<AnimationClip::Track>& tracks = bindings.clip->getTracks();
+    for (size_t i = 0; i < tracks.size() && i < bindings.targets.size(); i++){
+        if (tracks[i].channel != ClipChannel::Property || bindings.targets[i] == NULL_ENTITY) continue;
+        out.push_back(tracks[i].path + ":" + tracks[i].component + "." + tracks[i].property);
+    }
+    return out;
+}
+
 AnimationStateInfo AnimationPlayer::getStateInfo(const std::string& name) const{
     AnimationStateInfo info;
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();

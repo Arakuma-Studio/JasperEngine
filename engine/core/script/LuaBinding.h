@@ -20,6 +20,7 @@ namespace jasperengine {
     class Vector3;
     class Vector4;
     struct ScriptEntry;
+    enum class ScriptPropertyType;
 
     class JASPERENGINE_API LuaBinding {
         
@@ -194,6 +195,17 @@ namespace jasperengine {
         // onStateEnter layer index), else as floats
         static bool callLuaScriptMethod(Scene* scene, Entity entity, const std::string& method, const std::vector<AnimationEventArg>& args,
                                         bool integers = false);
+        // A clip's property track on a Lua script field (anim-properties spec 5.7): the declared
+        // `properties` field `name` of the GameObject's first enabled (else first) Lua script
+        // `className`, as floats of its type (Bool 0/1, Int, Float, Vector2-4, Color3/4 as stored:
+        // linear). The read takes the instance field (self.<name>) when the instance exists, else
+        // ScriptProperty::value; the write sets both (the instance field raw, a fresh Vector
+        // userdata for vectors: a script holding the old one never sees it change). False when
+        // the script or the declared field is missing. Main thread.
+        static bool getLuaScriptProperty(Scene* scene, Entity entity, const std::string& className, const std::string& name,
+                                         ScriptPropertyType type, float* out);
+        static bool setLuaScriptProperty(Scene* scene, Entity entity, const std::string& className, const std::string& name,
+                                         ScriptPropertyType type, const float* in);
         static void clearLoadedProjectModules();
 
         static std::string getLuaStackErrorString(lua_State* L, int index = -1);

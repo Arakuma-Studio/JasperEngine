@@ -35,6 +35,7 @@
 #include "component/LatticeComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "animation/ClipTypes.h"
+#include "animation/PropertyBindings.h"
 #include "particles/ParticleSimulation.h"
 
 namespace jasperengine{
@@ -45,6 +46,7 @@ namespace jasperengine{
 		class AnimationPlayerRuntime;
 		struct TrackSample;
 		struct ChannelRest;
+		struct PropertyRest;
 		struct ClipBindings;
 		struct PlayerStateRuntime;
 		struct QueuedState;
@@ -111,9 +113,39 @@ namespace jasperengine{
 			std::vector<char> hasRest;
 			std::vector<Vector3> rest;
 		};
+		// One animated property of an entity (anim-properties spec 8, Accumulation), keyed by
+		// (entity, property key): per component the weighted sums in key space and the rest fill
+		// (as morph weights); a discrete property the contributor with the largest weight (ties:
+		// the later one) against the rest's 1 - W. Nodes stay between frames (`active` false).
+		struct PropertyBlendAccum {
+			Entity target = NULL_ENTITY;
+			// the rest and the binding written through (anim::PropertyRest::binding): valid
+			// while active (a rest map node of a player or preview, alive until the flush)
+			const anim::PropertyRest* rest = nullptr;
+			float sums[4] = {0, 0, 0, 0};
+			float weights[4] = {0, 0, 0, 0};
+			float total = 0.0f;			// discrete: Σ w
+			float bestWeight = -1.0f;	// discrete: the winner so far (-1: none)
+			float bestValue = 0.0f;
+			bool active = false;
+		};
+		// a write that runs user callbacks (GameObject active, a script's enabled): applied after
+		// every other write of the flush, parents first, each re-checked (spec decision 6)
+		struct DeferredPropertyWrite {
+			Entity target = NULL_ENTITY;
+			size_t depth = 0;
+			float value = 0.0f;			// key space
+			anim::PropertyBinding binding;
+		};
 		std::unordered_map<Entity, TransformBlendAccum> transformBlend;
 		std::unordered_map<Entity, MorphBlendAccum> morphBlend;
 		std::unordered_map<Entity, LatticeBlendAccum> latticeBlend;
+		std::unordered_map<uint64_t, PropertyBlendAccum> propertyBlend;
+		// the property accumulator of (target, key) for this frame (reset on its first touch)
+		PropertyBlendAccum& propertyAccum(Entity target, uint32_t key, const anim::PropertyRest* rest);
+		// writes the properties (the deferred ones are appended to `deferred`, applied by
+		// flushPoseBlend after everything else)
+		void flushPropertyBlend(std::vector<DeferredPropertyWrite>& deferred);
 
 		void clearPoseBlend();
 		void flushPoseBlend();
@@ -260,9 +292,11 @@ namespace jasperengine{
 		void samplePlayerStates(Entity entity, AnimationPlayerComponent& player);
 		// one clip at `clipTime` with `weight` into the pose blend, rest values from `rest` (taken
 		// there on the first write of an entity); `written` (optional) gets the entries written
+		// (`writtenProperties`, optional: the (entity, property key) entries written)
 		void accumulateClip(const AnimationClip& clip, anim::ClipBindings& bindings, float clipTime, float weight,
 		                    std::unordered_map<Entity, anim::ChannelRest>& rest,
-		                    std::vector<std::pair<Entity, ClipChannel>>* written);
+		                    std::vector<std::pair<Entity, ClipChannel>>* written,
+		                    std::vector<std::pair<Entity, uint32_t>>* writtenProperties = nullptr);
 
 		// The layered evaluator (anim layers spec 7.3; ActionSystemLayers.cpp). A player that is
 		// not anim::isDefaultLayering samples through it: preparePlayerLayers (end of
@@ -274,7 +308,8 @@ namespace jasperengine{
 		// the shared core (players and the layered preview): scratch.stateInputs per
 		// scratch.layerInputs, composed bottom-up, every composed slot added to the pose blend
 		// with weight 1; `written` (optional) gets the (entity, channel) entries written
-		void composePlayerLayers(anim::PlayerPoseScratch& scratch, std::vector<std::pair<Entity, ClipChannel>>* written);
+		void composePlayerLayers(anim::PlayerPoseScratch& scratch, std::vector<std::pair<Entity, ClipChannel>>* written,
+		                         std::vector<std::pair<Entity, uint32_t>>* writtenProperties = nullptr);
 		// AvatarMaskPool::revision() seen by the last player update
 		uint64_t playerMaskPoolRevision = 0;
 		bool playerMaskPoolChanged = false;
@@ -368,6 +403,8 @@ namespace jasperengine{
 			std::vector<Entity> written;
 			// the (entity, channel) entries written this call (also accumulated in session.written)
 			std::vector<std::pair<Entity, ClipChannel>> channels;
+			// the (entity, property key) entries written this call (session.writtenProperties)
+			std::vector<std::pair<Entity, uint32_t>> properties;
 			// paths of tracks that did not resolve (unique)
 			std::vector<std::string> unresolved;
 		};
@@ -428,7 +465,8 @@ namespace jasperengine{
 		};
 		void previewLayers(Entity root, const PlayerPreview& preview, anim::ClipPreviewSession& session,
 		                   std::vector<anim::ClipBindings>& bindings, const std::vector<LayeredPreviewState>& states,
-		                   std::vector<std::pair<Entity, ClipChannel>>& written);
+		                   std::vector<std::pair<Entity, ClipChannel>>& written,
+		                   std::vector<std::pair<Entity, uint32_t>>& writtenProperties);
 	};
 
 }

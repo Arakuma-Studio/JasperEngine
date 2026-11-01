@@ -69,6 +69,7 @@ void anim::ClipPreviewSession::reset(){
     rest.clear();
     bindings.clear();
     written.clear();
+    writtenProperties.clear();
     previousTimes.clear();
     scratch = PlayerPoseScratch();
     trackSlots.clear();

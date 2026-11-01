@@ -22,6 +22,10 @@ namespace jasperengine::playerdetail{
 
     // the scene value of the channels of `entity` (R2) that have none yet
     void completeRest(Scene* scene, Entity entity, anim::ChannelRest& rest, ClipChannel channel);
+    // the rest of a bound property (its value in key space the first time, the binding it was
+    // bound through every time: what the flush and a preview restore write through); null when
+    // the binding is not Bound
+    anim::PropertyRest* completePropertyRest(Scene* scene, Entity entity, anim::ChannelRest& rest, const anim::PropertyBinding& binding);
     // the time a state is sampled at this update, in its clip
     float sampleTimeOf(const AnimationPlayerComponent& player, const anim::PlayerStateRuntime& state);
 

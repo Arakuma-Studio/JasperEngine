@@ -251,6 +251,7 @@
 #include "animation/AnimationEvent.h"
 #include "animation/ClipBinding.h"
 #include "animation/KeyframeSampling.h"
+#include "animation/PropertyBindings.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"

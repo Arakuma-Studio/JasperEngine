@@ -152,8 +152,9 @@ TEST(ClipIO, CanonicalFileRoundTripsByteForByte){
     std::vector<ClipWarning> warnings;
     ClipData data = parseOk(canonicalText, &warnings);
     EXPECT_EQ(anim::writeClip(data), canonicalText);
-    // the property track and the unknown keys are the only warnings
-    EXPECT_TRUE(hasWarning(warnings, "tracks[5]", "property tracks are not supported yet")) << listWarnings(warnings);
+    // the property track this engine cannot animate (kept verbatim) and the unknown keys are the
+    // only warnings
+    EXPECT_TRUE(hasWarning(warnings, "tracks[5]", "unknown animatable property 'Light.intensity'")) << listWarnings(warnings);
     EXPECT_TRUE(hasWarning(warnings, "", "cycle_offset, curves")) << listWarnings(warnings);
     EXPECT_EQ(warnings.size(), 2u) << listWarnings(warnings);
 
@@ -813,7 +814,8 @@ TEST(ClipIO, PropertyTracksAreKeptAndFollowPathEdits){
     ClipData data = parseOk(wrapClip("\"tracks\": [{\"path\": \"Lamp\", \"channel\": \"property\", \"component\": \"Light\", "
                                      "\"property\": \"intensity\", \"keys\": [[0, 1], [1, 2]], \"future\": {\"x\": 1}}]"), &warnings);
     ASSERT_EQ(data.tracks.size(), 1u);
-    EXPECT_TRUE(hasWarning(warnings, "tracks[0]", "not supported yet")) << listWarnings(warnings);
+    EXPECT_TRUE(hasWarning(warnings, "tracks[0]", "kept in the file, not played")) << listWarnings(warnings);
+    EXPECT_TRUE(hasWarning(warnings, "tracks[0]", "did you mean 'light'")) << "component keys are lowercase: " << listWarnings(warnings);
     EXPECT_EQ(data.findTrack("Lamp", ClipChannel::Property), -1) << "findTrack never returns property tracks";
     std::string text = anim::writeClip(data);
     EXPECT_NE(text.find("    {\"path\":\"Lamp\",\"channel\":\"property\",\"component\":\"Light\",\"property\":\"intensity\","

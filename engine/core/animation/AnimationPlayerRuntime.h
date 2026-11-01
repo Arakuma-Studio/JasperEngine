@@ -41,6 +41,7 @@
 #include "animation/AnimationEvent.h"
 #include "animation/AnimatorController.h"
 #include "animation/KeyframeSampling.h"
+#include "animation/PropertyBindings.h"
 #include "component/AnimationPlayerComponent.h"
 #include "ecs/Entity.h"
 #include "math/Quaternion.h"
@@ -74,6 +75,17 @@ namespace jasperengine::anim{
     // one per morph target of the MeshComponent (MAX_MORPHTARGETS); latticeOffsets: the full cage
     // by flat index. Keyed by Entity: an entry is dropped when its entity is destroyed (a renamed
     // or reparented entity that fails the bind validation keeps it, R2).
+    // The rest of one property of an entity (anim-properties spec 5.8): the whole value in key
+    // space when first bound, the binding it was read through (what a preview restore writes
+    // back) and the row's snapshot (a sprite's texture rect, an anchor preset)
+    struct JASPERENGINE_API PropertyRest{
+        bool has = false;
+        float value[4] = {0, 0, 0, 0};
+        bool hasSnapshot = false;
+        float snapshot[4] = {0, 0, 0, 0};
+        PropertyBinding binding;
+    };
+
     struct JASPERENGINE_API ChannelRest{
         bool hasTransform = false;
         Vector3 position = Vector3(0, 0, 0);
@@ -83,6 +95,8 @@ namespace jasperengine::anim{
         std::vector<float> morphWeights;
         bool hasLattice = false;
         std::vector<Vector3> latticeOffsets;
+        // by property key (internPropertyKey; nodes stay put on insert)
+        std::unordered_map<uint32_t, PropertyRest> properties;
     };
     using RestMap = std::unordered_map<Entity, ChannelRest>;
 
@@ -112,6 +126,11 @@ namespace jasperengine::anim{
         // a process-wide number taken on every resolve: what was computed from the targets
         // (mask weights, slots) is current while it is unchanged
         uint64_t serial = 0;
+        // per clip track when the clip has property tracks (empty otherwise): how each property
+        // track bound (a track whose binding is not Bound has no target); the property tracks
+        // that did not bind (missing components are looked for again like unresolved paths)
+        std::vector<PropertyBinding> properties;
+        size_t unboundProperties = 0;
     };
 
     // Legacy AnimationState.AddMixingTransform: the state animates only these paths
@@ -180,6 +199,7 @@ namespace jasperengine::anim{
         uint64_t referenceSerial = 0;
         const AnimationClip* referenceClip = nullptr;
         bool referenceWarned = false;       // a zero scale reference was reported
+        bool discreteAdditiveWarned = false;    // discrete property tracks skipped on an additive layer
         // per clip track: the slot of the player's PlayerPoseScratch (UINT32_MAX: none)
         std::vector<uint32_t> trackSlots;
 
@@ -254,10 +274,13 @@ namespace jasperengine::anim{
         ClipChannel channel = ClipChannel::Position;
         uint32_t first = 0;                 // its first element
         uint32_t width = 1;
-        uint32_t key = 0;                   // anim-properties: the property key (unused today)
+        uint32_t key = 0;                   // Property: the property key (internPropertyKey)
         // the target's rest (AnimationPlayerRuntime::rest: map nodes stay put on insert; erased
         // only by a rebind, which rebuilds the table)
         ChannelRest* rest = nullptr;
+        // Property: one element per component of the whole value; its rest and binding
+        PropertyRest* propertyRest = nullptr;
+        bool discrete = false;
     };
     struct JASPERENGINE_API PoseElement{
         float sum[4] = {0, 0, 0, 0};        // Σ w·v (rotation: w x y z, hemisphere aligned)
@@ -289,6 +312,7 @@ namespace jasperengine::anim{
         const uint32_t* trackSlots = nullptr;   // per clip track (PoseSlot index, UINT32_MAX: none)
         const TrackSample* reference = nullptr; // additive layers: per clip track at additive_reference
         bool* referenceWarned = nullptr;    // a zero scale reference warned (per state)
+        bool* discreteWarned = nullptr;     // discrete property tracks skipped on an additive layer (per state)
     };
 
     struct JASPERENGINE_API PlayerPoseScratch{
@@ -572,6 +596,8 @@ namespace jasperengine::anim{
         std::vector<ClipBindings> bindings;
         // the (entity, channel) entries this session wrote: what restorePlayerPreview puts back
         std::vector<std::pair<Entity, ClipChannel>> written;
+        // the (entity, property key) entries it wrote (their rest: rest[entity].properties)
+        std::vector<std::pair<Entity, uint32_t>> writtenProperties;
         // fireEvents: the previous call's time per state (key: the state name, or the clip's
         // address for explicit clips)
         std::unordered_map<std::string, float> previousTimes;
