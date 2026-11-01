@@ -506,7 +506,8 @@ Json bindingsJson(SceneProject* scene, const ClipValidationReport& report, const
                               "absolute local rotations). Likely a clip made for another rig, whose renamed paths would turn "
                               "this character wrong: retarget it (set_properties animationplayer.clips[i].retarget: true, or "
                               "convert it: edit_animation {clip: <new .anim>, create: {from: <clip>, humanoid: {}}}), or use a "
-                              "clip made on this rig. A path of the same rig (a bone or prop posed far from its rest) can still "
+                              "clip made on this rig (bake the .poseanim on this model: edit_pose_animation {path, bake: "
+                              "{model, clip: true}}, or key a new clip on it). A path of the same rig (a bone or prop posed far from its rest) can still "
                               "be renamed by hand";
     }
     if (std::any_of(missing.begin(), missing.end(), [](const Json& m) { return m.contains("fix"); })) {
@@ -2335,7 +2336,7 @@ bool clipAssetInfo(Project* project, const fs::path& file, Json& data, std::stri
         tracks.push_back({{"path", track.path}, {"channel", anim::channelName(track.channel)}, {"key_count", track.keys.size()}});
     }
     const std::vector<ClipUser> users = findClipUsers(project, rel);
-    data["clip"] = {{"version", anim::ANIM_VERSION}, {"guid", clip.guid}, {"length", r6(clip.effectiveLength())},
+    data["clip"] = {{"version", clip.isHumanoid() ? anim::ANIM_VERSION : 1}, {"guid", clip.guid}, {"length", r6(clip.effectiveLength())},
                     {"wrap", anim::wrapName(clip.wrap)}, {"frame_rate", r6(clip.frameRate)}, {"tracks", tracks},
                     {"events", eventsJson(clip.events)}, {"warnings", warningsJson(document->loadWarnings())},
                     {"users", usersJson(project, users)}};

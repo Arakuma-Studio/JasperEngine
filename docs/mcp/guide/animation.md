@@ -451,7 +451,8 @@ set:
 `clips[i].mirror` (left/right swapped) and `clips[i].footIK` (legs reach the foot goals) apply to
 humanoid clips; Lua `state.mirror` / `state.footIK` override them at runtime. The target rig is the
 first model on or under the player root whose bones map as a humanoid (`get_asset_info` on a
-model: `avatar {animation_type, humanoid, mapped, missing, extra_mapped, twist, human_scale}`).
+model: its `avatar` with animation_type, humanoid, mapped, missing, extra_mapped, twist and
+human_scale).
 
 Verify numerically: `get_animation {clip, root: "Robot", times: [0.5]}` on a humanoid clip (or one
 the root's entry retargets) adds `retarget_report {target {model, human_scale}, source, scale_ratio,
@@ -473,7 +474,7 @@ Humanoid tracks in edit_animation (no `path`):
 `right_eye` or `jaw`; `humanoid_position` takes `hips`, `left_foot`, `right_foot`. `angles` are
 the slot's DOFs in degrees (jasper://docs/pose-animation), stored as the quaternion; results list
 humanoid keys as `{quat, angles}`. A wrong bone gets a did-you-mean. Fix a bad mapping with
-`set_humanoid` (`bones`, `extra_bones` for fingers, eyes and jaw, `twist {slot: degrees}` to turn
+`set_humanoid` (`bones`, `extra_bones` for fingers, eyes and jaw, `twist` (slot: degrees) to turn
 a slot's neutral pose about its direction); twists change the model's pose animations too.
 
 ## Scene mode: entity Animations and tweens
