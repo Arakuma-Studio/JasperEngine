@@ -191,3 +191,10 @@ origin/main).
   Generator::configure taking both shaderGlobals and playerSettings). Known load flakes: test_autosync::
   test_external_property_picked_up, ConvexDecomposition.ConcurrentRequests, CanvasGroupTest.PerformanceBudgets
   (being made robust).
+- 2026-11-01: rule change: agents merge main ONCE at handoff and do not chase it; the lead merges later main changes
+  and verifies combined trees in batches. video-mp4 review fixes done (18 defects + spec items; unit 1436, htmlui
+  3114, MCP only baseline + the known canvas resave). It found a merge-blocker on local main: physics-3d sources
+  compile even with JASPERENGINE_PHYSICS_3D=OFF, which the Exporter sets for projects without 3D physics (every
+  2D-only export would fail) -> physics-3d agent fixing, also checking PHYSICS_2D=OFF and both OFF. audio-mixer
+  review: 2 high (live mixer edits reallocating SoLoud voice buffers -> dropouts; voice limit beyond SoLoud's 255
+  -> audio-thread overflow / Windows break), fixes in progress.
