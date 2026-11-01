@@ -469,7 +469,8 @@ async def test_cli_anims_guid_mismatch_and_unreadable_yaml():
 
 async def test_cli_anims_masks_and_controllers():
     """--anims reads Avatar Masks (.mask) and Animator Controllers (.controller): their format
-    (line:col, JSON paths of dropped parts) and the controller validation (anim layers spec 5.11)"""
+    (line:col, JSON paths of dropped parts) and the controller validation (anim layers spec 5.11); upstream's
+    version 1 files are read converted (noted), their findings with S21's JSON paths"""
     with scratch_project() as project:
         write(project, "assets/anim/good.anim", GOOD_CLIP)
         write(project, "assets/anim/arm.mask",
@@ -495,7 +496,9 @@ async def test_cli_anims_masks_and_controllers():
         unity = found.get("assets/anim/unity.controller", [])
         check(len(unity) == 1 and "Unity .controller" in unity[0][2], f"Unity YAML is refused: {unity}")
         controller = [m for _, _, m in found.get("assets/anim/granjero.controller", [])]
-        check(any("layers[0].states[1].clip" in m and "does not load" in m for m in controller), f"a missing clip: {controller}")
+        check(any("upstream's version 1 Animator Controller" in m for m in controller), f"the conversion is noted: {controller}")
+        check(any("upstream's version 1 Avatar Mask" in m for _, _, m in mask), f"the conversion is noted: {mask}")
+        check(any("layers[0].state_machine.states[1].motion.clip" in m and "does not load" in m for m in controller), f"a missing clip: {controller}")
         check(any("parameters[2]" in m and "unused" in m for m in controller), f"an unused parameter: {controller}")
         check(any("layers[1].mask" in m and "does not exist" in m for m in controller), f"a missing mask: {controller}")
         check(any("parameters[0]" in m and "unused" in m for m in controller), f"Speed is read by nothing: {controller}")
@@ -564,7 +567,8 @@ async def test_cli_anims_player_mask_and_controller_references():
             code, data = run_json(project, *args)
             follow = sorted((f["severity"], f["message"]) for f in data["findings"] if f["path"] == "assets/anim/follow.controller")
             check(not any(s == "error" for s, _ in follow) and not any("does not load" in m for _, m in follow), f"{args}: found by GUID: {follow}")
-            check(any("layers[0].states[0].clip: 'old/good.anim' moved to 'assets/anim/good.anim'" in m for _, m in follow), f"{args}: the clip: {follow}")
+            check(any("layers[0].state_machine.states[0].motion.clip: 'old/good.anim' moved to 'assets/anim/good.anim'" in m for _, m in follow),
+                  f"{args}: the clip: {follow}")
             check(any("layers[1].mask: 'old/arm.mask' moved to 'assets/anim/arm.mask'" in m for _, m in follow), f"{args}: the mask: {follow}")
 
 

@@ -1,5 +1,7 @@
-"""Animation Player layers and Avatar Masks over MCP (anim layers spec 10, 14 MCP tests): write_file of a
-.mask (valid, broken JSON with line:col, Unity YAML refused), set_properties / add_component of layers and
+"""Animation Player layers and Avatar Masks over MCP (upstream anim layers spec 10, 14 MCP tests, on S21's masks:
+docs/specs/S21-animation.md "Upstream absorption"): write_file of a .mask (upstream's version 1 read converted with
+its warnings, broken JSON with line:col, Unity YAML refused), edit_avatar_mask (version 2: default, fractional body
+parts, paths with children, root_hierarchy), set_properties / add_component of layers and
 entry layers with their refusals, get_animation {mask, root} coverage on Hero's humanoid rig, get_animation
 {entity} layers and mask_coverage, preview_animation over a base state, and the Garden farmer flow in play
 mode: eval_lua setLayerWeight, then get_runtime_entity on both forearms (the right one holds, the left one
@@ -81,11 +83,24 @@ async def test_mask_file_and_clips(ed: Editor):
     await refused(ed, "write_file", {"path": "assets/anim/bad.mask", "content": '{"format": "jasperengine.mask",\n "version": 1,,}'}, "2:")
     await refused(ed, "write_file", {"path": "assets/anim/unity.mask", "content": "%YAML 1.1\n--- !u!319 &31900000\nAvatarMask:\n"},
                   "Create a JasperEngine Avatar Mask")
+    # upstream's version 1 mask: read converted (its arm part also weighs the hand), the IK part
+    # warned about
     mask = {"format": "jasperengine.mask", "version": 1, "default": 0,
             "humanoid": {"right_arm": 1, "right_fingers": True, "left_hand_ik": 1}}
     r = await ed.call_raw("write_file", {"path": MASK, "content": json.dumps(mask, indent=2)})
     ed.check(not r.is_error, r.text[:500])
-    ed.check("Avatar Mask loads with 1 warning" in r.text and "left_hand_ik" in r.text, f"the IK part is warned about: {r.text[:500]}")
+    ed.check("Avatar Mask loads with" in r.text and "left_hand_ik" in r.text and "read converted" in r.text,
+             f"the IK part and the conversion are said: {r.text[:500]}")
+    # edit_avatar_mask writes version 2: the same weights, the S21 form
+    r = await ed.call_raw("edit_avatar_mask", {"path": "assets/anim/arm2.mask", "create": True, "default": 0,
+                                               "body_parts": {"right_arm": 1, "right_hand": 1, "right_fingers": 1, "head": 0.5},
+                                               "paths": {"mixamorig:Hips": {"weight": 0.25, "children": False}}})
+    ed.check(not r.is_error, r.text[:500])
+    written = json.loads((ed.project / "assets" / "anim" / "arm2.mask").read_text())
+    ed.check_eq((written["version"], written["default"], written["body_parts"]["head"], written["root_hierarchy"]), (2, 0, 0.5, False),
+                f"version 2 with a fractional part: {written}")
+    ed.check_eq(written["paths"], [{"path": "mixamorig:Hips", "weight": 0.25, "children": False}], "a path entry")
+    await refused(ed, "edit_avatar_mask", {"path": "assets/anim/arm2.mask", "body_parts": {"left_hand_ik": 1}}, "body part")
 
     for path, euler in ((BASE, BASE_EULER), (HOLD, HOLD_EULER)):
         tracks = [{"path": p, "channel": "rotation", "keys": [{"time": 0, "value": {"euler": euler}}, {"time": 1, "value": {"euler": euler}}]}
@@ -97,16 +112,21 @@ async def test_mask_file_and_clips(ed: Editor):
 async def test_mask_coverage_on_the_rig(ed: Editor):
     got = await ed.call("get_animation", mask=MASK, root="Hero")
     ed.check_eq(got["default"], 0, "default")
-    ed.check_eq(got["humanoid"], {"right_arm": 1, "right_fingers": 1}, "the parts as read (true is 1)")
+    ed.check_eq(got["read_as"], "upstream_v1", "read converted from upstream's version 1")
+    ed.check_eq(got["body_parts"], {"right_arm": 1, "right_hand": 1, "right_fingers": 1},
+                "the parts as converted (true is 1, upstream's arm also weighs the hand)")
+    ed.check(got["root_hierarchy"] is True, "upstream's root part covered what is above the hips")
     ed.check(got.get("humanoid_rig") is True, f"Hero is humanoid: {json.dumps(got)[:400]}")
     coverage = {c["path"]: c for c in got["coverage"]}
     ed.check(got["coverage_total"] >= len(got["coverage"]) > 0, "coverage rows")
     right = next((c for p, c in coverage.items() if p.endswith("mixamorig:RightForeArm")), None)
     left = next((c for p, c in coverage.items() if p.endswith("mixamorig:LeftForeArm")), None)
-    ed.check(right and right["weight"] == 1 and right["rule"] == "humanoid:right_arm", f"right forearm: {right}")
-    ed.check(left and left["weight"] == 0 and left["rule"] == "humanoid:left_arm", f"left forearm: {left}")
+    ed.check(right and right["weight"] == 1 and right["rule"] == "body_part:right_arm", f"right forearm: {right}")
+    ed.check(left and left["weight"] == 0 and left["rule"] == "default", f"left forearm (its part not set: the default): {left}")
+    hand = next((c for p, c in coverage.items() if p.endswith("mixamorig:RightHand")), None)
+    ed.check(hand and hand["rule"] == "body_part:right_hand" and hand["weight"] == 1, f"the right hand: {hand}")
     finger = next((c for p, c in coverage.items() if "RightHandIndex" in p), None)
-    ed.check(finger and finger["rule"] == "humanoid:right_fingers" and finger["weight"] == 1, f"a right finger: {finger}")
+    ed.check(finger and finger["rule"] == "body_part:right_fingers" and finger["weight"] == 1, f"a right finger: {finger}")
     await refused(ed, "get_animation", {"mask": "assets/anim/nope.mask"}, "does not exist")
 
     # coverage lists at most 200 rows; coverage_total counts them all (an entity without a player:
