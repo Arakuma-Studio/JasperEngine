@@ -4,6 +4,8 @@
 #include "AnimationClipIO.h"
 
 #include "animation/AnimJson.h"
+#include "pose/HumanExtraBones.h"
+#include "pose/PoseRig.h"
 
 #include "Engine.h"
 #include "json.hpp"
@@ -111,7 +113,8 @@ namespace{
         return false;
     }
 
-    const char* const channelNames[] = {"position", "rotation", "scale", "morph", "lattice", "property"};
+    const char* const channelNames[] = {"position", "rotation", "scale", "morph", "lattice", "property", "humanoid", "humanoid_position"};
+    const char* const humanoidPositionNames[] = {"hips", "left_foot", "right_foot"};
     const char* const wrapNames[] = {"default", "once", "loop", "ping_pong", "clamp_forever"};
 
     struct EaseName{
@@ -215,6 +218,45 @@ bool anim::channelFromName(const std::string& name, ClipChannel& out){
         if (name == channelNames[i]){
             out = (ClipChannel)i;
             return true;
+        }
+    }
+    return false;
+}
+
+static_assert(anim::HUMANOID_TRACK_BONE_COUNT == pose::HUMAN_BONE_COUNT + pose::HUMAN_EXTRA_BONE_COUNT, "humanoid track bones: slots then extra bones");
+
+const char* anim::humanoidTrackBoneName(ClipChannel channel, int humanBone){
+    if (channel == ClipChannel::Humanoid){
+        if (humanBone >= 0 && humanBone < pose::HUMAN_BONE_COUNT) return pose::humanBoneName(pose::boneAt(humanBone));
+        if (humanBone >= pose::HUMAN_BONE_COUNT && humanBone < HUMANOID_TRACK_BONE_COUNT){
+            return pose::humanExtraBoneName(pose::extraAt(humanBone - pose::HUMAN_BONE_COUNT));
+        }
+    }else if (channel == ClipChannel::HumanoidPosition){
+        if (humanBone >= 0 && humanBone < HUMANOID_POSITION_COUNT) return humanoidPositionNames[humanBone];
+    }
+    return "";
+}
+
+bool anim::humanoidTrackBoneFromName(ClipChannel channel, const std::string& name, int& out){
+    if (channel == ClipChannel::Humanoid){
+        pose::HumanBone bone;
+        if (pose::humanBoneFromName(name, bone)){
+            out = pose::boneIndex(bone);
+            return true;
+        }
+        pose::HumanExtraBone extra;
+        if (pose::humanExtraBoneFromName(name, extra)){
+            out = pose::HUMAN_BONE_COUNT + pose::extraIndex(extra);
+            return true;
+        }
+        return false;
+    }
+    if (channel == ClipChannel::HumanoidPosition){
+        for (int i = 0; i < HUMANOID_POSITION_COUNT; i++){
+            if (name == humanoidPositionNames[i]){
+                out = i;
+                return true;
+            }
         }
     }
     return false;
@@ -369,7 +411,15 @@ namespace{
         return ClipData::valueWidth(track.channel, morphCount, track.points.size());
     }
 
+    // humanoid tracks after every path track, by channel, then bone (anim-retarget 6.1)
     bool trackLess(const ClipTrackData& a, const ClipTrackData& b){
+        const bool ha = isHumanoidChannel(a.channel);
+        const bool hb = isHumanoidChannel(b.channel);
+        if (ha != hb) return hb;
+        if (ha){
+            if (a.channel != b.channel) return a.channel < b.channel;
+            return a.humanBone < b.humanBone;
+        }
         if (a.path != b.path) return a.path < b.path;
         if (a.channel != b.channel) return a.channel < b.channel;
         if (a.component != b.component) return a.component < b.component;
@@ -377,6 +427,9 @@ namespace{
     }
 
     bool sameTrack(const ClipTrackData& a, const ClipTrackData& b){
+        if (isHumanoidChannel(a.channel) || isHumanoidChannel(b.channel)){
+            return a.channel == b.channel && a.humanBone == b.humanBone;
+        }
         return a.path == b.path && a.channel == b.channel &&
                (a.channel != ClipChannel::Property || (a.component == b.component && a.property == b.property));
     }
@@ -397,7 +450,7 @@ namespace{
     // Step 1: each key on its own (widths, numbers, time, tangents, ease); bad keys go
     void sanitizeKeys(ClipTrackData& track, TrackOrigin& origin, std::vector<ClipWarning>* warnings){
         const std::string& path = origin.path;
-        if (track.relative && (track.channel == ClipChannel::Morph || track.channel == ClipChannel::Lattice)){
+        if (track.relative && (track.channel == ClipChannel::Morph || track.channel == ClipChannel::Lattice || isHumanoidChannel(track.channel))){
             warn(warnings, member(path, "relative"), "only position, rotation and scale tracks can be relative, ignored");
             track.relative = false;
         }
@@ -461,10 +514,10 @@ namespace{
 
         size_t fixedWidth = 0;
         const char* expected = "";
-        if (track.channel == ClipChannel::Position || track.channel == ClipChannel::Scale){
+        if (isVectorChannel(track.channel)){
             fixedWidth = 3;
             expected = "expected [x, y, z]";
-        }else if (track.channel == ClipChannel::Rotation){
+        }else if (isRotationChannel(track.channel)){
             fixedWidth = 4;
             expected = "expected [x, y, z, w]";
         }
@@ -486,7 +539,7 @@ namespace{
                 warn(warnings, member(keyPath, "value"), "not a finite number, key dropped");
                 continue;
             }
-            if (track.channel == ClipChannel::Rotation && quaternionLength(key.value) < 1e-6f){
+            if (isRotationChannel(track.channel) && quaternionLength(key.value) < 1e-6f){
                 warn(warnings, member(keyPath, "value"), "a zero quaternion is no rotation, key dropped");
                 continue;
             }
@@ -576,7 +629,7 @@ namespace{
         // towards the keys with stored tangents first (its sign is free: no stored tangent depends
         // on it), so its segments don't flip: after the first key with tangents each takes the key
         // before it, before it (key 0 too) each takes the key after it
-        if (track.channel == ClipChannel::Rotation){
+        if (isRotationChannel(track.channel)){
             size_t first = 0;
             while (first < track.keys.size() && !track.keys[first].hasTangents()) first++;
             for (size_t k = first + 1; k < track.keys.size(); k++){
@@ -653,6 +706,32 @@ namespace{
         if (!data.guid.empty() && !anim::isClipGuid(data.guid)){
             warn(warnings, "guid", "not 32 lowercase hex digits: dropped");
             data.guid.clear();
+        }
+
+        // humanoid tracks (anim-retarget 6.1): a known bone, no path; other tracks have no bone
+        {
+            std::vector<ClipTrackData> kept;
+            std::vector<TrackOrigin> keptOrigins;
+            for (size_t i = 0; i < data.tracks.size(); i++){
+                ClipTrackData& track = data.tracks[i];
+                if (isHumanoidChannel(track.channel)){
+                    if (anim::humanoidTrackBoneName(track.channel, track.humanBone)[0] == '\0'){
+                        warn(warnings, member(origins.tracks[i].path, "bone"), "not a humanoid bone, track dropped");
+                        continue;
+                    }
+                    if (!track.path.empty()){
+                        warn(warnings, member(origins.tracks[i].path, "path"), "humanoid tracks have no path (they are identified by \"bone\"): path ignored");
+                        track.path.clear();
+                    }
+                    track.points.clear();
+                }else{
+                    track.humanBone = -1;
+                }
+                kept.push_back(std::move(track));
+                keptOrigins.push_back(std::move(origins.tracks[i]));
+            }
+            data.tracks = std::move(kept);
+            origins.tracks = std::move(keptOrigins);
         }
 
         // tracks, step 1: every key on its own
@@ -739,7 +818,7 @@ namespace{
 
             sortAndCollapseKeys(track, origin, warnings);
 
-            if (track.channel == ClipChannel::Rotation){
+            if (isRotationChannel(track.channel)){
                 for (size_t k = 0; k < track.keys.size(); k++){
                     ClipKey& key = track.keys[k];
                     float length = quaternionLength(key.value);
@@ -803,6 +882,10 @@ namespace{
         }
         origins.tracks = std::move(trackOrigins);
 
+        if (!std::isfinite(data.humanoid.humanScale) || data.humanoid.humanScale < 0.0f){
+            warn(warnings, "humanoid.human_scale", "expected a positive number: dropped");
+            data.humanoid.humanScale = 0.0f;
+        }
         if (data.source.kind != "" && data.source.kind != "model" && data.source.kind != "entity" && data.source.kind != "pose"){
             warn(warnings, "source.kind", "expected model, entity or pose: source dropped");
             data.source = ClipSource();
@@ -833,11 +916,34 @@ namespace{
         float eulerAngles[3] = {0, 0, 0};
     };
 
-    bool readValue(const OJson& json, ClipChannel channel, bool tangent, const std::string& path,
+    bool readValue(const OJson& json, ClipChannel channel, int humanBone, bool tangent, const std::string& path,
                    ParsedValue& out, std::vector<ClipWarning>& warnings){
         switch (channel){
+            case ClipChannel::Humanoid:
+                // a slot's joint angles (the pose system's DOFs, degrees), written back as E
+                if (!tangent && json.is_object() && json.contains("angles")){
+                    std::vector<float> angles;
+                    if (humanBone < 0 || humanBone >= pose::HUMAN_BONE_COUNT){
+                        warn(&warnings, path, "{\"angles\"} is for the 22 body slots: an extra bone takes [x, y, z, w]");
+                        return false;
+                    }
+                    if (json.size() != 1 || !readNumbers(json["angles"], 3, angles)){
+                        warn(&warnings, path, "expected {\"angles\": [dof1, dof2, twist]} degrees");
+                        return false;
+                    }
+                    out.values.resize(4);
+                    quaternionToXYZW(pose::jointRotation(pose::boneAt(humanBone), angles.data()).normalized().toQuaternion(), out.values.data());
+                    return true;
+                }
+                if (!readNumbers(json, 4, out.values)){
+                    warn(&warnings, path, tangent || humanBone >= pose::HUMAN_BONE_COUNT ? "expected [x, y, z, w]"
+                                                                                   : "expected [x, y, z, w] or {\"angles\": [dof1, dof2, twist]} degrees");
+                    return false;
+                }
+                return true;
             case ClipChannel::Position:
             case ClipChannel::Scale:
+            case ClipChannel::HumanoidPosition:
                 if (!readNumbers(json, 3, out.values)){
                     warn(&warnings, path, "expected [x, y, z]");
                     return false;
@@ -925,7 +1031,7 @@ namespace{
         return true;
     }
 
-    bool readKey(const OJson& json, ClipChannel channel, const std::string& path, ParsedKey& key,
+    bool readKey(const OJson& json, ClipChannel channel, int humanBone, const std::string& path, ParsedKey& key,
                  std::vector<ClipWarning>& warnings){
         const OJson* time = nullptr;
         const OJson* value = nullptr;
@@ -964,7 +1070,7 @@ namespace{
             warn(&warnings, member(path, "time"), "expected a time in seconds, key dropped");
             return false;
         }
-        if (!readValue(*value, channel, false, valuePath, key.value, warnings)){
+        if (!readValue(*value, channel, humanBone, false, valuePath, key.value, warnings)){
             warn(&warnings, path, "key dropped");
             return false;
         }
@@ -974,8 +1080,8 @@ namespace{
             if (!ok){
                 warn(&warnings, path, "in and out tangents go together: tangents ignored");
             }else{
-                ok = readValue(*in, channel, true, member(path, "in"), key.in, warnings) &&
-                     readValue(*out, channel, true, member(path, "out"), key.out, warnings);
+                ok = readValue(*in, channel, humanBone, true, member(path, "in"), key.in, warnings) &&
+                     readValue(*out, channel, humanBone, true, member(path, "out"), key.out, warnings);
                 if (!ok) warn(&warnings, path, "tangents ignored");
             }
             key.tangents = ok;
@@ -996,11 +1102,28 @@ namespace{
         }
         auto channel = json.find("channel");
         if (channel == json.end() || !channel->is_string() || !anim::channelFromName(channel->get<std::string>(), track.channel)){
-            warn(&warnings, member(path, "channel"), "expected position, rotation, scale, morph or lattice, track dropped");
+            warn(&warnings, member(path, "channel"), "expected position, rotation, scale, morph, lattice, humanoid or humanoid_position, track dropped");
             return false;
         }
         auto trackPath = json.find("path");
-        if (trackPath == json.end()){
+        if (isHumanoidChannel(track.channel)){
+            // identified by its bone (anim-retarget 6.1)
+            if (trackPath != json.end()){
+                warn(&warnings, member(path, "path"), "humanoid tracks are identified by \"bone\", not a path: track dropped");
+                return false;
+            }
+            auto bone = json.find("bone");
+            if (bone == json.end() || !bone->is_string()){
+                warn(&warnings, member(path, "bone"), "missing: a humanoid track names its bone (left_upper_arm, hips...), track dropped");
+                return false;
+            }
+            if (!anim::humanoidTrackBoneFromName(track.channel, bone->get<std::string>(), track.humanBone)){
+                warn(&warnings, member(path, "bone"), track.channel == ClipChannel::Humanoid
+                     ? "\"" + bone->get<std::string>() + "\" is not a humanoid slot or extra bone, track dropped"
+                     : "\"" + bone->get<std::string>() + "\" is not hips, left_foot or right_foot, track dropped");
+                return false;
+            }
+        }else if (trackPath == json.end()){
             warn(&warnings, member(path, "path"), "missing: the track animates the root");
         }else if (!trackPath->is_string()){
             warn(&warnings, member(path, "path"), "expected a string, track dropped");
@@ -1021,7 +1144,7 @@ namespace{
 
         for (auto it = json.begin(); it != json.end(); ++it){
             const std::string& name = it.key();
-            if (name == "path" || name == "channel" || name == "keys") continue;
+            if (name == "path" || name == "channel" || name == "keys" || (name == "bone" && isHumanoidChannel(track.channel))) continue;
             if (name == "relative" || name == "loop"){
                 if (!it->is_boolean()){
                     warn(&warnings, member(path, name.c_str()), "expected true or false, ignored");
@@ -1050,7 +1173,7 @@ namespace{
             std::string keyPath = indexed(path, "keys", k);
             ParsedKey key;
             key.origin = k;
-            if (!readKey((*keys)[k], track.channel, keyPath, key, warnings)){
+            if (!readKey((*keys)[k], track.channel, track.humanBone, keyPath, key, warnings)){
                 parsed.push_back(ParsedKey());
                 parsed.back().origin = SIZE_MAX;
                 continue;
@@ -1267,7 +1390,9 @@ namespace{
             object["property"] = track.property;
             return "    " + object.dump(-1, ' ', false, OJson::error_handler_t::replace);
         }
-        std::string text = "    {\"path\": " + quote(track.path) + ", \"channel\": " + quote(anim::channelName(track.channel));
+        std::string text = isHumanoidChannel(track.channel)
+            ? "    {\"channel\": " + quote(anim::channelName(track.channel)) + ", \"bone\": " + quote(anim::humanoidTrackBoneName(track.channel, track.humanBone))
+            : "    {\"path\": " + quote(track.path) + ", \"channel\": " + quote(anim::channelName(track.channel));
         if (track.relative) text += ", \"relative\": true";
         if (track.loop) text += ", \"loop\": true";
         if (track.keys.empty()) return text + ", \"keys\": []}";
@@ -1293,7 +1418,7 @@ namespace{
     }
 
     const char* const knownTopLevelKeys[] = {"format", "version", "guid", "frame_rate", "wrap", "length", "additive_reference",
-                                             "tracks", "events", "preview", "source"};
+                                             "humanoid", "tracks", "events", "preview", "source"};
 
     bool isKnownTopLevelKey(const std::string& name){
         for (const char* known : knownTopLevelKeys){
@@ -1401,6 +1526,27 @@ static anim::ClipParseResult parseClipText(const std::string& text){
                 reference = 0.0f;
             }
             data.additiveReference = reference;
+        }else if (name == "humanoid"){
+            if (!value.is_object()){
+                warn(&warnings, "humanoid", "expected {\"source_model\", \"human_scale\"}, ignored");
+                continue;
+            }
+            for (auto entry = value.begin(); entry != value.end(); ++entry){
+                if (entry.key() == "source_model" && entry->is_string()){
+                    data.humanoid.sourceModel = entry->get<std::string>();
+                }else if (entry.key() == "human_scale" && entry->is_number()){
+                    float scale = 0.0f;
+                    if (!toFloat(*entry, scale) || !(scale > 0.0f)){
+                        warn(&warnings, "humanoid.human_scale", "expected a positive number, ignored");
+                    }else{
+                        data.humanoid.humanScale = scale;
+                    }
+                }else if (entry.key() == "source_model" || entry.key() == "human_scale"){
+                    warn(&warnings, "humanoid." + entry.key(), entry.key() == "source_model" ? "expected a model path, ignored" : "expected a number, ignored");
+                }else{
+                    warn(&warnings, "humanoid." + entry.key(), "unknown key ignored");
+                }
+            }
         }else if (name == "tracks"){
             if (!value.is_array()){
                 warn(&warnings, "tracks", "expected an array of tracks, ignored");
@@ -1469,6 +1615,9 @@ static anim::ClipParseResult parseClipText(const std::string& text){
 
     normalizeClip(data, &warnings, &origins);
     checkEulerSegments(data, origins, eulerKeys, warnings);
+    if (version->get<double>() < 2.0 && data.isHumanoid()){
+        warn(&warnings, "version", "humanoid tracks in a version 1 file: the clip is saved as version 2");
+    }
     result.data = std::move(data);
     return result;
 }
@@ -1495,7 +1644,7 @@ std::string anim::writeClip(const ClipData& input){
             quantize(key);
             // a quaternion just inside the 1e-5 band can leave it once rounded: normalized
             // and rounded again it lands within ~1e-6, where the reader keeps it
-            if (track.channel == ClipChannel::Rotation){
+            if (isRotationChannel(track.channel)){
                 float length = quaternionLength(key.value);
                 if (std::fabs(length - 1.0f) > 1e-5f && length > 0.0f){
                     scaleRotationKey(key, 1.0f / length);
@@ -1503,17 +1652,24 @@ std::string anim::writeClip(const ClipData& input){
                 }
             }
         }
-        if (track.channel == ClipChannel::Rotation) enforceHemisphere(track);
+        if (isRotationChannel(track.channel)) enforceHemisphere(track);
     }
 
     std::string text = "{\n";
     text += std::string("  \"format\": ") + quote(ANIM_FORMAT) + ",\n";
-    text += "  \"version\": " + std::to_string(ANIM_VERSION) + ",\n";
+    // version 1 files stay byte-identical: 2 only for humanoid clips (anim-retarget 6.1)
+    text += "  \"version\": " + std::to_string(data.isHumanoid() ? ANIM_VERSION : 1) + ",\n";
     if (!data.guid.empty()) text += "  \"guid\": " + quote(data.guid) + ",\n";
     text += "  \"frame_rate\": " + number(data.frameRate) + ",\n";
     text += std::string("  \"wrap\": ") + quote(wrapName(data.wrap)) + ",\n";
     if (data.hasExplicitLength()) text += "  \"length\": " + timeNumber(data.length) + ",\n";
     if (data.additiveReference != 0.0f) text += "  \"additive_reference\": " + timeNumber(data.additiveReference) + ",\n";
+    if (!data.humanoid.empty()){
+        std::string info;
+        if (!data.humanoid.sourceModel.empty()) info += "\"source_model\": " + quote(data.humanoid.sourceModel);
+        if (data.humanoid.humanScale > 0.0f) info += std::string(info.empty() ? "" : ", ") + "\"human_scale\": " + number(data.humanoid.humanScale);
+        text += "  \"humanoid\": {" + info + "},\n";
+    }
 
     if (data.tracks.empty()){
         text += "  \"tracks\": [],\n";

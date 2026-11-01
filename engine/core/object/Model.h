@@ -9,7 +9,21 @@
 #include "action/Animation.h"
 #include "PoseAnimator.h"
 
+#include <string>
+#include <vector>
+
 namespace jasperengine{
+    // Model:getHumanoidInfo() (anim-retarget 8): the model's Avatar as its rig sees it
+    struct JASPERENGINE_API ModelHumanoidInfo{
+        bool valid = false;                 // the model has bones (else getHumanoidInfo is nil in Lua)
+        bool humanoid = false;              // a valid humanoid rig (the 22-slot map validates)
+        std::string animationType = "generic";  // the sidecar's: "generic" or "humanoid"
+        float humanScale = 0.0f;            // neutral hips height / 0.95 (0 without a rig)
+        std::vector<std::string> missing;   // unmapped slots (required ones make it no humanoid)
+        int extraMapped = 0;                // fingers, eyes and jaw mapped (of 33)
+        std::string error;                  // why it is no humanoid
+    };
+
     class JASPERENGINE_API Model: public Mesh{
     public:
 
@@ -55,6 +69,9 @@ namespace jasperengine{
 
         // the Pose Animator of this model (added when missing)
         PoseAnimator getPoseAnimator();
+
+        // the humanoid rig of the loaded model (anim-retarget 8): mapping, Animation Type, scale
+        ModelHumanoidInfo getHumanoidInfo() const;
     };
 }
 

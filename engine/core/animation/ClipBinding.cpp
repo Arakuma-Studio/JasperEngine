@@ -303,6 +303,9 @@ bool anim::readChannelValue(EntityRegistry* registry, Entity entity, ClipChannel
             return true;
         }
         case ClipChannel::Property:
+        case ClipChannel::Humanoid:
+        case ClipChannel::HumanoidPosition:
+            // not entity channels: a humanoid track is realised on a rig (HumanoidClip.h)
             return false;
     }
     return false;
@@ -363,6 +366,9 @@ bool anim::writeChannelValue(EntityRegistry* registry, Entity entity, ClipChanne
             return true;
         }
         case ClipChannel::Property:
+        case ClipChannel::Humanoid:
+        case ClipChannel::HumanoidPosition:
+            // not entity channels: a humanoid track is realised on a rig (HumanoidClip.h)
             return false;
     }
     return false;

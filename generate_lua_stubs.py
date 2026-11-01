@@ -2462,6 +2462,21 @@ OVERRIDES[('AnimationPlayer', 'crossFade')] = {
                   ([('name', 'string'), ('fade', 'number')], ''),
                   ([('name', 'string'), ('fade', 'number'), ('mode', 'PlayMode')], ''),
                   ([('name', 'string'), ('seconds', 'number'), ('layer', 'integer')], '')]}
+# anim-retarget: addClip's options table, Model:getHumanoidInfo's table (LuaRef in C++)
+OVERRIDES[('AnimationPlayer', 'addClip')] = {
+    'doc': ["Adds a clip entry (an authored change: the next update reloads): an asset-relative .anim or",
+            "\"<model>#<clip>\"; `name` empty or nil = the default state name. `options.retarget` plays a",
+            "generic clip as a humanoid clip, retargeted from its source model; `mirror` / `footIK` apply",
+            "to humanoid clips; `layer` is the entry's layer. False when the state name is taken."],
+    'overloads': [([('path', 'string')], 'boolean'),
+                  ([('path', 'string'), ('name', 'string')], 'boolean'),
+                  ([('path', 'string'), ('name', 'string|nil'),
+                    ('options', '{retarget?: boolean, mirror?: boolean, footIK?: boolean, layer?: integer}')], 'boolean')]}
+OVERRIDES[('Model', 'getHumanoidInfo')] = {
+    'doc': ["The model's humanoid rig (its Avatar): `humanoid` (the bone map is a valid humanoid),",
+            "`animationType` (\"generic\" or \"humanoid\", the .humanoid sidecar's), `humanScale`, the unmapped",
+            "slot names in `missing`, `extraMapped` (fingers, eyes and jaw, of 33) and `error`; nil without bones."],
+    'overloads': [([], '{humanoid: boolean, animationType: string, humanScale: number, missing: string[], extraMapped: integer, error?: string}|nil')]}
 OVERRIDES[('UIClassList', 'add')] = {
     'doc': ['Adds the classes.'], 'overloads': [([('...', 'string')], '')]}
 OVERRIDES[('UIClassList', 'remove')] = {

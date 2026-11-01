@@ -48,6 +48,17 @@
 //   model reload, R13). For a changed model file editors call one of those, not
 //   invalidate/invalidateModel alone: the builders prefer the pooled parse, which only they drop
 //   (invalidateModelParse when the entities using the model are not reloaded: their images stay).
+// - Humanoid clips (anim-retarget 7.4):
+//   * a sub-clip of a model whose .humanoid sidecar says animation_type humanoid is converted
+//     (anim::convertToHumanoid, the model's rig from HumanoidSourceCache) after it is built; its
+//     key is unchanged. invalidateModel (a model or sidecar edit: the editor's sidecar writers
+//     call it) drops it with the model's other clips.
+//   * "<clip reference>@humanoid" is the clip converted from its source model (a sub-clip: its
+//     model; a .anim: source.path when source.kind is "model", else preview.model), or the clip
+//     itself when it is humanoid already: an entry of its own ("<entry key>@humanoid"), dropped
+//     with the clip (invalidate), its model (sub-clips) or its source model (invalidateModel).
+//     Without a source model: "retarget: the clip names no source model (set its Preview Model)".
+//   * pollOrLoad converts "@humanoid" references on the thread pool too.
 
 #ifndef ANIMATION_CLIP_POOL_H
 #define ANIMATION_CLIP_POOL_H
@@ -108,6 +119,11 @@ namespace jasperengine{
         static void releaseUnused(const std::string& path);
 
         static size_t size();
+
+    private:
+        // getOrLoad without the "@humanoid" form
+        static std::shared_ptr<const AnimationClip> loadPlain(const std::string& path, std::string* error,
+                                                              std::vector<ClipWarning>* warnings);
     };
 
 }

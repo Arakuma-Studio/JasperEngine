@@ -1698,6 +1698,21 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, float>(&Model::setMorphWeight))
         .addFunction("resetToBindPose", &Model::resetToBindPose)
         .addFunction("getPoseAnimator", &Model::getPoseAnimator)
+        // the humanoid rig (anim-retarget): {humanoid, animationType, humanScale, missing, extraMapped}, nil without bones
+        .addFunction("getHumanoidInfo", +[](const Model* self, lua_State* L) -> luabridge::LuaRef {
+            const ModelHumanoidInfo info = self->getHumanoidInfo();
+            if (!info.valid) return luabridge::LuaRef(L);
+            luabridge::LuaRef table = luabridge::newTable(L);
+            table["humanoid"] = info.humanoid;
+            table["animationType"] = info.animationType;
+            table["humanScale"] = info.humanScale;
+            luabridge::LuaRef missing = luabridge::newTable(L);
+            for (size_t i = 0; i < info.missing.size(); i++) missing[(int)i + 1] = info.missing[i];
+            table["missing"] = missing;
+            table["extraMapped"] = info.extraMapped;
+            if (!info.error.empty()) table["error"] = info.error;
+            return table;
+        })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -2534,6 +2549,11 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, bool>(&AnimationState::addMixingTransform))
         .addFunction("removeMixingTransform", &AnimationState::removeMixingTransform)
         .addFunction("clearMixingTransforms", &AnimationState::clearMixingTransforms)
+        // humanoid clips: runtime overrides of the entry's Mirror and Foot IK; a humanoid clip or a
+        // retargeted one
+        .addProperty("mirror", &AnimationState::getMirror, &AnimationState::setMirror)
+        .addProperty("footIK", &AnimationState::getFootIK, &AnimationState::setFootIK)
+        .addProperty("isHumanoid", &AnimationState::isHumanoid)
         .endClass();
 
     // Unity's AnimatorStateInfo (a copy): AnimationPlayer:getCurrentStateInfo / getNextStateInfo
@@ -2586,7 +2606,23 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getState", &AnimationPlayer::getState)
         .addFunction("addClip",
             luabridge::overload<const std::string&>(&AnimationPlayer::addClip),
-            luabridge::overload<const std::string&, const std::string&>(&AnimationPlayer::addClip))
+            luabridge::overload<const std::string&, const std::string&>(&AnimationPlayer::addClip),
+            // addClip(path, name | nil, {retarget, mirror, footIK, layer})
+            luabridge::overload<AnimationPlayer*, const std::string&, const luabridge::LuaRef&, const luabridge::LuaRef&>(
+                +[](AnimationPlayer* self, const std::string& path, const luabridge::LuaRef& name, const luabridge::LuaRef& options){
+                    AnimationClipOptions values;
+                    if (options.isTable()){
+                        const luabridge::LuaRef retarget = options["retarget"];
+                        const luabridge::LuaRef mirror = options["mirror"];
+                        const luabridge::LuaRef footIK = options["footIK"];
+                        const luabridge::LuaRef layer = options["layer"];
+                        if (!retarget.isNil()) values.retarget = retarget.unsafe_cast<bool>();
+                        if (!mirror.isNil()) values.mirror = mirror.unsafe_cast<bool>();
+                        if (!footIK.isNil()) values.footIK = footIK.unsafe_cast<bool>();
+                        if (layer.isNumber()) values.layer = layer.unsafe_cast<int>();
+                    }
+                    return self->addClip(path, name.isString() ? name.unsafe_cast<std::string>() : std::string(), values);
+                }))
         .addFunction("removeClip", &AnimationPlayer::removeClip)
         .addFunction("getClipCount", &AnimationPlayer::getClipCount)
         .addFunction("getClipName", &AnimationPlayer::getClipName)

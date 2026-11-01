@@ -33,6 +33,10 @@ namespace jasperengine{
     class Scene;
 }
 
+namespace tinygltf{
+    class Model;
+}
+
 namespace jasperengine::pose {
 
     // Skeleton of the Model entity `model`: one bone per bone entity (ModelComponent bones, glTF
@@ -42,6 +46,21 @@ namespace jasperengine::pose {
     JASPERENGINE_API bool buildSkeleton(Scene* scene, Entity model, Skeleton& skeleton, std::vector<Entity>& boneEntities);
     JASPERENGINE_API bool buildSkeleton(Scene* scene, Entity model, Skeleton& skeleton, std::vector<Entity>& boneEntities,
                                         std::vector<Matrix4>* bridges);
+
+    // The same skeleton from the glTF data alone (anim-retarget 7.1, no scene): the bones are the
+    // union of all skins' joints in node order, named node.name or "Node <i>", parented to the
+    // nearest bone ancestor (the node that lists them as a child, as loadGLTF builds the
+    // hierarchy), rest TRS from the node, non-bone ancestors folded into the rest and `bridges`
+    // exactly as buildSkeleton does on a loaded model. `bonePaths[i]` is bone i's path from the
+    // model root (ModelSubClips' node paths), `boneNodes[i]` (optional) its glTF node index.
+    JASPERENGINE_API bool buildSkeletonFromGltf(const tinygltf::Model& gltf, Skeleton& skeleton, std::vector<std::string>& bonePaths,
+                                                std::vector<Matrix4>* bridges, std::vector<int>* boneNodes = nullptr);
+    // a glTF node's local TRS as the loader's entity gets it (its matrix, or T R S, decomposed)
+    JASPERENGINE_API void gltfNodeLocal(const tinygltf::Model& gltf, int node, Vector3& position, Quaternion& rotation, Vector3& scale);
+    // buildSkin from the glTF data (the inverse bind matrices of the first skin that lists each
+    // joint, as the loader's BoneComponents): the same sample buildSkin takes from the scene
+    JASPERENGINE_API std::shared_ptr<PoseSkin> buildSkinFromGltf(const tinygltf::Model& gltf, const Skeleton& skeleton,
+                                                                 const std::vector<int>& boneNodes);
 
     // CPU skinning sample of the Model's skinned meshes, from the glTF positions, JOINTS_0 and
     // WEIGHTS_0 the ModelComponent keeps loaded (at most PoseSkin::MAX_VERTICES vertices,
@@ -57,6 +76,10 @@ namespace jasperengine::pose {
     // a valid humanoid.
     JASPERENGINE_API bool resolveHumanoid(const Skeleton& skeleton, const HumanoidOverrides& overrides, HumanoidMap& out,
                                           std::string* error, std::vector<std::string>* notes = nullptr);
+    // the same, then the extra bones (fingers, eyes, jaw: resolveExtraBones with the sidecar's
+    // extra_bones); false when either fails
+    JASPERENGINE_API bool resolveHumanoid(const Skeleton& skeleton, const HumanoidOverrides& overrides, HumanoidMap& out,
+                                          HumanExtraMap& extra, std::string* error, std::vector<std::string>* notes = nullptr);
 
     // The sidecar's content in `stamp`, "" when there is none: what decides whether a cached rig
     // is current (the engine file API has no modification times in exported games, the text is
@@ -65,17 +88,21 @@ namespace jasperengine::pose {
 
     // A cached rig is shared: read-only (const) for everyone
     struct JASPERENGINE_API ModelRigInfo {
-        std::shared_ptr<const PoseRig> rig;    // built, skin set (when there is one)
+        std::shared_ptr<const PoseRig> rig;    // built, skin set (when there is one), twist corrections applied
         std::shared_ptr<const PoseSkin> skin;  // may be nullptr
         HumanoidMap humanoid;
+        HumanExtraMap extra;                   // fingers, eyes, jaw (anim-retarget 6.3)
+        // the sidecar's Animation Type and overrides the rig was built with
+        AnimationType animationType = AnimationType::Generic;
+        HumanoidOverrides overrides;
         std::vector<std::string> notes;
     };
 
     // Rigs shared by model file and sidecar: get() returns the cached rig when the model path, the
     // sidecar stamp, the model's loaded data (`source`: the ModelComponent's gltfModel/objModel,
     // held weakly, so a reloaded file is new data) and the skeleton (names, parents, rest TRS)
-    // all match, else builds it (resolveHumanoid + setSkin + PoseRig::build) outside the lock and
-    // caches it. Entries whose source data is gone (model reloaded or unloaded) are dropped on
+    // all match, else builds it (resolveHumanoid with the extra bones + setSkin + PoseRig::build
+    // with the sidecar's twist corrections) outside the lock and caches it. Entries whose source data is gone (model reloaded or unloaded) are dropped on
     // every get and by prune() (a scene's PoseAnimatorSystem prunes when the scene goes).
     // Thread safe. The editor clears it when a project closes.
     class JASPERENGINE_API PoseRigCache {

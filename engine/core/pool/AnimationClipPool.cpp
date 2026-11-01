@@ -6,7 +6,10 @@
 
 #include "animation/AnimationClip.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/HumanoidClip.h"
 #include "animation/ModelSubClips.h"
+#include "pose/HumanoidMapIO.h"
+#include "pose/ModelRig.h"
 #include "Engine.h"
 #include "io/Data.h"
 #include "io/FileData.h"
@@ -42,6 +45,9 @@ namespace{
         std::map<std::string, uint64_t> epochs;
         uint64_t clearEpoch = 0;
         std::map<std::string, ModelAliases> models;   // by model key
+        // "<key>@humanoid" entries converted from another file's rig: their source model's key
+        // (invalidateModel of that model drops them)
+        std::map<std::string, std::string> humanoidSources;
         uint64_t revision = 0;
 #ifdef JASPERENGINE_ANIM_TEST_HOOKS
         AnimationClipPoolTestHooks hooks;
@@ -70,16 +76,31 @@ namespace{
         return modelKey + "#";
     }
 
+    const char* const HUMANOID_SUFFIX = "@humanoid";
+
+    // "<clip>@humanoid": the clip converted from its source model (anim-retarget 7.4)
+    bool isHumanoidReference(const std::string& path){
+        const size_t length = std::char_traits<char>::length(HUMANOID_SUFFIX);
+        return path.size() > length && path.compare(path.size() - length, length, HUMANOID_SUFFIX) == 0;
+    }
+
+    std::string withoutHumanoidSuffix(const std::string& path){
+        return isHumanoidReference(path) ? path.substr(0, path.size() - std::char_traits<char>::length(HUMANOID_SUFFIX)) : path;
+    }
+
     // A reference normalized without the lock (the path work allocates and asks System for the
     // asset root): a .anim key, or a model key + the clip part to resolve under the lock
     struct Reference{
         bool subClip = false;
+        bool humanoid = false;  // "@humanoid": the entry key gets the suffix
         std::string key;        // .anim: the entry key; sub-clip: the model key
         std::string clip;       // sub-clip: the part after '#'
     };
 
-    Reference reference(const std::string& path){
+    Reference reference(const std::string& input){
         Reference out;
+        out.humanoid = isHumanoidReference(input);
+        const std::string path = withoutHumanoidSuffix(input);
         anim::SubClipReference parsed;
         if (anim::parseSubClipReference(path, parsed)){
             out.subClip = true;
@@ -93,12 +114,13 @@ namespace{
 
     // with the mutex held: the entry key, empty when a sub-clip alias is not known yet
     std::string entryKeyLocked(PoolState& pool, const Reference& ref){
-        if (!ref.subClip) return ref.key;
+        const std::string suffix = ref.humanoid ? HUMANOID_SUFFIX : "";
+        if (!ref.subClip) return ref.key + suffix;
         auto model = pool.models.find(ref.key);
         if (model == pool.models.end()) return std::string();
         auto alias = model->second.indices.find(ref.clip);
         if (alias == model->second.indices.end()) return std::string();
-        return subClipKey(ref.key, alias->second);
+        return subClipKey(ref.key, alias->second) + suffix;
     }
 
     uint64_t epochLocked(PoolState& pool, const std::string& key){
@@ -159,6 +181,16 @@ namespace{
     }
 
     void dropModelLocked(PoolState& pool, const std::string& modelKey){
+        // clips converted from this model's rig ("<anim>@humanoid" with it as their source)
+        for (auto it = pool.humanoidSources.begin(); it != pool.humanoidSources.end();){
+            if (it->second == modelKey){
+                bumpLocked(pool, it->first);
+                pool.entries.erase(it->first);
+                it = pool.humanoidSources.erase(it);
+            }else{
+                ++it;
+            }
+        }
         std::string prefix = aliasEpochKey(modelKey);
         for (auto it = pool.entries.lower_bound(prefix); it != pool.entries.end() && it->first.compare(0, prefix.size(), prefix) == 0;){
             bumpLocked(pool, it->first);
@@ -226,6 +258,23 @@ namespace{
         }
     }
 
+    // forgets one build in flight (its getKey)
+    void forgetAsyncLoad(const std::string& key){
+        AsyncLoads& loads = asyncLoads();
+        std::lock_guard<std::mutex> lock(loads.mutex);
+        loads.pending.erase(key);
+    }
+
+    // forgets every "<file>@humanoid" conversion in flight (a source model changed)
+    void forgetHumanoidLoads(){
+        AsyncLoads& loads = asyncLoads();
+        std::lock_guard<std::mutex> lock(loads.mutex);
+        for (auto it = loads.pending.begin(); it != loads.pending.end();){
+            if (isHumanoidReference(it->first)) it = loads.pending.erase(it);
+            else ++it;
+        }
+    }
+
     std::shared_ptr<const AnimationClip> cachedLocked(PoolState& pool, const std::string& key, std::vector<ClipWarning>* warnings){
         auto it = pool.entries.find(key);
         if (it == pool.entries.end()) return nullptr;
@@ -245,7 +294,7 @@ void jasperengine::setAnimationClipPoolTestHooks(const AnimationClipPoolTestHook
 
 std::string AnimationClipPool::getKey(const std::string& path){
     Reference ref = reference(path);
-    return ref.subClip ? anim::formatSubClipReference(ref.key, ref.clip) : ref.key;
+    return (ref.subClip ? anim::formatSubClipReference(ref.key, ref.clip) : ref.key) + (ref.humanoid ? HUMANOID_SUFFIX : "");
 }
 
 std::shared_ptr<const AnimationClip> AnimationClipPool::get(const std::string& path){
@@ -256,7 +305,92 @@ std::shared_ptr<const AnimationClip> AnimationClipPool::get(const std::string& p
     return key.empty() ? nullptr : cachedLocked(pool, key, nullptr);
 }
 
+namespace{
+
+    // the sidecar of a model says Animation Type: Humanoid
+    bool modelIsHumanoid(const std::string& modelPath){
+        std::string stamp;
+        if (!pose::humanoidSidecarStamp(modelPath, stamp, nullptr) || stamp.empty()) return false;
+        pose::HumanoidOverrides overrides;
+        std::vector<std::string> warnings;
+        return pose::parseHumanoidOverrides(stamp, overrides, warnings, nullptr) && overrides.isHumanoid();
+    }
+
+    // `data` converted from `modelPath`'s rig (false + error when the model is no humanoid)
+    bool convertFromModel(const ClipData& data, const std::string& modelPath, ClipData& out, std::vector<ClipWarning>& warnings,
+                          std::string* error){
+        std::shared_ptr<const anim::HumanoidSource> source;
+        std::string sourceError;
+        if (!anim::HumanoidSourceCache::get(modelPath, source, &sourceError)){
+            if (error) *error = "retarget from " + modelPath + ": " + sourceError;
+            return false;
+        }
+        return anim::convertToHumanoid(data, *source, out, warnings, error);
+    }
+
+}
+
 std::shared_ptr<const AnimationClip> AnimationClipPool::getOrLoad(const std::string& path, std::string* error,
+                                                                  std::vector<ClipWarning>* warnings){
+    if (!isHumanoidReference(path)) return loadPlain(path, error, warnings);
+
+    // "<clip>@humanoid" (anim-retarget 7.4): the clip, converted from its source model unless it
+    // is humanoid already
+    PoolState& pool = state();
+    if (warnings) warnings->clear();
+    const std::string basePath = withoutHumanoidSuffix(path);
+    std::vector<ClipWarning> baseWarnings;
+    std::shared_ptr<const AnimationClip> base = loadPlain(basePath, error, &baseWarnings);
+    if (!base) return nullptr;
+    Reference ref = reference(path);
+    std::string key;
+    LoadStamp stamp;
+    {
+        std::lock_guard<std::mutex> lock(pool.mutex);
+        key = entryKeyLocked(pool, ref);
+        if (key.empty()){
+            if (error) *error = "cannot resolve " + path;
+            return nullptr;
+        }
+        if (std::shared_ptr<const AnimationClip> cached = cachedLocked(pool, key, warnings)) return cached;
+        stamp = stampLocked(pool, key);
+    }
+    std::string sourceModel;
+    std::shared_ptr<const AnimationClip> clip;
+    if (base->isHumanoid()){
+        clip = base;
+    }else{
+        anim::SubClipReference sub;
+        if (anim::parseSubClipReference(basePath, sub)){
+            sourceModel = sub.model;
+        }else if (base->getSource().kind == "model" && !base->getSource().path.empty()){
+            sourceModel = base->getSource().path;
+        }else{
+            sourceModel = base->getPreviewModel();
+        }
+        if (sourceModel.empty()){
+            if (error) *error = "retarget: the clip names no source model (set its Preview Model)";
+            return nullptr;
+        }
+        if (!anim::isModelFilePath(sourceModel)){
+            if (error) *error = "retarget: the clip's source '" + sourceModel + "' is not a model (set a .gltf, .glb or .fbx as its Preview Model)";
+            return nullptr;
+        }
+        ClipData converted;
+        std::vector<ClipWarning> convertWarnings = base->getWarnings();
+        if (!convertFromModel(base->toData(), sourceModel, converted, convertWarnings, error)) return nullptr;
+        clip = AnimationClip::build(converted, convertWarnings, nullptr);
+    }
+    {
+        std::lock_guard<std::mutex> lock(pool.mutex);
+        if (!sourceModel.empty() && !anim::isSubClipReference(basePath)) pool.humanoidSources[key] = pathKey(sourceModel);
+    }
+    std::shared_ptr<const AnimationClip> cached = insert(pool, key, stamp, clip);
+    if (warnings) *warnings = cached->getWarnings();
+    return cached;
+}
+
+std::shared_ptr<const AnimationClip> AnimationClipPool::loadPlain(const std::string& path, std::string* error,
                                                                   std::vector<ClipWarning>* warnings){
     PoolState& pool = state();
     if (warnings) warnings->clear();
@@ -363,6 +497,16 @@ std::shared_ptr<const AnimationClip> AnimationClipPool::getOrLoad(const std::str
     bool built = anim::buildModelSubClip(build, data, buildWarnings, error);
 #endif
     if (!built) return nullptr;
+    // a model whose Animation Type is Humanoid serves its clips as humanoid clips (spec 7.4)
+    if (modelIsHumanoid(parsed.model)){
+        ClipData converted;
+        std::string convertError;
+        if (convertFromModel(data, parsed.model, converted, buildWarnings, &convertError)){
+            data = std::move(converted);
+        }else{
+            buildWarnings.push_back({"", "the model's Animation Type is Humanoid, but " + convertError + ": played as a generic clip"});
+        }
+    }
     std::shared_ptr<const AnimationClip> clip = AnimationClip::build(data, buildWarnings, nullptr);
     std::shared_ptr<const AnimationClip> cached = insert(pool, key, stamp, clip);
     if (warnings) *warnings = cached->getWarnings();
@@ -371,7 +515,7 @@ std::shared_ptr<const AnimationClip> AnimationClipPool::getOrLoad(const std::str
 
 std::shared_ptr<const AnimationClip> AnimationClipPool::pollOrLoad(const std::string& path, bool& loading, std::string* error){
     loading = false;
-    if (path.empty() || !Engine::isAsyncLoading() || !anim::isSubClipReference(path)){
+    if (path.empty() || !Engine::isAsyncLoading() || !(anim::isSubClipReference(withoutHumanoidSuffix(path)) || isHumanoidReference(path))){
         return getOrLoad(path, error);
     }
     if (std::shared_ptr<const AnimationClip> cached = get(path)) return cached;
@@ -440,12 +584,20 @@ void AnimationClipPool::invalidate(const std::string& path){
     }
     Reference ref = reference(path);
     if (ref.subClip) forgetAsyncLoads(ref.key);
+    else forgetAsyncLoad(ref.key + HUMANOID_SUFFIX);
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);
     std::string key = entryKeyLocked(pool, ref);
     if (key.empty()) return;
     bumpLocked(pool, key);
     pool.entries.erase(key);
+    // the clip changed: its humanoid conversion too
+    if (!ref.humanoid){
+        const std::string converted = key + HUMANOID_SUFFIX;
+        bumpLocked(pool, converted);
+        pool.entries.erase(converted);
+        pool.humanoidSources.erase(converted);
+    }
     pool.revision++;
 }
 
@@ -453,8 +605,11 @@ void AnimationClipPool::invalidateModel(const std::string& modelPath){
     if (modelPath.empty()) return;
     // the builders' own parse of the file first: a load after this reads the file again
     anim::dropModelFileParse(modelPath);
+    // its humanoid rig (the model or its .humanoid sidecar changed)
+    anim::HumanoidSourceCache::drop(modelPath);
     std::string modelKey = pathKey(modelPath);
     forgetAsyncLoads(modelKey);
+    forgetHumanoidLoads();
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);
     dropModelLocked(pool, modelKey);
@@ -462,6 +617,7 @@ void AnimationClipPool::invalidateModel(const std::string& modelPath){
 
 void AnimationClipPool::clear(){
     anim::dropModelFileParse(std::string());
+    anim::HumanoidSourceCache::drop(std::string());
     forgetAsyncLoads(std::string());
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);
@@ -471,6 +627,7 @@ void AnimationClipPool::clear(){
     }
     pool.entries.clear();
     pool.models.clear();
+    pool.humanoidSources.clear();
     pool.epochs.clear();
     pool.clearEpoch++;
     pool.revision++;

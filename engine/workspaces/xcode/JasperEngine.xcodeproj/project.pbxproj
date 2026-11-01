@@ -3460,6 +3460,12 @@
 		4A534E474B028A49F22E7413 /* AvatarMaskPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */; };
 		4A534E4790F1AB4DDB5485FE /* JsonAssetPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */; };
 		4A534E47658965B013EA1310 /* ActionSystemPlayersDetail.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */; };
+		4A534E47B147FA03588D0AE2 /* HumanoidClip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471EF2CC7F3BB65A35 /* HumanoidClip.cpp */; };
+		4A534E47C7A26584A6ACC6A0 /* HumanoidClip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471EF2CC7F3BB65A35 /* HumanoidClip.cpp */; };
+		4A534E47124F8CA0124BC33E /* HumanExtraBones.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4772A93B1FA0AF6499 /* HumanExtraBones.cpp */; };
+		4A534E4794030AE855D1E3B1 /* HumanExtraBones.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4772A93B1FA0AF6499 /* HumanExtraBones.cpp */; };
+		4A534E47925B19D3B1F178D4 /* HumanoidClip.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D21FB37D2CD0BAC9 /* HumanoidClip.h */; };
+		4A534E47C2AEB0877A0DF737 /* HumanExtraBones.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47052B91DAD5A0DE85 /* HumanExtraBones.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6938,6 +6944,10 @@
 		4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AvatarMaskPool.h; sourceTree = "<group>"; };
 		4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JsonAssetPool.h; sourceTree = "<group>"; };
 		4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ActionSystemPlayersDetail.h; sourceTree = "<group>"; };
+		4A534E471EF2CC7F3BB65A35 /* HumanoidClip.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HumanoidClip.cpp; sourceTree = "<group>"; };
+		4A534E4772A93B1FA0AF6499 /* HumanExtraBones.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HumanExtraBones.cpp; sourceTree = "<group>"; };
+		4A534E47D21FB37D2CD0BAC9 /* HumanoidClip.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HumanoidClip.h; sourceTree = "<group>"; };
+		4A534E47052B91DAD5A0DE85 /* HumanExtraBones.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HumanExtraBones.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -8181,6 +8191,8 @@
 				4A534E47E5073D8D758390C4 /* PoseRealisation.cpp */,
 				4A534E47D99278DD57537FE0 /* PoseMetrics.h */,
 				4A534E47137B26983B17AF0F /* PoseRealisation.h */,
+				4A534E4772A93B1FA0AF6499 /* HumanExtraBones.cpp */,
+				4A534E47052B91DAD5A0DE85 /* HumanExtraBones.h */,
 			);
 			path = pose;
 			sourceTree = "<group>";
@@ -8239,6 +8251,8 @@
 				4A534E47D659E046BA39D1C5 /* AnimJson.h */,
 				4A534E47E8C82FBFE31A0756 /* AnimatorController.h */,
 				4A534E4785CD3820E9AA2297 /* AvatarMask.h */,
+				4A534E471EF2CC7F3BB65A35 /* HumanoidClip.cpp */,
+				4A534E47D21FB37D2CD0BAC9 /* HumanoidClip.h */,
 			);
 			path = animation;
 			sourceTree = "<group>";
@@ -12366,6 +12380,8 @@
 				4A534E474B028A49F22E7413 /* AvatarMaskPool.h in Headers */,
 				4A534E4790F1AB4DDB5485FE /* JsonAssetPool.h in Headers */,
 				4A534E47658965B013EA1310 /* ActionSystemPlayersDetail.h in Headers */,
+				4A534E47925B19D3B1F178D4 /* HumanoidClip.h in Headers */,
+				4A534E47C2AEB0877A0DF737 /* HumanExtraBones.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14465,6 +14481,8 @@
 				4A534E4792CE3E8DF5963EC5 /* AnimatorControllerPool.cpp in Sources */,
 				4A534E47DC0E92FD3966E7E3 /* ActionSystemLayers.cpp in Sources */,
 				4A534E470D249A6CD7FD5DDC /* ActionSystemController.cpp in Sources */,
+				4A534E47B147FA03588D0AE2 /* HumanoidClip.cpp in Sources */,
+				4A534E47124F8CA0124BC33E /* HumanExtraBones.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14943,6 +14961,8 @@
 				4A534E4784007B7DE713386D /* AnimatorControllerPool.cpp in Sources */,
 				4A534E47B6383C70AF9337CE /* ActionSystemLayers.cpp in Sources */,
 				4A534E4765A4B02E89DDFB2A /* ActionSystemController.cpp in Sources */,
+				4A534E47C7A26584A6ACC6A0 /* HumanoidClip.cpp in Sources */,
+				4A534E4794030AE855D1E3B1 /* HumanExtraBones.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

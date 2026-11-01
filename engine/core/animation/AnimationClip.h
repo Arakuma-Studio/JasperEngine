@@ -81,6 +81,10 @@ namespace jasperengine{
         bool loop = false;
         // lattice: the flat point indices each key's value lists, in this order
         std::vector<int> points;
+        // humanoid / humanoid_position (anim-retarget 7.1): the bone, -1 for other channels.
+        // humanoid: 0..21 a slot (pose::HumanBone), 22..54 an extra bone (HUMAN_BONE_COUNT +
+        // pose::HumanExtraBone); humanoid_position: HUMANOID_POSITION_HIPS / _LEFT_FOOT / _RIGHT_FOOT
+        int humanBone = -1;
         // property (reserved): the addressed component/property and the track as read (compact
         // JSON text), written back verbatim
         std::string component;
@@ -95,6 +99,15 @@ namespace jasperengine{
         float time = 0.0f;
         std::string function;                   // a Lua identifier
         std::vector<AnimationEventArg> args;
+    };
+
+    // A humanoid clip's source (file key "humanoid", anim-retarget 6.1): informational, the
+    // reports show the scale ratio with it
+    struct JASPERENGINE_API ClipHumanoidInfo{
+        std::string sourceModel;                // asset-relative
+        float humanScale = 0.0f;                // the source rig's humanScale (0: unknown)
+
+        bool empty() const { return sourceModel.empty() && humanScale == 0.0f; }
     };
 
     // Written by Extract / Convert / Bake only; ignored by the runtime
@@ -123,17 +136,23 @@ namespace jasperengine{
         // editor-only hint: a model or prefab to preview the clip on (asset-relative)
         std::string previewModel;
         ClipSource source;
+        ClipHumanoidInfo humanoid;
         // unknown top-level keys and their compact JSON text, in file order: written back
         std::vector<std::pair<std::string, std::string>> unknownKeys;
 
         bool hasExplicitLength() const { return length >= 0.0f; }
+        // a clip with any humanoid track is a humanoid clip (written as version 2)
+        bool isHumanoid() const;
+        // index into tracks of the humanoid track (channel, humanBone), -1 when none
+        int findHumanoidTrack(ClipChannel channel, int humanBone) const;
         // the explicit length, else the last key or event time over the whole clip
         float effectiveLength() const;
-        // index into tracks, -1 when none (property tracks are not found by this)
+        // index into tracks, -1 when none (property tracks are not found by this; for a humanoid
+        // channel `path` is the bone name: "left_upper_arm", "hips")
         int findTrack(const std::string& path, ClipChannel channel) const;
 
-        // floats per key value: position/scale 3, rotation 4, morph `morphCount`, lattice
-        // 3 * `pointCount`, property 0
+        // floats per key value: position/scale/humanoid_position 3, rotation/humanoid 4, morph
+        // `morphCount`, lattice 3 * `pointCount`, property 0
         static size_t valueWidth(ClipChannel channel, size_t morphCount = 0, size_t pointCount = 0);
     };
 
@@ -146,6 +165,7 @@ namespace jasperengine{
             ClipChannel channel = ClipChannel::Position;
             bool relative = false;
             bool loop = false;
+            int humanBone = -1;                 // humanoid tracks (ClipTrackData::humanBone)
             float duration = 0.0f;              // its last key's time
 
             size_t keyCount = 0;
@@ -155,8 +175,8 @@ namespace jasperengine{
             // values per key: 1 for position/rotation/scale, the morph target count for morph,
             // the point count for lattice; key k's row starts at k * width
             size_t width = 1;
-            const Vector3* vectors = nullptr;       // position, scale, lattice
-            const Quaternion* rotations = nullptr;  // rotation
+            const Vector3* vectors = nullptr;       // position, scale, lattice, humanoid_position
+            const Quaternion* rotations = nullptr;  // rotation, humanoid
             const float* weights = nullptr;         // morph
             // tangents of the same channel, null without (linear / eased track)
             const Vector3* inVectors = nullptr;
@@ -203,6 +223,9 @@ namespace jasperengine{
         const std::string& getGuid() const { return guid; }
         const std::string& getPreviewModel() const { return previewModel; }
         const ClipSource& getSource() const { return source; }
+        const ClipHumanoidInfo& getHumanoidInfo() const { return humanoid; }
+        // any humanoid track (anim-retarget 5.1)
+        bool isHumanoid() const { return humanoidTracks > 0; }
         const std::vector<std::pair<std::string, std::string>>& getUnknownKeys() const { return unknownKeys; }
         // the loader's and build's warnings (what the editor and tools report)
         const std::vector<ClipWarning>& getWarnings() const { return warnings; }
@@ -211,8 +234,9 @@ namespace jasperengine{
         // sorted by (time, function)
         const std::vector<ClipEventData>& getEvents() const { return events; }
 
-        // index into getTracks(), -1 when none
+        // index into getTracks(), -1 when none (humanoid channels: `path` is the bone name)
         int findTrack(const std::string& path, ClipChannel channel) const;
+        int findHumanoidTrack(ClipChannel channel, int humanBone) const;
 
     private:
         AnimationClip() = default;
@@ -228,6 +252,8 @@ namespace jasperengine{
         std::string guid;
         std::string previewModel;
         ClipSource source;
+        ClipHumanoidInfo humanoid;
+        size_t humanoidTracks = 0;
         std::vector<std::pair<std::string, std::string>> unknownKeys;
         std::vector<ClipWarning> warnings;
         std::vector<Track> tracks;

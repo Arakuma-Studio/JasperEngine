@@ -109,7 +109,7 @@ namespace jasperengine::anim{
         std::string clipGuid;           // .anim: its GUID (editor)
         float threshold = 0.0f;
         float speed = 1.0f;
-        bool mirror = false;            // anim-retarget
+        bool mirror = false;            // anim-retarget: flips its state's Mirror
         KeptKeys unknownKeys;
     };
 
@@ -132,7 +132,7 @@ namespace jasperengine::anim{
         std::string speedParameter;     // a float parameter multiplied in
         ClipWrapMode wrap = ClipWrapMode::Default;  // Default: the clip's own
         float cycleOffset = 0.0f;       // 0..1, the normalized start
-        // consumed by anim-retarget (kept and ignored before it)
+        // humanoid playback (anim-retarget): the player state's Mirror, Foot IK and Retarget
         bool mirror = false;
         bool footIK = false;
         bool retarget = false;
