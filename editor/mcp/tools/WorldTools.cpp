@@ -5729,11 +5729,11 @@ void registerWorldTools(McpRegistry& registry) {
         editAnimationTool, false, false);
 
     add("get_animation", "Get Animation",
-        "entity: an Animation's timeline (loop, duration, autoplay, target, actions with kind, keys or tween "
-        "values), or for another GameObject the animations targeting it or its children (model clips too) and "
-        "the Animation Player playing it (states, layers, mask coverage, bindings; live in play). clip (.anim or "
-        "\"model.gltf#Walk\"): settings, tracks, events, users; times: values sampled there; root: bindings (humanoid: "
-        "retarget_report, realised at times); "
+        "entity: an Animation's timeline (loop, duration, autoplay, target, actions with kind, keys/tween "
+        "values), or for a GameObject the animations on it or below (model clips too) and "
+        "its Animation Player (states, layers, mask coverage, bindings; live in play). clip (.anim or "
+        "\"model.gltf#Walk\"): settings, tracks, events, users; times: sampled values; root: bindings (humanoid: "
+        "retarget_report, realised); "
         "root + list_properties (a path): its animatable properties. "
         "mask (.mask; root: coverage) or controller (.controller summary).",
         object({
