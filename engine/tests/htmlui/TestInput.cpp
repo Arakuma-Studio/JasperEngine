@@ -827,7 +827,10 @@ TEST_F(InputTest, ComponentUIPointersOutsideTheCanvasFocusLossAndPauseAreCancell
     EXPECT_EQ(releases, 1);
     EXPECT_FALSE(ui.isPointerCaptured(-1));
 
-    // focus lost while a finger holds the stick and the mouse the Button
+    // focus lost while a finger holds the stick and the mouse the Button (from a focused app: an
+    // earlier test's pause took the focus, and the engine keeps it until it comes back)
+    Engine::systemFocusChanged(true);
+    Engine::systemFocus(true);
     Engine::systemTouchStart(1, 560, 240);
     Engine::systemMouseDown(D_MOUSE_BUTTON_LEFT, 560, 330, 0);
     EXPECT_TRUE(control.pressed);
