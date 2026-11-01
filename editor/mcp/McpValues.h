@@ -169,6 +169,17 @@ namespace jasperengine::editor::mcp {
         static Json toJson(const Quaternion& value);
         static Vector3 eulerDegrees(const Quaternion& value);
 
+        // Animation references as MCP passes them (project-relative; the stored form of an existing
+        // file is taken too) to the stored (asset-relative) form and the file's GUID: a clip (.anim
+        // that exists, or "<model>#<animation>" of an existing model, checked against its
+        // animations), a .mask / .controller (it must exist and parse). Empty clears. The error
+        // names what is wrong with an example (no field prefix).
+        static bool clipReferenceFromJson(Project* project, const std::string& text, std::string& stored, std::string& guid, std::string& error);
+        static bool animAssetReferenceFromJson(Project* project, const std::string& text, bool mask, std::string& stored, std::string& guid,
+                                               std::string& error);
+        // a stored clip reference shown project-relative ("assets/anim/walk.anim", "assets/hero.gltf#Walk")
+        static std::string clipReferenceToJson(Project* project, const std::string& stored);
+
         // Recomputes every Transform's world matrix and values now (the transform system only runs
         // between frames, so a GameObject made or moved this frame reads stale world values)
         static void refreshTransforms(SceneProject* scene);

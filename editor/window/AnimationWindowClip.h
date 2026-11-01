@@ -131,6 +131,8 @@ namespace jasperengine::editor{
             std::string leaf;       // what the row shows: "Leaf : Channel"
             bool missing = false;
             std::string message;    // the binding problem (tooltip)
+            // the layer's mask hides the track's target: "masked out by Arm.mask on layer Holding"
+            std::string masked;
         };
 
         struct CopiedKey{

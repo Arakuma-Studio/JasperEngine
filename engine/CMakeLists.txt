@@ -916,6 +916,10 @@ set(JASPERENGINE_SRCS
     core/action/keyframe/TranslateTracks.cpp
     core/animation/AnimationClip.cpp
     core/animation/AnimationClipIO.cpp
+    core/animation/AnimJson.cpp
+    core/animation/AvatarMask.cpp
+    core/animation/AnimatorController.cpp
+    core/animation/AnimatorControllerPlayback.cpp
     core/animation/AnimationEvent.cpp
     core/animation/AnimationPlayerRuntime.cpp
     core/animation/VertexAnimatorRuntime.cpp
@@ -1092,6 +1096,8 @@ set(JASPERENGINE_SRCS
     core/pool/MeshLodPool.cpp
     core/pool/MeshBufferPool.cpp
     core/pool/AnimationClipPool.cpp
+    core/pool/AvatarMaskPool.cpp
+    core/pool/AnimatorControllerPool.cpp
     core/pool/PhysicsMaterialPool.cpp
     core/pool/VertexAnimationPool.cpp
     core/object/physics/Collision.cpp
@@ -1155,6 +1161,8 @@ set(JASPERENGINE_SRCS
     core/subsystem/ActionSystem.cpp
     core/subsystem/ActionSystemParticles.cpp
     core/subsystem/ActionSystemPlayers.cpp
+    core/subsystem/ActionSystemLayers.cpp
+    core/subsystem/ActionSystemController.cpp
     core/subsystem/PoseAnimatorSystem.cpp
     core/subsystem/VertexAnimatorSystem.cpp
     core/subsystem/TrailSystem.cpp

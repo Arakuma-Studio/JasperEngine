@@ -3453,6 +3453,29 @@
 		4A534E470DA75CBE9CCA66E2 /* OnScreenControls.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A3734219166C9A6F /* OnScreenControls.h */; };
 		4A534E471B6DA2DDED262F16 /* OnScreenControls.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477650920F4D670D0F /* OnScreenControls.h */; };
 		4A534E47786C4C82C1A31AFB /* PointerEventData.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AD6F5BB381B88CCB /* PointerEventData.h */; };
+		4A534E47C2EB8733EFA6A703 /* AnimJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4740DBAA4CDAA5F839 /* AnimJson.cpp */; };
+		4A534E47B883AB58AE96516A /* AnimJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4740DBAA4CDAA5F839 /* AnimJson.cpp */; };
+		4A534E4762ADCF900A1EE759 /* AvatarMask.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47996AB1821448E1AE /* AvatarMask.cpp */; };
+		4A534E479157A9898502F849 /* AvatarMask.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47996AB1821448E1AE /* AvatarMask.cpp */; };
+		4A534E473B6F76E6926344CF /* AnimatorController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475C33BEC4EEB71F20 /* AnimatorController.cpp */; };
+		4A534E474769C0AF2E2ADF1C /* AnimatorController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475C33BEC4EEB71F20 /* AnimatorController.cpp */; };
+		4A534E473B7ADBFE51472A17 /* AnimatorControllerPlayback.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C840674BC8E739BE /* AnimatorControllerPlayback.cpp */; };
+		4A534E473C3FBE3B58C8E61A /* AnimatorControllerPlayback.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C840674BC8E739BE /* AnimatorControllerPlayback.cpp */; };
+		4A534E473471AEDD7E75E664 /* AvatarMaskPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FF975B0B4DF4353A /* AvatarMaskPool.cpp */; };
+		4A534E479511A0CC70AEAA36 /* AvatarMaskPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FF975B0B4DF4353A /* AvatarMaskPool.cpp */; };
+		4A534E4792CE3E8DF5963EC5 /* AnimatorControllerPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470F6780B5E26BAA01 /* AnimatorControllerPool.cpp */; };
+		4A534E4784007B7DE713386D /* AnimatorControllerPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470F6780B5E26BAA01 /* AnimatorControllerPool.cpp */; };
+		4A534E47DC0E92FD3966E7E3 /* ActionSystemLayers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470FE648ABDB388822 /* ActionSystemLayers.cpp */; };
+		4A534E47B6383C70AF9337CE /* ActionSystemLayers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470FE648ABDB388822 /* ActionSystemLayers.cpp */; };
+		4A534E470D249A6CD7FD5DDC /* ActionSystemController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4714F69319B4C8EADD /* ActionSystemController.cpp */; };
+		4A534E4765A4B02E89DDFB2A /* ActionSystemController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4714F69319B4C8EADD /* ActionSystemController.cpp */; };
+		4A534E4760E68158A46EE9E7 /* AnimJson.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D659E046BA39D1C5 /* AnimJson.h */; };
+		4A534E47F140524B37ABEF43 /* AnimatorController.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E8C82FBFE31A0756 /* AnimatorController.h */; };
+		4A534E477173DC4F901A839F /* AvatarMask.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4785CD3820E9AA2297 /* AvatarMask.h */; };
+		4A534E4780DBE4298C5B38E0 /* AnimatorControllerPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476874CEB8B84CDC87 /* AnimatorControllerPool.h */; };
+		4A534E474B028A49F22E7413 /* AvatarMaskPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */; };
+		4A534E4790F1AB4DDB5485FE /* JsonAssetPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */; };
+		4A534E47658965B013EA1310 /* ActionSystemPlayersDetail.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6929,6 +6952,21 @@
 		4A534E47A3734219166C9A6F /* OnScreenControls.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnScreenControls.h; sourceTree = "<group>"; };
 		4A534E477650920F4D670D0F /* OnScreenControls.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnScreenControls.h; sourceTree = "<group>"; };
 		4A534E47AD6F5BB381B88CCB /* PointerEventData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PointerEventData.h; sourceTree = "<group>"; };
+		4A534E4740DBAA4CDAA5F839 /* AnimJson.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimJson.cpp; sourceTree = "<group>"; };
+		4A534E47996AB1821448E1AE /* AvatarMask.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AvatarMask.cpp; sourceTree = "<group>"; };
+		4A534E475C33BEC4EEB71F20 /* AnimatorController.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorController.cpp; sourceTree = "<group>"; };
+		4A534E47C840674BC8E739BE /* AnimatorControllerPlayback.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorControllerPlayback.cpp; sourceTree = "<group>"; };
+		4A534E47FF975B0B4DF4353A /* AvatarMaskPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AvatarMaskPool.cpp; sourceTree = "<group>"; };
+		4A534E470F6780B5E26BAA01 /* AnimatorControllerPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorControllerPool.cpp; sourceTree = "<group>"; };
+		4A534E470FE648ABDB388822 /* ActionSystemLayers.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ActionSystemLayers.cpp; sourceTree = "<group>"; };
+		4A534E4714F69319B4C8EADD /* ActionSystemController.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ActionSystemController.cpp; sourceTree = "<group>"; };
+		4A534E47D659E046BA39D1C5 /* AnimJson.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimJson.h; sourceTree = "<group>"; };
+		4A534E47E8C82FBFE31A0756 /* AnimatorController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorController.h; sourceTree = "<group>"; };
+		4A534E4785CD3820E9AA2297 /* AvatarMask.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AvatarMask.h; sourceTree = "<group>"; };
+		4A534E476874CEB8B84CDC87 /* AnimatorControllerPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorControllerPool.h; sourceTree = "<group>"; };
+		4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AvatarMaskPool.h; sourceTree = "<group>"; };
+		4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JsonAssetPool.h; sourceTree = "<group>"; };
+		4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ActionSystemPlayersDetail.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -8224,6 +8262,13 @@
 				4A534E47AD5E53AFFD11DDEA /* VertexAnimation.h */,
 				4A534E472C320572A975C725 /* VertexAnimatorRuntime.h */,
 				4A534E47CB75CAA034603A13 /* CanvasGroupTracks.h */,
+				4A534E4740DBAA4CDAA5F839 /* AnimJson.cpp */,
+				4A534E47996AB1821448E1AE /* AvatarMask.cpp */,
+				4A534E475C33BEC4EEB71F20 /* AnimatorController.cpp */,
+				4A534E47C840674BC8E739BE /* AnimatorControllerPlayback.cpp */,
+				4A534E47D659E046BA39D1C5 /* AnimJson.h */,
+				4A534E47E8C82FBFE31A0756 /* AnimatorController.h */,
+				4A534E4785CD3820E9AA2297 /* AvatarMask.h */,
 			);
 			path = animation;
 			sourceTree = "<group>";
@@ -8662,6 +8707,9 @@
 				4A534E47FC33E0E52A92BE03 /* PhysicsSystemContacts.cpp */,
 				4A534E471CF047A32835BE30 /* ActionSystemParticles.cpp */,
 				4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */,
+				4A534E470FE648ABDB388822 /* ActionSystemLayers.cpp */,
+				4A534E4714F69319B4C8EADD /* ActionSystemController.cpp */,
+				4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -9845,6 +9893,11 @@
 				4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */,
 				4A534E4734D6776EE9983E2C /* PhysicsMaterialPool.cpp */,
 				4A534E47366B4EA887EC0288 /* PhysicsMaterialPool.h */,
+				4A534E47FF975B0B4DF4353A /* AvatarMaskPool.cpp */,
+				4A534E470F6780B5E26BAA01 /* AnimatorControllerPool.cpp */,
+				4A534E476874CEB8B84CDC87 /* AnimatorControllerPool.h */,
+				4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */,
+				4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */,
 			);
 			path = pool;
 			sourceTree = "<group>";
@@ -12360,6 +12413,13 @@
 				4A534E470DA75CBE9CCA66E2 /* OnScreenControls.h in Headers */,
 				4A534E471B6DA2DDED262F16 /* OnScreenControls.h in Headers */,
 				4A534E47786C4C82C1A31AFB /* PointerEventData.h in Headers */,
+				4A534E4760E68158A46EE9E7 /* AnimJson.h in Headers */,
+				4A534E47F140524B37ABEF43 /* AnimatorController.h in Headers */,
+				4A534E477173DC4F901A839F /* AvatarMask.h in Headers */,
+				4A534E4780DBE4298C5B38E0 /* AnimatorControllerPool.h in Headers */,
+				4A534E474B028A49F22E7413 /* AvatarMaskPool.h in Headers */,
+				4A534E4790F1AB4DDB5485FE /* JsonAssetPool.h in Headers */,
+				4A534E47658965B013EA1310 /* ActionSystemPlayersDetail.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14457,6 +14517,14 @@
 				4A534E47CE4DDDD5406DCD9F /* OnScreenControls.cpp in Sources */,
 				4A534E475734202A34670B36 /* OnScreenControls.cpp in Sources */,
 				4A534E476A7F8F86DF73A561 /* UISystemPointer.cpp in Sources */,
+				4A534E47C2EB8733EFA6A703 /* AnimJson.cpp in Sources */,
+				4A534E4762ADCF900A1EE759 /* AvatarMask.cpp in Sources */,
+				4A534E473B6F76E6926344CF /* AnimatorController.cpp in Sources */,
+				4A534E473B7ADBFE51472A17 /* AnimatorControllerPlayback.cpp in Sources */,
+				4A534E473471AEDD7E75E664 /* AvatarMaskPool.cpp in Sources */,
+				4A534E4792CE3E8DF5963EC5 /* AnimatorControllerPool.cpp in Sources */,
+				4A534E47DC0E92FD3966E7E3 /* ActionSystemLayers.cpp in Sources */,
+				4A534E470D249A6CD7FD5DDC /* ActionSystemController.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14933,6 +15001,14 @@
 				4A534E472B759C831029D9FF /* OnScreenControls.cpp in Sources */,
 				4A534E4775C989A97F7DAD2F /* OnScreenControls.cpp in Sources */,
 				4A534E475C8615BE887AD90C /* UISystemPointer.cpp in Sources */,
+				4A534E47B883AB58AE96516A /* AnimJson.cpp in Sources */,
+				4A534E479157A9898502F849 /* AvatarMask.cpp in Sources */,
+				4A534E474769C0AF2E2ADF1C /* AnimatorController.cpp in Sources */,
+				4A534E473C3FBE3B58C8E61A /* AnimatorControllerPlayback.cpp in Sources */,
+				4A534E479511A0CC70AEAA36 /* AvatarMaskPool.cpp in Sources */,
+				4A534E4784007B7DE713386D /* AnimatorControllerPool.cpp in Sources */,
+				4A534E47B6383C70AF9337CE /* ActionSystemLayers.cpp in Sources */,
+				4A534E4765A4B02E89DDFB2A /* ActionSystemController.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

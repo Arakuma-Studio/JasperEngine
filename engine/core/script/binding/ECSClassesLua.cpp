@@ -883,6 +883,9 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("needsLoad", &AnimationPlayerComponent::needsLoad, &AnimationPlayerComponent::needsLoad)
         .addProperty("onEvent", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onEvent; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onEvent = L; })
         .addProperty("onFinish", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onFinish; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onFinish = L; })
+        .addProperty("controller", &AnimationPlayerComponent::controller, &AnimationPlayerComponent::controller)
+        .addProperty("onStateEnter", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onStateEnter; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onStateEnter = L; })
+        .addProperty("onStateExit", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onStateExit; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onStateExit = L; })
         .endClass();
 
     // The Vertex Animator's data (the VertexAnimator object plays it: play, crossFade, blend...)

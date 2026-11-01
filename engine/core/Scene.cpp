@@ -121,6 +121,8 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
     removeComponentSubscriptionsByTag<AnimationPlayerComponent>(this, substring, [](AnimationPlayerComponent& player, const std::string& tag) {
         player.onEvent.removeByTagSubstring(tag);
         player.onFinish.removeByTagSubstring(tag);
+        player.onStateEnter.removeByTagSubstring(tag);
+        player.onStateExit.removeByTagSubstring(tag);
     });
 
     removeComponentSubscriptionsByTag<VertexAnimatorComponent>(this, substring, [](VertexAnimatorComponent& animator, const std::string& tag) {

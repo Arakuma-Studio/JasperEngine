@@ -442,6 +442,8 @@ void prepare<AnimationPlayerComponent>(AnimationPlayerComponent& player, Entity,
     if (!ctx.move) {
         player.onEvent.clear();
         player.onFinish.clear();
+        player.onStateEnter.clear();
+        player.onStateExit.clear();
     }
 }
 

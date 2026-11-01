@@ -10,6 +10,8 @@
 #include "util/Util.h"
 
 #include "animation/AnimationClipIO.h"
+#include "animation/AnimatorController.h"
+#include "animation/AvatarMask.h"
 #include "animation/VertexAnimation.h"
 #include "yaml-cpp/yaml.h"
 
@@ -62,17 +64,26 @@ namespace {
         return value;
     }
 
-    // .anim clips and .vat Vertex Animations are JSON: their GUID is the top-level "guid" member
-    // (AnimationClipIO reads and replaces it in any JSON object that has a "version" member)
+    // .anim clips, .vat Vertex Animations, .mask Avatar Masks and .controller Animator
+    // Controllers are JSON: their GUID is the top-level "guid" member (AnimationClipIO reads and
+    // replaces it in any JSON object that has a "version" member)
     bool isClipFile(const fs::path& path) {
-        return editor::Util::isAnimationClipFile(path.string()) || editor::Util::isVertexAnimationFile(path.string());
+        const std::string text = path.string();
+        return editor::Util::isAnimationClipFile(text) || editor::Util::isVertexAnimationFile(text) ||
+               editor::Util::isAvatarMaskFile(text) || editor::Util::isAnimatorControllerFile(text);
     }
 
-    // the JSON asset parses as its own type; a broken or foreign file (a Unity YAML .anim, broken
-    // JSON) is left alone: its error must keep its line
+    // the JSON asset parses as its own type; a broken or foreign file (a Unity YAML .anim, .mask
+    // or .controller, broken JSON) is left alone: its error must keep its line
     bool parsesAsJsonAsset(const fs::path& path, const std::string& text) {
         if (editor::Util::isVertexAnimationFile(path.string())) {
             return vat::parseVat(text).ok();
+        }
+        if (editor::Util::isAvatarMaskFile(path.string())) {
+            return anim::parseAvatarMask(text).ok();
+        }
+        if (editor::Util::isAnimatorControllerFile(path.string())) {
+            return anim::parseController(text).ok();
         }
         return anim::parseClip(text).ok();
     }
@@ -81,6 +92,8 @@ namespace {
     const char* kindOf(const std::string& relative) {
         if (editor::Util::isAnimationClipFile(relative)) return "Animation clip";
         if (editor::Util::isVertexAnimationFile(relative)) return "Vertex Animation";
+        if (editor::Util::isAvatarMaskFile(relative)) return "Avatar Mask";
+        if (editor::Util::isAnimatorControllerFile(relative)) return "Animator Controller";
         return "Prefab";
     }
 
@@ -93,8 +106,7 @@ namespace {
 }
 
 bool editor::AssetDatabase::isTrackedFile(const fs::path& path) {
-    return Util::isPrefabFile(path.string()) || Util::isAnimationClipFile(path.string()) ||
-           Util::isVertexAnimationFile(path.string());
+    return Util::isPrefabFile(path.string()) || isClipFile(path);
 }
 
 std::string editor::AssetDatabase::generateGuid() {

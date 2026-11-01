@@ -105,8 +105,10 @@ namespace jasperengine {
                            const std::function<int(lua_State*)>& pushArgs,
                            const std::function<void(ScriptBase&)>& callCpp);
         // A method given by name on the enabled Lua scripts of the GameObject (the Animation
-        // Player's and Vertex Animator's clip events). True when at least one defines it.
-        static bool sendNamed(Scene* scene, Entity entity, const std::string& method, const std::vector<AnimationEventArg>& args);
+        // Player's and Vertex Animator's clip events, its controller's onStateEnter/Exit). True
+        // when at least one defines it. `integers`: whole numbers go as Lua integers
+        static bool sendNamed(Scene* scene, Entity entity, const std::string& method, const std::vector<AnimationEventArg>& args,
+                              bool integers = false);
         // One entry without any delivery rule (ScriptRuntime applies the lifecycle's own). True
         // when the script defines the method (it was called; an error in it is logged).
         static bool invoke(Scene* scene, Entity entity, size_t scriptIndex, ScriptMessage m,
