@@ -108,7 +108,8 @@ Binding conventions: [AGENT-BRIEF.md](../../engine-gaps/AGENT-BRIEF.md). Gap: [G
 - **A11. Global voice budget**: Project Settings > Audio `maxRealVoices` (32, SoLoud active voices + one per group)
   and `maxVoices` (256): starting a voice past `maxVoices` stops the playing voice with the highest `priority`
   number (least important), oldest first; if the new voice is the least important it does not start. Protected
-  voices (`protectVoice`) are never virtualised by SoLoud nor stolen.
+  voices (`protectVoice`) are never stolen by the budget nor killed when SoLoud's voice slots run out
+  (they can be virtualised like any other; corrected in implementation).
 - **A12. Fades are volume animations** of the source's `volume` (`fadeTo` changes `volume`; `fadeIn` plays from 0 to
   the current `volume`; `fadeOut` goes to 0, then stops (or pauses with `{pause=true}`) and restores `volume` so the
   next `play()` is at the authored level). Scaled time by default (A7), `{unscaled=true}` option. Implemented on the
@@ -398,3 +399,124 @@ nosound in CI).
 - **coroutines**: fades/transitions are engine-driven, no coroutine needed; scripts may still tween with coroutines.
 - **platform-services**: app focus loss can pause audio with `AudioListener.pause` (game choice); `onFocus` event
   lives there.
+
+## Implementation notes
+
+Decisions taken while implementing (2026-10-31), where the spec was silent, ambiguous or did not fit the code:
+
+- **Meters are post-effect and post-fader.** SoLoud's bus visualization is taken before the bus's own filters and
+  volume, so it cannot show a low-pass or a mute. Each group bus gets an engine `MeterFilter` in a ninth filter slot
+  (the vendored `soloud.h` `FILTERS_PER_STREAM` is raised from 8 to 9, commented): it keeps the peaks of the last 8
+  mix blocks (~90 ms); `getMeterDb` = that peak x the bus's current volume. Groups still hold 8 effects. The duck
+  effect keeps listening to SoLoud's (pre-fader) visualization of its side-chain bus, as SoLoud does.
+- **Backends.** No device: `MINIAUDIO` -> `NOSOUND` (its own mixing thread, real time) -> `NULLDRIVER`, which
+  `AudioMixer::update` mixes on the main thread by the frame's unscaled delta (where threads are missing, e.g. a Web
+  build without pthreads, and in the unit tests: `AudioSystem::setBackend(AudioBackend::Null)` makes every meter,
+  fade and end exact without a device). `JASPERENGINE_AUDIO_BACKEND=nosound|null` forces one.
+  `AudioSystem::close()` reopens the audio with new settings (tests).
+- **Streaming** goes through an `EngineWavStream` (a `WavStream` whose every voice opens its own `SoloudEngineFile`
+  over the engine `File`: SoLoud's `loadFile` would share one file between the voices of a clip). On the Web the
+  preloaded assets are a file system too, so it streams from there as well (the spec's `loadMem` fallback is kept for
+  resource packs only: a packed file has no random access, it becomes Compressed In Memory). The scene resource
+  lists carry a non-Auto load type as `"<file>#<type>"` (`SoundPool::parseClipRef`). `SoundPool::getEntries`
+  reports each cached sample's memory (decoded PCM, the file's bytes, or 0 when streamed).
+- **Edit mode sounds as the faders** (the asset's values); Play (and an exported game) starts from the start
+  snapshot and the remembered values; Play stop returns to the faders (`Project::resetPlayAudio`). The faders edit
+  the asset's values, not "the current snapshot" (Unity): snapshots are captured with "Save Current Values"
+  (`set_snapshot capture`) or given values. The Audio Mixer window hears a drag live and writes it once, when it
+  ends (one undo step).
+- **Script values.** Setting `AudioMixerGroup.volume` / `setVolume` or `AudioMixerEffect:setParameter` from Lua is a
+  script value like `setFloat` (it overrides snapshots until cleared); `mute` / `solo` / `bypassEffects` from Lua
+  change the runtime only. `opts.unscaled = true` forces unscaled time; without it the mixer's `updateMode` decides
+  (so `{unscaled = false}` cannot make a call scaled on an unscaled mixer).
+- **Events and isPlaying.** `onStart` also fires when a paused source resumes; `onStop` also when the voice budget
+  stole the main voice. `isPlaying()` is true right after `play()` and while any voice of the source (one-shots
+  included) plays, false while it is paused.
+- **Pause.** `AudioSystem.pauseAll/resumeAll` (and the app pause) pause the Master bus voice; `stopAll` stops the
+  engine's voices, never the buses. The editor's Play pause and `AudioListener.pause` both go through one rule: a
+  voice is paused when its source is Paused, or the scene's audio is paused, or the listener is paused (not for
+  `ignoreListenerPause`); so nothing un-pauses what the game paused. HTML UI video audio plays through the Master
+  bus now (app pause and the master volume reach it).
+- **Group removal** (window, MCP `remove_group`) removes its subgroups too (Unity), and drops the exposed parameters
+  and snapshot values of what went. A running voice of a removed group is annexed to Master; a source keeps its
+  group name, so a group of that name coming back takes it again.
+- **Live edits** (`AudioMixer::apply`) never restart a bus: new buses are played, moved groups annexed into their new
+  parent, removed ones stopped after their voices moved; a changed effect list re-sets only the slots that changed.
+  An echo whose delay grows past the one it was made with is rebuilt (SoLoud sizes its buffer once).
+- **Editor decode keeps voices.** `Stream::decodeAudioSourceComponent` over an existing component (an Inspector edit
+  or an undo in Play) used to zero the voice handle and leave the voice playing on its own; it now keeps the voices,
+  and the system stops them when the state says Stopped or the file changed.
+- **MCP.** `audio_mixer` also has `set_exposed` (remember, rename), `set_mixer` (update mode), `set_group parent /
+  new_name`, `set_effect move_to`; snapshot `values` accept exposed names, `"<group>/volume"` and
+  `"<group>/<effect>/<param>"`. Project Settings keys add `audio.default_output_group` (a Project Settings > Audio
+  field the spec lists). `audio.mixer` is shown project-relative (like every MCP path); project.yaml stores it assets-relative under `audio`, which the exported `AudioMixer::load` takes. The default `audio/Main.mixer` is in the assets folder (the spec's `assets/audio/Main.mixer` for a project whose assets folder is `assets/`).
+  `get_play_state.audio` adds `output` when there is no device. Lua `getEffect` is 1-based, MCP `index` 0-based.
+- **Lua additions** beyond the spec's list: `AudioMixer.getCurrentSnapshot()`, `AudioMixerGroup.id`, `isValid()`,
+  `getMeter()`, `setVolume(db, seconds, opts)`, `AudioMixerEffect.id`, `isValid()`, `hasParameter()`,
+  `AudioSource:getVoiceCount()`, `getResolvedLoadType()`, `AudioSystem.isOutputAvailable()`, `getVoiceCount()`.
+  `AudioSystem.preload` holds the sample until the engine shuts down (`SoundPool::pin`).
+- **Persistence** (feature `persistence`, merged meanwhile): its `EntityCloner` move keeps the component's runtime and
+  its hand-over now calls `AudioSystem::moveSourceVoices` (below), so the old scene's `stopSceneSounds` and the voice
+  budget see the moved voices under the persistent scene; the persistent scene's 3D voices use the main scene's
+  camera (`listenerScene`, as persistence did), the listener placed once a frame where a 3D voice plays. The API:
+  after copying an `AudioSourceComponent`
+  into the persistent scene, call `AudioSystem::moveSourceVoices(fromScene, sourceComponent, toScene,
+  targetComponent)`: it moves the runtime state (main voice, one-shots and their samples, pending one-shots, fade,
+  pause state, resolved group) to the copy and re-owns the voices in the engine-wide voice registry (which
+  `stopSceneSounds` and the budget use), leaving the source component without voices, so destroying it or its scene
+  stops nothing. The persistent scene's `AudioSystem::setListenerEnabled(false)` leaves the 3D listener to the main
+  scene (spec persistence 6.3). `EntityCloner`'s clone path keeps resetting the runtime (a clone gets its own voice).
+- Sample rate choices: Auto, 22050, 44100, 48000 (the spec lists Auto/44100/48000; 22050 is common on low-end
+  Android). The rate applies the next time the audio opens.
+- **Verification** (tree merged with main at `92cc07d2a`, box 2203): editor + tests build with 0 warnings (clean
+  build); unit tests 1201 passed, 8 skipped (the known ones), 0 failed, 26 of them new (AudioMixerIOTest,
+  AudioMixerMathTest, AudioMixerMathRuntimeTest, AudioMixerRuntimeTest, AudioSourceTest, AudioLuaTest,
+  GeneratorAudioTest; all on the null backend, no device). MCP: `test_audio_mixer.py` (5) and `test_stubs`,
+  `test_docs`, `test_html_ui_tools` (budget: total 107425, the limit raised by it), `test_protocol` (agent guide
+  16313 bytes), `test_play`, `test_project`, `test_html_ui_video`, `test_runtime_regressions`, `test_build`,
+  `test_animation_clip`, `test_prefab`, `test_play_stop_gizmos`: all pass; skipped: the lua-language-server / clangd
+  checks (not installed on the box) and the slow desktop player run of `test_build` (`JASPER_SLOW_BUILD`, not run:
+  its exported-player check of the mixer log line is untested). The changed engine sources and the new SoLoud
+  sources compile with emsdk (Web) and the Android NDK (arm64-v8a clang); `tools/xcode_sync_engine.py --check`
+  passes. Not compiled anywhere: the Xcode project (Apple) and Windows builds.
+- **Final verification** (merged with main at `b6989373c`: persistence, physics-3d, ui-canvas-group, http; box 2203):
+  0 warnings; unit 1379 passed, 9 skipped, 0 failed; full MCP suite 867 passed, 18 skipped, 11 failed: the 10
+  baseline failures (`test_animation_assets` 5, `test_lattice_scene` 5) and
+  `test_stochastic_tiling::test_old_scene_resaves_byte_identical`, which fails because every scene now lists the
+  HTML UI `htmluipost` shader key (ui-canvas-group's "Flatten composite always exported", `ShaderVariantCollector`
+  / `Project.cpp` insertKeys): not audio, it fails the same alone; agent guide 16345 bytes; tool budget 152 tools,
+  108425 (TOTAL_LIMIT set to it); TOOLS.md regenerated from this build. The changed engine sources (audio, SoLoud's
+  wavstream / nosound / null, AudioSystem, EntityCloner, bindings) compile with emsdk (Web) and the Android NDK
+  (arm64-v8a) on this merged tree.
+- **Review fixes** (independent review): SoLoud's voice limit is set only when it changes (setting it reallocates
+  every voice's resample buffers: a fader drag crackled) and never above 255 (Max Real Voices + the mixer's groups;
+  the Project Settings field and `audio.max_real_voices` stop at 255 minus the groups); a mixer whose Master has
+  another id keeps the Master bus (re-homed under the new id), so what plays through it, the HTML UI video and the
+  Inspector preview included, goes on; a scene or prefab node without a mixer key restores that field's default
+  over an existing component (undo, whole-component prefab overrides); `saveParameters` keeps only what scripts
+  set and removes the other keys; `play()` over a `fadeOut` cuts the fade and restores the volume; clocked voices
+  start held when the source, the listener or the scene is paused; a streamed clip's voices never share the
+  parsed file (a vendored SoLoud hook, `WavStream::openInstanceFile`, gives each voice its own engine file, no
+  swap of `mStreamFile`), a voice whose file cannot open again ends at once (an ended instance), and a
+  `WavStreamInstance` whose decoder did not open reports itself ended (vendored `hasEnded` patch) instead of
+  playing silence for ever; a timed echo `delay` rebuilds the echo once, where the change ends. The wording of A11
+  about protected voices is corrected (they are not stolen nor killed when SoLoud's slots run out; they can be
+  virtualised). Found by those tests: a group bus nothing had played through yet stopped every voice of the core
+  when it was removed (SoLoud's `BusInstance` destructor stops the voices whose bus handle is its own, which SoLoud
+  learns only on a first play: 0, the core's), so the bus is told its handle when it starts; and an echo made again
+  takes the delay heard now, not the asset's (it was rebuilt every frame after a timed delay change).
+- **Verification after the review fixes** (merged with main at shader-globals / platform-services, box 2203): 0
+  warnings; unit 1449 passed, 9 skipped, 0 failed (35 audio tests, 9 new for the review); full MCP suite 888
+  passed, 19 skipped, 11 failed (the 10 baseline failures and `test_stochastic_tiling` resave, see above); the
+  exported Linux player run (`JASPER_SLOW_BUILD=1 test_build.py`, 12 passed) logs "Audio mixer loaded:
+  audio/Main.mixer (2 groups)" and the mixer's groups and exposed parameter from Lua; agent guide 16352 bytes;
+  tool budget 152 tools, 108947 (TOTAL_LIMIT); Web (emsdk) and Android (NDK arm64) compile checks of the changed
+  engine and SoLoud sources pass.
+- **Handoff merge with main 9c8c6c584** (box 2202, `-j5`): 15 conflicting files resolved with main's final
+  versions and the mixer on top (the mixer line under the guide's "Feature guides", `FILE_DIALOG_AUDIO_MIXER`
+  moved to `1 << 15` after main's dialog flags, the Xcode project as a union with every sync script `--check`
+  clean; no component or UpdateFlags entries are added by this feature). 0 warnings; unit 1676 passed, 9
+  skipped, 1 failed (`PhysicsContactsTest.ContactProcessingCostIsSmall`, a timing budget, at box load ~20; it
+  passes run alone); full MCP suite (`-j3`) 925 passed, 21 skipped, 11 failed: the 10 baseline failures and
+  `test_budget`, run with main's limit before TOTAL_LIMIT was set (it passes with it); tool budget 154 tools,
+  112708 (TOTAL_LIMIT); TOOLS.md regenerated from this build.

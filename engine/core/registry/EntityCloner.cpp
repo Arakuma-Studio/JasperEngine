@@ -13,6 +13,7 @@
 #include "texture/Framebuffer.h"
 #include "fluid/FluidSimulator.h"
 #include "subsystem/PhysicsSystem.h"
+#include "subsystem/AudioSystem.h"
 #include "ecs/EntityManager.h"
 #include "Log.h"
 
@@ -551,7 +552,18 @@ void prepare<AudioSourceComponent>(AudioSourceComponent& audio, Entity, CloneCon
     }
     // its own voice and sample: a Playing state starts it (play on awake)
     audio.sample.reset();
+    audio.sampleKey.clear();
     audio.handle = 0;
+    audio.oneShots.clear();
+    audio.pendingOneShots.clear();
+    // a running fade does not carry over; fadeIn / fadeOut leave the authored volume
+    if (audio.fade.active && audio.fade.restore) audio.volume = audio.fade.restoreVolume;
+    audio.fade = AudioFade();
+    audio.voicePaused = false;
+    audio.listenerPaused = false;
+    audio.resolvedGroup.clear();
+    audio.groupWarned = false;
+    audio.lastVolumeApplied = -1;
     audio.loaded = false;
     audio.loadFailed = false;
     audio.playingTime = 0;
@@ -1090,7 +1102,7 @@ T* componentOf(EntityRegistry* registry, Entity entity, const Signature& signatu
 
 // EntityCloner::move: what the copy took over is no longer the original's, so destroying it
 // stops no voice, releases no script instance, fires no callback and destroys nothing else
-void handOver(EntityRegistry* source, Entity entity, const CloneContext& ctx) {
+void handOver(EntityRegistry* source, Entity entity, const CloneContext& ctx, EntityRegistry* target) {
     const Signature signature = source->getSignature(entity);
     if (ScriptComponent* scripts = componentOf<ScriptComponent>(source, entity, signature)) {
         for (ScriptEntry& entry : scripts->scripts) {
@@ -1105,6 +1117,15 @@ void handOver(EntityRegistry* source, Entity entity, const CloneContext& ctx) {
         }
     }
     if (AudioSourceComponent* audio = componentOf<AudioSourceComponent>(source, entity, signature)) {
+        // the copy's voices (main and one-shots) count under its scene now: the old scene's
+        // stopSceneSounds and the voice budget see them there (audio-mixer moveSourceVoices)
+        Scene* fromScene = dynamic_cast<Scene*>(source);
+        Scene* toScene = dynamic_cast<Scene*>(target);
+        const Entity copy = ctx.remap(entity);
+        AudioSourceComponent* moved = toScene && copy != NULL_ENTITY ? toScene->findComponent<AudioSourceComponent>(copy) : nullptr;
+        if (fromScene && toScene && moved) {
+            AudioSystem::moveSourceVoices(fromScene, *audio, toScene, *moved);
+        }
         audio->handle = 0;
         audio->sample.reset();
         audio->loaded = false;
@@ -1403,7 +1424,7 @@ std::vector<Entity> EntityCloner::move(Scene* source, const std::vector<Entity>&
     }
 
     for (Entity entity : sources) {
-        handOver(source, entity, ctx);
+        handOver(source, entity, ctx, target);
     }
     return copies;
 }

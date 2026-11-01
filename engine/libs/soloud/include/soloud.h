@@ -80,7 +80,8 @@ freely, subject to the following restrictions:
 // Configuration defines
 
 // Maximum number of filters per stream
-#define FILTERS_PER_STREAM 8
+// JasperEngine: 9, the 8 effects of a mixer group plus its level meter in the last slot
+#define FILTERS_PER_STREAM 9
 
 // Number of samples to process on one go
 #define SAMPLE_GRANULARITY 512

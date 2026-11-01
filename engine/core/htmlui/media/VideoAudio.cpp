@@ -4,6 +4,7 @@
 #include "VideoAudio.h"
 
 #include "subsystem/AudioSystem.h"
+#include "audio/AudioMixer.h"
 
 #include "soloud.h"
 
@@ -216,9 +217,11 @@ VideoAudioSource::~VideoAudioSource(){
 bool VideoAudioSource::start(float volume){
     if (isPlaying())
         return true;
-    if (!AudioSystem::init())
+    // no device (the NoSound / Null mixing): the video runs on its own clock, as before
+    if (!AudioSystem::init() || !AudioSystem::isOutputAvailable())
         return false;
-    handle = AudioSystem::getSoloud().play(*source, volume, 0.0f, true);
+    // through the mixer's Master, so app pause and the master volume reach it
+    handle = AudioMixer::play("", *source, false, Vector3(0, 0, 0), volume, false, 0.0);
     paused = true;
     return handle != 0;
 }

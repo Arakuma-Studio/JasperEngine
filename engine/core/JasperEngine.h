@@ -250,6 +250,7 @@
 #include "subsystem/TrailSystem.h"
 #include "subsystem/CameraControlSystem.h"
 #include "subsystem/AudioSystem.h"
+#include "audio/AudioMixer.h"
 #include "subsystem/FluidSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/LatticeSystem.h"

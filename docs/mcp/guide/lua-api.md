@@ -281,7 +281,7 @@ RegisterEvent(self, self.scene:getPhysicsSystem().beginContact2D, "onBeginContac
 | `Panel(...):getPanelComponent()` | `onMove` / `onResize` | none / `width, height` |
 | `InputField(...):getInputFieldComponent()` | `onChange`, `onSubmit` | none |
 | `Action(...):getActionComponent()` (any Action/Tween/Animation entity) | `onStart`, `onPause`, `onStop`, `onStep` | none |
-| `AudioSource(...):getAudioSourceComponent()` | `onStart`, `onPause`, `onStop` | none |
+| `AudioSource(...):getAudioSourceComponent()` | `onStart` (play, playOnAwake, a resume), `onPause`, `onStop` (`stop()`, `fadeOut`, the natural end of a non-looping clip, a voice stolen) | none |
 | `PoseAnimator(...):getPoseAnimatorComponent()` | `onFinish` | none |
 | `self.scene:getPhysicsSystem()` (2D) | `beginContact2D`, `endContact2D` | `bodyA, shapeA, bodyB, shapeB` (Rigidbody2D, index, Rigidbody2D, index) |
 | same | `beginSensorContact2D`, `endSensorContact2D` | `sensorBody, sensorShape, visitorBody, visitorShape` |
@@ -977,8 +977,28 @@ Entities are plain integers (`0` = none).
 `createRigidbody2D(e)`, `removeRigidbody2D(e)`, `createRigidbody(e)`, `removeRigidbody(e)`
 (partial).
 
-`AudioSystem` (static): `AudioSystem.stopAll()`, `pauseAll()`, `resumeAll()`,
-`AudioSystem.globalVolume` (rw).
+`AudioSystem` (static): `AudioSystem.stopAll()`, `pauseAll()` / `resumeAll()` (the app pause: the
+mixer's Master bus holds; a source a script paused stays paused), `AudioSystem.globalVolume` (rw,
+= `AudioListener.volume`), `preload(path [, loadType])` (decode or open a clip ahead),
+`isOutputAvailable()` (false without an audio device: sounds still mix, meters still read),
+`getVoiceCount()`.
+
+`AudioListener` (static, Unity's): `pause` (rw: every source but the `ignoreListenerPause` ones
+holds; a pause menu), `volume` (rw, 0..1, everything).
+
+`AudioMixer` (static, the project's Audio Mixer, Project Settings > Audio; `jasper://docs/audio`):
+`setFloat(name, value [, seconds [, opts]])` -> bool (an exposed parameter: a group volume in dB, an
+effect value; it overrides snapshots until `clearFloat(name)`), `getFloat(name)` -> number or nil,
+`clearFloat(name)`, `hasParameter(name)`, `getParameterNames()`, `transitionTo(snapshot, seconds
+[, opts])`, `transitionToSnapshots(names, weights, seconds [, opts])`, `getSnapshotNames()`,
+`getCurrentSnapshot()`, `getGroup(name)` -> `AudioMixerGroup` or nil, `getGroupNames()`,
+`getMeter(group)` -> dB (-80 silent), `saveParameters()` / `loadParameters()` (the `remember`
+ones, UserSettings), `dbToLinear(db)`, `linearToDb(v)`. `opts = {unscaled = true}`: unscaled
+time (default: the mixer's update mode, scaled). `AudioMixerGroup`: `name`, `id` (ro), `volume`
+(dB), `mute`, `solo`, `bypassEffects` (rw), `setVolume(db, seconds [, opts])`, `getEffect(index
+(1-based) or type)` -> `AudioMixerEffect` (`type`, `id` ro; `bypass`, `wet` rw;
+`setParameter(name, value [, seconds [, opts]])` -> bool, `getParameter(name)`), `getEffectCount()`,
+`getMeter()`.
 
 ### 2.10 Physics / Physics2D / LayerMask (static)
 
@@ -1934,10 +1954,20 @@ Methods: `play()`, `pause()`, `stop()`, `seek(t)`, `loadSound(path)`, `destroySo
 `isPlaying()`, `isPaused()`, `isStopped()`, `getLength()`, `getPlayingTime()`,
 `getGameObject()`, `setMinMaxDistance(min, max)`, `setInaudibleBehavior(mustTick, kill)`,
 `getAudioSourceComponent()`.
-rw: `enabled`, `volume`, `speed`, `pan`, `looping`, `loopingPoint`, `sound3D`,
+rw: `enabled`, `volume`, `speed` (`pitch` is the same), `pan`, `looping`, `loopingPoint`, `sound3D`,
 `clockedSound`, `protectVoice`, `minDistance`, `maxDistance`, `attenuationModel`
-(`AudioSourceAttenuation.*`), `attenuationRolloffFactor`, `dopplerFactor`.
-Restart a one-shot: `snd:stop(); snd:play()`.
+(`AudioSourceAttenuation.*`), `attenuationRolloffFactor`, `dopplerFactor`, `outputGroup` (the
+mixer group by name, "" = Master), `loadType` (`AudioLoadType.*`, Auto streams files of 1 MiB and
+more), `priority` (0 most important .. 256, default 128), `maxVoices` (1..64, default 8),
+`ignoreListenerPause`.
+Mixer and voices: `playOneShot(path [, volumeScale])` (an extra voice over what plays, Unity's
+PlayOneShot; the oldest one-shot is stolen past `maxVoices`), `fadeIn(seconds [, opts])`,
+`fadeOut(seconds [, opts])` (`opts.pause` pauses instead of stopping; the volume comes back for
+the next play), `fadeTo(volume, seconds [, opts])`, `isFading()`, `getVoiceCount()`,
+`getResolvedLoadType()`; static `AudioSource.playClipAtPoint(scene, path, position [, volume
+[, group]])` (stops with `scene`). `isPlaying()` follows the voice: true for a looping clip at any
+pitch, and right after `play()`. `play()` on a playing source starts it over; two sources play
+one clip at once.
 
 ### 4.13 Rigidbody2D (EntityHandle) - 2D physics (Box2D)
 
@@ -2484,6 +2514,7 @@ use the methods. Physics colliders keep the rest shape.
 | `ActionState` | `Running`, `Paused`, `Stopped` |
 | `AudioSourceState` | `Playing`, `Paused`, `Stopped` |
 | `AudioSourceAttenuation` | `NO_ATTENUATION`, `INVERSE_DISTANCE`, `LINEAR_DISTANCE`, `EXPONENTIAL_DISTANCE` |
+| `AudioLoadType` | `Auto`, `DecompressOnLoad`, `CompressedInMemory`, `Streaming` |
 | `AnchorPreset` | `NONE`, `TOP_LEFT`, `TOP_RIGHT`, `BOTTOM_LEFT`, `BOTTOM_RIGHT`, `CENTER_LEFT`, `CENTER_TOP`, `CENTER_RIGHT`, `CENTER_BOTTOM`, `CENTER`, `LEFT_WIDE`, `TOP_WIDE`, `RIGHT_WIDE`, `BOTTOM_WIDE`, `VERTICAL_CENTER_WIDE`, `HORIZONTAL_CENTER_WIDE`, `FULL_LAYOUT` |
 | `PivotPreset` | `CENTER`, `TOP_CENTER`, `BOTTOM_CENTER`, `LEFT_CENTER`, `RIGHT_CENTER`, `TOP_LEFT`, `BOTTOM_LEFT`, `TOP_RIGHT`, `BOTTOM_RIGHT` |
 | `LayoutGroupType` | `VERTICAL`, `HORIZONTAL`, `VERTICAL_WRAP`, `HORIZONTAL_WRAP` |

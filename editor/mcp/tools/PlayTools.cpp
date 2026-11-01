@@ -33,6 +33,8 @@
 #include "Platform.h"
 #include "input/InputActions.h"
 #include "input/InputControlNames.h"
+#include "audio/AudioMixer.h"
+#include "subsystem/AudioSystem.h"
 #include "Project.h"
 #include "Screen.h"
 #include "command/CommandHandle.h"
@@ -607,6 +609,20 @@ Json playInputJson() {
     return {{"actions", actions}, {"touches", Input::getTouchCount()}, {"keys_held", keys}};
 }
 
+// What the game's audio does now (get_play_state while playing): the voices, and the mixer
+// groups that are audible (above -60 dB)
+Json playAudioJson() {
+    Json meters = Json::object();
+    for (const std::string& group : AudioMixer::getGroupNames()) {
+        const float db = AudioMixer::getMeterDb(group);
+        if (db > -60.0f) meters[group] = std::round(db * 10.0f) / 10.0f;
+    }
+    Json out = {{"voices", AudioSystem::getVoiceCount()}, {"mixer_meters", meters}};
+    if (!AudioSystem::isOutputAvailable()) out["output"] = "none (mixing without a device)";
+    if (AudioSystem::isListenerPaused()) out["listener_paused"] = true;
+    return out;
+}
+
 } // namespace
 
 // ================================================================== shared (w3)
@@ -692,6 +708,7 @@ Json playStateJson(McpContext& ctx) {
     if (s.last.serial != 0) out["last_session"] = sessionJson(s.last);
     if (!s.held.empty()) out["held_input"] = heldInputJson();
     if (playId != NULL_PROJECT_SCENE && s.current.active) out["input"] = playInputJson();
+    if (playId != NULL_PROJECT_SCENE && s.current.active) out["audio"] = playAudioJson();
     // script coroutines and pending timers of the game (get_runtime_entity lists them per script)
     out["coroutines"] = ScriptScheduler::coroutineCount();
     out["timers"] = ScriptScheduler::timerCount();
@@ -3778,7 +3795,8 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Get Play State";
         tool.description =
             "Play state: played and running scenes (child scenes run as copies with own ids), the session (time, "
-            "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), "
+            "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), audio "
+            "(voices, mixer_meters dB), "
             "console_cursor, script coroutines and timers (counts), the clock (time_scale, fixed_fps, auto_pause, held), "
             "platform (lifecycle, orientation, opened_urls...), http (request counts, last failures); stopped: play_would_start.";
         tool.inputSchema = object({});

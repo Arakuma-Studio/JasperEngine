@@ -106,6 +106,7 @@ namespace jasperengine::editor{
         static std::string formatSceneColorScale(SceneColorScale scale);
         static std::string formatPostProcessing(int indentSpaces, const PostProcessingSettings& settings, const std::string& variableName);
         static std::string formatAudioSourceState(AudioSourceState state);
+        static std::string formatAudioLoadType(AudioLoadType loadType);
         static std::string formatAudioSourceAttenuation(AudioSourceAttenuation attenuation);
         static std::string formatUIEventState(UIEventState state);
         static std::string formatCameraType(CameraType type);

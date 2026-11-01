@@ -97,6 +97,9 @@ namespace SoLoud
 		result loadFile(File *aFile);
 		result loadFileToMem(File *aFile);		
 		virtual AudioSourceInstance *createInstance();
+		// JasperEngine: the file a new voice of a loadFile stream reads (owned by the voice), or 0
+		// for the shared mStreamFile (SoLoud's own behaviour)
+		virtual File *openInstanceFile() { return 0; }
 		time getLength();
 
 	public:

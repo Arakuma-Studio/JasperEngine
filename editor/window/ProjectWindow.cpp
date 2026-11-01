@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectWindow.h"
+#include "audio/AudioMixerDocument.h"
 #include "util/BidiText.h"
 
 #include "ImageViewerWindow.h"
@@ -983,6 +984,10 @@ void editor::ProjectWindow::renderCreateMenuItems() {
     }
     if (ImGui::MenuItem(ICON_FA_BURST " Create Shake Preset")){
         assetsCreateShakePreset();
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_SLIDERS " Create Audio Mixer")){
+        assetsCreateAudioMixer();
         ImGui::CloseCurrentPopup();
     }
     if (ImGui::MenuItem(ICON_FA_CIRCLE_HALF_STROKE " Create Physics Material")){
@@ -4294,6 +4299,27 @@ void editor::ProjectWindow::assetsCreatePhysicsMaterial(bool preset2D) {
     startRename(fileName);
 }
 
+void editor::ProjectWindow::assetsCreateAudioMixer() {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    // Unity's Create > Audio Mixer: Master only; the Audio Mixer window adds the groups
+    const fs::path relative = uniqueRelativePath(currentPath, "New Audio Mixer", AudioMixerIO::EXTENSION);
+    std::string error;
+    if (!AudioMixerDocument::commit(project, project->getProjectPath() / relative, AudioMixerIO::createDefault(), "", &error)) {
+        Backend::getApp().registerAlert("Create Audio Mixer", error);
+        return;
+    }
+    scanDirectory(currentPath);
+    const std::string fileName = relative.filename().string();
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+    updateInspectedAsset(fileName);
+    startRename(fileName);
+}
+
 void editor::ProjectWindow::processPoseThumbnails() {
     poseThumbnailer.process();
     if (poseThumbnailer.busy() || poseThumbnailQueue.empty() || !Engine::isViewLoaded()) {
@@ -4388,6 +4414,8 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
         animationClipInspectorHooks().openClip(project, 0, NULL_ENTITY, clip);
     } else if (Util::isPrefabFile(filePath.string())) {
         editor::getEditorHost().openPrefabAsset(filePath);  // Unity: Prefab Mode
+    } else if (filePath.extension() == AudioMixerIO::EXTENSION) {
+        editor::getEditorHost().openAudioMixerWindow(filePath);
     } else {
         // text files (an .anim only when the clip hooks are unset: its JSON text)
         codeEditor->openFile(filePath.string(), true);

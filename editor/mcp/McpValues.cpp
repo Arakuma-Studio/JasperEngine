@@ -615,6 +615,16 @@ const EnumOptions& audioStateOptions() {
     return options;
 }
 
+const EnumOptions& audioLoadTypeOptions() {
+    static const EnumOptions options = {
+        {(int)AudioLoadType::Auto, "auto", "Auto"},
+        {(int)AudioLoadType::DecompressOnLoad, "decompress_on_load", "Decompress On Load"},
+        {(int)AudioLoadType::CompressedInMemory, "compressed_in_memory", "Compressed In Memory"},
+        {(int)AudioLoadType::Streaming, "streaming", "Streaming"}
+    };
+    return options;
+}
+
 const EnumOptions& audioAttenuationOptions() {
     static const EnumOptions options = {
         {(int)AudioSourceAttenuation::NO_ATTENUATION, "no_attenuation", "No Attenuation"},
@@ -1358,6 +1368,7 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
         case ComponentType::AudioSourceComponent:
             if (name == "state") return &audioStateOptions();
             if (name == "attenuationModel") return &audioAttenuationOptions();
+            if (name == "loadType") return &audioLoadTypeOptions();
             break;
         case ComponentType::Joint2DComponent:
             if (name == "type") return &joint2DTypeOptions();
