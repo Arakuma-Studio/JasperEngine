@@ -303,9 +303,14 @@ Json reflect::reflectionDocument() {
     const StructDesc& postProcessing = postProcessingStruct();
     Json postProcessingProperties = Json::object();
     for (const FieldDesc& field : postProcessing.fields) postProcessingProperties[field.name] = fieldSchema(postProcessing, field);
+    // Project Settings > Debug: project.yaml's debug block
+    const StructDesc& debugSettings = debugSettingsStruct();
+    Json debugProperties = Json::object();
+    for (const FieldDesc& field : debugSettings.fields) debugProperties[field.name] = fieldSchema(debugSettings, field);
 
     std::vector<const EnumDesc*> enumList(enumTables().begin(), enumTables().end());
     for (const EnumDesc* desc : postProcessingEnums()) enumList.push_back(desc);
+    for (const EnumDesc* desc : debugSettingsEnums()) enumList.push_back(desc);
     Json enumsJson = Json::array();
     for (const EnumDesc* desc : enumList) {
         Json items = Json::array();
@@ -327,6 +332,7 @@ Json reflect::reflectionDocument() {
         {"prefab_format_version", StreamMigrations::currentVersion(DocumentKind::Prefab)},
         {"components", components},
         {"post_processing", Json{{"type", "object"}, {"properties", postProcessingProperties}}},
+        {"project_debug", Json{{"type", "object"}, {"properties", debugProperties}}},
         {"enums", enumsJson}
     };
 }

@@ -2926,23 +2926,10 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (audioNode.size()) root["audio"] = audioNode;
     }
 
-    // Project Settings > Debug: what differs from the defaults
+    // Project Settings > Debug: what differs from the defaults (its reflection table)
     {
-        const DebugSettings& debug = project->getDebugSettings();
-        const DebugSettings defaults;
-        YAML::Node debugNode;
-        if (debug.overlay != defaults.overlay) debugNode["overlay"] = DebugSettingsNames::name(debug.overlay);
-        if (debug.toggleKey != defaults.toggleKey) debugNode["toggleKey"] = debug.toggleKey;
-        if (debug.statsKey != defaults.statsKey) debugNode["statsKey"] = debug.statsKey;
-        if (debug.gesture != defaults.gesture) debugNode["gesture"] = DebugSettingsNames::name(debug.gesture);
-        if (debug.popup != defaults.popup) debugNode["popup"] = DebugSettingsNames::name(debug.popup);
-        if (debug.openOnError != defaults.openOnError) debugNode["openOnError"] = debug.openOnError;
-        if (debug.stats != defaults.stats) debugNode["stats"] = DebugSettingsNames::name(debug.stats);
-        if (debug.statsCorner != defaults.statsCorner) debugNode["statsCorner"] = DebugSettingsNames::name(debug.statsCorner);
-        if (debug.allowLua != defaults.allowLua) debugNode["allowLua"] = DebugSettingsNames::name(debug.allowLua);
-        if (debug.logBufferSize != defaults.logBufferSize) debugNode["logBufferSize"] = debug.logBufferSize;
-        if (debug.logStackTraces != defaults.logStackTraces) debugNode["logStackTraces"] = DebugSettingsNames::name(debug.logStackTraces);
-        if (debugNode.size()) root["debug"] = debugNode;
+        const YAML::Node debugNode = reflect::encode(reflect::debugSettingsStruct(), &project->getDebugSettings(), reflect::EncodeContext{});
+        if (debugNode.IsMap() && debugNode.size()) root["debug"] = debugNode;
     }
 
     if (!project->getStandalonePrefabs().empty()) {
@@ -3666,37 +3653,17 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setAudioSettings(audio);
     }
 
-    // Project Settings > Debug; a value that does not read keeps its default (warned)
+    // Project Settings > Debug by its reflection table; a value that does not read keeps its
+    // default (an enum's fallback is its default; reported)
     {
         DebugSettings debug;
         if (node["debug"] && node["debug"].IsMap()) {
-            const YAML::Node debugNode = node["debug"];
-            auto readEnum = [&debugNode](const char* key, auto& value) {
-                if (!debugNode[key]) return;
-                const std::string text = debugNode[key].IsScalar() ? debugNode[key].Scalar() : std::string();
-                if (!DebugSettingsNames::parse(text, value))
-                    Out::warning("Ignoring debug.%s \"%s\" in project settings", key, text.c_str());
-            };
-            auto readKey = [&debugNode](const char* key, std::string& value) {
-                if (!debugNode[key]) return;
-                const std::string text = debugNode[key].IsScalar() ? debugNode[key].Scalar() : std::string();
-                if (DebugSettingsNames::isKeyName(text)) value = text;
-                else Out::warning("Ignoring debug.%s \"%s\" in project settings: not a key name", key, text.c_str());
-            };
-            readEnum("overlay", debug.overlay);
-            readKey("toggleKey", debug.toggleKey);
-            readKey("statsKey", debug.statsKey);
-            readEnum("gesture", debug.gesture);
-            readEnum("popup", debug.popup);
-            if (debugNode["openOnError"]) debug.openOnError = YamlNumbers::as<bool>(debugNode["openOnError"]);
-            readEnum("stats", debug.stats);
-            readEnum("statsCorner", debug.statsCorner);
-            readEnum("allowLua", debug.allowLua);
-            if (debugNode["logBufferSize"]) {
-                const long long size = YamlNumbers::as<long long>(debugNode["logBufferSize"]);
-                debug.logBufferSize = static_cast<unsigned int>(std::clamp<long long>(size, 0, DebugSettings::maxLogBufferSize));
-            }
-            readEnum("logStackTraces", debug.logStackTraces);
+            reflect::DecodeContext ctx;
+            ctx.component = "debug";
+            reflect::decode(reflect::debugSettingsStruct(), node["debug"], &debug, ctx);
+            debug.sanitize([](const std::string& key, const std::string& value) {
+                Out::warning("Ignoring debug.%s \"%s\" in project settings: not a key name", key.c_str(), value.c_str());
+            });
         }
         // a project without the node (older ones) gets the defaults
         project->setDebugSettings(debug);

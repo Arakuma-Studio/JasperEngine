@@ -71,6 +71,10 @@ namespace jasperengine{
         // 0: a new random seed at every play (Unity's Auto Random Seed)
         uint32_t seed = 0;
         float playbackSpeed = 1.0f;
+        // this system ticks with the unscaled frame time (Engine.timeScale 0 does not stop it:
+        // a pause menu, UI particles), as does the effect's own Unscaled Time; the GameObject's
+        // own switch, so a prefab with a shared .particles asset plays unscaled without a copy
+        bool useUnscaledTime = false;
         // values for the effect's exposed parameters, over the effect's own
         std::vector<ParticleExposedValue> exposedValues;
         // GameObjects whose transforms are more collision planes (their up axis is the

@@ -154,7 +154,8 @@ async def test_ui_particles_play_while_paused(ed: Editor):
     made = await ed.call("create_particles", scene=s["scene"], parent="Backdrop", preset="magic")
     system = made.get("entity") or made.get("particle_system") or made
     ed.check(system is not None, f"created: {made}")
-    ed.check_eq(made.get("renderer"), "points", f"GL points under a UI element (clipped by panels): {made}")
+    ed.check_eq(made.get("ui"), True, f"UI particles under a UI element (drawn between siblings, clipped by panels): {made}")
+    ed.check_eq(made.get("unscaled_time"), True, f"UI particles on unscaled time: {made}")
     await ed.call("play", action="start", scene=s["scene"])
     try:
         unscaled = (await lua(ed, "for _, ps in ipairs({object('Particle System', 'ParticleSystem')}) do return ps.useUnscaledTime end"))[0]

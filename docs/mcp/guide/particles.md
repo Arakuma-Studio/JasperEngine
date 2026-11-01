@@ -118,7 +118,9 @@ first, said once): `ps.main.startSpeed = 4` (a number, `MinMaxCurve`, `{min, max
 `ps:clear(true)` take the children too; `GameObject:getParticleSystemsInChildren()`.
 
 Properties: `isPlaying`, `isPaused`, `isEmitting`, `particleCount`, `time`, `playbackSpeed`,
-`seed` (0: a new seed each play), `playOnAwake`, `effect` (asset path, "" inline).
+`seed` (0: a new seed each play), `playOnAwake`, `effect` (asset path, "" inline),
+`useUnscaledTime` (the GameObject's own Unscaled Time, beside the effect's: it plays at
+`Engine.timeScale` 0; UI particles, jasper://docs/ui).
 `onCollision`, `onParticleDeath`, `onSubEmit` deliver one batch per frame on the main thread
 (collisions capped by the Collision module's `maxCollisionEvents`). The old setters
 (`rate`, `setLifeInitializer`, `addBurst`, `start()`...) still work on the inline effect and

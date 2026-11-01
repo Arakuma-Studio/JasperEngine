@@ -17,7 +17,6 @@
 #include "io/UserSettings.h"
 #include "input/InputActions.h"
 #include "debug/DebugOverlay.h"
-#include "debug/DebugStats.h"
 #include "render/SystemRender.h"
 #include "shader/ShaderWarmup.h"
 #include "script/LuaBinding.h"
@@ -2153,8 +2152,7 @@ void Engine::runFrame(bool draw){
     const uint64_t frameStart = lastTime;
     framerate = (rawDelta > 0.0) ? (float)(1.0 / rawDelta) : 0.0f;
     framePeriod = rawDelta;
-    // the stats overlay's frame times: what the device took, a float into a ring
-    DebugStats::recordFrame(rawDelta);
+    // (the stats overlay's frame times are S15's frame-time ring, FrameTimes, from systemDraw)
 
     // Cap the delta exposed to gameplay (Engine::getDeltatime) and the update loop.
     // Anything bigger than maxDeltatime gets clamped; the simulation effectively

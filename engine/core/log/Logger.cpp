@@ -18,6 +18,7 @@
 #include <limits>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 #if defined(_WIN32)
     #ifndef NOMINMAX
@@ -75,6 +76,8 @@ namespace je_logger {
         Logger::SinkId id = 0;
         std::unique_ptr<LogSink> sink;
         bool inlineDelivery = false;
+        bool resident = false;       // LogSink::resident (Inline only)
+        bool afterWrite = false;     // LogSink::wantsAfterWrite (Inline only)
         // held while the sink writes: the drain thread's batch, a Fatal record
         std::timed_mutex writeMutex;
         std::array<std::atomic<uint8_t>, kMaxCategories> categoryLevels;
@@ -164,6 +167,8 @@ namespace je_logger {
         char formatBuffer[1024];
         std::string largeText;
         void* frames[LogRecord::MAX_FRAMES];
+        // Inline sinks written under the lock that want afterWrite() once it is released
+        std::vector<std::shared_ptr<SinkEntry>> afterWrite;
     };
 
     ThreadState& logThreadState() {
@@ -304,6 +309,7 @@ namespace je_logger {
         std::condition_variable drainedCv;    // a batch done (flush)
         std::array<SinkPtr, kMaxSinks> sinks;
         size_t sinkCount = 0;
+        std::atomic<uint32_t> residentCount{0};   // resident sinks among them
         Logger::SinkId nextSinkId = 1;
         uint64_t sinkGeneration = 0;
         std::unique_ptr<uint8_t[]> ring;
@@ -400,6 +406,32 @@ namespace je_logger {
         thread.currentSink = entry.id;
         entry.sink->write(record);
         thread.currentSink = previous;
+    }
+
+    // an Inline sink written under the lock: its afterWrite() once the lock is released
+    void queueAfterWrite(const SinkPtr& entry) {
+        std::vector<SinkPtr>& pending = logThreadState().afterWrite;
+        for (const SinkPtr& queued : pending) {
+            if (queued == entry) return;
+        }
+        pending.push_back(entry);
+    }
+
+    // The afterWrite() of the sinks written on this thread, the logger's lock released. One
+    // that logs queues its sink again and runs it from here (no recursion past one level).
+    void runAfterWrite() {
+        ThreadState& thread = logThreadState();
+        if (thread.holdsQueueLock) return;
+        while (!thread.afterWrite.empty()) {
+            std::vector<SinkPtr> running;
+            running.swap(thread.afterWrite);
+            for (const SinkPtr& entry : running) {
+                entry->sink->afterWrite();
+            }
+            running.clear();
+            // the list's storage back for the next record (no allocation per record)
+            if (thread.afterWrite.empty()) thread.afterWrite.swap(running);
+        }
     }
 
     // ---- the queue (queueMutex held)
@@ -595,6 +627,7 @@ namespace je_logger {
             SinkEntry& entry = *s.sinks[i];
             if ((entry.inlineDelivery || !async) && entry.id != excluded && entry.accepts(record.level, *record.category)) {
                 dispatchToSink(entry, record);
+                if (entry.afterWrite) queueAfterWrite(s.sinks[i]);
             }
         }
         if (queue && s.dropped.load(std::memory_order_relaxed) != s.droppedReported) {
@@ -778,6 +811,11 @@ namespace je_logger {
                 thread.holdsQueueLock = true;
                 reportDropsLocked(s);
                 thread.holdsQueueLock = false;
+                if (!thread.afterWrite.empty()) {
+                    lock.unlock();
+                    runAfterWrite();
+                    lock.lock();
+                }
             }
         }
         s.drainedSeq.store(s.pushedSeq.load(std::memory_order_acquire), std::memory_order_release);
@@ -826,7 +864,9 @@ namespace je_logger {
             sinkCount = s.sinkCount;
             for (size_t i = 0; i < sinkCount; i++) sinks[i] = s.sinks[i];
         }
-        if (sinkCount == 0) {
+        size_t ownSinks = 0;
+        for (size_t i = 0; i < sinkCount; i++) ownSinks += sinks[i]->resident ? 0 : 1;
+        if (ownSinks == 0) {
             writeFallback(record.level, record.category, record.text);
             return;
         }
@@ -844,13 +884,56 @@ namespace je_logger {
         }
     }
 
+    // Before init() and after shutdown(): the resident sinks get the record on this thread
+    // (with an id, as after init), then the stderr fallback writes it
+    void deliverResident(LoggerState& s, ThreadState& thread, LogLevel level, const LogCategory& category,
+                         const LogSource* source, std::string_view text, uint32_t flags) {
+        LogRecord record;
+        record.level = level;
+        record.category = &category;
+        record.flags = flags;
+        record.wallTime = logWallSeconds();
+        record.frame = s.frame.load(std::memory_order_relaxed);
+        record.threadId = thread.id;
+        record.threadName = std::string_view(thread.name, std::strlen(thread.name));
+        if (source) {
+            if (source->file) {
+                std::string_view file(source->file);
+                if (file.size() > LogRecord::MAX_FILE_BYTES) file = file.substr(file.size() - LogRecord::MAX_FILE_BYTES);
+                record.file = file;
+            }
+            if (source->function) record.function = std::string_view(source->function).substr(0, LogRecord::MAX_FUNCTION_BYTES);
+            record.line = source->line;
+        }
+        if (text.size() > LogRecord::MAX_TEXT_BYTES) {
+            text = text.substr(0, LogRecord::MAX_TEXT_BYTES);
+            record.flags |= LogFlagTruncated;
+        }
+        record.text = text;
+        std::lock_guard<std::mutex> lock(s.queueMutex);
+        // init() ran meanwhile: the caller's fallback line still goes out, the sinks have it
+        record.id = s.lastId.fetch_add(1, std::memory_order_relaxed) + 1;
+        thread.holdsQueueLock = true;
+        for (size_t i = 0; i < s.sinkCount; i++) {
+            SinkEntry& entry = *s.sinks[i];
+            if (!entry.resident || entry.id == thread.currentSink || !entry.accepts(level, category)) continue;
+            dispatchToSink(entry, record);
+            if (entry.afterWrite) queueAfterWrite(s.sinks[i]);
+        }
+        thread.holdsQueueLock = false;
+    }
+
     void logSubmit(LogLevel level, const LogCategory& category, const LogSource* source, std::string_view text,
                 uint32_t flags, uint64_t valveKey) {
         LoggerState& s = logState();
         ThreadState& thread = logCurrentThread();
 
         if (!s.initialized.load(std::memory_order_acquire)) {
+            if (s.residentCount.load(std::memory_order_acquire) > 0 && !thread.holdsQueueLock) {
+                deliverResident(s, thread, level, category, source, text, flags);
+            }
             writeFallback(level, &category, text);
+            runAfterWrite();
             return;
         }
 
@@ -928,6 +1011,10 @@ namespace je_logger {
 
         if (level == LogLevel::Fatal) {
             deliverFatal(s, record);
+        }
+        // outside the lock: the sinks' afterWrite (from inside an Inline sink, the outer call's)
+        if (!thread.holdsQueueLock && !thread.afterWrite.empty()) {
+            runAfterWrite();
         }
     }
 
@@ -1227,11 +1314,17 @@ void Logger::shutdown() {
     {
         std::lock_guard<std::mutex> lock(s.queueMutex);
         s.async.store(false, std::memory_order_relaxed);
-        sinkCount = s.sinkCount;
-        for (size_t i = 0; i < sinkCount; i++) {
-            sinks[i] = std::move(s.sinks[i]);
+        // the resident sinks stay (they get what is logged from here on, as before init)
+        size_t kept = 0;
+        for (size_t i = 0; i < s.sinkCount; i++) {
+            if (s.sinks[i]->resident) {
+                s.sinks[kept++] = std::move(s.sinks[i]);
+            } else {
+                sinks[sinkCount++] = std::move(s.sinks[i]);
+            }
         }
-        s.sinkCount = 0;
+        for (size_t i = kept; i < s.sinkCount; i++) s.sinks[i] = nullptr;
+        s.sinkCount = kept;
         s.sinkGeneration++;
         s.ring.reset();
         s.capacity = s.head = s.tail = s.used = 0;
@@ -1252,11 +1345,14 @@ Logger::SinkId Logger::addSink(std::unique_ptr<LogSink> sink) {
     LoggerState& s = logState();
     auto entry = std::make_shared<SinkEntry>();
     entry->inlineDelivery = sink->delivery() == LogSink::Delivery::Inline;
+    entry->resident = entry->inlineDelivery && sink->resident();
+    entry->afterWrite = entry->inlineDelivery && sink->wantsAfterWrite();
     entry->sink = std::move(sink);
     std::lock_guard<std::mutex> lock(s.queueMutex);
     if (s.sinkCount == kMaxSinks) return 0;
     entry->id = s.nextSinkId++;
     s.sinks[s.sinkCount++] = entry;
+    if (entry->resident) s.residentCount.fetch_add(1, std::memory_order_release);
     s.sinkGeneration++;
     recomputeGatesLocked(s);
     return entry->id;
@@ -1270,6 +1366,7 @@ void Logger::removeSink(SinkId id) {
         for (size_t i = 0; i < s.sinkCount; i++) {
             if (s.sinks[i]->id != id) continue;
             removed = std::move(s.sinks[i]);
+            if (removed->resident) s.residentCount.fetch_sub(1, std::memory_order_release);
             for (size_t j = i + 1; j < s.sinkCount; j++) s.sinks[j - 1] = std::move(s.sinks[j]);
             s.sinks[--s.sinkCount] = nullptr;
             s.sinkGeneration++;

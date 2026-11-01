@@ -894,8 +894,9 @@ void ParticleSubsystem::update(double dt){
         // paused for good once stopped and cleared)
         const bool visible = inRange && (!state.hasBounds || state.runtime.count() == 0 || frame <= state.visibleFrame + 1);
         uint32_t maxTicks = kMaxTicksPerFrame;
-        // Unscaled Time: Time.timeScale does not slow it (UI, pause menus)
-        const double frameDt = d.useUnscaledTime ? unscaledDt : dt;
+        // Unscaled Time (the effect's or the component's): Time.timeScale does not slow it (UI,
+        // pause menus)
+        const double frameDt = (d.useUnscaledTime || particles.useUnscaledTime) ? unscaledDt : dt;
         task.dt = cullingStep(d.cullingMode, d.looping, visible, frameDt, d.tickRate, state.cull, maxTicks);
         task.maxTicks = maxTicks;
         state.culled = !visible;

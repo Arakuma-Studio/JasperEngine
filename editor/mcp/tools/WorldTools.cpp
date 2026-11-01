@@ -4907,6 +4907,7 @@ void createParticlesTool(const CallPtr& call) {
 
     Entity system = NULL_ENTITY;
     bool created = false;
+    bool inUI = false;
     std::string preset;
     auto* multi = new MultiPropertyCmd();
     std::unique_ptr<MultiPropertyCmd> guard(multi);
@@ -4981,6 +4982,15 @@ void createParticlesTool(const CallPtr& call) {
         } else {
             Entity parent = NULL_ENTITY;
             if (has(args, "parent") && (parent = resolveRef(target.scene, args["parent"], error)) == NULL_ENTITY) { failWith("parent: " + error); return; }
+            // particles of a UI scene or under a UI element (ui-scaling-text): drawn between their
+            // siblings, clipped by the nearest panel, unscaled time (they play in a paused game),
+            // turned y down as the UI is (local simulation space), the soft round image
+            inUI = target.scene->sceneType == SceneType::SCENE_UI;
+            for (Entity e = parent; e != NULL_ENTITY && !inUI;) {
+                if (scene->findComponent<RectTransformComponent>(e)) inUI = true;
+                Transform* tf = scene->findComponent<Transform>(e);
+                e = tf ? tf->parent : NULL_ENTITY;
+            }
             const std::string name = stringOr(args, "name", "Particle System");
             auto* create = parent != NULL_ENTITY
                 ? new CreateEntityCmd(target.project, target.sceneId(), name, EntityCreationType::PARTICLE_SYSTEM, parent)
@@ -4988,20 +4998,29 @@ void createParticlesTool(const CallPtr& call) {
             Vector3 position;
             if (!readVec3(args, "position", position, error)) { delete create; failWith(error); return; }
             if (has(args, "position")) create->addProperty<Vector3>(ComponentType::Transform, "position", position);
+            // the UI is y down: what rises in the world rises on screen (local simulation space)
+            if (inUI) create->addProperty<Quaternion>(ComponentType::Transform, "rotation", Quaternion(180.0f, Vector3(1.0f, 0.0f, 0.0f)));
             if (!step.add(create)) { failWith("Could not create the Particle System."); return; }
             system = create->getEntity();
+            if (inUI && !has(args, "texture")) {
+                const std::string soft = ProjectUtils::ensureSoftParticleTexture(target.project);
+                std::string stored;
+                if (!soft.empty() && McpValues::assetPathFromJson(target.project, soft, stored, error)) {
+                    legacyTarget.texture = stored;
+                    legacyTarget.textureGuid = target.project->makeAssetRef(stored, AssetPathBase::Assets).guid.str();
+                }
+            }
         }
         created = true;
         particles::ParticleEffectDocument document = particles::LegacyParticleConverter::convert(legacy, legacyTarget);
         // a new effect draws Unity's soft particle without a texture (the converter keeps the old squares)
         document.renderer.untexturedShape = particles::UntexturedShape::Disc;
+        if (inUI) document.simulationSpace = particles::SimulationSpace::Local;
         if (!applyEffectArgs(args, document, error)) { failWith(error); return; }
         addProp<particles::ParticleEffectDocument>(*multi, target, system, ComponentType::ParticleSystemComponent, "inlineEffect", document);
+        if (inUI) addProp<bool>(*multi, target, system, ComponentType::ParticleSystemComponent, "useUnscaledTime", true);
     }
 
-    // SYNC4-ABSORB(particles): upstream's (ui-scaling-text) UI particles for create_particles (in a UI
-    // scene or under a RectTransform: y flipped, useUnscaledTime, localSpace, the soft particle
-    // texture) wait for the particles absorption: S20's effect document has no unscaled time
     if (has(args, "properties") && !addCatalogProperties(target.project, target.scene, system, ComponentType::ParticleSystemComponent, args["properties"], *multi, error)) {
         failWith("properties: " + error);
         return;
@@ -5020,6 +5039,7 @@ void createParticlesTool(const CallPtr& call) {
              (preset.empty() ? std::string() : " (" + preset + ")") + ". It plays when the scene plays (autoplay: Play On Awake) or when a "
              "script calls play(); edit_particle_effect edits any module of its effect.",
              Json{{"particle_system", entityJson(target, system)}, {"emitter", entityJson(target, system)}, {"created", created},
+                  {"ui", inUI}, {"unscaled_time", c.useUnscaledTime},
                   {"effect", c.effect.empty() ? Json(nullptr) : Json(c.effect.path)},
                   {"max_particles", view.maxParticles}, {"rate", view.rate}, {"loop", view.loop},
                   {"life", {view.lifeInitializer.minLife, view.lifeInitializer.maxLife}}, {"bursts", view.bursts.size()},

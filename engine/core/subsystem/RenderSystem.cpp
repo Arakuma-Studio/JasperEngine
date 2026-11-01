@@ -16069,9 +16069,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             if (applyPassScissor(entity, signature, transform, camera.render, colorPassViewport, hasActiveScissor))
                 continue;
         }else if (transform.parent != NULL_ENTITY &&
-                  signature.test(scene->getComponentId<PointsComponent>())){
-            // Points under UI (UI particles): clipped by the nearest ancestor RectTransform's
-            // scissor, like its UI children; they set none of their own
+                  (signature.test(scene->getComponentId<PointsComponent>()) || signature.test(scene->getComponentId<ParticleSystemComponent>()))){
+            // Points and Particle Systems under UI (UI particles): clipped by the nearest ancestor
+            // RectTransform's scissor, like its UI children; they set none of their own
             Entity ancestor = transform.parent;
             while (ancestor != NULL_ENTITY && !scene->getSignature(ancestor).test(scene->getComponentId<RectTransformComponent>())){
                 ancestor = scene->getComponent<Transform>(ancestor).parent;
@@ -16161,10 +16161,16 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
         }
 
-        // particle systems draw in the transparent queue (by their bounds' distance)
+        // particle systems draw in the transparent queue (by their bounds' distance); a UI
+        // particle system (under a RectTransform) draws here, between its siblings, inside the
+        // nearest panel's scissor set above (ui-scaling-text), hidden under a Canvas Group at 0
         if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
             ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
-            if (particles.enabled && particles.state && particles.state->render.loaded && transform.visible && isParticleRenderActive(entity, cullingMask)){
+            if (particles.enabled && particles.state && particles.state->render.loaded && transform.visible && isParticleRenderActive(entity, cullingMask) &&
+                    transform.parent != NULL_ENTITY && isUIParticle(entity)){
+                if (!(canvasSkipped && !passCanvasLayers.count(canvasSkipGroup)))
+                    drawParticles(entity, particles, transform, camera, cameraTransform, colorPip);
+            }else if (particles.enabled && particles.state && particles.state->render.loaded && transform.visible && isParticleRenderActive(entity, cullingMask)){
                 const particles::ParticleSystemState& state = *particles.state;
                 const Vector3 center = state.hasBounds ? Vector3((state.boundsMin[0] + state.boundsMax[0]) * 0.5f, (state.boundsMin[1] + state.boundsMax[1]) * 0.5f,
                                                                  (state.boundsMin[2] + state.boundsMax[2]) * 0.5f)

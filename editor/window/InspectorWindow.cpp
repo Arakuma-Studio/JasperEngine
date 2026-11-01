@@ -12013,8 +12013,8 @@ void editor::InspectorWindow::drawSkyboxComponent(ComponentType cpType, ScenePro
     endTable();
 }
 
-// SYNC4: upstream's drawParticleSystemLegacy rows (ui-scaling-text: Unscaled Time and the "UI particles" note) are not
-// carried: this branch's particles are S20's (ParticleSystemComponent has no useUnscaledTime; drawParticleSystemComponent)
+// (upstream's drawParticleSystemLegacy rows of ui-scaling-text, Unscaled Time and the "UI particles" note, are S20's
+// drawParticleSystemComponent's, InspectorParticles.cpp)
 void editor::InspectorWindow::startActionPreview(Entity entity, Scene* scene, SceneProject* sceneProject) {
     if (actionPreviewing) return;
 

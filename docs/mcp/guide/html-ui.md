@@ -1388,13 +1388,15 @@ exact command to run; a failed conversion gives `HTMLUI-IMP-0011`. By hand:
 ### Particles: `<particle-system>`
 
 `<particle-system src="fx/confetti.prefab" autoplay loop time="ui" scale="1">` plays a prefab's
-Particle System (a prefab whose GameObjects have a Particle System and its Points emitter: texture,
-sprite frames, blending) and draws its particles in document order: above what comes before it,
+Particle System (the first of its GameObjects with one; its billboards as they look: the Renderer's
+texture or soft disc, sprite sheet frames, additive or alpha blending, sizes, rotations, colours)
+and draws its particles in document order: above what comes before it,
 below what comes after, inside the element's clip (`overflow: hidden`) and transform. The emitter
 is at the centre of its content box (0 x 0 by default: give it a size or position it), one prefab
-unit is `scale` CSS px, y up. `time="ui"` (default) plays while the game is paused, `game` follows
-`Engine.timeScale`; `loop="false"` plays once (the prefab's own setting otherwise); without
-`autoplay` it waits for `el:play()`.
+unit is `scale` CSS px, y up. `time="ui"` (default: the system's `useUnscaledTime`) plays while
+the game is paused, `game` follows `Engine.timeScale` (the effect's own Unscaled Time off too);
+`loop="false"` plays once, `loop` loops (the effect's Looping on the GameObject's own copy; the
+prefab's own setting otherwise); without `autoplay` it waits for `el:play()`.
 
 ```html
 <div class="panel" style="overflow: hidden">
@@ -1406,7 +1408,10 @@ unit is `scale` CSS px, y up. `time="ui"` (default) plays while the game is paus
 Lua: `el:play()`, `el:pause()`, `el:stop()`, `el:clear()`, `el:isPlaying()`,
 `el:getParticleSystem()` (the system of its hidden GameObject: every `ParticleSystem` API works;
 `nil` until the element's first update made the prefab, e.g. in `onLoad`, in edit mode, or when its
-`src` failed); event `complete` when a system that does not loop stops. `play()` / `pause()` /
+`src` failed); `el:clear()` removes the particles (the system plays on), `el:stop()` stops
+emitting (what is alive dies out; `el:isPlaying()` until then, as Unity's), `el:isPlaying()` is
+false while paused; event `complete` when a system that does not loop has stopped (its last
+particle died). `play()` / `pause()` /
 `stop()` before the prefab exists are queued (the last one applies, over `autoplay`). The prefab is
 made on a hidden GameObject of the document's scene (not in the Hierarchy, not saved; none of its
 renderers draws) and goes, with all its children, with the element, its document or a new `src`.

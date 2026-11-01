@@ -4,6 +4,7 @@
 #include "DebugStats.h"
 
 #include "Engine.h"
+#include "profiler/FrameTimes.h"
 #include "Scene.h"
 #include "System.h"
 #include "script/LuaBinding.h"
@@ -15,29 +16,14 @@
 #include "lua.hpp"
 
 #include <algorithm>
-#include <array>
-#include <atomic>
+#include <functional>
 
 using namespace jasperengine;
 
 namespace {
 
-    // main thread only (Engine::runFrame, DebugOverlay, the Lua binding)
-    struct History {
-        std::array<float, DebugStats::historySize> frames{};
-        size_t next = 0;
-        size_t count = 0;
-        size_t recorded = 0;
-    };
-
-    History& history(){
-        static History instance;
-        return instance;
-    }
-
-
     // a stall (a breakpoint, the app in the background) is one long frame, not the scale of the graph
-    constexpr double maxRecordedSeconds = 1.0;
+    constexpr float maxShownMs = 1000.0f;
     // the window of the frame-time figures
     constexpr double windowSeconds = 2.0;
 
@@ -46,32 +32,17 @@ namespace {
     }
 }
 
-void DebugStats::recordFrame(double unscaledFrameSeconds){
-    History& h = history();
-    const double seconds = std::clamp(unscaledFrameSeconds, 0.0, maxRecordedSeconds);
-    h.frames[h.next] = static_cast<float>(seconds * 1000.0);
-    h.next = (h.next + 1) % historySize;
-    if (h.count < historySize)
-        h.count++;
-    h.recorded++;
-}
-
 std::vector<float> DebugStats::frameHistory(){
-    const History& h = history();
+    const std::vector<FrameTimeSample> samples = FrameTimes::snapshot(historySize);
     std::vector<float> out;
-    out.reserve(h.count);
-    const size_t start = (h.next + historySize - h.count) % historySize;
-    for (size_t i = 0; i < h.count; i++)
-        out.push_back(h.frames[(start + i) % historySize]);
+    out.reserve(samples.size());
+    for (const FrameTimeSample& sample : samples)
+        out.push_back(std::clamp(sample.frameMs, 0.0f, maxShownMs));
     return out;
 }
 
 size_t DebugStats::recordedFrames(){
-    return history().recorded;
-}
-
-void DebugStats::reset(){
-    history() = History();
+    return static_cast<size_t>(FrameTimes::currentFrame());
 }
 
 DebugStatsSnapshot DebugStats::sample(){

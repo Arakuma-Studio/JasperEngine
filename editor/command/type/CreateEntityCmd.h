@@ -74,8 +74,8 @@ namespace jasperengine::editor{
         // a version 2 Particle System on its own GameObject (Unity's: the default quad renderer)
         PARTICLE_SYSTEM,
         FORCE_FIELD,
-        // a Points emitter in UI units under a UI element and its Particle System child
-        // (unscaled time, local space): particles drawn in canvas order, clipped by panels
+        // a Particle System in UI units under a UI element (unscaled time, local space, the soft
+        // image): its particles drawn in canvas order, clipped by panels
         UI_PARTICLE_SYSTEM,
         POINTS,
         LINE_RENDERER,

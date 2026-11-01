@@ -14,6 +14,7 @@
 #include "object/environment/Water.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "particles/LegacyParticleConverter.h"
 
 #include <algorithm>
 #include <utility>
@@ -806,49 +807,43 @@ bool editor::CreateEntityCmd::execute(){
 
     }else if (type == EntityCreationType::UI_PARTICLE_SYSTEM){
 
-        // the emitter draws between its siblings, in UI units, clipped by the nearest panel
+        // under a UI element it draws between its siblings, in UI units, clipped by the nearest
+        // panel (it renders itself: one GameObject); a soft sparkle rising and falling (UI is y
+        // down), at time scale 0 too: origin/main's legacy fields, through the old system's
+        // converter (as create_particles makes its presets)
         scene->addComponent<Transform>(entity, {});
-        scene->addComponent<PointsComponent>(entity, {});
+        LegacyParticleSystem legacy;
+        legacy.localSpace = true;
+        legacy.maxParticles = 100;
+        legacy.rate = 25;
+        legacy.lifeInitializer.minLife = 0.8f;
+        legacy.lifeInitializer.maxLife = 1.6f;
+        legacy.positionInitializer.shape = ParticleEmitterShape::Box;
+        legacy.positionInitializer.minPosition = Vector3(-20.0f, -5.0f, 0.0f);
+        legacy.positionInitializer.maxPosition = Vector3(20.0f, 5.0f, 0.0f);
+        legacy.velocityInitializer.minVelocity = Vector3(-60.0f, -220.0f, 0.0f);
+        legacy.velocityInitializer.maxVelocity = Vector3(60.0f, -120.0f, 0.0f);
+        legacy.accelerationInitializer.minAcceleration = Vector3(0.0f, 240.0f, 0.0f);
+        legacy.accelerationInitializer.maxAcceleration = Vector3(0.0f, 240.0f, 0.0f);
+        legacy.sizeInitializer.minSize = 16.0f;
+        legacy.sizeInitializer.maxSize = 28.0f;
+        legacy.alphaModifier.fromTime = 0.0f;
+        legacy.alphaModifier.toTime = 1.6f;
+        legacy.alphaModifier.fromAlpha = 1.0f;
+        legacy.alphaModifier.toAlpha = 0.0f;
+        particles::LegacyTarget softTarget;
+        // the soft round image (ui/particle_soft.png, made once per project)
         const std::string softTexture = ProjectUtils::ensureSoftParticleTexture(project);
         if (!softTexture.empty()) {
-            scene->getComponent<PointsComponent>(entity).texture = Texture(softTexture);
+            softTarget.texture = project->normalizeToAssetsRelative(project->getProjectPath() / softTexture).generic_string();
+            softTarget.textureGuid = project->makeAssetRef(softTarget.texture, AssetPathBase::Assets).guid.str();
         }
 
-        Entity system = scene->createUserEntity();
-        scene->addComponent<Transform>(system, {});
-        scene->addEntityChild(entity, system, false);
-        scene->setEntityName(system, "Particle System");
-        scene->addComponent<ActionComponent>(system, {});
-        scene->addComponent<ParticleSystemComponent>(system, {});
-        ActionComponent& action = scene->getComponent<ActionComponent>(system);
-        action.target = entity;
-        action.state = ActionState::Running;
-
-#if 0 // SYNC4-ABSORB(particles): upstream's legacy particle fields, to the new module API
-        // a soft sparkle rising and falling (UI is y down), at time scale 0 too
-        ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(system);
-        particles.useUnscaledTime = true;
-        particles.localSpace = true;
-        particles.maxParticles = 100;
-        particles.rate = 25;
-        particles.lifeInitializer.minLife = 0.8f;
-        particles.lifeInitializer.maxLife = 1.6f;
-        particles.positionInitializer.shape = ParticleEmitterShape::Box;
-        particles.positionInitializer.minPosition = Vector3(-20.0f, -5.0f, 0.0f);
-        particles.positionInitializer.maxPosition = Vector3(20.0f, 5.0f, 0.0f);
-        particles.velocityInitializer.minVelocity = Vector3(-60.0f, -220.0f, 0.0f);
-        particles.velocityInitializer.maxVelocity = Vector3(60.0f, -120.0f, 0.0f);
-        particles.accelerationInitializer.minAcceleration = Vector3(0.0f, 240.0f, 0.0f);
-        particles.accelerationInitializer.maxAcceleration = Vector3(0.0f, 240.0f, 0.0f);
-        particles.sizeInitializer.minSize = 16.0f;
-        particles.sizeInitializer.maxSize = 28.0f;
-        particles.alphaModifier.fromTime = 0.0f;
-        particles.alphaModifier.toTime = 1.6f;
-        particles.alphaModifier.fromAlpha = 1.0f;
-        particles.alphaModifier.toAlpha = 0.0f;
-#endif
-
-        registerChildEntity(system, entity);
+        ParticleSystemComponent uiParticles;
+        uiParticles.inlineEffect = particles::LegacyParticleConverter::convert(legacy, softTarget);
+        uiParticles.inlineEffect.renderer.untexturedShape = particles::UntexturedShape::Disc;
+        uiParticles.useUnscaledTime = true;
+        scene->addComponent<ParticleSystemComponent>(entity, uiParticles);
 
     }else if (type == EntityCreationType::POINTS){
 

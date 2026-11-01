@@ -4,8 +4,11 @@ The engine has an on-device debug overlay (Unity's IngameDebugConsole and Graphy
 console** with filters, search, collapse, stack traces, copy, save and commands; a **popup** with the
 warning and error counts; and an **FPS / stats panel**. It runs in the editor's Play (Game view) and in
 exported games on every platform, from a document embedded in the engine, so it works when the game's
-own UI, CSS, fonts or Lua are broken. Under it is the **log** itself: every line is buffered and handed
-to listeners (Unity's `Application.logMessageReceived`), in C++ and Lua.
+own UI, CSS, fonts or Lua are broken. Under it is the **log** itself: the engine log (C++ `JE_LOG_*` and
+`Log::*` of every category, Lua; not the editor's own lines) keeps its newest lines in a buffer and hands every line to
+listeners (Unity's `Application.logMessageReceived`), in C++ and Lua. The buffer is one of the log's
+outputs (a sink, like the Console and the log file): a line the log's level or rate limit holds back
+reaches none of them.
 
 ## 1. Turning it on
 
@@ -51,8 +54,9 @@ jasper://docs/safe-area), also in the Game view's device simulation.
 
 ## 3. The console
 
-- **Info / Warn / Error** toggle the levels shown (verbose and debug lines count as info); each shows
-  its count since the last clear.
+- **Info / Warn / Error** toggle the levels shown (trace and debug lines count as info, fatal as
+  error); each shows its count since the last clear. A line of a category other than engine, editor,
+  lua or build shows it first: `[render] 3 draws dropped`.
 - **Collapse** shows one row per distinct message (and trace) with a count badge.
 - **Search** filters rows by a case-insensitive substring of the message or the stack trace.
 - A **row** shows a level mark, the time (`mm:ss.mmm` since the app started) and the first line of the
@@ -103,6 +107,9 @@ commands go when Play stops. `DebugOverlay.removeCommand(name)` removes one,
 
 ## 5. The stats panel
 
+Frame times come from the engine's frame-time ring (the profiler's, recorded in every build: a
+game's frame from one draw to the next, the editor's own frames in Play), not a copy of its own.
+
 FPS mode: `60 FPS  16.7 ms` (the average of the last 2 s, yellow over 17.5 ms, red over 34 ms) and a
 frame-time graph of the last 120 frames with lines at 16.7 ms (60 FPS) and 33.3 ms (30 FPS). Full mode
 adds a table. Initial mode: `debug.overlay_stats`; corner: `debug.overlay_stats_corner` (`top_left`,
@@ -112,7 +119,7 @@ adds a table. Initial mode: `debug.overlay_stats`; corner: `debug.overlay_stats_
 
 | Field | Meaning |
 |---|---|
-| `fps`, `frameMs`, `frameMsAvg`, `frameMsMin`, `frameMsMax`, `frameMs1PercentLow` | over the last 2 s of unscaled frames; 1% low is the average of the slowest 1% |
+| `fps`, `frameMs`, `frameMsAvg`, `frameMsMin`, `frameMsMax`, `frameMs1PercentLow` | over the last 2 s of the frame-time ring (unscaled: what the device took); 1% low is the average of the slowest 1% |
 | `drawCalls`, `instances`, `triangles` | the last drawn frame (the overlay's own draws excluded) |
 | `processMemoryBytes` | resident memory of the process (Linux/Android RSS, Windows working set, Apple physical footprint, Web the WebAssembly heap; 0 when unknown) |
 | `luaMemoryBytes` | the Lua heap |
@@ -136,15 +143,17 @@ print(Log.count(LogLevel.WARN), Log.bufferSize)
 Log.clear()
 ```
 
-- Levels: `LogLevel.INFO`, `VERBOSE`, `DEBUG`, `WARN`, `ERROR` (integers 0-4).
+- Levels: the engine log's, `LogLevel.TRACE` (= `VERBOSE`), `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`
+  (integers 0-5; compare with the names).
 - `Log.getEntries([maxCount [, levels]])`: the buffered lines, oldest first (the newest `maxCount`),
-  each `{id, level, message, stackTrace, time, frame, mainThread, fromLua}`.
+  each `{id, category, level, message, stackTrace, time, frame, mainThread, fromLua}`; `id` is the
+  log record's (increasing, never reused; gaps are lines of other levels or held back).
 - `Log.count(level)`: lines of that level since the last clear. `Log.bufferSize` (rw): the lines kept
   (Project Settings > Debug > Log Buffer Size, default 500; 0 keeps none; at most 100000).
 - **Stack traces**: a Lua error's message is split at `stack traceback:` (the trace goes to
   `stackTrace`). `Log.*` lines of Lua get a traceback per **Log Stack Traces**
   (`debug.log_stack_traces`: `none`, `errors`, `warnings` (default: warnings and errors), `all`).
-  C++ lines have none.
+  C++ lines have none (their native backtraces go to the log file).
 
 **Listening** (Unity's `Application.logMessageReceived`, same argument order):
 
@@ -178,8 +187,9 @@ DebugStatsSnapshot stats = DebugStats::sample();
 ```
 
 `MainThread` listeners (the default) follow the Lua rule above; `AnyThread` listeners run on the
-thread that logs, at once (Unity's `logMessageReceivedThreaded`). Listeners are never called with the
-log's lock held. Logs other threads make wait in a queue of 1,000 lines for the next frame; past it
+thread that logs, at once (Unity's `logMessageReceivedThreaded`). Listeners get every record of the
+engine log (`JE_LOG_*` of any category included; `entry.category`), before `Logger::init` and after
+`Logger::shutdown` too, and are never called with the log's locks held (the Logger's or the buffer's). Logs other threads make wait in a queue of 1,000 lines for the next frame; past it
 they are counted and reported once. `Log::removeListener` returns once every running call of that
 listener has ended (so what it uses can go), unless it is called from inside a listener call: then it
 does not wait, and only no new call starts. Do not hold a lock the listener takes while removing it.
@@ -201,7 +211,7 @@ does not wait, and only no new call starts. Do not hold a lock the listener take
 
 | State | Cost |
 |---|---|
-| Not enabled | per log line: one lock and one copy into the buffer (nothing with a buffer of 0); per frame: one float into the frame-time ring and a branch per input event |
+| Not enabled | per log line: the log's own cost, then one lock and one copy into the buffer (nothing with a buffer of 0); per frame: a branch per input event (the frame-time ring is the profiler's, recorded anyway) |
 | Enabled, nothing shown | the same; the overlay Scene stays loaded but is neither updated nor drawn |
 | Console open | rows appended as lines come (a full rebuild only when a filter, the search or collapse changes); stats text at 4 Hz and the graph at 10 Hz |
-| Memory | ~500 lines x their length (about 100 KB) plus the overlay document while shown |
+| Memory | the buffer's slots, reserved at start so a line never allocates: about 250 KB for 500 lines and the 1,000 waiting for the main thread (longer lines grow their slot once), plus the overlay document while shown |

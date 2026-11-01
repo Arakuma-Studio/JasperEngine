@@ -88,12 +88,16 @@ async def test_settings(ed: Editor):
     project_yaml = yaml.safe_load((ed.project / "project.yaml").read_text())
     ed.check_eq(project_yaml.get("debug"), {"overlay": "always", "logBufferSize": 200, "allowLua": "always"}, "saved")
 
-    # undoable, one step per key
+    # undoable: one step per key, folded into one for the call (an MCP call is one undo step,
+    # McpUndo::foldCall); DebugReflectTest.EachRowIsOneUndoStep checks the steps per key
     await ed.call("undo", scope="project")
-    after = (await ed.call("get_project_settings", keys=["debug.overlay_allow_lua", "debug.overlay"]))["settings"]
-    ed.check_eq(after["debug.overlay_allow_lua"], "development", f"undone: {after}")
-    ed.check_eq(after["debug.overlay"], "always", f"the others stay: {after}")
+    keys = ["debug.overlay_allow_lua", "debug.overlay", "debug.log_buffer_size"]
+    after = (await ed.call("get_project_settings", keys=keys))["settings"]
+    ed.check_eq({k: after.get(k) for k in keys}, {"debug.overlay_allow_lua": "development", "debug.overlay": "development", "debug.log_buffer_size": 500},
+                "the call undone as one step")
     await ed.call("redo", scope="project")
+    after = (await ed.call("get_project_settings", keys=keys))["settings"]
+    ed.check_eq({k: after.get(k) for k in keys}, {"debug.overlay_allow_lua": "always", "debug.overlay": "always", "debug.log_buffer_size": 200}, "redone")
 
 
 async def test_console_in_play(ed: Editor):

@@ -191,6 +191,14 @@ float ParticleSystem::getPlaybackSpeed() const{
     return system().playbackSpeed;
 }
 
+void ParticleSystem::setUseUnscaledTime(bool useUnscaledTime){
+    system().useUnscaledTime = useUnscaledTime;
+}
+
+bool ParticleSystem::isUseUnscaledTime() const{
+    return system().useUnscaledTime;
+}
+
 void ParticleSystem::setSeed(unsigned int seed){
     system().seed = seed;
     system().needReload = true;

@@ -43,6 +43,9 @@ namespace {
         JE_FIELD(ParticleSystemComponent, playOnAwake),
         JE_FIELD(ParticleSystemComponent, seed, .updateFlags = kParticles, .tooltip = "0: a new random seed at every play."),
         JE_FIELD(ParticleSystemComponent, playbackSpeed),
+        // written only when on: a file from before it reads as it was, byte for byte
+        JE_FIELD(ParticleSystemComponent, useUnscaledTime, .flags = OmitIfDefault | CodegenIfChanged, .label = "Unscaled Time",
+                 .tooltip = "Ticks with the unscaled frame time: it plays at Engine.timeScale 0 (a pause menu, UI particles), as the effect's own Unscaled Time does."),
         JE_FIELD(ParticleSystemComponent, exposedValues, .ops = &ops::Opaque<std::vector<ParticleExposedValue>>, .updateFlags = kParticles),
         // GameObjects whose transforms are more collision planes (their up axis is the normal)
         JE_FIELD(ParticleSystemComponent, collisionPlanes, .flags = NoDefault | ListWhole, .elementOps = &ops::Entity),
@@ -51,7 +54,7 @@ namespace {
     const ComponentCodec kParticleSystemCodec = JE_STREAM_CODEC(ParticleSystemComponent, encodeParticleSystemComponent, decodeParticleSystemComponent);
 
     // the keys its codec reads
-    constexpr const char* kParticleSystemKnownKeys[] = {"collisionPlanes", "effect", "effectGuid", "enabled", "exposedValues", "inlineEffect", "playOnAwake", "playbackSpeed", "seed"};
+    constexpr const char* kParticleSystemKnownKeys[] = {"collisionPlanes", "effect", "effectGuid", "enabled", "exposedValues", "inlineEffect", "playOnAwake", "playbackSpeed", "seed", "useUnscaledTime"};
 
     // ---------------------------------------------------------------- Force Field
 

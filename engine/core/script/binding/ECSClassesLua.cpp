@@ -962,6 +962,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("playOnAwake", &ParticleSystemComponent::playOnAwake, &setTrackedMember<&ParticleSystemComponent::playOnAwake>)
         .addProperty("seed", &ParticleSystemComponent::seed, &setTrackedMember<&ParticleSystemComponent::seed>)
         .addProperty("playbackSpeed", &ParticleSystemComponent::playbackSpeed, &setTrackedMember<&ParticleSystemComponent::playbackSpeed>)
+        .addProperty("useUnscaledTime", &ParticleSystemComponent::useUnscaledTime, &setTrackedMember<&ParticleSystemComponent::useUnscaledTime>)
         .addProperty("effect", [] (const ParticleSystemComponent* self) { return self->effect.path; },
                      [] (ParticleSystemComponent* self, std::string path) { self->effect = path; self->needReload = true; })
         .addProperty("onCollision", [] (ParticleSystemComponent* self, lua_State* L) { return &self->onCollision; }, [] (ParticleSystemComponent* self, lua_State* L) { self->onCollision = L; })

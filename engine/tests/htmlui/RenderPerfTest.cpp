@@ -351,8 +351,9 @@ TEST(HtmlUIRenderPerf, B4ScalePopin){
         runner.frameAt(clock, true);
         const HtmlUIRenderStats& stats = runner.renderer()->getStats();
         EXPECT_LE(stats.glyphsRasterized, (uint32_t)RmlFontEngine::settleGlyphBudget) << "frame " << frame;
-        if (frame > 0)
+        if (frame > 0){
             EXPECT_LE(runner.textCounters().glyphRasterMs, RmlFontEngine::settleTimeBudgetMs * compat::perfSlack()) << "frame " << frame;
+        }
         // from the end of the first labels' animation (300 ms; the others' delays reach 80 ms)
         if (clock > 0.3)
             settleRegenerations += stats.textRegenerations;

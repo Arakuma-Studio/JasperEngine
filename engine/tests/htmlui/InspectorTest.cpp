@@ -290,10 +290,12 @@ TEST_F(InspectorTest, RefsAreUnique){
     EXPECT_EQ(findRef(elements, "#dup"), nullptr) << "a duplicate id is not a ref";
     EXPECT_EQ(findRef(elements, "#9lives"), nullptr) << "an id that needs escaping is not a ref";
     for (const InspectElement& element : elements){
-        if (element.tag == "svg")
+        if (element.tag == "svg"){
             EXPECT_EQ(element.childCount, 0) << "<svg> is a leaf";
-        if (element.tag == "template")
+        }
+        if (element.tag == "template"){
             EXPECT_TRUE(element.flags.hidden);
+        }
     }
 }
 
@@ -903,8 +905,9 @@ TEST_F(InspectorTest, ReloadBetweenQueries){
     GpuEnvironment::drawFrames(2);
     std::vector<InspectElement> out;
     bool truncated = false;
-    if (!HtmlUIInspector::query(scene, entity, "", 1, 10, out, truncated, error))
+    if (!HtmlUIInspector::query(scene, entity, "", 1, 10, out, truncated, error)){
         EXPECT_NE(error.find("is not loaded"), std::string::npos) << error;
+    }
 }
 
 // unicode text: collapsed, cut at 120 code points with "...", valid UTF-8; unicode ids get a path ref
