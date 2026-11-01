@@ -719,7 +719,12 @@ ambiguous or in conflict with the code:
   macOS and iOS with 0 errors (it found `uint64_t id` parameters hiding Objective-C's `id` in
   NativePlatformApple.mm: renamed). Exported test projects (an Objective-C and a Swift plugin in
   apple/, an iOS-only Swift plugin importing swift-collections through ios.swift_packages, plist
-  entries and system frameworks per platform, a Lua caller) were handed over for an xcodebuild run.
+  entries and system frameworks per platform, a Lua caller) built on the owner's Mac (Xcode 26.6,
+  arm64, dav1d asm off, signing off) once every export links the engine's frameworks explicitly
+  (the first iOS build failed: AVAudioSession undefined without the AdMob SDK): iOS device and
+  simulator and macOS, with plugins and without, exit 0 and 0 errors, against this branch's
+  template and against it with main's APP_FRAMEWORKS phase entries (9d8286d3e); `otool -L` lists
+  AVFoundation, AudioToolbox, CoreMedia, CoreVideo, Metal, MetalKit, QuartzCore, UIKit/AppKit.
 - Android, on the host: the exported test project of `test_source_export` (a Java and a Kotlin
   plugin, libs/x.jar, a plugin manifest with tools:node="remove", Gradle dependencies, a repository,
   manifest fragments) **built with `./gradlew assembleDebug`** (AGP 9, arm64 only, 0 warnings): the
