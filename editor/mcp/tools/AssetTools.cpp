@@ -3,8 +3,11 @@
 
 // W4: assets, import, materials, shaders, text files, placeholder art
 #include "McpTools.h"
+#include "util/ShaderGlobalsJson.h"
+#include "shader/ShaderGlobals.h"
 #include "W4Shared.h"
 #include "AnimationClipTools.h"
+#include "AnimatorTools.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -58,6 +61,7 @@
 #include "window/ProjectWindow.h"
 
 #include "stb_image.h"
+#include "unity/UnityParticleImport.h"
 #include "stb_image_resize2.h"
 #include "stb_image_write.h"
 #include "yaml-cpp/yaml.h"
@@ -1153,6 +1157,18 @@ void writeFileTool(const CallPtr& call) {
             return;
         }
     }
+    // Avatar Masks and Animator Controllers must stay loadable (layers and players read them): content problems
+    // (and a controller's validation) are warnings
+    std::vector<std::string> animWarnings;
+    if (Util::isAvatarMaskFile(rel) || Util::isAnimatorControllerFile(rel)) {
+        std::string why;
+        const bool mask = Util::isAvatarMaskFile(rel);
+        if (mask ? !animator_tools::checkMaskText(content, animWarnings, why) : !animator_tools::checkControllerText(project, content, animWarnings, why)) {
+            call->fail(std::string(mask ? "Not a valid Avatar Mask: " : "Not a valid Animator Controller: ") + why +
+                       (mask ? ". The format: jasper://docs/animation (Layers and masks)." : ". Prefer edit_animator (jasper://docs/animation)."));
+            return;
+        }
+    }
     // Vertex Animations must stay loadable: generated fields are the baker's (rebake), the rest are warnings
     std::vector<std::string> vatWarnings;
     if (Util::isVertexAnimationFile(rel)) {
@@ -1186,6 +1202,12 @@ void writeFileTool(const CallPtr& call) {
         text += vatWarnings.empty() ? std::string(" Valid Vertex Animation (its animators reload).")
                                     : " Vertex Animation loads with " + std::to_string(vatWarnings.size()) + " warning(s) (the bad parts are dropped):";
         for (size_t i = 0; i < vatWarnings.size() && i < 8; i++) text += "\n" + vatWarnings[i];
+    } else if (Util::isAvatarMaskFile(rel) || Util::isAnimatorControllerFile(rel)) {
+        data["warnings"] = animWarnings;
+        const char* kind = Util::isAvatarMaskFile(rel) ? "Avatar Mask" : "Animator Controller";
+        text += animWarnings.empty() ? std::string(" Valid ") + kind + " (its players reload)."
+                                     : std::string(" ") + kind + " loads with " + std::to_string(animWarnings.size()) + " warning(s):";
+        for (size_t i = 0; i < animWarnings.size() && i < 8; i++) text += "\n" + animWarnings[i];
     } else if (Util::isAnimationClipFile(rel)) {
         data["warnings"] = clipWarnings;
         text += clipWarnings.empty() ? std::string(" Valid clip.") : " Clip loads with " + std::to_string(clipWarnings.size()) + " warning(s) (the bad parts are dropped):";
@@ -1324,7 +1346,7 @@ public:
         for (const fs::path& copied : {to, pairTo}) {
             if (copied.empty()) continue;
             project->cleanupPrefabFilePath(copied);
-            if (isDir || Util::isAnimationClipFile(copied.string()) || Util::isVertexAnimationFile(copied.string())) {
+            if (isDir || Util::isGuidJsonAssetFile(copied.string())) {
                 project->cleanupClipFilePath(copied);
             }
             project->cleanupInspectedAsset(copied);
@@ -2514,6 +2536,79 @@ std::string uniformSetNote(const Json& members, const std::string& name, bool& d
            "the value is kept and applies once declared.";
 }
 
+// ---- global shader values (ShaderGlobals): what a shader's globals blocks and texture
+// uniforms read, and the members bound to globals
+
+const char* globalsMemberGlsl(ShaderUniformType type) {
+    return type == ShaderUniformType::MAT4 ? "mat4" : type == ShaderUniformType::MAT3 ? "mat3" : uniformTypeName(type);
+}
+
+void addGlobalMember(Json& list, const std::string& member, const char* stage, const std::string& glsl) {
+    for (const Json& entry : list) {
+        if (entry.value("member", "") == member && entry.value("stage", "") == stage) return;
+    }
+    ShaderGlobalValue value;
+    const bool exists = ShaderGlobals::get(ShaderGlobals::findID(member), value);
+    Json entry = {{"member", member}, {"stage", stage}, {"global", member}, {"glsl", glsl}, {"declared", exists && value.declared}};
+    if (!exists) {
+        entry["type"] = nullptr;
+        entry["value"] = nullptr;
+    } else {
+        entry["type"] = ShaderGlobals::getTypeName(value.type);
+        if (ShaderGlobals::isTexture(value.type))
+            entry["value"] = value.texture.isFramebuffer() ? std::string("<render target>") : value.texture.getPath(0);
+        else
+            entry["value"] = ShaderGlobalsJson::valueToJson(value.type, value.arraySize, value.values);
+    }
+    list.push_back(entry);
+}
+
+void appendGlobalMembers(Json& list, const ShaderLibraryBindings& bindings) {
+    auto block = [&list](const std::shared_ptr<GlobalsBlockLayout>& layout, const char* stage) {
+        if (!layout) return;
+        for (const GlobalsBlockLayout::Member& member : layout->members) {
+            std::string glsl = globalsMemberGlsl(member.type);
+            if (member.arrayCount > 1) glsl += "[" + std::to_string(member.arrayCount) + "]";
+            addGlobalMember(list, member.name, stage, glsl);
+        }
+    };
+    block(bindings.vsGlobals, "vertex");
+    block(bindings.fsGlobals, "fragment");
+    for (const GlobalTextureSlot& texture : bindings.globalTextures)
+        addGlobalMember(list, ShaderGlobals::nameOf(texture.globalId), "texture", texture.cube ? "textureCube" : "texture2D");
+}
+
+// the globals the loaded shaders of the entity's component read (a mesh: every submesh, or one)
+Json componentGlobalMembers(Scene* scene, Entity entity, ComponentType component, int submesh) {
+    Json list = Json::array();
+    if (component == ComponentType::MeshComponent) {
+        if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)) {
+            for (unsigned int s = 0; s < mesh->numSubmeshes; s++) {
+                if (submesh >= 0 && (int)s != submesh) continue;
+                appendGlobalMembers(list, mesh->submeshes[s].libraryBindings);
+                appendGlobalMembers(list, mesh->submeshes[s].depthLibraryBindings);
+            }
+        }
+    } else if (UIComponent* ui = component == ComponentType::UIComponent ? scene->findComponent<UIComponent>(entity) : nullptr) {
+        appendGlobalMembers(list, ui->libraryBindings);
+    } else if (PointsComponent* points = component == ComponentType::PointsComponent ? scene->findComponent<PointsComponent>(entity) : nullptr) {
+        appendGlobalMembers(list, points->libraryBindings);
+    } else if (LineRendererComponent* lines = component == ComponentType::LineRendererComponent ? scene->findComponent<LineRendererComponent>(entity) : nullptr) {
+        appendGlobalMembers(list, lines->libraryBindings);
+    } else if (SkyboxComponent* sky = component == ComponentType::SkyboxComponent ? scene->findComponent<SkyboxComponent>(entity) : nullptr) {
+        appendGlobalMembers(list, sky->libraryBindings);
+    } else if (TrailRendererComponent* trail = component == ComponentType::TrailRendererComponent ? scene->findComponent<TrailRendererComponent>(entity) : nullptr) {
+        appendGlobalMembers(list, trail->libraryBindings);
+    }
+    return list;
+}
+
+Json globalBindingsJson(const ShaderGlobalBindings& bindings) {
+    Json json = Json::object();
+    for (const auto& binding : bindings) json[binding.first] = binding.second;
+    return json;
+}
+
 bool passIndexArg(const CallPtr& call, const std::vector<PostProcessPass>& passes, int& index) {
     const Json& value = call->args()["pass_index"];
     index = value.is_number_integer() ? value.get<int>() : -1;
@@ -2582,9 +2677,19 @@ void getShaderUniformsTool(const CallPtr& call) {
         const PostProcessPass& p = passes[index];
         bool buildFailed = false;
         passUniformMembers(members, warnings, p, buildFailed);
+        // the globals the pass's shader reads, from its reflection
+        Json globals = Json::array();
+        std::shared_ptr<ShaderRender> passShader = ShaderPool::get(ShaderType::POSTPROCESS, 0, ShaderPool::registerCustomShader(p.shader));
+        if (!buildFailed && passShader && passShader->isCreated()) {
+            ShaderLibraryBindings bindings;
+            bindings.vsGlobals = ShaderGlobals::acquireLayout(passShader->shaderData, ShaderGlobals::VERTEX_BLOCK);
+            bindings.fsGlobals = ShaderGlobals::acquireLayout(passShader->shaderData, ShaderGlobals::FRAGMENT_BLOCK);
+            appendGlobalMembers(globals, bindings);
+        }
         call->ok("Post-process pass " + std::to_string(index) + " (" + p.shader + "): " + std::to_string(members.size()) + " member(s).",
                  Json{{"pass_index", index}, {"shader", p.shader}, {"enabled", p.enabled}, {"build_failed", buildFailed},
-                      {"members", members}, {"warnings", warnings}, {"values", uniformValuesJson(p.uniforms)}});
+                      {"members", members}, {"warnings", warnings}, {"values", uniformValuesJson(p.uniforms)},
+                      {"globals", globals}, {"global_bindings", globalBindingsJson(p.shaderGlobalBindings)}});
         return;
     }
     ShaderType shaderType;
@@ -2609,7 +2714,9 @@ void getShaderUniformsTool(const CallPtr& call) {
                      {"build_failed", Catalog::isCustomShaderBuildFailed(scene, where.entity, where.component)},
                      {"members", members},
                      {"warnings", Catalog::getShaderUniformWarnings(blocks)},
-                     {"values", uniformValuesJson(sub.material.shaderParams)}};
+                     {"values", uniformValuesJson(sub.material.shaderParams)},
+                     {"globals", componentGlobalMembers(scene, where.entity, where.component, submesh)},
+                     {"global_bindings", globalBindingsJson(sub.material.shaderGlobalBindings)}};
         if (manifest) data["parameters"] = manifestParameters(manifest.get(), sub.material.shaderParams);
         // what this variant reads of the scene (phase 3) and the cost
         if (const uint32_t reads = Catalog::getMaterialSceneInputs(scene, where.entity, submesh, false)) {
@@ -2634,7 +2741,10 @@ void getShaderUniformsTool(const CallPtr& call) {
                  {"build_failed", Catalog::isCustomShaderBuildFailed(scene, where.entity, where.component)},
                  {"members", members},
                  {"warnings", warnings},
-                 {"values", uniformValuesJson(*values)}};
+                 {"values", uniformValuesJson(*values)},
+                 {"globals", componentGlobalMembers(scene, where.entity, where.component, -1)}};
+    if (const ShaderGlobalBindings* bindings = Catalog::getPropertyRef<ShaderGlobalBindings>(scene, where.entity, where.component, "shaderGlobalBindings"))
+        data["global_bindings"] = globalBindingsJson(*bindings);
     // a mesh's depth fork declares blocks of its own, listed in the same members
     if (std::string* depth = Catalog::getPropertyRef<std::string>(scene, where.entity, where.component, "customDepthShader")) {
         data["custom_depth_shader"] = *depth;
@@ -2890,6 +3000,8 @@ void checkShaderTool(const CallPtr& call) {
             std::vector<ProjectChecks::Finding> sceneFindings = ProjectChecks::stochasticTilingFindings(project);
             const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(project);
             sceneFindings.insert(sceneFindings.end(), lines.begin(), lines.end());
+            const std::vector<ProjectChecks::Finding> particleChecks = ProjectChecks::particleFindings(project);
+            sceneFindings.insert(sceneFindings.end(), particleChecks.begin(), particleChecks.end());
             std::string text = "No custom shader is used by the loaded scenes.";
             Json findings = Json::array();
             for (const ProjectChecks::Finding& finding : sceneFindings) {
@@ -2910,6 +3022,9 @@ void checkShaderTool(const CallPtr& call) {
         // Line and Trail Renderers: a hairline sampling a texture, a trail with Time 0
         const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(project);
         stateFindings.insert(stateFindings.end(), lines.begin(), lines.end());
+        // Particle Systems: legacy ones, points with a render mode, the mobile budget
+        const std::vector<ProjectChecks::Finding> particleChecks = ProjectChecks::particleFindings(project);
+        stateFindings.insert(stateFindings.end(), particleChecks.begin(), particleChecks.end());
     }
     checkShadersWithFindings(call, forks, [call, stateFindings](Json results, Json findings) {
         for (const ProjectChecks::Finding& finding : stateFindings) findings.push_back(ProjectChecks::toJson(finding));
@@ -3158,6 +3273,51 @@ void placeholderArtTool(const CallPtr& call) {
 // ------------------------------------------------------------------ search_files
 
 // Searches the project's text files (what read_file reads): literal or ECMAScript regex, per line
+// import_unity_particles: a Unity .prefab / .unity (absolute path) as engine prefabs (particles spec 6.10)
+void importUnityParticlesTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    if (!args.contains("path") || !args["path"].is_string() || args["path"].get<std::string>().empty()) {
+        call->fail("path is required: the absolute path of a .prefab or .unity file inside a Unity project.");
+        return;
+    }
+    unity::ImportOptions options;
+    options.file = fs::u8path(args["path"].get<std::string>()).lexically_normal();
+    if (!options.file.is_absolute()) {
+        call->fail("path must be absolute (the Unity project is outside the engine project).");
+        return;
+    }
+    if (args.contains("object") && args["object"].is_string()) options.object = args["object"].get<std::string>();
+    if (args.contains("dest") && args["dest"].is_string()) options.dest = args["dest"].get<std::string>();
+    if (args.contains("unity_project") && args["unity_project"].is_string()) {
+        options.unityProject = fs::u8path(args["unity_project"].get<std::string>()).lexically_normal();
+    }
+    options.dryRun = args.value("dry_run", false);
+    options.overwrite = args.value("overwrite", false);
+    // the output folder: inside the project once links are resolved
+    fs::path dest;
+    std::string error;
+    if (!McpRefs::resolveProjectWritePath(project, options.dest, dest, error, false)) {
+        call->fail(error);
+        return;
+    }
+    const unity::ImportResult result = unity::importParticlesIntoProject(project, options);
+    if (!result.ok) {
+        call->fail(result.error);
+        return;
+    }
+    int notes = 0;
+    for (const Json& system : result.report["systems"]) notes += (int)system["notes"].size();
+    notes += (int)result.report["warnings"].size();
+    std::string message = std::string(options.dryRun ? "Would import " : "Imported ") + std::to_string(result.report["systems"].size()) +
+                          " particle system(s) into " + std::to_string(result.prefabs.size()) + " prefab(s)";
+    message += notes ? " with " + std::to_string(notes) + " note(s) (see report)." : ".";
+    if (!options.dryRun) message += " Instantiate a prefab with instantiate_prefab; undo removes the files.";
+    Json data = {{"prefabs", result.prefabs}, {"report", result.report}};
+    if (!result.reportFile.empty()) data["report_file"] = result.reportFile;
+    call->ok(message, data);
+}
+
 void searchFilesTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -3605,8 +3765,8 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Get Shader Uniforms";
         tool.description =
             "A custom or library shader's parameters (u_vs/u_fs_customParams, a pass's u_fs_postParams): GLSL type, "
-            "engine-written (time, resolution), value; library shaders add label, kind, default. entity (+ "
-            "component, + submesh) or pass_index; known once compiled.";
+            "engine-written (time, resolution), value; library shaders add label, kind, default; globals read "
+            "(u_vs/u_fs_globals) and global_bindings. entity (+ component, + submesh) or pass_index; known once compiled.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -3731,6 +3891,27 @@ void registerAssetTools(McpRegistry& registry) {
             {"overwrite", withDefault(boolean(""), false)}
         }, {"path"});
         tool.handler = placeholderArtTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "import_unity_particles";
+        tool.title = "Import Unity Particles";
+        tool.description =
+            "Import the ParticleSystems of a Unity .prefab/.unity (absolute path; the Unity project is only read) as "
+            "engine prefabs with materials and textures. Returns the prefabs and a report (per module imported/"
+            "approximated/unsupported, notes). jasper://docs/particles";
+        tool.inputSchema = object({
+            {"path", string("Absolute .prefab or .unity path.")},
+            {"object", string("GameObject path, e.g. \"Player/Camera/EndParticles\".")},
+            {"dest", withDefault(assetPath(""), "assets/fx")},
+            {"unity_project", string("Default: found from path.")},
+            {"dry_run", withDefault(boolean(""), false)},
+            {"overwrite", withDefault(boolean(""), false)}
+        }, {"path"});
+        tool.annotations.openWorld = true;
+        tool.handler = importUnityParticlesTool;
         registry.addTool(std::move(tool));
     }
 

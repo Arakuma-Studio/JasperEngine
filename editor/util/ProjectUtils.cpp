@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectUtils.h"
+#include "action/ParticleSystem.h"
+#include "particles/ParticleFields.h"
+#include "command/type/MultiPropertyCmd.h"
 
 #include "Out.h"
 #include "util/FileUtils.h"
@@ -17,6 +20,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cctype>
+#include <cmath>
 #include <fstream>
 #include <filesystem>
 #include <functional>
@@ -47,6 +51,7 @@
 #include "component/UIComponent.h"
 #include "component/TextComponent.h"
 #include "component/InputFieldComponent.h"
+#include "stb_image_write.h"
 #include "component/ImageComponent.h"
 #include "component/PanelComponent.h"
 #include "component/ScrollbarComponent.h"
@@ -1407,6 +1412,27 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<TextComponent>(entity, Stream::decodeTextComponent(componentNode));
             }
             break;
+        case ComponentType::OnScreenStickComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<OnScreenStickComponent>(entity, {});
+            }else{
+                registry->addComponent<OnScreenStickComponent>(entity, Stream::decodeOnScreenStickComponent(componentNode));
+            }
+            break;
+        case ComponentType::OnScreenButtonComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<OnScreenButtonComponent>(entity, {});
+            }else{
+                registry->addComponent<OnScreenButtonComponent>(entity, Stream::decodeOnScreenButtonComponent(componentNode));
+            }
+            break;
+        case ComponentType::TouchAreaComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<TouchAreaComponent>(entity, {});
+            }else{
+                registry->addComponent<TouchAreaComponent>(entity, Stream::decodeTouchAreaComponent(componentNode));
+            }
+            break;
         case ComponentType::InputFieldComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
                 registry->addComponent<InputFieldComponent>(entity, {});
@@ -1910,6 +1936,24 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
             }
             registry->removeComponent<TextComponent>(entity);
             break;
+        case ComponentType::OnScreenStickComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeOnScreenStickComponent(registry->getComponent<OnScreenStickComponent>(entity));
+            }
+            registry->removeComponent<OnScreenStickComponent>(entity);
+            break;
+        case ComponentType::OnScreenButtonComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeOnScreenButtonComponent(registry->getComponent<OnScreenButtonComponent>(entity));
+            }
+            registry->removeComponent<OnScreenButtonComponent>(entity);
+            break;
+        case ComponentType::TouchAreaComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeTouchAreaComponent(registry->getComponent<TouchAreaComponent>(entity));
+            }
+            registry->removeComponent<TouchAreaComponent>(entity);
+            break;
         case ComponentType::InputFieldComponent:
             if (encodeComponent){
                 oldComponent = Stream::encodeInputFieldComponent(registry->getComponent<InputFieldComponent>(entity));
@@ -2388,6 +2432,41 @@ EntityClassInfo handleClass(const char* name) { return {name, false, false}; }
 
 } // namespace
 
+std::string editor::ProjectUtils::ensureOnScreenControlTexture(const std::filesystem::path& assetsPath, bool knob) {
+    const std::string stored = knob ? "ui/onscreen/stick_knob.png" : "ui/onscreen/stick_base.png";
+    const std::filesystem::path file = assetsPath / "ui" / "onscreen" / (knob ? "stick_knob.png" : "stick_base.png");
+    std::error_code ec;
+    if (std::filesystem::exists(file, ec))
+        return stored;
+    std::filesystem::create_directories(file.parent_path(), ec);
+
+    // white, so the Image color tints it: a translucent disc with a brighter rim (the base) or
+    // a nearly opaque disc (the knob), antialiased over one pixel
+    const int size = knob ? 128 : 256;
+    std::vector<unsigned char> pixels(static_cast<size_t>(size) * size * 4, 0);
+    const float radius = size / 2.0f - 1.0f;
+    const float rim = knob ? 0.0f : size * 0.03f;
+    for (int y = 0; y < size; y++) {
+        for (int x = 0; x < size; x++) {
+            const float dx = x + 0.5f - size / 2.0f;
+            const float dy = y + 0.5f - size / 2.0f;
+            const float d = std::sqrt(dx * dx + dy * dy);
+            const float coverage = std::clamp(radius - d + 0.5f, 0.0f, 1.0f);
+            float alpha = knob ? 0.85f : 0.35f;
+            if (!knob && d > radius - rim)
+                alpha = 0.7f;
+            unsigned char* p = &pixels[(static_cast<size_t>(y) * size + x) * 4];
+            p[0] = p[1] = p[2] = 255;
+            p[3] = static_cast<unsigned char>(std::lround(255.0f * alpha * coverage));
+        }
+    }
+    if (!stbi_write_png(file.string().c_str(), size, size, 4, pixels.data(), size * 4)) {
+        Out::error("Could not write %s", file.string().c_str());
+        return "";
+    }
+    return stored;
+}
+
 editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(Scene* scene, Entity entity) {
     if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity)) return handleClass("EntityHandle");
 
@@ -2407,6 +2486,9 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<SkyboxComponent>()))         return handleClass("Skybox");
     if (signature.test(scene->getComponentId<FogComponent>()))         return handleClass("Fog");
     if (signature.test(scene->getComponentId<AudioSourceComponent>()))       return handleClass("AudioSource");
+    if (signature.test(scene->getComponentId<OnScreenStickComponent>()))  return objectClass("OnScreenStick");
+    if (signature.test(scene->getComponentId<OnScreenButtonComponent>())) return objectClass("OnScreenButton");
+    if (signature.test(scene->getComponentId<TouchAreaComponent>()))      return objectClass("TouchArea");
     if (signature.test(scene->getComponentId<ButtonComponent>()))      return objectClass("Button");
     if (signature.test(scene->getComponentId<ScrollbarComponent>()))   return objectClass("Scrollbar");
     if (signature.test(scene->getComponentId<ProgressbarComponent>())) return objectClass("Progressbar");
@@ -2513,4 +2595,76 @@ void editor::ProjectUtils::setupNewTrailRenderer(TrailRendererComponent& trail, 
     trail.colorGradient = Gradient({GradientColorKey(0.0f, Vector3(1.0f, 1.0f, 1.0f)), GradientColorKey(1.0f, Vector3(1.0f, 1.0f, 1.0f))},
                                    {GradientAlphaKey(0.0f, 1.0f), GradientAlphaKey(1.0f, 0.0f)});
     trail.needUpdateRibbon = true;
+}
+
+void editor::ProjectUtils::setupNewParticleSystem(Scene* scene, Entity entity, bool scene2D){
+    ParticleSystemComponent& ps = scene->getComponent<ParticleSystemComponent>(entity);
+    ps = ParticleSystemComponent();
+    ps.version = 2;
+    if (scene2D){
+        // the presets' 2D scale: 40 pixels a unit
+        const float k = 40.0f;
+        ps.main.startSpeed = MinMaxCurve(5.0f * k);
+        ps.main.startSize = MinMaxCurve(1.0f * k);
+        ps.main.gravitySource = ParticleSystemGravitySource::Physics2D;
+        ps.shape.radius = 1.0f * k;
+    }
+    if (scene->findComponent<PointsComponent>(entity)){
+        // drawn as points: billboards of a world diameter, on its own GameObject
+        PointsComponent& points = scene->getComponent<PointsComponent>(entity);
+        points.maxPoints = std::max(1u, std::min(ps.main.maxParticles, 100000u));
+        ActionComponent& action = scene->getComponent<ActionComponent>(entity);
+        action.target = entity;
+        action.ownedTarget = false;
+        return;
+    }
+    ParticleSystem::setupDefaultRenderer(scene, entity);
+}
+
+void editor::ProjectUtils::addParticleSystemValues(MultiPropertyCmd& multi, Project* project, uint32_t sceneId, Scene* scene, Entity entity,
+                                                   const ParticleSystemComponent& values){
+    const ParticleSystemComponent* current = scene->findComponent<ParticleSystemComponent>(entity);
+    if (!current) return;
+    const ComponentType type = ComponentType::ParticleSystemComponent;
+    if (current->version != values.version){
+        multi.addPropertyCmd<int>(project, sceneId, entity, type, "version", values.version);
+    }
+    if (current->useUnscaledTime != values.useUnscaledTime){
+        multi.addPropertyCmd<bool>(project, sceneId, entity, type, "useUnscaledTime", values.useUnscaledTime);
+    }
+    for (const particles::FieldInfo& field : particles::fields()){
+        bool same = false;
+        const void* a = field.get(values);
+        const void* b = field.get(*current);
+        switch (field.type){
+            case particles::FieldType::Bool: same = *static_cast<const bool*>(a) == *static_cast<const bool*>(b); break;
+            case particles::FieldType::Int:
+            case particles::FieldType::Enum: same = *static_cast<const int*>(a) == *static_cast<const int*>(b); break;
+            case particles::FieldType::UInt: same = *static_cast<const unsigned int*>(a) == *static_cast<const unsigned int*>(b); break;
+            case particles::FieldType::Float: same = *static_cast<const float*>(a) == *static_cast<const float*>(b); break;
+            case particles::FieldType::Vector2: same = *static_cast<const Vector2*>(a) == *static_cast<const Vector2*>(b); break;
+            case particles::FieldType::Vector3: same = *static_cast<const Vector3*>(a) == *static_cast<const Vector3*>(b); break;
+            case particles::FieldType::Curve: same = *static_cast<const MinMaxCurve*>(a) == *static_cast<const MinMaxCurve*>(b); break;
+            case particles::FieldType::Gradient: same = *static_cast<const MinMaxGradient*>(a) == *static_cast<const MinMaxGradient*>(b); break;
+            case particles::FieldType::Bursts: same = *static_cast<const std::vector<ParticleEmissionBurst>*>(a) == *static_cast<const std::vector<ParticleEmissionBurst>*>(b); break;
+            case particles::FieldType::IntList: same = *static_cast<const std::vector<int>*>(a) == *static_cast<const std::vector<int>*>(b); break;
+            case particles::FieldType::String: same = *static_cast<const std::string*>(a) == *static_cast<const std::string*>(b); break;
+        }
+        if (same) continue;
+        const std::string name = field.path();
+        switch (field.type){
+            case particles::FieldType::Bool: multi.addPropertyCmd<bool>(project, sceneId, entity, type, name, *static_cast<const bool*>(a)); break;
+            case particles::FieldType::Int:
+            case particles::FieldType::Enum: multi.addPropertyCmd<int>(project, sceneId, entity, type, name, *static_cast<const int*>(a)); break;
+            case particles::FieldType::UInt: multi.addPropertyCmd<unsigned int>(project, sceneId, entity, type, name, *static_cast<const unsigned int*>(a)); break;
+            case particles::FieldType::Float: multi.addPropertyCmd<float>(project, sceneId, entity, type, name, *static_cast<const float*>(a)); break;
+            case particles::FieldType::Vector2: multi.addPropertyCmd<Vector2>(project, sceneId, entity, type, name, *static_cast<const Vector2*>(a)); break;
+            case particles::FieldType::Vector3: multi.addPropertyCmd<Vector3>(project, sceneId, entity, type, name, *static_cast<const Vector3*>(a)); break;
+            case particles::FieldType::Curve: multi.addPropertyCmd<MinMaxCurve>(project, sceneId, entity, type, name, *static_cast<const MinMaxCurve*>(a)); break;
+            case particles::FieldType::Gradient: multi.addPropertyCmd<MinMaxGradient>(project, sceneId, entity, type, name, *static_cast<const MinMaxGradient*>(a)); break;
+            case particles::FieldType::Bursts: multi.addPropertyCmd<std::vector<ParticleEmissionBurst>>(project, sceneId, entity, type, name, *static_cast<const std::vector<ParticleEmissionBurst>*>(a)); break;
+            case particles::FieldType::IntList: multi.addPropertyCmd<std::vector<int>>(project, sceneId, entity, type, name, *static_cast<const std::vector<int>*>(a)); break;
+            case particles::FieldType::String: multi.addPropertyCmd<std::string>(project, sceneId, entity, type, name, *static_cast<const std::string*>(a)); break;
+        }
+    }
 }

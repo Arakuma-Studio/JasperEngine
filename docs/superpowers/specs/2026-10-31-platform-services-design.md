@@ -705,3 +705,12 @@ ambiguous or did not fit the code:
     feature's `systemFocus` / `systemPause` / `systemResume` (idempotent, focus lost before the
     pause, resume before the focus comes back, input released) are the ones kept, and the
     script-lifecycle test expects that order (`focusfalse` before `pausetrue`).
+30. **Merge with http, physics-3d, ui-canvas-group:** the Android manifest takes this feature's
+    permission scan (VIBRATE, ACCESS_NETWORK_STATE for `System.getInternetReachability`) and http's
+    INTERNET scan together, each permission once (with INTERNET, ACCESS_NETWORK_STATE is written by
+    http's block); `Generator::configure` takes `allowInsecureHttp` then `playerSettings`; the
+    Windows project libraries list both features' (winhttp iphlpapi, ole32 uuid advapi32); the
+    editor's Play applies the presentation settings and http's plain-HTTP policy before scripts;
+    `configure_game_view` keeps physics_debug / network and device / orientation / language;
+    `get_play_state` reports both `platform` and `http`. The generated-sources test skips the HTTP
+    backends (the engine library compiles them).

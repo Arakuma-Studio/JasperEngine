@@ -782,7 +782,7 @@ TEST(GeneratedProject, PlatformSourcesListEveryBackendFile) {
     // a project built outside an export (Play with C++ scripts, `build_project` desktop) compiles
     // the desktop backends from this list: every source of platform/<os> must be in it (a missing
     // one, as HostServices*, fails at link time), but the entry points, D3D11 (not offered there)
-    // and the HTTP backend (compiled into the engine library)
+    // and the HTTP backends (the engine library compiles them: JASPERENGINE_HTTP_BACKEND)
     Generator generator;
     const std::string cmake = GeneratorTestAccess::platformCMake(generator);
     const std::filesystem::path platform = std::filesystem::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "engine" / "platform";
@@ -793,10 +793,8 @@ TEST(GeneratedProject, PlatformSourcesListEveryBackendFile) {
             const std::string name = entry.path().filename().string();
             const std::string extension = entry.path().extension().string();
             if (extension != ".cpp" && extension != ".mm") continue;
-            if ((std::string(os) != "mac" && name == "main.cpp") || name == "D3D11Context.cpp") continue;
-            // the HTTP client's backend is the engine library's (engine/CMakeLists.txt
-            // JASPERENGINE_HTTP_BACKEND), not a platform source of the project
-            if (name.rfind("HttpBackend", 0) == 0) continue;
+            if ((std::string(os) != "mac" && name == "main.cpp") || name == "D3D11Context.cpp" ||
+                name.rfind("HttpBackend", 0) == 0) continue;
             EXPECT_NE(cmake.find(std::string("${JASPERENGINE_PLATFORM_DIR}/") + os + "/" + name), std::string::npos)
                 << os << "/" << name << " is not in the generated platform sources";
             checked++;

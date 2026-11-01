@@ -6,6 +6,7 @@
 
 #include "Action.h"
 #include "component/ParticleSystemComponent.h"
+#include "particles/ParticleUpgrade.h"
 
 namespace jasperengine{
 
@@ -15,7 +16,11 @@ namespace jasperengine{
         // component checkbox (Unity Behaviour.enabled): a disabled Particles is skipped by its system
         void setEnabled(bool enabled);
         bool isEnabled() const;
+        // a version 1 (legacy) system on a new GameObject, as before the module model
         ParticleSystem(Scene* scene);
+        // modules: a version 2 system drawing on its own new GameObject (a Transform, the
+        // default particle quad and its instanced mesh); false is the constructor above
+        ParticleSystem(Scene* scene, bool modules);
         ParticleSystem(Scene* scene, Entity entity);
         virtual ~ParticleSystem();
 
@@ -25,6 +30,51 @@ namespace jasperengine{
         ParticleSystem& operator=(ParticleSystem&& rhs) noexcept;
 
         void reset();
+
+        // ---- version 2 (particles spec 6.6): Unity's ParticleSystem control; withChildren
+        // also drives every version 2 system of the GameObject's children. A version 1 system
+        // keeps the Action behaviour (start / stop / pause)
+        void play(bool withChildren = true);
+        void stop(bool withChildren = true, ParticleSystemStopBehavior behavior = ParticleSystemStopBehavior::StopEmitting);
+        void pause(bool withChildren = true);
+        void clear(bool withChildren = true);
+        // `count` particles now (also while stopped); the number spawned
+        int emit(int count);
+        void simulate(float time, bool withChildren = true, bool restart = true);
+        bool isPlaying() const;
+        bool isPaused() const;
+        bool isStopped() const;
+        bool isEmitting() const;
+        bool isAlive(bool withChildren = true) const;
+        unsigned int getParticleCount() const;
+        // the system clock (0 .. main.duration)
+        float getTime() const;
+        void setTime(float time);
+        uint32_t getRandomSeed() const;
+        void setRandomSeed(uint32_t seed);
+        bool getUseAutoRandomSeed() const;
+        void setUseAutoRandomSeed(bool automatic);
+        bool getUseUnscaledTime() const;
+        void setUseUnscaledTime(bool unscaled);
+        int getVersion() const;
+        // 1 -> 2 runs upgrade(); 2 -> 1 is refused (an error in the log)
+        void setVersion(int version);
+        // the legacy model as modules (particles/ParticleUpgrade): the component becomes version 2
+        // unless something would be dropped (a position modifier) and `force` is off
+        particles::UpgradeReport upgrade(bool force = false);
+
+        // The default renderer of a version 2 system on its own GameObject: a Transform when it
+        // has none, a 1 x 1 quad facing +Z drawn with library:unlit (the built-in soft particle
+        // texture, alpha blended, no depth write, both faces) and an empty InstancedMeshComponent
+        // the system fills; the action targets the GameObject itself. Used by the editor (the
+        // menu, create_particles, the Unity importer) and by ParticleSystem(scene, true)
+        static void setupDefaultRenderer(Scene* scene, Entity entity);
+        // the target mesh of a Mesh render mode: "quad", "cube", "sphere", "cylinder", "capsule",
+        // "plane" (a model path is the editor's: false)
+        static bool applyRendererMesh(Scene* scene, Entity entity, const std::string& mesh);
+        // what a version 1 system's target draws its particles as (the upgrade's render mode):
+        // Points, a camera-facing or Y-turned instanced quad, or its own mesh
+        static particles::LegacyTarget legacyTargetOf(Scene* scene, Entity target);
 
         void setMaxParticles(unsigned int maxParticles);
         unsigned int getMaxParticles() const;

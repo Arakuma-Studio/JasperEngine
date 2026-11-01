@@ -33,6 +33,13 @@
 #endif
 
 #include "registry/TagManager.h"
+#include "physics/ContactTracker.h"
+#include "object/physics/Collision.h"
+#include "object/physics/Collision2D.h"
+
+#include <map>
+#include <set>
+#include <memory>
 #include "physics/PhysicsDebugLines.h"
 
 #include <unordered_map>
@@ -52,9 +59,26 @@ namespace jasperengine{
 	class JoltObjectVsBroadPhaseLayerFilter;
 	class JoltObjectLayerPairFilter;
 	class JoltPairFilter3D;
+	class ContactRecorder3D;
+	struct RawContact3D;
+	struct ContactState2D;
+	std::shared_ptr<ContactState2D> makeContactState2D();
+	enum class ScriptMessage : uint8_t;
 	class Joint3D;
 	struct RagdollComponent;
 	
+
+	// One contact of a body for the editor and MCP: from the per-object callbacks' pairs when
+	// tracked (with the step of its Enter), else read from the backend now
+	struct ContactSummary{
+		Entity other = NULL_ENTITY;
+		int collider = -1;
+		int otherCollider = -1;
+		bool trigger = false;
+		bool tracked = false;
+		uint32_t sinceStep = 0;
+		bool asleep = false;
+	};
 
 	class JASPERENGINE_API PhysicsSystem : public SubSystem {
 
@@ -93,6 +117,15 @@ namespace jasperengine{
 		// Box2D create calls made, for the per-collider rebuild tests and diagnostics
 		uint64_t shapesCreated2D = 0;
 		uint64_t chainsCreated2D = 0;
+
+		// contact callbacks (physics-contacts): the touching shape pairs Box2D told about, the
+		// collider pairs of the per-object callbacks
+		std::shared_ptr<ContactState2D> contacts2D;
+		ContactTracker contactTracker2D;
+		// Physics2D.ignoreCollision: the body pairs Box2DAux::CollisionFilter refuses, and the
+		// bodies to re-pair after a step that locked Box2D (their contacts made again)
+		std::set<std::pair<Entity, Entity>> ignoredPairs2D;
+		std::vector<Entity> pendingRefilter2D;
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 		bool lock3DBodies;
@@ -144,6 +177,18 @@ namespace jasperengine{
 		std::unordered_set<Entity> warnedNonNormalizedRotations;
 		std::unordered_set<Entity> reportedInvalidRotations;
 
+		// contact callbacks (physics-contacts): the job threads' records, the collider pairs of
+		// the per-object callbacks, and the main-thread job system of synchronous steps
+		ContactRecorder3D* contactRecorder3D;
+		ContactTracker contactTracker3D;
+		std::vector<RawContact3D>* rawContacts3D;
+		std::unique_ptr<JPH::JobSystem> syncJobSystem3D;
+		bool synchronousContactEvents3D = false;
+		bool stepSynchronous3D = false;
+		bool loggedAutoSynchronous3D = false;
+		// seconds spent in world3D.Update and in the contact processing after it, summed
+		double stepSeconds3D = 0.0;
+		double contactSeconds3D = 0.0;
 		// the group filter of every body: same collision group ids, joints with enableCollision
 		// off, Physics.ignoreCollision and ragdoll self collision (owned: AddRef / Release)
 		JoltPairFilter3D* pairFilter3D = nullptr;
@@ -189,6 +234,11 @@ namespace jasperengine{
 		std::vector<std::pair<Vector3, Vector3>> debugContacts3D;
 #endif
 
+		// a script that defines a contact message appeared or went: the listener masks of the
+		// bodies are computed again before the next step
+		bool listenerMasksDirty = true;
+		bool warnedContactSnapshotSetter = false;
+
 #ifdef JASPERENGINE_PHYSICS_2D
 		void ensureWorld2D();
 		// Moves the body by what something other than physics moved its Transform, position
@@ -218,6 +268,15 @@ namespace jasperengine{
 		void dispatchJointBreaks2D();
 		static Vector2 absScale2D(const Vector2& scale);
 		static float maxScaleXY(const Vector2& scale);
+
+		// The contact events of the step: the legacy global events (filtered by the authored
+		// flags), the 2D stay events, then the per-object callbacks (physics-contacts 6.1.4)
+		void processContacts2D();
+		// The Box2D event flags of a collider's shapes: authored, or a listener asks for them
+		bool applyShapeEventFlags2D(const Collider2D& collider, uint16_t mask, b2ShapeId shape) const;
+		void refreshListenerMask2D(Entity entity, Rigidbody2DComponent& body);
+		// drops the body's contacts and pairs its shapes again (an ignore change), or after the step
+		void repairBody2D(Entity entity);
 
 		// Re-pairs the shapes on layers whose matrix row changed since the last step
 		void syncLayerCollisionMatrix2D();
@@ -292,8 +351,23 @@ namespace jasperengine{
 		void releaseObjectLayer3D(const JPH::BodyID& bodyId);
 		// Wakes a body and whatever overlaps it, so resting pairs are tested again
 		void wakeAround3D(const JPH::BodyID& bodyId);
+
+		// After the step on the main thread: the global events (unless the step was
+		// synchronous), then the per-object callbacks (physics-contacts 6.1.4, 6.1.5)
+		void processContacts3D();
+		void refreshListenerMask3D(Entity entity, RigidbodyComponent& body);
+		void applyIgnoreCollision3D(Entity a, Entity b, bool ignore);
 #endif
 
+		// the listener mask of a body: the contact messages its GameObject's scripts, and its
+		// colliders' receivers' scripts, define
+		uint16_t computeListenerMask(Entity entity, const std::vector<Entity>& receivers) const;
+		void refreshListenerMasks();
+		// a body that goes: the other side of each of its pairs gets the Exit now (D6)
+		void contactBodyRemoved2D(Entity entity);
+		void contactBodyRemoved3D(Entity entity);
+		// a contact message to a body's GameObject and its collider's receiver
+		bool contactTargetWants(Entity target, ScriptMessage message) const;
 		// The bodies' Transforms in hierarchy order (parents first), each world matrix made again
 		// after it is written, so a body under another body (a ragdoll) is placed from its
 		// parent's new pose, not the one before the step. interpolating: the drawn pose of the
@@ -399,6 +473,22 @@ namespace jasperengine{
 
 		uint64_t getShapesCreated2D() const { return shapesCreated2D; }
 		uint64_t getChainsCreated2D() const { return chainsCreated2D; }
+
+		// The collider pairs of the 2D per-object callbacks (editor, MCP, tests)
+		const ContactTracker& getContactTracker2D() const { return contactTracker2D; }
+		// Physics2D.ignoreCollision: no contacts between the two bodies (a Box2D null joint,
+		// made again when a body is); runtime only. False if either has no Rigidbody 2D.
+		bool setIgnoreCollision2D(Entity a, Entity b, bool ignore);
+		bool getIgnoreCollision2D(Entity a, Entity b) const;
+		// the custom filter's test (inside the step, from Box2D)
+		bool isIgnoredPair2D(Entity a, Entity b) const{
+			return !ignoredPairs2D.empty() && ignoredPairs2D.count(a < b ? std::make_pair(a, b) : std::make_pair(b, a)) > 0;
+		}
+		// A collider of the entity was removed: its pairs end at the next step, the indices of
+		// the later ones shift down (removeCollider2D)
+		void contactColliderRemoved2D(Entity entity, size_t index);
+		// what the body touches now (the Inspector's Contacts foldout, get_runtime_entity)
+		std::vector<ContactSummary> getContactSummary2D(Entity entity);
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -425,10 +515,40 @@ namespace jasperengine{
 
 		static JPH::EMotionQuality getRigidbodyMotionQualityToJolt(RigidbodyMotionQuality motionQuality);
 
+		// The collider pairs of the 3D per-object callbacks (editor, MCP, tests)
+		const ContactTracker& getContactTracker3D() const { return contactTracker3D; }
+
+		// The global 3D events (onContactAdded3D...) inside the step with a live, modifiable
+		// Contact3D, the step on the main thread (JPH::JobSystemSingleThreaded). Off by
+		// default: they come after the step with snapshots. On by itself while
+		// shouldCollide3D has a Lua subscriber (which must run in the step).
+		void setSynchronousContactEvents3D(bool synchronous);
+		bool isSynchronousContactEvents3D() const;
+		// the current (or last) step runs synchronously
+		bool isStepSynchronous3D() const;
+
+		// Physics.ignoreCollision: no contacts between the two bodies (both woken so resting
+		// pairs are tested again); runtime only. False if either has no Rigidbody.
+		bool setIgnoreCollision3D(Entity a, Entity b, bool ignore);
+		bool getIgnoreCollision3D(Entity a, Entity b) const;
+
+		// what the body touches now (the Inspector's Contacts foldout, get_runtime_entity)
+		std::vector<ContactSummary> getContactSummary3D(Entity entity);
+		// a collider of the entity was removed (Rigidbody.removeCollider / removeAllColliders)
+		void contactColliderRemoved3D(Entity entity, size_t index) { contactTracker3D.removeCollider(entity, (int)index); }
+
+		// Seconds summed over the steps since the last reset: Jolt's step, and the contact
+		// records' processing after it (callbacks included); the performance tests
+		double getStepSeconds3D() const { return stepSeconds3D; }
+		double getContactSeconds3D() const { return contactSeconds3D; }
+		void resetTimings3D() { stepSeconds3D = 0.0; contactSeconds3D = 0.0; }
+
+		// a contact removed in a synchronous step (the global onContactRemoved3D at once)
+		void dispatchContactRemoved3D(const JPH::BodyID& body1, const JPH::BodyID& body2, uint32_t subShape1, uint32_t subShape2);
 		// the contact listener's points for Physics.debugDrawContacts (any thread)
 		void recordDebugContact3D(const JPH::ContactManifold& manifold);
 
-		// The size of the 3D worlds made from now on (project setting physics3D): bodies, body
+		// The size of the 3D worlds made from now on (project setting physics3DWorld): bodies, body
 		// pairs and contact constraints. Defaults 8192 / 8192 / 8192 (a world takes 3.6 MB with them, Physics3DBodyTest). A world past one of them
 		// reports it once with the setting to raise.
 		static void setWorldCapacity3D(unsigned int maxBodies, unsigned int maxBodyPairs, unsigned int maxContactConstraints);
@@ -509,6 +629,12 @@ namespace jasperengine{
 		size_t getDebugLineCount() const;
 		Entity getDebugLinesEntity() const { return debugLinesEntity; }
 
+		// A setter called on a Contact3D snapshot: one warning per scene
+		void warnContactSnapshotSetter();
+		// Told by ScriptMessages: a script defining contact messages appeared or went
+		static void onScriptReceiversChanged(Scene* scene, Entity entity);
+		void markListenerMasksDirty() { listenerMasksDirty = true; }
+
 #ifdef JASPERENGINE_PHYSICS_2D
 		FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)> beginContact2D;
 		FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)> endContact2D;
@@ -518,6 +644,12 @@ namespace jasperengine{
 		FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Manifold2D)> preSolve2D;
 
 		FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)> shouldCollide2D;
+
+		// once per step per touching shape pair with the authored flag (contactEvents;
+		// sensorEvents / sensor), while either body is awake; the arguments of beginContact2D /
+		// beginSensorContact2D
+		FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)> stayContact2D;
+		FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)> staySensorContact2D;
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -528,6 +660,14 @@ namespace jasperengine{
 		FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)> onContactRemoved3D;
 
 		FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)> shouldCollide3D;
+
+		// C++ only (not in Lua): every added or persisted manifold, inside the step on Jolt's
+		// job threads, with a live Contact3D whose setters work (friction for conveyor belts,
+		// sensor overrides). Called on several threads at once, without a lock and without the
+		// crash guard: subscribers must be thread-safe, must not call the engine, the scene or
+		// Lua (read the two Rigidbody handles' entities and the contact only), must not throw,
+		// and must be added / removed outside the step.
+		FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D&)> onContactModify3D;
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D

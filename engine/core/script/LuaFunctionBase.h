@@ -24,7 +24,8 @@ namespace jasperengine{
 
     private:
 
-        void store_function();
+        // takes the function on top of vm; keeps the main thread of vm's state
+        void store_function(lua_State *vm);
 
     protected:
         // the virtual machine and the registry reference to the function

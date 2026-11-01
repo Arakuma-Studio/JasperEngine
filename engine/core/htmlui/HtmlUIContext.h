@@ -19,6 +19,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <map>
 #include <vector>
 
 namespace Rml {
@@ -55,6 +56,8 @@ namespace jasperengine {
         bool processMouseButtonDown(int button, int modifiers);
         bool processMouseButtonUp(int button, int modifiers);
         bool processMouseLeave();
+        // ui-multitouch D6: the mouse's held buttons let go without a click or drop (pointercancel)
+        void processMouseCancel();
         // true when the hovered/active element blocks the pointer: an element inside a
         // document, or a document with a background colour or a decorator (phase 1)
         bool isPointerOverContent() const;
@@ -84,12 +87,19 @@ namespace jasperengine {
         void setNavigateHandler(std::function<void(Rml::ElementDocument*, const std::string&, const std::string&)> handler);
 
         // --- p1-input (HtmlUIContextInput.cpp, phase-1 spec §3.6) ---
-        // touch pointers with their ids (RmlUi treats each as the primary button)
+        // touch pointers with their Input finger ids (ui-multitouch): each its own DOM pointer
+        // (pointerId = fingerId + 2, touchPointerId) with its own hover, :active, capture, drag and
+        // click (the fork's Context::ProcessPointer*). True when the finger is over or pressed
+        // content (isTouchOverContent).
         bool processTouchStart(int pointer, Rml::Vector2f position, int modifiers);
         bool processTouchMove(int pointer, Rml::Vector2f position, int modifiers);
         bool processTouchEnd(int pointer, Rml::Vector2f position, int modifiers);
         bool processTouchCancel(int pointer);
         bool hasTouch(int pointer) const;
+        const std::vector<int>& getTouches() const { return touches; }
+        bool isTouchOverContent(int pointer) const;
+        // D1: the DOM pointerId of an Input finger id (the mouse is pointer 1)
+        static int touchPointerId(int fingerId) { return fingerId + 2; }
         // engine wheel offsets (positive y = up, positive x = left, as GLFW) to RmlUi's
         // (positive = down/right), times the wheel scale. Returns Context::ProcessMouseWheel
         bool processMouseWheel(Rml::Vector2f offset, int modifiers);
@@ -144,11 +154,14 @@ namespace jasperengine {
         bool renderedOnce = false;
         // the element a primary button press started on, until the release (RmlUi keeps it private)
         Rml::ObserverPtr<Rml::Element> activeElement;
+        int mouseButtons = 0;   // the RmlUi mouse buttons held (bit per button), for processMouseCancel
 
         // --- p1-input ---
         // outlives the RmlUi context (its text fields call OnDestroy when they go)
         std::unique_ptr<RmlTextInputHandler> textInputHandler;
-        std::vector<int> touches;   // touch pointers down in RmlUi
+        std::vector<int> touches;   // touch pointers down in RmlUi (finger ids)
+        // the content element each finger pressed, until its release (the touch's activeElement)
+        std::map<int, Rml::ObserverPtr<Rml::Element>> touchPresses;
         float wheelScale;
 
         // --- phase 2 (p2-html) ---

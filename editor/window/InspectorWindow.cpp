@@ -4,8 +4,10 @@
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
 #include "window/CanvasScalerFields.h"
+#include "shader/ShaderGlobals.h"
 #include "window/widget/CurveField.h"
 #include "window/widget/GradientField.h"
+#include "window/widget/MinMaxFields.h"
 #include "SceneWindow.h"
 #include "script/ScriptRuntime.h"
 
@@ -14,6 +16,7 @@
 #include "util/Util.h"
 #include "util/UIUtils.h"
 #include "util/FileDialogs.h"
+#include "script/ScriptScheduler.h"
 #include "util/FileUtils.h"
 #include "window/CodeEditor.h"
 #include "subsystem/UIDocumentSystem.h"
@@ -2043,6 +2046,12 @@ bool editor::InspectorWindow::consumeTagsAndLayersRequest(){
     return requested;
 }
 
+bool editor::InspectorWindow::consumeShaderGlobalsRequest(){
+    bool requested = shaderGlobalsRequested;
+    shaderGlobalsRequested = false;
+    return requested;
+}
+
 // The entities and every Transform descendant, each once
 static std::vector<Entity> withDescendants(Scene* scene, const std::vector<Entity>& entities){
     std::vector<Entity> all = entities;
@@ -3552,9 +3561,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
 
         bool inputChanged = false;
+        const bool suggestions = settings.stringSuggestions && type == RowPropertyType::String;
         if (type == RowPropertyType::MultilineString){
             inputChanged = ImGui::InputTextMultiline(("##input_string_"+id).c_str(), buffer.data(), buffer.size(), ImVec2(0, ImGui::GetTextLineHeight() * 6));
         }else{
+            if (suggestions)
+                ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemInnerSpacing.x));
             inputChanged = ImGui::InputText(("##input_string_"+id).c_str(), buffer.data(), buffer.size());
         }
 
@@ -3566,6 +3578,27 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         }
         if (dif)
             ImGui::PopStyleColor();
+
+        if (suggestions){
+            ImGui::SameLine(0, ImGui::GetStyle().ItemInnerSpacing.x);
+            const std::string popupId = "string_suggestions_" + id;
+            if (ImGui::ArrowButton(("##suggest_" + id).c_str(), ImGuiDir_Down))
+                ImGui::OpenPopup(popupId.c_str());
+            if (ImGui::BeginPopup(popupId.c_str())){
+                if (settings.stringSuggestions->empty() && settings.suggestionsEmpty)
+                    ImGui::TextDisabled("%s", settings.suggestionsEmpty);
+                for (const std::string& option : *settings.stringSuggestions){
+                    if (ImGui::Selectable(option.c_str(), !dif && option == newValue)){
+                        for (Entity& entity : entities){
+                            cmd = new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, id, option, settings.onValueChanged);
+                            CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                        }
+                        finishProperty = true;
+                    }
+                }
+                ImGui::EndPopup();
+            }
+        }
 
     }else if (type == RowPropertyType::Bool){
         bool* value = nullptr;
@@ -4206,7 +4239,8 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (dif)
             ImGui::PopStyleColor();
 
-    }else if (type == RowPropertyType::Curve || type == RowPropertyType::Gradient){
+    }else if (type == RowPropertyType::Curve || type == RowPropertyType::Gradient ||
+              type == RowPropertyType::MinMaxCurve || type == RowPropertyType::MinMaxGradient){
         // Unity AnimationCurve / Gradient: an inline preview that opens its editor popup;
         // every frame of a drag is one merged command, the edit's end its own undo step
         auto valueRow = [&](auto sample, auto drawField){
@@ -4245,6 +4279,14 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         auto fieldWidth = [&](){ return std::max(ImGui::GetFontSize() * 4.0f, ImGui::GetContentRegionAvail().x - helpWidth); };
         if (type == RowPropertyType::Curve){
             valueRow(AnimationCurve(), [&](AnimationCurve& value, bool mixed){ return curveField(("##curve_" + id).c_str(), value, mixed, fieldWidth()); });
+        }else if (type == RowPropertyType::MinMaxCurve){
+            valueRow(MinMaxCurve(), [&](MinMaxCurve& value, bool mixed){
+                return minMaxCurveField(("##minmax_" + id).c_str(), value, mixed, fieldWidth(), settings.displayScale, settings.format, settings.stepSize);
+            });
+        }else if (type == RowPropertyType::MinMaxGradient){
+            valueRow(MinMaxGradient(), [&](MinMaxGradient& value, bool mixed){
+                return minMaxGradientField(("##minmaxgradient_" + id).c_str(), value, mixed, fieldWidth());
+            });
         }else{
             valueRow(jasperengine::Gradient(), [&](jasperengine::Gradient& value, bool mixed){ return gradientField(("##gradient_" + id).c_str(), value, mixed, fieldWidth()); });
         }
@@ -6209,7 +6251,23 @@ void editor::InspectorWindow::drawShaderUniformWarnings(const std::vector<std::s
     }
 }
 
-bool editor::InspectorWindow::drawShaderUniformRow(const ShaderUniform& uniform, const ShaderUniformValues& values, const std::string& idPrefix, Vector4& newValue){
+namespace {
+    // the components a value member of a custom block has (0: not a value a global can feed)
+    int uniformComponents(const ShaderUniform& uniform){
+        if (uniform.arrayCount > 1 || ShaderUniforms::isReserved(uniform.name) || !ShaderUniforms::isEditable(uniform))
+            return 0;
+        switch (uniform.type){
+            case ShaderUniformType::FLOAT: case ShaderUniformType::INT: return 1;
+            case ShaderUniformType::FLOAT2: case ShaderUniformType::INT2: return 2;
+            case ShaderUniformType::FLOAT3: case ShaderUniformType::INT3: return 3;
+            case ShaderUniformType::FLOAT4: case ShaderUniformType::INT4: return 4;
+            default: return 0;
+        }
+    }
+}
+
+bool editor::InspectorWindow::drawShaderUniformRow(const ShaderUniform& uniform, const ShaderUniformValues& values, const std::string& idPrefix, Vector4& newValue,
+                                                   float reserveRight){
     const std::string& name = uniform.name;
 
     ImGui::TableNextRow();
@@ -6254,7 +6312,7 @@ bool editor::InspectorWindow::drawShaderUniformRow(const ShaderUniform& uniform,
     float fields[4] = {value.x, value.y, value.z, value.w};
     bool changed = false;
     std::string uniformId = idPrefix + name;
-    ImGui::SetNextItemWidth(-1);
+    ImGui::SetNextItemWidth(reserveRight > 0.0f ? -reserveRight : -1.0f);
     if (isInt){
         int intFields[4] = {(int)fields[0], (int)fields[1], (int)fields[2], (int)fields[3]};
         changed = ImGui::DragScalarN(uniformId.c_str(), ImGuiDataType_S32, intFields, components, 1.0f);
@@ -6287,10 +6345,33 @@ void editor::InspectorWindow::drawShaderUniformRows(ComponentType cpType, SceneP
         return;
     const ShaderUniformValues values = *valuesRef;
     const uint32_t sceneId = sceneProject->id;
+    // members that follow a global shader value (a mesh keeps them on its materials)
+    ShaderGlobalBindings* bindingsRef = cpType == ComponentType::MeshComponent ? nullptr
+        : Catalog::getPropertyRef<ShaderGlobalBindings>(sceneProject->scene, entity, cpType, "shaderGlobalBindings");
+    const ShaderGlobalBindings bindings = bindingsRef ? *bindingsRef : ShaderGlobalBindings();
+    auto setBindings = [&](const ShaderGlobalBindings& value) {
+        CommandHandle::get(sceneId)->addCommandNoMerge(
+            new PropertyCmd<ShaderGlobalBindings>(project, sceneId, entity, cpType, "shaderGlobalBindings", value));
+    };
+    const float linkWidth = getGlobalLinkButtonWidth() + ImGui::GetStyle().ItemSpacing.x;
 
     for (const ShaderUniform& uniform : rows.members) {
+        const int components = bindingsRef ? uniformComponents(uniform) : 0;
+        const std::string bound = components > 0 ? ShaderGlobals::getBinding(bindings, uniform.name) : std::string();
+        ImGui::PushID(("uniform_" + uniform.name).c_str());
+        if (!bound.empty()) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("%s", uniform.name.c_str());
+            ImGui::TableSetColumnIndex(1);
+            drawBoundGlobalValue(bound, components, false, ImGui::GetContentRegionAvail().x - linkWidth);
+            drawGlobalLinkButton(uniform.name, components, bindings, setBindings);
+            ImGui::PopID();
+            continue;
+        }
         Vector4 newValue;
-        if (drawShaderUniformRow(uniform, values, "##shader_uniform_", newValue)) {
+        if (drawShaderUniformRow(uniform, values, "##shader_uniform_", newValue, components > 0 ? linkWidth : 0.0f)) {
             ShaderUniformValues newValues = values;
             ShaderUniforms::set(newValues, uniform.name, newValue);
 
@@ -6302,6 +6383,9 @@ void editor::InspectorWindow::drawShaderUniformRows(ComponentType cpType, SceneP
             cmd->setNoMerge();
             cmd = nullptr;
         }
+        if (components > 0)
+            drawGlobalLinkButton(uniform.name, components, bindings, setBindings);
+        ImGui::PopID();
     }
 
     drawShaderUniformWarnings(rows.warnings);
@@ -6403,8 +6487,32 @@ void editor::InspectorWindow::drawPostProcessUniforms(uint32_t sceneId, const st
     }
 
     const ShaderUniformValues& values = passes[index].uniforms;
+    // members that follow a global shader value
+    const ShaderGlobalBindings& bindings = passes[index].shaderGlobalBindings;
+    auto setBindings = [&](const ShaderGlobalBindings& value){
+        std::vector<PostProcessPass> newPasses = passes;
+        newPasses[index].shaderGlobalBindings = value;
+        CommandHandle::get(sceneId)->addCommandNoMerge(
+            new ScenePropertyCmd<std::vector<PostProcessPass>>(project, sceneId, "post_process", newPasses));
+    };
+    const float linkWidth = getGlobalLinkButtonWidth() + ImGui::GetStyle().ItemSpacing.x;
     for (const ShaderUniform& uniform : resolved.block.members){
         ImGui::PushID(uniform.name.c_str());
+        const int components = uniformComponents(uniform);
+        const std::string bound = components > 0 ? ShaderGlobals::getBinding(bindings, uniform.name) : std::string();
+        if (!bound.empty()){
+            const ShaderManifestProperty* property = resolved.manifest ? resolved.manifest->findProperty(uniform.name) : nullptr;
+            const bool color = property && (property->kind == ShaderPropertyKind::COLOR || property->kind == ShaderPropertyKind::HDRCOLOR);
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(property && !property->label.empty() ? property->label.c_str() : uniform.name.c_str());
+            ImGui::TableSetColumnIndex(1);
+            drawBoundGlobalValue(bound, components, color, ImGui::GetContentRegionAvail().x - linkWidth);
+            drawGlobalLinkButton(uniform.name, components, bindings, setBindings);
+            ImGui::PopID();
+            continue;
+        }
         // a member the shader's manifest declares (@property): its label, range and widget, and
         // its default while unset (what the engine renders), with a reset arrow once set
         const ShaderManifestProperty* property = resolved.manifest ? resolved.manifest->findProperty(uniform.name) : nullptr;
@@ -6442,7 +6550,7 @@ void editor::InspectorWindow::drawPostProcessUniforms(uint32_t sceneId, const st
             ImGui::TableSetColumnIndex(1);
             Vector4 edited;
             bool continuous = true;
-            if (drawShaderPropertyValue(*property, "##pp_param_" + uniform.name, value, edited, continuous)){
+            if (drawShaderPropertyValue(*property, "##pp_param_" + uniform.name, value, edited, continuous, components > 0 ? -linkWidth : -1.0f)){
                 std::vector<PostProcessPass> newPasses = passes;
                 newPasses[index].setUniform(uniform.name, edited);
                 Command* passCmd = new ScenePropertyCmd<std::vector<PostProcessPass>>(project, sceneId, "post_process", newPasses);
@@ -6458,7 +6566,7 @@ void editor::InspectorWindow::drawPostProcessUniforms(uint32_t sceneId, const st
                 ImGui::SetTooltip("%s", uniform.name.c_str());
         }else{
             Vector4 newValue;
-            if (drawShaderUniformRow(uniform, values, "##pp_uniform_", newValue)){
+            if (drawShaderUniformRow(uniform, values, "##pp_uniform_", newValue, components > 0 ? linkWidth : 0.0f)){
                 std::vector<PostProcessPass> newPasses = passes;
                 newPasses[index].setUniform(uniform.name, newValue);
 
@@ -6474,6 +6582,8 @@ void editor::InspectorWindow::drawPostProcessUniforms(uint32_t sceneId, const st
             cmd->setNoMerge();
             cmd = nullptr;
         }
+        if (components > 0)
+            drawGlobalLinkButton(uniform.name, components, bindings, setBindings);
         ImGui::PopID();
     }
 
@@ -7838,6 +7948,161 @@ void editor::InspectorWindow::drawProgressbarComponent(ComponentType cpType, Sce
     propertyRow(RowPropertyType::Int, cpType, "fillMarginTop", "Margin Top", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Int, cpType, "fillMarginBottom", "Margin Bottom", sceneProject, entities, settingsInt);
     endTable();
+}
+
+namespace {
+    // the project's Input action names, axes first (the stick's and touch area's dropdowns)
+    std::vector<std::string> inputActionNames(const editor::Project* project, bool axesFirst){
+        std::vector<std::string> names;
+        for (int pass = 0; pass < 2; pass++){
+            for (const InputAction& action : project->getInputActions()){
+                const bool axis = action.type == InputActionType::Axis;
+                if ((pass == 0) == (axis == axesFirst) && std::find(names.begin(), names.end(), action.name) == names.end())
+                    names.push_back(action.name);
+            }
+        }
+        return names;
+    }
+
+    const char* const noInputActions = "No actions: Project Settings > Input";
+}
+
+void editor::InspectorWindow::drawOnScreenStickComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    static std::vector<editor::EnumEntry> entriesMode = {
+        { (int)OnScreenStickMode::FIXED, "Fixed" },
+        { (int)OnScreenStickMode::FLOATING, "Floating" },
+        { (int)OnScreenStickMode::DYNAMIC, "Dynamic" }
+    };
+    static std::vector<editor::EnumEntry> entriesAxes = {
+        { (int)OnScreenStickAxes::BOTH, "Both" },
+        { (int)OnScreenStickAxes::HORIZONTAL, "Horizontal" },
+        { (int)OnScreenStickAxes::VERTICAL, "Vertical" }
+    };
+    static std::vector<editor::EnumEntry> entriesVisibility = {
+        { (int)OnScreenVisibility::ALWAYS, "Always" },
+        { (int)OnScreenVisibility::TOUCH_DEVICES_ONLY, "Touch Devices Only" }
+    };
+    const std::vector<std::string> actions = inputActionNames(project, true);
+
+    RowSettings settings;
+    RowSettings settingsMode;
+    settingsMode.enumEntries = &entriesMode;
+    settingsMode.help = "Fixed: the base stays. Floating: it appears under the finger. Dynamic: it also follows the finger past Move Threshold (Joystick Pack).";
+    RowSettings settingsAxes;
+    settingsAxes.enumEntries = &entriesAxes;
+    RowSettings settingsVisibility;
+    settingsVisibility.enumEntries = &entriesVisibility;
+    settingsVisibility.help = "Touch Devices Only hides it where System.isTouchDevice() is false (the Game view's Simulate Touch counts as touch).";
+    RowSettings settingsRange;
+    settingsRange.stepSize = 0.01f;
+    settingsRange.secondColSize = 6 * ImGui::GetFontSize();
+    RowSettings settingsDead = settingsRange;
+    settingsDead.help = "|input| at or below this reads 0 (in radii of the base).";
+    RowSettings settingsThreshold = settingsRange;
+    settingsThreshold.help = "Dynamic: the base follows the finger once it is this far out (radii).";
+    RowSettings settingsAction;
+    settingsAction.stringSuggestions = &actions;
+    settingsAction.suggestionsEmpty = noInputActions;
+    RowSettings settingsEntity;
+    settingsEntity.entityFilter.set(sceneProject->scene->getComponentId<ImageComponent>());
+
+    beginTable(cpType, getLabelSize("Horizontal Action"));
+    propertyRow(RowPropertyType::Enum, cpType, "mode", "Mode", sceneProject, entities, settingsMode);
+    propertyRow(RowPropertyType::LocalEntity, cpType, "background", "Background", sceneProject, entities, settingsEntity);
+    propertyRow(RowPropertyType::LocalEntity, cpType, "handle", "Handle", sceneProject, entities, settingsEntity);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "handleRange", "Handle Range", sceneProject, entities, settingsRange);
+    propertyRow(RowPropertyType::Float_0_1, cpType, "deadZone", "Dead Zone", sceneProject, entities, settingsDead);
+    propertyRow(RowPropertyType::Enum, cpType, "axes", "Axis Options", sceneProject, entities, settingsAxes);
+    propertyRow(RowPropertyType::Bool, cpType, "snapX", "Snap X", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::Bool, cpType, "snapY", "Snap Y", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "moveThreshold", "Move Threshold", sceneProject, entities, settingsThreshold);
+    propertyRow(RowPropertyType::Bool, cpType, "hideWhenReleased", "Hide Released", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::Bool, cpType, "clampToArea", "Clamp To Area", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::String, cpType, "horizontalAction", "Horizontal Action", sceneProject, entities, settingsAction);
+    propertyRow(RowPropertyType::String, cpType, "verticalAction", "Vertical Action", sceneProject, entities, settingsAction);
+    propertyRow(RowPropertyType::Enum, cpType, "visibility", "Visibility", sceneProject, entities, settingsVisibility);
+    endTable();
+
+    // live state while playing
+    if (entities.size() == 1 && project->isAnyScenePlaying()){
+        if (const OnScreenStickComponent* stick = sceneProject->scene->findComponent<OnScreenStickComponent>(entities[0])){
+            ImGui::TextDisabled("Value (%.2f, %.2f)  %s", stick->value.x, stick->value.y,
+                                stick->pressed ? ("held by pointer " + std::to_string(stick->pointerId)).c_str() : "released");
+        }
+    }
+}
+
+void editor::InspectorWindow::drawOnScreenButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    static std::vector<editor::EnumEntry> entriesVisibility = {
+        { (int)OnScreenVisibility::ALWAYS, "Always" },
+        { (int)OnScreenVisibility::TOUCH_DEVICES_ONLY, "Touch Devices Only" }
+    };
+    const std::vector<std::string> actions = inputActionNames(project, false);
+
+    RowSettings settings;
+    RowSettings settingsAction;
+    settingsAction.stringSuggestions = &actions;
+    settingsAction.suggestionsEmpty = noInputActions;
+    settingsAction.help = "The Input action it presses (Input.getButton(\"Fire1\")); on an axis it adds Value.";
+    RowSettings settingsValue;
+    settingsValue.stepSize = 0.01f;
+    settingsValue.floatMin = -1.0f;
+    settingsValue.floatMax = 1.0f;
+    settingsValue.secondColSize = 6 * ImGui::GetFontSize();
+    RowSettings settingsEnters;
+    settingsEnters.help = "A finger already down that slides onto it presses it.";
+    RowSettings settingsLeaves;
+    settingsLeaves.help = "A finger that slides off it releases it.";
+    RowSettings settingsVisibility;
+    settingsVisibility.enumEntries = &entriesVisibility;
+
+    beginTable(cpType, getLabelSize("Release On Leave"));
+    propertyRow(RowPropertyType::String, cpType, "action", "Action", sceneProject, entities, settingsAction);
+    propertyRow(RowPropertyType::Float, cpType, "value", "Value", sceneProject, entities, settingsValue);
+    propertyRow(RowPropertyType::Bool, cpType, "pressWhenPointerEnters", "Press On Enter", sceneProject, entities, settingsEnters);
+    propertyRow(RowPropertyType::Bool, cpType, "releaseWhenPointerLeaves", "Release On Leave", sceneProject, entities, settingsLeaves);
+    propertyRow(RowPropertyType::Enum, cpType, "visibility", "Visibility", sceneProject, entities, settingsVisibility);
+    endTable();
+
+    if (entities.size() == 1 && project->isAnyScenePlaying()){
+        if (const OnScreenButtonComponent* control = sceneProject->scene->findComponent<OnScreenButtonComponent>(entities[0])){
+            ImGui::TextDisabled("%s", control->pressed ? ("Pressed by " + std::to_string(control->pointers.size()) + " pointer(s)").c_str() : "Released");
+        }
+    }
+}
+
+void editor::InspectorWindow::drawTouchAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    static std::vector<editor::EnumEntry> entriesVisibility = {
+        { (int)OnScreenVisibility::ALWAYS, "Always" },
+        { (int)OnScreenVisibility::TOUCH_DEVICES_ONLY, "Touch Devices Only" }
+    };
+    const std::vector<std::string> actions = inputActionNames(project, true);
+
+    RowSettings settings;
+    RowSettings settingsAction;
+    settingsAction.stringSuggestions = &actions;
+    settingsAction.suggestionsEmpty = noInputActions;
+    RowSettings settingsSensitivity;
+    settingsSensitivity.stepSize = 0.01f;
+    settingsSensitivity.secondColSize = 6 * ImGui::GetFontSize();
+    settingsSensitivity.help = "Canvas pixels to action units; 0.1 is the default Mouse X/Y sensitivity, so a drag feels like the mouse.";
+    RowSettings settingsVisibility;
+    settingsVisibility.enumEntries = &entriesVisibility;
+
+    beginTable(cpType, getLabelSize("Horizontal Action"));
+    propertyRow(RowPropertyType::String, cpType, "horizontalAction", "Horizontal Action", sceneProject, entities, settingsAction);
+    propertyRow(RowPropertyType::String, cpType, "verticalAction", "Vertical Action", sceneProject, entities, settingsAction);
+    propertyRow(RowPropertyType::Float, cpType, "sensitivity", "Sensitivity", sceneProject, entities, settingsSensitivity);
+    propertyRow(RowPropertyType::Bool, cpType, "invertX", "Invert X", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::Bool, cpType, "invertY", "Invert Y", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::Enum, cpType, "visibility", "Visibility", sceneProject, entities, settingsVisibility);
+    endTable();
+
+    if (entities.size() == 1 && project->isAnyScenePlaying()){
+        if (const TouchAreaComponent* area = sceneProject->scene->findComponent<TouchAreaComponent>(entities[0])){
+            ImGui::TextDisabled("%s", area->pressed ? ("Dragged by pointer " + std::to_string(area->pointerId)).c_str() : "Released");
+        }
+    }
 }
 
 void editor::InspectorWindow::drawInputFieldComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
@@ -11062,6 +11327,22 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
 
             ImGui::PopStyleVar();
 
+            // during Play: what the script started and is still running (coroutines, timers)
+            if (entities.size() == 1 && script.instance) {
+                // the owner: a Lua instance's ref, a C++ script's ScriptBase
+                const void* owner = script.type == ScriptType::CPP && script.cppScript ? static_cast<const void*>(script.cppScript) : script.instance;
+                const size_t coroutines = ScriptScheduler::coroutineCountOf(owner);
+                const size_t timers = ScriptScheduler::timerCountOf(owner);
+                if (coroutines > 0 || timers > 0) {
+                    propertyHeader("Running");
+                    ImGui::TextDisabled("Coroutines: %zu, Timers: %zu", coroutines, timers);
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("Started by this script (self:startCoroutine, self:invoke): coroutines stop when the "
+                                          "GameObject is deactivated, timers when it is destroyed");
+                    }
+                }
+            }
+
             endTable();
 
             // Display script properties if available
@@ -11343,7 +11624,7 @@ void editor::InspectorWindow::drawInstancedMeshComponent(ComponentType cpType, S
     }
 }
 
-void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawParticleSystemLegacy(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsFloat;
     settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
 
@@ -12536,7 +12817,7 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
 
         std::string shapeKey = "colliders[" + std::to_string(s) + "]";
 
-        beginTable(cpType, getLabelSize("Bottom Radius"), "rigidbody_collider");
+        beginTable(cpType, getLabelSize("Send Callbacks To"), "rigidbody_collider");
 
         PropertyData shapeTypeProp = Catalog::getProperty(sceneProject->scene, entities[0], cpType, shapeKey + ".type");
         int* shapeTypeDef = static_cast<int*>(shapeTypeProp.def);
@@ -12912,6 +13193,54 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
         settingsReceiver.help = "Another GameObject that also gets this collider's contact callbacks";
         propertyRow(RowPropertyType::LocalEntity, cpType, shapeKey + ".receiver", "Send Callbacks To", sceneProject, entities, settingsReceiver);
         endTable();
+    }
+
+    // Play: what the body touches, and the contact callbacks its scripts define
+    if (sceneProject->playState != ScenePlayState::STOPPED && entities.size() == 1){
+        drawPhysicsContacts(sceneProject, entities[0], false);
+    }
+}
+
+void editor::InspectorWindow::drawPhysicsContacts(SceneProject* sceneProject, Entity entity, bool is2D){
+    Scene* scene = sceneProject->scene;
+    // read again at most 10 times a second
+    PhysicsContactsView& view = physicsContactsViews[{sceneProject->id, entity, is2D}];
+    const double now = ImGui::GetTime();
+    if (view.readAt < 0.0 || now - view.readAt >= 0.1){
+        view.readAt = now;
+        std::shared_ptr<PhysicsSystem> physics = scene->getSystem<PhysicsSystem>();
+        view.contacts.clear();
+#ifdef JASPERENGINE_PHYSICS_2D
+        if (is2D && scene->findComponent<Rigidbody2DComponent>(entity)) view.contacts = physics->getContactSummary2D(entity);
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+        if (!is2D && scene->findComponent<RigidbodyComponent>(entity)) view.contacts = physics->getContactSummary3D(entity);
+#endif
+        view.callbacks = ScriptMessages::describeReceivers(scene, entity, is2D ? PhysicsCallbacks::ALL_2D : PhysicsCallbacks::ALL_3D);
+    }
+
+    ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubtleText);
+    std::string callbacks;
+    for (const std::string& name : view.callbacks){
+        callbacks += (callbacks.empty() ? "" : ", ") + name;
+    }
+    ImGui::TextWrapped("Callbacks: %s", callbacks.empty() ? "none (define onCollisionEnter / onTriggerEnter on a script)" : callbacks.c_str());
+    ImGui::PopStyleColor();
+
+    const std::string title = "Contacts (" + std::to_string(view.contacts.size()) + ")##physics_contacts_" + std::string(is2D ? "2d" : "3d");
+    if (ImGui::TreeNode(title.c_str())){
+        if (view.contacts.empty()){
+            ImGui::TextDisabled("Touching nothing");
+        }
+        for (const ContactSummary& contact : view.contacts){
+            const std::string other = scene->isEntityCreated(contact.other) ? scene->getEntityName(contact.other) : ("#" + std::to_string(contact.other));
+            std::string line = other + "  collider " + std::to_string(contact.collider) + " / " + std::to_string(contact.otherCollider);
+            if (contact.trigger) line += "  trigger";
+            if (contact.sinceStep > 0) line += "  since step " + std::to_string(contact.sinceStep);
+            if (contact.asleep) line += "  asleep";
+            ImGui::BulletText("%s", line.c_str());
+        }
+        ImGui::TreePop();
     }
 }
 
@@ -16503,6 +16832,12 @@ void editor::InspectorWindow::show(){
                     drawProgressbarComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::InputFieldComponent){
                     drawInputFieldComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::OnScreenStickComponent){
+                    drawOnScreenStickComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::OnScreenButtonComponent){
+                    drawOnScreenButtonComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::TouchAreaComponent){
+                    drawTouchAreaComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::PanelComponent){
                     drawPanelComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::PolygonComponent){

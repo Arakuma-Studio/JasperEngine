@@ -10,6 +10,8 @@
 #include "Engine.h"
 #include "buffer/ExternalBuffer.h"
 #include "math/Matrix4.h"
+#include "particles/ParticleModules.h"
+#include "action/Ease.h"
 
 #include <algorithm>
 
@@ -234,6 +236,35 @@ namespace jasperengine{
     struct JASPERENGINE_API ParticleSystemComponent{
         // component checkbox: its system skips a disabled component
         bool enabled = true;
+
+        // 1: the legacy model (the initializers and modifiers below, their code path unchanged);
+        // 2: Unity's modules (main ... renderer, particles/ParticleSimulation). A file without a
+        // version is 1; new systems (menu, create_particles, the Unity importer) are 2
+        int version = 1;
+        // advanced by the unscaled frame delta (UI particles keep playing at time scale 0)
+        bool useUnscaledTime = false;
+
+        // ---- version 2: the modules (particles spec 6.2)
+        ParticleMainModule main;
+        ParticleEmissionModule emission;
+        ParticleShapeModule shape;
+        ParticleVelocityOverLifetimeModule velocityOverLifetime;
+        ParticleLimitVelocityOverLifetimeModule limitVelocityOverLifetime;
+        ParticleInheritVelocityModule inheritVelocity;
+        ParticleForceOverLifetimeModule forceOverLifetime;
+        ParticleColorOverLifetimeModule colorOverLifetime;
+        ParticleColorBySpeedModule colorBySpeed;
+        ParticleSizeOverLifetimeModule sizeOverLifetime;
+        ParticleSizeBySpeedModule sizeBySpeed;
+        ParticleRotationOverLifetimeModule rotationOverLifetime;
+        ParticleRotationBySpeedModule rotationBySpeed;
+        ParticleNoiseModule noise;
+        ParticleTextureSheetAnimationModule textureSheetAnimation;
+        ParticleRendererModule renderer;
+        // runtime only: the particles and clocks of version 2
+        ParticleSimState state;
+
+        // ---- version 1: the legacy model
 
         std::vector<ParticleData> particles;
 

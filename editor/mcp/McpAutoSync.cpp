@@ -165,6 +165,9 @@ bool McpAutoSync::isTrackedFile(const std::string& path) {
     // pose animations and humanoid sidecars: their open documents reload (editor/pose); clips:
     // their documents reload, AnimationClipPool drops them and their players reload
     if (ext == ".c" || ext == ".inl" || ext == ".poseanim" || ext == ".humanoid" || Util::isAnimationClipFile(path)) return true;
+    // Avatar Masks and Animator Controllers: their documents reload, their pools drop them and
+    // their players reload (AnimationClipDocument::filesChanged reaches them)
+    if (Util::isAvatarMaskFile(path) || Util::isAnimatorControllerFile(path)) return true;
     // Vertex Animations: their documents reload, VertexAnimationPool drops them, animators reload
     if (Util::isVertexAnimationFile(path)) return true;
     // models and glTF buffers: the clips made from their animations reload (picked up, not reported)
@@ -660,7 +663,7 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
             // reload their documents now too (phase 5); so do clip and pose animation documents
             // (players see a clip's new pool generation; their problems are reported now)
             if (isUiCodeFile(rel) || (isAssetFile(rel) && !Util::isImageFile(rel)) || lowerExtension(rel) == ".glsl" ||
-                Util::isAnimationClipFile(rel) || Util::isPoseAnimationFile(rel) || Util::isVertexAnimationFile(rel) ||
+                Util::isGuidJsonAssetFile(rel) || Util::isPoseAnimationFile(rel) ||
                 (lowerExtension(rel) == ".frag" && (pending.kind == 'r' || ProjectChecks::isUiEffectFile(path)))) {
                 uiPaths.push_back(path);
                 continue;

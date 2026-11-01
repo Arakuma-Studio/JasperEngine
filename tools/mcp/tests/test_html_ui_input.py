@@ -65,6 +65,8 @@ local InputProbe = {
         { name = "scrolls", type = "int", default = 0 },
         { name = "touches", type = "int", default = 0 },
         { name = "clicks", type = "int", default = 0 },
+        { name = "touchClicks", type = "int", default = 0 },
+        { name = "touchPointers", type = "string", default = "" },
     }
 }
 
@@ -79,6 +81,13 @@ end
 function InputProbe:attach()
     local doc = UIDocument(self.scene, self.entity)
     doc:getElementById("button"):addEventListener("click", function(event) self.clicks = self.clicks + 1 end)
+    -- ui-multitouch: a click per finger, with its pointer (DOM pointerId = fingerId + 2)
+    for _, id in ipairs({"touchA", "touchB"}) do
+        doc:getElementById(id):addEventListener("click", function(event)
+            self.touchClicks = self.touchClicks + 1
+            self.touchPointers = self.touchPointers .. id .. ":" .. event.pointerType .. event.fingerId .. " "
+        end)
+    end
 end
 
 function InputProbe:onMouseDown(button, x, y, mods) self.downs = self.downs + 1 end
@@ -265,11 +274,19 @@ async def test_two_touch_pointers(ed: Editor):
     check_color(ed, shot, P_TOUCH_B, MAGENTA, "second finger's target :active")
     ed.check_eq(await probe(ed, "touches"), touches, "touches on document elements reached onTouchStart")
 
-    await send(ed, {"type": "touch", "action": "end", "pointer": 0, "x": P_TOUCH_A[0], "y": P_TOUCH_A[1]},
-               {"type": "touch", "action": "end", "pointer": 1, "x": P_TOUCH_B[0], "y": P_TOUCH_B[1]}, frames_after=3)
+    # ui-multitouch: lifting one finger releases only its own target
+    await send(ed, {"type": "touch", "action": "end", "pointer": 0, "x": P_TOUCH_A[0], "y": P_TOUCH_A[1]}, frames_after=3)
+    shot = await shoot(ed, "first-touch-ended")
+    check_color(ed, shot, P_TOUCH_A, LIGHT, "first target after its finger lifted")
+    check_color(ed, shot, P_TOUCH_B, MAGENTA, "second finger's target still :active")
+
+    await send(ed, {"type": "touch", "action": "end", "pointer": 1, "x": P_TOUCH_B[0], "y": P_TOUCH_B[1]}, frames_after=3)
     shot = await shoot(ed, "touches-ended")
     check_color(ed, shot, P_TOUCH_A, LIGHT, "first target after the fingers lifted")
     check_color(ed, shot, P_TOUCH_B, LIGHT, "second target after the fingers lifted")
+    ed.check_eq(await probe(ed, "touchClicks"), 2, "each finger clicked its own target")
+    ed.check_eq(await probe(ed, "touchPointers"), "touchA:touch0 touchB:touch1 ",
+                "the clicks carry each finger (pointerType touch, fingerId)")
 
     await send(ed, {"type": "touch", "action": "tap", "pointer": 2, "x": P_BODY[0], "y": P_BODY[1]})
     ed.check_eq(await probe(ed, "touches"), touches + 1, "a touch on the body did not reach the game")

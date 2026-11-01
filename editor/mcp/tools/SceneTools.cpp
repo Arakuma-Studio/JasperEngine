@@ -4,6 +4,7 @@
 // W1: scenes (list, create, open, close, select, save, rename, delete), child scenes, main
 // camera, scene settings
 #include "McpTools.h"
+#include "shader/ShaderGlobals.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -858,6 +859,12 @@ Json postProcessToJson(const std::vector<PostProcessPass>& passes, Project* proj
         Json textures = McpValues::shaderTexturesToJson(project, nullptr, pass.textures);
         if (!textures.empty()) item["textures"] = textures;
         if (pass.scale != 1.0f) item["scale"] = pass.scale;
+        // members following global shader values {member: global}, only when set
+        if (!pass.shaderGlobalBindings.empty()) {
+            Json bindings = Json::object();
+            for (const auto& binding : pass.shaderGlobalBindings) bindings[binding.first] = binding.second;
+            item["shaderGlobalBindings"] = bindings;
+        }
         list.push_back(item);
     }
     return list;
@@ -1065,9 +1072,10 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
                 }
                 // a misspelt key would otherwise be dropped without a word
                 for (auto key = item.begin(); key != item.end(); ++key) {
-                    static const std::set<std::string> known = {"shader", "enabled", "uniforms", "textures", "scale"};
+                    static const std::set<std::string> known = {"shader", "enabled", "uniforms", "textures", "scale", "shaderGlobalBindings"};
                     if (!known.count(key.key())) {
-                        error = where + ": unknown key \"" + key.key() + "\". A pass is {shader, enabled, uniforms, textures, scale}.";
+                        error = where + ": unknown key \"" + key.key() + "\". A pass is {shader, enabled, uniforms, textures, scale, "
+                                "shaderGlobalBindings}.";
                         return nullptr;
                     }
                 }
@@ -1113,6 +1121,23 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
                         return nullptr;
                     }
                     pass.scale = item["scale"].get<float>();
+                }
+                if (item.contains("shaderGlobalBindings")) {
+                    // {member: global}: u_fs_postParams members that follow global shader values
+                    const Json& bindings = item["shaderGlobalBindings"];
+                    if (!bindings.is_object()) {
+                        error = where + ".shaderGlobalBindings is an object {member: global name}.";
+                        return nullptr;
+                    }
+                    for (auto it = bindings.begin(); it != bindings.end(); ++it) {
+                        std::string invalid;
+                        if (it.value().is_null()) continue;
+                        if (!it.value().is_string() || !ShaderGlobals::isValidName(it.value().get<std::string>(), &invalid)) {
+                            error = where + ".shaderGlobalBindings." + it.key() + ": " + (invalid.empty() ? "a global's name" : invalid) + ".";
+                            return nullptr;
+                        }
+                        ShaderGlobals::setBinding(pass.shaderGlobalBindings, it.key(), it.value().get<std::string>());
+                    }
                 }
                 passes.push_back(pass);
             }

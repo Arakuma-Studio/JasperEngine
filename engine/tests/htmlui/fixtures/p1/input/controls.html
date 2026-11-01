@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+    html, body { margin: 0; width: 640px; height: 360px; }
+    #stick { position: absolute; left: 0; top: 160px; width: 200px; height: 200px; }
+    #fire { position: absolute; left: 520px; top: 240px; width: 96px; height: 96px; }
+    #look { position: absolute; left: 320px; top: 0; width: 320px; height: 200px; }
+</style>
+</head>
+<body>
+    <!-- the stick's base (160 px) is centred: (100, 260), radius 80 -->
+    <onscreen-stick id="stick" dead-zone="0.1"></onscreen-stick>
+    <onscreen-button id="fire" action="Fire1">Fire</onscreen-button>
+    <touch-area id="look" sensitivity="0.1"></touch-area>
+</body>
+</html>

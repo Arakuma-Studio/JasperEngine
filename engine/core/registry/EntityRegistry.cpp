@@ -77,6 +77,9 @@ EntityRegistry::EntityRegistry() {
     registerComponent<VertexAnimatorComponent>();
     registerComponent<TrailRendererComponent>();
     registerComponent<CanvasGroupComponent>();
+    registerComponent<OnScreenStickComponent>();
+    registerComponent<OnScreenButtonComponent>();
+    registerComponent<TouchAreaComponent>();
     registerComponent<TextEffectComponent>();
 }
 

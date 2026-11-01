@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "Stream.h"
+#include "particles/ParticleFields.h"
+#include "util/ShaderGlobalsJson.h"
 #include "AppSettings.h"
 #include "EditorHost.h"
 #include "Out.h"
@@ -12,6 +14,7 @@
 #include "util/YamlNumbers.h"
 #include "lattice/LatticeTypes.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/AnimationPlayerRuntime.h"
 #include "animation/ModelSubClips.h"
 #include "Factory.h"
 #include "pool/SoundPool.h"
@@ -2061,6 +2064,174 @@ Gradient editor::Stream::decodeGradient(const YAML::Node& node, const Gradient& 
     return gradient;
 }
 
+YAML::Node editor::Stream::encodeColorValue(const Vector4& linear) {
+    // the gradient keys' rule for the colour, the alpha appended when not 1
+    const YAML::Node rgb = encodeGradientColor(Vector3(linear.x, linear.y, linear.z));
+    const float alpha = finiteOr(linear.w, 1.0f);
+    if (rgb.IsScalar()) {
+        const int a = (int)std::lround(std::min(std::max(alpha, 0.0f), 1.0f) * 255.0f);
+        if (alpha == 1.0f) return rgb;
+        if (std::fabs((float)a / 255.0f - alpha) <= 1e-6f) {
+            char text[4];
+            std::snprintf(text, sizeof(text), "%02X", a);
+            return YAML::Node(rgb.as<std::string>() + text);
+        }
+    }
+    YAML::Node node;
+    node.SetStyle(YAML::EmitterStyle::Flow);
+    node.push_back(YamlNumbers::text(finiteOr(linear.x)));
+    node.push_back(YamlNumbers::text(finiteOr(linear.y)));
+    node.push_back(YamlNumbers::text(finiteOr(linear.z)));
+    node.push_back(YamlNumbers::text(alpha));
+    return node;
+}
+
+YAML::Node editor::Stream::encodeMinMaxCurve(const MinMaxCurve& curve) {
+    switch (curve.mode) {
+        case ParticleSystemCurveMode::Constant:
+            return YAML::Node(YamlNumbers::text(finiteOr(curve.constant)));
+        case ParticleSystemCurveMode::TwoConstants: {
+            YAML::Node node;
+            node.SetStyle(YAML::EmitterStyle::Flow);
+            node["mode"] = "two_constants";
+            node["min"] = YamlNumbers::text(finiteOr(curve.constantMin));
+            node["max"] = YamlNumbers::text(finiteOr(curve.constant));
+            return node;
+        }
+        case ParticleSystemCurveMode::Curve: {
+            YAML::Node node;
+            node["mode"] = "curve";
+            node["multiplier"] = YamlNumbers::text(finiteOr(curve.constant));
+            node["curve"] = encodeCurve(curve.curve);
+            return node;
+        }
+        case ParticleSystemCurveMode::TwoCurves: {
+            YAML::Node node;
+            node["mode"] = "two_curves";
+            node["multiplier"] = YamlNumbers::text(finiteOr(curve.constant));
+            node["min"] = encodeCurve(curve.curveMin);
+            node["max"] = encodeCurve(curve.curve);
+            return node;
+        }
+    }
+    return YAML::Node(YamlNumbers::text(finiteOr(curve.constant)));
+}
+
+MinMaxCurve editor::Stream::decodeMinMaxCurve(const YAML::Node& node, const MinMaxCurve& fallback) {
+    if (!node || node.IsNull()) return fallback;
+    if (node.IsScalar()) {
+        try {
+            const float value = node.as<float>();
+            return std::isfinite(value) ? MinMaxCurve(value) : fallback;
+        } catch (const YAML::Exception&) {
+            return fallback;
+        }
+    }
+    if (!node.IsMap()) return fallback;
+    const std::string mode = node["mode"] ? node["mode"].as<std::string>() : std::string("constant");
+    MinMaxCurve curve;
+    if (mode == "two_constants") {
+        curve = MinMaxCurve::between(decodeFinite(node["min"], 0.0f), decodeFinite(node["max"], 0.0f));
+    } else if (mode == "curve") {
+        curve = MinMaxCurve::fromCurve(decodeCurve(node["curve"], AnimationCurve::constant(1.0f)), decodeFinite(node["multiplier"], 1.0f));
+    } else if (mode == "two_curves") {
+        curve = MinMaxCurve::between(decodeCurve(node["min"], AnimationCurve::constant(1.0f)),
+                                     decodeCurve(node["max"], AnimationCurve::constant(1.0f)), decodeFinite(node["multiplier"], 1.0f));
+    } else {
+        curve = MinMaxCurve(decodeFinite(node["value"] ? node["value"] : node["constant"], fallback.constant));
+    }
+    return curve;
+}
+
+YAML::Node editor::Stream::encodeMinMaxGradient(const MinMaxGradient& gradient) {
+    switch (gradient.mode) {
+        case ParticleSystemGradientMode::Color:
+            return encodeColorValue(gradient.color);
+        case ParticleSystemGradientMode::TwoColors: {
+            YAML::Node node;
+            node["mode"] = "two_colors";
+            node["min"] = encodeColorValue(gradient.colorMin);
+            node["max"] = encodeColorValue(gradient.color);
+            return node;
+        }
+        case ParticleSystemGradientMode::Gradient:
+        case ParticleSystemGradientMode::RandomColor: {
+            YAML::Node node;
+            node["mode"] = gradient.mode == ParticleSystemGradientMode::Gradient ? "gradient" : "random_color";
+            node["gradient"] = encodeGradient(gradient.gradient);
+            return node;
+        }
+        case ParticleSystemGradientMode::TwoGradients: {
+            YAML::Node node;
+            node["mode"] = "two_gradients";
+            node["min"] = encodeGradient(gradient.gradientMin);
+            node["max"] = encodeGradient(gradient.gradient);
+            return node;
+        }
+    }
+    return encodeColorValue(gradient.color);
+}
+
+MinMaxGradient editor::Stream::decodeMinMaxGradient(const YAML::Node& node, const MinMaxGradient& fallback) {
+    if (!node || node.IsNull()) return fallback;
+    Vector4 color;
+    bool hasAlpha = false;
+    if ((node.IsScalar() || node.IsSequence()) && decodeColorValue(node, color, hasAlpha)) {
+        return MinMaxGradient::fromColor(color);
+    }
+    if (!node.IsMap()) return fallback;
+    const std::string mode = node["mode"] ? node["mode"].as<std::string>() : std::string("color");
+    auto colorOf = [&](const YAML::Node& value, const Vector4& otherwise) {
+        Vector4 linear;
+        bool alpha = false;
+        return decodeColorValue(value, linear, alpha) ? linear : otherwise;
+    };
+    if (mode == "two_colors") {
+        return MinMaxGradient::between(colorOf(node["min"], Vector4(1, 1, 1, 1)), colorOf(node["max"], Vector4(1, 1, 1, 1)));
+    }
+    if (mode == "gradient" || mode == "random_color") {
+        MinMaxGradient g = MinMaxGradient::fromGradient(decodeGradient(node["gradient"], Gradient()));
+        if (mode == "random_color") g.mode = ParticleSystemGradientMode::RandomColor;
+        return g;
+    }
+    if (mode == "two_gradients") {
+        return MinMaxGradient::between(decodeGradient(node["min"], Gradient()), decodeGradient(node["max"], Gradient()));
+    }
+    return MinMaxGradient::fromColor(colorOf(node["color"], fallback.color));
+}
+
+YAML::Node editor::Stream::encodeParticleBursts(const std::vector<ParticleEmissionBurst>& bursts) {
+    YAML::Node list(YAML::NodeType::Sequence);
+    const ParticleEmissionBurst defaults;
+    for (const ParticleEmissionBurst& burst : bursts) {
+        YAML::Node node;
+        node.SetStyle(YAML::EmitterStyle::Flow);
+        node["time"] = YamlNumbers::text(finiteOr(burst.time));
+        node["count"] = encodeMinMaxCurve(burst.count);
+        if (burst.cycles != defaults.cycles) node["cycles"] = burst.cycles;
+        if (burst.interval != defaults.interval) node["interval"] = YamlNumbers::text(finiteOr(burst.interval));
+        if (burst.probability != defaults.probability) node["probability"] = YamlNumbers::text(finiteOr(burst.probability));
+        list.push_back(node);
+    }
+    return list;
+}
+
+std::vector<ParticleEmissionBurst> editor::Stream::decodeParticleBursts(const YAML::Node& node) {
+    std::vector<ParticleEmissionBurst> bursts;
+    if (!node || !node.IsSequence()) return bursts;
+    for (const YAML::Node& item : node) {
+        if (!item.IsMap()) continue;
+        ParticleEmissionBurst burst;
+        burst.time = std::max(0.0f, decodeFinite(item["time"], 0.0f));
+        if (item["count"]) burst.count = decodeMinMaxCurve(item["count"], burst.count);
+        if (item["cycles"]) burst.cycles = std::max(0, YamlNumbers::as<int>(item["cycles"]));
+        if (item["interval"]) burst.interval = std::max(0.0001f, decodeFinite(item["interval"], burst.interval));
+        if (item["probability"]) burst.probability = std::min(1.0f, std::max(0.0f, decodeFinite(item["probability"], 1.0f)));
+        bursts.push_back(burst);
+    }
+    return bursts;
+}
+
 YAML::Node editor::Stream::encodeShaderUniforms(const ShaderUniformValues& uniforms) {
     YAML::Node node;
     for (const auto& uniform : uniforms) {
@@ -2079,6 +2250,25 @@ ShaderUniformValues editor::Stream::decodeShaderUniforms(const YAML::Node& node)
         }
     }
     return uniforms;
+}
+
+// {member: global}, written only when not empty
+YAML::Node editor::Stream::encodeShaderGlobalBindings(const ShaderGlobalBindings& bindings) {
+    YAML::Node node(YAML::NodeType::Map);
+    for (const auto& binding : bindings) node[binding.first] = binding.second;
+    return node;
+}
+
+ShaderGlobalBindings editor::Stream::decodeShaderGlobalBindings(const YAML::Node& node) {
+    ShaderGlobalBindings bindings;
+    if (!node || !node.IsMap()) return bindings;
+    for (const auto& binding : node) {
+        if (!binding.second.IsScalar()) continue;
+        const std::string member = binding.first.as<std::string>();
+        const std::string global = binding.second.as<std::string>();
+        if (!member.empty() && !global.empty()) bindings.push_back({member, global});
+    }
+    return bindings;
 }
 
 YAML::Node editor::Stream::encodeQuaternion(const Quaternion& quat) {
@@ -2805,6 +2995,31 @@ nlohmann::json yamlToJson(const YAML::Node& node) {
     return text;
 }
 
+// JSON -> YAML with numbers written as their shortest float text ("0.1", not 0.10000000000000001)
+YAML::Node shaderGlobalsJsonToYaml(const nlohmann::json& j) {
+    if (j.is_number_float()) {
+        char text[32];
+        snprintf(text, sizeof(text), "%.17g", j.get<double>());
+        // the shortest that reads back the same (the values are float-exact doubles)
+        for (int digits = 6; digits <= 17; digits++) {
+            snprintf(text, sizeof(text), "%.*g", digits, j.get<double>());
+            if (std::strtod(text, nullptr) == j.get<double>()) break;
+        }
+        return YAML::Node(std::string(text));
+    }
+    if (j.is_object()) {
+        YAML::Node node(YAML::NodeType::Map);
+        for (auto it = j.begin(); it != j.end(); ++it) node[it.key()] = shaderGlobalsJsonToYaml(it.value());
+        return node;
+    }
+    if (j.is_array()) {
+        YAML::Node node(YAML::NodeType::Sequence);
+        for (const nlohmann::json& v : j) node.push_back(shaderGlobalsJsonToYaml(v));
+        return node;
+    }
+    return jsonToYaml(j);
+}
+
 const char* spriteNormalsViewName(int view) {
     switch (view) {
         case 0: return "color";
@@ -3139,14 +3354,24 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         }
     }
 
-    // Project Settings > Physics > 3D World Capacity: only when it differs from the defaults
+    // Project Settings > Graphics > Shader Globals: {name, type, arraySize (arrays), default}
+    if (!project->getShaderGlobals().empty()) {
+        YAML::Node globals = shaderGlobalsJsonToYaml(ShaderGlobalsJson::listToJson(project->getShaderGlobals(), "arraySize"));
+        for (YAML::Node global : globals) {
+            if (global["default"] && global["default"].IsSequence()) global["default"].SetStyle(YAML::EmitterStyle::Flow);
+        }
+        root["shaderGlobals"] = globals;
+    }
+
+    // Project Settings > Physics > 3D World Capacity: only when it differs from the defaults (its own key:
+    // physics3D is the 3D physics on/off switch)
     if (project->getPhysics3DWorldSettings() != Physics3DWorldSettings()) {
         const Physics3DWorldSettings& world = project->getPhysics3DWorldSettings();
         YAML::Node physicsNode;
         physicsNode["maxBodies"] = world.maxBodies;
         physicsNode["maxBodyPairs"] = world.maxBodyPairs;
         physicsNode["maxContactConstraints"] = world.maxContactConstraints;
-        root["physics3D"] = physicsNode;
+        root["physics3DWorld"] = physicsNode;
     }
 
     // Project Settings > Input: only once edited (an old project reads Unity's defaults)
@@ -3580,15 +3805,41 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     {
+        // Project Settings > Graphics > Shader Globals; an entry that cannot be read is left out
+        // (with an error), the others are kept
+        std::vector<ShaderGlobalDecl> globals;
+        const YAML::Node globalsNode = node["shaderGlobals"];
+        if (globalsNode && globalsNode.IsSequence()) {
+            for (const YAML::Node& entry : globalsNode) {
+                ShaderGlobalDecl decl;
+                std::string error;
+                std::vector<ShaderGlobalDecl> candidate = globals;
+                if (ShaderGlobalsJson::declFromJson(yamlToJson(entry), decl, error)) {
+                    candidate.push_back(decl);
+                    error = ShaderGlobals::validate(candidate);
+                }
+                if (!error.empty()) {
+                    Out::error("Project Settings > Graphics > Shader Globals: %s (left out)", error.c_str());
+                    continue;
+                }
+                globals = candidate;
+            }
+        } else if (globalsNode && !globalsNode.IsNull()) {
+            Out::error("Project Settings > Graphics > Shader Globals: shaderGlobals in project.yaml is not a list (ignored)");
+        }
+        project->setShaderGlobals(globals);
+    }
+
+    {
         // Project Settings > Physics > 3D World Capacity; missing: the defaults
         Physics3DWorldSettings world;
-        const YAML::Node physicsNode = node["physics3D"];
+        const YAML::Node physicsNode = node["physics3DWorld"];
         if (physicsNode && physicsNode.IsMap()) {
             if (physicsNode["maxBodies"]) world.maxBodies = YamlNumbers::as<unsigned int>(physicsNode["maxBodies"]);
             if (physicsNode["maxBodyPairs"]) world.maxBodyPairs = YamlNumbers::as<unsigned int>(physicsNode["maxBodyPairs"]);
             if (physicsNode["maxContactConstraints"]) world.maxContactConstraints = YamlNumbers::as<unsigned int>(physicsNode["maxContactConstraints"]);
         } else if (physicsNode) {
-            Out::warning("Ignoring physics3D in project settings: not a map");
+            Out::warning("Ignoring physics3DWorld in project settings: not a map");
         }
         project->setPhysics3DWorldSettings(world);
     }
@@ -4358,6 +4609,8 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         }
         if (pass.scale != 1.0f)
             passNode["scale"] = pass.scale;
+        if (!pass.shaderGlobalBindings.empty())
+            passNode["shaderGlobalBindings"] = encodeShaderGlobalBindings(pass.shaderGlobalBindings);
         sceneNode["postProcess"].push_back(passNode);
     }
 
@@ -4562,6 +4815,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
             pass.uniforms = decodeShaderUniforms(passNode["uniforms"]);
             pass.textures = decodeShaderTextures(passNode["textures"]);
             pass.scale = decodeFinite(passNode["scale"], 1.0f);
+            pass.shaderGlobalBindings = decodeShaderGlobalBindings(passNode["shaderGlobalBindings"]);
             postProcess.push_back(pass);
         }
     }
@@ -5057,6 +5311,7 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
         if (textures.size() > 0) node["shaderTextures"] = textures;
     }
     if (!material.shaderFeatures.empty()) node["shaderFeatures"] = encodeShaderFeatures(material.shaderFeatures);
+    if (!material.shaderGlobalBindings.empty()) node["shaderGlobalBindings"] = encodeShaderGlobalBindings(material.shaderGlobalBindings);
     if (material.blendMode != MaterialBlendMode::AUTO) node["blendMode"] = materialBlendModeToString(material.blendMode);
     if (material.cullMode != MaterialCullMode::AUTO) node["cullMode"] = materialCullModeToString(material.cullMode);
     if (material.depthWrite != MaterialDepthWrite::AUTO) node["depthWrite"] = materialDepthWriteToString(material.depthWrite);
@@ -5121,6 +5376,7 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     material.shaderParams = decodeShaderUniforms(node["shaderParams"]);
     material.shaderTextures = decodeShaderTextures(node["shaderTextures"]);
     material.shaderFeatures = decodeShaderFeatures(node["shaderFeatures"]);
+    material.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
     material.blendMode = node["blendMode"] ? stringToMaterialBlendMode(node["blendMode"].as<std::string>()) : MaterialBlendMode::AUTO;
     material.cullMode = node["cullMode"] ? stringToMaterialCullMode(node["cullMode"].as<std::string>()) : MaterialCullMode::AUTO;
     material.depthWrite = node["depthWrite"] ? stringToMaterialDepthWrite(node["depthWrite"].as<std::string>()) : MaterialDepthWrite::AUTO;
@@ -5235,6 +5491,18 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
     if (signature.test(registry->getComponentId<ProgressbarComponent>())) {
         const ProgressbarComponent& progressbar = registry->getComponent<ProgressbarComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::ProgressbarComponent, true)] = encodeProgressbarComponent(progressbar);
+    }
+
+    if (signature.test(registry->getComponentId<OnScreenStickComponent>())) {
+        compNode[Catalog::getComponentName(ComponentType::OnScreenStickComponent, true)] = encodeOnScreenStickComponent(registry->getComponent<OnScreenStickComponent>(entity));
+    }
+
+    if (signature.test(registry->getComponentId<OnScreenButtonComponent>())) {
+        compNode[Catalog::getComponentName(ComponentType::OnScreenButtonComponent, true)] = encodeOnScreenButtonComponent(registry->getComponent<OnScreenButtonComponent>(entity));
+    }
+
+    if (signature.test(registry->getComponentId<TouchAreaComponent>())) {
+        compNode[Catalog::getComponentName(ComponentType::TouchAreaComponent, true)] = encodeTouchAreaComponent(registry->getComponent<TouchAreaComponent>(entity));
     }
 
     if (signature.test(registry->getComponentId<InputFieldComponent>())) {
@@ -5629,6 +5897,45 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::InputFieldComponent, existing, &inputfield);
             registry->getComponent<InputFieldComponent>(entity) = std::move(inputfield);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::OnScreenStickComponent, true);
+    if (compNode[compName]) {
+        OnScreenStickComponent* existing = registry->findComponent<OnScreenStickComponent>(entity);
+        OnScreenStickComponent stick = decodeOnScreenStickComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<OnScreenStickComponent>())){
+            registry->addComponent<OnScreenStickComponent>(entity, std::move(stick));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::OnScreenStickComponent, existing, &stick);
+            registry->getComponent<OnScreenStickComponent>(entity) = std::move(stick);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::OnScreenButtonComponent, true);
+    if (compNode[compName]) {
+        OnScreenButtonComponent* existing = registry->findComponent<OnScreenButtonComponent>(entity);
+        OnScreenButtonComponent control = decodeOnScreenButtonComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<OnScreenButtonComponent>())){
+            registry->addComponent<OnScreenButtonComponent>(entity, std::move(control));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::OnScreenButtonComponent, existing, &control);
+            registry->getComponent<OnScreenButtonComponent>(entity) = std::move(control);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::TouchAreaComponent, true);
+    if (compNode[compName]) {
+        TouchAreaComponent* existing = registry->findComponent<TouchAreaComponent>(entity);
+        TouchAreaComponent area = decodeTouchAreaComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<TouchAreaComponent>())){
+            registry->addComponent<TouchAreaComponent>(entity, std::move(area));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::TouchAreaComponent, existing, &area);
+            registry->getComponent<TouchAreaComponent>(entity) = std::move(area);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -6625,6 +6932,8 @@ YAML::Node editor::Stream::encodeUIComponent(const UIComponent& ui, bool encodeB
         node["customShader"] = ui.customShader;
     if (!ui.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(ui.shaderUniforms);
+    if (!ui.shaderGlobalBindings.empty())
+        node["shaderGlobalBindings"] = encodeShaderGlobalBindings(ui.shaderGlobalBindings);
     encodeComponentShaderLibrary(node, ui.shaderTextures, ui.shaderFeatures, &ui.blendMode, &ui.depthWrite, embedTextureData);
     encodeStencilAndColorWrite(node, ui.stencil, ui.colorWrite);
 
@@ -6661,6 +6970,7 @@ UIComponent editor::Stream::decodeUIComponent(const YAML::Node& node, const UICo
 
     if (node["customShader"]) ui.customShader = node["customShader"].as<std::string>();
     ui.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
+    ui.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
     ui.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, ui.shaderTextures, ui.shaderFeatures, &ui.blendMode, &ui.depthWrite);
     decodeStencilAndColorWrite(node, ui.stencil, ui.colorWrite);
@@ -6770,6 +7080,147 @@ ProgressbarComponent editor::Stream::decodeProgressbarComponent(const YAML::Node
     progressbar.needUpdateProgressbar = true;
 
     return progressbar;
+}
+
+namespace {
+
+    const char* stickModeToString(OnScreenStickMode mode) {
+        switch (mode) {
+            case OnScreenStickMode::FLOATING: return "floating";
+            case OnScreenStickMode::DYNAMIC: return "dynamic";
+            default: return "fixed";
+        }
+    }
+
+    OnScreenStickMode stringToStickMode(const std::string& text) {
+        if (text == "floating") return OnScreenStickMode::FLOATING;
+        if (text == "dynamic") return OnScreenStickMode::DYNAMIC;
+        return OnScreenStickMode::FIXED;
+    }
+
+    const char* stickAxesToString(OnScreenStickAxes axes) {
+        switch (axes) {
+            case OnScreenStickAxes::HORIZONTAL: return "horizontal";
+            case OnScreenStickAxes::VERTICAL: return "vertical";
+            default: return "both";
+        }
+    }
+
+    OnScreenStickAxes stringToStickAxes(const std::string& text) {
+        if (text == "horizontal") return OnScreenStickAxes::HORIZONTAL;
+        if (text == "vertical") return OnScreenStickAxes::VERTICAL;
+        return OnScreenStickAxes::BOTH;
+    }
+
+    const char* visibilityToString(OnScreenVisibility visibility) {
+        return visibility == OnScreenVisibility::TOUCH_DEVICES_ONLY ? "touch_devices_only" : "always";
+    }
+
+    OnScreenVisibility stringToVisibility(const std::string& text) {
+        return text == "touch_devices_only" ? OnScreenVisibility::TOUCH_DEVICES_ONLY : OnScreenVisibility::ALWAYS;
+    }
+
+}
+
+YAML::Node editor::Stream::encodeOnScreenStickComponent(const OnScreenStickComponent& stick) {
+    YAML::Node node;
+    node["enabled"] = stick.enabled;
+    node["mode"] = stickModeToString(stick.mode);
+    node["background"] = stick.background;
+    node["handle"] = stick.handle;
+    node["handleRange"] = stick.handleRange;
+    node["deadZone"] = stick.deadZone;
+    node["moveThreshold"] = stick.moveThreshold;
+    node["axes"] = stickAxesToString(stick.axes);
+    node["snapX"] = stick.snapX;
+    node["snapY"] = stick.snapY;
+    node["hideWhenReleased"] = stick.hideWhenReleased;
+    node["clampToArea"] = stick.clampToArea;
+    node["horizontalAction"] = stick.horizontalAction;
+    node["verticalAction"] = stick.verticalAction;
+    node["visibility"] = visibilityToString(stick.visibility);
+    return node;
+}
+
+OnScreenStickComponent editor::Stream::decodeOnScreenStickComponent(const YAML::Node& node, const OnScreenStickComponent* oldStick) {
+    OnScreenStickComponent stick;
+    if (oldStick) {
+        stick = *oldStick;
+    }
+
+    if (node["enabled"]) stick.enabled = node["enabled"].as<bool>();
+    if (node["mode"]) stick.mode = stringToStickMode(node["mode"].as<std::string>());
+    if (node["background"]) stick.background = YamlNumbers::as<Entity>(node["background"]);
+    if (node["handle"]) stick.handle = YamlNumbers::as<Entity>(node["handle"]);
+    if (node["handleRange"]) stick.handleRange = std::max(0.0f, YamlNumbers::as<float>(node["handleRange"]));
+    if (node["deadZone"]) stick.deadZone = std::clamp(YamlNumbers::as<float>(node["deadZone"]), 0.0f, 1.0f);
+    if (node["moveThreshold"]) stick.moveThreshold = std::max(0.0f, YamlNumbers::as<float>(node["moveThreshold"]));
+    if (node["axes"]) stick.axes = stringToStickAxes(node["axes"].as<std::string>());
+    if (node["snapX"]) stick.snapX = node["snapX"].as<bool>();
+    if (node["snapY"]) stick.snapY = node["snapY"].as<bool>();
+    if (node["hideWhenReleased"]) stick.hideWhenReleased = node["hideWhenReleased"].as<bool>();
+    if (node["clampToArea"]) stick.clampToArea = node["clampToArea"].as<bool>();
+    if (node["horizontalAction"]) stick.horizontalAction = node["horizontalAction"].as<std::string>();
+    if (node["verticalAction"]) stick.verticalAction = node["verticalAction"].as<std::string>();
+    if (node["visibility"]) stick.visibility = stringToVisibility(node["visibility"].as<std::string>());
+
+    return stick;
+}
+
+YAML::Node editor::Stream::encodeOnScreenButtonComponent(const OnScreenButtonComponent& button) {
+    YAML::Node node;
+    node["enabled"] = button.enabled;
+    node["action"] = button.action;
+    node["value"] = button.value;
+    node["pressWhenPointerEnters"] = button.pressWhenPointerEnters;
+    node["releaseWhenPointerLeaves"] = button.releaseWhenPointerLeaves;
+    node["visibility"] = visibilityToString(button.visibility);
+    return node;
+}
+
+OnScreenButtonComponent editor::Stream::decodeOnScreenButtonComponent(const YAML::Node& node, const OnScreenButtonComponent* oldButton) {
+    OnScreenButtonComponent button;
+    if (oldButton) {
+        button = *oldButton;
+    }
+
+    if (node["enabled"]) button.enabled = node["enabled"].as<bool>();
+    if (node["action"]) button.action = node["action"].as<std::string>();
+    if (node["value"]) button.value = std::clamp(YamlNumbers::as<float>(node["value"]), -1.0f, 1.0f);
+    if (node["pressWhenPointerEnters"]) button.pressWhenPointerEnters = node["pressWhenPointerEnters"].as<bool>();
+    if (node["releaseWhenPointerLeaves"]) button.releaseWhenPointerLeaves = node["releaseWhenPointerLeaves"].as<bool>();
+    if (node["visibility"]) button.visibility = stringToVisibility(node["visibility"].as<std::string>());
+
+    return button;
+}
+
+YAML::Node editor::Stream::encodeTouchAreaComponent(const TouchAreaComponent& area) {
+    YAML::Node node;
+    node["enabled"] = area.enabled;
+    node["horizontalAction"] = area.horizontalAction;
+    node["verticalAction"] = area.verticalAction;
+    node["sensitivity"] = area.sensitivity;
+    node["invertX"] = area.invertX;
+    node["invertY"] = area.invertY;
+    node["visibility"] = visibilityToString(area.visibility);
+    return node;
+}
+
+TouchAreaComponent editor::Stream::decodeTouchAreaComponent(const YAML::Node& node, const TouchAreaComponent* oldArea) {
+    TouchAreaComponent area;
+    if (oldArea) {
+        area = *oldArea;
+    }
+
+    if (node["enabled"]) area.enabled = node["enabled"].as<bool>();
+    if (node["horizontalAction"]) area.horizontalAction = node["horizontalAction"].as<std::string>();
+    if (node["verticalAction"]) area.verticalAction = node["verticalAction"].as<std::string>();
+    if (node["sensitivity"]) area.sensitivity = YamlNumbers::as<float>(node["sensitivity"]);
+    if (node["invertX"]) area.invertX = node["invertX"].as<bool>();
+    if (node["invertY"]) area.invertY = node["invertY"].as<bool>();
+    if (node["visibility"]) area.visibility = stringToVisibility(node["visibility"].as<std::string>());
+
+    return area;
 }
 
 YAML::Node editor::Stream::encodeInputFieldComponent(const InputFieldComponent& inputfield) {
@@ -8156,9 +8607,30 @@ YAML::Node editor::Stream::encodeAnimationPlayerComponent(const AnimationPlayerC
         if (!entry.guid.empty()) entryNode["guid"] = entry.guid;
         if (!entry.name.empty()) entryNode["name"] = entry.name;
         if (entry.wrap != ClipWrapMode::Default) entryNode["wrap"] = anim::wrapName(entry.wrap);
+        if (entry.layer != 0) entryNode["layer"] = entry.layer;
         clipsNode.push_back(entryNode);
     }
     node["clips"] = clipsNode;
+    // layers (anim layers spec 6.3): only when they differ from the default single Base Layer
+    // (a missing key decodes to that default)
+    const bool defaultLayers = player.layers.empty() ||
+        (player.layers.size() == 1 && player.layers[0].name == anim::BASE_LAYER_NAME && player.layers[0].mask.empty() &&
+         player.layers[0].maskGuid.empty() && player.layers[0].weight == 1.0f && player.layers[0].blend == AnimationLayerBlend::Override);
+    if (!defaultLayers) {
+        YAML::Node layersNode(YAML::NodeType::Sequence);
+        for (const AnimationPlayerLayer& layer : player.layers) {
+            YAML::Node layerNode;
+            layerNode["name"] = layer.name;
+            if (layer.weight != 1.0f) encodeFinite(layerNode, "weight", layer.weight);
+            if (layer.blend != AnimationLayerBlend::Override) layerNode["blend"] = anim::layerBlendName(layer.blend);
+            if (!layer.mask.empty()) layerNode["mask"] = layer.mask;
+            if (!layer.maskGuid.empty()) layerNode["maskGuid"] = layer.maskGuid;
+            layersNode.push_back(layerNode);
+        }
+        node["layers"] = layersNode;
+    }
+    if (!player.controller.empty()) node["controller"] = player.controller;
+    if (!player.controllerGuid.empty()) node["controllerGuid"] = player.controllerGuid;
     node["defaultClip"] = player.defaultClip;
     node["playAutomatically"] = YamlNumbers::text(player.playAutomatically);
     encodeFinite(node, "speed", player.speed);
@@ -8177,6 +8649,8 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
     // over the component must not bring back a released Lua function
     player.onEvent.clear();
     player.onFinish.clear();
+    player.onStateEnter.clear();
+    player.onStateExit.clear();
 
     // a missing key is the default, not the old value
     const AnimationPlayerComponent defaults;
@@ -8225,6 +8699,11 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
                     }
                     entry.wrap = ClipWrapMode::Default;
                 }
+                const YAML::Node layerNode = entryNode["layer"];
+                if (layerNode && layerNode.IsScalar()) {
+                    int layer = 0;
+                    if (YamlNumbers::readPlain(layerNode.Scalar(), layer) && layer >= 0) entry.layer = layer;
+                }
             } else {
                 // a list, or a map whose clip is not a path
                 continue;
@@ -8234,12 +8713,46 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
     }
     player.clips = std::move(clips);
 
+    // layers: a missing key is the default single Base Layer (empty)
+    std::vector<AnimationPlayerLayer> layers;
+    const YAML::Node layersNode = node["layers"];
+    if (layersNode && layersNode.IsSequence()) {
+        for (const YAML::Node& layerNode : layersNode) {
+            AnimationPlayerLayer layer;
+            if (layerNode.IsScalar()) {
+                layer.name = layerNode.Scalar();
+            } else if (layerNode.IsMap()) {
+                auto text = [&layerNode](const char* key) {
+                    const YAML::Node value = layerNode[key];
+                    return value && value.IsScalar() ? value.Scalar() : std::string();
+                };
+                layer.name = text("name");
+                if (layerNode["weight"] && layerNode["weight"].IsScalar()) {
+                    layer.weight = std::clamp(decodeFinite(layerNode["weight"], 1.0f), 0.0f, 1.0f);
+                }
+                const std::string blend = text("blend");
+                if (!blend.empty() && !anim::layerBlendFromName(blend, layer.blend)) {
+                    Out::warning("Animation Player layer \"%s\": unknown blend \"%s\" (override, additive), using override", layer.name.c_str(), blend.c_str());
+                    layer.blend = AnimationLayerBlend::Override;
+                }
+                layer.mask = text("mask");
+                layer.maskGuid = text("maskGuid");
+            } else {
+                continue;
+            }
+            layers.push_back(std::move(layer));
+        }
+    }
+    player.layers = std::move(layers);
+    player.controller = given("controller") && node["controller"].IsScalar() ? node["controller"].Scalar() : std::string();
+    player.controllerGuid = given("controllerGuid") && node["controllerGuid"].IsScalar() ? node["controllerGuid"].Scalar() : std::string();
+
     player.defaultClip = given("defaultClip") && node["defaultClip"].IsScalar() ? node["defaultClip"].Scalar() : std::string();
     player.playAutomatically = boolean("playAutomatically", defaults.playAutomatically);
     player.speed = given("speed") ? decodeFinite(node["speed"], defaults.speed) : defaults.speed;
     player.defaultFadeTime = given("defaultFadeTime") ? std::max(0.0f, decodeFinite(node["defaultFadeTime"], defaults.defaultFadeTime)) : defaults.defaultFadeTime;
 
-    if (oldPlayer && oldPlayer->clips != player.clips) {
+    if (oldPlayer && (oldPlayer->clips != player.clips || oldPlayer->layers != player.layers || oldPlayer->controller != player.controller)) {
         player.needsLoad = true;
     }
 
@@ -8625,6 +9138,8 @@ YAML::Node editor::Stream::encodeSkyboxComponent(const SkyboxComponent& sky) {
         node["customShader"] = sky.customShader;
     if (!sky.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(sky.shaderUniforms);
+    if (!sky.shaderGlobalBindings.empty())
+        node["shaderGlobalBindings"] = encodeShaderGlobalBindings(sky.shaderGlobalBindings);
     encodeComponentShaderLibrary(node, sky.shaderTextures, sky.shaderFeatures, nullptr, nullptr, true);
 
     return node;
@@ -8660,6 +9175,7 @@ SkyboxComponent editor::Stream::decodeSkyboxComponent(const YAML::Node& node, co
 
     if (node["customShader"]) sky.customShader = node["customShader"].as<std::string>();
     sky.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
+    sky.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
     sky.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, sky.shaderTextures, sky.shaderFeatures, nullptr, nullptr);
 
@@ -10437,9 +10953,90 @@ LatticeTracksComponent editor::Stream::decodeLatticeTracksComponent(const YAML::
     return tracks;
 }
 
+// a version 2 field's value in the scene encoding (particles/ParticleFields)
+YAML::Node editor::Stream::encodeParticleField(const particles::FieldInfo& field, const ParticleSystemComponent& component) {
+    const void* value = field.get(component);
+    switch (field.type) {
+        case particles::FieldType::Bool: return YAML::Node(*static_cast<const bool*>(value));
+        case particles::FieldType::Int: return YAML::Node(*static_cast<const int*>(value));
+        case particles::FieldType::UInt: return YAML::Node(*static_cast<const unsigned int*>(value));
+        case particles::FieldType::Float: return YAML::Node(editor::YamlNumbers::text(*static_cast<const float*>(value)));
+        case particles::FieldType::Vector2: return editor::Stream::encodeVector2(*static_cast<const Vector2*>(value));
+        case particles::FieldType::Vector3: return editor::Stream::encodeVector3(*static_cast<const Vector3*>(value));
+        case particles::FieldType::Curve: return editor::Stream::encodeMinMaxCurve(*static_cast<const MinMaxCurve*>(value));
+        case particles::FieldType::Gradient: return editor::Stream::encodeMinMaxGradient(*static_cast<const MinMaxGradient*>(value));
+        case particles::FieldType::Enum: return YAML::Node(particles::enumName(field, *static_cast<const int*>(value)));
+        case particles::FieldType::Bursts: return editor::Stream::encodeParticleBursts(*static_cast<const std::vector<ParticleEmissionBurst>*>(value));
+        case particles::FieldType::IntList: {
+            YAML::Node list(YAML::NodeType::Sequence);
+            list.SetStyle(YAML::EmitterStyle::Flow);
+            for (int v : *static_cast<const std::vector<int>*>(value)) list.push_back(v);
+            return list;
+        }
+        case particles::FieldType::String: return YAML::Node(*static_cast<const std::string*>(value));
+    }
+    return YAML::Node();
+}
+
+void editor::Stream::decodeParticleField(const particles::FieldInfo& field, const YAML::Node& node, ParticleSystemComponent& component) {
+    void* value = field.get(component);
+    try {
+        switch (field.type) {
+            case particles::FieldType::Bool: *static_cast<bool*>(value) = editor::YamlNumbers::as<bool>(node); break;
+            case particles::FieldType::Int: *static_cast<int*>(value) = editor::YamlNumbers::as<int>(node); break;
+            case particles::FieldType::UInt: *static_cast<unsigned int*>(value) = editor::YamlNumbers::as<unsigned int>(node); break;
+            case particles::FieldType::Float: *static_cast<float*>(value) = editor::Stream::decodeFinite(node, *static_cast<float*>(value)); break;
+            case particles::FieldType::Vector2: *static_cast<Vector2*>(value) = editor::Stream::decodeVector2(node); break;
+            case particles::FieldType::Vector3: *static_cast<Vector3*>(value) = editor::Stream::decodeFiniteVector3(node, *static_cast<Vector3*>(value)); break;
+            case particles::FieldType::Curve: *static_cast<MinMaxCurve*>(value) = editor::Stream::decodeMinMaxCurve(node, *static_cast<MinMaxCurve*>(value)); break;
+            case particles::FieldType::Gradient: *static_cast<MinMaxGradient*>(value) = editor::Stream::decodeMinMaxGradient(node, *static_cast<MinMaxGradient*>(value)); break;
+            case particles::FieldType::Enum: {
+                const int parsed = node.IsScalar() ? particles::enumValue(field, node.as<std::string>()) : -1;
+                if (parsed >= 0) {
+                    *static_cast<int*>(value) = parsed;
+                } else if (node.IsScalar()) {
+                    // a number: the enum's value when it is one
+                    int number = 0;
+                    if (YAML::convert<int>::decode(node, number) && field.enumNames && number >= 0 && (size_t)number < field.enumNames->size()) {
+                        *static_cast<int*>(value) = number;
+                    }
+                }
+                break;
+            }
+            case particles::FieldType::Bursts: *static_cast<std::vector<ParticleEmissionBurst>*>(value) = editor::Stream::decodeParticleBursts(node); break;
+            case particles::FieldType::IntList: {
+                std::vector<int> list;
+                if (node.IsSequence()) {
+                    for (const YAML::Node& item : node) list.push_back(editor::YamlNumbers::as<int>(item));
+                }
+                *static_cast<std::vector<int>*>(value) = list;
+                break;
+            }
+            case particles::FieldType::String: *static_cast<std::string*>(value) = node.as<std::string>(); break;
+        }
+    } catch (const YAML::Exception&) {
+        // a malformed value keeps the one before (as the other components' fields)
+    }
+}
+
 YAML::Node editor::Stream::encodeParticleSystemComponent(const ParticleSystemComponent& particles) {
     YAML::Node node;
     node["enabled"] = particles.enabled;
+
+    if (particles.version >= 2) {
+        node["version"] = particles.version;
+        if (particles.useUnscaledTime) node["useUnscaledTime"] = true;
+        for (const std::string& module : particles::moduleNames()) {
+            YAML::Node moduleNode;
+            for (const particles::FieldInfo* field : particles::moduleFields(module)) {
+                if (!particles::isDefault(*field, particles)) {
+                    moduleNode[field->name] = encodeParticleField(*field, particles);
+                }
+            }
+            if (moduleNode.size() > 0) node[module] = moduleNode;
+        }
+        return node;
+    }
 
     node["maxParticles"] = particles.maxParticles;
     node["emitter"] = particles.emitter;
@@ -10604,6 +11201,9 @@ YAML::Node editor::Stream::encodeParticleSystemComponent(const ParticleSystemCom
     scaleMod["toScale"] = encodeVector3(particles.scaleModifier.toScale);
     scaleMod["function"] = encodeEase(particles.scaleModifier.function);
     node["scaleModifier"] = scaleMod;
+
+    // shared with version 2; written only when set, so older files stay as they were
+    if (particles.useUnscaledTime) node["useUnscaledTime"] = true;
 
     return node;
 }
@@ -10782,10 +11382,22 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
         if (n["function"]) particles.scaleModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->scaleModifier.function : nullptr);
     }
 
+    // version 2: the modules (a file without a version is version 1)
+    if (node["version"]) particles.version = std::max(1, YamlNumbers::as<int>(node["version"]));
+    if (node["useUnscaledTime"]) particles.useUnscaledTime = YamlNumbers::as<bool>(node["useUnscaledTime"]);
+    for (const std::string& module : particles::moduleNames()) {
+        const YAML::Node moduleNode = node[module];
+        if (!moduleNode || !moduleNode.IsMap()) continue;
+        for (const particles::FieldInfo* field : particles::moduleFields(module)) {
+            if (moduleNode[field->name]) decodeParticleField(*field, moduleNode[field->name], particles);
+        }
+    }
+
     // Reset runtime fields
     particles.particles.clear();
     particles.newParticlesCount = 0;
     particles.lastUsedParticle = 0;
+    particles.state = ParticleSimState();
 
     if (node["enabled"]) particles.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
@@ -10893,6 +11505,8 @@ YAML::Node editor::Stream::encodePointsComponent(const PointsComponent& points) 
         node["customShader"] = points.customShader;
     if (!points.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(points.shaderUniforms);
+    if (!points.shaderGlobalBindings.empty())
+        node["shaderGlobalBindings"] = encodeShaderGlobalBindings(points.shaderGlobalBindings);
     encodeComponentShaderLibrary(node, points.shaderTextures, points.shaderFeatures, &points.blendMode, &points.depthWrite, true);
     encodeStencilAndColorWrite(node, points.stencil, points.colorWrite);
 
@@ -10934,6 +11548,7 @@ PointsComponent editor::Stream::decodePointsComponent(const YAML::Node& node, co
 
     if (node["customShader"]) points.customShader = node["customShader"].as<std::string>();
     points.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
+    points.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
     points.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, points.shaderTextures, points.shaderFeatures, &points.blendMode, &points.depthWrite);
     decodeStencilAndColorWrite(node, points.stencil, points.colorWrite);
@@ -11069,11 +11684,8 @@ YAML::Node editor::Stream::encodeTrailRendererComponent(const TrailRendererCompo
         node["shaderUniforms"] = encodeShaderUniforms(trail.shaderUniforms);
     encodeComponentShaderLibrary(node, trail.shaderTextures, trail.shaderFeatures, &trail.blendMode, &trail.depthWrite, true);
     encodeStencilAndColorWrite(node, trail.stencil, trail.colorWrite);
-    if (!trail.shaderGlobalBindings.empty()) {
-        YAML::Node bindings(YAML::NodeType::Map);
-        for (const auto& binding : trail.shaderGlobalBindings) bindings[binding.first] = binding.second;
-        node["shaderGlobalBindings"] = bindings;
-    }
+    if (!trail.shaderGlobalBindings.empty())
+        node["shaderGlobalBindings"] = encodeShaderGlobalBindings(trail.shaderGlobalBindings);
     return node;
 }
 
@@ -11094,12 +11706,7 @@ TrailRendererComponent editor::Stream::decodeTrailRendererComponent(const YAML::
     trail.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, trail.shaderTextures, trail.shaderFeatures, &trail.blendMode, &trail.depthWrite);
     decodeStencilAndColorWrite(node, trail.stencil, trail.colorWrite);
-    trail.shaderGlobalBindings.clear();
-    if (node["shaderGlobalBindings"] && node["shaderGlobalBindings"].IsMap()) {
-        for (const auto& binding : node["shaderGlobalBindings"]) {
-            trail.shaderGlobalBindings.push_back({binding.first.as<std::string>(), binding.second.as<std::string>()});
-        }
-    }
+    trail.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
 
     // the runtime starts again: no points, nothing loaded
     trail.points.reset();
@@ -11148,6 +11755,8 @@ YAML::Node editor::Stream::encodeLineRendererComponent(const LineRendererCompone
         node["customShader"] = lines.customShader;
     if (!lines.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(lines.shaderUniforms);
+    if (!lines.shaderGlobalBindings.empty())
+        node["shaderGlobalBindings"] = encodeShaderGlobalBindings(lines.shaderGlobalBindings);
     encodeComponentShaderLibrary(node, lines.shaderTextures, lines.shaderFeatures, &lines.blendMode, &lines.depthWrite, true);
     encodeStencilAndColorWrite(node, lines.stencil, lines.colorWrite);
 
@@ -11181,6 +11790,7 @@ LineRendererComponent editor::Stream::decodeLineRendererComponent(const YAML::No
 
     if (node["customShader"]) lines.customShader = node["customShader"].as<std::string>();
     lines.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
+    lines.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
     lines.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, lines.shaderTextures, lines.shaderFeatures, &lines.blendMode, &lines.depthWrite);
     decodeStencilAndColorWrite(node, lines.stencil, lines.colorWrite);

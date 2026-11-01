@@ -148,6 +148,11 @@ namespace jasperengine{
         bool eventOnPointerUp(int pointer, int button, float x, float y, int mods, bool touch, bool world = true);
         bool eventOnPointerMove(int pointer, float x, float y, int mods, bool touch, bool world = true);
         bool eventOnTouchCancel(int pointer);
+        // ui-multitouch D6: a mouse button released outside the canvas. The mouse pointer ends
+        // without a click or drop (pointercancel; every held button: one DOM pointer)
+        bool eventOnMouseCancel(int button);
+        // D6: every finger and the mouse end without a click (pause, focus loss)
+        void cancelAllPointers();
         bool eventOnWheel(float dx, float dy, int mods);
         void eventOnMouseLeave();
         bool eventOnKeyDown(int key, bool repeat, int mods);
@@ -158,6 +163,10 @@ namespace jasperengine{
         bool hasFocusedTextInput() const;
         // a document took this pointer's down (touch: pointer id; mouse: button) and keeps it until the up
         bool hasPointerCapture(int pointer, int button, bool touch) const;
+        // Input.isPointerOverUI (ui-multitouch D15), native pointer ids: -1 / -2 / -3 the mouse,
+        // >= 0 a finger, INT_MIN the mouse or any finger. Over shown document content, or held
+        // by a document since its press.
+        bool isPointerOverUI(int pointerId) const;
         // the CSS cursor of the element under the pointer, ARROW when the pointer is not over content
         CursorType getPointerCursor() const;
         // p4-input: a gamepad key (Engine's routing turns buttons, the left stick and the triggers into
@@ -346,6 +355,7 @@ namespace jasperengine{
         bool isWorldPointerCaptured(int pointer, int button, bool touch) const;   // button < 0: any mouse button
         bool dispatchWorldWheel(float dx, float dy, int mods);   // the hovered texture document
         void textureMouseLeave();
+        void textureCancelAll();   // ui-multitouch D6: pause, focus loss
 
         // --- p2-html ---
         std::shared_ptr<HtmlUICompatState> compatState;

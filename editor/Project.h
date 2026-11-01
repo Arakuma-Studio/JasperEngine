@@ -23,6 +23,7 @@
 #include "util/PlatformRules.h"
 #include "window/SpriteNormalsWindowSettings.h"
 #include "input/InputActions.h"
+#include "shader/ShaderGlobals.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -85,7 +86,7 @@ namespace jasperengine::editor{
         std::string filepath;
     };
 
-    // the 3D world capacity (project.yaml physics3D); defaults = PhysicsSystem's
+    // the 3D world capacity (project.yaml physics3DWorld; physics3D is the 3D physics switch); defaults = PhysicsSystem's
     struct Physics3DWorldSettings {
         unsigned int maxBodies = 8192;
         unsigned int maxBodyPairs = 8192;
@@ -687,6 +688,9 @@ namespace jasperengine::editor{
         // an input node of project.yaml that could not be read: written back as it was until
         // the actions are edited, so a typo made by hand does not lose them
         std::string unreadableInputNode;
+        // Project Settings > Graphics > Shader Globals: the global shader values the project
+        // declares (name, type, default), applied to the engine's ShaderGlobals
+        std::vector<ShaderGlobalDecl> shaderGlobals;
         bool packNativeResources;
         bool versionControlMetadata;
         ShaderOverrides shaderOverrides;
@@ -1306,6 +1310,15 @@ namespace jasperengine::editor{
         // Play starts and stops with clean input: no held keys, touches, rebinding overrides,
         // disabled actions or simulated sources of the last Play
         void resetPlayInput() const;
+
+        // Project Settings > Graphics > Shader Globals. Setting them validates nothing (callers
+        // do: ShaderGlobals::validate) and declares them to the engine's ShaderGlobals (the
+        // Scene and Game views and a running Play read them at once)
+        void setShaderGlobals(const std::vector<ShaderGlobalDecl>& decls);
+        const std::vector<ShaderGlobalDecl>& getShaderGlobals() const;
+        void applyShaderGlobals() const;
+        // a Play starts and stops with the declared defaults (the values scripts set are gone)
+        void resetPlayShaderGlobals() const;
 
         // Absolute roots stored references are relative to: assets for textures, models,
         // sounds and fonts ("asset://"), Lua for script entries ("lua://").

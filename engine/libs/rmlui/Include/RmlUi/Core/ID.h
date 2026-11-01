@@ -377,6 +377,8 @@ enum class PropertyId : uint16_t {
 	// Line clamping (fork, phase 6, P6-L1): '-webkit-line-clamp' and the legacy '-webkit-box-orient' it needs.
 	WebkitLineClamp,
 	WebkitBoxOrient,
+	// Pointer Events (fork, engine-gaps G5-4): what a touch on the element may pan (read when a touch starts).
+	TouchAction,
 
 	NumDefinedIds,
 	FirstCustomId = NumDefinedIds,
@@ -468,6 +470,20 @@ enum class EventId : uint16_t {
 	Transitionrun,
 	Transitionstart,
 	Transitioncancel,
+
+	// DOM Pointer Events (fork, engine-gaps G5-2)
+	Pointerdown,
+	Pointermove,
+	Pointerup,
+	Pointercancel,
+	Pointerover,
+	Pointerout,
+	Pointerenter,
+	Pointerleave,
+	Gotpointercapture,
+	Lostpointercapture,
+	Mouseenter,
+	Mouseleave,
 
 	NumDefinedIds,
 

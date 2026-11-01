@@ -32,6 +32,12 @@ namespace jasperengine::editor{
         SCROLLBAR,
         PROGRESSBAR,
         INPUT_FIELD,
+        // ui-multitouch: on-screen controls (the stick in Joystick Pack's three modes)
+        ONSCREEN_STICK_FIXED,
+        ONSCREEN_STICK_FLOATING,
+        ONSCREEN_STICK_DYNAMIC,
+        ONSCREEN_BUTTON,
+        TOUCH_AREA,
         PANEL,
         POLYGON,
         LAYOUT_GROUP,
@@ -63,7 +69,13 @@ namespace jasperengine::editor{
         MORPH_TRACKS,
         LATTICE_TRACKS,
         MODEL,
+        // a version 2 Particle System on its own GameObject (Unity's: the default quad renderer)
         PARTICLE_SYSTEM,
+        // a version 1 (legacy) Particle System drawing on its parent (a Points or Mesh GameObject):
+        // create_particles' emitter_entity
+        PARTICLE_SYSTEM_LEGACY,
+        // a version 2 Particle System drawn as GL points on its own GameObject (billboards only)
+        PARTICLE_SYSTEM_POINTS,
         // a Points emitter in UI units under a UI element and its Particle System child
         // (unscaled time, local space): particles drawn in canvas order, clipped by panels
         UI_PARTICLE_SYSTEM,

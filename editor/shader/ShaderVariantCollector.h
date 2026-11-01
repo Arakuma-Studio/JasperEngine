@@ -66,6 +66,11 @@ namespace jasperengine::editor {
     // script reaches compiles at runtime.
     class ShaderVariantCollector {
     public:
+        // The variants every build ships whatever its scenes hold (added by the Exporter, never
+        // to a scene's saved shaderKeys): the FLATTEN Canvas Group composite (the HTML UI
+        // passthrough, a few KB), since a script can add a group or switch one to FLATTEN in any scene
+        static void addBuildRequiredKeys(std::set<ShaderKey>& keys);
+
         static void collectScene(Scene* scene, const ShaderVariantContent& sceneContent,
                                  const std::vector<ShaderVariantContent>& prefabContents,
                                  std::set<ShaderKey>& keys, const std::filesystem::path& projectRoot = {},

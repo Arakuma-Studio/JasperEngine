@@ -82,6 +82,11 @@ namespace jasperengine {
                                const std::function<void(ScriptBase&)>& callCpp,
                                uint32_t deliver = DeliverAny);
 
+        // Unity's ExecuteEvents.GetEventHandler: the GameObject itself or its first ancestor (upward)
+        // that is active in hierarchy and has an enabled script defining the message
+        // (ScriptMessages::defines); NULL_ENTITY when none
+        static Entity findHandler(Scene* scene, Entity entity, ScriptMessage m);
+
         // The scene's scripts were awakened and it is not unloaded
         static bool hasStarted(Scene* scene);
         // The started scenes: the running ones in Engine order, then the others in start order

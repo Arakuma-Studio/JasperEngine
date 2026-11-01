@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "Catalog.h"
+#include "particles/ParticleFields.h"
+#include "action/ParticleSystem.h"
+#include "subsystem/ActionSystem.h"
 #include "script/ScriptRuntime.h"
 
 #include "Stream.h"
@@ -202,6 +205,7 @@ namespace {
         {"material.shaderParams", SubmeshOverride_ShaderParams},
         {"material.shaderTextures", SubmeshOverride_ShaderTextures},
         {"material.shaderFeatures", SubmeshOverride_ShaderFeatures},
+        {"material.shaderGlobalBindings", SubmeshOverride_ShaderGlobalBindings},
         {"material.blendMode", SubmeshOverride_BlendMode},
         {"material.cullMode", SubmeshOverride_CullMode},
         {"material.depthWrite", SubmeshOverride_DepthWrite},
@@ -259,7 +263,7 @@ namespace {
     // shader, its features, textures and render state are resolved when the mesh loads, so a
     // change reloads it; parameters only rewrite the uniform blocks.
     const char* const kMaterialLibraryFields[] = {
-        "shader", "shaderParams", "shaderTextures", "shaderFeatures", "blendMode", "cullMode", "depthWrite",
+        "shader", "shaderParams", "shaderTextures", "shaderFeatures", "shaderGlobalBindings", "blendMode", "cullMode", "depthWrite",
         "depthTest", "depthOffsetFactor", "depthOffsetUnits", "sortPriority", "lighting",
         // phase 2
         "stencil", "stencil.compare", "stencil.ref", "stencil.readMask", "stencil.writeMask", "stencil.pass",
@@ -326,6 +330,8 @@ namespace {
         if (field == "shaderParams") return data(PropertyType::Custom, UpdateFlags_Shader_Uniforms, &Material::shaderParams);
         if (field == "shaderTextures") return data(PropertyType::Custom, UpdateFlags_Mesh_Reload | UpdateFlags_Mesh_Texture, &Material::shaderTextures);
         if (field == "shaderFeatures") return data(PropertyType::Custom, UpdateFlags_Mesh_Reload, &Material::shaderFeatures);
+        // members following a global: rewritten into the blocks like the parameters
+        if (field == "shaderGlobalBindings") return data(PropertyType::Custom, UpdateFlags_Shader_Uniforms, &Material::shaderGlobalBindings);
         if (field == "blendMode") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &Material::blendMode);
         if (field == "cullMode") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &Material::cullMode);
         if (field == "depthWrite") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &Material::depthWrite);
@@ -369,6 +375,7 @@ namespace {
         makeFastProperty<UIComponent, Texture, &UIComponent::texture>("texture", PropertyType::Texture, UpdateFlags_UI_Texture),
         makeFastProperty<UIComponent, std::string, &UIComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
         makeFastProperty<UIComponent, ShaderUniformValues, &UIComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
+        makeFastProperty<UIComponent, ShaderGlobalBindings, &UIComponent::shaderGlobalBindings>("shaderGlobalBindings", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
         // shader library: resolved when the UI loads its shader
         makeFastProperty<UIComponent, std::vector<std::pair<std::string, Texture>>, &UIComponent::shaderTextures>("shaderTextures", PropertyType::Custom, UpdateFlags_Shader_Reload),
         makeFastProperty<UIComponent, std::vector<std::string>, &UIComponent::shaderFeatures>("shaderFeatures", PropertyType::Custom, UpdateFlags_Shader_Reload),
@@ -425,6 +432,44 @@ namespace {
         makeFastProperty<ScrollbarComponent, int, &ScrollbarComponent::barMarginRight>("barMarginRight", PropertyType::Int, UpdateFlags_None),
         makeFastProperty<ScrollbarComponent, int, &ScrollbarComponent::barMarginTop>("barMarginTop", PropertyType::Int, UpdateFlags_None),
         makeFastProperty<ScrollbarComponent, int, &ScrollbarComponent::barMarginBottom>("barMarginBottom", PropertyType::Int, UpdateFlags_None),
+    };
+
+    // ui-multitouch: the on-screen controls (the runtime state is not a property)
+    static const FastPropertyDescriptor kOnScreenStickProperties[] = {
+        makeFastProperty<OnScreenStickComponent, bool, &OnScreenStickComponent::enabled>("enabled", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, OnScreenStickMode, &OnScreenStickComponent::mode>("mode", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, Entity, &OnScreenStickComponent::background>("background", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, Entity, &OnScreenStickComponent::handle>("handle", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, float, &OnScreenStickComponent::handleRange>("handleRange", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, float, &OnScreenStickComponent::deadZone>("deadZone", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, float, &OnScreenStickComponent::moveThreshold>("moveThreshold", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, OnScreenStickAxes, &OnScreenStickComponent::axes>("axes", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, bool, &OnScreenStickComponent::snapX>("snapX", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, bool, &OnScreenStickComponent::snapY>("snapY", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, bool, &OnScreenStickComponent::hideWhenReleased>("hideWhenReleased", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, bool, &OnScreenStickComponent::clampToArea>("clampToArea", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, std::string, &OnScreenStickComponent::horizontalAction>("horizontalAction", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, std::string, &OnScreenStickComponent::verticalAction>("verticalAction", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, OnScreenVisibility, &OnScreenStickComponent::visibility>("visibility", PropertyType::Enum, UpdateFlags_None),
+    };
+
+    static const FastPropertyDescriptor kOnScreenButtonProperties[] = {
+        makeFastProperty<OnScreenButtonComponent, bool, &OnScreenButtonComponent::enabled>("enabled", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenButtonComponent, std::string, &OnScreenButtonComponent::action>("action", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<OnScreenButtonComponent, float, &OnScreenButtonComponent::value>("value", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<OnScreenButtonComponent, bool, &OnScreenButtonComponent::pressWhenPointerEnters>("pressWhenPointerEnters", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenButtonComponent, bool, &OnScreenButtonComponent::releaseWhenPointerLeaves>("releaseWhenPointerLeaves", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenButtonComponent, OnScreenVisibility, &OnScreenButtonComponent::visibility>("visibility", PropertyType::Enum, UpdateFlags_None),
+    };
+
+    static const FastPropertyDescriptor kTouchAreaProperties[] = {
+        makeFastProperty<TouchAreaComponent, bool, &TouchAreaComponent::enabled>("enabled", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TouchAreaComponent, std::string, &TouchAreaComponent::horizontalAction>("horizontalAction", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<TouchAreaComponent, std::string, &TouchAreaComponent::verticalAction>("verticalAction", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<TouchAreaComponent, float, &TouchAreaComponent::sensitivity>("sensitivity", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<TouchAreaComponent, bool, &TouchAreaComponent::invertX>("invertX", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TouchAreaComponent, bool, &TouchAreaComponent::invertY>("invertY", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TouchAreaComponent, OnScreenVisibility, &TouchAreaComponent::visibility>("visibility", PropertyType::Enum, UpdateFlags_None),
     };
 
     static const FastPropertyDescriptor kProgressbarProperties[] = {
@@ -781,10 +826,14 @@ namespace {
 
     // enabled is the shared component checkbox (findEnabledGetter). The clip list is `clips`
     // (Custom: the whole list, what a prefab override of the list holds) plus
-    // clips[i].clip/guid/name/wrap (resolveAnimationPlayerPropertyFast); the runtime fields are
+    // clips[i].clip/guid/name/wrap/layer, layers[i].name/weight/blend/mask/maskGuid
+    // (resolveAnimationPlayerPropertyFast); the runtime fields are
     // not properties. The settings are read by the player when it plays (no update flag).
     static const FastPropertyDescriptor kAnimationPlayerProperties[] = {
         makeFastProperty<AnimationPlayerComponent, std::vector<AnimationPlayerClip>, &AnimationPlayerComponent::clips>("clips", PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload),
+        makeFastProperty<AnimationPlayerComponent, std::vector<AnimationPlayerLayer>, &AnimationPlayerComponent::layers>("layers", PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload),
+        makeFastProperty<AnimationPlayerComponent, std::string, &AnimationPlayerComponent::controller>("controller", PropertyType::String, UpdateFlags_AnimationPlayer_Reload),
+        makeFastProperty<AnimationPlayerComponent, std::string, &AnimationPlayerComponent::controllerGuid>("controllerGuid", PropertyType::String, UpdateFlags_AnimationPlayer_Reload),
         makeFastProperty<AnimationPlayerComponent, std::string, &AnimationPlayerComponent::defaultClip>("defaultClip", PropertyType::String, UpdateFlags_None),
         makeFastProperty<AnimationPlayerComponent, bool, &AnimationPlayerComponent::playAutomatically>("playAutomatically", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<AnimationPlayerComponent, float, &AnimationPlayerComponent::speed>("speed", PropertyType::Float, UpdateFlags_None),
@@ -850,6 +899,7 @@ namespace {
         makeFastProperty<TrailRendererComponent, int, &TrailRendererComponent::sortPriority>("sortPriority", PropertyType::Int, UpdateFlags_None),
         makeFastProperty<TrailRendererComponent, std::string, &TrailRendererComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
         makeFastProperty<TrailRendererComponent, ShaderUniformValues, &TrailRendererComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
+        makeFastProperty<TrailRendererComponent, ShaderGlobalBindings, &TrailRendererComponent::shaderGlobalBindings>("shaderGlobalBindings", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
         makeFastProperty<TrailRendererComponent, std::vector<std::pair<std::string, Texture>>, &TrailRendererComponent::shaderTextures>("shaderTextures", PropertyType::Custom, UpdateFlags_Shader_Reload),
         makeFastProperty<TrailRendererComponent, std::vector<std::string>, &TrailRendererComponent::shaderFeatures>("shaderFeatures", PropertyType::Custom, UpdateFlags_Shader_Reload),
         makeFastProperty<TrailRendererComponent, MaterialBlendMode, &TrailRendererComponent::blendMode>("blendMode", PropertyType::Enum, UpdateFlags_Shader_Reload),
@@ -909,6 +959,7 @@ namespace {
         makeFastProperty<SkyboxComponent, bool, &SkyboxComponent::visible>("visible", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<SkyboxComponent, std::string, &SkyboxComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
         makeFastProperty<SkyboxComponent, ShaderUniformValues, &SkyboxComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
+        makeFastProperty<SkyboxComponent, ShaderGlobalBindings, &SkyboxComponent::shaderGlobalBindings>("shaderGlobalBindings", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
         makeFastProperty<SkyboxComponent, std::vector<std::pair<std::string, Texture>>, &SkyboxComponent::shaderTextures>("shaderTextures", PropertyType::Custom, UpdateFlags_Shader_Reload),
         makeFastProperty<SkyboxComponent, std::vector<std::string>, &SkyboxComponent::shaderFeatures>("shaderFeatures", PropertyType::Custom, UpdateFlags_Shader_Reload),
     };
@@ -1718,6 +1769,18 @@ namespace {
         return resolveDirectProperties(static_cast<ScrollbarComponent*>(comp), propertyName, kScrollbarProperties);
     }
 
+    PropertyData resolveOnScreenStickPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<OnScreenStickComponent*>(comp), propertyName, kOnScreenStickProperties);
+    }
+
+    PropertyData resolveOnScreenButtonPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<OnScreenButtonComponent*>(comp), propertyName, kOnScreenButtonProperties);
+    }
+
+    PropertyData resolveTouchAreaPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<TouchAreaComponent*>(comp), propertyName, kTouchAreaProperties);
+    }
+
     PropertyData resolveProgressbarPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<ProgressbarComponent*>(comp), propertyName, kProgressbarProperties);
     }
@@ -2167,6 +2230,28 @@ namespace {
                 if (fieldName == ".wrap") {
                     return {PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.wrap, (void*)&entry.wrap};
                 }
+                if (fieldName == ".layer") {
+                    return {PropertyType::Int, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.layer, (void*)&entry.layer};
+                }
+            }
+        }
+
+        // layers[i].name / .weight / .mask / .maskGuid; .blend is an AnimationLayerBlend, one
+        // byte: Custom like clips[i].wrap (anim layers spec 6.3)
+        if (propertyName.compare(0, 7, "layers[") == 0) {
+            size_t pos = 7;
+            size_t index = 0;
+            if (!parseIndex(propertyName, pos, index)) return PropertyData();
+            if (pos + 1 >= propertyName.length() || propertyName[pos] != ']') return PropertyData();
+            if (index < comp->layers.size()) {
+                static AnimationPlayerLayer defLayer;
+                AnimationPlayerLayer& layer = comp->layers[index];
+                const std::string fieldName = propertyName.substr(pos + 1);
+                if (fieldName == ".name") return {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.name, (void*)&layer.name};
+                if (fieldName == ".weight") return {PropertyType::Float, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.weight, (void*)&layer.weight};
+                if (fieldName == ".blend") return {PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.blend, (void*)&layer.blend};
+                if (fieldName == ".mask") return {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.mask, (void*)&layer.mask};
+                if (fieldName == ".maskGuid") return {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.maskGuid, (void*)&layer.maskGuid};
             }
         }
 
@@ -2303,9 +2388,38 @@ namespace {
         return getRigidbodyPropertyFast(static_cast<RigidbodyComponent*>(comp), propertyName);
     }
 
+    // a version 2 module field (particles/ParticleFields) as a property
+    PropertyData particleFieldProperty(const particles::FieldInfo& field, ParticleSystemComponent* comp, ParticleSystemComponent& def) {
+        PropertyType type = PropertyType::Custom;
+        switch (field.type) {
+            case particles::FieldType::Bool: type = PropertyType::Bool; break;
+            case particles::FieldType::Int: type = PropertyType::Int; break;
+            case particles::FieldType::UInt: type = PropertyType::UInt; break;
+            case particles::FieldType::Float: type = PropertyType::Float; break;
+            case particles::FieldType::Vector2: type = PropertyType::Vector2; break;
+            case particles::FieldType::Vector3: type = PropertyType::Vector3; break;
+            case particles::FieldType::Curve: type = PropertyType::MinMaxCurve; break;
+            case particles::FieldType::Gradient: type = PropertyType::MinMaxGradient; break;
+            case particles::FieldType::Enum: type = PropertyType::Enum; break;
+            case particles::FieldType::String: type = PropertyType::String; break;
+            case particles::FieldType::Bursts:
+            case particles::FieldType::IntList: type = PropertyType::Custom; break;
+        }
+        const uint64_t flags = field.path() == "renderer.mesh" ? (uint64_t)UpdateFlags_Particle_Mesh : (uint64_t)UpdateFlags_None;
+        return {type, flags, field.get(def), comp ? field.get(*comp) : nullptr};
+    }
+
     PropertyData getParticlesPropertyFast(ParticleSystemComponent* comp, const std::string& propertyName) {
         ParticleSystemComponent& def = getDefaultComponent<ParticleSystemComponent>();
         if (!comp) return PropertyData();
+
+        // the model (1 legacy, 2 modules) and the time it runs on
+        if (propertyName == "version") return {PropertyType::Int, UpdateFlags_None, &def.version, &comp->version};
+        if (propertyName == "useUnscaledTime") return {PropertyType::Bool, UpdateFlags_None, &def.useUnscaledTime, &comp->useUnscaledTime};
+        // version 2: "module.field"
+        if (const particles::FieldInfo* field = particles::findField(propertyName)) {
+            return particleFieldProperty(*field, comp, def);
+        }
 
         // Top-level properties
         if (propertyName == "maxParticles") return {PropertyType::UInt, UpdateFlags_None, &def.maxParticles, &comp->maxParticles};
@@ -3082,6 +3196,18 @@ namespace {
         enumerateFromDescriptors(comp, ps, kScrollbarProperties);
     }
 
+    void enumerateOnScreenStickProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kOnScreenStickProperties);
+    }
+
+    void enumerateOnScreenButtonProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kOnScreenButtonProperties);
+    }
+
+    void enumerateTouchAreaProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kTouchAreaProperties);
+    }
+
     void enumerateProgressbarProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kProgressbarProperties);
     }
@@ -3316,6 +3442,17 @@ namespace {
             ps[prefix + ".guid"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.guid, entry ? (void*)&entry->guid : nullptr};
             ps[prefix + ".name"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.name, entry ? (void*)&entry->name : nullptr};
             ps[prefix + ".wrap"] = {PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.wrap, entry ? (void*)&entry->wrap : nullptr};
+            ps[prefix + ".layer"] = {PropertyType::Int, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.layer, entry ? (void*)&entry->layer : nullptr};
+        }
+        static AnimationPlayerLayer defLayer;
+        for (size_t i = 0; i < (compRef ? comp->layers.size() : 1); i++) {
+            const std::string prefix = "layers[" + (compRef ? std::to_string(i) : std::string()) + "]";
+            AnimationPlayerLayer* layer = compRef ? &comp->layers[i] : nullptr;
+            ps[prefix + ".name"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.name, layer ? (void*)&layer->name : nullptr};
+            ps[prefix + ".weight"] = {PropertyType::Float, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.weight, layer ? (void*)&layer->weight : nullptr};
+            ps[prefix + ".blend"] = {PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.blend, layer ? (void*)&layer->blend : nullptr};
+            ps[prefix + ".mask"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.mask, layer ? (void*)&layer->mask : nullptr};
+            ps[prefix + ".maskGuid"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defLayer.maskGuid, layer ? (void*)&layer->maskGuid : nullptr};
         }
     }
 
@@ -3597,6 +3734,16 @@ namespace {
         ParticleSystemComponent* comp = static_cast<ParticleSystemComponent*>(compRef);
         ParticleSystemComponent& def = getDefaultComponent<ParticleSystemComponent>();
 
+        ps["version"] = {PropertyType::Int, UpdateFlags_None, &def.version, comp ? &comp->version : nullptr};
+        ps["useUnscaledTime"] = {PropertyType::Bool, UpdateFlags_None, &def.useUnscaledTime, comp ? &comp->useUnscaledTime : nullptr};
+        // a system lists the fields of its model: the modules (version 2) or the legacy ones
+        if (!comp || comp->version >= 2) {
+            for (const particles::FieldInfo& field : particles::fields()) {
+                ps[field.path()] = particleFieldProperty(field, comp, def);
+            }
+            if (comp) return;
+        }
+
         ps["maxParticles"] = {PropertyType::UInt, UpdateFlags_None, &def.maxParticles, comp ? &comp->maxParticles : nullptr};
         ps["emitter"] = {PropertyType::Bool, UpdateFlags_None, &def.emitter, comp ? &comp->emitter : nullptr};
         ps["loop"] = {PropertyType::Bool, UpdateFlags_None, &def.loop, comp ? &comp->loop : nullptr};
@@ -3702,6 +3849,7 @@ namespace {
         if (propertyName == "texture") return {PropertyType::Texture, UpdateFlags_Points_Texture, &def.texture, &comp->texture};
         if (propertyName == "customShader") return {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, &comp->customShader};
         if (propertyName == "shaderUniforms") return {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, &comp->shaderUniforms};
+        if (propertyName == "shaderGlobalBindings") return {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderGlobalBindings, &comp->shaderGlobalBindings};
         if (propertyName == "shaderTextures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, &comp->shaderTextures};
         if (propertyName == "shaderFeatures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, &comp->shaderFeatures};
         if (propertyName == "blendMode") return {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.blendMode, &comp->blendMode};
@@ -3794,6 +3942,7 @@ namespace {
         ps["texture"] = {PropertyType::Texture, UpdateFlags_Points_Texture, &def.texture, comp ? &comp->texture : nullptr};
         ps["customShader"] = {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, comp ? &comp->customShader : nullptr};
         ps["shaderUniforms"] = {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, comp ? &comp->shaderUniforms : nullptr};
+        ps["shaderGlobalBindings"] = {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderGlobalBindings, comp ? &comp->shaderGlobalBindings : nullptr};
         ps["shaderTextures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, comp ? &comp->shaderTextures : nullptr};
         ps["shaderFeatures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, comp ? &comp->shaderFeatures : nullptr};
         ps["blendMode"] = {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.blendMode, comp ? &comp->blendMode : nullptr};
@@ -3850,6 +3999,7 @@ namespace {
         if (propertyName == "maxLines") return {PropertyType::UInt, UpdateFlags_Lines_Reload, &def.maxLines, &comp->maxLines};
         if (propertyName == "customShader") return {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, &comp->customShader};
         if (propertyName == "shaderUniforms") return {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, &comp->shaderUniforms};
+        if (propertyName == "shaderGlobalBindings") return {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderGlobalBindings, &comp->shaderGlobalBindings};
         if (propertyName == "shaderTextures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, &comp->shaderTextures};
         if (propertyName == "shaderFeatures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, &comp->shaderFeatures};
         if (propertyName == "blendMode") return {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.blendMode, &comp->blendMode};
@@ -3928,6 +4078,7 @@ namespace {
         ps["maxLines"] = {PropertyType::UInt, UpdateFlags_Lines_Reload, &def.maxLines, comp ? &comp->maxLines : nullptr};
         ps["customShader"] = {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, comp ? &comp->customShader : nullptr};
         ps["shaderUniforms"] = {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, comp ? &comp->shaderUniforms : nullptr};
+        ps["shaderGlobalBindings"] = {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderGlobalBindings, comp ? &comp->shaderGlobalBindings : nullptr};
         ps["shaderTextures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, comp ? &comp->shaderTextures : nullptr};
         ps["shaderFeatures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, comp ? &comp->shaderFeatures : nullptr};
         ps["blendMode"] = {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.blendMode, comp ? &comp->blendMode : nullptr};
@@ -4097,6 +4248,9 @@ namespace {
         {ComponentType::AnimationPlayerComponent, &findComponentPtr<AnimationPlayerComponent>, &resolveAnimationPlayerPropertyFast, &enumerateAnimationPlayerProperties},
         {ComponentType::VertexAnimatorComponent, &findComponentPtr<VertexAnimatorComponent>, &resolveVertexAnimatorPropertyFast, &enumerateVertexAnimatorProperties},
         {ComponentType::CanvasGroupComponent, &findComponentPtr<CanvasGroupComponent>, &resolveCanvasGroupPropertyFast, &enumerateCanvasGroupProperties},
+        {ComponentType::OnScreenStickComponent, &findComponentPtr<OnScreenStickComponent>, &resolveOnScreenStickPropertyFast, &enumerateOnScreenStickProperties},
+        {ComponentType::OnScreenButtonComponent, &findComponentPtr<OnScreenButtonComponent>, &resolveOnScreenButtonPropertyFast, &enumerateOnScreenButtonProperties},
+        {ComponentType::TouchAreaComponent, &findComponentPtr<TouchAreaComponent>, &resolveTouchAreaPropertyFast, &enumerateTouchAreaProperties},
         {ComponentType::Light2DComponent, &findComponentPtr<Light2DComponent>, &resolveLight2DPropertyFast, &enumerateLight2DProperties},
         {ComponentType::ShadowCaster2DComponent, &findComponentPtr<ShadowCaster2DComponent>, &resolveShadowCaster2DPropertyFast, &enumerateShadowCaster2DProperties},
         {ComponentType::CameraComponent, &findComponentPtr<CameraComponent>, &resolveCameraPropertyFast, &enumerateCameraProperties},
@@ -4177,6 +4331,9 @@ namespace {
             case ComponentType::AnimationPlayerComponent: return &getEnabledRef<AnimationPlayerComponent>;
             case ComponentType::VertexAnimatorComponent: return &getEnabledRef<VertexAnimatorComponent>;
             case ComponentType::CanvasGroupComponent: return &getEnabledRef<CanvasGroupComponent>;
+            case ComponentType::OnScreenStickComponent: return &getEnabledRef<OnScreenStickComponent>;
+            case ComponentType::OnScreenButtonComponent: return &getEnabledRef<OnScreenButtonComponent>;
+            case ComponentType::TouchAreaComponent: return &getEnabledRef<TouchAreaComponent>;
             case ComponentType::TextEffectComponent: return &getEnabledRef<TextEffectComponent>;
             default: return nullptr;
         }
@@ -4333,6 +4490,12 @@ std::string computeComponentName(editor::ComponentType component){
         name = "TrailRendererComponent";
     }else if(component == ComponentType::CanvasGroupComponent){
         name = "CanvasGroupComponent";
+    }else if(component == ComponentType::OnScreenStickComponent){
+        name = "OnScreenStickComponent";
+    }else if(component == ComponentType::OnScreenButtonComponent){
+        name = "OnScreenButtonComponent";
+    }else if(component == ComponentType::TouchAreaComponent){
+        name = "TouchAreaComponent";
     }else if(component == ComponentType::TextEffectComponent){
         name = "TextEffectComponent";
     }else if(component == ComponentType::Light2DComponent){
@@ -4471,6 +4634,9 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::SpriteComponent: return "Sprite Renderer";
         case ComponentType::TextComponent: return "Text";
         case ComponentType::InputFieldComponent: return "Input Field";
+        case ComponentType::OnScreenStickComponent: return "On-Screen Stick";
+        case ComponentType::OnScreenButtonComponent: return "On-Screen Button";
+        case ComponentType::TouchAreaComponent: return "Touch Area";
         case ComponentType::TilemapComponent: return "Tilemap";
         case ComponentType::TranslateTracksComponent: return "Position Tracks";
         case ComponentType::LayoutGroupComponent: return "Layout Group";
@@ -4542,6 +4708,9 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::SpriteComponent: return ICON_FA_IMAGE;
         case ComponentType::TextComponent: return ICON_FA_FONT;
         case ComponentType::InputFieldComponent: return ICON_FA_KEYBOARD;
+        case ComponentType::OnScreenStickComponent: return ICON_FA_GAMEPAD;
+        case ComponentType::OnScreenButtonComponent: return ICON_FA_CIRCLE_DOT;
+        case ComponentType::TouchAreaComponent: return ICON_FA_HAND_POINTER;
         case ComponentType::TilemapComponent: return ICON_FA_BORDER_ALL;
         case ComponentType::TranslateTracksComponent: return ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT;
         case ComponentType::LayoutGroupComponent: return ICON_FA_TABLE_CELLS;
@@ -4625,6 +4794,12 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<AnimationPlayerComponent>();
         case ComponentType::VertexAnimatorComponent:
             return registry->getComponentId<VertexAnimatorComponent>();
+        case ComponentType::OnScreenStickComponent:
+            return registry->getComponentId<OnScreenStickComponent>();
+        case ComponentType::OnScreenButtonComponent:
+            return registry->getComponentId<OnScreenButtonComponent>();
+        case ComponentType::TouchAreaComponent:
+            return registry->getComponentId<TouchAreaComponent>();
         case ComponentType::TextEffectComponent:
             return registry->getComponentId<TextEffectComponent>();
         case ComponentType::Light2DComponent:
@@ -4825,6 +5000,12 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::TextComponent;
     }else if(normalizedName == "inputfield"){
         return ComponentType::InputFieldComponent;
+    }else if(normalizedName == "onscreenstick"){
+        return ComponentType::OnScreenStickComponent;
+    }else if(normalizedName == "onscreenbutton"){
+        return ComponentType::OnScreenButtonComponent;
+    }else if(normalizedName == "toucharea"){
+        return ComponentType::TouchAreaComponent;
     }else if(normalizedName == "tilemap"){
         return ComponentType::TilemapComponent;
     }else if(normalizedName == "tween"){
@@ -5050,6 +5231,15 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     if (registry->findComponent<InputFieldComponent>(entity)){
         ret.push_back(ComponentType::InputFieldComponent);
     }
+    if (registry->findComponent<OnScreenStickComponent>(entity)){
+        ret.push_back(ComponentType::OnScreenStickComponent);
+    }
+    if (registry->findComponent<OnScreenButtonComponent>(entity)){
+        ret.push_back(ComponentType::OnScreenButtonComponent);
+    }
+    if (registry->findComponent<TouchAreaComponent>(entity)){
+        ret.push_back(ComponentType::TouchAreaComponent);
+    }
     if (registry->findComponent<TilemapComponent>(entity)){
         ret.push_back(ComponentType::TilemapComponent);
     }
@@ -5217,6 +5407,12 @@ uint64_t editor::Catalog::getChangedUpdateFlags(ComponentType compType, void* ol
                 break;
             case PropertyType::Gradient:
                 changed = *static_cast<Gradient*>(oldProp.ref) != *static_cast<Gradient*>(newProp.ref);
+                break;
+            case PropertyType::MinMaxCurve:
+                changed = *static_cast<MinMaxCurve*>(oldProp.ref) != *static_cast<MinMaxCurve*>(newProp.ref);
+                break;
+            case PropertyType::MinMaxGradient:
+                changed = *static_cast<MinMaxGradient*>(oldProp.ref) != *static_cast<MinMaxGradient*>(newProp.ref);
                 break;
             case PropertyType::Custom:
                 // Conservative: assume changed for complex types
@@ -5397,7 +5593,7 @@ bool editor::Catalog::isCustomDepthShaderBuildFailed(Scene* scene, Entity entity
 }
 
 bool editor::Catalog::splitShaderEntryProperty(const std::string& propertyName, std::string& collection, std::string& key) {
-    for (const char* name : {"shaderParams.", "shaderTextures.", "shaderUniforms."}) {
+    for (const char* name : {"shaderParams.", "shaderTextures.", "shaderUniforms.", "shaderGlobalBindings."}) {
         const size_t at = propertyName.find(name);
         if (at == std::string::npos) continue;
         const std::string prefix = propertyName.substr(0, at);
@@ -5405,9 +5601,11 @@ bool editor::Catalog::splitShaderEntryProperty(const std::string& propertyName, 
         const bool material = prefix.compare(0, 10, "submeshes[") == 0 &&
                               (endsWith(prefix, "].material.") || endsWith(prefix, "].material.extraPass."));
         const bool component = prefix.empty();
-        // a material has shaderParams, a component shaderUniforms; both have shaderTextures
+        // a material has shaderParams, a component shaderUniforms; both have shaderTextures and
+        // shaderGlobalBindings (an extra pass has none)
         const std::string field(name, std::strlen(name) - 1);
-        if ((material && field == "shaderUniforms") || (component && field == "shaderParams") || (!material && !component)) {
+        if ((material && field == "shaderUniforms") || (component && field == "shaderParams") || (!material && !component) ||
+                (field == "shaderGlobalBindings" && endsWith(prefix, "extraPass."))) {
             return false;
         }
         key = propertyName.substr(at + std::strlen(name));
@@ -5661,6 +5859,14 @@ uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Mat
 }
 
 void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint64_t updateFlags){
+    if (updateFlags & UpdateFlags_Particle_Mesh){
+        // the Mesh render mode's primitive, drawn by the system's target
+        Scene* scene = dynamic_cast<Scene*>(registry);
+        const ParticleSystemComponent* ps = registry->findComponent<ParticleSystemComponent>(entity);
+        if (scene && ps && ps->version >= 2){
+            ParticleSystem::applyRendererMesh(scene, scene->getSystem<ActionSystem>()->particleTarget(entity), ps->renderer.mesh);
+        }
+    }
     if (updateFlags & UpdateFlags_CanvasGroup){
         // alpha in [0, 1] at once (a NaN keeps the value UISystem last saw)
         if (CanvasGroupComponent* group = registry->findComponent<CanvasGroupComponent>(entity)){
@@ -6067,6 +6273,24 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
         case ComponentType::InputFieldComponent: {
             YAML::Node encoded = Stream::encodeInputFieldComponent(sourceRegistry->getComponent<InputFieldComponent>(sourceEntity));
             targetRegistry->getComponent<InputFieldComponent>(targetEntity) = Stream::decodeInputFieldComponent(encoded);
+            break;
+        }
+
+        case ComponentType::OnScreenStickComponent: {
+            YAML::Node encoded = Stream::encodeOnScreenStickComponent(sourceRegistry->getComponent<OnScreenStickComponent>(sourceEntity));
+            targetRegistry->getComponent<OnScreenStickComponent>(targetEntity) = Stream::decodeOnScreenStickComponent(encoded);
+            break;
+        }
+
+        case ComponentType::OnScreenButtonComponent: {
+            YAML::Node encoded = Stream::encodeOnScreenButtonComponent(sourceRegistry->getComponent<OnScreenButtonComponent>(sourceEntity));
+            targetRegistry->getComponent<OnScreenButtonComponent>(targetEntity) = Stream::decodeOnScreenButtonComponent(encoded);
+            break;
+        }
+
+        case ComponentType::TouchAreaComponent: {
+            YAML::Node encoded = Stream::encodeTouchAreaComponent(sourceRegistry->getComponent<TouchAreaComponent>(sourceEntity));
+            targetRegistry->getComponent<TouchAreaComponent>(targetEntity) = Stream::decodeTouchAreaComponent(encoded);
             break;
         }
 
@@ -6540,8 +6764,28 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             if (source && target) *target = *source;
             break;
         }
+        case PropertyType::MinMaxCurve: {
+            MinMaxCurve* source = Catalog::getPropertyRef<MinMaxCurve>(sourceRegistry, sourceEntity, compType, property);
+            MinMaxCurve* target = Catalog::getPropertyRef<MinMaxCurve>(targetRegistry, targetEntity, compType, property);
+            if (source && target) *target = *source;
+            break;
+        }
+        case PropertyType::MinMaxGradient: {
+            MinMaxGradient* source = Catalog::getPropertyRef<MinMaxGradient>(sourceRegistry, sourceEntity, compType, property);
+            MinMaxGradient* target = Catalog::getPropertyRef<MinMaxGradient>(targetRegistry, targetEntity, compType, property);
+            if (source && target) *target = *source;
+            break;
+        }
         case PropertyType::Custom:
-            if (compType == ComponentType::ScriptComponent) {
+            if (compType == ComponentType::ParticleSystemComponent && property == "emission.bursts") {
+                auto* source = Catalog::getPropertyRef<std::vector<ParticleEmissionBurst>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<ParticleEmissionBurst>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::ParticleSystemComponent && property == "textureSheetAnimation.sprites") {
+                auto* source = Catalog::getPropertyRef<std::vector<int>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<int>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::ScriptComponent) {
                 copyComponent(sourceRegistry, sourceEntity, targetRegistry, targetEntity, compType);
             } else if (compType == ComponentType::TerrainComponent && property == "foliageLayers") {
                 auto* source = Catalog::getPropertyRef<std::vector<TerrainFoliageLayer>>(sourceRegistry, sourceEntity, compType, property);
@@ -6615,6 +6859,14 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
                 auto* source = Catalog::getPropertyRef<ClipWrapMode>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<ClipWrapMode>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
+            } else if (compType == ComponentType::AnimationPlayerComponent && property == "layers") {
+                auto* source = Catalog::getPropertyRef<std::vector<AnimationPlayerLayer>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<AnimationPlayerLayer>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::AnimationPlayerComponent && property.compare(0, 7, "layers[") == 0 && endsWith(property, "].blend")) {
+                auto* source = Catalog::getPropertyRef<AnimationLayerBlend>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<AnimationLayerBlend>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
             } else if (compType == ComponentType::LatticeTracksComponent && property == "points") {
                 auto* source = Catalog::getPropertyRef<std::vector<int>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<int>>(targetRegistry, targetEntity, compType, property);
@@ -6651,6 +6903,10 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             } else if (property == "shaderTextures" || endsWith(property, "material.shaderTextures") || endsWith(property, "extraPass.shaderTextures")) {
                 auto* source = Catalog::getPropertyRef<std::vector<std::pair<std::string, Texture>>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<std::pair<std::string, Texture>>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (property == "shaderGlobalBindings" || endsWith(property, "material.shaderGlobalBindings")) {
+                auto* source = Catalog::getPropertyRef<ShaderGlobalBindings>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<ShaderGlobalBindings>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
             } else if (property == "shaderFeatures" || endsWith(property, "material.shaderFeatures") || endsWith(property, "extraPass.shaderFeatures")) {
                 auto* source = Catalog::getPropertyRef<std::vector<std::string>>(sourceRegistry, sourceEntity, compType, property);

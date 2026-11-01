@@ -694,6 +694,14 @@ bool anim::listModelFileClips(const std::string& modelPath, std::vector<ModelCli
     });
 }
 
+bool anim::listModelFileNodes(const std::string& modelPath, std::vector<std::string>& out, std::string* error){
+    out.clear();
+    return withModelFile(modelPath, error, [&](const tinygltf::Model& model){
+        out = modelNodePaths(model);
+        return true;
+    });
+}
+
 bool anim::buildModelSubClip(const std::string& reference, ClipData& out,
                              std::vector<ClipWarning>& warnings, std::string* error){
     out = ClipData();

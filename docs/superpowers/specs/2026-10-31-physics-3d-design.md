@@ -856,3 +856,13 @@ script-lifecycle), where the spec was silent, ambiguous or contradicted what the
     shrunk); the editor's exported capacity default for body pairs is 8192 like the project's.
 31. **T17**: the Factory output is checked by text in the unit suite; compiling it needs the export
     toolchain (the `JASPER_SLOW_BUILD` MCP export test does), so it is not compiled there.
+
+- Lead fix after merging (2026-11-01): project.yaml stores the 3D world capacity under `physics3DWorld`, not
+  `physics3D`, which already was the 3D physics on/off switch (a bool): sharing the key made one overwrite the
+  other and a capacity map failed the bool read. Log messages name `physics3DWorld.maxBodies` etc.; MCP keys
+  (`physics.max_*`) are unchanged. Test: editor/tests/ProjectPhysicsSettingsTest.cpp.
+32. **Builds without a physics backend.** `PhysicsSystemJoints3D.cpp` and `PhysicsSystemRagdoll.cpp`
+    included the 3D headers before their `#ifdef JASPERENGINE_PHYSICS_3D`, so an export of a project
+    without 3D physics (the Exporter writes the switch OFF) did not compile; their includes are now
+    inside the guard. `tools/check-physics-off.sh` builds the standalone engine and its sample with
+    3D off, 2D off and both off (build/physics-off-*), to run before merging physics changes.
