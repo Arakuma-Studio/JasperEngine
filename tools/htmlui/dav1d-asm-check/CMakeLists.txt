@@ -3,6 +3,11 @@
 cmake_minimum_required(VERSION 3.20)
 project(dav1d_asm_check C)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../../engine/libs/dav1d ${CMAKE_BINARY_DIR}/dav1d)
+# every C function compiled (config.h's TRIM_DSP_FUNCTIONS): otherwise the baseline asm (aarch64
+# NEON, x86-64 SSE2) is always on and replaces C, and the mask 0 run is not C only
+foreach(target dav1d dav1d_bitdepth_8 dav1d_bitdepth_16)
+    target_compile_definitions(${target} PRIVATE TRIM_DSP_FUNCTIONS=0)
+endforeach()
 add_executable(dav1d-asm-check check.c)
 # the check reads dav1d's CPU dispatch symbols (src/cpu.h); hidden in the library, linked statically
 target_link_libraries(dav1d-asm-check PRIVATE dav1d)
