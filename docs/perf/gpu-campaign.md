@@ -83,24 +83,37 @@ why S11 is measured at 4K.
 
 ### S32 asynchronous shaders (R21, R22)
 
-`tools/perf/async_shaders_bench.py --runs 5` (10 toggles, the editor focused and its vsync off).
+`tools/perf/async_shaders_bench.py --runs 5` (10 toggles, the editor focused and its vsync off),
+re-measured in perf2 over every frame of the toggles: the first campaign's capture windows had
+gaps and missed the worst frames, so its GL R22 (16.4x, worst 18.7 ms) was wrong. Frames that ran
+an MCP tool (the edit, the bench's own calls) are apart (`get_frame_times` `tool`). Medians of 5:
 
-| | R21 max main-thread creation (≤ 4 ms) | R22 worst / idle frame (≤ 2) | software (E) |
-|---|---|---|---|
-| GL `worker`, warm draws on (new default) | **0.014 ms** | 16.4 (worst 11-18.7 ms, idle 1.13 ms) | `parallel` 385.7 ms / 10.0 |
-| GL `worker`, warm draws off | 0.015 ms | 15.7 | |
-| GL `parallel` (compile threads fixed) | 8.83 ms | 10.6 | |
-| GL `sync` | 2192 ms | 1477 | 375.5 ms / 12.9 |
-| GL control: the same edits, no creation | 0.011 ms | 8.7 | |
-| Vulkan `thread` | **0.227 ms** | 3.9 (worst 3.7 ms) | 0.105 ms / 16.0 |
-| Vulkan `sync` | 799 ms | 838 | 298.4 ms / 21.3 |
+| | R21 max main-thread creation (≤ 4 ms) | R22 worst / idle frame (≤ 2) |
+|---|---|---|
+| GL `worker`, drivers' shader caches off (every run cold) | **0.016 ms** | 676 (755-828 ms) |
+| GL `worker`, driver cache on (run 1 cold, runs 2-5 warm) | 0.016 ms | **1.69** (a second batch 2.06) |
+| the same before the compile-start delay | 0.014 ms | 9.06 (9-11 ms every toggle) |
+| GL, the same recording with no edit (`--idle`) | | 2.02 |
+| Vulkan `thread` | **0.24 ms** | 3.7 (2.8-4.4 ms) |
+| Vulkan with the GL fix's delay (not kept: no measurable change) | 0.22 ms | 3.0, a second batch 3.7 |
+| Vulkan `--control` / `--idle` | | 1.5 / 2.2 |
+| GL `sync` / Vulkan `sync` (red controls, first campaign) | 2192 / 799 ms | 1477 / 838 |
 
-R21 holds on GL `worker` and Vulkan. R22 does not: on NVIDIA GL the worker's GLSL front end (about
-8 ms per new variant) holds the render thread's GL calls, and an unwarmed first draw compiles
-another ~8 ms; the no-creation control shows that one edit already costs the editor ~10 ms
-against a 1.1 ms idle frame. Fixed: `parallel` mode got no driver compile threads on NVIDIA (a
-2.1 s link on the render thread, now 8.8 ms). Defaults: GL Auto = `worker`, warm draws on for desktop
-GL, off on GLES. Details: `docs/specs/S32-async-shaders.md` (Progress).
+- **NVIDIA GL recompiles every program on the context that first draws it**, ~0.75 s per stage
+  (fragment, then vertex; the driver's debug output: "being recompiled based on GL state ... not
+  found in the disk cache"). Warm draws (on or off), a warm-draw state matched cap for cap,
+  program binaries, `parallel` and `__GL_THREADED_OPTIMIZATIONS` do not avoid it; `sync` pays it
+  inside its 2.1 s link. The driver's disk cache (its default) does: R22 1.69 with it warm.
+- **Fixed: the ~10 ms stall per variant.** A compile or warm draw the GL worker starts within
+  ~50 ms of its request held the render thread's next GL calls for 8-10 ms; the worker now starts
+  it 60 ms after the request (GL 9.06 -> 1.69; hardware GL only).
+- **Vulkan's 3.7** is a few frames per run of 2.5-3.8 ms of main-thread work in the editor's
+  render while the driver compiles a pipeline on the worker; no creation work on the render thread
+  (R21 0.22 ms), the mean frame unchanged, against a noise floor of 2.2 with no edit at all.
+- The 2x bound sits at this machine's own noise at a 1 ms frame (2.0-2.2 with no edit): a revision
+  to max(2x idle, idle + 4 ms) with the driver cache warm is proposed in
+  `docs/specs/S32-async-shaders.md` R22 (pending approval; Vulkan and GL meet it). Details there
+  (Progress, perf2).
 
 ### S10 shadows (AC14)
 
@@ -185,13 +198,35 @@ The ratio is the whole view's, so it slightly understates a lobe's per-sphere co
 | Transmission | 1.982 | +205.9 % (with the scene-colour copy, which the budget excludes) | ≤ +20 % | 1.047 |
 | Hex Terrain / Terrain Baseline | 6.056 / 1.173 | **5.16x** | ≤ 1.35x | |
 
-Software (E) could not see these (vertex-bound on llvmpipe: every lobe within 1 %). Open: Sheen,
-Specular/IOR and High quality are a few points over; the hex terrain is 4x over. Making a hex
-layer skip the near/far path it overwrites (`terrain_fs.glsl`) made no measurable difference (the
-compiler already drops it) and was reverted (it changed the default variants' source,
-`ShaderZeroCost`); the cost is the hex taps themselves (three explicit-gradient taps per map and
-layer, plus the side planes) and needs a design change (fewer maps on the hex path, or the hex
-weights shared across layers).
+Software (E) could not see these (vertex-bound on llvmpipe: every lobe within 1 %).
+
+**perf2** (5 runs GL, 3 Vulkan, 4K unless said; the same scenes):
+
+| | GL | Vulkan | Budget |
+|---|---|---|---|
+| Sheen | +16.0 % | **+7.9 %** | ≤ +15 % |
+| Specular/IOR | +8.3 % (+0.054 ms) | +3.8 % (+0.036 ms) | ≤ +3 % |
+| Hex Terrain / Terrain Baseline | 6.41 -> **3.67 / 1.14 ms (3.2x)** | 8.11 -> **3.28 / 1.11 (3.0x)** | ≤ 1.35x |
+
+- **Fixed (hex terrain, output unchanged):** a hex layer's taps (`HexTaps`, 13 vec2 and the
+  barycentrics) were made once and kept live through the layer for its surface and normal maps; the
+  NVIDIA compiler allocated registers for them over the whole layer loop even where those maps are
+  never sampled. Made where each map samples them (the same inputs, so the same values): GL 5.94
+  -> 3.67 ms, Vulkan 8.11 -> 3.28 ms. Also exact: a side plane with no weight is not fetched
+  (6.41 -> 6.08), and a hex layer no longer samples the flat projection its hex colour overwrites
+  (6.08 -> 5.94).
+- What is left of the hex terrain, measured by removing parts: the hex taps themselves are cheap
+  (one tap instead of three: -0.24 ms; no `pow` in the weights, a trivial hash, no lattice
+  colouring: within noise; no rotation: -0.45 ms); the variant with every hex call removed still
+  takes 2.63 ms against 1.15: a built-in Lit variant with extra defines (a custom shader
+  reference, `RenderSystem::getSubmeshShaderReference`) costs more than the default variant with
+  the same code. The same shows for the lobes: at 1080p Lobe Specular is +0.07 ms over Lobes Off,
+  more than at 4K (+0.054 ms), so it is not shading; with the lobe shading removed (only the block
+  and the define left) it is still +0.045 ms. That per-variant cost is the next lead for Sheen,
+  Specular and hex; at the shader level they are within budget on Vulkan (Sheen) or a few
+  hundredths of a millisecond from it.
+- Tried and not kept: Sheen's view terms once a fragment and a single-evaluation Charlie lambda
+  (+24.7 %, slower than +16.0 %); a 3-vec4 lobe block for Specular (no change).
 
 ### S20 particles (R23)
 
@@ -215,16 +250,21 @@ until creation is idle over 5 drawn frames.
 `tools/perf/profiler_overhead.py --runs 30`, the S15 merge against its parent (both with the
 benchmark focus fix), frames of 0.81 ms: idle **+0.72 %** [+0.04, +1.40] (≤ 0.5 %: over, ~6 µs a
 frame), recording +1.16 % (≤ 3 %), recording + GPU timers **+4.19 %** (≤ 3.5 %: over, ~34 µs).
-Software (E, 120 rounds): idle +0.40 %. Open (`docs/specs/S15-profiling-diagnostics.md`).
+Software (E, 120 rounds): idle +0.40 %.
+
+perf2 (the fixture now 1.06 ms a frame; paired rounds, 30 each, today's editor): the idle machinery
+switched off (sokol's stats, the trace hub and pass recorder) -0.31 % [-0.80, +0.18]; recording
++0.42 % over idle; recording + GPU timers **+3.16 %** [+2.39, +3.93] over idle (~34 µs a frame).
+No `glFlush` per commit was slower (-1.17 % for keeping it), one availability query a commit and
+cached counter monitors made no measurable change. The 0.5 % bound is 5 µs at this frame, under the
+measurement's ±0.5-0.7 points: an absolute floor (5 / 30 / 40 µs a frame) is proposed in
+`docs/specs/S15-profiling-diagnostics.md` (pending approval).
 
 ### Known measurement limits
 
-- **Vulkan pass timers in the editor drop the Game view's passes on light frames.** Captures of
-  frames under ~0.5 ms (the S10 receiver and static cases, S13, S20, the light S12 configurations)
-  have no Game-view pass in any run, while heavy ones (S12 volumetric/clouds High, S10 Ultra) are
-  timed in every run. The benchmark CLI's frame GPU time is not affected (VAT above). Likely the
-  timer's per-commit results arriving after the ring drops them (`sgj_poll`, `SGJ_MAX_AGE`) at
-  1,000+ uncapped frames a second with three commits each; open for S15. The benches use only the
-  runs a capture timed, and GL is the reference.
+- **Fixed (perf2): Vulkan pass timers in the editor dropped the Game view's passes on light
+  frames.** A light frame's commit resolved before the frame ended and the profiler only gave
+  times to frames already marked; they now wait for their frame (S15 Progress). No commit was
+  dropped by the timer ring (`get_render_stats` `gpu.commits`).
 - **The editor draws the Scene view behind a maximised Game view**: the benches keep the Game
   view unmaximised (its tab hides the Scene view) and size it with `fit_view`.

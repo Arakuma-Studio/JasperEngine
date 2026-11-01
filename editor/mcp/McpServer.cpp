@@ -18,6 +18,8 @@
 #include "EditorVersion.h"
 #include "Out.h"
 #include "thread/ResourceProgress.h"
+#include "profiler/Profile.h"
+#include "profiler/FrameTimes.h"
 
 #include <algorithm>
 #include <chrono>
@@ -1351,6 +1353,9 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
     try {
         std::optional<UndoOriginScope> attribution;
         if (call->attributed()) attribution.emplace(call->getUndoOrigin());
+        // an agent's edit in the frame's profile (benches tell an edit's frame from others: S32 R22)
+        JE_PROFILE_SCOPE("MCP tool");
+        if (onMainThread) FrameTimes::markHostWork();
         def.handler(call);
     } catch (const Json::type_error& e) {
         // an argument a handler read without checking its type: still an error the agent can fix

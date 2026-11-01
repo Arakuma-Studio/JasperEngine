@@ -419,7 +419,9 @@ sgj_read_result sgj_backend_read(sgj_slot& slot, sgj_resolved& out) {
     out.info.frame_valid = false;
     out.info.frame_gpu_ms = 0.0;
     #if defined(_SOKOL_ANY_GL)
-        // queries complete in order: the last issued one first, then each
+        // queries complete in order, so the last issued one being available says the others are
+        // (one availability query a commit, not one a pass: each is a driver round trip, GPU
+        // campaign perf2)
         for (int i = (int)n - 1; i >= 0; i--) {
             if (!slot.pass_issued[i])
                 continue;
@@ -427,6 +429,7 @@ sgj_read_result sgj_backend_read(sgj_slot& slot, sgj_resolved& out) {
             glGetQueryObjectuiv(slot.queries[i], GL_QUERY_RESULT_AVAILABLE, &available);
             if (!available)
                 return SGJ_READ_PENDING;
+            break;
         }
         double sum = 0.0;
         bool any = false;

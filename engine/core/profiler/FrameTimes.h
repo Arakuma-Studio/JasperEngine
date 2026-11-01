@@ -34,6 +34,9 @@ namespace jasperengine {
         static constexpr size_t CAPACITY = 600;
         // the frame's GPU time is the sum of its passes (the GL family), not a timestamp span
         static constexpr uint32_t FLAG_GPU_SUM = 1u << 0;
+        // the host ran a request of its own in the frame (the editor: an MCP tool), so its time
+        // is not only the frame's (S32 R22 tells such frames from the others)
+        static constexpr uint32_t FLAG_HOST_WORK = 1u << 1;
 
         // Starts frame currentFrame()+1 and completes the previous one's sample. The Engine calls
         // it from systemDraw unless the host owns the frames (setExternalFrames: the editor).
@@ -47,6 +50,8 @@ namespace jasperengine {
         // the serial of the frame being drawn (0 before the first)
         static uint64_t currentFrame();
         static void setDrawCalls(uint32_t drawCalls);
+        // the current frame ran host work (FLAG_HOST_WORK)
+        static void markHostWork();
         // the GPU time of an earlier frame, when its timer queries resolved (frames ago)
         static void setGpuMs(uint64_t frame, double gpuMs, bool sumOfPasses);
 
