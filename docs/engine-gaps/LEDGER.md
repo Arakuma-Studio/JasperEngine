@@ -48,9 +48,9 @@ origin/main).
 | 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | merged |
 | 8 | `physics-contacts` | per-object collision/trigger callbacks (enter/stay/exit) for 3D and 2D, delivered on the main thread; 3D global handlers off the job threads | review |
 | 9 | `physics-3d` | damping, centre of mass, safe body-type switching, per-collider sensor/material, collider removal, 3D joint limits/motors/springs, cone fix, ragdoll, runtime-sized collider data and world capacity | review |
-| 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | impl |
-| 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | specced |
-| 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | specced |
+| 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | review |
+| 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | impl |
+| 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | impl |
 | 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | merged |
 | 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | review |
 | 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | review |
@@ -206,3 +206,8 @@ origin/main).
   new task `guide-headroom` restructures it to ~15 KB (details to docs/mcp/guide). New task `asan-sweep`: the unit
   suite under ASan+UBSan with root-cause fixes (leads: a stack-use-after-scope in Catalog::copyPropertyValue
   from physics-2d's override migration; a heap error once in PersistenceTest).
+- 2026-11-01: the physics-3d fix for builds with physics OFF merged (f873f2ce9; tools/check-physics-off.sh). The
+  anim-layers agent found main did not compile: the coroutines merge had brought a second identical
+  Engine::getUnscaledDeltatime -> fixed (94a22289c); lead now builds after each batch of merges before moving on.
+  Final verification of the batch (Linux full suites + physics-off variants on box 2201, iOS/macOS on the owner's
+  Mac) running. anim-layers implemented (both phases), in review; anim-properties and anim-retarget started on it.
