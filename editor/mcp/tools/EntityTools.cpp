@@ -102,7 +102,7 @@ Entity parentOf(Scene* scene, Entity entity) {
     return transform ? transform->parent : NULL_ENTITY;
 }
 
-// Children by parent, in Transform (Hierarchy) order; roots in the scene's entity order
+// Children by parent, in Transform (Hierarchy) order; roots in the Hierarchy window's order
 struct Hierarchy {
     std::vector<Entity> roots;
     std::unordered_map<Entity, std::vector<Entity>> children;
@@ -123,30 +123,21 @@ Hierarchy buildHierarchy(SceneProject* scene) {
     const size_t count = transforms ? transforms->size() : 0;
     std::unordered_set<Entity> withTransform;
     withTransform.reserve(count);
+    std::vector<Entity> transformRoots;
     for (size_t i = 0; i < count; i++) {
         const Entity entity = transforms->getEntity(i);
         if (!playing && !authored.count(entity)) continue;
         withTransform.insert(entity);
         const Entity parent = transforms->getComponentFromIndex(i).parent;
-        if (parent == NULL_ENTITY) hierarchy.roots.push_back(entity);
+        if (parent == NULL_ENTITY) transformRoots.push_back(entity);
         else hierarchy.children[parent].push_back(entity);
     }
-    // GameObjects without a Transform are roots, kept in the scene's order among the others
-    std::vector<Entity> ordered;
-    ordered.reserve(hierarchy.roots.size());
-    std::unordered_set<Entity> rootSet;
-    rootSet.reserve(hierarchy.roots.size());
-    rootSet.insert(hierarchy.roots.begin(), hierarchy.roots.end());
+    // As the Hierarchy window lists them (HierarchyWindow::rebuildEntityTree): the GameObjects
+    // without a Transform first, in the scene's order, then the Transform roots in Transform order
     for (Entity entity : scene->entities) {
-        if (rootSet.count(entity) || (!withTransform.count(entity) && registry->isEntityCreated(entity))) {
-            ordered.push_back(entity);
-            rootSet.erase(entity);
-        }
+        if (!withTransform.count(entity) && registry->isEntityCreated(entity)) hierarchy.roots.push_back(entity);
     }
-    for (Entity entity : hierarchy.roots) {
-        if (rootSet.count(entity)) ordered.push_back(entity);  // runtime-made roots
-    }
-    hierarchy.roots = std::move(ordered);
+    hierarchy.roots.insert(hierarchy.roots.end(), transformRoots.begin(), transformRoots.end());
     return hierarchy;
 }
 
