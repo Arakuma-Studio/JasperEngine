@@ -27,7 +27,7 @@ namespace {
     constexpr double BUDGET_MS = 4.0;
 
     Scene scene;
-    Camera camera(&scene);
+    Camera sceneCamera(&scene);
     std::vector<std::unique_ptr<Primitive>> spheres;
     int frames = 0;
 
@@ -38,10 +38,10 @@ JASPERENGINE_INIT void init(){
     Engine::setScene(&scene);
     scene.setBackgroundColor(0.1f, 0.1f, 0.12f);
 
-    camera.setType(CameraType::CAMERA_PERSPECTIVE);
-    camera.setPosition(0.0f, 0.0f, 260.0f);
-    camera.setTarget(Vector3(0.0f, 0.0f, 0.0f));
-    scene.setCamera(&camera);
+    sceneCamera.setType(CameraType::CAMERA_PERSPECTIVE);
+    sceneCamera.setPosition(0.0f, 0.0f, 260.0f);
+    sceneCamera.setTarget(Vector3(0.0f, 0.0f, 0.0f));
+    scene.setCamera(&sceneCamera);
 
     std::mt19937 rng(26);
     std::uniform_real_distribution<float> place(-100.0f, 100.0f);
