@@ -63,6 +63,16 @@ namespace jasperengine::editor{
                                    const std::string& clipPath, bool usePlayer, ClipActionResult& result, std::string& error,
                                    const ClipData* edited = nullptr);
 
+        // Convert to Humanoid Clip (anim-retarget 9): `source` (a .anim, project- or asset-relative,
+        // or "<model>#<clip>") converted on the rig of `model` (asset-relative; "" = its model,
+        // source or preview model) into the new file `clipPath`. With `player` and `entry` (an
+        // index of its clip list) the entry switches to the file in the same scene step (Use in
+        // this player); otherwise the file alone, a project step.
+        static bool convertToHumanoid(Project* project, uint32_t sceneId, Entity player, size_t entry, const std::string& source,
+                                      const std::string& model, const std::string& clipPath, ClipActionResult& result, std::string& error);
+        // "<name> (Humanoid).anim" next to the source (a model clip: in the model's folder), project-relative
+        static std::string humanoidClipPath(Project* project, const std::string& source);
+
         // Use Animation Player (R15): the model's entity animations and their tracks removed,
         // ModelComponent.animationEntities = false, a player listing every "<model>#<name>"
         static bool useAnimationPlayer(Project* project, uint32_t sceneId, Entity model, ClipActionResult& result, std::string& error);

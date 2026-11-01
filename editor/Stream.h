@@ -17,6 +17,7 @@
 #include "math/AnimationCurve.h"
 #include "math/Gradient.h"
 #include "particles/ParticleFields.h"
+#include "component/VideoPlayerComponent.h"
 
 #include <filesystem>
 #include <set>
@@ -474,6 +475,9 @@ namespace jasperengine::editor {
         static YAML::Node encodeRectTransformComponent(const RectTransformComponent& layout);
         static RectTransformComponent decodeRectTransformComponent(const YAML::Node& node, const RectTransformComponent* oldLayout = nullptr);
 
+        // only what differs from the defaults (every edge on, extras included)
+        static YAML::Node encodeSafeAreaComponent(const SafeAreaComponent& safeArea);
+        static SafeAreaComponent decodeSafeAreaComponent(const YAML::Node& node, const SafeAreaComponent* oldSafeArea = nullptr);
         static YAML::Node encodeLayoutGroupComponent(const LayoutGroupComponent& container);
         static LayoutGroupComponent decodeLayoutGroupComponent(const YAML::Node& node, const LayoutGroupComponent* oldContainer = nullptr);
         static YAML::Node encodeCanvasGroupComponent(const CanvasGroupComponent& group);
@@ -527,6 +531,8 @@ namespace jasperengine::editor {
         // only what differs from the defaults is written; a missing key is the default. Over an
         // old component its runtime state (the simulator) stays; a new seed or start burst
         // restarts it (needReset)
+        static YAML::Node encodeVideoPlayerComponent(const VideoPlayerComponent& player);
+        static VideoPlayerComponent decodeVideoPlayerComponent(const YAML::Node& node, const VideoPlayerComponent* oldPlayer = nullptr);
         static YAML::Node encodeFluidSimulationComponent(const FluidSimulationComponent& fluid);
         static FluidSimulationComponent decodeFluidSimulationComponent(const YAML::Node& node, const FluidSimulationComponent* oldFluid = nullptr);
 

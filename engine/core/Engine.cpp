@@ -57,7 +57,9 @@
 #include "pool/PhysicsMaterialPool.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
+#include "native/NativeBridge.h"
 #include "net/Http.h"
+#include "media/MediaCache.h"
 #include "thread/MainThreadQueue.h"
 #ifndef NO_THREAD_SUPPORT
     #include "thread/ThreadPoolManager.h"
@@ -142,6 +144,8 @@ bool Engine::clampNextDelta = false;
 
 std::atomic<bool> Engine::viewLoaded = false;
 std::atomic<bool> Engine::paused = false;
+bool Engine::osPaused = false;
+bool Engine::nativePaused = false;
 std::atomic<bool> Engine::focused = true;
 int Engine::targetFrameRate = -1;
 // the project's VSync setting in builds (the generated init() sets it too)
@@ -179,6 +183,7 @@ FunctionSubscribe<void()> Engine::onShutdown;
 FunctionSubscribe<void(bool)> Engine::onFocus;
 FunctionSubscribe<void(int)> Engine::onOrientationChanged;
 FunctionSubscribe<void()> Engine::onLowMemory;
+FunctionSubscribe<void()> Engine::onSafeAreaChanged;
 FunctionSubscribe<void()> Engine::onSceneLoaded;
 FunctionSubscribe<void(int,float,float)> Engine::onTouchStart;
 FunctionSubscribe<void(int,float,float)> Engine::onTouchEnd;
@@ -1086,6 +1091,7 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     onFocus.removeByTagSubstring(substring);
     onOrientationChanged.removeByTagSubstring(substring);
     onLowMemory.removeByTagSubstring(substring);
+    onSafeAreaChanged.removeByTagSubstring(substring);
     onSceneLoaded.removeByTagSubstring(substring);
 
     // Log.onMessageReceived and the console commands a released script added
@@ -1149,6 +1155,7 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
         onFocus.clear();
         onOrientationChanged.clear();
         onLowMemory.clear();
+        onSafeAreaChanged.clear();
     }
 }
 
@@ -1359,6 +1366,8 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
     updateTimeCount = 0;
     viewLoaded = false;
     paused = false;
+    osPaused = false;
+    nativePaused = false;
     focused = true;
     lastOrientation = 0;
     orientationPendingSince = 0.0;
@@ -1383,6 +1392,8 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
 void Engine::systemStartProject(){
     #ifndef NO_LUA_INIT
     LuaBinding::init();
+    // native plugins' init hooks (Apple +jasperInit) before any script can call them
+    NativeBridge::initPlugins();
     #endif
     #ifndef NO_CPP_INIT
     getOnInit().call();
@@ -1405,6 +1416,7 @@ void Engine::systemViewLoaded(){
     // the orientation and screen sleep a window
     applyFramePacing();
     Screen::applyToPlatform();
+    applySimulatedSafeArea();
 
     // systemViewDestroyed stopped async loads; a recreated view needs them again
     SoundPool::cancelShutdown();
@@ -1453,10 +1465,16 @@ void Engine::systemViewChanged(){
     if (Scene* overlay = DebugOverlay::getScene())
         overlay->updateCameraSize();
 
+    // the canvas mapping changed: Screen.safeArea follows (its event after the two below)
+    Screen::updateSafeArea();
+
     onViewChanged.call();
 
     // a resize can be a rotation: onOrientationChanged comes after onCanvasChanged
     systemOrientationChanged();
+
+    // a backgrounded app gets it after onResume (the next frame)
+    if (!paused) Screen::dispatchSafeAreaEvent();
 }
 
 // With JASPERENGINE_READY_SIGNAL set (tools/smoke-test.sh sets it), logs once the frame
@@ -1551,6 +1569,8 @@ void Engine::runFrame(bool draw){
     if (orientationPendingSince > 0.0){
         systemOrientationChanged();
     }
+    // insets the platform pushed between frames (held while the app is paused)
+    if (!paused) Screen::dispatchSafeAreaEvent();
 
     //Deltatime in seconds
     double rawDelta = stm_sec(stm_laptime(&lastTime));
@@ -1599,6 +1619,9 @@ void Engine::runFrame(bool draw){
     // lines other threads logged since the last frame, to the main-thread log listeners
     // (Log.onMessageReceived), first thing of the frame
     Log::dispatchPending();
+
+    // native SDKs' engine pause requests and native call timeouts (paused frames too)
+    NativeBridge::update();
 
     // async uploads of the last frame, while the scenes that queued them still exist
     SystemRender::executeQueue();
@@ -1883,6 +1906,10 @@ void Engine::systemShutdown(){
     // HTTP requests end without their callbacks and the HTTP stack's threads stop; what other
     // threads posted for the game is dropped
     Http::terminate();
+    // the media cache's downloads are forgotten (their .part files stay for a resume)
+    MediaCache::shutdown();
+    // native calls end without their callbacks, the event handlers go
+    NativeBridge::shutdown();
     MainThreadQueue::clear();
     LuaBinding::cleanup();
 
@@ -1894,10 +1921,35 @@ void Engine::systemShutdown(){
 }
 
 void Engine::systemPause(){
-    if (paused) return;
+    if (osPaused) return;
     // leaving: the focus goes first (Unity: OnApplicationFocus(false), then OnApplicationPause(true))
     systemFocus(false);
-    paused = true;
+    osPaused = true;
+    applyPause();
+}
+
+void Engine::systemResume(){
+    if (!osPaused) return;
+    osPaused = false;
+    applyPause();
+}
+
+void Engine::setNativePause(bool held){
+    nativePaused = held;
+    applyPause();
+}
+
+void Engine::applyPause(){
+    const bool want = osPaused || nativePaused;
+    if (want == paused) return;
+    paused = want;
+    if (!want){
+        AudioSystem::resumeAll();
+        ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 0); return 1; },
+            [](ScriptBase& script) { script.onApplicationPause(false); });
+        Engine::onResume.call();
+        return;
+    }
     AudioSystem::pauseAll();
     ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 1); return 1; },
         [](ScriptBase& script) { script.onApplicationPause(true); });
@@ -1914,19 +1966,10 @@ void Engine::systemPause(){
     UserSettings::save();
 }
 
-void Engine::systemResume(){
-    if (!paused) return;
-    paused = false;
-    AudioSystem::resumeAll();
-    ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 0); return 1; },
-        [](ScriptBase& script) { script.onApplicationPause(false); });
-    Engine::onResume.call();
-}
-
 void Engine::systemFocus(bool hasFocus){
     if (hasFocus == focused) return;
     // coming back: the resume goes first (OnApplicationPause(false), then OnApplicationFocus(true))
-    if (hasFocus && paused){
+    if (hasFocus && osPaused){
         systemResume();
     }
     focused = hasFocus;
@@ -1946,6 +1989,8 @@ void Engine::systemOrientationChanged(){
     const int orientation = (int)Screen::getOrientation();
     if (orientation == lastOrientation){
         orientationPendingSince = 0.0;
+        // safe-area insets that came while a quarter turn waited (it was undone)
+        Screen::releaseHeldSafeArea();
         return;
     }
     // the first one is where the view starts, not a change
@@ -1973,13 +2018,36 @@ void Engine::systemOrientationChanged(){
     orientationPendingSince = 0.0;
     lastOrientation = orientation;
     Engine::onOrientationChanged.call(orientation);
+    // the insets the platform pushed while the turn waited for its size (the timeout: a view that
+    // keeps its shape); after a size change systemViewChanged already used them
+    Screen::releaseHeldSafeArea();
+}
+
+bool Engine::isOrientationPending(){
+    return orientationPendingSince > 0.0;
 }
 
 void Engine::systemLowMemory(){
     Engine::onLowMemory.call();
 }
 
+void Engine::applySimulatedSafeArea(){
+    if (!System::hasInstance()) return;
+    const Platform platform = getPlatform();
+    if (platform != Platform::Linux && platform != Platform::Windows && platform != Platform::MacOS) return;
+    // the editor simulates devices in its Game view
+    if (System::instance().isEditor()) return;
+    EdgeInsets insets;
+    if (System::instance().getSimulatedSafeArea(insets)){
+        Screen::setPlatformSafeArea(insets);
+        Log::print("Simulated safe area (JASPERENGINE_SIMULATE_SAFE_AREA): top %g, right %g, bottom %g, left %g pixels",
+                  insets.top, insets.right, insets.bottom, insets.left);
+    }
+}
+
 void Engine::resetApplicationState(){
+    osPaused = false;
+    nativePaused = false;
     if (paused){
         paused = false;
         AudioSystem::resumeAll();
@@ -1989,6 +2057,8 @@ void Engine::resetApplicationState(){
     orientationPendingSince = 0.0;
     targetFrameRate = -1;
     applyFramePacing();
+    // no extra insets, and the next safe area is where the game starts (no event)
+    Screen::resetSafeAreaState();
 }
 
 bool Engine::isFocused(){

@@ -1929,6 +1929,14 @@ OVERRIDES = {
     },
 }
 
+OVERRIDES[('Screen', 'setExtraInsets')] = {
+    'doc': ['Space the game keeps free per edge on top of the device insets (a banner ad): every safe-area',
+            'consumer includes it (Screen.safeArea, the Safe Area component, HTML env()). `unit` is',
+            '"canvas" (default) or "pixels" (view pixels, converted again when the canvas changes).'],
+    'overloads': [([('left', 'number'), ('top', 'number'), ('right', 'number'), ('bottom', 'number'),
+                    ('unit?', '"canvas"|"pixels"')], '')],
+}
+
 # script-lifecycle: the getScript family on every GameObject handle (and script instance, Script.lua),
 # GameObject's scene-wide finds and the Event class (lua_CFunctions)
 _GET_SCRIPT_DOCS = {
@@ -2517,7 +2525,56 @@ OVERRIDES.update({
         'overloads': [([('name', 'string')], 'string?')]},
 })
 
-# Properties whose getter returns a LuaRef: (Lua type, a copy)
+# native-bridge (NativeClassesLua.cpp): the Native functions are lua_CFunctions (positional
+# optional args, callback, options); NativeCallOptions / NativeErrorCode / NativePending are in
+# engine/core/script/binding/stubs/Native.lua
+_NATIVE_CB = 'fun(result: JsonValue, errMessage: string?, errCode: NativeErrorCode?)'
+OVERRIDES.update({
+    ('Native', 'call'): {
+        'doc': ['Calls `method` of the native plugin `plugin` now (Unity\'s AndroidJavaClass.CallStatic): a C++ plugin,',
+                'else the platform\'s (Java/Kotlin static method, Objective-C/Swift class method, JavaScript function),',
+                'else a Lua mock. Arguments and the result are JSON values. Errors are values:',
+                '`local v, err, code = Native.call("Device", "getCode")`.'],
+        'overloads': [([('plugin', 'string'), ('method', 'string'), ('...', 'JsonValue')], 'JsonValue, string?, NativeErrorCode?')]},
+    ('Native', 'callAsync'): {
+        'doc': ['Starts an asynchronous call; `callback(result, errMessage, errCode)` runs once on the main thread, before',
+                'onUpdate (not when cancelled or its owner went). Pass `{owner = self}` in per-scene scripts.'],
+        'overloads': [
+            ([('plugin', 'string'), ('method', 'string')], 'NativeCall'),
+            ([('plugin', 'string'), ('method', 'string'), ('callback', _NATIVE_CB), ('options?', 'NativeCallOptions')], 'NativeCall'),
+            ([('plugin', 'string'), ('method', 'string'), ('args', 'JsonValue[]|nil'), ('callback?', _NATIVE_CB), ('options?', 'NativeCallOptions')], 'NativeCall'),
+        ]},
+    ('Native', 'on'): {
+        'doc': ['Subscribes to native events (JasperNative.emit on the native side): `handler(payload)` runs on the main thread',
+                'before onUpdate, handlers in registration order. With an owner it goes with it. Returns the id for Native.off.'],
+        'overloads': [([('plugin', 'string'), ('event', 'string'), ('handler', 'fun(payload: JsonValue)'), ('owner?', 'ScriptInstance|EntityHandle|Scene')], 'integer')]},
+    ('Native', 'off'): {
+        'doc': ['Removes a Native.on handler (an unknown id does nothing).'],
+        'overloads': [([('id', 'integer')], '')]},
+    ('Native', 'has'): {
+        'doc': ['A C++, platform or mock implementation of the plugin exists here; with `method`, that method exists.'],
+        'overloads': [([('plugin', 'string'), ('method?', 'string')], 'boolean')]},
+    ('Native', 'setMock'): {
+        'doc': ['A Lua mock of the plugin, used only when no C++ or platform plugin exists (editor Play, desktop): each',
+                'function gets the call\'s arguments (async calls: plus the NativeCall last) and returns the value, or nil,',
+                'message [, code], or Native.pending() to complete later with call:resolve / call:reject.'],
+        'overloads': [([('plugin', 'string'), ('mock', 'table<string, function>')], '')]},
+    ('Native', 'clearMock'): {
+        'doc': ['Removes the Native.setMock mock of the plugin.'],
+        'overloads': [([('plugin', 'string')], '')]},
+    ('Native', 'emitMock'): {
+        'doc': ['Fires the Native.on handlers of (plugin, event) in the next frame, as if native code emitted it.'],
+        'overloads': [([('plugin', 'string'), ('event', 'string'), ('payload?', 'JsonValue')], '')]},
+    ('Native', 'pending'): {
+        'doc': ['What an async mock function returns to complete its call later (call:resolve / call:reject).'],
+        'overloads': [([], 'NativePending')]},
+    ('NativeCall', 'resolve'): {
+        'doc': ['Mocks: completes the call with `value` (false when it was already completed or cancelled).'],
+        'overloads': [([('value?', 'JsonValue')], 'boolean')]},
+    ('NativeCall', 'reject'): {
+        'doc': ['Mocks: fails the call with `code` and `message` (false when it was already completed or cancelled).'],
+        'overloads': [([('code', 'NativeErrorCode|string'), ('message?', 'string')], 'boolean')]},
+})
 
 # Properties whose getter returns a LuaRef, or whose lambda's return type is not inferred:
 # (Lua type, a copy)
@@ -2545,11 +2602,13 @@ PROPERTY_OVERRIDES = {
     # the GameObject a Camera Follow follows (its scene or the persistent one), nil without one
     ('CameraFollow', 'target'): ('GameObject?', False),
     ('HttpRequest', 'response'): ('HttpResponse|nil', False),
+    ('NativeCall', 'result'): ('JsonValue', False),
+    ('NativeCall', 'errorCode'): ('NativeErrorCode|nil', False),
+    ('NativeCall', 'errorMessage'): ('string|nil', False),
     ('HttpResponse', 'headers'): ('table<string, string>', True),
     ('HttpResponse', 'body'): ('string', False),
     ('HttpResponse', 'data'): ('JsonValue', False),
     ('HttpResponse', 'textureData'): ('TextureData|nil', True),
-
     # the joint's bodies (std::optional<GameObject> lambdas): nil = the world
     ('Joint2D', 'bodyA'): ('GameObject|nil', False),
     ('Joint2D', 'bodyB'): ('GameObject|nil', False),
@@ -2658,6 +2717,21 @@ OVERRIDES[('UIDocument', 'createDataModel')] = {
 OVERRIDES[('UIDocument', 'getDataModel')] = {
     'doc': ['The proxy of a data model this document created, or nil.'],
     'overloads': [([('name', 'string')], 'UIDataModel|nil')]}
+# anim-retarget: addClip's options table, Model:getHumanoidInfo's table (LuaRef in C++)
+OVERRIDES[('AnimationPlayer', 'addClip')] = {
+    'doc': ["Adds a clip entry (an authored change: the next update reloads): an asset-relative .anim or",
+            "\"<model>#<clip>\"; `name` empty or nil = the default state name. `options.retarget` plays a",
+            "generic clip as a humanoid clip, retargeted from its source model; `mirror` / `footIK` apply",
+            "to humanoid clips; `layer` is the entry's layer. False when the state name is taken."],
+    'overloads': [([('path', 'string')], 'boolean'),
+                  ([('path', 'string'), ('name', 'string')], 'boolean'),
+                  ([('path', 'string'), ('name', 'string|nil'),
+                    ('options', '{retarget?: boolean, mirror?: boolean, footIK?: boolean, layer?: integer}')], 'boolean')]}
+OVERRIDES[('Model', 'getHumanoidInfo')] = {
+    'doc': ["The model's humanoid rig (its Avatar): `humanoid` (the bone map is a valid humanoid),",
+            "`animationType` (\"generic\" or \"humanoid\", the .humanoid sidecar's), `humanScale`, the unmapped",
+            "slot names in `missing`, `extraMapped` (fingers, eyes and jaw, of 33) and `error`; nil without bones."],
+    'overloads': [([], '{humanoid: boolean, animationType: string, humanScale: number, missing: string[], extraMapped: integer, error?: string}|nil')]}
 OVERRIDES[('UIClassList', 'add')] = {
     'doc': ['Adds the classes.'], 'overloads': [([('...', 'string')], '')]}
 OVERRIDES[('UIClassList', 'remove')] = {

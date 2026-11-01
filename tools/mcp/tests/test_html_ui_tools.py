@@ -164,11 +164,35 @@ LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 
 # parameters in jasper://docs/audio) and get_play_state's audio block; merged with main 9c8c6c584:
 # 154 tools, total 112708 (tool_budget.py on the merged tree), the limit set to it
 # lead: main with camera-shake + ui-scaling-text + audio-mixer: provisional (112276 + audio-mixer's +799), re-measured on the merged tree
-TOTAL_LIMIT = 113075
+# anim-retarget (spec 10): edit_animation's humanoid tracks and create.humanoid (3654), get_animation's
+# retarget_report / realised (862), edit_pose_animation's Avatar-only set_humanoid (1247): the limits
+# raised to them; measured on the tree merged with main 5762bb259 (anim-layers): 153 tools, total 112266
+# (tool_budget.py), the limit set to it
+LIMITS.update({"edit_animation": 3700, "get_animation": 870, "edit_pose_animation": 1250})
+# lead: + anim-retarget (+365 over main 111901): provisional 113440, re-measured on the merged tree
+# (then TOTAL_LIMIT = 112276)
+# video-mp4 (spec 6.10): no new tool; create_entity's video_player / video_background, get_asset_info's
+# video probe and playable_on, inspect_ui's media backend, set_runtime_property's videoplayer state /
+# time / frame (+~180 on its branch); merged with main 5762bb259: 153 tools measured 111997, the limit
+# set to it
+# (then TOTAL_LIMIT = 111997)
+# video-mp4 merged with main dce634fb7 (camera-shake, ui-scaling-text): 153 tools measured 112289 (on box
+# 2202), the limit set to it
+# lead: + video-mp4 (+96 over the measured 112193 of main 2e916ebb9): provisional 113536, re-measured on the merged tree
+# native-bridge: the native_plugins tool (list / create a plugin for every platform with its Lua mock)
+# measured 1022 on its branch; merged with main 2e916ebb9: 154 tools, total 113215 (tool_budget.py on
+# the merged tree), the limit set to it
+# lead: + native-bridge (+1022 over the measured 112193 of main 2e916ebb9) on main measured 113357 + video's 96: provisional 114475, re-measured on the merged tree
+# measured on main 5fde0ada4 (everything above merged): 155 tools, total 114475 (tool_budget.py)
+# safe area (spec 6.7): configure_game_view's device_overlay, safe_area_outline, custom_device and
+# safe_area, screenshot's device_overlay / safe_area_in_image, create_ui / create_entity safe_area,
+# get_play_state's safe_area (+390 on its branch), custom_device's dpi; measured on the tree merged
+# with main 7fd144900 (everything above): 154 tools, total 113752 (test_budget), the limit set to it
+# lead: + safe-area (+395 over the measured 113357 of main 7fd144900) on main's measured 114475: provisional 114870, re-measured on the merged tree
+TOTAL_LIMIT = 114870
 # debug overlay: no new tool; get_project_settings' category list (+ "debug") and get_play_state's
-# debug_overlay block (+22); measured on the tree merged with main dce634fb7 (everything above):
-# 154 tools, total 113014 (test_budget on the full MCP run), the limit set to it
-TOTAL_LIMIT = 113014
+# debug_overlay block (+22); measured 113014 on the tree merged with main dce634fb7; merged with main
+# fa4eeed50 (everything above): re-measured below
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

@@ -7,6 +7,8 @@
 
 #include "NativeEngine.h"
 #include "HttpBackendAndroid.h"
+#include "MediaCodecBackend.h"
+#include "NativePlatformAndroid.h"
 
 #include <game-activity/native_app_glue/android_native_app_glue.h>
 #include <android/log.h>
@@ -25,6 +27,7 @@
 #include "JasperEngineAndroid.h"
 #include "Engine.h"
 #include "Input.h"
+#include "Screen.h"
 #include "Log.h"
 #include "util/StringUtils.h"
 
@@ -608,6 +611,13 @@ NativeEngine::NativeEngine(struct android_app *app) {
     mSurfWidth = mSurfHeight = 0;
     mDisplayRotation = 0;
     mNaturalPortrait = true;
+    mFullscreenGame = true;
+    mSafeAreaKnown = false;
+    mLastCutoutInsets = ARect{0, 0, 0, 0};
+    mLastBarInsets = ARect{0, 0, 0, 0};
+    mLastSafeAreaRevision = -1;
+    mLastSafeAreaWidth = -1;
+    mLastSafeAreaHeight = -1;
     mFallbackSwapInterval = 1;
     mFallbackLimiterFps = 0.0;
     mAppliedSwapInterval = 0;
@@ -733,6 +743,68 @@ bool NativeEngine::refreshDisplayRotation(){
         }
     }
     return true;
+}
+
+void NativeEngine::updateSafeArea(){
+    if (!mApp || !mApp->activity || mSurfWidth <= 0 || mSurfHeight <= 0) return;
+
+    // window pixels: the display cutout (waterfall included; zero below API 28) and, for a game
+    // that shows them, the system bars (in fullscreen they come and go over the game, Unity's rule)
+    ARect cutout{0, 0, 0, 0};
+    ARect bars{0, 0, 0, 0};
+    GameActivity_getWindowInsets(mApp->activity, GAMECOMMON_INSETS_TYPE_DISPLAY_CUTOUT, &cutout);
+    if (!mFullscreenGame) {
+        GameActivity_getWindowInsets(mApp->activity, GAMECOMMON_INSETS_TYPE_SYSTEM_BARS, &bars);
+    }
+    JNIEnv* env = getJniEnv();
+    const int revision = (env && mJniData.platformClsRef && mJniData.platformSafeAreaRevision)
+        ? env->GetStaticIntField(mJniData.platformClsRef, mJniData.platformSafeAreaRevision) : 0;
+    auto same = [](const ARect& a, const ARect& b){
+        return a.left == b.left && a.top == b.top && a.right == b.right && a.bottom == b.bottom;
+    };
+    if (mSafeAreaKnown && same(cutout, mLastCutoutInsets) && same(bars, mLastBarInsets) && revision == mLastSafeAreaRevision &&
+        mSurfWidth == mLastSafeAreaWidth && mSurfHeight == mLastSafeAreaHeight) {
+        return;
+    }
+    mSafeAreaKnown = true;
+    mLastCutoutInsets = cutout;
+    mLastBarInsets = bars;
+    mLastSafeAreaRevision = revision;
+    mLastSafeAreaWidth = mSurfWidth;
+    mLastSafeAreaHeight = mSurfHeight;
+
+    // where the surface lies in the window (0 in fullscreen) and the cutout rectangles
+    int offsets[4] = {0, 0, 0, 0};
+    std::vector<jasperengine::Rect> cutouts;
+    if (env && mJniData.platformClsRef && mJniData.platformSafeAreaInfo) {
+        jintArray array = (jintArray)env->GetStaticObjectField(mJniData.platformClsRef, mJniData.platformSafeAreaInfo);
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            array = NULL;
+        }
+        if (array) {
+            const jsize length = env->GetArrayLength(array);
+            std::vector<jint> values((size_t)length);
+            if (length > 0) env->GetIntArrayRegion(array, 0, length, values.data());
+            if (length >= 5) {
+                for (int i = 0; i < 4; i++) offsets[i] = std::max(0, (int)values[i]);
+                const int count = std::max(0, (int)values[4]);
+                for (int i = 0; i < count && 5 + i * 4 + 3 < length; i++) {
+                    const jint* r = &values[5 + i * 4];
+                    // window to surface pixels
+                    cutouts.push_back(jasperengine::Rect((float)(r[0] - offsets[0]), (float)(r[1] - offsets[1]),
+                                                         (float)(r[2] - r[0]), (float)(r[3] - r[1])));
+                }
+            }
+            env->DeleteLocalRef(array);
+        }
+    }
+
+    // the window's insets less where the surface already keeps clear of them
+    auto edge = [](int cut, int bar, int offset){ return (float)std::max(0, std::max(cut, bar) - offset); };
+    const jasperengine::EdgeInsets insets(edge(cutout.left, bars.left, offsets[0]), edge(cutout.top, bars.top, offsets[1]),
+                                          edge(cutout.right, bars.right, offsets[2]), edge(cutout.bottom, bars.bottom, offsets[3]));
+    jasperengine::Screen::setPlatformSafeArea(insets, cutouts);
 }
 
 void NativeEngine::showSoftInput(std::wstring text){
@@ -924,6 +996,9 @@ void NativeEngine::setupJNI(){
 
     // the HTTP client's Java side (JasperHttp) and its native callbacks
     jasperengine::httpAndroidSetup(env, mJniData.gameActivityObjRef);
+    jasperengine::mediaCodecSetAssetManager(getAssetManager());
+    // the native bridge's Java side (JasperNative) and its natives
+    jasperengine::nativeBridgeAndroidSetup(env, mJniData.gameActivityObjRef);
     setupPlatformJNI(env);
 }
 
@@ -1000,6 +1075,31 @@ void NativeEngine::setupPlatformJNI(JNIEnv* env){
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
         mJniData.platformDeviceDegrees = NULL;
+    }
+    mJniData.platformSafeAreaRevision = env->GetStaticFieldID(mJniData.platformClsRef, "safeAreaRevision", "I");
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        mJniData.platformSafeAreaRevision = NULL;
+    }
+    mJniData.platformSafeAreaInfo = env->GetStaticFieldID(mJniData.platformClsRef, "safeAreaInfo", "[I");
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        mJniData.platformSafeAreaInfo = NULL;
+    }
+
+    // Player > Android > Fullscreen as the export wrote it into MainActivity (true without it)
+    jmethodID isFullscreenGame = env->GetMethodID(mJniData.gameActivityClsRef, "isFullscreenGame", "()Z");
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        isFullscreenGame = NULL;
+    }
+    mFullscreenGame = true;
+    if (isFullscreenGame) {
+        mFullscreenGame = env->CallBooleanMethod(mJniData.gameActivityObjRef, isFullscreenGame) == JNI_TRUE;
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            mFullscreenGame = true;
+        }
     }
 
     // the orientation the app starts in
@@ -1230,13 +1330,19 @@ void NativeEngine::doFrame() {
         mSurfWidth = width;
         mSurfHeight = height;
 
-        // onCanvasChanged, then onOrientationChanged
+        // the insets that go with the new size, then onCanvasChanged, onOrientationChanged and
+        // onSafeAreaChanged
+        updateSafeArea();
         jasperengine::Engine::systemViewChanged();
 
         glViewport(0, 0, mSurfWidth, mSurfHeight);
     } else if (rotated) {
         jasperengine::Engine::systemOrientationChanged();
     }
+    // insets that changed without a new surface size (a half turn moves the cutout; the
+    // event comes at the start of this frame's update). During a quarter turn that waits for its
+    // surface size Screen holds them for that size (Engine::isOrientationPending)
+    updateSafeArea();
 
     jasperengine::Engine::systemDraw();
 
@@ -1552,6 +1658,11 @@ void NativeEngine::handleCommand(int32_t cmd) {
             break;
         case APP_CMD_START:
             mIsVisible = true;
+            break;
+        case APP_CMD_WINDOW_INSETS_CHANGED:
+            // the display cutout or the system bars changed: read in the next doFrame, after the
+            // display rotation and the surface size, so the insets go with the size they belong
+            // to (a rotation reports the new insets before the surface resizes)
             break;
         case APP_CMD_CONFIG_CHANGED:
             // a rotation or a locale change (configChanges keeps the activity): the surface size

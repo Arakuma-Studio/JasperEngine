@@ -25,6 +25,8 @@
 #include "util/EntityPayload.h"
 #include "util/CameraTextureLink.h"
 #include "util/FluidTextureLink.h"
+#include "util/VideoTextureLink.h"
+#include "component/VideoPlayerComponent.h"
 #include "util/FluidEditorTools.h"
 #include "util/UIProbe.h"
 #include "component/FluidSimulationComponent.h"
@@ -58,6 +60,9 @@
 #include "App.h"
 #include "Backend.h"
 #include "Theme.h"
+#include "Platform.h"
+#include "Screen.h"
+#include "window/DeviceProfiles.h"
 #include "Widgets.h"
 #include "Factory.h"
 #include "audio/AudioMixer.h"
@@ -4412,6 +4417,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
 
         bool isCameraTexture = CameraTextureLink::isCameraTexture(newValue);
         bool isFluidTexture = FluidTextureLink::isFluidTexture(newValue);
+        const bool isVideoTexture = VideoTextureLink::isVideoTexture(newValue);
 
         float thumbSize = ImGui::GetFrameHeight() * 3;
         Texture* thumbTexture = findThumbnail(newValue.getPath());
@@ -4426,7 +4432,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 Widgets::image(Backend::getImGuiTexture(thumbTexture->getRender()), ImVec2(thumbTexture->getWidth(), thumbTexture->getHeight()));
                 ImGui::EndTooltip();
             }
-        } else if ((isCameraTexture || isFluidTexture) && newValue.isFramebuffer() && newValue.getFramebuffer()->isCreated()) {
+        } else if ((isCameraTexture || isFluidTexture || isVideoTexture) && newValue.isFramebuffer() && newValue.getFramebuffer()->isCreated()) {
             // live preview of the linked camera framebuffer or fluid output
             ImU32 border_col = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_FrameBg]);
             if (dif){
@@ -4437,7 +4443,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
 
         // sampler settings (min/mag filter, wrap) only apply to an actual image texture,
         // not to a camera/framebuffer link or an empty slot
-        bool showTexSettings = settings.allowTextureSettings && !isCameraTexture && !isFluidTexture && !newValue.empty();
+        bool showTexSettings = settings.allowTextureSettings && !isCameraTexture && !isFluidTexture && !isVideoTexture && !newValue.empty();
 
         ImVec2 texButtonSize = ImGui::CalcItemSize(ImVec2(0, 0), ImGui::GetFrameHeight(), ImGui::GetFrameHeight());
         // reserve room for the action buttons (file + camera + fluid, plus a settings button
@@ -4454,6 +4460,8 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             texName = std::string(ICON_FA_VIDEO) + " " + CameraTextureLink::cameraName(sceneProject->scene, newValue);
         } else if (isFluidTexture) {
             texName = std::string(ICON_FA_DROPLET) + " " + FluidTextureLink::fluidName(sceneProject->scene, newValue);
+        } else if (isVideoTexture) {
+            texName = std::string(ICON_FA_FILM) + " " + VideoTextureLink::videoName(sceneProject->scene, newValue);
         } else {
             // Never show the "?svgScale=" suffix in the slot; display the clean path/name.
             texName = TextureData::parseSvgScalePath(texName);
@@ -4561,6 +4569,28 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             }
             if (!hasCamera) {
                 ImGui::TextDisabled("No camera in scene");
+            }
+            // the Video Players' render textures (video|<entity>)
+            if (scene->isComponentRegistered<VideoPlayerComponent>()) {
+                auto videosArray = scene->getComponentArray<VideoPlayerComponent>();
+                bool separated = false;
+                for (size_t v = 0; v < videosArray->size(); v++) {
+                    Entity videoEntity = videosArray->getEntity(v);
+                    if (std::find(sceneProject->entities.begin(), sceneProject->entities.end(), videoEntity) == sceneProject->entities.end())
+                        continue;
+                    if (!separated) {
+                        ImGui::Separator();
+                        separated = true;
+                    }
+                    const std::string videoLabel = std::string(ICON_FA_FILM) + " Video Player: " + scene->getEntityName(videoEntity) +
+                                                   "##video_" + std::to_string(videoEntity);
+                    const bool linked = VideoTextureLink::parse(newValue.getId()) == videoEntity && !dif;
+                    if (ImGui::MenuItem(videoLabel.c_str(), nullptr, linked)) {
+                        applyVideoTexture(videoEntity, cpType, id, sceneProject, entities, settings.onValueChanged);
+                        finishProperty = true;
+                    }
+                    UIProbe::item("texture.video.item." + std::to_string(videoEntity));
+                }
             }
             ImGui::EndPopup();
         }
@@ -7612,6 +7642,8 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
 
     endTable();
 
+    if (entities.size() == 1) drawModelRig(cpType, sceneProject, entities[0]);
+
     if (entities.size() != 1) {
         ImGui::SeparatorText("Animations");
         ImGui::TextDisabled("Select a single GameObject to edit animations");
@@ -8530,7 +8562,19 @@ void editor::InspectorWindow::drawRectTransformComponent(ComponentType cpType, S
     settingsPivot.secondColSize = 6 * ImGui::GetFontSize();
     settingsPivot.help = "Scale and rotation center: (0, 0) is the top-left corner, (0.5, 0.5) the center";
 
+    // a Safe Area component sets the anchors, offsets and size (Unity's driven properties)
+    bool drivenBySafeArea = false;
+    for (const Entity& entity : entities){
+        if (sceneProject->scene->findComponent<SafeAreaComponent>(entity)) drivenBySafeArea = true;
+    }
+    if (drivenBySafeArea){
+        ImGui::TextDisabled(ICON_FA_LOCK " Driven by Safe Area");
+        ImGui::SetItemTooltip("The Safe Area component sets the anchors, offsets and size from Screen.safeArea; "
+                              "edit its edges, or remove it to edit these again.");
+    }
+
     beginTable(cpType, getLabelSize("Position Offset"));
+    ImGui::BeginDisabled(drivenBySafeArea);
     propertyRow(RowPropertyType::UInt, cpType, "width", "Width", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::UInt, cpType, "height", "Height", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Bool, cpType, "usingAnchors", "Use Anchors", sceneProject, entities);
@@ -8560,6 +8604,7 @@ void editor::InspectorWindow::drawRectTransformComponent(ComponentType cpType, S
         ImGui::EndDisabled();
     }
     propertyRow(RowPropertyType::Vector2, cpType, "positionOffset", "Position Offset", sceneProject, entities, settingsPositionOffset);
+    ImGui::EndDisabled();
     propertyRow(RowPropertyType::Vector2, cpType, "pivot", "Pivot", sceneProject, entities, settingsPivot);
     propertyRow(RowPropertyType::Bool, cpType, "ignoreScissor", "Ignore Scissor", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "ignoreEvents", "Ignore Events", sceneProject, entities);
@@ -8645,6 +8690,64 @@ void editor::InspectorWindow::drawLayoutGroupComponent(ComponentType cpType, Sce
         endTable();
     }
 
+}
+
+void editor::InspectorWindow::drawSafeAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    Scene* scene = sceneProject->scene;
+
+    // the edges that follow the safe area, in one row (Unity's community SafeArea "Conform X/Y",
+    // per edge); an edge turned off stays at the parent's edge
+    beginTable(cpType, getLabelSize("Include Extra Insets"));
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Edges");
+    ImGui::SetItemTooltip("The edges of the RectTransform that keep inside Screen.safeArea");
+    ImGui::TableSetColumnIndex(1);
+    const struct { const char* property; const char* label; } edges[] = {
+        {"left", "Left"}, {"top", "Top"}, {"right", "Right"}, {"bottom", "Bottom"}};
+    for (int i = 0; i < 4; i++){
+        bool all = true, any = false;
+        for (const Entity& entity : entities){
+            PropertyData prop = Catalog::findProperty(scene, entity, cpType, edges[i].property);
+            const bool on = prop.ref && *static_cast<bool*>(prop.ref);
+            all = all && on;
+            any = any || on;
+        }
+        bool value = all;
+        if (i > 0) ImGui::SameLine();
+        if (any && !all) ImGui::PushStyleColor(ImGuiCol_CheckMark, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        if (ImGui::Checkbox((std::string(edges[i].label) + "##safearea_" + edges[i].property).c_str(), &value)){
+            for (const Entity& entity : entities){
+                cmd = new PropertyCmd<bool>(project, sceneProject->id, entity, cpType, edges[i].property, value);
+                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+            }
+            if (cmd) cmd->setNoMerge();
+        }
+        if (any && !all) ImGui::PopStyleColor();
+    }
+    RowSettings settingsExtra;
+    settingsExtra.help = "Screen.setExtraInsets (a banner ad's height) shrinks this panel too";
+    propertyRow(RowPropertyType::Bool, cpType, "includeExtraInsets", "Include Extra Insets", sceneProject, entities, settingsExtra);
+    endTable();
+
+    bool missingRect = false;
+    for (const Entity& entity : entities){
+        if (!scene->findComponent<RectTransformComponent>(entity)) missingRect = true;
+    }
+    if (missingRect){
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " Needs a RectTransform (a UI element) to drive");
+    }
+
+    // what it fits to now, in canvas units (the Game view's simulated device in the editor)
+    const Rect safe = Screen::getSafeArea();
+    const DeviceProfile* device = Platform::getSimulation().device;
+    char line[160];
+    std::snprintf(line, sizeof(line), "Safe area: x %g, y %g, %g x %g (%s%s)", std::round(safe.getX()), std::round(safe.getY()),
+                  std::round(safe.getWidth()), std::round(safe.getHeight()), device ? "simulated: " : "no device simulated",
+                  device ? device->name : "");
+    ImGui::TextDisabled("%s", line);
+    ImGui::SetItemTooltip("Screen.safeArea, canvas units. Pick a phone in the Game view's Device menu to see it with a notch.");
 }
 
 void editor::InspectorWindow::drawImageComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
@@ -16794,6 +16897,7 @@ void editor::InspectorWindow::show(){
     flushDirtyMaterials(ImGui::GetIO().DeltaTime);
 
     trackInspectedObject();
+    closeIdleVideoPreview();
 
     // fluid previews keep their Scene view redrawing; they and the Paint Dye brush end with
     // what they work on (FluidEditorTools)
@@ -16973,6 +17077,8 @@ void editor::InspectorWindow::show(){
                     drawLayoutGroupComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::CanvasGroupComponent){
                     drawCanvasGroupComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::SafeAreaComponent){
+                    drawSafeAreaComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::ImageComponent){
                     drawImageComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::SpriteComponent){
@@ -17005,6 +17111,11 @@ void editor::InspectorWindow::show(){
                     drawCameraShakerComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::CameraFollowComponent){
                     drawCameraFollowComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::VideoPlayerComponent){
+                    // its playback bar (Play) is no edit: it works on a read-only player too
+                    if (compReadOnly) ImGui::EndDisabled();
+                    drawVideoPlayerComponent(cpType, sceneProject, entities, compReadOnly);
+                    if (compReadOnly) ImGui::BeginDisabled(true);
                 }else if (cpType == ComponentType::CameraComponent){
                     drawCameraComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::AudioSourceComponent){

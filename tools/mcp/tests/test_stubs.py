@@ -179,6 +179,25 @@ function Good:init()
     sound:fadeTo(0.5, 2)
     AudioSource.playClipAtPoint(self.scene, "sfx/boom.wav", Vector3(0, 0, 0), 1, "SFX")
     AudioSystem.preload("music/theme.ogg", AudioLoadType.Streaming)
+    -- the Video Player: fields, enums, events, methods and statics (video-mp4)
+    local vp = self.go:getVideoPlayer()
+    if vp and self.go:hasVideoPlayer() then
+        vp.source = VideoPlayerSource.URL
+        vp.url = System.getUserDataPath() .. "/ads/ad1.mp4"
+        vp.timeUpdateMode = VideoTimeUpdateMode.UNSCALED_GAME_TIME
+        vp.renderMode = VideoRenderMode.RENDER_TEXTURE
+        vp.aspectRatio = VideoAspectRatio.FIT_INSIDE
+        vp.audioOutputMode = VideoAudioOutputMode.DIRECT
+        vp.isLooping = false
+        vp.playbackSpeed = 1.5
+        vp.targetCamera = nil
+        vp.onPrepareCompleted = function(p) p:play() end
+        vp.onErrorReceived = function(p, message) Log.print(message) end
+        vp:prepare()
+        local framebuffer = vp:getFramebuffer()
+        print(framebuffer, vp.isPrepared, vp.frameCount, vp.length, vp.time, vp.frame, vp.backend, vp.texture)
+        print(VideoPlayer.canPlay("ads/ad1.mp4"), VideoPlayer.clearCache(), VideoPlayer.clearCache("https://cdn.example.com/a.mp4"))
+    end
 end
 
 function Good:onContact(bodyA, shapeA, bodyB, shapeB)
@@ -251,6 +270,21 @@ function Good:onUpdate()
     Http.timeout = 20
     Http.logFailures = true
     req:cancel()
+    -- native-bridge: the hand-written signatures and option classes
+    local code, err, errCode = Native.call("Device", "getCode", 1, "two", {three = 3})
+    print(code, err, errCode == "not_found")
+    local call = Native.callAsync("Ads", "show", {"unit"}, function(result, message, c)
+        print(result, message, c)
+    end, {owner = self, thread = "background", timeout = 5})
+    Native.callAsync("Ads", "load", function(result) print(result) end)
+    print(call.id, call.result, call.errorCode, call.errorMessage, call.plugin, call.method, call:isDone())
+    call:cancel()
+    local id = Native.on("Ads", "paid", function(payload) print(payload) end, self)
+    Native.off(id)
+    print(Native.has("Ads"), Native.has("Ads", "show"))
+    Native.setMock("Ads", {show = function() return Native.pending() end})
+    Native.emitMock("Ads", "paid", {value = 1})
+    Native.clearMock("Ads")
 end
 
 return Good

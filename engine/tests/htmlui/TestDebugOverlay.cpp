@@ -8,7 +8,7 @@
 // input first, consuming only taps on its own panels (also above a loading scene); the Canvas
 // Scaler and the DPI scale; the row window and its throttle; the popup, the four-finger tap,
 // Open On Error; the keys while the game types; gestures reset on focus loss, pause and
-// cancel. The log and commands are tested by
+// cancel; the safe area. The log and commands are tested by
 // editor/tests/LogListenerTest.cpp.
 
 #include "InspectorTestCommon.h"
@@ -19,6 +19,7 @@
 #include "debug/DebugOverlay.h"
 #include "debug/DebugStats.h"
 #include "harness/Readback.h"
+#include "Screen.h"
 #include "manager/SceneManager.h"
 #include "subsystem/RenderSystem.h"
 #include "util/CanvasScaler.h"
@@ -900,4 +901,55 @@ TEST_F(DebugOverlayTest, AboveTheLoadingScene){
     // the overlay's buttons work over a loading scene
     click("close");
     EXPECT_FALSE(DebugOverlay::isConsoleVisible());
+}
+
+// a notch (the platform's insets, as a phone in landscape and the Game view's device simulation
+// give them): the console and the stats panel keep clear of the safe area
+TEST_F(DebugOverlayTest, PanelsKeepClearOfTheSafeArea){
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    struct Restore { ~Restore(){ Screen::setPlatformSafeArea(EdgeInsets()); } } restore;
+    DebugOverlaySettings settings;
+    settings.stats = DebugOverlaySettings::Stats::Fps;
+    enable(settings);
+    DebugOverlay::showConsole();
+    GpuEnvironment::drawFrames(3);
+    ASSERT_NE(document(), nullptr);
+    const float consoleLeft = byId("console")->GetAbsoluteOffset(Rml::BoxArea::Border).x;
+    const float consoleTop = byId("console")->GetAbsoluteOffset(Rml::BoxArea::Border).y;
+    EXPECT_NEAR(consoleLeft, 0.0f, 0.5f);
+    EXPECT_NEAR(consoleTop, 0.0f, 0.5f);
+
+    // view pixels (the view is the canvas here): a notch at the left, the status bar's corners at
+    // the top, the home indicator at the bottom
+    const Rect view = Engine::getViewRect();
+    const float canvasPerView = (float)Engine::getCanvasWidth() / view.getWidth();
+    Screen::setPlatformSafeArea(EdgeInsets(88.0f, 24.0f, 40.0f, 21.0f));
+    GpuEnvironment::drawFrames(3);
+    const EdgeInsets insets = Screen::getSafeAreaInsets();
+    EXPECT_NEAR(insets.left, 88.0f * canvasPerView, 0.5f);
+    Rml::Element* console = byId("console");
+    EXPECT_NEAR(console->GetAbsoluteOffset(Rml::BoxArea::Border).x, insets.left, 0.5f);
+    EXPECT_NEAR(console->GetAbsoluteOffset(Rml::BoxArea::Border).y, insets.top, 0.5f);
+    EXPECT_NEAR(console->GetAbsoluteOffset(Rml::BoxArea::Border).x + console->GetOffsetWidth(),
+                (float)Engine::getCanvasWidth() - insets.right, 0.5f);
+    // full height: down to the bottom inset
+    click("size");
+    GpuEnvironment::drawFrames(2);
+    EXPECT_NEAR(console->GetAbsoluteOffset(Rml::BoxArea::Border).y + console->GetOffsetHeight(),
+                (float)Engine::getCanvasHeight() - insets.bottom, 0.5f);
+
+    // the stats panel (top-left) too, under the console's top when both show
+    DebugOverlay::hideConsole();
+    GpuEnvironment::drawFrames(2);
+    Rml::Element* stats = byId("stats");
+    EXPECT_GE(stats->GetAbsoluteOffset(Rml::BoxArea::Border).x, insets.left);
+    EXPECT_GE(stats->GetAbsoluteOffset(Rml::BoxArea::Border).y, insets.top);
+    // the pixels in the notch stay the game's
+    const std::array<int, 4> notch = pixel(20, 10);
+    EXPECT_NEAR(notch[0], 0x1E, 3) << notch[0] << "," << notch[1] << "," << notch[2];
+
+    // gone: the panels back at the edges
+    Screen::setPlatformSafeArea(EdgeInsets());
+    GpuEnvironment::drawFrames(3);
+    EXPECT_NEAR(stats->GetAbsoluteOffset(Rml::BoxArea::Border).x, 4.0f, 1.0f);
 }

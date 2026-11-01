@@ -26,6 +26,23 @@ namespace jasperengine {
         // Data::open can take ownership directly, without copying the packed bytes.
         static bool readOwned(const std::string& path, std::unique_ptr<unsigned char[]>& outData,
                               unsigned int& outSize);
+
+        // A packed entry read in parts (videos: their decoders read positions, never the whole
+        // file into memory): open() gives the entry's size and a handle of the pack file;
+        // readRange() the bytes [from, from + count) of the entry, deobfuscated
+        class JASPERENGINE_API RangeReader {
+        public:
+            ~RangeReader();
+            bool open(const std::string& path);
+            uint64_t size() const { return entrySize; }
+            bool readRange(uint64_t from, unsigned char* dst, size_t count);
+        private:
+            void* file = nullptr;
+            uint64_t entryOffset = 0;
+            uint64_t entrySize = 0;
+            uint8_t key = 0;
+            uint32_t shift = 0;
+        };
     };
 
 }

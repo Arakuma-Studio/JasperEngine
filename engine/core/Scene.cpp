@@ -20,6 +20,7 @@
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/FluidSystem.h"
+#include "subsystem/VideoPlayerSystem.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/PoseAnimatorSystem.h"
 #include "subsystem/AudioSystem.h"
@@ -54,6 +55,8 @@ void Scene::init(){
     registerSystem<UISystem>();
     registerSystem<UIDocumentSystem>();
     registerSystem<FluidSystem>();
+    // after the scripts' frame, before RenderSystem converts the frames it hands over
+    registerSystem<VideoPlayerSystem>();
     registerSystem<RenderSystem>();
     // after Render, whose update makes this frame's world transforms (the trails' heads)
     registerSystem<TrailSystem>();

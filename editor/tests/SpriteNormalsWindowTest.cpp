@@ -986,7 +986,8 @@ TEST(SpriteNormalsWindowDeathTest, Eyedropper) {
         ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
         ASSERT_TRUE(window.pickRegionColour(-1, 16, 16, error)) << error;
         ASSERT_EQ(window.getSettings().regions.size(), 1u) << "Alt-click with no region makes region 1";
-        const uint8_t* p = disk(32, 32).pixel(16, 16);
+        const ts::Image hero = disk(32, 32);
+        const uint8_t* p = hero.pixel(16, 16);
         EXPECT_EQ(window.getSettings().regions[0].colors[0], (uint32_t(p[0]) << 16) | (uint32_t(p[1]) << 8) | p[2]);
         EXPECT_FALSE(window.pickRegionColour(0, 0, 0, error));
         EXPECT_EQ(error, "That pixel is empty.");

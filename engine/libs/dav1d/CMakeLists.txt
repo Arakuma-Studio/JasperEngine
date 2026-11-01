@@ -1,6 +1,6 @@
 # dav1d 1.5.4 - https://code.videolan.org/videolan/dav1d (BSD-2-Clause, COPYING)
 #
-# The AV1 decoder of the HTML UI's <video> (engine/core/htmlui/media/Av1Decoder,
+# The AV1 decoder of the HTML UI's <video> (engine/core/media/Av1Decoder,
 # docs/html-ui/phase-6-video.md §3.2). This file replaces upstream's meson build (config/config.h,
 # config/config.asm), both bit depths. The bitdepth templates (*_tmpl.c) are compiled twice, with
 # BITDEPTH 8 and 16, as upstream does. The asm, with dav1d's run-time CPU dispatch: x86-64 with NASM

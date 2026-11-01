@@ -60,6 +60,7 @@ editor::AnchorGizmo::~AnchorGizmo(){
     for (int i = 0; i < 4; i++){
         delete points[i];
     }
+    delete center;
 }
 
 void editor::AnchorGizmo::updateVisual(){

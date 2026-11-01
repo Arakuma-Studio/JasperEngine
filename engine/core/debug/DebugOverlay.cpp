@@ -93,6 +93,16 @@ namespace {
         void ProcessEvent(Rml::Event& event) override;
     };
 
+    // Screen's safe area (feature safe-area): the insets of the canvas, extras (a banner ad)
+    // included; the overlay's document is laid out in canvas px, so they apply as they are
+    void screenSafeAreaInsets(float& left, float& top, float& right, float& bottom){
+        const EdgeInsets insets = Screen::getSafeAreaInsets();
+        left = insets.left;
+        top = insets.top;
+        right = insets.right;
+        bottom = insets.bottom;
+    }
+
     struct OverlayState {
         DebugOverlaySettings settings;
         bool enabled = false;
@@ -162,7 +172,7 @@ namespace {
 
         std::vector<Command> commands;
 
-        DebugOverlay::InsetsFunction safeArea = nullptr;
+        DebugOverlay::InsetsFunction safeArea = &screenSafeAreaInsets;
         std::string appliedInsets;
     };
 

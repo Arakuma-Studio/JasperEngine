@@ -45,6 +45,7 @@
 #include "CameraFollow.h"
 #include "camera/CameraShake.h"
 #include "camera/ShakePreset.h"
+#include "VideoPlayer.h"
 #include "animation/AnimationEvent.h"
 #include "MeshPolygon.h"
 #include "Points.h"
@@ -62,6 +63,7 @@
 #include "object/ui/OnScreenControls.h"
 
 #include <algorithm>
+#include <cmath>
 #include "LayoutGroup.h"
 #include "object/ui/CanvasGroup.h"
 #include "AudioSource.h"
@@ -223,6 +225,35 @@ namespace {
         throw std::runtime_error(std::string(function) + ": the global is a name (a string), or nil to unbind");
     }
 
+
+bool luaObjectArg(lua_State* L, int index, Scene*& scene, Entity& entity, std::string* scriptClass);
+
+// An entity field of a component shown to Lua (the Video Player's targets): a GameObject, nil
+// for none
+std::optional<GameObject> gameObjectOrNil(Scene* scene, Entity entity){
+    if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity))
+        return std::nullopt;
+    return GameObject(scene, entity);
+}
+
+// ... set from a GameObject (any handle, a script instance), an entity number or nil
+Entity entityOf(const luabridge::LuaRef& value, const char* field){
+    if (value.isNil())
+        return NULL_ENTITY;
+    if (value.isNumber())
+        return (Entity)value.unsafe_cast<lua_Integer>();
+    lua_State* L = value.state();
+    value.push(L);
+    Scene* scene = nullptr;
+    Entity entity = NULL_ENTITY;
+    const bool ok = luaObjectArg(L, -1, scene, entity, nullptr);
+    lua_pop(L, 1);
+    if (!ok){
+        Log::error("VideoPlayer.%s takes a GameObject or nil", field);
+        return NULL_ENTITY;
+    }
+    return entity;
+}
 
 // A GameObject argument: any GameObject handle (EntityHandle and what derives from it), or
 // a Lua script instance (its self: a table with scene and entity), whose class is returned
@@ -1314,6 +1345,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             return scene && scene->isEntityCreated(self->getEntity()) &&
                    scene->findComponent<CameraFollowComponent>(self->getEntity()) != nullptr;
         })
+        // the Video Player of the GameObject, nil when it has none (Unity's GetComponent<VideoPlayer>)
+        .addFunction("getVideoPlayer", +[](GameObject* self) -> std::optional<VideoPlayer> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<VideoPlayerComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return VideoPlayer(scene, self->getEntity());
+        })
+        .addFunction("hasVideoPlayer", +[](GameObject* self) -> bool {
+            Scene* scene = self->getScene();
+            return scene && scene->isEntityCreated(self->getEntity()) &&
+                   scene->findComponent<VideoPlayerComponent>(self->getEntity()) != nullptr;
+        })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1985,6 +2030,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, float>(&Model::setMorphWeight))
         .addFunction("resetToBindPose", &Model::resetToBindPose)
         .addFunction("getPoseAnimator", &Model::getPoseAnimator)
+        .addFunction("getHumanoidInfo", +[](const Model* self, lua_State* L) -> luabridge::LuaRef {
+            const ModelHumanoidInfo info = self->getHumanoidInfo();
+            if (!info.valid) return luabridge::LuaRef(L);
+            luabridge::LuaRef table = luabridge::newTable(L);
+            table["humanoid"] = info.humanoid;
+            table["animationType"] = info.animationType;
+            table["humanScale"] = info.humanScale;
+            luabridge::LuaRef missing = luabridge::newTable(L);
+            for (size_t i = 0; i < info.missing.size(); i++) missing[(int)i + 1] = info.missing[i];
+            table["missing"] = missing;
+            table["extraMapped"] = info.extraMapped;
+            if (!info.error.empty()) table["error"] = info.error;
+            return table;
+        })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -2321,6 +2380,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getGroupsBlockRaycasts", &RectTransform::getGroupsBlockRaycasts)
         .addFunction("isInteractable", &RectTransform::isInteractable)
         .addFunction("getRectTransformComponent", &RectTransform::getComponent<RectTransformComponent>)
+        // the Safe Area component driving this RectTransform, nil when it has none
+        .addFunction("getSafeAreaComponent", [] (RectTransform* self) -> SafeAreaComponent* {
+            return self->getScene()->findComponent<SafeAreaComponent>(self->getEntity());
+        })
         .endClass();
 
     // Unity's CanvasGroup: fades, disables or makes click-through a UI subtree. The fade options
@@ -3029,6 +3092,16 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, bool>(&AnimationState::addMixingTransform))
         .addFunction("removeMixingTransform", &AnimationState::removeMixingTransform)
         .addFunction("clearMixingTransforms", &AnimationState::clearMixingTransforms)
+        // humanoid clips: plays left and right swapped (overrides the entry's Mirror; resetMirror() goes back)
+        .addProperty("mirror", &AnimationState::getMirror, &AnimationState::setMirror)
+        // humanoid clips: the legs reach the clip's foot goals (overrides the entry's Foot IK; resetFootIK() goes back)
+        .addProperty("footIK", &AnimationState::getFootIK, &AnimationState::setFootIK)
+        // mirror back to the entry's (or the controller state's) Mirror
+        .addFunction("resetMirror", &AnimationState::resetMirror)
+        // footIK back to the entry's (or the controller state's) Foot IK
+        .addFunction("resetFootIK", &AnimationState::resetFootIK)
+        // a humanoid clip, or a generic clip being retargeted
+        .addProperty("isHumanoid", &AnimationState::isHumanoid)
         .endClass();
 
     // Unity's AnimatorStateInfo (a copy): AnimationPlayer:getCurrentStateInfo / getNextStateInfo
@@ -3086,7 +3159,46 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getState", &AnimationPlayer::getState)
         .addFunction("addClip",
             luabridge::overload<const std::string&>(&AnimationPlayer::addClip),
-            luabridge::overload<const std::string&, const std::string&>(&AnimationPlayer::addClip))
+            luabridge::overload<const std::string&, const std::string&>(&AnimationPlayer::addClip),
+            // addClip(path, name | nil, {retarget, mirror, footIK, layer})
+            luabridge::overload<AnimationPlayer*, const std::string&, const luabridge::LuaRef&, const luabridge::LuaRef&>(
+                +[](AnimationPlayer* self, const std::string& path, const luabridge::LuaRef& name, const luabridge::LuaRef& options){
+                    AnimationClipOptions values;
+                    if (!name.isNil() && !name.isString()){
+                        throw std::runtime_error("AnimationPlayer:addClip: the name is a string, or nil for the clip's own");
+                    }
+                    if (!options.isNil() && !options.isTable()){
+                        throw std::runtime_error("AnimationPlayer:addClip: the options are a table {retarget, mirror, footIK, layer}");
+                    }
+                    if (options.isTable()){
+                        for (luabridge::Iterator it(options); !it.isNil(); ++it){
+                            const luabridge::LuaRef key = it.key();
+                            const std::string field = key.isString() ? key.unsafe_cast<std::string>() : std::string();
+                            if (field != "retarget" && field != "mirror" && field != "footIK" && field != "layer"){
+                                throw std::runtime_error("AnimationPlayer:addClip: unknown option '" + (field.empty() ? key.tostring() : field) +
+                                                         "' (options are retarget, mirror, footIK, layer)");
+                            }
+                        }
+                        auto flag = [&](const char* field, bool& out){
+                            const luabridge::LuaRef value = options[field];
+                            if (value.isNil()) return;
+                            if (!value.isBool()) throw std::runtime_error(std::string("AnimationPlayer:addClip: ") + field + " is true or false");
+                            out = value.unsafe_cast<bool>();
+                        };
+                        flag("retarget", values.retarget);
+                        flag("mirror", values.mirror);
+                        flag("footIK", values.footIK);
+                        const luabridge::LuaRef layer = options["layer"];
+                        if (!layer.isNil()){
+                            const double index = layer.isNumber() ? layer.unsafe_cast<double>() : -1.0;
+                            if (!layer.isNumber() || index != std::floor(index) || index < 0.0 || index > 1e6){
+                                throw std::runtime_error("AnimationPlayer:addClip: layer is a layer index, a whole number (0 is the base layer)");
+                            }
+                            values.layer = (int)index;
+                        }
+                    }
+                    return self->addClip(path, name.isString() ? name.unsafe_cast<std::string>() : std::string(), values);
+                }))
         .addFunction("removeClip", &AnimationPlayer::removeClip)
         .addFunction("getClipCount", &AnimationPlayer::getClipCount)
         .addFunction("getClipName", &AnimationPlayer::getClipName)
@@ -3385,6 +3497,123 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("boundsMax", &CameraFollow::getBoundsMax, &CameraFollow::setBoundsMax)
         .addProperty("unscaledTime", &CameraFollow::isUnscaledTime, &CameraFollow::setUnscaledTime)
         .addProperty("enabled", &CameraFollow::isEnabled, &CameraFollow::setEnabled)
+        .endClass();
+
+    // Unity's VideoPlayer enums (docs/mcp/guide/video.md)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("VideoPlayerSource")
+        .addVariable("CLIP", VideoPlayerSource::CLIP)
+        .addVariable("URL", VideoPlayerSource::URL)
+        .endNamespace()
+        .beginNamespace("VideoTimeUpdateMode")
+        .addVariable("GAME_TIME", VideoTimeUpdateMode::GAME_TIME)
+        .addVariable("UNSCALED_GAME_TIME", VideoTimeUpdateMode::UNSCALED_GAME_TIME)
+        .endNamespace()
+        .beginNamespace("VideoRenderMode")
+        .addVariable("CAMERA_FAR_PLANE", VideoRenderMode::CAMERA_FAR_PLANE)
+        .addVariable("CAMERA_NEAR_PLANE", VideoRenderMode::CAMERA_NEAR_PLANE)
+        .addVariable("RENDER_TEXTURE", VideoRenderMode::RENDER_TEXTURE)
+        .addVariable("MATERIAL_OVERRIDE", VideoRenderMode::MATERIAL_OVERRIDE)
+        .addVariable("API_ONLY", VideoRenderMode::API_ONLY)
+        .endNamespace()
+        .beginNamespace("VideoAspectRatio")
+        .addVariable("NO_SCALING", VideoAspectRatio::NO_SCALING)
+        .addVariable("FIT_VERTICALLY", VideoAspectRatio::FIT_VERTICALLY)
+        .addVariable("FIT_HORIZONTALLY", VideoAspectRatio::FIT_HORIZONTALLY)
+        .addVariable("FIT_INSIDE", VideoAspectRatio::FIT_INSIDE)
+        .addVariable("FIT_OUTSIDE", VideoAspectRatio::FIT_OUTSIDE)
+        .addVariable("STRETCH", VideoAspectRatio::STRETCH)
+        .endNamespace()
+        .beginNamespace("VideoAudioOutputMode")
+        .addVariable("NONE", VideoAudioOutputMode::NONE)
+        .addVariable("AUDIO_SOURCE", VideoAudioOutputMode::AUDIO_SOURCE)
+        .addVariable("DIRECT", VideoAudioOutputMode::DIRECT)
+        .endNamespace();
+
+    // Unity's VideoPlayer: plays a clip or a URL into its render texture, a material, a camera
+    // plane or nowhere (API only); its sound directly or through an AudioSource
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<VideoPlayer, EntityHandle>("VideoPlayer")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &VideoPlayer::isEnabled, &VideoPlayer::setEnabled)
+        .addProperty("source", &VideoPlayer::getSource, &VideoPlayer::setSource)
+        .addProperty("clip", &VideoPlayer::getClip, &VideoPlayer::setClip)
+        .addProperty("url", &VideoPlayer::getUrl, &VideoPlayer::setUrl)
+        .addProperty("playOnAwake", &VideoPlayer::isPlayOnAwake, &VideoPlayer::setPlayOnAwake)
+        .addProperty("waitForFirstFrame", &VideoPlayer::isWaitForFirstFrame, &VideoPlayer::setWaitForFirstFrame)
+        .addProperty("isLooping", &VideoPlayer::isLooping, &VideoPlayer::setLooping)
+        .addProperty("skipOnDrop", &VideoPlayer::isSkipOnDrop, &VideoPlayer::setSkipOnDrop)
+        .addProperty("playbackSpeed", &VideoPlayer::getPlaybackSpeed, &VideoPlayer::setPlaybackSpeed)
+        .addProperty("timeUpdateMode", &VideoPlayer::getTimeUpdateMode, &VideoPlayer::setTimeUpdateMode)
+        .addProperty("renderMode", &VideoPlayer::getRenderMode, &VideoPlayer::setRenderMode)
+        // a GameObject with a Camera, nil: the main camera
+        .addProperty("targetCamera",
+            [](const VideoPlayer* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getTargetCamera()); },
+            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetCamera(entityOf(value, "targetCamera")); })
+        .addProperty("targetCameraAlpha", &VideoPlayer::getTargetCameraAlpha, &VideoPlayer::setTargetCameraAlpha)
+        .addProperty("aspectRatio", &VideoPlayer::getAspectRatio, &VideoPlayer::setAspectRatio)
+        // a GameObject with a Mesh, Sprite or Image, nil: this one
+        .addProperty("targetMaterialRenderer",
+            [](const VideoPlayer* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getTargetMaterialRenderer()); },
+            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetMaterialRenderer(entityOf(value, "targetMaterialRenderer")); })
+        // "baseColorTexture" (default), "emissiveTexture", ... or a shader @texture uniform
+        .addProperty("targetMaterialProperty", &VideoPlayer::getTargetMaterialProperty, &VideoPlayer::setTargetMaterialProperty)
+        // -1: every submesh
+        .addProperty("targetSubmesh", &VideoPlayer::getTargetSubmesh, &VideoPlayer::setTargetSubmesh)
+        .addProperty("renderTextureWidth", &VideoPlayer::getRenderTextureWidth, &VideoPlayer::setRenderTextureWidth)
+        .addProperty("renderTextureHeight", &VideoPlayer::getRenderTextureHeight, &VideoPlayer::setRenderTextureHeight)
+        .addProperty("audioOutputMode", &VideoPlayer::getAudioOutputMode, &VideoPlayer::setAudioOutputMode)
+        .addProperty("directVolume", &VideoPlayer::getDirectVolume, &VideoPlayer::setDirectVolume)
+        .addProperty("directMute", &VideoPlayer::isDirectMute, &VideoPlayer::setDirectMute)
+        // a GameObject with an AudioSource, nil: this one
+        .addProperty("targetAudioSource",
+            [](const VideoPlayer* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getTargetAudioSource()); },
+            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetAudioSource(entityOf(value, "targetAudioSource")); })
+        .addProperty("time", &VideoPlayer::getTime, &VideoPlayer::setTime)
+        .addProperty("canSetTime", &VideoPlayer::canSetTime)
+        .addProperty("frame", &VideoPlayer::getFrame, &VideoPlayer::setFrame)
+        .addProperty("frameCount", &VideoPlayer::getFrameCount)
+        .addProperty("frameRate", &VideoPlayer::getFrameRate)
+        // seconds
+        .addProperty("length", &VideoPlayer::getLength)
+        .addProperty("width", &VideoPlayer::getWidth)
+        .addProperty("height", &VideoPlayer::getHeight)
+        .addProperty("isPrepared", &VideoPlayer::isPrepared)
+        .addProperty("isPlaying", &VideoPlayer::isPlaying)
+        .addProperty("isPaused", &VideoPlayer::isPaused)
+        // 0..1: the download of a URL, then the opening
+        .addProperty("prepareProgress", &VideoPlayer::getPrepareProgress)
+        .addProperty("texture", &VideoPlayer::getTexture)
+        .addProperty("backend", &VideoPlayer::getBackend)
+        .addProperty("videoCodec", &VideoPlayer::getVideoCodec)
+        .addProperty("audioCodec", &VideoPlayer::getAudioCodec)
+        // the last error ("" when none)
+        .addProperty("error", &VideoPlayer::getError)
+        .addFunction("prepare", &VideoPlayer::prepare)
+        .addFunction("play", &VideoPlayer::play)
+        .addFunction("pause", &VideoPlayer::pause)
+        .addFunction("stop", &VideoPlayer::stop)
+        // paused: the next frame
+        .addFunction("stepForward", &VideoPlayer::stepForward)
+        .addFunction("getFramebuffer", &VideoPlayer::getFramebuffer)
+        .addStaticFunction("canPlay", &VideoPlayer::canPlay)
+        // deletes the media cache's files (of one URL, or all); the number removed
+        .addStaticFunction("clearCache",
+            luabridge::overload<>(+[]() -> int { return VideoPlayer::clearCache(); }),
+            luabridge::overload<const std::string&>(+[](const std::string& url) -> int { return VideoPlayer::clearCache(url); }))
+        // function(player) when it can play
+        .addProperty("onPrepareCompleted", [] (VideoPlayer* self, lua_State*) { return &self->getOnPrepareCompleted(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnPrepareCompleted() = L; })
+        // function(player) when the first frame of a play shows
+        .addProperty("onStarted", [] (VideoPlayer* self, lua_State*) { return &self->getOnStarted(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnStarted() = L; })
+        // function(player) at each loop and at the end of a play that does not loop
+        .addProperty("onLoopPointReached", [] (VideoPlayer* self, lua_State*) { return &self->getOnLoopPointReached(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnLoopPointReached() = L; })
+        // function(player, message)
+        .addProperty("onErrorReceived", [] (VideoPlayer* self, lua_State*) { return &self->getOnErrorReceived(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnErrorReceived() = L; })
+        // function(player) when a seek's frame shows
+        .addProperty("onSeekCompleted", [] (VideoPlayer* self, lua_State*) { return &self->getOnSeekCompleted(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnSeekCompleted() = L; })
+        // function(player, frameIndex) each frame shown (a call per frame: set it only when needed)
+        .addProperty("onFrameReady", [] (VideoPlayer* self, lua_State*) { return &self->getOnFrameReady(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnFrameReady() = L; })
+        .addFunction("getVideoPlayerComponent", (VideoPlayerComponent&(VideoPlayer::*)() const)&VideoPlayer::getComponent)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

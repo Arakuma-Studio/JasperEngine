@@ -7,7 +7,7 @@ from harness import Editor
 
 EDITOR = {"create": True, "name": "MCP Resources"}
 
-DOCS = ["animation", "camera", "cpp-scripting", "debugging", "html-ui", "input", "lattice", "lines-trails", "lua-api", "particles", "physics", "platform-services", "post-processing", "prefabs", "shaders", "sprite-normals", "ui", "unity-glossary", "vertex-animation"]
+DOCS = ["animation", "camera", "cpp-scripting", "debugging", "html-ui", "input", "lattice", "lines-trails", "lua-api", "particles", "physics", "platform-services", "post-processing", "prefabs", "safe-area", "shaders", "sprite-normals", "ui", "unity-glossary", "vertex-animation"]
 
 
 async def read_text(ed: Editor, uri: str) -> str:

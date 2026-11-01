@@ -144,7 +144,11 @@ void AnimationWindowClip::drawToolbar(SceneProject* sceneProject){
     {
         const bool on = c.isRecording();
         const bool editableClip = doc && !doc->isReadOnly();
-        ImGui::BeginDisabled(!on && (!editableClip || !blocker.empty() || !stopped));
+        // a humanoid clip keys the rig's joint rotations: only on a humanoid character (anim-retarget 9)
+        const std::string recordBlocker = !blocker.empty() ? blocker
+            : (doc && doc->data().isHumanoid() && c.getRoot() != NULL_ENTITY && !c.boundHumanoid()) ? std::string("Bind a humanoid character to record this humanoid clip")
+            : std::string();
+        ImGui::BeginDisabled(!on && (!editableClip || !recordBlocker.empty() || !stopped));
         if (on) ImGui::PushStyleColor(ImGuiCol_Button, mix(Theme::Colors::ErrorText, ImVec4(0, 0, 0, 1), 0.45f));
         ImGui::PushStyleColor(ImGuiCol_Text, on ? ImVec4(1, 1, 1, 1) : Theme::Colors::ErrorText);
         if (ImGui::Button(ICON_FA_CIRCLE "##clip_record")){
@@ -159,7 +163,7 @@ void AnimationWindowClip::drawToolbar(SceneProject* sceneProject){
                                                               : "Stop recording (R): the preview stops and the scene goes back to how it was before")
                                     : !doc ? "Record: open a clip first"
                                     : doc->isReadOnly() ? "Record: the clip is read-only (extract it to edit it)"
-                                    : !blocker.empty() ? blocker.c_str()
+                                    : !recordBlocker.empty() ? recordBlocker.c_str()
                                     : "Record (R): moving the bound GameObject or its children (Scene view, Inspector) keys the clip at the playhead");
         }
     }
@@ -676,7 +680,11 @@ void AnimationWindowClip::drawValueField(const Row& row, ImVec2 pos, float width
     // what the Scene view shows while previewing (incl. an unkeyed pink value), else the clip's value
     std::vector<float> value;
     bool shown = false;
-    if (c.isPreviewing() && !row.missing){
+    if (c.isPreviewing() && !row.missing && isHumanoidChannel(track.channel)){
+        // the bound rig's pose as the humanoid value (anim-retarget 9)
+        std::shared_ptr<const anim::HumanoidSlots> humanoid = c.boundHumanoid();
+        shown = humanoid && anim::readHumanoidValue(valueScene(), *humanoid->target, track.channel, track.humanBone, value);
+    }else if (c.isPreviewing() && !row.missing){
         Scene* scene = valueScene();
         const Entity entity = scene ? anim::resolvePath(scene, valueRoot(), track.path) : NULL_ENTITY;
         shown = entity != NULL_ENTITY && anim::readChannelValue(scene, entity, track.channel, track.points, value);
@@ -687,8 +695,8 @@ void AnimationWindowClip::drawValueField(const Row& row, ImVec2 pos, float width
     ImGui::PushID(row.track * 64 + row.component + 1);
     if (row.kind == Row::Kind::Track){
         char text[96] = "";
-        if (track.channel == ClipChannel::Rotation){
-            const Vector3 e = eulerOf(value);
+        if (isAngleTrack(track)){
+            const Vector3 e = anglesOf(track, value);
             std::snprintf(text, sizeof(text), "%.1f  %.1f  %.1f", e.x, e.y, e.z);
         }else if (track.channel == ClipChannel::Morph){
             std::snprintf(text, sizeof(text), "%zu weights", value.size());
@@ -707,9 +715,9 @@ void AnimationWindowClip::drawValueField(const Row& row, ImVec2 pos, float width
     // an editable component: unkeyed edits preview in pink until K keys them
     ImGui::SetCursorScreenPos(ImVec2(pos.x + width - m.valueWidth, pos.y + (height - ImGui::GetFrameHeight()) * 0.5f));
     float v = 0.0f;
-    const bool editingEuler = track.channel == ClipChannel::Rotation && eulerEditTrack == row.track;
-    if (track.channel == ClipChannel::Rotation){
-        const Vector3 e = editingEuler ? eulerEdit : eulerOf(value);
+    const bool editingEuler = isAngleTrack(track) && eulerEditTrack == row.track;
+    if (isAngleTrack(track)){
+        const Vector3 e = editingEuler ? eulerEdit : anglesOf(track, value);
         v = row.component == 0 ? e.x : row.component == 1 ? e.y : e.z;
     }else if ((size_t)row.component < value.size()){
         v = value[(size_t)row.component];
@@ -717,14 +725,14 @@ void AnimationWindowClip::drawValueField(const Row& row, ImVec2 pos, float width
     if (pending) ImGui::PushStyleColor(ImGuiCol_FrameBg, pendingFieldColor());
     ImGui::SetNextItemWidth(m.valueWidth - 4.0f * m.s);
     ImGui::BeginDisabled(doc->isReadOnly() || row.missing);
-    const float speed = track.channel == ClipChannel::Rotation ? 0.5f : 0.01f;
+    const float speed = isAngleTrack(track) ? 0.5f : 0.01f;
     const bool changed = ImGui::DragFloat("##value", &v, speed, 0.0f, 0.0f, "%.3f");
     if (ImGui::IsItemActivated()){
         valueMergeKey.clear();
-        if (track.channel == ClipChannel::Rotation){
+        if (isAngleTrack(track)){
             // the triple stays as dragged while the field is active (M13)
             eulerEditTrack = row.track;
-            eulerEdit = eulerOf(value);
+            eulerEdit = anglesOf(track, value);
         }
     }
     if (changed){
@@ -1279,6 +1287,46 @@ void AnimationWindowClip::drawAddPropertyPopup(){
         ImGui::PopID();
     };
     visit(root, "", true);
+
+    // humanoid tracks (anim-retarget 9): every slot and extra bone, the body position and the
+    // foot goals, keyed from the bound humanoid rig
+    std::shared_ptr<const anim::HumanoidSlots> humanoid = controller().boundHumanoid();
+    if (!done && (humanoid || data.isHumanoid())){
+        ImGui::PushID("humanoid");
+        if (!humanoid){
+            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " Humanoid (bind a humanoid character)");
+            ImGui::SetItemTooltip("Humanoid tracks are keyed from a humanoid rig: bind a character whose model maps the humanoid bones");
+        }else if (ImGui::TreeNodeEx("##humanoid", needle.empty() ? 0 : ImGuiTreeNodeFlags_DefaultOpen, "Humanoid")){
+            auto humanoidItem = [&](ClipChannel channel, int bone){
+                const std::string label = humanoidTrackLabel(channel, bone).substr(std::string("Humanoid : ").size());
+                if (!needle.empty() && lower(label).find(needle) == std::string::npos) return;
+                const bool exists = data.findHumanoidTrack(channel, bone) >= 0;
+                std::vector<float> value;
+                const bool available = anim::readHumanoidValue(scene, *humanoid->target, channel, bone, value);
+                ImGui::PushID(bone + (channel == ClipChannel::HumanoidPosition ? 1000 : 0));
+                const std::string text = label + (exists ? "  (animated)" : available ? "" : "  (not on this rig)");
+                if (ImGui::Selectable(text.c_str(), false, exists || !available ? ImGuiSelectableFlags_Disabled : 0)){
+                    AnimationClipController& c = controller();
+                    c.setTime(snapToFrame(c.getTime()));
+                    size_t track = 0;
+                    if (!c.addProperty(anim::humanoidTrackBoneName(channel, bone), channel, &track, &error)){
+                        setNotice(error, true);
+                    }else{
+                        std::shared_ptr<AnimationClipDocument> now = document();
+                        if (now && track < now->data().tracks.size()) expanded.insert(rowKey(now->data().tracks[track]));
+                    }
+                    done = true;
+                }
+                ImGui::PopID();
+            };
+            humanoidItem(ClipChannel::HumanoidPosition, HUMANOID_POSITION_HIPS);
+            for (int b = 0; b < anim::HUMANOID_TRACK_BONE_COUNT && !done; b++) humanoidItem(ClipChannel::Humanoid, b);
+            humanoidItem(ClipChannel::HumanoidPosition, HUMANOID_POSITION_LEFT_FOOT);
+            humanoidItem(ClipChannel::HumanoidPosition, HUMANOID_POSITION_RIGHT_FOOT);
+            ImGui::TreePop();
+        }
+        ImGui::PopID();
+    }
     ImGui::EndChild();
     if (done) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();

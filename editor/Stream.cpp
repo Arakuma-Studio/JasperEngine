@@ -24,6 +24,7 @@
 #include "util/CameraTextureLink.h"
 #include "util/Color.h"
 #include "util/FluidTextureLink.h"
+#include "util/VideoTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/StringUtils.h"
 #include "ecs/EntityManager.h"
@@ -38,6 +39,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
+#include <iomanip>
+#include <locale>
+#include <sstream>
 #include <cmath>
 #include <cstdio>
 #include <limits>
@@ -2363,6 +2368,14 @@ YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData)
         node["fluid"] = linkedFluid;
         return node;
     }
+    // a Video Player's render texture (VideoTextureLink), the same way
+    Entity linkedVideo = VideoTextureLink::parse(texture.getId());
+    if (linkedVideo != NULL_ENTITY) {
+        node["textureType"] = "2D";
+        node["source"] = "video";
+        node["video"] = linkedVideo;
+        return node;
+    }
 
     if (texture.empty() || texture.isFramebuffer())
         return node;
@@ -2487,6 +2500,11 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
                 // a FluidSimulation's output, bound by CameraTextureLink::resolve too
                 if (node["fluid"]) {
                     texture.setId(FluidTextureLink::makeId(YamlNumbers::as<Entity>(node["fluid"])));
+                }
+            } else if (source == "video") {
+                // a Video Player's render texture, bound by CameraTextureLink::resolve too
+                if (node["video"]) {
+                    texture.setId(VideoTextureLink::makeId(YamlNumbers::as<Entity>(node["video"])));
                 }
             }
         }
@@ -3156,6 +3174,132 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
 
 namespace {
 
+// ---- the native plugin settings of project.yaml (android/ios/macos/web nodes)
+
+using jasperengine::editor::NativePlistValue;
+
+void encodeStringList(YAML::Node& parent, const char* key, const std::vector<std::string>& values) {
+    if (values.empty()) return;
+    YAML::Node list(YAML::NodeType::Sequence);
+    for (const std::string& value : values) list.push_back(value);
+    parent[key] = list;
+}
+
+std::vector<std::string> decodeStringList(const YAML::Node& node) {
+    std::vector<std::string> values;
+    if (!node || !node.IsSequence()) return values;
+    for (const YAML::Node& item : node) {
+        if (item.IsScalar()) values.push_back(item.as<std::string>());
+    }
+    return values;
+}
+
+// A plain scalar read back as a plist value: true/false, an integer, a real, else a string
+NativePlistValue plainPlistValue(const std::string& text) {
+    NativePlistValue value;
+    if (text == "true" || text == "false") {
+        value.kind = NativePlistValue::Kind::Bool;
+        value.flag = text == "true";
+        return value;
+    }
+    if (!text.empty()) {
+        char* end = nullptr;
+        errno = 0;
+        const long long integer = std::strtoll(text.c_str(), &end, 10);
+        if (errno == 0 && end && *end == '\0' && text.find_first_of(" \t") == std::string::npos) {
+            value.kind = NativePlistValue::Kind::Integer;
+            value.integer = integer;
+            return value;
+        }
+        errno = 0;
+        const double real = std::strtod(text.c_str(), &end);
+        if (errno == 0 && end && *end == '\0' && std::isfinite(real) && text.find_first_of(" \tinfINFnNxX") == std::string::npos) {
+            value.kind = NativePlistValue::Kind::Real;
+            value.real = real;
+            return value;
+        }
+    }
+    value.kind = NativePlistValue::Kind::String;
+    value.text = text;
+    return value;
+}
+
+YAML::Node encodePlistValue(const NativePlistValue& value) {
+    switch (value.kind) {
+        case NativePlistValue::Kind::Bool: return YAML::Node(value.flag);
+        case NativePlistValue::Kind::Integer: return YAML::Node(value.integer);
+        case NativePlistValue::Kind::Real: {
+            // a real keeps a decimal point, so it reads back as a real
+            std::ostringstream out;
+            out.imbue(std::locale::classic());
+            out << std::setprecision(17) << value.real;
+            std::string text = out.str();
+            if (text.find_first_of(".eE") == std::string::npos) text += ".0";
+            return YAML::Node(text);
+        }
+        case NativePlistValue::Kind::StringArray: {
+            YAML::Node list(YAML::NodeType::Sequence);
+            for (const std::string& item : value.items) list.push_back(item);
+            return list;
+        }
+        case NativePlistValue::Kind::String:
+            break;
+    }
+    // a string that would read back as something else ("true", "12", "") is written {string: ...}
+    const NativePlistValue plain = plainPlistValue(value.text);
+    if (plain.kind != NativePlistValue::Kind::String || value.text.empty() || value.text == "null" || value.text == "~") {
+        YAML::Node wrapped;
+        wrapped["string"] = value.text;
+        return wrapped;
+    }
+    return YAML::Node(value.text);
+}
+
+bool decodePlistValue(const YAML::Node& node, NativePlistValue& out) {
+    if (node.IsSequence()) {
+        out = NativePlistValue();
+        out.kind = NativePlistValue::Kind::StringArray;
+        out.items = decodeStringList(node);
+        return true;
+    }
+    if (node.IsMap() && node["string"] && node["string"].IsScalar()) {
+        out = NativePlistValue();
+        out.kind = NativePlistValue::Kind::String;
+        out.text = node["string"].as<std::string>();
+        return true;
+    }
+    if (!node.IsScalar()) return false;
+    // a quoted scalar is a string whatever it says
+    if (node.Tag() == "!") {
+        out = NativePlistValue();
+        out.text = node.as<std::string>();
+        return true;
+    }
+    out = plainPlistValue(node.as<std::string>());
+    return true;
+}
+
+void encodePlistEntries(YAML::Node& parent, const std::map<std::string, NativePlistValue>& entries) {
+    if (entries.empty()) return;
+    YAML::Node map(YAML::NodeType::Map);
+    for (const auto& [key, value] : entries) map[key] = encodePlistValue(value);
+    parent["plistEntries"] = map;
+}
+
+std::map<std::string, NativePlistValue> decodePlistEntries(const YAML::Node& node) {
+    std::map<std::string, NativePlistValue> entries;
+    if (!node || !node.IsMap()) return entries;
+    for (const auto& item : node) {
+        NativePlistValue value;
+        if (item.first.IsScalar() && decodePlistValue(item.second, value)) entries[item.first.as<std::string>()] = value;
+    }
+    return entries;
+}
+
+} // namespace
+
+namespace {
+
 // ---- Project Settings > Input in project.yaml: `input: {version: 1, actions: [...]}`, the
 // shape InputActions reads as JSON (InputActions::parseActionsJson), each binding a flow map
 
@@ -3453,6 +3597,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (!web.headInclude.empty()) webNode["headInclude"] = web.headInclude;
         if (web.resizeCanvasToWindow != defaultWeb.resizeCanvasToWindow) webNode["resizeCanvasToWindow"] = web.resizeCanvasToWindow;
         if (web.hideEmscriptenUI != defaultWeb.hideEmscriptenUI) webNode["hideEmscriptenUI"] = web.hideEmscriptenUI;
+        encodeStringList(webNode, "scriptUrls", web.scriptUrls);
+        if (web.viewportFitCover != defaultWeb.viewportFitCover) webNode["viewportFitCover"] = web.viewportFitCover;
         if (webNode.size() != 0) root["web"] = webNode;
     }
 
@@ -3486,6 +3632,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (!macOS.buildNumber.empty()) macOSNode["buildNumber"] = macOS.buildNumber;
         if (!macOS.icon.empty()) macOSNode["icon"] = macOS.icon.generic_string();
         if (macOS.highDpi != defaultMacOS.highDpi) macOSNode["highDpi"] = macOS.highDpi;
+        encodePlistEntries(macOSNode, macOS.plistEntries);
+        encodeStringList(macOSNode, "frameworks", macOS.frameworks);
         if (macOSNode.size() != 0) root["macos"] = macOSNode;
     }
 
@@ -3503,6 +3651,33 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (ios.supportsHighRefreshRate != defaultIOS.supportsHighRefreshRate) iosNode["supportsHighRefreshRate"] = ios.supportsHighRefreshRate;
         if (ios.admobEnabled != defaultIOS.admobEnabled) iosNode["admobEnabled"] = ios.admobEnabled;
         if (!ios.admobAppId.empty()) iosNode["admobAppId"] = ios.admobAppId;
+        encodePlistEntries(iosNode, ios.plistEntries);
+        if (!ios.plistXml.empty()) iosNode["plistXml"] = ios.plistXml;
+        encodeStringList(iosNode, "frameworks", ios.frameworks);
+        if (!ios.cocoapods.empty()) {
+            YAML::Node pods(YAML::NodeType::Sequence);
+            for (const NativeCocoaPod& pod : ios.cocoapods) {
+                YAML::Node podNode;
+                podNode["name"] = pod.name;
+                if (!pod.version.empty()) podNode["version"] = pod.version;
+                if (!pod.source.empty()) podNode["source"] = pod.source;
+                pods.push_back(podNode);
+            }
+            iosNode["cocoapods"] = pods;
+        }
+        if (!ios.swiftPackages.empty()) {
+            YAML::Node packages(YAML::NodeType::Sequence);
+            for (const NativeSwiftPackage& package : ios.swiftPackages) {
+                YAML::Node packageNode;
+                packageNode["url"] = package.url;
+                packageNode["version"] = package.version;
+                encodeStringList(packageNode, "products", package.products);
+                packages.push_back(packageNode);
+            }
+            iosNode["swiftPackages"] = packages;
+        }
+        if (!ios.entitlementsXml.empty()) iosNode["entitlementsXml"] = ios.entitlementsXml;
+        if (ios.deploymentTarget != defaultIOS.deploymentTarget) iosNode["deploymentTarget"] = ios.deploymentTarget;
         if (iosNode.size() != 0) root["ios"] = iosNode;
     }
 
@@ -3548,6 +3723,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (android.fullscreen != defaults.fullscreen) androidNode["fullscreen"] = android.fullscreen;
         if (android.admobEnabled != defaults.admobEnabled) androidNode["admobEnabled"] = android.admobEnabled;
         if (!android.admobAppId.empty()) androidNode["admobAppId"] = android.admobAppId;
+        encodeStringList(androidNode, "gradleDependencies", android.gradleDependencies);
+        encodeStringList(androidNode, "gradleRepositories", android.gradleRepositories);
+        encodeStringList(androidNode, "gradleProperties", android.gradleProperties);
+        encodeStringList(androidNode, "extraPermissions", android.extraPermissions);
+        if (!android.manifestXml.empty()) androidNode["manifestXml"] = android.manifestXml;
+        if (!android.manifestApplicationXml.empty()) androidNode["manifestApplicationXml"] = android.manifestApplicationXml;
         if (androidNode.size()) root["android"] = androidNode;
     }
 
@@ -3967,6 +4148,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (webNode["headInclude"]) web.headInclude = webNode["headInclude"].as<std::string>();
         if (webNode["resizeCanvasToWindow"].IsDefined()) web.resizeCanvasToWindow = YamlNumbers::as<bool>(webNode["resizeCanvasToWindow"]);
         if (webNode["hideEmscriptenUI"].IsDefined()) web.hideEmscriptenUI = YamlNumbers::as<bool>(webNode["hideEmscriptenUI"]);
+        web.scriptUrls = decodeStringList(webNode["scriptUrls"]);
+        if (webNode["viewportFitCover"].IsDefined()) web.viewportFitCover = YamlNumbers::as<bool>(webNode["viewportFitCover"]);
     }
 
     if (node["linux"] && node["linux"].IsMap()) {
@@ -3995,6 +4178,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (macOSNode["buildNumber"]) macOS.buildNumber = macOSNode["buildNumber"].as<std::string>();
         if (macOSNode["icon"]) macOS.icon = macOSNode["icon"].as<std::string>();
         if (macOSNode["highDpi"].IsDefined()) macOS.highDpi = YamlNumbers::as<bool>(macOSNode["highDpi"]);
+        macOS.plistEntries = decodePlistEntries(macOSNode["plistEntries"]);
+        macOS.frameworks = decodeStringList(macOSNode["frameworks"]);
     }
 
     if (node["ios"] && node["ios"].IsMap()) {
@@ -4010,6 +4195,33 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (iosNode["supportsHighRefreshRate"].IsDefined()) ios.supportsHighRefreshRate = YamlNumbers::as<bool>(iosNode["supportsHighRefreshRate"]);
         if (iosNode["admobEnabled"].IsDefined()) ios.admobEnabled = YamlNumbers::as<bool>(iosNode["admobEnabled"]);
         if (iosNode["admobAppId"]) ios.admobAppId = iosNode["admobAppId"].as<std::string>();
+        ios.plistEntries = decodePlistEntries(iosNode["plistEntries"]);
+        if (iosNode["plistXml"]) ios.plistXml = iosNode["plistXml"].as<std::string>();
+        ios.frameworks = decodeStringList(iosNode["frameworks"]);
+        ios.cocoapods.clear();
+        if (iosNode["cocoapods"] && iosNode["cocoapods"].IsSequence()) {
+            for (const YAML::Node& podNode : iosNode["cocoapods"]) {
+                if (!podNode.IsMap() || !podNode["name"]) continue;
+                NativeCocoaPod pod;
+                pod.name = podNode["name"].as<std::string>();
+                if (podNode["version"]) pod.version = podNode["version"].as<std::string>();
+                if (podNode["source"]) pod.source = podNode["source"].as<std::string>();
+                ios.cocoapods.push_back(pod);
+            }
+        }
+        ios.swiftPackages.clear();
+        if (iosNode["swiftPackages"] && iosNode["swiftPackages"].IsSequence()) {
+            for (const YAML::Node& packageNode : iosNode["swiftPackages"]) {
+                if (!packageNode.IsMap() || !packageNode["url"]) continue;
+                NativeSwiftPackage package;
+                package.url = packageNode["url"].as<std::string>();
+                if (packageNode["version"]) package.version = packageNode["version"].as<std::string>();
+                package.products = decodeStringList(packageNode["products"]);
+                ios.swiftPackages.push_back(package);
+            }
+        }
+        if (iosNode["entitlementsXml"]) ios.entitlementsXml = iosNode["entitlementsXml"].as<std::string>();
+        if (iosNode["deploymentTarget"]) ios.deploymentTarget = iosNode["deploymentTarget"].as<std::string>();
     }
 
     if (node["android"] && node["android"].IsMap()) {
@@ -4056,6 +4268,12 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         // window flag), which presentation.keepScreenOn (default true) keeps doing
         if (androidNode["admobEnabled"].IsDefined()) android.admobEnabled = YamlNumbers::as<bool>(androidNode["admobEnabled"]);
         if (androidNode["admobAppId"]) android.admobAppId = androidNode["admobAppId"].as<std::string>();
+        android.gradleDependencies = decodeStringList(androidNode["gradleDependencies"]);
+        android.gradleRepositories = decodeStringList(androidNode["gradleRepositories"]);
+        android.gradleProperties = decodeStringList(androidNode["gradleProperties"]);
+        android.extraPermissions = decodeStringList(androidNode["extraPermissions"]);
+        if (androidNode["manifestXml"]) android.manifestXml = androidNode["manifestXml"].as<std::string>();
+        if (androidNode["manifestApplicationXml"]) android.manifestApplicationXml = androidNode["manifestApplicationXml"].as<std::string>();
     }
 
     if (node["startSceneId"]) {
@@ -5615,6 +5833,11 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
         compNode[Catalog::getComponentName(ComponentType::CanvasGroupComponent, true)] = encodeCanvasGroupComponent(group);
     }
 
+    if (signature.test(registry->getComponentId<SafeAreaComponent>())) {
+        const SafeAreaComponent& safeArea = registry->getComponent<SafeAreaComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::SafeAreaComponent, true)] = encodeSafeAreaComponent(safeArea);
+    }
+
     if (signature.test(registry->getComponentId<TextComponent>())) {
         const TextComponent& text = registry->getComponent<TextComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::TextComponent, true)] = encodeTextComponent(text);
@@ -5683,6 +5906,11 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
     if (signature.test(registry->getComponentId<FluidSimulationComponent>())) {
         const FluidSimulationComponent& fluid = registry->getComponent<FluidSimulationComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::FluidSimulationComponent, true)] = encodeFluidSimulationComponent(fluid);
+    }
+
+    if (registry->isComponentRegistered<VideoPlayerComponent>() && signature.test(registry->getComponentId<VideoPlayerComponent>())) {
+        const VideoPlayerComponent& player = registry->getComponent<VideoPlayerComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::VideoPlayerComponent, true)] = encodeVideoPlayerComponent(player);
     }
 
     if (signature.test(registry->getComponentId<LatticeComponent>())) {
@@ -6061,6 +6289,17 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }
     }
 
+    compName = Catalog::getComponentName(ComponentType::SafeAreaComponent, true);
+    if (compNode[compName]) {
+        SafeAreaComponent* existing = registry->findComponent<SafeAreaComponent>(entity);
+        SafeAreaComponent safeArea = decodeSafeAreaComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<SafeAreaComponent>())){
+            registry->addComponent<SafeAreaComponent>(entity, std::move(safeArea));
+        }else{
+            registry->getComponent<SafeAreaComponent>(entity) = std::move(safeArea);
+        }
+    }
+
     compName = Catalog::getComponentName(ComponentType::LayoutGroupComponent, true);
     if (compNode[compName]) {
         LayoutGroupComponent* existing = registry->findComponent<LayoutGroupComponent>(entity);
@@ -6270,6 +6509,17 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::FluidSimulationComponent, existing, &fluid);
             registry->getComponent<FluidSimulationComponent>(entity) = std::move(fluid);
             Catalog::updateEntity(registry, entity, flags);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::VideoPlayerComponent, true);
+    if (compNode[compName] && registry->isComponentRegistered<VideoPlayerComponent>()) {
+        VideoPlayerComponent* existing = registry->findComponent<VideoPlayerComponent>(entity);
+        VideoPlayerComponent player = decodeVideoPlayerComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<VideoPlayerComponent>())){
+            registry->addComponent<VideoPlayerComponent>(entity, std::move(player));
+        }else{
+            registry->getComponent<VideoPlayerComponent>(entity) = std::move(player);
         }
     }
 
@@ -7493,6 +7743,34 @@ RectTransformComponent editor::Stream::decodeRectTransformComponent(const YAML::
     return layout;
 }
 
+YAML::Node editor::Stream::encodeSafeAreaComponent(const SafeAreaComponent& safeArea) {
+    // an empty map when every field is the default: `safearea: {}`
+    YAML::Node node(YAML::NodeType::Map);
+    const SafeAreaComponent defaults;
+    if (safeArea.enabled != defaults.enabled) node["enabled"] = YamlNumbers::text(safeArea.enabled);
+    if (safeArea.left != defaults.left) node["left"] = YamlNumbers::text(safeArea.left);
+    if (safeArea.top != defaults.top) node["top"] = YamlNumbers::text(safeArea.top);
+    if (safeArea.right != defaults.right) node["right"] = YamlNumbers::text(safeArea.right);
+    if (safeArea.bottom != defaults.bottom) node["bottom"] = YamlNumbers::text(safeArea.bottom);
+    if (safeArea.includeExtraInsets != defaults.includeExtraInsets) node["includeExtraInsets"] = YamlNumbers::text(safeArea.includeExtraInsets);
+    if (node.size() == 0) node.SetStyle(YAML::EmitterStyle::Flow);
+    return node;
+}
+
+SafeAreaComponent editor::Stream::decodeSafeAreaComponent(const YAML::Node& node, const SafeAreaComponent* oldSafeArea) {
+    // from the defaults (a field left out is the default), the runtime state kept
+    SafeAreaComponent safeArea;
+    if (oldSafeArea) safeArea.appliedRevision = oldSafeArea->appliedRevision;
+    if (!node.IsMap()) return safeArea;
+    if (node["enabled"]) safeArea.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["left"]) safeArea.left = YamlNumbers::as<bool>(node["left"]);
+    if (node["top"]) safeArea.top = YamlNumbers::as<bool>(node["top"]);
+    if (node["right"]) safeArea.right = YamlNumbers::as<bool>(node["right"]);
+    if (node["bottom"]) safeArea.bottom = YamlNumbers::as<bool>(node["bottom"]);
+    if (node["includeExtraInsets"]) safeArea.includeExtraInsets = YamlNumbers::as<bool>(node["includeExtraInsets"]);
+    return safeArea;
+}
+
 YAML::Node editor::Stream::encodeLayoutGroupComponent(const LayoutGroupComponent& container) {
     YAML::Node node;
     node["type"] = layoutGroupTypeToString(container.type);
@@ -8567,6 +8845,148 @@ UIDocumentComponent editor::Stream::decodeUIDocumentComponent(const YAML::Node& 
     return document;
 }
 
+namespace {
+
+    const char* videoPlayerSourceName(VideoPlayerSource value){
+        return value == VideoPlayerSource::URL ? "url" : "clip";
+    }
+    VideoPlayerSource videoPlayerSourceOf(const std::string& text, VideoPlayerSource fallback){
+        if (text == "url") return VideoPlayerSource::URL;
+        if (text == "clip") return VideoPlayerSource::CLIP;
+        return fallback;
+    }
+    const char* videoTimeUpdateModeName(VideoTimeUpdateMode value){
+        return value == VideoTimeUpdateMode::UNSCALED_GAME_TIME ? "unscaled_game_time" : "game_time";
+    }
+    VideoTimeUpdateMode videoTimeUpdateModeOf(const std::string& text, VideoTimeUpdateMode fallback){
+        if (text == "unscaled_game_time") return VideoTimeUpdateMode::UNSCALED_GAME_TIME;
+        if (text == "game_time") return VideoTimeUpdateMode::GAME_TIME;
+        return fallback;
+    }
+    const char* videoRenderModeName(VideoRenderMode value){
+        switch (value){
+            case VideoRenderMode::CAMERA_FAR_PLANE: return "camera_far_plane";
+            case VideoRenderMode::CAMERA_NEAR_PLANE: return "camera_near_plane";
+            case VideoRenderMode::RENDER_TEXTURE: return "render_texture";
+            case VideoRenderMode::MATERIAL_OVERRIDE: return "material_override";
+            case VideoRenderMode::API_ONLY: return "api_only";
+        }
+        return "render_texture";
+    }
+    VideoRenderMode videoRenderModeOf(const std::string& text, VideoRenderMode fallback){
+        for (VideoRenderMode mode : {VideoRenderMode::CAMERA_FAR_PLANE, VideoRenderMode::CAMERA_NEAR_PLANE, VideoRenderMode::RENDER_TEXTURE,
+                                     VideoRenderMode::MATERIAL_OVERRIDE, VideoRenderMode::API_ONLY}){
+            if (text == videoRenderModeName(mode)) return mode;
+        }
+        return fallback;
+    }
+    const char* videoAspectRatioName(VideoAspectRatio value){
+        switch (value){
+            case VideoAspectRatio::NO_SCALING: return "no_scaling";
+            case VideoAspectRatio::FIT_VERTICALLY: return "fit_vertically";
+            case VideoAspectRatio::FIT_HORIZONTALLY: return "fit_horizontally";
+            case VideoAspectRatio::FIT_INSIDE: return "fit_inside";
+            case VideoAspectRatio::FIT_OUTSIDE: return "fit_outside";
+            case VideoAspectRatio::STRETCH: return "stretch";
+        }
+        return "fit_inside";
+    }
+    VideoAspectRatio videoAspectRatioOf(const std::string& text, VideoAspectRatio fallback){
+        for (VideoAspectRatio fit : {VideoAspectRatio::NO_SCALING, VideoAspectRatio::FIT_VERTICALLY, VideoAspectRatio::FIT_HORIZONTALLY,
+                                     VideoAspectRatio::FIT_INSIDE, VideoAspectRatio::FIT_OUTSIDE, VideoAspectRatio::STRETCH}){
+            if (text == videoAspectRatioName(fit)) return fit;
+        }
+        return fallback;
+    }
+    const char* videoAudioOutputModeName(VideoAudioOutputMode value){
+        switch (value){
+            case VideoAudioOutputMode::NONE: return "none";
+            case VideoAudioOutputMode::AUDIO_SOURCE: return "audio_source";
+            case VideoAudioOutputMode::DIRECT: return "direct";
+        }
+        return "direct";
+    }
+    VideoAudioOutputMode videoAudioOutputModeOf(const std::string& text, VideoAudioOutputMode fallback){
+        if (text == "none") return VideoAudioOutputMode::NONE;
+        if (text == "audio_source") return VideoAudioOutputMode::AUDIO_SOURCE;
+        if (text == "direct") return VideoAudioOutputMode::DIRECT;
+        return fallback;
+    }
+
+}
+
+YAML::Node editor::Stream::encodeVideoPlayerComponent(const VideoPlayerComponent& player) {
+    YAML::Node node;
+    node["enabled"] = player.enabled;
+
+    // only what differs from the defaults (Unity's); decode restores the defaults
+    const VideoPlayerComponent defaults;
+    if (player.source != defaults.source) node["source"] = videoPlayerSourceName(player.source);
+    if (player.clip != defaults.clip) node["clip"] = player.clip;
+    if (player.url != defaults.url) node["url"] = player.url;
+    if (player.playOnAwake != defaults.playOnAwake) node["playOnAwake"] = player.playOnAwake;
+    if (player.waitForFirstFrame != defaults.waitForFirstFrame) node["waitForFirstFrame"] = player.waitForFirstFrame;
+    if (player.isLooping != defaults.isLooping) node["isLooping"] = player.isLooping;
+    if (player.skipOnDrop != defaults.skipOnDrop) node["skipOnDrop"] = player.skipOnDrop;
+    if (player.playbackSpeed != defaults.playbackSpeed) encodeFinite(node, "playbackSpeed", player.playbackSpeed);
+    if (player.timeUpdateMode != defaults.timeUpdateMode) node["timeUpdateMode"] = videoTimeUpdateModeName(player.timeUpdateMode);
+    if (player.renderMode != defaults.renderMode) node["renderMode"] = videoRenderModeName(player.renderMode);
+    if (player.targetCamera != defaults.targetCamera) node["targetCamera"] = player.targetCamera;
+    if (player.targetCameraAlpha != defaults.targetCameraAlpha) encodeFinite(node, "targetCameraAlpha", player.targetCameraAlpha);
+    if (player.aspectRatio != defaults.aspectRatio) node["aspectRatio"] = videoAspectRatioName(player.aspectRatio);
+    if (player.targetMaterialRenderer != defaults.targetMaterialRenderer) node["targetMaterialRenderer"] = player.targetMaterialRenderer;
+    if (player.targetMaterialProperty != defaults.targetMaterialProperty) node["targetMaterialProperty"] = player.targetMaterialProperty;
+    if (player.targetSubmesh != defaults.targetSubmesh) node["targetSubmesh"] = player.targetSubmesh;
+    if (player.renderTextureWidth != defaults.renderTextureWidth) node["renderTextureWidth"] = player.renderTextureWidth;
+    if (player.renderTextureHeight != defaults.renderTextureHeight) node["renderTextureHeight"] = player.renderTextureHeight;
+    if (player.audioOutputMode != defaults.audioOutputMode) node["audioOutputMode"] = videoAudioOutputModeName(player.audioOutputMode);
+    if (player.directVolume != defaults.directVolume) encodeFinite(node, "directVolume", player.directVolume);
+    if (player.directMute != defaults.directMute) node["directMute"] = player.directMute;
+    if (player.targetAudioSource != defaults.targetAudioSource) node["targetAudioSource"] = player.targetAudioSource;
+    return node;
+}
+
+VideoPlayerComponent editor::Stream::decodeVideoPlayerComponent(const YAML::Node& node, const VideoPlayerComponent* oldPlayer) {
+    // the old one's runtime state (its render texture, which textures linked to "video|<entity>"
+    // show, and its listeners) stays
+    VideoPlayerComponent player;
+    if (oldPlayer) {
+        player = *oldPlayer;
+    }
+
+    if (node["enabled"]) player.enabled = YamlNumbers::as<bool>(node["enabled"]);
+
+    // keys are omitted at their defaults: a missing key is the default, not the old value
+    const VideoPlayerComponent defaults;
+    auto given = [&node](const char* key) {
+        const YAML::Node value = node[key];
+        return value && !value.IsNull() && !(value.IsScalar() && value.Scalar().empty());
+    };
+    player.source = given("source") ? videoPlayerSourceOf(node["source"].as<std::string>(), defaults.source) : defaults.source;
+    player.clip = given("clip") ? node["clip"].as<std::string>() : defaults.clip;
+    player.url = given("url") ? node["url"].as<std::string>() : defaults.url;
+    player.playOnAwake = given("playOnAwake") ? YamlNumbers::as<bool>(node["playOnAwake"]) : defaults.playOnAwake;
+    player.waitForFirstFrame = given("waitForFirstFrame") ? YamlNumbers::as<bool>(node["waitForFirstFrame"]) : defaults.waitForFirstFrame;
+    player.isLooping = given("isLooping") ? YamlNumbers::as<bool>(node["isLooping"]) : defaults.isLooping;
+    player.skipOnDrop = given("skipOnDrop") ? YamlNumbers::as<bool>(node["skipOnDrop"]) : defaults.skipOnDrop;
+    player.playbackSpeed = given("playbackSpeed") ? std::clamp(decodeFinite(node["playbackSpeed"], defaults.playbackSpeed), 0.0625f, 16.0f) : defaults.playbackSpeed;
+    player.timeUpdateMode = given("timeUpdateMode") ? videoTimeUpdateModeOf(node["timeUpdateMode"].as<std::string>(), defaults.timeUpdateMode) : defaults.timeUpdateMode;
+    player.renderMode = given("renderMode") ? videoRenderModeOf(node["renderMode"].as<std::string>(), defaults.renderMode) : defaults.renderMode;
+    player.targetCamera = given("targetCamera") ? YamlNumbers::as<Entity>(node["targetCamera"]) : defaults.targetCamera;
+    player.targetCameraAlpha = given("targetCameraAlpha") ? std::clamp(decodeFinite(node["targetCameraAlpha"], defaults.targetCameraAlpha), 0.0f, 1.0f) : defaults.targetCameraAlpha;
+    player.aspectRatio = given("aspectRatio") ? videoAspectRatioOf(node["aspectRatio"].as<std::string>(), defaults.aspectRatio) : defaults.aspectRatio;
+    player.targetMaterialRenderer = given("targetMaterialRenderer") ? YamlNumbers::as<Entity>(node["targetMaterialRenderer"]) : defaults.targetMaterialRenderer;
+    player.targetMaterialProperty = given("targetMaterialProperty") ? node["targetMaterialProperty"].as<std::string>() : defaults.targetMaterialProperty;
+    player.targetSubmesh = given("targetSubmesh") ? YamlNumbers::as<int>(node["targetSubmesh"]) : defaults.targetSubmesh;
+    player.renderTextureWidth = given("renderTextureWidth") ? YamlNumbers::as<unsigned int>(node["renderTextureWidth"]) : defaults.renderTextureWidth;
+    player.renderTextureHeight = given("renderTextureHeight") ? YamlNumbers::as<unsigned int>(node["renderTextureHeight"]) : defaults.renderTextureHeight;
+    player.audioOutputMode = given("audioOutputMode") ? videoAudioOutputModeOf(node["audioOutputMode"].as<std::string>(), defaults.audioOutputMode) : defaults.audioOutputMode;
+    player.directVolume = given("directVolume") ? std::clamp(decodeFinite(node["directVolume"], defaults.directVolume), 0.0f, 1.0f) : defaults.directVolume;
+    player.directMute = given("directMute") ? YamlNumbers::as<bool>(node["directMute"]) : defaults.directMute;
+    player.targetAudioSource = given("targetAudioSource") ? YamlNumbers::as<Entity>(node["targetAudioSource"]) : defaults.targetAudioSource;
+    return player;
+}
+
 YAML::Node editor::Stream::encodeFluidSimulationComponent(const FluidSimulationComponent& fluid) {
     YAML::Node node;
     node["enabled"] = fluid.enabled;
@@ -8725,6 +9145,10 @@ YAML::Node editor::Stream::encodeAnimationPlayerComponent(const AnimationPlayerC
         if (!entry.name.empty()) entryNode["name"] = entry.name;
         if (entry.wrap != ClipWrapMode::Default) entryNode["wrap"] = anim::wrapName(entry.wrap);
         if (entry.layer != 0) entryNode["layer"] = entry.layer;
+        // humanoid playback (anim-retarget 7.1): written only when set
+        if (entry.retarget) entryNode["retarget"] = YamlNumbers::text(true);
+        if (entry.mirror) entryNode["mirror"] = YamlNumbers::text(true);
+        if (entry.footIK) entryNode["footIK"] = YamlNumbers::text(true);
         clipsNode.push_back(entryNode);
     }
     node["clips"] = clipsNode;
@@ -8821,6 +9245,20 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
                     int layer = 0;
                     if (YamlNumbers::readPlain(layerNode.Scalar(), layer) && layer >= 0) entry.layer = layer;
                 }
+                auto flag = [&entryNode](const char* key) {
+                    const YAML::Node value = entryNode[key];
+                    if (!value || !value.IsScalar() || value.Scalar().empty()) return false;
+                    bool result = false;
+                    if (YamlNumbers::readPlain(value.Scalar(), result)) return result;
+                    try {
+                        return value.as<bool>();
+                    } catch (const YAML::Exception&) {
+                        return false;
+                    }
+                };
+                entry.retarget = flag("retarget");
+                entry.mirror = flag("mirror");
+                entry.footIK = flag("footIK");
             } else {
                 // a list, or a map whose clip is not a path
                 continue;

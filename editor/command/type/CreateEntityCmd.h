@@ -88,11 +88,17 @@ namespace jasperengine::editor{
         UI_DOCUMENT,
         WATER,
         FLUID_SIMULATION,
+        // a Video Player into its render texture (video|<entity>), and one on the main
+        // camera's far plane (a looping background)
+        VIDEO_PLAYER,
+        VIDEO_BACKGROUND,
         // a unit lattice (Transform + LatticeComponent); the menus create one through
         // LatticeEditorOps::createLattice, which fits and binds it around the selection
         LATTICE,
         // not a GameObject: the Hierarchy's "3D Object > Ragdoll..." opens the wizard on the selection
-        RAGDOLL_WIZARD
+        RAGDOLL_WIZARD,
+        // a full-stretch RectTransform the Safe Area component drives (GameObject > UI > Safe Area)
+        SAFE_AREA
     };
 
     class CreateEntityCmd: public Command{

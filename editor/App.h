@@ -19,6 +19,7 @@
 #include "window/AnimationWindow.h"
 #include "window/PoseAnimationWindow.h"
 #include "window/AnimatorWindow.h"
+#include "window/AvatarWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/AudioMixerWindow.h"
@@ -179,6 +180,7 @@ namespace jasperengine::editor{
         AnimationWindow* animationWindow;
         PoseAnimationWindow* poseAnimationWindow;
         AnimatorWindow* animatorWindow = nullptr;
+        AvatarWindow* avatarWindow = nullptr;
         TerrainEditWindow* terrainEditWindow;
         TextureSynthesisWindow* textureSynthesisWindow;
         AudioMixerWindow* audioMixerWindow;
@@ -232,6 +234,8 @@ namespace jasperengine::editor{
         ExportWindow exportWindow;
         EditorSettingsWindow editorSettingsWindow;
         ProjectSettingsWindow projectSettingsWindow;
+        // Assets > Create > Native Plugin...
+        NativePluginDialog nativePluginDialog;
         PrefabsWindow prefabsWindow;
         AboutWindow aboutWindow;
         ScenesWindow scenesWindow;
@@ -442,6 +446,9 @@ namespace jasperengine::editor{
         AnimationWindow* getAnimationWindow() const;
         PoseAnimationWindow* getPoseAnimationWindow() const;
         AnimatorWindow* getAnimatorWindow() const;
+        AvatarWindow* getAvatarWindow() const;
+        // the Avatar Configuration window on the Model of `entity` (anim-retarget 9)
+        void openAvatarWindow(uint32_t sceneId, Entity entity);
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
         TextureSynthesisWindow* getTextureSynthesisWindow() const;

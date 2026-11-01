@@ -3,6 +3,8 @@
 
 #include "ProjectSettingsWindow.h"
 #include "util/FileDialogs.h"
+#include "util/FileUtils.h"
+#include "util/NativePlugins.h"
 #include "Backend.h"
 #include "App.h"
 #include "util/Util.h"
@@ -27,9 +29,11 @@
 #include "input/InputControlNames.h"
 
 #include <algorithm>
+#include <set>
 #include <cmath>
 #include <cctype>
 #include <cfloat>
+#include <cstdlib>
 #include <cstring>
 
 namespace jasperengine::editor {
@@ -148,6 +152,7 @@ enum class ProjectCategory {
     Scripting,
     Debug,
     TagsAndLayers,
+    NativePlugins,
     Editor,
     Count
 };
@@ -173,6 +178,9 @@ static const settingsui::Category projectCategories[] = {
     {"Debug", "", "debug overlay console log stats fps graph development build toggle key gesture popup error commands lua "
                   "buffer stack traces ingamedebugconsole graphy"},
     {"Tags and Layers", "", "tags layers"},
+    {"Native Plugins", "", "native plugins android java kotlin ios macos objective-c swift web javascript c++ gradle dependencies "
+                           "repositories maven properties permissions manifest xml application info.plist plist frameworks cocoapods "
+                           "pods swift packages spm entitlements deployment target script urls sdk"},
     {"Editor", "", "version control files assets directory"},
 };
 static constexpr int projectCategoryCount = static_cast<int>(ProjectCategory::Count);
@@ -917,6 +925,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     snprintf(m_webHeadIncludeBuffer, sizeof(m_webHeadIncludeBuffer), "%s", web.headInclude.c_str());
     m_webResizeCanvasToWindow = web.resizeCanvasToWindow;
     m_webHideEmscriptenUI = web.hideEmscriptenUI;
+    m_webViewportFitCover = web.viewportFitCover;
 
     const LinuxProjectSettings& linuxSettings = project->getLinuxProjectSettings();
     snprintf(m_linuxApplicationNameBuffer, sizeof(m_linuxApplicationNameBuffer), "%s", linuxSettings.applicationName.c_str());
@@ -1003,6 +1012,27 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_layerCollision3D = project->getLayerCollisionMatrix3D();
     m_layerCollision2D = project->getLayerCollisionMatrix2D();
 
+    const AndroidProjectSettings& nativeAndroid = project->getAndroidProjectSettings();
+    m_gradleDependencies = nativeAndroid.gradleDependencies;
+    m_gradleRepositories = nativeAndroid.gradleRepositories;
+    m_gradleProperties = nativeAndroid.gradleProperties;
+    m_extraPermissions = nativeAndroid.extraPermissions;
+    m_manifestXml = nativeAndroid.manifestXml;
+    m_manifestApplicationXml = nativeAndroid.manifestApplicationXml;
+    const IOSProjectSettings& nativeIOS = project->getIOSProjectSettings();
+    m_iosPlistEntries.assign(nativeIOS.plistEntries.begin(), nativeIOS.plistEntries.end());
+    m_iosPlistXml = nativeIOS.plistXml;
+    m_iosFrameworks = nativeIOS.frameworks;
+    m_iosCocoapods = nativeIOS.cocoapods;
+    m_iosSwiftPackages = nativeIOS.swiftPackages;
+    m_iosEntitlementsXml = nativeIOS.entitlementsXml;
+    m_iosDeploymentTarget = nativeIOS.deploymentTarget;
+    const MacOSProjectSettings& nativeMacOS = project->getMacOSProjectSettings();
+    m_macosPlistEntries.assign(nativeMacOS.plistEntries.begin(), nativeMacOS.plistEntries.end());
+    m_macosFrameworks = nativeMacOS.frameworks;
+    m_webScriptUrls = project->getWebProjectSettings().scriptUrls;
+    m_nativeSummary.clear();
+
     m_inputActions = project->getInputActions();
     m_inputCommitted = m_inputActions;
     m_inputCommittedJson = InputActions::actionsToJson(m_inputActions);
@@ -1079,6 +1109,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::Scripting: drawScriptingSettings(); break;
         case ProjectCategory::Debug: drawDebugSettings(); break;
         case ProjectCategory::TagsAndLayers: drawTagsAndLayersSettings(); break;
+        case ProjectCategory::NativePlugins: drawNativePluginsSettings(); break;
         case ProjectCategory::Editor: drawEditorSettings(); break;
         default: break;
     }
@@ -2139,6 +2170,13 @@ void ProjectSettingsWindow::drawWebSettings() {
     }
     ImGui::Checkbox("##WebHideEmscriptenUI", &m_webHideEmscriptenUI);
     endSettingsRow("Hide the standard logo, status, controls and output console. Runtime scripts remain active. Custom HTML elements are not removed.");
+
+    if (beginSettingsRow("Viewport Fit Cover", !m_webViewportFitCover)) {
+        m_webViewportFitCover = true;
+    }
+    ImGui::Checkbox("##WebViewportFitCover", &m_webViewportFitCover);
+    endSettingsRow("Adds viewport-fit=cover to the page's viewport: on phones the page reaches under the notch and the "
+                   "safe area comes from env(safe-area-inset-*) (Screen.safeArea, the Safe Area component).");
 }
 
 void ProjectSettingsWindow::drawLinuxSettings() {
@@ -2392,6 +2430,153 @@ void ProjectSettingsWindow::drawAndroidSettings() {
     ImGui::EndDisabled();
 }
 
+// ---- Native Plugins
+
+namespace {
+
+    // A text field over a std::string (grows with the text)
+    int growString(ImGuiInputTextCallbackData* data) {
+        if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
+            auto* text = static_cast<std::string*>(data->UserData);
+            text->resize(static_cast<size_t>(data->BufTextLen));
+            data->Buf = text->data();
+        }
+        return 0;
+    }
+
+    bool inputString(const char* id, std::string& text, const char* hint = nullptr) {
+        if (hint) return ImGui::InputTextWithHint(id, hint, text.data(), text.capacity() + 1, ImGuiInputTextFlags_CallbackResize, growString, &text);
+        return ImGui::InputText(id, text.data(), text.capacity() + 1, ImGuiInputTextFlags_CallbackResize, growString, &text);
+    }
+
+    bool inputMultiline(const char* id, std::string& text, float height) {
+        return ImGui::InputTextMultiline(id, text.data(), text.capacity() + 1, ImVec2(-1.0f, Theme::dpi(height)),
+                                         ImGuiInputTextFlags_CallbackResize, growString, &text);
+    }
+
+    std::string trimmed(const std::string& text) {
+        const size_t start = text.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos) return std::string();
+        return text.substr(start, text.find_last_not_of(" \t\r\n") - start + 1);
+    }
+
+    std::vector<std::string> splitList(const std::string& text) {
+        std::vector<std::string> items;
+        size_t start = 0;
+        while (start <= text.size()) {
+            const size_t comma = text.find(',', start);
+            const std::string item = trimmed(text.substr(start, comma == std::string::npos ? std::string::npos : comma - start));
+            if (!item.empty()) items.push_back(item);
+            if (comma == std::string::npos) break;
+            start = comma + 1;
+        }
+        return items;
+    }
+
+    std::string joinList(const std::vector<std::string>& items) {
+        std::string text;
+        for (const std::string& item : items) text += (text.empty() ? "" : ", ") + item;
+        return text;
+    }
+
+    void xmlWarning(const std::string& xml) {
+        const std::string error = NativePlugins::xmlFragmentError(xml);
+        if (!error.empty()) ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.3f, 1.0f), "%s (the export stops on it)", error.c_str());
+    }
+
+    // one text row per entry, - removes, + adds
+    void drawStringList(const char* label, const char* id, std::vector<std::string>& items, const char* hint, const char* tooltip) {
+        beginSettingsRow(label);
+        ImGui::PushID(id);
+        int remove = -1;
+        for (size_t i = 0; i < items.size(); i++) {
+            ImGui::PushID(static_cast<int>(i));
+            ImGui::SetNextItemWidth(-ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x);
+            inputString("##item", items[i], hint);
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_MINUS, ImVec2(ImGui::GetFrameHeight(), 0.0f))) remove = static_cast<int>(i);
+            ImGui::PopID();
+        }
+        if (remove >= 0) items.erase(items.begin() + remove);
+        if (ImGui::SmallButton(ICON_FA_PLUS)) items.emplace_back();
+        ImGui::PopID();
+        endSettingsRow(tooltip);
+    }
+
+    const char* const plistKinds[] = {"String", "Boolean", "Integer", "Real", "String list"};
+
+    void drawPlistEntries(const char* id, std::vector<std::pair<std::string, NativePlistValue>>& entries, const char* tooltip) {
+        beginSettingsRow("Info.plist Entries");
+        ImGui::PushID(id);
+        int remove = -1;
+        std::set<std::string> keys;
+        bool duplicate = false;
+        for (size_t i = 0; i < entries.size(); i++) {
+            auto& [key, value] = entries[i];
+            ImGui::PushID(static_cast<int>(i));
+            const float keyWidth = ImGui::GetContentRegionAvail().x * 0.4f;
+            ImGui::SetNextItemWidth(keyWidth);
+            inputString("##key", key, "NSUserTrackingUsageDescription");
+            if (!trimmed(key).empty() && !keys.insert(trimmed(key)).second) duplicate = true;
+            ImGui::SameLine();
+            int kind = static_cast<int>(value.kind);
+            ImGui::SetNextItemWidth(Theme::dpi(100.0f));
+            if (ImGui::Combo("##kind", &kind, plistKinds, 5)) value.kind = static_cast<NativePlistValue::Kind>(kind);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(-ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x);
+            switch (value.kind) {
+                case NativePlistValue::Kind::String: inputString("##value", value.text); break;
+                case NativePlistValue::Kind::Bool: ImGui::Checkbox("##value", &value.flag); break;
+                case NativePlistValue::Kind::Integer: {
+                    ImS64 v = static_cast<ImS64>(value.integer);
+                    if (ImGui::InputScalar("##value", ImGuiDataType_S64, &v)) value.integer = static_cast<long long>(v);
+                    break;
+                }
+                case NativePlistValue::Kind::Real: ImGui::InputDouble("##value", &value.real); break;
+                case NativePlistValue::Kind::StringArray: {
+                    std::string text = joinList(value.items);
+                    if (inputString("##value", text, "fetch, remote-notification")) value.items = splitList(text);
+                    break;
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_MINUS, ImVec2(ImGui::GetFrameHeight(), 0.0f))) remove = static_cast<int>(i);
+            ImGui::PopID();
+        }
+        if (remove >= 0) entries.erase(entries.begin() + remove);
+        if (ImGui::SmallButton(ICON_FA_PLUS)) entries.emplace_back();
+        if (duplicate) ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "A key is listed twice: the last one wins.");
+        ImGui::PopID();
+        endSettingsRow(tooltip);
+    }
+
+    void drawXmlSetting(const char* label, const char* id, std::string& xml, float height, const char* tooltip) {
+        beginSettingsRow(label);
+        ImGui::PushID(id);
+        inputMultiline("##xml", xml, height);
+        xmlWarning(xml);
+        ImGui::PopID();
+        endSettingsRow(tooltip);
+    }
+
+    std::map<std::string, NativePlistValue> plistMap(const std::vector<std::pair<std::string, NativePlistValue>>& entries) {
+        std::map<std::string, NativePlistValue> map;
+        for (const auto& [key, value] : entries) {
+            if (!trimmed(key).empty()) map[trimmed(key)] = value;
+        }
+        return map;
+    }
+
+    std::vector<std::string> nonEmpty(const std::vector<std::string>& items) {
+        std::vector<std::string> out;
+        for (const std::string& item : items) {
+            if (!trimmed(item).empty()) out.push_back(trimmed(item));
+        }
+        return out;
+    }
+
+}
+
 // ---- Input (Project Settings > Input): the input actions
 
 namespace {
@@ -2448,6 +2633,160 @@ namespace {
         return changed;
     }
 
+}
+
+void ProjectSettingsWindow::refreshNativeSummary() {
+    // what plugins/native holds
+    const NativePlugins::Scan scan = NativePlugins::scan(m_project->getProjectPath());
+    std::string summary;
+    static const char* const labels[] = {"Android", "Apple", "iOS", "macOS", "Web", "C++"};
+    const auto& platforms = NativePlugins::platformNames();
+    for (size_t i = 0; i < platforms.size(); i++) {
+        const size_t count = scan.count(platforms[i]);
+        if (count) summary += (summary.empty() ? "" : ", ") + std::string(labels[i]) + " " + std::to_string(count);
+    }
+    const size_t plugins = NativePlugins::listPlugins(scan).size();
+    const size_t mocks = NativePlugins::listMocks(m_project->getLuaPath()).size();
+    m_nativeSummary = scan.exists
+        ? "plugins/native: " + std::to_string(plugins) + " plugin(s) (" + (summary.empty() ? std::string("no files") : summary + " files") +
+          "), " + std::to_string(mocks) + " Lua mock(s). Lua calls them with Native.call / callAsync."
+        : "No plugins/native folder yet. Create Plugin writes one plugin for the chosen platforms and its Lua mock; "
+          "Lua calls it with Native.call / callAsync (jasper://docs/native-bridge).";
+}
+
+void ProjectSettingsWindow::drawNativePluginsSettings() {
+    if (beginSettingsPanel("##NativePluginsPanel")) {
+        if (m_nativeSummary.empty()) refreshNativeSummary();
+        drawSectionNote(m_nativeSummary.c_str());
+        if (ImGui::Button(ICON_FA_FOLDER_OPEN " Open Folder")) {
+            const fs::path root = NativePlugins::root(m_project->getProjectPath());
+            std::error_code ec;
+            fs::create_directories(root, ec);
+            auto openInShell = ImGui::GetPlatformIO().Platform_OpenInShellFn;
+            const std::string rootUtf8 = FileUtils::pathToUtf8(root);
+            if (!openInShell || !openInShell(ImGui::GetCurrentContext(), rootUtf8.c_str())) {
+                Backend::getApp().registerAlert("Open in File Manager", "Could not open " + rootUtf8);
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_FA_PLUS " Create Plugin...")) m_nativePluginDialog.open(m_project);
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_FA_ROTATE " Refresh")) refreshNativeSummary();
+        const bool wasOpen = m_nativePluginDialog.isOpen();
+        m_nativePluginDialog.show();
+        if (wasOpen && !m_nativePluginDialog.isOpen()) refreshNativeSummary();
+        ImGui::Spacing();
+
+        if (Theme::foldoutHeader("Android", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##NativeAndroidTable")) {
+            drawStringList("Gradle Dependencies", "##GradleDependencies", m_gradleDependencies, "com.example:sdk:1.2.3",
+                "group:name:version becomes api \"...\" in the nativeplugins module; other text is a dependencies line as is "
+                "(implementation platform('...bom:33.0.0')).");
+            drawStringList("Maven Repositories", "##GradleRepositories", m_gradleRepositories, "https://maven.example.com/releases",
+                "maven { url \"...\" } in allprojects.repositories.");
+            drawStringList("Gradle Properties", "##GradleProperties", m_gradleProperties, "android.enableJetifier=true",
+                "key=value lines of gradle.properties (replacing a key already there).");
+            drawStringList("Extra Permissions", "##ExtraPermissions", m_extraPermissions, "com.google.android.gms.permission.AD_ID",
+                "<uses-permission> by full name (the Player permissions list takes the common ones).");
+            drawXmlSetting("Manifest XML", "##ManifestXml", m_manifestXml, 70.0f,
+                "Raw XML inside <manifest>, before <application> (<queries>, <uses-feature>, tools:node=\"remove\" entries).");
+            drawXmlSetting("Application XML", "##ManifestApplicationXml", m_manifestApplicationXml, 70.0f,
+                "Raw XML inside <application> (an SDK's <meta-data>, <activity>, <provider>).");
+            ImGui::EndTable();
+        }
+
+        if (Theme::foldoutHeader("iOS", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##NativeIOSTable")) {
+            drawPlistEntries("##IOSPlist", m_iosPlistEntries, "Info.plist keys, replacing the export's (NSUserTrackingUsageDescription, GADApplicationIdentifier...).");
+            drawXmlSetting("Info.plist XML", "##IOSPlistXml", m_iosPlistXml, 70.0f,
+                "Raw <key>..</key><value> pairs appended to the top dictionary (dictionaries, SKAdNetworkItems).");
+            drawStringList("Frameworks", "##IOSFrameworks", m_iosFrameworks, "StoreKit", "System frameworks linked; Name? links it weakly.");
+
+            beginSettingsRow("CocoaPods");
+            {
+                ImGui::PushID("##Pods");
+                int remove = -1;
+                for (size_t i = 0; i < m_iosCocoapods.size(); i++) {
+                    ImGui::PushID(static_cast<int>(i));
+                    const float width = (ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight()) / 3.0f - ImGui::GetStyle().ItemSpacing.x;
+                    ImGui::SetNextItemWidth(width);
+                    inputString("##name", m_iosCocoapods[i].name, "Pod name");
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(width);
+                    inputString("##version", m_iosCocoapods[i].version, "~> 1.0");
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(width);
+                    inputString("##source", m_iosCocoapods[i].source, "spec repository (optional)");
+                    ImGui::SameLine();
+                    if (ImGui::Button(ICON_FA_MINUS, ImVec2(ImGui::GetFrameHeight(), 0.0f))) remove = static_cast<int>(i);
+                    ImGui::PopID();
+                }
+                if (remove >= 0) m_iosCocoapods.erase(m_iosCocoapods.begin() + remove);
+                if (ImGui::SmallButton(ICON_FA_PLUS)) m_iosCocoapods.emplace_back();
+                ImGui::PopID();
+            }
+            endSettingsRow("workspaces/xcode/Podfile: run pod install there and open JasperEngine.xcworkspace.");
+
+            beginSettingsRow("Swift Packages");
+            {
+                ImGui::PushID("##Packages");
+                int remove = -1;
+                for (size_t i = 0; i < m_iosSwiftPackages.size(); i++) {
+                    NativeSwiftPackage& package = m_iosSwiftPackages[i];
+                    ImGui::PushID(static_cast<int>(i));
+                    const float avail = ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x * 3.0f;
+                    ImGui::SetNextItemWidth(avail * 0.5f);
+                    inputString("##url", package.url, "https://github.com/...");
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(avail * 0.2f);
+                    inputString("##version", package.version, "1.0.0");
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(avail * 0.3f);
+                    std::string products = joinList(package.products);
+                    if (inputString("##products", products, "Product, Other")) package.products = splitList(products);
+                    ImGui::SameLine();
+                    if (ImGui::Button(ICON_FA_MINUS, ImVec2(ImGui::GetFrameHeight(), 0.0f))) remove = static_cast<int>(i);
+                    ImGui::PopID();
+                }
+                if (remove >= 0) m_iosSwiftPackages.erase(m_iosSwiftPackages.begin() + remove);
+                if (ImGui::SmallButton(ICON_FA_PLUS)) m_iosSwiftPackages.emplace_back();
+                ImGui::PopID();
+            }
+            endSettingsRow("Repository URL, minimum version (up to the next major), the products linked (comma-separated).");
+
+            drawXmlSetting("Entitlements", "##IOSEntitlements", m_iosEntitlementsXml, 60.0f,
+                "The <key>..</key><value> pairs of ios/JasperEngine.entitlements (CODE_SIGN_ENTITLEMENTS).");
+            const IOSProjectSettings iosDefaults;
+            if (beginSettingsRow("Deployment Target", m_iosDeploymentTarget != iosDefaults.deploymentTarget)) {
+                m_iosDeploymentTarget = iosDefaults.deploymentTarget;
+            }
+            ImGui::SetNextItemWidth(Theme::dpi(100.0f));
+            inputString("##IOSDeploymentTarget", m_iosDeploymentTarget);
+            endSettingsRow("IPHONEOS_DEPLOYMENT_TARGET of every target: 15.0 or later.");
+            const bool validTarget = m_iosDeploymentTarget.find_first_not_of("0123456789.") == std::string::npos &&
+                                     std::count(m_iosDeploymentTarget.begin(), m_iosDeploymentTarget.end(), '.') == 1 &&
+                                     m_iosDeploymentTarget.front() != '.' && m_iosDeploymentTarget.back() != '.' &&
+                                     std::atof(m_iosDeploymentTarget.c_str()) >= 15.0;
+            if (!validTarget) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TableNextColumn();
+                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Use a version like 15.0 or 16.4 (at least 15.0); the export uses 15.0.");
+            }
+            ImGui::EndTable();
+        }
+
+        if (Theme::foldoutHeader("macOS") && beginSettingsTable("##NativeMacOSTable")) {
+            drawPlistEntries("##MacOSPlist", m_macosPlistEntries, "Info.plist keys of the macOS app, replacing the export's.");
+            drawStringList("Frameworks", "##MacOSFrameworks", m_macosFrameworks, "GameKit", "System frameworks linked; Name? links it weakly.");
+            ImGui::EndTable();
+        }
+
+        if (Theme::foldoutHeader("Web") && beginSettingsTable("##NativeWebTable")) {
+            drawStringList("Script URLs", "##WebScriptUrls", m_webScriptUrls, "https://sdk.example.com/sdk.js",
+                "Each a <script src> in the page <head>, before plugins/native/web/*.js.");
+            ImGui::EndTable();
+        }
+    }
+    endSettingsPanel();
 }
 
 std::string ProjectSettingsWindow::inputError() const {
@@ -3047,6 +3386,8 @@ bool ProjectSettingsWindow::applySettings() {
     applyTextBuffer(web.headInclude, m_webHeadIncludeBuffer);
     web.resizeCanvasToWindow = m_webResizeCanvasToWindow;
     web.hideEmscriptenUI = m_webHideEmscriptenUI;
+    web.scriptUrls = nonEmpty(m_webScriptUrls);
+    web.viewportFitCover = m_webViewportFitCover;
 
     LinuxProjectSettings& linuxSettings = m_project->getLinuxProjectSettings();
     applyOverride(linuxSettings.applicationName, m_linuxApplicationNameBuffer, inheritedName);
@@ -3081,6 +3422,8 @@ bool ProjectSettingsWindow::applySettings() {
     applyAppleVersion(macOS.buildNumber, m_macOSBuildNumberBuffer, inheritedBuild, isAppleBuildValid);
     macOS.icon = m_macOSIcon;
     macOS.highDpi = m_macOSHighDpi;
+    macOS.plistEntries = plistMap(m_macosPlistEntries);
+    macOS.frameworks = nonEmpty(m_macosFrameworks);
 
     IOSProjectSettings& ios = m_project->getIOSProjectSettings();
     applyOverride(ios.applicationName, m_iosApplicationNameBuffer, inheritedName);
@@ -3088,6 +3431,24 @@ bool ProjectSettingsWindow::applySettings() {
     applyAppleVersion(ios.versionName, m_iosVersionNameBuffer, inheritedVersion, isAppleVersionValid);
     applyAppleVersion(ios.buildNumber, m_iosBuildNumberBuffer, inheritedBuild, isAppleBuildValid);
     ios.icon = m_iosIcon;
+    ios.plistEntries = plistMap(m_iosPlistEntries);
+    ios.plistXml = m_iosPlistXml;
+    ios.frameworks = nonEmpty(m_iosFrameworks);
+    ios.cocoapods.clear();
+    for (NativeCocoaPod pod : m_iosCocoapods) {
+        pod.name = trimmed(pod.name);
+        pod.version = trimmed(pod.version);
+        pod.source = trimmed(pod.source);
+        if (!pod.name.empty()) ios.cocoapods.push_back(pod);
+    }
+    ios.swiftPackages.clear();
+    for (NativeSwiftPackage package : m_iosSwiftPackages) {
+        package.url = trimmed(package.url);
+        package.version = trimmed(package.version);
+        if (!package.url.empty()) ios.swiftPackages.push_back(package);
+    }
+    ios.entitlementsXml = m_iosEntitlementsXml;
+    ios.deploymentTarget = trimmed(m_iosDeploymentTarget).empty() ? IOSProjectSettings().deploymentTarget : trimmed(m_iosDeploymentTarget);
     ios.hideStatusBar = m_iosHideStatusBar;
     ios.hideHomeIndicator = m_iosHideHomeIndicator;
     ios.supportsHighRefreshRate = m_iosSupportsHighRefreshRate;
@@ -3115,6 +3476,12 @@ bool ProjectSettingsWindow::applySettings() {
     android.abiX86_64 = m_androidAbiX86_64;
     android.permissions = m_androidPermissions;
     android.internetAccess = m_androidInternetAccessIndex == 1 ? AndroidInternetAccess::Require : AndroidInternetAccess::Auto;
+    android.gradleDependencies = nonEmpty(m_gradleDependencies);
+    android.gradleRepositories = nonEmpty(m_gradleRepositories);
+    android.gradleProperties = nonEmpty(m_gradleProperties);
+    android.extraPermissions = nonEmpty(m_extraPermissions);
+    android.manifestXml = m_manifestXml;
+    android.manifestApplicationXml = m_manifestApplicationXml;
     android.allowBackup = m_androidAllowBackup;
     android.fullscreen = m_androidFullscreen;
     android.admobEnabled = m_androidAdmobEnabled;

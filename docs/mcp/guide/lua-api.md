@@ -250,6 +250,7 @@ Engine events (names valid for `RegisterEngineEvent`; handler arguments in order
 | `onPause`, `onResume`, `onShutdown` | none | application lifecycle (pause = to the background; idempotent) |
 | `onFocus` | `hasFocus` | the app gained or lost focus (a dialog, the notification shade, another window); `onFocus(false)` comes before `onPause`, `onFocus(true)` after `onResume` |
 | `onOrientationChanged` | `orientation` (`ScreenOrientation`) | the interface rotated, after `onCanvasChanged` |
+| `onSafeAreaChanged` | none | `Screen.safeArea` changed (rotation, platform insets, `Screen.setExtraInsets`), after `onCanvasChanged` / `onOrientationChanged` |
 | `onLowMemory` | none | the system is short of memory (Android, iOS) |
 | `onSceneLoaded` | none | a scene loaded by SceneManager is ready |
 | `onKeyDown`, `onKeyUp` | `key, isRepeat, mods` | key event (`key` is an `Input.KEY_*` value) |
@@ -811,6 +812,17 @@ Platform services ([platform-services.md](platform-services.md) has the per-plat
 | `Screen.autorotateToPortrait`, `autorotateToPortraitUpsideDown`, `autorotateToLandscapeLeft`, `autorotateToLandscapeRight` | rw | bools: where `AutoRotation` may turn (the last one cannot be turned off) |
 | `Screen.sleepTimeout` | rw | `SleepTimeout.NeverSleep` (-1, keeps the screen on) or `SleepTimeout.SystemSetting` (-2) |
 | `Screen.dpi`, `Screen.refreshRate` | ro | dots per inch (0 unknown), Hz |
+| `Screen.safeArea` | ro `Rect` | the part no notch, rounded corner or home indicator covers: canvas units, top-left origin, extra insets included |
+| `Screen.safeAreaInsets` | ro `EdgeInsets` | canvas units from each canvas edge |
+| `Screen.deviceSafeArea`, `Screen.deviceSafeAreaInsets` | ro | without the extra insets |
+| `Screen.safeAreaPixels` | ro `Rect` | view pixels, top-left, extras included |
+| `Screen.cutouts` | ro `Rect[]` | canvas units; empty when none or unknown (iOS) |
+| `Screen.extraInsets` | ro `EdgeInsets` | canvas units |
+| `Screen.setExtraInsets(l, t, r, b [, unit])` | fn | space kept free (a banner): `unit` `"canvas"` (default) or `"pixels"`; persists across scene loads |
+| `Screen.clearExtraInsets()` | fn | |
+
+Safe areas: the Safe Area component, HTML `env(safe-area-inset-*)`, editor device simulation:
+jasper://docs/safe-area.
 
 The pixel size is `System.getScreenWidth()` / `getScreenHeight()`; the canvas `Engine.canvasWidth` /
 `canvasHeight`. `LandscapeLeft` = the device turned counter-clockwise from portrait.
@@ -1286,6 +1298,34 @@ Http.get("https://backend.example.com/Now", {responseType = "json", timeout = 10
 end)
 ```
 
+### 2.14 Native (static, native code of the platform)
+
+Full reference, every platform's conventions, mocks and SDK settings: `jasper://docs/native-bridge`.
+A plugin name answers from, in order: a C++ plugin, the platform's class/object (Java/Kotlin on
+Android, Objective-C/Swift on iOS/macOS, JavaScript on the Web), a Lua mock
+(`<Lua folder>/native_mocks/<Plugin>.lua` or `Native.setMock`). Values are JSON (the `Json` rules);
+errors are values; callbacks and events run on the main thread before `onUpdate`.
+
+| Call | Meaning |
+|---|---|
+| `Native.call(plugin, method, ...)` | sync: `value, nil, nil` or `nil, errMessage, errCode` |
+| `Native.callAsync(plugin, method [, args] [, callback] [, options])` | `callback(result, errMessage, errCode)`; options `thread` (`"main"`/`"background"`), `owner`, `timeout`; returns a `NativeCall` |
+| `Native.on(plugin, event, handler [, owner])` / `Native.off(id)` | native events (`handler(payload)`) |
+| `Native.has(plugin [, method])` | an implementation exists here |
+| `Native.setMock(plugin, table)`, `Native.clearMock(plugin)`, `Native.emitMock(plugin, event, payload)`, `Native.pending()` | Lua mocks |
+
+`NativeCall`: `id`, `plugin`, `method`, `result`, `errorCode`, `errorMessage`, `call:isDone()`
+(`Coroutine.waitFor(call)`), `call:cancel()`, and for mocks `call:resolve(value)`,
+`call:reject(code, message)`. Codes: `not_found`, `no_method`, `bad_args`, `exception`,
+`unsupported_type`, `invalid_utf8`, `cancelled`, `timeout`, `async_only`, `not_ready`, `unavailable`.
+
+```lua
+local version, err = Native.call("Device", "getCode")
+Native.callAsync("Ads", "showRewarded", {"unit-1"}, function(result, err, code)
+    if err then Log.warn(code .. ": " .. err) else self.coins = self.coins + result.amount end
+end, {owner = self})
+```
+
 ---
 
 ## 3. Math
@@ -1330,6 +1370,7 @@ false). `==` with a value of another class is `false`. There is no `v + number`.
 | Class | Key members |
 |---|---|
 | `Rect(x, y, w, h)` | rw `x y width height`; `contains(...)`, `setRect(...)`, `fitOnRect(r)`, `getVector()`, `isZero()`, `isNormalized()` |
+| `EdgeInsets(left, top, right, bottom)` | rw `left top right bottom`; `isZero()`, `==`, `tostring` (Screen.safeAreaInsets) |
 | `Ray(origin, direction)` (Vector3) | rw `origin direction`; `getPoint(t)`; `intersects(AABB/OBB/Plane/Rigidbody2D/Rigidbody/...)`; `Ray.NO_HIT` |
 | `Matrix3`, `Matrix4` | `+ - == tostring`; `*` by a matrix, a number (either side) or a vector (`m * Vector3`, Matrix4 also `m * Vector4`; `Matrix4 * Vector3` applies the translation); `row column get set identity inverse transpose`; Matrix4 static `translateMatrix rotateMatrix rotateXMatrix rotateYMatrix rotateZMatrix scaleMatrix lookAtMatrix orthoMatrix perspectiveMatrix frustumMatrix` |
 | `Plane`, `AABB`, `OBB`, `Sphere` | geometry helpers (`intersects`, `contains`, `getCenter`, `getSize`, `merge`, ...) |
@@ -1540,7 +1581,9 @@ intervalMs, loop)`, plus Action: `start()`, `pause()`, `stop()`, `isRunning()`,
 `loadModel(path)`, `loadGLTF(path)`, `loadOBJ(path)`, `getAnimation(i)`,
 `findAnimation(name)`, `playAnimation(indexOrName [, fadeTime])`, `stopAnimations(fadeTime)`,
 `getBone(indexOrName)`, `getMorphWeight(indexOrName)`, `setMorphWeight(indexOrName, w)`,
-`resetToBindPose()`, `enabled` (rw), `getPoseAnimator()` (the model's PoseAnimator, added when missing).
+`resetToBindPose()`, `enabled` (rw), `getPoseAnimator()` (the model's PoseAnimator, added when missing),
+`getHumanoidInfo()` (`{humanoid, animationType ("generic"/"humanoid"), humanScale, missing = {slot names},
+extraMapped, error?}`: its Avatar; nil without bones).
 
 With an Animation Player on the Model's GameObject (4.8.2), `playAnimation(name [, fadeTime])`
 crossfades to the player's state of that name (over the player's `defaultFadeTime` when no fade
@@ -1609,7 +1652,7 @@ on the next frame. User guide: `docs/animation-clips.md`; agents: `jasper://docs
 | `sample()` | applies the current times once (e.g. paused) |
 | `isPlaying()`, `isPlaying(name)` | bool; false for a `once` state that ended (held) |
 | `getState(name)` | an `AnimationState` (below) |
-| `addClip(path [, name])` | appends an entry (`name` empty = the file stem / model clip name); false when the name is taken |
+| `addClip(path [, name [, options]])` | appends an entry (`name` empty or nil = the file stem / model clip name); false when the name is taken. `options`: `{retarget = bool (play a generic clip as a humanoid clip, from its source model), mirror = bool, footIK = bool, layer = int}` (other keys or types are an error) |
 | `removeClip(name)`, `getClipCount()`, `getClipName(i)` | `getClipName` is 0-based, `""` out of range |
 | `speed`, `defaultClip`, `defaultFadeTime`, `playAutomatically`, `enabled` | rw; `speed` multiplies every state (negative plays backwards); `enabled = false`: time stops, nothing is written |
 | `isLoaded()` | every clip loaded and bound |
@@ -1665,7 +1708,9 @@ calls made inside them take effect next frame.
 `AnimationState` (by player + state name, looked up on every access; works across clip list
 changes): rw `time`, `normalizedTime`, `speed` (the state's own), `weight`, `wrap` (`"once"`,
 `"loop"`, `"ping_pong"`, `"clamp_forever"`; `"default"` = the entry's), `enabled` (false pauses),
-`layer` (a runtime move: time and weight are kept, the tracks re-mask); ro `name`, `clip`, `length`;
+`layer` (a runtime move: time and weight are kept, the tracks re-mask), `mirror` and `footIK` (humanoid
+clips: runtime overrides of the entry's Mirror / Foot IK; `resetMirror()` / `resetFootIK()` go back to
+the entry's); ro `name`, `clip`, `length`, `isHumanoid` (a humanoid clip, or a generic one retargeted);
 `isValid()`; `addMixingTransform(path [, recursive=true])`, `removeMixingTransform(path)`,
 `clearMixingTransforms()` (Unity's legacy AddMixingTransform: with any, the state animates only
 those paths, below them too unless `recursive` is false; multiplied with the layer's mask). An
@@ -1911,7 +1956,10 @@ RectTransform (GameObject) rw: `width`, `height`, `anchorPreset` (`AnchorPreset.
 `anchorPointLeft/Top/Right/Bottom`, `anchorOffsetLeft/Top/Right/Bottom`,
 `positionXOffset`, `positionYOffset`, `positionOffset` (Vector2), `pivot` (Vector2),
 `usingAnchors`, `ignoreScissor`, `enabled`; methods `setSize(w, h)`,
-`setAnchorPoints(l, t, r, b)`, `setAnchorOffsets(l, t, r, b)`, `setPivot(x, y)`.
+`setAnchorPoints(l, t, r, b)`, `setAnchorOffsets(l, t, r, b)`, `setPivot(x, y)`,
+`getSafeAreaComponent()` (the Safe Area component driving it, or nil: `SafeAreaComponent`
+rw `left`, `top`, `right`, `bottom`, `includeExtraInsets`, `enabled`; its anchors, offsets and
+size are driven while it is there).
 Canvas Groups over the element (4.11.1), walked on demand: `getInheritedAlpha()` (Unity
 `CanvasRenderer.GetInheritedAlpha`), `getGroupsAllowInteraction()`, `getGroupsBlockRaycasts()`,
 `isInteractable()` (the groups and the Button / InputField's own `disabled`; Unity
@@ -2354,6 +2402,32 @@ function Fluid:onUpdate()
 end
 ```
 
+### 4.17.1 VideoPlayer (EntityHandle)
+
+Unity's VideoPlayer (Add Component > Video > Video Player; jasper://docs/video).
+`self.gameObject:getVideoPlayer()` (nil without one; `hasVideoPlayer()`), `VideoPlayer(scene)`
+makes a GameObject with one.
+
+- Settings (read/write): `enabled`, `source` (`VideoPlayerSource.*`), `clip` (asset path), `url`
+  (`https://...`, `data://...`, absolute or asset path), `playOnAwake`, `waitForFirstFrame`,
+  `isLooping`, `skipOnDrop`, `playbackSpeed` (0.0625..16), `timeUpdateMode`
+  (`VideoTimeUpdateMode.*`), `renderMode` (`VideoRenderMode.*`), `targetCamera` (a GameObject or
+  nil: the main camera), `targetCameraAlpha`, `aspectRatio` (`VideoAspectRatio.*`),
+  `targetMaterialRenderer` (GameObject or nil: this one), `targetMaterialProperty`
+  (`"baseColorTexture"`, a shader `@texture` uniform), `targetSubmesh` (-1 all),
+  `renderTextureWidth`/`renderTextureHeight` (0: the video's), `audioOutputMode`
+  (`VideoAudioOutputMode.*`), `directVolume`, `directMute`, `targetAudioSource`.
+- `time` (seconds; setting it seeks), `frame` (setting it seeks), read only: `canSetTime`,
+  `frameCount`, `frameRate`, `length`, `width`, `height`, `isPrepared`, `isPlaying`, `isPaused`,
+  `prepareProgress` (0..1), `texture` (a `Texture`, nil before prepared), `backend`, `videoCodec`,
+  `audioCodec`, `error`.
+- `prepare()`, `play()`, `pause()`, `stop()`, `stepForward()`, `getFramebuffer()`
+  (`image:setTexture(vp:getFramebuffer())`), `VideoPlayer.canPlay(pathOrUrl)` ("probably", "maybe",
+  ""), `VideoPlayer.clearCache([url])`, `getVideoPlayerComponent()` (the raw fields).
+- Events (function properties, called with the player): `onPrepareCompleted`, `onStarted`,
+  `onLoopPointReached`, `onErrorReceived(player, message)`, `onSeekCompleted`,
+  `onFrameReady(player, frameIndex)`.
+
 ### 4.18 Other wrappers (partial)
 
 - `Points`: `addPoint(...)`, `updatePoint(i, ...)`, `removePoint(i)`, `clearPoints()`,
@@ -2517,6 +2591,11 @@ use the methods. Physics colliders keep the rest shape.
 | Namespace | Values |
 |---|---|
 | `BodyType` | `STATIC`, `KINEMATIC`, `DYNAMIC` |
+| `VideoPlayerSource` | `CLIP`, `URL` |
+| `VideoTimeUpdateMode` | `GAME_TIME`, `UNSCALED_GAME_TIME` |
+| `VideoRenderMode` | `CAMERA_FAR_PLANE`, `CAMERA_NEAR_PLANE`, `RENDER_TEXTURE`, `MATERIAL_OVERRIDE`, `API_ONLY` |
+| `VideoAspectRatio` | `NO_SCALING`, `FIT_VERTICALLY`, `FIT_HORIZONTALLY`, `FIT_INSIDE`, `FIT_OUTSIDE`, `STRETCH` |
+| `VideoAudioOutputMode` | `NONE`, `AUDIO_SOURCE`, `DIRECT` |
 | `Collider2DType` | `POLYGON`, `CIRCLE`, `CAPSULE`, `SEGMENT`, `CHAIN` |
 | `Collider3DType` | `SPHERE`, `BOX`, `CAPSULE`, `TAPERED_CAPSULE`, `CYLINDER`, `CONVEX_HULL`, `MESH`, `HEIGHTFIELD` |
 | `RigidbodyMotionQuality` | `DISCRETE`, `LINEAR_CAST` |

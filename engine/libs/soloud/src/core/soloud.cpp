@@ -82,7 +82,10 @@ namespace SoLoud
 
 	void AlignedFloatBuffer::clear()
 	{
-		memset(mData, 0, sizeof(float) * mFloats);
+		// JasperEngine local patch: nothing to clear before init() (the nosound backend clears
+		// its buffer first: memset of a null pointer)
+		if (mData)
+			memset(mData, 0, sizeof(float) * mFloats);
 	}
 
 	AlignedFloatBuffer::~AlignedFloatBuffer()
@@ -599,6 +602,10 @@ namespace SoLoud
 		if (mScratchSize < 4096) mScratchSize = 4096;
 		mScratch.init(mScratchSize * MAX_CHANNELS);
 		mOutputScratch.init(mScratchSize * MAX_CHANNELS);
+		// JasperEngine local patch: an init after an earlier one (a new sample rate or backend)
+		// frees the arrays it made, as setMaxActiveVoiceCount does (they leaked)
+		delete[] mResampleData;
+		delete[] mResampleDataOwner;
 		mResampleData = new float*[mMaxActiveVoices * 2];
 		mResampleDataOwner = new AudioSourceInstance*[mMaxActiveVoices];
 		mResampleDataBuffer.init(mMaxActiveVoices * 2 * SAMPLE_GRANULARITY * MAX_CHANNELS);

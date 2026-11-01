@@ -84,6 +84,10 @@ EntityRegistry::EntityRegistry() {
     registerComponent<CameraShakerComponent>();
     registerComponent<CameraFollowComponent>();
     registerComponent<TextEffectComponent>();
+    // appended: ids stay those of saved scenes and the editor's ComponentType order
+    registerComponent<VideoPlayerComponent>();
+    // safe-area spec 6.3
+    registerComponent<SafeAreaComponent>();
 }
 
 EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {

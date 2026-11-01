@@ -27,6 +27,7 @@
 #include "component/RectTransformComponent.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/CanvasGroupComponent.h"
+#include "component/SafeAreaComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/OnScreenControlComponents.h"
@@ -41,6 +42,7 @@
 #include "component/SpriteComponent.h"
 #include "component/FogComponent.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/LatticeModifierComponent.h"
@@ -628,6 +630,17 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("function", [] (TweenComponent* self, lua_State* L) { return &self->function; }, [] (TweenComponent* self, lua_State* L) { self->function = L; })
         .endClass();
     
+    // the Safe Area component: which edges of the RectTransform follow Screen.safeArea
+    luabridge::getGlobalNamespace(L)
+        .beginClass<SafeAreaComponent>("SafeAreaComponent")
+        .addProperty("enabled", &SafeAreaComponent::enabled, &SafeAreaComponent::enabled)
+        .addProperty("left", &SafeAreaComponent::left, &SafeAreaComponent::left)
+        .addProperty("top", &SafeAreaComponent::top, &SafeAreaComponent::top)
+        .addProperty("right", &SafeAreaComponent::right, &SafeAreaComponent::right)
+        .addProperty("bottom", &SafeAreaComponent::bottom, &SafeAreaComponent::bottom)
+        .addProperty("includeExtraInsets", &SafeAreaComponent::includeExtraInsets, &SafeAreaComponent::includeExtraInsets)
+        .endClass();
+
     luabridge::getGlobalNamespace(L)
         .beginClass<RectTransformComponent>("RectTransformComponent")
         .addProperty("width", &RectTransformComponent::width, &RectTransformComponent::width)
@@ -1166,6 +1179,34 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("priority", &AudioSourceComponent::priority, &AudioSourceComponent::priority)
         .addProperty("maxVoices", &AudioSourceComponent::maxVoices, &AudioSourceComponent::maxVoices)
         .addProperty("ignoreListenerPause", &AudioSourceComponent::ignoreListenerPause, &AudioSourceComponent::ignoreListenerPause)
+        .endClass();
+
+    // the raw fields of a Video Player (VideoPlayer's setters clamp; entity fields are entity numbers here)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<VideoPlayerComponent>("VideoPlayerComponent")
+        .addProperty("enabled", &VideoPlayerComponent::enabled, &VideoPlayerComponent::enabled)
+        .addProperty("source", &VideoPlayerComponent::source, &VideoPlayerComponent::source)
+        .addProperty("clip", &VideoPlayerComponent::clip, &VideoPlayerComponent::clip)
+        .addProperty("url", &VideoPlayerComponent::url, &VideoPlayerComponent::url)
+        .addProperty("playOnAwake", &VideoPlayerComponent::playOnAwake, &VideoPlayerComponent::playOnAwake)
+        .addProperty("waitForFirstFrame", &VideoPlayerComponent::waitForFirstFrame, &VideoPlayerComponent::waitForFirstFrame)
+        .addProperty("isLooping", &VideoPlayerComponent::isLooping, &VideoPlayerComponent::isLooping)
+        .addProperty("skipOnDrop", &VideoPlayerComponent::skipOnDrop, &VideoPlayerComponent::skipOnDrop)
+        .addProperty("playbackSpeed", &VideoPlayerComponent::playbackSpeed, &VideoPlayerComponent::playbackSpeed)
+        .addProperty("timeUpdateMode", &VideoPlayerComponent::timeUpdateMode, &VideoPlayerComponent::timeUpdateMode)
+        .addProperty("renderMode", &VideoPlayerComponent::renderMode, &VideoPlayerComponent::renderMode)
+        .addProperty("targetCamera", &VideoPlayerComponent::targetCamera, &VideoPlayerComponent::targetCamera)
+        .addProperty("targetCameraAlpha", &VideoPlayerComponent::targetCameraAlpha, &VideoPlayerComponent::targetCameraAlpha)
+        .addProperty("aspectRatio", &VideoPlayerComponent::aspectRatio, &VideoPlayerComponent::aspectRatio)
+        .addProperty("targetMaterialRenderer", &VideoPlayerComponent::targetMaterialRenderer, &VideoPlayerComponent::targetMaterialRenderer)
+        .addProperty("targetMaterialProperty", &VideoPlayerComponent::targetMaterialProperty, &VideoPlayerComponent::targetMaterialProperty)
+        .addProperty("targetSubmesh", &VideoPlayerComponent::targetSubmesh, &VideoPlayerComponent::targetSubmesh)
+        .addProperty("renderTextureWidth", &VideoPlayerComponent::renderTextureWidth, &VideoPlayerComponent::renderTextureWidth)
+        .addProperty("renderTextureHeight", &VideoPlayerComponent::renderTextureHeight, &VideoPlayerComponent::renderTextureHeight)
+        .addProperty("audioOutputMode", &VideoPlayerComponent::audioOutputMode, &VideoPlayerComponent::audioOutputMode)
+        .addProperty("directVolume", &VideoPlayerComponent::directVolume, &VideoPlayerComponent::directVolume)
+        .addProperty("directMute", &VideoPlayerComponent::directMute, &VideoPlayerComponent::directMute)
+        .addProperty("targetAudioSource", &VideoPlayerComponent::targetAudioSource, &VideoPlayerComponent::targetAudioSource)
         .endClass();
 
     // the raw fields (no validation: FluidSimulation's setters check their values)

@@ -296,17 +296,67 @@ Because paths are relative, a clip plays on any GameObject whose children have t
   nearest existing path. **Retarget...** in the window's row menu renames a path in the clip. That
   changes the clip for every user, and the dialog says how many there are in open scenes. To keep
   the original, copy the file in the Project window first: the copy gets its own identity.
-- **Another character rig** (other bone names and rest orientations): renaming paths doesn't make
-  a clip fit it. Rotation keys are absolute local rotations, so the other rig's bones end up turned
-  wrong (legs up, arms twisted). Make that character its own clip: bake a Pose Animation on it
-  (**Bake to Animation Clip**), or key a new clip on it. For agents, the binding report offers no
-  rename fix for such paths (`rest_mismatch`).
+- **Another character rig** (other bone names, rest orientations or proportions): renaming paths
+  doesn't make a clip fit it. Rotation keys are absolute local rotations, so the other rig's bones
+  end up turned wrong (legs up, arms twisted). Play it as a **humanoid clip** instead: tick the
+  entry's **Retarget**, mark the source model **Animation Type: Humanoid**, or **Convert to
+  Humanoid Clip...** (see [Humanoid clips and retargeting](#humanoid-clips-and-retargeting)). For
+  agents, the binding report offers no rename fix for such paths (`rest_mismatch`) and suggests
+  retargeting.
 
 The files are referenced by GUID (the `guid` key the editor writes into each clip) plus the path.
 Renaming or moving a clip keeps every Animation Player pointing at it: open scenes and loaded
 prefabs right away, closed scenes and prefabs when they are opened (the scene opens as modified
 with the repaired path). Deleting a clip leaves a yellow "Missing" entry, and undoing the delete
 relinks it. A copied clip gets a new GUID.
+
+## Humanoid clips and retargeting
+
+A **humanoid clip** plays correctly on any humanoid character, whatever its bone names (Mixamo,
+Unreal, Blender/Rigify, VRM, Unity), rest pose (T-pose or A-pose) and proportions: Unity's humanoid
+(muscle) clips. Instead of bone paths it stores, per humanoid slot (`left_upper_arm`...), the joint
+rotation relative to the **neutral pose** the pose system computes for every rig, plus the body
+(hips) position and two foot goals in units of the rig's human scale (neutral hips height / 0.95).
+The player turns those into bone rotations on its own character's rig every frame, so hips height
+and stride scale with the character.
+
+Three ways to get one, nothing is retargeted otherwise (old clips play exactly as before):
+
+- **Animation Type: Humanoid** on the source model (Inspector > Model > Rig, stored in its
+  `.humanoid` file, Unity's Rig tab). Every `model.glb#Clip` of it is then a humanoid clip, played
+  retargeted by any player; Extract to .anim writes the humanoid clip.
+- **Retarget** on a player entry: that generic clip is converted when it loads, from its source
+  model (a model clip's model, or a `.anim`'s source or Preview Model).
+- **Convert to Humanoid Clip...** (the `.anim`'s Project menu, the clip asset Inspector, a player
+  entry's clip menu) writes an editable humanoid `.anim` (`<name> (Humanoid).anim`); from an entry,
+  **Use in this player** switches it in the same undo step. The Pose window's **Bake > Bake to
+  Humanoid Clip** bakes a pose animation as one.
+
+The **target rig** is the first model on or under the player's GameObject whose bones map as a
+humanoid. Without one the humanoid tracks don't play (the Bindings report says so) and the clip's
+other tracks still do. A humanoid entry shows a **Humanoid** badge and two options:
+
+- **Mirror**: left and right swapped (also Lua `state.mirror`).
+- **Foot IK**: each leg reaches the clip's foot goal (scaled to this character), so feet don't
+  slide when the legs are longer or shorter than the source's (Lua `state.footIK`). It runs per
+  state before the layers blend.
+
+The Bindings report lists, per humanoid state, the rig it plays on with its human scale and the
+ratio to the source's, the slots a missing one was folded into ("chest folded into spine": a rig
+without a chest bone gets the chest's rotation on its next bone), and the clip bones the rig lacks.
+Fingers, eyes and the jaw play when both rigs map them; a slot the clip lacks stays in the neutral
+pose, while a finger, eye or jaw bone the clip lacks is left to the other clips and layers (a
+right-hand pose on an Override layer keeps the idle's left hand; with **Mirror** it poses the left
+hand and leaves the right one). Props and bones that aren't humanoid stay normal tracks: they bind by path, or by a unique
+bone name on another rig.
+
+Humanoid clips blend with generic clips, layers, masks (a humanoid mask's body parts apply to their
+bones) and additive layers. In the Animation window their rows read `Humanoid : Left Upper Arm`
+with the slot's joint angles (the pose system's raise / forward / twist...) as curves, `Humanoid :
+Body Position` and `Humanoid : Left Foot Goal`; **Add Property > Humanoid** adds a slot. Record
+keys a rotated bone's joint rotation on a humanoid character (bind one to record a humanoid clip).
+Fix a rig's mapping, fingers or twisted forearms in **Configure Avatar...** (see
+[Pose animation](pose-animation.md#the-avatar-configuration-window)).
 
 ## Model clips, Extract, and Use Animation Player
 
@@ -628,7 +678,7 @@ before every MCP call), and the open window, the Inspector and running players p
 
 | key | meaning |
 |---|---|
-| `format`, `version` | required (`"jasperengine.anim"`, `1`). A missing or different format, a newer version, text that isn't JSON (reported with `line:col`) or a Unity YAML clip fail to load |
+| `format`, `version` | required (`"jasperengine.anim"`, `1`; `2` for a humanoid clip, the only clips written as version 2). A missing or different format, a newer version, text that isn't JSON (reported with `line:col`) or a Unity YAML clip fail to load |
 | `guid` | the clip's identity for references. The editor adds one to a clip without it. Don't copy it into another file: a copy made in the Project window gets its own |
 | `frame_rate` | samples per second, 1 to 240 (default 30): the snapping grid only. Key times are seconds |
 | `wrap` | `once` (default), `loop`, `ping_pong`, `clamp_forever` |
@@ -637,7 +687,8 @@ before every MCP call), and the open window, the Inspector and running players p
 | `tracks[]` | `path`, `channel`, `keys`; optional `relative` (position, rotation, scale only) and `loop` (the track's keys repeat inside a longer clip) |
 | `events[]` | `time`, `function` (a Lua identifier, not a keyword), `args` (at most 8 numbers, strings, booleans) |
 | `preview.model` | editor only: the model or prefab (asset-relative) to preview on when no GameObject is bound |
-| `source` | written by Extract, Convert and Bake (`{"kind": "model" / "entity" / "pose", "path", "name"}`); ignored at runtime |
+| `source` | written by Extract, Convert and Bake (`{"kind": "model" / "entity" / "pose", "path", "name"}`); ignored at runtime, except that a Retarget entry converts a `.anim` from its `source.path` model when `kind` is `model` (else from its `preview.model`) |
+| `humanoid` | humanoid clips: `{"source_model", "human_scale"}` of the rig it was made on (informational: the reports' scale ratio) |
 
 Channels and values:
 
@@ -647,6 +698,8 @@ Channels and values:
 | `rotation` | a quaternion `[x, y, z, w]`, or `{"euler": [x, y, z]}` in degrees (read, written back as a quaternion). Between two Euler keys more than 180 degrees apart on an axis, add a middle key (the loader warns). Keys are written on the side of the key before them (the same rotation); a track with tangents keeps its signs, since its curve depends on them |
 | `morph` | `[w0, w1, ...]`, one weight per morph target. Shorter arrays mean 0 for the rest; at most 8 targets |
 | `lattice` | `{"points": [[flatIndex, [x, y, z]], ...]}` offsets of the cage points. A point a key omits holds 0 (warning). The path is the cage GameObject |
+| `humanoid` | no `path`: `"bone"` names a slot (`hips`, `left_upper_arm`... the pose system's 22) or a finger, eye or jaw (`left_index_proximal`, `left_eye`, `jaw`). A quaternion `[x, y, z, w]`: a slot's joint rotation relative to the neutral pose, a finger's rotation from its rest, in the character frame. Slots also take `{"angles": [dof1, dof2, twist]}` in degrees (written back as a quaternion) |
+| `humanoid_position` | no `path`: `"bone"` is `hips` (the body offset) or `left_foot` / `right_foot` (the Foot IK goals); `[left, up, forward]` from the neutral hips, in human-scale units |
 
 - A key is `[time, value]` or `[time, value, ease]`. `ease` is the easing of the segment that
   starts at that key: `linear` (default), `step`, or
@@ -674,6 +727,7 @@ animationplayer:
   clips:
     - {clip: anim/walk.anim, guid: 6f1d0c2a9b8e4f7da1c3e5b7092f4d6e, name: Walk, wrap: loop}
     - {clip: models/hero.gltf#Idle}
+    - {clip: models/robot.glb#Run, retarget: true, footIK: true}
   defaultClip: Walk
   playAutomatically: true
   speed: 1
@@ -681,7 +735,7 @@ animationplayer:
 ```
 
 `clip` paths are relative to the assets folder. `guid` is written for `.anim` files only (model
-clips are path-only), and `name`/`wrap` only when set. With layers or a controller:
+clips are path-only), and `name`/`wrap`/`retarget`/`mirror`/`footIK` only when set. With layers or a controller:
 
 ```yaml
 animationplayer:
@@ -778,7 +832,8 @@ selected GameObject.
 
 Animator sub-state machines, 2D and direct blend trees, synced layers, IK in masks, Animator
 Override Controllers and importing Unity `.controller` / `.mask` files (they are refused with a
-message), humanoid (muscle) clips, curves of other component properties (light intensity, material
+message), reading Unity muscle `.anim` clips (re-export them as glTF and retarget), root motion from
+humanoid clips, curves of other component properties (light intensity, material
 colours: the format reserves `"channel": "property"`), root motion and animating layer weights from
 clips (use Lua). Also: sprite-swap, active and colour/alpha curves (2D games keep sprite animations
 and tweens), importer clip ranges and per-model-clip events, a preview pane in the clip asset

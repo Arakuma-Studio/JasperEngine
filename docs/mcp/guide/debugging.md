@@ -45,7 +45,9 @@ game has the keyboard, the toggle and stats keys type into it and do not toggle 
 
 The overlay keeps its own size whatever the Canvas Scaler (`graphics.ui_scale`): 13 px text of
 `min(width, height) / 720` px on desktop; on touch screens 1/160 inch from the screen's DPI (at most
-`min(width, height) / 400`, which is also used when the DPI is unknown).
+`min(width, height) / 400`, which is also used when the DPI is unknown). Its panels keep clear of the safe area
+(`Screen.safeAreaInsets`: notches, rounded corners, `Screen.setExtraInsets` such as a banner ad;
+jasper://docs/safe-area), also in the Game view's device simulation.
 
 ## 3. The console
 

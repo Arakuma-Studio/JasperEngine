@@ -26,6 +26,7 @@
 #include "lattice/LatticeSolver.h"
 #include "math/AABB.h"
 #include "math/Matrix4.h"
+#include "pool/AnimationClipPool.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -366,8 +367,10 @@ namespace{
         switch (sample.channel){
             case ClipChannel::Position:
             case ClipChannel::Scale:
+            case ClipChannel::HumanoidPosition:
                 return {sample.vector.x, sample.vector.y, sample.vector.z};
-            case ClipChannel::Rotation: {
+            case ClipChannel::Rotation:
+            case ClipChannel::Humanoid: {
                 std::vector<float> out(4);
                 quaternionToXYZW(sample.rotation, out.data());
                 return out;
@@ -387,7 +390,7 @@ namespace{
 
     bool sameValue(ClipChannel channel, const std::vector<float>& a, const std::vector<float>& b){
         const float tolerance = 1e-4f;
-        if (channel == ClipChannel::Rotation && a.size() == 4 && b.size() == 4){
+        if (isRotationChannel(channel) && a.size() == 4 && b.size() == 4){
             // q and -q are one rotation
             const float dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
             return std::fabs(std::fabs(dot) - 1.0f) <= tolerance;
@@ -434,6 +437,8 @@ namespace{
                 return true;
             }
             case ClipChannel::Property:
+            case ClipChannel::Humanoid:
+            case ClipChannel::HumanoidPosition:
                 break;
         }
         return false;
@@ -477,6 +482,8 @@ namespace{
                 return;
             }
             case ClipChannel::Property:
+            case ClipChannel::Humanoid:
+            case ClipChannel::HumanoidPosition:
                 return;
         }
     }
@@ -492,6 +499,8 @@ namespace{
             case ClipChannel::Lattice:
                 return rest.hasLattice;
             case ClipChannel::Property:
+            case ClipChannel::Humanoid:
+            case ClipChannel::HumanoidPosition:
                 break;
         }
         return false;
@@ -841,8 +850,18 @@ std::vector<std::string> AnimationClipController::maskedTracks() const{
     const std::string reason = "masked out by " + fs::u8path(layers[(size_t)layer].mask).filename().string() + " on layer " + layers[(size_t)layer].name;
     masked.assign(trackCount, std::string());
     for (size_t t = 0; t < trackCount; t++){
-        const std::string& path = document->data().tracks[t].path;
-        const Entity target = path.empty() ? root : anim::resolvePath(scene, root, path);
+        // humanoid tracks: their slot's bone on the root's rig
+        const ClipTrackData& clipTrack = document->data().tracks[t];
+        Entity target = NULL_ENTITY;
+        if (isHumanoidChannel(clipTrack.channel)){
+            std::shared_ptr<const anim::HumanoidSlots> humanoid = boundHumanoid();
+            if (humanoid && clipTrack.channel == ClipChannel::Humanoid && clipTrack.humanBone < pose::HUMAN_BONE_COUNT){
+                target = humanoid->target->slotEntities[(size_t)clipTrack.humanBone];
+            }
+            if (target == NULL_ENTITY) continue;
+        }
+        const std::string& path = clipTrack.path;
+        if (target == NULL_ENTITY) target = path.empty() ? root : anim::resolvePath(scene, root, path);
         if (target == NULL_ENTITY) continue;
         if (mask->weightOf(scene, root, target, entries, slots.valid ? &slots : nullptr).weight <= 0.0f) masked[t] = reason;
     }
@@ -1452,12 +1471,31 @@ bool AnimationClipController::newestRedoIsClipCommit(Project* project){
     return projectStep > sceneRedo && projectStep > sceneNew;
 }
 
+std::shared_ptr<const anim::HumanoidSlots> AnimationClipController::boundHumanoid() const{
+    SceneProject* sceneProject = nullptr;
+    const Entity target = valueRoot(&sceneProject);
+    if (target == NULL_ENTITY || !sceneProject || !sceneProject->scene) return nullptr;
+    Scene* scene = sceneProject->scene;
+    if (!humanoidCache || humanoidCacheRoot != target || humanoidCacheRevision != scene->hierarchyRevision() ||
+        humanoidCachePool != AnimationClipPool::revision()){
+        humanoidCache = std::make_shared<anim::HumanoidSlots>(anim::resolveHumanoidSlots(scene, target));
+        humanoidCacheRoot = target;
+        humanoidCacheRevision = scene->hierarchyRevision();
+        humanoidCachePool = AnimationClipPool::revision();
+    }
+    return humanoidCache->target ? humanoidCache : nullptr;
+}
+
 bool AnimationClipController::currentTrackValue(const ClipTrackData& track, std::vector<float>& out) const{
     out.clear();
     SceneProject* sceneProject = nullptr;
     const Entity target = valueRoot(&sceneProject);
     if (target == NULL_ENTITY || !sceneProject || track.channel == ClipChannel::Property) return false;
     Scene* scene = sceneProject->scene;
+    if (isHumanoidChannel(track.channel)){
+        std::shared_ptr<const anim::HumanoidSlots> humanoid = boundHumanoid();
+        return humanoid && anim::readHumanoidValue(scene, *humanoid->target, track.channel, track.humanBone, out);
+    }
     const Entity entity = anim::resolvePath(scene, target, track.path);
     if (entity == NULL_ENTITY) return false;
     if (!anim::readChannelValue(scene, entity, track.channel, track.points, out)) return false;
@@ -1500,6 +1538,29 @@ bool AnimationClipController::currentTrackValue(const ClipTrackData& track, std:
 bool AnimationClipController::addProperty(const std::string& path, ClipChannel channel, size_t* newTrack, std::string* error){
     if (!editable(error)) return false;
     if (channel == ClipChannel::Property) return fail(error, "component properties can't be animated yet");
+    if (isHumanoidChannel(channel)){
+        // a humanoid track (anim-retarget 9): `path` is its bone; the value from the bound rig
+        int bone = -1;
+        if (!anim::humanoidTrackBoneFromName(channel, path, bone)) return fail(error, "'" + path + "' is not a humanoid bone");
+        ClipData data = document->data();
+        if (data.findHumanoidTrack(channel, bone) >= 0) return fail(error, "the clip already animates " + clipui::humanoidTrackLabel(channel, bone));
+        ClipTrackData track;
+        track.channel = channel;
+        track.humanBone = bone;
+        std::vector<float> value;
+        if (!currentTrackValue(track, value)){
+            return fail(error, boundHumanoid() ? "the bound humanoid rig has no " + path
+                                               : std::string("bind a humanoid character to key humanoid tracks"));
+        }
+        setKeyAt(track, time, value);
+        data.tracks.push_back(track);
+        if (!commitEdit(data, "Add Property", "", error)) return false;
+        if (newTrack){
+            const int index = document->data().findHumanoidTrack(channel, bone);
+            *newTrack = index < 0 ? 0 : (size_t)index;
+        }
+        return true;
+    }
     std::vector<anim::PathSegment> segments;
     if (!anim::parsePath(path, segments)) return fail(error, "'" + path + "' is not a valid path");
     ClipData data = document->data();
@@ -1556,7 +1617,7 @@ bool AnimationClipController::keyTracks(const std::vector<size_t>& tracks, float
         std::vector<float> value;
         if (!currentTrackValue(track, value)) continue;
         setKeyAt(track, atTime, value);
-        written.push_back({track.path, track.channel});
+        written.push_back({clipui::trackIdentityPath(track), track.channel});
     }
     if (written.empty()) return fail(error, "no bound track to key (missing bindings are skipped)");
     if (!commitEdit(data, "Add Key", mergeKey, error)) return false;
@@ -1597,7 +1658,7 @@ bool AnimationClipController::keyModified(float atTime, std::vector<KeyRef>* key
         const ClipTrackData& track = data.tracks[i];
         std::vector<float> value;
         if (!currentTrackValue(track, value)) continue;
-        const int built = clip->findTrack(track.path, track.channel);
+        const int built = clipui::findRuntimeTrack(*clip, track);
         if (built < 0 || (size_t)built >= samples.size() || !samples[(size_t)built].valid){
             changed.push_back(i);
             continue;
@@ -1674,7 +1735,7 @@ bool AnimationClipController::moveKeys(const std::vector<KeyRef>& keys, float de
     for (const KeyRef& ref : keys){
         if (ref.track >= data.tracks.size() || ref.key >= data.tracks[ref.track].keys.size()) return fail(error, "no such key");
         const ClipTrackData& track = data.tracks[ref.track];
-        identities.push_back({track.path, track.channel, std::max(0.0f, track.keys[ref.key].time + deltaTime)});
+        identities.push_back({clipui::trackIdentityPath(track), track.channel, std::max(0.0f, track.keys[ref.key].time + deltaTime)});
     }
     if (!moveKeyData(data, keys, deltaTime, nullptr, error)) return false;
     if (!commitEdit(data, "Move Keys", mergeKey, error)) return false;
@@ -1703,7 +1764,7 @@ bool AnimationClipController::beginKeyDrag(const std::vector<KeyRef>& keys, std:
     for (const KeyRef& ref : keys){
         if (ref.track >= data.tracks.size() || ref.key >= data.tracks[ref.track].keys.size()) return fail(error, "no such key");
         const ClipTrackData& track = data.tracks[ref.track];
-        identities.push_back({track.path, track.channel, track.keys[ref.key].time});
+        identities.push_back({clipui::trackIdentityPath(track), track.channel, track.keys[ref.key].time});
     }
     dragging = true;
     dragBase = data;
@@ -1940,6 +2001,35 @@ bool AnimationClipController::takeRecordStoppedNotice(){
     return notice;
 }
 
+// A humanoid clip's Record (anim-retarget 9): the humanoid track a write of `entity`'s `channel`
+// keys on the bound rig (a mapped slot or extra bone's rotation, the hips position); false for
+// other bones (they key generic tracks)
+static bool humanoidRecordTrack(const anim::HumanoidSlots* humanoid, Entity entity, ClipChannel channel, ClipChannel& outChannel, int& outBone){
+    if (!humanoid || !humanoid->target) return false;
+    const anim::HumanoidTarget& target = *humanoid->target;
+    if (channel == ClipChannel::Rotation){
+        for (int b = 0; b < pose::HUMAN_BONE_COUNT; b++){
+            if (target.slotEntities[(size_t)b] == entity){
+                outChannel = ClipChannel::Humanoid;
+                outBone = b;
+                return true;
+            }
+        }
+        for (int x = 0; x < pose::HUMAN_EXTRA_BONE_COUNT; x++){
+            if (target.extraEntities[(size_t)x] == entity){
+                outChannel = ClipChannel::Humanoid;
+                outBone = pose::HUMAN_BONE_COUNT + x;
+                return true;
+            }
+        }
+    }else if (channel == ClipChannel::Position && target.slotEntities[0] == entity){
+        outChannel = ClipChannel::HumanoidPosition;
+        outBone = HUMANOID_POSITION_HIPS;
+        return true;
+    }
+    return false;
+}
+
 bool AnimationClipController::recordClaims(uint32_t id, Entity entity, ClipChannel channel) const{
     // a pure check (the sources ask it every frame): the edit becomes a scene step, and the window
     // says why when one arrives (afterSceneWrite)
@@ -1955,6 +2045,8 @@ bool AnimationClipController::recordEligible(uint32_t id, Entity entity, ClipCha
     // anything under the root that has the channel's component: a new track when it has none
     std::string path;
     if (!anim::relativePath(sceneProject->scene, previewRoot, entity, path)) return false;
+    // a humanoid clip records on a humanoid character only (its keys are the rig's E)
+    if (document->data().isHumanoid() && !boundHumanoid()) return false;
     std::vector<float> value;
     return anim::readChannelValue(sceneProject->scene, entity, channel, {}, value);
 }
@@ -1964,6 +2056,11 @@ bool AnimationClipController::recordAnimates(uint32_t id, Entity entity, ClipCha
     SceneProject* sceneProject = sceneProjectOf(previewSceneId);
     std::string path;
     if (!sceneProject || !anim::relativePath(sceneProject->scene, previewRoot, entity, path)) return false;
+    ClipChannel humanoidChannel = ClipChannel::Humanoid;
+    int bone = -1;
+    if (document->data().isHumanoid() && humanoidRecordTrack(boundHumanoid().get(), entity, channel, humanoidChannel, bone)){
+        return document->data().findHumanoidTrack(humanoidChannel, bone) >= 0;
+    }
     return document->data().findTrack(path, channel) >= 0;
 }
 
@@ -1989,11 +2086,20 @@ void AnimationClipController::recordValue(uint32_t id, Entity entity, const Clip
     anim::writeChannelValue(scene, entity, value.channel, value.points, value.value);
 
     ClipData data = document->data();
-    int index = data.findTrack(path, value.channel);
+    // a humanoid clip keys a mapped bone's E (the rig's joint rotation of its new local rotation)
+    ClipChannel humanoidChannel = ClipChannel::Humanoid;
+    int bone = -1;
+    const bool humanoid = data.isHumanoid() && humanoidRecordTrack(boundHumanoid().get(), entity, value.channel, humanoidChannel, bone);
+    int index = humanoid ? data.findHumanoidTrack(humanoidChannel, bone) : data.findTrack(path, value.channel);
     if (index < 0){
         ClipTrackData track;
-        track.path = path;
-        track.channel = value.channel;
+        if (humanoid){
+            track.channel = humanoidChannel;
+            track.humanBone = bone;
+        }else{
+            track.path = path;
+            track.channel = value.channel;
+        }
         data.tracks.push_back(track);
         index = (int)data.tracks.size() - 1;
     }

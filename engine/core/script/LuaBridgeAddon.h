@@ -16,6 +16,7 @@
 #include "debug/DebugOverlay.h"
 #include "Log.h"
 #include "component/LineRendererComponent.h"
+#include "component/VideoPlayerComponent.h"
 
 using namespace jasperengine;
 
@@ -129,6 +130,11 @@ namespace luabridge
     template<> struct Stack<PhysicsMaterialCombine> : EnumWrapper<PhysicsMaterialCombine>{};
     template<> struct Stack<UIDocumentRenderMode> : EnumWrapper<UIDocumentRenderMode>{};
     template<> struct Stack<FluidOutput> : EnumWrapper<FluidOutput>{};
+    template<> struct Stack<VideoPlayerSource> : EnumWrapper<VideoPlayerSource>{};
+    template<> struct Stack<VideoTimeUpdateMode> : EnumWrapper<VideoTimeUpdateMode>{};
+    template<> struct Stack<VideoRenderMode> : EnumWrapper<VideoRenderMode>{};
+    template<> struct Stack<VideoAspectRatio> : EnumWrapper<VideoAspectRatio>{};
+    template<> struct Stack<VideoAudioOutputMode> : EnumWrapper<VideoAudioOutputMode>{};
     // bound enums that had none: LuaBridge pushed them as unregistered userdata (an error
     // reading probe.mode) and took no integer for them
     template<> struct Stack<ReflectionProbeMode> : EnumWrapper<ReflectionProbeMode>{};

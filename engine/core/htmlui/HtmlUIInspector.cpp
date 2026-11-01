@@ -1255,6 +1255,7 @@ InspectElement inspect::describe(const Doc& doc, Refs& refs, Rml::Element* eleme
     if (UIVideoElement* video = rmlui_dynamic_cast<UIVideoElement*>(element)){
         auto media = std::make_shared<InspectMedia>();
         media->currentSrc = video->getCurrentSrc();
+        media->backend = video->getVideoBackend();
         media->currentTime = video->getCurrentTime();
         const double duration = video->getDuration();
         media->duration = std::isfinite(duration) ? duration : -1.0;

@@ -125,6 +125,10 @@ namespace jasperengine::editor::mcp {
         // it expands in place (in the object form before the component's other values, which
         // then override it)
         static bool parseChanges(const Json& changes, std::vector<Change>& out, std::string& error);
+        // A RectTransform property the entity's Safe Area component drives (anchors, offsets,
+        // size): the error that refuses setting it, "" when it is free
+        static std::string safeAreaDrivenError(Scene* scene, Entity entity, const std::string& property);
+
         // parseChanges without the renamed names mapped to the current ones
         static bool parseChangesAsGiven(const Json& changes, std::vector<Change>& out, std::string& error);
         // The commands for `changes` on each entity, added to `multi`: per entity and
@@ -269,6 +273,10 @@ namespace jasperengine::editor::mcp {
         // only: FluidStats in snake_case plus the matching preset, the device's support and the
         // simulator's last error; null when the entity has no FluidSimulationComponent
         static Json fluidStatsToJson(Scene* scene, Entity entity);
+        // A Video Player's playback state (get_entity, get_runtime_entity: "video"): prepared,
+        // playing, time, frame, frameCount, length, backend, codecs, error, prepareProgress; null
+        // when the entity has none or nothing was opened yet (edit mode)
+        static Json videoStatusToJson(Scene* scene, Entity entity);
         // A UI element's Canvas Group chain (ui canvas group spec 7.8): {inherited_alpha,
         // interactable, blocks_raycasts, group: "<path>"}; null outside any group or without a
         // RectTransform; a FLATTEN group adds flatten {layered, layer_alpha, the scene's layer stats}

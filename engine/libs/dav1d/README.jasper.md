@@ -1,7 +1,7 @@
 # dav1d in JasperEngine
 
 - Upstream: https://code.videolan.org/videolan/dav1d, tag `1.5.4` (BSD-2-Clause, `COPYING`).
-- Used by: the HTML UI's `<video>` (`engine/core/htmlui/media/Av1Decoder.cpp`,
+- Used by: the HTML UI's `<video>` (`engine/core/media/Av1Decoder.cpp`,
   `docs/html-ui/phase-6-video.md`).
 
 ## Vendored (byte for byte from the tag)
@@ -41,6 +41,10 @@ files, `package/`, and the code of other architectures (`src/ppc`, `src/riscv`, 
   them. The `.S` files are excluded from x86_64 slices and the NASM files from arm64 ones
   (`EXCLUDED_SOURCE_FILE_NAMES[arch=...]`); a build rule assembles `*.asm` into `<name>.nasm.o` with
   the `nasm` of PATH, Homebrew's or `/usr/local/bin` (x86-64 Macs and the Intel simulator need it).
+  The targets have `USE_HEADERMAP = NO`: Xcode's project header map, searched before the search
+  paths, resolved `#include "config.h"` to `engine/libs/thorvg/config/config.h` (the asm did not
+  assemble, and the C build had no bit depth); `xcode/cpu_*.c` stop the build with an `#error`
+  when `config.h` is not ours.
 
 ## Updating
 Copy the same file set from the new tag, compare `src/meson.build`'s `libdav1d_sources`,

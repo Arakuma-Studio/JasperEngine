@@ -711,7 +711,7 @@ Json elementJson(const hui::InspectElement& e, const std::vector<hui::InspectSty
     // a <video>'s state and its controls' rectangles (phase 6)
     if (e.media) {
         const hui::InspectMedia& m = *e.media;
-        Json media = {{"currentSrc", m.currentSrc}, {"currentTime", m.currentTime}, {"paused", m.paused}, {"ended", m.ended},
+        Json media = {{"currentSrc", m.currentSrc}, {"backend", m.backend}, {"currentTime", m.currentTime}, {"paused", m.paused}, {"ended", m.ended},
                       {"seeking", m.seeking}, {"loop", m.loop}, {"muted", m.muted}, {"volume", m.volume}, {"playbackRate", m.playbackRate},
                       {"readyState", m.readyState}, {"networkState", m.networkState}, {"videoWidth", m.videoWidth},
                       {"videoHeight", m.videoHeight}, {"frame", m.frame}, {"droppedFrames", m.droppedFrames},

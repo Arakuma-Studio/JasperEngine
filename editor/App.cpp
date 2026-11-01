@@ -33,6 +33,7 @@
 
 #include "EditorVersion.h"
 #include "Out.h"
+#include "window/HumanoidConvertDialog.h"
 #include "AppSettings.h"
 #include "Theme.h"
 #include "resources/fonts/fa-solid-900_ttf.h"
@@ -140,6 +141,7 @@ editor::App::App(){
     animationWindow = new AnimationWindow(&project);
     poseAnimationWindow = new PoseAnimationWindow(&project);
     animatorWindow = new AnimatorWindow(&project);
+    avatarWindow = new AvatarWindow(&project);
     // the Inspector's Controller field, the Project window's double-click and MCP open it
     animationClipAppHooks().openAnimator = [this](Project*, const std::string& controller, uint32_t sceneId, Entity entity){
         animatorWindow->setOpen(true);
@@ -319,6 +321,7 @@ enum class AppMenuCommand : uint32_t {
     AssetsCreateHtmlDocument,
     AssetsCreateAudioMixer,
     AssetsCreatePoseAnimation,
+    AssetsCreateNativePlugin,
     AssetsCreateAnimationClip,      // shown only once AnimationClipAppHooks::createClipAsset is set
     AssetsCreateAnimatorController, // (createControllerAsset)
     AssetsCreateAvatarMask,         // (createMaskAsset)
@@ -622,7 +625,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuSeparator(),
         menuCommand(AppMenuCommand::AssetsCreateAudioMixer, "Audio Mixer"),
         menuSeparator(),
-        menuCommand(AppMenuCommand::AssetsCreatePoseAnimation, "Pose Animation")
+        menuCommand(AppMenuCommand::AssetsCreatePoseAnimation, "Pose Animation"),
+        menuSeparator(),
+        menuCommand(AppMenuCommand::AssetsCreateNativePlugin, "Native Plugin...", !isProjectBusy)
     };
     // Animation Clip: once the clip asset task set its hook
     if (animationClipAppHooks().createClipAsset) {
@@ -1072,6 +1077,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             }
             break;
         }
+        case AppMenuCommand::AssetsCreateNativePlugin:
+            nativePluginDialog.open(&project);
+            break;
         case AppMenuCommand::AssetsCreateAnimationClip:
             if (animationClipAppHooks().createClipAsset) {
                 animationClipAppHooks().createClipAsset(&project);
@@ -2496,6 +2504,13 @@ void editor::App::show(){
     editorSettingsWindow.show();
     aboutWindow.show();
     projectSettingsWindow.show();
+    nativePluginDialog.show();
+    // a native plugin was made (either dialog): its Lua mock opens in the code editor
+    for (const fs::path& created : {nativePluginDialog.consumeCreatedFile(), projectSettingsWindow.consumeCreatedFile()}) {
+        if (created.empty()) continue;
+        projectWindow->refreshCurrentDirectory();
+        codeEditor->openFile(created.string());
+    }
     prefabsWindow.show();
     scenesWindow.show();
 
@@ -2509,6 +2524,8 @@ void editor::App::show(){
     consoleWindow->show();
     animationWindow->show();
     animatorWindow->show();
+    avatarWindow->show();
+    HumanoidConvertDialog::draw(&project);
     poseAnimationWindow->show();
     // the Scene views posing its character: a selection elsewhere leaves posing, ghosts go
     PoseViewport::frame(&project);
@@ -3869,6 +3886,10 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
         animatorWindow->clearSceneState(sceneId);
     }
 
+    if (avatarWindow) {
+        avatarWindow->clearSceneState(sceneId);
+    }
+
     if (lastActivatedScene == sceneId) {
         resetLastActivatedScene();
     }
@@ -3878,6 +3899,8 @@ void editor::App::prepareForProjectSwitch() {
     // the posed bones go back while their scenes still exist
     poseAnimationWindow->prepareForProjectSwitch();
     animatorWindow->projectClosed();
+    avatarWindow->stopPreview();
+    avatarWindow->projectClosed();
     // and the clip previews (documents and the shared clip controller are released)
     if (animationClipAppHooks().projectClosed) {
         animationClipAppHooks().projectClosed();
@@ -4003,6 +4026,9 @@ void editor::App::stopTransientPreviews() {
     }
     if (animatorWindow) {
         animatorWindow->stopTransientPreviews();
+    }
+    if (avatarWindow) {
+        avatarWindow->stopTransientPreviews();
     }
     // and the Animation window's previewed targets to their snapshots (animation clips 9.R6):
     // the entity-sequence mode, then the clip mode
@@ -4386,6 +4412,18 @@ editor::PoseAnimationWindow* editor::App::getPoseAnimationWindow() const{
 
 editor::AnimatorWindow* editor::App::getAnimatorWindow() const{
     return animatorWindow;
+}
+
+editor::AvatarWindow* editor::App::getAvatarWindow() const{
+    return avatarWindow;
+}
+
+void editor::App::openAvatarWindow(uint32_t sceneId, Entity entity){
+    std::string error;
+    // the bound model keeps its edits; another one asks about unsaved edits first
+    if (!avatarWindow->requestOpen(sceneId, entity, &error)){
+        Out::warning("Configure Avatar: %s", error.c_str());
+    }
 }
 
 editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{

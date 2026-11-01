@@ -19,6 +19,7 @@
 #include "LuaBinding.h"
 #include "Log.h"
 #include "animation/AnimationEvent.h"
+#include "object/VideoPlayer.h"
 
 #include "lua.hpp"
 #include "LuaBridge.h"
@@ -144,6 +145,11 @@ void LuaFunctionBase::push_value(lua_State *vm, Vector2 o){
 
 void LuaFunctionBase::push_value(lua_State *vm, Vector3 o){
     if (!luabridge::push<Vector3>(vm, o))
+        throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
+}
+
+void LuaFunctionBase::push_value(lua_State *vm, const VideoPlayer &o){
+    if (!luabridge::push<VideoPlayer>(vm, o))
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
 }
 

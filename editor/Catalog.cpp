@@ -12,6 +12,7 @@
 #include "util/CameraTextureLink.h"
 #include "subsystem/RenderSystem.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "lattice/LatticeTypes.h"
 #include "pose/PoseAnimatorRuntime.h"
@@ -734,6 +735,33 @@ namespace {
     // Sizes and the look need no flag: FluidSimulator recreates its targets and reads every
     // value each frame; what the start depends on (the seed, the start burst) restarts the
     // fluid (UpdateFlags_Fluid_Reset).
+    // A Video Player (video-mp4 spec 6.4): every serialized field. A new clip/url stops the player
+    // by itself (VideoPlayerSystem compares what it opened), so no flag is needed
+    static const FastPropertyDescriptor kVideoPlayerProperties[] = {
+        makeFastProperty<VideoPlayerComponent, VideoPlayerSource, &VideoPlayerComponent::source>("source", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, std::string, &VideoPlayerComponent::clip>("clip", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, std::string, &VideoPlayerComponent::url>("url", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, bool, &VideoPlayerComponent::playOnAwake>("playOnAwake", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, bool, &VideoPlayerComponent::waitForFirstFrame>("waitForFirstFrame", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, bool, &VideoPlayerComponent::isLooping>("isLooping", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, bool, &VideoPlayerComponent::skipOnDrop>("skipOnDrop", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, float, &VideoPlayerComponent::playbackSpeed>("playbackSpeed", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, VideoTimeUpdateMode, &VideoPlayerComponent::timeUpdateMode>("timeUpdateMode", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, VideoRenderMode, &VideoPlayerComponent::renderMode>("renderMode", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, Entity, &VideoPlayerComponent::targetCamera>("targetCamera", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, float, &VideoPlayerComponent::targetCameraAlpha>("targetCameraAlpha", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, VideoAspectRatio, &VideoPlayerComponent::aspectRatio>("aspectRatio", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, Entity, &VideoPlayerComponent::targetMaterialRenderer>("targetMaterialRenderer", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, std::string, &VideoPlayerComponent::targetMaterialProperty>("targetMaterialProperty", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, int, &VideoPlayerComponent::targetSubmesh>("targetSubmesh", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, unsigned int, &VideoPlayerComponent::renderTextureWidth>("renderTextureWidth", PropertyType::UInt, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, unsigned int, &VideoPlayerComponent::renderTextureHeight>("renderTextureHeight", PropertyType::UInt, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, VideoAudioOutputMode, &VideoPlayerComponent::audioOutputMode>("audioOutputMode", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, float, &VideoPlayerComponent::directVolume>("directVolume", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, bool, &VideoPlayerComponent::directMute>("directMute", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<VideoPlayerComponent, Entity, &VideoPlayerComponent::targetAudioSource>("targetAudioSource", PropertyType::Entity, UpdateFlags_None),
+    };
+
     static const FastPropertyDescriptor kFluidSimulationProperties[] = {
         makeFastProperty<FluidSimulationComponent, FluidOutput, &FluidSimulationComponent::output>("output", PropertyType::Enum, UpdateFlags_None),
         makeFastProperty<FluidSimulationComponent, bool, &FluidSimulationComponent::interactive>("interactive", PropertyType::Bool, UpdateFlags_None),
@@ -877,6 +905,15 @@ namespace {
     // GUID (editor); `attachments` (Custom: the whole list, what a prefab override holds) plus
     // attachments[i].socket / .entity (resolveVertexAnimatorPropertyFast). The runtime fields
     // are not properties; the settings are read by the system when it plays (no update flag).
+    // the Safe Area component: UISystem drives the RectTransform from these every update
+    static const FastPropertyDescriptor kSafeAreaProperties[] = {
+        makeFastProperty<SafeAreaComponent, bool, &SafeAreaComponent::left>("left", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<SafeAreaComponent, bool, &SafeAreaComponent::top>("top", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<SafeAreaComponent, bool, &SafeAreaComponent::right>("right", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<SafeAreaComponent, bool, &SafeAreaComponent::bottom>("bottom", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<SafeAreaComponent, bool, &SafeAreaComponent::includeExtraInsets>("includeExtraInsets", PropertyType::Bool, UpdateFlags_None),
+    };
+
     static const FastPropertyDescriptor kVertexAnimatorProperties[] = {
         makeFastProperty<VertexAnimatorComponent, std::string, &VertexAnimatorComponent::animation>("animation", PropertyType::String, UpdateFlags_VertexAnimator_Reload),
         makeFastProperty<VertexAnimatorComponent, std::string, &VertexAnimatorComponent::guid>("guid", PropertyType::String, UpdateFlags_VertexAnimator_Reload),
@@ -2120,6 +2157,10 @@ namespace {
         return resolveDirectProperties(static_cast<LightComponent*>(comp), propertyName, kLightProperties);
     }
 
+    PropertyData resolveSafeAreaPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<SafeAreaComponent*>(comp), propertyName, kSafeAreaProperties);
+    }
+
     PropertyData resolveFogPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<FogComponent*>(comp), propertyName, kFogProperties);
     }
@@ -2134,6 +2175,10 @@ namespace {
 
     PropertyData resolveUIDocumentPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<UIDocumentComponent*>(comp), propertyName, kUIDocumentProperties);
+    }
+
+    PropertyData resolveVideoPlayerPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<VideoPlayerComponent*>(comp), propertyName, kVideoPlayerProperties);
     }
 
     PropertyData resolveFluidSimulationPropertyFast(void* comp, const std::string& propertyName) {
@@ -2279,6 +2324,16 @@ namespace {
                 }
                 if (fieldName == ".layer") {
                     return {PropertyType::Int, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.layer, (void*)&entry.layer};
+                }
+                // humanoid playback (anim-retarget 7.1)
+                if (fieldName == ".retarget") {
+                    return {PropertyType::Bool, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.retarget, (void*)&entry.retarget};
+                }
+                if (fieldName == ".mirror") {
+                    return {PropertyType::Bool, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.mirror, (void*)&entry.mirror};
+                }
+                if (fieldName == ".footIK") {
+                    return {PropertyType::Bool, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.footIK, (void*)&entry.footIK};
                 }
             }
         }
@@ -3400,6 +3455,10 @@ namespace {
         enumerateFromDescriptors(comp, ps, kLightProperties);
     }
 
+    void enumerateSafeAreaProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kSafeAreaProperties);
+    }
+
     void enumerateFogProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kFogProperties);
     }
@@ -3414,6 +3473,10 @@ namespace {
 
     void enumerateUIDocumentProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kUIDocumentProperties);
+    }
+
+    void enumerateVideoPlayerProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kVideoPlayerProperties);
     }
 
     void enumerateFluidSimulationProperties(void* comp, std::map<std::string, PropertyData>& ps) {
@@ -3497,6 +3560,9 @@ namespace {
             ps[prefix + ".name"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.name, entry ? (void*)&entry->name : nullptr};
             ps[prefix + ".wrap"] = {PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.wrap, entry ? (void*)&entry->wrap : nullptr};
             ps[prefix + ".layer"] = {PropertyType::Int, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.layer, entry ? (void*)&entry->layer : nullptr};
+            ps[prefix + ".retarget"] = {PropertyType::Bool, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.retarget, entry ? (void*)&entry->retarget : nullptr};
+            ps[prefix + ".mirror"] = {PropertyType::Bool, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.mirror, entry ? (void*)&entry->mirror : nullptr};
+            ps[prefix + ".footIK"] = {PropertyType::Bool, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.footIK, entry ? (void*)&entry->footIK : nullptr};
         }
         static AnimationPlayerLayer defLayer;
         for (size_t i = 0; i < (compRef ? comp->layers.size() : 1); i++) {
@@ -4304,6 +4370,8 @@ namespace {
         {ComponentType::OnScreenStickComponent, &findComponentPtr<OnScreenStickComponent>, &resolveOnScreenStickPropertyFast, &enumerateOnScreenStickProperties},
         {ComponentType::OnScreenButtonComponent, &findComponentPtr<OnScreenButtonComponent>, &resolveOnScreenButtonPropertyFast, &enumerateOnScreenButtonProperties},
         {ComponentType::TouchAreaComponent, &findComponentPtr<TouchAreaComponent>, &resolveTouchAreaPropertyFast, &enumerateTouchAreaProperties},
+        {ComponentType::VideoPlayerComponent, &findComponentPtr<VideoPlayerComponent>, &resolveVideoPlayerPropertyFast, &enumerateVideoPlayerProperties},
+        {ComponentType::SafeAreaComponent, &findComponentPtr<SafeAreaComponent>, &resolveSafeAreaPropertyFast, &enumerateSafeAreaProperties},
         {ComponentType::Light2DComponent, &findComponentPtr<Light2DComponent>, &resolveLight2DPropertyFast, &enumerateLight2DProperties},
         {ComponentType::ShadowCaster2DComponent, &findComponentPtr<ShadowCaster2DComponent>, &resolveShadowCaster2DPropertyFast, &enumerateShadowCaster2DProperties},
         {ComponentType::CameraComponent, &findComponentPtr<CameraComponent>, &resolveCameraPropertyFast, &enumerateCameraProperties},
@@ -4392,6 +4460,8 @@ namespace {
             case ComponentType::CameraShakerComponent: return &getEnabledRef<CameraShakerComponent>;
             case ComponentType::CameraFollowComponent: return &getEnabledRef<CameraFollowComponent>;
             case ComponentType::TextEffectComponent: return &getEnabledRef<TextEffectComponent>;
+            case ComponentType::VideoPlayerComponent: return &getEnabledRef<VideoPlayerComponent>;
+            case ComponentType::SafeAreaComponent: return &getEnabledRef<SafeAreaComponent>;
             default: return nullptr;
         }
     }
@@ -4559,6 +4629,10 @@ std::string computeComponentName(editor::ComponentType component){
         name = "CameraFollowComponent";
     }else if(component == ComponentType::TextEffectComponent){
         name = "TextEffectComponent";
+    }else if(component == ComponentType::VideoPlayerComponent){
+        name = "VideoPlayerComponent";
+    }else if(component == ComponentType::SafeAreaComponent){
+        name = "SafeAreaComponent";
     }else if(component == ComponentType::Light2DComponent){
         name = "Light2DComponent";
     }else if(component == ComponentType::ShadowCaster2DComponent){
@@ -4718,6 +4792,8 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::CameraShakerComponent: return "Camera Shaker";
         case ComponentType::CameraFollowComponent: return "Camera Follow";
         case ComponentType::TextEffectComponent: return "Text Effect";
+        case ComponentType::VideoPlayerComponent: return "Video Player";
+        case ComponentType::SafeAreaComponent: return "Safe Area";
     }
     return getComponentName(component);
 }
@@ -4794,6 +4870,8 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::CameraShakerComponent: return ICON_FA_BURST;
         case ComponentType::CameraFollowComponent: return ICON_FA_LOCATION_CROSSHAIRS;
         case ComponentType::TextEffectComponent: return ICON_FA_WAND_MAGIC_SPARKLES;
+        case ComponentType::VideoPlayerComponent: return ICON_FA_FILM;
+        case ComponentType::SafeAreaComponent: return ICON_FA_MOBILE_SCREEN_BUTTON;
     }
     return ICON_FA_PUZZLE_PIECE;
 }
@@ -4871,6 +4949,10 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<CameraFollowComponent>();
         case ComponentType::TextEffectComponent:
             return registry->getComponentId<TextEffectComponent>();
+        case ComponentType::VideoPlayerComponent:
+            return registry->getComponentId<VideoPlayerComponent>();
+        case ComponentType::SafeAreaComponent:
+            return registry->getComponentId<SafeAreaComponent>();
         case ComponentType::Light2DComponent:
             return registry->getComponentId<Light2DComponent>();
         case ComponentType::ShadowCaster2DComponent:
@@ -5007,6 +5089,10 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::CameraFollowComponent;
     }else if(normalizedName == "texteffect"){
         return ComponentType::TextEffectComponent;
+    }else if(normalizedName == "videoplayer"){
+        return ComponentType::VideoPlayerComponent;
+    }else if(normalizedName == "safearea"){
+        return ComponentType::SafeAreaComponent;
     }else if(normalizedName == "light2d"){
         return ComponentType::Light2DComponent;
     }else if(normalizedName == "shadowcaster2d"){
@@ -5249,6 +5335,12 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<CameraFollowComponent>(entity)){
         ret.push_back(ComponentType::CameraFollowComponent);
+    }
+    if (registry->isComponentRegistered<VideoPlayerComponent>() && registry->findComponent<VideoPlayerComponent>(entity)){
+        ret.push_back(ComponentType::VideoPlayerComponent);
+    }
+    if (registry->findComponent<SafeAreaComponent>(entity)){
+        ret.push_back(ComponentType::SafeAreaComponent);
     }
     if (registry->findComponent<MorphTracksComponent>(entity)){
         ret.push_back(ComponentType::MorphTracksComponent);
@@ -6402,6 +6494,12 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             break;
         }
 
+        case ComponentType::SafeAreaComponent: {
+            YAML::Node encoded = Stream::encodeSafeAreaComponent(sourceRegistry->getComponent<SafeAreaComponent>(sourceEntity));
+            targetRegistry->getComponent<SafeAreaComponent>(targetEntity) = Stream::decodeSafeAreaComponent(encoded);
+            break;
+        }
+
         case ComponentType::LayoutGroupComponent: {
             YAML::Node encoded = Stream::encodeLayoutGroupComponent(sourceRegistry->getComponent<LayoutGroupComponent>(sourceEntity));
             targetRegistry->getComponent<LayoutGroupComponent>(targetEntity) = Stream::decodeLayoutGroupComponent(encoded);
@@ -6530,6 +6628,14 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             YAML::Node encoded = Stream::encodeAnimationPlayerComponent(sourceRegistry->getComponent<AnimationPlayerComponent>(sourceEntity));
             AnimationPlayerComponent& target = targetRegistry->getComponent<AnimationPlayerComponent>(targetEntity);
             target = Stream::decodeAnimationPlayerComponent(encoded, &target);
+            break;
+        }
+
+        case ComponentType::VideoPlayerComponent: {
+            // decoded over the target's own: its render texture (and every texture showing it) stays
+            YAML::Node encoded = Stream::encodeVideoPlayerComponent(sourceRegistry->getComponent<VideoPlayerComponent>(sourceEntity));
+            VideoPlayerComponent& target = targetRegistry->getComponent<VideoPlayerComponent>(targetEntity);
+            target = Stream::decodeVideoPlayerComponent(encoded, &target);
             break;
         }
 
@@ -6743,14 +6849,17 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
     auto sourceProperties = Catalog::findEntityProperties(sourceRegistry, sourceEntity, compType);
     auto propIt = sourceProperties.find(property);
     PropertyType propType;
+    uint64_t updateFlags;
     if (propIt != sourceProperties.end()) {
         propType = propIt->second.type;
+        updateFlags = propIt->second.updateFlags;
     } else {
         const PropertyData found = Catalog::findProperty(sourceRegistry, sourceEntity, compType, property);
         if (!found.ref || !Catalog::findProperty(targetRegistry, targetEntity, compType, property).ref) {
             return; // Property not found
         }
         propType = found.type;
+        updateFlags = found.updateFlags;
     }
 
     // Copy based on property type
@@ -7032,8 +7141,9 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
         }
     }
 
-    // Apply any update flags that are associated with this property
-    updateEntity(targetRegistry, targetEntity, propIt->second.updateFlags);
+    // Apply any update flags that are associated with this property (a looked-up name's too:
+    // propIt is end() for those)
+    updateEntity(targetRegistry, targetEntity, updateFlags);
 }
 
 editor::PropertyData editor::Catalog::findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName){

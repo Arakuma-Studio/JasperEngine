@@ -153,6 +153,8 @@ namespace jasperengine::editor {
     class Generator {
         friend struct GeneratorTestAccess;
     private:
+        // macos.frameworks (Project Settings > Native Plugins): linked with the Objective-C plugins
+        std::vector<std::string> macOSFrameworks;
         std::future<void> buildFuture;
         std::atomic<bool> lastBuildSucceeded;
         CommandRunner commandRunner;
@@ -180,6 +182,7 @@ namespace jasperengine::editor {
         void writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<SceneBuildInfo>& scenes, const std::vector<PrefabSceneInfo>& prefabs, bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard);
 
     public:
+        void setMacOSFrameworks(std::vector<std::string> frameworks) { macOSFrameworks = std::move(frameworks); }
         // AGENTS.md at the project root, written only when the project has none (then CLAUDE.md likewise)
         static void writeAgentsFile(const fs::path& projectPath, const fs::path& projectInternalPath);
         // CLAUDE.md importing AGENTS.md, written only when the project has none

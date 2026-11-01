@@ -200,6 +200,8 @@ const std::vector<EntityKind>& entityKinds() {
         {"reflection_probe", EntityCreationType::REFLECTION_PROBE, "Reflection Probe"},
         {"particle_system", EntityCreationType::PARTICLE_SYSTEM, "Particle System"},
         {"fluid_simulation", EntityCreationType::FLUID_SIMULATION, "Fluid Simulation"},
+        {"video_player", EntityCreationType::VIDEO_PLAYER, "Video Player"},
+        {"video_background", EntityCreationType::VIDEO_BACKGROUND, "Video Background"},
         {"points", EntityCreationType::POINTS, "Points"},
         {"line_renderer", EntityCreationType::LINE_RENDERER, "Line Renderer"},
         {"trail_renderer", EntityCreationType::TRAIL_RENDERER, "Trail Renderer"},
@@ -227,6 +229,7 @@ const std::vector<EntityKind>& entityKinds() {
         {"polygon", EntityCreationType::POLYGON, "Polygon"},
         {"layout_group", EntityCreationType::LAYOUT_GROUP, "Layout Group"},
         {"canvas_group", EntityCreationType::CANVAS_GROUP, "Canvas Group"},
+        {"safe_area", EntityCreationType::SAFE_AREA, "Safe Area"},
         {"ui_document", EntityCreationType::UI_DOCUMENT, "UI Document"},
         {"animation", EntityCreationType::ANIMATION, "Animation"},
         {"sprite_animation", EntityCreationType::SPRITE_ANIMATION, "Sprite Animation"},
@@ -256,7 +259,8 @@ const EntityKind* findKind(const std::string& given) {
         {"rigidbody3d", "rigidbody"}, {"joint", "joint3d"}, {"joint_2d", "joint2d"}, {"progress_bar", "progressbar"},
         {"sun", "directional_light"}, {"audio", "audio_source"}, {"ui_image", "image"}, {"ui_text", "text"},
         {"label", "text"}, {"quad", "plane"}, {"uidocument", "ui_document"}, {"html", "ui_document"},
-        {"fluid", "fluid_simulation"}, {"line", "line_renderer"}, {"trail", "trail_renderer"}
+        {"fluid", "fluid_simulation"}, {"line", "line_renderer"}, {"trail", "trail_renderer"}, {"video", "video_player"},
+        {"videoplayer", "video_player"}, {"video_camera_background", "video_background"}
     };
     auto alias = aliases.find(key);
     if (alias != aliases.end()) key = alias->second;

@@ -10,6 +10,7 @@
 #include "Stream.h"
 #include "util/CameraTextureLink.h"
 #include "util/FluidTextureLink.h"
+#include "util/VideoTextureLink.h"
 #include "component/FluidSimulationComponent.h"
 #include "editor/Out.h"
 #include <cmath>
@@ -1850,6 +1851,24 @@ std::string editor::Factory::createRectTransformComponent(int indentSpaces, Enti
     return code.str();
 }
 
+std::string editor::Factory::createSafeAreaComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<SafeAreaComponent>(entity)) return "";
+    const SafeAreaComponent& safeArea = scene->getComponent<SafeAreaComponent>(entity);
+    const SafeAreaComponent defaults;
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "SafeAreaComponent safearea;\n";
+    // what differs from the defaults (every edge, extras included)
+    if (safeArea.enabled != defaults.enabled) code << ind << "safearea.enabled = " << formatBool(safeArea.enabled) << ";\n";
+    if (safeArea.left != defaults.left) code << ind << "safearea.left = " << formatBool(safeArea.left) << ";\n";
+    if (safeArea.top != defaults.top) code << ind << "safearea.top = " << formatBool(safeArea.top) << ";\n";
+    if (safeArea.right != defaults.right) code << ind << "safearea.right = " << formatBool(safeArea.right) << ";\n";
+    if (safeArea.bottom != defaults.bottom) code << ind << "safearea.bottom = " << formatBool(safeArea.bottom) << ";\n";
+    if (safeArea.includeExtraInsets != defaults.includeExtraInsets) code << ind << "safearea.includeExtraInsets = " << formatBool(safeArea.includeExtraInsets) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "SafeAreaComponent", "safearea", assignExisting);
+    return code.str();
+}
+
 std::string editor::Factory::createLayoutGroupComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<LayoutGroupComponent>(entity)) return "";
     LayoutGroupComponent& container = scene->getComponent<LayoutGroupComponent>(entity);
@@ -2279,6 +2298,9 @@ std::string editor::Factory::createAnimationPlayerComponent(int indentSpaces, En
         if (!entry.name.empty()) code << ind << target << ".name = " << formatString(entry.name) << ";\n";
         if (entry.wrap != ClipWrapMode::Default) code << ind << target << ".wrap = " << formatClipWrapMode(entry.wrap) << ";\n";
         if (entry.layer != 0) code << ind << target << ".layer = " << entry.layer << ";\n";
+        if (entry.retarget) code << ind << target << ".retarget = true;\n";
+        if (entry.mirror) code << ind << target << ".mirror = true;\n";
+        if (entry.footIK) code << ind << target << ".footIK = true;\n";
     }
     if (!player.layers.empty()) code << ind << "animationplayer.layers.resize(" << player.layers.size() << ");\n";
     for (size_t i = 0; i < player.layers.size(); i++) {
@@ -2352,6 +2374,41 @@ std::string editor::Factory::createUIDocumentComponent(int indentSpaces, EntityR
     if (document.inputSurface != defaults.inputSurface) code << ind << "uidocument.inputSurface = " << formatEntity(document.inputSurface, entityVarNames) << ";\n";
     if (document.pixelRatio != defaults.pixelRatio) code << ind << "uidocument.pixelRatio = " << formatFloat(document.pixelRatio) << ";\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "UIDocumentComponent", "uidocument", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createVideoPlayerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->isComponentRegistered<VideoPlayerComponent>() || !scene->findComponent<VideoPlayerComponent>(entity)) return "";
+    VideoPlayerComponent& player = scene->getComponent<VideoPlayerComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "VideoPlayerComponent player;\n";
+    if (!player.enabled) code << ind << "player.enabled = false;\n";
+    // only what differs from the defaults; the runtime (its texture, its listeners) starts fresh
+    const VideoPlayerComponent defaults;
+    if (player.source != defaults.source) code << ind << "player.source = " << "VideoPlayerSource(" << (int)player.source << ")" << ";\n";
+    if (player.clip != defaults.clip) code << ind << "player.clip = " << formatString(player.clip) << ";\n";
+    if (player.url != defaults.url) code << ind << "player.url = " << formatString(player.url) << ";\n";
+    if (player.playOnAwake != defaults.playOnAwake) code << ind << "player.playOnAwake = " << formatBool(player.playOnAwake) << ";\n";
+    if (player.waitForFirstFrame != defaults.waitForFirstFrame) code << ind << "player.waitForFirstFrame = " << formatBool(player.waitForFirstFrame) << ";\n";
+    if (player.isLooping != defaults.isLooping) code << ind << "player.isLooping = " << formatBool(player.isLooping) << ";\n";
+    if (player.skipOnDrop != defaults.skipOnDrop) code << ind << "player.skipOnDrop = " << formatBool(player.skipOnDrop) << ";\n";
+    if (player.playbackSpeed != defaults.playbackSpeed) code << ind << "player.playbackSpeed = " << formatFloat(player.playbackSpeed) << ";\n";
+    if (player.timeUpdateMode != defaults.timeUpdateMode) code << ind << "player.timeUpdateMode = " << "VideoTimeUpdateMode(" << (int)player.timeUpdateMode << ")" << ";\n";
+    if (player.renderMode != defaults.renderMode) code << ind << "player.renderMode = " << "VideoRenderMode(" << (int)player.renderMode << ")" << ";\n";
+    if (player.targetCamera != defaults.targetCamera) code << ind << "player.targetCamera = " << formatEntity(player.targetCamera, entityVarNames) << ";\n";
+    if (player.targetCameraAlpha != defaults.targetCameraAlpha) code << ind << "player.targetCameraAlpha = " << formatFloat(player.targetCameraAlpha) << ";\n";
+    if (player.aspectRatio != defaults.aspectRatio) code << ind << "player.aspectRatio = " << "VideoAspectRatio(" << (int)player.aspectRatio << ")" << ";\n";
+    if (player.targetMaterialRenderer != defaults.targetMaterialRenderer) code << ind << "player.targetMaterialRenderer = " << formatEntity(player.targetMaterialRenderer, entityVarNames) << ";\n";
+    if (player.targetMaterialProperty != defaults.targetMaterialProperty) code << ind << "player.targetMaterialProperty = " << formatString(player.targetMaterialProperty) << ";\n";
+    if (player.targetSubmesh != defaults.targetSubmesh) code << ind << "player.targetSubmesh = " << std::to_string(player.targetSubmesh) << ";\n";
+    if (player.renderTextureWidth != defaults.renderTextureWidth) code << ind << "player.renderTextureWidth = " << formatUInt(player.renderTextureWidth) << "u" << ";\n";
+    if (player.renderTextureHeight != defaults.renderTextureHeight) code << ind << "player.renderTextureHeight = " << formatUInt(player.renderTextureHeight) << "u" << ";\n";
+    if (player.audioOutputMode != defaults.audioOutputMode) code << ind << "player.audioOutputMode = " << "VideoAudioOutputMode(" << (int)player.audioOutputMode << ")" << ";\n";
+    if (player.directVolume != defaults.directVolume) code << ind << "player.directVolume = " << formatFloat(player.directVolume) << ";\n";
+    if (player.directMute != defaults.directMute) code << ind << "player.directMute = " << formatBool(player.directMute) << ";\n";
+    if (player.targetAudioSource != defaults.targetAudioSource) code << ind << "player.targetAudioSource = " << formatEntity(player.targetAudioSource, entityVarNames) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "VideoPlayerComponent", "player", assignExisting);
     return code.str();
 }
 
@@ -3638,6 +3695,7 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::RectTransformComponent: return createRectTransformComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::LayoutGroupComponent: return createLayoutGroupComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::CanvasGroupComponent: return createCanvasGroupComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::SafeAreaComponent: return createSafeAreaComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::TextComponent: return createTextComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::TextEffectComponent: return createTextEffectComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ImageComponent: return createImageComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
@@ -3657,6 +3715,7 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::VertexAnimatorComponent: return createVertexAnimatorComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::CameraShakerComponent: return createCameraShakerComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::CameraFollowComponent: return createCameraFollowComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::VideoPlayerComponent: return createVideoPlayerComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::CameraComponent: return createCameraComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::AudioSourceComponent: return createAudioSourceComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ScriptComponent: return createScriptComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
@@ -4248,6 +4307,20 @@ std::string editor::Factory::createCameraTextureLinks(int indentSpaces, EntityRe
                     links << ind << "if (!" << fluidExpr << ".simulator) " << fluidExpr << ".simulator = std::make_shared<FluidSimulator>();\n";
                     links << ind << "scene->getComponent<" << Catalog::getComponentName(cpType) << ">(" << formatEntity(entity, entityVarNames) << ")."
                           << propName << ".setFramebuffer(" << fluidExpr << ".simulator->getOutputFramebuffer());\n";
+                    continue;
+                }
+                Entity videoEntity = VideoTextureLink::parse(texture->getId());
+                if (videoEntity != NULL_ENTITY) {
+                    // a Video Player's render texture: its object made here when it has none yet
+                    if (!registry->isEntityCreated(videoEntity) || !registry->isComponentRegistered<VideoPlayerComponent>() ||
+                        !registry->findComponent<VideoPlayerComponent>(videoEntity))
+                        continue;
+                    if (namedCamerasOnly && (!entityVarNames || !entityVarNames->count(videoEntity)))
+                        continue;
+                    const std::string videoExpr = "scene->getComponent<VideoPlayerComponent>(" + formatEntity(videoEntity, entityVarNames) + ")";
+                    links << ind << "if (!" << videoExpr << ".output) " << videoExpr << ".output = std::make_shared<VideoTextureConverter>();\n";
+                    links << ind << "scene->getComponent<" << Catalog::getComponentName(cpType) << ">(" << formatEntity(entity, entityVarNames) << ")."
+                          << propName << ".setFramebuffer(" << videoExpr << ".output->getFramebuffer());\n";
                     continue;
                 }
                 Entity cameraEntity = CameraTextureLink::parse(texture->getId());

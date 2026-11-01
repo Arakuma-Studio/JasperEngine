@@ -1,0 +1,30 @@
+# LeakSanitizer suppressions for tools/run-sanitizer-tests.sh (SAN_LEAKS=1): leaks in third-party
+# code and drivers only, each with why; leaks in engine or editor code are fixed instead.
+
+# PulseAudio's client context, created by miniaudio's (SoLoud's backend) device probe: the
+# library keeps it for the process
+leak:libpulse.so
+leak:pa_context_new_with_proplist
+
+# a shared library's constructors run by the dynamic loader (elf/dl-init.c), from a module
+# without symbols ("<unknown module>": the GL driver Xvfb's Mesa loads). It also covers the
+# engine library's static initialisers, which only allocate once per process
+leak:dl-init.c
+
+# LuaBridge's error-category strings when a Lua error unwinds through a C++ binding: Lua is built
+# as C and raises with longjmp, which skips the destructors of the C++ frames it crosses
+leak:luabridge::detail::ErrorCategory::message
+
+# Jolt's job threads: JoltShapeBuilder::sharedPhysicsJobSystem() is a process-lifetime pool by
+# design (never stopped); the std::thread states of its running workers are not referenced from
+# anywhere LeakSanitizer scans
+leak:JPH::JobSystemThreadPool::StartThreads
+
+# Not suppressed, still reported (known, left for their own fixes):
+# - CameraComponent::framebuffer is a raw `new Framebuffer()` in the component's default member
+#   initialiser that nothing deletes (copies share the pointer, so no copy may delete it): about
+#   680 bytes per camera component made (Scene::createDefaultCamera, Project::createDefaultCamera,
+#   ComponentArray slots, EntityCloner::move).
+# - exit-time ownership: objects held by raw pointers in process-lifetime statics that are never
+#   closed (the tests' static headless Projects with their scenes' SceneRenders, CommandHandle's
+#   histories, the editor App's ProjectWindow thumbnail thread).

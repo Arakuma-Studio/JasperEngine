@@ -107,9 +107,12 @@ TEST(VideoFormats, Extensions){
     EXPECT_TRUE(VideoFormats::isPlayableExtension("ui/clip.webm"));
     EXPECT_TRUE(VideoFormats::isPlayableExtension("ui/CLIP.WEBM?x=1#t=2"));
     EXPECT_TRUE(VideoFormats::isPlayableExtension("a.mkv"));
-    EXPECT_FALSE(VideoFormats::isPlayableExtension("a.mp4"));
-    EXPECT_TRUE(VideoFormats::isRejectedExtension("a.mp4"));
-    EXPECT_TRUE(VideoFormats::isRejectedExtension("dir.v/a.MOV"));
+    // MP4s play where the platform decodes them (docs/superpowers/specs/2026-10-31-video-mp4-design.md)
+    EXPECT_TRUE(VideoFormats::isPlayableExtension("a.mp4"));
+    EXPECT_FALSE(VideoFormats::isRejectedExtension("a.mp4"));
+    EXPECT_FALSE(VideoFormats::isRejectedExtension("dir.v/a.MOV"));
+    EXPECT_TRUE(VideoFormats::isMp4Extension("dir.v/a.MOV"));
+    EXPECT_TRUE(VideoFormats::isRejectedExtension("a.avi"));
     EXPECT_TRUE(VideoFormats::isRejectedExtension("a.ogv"));
     EXPECT_FALSE(VideoFormats::isRejectedExtension("a.webm"));
     EXPECT_FALSE(VideoFormats::isVideoPath("a.png"));

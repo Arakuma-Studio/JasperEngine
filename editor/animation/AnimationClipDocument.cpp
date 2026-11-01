@@ -876,6 +876,15 @@ void AnimationClipDocument::filesChanged(const std::vector<fs::path>& givenPaths
             MeshSystem::invalidateModelParse(normal.generic_string());
         }
     }
+    // a changed .humanoid sidecar (the model's Avatar, anim-retarget 7.4): the model's clips and its
+    // humanoid rig are built again (a humanoid model's clips, clips retargeted from it)
+    for (const fs::path& path : paths){
+        const fs::path normal = path.lexically_normal();
+        if (normal.extension() != ".humanoid") continue;
+        fs::path model = normal;
+        model.replace_extension();
+        if (Util::isModelFile(model.string())) AnimationClipPool::invalidateModel(model.generic_string());
+    }
 
     std::vector<std::shared_ptr<AnimationClipDocument>> changed;
     for (const auto& entry : reg.documents){

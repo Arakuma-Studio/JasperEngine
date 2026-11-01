@@ -95,6 +95,9 @@ ComponentAddDialog::ComponentAddDialog() {
         {"Audio", ICON_FA_VOLUME_HIGH, {
             {ComponentType::AudioSourceComponent, "Plays an audio clip"},
         }},
+        {"Video", ICON_FA_FILM, {
+            {ComponentType::VideoPlayerComponent, "Plays a video (MP4, WebM) or a URL into a texture, a material or a camera plane"},
+        }},
         {"UI", ICON_FA_WINDOW_RESTORE, {
             {ComponentType::RectTransformComponent, "Size, anchors and pivot of a UI element"},
             {ComponentType::UIComponent, "Draws a UI element"},
@@ -111,6 +114,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::TouchAreaComponent, "Drag area feeding Input actions (Mouse X / Mouse Y): touch look"},
             {ComponentType::LayoutGroupComponent, "Arranges child elements in a row, column or grid"},
             {ComponentType::CanvasGroupComponent, "Fades, disables or makes click-through a UI subtree"},
+            {ComponentType::SafeAreaComponent, "Fits the RectTransform to the screen's safe area (notch, rounded corners, banner)"},
             {ComponentType::PolygonComponent, "Filled UI polygon"},
             {ComponentType::UIDocumentComponent, "HTML/CSS document rendered by the engine"},
         }},

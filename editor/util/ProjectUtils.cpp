@@ -16,6 +16,7 @@
 #include "util/ProjectChecks.h"
 #include "script/LuaBinding.h"
 #include "System.h"
+#include "pool/TextureDataPool.h"
 
 #include <algorithm>
 #include <cmath>
@@ -34,6 +35,7 @@
 #include "component/ButtonComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
 #include "component/MeshComponent.h"
@@ -129,6 +131,19 @@ bool splitTrailingDuplicateNumber(const std::string& name, std::string& baseName
 }
 
 void editor::ProjectUtils::setDefaultSkyTexture(Texture& outTexture) {
+    const std::string id = "editor:resources:default_sky";
+
+    // the pool's faces while it has them: setCubeDatas keeps those and drops the ones it is
+    // given, and a TextureData does not own its pixels, so decoding again for every new scene,
+    // scene load and Inspector reset leaked six images each time (front, back, left, right, up,
+    // down are faces 4, 5, 1, 0, 2, 3)
+    const std::shared_ptr<std::array<TextureData, 6>> cached = TextureDataPool::get(id);
+    if (cached && TextureDataPool::hasTexturePixels(cached, 6)) {
+        outTexture.setId(id);
+        outTexture.setCubeDatas(id, cached->at(4), cached->at(5), cached->at(1), cached->at(0), cached->at(2), cached->at(3));
+        return;
+    }
+
     TextureData skyBack;
     TextureData skyBottom;
     TextureData skyFront;
@@ -143,8 +158,8 @@ void editor::ProjectUtils::setDefaultSkyTexture(Texture& outTexture) {
     skyRight.loadTextureFromMemory(Daylight_Box_Right_png, Daylight_Box_Right_png_len);
     skyTop.loadTextureFromMemory(Daylight_Box_Top_png, Daylight_Box_Top_png_len);
 
-    outTexture.setId("editor:resources:default_sky");
-    outTexture.setCubeDatas("editor:resources:default_sky", skyFront, skyBack, skyLeft, skyRight, skyTop, skyBottom);
+    outTexture.setId(id);
+    outTexture.setCubeDatas(id, skyFront, skyBack, skyLeft, skyRight, skyTop, skyBottom);
 }
 
 namespace {
@@ -1216,6 +1231,13 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<TrailRendererComponent>(entity, Stream::decodeTrailRendererComponent(componentNode));
             }
             break;
+        case ComponentType::VideoPlayerComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<VideoPlayerComponent>(entity, {});
+            }else{
+                registry->addComponent<VideoPlayerComponent>(entity, Stream::decodeVideoPlayerComponent(componentNode));
+            }
+            break;
         case ComponentType::Light2DComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
                 registry->addComponent<Light2DComponent>(entity, {});
@@ -1495,6 +1517,13 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<CanvasGroupComponent>(entity, {});
             }else{
                 registry->addComponent<CanvasGroupComponent>(entity, Stream::decodeCanvasGroupComponent(componentNode));
+            }
+            break;
+        case ComponentType::SafeAreaComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<SafeAreaComponent>(entity, {});
+            }else{
+                registry->addComponent<SafeAreaComponent>(entity, Stream::decodeSafeAreaComponent(componentNode));
             }
             break;
         default:
@@ -1784,6 +1813,13 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
             }
             registry->removeComponent<TrailRendererComponent>(entity);
             break;
+        case ComponentType::VideoPlayerComponent:
+            // its source closes and its texture keeps no frame (VideoPlayerSystem::onComponentRemoved)
+            if (encodeComponent){
+                oldComponent = Stream::encodeVideoPlayerComponent(registry->getComponent<VideoPlayerComponent>(entity));
+            }
+            registry->removeComponent<VideoPlayerComponent>(entity);
+            break;
         case ComponentType::Light2DComponent:
             if (encodeComponent){
                 oldComponent = Stream::encodeLight2DComponent(registry->getComponent<Light2DComponent>(entity));
@@ -2023,6 +2059,12 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeTextEffectComponent(registry->getComponent<TextEffectComponent>(entity));
             }
             registry->removeComponent<TextEffectComponent>(entity);
+            break;
+        case ComponentType::SafeAreaComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeSafeAreaComponent(registry->getComponent<SafeAreaComponent>(entity));
+            }
+            registry->removeComponent<SafeAreaComponent>(entity);
             break;
         default:
             break;

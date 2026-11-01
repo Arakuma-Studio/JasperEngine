@@ -754,6 +754,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerIOClasses(L);
     registerMathClasses(L); 
     registerNetClasses(L);
+    registerNativeClasses(L);
     registerUtilClasses(L);
     registerThreadClasses(L);
     registerHtmlUIClasses(L);

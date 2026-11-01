@@ -203,9 +203,9 @@ TEST(LineRendererStreamTest, TrailRoundTripKeepsNoRuntime){
 TEST(LineRendererStreamTest, TrailRegistrationAndCatalog){
     const ComponentType type = ComponentType::TrailRendererComponent;
     // appended after every older type (prefab override masks use the ordinal); the Canvas Group,
-    // then the Text Effect (last) came after it
+    // then later features (the Text Effect, the Video Player, the Safe Area, ...) came after it
     EXPECT_EQ(static_cast<int>(type) + 1, static_cast<int>(ComponentType::CanvasGroupComponent));
-    EXPECT_EQ(LastComponentType, ComponentType::TextEffectComponent);
+    EXPECT_GE(static_cast<int>(LastComponentType), static_cast<int>(ComponentType::TextEffectComponent));
     EXPECT_EQ(Catalog::getComponentName(type, true), "trailrenderer");
     EXPECT_EQ(Catalog::getComponentDisplayName(type), "Trail Renderer");
     EXPECT_EQ(Catalog::getComponentType("trailrenderer"), type);

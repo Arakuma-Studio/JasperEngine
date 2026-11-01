@@ -232,6 +232,9 @@ anim::ControllerData animlayersui::controllerFromClips(const AnimationPlayerComp
         state.clip = entry.clip;
         state.clipGuid = entry.guid;
         state.wrap = entry.wrap;
+        state.retarget = entry.retarget;
+        state.mirror = entry.mirror;
+        state.footIK = entry.footIK;
         const int k = counts[l]++;
         state.hasPosition = true;
         state.position[0] = 260.0f + 220.0f * (float)(k % 4);

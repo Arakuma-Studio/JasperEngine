@@ -56,6 +56,7 @@
 #include "component/CameraShakerComponent.h"
 #include "component/ColorTweenComponent.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "component/FogComponent.h"
 #include "component/ImageComponent.h"
 #include "component/InstancedMeshComponent.h"
@@ -111,6 +112,7 @@
 #include "component/UIComponent.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/CanvasGroupComponent.h"
+#include "component/SafeAreaComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/UIDocumentComponent.h"
 
@@ -157,6 +159,8 @@
 #include "object/EntityHandle.h"
 #include "object/environment/Fog.h"
 #include "object/FluidSimulation.h"
+#include "object/VideoPlayer.h"
+#include "media/VideoTextureConverter.h"
 #include "object/environment/ReflectionProbe.h"
 #include "object/environment/Water.h"
 #include "object/environment/Skybox.h"
@@ -254,6 +258,7 @@
 #include "subsystem/AudioSystem.h"
 #include "audio/AudioMixer.h"
 #include "subsystem/FluidSystem.h"
+#include "subsystem/VideoPlayerSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/LatticeSystem.h"
 #include "lattice/LatticeSolver.h"
@@ -299,6 +304,7 @@
 #include "thread/ResourceProgress.h"
 #include "thread/ThreadPoolManager.h"
 
+#include "native/NativeBridge.h"
 #include "net/Http.h"
 #include "script/AsyncOwner.h"
 

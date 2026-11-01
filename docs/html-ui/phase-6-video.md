@@ -71,6 +71,10 @@ a user-installed FFmpeg is available (`import_files`, the Project window). Expor
   DESIGN deviations.
 
 ### Out (with reason)
+
+> Superseded in part by `docs/superpowers/specs/2026-10-31-video-mp4-design.md`: MP4 through the
+> platform decoders, URL sources and the Video Player component now exist **next to** this WebM
+> AV1 path, which stays the deterministic everywhere-format (it is still chosen for AV1/Opus WebM).
 - **Platform decoders for MP4 (H.264/HEVC/AAC)**: AVFoundation, MediaCodec, Media Foundation,
   and the browser's own `<video>` on Web. Section 3.1 has the comparison and reasons: the same
   file would not play everywhere, decoding would not be frame-exact or deterministic, audio would
@@ -169,6 +173,9 @@ build decodes 720p30 on one worker thread with headroom, 1080p30 with 2-4 thread
 (2).
 
 #### 3.1.5 Decision
+
+> Superseded in part by `docs/superpowers/specs/2026-10-31-video-mp4-design.md` (platform decoders
+> for MP4 and other codecs, alongside this software path).
 **The shipped format is WebM with AV1 video (8 or 10 bit) and optional Opus audio. It is decoded in
 software by dav1d, libopus and libwebm's `mkvparser`, vendored as C/C++ source and built by the
 engine's CMake and Xcode projects on all six platforms. Platform decoders are not used.** The

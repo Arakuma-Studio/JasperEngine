@@ -76,7 +76,8 @@ xvfb, xdotool, dbus-x11, uv, FFmpeg: the same toolchain as the host). From insid
 - Android (Gradle/NDK) and Web (emsdk) compile checks still run on the host (toolchains only here): keep them few.
 - Apple builds use the Xcode project, which lists sources itself: after adding sources run ALL of
   `python3 tools/xcode_sync_engine.py`, `tools/htmlui/xcode_sync_rmlui.py`, `tools/htmlui/xcode_sync_compat.py`,
-  `tools/htmlui/xcode_sync_effects.py` (each has `--check`); a missing file only fails the Apple link.
+  `tools/htmlui/xcode_sync_effects.py` (each has `--check`; the engine script also covers the SoLoud sources); a missing
+  file only fails the Apple link.
 
 ## Build and test on this host (fallback)
 

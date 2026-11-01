@@ -87,10 +87,9 @@ namespace jasperengine {
         // every command added with an owner tag (scripts): Play stop, the Lua state going
         static void removeOwnedCommands();
 
-        // The insets the panels keep clear of, in canvas px (left, top, right, bottom): feature
-        // safe-area gives Screen's safe area insets here (whichever of the two merges second
-        // wires it: Engine's startup sets a function reading Screen::getSafeAreaInsets()
-        // converted to canvas px); null = none
+        // The insets the panels keep clear of, in canvas px (left, top, right, bottom). By default
+        // Screen::getSafeAreaInsets() (notches, rounded corners, the app's extra insets such as a
+        // banner ad); another function replaces it, null = none
         using InsetsFunction = void (*)(float& left, float& top, float& right, float& bottom);
         static void setSafeAreaInsetsProvider(InsetsFunction provider);
 

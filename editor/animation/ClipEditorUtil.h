@@ -12,6 +12,7 @@
 #include "ecs/Entity.h"
 #include "registry/EntityRegistry.h"
 
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -32,8 +33,47 @@ namespace jasperengine::editor::clipui{
             case ClipChannel::Morph: return "Blend Shapes";
             case ClipChannel::Lattice: return "Lattice";
             case ClipChannel::Property: return "Property";
+            case ClipChannel::Humanoid: return "Humanoid";
+            case ClipChannel::HumanoidPosition: return "Humanoid Position";
         }
         return "";
+    }
+
+    // what identifies a track with its channel (ClipData::findTrack): its path, or a humanoid
+    // track's bone name
+    inline std::string trackIdentityPath(const ClipTrackData& track){
+        return isHumanoidChannel(track.channel) ? std::string(anim::humanoidTrackBoneName(track.channel, track.humanBone)) : track.path;
+    }
+
+    // the runtime track of an editable track (-1 when none): humanoid tracks by bone, others by path
+    inline int findRuntimeTrack(const AnimationClip& clip, const ClipTrackData& track){
+        return clip.findTrack(trackIdentityPath(track), track.channel);
+    }
+
+    // "left_upper_arm" -> "Left Upper Arm"
+    inline std::string titleCase(const std::string& snake){
+        std::string out;
+        bool upper = true;
+        for (char c : snake){
+            if (c == '_'){
+                out += ' ';
+                upper = true;
+                continue;
+            }
+            out += upper ? (char)std::toupper((unsigned char)c) : c;
+            upper = false;
+        }
+        return out;
+    }
+
+    // a humanoid track's row (anim-retarget 9): "Humanoid : Left Upper Arm", "Humanoid : Body
+    // Position", "Humanoid : Left Foot Goal"
+    inline std::string humanoidTrackLabel(ClipChannel channel, int humanBone){
+        if (channel == ClipChannel::HumanoidPosition){
+            if (humanBone == HUMANOID_POSITION_HIPS) return "Humanoid : Body Position";
+            return "Humanoid : " + titleCase(anim::humanoidTrackBoneName(channel, humanBone)) + " Goal";
+        }
+        return "Humanoid : " + titleCase(anim::humanoidTrackBoneName(channel, humanBone));
     }
 
     // What a track of the root ("" path) is called where no GameObject is bound
@@ -94,7 +134,7 @@ namespace jasperengine::editor::clipui{
     // `value` as it is. `tolerance`: how close a key replaced at `time` is (the caller's own rule).
     inline std::vector<float> alignedRotationKeyValue(const ClipTrackData& track, float time, std::vector<float> value,
                                                       float tolerance = anim::ANIM_TIME_EPSILON){
-        if (track.channel != ClipChannel::Rotation || track.keys.empty()) return value;
+        if (!isRotationChannel(track.channel) || track.keys.empty()) return value;
         const ClipKey* reference = &track.keys.front();
         for (const ClipKey& key : track.keys){
             if (std::fabs(key.time - time) <= tolerance){

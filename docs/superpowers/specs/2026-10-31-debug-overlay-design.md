@@ -444,9 +444,12 @@ the code:
 12. **Cross-feature hooks** (record what to wire when they merge):
     - **coroutines** (merged): `DebugStats::sample` reads `ScriptScheduler::coroutineCount()` and
       `timerCount()` directly.
-    - **safe-area**: `DebugOverlay::setSafeAreaInsetsProvider(fn)` with a function filling the
-      canvas-px insets from `Screen::getSafeAreaInsets()`; the overlay moves its body's edges in by
-      them (RCSS of an `.rml` document has no `env()`), re-applied when they change. Until then 0.
+    - **safe-area** (merged, wired here: debug-overlay merged second): the overlay's insets are
+      `Screen::getSafeAreaInsets()` by default (canvas units, extras such as a banner included; the
+      overlay's document is laid out in canvas px, its own `FollowGameCanvas` scaler, so they apply
+      as they are); `DebugOverlay::setSafeAreaInsetsProvider(fn)` replaces them (null = none). The
+      body's edges move in by them (RCSS of an `.rml` document has no `env()`), re-applied when
+      they change.
     - **persistence** (merged): the persistent scene is a running scene layer, so the counts include
       it; the overlay is drawn after it and after the loading scene.
 13. **Editor**: Project Settings > Debug page (Overlay and Log sections) with reset arrows; OK
@@ -514,8 +517,8 @@ the code:
       listener removing itself, the pending-queue overflow report, invalid `statsMode`,
       `updateSettings`; in MCP the settings changed during Play, `statsMode = 3`, the buffer cap
       and the audio voices against get_play_state.
-    - The safe-area hook (`setSafeAreaInsetsProvider`) still has no caller: whichever of
-      debug-overlay and safe-area merges second wires it (12).
+    - The safe area is wired (12), with a GPU test: platform insets (a notch) move the console
+      and the stats panel clear of them.
 18. **Verification** (box 2203, branch merged with `main` `dce634fb7`, audio-mixer, camera-shake and
     ui-scaling-text included): editor and tests build with 0 compiler warnings; `jasperengine-editor-tests`
     1748 tests, 1739 passed, 9 skipped, 0 failed. Full MCP suite (`run-tests.sh -j3`): 935 passed, 22

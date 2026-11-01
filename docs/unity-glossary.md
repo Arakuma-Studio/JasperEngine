@@ -41,7 +41,10 @@ Projects made before the rename are migrated once with
 | Animation window with an Animation Clip (Preview, Record, Dopesheet / Curves, Add Property, events) | Animation window (entity Animations only). It now edits clips when the selected GameObject or an ancestor has an Animation Player, or when a clip is opened from the Project window or the Inspector; entity Animations still open in its older mode |
 | A model's imported clips (the Animation tab of a model's Import Settings; sub-assets such as `Take 001`) | none (new): model clips, read-only, named `<model>#<animation>` (`hero.gltf#Walk`; `"Wave 2"` for a second animation named Wave), with **Extract to .anim** for an editable copy and the Model section's **Use Animation Player** |
 | none: Unity has no pose-to-pose animation (the closest is keyframing a humanoid clip in the Animation window) | none (new): Pose Animation (Window > Animation > Pose Animation; `.poseanim` assets and templates), played by the Pose Animator or baked to an Animation Clip or an Animation; see [pose-animation.md](pose-animation.md) |
-| Avatar (Rig > Animation Type Humanoid, Configure Avatar) | none (new): the humanoid map, bones mapped to body parts from their names; fixes in the Pose Animation window's Map Bones... popup, stored in a `<model>.humanoid` file next to the model |
+| Avatar (Rig > Configure Avatar) | none (new): the model's humanoid map (22 body slots, fingers, eyes, jaw) detected from bone names, with twist corrections; edited in the Avatar Configuration window (Inspector > Model > Rig > Configure Avatar...) or MCP `set_humanoid`, stored in a `<model>.humanoid` file next to the model; see [pose-animation.md](pose-animation.md#the-avatar-configuration-window) |
+| Rig > Animation Type: Humanoid / Generic | Rig > Animation Type (`animation_type` in the `.humanoid` file): a Humanoid model's clips play retargeted on any humanoid character |
+| humanoid (muscle) clip, retargeting | humanoid clip: a `.anim` with `humanoid` tracks (per-slot joint rotations from the neutral pose, body position, foot goals; no muscles), from Animation Type Humanoid, an entry's **Retarget**, or Convert to Humanoid Clip...; see [animation-clips.md](animation-clips.md#humanoid-clips-and-retargeting) |
+| Animator state Mirror / Foot IK | the player entry's (and controller state's) **Mirror** / **Foot IK**; Lua `state.mirror` / `state.footIK` |
 | none: Unity has no vertex animation textures built in (they come from Asset Store packages or Houdini's exporter, played by a custom material) | none (new): Vertex Animation (a `.vat` asset and its generated `.vat.glb`; Window > Animation > Vertex Animation Baker, the `.vat` Inspector's Rebake and Create Crowd...), baked from model clips, Animation Clips, Animation Players, pose animations and lattices, or imported from Houdini Labs VAT 3 and OpenVAT exports; see [vertex-animation.md](vertex-animation.md) |
 | Animator Controller (`.controller`; Assets > Create > Animator Controller; the Animator window with layers, parameters, states, Any State, transitions, 1D blend trees) | none (new): Animator Controller, a JSON `.controller` (`{"format": "jasperengine.controller"}`, not Unity's YAML, which is refused) played by an Animation Player's **Controller** field and edited in Window > Animation > Animator (`Ctrl+7`) or with MCP `edit_animator`; see [animation-clips.md](animation-clips.md#animator-controllers) |
 | Avatar Mask (`.mask`; Assets > Create > Avatar Mask; Humanoid body parts and Transform paths) | none (new): Avatar Mask, a JSON `.mask` (humanoid body parts in Unity's names without the IK goals, transform paths with a weight and a children flag), set on an Animation Player layer; see [animation-clips.md](animation-clips.md#avatar-masks) |
@@ -131,6 +134,17 @@ Unchanged: `Entity`, `Scene`, `Transform`, `Camera`, `Light`, `Light2D`, `Mesh`,
 `SpriteAnimation`, the keyframe tracks, `Joint2D`/`Joint3D`, `Contact2D`/`Contact3D`
 and `CollideShapeResult3D`.
 
+Unity's `VideoPlayer` is the **Video Player** component (`VideoPlayerComponent`, Lua
+`VideoPlayer`: `gameObject:getVideoPlayer()`, Add Component > Video > Video Player): `source`,
+`clip`, `url`, `playOnAwake`, `isLooping`, `renderMode`, `timeUpdateMode`, `audioOutputMode`,
+`prepare()`, `play()`, `isPrepared`, `frame`, `frameCount`, the events `prepareCompleted` ->
+`onPrepareCompleted` (likewise `started`, `loopPointReached`, `errorReceived`, `seekCompleted`,
+`frameReady`). A `VideoClip` asset is the `clip` path of a video file (.mp4, .mov, .webm); a
+`RenderTexture` target is the player's own texture, used through the `video|<entity>` texture link
+(`player.texture`, `player:getFramebuffer()`); `SetDirectAudioVolume(0, v)` is `directVolume`.
+Not offered: `DSPTime` (the audio follows the picture) and `APIOnly` audio. See
+[mcp/guide/video.md](mcp/guide/video.md).
+
 New, with no Unity counterpart: `FluidSimulation` / `FluidSimulationComponent`
 (GameObject > Effects > Fluid Simulation, Pavel Dobryakov's WebGL fluid). Unity has no
 built-in fluid component; there it takes a Custom Render Texture or compute-shader
@@ -163,7 +177,13 @@ New: the engine had none of these. Unity's members became `System`, `Screen`, `E
 | `Application.internetReachability` | `System.getInternetReachability()` (`NetworkReachability.*`) |
 | `Handheld.Vibrate()` | `System.vibrate([ms])`; iOS-style feedback: `System.hapticFeedback(HapticFeedback.*)` |
 | Player > Default Orientation, Allowed Orientations for Auto Rotation | Project Settings > Player > Resolution and Presentation (`player.default_orientation`, `player.allowed_orientations`; shared by Android and iOS) |
-| Device Simulator (orientation, language, `SystemInfo.deviceModel`) | the Game view's Device menu (device, Rotate, Language) |
+| Device Simulator (orientation, language, `SystemInfo.deviceModel`, safe area, notch overlay) | the Game view's Device menu (device or Custom..., Rotate, Language), Device Overlay and Safe Area toggles; MCP `configure_game_view {device}` |
+| `Screen.safeArea` (pixels, bottom-left origin) | `Screen.safeArea` (canvas units, top-left origin); pixels: `Screen.safeAreaPixels` (top-left); insets: `Screen.safeAreaInsets` (`EdgeInsets`) |
+| `Screen.cutouts` | `Screen.cutouts` (canvas units; empty on iOS) |
+| Community `SafeArea` script (Crystal SafeArea, a `CanvasHelper` safe panel) | the Safe Area component (GameObject > UI > Safe Area; per-edge Left/Top/Right/Bottom) |
+| A banner margin added to the safe panel | `Screen.setExtraInsets(l, t, r, b [, "pixels"])` |
+| Player > Android > *Render outside safe area* | the default Android fullscreen (the game draws under the cutout; `Screen.safeArea` keeps the UI out) |
+| CSS `env(safe-area-inset-*)` (`viewport-fit=cover`) | the same in HTML UI documents (live); web export `web.viewport_fit_cover` |
 
 ## UI scaling, TextMesh Pro, UI particles
 
@@ -249,6 +269,22 @@ Rules, presets and the frame order: [camera.md](mcp/guide/camera.md) (users:
 | Graphy (FPS, RAM, audio monitors) | the debug overlay's stats panel (`DebugOverlay.statsMode`, F3) and `DebugOverlay.getStats()` |
 
 See [mcp/guide/debugging.md](mcp/guide/debugging.md).
+
+## Native plugins
+
+Details: jasper://docs/native-bridge.
+
+| Unity term | JasperEngine name |
+|---|---|
+| `new AndroidJavaClass("com.me.X").CallStatic<T>("m", args)` | `Native.call("X", "m", ...)` (a public static method of a class in `plugins/native/android`; the full name works too) |
+| `AndroidJavaProxy` callbacks, `UnitySendMessage` / `SendMessage` from native code | `NativeCall` (`Native.callAsync`: one result) or `JasperNative.emit(plugin, event, payload)` + `Native.on(plugin, event, fn)` |
+| `[DllImport("__Internal")]` functions (iOS) | Objective-C/Swift class methods `+ (id)m:(NSArray*)args` in `plugins/native/ios` or `apple` |
+| `.jslib` (`mergeInto(LibraryManager.library, ...)`), `SendMessage` (Web) | `plugins/native/web/*.js` with `JasperNative.register(name, {...})`, `JasperNative.emit` |
+| `Assets/Plugins/Android`, `Assets/Plugins/iOS`, `Assets/Plugins/WebGL` | `plugins/native/android`, `plugins/native/ios` (or `apple`), `plugins/native/web` |
+| Native C++ plugins (desktop `DllImport`) | `JASPERENGINE_NATIVE_PLUGIN(Name)` in `plugins/native/cpp` |
+| External Dependency Manager `*Dependencies.xml` (`androidPackage`, `iosPod`) | `android.gradle_dependencies` + `android.gradle_repositories`, `ios.cocoapods` (Project Settings > Native Plugins) |
+| `mainTemplate.gradle`, `gradleTemplate.properties`, custom `AndroidManifest.xml` | `android.gradle_*` settings, `android.manifest_xml` / `manifest_application_xml`, `plugins/native/android/AndroidManifest.xml` (merged) |
+| `PostProcessBuild` Info.plist / capabilities edits | `ios.plist_entries`, `ios.plist_xml`, `ios.frameworks`, `ios.entitlements_xml`, `ios.swift_packages` |
 
 ## UI (Canvas Group)
 

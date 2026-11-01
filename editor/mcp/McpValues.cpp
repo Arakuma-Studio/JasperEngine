@@ -29,6 +29,7 @@
 #include "component/ModelComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/TextComponent.h"
+#include "component/SafeAreaComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/LatticeModifierComponent.h"
@@ -45,7 +46,10 @@
 #include "util/CameraTextureLink.h"
 #include "util/Color.h"
 #include "util/FluidTextureLink.h"
+#include "util/VideoTextureLink.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/VideoPlayerComponent.h"
+#include "subsystem/VideoPlayerSystem.h"
 #include "fluid/FluidPresets.h"
 #include "fluid/FluidSimulator.h"
 #include "util/EntityClipboard.h"
@@ -491,6 +495,54 @@ const EnumOptions& uiDocumentRenderModeOptions() {
     static const EnumOptions options = {
         {(int)UIDocumentRenderMode::SCREEN, "screen", "Screen"},
         {(int)UIDocumentRenderMode::TEXTURE, "texture", "Texture"}
+    };
+    return options;
+}
+
+const EnumOptions& videoSourceOptions() {
+    static const EnumOptions options = {
+        {(int)VideoPlayerSource::CLIP, "clip", "Video Clip"},
+        {(int)VideoPlayerSource::URL, "url", "URL"}
+    };
+    return options;
+}
+
+const EnumOptions& videoTimeUpdateModeOptions() {
+    static const EnumOptions options = {
+        {(int)VideoTimeUpdateMode::GAME_TIME, "game_time", "Game Time"},
+        {(int)VideoTimeUpdateMode::UNSCALED_GAME_TIME, "unscaled_game_time", "Unscaled Game Time"}
+    };
+    return options;
+}
+
+const EnumOptions& videoRenderModeOptions() {
+    static const EnumOptions options = {
+        {(int)VideoRenderMode::CAMERA_FAR_PLANE, "camera_far_plane", "Camera Far Plane"},
+        {(int)VideoRenderMode::CAMERA_NEAR_PLANE, "camera_near_plane", "Camera Near Plane"},
+        {(int)VideoRenderMode::RENDER_TEXTURE, "render_texture", "Render Texture"},
+        {(int)VideoRenderMode::MATERIAL_OVERRIDE, "material_override", "Material Override"},
+        {(int)VideoRenderMode::API_ONLY, "api_only", "API Only"}
+    };
+    return options;
+}
+
+const EnumOptions& videoAspectRatioOptions() {
+    static const EnumOptions options = {
+        {(int)VideoAspectRatio::NO_SCALING, "no_scaling", "No Scaling"},
+        {(int)VideoAspectRatio::FIT_VERTICALLY, "fit_vertically", "Fit Vertically"},
+        {(int)VideoAspectRatio::FIT_HORIZONTALLY, "fit_horizontally", "Fit Horizontally"},
+        {(int)VideoAspectRatio::FIT_INSIDE, "fit_inside", "Fit Inside"},
+        {(int)VideoAspectRatio::FIT_OUTSIDE, "fit_outside", "Fit Outside"},
+        {(int)VideoAspectRatio::STRETCH, "stretch", "Stretch"}
+    };
+    return options;
+}
+
+const EnumOptions& videoAudioOutputModeOptions() {
+    static const EnumOptions options = {
+        {(int)VideoAudioOutputMode::NONE, "none", "None"},
+        {(int)VideoAudioOutputMode::AUDIO_SOURCE, "audio_source", "Audio Source"},
+        {(int)VideoAudioOutputMode::DIRECT, "direct", "Direct"}
     };
     return options;
 }
@@ -1346,6 +1398,13 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
         case ComponentType::FluidSimulationComponent:
             if (name == "output") return &fluidOutputOptions();
             break;
+        case ComponentType::VideoPlayerComponent:
+            if (name == "source") return &videoSourceOptions();
+            if (name == "timeUpdateMode") return &videoTimeUpdateModeOptions();
+            if (name == "renderMode") return &videoRenderModeOptions();
+            if (name == "aspectRatio") return &videoAspectRatioOptions();
+            if (name == "audioOutputMode") return &videoAudioOutputModeOptions();
+            break;
         case ComponentType::LatticeComponent:
             if (name == "interpolation") return &latticeInterpolationOptions();
             if (name == "outside") return &latticeOutsideOptions();
@@ -1912,6 +1971,10 @@ Json playerClipsToJson(Project* project, const std::vector<AnimationPlayerClip>&
         Json item{{"clip", clipPathToJson(project, entry.clip)}, {"name", entry.name}, {"wrap", anim::wrapName(entry.wrap)}};
         if (!entry.guid.empty()) item["guid"] = entry.guid;
         if (entry.layer != 0) item["layer"] = entry.layer;
+        // humanoid playback (anim-retarget): only when set
+        if (entry.retarget) item["retarget"] = true;
+        if (entry.mirror) item["mirror"] = true;
+        if (entry.footIK) item["footIK"] = true;
         list.push_back(item);
     }
     return list;
@@ -2041,8 +2104,9 @@ bool normalizePlayerClips(Project* project, const AnimationPlayerComponent* curr
             for (auto it = item.begin(); it != item.end(); ++it) {
                 const std::string key = it->first.as<std::string>();
                 // guid: as get_entity shows it, so a list read back is taken; its value is ignored
-                if (key != "clip" && key != "guid" && key != "name" && key != "wrap" && key != "layer") {
-                    error = at + ": unknown key \"" + key + "\" (an entry is {clip, name, wrap, layer}; its guid follows the clip).";
+                if (key != "clip" && key != "guid" && key != "name" && key != "wrap" && key != "layer" && key != "retarget" &&
+                    key != "mirror" && key != "footIK") {
+                    error = at + ": unknown key \"" + key + "\" (an entry is {clip, name, wrap, layer, retarget, mirror, footIK}; its guid follows the clip).";
                     return false;
                 }
                 if (!it->second.IsScalar() && !it->second.IsNull()) {
@@ -2095,6 +2159,18 @@ bool normalizePlayerClips(Project* project, const AnimationPlayerComponent* curr
                 return false;
             }
             if (layer == 0) entry.remove("layer");
+        }
+        for (const char* flag : {"retarget", "mirror", "footIK"}) {
+            if (!constEntry[flag]) continue;
+            bool on = false;
+            const std::string text = constEntry[flag].Scalar();
+            if (text != "true" && text != "false" && !YamlNumbers::readPlain(text, on)) {
+                error = at + "." + flag + " must be true or false.";
+                return false;
+            }
+            if (text == "true") on = true;
+            if (on) entry[flag] = "true";
+            else entry.remove(flag);
         }
         rebuilt.push_back(entry);
     }
@@ -2794,6 +2870,10 @@ Json McpValues::textureToJson(Project* project, SceneProject* scene, const Textu
     if (fluid != NULL_ENTITY) {
         return Json{{"fluid", entityToJson(scene, fluid)}};
     }
+    const Entity video = VideoTextureLink::parse(texture.getId());
+    if (video != NULL_ENTITY) {
+        return Json{{"video", entityToJson(scene, video)}};
+    }
     if (texture.empty() || texture.isFramebuffer()) return nullptr;
 
     static const Texture defaults;
@@ -2860,17 +2940,17 @@ bool McpValues::textureFromJson(Project* project, SceneProject* scene, const Jso
         out = Texture();
         return true;
     }
-    // a link id as a scene file keeps it: "camera|<entity id>", "fluid|<entity id>"
+    // a link id as a scene file keeps it: "camera|<entity id>", "fluid|<entity id>", "video|<entity id>"
     if (value.is_string()) {
         const std::string text = value.get<std::string>();
-        if (text.rfind("camera|", 0) == 0 || text.rfind("fluid|", 0) == 0) {
+        if (text.rfind("camera|", 0) == 0 || text.rfind("fluid|", 0) == 0 || text.rfind("video|", 0) == 0) {
             const Entity linked = CameraTextureLink::parseLink(text);
             if (linked == NULL_ENTITY) {
-                error = "\"" + text + "\" is not a texture link; one is \"camera|<entity id>\" or \"fluid|<entity id>\".";
+                error = "\"" + text + "\" is not a texture link; one is \"camera|<entity id>\", \"fluid|<entity id>\" or \"video|<entity id>\".";
                 return false;
             }
             Json link = Json::object();
-            link[text[0] == 'c' ? "camera" : "fluid"] = linked;
+            link[text[0] == 'c' ? "camera" : text[0] == 'f' ? "fluid" : "video"] = linked;
             return textureFromJson(project, scene, link, out, camera, error);
         }
     }
@@ -2882,17 +2962,32 @@ bool McpValues::textureFromJson(Project* project, SceneProject* scene, const Jso
     }
     if (!value.is_object()) {
         error = "a texture is null, a project-relative path, {\"path\": ..., \"min_filter\": ...}, "
-                "{\"cube\": [front, back, left, right, up, down] or \"path\"}, {\"camera\": <entity>} or {\"fluid\": <entity>}.";
+                "{\"cube\": [front, back, left, right, up, down] or \"path\"}, {\"camera\": <entity>}, {\"fluid\": <entity>} or {\"video\": <entity>}.";
         return false;
     }
-    static const std::set<std::string> keys = {"path", "cube", "camera", "fluid", "id", "min_filter", "mag_filter", "wrap_u",
+    static const std::set<std::string> keys = {"path", "cube", "camera", "fluid", "video", "id", "min_filter", "mag_filter", "wrap_u",
                                                "wrap_v", "alpha_border", "svg_scale"};
     for (auto it = value.begin(); it != value.end(); ++it) {
         if (!keys.count(it.key())) {
-            error = "unknown texture key \"" + it.key() + "\"; valid: path, cube, camera, fluid, min_filter, mag_filter, "
+            error = "unknown texture key \"" + it.key() + "\"; valid: path, cube, camera, fluid, video, min_filter, mag_filter, "
                     "wrap_u, wrap_v, alpha_border, svg_scale.";
             return false;
         }
+    }
+    if (value.contains("video")) {
+        if (!scene || !scene->scene) {
+            error = "a video texture needs a loaded scene.";
+            return false;
+        }
+        Entity videoEntity = NULL_ENTITY;
+        if (!entityFromJson(scene, value["video"], videoEntity, error)) return false;
+        if (videoEntity == NULL_ENTITY || !scene->scene->isEntityCreated(videoEntity) ||
+            !scene->scene->findComponent<VideoPlayerComponent>(videoEntity)) {
+            error = "the player of a video texture must be a GameObject with a Video Player component.";
+            return false;
+        }
+        out = VideoTextureLink::make(scene->scene, videoEntity);
+        return true;
     }
     if (value.contains("fluid")) {
         if (!scene || !scene->scene) {
@@ -4408,6 +4503,22 @@ bool McpValues::parseChangesAsGiven(const Json& changes, std::vector<Change>& ou
     return true;
 }
 
+Json McpValues::videoStatusToJson(Scene* scene, Entity entity) {
+    if (!scene || !scene->isComponentRegistered<VideoPlayerComponent>() || !scene->findComponent<VideoPlayerComponent>(entity)) return nullptr;
+    std::shared_ptr<VideoPlayerSystem> system = scene->findSystem<VideoPlayerSystem>();
+    if (!system) return nullptr;
+    const VideoPlayerSystem::Status s = system->getStatus(entity);
+    if (s.backend.empty() && s.error.empty() && !s.preparing) return nullptr;
+    auto round3 = [](double v) { return std::round(v * 1000.0) / 1000.0; };
+    Json out = {{"prepared", s.prepared}, {"preparing", s.preparing}, {"playing", s.playing}, {"paused", s.paused},
+                {"time", round3(s.time)}, {"frame", s.frame}, {"frameCount", s.frameCount}, {"frameRate", round3(s.frameRate)},
+                {"length", round3(s.length)}, {"width", s.width}, {"height", s.height}, {"backend", s.backend},
+                {"videoCodec", s.videoCodec}, {"audioCodec", s.audioCodec}, {"prepareProgress", round3(s.prepareProgress)},
+                {"buffered", round3(s.bufferedSeconds)}};
+    out["error"] = s.error.empty() ? Json(nullptr) : Json(s.error);
+    return out;
+}
+
 Json McpValues::canvasGroupStateToJson(Scene* scene, Entity entity) {
     if (!scene || !scene->isEntityCreated(entity) || !scene->findComponent<RectTransformComponent>(entity)) return nullptr;
     const CanvasGroupState state = scene->getSystem<UISystem>()->getCanvasGroupState(entity);
@@ -4495,6 +4606,18 @@ static bool isWholeValueProperty(Scene* scene, Entity entity, ComponentType comp
             endsWith(property, "shaderFeatures") || endsWith(property, "shaderGlobalBindings"));
 }
 
+std::string McpValues::safeAreaDrivenError(Scene* scene, Entity entity, const std::string& property) {
+    static const std::set<std::string> driven = {
+        "width", "height", "anchorPointLeft", "anchorPointTop", "anchorPointRight", "anchorPointBottom",
+        "anchorOffsetLeft", "anchorOffsetTop", "anchorOffsetRight", "anchorOffsetBottom", "positionOffset",
+        "anchorPreset", "usingAnchors"};
+    if (!scene || !scene->findComponent<SafeAreaComponent>(entity)) return std::string();
+    const std::string root = property.substr(0, property.find_first_of(".["));
+    if (!property.empty() && driven.count(root) == 0) return std::string();
+    return "RectTransform" + (property.empty() ? std::string() : "." + property) + " of \"" + scene->getEntityName(entity) +
+           "\" is driven by the Safe Area component (remove it or edit the Safe Area edges).";
+}
+
 // A player without authored layers plays one Base Layer (playerLayers), which has no layers[0].*
 // property: its field edits become one edit of the whole effective list, which then holds them
 // (as the Inspector's layer fields do), checked like any list
@@ -4579,6 +4702,16 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                 error = label + " has no " + componentLabel + " component; add it first (add_component, or create_entity's "
                         "components).";
                 return false;
+            }
+            if (component == ComponentType::RectTransformComponent) {
+                for (const Change& change : changes) {
+                    if (change.component != component) continue;
+                    const std::string driven = safeAreaDrivenError(scene->scene, entity, change.property);
+                    if (!driven.empty()) {
+                        error = driven;
+                        return false;
+                    }
+                }
             }
             // A whole value set as one command (a material, an extra pass, a stencil, a shader
             // library collection) and a path inside it in the same call: each command is built from

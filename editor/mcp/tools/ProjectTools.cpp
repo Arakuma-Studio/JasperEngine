@@ -40,6 +40,7 @@
 #include "util/ShaderGlobalsJson.h"
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
+#include "util/NativePlugins.h"
 #include "util/SafeWrite.h"
 #include "util/ShellEnv.h"
 #include "window/CodeEditor.h"
@@ -54,6 +55,7 @@
 #include <fstream>
 #include <functional>
 #include <map>
+#include <regex>
 #include <memory>
 #include <map>
 #include <set>
@@ -1018,6 +1020,140 @@ Setting layerCollisionSetting(const std::string& key, bool is3D) {
     return s;
 }
 
+
+// ---- native plugins (Project Settings > Native Plugins)
+
+// A list of strings; `valid` checks each ("" when fine, else why)
+Setting stringListField(const std::string& key, const std::string& description, std::function<std::vector<std::string>&(Project&)> field,
+                        std::function<std::string(const std::string&)> valid = nullptr) {
+    Setting s;
+    s.key = key;
+    s.type = "list";
+    s.description = description;
+    s.get = [field](McpContext& ctx) {
+        Json list = Json::array();
+        for (const std::string& item : field(*ctx.project())) list.push_back(item);
+        return list;
+    };
+    s.set = [field, valid](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+        if (!value.is_array()) {
+            error = "must be a list of strings";
+            return false;
+        }
+        std::vector<std::string> items;
+        for (const Json& item : value) {
+            std::string text;
+            if (!readString(item, text, error, 2048)) return false;
+            text.erase(0, text.find_first_not_of(" \t"));
+            text.erase(text.find_last_not_of(" \t") + 1);
+            if (text.empty()) continue;
+            if (valid) {
+                const std::string why = valid(text);
+                if (!why.empty()) {
+                    error = "\"" + text + "\" " + why;
+                    return false;
+                }
+            }
+            items.push_back(text);
+        }
+        if (apply) field(*ctx.project()) = items;
+        return true;
+    };
+    return s;
+}
+
+// Raw XML, refused when it is not well-formed
+Setting xmlField(const std::string& key, const std::string& description, std::function<std::string&(Project&)> field) {
+    Setting s;
+    s.key = key;
+    s.type = "string";
+    s.description = description + " Refused unless well-formed XML; \"\" clears it.";
+    s.get = [field](McpContext& ctx) { return Json(field(*ctx.project())); };
+    s.set = [field](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+        std::string text;
+        if (!readString(value, text, error, 65536)) return false;
+        const std::string why = NativePlugins::xmlFragmentError(text);
+        if (!why.empty()) {
+            error = "is " + why;
+            return false;
+        }
+        if (apply) field(*ctx.project()) = text;
+        return true;
+    };
+    return s;
+}
+
+Json plistValueJson(const NativePlistValue& value) {
+    switch (value.kind) {
+        case NativePlistValue::Kind::Bool: return Json(value.flag);
+        case NativePlistValue::Kind::Integer: return Json(value.integer);
+        case NativePlistValue::Kind::Real: return Json(value.real);
+        case NativePlistValue::Kind::StringArray: {
+            Json list = Json::array();
+            for (const std::string& item : value.items) list.push_back(item);
+            return list;
+        }
+        case NativePlistValue::Kind::String: break;
+    }
+    return Json(value.text);
+}
+
+Setting plistEntriesField(const std::string& key, const std::string& description, std::function<std::map<std::string, NativePlistValue>&(Project&)> field) {
+    Setting s;
+    s.key = key;
+    s.type = "object";
+    s.description = description;
+    s.get = [field](McpContext& ctx) {
+        Json object = Json::object();
+        for (const auto& [name, value] : field(*ctx.project())) object[name] = plistValueJson(value);
+        return object;
+    };
+    s.set = [field](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+        if (!value.is_object()) {
+            error = "must be an object {\"NSUserTrackingUsageDescription\": \"...\", \"ITSAppUsesNonExemptEncryption\": false}";
+            return false;
+        }
+        std::map<std::string, NativePlistValue> entries;
+        for (auto it = value.begin(); it != value.end(); ++it) {
+            const std::string& name = it.key();
+            if (name.empty() || name.find_first_of("<>&\"") != std::string::npos) {
+                error = "key \"" + name + "\" is not an Info.plist key";
+                return false;
+            }
+            const Json& v = it.value();
+            NativePlistValue entry;
+            if (v.is_boolean()) {
+                entry.kind = NativePlistValue::Kind::Bool;
+                entry.flag = v.get<bool>();
+            } else if (v.is_number_integer()) {
+                entry.kind = NativePlistValue::Kind::Integer;
+                entry.integer = v.get<long long>();
+            } else if (v.is_number()) {
+                entry.kind = NativePlistValue::Kind::Real;
+                entry.real = v.get<double>();
+            } else if (v.is_string()) {
+                entry.text = v.get<std::string>();
+            } else if (v.is_array()) {
+                entry.kind = NativePlistValue::Kind::StringArray;
+                for (const Json& item : v) {
+                    if (!item.is_string()) {
+                        error = name + ": a list holds strings only (other shapes: ios.plist_xml)";
+                        return false;
+                    }
+                    entry.items.push_back(item.get<std::string>());
+                }
+            } else {
+                error = name + ": a value is a string, a boolean, a number or a list of strings (dictionaries: ios.plist_xml)";
+                return false;
+            }
+            entries[name] = entry;
+        }
+        if (apply) field(*ctx.project()) = entries;
+        return true;
+    };
+    return s;
+}
+
 // Project Settings > Input: the input actions as one list, replaced whole (one undo step)
 Setting inputActionsSetting() {
     Setting s;
@@ -1058,6 +1194,15 @@ Setting inputActionsSetting() {
         return true;
     };
     return s;
+}
+
+std::string frameworkNameError(const std::string& name) {
+    std::string bare = name;
+    if (!bare.empty() && bare.back() == '?') bare.pop_back();
+    if (bare.empty() || !std::all_of(bare.begin(), bare.end(), [](unsigned char c) { return std::isalnum(c) || c == '_' || c == '.' || c == '-'; })) {
+        return "is not a system framework name (\"StoreKit\", \"AppTrackingTransparency?\" for weak)";
+    }
+    return std::string();
 }
 
 // Project Settings > Graphics > Shader Globals: the list (replaced whole) and one global by name
@@ -1436,6 +1581,10 @@ const std::vector<Setting>& settingsTable() {
         add(stringSetting("web.head_include", "Extra HTML put in the page <head>.", [](Project& p) -> std::string& { return p.getWebProjectSettings().headInclude; }));
         add(boolField("web.resize_canvas_to_window", "The canvas follows the browser window size.", [](Project& p) -> bool& { return p.getWebProjectSettings().resizeCanvasToWindow; }));
         add(boolField("web.hide_emscripten_ui", "Hide the Emscripten status/console UI.", [](Project& p) -> bool& { return p.getWebProjectSettings().hideEmscriptenUI; }));
+        add(stringListField("web.script_urls", "Native plugins: SDK script URLs, each a <script src> in <head> before plugins/native/web/*.js (in order).",
+                            [](Project& p) -> std::vector<std::string>& { return p.getWebProjectSettings().scriptUrls; },
+                            [](const std::string& v) { return v.find_first_of("<>\"") != std::string::npos ? std::string("is not a URL") : std::string(); }));
+        add(boolField("web.viewport_fit_cover", "Page viewport-fit=cover: canvas under the notch, safe area from env().", [](Project& p) -> bool& { return p.getWebProjectSettings().viewportFitCover; }));
         add(stringSetting("linux.application_name", "Linux .desktop name override.", [](Project& p) -> std::string& { return p.getLinuxProjectSettings().applicationName; }));
         add(stringSetting("linux.comment", "Linux .desktop comment.", [](Project& p) -> std::string& { return p.getLinuxProjectSettings().comment; }));
         add(stringSetting("linux.categories", "Linux .desktop categories (e.g. Game;).", [](Project& p) -> std::string& { return p.getLinuxProjectSettings().categories; }));
@@ -1454,6 +1603,10 @@ const std::vector<Setting>& settingsTable() {
                           [](const std::string& v) { return isNumericVersion(v, 3, 0xFFFFFFFFull); }, "1 to 3 numeric parts"));
         add(pathSetting("macos.icon", "macOS icon.", [](Project& p) -> fs::path& { return p.getMacOSProjectSettings().icon; }));
         add(boolField("macos.high_dpi", "macOS high DPI (Retina) rendering.", [](Project& p) -> bool& { return p.getMacOSProjectSettings().highDpi; }));
+        add(plistEntriesField("macos.plist_entries", "Native plugins: macOS Info.plist keys -> string, boolean, number or string list (replacing the export's keys).",
+                              [](Project& p) -> std::map<std::string, NativePlistValue>& { return p.getMacOSProjectSettings().plistEntries; }));
+        add(stringListField("macos.frameworks", "Native plugins: macOS system frameworks linked (\"GameKit\"; \"Name?\" = weak).",
+                            [](Project& p) -> std::vector<std::string>& { return p.getMacOSProjectSettings().frameworks; }, frameworkNameError));
         add(stringSetting("ios.application_name", "iOS name override.", [](Project& p) -> std::string& { return p.getIOSProjectSettings().applicationName; }));
         add(stringSetting("ios.bundle_identifier", "iOS bundle identifier override.", [](Project& p) -> std::string& { return p.getIOSProjectSettings().bundleIdentifier; },
                           [](const std::string& v) { return isDottedIdentifier(v, appleIdPart); }, "dot-separated parts of letters, digits and hyphens"));
@@ -1470,6 +1623,120 @@ const std::vector<Setting>& settingsTable() {
         add(stringSetting("ios.admob_app_id", "iOS AdMob App ID (GADApplicationIdentifier) from the AdMob console; without it the export leaves AdMob out.",
                           [](Project& p) -> std::string& { return p.getIOSProjectSettings().admobAppId; },
                           isAdMobAppIdValid, "an AdMob app ID like ca-app-pub-0000000000000000~0000000000 (not an ad unit ID)"));
+        add(plistEntriesField("ios.plist_entries", "Native plugins: iOS Info.plist keys -> string, boolean, number or string list, replacing the export's "
+                              "(NSUserTrackingUsageDescription, GADApplicationIdentifier...).",
+                              [](Project& p) -> std::map<std::string, NativePlistValue>& { return p.getIOSProjectSettings().plistEntries; }));
+        add(xmlField("ios.plist_xml", "Native plugins: raw <key>..</key><value> pairs appended to the iOS Info.plist top dict (SKAdNetworkItems...).",
+                     [](Project& p) -> std::string& { return p.getIOSProjectSettings().plistXml; }));
+        add(stringListField("ios.frameworks", "Native plugins: iOS system frameworks linked (\"StoreKit\", \"AppTrackingTransparency?\" = weak).",
+                            [](Project& p) -> std::vector<std::string>& { return p.getIOSProjectSettings().frameworks; }, frameworkNameError));
+        {
+            Setting s;
+            s.key = "ios.cocoapods";
+            s.type = "list";
+            s.description = "Native plugins: CocoaPods [{name, version?, source?}] in workspaces/xcode/Podfile (run pod install there, open the "
+                            ".xcworkspace); version like \"~> 1.7\", source a spec repository URL.";
+            s.get = [](McpContext& ctx) {
+                Json list = Json::array();
+                for (const NativeCocoaPod& pod : ctx.project()->getIOSProjectSettings().cocoapods) {
+                    Json item = {{"name", pod.name}};
+                    if (!pod.version.empty()) item["version"] = pod.version;
+                    if (!pod.source.empty()) item["source"] = pod.source;
+                    list.push_back(item);
+                }
+                return list;
+            };
+            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array()) {
+                    error = "must be a list of {name, version?, source?}";
+                    return false;
+                }
+                std::vector<NativeCocoaPod> pods;
+                for (const Json& item : value) {
+                    NativeCocoaPod pod;
+                    if (item.is_string()) {
+                        pod.name = item.get<std::string>();
+                    } else if (item.is_object() && item.contains("name") && item["name"].is_string()) {
+                        pod.name = item["name"].get<std::string>();
+                        if (item.contains("version") && !readString(item["version"], pod.version, error, 256)) return false;
+                        if (item.contains("source") && !readString(item["source"], pod.source, error, 2048)) return false;
+                    } else {
+                        error = "each pod is {name, version?, source?}";
+                        return false;
+                    }
+                    if (pod.name.empty() || pod.name.find_first_of(" '\"\\") != std::string::npos) {
+                        error = "\"" + pod.name + "\" is not a pod name";
+                        return false;
+                    }
+                    if (pod.version.find_first_of("'\\\n") != std::string::npos || pod.source.find_first_of("'\\\n ") != std::string::npos) {
+                        error = pod.name + ": version and source cannot hold quotes, backslashes or line breaks";
+                        return false;
+                    }
+                    pods.push_back(pod);
+                }
+                if (apply) ctx.project()->getIOSProjectSettings().cocoapods = pods;
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "ios.swift_packages";
+            s.type = "list";
+            s.description = "Native plugins: Swift packages [{url, version, products[]}] of the iOS target (up to the next major version).";
+            s.get = [](McpContext& ctx) {
+                Json list = Json::array();
+                for (const NativeSwiftPackage& package : ctx.project()->getIOSProjectSettings().swiftPackages) {
+                    list.push_back({{"url", package.url}, {"version", package.version}, {"products", package.products}});
+                }
+                return list;
+            };
+            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array()) {
+                    error = "must be a list of {url, version, products}";
+                    return false;
+                }
+                std::vector<NativeSwiftPackage> packages;
+                for (const Json& item : value) {
+                    if (!item.is_object() || !item.contains("url") || !item["url"].is_string()) {
+                        error = "each package is {url, version, products}";
+                        return false;
+                    }
+                    NativeSwiftPackage package;
+                    package.url = item["url"].get<std::string>();
+                    if (package.url.rfind("https://", 0) != 0 && package.url.rfind("git@", 0) != 0) {
+                        error = "\"" + package.url + "\" is not a repository URL (https://github.com/...)";
+                        return false;
+                    }
+                    if (!item.contains("version") || !readString(item["version"], package.version, error, 64) ||
+                        !std::regex_match(package.version, std::regex("^[0-9]+(\\.[0-9]+){0,2}([-+][0-9A-Za-z.-]+)?$"))) {
+                        error = package.url + ": version must be a minimum version like \"4.0.0\"";
+                        return false;
+                    }
+                    if (!item.contains("products") || !item["products"].is_array() || item["products"].empty()) {
+                        error = package.url + ": products lists the package products to link (e.g. [\"RevenueCat\"])";
+                        return false;
+                    }
+                    for (const Json& product : item["products"]) {
+                        if (!product.is_string() || product.get<std::string>().empty()) {
+                            error = package.url + ": products are names";
+                            return false;
+                        }
+                        package.products.push_back(product.get<std::string>());
+                    }
+                    packages.push_back(package);
+                }
+                if (apply) ctx.project()->getIOSProjectSettings().swiftPackages = packages;
+                return true;
+            };
+            add(s);
+        }
+        add(xmlField("ios.entitlements_xml", "Native plugins: the <key>..</key><value> pairs of ios/JasperEngine.entitlements (CODE_SIGN_ENTITLEMENTS).",
+                     [](Project& p) -> std::string& { return p.getIOSProjectSettings().entitlementsXml; }));
+        add(stringSetting("ios.deployment_target", "iOS deployment target of every target (IPHONEOS_DEPLOYMENT_TARGET), 15.0 or later.",
+                          [](Project& p) -> std::string& { return p.getIOSProjectSettings().deploymentTarget; },
+                          [](const std::string& v) { return std::regex_match(v, std::regex("^[0-9]+\\.[0-9]+$")) && std::stod(v) >= 15.0; },
+                          "a version like 15.0 or 16.4, at least 15.0"));
         add(stringSetting("android.application_name", "Android label override.", [](Project& p) -> std::string& { return p.getAndroidProjectSettings().applicationName; }));
         add(stringSetting("android.package_name", "Android package name override.", [](Project& p) -> std::string& { return p.getAndroidProjectSettings().packageName; },
                           [](const std::string& v) { return isDottedIdentifier(v, javaIdPart); }, "a Java package name (dot-separated identifiers)"));
@@ -1592,6 +1859,26 @@ const std::vector<Setting>& settingsTable() {
         add(stringSetting("android.admob_app_id", "Android AdMob App ID (com.google.android.gms.ads.APPLICATION_ID) from the AdMob console; without it the export leaves AdMob out.",
                           [](Project& p) -> std::string& { return p.getAndroidProjectSettings().admobAppId; },
                           isAdMobAppIdValid, "an AdMob app ID like ca-app-pub-0000000000000000~0000000000 (not an ad unit ID)"));
+        add(stringListField("android.gradle_dependencies", "Native plugins: Gradle dependencies; \"group:name:version\" becomes api \"...\" in the "
+                            "nativeplugins module, any other text is a dependencies line as is (implementation platform('...')).",
+                            [](Project& p) -> std::vector<std::string>& { return p.getAndroidProjectSettings().gradleDependencies; },
+                            [](const std::string& v) { return v.find('\n') != std::string::npos ? std::string("is more than one line") : std::string(); }));
+        add(stringListField("android.gradle_repositories", "Native plugins: Maven repository URLs (allprojects.repositories).",
+                            [](Project& p) -> std::vector<std::string>& { return p.getAndroidProjectSettings().gradleRepositories; },
+                            [](const std::string& v) { return (v.find("://") == std::string::npos || v.find_first_of("\" \n") != std::string::npos)
+                                ? std::string("is not a repository URL (https://...)") : std::string(); }));
+        add(stringListField("android.gradle_properties", "Native plugins: gradle.properties lines \"key=value\" (replacing a key already there).",
+                            [](Project& p) -> std::vector<std::string>& { return p.getAndroidProjectSettings().gradleProperties; },
+                            [](const std::string& v) { return (v.find('=') == std::string::npos || v.find('=') == 0 || v.find('\n') != std::string::npos)
+                                ? std::string("is not a key=value line") : std::string(); }));
+        add(stringListField("android.extra_permissions", "Native plugins: <uses-permission> by full name (com.google.android.gms.permission.AD_ID).",
+                            [](Project& p) -> std::vector<std::string>& { return p.getAndroidProjectSettings().extraPermissions; },
+                            [](const std::string& v) { return (v.find('.') == std::string::npos || v.find_first_of("\"<>& ") != std::string::npos)
+                                ? std::string("is not a full permission name (android.permission.X)") : std::string(); }));
+        add(xmlField("android.manifest_xml", "Native plugins: raw XML inside <manifest>, before <application> (<queries>, tools:node=\"remove\" entries).",
+                     [](Project& p) -> std::string& { return p.getAndroidProjectSettings().manifestXml; }));
+        add(xmlField("android.manifest_application_xml", "Native plugins: raw XML inside <application> (<meta-data>, <activity>, <provider>).",
+                     [](Project& p) -> std::string& { return p.getAndroidProjectSettings().manifestApplicationXml; }));
 
         // ---- graphics / quality
         for (const bool width : {true, false}) {
@@ -2674,6 +2961,123 @@ void editProjectBuildFileTool(const CallPtr& call) {
              "log for CMake errors.", Json{{"path", "ProjectBuild.cmake"}, {"bytes", content.size()}});
 }
 
+
+// ---- native_plugins: plugins/native (feature native-bridge, docs/mcp/guide/native-bridge.md)
+
+const std::vector<std::string>& nativeSettingKeys() {
+    static const std::vector<std::string> keys = {
+        "android.gradle_dependencies", "android.gradle_repositories", "android.gradle_properties", "android.extra_permissions",
+        "android.manifest_xml", "android.manifest_application_xml", "ios.plist_entries", "ios.plist_xml", "ios.frameworks",
+        "ios.cocoapods", "ios.swift_packages", "ios.entitlements_xml", "ios.deployment_target", "macos.plist_entries",
+        "macos.frameworks", "web.script_urls"};
+    return keys;
+}
+
+void nativePluginsTool(const CallPtr& call) {
+    McpContext& ctx = call->ctx();
+    Project* project = ctx.project();
+    const Json& args = call->args();
+    const std::string action = args.value("action", "list");
+    const fs::path projectPath = project->getProjectPath();
+
+    if (action == "list") {
+        const NativePlugins::Scan scan = NativePlugins::scan(projectPath);
+        Json data;
+        data["root"] = FileUtils::pathToGenericUtf8(NativePlugins::relativeRoot());
+        data["exists"] = scan.exists;
+        Json plugins = Json::array();
+        for (const NativePlugins::PluginInfo& plugin : NativePlugins::listPlugins(scan)) {
+            Json platforms = Json::object();
+            for (const auto& [platform, files] : plugin.files) platforms[platform] = files;
+            plugins.push_back({{"name", plugin.name}, {"platforms", platforms}, {"methods", plugin.methods}});
+        }
+        data["plugins"] = plugins;
+        Json counts = Json::object();
+        for (const std::string& platform : NativePlugins::platformNames()) {
+            if (scan.count(platform)) counts[platform] = scan.count(platform);
+        }
+        data["files"] = counts;
+        data["mocks"] = NativePlugins::listMocks(project->getLuaPath());
+        Json settings = Json::object();
+        for (const Setting& setting : settingsTable()) {
+            if (std::find(nativeSettingKeys().begin(), nativeSettingKeys().end(), setting.key) == nativeSettingKeys().end()) continue;
+            const Json value = setting.get(ctx);
+            // only what is set (the defaults are empty, and 15.0)
+            if ((value.is_string() && (value.get<std::string>().empty() || (setting.key == "ios.deployment_target" && value == "15.0"))) ||
+                ((value.is_array() || value.is_object()) && value.empty())) {
+                continue;
+            }
+            settings[setting.key] = value;
+        }
+        data["settings"] = settings;
+        std::string text = std::to_string(plugins.size()) + " native plugin(s)";
+        if (!scan.exists) text += " (no plugins/native folder yet: action create makes one)";
+        text += ", " + std::to_string(data["mocks"].size()) + " Lua mock(s), " + std::to_string(settings.size()) + " native setting(s) set.";
+        call->ok(text, data);
+        return;
+    }
+    if (action != "create") {
+        call->fail("action must be \"list\" or \"create\".");
+        return;
+    }
+    if (ctx.isPlaying()) {
+        call->fail("Stop Play mode before creating a native plugin (its C++ joins the Play library at the next Play).");
+        return;
+    }
+    NativePlugins::CreateOptions options;
+    options.name = args.value("name", "");
+    if (args.contains("platforms")) {
+        if (!args["platforms"].is_array()) {
+            call->fail("platforms must be a list: android, ios, macos, web, cpp.");
+            return;
+        }
+        for (const Json& platform : args["platforms"]) {
+            if (platform.is_string()) options.platforms.push_back(platform.get<std::string>());
+        }
+    } else {
+        options.platforms = {"android", "ios", "web", "cpp"};
+    }
+    options.androidLanguage = args.value("android_language", "java");
+    options.appleLanguage = args.value("apple_language", "objc");
+    options.package = args.value("package", options.package);
+    options.overwrite = args.value("overwrite", false);
+    if (args.contains("methods")) {
+        if (!args["methods"].is_array()) {
+            call->fail("methods must be a list of {name, async}.");
+            return;
+        }
+        for (const Json& method : args["methods"]) {
+            NativePlugins::MethodSpec spec;
+            if (method.is_string()) {
+                spec.name = method.get<std::string>();
+            } else if (method.is_object()) {
+                spec.name = method.value("name", "");
+                spec.async = method.value("async", false);
+            }
+            options.methods.push_back(spec);
+        }
+    }
+    const std::string invalid = NativePlugins::validate(options);
+    if (!invalid.empty()) {
+        call->fail(invalid + ".");
+        return;
+    }
+    std::vector<NativePlugins::CreatedFile> written;
+    std::string error;
+    if (!NativePlugins::create(projectPath, project->getLuaPath(), options, written, error)) {
+        call->fail(error + ".");
+        return;
+    }
+    if (ctx.projectWindow()) ctx.projectWindow()->refreshCurrentDirectory();
+    Json files = Json::array();
+    for (const NativePlugins::CreatedFile& file : written) files.push_back({{"path", file.path}, {"overwritten", file.overwritten}});
+    Json data = {{"name", options.name}, {"files", files}};
+    data["try"] = "eval_lua in Play: return Native.call('" + options.name + "', '" +
+                  (options.methods.empty() ? std::string("method") : options.methods[0].name) + "') (the Lua mock answers outside the device)";
+    call->ok("Wrote " + std::to_string(written.size()) + " file(s) of the native plugin " + options.name +
+             " (not undoable). The Lua mock " + written.back().path + " answers in editor Play and desktop builds; the platform files "
+             "answer on their platforms.", data);
+}
 } // namespace
 
 void registerProjectTools(McpRegistry& registry) {
@@ -2772,6 +3176,28 @@ void registerProjectTools(McpRegistry& registry) {
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = getProjectSettingsTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "native_plugins";
+        tool.title = "Native Plugins";
+        tool.description =
+            "plugins/native for Lua's Native.call (Java/Kotlin, ObjC/Swift, JS, C++). list: plugins, methods, Lua mocks, "
+            "native settings. create: one plugin's files for the platforms plus its Lua mock; refuses to overwrite. SDK "
+            "settings: set_project_settings android.gradle_*, ios.cocoapods... jasper://docs/native-bridge.";
+        tool.inputSchema = object({
+            {"action", stringEnum("", {"list", "create"})},
+            {"name", string("e.g. Device")},
+            {"platforms", array(stringEnum("", {"android", "ios", "macos", "web", "cpp"}), "default android, ios, web, cpp")},
+            {"android_language", stringEnum("", {"java", "kotlin"})},
+            {"apple_language", stringEnum("", {"objc", "swift"})},
+            {"package", string("default com.example.plugins")},
+            {"methods", array(object({{"name", string("")}, {"async", boolean("")}}, {"name"}), "")},
+            {"overwrite", boolean("")}
+        }, {"action"});
+        tool.handler = nativePluginsTool;
         registry.addTool(std::move(tool));
     }
 

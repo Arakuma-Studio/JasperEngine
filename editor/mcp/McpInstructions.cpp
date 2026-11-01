@@ -223,6 +223,7 @@ Read the page before using these tools:
   Animation Player (jasper://docs/animation).
 - Humanoid poses (.poseanim): get/edit/render_pose_animation, mirror_pose; degrees from
   standing, arms down (jasper://docs/pose-animation).
+- Clip on another humanoid rig: clips[i].retarget or create.humanoid (jasper://docs/animation).
 - Crowds: bake_vertex_animation (preview, then output) -> .vat on a Vertex Animator
   (jasper://docs/vertex-animation).
 - Particles: create_particles, import_unity_particles (jasper://docs/particles).
@@ -233,9 +234,14 @@ Read the page before using these tools:
   (jasper://docs/ui).
 - Lines, lasers, trails: line_renderer / trail_renderer (jasper://docs/lines-trails).
 - On-device console and FPS/stats: DebugOverlay, Log.getEntries (jasper://docs/debugging).
+- Video: type video_player / video_background, texture video|<id>; MP4 and WebM
+  (jasper://docs/video).
+- Notches and safe areas: Screen.safeArea, the Safe Area component (create_ui safe_area), CSS
+  env(); phones in configure_game_view device (jasper://docs/safe-area).
 - Bend/squash: edit_lattice (jasper://docs/lattice). GPU fluid: type fluid_simulation
   (jasper://docs/fluid). Textures from examples: synthesize_texture
   (jasper://docs/texture-synthesis).
+- Native SDKs: Native.call/callAsync/on; plugins: native_plugins (jasper://docs/native-bridge).
 
 ## HTML/CSS UI
 Menus, HUDs and dialogs in standard HTML + CSS, logic in Lua (no JavaScript):

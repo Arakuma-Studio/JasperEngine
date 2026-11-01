@@ -1,7 +1,7 @@
 # libopus in JasperEngine
 
 - Upstream: https://github.com/xiph/opus, tag `v1.6.1` (BSD-3-Clause, `COPYING`; contributors in `AUTHORS`).
-- Used by: the HTML UI's `<video>` audio (`engine/core/htmlui/media/OpusAudioDecoder.cpp`,
+- Used by: the HTML UI's `<video>` audio (`engine/core/media/OpusAudioDecoder.cpp`,
   `docs/html-ui/phase-6-video.md`).
 
 ## Vendored (byte for byte from the tag)
