@@ -436,9 +436,10 @@ solid collider of one body touching the same collider give both.
   (`other.gameObject` is valid and named); deactivated, body disabled, collider removed, layers or
   `ignoreCollision` changed: at the end of the next step. The departing object gets nothing. Scene
   unload and Play stop send nothing.
-- `GameObject.destroy` in a callback lets the step's other callbacks reach the object;
-  `destroyImmediate` ends them. Changes made in a callback (teleports, colliders, layers) apply at
-  the next step.
+- `GameObject.destroy` in a callback lets the step's other callbacks reach the object; so does
+  `destroyImmediate` in a contact callback: the callbacks run while the physics system works, so
+  the object goes when the step's callbacks are done (and its partners get their Exit then).
+  Changes made in a callback (teleports, colliders, layers) apply at the next step.
 - An error in a callback is logged (once a second per script and method) and the others still run.
   Callbacks cannot yield: start a coroutine for waits.
 
@@ -489,7 +490,7 @@ Inspector shows the same under each body in Play.
   `contactEvents` on (the default for new colliders; sensors always), `preSolve2D` / `shouldCollide2D`
   inside the step. 3D `onContactAdded3D`, `onContactPersisted3D`, `onContactRemoved3D`,
   `onBodyActivated3D`, `onBodyDeactivated3D` run on the main thread after the step, with a
-  `Contact3D` snapshot (its setters warn and do nothing). `physicsSystem.synchronousContactEvents3D
+  `Contact3D` snapshot (its setters apply from the next step on, for the rest of that contact). `physicsSystem.synchronousContactEvents3D
   = true` steps the scene's 3D world on the main thread and calls them inside the step with live,
   settable contacts (slower: one thread). A Lua `shouldCollide3D` turns that on by itself, since it
   must run inside the step (prefer `Physics.ignoreCollision` or layers). C++ contact modification

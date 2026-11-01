@@ -272,7 +272,6 @@ namespace jasperengine{
 		// a script that defines a contact message appeared or went: the listener masks of the
 		// bodies are computed again before the next step
 		bool listenerMasksDirty = true;
-		bool warnedContactSnapshotSetter = false;
 
 #ifdef JASPERENGINE_PHYSICS_2D
 		void ensureWorld2D();
@@ -691,8 +690,6 @@ namespace jasperengine{
 		size_t getDebugLineCount() const;
 		Entity getDebugLinesEntity() const { return debugLinesEntity; }
 
-		// A setter called on a Contact3D snapshot: one warning per scene
-		void warnContactSnapshotSetter();
 		// Told by ScriptMessages: a script defining contact messages appeared or went
 		static void onScriptReceiversChanged(Scene* scene, Entity entity);
 		void markListenerMasksDirty() { listenerMasksDirty = true; }

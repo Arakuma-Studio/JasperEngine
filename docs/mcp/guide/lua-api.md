@@ -300,8 +300,9 @@ to the GameObjects involved. These physics events are scene-wide: they fire for 
 bodies. Filter in the handler, e.g.
 `if bodyA.entity == self.entity or bodyB.entity == self.entity then ... end`. They run on the main
 thread after the step (2D: also `stayContact2D`, `staySensorContact2D`, same arguments as the
-begin ones); 3D gets a `Contact3D` snapshot whose setters do nothing, unless
-`physicsSystem.synchronousContactEvents3D = true` (a Lua `shouldCollide3D` turns it on).
+begin ones); 3D gets a `Contact3D` snapshot whose setters apply from the next step; with
+`physicsSystem.synchronousContactEvents3D = true` (a Lua `shouldCollide3D` turns it on) they run
+inside the step with live contacts.
 2D contact events need "Contact Events" (sensor events: sensor + "Sensor Events", hit: "Hit
 Events") enabled on the Collider 2D (Inspector, or `body.shapeContactEvents = true`,
 `body.shapeSensorEvents = true`, `body.shapeEnableHitEvents = true`).
@@ -2293,7 +2294,7 @@ or `CharacterController2D(scene, entity)`. Points and points per second, as Rigi
 
 `Contact3D` (global events): `getWorldSpaceNormal()`, `getPenetrationDepth()`, `getBaseOffset()`,
 `getColliderIndex1()`, `getColliderIndex2()`, `getRelativeContactPointsOnA(i)` / `OnB(i)`,
-`numContactPoints`, `snapshot` (true after the step: setters do nothing), rw `combinedFriction`,
+`numContactPoints`, `snapshot` (true after the step: setters apply from the next step), rw `combinedFriction`,
 `combinedRestitution`, `sensor`.
 
 #### Collision, ContactPoint, Collider (the 3D callbacks' values, read-only)

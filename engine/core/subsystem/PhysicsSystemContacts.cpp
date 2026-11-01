@@ -75,14 +75,6 @@ void PhysicsSystem::onScriptReceiversChanged(Scene* scene, Entity entity){
     }
 }
 
-void PhysicsSystem::warnContactSnapshotSetter(){
-    if (warnedContactSnapshotSetter){
-        return;
-    }
-    warnedContactSnapshotSetter = true;
-    Log::warn("Contact3D setters have no effect after the step: set physicsSystem.synchronousContactEvents3D = true or use a physics material");
-}
-
 uint16_t PhysicsSystem::computeListenerMask(Entity entity, const std::vector<Entity>& receivers) const{
     uint32_t mask = ScriptMessages::receivers(scene, entity);
     for (Entity receiver : receivers){

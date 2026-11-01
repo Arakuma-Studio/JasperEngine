@@ -2265,18 +2265,19 @@ void Engine::runFrame(bool draw){
             MainThreadQueue::drain();
         }
         Engine::onUpdate.call();
-        // timers, then the coroutines waiting seconds, frames, predicates or other work (Unity's
-        // yield null / WaitForSeconds point: after Update, before LateUpdate)
-        ScriptScheduler::updatePhase();
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->update(frameDelta);
         }
-        // timers and coroutines run after the update, before the post-update (as Unity's)
+        // timers (the Scheduler's, the Lua Timer's among them), then the coroutines waiting
+        // seconds, frames, predicates, timers or other work: after the update, before the
+        // post-update (Unity's yield null / WaitForSeconds point: after Update, before
+        // LateUpdate). A coroutine waiting for a timer resumes in the frame the timer ends.
         if (gameClocks) {
             scheduler.process(TimeDomain::Game);
             scheduler.process(TimeDomain::Unscaled);
             scheduler.process(TimeDomain::Frames);
         }
+        ScriptScheduler::updatePhase();
         Engine::onPostUpdate.call();
 
         // GameObject::destroy: after the update, before the draw (Unity)
