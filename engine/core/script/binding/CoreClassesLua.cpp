@@ -25,6 +25,7 @@
 #include <stdexcept>
 #include "System.h"
 #include "Screen.h"
+#include "util/CanvasScalerRef.h"
 #include "registry/PhysicsLayers.h"
 #include "math/Ray.h"
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -808,6 +809,53 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("STRETCH", Scaling::STRETCH)
         .addVariable("NATIVE", Scaling::NATIVE)
         .endNamespace();
+
+    // the Canvas Scaler (Unity's CanvasScaler.ScaleMode, ScreenMatchMode, Unit)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("UIScaleMode")
+        .addVariable("FollowGameCanvas", UIScaleMode::FollowGameCanvas)
+        .addVariable("ConstantPixelSize", UIScaleMode::ConstantPixelSize)
+        .addVariable("ScaleWithScreenSize", UIScaleMode::ScaleWithScreenSize)
+        .addVariable("ConstantPhysicalSize", UIScaleMode::ConstantPhysicalSize)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ScreenMatchMode")
+        .addVariable("MatchWidthOrHeight", ScreenMatchMode::MatchWidthOrHeight)
+        .addVariable("Expand", ScreenMatchMode::Expand)
+        .addVariable("Shrink", ScreenMatchMode::Shrink)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PhysicalUnit")
+        .addVariable("Centimeters", PhysicalUnit::Centimeters)
+        .addVariable("Millimeters", PhysicalUnit::Millimeters)
+        .addVariable("Inches", PhysicalUnit::Inches)
+        .addVariable("Points", PhysicalUnit::Points)
+        .addVariable("Picas", PhysicalUnit::Picas)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<CanvasScalerRef>("CanvasScaler")
+        .addProperty("uiScaleMode", &CanvasScalerRef::getUIScaleMode, &CanvasScalerRef::setUIScaleMode)
+        .addProperty("scaleFactor", &CanvasScalerRef::getScaleFactor, &CanvasScalerRef::setScaleFactor)
+        .addProperty("referenceResolution", &CanvasScalerRef::getReferenceResolution, &CanvasScalerRef::setReferenceResolution)
+        .addProperty("screenMatchMode", &CanvasScalerRef::getScreenMatchMode, &CanvasScalerRef::setScreenMatchMode)
+        .addProperty("matchWidthOrHeight", &CanvasScalerRef::getMatchWidthOrHeight, &CanvasScalerRef::setMatchWidthOrHeight)
+        .addProperty("physicalUnit", &CanvasScalerRef::getPhysicalUnit, &CanvasScalerRef::setPhysicalUnit)
+        .addProperty("fallbackScreenDPI", &CanvasScalerRef::getFallbackScreenDPI, &CanvasScalerRef::setFallbackScreenDPI)
+        .addProperty("useProjectDefault", &CanvasScalerRef::isUseProjectDefault, &CanvasScalerRef::setUseProjectDefault)
+        .addProperty("canvasSize", &CanvasScalerRef::getCanvasSize)
+        .addProperty("appliedScaleFactor", &CanvasScalerRef::getAppliedScaleFactor)
+        .endClass();
+
+    // the UI's statics: canvas pixels (Input, the game canvas) <-> a scene's UI units
+    luabridge::getGlobalNamespace(L)
+        .beginClass<UIStatics>("UI")
+        .addStaticFunction("canvasToUI", &UIStatics::canvasToUI)
+        .addStaticFunction("uiToCanvas", &UIStatics::uiToCanvas)
+        .addStaticProperty("reducedMotion", &UISystem::isReducedMotion, &UISystem::setReducedMotion)
+        .endClass();
 
     luabridge::getGlobalNamespace(L)
         .beginNamespace("Platform")
@@ -2278,6 +2326,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("fixedResolutionHeight", &Scene::getFixedResolutionHeight, &Scene::setFixedResolutionHeight)
         .addProperty("fixedResolutionFilter", &Scene::getFixedResolutionFilter, &Scene::setFixedResolutionFilter)
         .addFunction("setFixedResolutionSize", &Scene::setFixedResolutionSize)
+        .addFunction("getCanvasScaler", [] (Scene* self) { return CanvasScalerRef(self); })
         .addProperty("defaultMeshShader", &Scene::getDefaultMeshShader, &Scene::setDefaultMeshShader)
         .addProperty("defaultUIShader", &Scene::getDefaultUIShader, &Scene::setDefaultUIShader)
         .addProperty("defaultSkyShader", &Scene::getDefaultSkyShader, &Scene::setDefaultSkyShader)

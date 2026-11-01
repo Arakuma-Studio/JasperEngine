@@ -22,6 +22,11 @@ std::shared_ptr<STBText> FontPool::get(const std::string& id){
 }
 
 std::shared_ptr<STBText> FontPool::get(const std::string& id, const std::string& fontpath, const std::vector<std::string>& fallbackPaths, unsigned int fontSize){
+	return get(id, fontpath, fallbackPaths, fontSize, STBTextOptions());
+}
+
+std::shared_ptr<STBText> FontPool::get(const std::string& id, const std::string& fontpath, const std::vector<std::string>& fallbackPaths, unsigned int fontSize,
+                                       const STBTextOptions& options){
 	auto& shared = getMap()[id];
 
 	if (shared.use_count() > 0){
@@ -29,6 +34,7 @@ std::shared_ptr<STBText> FontPool::get(const std::string& id, const std::string&
 	}
 
 	const auto resource = std::make_shared<STBText>();
+    resource->setOptions(options);
     resource->load(fontpath, fallbackPaths, fontSize);
 
 	shared = resource;
@@ -41,6 +47,27 @@ void FontPool::remove(const std::string& id){
 	auto it = map.find(id);
 	if (it != map.end() && it->second.use_count() <= 1)
 		map.erase(it);
+}
+
+void FontPool::release(std::shared_ptr<STBText>& text){
+	if (!text)
+		return;
+	auto& map = getMap();
+	for (auto it = map.begin(); it != map.end(); ++it){
+		if (it->second == text){
+			text.reset();
+			if (it->second.use_count() <= 1)
+				map.erase(it);
+			return;
+		}
+	}
+	text.reset();
+}
+
+bool FontPool::contains(const std::string& id){
+	auto& map = getMap();
+	auto it = map.find(id);
+	return it != map.end() && it->second;
 }
 
 void FontPool::clear(){

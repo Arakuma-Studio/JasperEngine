@@ -198,6 +198,8 @@ Rml::ElementDocument* UIDocumentSystem::textureLoadDocument(Entity entity, UIDoc
         // p1-lua: DOM change events, and the data models this document's scripts made
         Rml::Context* rmlContext = entry.context->getRmlContext();
         HtmlUIEventNames::installChangeSynthesizer(rmlContext);
+        // its elements find the scene too (<particle-system> makes its prefab there)
+        contextScenes()[rmlContext] = scene;
         if (scriptState){
             for (auto& pair : scriptState->models){
                 if (pair.second->owner == entity)
@@ -271,6 +273,7 @@ void UIDocumentSystem::textureRemoveEntity(Entity entity){
     }
     HtmlUIElementRegistry::freeContext(rmlContext);
     HtmlUIFileLog::forgetRenderer(&entry.context->getRenderer());
+    contextScenes().erase(rmlContext);
 
     // the target object stays (consumers may still point at it), its GPU texture goes
     if (entry.target)

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // W3: screenshots, Scene view camera, window focus, Game view settings
+#include "Screen.h"
 #include "registry/PhysicsLayers.h"
 #include "McpTools.h"
 #include "PlayViewCommon.h"
@@ -33,6 +34,7 @@
 #include "util/GraphicUtils.h"
 #include "util/PlatformRules.h"
 #include "window/DeviceProfiles.h"
+#include "window/GameResolutions.h"
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
 #include "window/AnimatorWindow.h"
@@ -60,6 +62,7 @@
 #endif
 
 #include <algorithm>
+#include <cstdio>
 #include <chrono>
 #include <cmath>
 #include <fstream>
@@ -1220,6 +1223,12 @@ void configureGameViewTool(const CallPtr& call) {
             return;
         }
         settings.aspect = static_cast<int>(it - aspectNames().begin());
+        // an aspect replaces a fixed resolution, as the toolbar's Aspect entries do (a
+        // resolution given in the same call still wins: it is applied below)
+        settings.resolution.clear();
+        settings.resolutionWidth = 0;
+        settings.resolutionHeight = 0;
+        settings.resolutionDpi = 0.0f;
         changed.push_back("aspect");
     }
     if (args.contains("scale")) {
@@ -1293,6 +1302,39 @@ void configureGameViewTool(const CallPtr& call) {
 
     if (!changed.empty()) gw->applySettings(settings);
 
+    // a fixed resolution: a preset or custom name, "WxH[@dpi]", {width, height, dpi[, name]} (a
+    // name saves it as a custom one), "free" back to the aspect
+    if (args.contains("resolution")) {
+        const Json& value = args["resolution"];
+        std::string error;
+        bool ok = false;
+        if (value.is_string()) {
+            ok = gw->setResolution(value.get<std::string>(), &error);
+        } else if (value.is_object()) {
+            GameResolution resolution;
+            resolution.width = value.value("width", 0);
+            resolution.height = value.value("height", 0);
+            resolution.dpi = value.value("dpi", 0.0f);
+            resolution.name = value.value("name", std::string());
+            if (!isValidGameResolution(resolution.width, resolution.height, resolution.dpi)) {
+                error = "resolution {width, height} must be 16..16384, dpi 0..2000";
+            } else if (!resolution.name.empty()) {
+                ok = gw->addCustomResolution(resolution, &error) && gw->setResolution(resolution.name, &error);
+            } else {
+                char text[64];
+                std::snprintf(text, sizeof(text), "%dx%d@%g", resolution.width, resolution.height, resolution.dpi);
+                ok = gw->setResolution(text, &error);
+            }
+        } else {
+            error = "resolution must be a string (\"1920x1080\", a preset name, \"free\") or {width, height, dpi, name}";
+        }
+        if (!ok) {
+            call->fail("resolution: " + error + ".");
+            return;
+        }
+        changed.push_back("resolution");
+    }
+
     if (args.contains("orientation")) {
         ScreenOrientation orientation;
         const std::string name = args.value("orientation", "");
@@ -1321,6 +1363,18 @@ void configureGameViewTool(const CallPtr& call) {
     const PlatformSimulation& simulation = Platform::getSimulation();
     Json devices = Json::array();
     for (const DeviceProfile& profile : deviceProfiles()) devices.push_back(profile.id);
+    Json resolutions = Json::array();
+    for (const GameResolution& r : builtInGameResolutions()) resolutions.push_back(r.name);
+    Json customResolutions = Json::array();
+    for (const GameResolution& r : project->getCustomResolutions())
+        customResolutions.push_back({{"name", r.name}, {"width", r.width}, {"height", r.height}, {"dpi", r.dpi}});
+    int fixedWidth = 0, fixedHeight = 0;
+    float fixedDpi = 0.0f;
+    Json resolution = "free";
+    if (gw->getFixedResolution(fixedWidth, fixedHeight, fixedDpi)) {
+        resolution = {{"name", simulation.device ? std::string(simulation.device->id) : settings.resolution},
+                      {"width", fixedWidth}, {"height", fixedHeight}, {"dpi", fixedDpi}};
+    }
 
     // the lines the playing scenes drew last frame (0 until a frame is drawn after turning it on)
     size_t physicsDebugLines = 0;
@@ -1348,6 +1402,11 @@ void configureGameViewTool(const CallPtr& call) {
         {"orientation", PlatformRules::orientationName(simulation.orientation)},
         {"language", settings.language.empty() ? std::string("system") : settings.language},
         {"devices", devices},
+        {"resolution", resolution},
+        {"resolutions", resolutions},
+        {"custom_resolutions", customResolutions},
+        // Screen.dpi as Play reads it: the device's, a resolution preset's, else the host's
+        {"screen_dpi", Screen::getDpi()},
         {"changed", changed}
     };
     call->ok(std::string(changed.empty() ? "Game view settings: " : "Updated the Game view: ") + data.dump(), data);
@@ -1456,7 +1515,8 @@ void registerViewTools(McpRegistry& registry) {
         tool.title = "Configure Game View";
         tool.description =
             "Read (no arguments) or change the Game view toolbar settings (editor preferences, not undoable). aspect "
-            "project = the canvas size (a project setting); the game renders at render_size. device, orientation, "
+            "project = the canvas size (a project setting); the game renders at render_size. resolution: a fixed size the "
+            "game renders at (screenshots too), with its dpi as Screen.dpi. device, orientation, "
             "language: a simulated phone and system language (editor only).";
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
@@ -1469,7 +1529,8 @@ void registerViewTools(McpRegistry& registry) {
             {"network", stringEnum("offline: Http to non-localhost fails with \"offline\". Works while playing.", {"online", "offline"})},
             {"device", string("An id of devices, or none.")},
             {"orientation", stringEnum("", {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"})},
-            {"language", string("es-MX..., or system.")}
+            {"language", string("es-MX..., or system.")},
+            {"resolution", any("\"1920x1080\", \"WxH@dpi\", a resolutions name, free, or {width, height, dpi, name} (a name saves it).")}
         });
         tool.annotations.idempotent = true;
         tool.handler = configureGameViewTool;

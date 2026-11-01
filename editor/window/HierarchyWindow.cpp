@@ -529,6 +529,7 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"UI", "Touch Area", ICON_FA_HAND_POINTER, T::TOUCH_AREA, "Touch Area", CREATE_IN_ALL},
         {"UI", "Layout Group", ICON_FA_OBJECT_GROUP, T::LAYOUT_GROUP, "Layout Group", CREATE_IN_ALL, true},
         {"UI", "Canvas Group", ICON_FA_LAYER_GROUP, T::CANVAS_GROUP, "Canvas Group", CREATE_IN_ALL},
+        {"UI", "Particle System", ICON_FA_FIRE, T::UI_PARTICLE_SYSTEM, "UI Particles", CREATE_IN_ALL},
         {"UI", "UI Document", ICON_FA_FILE_CODE, T::UI_DOCUMENT, "UI Document", CREATE_IN_ALL, true},
 
         {"Physics", "Rigidbody", ICON_FA_WEIGHT_HANGING, T::RIGIDBODY, "Rigidbody", CREATE_IN_3D},

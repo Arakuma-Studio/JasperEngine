@@ -213,6 +213,7 @@ bool ParticleSystem::isLocalSpace() const{
     return partAnim.localSpace;
 }
 
+
 void ParticleSystem::setMaxPerUpdate(int maxPerUpdate){
     ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
     

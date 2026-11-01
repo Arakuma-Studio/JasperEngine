@@ -6,6 +6,7 @@
 // word breaking, line clamping. With the fork's TextShadow and TextProperties (phase 3, p3-text)
 // the text properties pass through natively, checked against the fork's grammar.
 
+#include "htmlui/HtmlTextEffects.h"
 #include "htmlui/compat/css/props/Rewriters.h"
 #include "htmlui/compat/LiteralCompare.h"
 
@@ -628,4 +629,30 @@ void jasperengine::htmlui::compat::rewriteUserSelect(DeclContext& context){
         context.reportAs(Severity::Info, codes::ApproximatedMinor, "'user-select: " + k + "' selects nothing: text outside text inputs is not selectable",
                          "only text inputs and text areas select text");
     emitNative(context, "user-select");
+}
+
+// text-effect (engine extension, ui-scaling-text spec 7.4): validated by its parser, written as declared
+void jasperengine::htmlui::compat::rewriteTextEffect(DeclContext& context){
+    const std::string value = context.valueText();
+    std::string error;
+    bool valid = true;
+    if (context.name == "text-effect"){
+        HtmlTextEffect parsed;
+        valid = parseTextEffect(value, parsed, error);
+    }else if (context.name == "text-effect-iteration"){
+        int iterations = 0;
+        valid = parseTextEffectIteration(value, iterations);
+        if (!valid) error = "use infinite or a whole number from 1";
+    }else if (context.name == "text-effect-time"){
+        const std::string time = value;
+        valid = time == "ui" || time == "game";
+        if (!valid) error = "use ui (unscaled) or game";
+    }
+    if (!valid){
+        context.report(codes::UnsupportedValue, context.name + ": " + error + "; the declaration is dropped",
+                       "e.g. text-effect: wave(0.15em 1.5s), gradient(2s add #ff0 0%, #f80 100%)");
+        context.dropped = true;
+        return;
+    }
+    context.emit(context.name, value);
 }

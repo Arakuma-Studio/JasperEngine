@@ -1418,6 +1418,13 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         drawVatAsset(asset);
         return true;
     }
+    // a .shake: its own view (InspectorWindowCamera.cpp)
+    if (Util::isShakePresetFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawShakePresetAsset(asset);
+        return true;
+    }
     // a video (.mp4, .m4v, .mov, .webm, .mkv): probe, platform matrix, preview (InspectorVideo.cpp)
     if (VideoFormats::isPlayableExtension(file)){
         std::error_code ec;

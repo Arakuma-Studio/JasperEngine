@@ -924,16 +924,19 @@
 		71ABBD0F277A313C001CE3AF /* AlphaTween.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD0C277A313C001CE3AF /* AlphaTween.cpp */; };
 		71ABBD10277A313C001CE3AF /* AlphaTween.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD0D277A313C001CE3AF /* AlphaTween.h */; };
 		71ABBD13277A3166001CE3AF /* TextComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD11277A3166001CE3AF /* TextComponent.h */; };
+		4A534E4719F000D92EF9191D /* TextEffectComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47796DB3DF40344704 /* TextEffectComponent.h */; };
 		71ABBD14277A3166001CE3AF /* AlphaTweenComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD12277A3166001CE3AF /* AlphaTweenComponent.h */; };
 		71ABBD1C277A31BA001CE3AF /* Text.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD18277A31BA001CE3AF /* Text.cpp */; };
 		71ABBD1D277A31BA001CE3AF /* Text.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD18277A31BA001CE3AF /* Text.cpp */; };
 		71ABBD1E277A31BA001CE3AF /* Text.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD19277A31BA001CE3AF /* Text.h */; };
+		4A534E471345135D2F624DEC /* TextEffect.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470BB9A69CE1A89342 /* TextEffect.h */; };
 		71ABBD23277A31E6001CE3AF /* UISystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD21277A31E6001CE3AF /* UISystem.h */; };
 		71ABBD24277A31E6001CE3AF /* UISystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD22277A31E6001CE3AF /* UISystem.cpp */; };
 		71ABBD25277A31E6001CE3AF /* UISystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD22277A31E6001CE3AF /* UISystem.cpp */; };
 		71ABBD29277A3210001CE3AF /* STBText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD26277A3210001CE3AF /* STBText.cpp */; };
 		71ABBD2A277A3210001CE3AF /* STBText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD26277A3210001CE3AF /* STBText.cpp */; };
 		71ABBD2B277A3210001CE3AF /* STBText.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD27277A3210001CE3AF /* STBText.h */; };
+		4A534E47ADA850E0B9F100AA /* TextGlyphInfo.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4707D4DDB4F0BECC9D /* TextGlyphInfo.h */; };
 		71ABBD2C277A3210001CE3AF /* DefaultFont.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD28277A3210001CE3AF /* DefaultFont.h */; };
 		71ABBD342783C8BB001CE3AF /* Image.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD322783C8BA001CE3AF /* Image.h */; };
 		71ABBD352783C8BB001CE3AF /* Image.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD332783C8BB001CE3AF /* Image.cpp */; };
@@ -1189,12 +1192,6 @@
 		5C53A5D162D9C346844CB8CB /* LuaJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C1D155A15509F2C1C2A0CA1 /* LuaJson.cpp */; };
 		71FCE4C028E0FA01003C5217 /* LuaFunctionBase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71FCE4BB28E0FA01003C5217 /* LuaFunctionBase.cpp */; };
 		5C72896B6774821F58C7FFE8 /* LuaJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C1D155A15509F2C1C2A0CA1 /* LuaJson.cpp */; };
-		5C7722CA13C8F27169D0B74F /* ScriptScheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C8BD76A3FF7EF1E77D918F4 /* ScriptScheduler.cpp */; };
-		5C3BEC6A230B027038CFB065 /* ScriptScheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C8BD76A3FF7EF1E77D918F4 /* ScriptScheduler.cpp */; };
-		5C2971B8BC53558DD35F4A85 /* CoroutineClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5CF04AAFAFA2C7D98C3818A9 /* CoroutineClassesLua.cpp */; };
-		5CDD7FFB6F3FFF44D5F63680 /* CoroutineClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5CF04AAFAFA2C7D98C3818A9 /* CoroutineClassesLua.cpp */; };
-		5CC0078C861242152915F064 /* EngineTime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C41FD19F3BE6E6C84520FC6 /* EngineTime.cpp */; };
-		5C96984210E9C63A8E91FC8B /* EngineTime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C41FD19F3BE6E6C84520FC6 /* EngineTime.cpp */; };
 		71FCE4C128E0FA01003C5217 /* LuaFunctionBase.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FCE4BC28E0FA01003C5217 /* LuaFunctionBase.h */; };
 		71FCE4C228E0FA01003C5217 /* LuaBridgeAddon.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FCE4BD28E0FA01003C5217 /* LuaBridgeAddon.h */; };
 		71FCE4C528E0FA31003C5217 /* LuaBridge.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FCE4C428E0FA31003C5217 /* LuaBridge.h */; };
@@ -1688,6 +1685,8 @@
 		48544D4C00000000000001D3 /* URL.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D1 /* URL.cpp */; };
 		48544D4C00000000000001D5 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
 		48544D4C00000000000001D6 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
+		524D4C55B75762B8FB50E4A0 /* ContextPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */; };
+		524D4C55BAE4061CA1A51C86 /* ContextPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */; };
 		524D4C554044E87D2818FC4D /* LineClampEllipsis.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55D59A80B61DED31AC /* LineClampEllipsis.cpp */; };
 		524D4C556D598CE64B555B31 /* LineClampEllipsis.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55D59A80B61DED31AC /* LineClampEllipsis.cpp */; };
 		524D4C551FF1B7571B423E99 /* TextJustification.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C557D0A034BDBCAD8B7 /* TextJustification.cpp */; };
@@ -1909,8 +1908,14 @@
 		48544D4C0000000000000292 /* librmlui-ios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000290 /* librmlui-ios.a */; };
 		48544D4C0000000000000293 /* librmlui-macos.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000291 /* librmlui-macos.a */; };
 		48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A6 /* HtmlUIClock.h */; };
+		4A534E471C3F4DAB332F96BE /* UIParticleSystemElement.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47003429E8B7BC0051 /* UIParticleSystemElement.h */; };
+		4A534E470F6F1615323BCE7C /* HtmlTextEffects.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47BAF7E96D3D74E94A /* HtmlTextEffects.h */; };
 		48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		4A534E4771ADCA4EFFFC68F6 /* UIParticleSystemElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478D592BED4648F8FD /* UIParticleSystemElement.cpp */; };
+		4A534E479E432B7A243D7B2C /* HtmlTextEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476A5524DF63B1EDB3 /* HtmlTextEffects.cpp */; };
 		48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		4A534E47A87B6802B44200F7 /* UIParticleSystemElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478D592BED4648F8FD /* UIParticleSystemElement.cpp */; };
+		4A534E47AB42BF2CCC559963 /* HtmlTextEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476A5524DF63B1EDB3 /* HtmlTextEffects.cpp */; };
 		434F4D507A858F2513B7D0C0 /* EffectSimulator.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50B23E8A28DF9E3D0F /* EffectSimulator.h */; };
 		434F4D504F4AFBC2FF2FA6C1 /* EffectSimulator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50A333501C6FB22061 /* EffectSimulator.cpp */; };
 		434F4D5022D0B1A30CA129C1 /* EffectSimulator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50A333501C6FB22061 /* EffectSimulator.cpp */; };
@@ -3350,6 +3355,46 @@
 		4A534E471ECC1F0F8A111EDB /* TrailRenderer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D1A59D898AF8B4BB /* TrailRenderer.h */; };
 		4A534E478F589171F02F0B63 /* LineRibbonBuilder.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47197C345843945889 /* LineRibbonBuilder.h */; };
 		4A534E47212823E1E8889FB7 /* TrailSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D89F43391B4A415F /* TrailSystem.h */; };
+		4A534E479F3BE7035D7F4D90 /* EngineTime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4797747B82CF011898 /* EngineTime.cpp */; };
+		4A534E472A1484C39C524E8C /* EngineTime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4797747B82CF011898 /* EngineTime.cpp */; };
+		4A534E47048BE5CDF2664DF4 /* CameraShake.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D0853CFF5E642C5C /* CameraShake.cpp */; };
+		4A534E47074A94244F2B20FB /* CameraShake.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D0853CFF5E642C5C /* CameraShake.cpp */; };
+		4A534E4746EC17F97BB42ED1 /* ShakeInstance.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476152A9BE611CA36E /* ShakeInstance.cpp */; };
+		4A534E47725D6230B1B873F3 /* ShakeInstance.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476152A9BE611CA36E /* ShakeInstance.cpp */; };
+		4A534E47D9D7FAB57F144485 /* ShakePreset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F38859BB0988A617 /* ShakePreset.cpp */; };
+		4A534E4784D1DA85F005B40D /* ShakePreset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F38859BB0988A617 /* ShakePreset.cpp */; };
+		4A534E477D68B797CADBE48E /* ShakePresets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474055D2D3C55D7617 /* ShakePresets.cpp */; };
+		4A534E47596A1290685F8DCB /* ShakePresets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474055D2D3C55D7617 /* ShakePresets.cpp */; };
+		4A534E478D983354706E9325 /* ShakerRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473AF067139F43BD5E /* ShakerRuntime.cpp */; };
+		4A534E47638384C30E26EFE7 /* ShakerRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473AF067139F43BD5E /* ShakerRuntime.cpp */; };
+		4A534E47C26B54EF4E5BDC09 /* CameraFollow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475622761E30F06B44 /* CameraFollow.cpp */; };
+		4A534E4725CB54339B6279C7 /* CameraFollow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475622761E30F06B44 /* CameraFollow.cpp */; };
+		4A534E47BADBC140AE5B070C /* CameraShaker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A0C142BC14B4F575 /* CameraShaker.cpp */; };
+		4A534E4707E0059A2D9869E3 /* CameraShaker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A0C142BC14B4F575 /* CameraShaker.cpp */; };
+		4A534E4739799404EF91B066 /* ShakePresetPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4715AC7BEF8A4014B1 /* ShakePresetPool.cpp */; };
+		4A534E475B2541096B24D6E9 /* ShakePresetPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4715AC7BEF8A4014B1 /* ShakePresetPool.cpp */; };
+		4A534E479DE1B0E1D1CEB86B /* ScriptScheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471A684BB3C1D35FD3 /* ScriptScheduler.cpp */; };
+		4A534E4758155DCB1F5F3A3C /* ScriptScheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471A684BB3C1D35FD3 /* ScriptScheduler.cpp */; };
+		4A534E47E6723A34FDEBCB89 /* CoroutineClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4702DFA525BC1A4494 /* CoroutineClassesLua.cpp */; };
+		4A534E4719BB138CE097F966 /* CoroutineClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4702DFA525BC1A4494 /* CoroutineClassesLua.cpp */; };
+		4A534E47ACA96965B76DFE3C /* CameraControlSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472D5BDDA43BAF777F /* CameraControlSystem.cpp */; };
+		4A534E47D024053B56F36067 /* CameraControlSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472D5BDDA43BAF777F /* CameraControlSystem.cpp */; };
+		4A534E474A9B15BC1B4DACFB /* EngineTime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477CEC3CA5610A4AFB /* EngineTime.h */; };
+		4A534E4762CBD67A870F694C /* CameraShake.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B5AA4757EB461A19 /* CameraShake.h */; };
+		4A534E47F2C776DE753EF7DC /* ShakeInstance.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473E2FABFF3DFC25B1 /* ShakeInstance.h */; };
+		4A534E47B52C287852EA96A5 /* ShakePreset.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471EDC920A8DCBF993 /* ShakePreset.h */; };
+		4A534E47BE2C756D9CCE7E22 /* ShakePresets.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4775CFE4EABC3BFB73 /* ShakePresets.h */; };
+		4A534E474047CEFF2E9BF559 /* ShakerRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470967CFAF401F9620 /* ShakerRuntime.h */; };
+		4A534E47ABFEE84C719133EE /* CameraFollowComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476F1D7EA86CAA5EA6 /* CameraFollowComponent.h */; };
+		4A534E471E1D2C7A5EC6A0F9 /* CameraShakerComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4755A896E2EFAC63FB /* CameraShakerComponent.h */; };
+		4A534E47F7F5B092AAE26B95 /* Noise.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472114016401F2D894 /* Noise.h */; };
+		4A534E47ED1D3D47390E6782 /* CameraFollow.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4752CF16E633DF8695 /* CameraFollow.h */; };
+		4A534E474F36FD3C48FFD8B5 /* CameraShaker.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E25A1D2272719AB1 /* CameraShaker.h */; };
+		4A534E4702AEE79808235DC3 /* ShakePresetPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476CC2911518D3103A /* ShakePresetPool.h */; };
+		4A534E47F95594DF4FF074F3 /* ScriptScheduler.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475934CD286A02336B /* ScriptScheduler.h */; };
+		4A534E47F6A4FDB2A0324746 /* Timer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47038A75D31A53C3F5 /* Timer.h */; };
+		4A534E47CE1FCBE31631EF08 /* CameraControlSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47433C8BF3A3471BA4 /* CameraControlSystem.h */; };
+		4A534E47759C736B9546FF1B /* CanvasGroupTracks.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CB75CAA034603A13 /* CanvasGroupTracks.h */; };
 		4A534E47AC37D409692AA7D7 /* Http.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4787C9BCF72092DFEE /* Http.cpp */; };
 		4A534E47947208F6A52C0D79 /* Http.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4787C9BCF72092DFEE /* Http.cpp */; };
 		4A534E4707D0FB4D966D8BE5 /* HttpUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F788CC244AA03377 /* HttpUtil.cpp */; };
@@ -3362,7 +3407,6 @@
 		4A534E47265BB2DD7CEE9EEA /* MainThreadQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C9ACB5FAD8A291B0 /* MainThreadQueue.cpp */; };
 		4A534E476582D52ED841837C /* HttpBackendApple.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */; };
 		4A534E47D3ECA820EEE9216B /* HttpBackendApple.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */; };
-		4A534E47759C736B9546FF1B /* CanvasGroupTracks.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CB75CAA034603A13 /* CanvasGroupTracks.h */; };
 		4A534E47C85979F7504AB7AC /* CurlApi.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4746F0372B5BDC60B0 /* CurlApi.h */; };
 		4A534E472BD874B8DCF6E3EC /* Http.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4702C5166EB52DF781 /* Http.h */; };
 		4A534E475B9A526F84177777 /* HttpBackend.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4713FE339C7A9F7A0B /* HttpBackend.h */; };
@@ -3374,6 +3418,10 @@
 		4A534E471D112E5B5C5C529F /* Screen.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730D9EC2E29E781C3 /* Screen.cpp */; };
 		4A534E47A03D72D8121AA453 /* FrameLimiter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */; };
 		4A534E47B6B13162C6157931 /* FrameLimiter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */; };
+		4A534E47C144534CF4FEA79E /* TextEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4781CB301F7B480963 /* TextEffects.cpp */; };
+		4A534E4724C240F5D9AD0E03 /* CanvasScaler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47466B4A02C7A505EF /* CanvasScaler.cpp */; };
+		4A534E4702A81B13C975CC0E /* TextEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4781CB301F7B480963 /* TextEffects.cpp */; };
+		4A534E47361DD5D17268777C /* CanvasScaler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47466B4A02C7A505EF /* CanvasScaler.cpp */; };
 		4A534E471F031487F33960F3 /* PlatformRules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */; };
 		4A534E474B3E5336B343B76E /* PlatformRules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */; };
 		4A534E4792C92F90213540FE /* Screen.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471F33544BB442A466 /* Screen.h */; };
@@ -3451,6 +3499,9 @@
 		4A534E474B028A49F22E7413 /* AvatarMaskPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */; };
 		4A534E4790F1AB4DDB5485FE /* JsonAssetPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */; };
 		4A534E47658965B013EA1310 /* ActionSystemPlayersDetail.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */; };
+		4A534E4745BC31F5DF7490B9 /* CanvasScalerRef.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E272DE30F6985277 /* CanvasScalerRef.h */; };
+		4A534E4748DA23385687367C /* TextEffects.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47ABFE3CB4E3CFD085 /* TextEffects.h */; };
+		4A534E470113400EA26A0D56 /* CanvasScaler.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47310D1BCA96AE12EB /* CanvasScaler.h */; };
 		4A534E472C14B7D5E015EE49 /* Av1Decoder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479442A43A13E74DED /* Av1Decoder.cpp */; };
 		4A534E470F8E323359FF74EC /* Av1Decoder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479442A43A13E74DED /* Av1Decoder.cpp */; };
 		4A534E47A43E38BFF8148009 /* GrowingFileReader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E5A2FD966F40542E /* GrowingFileReader.cpp */; };
@@ -5255,13 +5306,16 @@
 		71ABBD0C277A313C001CE3AF /* AlphaTween.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AlphaTween.cpp; sourceTree = "<group>"; };
 		71ABBD0D277A313C001CE3AF /* AlphaTween.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AlphaTween.h; sourceTree = "<group>"; };
 		71ABBD11277A3166001CE3AF /* TextComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextComponent.h; sourceTree = "<group>"; };
+		4A534E47796DB3DF40344704 /* TextEffectComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextEffectComponent.h; sourceTree = "<group>"; };
 		71ABBD12277A3166001CE3AF /* AlphaTweenComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AlphaTweenComponent.h; sourceTree = "<group>"; };
 		71ABBD18277A31BA001CE3AF /* Text.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Text.cpp; sourceTree = "<group>"; };
 		71ABBD19277A31BA001CE3AF /* Text.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Text.h; sourceTree = "<group>"; };
+		4A534E470BB9A69CE1A89342 /* TextEffect.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextEffect.h; sourceTree = "<group>"; };
 		71ABBD21277A31E6001CE3AF /* UISystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UISystem.h; sourceTree = "<group>"; };
 		71ABBD22277A31E6001CE3AF /* UISystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UISystem.cpp; sourceTree = "<group>"; };
 		71ABBD26277A3210001CE3AF /* STBText.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = STBText.cpp; sourceTree = "<group>"; };
 		71ABBD27277A3210001CE3AF /* STBText.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = STBText.h; sourceTree = "<group>"; };
+		4A534E4707D4DDB4F0BECC9D /* TextGlyphInfo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextGlyphInfo.h; sourceTree = "<group>"; };
 		71ABBD28277A3210001CE3AF /* DefaultFont.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DefaultFont.h; sourceTree = "<group>"; };
 		71ABBD322783C8BA001CE3AF /* Image.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Image.h; sourceTree = "<group>"; };
 		71ABBD332783C8BB001CE3AF /* Image.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Image.cpp; sourceTree = "<group>"; };
@@ -5462,12 +5516,6 @@
 		71FCE4BB28E0FA01003C5217 /* LuaFunctionBase.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LuaFunctionBase.cpp; sourceTree = "<group>"; };
 		5CE4F17FDC667A00AD056E88 /* LuaJson.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaJson.h; sourceTree = "<group>"; };
 		5C1D155A15509F2C1C2A0CA1 /* LuaJson.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LuaJson.cpp; sourceTree = "<group>"; };
-		5C601CE397BFD6A7D949A7FC /* ScriptScheduler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScriptScheduler.h; sourceTree = "<group>"; };
-		5C936A55C74F6B41E9BABBC8 /* Timer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Timer.h; sourceTree = "<group>"; };
-		5C829CB5345D82DBCEBD5506 /* EngineTime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EngineTime.h; sourceTree = "<group>"; };
-		5C8BD76A3FF7EF1E77D918F4 /* ScriptScheduler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptScheduler.cpp; sourceTree = "<group>"; };
-		5CF04AAFAFA2C7D98C3818A9 /* CoroutineClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CoroutineClassesLua.cpp; sourceTree = "<group>"; };
-		5C41FD19F3BE6E6C84520FC6 /* EngineTime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EngineTime.cpp; sourceTree = "<group>"; };
 		71FCE4BC28E0FA01003C5217 /* LuaFunctionBase.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaFunctionBase.h; sourceTree = "<group>"; };
 		71FCE4BD28E0FA01003C5217 /* LuaBridgeAddon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaBridgeAddon.h; sourceTree = "<group>"; };
 		71FCE4C428E0FA31003C5217 /* LuaBridge.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaBridge.h; sourceTree = "<group>"; };
@@ -5734,6 +5782,7 @@
 		48544D4C00000000000001CE /* TypeConverter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TypeConverter.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D1 /* URL.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = URL.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D4 /* Variant.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Variant.cpp; sourceTree = "<group>"; };
+		524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ContextPointer.cpp; sourceTree = "<group>"; };
 		524D4C55D59A80B61DED31AC /* LineClampEllipsis.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LineClampEllipsis.cpp; sourceTree = "<group>"; };
 		524D4C557D0A034BDBCAD8B7 /* TextJustification.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextJustification.cpp; sourceTree = "<group>"; };
 		524D4C559EFCFA10D282503B /* PropertyIdSet.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyIdSet.cpp; sourceTree = "<group>"; };
@@ -5846,7 +5895,11 @@
 		48544D4C0000000000000290 /* librmlui-ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-ios.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		48544D4C0000000000000291 /* librmlui-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		48544D4C00000000000002A6 /* HtmlUIClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClock.h; sourceTree = "<group>"; };
+		4A534E47003429E8B7BC0051 /* UIParticleSystemElement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIParticleSystemElement.h; sourceTree = "<group>"; };
+		4A534E47BAF7E96D3D74E94A /* HtmlTextEffects.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlTextEffects.h; sourceTree = "<group>"; };
 		48544D4C00000000000002A8 /* HtmlUIClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClock.cpp; sourceTree = "<group>"; };
+		4A534E478D592BED4648F8FD /* UIParticleSystemElement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIParticleSystemElement.cpp; sourceTree = "<group>"; };
+		4A534E476A5524DF63B1EDB3 /* HtmlTextEffects.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlTextEffects.cpp; sourceTree = "<group>"; };
 		434F4D50B23E8A28DF9E3D0F /* EffectSimulator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EffectSimulator.h; sourceTree = "<group>"; };
 		434F4D50A333501C6FB22061 /* EffectSimulator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EffectSimulator.cpp; sourceTree = "<group>"; };
 		434F4D503752E7417C733B6D /* EffectValue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EffectValue.h; sourceTree = "<group>"; };
@@ -6914,13 +6967,40 @@
 		4A534E47D1A59D898AF8B4BB /* TrailRenderer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TrailRenderer.h; sourceTree = "<group>"; };
 		4A534E47197C345843945889 /* LineRibbonBuilder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LineRibbonBuilder.h; sourceTree = "<group>"; };
 		4A534E47D89F43391B4A415F /* TrailSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TrailSystem.h; sourceTree = "<group>"; };
+		4A534E4797747B82CF011898 /* EngineTime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EngineTime.cpp; sourceTree = "<group>"; };
+		4A534E47D0853CFF5E642C5C /* CameraShake.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CameraShake.cpp; sourceTree = "<group>"; };
+		4A534E476152A9BE611CA36E /* ShakeInstance.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShakeInstance.cpp; sourceTree = "<group>"; };
+		4A534E47F38859BB0988A617 /* ShakePreset.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShakePreset.cpp; sourceTree = "<group>"; };
+		4A534E474055D2D3C55D7617 /* ShakePresets.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShakePresets.cpp; sourceTree = "<group>"; };
+		4A534E473AF067139F43BD5E /* ShakerRuntime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShakerRuntime.cpp; sourceTree = "<group>"; };
+		4A534E475622761E30F06B44 /* CameraFollow.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CameraFollow.cpp; sourceTree = "<group>"; };
+		4A534E47A0C142BC14B4F575 /* CameraShaker.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CameraShaker.cpp; sourceTree = "<group>"; };
+		4A534E4715AC7BEF8A4014B1 /* ShakePresetPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShakePresetPool.cpp; sourceTree = "<group>"; };
+		4A534E471A684BB3C1D35FD3 /* ScriptScheduler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptScheduler.cpp; sourceTree = "<group>"; };
+		4A534E4702DFA525BC1A4494 /* CoroutineClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CoroutineClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E472D5BDDA43BAF777F /* CameraControlSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CameraControlSystem.cpp; sourceTree = "<group>"; };
+		4A534E477CEC3CA5610A4AFB /* EngineTime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EngineTime.h; sourceTree = "<group>"; };
+		4A534E47B5AA4757EB461A19 /* CameraShake.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraShake.h; sourceTree = "<group>"; };
+		4A534E473E2FABFF3DFC25B1 /* ShakeInstance.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ShakeInstance.h; sourceTree = "<group>"; };
+		4A534E471EDC920A8DCBF993 /* ShakePreset.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ShakePreset.h; sourceTree = "<group>"; };
+		4A534E4775CFE4EABC3BFB73 /* ShakePresets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ShakePresets.h; sourceTree = "<group>"; };
+		4A534E470967CFAF401F9620 /* ShakerRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ShakerRuntime.h; sourceTree = "<group>"; };
+		4A534E476F1D7EA86CAA5EA6 /* CameraFollowComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraFollowComponent.h; sourceTree = "<group>"; };
+		4A534E4755A896E2EFAC63FB /* CameraShakerComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraShakerComponent.h; sourceTree = "<group>"; };
+		4A534E472114016401F2D894 /* Noise.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Noise.h; sourceTree = "<group>"; };
+		4A534E4752CF16E633DF8695 /* CameraFollow.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraFollow.h; sourceTree = "<group>"; };
+		4A534E47E25A1D2272719AB1 /* CameraShaker.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraShaker.h; sourceTree = "<group>"; };
+		4A534E476CC2911518D3103A /* ShakePresetPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ShakePresetPool.h; sourceTree = "<group>"; };
+		4A534E475934CD286A02336B /* ScriptScheduler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScriptScheduler.h; sourceTree = "<group>"; };
+		4A534E47038A75D31A53C3F5 /* Timer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Timer.h; sourceTree = "<group>"; };
+		4A534E47433C8BF3A3471BA4 /* CameraControlSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraControlSystem.h; sourceTree = "<group>"; };
+		4A534E47CB75CAA034603A13 /* CanvasGroupTracks.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CanvasGroupTracks.h; sourceTree = "<group>"; };
 		4A534E4787C9BCF72092DFEE /* Http.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Http.cpp; sourceTree = "<group>"; };
 		4A534E47F788CC244AA03377 /* HttpUtil.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HttpUtil.cpp; sourceTree = "<group>"; };
 		4A534E47C1EA7EEF9E302A12 /* AsyncOwner.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AsyncOwner.cpp; sourceTree = "<group>"; };
 		4A534E47C7032EFC250E9A0E /* NetClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NetClassesLua.cpp; sourceTree = "<group>"; };
 		4A534E47C9ACB5FAD8A291B0 /* MainThreadQueue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MainThreadQueue.cpp; sourceTree = "<group>"; };
 		4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = HttpBackendApple.mm; sourceTree = "<group>"; };
-		4A534E47CB75CAA034603A13 /* CanvasGroupTracks.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CanvasGroupTracks.h; sourceTree = "<group>"; };
 		4A534E4746F0372B5BDC60B0 /* CurlApi.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CurlApi.h; sourceTree = "<group>"; };
 		4A534E4702C5166EB52DF781 /* Http.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Http.h; sourceTree = "<group>"; };
 		4A534E4713FE339C7A9F7A0B /* HttpBackend.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HttpBackend.h; sourceTree = "<group>"; };
@@ -6930,6 +7010,8 @@
 		4A534E4743499EE7BE02622E /* MainThreadQueue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MainThreadQueue.h; sourceTree = "<group>"; };
 		4A534E4730D9EC2E29E781C3 /* Screen.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Screen.cpp; sourceTree = "<group>"; };
 		4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FrameLimiter.cpp; sourceTree = "<group>"; };
+		4A534E4781CB301F7B480963 /* TextEffects.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextEffects.cpp; sourceTree = "<group>"; };
+		4A534E47466B4A02C7A505EF /* CanvasScaler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CanvasScaler.cpp; sourceTree = "<group>"; };
 		4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PlatformRules.cpp; sourceTree = "<group>"; };
 		4A534E471F33544BB442A466 /* Screen.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Screen.h; sourceTree = "<group>"; };
 		4A534E477A428FAA7908B6A0 /* EdgeInsets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EdgeInsets.h; sourceTree = "<group>"; };
@@ -6982,6 +7064,9 @@
 		4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AvatarMaskPool.h; sourceTree = "<group>"; };
 		4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JsonAssetPool.h; sourceTree = "<group>"; };
 		4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ActionSystemPlayersDetail.h; sourceTree = "<group>"; };
+		4A534E47E272DE30F6985277 /* CanvasScalerRef.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CanvasScalerRef.h; sourceTree = "<group>"; };
+		4A534E47ABFE3CB4E3CFD085 /* TextEffects.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextEffects.h; sourceTree = "<group>"; };
+		4A534E47310D1BCA96AE12EB /* CanvasScaler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CanvasScaler.h; sourceTree = "<group>"; };
 		4A534E479442A43A13E74DED /* Av1Decoder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Av1Decoder.cpp; sourceTree = "<group>"; };
 		4A534E47E5A2FD966F40542E /* GrowingFileReader.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GrowingFileReader.cpp; sourceTree = "<group>"; };
 		4A534E47D6E18E1D97CCB989 /* MediaByteSource.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MediaByteSource.cpp; sourceTree = "<group>"; };
@@ -7434,9 +7519,9 @@
 				50314C550000000000000014 /* HtmlUIClassesLua.cpp */,
 				564944450D63D10E11014513 /* HtmlUIMediaLua.cpp */,
 				414E494D4500000000000044 /* HtmlUIAnimeLua.cpp */,
-				5CF04AAFAFA2C7D98C3818A9 /* CoroutineClassesLua.cpp */,
 				505645430000000000000178 /* HtmlUIVectorLua.cpp */,
 				4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */,
+				4A534E4702DFA525BC1A4494 /* CoroutineClassesLua.cpp */,
 				4A534E47C7032EFC250E9A0E /* NetClassesLua.cpp */,
 				4A534E47C4CB6F074423D782 /* NetClassesLua.h */,
 				4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */,
@@ -8338,6 +8423,23 @@
 			path = input;
 			sourceTree = "<group>";
 		};
+		4A534E47BC91C4E5E4FDA2FC /* camera */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E47D0853CFF5E642C5C /* CameraShake.cpp */,
+				4A534E476152A9BE611CA36E /* ShakeInstance.cpp */,
+				4A534E47F38859BB0988A617 /* ShakePreset.cpp */,
+				4A534E474055D2D3C55D7617 /* ShakePresets.cpp */,
+				4A534E473AF067139F43BD5E /* ShakerRuntime.cpp */,
+				4A534E47B5AA4757EB461A19 /* CameraShake.h */,
+				4A534E473E2FABFF3DFC25B1 /* ShakeInstance.h */,
+				4A534E471EDC920A8DCBF993 /* ShakePreset.h */,
+				4A534E4775CFE4EABC3BFB73 /* ShakePresets.h */,
+				4A534E470967CFAF401F9620 /* ShakerRuntime.h */,
+			);
+			path = camera;
+			sourceTree = "<group>";
+		};
 		4A534E47325562508AC85529 /* net */ = {
 			isa = PBXGroup;
 			children = (
@@ -8424,8 +8526,6 @@
 				48544D4C0000000000000047 /* htmlui */,
 				7162FC2B25962A0E0075B97D /* Engine.h */,
 				7162FC7225962A0E0075B97D /* Engine.cpp */,
-				5C829CB5345D82DBCEBD5506 /* EngineTime.h */,
-				5C41FD19F3BE6E6C84520FC6 /* EngineTime.cpp */,
 				175DCCB9300FA22F008C19EC /* Export.h */,
 				F10B0B1E0000000000000005 /* fluid */,
 				7128D05D25BB02F800965B51 /* Input.h */,
@@ -8456,6 +8556,9 @@
 				4A534E472AD0C1A658CC6825 /* physics */,
 				4A534E477E49C8CF16ED0963 /* animation */,
 				4A534E47BC50EC83811560AA /* input */,
+				4A534E4797747B82CF011898 /* EngineTime.cpp */,
+				4A534E47BC91C4E5E4FDA2FC /* camera */,
+				4A534E477CEC3CA5610A4AFB /* EngineTime.h */,
 				4A534E47325562508AC85529 /* net */,
 				4A534E4730D9EC2E29E781C3 /* Screen.cpp */,
 				4A534E471F33544BB442A466 /* Screen.h */,
@@ -8495,6 +8598,7 @@
 				7105CAA62AD61BD5007C91BA /* JoltPhysicsAux.h */,
 				71451BF2270CA3EA00712643 /* SpriteFrameData.h */,
 				71ABBD27277A3210001CE3AF /* STBText.h */,
+				4A534E4707D4DDB4F0BECC9D /* TextGlyphInfo.h */,
 				71ABBD26277A3210001CE3AF /* STBText.cpp */,
 				7128D0AD25BB18DC00965B51 /* StringUtils.h */,
 				48544D4C00000000000002DB /* Utf16Combiner.h */,
@@ -8521,8 +8625,13 @@
 				4A534E47951BAE2F6DCE875F /* PostColorLut.cpp */,
 				4A534E47BE2CA7B811737252 /* PostColorLut.h */,
 				4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */,
+				4A534E4781CB301F7B480963 /* TextEffects.cpp */,
+				4A534E47466B4A02C7A505EF /* CanvasScaler.cpp */,
 				4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */,
 				4A534E47DB493E51DF771D1F /* FrameLimiter.h */,
+				4A534E47E272DE30F6985277 /* CanvasScalerRef.h */,
+				4A534E47ABFE3CB4E3CFD085 /* TextEffects.h */,
+				4A534E47310D1BCA96AE12EB /* CanvasScaler.h */,
 				4A534E47778D99DE934432D4 /* PlatformRules.h */,
 			);
 			path = util;
@@ -8630,6 +8739,7 @@
 				71451BB2270C9D0F00712643 /* SpriteComponent.h */,
 				715CB113288CD3F60049344B /* TerrainComponent.h */,
 				71ABBD11277A3166001CE3AF /* TextComponent.h */,
+				4A534E47796DB3DF40344704 /* TextEffectComponent.h */,
 				713E581427BA9D1300376680 /* InputFieldComponent.h */,
 				71D7494B296731A800348AB8 /* TilemapComponent.h */,
 				71451BB9270C9D0F00712643 /* TweenComponent.h */,
@@ -8647,6 +8757,8 @@
 				4A534E47ECB20D024971B61A /* RagdollComponent.h */,
 				4A534E471E4D971B8C73A691 /* TrailRendererComponent.h */,
 				4A534E47E52435C695296268 /* OnScreenControlComponents.h */,
+				4A534E476F1D7EA86CAA5EA6 /* CameraFollowComponent.h */,
+				4A534E4755A896E2EFAC63FB /* CameraShakerComponent.h */,
 				4A534E47C9EB4F5CD128ABB8 /* VideoPlayerComponent.h */,
 			);
 			path = component;
@@ -8685,6 +8797,7 @@
 				4A534E47B61DB73C5C1B6ABF /* AnimationCurve.h */,
 				4A534E475BFC5BBB38279DB9 /* Gradient.h */,
 				4A534E477A428FAA7908B6A0 /* EdgeInsets.h */,
+				4A534E472114016401F2D894 /* Noise.h */,
 			);
 			path = math;
 			sourceTree = "<group>";
@@ -8742,6 +8855,10 @@
 				4A534E47E1D001E6946218B1 /* VertexAnimator.h */,
 				4A534E4759A335399714FD33 /* TrailRenderer.cpp */,
 				4A534E47D1A59D898AF8B4BB /* TrailRenderer.h */,
+				4A534E475622761E30F06B44 /* CameraFollow.cpp */,
+				4A534E47A0C142BC14B4F575 /* CameraShaker.cpp */,
+				4A534E4752CF16E633DF8695 /* CameraFollow.h */,
+				4A534E47E25A1D2272719AB1 /* CameraShaker.h */,
 				4A534E47CE10E825FF34974A /* VideoPlayer.cpp */,
 				4A534E477741740820D741F9 /* VideoPlayer.h */,
 			);
@@ -8808,6 +8925,8 @@
 				4A534E470FE648ABDB388822 /* ActionSystemLayers.cpp */,
 				4A534E4714F69319B4C8EADD /* ActionSystemController.cpp */,
 				4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */,
+				4A534E472D5BDDA43BAF777F /* CameraControlSystem.cpp */,
+				4A534E47433C8BF3A3471BA4 /* CameraControlSystem.h */,
 				4A534E47456C3BFEBD9D2182 /* VideoPlayerSystem.cpp */,
 				4A534E47D88DB63824966935 /* VideoPlayerSystem.h */,
 			);
@@ -9818,6 +9937,7 @@
 				71033D682BD1A7F000D81FB5 /* Scrollbar.h */,
 				71033D672BD1A7F000D81FB5 /* Scrollbar.cpp */,
 				71ABBD19277A31BA001CE3AF /* Text.h */,
+				4A534E470BB9A69CE1A89342 /* TextEffect.h */,
 				71ABBD18277A31BA001CE3AF /* Text.cpp */,
 				713E580B27BA9CE400376680 /* InputField.h */,
 				713E580927BA9CE400376680 /* InputField.cpp */,
@@ -9946,9 +10066,6 @@
 				71FCE4BB28E0FA01003C5217 /* LuaFunctionBase.cpp */,
 				5CE4F17FDC667A00AD056E88 /* LuaJson.h */,
 				5C1D155A15509F2C1C2A0CA1 /* LuaJson.cpp */,
-				5C601CE397BFD6A7D949A7FC /* ScriptScheduler.h */,
-				5C8BD76A3FF7EF1E77D918F4 /* ScriptScheduler.cpp */,
-				5C936A55C74F6B41E9BABBC8 /* Timer.h */,
 				71BE623025B1DB9D006D6E02 /* LuaScript.h */,
 				71BE622F25B1DB9D006D6E02 /* LuaScript.cpp */,
 				71AD5E6D2E9F2B86004951AB /* ScriptBase.h */,
@@ -9961,6 +10078,9 @@
 				4A534E47752AE757CAFC728C /* ScriptRuntime.cpp */,
 				4A534E473B9ADEBA91C10EBA /* ScriptEvent.h */,
 				4A534E4700754C227C4F1876 /* ScriptRuntime.h */,
+				4A534E471A684BB3C1D35FD3 /* ScriptScheduler.cpp */,
+				4A534E475934CD286A02336B /* ScriptScheduler.h */,
+				4A534E47038A75D31A53C3F5 /* Timer.h */,
 				4A534E47C1EA7EEF9E302A12 /* AsyncOwner.cpp */,
 				4A534E4740FD2A72CFB10C16 /* AsyncOwner.h */,
 			);
@@ -9999,6 +10119,8 @@
 				4A534E476874CEB8B84CDC87 /* AnimatorControllerPool.h */,
 				4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */,
 				4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */,
+				4A534E4715AC7BEF8A4014B1 /* ShakePresetPool.cpp */,
+				4A534E476CC2911518D3103A /* ShakePresetPool.h */,
 			);
 			path = pool;
 			sourceTree = "<group>";
@@ -10627,7 +10749,11 @@
 				48544D4C0000000000000001 /* HtmlUI.h */,
 				48544D4C0000000000000003 /* HtmlUI.cpp */,
 				48544D4C00000000000002A6 /* HtmlUIClock.h */,
+				4A534E47003429E8B7BC0051 /* UIParticleSystemElement.h */,
+				4A534E47BAF7E96D3D74E94A /* HtmlTextEffects.h */,
 				48544D4C00000000000002A8 /* HtmlUIClock.cpp */,
+				4A534E478D592BED4648F8FD /* UIParticleSystemElement.cpp */,
+				4A534E476A5524DF63B1EDB3 /* HtmlTextEffects.cpp */,
 				48544D4CD1BC6E137B04E6B6 /* HtmlUIInspector.h */,
 				48544D4C1D9C506F82E136FE /* HtmlUIInspector.cpp */,
 				48544D4CF6E10DE1E9E06189 /* HtmlUIInspectorInternal.h */,
@@ -10853,6 +10979,7 @@
 				524D4C559EFCFA10D282503B /* PropertyIdSet.cpp */,
 				524D4C557D0A034BDBCAD8B7 /* TextJustification.cpp */,
 				524D4C55D59A80B61DED31AC /* LineClampEllipsis.cpp */,
+				524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */,
 			);
 			name = Core;
 			path = Source/Core;
@@ -12125,6 +12252,7 @@
 				71ABBD382791167A001CE3AF /* UIComponent.h in Headers */,
 				71BE623E25B1DB9E006D6E02 /* LuaScript.h in Headers */,
 				71ABBD1E277A31BA001CE3AF /* Text.h in Headers */,
+				4A534E471345135D2F624DEC /* TextEffect.h in Headers */,
 				7126757E2B65F4470031089C /* LineRendererComponent.h in Headers */,
 				71E54505284D5BB700C68FAB /* TranslateTracks.h in Headers */,
 				7157344C2D9A23A40078952E /* OBB.h in Headers */,
@@ -12159,6 +12287,7 @@
 				17C554F82FB903B0008804C2 /* ModelPool.h in Headers */,
 				71C005C2D2E7A0100C91BA00 /* MeshLodPool.h in Headers */,
 				71ABBD2B277A3210001CE3AF /* STBText.h in Headers */,
+				4A534E47ADA850E0B9F100AA /* TextGlyphInfo.h in Headers */,
 				71CC839726B8C4D800EEBB93 /* Light.h in Headers */,
 				717D9B4127337850002C0803 /* ParticleSystemComponent.h in Headers */,
 				715CB119288CD40E0049344B /* Terrain.h in Headers */,
@@ -12209,6 +12338,7 @@
 				7105A55A28B305910092EA05 /* Color.h in Headers */,
 				71ABBD342783C8BB001CE3AF /* Image.h in Headers */,
 				71ABBD13277A3166001CE3AF /* TextComponent.h in Headers */,
+				4A534E4719F000D92EF9191D /* TextEffectComponent.h in Headers */,
 				71E5450C284D5BB700C68FAB /* ScaleTracks.h in Headers */,
 				71E54515284D5BE000C68FAB /* AnimationComponent.h in Headers */,
 				71ABBD2C277A3210001CE3AF /* DefaultFont.h in Headers */,
@@ -12257,6 +12387,8 @@
 				717AD9862919E1CB007D7DB5 /* RectTransform.h in Headers */,
 				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
 				48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */,
+				4A534E471C3F4DAB332F96BE /* UIParticleSystemElement.h in Headers */,
+				4A534E470F6F1615323BCE7C /* HtmlTextEffects.h in Headers */,
 				434F4D507A858F2513B7D0C0 /* EffectSimulator.h in Headers */,
 				434F4D505B1F49763171CF59 /* EffectValue.h in Headers */,
 				434F4D5011BEA07CC8A2964F /* EffectTypes.h in Headers */,
@@ -12460,6 +12592,21 @@
 				4A534E471ECC1F0F8A111EDB /* TrailRenderer.h in Headers */,
 				4A534E478F589171F02F0B63 /* LineRibbonBuilder.h in Headers */,
 				4A534E47212823E1E8889FB7 /* TrailSystem.h in Headers */,
+				4A534E474A9B15BC1B4DACFB /* EngineTime.h in Headers */,
+				4A534E4762CBD67A870F694C /* CameraShake.h in Headers */,
+				4A534E47F2C776DE753EF7DC /* ShakeInstance.h in Headers */,
+				4A534E47B52C287852EA96A5 /* ShakePreset.h in Headers */,
+				4A534E47BE2C756D9CCE7E22 /* ShakePresets.h in Headers */,
+				4A534E474047CEFF2E9BF559 /* ShakerRuntime.h in Headers */,
+				4A534E47ABFEE84C719133EE /* CameraFollowComponent.h in Headers */,
+				4A534E471E1D2C7A5EC6A0F9 /* CameraShakerComponent.h in Headers */,
+				4A534E47F7F5B092AAE26B95 /* Noise.h in Headers */,
+				4A534E47ED1D3D47390E6782 /* CameraFollow.h in Headers */,
+				4A534E474F36FD3C48FFD8B5 /* CameraShaker.h in Headers */,
+				4A534E4702AEE79808235DC3 /* ShakePresetPool.h in Headers */,
+				4A534E47F95594DF4FF074F3 /* ScriptScheduler.h in Headers */,
+				4A534E47F6A4FDB2A0324746 /* Timer.h in Headers */,
+				4A534E47CE1FCBE31631EF08 /* CameraControlSystem.h in Headers */,
 				4A534E47759C736B9546FF1B /* CanvasGroupTracks.h in Headers */,
 				4A534E47C85979F7504AB7AC /* CurlApi.h in Headers */,
 				4A534E472BD874B8DCF6E3EC /* Http.h in Headers */,
@@ -12495,6 +12642,9 @@
 				4A534E474B028A49F22E7413 /* AvatarMaskPool.h in Headers */,
 				4A534E4790F1AB4DDB5485FE /* JsonAssetPool.h in Headers */,
 				4A534E47658965B013EA1310 /* ActionSystemPlayersDetail.h in Headers */,
+				4A534E4745BC31F5DF7490B9 /* CanvasScalerRef.h in Headers */,
+				4A534E4748DA23385687367C /* TextEffects.h in Headers */,
+				4A534E470113400EA26A0D56 /* CanvasScaler.h in Headers */,
 				4A534E4705C16683AC529361 /* VideoPlayerComponent.h in Headers */,
 				4A534E478EF7E7AAB5A6FAAB /* GrowingFileReader.h in Headers */,
 				4A534E4741E5E7B5BE0371AB /* IVideoSource.h in Headers */,
@@ -14249,9 +14399,6 @@
 				713D829C259D307F00567F9F /* CameraRender.cpp in Sources */,
 				71FCE4C028E0FA01003C5217 /* LuaFunctionBase.cpp in Sources */,
 				5C72896B6774821F58C7FFE8 /* LuaJson.cpp in Sources */,
-				5C3BEC6A230B027038CFB065 /* ScriptScheduler.cpp in Sources */,
-				5CDD7FFB6F3FFF44D5F63680 /* CoroutineClassesLua.cpp in Sources */,
-				5C96984210E9C63A8E91FC8B /* EngineTime.cpp in Sources */,
 				71451BE5270CA17F00712643 /* Action.cpp in Sources */,
 				71165BC0282981BE00CF79C1 /* Base64.cpp in Sources */,
 				713D829D259D307F00567F9F /* Vector4.cpp in Sources */,
@@ -14360,6 +14507,8 @@
 				713D82B7259D307F00567F9F /* SokolCamera.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
+				4A534E4771ADCA4EFFFC68F6 /* UIParticleSystemElement.cpp in Sources */,
+				4A534E479E432B7A243D7B2C /* HtmlTextEffects.cpp in Sources */,
 				434F4D5022D0B1A30CA129C1 /* EffectSimulator.cpp in Sources */,
 				434F4D503637B31EF1ABE22A /* EffectValue.cpp in Sources */,
 				434F4D5018A8FE224E1B3193 /* EffectSyntax.cpp in Sources */,
@@ -14580,6 +14729,18 @@
 				4A534E47CB7C331EE90C2019 /* TrailRenderer.cpp in Sources */,
 				4A534E474FD048B43C95AA02 /* LineRibbonBuilder.cpp in Sources */,
 				4A534E47C826FA60D57B648C /* TrailSystem.cpp in Sources */,
+				4A534E479F3BE7035D7F4D90 /* EngineTime.cpp in Sources */,
+				4A534E47048BE5CDF2664DF4 /* CameraShake.cpp in Sources */,
+				4A534E4746EC17F97BB42ED1 /* ShakeInstance.cpp in Sources */,
+				4A534E47D9D7FAB57F144485 /* ShakePreset.cpp in Sources */,
+				4A534E477D68B797CADBE48E /* ShakePresets.cpp in Sources */,
+				4A534E478D983354706E9325 /* ShakerRuntime.cpp in Sources */,
+				4A534E47C26B54EF4E5BDC09 /* CameraFollow.cpp in Sources */,
+				4A534E47BADBC140AE5B070C /* CameraShaker.cpp in Sources */,
+				4A534E4739799404EF91B066 /* ShakePresetPool.cpp in Sources */,
+				4A534E479DE1B0E1D1CEB86B /* ScriptScheduler.cpp in Sources */,
+				4A534E47E6723A34FDEBCB89 /* CoroutineClassesLua.cpp in Sources */,
+				4A534E47ACA96965B76DFE3C /* CameraControlSystem.cpp in Sources */,
 				4A534E47AC37D409692AA7D7 /* Http.cpp in Sources */,
 				4A534E4707D0FB4D966D8BE5 /* HttpUtil.cpp in Sources */,
 				4A534E4768DDBB2353D5C83D /* AsyncOwner.cpp in Sources */,
@@ -14613,6 +14774,8 @@
 				4A534E4792CE3E8DF5963EC5 /* AnimatorControllerPool.cpp in Sources */,
 				4A534E47DC0E92FD3966E7E3 /* ActionSystemLayers.cpp in Sources */,
 				4A534E470D249A6CD7FD5DDC /* ActionSystemController.cpp in Sources */,
+				4A534E47C144534CF4FEA79E /* TextEffects.cpp in Sources */,
+				4A534E4724C240F5D9AD0E03 /* CanvasScaler.cpp in Sources */,
 				4A534E472C14B7D5E015EE49 /* Av1Decoder.cpp in Sources */,
 				4A534E47A43E38BFF8148009 /* GrowingFileReader.cpp in Sources */,
 				4A534E473BF24B705C04A185 /* MediaByteSource.cpp in Sources */,
@@ -14743,9 +14906,6 @@
 				7162FD2125963AE00075B97D /* ObjectRender.cpp in Sources */,
 				71FCE4BF28E0FA01003C5217 /* LuaFunctionBase.cpp in Sources */,
 				5C53A5D162D9C346844CB8CB /* LuaJson.cpp in Sources */,
-				5C7722CA13C8F27169D0B74F /* ScriptScheduler.cpp in Sources */,
-				5C2971B8BC53558DD35F4A85 /* CoroutineClassesLua.cpp in Sources */,
-				5CC0078C861242152915F064 /* EngineTime.cpp in Sources */,
 				71451BE4270CA17F00712643 /* Action.cpp in Sources */,
 				71165BBF282981BE00CF79C1 /* Base64.cpp in Sources */,
 				7162FD2325963AE00075B97D /* TextureRender.cpp in Sources */,
@@ -14854,6 +15014,8 @@
 				7162FD6025963AE10075B97D /* IndexBuffer.cpp in Sources */,
 				48544D4C0000000000000005 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */,
+				4A534E47A87B6802B44200F7 /* UIParticleSystemElement.cpp in Sources */,
+				4A534E47AB42BF2CCC559963 /* HtmlTextEffects.cpp in Sources */,
 				434F4D504F4AFBC2FF2FA6C1 /* EffectSimulator.cpp in Sources */,
 				434F4D5043DC7783C361E7D8 /* EffectValue.cpp in Sources */,
 				434F4D50E16C78090E603422 /* EffectSyntax.cpp in Sources */,
@@ -15074,6 +15236,18 @@
 				4A534E47666B66B24871AAA0 /* TrailRenderer.cpp in Sources */,
 				4A534E47F807A7F7B7DC0936 /* LineRibbonBuilder.cpp in Sources */,
 				4A534E479399C2E0EAF5A3C3 /* TrailSystem.cpp in Sources */,
+				4A534E472A1484C39C524E8C /* EngineTime.cpp in Sources */,
+				4A534E47074A94244F2B20FB /* CameraShake.cpp in Sources */,
+				4A534E47725D6230B1B873F3 /* ShakeInstance.cpp in Sources */,
+				4A534E4784D1DA85F005B40D /* ShakePreset.cpp in Sources */,
+				4A534E47596A1290685F8DCB /* ShakePresets.cpp in Sources */,
+				4A534E47638384C30E26EFE7 /* ShakerRuntime.cpp in Sources */,
+				4A534E4725CB54339B6279C7 /* CameraFollow.cpp in Sources */,
+				4A534E4707E0059A2D9869E3 /* CameraShaker.cpp in Sources */,
+				4A534E475B2541096B24D6E9 /* ShakePresetPool.cpp in Sources */,
+				4A534E4758155DCB1F5F3A3C /* ScriptScheduler.cpp in Sources */,
+				4A534E4719BB138CE097F966 /* CoroutineClassesLua.cpp in Sources */,
+				4A534E47D024053B56F36067 /* CameraControlSystem.cpp in Sources */,
 				4A534E47947208F6A52C0D79 /* Http.cpp in Sources */,
 				4A534E47271657C6F28FFA0A /* HttpUtil.cpp in Sources */,
 				4A534E47951C64628BDACD07 /* AsyncOwner.cpp in Sources */,
@@ -15107,6 +15281,8 @@
 				4A534E4784007B7DE713386D /* AnimatorControllerPool.cpp in Sources */,
 				4A534E47B6383C70AF9337CE /* ActionSystemLayers.cpp in Sources */,
 				4A534E4765A4B02E89DDFB2A /* ActionSystemController.cpp in Sources */,
+				4A534E4702A81B13C975CC0E /* TextEffects.cpp in Sources */,
+				4A534E47361DD5D17268777C /* CanvasScaler.cpp in Sources */,
 				4A534E470F8E323359FF74EC /* Av1Decoder.cpp in Sources */,
 				4A534E47E778CBEE07991DE2 /* GrowingFileReader.cpp in Sources */,
 				4A534E47634D2ACB1B0FAB2B /* MediaByteSource.cpp in Sources */,
@@ -15699,6 +15875,7 @@
 				48544D4C00000000000001CF /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D2 /* URL.cpp in Sources */,
 				48544D4C00000000000001D5 /* Variant.cpp in Sources */,
+				524D4C55B75762B8FB50E4A0 /* ContextPointer.cpp in Sources */,
 				524D4C554044E87D2818FC4D /* LineClampEllipsis.cpp in Sources */,
 				524D4C551FF1B7571B423E99 /* TextJustification.cpp in Sources */,
 				524D4C55280D970116FCD657 /* PropertyIdSet.cpp in Sources */,
@@ -15953,6 +16130,7 @@
 				48544D4C00000000000001D0 /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D3 /* URL.cpp in Sources */,
 				48544D4C00000000000001D6 /* Variant.cpp in Sources */,
+				524D4C55BAE4061CA1A51C86 /* ContextPointer.cpp in Sources */,
 				524D4C556D598CE64B555B31 /* LineClampEllipsis.cpp in Sources */,
 				524D4C555F4819C5AB209F97 /* TextJustification.cpp in Sources */,
 				524D4C55D86EF33DDCE0322D /* PropertyIdSet.cpp in Sources */,

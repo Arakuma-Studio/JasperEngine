@@ -62,6 +62,7 @@ namespace {
         {RewriteId::ClipPath, rewriteClipPath},
         {RewriteId::ListStyle, rewriteListStyle},
         {RewriteId::ObjectFit, rewriteObjectFit},
+        {RewriteId::TextEffect, rewriteTextEffect},
         {RewriteId::ImageRendering, rewriteImageRendering},
         {RewriteId::AccentColor, rewriteAccentColor},
         {RewriteId::Appearance, rewriteAppearance},

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // W4: assets, import, materials, shaders, text files, placeholder art
+#include "camera/ShakePreset.h"
+#include "camera/ShakeInstance.h"
 #include "media/VideoFormats.h"
 #include "media/VideoSourceFactory.h"
 #include "McpTools.h"
@@ -936,6 +938,32 @@ void getAssetInfoTool(const CallPtr& call) {
     } else if (kind == "vertex_animation") {
         // a .vat: mode, clips, layout, stats, staleness against its recipe, the Vertex Animators using it
         vatAssetInfo(project, file, data, text);
+    } else if (kind == "shake") {
+        // a .shake: its values and the peaks of its graph (the Inspector's: 60 Hz, seed 0)
+        std::string source;
+        ProjectChecks::readFile(file, source);
+        const camera::ShakeParseResult parsed = camera::parseShakePreset(source);
+        if (!parsed.ok()) {
+            data["error"] = parsed.errorText();
+            text += "; not a valid shake preset: " + parsed.errorText();
+        } else {
+            const camera::ShakePreset& preset = parsed.file->preset;
+            const float duration = camera::shakePreviewDuration(preset);
+            const camera::ShakeOffset peaks = camera::shakeOffsetPeaks(camera::sampleShakePreset(preset, duration, 60.0f, 0));
+            data["shake"] = {{"type", camera::shakeTypeName(preset.type)}, {"strength", McpValues::number(preset.strength)},
+                             {"roughness", McpValues::number(preset.roughness)}, {"fade_in", McpValues::number(preset.fadeIn)},
+                             {"fade_out", McpValues::number(preset.fadeOut)},
+                             {"position_influence", McpValues::toJson(preset.positionInfluence)},
+                             {"rotation_influence", McpValues::toJson(preset.rotationInfluence)}};
+            data["peak"] = {{"position", McpValues::toJson(peaks.position)}, {"rotation", McpValues::toJson(peaks.rotation)},
+                            {"duration", McpValues::number(duration)}};
+            if (!parsed.warnings.empty()) data["warnings"] = parsed.warnings;
+            char summary[160];
+            std::snprintf(summary, sizeof(summary), "; %s shake, strength %g, roughness %g; peak rotation %.2f deg",
+                          camera::shakeTypeName(preset.type), preset.strength, preset.roughness,
+                          std::max(peaks.rotation.x, std::max(peaks.rotation.y, peaks.rotation.z)));
+            text += summary;
+        }
     }
     if (kind == "model" && rel.size() > 8 && Util::isVertexAnimationFile(rel.substr(0, rel.size() - 4))) {
         // "<stem>.vat.glb": the baked mesh and payload of the .vat next to it
@@ -1200,6 +1228,18 @@ void writeFileTool(const CallPtr& call) {
             return;
         }
     }
+    // Shake Presets must stay readable (the shakers load them): content problems are warnings
+    std::vector<std::string> shakeWarnings;
+    if (Util::isShakePresetFile(rel)) {
+        const camera::ShakeParseResult parsed = camera::parseShakePreset(content);
+        if (!parsed.ok()) {
+            call->fail("Not a valid shake preset: " + parsed.errorText() + ". The format: {\"format\": \"jasperengine.shake\", "
+                       "\"version\": 1, \"type\", \"strength\", \"roughness\", \"fade_in\", \"fade_out\", \"position_influence\", "
+                       "\"rotation_influence\"} (jasper://docs/camera).");
+            return;
+        }
+        shakeWarnings = parsed.warnings;
+    }
     // Vertex Animations must stay loadable: generated fields are the baker's (rebake), the rest are warnings
     std::vector<std::string> vatWarnings;
     if (Util::isVertexAnimationFile(rel)) {
@@ -1239,6 +1279,11 @@ void writeFileTool(const CallPtr& call) {
         text += animWarnings.empty() ? std::string(" Valid ") + kind + " (its players reload)."
                                      : std::string(" ") + kind + " loads with " + std::to_string(animWarnings.size()) + " warning(s):";
         for (size_t i = 0; i < animWarnings.size() && i < 8; i++) text += "\n" + animWarnings[i];
+    } else if (Util::isShakePresetFile(rel)) {
+        data["warnings"] = shakeWarnings;
+        text += shakeWarnings.empty() ? std::string(" Valid shake preset.") : " Shake preset loads with " + std::to_string(shakeWarnings.size()) +
+                                                                            " warning(s) (bad values repaired):";
+        for (size_t i = 0; i < shakeWarnings.size() && i < 8; i++) text += "\n" + shakeWarnings[i];
     } else if (Util::isAnimationClipFile(rel)) {
         data["warnings"] = clipWarnings;
         text += clipWarnings.empty() ? std::string(" Valid clip.") : " Clip loads with " + std::to_string(clipWarnings.size()) + " warning(s) (the bad parts are dropped):";
@@ -3503,7 +3548,7 @@ void searchFilesTool(const CallPtr& call) {
 void registerAssetTools(McpRegistry& registry) {
     using namespace schema;
 
-    const std::vector<std::string> types = {"any", "texture", "model", "audio", "font", "html", "css", "script", "scene", "prefab", "material", "shader", "animation", "vertex_animation", "folder", "other"};
+    const std::vector<std::string> types = {"any", "texture", "model", "audio", "font", "html", "css", "script", "scene", "prefab", "material", "shader", "animation", "vertex_animation", "shake", "folder", "other"};
 
     {
         ToolDef tool;

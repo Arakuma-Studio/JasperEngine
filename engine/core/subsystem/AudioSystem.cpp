@@ -411,7 +411,8 @@ void AudioSystem::update(double dt){
 
                         Vector3 camWorldPos = cameraTransform.worldPosition;
                         Vector3 camWorldView = camera.worldTarget - camWorldPos;
-                        Vector3 camWorldUp = camera.worldUp;
+                        // the unshaken view: a Camera Shaker never turns the listener
+                        Vector3 camWorldUp = camera.steadyWorldUp;
                         Vector3 camVelocity = cameraLastPosition - camWorldPos;
 
                         unsigned int attModel = SoLoud::AudioSource::NO_ATTENUATION;
@@ -455,7 +456,7 @@ void AudioSystem::placeListener(Scene& listenerScene){
     const Transform& cameraTransform = listenerScene.getComponent<Transform>(listenerScene.getCamera());
     const Vector3 position = cameraTransform.worldPosition;
     const Vector3 view = camera.worldTarget - position;
-    const Vector3 up = camera.worldUp;
+    const Vector3 up = camera.steadyWorldUp;  // unshaken (Camera Shaker)
     const Vector3 velocity = cameraLastPosition - position;
     getSoloud().set3dListenerParameters(position.x, position.y, position.z, view.x, view.y, view.z,
                                         up.x, up.y, up.z, velocity.x, velocity.y, velocity.z);

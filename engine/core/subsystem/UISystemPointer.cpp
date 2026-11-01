@@ -847,6 +847,8 @@ void UISystem::applyScrollbarPointerPosition(Entity entity, float x, float y){
 // ---- the entry points
 
 bool UISystem::eventOnPointerDown(int pointerId, int button, float x, float y, bool touch){
+    // canvas pixels to UI units (the scene's Canvas Scaler; the same point without one)
+    toUISpace(x, y);
     // a script may have changed a Canvas Group since the last frame (blocksRaycasts, interactable)
     syncCanvasGroups();
     validatePointers();
@@ -991,6 +993,7 @@ bool UISystem::eventOnPointerDown(int pointerId, int button, float x, float y, b
 }
 
 bool UISystem::eventOnPointerMove(int pointerId, float x, float y, bool touch){
+    toUISpace(x, y);
     syncCanvasGroups();
     validatePointers();
 
@@ -1152,6 +1155,7 @@ bool UISystem::eventOnPointerMove(int pointerId, float x, float y, bool touch){
 bool UISystem::eventOnPointerUp(int pointerId, int button, float x, float y, bool touch){
     (void)button;
     (void)touch;
+    toUISpace(x, y);
     syncCanvasGroups();
     validatePointers();
 

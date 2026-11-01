@@ -12,6 +12,7 @@
 #include "math/Quaternion.h"
 #include "math/Matrix4.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/TextEffectComponent.h"
 #include "component/TrailRendererComponent.h"
 #include "math/AnimationCurve.h"
 #include "math/Gradient.h"
@@ -290,6 +291,10 @@ namespace jasperengine::editor {
         static void decodeRibbonFields(const YAML::Node& node, T& component, const T& defaults);
 
     public:
+        // the Canvas Scaler: only the fields that differ from the defaults (project.yaml uiScale,
+        // a scene's canvasScaler); decode starts from the defaults
+        static YAML::Node encodeCanvasScaler(const CanvasScalerSettings& settings);
+        static CanvasScalerSettings decodeCanvasScaler(const YAML::Node& node);
         // custom-block members that follow a global shader value: {member: global}
         static YAML::Node encodeShaderGlobalBindings(const ShaderGlobalBindings& bindings);
         static ShaderGlobalBindings decodeShaderGlobalBindings(const YAML::Node& node);
@@ -477,6 +482,11 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeTextComponent(const TextComponent& text);
         static TextComponent decodeTextComponent(const YAML::Node& node, const TextComponent* oldText = nullptr);
+        // only what differs from the defaults (old scenes re-save byte-identical)
+        static YAML::Node encodeTextEffectComponent(const TextEffectComponent& effect);
+        static TextEffectComponent decodeTextEffectComponent(const YAML::Node& node, const TextEffectComponent* oldEffect = nullptr);
+        static YAML::Node encodeTextEffectLayer(const TextEffectLayer& layer);
+        static TextEffectLayer decodeTextEffectLayer(const YAML::Node& node);
 
         static YAML::Node encodeImageComponent(const ImageComponent& image);
         static ImageComponent decodeImageComponent(const YAML::Node& node, const ImageComponent* oldImage = nullptr);
@@ -541,6 +551,13 @@ namespace jasperengine::editor {
         // written when empty), attachments[] are {socket, entity}. Decoding never loads; over an
         // old component everything it played is reset (the system starts it again) except the
         // editor's Preview toggle, and the callbacks are cleared.
+        // camera shake spec 7.1: the authored fields (each written; a missing key decodes to its
+        // default); decoding over an existing component keeps its runtime (the shakes play on)
+        static YAML::Node encodeCameraShakerComponent(const CameraShakerComponent& shaker);
+        static CameraShakerComponent decodeCameraShakerComponent(const YAML::Node& node, const CameraShakerComponent* oldShaker = nullptr);
+        static YAML::Node encodeCameraFollowComponent(const CameraFollowComponent& follow);
+        static CameraFollowComponent decodeCameraFollowComponent(const YAML::Node& node, const CameraFollowComponent* oldFollow = nullptr);
+
         static YAML::Node encodeVertexAnimatorComponent(const VertexAnimatorComponent& animator);
         static VertexAnimatorComponent decodeVertexAnimatorComponent(const YAML::Node& node, const VertexAnimatorComponent* oldAnimator = nullptr);
 

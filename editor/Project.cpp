@@ -60,6 +60,7 @@
 #include "subsystem/VertexAnimatorSystem.h"
 #include "subsystem/VideoPlayerSystem.h"
 #include "subsystem/TrailSystem.h"
+#include "subsystem/CameraControlSystem.h"
 #include "pose/ModelRig.h"
 #include "pose/PoseAnimatorRuntime.h"
 #include "animation/ModelSubClips.h"
@@ -737,6 +738,18 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
         if (transform(path) && !path.empty() && path != animator.animation) {
             animator.animation = path;
             animator.needsLoad = true;
+            changed = true;
+        }
+    });
+
+    // Camera Shaker: a start preset that is a .shake file (a built-in name is no path)
+    visitComponents(registry->getComponentArray<CameraShakerComponent>(), [&](CameraShakerComponent& shaker) {
+        if (shaker.startPreset.size() <= 6 || shaker.startPreset.compare(shaker.startPreset.size() - 6, 6, ".shake") != 0) {
+            return;
+        }
+        std::string path = shaker.startPreset;
+        if (transform(path) && !path.empty() && path != shaker.startPreset) {
+            shaker.startPreset = path;
             changed = true;
         }
     });
@@ -2271,19 +2284,25 @@ editor::SceneRender* editor::Project::createSceneRender(SceneType type, Scene* s
     }
 
     pauseEngineScene(scene, true);
-    scene->getSystem<UISystem>()->setAnchorReferenceSize(canvasWidth, canvasHeight);
-    scene->getSystem<UIDocumentSystem>()->setReferenceSize(canvasWidth, canvasHeight);
 
+    SceneRender* sceneRender = nullptr;
     switch (type) {
-        case SceneType::SCENE_3D:
-            return new SceneRender3D(scene);
         case SceneType::SCENE_2D:
-            return new SceneRender2D(scene, canvasWidth, canvasHeight, false);
+            sceneRender = new SceneRender2D(scene, canvasWidth, canvasHeight, false);
+            break;
         case SceneType::SCENE_UI:
-            return new SceneRender2D(scene, canvasWidth, canvasHeight, true);
+            sceneRender = new SceneRender2D(scene, canvasWidth, canvasHeight, true);
+            break;
+        case SceneType::SCENE_3D:
         default:
-            return new SceneRender3D(scene);
+            sceneRender = new SceneRender3D(scene);
+            break;
     }
+
+    // the UI size of the scene's Canvas Scaler for the Game view (the canvas when it follows it)
+    applyEditCanvasScale(scene, type, sceneRender);
+
+    return sceneRender;
 }
 
 Entity editor::Project::createDefaultCamera(SceneType type, Scene* scene) const {
@@ -2363,10 +2382,9 @@ void editor::Project::setCanvasSize(unsigned int width, unsigned int height){
             continue;
         }
 
-        sceneProject.scene->getSystem<UISystem>()->setAnchorReferenceSize(width, height);
-        sceneProject.scene->getSystem<UIDocumentSystem>()->setReferenceSize(width, height);
-
-        if (sceneProject.sceneRender && sceneProject.sceneType != SceneType::SCENE_3D) {
+        if (sceneProject.playState == ScenePlayState::STOPPED) {
+            applyEditCanvasScale(sceneProject.scene, sceneProject.sceneType, sceneProject.sceneRender);
+        } else if (sceneProject.sceneRender && sceneProject.sceneType != SceneType::SCENE_3D) {
             static_cast<SceneRender2D*>(sceneProject.sceneRender)->setCanvasFrameSize(width, height);
         }
 
@@ -2388,6 +2406,80 @@ void editor::Project::setScalingMode(Scaling scalingMode){
 
 Scaling editor::Project::getScalingMode() const{
     return scalingMode;
+}
+
+void editor::Project::setUIScale(const CanvasScalerSettings& uiScale){
+    this->uiScale = uiScale;
+    // the Engine's default is what edit-mode scenes on the project default resolve to as well
+    Engine::setDefaultCanvasScaler(uiScale);
+    applyEditCanvasScaleToAll();
+}
+
+const CanvasScalerSettings& editor::Project::getUIScale() const{
+    return uiScale;
+}
+
+void editor::Project::setEditViewSize(float width, float height, float dpi){
+    if (width == editViewWidth && height == editViewHeight && dpi == editViewDpi)
+        return;
+    editViewWidth = width;
+    editViewHeight = height;
+    editViewDpi = dpi;
+    applyEditCanvasScaleToAll();
+}
+
+void editor::Project::getEditViewSize(float& width, float& height, float& dpi) const{
+    width = (editViewWidth > 0.0f) ? editViewWidth : (float)canvasWidth;
+    height = (editViewHeight > 0.0f) ? editViewHeight : (float)canvasHeight;
+    dpi = editViewDpi;
+}
+
+void editor::Project::applyEditCanvasScale(Scene* scene, SceneType type, SceneRender* sceneRender) const{
+    if (!scene)
+        return;
+
+    // the Canvas Scaler as the Game view's game would compute it: its view and the game
+    // canvas the scaling mode gives that view. Edit mode lays out the project canvas, as before,
+    // unless the scaler changes the UI size.
+    float viewWidth, viewHeight, dpi;
+    getEditViewSize(viewWidth, viewHeight, dpi);
+    int gameCanvasWidth = (int)canvasWidth, gameCanvasHeight = (int)canvasHeight;
+    Rect viewRect;
+    Engine::computeViewLayout((int)std::lround(viewWidth), (int)std::lround(viewHeight), (int)canvasWidth, (int)canvasHeight, scalingMode,
+                              gameCanvasWidth, gameCanvasHeight, viewRect);
+    scene->updateCanvasScale(viewRect.getWidth(), viewRect.getHeight(), (float)gameCanvasWidth, (float)gameCanvasHeight, dpi);
+
+    const CanvasScalerResult& scale = scene->getCanvasScale();
+    const bool uiScaled = scale.scaled && type == SceneType::SCENE_UI;
+    const float frameWidth = uiScaled ? scale.uiWidth : (float)canvasWidth;
+    const float frameHeight = uiScaled ? scale.uiHeight : (float)canvasHeight;
+
+    scene->getSystem<UISystem>()->setAnchorReferenceSize(frameWidth, frameHeight);
+
+    UIDocumentSystem* documents = scene->getSystem<UIDocumentSystem>().get();
+    if (scale.scaled){
+        documents->setReferenceSize(std::max(1, (int)std::lround(scale.uiWidth)), std::max(1, (int)std::lround(scale.uiHeight)));
+        documents->setFrameSize(frameWidth, frameHeight);
+    }else{
+        documents->setReferenceSize((int)canvasWidth, (int)canvasHeight);
+        documents->setFrameSize(0.0f, 0.0f);
+    }
+
+    if (sceneRender && type != SceneType::SCENE_3D){
+        static_cast<SceneRender2D*>(sceneRender)->setCanvasFrameSize((unsigned int)std::lround(frameWidth), (unsigned int)std::lround(frameHeight));
+    }
+}
+
+void editor::Project::applyEditCanvasScaleToAll(){
+    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
+        SceneProject& sceneProject = *sceneProjectPtr;
+        // a playing scene lays out in the Engine's view
+        if (!sceneProject.scene || sceneProject.playState != ScenePlayState::STOPPED) {
+            continue;
+        }
+        applyEditCanvasScale(sceneProject.scene, sceneProject.sceneType, sceneProject.sceneRender);
+        sceneProject.needUpdateRender = true;
+    }
 }
 
 void editor::Project::setTextureStrategy(TextureStrategy textureStrategy){
@@ -3531,6 +3623,14 @@ const editor::SpriteNormalsWindowSettings& editor::Project::getSpriteNormalsSett
 
 bool editor::Project::isSimulateTouch() const{
     return simulateTouch;
+}
+
+const std::vector<editor::GameResolution>& editor::Project::getCustomResolutions() const{
+    return customResolutions;
+}
+
+void editor::Project::setCustomResolutions(const std::vector<GameResolution>& resolutions){
+    customResolutions = resolutions;
 }
 
 void editor::Project::setSimulateTouch(bool simulateTouch){
@@ -5577,6 +5677,8 @@ void editor::Project::deleteSceneProject(SceneProject* sceneProject){
 
 void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     Engine::setScalingMode(Scaling::NATIVE);
+    // edit-mode scenes on the project default resolve it through the Engine
+    Engine::setDefaultCanvasScaler(uiScale);
     Engine::setTextureStrategy(textureStrategy);
     Engine::setMouseCursor(CursorType::ARROW);
     Engine::setMouseMode(MouseMode::NORMAL);
@@ -5637,6 +5739,8 @@ void editor::Project::resetConfigs() {
     canvasWidth = defaultCanvasWidth;
     canvasHeight = defaultCanvasHeight;
     scalingMode = defaultScalingMode;
+    uiScale = CanvasScalerSettings();
+    Engine::setDefaultCanvasScaler(uiScale);
     textureStrategy = defaultTextureStrategy;
     vsyncEnabled = defaultVSyncEnabled;
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
@@ -5683,6 +5787,7 @@ void editor::Project::resetConfigs() {
     physicsPlacementSettings = {};
     spriteNormalsSettings = {};
     simulateTouch = false;
+    customResolutions.clear();
     projectPath.clear();
     assetDatabase.close();
     pendingAssetChanges.clear();
@@ -5750,12 +5855,24 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<LatticeSystem>()->setPaused(pause);
     // Vertex Animators hold still in edit mode unless their Preview is on
     scene->getSystem<VertexAnimatorSystem>()->setPaused(pause);
+    // and Text Effects unless the Inspector previews them
+    scene->getSystem<UISystem>()->setTextEffectsHeld(pause);
     // Video Players play nothing in edit mode (playOnAwake waits for Play)
     if (auto videos = scene->findSystem<VideoPlayerSystem>()) videos->setPaused(pause);
     // trails keep no point in edit mode but a dragged GameObject's (TrailSystem's preview)
     if (auto trails = scene->findSystem<TrailSystem>()){
         trails->setPaused(pause);
         if (!pause) trails->clearPreviews();
+    }
+    // Camera Follow and the Camera Shakers hold in edit mode (the Inspector's shake preview runs)
+    scene->getSystem<CameraControlSystem>()->setPaused(pause);
+}
+
+void editor::Project::stopCameraShakePreviews() {
+    for (SceneProject* sceneProject : getScenesAndPrefabStages()) {
+        if (sceneProject && sceneProject->scene && sceneProject->playState == ScenePlayState::STOPPED) {
+            sceneProject->scene->getSystem<CameraControlSystem>()->stopPreview();
+        }
     }
 }
 
@@ -5947,9 +6064,11 @@ std::vector<Entity> editor::Project::getPlayCreatedEntities(const SceneProject* 
 
     const std::set<Entity> keep = getPlayKeptEntities(sceneProject);
 
+    // what its documents made for themselves (a <particle-system>'s prefab) is not the game's
+    UIDocumentSystem* documents = sceneProject->scene->findSystem<UIDocumentSystem>().get();
     std::vector<Entity> created;
     for (Entity entity : sceneProject->scene->getEntityList()) {
-        if (entity > EntityManager::lastSystemEntity() && keep.count(entity) == 0) {
+        if (entity > EntityManager::lastSystemEntity() && keep.count(entity) == 0 && !(documents && documents->isRuntimeEntity(entity))) {
             created.push_back(entity);
         }
     }
@@ -6092,8 +6211,7 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         }
 
         pauseEngineScene(sceneProject->scene, true);
-        sceneProject->scene->getSystem<UISystem>()->setAnchorReferenceSize(canvasWidth, canvasHeight);
-        sceneProject->scene->getSystem<UIDocumentSystem>()->setReferenceSize(canvasWidth, canvasHeight);
+        applyEditCanvasScale(sceneProject->scene, sceneProject->sceneType, sceneProject->sceneRender);
 
         // GameObject.destroy calls still pending; what the game made goes with the snapshot
         ObjectManager::forgetScene(sceneProject->scene);
@@ -6106,6 +6224,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         sceneProject->scene->getSystem<ActionSystem>()->resetPlayers();
         // and the Vertex Animators (vertex animation spec 3.4)
         sceneProject->scene->getSystem<VertexAnimatorSystem>()->resetAnimators();
+        // and the camera shakes (their view offsets) and the followers' motion
+        sceneProject->scene->getSystem<CameraControlSystem>()->resetAll();
         // and the Video Players: their sources close, playOnAwake runs again at the next Play
         if (auto videos = sceneProject->scene->findSystem<VideoPlayerSystem>()) videos->resetPlayers();
 
@@ -6145,6 +6265,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
 
         // Restore snapshot if present
         const bool restoredFromSnapshot = restorePlaySnapshot(sceneProject);
+        // the restored scene's own Canvas Scaler (a script may have changed it while playing)
+        applyEditCanvasScale(sceneProject->scene, sceneProject->sceneType, sceneProject->sceneRender);
         // the fluids too: back to the edit-mode start, not the game's last frame
         restartFluids(sceneProject->scene);
 
@@ -7060,6 +7182,7 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
+    generator.setUIScale(uiScale);
     generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings());
 }
 
@@ -7114,6 +7237,7 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
 
     editor::getEditorHost().stopTransientPreviews();
     stopVertexAnimatorPreviews();
+    stopCameraShakePreviews();
 
     sceneProject->playState = ScenePlayState::SAVING;
     fs::path savePath = path;
@@ -7153,6 +7277,7 @@ void editor::Project::saveAllScenes(std::function<void(bool)> callback) {
     // first: a physics gesture that settles now commits, and its scene counts as changed below
     editor::getEditorHost().stopTransientPreviews();
     stopVertexAnimatorPreviews();
+    stopCameraShakePreviews();
 
     std::vector<uint32_t> sceneIds;
     // the prefab stages first: the scenes saved after them hold their assets' new state
@@ -8763,6 +8888,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
+    generator.setUIScale(uiScale);
     generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings());
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
@@ -8941,6 +9067,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 // Apply project display settings before scripts read the canvas size.
                 Engine::setCanvasSize(canvasWidth, canvasHeight);
                 Engine::setScalingMode(scalingMode);
+                Engine::setDefaultCanvasScaler(uiScale);
                 Engine::setTextureStrategy(textureStrategy);
                 Engine::systemViewChanged();
 
@@ -9356,6 +9483,8 @@ void editor::Project::start(uint32_t sceneId) {
     editor::getEditorHost().stopTransientPreviews();
     // a previewing Vertex Animator plays from its start
     stopVertexAnimatorPreviews();
+    // a shake previewed in the Game view does not carry into the game
+    stopCameraShakePreviews();
 
     // Exit any editor camera preview before starting: covers the owned-runtime path
     // where the source scene's render never enters play mode, so stopping wouldn't

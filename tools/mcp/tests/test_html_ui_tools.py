@@ -153,12 +153,21 @@ LIMITS.update({"create_ragdoll": 900})
 # platform-services, shader-globals): 153 tools, total 111616 (tool_budget.py), the limit set to it
 LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 2400})
 # merged by the lead (guide-headroom + anim-layers): provisional, re-measured on the merged tree
-# (then TOTAL_LIMIT = 112100)
+# camera-shake (camerashaker/camerafollow component types, get_runtime_entity's shake/follow state,
+# .shake assets): +91 on its branch (107717 on main 1acde245f); merged with main 5762bb259:
+# 153 tools, total 111909 (tool_budget.py on the merged tree), the limit set to it
+# ui-scaling-text: configure_game_view's resolution (a preset, "WxH[@dpi]", {width, height, dpi, name}) and
+# create_ui's outline/shadow text props (+284 on its branch); measured on the tree merged with main
+# 5762bb259 (everything above): 153 tools, total 112185 (tool_budget.py), the limit set to it
+# merged on main with camera-shake (lead, 9c8c6c584 + ui-scaling-text): provisional sum, re-measured below
+# (then TOTAL_LIMIT = 112276)
 # video-mp4 (spec 6.10): no new tool; create_entity's video_player / video_background, get_asset_info's
 # video probe and playable_on, inspect_ui's media backend, set_runtime_property's videoplayer state /
 # time / frame (+~180 on its branch); merged with main 5762bb259: 153 tools measured 111997, the limit
 # set to it
-TOTAL_LIMIT = 111997
+# (then TOTAL_LIMIT = 111997)
+# video-mp4 merged with main dce634fb7 (camera-shake, ui-scaling-text): MEASURED
+TOTAL_LIMIT = 112276
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

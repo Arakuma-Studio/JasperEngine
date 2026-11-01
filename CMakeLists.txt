@@ -789,6 +789,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorFluid.cpp
     ${EDITOR_DIR}/window/InspectorLinesTrails.cpp
     ${EDITOR_DIR}/window/InspectorParticles.cpp
+    ${EDITOR_DIR}/window/InspectorWindowCamera.cpp
     ${EDITOR_DIR}/window/InspectorVideo.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
@@ -797,6 +798,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/SceneParticleOverlay.cpp
     ${EDITOR_DIR}/window/PrefabStageBar.cpp
     ${EDITOR_DIR}/window/DeviceProfiles.cpp
+    ${EDITOR_DIR}/window/CanvasScalerFields.cpp
+    ${EDITOR_DIR}/window/GameResolutions.cpp
     ${EDITOR_DIR}/window/GameWindow.cpp
     ${EDITOR_DIR}/window/MainToolbar.cpp
     ${EDITOR_DIR}/window/PlayInput.cpp

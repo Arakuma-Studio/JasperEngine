@@ -9,6 +9,7 @@
 //   eval_lua              run Lua in the game's Lua state, results as JSON
 //   list_runtime_entities / get_runtime_entity / set_runtime_property   live GameObjects
 //   send_input            keyboard / text / mouse / touch / gamepad sequences across frames
+#include "camera/ShakerRuntime.h"
 #include "object/physics/Joint3D.h"
 #include "object/physics/Rigidbody.h"
 #include "McpTools.h"
@@ -2150,6 +2151,40 @@ Json scriptStateJson(Project* project, SceneProject* sp, Entity entity, int maxD
     return scripts;
 }
 
+// camera shake spec 10: a Camera Shaker's play state and a Camera Follow's motion (read only)
+Json shakerRuntimeJson(const CameraShakerComponent& shaker) {
+    Json instances = Json::array();
+    float trauma = 0.0f;
+    Vector3 position(0, 0, 0), rotation(0, 0, 0);
+    if (const camera::ShakerRuntime* runtime = shaker.runtime.get()) {
+        for (const camera::ShakerInstanceEntry& entry : runtime->instances) {
+            const char* state = "stopped";
+            switch (entry.instance.getState()) {
+                case camera::ShakeState::FadingIn: state = "fading_in"; break;
+                case camera::ShakeState::Sustained: state = "sustained"; break;
+                case camera::ShakeState::FadingOut: state = "fading_out"; break;
+                default: break;
+            }
+            if (entry.instance.isPaused() && !entry.instance.isFinished()) state = "paused";
+            instances.push_back({{"preset", entry.presetName}, {"state", state},
+                                 {"strength", McpValues::number(entry.instance.getCurrentStrength())}});
+        }
+        trauma = runtime->trauma.trauma;
+        position = runtime->offsetPosition;
+        rotation = runtime->offsetRotation;
+    }
+    return {{"instances", instances}, {"trauma", McpValues::number(trauma)},
+            {"offset_position", McpValues::toJson(position)}, {"offset_rotation", McpValues::toJson(rotation)}};
+}
+
+Json followRuntimeJson(const CameraFollowComponent& follow) {
+    Json runtime = {{"velocity", McpValues::toJson(follow.velocity)}, {"desired", McpValues::toJson(follow.desired)},
+                    {"placed", follow.placed}};
+    if (follow.foreignWriteDetected) runtime["foreign_write"] = true;
+    if (follow.targetPersistent) runtime["target_persistent"] = true;
+    return runtime;
+}
+
 // the live state of a 2D joint (Unity's read-outs): forces N, torques N m, points, engine angle units
 Json joint2DReadoutsJson(Scene* scene, Entity entity) {
     Joint2D joint(scene, entity);
@@ -2312,6 +2347,11 @@ void getRuntimeEntityTool(const CallPtr& call) {
                     props[name] = "<unreadable>";
                 }
             }
+        }
+        if (type == ComponentType::CameraShakerComponent) {
+            props["runtime"] = shakerRuntimeJson(sp->scene->getComponent<CameraShakerComponent>(entity));
+        } else if (type == ComponentType::CameraFollowComponent) {
+            props["runtime"] = followRuntimeJson(sp->scene->getComponent<CameraFollowComponent>(entity));
         }
         components[componentNameOf(type)] = props;
     }

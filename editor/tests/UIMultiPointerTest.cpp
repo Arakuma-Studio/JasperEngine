@@ -628,7 +628,8 @@ TEST_F(UIMultiPointerTest, IsPointerOverUIPerPointer) {
 TEST(OnScreenControlsEditor, CatalogStreamAndExport) {
     using editor::Catalog;
     using editor::ComponentType;
-    // appended after every older type (prefab override masks use the ordinal); the Video Player came after it
+    // appended after the Canvas Group; later features (the camera components, the Text Effect) append after it
+    EXPECT_EQ(static_cast<int>(ComponentType::OnScreenStickComponent), static_cast<int>(ComponentType::CanvasGroupComponent) + 1);
     EXPECT_GE(static_cast<int>(editor::LastComponentType), static_cast<int>(ComponentType::TouchAreaComponent));
     EXPECT_EQ(Catalog::getComponentName(ComponentType::OnScreenStickComponent, true), "onscreenstick");
     EXPECT_EQ(Catalog::getComponentType("onscreenbutton"), ComponentType::OnScreenButtonComponent);

@@ -4,6 +4,7 @@
 #include "UISystem.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <limits>
 #include <vector>
@@ -12,6 +13,7 @@
 #include "Engine.h"
 #include "System.h"
 #include "util/STBText.h"
+#include "util/Color.h"
 #include "util/StringUtils.h"
 #include "pool/FontPool.h"
 
@@ -192,7 +194,49 @@ bool UISystem::createImagePatches(ImageComponent& img, UIComponent& ui, RectTran
     return true;
 }
 
+// an outline or a shadow needs the signed-distance atlas
+static bool hasTextOutlineOrShadow(const TextComponent& text){
+    return (std::isfinite(text.outlineWidth) && text.outlineWidth > 0.0f) || text.shadowEnabled;
+}
+
+STBTextOptions UISystem::getTextOptions(const TextComponent& text) const{
+    STBTextOptions options;
+    const float fontSize = (float)std::max(text.fontSize, 1u);
+
+    // whole raster pixels, so a resize reuses an atlas once the size settles
+    const float scale = getTextRasterScale();
+    float rasterSize = fontSize;
+    if (scale != 1.0f)
+        rasterSize = std::max(1.0f, std::round(fontSize * scale));
+
+    if (hasTextOutlineOrShadow(text)){
+        // a distance field of small glyphs keeps its corners at 32 pixels and more
+        rasterSize = std::max(rasterSize, 32.0f);
+        options.rasterScale = rasterSize / fontSize;
+
+        float extent = std::max(text.outlineWidth, 0.0f);
+        if (text.shadowEnabled){
+            const float offset = std::max(std::fabs(text.shadowOffset.x), std::fabs(text.shadowOffset.y));
+            extent = std::max(extent, std::max(text.shadowSoftness, 0.0f) + std::max(text.shadowDilate, 0.0f) + offset);
+        }
+        if (!std::isfinite(extent))
+            extent = 0.0f;
+        int padding = (int)std::ceil(extent * options.rasterScale) + 2;
+        // steps of 4 pixels, so dragging a width does not make an atlas per value
+        padding = std::clamp(((padding + 3) / 4) * 4, 4, 64);
+        options.sdfPadding = padding;
+    }else if (rasterSize != fontSize){
+        options.rasterScale = rasterSize / fontSize;
+    }
+
+    return options;
+}
+
 std::string UISystem::getFontId(const TextComponent& text) const{
+    return getFontId(text, getTextOptions(text));
+}
+
+std::string UISystem::getFontId(const TextComponent& text, const STBTextOptions& options) const{
     std::string fontId = text.font[0];
     if (fontId.empty())
         fontId = "font";
@@ -203,7 +247,13 @@ std::string UISystem::getFontId(const TextComponent& text) const{
             fontId += std::string(";") + text.font[i];
     }
 
-    return fontId + std::string("|") + std::to_string(text.fontSize);
+    fontId += std::string("|") + std::to_string(text.fontSize);
+    // another raster size or an SDF is another atlas (plain texts keep their old id)
+    if (options.rasterScale != 1.0f)
+        fontId += std::string("@") + std::to_string((int)std::lround((float)text.fontSize * options.rasterScale));
+    if (options.sdfPadding > 0)
+        fontId += std::string("~sdf") + std::to_string(options.sdfPadding);
+    return fontId;
 }
 
 std::string UISystem::getFontTextureId(const TextComponent& text) const{
@@ -233,7 +283,8 @@ void UISystem::syncFontAtlas(TextComponent& text, UIComponent& ui){
 }
 
 bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, RectTransformComponent& layout){
-    std::string fontId = getFontId(text);
+    const STBTextOptions options = getTextOptions(text);
+    std::string fontId = getFontId(text, options);
 
     text.stbtext = FontPool::get(fontId);
     if (!text.stbtext){
@@ -243,7 +294,7 @@ bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, RectTransform
                 fallbacks.push_back(text.font[i]);
         }
 
-        text.stbtext = FontPool::get(fontId, text.font[0], fallbacks, text.fontSize);
+        text.stbtext = FontPool::get(fontId, text.font[0], fallbacks, text.fontSize, options);
         if (!text.stbtext) {
             Log::error("Cannot load font atlas from: %s", text.font[0].c_str());
             return false;
@@ -252,6 +303,8 @@ bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, RectTransform
 
     //texture is published by syncFontAtlas, after createText rasterized the glyphs
     text.atlasVersion = 0;
+    text.rasterScale = options.rasterScale;
+    text.sdfPadding = options.sdfPadding;
 
     text.needReloadAtlas = false;
     text.loaded = true;
@@ -326,6 +379,65 @@ static void clipTextQuad(Buffer& buffer, Attribute* atrVertice, Attribute* atrTe
     buffer.setVector2(firstVertex + 3, atrTexcoord, uv3);
 }
 
+// the glyph quads of characters from `count` on (characters: the clusters in logical order)
+// collapse to a point
+void UISystem::hideTextGlyphsAfter(TextComponent& text, UIComponent& ui, size_t count){
+    Attribute* atrVertice = ui.buffer.getAttribute(AttributeType::POSITION);
+    if (!atrVertice)
+        return;
+
+    // the character index of each cluster start, in logical order
+    std::vector<uint32_t> clusters;
+    clusters.reserve(text.glyphInfo.size());
+    for (const TextGlyphInfo& info : text.glyphInfo)
+        clusters.push_back(info.cluster);
+    std::sort(clusters.begin(), clusters.end());
+    clusters.erase(std::unique(clusters.begin(), clusters.end()), clusters.end());
+
+    for (size_t g = 0; g < text.glyphInfo.size(); g++){
+        const size_t character = (size_t)(std::lower_bound(clusters.begin(), clusters.end(), text.glyphInfo[g].cluster) - clusters.begin());
+        if (character < count)
+            continue;
+        const int first = (int)(g * 4);
+        if (first + 3 >= (int)ui.buffer.getCount())
+            break;
+        const Vector3 corner = ui.buffer.getVector3(atrVertice, first);
+        for (int v = 0; v < 4; v++)
+            ui.buffer.setVector3(first + v, atrVertice, corner);
+    }
+}
+
+void UISystem::updateTextShaderParams(TextComponent& text, UIComponent& ui){
+    ui.textSdf = text.sdfPadding > 0 && text.stbtext;
+    if (!ui.textSdf)
+        return;
+
+    const float raster = text.rasterScale;
+    const bool outline = std::isfinite(text.outlineWidth) && text.outlineWidth > 0.0f;
+    const Vector4 outlineColor = outline ? text.outlineColor : Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    const Vector4 shadowColor = text.shadowEnabled ? text.shadowColor : Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+
+    // colours linear as ui.color, sizes in atlas pixels, within the glyph's padding (the
+    // padding is capped: wider outlines and shadows stop at its edge, not at a neighbour glyph)
+    const float reach = std::max((float)text.sdfPadding - 2.0f, 0.0f);
+    const float softness = std::min(std::max(text.shadowSoftness, 0.0f) * raster, reach);
+    const float dilate = std::min(std::max(text.shadowDilate, 0.0f) * raster, reach - softness);
+    ui.textParams[0] = outlineColor;
+    ui.textParams[1] = shadowColor;
+    ui.textParams[2] = Vector4(outline ? std::min(text.outlineWidth * raster, reach) : 0.0f,
+                               softness,
+                               dilate,
+                               text.stbtext->getSdfDistanceScale());
+    float u = 0.0f, v = 0.0f;
+    if (TextureData* atlas = text.stbtext->getTextureData()){
+        if (atlas->getWidth() > 0 && atlas->getHeight() > 0 && text.shadowEnabled){
+            u = std::clamp(text.shadowOffset.x * raster, -reach, reach) / (float)atlas->getWidth();
+            v = std::clamp(text.shadowOffset.y * raster, -reach, reach) / (float)atlas->getHeight();
+        }
+    }
+    ui.textParams[3] = Vector4(u, v, 0.0f, 0.0f);
+}
+
 void UISystem::createText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout){
 
     ui.primitiveType = PrimitiveType::TRIANGLES;
@@ -333,7 +445,12 @@ void UISystem::createText(TextComponent& text, UIComponent& ui, RectTransformCom
     ui.buffer.clear();
     ui.buffer.addAttribute(AttributeType::POSITION, 3);
     ui.buffer.addAttribute(AttributeType::TEXCOORD1, 2);
+    // a Text Effect colours each glyph (plain texts keep their two attributes)
+    if (text.vertexColor)
+        ui.buffer.addAttribute(AttributeType::COLOR, 4);
     ui.buffer.setUsage(BufferUsage::DYNAMIC);
+    ui.vertexColorAbsolute = text.vertexColor;
+    text.buildCount++;
 
     ui.indices.clear();
     ui.indices.setUsage(BufferUsage::DYNAMIC);
@@ -357,9 +474,11 @@ void UISystem::createText(TextComponent& text, UIComponent& ui, RectTransformCom
     ui.minBufferCount = text.maxTextSize * 4;
     ui.minIndicesCount = text.maxTextSize * 6;
 
-    text.stbtext->createText(text.text, &ui.buffer, indices_array, text.charPositions, text.charExtents, layout.width, layout.height, text.fixedWidth, text.fixedHeight, text.multiline, ui.flipY);
+    text.stbtext->createText(text.text, &ui.buffer, indices_array, text.charPositions, text.charExtents, layout.width, layout.height, text.fixedWidth, text.fixedHeight, text.multiline, ui.flipY,
+                             &text.glyphInfo);
 
     syncFontAtlas(text, ui);
+    updateTextShaderParams(text, ui);
 
     float baselineOffsetY = ui.flipY ? (layout.height - text.stbtext->getAscent()) : text.stbtext->getAscent();
     float offsetX = text.pivotCentered ? -(layout.width / 2.0f) : 0.0f;
@@ -389,6 +508,20 @@ void UISystem::createText(TextComponent& text, UIComponent& ui, RectTransformCom
         Attribute* atrTexcoord = ui.buffer.getAttribute(AttributeType::TEXCOORD1);
         for (int i = 0; i + 3 < ui.buffer.getCount(); i += 4){
             clipTextQuad(ui.buffer, atrVertice, atrTexcoord, i, clip, clipWidth, clipHeight);
+        }
+    }
+
+    // TMP maxVisibleCharacters: the glyphs of later characters collapse (layout unchanged)
+    if (text.visibleCharacters >= 0){
+        hideTextGlyphsAfter(text, ui, (size_t)text.visibleCharacters);
+    }
+
+    if (text.vertexColor){
+        // the Text Effect writes the colours (rgb, and its alpha factor); until then the text's own
+        Attribute* atrColor = ui.buffer.getAttribute(AttributeType::COLOR);
+        const unsigned int vertices = ui.buffer.getAttribute(AttributeType::POSITION)->getCount();
+        for (unsigned int i = 0; i < vertices; i++){
+            ui.buffer.addVector4(atrColor, Vector4(ui.color.x, ui.color.y, ui.color.z, 1.0f));
         }
     }
 
@@ -1420,13 +1553,33 @@ Vector2 UISystem::getTextMinSize(TextComponent& text){
     return Vector2(minWidth, minHeight);
 }
 
+void UISystem::checkTextAtlasOptions(TextComponent& text, UIComponent& ui){
+    if (text.loaded && !text.needReloadAtlas){
+        const STBTextOptions options = getTextOptions(text);
+        if (options.rasterScale != text.rasterScale || options.sdfPadding != text.sdfPadding){
+            text.needReloadAtlas = true;
+            // another shader variant (SDF on or off)
+            if ((options.sdfPadding > 0) != (text.sdfPadding > 0) && ui.loaded)
+                ui.needReload = true;
+        }
+    }
+}
+
 bool UISystem::createOrUpdateText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout){
+    // the canvas scale or the outline/shadow changed the atlas it needs
+    checkTextAtlasOptions(text, ui);
+
     if (text.loaded && text.needReloadAtlas){
         destroyText(text);
     }
 
     if (isFontAtlasStale(text)){
         text.needUpdateText = true;
+    }
+
+    // colours, offsets and softness reach the shader without a rebuild
+    if (!text.needUpdateText && text.loaded && ui.textSdf){
+        updateTextShaderParams(text, ui);
     }
 
     if (text.needUpdateText){
@@ -1551,15 +1704,8 @@ void UISystem::convertLocalParentSpaceToLayoutSpace(Entity transformParent, Enti
 
 Rect UISystem::getAnchorReferenceRect(const RectTransformComponent& layout, const Transform& transform, bool worldPosition){
     auto canvasRect = [this]() {
-        int finalCanvasWidth = Engine::getCanvasWidth();
-        if (anchorReferenceWidth != 0)
-            finalCanvasWidth = anchorReferenceWidth;
-
-        int finalCanvasHeight = Engine::getCanvasHeight();
-        if (anchorReferenceHeight != 0)
-            finalCanvasHeight = anchorReferenceHeight;
-
-        return Rect(0, 0, finalCanvasWidth, finalCanvasHeight);
+        const Vector2 size = getCanvasSize();
+        return Rect(0, 0, size.x, size.y);
     };
 
     if (transform.parent == NULL_ENTITY){
@@ -1604,7 +1750,7 @@ Rect UISystem::getAnchorReferenceRect(const RectTransformComponent& layout, cons
     return boxRect;
 }
 
-void UISystem::setAnchorReferenceSize(int width, int height){
+void UISystem::setAnchorReferenceSize(float width, float height){
     this->anchorReferenceWidth = width;
     this->anchorReferenceHeight = height;
 }
@@ -1614,12 +1760,398 @@ void UISystem::clearAnchorReferenceSize(){
     this->anchorReferenceHeight = 0;
 }
 
-int UISystem::getAnchorReferenceWidth() const{
+float UISystem::getAnchorReferenceWidth() const{
     return anchorReferenceWidth;
 }
 
-int UISystem::getAnchorReferenceHeight() const{
+float UISystem::getAnchorReferenceHeight() const{
     return anchorReferenceHeight;
+}
+
+bool UISystem::reducedMotion = false;
+
+void UISystem::setTextEffectsHeld(bool held){
+    if (textEffectsHeld == held)
+        return;
+    textEffectsHeld = held;
+
+    // Play and Stop start each effect again as a loaded scene starts it (a preview ends)
+    auto effects = scene->getComponentArray<TextEffectComponent>();
+    for (size_t i = 0; i < effects->size(); i++){
+        TextEffectComponent& effect = effects->getComponentFromIndex(i);
+        effect.previewInEditor = false;
+        effect.wasActive = false;
+        effect.playing = false;
+        effect.needApply = true;
+    }
+}
+
+bool UISystem::isTextEffectsHeld() const{
+    return textEffectsHeld;
+}
+
+namespace {
+
+    // TMP Effect's word separators
+    bool isWordSeparator(uint32_t c){
+        if (c == 0x20 || c == 0x09 || c == 0x0A || c == 0x0D || c == 0xA0 || c == 0x3000 || (c >= 0x2000 && c <= 0x200B))
+            return true;
+        return c < 128 && std::ispunct((int)c);
+    }
+
+    // the codepoints forWords names: each whole-word occurrence of its space-separated words
+    std::vector<bool> codepointsOfWords(const std::vector<uint32_t>& text, const std::string& forWords){
+        std::vector<bool> marked(text.size(), false);
+        bool invalid = false;
+        std::vector<uint32_t> words = StringUtils::decodeUtf8ToCodepoints(forWords, invalid);
+        size_t start = 0;
+        while (start < words.size()){
+            while (start < words.size() && isWordSeparator(words[start]) && (words[start] == 0x20 || words[start] == 0x09))
+                start++;
+            size_t end = start;
+            while (end < words.size() && words[end] != 0x20 && words[end] != 0x09)
+                end++;
+            const size_t length = end - start;
+            if (length > 0){
+                for (size_t at = 0; at + length <= text.size(); at++){
+                    if (!std::equal(words.begin() + start, words.begin() + end, text.begin() + at))
+                        continue;
+                    const bool before = at == 0 || isWordSeparator(text[at - 1]);
+                    const bool after = at + length >= text.size() || isWordSeparator(text[at + length]);
+                    if (before && after){
+                        for (size_t k = at; k < at + length; k++)
+                            marked[k] = true;
+                    }
+                }
+            }
+            start = end;
+        }
+        return marked;
+    }
+
+}
+
+void UISystem::applyTextEffect(Entity entity, TextEffectComponent& effect, TextComponent& text, UIComponent& ui,
+                               std::vector<int>& revealedEvents, bool& completed){
+    (void)entity;
+    Attribute* positions = ui.buffer.getAttribute(AttributeType::POSITION);
+    Attribute* colors = ui.buffer.getAttribute(AttributeType::COLOR);
+    if (!positions || !colors)
+        return;
+
+    const unsigned int vertexCount = std::min<unsigned int>(positions->getCount(), (unsigned int)effect.basePositions.size());
+    const Vector4 base = effect.baseColor;   // linear
+    const Vector3 plainRgb(base.x, base.y, base.z);
+
+    // the plain text: the base vertices and its colour
+    if (!effect.playing){
+        for (unsigned int v = 0; v < vertexCount; v++){
+            ui.buffer.setVector3(v, positions, effect.basePositions[v]);
+            ui.buffer.setVector4(v, colors, Vector4(plainRgb, 1.0f));
+        }
+        effect.applied = false;
+        ui.needUpdateBuffer = ui.loaded;
+        return;
+    }
+
+    // the characters it animates: by range, or the whole words of forWords
+    std::vector<uint32_t> clusters;
+    clusters.reserve(text.glyphInfo.size());
+    for (const TextGlyphInfo& info : text.glyphInfo)
+        clusters.push_back(info.cluster);
+    std::sort(clusters.begin(), clusters.end());
+    clusters.erase(std::unique(clusters.begin(), clusters.end()), clusters.end());
+
+    std::vector<bool> wordCodepoints;
+    const bool byWords = !effect.forWords.empty();
+    if (byWords){
+        bool invalid = false;
+        wordCodepoints = codepointsOfWords(StringUtils::decodeUtf8ToCodepoints(text.text, invalid), effect.forWords);
+    }
+    const int rangeStart = std::max(effect.startIndex, 0);
+    const int rangeEnd = (effect.length < 0) ? std::numeric_limits<int>::max() : rangeStart + effect.length;
+
+    // the glyph's index among the animated visible glyphs (-1: not animated or no ink)
+    const size_t glyphCount = std::min(text.glyphInfo.size(), (size_t)(vertexCount / 4));
+    // the effect's index of each glyph in reading (logical) order, so a right-to-left text
+    // types from its first character too
+    std::vector<int> order(glyphCount, -1);
+    std::vector<std::pair<uint32_t, size_t>> selectedGlyphs;
+    for (size_t g = 0; g < glyphCount; g++){
+        const Vector3& p0 = effect.basePositions[g * 4];
+        const Vector3& p2 = effect.basePositions[g * 4 + 2];
+        if (p0.x == p2.x || p0.y == p2.y)
+            continue;
+        const uint32_t cluster = text.glyphInfo[g].cluster;
+        bool selected;
+        if (byWords){
+            selected = cluster < wordCodepoints.size() && wordCodepoints[cluster];
+        }else{
+            const int character = (int)(std::lower_bound(clusters.begin(), clusters.end(), cluster) - clusters.begin());
+            selected = character >= rangeStart && character < rangeEnd;
+        }
+        if (selected)
+            selectedGlyphs.push_back({cluster, g});
+    }
+    std::stable_sort(selectedGlyphs.begin(), selectedGlyphs.end(),
+                     [](const std::pair<uint32_t, size_t>& a, const std::pair<uint32_t, size_t>& b){ return a.first < b.first; });
+    const int count = (int)selectedGlyphs.size();
+    for (int i = 0; i < count; i++)
+        order[selectedGlyphs[(size_t)i].second] = i;
+    // TMP Effect times glyphs over the characters, spaces included: the selection's and the text's
+    const int textCharacters = (int)clusters.size();
+    int characters = 0;
+    if (byWords){
+        characters = (int)std::count(wordCodepoints.begin(), wordCodepoints.end(), true);
+    }else{
+        characters = std::max(0, std::min(rangeEnd, textCharacters) - std::min(rangeStart, textCharacters));
+    }
+
+    const bool reduced = UISystem::isReducedMotion();
+    const float fontSize = (float)text.fontSize;
+    const Vector4 baseSRGB(Color::linearTosRGB(plainRgb), base.w);
+    // y up under an orthographic camera (flipped text): the effects work y down
+    const float ySign = ui.flipY ? -1.0f : 1.0f;
+
+    for (size_t g = 0; g < glyphCount; g++){
+        const unsigned int first = (unsigned int)(g * 4);
+        if (order[g] < 0){
+            for (unsigned int v = 0; v < 4; v++){
+                ui.buffer.setVector3(first + v, positions, effect.basePositions[first + v]);
+                ui.buffer.setVector4(first + v, colors, Vector4(plainRgb, 1.0f));
+            }
+            continue;
+        }
+
+        // corners top-left, top-right, bottom-right, bottom-left of the quad (x0,y0) (x1,y0)
+        // (x1,y1) (x0,y1); flipped, the first two are the bottom ones
+        static const int straight[4] = {0, 1, 2, 3};
+        static const int flipped[4] = {3, 2, 1, 0};
+        const int* corner = ui.flipY ? flipped : straight;
+
+        TextEffectGlyphState state;
+        for (int c = 0; c < 4; c++){
+            const Vector3& p = effect.basePositions[first + corner[c]];
+            state.corners[c] = Vector2(p.x, p.y * ySign);
+        }
+        state.color = baseSRGB;
+
+        for (const TextEffectLayer& layer : effect.layers){
+            const float layerTime = (float)(TextEffects::isOneShot(layer.type) ? effect.cycleTime : effect.time);
+            TextEffects::applyLayer(layer, order[g], count, layerTime, fontSize, reduced, state, characters, textCharacters);
+        }
+
+        const Vector3 rgb = Color::sRGBToLinear(Vector3(state.color.x, state.color.y, state.color.z));
+        const float alpha = (baseSRGB.w > 0.0f) ? state.color.w / baseSRGB.w : state.color.w;
+        for (int c = 0; c < 4; c++){
+            const Vector3& p = effect.basePositions[first + corner[c]];
+            ui.buffer.setVector3(first + corner[c], positions, Vector3(state.corners[c].x, state.corners[c].y * ySign, p.z));
+            ui.buffer.setVector4(first + corner[c], colors, Vector4(rgb, alpha));
+        }
+    }
+
+    // a typewriter's events: each character once, in order, as it appears
+    for (const TextEffectLayer& layer : effect.layers){
+        if (!layer.enabled || layer.type != TextEffectType::Typewriter)
+            continue;
+        int shown = 0;
+        while (shown < count && TextEffects::revealTime(layer, shown, count) <= (float)effect.cycleTime)
+            shown++;
+        for (int i = effect.revealed; i < shown; i++)
+            revealedEvents.push_back(i);
+        effect.revealed = std::max(effect.revealed, shown);
+        break;
+    }
+
+    // the one-shot layers finished: every glyph reached its end (a layer reduced motion holds
+    // still is done at once)
+    bool anyOneShot = false;
+    const float oneShotLength = TextEffects::effectLength(effect.layers.data(), effect.layers.size(), count, reduced, anyOneShot);
+    if (anyOneShot && count > 0 && !effect.finished && effect.cycleTime >= (double)oneShotLength){
+        effect.finished = true;
+        completed = true;
+    }
+
+    effect.applied = true;
+    ui.needUpdateBuffer = ui.loaded;
+}
+
+void UISystem::updateTextEffects(double dt){
+    auto effects = scene->getComponentArray<TextEffectComponent>();
+    if (effects->size() == 0){
+        lastTextEffectsTime = 0.0;
+        return;
+    }
+
+    // the Inspector's preview runs on the wall clock (edit mode updates with no delta)
+    const double now = Engine::getSystemTime();
+    const double previewDt = (lastTextEffectsTime > 0.0) ? std::min(now - lastTextEffectsTime, 0.25) : 0.0;
+    lastTextEffectsTime = now;
+    // the frame's delta before Engine.timeScale (dt is the scaled one)
+    const double timeScale = Engine::getTimeScale();
+    const double unscaledDt = (timeScale > 0.0) ? dt / timeScale : (double)Engine::getUnscaledDeltatime();
+
+    struct Pending {
+        Entity entity;
+        std::vector<int> revealed;
+        bool completed;
+    };
+    std::vector<Pending> pending;
+
+    for (size_t i = 0; i < effects->size(); i++){
+        Entity entity = effects->getEntity(i);
+        TextEffectComponent& effect = effects->getComponentFromIndex(i);
+        TextComponent* text = scene->findComponent<TextComponent>(entity);
+        UIComponent* ui = scene->findComponent<UIComponent>(entity);
+        if (!text || !ui || !text->loaded || !text->vertexColor || !ui->buffer.getAttribute(AttributeType::COLOR))
+            continue;
+
+        const bool held = textEffectsHeld && !effect.previewInEditor;
+        const bool active = effect.enabled && scene->isEntityActiveInHierarchy(entity) && !held;
+
+        // a rebuilt text is the new base; a new text starts its one-shot layers again
+        bool changed = effect.needApply;
+        if (effect.appliedBuild != text->buildCount){
+            effect.appliedBuild = text->buildCount;
+            Attribute* positions = ui->buffer.getAttribute(AttributeType::POSITION);
+            effect.basePositions.resize(positions->getCount());
+            for (unsigned int v = 0; v < positions->getCount(); v++)
+                effect.basePositions[v] = ui->buffer.getVector3(positions, v);
+            if (effect.appliedText != text->text || effect.appliedFontSize != text->fontSize){
+                effect.appliedText = text->text;
+                effect.appliedFontSize = text->fontSize;
+                effect.cycleTime = 0.0;
+                effect.revealed = 0;
+                effect.finished = false;
+            }
+            changed = true;
+        }
+        if (ui->color != effect.baseColor){
+            effect.baseColor = ui->color;
+            changed = true;
+        }
+
+        if (!active){
+            // hidden, disabled or held: the plain text, and it starts again when shown
+            // (a colour or text change too: the vertices hold the absolute colour)
+            if (effect.wasActive || effect.applied || changed){
+                effect.wasActive = false;
+                const bool wasPlaying = effect.playing;
+                effect.playing = false;
+                std::vector<int> none;
+                bool done = false;
+                applyTextEffect(entity, effect, *text, *ui, none, done);
+                effect.playing = wasPlaying;
+            }
+            effect.needApply = false;
+            continue;
+        }
+
+        if (!effect.wasActive){
+            effect.wasActive = true;
+            if (effect.autoPlay || effect.previewInEditor){
+                effect.started = true;
+                effect.playing = true;
+                effect.needRestart = true;
+            }
+        }
+        if (effect.needRestart){
+            effect.needRestart = false;
+            effect.time = 0.0;
+            effect.cycleTime = 0.0;
+            effect.revealed = 0;
+            effect.finished = false;
+            changed = true;
+        }
+
+        // looping layers keep it moving; one-shot ones until they finish
+        bool looping = false;
+        for (const TextEffectLayer& layer : effect.layers){
+            if (layer.enabled && layer.type != TextEffectType::None && !TextEffects::isOneShot(layer.type) &&
+                !(UISystem::isReducedMotion() && TextEffects::isMotion(layer.type)))
+                looping = true;
+        }
+
+        if (effect.playing){
+            const double step = effect.previewInEditor ? previewDt : (effect.useUnscaledTime ? unscaledDt : dt);
+            if (step > 0.0 && (looping || !effect.finished)){
+                effect.time += step;
+                if (!effect.finished)
+                    effect.cycleTime += step;
+                changed = true;
+            }
+        }
+
+        if (!changed && effect.applied == effect.playing)
+            continue;
+
+        Pending events{entity, {}, false};
+        applyTextEffect(entity, effect, *text, *ui, events.revealed, events.completed);
+        effect.needApply = false;
+
+        // TMP Repeat: the one-shot layers again, the looping ones carry on (not one that reduced
+        // motion holds still: it would complete every frame)
+        bool anyOneShot = false;
+        const bool repeats = TextEffects::effectLength(effect.layers.data(), effect.layers.size(), 1, UISystem::isReducedMotion(), anyOneShot) > 0.0f;
+        if (events.completed && effect.loop && repeats){
+            effect.cycleTime = 0.0;
+            effect.revealed = 0;
+            effect.finished = false;
+        }
+        if (!events.revealed.empty() || events.completed)
+            pending.push_back(std::move(events));
+    }
+
+    // the callbacks may change the registry: after the pass, each looked up again
+    for (const Pending& events : pending){
+        for (int index : events.revealed){
+            TextEffectComponent* effect = scene->findComponent<TextEffectComponent>(events.entity);
+            if (!effect)
+                break;
+            effect->onCharacterRevealed.call(index);
+        }
+        if (events.completed){
+            if (TextEffectComponent* effect = scene->findComponent<TextEffectComponent>(events.entity))
+                effect->onComplete.call();
+        }
+    }
+}
+
+void UISystem::setReducedMotion(bool reducedMotion){
+    UISystem::reducedMotion = reducedMotion;
+}
+
+bool UISystem::isReducedMotion(){
+    return reducedMotion;
+}
+
+void UISystem::toUISpace(float& x, float& y) const{
+    if (scene->isUIScaled()){
+        const Vector2 ui = scene->canvasToUI(Vector2(x, y));
+        x = ui.x;
+        y = ui.y;
+    }
+}
+
+Vector2 UISystem::getCanvasSize() const{
+    Vector2 size((float)Engine::getCanvasWidth(), (float)Engine::getCanvasHeight());
+    if (scene->isUIScaled()){
+        size = Vector2(scene->getCanvasScale().uiWidth, scene->getCanvasScale().uiHeight);
+    }
+
+    if (anchorReferenceWidth != 0)
+        size.x = anchorReferenceWidth;
+    if (anchorReferenceHeight != 0)
+        size.y = anchorReferenceHeight;
+
+    return size;
+}
+
+float UISystem::getTextRasterScale() const{
+    if (!scene->isUIScaled())
+        return 1.0f;
+    const float scale = scene->getCanvasScale().scaleFactor;
+    return (scale > 0.0f) ? scale : 1.0f;
 }
 
 void UISystem::applyAnchorPreset(RectTransformComponent& layout){
@@ -1788,7 +2320,12 @@ void UISystem::destroyText(TextComponent& text){
     text.atlasVersion = 0;
 
     if (text.stbtext){
-        text.stbtext.reset();
+        // an atlas of a raster scale or a distance field is one of many (each canvas scale,
+        // each padding): it goes with its last text; plain atlases stay pooled as before
+        if (text.rasterScale != 1.0f || text.sdfPadding > 0)
+            FontPool::release(text.stbtext);
+        else
+            text.stbtext.reset();
     }
 }
 
@@ -1857,9 +2394,22 @@ void UISystem::createOrUpdateUiComponent(RectTransformComponent& layout, Entity 
 
             if (noGeometry) text.needUpdateText = true;
 
+            // a Text Effect needs a colour per vertex: another buffer layout and shader variant
+            const bool vertexColor = scene->findComponent<TextEffectComponent>(entity) != nullptr;
+            if (text.vertexColor != vertexColor){
+                text.vertexColor = vertexColor;
+                text.needUpdateText = true;
+                if (ui.loaded)
+                    ui.needReload = true;
+            }
+
             if (InputFieldComponent* ownerEdit = findInputFieldForTextChild(entity)){
+                // (its input field rebuilds it: a new canvas scale or outline reaches it too)
+                checkTextAtlasOptions(text, ui);
                 if (text.needUpdateText || text.needReloadAtlas || isFontAtlasStale(text)){
                     ownerEdit->needUpdateInputField = true;
+                }else if (text.loaded && ui.textSdf){
+                    updateTextShaderParams(text, ui);
                 }
             }else{
                 createOrUpdateText(text, ui, layout);
@@ -2610,6 +3160,8 @@ void UISystem::update(double dt){
     // the on-screen controls (UISystemPointer.cpp): visibility, the Touch Areas' frame drags,
     // presses of elements that went inactive cancelled
     updateControls();
+    // after the layout: the glyphs of this frame are built
+    updateTextEffects(dt);
 }
 
 bool UISystem::hasPendingImages() const{

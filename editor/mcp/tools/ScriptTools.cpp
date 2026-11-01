@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // W4: Lua/C++ scripts, compile check, code editor sync
+#include "camera/ShakePreset.h"
 #include "media/VideoFormats.h"
 #include "McpTools.h"
 #include "W4Shared.h"
@@ -123,6 +124,8 @@ std::string assetType(const fs::path& path) {
     }
     // Vertex Animations (.vat; the generated .vat.glb is a model)
     if (Util::isVertexAnimationFile(p)) return "vertex_animation";
+    // Shake Presets (.shake, camera shake spec 6)
+    if (Util::isShakePresetFile(p)) return "shake";
     return "other";
 }
 
@@ -131,7 +134,7 @@ bool isTextFile(const fs::path& path) {
         ".lua", ".cpp", ".cc", ".cxx", ".c", ".h", ".hh", ".hpp", ".hxx", ".inl",
         ".material", ".scene", ".prefab", ".yaml", ".yml", ".json", ".txt", ".md", ".csv", ".ini", ".cfg",
         ".glsl", ".vert", ".frag", ".hlsl", ".cmake", ".xml", ".gltf", ".obj", ".mtl", ".svg", ".tsx", ".tmx",
-        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim", ".vat", ".mask", ".controller"
+        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim", ".vat", ".mask", ".controller", ".shake"
     };
     if (path.filename() == "CMakeLists.txt" || path.filename() == "AGENTS.md") return true;
     return text.count(extensionOf(path)) > 0;
@@ -431,16 +434,30 @@ void addAnimationFileProblems(Project* project, const fs::path& path, Json& prob
     const std::string pathText = path.string();
     const bool clip = Util::isAnimationClipFile(pathText);
     const bool vertexAnimation = Util::isVertexAnimationFile(pathText);
+    const bool shake = Util::isShakePresetFile(pathText);
     const bool mask = Util::isAvatarMaskFile(pathText);
     const bool controller = Util::isAnimatorControllerFile(pathText);
-    if (!clip && !vertexAnimation && !mask && !controller && !Util::isPoseAnimationFile(pathText)) return;
+    if (!clip && !vertexAnimation && !mask && !controller && !shake && !Util::isPoseAnimationFile(pathText)) return;
     std::error_code ec;
     std::string text;
     if (!fs::is_regular_file(path, ec) || !ProjectChecks::readFile(path, text)) return;
     const std::string rel = projectRelative(project, path);
 
     std::vector<std::string> warnings;
-    if (vertexAnimation) {
+    if (shake) {
+        // a .shake (camera shake spec 6): a shake naming it plays nothing until it reads again
+        const camera::ShakeParseResult parsed = camera::parseShakePreset(text);
+        if (!parsed.ok()) {
+            Json problem = {{"path", rel}, {"message", "Not a valid shake preset: " + parsed.error + " (nothing shakes with it)."}};
+            if (parsed.line > 0) {
+                problem["line"] = parsed.line;
+                problem["col"] = parsed.column;
+            }
+            problems.push_back(problem);
+            return;
+        }
+        warnings = parsed.warnings;
+    } else if (vertexAnimation) {
         // a .vat (vertex animation spec 2.1): the parser's error ("line:col: message" for JSON)
         const jasperengine::vat::VatParseResult parsed = jasperengine::vat::parseVat(text);
         if (!parsed.ok()) {

@@ -39,32 +39,32 @@ origin/main).
 
 | # | Feature (branch `gaps/<name>`) | Covers | Status |
 |---|---|---|---|
-| 1 | `http` | HTTP client for Lua (GET/POST/HEAD, headers, timeouts, JSON/text/binary bodies, download to file, texture from URL), all platforms | review |
+| 1 | `http` | HTTP client for Lua (GET/POST/HEAD, headers, timeouts, JSON/text/binary bodies, download to file, texture from URL), all platforms | merged |
 | 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | review |
-| 3 | `platform-services` | `openURL`, system language/locale, target frame rate / vsync, runtime orientation lock + iOS orientation setting + device orientation, app focus event | review |
+| 3 | `platform-services` | `openURL`, system language/locale, target frame rate / vsync, runtime orientation lock + iOS orientation setting + device orientation, app focus event | merged |
 | 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | impl |
-| 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | review |
-| 6 | `audio-mixer` | mixer buses with volume/mute and filters (low-pass/high-pass, ...), streamed music, PlayOneShot, fades | impl |
+| 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | merged |
+| 6 | `audio-mixer` | mixer buses with volume/mute and filters (low-pass/high-pass, ...), streamed music, PlayOneShot, fades | review |
 | 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | merged |
-| 8 | `physics-contacts` | per-object collision/trigger callbacks (enter/stay/exit) for 3D and 2D, delivered on the main thread; 3D global handlers off the job threads | review |
-| 9 | `physics-3d` | damping, centre of mass, safe body-type switching, per-collider sensor/material, collider removal, 3D joint limits/motors/springs, cone fix, ragdoll, runtime-sized collider data and world capacity | review |
-| 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | review |
+| 8 | `physics-contacts` | per-object collision/trigger callbacks (enter/stay/exit) for 3D and 2D, delivered on the main thread; 3D global handlers off the job threads | merged |
+| 9 | `physics-3d` | damping, centre of mass, safe body-type switching, per-collider sensor/material, collider removal, 3D joint limits/motors/springs, cone fix, ragdoll, runtime-sized collider data and world capacity | merged |
+| 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | merged |
 | 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | impl |
 | 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | impl |
 | 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | merged |
-| 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | review |
+| 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | merged |
 | 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | review |
-| 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | review |
+| 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | merged |
 | 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | merged |
 | 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | merged |
 | 19 | `input` | key/mouse/button down/up edge queries, virtual axes and buttons (Input Manager-style), bound Touch with phases and deltas | merged |
 | 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | merged |
 | 21 | `ui-scaling-text` | canvas match-width-or-height scaling, per-character text effects (waves etc.), particles inside UI | review |
-| 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | review |
+| 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | merged |
 | 23 | `debug-overlay` | on-device log console and stats/FPS overlay | impl |
 | 24 | `camera-shake` | camera shake component and presets (MilkShake-like), camera follow | review |
 | 26 | `xcode26-dav1d` | iOS/macOS builds fail on Xcode 26.6 (pre-existing on the original main): dav1d's aarch64 assembly (src/arm/64/refmvs.S ...) does not assemble; fix and verify on a macOS box | todo |
-| 25 | `ui-canvas-group` | Canvas Group for the native UI: group alpha, interactable, blocks raycasts, ignore parent groups; animatable (found by the animation spec: legacy clips animate CanvasGroup alpha) | review |
+| 25 | `ui-canvas-group` | Canvas Group for the native UI: group alpha, interactable, blocks raycasts, ignore parent groups; animatable (found by the animation spec: legacy clips animate CanvasGroup alpha) | merged |
 
 ## Log
 
@@ -211,3 +211,19 @@ origin/main).
   Engine::getUnscaledDeltatime -> fixed (94a22289c); lead now builds after each batch of merges before moving on.
   Final verification of the batch (Linux full suites + physics-off variants on box 2201, iOS/macOS on the owner's
   Mac) running. anim-layers implemented (both phases), in review; anim-properties and anim-retarget started on it.
+- 2026-11-01: batch verification of 94a22289c (ui-canvas-group, physics-3d, http, shader-globals, platform-services,
+  physics-contacts, particles, ui-multitouch, coroutines + lead fixes): Linux 0 warnings, unit 1601 passed, full MCP
+  only the 10 baseline failures (+ the budget limit, corrected); physics-off builds (3d-off, 2d-off, both-off) pass.
+  The Mac check found an iOS/macOS compile error: two headers named OnScreenControls.h (component UI and HTML UI)
+  and a bare include that Xcode resolved to the wrong one -> include by path (4a627a9e8). guide-headroom merged
+  (guide 14966 bytes); anim-layers merged (review fixes done). camera-shake, ui-scaling-text and video-mp4 conflict
+  heavily with main now (they carry older copies of merged features): each does one final merge of main itself.
+  Re-verifying the tip (4a627a9e8) on Linux and the Mac before pushing.
+- 2026-11-01: the tip fda5c0d0f is verified and pushed. Linux (at 4a627a9e8; fda5c0d0f only changes the Xcode
+  project and this brief): 0 warnings, unit 1634 passed (+2 known timing flakes), full MCP 917 passed with only the
+  10 baseline failures. Owner's Mac: iOS and macOS build with 0 errors, after a second Apple-only fix: the RmlUi
+  Xcode targets did not compile ui-multitouch's new Source/Core/ContextPointer.cpp (link error) -> synced with
+  tools/htmlui/xcode_sync_rmlui.py; the brief now lists all four Xcode sync scripts. Pushed: http,
+  platform-services, ui-multitouch, physics-contacts, physics-3d, anim-layers, shader-globals, coroutines,
+  particles, ui-canvas-group (+ guide-headroom). Next batch: camera-shake (final merge done, 0ea304609),
+  audio-mixer, native-bridge, then ui-scaling-text, video-mp4, safe-area as their final merges land.

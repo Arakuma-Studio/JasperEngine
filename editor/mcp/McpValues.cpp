@@ -1,6 +1,9 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "util/ProjectChecks.h"
+#include "camera/ShakePresets.h"
+#include "camera/ShakePreset.h"
 #include "McpValues.h"
 #include "particles/ParticleFields.h"
 #include "shader/ShaderGlobals.h"
@@ -184,6 +187,11 @@ bool isVertexAnimationProperty(ComponentType component, const std::string& prope
 // String properties holding an asset reference instead of plain text: stored relative to the
 // assets folder, project-relative over MCP (a model's or document's filename, a Pose Animator's
 // animation, an Animation Player's clip, a Vertex Animator's animation)
+// a Camera Shaker's start preset naming a .shake file (a built-in name is no path)
+bool isShakePresetPathProperty(ComponentType component, const std::string& propertyName, const std::string& value) {
+    return component == ComponentType::CameraShakerComponent && propertyName == "startPreset" && Util::isShakePresetFile(value);
+}
+
 // A Rigidbody 2D's or one of its colliders' physics material (a .physicsmaterial)
 bool isPhysicsMaterialProperty(ComponentType component, const std::string& propertyName) {
     return (component == ComponentType::Rigidbody2DComponent || component == ComponentType::RigidbodyComponent) &&
@@ -399,6 +407,24 @@ const EnumOptions& cullingModeOptions() {
     static const EnumOptions options = {
         {(int)CullingMode::BACK, "back", "Back"},
         {(int)CullingMode::FRONT, "front", "Front"}
+    };
+    return options;
+}
+
+const EnumOptions& cameraShakeModeOptions() {
+    static const EnumOptions options = {
+        {(int)CameraShakeMode::Auto, "auto", "Auto"},
+        {(int)CameraShakeMode::Mode3D, "3d", "3D"},
+        {(int)CameraShakeMode::Mode2D, "2d", "2D"}
+    };
+    return options;
+}
+
+const EnumOptions& followOffsetSpaceOptions() {
+    static const EnumOptions options = {
+        {(int)FollowOffsetSpace::World, "world", "World"},
+        {(int)FollowOffsetSpace::Target, "target", "Target"},
+        {(int)FollowOffsetSpace::TargetYaw, "target_yaw", "Target Yaw"}
     };
     return options;
 }
@@ -739,6 +765,32 @@ const EnumOptions& joint3DTypeOptions() {
         {(int)Joint3DType::GEAR, "gear", "Gear"},
         {(int)Joint3DType::RACKANDPINON, "rack_and_pinion", "Rack and Pinion"},
         {(int)Joint3DType::PULLEY, "pulley", "Pulley"}
+    };
+    return options;
+}
+
+const EnumOptions& textEffectTypeOptions() {
+    static const EnumOptions options = {
+        {(int)TextEffectType::None, "none", "None"},
+        {(int)TextEffectType::Wave, "wave", "Wave"},
+        {(int)TextEffectType::Bounce, "bounce", "Bounce"},
+        {(int)TextEffectType::Shake, "shake", "Shake"},
+        {(int)TextEffectType::Pulse, "pulse", "Pulse"},
+        {(int)TextEffectType::Typewriter, "typewriter", "Typewriter"},
+        {(int)TextEffectType::FadeIn, "fade_in", "Fade In"},
+        {(int)TextEffectType::Grow, "grow", "Grow"},
+        {(int)TextEffectType::Unfold, "unfold", "Unfold"},
+        {(int)TextEffectType::Rainbow, "rainbow", "Rainbow"},
+        {(int)TextEffectType::Gradient, "gradient", "Gradient"}
+    };
+    return options;
+}
+
+const EnumOptions& textEffectMixOptions() {
+    static const EnumOptions options = {
+        {(int)TextEffectMix::Multiply, "multiply", "Multiply"},
+        {(int)TextEffectMix::Add, "add", "Add"},
+        {(int)TextEffectMix::Replace, "replace", "Replace"}
     };
     return options;
 }
@@ -1258,6 +1310,8 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"rigidbody_interpolation", &rigidbodyInterpolationOptions()},
         {"light_type", &lightTypeOptions()},
         {"camera_type", &cameraTypeOptions()},
+        {"camera_shake_mode", &cameraShakeModeOptions()},
+        {"follow_offset_space", &followOffsetSpaceOptions()},
         {"lattice_interpolation", &latticeInterpolationOptions()},
         {"lattice_outside", &latticeOutsideOptions()},
         {"lattice_jiggle_anchor", &latticeJiggleAnchorOptions()},
@@ -1349,6 +1403,12 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             if (name == "bindings[].stage") return &latticeStageOptions();
             if (name == "bindings[].mask") return &latticeMaskOptions();
             break;
+        case ComponentType::CameraShakerComponent:
+            if (name == "mode") return &cameraShakeModeOptions();
+            break;
+        case ComponentType::CameraFollowComponent:
+            if (name == "offsetSpace") return &followOffsetSpaceOptions();
+            break;
         case ComponentType::CameraComponent:
             if (name == "type") return &cameraTypeOptions();
             if (name == "framebufferFilter") return &framebufferFilterOptions();
@@ -1372,6 +1432,10 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             break;
         case ComponentType::LayoutGroupComponent:
             if (name == "type") return &layoutGroupTypeOptions();
+            break;
+        case ComponentType::TextEffectComponent:
+            if (name == "layers[].type") return &textEffectTypeOptions();
+            if (name == "layers[].mix") return &textEffectMixOptions();
             break;
         case ComponentType::CanvasGroupComponent:
             if (name == "renderMode") return &canvasGroupRenderModeOptions();
@@ -1619,6 +1683,75 @@ double McpValues::number(float value) {
 }
 
 Json McpValues::toJson(const Vector2& value) { return Json::array({number(value.x), number(value.y)}); }
+
+Json McpValues::canvasScalerToJson(const CanvasScalerSettings& settings) {
+    return Json{{"mode", CanvasScaler::modeName(settings.mode)},
+                {"scale_factor", number(settings.scaleFactor)},
+                {"reference", toJson(settings.referenceResolution)},
+                {"match_mode", CanvasScaler::matchModeName(settings.screenMatchMode)},
+                {"match", number(settings.matchWidthOrHeight)},
+                {"physical_unit", CanvasScaler::unitName(settings.physicalUnit)},
+                {"fallback_dpi", number(settings.fallbackScreenDPI)}};
+}
+
+bool McpValues::canvasScalerFromJson(const Json& value, CanvasScalerSettings& out, std::string& error) {
+    if (!value.is_object()) {
+        error = "must be an object {mode, scale_factor, reference, match_mode, match, physical_unit, fallback_dpi}";
+        return false;
+    }
+    CanvasScalerSettings settings = out;
+    auto readPositive = [&](const Json& v, const char* key, double minimum, const char* minimumText, float& target) {
+        if (!v.is_number() || !std::isfinite(v.get<double>()) || v.get<double>() < minimum) {
+            error = std::string(key) + " must be a number >= " + minimumText;
+            return false;
+        }
+        target = static_cast<float>(v.get<double>());
+        return true;
+    };
+    auto readName = [&](const Json& v, const char* key, const char* names, auto parse) {
+        if (!v.is_string() || !parse(v.get<std::string>().c_str())) {
+            error = std::string(key) + " must be one of " + names;
+            return false;
+        }
+        return true;
+    };
+    for (auto it = value.begin(); it != value.end(); ++it) {
+        const std::string& key = it.key();
+        const Json& v = it.value();
+        if (key == "mode") {
+            if (!readName(v, "mode", "follow_game_canvas, constant_pixel_size, scale_with_screen_size, constant_physical_size",
+                          [&](const char* n){ return CanvasScaler::parseMode(n, settings.mode); })) return false;
+        } else if (key == "scale_factor") {
+            if (!readPositive(v, "scale_factor", 0.01, "0.01", settings.scaleFactor)) return false;
+        } else if (key == "reference" || key == "reference_resolution") {
+            Vector2 reference = settings.referenceResolution;
+            if (!parseVector2(v, reference) || !(reference.x >= 1.0f) || !(reference.y >= 1.0f)) {
+                error = key + " must be [width, height] (>= 1)";
+                return false;
+            }
+            settings.referenceResolution = reference;
+        } else if (key == "match_mode" || key == "screen_match_mode") {
+            if (!readName(v, "match_mode", "match_width_or_height, expand, shrink",
+                          [&](const char* n){ return CanvasScaler::parseMatchMode(n, settings.screenMatchMode); })) return false;
+        } else if (key == "match" || key == "match_width_or_height") {
+            if (!v.is_number() || v.get<double>() < 0.0 || v.get<double>() > 1.0) {
+                error = key + " must be a number 0 (width) .. 1 (height)";
+                return false;
+            }
+            settings.matchWidthOrHeight = static_cast<float>(v.get<double>());
+        } else if (key == "physical_unit") {
+            if (!readName(v, "physical_unit", "centimeters, millimeters, inches, points, picas",
+                          [&](const char* n){ return CanvasScaler::parseUnit(n, settings.physicalUnit); })) return false;
+        } else if (key == "fallback_dpi" || key == "fallback_screen_dpi") {
+            if (!readPositive(v, key.c_str(), 1.0, "1", settings.fallbackScreenDPI)) return false;
+        } else {
+            error = "unknown key \"" + key + "\" (mode, scale_factor, reference, match_mode, match, physical_unit, fallback_dpi)";
+            return false;
+        }
+    }
+    out = settings;
+    return true;
+}
 Json McpValues::toJson(const Vector3& value) { return Json::array({number(value.x), number(value.y), number(value.z)}); }
 Json McpValues::toJson(const Vector4& value) {
     return Json::array({number(value.x), number(value.y), number(value.z), number(value.w)});
@@ -3358,6 +3491,7 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         case PropertyType::String: {
             const std::string& value = *static_cast<std::string*>(ref);
             if (isPlayerClipProperty(ctx.component, name)) return clipPathToJson(ctx.project, value);
+            if (isShakePresetPathProperty(ctx.component, name, value)) return assetPathToJson(ctx.project, value);
             return isAssetPathProperty(ctx.component, name) ? assetPathToJson(ctx.project, value) : value;
         }
         case PropertyType::Float:
@@ -3652,6 +3786,31 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                         ".clip, its GUID follows the file.";
                 return nullptr;
             }
+            if (component == ComponentType::CameraShakerComponent && propertyName == "startPreset" && !text.empty()) {
+                // a built-in name, or a .shake that exists and reads (project-relative, or its stored form)
+                if (!Util::isShakePresetFile(text)) {
+                    if (!camera::findBuiltinShakePreset(text)) {
+                        std::string names;
+                        for (const std::string& name : camera::builtinShakePresetNames()) names += (names.empty() ? "" : ", ") + name;
+                        error = "startPreset: '" + text + "' is no built-in preset (" + names + ") and no .shake path.";
+                        return nullptr;
+                    }
+                } else {
+                    std::string stored;
+                    if (!storedAssetPathFromJson(project, text, stored, error)) return nullptr;
+                    std::string content;
+                    if (!ProjectChecks::readFile(project->resolveAssetPath(stored), content)) {
+                        error = "startPreset: " + text + " does not exist (write it first: write_file with a .shake).";
+                        return nullptr;
+                    }
+                    camera::ShakeParseResult parsed = camera::parseShakePreset(content);
+                    if (!parsed.ok()) {
+                        error = "startPreset: " + text + " is no shake preset: " + parsed.errorText();
+                        return nullptr;
+                    }
+                    text = stored;
+                }
+            }
             if (isAssetPathProperty(component, propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
             // a foliage layer's FBX mesh loads from its import, created here the first time
             if (component == ComponentType::TerrainComponent && endsWith(propertyName, "meshPath") &&
@@ -3688,6 +3847,19 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
         }
         case PropertyType::Float: {
             if (!value.is_number()) return expect("a number");
+            // camera shake spec 10: the Camera Shaker's and Camera Follow's ranges
+            if (component == ComponentType::CameraShakerComponent || component == ComponentType::CameraFollowComponent) {
+                const double number = value.get<double>();
+                if (component == ComponentType::CameraShakerComponent && propertyName == "traumaPower" &&
+                        !(number >= 1.0 && number <= 4.0)) {
+                    error = "traumaPower must be 1 to 4 (shake = trauma ^ power; 2 by default).";
+                    return nullptr;
+                }
+                if (!(number >= 0.0) || !std::isfinite(number)) {
+                    error = propertyName + " must be 0 or more.";
+                    return nullptr;
+                }
+            }
             // as the scene file reads it back (Stream clamps a negative fade to none)
             if (component == ComponentType::AnimationPlayerComponent && propertyName == "defaultFadeTime" &&
                     !(value.get<double>() >= 0.0)) {
@@ -3709,11 +3881,19 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
         case PropertyType::Vector2: {
             Vector2 v = property.ref ? *static_cast<Vector2*>(property.ref) : Vector2::ZERO;
             if (!parseVector2(value, v)) return expect("[x,y]");
+            if (component == ComponentType::CameraFollowComponent && propertyName == "deadZone" && (v.x < 0.0f || v.y < 0.0f)) {
+                error = "deadZone is a width and a height: both 0 or more.";
+                return nullptr;
+            }
             return new PropertyCmd<Vector2>(project, sceneId, entity, component, propertyName, v, onChanged);
         }
         case PropertyType::Vector3: {
             Vector3 v = property.ref ? *static_cast<Vector3*>(property.ref) : Vector3::ZERO;
             if (!parseVector3(value, v)) return expect("[x,y,z] (or \"#RRGGBB\")");
+            if (component == ComponentType::CameraFollowComponent && propertyName == "damping" && (v.x < 0.0f || v.y < 0.0f || v.z < 0.0f)) {
+                error = "damping is a smooth time in seconds per axis: 0 (rigid) or more.";
+                return nullptr;
+            }
             return new PropertyCmd<Vector3>(project, sceneId, entity, component, propertyName, v, onChanged);
         }
         case PropertyType::Vector4: {
