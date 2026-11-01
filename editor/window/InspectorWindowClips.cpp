@@ -1417,6 +1417,13 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         drawVatAsset(asset);
         return true;
     }
+    // a .shake: its own view (InspectorWindowCamera.cpp)
+    if (Util::isShakePresetFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawShakePresetAsset(asset);
+        return true;
+    }
     // a physics material: its four fields (InspectorPhysics2D.cpp)
     if (PhysicsMaterialAssets::isPhysicsMaterialFile(file)){
         std::error_code ec;

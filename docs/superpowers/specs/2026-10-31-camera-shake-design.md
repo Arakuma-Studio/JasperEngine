@@ -653,3 +653,138 @@ MCP tests (`tools/mcp/tests/test_camera_shake.py`):
 - **`debug-overlay` (#23)** is unrelated. It may show `CameraShake` stats later.
 - **The animation features** are independent. A camera animated by an Animation Player still shakes,
   because the shake is a view offset.
+
+## Implementation notes
+
+Decisions taken while implementing (branch `gaps/camera-shake`, both phases):
+
+1. **Built-in presets: all 13 of the game.** Section 6 listed 9 of the game's MilkShake assets
+   while promising its 13 presets. The other four ship too, with the asset values:
+   `eh_shake` (EHShake), `entity_shake` (EnitityShake), `invader_drunk` (InvaderDrunk) and
+   `invaders_explosion` (InvadersExplosion). There are 16 built-ins with EZ Camera Shake's three.
+2. **MilkShake's step order, exactly.** MilkShake's `UpdateShake` returns the offset of the state
+   **before** the step. Then it advances the pause fade, then the noise clock (with the
+   roughness of the fade before this step), then the fade. Section 7.2 listed the fade first.
+   MilkShake's order is kept, so a shake's first frame is still, as in Unity.
+   Two guards differ from MilkShake, both against zero time steps:
+   - a step with dt <= 0 changes nothing (MilkShake stopped a shake started at time scale 0);
+   - only a shake fading in turns Sustained (MilkShake undid a `stop()` taken during a zero step).
+3. **Pause** keeps MilkShake's meaning: the noise clock slows to a stop, and the fade goes on. A
+   paused sustained shake holds its offset. A paused one-shot keeps fading out. The docs say so.
+4. **`viewOffsetPivot`**, a fourth runtime field on `CameraComponent`. A 2D shake rolls about the
+   view's centre (an orthographic camera's view origin is a corner). A 3D shake turns about the
+   eye. `view = T(c) R^-1 T(-c) T(-p) view`. With a custom view matrix (mirrors) the offset is
+   not applied.
+5. **`CameraFollowComponent::target` is an `Entity`** (`PropertyType::Entity`), like every other
+   GameObject field of a component (Joint2D bodies, Lattice Follower). S9 already rules out
+   targets in other scenes. Cloning remaps a target inside the copied hierarchy.
+6. **Staleness of `.shake` files.** `ShakePresetPool` keeps each file's size and modification
+   time and reloads the file when they change. This covers the Inspector, `write_file`, undo and
+   outside edits alike, with no editor hook to forget. `invalidate()` exists too. In packed
+   builds (no stat) an entry is loaded once.
+7. **Paths.** A `.shake` is named by its path relative to the assets folder. This is the stored
+   form, and Lua uses it. MCP takes and returns the project-relative form, as for every asset
+   path. With the default layout (assets folder = project folder) the two are the same:
+   `"assets/shakes/boom.shake"`.
+8. **The edit-mode preview** (`previewShake`, `previewAddTrauma`, `previewStop`, `stopPreview`).
+   - The paused system steps the preview itself, on the editor's frame time (clamped to 0.1 s).
+     The Inspector only starts and stops it, so the preview runs even while the Inspector is
+     scrolled away.
+   - A camera **without** a Camera Shaker can be previewed with default settings. The `.shake`
+     asset's **Test** uses this on the scene's main camera.
+   - In play mode, Test shakes the main camera's shaker, or every global shaker when the main
+     camera has none.
+   - The preview stops on Play, a save, Play stop, a scene switch, and when neither its
+     GameObject nor its `.shake` is shown in the Inspector.
+   - The Game view shows a "Shake preview" badge and redraws every frame while the preview
+     shakes.
+9. **Static calls skip paused systems.** An editor scene in edit mode never takes a
+   `CameraShake.*` shake, which would otherwise wait and play on Play.
+10. **Menus.** The GameObject menu has Camera as a single item, not a submenu. The command is
+    therefore **GameObject > Add Camera Shaker to Main Camera**, after the create items. It is
+    disabled when the main camera already has a shaker. In Add Component, both components are in
+    **Rendering**, next to Camera.
+11. **`list_assets` gains the type `shake`.** This is the only tool-definition change, and it is
+    measured in the tool budget. `get_asset_info` on a `.shake` returns `shake` (its values) and
+    `peak {position, rotation, duration}`.
+12. **Look-at conventions.**
+    - A camera looks down its -Z.
+    - Any other followed GameObject turns its +Z to the target, as Unity's `LookAt` does.
+    - With `lookAt` off, a `useTarget` camera keeps its view direction: its `target` moves with it.
+    - The dead zone uses world x/y and works on orthographic and UI cameras only. The
+      Inspector shows it only there and notes when a perspective camera has one.
+13. **Transform mode in 2D.** A non-camera GameObject in 2D mode (a UI element under `auto`, or
+    any GameObject under `2d`) uses units of the canvas height / 10.
+14. **Axes.** The offset is applied in the camera's local axes, the engine's: x right, y up, z
+    back. Unity's z is forward, but the noise is symmetric, so the presets look the same.
+15. **Tests.**
+    - The asset edit/undo test drives the write helper (`inspectorcamera::writeShakePresetFile`)
+      that the asset Inspector uses, not ImGui.
+    - The budget test (section 13) asserts 0.02 ms per frame in Release builds only.
+    - The Factory test pastes the emitted text into the test and compiles it, as the Vertex
+      Animator test does.
+16. **Camera Follow in edit mode** does nothing: the system is paused. **Snap Now** computes the
+    placement (`computeFollow` with snap) and writes the position, the rotation and the camera
+    target as one MultiPropertyCmd.
+17. **Merging main** (physics-2d, script-lifecycle and lines-trails on top of the coroutines base).
+    - **Ordinals.** `TrailRendererComponent` keeps its ordinal, and the Camera Shaker and Camera
+      Follow come after it (`LastComponentType` = `CameraFollowComponent`).
+    - **ScriptInstanceBase.** Coroutines and script-lifecycle each had one, under the same
+      registry key. The merge keeps lifecycle's (its members, its plain/shared class handling).
+      `ScriptSchedulerLua::addInstanceMethods` adds the coroutine and timer methods to it.
+      Coroutines' own module `__index` chaining is removed.
+    - **Deactivation.** It still stops the GameObject's coroutines (`setEntityActive`), next to
+      lifecycle's observed activation.
+    - **A test rename.** A coroutine test whose Lua method was named `start` was renamed, because
+      the lifecycle now calls `start` itself.
+    - **The agent guide** was at 16812 bytes after the merge, over its 16 KB budget (main alone
+      was at 16488). Wording was condensed in the intro, Code, Lua, physics, shaders and build
+      sections, keeping every rule and pointer, to 16369 bytes.
+18. **Review fixes.**
+    - **Start presets don't pile up.** `startPreset` replays on an enable only when the shake it
+      started (`ShakerRuntime::startInstanceId`) is gone. A disabled shaker holds its shakes, so
+      a disable/enable resumes the same one.
+    - **Transform mode writes the base back before the frame.** It does this at the start of
+      each frame (`CameraControlSystem::preUpdate`, called by `Engine::runFrame` before the fixed
+      steps and scripts) and applies base + offset in the update. A script moving relative to its
+      current pose (`position = position + v * dt`) no longer soaks up the shake. The
+      PoseBlendBone comparison remains for frames run without `preUpdate` (tests, scenes updated
+      by hand).
+    - **2D transform mode on non-UI GameObjects** uses tenths of the scene camera's orthographic
+      height. UI elements keep tenths of the canvas height.
+    - **`CameraComponent::steadyWorldUp`** is the up of the view before the shake. The 3D audio
+      listener uses it, so a shake never turns what is heard. `worldUp` / `worldRight` /
+      `worldDirection`, picking and `getViewMatrix` follow the drawn (shaken) view, as in Unity.
+    - **A CameraComponent removed** from a shaking GameObject turns the shaker to transform mode
+      from its own pose. **One added** to a transform-mode shaker writes the base back at once;
+      the shake continues through the view offset.
+    - **Static calls while a scene is paused** (the editor's Play paused, edit mode) are dropped,
+      not queued (nothing steps there), with their own warning. They no longer use up the
+      once-per-process "no global Camera Shaker" warning.
+    - **2D HUDs** drawn by the shaken camera shake with it. The docs say to put the HUD in a UI
+      child scene. Excluding UI layers from the view offset was not cheap: it would take a second
+      view matrix in the camera loop.
+19. **Camera Follow and the persistent scene** (lead decision with persistence).
+    - A target can be a GameObject of the persistent DontDestroyOnLoad scene
+      (`CameraFollowComponent::targetPersistent`, runtime). Set it from Lua
+      (`follow.target = persistentPlayer`) or C++ `CameraFollow::setTarget(scene, entity)`.
+    - When a followed GameObject moves into the persistent scene
+      (`ObjectManager::moveToScene` -> `CameraControlSystem::remapTargets`), its followers follow
+      the moved copy.
+    - A target in any other scene is refused with a warning, and a move to a scene that is not
+      persistent clears the target with a warning.
+    - Scene files and the Inspector name targets of their own scene only; the flag is not saved.
+20. **Two inherited coroutine tests** (gaps/coroutines' merge with main, taken as it is).
+    - `CoroutineTest.CoroutinesAndTimersFollowAGameObjectMovedToAnotherScene` moved a GameObject
+      into a scene whose scripts never started. The lifecycle's `setEntityActive` ignores
+      activation changes in such a scene, so the coroutine was not stopped and the test failed.
+      The test now starts the destination scene first (`ScriptRuntime::awakeScene`), as a loaded
+      or persistent scene is. The engine code is unchanged.
+    - The lifecycle-start coroutine test added for the review waits 4 frames before it checks
+      that `start` has not resumed yet, and 10 more before it checks that it has.
+21. **Final merge with main (5762bb259).** Main's final coroutines code is kept wherever this
+    branch had an older copy, including the two coroutine tests of note 20, which main now carries.
+    The camera components come after the on-screen controls (ui-multitouch): the Camera Shaker is
+    TouchArea + 1, and the on-screen controls test no longer requires TouchArea to be last. The
+    shake/follow line of the agent guide is under "Feature guides". The stochastic-tiling re-save
+    failure seen on the earlier main (acba2fadf) passes on this merge.

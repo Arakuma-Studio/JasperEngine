@@ -14,6 +14,7 @@
 
 #include "external/IconsFontAwesome6.h"
 #include "command/CommandHandle.h"
+#include "command/type/AddComponentCmd.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/RemoveChildSceneCmd.h"
@@ -318,6 +319,8 @@ enum class AppMenuCommand : uint32_t {
     AssetsCreateAnimationClip,      // shown only once AnimationClipAppHooks::createClipAsset is set
     AssetsCreateAnimatorController, // (createControllerAsset)
     AssetsCreateAvatarMask,         // (createMaskAsset)
+    AssetsCreateShakePreset,
+    AddCameraShakerToMainCamera,
     AssetsCreateCppScript,
     AssetsShowInFileManager,
     AssetsOpen,
@@ -626,6 +629,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     if (animationClipAppHooks().createMaskAsset) {
         assetsCreateItems.push_back(menuCommand(AppMenuCommand::AssetsCreateAvatarMask, "Avatar Mask"));
     }
+    assetsCreateItems.push_back(menuCommand(AppMenuCommand::AssetsCreateShakePreset, "Shake Preset"));
     assetsCreateItems.push_back(menuSeparator());
     assetsCreateItems.push_back(menuSubmenu("Scene", newSceneItems(), !isProjectBusy));
 
@@ -645,8 +649,16 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuCommand(AppMenuCommand::ClearTrash, "Empty Trash...", !isProjectBusy)
     }));
 
-    menu.menus.push_back(menuSubmenu("GameObject",
-        gameObjectMenuItems(selectedScene, canCreate, canCreateChild)));
+    // Camera Shaker on the scene's main camera (camera shake spec 9), after the create items
+    std::vector<PlatformMenuItem> gameObjectItems = gameObjectMenuItems(selectedScene, canCreate, canCreateChild);
+    {
+        const Entity mainCamera = hasSelectedScene ? project.getGameCamera(selectedSceneId) : NULL_ENTITY;
+        const bool canAddShaker = hasSelectedScene && !isProjectBusy && mainCamera != NULL_ENTITY && selectedScene->scene &&
+                                  !selectedScene->scene->findComponent<CameraShakerComponent>(mainCamera);
+        gameObjectItems.push_back(menuSeparator());
+        gameObjectItems.push_back(menuCommand(AppMenuCommand::AddCameraShakerToMainCamera, "Add Camera Shaker to Main Camera", canAddShaker));
+    }
+    menu.menus.push_back(menuSubmenu("GameObject", std::move(gameObjectItems)));
 
     menu.menus.push_back(menuSubmenu("Component", {
         menuShortcut(AppMenuCommand::AddComponent, "Add...", "Ctrl+Shift+A", canAddComponent)
@@ -1031,6 +1043,20 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AssetsCreatePoseAnimation:
             projectWindow->assetsCreatePoseAnimation();
             break;
+        case AppMenuCommand::AssetsCreateShakePreset:
+            projectWindow->assetsCreateShakePreset();
+            break;
+        case AppMenuCommand::AddCameraShakerToMainCamera: {
+            SceneProject* scene = project.getSelectedScene();
+            const Entity mainCamera = scene ? project.getGameCamera(scene->id) : NULL_ENTITY;
+            if (scene && scene->scene && !project.isAnyScenePlaying() && mainCamera != NULL_ENTITY &&
+                !scene->scene->findComponent<CameraShakerComponent>(mainCamera)) {
+                CommandHandle::get(scene->id)->addCommandNoMerge(
+                    new AddComponentCmd(&project, scene->id, mainCamera, ComponentType::CameraShakerComponent));
+                project.setSelectedEntity(scene->id, mainCamera);
+            }
+            break;
+        }
         case AppMenuCommand::AssetsCreateAnimationClip:
             if (animationClipAppHooks().createClipAsset) {
                 animationClipAppHooks().createClipAsset(&project);
@@ -3405,8 +3431,23 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
     Engine::computeViewLayout(width, height, (int)project.getCanvasWidth(), (int)project.getCanvasHeight(), project.getScalingMode(),
                               canvasWidth, canvasHeight, viewRect);
 
+    // a UI scene's camera covers its Canvas Scaler UI size (what it is laid out at), any other the canvas
+    auto layerCanvas = [&](SceneProject* layerScene, Entity layerCamera, float& layerWidth, float& layerHeight) {
+        layerWidth = (float)canvasWidth;
+        layerHeight = (float)canvasHeight;
+        CameraComponent* camera = layerScene->scene->findComponent<CameraComponent>(layerCamera);
+        if (layerScene->sceneType == SceneType::SCENE_UI && layerScene->scene->getCanvasScale().scaled &&
+            camera && camera->type == CameraType::CAMERA_UI) {
+            const Vector2 ui = layerScene->scene->getSystem<UISystem>()->getCanvasSize();
+            layerWidth = ui.x;
+            layerHeight = ui.y;
+        }
+    };
+
     std::vector<Engine::ViewLayer> layers;
-    layers.push_back({sceneProject.scene, cameraEntity, viewRect, false, true, false, (float)canvasWidth, (float)canvasHeight});
+    float mainCanvasWidth = 0.0f, mainCanvasHeight = 0.0f;
+    layerCanvas(&sceneProject, cameraEntity, mainCanvasWidth, mainCanvasHeight);
+    layers.push_back({sceneProject.scene, cameraEntity, viewRect, false, true, false, mainCanvasWidth, mainCanvasHeight});
 
     for (const ChildSceneRef& childSceneRef : sceneProject.childScenes) {
         SceneProject* childScene = project.getScene(childSceneRef.id);
@@ -3421,7 +3462,9 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
             childScene->scene->getSystem<UIDocumentSystem>()->update(0);
             childScene->scene->getSystem<RenderSystem>()->update(0);
         }
-        layers.push_back({childScene->scene, childCamera, viewRect, false, false, false, (float)canvasWidth, (float)canvasHeight});
+        float childCanvasWidth = 0.0f, childCanvasHeight = 0.0f;
+        layerCanvas(childScene, childCamera, childCanvasWidth, childCanvasHeight);
+        layers.push_back({childScene->scene, childCamera, viewRect, false, false, false, childCanvasWidth, childCanvasHeight});
     }
 
     Engine::drawView(GAME_VIEW_ID, target, layers);

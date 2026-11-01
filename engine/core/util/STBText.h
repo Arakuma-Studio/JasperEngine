@@ -16,11 +16,21 @@
 #include "util/CharExtent.h"
 #include "texture/Texture.h"
 #include "util/TextShaper.h"
+#include "util/TextGlyphInfo.h"
 
 namespace jasperengine {
 
     class FontFace;
     class GlyphAtlas;
+
+    // How an atlas rasterizes: rasterScale physical pixels per text pixel (crisp text on a
+    // scaled canvas, Canvas Scaler); sdfPadding > 0 makes a signed-distance atlas with that
+    // many pixels around each glyph (Text outline and shadow). The defaults are the plain atlas.
+    struct JASPERENGINE_API STBTextOptions {
+        float rasterScale = 1.0f;
+        int sdfPadding = 0;
+    };
+
 
     //glyph atlas of a font in a single size, plus the fonts it falls back to. The whole
     //chain shares one atlas, so mixed scripts stay a single texture. Faces come from
@@ -77,6 +87,8 @@ namespace jasperengine {
 
         TextureData* textureData;
 
+        STBTextOptions options;
+
         static uint64_t glyphKey(unsigned int face, uint32_t glyphIndex);
 
         bool addFace(const std::string& fontpath, unsigned int fontSize);
@@ -95,6 +107,7 @@ namespace jasperengine {
         bool growAtlas();
         void rasterizeGlyph(unsigned int face, uint32_t glyphIndex, FontGlyph& glyph, int x, int y);
         const FontGlyph* getGlyph(unsigned int face, uint32_t glyphIndex);
+        const FontGlyph* getSdfGlyph(unsigned int face, uint32_t glyphIndex, uint64_t key);
         const FontGlyph* getGlyphForCodepoint(uint32_t codepoint);
         void refreshTextureData();
 
@@ -114,10 +127,20 @@ namespace jasperengine {
 
         unsigned long getAtlasVersion() const;
 
+        // before load(): the raster scale and SDF padding of this atlas
+        void setOptions(const STBTextOptions& options);
+        const STBTextOptions& getOptions() const;
+        // pixels of distance one unit of the SDF atlas's red channel spans (0..1 = 0..255):
+        // distance = (value - 128/255) * getSdfDistanceScale(), positive inside the glyph
+        float getSdfDistanceScale() const;
+
         TextureData* load(const std::string& fontpath, const std::vector<std::string>& fallbackPaths, unsigned int fontSize);
+        // Every length in and out is in text pixels (UI units), whatever the raster scale.
+        // glyphInfo (optional) gets one entry per quad written to the buffer.
         void createText(const std::string& text, Buffer* buffer, std::vector<uint16_t>& indices, std::vector<Vector2>& charPositions,
                         std::vector<CharExtent>& charExtents,
-                        unsigned int& width, unsigned int& height, bool fixedWidth, bool fixedHeight, bool multiline, bool invert);
+                        unsigned int& width, unsigned int& height, bool fixedWidth, bool fixedHeight, bool multiline, bool invert,
+                        std::vector<TextGlyphInfo>* glyphInfo = nullptr);
 
         TextureData* getTextureData();
         

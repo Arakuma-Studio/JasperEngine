@@ -12,6 +12,9 @@
 #include "HtmlUIScriptInternal.h"
 #include "UILottieElement.h"
 #include "media/UIVideoElement.h"
+#include "htmlui/UIParticleSystemElement.h"
+#include "htmlui/HtmlTextEffects.h"
+#include "action/ParticleSystem.h"
 
 #include "Log.h"
 
@@ -54,9 +57,18 @@ namespace {
         return element ? rmlui_dynamic_cast<UIVideoElement*>(element) : nullptr;
     }
 
+    // play(), pause(), stop(), isPlaying() serve a <particle-system> too (ui-scaling-text)
+    UIParticleSystemElement* asParticles(Rml::Element* element){
+        return element ? rmlui_dynamic_cast<UIParticleSystemElement*>(element) : nullptr;
+    }
+
 }
 
 void UIElement::play(){
+    if (UIParticleSystemElement* particles = asParticles(get())){
+        particles->play();
+        return;
+    }
     if (UIVideoElement* video = asVideo(get())){
         video->play();
         return;
@@ -67,6 +79,10 @@ void UIElement::play(){
 }
 
 void UIElement::pause(){
+    if (UIParticleSystemElement* particles = asParticles(get())){
+        particles->pause();
+        return;
+    }
     if (UIVideoElement* video = asVideo(get())){
         video->pause();
         return;
@@ -77,6 +93,10 @@ void UIElement::pause(){
 }
 
 void UIElement::stop(){
+    if (UIParticleSystemElement* particles = asParticles(get())){
+        particles->stop();
+        return;
+    }
     LOTTIE_OF(stop);
     if (lottie)
         lottie->stop();
@@ -135,6 +155,8 @@ void UIElement::setMarker(const std::string& marker){
 }
 
 bool UIElement::isPlaying() const{
+    if (UIParticleSystemElement* particles = asParticles(get()))
+        return particles->isPlaying();
     if (UIVideoElement* video = asVideo(get()))
         return !video->isPaused();
     LOTTIE_OF(isPlaying);
@@ -156,4 +178,35 @@ float UIElement::getDuration() const{
         return (float)video->getDuration();
     LOTTIE_OF(getDuration);
     return lottie ? lottie->getDuration() : 0.0f;
+}
+
+// ---- <particle-system> and text-effect (ui-scaling-text)
+
+void UIElement::clear(){
+    if (UIParticleSystemElement* particles = asParticles(get())){
+        particles->clear();
+        return;
+    }
+    Log::error("[HTML UI] UIElement::clear: not a <particle-system> element");
+}
+
+bool UIElement::hasParticleSystem() const{
+    UIParticleSystemElement* particles = asParticles(get());
+    return particles && particles->getScene() && particles->getParticleEntity() != NULL_ENTITY;
+}
+
+ParticleSystem UIElement::getParticleSystem() const{
+    if (UIParticleSystemElement* particles = asParticles(get())){
+        if (particles->getScene() && particles->getParticleEntity() != NULL_ENTITY)
+            return ParticleSystem(particles->getScene(), particles->getParticleEntity());
+        Log::warn("[HTML UI] UIElement::getParticleSystem: the <particle-system> has no system (yet, or its src failed)");
+    }else{
+        Log::error("[HTML UI] UIElement::getParticleSystem: not a <particle-system> element");
+    }
+    return ParticleSystem(static_cast<Scene*>(nullptr), static_cast<Entity>(NULL_ENTITY));
+}
+
+void UIElement::restartTextEffect(){
+    if (Rml::Element* element = get())
+        htmlui::HtmlTextEffects::get().restart(element);
 }

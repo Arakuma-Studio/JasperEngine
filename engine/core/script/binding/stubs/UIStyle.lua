@@ -5,4 +5,10 @@
 ---@class UIStyle
 ---The inline declarations as text; assigning replaces them all (phase 2)
 ---@field cssText string
+---Per-character text animation (engine extension, inherited): "wave(0.15em 1.5s)", "typewriter(30 0.1s)", "gradient(2s add #ff0, #f80)", "none"
+---@field textEffect string
+---How many times the one-shot text effects run: "infinite" or an integer (texteffectend after the last)
+---@field textEffectIteration string
+---The text effects' clock: "ui" (unscaled, default) or "game"
+---@field textEffectTime string
 ---@field [string] string

@@ -34,6 +34,9 @@ option(JASPERENGINE_ANIM_TESTS "Build jasperengine-anim-tests" OFF)
 # googletest suite of the vertex animation asset (engine/tests/vat): .vat IO, payload addressing,
 # playback math, the .vat.glb reader and the pool against the engine library; no GPU or window
 option(JASPERENGINE_VAT_TESTS "Build jasperengine-vat-tests" OFF)
+# googletest suite of camera shake and camera follow (engine/tests/camera): the shake maths,
+# presets, the shakers and followers of a headless scene and the view offset; no GPU or window
+option(JASPERENGINE_CAMERA_TESTS "Build jasperengine-camera-tests" OFF)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -920,6 +923,11 @@ set(JASPERENGINE_SRCS
     core/animation/AvatarMask.cpp
     core/animation/AnimatorController.cpp
     core/animation/AnimatorControllerPlayback.cpp
+    core/camera/CameraShake.cpp
+    core/camera/ShakeInstance.cpp
+    core/camera/ShakePreset.cpp
+    core/camera/ShakePresets.cpp
+    core/camera/ShakerRuntime.cpp
     core/animation/AnimationEvent.cpp
     core/animation/AnimationPlayerRuntime.cpp
     core/animation/VertexAnimatorRuntime.cpp
@@ -952,6 +960,8 @@ set(JASPERENGINE_SRCS
     core/ecs/ComponentManager.cpp
     core/htmlui/HtmlUI.cpp
     core/htmlui/HtmlUIClock.cpp
+    core/htmlui/HtmlTextEffects.cpp
+    core/htmlui/UIParticleSystemElement.cpp
     core/htmlui/HtmlUIContext.cpp
     core/htmlui/HtmlUIContextRender.cpp
     core/htmlui/HtmlUIDependencies.cpp
@@ -1042,6 +1052,8 @@ set(JASPERENGINE_SRCS
     core/particles/ParticleUpgrade.cpp
     core/object/Bone.cpp
     core/object/Camera.cpp
+    core/object/CameraFollow.cpp
+    core/object/CameraShaker.cpp
     core/object/EntityHandle.cpp
     core/object/Light.cpp
     core/object/Light2D.cpp
@@ -1098,6 +1110,7 @@ set(JASPERENGINE_SRCS
     core/pool/AnimationClipPool.cpp
     core/pool/AvatarMaskPool.cpp
     core/pool/AnimatorControllerPool.cpp
+    core/pool/ShakePresetPool.cpp
     core/pool/PhysicsMaterialPool.cpp
     core/pool/VertexAnimationPool.cpp
     core/object/physics/Collision.cpp
@@ -1131,6 +1144,7 @@ set(JASPERENGINE_SRCS
     core/script/ScriptBase.cpp
     core/script/ScriptScheduler.cpp
     core/script/ScriptEvent.cpp
+    core/script/ScriptScheduler.cpp
     core/script/ScriptMessages.cpp
     core/script/ScriptProperty.cpp
     core/script/ScriptRuntime.cpp
@@ -1166,6 +1180,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/PoseAnimatorSystem.cpp
     core/subsystem/VertexAnimatorSystem.cpp
     core/subsystem/TrailSystem.cpp
+    core/subsystem/CameraControlSystem.cpp
     core/subsystem/FluidSystem.cpp
     core/fluid/FluidSimulator.cpp
     core/fluid/FluidPresets.cpp
@@ -1203,6 +1218,8 @@ set(JASPERENGINE_SRCS
     core/util/FontFace.cpp
     core/util/FontRegistry.cpp
     core/util/FrameLimiter.cpp
+    core/util/CanvasScaler.cpp
+    core/util/TextEffects.cpp
     core/util/GlyphAtlas.cpp
     core/util/LunaSVGRuntime.cpp
     core/util/PlatformRules.cpp
@@ -1584,4 +1601,8 @@ endif()
 
 if(JASPERENGINE_VAT_TESTS)
     add_subdirectory(tests/vat)
+endif()
+
+if(JASPERENGINE_CAMERA_TESTS)
+    add_subdirectory(tests/camera)
 endif()

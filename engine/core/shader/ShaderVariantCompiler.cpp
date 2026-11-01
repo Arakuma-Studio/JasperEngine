@@ -453,6 +453,7 @@ void addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const
     if (prop & shaderPropertyBit(1))  defs.push_back({"HAS_FONTATLAS_TEXTURE", "1"});    // 'Ftx'
     if (prop & shaderPropertyBit(2))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
     if (prop & shaderPropertyBit(3))  defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});    // 'Vc4'
+    if (prop & shaderPropertyBit(4))  defs.push_back({"HAS_FONTATLAS_SDF", "1"});        // 'Sdf' (with 'Ftx')
 }
 
 void addHtmlUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {

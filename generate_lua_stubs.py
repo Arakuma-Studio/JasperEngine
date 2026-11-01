@@ -2189,6 +2189,12 @@ OVERRIDES[('CanvasGroup', 'stopFade')] = {
     'doc': ['Stops the running fade; `jumpToEnd` writes its end alpha and completes it now (onComplete, deactivate).'],
     'overloads': [([('jumpToEnd?', 'boolean')], '')]}
 
+# <particle-system>: nil before its prefab is made or when its src failed (a LuaRef)
+OVERRIDES[('UIElement', 'getParticleSystem')] = {
+    'doc': ['The Particle System of a <particle-system> element\'s hidden GameObject; nil before the prefab',
+            'is made (document scripts, onLoad, edit mode) or when its src failed.'],
+    'overloads': [([], 'ParticleSystem|nil')]}
+
 # Mesh:getMaterial and Mesh.material push the Material copy themselves (a LuaRef: the copy
 # remembers the shader its submesh draws with, LuaBinding::setMaterialDrawnShader)
 OVERRIDES[('Mesh', 'getMaterial')] = {
@@ -2440,6 +2446,8 @@ PROPERTY_OVERRIDES = {
     # a coroutine's error (with its traceback) and the script instance that started it
     ('Coroutine', 'error'): ('string?', False),
     ('Coroutine', 'owner'): ('ScriptInstance?', False),
+    # the GameObject a Camera Follow follows (its scene or the persistent one), nil without one
+    ('CameraFollow', 'target'): ('GameObject?', False),
     ('HttpRequest', 'response'): ('HttpResponse|nil', False),
     ('HttpResponse', 'headers'): ('table<string, string>', True),
     ('HttpResponse', 'body'): ('string', False),
@@ -2505,6 +2513,27 @@ for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
             'overloads': [([('scene', 'Scene'), ('ray', 'Ray'), ('layerMask?', 'integer')], _ret),
                           ([('scene', 'Scene'), ('origin', _vec), ('direction', _vec), ('maxDistance', 'number'),
                             ('layerMask?', 'integer')], _ret)]}
+
+# Camera shake (camera shake spec 8): the shake calls are lua_CFunctions (a preset is a name, a
+# .shake path or a table; options a table); ShakePreset and ShakeOptions are in
+# engine/core/script/binding/stubs/CameraShake.lua
+_SHAKE_PRESET = 'ShakePresetName|string|ShakePreset'
+for _cls, _who, _example in (
+        ('CameraShake', 'every global Camera Shaker (enabled, active, Global on, in every running scene)',
+         '`CameraShake.shake("explosion")`, `CameraShake.shake("assets/shakes/boom.shake", {strength = 0.5})`'),
+        ('CameraShaker', 'this shaker, whatever its Global flag',
+         '`self.gameObject:getCameraShaker():shake("punch", {seed = 7})`')):
+    OVERRIDES[(_cls, 'shake')] = {
+        'doc': [f'Starts a shake on {_who}.',
+                '`preset`: a built-in name (CameraShake.getPresetNames()), a .shake path or a preset table. Returns',
+                'the ShakeInstance (invalid when nothing was shaken; an unknown name logs one warning).',
+                _example],
+        'overloads': [([('preset', _SHAKE_PRESET), ('options?', 'ShakeOptions')], 'ShakeInstance')]}
+    OVERRIDES[(_cls, 'shakeAt')] = {
+        'doc': [f'As shake, on {_who}, with the strength and roughness scaled by',
+                'max(0, 1 - d / radius), d the distance from the shaker (x/y only in 2D); none at d >= radius.'],
+        'overloads': [([('position', 'Vector3'), ('radius', 'number'), ('preset', _SHAKE_PRESET),
+                        ('options?', 'ShakeOptions')], 'ShakeInstance')]}
 
 # HTML UI (phase 1, p1-lua): the element API's lua_CFunctions (they take Lua functions and
 # option tables, and raise errors with no C++ object alive)

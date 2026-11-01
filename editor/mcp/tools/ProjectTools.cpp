@@ -1572,6 +1572,24 @@ const std::vector<Setting>& settingsTable() {
         }
         {
             Setting s;
+            s.key = "graphics.ui_scale";
+            s.type = "object";
+            s.description = "Canvas Scaler of every scene's UI and screen HTML documents unless a scene overrides it (scene setting "
+                            "canvas_scaler): {mode: follow_game_canvas (default, UI = game canvas)|constant_pixel_size|"
+                            "scale_with_screen_size|constant_physical_size, reference: [w,h], match_mode: "
+                            "match_width_or_height|expand|shrink, match: 0 width..1 height, scale_factor, physical_unit, "
+                            "fallback_dpi}; fields not given keep their value.";
+            s.get = [](McpContext& ctx) { return McpValues::canvasScalerToJson(ctx.project()->getUIScale()); };
+            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                CanvasScalerSettings settings = ctx.project()->getUIScale();
+                if (!McpValues::canvasScalerFromJson(value, settings, error)) return false;
+                if (apply) ctx.project()->setUIScale(settings);
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
             s.key = "graphics.texture_strategy";
             s.type = "enum";
             s.values = enumNames(textureStrategies);
