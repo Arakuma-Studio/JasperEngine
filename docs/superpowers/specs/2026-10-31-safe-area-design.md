@@ -597,15 +597,14 @@ spec was silent, ambiguous or did not fit the code:
     HTML documents get `env()` in their UI-size CSS px (`getLayoutSize`). The Custom device gained a
     dpi (0: the computer's; `Platform::getScreenDpi` falls back to it when a device has none) so
     Constant Physical Size works on it (`custom_device.dpi`).
-20. **Verification** (tree merged with `main` at `fda5c0d0f`, which includes `5762bb259`; branch at
-    the idle fix 9a14dc993), box 2203: editor and tests build with 0 new warnings; unit suite 1670 tests:
-    1659 passed, 10 skipped, 1 failed: `PhysicsContactsTest.ContactProcessingCostIsSmall`, a timing test
-    that fails the same way with debug-overlay's build of a newer `main` on the same box (no safe-area
-    code), a known load flake; `SafeAreaTest` 25/25. Full MCP suite (`run-tests.sh -j2`) 922 passed,
-    10 failed, 21 skipped: only the 10 baseline failures (test_animation_assets x5, test_lattice_scene
-    x5); `test_safe_area.py` 5/5, `test_runtime_regressions.py` 6/6 (the idle editor). HTML UI suite
-    (`jasperengine-htmlui-tests`) 3120 passed, `SafeArea*` 9/9, one input test that passes alone.
-    Android `assembleDebug` (arm64-v8a) builds on the host; the web (emcc) objects of the changed
-    sources compile on the host (no full web export was built). iOS (`ViewController.m`, `Renderer.mm`)
-    was reviewed, not built. The tool budget is 112291 for 153 tools (TOTAL_LIMIT 112300); the agent
-    guide is 15133 bytes.
+20. **Verification** (tree merged with `main` 7fd144900), box 2203: editor, unit and HTML UI tests
+    build with 0 warnings; unit suite 1764 tests: 1753 passed, 10 skipped, 1 failed:
+    `PhysicsContactsTest.ContactProcessingCostIsSmall`, a timing test that fails the same way alone
+    on this box with other branches' builds (no safe-area code; it passed in the run before), a
+    known load flake; `SafeArea*` 27/27. HTML UI suite 3156/3156 passed (`SafeArea*` 9/9). Full MCP
+    suite (`run-tests.sh -j3`) 939 passed, 11 failed, 21 skipped: the 10 baseline failures
+    (test_animation_assets x5, test_lattice_scene x5) and `test_budget` before TOTAL_LIMIT was set to
+    the measured 113752 (154 tools; `test_html_ui_tools.py` 34/34 after it); `test_safe_area.py` and
+    `test_runtime_regressions.py` pass. Android `assembleDebug` (arm64-v8a) builds on the host; the web
+    (emcc) objects of the changed sources compile. The four Xcode sync scripts pass `--check`; the
+    branch before this merge (a3812a560) built for macOS and the iOS Simulator on the owner's Mac.
