@@ -36,6 +36,7 @@
 #include <cstdio>
 #include <cstring>
 #include <map>
+#include <set>
 #include <mutex>
 #include <string>
 
@@ -125,6 +126,21 @@ namespace {
         return format && AMediaFormat_getInt32(format, key, &value) ? value : fallback;
     }
 
+    // the MIME types a decoder was made for in this process: when one cannot be made again, the
+    // device's instances are in use (a limit), not missing
+    std::mutex createdMutex;
+    std::set<std::string> createdMimes;
+
+    void noteCreated(const std::string& mime){
+        std::lock_guard<std::mutex> lock(createdMutex);
+        createdMimes.insert(mime);
+    }
+
+    bool hasDecoderFor(const std::string& mime){
+        std::lock_guard<std::mutex> lock(createdMutex);
+        return createdMimes.count(mime) > 0;
+    }
+
     class Backend : public PlatformDecoderBackend {
     public:
         ~Backend() override{ close(); }
@@ -196,6 +212,9 @@ namespace {
             AMediaCodec_flush(codec);
             inputEnded = false;
             outputEnded = false;
+            drainWaits = 0;
+            lastOutputUs = -1;
+            skipUntilUs = -1;
             resampler.flush();
             return true;
         }
@@ -203,6 +222,7 @@ namespace {
         Step decodeNext(VideoFrame& frame, std::vector<float>& pcm, double& pcmStart, MediaError& error) override{
             for (int round = 0; round < 32; round++){
                 // input: the extractor's samples into the codec
+                bool queued = false;
                 if (!inputEnded){
                     const ssize_t in = AMediaCodec_dequeueInputBuffer(codec, 0);
                     if (in >= 0){
@@ -222,11 +242,18 @@ namespace {
                             AMediaCodec_queueInputBuffer(codec, (size_t)in, 0, (size_t)size, (uint64_t)std::max<int64_t>(time, 0), 0);
                             AMediaExtractor_advance(extractor);
                         }
+                        queued = true;
+                    }else if (in != AMEDIACODEC_INFO_TRY_AGAIN_LATER){
+                        // the codec died (reclaimed by the system, a media server restart): a new one
+                        if (!recreateCodec(error, (int)in))
+                            return Step::ERROR;
+                        continue;
                     }
                 }
-                // output
+                // output: no wait while there is input to give, else up to 10 ms (the worker
+                // sleeps here instead of spinning)
                 AMediaCodecBufferInfo bufferInfo;
-                const ssize_t out = AMediaCodec_dequeueOutputBuffer(codec, &bufferInfo, inputEnded ? 2000 : 0);
+                const ssize_t out = AMediaCodec_dequeueOutputBuffer(codec, &bufferInfo, queued ? 0 : 10000);
                 if (out == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED){
                     readOutputFormat();
                     if (stream == Stream::VIDEO && tiled && !retriedSoftware){
@@ -240,29 +267,37 @@ namespace {
                 if (out == AMEDIACODEC_INFO_TRY_AGAIN_LATER || out == AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED){
                     if (outputEnded)
                         return Step::END;
-                    if (inputEnded && out == AMEDIACODEC_INFO_TRY_AGAIN_LATER && ++drainWaits > 50)
+                    // the end queued, nothing more for a second: done
+                    if (inputEnded && out == AMEDIACODEC_INFO_TRY_AGAIN_LATER && ++drainWaits > 100)
                         return Step::END;
-                    if (!inputEnded)
-                        return Step::AGAIN;
-                    continue;
+                    if (queued || out == AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED)
+                        continue;
+                    // waited 10 ms with no input to give: the source asks again (its queue, a seek)
+                    return Step::AGAIN;
                 }
                 if (out < 0){
-                    error.code = MediaErrorCode::DECODE;
-                    error.message = "the decoder failed (" + std::to_string(out) + ")";
-                    return Step::ERROR;
+                    if (!recreateCodec(error, (int)out))
+                        return Step::ERROR;
+                    continue;
                 }
                 drainWaits = 0;
                 const bool end = (bufferInfo.flags & AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM) != 0;
+                // after a new codec: what was given out already comes again from the keyframe
+                const bool repeat = skipUntilUs >= 0 && bufferInfo.presentationTimeUs <= skipUntilUs;
                 Step step = Step::AGAIN;
-                if (bufferInfo.size > 0){
+                if (bufferInfo.size > 0 && !repeat){
                     size_t capacity = 0;
                     uint8_t* data = AMediaCodec_getOutputBuffer(codec, (size_t)out, &capacity);
                     if (data){
                         const uint8_t* start = data + bufferInfo.offset;
                         step = stream == Stream::VIDEO ? takePicture(start, (size_t)bufferInfo.size, bufferInfo.presentationTimeUs, frame)
                                                        : takeAudio(start, (size_t)bufferInfo.size, bufferInfo.presentationTimeUs, pcm, pcmStart);
+                        if (step != Step::AGAIN)
+                            lastOutputUs = bufferInfo.presentationTimeUs;
                     }
                 }
+                if (!repeat)
+                    skipUntilUs = -1;
                 AMediaCodec_releaseOutputBuffer(codec, (size_t)out, false);
                 if (end)
                     outputEnded = true;
@@ -406,20 +441,26 @@ namespace {
 
         bool startCodec(const char* name, MediaError& error){
             codec = name ? AMediaCodec_createCodecByName(name) : AMediaCodec_createDecoderByType(mime.c_str());
-            if (!codec)
-                return fail(error, MediaErrorCode::SRC_NOT_SUPPORTED, "this device has no " + mime + " decoder");
+            if (!codec){
+                // a type the device decodes elsewhere in the app (another video) but no free instance
+                // looks the same as none: one retry by the source, then "no decoder"
+                resourceLimited = !name && hasDecoderFor(mime);
+                return fail(error, resourceLimited ? MediaErrorCode::DECODE : MediaErrorCode::SRC_NOT_SUPPORTED,
+                            resourceLimited ? "the " + mime + " decoder could not be created" : "this device has no " + mime + " decoder");
+            }
             media_status_t status = AMediaCodec_configure(codec, trackFormat, nullptr, nullptr, 0);
             if (status == AMEDIA_OK)
                 status = AMediaCodec_start(codec);
             if (status != AMEDIA_OK){
                 // the device's decoder instances are all in use (or its memory): the source retries once
-                resourceLimited = status == AMEDIACODEC_ERROR_INSUFFICIENT_RESOURCE || status == AMEDIA_ERROR_UNKNOWN;
+                resourceLimited = status == AMEDIACODEC_ERROR_INSUFFICIENT_RESOURCE;
                 AMediaCodec_delete(codec);
                 codec = nullptr;
                 return fail(error, MediaErrorCode::DECODE, "the " + mime + " decoder could not start (" + std::to_string(status) + ")");
             }
             inputEnded = outputEnded = false;
             colorFormat = COLOR_FormatYUV420Flexible;
+            noteCreated(mime);
             return true;
         }
 
@@ -429,6 +470,27 @@ namespace {
                 AMediaCodec_delete(codec);
             }
             codec = nullptr;
+        }
+
+        // a dead codec (reclaimed for a foreground app, the media server restarted): a new one,
+        // the extractor back to the keyframe before the last output (what was given out already
+        // is skipped); twice at most, then the error
+        bool recreateCodec(MediaError& error, int status){
+            if (recreated >= 2 || !extractor){
+                error.code = MediaErrorCode::DECODE;
+                error.message = "the decoder failed (" + std::to_string(status) + ")";
+                return false;
+            }
+            recreated++;
+            Log::warn("[Video] the %s decoder stopped (%d): a new one resumes the video", mime.c_str(), status);
+            stopCodec();
+            if (!startCodec(softwareName.empty() ? nullptr : softwareName.c_str(), error))
+                return false;
+            AMediaExtractor_seekTo(extractor, std::max<int64_t>(lastOutputUs, 0), AMEDIAEXTRACTOR_SEEK_PREVIOUS_SYNC);
+            skipUntilUs = lastOutputUs;
+            drainWaits = 0;
+            resampler.flush();
+            return true;
         }
 
         bool restartWithSoftware(MediaError& error){
@@ -441,6 +503,7 @@ namespace {
                     continue;
                 if (AMediaCodec_configure(codec, trackFormat, nullptr, nullptr, 0) == AMEDIA_OK && AMediaCodec_start(codec) == AMEDIA_OK){
                     tiled = false;
+                    softwareName = name;
                     inputEnded = outputEnded = false;
                     Log::verbose("[Video] the device's %s decoder gives a tiled layout: %s decodes instead", mime.c_str(), name);
                     return true;
@@ -556,6 +619,10 @@ namespace {
         int32_t cropLeft = 0, cropTop = 0, cropRight = -1, cropBottom = -1;
         bool tiled = false;
         bool retriedSoftware = false;
+        std::string softwareName;       // the software decoder in use ("": the device's)
+        int recreated = 0;
+        int64_t lastOutputUs = -1;      // the last frame or audio chunk given out
+        int64_t skipUntilUs = -1;       // after a new codec: outputs up to this are repeats
         VideoColor color;
         // audio
         int channels = 2;

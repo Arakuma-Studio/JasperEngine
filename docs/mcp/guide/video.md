@@ -22,10 +22,14 @@ error (`onErrorReceived`, `<video>` `error`) that names the codec and the fix.
   `libavcodec60 libavformat60 libswresample4` or newer. Fedora: `ffmpeg-libs` from RPM Fusion
   (Fedora's own `ffmpeg-free` has no H.264). Without them: the error says what to install. Unity
   itself plays no H.264 on Linux.
-- **Windows N editions** need the Media Feature Pack; HEVC/VP9/AV1 need the Store extensions.
+- HEVC/VP9/AV1 on Windows need the Store extensions.
 - **Web**: the browser plays it (`<video>` behind the scenes, its frames uploaded with
-  `texSubImage2D`); cross-origin URLs need the server to send `Access-Control-Allow-Origin`; sound
-  starts after the page's first click or tap (the browsers' autoplay rule).
+  `texSubImage2D`, following the player's clock; a hidden tab or a paused game pauses it);
+  cross-origin URLs need the server to send `Access-Control-Allow-Origin` (else
+  `onErrorReceived`); sound starts after the page's first click or tap (the browsers' autoplay
+  rule). `renderTextureWidth/Height` do not apply there.
+- **Windows N editions** without the Media Feature Pack still run the game: MP4 then fails with the
+  hint, WebM AV1 plays.
 - **Licensing**: the engine ships no H.264/HEVC/AAC decoder (the platforms' carry their licences;
   Linux loads the system's LGPL FFmpeg dynamically). For paid titles, check the MPEG LA / Via LA AVC
   pool's terms for *content*; WebM AV1 is the royalty-free choice.
@@ -36,7 +40,9 @@ video returns `video` (container, codecs, size, duration, frame rate, rotation),
 `playable_on: {linux, windows, macos, ios, android, web}` with `"yes" | "needs_ffmpeg" |
 "needs_extension" | "device_dependent" | "no"`. `jasperengine-editor check --videos` warns per
 platform (`video-codec-unsupported-on-target`) and about URL MP4s that are not fast start
-(`video-not-faststart-url`). MP4s are imported as they are (no automatic conversion).
+(`video-not-faststart-url`; the check downloads nothing: an http(s) url is judged by the project's
+file of the same name, the one uploaded). MP4s are imported as they are (no automatic conversion);
+a VP9 WebM is still converted to AV1 (Apple has no VP9).
 
 ## The Video Player component
 
@@ -65,7 +71,7 @@ Camera Far Plane replaces the background (after the sky, under the scene); Near 
 the scene, under the UI. Material Override puts the texture into the renderer's slot while the
 player has a picture and gives the slot its own texture back when it stops.
 
-The editor plays nothing in edit mode: Play runs `playOnAwake`. In Play the Inspector has the
+The editor plays nothing in edit mode: Play runs `playOnAwake`, Stop closes the players. In Play the Inspector has the
 playback bar (play/pause/stop, step, scrubber, prepared/buffered, the backend) and the texture.
 
 ### Lua
@@ -103,7 +109,9 @@ vp:prepare()
 Rules: a new `clip`/`url` stops the player (`isPrepared` false; `playOnAwake` does not start it
 again). `play()` before prepared prepares, fires `onPrepareCompleted`, then `onStarted` with the
 first frame (with `waitForFirstFrame` the clock starts then). Destroying the GameObject (or
-unloading its scene) closes the source and stops its sound. Two players of one file decode
+unloading its scene) closes the source and stops its sound; moved to the persistent scene
+(`DontDestroyOnLoad`) it plays on, with its texture and listeners. `prepare()` after an error tries
+again. With `skipOnDrop` off the clock waits for slow decoding (frames never skip). Two players of one file decode
 separately; of one URL, they share the download. `frameCount` of a file without a frame index
 (variable rate, WebM through the platform) is an estimate, `round(length x frameRate)`, as Unity's.
 Phone videos are shown turned as their rotation says.
@@ -114,7 +122,8 @@ Phone videos are shown turned as their rotation says.
 an Image's texture `"video|<id>"` (or `{"video": <entity>}`); in Play `get_runtime_entity` (and
 `get_entity`) add `video: {prepared, playing, paused, time, frame, frameCount, frameRate, length,
 backend, videoCodec, audioCodec, prepareProgress, buffered, error}`; drive it with `eval_lua`
-(`go:getVideoPlayer():play()`), then `screenshot`.
+(`go:getVideoPlayer():play()`) or `set_runtime_property component videoplayer` with `state`
+(`play`, `pause`, `stop`, `prepare`), `time` or `frame`, then `screenshot`.
 
 ## URLs, the media cache, progressive start
 

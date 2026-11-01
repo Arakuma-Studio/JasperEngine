@@ -390,7 +390,7 @@ void UIVideoElement::advance(bool fromUpdate){
     if (fromUpdate)
         playback.update(HtmlUIClock::now(), playbackEvents);
     // a source that is its own clock (the browser's element) follows this one
-    stream->setClock(playback.isAdvancing(), playback.getPlaybackRate());
+    stream->setClock(playback.isAdvancing(), playback.getPlaybackRate(), playback.getPosition());
     showFrameForTime();
     handlePlaybackEvents();
 }

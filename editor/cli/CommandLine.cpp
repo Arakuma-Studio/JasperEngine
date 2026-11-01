@@ -1719,7 +1719,8 @@ void printCheckUsage(const std::string& commandName) {
         << "                           (height 0).\n"
         << "      --videos             Video Players' clips: codecs an export platform does not decode\n"
         << "                           (video-codec-unsupported-on-target, a warning per platform) and URL MP4s\n"
-        << "                           whose moov box follows the media data (video-not-faststart-url, info).\n"
+        << "                           whose moov box follows the media data (video-not-faststart-url, info; an\n"
+        << "                           http(s) url by the project's file of that name: nothing is downloaded).\n"
         << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations, normal maps and videos.\n"
         << "                           Default: --lua --shaders --ui --textures --anims --vat --normals --videos.\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
@@ -2171,6 +2172,29 @@ void collectVideoPlayers(const YAML::Node& node, std::vector<YAML::Node>& out, i
     }
 }
 
+// the project's file an http(s) url names (its last path segment, query and fragment dropped): the
+// copy that was uploaded there, presumably; "" when the project has none (or several)
+fs::path findServedCopy(const fs::path& assets, const std::string& url) {
+    std::string path = url.substr(0, url.find_first_of("?#"));
+    const size_t slash = path.find_last_of('/');
+    const std::string name = slash == std::string::npos ? path : path.substr(slash + 1);
+    if (name.empty() || name.find('.') == std::string::npos) return {};
+    fs::path found;
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(assets, fs::directory_options::skip_permission_denied, ec), end; !ec && it != end; it.increment(ec)) {
+        const std::string entry = it->path().filename().string();
+        if (it->is_directory(ec) && !entry.empty() && (entry[0] == '.' || entry == "build")) {
+            it.disable_recursion_pending();
+            continue;
+        }
+        if (entry == name && it->is_regular_file(ec)) {
+            if (!found.empty()) return {};
+            found = it->path();
+        }
+    }
+    return found;
+}
+
 // video-codec-unsupported-on-target: a player's clip (or local url) in a codec an export platform
 // does not decode (Linux counts as FFmpeg's); video-not-faststart-url: an MP4 played as a URL
 // whose moov box follows the media data (it plays only once downloaded)
@@ -2190,8 +2214,26 @@ VideoCheck checkVideoPlayers(const fs::path& root) {
             check.players++;
             const bool url = player["source"] && player["source"].IsScalar() && player["source"].Scalar() == "url";
             const std::string value = url ? (player["url"] ? player["url"].as<std::string>("") : "") : (player["clip"] ? player["clip"].as<std::string>("") : "");
-            if (value.empty() || value.rfind("http://", 0) == 0 || value.rfind("https://", 0) == 0 || value.rfind("data://", 0) == 0)
+            std::string scheme = value.substr(0, 8);
+            std::transform(scheme.begin(), scheme.end(), scheme.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+            const bool remote = scheme.rfind("http://", 0) == 0 || scheme.rfind("https://", 0) == 0;
+            if (value.empty() || scheme.rfind("data://", 0) == 0)
                 continue;
+            if (remote) {
+                // the check is offline (nothing is downloaded): an http(s) url is judged by the
+                // project's own copy of the file it names (the one uploaded there), when there is one
+                const fs::path served = findServedCopy(assets, value);
+                if (served.empty() || !reported.insert(rel + "|" + value).second) continue;
+                const jasperengine::VideoProbe probe = jasperengine::VideoFormats::probeStdio(std::fopen(served.string().c_str(), "rb"), value);
+                const bool mp4 = probe.container == "mp4" || probe.container == "mov" || probe.container == "3gp";
+                if (mp4 && !probe.fastStart && !probe.fragmented) {
+                    check.findings.push_back({"videos", rel, 0, 0, "info", "'" + value + "' (as the project's " +
+                                              ProjectChecks::projectRelative(root, served) + ") has its moov box after the media data: it plays only once downloaded",
+                                              "video-not-faststart-url",
+                                              "the video asset's Inspector: Optimize for streaming (or ffmpeg -movflags +faststart), then upload it again"});
+                }
+                continue;
+            }
             const fs::path video = fs::path(value).is_absolute() ? fs::u8path(value) : (assets / fs::u8path(value)).lexically_normal();
             std::error_code ec;
             if (!fs::is_regular_file(video, ec)) {

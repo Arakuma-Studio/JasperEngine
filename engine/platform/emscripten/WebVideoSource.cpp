@@ -32,26 +32,42 @@ using namespace jasperengine;
 
 EM_JS_DEPS(jasper_video, "$UTF8ToString,$stringToNewUTF8,$GL");
 
-// the registry of elements and the first-gesture unmute
+// the registry of elements, the first-gesture unlock and the hidden tab
 EM_JS(void, jasper_video_install, (), {
     if (Module.jasperVideo) return;
     var registry = { next: 1, videos: {}, unlocked: false, context: null };
     Module.jasperVideo = registry;
+    var gestures = ['pointerdown', 'mousedown', 'touchstart', 'touchend', 'keydown', 'click'];
     var unlock = function(){
         registry.unlocked = true;
-        if (registry.context && registry.context.state === 'suspended') registry.context.resume();
+        // the listeners stay until the page's audio really runs (a gesture the browser does not
+        // count leaves the context suspended)
+        var done = function(){
+            if (registry.context && registry.context.state !== 'running') return;
+            for (var i = 0; i < gestures.length; i++) window.removeEventListener(gestures[i], unlock, true);
+        };
+        if (registry.context && registry.context.state === 'suspended') registry.context.resume().then(done, function(){});
+        else done();
         for (var id in registry.videos) {
             var v = registry.videos[id];
-            v.element.muted = false;
-            if (v.wantPlay && v.element.paused) v.element.play().catch(function(){});
+            // only elements with sound: one made without audio stays muted
+            if (v.withAudio) v.element.muted = false;
+            if (v.wantPlay && v.element.paused && !document.hidden) v.element.play().catch(function(){});
         }
-        window.removeEventListener('pointerdown', unlock, true);
-        window.removeEventListener('keydown', unlock, true);
-        window.removeEventListener('touchend', unlock, true);
     };
-    window.addEventListener('pointerdown', unlock, true);
-    window.addEventListener('keydown', unlock, true);
-    window.addEventListener('touchend', unlock, true);
+    for (var i = 0; i < gestures.length; i++) window.addEventListener(gestures[i], unlock, true);
+    // a hidden tab pauses the elements (the engine's frames stop too); they go on when it shows
+    document.addEventListener('visibilitychange', function(){
+        for (var id in registry.videos) {
+            var v = registry.videos[id];
+            if (document.hidden) {
+                if (!v.element.paused) { v.element.pause(); v.hiddenPaused = true; }
+            } else if (v.hiddenPaused) {
+                v.hiddenPaused = false;
+                if (v.wantPlay) v.element.play().catch(function(){});
+            }
+        }
+    });
 });
 
 // a new element; src a URL (http(s) or blob:); returns its id
@@ -65,12 +81,13 @@ EM_JS(int, jasper_video_create, (const char* srcPtr, int crossOrigin, int withAu
     element.muted = !registry.unlocked || !withAudio;
     if (crossOrigin) element.crossOrigin = 'anonymous';
     var v = { element: element, state: 0, error: "", frames: 0, lastTime: -1, wantPlay: false, ended: false, seeking: false,
-              gain: null, blob: "", withAudio: !!withAudio, cors: !!crossOrigin };
+              waiting: false, gain: null, blob: "", withAudio: !!withAudio, cors: !!crossOrigin, fps: 0, lastMediaTime: -1 };
     registry.videos[id] = v;
     element.addEventListener('loadedmetadata', function(){ if (v.state === 0) v.state = 1; });
     element.addEventListener('canplay', function(){ if (v.state < 2) v.state = 2; });
     element.addEventListener('waiting', function(){ v.waiting = true; });
-    element.addEventListener('playing', function(){ v.waiting = false; });
+    element.addEventListener('playing', function(){ v.waiting = false; v.ended = false; });
+    element.addEventListener('canplaythrough', function(){ v.waiting = false; });
     element.addEventListener('ended', function(){ v.ended = true; });
     element.addEventListener('seeking', function(){ v.seeking = true; });
     element.addEventListener('seeked', function(){ v.seeking = false; v.frames++; });
@@ -83,7 +100,16 @@ EM_JS(int, jasper_video_create, (const char* srcPtr, int crossOrigin, int withAu
     });
     // new frames: requestVideoFrameCallback where the browser has it, else a changed currentTime
     if (element.requestVideoFrameCallback) {
-        var onFrame = function(){ v.frames++; if (registry.videos[id]) element.requestVideoFrameCallback(onFrame); };
+        var onFrame = function(now, metadata){
+            v.frames++;
+            // the frame rate: the smallest step between consecutive frames' media times
+            if (metadata && metadata.mediaTime !== undefined) {
+                var step = metadata.mediaTime - v.lastMediaTime;
+                if (v.lastMediaTime >= 0 && step > 0.001 && step < 1 && (v.fps === 0 || 1 / step > v.fps + 0.01)) v.fps = 1 / step;
+                v.lastMediaTime = metadata.mediaTime;
+            }
+            if (registry.videos[id]) element.requestVideoFrameCallback(onFrame);
+        };
         element.requestVideoFrameCallback(onFrame);
         v.rvfc = true;
     }
@@ -137,29 +163,45 @@ EM_JS(double, jasper_video_metric, (int id, int which), {
         var b = e.buffered;
         return b.length ? b.end(b.length - 1) : 0;
     }
+    if (which === 6) return v.waiting || e.readyState < 2 ? 1 : 0;
+    if (which === 7) return v.rvfc ? 1 : 0;
+    if (which === 8) return v.fps;
+    if (which === 9) return e.ended ? 1 : 0;
     return 0;
 });
 
-// follows the player's clock
-EM_JS(void, jasper_video_clock, (int id, int advancing, double rate, double seconds, int loop), {
+// follows the player's clock: its rate, play/pause, and its time when they drift apart (by more
+// than 0.3 s while playing: a seek, a stall of either side; by half a frame while paused: a frame
+// step or a seek). Not while the element buffers (the player waits for it then) or has ended
+EM_JS(void, jasper_video_clock, (int id, int advancing, double rate, double seconds, int loop, double frameRate), {
     var v = Module.jasperVideo.videos[id];
     if (!v || v.state === 3) return;
     var e = v.element;
     e.loop = !!loop;
     if (rate > 0 && Math.abs(e.playbackRate - rate) > 1e-6) e.playbackRate = rate;
-    // apart by more than 0.3 s (a seek, a stall of either side): to the player's time
-    if (!v.seeking && e.readyState >= 1 && Math.abs(e.currentTime - seconds) > 0.3 && (!e.loop || Math.abs(e.currentTime - seconds) < e.duration - 0.3))
+    var apart = Math.abs(e.currentTime - seconds);
+    var tolerance = advancing ? 0.3 : 0.5 / Math.max(frameRate, 1);
+    var atEnd = e.ended && isFinite(e.duration) && seconds >= e.duration - 0.3;
+    if (!v.seeking && !v.waiting && !atEnd && e.readyState >= 1 && apart > tolerance && (!e.loop || apart < e.duration - 0.3))
         e.currentTime = seconds;
     v.wantPlay = !!advancing;
-    if (advancing && e.paused && !e.ended) {
+    if (advancing && e.paused && !e.ended && !document.hidden) {
         var p = e.play();
         if (p && p.catch) p.catch(function(err){
-            // the autoplay rule: muted, then again (the first gesture unmutes it)
-            if (err && err.name === 'NotAllowedError' && !e.muted) { e.muted = true; e.play().catch(function(){}); }
+            if (!err || err.name !== 'NotAllowedError') return;
+            // the autoplay rule: muted, then again (the first gesture unmutes it); blocked even
+            // muted: reported (onErrorReceived)
+            if (!e.muted) { e.muted = true; e.play().catch(function(again){ if (again && again.name === 'NotAllowedError') v.autoplayBlocked = true; }); }
+            else v.autoplayBlocked = true;
         });
     } else if (!advancing && !e.paused) {
         e.pause();
     }
+});
+
+EM_JS(int, jasper_video_autoplay_blocked, (int id), {
+    var v = Module.jasperVideo.videos[id];
+    return v && v.autoplayBlocked ? 1 : 0;
 });
 
 // the volume: a GainNode (iOS ignores element.volume), else the element's own
@@ -267,8 +309,10 @@ namespace {
                 // the frame rate and index size from the file itself where it says
                 std::unique_ptr<MediaByteSource> memory = MediaByteSource::openMemory(data, pathOrUrl);
                 const Mp4ProbeResult probe = Mp4Probe::probe(*memory);
-                if (probe.ok && probe.video.frameRate > 0.0)
+                if (probe.ok && probe.video.frameRate > 0.0){
                     frameRate = probe.video.frameRate;
+                    rateFromFile = true;
+                }
                 if (probe.ok){
                     info.container = probe.container;
                     info.videoCodec = probe.video.fourcc;
@@ -302,10 +346,17 @@ namespace {
             if (state != State::READY)
                 return FrameResult::NOT_READY;
             lastSeconds = seconds;
-            jasper_video_clock(id, advancing ? 1 : 0, rate, seconds, loop ? 1 : 0);
+            followRate();
+            jasper_video_clock(id, advancing ? 1 : 0, rate, seconds, loop ? 1 : 0, info.frameRate);
+            // buffering: no frame of this time (the player's clock waits)
+            if (jasper_video_metric(id, 6) > 0.0 && shownSequence >= 0)
+                return FrameResult::NOT_READY;
+            // a new frame: requestVideoFrameCallback's count where the browser has it (the
+            // current time moves between frames), else a changed current time
             const double frames = jasper_video_metric(id, 4);
             const double current = jasper_video_metric(id, 3);
-            const bool fresh = frames != lastFrames || (current != lastCurrent && !std::isnan(current));
+            const bool counted = jasper_video_metric(id, 7) > 0.0;
+            const bool fresh = frames != lastFrames || (!counted && current != lastCurrent && !std::isnan(current));
             lastFrames = frames;
             lastCurrent = current;
             const int64_t sequence = sequenceFor(iteration, seconds);
@@ -347,10 +398,10 @@ namespace {
                 return false;
             const int texture = (int)target.getRender().getColorTexture().backend.getGLHandler();
             const int result = jasper_video_upload(id, texture, (int)target.getWidth(), (int)target.getHeight());
-            if (result < 0 && !corsReported){
-                corsReported = true;
-                Log::error("[Video] '%s': the browser refuses the frames of this cross-origin URL: the server must send "
-                           "Access-Control-Allow-Origin (CORS)", name.c_str());
+            if (result < 0){
+                // reported to the player (onErrorReceived) as the source's failure
+                fail(MediaErrorCode::SRC_NOT_SUPPORTED, "'" + name + "': the browser refuses the frames of this cross-origin URL: "
+                     "the server must send Access-Control-Allow-Origin (CORS)");
             }
             return result > 0;
         }
@@ -359,11 +410,14 @@ namespace {
             if (state == State::READY && withAudio)
                 jasper_video_volume(id, volume);
         }
-        void setClock(bool clockAdvancing, double clockRate) override{
+        void setClock(bool clockAdvancing, double clockRate, double seconds) override{
             advancing = clockAdvancing;
             rate = clockRate;
+            // the time comes with the clock: an audio-only source has no frames asked for
+            lastSeconds = seconds;
+            poll();
             if (state == State::READY)
-                jasper_video_clock(id, advancing ? 1 : 0, rate, lastSeconds, loop ? 1 : 0);
+                jasper_video_clock(id, advancing ? 1 : 0, rate, lastSeconds, loop ? 1 : 0, info.frameRate);
         }
         const char* backendName() const override{ return "browser"; }
 
@@ -375,11 +429,17 @@ namespace {
         }
 
         void poll(){
-            if (state != State::OPENING || id <= 0)
+            if (state == State::FAILED || id <= 0)
                 return;
             const int jsState = jasper_video_state(id);
             if (jsState == 3){
-                fail(MediaErrorCode::SRC_NOT_SUPPORTED, "'" + name + "': " + fromJs(jasper_video_error(id)));
+                // also once playing (a network error mid-way): the player gets it (onErrorReceived)
+                fail(state == State::READY ? MediaErrorCode::NETWORK : MediaErrorCode::SRC_NOT_SUPPORTED, "'" + name + "': " + fromJs(jasper_video_error(id)));
+                return;
+            }
+            if (state == State::READY){
+                if (jasper_video_autoplay_blocked(id))
+                    fail(MediaErrorCode::ABORTED, "'" + name + "': the browser does not let it play before the page gets a click or tap (autoplay rule)");
                 return;
             }
             if (jsState < 1)
@@ -396,6 +456,30 @@ namespace {
             state = State::READY;
         }
 
+        // a URL (no probe of its file): the frame rate requestVideoFrameCallback measures, once known
+        void followRate(){
+            if (rateFromFile || rateMeasured)
+                return;
+            const double measured = jasper_video_metric(id, 8);
+            if (measured <= 1.0)
+                return;
+            // a common rate near the measure (23.976, 25, 29.97, 30, 50, 59.94, 60)
+            static const double rates[] = {23.976, 24.0, 25.0, 29.97, 30.0, 48.0, 50.0, 59.94, 60.0, 120.0};
+            double best = measured;
+            double closest = 1.0;
+            for (double r : rates){
+                const double off = std::fabs(r - measured) / r;
+                if (off < 0.02 && off < closest){
+                    closest = off;
+                    best = r;
+                }
+            }
+            rateMeasured = true;
+            frameRate = best;
+            info.frameRate = best;
+            info.frameCount = std::max(1, (int)std::lround(info.duration * best));
+        }
+
         std::string name;
         std::string blob;
         bool withAudio;
@@ -410,7 +494,8 @@ namespace {
         double lastSeconds = 0.0;
         double lastFrames = -1.0;
         double lastCurrent = -1.0;
-        bool corsReported = false;
+        bool rateFromFile = false;
+        bool rateMeasured = false;
     };
 
 }

@@ -96,7 +96,7 @@ namespace jasperengine {
         // and global volume applied) and its clock, which they follow
         virtual bool playsOwnAudio() const { return false; }
         virtual void setOutputVolume(float volume) { (void)volume; }
-        virtual void setClock(bool advancing, double rate) { (void)advancing; (void)rate; }
+        virtual void setClock(bool advancing, double rate, double seconds) { (void)advancing; (void)rate; (void)seconds; }
         // "webm", "ffmpeg", "mediacodec", "avfoundation", "mediafoundation", "browser"
         virtual const char* backendName() const = 0;
     };

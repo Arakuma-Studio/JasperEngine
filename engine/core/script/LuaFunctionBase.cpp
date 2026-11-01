@@ -145,6 +145,11 @@ void LuaFunctionBase::push_value(lua_State *vm, Vector3 o){
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
 }
 
+void LuaFunctionBase::push_value(lua_State *vm, const VideoPlayer &o){
+    if (!luabridge::push<VideoPlayer>(vm, o))
+        throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
+}
+
 #ifdef JASPERENGINE_PHYSICS_2D
 void LuaFunctionBase::push_value(lua_State *vm, Rigidbody2D o){
     if (!luabridge::push<Rigidbody2D>(vm, o))
@@ -163,11 +168,6 @@ void LuaFunctionBase::push_value(lua_State *vm, Contact2D o){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
-void LuaFunctionBase::push_value(lua_State *vm, const VideoPlayer &o){
-    if (!luabridge::push<VideoPlayer>(vm, o))
-        throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
-}
-
 void LuaFunctionBase::push_value(lua_State *vm, Rigidbody o){
     if (!luabridge::push<Rigidbody>(vm, o))
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);

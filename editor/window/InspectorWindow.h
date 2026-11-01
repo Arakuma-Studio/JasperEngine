@@ -608,6 +608,8 @@ namespace jasperengine::editor{
         // a preview)
         void drawVideoPlayerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities, bool readOnly);
         void drawVideoAsset(const std::filesystem::path& asset);
+        // the asset preview's decoder goes once the asset is not shown any more
+        void closeIdleVideoPreview();
         // why the fluid draws nothing (device, simulator error, no surface for Material)
         void drawFluidStatus(SceneProject* sceneProject, const std::vector<Entity>& entities);
         void drawFluidPreviewBar(SceneProject* sceneProject, const std::vector<Entity>& entities);

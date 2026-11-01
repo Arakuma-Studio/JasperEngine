@@ -57,6 +57,10 @@ namespace jasperengine{
         // every player stopped and not yet awoken (playOnAwake runs at the next update): the
         // editor's Play stop, which keeps the scene
         void resetPlayers();
+        // EntityCloner::move: `entity`'s playback (its source, clock, sound, events) goes on in
+        // `to`'s scene as `toEntity` (a persistent player keeps playing across scene loads); the
+        // component there shares the same render texture
+        void handOver(Entity entity, VideoPlayerSystem& to, Entity toEntity);
         void stepForward(Entity entity);    // paused: the next frame
         void setTime(Entity entity, double seconds);
         void setFrame(Entity entity, int64_t frame);

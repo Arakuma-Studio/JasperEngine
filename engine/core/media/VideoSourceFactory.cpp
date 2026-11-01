@@ -181,7 +181,7 @@ namespace {
         bool uploadTo(Framebuffer& target) override{ return inner && inner->uploadTo(target); }
         bool playsOwnAudio() const override{ return inner && inner->playsOwnAudio(); }
         void setOutputVolume(float volume) override{ if (inner) inner->setOutputVolume(volume); }
-        void setClock(bool advancing, double rate) override{ if (inner) inner->setClock(advancing, rate); }
+        void setClock(bool advancing, double rate, double seconds) override{ if (inner) inner->setClock(advancing, rate, seconds); }
         const char* backendName() const override{ return inner ? inner->backendName() : ""; }
 
     private:
@@ -302,7 +302,13 @@ namespace {
         if (!mp4){
             // WebM: AV1/Opus in software; another codec through the platform's decoders when they have it
             if (ebml){
-                const VideoProbe probe = VideoFormats::probeFile(path);
+                // the tracks from the file's start (a WebM's headers precede its clusters): no
+                // second read of the whole file before VideoStream reads it; unreadable from the
+                // prefix: the software path, as before
+                const int64_t prefix = std::min<int64_t>(bytes->size(), (int64_t)1 << 20);
+                std::vector<uint8_t> head(prefix > 0 ? (size_t)prefix : 0);
+                const int64_t got = head.empty() ? 0 : bytes->readAt(0, head.data(), head.size());
+                const VideoProbe probe = got > 0 ? VideoFormats::probeMemory(head.data(), (size_t)got, path) : VideoProbe();
                 std::string backend;
                 std::string reason;
                 if (probe.backend != "webm" && !probe.backend.empty() &&

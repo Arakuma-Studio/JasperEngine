@@ -285,6 +285,34 @@ TEST_F(VideoMp4Test, OptimizeForStreamingMovesTheMoov){
         EXPECT_EQ(frameAt(*source, 0, k, shown), k);
 }
 
+TEST_F(VideoMp4Test, OptimizeForStreamingWritesTheSizeOfAToTheEndMoov){
+    // the moov is the last box and says size 0 ("to the end of the file"), as some muxers write it
+    std::ifstream in(clip("h264_aac_160x90_moov_end.mp4"), std::ios::binary);
+    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::unique_ptr<MediaByteSource> original = MediaByteSource::openMemory(bytes, "moov_end.mp4");
+    const Mp4ProbeResult before = Mp4Probe::probe(*original);
+    ASSERT_TRUE(before.ok) << before.error;
+    ASSERT_GT(before.moovOffset, 0);
+    const size_t at = (size_t)before.moovOffset;
+    bytes[at] = bytes[at + 1] = bytes[at + 2] = bytes[at + 3] = 0;
+    const std::string input = (root / "zero.mp4").string();
+    {
+        std::ofstream out(input, std::ios::binary);
+        out.write((const char*)bytes.data(), (std::streamsize)bytes.size());
+    }
+    const std::string output = (root / "zero-fast.mp4").string();
+    std::string error;
+    ASSERT_TRUE(Mp4Probe::rewriteFastStart(input, output, error)) << error;
+    std::unique_ptr<MediaByteSource> fast = MediaByteSource::openFile(output, error);
+    ASSERT_TRUE(fast) << error;
+    const Mp4ProbeResult probe = Mp4Probe::probe(*fast);
+    ASSERT_TRUE(probe.ok) << probe.error;
+    EXPECT_TRUE(probe.fastStart);
+    Mp4VideoIndex index;
+    EXPECT_TRUE(Mp4Probe::buildVideoIndex(*fast, probe, index, error)) << error;
+    EXPECT_EQ(index.ptsNs.size(), 60u);
+}
+
 // ---------------------------------------------------------------- growing files
 
 TEST_F(VideoMp4Test, GrowingFileReaderBlocksUntilTheBytesArrive){

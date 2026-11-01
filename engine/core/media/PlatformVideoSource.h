@@ -148,7 +148,9 @@ namespace jasperengine {
         static int getLiveCount();
 
     private:
-        enum class Work { NONE, DONE };
+        // NONE: nothing to do (wait for work); DONE: progress; IDLE: the decoder had nothing yet
+        // (back off a little instead of spinning)
+        enum class Work { NONE, DONE, IDLE };
 
         void threadMain();
         Work step();
@@ -202,6 +204,7 @@ namespace jasperengine {
         std::condition_variable frameReady;
         std::atomic<State> state{State::OPENING};
         std::atomic<bool> opened{false};
+        bool lateWarned = false;
         VideoInfo info;
         MediaError error;
         std::deque<VideoFrame> queue;

@@ -229,6 +229,9 @@ namespace jasperengine::editor {
     public:
         // a scene or prefab file's text: a Video Player with an http(s) url
         static bool hasUrlVideoPlayer(const std::string& sceneText);
+        // the first of `files` (relative to `root`: Lua, C++ scripts, HTML UI documents) that may
+        // play a URL video (sets a Video Player's url, an HTML <video> of an http(s) URL); ""
+        static std::string scriptVideoUrlFile(const std::filesystem::path& root, const std::vector<std::filesystem::path>& files);
 
         // a PNG copied (read once) without its jasper.* text chunks (util/PngEditorChunks.h; one
         // without them, or not a well-formed PNG, as it is); false when it is not a .png or could

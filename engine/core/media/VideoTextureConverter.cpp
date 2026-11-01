@@ -87,7 +87,9 @@ namespace {
 }
 
 struct VideoTextureConverter::Impl {
-    Framebuffer target;
+    // shared with the Textures linked to it (Texture::setFramebuffer keeps the owner): an Image
+    // showing it outlives the player safely, its GPU side freed (the texture draws its fallback)
+    std::shared_ptr<Framebuffer> target = std::make_shared<Framebuffer>();
     std::unique_ptr<TextureRender> planes[3];
     int planeSizes[3][2] = {};
     TextureRender placeholder;
@@ -119,7 +121,7 @@ struct VideoTextureConverter::Impl {
     }
 
     bool ensureTarget(int w, int h){
-        if (target.isCreated() && width == w && height == h)
+        if (target->isCreated() && width == w && height == h)
             return true;
         FramebufferDesc desc;
         desc.width = w;
@@ -128,9 +130,9 @@ struct VideoTextureConverter::Impl {
         desc.depth = DepthStencilFormat::NONE;
         desc.sampleCount = 1;
         desc.label = "video-player";
-        if (target.isCreated())
-            target.destroy();
-        if (!target.create(desc)){
+        if (target->isCreated())
+            target->destroy();
+        if (!target->create(desc)){
             Log::error("[Video] could not create the %d x %d video texture", w, h);
             return false;
         }
@@ -181,7 +183,7 @@ int VideoTextureConverter::getLiveCount(){
 }
 
 Framebuffer* VideoTextureConverter::getFramebuffer(){
-    return &impl->target;
+    return impl->target.get();
 }
 
 void VideoTextureConverter::submit(VideoFrame frame, int targetWidth, int targetHeight, VideoAspectRatio fit){
@@ -278,7 +280,7 @@ bool VideoTextureConverter::convert(){
         if (!m.ensureTarget(m.targetWidth, m.targetHeight))
             return false;
         m.source = nullptr;
-        if (!source->uploadTo(m.target))
+        if (!source->uploadTo(*m.target))
             return false;
         m.picture = true;
         m.conversions++;
@@ -317,7 +319,7 @@ bool VideoTextureConverter::convert(){
     // the bars of a letterboxed picture are transparent black
     m.pass.setColorActions(covers ? LoadAction::DONTCARE : LoadAction::CLEAR, StoreAction::STORE, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
     m.pass.setLabel("video conversion");
-    m.pass.startRenderPass(&m.target.getRender());
+    m.pass.startRenderPass(&m.target->getRender());
     if (visible){
         const int x = (int)std::floor(rect[0]), y = (int)std::floor(rect[1]);
         const int vw = std::max(1, (int)std::ceil(rect[0] + rect[2]) - x), vh = std::max(1, (int)std::ceil(rect[1] + rect[3]) - y);
@@ -353,7 +355,7 @@ bool VideoTextureConverter::convert(){
 bool VideoTextureConverter::drawPlane(const RenderTargetFormat& format, CameraRender& pass, const Rect& viewport, VideoAspectRatio fit,
                                       float alpha, bool flipY){
     Impl& m = *impl;
-    if (!m.picture || !m.target.isCreated() || alpha <= 0.0f)
+    if (!m.picture || !m.target->isCreated() || alpha <= 0.0f)
         return false;
     if (!m.ensurePlaceholder() || !m.blit.load(HtmlUIPostVariant::PASSTHROUGH, &m.placeholder))
         return false;
@@ -372,7 +374,7 @@ bool VideoTextureConverter::drawPlane(const RenderTargetFormat& format, CameraRe
     pass.applyViewport(area);
     pass.applyScissor(area);
     Program& program = m.blit;
-    program.object.addTexture(program.texture, ShaderStageType::FRAGMENT, &m.target.getRender().getColorTexture());
+    program.object.addTexture(program.texture, ShaderStageType::FRAGMENT, &m.target->getRender().getColorTexture());
     PipelineState state;
     state.target = format;
     state.blend = BlendMode::PREMULTIPLIED;
@@ -416,8 +418,8 @@ void VideoTextureConverter::release(){
     if (m.placeholderMade)
         m.placeholder.destroyTexture();
     m.placeholderMade = false;
-    if (m.target.isCreated())
-        m.target.destroy();
+    if (m.target->isCreated())
+        m.target->destroy();
     m.picture = false;
     m.framePending = false;
     m.source = nullptr;

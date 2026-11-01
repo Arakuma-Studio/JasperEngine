@@ -17,6 +17,9 @@ namespace {
     std::atomic<int> liveSources{0};
 
     constexpr auto WAIT_LIMIT = std::chrono::seconds(10);
+    // a frame-exact frame (fixed time steps) is waited for at most this long, then the caller's
+    // clock waits a frame (no main-thread freeze on a decoder that stopped)
+    constexpr auto FRAME_WAIT_LIMIT = std::chrono::seconds(1);
     // audio is decoded while this much of the ring is free (a platform decoder's chunk is far
     // smaller; the rest of a larger one waits in `pending`)
     constexpr size_t AUDIO_MIN_FREE = 9600;
@@ -353,9 +356,17 @@ int64_t PlatformVideoSource::audioFramesPerIteration() const{
 void PlatformVideoSource::threadMain(){
     for (;;){
         const Work work = step();
-        if (work != Work::NONE)
+        if (work == Work::DONE)
             continue;
         std::unique_lock<std::mutex> lock(mutex);
+        if (work == Work::IDLE){
+            // the decoder is waiting for data (a hardware decoder's output, a download): a short
+            // nap, woken at once by a seek or the end
+            workerWake.wait_for(lock, std::chrono::milliseconds(2), [this]{ return quit || pendingSeek >= 0 || pendingAudioSync >= 0; });
+            if (quit)
+                return;
+            continue;
+        }
         if (quit)
             return;
         if (ring && !audioEnd)
@@ -556,7 +567,16 @@ void PlatformVideoSource::openNow(){
     bool hasFirst = false;
     int64_t bias = 0;
     if (videoBackend){
-        for (int attempt = 0; attempt < 512; attempt++){
+        // up to 2 s of decoding (hardware decoders take a while to give their first picture);
+        // a growing download blocks in its reads meanwhile, so it gets as long as it needs to
+        // arrive, the closing of the source ending the wait
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(bytes->isGrowing() ? 120 : 2);
+        while (std::chrono::steady_clock::now() < deadline){
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                if (quit)
+                    return;
+            }
             std::vector<float> unused;
             double unusedStart = 0.0;
             MediaError failure;
@@ -573,8 +593,10 @@ void PlatformVideoSource::openNow(){
                 hasFirst = true;
                 break;
             }
-            if (result == PlatformDecoderBackend::Step::AGAIN)
+            if (result == PlatformDecoderBackend::Step::AGAIN){
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 continue;
+            }
             if (result == PlatformDecoderBackend::Step::ERROR){
                 std::lock_guard<std::mutex> lock(mutex);
                 failLocked(failure.code == MediaErrorCode::NONE ? MediaErrorCode::DECODE : failure.code, "'" + path + "': " + failure.message);
@@ -715,7 +737,7 @@ PlatformVideoSource::Work PlatformVideoSource::decodeVideo(std::unique_lock<std:
     const int count = std::max(info.frameCount, 1);
     switch (result){
         case PlatformDecoderBackend::Step::AGAIN:
-            return Work::DONE;
+            return Work::IDLE;
         case PlatformDecoderBackend::Step::ERROR:
             failLocked(failure.code == MediaErrorCode::NONE ? MediaErrorCode::DECODE : failure.code, "'" + bytes->path() + "': " + failure.message);
             return Work::DONE;
@@ -788,6 +810,7 @@ PlatformVideoSource::Work PlatformVideoSource::decodeAudio(std::unique_lock<std:
     const int64_t perIteration = audioFramesPerIteration();
     switch (result){
         case PlatformDecoderBackend::Step::AGAIN:
+            return Work::IDLE;
         case PlatformDecoderBackend::Step::FRAME:
             return Work::DONE;
         case PlatformDecoderBackend::Step::ERROR:
@@ -934,7 +957,7 @@ IVideoSource::FrameResult PlatformVideoSource::acquireFrame(int iteration, doubl
     const int count = std::max(info.frameCount, 1);
     const int64_t behindLimit = std::max<int64_t>(SEEK_AHEAD_FRAMES * 2, (int64_t)std::ceil(0.5 * (info.frameRate > 0.0 ? info.frameRate : 30.0)));
 
-    const auto deadline = std::chrono::steady_clock::now() + WAIT_LIMIT;
+    const auto deadline = std::chrono::steady_clock::now() + FRAME_WAIT_LIMIT;
     std::unique_lock<std::mutex> lock(mutex);
     for (;;){
         while (queue.size() >= 2 && queue[1].sequence <= target){
@@ -992,7 +1015,10 @@ IVideoSource::FrameResult PlatformVideoSource::acquireFrame(int iteration, doubl
         }
         workerWake.notify_all();
         if (frameReady.wait_until(lock, deadline) == std::cv_status::timeout){
-            Log::error("[Video] '%s': frame %lld was not decoded in time", bytes->path().c_str(), (long long)target);
+            if (!lateWarned){
+                lateWarned = true;
+                Log::warn("[Video] '%s': frame %lld was not decoded within a second: the video waits", bytes->path().c_str(), (long long)target);
+            }
             return FrameResult::NOT_READY;
         }
         if (quit)

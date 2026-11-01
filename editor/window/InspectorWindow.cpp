@@ -16112,6 +16112,7 @@ void editor::InspectorWindow::show(){
     flushDirtyMaterials(ImGui::GetIO().DeltaTime);
 
     trackInspectedObject();
+    closeIdleVideoPreview();
 
     // fluid previews keep their Scene view redrawing; they and the Paint Dye brush end with
     // what they work on (FluidEditorTools)

@@ -24,7 +24,9 @@
 #import <Foundation/Foundation.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstring>
 #include <map>
 #include <mutex>
 #include <string>
@@ -49,27 +51,71 @@ namespace {
         return text ? std::string([text UTF8String]) : std::string();
     }
 
-    // a file AVFoundation can open: the source's own, else its bytes written once to the caches folder
+    std::string lower(std::string text){
+        std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c){ return (char)std::tolower(c); });
+        return text;
+    }
+
+    // the extension of a path when it names a container AVFoundation reads, else ""
+    std::string knownExtension(const std::string& path){
+        const size_t slash = path.find_last_of('/');
+        const size_t dot = path.find_last_of('.');
+        if (dot == std::string::npos || (slash != std::string::npos && dot < slash))
+            return "";
+        const std::string extension = lower(path.substr(dot + 1));
+        static const char* const known[] = {"mp4", "m4v", "mov", "3gp", "m4a"};
+        for (const char* name : known){
+            if (extension == name)
+                return extension;
+        }
+        return "";
+    }
+
+    // the container by its first box (ftyp brand "qt  ": QuickTime), for a file whose name says
+    // nothing (a media cache file of an extensionless URL is .bin): AVFoundation goes by the
+    // extension
+    std::string sniffedExtension(MediaByteSource& source){
+        uint8_t head[12] = {};
+        if (source.readAt(0, head, sizeof(head)) >= 12 && std::memcmp(head + 4, "ftyp", 4) == 0)
+            return std::memcmp(head + 8, "qt  ", 4) == 0 ? "mov" : "mp4";
+        return "mp4";
+    }
+
+    NSURL* cacheFolder(){
+        NSArray<NSURL*>* caches = [[NSFileManager defaultManager] URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask];
+        NSURL* folder = caches.count ? [caches.firstObject URLByAppendingPathComponent:@"jasperengine-video" isDirectory:YES]
+                                     : [NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES];
+        [[NSFileManager defaultManager] createDirectoryAtURL:folder withIntermediateDirectories:YES attributes:nil error:nil];
+        return folder;
+    }
+
+    // a file AVFoundation can open: the source's own (through a link named by its container when
+    // its own name has no known extension), else its bytes written once to the caches folder
     NSURL* fileUrlOf(MediaByteSource& source, MediaError& error){
         const std::string own = source.systemPath();
-        if (!own.empty())
-            return [NSURL fileURLWithPath:[NSString stringWithUTF8String:own.c_str()]];
+        if (!own.empty()){
+            NSURL* file = [NSURL fileURLWithPath:[NSString stringWithUTF8String:own.c_str()]];
+            if (!knownExtension(own).empty())
+                return file;
+            const std::string name = htmlui::compat::sha256Hex(own).substr(0, 24) + "." + sniffedExtension(source);
+            NSURL* link = [cacheFolder() URLByAppendingPathComponent:[NSString stringWithUTF8String:name.c_str()]];
+            [[NSFileManager defaultManager] removeItemAtURL:link error:nil];
+            if ([[NSFileManager defaultManager] createSymbolicLinkAtURL:link withDestinationURL:file error:nil])
+                return link;
+            // no link possible: the copy below
+        }
         const int64_t size = source.size();
         if (size <= 0){
             error.code = MediaErrorCode::NETWORK;
             error.message = "'" + source.path() + "' could not be read";
             return nil;
         }
-        NSArray<NSURL*>* caches = [[NSFileManager defaultManager] URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask];
-        NSURL* folder = caches.count ? [caches.firstObject URLByAppendingPathComponent:@"jasperengine-video" isDirectory:YES]
-                                     : [NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES];
-        [[NSFileManager defaultManager] createDirectoryAtURL:folder withIntermediateDirectories:YES attributes:nil error:nil];
+        NSURL* folder = cacheFolder();
         // the extension tells AVFoundation the container
-        std::string extension = "mp4";
         const std::string& path = source.path();
-        const size_t dot = path.find_last_of('.');
-        if (dot != std::string::npos && path.size() - dot <= 5)
-            extension = path.substr(dot + 1);
+        std::string extension = knownExtension(path);
+        if (extension.empty())
+            extension = sniffedExtension(source);
         const std::string name = htmlui::compat::sha256Hex(path + ":" + std::to_string(size)).substr(0, 24) + "." + extension;
         NSURL* file = [folder URLByAppendingPathComponent:[NSString stringWithUTF8String:name.c_str()]];
         NSNumber* existing = nil;
@@ -179,6 +225,7 @@ namespace {
 
         bool seek(double seconds) override{
             MediaError error;
+            lastPts = kCMTimeInvalid;
             return startReader(CMTimeMakeWithSeconds(std::max(seconds, 0.0), 600000), error);
         }
 
@@ -189,18 +236,36 @@ namespace {
                 CMSampleBufferRef sample = [output copyNextSampleBuffer];
                 if (!sample){
                     if (reader.status == AVAssetReaderStatusFailed){
-                        error.code = MediaErrorCode::DECODE;
-                        error.message = "AVFoundation stopped decoding (" + utf8(reader.error.localizedDescription) + ")";
+                        NSError* failure = reader.error;
+                        // iOS stops readers when the app goes to the background (and on a media
+                        // services reset): read on from just after the last sample, in sync
+                        if (isInterruption(failure) && restarts < 16){
+                            restarts++;
+                            const CMTime resume = CMTIME_IS_NUMERIC(lastPts) ? CMTimeAdd(lastPts, CMTimeMake(1, 600000)) : kCMTimeZero;
+                            MediaError restartError;
+                            if (startReader(resume, restartError))
+                                return Step::AGAIN;
+                            error = restartError;
+                            return Step::ERROR;
+                        }
+                        error.code = isCodecFailure(failure) ? MediaErrorCode::SRC_NOT_SUPPORTED : MediaErrorCode::DECODE;
+                        error.message = isCodecFailure(failure) ? "this device has no " + codecLabel(codecName) + " decoder (" + utf8(failure.localizedDescription) + ")"
+                                                                : "AVFoundation stopped decoding (" + utf8(failure.localizedDescription) + ")";
                         return Step::ERROR;
                     }
                     return Step::END;
                 }
+                const CMTime pts = CMSampleBufferGetPresentationTimeStamp(sample);
+                if (CMTIME_IS_NUMERIC(pts))
+                    lastPts = pts;
                 Step step = Step::AGAIN;
                 if (stream == Stream::VIDEO)
                     step = takePicture(sample, frame);
                 else
                     step = takeAudio(sample, pcm, pcmStart);
                 CFRelease(sample);
+                if (step != Step::AGAIN)
+                    restarts = 0;
                 return step;
             }
         }
@@ -256,14 +321,28 @@ namespace {
                 if (CMTimeCompare(start, kCMTimeZero) > 0)
                     made.timeRange = CMTimeRangeMake(start, kCMTimePositiveInfinity);
                 if (![made startReading]){
-                    error.code = MediaErrorCode::SRC_NOT_SUPPORTED;
-                    error.message = "AVFoundation cannot decode its " + codecLabel(codecName) + " (" + utf8(made.error.localizedDescription) + ")";
+                    error.code = isCodecFailure(made.error) || !made.error ? MediaErrorCode::SRC_NOT_SUPPORTED : MediaErrorCode::DECODE;
+                    error.message = isCodecFailure(made.error) ? "this device has no " + codecLabel(codecName) + " decoder (" + utf8(made.error.localizedDescription) + ")"
+                                                               : "AVFoundation cannot decode its " + codecLabel(codecName) + " (" + utf8(made.error.localizedDescription) + ")";
                     return false;
                 }
                 reader = made;
                 output = trackOutput;
                 return true;
             }
+        }
+
+        // AVErrorOperationInterrupted (-11847: the app left the foreground) and
+        // AVErrorMediaServicesWereReset (-11819), by value: the latter is iOS-only API
+        static bool isInterruption(NSError* failure){
+            return failure && [failure.domain isEqualToString:AVFoundationErrorDomain] && (failure.code == -11847 || failure.code == -11819);
+        }
+
+        // AVErrorDecoderNotFound (-11833), AVErrorFileFormatNotRecognized (-11828), AVErrorDecodeFailed
+        // (-11821): no decoder for it here (the codec hint applies)
+        static bool isCodecFailure(NSError* failure){
+            return failure && [failure.domain isEqualToString:AVFoundationErrorDomain] &&
+                   (failure.code == -11833 || failure.code == -11828 || failure.code == -11821);
         }
 
         static std::string codecLabel(const std::string& code){
@@ -339,6 +418,8 @@ namespace {
         AVAssetReaderTrackOutput* output = nil;
         OSType pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
         std::string codecName;
+        CMTime lastPts = kCMTimeInvalid;   // the last sample given out (an interrupted reader resumes after it)
+        int restarts = 0;
     };
 
 }

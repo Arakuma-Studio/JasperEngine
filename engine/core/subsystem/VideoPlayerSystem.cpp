@@ -178,6 +178,11 @@ void VideoPlayerSystem::destroy(){
         if (entry.voice)
             entry.voice->stop();
         entry.voice.reset();
+        // the converter may hold the source for a conversion not run yet (the browser's element)
+        if (scene->isComponentRegistered<VideoPlayerComponent>() && scene->isEntityCreated(entity)){
+            if (VideoPlayerComponent* player = scene->findComponent<VideoPlayerComponent>(entity); player && player->output)
+                player->output->forgetSource(entry.source.get());
+        }
         entry.source.reset();
     }
     state->entries.clear();
@@ -189,6 +194,9 @@ void VideoPlayerSystem::setPaused(bool value){
     for (auto& [entity, entry] : state->entries){
         if (entry.voice)
             entry.voice->setPaused(value || !entry.clock.isAdvancing());
+        // a source that plays by itself (the browser's element) holds too
+        if (entry.source)
+            entry.source->setClock(!value && entry.clock.isAdvancing(), entry.clock.getPlaybackRate(), entry.clock.getPosition());
     }
 }
 
@@ -275,7 +283,9 @@ void VideoPlayerSystem::prepare(Entity entity){
         return;
     }
     // a clip or url set since it opened (`vp.url = x; vp:prepare()` in one go): that one goes
-    if (entry.source && (entry.openedPath != path || entry.openedAudio != (player->audioOutputMode != VideoAudioOutputMode::NONE)))
+    // ... and one that failed: prepare() tries again (a URL back online, a file fixed)
+    if (entry.source && (entry.openedPath != path || entry.openedAudio != (player->audioOutputMode != VideoAudioOutputMode::NONE) ||
+                         entry.source->getState() == IVideoSource::State::FAILED))
         stop(entity);
     if (entry.source)
         return;
@@ -304,7 +314,8 @@ void VideoPlayerSystem::play(Entity entity){
     PlayerEntry& entry = state->entries[entity];
     entry.awoken = true;
     if (entry.source && (entry.openedPath != sourcePathOf(*player) ||
-                         entry.openedAudio != (player->audioOutputMode != VideoAudioOutputMode::NONE)))
+                         entry.openedAudio != (player->audioOutputMode != VideoAudioOutputMode::NONE) ||
+                         entry.source->getState() == IVideoSource::State::FAILED))
         stop(entity);
     if (!entry.source)
         prepare(entity);
@@ -376,6 +387,20 @@ void VideoPlayerSystem::resetPlayers(){
     }
     state->pendingEvents.clear();
     state->lastUiNow = -1.0;
+}
+
+void VideoPlayerSystem::handOver(Entity entity, VideoPlayerSystem& to, Entity toEntity){
+    if (!state || !to.state)
+        return;
+    auto it = state->entries.find(entity);
+    if (it == state->entries.end())
+        return;
+    PlayerEntry moved = std::move(it->second);
+    state->entries.erase(it);
+    // Material Override slots belong to this scene's renderers: given back here, set again there
+    restoreOverride(scene, moved.overridden);
+    moved.overrideWarned = false;
+    to.state->entries[toEntity] = std::move(moved);
 }
 
 void VideoPlayerSystem::setTime(Entity entity, double seconds){
@@ -786,14 +811,16 @@ void VideoPlayerSystem::update(double dt){
         }
 
         entry.clock.update(entry.now, entry.events);
-        source.setClock(entry.clock.isAdvancing(), entry.clock.getPlaybackRate());
+        source.setClock(entry.clock.isAdvancing() && !paused, entry.clock.getPlaybackRate(), entry.clock.getPosition());
 
         // the frame of the clock's time
         bool shown = false;
         bool exact = false;
         if (info.hasVideo){
             VideoFrame frame;
-            const bool wait = frameExact || !player.skipOnDrop;
+            // only frame-exact play (fixed time steps) waits for the frame, bounded; real-time play
+            // never blocks: without skipOnDrop the clock waits for the decoder instead (below)
+            const bool wait = frameExact;
             const IVideoSource::FrameResult result = source.acquireFrame(entry.clock.getIteration(), entry.clock.getPosition(), wait,
                                                                          entry.shownSequence, frame);
             switch (result){
@@ -834,7 +861,8 @@ void VideoPlayerSystem::update(double dt){
             const int64_t target = source.sequenceFor(entry.clock.getIteration(), entry.clock.getPosition());
             const double frameSeconds = info.frameRate > 0.0 ? 1.0 / info.frameRate : 1.0 / 30.0;
             const int64_t lag = std::max<int64_t>(target - std::max<int64_t>(entry.shownSequence, 0), 0);
-            if (entry.shownSequence < 0 || (double)lag * frameSeconds > 0.25)
+            // skipOnDrop off (Unity): every frame shows, the clock slows down to the decoder
+            if (entry.shownSequence < 0 || !player.skipOnDrop || (double)lag * frameSeconds > 0.25)
                 entry.clock.setStalled(true, entry.now, entry.events);
         }
 

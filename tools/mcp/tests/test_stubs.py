@@ -128,6 +128,25 @@ function Good:init()
     GameState = { level = 1 }  -- the game's own global table
     GameState.level = "boss"
     Log.print("frames " .. tostring(Engine.frameCount) .. " " .. tostring(Engine.gameTime))
+    -- the Video Player: fields, enums, events, methods and statics (video-mp4)
+    local vp = self.go:getVideoPlayer()
+    if vp and self.go:hasVideoPlayer() then
+        vp.source = VideoPlayerSource.URL
+        vp.url = System.getUserDataPath() .. "/ads/ad1.mp4"
+        vp.timeUpdateMode = VideoTimeUpdateMode.UNSCALED_GAME_TIME
+        vp.renderMode = VideoRenderMode.RENDER_TEXTURE
+        vp.aspectRatio = VideoAspectRatio.FIT_INSIDE
+        vp.audioOutputMode = VideoAudioOutputMode.DIRECT
+        vp.isLooping = false
+        vp.playbackSpeed = 1.5
+        vp.targetCamera = nil
+        vp.onPrepareCompleted = function(p) p:play() end
+        vp.onErrorReceived = function(p, message) Log.print(message) end
+        vp:prepare()
+        local framebuffer = vp:getFramebuffer()
+        print(framebuffer, vp.isPrepared, vp.frameCount, vp.length, vp.time, vp.frame, vp.backend, vp.texture)
+        print(VideoPlayer.canPlay("ads/ad1.mp4"), VideoPlayer.clearCache(), VideoPlayer.clearCache("https://cdn.example.com/a.mp4"))
+    end
 end
 
 function Good:onContact(bodyA, shapeA, bodyB, shapeB)

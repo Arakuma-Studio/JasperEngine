@@ -29,12 +29,18 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <unordered_map>
 #include <string>
 #include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
+namespace fs = std::filesystem;
 
 namespace {
 
@@ -491,4 +497,168 @@ TEST(VideoPlayerComponent, AndroidInternetForUrlPlayers){
     node["components"]["videoplayer"] = Stream::encodeVideoPlayerComponent(player);
     EXPECT_FALSE(Exporter::hasUrlVideoPlayer(YAML::Dump(node)));
     EXPECT_FALSE(Exporter::hasUrlVideoPlayer("components:\n  sprite:\n    url: https://x.example/a.png\n"));
+}
+
+TEST(VideoPlayerComponent, AndroidInternetCheckParsesTheYaml){
+    // a scene line of 100 KB (an embedded buffer) does not overflow the check (no regex over it)
+    YAML::Node node;
+    node["entities"][0]["components"]["mesh"]["data"] = std::string(100 * 1024, 'A');
+    VideoPlayerComponent player;
+    player.url = "HTTPS://cdn.example.com/ad.mp4";
+    node["entities"][1]["components"]["videoplayer"] = Stream::encodeVideoPlayerComponent(player);
+    EXPECT_TRUE(Exporter::hasUrlVideoPlayer(YAML::Dump(node))) << "the scheme in any case";
+    // a player without a url and another GameObject's url: nothing
+    YAML::Node other;
+    other["entities"][0]["components"]["videoplayer"]["clip"] = "assets/video/a.mp4";
+    other["entities"][1]["components"]["sprite"]["url"] = "https://cdn.example.com/b.png";
+    EXPECT_FALSE(Exporter::hasUrlVideoPlayer(YAML::Dump(other)));
+    // not YAML at all
+    EXPECT_FALSE(Exporter::hasUrlVideoPlayer("videoplayer: [unclosed"));
+}
+
+TEST(VideoPlayerComponent, AndroidInternetForScriptsSettingAUrl){
+    const fs::path root = fs::temp_directory_path() / "jasper-video-internet";
+    fs::remove_all(root);
+    fs::create_directories(root / "lua");
+    fs::create_directories(root / "assets/ui");
+    auto write = [&](const std::string& rel, const std::string& text){ std::ofstream(root / rel) << text; };
+    write("lua/Plain.lua", "local x = 1\n");
+    write("lua/Ad.lua", "local vp = self.gameObject:getVideoPlayer()\nvp.url = base .. '/ad.mp4'\n");
+    write("assets/ui/menu.html", "<html><body><video src=\"ui/intro.webm\"></video></body></html>");
+    write("assets/ui/promo.html", "<html><body><video autoplay src=\"https://cdn.example.com/p.mp4\"></video></body></html>");
+    EXPECT_EQ(Exporter::scriptVideoUrlFile(root, {"lua/Plain.lua", "assets/ui/menu.html"}), "");
+    EXPECT_EQ(Exporter::scriptVideoUrlFile(root, {"lua/Plain.lua", "lua/Ad.lua"}), "lua/Ad.lua");
+    EXPECT_EQ(Exporter::scriptVideoUrlFile(root, {"assets/ui/promo.html"}), "assets/ui/promo.html");
+    fs::remove_all(root);
+}
+
+TEST(VideoPlayerComponent, AnImageOutlivesItsPlayer){
+    // the ad flow: image:setTexture(player:getFramebuffer()), then the player's GameObject goes
+    Scene scene;
+    const Entity player = scene.createUserEntity();
+    scene.addComponent<Transform>(player, {});
+    scene.addComponent<VideoPlayerComponent>(player, {});
+    VideoPlayerComponent& component = scene.getComponent<VideoPlayerComponent>(player);
+    if (!component.output)
+        component.output = std::make_shared<VideoTextureConverter>();
+    Texture shown(component.output->getFramebuffer());
+    std::weak_ptr<Framebuffer> owner = component.output->getFramebuffer()->weak_from_this();
+    ASSERT_FALSE(owner.expired()) << "the render texture is shared (Texture keeps its owner)";
+    scene.destroyEntity(player);
+    component.output.reset();
+    EXPECT_FALSE(owner.expired()) << "the Image's texture keeps the object alive";
+    ASSERT_NE(shown.getFramebuffer(), nullptr);
+    EXPECT_FALSE(shown.getFramebuffer()->isCreated()) << "its GPU side is gone: the texture draws its fallback";
+}
+
+TEST(VideoPlayerComponent, LinksFollowRemapsAndDeletes){
+    // a prefab boundary or paste retargets video|<id> to the copy's player (CameraTextureLink::retarget)
+    Scene scene;
+    const Entity a = scene.createUserEntity();
+    const Entity b = scene.createUserEntity();
+    for (Entity e : {a, b}){
+        scene.addComponent<Transform>(e, {});
+        scene.addComponent<VideoPlayerComponent>(e, {});
+    }
+    Texture texture = VideoTextureLink::make(&scene, a);
+    ASSERT_EQ(texture.getId(), VideoTextureLink::makeId(a));
+    CameraTextureLink::retarget(&scene, texture, b);
+    EXPECT_EQ(texture.getId(), VideoTextureLink::makeId(b));
+    EXPECT_EQ(texture.getFramebuffer(), scene.getComponent<VideoPlayerComponent>(b).output->getFramebuffer());
+    // the player deleted: links to it resolve to nothing, and keep naming it (undo brings it back)
+    const Entity image = scene.createUserEntity();
+    scene.addComponent<Transform>(image, {});
+    MeshComponent mesh;
+    mesh.numSubmeshes = 1;
+    mesh.submeshes[0].material.baseColorTexture = texture;
+    scene.addComponent<MeshComponent>(image, mesh);
+    scene.destroyEntity(b);
+    EXPECT_TRUE(CameraTextureLink::resolve(&scene));
+    const Texture& after = scene.getComponent<MeshComponent>(image).submeshes[0].material.baseColorTexture;
+    EXPECT_EQ(after.getFramebuffer(), nullptr);
+    EXPECT_EQ(after.getId(), VideoTextureLink::makeId(b));
+}
+
+TEST(VideoPlayerComponent, ExportedLinkCode){
+    Scene scene;
+    const Entity player = scene.createUserEntity();
+    scene.addComponent<Transform>(player, {});
+    scene.addComponent<VideoPlayerComponent>(player, {});
+    const Entity image = scene.createUserEntity();
+    scene.addComponent<Transform>(image, {});
+    MeshComponent mesh;
+    mesh.numSubmeshes = 1;
+    mesh.submeshes[0].material.baseColorTexture.setId(VideoTextureLink::makeId(player));
+    scene.addComponent<MeshComponent>(image, mesh);
+    const std::string code = Factory::createCameraTextureLinks(4, &scene, {player, image}, nullptr, false);
+    EXPECT_NE(code.find(".output = std::make_shared<VideoTextureConverter>();"), std::string::npos) << code;
+    EXPECT_NE(code.find(".setFramebuffer(scene->getComponent<VideoPlayerComponent>("), std::string::npos) << code;
+    EXPECT_NE(code.find(".output->getFramebuffer());"), std::string::npos) << code;
+}
+
+TEST_F(VideoPlayerSystemTest, AMovedPlayerKeepsPlaying){
+    // to another scene (DontDestroyOnLoad): its texture, its listeners and its playback go along
+    const Entity entity = makePlayer();
+    run(4, 0.05);
+    VideoPlayer player(&scene, entity);
+    ASSERT_TRUE(player.isPlaying());
+    Framebuffer* texture = scene.getComponent<VideoPlayerComponent>(entity).output->getFramebuffer();
+    const Entity image = scene.createUserEntity();
+    scene.addComponent<Transform>(image, {});
+    MeshComponent mesh;
+    mesh.numSubmeshes = 1;
+    mesh.submeshes[0].material.baseColorTexture = VideoTextureLink::make(&scene, entity);
+    scene.addComponent<MeshComponent>(image, mesh);
+
+    Scene persistent;
+    std::unordered_map<Entity, Entity> map;
+    const std::vector<Entity> moved = EntityCloner::move(&scene, {entity, image}, &persistent, map);
+    ASSERT_EQ(moved.size(), 2u);
+    for (Entity e : {entity, image})
+        scene.destroyEntity(e);
+    const Entity there = map[entity];
+    VideoPlayerComponent& movedPlayer = persistent.getComponent<VideoPlayerComponent>(there);
+    ASSERT_TRUE(movedPlayer.output);
+    EXPECT_EQ(movedPlayer.output->getFramebuffer(), texture) << "the same render texture";
+    const Texture& shown = persistent.getComponent<MeshComponent>(map[image]).submeshes[0].material.baseColorTexture;
+    EXPECT_EQ(shown.getFramebuffer(), texture);
+    EXPECT_EQ(shown.getId(), VideoTextureLink::makeId(there));
+    VideoPlayer movedHandle(&persistent, there);
+    EXPECT_TRUE(movedHandle.isPrepared()) << "not opened again";
+    EXPECT_TRUE(movedHandle.isPlaying());
+    EXPECT_EQ(opened.size(), 1u);
+    const double before = movedHandle.getTime();
+    events.clear();
+    for (int i = 0; i < 4; i++){
+        HtmlUIClock::advance(0.05);
+        persistent.getSystem<VideoPlayerSystem>()->update(0.05);
+    }
+    EXPECT_GT(movedHandle.getTime(), before) << "it plays on there";
+    for (int i = 0; i < 30; i++){
+        HtmlUIClock::advance(0.05);
+        persistent.getSystem<VideoPlayerSystem>()->update(0.05);
+    }
+    EXPECT_EQ(std::count(events.begin(), events.end(), "loop"), 1) << "its listeners came along";
+}
+
+TEST_F(VideoPlayerSystemTest, PrepareAfterAnErrorTriesAgain){
+    failing = true;
+    const Entity entity = makePlayer();
+    run(4, 0.05);
+    VideoPlayer player(&scene, entity);
+    ASSERT_FALSE(player.getError().empty());
+    failing = false;
+    player.prepare();
+    run(4, 0.05);
+    EXPECT_TRUE(player.isPrepared()) << "a failed source is dropped by prepare()";
+    EXPECT_EQ(opened.size(), 2u);
+}
+
+TEST_F(VideoPlayerSystemTest, SkipOnDropOffNeverBlocks){
+    const Entity entity = makePlayer();
+    scene.getComponent<VideoPlayerComponent>(entity).skipOnDrop = false;
+    run(4, 0.05);
+    const auto start = std::chrono::steady_clock::now();
+    run(10, 0.05);
+    EXPECT_LT(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count(), 1.0);
 }

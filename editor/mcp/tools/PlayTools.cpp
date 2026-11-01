@@ -23,6 +23,7 @@
 #include "mcp/McpSchema.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpValues.h"
+#include "subsystem/VideoPlayerSystem.h"
 
 #include "App.h"
 #include "Catalog.h"
@@ -2283,6 +2284,59 @@ void setRuntimePropertyTool(const CallPtr& call) {
         return;
     }
 
+    // a Video Player's playback (spec 6.10): state play | pause | stop | prepare, time (seconds,
+    // seeks), frame (seeks to it); its fields go on below as any component's
+    if (component == ComponentType::VideoPlayerComponent) {
+        std::shared_ptr<VideoPlayerSystem> videos = sp->scene->findSystem<VideoPlayerSystem>();
+        if (!videos) {
+            call->fail("The scene has no Video Player system.");
+            return;
+        }
+        const bool seeks = values.contains("time") || values.contains("frame");
+        if (values.contains("state")) {
+            const Json& value = values["state"];
+            const std::string state = value.is_string() ? value.get<std::string>() : std::string();
+            if (state == "play") videos->play(entity);
+            else if (state == "pause") videos->pause(entity);
+            else if (state == "stop") videos->stop(entity);
+            else if (state == "prepare") videos->prepare(entity);
+            else {
+                call->fail("state must be play, pause, stop or prepare.");
+                return;
+            }
+            values.erase("state");
+        }
+        if (seeks && !videos->getStatus(entity).prepared) {
+            call->fail("time and frame seek a prepared player: state prepare (or play), then wait until video.prepared.");
+            return;
+        }
+        if (values.contains("time")) {
+            if (!values["time"].is_number() || values["time"].get<double>() < 0.0) {
+                call->fail("time must be a number of seconds >= 0.");
+                return;
+            }
+            videos->setTime(entity, values["time"].get<double>());
+            values.erase("time");
+        }
+        if (values.contains("frame")) {
+            if (!values["frame"].is_number_integer() || values["frame"].get<int64_t>() < 0) {
+                call->fail("frame must be an integer >= 0.");
+                return;
+            }
+            videos->setFrame(entity, values["frame"].get<int64_t>());
+            values.erase("frame");
+        }
+        if (values.empty()) {
+            Json data = McpRefs::entityJson(sp, entity);
+            data["component"] = componentNameOf(component);
+            const Json video = McpValues::videoStatusToJson(sp->scene, entity);
+            data["video"] = video;
+            call->ok("Video Player of \"" + data.value("path", std::string()) + "\": " + video.dump() +
+                     " (the next frames show it; get_runtime_entity reads it again).", data);
+            return;
+        }
+    }
+
     const std::map<std::string, PropertyData> properties = Catalog::findEntityProperties(sp->scene, entity, component);
     auto multi = new MultiPropertyCmd();
     std::vector<std::string> names;
@@ -3670,7 +3724,8 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Set Runtime Property";
         tool.description =
             "Set component properties of a GameObject in the running game, live: property + value, or values {name: "
-            "value}. Reverted at stop, never saved; only while playing. Lua script fields: eval_lua.";
+            "value}. Reverted at stop, never saved; only while playing. Lua script fields: eval_lua. videoplayer also: "
+            "state play|pause|stop|prepare, time, frame.";
         tool.inputSchema = object({
             {"scene", runtimeScene},
             {"entity", entityRef()},

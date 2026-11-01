@@ -40,6 +40,7 @@
 #include "App.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstring>
 #include <cmath>
@@ -156,24 +157,35 @@ namespace {
         }).detach();
     }
 
-    // "Optimize for streaming": the moov box to the front, in place (a temporary file renamed over it)
+    std::atomic<bool>& optimizing(){
+        static std::atomic<bool> value{false};
+        return value;
+    }
+
+    // "Optimize for streaming": the moov box to the front, in place (a temporary file renamed over
+    // it), on a worker (a large file takes a while); the caller closed its own preview of it
     void optimizeForStreaming(const fs::path& file){
-        const fs::path temp = file.parent_path() / (file.filename().u8string() + ".faststart.tmp");
-        std::string error;
-        if (!Mp4Probe::rewriteFastStart(file.string(), temp.string(), error)){
+        if (optimizing().exchange(true))
+            return;
+        Out::info("Optimizing %s for streaming...", file.filename().u8string().c_str());
+        std::thread([file](){
+            const fs::path temp = file.parent_path() / (file.filename().u8string() + ".faststart.tmp");
+            std::string error;
             std::error_code ec;
-            fs::remove(temp, ec);
-            Out::error("Optimize for streaming: %s", error.c_str());
-            return;
-        }
-        std::error_code ec;
-        fs::rename(temp, file, ec);
-        if (ec){
-            fs::remove(temp, ec);
-            Out::error("Optimize for streaming: %s could not be replaced (%s)", file.filename().u8string().c_str(), ec.message().c_str());
-            return;
-        }
-        Out::info("%s: the moov box is at the front now: it plays while it downloads", file.filename().u8string().c_str());
+            if (!Mp4Probe::rewriteFastStart(file.string(), temp.string(), error)){
+                fs::remove(temp, ec);
+                Out::error("Optimize for streaming: %s", error.c_str());
+            }else{
+                fs::rename(temp, file, ec);
+                if (ec){
+                    fs::remove(temp, ec);
+                    Out::error("Optimize for streaming: %s could not be replaced (%s)", file.filename().u8string().c_str(), ec.message().c_str());
+                }else{
+                    Out::info("%s: the moov box is at the front now: it plays while it downloads", file.filename().u8string().c_str());
+                }
+            }
+            optimizing() = false;
+        }).detach();
     }
 
     // ---- the asset preview: frames converted on the CPU into a small dynamic texture
@@ -187,6 +199,7 @@ namespace {
         double position = 0.0;
         int iteration = 0;
         int64_t shown = -1;
+        int lastDrawn = 0;
         std::chrono::steady_clock::time_point last;
 
         void close(){
@@ -574,6 +587,12 @@ void editor::InspectorWindow::drawVideoPlayerComponent(ComponentType cpType, Sce
 
 // ---------------------------------------------------------------- the asset view
 
+void editor::InspectorWindow::closeIdleVideoPreview(){
+    VideoPreview& p = preview();
+    if ((p.source || p.texture.isCreated()) && ImGui::GetFrameCount() - p.lastDrawn > 2)
+        p.close();
+}
+
 void editor::InspectorWindow::drawVideoAsset(const fs::path& asset){
     drawAssetHeader(ICON_FA_FILM, asset, "Video");
     const VideoProbe* probe = cachedProbe(asset);
@@ -610,8 +629,14 @@ void editor::InspectorWindow::drawVideoAsset(const fs::path& asset){
         ImGui::Text("Fast start: %s", probe->fastStart ? "yes (plays while it downloads from a URL)" : "no");
         if (!probe->fastStart && !probe->fragmented){
             ImGui::SameLine();
-            if (ImGui::SmallButton("Optimize for streaming"))
+            ImGui::BeginDisabled(optimizing());
+            if (ImGui::SmallButton("Optimize for streaming")){
+                // not over a file the preview has open
+                if (preview().path == asset.string())
+                    preview().close();
                 optimizeForStreaming(asset);
+            }
+            ImGui::EndDisabled();
             ImGui::SetItemTooltip("Moves the moov box before the media data (no re-encoding): a URL plays while it downloads");
         }
     }
@@ -622,6 +647,9 @@ void editor::InspectorWindow::drawVideoAsset(const fs::path& asset){
     const std::string path = asset.string();
     if (p.path != path)
         p.close();
+    p.lastDrawn = ImGui::GetFrameCount();
+    if (optimizing())
+        return;
     if (!p.source){
         if (ImGui::Button(ICON_FA_PLAY " Preview")){
             VideoSourceFactory::Options options;

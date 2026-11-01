@@ -1301,8 +1301,10 @@ target_link_libraries(jasperengine PRIVATE Threads::Threads)
 
 # The HTTP and video backends' system libraries
 if(WIN32)
-    # iphlpapi: whether a network is up at all ("offline"); Media Foundation: the video decoders
-    target_link_libraries(jasperengine PRIVATE winhttp iphlpapi mfplat mfreadwrite mfuuid ole32)
+    # iphlpapi: whether a network is up at all ("offline"). Media Foundation (the video decoders):
+    # mfplat.dll and mfreadwrite.dll are loaded at run time (Windows N editions lack them without
+    # the Media Feature Pack, platform/win/MediaFoundationBackend.cpp); mfuuid is static GUIDs
+    target_link_libraries(jasperengine PRIVATE winhttp iphlpapi mfuuid ole32)
 elseif(APPLE)
     target_link_libraries(jasperengine PRIVATE "-framework Foundation" "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")

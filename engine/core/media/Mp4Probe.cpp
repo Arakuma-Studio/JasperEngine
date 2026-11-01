@@ -896,6 +896,18 @@ bool Mp4Probe::rewriteFastStart(const std::string& inputPath, const std::string&
         return false;
     }
     source.reset();
+    // a last box may say size 0 ("to the end of the file"): moved to the front it says its size
+    if (moovBytes.size() >= 8 && moovBytes[0] == 0 && moovBytes[1] == 0 && moovBytes[2] == 0 && moovBytes[3] == 0){
+        const uint64_t size = (uint64_t)moovBox.size;
+        if (size > 0xFFFFFFFFull){
+            error = "the moov box is too large to rewrite";
+            return false;
+        }
+        moovBytes[0] = (uint8_t)(size >> 24);
+        moovBytes[1] = (uint8_t)(size >> 16);
+        moovBytes[2] = (uint8_t)(size >> 8);
+        moovBytes[3] = (uint8_t)size;
+    }
 
     // the new order: ftyp (and what precedes the first media box), the moov, everything else
     size_t front = 0;

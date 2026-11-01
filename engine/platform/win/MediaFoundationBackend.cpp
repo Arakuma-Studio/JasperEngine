@@ -84,12 +84,54 @@ namespace {
         }
     }
 
+    // Media Foundation's functions, looked up at run time: Windows N editions have no
+    // mfplat.dll / mfreadwrite.dll without the Media Feature Pack, and a load-time import would
+    // stop every game (and the editor) from starting there
+    struct MfApi {
+        bool ok = false;
+        decltype(&::MFStartup) Startup = nullptr;
+        decltype(&::MFCreateAttributes) CreateAttributes = nullptr;
+        decltype(&::MFCreateAsyncResult) CreateAsyncResult = nullptr;
+        decltype(&::MFPutWorkItemEx) PutWorkItemEx = nullptr;
+        decltype(&::MFCreateMediaType) CreateMediaType = nullptr;
+        decltype(&::MFTEnumEx) TEnumEx = nullptr;
+        decltype(&::MFCreateSourceReaderFromByteStream) CreateSourceReaderFromByteStream = nullptr;
+    };
+
+    template<typename T>
+    void lookUp(HMODULE module, const char* name, T& out){
+        out = module ? reinterpret_cast<T>(reinterpret_cast<void*>(GetProcAddress(module, name))) : nullptr;
+    }
+
+    const MfApi& mf(){
+        static MfApi api;
+        static std::once_flag once;
+        std::call_once(once, []{
+            HMODULE plat = LoadLibraryExW(L"mfplat.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+            HMODULE readwrite = LoadLibraryExW(L"mfreadwrite.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+            lookUp(plat, "MFStartup", api.Startup);
+            lookUp(plat, "MFCreateAttributes", api.CreateAttributes);
+            lookUp(plat, "MFCreateAsyncResult", api.CreateAsyncResult);
+            lookUp(plat, "MFPutWorkItemEx", api.PutWorkItemEx);
+            lookUp(plat, "MFCreateMediaType", api.CreateMediaType);
+            lookUp(plat, "MFTEnumEx", api.TEnumEx);
+            lookUp(readwrite, "MFCreateSourceReaderFromByteStream", api.CreateSourceReaderFromByteStream);
+            api.ok = api.Startup && api.CreateAttributes && api.CreateAsyncResult && api.PutWorkItemEx && api.CreateMediaType &&
+                     api.TEnumEx && api.CreateSourceReaderFromByteStream;
+            if (!api.ok)
+                Log::warn("[Video] Media Foundation is not installed (Windows N/KN: the Media Feature Pack): video other than WebM AV1 does not play");
+        });
+        return api;
+    }
+
     // MFStartup once for the process (never shut down while a backend may live)
     bool startMediaFoundation(){
         static std::once_flag once;
         static bool ok = false;
         std::call_once(once, []{
-            ok = SUCCEEDED(MFStartup(MF_VERSION, MFSTARTUP_LITE));
+            if (!mf().ok)
+                return;
+            ok = SUCCEEDED(mf().Startup(MF_VERSION, MFSTARTUP_LITE));
             if (!ok)
                 Log::error("[Video] Media Foundation could not start: video other than WebM AV1 does not play");
         });
@@ -138,7 +180,7 @@ namespace {
     class ByteStream : public IMFByteStream {
     public:
         explicit ByteStream(MediaByteSource& source): source(source){
-            MFCreateAttributes(&attributes, 1);
+            mf().CreateAttributes(&attributes, 1);
         }
         virtual ~ByteStream(){
             release(attributes);
@@ -228,12 +270,12 @@ namespace {
             ULONG read = 0;
             const HRESULT readResult = Read(buffer, wanted, &read);
             IMFAsyncResult* result = nullptr;
-            HRESULT hr = MFCreateAsyncResult(nullptr, callback, state, &result);
+            HRESULT hr = mf().CreateAsyncResult(nullptr, callback, state, &result);
             if (FAILED(hr))
                 return hr;
             lastRead = read;
             result->SetStatus(readResult);
-            hr = MFPutWorkItemEx(MFASYNC_CALLBACK_QUEUE_STANDARD, result);
+            hr = mf().PutWorkItemEx(MFASYNC_CALLBACK_QUEUE_STANDARD, result);
             result->Release();
             return hr;
         }
@@ -286,13 +328,13 @@ namespace {
             byteStream->setContentType(webm ? L"video/webm" : L"video/mp4");
 
             IMFAttributes* attributes = nullptr;
-            MFCreateAttributes(&attributes, 3);
+            mf().CreateAttributes(&attributes, 3);
             if (attributes){
                 // any decoder output turned into NV12 (a format the engine reads), in hardware where it can
                 attributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE);
                 attributes->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE);
             }
-            HRESULT hr = MFCreateSourceReaderFromByteStream(byteStream, attributes, &reader);
+            HRESULT hr = mf().CreateSourceReaderFromByteStream(byteStream, attributes, &reader);
             release(attributes);
             if (FAILED(hr))
                 return fail(error, byteStream->readFailed() ? MediaErrorCode::NETWORK : MediaErrorCode::SRC_NOT_SUPPORTED,
@@ -314,25 +356,36 @@ namespace {
                 release(native);
             }
 
-            // what the engine wants out
-            IMFMediaType* wanted = nullptr;
-            MFCreateMediaType(&wanted);
-            if (!wanted)
-                return fail(error, MediaErrorCode::DECODE, "Media Foundation could not make a media type");
-            if (which == Stream::VIDEO){
-                wanted->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-                wanted->SetGUID(MF_MT_SUBTYPE, SUBTYPE_NV12);
-            }else{
-                wanted->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
-                wanted->SetGUID(MF_MT_SUBTYPE, SUBTYPE_FLOAT);
+            // what the engine wants out: NV12, else P010 (10-bit HEVC/VP9 decoders that give no
+            // 8-bit output; the planes are shifted down to 8 bits on the worker)
+            const GUID videoOut[] = {SUBTYPE_NV12, SUBTYPE_P010};
+            const int choices = which == Stream::VIDEO ? 2 : 1;
+            for (int choice = 0; choice < choices; choice++){
+                IMFMediaType* wanted = nullptr;
+                mf().CreateMediaType(&wanted);
+                if (!wanted)
+                    return fail(error, MediaErrorCode::DECODE, "Media Foundation could not make a media type");
+                if (which == Stream::VIDEO){
+                    wanted->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+                    wanted->SetGUID(MF_MT_SUBTYPE, videoOut[choice]);
+                }else{
+                    wanted->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+                    wanted->SetGUID(MF_MT_SUBTYPE, SUBTYPE_FLOAT);
+                }
+                hr = reader->SetCurrentMediaType(streamId, nullptr, wanted);
+                release(wanted);
+                if (SUCCEEDED(hr))
+                    break;
             }
-            hr = reader->SetCurrentMediaType(streamId, nullptr, wanted);
-            release(wanted);
             if (FAILED(hr)){
-                const bool missing = hr == MF_E_TOPO_CODEC_NOT_FOUND || hr == MF_E_INVALIDMEDIATYPE || hr == MF_E_UNSUPPORTED_BYTESTREAM_TYPE;
-                return fail(error, missing ? MediaErrorCode::SRC_NOT_SUPPORTED : MediaErrorCode::DECODE,
-                            "this Windows has no decoder for its " + (codec.empty() ? std::string("codec") : codec) + ": " + missingHint(codec) +
-                            " (" + hresultText(hr) + ")");
+                // no decoder at all, or one that gives neither layout (the extension is installed then)
+                const bool noDecoder = hr == MF_E_TOPO_CODEC_NOT_FOUND || hr == MF_E_UNSUPPORTED_BYTESTREAM_TYPE;
+                const bool noLayout = hr == MF_E_INVALIDMEDIATYPE;
+                const std::string label = codec.empty() ? std::string("codec") : codec;
+                return fail(error, noDecoder || noLayout ? MediaErrorCode::SRC_NOT_SUPPORTED : MediaErrorCode::DECODE,
+                            noLayout ? "this Windows' " + label + " decoder gives no picture format the engine reads (NV12 or P010); convert the video to "
+                                       "8-bit H.264 or WebM AV1 (" + hresultText(hr) + ")"
+                                     : "this Windows has no decoder for its " + label + ": " + missingHint(codec) + " (" + hresultText(hr) + ")");
             }
             readCurrentType();
 
@@ -584,7 +637,7 @@ platformvideo::Support platformvideo::supports(const std::string& codec){
     MFT_REGISTER_TYPE_INFO input = {type->second.second ? MFMediaType_Video : MFMediaType_Audio, type->second.first};
     IMFActivate** activates = nullptr;
     UINT32 count = 0;
-    const HRESULT hr = MFTEnumEx(type->second.second ? MFT_CATEGORY_VIDEO_DECODER : MFT_CATEGORY_AUDIO_DECODER,
+    const HRESULT hr = mf().TEnumEx(type->second.second ? MFT_CATEGORY_VIDEO_DECODER : MFT_CATEGORY_AUDIO_DECODER,
                                  MFT_ENUM_FLAG_SYNCMFT | MFT_ENUM_FLAG_ASYNCMFT | MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER,
                                  &input, nullptr, &activates, &count);
     for (UINT32 i = 0; i < count; i++)

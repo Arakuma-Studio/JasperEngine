@@ -589,10 +589,45 @@ What the implementation does differently from the text above, and why.
 - The agent guide's line is "Video Player (texture video|<id>), MP4, WebM: jasper://docs/video." (shorter
   than §6.10's: the guide is at its 16 KB limit after the merges).
 
+- The render texture's Framebuffer is held by a `std::shared_ptr` (as the fluid's output), so every
+  Texture showing it (`image:setTexture(player:getFramebuffer())`, links) keeps the object alive
+  after the player is gone (its GPU side freed: the texture draws its fallback).
+- A player moved to another scene (`EntityCloner::move`, `DontDestroyOnLoad`) keeps its converter,
+  its listeners and its playback (`VideoPlayerSystem::handOver`), §11.
+- `skipOnDrop = false` does not block the main thread: the clock stalls until the decoder has the
+  frame (Unity's "slow down instead of skipping"). Only frame-exact play (fixed time steps) waits for
+  a frame, at most 1 s, then the clock waits.
+- `prepare()`/`play()` after an error drop the failed source and open it again.
+- Packed assets (the resource pack) are read in parts (`ResourcePack::RangeReader`), never whole;
+  a WebM's codecs are probed from its first MiB (its headers), so the software path reads the file
+  as before.
+- Android: an output wait of 10 ms when no input was queued (no busy loop), the first frame waited
+  for up to 2 s (a download: as long as it takes), "no free decoder instance" told apart from "no
+  decoder", and a reclaimed or dead codec is recreated (twice at most) and resumes at the last output.
+- iOS: a reader stopped by the app going to the background (AVErrorOperationInterrupted) or a media
+  services reset restarts after the last sample given out; AVFoundation's decoder-not-found,
+  format-not-recognized and decode-failed errors get the codec hint. A file without a known
+  extension (a media cache file of an extensionless URL) is opened through a link named by its
+  container.
+- Windows: `mfplat.dll` and `mfreadwrite.dll` are loaded at run time (LoadLibrary / GetProcAddress),
+  so games and the editor start on N editions without the Media Feature Pack (MP4 then fails with
+  the hint). 10-bit decoders that give no NV12 are asked for P010.
+- Web: a hidden tab or a paused game pauses the element; the clock's time reaches audio-only
+  sources; the first-gesture unlock unmutes only elements made with sound and stays armed until the
+  page's audio runs; no drift seek while the element buffers (the player waits) or after its end;
+  frame steps while paused seek by half a frame; failures after READY, CORS refusals and a blocked
+  autoplay reach `onErrorReceived`; a frame is uploaded only when the element has a new one; the
+  frame rate of a URL comes from `requestVideoFrameCallback`.
+- `set_runtime_property component videoplayer` also takes `state` (`play`, `pause`, `stop`,
+  `prepare`), `time` and `frame` (§6.10).
+
 **Editor, exports, tools**
 - Apple frameworks (AVFoundation, CoreMedia, CoreVideo): in the Xcode project the `.mm`'s `#import`s of the
   framework headers are module imports (`CLANG_ENABLE_MODULES = YES`), which autolink them;
   `tools/xcode_sync_engine.py` adds the source file only. CMake Apple builds link them explicitly.
+- Android's INTERNET permission is also added for a Lua or C++ script that sets a Video Player's url
+  (or its source to URL) and for an HTML `<video>`/`<source>` of an http(s) URL: a script may build any
+  url, so setting one at all counts. The scene check parses the YAML (no regex over long lines).
 - Android's `noCompress 'mp4', 'm4v', 'mov', 'webm'` is in the Gradle template
   (`engine/workspaces/androidstudio/app/build.gradle`, `androidResources`), which every Android export copies,
   rather than written by the Exporter. The INTERNET permission comes from `Exporter::videoUrlScene()` (a scene
@@ -600,6 +635,8 @@ What the implementation does differently from the text above, and why.
 - `jasperengine-editor check --videos` (in the default set) reports `video-codec-unsupported-on-target` for
   each of the six platforms where the clip plays `no` (the project has no list of target platforms to narrow
   it), `video-not-faststart-url` (info) and `video-missing` (a clip or local url that is not in the project).
+  The check is offline: an http(s) url (any case of its scheme) is judged by the project's file of the
+  same name (the one uploaded there), when there is exactly one.
 - The Inspector's preview of a video asset is CPU-converted (`VideoColorConvert::toRgba` into an ImGui
   texture) rather than going through the engine's `VideoTextureConverter` (the editor's ImGui renderer is not
   a scene render target).

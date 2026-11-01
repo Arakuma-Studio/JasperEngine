@@ -72,6 +72,29 @@ namespace {
         int64_t total;
     };
 
+    // a packed asset (ResourcePack): its entry read in parts, never whole
+    class PackSource : public MediaByteSource {
+    public:
+        PackSource(std::unique_ptr<ResourcePack::RangeReader> reader, std::string path): reader(std::move(reader)), name(std::move(path)){}
+        int64_t readAt(int64_t offset, void* dst, size_t size) override{
+            if (offset < 0)
+                return -1;
+            const int64_t total = (int64_t)reader->size();
+            if (offset >= total || size == 0)
+                return 0;
+            const size_t wanted = (size_t)std::min<int64_t>((int64_t)size, total - offset);
+            std::lock_guard<std::mutex> lock(mutex);
+            return reader->readRange((uint64_t)offset, static_cast<unsigned char*>(dst), wanted) ? (int64_t)wanted : -1;
+        }
+        int64_t size() const override{ return (int64_t)reader->size(); }
+        const std::string& path() const override{ return name; }
+
+    private:
+        std::mutex mutex;
+        std::unique_ptr<ResourcePack::RangeReader> reader;
+        std::string name;
+    };
+
     class MemorySource : public MediaByteSource {
     public:
         MemorySource(std::vector<uint8_t> bytes, std::string name): data(std::move(bytes)), name(std::move(name)){}
@@ -99,14 +122,14 @@ std::unique_ptr<MediaByteSource> MediaByteSource::openFile(const std::string& pa
         error = "no file";
         return nullptr;
     }
-    // a packed asset has no file on disk: its bytes in memory
+    // a packed asset has no file on disk: read in parts from the pack
     if (ResourcePack::contains(path)){
-        std::vector<unsigned char> bytes;
-        if (!ResourcePack::read(path, bytes)){
+        auto reader = std::make_unique<ResourcePack::RangeReader>();
+        if (!reader->open(path) || reader->size() == 0){
             error = "'" + path + "' could not be read from the resource pack";
             return nullptr;
         }
-        return std::make_unique<MemorySource>(std::vector<uint8_t>(bytes.begin(), bytes.end()), path);
+        return std::make_unique<PackSource>(std::move(reader), path);
     }
     const std::string systemPath = FileData::getSystemPath(path);
     FILE* file = System::instance().platformFopen(systemPath.c_str(), "rb");
