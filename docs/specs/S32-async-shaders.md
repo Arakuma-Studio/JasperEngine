@@ -257,23 +257,23 @@ shader cache.
   + `GPU create publish` + `GPU pipeline create` stays at **≤ 4 ms in every frame** of the
   variant-toggle scenario (§7 AC13), on GL `worker` and on Vulkan. Before S32 it is the full
   1.2 s link (GL). E is about 10% slower than the old E, and the budget includes that.
-- **R22. Frame-time spike.** In the same scenario, the worst frame is **≤ 2× the idle median
-  frame** on GL `worker` (with Mesa's disk cache, its default) and on Vulkan. Before S32 the
-  worst GL frame is about 3.9 s on A against a 190 ms idle frame. Measured over every frame of the
-  toggles (§7 AC13), the frames that ran an MCP tool apart (the agent's edit and the bench's own
-  calls: the editor's cost of the edit, not the creation's).
-  - **Proposed revision (GPU campaign perf2, pending approval; the budget above is unchanged until
-    then):** worst frame ≤ max(2× the idle median, the idle median + 4 ms), and on NVIDIA GL with the
-    driver's shader disk cache warm. Evidence on the RTX 3080 Ti (Progress, perf2): with no edit at
-    all, the same recording's worst frame is already 2.0× (GL) and 2.2× (Vulkan) the idle median, so
-    at a GPU's ~1 ms idle frame the 2× bound is the machine's own frame-time noise (it was set on E,
-    a 190 ms frame); R21 allows 4 ms of creation work in a frame, which a 2 ms bound forbids. And
-    NVIDIA recompiles every program on the context that first draws it (driver debug output:
-    "Program/shader state performance warning: ... being recompiled based on GL state", ~0.75 s per
-    stage, fragment then vertex), whichever context linked it and whatever the warm draw did;
-    no creation mode avoids it (worker, parallel, warm draws on and off, matched draw state,
-    program binaries: measured). A variant the driver cache already has does not recompile; the
-    first run's variants are R24's warm-up list's to build during loading.
+- **R22. Frame-time spike.** In the same scenario, the worst frame is **≤ max(2× idle, idle + 4 ms)**
+  (idle: the idle median frame) **with the driver shader cache warm**, on GL `worker` and on
+  Vulkan (approved by the user 2026-11-01). Before S32 the worst GL frame is about 3.9 s on A
+  against a 190 ms idle frame. Measured over every frame of the toggles (§7 AC13), the frames that
+  ran an MCP tool apart (the agent's edit and the bench's own calls: the editor's cost of the edit,
+  not the creation's).
+  - Why the bound has the absolute term and the warm cache (GPU campaign perf2; it was ≤ 2× the
+    idle median, set on E's 190 ms frame): on the RTX 3080 Ti, with no edit at all, the same
+    recording's worst frame is already 2.0× (GL) and 2.2× (Vulkan) the idle median, so at a GPU's
+    ~1 ms frame 2× is the machine's own frame-time noise; R21 allows 4 ms of creation work in a
+    frame, which a 2 ms bound forbids. And NVIDIA recompiles every program on the context that
+    first draws it (driver debug output: "Program/shader state performance warning: ... being
+    recompiled based on GL state", ~0.75 s per stage, fragment then vertex), whichever context
+    linked it and whatever the warm draw did; no creation mode avoids it (worker, parallel, warm
+    draws on and off, matched draw state, program binaries: measured). A variant the driver cache
+    (Mesa's and NVIDIA's disk caches, on by default) already has does not recompile; the first
+    run's variants are R24's warm-up list's to build during loading.
 - **R23. Idle cost.** `SokolAsyncCreate::update()` with nothing pending: **≤ 2 µs** (micro-bench
   `AsyncCreateBench.IdleUpdate`). With async off nothing runs. The pipeline intern lookup in
   `endLoad`: ≤ 1 µs per pipeline (`AsyncCreateBench.InternLookup`).
@@ -578,7 +578,7 @@ public:
 | AC10 (R12) | `ShaderWarmup.ReplayHoldsPipelines` (GPU test): replay a list → the pipelines exist in the intern table; an object created after with that state is ready at its first `endLoad`. Smoke variant `SMOKE_GAME_RUNS=warmup` on the exported Warmup scene: the game log has `[gpu] warm-up done N/N`, and the first frame after READY has no pending creation. |
 | AC11 (R13) | `VkPipelineCache.SaveLoadValidates` (Vulkan GPU test): a saved cache reloads; a header with another UUID, a truncated file and a bad checksum are each ignored and replaced; the save is atomic (S03 `AtomicFile`). |
 | AC12 (R19) | `SokolPatchMarkers.AsyncCreationHooks`: exactly the documented number of `JasperEngine: async creation` markers; `PATCHES.md` lists each. The Metal and D3D11 paths compile in `tools/build.sh` cross targets where present and in the Xcode project check (`xcode_sync_*.py --check`); **Metal and D3D11 are runtime-unverified** until the GPU campaign. |
-| AC13 (R21, R22) | E bench `tools/perf/async_shaders_bench.py` (fixture Variants scene, editor headless with MCP, 5 runs, GL worker and Vulkan): per frame the sum of the R31 main-thread scopes from `capture_profile` + `get_cpu_profile` over 600 frames (10 toggles); the median-of-runs of the per-run max ≤ 4 ms; worst frame ≤ 2× idle median. The same script with `--sync` records the pre-S32 numbers (red control). Thresholds in `tools/perf/bench-thresholds.json`. **R22's method (perf2):** the captures record windows with gaps, so the worst frame is taken over every frame from the first toggle to the last (`get_frame_times` read every 0.25 s, its 600-frame ring), leaving out the frames flagged `tool` (`FrameTimes::FLAG_HOST_WORK`: an MCP tool ran in them, the edit or the bench's own calls); `r22_worst_frame_ratio` is that over the idle median, `edit_worst_frame_ms` / `tool_worst_frame_ms` the edit's frames apart, `worker_worst_frame_ms` the frames the worker created in. Controls: `--control` (the same edits between variants built before), `--idle` (the same recording with no edit: the editor's own noise, R22's floor), `--driver-cache <dir>` (the drivers' disk caches on, runs after the first warm). |
+| AC13 (R21, R22) | E bench `tools/perf/async_shaders_bench.py` (fixture Variants scene, editor headless with MCP, 5 runs, GL worker and Vulkan): per frame the sum of the R31 main-thread scopes from `capture_profile` + `get_cpu_profile` over 600 frames (10 toggles); the median-of-runs of the per-run max ≤ 4 ms; worst frame ≤ max(2× idle median, idle median + 4 ms) with the driver cache warm (R22). The same script with `--sync` records the pre-S32 numbers (red control). Thresholds in `tools/perf/bench-thresholds.json`. **R22's method (perf2):** the captures record windows with gaps, so the worst frame is taken over every frame from the first toggle to the last (`get_frame_times` read every 0.25 s, its 600-frame ring), leaving out the frames flagged `tool` (`FrameTimes::FLAG_HOST_WORK`: an MCP tool ran in them, the edit or the bench's own calls); `r22_worst_frame_ratio` is that over the idle median, `edit_worst_frame_ms` / `tool_worst_frame_ms` the edit's frames apart, `worker_worst_frame_ms` the frames the worker created in. Controls: `--control` (the same edits between variants built before), `--idle` (the same recording with no edit: the editor's own noise, R22's floor), `--driver-cache <dir>` (the drivers' disk caches on, runs after the first warm). |
 | AC14 (R23) | `AsyncCreateBench.IdleUpdate` ≤ 2 µs, `AsyncCreateBench.InternLookup` ≤ 1 µs (E, median of 5). |
 | AC15 (R24) | The bench's `--warmup` run: replaying the Warmup list holds no frame above the R22 bound and ends within 1.5× the synchronous creation time of the same list. |
 | AC16 (R25-R27) | Editor checklist `docs/specs/checklists/S32.md`, run on an isolated editor with screenshots: status bar shows "Compiling shaders N" during a toggle and hides after; Project Settings rows present, searchable ("warm-up"), undoable; Clear empties the list; Inspector "Compiling..." until GPU-ready. `test_async_shaders.py::test_settings_rows` sets each row over `set_project_settings` and reads it back. |
@@ -766,7 +766,7 @@ public:
     within 0.01 ms in the 2,600 frames the worker created in); a few frames of each run take 2.5-3.8
     ms of main-thread work in the editor's own Vulkan render and the scene views while a pipeline
     compiles on the worker (the driver; a niced worker thread changes nothing), against a 2.2x noise
-    floor with no edit. Under the proposed R22 revision (idle + 4 ms) it is met.
+    floor with no edit. Under R22 as approved (idle + 4 ms) it is met.
   - Remaining: on GL with the cache warm, the control's first toggle still holds one ~9 ms frame in
     the editor's own GL render while the worker loads a program from the driver cache (the delay
     and warm draws off do not change it).

@@ -88,7 +88,7 @@ re-measured in perf2 over every frame of the toggles: the first campaign's captu
 gaps and missed the worst frames, so its GL R22 (16.4x, worst 18.7 ms) was wrong. Frames that ran
 an MCP tool (the edit, the bench's own calls) are apart (`get_frame_times` `tool`). Medians of 5:
 
-| | R21 max main-thread creation (≤ 4 ms) | R22 worst / idle frame (≤ 2) |
+| | R21 max main-thread creation (≤ 4 ms) | R22 worst / idle frame (≤ max(2, 1 + 4 ms / idle), cache warm) |
 |---|---|---|
 | GL `worker`, drivers' shader caches off (every run cold) | **0.016 ms** | 676 (755-828 ms) |
 | GL `worker`, driver cache on (run 1 cold, runs 2-5 warm) | 0.016 ms | **1.69** (a second batch 2.06) |
@@ -110,10 +110,9 @@ an MCP tool (the edit, the bench's own calls) are apart (`get_frame_times` `tool
 - **Vulkan's 3.7** is a few frames per run of 2.5-3.8 ms of main-thread work in the editor's
   render while the driver compiles a pipeline on the worker; no creation work on the render thread
   (R21 0.22 ms), the mean frame unchanged, against a noise floor of 2.2 with no edit at all.
-- The 2x bound sits at this machine's own noise at a 1 ms frame (2.0-2.2 with no edit): a revision
-  to max(2x idle, idle + 4 ms) with the driver cache warm is proposed in
-  `docs/specs/S32-async-shaders.md` R22 (pending approval; Vulkan and GL meet it). Details there
-  (Progress, perf2).
+- The 2x bound sat at this machine's own noise at a 1 ms frame (2.0-2.2 with no edit): R22 is now
+  max(2x idle, idle + 4 ms) with the driver cache warm (`docs/specs/S32-async-shaders.md` R22,
+  approved by the user 2026-11-01; Vulkan and GL meet it). Details there (Progress, perf2).
 
 ### S10 shadows (AC14)
 
@@ -257,8 +256,9 @@ switched off (sokol's stats, the trace hub and pass recorder) -0.31 % [-0.80, +0
 +0.42 % over idle; recording + GPU timers **+3.16 %** [+2.39, +3.93] over idle (~34 µs a frame).
 No `glFlush` per commit was slower (-1.17 % for keeping it), one availability query a commit and
 cached counter monitors made no measurable change. The 0.5 % bound is 5 µs at this frame, under the
-measurement's ±0.5-0.7 points: an absolute floor (5 / 30 / 40 µs a frame) is proposed in
-`docs/specs/S15-profiling-diagnostics.md` (pending approval).
+measurement's ±0.5-0.7 points: AC4 now has an absolute floor (5 / 30 / 40 µs a frame, whichever
+of it and the percentage is larger; `docs/specs/S15-profiling-diagnostics.md`, approved by the
+user 2026-11-01), which GL meets.
 
 ### Known measurement limits
 

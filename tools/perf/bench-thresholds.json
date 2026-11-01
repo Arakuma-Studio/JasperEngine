@@ -106,6 +106,6 @@
   },
   "async-shaders": {
     "max_main_ms": {"max": 4.0, "spec": "S32 R21: the render thread's creation work (GPU create scopes) in the worst frame of the lobe toggles"},
-    "worst_frame_ratio": {"max": 2.0, "spec": "S32 R22: the worst frame of the toggles over the idle median frame"}
+    "r22_worst_over_bound": {"max": 1.0, "spec": "S32 R22: the worst frame of the toggles (edit frames apart) over max(2x the idle median, the idle median + 4 ms), driver cache warm"}
   }
 }
