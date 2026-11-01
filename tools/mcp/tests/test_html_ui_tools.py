@@ -166,8 +166,9 @@ LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 
 # time / frame (+~180 on its branch); merged with main 5762bb259: 153 tools measured 111997, the limit
 # set to it
 # (then TOTAL_LIMIT = 111997)
-# video-mp4 merged with main dce634fb7 (camera-shake, ui-scaling-text): MEASURED
-TOTAL_LIMIT = 112276
+# video-mp4 merged with main dce634fb7 (camera-shake, ui-scaling-text): 153 tools measured 112289 (on box
+# 2202), the limit set to it
+TOTAL_LIMIT = 112289
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
