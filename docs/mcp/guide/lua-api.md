@@ -2081,7 +2081,7 @@ controller does not have warn once and do nothing.
 | `getParameterIndex(name)`, `getParameterCount()`, `getParameterName(i)` | 0-based; -1 / `""` when unknown |
 | `play(state [, layer, normalizedTime])` | at once; `state` a name or `"Layer.Machine.State"`; `normalizedTime` < 0 keeps the current time when it is the current state |
 | `crossFade(state, duration [, layer, offset])` | `duration` in the current state's lengths; `crossFadeInFixedTime` in seconds |
-| `getCurrentState(layer)`, `getNextState(layer)` | an `AnimatorStateInfo`: `valid`, `name`, `fullPath`, `tag`, `normalizedTime` (laps + fraction), `length` (s), `loop`, `speed` |
+| `getCurrentState(layer)`, `getNextState(layer)` | an `AnimatorStateInfo`: `valid`, `name`, `fullPath`, `tag`, `normalizedTime` (laps + fraction), `length` (s), `loop`, `speed`, `mirror` and `footIK` (the state's humanoid playback) |
 | `isInTransition([layer])` | layer 0 by default |
 | `getLayerCount()`, `getLayerName(i)`, `getLayerIndex(name)`, `setLayerWeight(layer, w [, fade])`, `getLayerWeight(layer)` | `layer` an index or a name; `fade` seconds to reach `w`; the first layer always weighs 1 |
 | `getCurrentStateName([layer])`, `getCurrentStateInfo([layer])`, `getNextStateInfo([layer])` | the names of the Animation Player's controller calls (scripts written for them run as they are): the state's name, a `ControllerStateInfo` |
