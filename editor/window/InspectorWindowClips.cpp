@@ -809,13 +809,27 @@ void editor::InspectorWindow::drawAnimationPlayerComponent(ComponentType cpType,
     fadeSettings.secondColSize = 6 * ImGui::GetFontSize();
     fadeSettings.help = "Seconds of the crossfade when play(name, fade), crossFade(name) or Model:playAnimation give none.";
 
+    // a controller owns the states (anim layers spec 5.10): the clip list, default clip and
+    // layers are hidden (the Controller field says what is ignored)
+    bool hasController = false;
+    if (entities.size() == 1){
+        drawAnimationPlayerController(cpType, sceneProject, entities[0]);
+        const AnimationPlayerComponent* player = sceneProject->scene->findComponent<AnimationPlayerComponent>(entities[0]);
+        hasController = player && !player->controller.empty();
+    }
+
     // Unity's order: the default clip ("Animation"), the list, then the settings
-    beginTable(cpType, getLabelSize("Play Automatically"), "player_default");
-    drawPlayerDefaultClipRow(cpType, sceneProject, entities);
-    endTable();
+    if (!hasController){
+        beginTable(cpType, getLabelSize("Play Automatically"), "player_default");
+        drawPlayerDefaultClipRow(cpType, sceneProject, entities);
+        endTable();
+    }
 
     if (entities.size() == 1){
-        drawAnimationPlayerClips(cpType, sceneProject, entities[0]);
+        if (!hasController){
+            drawAnimationPlayerLayers(cpType, sceneProject, entities[0]);
+            drawAnimationPlayerClips(cpType, sceneProject, entities[0]);
+        }
     }else{
         beginTable(cpType, getLabelSize("Play Automatically"), "player_clips_multi");
         propertyHeader("Clips");
@@ -830,6 +844,12 @@ void editor::InspectorWindow::drawAnimationPlayerComponent(ComponentType cpType,
     endTable();
 
     if (entities.size() != 1){
+        return;
+    }
+    if (hasController){
+        if (sceneProject->playState != ScenePlayState::STOPPED){
+            drawControllerPlayState(sceneProject, entities[0]);
+        }
         return;
     }
     drawAnimationPlayerBindings(sceneProject, entities[0]);
@@ -986,6 +1006,7 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
             }
 
             drawPlayerClipNameRow(cpType, sceneProject, entity, i);
+            drawPlayerClipLayerRow(cpType, sceneProject, entity, i);
 
             // wrap: a one-byte enum (PropertyCmd<ClipWrapMode>, never the int Enum row)
             ClipWrapMode clipWrap = ClipWrapMode::Once;
@@ -1316,6 +1337,8 @@ void editor::InspectorWindow::drawAnimationPlayerBindings(SceneProject* scenePro
         }
         ImGui::PopID();
     }
+    // the layers' masks: how many bound entities each covers (anim layers spec 9)
+    drawPlayerMaskCoverage(sceneProject, entity);
     ImGui::TreePop();
 }
 
@@ -1329,47 +1352,56 @@ void editor::InspectorWindow::drawAnimationPlayerStates(ComponentType cpType, Sc
     UIProbe::item("player.states");
     // the component exists: the object adds none
     AnimationPlayer playerObject(scene, entity);
-    beginTable(cpType, getLabelSize("Play Automatically"), "player_states");
-    for (size_t i = 0; i < states.size(); i++){
-        const AnimationStateInfo info = playerObject.getStateInfo(states[i]);
-        ImGui::PushID((int)i);
-        ImGui::TableNextRow();
-        ImGui::TableNextColumn();
-        ImGui::AlignTextToFramePadding();
-        if (info.playing){
-            ImGui::TextUnformatted(ICON_FA_PLAY);
-        }else{
-            ImGui::TextDisabled(ICON_FA_PAUSE);
-        }
-        ImGui::SameLine();
-        ImGui::TextUnformatted(states[i].c_str());
-        ImGui::TableNextColumn();
-        if (!info.error.empty()){
+    AnimationPlayerComponent& component = scene->getComponent<AnimationPlayerComponent>(entity);
+    const anim::AnimationPlayerRuntime& runtime = anim::playerRuntime(component);
+    // grouped under their layers (anim layers spec 9: a live weight per layer)
+    const size_t layerCount = std::max<size_t>(1, runtime.layers.size());
+    for (size_t layer = 0; layer < layerCount; layer++){
+        if (layerCount > 1) drawPlayerLayerStatesHeader(sceneProject, entity, (int)layer);
+        beginTable(cpType, getLabelSize("Play Automatically"), "player_states" + std::to_string(layer));
+        for (size_t i = 0; i < states.size(); i++){
+            const int stateIndex = runtime.findState(states[i]);
+            if (layerCount > 1 && (stateIndex < 0 || runtime.stateLayer(runtime.states[(size_t)stateIndex]) != (int)layer)) continue;
+            const AnimationStateInfo info = playerObject.getStateInfo(states[i]);
+            ImGui::PushID((int)i);
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
-            ImGui::TextColored(Theme::Colors::ErrorText, "%s", info.error.c_str());
-        }else if (!info.loaded){
-            ImGui::AlignTextToFramePadding();
-            ImGui::TextDisabled("Loading...");
-        }else{
-            char overlay[64];
-            std::snprintf(overlay, sizeof(overlay), "%.2f / %.2f s", info.time, info.length);
-            const float weightWidth = textWidth("w 0.00") + ImGui::GetStyle().ItemSpacing.x;
-            const float fraction = info.length > 0.0f ? std::clamp(info.time / info.length, 0.0f, 1.0f) : 0.0f;
-            ImGui::ProgressBar(fraction, ImVec2(std::max(1.0f, ImGui::GetContentRegionAvail().x - weightWidth), 0), overlay);
-            ImGui::SameLine();
-            ImGui::AlignTextToFramePadding();
-            if (info.weight > 0.0f){
-                ImGui::Text("w %.2f", info.weight);
+            if (info.playing){
+                ImGui::TextUnformatted(ICON_FA_PLAY);
             }else{
-                ImGui::TextDisabled("w %.2f", info.weight);
+                ImGui::TextDisabled(ICON_FA_PAUSE);
             }
-            ImGui::SetItemTooltip("Weight %.2f (target %.2f), speed %.2f, %s%s, %zu/%zu tracks bound", info.weight, info.targetWeight,
-                                  info.speed, inspectorclips::wrapLabel(info.wrap), info.queued ? ", queued" : "",
-                                  info.boundTracks, info.trackCount);
+            ImGui::SameLine();
+            ImGui::TextUnformatted(states[i].c_str());
+            ImGui::TableNextColumn();
+            if (!info.error.empty()){
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextColored(Theme::Colors::ErrorText, "%s", info.error.c_str());
+            }else if (!info.loaded){
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextDisabled("Loading...");
+            }else{
+                char overlay[64];
+                std::snprintf(overlay, sizeof(overlay), "%.2f / %.2f s", info.time, info.length);
+                const float weightWidth = textWidth("w 0.00") + ImGui::GetStyle().ItemSpacing.x;
+                const float fraction = info.length > 0.0f ? std::clamp(info.time / info.length, 0.0f, 1.0f) : 0.0f;
+                ImGui::ProgressBar(fraction, ImVec2(std::max(1.0f, ImGui::GetContentRegionAvail().x - weightWidth), 0), overlay);
+                ImGui::SameLine();
+                ImGui::AlignTextToFramePadding();
+                if (info.weight > 0.0f){
+                    ImGui::Text("w %.2f", info.weight);
+                }else{
+                    ImGui::TextDisabled("w %.2f", info.weight);
+                }
+                ImGui::SetItemTooltip("Weight %.2f (target %.2f), speed %.2f, %s%s, %zu/%zu tracks bound", info.weight, info.targetWeight,
+                                      info.speed, inspectorclips::wrapLabel(info.wrap), info.queued ? ", queued" : "",
+                                      info.boundTracks, info.trackCount);
+            }
+            ImGui::PopID();
         }
-        ImGui::PopID();
+        endTable();
     }
-    endTable();
 }
 
 // ---- the inspected asset (.anim, or a model's clips) ----
@@ -1402,6 +1434,14 @@ bool editor::InspectorWindow::drawInspectedAsset(){
     }
     // a generated normal map or its source image: their own view; any other image keeps the scene selection
     if (Util::isImageFile(file)) return drawSpriteNormalsAsset(asset);
+    // an Avatar Mask / Animator Controller (anim layers spec 9, 11.4); gone: the scene selection
+    if (Util::isAvatarMaskFile(file) || Util::isAnimatorControllerFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        if (Util::isAvatarMaskFile(file)) drawAvatarMaskAsset(asset);
+        else drawControllerAsset(asset);
+        return true;
+    }
     const bool clip = Util::isAnimationClipFile(file);
     if (!clip && !Util::isModelFile(file)) return false;
     if (state.relativeOf != asset){

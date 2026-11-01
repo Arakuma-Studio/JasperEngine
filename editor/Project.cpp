@@ -4,6 +4,8 @@
 #include "Project.h"
 #include "subsystem/PhysicsSystem.h"
 #include "animation/AnimationClipDocument.h"
+#include "animation/AnimatorController.h"
+#include "pool/AnimatorControllerPool.h"
 #include "vat/VatDocument.h"
 #include "animation/ModelSubClips.h"
 #include "pose/PoseAnimationDocument.h"
@@ -14,6 +16,8 @@
 #include "registry/PhysicsLayers.h"
 
 #include "EditorHost.h"
+#include "Platform.h"
+#include "Screen.h"
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 #include "util/FbxImporter.h"
@@ -60,6 +64,7 @@
 #include "pose/PoseAnimatorRuntime.h"
 #include "animation/ModelSubClips.h"
 #include "htmlui/anim/AnimEngine.h"
+#include "script/ScriptScheduler.h"
 #include "net/Http.h"
 #include "media/MediaCache.h"
 #include "thread/MainThreadQueue.h"
@@ -704,6 +709,18 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
                 playerChanged = true;
             }
         }
+        // layer masks and the controller: the path hint (the GUID stays); a deleted file keeps it
+        auto follow = [&](std::string& reference) {
+            std::string path = reference;
+            if (!reference.empty() && transform(path) && !path.empty() && path != reference) {
+                reference = path;
+                playerChanged = true;
+            }
+        };
+        for (AnimationPlayerLayer& layer : player.layers) {
+            follow(layer.mask);
+        }
+        follow(player.controller);
         if (playerChanged) {
             player.needsLoad = true;
             changed = true;
@@ -866,12 +883,37 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
     // Animation Player clips (AnimationClipPool); a model sub-clip is built once its model is
     // loaded, so the model is preloaded too
     visitComponents(registry->getComponentArray<AnimationPlayerComponent>(), [&](AnimationPlayerComponent& player) {
-        for (const AnimationPlayerClip& entry : player.clips) {
+        auto addClip = [&](const std::string& clip) {
             anim::SubClipReference reference;
-            if (anim::parseSubClipReference(entry.clip, reference)) {
+            if (anim::parseSubClipReference(clip, reference)) {
                 addFile(resources.models, reference.model);
             }
-            addFile(resources.clips, entry.clip);
+            addFile(resources.clips, clip);
+        };
+        if (!player.controller.empty()) {
+            // a controller owns the states: its clips and masks (anim layers spec 11.6)
+            addFile(resources.controllers, player.controller);
+            // (read through the engine's file API, as the build will: the pool caches it)
+            if (std::shared_ptr<const anim::AnimatorController> controller = AnimatorControllerPool::getOrLoad(player.controller)) {
+                {
+                    for (const anim::ControllerLayer& layer : controller->getData().layers) {
+                        addFile(resources.masks, layer.mask);
+                        for (const anim::ControllerState& state : layer.states) {
+                            if (!state.clip.empty()) addClip(state.clip);
+                            for (const anim::BlendTreeChild& child : state.blendTree.children) {
+                                if (!child.clip.empty()) addClip(child.clip);
+                            }
+                        }
+                    }
+                }
+            }
+            return;
+        }
+        for (const AnimationPlayerClip& entry : player.clips) {
+            addClip(entry.clip);
+        }
+        for (const AnimationPlayerLayer& layer : player.layers) {
+            addFile(resources.masks, layer.mask);
         }
     });
 
@@ -3268,6 +3310,65 @@ editor::ApplicationSettings& editor::Project::getApplicationSettings(){
     return applicationSettings;
 }
 
+uint8_t editor::PresentationSettings::effectiveAllowedOrientations() const{
+    uint8_t mask = allowedOrientations & PlatformRules::ALL_ORIENTATIONS;
+    if (PlatformRules::isFixedOrientation(defaultOrientation)){
+        mask |= PlatformRules::orientationBit(defaultOrientation);
+    }
+    return mask ? mask : PlatformRules::DEFAULT_ALLOWED_ORIENTATIONS;
+}
+
+editor::PresentationSettings& editor::Project::getPresentationSettings(){
+    return presentationSettings;
+}
+
+const editor::PresentationSettings& editor::Project::getPresentationSettings() const{
+    return presentationSettings;
+}
+
+editor::PlayerSettings editor::Project::getPlayerSettings() const{
+    PlayerSettings settings;
+    settings.defaultOrientation = presentationSettings.defaultOrientation;
+    settings.allowedOrientations = presentationSettings.effectiveAllowedOrientations();
+    settings.keepScreenOn = presentationSettings.keepScreenOn;
+    settings.targetFrameRate = presentationSettings.targetFrameRate;
+    auto app = [this](const std::string& name, const std::string& identifier, const std::string& version, const std::string& build) {
+        ApplicationInfo info;
+        info.name = getApplicationName(name);
+        info.identifier = getApplicationIdentifier(identifier);
+        info.version = getApplicationVersion(version);
+        info.build = OsRules::parseBuildNumber(getApplicationBuild(build));
+        return info;
+    };
+    settings.linuxApp = app(linuxProjectSettings.applicationName, "", "", "");
+    settings.windowsApp = app(windowsProjectSettings.productName, "", windowsProjectSettings.productVersion, "");
+    settings.macosApp = app(macOSProjectSettings.applicationName, macOSProjectSettings.bundleIdentifier,
+                            macOSProjectSettings.versionName, macOSProjectSettings.buildNumber);
+    settings.webApp = app(webProjectSettings.applicationName, "", "", "");
+    return settings;
+}
+
+void editor::Project::applyPresentationSettings(){
+    // what an earlier Play changed (focus, pause, frame rate) does not carry over
+    Engine::resetApplicationState();
+    editor::Platform::resetPlayRecords();
+    Engine::setVSyncCount(vsyncEnabled ? 1 : 0);
+    Engine::setTargetFrameRate(presentationSettings.targetFrameRate);
+    Screen::initialize(presentationSettings.defaultOrientation, presentationSettings.effectiveAllowedOrientations(),
+                       presentationSettings.keepScreenOn);
+    // a simulated phone or tablet keeps the screen on as the device would (Keep Screen On
+    // applies on Android and iOS only)
+    if (presentationSettings.keepScreenOn && editor::Platform::getSimulation().device) {
+        Screen::setSleepTimeout(SleepTimeout::NeverSleep);
+    }
+    ApplicationInfo info;
+    info.name = getApplicationName();
+    info.identifier = getApplicationIdentifier();
+    info.version = getApplicationVersion();
+    info.build = getApplicationVersionCode();
+    System::setApplicationInfo(info);
+}
+
 const editor::ApplicationSettings& editor::Project::getApplicationSettings() const{
     return applicationSettings;
 }
@@ -5564,6 +5665,7 @@ void editor::Project::resetConfigs() {
     sourceCodeExportSettings = {};
     desktopExportSettings = {};
     applicationSettings = {};
+    presentationSettings = {};
     webProjectSettings = {};
     linuxProjectSettings = {};
     windowsProjectSettings = {};
@@ -6958,7 +7060,7 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp, getShaderGlobals());
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings());
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -8517,6 +8619,8 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
         }
 
         cleanupPlaySession(session);
+        // what the scripts that ran started (Coroutine.start, Timer.after)
+        ScriptScheduler::clear();
         SceneManager::clearAll();
         PrefabManager::clearAll();
         ObjectManager::clearAll();
@@ -8659,7 +8763,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp, getShaderGlobals());
+    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings());
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
     }
@@ -8827,6 +8931,9 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 // C++ projects run Lua scripts too, through the plugin's initScripts
                 LuaBinding::clearLoadedProjectModules();
 
+                // Frame pacing, orientation, screen sleep and application info, before any
+                // script runs (an exported game's generated main sets them before its scripts too)
+                applyPresentationSettings();
                 // the plain-HTTP policy of the exported game (its generated main sets it before
                 // any scene), before the first script's init can send a request
                 Http::setInsecureHttpAllowed(applicationSettings.allowInsecureHttp);
@@ -9446,6 +9553,8 @@ void editor::Project::stop(uint32_t sceneId) {
 
             // anime: every animation of the play, and its script callbacks, before the scripts go
             AnimEngine::instance().reset();
+            // every coroutine and timer of the play (unowned ones too), before the scripts go
+            ScriptScheduler::clear();
             // HTTP requests of the play end without their callbacks (nothing waits for a
             // transfer); what worker threads posted for the game is dropped
             Http::shutdown();
@@ -9507,6 +9616,10 @@ void editor::Project::stop(uint32_t sceneId) {
 
             // what the game stored in UserSettings / PlayerPrefs is on disk when Play has stopped
             UserSettings::save();
+
+            // simulated focus, pause and rotation end with the Play, as the frame rate a script set
+            Engine::resetApplicationState();
+            editor::Platform::endPlaySimulation();
 
             {
                 std::scoped_lock lock(playSessionMutex);

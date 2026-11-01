@@ -31,6 +31,11 @@ namespace jasperengine {
         // Vertex Animation assets (.vat, asset-relative), loaded into VertexAnimationPool; their
         // .vat.glb meshes are Models, in `models`
         std::vector<std::string> vats;
+        // Avatar Masks (.mask) and Animator Controllers (.controller), asset-relative, loaded into
+        // AvatarMaskPool / AnimatorControllerPool; a controller's clips and masks are listed in
+        // `clips` and `masks` too (anim layers spec 11.6)
+        std::vector<std::string> masks;
+        std::vector<std::string> controllers;
     };
 
     // SceneManager allows registering named scene stacks and switching between them at runtime.
@@ -241,6 +246,9 @@ namespace jasperengine {
 
         // Return the name of the scene at the given id, or "" if not found.
         static std::string getSceneName(uint32_t id);
+
+        // The name of a stored scene pointer's scene (setScenePtr), or "" (messages)
+        static std::string getSceneNameOf(const Scene* scene);
 
         // Return all registered scene names in registration order.
         static std::vector<std::string> getSceneNames();

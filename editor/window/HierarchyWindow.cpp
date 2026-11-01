@@ -522,6 +522,11 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"UI", "Input Field", ICON_FA_I_CURSOR, T::INPUT_FIELD, "Input Field", CREATE_IN_ALL},
         {"UI", "Panel", ICON_FA_WINDOW_MAXIMIZE, T::PANEL, "Panel", CREATE_IN_ALL},
         {"UI", "Polygon", ICON_FA_DRAW_POLYGON, T::POLYGON, "Polygon", CREATE_IN_ALL},
+        {"UI", "On-Screen Stick (Fixed)", ICON_FA_GAMEPAD, T::ONSCREEN_STICK_FIXED, "On-Screen Stick", CREATE_IN_ALL, true},
+        {"UI", "On-Screen Stick (Floating)", ICON_FA_GAMEPAD, T::ONSCREEN_STICK_FLOATING, "On-Screen Stick", CREATE_IN_ALL},
+        {"UI", "On-Screen Stick (Dynamic)", ICON_FA_GAMEPAD, T::ONSCREEN_STICK_DYNAMIC, "On-Screen Stick", CREATE_IN_ALL},
+        {"UI", "On-Screen Button", ICON_FA_CIRCLE_DOT, T::ONSCREEN_BUTTON, "On-Screen Button", CREATE_IN_ALL},
+        {"UI", "Touch Area", ICON_FA_HAND_POINTER, T::TOUCH_AREA, "Touch Area", CREATE_IN_ALL},
         {"UI", "Layout Group", ICON_FA_OBJECT_GROUP, T::LAYOUT_GROUP, "Layout Group", CREATE_IN_ALL, true},
         {"UI", "Canvas Group", ICON_FA_LAYER_GROUP, T::CANVAS_GROUP, "Canvas Group", CREATE_IN_ALL},
         {"UI", "UI Document", ICON_FA_FILE_CODE, T::UI_DOCUMENT, "UI Document", CREATE_IN_ALL, true},
@@ -1041,6 +1046,9 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
     }else if (signature.test(scene->getComponentId<FluidSimulationComponent>())){
         // before the Sprite or Mesh it is drawn on: the fluid is what the object is
         return ICON_FA_DROPLET;
+    }else if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
+        // before the Mesh it draws with (a version 2 system's own quad)
+        return ICON_FA_FIRE;
     }else if (signature.test(scene->getComponentId<TilemapComponent>())){
         return ICON_FA_BORDER_ALL;
     }else if (signature.test(scene->getComponentId<SpriteComponent>())){
@@ -1065,6 +1073,12 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
         return ICON_FA_FILE_CODE;
     }else if (signature.test(scene->getComponentId<LayoutGroupComponent>())){
         return ICON_FA_OBJECT_GROUP;
+    }else if (signature.test(scene->getComponentId<OnScreenStickComponent>())){
+        return ICON_FA_GAMEPAD;
+    }else if (signature.test(scene->getComponentId<OnScreenButtonComponent>())){
+        return ICON_FA_CIRCLE_DOT;
+    }else if (signature.test(scene->getComponentId<TouchAreaComponent>())){
+        return ICON_FA_HAND_POINTER;
     }else if (signature.test(scene->getComponentId<CanvasGroupComponent>()) && !signature.test(scene->getComponentId<UIComponent>())){
         // a group container (an element with its own group keeps its element's icon)
         return ICON_FA_LAYER_GROUP;

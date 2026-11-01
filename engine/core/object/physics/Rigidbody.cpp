@@ -1087,6 +1087,11 @@ bool Rigidbody::removeCollider(size_t index){
 
 void Rigidbody::removeAllColliders(){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    // their pairs end at the next step with an invalid collider index, from the last
+    std::shared_ptr<PhysicsSystem> physics = scene->getSystem<PhysicsSystem>();
+    for (size_t i = body.colliders.size(); i-- > 0;){
+        physics->contactColliderRemoved3D(entity, i);
+    }
     body.colliders.clear();
     body.needUpdateColliders = true;
 }

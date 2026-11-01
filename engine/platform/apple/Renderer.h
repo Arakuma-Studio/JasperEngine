@@ -11,9 +11,25 @@
 
 + (void)pauseGame;
 + (void)resumeGame;
+// Unity's OnApplicationFocus (Engine::systemFocus), a memory warning, a finished rotation
++ (void)focusGame:(BOOL)focused;
++ (void)lowMemory;
++ (void)orientationChanged;
+// Engine.targetFrameRate / vSyncCount as the view's preferredFramesPerSecond
++ (void)applyFramePacing;
+#if TARGET_OS_IPHONE
+// Screen.orientation / autorotateTo* as a UIInterfaceOrientationMask
++ (NSUInteger)supportedInterfaceOrientations;
+// the UIInterfaceOrientation of a fixed request, 0 (Unknown) in auto-rotation
++ (NSInteger)requestedInterfaceOrientation;
+#endif
 
 @property (class, nonatomic, assign, readonly, nullable) MTKView* view;
 @property (class, nonatomic, assign, readonly) CGSize screenSize;
 
 @end
+
+// Posted (main thread) when Screen.orientation or autorotateTo* change: the view controller
+// asks UIKit for the new supported orientations
+extern NSString* const JasperEngineOrientationPolicyNotification;
 

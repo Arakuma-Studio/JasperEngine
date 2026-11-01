@@ -19,6 +19,7 @@
 #include "math/Vector3.h"
 #include "texture/IBLEnvironment.h"
 #include "util/Angle.h"
+#include "particles/ParticleSimulation.h"
 #include "util/Color.h"
 #include "buffer/ExternalBuffer.h"
 #include "math/AABB.h"
@@ -217,6 +218,128 @@ namespace {
             }
         }
         return instmesh.fadeEnd;
+    }
+
+    // the mesh model matrix without its translation, inverted: what brings a world rotation
+    // and scale back into the mesh's space (a particle instance is built in the world)
+    Matrix4 inverseLinear(const Matrix4& model){
+        Matrix4 linear = model;
+        linear.set(3, 0, 0.0f);
+        linear.set(3, 1, 0.0f);
+        linear.set(3, 2, 0.0f);
+        const Matrix4 inverse = linear.inverse();
+        return inverse.isValid() ? inverse : Matrix4();
+    }
+
+    // A version 2 Particle System's instance (InstanceParticleRender, particles spec 6.4) in
+    // its mesh's space: the instance's position is there already; its rotation and its scale
+    // (the particle's world size) are made in the world for the alignment and the camera,
+    // limited to the min/max share of the viewport height, moved by the pivot (in particle
+    // sizes), then brought back by `inverseLinear` (the mesh's own rotation and scale undone)
+    Matrix4 particleInstanceMatrix(const InstanceData& instance, const InstanceParticleRender& render, const Transform& transform,
+                                   const Matrix4& inverseLinearModel, const Quaternion& cameraRotation, const Vector3& cameraPosition,
+                                   const CameraComponent& camera){
+        const Vector3 worldPosition = transform.modelMatrix * instance.position;
+        Vector3 scale = instance.scale;
+        Quaternion rotation;
+        // the min/max share of the viewport (Billboard particles only: the sync writes them for
+        // that mode), before a stretch lengthens the quad
+        if (render.minSize > 0.0f || render.maxSize > 0.0f){
+            const float extent = std::max(std::fabs(scale.x), std::fabs(scale.y));
+            float viewport;
+            if (camera.type == CameraType::CAMERA_PERSPECTIVE){
+                const Vector3 forward = cameraRotation * Vector3(0.0f, 0.0f, -1.0f);
+                const float depth = std::max(1e-4f, (worldPosition - cameraPosition).dotProduct(forward));
+                viewport = depth * 2.0f * std::tan(camera.yfov * 0.5f);
+            }else{
+                viewport = std::fabs(camera.topClip - camera.bottomClip);
+            }
+            if (viewport > 0.0f && extent > 0.0f){
+                const float fraction = extent / viewport;
+                float limited = fraction;
+                if (render.maxSize > 0.0f) limited = std::min(limited, render.maxSize);
+                if (render.minSize > 0.0f) limited = std::max(limited, render.minSize);
+                scale = scale * (limited / fraction);
+            }
+        }
+
+        const Vector3 cameraUp = cameraRotation * Vector3(0.0f, 1.0f, 0.0f);
+        auto roll = [&](float angle){
+            Quaternion q;
+            q.fromAngleAxis(Angle::radToDefault(angle), Vector3(0.0f, 0.0f, 1.0f));
+            return q;
+        };
+        switch (render.alignment){
+            case InstanceAlignment::None:
+            case InstanceAlignment::View:
+                rotation = cameraRotation * instance.rotation;
+                break;
+            case InstanceAlignment::World:
+                rotation = instance.rotation;
+                break;
+            case InstanceAlignment::Local:
+                rotation = transform.worldRotation * instance.rotation;
+                break;
+            case InstanceAlignment::Facing: {
+                const Vector3 toCamera = cameraPosition - worldPosition;
+                rotation = (toCamera.squaredLength() > 1e-12f ? Quaternion::lookRotation(toCamera, cameraUp) : cameraRotation) * instance.rotation;
+                break;
+            }
+            case InstanceAlignment::Velocity: {
+                const Vector3& v = instance.velocity;
+                rotation = (v.squaredLength() > 1e-12f ? Quaternion::lookRotation(v, Vector3(0.0f, 1.0f, 0.0f)) : Quaternion()) * instance.rotation;
+                break;
+            }
+            case InstanceAlignment::Vertical: {
+                // upright, turned about the world's Y to the camera
+                Vector3 toCamera = cameraPosition - worldPosition;
+                toCamera.y = 0.0f;
+                if (toCamera.squaredLength() < 1e-12f){
+                    toCamera = cameraRotation * Vector3(0.0f, 0.0f, 1.0f);
+                    toCamera.y = 0.0f;
+                }
+                rotation = (toCamera.squaredLength() > 1e-12f ? Quaternion::lookRotation(toCamera, Vector3(0.0f, 1.0f, 0.0f)) : Quaternion()) * roll(instance.roll);
+                break;
+            }
+            case InstanceAlignment::Horizontal: {
+                // flat, facing up, turned about the world's Y by the roll
+                Quaternion flat;
+                flat.fromAngleAxis(Angle::radToDefault(-1.57079632679f), Vector3(1.0f, 0.0f, 0.0f));
+                Quaternion turn;
+                turn.fromAngleAxis(Angle::radToDefault(instance.roll), Vector3(0.0f, 1.0f, 0.0f));
+                rotation = turn * flat;
+                break;
+            }
+            case InstanceAlignment::Stretched: {
+                const Vector3& v = instance.velocity;
+                const float speed = v.length();
+                Vector3 toCamera = cameraPosition - worldPosition;
+                if (speed > 1e-5f && toCamera.squaredLength() > 1e-12f){
+                    // X along the velocity, the face turned to the camera about it
+                    const Vector3 axisX = v / speed;
+                    toCamera.normalize();
+                    Vector3 normal = toCamera - axisX * toCamera.dotProduct(axisX);
+                    if (normal.squaredLength() < 1e-10f){
+                        // moving along the view ray: any axis across the velocity (the camera's
+                        // up, or its right when the velocity is vertical on screen)
+                        Vector3 across = cameraUp;
+                        if (std::fabs(across.dotProduct(axisX)) > 0.99f) across = cameraRotation * Vector3(1.0f, 0.0f, 0.0f);
+                        normal = across - axisX * across.dotProduct(axisX);
+                    }
+                    normal.normalize();
+                    const Vector3 axisY = normal.crossProduct(axisX);
+                    rotation = Quaternion(axisX, axisY, normal);
+                    const float length = std::fabs(scale.x) * render.lengthScale + speed * render.velocityScale;
+                    scale.x = std::copysign(length, scale.x);
+                }else{
+                    rotation = cameraRotation * roll(instance.roll);
+                }
+                break;
+            }
+        }
+
+        const Matrix4 world = rotation.getRotationMatrix() * Matrix4::scaleMatrix(scale) * Matrix4::translateMatrix(render.pivot);
+        return Matrix4::translateMatrix(instance.position) * inverseLinearModel * world;
     }
 
     // shadow-map texels of error a caster may lose, well inside the PCF blur
@@ -635,6 +758,8 @@ uint32_t RenderSystem::pixelsRipples[DEFAULT_PATTERN_SIZE * DEFAULT_PATTERN_SIZE
 uint32_t RenderSystem::pixelsNoise[DEFAULT_PATTERN_SIZE * DEFAULT_PATTERN_SIZE];
 TextureRender RenderSystem::defaultRipples;
 TextureRender RenderSystem::defaultNoise;
+uint32_t RenderSystem::pixelsParticle[DEFAULT_PARTICLE_SIZE * DEFAULT_PARTICLE_SIZE];
+TextureRender RenderSystem::defaultParticle;
 TextureRender RenderSystem::emptyCubeGray;
 std::vector<RenderSystem::ZeroVertexBuffer> RenderSystem::zeroVertexBuffers;
 std::mutex RenderSystem::zeroVertexBuffersMutex;
@@ -1055,6 +1180,14 @@ void RenderSystem::createEmptyTextures(){
                 "default|noise", DEFAULT_PATTERN_SIZE, DEFAULT_PATTERN_SIZE, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data_array, size_array,
                 TextureFilter::LINEAR_MIPMAP_LINEAR, TextureFilter::LINEAR, TextureWrap::REPEAT, TextureWrap::REPEAT);
 
+        // the Particle Systems' default: a soft disc, clamped (particles spec 6.4)
+        particles::makeParticleTexture(pixelsParticle, DEFAULT_PARTICLE_SIZE);
+        size_array[0] = DEFAULT_PARTICLE_SIZE * DEFAULT_PARTICLE_SIZE * 4;
+        data_array[0] = (void*)pixelsParticle;
+        defaultParticle.createTexture(
+                "default|particle", DEFAULT_PARTICLE_SIZE, DEFAULT_PARTICLE_SIZE, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data_array, size_array,
+                TextureFilter::LINEAR, TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE);
+
         emptyTexturesCreated = true;
     }
 
@@ -1071,7 +1204,7 @@ void RenderSystem::createEmptyTextures(){
 void RenderSystem::destroyEmptyTextures(){
     TextureRender* textures[] = {
         &emptyWhite, &emptyArrayWhite, &emptyBlack, &emptyCubeBlack, &emptyCubeWhite, &emptyNormal,
-        &emptyShadowDepth, &emptyGray, &emptyFlatNormal, &defaultRipples, &defaultNoise, &emptyCubeGray, &emptyTransparent
+        &emptyShadowDepth, &emptyGray, &emptyFlatNormal, &defaultRipples, &defaultNoise, &defaultParticle, &emptyCubeGray, &emptyTransparent
     };
     // (destroyTexture skips handles that are already gone and clears them)
     for (TextureRender* texture : textures){
@@ -3947,6 +4080,7 @@ TextureRender* RenderSystem::getDefaultShaderTexture(int fallback, bool cube){
         case ShaderTextureDefault::NORMAL: return cube ? &emptyCubeGray : &emptyFlatNormal;
         case ShaderTextureDefault::RIPPLES: return cube ? &emptyCubeGray : &defaultRipples;
         case ShaderTextureDefault::NOISE:  return cube ? &emptyCubeGray : &defaultNoise;
+        case ShaderTextureDefault::PARTICLE: return cube ? &emptyCubeWhite : &defaultParticle;
         default:                           return cube ? &emptyCubeWhite : &emptyWhite;
     }
 }
@@ -7805,8 +7939,10 @@ void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& ma
             continue;
         }
 
-        // the main camera keeps the order where it is the layering: blended batches and 2D
-        InstanceOrder order = (mesh->transparent || !sortsByDistance(mainCamera)) ? InstanceOrder::KEEP : InstanceOrder::NEAREST;
+        // the main camera keeps the order where it is the layering: blended batches, 2D and a
+        // Particle System's own order or distance sort (sortInstancedMesh made it)
+        const bool particleOrder = instmesh.particle.alignment != InstanceAlignment::None && instmesh.particle.sort != InstanceSortMode::Auto;
+        InstanceOrder order = (mesh->transparent || particleOrder || !sortsByDistance(mainCamera)) ? InstanceOrder::KEEP : InstanceOrder::NEAREST;
         const Vector3& eye = mainCameraTransform.worldPosition;
         const InstanceRenderData* instances = instmesh.renderInstances.data();
         const InstanceVatRenderData* vat = instanceVatData(instmesh);
@@ -12711,6 +12847,15 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
         bRotation = transform.worldRotation.inverse() * bRotation;
     }
 
+    // a version 2 Particle System's instances, aligned for the main camera
+    const bool particleAligned = instmesh.particle.alignment != InstanceAlignment::None;
+    Matrix4 particleInverseLinear;
+    Quaternion particleCameraRotation;
+    if (particleAligned){
+        particleInverseLinear = inverseLinear(transform.modelMatrix);
+        particleCameraRotation.fromRotationMatrix(camera.viewMatrix.inverse());
+    }
+
     // Not AABB::ZERO: that is a finite box at the origin, so merging into it stretches every
     // instanced mesh back to its own origin and defeats culling.
     mesh.aabb.setNull();
@@ -12724,17 +12869,23 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
             if (cullEnd >= 0.0f && dx * dx + dz * dz > cullRadiusSquared){
                 continue;
             }
-            Matrix4 translateMatrix = Matrix4::translateMatrix(instmesh.instances[i].position);
-            Matrix4 rotationMatrix;
-            Matrix4 scaleMatrix = Matrix4::scaleMatrix(instmesh.instances[i].scale);
-
-            if (instmesh.instancedBillboard){
-                rotationMatrix = bRotation.getRotationMatrix();
+            Matrix4 instanceMatrix;
+            if (particleAligned){
+                instanceMatrix = particleInstanceMatrix(instmesh.instances[i], instmesh.particle, transform, particleInverseLinear,
+                                                        particleCameraRotation, camTransform.worldPosition, camera);
             }else{
-                rotationMatrix = instmesh.instances[i].rotation.getRotationMatrix();
-            }
+                Matrix4 translateMatrix = Matrix4::translateMatrix(instmesh.instances[i].position);
+                Matrix4 rotationMatrix;
+                Matrix4 scaleMatrix = Matrix4::scaleMatrix(instmesh.instances[i].scale);
 
-            Matrix4 instanceMatrix = translateMatrix * rotationMatrix * scaleMatrix;
+                if (instmesh.instancedBillboard){
+                    rotationMatrix = bRotation.getRotationMatrix();
+                }else{
+                    rotationMatrix = instmesh.instances[i].rotation.getRotationMatrix();
+                }
+
+                instanceMatrix = translateMatrix * rotationMatrix * scaleMatrix;
+            }
 
             instmesh.renderInstances.push_back({});
             instmesh.renderInstances[instmesh.numVisible].instanceMatrix = instanceMatrix;
@@ -12766,11 +12917,15 @@ void RenderSystem::sortInstancedMesh(InstancedMeshComponent& instmesh, MeshCompo
     Vector3 camDir = (camTransform.worldPosition - camera.worldTarget).normalize();
 
     // the bounds follow the sort so the instance views keep matching
-    const auto order = detail::instanceDepthOrder(instmesh.renderInstances, transform.modelMatrix, camDir);
-    std::vector<InstanceRenderData> sortedInstances(order.size());
-    std::vector<InstanceBounds> sortedBounds(std::min(order.size(), instmesh.renderBounds.size()));
+    detail::instanceDepthOrder(instmesh.renderInstances, transform.modelMatrix, camDir, sortOrderScratch, sortDepthScratch);
+    const std::vector<unsigned int>& order = sortOrderScratch;
+    std::vector<InstanceRenderData>& sortedInstances = sortInstancesScratch;
+    sortedInstances.resize(order.size());
+    std::vector<InstanceBounds>& sortedBounds = sortBoundsScratch;
+    sortedBounds.resize(std::min(order.size(), instmesh.renderBounds.size()));
     // a VAT batch's states move with their instances
-    std::vector<InstanceVatRenderData> sortedVat(std::min(order.size(), instmesh.renderVat.size()));
+    std::vector<InstanceVatRenderData>& sortedVat = sortVatScratch;
+    sortedVat.resize(std::min(order.size(), instmesh.renderVat.size()));
     for (unsigned int i = 0; i < order.size(); i++){
         sortedInstances[i] = instmesh.renderInstances[order[i]];
         if (order[i] < sortedBounds.size() && i < sortedBounds.size())
@@ -14261,7 +14416,12 @@ void RenderSystem::update(double dt){
                         (inverseModel * fadeEyePosition) : fadeEyePosition;
                 }
 
-                bool sortTransparentInstances = mesh.transparent && batchSort;
+                // a Particle System's sort mode: by distance (opaque too) or its own order
+                const InstanceSortMode particleSort = instmesh->particle.alignment != InstanceAlignment::None ? instmesh->particle.sort : InstanceSortMode::Auto;
+                bool sortTransparentInstances = batchSort && ((mesh.transparent && particleSort == InstanceSortMode::Auto) ||
+                                                              particleSort == InstanceSortMode::ByDistance);
+                // instances that face or scale with the camera are rebuilt when it moves
+                const bool cameraBound = instmesh->instancedBillboard || instmesh->particle.cameraDependent();
 
                 const float cullEnd = instanceFadeCullEnd(*instmesh, mesh, *scene);
                 const bool fadeSelectionChanged = cullEnd != instmesh->lastFadeCullEnd ||
@@ -14270,15 +14430,16 @@ void RenderSystem::update(double dt){
                 bool instancesNeedUpdate = instmesh->needUpdateInstances || mesh.needUpdateAABB ||
                     batchSortChanged || fadeSelectionChanged;
 
-                if (instancesNeedUpdate && !instmesh->instancedBillboard){
+                if (instancesNeedUpdate && !cameraBound){
                     updateInstancedMesh(*instmesh, mesh, transform, mainCamera, mainCameraTransform);
                 }
 
-                if (instancesNeedUpdate || ((mainCamera.needUpdate || transform.needUpdate) && sortTransparentInstances)){
+                const bool particleCamera = instmesh->particle.cameraDependent();
+                if (instancesNeedUpdate || ((mainCamera.needUpdate || transform.needUpdate) && (sortTransparentInstances || particleCamera))){
                     // The instance buffer is shared by every camera and sokol allows one
                     // sg_update_buffer per frame (VALIDATE_UPDATEBUF_ONCE), so the main camera
                     // fixes the batch order and every other camera reuses it.
-                    if (instmesh->instancedBillboard){
+                    if (cameraBound){
                         updateInstancedMesh(*instmesh, mesh, transform, mainCamera, mainCameraTransform);
                     }
                     if (sortTransparentInstances){
@@ -14832,7 +14993,7 @@ void RenderSystem::ensureCasterLayers(){
         bool unbounded = transform->billboard && !transform->fakeBillboard && !mesh.shadowsBillboard;
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
         if (instmesh){
-            unbounded = unbounded || instmesh->instancedBillboard ||
+            unbounded = unbounded || instmesh->instancedBillboard || instmesh->particle.cameraDependent() ||
                 instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f ||
                 (instmesh->cullInstances && std::isfinite(instmesh->cullDistance) && instmesh->cullDistance > 0.0f);
         }
@@ -16236,7 +16397,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 opaqueRenders.push_back({entity, &mesh, instmesh, terrain, tilemap, &transform, distance, mesh.opaqueSortPriority, (uint32_t)opaqueRenders.size()});
             }
             if (mesh.transparent && distanceSort){
-                transparentRenders.push_back({TransparentRenderType::MESH, entity, &mesh, nullptr, instmesh, terrain, tilemap, &transform, objectDistance(transform), mesh.transparentSortPriority, transparentOrder++});
+                // a Particle System's sorting fudge moves it in the queue (lower: on top)
+                const bool particles = instmesh && instmesh->particle.alignment != InstanceAlignment::None;
+                const float fudge = particles ? instmesh->particle.sortingFudge : 0.0f;
+                const int priority = mesh.transparentSortPriority + (particles ? instmesh->particle.sortPriority : 0);
+                transparentRenders.push_back({TransparentRenderType::MESH, entity, &mesh, nullptr, instmesh, terrain, tilemap, &transform, objectDistance(transform) + fudge, priority, transparentOrder++});
             }
         }
 
@@ -16478,7 +16643,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 if (!points.transparent || !distanceSort){
                     drawPoints(entity, points, transform, camera, cameraTransform, colorPip);
                 }else{
-                    transparentRenders.push_back({TransparentRenderType::POINTS, entity, nullptr, &points, nullptr, nullptr, nullptr, &transform, objectDistance(transform), points.sortPriority, transparentOrder++});
+                    transparentRenders.push_back({TransparentRenderType::POINTS, entity, nullptr, &points, nullptr, nullptr, nullptr, &transform, objectDistance(transform) + points.sortingFudge, points.sortPriority + points.particleSortPriority, transparentOrder++});
                 }
             }
 
@@ -17553,6 +17718,18 @@ void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, con
         billboardRotation = transform.worldRotation.inverse() * billboardRotation;
     }
 
+    // a version 2 Particle System's instances, aligned for this camera
+    const bool particleAligned = instmesh.particle.alignment != InstanceAlignment::None;
+    Matrix4 particleInverseLinear;
+    Quaternion particleCameraRotation;
+    Vector3 particleCameraPosition;
+    if (particleAligned){
+        particleInverseLinear = inverseLinear(transform.modelMatrix);
+        const Matrix4 cameraWorld = camera.viewMatrix.inverse();
+        particleCameraRotation.fromRotationMatrix(cameraWorld);
+        particleCameraPosition = cameraWorld * Vector3(0.0f, 0.0f, 0.0f);
+    }
+
     AABB localAABB;
     localAABB.setNull();
 
@@ -17570,8 +17747,14 @@ void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, con
         if (cullEnd >= 0.0f && dx * dx + dz * dz > cullRadiusSquared)
             continue;
 
-        Matrix4 rotationMatrix = instmesh.instancedBillboard ? billboardRotation.getRotationMatrix() : instance.rotation.getRotationMatrix();
-        Matrix4 instanceMatrix = Matrix4::translateMatrix(instance.position) * rotationMatrix * Matrix4::scaleMatrix(instance.scale);
+        Matrix4 instanceMatrix;
+        if (particleAligned){
+            instanceMatrix = particleInstanceMatrix(instance, instmesh.particle, transform, particleInverseLinear,
+                                                    particleCameraRotation, particleCameraPosition, camera);
+        }else{
+            Matrix4 rotationMatrix = instmesh.instancedBillboard ? billboardRotation.getRotationMatrix() : instance.rotation.getRotationMatrix();
+            instanceMatrix = Matrix4::translateMatrix(instance.position) * rotationMatrix * Matrix4::scaleMatrix(instance.scale);
+        }
 
         InstanceRenderData renderData{};
         renderData.instanceMatrix = instanceMatrix;
@@ -17671,7 +17854,7 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
         const InstanceVatRenderData* vat;
         const InstanceBounds* bounds;
         unsigned int count;
-        source.own = instmesh.instancedBillboard || instanceFadeCullEnd(instmesh, *mesh, *scene) >= 0.0f;
+        source.own = instmesh.instancedBillboard || instmesh.particle.cameraDependent() || instanceFadeCullEnd(instmesh, *mesh, *scene) >= 0.0f;
         if (source.own){
             buildInstanceList(instmesh, *mesh, *transform, camera, source.fadeEyeLocal, source);
             instances = source.instances.data();
@@ -17688,12 +17871,14 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
             count = (instmesh.renderBounds.size() < instmesh.numVisible) ? 0 : instmesh.numVisible;
         }
 
-        // blended batches go back to front from this camera, 2D keeps its layering
+        // blended batches go back to front from this camera, 2D keeps its layering; a Particle
+        // System keeps its own order (the age sorts) or sorts by distance (also when opaque)
+        const InstanceSortMode particleSort = instmesh.particle.alignment != InstanceAlignment::None ? instmesh.particle.sort : InstanceSortMode::Auto;
         InstanceOrder order = InstanceOrder::NEAREST;
         Vector3 direction = Vector3::ZERO;
-        if (!sortsByDistance(camera)){
+        if (!sortsByDistance(camera) || particleSort == InstanceSortMode::Keep){
             order = InstanceOrder::KEEP;
-        }else if (mesh->transparent){
+        }else if (mesh->transparent || particleSort == InstanceSortMode::ByDistance){
             order = InstanceOrder::BACK_TO_FRONT;
             direction = towardCamera;
         }

@@ -16,6 +16,7 @@
 #include <swappy/swappyGL.h>
 #include <algorithm>
 #include <atomic>
+#include <cstddef>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -606,6 +607,11 @@ NativeEngine::NativeEngine(struct android_app *app) {
     mEglContext = EGL_NO_CONTEXT;
     mEglConfig = 0;
     mSurfWidth = mSurfHeight = 0;
+    mDisplayRotation = 0;
+    mNaturalPortrait = true;
+    mFallbackSwapInterval = 1;
+    mFallbackLimiterFps = 0.0;
+    mAppliedSwapInterval = 0;
     mJniEnv = NULL;
     memset(&mState, 0, sizeof(mState));
 
@@ -636,7 +642,8 @@ NativeEngine::NativeEngine(struct android_app *app) {
     assert(_singleton == NULL);
     _singleton = this;
 
-    // initialize Swappy to adjuest swap timing properly.
+    // initialize Swappy to adjuest swap timing properly. 60 fps until Engine.targetFrameRate
+    // says otherwise (JasperEngineAndroid::applyFramePacing)
     SwappyGL_init(getJniEnv(), mApp->activity->javaGameActivity);
     SwappyGL_setSwapIntervalNS(SWAPPY_SWAP_60FPS);
 
@@ -694,6 +701,41 @@ int NativeEngine::getSurfHeight(){
     return mSurfHeight;
 }
 
+void NativeEngine::setFallbackPacing(int swapInterval, double limiterFps){
+    mFallbackSwapInterval = std::max(1, swapInterval);
+    mFallbackLimiterFps = limiterFps;
+}
+
+int NativeEngine::getDisplayRotation(){
+    return mDisplayRotation;
+}
+
+bool NativeEngine::isNaturalPortrait(){
+    return mNaturalPortrait;
+}
+
+int NativeEngine::getDeviceDegrees(){
+    if (!mJniData.platformClsRef || !mJniData.platformDeviceDegrees) return -1;
+    return getJniEnv()->GetStaticIntField(mJniData.platformClsRef, mJniData.platformDeviceDegrees);
+}
+
+bool NativeEngine::refreshDisplayRotation(){
+    if (!mJniData.platformClsRef || !mJniData.platformDisplayRotation) return false;
+    JNIEnv* env = getJniEnv();
+    const int rotation = env->GetStaticIntField(mJniData.platformClsRef, mJniData.platformDisplayRotation);
+    if (rotation == mDisplayRotation) return false;
+    mDisplayRotation = rotation;
+    if (mJniData.platformIsNaturalPortrait) {
+        mNaturalPortrait = env->CallStaticBooleanMethod(mJniData.platformClsRef, mJniData.platformIsNaturalPortrait,
+                                                        mJniData.gameActivityObjRef) == JNI_TRUE;
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            mNaturalPortrait = true;
+        }
+    }
+    return true;
+}
+
 void NativeEngine::showSoftInput(std::wstring text){
     textInputBuffer = text;
 
@@ -740,8 +782,10 @@ void NativeEngine::gameLoop() {
     mApp->userData = this;
     mApp->onAppCmd = _handle_cmd_proxy;
 
+    // keeping the screen on is Screen.sleepTimeout's (Player > Keep Screen On, applied by
+    // Screen::initialize through JasperEngineAndroid::setKeepScreenOn)
     GameActivity_setWindowFlags(mApp->activity,
-                                AWINDOW_FLAG_KEEP_SCREEN_ON | AWINDOW_FLAG_TURN_SCREEN_ON |
+                                AWINDOW_FLAG_TURN_SCREEN_ON |
                                 AWINDOW_FLAG_FULLSCREEN |
                                 AWINDOW_FLAG_SHOW_WHEN_LOCKED,
                                 0);
@@ -882,6 +926,87 @@ void NativeEngine::setupJNI(){
     // the HTTP client's Java side (JasperHttp) and its native callbacks
     jasperengine::httpAndroidSetup(env, mJniData.gameActivityObjRef);
     jasperengine::mediaCodecSetAssetManager(getAssetManager());
+    setupPlatformJNI(env);
+}
+
+// JasperPlatform through the activity's class loader: the game thread is attached natively, so
+// FindClass would only see the system's classes
+void NativeEngine::setupPlatformJNI(JNIEnv* env){
+    memset(&mJniData.platformClsRef, 0, sizeof(JniData) - offsetof(JniData, platformClsRef));
+
+    jclass activityClass = env->GetObjectClass(mJniData.gameActivityObjRef);
+    jmethodID getClassLoader = env->GetMethodID(activityClass, "getClassLoader", "()Ljava/lang/ClassLoader;");
+    jobject loader = getClassLoader ? env->CallObjectMethod(mJniData.gameActivityObjRef, getClassLoader) : NULL;
+    jclass platformClass = NULL;
+    if (loader && !env->ExceptionCheck()) {
+        jclass loaderClass = env->GetObjectClass(loader);
+        jmethodID loadClass = env->GetMethodID(loaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+        jstring name = env->NewStringUTF("com.jaspergameengine.jasperengine.JasperPlatform");
+        platformClass = loadClass ? (jclass)env->CallObjectMethod(loader, loadClass, name) : NULL;
+        env->DeleteLocalRef(name);
+        env->DeleteLocalRef(loaderClass);
+    }
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        platformClass = NULL;
+    }
+    if (loader) env->DeleteLocalRef(loader);
+    env->DeleteLocalRef(activityClass);
+    if (!platformClass) {
+        jasperengine::Log::warn("NativeEngine: no JasperPlatform class: openURL, locale, orientation and device info use the defaults");
+        return;
+    }
+    mJniData.platformClsRef = (jclass)env->NewGlobalRef(platformClass);
+    env->DeleteLocalRef(platformClass);
+
+    auto method = [&](const char* name, const char* signature) -> jmethodID {
+        jmethodID id = env->GetStaticMethodID(mJniData.platformClsRef, name, signature);
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            jasperengine::Log::warn("NativeEngine: JasperPlatform.%s is missing", name);
+            return NULL;
+        }
+        return id;
+    };
+    // (Activity, ...) signatures: rest is what follows the activity parameter
+    auto withActivity = [&](const char* name, const char* rest) {
+        return method(name, (std::string("(Landroid/app/Activity;") + rest).c_str());
+    };
+    mJniData.platformOpenURL = withActivity("openURL", "Ljava/lang/String;)Z");
+    mJniData.platformGetPreferredLocales = method("getPreferredLocales", "()[Ljava/lang/String;");
+    mJniData.platformGetRegion = method("getRegion", "()Ljava/lang/String;");
+    mJniData.platformGetAppVersion = withActivity("getAppVersion", ")Ljava/lang/String;");
+    mJniData.platformGetAppBuild = withActivity("getAppBuild", ")J");
+    mJniData.platformGetAppIdentifier = withActivity("getAppIdentifier", ")Ljava/lang/String;");
+    mJniData.platformGetAppName = withActivity("getAppName", ")Ljava/lang/String;");
+    mJniData.platformGetOsRelease = method("getOsRelease", "()Ljava/lang/String;");
+    mJniData.platformGetApiLevel = method("getApiLevel", "()I");
+    mJniData.platformGetBuildDisplay = method("getBuildDisplay", "()Ljava/lang/String;");
+    mJniData.platformGetBuildIncremental = method("getBuildIncremental", "()Ljava/lang/String;");
+    mJniData.platformGetDeviceModel = method("getDeviceModel", "()Ljava/lang/String;");
+    mJniData.platformGetSystemMemorySize = withActivity("getSystemMemorySize", ")I");
+    mJniData.platformGetInternetReachability = withActivity("getInternetReachability", ")I");
+    mJniData.platformVibrate = withActivity("vibrate", "I)Z");
+    mJniData.platformHapticFeedback = withActivity("hapticFeedback", "I)Z");
+    mJniData.platformGetScreenDpi = withActivity("getScreenDpi", ")I");
+    mJniData.platformGetRefreshRate = withActivity("getRefreshRate", ")F");
+    mJniData.platformIsNaturalPortrait = withActivity("isNaturalPortrait", ")Z");
+    mJniData.platformSetOrientationPolicy = withActivity("setOrientationPolicy", "I)V");
+
+    mJniData.platformDisplayRotation = env->GetStaticFieldID(mJniData.platformClsRef, "displayRotation", "I");
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        mJniData.platformDisplayRotation = NULL;
+    }
+    mJniData.platformDeviceDegrees = env->GetStaticFieldID(mJniData.platformClsRef, "deviceDegrees", "I");
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        mJniData.platformDeviceDegrees = NULL;
+    }
+
+    // the orientation the app starts in
+    mDisplayRotation = -1;
+    refreshDisplayRotation();
 }
 
 bool NativeEngine::initDisplay() {
@@ -998,6 +1123,8 @@ void NativeEngine::killContext() {
 
 void NativeEngine::killSurface() {
     eglMakeCurrent(mEglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    // a new surface takes the swap interval again
+    mAppliedSwapInterval = 0;
     if (mEglSurface != EGL_NO_SURFACE) {
         eglDestroySurface(mEglDisplay, mEglSurface);
         mEglSurface = EGL_NO_SURFACE;
@@ -1098,16 +1225,29 @@ void NativeEngine::doFrame() {
     eglQuerySurface(mEglDisplay, mEglSurface, EGL_WIDTH, &width);
     eglQuerySurface(mEglDisplay, mEglSurface, EGL_HEIGHT, &height);
 
+    // a rotation changes the display rotation; a half turn changes nothing else
+    const bool rotated = refreshDisplayRotation();
+
     if (width != mSurfWidth || height != mSurfHeight) {
         mSurfWidth = width;
         mSurfHeight = height;
 
+        // onCanvasChanged, then onOrientationChanged
         jasperengine::Engine::systemViewChanged();
 
         glViewport(0, 0, mSurfWidth, mSurfHeight);
+    } else if (rotated) {
+        jasperengine::Engine::systemOrientationChanged();
     }
 
     jasperengine::Engine::systemDraw();
+
+    // without Swappy, SwappyGL_swap is eglSwapBuffers: pace it with the swap interval
+    const bool swappy = SwappyGL_isEnabled();
+    if (!swappy && mAppliedSwapInterval != mFallbackSwapInterval) {
+        eglSwapInterval(mEglDisplay, mFallbackSwapInterval);
+        mAppliedSwapInterval = mFallbackSwapInterval;
+    }
 
     // swap buffers
     if (!SwappyGL_swap(mEglDisplay, mEglSurface)) {        // failed to swap buffers...
@@ -1115,6 +1255,10 @@ void NativeEngine::doFrame() {
         jasperengine::Log::error("NativeEngine: SwappyGL_swap failed, EGL error %d", error);
         handleEglError(error);
         return;
+    }
+
+    if (!swappy) {
+        mFrameLimiter.wait(mFallbackLimiterFps);
     }
 
     // print out GL errors, if any
@@ -1131,8 +1275,9 @@ void NativeEngine::doFrame() {
     }
 }
 
+// Visible but unfocused (a permission dialog, the notification shade) keeps rendering, as Unity
 bool NativeEngine::isAnimating() {
-    return mHasFocus && mIsVisible && mHasWindow;
+    return mIsVisible && mHasWindow;
 }
 
 // Gamepads are registered lazily on their first event; Android has no NDK-side
@@ -1410,7 +1555,12 @@ void NativeEngine::handleCommand(int32_t cmd) {
         case APP_CMD_START:
             mIsVisible = true;
             break;
+        case APP_CMD_CONFIG_CHANGED:
+            // a rotation or a locale change (configChanges keeps the activity): the surface size
+            // follows in a later frame, which reports the rotation after onCanvasChanged
+            break;
         case APP_CMD_LOW_MEMORY:
+            jasperengine::Engine::systemLowMemory();
             // system told us we have low memory. So if we are not visible, let's
             // cooperate by deallocating all of our graphic resources.
             // The context is no longer current once the window is gone, so GL deletes are

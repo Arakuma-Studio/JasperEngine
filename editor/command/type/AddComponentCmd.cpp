@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "AddComponentCmd.h"
+#include "component/ActionComponent.h"
+#include "component/ParticleSystemComponent.h"
 
 #include "Out.h"
 #include "component/Light2DComponent.h"
@@ -48,6 +50,25 @@ bool editor::AddComponentCmd::execute() {
             if (componentType == ComponentType::TrailRendererComponent){
                 if (TrailRendererComponent* trail = scene->findComponent<TrailRendererComponent>(entity)){
                     ProjectUtils::setupNewTrailRenderer(*trail, sceneProject->sceneType != SceneType::SCENE_3D);
+                }
+            }
+
+            // a Particle System added in the editor is Unity's (version 2 modules) drawing on its
+            // own GameObject's renderer (a Mesh's instances or Points); the loader's and the
+            // scripts' default stays version 1
+            if (componentType == ComponentType::ParticleSystemComponent){
+                if (ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity)){
+                    *ps = ParticleSystemComponent();
+                    ps->version = 2;
+                    if (sceneProject->sceneType != SceneType::SCENE_3D){
+                        ps->main.startSpeed = MinMaxCurve(200.0f);
+                        ps->main.startSize = MinMaxCurve(40.0f);
+                        ps->main.gravitySource = ParticleSystemGravitySource::Physics2D;
+                        ps->shape.radius = 40.0f;
+                    }
+                }
+                if (ActionComponent* action = scene->findComponent<ActionComponent>(entity)){
+                    if (action->target == NULL_ENTITY) action->target = entity;
                 }
             }
 

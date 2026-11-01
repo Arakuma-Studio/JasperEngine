@@ -364,8 +364,8 @@ TEST_F(VideoPlayerSystemTest, MaterialOverrideIsRestored){
 
 TEST(VideoPlayerComponent, CatalogAndNames){
     const ComponentType type = ComponentType::VideoPlayerComponent;
-    // appended after the Canvas Group (prefab override masks use the ordinal)
-    EXPECT_EQ(static_cast<int>(type), static_cast<int>(ComponentType::CanvasGroupComponent) + 1);
+    // appended after the on-screen controls (prefab override masks use the ordinal)
+    EXPECT_EQ(static_cast<int>(type), static_cast<int>(ComponentType::TouchAreaComponent) + 1);
     EXPECT_GE(static_cast<int>(LastComponentType), static_cast<int>(type));
     EXPECT_EQ(Catalog::getComponentName(type, true), "videoplayer");
     EXPECT_EQ(Catalog::getComponentDisplayName(type), "Video Player");

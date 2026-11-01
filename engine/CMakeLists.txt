@@ -361,6 +361,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/JasperEngineWin.cpp
             ${PLATFORM_ROOT}/WindowWin.cpp
             ${PLATFORM_ROOT}/SystemWin.cpp
+            ${PLATFORM_ROOT}/HostServicesWin.cpp
             ${PLATFORM_ROOT}/WinInputRouter.cpp
             ${PLATFORM_ROOT}/GamepadWin.cpp
             ${PLATFORM_ROOT}/main.cpp
@@ -371,7 +372,13 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             gdi32
             shell32
             imm32 # IME composition for HTML UI text fields (WinInputRouter)
+            ole32 # INetworkListManager (System.getInternetReachability)
+            uuid
+            advapi32 # the BIOS product name (System.getDeviceModel)
         )
+
+        # HostServices.h, shared with the editor
+        include_directories(${JASPERENGINE_ROOT}/platform/common)
 
         if(GRAPHIC_BACKEND STREQUAL "vulkan")
             # Device and swapchain are shared with the other desktops
@@ -433,6 +440,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/JasperEngineLinux.cpp
             ${PLATFORM_ROOT}/WindowLinux.cpp
             ${PLATFORM_ROOT}/SystemLinux.cpp
+            ${PLATFORM_ROOT}/HostServicesLinux.cpp
             ${PLATFORM_ROOT}/LinuxInputRouter.cpp
             ${PLATFORM_ROOT}/GamepadLinux.cpp
             ${PLATFORM_ROOT}/GamepadDB.cpp
@@ -547,12 +555,15 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
             # Gamepads come from the same GameController code iOS and the editor use
             include_directories(${JASPERENGINE_ROOT}/platform/apple)
+            # HostServices.h, shared with the editor
+            include_directories(${JASPERENGINE_ROOT}/platform/common)
 
             list(APPEND PLATFORM_SOURCE
                 ${PLATFORM_ROOT}/JasperEngineMac.h
                 ${PLATFORM_ROOT}/JasperEngineMac.mm
                 ${PLATFORM_ROOT}/WindowMac.mm
                 ${PLATFORM_ROOT}/SystemMac.mm
+                ${PLATFORM_ROOT}/HostServicesMac.mm
                 ${PLATFORM_ROOT}/MacInputRouter.mm
                 ${PLATFORM_ROOT}/MacTextInputClient.mm
                 ${PLATFORM_ROOT}/main.mm
@@ -878,12 +889,14 @@ endif()
 
 set(JASPERENGINE_SRCS
     core/Engine.cpp
+    core/EngineTime.cpp
     core/Input.cpp
     core/input/InputActions.cpp
     core/input/InputControlNames.cpp
     core/Log.cpp
     core/Scene.cpp
     core/SceneSettings.cpp
+    core/Screen.cpp
     core/System.cpp
     core/action/Action.cpp
     core/action/AlphaTween.cpp
@@ -903,6 +916,10 @@ set(JASPERENGINE_SRCS
     core/action/keyframe/TranslateTracks.cpp
     core/animation/AnimationClip.cpp
     core/animation/AnimationClipIO.cpp
+    core/animation/AnimJson.cpp
+    core/animation/AvatarMask.cpp
+    core/animation/AnimatorController.cpp
+    core/animation/AnimatorControllerPlayback.cpp
     core/animation/AnimationEvent.cpp
     core/animation/AnimationPlayerRuntime.cpp
     core/animation/VertexAnimatorRuntime.cpp
@@ -965,6 +982,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/vector/LottiePlayback.cpp
     core/htmlui/vector/UIElementLottie.cpp
     core/htmlui/vector/UILottieElement.cpp
+    core/htmlui/controls/OnScreenControls.cpp
     core/media/Av1Decoder.cpp
     core/media/GrowingFileReader.cpp
     core/media/MediaByteSource.cpp
@@ -1022,6 +1040,13 @@ set(JASPERENGINE_SRCS
     core/math/Vector2.cpp
     core/math/Vector3.cpp
     core/math/Vector4.cpp
+    core/particles/MinMax.cpp
+    core/particles/ParticleFields.cpp
+    core/particles/ParticleModules.cpp
+    core/particles/ParticleNoise.cpp
+    core/particles/ParticleShapes.cpp
+    core/particles/ParticleSimulation.cpp
+    core/particles/ParticleUpgrade.cpp
     core/object/Bone.cpp
     core/object/Camera.cpp
     core/object/EntityHandle.cpp
@@ -1052,6 +1077,7 @@ set(JASPERENGINE_SRCS
     core/object/environment/Skybox.cpp
     core/object/environment/Water.cpp
     core/object/ui/Button.cpp
+    core/object/ui/OnScreenControls.cpp
     core/object/ui/LayoutGroup.cpp
     core/object/ui/CanvasGroup.cpp
     core/object/ui/Image.cpp
@@ -1078,12 +1104,17 @@ set(JASPERENGINE_SRCS
     core/pool/MeshLodPool.cpp
     core/pool/MeshBufferPool.cpp
     core/pool/AnimationClipPool.cpp
+    core/pool/AvatarMaskPool.cpp
+    core/pool/AnimatorControllerPool.cpp
     core/pool/PhysicsMaterialPool.cpp
     core/pool/VertexAnimationPool.cpp
+    core/object/physics/Collision.cpp
+    core/object/physics/Collision2D.cpp
     core/registry/EntityCloner.cpp
     core/registry/EntityRegistry.cpp
     core/registry/TagManager.cpp
     core/registry/PhysicsLayers.cpp
+    core/physics/ContactTracker.cpp
     core/physics/ConvexDecomposition.cpp
     core/physics/JoltShapeBuilder.cpp
     core/physics/PhysicsDebugLines.cpp
@@ -1106,6 +1137,7 @@ set(JASPERENGINE_SRCS
     core/script/LuaJson.cpp
     core/script/LuaScript.cpp
     core/script/ScriptBase.cpp
+    core/script/ScriptScheduler.cpp
     core/script/ScriptEvent.cpp
     core/script/ScriptMessages.cpp
     core/script/ScriptProperty.cpp
@@ -1116,6 +1148,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/IOClassesLua.cpp
     core/script/binding/MathClassesLua.cpp
     core/script/binding/NetClassesLua.cpp
+    core/script/binding/ParticleClassesLua.cpp
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
@@ -1123,6 +1156,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/UtilClassesLua.cpp
     core/script/binding/HtmlUIClassesLua.cpp
     core/script/binding/HtmlUIAnimeLua.cpp
+    core/script/binding/CoroutineClassesLua.cpp
     core/script/binding/ScriptClassesLua.cpp
     core/shader/RuntimeShaderCompiler.cpp
     core/shader/ShaderData.cpp
@@ -1133,7 +1167,10 @@ set(JASPERENGINE_SRCS
     core/shader/ShaderVariantCollection.cpp
     core/shader/ShaderVariantCompiler.cpp
     core/subsystem/ActionSystem.cpp
+    core/subsystem/ActionSystemParticles.cpp
     core/subsystem/ActionSystemPlayers.cpp
+    core/subsystem/ActionSystemLayers.cpp
+    core/subsystem/ActionSystemController.cpp
     core/subsystem/PoseAnimatorSystem.cpp
     core/subsystem/VertexAnimatorSystem.cpp
     core/subsystem/TrailSystem.cpp
@@ -1148,11 +1185,13 @@ set(JASPERENGINE_SRCS
     core/lattice/LatticePresets.cpp
     core/lattice/LatticeRender.cpp
     core/subsystem/PhysicsSystem.cpp
+    core/subsystem/PhysicsSystemContacts.cpp
     core/subsystem/PhysicsSystemJoints3D.cpp
     core/subsystem/PhysicsSystemRagdoll.cpp
     core/subsystem/PhysicsSystemDebugDraw.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/UISystem.cpp
+    core/subsystem/UISystemPointer.cpp
     core/subsystem/UIDocumentSystem.cpp
     core/subsystem/UIDocumentSystemRender.cpp
     core/subsystem/UIDocumentSystemInput.cpp
@@ -1172,8 +1211,10 @@ set(JASPERENGINE_SRCS
     core/util/Color.cpp
     core/util/FontFace.cpp
     core/util/FontRegistry.cpp
+    core/util/FrameLimiter.cpp
     core/util/GlyphAtlas.cpp
     core/util/LunaSVGRuntime.cpp
+    core/util/PlatformRules.cpp
     core/util/NumberText.cpp
     core/util/PostColorLut.cpp
     core/util/STBText.cpp

@@ -50,6 +50,7 @@ TEST(AnimationClipContract, CatalogKnowsTheAnimationPlayer){
     // appended after it (prefab override masks use the ordinal): the Vertex Animator next, later
     // types (the Video Player, ...) after them
     EXPECT_EQ(static_cast<int>(ComponentType::VertexAnimatorComponent), static_cast<int>(ComponentType::AnimationPlayerComponent) + 1);
+    // later features append after it (the on-screen controls, ui-multitouch)
     EXPECT_GE(static_cast<int>(LastComponentType), static_cast<int>(ComponentType::VertexAnimatorComponent));
     EXPECT_EQ(ComponentTypeCount, static_cast<int>(LastComponentType) + 1);
     EXPECT_EQ(Catalog::getComponentType("animationplayer"), ComponentType::AnimationPlayerComponent);

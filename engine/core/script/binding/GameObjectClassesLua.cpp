@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "LuaBinding.h"
+#include "component/ActionComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "action/ParticleSystem.h"
 
 #include "lua.hpp"
 
@@ -48,6 +51,9 @@
 #include "Scrollbar.h"
 #include "Progressbar.h"
 #include "InputField.h"
+#include "OnScreenControls.h"
+
+#include <algorithm>
 #include "LayoutGroup.h"
 #include "object/ui/CanvasGroup.h"
 #include "AudioSource.h"
@@ -62,6 +68,7 @@
 #include "Joint2D.h"
 #include "Contact2D.h"
 #include "Manifold2D.h"
+#include "Collision2D.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "Rigidbody.h"
@@ -69,10 +76,55 @@
 #include "Ragdoll.h"
 #include "Contact3D.h"
 #include "CollideShapeResult3D.h"
+#include "Collision.h"
 #include <stdexcept>
 #endif
 
 using namespace jasperengine;
+
+// The contact callbacks' values (physics-contacts): what they name may be gone since (nil then)
+namespace {
+
+    template<typename Ref>
+    std::optional<GameObject> luaColliderGameObject(const Ref& ref){
+        return ref.hasGameObject() ? std::optional<GameObject>(ref.getGameObject()) : std::nullopt;
+    }
+
+    template<typename Ref>
+    std::optional<GameObject> luaColliderReceiver(const Ref& ref){
+        const Entity receiver = ref.getReceiver();
+        return receiver != NULL_ENTITY ? std::optional<GameObject>(GameObject(ref.scene, receiver)) : std::nullopt;
+    }
+
+    // a new 1-based table of the contact points
+    template<typename CollisionT>
+    luabridge::LuaRef luaContactsTable(const CollisionT* self, lua_State* L){
+        luabridge::LuaRef table = luabridge::newTable(L);
+        for (size_t i = 0; i < self->contacts.size(); i++){
+            table[(int)i + 1] = self->contacts[i];
+        }
+        return table;
+    }
+
+    // getContact(i): 0-based, an error out of range (Unity throws)
+    template<typename CollisionT>
+    int luaGetContact(lua_State* L){
+        auto self = luabridge::get<const CollisionT*>(L, 1);
+        if (!self || !self.value()){
+            return luaL_error(L, "getContact: call it on a collision (collision:getContact(i))");
+        }
+        const lua_Integer index = luaL_checkinteger(L, 2);
+        const CollisionT* collision = self.value();
+        if (index < 0 || (size_t)index >= collision->contacts.size()){
+            return luaL_error(L, "getContact(%d): index out of range, the collision has %d contacts (0-based)", (int)index, (int)collision->contacts.size());
+        }
+        if (!luabridge::push(L, collision->contacts[(size_t)index])){
+            lua_pushnil(L);
+        }
+        return 1;
+    }
+
+}
 
 // Layer masks read as Unity's int (Everything is -1) and take any integer, keeping its
 // low 32 bits, so both -1 and ~LayerMask.getMask("UI") work
@@ -497,6 +549,41 @@ namespace {
     }
 }
 
+namespace {
+
+    // the GameObject's own Particle System, else (the legacy layout) the system drawing on it
+    Entity particleSystemOf(Scene* scene, Entity entity){
+        if (scene->findComponent<ParticleSystemComponent>(entity)) return entity;
+        auto systems = scene->getComponentArray<ParticleSystemComponent>();
+        for (size_t i = 0; i < systems->size(); i++){
+            const Entity system = systems->getEntity(i);
+            const ActionComponent* action = scene->findComponent<ActionComponent>(system);
+            if (action && action->target == entity) return system;
+        }
+        return NULL_ENTITY;
+    }
+
+    // the GameObject and its descendants in hierarchy (Transform) order
+    std::vector<Entity> hierarchyOf(Scene* scene, Entity root){
+        std::vector<Entity> out{root};
+        auto transforms = scene->getComponentArray<Transform>();
+        if (!transforms->hasEntity(root)) return out;
+        for (size_t i = transforms->getIndex(root) + 1; i < transforms->size(); i++){
+            Entity parent = transforms->getComponentFromIndex(i).parent;
+            bool descendant = false;
+            while (parent != NULL_ENTITY){
+                if (parent == root){ descendant = true; break; }
+                const Transform* t = scene->findComponent<Transform>(parent);
+                parent = t ? t->parent : NULL_ENTITY;
+            }
+            if (!descendant) break;
+            out.push_back(transforms->getEntity(i));
+        }
+        return out;
+    }
+
+}
+
 void LuaBinding::registerGameObjectClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
 
@@ -877,6 +964,15 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             }
             return AnimationPlayer(scene, self->getEntity());
         })
+        // Unity's Animator: the Animation Player (with or without a Controller)
+        .addFunction("getAnimator", +[](GameObject* self) -> std::optional<AnimationPlayer> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<AnimationPlayerComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return AnimationPlayer(scene, self->getEntity());
+        })
         .addFunction("hasAnimationPlayer", +[](GameObject* self) -> bool {
             Scene* scene = self->getScene();
             return scene && scene->isEntityCreated(self->getEntity()) &&
@@ -909,6 +1005,27 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             Scene* scene = self->getScene();
             return scene && scene->isEntityCreated(self->getEntity()) &&
                    scene->findComponent<TrailRendererComponent>(self->getEntity()) != nullptr;
+        })
+        // the Particle System of the GameObject (Unity's GetComponent<ParticleSystem>): its own, or
+        // in the legacy layout the system drawing on it; nil without one
+        .addFunction("getParticleSystem", +[](GameObject* self) -> std::optional<ParticleSystem> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity())) return std::nullopt;
+            const Entity system = particleSystemOf(scene, self->getEntity());
+            if (system == NULL_ENTITY) return std::nullopt;
+            return ParticleSystem(scene, system);
+        })
+        // the Particle Systems of the GameObject and its children, in hierarchy order (Unity's
+        // GetComponentsInChildren<ParticleSystem>)
+        .addFunction("getParticleSystemsInChildren", +[](GameObject* self) -> std::vector<ParticleSystem> {
+            std::vector<ParticleSystem> systems;
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity())) return systems;
+            for (Entity entity : hierarchyOf(scene, self->getEntity())){
+                const Entity system = particleSystemOf(scene, entity);
+                if (system != NULL_ENTITY) systems.push_back(ParticleSystem(scene, system));
+            }
+            return systems;
         })
         // Unity's AddComponent<TrailRenderer>(): its Trail Renderer, added when it has none
         .addFunction("addTrailRenderer", +[](GameObject* self) -> std::optional<TrailRenderer> {
@@ -2381,6 +2498,66 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getInputFieldComponent", &InputField::getComponent<InputFieldComponent>)
         .endClass();
 
+    // ui-multitouch: the on-screen controls (input sources feeding Input actions)
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<OnScreenStick, Image>("OnScreenStick")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", [] (const OnScreenStick* self) -> bool { return self->getStick().enabled; }, [] (OnScreenStick* self, bool value) { self->getStick().enabled = value; })
+        .addProperty("mode", [] (const OnScreenStick* self) -> OnScreenStickMode { return self->getStick().mode; }, [] (OnScreenStick* self, OnScreenStickMode value) { self->getStick().mode = value; })
+        .addProperty("background", [] (const OnScreenStick* self) -> Entity { return self->getStick().background; }, [] (OnScreenStick* self, Entity value) { self->getStick().background = value; })
+        .addProperty("handle", [] (const OnScreenStick* self) -> Entity { return self->getStick().handle; }, [] (OnScreenStick* self, Entity value) { self->getStick().handle = value; })
+        .addProperty("handleRange", [] (const OnScreenStick* self) -> float { return self->getStick().handleRange; }, [] (OnScreenStick* self, float value) { self->getStick().handleRange = std::max(0.0f, value); })
+        .addProperty("deadZone", [] (const OnScreenStick* self) -> float { return self->getStick().deadZone; }, [] (OnScreenStick* self, float value) { self->getStick().deadZone = std::max(0.0f, std::min(1.0f, value)); })
+        .addProperty("moveThreshold", [] (const OnScreenStick* self) -> float { return self->getStick().moveThreshold; }, [] (OnScreenStick* self, float value) { self->getStick().moveThreshold = std::max(0.0f, value); })
+        .addProperty("axes", [] (const OnScreenStick* self) -> OnScreenStickAxes { return self->getStick().axes; }, [] (OnScreenStick* self, OnScreenStickAxes value) { self->getStick().axes = value; })
+        .addProperty("snapX", [] (const OnScreenStick* self) -> bool { return self->getStick().snapX; }, [] (OnScreenStick* self, bool value) { self->getStick().snapX = value; })
+        .addProperty("snapY", [] (const OnScreenStick* self) -> bool { return self->getStick().snapY; }, [] (OnScreenStick* self, bool value) { self->getStick().snapY = value; })
+        .addProperty("hideWhenReleased", [] (const OnScreenStick* self) -> bool { return self->getStick().hideWhenReleased; }, [] (OnScreenStick* self, bool value) { self->getStick().hideWhenReleased = value; })
+        .addProperty("clampToArea", [] (const OnScreenStick* self) -> bool { return self->getStick().clampToArea; }, [] (OnScreenStick* self, bool value) { self->getStick().clampToArea = value; })
+        .addProperty("horizontalAction", [] (const OnScreenStick* self) -> std::string { return self->getStick().horizontalAction; }, [] (OnScreenStick* self, std::string value) { self->getStick().horizontalAction = value; })
+        .addProperty("verticalAction", [] (const OnScreenStick* self) -> std::string { return self->getStick().verticalAction; }, [] (OnScreenStick* self, std::string value) { self->getStick().verticalAction = value; })
+        .addProperty("visibility", [] (const OnScreenStick* self) -> OnScreenVisibility { return self->getStick().visibility; }, [] (OnScreenStick* self, OnScreenVisibility value) { self->getStick().visibility = value; })
+        .addProperty("value", [] (const OnScreenStick* self) -> Vector2 { return self->getStick().value; })
+        .addProperty("pressed", [] (const OnScreenStick* self) -> bool { return self->getStick().pressed; })
+        .addProperty("pointerId", [] (const OnScreenStick* self) -> int { return self->getStick().pointerId; })
+        .addProperty("onValueChanged", [] (OnScreenStick* self, lua_State* L) { return &self->getStick().onValueChanged; }, [] (OnScreenStick* self, lua_State* L) { self->getStick().onValueChanged = L; })
+        .addProperty("onPress", [] (OnScreenStick* self, lua_State* L) { return &self->getStick().onPress; }, [] (OnScreenStick* self, lua_State* L) { self->getStick().onPress = L; })
+        .addProperty("onRelease", [] (OnScreenStick* self, lua_State* L) { return &self->getStick().onRelease; }, [] (OnScreenStick* self, lua_State* L) { self->getStick().onRelease = L; })
+        .addFunction("getOnScreenStickComponent", &OnScreenStick::getComponent<OnScreenStickComponent>)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<OnScreenButton, Image>("OnScreenButton")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", [] (const OnScreenButton* self) -> bool { return self->getControl().enabled; }, [] (OnScreenButton* self, bool value) { self->getControl().enabled = value; })
+        .addProperty("action", [] (const OnScreenButton* self) -> std::string { return self->getControl().action; }, [] (OnScreenButton* self, std::string value) { self->getControl().action = value; })
+        .addProperty("value", [] (const OnScreenButton* self) -> float { return self->getControl().value; }, [] (OnScreenButton* self, float value) { self->getControl().value = std::max(-1.0f, std::min(1.0f, value)); })
+        .addProperty("pressWhenPointerEnters", [] (const OnScreenButton* self) -> bool { return self->getControl().pressWhenPointerEnters; }, [] (OnScreenButton* self, bool value) { self->getControl().pressWhenPointerEnters = value; })
+        .addProperty("releaseWhenPointerLeaves", [] (const OnScreenButton* self) -> bool { return self->getControl().releaseWhenPointerLeaves; }, [] (OnScreenButton* self, bool value) { self->getControl().releaseWhenPointerLeaves = value; })
+        .addProperty("visibility", [] (const OnScreenButton* self) -> OnScreenVisibility { return self->getControl().visibility; }, [] (OnScreenButton* self, OnScreenVisibility value) { self->getControl().visibility = value; })
+        .addProperty("pressed", [] (const OnScreenButton* self) -> bool { return self->getControl().pressed; })
+        .addProperty("onPress", [] (OnScreenButton* self, lua_State* L) { return &self->getControl().onPress; }, [] (OnScreenButton* self, lua_State* L) { self->getControl().onPress = L; })
+        .addProperty("onRelease", [] (OnScreenButton* self, lua_State* L) { return &self->getControl().onRelease; }, [] (OnScreenButton* self, lua_State* L) { self->getControl().onRelease = L; })
+        .addFunction("getOnScreenButtonComponent", &OnScreenButton::getComponent<OnScreenButtonComponent>)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<TouchArea, Image>("TouchArea")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", [] (const TouchArea* self) -> bool { return self->getArea().enabled; }, [] (TouchArea* self, bool value) { self->getArea().enabled = value; })
+        .addProperty("horizontalAction", [] (const TouchArea* self) -> std::string { return self->getArea().horizontalAction; }, [] (TouchArea* self, std::string value) { self->getArea().horizontalAction = value; })
+        .addProperty("verticalAction", [] (const TouchArea* self) -> std::string { return self->getArea().verticalAction; }, [] (TouchArea* self, std::string value) { self->getArea().verticalAction = value; })
+        .addProperty("sensitivity", [] (const TouchArea* self) -> float { return self->getArea().sensitivity; }, [] (TouchArea* self, float value) { self->getArea().sensitivity = value; })
+        .addProperty("invertX", [] (const TouchArea* self) -> bool { return self->getArea().invertX; }, [] (TouchArea* self, bool value) { self->getArea().invertX = value; })
+        .addProperty("invertY", [] (const TouchArea* self) -> bool { return self->getArea().invertY; }, [] (TouchArea* self, bool value) { self->getArea().invertY = value; })
+        .addProperty("visibility", [] (const TouchArea* self) -> OnScreenVisibility { return self->getArea().visibility; }, [] (TouchArea* self, OnScreenVisibility value) { self->getArea().visibility = value; })
+        .addProperty("delta", [] (const TouchArea* self) -> Vector2 { return self->getArea().delta; })
+        .addProperty("pressed", [] (const TouchArea* self) -> bool { return self->getArea().pressed; })
+        .addProperty("pointerId", [] (const TouchArea* self) -> int { return self->getArea().pointerId; })
+        .addProperty("onDrag", [] (TouchArea* self, lua_State* L) { return &self->getArea().onDrag; }, [] (TouchArea* self, lua_State* L) { self->getArea().onDrag = L; })
+        .addFunction("getTouchAreaComponent", &TouchArea::getComponent<TouchAreaComponent>)
+        .endClass();
+
     luabridge::getGlobalNamespace(L)
         .deriveClass<PoseAnimator, EntityHandle>("PoseAnimator")
         .addConstructor <void (*) (Scene*, Entity)> ()
@@ -2456,7 +2633,34 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("length", &AnimationState::getLength)
         .addProperty("wrap", &AnimationState::getWrap, &AnimationState::setWrap)
         .addProperty("enabled", &AnimationState::isEnabled, &AnimationState::setEnabled)
+        // the layer the state plays on (a runtime move: it keeps its time and weight)
+        .addProperty("layer", &AnimationState::getLayer, &AnimationState::setLayer)
+        // Unity AddMixingTransform: the state then animates only these paths (recursive: and below)
+        .addFunction("addMixingTransform",
+            luabridge::overload<const std::string&>(&AnimationState::addMixingTransform),
+            luabridge::overload<const std::string&, bool>(&AnimationState::addMixingTransform))
+        .addFunction("removeMixingTransform", &AnimationState::removeMixingTransform)
+        .addFunction("clearMixingTransforms", &AnimationState::clearMixingTransforms)
         .endClass();
+
+    // Unity's AnimatorStateInfo (a copy): AnimationPlayer:getCurrentStateInfo / getNextStateInfo
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AnimatorStateInfo>("AnimatorStateInfo")
+        .addProperty("isValid", &AnimatorStateInfo::isValid)
+        .addProperty("name", &AnimatorStateInfo::name)
+        .addProperty("fullName", &AnimatorStateInfo::fullName)
+        .addProperty("normalizedTime", &AnimatorStateInfo::normalizedTime)
+        .addProperty("length", &AnimatorStateInfo::length)
+        .addProperty("speed", &AnimatorStateInfo::speed)
+        .addProperty("loop", &AnimatorStateInfo::loop)
+        .endClass();
+
+    // Unity's PlayMode: what play / crossFade stop
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PlayMode")
+        .addVariable("STOP_SAME_LAYER", PlayMode::StopSameLayer)
+        .addVariable("STOP_ALL", PlayMode::StopAll)
+        .endNamespace();
 
     // Unity's legacy Animation component: clips played with fades, blends and queues
     luabridge::getGlobalNamespace(L)
@@ -2464,10 +2668,17 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addConstructor <void (*) (Scene*, Entity)> ()
         .addFunction("play",
             luabridge::overload<const std::string&>(&AnimationPlayer::play),
-            luabridge::overload<const std::string&, float>(&AnimationPlayer::play))
+            luabridge::overload<const std::string&, float>(&AnimationPlayer::play),
+            luabridge::overload<const std::string&, float, PlayMode>(&AnimationPlayer::play))
         .addFunction("crossFade",
             luabridge::overload<const std::string&>(&AnimationPlayer::crossFade),
-            luabridge::overload<const std::string&, float>(&AnimationPlayer::crossFade))
+            luabridge::overload<const std::string&, float>(&AnimationPlayer::crossFade),
+            luabridge::overload<const std::string&, float, PlayMode>(&AnimationPlayer::crossFade))
+        // Unity's Animator.Play(name, layer, normalizedTime) / CrossFadeInFixedTime(name, seconds, layer)
+        .addFunction("playInLayer",
+            luabridge::overload<const std::string&, int>(&AnimationPlayer::playInLayer),
+            luabridge::overload<const std::string&, int, float>(&AnimationPlayer::playInLayer))
+        .addFunction("crossFadeInLayer", &AnimationPlayer::crossFadeInLayer)
         .addFunction("blend",
             luabridge::overload<const std::string&, float>(&AnimationPlayer::blend),
             luabridge::overload<const std::string&, float, float>(&AnimationPlayer::blend))
@@ -2497,6 +2708,73 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("playAutomatically", &AnimationPlayer::isPlayAutomatically, &AnimationPlayer::setPlayAutomatically)
         .addProperty("enabled", &AnimationPlayer::isEnabled, &AnimationPlayer::setEnabled)
         .addFunction("isLoaded", &AnimationPlayer::isLoaded)
+        // layers (index 0 is the base layer; a layer is an index or a name)
+        .addFunction("getLayerCount", &AnimationPlayer::getLayerCount)
+        .addFunction("getLayerName", &AnimationPlayer::getLayerName)
+        .addFunction("getLayerIndex", &AnimationPlayer::getLayerIndex)
+        .addFunction("addLayer",
+            luabridge::overload<const std::string&>(&AnimationPlayer::addLayer),
+            luabridge::overload<const std::string&, float>(&AnimationPlayer::addLayer),
+            luabridge::overload<const std::string&, float, const std::string&>(&AnimationPlayer::addLayer),
+            luabridge::overload<const std::string&, float, const std::string&, const std::string&>(&AnimationPlayer::addLayer))
+        .addFunction("removeLayer",
+            luabridge::overload<int>(&AnimationPlayer::removeLayer),
+            luabridge::overload<const std::string&>(&AnimationPlayer::removeLayer))
+        .addFunction("setLayerWeight",
+            luabridge::overload<int, float>(&AnimationPlayer::setLayerWeight),
+            luabridge::overload<int, float, float>(&AnimationPlayer::setLayerWeight),
+            luabridge::overload<const std::string&, float>(&AnimationPlayer::setLayerWeight),
+            luabridge::overload<const std::string&, float, float>(&AnimationPlayer::setLayerWeight))
+        .addFunction("getLayerWeight",
+            luabridge::constOverload<int>(&AnimationPlayer::getLayerWeight),
+            luabridge::constOverload<const std::string&>(&AnimationPlayer::getLayerWeight))
+        .addFunction("setLayerMask",
+            luabridge::overload<int, const std::string&>(&AnimationPlayer::setLayerMask),
+            luabridge::overload<const std::string&, const std::string&>(&AnimationPlayer::setLayerMask))
+        .addFunction("getLayerMask",
+            luabridge::constOverload<int>(&AnimationPlayer::getLayerMask),
+            luabridge::constOverload<const std::string&>(&AnimationPlayer::getLayerMask))
+        .addFunction("setLayerBlendMode",
+            luabridge::overload<int, const std::string&>(&AnimationPlayer::setLayerBlendMode),
+            luabridge::overload<const std::string&, const std::string&>(&AnimationPlayer::setLayerBlendMode))
+        .addFunction("getLayerBlendMode",
+            luabridge::constOverload<int>(&AnimationPlayer::getLayerBlendMode),
+            luabridge::constOverload<const std::string&>(&AnimationPlayer::getLayerBlendMode))
+        .addFunction("stopLayer",
+            luabridge::overload<int>(&AnimationPlayer::stopLayer),
+            luabridge::overload<int, float>(&AnimationPlayer::stopLayer),
+            luabridge::overload<const std::string&>(&AnimationPlayer::stopLayer),
+            luabridge::overload<const std::string&, float>(&AnimationPlayer::stopLayer))
+        // Animator Controller (Unity's Animator): the controller asset and its parameters
+        .addProperty("controller", &AnimationPlayer::getController, &AnimationPlayer::setController)
+        .addFunction("hasController", &AnimationPlayer::hasController)
+        .addFunction("setFloat",
+            luabridge::overload<const std::string&, float>(&AnimationPlayer::setFloat),
+            luabridge::overload<const std::string&, float, float>(&AnimationPlayer::setFloat))
+        .addFunction("getFloat", &AnimationPlayer::getFloat)
+        .addFunction("setInteger", &AnimationPlayer::setInteger)
+        .addFunction("getInteger", &AnimationPlayer::getInteger)
+        .addFunction("setBool", &AnimationPlayer::setBool)
+        .addFunction("getBool", &AnimationPlayer::getBool)
+        .addFunction("setTrigger", &AnimationPlayer::setTrigger)
+        .addFunction("resetTrigger", &AnimationPlayer::resetTrigger)
+        .addFunction("hasParameter", &AnimationPlayer::hasParameter)
+        .addFunction("getParameterType", &AnimationPlayer::getParameterType)
+        .addFunction("getCurrentStateName",
+            luabridge::constOverload<>(&AnimationPlayer::getCurrentStateName),
+            luabridge::constOverload<int>(&AnimationPlayer::getCurrentStateName))
+        .addFunction("getCurrentStateInfo",
+            luabridge::constOverload<>(&AnimationPlayer::getCurrentStateInfo),
+            luabridge::constOverload<int>(&AnimationPlayer::getCurrentStateInfo))
+        .addFunction("getNextStateInfo",
+            luabridge::constOverload<>(&AnimationPlayer::getNextStateInfo),
+            luabridge::constOverload<int>(&AnimationPlayer::getNextStateInfo))
+        .addFunction("isInTransition",
+            luabridge::constOverload<>(&AnimationPlayer::isInTransition),
+            luabridge::constOverload<int>(&AnimationPlayer::isInTransition))
+        // functions called with (layer, state name) when a controller state is entered / exited
+        .addProperty("onStateEnter", [] (AnimationPlayer* self, lua_State*) { return &self->getOnStateEnter(); }, [] (AnimationPlayer* self, lua_State* L) { self->getOnStateEnter() = L; })
+        .addProperty("onStateExit", [] (AnimationPlayer* self, lua_State*) { return &self->getOnStateExit(); }, [] (AnimationPlayer* self, lua_State* L) { self->getOnStateExit() = L; })
         // a function called with an AnimationEvent when a clip event fires
         .addProperty("onEvent", [] (AnimationPlayer* self, lua_State*) { return &self->getOnEvent(); }, [] (AnimationPlayer* self, lua_State* L) { self->getOnEvent() = L; })
         // a function called with the state name when a once state ends (or a clamp_forever one first reaches its end)
@@ -3048,6 +3326,51 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getBodyB", &Contact2D::getBodyB)
         .addFunction("getColliderIndexB", &Contact2D::getColliderIndexB)
         .endClass();
+    // physics-contacts: what onCollisionEnter2D / onTriggerEnter2D... get. Unity's Collision2D
+    // names the other side collider / rigidbody and this side otherCollider / otherRigidbody;
+    // thisCollider / thisRigidbody say it plainly.
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ColliderRef2D>("Collider2D")
+        .addProperty("gameObject", [] (const ColliderRef2D* self) -> std::optional<GameObject> { return luaColliderGameObject(*self); })
+        .addProperty("rigidbody", [] (const ColliderRef2D* self) -> std::optional<Rigidbody2D> { return self->hasRigidbody() ? std::optional<Rigidbody2D>(self->getRigidbody()) : std::nullopt; })
+        .addProperty("attachedRigidbody", [] (const ColliderRef2D* self) -> std::optional<Rigidbody2D> { return self->hasRigidbody() ? std::optional<Rigidbody2D>(self->getRigidbody()) : std::nullopt; })
+        .addProperty("index", &ColliderRef2D::getIndex)
+        .addProperty("type", &ColliderRef2D::getType)
+        .addProperty("isTrigger", &ColliderRef2D::isTrigger)
+        .addProperty("tag", &ColliderRef2D::getTag)
+        .addFunction("compareTag", &ColliderRef2D::compareTag)
+        .addProperty("receiver", [] (const ColliderRef2D* self) -> std::optional<GameObject> { return luaColliderReceiver(*self); })
+        .addFunction("isValid", &ColliderRef2D::isValid)
+        .addFunction("__eq", [] (const ColliderRef2D* self, const ColliderRef2D* other) { return other && *self == *other; })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ContactPoint2D>("ContactPoint2D")
+        .addProperty("point", &ContactPoint2D::getPoint)
+        .addProperty("normal", &ContactPoint2D::getNormal)
+        .addProperty("separation", &ContactPoint2D::getSeparation)
+        .addProperty("normalImpulse", &ContactPoint2D::getNormalImpulse)
+        .addProperty("tangentImpulse", &ContactPoint2D::getTangentImpulse)
+        .addProperty("relativeVelocity", &ContactPoint2D::getRelativeVelocity)
+        .addProperty("thisCollider", &ContactPoint2D::getThisCollider)
+        .addProperty("otherCollider", &ContactPoint2D::getOtherCollider)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<Collision2D>("Collision2D")
+        .addProperty("gameObject", [] (const Collision2D* self) -> std::optional<GameObject> { return luaColliderGameObject(self->otherCollider); })
+        .addProperty("collider", &Collision2D::getCollider)
+        .addProperty("rigidbody", [] (const Collision2D* self) -> std::optional<Rigidbody2D> { return self->otherCollider.hasRigidbody() ? std::optional<Rigidbody2D>(self->getRigidbody()) : std::nullopt; })
+        .addProperty("otherCollider", &Collision2D::getThisCollider)
+        .addProperty("otherRigidbody", [] (const Collision2D* self) -> std::optional<Rigidbody2D> { return self->thisCollider.hasRigidbody() ? std::optional<Rigidbody2D>(self->getThisRigidbody()) : std::nullopt; })
+        .addProperty("thisCollider", &Collision2D::getThisCollider)
+        .addProperty("thisRigidbody", [] (const Collision2D* self) -> std::optional<Rigidbody2D> { return self->thisCollider.hasRigidbody() ? std::optional<Rigidbody2D>(self->getThisRigidbody()) : std::nullopt; })
+        .addProperty("relativeVelocity", &Collision2D::getRelativeVelocity)
+        .addProperty("enabled", &Collision2D::isEnabled)
+        .addProperty("contactCount", &Collision2D::getContactCount)
+        .addFunction("getContact", &luaGetContact<Collision2D>)
+        .addProperty("contacts", [] (const Collision2D* self, lua_State* L) -> luabridge::LuaRef { return luaContactsTable(self, L); })
+        .endClass();
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -3367,6 +3690,50 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("combinedFriction", &Contact3D::getCombinedFriction, &Contact3D::setCombinedFriction)
         .addProperty("combinedRestitution", &Contact3D::getCombinedRestitution, &Contact3D::setCombinedRestitution)
         .addProperty("sensor", &Contact3D::isSensor, &Contact3D::setIsSensor)
+        // the points of getRelativeContactPointsOnA / OnB
+        .addProperty("numContactPoints", &Contact3D::getNumContactPoints)
+        // delivered after the step (setters do nothing then)
+        .addProperty("snapshot", &Contact3D::isSnapshot)
+        .endClass();
+
+    // physics-contacts: what onCollisionEnter / onTriggerEnter... get
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ColliderRef>("Collider")
+        .addProperty("gameObject", [] (const ColliderRef* self) -> std::optional<GameObject> { return luaColliderGameObject(*self); })
+        .addProperty("rigidbody", [] (const ColliderRef* self) -> std::optional<Rigidbody> { return self->hasRigidbody() ? std::optional<Rigidbody>(self->getRigidbody()) : std::nullopt; })
+        .addProperty("attachedRigidbody", [] (const ColliderRef* self) -> std::optional<Rigidbody> { return self->hasRigidbody() ? std::optional<Rigidbody>(self->getRigidbody()) : std::nullopt; })
+        .addProperty("index", &ColliderRef::getIndex)
+        .addProperty("type", &ColliderRef::getType)
+        .addProperty("isTrigger", &ColliderRef::isTrigger)
+        .addProperty("tag", &ColliderRef::getTag)
+        .addFunction("compareTag", &ColliderRef::compareTag)
+        .addProperty("receiver", [] (const ColliderRef* self) -> std::optional<GameObject> { return luaColliderReceiver(*self); })
+        .addFunction("isValid", &ColliderRef::isValid)
+        .addFunction("__eq", [] (const ColliderRef* self, const ColliderRef* other) { return other && *self == *other; })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ContactPoint>("ContactPoint")
+        .addProperty("point", &ContactPoint::getPoint)
+        .addProperty("normal", &ContactPoint::getNormal)
+        .addProperty("separation", &ContactPoint::getSeparation)
+        .addProperty("impulse", &ContactPoint::getImpulse)
+        .addProperty("thisCollider", &ContactPoint::getThisCollider)
+        .addProperty("otherCollider", &ContactPoint::getOtherCollider)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<Collision>("Collision")
+        .addProperty("gameObject", [] (const Collision* self) -> std::optional<GameObject> { return luaColliderGameObject(self->otherCollider); })
+        .addProperty("collider", &Collision::getCollider)
+        .addProperty("rigidbody", [] (const Collision* self) -> std::optional<Rigidbody> { return self->otherCollider.hasRigidbody() ? std::optional<Rigidbody>(self->getRigidbody()) : std::nullopt; })
+        .addProperty("thisCollider", &Collision::getThisCollider)
+        .addProperty("thisRigidbody", [] (const Collision* self) -> std::optional<Rigidbody> { return self->thisCollider.hasRigidbody() ? std::optional<Rigidbody>(self->getThisRigidbody()) : std::nullopt; })
+        .addProperty("impulse", &Collision::getImpulse)
+        .addProperty("relativeVelocity", &Collision::getRelativeVelocity)
+        .addProperty("contactCount", &Collision::getContactCount)
+        .addFunction("getContact", &luaGetContact<Collision>)
+        .addProperty("contacts", [] (const Collision* self, lua_State* L) -> luabridge::LuaRef { return luaContactsTable(self, L); })
         .endClass();
 
     luabridge::getGlobalNamespace(L)

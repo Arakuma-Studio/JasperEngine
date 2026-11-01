@@ -346,9 +346,12 @@ diagnostic):
 - Inspector sections with Unity/Joystick Pack labels (Mode, Handle Range, Dead Zone, Axis Options, Snap X/Y, Move
   Threshold, Horizontal/Vertical Action as dropdowns of the project's actions with free text allowed), live value
   while playing. The Scene view draws the stick's handle-range circle and the dead-zone circle as gizmos.
-- Game view, "Simulate touch" on: the mouse is finger 0 (today). New: **Alt + left press pins finger 0** where it
-  is (it stays down while Alt is held) and the next press-drag is finger 1, so a human can hold the stick and look
-  with one mouse. Releasing Alt lifts the pinned finger. Documented in the Game view tooltip and input.md.
+- Game view, "Simulate touch" on: the mouse is finger 0 (today). New: **releasing the left button with Alt held
+  pins finger 0** where it is (it stays down while Alt is held: drag the stick, then let go with Alt) and the next
+  press-drag is finger 1, so a human can hold the stick deflected and look with one mouse. Releasing Alt lifts the
+  pinned finger. Documented in the Game view tooltip and input.md. (Changed in review from "Alt + left press pins
+  finger 0": pinning on the release keeps the drag that deflected the stick, a pin on the press could only hold a
+  stick at its centre.)
 
 ## 10. MCP / agent surfaces
 
@@ -458,3 +461,100 @@ probe; same scenario with an HTML document using the custom elements.
   nothing extra here.
 - **script-lifecycle**: provides `ScriptRuntime::sendMessage` and the `ScriptMessage` enum this spec extends
   (11 pointer messages + `findHandler`); `onDisable` of a control's GameObject = D6 cancel + source clear.
+
+## Implementation notes
+
+Implemented on `gaps/ui-multitouch` (based on `gaps/script-lifecycle`, with `main` merged for `input`'s virtual
+sources). Decisions where the spec was silent, ambiguous or met the code:
+
+- **The hit test is one function**, `UISystem::raycast(point, panelHit)` (`engine/core/subsystem/UISystemPointer.cpp`):
+  the last element in RectTransform order that is visible, active in hierarchy with an enabled UIComponent, has an
+  Image, contains the point (clipped to its panel) and does not ignore events. Every pointer event and
+  `isPointerOverUI` use it. **Contract for ui-canvas-group:** its `blocksRaycasts` filter goes into this function
+  only (skip elements whose groups do not block); `interactable` belongs in `legacyPointerDown` (the built-in widgets,
+  `isWidgetGestureOwned`), `refreshButtonPressed` and `controlTakesPointers` (the on-screen controls on down);
+  interactability lost while pressed is `validatePointers`' cancel (D6), which already runs at every event and once
+  a frame. Script callbacks are not filtered by `interactable` (EventTrigger semantics).
+- **64 script message bits.** Lifecycle (8) + physics (14) + the 11 pointer messages exceed the 32 bits
+  `ScriptMessageMask` had: it is `uint64_t` now (`ScriptEntry::cppMessageMask` too); physics-contacts' values keep
+  their order.
+- **ExecuteHierarchy is exact for down, drop and scroll**: the message is sent from the element upward until a
+  GameObject handles it (an on-screen control, or a script whose method ran; a C++ script whose class does not
+  override it is passed: since the merged script-lifecycle, C++ overrides are known when the base method runs).
+  The click and drag handlers (Unity's `GetEventHandler`, found without calling) treat a C++ script as a handler
+  until its base method has run once.
+- **C++ callbacks take `PointerEventData&`** (not `const`): `use()` and `useDragThreshold` written by a C++ handler
+  reach the EventSystem as from Lua. A C++ script that declares `onPointerDown(float, float)` for `REGISTER_UI_EVENT`
+  hides the virtual (harmless; GCC may warn `-Woverloaded-virtual` in that script).
+- **The RegisterEvent collision rule (D4)** is kept per Lua instance table: a method named like a pointer callback
+  that the instance subscribed to a `FunctionSubscribe<void(float,float)>` (the UIComponent pointer events) is not
+  also called with `e` while one such subscription lives. Each note keeps a probe of its subscription
+  (`FunctionSubscribe::subscriptionProbe`, a weak reference to the subscriber), so an `UnregisterEvent`, an event
+  cleared from C++ or destroyed with its component stops counting; several subscriptions count separately. The
+  instance's release forgets its notes.
+- **Deactivation while pressed** cancels the press (Button released, controls cleared, no click) but the deactivated
+  GameObject's scripts get no `onPointerUp` (inactive GameObjects receive no messages, as in Unity); a disabled
+  UIComponent (the GameObject still active) gets `onPointerUp` with `canceled`. Destruction drops the state silently.
+- **Right / middle mouse buttons** reach the script callbacks; they are consumed (kept from the game) only when a
+  script handler took the press, so a right click over a HUD image still reaches the game as before.
+- **No `Engine::uiCapturedPointers` set**: `UIPointerState::captured` (per pointer, set on its down) gives the same
+  per-pointer consumption of moves and ups. A finger whose down a document took never reaches the component UI (any
+  scene); before, only the same scene's component UI was skipped.
+- **Mouse states**: the left button's state (-1) lives from the first move (hover, enter/exit); -2 / -3 exist while
+  their button is held and move with the mouse. `clickCount` is per pointer id (0.3 s, kept across a finger's
+  states); the legacy `onDoubleClick` keeps its one global record.
+- **Touch Area deltas** are written in the move events (`InputActions::addSourceDelta`, valid until the frame's
+  `Input::endFrame`), which is what `Touch.deltaPosition` sums; `onDrag(dx, dy)` fires once a frame from
+  `UISystem::update` with the frame's sum. Pressed with the mouse, it adds nothing to an action that has a mouse
+  movement binding (`Mouse X`/`Mouse Y` already move with the mouse: no double count); fingers always add.
+- **Events are `FunctionSubscribe<void(float, float)>`** for `onValueChanged(x, y)` and `onDrag(dx, dy)` (the spec's
+  `void(Vector2)` has no Lua binding type); Touch Area also has `visibility`.
+- **Hiding** (`visibility = TOUCH_DEVICES_ONLY` off touch devices, a released Floating/Dynamic base with
+  `hideWhenReleased`) toggles `Transform.visible` of the control's subtree at run time only (`ScriptRuntime::hasStarted`),
+  never in edit mode. The knob should be a child of the base (the menu's is): a Floating base moves its knob with it.
+- **Wrappers** `OnScreenStick`, `OnScreenButton`, `TouchArea` derive from `Image`; wrapping a GameObject without
+  the component adds it. `UIComponent:getPointerEventData()` reads one static "current legacy event" (events are
+  delivered one at a time on the main thread).
+- **Menu**: GameObject > UI has flat items "On-Screen Stick (Fixed)", "(Floating)", "(Dynamic)", "On-Screen Button",
+  "Touch Area" (the create menu has one submenu level). The On-Screen Button item makes a round Button with a
+  "Fire" label and the control (its visuals follow any finger's press). The circle images are written once into
+  the project's assets (`ui/onscreen/stick_base.png`, `stick_knob.png`, generated with stb_image_write).
+- **Gizmos**: the handle-range, dead-zone and (Dynamic) move-threshold circles are drawn by the 2D scene renderer
+  (where UI guides are drawn) for a selected stick.
+- **Agent guide**: the merged guide (script-lifecycle + main) was already 4 bytes over 16 KB; the touch-controls line
+  went into the UI bullet and a few redundant phrases were trimmed (16370 bytes after merging main).
+- **RmlUi fork**: G5-1..G5-6 are one `rmlui:` commit (the per-pointer state of G5-1 is what the other rows are built
+  of) plus two test commits and the review's boundary-order fix; FORK.md lists the six rows on them. The mouse keeps the context's original members
+  (pointer 1); touch and pen pointers are `PointerState`s (`Source/Core/ContextPointer.cpp`). A first mouse button
+  gives `pointerdown`, a further one `pointermove` (DOM chorded buttons). The mouse is captured only explicitly;
+  a capture also receives the compatibility mouse events. `touch-action` is a string property read when a touch
+  starts. A drag clone of a touch sits in the cursor proxy offset by the pointer's distance from the mouse.
+- **HTML ids**: `HtmlUIContext::touchPointerId(fingerId) = fingerId + 2`; the touch helpers keep their names
+  (`processTouchStart`...) over the new `Context::ProcessPointer*`, and the `activeElement` workaround is gone for
+  touches (each finger's pressed element is kept in `touchPresses`). `UIDocumentSystem::isPointerOverUI(id)` takes
+  the native numbering.
+- **HTML controls** read their attributes live (a script may change them), clear their sources in the destructor,
+  when hidden (`display: none`, a hidden document, `visibility="touch-devices-only"` off touch devices) and on release;
+  the custom events carry `event.detail` (`{x, y}` / `{dx, dy}`).
+- **`uiPosition` / `uiDelta`** equal `position` / `delta` until ui-scaling-text adds the canvas scaler.
+- **Review fixes** (the pointer ends the UI never saw):
+  - A finger lifted or a mouse button released **outside the canvas** (the letterbox, off the window) is a D6
+    cancel for the documents (`UIDocumentSystem::eventOnTouchCancel` / `eventOnMouseCancel`) and the component UI
+    of every scene (`Engine::cancelUIPointer`); the game still gets no event for it. A mouse cancel ends the DOM
+    mouse pointer (all its buttons: one pointer, `Context::ProcessPointerCancel(MousePointerId)`).
+  - **Focus loss** (`Engine::systemFocus(false)`) and **pause** cancel every pointer of the documents (the screen
+    context and the texture-mode ones: `UIDocumentSystem::cancelAllPointers`) and of the component UI
+    (`Engine::cancelAllUIPointers`).
+  - **`Button.disabled` set mid-press** cancels that press at the next event or update (`validatePointers`).
+  - **A finger holding a control** (stick, Touch Area, another button) that slides onto a `pressWhenPointerEnters`
+    On-Screen Button presses it besides its control (`UIPointerState::enteredButton`, one per pointer); it is
+    released on leaving with `releaseWhenPointerLeaves`, on entering another such button, on the up and the cancel.
+  - The HTML `press-on-enter` button is pressed by a finger captured by another element (the one it went down
+    on, which gets its up): it lets go at the `pointerout` with `buttons == 0` that the ended finger gives
+    (a touch has no hover after its up or cancel). The Dynamic stick's base rest centre is measured once at the
+    press (the transform that moves the base is not in `GetAbsoluteOffset`).
+  - A kept `PointerEventData` holds a weak reference to its scene's lifetime: once the scene is deleted, its
+    GameObject fields are nil (no dangling `Scene*`).
+  - A scene leaving the layers (`resetButtonStates`) releases held sticks and buttons without callbacks.
+  - Boundary events follow the DOM order: `pointerover`, `pointerenter`, `mouseover`, `mouseenter`; `pointerout`,
+    `pointerleave`, `mouseout`, `mouseleave`.

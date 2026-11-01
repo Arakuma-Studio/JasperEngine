@@ -4,6 +4,7 @@
 // W1: the Inspector: get_entity, components (add, remove, reset, copy/paste values),
 // set_properties (every property type), set_transform, list_component_types
 #include "McpTools.h"
+#include "component/ParticleSystemComponent.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -366,6 +367,20 @@ void getEntityTool(const CallPtr& call) {
         if (!video.is_null()) {
             data["video"] = video;
             text += ". video: " + video.dump();
+        }
+    }
+    // a version 2 Particle System's runtime state (read only; moves every frame in Play)
+    if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::ParticleSystemComponent) != filter.end()) {
+        if (const ParticleSystemComponent* ps = registry->findComponent<ParticleSystemComponent>(entity); ps && ps->version >= 2) {
+            Json state = Json::object();
+            state["count"] = ps->state.count();
+            state["time"] = McpValues::number(ps->state.time);
+            state["isPlaying"] = ps->state.playing && !ps->state.paused;
+            state["isPaused"] = ps->state.playing && ps->state.paused;
+            state["isEmitting"] = ps->state.playing && ps->state.emitting && !ps->state.paused;
+            state["seed"] = ps->state.seedUsed;
+            data["particles"] = state;
+            text += ". particles: " + state.dump();
         }
     }
     // the Canvas Groups over a UI element (inherited alpha, interactable, click-through)

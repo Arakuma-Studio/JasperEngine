@@ -77,6 +77,9 @@ EntityRegistry::EntityRegistry() {
     registerComponent<VertexAnimatorComponent>();
     registerComponent<TrailRendererComponent>();
     registerComponent<CanvasGroupComponent>();
+    registerComponent<OnScreenStickComponent>();
+    registerComponent<OnScreenButtonComponent>();
+    registerComponent<TouchAreaComponent>();
     // appended: ids stay those of saved scenes and the editor's ComponentType order
     registerComponent<VideoPlayerComponent>();
 }

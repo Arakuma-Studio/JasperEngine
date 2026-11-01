@@ -169,6 +169,17 @@ namespace jasperengine::editor::mcp {
         static Json toJson(const Quaternion& value);
         static Vector3 eulerDegrees(const Quaternion& value);
 
+        // Animation references as MCP passes them (project-relative; the stored form of an existing
+        // file is taken too) to the stored (asset-relative) form and the file's GUID: a clip (.anim
+        // that exists, or "<model>#<animation>" of an existing model, checked against its
+        // animations), a .mask / .controller (it must exist and parse). Empty clears. The error
+        // names what is wrong with an example (no field prefix).
+        static bool clipReferenceFromJson(Project* project, const std::string& text, std::string& stored, std::string& guid, std::string& error);
+        static bool animAssetReferenceFromJson(Project* project, const std::string& text, bool mask, std::string& stored, std::string& guid,
+                                               std::string& error);
+        // a stored clip reference shown project-relative ("assets/anim/walk.anim", "assets/hero.gltf#Walk")
+        static std::string clipReferenceToJson(Project* project, const std::string& stored);
+
         // Recomputes every Transform's world matrix and values now (the transform system only runs
         // between frames, so a GameObject made or moved this frame reads stale world values)
         static void refreshTransforms(SceneProject* scene);
@@ -189,6 +200,18 @@ namespace jasperengine::editor::mcp {
         static bool curveFromJson(const Json& value, AnimationCurve& out, std::string& error);
         static Json gradientToJson(const Gradient& gradient);
         static bool gradientFromJson(const Json& value, Gradient& out, std::string& error);
+        // Unity's MinMaxCurve / MinMaxGradient (docs/mcp/guide/particles.md): a curve is a number
+        // (constant), {"mode": "two_constants", "min", "max"}, {"mode": "curve", "multiplier",
+        // "curve"} or {"mode": "two_curves", "multiplier", "min", "max"} (curves as above); a
+        // gradient is one colour, {"mode": "gradient", "gradient"}, {"mode": "two_colors", "min",
+        // "max"}, {"mode": "two_gradients", "min", "max"} or {"mode": "random_color", "gradient"}
+        static Json minMaxCurveToJson(const MinMaxCurve& curve);
+        static bool minMaxCurveFromJson(const Json& value, MinMaxCurve& out, std::string& error);
+        static Json minMaxGradientToJson(const MinMaxGradient& gradient);
+        static bool minMaxGradientFromJson(const Json& value, MinMaxGradient& out, std::string& error);
+        // emission.bursts: [{"time", "count" (a curve value), "cycles", "interval", "probability"}]
+        static Json particleBurstsToJson(const std::vector<ParticleEmissionBurst>& bursts);
+        static bool particleBurstsFromJson(const Json& value, std::vector<ParticleEmissionBurst>& out, std::string& error);
 
         static Json textureToJson(Project* project, SceneProject* scene, const Texture& texture);
         // `camera` gets the camera entity of a {"camera": ...} value (NULL_ENTITY otherwise; a

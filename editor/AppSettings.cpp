@@ -336,6 +336,7 @@ bool AppSettings::loadSettings() {
                 if (panelsNode["console"]) panelVisibility.console = panelsNode["console"].as<bool>();
                 if (panelsNode["animation"]) panelVisibility.animation = panelsNode["animation"].as<bool>();
                 if (panelsNode["poseAnimation"]) panelVisibility.poseAnimation = panelsNode["poseAnimation"].as<bool>();
+                if (panelsNode["animator"]) panelVisibility.animator = panelsNode["animator"].as<bool>();
                 if (panelsNode["terrain"]) panelVisibility.terrain = panelsNode["terrain"].as<bool>();
                 if (panelsNode["textureSynthesis"]) panelVisibility.textureSynthesis = panelsNode["textureSynthesis"].as<bool>();
                 if (panelsNode["vertexAnimationBaker"]) panelVisibility.vertexAnimationBaker = panelsNode["vertexAnimationBaker"].as<bool>();
@@ -350,6 +351,9 @@ bool AppSettings::loadSettings() {
                 if (gameNode["scale"]) gameViewSettings.scale = gameNode["scale"].as<float>();
                 if (gameNode["maximize_on_play"]) gameViewSettings.maximizeOnPlay = gameNode["maximize_on_play"].as<bool>();
                 if (gameNode["stats"]) gameViewSettings.showStats = gameNode["stats"].as<bool>();
+                if (gameNode["device"]) gameViewSettings.device = gameNode["device"].as<std::string>();
+                if (gameNode["orientation"]) gameViewSettings.orientation = gameNode["orientation"].as<int>();
+                if (gameNode["language"]) gameViewSettings.language = gameNode["language"].as<std::string>();
             }
         }
 
@@ -496,6 +500,7 @@ bool AppSettings::saveSettings() {
         panelsNode["console"] = panelVisibility.console;
         panelsNode["animation"] = panelVisibility.animation;
         panelsNode["poseAnimation"] = panelVisibility.poseAnimation;
+        panelsNode["animator"] = panelVisibility.animator;
         panelsNode["terrain"] = panelVisibility.terrain;
         panelsNode["textureSynthesis"] = panelVisibility.textureSynthesis;
         panelsNode["vertexAnimationBaker"] = panelVisibility.vertexAnimationBaker;
@@ -509,6 +514,9 @@ bool AppSettings::saveSettings() {
         gameNode["scale"] = gameViewSettings.scale;
         gameNode["maximize_on_play"] = gameViewSettings.maximizeOnPlay;
         gameNode["stats"] = gameViewSettings.showStats;
+        if (!gameViewSettings.device.empty()) gameNode["device"] = gameViewSettings.device;
+        if (gameViewSettings.orientation != GameViewSettings{}.orientation) gameNode["orientation"] = gameViewSettings.orientation;
+        if (!gameViewSettings.language.empty()) gameNode["language"] = gameViewSettings.language;
         editorNode["game_view"] = gameNode;
         settingsData["editor"] = editorNode;
 

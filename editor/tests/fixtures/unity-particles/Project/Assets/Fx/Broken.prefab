@@ -1,0 +1,8 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &1
+GameObject: not a map
+--- !u!4 &2
+Transform: 7
+--- !u!198 &3
+ParticleSystem: [1, 2]

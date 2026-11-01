@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "ScriptMessages.h"
+
+#include <cmath>
 #include "LuaBinding.h"
 #include "ScriptRuntime.h"
 #include "Scene.h"
@@ -11,7 +13,11 @@
 #include "lua.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <cstring>
 #include <exception>
+#include <set>
+#include <string>
 #include <unordered_map>
 
 using namespace jasperengine;
@@ -20,6 +26,9 @@ namespace {
     // receivers() per scene and GameObject, dropped by notifyReceiversChanged
     std::unordered_map<Scene*, std::unordered_map<Entity, ScriptMessageMask>> receiverCache;
     std::vector<ScriptMessages::ReceiversChanged> receiverListeners;
+    // D4's collision rule: Lua instance tables, the methods they subscribed to UIComponent
+    // events and a probe of each subscription (true while it lives)
+    std::unordered_map<const void*, std::unordered_map<std::string, std::vector<std::function<bool()>>>> legacySubscriptions;
 
     int luaRefOf(const ScriptEntry& entry) {
         return static_cast<int>(reinterpret_cast<intptr_t>(entry.instance));
@@ -35,6 +44,23 @@ namespace {
     bool destroyed(const ScriptEntry& entry) {
         const ScriptState* state = ScriptRuntime::getState(entry.instance);
         return state && state->destroyed;
+    }
+
+    // The contact messages run every fixed step: an error in one is logged once a second per
+    // script class and message (physics-contacts spec 7.13), the others every time
+    bool reportError(ScriptMessage m, const std::string& className) {
+        if (static_cast<int>(m) > static_cast<int>(ScriptMessage::TriggerExit2D)) {
+            return true;
+        }
+        static std::unordered_map<std::string, std::chrono::steady_clock::time_point> lastReports;
+        const auto now = std::chrono::steady_clock::now();
+        const std::string key = className + "." + ScriptMessages::methodName(m);
+        auto last = lastReports.find(key);
+        if (last != lastReports.end() && now - last->second < std::chrono::seconds(1)) {
+            return false;
+        }
+        lastReports[key] = now;
+        return true;
     }
 
     bool mainThread() {
@@ -70,9 +96,102 @@ const char* ScriptMessages::methodName(ScriptMessage m) {
         case ScriptMessage::ApplicationPause: return "onApplicationPause";
         case ScriptMessage::ApplicationFocus: return "onApplicationFocus";
         case ScriptMessage::ApplicationQuit: return "onApplicationQuit";
+        case ScriptMessage::ParticleSystemStopped: return "onParticleSystemStopped";
+        case ScriptMessage::PointerDown: return "onPointerDown";
+        case ScriptMessage::PointerUp: return "onPointerUp";
+        case ScriptMessage::PointerClick: return "onPointerClick";
+        case ScriptMessage::PointerEnter: return "onPointerEnter";
+        case ScriptMessage::PointerExit: return "onPointerExit";
+        case ScriptMessage::InitializePotentialDrag: return "onInitializePotentialDrag";
+        case ScriptMessage::BeginDrag: return "onBeginDrag";
+        case ScriptMessage::Drag: return "onDrag";
+        case ScriptMessage::EndDrag: return "onEndDrag";
+        case ScriptMessage::Drop: return "onDrop";
+        case ScriptMessage::Scroll: return "onScroll";
         case ScriptMessage::Count: break;
     }
     return "";
+}
+
+bool ScriptMessages::fromMethodName(const char* name, ScriptMessage& out) {
+    if (!name) {
+        return false;
+    }
+    for (int m = 0; m < static_cast<int>(ScriptMessage::Count); m++) {
+        if (std::strcmp(methodName(static_cast<ScriptMessage>(m)), name) == 0) {
+            out = static_cast<ScriptMessage>(m);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ScriptMessages::defines(Scene* scene, Entity entity, ScriptMessage m) {
+    if (!scene || !scene->isEntityCreated(entity)) {
+        return false;
+    }
+    ScriptComponent* scripts = scene->findComponent<ScriptComponent>(entity);
+    if (!scripts) {
+        return false;
+    }
+    const char* method = methodName(m);
+    lua_State* L = LuaBinding::getLuaState();
+    for (const ScriptEntry& entry : scripts->scripts) {
+        if (!entry.instance || !entry.enabled || !live(entry)) {
+            continue;
+        }
+        if (entry.type == ScriptType::LUA) {
+            if (!L) {
+                continue;
+            }
+            const int top = lua_gettop(L);
+            lua_rawgeti(L, LUA_REGISTRYINDEX, luaRefOf(entry));
+            const void* table = lua_topointer(L, -1);
+            LuaBinding::protectedGetField(L, -1, method);
+            const bool found = lua_isfunction(L, -1) && !isLegacySubscription(table, method);
+            lua_settop(L, top);
+            if (found) {
+                return true;
+            }
+        } else if (entry.cppScript && (entry.cppMessageMask & ~entry.cppScript->inheritedMessages & scriptMessageBit(m))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void ScriptMessages::noteLegacySubscription(const void* instanceTable, const std::string& method,
+                                            std::function<bool()> subscriptionAlive) {
+    if (instanceTable && subscriptionAlive) {
+        legacySubscriptions[instanceTable][method].push_back(std::move(subscriptionAlive));
+    }
+}
+
+bool ScriptMessages::isLegacySubscription(const void* instanceTable, const char* method) {
+    auto it = legacySubscriptions.find(instanceTable);
+    if (it == legacySubscriptions.end() || !method) {
+        return false;
+    }
+    auto methodIt = it->second.find(method);
+    if (methodIt == it->second.end()) {
+        return false;
+    }
+    // the subscriptions that went (UnregisterEvent, the event cleared, its component destroyed)
+    std::vector<std::function<bool()>>& probes = methodIt->second;
+    probes.erase(std::remove_if(probes.begin(), probes.end(),
+        [](const std::function<bool()>& alive) { return !alive(); }), probes.end());
+    if (!probes.empty()) {
+        return true;
+    }
+    it->second.erase(methodIt);
+    if (it->second.empty()) {
+        legacySubscriptions.erase(it);
+    }
+    return false;
+}
+
+void ScriptMessages::forgetLegacySubscriptions(const void* instanceTable) {
+    legacySubscriptions.erase(instanceTable);
 }
 
 ScriptMessageMask ScriptMessages::receivers(Scene* scene, Entity entity) {
@@ -100,7 +219,7 @@ ScriptMessageMask ScriptMessages::receivers(Scene* scene, Entity entity) {
                     // protected: a class's own __index may raise for what it does not define
                     LuaBinding::protectedGetField(L, -1, methodName(static_cast<ScriptMessage>(m)));
                     if (lua_isfunction(L, -1)) {
-                        mask |= 1u << m;
+                        mask |= scriptMessageBit(static_cast<ScriptMessage>(m));
                     }
                     lua_pop(L, 1);
                 }
@@ -113,6 +232,45 @@ ScriptMessageMask ScriptMessages::receivers(Scene* scene, Entity entity) {
     }
     sceneCache[entity] = mask;
     return mask;
+}
+
+std::vector<std::string> ScriptMessages::describeReceivers(Scene* scene, Entity entity, ScriptMessageMask filter) {
+    std::vector<std::string> names;
+    if (!scene || !scene->isEntityCreated(entity)) {
+        return names;
+    }
+    ScriptComponent* scripts = scene->findComponent<ScriptComponent>(entity);
+    lua_State* L = LuaBinding::getLuaState();
+    if (!scripts) {
+        return names;
+    }
+    for (const ScriptEntry& entry : scripts->scripts) {
+        if (!entry.instance || destroyed(entry)) {
+            continue;
+        }
+        for (int m = 0; m < static_cast<int>(ScriptMessage::Count); m++) {
+            if (!(filter & (1u << m))) {
+                continue;
+            }
+            bool defines = false;
+            if (entry.type == ScriptType::LUA) {
+                if (!L) continue;
+                lua_rawgeti(L, LUA_REGISTRYINDEX, luaRefOf(entry));
+                if (lua_istable(L, -1)) {
+                    LuaBinding::protectedGetField(L, -1, methodName(static_cast<ScriptMessage>(m)));
+                    defines = lua_isfunction(L, -1);
+                    lua_pop(L, 1);
+                }
+                lua_pop(L, 1);
+            } else if (entry.cppScript) {
+                defines = (entry.cppMessageMask & ~entry.cppScript->inheritedMessages & (1u << m)) != 0;
+            }
+            if (defines) {
+                names.push_back(std::string(methodName(static_cast<ScriptMessage>(m))) + " (" + entry.className + ")");
+            }
+        }
+    }
+    return names;
 }
 
 // One entry, no delivery rules (ScriptRuntime's own checks, or send/sendTo's)
@@ -137,14 +295,14 @@ bool ScriptMessages::invoke(Scene* scene, Entity entity, size_t scriptIndex, Scr
         const int top = lua_gettop(L);
         lua_rawgeti(L, LUA_REGISTRYINDEX, luaRefOf(entry));
         LuaBinding::protectedGetField(L, -1, method);
-        if (!lua_isfunction(L, -1)) {
+        if (!lua_isfunction(L, -1) || isLegacySubscription(lua_topointer(L, -2), method)) {
             lua_settop(L, top);
             return false;
         }
         lua_insert(L, -2); // method, self
         const std::string entityName = scene->getEntityName(entity);
         const int nargs = pushArgs ? pushArgs(L) : 0;
-        if (LuaBinding::pcallWithTraceback(L, 1 + nargs, 0) != LUA_OK) {
+        if (LuaBinding::pcallWithTraceback(L, 1 + nargs, 0) != LUA_OK && reportError(m, className)) {
             Log::error("Lua %s() failed for '%s' on '%s': %s", method, className.c_str(), entityName.c_str(),
                        LuaBinding::getLuaStackErrorString(L, -1).c_str());
         }
@@ -166,16 +324,14 @@ bool ScriptMessages::invoke(Scene* scene, Entity entity, size_t scriptIndex, Scr
         // gone, so only the flag is read)
         overridden = !ScriptBase::baseMessageRan;
     } catch (const std::exception& e) {
-        Log::error("C++ %s() failed for '%s': %s", method, className.c_str(), e.what());
+        if (reportError(m, className)) Log::error("C++ %s() failed for '%s': %s", method, className.c_str(), e.what());
     } catch (...) {
-        Log::error("C++ %s() failed for '%s': unknown exception", method, className.c_str());
+        if (reportError(m, className)) Log::error("C++ %s() failed for '%s': unknown exception", method, className.c_str());
     }
     ScriptBase::baseMessageRan = nested;
     if (!overridden) {
-        auto sceneCache = receiverCache.find(scene);
-        if (sceneCache != receiverCache.end()) {
-            sceneCache->second.erase(entity);
-        }
+        // the listeners follow (physics stops recording contacts for a message nobody overrides)
+        notifyReceiversChanged(scene, entity);
     }
     return overridden;
 }
@@ -230,7 +386,8 @@ bool ScriptMessages::sendTo(Scene* scene, Entity entity, size_t scriptIndex, Scr
     return invoke(scene, entity, scriptIndex, m, pushArgs, callCpp);
 }
 
-bool ScriptMessages::sendNamed(Scene* scene, Entity entity, const std::string& method, const std::vector<AnimationEventArg>& args) {
+bool ScriptMessages::sendNamed(Scene* scene, Entity entity, const std::string& method, const std::vector<AnimationEventArg>& args,
+                               bool integers) {
     lua_State* L = LuaBinding::getLuaState();
     if (!L || !scene || method.empty() || !scene->isEntityCreated(entity)) {
         return false;
@@ -258,7 +415,8 @@ bool ScriptMessages::sendNamed(Scene* scene, Entity entity, const std::string& m
         lua_insert(L, -2); // method, self
         for (const AnimationEventArg& arg : args) {
             if (const double* number = std::get_if<double>(&arg)) {
-                lua_pushnumber(L, *number);
+                if (integers && std::floor(*number) == *number && std::fabs(*number) < 9.0e15) lua_pushinteger(L, (lua_Integer)*number);
+                else lua_pushnumber(L, *number);
             } else if (const std::string* text = std::get_if<std::string>(&arg)) {
                 lua_pushlstring(L, text->data(), text->size());
             } else {
