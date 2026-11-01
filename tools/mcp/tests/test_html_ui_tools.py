@@ -154,8 +154,9 @@ LIMITS.update({"create_ragdoll": 900})
 LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 2400})
 # merged by the lead (guide-headroom + anim-layers): provisional, re-measured on the merged tree
 # ui-scaling-text: configure_game_view's resolution (a preset, "WxH[@dpi]", {width, height, dpi, name}) and
-# create_ui's outline/shadow text props (+284 on its branch); measured on the merged tree: MEASURED
-TOTAL_LIMIT = 113000
+# create_ui's outline/shadow text props (+284 on its branch); measured on the tree merged with main
+# 5762bb259 (everything above): 153 tools, total 112185 (tool_budget.py), the limit set to it
+TOTAL_LIMIT = 112185
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
