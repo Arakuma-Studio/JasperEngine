@@ -792,6 +792,11 @@ and `using AnimationCurve = Curve;`. `MinMaxCurve` must have
       Debug assertion outside S27). Smoke: fixture-unity and tools/fixtures/tween-curve PASS
       (the exported game logs the curve checks; `record` writes 30 frames). Xcode checks clean.
       TOOLS.md regenerated. The full MCP suite (MCP_SUITE=all, slow builds) on the merged commit.
+- [x] Performance on the benchmark server E (4 dedicated vCPU, Release, median of N, budgets
+      enforced with slack 1): AC5 bake of 64 entries from 16 keys 0.387 us (N=9, budget 3 us);
+      20 Curve fields 0.0485 ms a frame (N=9, budget 0.2 ms); AC25 1080p30 PNG 12.1 recorded
+      frames per wall second and H.264 (libx264) 37.1 (N=5, budgets 10 and 20), at most 8 frames
+      queued, none dropped.
 - Unverified here: Windows and macOS (the screen eyedropper's BitBlt / NSColorSampler, the
   Shift-at-launch readers, D3D11 and Metal rect readback compile paths), manual checks of
   docs/editor/color-picker.md and curves.md, R36-R38 budgets on the benchmark server.
