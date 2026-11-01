@@ -201,6 +201,7 @@ LIMITS.update({"edit_animation": 3800, "get_animation": 960})
 # fa4eeed50 (everything above, safe-area included): 155 tools, total 114892 (test_budget on the full
 # MCP run), the limit set to it
 # lead: + debug-overlay (its 114892 on main fa4eeed50, whose own total is 114870): provisional 115120, re-measured on the merged tree
+# measured on main b14b9c2f9 (every engine-gaps feature merged): 155 tools, total 115120 (tool_budget.py)
 TOTAL_LIMIT = 115120
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)

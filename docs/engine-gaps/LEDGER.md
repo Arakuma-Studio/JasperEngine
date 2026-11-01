@@ -61,7 +61,7 @@ origin/main).
 | 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | merged |
 | 21 | `ui-scaling-text` | canvas match-width-or-height scaling, per-character text effects (waves etc.), particles inside UI | merged |
 | 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | merged |
-| 23 | `debug-overlay` | on-device log console and stats/FPS overlay | impl |
+| 23 | `debug-overlay` | on-device log console and stats/FPS overlay | merged |
 | 24 | `camera-shake` | camera shake component and presets (MilkShake-like), camera follow | merged |
 | 26 | `xcode26-dav1d` | iOS/macOS builds fail on Xcode 26.6 (pre-existing on the original main): dav1d's aarch64 assembly (src/arm/64/refmvs.S ...) does not assemble; fix and verify on a macOS box | merged |
 | 25 | `ui-canvas-group` | Canvas Group for the native UI: group alpha, interactable, blocks raycasts, ignore parent groups; animatable (found by the animation spec: legacy clips animate CanvasGroup alpha) | merged |
@@ -264,3 +264,15 @@ origin/main).
   failures and the autosync load flake, 155 tools 115098; owner's Mac macOS + iOS 0 errors. Merge notes: the Video
   Player then the Safe Area in the component order; the Safe Area got its `enabled` animation row (anim-properties'
   reverse test); safe-area's Game view devices combine with ui-scaling-text's resolutions (one device list).
+- 2026-11-01: FINAL. Pushed debug-overlay (two review rounds; the second found a removeListener deadlock, fixed:
+  every removed call wakes the remover and no wait happens from inside a listener) and perf-canvasgroup (reviewed:
+  EntityManager's paged signature cache, not copyable for MSVC's dllexport, physics cost budgets independent of box
+  load, AnimationClipControllerTest's undo isolation). Every feature of the table is merged and pushed.
+  Final verification of b14b9c2f9 (box 2201, idle): build 0 warnings; unit 1874 passed, 0 failed (the timing tests
+  included); full MCP 961 passed, only the 10 baseline failures (test_animation_assets x5, test_lattice_scene x5,
+  pre-existing on the original main); 155 tools 115120 chars (TOTAL_LIMIT), TOOLS.md from this build; owner's Mac:
+  JasperEngine macOS and iOS 0 errors with dav1d's assembly on.
+  Not verified anywhere: Windows builds (no Windows toolchain here; MSVC-specific risks addressed by reading only),
+  runs on real devices or simulators (Apple and Android builds compile and link; Android exports assemble), the
+  editor windows by eye. Known leftovers recorded in the specs' Implementation notes (e.g. asan-sweep: a raw
+  Framebuffer per CameraComponent is never freed, ~680 bytes per camera, needs render-target ownership work).
