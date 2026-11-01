@@ -144,7 +144,9 @@ LIMITS.update({"create_ragdoll": 900})
 # coroutines (spec 2026-10-31-coroutines 7): get_play_state names its coroutines/timers counts and
 # get_runtime_entity the scripts' coroutines and timers (+83); merged with main (platform-services): 108160 + 83
 # merged by the lead (+ coroutines): provisional, re-measured on the merged tree
-TOTAL_LIMIT = 109200
+# re-measured on main 66fb7f0dd (everything above merged; guide-headroom adds no tool text): 152 tools
+# 109388 (test_budget / tool_budget.py), the limit set to it
+TOTAL_LIMIT = 109388
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
