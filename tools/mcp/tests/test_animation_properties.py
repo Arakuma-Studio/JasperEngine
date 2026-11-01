@@ -199,7 +199,7 @@ async def test_play_matches_unity_timings(ed: Editor):
         ed.check(log == "score:true|record:true|coins:true", f"events after the values, in order: {log!r}")
         alpha = (await lua(ed, "return CanvasGroup(scene, entity('GameOverMenu')).alpha"))[0]
         ed.check(approx(alpha, 1.0, 1e-4), f"the group faded in: {alpha!r}")
-        props = (await lua(ed, "return #object('GameOverMenu', 'AnimationPlayer'):getAnimatedProperties('GameStatsShowing')"))[0]
+        props = (await lua(ed, "local p = AnimationPlayer(scene, entity('GameOverMenu')); p.entityOwned = false; return #p:getAnimatedProperties('GameStatsShowing')"))[0]
         ed.check(props == 9, f"getAnimatedProperties lists the 9 bound tracks: {props!r}")
     finally:
         await ed.call("play", action="stop")

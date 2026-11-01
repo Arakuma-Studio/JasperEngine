@@ -5857,8 +5857,7 @@ void registerWorldTools(McpRegistry& registry) {
         "Animation Player plays it; create {from?: entity Animation or \"model.gltf#Walk\"}; root checks paths "
         "(bindings); a project undo step (from an Animation, or a model clip with root: scene). Without clip: an entity Animation (creates one under target), tweens, "
         "actions; a scene step. tracks: keys {time, value|points, ease} of local position/scale, rotation, "
-        "morph weights, lattice points, or channel property {component, property} (active, colours sRGB, "
-        "intensity...; get_animation list_properties); the same "
+        "morph weights, lattice points or a component property (channel property: component, property); the same "
         "path|target+channel replaces or merges. "
         "Guide: jasper://docs/animation.",
         object({

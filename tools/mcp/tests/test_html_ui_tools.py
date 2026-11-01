@@ -154,6 +154,11 @@ LIMITS.update({"create_ragdoll": 900})
 LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 2400})
 # merged by the lead (guide-headroom + anim-layers): provisional, re-measured on the merged tree
 TOTAL_LIMIT = 112100
+# anim properties (spec 2026-10-31-anim-properties 11): edit_animation's property channel (channel enum,
+# component, property: 3523) and get_animation's list_properties (911), under the spec's +400; measured on
+# the tree merged with main 5762bb259: 153 tools, total 112129 (tool_budget.py), the limit set to it
+LIMITS.update({"edit_animation": 3600, "get_animation": 930})
+TOTAL_LIMIT = 112129
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

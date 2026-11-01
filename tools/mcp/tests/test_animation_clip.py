@@ -218,7 +218,7 @@ async def test_file_mode_rejections(ed: Editor):
     track = {"path": "", "channel": "position", "keys": [{"time": 0, "value": [0, 0, 0]}]}
     for change, contains in (
             ({"start_time": 1}, "shift the keys"), ({"name": "x"}, "path and channel"), ({"path": "a//b"}, "malformed"),
-            ({"path": 3}, "must be a string"), ({"channel": "colour"}, "Use one of"), ({"channel": "property"}, "reserved"),
+            ({"path": 3}, "must be a string"), ({"channel": "colour"}, "Use one of"), ({"channel": "property"}, "needs component"),
             ({"channel": "morph", "relative": True, "keys": [{"time": 0, "value": [1]}]}, "only position, rotation and scale"),
             ({"target": "Hero"}, "give path or target"), ({"path": None, "target": "Hero"}, "turn target into a path"),
             ({"mode": "add"}, "replace or merge"), ({"keys": [{"time": -1, "value": [0, 0, 0]}]}, "time must be"),
@@ -1091,7 +1091,9 @@ async def test_guide_names_exist(ed: Editor):
               # layers, masks and controllers (test_animation_layers / test_animator_controller): their results, the
               # mask's humanoid parts and the clip / controller file keys
               "humanoid_rig", "coverage_total", "mask_coverage", "live_weight", "normalized_time", "additive_reference",
-              "automate_thresholds", "left_arm", "right_arm", "left_leg", "right_leg", "left_fingers", "right_fingers"}
+              "automate_thresholds", "left_arm", "right_arm", "left_leg", "right_leg", "left_fingers", "right_fingers",
+              # property tracks (test_animation_properties): a status and the tangent key member
+              "unknown_property", "tangent_mode"}
     words = set(re.findall(r"(?<![\w./:-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w(])", text))
     unknown = sorted(w for w in words if w not in known)
     ed.check(not unknown, f"the guide names unknown things: {unknown}")
