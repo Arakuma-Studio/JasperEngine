@@ -13,6 +13,8 @@
 # Wav's loaders stay within the clip (src/audiosource/wav/soloud_wav.cpp: loadogg wrote the frames
 # stb_vorbis decodes past the last granule beyond mData; loadwav and loadflac copied whole blocks after
 # a short read, stale or uninitialised floats).
+# A voice that ends plays its last block to the end (src/core/soloud.cpp mixBus_internal: it was stopped
+# at the end of the mix call that read that block, dropping what the block still held).
 
 include_directories ("${CMAKE_CURRENT_SOURCE_DIR}/include")
 

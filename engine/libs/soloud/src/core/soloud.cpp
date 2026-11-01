@@ -1659,6 +1659,19 @@ namespace SoLoud
 				{
 					if (voice->mLeftoverSamples == 0)
 					{
+						// JasperEngine local patch: a voice that stops at its end stops once its last block
+						// is written: here the rest of the call is silence, and below it stops only
+						// with no samples left over. Upstream stopped it at the end of the call that
+						// read the last block and dropped what that block still held whenever the call
+						// ended inside it (up to 511 frames, more when resampled).
+						if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded())
+						{
+							unsigned int k;
+							for (k = 0; k < voice->mChannels; k++)
+								memset(aScratch + k * aBufferSize + outofs, 0, sizeof(float) * (aSamplesToRead - outofs));
+							break;
+						}
+
 						// Swap resample buffers (ping-pong)
 						float * t = voice->mResampleData[0];
 						voice->mResampleData[0] = voice->mResampleData[1];
@@ -1800,8 +1813,8 @@ namespace SoLoud
 				// Handle panning and channel expansion (and/or shrinking)
 				panAndExpand(voice, aBuffer, aSamplesToRead, aBufferSize, aScratch, aChannels);
 
-				// clear voice if the sound is over
-				if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded())
+				// clear voice if the sound is over (and its last block written, the patch above)
+				if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded() && voice->mLeftoverSamples == 0)
 				{
 					stopVoice_internal(mActiveVoice[i]);
 				}
