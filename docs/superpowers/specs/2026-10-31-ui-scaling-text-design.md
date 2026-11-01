@@ -615,3 +615,9 @@ spec was silent, ambiguous or did not fit the code:
       - A hidden Game tab renders at the fixed resolution.
       - The soft particle texture is project-relative (`assets/ui/particle_soft.png`).
       - The Inspector lists every Text Effect layer up to the last used one, plus one.
+16. **Merge with main (persistence, physics-3d, http).**
+    - The Text Effect update flag is bit 52, after main's Canvas Group (48), Rigidbody_Params (49),
+      Joint3D_Params (50) and Ragdoll (51).
+    - `GeneratedProject.PlatformSourcesListEveryBackendFile` (platform-services) now skips `HttpBackend*`.
+      Main's `platform/win/HttpBackendWin.cpp` is compiled into the engine library
+      (`JASPERENGINE_HTTP_BACKEND`), not listed as a project platform source.
