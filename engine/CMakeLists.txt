@@ -1444,8 +1444,6 @@ set(JASPERENGINE_SRCS
     core/math/Curve.cpp
     core/math/CurveJson.cpp
     # the Line and Trail Renderers' curves and gradients (upstream's, beside S27's Curve)
-    core/math/AnimationCurve.cpp
-    core/math/Gradient.cpp
     core/math/Matrix3.cpp
     core/math/Matrix4.cpp
     core/math/OBB.cpp
@@ -1457,10 +1455,6 @@ set(JASPERENGINE_SRCS
     core/math/Vector2.cpp
     core/math/Vector3.cpp
     core/math/Vector4.cpp
-    # SYNC4-ABSORB(Particles): upstream's particles v2 (core/particles/MinMax, ParticleFields,
-    # ParticleNoise, ParticleShapes, ParticleSimulation, ParticleUpgrade, ParticleRandom.h) stay in
-    # the tree out of the build: S20's particles (ParticleSources.cmake, ParticleModules.cpp
-    # included) are the engine's
     core/object/Bone.cpp
     core/object/Camera.cpp
     core/object/EntityHandle.cpp
@@ -1585,7 +1579,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/IOClassesLua.cpp
     core/script/binding/MathClassesLua.cpp
     core/script/binding/NetClassesLua.cpp
-    # SYNC4-ABSORB(particles): upstream's core/script/binding/ParticleClassesLua.cpp (version 2 Lua API) out of the build
+    core/script/binding/ParticleClassesLua.cpp
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ProfilerClassesLua.cpp
     core/script/binding/GameplayClassesLua.cpp
@@ -1609,8 +1603,6 @@ set(JASPERENGINE_SRCS
     core/shader/ShaderWarmup.cpp
     core/shader/ShaderVariantCompiler.cpp
     core/subsystem/ActionSystem.cpp
-    # SYNC4-ABSORB(Particles): core/subsystem/ActionSystemParticles.cpp (upstream's version 2
-    # systems in the ActionSystem) is out of the build; S20's ParticleSubsystem runs them
     core/subsystem/ActionSystemPlayers.cpp
     core/subsystem/ActionSystemLayers.cpp
     core/subsystem/PoseAnimatorSystem.cpp

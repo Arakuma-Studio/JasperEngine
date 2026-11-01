@@ -31,7 +31,8 @@ TEST(Migrations, SceneV0ToV1) {
     EXPECT_EQ(saved["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
     // and nothing else changes but what the later migrations change (scene 1 -> 2: the old
     // default shadow quality Low is Auto, a light's shadow bias is in texels; 3 -> 4: the
-    // transforms' derived values are not written)
+    // transforms' derived values are not written; 5 -> 6: the Line and Trail Renderers' curves
+    // in S27's form, none here)
     YAML::Node expected = YAML::Load(readText(fixture("migrations/scene-v0.scene")));
     expected["scene"]["shadowQuality"] = "auto";
     for (YAML::Node entity : expected["entities"]) {
@@ -50,7 +51,7 @@ TEST(Migrations, NewerFormatGated) {
     DecodedScene decoded = decodeSceneFile(fixture("migrations/scene-v99.scene"));
     ASSERT_EQ(decoded.report.dropped(), 1u);
     EXPECT_TRUE(decoded.report.newerFormat());
-    EXPECT_EQ(decoded.report.issues[0].message, "Written by a newer JasperEngine (scene format 99; this editor writes 6).");
+    EXPECT_EQ(decoded.report.issues[0].message, "Written by a newer JasperEngine (scene format 99; this editor writes 7).");
     // loaded best-effort
     EXPECT_EQ(decoded.scene->name, "FromTheFuture");
     EXPECT_EQ(decoded.scene->entities.size(), 1u);
@@ -59,11 +60,11 @@ TEST(Migrations, NewerFormatGated) {
     LoadReport prefabReport;
     {
         ScopedLoadReport scope(prefabReport);
-        DocumentFile prefab = DocumentFiles::read(fixture("migrations/prefab-v8.prefab"), DocumentKind::Prefab);
-        EXPECT_EQ(prefab.migration.versionRead, 8);
-        EXPECT_EQ(prefab.root["version"].as<int>(), 8);
+        DocumentFile prefab = DocumentFiles::read(fixture("migrations/prefab-v9.prefab"), DocumentKind::Prefab);
+        EXPECT_EQ(prefab.migration.versionRead, 9);
+        EXPECT_EQ(prefab.root["version"].as<int>(), 9);
     }
     ASSERT_EQ(prefabReport.dropped(), 1u);
-    EXPECT_EQ(prefabReport.issues[0].message, "Written by a newer JasperEngine (prefab format 8; this editor writes 7).");
+    EXPECT_EQ(prefabReport.issues[0].message, "Written by a newer JasperEngine (prefab format 9; this editor writes 8).");
     EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Prefab), Prefab::FILE_VERSION);
 }

@@ -32,8 +32,9 @@ extern unsigned int bulb_icon_png_len;
 #include "util/Angle.h"
 #include "util/FluidEditorTools.h"
 #include "pose/PoseViewport.h"
-// SYNC4-ABSORB(particles): render/gizmo/ParticleShapeGizmo.h (version 2 shapes)
 #include "component/ParticleSystemComponent.h"
+#include "particles/ParticleCompiler.h"
+#include "subsystem/ParticleSubsystem.h"
 
 #include <algorithm>
 #include <cmath>
@@ -88,26 +89,26 @@ void editor::SceneRender::ensureOverlayLines(std::map<Entity, LineRenderer*>& li
     }
 }
 
+// the selected Particle System's shape in the 2D Scene view (the 3D view's are in its particle
+// lines, SceneRender3D): the effect's Shape module outline (ParticleCompiler::shapeOutline)
 void editor::SceneRender::updateParticleShapeLines(Entity entity, bool selected, std::set<Entity>& current){
-    // SYNC4-ABSORB(particles): upstream's version 2 shape gizmo (render/gizmo/ParticleShapeGizmo, out of the build)
-    (void)entity; (void)selected; (void)current;
-#if 0
     const ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity);
     const Transform* transform = scene->findComponent<Transform>(entity);
-    if (!ps || !transform || ps->version < 2) return;
+    if (!ps || !transform) return;
     current.insert(entity);
     ensureOverlayLines(particleShapeLines, entity);
     LineRenderer* lines = particleShapeLines[entity];
     lines->clearLines();
-    const bool visible = selected && transform->visible && ps->shape.enabled;
+    const particles::ParticleEffectDocument* document = ParticleSubsystem::getDocument(*ps);
+    const bool visible = selected && transform->visible && document && document->shape.present && document->shape.enabled;
     lines->setVisible(visible);
     if (!visible) return;
-    // Unity's shape gizmo blue
-    const Vector4 color(0.58f, 0.78f, 1.0f, 1.0f);
-    for (const auto& segment : particleShapeGizmoSegments(ps->shape)){
-        lines->addLine(transform->modelMatrix * segment.first, transform->modelMatrix * segment.second, color);
+    std::vector<Vector3> segments;
+    particles::ParticleCompiler::shapeOutline(document->shape, segments);
+    const Vector4 color(0.45f, 0.8f, 1.0f, 1.0f);
+    for (size_t i = 0; i + 1 < segments.size(); i += 2){
+        lines->addLine(transform->modelMatrix * segments[i], transform->modelMatrix * segments[i + 1], color);
     }
-#endif
 }
 
 void editor::SceneRender::dropParticleShapeLines(const std::set<Entity>& current){

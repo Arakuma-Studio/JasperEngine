@@ -171,7 +171,7 @@ entities:
         path: prefabs/Enemy.prefab
         guid: e0e0e0e0e0e0e0e0e0e0e0e0e0e00001
     prefabInstance:
-      version: 6
+      version: 7
       memberIds:
         - [1002, 1004]
         - [1003, 1005]

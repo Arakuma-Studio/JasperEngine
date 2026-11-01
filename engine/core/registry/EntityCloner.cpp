@@ -605,9 +605,18 @@ void prepare<AnimationComponent>(AnimationComponent& animation, Entity, CloneCon
 }
 
 template<>
-void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity, CloneContext& ctx) {
-    // SYNC4-ABSORB(Particles): a system moved to the persistent scene (DontDestroyOnLoad, ctx.move)
-    // starts over here; upstream kept its live particles on a move
+void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity sourceEntity, CloneContext& ctx) {
+    if (ctx.move) {
+        // a system moved to another scene (DontDestroyOnLoad) plays on from where it is: its
+        // particles, clocks and listeners move with it (the source gives its state up, so its
+        // removal releases nothing)
+        if (ParticleSystemComponent* source = ctx.source->findComponent<ParticleSystemComponent>(sourceEntity))
+            source->state.reset();
+        for (Entity& plane : particles.collisionPlanes) {
+            plane = ctx.remap(plane);
+        }
+        return;
+    }
     // the copy simulates on its own (its runtime is made at its first update)
     particles.state.reset();
     particles.needReload = true;

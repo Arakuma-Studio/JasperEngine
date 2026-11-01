@@ -84,6 +84,7 @@ namespace jasperengine {
         Curve() = default;
         explicit Curve(std::vector<CurveKey> keys): keys(std::move(keys)) {}
 
+        // (a NaN time: the first key)
         float evaluate(float time) const;
         // the slope at `time` (outside the keys: the wrap's, 0 when clamped)
         float derivative(float time) const;
@@ -93,21 +94,36 @@ namespace jasperengine {
         bool empty() const { return keys.empty(); }
         // Sorts the keys by time (stable for equal times)
         void sortKeys();
+        // Drops the keys with a non-finite time or value or a NaN tangent, sorts the rest by time
+        // (stable) and drops each key at the time of the one before it (the first stays): what a
+        // curve read from a lenient source (upstream's lines-and-trails files, Unity) becomes
+        void normalize();
         // smallest and largest value the curve takes between its first and last key
         void valueRange(float& lo, float& hi) const;
+        // ... over [minTime, maxTime], wraps included (the keys inside it and 64 samples)
+        void valueRange(float minTime, float maxTime, float& lo, float& hi) const;
+        // the first and last key's times (0 without keys)
+        float firstTime() const { return keys.empty() ? 0.0f : keys.front().time; }
+        float lastTime() const { return keys.empty() ? 0.0f : keys.back().time; }
+        // the same value everywhere: every key's value equal and every segment flat (flat
+        // tangents at both of its ends, or a step)
+        bool isConstant() const;
 
         // ---- key editing (Unity's AnimationCurve API). Indices are 0-based.
 
         // A key at (time, value), its tangents smoothed (Clamped Auto) with its neighbours'
-        // modes applied; -1 when a key already sits at that time
+        // modes applied; -1 when a key already sits at that time (or a value is not finite)
         int addKey(float time, float value);
         // `key` inserted in time order (its tangents as given unless its modes recompute them);
-        // -1 when a key already sits at that time
+        // -1 when a key already sits at that time, or its time or value is not finite or a
+        // tangent is NaN
         int addKey(const CurveKey& key);
         // Replaces key `index` by `key` and returns its new index. When another key sits at
-        // key.time, the old key's time is kept (Unity's MoveKey). -1 for a bad index.
+        // key.time, the old key's time is kept (Unity's MoveKey). -1 for a bad index or a key
+        // addKey refuses (the curve unchanged).
         int moveKey(size_t index, const CurveKey& key);
-        void removeKey(size_t index);
+        // false for a bad index
+        bool removeKey(size_t index);
         // Unity's SmoothTangents: in = out = the slopes to the neighbours blended by `weight`
         // (-1 the left one, 0 their mean, 1 the right one); the end keys point at their neighbour
         void smoothTangents(size_t index, float weight);
@@ -125,10 +141,12 @@ namespace jasperengine {
         // a line from (0, from) to (1, to)
         static Curve linear(float from, float to);
         // Unity's AnimationCurve.Linear: a line from (timeStart, valueStart) to (timeEnd, valueEnd)
+        // (the keys in time order when timeEnd comes first)
         static Curve linear(float timeStart, float valueStart, float timeEnd, float valueEnd);
         // linear segments through (time, value) points, tangents along the segments
         static Curve polyline(const std::vector<std::pair<float, float>>& points);
-        // the ease-in-out of Unity's AnimationCurve.EaseInOut: flat tangents at both ends
+        // the ease-in-out of Unity's AnimationCurve.EaseInOut: flat tangents at both ends (keys in
+        // time order)
         static Curve easeInOut(float timeStart, float valueStart, float timeEnd, float valueEnd);
         // An ease over [0, 1] as keys (the ends, then a key where the curve is furthest from the
         // ease, each with the ease's slopes on both sides; a jump becomes a step): `keys` keys,
@@ -191,6 +209,10 @@ namespace jasperengine {
         float evaluateAlpha(float time) const;
 
         void sortKeys();
+        // Drops the keys with a non-finite time or value, clamps the times to [0, 1], sorts them
+        // (stable) and keeps at most kMaxKeys of each (the first kMaxKeys - 1 by time and the
+        // last, so both ends stay): what a gradient read from a lenient source becomes
+        void normalize();
 
         // a single colour (sRGB) and alpha
         static Gradient constant(const Vector3& color, float alpha = 1.0f);

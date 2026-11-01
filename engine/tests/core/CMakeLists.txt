@@ -72,6 +72,8 @@ jasperengine_skip_unity_build(
         ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleRenderTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleSeekTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleSubEmittersTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleUpstreamBehaviourTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleUpstreamModulesTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/physics/CharacterController2DTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/physics/CharacterControllerBenchTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/physics/CharacterControllerTest.cpp

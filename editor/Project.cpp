@@ -3900,6 +3900,8 @@ void editor::Project::invalidateCustomShaders(const std::function<bool(const std
                 flagReload(pts->needReload, scenePoints || fork(pts->customShader));
             if (LineRendererComponent* ln = scene->findComponent<LineRendererComponent>(entity))
                 flagReload(ln->needReload, sceneLines || fork(ln->customShader));
+            if (TrailRendererComponent* trail = scene->findComponent<TrailRendererComponent>(entity))
+                flagReload(trail->needReload, sceneLines || fork(trail->customShader));
             if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity))
                 flagReload(sky->needReload, sceneSky || fork(sky->customShader));
         }
@@ -9396,6 +9398,9 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                     entry.scriptsRan = true;
 
                     Scene* scene = runtimeSceneOf(entry);
+                    // the edit-time scene plays in place: its Particle Systems start as loaded
+                    // ones (the Scene view's preview stopped or played some), before any script
+                    scene->getSystem<ParticleSubsystem>()->resetForPlay();
                     if (hasCppScripts) {
                         conector.init(scene);
                     } else {

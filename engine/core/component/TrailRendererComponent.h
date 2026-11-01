@@ -10,6 +10,7 @@
 // transform once per frame (scaled game time); the render system builds and draws the ribbon
 // like a thick Line Renderer's.
 
+#include "asset/AssetRef.h"
 #include "component/LineRendererComponent.h"
 #include "math/Vector3.h"
 #include <string>
@@ -59,10 +60,10 @@ namespace jasperengine{
         float minVertexDistance = 0.1f;
         // width = widthMultiplier x widthCurve over the trail (0 = the head, 1 = the tail)
         float widthMultiplier = 1.0f;
-        upcurve::AnimationCurve widthCurve = upcurve::AnimationCurve::constant(1.0f);
+        Curve widthCurve = Curve::constant(1.0f);
         LineWidthUnit widthUnit = LineWidthUnit::World;
         // over the trail by age: 0 = the head, 1 = the oldest point
-        upcurve::Gradient colorGradient;
+        Gradient colorGradient = Gradient::twoColors(Vector3(1.0f, 1.0f, 1.0f), Vector3(1.0f, 1.0f, 1.0f));
         unsigned int numCornerVertices = 0;
         unsigned int numCapVertices = 0;
         LineAlignment alignment = LineAlignment::View;
@@ -77,7 +78,7 @@ namespace jasperengine{
 
         // shader: as LineRendererComponent (the built-in line shader's ribbon variant, a
         // library lines shader or a fork); AUTO blend is alpha, AUTO depth write off
-        std::string customShader;
+        ShaderRef customShader;
         uint16_t customShaderId = 0;
         ShaderUniformValues shaderUniforms;
         bool needUpdateShaderUniforms = false;

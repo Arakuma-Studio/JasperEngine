@@ -151,7 +151,7 @@ entities:
         path: prefabs/Lamp.prefab
         guid: 30aeaad93c80be96b89030fe283e7a8b
     prefabInstance:
-      version: 6
+      version: 7
       overrides:
         - registryEntity: 1001
           removedComponents:

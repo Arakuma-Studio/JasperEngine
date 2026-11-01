@@ -373,15 +373,7 @@ CurveEditorResult CurveEditor::draw(const char* id, std::vector<CurveBinding>& c
     // zoom around the cursor: the wheel both axes, Ctrl time only, Shift values only
     if (hovered && io.MouseWheel != 0.0f) {
         const float factor = std::pow(0.85f, io.MouseWheel);
-        const float t = view.toTime(mouse.x), v = view.toValue(mouse.y);
-        if (!io.KeyShift) {
-            view.t0 = t + (view.t0 - t) * factor;
-            view.t1 = t + (view.t1 - t) * factor;
-        }
-        if (!io.KeyCtrl) {
-            view.v0 = v + (view.v0 - v) * factor;
-            view.v1 = v + (view.v1 - v) * factor;
-        }
+        view = curveops::zoom(view, mouse.x, mouse.y, io.KeyShift ? 1.0f : factor, io.KeyCtrl ? 1.0f : factor);
     }
 
     if (hovered && drag == Drag::None) {
@@ -456,11 +448,7 @@ CurveEditorResult CurveEditor::draw(const char* id, std::vector<CurveBinding>& c
     switch (drag) {
         case Drag::Pan:
             if (ImGui::IsMouseDown(ImGuiMouseButton_Middle) || ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-                const float dt = (mouse.x - dragStart.x) / view.scaleX(), dv = -(mouse.y - dragStart.y) / view.scaleY();
-                view.t0 -= dt;
-                view.t1 -= dt;
-                view.v0 -= dv;
-                view.v1 -= dv;
+                view = curveops::pan(view, mouse.x - dragStart.x, mouse.y - dragStart.y);
                 dragStart = mouse;
             } else {
                 drag = Drag::None;

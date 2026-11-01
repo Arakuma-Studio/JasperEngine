@@ -1,13 +1,14 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The Unity ParticleSystem importer (UnityParticleImport.h, particles spec 6.10). Steps: the
-// file is read into one object graph (prefab instances resolved recursively, their
-// modifications applied by property path, their objects given Unity's own ids: source id XOR
-// instance id, so the file's stripped placeholders and references meet them), the roots are
-// picked, each root's GameObject tree is built in a scratch Scene (transforms converted by
-// S = diag(-1, 1, 1); each ParticleSystem a version 2 system on its GameObject's own quad),
-// then written as a prefab with its materials and textures, and the report.
+// The Unity ParticleSystem importer (UnityParticleImport.h; docs/specs/S20-particles.md,
+// Upstream absorption). Steps: the file is read into one object graph (prefab instances
+// resolved recursively, their modifications applied by property path, their objects given
+// Unity's own ids: source id XOR instance id, so the file's stripped placeholders and
+// references meet them), the roots are picked, each root's GameObject tree is built in a
+// scratch Scene (transforms converted by S = diag(-1, 1, 1); each ParticleSystem an S20
+// Particle System with an inline effect, its renderer's material in the Renderer module),
+// then written as a prefab with its textures, and the report.
 
 #include "UnityParticleImport.h"
 #include "UnityProject.h"
@@ -18,15 +19,15 @@
 #include "util/ProjectFileWrites.h"
 #include "Stream.h"
 #include "Scene.h"
-#include "action/ParticleSystem.h"
-#include "component/ActionComponent.h"
-#include "component/InstancedMeshComponent.h"
-#include "component/MeshComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "component/Transform.h"
-#include "particles/ParticleSimulation.h"
+#include "math/Curve.h"
+#include "particles/ParticleEffect.h"
 #include "shader/ShaderUniforms.h"
+#include "stream/UpstreamParticles.h"
+#include "texture/Material.h"
 #include "util/AssetDatabase.h"
+#include "util/Prefab.h"
 #include "util/Color.h"
 #include "util/SafeWrite.h"
 
@@ -47,14 +48,19 @@ using namespace jasperengine::editor::unity;
 namespace fs = std::filesystem;
 using Json = nlohmann::json;
 using UnityProject = jasperengine::editor::unity::Project;
+using particles::MinMaxCurve;
+using particles::MinMaxGradient;
+using particles::ParticleEffectDocument;
 
 namespace {
 
     // Unity's view is left handed: a positive billboard roll turns clockwise on screen there,
-    // counter-clockwise here; Z rotations and Z angular speeds change sign (spec 5.4). If a
-    // capture from Unity shows otherwise, only this changes.
+    // counter-clockwise here; Z rotations and Z angular speeds change sign. If a capture from
+    // Unity shows otherwise, only this changes.
     constexpr float ROTATION_SIGN = -1.0f;
     constexpr float PI = 3.14159265358979323846f;
+    // Unity stores rotations and angular speeds in radians; S20's are degrees
+    constexpr float RAD_TO_DEG = 180.0f / PI;
 
     // ------------------------------------------------------------------ the object graph
 
@@ -111,7 +117,7 @@ namespace {
         std::vector<std::string> warnings;
         Json materials = Json::array();
         Json textures = Json::array();
-        // Unity material path -> the engine material (its name: the .material path) and the
+        // Unity material path -> the engine material (the Renderer modules take its values) and the
         // notes its import made (given again to every system that uses it)
         struct CachedMaterial { Material material; std::vector<ImportNote> notes; };
         std::map<std::string, CachedMaterial> materialCache;
@@ -522,26 +528,30 @@ namespace {
 
     // Unity's AnimationCurve ({m_Curve: [{time, value, inSlope, outSlope, weightedMode}],
     // m_PreInfinity, m_PostInfinity}); weighted keys become the plain Hermite (noted)
-    AnimationCurve readCurve(const YAML::Node& node, Context& ctx, const std::string& where){
-        AnimationCurve curve;
-        if (!node || !node.IsMap()) return AnimationCurve::constant(1.0f);
+    Curve readCurve(const YAML::Node& node, Context& ctx, const std::string& where){
+        Curve curve;
+        if (!node || !node.IsMap()) return Curve::constant(1.0f);
         const YAML::Node keys = node["m_Curve"];
         bool weighted = false;
         if (keys && keys.IsSequence()){
             for (const YAML::Node& k : keys){
-                CurveKey key(readFloat(k, "time"), readFloat(k, "value"), readFloat(k, "inSlope"), readFloat(k, "outSlope"));
+                CurveKey key;
+                key.time = readFloat(k, "time");
+                key.value = readFloat(k, "value");
+                key.inTangent = readFloat(k, "inSlope");
+                key.outTangent = readFloat(k, "outSlope");
                 if (readInt(k, "weightedMode") != 0) weighted = true;
                 curve.keys.push_back(key);
             }
         }
         // Unity's internal wrap: 0 ping pong, 1 repeat, 2 clamp
         auto wrap = [](int mode){
-            return mode == 0 ? CurveWrap::PingPong : mode == 1 ? CurveWrap::Loop : CurveWrap::Clamp;
+            return mode == 0 ? CurveWrapMode::PingPong : mode == 1 ? CurveWrapMode::Loop : CurveWrapMode::Clamp;
         };
-        curve.preWrap = wrap(readInt(node, "m_PreInfinity", 2));
-        curve.postWrap = wrap(readInt(node, "m_PostInfinity", 2));
+        curve.preWrapMode = wrap(readInt(node, "m_PreInfinity", 2));
+        curve.postWrapMode = wrap(readInt(node, "m_PostInfinity", 2));
         curve.normalize();
-        if (curve.keys.empty()) curve = AnimationCurve::constant(0.0f);
+        if (curve.keys.empty()) curve = Curve::constant(0.0f);
         if (weighted) note(ctx, "weighted-tangents", where + ": weighted tangents became plain (Hermite) tangents");
         return curve;
     }
@@ -554,58 +564,80 @@ namespace {
         const float minScalar = readFloat(node, "minScalar", scalar);
         switch (state){
             case 1: return MinMaxCurve::fromCurve(readCurve(node["maxCurve"], ctx, where), scalar * scale);
-            case 2: return MinMaxCurve::between(readCurve(node["minCurve"], ctx, where), readCurve(node["maxCurve"], ctx, where), scalar * scale);
-            case 3: return MinMaxCurve::between(minScalar * scale, scalar * scale);
+            case 2: {
+                // S20's Two Curves: curve the first (Unity's min), curveMax the second
+                MinMaxCurve value = MinMaxCurve::fromCurve(readCurve(node["minCurve"], ctx, where), scalar * scale);
+                value.mode = particles::CurveMode::TwoCurves;
+                value.curveMax = readCurve(node["maxCurve"], ctx, where);
+                return value;
+            }
+            case 3: return MinMaxCurve::twoConstants(minScalar * scale, scalar * scale);
             default: return MinMaxCurve(scalar * scale);
         }
     }
 
-    // a gamma colour as the engine's linear one (alpha kept)
-    Vector4 linearColor(const Vector4& gamma){
-        const Vector3 c = Color::sRGBToLinear(Vector3(std::max(0.0f, gamma.x), std::max(0.0f, gamma.y), std::max(0.0f, gamma.z)));
-        return Vector4(c.x, c.y, c.z, gamma.w);
-    }
-
-    // Unity's Gradient ({key0..7, ctime0..7, atime0..7 in 0..65535, m_Mode, m_NumColorKeys, m_NumAlphaKeys})
+    // Unity's Gradient ({key0..7, ctime0..7, atime0..7 in 0..65535, m_Mode, m_NumColorKeys,
+    // m_NumAlphaKeys}): its colours are sRGB (gamma) as S27's keys are, blended there as Unity does
     Gradient readGradient(const YAML::Node& node){
         if (!node || !node.IsMap()) return Gradient();
-        Gradient g({}, {});
+        Gradient g;
         const int colors = std::min(8, readInt(node, "m_NumColorKeys", 2));
         const int alphas = std::min(8, readInt(node, "m_NumAlphaKeys", 2));
         for (int i = 0; i < colors; i++){
             const std::string k = "key" + std::to_string(i), t = "ctime" + std::to_string(i);
-            const Vector4 c = linearColor(readColor(node, k.c_str()));
-            g.colorKeys.push_back(GradientColorKey(readFloat(node, t.c_str()) / 65535.0f, Vector3(c.x, c.y, c.z)));
+            const Vector4 c = readColor(node, k.c_str());
+            g.colorKeys.push_back(GradientColorKey{readFloat(node, t.c_str()) / 65535.0f, Vector3(std::max(0.0f, c.x), std::max(0.0f, c.y), std::max(0.0f, c.z))});
         }
         for (int i = 0; i < alphas; i++){
             const std::string k = "key" + std::to_string(i), t = "atime" + std::to_string(i);
-            g.alphaKeys.push_back(GradientAlphaKey(readFloat(node, t.c_str()) / 65535.0f, readColor(node, k.c_str()).w));
+            g.alphaKeys.push_back(GradientAlphaKey{readFloat(node, t.c_str()) / 65535.0f, readColor(node, k.c_str()).w});
         }
         g.mode = readInt(node, "m_Mode") == 1 ? GradientMode::Fixed : GradientMode::Blend;
         g.normalize();
         return g;
     }
 
+    // a Unity colour (sRGB, alpha) as S20's (sRGB, alpha)
+    Vector4 srgbColor(const Vector4& c){
+        return Vector4(std::max(0.0f, c.x), std::max(0.0f, c.y), std::max(0.0f, c.z), c.w);
+    }
+
     MinMaxGradient readMinMaxGradient(const YAML::Node& node){
         if (!node || !node.IsMap()) return MinMaxGradient();
-        const Vector4 minColor = linearColor(readColor(node, "minColor"));
-        const Vector4 maxColor = linearColor(readColor(node, "maxColor"));
+        const Vector4 minColor = srgbColor(readColor(node, "minColor"));
+        const Vector4 maxColor = srgbColor(readColor(node, "maxColor"));
+        MinMaxGradient value;
         switch (readInt(node, "minMaxState")){
-            case 1: return MinMaxGradient::fromGradient(readGradient(node["maxGradient"]));
-            case 2: return MinMaxGradient::between(minColor, maxColor);
-            case 3: return MinMaxGradient::between(readGradient(node["minGradient"]), readGradient(node["maxGradient"]));
-            case 4: {
-                MinMaxGradient g = MinMaxGradient::fromGradient(readGradient(node["maxGradient"]));
-                g.mode = ParticleSystemGradientMode::RandomColor;
-                return g;
-            }
-            default: return MinMaxGradient::fromColor(maxColor);
+            case 1:
+                value.mode = particles::GradientValueMode::Gradient;
+                value.gradient = readGradient(node["maxGradient"]);
+                return value;
+            case 2:
+                value.mode = particles::GradientValueMode::TwoColors;
+                value.color = minColor;
+                value.colorMax = maxColor;
+                return value;
+            case 3:
+                value.mode = particles::GradientValueMode::TwoGradients;
+                value.gradient = readGradient(node["minGradient"]);
+                value.gradientMax = readGradient(node["maxGradient"]);
+                return value;
+            case 4:
+                value.mode = particles::GradientValueMode::RandomColor;
+                value.gradient = readGradient(node["maxGradient"]);
+                return value;
+            default:
+                return MinMaxGradient(maxColor);
         }
     }
 
     MinMaxCurve negated(MinMaxCurve c){
-        c.constant = -c.constant;
-        c.constantMin = -c.constantMin;
+        if (c.usesCurve()){
+            c.multiplier = -c.multiplier;
+        }else{
+            c.constant = -c.constant;
+            c.constantMax = -c.constantMax;
+        }
         return c;
     }
 
@@ -676,7 +708,8 @@ void jasperengine::editor::unity::convertShapeRotation(const float unityEuler[3]
     Quaternion c = axisAngle(Vector3(1, 0, 0), 90.0f) * axisAngle(Vector3(0, 1, 0), 180.0f);
     if (edge) c = c * axisAngle(Vector3(1, 0, 0), 90.0f);
     const Quaternion engine = mirrored(unity) * c;
-    const Vector3 e = eulerXYZDegrees(engine);
+    // S20's shape order (Z, then X, then Y) of the engine's turn
+    const Vector3 e = upstreamparticles::shapeRotation(eulerXYZDegrees(engine));
     engineEuler[0] = e.x;
     engineEuler[1] = e.y;
     engineEuler[2] = e.z;
@@ -1036,16 +1069,8 @@ namespace {
             ShaderUniforms::set(material.shaderParams, "softness", Vector4(1.0f / invFadeValue, 0, 0, 0));
         }
 
-        // its file: dest/materials/<name>.material, linked (the name is the file)
-        const std::string rel = claimOutput(ctx, ctx.destRel + "/materials", sanitize(unityName), ".material", key);
-        material.name = rel;
-        std::error_code exists;
-        if (!ctx.options.overwrite && fs::exists(ctx.engineRoot / rel, exists)){
-            entry["reused"] = true;
-        }else{
-            ctx.files.push_back({ctx.engineRoot / rel, YAML::Dump(Stream::encodeMaterial(material, false)) + "\n"});
-        }
-        entry["file"] = rel;
+        // no file of its own: the systems' Renderer modules take its values (S20)
+        material.name = unityName;
         entry["shader"] = shaderName;
         entry["blend"] = blend == Blend::Additive ? "additive" : blend == Blend::Multiply ? "multiply" :
                          blend == Blend::Premultiplied ? "premultiplied" : blend == Blend::Opaque ? "opaque" : "alpha";
@@ -1059,34 +1084,92 @@ namespace {
     const char* const UNSUPPORTED_MODULES[] = {"SubModule", "CollisionModule", "TriggerModule", "LightsModule", "TrailModule",
                                                "CustomDataModule", "ExternalForcesModule", "LifetimeByEmitterSpeedModule"};
 
-    // a Unity ParticleSystem (and its renderer) as a version 2 component; `modules` the report
-    void convertSystem(const YAML::Node& ps, ParticleSystemComponent& c, Json& modules, Context& ctx){
-        c = ParticleSystemComponent();
-        c.version = 2;
+    // the S20 shape of Unity's shape type (spec of ParticleSystemShapeType); false: not supported
+    bool shapeOf(int type, particles::ShapeModule& s, float& thicknessOverride, bool& edge){
+        using particles::ShapeType;
+        using particles::ShapeEmitFrom;
+        thicknessOverride = -1.0f;
+        edge = false;
+        s.emitFrom = ShapeEmitFrom::Volume;
+        switch (type){
+            case 0: s.shape = ShapeType::Sphere; break;
+            case 1: s.shape = ShapeType::Sphere; thicknessOverride = 0.0f; break;
+            case 2: s.shape = ShapeType::Hemisphere; break;
+            case 3: s.shape = ShapeType::Hemisphere; thicknessOverride = 0.0f; break;
+            case 4: s.shape = ShapeType::Cone; s.emitFrom = ShapeEmitFrom::Base; break;
+            case 5: s.shape = ShapeType::Box; break;
+            case 7: s.shape = ShapeType::Cone; s.emitFrom = ShapeEmitFrom::Base; thicknessOverride = 0.0f; break;
+            case 8: s.shape = ShapeType::Cone; break;
+            case 9: s.shape = ShapeType::Cone; thicknessOverride = 0.0f; break;
+            case 10: s.shape = ShapeType::Circle; break;
+            case 11: s.shape = ShapeType::Circle; thicknessOverride = 0.0f; break;
+            case 12: s.shape = ShapeType::Edge; edge = true; break;
+            case 15: s.shape = ShapeType::Box; s.emitFrom = ShapeEmitFrom::Shell; break;
+            case 16: s.shape = ShapeType::Box; s.emitFrom = ShapeEmitFrom::Edge; break;
+            case 17: s.shape = ShapeType::Donut; break;
+            case 18: s.shape = ShapeType::Rectangle; break;
+            default:
+                s.shape = ShapeType::Cone;
+                s.emitFrom = ShapeEmitFrom::Base;
+                return false;
+        }
+        return true;
+    }
+
+    particles::ShapeMultiMode multiModeOf(int mode){
+        switch (std::max(0, std::min(3, mode))){
+            case 1: return particles::ShapeMultiMode::Loop;
+            case 2: return particles::ShapeMultiMode::PingPong;
+            case 3: return particles::ShapeMultiMode::BurstSpread;
+            default: return particles::ShapeMultiMode::Random;
+        }
+    }
+
+    particles::ValueSpace spaceOf(const YAML::Node& module){
+        return readBool(module, "inWorldSpace") ? particles::ValueSpace::World : particles::ValueSpace::Local;
+    }
+
+    // a Unity ParticleSystem as an S20 effect (and the component's own Play On Awake and seed);
+    // `modules` the report
+    void convertSystem(const YAML::Node& ps, ParticleEffectDocument& d, ParticleSystemComponent& c, Json& modules, Context& ctx){
+        using namespace particles;
+        d = ParticleEffectDocument();
         auto status = [&](const char* unityModule, const char* status){ modules[unityModule] = status; };
 
         // main
-        ParticleMainModule& m = c.main;
-        m.duration = std::max(0.05f, readFloat(ps, "lengthInSec", 5.0f));
-        m.looping = readBool(ps, "looping", true);
-        m.prewarm = readBool(ps, "prewarm");
-        m.playOnAwake = readBool(ps, "playOnAwake", true);
-        m.simulationSpeed = readFloat(ps, "simulationSpeed", 1.0f);
-        m.startDelay = readMinMaxCurve(ps["startDelay"], ctx, "startDelay");
-        m.autoRandomSeed = readBool(ps, "autoRandomSeed", true);
-        m.randomSeed = (uint32_t)readInt(ps, "randomSeed");
+        MainModule& m = d.main;
+        d.duration = std::max(0.05f, readFloat(ps, "lengthInSec", 5.0f));
+        d.looping = readBool(ps, "looping", true);
+        d.prewarm = readBool(ps, "prewarm");
+        c.playOnAwake = readBool(ps, "playOnAwake", true);
+        d.simulationSpeed = readFloat(ps, "simulationSpeed", 1.0f);
+        d.startDelay = readMinMaxCurve(ps["startDelay"], ctx, "startDelay");
+        if (d.startDelay.usesCurve()){
+            d.startDelay = MinMaxCurve(d.startDelay.curve.evaluate(0.0f) * d.startDelay.multiplier);
+            note(ctx, "start-delay-curve", "a curve start delay starts at its value at 0");
+        }
+        // 0: a new seed at every play (Unity's Auto Random Seed)
+        if (!readBool(ps, "autoRandomSeed", true)){
+            const int seed = readInt(ps, "randomSeed");
+            c.seed = seed == 0 ? 1u : (uint32_t)seed;
+        }
         const int stopAction = readInt(ps, "stopAction");
-        m.stopAction = (stopAction >= 0 && stopAction <= 3) ? (ParticleSystemStopAction)stopAction : ParticleSystemStopAction::None;
+        d.stopAction = (stopAction >= 0 && stopAction <= 3) ? (StopAction)stopAction : StopAction::None;
         const int space = readInt(ps, "moveWithTransform");
-        m.simulationSpace = space == 0 ? ParticleSystemSimulationSpace::Local : ParticleSystemSimulationSpace::World;
+        d.simulationSpace = space == 0 ? SimulationSpace::Local : SimulationSpace::World;
         if (space == 2) note(ctx, "custom-simulation-space", "a custom simulation space is simulated in World space");
         const int scaling = readInt(ps, "scalingMode", 1);
-        m.scalingMode = (scaling >= 0 && scaling <= 2) ? (ParticleSystemScalingMode)scaling : ParticleSystemScalingMode::Local;
-        c.useUnscaledTime = readBool(ps, "useUnscaledTime");
-        m.emitterVelocityMode = readInt(ps, "emitterVelocityMode") == 1 ? ParticleSystemEmitterVelocityMode::Rigidbody
-                                                                          : ParticleSystemEmitterVelocityMode::Transform;
+        d.scalingMode = (scaling >= 0 && scaling <= 2) ? (ScalingMode)scaling : ScalingMode::Local;
+        d.useUnscaledTime = readBool(ps, "useUnscaledTime");
+        d.emitterVelocityMode = readInt(ps, "emitterVelocityMode") == 1 ? EmitterVelocityMode::Rigidbody : EmitterVelocityMode::Transform;
         const int culling = readInt(ps, "cullingMode");
-        if (culling == 1 || culling == 2) note(ctx, "culling-mode", "the culling mode is not imported: the system always simulates");
+        // Unity's Automatic, Pause and Catch-up, Pause, Always Simulate
+        switch (culling){
+            case 1: d.cullingMode = particles::CullingMode::PauseAndCatchUp; break;
+            case 2: d.cullingMode = particles::CullingMode::Pause; break;
+            case 3: d.cullingMode = particles::CullingMode::AlwaysSimulate; break;
+            default: d.cullingMode = particles::CullingMode::Automatic; break;
+        }
         if (readInt(ps, "ringBufferMode") != 0) note(ctx, "ring-buffer", "ring buffer mode is not supported: the oldest particles are not recycled");
 
         const YAML::Node init = moduleOf(ps, "InitialModule");
@@ -1098,73 +1181,59 @@ namespace {
         m.startSizeY = readMinMaxCurve(init["startSizeY"], ctx, "startSizeY", 1.0f, 1.0f);
         m.startSizeZ = readMinMaxCurve(init["startSizeZ"], ctx, "startSizeZ", 1.0f, 1.0f);
         m.startRotation3D = readBool(init, "rotation3D");
-        // radians; (x, y, z) -> (x, -y, -z) (S), the roll's sign by ROTATION_SIGN
-        m.startRotation = readMinMaxCurve(init["startRotation"], ctx, "startRotation", ROTATION_SIGN);
-        m.startRotationX = readMinMaxCurve(init["startRotationX"], ctx, "startRotationX");
-        m.startRotationY = negated(readMinMaxCurve(init["startRotationY"], ctx, "startRotationY"));
+        // radians to degrees; (x, y, z) -> (x, -y, -z) (S), the roll's sign by ROTATION_SIGN
+        m.startRotation = readMinMaxCurve(init["startRotation"], ctx, "startRotation", ROTATION_SIGN * RAD_TO_DEG);
+        m.startRotationX = readMinMaxCurve(init["startRotationX"], ctx, "startRotationX", RAD_TO_DEG);
+        m.startRotationY = negated(readMinMaxCurve(init["startRotationY"], ctx, "startRotationY", RAD_TO_DEG));
         m.flipRotation = readFloat(init, "randomizeRotationDirection");
         m.gravityModifier = readMinMaxCurve(init["gravityModifier"], ctx, "gravityModifier");
-        m.gravitySource = readInt(init, "gravitySource") == 1 ? ParticleSystemGravitySource::Physics2D : ParticleSystemGravitySource::Physics3D;
-        m.maxParticles = (unsigned int)std::max(0, std::min(100000, readInt(init, "maxNumParticles", 1000)));
+        // over the system's time in Unity
+        if (m.gravityModifier.usesCurve()) m.gravityModifier.driver = CurveDriver::EmitterTime;
+        m.gravitySource = readInt(init, "gravitySource") == 1 ? GravitySource::Physics2D : GravitySource::Physics3D;
+        d.maxParticles = (uint32_t)std::max(0, std::min((int)kMaxParticlesPerEmitter, readInt(init, "maxNumParticles", 1000)));
         status("InitialModule", "imported");
 
         // emission
         const YAML::Node emission = moduleOf(ps, "EmissionModule");
-        c.emission.enabled = readBool(emission, "enabled", true);
-        c.emission.rateOverTime = readMinMaxCurve(emission["rateOverTime"], ctx, "rateOverTime", 1.0f, 10.0f);
-        c.emission.rateOverDistance = readMinMaxCurve(emission["rateOverDistance"], ctx, "rateOverDistance");
+        d.emission.enabled = readBool(emission, "enabled", true);
+        d.emission.rateOverTime = readMinMaxCurve(emission["rateOverTime"], ctx, "rateOverTime", 1.0f, 10.0f);
+        d.emission.rateOverDistance = readMinMaxCurve(emission["rateOverDistance"], ctx, "rateOverDistance");
         if (emission["m_Bursts"] && emission["m_Bursts"].IsSequence()){
             for (const YAML::Node& b : emission["m_Bursts"]){
-                ParticleEmissionBurst burst;
+                if (d.emission.bursts.size() >= kMaxBursts){
+                    note(ctx, "bursts-capped", "more than " + std::to_string(kMaxBursts) + " bursts: the first " + std::to_string(kMaxBursts) + " are kept");
+                    break;
+                }
+                Burst burst;
                 burst.time = readFloat(b, "time");
                 if (b["countCurve"]){
                     burst.count = readMinMaxCurve(b["countCurve"], ctx, "burst count");
                 }else{
-                    burst.count = MinMaxCurve::between((float)readInt(b, "minCount", 30), (float)readInt(b, "maxCount", 30));
+                    const float lo = (float)readInt(b, "minCount", 30), hi = (float)readInt(b, "maxCount", 30);
+                    burst.count = lo == hi ? MinMaxCurve(lo) : MinMaxCurve::twoConstants(lo, hi);
                 }
                 burst.cycles = std::max(0, readInt(b, "cycleCount", 1));
                 burst.interval = std::max(0.0001f, readFloat(b, "repeatInterval", 0.01f));
                 burst.probability = std::min(1.0f, std::max(0.0f, readFloat(b, "probability", 1.0f)));
-                c.emission.bursts.push_back(burst);
+                d.emission.bursts.push_back(burst);
             }
         }
-        status("EmissionModule", c.emission.enabled ? "imported" : "disabled");
+        status("EmissionModule", d.emission.enabled ? "imported" : "disabled");
 
-        // shape (spec 6.10.4: the shape frame converted; scale and box thickness (x, z, y))
+        // shape (the shape frame converted; scale and box thickness (x, z, y))
         const YAML::Node shape = moduleOf(ps, "ShapeModule");
-        ParticleShapeModule& s = c.shape;
+        ShapeModule& s = d.shape;
         s.enabled = readBool(shape, "enabled", true);
         const int type = readInt(shape, "type", 4);
         bool edge = false;
         float thicknessOverride = -1.0f;
-        switch (type){
-            case 0: s.shapeType = ParticleSystemShapeType::Sphere; break;
-            case 1: s.shapeType = ParticleSystemShapeType::Sphere; thicknessOverride = 0.0f; break;
-            case 2: s.shapeType = ParticleSystemShapeType::Hemisphere; break;
-            case 3: s.shapeType = ParticleSystemShapeType::Hemisphere; thicknessOverride = 0.0f; break;
-            case 4: s.shapeType = ParticleSystemShapeType::Cone; break;
-            case 5: s.shapeType = ParticleSystemShapeType::Box; break;
-            case 7: s.shapeType = ParticleSystemShapeType::Cone; thicknessOverride = 0.0f; break;
-            case 8: s.shapeType = ParticleSystemShapeType::ConeVolume; break;
-            case 9: s.shapeType = ParticleSystemShapeType::ConeVolume; thicknessOverride = 0.0f; break;
-            case 10: s.shapeType = ParticleSystemShapeType::Circle; break;
-            case 11: s.shapeType = ParticleSystemShapeType::Circle; thicknessOverride = 0.0f; break;
-            case 12: s.shapeType = ParticleSystemShapeType::Edge; edge = true; break;
-            case 15: s.shapeType = ParticleSystemShapeType::BoxShell; break;
-            case 16: s.shapeType = ParticleSystemShapeType::BoxEdge; break;
-            case 17: s.shapeType = ParticleSystemShapeType::Donut; break;
-            case 18: s.shapeType = ParticleSystemShapeType::Rectangle; break;
-            default:
-                if (s.enabled){
-                    note(ctx, "shape-unsupported", "shape type " + std::to_string(type) + " (a mesh, sprite or texture shape) is not supported: a cone is used");
-                }
-                s.shapeType = ParticleSystemShapeType::Cone;
-                break;
+        if (!shapeOf(type, s, thicknessOverride, edge) && s.enabled){
+            note(ctx, "shape-unsupported", "shape type " + std::to_string(type) + " (a mesh, sprite or texture shape) is not supported: a cone is used");
         }
         const YAML::Node radius = shape["radius"];
         s.radius = radius && radius.IsMap() ? readFloat(radius, "value", 1.0f) : readFloat(shape, "radius", 1.0f);
         if (radius && radius.IsMap()){
-            s.radiusMode = (ParticleSystemShapeMultiModeValue)std::max(0, std::min(3, readInt(radius, "mode")));
+            s.radiusMode = multiModeOf(readInt(radius, "mode"));
             s.radiusSpread = readFloat(radius, "spread");
             s.radiusSpeed = readMinMaxCurve(radius["speed"], ctx, "radius speed", 1.0f, 1.0f);
         }
@@ -1172,11 +1241,11 @@ namespace {
         const YAML::Node arc = shape["arc"];
         s.arc = arc && arc.IsMap() ? readFloat(arc, "value", 360.0f) : readFloat(shape, "arc", 360.0f);
         if (arc && arc.IsMap()){
-            s.arcMode = (ParticleSystemShapeMultiModeValue)std::max(0, std::min(3, readInt(arc, "mode")));
+            s.arcMode = multiModeOf(readInt(arc, "mode"));
             s.arcSpread = readFloat(arc, "spread");
             s.arcSpeed = readMinMaxCurve(arc["speed"], ctx, "arc speed", 1.0f, 1.0f);
         }
-        s.angle = readFloat(shape, "angle", 25.0f);
+        s.angle = std::max(0.0f, std::min(90.0f, readFloat(shape, "angle", 25.0f)));
         s.length = readFloat(shape, "length", 5.0f);
         const Vector3 thickness = readVector3(shape, "boxThickness");
         s.boxThickness = Vector3(thickness.x, thickness.z, thickness.y);
@@ -1191,129 +1260,148 @@ namespace {
         const Vector3 scale = readVector3(shape, "m_Scale", Vector3(1, 1, 1));
         s.scale = Vector3(scale.x, scale.z, scale.y);
         s.alignToDirection = readBool(shape, "alignToDirection");
-        s.randomDirectionAmount = readFloat(shape, "randomDirectionAmount");
-        s.sphericalDirectionAmount = readFloat(shape, "sphericalDirectionAmount");
-        s.randomPositionAmount = readFloat(shape, "randomPositionAmount");
+        s.randomizeDirection = readFloat(shape, "randomDirectionAmount");
+        s.spherizeDirection = readFloat(shape, "sphericalDirectionAmount");
+        s.randomizePosition = readFloat(shape, "randomPositionAmount");
         if (!s.enabled){
             // Unity emits along the system's +Z without a shape: a point emitting straight there
-            s.enabled = true;
-            s.shapeType = ParticleSystemShapeType::Cone;
+            s = ShapeModule();
+            s.shape = ShapeType::Cone;
+            s.emitFrom = ShapeEmitFrom::Base;
             s.radius = 0.0f;
             s.angle = 0.0f;
-            s.radiusThickness = 1.0f;
-            s.arc = 360.0f;
-            s.position = Vector3(0, 0, 0);
             s.rotation = Vector3(90.0f, 0.0f, 0.0f);
-            s.scale = Vector3(1, 1, 1);
-            s.randomDirectionAmount = s.sphericalDirectionAmount = s.randomPositionAmount = 0.0f;
             status("ShapeModule", "disabled");
         }else{
             status("ShapeModule", "imported");
         }
 
-        // velocity over lifetime (vectors by S: x negated; angular speeds (x, -y, -z))
+        // velocity over lifetime (vectors by S: x negated; angular speeds (x, -y, -z), in degrees)
         const YAML::Node vel = moduleOf(ps, "VelocityModule");
-        c.velocityOverLifetime.enabled = readBool(vel, "enabled");
-        c.velocityOverLifetime.x = negated(readMinMaxCurve(vel["x"], ctx, "velocity x"));
-        c.velocityOverLifetime.y = readMinMaxCurve(vel["y"], ctx, "velocity y");
-        c.velocityOverLifetime.z = readMinMaxCurve(vel["z"], ctx, "velocity z");
-        c.velocityOverLifetime.orbitalX = readMinMaxCurve(vel["orbitalX"], ctx, "orbital x");
-        c.velocityOverLifetime.orbitalY = negated(readMinMaxCurve(vel["orbitalY"], ctx, "orbital y"));
-        c.velocityOverLifetime.orbitalZ = negated(readMinMaxCurve(vel["orbitalZ"], ctx, "orbital z"));
-        c.velocityOverLifetime.orbitalOffsetX = negated(readMinMaxCurve(vel["orbitalOffsetX"], ctx, "orbital offset x"));
-        c.velocityOverLifetime.orbitalOffsetY = readMinMaxCurve(vel["orbitalOffsetY"], ctx, "orbital offset y");
-        c.velocityOverLifetime.orbitalOffsetZ = readMinMaxCurve(vel["orbitalOffsetZ"], ctx, "orbital offset z");
-        c.velocityOverLifetime.radial = readMinMaxCurve(vel["radial"], ctx, "radial");
-        c.velocityOverLifetime.speedModifier = readMinMaxCurve(vel["speedModifier"], ctx, "speed modifier", 1.0f, 1.0f);
-        c.velocityOverLifetime.space = readBool(vel, "inWorldSpace") ? ParticleSystemSimulationSpace::World : ParticleSystemSimulationSpace::Local;
-        status("VelocityModule", c.velocityOverLifetime.enabled ? "imported" : "disabled");
+        VelocityOverLifetimeModule& v = d.velocityOverLifetime;
+        v.enabled = readBool(vel, "enabled");
+        v.present = v.enabled;
+        v.x = negated(readMinMaxCurve(vel["x"], ctx, "velocity x"));
+        v.y = readMinMaxCurve(vel["y"], ctx, "velocity y");
+        v.z = readMinMaxCurve(vel["z"], ctx, "velocity z");
+        v.orbitalX = readMinMaxCurve(vel["orbitalX"], ctx, "orbital x", RAD_TO_DEG);
+        v.orbitalY = negated(readMinMaxCurve(vel["orbitalY"], ctx, "orbital y", RAD_TO_DEG));
+        v.orbitalZ = negated(readMinMaxCurve(vel["orbitalZ"], ctx, "orbital z", RAD_TO_DEG));
+        v.offsetX = negated(readMinMaxCurve(vel["orbitalOffsetX"], ctx, "orbital offset x"));
+        v.offsetY = readMinMaxCurve(vel["orbitalOffsetY"], ctx, "orbital offset y");
+        v.offsetZ = readMinMaxCurve(vel["orbitalOffsetZ"], ctx, "orbital offset z");
+        v.radial = readMinMaxCurve(vel["radial"], ctx, "radial");
+        v.speedModifier = readMinMaxCurve(vel["speedModifier"], ctx, "speed modifier", 1.0f, 1.0f);
+        v.space = spaceOf(vel);
+        status("VelocityModule", v.enabled ? "imported" : "disabled");
 
         const YAML::Node clamp = moduleOf(ps, "ClampVelocityModule");
-        auto& lim = c.limitVelocityOverLifetime;
+        LimitVelocityModule& lim = d.limitVelocity;
         lim.enabled = readBool(clamp, "enabled");
+        lim.present = lim.enabled;
         lim.separateAxes = readBool(clamp, "separateAxis");
-        lim.limit = readMinMaxCurve(clamp["magnitude"], ctx, "limit", 1.0f, 1.0f);
-        lim.limitX = readMinMaxCurve(clamp["x"], ctx, "limit x", 1.0f, 1.0f);
+        lim.limit = lim.separateAxes ? readMinMaxCurve(clamp["x"], ctx, "limit x", 1.0f, 1.0f) : readMinMaxCurve(clamp["magnitude"], ctx, "limit", 1.0f, 1.0f);
         lim.limitY = readMinMaxCurve(clamp["y"], ctx, "limit y", 1.0f, 1.0f);
         lim.limitZ = readMinMaxCurve(clamp["z"], ctx, "limit z", 1.0f, 1.0f);
-        lim.space = readBool(clamp, "inWorldSpace") ? ParticleSystemSimulationSpace::World : ParticleSystemSimulationSpace::Local;
+        lim.space = spaceOf(clamp);
         lim.dampen = readFloat(clamp, "dampen", 1.0f);
         lim.drag = readMinMaxCurve(clamp["drag"], ctx, "drag");
-        lim.multiplyDragByParticleSize = readBool(clamp, "multiplyDragByParticleSize", true);
-        lim.multiplyDragByParticleVelocity = readBool(clamp, "multiplyDragByParticleVelocity", true);
+        lim.multiplyBySize = readBool(clamp, "multiplyDragByParticleSize", true);
+        lim.multiplyByVelocity = readBool(clamp, "multiplyDragByParticleVelocity", true);
         status("ClampVelocityModule", lim.enabled ? "imported" : "disabled");
 
+        // inherit velocity: Main's here
         const YAML::Node inherit = moduleOf(ps, "InheritVelocityModule");
-        c.inheritVelocity.enabled = readBool(inherit, "enabled");
-        c.inheritVelocity.mode = readInt(inherit, "m_Mode") == 1 ? ParticleSystemInheritVelocityMode::Current : ParticleSystemInheritVelocityMode::Initial;
-        c.inheritVelocity.curve = readMinMaxCurve(inherit["m_Curve"], ctx, "inherit velocity");
-        status("InheritVelocityModule", c.inheritVelocity.enabled ? "imported" : "disabled");
+        if (readBool(inherit, "enabled")){
+            m.inheritVelocityMode = readInt(inherit, "m_Mode") == 1 ? InheritVelocityMode::Current : InheritVelocityMode::Initial;
+            m.inheritVelocity = readMinMaxCurve(inherit["m_Curve"], ctx, "inherit velocity");
+            status("InheritVelocityModule", "imported");
+        }else{
+            status("InheritVelocityModule", "disabled");
+        }
 
         const YAML::Node force = moduleOf(ps, "ForceModule");
-        c.forceOverLifetime.enabled = readBool(force, "enabled");
-        c.forceOverLifetime.x = negated(readMinMaxCurve(force["x"], ctx, "force x"));
-        c.forceOverLifetime.y = readMinMaxCurve(force["y"], ctx, "force y");
-        c.forceOverLifetime.z = readMinMaxCurve(force["z"], ctx, "force z");
-        c.forceOverLifetime.space = readBool(force, "inWorldSpace") ? ParticleSystemSimulationSpace::World : ParticleSystemSimulationSpace::Local;
-        c.forceOverLifetime.randomized = readBool(force, "randomizePerFrame");
-        status("ForceModule", c.forceOverLifetime.enabled ? "imported" : "disabled");
+        ForceOverLifetimeModule& f = d.forceOverLifetime;
+        f.enabled = readBool(force, "enabled");
+        f.present = f.enabled;
+        f.x = negated(readMinMaxCurve(force["x"], ctx, "force x"));
+        f.y = readMinMaxCurve(force["y"], ctx, "force y");
+        f.z = readMinMaxCurve(force["z"], ctx, "force z");
+        f.space = spaceOf(force);
+        f.randomizePerTick = readBool(force, "randomizePerFrame");
+        status("ForceModule", f.enabled ? "imported" : "disabled");
 
         const YAML::Node color = moduleOf(ps, "ColorModule");
-        c.colorOverLifetime.enabled = readBool(color, "enabled");
-        c.colorOverLifetime.color = readMinMaxGradient(color["gradient"]);
-        status("ColorModule", c.colorOverLifetime.enabled ? "imported" : "disabled");
+        d.colorOverLifetime.enabled = readBool(color, "enabled");
+        d.colorOverLifetime.present = d.colorOverLifetime.enabled;
+        d.colorOverLifetime.color = readMinMaxGradient(color["gradient"]);
+        status("ColorModule", d.colorOverLifetime.enabled ? "imported" : "disabled");
         const YAML::Node colorSpeed = moduleOf(ps, "ColorBySpeedModule");
-        c.colorBySpeed.enabled = readBool(colorSpeed, "enabled");
-        c.colorBySpeed.color = readMinMaxGradient(colorSpeed["gradient"]);
-        { const Vector3 r = readVector3(colorSpeed, "range", Vector3(0, 1, 0)); c.colorBySpeed.range = Vector2(r.x, r.y); }
-        status("ColorBySpeedModule", c.colorBySpeed.enabled ? "imported" : "disabled");
+        d.colorBySpeed.enabled = readBool(colorSpeed, "enabled");
+        d.colorBySpeed.present = d.colorBySpeed.enabled;
+        d.colorBySpeed.color = readMinMaxGradient(colorSpeed["gradient"]);
+        { const Vector3 r = readVector3(colorSpeed, "range", Vector3(0, 1, 0)); d.colorBySpeed.speedRange = Vector2(r.x, r.y); }
+        status("ColorBySpeedModule", d.colorBySpeed.enabled ? "imported" : "disabled");
 
         const YAML::Node size = moduleOf(ps, "SizeModule");
-        c.sizeOverLifetime.enabled = readBool(size, "enabled");
-        c.sizeOverLifetime.separateAxes = readBool(size, "separateAxes");
-        c.sizeOverLifetime.size = readMinMaxCurve(size["curve"], ctx, "size", 1.0f, 1.0f);
-        c.sizeOverLifetime.y = readMinMaxCurve(size["y"], ctx, "size y", 1.0f, 1.0f);
-        c.sizeOverLifetime.z = readMinMaxCurve(size["z"], ctx, "size z", 1.0f, 1.0f);
-        status("SizeModule", c.sizeOverLifetime.enabled ? "imported" : "disabled");
+        SizeOverLifetimeModule& so = d.sizeOverLifetime;
+        so.enabled = readBool(size, "enabled");
+        so.present = so.enabled;
+        so.separateAxes = readBool(size, "separateAxes");
+        so.size = readMinMaxCurve(size["curve"], ctx, "size", 1.0f, 1.0f);
+        so.sizeY = readMinMaxCurve(size["y"], ctx, "size y", 1.0f, 1.0f);
+        so.sizeZ = readMinMaxCurve(size["z"], ctx, "size z", 1.0f, 1.0f);
+        status("SizeModule", so.enabled ? "imported" : "disabled");
         const YAML::Node sizeSpeed = moduleOf(ps, "SizeBySpeedModule");
-        c.sizeBySpeed.enabled = readBool(sizeSpeed, "enabled");
-        c.sizeBySpeed.separateAxes = readBool(sizeSpeed, "separateAxes");
-        c.sizeBySpeed.size = readMinMaxCurve(sizeSpeed["curve"], ctx, "size by speed", 1.0f, 1.0f);
-        c.sizeBySpeed.y = readMinMaxCurve(sizeSpeed["y"], ctx, "size by speed y", 1.0f, 1.0f);
-        c.sizeBySpeed.z = readMinMaxCurve(sizeSpeed["z"], ctx, "size by speed z", 1.0f, 1.0f);
-        { const Vector3 r = readVector3(sizeSpeed, "range", Vector3(0, 1, 0)); c.sizeBySpeed.range = Vector2(r.x, r.y); }
-        status("SizeBySpeedModule", c.sizeBySpeed.enabled ? "imported" : "disabled");
+        SizeBySpeedModule& ss = d.sizeBySpeed;
+        ss.enabled = readBool(sizeSpeed, "enabled");
+        ss.present = ss.enabled;
+        ss.separateAxes = readBool(sizeSpeed, "separateAxes");
+        ss.size = readMinMaxCurve(sizeSpeed["curve"], ctx, "size by speed", 1.0f, 1.0f);
+        ss.sizeY = readMinMaxCurve(sizeSpeed["y"], ctx, "size by speed y", 1.0f, 1.0f);
+        ss.sizeZ = readMinMaxCurve(sizeSpeed["z"], ctx, "size by speed z", 1.0f, 1.0f);
+        { const Vector3 r = readVector3(sizeSpeed, "range", Vector3(0, 1, 0)); ss.speedRange = Vector2(r.x, r.y); }
+        status("SizeBySpeedModule", ss.enabled ? "imported" : "disabled");
 
         const YAML::Node rot = moduleOf(ps, "RotationModule");
-        c.rotationOverLifetime.enabled = readBool(rot, "enabled");
-        c.rotationOverLifetime.separateAxes = readBool(rot, "separateAxes");
-        c.rotationOverLifetime.x = readMinMaxCurve(rot["x"], ctx, "rotation x");
-        c.rotationOverLifetime.y = negated(readMinMaxCurve(rot["y"], ctx, "rotation y"));
-        c.rotationOverLifetime.z = readMinMaxCurve(rot["curve"], ctx, "rotation", ROTATION_SIGN);
-        status("RotationModule", c.rotationOverLifetime.enabled ? "imported" : "disabled");
+        RotationOverLifetimeModule& ro = d.rotationOverLifetime;
+        ro.enabled = readBool(rot, "enabled");
+        ro.present = ro.enabled;
+        ro.separateAxes = readBool(rot, "separateAxes");
+        ro.angularVelocityX = readMinMaxCurve(rot["x"], ctx, "rotation x", RAD_TO_DEG);
+        ro.angularVelocityY = negated(readMinMaxCurve(rot["y"], ctx, "rotation y", RAD_TO_DEG));
+        ro.angularVelocity = readMinMaxCurve(rot["curve"], ctx, "rotation", ROTATION_SIGN * RAD_TO_DEG, 0.785398163f);
+        status("RotationModule", ro.enabled ? "imported" : "disabled");
         const YAML::Node rotSpeed = moduleOf(ps, "RotationBySpeedModule");
-        c.rotationBySpeed.enabled = readBool(rotSpeed, "enabled");
-        c.rotationBySpeed.separateAxes = readBool(rotSpeed, "separateAxes");
-        c.rotationBySpeed.x = readMinMaxCurve(rotSpeed["x"], ctx, "rotation by speed x");
-        c.rotationBySpeed.y = negated(readMinMaxCurve(rotSpeed["y"], ctx, "rotation by speed y"));
-        c.rotationBySpeed.z = readMinMaxCurve(rotSpeed["curve"], ctx, "rotation by speed", ROTATION_SIGN);
-        { const Vector3 r = readVector3(rotSpeed, "range", Vector3(0, 1, 0)); c.rotationBySpeed.range = Vector2(r.x, r.y); }
-        status("RotationBySpeedModule", c.rotationBySpeed.enabled ? "imported" : "disabled");
+        RotationBySpeedModule& rs = d.rotationBySpeed;
+        rs.enabled = readBool(rotSpeed, "enabled");
+        rs.present = rs.enabled;
+        rs.separateAxes = readBool(rotSpeed, "separateAxes");
+        rs.angularVelocityX = readMinMaxCurve(rotSpeed["x"], ctx, "rotation by speed x", RAD_TO_DEG);
+        rs.angularVelocityY = negated(readMinMaxCurve(rotSpeed["y"], ctx, "rotation by speed y", RAD_TO_DEG));
+        rs.angularVelocity = readMinMaxCurve(rotSpeed["curve"], ctx, "rotation by speed", ROTATION_SIGN * RAD_TO_DEG, 0.785398163f);
+        { const Vector3 r = readVector3(rotSpeed, "range", Vector3(0, 1, 0)); rs.speedRange = Vector2(r.x, r.y); }
+        status("RotationBySpeedModule", rs.enabled ? "imported" : "disabled");
 
         const YAML::Node noise = moduleOf(ps, "NoiseModule");
-        auto& n = c.noise;
+        NoiseModule& n = d.noise;
         n.enabled = readBool(noise, "enabled");
+        n.present = n.enabled;
         n.separateAxes = readBool(noise, "separateAxes");
         n.strength = readMinMaxCurve(noise["strength"], ctx, "noise strength", 1.0f, 1.0f);
         n.strengthY = readMinMaxCurve(noise["strengthY"], ctx, "noise strength y", 1.0f, 1.0f);
         n.strengthZ = readMinMaxCurve(noise["strengthZ"], ctx, "noise strength z", 1.0f, 1.0f);
-        n.frequency = readFloat(noise, "frequency", 0.5f);
+        n.frequency = std::max(0.0001f, readFloat(noise, "frequency", 0.5f));
         n.damping = readBool(noise, "damping", true);
         n.octaves = std::max(1, std::min(4, readInt(noise, "octaves", 1)));
         n.octaveMultiplier = readFloat(noise, "octaveMultiplier", 0.5f);
         n.octaveScale = readFloat(noise, "octaveScale", 2.0f);
+        // Unity's quality: Low (2D), Medium, High
+        const int quality = readInt(noise, "quality", 2);
+        n.quality = quality == 0 ? NoiseQuality::Low : quality == 1 ? NoiseQuality::Medium : NoiseQuality::High;
         n.scrollSpeed = readMinMaxCurve(noise["scrollSpeed"], ctx, "noise scroll");
         n.positionAmount = readMinMaxCurve(noise["positionAmount"], ctx, "noise position", 1.0f, 1.0f);
+        // degrees in Unity, radians per second at amount 1 here (as the roll the noise turns)
         n.rotationAmount = readMinMaxCurve(noise["rotationAmount"], ctx, "noise rotation", ROTATION_SIGN * PI / 180.0f);
         n.sizeAmount = readMinMaxCurve(noise["sizeAmount"], ctx, "noise size");
         if (n.enabled){
@@ -1325,24 +1413,23 @@ namespace {
         }
 
         const YAML::Node uv = moduleOf(ps, "UVModule");
-        auto& sheet = c.textureSheetAnimation;
+        TextureSheetAnimationModule& sheet = d.textureSheetAnimation;
         sheet.enabled = readBool(uv, "enabled");
-        sheet.numTilesX = std::max(1, readInt(uv, "tilesX", 1));
-        sheet.numTilesY = std::max(1, readInt(uv, "tilesY", 1));
-        sheet.animation = readInt(uv, "animationType") == 1 ? ParticleSystemAnimationType::SingleRow : ParticleSystemAnimationType::WholeSheet;
-        sheet.rowMode = readInt(uv, "rowMode", readBool(uv, "randomRow") ? 1 : 0) == 0 ? ParticleSystemAnimationRowMode::Custom
-                                                                                          : ParticleSystemAnimationRowMode::Random;
+        sheet.present = sheet.enabled;
+        sheet.tilesX = std::max(1, readInt(uv, "tilesX", 1));
+        sheet.tilesY = std::max(1, readInt(uv, "tilesY", 1));
+        sheet.animation = readInt(uv, "animationType") == 1 ? TextureSheetAnimation::SingleRow : TextureSheetAnimation::WholeSheet;
+        sheet.rowMode = readInt(uv, "rowMode", readBool(uv, "randomRow") ? 1 : 0) == 0 ? TextureSheetRowMode::Custom : TextureSheetRowMode::Random;
         sheet.rowIndex = readInt(uv, "rowIndex");
         const int timeMode = readInt(uv, "timeMode");
-        sheet.timeMode = timeMode == 1 ? ParticleSystemAnimationTimeMode::Speed : timeMode == 2 ? ParticleSystemAnimationTimeMode::FPS
-                                                                                             : ParticleSystemAnimationTimeMode::Lifetime;
+        sheet.timeMode = timeMode == 1 ? TextureSheetTimeMode::Speed : timeMode == 2 ? TextureSheetTimeMode::FPS : TextureSheetTimeMode::Lifetime;
         sheet.fps = readFloat(uv, "fps", 30.0f);
         sheet.frameOverTime = readMinMaxCurve(uv["frameOverTime"], ctx, "frame over time", 1.0f, 1.0f);
         { const Vector3 r = readVector3(uv, "speedRange", Vector3(0, 1, 0)); sheet.speedRange = Vector2(r.x, r.y); }
         // Unity stores the start frame as a share of the frames
-        const int frames = sheet.animation == ParticleSystemAnimationType::SingleRow ? sheet.numTilesX : sheet.numTilesX * sheet.numTilesY;
+        const int frames = sheet.animation == TextureSheetAnimation::SingleRow ? sheet.tilesX : sheet.tilesX * sheet.tilesY;
         sheet.startFrame = readMinMaxCurve(uv["startFrame"], ctx, "start frame", (float)frames);
-        sheet.cycles = std::max(1, (int)std::lround(readFloat(uv, "cycles", 1.0f)));
+        sheet.cycles = (float)std::max(1, (int)std::lround(readFloat(uv, "cycles", 1.0f)));
         sheet.flipU = readFloat(uv, "flipU");
         sheet.flipV = readFloat(uv, "flipV");
         if (sheet.enabled && readInt(uv, "mode") == 1){
@@ -1358,7 +1445,7 @@ namespace {
                 on = module["subEmitters"] && module["subEmitters"].IsSequence() && module["subEmitters"].size() > 0;
             }
             if (on){
-                note(ctx, "module-unsupported", std::string(unsupported) + " is not supported (spec non-goals)");
+                note(ctx, "module-unsupported", std::string(unsupported) + " is not imported (S20 has the module: set it up in the Inspector)");
                 status(unsupported, "unsupported");
             }else{
                 status(unsupported, "disabled");
@@ -1366,48 +1453,52 @@ namespace {
         }
     }
 
-    // the renderer's values on the component and the GameObject's mesh
-    void convertRenderer(const YAML::Node& r, ParticleSystemComponent& c, Scene& scene, Entity entity, Context& ctx){
-        ParticleRendererModule& rm = c.renderer;
+    // the renderer's values on the effect's Renderer module (its first material's in it)
+    void convertRenderer(const YAML::Node& r, ParticleEffectDocument& d, Context& ctx){
+        using namespace particles;
+        RendererModule& rm = d.renderer;
         const int mode = readInt(r, "m_RenderMode");
-        rm.renderMode = (mode >= 0 && mode <= 4) ? (ParticleSystemRenderMode)mode : ParticleSystemRenderMode::Billboard;
         // Unity's None (5): simulated, not drawn (its renderer disabled below)
         const bool notRendered = mode == 5;
-        const int sort = readInt(r, "m_SortMode");
-        rm.sortMode = (sort >= 0 && sort <= 3) ? (ParticleSystemSortMode)sort : ParticleSystemSortMode::None;
-        rm.sortingFudge = readFloat(r, "m_SortingFudge");
-        rm.minParticleSize = readFloat(r, "m_MinParticleSize");
-        rm.maxParticleSize = readFloat(r, "m_MaxParticleSize", 0.5f);
-        rm.cameraVelocityScale = readFloat(r, "m_CameraVelocityScale");
-        rm.velocityScale = readFloat(r, "m_VelocityScale");
-        rm.lengthScale = readFloat(r, "m_LengthScale", 2.0f);
         const int align = readInt(r, "m_RenderAlignment");
-        rm.alignment = (align >= 0 && align <= 4) ? (ParticleSystemRenderSpace)align : ParticleSystemRenderSpace::View;
+        if (!upstreamparticles::applyRenderMode(mode >= 0 && mode <= 4 ? mode : 0, align >= 0 && align <= 4 ? align : 0,
+                                                 d.simulationSpace == SimulationSpace::Local, rm)){
+            note(ctx, "render-alignment", "a stretched, horizontal or vertical billboard has no render alignment here: left out");
+        }
+        const int sort = readInt(r, "m_SortMode");
+        rm.sortMode = sort == 1 ? SortMode::ByDistance : sort == 2 ? SortMode::OldestInFront : sort == 3 ? SortMode::YoungestInFront : SortMode::None;
+        rm.sortingFudge = readFloat(r, "m_SortingFudge");
+        rm.minScreenSize = readFloat(r, "m_MinParticleSize");
+        rm.maxScreenSize = readFloat(r, "m_MaxParticleSize", 0.5f);
+        rm.cameraScale = readFloat(r, "m_CameraVelocityScale");
+        rm.speedScale = readFloat(r, "m_VelocityScale");
+        rm.lengthScale = readFloat(r, "m_LengthScale", 2.0f);
         rm.pivot = readVector3(r, "m_Pivot");
         rm.flip = readVector3(r, "m_Flip");
         rm.sortPriority = readInt(r, "m_SortingOrder");
 
-        MeshComponent& mesh = scene.getComponent<MeshComponent>(entity);
-        if (rm.renderMode == ParticleSystemRenderMode::Mesh){
+        if (rm.renderMode == RenderMode::Mesh){
             const Ref meshRef = readRef(r, "m_Mesh");
+            bool primitive = false;
             if (const BuiltinAsset* builtin = UnityProject::builtin(meshRef); builtin && builtin->kind == BuiltinAsset::Mesh){
-                rm.mesh = builtin->engine;
+                rm.meshes = {upstreamparticles::meshSourceOf(builtin->engine, primitive)};
             }else{
                 const fs::path file = ctx.project.pathOf(meshRef.guid);
                 note(ctx, "mesh-missing", "the particle mesh " + (file.empty() ? "guid " + meshRef.guid : ctx.project.relative(file)) +
                      " is not a built-in one: particles draw as spheres; import the model and set its mesh");
-                rm.mesh = "sphere";
+                rm.meshes = {upstreamparticles::meshSourceOf("sphere", primitive)};
             }
-            ParticleSystem::applyRendererMesh(&scene, entity, rm.mesh);
         }
         // the first material (particles draw with one)
         Ref materialRef;
         if (r["m_Materials"] && r["m_Materials"].IsSequence() && r["m_Materials"].size() > 0) materialRef = toRef(r["m_Materials"][0]);
-        Material material = importMaterial(ctx, materialRef);
-        mesh.submeshes[0].material = material;
-        mesh.castShadows = readInt(r, "m_CastShadows") != 0;
-        mesh.receiveShadows = readBool(r, "m_ReceiveShadows");
-        if (!readBool(r, "m_Enabled", true) || notRendered) mesh.enabled = false;
+        const Material material = importMaterial(ctx, materialRef);
+        std::vector<std::string> notes;
+        upstreamparticles::applyMaterial(material, rm, notes);
+        for (const std::string& line : notes) note(ctx, "material-approximated", "material " + material.name + ": " + line);
+        if (readInt(r, "m_CastShadows") != 0) note(ctx, "cast-shadows", "the renderer casts shadows: particles do not");
+        rm.receiveShadows = readBool(r, "m_ReceiveShadows");
+        if (!readBool(r, "m_Enabled", true) || notRendered) rm.enabled = false;
     }
 
     // ------------------------------------------------------------------ the prefab
@@ -1457,14 +1548,12 @@ namespace {
             std::vector<ImportNote> notes;
             ctx.notes = &notes;
             Json modules = Json::object();
+            // an S20 system on the GameObject itself, its effect inline (it draws itself)
             ParticleSystemComponent component;
-            convertSystem(ps->body, component, modules, ctx);
-            scene.addComponent<ActionComponent>(entity, ActionComponent());
-            scene.addComponent<ParticleSystemComponent>(entity, component);
-            ParticleSystem::setupDefaultRenderer(&scene, entity);
-            ParticleSystemComponent& placed = scene.getComponent<ParticleSystemComponent>(entity);
+            convertSystem(ps->body, component.inlineEffect, component, modules, ctx);
+            particles::ParticleEffectDocument& effect = component.inlineEffect;
             if (const Object* renderer = componentOfClass(graph, go, CLASS_PARTICLESYSTEMRENDERER)){
-                convertRenderer(renderer->body, placed, scene, entity, ctx);
+                convertRenderer(renderer->body, effect, ctx);
                 modules["ParticleSystemRenderer"] = "imported";
             }else{
                 note(ctx, "renderer-missing", "no ParticleSystemRenderer: drawn with the default particle material");
@@ -1476,8 +1565,8 @@ namespace {
                 const fs::path script = ctx.project.pathOf(readRef(component2.body, "m_Script").guid);
                 const std::string stem = script.stem().string();
                 if (stem == "CFX_AutoDestructShuriken"){
-                    placed.main.stopAction = ParticleSystemStopAction::Destroy;
-                    note(ctx, "auto-destruct", "CFX_AutoDestructShuriken: main.stopAction Destroy");
+                    effect.stopAction = particles::StopAction::Destroy;
+                    note(ctx, "auto-destruct", "CFX_AutoDestructShuriken: Stop Action Destroy");
                 }else if (stem == "UIParticle" || stem == "UIParticleAttractor"){
                     note(ctx, "ui-particle", "drawn inside a UI canvas by Coffee UIParticle in Unity: put the prefab under a UI element (feature ui-scaling-text)");
                 }
@@ -1496,6 +1585,7 @@ namespace {
                 }
                 up = h.parentOf.count(up) ? h.parentOf.at(up) : 0;
             }
+            scene.addComponent<ParticleSystemComponent>(entity, component);
             ctx.notes = nullptr;
             Json notesJson = Json::array();
             for (const ImportNote& n : notes) notesJson.push_back({{"code", n.code}, {"message", n.message}});
@@ -1680,7 +1770,7 @@ ImportResult importParticlesUnchecked(const ImportOptions& options){
 
         YAML::Node prefab;
         prefab["type"] = "Prefab";
-        prefab["version"] = 3;
+        prefab["version"] = Prefab::FILE_VERSION;
         prefab["guid"] = AssetDatabase::generateGuid();
         prefab["nextEntity"] = maxEntity(built) + 1;
         prefab["root"] = built.entity;

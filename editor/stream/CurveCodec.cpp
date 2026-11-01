@@ -165,13 +165,32 @@ mcp::Json curvecodec::curveToJson(const Curve& curve) {
     return mcp::Json::parse(curvejson::curveToJson(curve).dump());
 }
 
+namespace {
+
+    // A value from MCP (not a file, read leniently): an unknown key is refused in either form,
+    // and in origin/main's form whatever its reader refused (a time out of 0..1, a wrap name)
+    bool refuseUpstreamWarnings(bool upstream, const std::vector<curvejson::Issue>& issues, std::string& reason) {
+        for (const curvejson::Issue& issue : issues) {
+            if (!upstream && issue.message.find("unknown") == std::string::npos) continue;
+            std::string path = issue.path;
+            if (!path.empty() && path[0] == '.') path.erase(0, 1);
+            reason = path.empty() ? issue.message : path + ": " + issue.message;
+            return true;
+        }
+        return false;
+    }
+
+}
+
 bool curvecodec::curveFromJson(const mcp::Json& json, Curve& curve, std::string& reason) {
     std::vector<curvejson::Issue> issues;
     Curve read;
-    if (!curvejson::curveFromJson(Ordered::parse(json.dump()), read, issues)) {
+    const Ordered j = Ordered::parse(json.dump());
+    if (!curvejson::curveFromJson(j, read, issues)) {
         reason = issueText(issues);
         return false;
     }
+    if (refuseUpstreamWarnings(curvejson::isUpstreamCurve(j), issues, reason)) return false;
     curve = std::move(read);
     return true;
 }
@@ -200,10 +219,12 @@ mcp::Json curvecodec::gradientToJson(const Gradient& gradient) {
 bool curvecodec::gradientFromJson(const mcp::Json& json, Gradient& gradient, std::string& reason) {
     std::vector<curvejson::Issue> issues;
     Gradient read;
-    if (!curvejson::gradientFromJson(Ordered::parse(json.dump()), read, issues)) {
+    const Ordered j = Ordered::parse(json.dump());
+    if (!curvejson::gradientFromJson(j, read, issues)) {
         reason = issueText(issues);
         return false;
     }
+    if (refuseUpstreamWarnings(curvejson::isUpstreamGradient(j), issues, reason)) return false;
     gradient = std::move(read);
     return true;
 }
@@ -252,24 +273,52 @@ std::string curvecodec::curveCppLiteral(const Curve& curve) {
            "; c.postWrapMode = " + wrapLiteral(curve.postWrapMode) + "; return c; }()";
 }
 
+std::string curvecodec::gradientCppLiteral(const Gradient& gradient) {
+    auto vector3 = [](const Vector3& v) {
+        return "Vector3(" + floatLiteral(v.x) + ", " + floatLiteral(v.y) + ", " + floatLiteral(v.z) + ")";
+    };
+    std::string code = "[]{ Gradient g; g.colorKeys = {";
+    for (size_t i = 0; i < gradient.colorKeys.size(); i++) {
+        if (i > 0) code += ", ";
+        code += "GradientColorKey{" + floatLiteral(gradient.colorKeys[i].time) + ", " + vector3(gradient.colorKeys[i].color) + "}";
+    }
+    code += "}; g.alphaKeys = {";
+    for (size_t i = 0; i < gradient.alphaKeys.size(); i++) {
+        if (i > 0) code += ", ";
+        code += "GradientAlphaKey{" + floatLiteral(gradient.alphaKeys[i].time) + ", " + floatLiteral(gradient.alphaKeys[i].alpha) + "}";
+    }
+    code += "};";
+    if (gradient.mode == GradientMode::Fixed) code += " g.mode = GradientMode::Fixed;";
+    if (gradient.linear) code += " g.linear = true;";
+    return code + " return g; }()";
+}
+
 mcp::Json curvecodec::curveSchema() {
     const mcp::Json key = {{"type", "array"}, {"minItems", 2}, {"maxItems", 5},
-                           {"description", "[time, value, inTangent, outTangent, mode?]; null tangent = step"}};
+                           {"description", "[time, value, inTangent, outTangent, mode?]; null (or \"inf\") tangent = step"}};
     return {{"description", "A curve: [[time, value, inTangent, outTangent(, mode)], ...] or {keys, preWrapMode, postWrapMode} "
                             "(wraps clamp|loop|pingPong|linear|loopWithOffset; modes clampedAuto|auto|free|linear|constant or "
-                            "in:<m>,out:<m>[,broken])"},
-            {"anyOf", mcp::Json::array({{{"type", "array"}, {"items", key}},
+                            "in:<m>,out:<m>[,broken]); also a number (a constant curve) and {keys, pre, post} (wraps "
+                            "clamp|loop|ping_pong)"},
+            {"anyOf", mcp::Json::array({{{"type", "number"}},
+                                        {{"type", "array"}, {"items", key}},
                                         {{"type", "object"}, {"properties", {{"keys", {{"type", "array"}, {"items", key}}},
                                                                              {"preWrapMode", {{"type", "string"}}},
-                                                                             {"postWrapMode", {{"type", "string"}}}}},
+                                                                             {"postWrapMode", {{"type", "string"}}},
+                                                                             {"pre", {{"type", "string"}}},
+                                                                             {"post", {{"type", "string"}}}}},
                                          {"required", mcp::Json::array({"keys"})}}})}};
 }
 
 mcp::Json curvecodec::gradientSchema() {
-    return {{"type", "object"},
-            {"description", "A gradient: {colorKeys: [[time, r, g, b]] (sRGB 0-1), alphaKeys: [[time, alpha]], mode?: blend|fixed, "
-                            "linear?: bool}; at most 8 keys of each"},
-            {"properties", {{"colorKeys", {{"type", "array"}}}, {"alphaKeys", {{"type", "array"}}},
-                            {"mode", {{"type", "string"}, {"enum", mcp::Json::array({"blend", "fixed"})}}},
-                            {"linear", {{"type", "boolean"}}}}}};
+    return {{"description", "A gradient: {colorKeys: [[time, r, g, b]] (sRGB 0-1), alphaKeys: [[time, alpha]], mode?: blend|fixed, "
+                            "linear?: bool}; at most 8 keys of each. Also {mode, colors: [[time, \"#RRGGBB\" | [r, g, b] linear]], "
+                            "alphas: [[time, alpha]]} and one colour (\"#RRGGBB(AA)\" or [r, g, b(, a)] linear) for a constant gradient"},
+            {"anyOf", mcp::Json::array({{{"type", "object"},
+                                         {"properties", {{"colorKeys", {{"type", "array"}}}, {"alphaKeys", {{"type", "array"}}},
+                                                         {"colors", {{"type", "array"}}}, {"alphas", {{"type", "array"}}},
+                                                         {"mode", {{"type", "string"}, {"enum", mcp::Json::array({"blend", "fixed"})}}},
+                                                         {"linear", {{"type", "boolean"}}}}}},
+                                        {{"type", "string"}},
+                                        {{"type", "array"}, {"minItems", 3}, {"maxItems", 4}, {"items", {{"type", "number"}}}}})}};
 }

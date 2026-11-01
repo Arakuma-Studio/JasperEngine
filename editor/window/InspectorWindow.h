@@ -102,7 +102,8 @@ namespace jasperengine::editor{
         Font,
         Asset,      // an asset file reference (AssetRef): path, drop target, missing state
         LayerMask,  // unsigned int culling mask: Unity's Nothing / Everything / per-layer dropdown
-        Curve       // an animation curve: the Curve field (S27, widget/CurveField.h)
+        Curve,      // an animation curve: the Curve field (S27, widget/CurveField.h)
+        Gradient    // a colour gradient: the Gradient field (S27, widget/GradientField.h)
     };
 
     struct EnumEntry {

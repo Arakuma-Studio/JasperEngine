@@ -32,7 +32,6 @@
 #include "component/LatticeComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "animation/ClipTypes.h"
-// SYNC4-ABSORB(particles): upstream's particles/ParticleSimulation.h (version 2) left out
 
 namespace jasperengine{
 
@@ -163,26 +162,6 @@ namespace jasperengine{
 
 		void processRunningAction(double dt, Entity entity, ActionComponent& action);
 
-#if 0 // SYNC4-ABSORB(particles): upstream's version 2 Particle System control (ActionSystemParticles.cpp, out of the build)
-		// version 2 Particle Systems (particles spec 6.5; ActionSystemParticles.cpp): stepped in
-		// a pass of their own after the actions' (a stopped system with emitted particles
-		// simulates too), their stop actions run at the end of update()
-		bool isParticleSystemV2(Entity entity) const;
-		void collectParticleSystems(Entity entity, bool withChildren, std::vector<Entity>& out);
-		void prepareParticleRenderer(Entity entity, ParticleSystemComponent& ps);
-		void particleSystemStart(Entity entity, ParticleSystemComponent& ps);
-		void particleSystemHardStop(Entity entity);
-		void stepParticleSystem(double dt, double unscaledDt, Entity entity);
-		void updateParticleSystems(double dt);
-		void finishParticleSystem(Entity entity);
-		void queueParticleStopAction(Entity entity);
-		void runParticleStopActions();
-		std::vector<Entity> pendingParticleStops;
-		// updateParticleSystems' list of systems, kept between frames
-		std::vector<Entity> particleUpdateScratch;
-
-#endif
-
 		float getDuration(Entity entity, int depth);
 		bool isAnimationReachable(Entity from, Entity target, std::unordered_set<Entity>& visited);
 
@@ -244,37 +223,6 @@ namespace jasperengine{
 		void actionStart(Entity entity, bool newRun = true);
 		void actionStop(Entity entity);
 		void actionPause(Entity entity);
-
-#if 0 // SYNC4-ABSORB(particles): upstream's version 2 Particle System control (ActionSystemParticles.cpp, out of the build)
-		// version 2 Particle Systems (Unity's ParticleSystem control): every version 2 system of
-		// the GameObject and, withChildren, of its children in hierarchy order. play() and
-		// stop() change the system now; onStart / onStop follow at the next update
-		void particleSystemPlay(Entity entity, bool withChildren);
-		// the time spent simulating version 2 Particle Systems (every scene) since the last call,
-		// in milliseconds, and the particles alive after it (frame stats: particles_sim_ms)
-		static double takeParticleSimMs(size_t* alive = nullptr);
-		void particleSystemStop(Entity entity, bool withChildren, ParticleSystemStopBehavior behavior);
-		void particleSystemPause(Entity entity, bool withChildren);
-		void particleSystemClear(Entity entity, bool withChildren);
-		// `count` particles now (also while stopped); the number spawned
-		int particleSystemEmit(Entity entity, int count);
-		// Unity's Simulate: advanced `time` seconds (from a restart), then paused
-		void particleSystemSimulate(Entity entity, float time, bool withChildren, bool restart);
-		// stopped and empty without callbacks nor stop action (an editor preview's end)
-		void particleSystemReset(Entity entity);
-		std::vector<Entity> particleSystemsOf(Entity entity, bool withChildren);
-		// the GameObject drawing the particles: the action's target, else the system's own
-		Entity particleTarget(Entity entity) const;
-		// the emitter (its Transform, or the target's in the legacy layout) and the gravity now
-		ParticleEmitterFrame particleEmitterFrame(Entity entity);
-		ParticleEnvironment particleEnvironment();
-		// writes the particles to the renderer (instances or points)
-		void syncParticleRenderer(Entity entity, ParticleSystemComponent& ps);
-		// the Scene view's particle preview (edit mode): steps these systems (their triggers
-		// applied), never running stop actions
-		void updateParticlePreview(double dt, const std::vector<Entity>& entities);
-
-#endif
 
 		// Edit-mode preview of clips on a root (animation clips spec 9.R21): what the Animation
 		// window's clip mode and MCP preview_animation drive (through AnimationClipController).

@@ -48,6 +48,10 @@ namespace jasperengine { namespace particles {
         float emissionScale = 1.0f;        // distance LOD and the world budget
         float sizeScale = 1.0f;            // the scaling mode's factor on start sizes
         float gravity[3] = {0.0f, -9.81f, 0.0f};   // world space
+        // the emitter's velocity when something else gives it (Emitter Velocity Mode Rigidbody:
+        // its body's), world space; without it the transform's motion is the velocity
+        bool hasVelocity = false;
+        float velocity[3] = {0.0f, 0.0f, 0.0f};
         // force fields that overlap the emitter, world space
         const ForceFieldSample* fields = nullptr;
         uint32_t fieldCount = 0;
@@ -147,6 +151,9 @@ namespace jasperengine { namespace particles {
         // stops emitting; clear also removes the particles
         void stop(bool clear);
         void restart();
+        // removes the particles and trails (its children's too), the clocks and the emission
+        // going on as they were (Unity's Clear)
+        void clear();
         PlayState state() const { return playState; }
         bool isPlaying() const { return playState == PlayState::Playing; }
         bool isPaused() const { return playState == PlayState::Paused; }
@@ -202,6 +209,8 @@ namespace jasperengine { namespace particles {
         double droppedTime() const { return dropped; }
         uint32_t ticksLastFrame() const { return ticksThisFrame; }
         uint64_t tickCount() const { return ticks; }
+        // the emitter jumped further than kTeleportDistance in a tick (Rate over Distance skipped it)
+        bool jumpedTooFar() const { return teleportWarned; }
         const ParticleChannels& particleChannels() const { return channels; }
         const ParticleTrails& trails() const { return trailStore; }
         std::span<const CollisionEvent> collisionEvents() const { return {collisions.data(), collisions.size()}; }
@@ -224,6 +233,8 @@ namespace jasperengine { namespace particles {
             ParticleChannels::Snapshot channels;
             ParticleTrails trails;
             double elapsed = 0.0, cycleTime = 0.0, burstCheckedTo = -1.0, rateAccumulator = 0.0, distanceAccumulator = 0.0;
+            float arcPhase = 0.0f, radiusPhase = 0.0f, noiseScroll = 0.0f;
+            float lastTickVelocity[3] = {0, 0, 0};
             uint64_t ticks = 0;
             uint32_t spawnCounter = 0;
             uint32_t loopIndex = 0;
@@ -246,6 +257,8 @@ namespace jasperengine { namespace particles {
         void configureStorage(uint32_t newCapacity);
         void growTo(uint32_t needed);
         void setFrameTransforms(const EmitterInput& input, double fraction);
+        // the start delay of this play (a random range: by the seed)
+        double pickStartDelay() const;
         void fillContext(KernelContext& ctx, const EmitterInput* input) const;
         void runTickSerial(const EmitterInput& input);
         void worldCollisionStage(const EmitterInput& input);
@@ -309,7 +322,22 @@ namespace jasperengine { namespace particles {
         float worldSim[16];
         float tickDt = 0.0f;
         float emitterVelocity[3] = {0, 0, 0};   // world units per second
+        // the emitter's velocity at the last tick (Inherit Velocity's Current mode takes the change)
+        float lastTickVelocity[3] = {0, 0, 0};
+        float tickVelocityDelta[3] = {0, 0, 0};
+        // the shape's Loop / Ping-Pong phases at the tick's start, their rates this tick; the
+        // noise field's scroll (a scroll speed that is not a constant)
+        float arcPhase = 0.0f, radiusPhase = 0.0f, arcRate = 0.0f, radiusRate = 0.0f;
+        float noiseScroll = 0.0f;
+        // a burst's particles being spawned: the batch's first one's index in it and its size
+        uint32_t spreadBase = 0, spreadCount = 0;
+        // the bursts firing this tick, one entry each (their counts)
+        std::vector<uint32_t> burstGroups;
         float tickDistance = 0.0f;
+        // a jump of the emitter of more than kTeleportDistance in one tick spawns nothing over
+        // distance (no burst of thousands; origin/main's rule), said once
+        static constexpr float kTeleportDistance = 100.0f;
+        bool teleportWarned = false;
 
         // per tick, sized at bind: chunk outputs and their arrays
         std::vector<ChunkOutput> chunkOut;

@@ -7,11 +7,7 @@
 // (physics 3D). Each keeps upstream's codec (StreamUpstream.cpp: the keys its files have); the
 // tables give the properties, schema, Inspector metadata, the exported code and the cooked
 // scenes' fields.
-//
-// SYNC4-ABSORB(curve): the Trail Renderer's widthCurve and colorGradient are upstream's curve
-// types (math/AnimationCurve.h, math/Gradient.h), which have no reflection ops: its codec writes
-// them, the table leaves them out until the Curve absorption moves them onto S27's Curve and
-// Gradient.
+// The Trail Renderer's widthCurve and colorGradient are S27's Curve and Gradient (math/Curve.h).
 
 #include "reflect/Components.h"
 #include "reflect/components/MaterialReflect.h"
@@ -37,7 +33,11 @@ namespace {
         JE_FIELD(TrailRendererComponent, time, .updateFlags = kTrail, .min = 0.0f, .tooltip = "Seconds a point of the trail lives."),
         JE_FIELD(TrailRendererComponent, minVertexDistance, .updateFlags = kTrail, .min = 0.0f),
         JE_FIELD(TrailRendererComponent, widthMultiplier, .updateFlags = kTrail, .min = 0.0f),
+        JE_FIELD(TrailRendererComponent, widthCurve, .updateFlags = kTrail, .tooltip = "The width over the trail (0 the head, 1 the tail), times Width Multiplier.",
+                 .drawer = "curve"),
         JE_FIELD(TrailRendererComponent, widthUnit, .enumDesc = &enums::kLineWidthUnit, .updateFlags = kTrail),
+        JE_FIELD(TrailRendererComponent, colorGradient, .updateFlags = kTrail, .tooltip = "The colour over the trail by age (0 the head, 1 the oldest point).",
+                 .drawer = "gradient"),
         JE_FIELD(TrailRendererComponent, numCornerVertices, .updateFlags = kTrail),
         JE_FIELD(TrailRendererComponent, numCapVertices, .updateFlags = kTrail),
         JE_FIELD(TrailRendererComponent, alignment, .enumDesc = &enums::kLineAlignment, .updateFlags = kTrail),
@@ -62,7 +62,7 @@ namespace {
     constexpr const char* kTrailRendererAliases[] = {"trail"};
 
     constexpr const char* kTrailRendererKnownKeys[] = {"alignment", "autodestruct", "blendMode", "colorGradient", "colorWrite", "customShader",
-        "depthWrite", "emitting", "enabled", "minVertexDistance", "numCapVertices", "numCornerVertices", "shaderFeatures", "shaderGlobalBindings",
+        "customShaderGuid", "depthWrite", "emitting", "enabled", "minVertexDistance", "numCapVertices", "numCornerVertices", "shaderFeatures", "shaderGlobalBindings",
         "shaderTextures", "shaderUniforms", "sortPriority", "stencil", "textureMode", "textureScale", "time", "widthCurve", "widthMultiplier",
         "widthUnit"};
 
@@ -153,6 +153,9 @@ namespace {
 
     const ComponentCodec kRagdollCodec = JE_STREAM_CODEC(RagdollComponent, encodeRagdollComponent, decodeRagdollComponent);
 
+    // origin/main's short name of the Trail Renderer (MCP, set_properties)
+    constexpr const char* kTrailRendererAliases[] = {"trail"};
+
     constexpr const char* kRagdollKnownKeys[] = {"animator", "enabled", "inheritVelocity", "root", "selfCollision", "simulated", "totalMass"};
 
 }
@@ -165,7 +168,6 @@ const ComponentDesc kTrailRendererDesc{
     .codec = &kTrailRendererCodec,
     .keyAliases = kTrailRendererAliases,
     .decodeApply = DecodeApply::MarkOnly,
-    // upstream's code (the curve and gradient included)
     .codegen = JE_FACTORY_CODEGEN(createTrailRendererComponent),
     .extraKeys = kTrailRendererKnownKeys,
 };

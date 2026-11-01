@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "GradientField.h"
+#include "GradientEditorOps.h"
 
 #include "AppSettings.h"
 #include "Theme.h"
@@ -122,6 +123,7 @@ EditPhase ui::minMaxGradientField(const char* id, particles::MinMaxGradient& val
             break;
         }
         case GradientValueMode::Gradient:
+        case GradientValueMode::RandomColor:
         case GradientValueMode::TwoGradients: {
             const bool two = value.mode == GradientValueMode::TwoGradients;
             GradientFieldOptions bar = options;
@@ -149,11 +151,13 @@ EditPhase ui::minMaxGradientField(const char* id, particles::MinMaxGradient& val
         };
         for (const ModeItem& item : {ModeItem{"Color", GradientValueMode::Color}, ModeItem{"Gradient", GradientValueMode::Gradient},
                                      ModeItem{"Random Between Two Colors", GradientValueMode::TwoColors},
-                                     ModeItem{"Random Between Two Gradients", GradientValueMode::TwoGradients}}) {
+                                     ModeItem{"Random Between Two Gradients", GradientValueMode::TwoGradients},
+                                     ModeItem{"Random Color", GradientValueMode::RandomColor}}) {
             if (ImGui::MenuItem(item.label, nullptr, value.mode == item.mode) && value.mode != item.mode) {
                 // a gradient starts from the colour it replaces
                 const Vector3 rgb(value.color.x, value.color.y, value.color.z);
-                if ((item.mode == GradientValueMode::Gradient || item.mode == GradientValueMode::TwoGradients) && value.gradient.colorKeys.empty()) {
+                if ((item.mode == GradientValueMode::Gradient || item.mode == GradientValueMode::TwoGradients ||
+                     item.mode == GradientValueMode::RandomColor) && value.gradient.colorKeys.empty()) {
                     value.gradient = Gradient::constant(rgb, value.color.w);
                 }
                 if (item.mode == GradientValueMode::TwoGradients && value.gradientMax.colorKeys.empty()) value.gradientMax = value.gradient;
@@ -280,14 +284,10 @@ void GradientWindow::drawKeys(ImVec2 barMin, ImVec2 barMax) {
                 // a click on the strip adds a key with the gradient's value there
                 beginGesture();
                 if (alphaRow) {
-                    gradient.alphaKeys.push_back({t, gradient.evaluateAlpha(t)});
-                    gradient.sortKeys();
-                    selectedAlpha = nearestKey(gradient.alphaKeys, t, 1e-6f);
+                    selectedAlpha = gradientops::addAlphaKey(gradient, t);
                     selectedColor = -1;
                 } else {
-                    gradient.colorKeys.push_back({t, gradient.evaluateEncoded(t)});
-                    gradient.sortKeys();
-                    selectedColor = nearestKey(gradient.colorKeys, t, 1e-6f);
+                    selectedColor = gradientops::addColorKey(gradient, t);
                     selectedAlpha = -1;
                 }
                 deliver(true);
@@ -331,24 +331,16 @@ void GradientWindow::drawKeys(ImVec2 barMin, ImVec2 barMax) {
             const bool off = io.MousePos.y < barMin.y - strip * 3.0f || io.MousePos.y > barMax.y + strip * 3.0f;
             Gradient next = beforeDrag;
             if (drag == Drag::Alpha && dragIndex >= 0 && (size_t)dragIndex < next.alphaKeys.size()) {
-                if (off && next.alphaKeys.size() > 1) {
-                    next.alphaKeys.erase(next.alphaKeys.begin() + (std::ptrdiff_t)dragIndex);
+                if (off && gradientops::removeAlphaKey(next, (size_t)dragIndex)) {
                     selectedAlpha = -1;
                 } else {
-                    next.alphaKeys[(size_t)dragIndex].time = t;
-                    const GradientAlphaKey moved = next.alphaKeys[(size_t)dragIndex];
-                    next.sortKeys();
-                    selectedAlpha = nearestKey(next.alphaKeys, moved.time, 1e-6f);
+                    selectedAlpha = gradientops::moveAlphaKey(next, (size_t)dragIndex, t);
                 }
             } else if (drag == Drag::Color && dragIndex >= 0 && (size_t)dragIndex < next.colorKeys.size()) {
-                if (off && next.colorKeys.size() > 1) {
-                    next.colorKeys.erase(next.colorKeys.begin() + (std::ptrdiff_t)dragIndex);
+                if (off && gradientops::removeColorKey(next, (size_t)dragIndex)) {
                     selectedColor = -1;
                 } else {
-                    next.colorKeys[(size_t)dragIndex].time = t;
-                    const GradientColorKey moved = next.colorKeys[(size_t)dragIndex];
-                    next.sortKeys();
-                    selectedColor = nearestKey(next.colorKeys, moved.time, 1e-6f);
+                    selectedColor = gradientops::moveColorKey(next, (size_t)dragIndex, t);
                 }
             }
             if (next != gradient) {

@@ -57,6 +57,18 @@ SwatchLibrary swatches::defaultLibrary() {
     for (int i = 0; i < 16; i++) {
         addSrgb(kHues[i], colormath::hsvToRgb(Vector3((float)i / 16.0f, 1.0f, 1.0f)));
     }
+    // the gradient presets (origin/main's gradient field's, S27 Upstream absorption): sRGB keys
+    const Vector3 white(1.0f, 1.0f, 1.0f), black(0.0f, 0.0f, 0.0f);
+    library.gradients.push_back({"White", Gradient::constant(white)});
+    library.gradients.push_back({"Fade Out", Gradient::twoColors(white, white, 1.0f, 0.0f)});
+    library.gradients.push_back({"Fade In", Gradient::twoColors(white, white, 0.0f, 1.0f)});
+    library.gradients.push_back({"Black to White", Gradient::twoColors(black, white)});
+    library.gradients.push_back({"White to Black", Gradient::twoColors(white, black)});
+    Gradient rainbow;
+    const Vector3 hues[6] = {Vector3(1, 0, 0), Vector3(1, 1, 0), Vector3(0, 1, 0), Vector3(0, 1, 1), Vector3(0, 0, 1), Vector3(1, 0, 1)};
+    for (int i = 0; i < 6; i++) rainbow.colorKeys.push_back({(float)i / 5.0f, hues[i]});
+    rainbow.alphaKeys.push_back({0.0f, 1.0f});
+    library.gradients.push_back({"Rainbow", rainbow});
     return library;
 }
 

@@ -117,7 +117,7 @@ bool MinMaxGradient::isWhite() const{
         }
         return true;
     };
-    if (mode == GradientValueMode::Gradient) return whiteGradient(gradient);
+    if (mode == GradientValueMode::Gradient || mode == GradientValueMode::RandomColor) return whiteGradient(gradient);
     return whiteGradient(gradient) && whiteGradient(gradientMax);
 }
 
@@ -129,6 +129,9 @@ Vector4 MinMaxGradient::evaluate(float input, float random) const{
             return Color::sRGBToLinear(color + (colorMax - color) * random);
         case GradientValueMode::Gradient:
             return gradient.evaluate(input);
+        case GradientValueMode::RandomColor:
+            // the particle's random pick is where it reads the gradient
+            return gradient.evaluate(random);
         case GradientValueMode::TwoGradients: {
             const Vector4 a = gradient.evaluate(input);
             const Vector4 b = gradientMax.evaluate(input);

@@ -3,6 +3,7 @@
 
 #include "manager/ObjectManager.h"
 #include "Engine.h"
+#include "subsystem/ParticleSubsystem.h"
 #include "shader/ShaderGlobals.h"
 #include "Log.h"
 #include "log/Logger.h"
@@ -1997,10 +1998,12 @@ void Engine::signalReadyOnce(){
         if (frameStats){
             frames++;
             const uint64_t after = frames - signalledFrame;
-            // SYNC4-ABSORB(particles): upstream's particles_sim_ms line (ActionSystem::takeParticleSimMs,
-            // version 2 systems) is not logged until the Particles absorption gives S20 an equivalent
+            // the particle simulation of this frame (every scene's systems: the CPU budget)
+            size_t alive = 0;
+            const double particleMs = ParticleSubsystem::takeFrameSimulation(&alive);
             if (frameStatsAll || after == 2 || after == 30 || after == 90){
                 SystemRender::logFrameStats(frames);
+                if (alive > 0) Log::print("Frame %llu particles_sim_ms %.3f (%zu particles)", (unsigned long long)frames, particleMs, alive);
             }
         }
         return;

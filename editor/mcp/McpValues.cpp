@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "McpValues.h"
-#include "particles/ParticleFields.h"
 #include "shader/ShaderGlobals.h"
 
 #include "command/PlayChangeReview.h"
@@ -613,6 +612,7 @@ std::string McpValues::propertyTypeName(PropertyType type) {
         case PropertyType::Asset: return "asset";
         case PropertyType::Shader: return "shader";
         case PropertyType::Curve: return "curve";
+        case PropertyType::Gradient: return "gradient";
     }
     return "unknown";
 }
@@ -1462,501 +1462,6 @@ bool McpValues::entityReferenceFromJson(Project* project, SceneProject* scene, c
     return true;
 }
 
-#if 0 // SYNC4-ABSORB(curve, particles): upstream's AnimationCurve / Gradient / MinMax / burst JSON (S27's is curvejson)
-namespace {
-
-    Json curveNumber(float value) {
-        if (std::isinf(value)) return value > 0.0f ? Json("inf") : Json("-inf");
-        return McpValues::number(value);
-    }
-
-    bool curveNumberFromJson(const Json& value, float& out) {
-        if (value.is_number()) {
-            out = value.get<float>();
-            return std::isfinite(out);
-        }
-        if (value.is_string()) {
-            const std::string text = value.get<std::string>();
-            if (text == "inf" || text == "+inf" || text == ".inf" || text == "Infinity") { out = std::numeric_limits<float>::infinity(); return true; }
-            if (text == "-inf" || text == "-.inf" || text == "-Infinity") { out = -std::numeric_limits<float>::infinity(); return true; }
-        }
-        return false;
-    }
-
-    const char* curveWrapName(CurveWrap wrap) {
-        switch (wrap) {
-            case CurveWrap::Loop: return "loop";
-            case CurveWrap::PingPong: return "ping_pong";
-            default: return "clamp";
-        }
-    }
-
-    bool curveWrapFromJson(const Json& value, CurveWrap& out) {
-        if (!value.is_string()) return false;
-        const std::string name = value.get<std::string>();
-        if (name == "clamp") { out = CurveWrap::Clamp; return true; }
-        if (name == "loop") { out = CurveWrap::Loop; return true; }
-        if (name == "ping_pong") { out = CurveWrap::PingPong; return true; }
-        return false;
-    }
-
-    // a colour of a gradient key: "#RRGGBB" (sRGB) or [r, g, b(, a)] (linear), as linear RGBA
-    bool gradientColorFromJson(const Json& value, Vector4& linear, bool& hasAlpha) {
-        hasAlpha = false;
-        float v[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-        int count = 0;
-        if (parseHexColor(value, v, count)) {
-            const Vector3 color = Color::sRGBToLinear(Vector3(v[0], v[1], v[2]));
-            linear = Vector4(color.x, color.y, color.z, count == 4 ? v[3] : 1.0f);
-            hasAlpha = count == 4;
-            return true;
-        }
-        if (value.is_array() && (value.size() == 3 || value.size() == 4)) {
-            for (size_t i = 0; i < value.size(); i++) {
-                if (!value[i].is_number()) return false;
-                v[i] = value[i].get<float>();
-                if (!std::isfinite(v[i])) return false;
-            }
-            linear = Vector4(v[0], v[1], v[2], v[3]);
-            hasAlpha = value.size() == 4;
-            return true;
-        }
-        return false;
-    }
-
-}
-
-Json McpValues::curveToJson(const AnimationCurve& curve) {
-    Json keys = Json::array();
-    for (const CurveKey& key : curve.keys) {
-        Json item = Json::array({number(key.time), number(key.value)});
-        if (key.inTangent != 0.0f || key.outTangent != 0.0f) {
-            item.push_back(curveNumber(key.inTangent));
-            item.push_back(curveNumber(key.outTangent));
-        }
-        keys.push_back(item);
-    }
-    Json out = Json::object();
-    out["keys"] = keys;
-    out["pre"] = curveWrapName(curve.preWrap);
-    out["post"] = curveWrapName(curve.postWrap);
-    return out;
-}
-
-bool McpValues::curveFromJson(const Json& value, AnimationCurve& out, std::string& error) {
-    const char* shape = "a number (constant), [[time, value], [time, value, inTangent, outTangent], ...] or "
-                        "{\"keys\": [...], \"pre\": \"clamp\"|\"loop\"|\"ping_pong\", \"post\": ...}";
-    out = AnimationCurve();
-    if (value.is_number()) {
-        const float constant = value.get<float>();
-        if (!std::isfinite(constant)) {
-            error = "a constant must be a finite number.";
-            return false;
-        }
-        out = AnimationCurve::constant(constant);
-        return true;
-    }
-    const Json* keys = nullptr;
-    if (value.is_array()) {
-        keys = &value;
-    } else if (value.is_object()) {
-        for (auto it = value.begin(); it != value.end(); ++it) {
-            if (it.key() != "keys" && it.key() != "pre" && it.key() != "post") {
-                error = "unknown key \"" + it.key() + "\"; expected " + shape + ".";
-                return false;
-            }
-        }
-        if (!value.contains("keys") || !value["keys"].is_array()) {
-            error = "missing \"keys\" array; expected " + std::string(shape) + ".";
-            return false;
-        }
-        keys = &value["keys"];
-        if (value.contains("pre") && !curveWrapFromJson(value["pre"], out.preWrap)) {
-            error = "\"pre\" must be \"clamp\", \"loop\" or \"ping_pong\".";
-            return false;
-        }
-        if (value.contains("post") && !curveWrapFromJson(value["post"], out.postWrap)) {
-            error = "\"post\" must be \"clamp\", \"loop\" or \"ping_pong\".";
-            return false;
-        }
-    } else {
-        error = std::string("expected ") + shape + ".";
-        return false;
-    }
-    for (size_t i = 0; i < keys->size(); i++) {
-        const Json& item = (*keys)[i];
-        CurveKey key;
-        bool ok = item.is_array() && (item.size() == 2 || item.size() == 4) && item[0].is_number() && item[1].is_number();
-        if (ok) {
-            key.time = item[0].get<float>();
-            key.value = item[1].get<float>();
-            ok = std::isfinite(key.time) && std::isfinite(key.value);
-            if (ok && item.size() == 4) {
-                // a step is an infinite tangent: "inf" / "-inf"
-                ok = curveNumberFromJson(item[2], key.inTangent) && curveNumberFromJson(item[3], key.outTangent);
-            }
-        }
-        if (!ok) {
-            error = "keys[" + std::to_string(i) + "] must be [time, value] or [time, value, inTangent, outTangent] "
-                    "(finite numbers; a step tangent is \"inf\" / \"-inf\").";
-            return false;
-        }
-        for (const CurveKey& existing : out.keys) {
-            if (existing.time == key.time) {
-                error = "keys[" + std::to_string(i) + "]: two keys at time " + std::to_string(key.time) + ".";
-                return false;
-            }
-        }
-        out.keys.push_back(key);
-    }
-    out.normalize();
-    return true;
-}
-
-Json McpValues::gradientToJson(const Gradient& gradient) {
-    Json out = Json::object();
-    out["mode"] = gradient.mode == GradientMode::Fixed ? "fixed" : "blend";
-    Json colors = Json::array();
-    for (const GradientColorKey& key : gradient.colorKeys) {
-        // the YAML form's rule: "#RRGGBB" when that is exactly the value, else linear numbers
-        const YAML::Node encoded = Stream::encodeGradient(Gradient({key}, {}))["colors"][0][1];
-        Json color = encoded.IsScalar() ? Json(encoded.as<std::string>())
-                                        : Json::array({number(key.color.x), number(key.color.y), number(key.color.z)});
-        colors.push_back(Json::array({number(key.time), color}));
-    }
-    out["colors"] = colors;
-    Json alphas = Json::array();
-    for (const GradientAlphaKey& key : gradient.alphaKeys) {
-        alphas.push_back(Json::array({number(key.time), number(key.alpha)}));
-    }
-    out["alphas"] = alphas;
-    return out;
-}
-
-bool McpValues::gradientFromJson(const Json& value, Gradient& out, std::string& error) {
-    const char* shape = "{\"mode\": \"blend\"|\"fixed\", \"colors\": [[time, \"#RRGGBB\" or [r, g, b] linear], ...], "
-                        "\"alphas\": [[time, alpha], ...]} (up to 8 keys each, times 0..1), or one colour for a constant gradient";
-    Vector4 single;
-    bool singleAlpha = false;
-    if (gradientColorFromJson(value, single, singleAlpha)) {
-        out = Gradient::constant(single);
-        return true;
-    }
-    if (!value.is_object()) {
-        error = std::string("expected ") + shape + ".";
-        return false;
-    }
-    out = Gradient({}, {});
-    for (auto it = value.begin(); it != value.end(); ++it) {
-        if (it.key() != "mode" && it.key() != "colors" && it.key() != "alphas") {
-            error = "unknown key \"" + it.key() + "\"; expected " + shape + ".";
-            return false;
-        }
-    }
-    if (value.contains("mode")) {
-        const Json& mode = value["mode"];
-        if (!mode.is_string() || (mode.get<std::string>() != "blend" && mode.get<std::string>() != "fixed")) {
-            error = "\"mode\" must be \"blend\" or \"fixed\".";
-            return false;
-        }
-        out.mode = mode.get<std::string>() == "fixed" ? GradientMode::Fixed : GradientMode::Blend;
-    }
-    auto checkTime = [&](const Json& time, const std::string& where, float& outTime) -> bool {
-        if (!time.is_number() || !std::isfinite(time.get<float>()) || time.get<float>() < 0.0f || time.get<float>() > 1.0f) {
-            error = where + ": the time must be a number in 0..1.";
-            return false;
-        }
-        outTime = time.get<float>();
-        return true;
-    };
-    if (value.contains("colors")) {
-        const Json& colors = value["colors"];
-        if (!colors.is_array() || colors.size() > Gradient::MAX_KEYS) {
-            error = "\"colors\" must be an array of up to 8 [time, colour] keys.";
-            return false;
-        }
-        for (size_t i = 0; i < colors.size(); i++) {
-            const std::string where = "colors[" + std::to_string(i) + "]";
-            const Json& item = colors[i];
-            Vector4 color;
-            bool hasAlpha = false;
-            float time = 0.0f;
-            if (!item.is_array() || item.size() != 2) {
-                error = where + " must be [time, colour].";
-                return false;
-            }
-            if (!checkTime(item[0], where, time)) return false;
-            if (!gradientColorFromJson(item[1], color, hasAlpha)) {
-                error = where + ": the colour must be \"#RRGGBB\" (sRGB) or [r, g, b] (linear).";
-                return false;
-            }
-            out.colorKeys.push_back(GradientColorKey(time, Vector3(color.x, color.y, color.z)));
-        }
-    }
-    if (value.contains("alphas")) {
-        const Json& alphas = value["alphas"];
-        if (!alphas.is_array() || alphas.size() > Gradient::MAX_KEYS) {
-            error = "\"alphas\" must be an array of up to 8 [time, alpha] keys.";
-            return false;
-        }
-        for (size_t i = 0; i < alphas.size(); i++) {
-            const std::string where = "alphas[" + std::to_string(i) + "]";
-            const Json& item = alphas[i];
-            float time = 0.0f;
-            if (!item.is_array() || item.size() != 2 || !item[1].is_number() || !std::isfinite(item[1].get<float>())) {
-                error = where + " must be [time, alpha] (numbers).";
-                return false;
-            }
-            if (!checkTime(item[0], where, time)) return false;
-            out.alphaKeys.push_back(GradientAlphaKey(time, item[1].get<float>()));
-        }
-    }
-    out.normalize();
-    return true;
-}
-
-Json McpValues::minMaxCurveToJson(const MinMaxCurve& curve) {
-    switch (curve.mode) {
-        case ParticleSystemCurveMode::Constant:
-            return number(curve.constant);
-        case ParticleSystemCurveMode::TwoConstants:
-            return Json{{"mode", "two_constants"}, {"min", number(curve.constantMin)}, {"max", number(curve.constant)}};
-        case ParticleSystemCurveMode::Curve:
-            return Json{{"mode", "curve"}, {"multiplier", number(curve.constant)}, {"curve", curveToJson(curve.curve)}};
-        case ParticleSystemCurveMode::TwoCurves:
-            return Json{{"mode", "two_curves"}, {"multiplier", number(curve.constant)}, {"min", curveToJson(curve.curveMin)},
-                        {"max", curveToJson(curve.curve)}};
-    }
-    return number(curve.constant);
-}
-
-bool McpValues::minMaxCurveFromJson(const Json& value, MinMaxCurve& out, std::string& error) {
-    const char* shape = "a number (constant), {\"mode\": \"two_constants\", \"min\", \"max\"}, {\"mode\": \"curve\", "
-                        "\"multiplier\", \"curve\"} or {\"mode\": \"two_curves\", \"multiplier\", \"min\", \"max\"} (curves: "
-                        "[[time, value], ...] or {\"keys\": ...})";
-    if (value.is_number()) {
-        const float constant = value.get<float>();
-        if (!std::isfinite(constant)) {
-            error = "a constant must be a finite number.";
-            return false;
-        }
-        out = MinMaxCurve(constant);
-        return true;
-    }
-    if (!value.is_object() || !value.contains("mode") || !value["mode"].is_string()) {
-        error = std::string("expected ") + shape + ".";
-        return false;
-    }
-    const std::string mode = value["mode"].get<std::string>();
-    auto finite = [&](const char* key, float fallback, float& result) -> bool {
-        if (!value.contains(key)) {
-            result = fallback;
-            return true;
-        }
-        if (!value[key].is_number() || !std::isfinite(value[key].get<float>())) {
-            error = std::string("\"") + key + "\" must be a finite number.";
-            return false;
-        }
-        result = value[key].get<float>();
-        return true;
-    };
-    auto allowOnly = [&](std::initializer_list<const char*> keys) -> bool {
-        for (auto it = value.begin(); it != value.end(); ++it) {
-            bool known = false;
-            for (const char* key : keys) known = known || it.key() == key;
-            if (!known) {
-                error = "unknown key \"" + it.key() + "\" for mode " + mode + "; expected " + shape + ".";
-                return false;
-            }
-        }
-        return true;
-    };
-    if (mode == "constant") {
-        float v = 0.0f;
-        if (!allowOnly({"mode", "value", "constant"})) return false;
-        if (!finite(value.contains("value") ? "value" : "constant", out.constant, v)) return false;
-        out = MinMaxCurve(v);
-        return true;
-    }
-    if (mode == "two_constants") {
-        float lo = 0.0f, hi = 0.0f;
-        if (!allowOnly({"mode", "min", "max"})) return false;
-        if (!value.contains("min") || !value.contains("max")) {
-            error = "two_constants needs \"min\" and \"max\".";
-            return false;
-        }
-        if (!finite("min", 0.0f, lo) || !finite("max", 0.0f, hi)) return false;
-        out = MinMaxCurve::between(lo, hi);
-        return true;
-    }
-    if (mode == "curve" || mode == "two_curves") {
-        float multiplier = 1.0f;
-        if (!allowOnly({"mode", "multiplier", "curve", "min", "max"})) return false;
-        if (!finite("multiplier", 1.0f, multiplier)) return false;
-        std::string why;
-        if (mode == "curve") {
-            AnimationCurve curve;
-            if (!value.contains("curve") || !curveFromJson(value["curve"], curve, why)) {
-                error = "\"curve\": " + (why.empty() ? std::string("missing") : why);
-                return false;
-            }
-            out = MinMaxCurve::fromCurve(curve, multiplier);
-            return true;
-        }
-        AnimationCurve lo, hi;
-        if (!value.contains("min") || !curveFromJson(value["min"], lo, why)) {
-            error = "\"min\": " + (why.empty() ? std::string("missing") : why);
-            return false;
-        }
-        if (!value.contains("max") || !curveFromJson(value["max"], hi, why)) {
-            error = "\"max\": " + (why.empty() ? std::string("missing") : why);
-            return false;
-        }
-        out = MinMaxCurve::between(lo, hi, multiplier);
-        return true;
-    }
-    error = "\"mode\" must be constant, two_constants, curve or two_curves.";
-    return false;
-}
-
-Json McpValues::minMaxGradientToJson(const MinMaxGradient& gradient) {
-    auto color = [](const Vector4& linear) {
-        const YAML::Node encoded = Stream::encodeColorValue(linear);
-        if (encoded.IsScalar()) return Json(encoded.as<std::string>());
-        return Json::array({number(linear.x), number(linear.y), number(linear.z), number(linear.w)});
-    };
-    switch (gradient.mode) {
-        case ParticleSystemGradientMode::Color:
-            return color(gradient.color);
-        case ParticleSystemGradientMode::TwoColors:
-            return Json{{"mode", "two_colors"}, {"min", color(gradient.colorMin)}, {"max", color(gradient.color)}};
-        case ParticleSystemGradientMode::Gradient:
-            return Json{{"mode", "gradient"}, {"gradient", gradientToJson(gradient.gradient)}};
-        case ParticleSystemGradientMode::RandomColor:
-            return Json{{"mode", "random_color"}, {"gradient", gradientToJson(gradient.gradient)}};
-        case ParticleSystemGradientMode::TwoGradients:
-            return Json{{"mode", "two_gradients"}, {"min", gradientToJson(gradient.gradientMin)}, {"max", gradientToJson(gradient.gradient)}};
-    }
-    return color(gradient.color);
-}
-
-bool McpValues::minMaxGradientFromJson(const Json& value, MinMaxGradient& out, std::string& error) {
-    const char* shape = "a colour (\"#RRGGBB[AA]\" sRGB or [r, g, b(, a)] linear), {\"mode\": \"gradient\", \"gradient\"}, "
-                        "{\"mode\": \"two_colors\", \"min\", \"max\"}, {\"mode\": \"two_gradients\", \"min\", \"max\"} or "
-                        "{\"mode\": \"random_color\", \"gradient\"}";
-    Vector4 single;
-    bool hasAlpha = false;
-    if (gradientColorFromJson(value, single, hasAlpha)) {
-        out = MinMaxGradient::fromColor(single);
-        return true;
-    }
-    if (!value.is_object() || !value.contains("mode") || !value["mode"].is_string()) {
-        error = std::string("expected ") + shape + ".";
-        return false;
-    }
-    const std::string mode = value["mode"].get<std::string>();
-    std::string why;
-    auto colorAt = [&](const char* key, Vector4& result) -> bool {
-        bool alpha = false;
-        if (!value.contains(key) || !gradientColorFromJson(value[key], result, alpha)) {
-            error = std::string("\"") + key + "\" must be a colour (\"#RRGGBB[AA]\" or [r, g, b(, a)] linear).";
-            return false;
-        }
-        return true;
-    };
-    auto gradientAt = [&](const char* key, Gradient& result) -> bool {
-        if (!value.contains(key) || !gradientFromJson(value[key], result, why)) {
-            error = std::string("\"") + key + "\": " + (why.empty() ? std::string("missing") : why);
-            return false;
-        }
-        return true;
-    };
-    if (mode == "color") {
-        Vector4 c;
-        if (!colorAt("color", c)) return false;
-        out = MinMaxGradient::fromColor(c);
-        return true;
-    }
-    if (mode == "two_colors") {
-        Vector4 lo, hi;
-        if (!colorAt("min", lo) || !colorAt("max", hi)) return false;
-        out = MinMaxGradient::between(lo, hi);
-        return true;
-    }
-    if (mode == "gradient" || mode == "random_color") {
-        Gradient g;
-        if (!gradientAt("gradient", g)) return false;
-        out = MinMaxGradient::fromGradient(g);
-        if (mode == "random_color") out.mode = ParticleSystemGradientMode::RandomColor;
-        return true;
-    }
-    if (mode == "two_gradients") {
-        Gradient lo, hi;
-        if (!gradientAt("min", lo) || !gradientAt("max", hi)) return false;
-        out = MinMaxGradient::between(lo, hi);
-        return true;
-    }
-    error = "\"mode\" must be color, gradient, two_colors, two_gradients or random_color.";
-    return false;
-}
-
-Json McpValues::particleBurstsToJson(const std::vector<ParticleEmissionBurst>& bursts) {
-    Json list = Json::array();
-    for (const ParticleEmissionBurst& burst : bursts) {
-        list.push_back(Json{{"time", number(burst.time)}, {"count", minMaxCurveToJson(burst.count)}, {"cycles", burst.cycles},
-                            {"interval", number(burst.interval)}, {"probability", number(burst.probability)}});
-    }
-    return list;
-}
-
-bool McpValues::particleBurstsFromJson(const Json& value, std::vector<ParticleEmissionBurst>& out, std::string& error) {
-    out.clear();
-    if (!value.is_array()) {
-        error = "expected [{\"time\", \"count\", \"cycles\" (0 = forever), \"interval\", \"probability\"}, ...].";
-        return false;
-    }
-    for (size_t i = 0; i < value.size(); i++) {
-        const Json& item = value[i];
-        const std::string where = "bursts[" + std::to_string(i) + "]";
-        if (!item.is_object()) {
-            error = where + " must be {\"time\", \"count\", \"cycles\", \"interval\", \"probability\"}.";
-            return false;
-        }
-        ParticleEmissionBurst burst;
-        for (auto it = item.begin(); it != item.end(); ++it) {
-            const std::string& key = it.key();
-            const Json& v = it.value();
-            if (key == "count") {
-                std::string why;
-                if (!minMaxCurveFromJson(v, burst.count, why)) {
-                    error = where + ".count: " + why;
-                    return false;
-                }
-            } else if (key == "time" || key == "interval" || key == "probability") {
-                if (!v.is_number() || !std::isfinite(v.get<float>())) {
-                    error = where + "." + key + " must be a number.";
-                    return false;
-                }
-                const float number = v.get<float>();
-                if (key == "time") burst.time = std::max(0.0f, number);
-                if (key == "interval") burst.interval = std::max(0.0001f, number);
-                if (key == "probability") burst.probability = std::min(1.0f, std::max(0.0f, number));
-            } else if (key == "cycles") {
-                if (!isIntegral(v) || integralValue(v) < 0) {
-                    error = where + ".cycles must be an integer >= 0 (0 = forever).";
-                    return false;
-                }
-                burst.cycles = (int)integralValue(v);
-            } else {
-                error = where + ": unknown key \"" + key + "\" (time, count, cycles, interval, probability).";
-                return false;
-            }
-        }
-        out.push_back(burst);
-    }
-    return true;
-}
-#endif
 
 Json McpValues::textureToJson(Project* project, SceneProject* scene, const Texture& texture) {
     const Entity camera = CameraTextureLink::parse(texture.getId());
@@ -2741,15 +2246,6 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         if (ref && isPlayerLayerBlendProperty(ctx.component, name)) {
             return anim::layerBlendName(*static_cast<AnimationLayerBlend*>(ref));
         }
-#if 0 // SYNC4-ABSORB(particles)
-        // a version 2 Particle System's bursts and sprite frames
-        if (ref && ctx.component == ComponentType::ParticleSystemComponent && name == "emission.bursts") {
-            return particleBurstsToJson(*static_cast<std::vector<ParticleEmissionBurst>*>(ref));
-        }
-        if (ref && ctx.component == ComponentType::ParticleSystemComponent && name == "textureSheetAnimation.sprites") {
-            return Json(*static_cast<std::vector<int>*>(ref));
-        }
-#endif
         bool found = false;
         return readYamlProperty(ctx, name, found);
     }
@@ -2770,6 +2266,8 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
             return static_cast<ShaderRef*>(ref)->path;
         case PropertyType::Curve:
             return curvecodec::curveToJson(*static_cast<Curve*>(ref));
+        case PropertyType::Gradient:
+            return curvecodec::gradientToJson(*static_cast<Gradient*>(ref));
         case PropertyType::Float:
             return number(*static_cast<float*>(ref));
         case PropertyType::Double:
@@ -2812,16 +2310,6 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
             return entityToJson(ctx.scene, *static_cast<Entity*>(ref));
         case PropertyType::EntityReference:
             return entityReferenceToJson(ctx.project, ctx.scene, *static_cast<EntityReference*>(ref));
-#if 0 // SYNC4-ABSORB(curve): upstream's AnimationCurve / Gradient / MinMax property types
-        case PropertyType::Curve:
-            return curveToJson(*static_cast<AnimationCurve*>(ref));
-        case PropertyType::Gradient:
-            return gradientToJson(*static_cast<Gradient*>(ref));
-        case PropertyType::MinMaxCurve:
-            return minMaxCurveToJson(*static_cast<MinMaxCurve*>(ref));
-        case PropertyType::MinMaxGradient:
-            return minMaxGradientToJson(*static_cast<MinMaxGradient*>(ref));
-#endif
         case PropertyType::Material: {
             std::string linked;
             unsigned int submesh = 0;
@@ -3234,6 +2722,21 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
             }
             return new PropertyCmd<Curve>(project, sceneId, entity, component, propertyName, curve, onChanged);
         }
+        case PropertyType::Gradient: {
+            Gradient gradient;
+            std::string why;
+            if (!curvecodec::gradientFromJson(value, gradient, why)) {
+                error = "Property " + propertyName + " is a gradient ({colorKeys: [[time, r, g, b]] sRGB, alphaKeys: [[time, alpha]], "
+                        "mode?, linear?}, {mode, colors, alphas} or one colour): " + why;
+                return nullptr;
+            }
+            if (gradient.colorKeys.size() > Gradient::kMaxKeys || gradient.alphaKeys.size() > Gradient::kMaxKeys) {
+                error = "Property " + propertyName + ": a gradient has at most " + std::to_string(Gradient::kMaxKeys) + " colour and " +
+                        std::to_string(Gradient::kMaxKeys) + " alpha keys.";
+                return nullptr;
+            }
+            return new PropertyCmd<Gradient>(project, sceneId, entity, component, propertyName, gradient, onChanged);
+        }
         case PropertyType::Quat: {
             Quaternion q = property.ref ? *static_cast<Quaternion*>(property.ref) : Quaternion::IDENTITY;
             if (!parseQuaternion(value, q)) return expect("[x,y,z,w], {\"euler\":[x,y,z]} in degrees or {\"quat\":[x,y,z,w]}");
@@ -3390,44 +2893,6 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
             }
             return new PropertyCmd<EntityReference>(project, sceneId, entity, component, propertyName, ref, onChanged);
         }
-#if 0 // SYNC4-ABSORB(curve): upstream's AnimationCurve / Gradient / MinMax property types
-        case PropertyType::Curve: {
-            AnimationCurve curve;
-            std::string why;
-            if (!curveFromJson(value, curve, why)) {
-                error = "Property " + propertyName + " is a curve: " + why;
-                return nullptr;
-            }
-            return new PropertyCmd<AnimationCurve>(project, sceneId, entity, component, propertyName, curve, onChanged);
-        }
-        case PropertyType::Gradient: {
-            Gradient gradient;
-            std::string why;
-            if (!gradientFromJson(value, gradient, why)) {
-                error = "Property " + propertyName + " is a gradient: " + why;
-                return nullptr;
-            }
-            return new PropertyCmd<Gradient>(project, sceneId, entity, component, propertyName, gradient, onChanged);
-        }
-        case PropertyType::MinMaxCurve: {
-            MinMaxCurve curve;
-            std::string why;
-            if (!minMaxCurveFromJson(value, curve, why)) {
-                error = "Property " + propertyName + " is a MinMaxCurve: " + why;
-                return nullptr;
-            }
-            return new PropertyCmd<MinMaxCurve>(project, sceneId, entity, component, propertyName, curve, onChanged);
-        }
-        case PropertyType::MinMaxGradient: {
-            MinMaxGradient gradient;
-            std::string why;
-            if (!minMaxGradientFromJson(value, gradient, why)) {
-                error = "Property " + propertyName + " is a MinMaxGradient: " + why;
-                return nullptr;
-            }
-            return new PropertyCmd<MinMaxGradient>(project, sceneId, entity, component, propertyName, gradient, onChanged);
-        }
-#endif
         case PropertyType::Material: {
             unsigned int submesh = 0;
             const bool linkable = component == ComponentType::MeshComponent && submeshMaterialIndex(propertyName, submesh);
@@ -3603,30 +3068,6 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                 if (!cmd) error = "Property " + propertyName + ": " + why;
                 return cmd;
             }
-#if 0 // SYNC4-ABSORB(particles): upstream's version 2 bursts and sprite frames
-            if (component == ComponentType::ParticleSystemComponent && propertyName == "emission.bursts") {
-                std::vector<ParticleEmissionBurst> bursts;
-                std::string why;
-                if (!particleBurstsFromJson(value, bursts, why)) {
-                    error = "Property " + propertyName + ": " + why;
-                    return nullptr;
-                }
-                return new PropertyCmd<std::vector<ParticleEmissionBurst>>(project, sceneId, entity, component, propertyName, bursts, onChanged);
-            }
-            if (component == ComponentType::ParticleSystemComponent && propertyName == "textureSheetAnimation.sprites") {
-                std::vector<int> frames;
-                bool ok = value.is_array();
-                for (size_t i = 0; ok && i < value.size(); i++) {
-                    ok = isIntegral(value[i]) && integralValue(value[i]) >= 0 && integralValue(value[i]) < MAX_SPRITE_FRAMES;
-                    if (ok) frames.push_back((int)integralValue(value[i]));
-                }
-                if (!ok) {
-                    error = "Property " + propertyName + " is a list of sprite frame ids (0.." + std::to_string(MAX_SPRITE_FRAMES - 1) + ").";
-                    return nullptr;
-                }
-                return new PropertyCmd<std::vector<int>>(project, sceneId, entity, component, propertyName, frames, onChanged);
-            }
-#endif
             error = "Property " + propertyName + " is custom: set it with set_properties (component encoding).";
             return nullptr;
     }

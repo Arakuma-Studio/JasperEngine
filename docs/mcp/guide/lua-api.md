@@ -1491,8 +1491,8 @@ index out of range gives `nil`, `false` or `-1`, never an error.
 | `AnimationCurve()` | `evaluate(t)`; `addKey(t, v)` / `addKey(keyframe)` -> index; `removeKey(i)` -> bool; `moveKey(i, keyframe)` -> new index; `getKey(i)` -> Keyframe or nil; `smoothTangents(i, weight)`; ro `length` (keys); rw `preWrapMode postWrapMode` (`WrapMode.*`); static `AnimationCurve.linear(t0, v0, t1, v1)`, `AnimationCurve.constant(t0, t1, v)`, `AnimationCurve.easeInOut(t0, v0, t1, v1)` |
 | `GradientColorKey(colorVector3, time)`, `GradientAlphaKey(alpha, time)` | rw `color`/`alpha`, `time` |
 | `Gradient()` | `evaluate(t)` -> Vector4 (sRGB 0-1); `setKeys(colorKeys, alphaKeys)` (Lua lists, at most 8 each); ro `colorKeys alphaKeys` (lists); rw `mode` (`GradientMode.Blend`/`Fixed`), `linear` (blend in linear space) |
-| `MinMaxCurve([constant])` | `evaluate(t[, random])` (random 0-1 picks between the two); rw `mode` (`MinMaxCurveMode.*`), `constant`/`constantMin`, `constantMax`, `curve`/`curveMin`, `curveMax`, `multiplier`; static `MinMaxCurve.twoConstants(a, b)`, `fromCurve(curve, multiplier)`, `twoCurves(min, max, multiplier)` |
-| `MinMaxGradient([colorVector4])` | `evaluate(t[, random])` -> Vector4; rw `mode` (`MinMaxGradientMode.*`), `color`/`colorMin`, `colorMax`, `gradient`/`gradientMin`, `gradientMax` |
+| `MinMaxCurve([constant])`, `MinMaxCurve(min, max)`, `MinMaxCurve(multiplier, curve)`, `MinMaxCurve(multiplier, minCurve, maxCurve)` (Unity's) | `evaluate(t[, random])` (random 0-1 picks between the two); rw `mode` (`MinMaxCurveMode.*`), `constant`/`constantMin`, `constantMax`, `curve`/`curveMin`, `curveMax`, `multiplier`; static `MinMaxCurve.twoConstants(a, b)`, `fromCurve(curve, multiplier)`, `twoCurves(min, max, multiplier)` |
+| `MinMaxGradient([color])` (Vector4, or Vector3 opaque; sRGB), `MinMaxGradient(min, max)` (two colours), `MinMaxGradient(gradient)`, `MinMaxGradient(minGradient, maxGradient)` (Unity's) | `evaluate(t[, random])` -> Vector4; rw `mode` (`MinMaxGradientMode.*`), `color`/`colorMin`, `colorMax`, `gradient`/`gradientMin`, `gradientMax` |
 
 ```lua
 local curve = AnimationCurve.linear(0, 0, 1, 2)
@@ -2420,7 +2420,8 @@ offsets (`relative` does not apply to it).
 
 ### 4.16 ParticleSystem
 
-A GameObject with a Particle System (`ParticleSystem(scene)` makes one; a script property of
+A GameObject with a Particle System (`ParticleSystem(scene)` makes one, as does origin/main's
+`ParticleSystem(scene, true)`; a script property of
 type ParticleSystem, or `object(ref, 'ParticleSystem')` in eval_lua). Methods: `play()`,
 `pause()`, `stop([clear])` (true also removes the particles), `restart()`,
 `emit(count [, {position, velocity, size, color, lifetime}])` (born at the system's next tick), `seek(t)` (restart and simulate to

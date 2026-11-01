@@ -8,6 +8,7 @@
 #include "StreamSchema.h"
 #include "StreamPreserved.h"
 #include "StreamMigrations.h"
+#include "stream/CurveCodec.h"
 #include "util/ShaderGlobalsJson.h"
 #include "AppSettings.h"
 #include "EditorHost.h"
@@ -1133,399 +1134,35 @@ Vector4 editor::Stream::decodeVector4(const YAML::Node& node) {
     return Vector4(decodeFinite(node[0], 0.0f), decodeFinite(node[1], 0.0f), decodeFinite(node[2], 0.0f), decodeFinite(node[3], 0.0f));
 }
 
-std::string editor::Stream::curveWrapToString(upcurve::CurveWrap wrap) {
-    switch (wrap) {
-        case upcurve::CurveWrap::Clamp: return "clamp";
-        case upcurve::CurveWrap::Loop: return "loop";
-        case upcurve::CurveWrap::PingPong: return "ping_pong";
-    }
-    return "clamp";
+YAML::Node editor::Stream::encodeCurve(const Curve& curve) {
+    return curvecodec::curveToYaml(curve);
 }
 
-upcurve::CurveWrap editor::Stream::stringToCurveWrap(const std::string& str) {
-    if (str == "loop" || str == "repeat") return upcurve::CurveWrap::Loop;
-    if (str == "ping_pong" || str == "pingpong" || str == "pingPong") return upcurve::CurveWrap::PingPong;
-    return upcurve::CurveWrap::Clamp;
-}
-
-YAML::Node editor::Stream::encodeCurve(const upcurve::AnimationCurve& curve) {
-    YAML::Node node;
-    YAML::Node keys(YAML::NodeType::Sequence);
-    for (const upcurve::CurveKey& key : curve.keys) {
-        YAML::Node keyNode;
-        keyNode.SetStyle(YAML::EmitterStyle::Flow);
-        keyNode.push_back(YamlNumbers::text(key.time));
-        keyNode.push_back(YamlNumbers::text(key.value));
-        if (key.inTangent != 0.0f || key.outTangent != 0.0f) {
-            keyNode.push_back(YamlNumbers::text(key.inTangent));
-            keyNode.push_back(YamlNumbers::text(key.outTangent));
-        }
-        keys.push_back(keyNode);
-    }
-    node["keys"] = keys;
-    if (curve.preWrap != upcurve::CurveWrap::Clamp) node["pre"] = curveWrapToString(curve.preWrap);
-    if (curve.postWrap != upcurve::CurveWrap::Clamp) node["post"] = curveWrapToString(curve.postWrap);
-    return node;
-}
-
-upcurve::AnimationCurve editor::Stream::decodeCurve(const YAML::Node& node, const upcurve::AnimationCurve& fallback) {
+Curve editor::Stream::decodeCurve(const YAML::Node& node, const Curve& fallback) {
     if (!node || node.IsNull()) return fallback;
-    // a number: a constant curve
-    if (node.IsScalar()) {
-        try {
-            return upcurve::AnimationCurve::constant(node.as<float>());
-        } catch (const YAML::Exception&) {
-            return fallback;
-        }
+    Curve curve;
+    std::string reason;
+    if (!curvecodec::curveFromYaml(node, curve, reason)) {
+        Out::warning("Curve: %s: the default curve is used", reason.c_str());
+        return fallback;
     }
-    upcurve::AnimationCurve curve;
-    YAML::Node keys = node.IsSequence() ? node : node["keys"];
-    if (keys && keys.IsSequence()) {
-        for (const YAML::Node& keyNode : keys) {
-            upcurve::CurveKey key;
-            try {
-                if (keyNode.IsSequence() && keyNode.size() >= 2) {
-                    key.time = keyNode[0].as<float>();
-                    key.value = keyNode[1].as<float>();
-                    if (keyNode.size() >= 4) {
-                        key.inTangent = keyNode[2].as<float>();
-                        key.outTangent = keyNode[3].as<float>();
-                    }
-                } else if (keyNode.IsMap()) {
-                    key.time = keyNode["time"] ? keyNode["time"].as<float>() : 0.0f;
-                    key.value = keyNode["value"] ? keyNode["value"].as<float>() : 0.0f;
-                    if (keyNode["inTangent"]) key.inTangent = keyNode["inTangent"].as<float>();
-                    if (keyNode["outTangent"]) key.outTangent = keyNode["outTangent"].as<float>();
-                } else {
-                    continue;
-                }
-            } catch (const YAML::Exception&) {
-                continue;
-            }
-            curve.keys.push_back(key);
-        }
-    }
-    if (node.IsMap()) {
-        // a wrap that is not a name: the default (clamp), with a warning
-        for (const char* side : {"pre", "post"}) {
-            const YAML::Node wrap = node[side];
-            if (!wrap) continue;
-            if (!wrap.IsScalar()) {
-                Out::warning("Curve: %s is not a wrap mode name (clamp, loop, ping_pong): clamp", side);
-                continue;
-            }
-            (std::string(side) == "pre" ? curve.preWrap : curve.postWrap) = stringToCurveWrap(wrap.Scalar());
-        }
-    }
-    curve.normalize();
     return curve;
 }
 
-bool editor::Stream::parseHexColor(const std::string& text, Vector4& srgb, bool& hasAlpha) {
-    std::string hex = text;
-    if (!hex.empty() && hex[0] == '#') hex = hex.substr(1);
-    if (hex.size() != 6 && hex.size() != 8) return false;
-    for (char c : hex) {
-        if (!std::isxdigit(static_cast<unsigned char>(c))) return false;
-    }
-    float v[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-    for (size_t i = 0; i < hex.size() / 2; i++) {
-        v[i] = static_cast<float>(std::stoi(hex.substr(i * 2, 2), nullptr, 16)) / 255.0f;
-    }
-    srgb = Vector4(v[0], v[1], v[2], v[3]);
-    hasAlpha = hex.size() == 8;
-    return true;
+YAML::Node editor::Stream::encodeGradient(const Gradient& gradient) {
+    return curvecodec::gradientToYaml(gradient);
 }
 
-bool editor::Stream::decodeColorValue(const YAML::Node& node, Vector4& linear, bool& hasAlpha) {
-    hasAlpha = false;
-    if (!node) return false;
-    if (node.IsScalar()) {
-        Vector4 srgb;
-        if (!parseHexColor(node.as<std::string>(), srgb, hasAlpha)) return false;
-        const Vector3 color = Color::sRGBToLinear(Vector3(srgb.x, srgb.y, srgb.z));
-        linear = Vector4(color.x, color.y, color.z, srgb.w);
-        return true;
-    }
-    if (node.IsSequence() && node.size() >= 3) {
-        linear = Vector4(decodeFinite(node[0], 0.0f), decodeFinite(node[1], 0.0f), decodeFinite(node[2], 0.0f),
-                         node.size() >= 4 ? decodeFinite(node[3], 1.0f) : 1.0f);
-        hasAlpha = node.size() >= 4;
-        return true;
-    }
-    return false;
-}
-
-namespace {
-
-    // a linear colour as "#RRGGBB" when that is exactly what it is (an 8-bit sRGB value read
-    // back gives it), else [r, g, b] in linear values
-    YAML::Node encodeGradientColor(const Vector3& linear) {
-        const Vector3 srgb = Color::linearTosRGB(Vector3(std::max(linear.x, 0.0f), std::max(linear.y, 0.0f), std::max(linear.z, 0.0f)));
-        const float channels[3] = {srgb.x, srgb.y, srgb.z};
-        const float linearChannels[3] = {linear.x, linear.y, linear.z};
-        int bytes[3];
-        bool exact = true;
-        for (int i = 0; i < 3 && exact; i++) {
-            if (!(channels[i] >= 0.0f && channels[i] <= 1.0f)) {
-                exact = false;
-                break;
-            }
-            bytes[i] = (int)std::lround(channels[i] * 255.0f);
-            const float back = Color::sRGBToLinear(Vector3((float)bytes[i] / 255.0f, 0.0f, 0.0f)).x;
-            exact = std::fabs(back - linearChannels[i]) <= 1e-6f;
-        }
-        if (exact) {
-            char text[8];
-            std::snprintf(text, sizeof(text), "#%02X%02X%02X", bytes[0], bytes[1], bytes[2]);
-            return YAML::Node(std::string(text));
-        }
-        YAML::Node node;
-        node.SetStyle(YAML::EmitterStyle::Flow);
-        node.push_back(editor::YamlNumbers::text(linear.x));
-        node.push_back(editor::YamlNumbers::text(linear.y));
-        node.push_back(editor::YamlNumbers::text(linear.z));
-        return node;
-    }
-
-}
-
-YAML::Node editor::Stream::encodeGradient(const upcurve::Gradient& gradient) {
-    YAML::Node node;
-    node["mode"] = gradient.mode == upcurve::GradientMode::Fixed ? "fixed" : "blend";
-    YAML::Node colors(YAML::NodeType::Sequence);
-    for (const upcurve::GradientColorKey& key : gradient.colorKeys) {
-        YAML::Node keyNode;
-        keyNode.SetStyle(YAML::EmitterStyle::Flow);
-        keyNode.push_back(YamlNumbers::text(key.time));
-        keyNode.push_back(encodeGradientColor(key.color));
-        colors.push_back(keyNode);
-    }
-    node["colors"] = colors;
-    YAML::Node alphas(YAML::NodeType::Sequence);
-    for (const upcurve::GradientAlphaKey& key : gradient.alphaKeys) {
-        YAML::Node keyNode;
-        keyNode.SetStyle(YAML::EmitterStyle::Flow);
-        keyNode.push_back(YamlNumbers::text(key.time));
-        keyNode.push_back(YamlNumbers::text(key.alpha));
-        alphas.push_back(keyNode);
-    }
-    node["alphas"] = alphas;
-    return node;
-}
-
-upcurve::Gradient editor::Stream::decodeGradient(const YAML::Node& node, const upcurve::Gradient& fallback) {
+Gradient editor::Stream::decodeGradient(const YAML::Node& node, const Gradient& fallback) {
     if (!node || node.IsNull()) return fallback;
-    // a single colour: a constant gradient
-    Vector4 single;
-    bool singleAlpha = false;
-    if ((node.IsScalar() || (node.IsSequence() && node.size() >= 3 && node[0].IsScalar())) && decodeColorValue(node, single, singleAlpha)) {
-        return upcurve::Gradient::constant(single);
+    Gradient gradient;
+    std::string reason;
+    if (!curvecodec::gradientFromYaml(node, gradient, reason)) {
+        Out::warning("Gradient: %s: the default gradient is used", reason.c_str());
+        return fallback;
     }
-    if (!node.IsMap()) return fallback;
-
-    upcurve::Gradient gradient({}, {});
-    if (node["mode"]) {
-        if (node["mode"].IsScalar()) {
-            gradient.mode = (node["mode"].Scalar() == "fixed") ? upcurve::GradientMode::Fixed : upcurve::GradientMode::Blend;
-        } else {
-            Out::warning("Gradient: mode is not blend or fixed: blend");
-        }
-    }
-    if (node["colors"] && node["colors"].IsSequence()) {
-        for (const YAML::Node& keyNode : node["colors"]) {
-            if (!keyNode.IsSequence() || keyNode.size() < 2) continue;
-            Vector4 color;
-            bool hasAlpha = false;
-            if (!decodeColorValue(keyNode[1], color, hasAlpha)) continue;
-            gradient.colorKeys.push_back(upcurve::GradientColorKey(decodeFinite(keyNode[0], 0.0f), Vector3(color.x, color.y, color.z)));
-        }
-    }
-    if (node["alphas"] && node["alphas"].IsSequence()) {
-        for (const YAML::Node& keyNode : node["alphas"]) {
-            if (!keyNode.IsSequence() || keyNode.size() < 2) continue;
-            gradient.alphaKeys.push_back(upcurve::GradientAlphaKey(decodeFinite(keyNode[0], 0.0f), decodeFinite(keyNode[1], 1.0f)));
-        }
-    }
-    // more than Unity's 8 keys: the file still loads, with the first 7 and the last (normalize)
-    if (gradient.colorKeys.size() > upcurve::Gradient::MAX_KEYS || gradient.alphaKeys.size() > upcurve::Gradient::MAX_KEYS) {
-        Out::warning("Gradient: %zu colour and %zu alpha keys, at most %zu each: the first %zu and the last are kept",
-                     gradient.colorKeys.size(), gradient.alphaKeys.size(), upcurve::Gradient::MAX_KEYS, upcurve::Gradient::MAX_KEYS - 1);
-    }
-    gradient.normalize();
     return gradient;
 }
-
-YAML::Node editor::Stream::encodeColorValue(const Vector4& linear) {
-    // the gradient keys' rule for the colour, the alpha appended when not 1
-    const YAML::Node rgb = encodeGradientColor(Vector3(linear.x, linear.y, linear.z));
-    const float alpha = finiteOr(linear.w, 1.0f);
-    if (rgb.IsScalar()) {
-        const int a = (int)std::lround(std::min(std::max(alpha, 0.0f), 1.0f) * 255.0f);
-        if (alpha == 1.0f) return rgb;
-        if (std::fabs((float)a / 255.0f - alpha) <= 1e-6f) {
-            char text[4];
-            std::snprintf(text, sizeof(text), "%02X", a);
-            return YAML::Node(rgb.as<std::string>() + text);
-        }
-    }
-    YAML::Node node;
-    node.SetStyle(YAML::EmitterStyle::Flow);
-    node.push_back(YamlNumbers::text(finiteOr(linear.x)));
-    node.push_back(YamlNumbers::text(finiteOr(linear.y)));
-    node.push_back(YamlNumbers::text(finiteOr(linear.z)));
-    node.push_back(YamlNumbers::text(alpha));
-    return node;
-}
-
-#if 0 // SYNC4-ABSORB(particles): upstream's version 2 particle values (MinMaxCurve/Gradient, bursts)
-YAML::Node editor::Stream::encodeMinMaxCurve(const MinMaxCurve& curve) {
-    switch (curve.mode) {
-        case ParticleSystemCurveMode::Constant:
-            return YAML::Node(YamlNumbers::text(finiteOr(curve.constant)));
-        case ParticleSystemCurveMode::TwoConstants: {
-            YAML::Node node;
-            node.SetStyle(YAML::EmitterStyle::Flow);
-            node["mode"] = "two_constants";
-            node["min"] = YamlNumbers::text(finiteOr(curve.constantMin));
-            node["max"] = YamlNumbers::text(finiteOr(curve.constant));
-            return node;
-        }
-        case ParticleSystemCurveMode::Curve: {
-            YAML::Node node;
-            node["mode"] = "curve";
-            node["multiplier"] = YamlNumbers::text(finiteOr(curve.constant));
-            node["curve"] = encodeCurve(curve.curve);
-            return node;
-        }
-        case ParticleSystemCurveMode::TwoCurves: {
-            YAML::Node node;
-            node["mode"] = "two_curves";
-            node["multiplier"] = YamlNumbers::text(finiteOr(curve.constant));
-            node["min"] = encodeCurve(curve.curveMin);
-            node["max"] = encodeCurve(curve.curve);
-            return node;
-        }
-    }
-    return YAML::Node(YamlNumbers::text(finiteOr(curve.constant)));
-}
-
-MinMaxCurve editor::Stream::decodeMinMaxCurve(const YAML::Node& node, const MinMaxCurve& fallback) {
-    if (!node || node.IsNull()) return fallback;
-    if (node.IsScalar()) {
-        try {
-            const float value = node.as<float>();
-            return std::isfinite(value) ? MinMaxCurve(value) : fallback;
-        } catch (const YAML::Exception&) {
-            return fallback;
-        }
-    }
-    if (!node.IsMap()) return fallback;
-    const std::string mode = node["mode"] ? node["mode"].as<std::string>() : std::string("constant");
-    MinMaxCurve curve;
-    if (mode == "two_constants") {
-        curve = MinMaxCurve::between(decodeFinite(node["min"], 0.0f), decodeFinite(node["max"], 0.0f));
-    } else if (mode == "curve") {
-        curve = MinMaxCurve::fromCurve(decodeCurve(node["curve"], AnimationCurve::constant(1.0f)), decodeFinite(node["multiplier"], 1.0f));
-    } else if (mode == "two_curves") {
-        curve = MinMaxCurve::between(decodeCurve(node["min"], AnimationCurve::constant(1.0f)),
-                                     decodeCurve(node["max"], AnimationCurve::constant(1.0f)), decodeFinite(node["multiplier"], 1.0f));
-    } else {
-        curve = MinMaxCurve(decodeFinite(node["value"] ? node["value"] : node["constant"], fallback.constant));
-    }
-    return curve;
-}
-
-YAML::Node editor::Stream::encodeMinMaxGradient(const MinMaxGradient& gradient) {
-    switch (gradient.mode) {
-        case ParticleSystemGradientMode::Color:
-            return encodeColorValue(gradient.color);
-        case ParticleSystemGradientMode::TwoColors: {
-            YAML::Node node;
-            node["mode"] = "two_colors";
-            node["min"] = encodeColorValue(gradient.colorMin);
-            node["max"] = encodeColorValue(gradient.color);
-            return node;
-        }
-        case ParticleSystemGradientMode::Gradient:
-        case ParticleSystemGradientMode::RandomColor: {
-            YAML::Node node;
-            node["mode"] = gradient.mode == ParticleSystemGradientMode::Gradient ? "gradient" : "random_color";
-            node["gradient"] = encodeGradient(gradient.gradient);
-            return node;
-        }
-        case ParticleSystemGradientMode::TwoGradients: {
-            YAML::Node node;
-            node["mode"] = "two_gradients";
-            node["min"] = encodeGradient(gradient.gradientMin);
-            node["max"] = encodeGradient(gradient.gradient);
-            return node;
-        }
-    }
-    return encodeColorValue(gradient.color);
-}
-
-MinMaxGradient editor::Stream::decodeMinMaxGradient(const YAML::Node& node, const MinMaxGradient& fallback) {
-    if (!node || node.IsNull()) return fallback;
-    Vector4 color;
-    bool hasAlpha = false;
-    if ((node.IsScalar() || node.IsSequence()) && decodeColorValue(node, color, hasAlpha)) {
-        return MinMaxGradient::fromColor(color);
-    }
-    if (!node.IsMap()) return fallback;
-    const std::string mode = node["mode"] ? node["mode"].as<std::string>() : std::string("color");
-    auto colorOf = [&](const YAML::Node& value, const Vector4& otherwise) {
-        Vector4 linear;
-        bool alpha = false;
-        return decodeColorValue(value, linear, alpha) ? linear : otherwise;
-    };
-    if (mode == "two_colors") {
-        return MinMaxGradient::between(colorOf(node["min"], Vector4(1, 1, 1, 1)), colorOf(node["max"], Vector4(1, 1, 1, 1)));
-    }
-    if (mode == "gradient" || mode == "random_color") {
-        MinMaxGradient g = MinMaxGradient::fromGradient(decodeGradient(node["gradient"], Gradient()));
-        if (mode == "random_color") g.mode = ParticleSystemGradientMode::RandomColor;
-        return g;
-    }
-    if (mode == "two_gradients") {
-        return MinMaxGradient::between(decodeGradient(node["min"], Gradient()), decodeGradient(node["max"], Gradient()));
-    }
-    return MinMaxGradient::fromColor(colorOf(node["color"], fallback.color));
-}
-
-YAML::Node editor::Stream::encodeParticleBursts(const std::vector<ParticleEmissionBurst>& bursts) {
-    YAML::Node list(YAML::NodeType::Sequence);
-    const ParticleEmissionBurst defaults;
-    for (const ParticleEmissionBurst& burst : bursts) {
-        YAML::Node node;
-        node.SetStyle(YAML::EmitterStyle::Flow);
-        node["time"] = YamlNumbers::text(finiteOr(burst.time));
-        node["count"] = encodeMinMaxCurve(burst.count);
-        if (burst.cycles != defaults.cycles) node["cycles"] = burst.cycles;
-        if (burst.interval != defaults.interval) node["interval"] = YamlNumbers::text(finiteOr(burst.interval));
-        if (burst.probability != defaults.probability) node["probability"] = YamlNumbers::text(finiteOr(burst.probability));
-        list.push_back(node);
-    }
-    return list;
-}
-
-std::vector<ParticleEmissionBurst> editor::Stream::decodeParticleBursts(const YAML::Node& node) {
-    std::vector<ParticleEmissionBurst> bursts;
-    if (!node || !node.IsSequence()) return bursts;
-    for (const YAML::Node& item : node) {
-        if (!item.IsMap()) continue;
-        ParticleEmissionBurst burst;
-        burst.time = std::max(0.0f, decodeFinite(item["time"], 0.0f));
-        if (item["count"]) burst.count = decodeMinMaxCurve(item["count"], burst.count);
-        if (item["cycles"]) burst.cycles = std::max(0, YamlNumbers::as<int>(item["cycles"]));
-        if (item["interval"]) burst.interval = std::max(0.0001f, decodeFinite(item["interval"], burst.interval));
-        if (item["probability"]) burst.probability = std::min(1.0f, std::max(0.0f, decodeFinite(item["probability"], 1.0f)));
-        bursts.push_back(burst);
-    }
-    return bursts;
-}
-
-#endif // SYNC4-ABSORB(particles)
 
 YAML::Node editor::Stream::encodeShaderUniforms(const ShaderUniformValues& uniforms) {
     YAML::Node node;

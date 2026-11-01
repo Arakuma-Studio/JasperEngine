@@ -3,6 +3,8 @@
 
 #include "CurveJson.h"
 
+#include "util/Color.h"
+
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -64,6 +66,31 @@ namespace {
         return true;
     }
 
+    // a tangent: a number, or a step (infinite): null, or upstream's "inf" / "-inf" (MCP) and
+    // the YAML spellings
+    bool readTangent(const Json& j, float& out){
+        if (j.is_null()){
+            out = INFINITY;
+            return true;
+        }
+        if (j.is_string()){
+            const std::string text = j.get<std::string>();
+            if (text == "inf" || text == "+inf" || text == ".inf" || text == "Infinity" || text == "+Infinity"){
+                out = INFINITY;
+                return true;
+            }
+            if (text == "-inf" || text == "-.inf" || text == "-Infinity"){
+                out = -INFINITY;
+                return true;
+            }
+            return false;
+        }
+        if (!j.is_number())
+            return false;
+        out = j.get<float>();
+        return !std::isnan(out);
+    }
+
     std::string indexed(size_t index){
         return "[" + std::to_string(index) + "]";
     }
@@ -85,13 +112,23 @@ namespace {
         for (size_t i = 0; i < j.size(); i++){
             const Json& k = j[i];
             CurveKey key;
+            if (k.is_object()){
+                // upstream's (lines and trails) key map {time, value, inTangent?, outTangent?}
+                bool ok = k.contains("time") && k.contains("value") && readFloat(k["time"], key.time) && readFloat(k["value"], key.value);
+                ok = ok && (!k.contains("inTangent") || readTangent(k["inTangent"], key.inTangent));
+                ok = ok && (!k.contains("outTangent") || readTangent(k["outTangent"], key.outTangent));
+                if (!ok){
+                    fail(issues, path + indexed(i), "a key map is {time, value, inTangent, outTangent} (numbers; a step tangent: null or \"inf\")");
+                    return false;
+                }
+                curve.keys.push_back(key);
+                continue;
+            }
             bool ok = k.is_array() && (k.size() == 2 || k.size() == 4 || k.size() == 5) && readFloat(k[0], key.time) &&
                       readFloat(k[1], key.value);
             if (ok && k.size() >= 4){
-                // null: an infinite (step) tangent
-                key.inTangent = k[2].is_null() ? INFINITY : 0.0f;
-                key.outTangent = k[3].is_null() ? INFINITY : 0.0f;
-                ok = (k[2].is_null() || readFloat(k[2], key.inTangent)) && (k[3].is_null() || readFloat(k[3], key.outTangent));
+                // null (or upstream's "inf" / "-inf"): an infinite (step) tangent
+                ok = readTangent(k[2], key.inTangent) && readTangent(k[3], key.outTangent);
             }
             if (ok && k.size() == 5){
                 if (!k[4].is_string() || !modeFromToken(k[4].get<std::string>(), key.mode)){
@@ -107,6 +144,22 @@ namespace {
             curve.keys.push_back(key);
         }
         return true;
+    }
+
+    // upstream's wrap names (lines and trails: clamp, loop, ping_pong, and the spellings its
+    // reader took); anything else reads as clamp with a warning, as it did there
+    void readUpstreamWrap(const Json& j, CurveWrapMode& mode, const std::string& path, std::vector<Issue>& issues){
+        const std::string name = j.is_string() ? j.get<std::string>() : std::string();
+        if (name == "clamp"){
+            mode = CurveWrapMode::Clamp;
+        }else if (name == "loop" || name == "repeat"){
+            mode = CurveWrapMode::Loop;
+        }else if (name == "ping_pong" || name == "pingpong" || name == "pingPong"){
+            mode = CurveWrapMode::PingPong;
+        }else{
+            mode = CurveWrapMode::Clamp;
+            warn(issues, path, "not a wrap mode name (clamp, loop, ping_pong): clamp");
+        }
     }
 
     bool readWrap(const Json& j, CurveWrapMode& mode, const std::string& path, std::vector<Issue>& issues){
@@ -236,8 +289,23 @@ Json curvejson::curveToJson(const Curve& curve){
 
 bool curvejson::curveFromJson(const Json& j, Curve& curve, std::vector<Issue>& issues){
     curve = Curve();
-    if (j.is_array())
-        return readKeys(j, curve, "", issues);
+    // upstream's (lines and trails) number: a constant curve
+    if (j.is_number()){
+        float value = 0.0f;
+        if (!readFloat(j, value)){
+            fail(issues, "", "a constant curve is a finite number");
+            return false;
+        }
+        curve = Curve::constant(value);
+        return true;
+    }
+    if (j.is_array()){
+        if (!readKeys(j, curve, "", issues))
+            return false;
+        if (isUpstreamCurve(j))
+            curve.normalize();
+        return true;
+    }
     if (!j.is_object()){
         fail(issues, "", "a curve is an array of [time, value, inTangent, outTangent] keys, or {keys, preWrapMode, postWrapMode}");
         return false;
@@ -253,6 +321,10 @@ bool curvejson::curveFromJson(const Json& j, Curve& curve, std::vector<Issue>& i
             ok = readWrap(*it, curve.preWrapMode, ".preWrapMode", issues) && ok;
         }else if (key == "postWrapMode"){
             ok = readWrap(*it, curve.postWrapMode, ".postWrapMode", issues) && ok;
+        }else if (key == "pre"){
+            readUpstreamWrap(*it, curve.preWrapMode, ".pre", issues);
+        }else if (key == "post"){
+            readUpstreamWrap(*it, curve.postWrapMode, ".post", issues);
         }else{
             warn(issues, "." + key, "unknown curve key");
         }
@@ -261,7 +333,32 @@ bool curvejson::curveFromJson(const Json& j, Curve& curve, std::vector<Issue>& i
         fail(issues, ".keys", "a curve object needs its keys");
         return false;
     }
+    if (ok && isUpstreamCurve(j))
+        curve.normalize();
     return ok;
+}
+
+bool curvejson::isUpstreamCurve(const Json& j){
+    if (j.is_number())
+        return true;
+    const Json* keys = &j;
+    if (j.is_object()){
+        if (j.contains("pre") || j.contains("post"))
+            return true;
+        if (!j.contains("keys"))
+            return false;
+        keys = &j["keys"];
+    }
+    if (!keys->is_array())
+        return false;
+    for (const Json& k : *keys){
+        if (k.is_object())
+            return true;
+        // a tangent as text ("inf"; a key's mode token is its 5th element)
+        if (k.is_array() && k.size() >= 4 && (k[2].is_string() || k[3].is_string()))
+            return true;
+    }
+    return false;
 }
 
 Json curvejson::gradientToJson(const Gradient& g){
@@ -283,7 +380,115 @@ Json curvejson::gradientToJson(const Gradient& g){
     return j;
 }
 
+namespace {
+
+    // upstream's (lines and trails) colour: "#RRGGBB(AA)" (sRGB) or [r, g, b(, a)] (linear),
+    // as sRGB-encoded rgb (Gradient's storage) and alpha
+    bool upstreamColor(const Json& j, Vector3& srgb, float& alpha, bool& hasAlpha){
+        hasAlpha = false;
+        alpha = 1.0f;
+        if (j.is_string()){
+            std::string hex = j.get<std::string>();
+            if (!hex.empty() && hex[0] == '#') hex.erase(0, 1);
+            if (hex.size() != 6 && hex.size() != 8) return false;
+            float v[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+            for (size_t i = 0; i < hex.size() / 2; i++){
+                char* end = nullptr;
+                const std::string pair = hex.substr(i * 2, 2);
+                const long byte = std::strtol(pair.c_str(), &end, 16);
+                if (!end || *end != '\0') return false;
+                v[i] = (float)byte / 255.0f;
+            }
+            srgb = Vector3(v[0], v[1], v[2]);
+            alpha = v[3];
+            hasAlpha = hex.size() == 8;
+            return true;
+        }
+        if (j.is_array() && (j.size() == 3 || j.size() == 4)){
+            float v[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+            for (size_t i = 0; i < j.size(); i++){
+                if (!readFloat(j[i], v[i])) return false;
+            }
+            // linear values (HDR above 1 kept: the encoding extends past 1)
+            srgb = Color::linearTosRGB(Vector3(std::max(v[0], 0.0f), std::max(v[1], 0.0f), std::max(v[2], 0.0f)));
+            alpha = v[3];
+            hasAlpha = j.size() == 4;
+            return true;
+        }
+        return false;
+    }
+
+    // upstream's gradient: {mode, colors: [[time, colour]], alphas: [[time, alpha]]}, or one
+    // colour (a constant gradient); Unity's 8 keys of each at most (the first 7 and the last)
+    bool upstreamGradientFromJson(const Json& j, Gradient& g, std::vector<Issue>& issues){
+        g = Gradient();
+        Vector3 single;
+        float alpha = 1.0f;
+        bool hasAlpha = false;
+        if (upstreamColor(j, single, alpha, hasAlpha)){
+            g = Gradient::constant(single, alpha);
+            return true;
+        }
+        if (!j.is_object()){
+            fail(issues, "", "a gradient is {colorKeys, alphaKeys}, {mode, colors, alphas} or one colour");
+            return false;
+        }
+        for (auto it = j.begin(); it != j.end(); ++it){
+            const std::string& key = it.key();
+            const std::string at = "." + key;
+            if (key == "mode"){
+                const std::string mode = it->is_string() ? it->get<std::string>() : std::string();
+                g.mode = mode == "fixed" ? GradientMode::Fixed : GradientMode::Blend;
+                if (mode != "fixed" && mode != "blend")
+                    warn(issues, at, "mode is not blend or fixed: blend");
+            }else if (key == "colors"){
+                if (!it->is_array()) continue;
+                for (size_t i = 0; i < it->size(); i++){
+                    const Json& k = (*it)[i];
+                    float time = 0.0f;
+                    Vector3 color;
+                    float a = 1.0f;
+                    bool withAlpha = false;
+                    if (!k.is_array() || k.size() < 2 || !readFloat(k[0], time) || !upstreamColor(k[1], color, a, withAlpha)){
+                        warn(issues, at + indexed(i), "not a colour key [time, \"#RRGGBB\" | [r, g, b]]: skipped");
+                        continue;
+                    }
+                    if (time < 0.0f || time > 1.0f)
+                        warn(issues, at + indexed(i), "a key's time is 0..1: clamped");
+                    g.colorKeys.push_back({time, color});
+                }
+            }else if (key == "alphas"){
+                if (!it->is_array()) continue;
+                for (size_t i = 0; i < it->size(); i++){
+                    const Json& k = (*it)[i];
+                    float v[2] = {0.0f, 1.0f};
+                    if (!k.is_array() || k.size() < 2 || !readFloat(k[0], v[0]) || !readFloat(k[1], v[1])){
+                        warn(issues, at + indexed(i), "not an alpha key [time, alpha]: skipped");
+                        continue;
+                    }
+                    if (v[0] < 0.0f || v[0] > 1.0f)
+                        warn(issues, at + indexed(i), "a key's time is 0..1: clamped");
+                    g.alphaKeys.push_back({v[0], v[1]});
+                }
+            }else{
+                warn(issues, at, "unknown gradient key");
+            }
+        }
+        if (g.colorKeys.size() > Gradient::kMaxKeys || g.alphaKeys.size() > Gradient::kMaxKeys)
+            warn(issues, "", "more than 8 colour or alpha keys: the first 7 and the last are kept");
+        g.normalize();
+        return true;
+    }
+
+}
+
+bool curvejson::isUpstreamGradient(const Json& j){
+    return j.is_string() || j.is_array() || (j.is_object() && (j.contains("colors") || j.contains("alphas")));
+}
+
 bool curvejson::gradientFromJson(const Json& j, Gradient& g, std::vector<Issue>& issues){
+    if (isUpstreamGradient(j))
+        return upstreamGradientFromJson(j, g, issues);
     if (!j.is_object()){
         fail(issues, "", "a gradient is {colorKeys: [[time, r, g, b]], alphaKeys: [[time, a]]}");
         return false;

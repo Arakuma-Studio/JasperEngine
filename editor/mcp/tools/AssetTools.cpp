@@ -3482,10 +3482,6 @@ void placeholderArtTool(const CallPtr& call) {
 // Searches the project's text files (what read_file reads): literal or ECMAScript regex, per line
 // import_unity_particles: a Unity .prefab / .unity (absolute path) as engine prefabs (particles spec 6.10)
 void importUnityParticlesTool(const CallPtr& call) {
-    // SYNC4-ABSORB(particles): upstream's Unity ParticleSystem importer (editor/unity, out of the build) writes
-    // version 2 systems; the Particles absorption moves it onto S20's
-    call->fail("import_unity_particles is not available in this build yet (the Unity importer moves onto the engine's particle effects).");
-#if 0
     const Json& args = call->args();
     Project* project = call->ctx().project();
     if (!args.contains("path") || !args["path"].is_string() || args["path"].get<std::string>().empty()) {
@@ -3527,7 +3523,6 @@ void importUnityParticlesTool(const CallPtr& call) {
     Json data = {{"prefabs", result.prefabs}, {"report", result.report}};
     if (!result.reportFile.empty()) data["report_file"] = result.reportFile;
     call->ok(message, data);
-#endif
 }
 
 void searchFilesTool(const CallPtr& call) {
@@ -4120,7 +4115,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.group = "particles";   // out of core to fit the budget (S31)
         tool.description =
             "Import the ParticleSystems of a Unity .prefab/.unity (absolute path; the Unity project is only read) as "
-            "engine prefabs with materials and textures. Returns the prefabs and a report (per module imported/"
+            "engine prefabs (S20 systems: each renderer's material in its Renderer module) and textures. Returns the prefabs and a report (per module imported/"
             "approximated/unsupported, notes). jasper://docs/particles";
         tool.inputSchema = object({
             {"path", string("Absolute .prefab or .unity path.")},
@@ -4131,6 +4126,7 @@ void registerAssetTools(McpRegistry& registry) {
             {"overwrite", withDefault(boolean(""), false)}
         }, {"path"});
         tool.annotations.openWorld = true;
+        tool.group = "particles";  // S31 tool groups: listed once enabled, callable always
         tool.handler = importUnityParticlesTool;
         registry.addTool(std::move(tool));
     }

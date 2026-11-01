@@ -128,6 +128,32 @@ async def test_setup(ed: Editor):
     texture.write_bytes(png_rgb(2, 1, [[(255, 0, 0), (0, 0, 255)]]))
 
 
+def hairline_features(image) -> dict:
+    """Where an image's hairline ends are (the mean position of its nearly pure red, green and
+    blue pixels, x and y from the centre over the height: the sky or the black behind them is
+    neither) and how thick the red-green line is at the centre column."""
+    w, h, px = image
+    def at(x, y):
+        i = (y * w + x) * 4
+        return px[i], px[i + 1], px[i + 2]
+    found = {"red": [], "green": [], "blue": []}
+    for y in range(h):
+        for x in range(w):
+            r, g, b = at(x, y)
+            if r > 200 and g < 60 and b < 60:
+                found["red"].append(((x - w / 2) / h, (y - h / 2) / h))
+            elif g > 200 and r < 60 and b < 60:
+                found["green"].append(((x - w / 2) / h, (y - h / 2) / h))
+            elif b > 200 and r < 60 and g < 60:
+                found["blue"].append(((x - w / 2) / h, (y - h / 2) / h))
+    # the red-green line (yellow at its middle, no blue): its pixels down the centre column
+    thick = sum(1 for y in range(h) if (lambda c: c[2] < 90 and max(c[0], c[1]) > 110)(at(w // 2, y)))
+    out = {"thickest": thick}
+    for key, points in found.items():
+        out[key] = (sum(p[0] for p in points) / len(points), sum(p[1] for p in points) / len(points)) if points else None
+    return out
+
+
 async def test_old_hairline_matches_main(ed: Editor):
     """A Line Renderer as main wrote it: Segments, no width, two coloured segments."""
     made = await ed.call("create_entity", type="line_renderer", name="Hairline")
@@ -140,18 +166,31 @@ async def test_old_hairline_matches_main(ed: Editor):
     if "widthMultiplier" in current:
         values["widthMultiplier"] = 0
     await set_line(ed, line, values)
-    data, _ = await shot(ed, "hairline")
-    if os.environ.get("JASPER_UPDATE_GOLDEN") == "1":
-        GOLDEN.parent.mkdir(parents=True, exist_ok=True)
-        GOLDEN.write_bytes(data)
-        print(f"     [golden] wrote {GOLDEN}")
-    else:
-        ed.check(GOLDEN.is_file(), f"missing committed golden image: {GOLDEN}")
-        ok, fraction, diff = pngdiff.compare(pngdiff.decode(GOLDEN.read_bytes()), pngdiff.decode(data), max_fraction=0.001)
-        if not ok and ed.scratch:
-            (ed.scratch.root / "lines-hairline-diff.png").write_bytes(diff)
-        ed.check(ok, f"the hairline differs from main's ({GOLDEN.name}) in {fraction:.4f} of the pixels")
-    await ed.call("delete_entities", entity=line)
+    try:
+        data, _ = await shot(ed, "hairline")
+        if os.environ.get("JASPER_UPDATE_GOLDEN") == "1":
+            GOLDEN.parent.mkdir(parents=True, exist_ok=True)
+            GOLDEN.write_bytes(data)
+            print(f"     [golden] wrote {GOLDEN}")
+        else:
+            ed.check(GOLDEN.is_file(), f"missing committed golden image: {GOLDEN}")
+            golden, now = pngdiff.decode(GOLDEN.read_bytes()), pngdiff.decode(data)
+            if golden[:2] == now[:2]:
+                ok, fraction, diff = pngdiff.compare(golden, now, max_fraction=0.001)
+                if not ok and ed.scratch and diff:
+                    (ed.scratch.root / "lines-hairline-diff.png").write_bytes(diff)
+                ed.check(ok, f"the hairline differs from main's ({GOLDEN.name}) in {fraction:.4f} of the pixels")
+            else:
+                # the Game view's size is the editor layout's: the same lines where main drew
+                # them (by the view's height: the vertical field of view), still one pixel thick
+                want, got = hairline_features(golden), hairline_features(now)
+                ed.check(1 <= got["thickest"] <= 2, f"a hairline (1 or 2 px thick): {got['thickest']} px")
+                for key in ("red", "green", "blue"):
+                    a, b = want[key], got[key]
+                    ed.check(a is not None and b is not None and all(abs(x - y) <= 0.012 for x, y in zip(a, b)),
+                             f"the {key} end where main drew it ({golden[0]}x{golden[1]} -> {now[0]}x{now[1]}): {b} vs {a}")
+    finally:
+        await ed.call("delete_entities", entity=line)
     if "widthMultiplier" not in current:
         skip("the main editor made the golden image; the rest needs widths")
 
@@ -164,31 +203,36 @@ async def test_create_defaults_and_shapes(ed: Editor):
     ed.check_eq(values["useWorldSpace"], True, "in world space")
     ed.check(abs(values["widthMultiplier"] - 0.1) < 1e-6, f"width 0.1: {values['widthMultiplier']}")
     ed.check_eq(values["positions"], [[0, 0, 0], [0, 0, 1]], "two points")
-    ed.check_eq(values["widthCurve"]["keys"], [[0, 1]], "a constant curve")
+    # S27's curve (docs/specs/S27-editor-tools.md): [[time, value, inTangent, outTangent]] keys
+    ed.check_eq(values["widthCurve"], [[0, 1, 0, 0]], "a constant curve")
 
-    # the curve and gradient shapes
+    # the curve and gradient shapes: origin/main's form is taken and read back in S27's
     await set_line(ed, laser, {"widthCurve": [[0, 1], [1, 0.25, -0.75, -0.75]],
                                "colorGradient": {"mode": "blend", "colors": [[0, "#FF9600"], [1, [0.5, 0.25, 0]]], "alphas": [[0, 1], [1, 0]]}})
     values = await props(ed, laser, "linerenderer", ["widthCurve", "colorGradient"])
-    ed.check_eq(values["widthCurve"]["keys"], [[0, 1], [1, 0.25, -0.75, -0.75]], "keys read back")
-    ed.check_eq(values["widthCurve"]["pre"], "clamp", "pre wrap")
-    ed.check_eq(values["colorGradient"]["colors"][0], [0, "#FF9600"], "an exact sRGB colour reads back as hex")
-    ed.check_eq(values["colorGradient"]["colors"][1], [1, [0.5, 0.25, 0]], "a linear colour as numbers")
-    ed.check_eq(values["colorGradient"]["alphas"], [[0, 1], [1, 0]], "alphas")
+    ed.check_eq(values["widthCurve"], [[0, 1, 0, 0], [1, 0.25, -0.75, -0.75]], "keys read back")
+    colors = values["colorGradient"]["colorKeys"]
+    ed.check(close(colors[0], [0, 1, 150 / 255, 0]), f"an sRGB hex colour is the key itself: {colors[0]}")
+    ed.check(close(colors[1], [1, srgb(0.5), srgb(0.25), 0]), f"a linear colour as its sRGB encoding: {colors[1]}")
+    ed.check_eq(values["colorGradient"]["alphaKeys"], [[0, 1], [1, 0]], "alphas")
+    # S27's own form, the same
+    await set_line(ed, laser, {"colorGradient": {"colorKeys": [[0, 1, 0, 0], [1, 0, 0, 1]], "alphaKeys": [[0, 1]], "mode": "fixed"}})
+    values = await props(ed, laser, "linerenderer", ["colorGradient"])
+    ed.check_eq(values["colorGradient"].get("mode"), "fixed", "S27's form")
 
     await set_line(ed, laser, {"widthCurve": 0.5, "colorGradient": "#FF000080"})
     values = await props(ed, laser, "linerenderer", ["widthCurve", "colorGradient"])
-    ed.check_eq(values["widthCurve"]["keys"], [[0, 0.5]], "a number is a constant curve")
-    ed.check_eq(values["colorGradient"]["colors"], [[0, "#FF0000"]], "one colour")
-    ed.check(abs(values["colorGradient"]["alphas"][0][1] - 128 / 255) < 1e-3, f"its alpha: {values['colorGradient']}")
+    ed.check_eq(values["widthCurve"], [[0, 0.5, 0, 0]], "a number is a constant curve")
+    ed.check_eq(values["colorGradient"]["colorKeys"], [[0, 1, 0, 0]], "one colour")
+    ed.check(abs(values["colorGradient"]["alphaKeys"][0][1] - 128 / 255) < 1e-3, f"its alpha: {values['colorGradient']}")
     await set_line(ed, laser, {"widthCurve": {"keys": [[0, 0, 0, "inf"], [1, 1]], "post": "loop"}})
     values = await props(ed, laser, "linerenderer", ["widthCurve"])
-    ed.check_eq(values["widthCurve"]["keys"][0], [0, 0, 0, "inf"], "a step tangent")
-    ed.check_eq(values["widthCurve"]["post"], "loop", "post wrap")
+    ed.check_eq(values["widthCurve"]["keys"][0], [0, 0, 0, None], "a step tangent (null)")
+    ed.check_eq(values["widthCurve"]["postWrapMode"], "loop", "post wrap")
 
     # wrong shapes are refused with the expected shape
     for bad, what in (({"widthCurve": {"keys": [[0]]}}, "keys[0]"), ({"widthCurve": "x"}, "curve"),
-                      ({"colorGradient": {"colors": [[2, "#FFFFFF"]]}}, "0..1"), ({"colorGradient": {"oops": 1}}, "unknown key"),
+                      ({"colorGradient": {"colors": [[2, "#FFFFFF"]]}}, "0..1"), ({"colorGradient": {"oops": 1}}, "unknown"),
                       ({"textureMode": "spiral"}, "stretch")):
         r = await ed.call_raw("set_properties", {"entity": laser, "values": {"linerenderer": bad}})
         ed.check(r.is_error and what in r.text, f"{bad} refused naming {what}: {r.text[:300]}")
@@ -197,7 +241,7 @@ async def test_create_defaults_and_shapes(ed: Editor):
     await set_line(ed, laser, {"widthCurve": [[0, 3], [1, 3]]})
     await ed.call("undo")
     values = await props(ed, laser, "linerenderer", ["widthCurve"])
-    ed.check_eq(values["widthCurve"]["keys"], [[0, 0, 0, "inf"], [1, 1]], "undo restores the curve")
+    ed.check_eq(values["widthCurve"]["keys"], [[0, 0, 0, None], [1, 1, 0, 0]], "undo restores the curve")
 
     # the texture shortcut is shaderTextures.u_baseTexture; the ribbon is read back
     await set_line(ed, laser, {"texture": TEXTURE, "widthCurve": 1})
@@ -212,8 +256,16 @@ async def test_create_defaults_and_shapes(ed: Editor):
     trail = find_key(await ed.call("create_entity", type="trail_renderer", name="Trail"), "entity_id", "id")
     values = await props(ed, trail, "trailrenderer", ["*"])
     ed.check(abs(values["time"] - 5) < 1e-6 and abs(values["widthMultiplier"] - 0.2) < 1e-6, f"trail defaults: {values!r}")
-    ed.check_eq(values["colorGradient"]["alphas"], [[0, 1], [1, 0]], "fading out")
+    ed.check_eq(values["colorGradient"]["alphaKeys"], [[0, 1], [1, 0]], "fading out")
     await ed.call("delete_entities", entity=trail)
+
+
+def srgb(linear: float) -> float:
+    return linear ** (1 / 2.2)   # the engine's Color::linearTosRGB (gamma 2.2)
+
+
+def close(a: list, b: list, tol: float = 1e-4) -> bool:
+    return len(a) == len(b) and all(abs(x - y) <= tol for x, y in zip(a, b))
 
 
 async def make_line(ed: Editor, name: str, values: dict) -> int:
@@ -543,16 +595,16 @@ local g = GameObject(scene); g.entityOwned = false; g.name = "NoTrailYet"
 pcall(function() return object("NoTrailYet", "TrailRenderer") end)
 local had = g:hasTrailRenderer()
 local t = g:addTrailRenderer()
-local ok, err = pcall(function()
-    local keys = {}
-    for i = 0, 8 do keys[#keys + 1] = {i / 8, Vector3(1, 1, 1)} end
-    Gradient():setKeys(keys, {{0, 1}})
-end)
-return had, g:hasTrailRenderer(), t ~= nil, ok, tostring(err)
+local keys = {}
+for i = 0, 8 do keys[#keys + 1] = {i / 8, Vector3(1, 1, 1)} end
+local gradient = Gradient()
+local set = gradient:setKeys(keys, {{0, 1}})
+return had, g:hasTrailRenderer(), t ~= nil, set, gradient.colorKeyCount
 """
     v = (await ed.call("eval_lua", code=code))["values"]
     ed.check_eq(v[:3], [False, True, True], "object(..., 'TrailRenderer') adds nothing, addTrailRenderer adds")
-    ed.check(v[3] is False and "at most 8" in v[4], f"9 colour keys refused: {v[4]}")
+    # S27's setKeys: false (and a warning) past 8 keys, the gradient unchanged
+    ed.check(v[3] is False and v[4] == 0, f"9 colour keys refused: {v[3:]}")
     await ed.call("play", action="stop")
 
 

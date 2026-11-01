@@ -12,8 +12,7 @@
 #include <gtest/gtest.h>
 
 #include "render/LineRibbonBuilder.h"
-#include "math/AnimationCurve.h"
-#include "math/Gradient.h"
+#include "math/Curve.h"
 #include "util/Color.h"
 
 #include <cmath>
@@ -173,8 +172,8 @@ TEST(LineRibbonBuilderTest, TextureU){
 }
 
 TEST(LineRibbonBuilderTest, WidthsAndColours){
-    const upcurve::AnimationCurve curve = upcurve::AnimationCurve::linear(0.0f, 1.0f, 1.0f, 0.0f);
-    const upcurve::Gradient gradient = upcurve::Gradient::twoColors(Vector4(1, 0, 0, 1), Vector4(0, 0, 1, 0));
+    const Curve curve = Curve::linear(0.0f, 1.0f, 1.0f, 0.0f);
+    const Gradient gradient = Gradient::twoColors(Vector3(1, 0, 0), Vector3(0, 0, 1), 1.0f, 0.0f);
     LineRibbonSettings settings;
     settings.widthMultiplier = 2.0f;
     settings.widthCurve = &curve;
@@ -197,7 +196,7 @@ TEST(LineRibbonBuilderTest, WidthsAndColours){
     EXPECT_TRUE(middle);
 
     // a negative curve is width 0, never flipped
-    const upcurve::AnimationCurve negative = upcurve::AnimationCurve::constant(-1.0f);
+    const Curve negative = Curve::constant(-1.0f);
     settings.widthCurve = &negative;
     Built flat = build({Vector3(0, 0, 0), Vector3(1, 0, 0)}, settings);
     for (const LineRibbonVertex& vertex : flat.vertices){
@@ -329,7 +328,7 @@ TEST(LineRibbonBuilderTest, LoopClosesTheLine){
 
 TEST(LineRibbonBuilderTest, WidthAndColourShortcuts){
     float multiplier = 0.0f;
-    upcurve::AnimationCurve curve = upcurve::AnimationCurve::constant(1.0f);
+    Curve curve = Curve::constant(1.0f);
     LineRibbonBuilder::setEndWidths(multiplier, curve, 0.35f, 0.1f);
     EXPECT_FLOAT_EQ(multiplier, 1.0f);
     EXPECT_FLOAT_EQ(LineRibbonBuilder::widthAt(multiplier, curve, 0.0f), 0.35f);
@@ -337,7 +336,7 @@ TEST(LineRibbonBuilderTest, WidthAndColourShortcuts){
     LineRibbonBuilder::setEndWidths(multiplier, curve, -1.0f, 0.1f);
     EXPECT_FLOAT_EQ(LineRibbonBuilder::widthAt(multiplier, curve, 0.0f), 0.0f);
 
-    upcurve::Gradient gradient;
+    Gradient gradient;
     LineRibbonBuilder::setEndColor(gradient, 0.0f, Vector4(1.0f, 0.5f, 0.0f, 1.0f));
     LineRibbonBuilder::setEndColor(gradient, 1.0f, Vector4(0.0f, 0.0f, 1.0f, 0.0f));
     const Vector4 start = LineRibbonBuilder::colorAt(gradient, 0.0f);
@@ -346,7 +345,8 @@ TEST(LineRibbonBuilderTest, WidthAndColourShortcuts){
     const Vector4 end = LineRibbonBuilder::colorAt(gradient, 1.0f);
     EXPECT_NEAR(end.z, 1.0f, 1e-5f);
     EXPECT_NEAR(end.w, 0.0f, 1e-6f);
-    // linear in memory
+    // sRGB-encoded keys, linear evaluation
+    EXPECT_NEAR(gradient.colorKeys[0].color.y, 0.5f, 1e-6f);
     EXPECT_NEAR(gradient.evaluate(0.0f).y, Color::sRGBToLinear(Vector3(0.0f, 0.5f, 0.0f)).y, 1e-5f);
     EXPECT_EQ(gradient.colorKeys.size(), 2u);
 }

@@ -334,7 +334,7 @@ YAML::Node editor::Stream::encodeTrailRendererComponent(const TrailRendererCompo
     encodeRibbonFields(node, trail, defaults);
 
     if (!trail.customShader.empty())
-        node["customShader"] = trail.customShader;
+        encodeShaderRef(node, "customShader", trail.customShader);
     if (!trail.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(trail.shaderUniforms);
     encodeComponentShaderLibrary(node, trail.shaderTextures, trail.shaderFeatures, &trail.blendMode, &trail.depthWrite, true);
@@ -356,7 +356,7 @@ TrailRendererComponent editor::Stream::decodeTrailRendererComponent(const YAML::
     trail.autodestruct = node["autodestruct"] ? YamlNumbers::as<bool>(node["autodestruct"]) : defaults.autodestruct;
     decodeRibbonFields(node, trail, defaults);
 
-    trail.customShader = node["customShader"] ? node["customShader"].as<std::string>() : std::string();
+    trail.customShader = node["customShader"] ? decodeShaderRef(node, "customShader") : ShaderRef();
     trail.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
     trail.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, trail.shaderTextures, trail.shaderFeatures, &trail.blendMode, &trail.depthWrite);

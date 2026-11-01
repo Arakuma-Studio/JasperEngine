@@ -615,19 +615,6 @@ std::string editor::Factory::formatFloat(float value) {
 
 namespace {
 
-    std::string formatCurveNumber(float value) {
-        if (std::isinf(value)) return value > 0.0f ? "upcurve::AnimationCurve::STEP" : "-upcurve::AnimationCurve::STEP";
-        return editor::Factory::formatFloat(value);
-    }
-
-    const char* formatCurveWrap(upcurve::CurveWrap wrap) {
-        switch (wrap) {
-            case upcurve::CurveWrap::Loop: return "upcurve::CurveWrap::Loop";
-            case upcurve::CurveWrap::PingPong: return "upcurve::CurveWrap::PingPong";
-            default: return "upcurve::CurveWrap::Clamp";
-        }
-    }
-
     const char* formatLineWidthUnit(LineWidthUnit unit) {
         return unit == LineWidthUnit::Pixels ? "LineWidthUnit::Pixels" : "LineWidthUnit::World";
     }
@@ -673,69 +660,13 @@ namespace {
 
 }
 
-std::string editor::Factory::formatCurve(const upcurve::AnimationCurve& curve) {
-    std::ostringstream code;
-    code << "upcurve::AnimationCurve({";
-    for (size_t i = 0; i < curve.keys.size(); i++) {
-        const upcurve::CurveKey& key = curve.keys[i];
-        if (i > 0) code << ", ";
-        code << "upcurve::CurveKey(" << formatFloat(key.time) << ", " << formatFloat(key.value) << ", "
-             << formatCurveNumber(key.inTangent) << ", " << formatCurveNumber(key.outTangent) << ")";
-    }
-    code << "}, " << formatCurveWrap(curve.preWrap) << ", " << formatCurveWrap(curve.postWrap) << ")";
-    return code.str();
+std::string editor::Factory::formatCurve(const Curve& curve) {
+    return curvecodec::curveCppLiteral(curve);
 }
 
-std::string editor::Factory::formatGradient(const upcurve::Gradient& gradient) {
-    std::ostringstream code;
-    code << "upcurve::Gradient({";
-    for (size_t i = 0; i < gradient.colorKeys.size(); i++) {
-        if (i > 0) code << ", ";
-        code << "upcurve::GradientColorKey(" << formatFloat(gradient.colorKeys[i].time) << ", " << formatVector3(gradient.colorKeys[i].color) << ")";
-    }
-    code << "}, {";
-    for (size_t i = 0; i < gradient.alphaKeys.size(); i++) {
-        if (i > 0) code << ", ";
-        code << "upcurve::GradientAlphaKey(" << formatFloat(gradient.alphaKeys[i].time) << ", " << formatFloat(gradient.alphaKeys[i].alpha) << ")";
-    }
-    code << "}, " << (gradient.mode == upcurve::GradientMode::Fixed ? "upcurve::GradientMode::Fixed" : "upcurve::GradientMode::Blend") << ")";
-    return code.str();
+std::string editor::Factory::formatGradient(const Gradient& gradient) {
+    return curvecodec::gradientCppLiteral(gradient);
 }
-
-#if 0 // SYNC4-ABSORB(particles): upstream's MinMaxCurve / MinMaxGradient literals
-std::string editor::Factory::formatMinMaxCurve(const MinMaxCurve& curve) {
-    switch (curve.mode) {
-        case ParticleSystemCurveMode::Constant:
-            return "MinMaxCurve(" + formatFloat(curve.constant) + ")";
-        case ParticleSystemCurveMode::TwoConstants:
-            return "MinMaxCurve::between(" + formatFloat(curve.constantMin) + ", " + formatFloat(curve.constant) + ")";
-        case ParticleSystemCurveMode::Curve:
-            return "MinMaxCurve::fromCurve(" + formatCurve(curve.curve) + ", " + formatFloat(curve.constant) + ")";
-        case ParticleSystemCurveMode::TwoCurves:
-            return "MinMaxCurve::between(" + formatCurve(curve.curveMin) + ", " + formatCurve(curve.curve) + ", " + formatFloat(curve.constant) + ")";
-    }
-    return "MinMaxCurve(" + formatFloat(curve.constant) + ")";
-}
-
-std::string editor::Factory::formatMinMaxGradient(const MinMaxGradient& gradient) {
-    switch (gradient.mode) {
-        case ParticleSystemGradientMode::Color:
-            return "MinMaxGradient::fromColor(" + formatVector4(gradient.color) + ")";
-        case ParticleSystemGradientMode::TwoColors:
-            return "MinMaxGradient::between(" + formatVector4(gradient.colorMin) + ", " + formatVector4(gradient.color) + ")";
-        case ParticleSystemGradientMode::Gradient:
-            return "MinMaxGradient::fromGradient(" + formatGradient(gradient.gradient) + ")";
-        case ParticleSystemGradientMode::TwoGradients:
-            return "MinMaxGradient::between(" + formatGradient(gradient.gradientMin) + ", " + formatGradient(gradient.gradient) + ")";
-        case ParticleSystemGradientMode::RandomColor: {
-            // a gradient read at a random point
-            return "[]{ MinMaxGradient g = MinMaxGradient::fromGradient(" + formatGradient(gradient.gradient) +
-                   "); g.mode = ParticleSystemGradientMode::RandomColor; return g; }()";
-        }
-    }
-    return "MinMaxGradient::fromColor(" + formatVector4(gradient.color) + ")";
-}
-#endif
 
 std::string editor::Factory::formatPositiveFloat(float value) {
     return formatFloat(std::isfinite(value) && value > 0.0f ? value : 1.0f);
@@ -3598,7 +3529,7 @@ std::string editor::Factory::createTrailRendererComponent(int indentSpaces, Enti
     if (t.autodestruct != defaults.autodestruct) code << ind << "trailcomp.autodestruct = " << (t.autodestruct ? "true" : "false") << ";\n";
     formatRibbonFields(code, ind, "trailcomp", t, defaults);
     if (!t.customShader.empty())
-        code << ind << "trailcomp.customShader = " << formatString(t.customShader) << ";\n";
+        code << ind << "trailcomp.customShader = " << formatString(t.customShader.path) << ";\n";
     if (!t.shaderUniforms.empty())
         code << ind << "trailcomp.shaderUniforms = " << formatShaderUniforms(t.shaderUniforms) << ";\n";
     code << formatComponentShaderLibrary(indentSpaces, t.shaderTextures, t.shaderFeatures, &t.blendMode, &t.depthWrite, "trailcomp", fs::path());

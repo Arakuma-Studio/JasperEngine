@@ -87,24 +87,19 @@ bool editor::AddComponentCmd::execute() {
                 }
             }
 
-            // a Particle System added in the editor is Unity's (version 2 modules) drawing on its
-            // own GameObject's renderer (a Mesh's instances or Points); the loader's and the
-            // scripts' default stays version 1
-            // SYNC4-ABSORB(particles): upstream made an editor-added Particle System a version 2 one
-            // (Unity's modules, its own renderer) drawing on its own GameObject
+            // a Particle System added in the editor: Unity's default effect, in a 2D scene in its
+            // pixel units (40 a unit, the presets' scale) under the 2D gravity
             if (componentType == ComponentType::ParticleSystemComponent){
-#if 0 // SYNC4-ABSORB(particles)
                 if (ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity)){
-                    *ps = ParticleSystemComponent();
-                    ps->version = 2;
-                    if (sceneProject->sceneType != SceneType::SCENE_3D){
-                        ps->main.startSpeed = MinMaxCurve(200.0f);
-                        ps->main.startSize = MinMaxCurve(40.0f);
-                        ps->main.gravitySource = ParticleSystemGravitySource::Physics2D;
-                        ps->shape.radius = 40.0f;
+                    if (sceneProject->sceneType != SceneType::SCENE_3D && ps->effect.empty()){
+                        particles::ParticleEffectDocument& d = ps->inlineEffect;
+                        d.main.startSpeed = particles::MinMaxCurve(200.0f);
+                        d.main.startSize = particles::MinMaxCurve(40.0f);
+                        d.main.gravitySource = particles::GravitySource::Physics2D;
+                        d.shape.radius = 40.0f;
+                        ps->needReload = true;
                     }
                 }
-#endif
                 if (ActionComponent* action = scene->findComponent<ActionComponent>(entity)){
                     if (action->target == NULL_ENTITY) action->target = entity;
                 }

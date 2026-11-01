@@ -173,7 +173,7 @@ namespace {
 float Curve::evaluate(float time) const{
     if (keys.empty())
         return 0.0f;
-    if (keys.size() == 1)
+    if (keys.size() == 1 || std::isnan(time))
         return keys.front().value;
     const CurveKey& first = keys.front();
     const CurveKey& last = keys.back();
@@ -247,8 +247,18 @@ int Curve::addKey(float time, float value){
     return addKey(key);
 }
 
+namespace {
+
+    // what addKey and moveKey take: a finite time and value, tangents that are numbers
+    // (infinite: a step)
+    bool acceptableKey(const CurveKey& key){
+        return std::isfinite(key.time) && std::isfinite(key.value) && !std::isnan(key.inTangent) && !std::isnan(key.outTangent);
+    }
+
+}
+
 int Curve::addKey(const CurveKey& key){
-    if (!std::isfinite(key.time))
+    if (!acceptableKey(key))
         return -1;
     for (const CurveKey& k : keys){
         if (k.time == key.time)
@@ -262,7 +272,7 @@ int Curve::addKey(const CurveKey& key){
 }
 
 int Curve::moveKey(size_t index, const CurveKey& key){
-    if (index >= keys.size() || !std::isfinite(key.time))
+    if (index >= keys.size() || !acceptableKey(key))
         return -1;
     CurveKey moved = key;
     for (size_t i = 0; i < keys.size(); i++){
@@ -282,17 +292,18 @@ int Curve::moveKey(size_t index, const CurveKey& key){
     return (int)newIndex;
 }
 
-void Curve::removeKey(size_t index){
+bool Curve::removeKey(size_t index){
     if (index >= keys.size())
-        return;
+        return false;
     keys.erase(keys.begin() + (std::ptrdiff_t)index);
     if (keys.empty())
-        return;
+        return true;
     // the neighbours that are now adjacent follow
     const size_t right = std::min(index, keys.size() - 1);
     updateTangents(right);
     if (right > 0)
         updateTangents(right - 1);
+    return true;
 }
 
 void Curve::smoothTangents(size_t index, float weight){
@@ -330,6 +341,46 @@ void Curve::updateAllTangents(){
 
 void Curve::sortKeys(){
     std::stable_sort(keys.begin(), keys.end(), [](const CurveKey& a, const CurveKey& b){ return a.time < b.time; });
+}
+
+void Curve::normalize(){
+    keys.erase(std::remove_if(keys.begin(), keys.end(), [](const CurveKey& key){ return !acceptableKey(key); }), keys.end());
+    sortKeys();
+    keys.erase(std::unique(keys.begin(), keys.end(), [](const CurveKey& a, const CurveKey& b){ return a.time == b.time; }), keys.end());
+}
+
+void Curve::valueRange(float minTime, float maxTime, float& lo, float& hi) const{
+    if (keys.empty()){
+        lo = hi = 0.0f;
+        return;
+    }
+    lo = hi = evaluate(minTime);
+    constexpr int kSamples = 64;
+    for (int i = 1; i <= kSamples; i++){
+        const float v = evaluate(minTime + (maxTime - minTime) * ((float)i / (float)kSamples));
+        lo = std::min(lo, v);
+        hi = std::max(hi, v);
+    }
+    for (const CurveKey& key : keys){
+        if (key.time >= minTime && key.time <= maxTime){
+            lo = std::min(lo, key.value);
+            hi = std::max(hi, key.value);
+        }
+    }
+}
+
+bool Curve::isConstant() const{
+    for (size_t i = 1; i < keys.size(); i++){
+        if (keys[i].value != keys[0].value)
+            return false;
+    }
+    for (size_t i = 0; i + 1 < keys.size(); i++){
+        // a flat segment: a step, or flat tangents at both of its ends
+        const bool step = std::isinf(keys[i].outTangent) || std::isinf(keys[i + 1].inTangent);
+        if (!step && (keys[i].outTangent != 0.0f || keys[i + 1].inTangent != 0.0f))
+            return false;
+    }
+    return true;
 }
 
 void Curve::valueRange(float& lo, float& hi) const{
@@ -374,7 +425,9 @@ Curve Curve::linear(float timeStart, float valueStart, float timeEnd, float valu
     if (timeEnd == timeStart)
         return constant(valueStart);
     const float m = (valueEnd - valueStart) / (timeEnd - timeStart);
-    return Curve({{timeStart, valueStart, m, m}, {timeEnd, valueEnd, m, m}});
+    Curve curve({{timeStart, valueStart, m, m}, {timeEnd, valueEnd, m, m}});
+    curve.sortKeys();
+    return curve;
 }
 
 Curve Curve::polyline(const std::vector<std::pair<float, float>>& points){
@@ -401,7 +454,9 @@ Curve Curve::polyline(const std::vector<std::pair<float, float>>& points){
 Curve Curve::easeInOut(float timeStart, float valueStart, float timeEnd, float valueEnd){
     if (timeEnd == timeStart)
         return constant(valueStart);
-    return Curve({{timeStart, valueStart, 0.0f, 0.0f}, {timeEnd, valueEnd, 0.0f, 0.0f}});
+    Curve curve({{timeStart, valueStart, 0.0f, 0.0f}, {timeEnd, valueEnd, 0.0f, 0.0f}});
+    curve.sortKeys();
+    return curve;
 }
 
 Curve Curve::fromEase(EaseType type, int keys){
@@ -572,6 +627,31 @@ void Gradient::bake(std::span<Vector4> out) const{
 void Gradient::sortKeys(){
     std::stable_sort(colorKeys.begin(), colorKeys.end(), [](const GradientColorKey& a, const GradientColorKey& b){ return a.time < b.time; });
     std::stable_sort(alphaKeys.begin(), alphaKeys.end(), [](const GradientAlphaKey& a, const GradientAlphaKey& b){ return a.time < b.time; });
+}
+
+void Gradient::normalize(){
+    colorKeys.erase(std::remove_if(colorKeys.begin(), colorKeys.end(), [](const GradientColorKey& key){
+        return !std::isfinite(key.time) || !std::isfinite(key.color.x) || !std::isfinite(key.color.y) || !std::isfinite(key.color.z);
+    }), colorKeys.end());
+    alphaKeys.erase(std::remove_if(alphaKeys.begin(), alphaKeys.end(), [](const GradientAlphaKey& key){
+        return !std::isfinite(key.time) || !std::isfinite(key.alpha);
+    }), alphaKeys.end());
+    for (GradientColorKey& key : colorKeys){
+        key.time = std::min(1.0f, std::max(0.0f, key.time));
+    }
+    for (GradientAlphaKey& key : alphaKeys){
+        key.time = std::min(1.0f, std::max(0.0f, key.time));
+    }
+    sortKeys();
+    // too many: the first kMaxKeys - 1 and the last (both ends kept)
+    if (colorKeys.size() > kMaxKeys){
+        colorKeys[kMaxKeys - 1] = colorKeys.back();
+        colorKeys.resize(kMaxKeys);
+    }
+    if (alphaKeys.size() > kMaxKeys){
+        alphaKeys[kMaxKeys - 1] = alphaKeys.back();
+        alphaKeys.resize(kMaxKeys);
+    }
 }
 
 Gradient Gradient::constant(const Vector3& color, float alpha){

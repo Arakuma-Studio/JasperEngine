@@ -199,13 +199,6 @@ template<> struct Codec<AnimationPlayerClip> {
 template<> struct TextureVisit<AnimationPlayerClip> {
     static void visit(AnimationPlayerClip& value, const TextureVisitor& f);
 };
-template<> struct Codec<AnimationPlayerLayer> {
-    static void write(Writer& w, const AnimationPlayerLayer& value);
-    static void read(Reader& r, AnimationPlayerLayer& value);
-};
-template<> struct TextureVisit<AnimationPlayerLayer> {
-    static void visit(AnimationPlayerLayer& value, const TextureVisitor& f);
-};
 template<> struct Codec<spline::SplineKnot> {
     static void write(Writer& w, const spline::SplineKnot& value);
     static void read(Reader& r, spline::SplineKnot& value);
@@ -585,8 +578,6 @@ const FieldEntry kStruct_Collider2D_fields[] = {
     JE_RF(Collider2D, contactEvents, 0x3d777a20u, Bool),
     JE_RF(Collider2D, preSolveEvents, 0x1f20e68eu, Bool),
     JE_RF(Collider2D, sensorEvents, 0x45592808u, Bool),
-    JE_RF(Collider2D, material, 0x23926496u, String),
-    JE_RF_ENTITY(Collider2D, receiver, 0xdc436802u, Entity),
 };
 const StructTable kStruct_Collider2D{"Collider2D", kStruct_Collider2D_fields, std::size(kStruct_Collider2D_fields)};
 void Codec<Collider2D>::write(Writer& w, const Collider2D& value) { writeStruct(w, kStruct_Collider2D, &value); }
@@ -611,9 +602,6 @@ const FieldEntry kStruct_Collider3D_fields[] = {
     JE_RF_ENTITY(Collider3D, sourceEntity, 0x801cb5ceu, Entity),
     JE_RF(Collider3D, samplesSize, 0x66556b56u, UInt),
     JE_RF(Collider3D, vertices, 0x2f676f0bu, Array),
-    JE_RF(Collider3D, isTrigger, 0x89640968u, Bool),
-    JE_RF(Collider3D, material, 0x0dad7be5u, String),
-    JE_RF_ENTITY(Collider3D, receiver, 0xe2057509u, Entity),
 };
 const StructTable kStruct_Collider3D{"Collider3D", kStruct_Collider3D_fields, std::size(kStruct_Collider3D_fields)};
 void Codec<Collider3D>::write(Writer& w, const Collider3D& value) { writeStruct(w, kStruct_Collider3D, &value); }
@@ -682,24 +670,11 @@ const FieldEntry kStruct_AnimationPlayerClip_fields[] = {
     JE_RF(AnimationPlayerClip, guid, 0xeac00e5du, String),
     JE_RF(AnimationPlayerClip, name, 0x48cd5093u, String),
     JE_RF(AnimationPlayerClip, wrap, 0x26b48f64u, Enum),
-    JE_RF(AnimationPlayerClip, layer, 0x4df90275u, Int),
 };
 const StructTable kStruct_AnimationPlayerClip{"AnimationPlayerClip", kStruct_AnimationPlayerClip_fields, std::size(kStruct_AnimationPlayerClip_fields)};
 void Codec<AnimationPlayerClip>::write(Writer& w, const AnimationPlayerClip& value) { writeStruct(w, kStruct_AnimationPlayerClip, &value); }
 void Codec<AnimationPlayerClip>::read(Reader& r, AnimationPlayerClip& value) { readStruct(r, kStruct_AnimationPlayerClip, &value); }
 void TextureVisit<AnimationPlayerClip>::visit(AnimationPlayerClip& value, const TextureVisitor& f) { visitStructTextures(kStruct_AnimationPlayerClip, &value, f); }
-
-const FieldEntry kStruct_AnimationPlayerLayer_fields[] = {
-    JE_RF(AnimationPlayerLayer, name, 0x6dcb3052u, String),
-    JE_RF(AnimationPlayerLayer, weight, 0x2ccc532du, Float),
-    JE_RF(AnimationPlayerLayer, blend, 0x527aec04u, Enum),
-    JE_RF(AnimationPlayerLayer, mask, 0xb6a887b5u, String),
-    JE_RF(AnimationPlayerLayer, maskGuid, 0x64d378fcu, String),
-};
-const StructTable kStruct_AnimationPlayerLayer{"AnimationPlayerLayer", kStruct_AnimationPlayerLayer_fields, std::size(kStruct_AnimationPlayerLayer_fields)};
-void Codec<AnimationPlayerLayer>::write(Writer& w, const AnimationPlayerLayer& value) { writeStruct(w, kStruct_AnimationPlayerLayer, &value); }
-void Codec<AnimationPlayerLayer>::read(Reader& r, AnimationPlayerLayer& value) { readStruct(r, kStruct_AnimationPlayerLayer, &value); }
-void TextureVisit<AnimationPlayerLayer>::visit(AnimationPlayerLayer& value, const TextureVisitor& f) { visitStructTextures(kStruct_AnimationPlayerLayer, &value, f); }
 
 const FieldEntry kStruct_spline__SplineKnot_fields[] = {
     JE_RF(spline::SplineKnot, position, 0x33bfcea4u, Vector3),
@@ -873,7 +848,9 @@ const FieldEntry kBody_LineRendererComponent_fields[] = {
     JE_RF(LineRendererComponent, loop, 0x0748baf0u, Bool),
     JE_RF(LineRendererComponent, useWorldSpace, 0xf95da83fu, Bool),
     JE_RF(LineRendererComponent, widthMultiplier, 0x558a2611u, Float),
+    JE_RF(LineRendererComponent, widthCurve, 0x90a99201u, Custom),
     JE_RF(LineRendererComponent, widthUnit, 0x8bd316d8u, Enum),
+    JE_RF(LineRendererComponent, colorGradient, 0xe18f3805u, Custom),
     JE_RF(LineRendererComponent, numCornerVertices, 0x48d88474u, UInt),
     JE_RF(LineRendererComponent, numCapVertices, 0x502764a9u, UInt),
     JE_RF(LineRendererComponent, alignment, 0x88155b87u, Enum),
@@ -1075,19 +1052,6 @@ const StructTable kBody_AudioSourceComponent{"audiosource", kBody_AudioSourceCom
 const FieldEntry kBody_Rigidbody2DComponent_fields[] = {
     JE_RF(Rigidbody2DComponent, enabled, 0x8e78c911u, Bool),
     JE_RF(Rigidbody2DComponent, type, 0x89be1638u, Enum),
-    JE_RF(Rigidbody2DComponent, gravityScale, 0x506b18ecu, Float),
-    JE_RF(Rigidbody2DComponent, linearDamping, 0x822b9a71u, Float),
-    JE_RF(Rigidbody2DComponent, angularDamping, 0x77f306a8u, Float),
-    JE_RF(Rigidbody2DComponent, fixedRotation, 0xb1ac8b38u, Bool),
-    JE_RF(Rigidbody2DComponent, collisionDetection, 0x991527b3u, Enum),
-    JE_RF(Rigidbody2DComponent, sleepingMode, 0xfd9d9582u, Enum),
-    JE_RF(Rigidbody2DComponent, useAutoMass, 0xe18d2ee8u, Bool),
-    JE_RF(Rigidbody2DComponent, mass, 0xc677b3a0u, Float),
-    JE_RF(Rigidbody2DComponent, autoCenterOfMass, 0xfa06d5c7u, Bool),
-    JE_RF(Rigidbody2DComponent, centerOfMass, 0x43504b34u, Vector2),
-    JE_RF(Rigidbody2DComponent, autoInertia, 0x1be21bd7u, Bool),
-    JE_RF(Rigidbody2DComponent, inertia, 0x1f0cbb8eu, Float),
-    JE_RF(Rigidbody2DComponent, material, 0x0ad64729u, String),
     JE_RF(Rigidbody2DComponent, colliders, 0xa1ab1c35u, Array),
 };
 const StructTable kBody_Rigidbody2DComponent{"rigidbody2d", kBody_Rigidbody2DComponent_fields, std::size(kBody_Rigidbody2DComponent_fields)};
@@ -1108,21 +1072,6 @@ const FieldEntry kBody_RigidbodyComponent_fields[] = {
     JE_RF(RigidbodyComponent, overrideMassProperties, 0xe2db2b67u, Bool),
     JE_RF(RigidbodyComponent, solidBoxSize, 0x7b744dabu, Vector3),
     JE_RF(RigidbodyComponent, solidBoxDensity, 0x7dc7bb26u, Float),
-    JE_RF(RigidbodyComponent, material, 0x847134a7u, String),
-    JE_RF(RigidbodyComponent, linearDamping, 0x0b8d11f7u, Float),
-    JE_RF(RigidbodyComponent, angularDamping, 0xd6e75e7eu, Float),
-    JE_RF(RigidbodyComponent, maxLinearVelocity, 0xd33fa562u, Float),
-    JE_RF(RigidbodyComponent, maxAngularVelocity, 0x82ecede1u, Float),
-    JE_RF(RigidbodyComponent, automaticMass, 0x43c19641u, Bool),
-    JE_RF(RigidbodyComponent, mass, 0xdebdcc92u, Float),
-    JE_RF(RigidbodyComponent, automaticCenterOfMass, 0x25045cb1u, Bool),
-    JE_RF(RigidbodyComponent, centerOfMass, 0xcd63e21au, Vector3),
-    JE_RF(RigidbodyComponent, automaticInertiaTensor, 0xbcac6650u, Bool),
-    JE_RF(RigidbodyComponent, inertiaTensor, 0xe48b9f65u, Vector3),
-    JE_RF(RigidbodyComponent, inertiaTensorRotation, 0x3609f2dfu, Quat),
-    JE_RF(RigidbodyComponent, allowSleeping, 0xd5d0787eu, Bool),
-    JE_RF(RigidbodyComponent, collideKinematicVsNonDynamic, 0x456d6d16u, Bool),
-    JE_RF(RigidbodyComponent, interpolation, 0xeb948100u, Enum),
     JE_RF(RigidbodyComponent, colliders, 0xaa51737bu, Array),
 };
 const StructTable kBody_RigidbodyComponent{"rigidbody", kBody_RigidbodyComponent_fields, std::size(kBody_RigidbodyComponent_fields)};
@@ -1849,7 +1798,6 @@ const StructTable kBody_PoseAnimatorComponent{"poseanimator", kBody_PoseAnimator
 const FieldEntry kBody_AnimationPlayerComponent_fields[] = {
     JE_RF(AnimationPlayerComponent, enabled, 0x0905c1efu, Bool),
     JE_RF(AnimationPlayerComponent, clips, 0xfb9972e5u, Array),
-    JE_RF(AnimationPlayerComponent, layers, 0x075b6c74u, Array),
     JE_RF(AnimationPlayerComponent, defaultClip, 0xb4831349u, String),
     JE_RF(AnimationPlayerComponent, playAutomatically, 0x002276c5u, Bool),
     JE_RF(AnimationPlayerComponent, speed, 0xa82cb315u, Float),
@@ -2102,7 +2050,9 @@ const FieldEntry kBody_TrailRendererComponent_fields[] = {
     JE_RF(TrailRendererComponent, time, 0x9e80328fu, Float),
     JE_RF(TrailRendererComponent, minVertexDistance, 0x935ae8dbu, Float),
     JE_RF(TrailRendererComponent, widthMultiplier, 0x630b6155u, Float),
+    JE_RF(TrailRendererComponent, widthCurve, 0xaa6b9f25u, Custom),
     JE_RF(TrailRendererComponent, widthUnit, 0x513c6a04u, Enum),
+    JE_RF(TrailRendererComponent, colorGradient, 0xdfc60e11u, Custom),
     JE_RF(TrailRendererComponent, numCornerVertices, 0x90d62240u, UInt),
     JE_RF(TrailRendererComponent, numCapVertices, 0x653e8765u, UInt),
     JE_RF(TrailRendererComponent, alignment, 0xd68032dbu, Enum),
@@ -2111,7 +2061,7 @@ const FieldEntry kBody_TrailRendererComponent_fields[] = {
     JE_RF(TrailRendererComponent, emitting, 0xd733dd59u, Bool),
     JE_RF(TrailRendererComponent, autodestruct, 0x07628c03u, Bool),
     JE_RF(TrailRendererComponent, sortPriority, 0xa529dd3au, Int),
-    JE_RF(TrailRendererComponent, customShader, 0x1fd5ec80u, String),
+    JE_RF(TrailRendererComponent, customShader, 0x1fd5ec80u, AssetPath),
     JE_RF(TrailRendererComponent, shaderUniforms, 0x04ea570eu, Custom),
     JE_RF(TrailRendererComponent, shaderTextures, 0x187d06d7u, Custom),
     JE_RF(TrailRendererComponent, shaderFeatures, 0x2a966cb0u, Custom),

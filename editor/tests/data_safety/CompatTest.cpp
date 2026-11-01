@@ -159,7 +159,10 @@ TEST(Compat, CorpusRoundTrip) {
                                    original.find("prefabInstance") == std::string::npos && original.find("\n      prefab:") == std::string::npos &&
                                    // a model's images are textures by id (the model file's path on the
                                    // machine that saved it), which a bare decode cannot load
-                                   original.find("|gltf-image|") == std::string::npos;
+                                   original.find("|gltf-image|") == std::string::npos &&
+                                   // old Particle Systems (S20 D9's, origin/main's version 2) become
+                                   // inline effects on their targets: their GameObjects change
+                                   (original.find("particlesystem:") == std::string::npos || original.find("inlineEffect:") != std::string::npos);
         if (editorWritten) {
             const std::string difference =
                 firstDifference(withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(first)))),

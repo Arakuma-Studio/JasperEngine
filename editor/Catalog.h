@@ -102,8 +102,6 @@ namespace jasperengine::editor{
         UpdateFlags_Joint3D_Params      = (uint64_t)1 << 53,
         // a Ragdoll's root or animator: its parts are collected again
         UpdateFlags_Ragdoll             = (uint64_t)1 << 54,
-        // a version 2 Particle System's renderer.mesh: its target draws that primitive now
-        UpdateFlags_Particle_Mesh       = (uint64_t)1 << 55,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -236,7 +234,8 @@ namespace jasperengine::editor{
         EntityReference,
         Asset,      // AssetRef: an asset reference (path hint + GUID)
         Shader,     // ShaderRef: a custom shader reference (path + the .vert/.frag GUIDs)
-        Curve       // Curve: an animation curve (math/Curve.h, docs/specs/S27-editor-tools.md R45)
+        Curve,      // Curve: an animation curve (math/Curve.h, docs/specs/S27-editor-tools.md R45)
+        Gradient    // Gradient: a colour gradient (math/Curve.h; the Line and Trail Renderers' colorGradient)
     };
 
     struct PropertyData{

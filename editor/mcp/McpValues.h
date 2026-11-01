@@ -205,31 +205,6 @@ namespace jasperengine::editor::mcp {
         static Json entityReferenceToJson(Project* project, SceneProject* scene, const EntityReference& value);
         static bool entityReferenceFromJson(Project* project, SceneProject* scene, const Json& value, EntityReference& out, std::string& error);
 
-#if 0 // SYNC4-ABSORB(curve, particles): upstream's AnimationCurve / Gradient / MinMax / burst JSON (S27's is curvejson)
-        // Unity AnimationCurve / Gradient (docs/mcp/guide/lines-trails.md): a curve is
-        // {"keys": [[time, value] | [time, value, inTangent, outTangent]...], "pre", "post":
-        // "clamp"|"loop"|"ping_pong"} (an infinite tangent, a step, is "inf" / "-inf"); writes
-        // also take a number (constant) or the keys array alone. A gradient is {"mode":
-        // "blend"|"fixed", "colors": [[time, colour]...], "alphas": [[time, alpha]...]}, colours
-        // "#RRGGBB" (sRGB, read back as such when exact) or [r, g, b] (linear); writes also take
-        // one colour ("#RRGGBB[AA]" or [r, g, b(, a)] linear) for a constant gradient
-        static Json curveToJson(const AnimationCurve& curve);
-        static bool curveFromJson(const Json& value, AnimationCurve& out, std::string& error);
-        static Json gradientToJson(const Gradient& gradient);
-        static bool gradientFromJson(const Json& value, Gradient& out, std::string& error);
-        // Unity's MinMaxCurve / MinMaxGradient (docs/mcp/guide/particles.md): a curve is a number
-        // (constant), {"mode": "two_constants", "min", "max"}, {"mode": "curve", "multiplier",
-        // "curve"} or {"mode": "two_curves", "multiplier", "min", "max"} (curves as above); a
-        // gradient is one colour, {"mode": "gradient", "gradient"}, {"mode": "two_colors", "min",
-        // "max"}, {"mode": "two_gradients", "min", "max"} or {"mode": "random_color", "gradient"}
-        static Json minMaxCurveToJson(const MinMaxCurve& curve);
-        static bool minMaxCurveFromJson(const Json& value, MinMaxCurve& out, std::string& error);
-        static Json minMaxGradientToJson(const MinMaxGradient& gradient);
-        static bool minMaxGradientFromJson(const Json& value, MinMaxGradient& out, std::string& error);
-        // emission.bursts: [{"time", "count" (a curve value), "cycles", "interval", "probability"}]
-        static Json particleBurstsToJson(const std::vector<ParticleEmissionBurst>& bursts);
-        static bool particleBurstsFromJson(const Json& value, std::vector<ParticleEmissionBurst>& out, std::string& error);
-#endif
 
         static Json textureToJson(Project* project, SceneProject* scene, const Texture& texture);
         // `camera` gets the camera entity of a {"camera": ...} value (NULL_ENTITY otherwise; a
