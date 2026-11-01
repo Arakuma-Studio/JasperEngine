@@ -116,7 +116,8 @@ namespace {
                   KeyframeTracksComponent, MorphTracksComponent, RotateTracksComponent, TranslateTracksComponent,
                   ScaleTracksComponent, TerrainComponent, AudioSourceComponent, TilemapComponent, InstancedMeshComponent,
                   PrefabComponent, ReflectionProbeComponent, UIDocumentComponent, PoseAnimatorComponent, AnimationPlayerComponent,
-                  VertexAnimatorComponent, ScriptComponent>(scene, entity);
+                  VertexAnimatorComponent, OnScreenStickComponent, OnScreenButtonComponent, TouchAreaComponent,
+                  ScriptComponent>(scene, entity);
 #ifdef JASPERENGINE_PHYSICS_2D
         stripEach<Rigidbody2DComponent, Joint2DComponent>(scene, entity);
 #endif

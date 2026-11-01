@@ -4,6 +4,7 @@
 #include "manager/ObjectManager.h"
 #include "script/ScriptRuntime.h"
 #include "Scene.h"
+#include "shader/ShaderGlobals.h"
 #include "script/AsyncOwner.h"
 
 #include "object/Camera.h"
@@ -67,6 +68,7 @@ void Scene::init(){
 }
 
 Scene::~Scene(){
+    tearingDown = true;
     // async work owned by the scene or its GameObjects ends without its callbacks
     AsyncOwners::sceneDestroyed(this);
     // first: handles that own entities of this scene and go during (or after) its teardown
@@ -123,6 +125,8 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
     removeComponentSubscriptionsByTag<AnimationPlayerComponent>(this, substring, [](AnimationPlayerComponent& player, const std::string& tag) {
         player.onEvent.removeByTagSubstring(tag);
         player.onFinish.removeByTagSubstring(tag);
+        player.onStateEnter.removeByTagSubstring(tag);
+        player.onStateExit.removeByTagSubstring(tag);
     });
 
     removeComponentSubscriptionsByTag<VertexAnimatorComponent>(this, substring, [](VertexAnimatorComponent& animator, const std::string& tag) {
@@ -164,6 +168,21 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
     removeComponentSubscriptionsByTag<InputFieldComponent>(this, substring, [](InputFieldComponent& inputField, const std::string& tag) {
         inputField.onChange.removeByTagSubstring(tag);
         inputField.onSubmit.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<OnScreenStickComponent>(this, substring, [](OnScreenStickComponent& stick, const std::string& tag) {
+        stick.onValueChanged.removeByTagSubstring(tag);
+        stick.onPress.removeByTagSubstring(tag);
+        stick.onRelease.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<OnScreenButtonComponent>(this, substring, [](OnScreenButtonComponent& button, const std::string& tag) {
+        button.onPress.removeByTagSubstring(tag);
+        button.onRelease.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<TouchAreaComponent>(this, substring, [](TouchAreaComponent& area, const std::string& tag) {
+        area.onDrag.removeByTagSubstring(tag);
     });
 
     getSystem<PhysicsSystem>()->removeSubscriptionsByTag(substring);
@@ -699,6 +718,25 @@ bool Scene::removePostProcessUniform(unsigned int index, const std::string& name
 
     getSystem<RenderSystem>()->needUpdatePostProcessUniforms();
     return true;
+}
+
+bool Scene::setPostProcessGlobalBinding(unsigned int index, const std::string& member, const std::string& global){
+    if (index >= settings.postProcess.size()){
+        Log::error("Post-process pass %u does not exist, cannot bind '%s'", index, member.c_str());
+        return false;
+    }
+    if (!ShaderGlobals::setBinding(settings.postProcess[index].shaderGlobalBindings, member, global))
+        return false;
+
+    getSystem<RenderSystem>()->needUpdatePostProcessUniforms();
+    return true;
+}
+
+std::string Scene::getPostProcessGlobalBinding(unsigned int index, const std::string& member) const{
+    if (index >= settings.postProcess.size())
+        return "";
+
+    return ShaderGlobals::getBinding(settings.postProcess[index].shaderGlobalBindings, member);
 }
 
 const PostProcessingSettings& Scene::getPostProcessing() const{

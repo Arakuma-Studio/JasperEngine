@@ -10,6 +10,7 @@
 
 #include <functional>
 #include "component/ScriptComponent.h"
+#include "PointerEventData.h"
 #include "object/EntityHandle.h"
 
 #include <type_traits>
@@ -18,6 +19,10 @@ namespace jasperengine {
 
     class Joint2D;
     class Joint3D;
+    class Collision;
+    class Collision2D;
+    class ColliderRef;
+    class ColliderRef2D;
 
     // The base of a C++ behaviour script (Unity's MonoBehaviour). The engine calls the
     // lifecycle methods below when a subclass overrides them, with the rules of Lua scripts
@@ -32,8 +37,8 @@ namespace jasperengine {
 
     public:
         ScriptBase(Scene* scene, Entity entity);
-        // virtual for the lifecycle callbacks; cancels this script's timers (invoke /
-        // invokeRepeating) and ends the async work it owns (AsyncOwners::fromScript(this))
+        // virtual for the lifecycle callbacks; ends the async work owned by the script
+        // (AsyncOwners::fromScript(this)) and its timers (invoke / invokeRepeating)
         virtual ~ScriptBase();
 
         Scene* getScene() const;
@@ -129,10 +134,46 @@ namespace jasperengine {
         // A 3D joint of this GameObject (or whose bodyA is it) broke under `force` (N, Unity
         // OnJointBreak(float)); the joint still exists during the call
         virtual void onJointBreak(float force, Joint3D& joint);
+        // Contacts (physics-contacts): on the main thread after the fixed step that caused them,
+        // enabled or not, while the GameObject is active in hierarchy (docs/mcp/guide/physics.md).
+        // A collision is seen from this side (its collider is the other one); a trigger gets the
+        // other collider.
+        virtual void onCollisionEnter(const Collision& collision);
+        virtual void onCollisionStay(const Collision& collision);
+        virtual void onCollisionExit(const Collision& collision);
+        virtual void onTriggerEnter(const ColliderRef& other);
+        virtual void onTriggerStay(const ColliderRef& other);
+        virtual void onTriggerExit(const ColliderRef& other);
+        virtual void onCollisionEnter2D(const Collision2D& collision);
+        virtual void onCollisionStay2D(const Collision2D& collision);
+        virtual void onCollisionExit2D(const Collision2D& collision);
+        virtual void onTriggerEnter2D(const ColliderRef2D& other);
+        virtual void onTriggerStay2D(const ColliderRef2D& other);
+        virtual void onTriggerExit2D(const ColliderRef2D& other);
+
+        // A Particle System of this GameObject with main.stopAction Callback finished: it stopped
+        // and its last particle died (Unity OnParticleSystemStopped).
+        virtual void onParticleSystemStopped();
+
+        // The component UI's EventSystem callbacks (ui-multitouch, Unity's IPointerDownHandler...):
+        // sent up the hierarchy from the element under the pointer to the first GameObject whose
+        // script overrides them. The event lives for the call (copy what you keep); use() and
+        // useDragThreshold write back.
+        virtual void onPointerDown(PointerEventData& e);
+        virtual void onPointerUp(PointerEventData& e);
+        virtual void onPointerClick(PointerEventData& e);
+        virtual void onPointerEnter(PointerEventData& e);
+        virtual void onPointerExit(PointerEventData& e);
+        virtual void onInitializePotentialDrag(PointerEventData& e);
+        virtual void onBeginDrag(PointerEventData& e);
+        virtual void onDrag(PointerEventData& e);
+        virtual void onEndDrag(PointerEventData& e);
+        virtual void onDrop(PointerEventData& e);
+        virtual void onScroll(PointerEventData& e);
 
         // the messages (ScriptMessage bits) whose base method ran: not overridden, so not sent
         // again and not among ScriptMessages::receivers
-        uint32_t inheritedMessages = 0;
+        uint64_t inheritedMessages = 0;   // ScriptMessageMask
         // set by a base message method (ScriptMessages reads it after a call without touching a
         // script the call may have destroyed)
         static bool baseMessageRan;

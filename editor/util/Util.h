@@ -181,6 +181,22 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".vat";
         }
 
+        // the GUID-tracked JSON assets of the animation system: clips, Vertex Animations, Avatar
+        // Masks, Animator Controllers (their references follow by GUID: remapClipFilePath)
+        inline static bool isGuidJsonAssetFile(const std::string& path) {
+            return isAnimationClipFile(path) || isVertexAnimationFile(path) || isAvatarMaskFile(path) || isAnimatorControllerFile(path);
+        }
+
+        // Avatar Masks (.mask, an Animation Player layer's mask) and Animator Controllers
+        // (.controller): GUID-tracked JSON assets like .anim (anim layers spec 6.2, 11.1)
+        inline static bool isAvatarMaskFile(const std::string& path) {
+            return fileExtension(path) == ".mask";
+        }
+
+        inline static bool isAnimatorControllerFile(const std::string& path) {
+            return fileExtension(path) == ".controller";
+        }
+
         // Shake Presets (CameraShakerComponent::startPreset, CameraShake.shake("x.shake"))
         inline static bool isShakePresetFile(const std::string& path) {
             return fileExtension(path) == ".shake";
@@ -190,6 +206,7 @@ namespace jasperengine::editor{
         inline static bool isAssetFile(const std::string& path) {
             return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path) ||
                    isHtmlFile(path) || isCssFile(path) || isPoseAnimationFile(path) || isAnimationClipFile(path) ||
+                   isAvatarMaskFile(path) || isAnimatorControllerFile(path) ||
                    isShakePresetFile(path);
         }
 

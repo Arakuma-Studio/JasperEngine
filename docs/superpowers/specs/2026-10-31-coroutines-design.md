@@ -597,3 +597,12 @@ the text above, or the text left a choice, this is what was done and why.
 - Test 10 under ASan in a debug build (the unit tests run in Release).
 - lua-language-server is not installed on this host: `test_stubs.py`'s LuaLS checks (now with coroutine, timer
   and Time code in the known-good script) skip.
+
+### Verification (after the review fixes and the merges of `main` up to shader-globals)
+- Box 2201, Release: 0 warnings; unit suite 1444 passed, 8 skipped, 0 failed (one earlier run aborted once in
+  `PersistenceTest.PersistingTheLevelCameraWarns` with a heap error that did not come back in a rerun, alone, or
+  next to the coroutine tests; the coroutine, persistence and canvas-group tests are clean under ASan), 57
+  coroutine tests; full MCP suite 876 passed, 11 failed (the 10 baseline failures and
+  `test_stochastic_tiling.py::test_old_scene_resaves_byte_identical`), 19 skipped.
+- 10,000 waiting coroutines + 1,000 timers: about 0.09 ms per frame on the box; 1,000 deactivations of GameObjects
+  without coroutines next to 10,000 coroutines: about 0.8 ms in all.

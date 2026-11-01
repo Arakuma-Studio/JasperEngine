@@ -43,17 +43,17 @@ origin/main).
 | 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | review |
 | 3 | `platform-services` | `openURL`, system language/locale, target frame rate / vsync, runtime orientation lock + iOS orientation setting + device orientation, app focus event | review |
 | 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | impl |
-| 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | impl |
+| 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | review |
 | 6 | `audio-mixer` | mixer buses with volume/mute and filters (low-pass/high-pass, ...), streamed music, PlayOneShot, fades | impl |
 | 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | merged |
 | 8 | `physics-contacts` | per-object collision/trigger callbacks (enter/stay/exit) for 3D and 2D, delivered on the main thread; 3D global handlers off the job threads | review |
 | 9 | `physics-3d` | damping, centre of mass, safe body-type switching, per-collider sensor/material, collider removal, 3D joint limits/motors/springs, cone fix, ragdoll, runtime-sized collider data and world capacity | review |
-| 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | impl |
-| 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | specced |
-| 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | specced |
+| 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | review |
+| 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | impl |
+| 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | impl |
 | 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | merged |
-| 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | impl |
-| 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | impl |
+| 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | review |
+| 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | review |
 | 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | review |
 | 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | merged |
 | 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | merged |
@@ -170,3 +170,52 @@ origin/main).
   ui-canvas-group; final suites of audio-mixer; implementations of anim-layers, debug-overlay, safe-area,
   video-mp4; the ui-multitouch review, which an API limit had stopped). Tailscale: this host had none before the
   lead installed it; it joins the owner's tailnet through a login link (no auth key) to build on the owner's Mac.
+- 2026-11-01: the owner's Mac (macOS 26.2, 14 cores, Xcode 26.6 with the iOS 26.5 SDK and simulator) is reachable
+  over Tailscale (`ssh mac`, user mapacho, a dedicated key; plain sshd via `tailscale nc`). Apple compile checks run
+  there in `~/engine-gaps-check` (`applecheck.sh <ref>`: the iOS Simulator and macOS app schemes, nice'd, 8 jobs,
+  DEVELOPER_DIR set per command, dav1d asm disabled locally per #26). The rented macOS box is no longer needed.
+  ui-multitouch review: 2 high (a press released outside the canvas never ends; HTML press-on-enter buttons stay
+  pressed under implicit capture), fixes in progress. video-mp4 implemented, in review. Box 2204 (Vultr) is slow
+  from CPU steal; agents moved off it.
+- 2026-11-01: Mac check of main (b6989373c): iOS and macOS app schemes 0 errors. shader-globals review fixes done
+  (framebuffer-global lifetime, cached texture resolution, Android context loss, renames refused in Play) and merged
+  locally (82890abd7). Its agent found a physics-3d merge bug on main: the 3D world capacity and the 3D physics
+  switch shared the project.yaml key `physics3D` -> lead moved the capacity to `physics3DWorld` with a round-trip
+  test (91e646d41). video-mp4 review: 4 confirmed high defects (exports without 3D physics fail to link; video
+  render textures by raw pointer; persistent players lose their output; a regex stack overflow in the Android
+  export) + platform issues; fixes in progress.
+- 2026-11-01: verification of 91e646d41 (ui-canvas-group, physics-3d, http, physics3DWorld fix) on box 2201: 0
+  warnings, unit 1354 passed + ConvexDecomposition.ConcurrentRequests (load flake: passes 5/5 alone, added to the
+  known flakes), full MCP 862 passed with only the 10 baseline failures + test_stochastic_tiling resave (the
+  ui-canvas-group regression, fix in progress). platform-services merged locally (cbf8f65a9; lead resolved
+  Generator::configure taking both shaderGlobals and playerSettings). Known load flakes: test_autosync::
+  test_external_property_picked_up, ConvexDecomposition.ConcurrentRequests, CanvasGroupTest.PerformanceBudgets
+  (being made robust).
+- 2026-11-01: rule change: agents merge main ONCE at handoff and do not chase it; the lead merges later main changes
+  and verifies combined trees in batches. video-mp4 review fixes done (18 defects + spec items; unit 1436, htmlui
+  3114, MCP only baseline + the known canvas resave). It found a merge-blocker on local main: physics-3d sources
+  compile even with JASPERENGINE_PHYSICS_3D=OFF, which the Exporter sets for projects without 3D physics (every
+  2D-only export would fail) -> physics-3d agent fixing, also checking PHYSICS_2D=OFF and both OFF. audio-mixer
+  review: 2 high (live mixer edits reallocating SoLoud voice buffers -> dropouts; voice limit beyond SoLoud's 255
+  -> audio-thread overflow / Windows break), fixes in progress.
+- 2026-11-01: merged locally (not pushed): physics-contacts, particles, ui-canvas-group's resave fix,
+  ui-multitouch, coroutines (lead resolved ScriptMessages enum/strings for particles + pointer callbacks, focus loss
+  releasing input AND cancelling UI pointers with one onFocus call, Engine time statics, stub generator blocks; the
+  ScriptMessages static_assert now < 64). Mac check of the batch through physics-contacts: iOS and macOS 0 errors.
+  Push blocked only on the physics-3d fix for builds with 3D physics OFF. The agent guide hit 16383/16384 bytes:
+  new task `guide-headroom` restructures it to ~15 KB (details to docs/mcp/guide). New task `asan-sweep`: the unit
+  suite under ASan+UBSan with root-cause fixes (leads: a stack-use-after-scope in Catalog::copyPropertyValue
+  from physics-2d's override migration; a heap error once in PersistenceTest).
+- 2026-11-01: the physics-3d fix for builds with physics OFF merged (f873f2ce9; tools/check-physics-off.sh). The
+  anim-layers agent found main did not compile: the coroutines merge had brought a second identical
+  Engine::getUnscaledDeltatime -> fixed (94a22289c); lead now builds after each batch of merges before moving on.
+  Final verification of the batch (Linux full suites + physics-off variants on box 2201, iOS/macOS on the owner's
+  Mac) running. anim-layers implemented (both phases), in review; anim-properties and anim-retarget started on it.
+- 2026-11-01: batch verification of 94a22289c (ui-canvas-group, physics-3d, http, shader-globals, platform-services,
+  physics-contacts, particles, ui-multitouch, coroutines + lead fixes): Linux 0 warnings, unit 1601 passed, full MCP
+  only the 10 baseline failures (+ the budget limit, corrected); physics-off builds (3d-off, 2d-off, both-off) pass.
+  The Mac check found an iOS/macOS compile error: two headers named OnScreenControls.h (component UI and HTML UI)
+  and a bare include that Xcode resolved to the wrong one -> include by path (4a627a9e8). guide-headroom merged
+  (guide 14966 bytes); anim-layers merged (review fixes done). camera-shake, ui-scaling-text and video-mp4 conflict
+  heavily with main now (they carry older copies of merged features): each does one final merge of main itself.
+  Re-verifying the tip (4a627a9e8) on Linux and the Mac before pushing.

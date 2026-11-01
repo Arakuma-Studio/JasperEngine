@@ -94,6 +94,8 @@ namespace jasperengine::editor{
         UpdateFlags_Joint3D_Params      = (uint64_t)1 << 50,
         // a Ragdoll's root or animator: its parts are collected again
         UpdateFlags_Ragdoll             = (uint64_t)1 << 51,
+        // a version 2 Particle System's renderer.mesh: its target draws that primitive now
+        UpdateFlags_Particle_Mesh       = (uint64_t)1 << 52,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -170,6 +172,10 @@ namespace jasperengine::editor{
         TrailRendererComponent,
         // Unity's CanvasGroup: group alpha, interactable, blocks raycasts (ui canvas group spec 7.5)
         CanvasGroupComponent,
+        // on-screen controls feeding Input actions (ui-multitouch spec 7.4)
+        OnScreenStickComponent,
+        OnScreenButtonComponent,
+        TouchAreaComponent,
         // MilkShake's Shaker: shakes from presets and trauma (camera shake spec 7.1)
         CameraShakerComponent,
         // Cinemachine-lite follow: offset, SmoothDamp, look-at, dead zone, bounds (camera shake spec 7.1)
@@ -202,7 +208,10 @@ namespace jasperengine::editor{
         EntityReference,
         // Unity AnimationCurve / Gradient (math/AnimationCurve.h, math/Gradient.h)
         Curve,
-        Gradient
+        Gradient,
+        // Unity's ParticleSystem.MinMaxCurve / MinMaxGradient (particles/MinMax.h)
+        MinMaxCurve,
+        MinMaxGradient
     };
 
     struct PropertyData{

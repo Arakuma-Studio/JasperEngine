@@ -46,6 +46,7 @@ namespace jasperengine{
 
         // Alive from construction to the start of the destructor (see getLifetime)
         std::shared_ptr<char> lifetime;
+        bool tearingDown = false;
 
         void init();
         Entity createDefaultCamera();
@@ -101,6 +102,11 @@ namespace jasperengine{
         // can be after its scene was deleted (a Play copy at play stop, or any scene before
         // lua_close at shutdown). The scene destroys all its entities, so nothing leaks.
         std::weak_ptr<char> getLifetime() const;
+
+        // Being deleted (set first thing in the destructor): what goes with it sends no
+        // callbacks (physics contact Exits...). Not Scene::destroy, which also runs when a
+        // view is recreated.
+        bool isTearingDown() const { return tearingDown; }
 
         void load();
         void destroy();
@@ -264,6 +270,10 @@ namespace jasperengine{
         void setPostProcessUniform(unsigned int index, const std::string& name, float value);
         Vector4 getPostProcessUniform(unsigned int index, const std::string& name) const;
         bool removePostProcessUniform(unsigned int index, const std::string& name);
+        // a u_fs_postParams member of pass index that follows a global shader value
+        // (Shader.setGlobal*); "" unbinds. False when nothing changed
+        bool setPostProcessGlobalBinding(unsigned int index, const std::string& member, const std::string& global);
+        std::string getPostProcessGlobalBinding(unsigned int index, const std::string& member) const;
         void setPostProcessPassEnabled(unsigned int index, bool enabled);
         bool isPostProcessPassEnabled(unsigned int index) const;
 

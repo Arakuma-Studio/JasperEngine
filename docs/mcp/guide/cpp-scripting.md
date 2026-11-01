@@ -97,6 +97,7 @@ ones, with the rules and order of Lua scripts (`jasper://docs/lua-api`, 1.1):
 | `void onDestroy() override` | once: destroy, scene unload, Play stop / quit (only if `init` ran); the destructor runs after it | `OnDestroy` |
 | `void onApplicationPause(bool paused) override`, `onApplicationFocus(bool focused)`, `onApplicationQuit()` | app background / focus / quit | `OnApplication*` |
 | `void onJointBreak2D(jasperengine::Joint2D& joint) override` | a 2D joint of this GameObject (or whose bodyA is it) broke | `OnJointBreak2D` |
+| `void onParticleSystemStopped() override` | a Particle System of this GameObject with stop action Callback finished | `OnParticleSystemStopped` |
 
 Overrides may be public, protected or private; do not call the base method: it only notes the
 script does not override the message, which is then not sent to it again. The constructor runs
@@ -198,6 +199,19 @@ fixed step; `Engine::getFixedDeltatime()` is a fixed frame delta, Unity's captur
   `nlohmann::json::parse(text)` and `j.dump()`. To hand JSON to Lua or take it from Lua use
   `jasperengine::LuaJson` (`"LuaJson.h"`: `toJson`, `push`, `encode`, `decode`, the same rules
   as the Lua `Json` module).
+
+## Global shader values
+
+`jasperengine::ShaderGlobals` (`"shader/ShaderGlobals.h"`, flat `"ShaderGlobals.h"`), the Lua
+`Shader.setGlobal*` (jasper://docs/shaders#global-values), main thread only:
+`int id = ShaderGlobals::propertyToID("FogTint")` once, then `ShaderGlobals::setColor(id,
+Vector4(1, 0.5f, 0, 1))` (sRGB in), `setFloat`, `setVector`, `setMatrix`, `setFloatArray(id,
+values, count)`, `setVectorArray`, `setTexture(id, Texture("textures/noise.png"))`,
+`clearTexture`, `get(id, value)` (a `ShaderGlobalValue`: type, linear values, texture),
+`exists`, `getNames()`, `resetToDefaults()`. A renderer's parameter follows a global with
+`setShaderGlobalBinding(member, global)` (`Image`, `Text`, `Polygon`, `Points`, `LineRenderer`,
+`TrailRenderer`, `Skybox`; a mesh: `Material::shaderGlobalBindings` with
+`ShaderGlobals::setBinding`, then `setMaterial`).
 
 ## Rules that bite
 

@@ -125,6 +125,8 @@ const std::vector<ScriptEvent>& eventList() {
 
         {S::AnimationPlayer, "onEvent", nullptr, "A clip event fired (its function name, args, state and time)", {{"const AnimationEvent&", "event"}}},
         {S::AnimationPlayer, "onFinish", nullptr, "A once state ended, or a clamp forever state first reached its end", {{"const std::string&", "state"}}},
+        {S::AnimationPlayer, "onStateEnter", nullptr, "An Animator Controller state was entered (its layer and name)", {{"int", "layer"}, {"const std::string&", "state"}}},
+        {S::AnimationPlayer, "onStateExit", nullptr, "An Animator Controller state was exited (its layer and name)", {{"int", "layer"}, {"const std::string&", "state"}}},
 
         {S::VertexAnimator, "onEvent", nullptr, "A baked clip event fired (a GameObject without instances)", {{"const AnimationEvent&", "event"}}},
         {S::VertexAnimator, "onFinish", nullptr, "A once clip ended", {{"const std::string&", "clip"}}},

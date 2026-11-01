@@ -86,7 +86,7 @@ void editor::CopyFileCmd::moveFile(const fs::path& source, const fs::path& desti
     }
     // clips: their GUIDs follow, documents and players learn the new path
     // clips (their GUIDs follow) and models (their sub-clips): open documents follow, players reload
-    if (isDirectory || Util::isAnimationClipFile(extension) || Util::isVertexAnimationFile(extension) || Util::isModelFile(extension)) {
+    if (isDirectory || Util::isGuidJsonAssetFile(extension) || Util::isModelFile(extension)) {
         project->remapClipFilePath(source, destination);
     }
     project->remapInspectedAsset(source, destination);
@@ -205,7 +205,7 @@ void editor::CopyFileCmd::undo(){
                         project->cleanupPrefabFilePath(sourceFs);
                     }
                     // references to the copied clips stay (Missing until a redo)
-                    if (project && (isDir || Util::isAnimationClipFile(extension) || Util::isVertexAnimationFile(extension))) {
+                    if (project && (isDir || Util::isGuidJsonAssetFile(extension))) {
                         project->cleanupClipFilePath(sourceFs);
                     }
                     if (project) {

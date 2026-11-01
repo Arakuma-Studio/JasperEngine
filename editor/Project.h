@@ -19,8 +19,10 @@
 #include "util/HtmlUIWatcher.h"
 #include "util/Util.h"
 #include "physics/PlacementSettings.h"
+#include "util/PlatformRules.h"
 #include "window/SpriteNormalsWindowSettings.h"
 #include "input/InputActions.h"
+#include "shader/ShaderGlobals.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -83,7 +85,7 @@ namespace jasperengine::editor{
         std::string filepath;
     };
 
-    // the 3D world capacity (project.yaml physics3D); defaults = PhysicsSystem's
+    // the 3D world capacity (project.yaml physics3DWorld; physics3D is the 3D physics switch); defaults = PhysicsSystem's
     struct Physics3DWorldSettings {
         unsigned int maxBodies = 8192;
         unsigned int maxBodyPairs = 8192;
@@ -514,6 +516,28 @@ namespace jasperengine::editor{
         bool allowInsecureHttp = false;
     };
 
+    // Player > Resolution and Presentation, shared by every platform: Unity's Default
+    // Orientation and Allowed Orientations for Auto Rotation (Android's screenOrientation, the
+    // iOS Info.plist), the initial Screen.sleepTimeout and Engine.targetFrameRate. The project's
+    // VSync setting gives the initial Engine.vSyncCount.
+    struct PresentationSettings {
+        ScreenOrientation defaultOrientation = ScreenOrientation::AutoRotation;
+        // PlatformRules::orientationBit of each; a fixed default is always in it
+        uint8_t allowedOrientations = PlatformRules::DEFAULT_ALLOWED_ORIENTATIONS;
+        bool keepScreenOn = true;
+        // -1 = the platform's rate
+        int targetFrameRate = -1;
+
+        // the allowed set with a fixed default in it, never empty
+        uint8_t effectiveAllowedOrientations() const;
+
+        bool operator==(const PresentationSettings& other) const {
+            return defaultOrientation == other.defaultOrientation && allowedOrientations == other.allowedOrientations
+                && keepScreenOn == other.keepScreenOn && targetFrameRate == other.targetFrameRate;
+        }
+        bool operator!=(const PresentationSettings& other) const { return !(*this == other); }
+    };
+
     // Name, identifier, version and build below are overrides: empty (or 0)
     // means the ApplicationSettings value.
 
@@ -562,15 +586,6 @@ namespace jasperengine::editor{
         std::string admobAppId;
     };
 
-    enum class AndroidOrientation {
-        Unspecified,
-        Portrait,
-        Landscape,
-        SensorPortrait,
-        SensorLandscape,
-        FullSensor
-    };
-
     // Android INTERNET permission: Auto adds it when the exported Lua or C++ uses Http (or the
     // permission is ticked), Require always adds it (Unity's Internet Access)
     enum class AndroidInternetAccess {
@@ -588,7 +603,7 @@ namespace jasperengine::editor{
         std::filesystem::path adaptiveIconBackground;
         unsigned int minSdk = 21;
         unsigned int targetSdk = 36;
-        AndroidOrientation orientation = AndroidOrientation::Unspecified;
+        // the orientation comes from PresentationSettings (Player > Resolution and Presentation)
         bool abiArmeabiV7a = true;
         bool abiArm64V8a = true;
         bool abiX86 = true;
@@ -597,7 +612,6 @@ namespace jasperengine::editor{
         AndroidInternetAccess internetAccess = AndroidInternetAccess::Auto;
         bool allowBackup = true;
         bool fullscreen = true;
-        bool keepScreenOn = false;
         // Google Mobile Ads is compiled in only when enabled
         bool admobEnabled = false;
         std::string admobAppId;
@@ -667,12 +681,16 @@ namespace jasperengine::editor{
         // an input node of project.yaml that could not be read: written back as it was until
         // the actions are edited, so a typo made by hand does not lose them
         std::string unreadableInputNode;
+        // Project Settings > Graphics > Shader Globals: the global shader values the project
+        // declares (name, type, default), applied to the engine's ShaderGlobals
+        std::vector<ShaderGlobalDecl> shaderGlobals;
         bool packNativeResources;
         bool versionControlMetadata;
         ShaderOverrides shaderOverrides;
         SourceCodeExportSettings sourceCodeExportSettings;
         DesktopExportSettings desktopExportSettings;
         ApplicationSettings applicationSettings;
+        PresentationSettings presentationSettings;
         WebProjectSettings webProjectSettings;
         LinuxProjectSettings linuxProjectSettings;
         WindowsProjectSettings windowsProjectSettings;
@@ -1272,6 +1290,15 @@ namespace jasperengine::editor{
         // disabled actions or simulated sources of the last Play
         void resetPlayInput() const;
 
+        // Project Settings > Graphics > Shader Globals. Setting them validates nothing (callers
+        // do: ShaderGlobals::validate) and declares them to the engine's ShaderGlobals (the
+        // Scene and Game views and a running Play read them at once)
+        void setShaderGlobals(const std::vector<ShaderGlobalDecl>& decls);
+        const std::vector<ShaderGlobalDecl>& getShaderGlobals() const;
+        void applyShaderGlobals() const;
+        // a Play starts and stops with the declared defaults (the values scripts set are gone)
+        void resetPlayShaderGlobals() const;
+
         // Absolute roots stored references are relative to: assets for textures, models,
         // sounds and fonts ("asset://"), Lua for script entries ("lua://").
         std::filesystem::path getAssetsPath() const;
@@ -1329,6 +1356,13 @@ namespace jasperengine::editor{
         const DesktopExportSettings& getDesktopExportSettings() const;
         ApplicationSettings& getApplicationSettings();
         const ApplicationSettings& getApplicationSettings() const;
+        PresentationSettings& getPresentationSettings();
+        const PresentationSettings& getPresentationSettings() const;
+        // Play start: Engine.targetFrameRate / vSyncCount, Screen and the application info from
+        // these settings, before any script runs (the generated main of an export does the same)
+        void applyPresentationSettings();
+        // what the generated init() of a build sets (Generator::configure)
+        PlayerSettings getPlayerSettings() const;
 
         // The platform override when set, otherwise the shared block.
         std::string getApplicationName(const std::string& platformOverride = {}) const;

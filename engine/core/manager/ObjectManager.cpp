@@ -21,6 +21,7 @@
 #include "component/ScriptComponent.h"
 
 #include <algorithm>
+#include <set>
 #include <unordered_set>
 
 using namespace jasperengine;
@@ -321,8 +322,21 @@ std::vector<Scene*> ObjectManager::getActiveSceneStack() {
     return activeScenes;
 }
 
+namespace {
+
+// GameObjects being destroyed right now: a callback their destruction runs (onDestroy, a
+// physics Exit to the GameObject they touched) may destroy them again, which does nothing
+std::set<std::pair<Scene*, Entity>> destroying;
+
+bool isBeingDestroyed(Scene* scene, Entity entity) {
+    return !destroying.empty() && destroying.count({scene, entity}) > 0;
+}
+
+}
+
 void ObjectManager::destroy(Scene* scene, Entity entity, float delay) {
-    if (!scene || entity == NULL_ENTITY) {
+    // one being destroyed now is gone at once (its id may be reused before a deferred destroy)
+    if (!scene || entity == NULL_ENTITY || isBeingDestroyed(scene, entity)) {
         return;
     }
     pendingDestroys.push_back({scene, entity, delay > 0.0f ? (double)delay : 0.0});
@@ -336,11 +350,11 @@ void destroyNow(Scene* scene, const std::vector<Entity>& roots) {
     std::vector<Entity> entities;
     std::unordered_set<Entity> seen;
     for (Entity root : roots) {
-        if (root == NULL_ENTITY || seen.count(root) || !scene->isEntityCreated(root)) {
+        if (root == NULL_ENTITY || seen.count(root) || !scene->isEntityCreated(root) || isBeingDestroyed(scene, root)) {
             continue;
         }
         for (Entity entity : EntityCloner::collectHierarchy(scene, root)) {
-            if (seen.insert(entity).second) {
+            if (!isBeingDestroyed(scene, entity) && seen.insert(entity).second) {
                 entities.push_back(entity);
             }
         }
@@ -348,10 +362,16 @@ void destroyNow(Scene* scene, const std::vector<Entity>& roots) {
     if (entities.empty()) {
         return;
     }
+    for (Entity entity : entities) {
+        destroying.insert({scene, entity});
+    }
     ObjectManager::cleanupScripts(scene, entities);
     // children first, a model taking the GameObjects it made along
     std::reverse(entities.begin(), entities.end());
     scene->destroyEntities(entities);
+    for (Entity entity : entities) {
+        destroying.erase({scene, entity});
+    }
     if (destroyListener) {
         destroyListener(scene, entities);
     }

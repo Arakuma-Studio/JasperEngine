@@ -30,9 +30,11 @@
 #include "Engine.h"
 #include "net/Http.h"
 #include "Input.h"
+#include "Platform.h"
 #include "input/InputActions.h"
 #include "input/InputControlNames.h"
 #include "Project.h"
+#include "Screen.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "command/type/MultiPropertyCmd.h"
@@ -47,6 +49,9 @@
 #include "script/ScriptRuntime.h"
 #include "manager/SceneManager.h"
 #include "util/EntityPath.h"
+#include "util/PlatformRules.h"
+#include "window/DeviceProfiles.h"
+#include "window/GameWindow.h"
 #include "window/PlayInput.h"
 
 #include "lua.hpp"
@@ -634,6 +639,34 @@ static Json httpJson() {
             {"cancelled", stats.cancelled}, {"offline", Http::isOfflineSimulated()}, {"last_failures", failures}};
 }
 
+// The platform side of the running game: lifecycle, frame pacing, orientation, the simulated
+// device and language, and what the game asked the system for (URLs, vibrations)
+Json platformJson() {
+    System& system = System::instance();
+    Json urls = Json::array();
+    for (const OpenedUrl& url : Platform::getOpenedUrls()) {
+        urls.push_back({{"url", url.url}, {"launched", url.launched},
+                        {"seconds_ago", std::round((Engine::getSystemTime() - url.time) * 10.0) / 10.0}});
+    }
+    const PlatformSimulation& simulation = Platform::getSimulation();
+    Json out = {
+        {"focused", Engine::isFocused()},
+        {"paused", Engine::isPaused()},
+        {"orientation", PlatformRules::orientationName(Screen::getOrientation())},
+        {"requested_orientation", PlatformRules::orientationName(Screen::getRequestedOrientation())},
+        {"target_frame_rate", Engine::getTargetFrameRate()},
+        {"vsync_count", Engine::getVSyncCount()},
+        {"language", system.getLocale()},
+        {"system_language", LocaleRules::systemLanguageName(system.getSystemLanguage())},
+        {"device", simulation.device ? Json(simulation.device->id) : Json()},
+        {"opened_urls", urls},
+        {"vibrations", Platform::getVibrationCount()},
+        {"haptics", Platform::getHapticCount()}
+    };
+    if (Platform::getOpenedUrlCount() > (int)urls.size()) out["opened_url_count"] = Platform::getOpenedUrlCount();
+    return out;
+}
+
 Json playStateJson(McpContext& ctx) {
     Project* project = ctx.project();
     PlayToolsState& s = state();
@@ -652,7 +685,10 @@ Json playStateJson(McpContext& ctx) {
         out["play_would_start"] = {{"id", sp->id}, {"name", sp->name}};
     }
     out["time"] = timeJson(playId != NULL_PROJECT_SCENE && s.current.active);
-    if (playId != NULL_PROJECT_SCENE) out["http"] = httpJson();
+    if (playId != NULL_PROJECT_SCENE) {
+        out["platform"] = platformJson();
+        out["http"] = httpJson();
+    }
     if (s.last.serial != 0) out["last_session"] = sessionJson(s.last);
     if (!s.held.empty()) out["held_input"] = heldInputJson();
     if (playId != NULL_PROJECT_SCENE && s.current.active) out["input"] = playInputJson();
@@ -2183,6 +2219,44 @@ Json rigidbody2DReadoutsJson(Scene* scene, Entity entity) {
                 {"angular_velocity", body.getAngularVelocity()}, {"awake", body.isAwake()}, {"collider_shapes", pieces}};
 }
 
+// physics.contacts [{other, other_path, collider, other_collider, trigger, since_step, asleep}]
+// and physics.callbacks (the contact methods its scripts define), for bodies and listeners
+Json physicsContactsJson(SceneProject* sp, Entity entity) {
+    Json out = Json::object();
+    Scene* scene = sp->scene;
+    std::vector<ContactSummary> contacts;
+    std::shared_ptr<PhysicsSystem> physics = scene->getSystem<PhysicsSystem>();
+    bool hasBody = false;
+#ifdef JASPERENGINE_PHYSICS_2D
+    if (scene->findComponent<Rigidbody2DComponent>(entity)) {
+        hasBody = true;
+        contacts = physics->getContactSummary2D(entity);
+    }
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+    if (scene->findComponent<RigidbodyComponent>(entity)) {
+        hasBody = true;
+        const std::vector<ContactSummary> contacts3D = physics->getContactSummary3D(entity);
+        contacts.insert(contacts.end(), contacts3D.begin(), contacts3D.end());
+    }
+#endif
+    const std::vector<std::string> callbacks = ScriptMessages::describeReceivers(scene, entity, PhysicsCallbacks::ALL_3D | PhysicsCallbacks::ALL_2D);
+    if (!hasBody && callbacks.empty()) return out;
+    if (hasBody) {
+        Json list = Json::array();
+        for (const ContactSummary& contact : contacts) {
+            Json item = {{"other", contact.other}, {"collider", contact.collider}, {"other_collider", contact.otherCollider},
+                         {"trigger", contact.trigger}, {"asleep", contact.asleep}};
+            if (scene->isEntityCreated(contact.other)) item["other_path"] = EntityPath::of(scene, contact.other);
+            item["since_step"] = contact.sinceStep > 0 ? Json(contact.sinceStep) : Json(nullptr);
+            list.push_back(item);
+        }
+        out["contacts"] = list;
+    }
+    out["callbacks"] = callbacks;
+    return out;
+}
+
 Json vec3Json(const Vector3& v) {
     return Json::array({v.x, v.y, v.z});
 }
@@ -2310,6 +2384,11 @@ void getRuntimeEntityTool(const CallPtr& call) {
     if ((only.empty() || only.count(ComponentType::RigidbodyComponent)) && sp->scene->findComponent<RigidbodyComponent>(entity)) {
         data["rigidbody"] = rigidbody3DReadoutsJson(sp->scene, entity);
     }
+    // physics-contacts: what the body touches now and the contact callbacks its scripts define
+    {
+        const Json physics = physicsContactsJson(sp, entity);
+        if (!physics.empty()) data["physics"] = physics;
+    }
     if (args.value("include_script_state", true)) {
         data["scripts"] = scriptStateJson(project, sp, entity, std::clamp(args.value("max_depth", 2), 1, 8));
     }
@@ -2320,6 +2399,7 @@ void getRuntimeEntityTool(const CallPtr& call) {
     if (data.contains("canvas_group_state")) text += "\ncanvas_group_state: " + data["canvas_group_state"].dump();
     if (data.contains("joint2d")) text += "\njoint2d: " + data["joint2d"].dump();
     if (data.contains("rigidbody2d")) text += "\nrigidbody2d: " + data["rigidbody2d"].dump();
+    if (data.contains("physics")) text += "\nphysics: " + data["physics"].dump();
     if (data.contains("joint3d")) text += "\njoint3d: " + data["joint3d"].dump();
     if (data.contains("rigidbody")) text += "\nrigidbody: " + data["rigidbody"].dump();
     if (text.size() > 12000) text = text.substr(0, 12000) + " ... (see structuredContent)";
@@ -3073,8 +3153,53 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
         return true;
     }
 
+    // The app's lifecycle as a device reports it (Engine::systemPause / systemResume /
+    // systemFocus / systemLowMemory), or the simulated device turned (configure_game_view device)
+    if (type == "app") {
+        const std::string action = lowerCopy(event.value("action", ""));
+        if (action == "pause" || action == "resume" || action == "focus_lost" || action == "focus_gained" ||
+            action == "low_memory") {
+            add([action]() {
+                if (action == "pause") Engine::systemPause();
+                else if (action == "resume") Engine::systemResume();
+                else if (action == "focus_lost") Engine::systemFocus(false);
+                else if (action == "focus_gained") Engine::systemFocus(true);
+                else Engine::systemLowMemory();
+                return std::string();
+            }, gapFrames, 0, "app " + action);
+            return true;
+        }
+        if (action == "orientation") {
+            ScreenOrientation orientation;
+            if (!PlatformRules::parseOrientationName(event.value("orientation", ""), orientation) ||
+                !PlatformRules::isFixedOrientation(orientation)) {
+                error = "app orientation needs orientation: portrait, portrait_upside_down, landscape_left or landscape_right";
+                return false;
+            }
+            add([c, orientation]() {
+                const DeviceProfile* device = Platform::getSimulation().device;
+                if (!device) return std::string("app orientation needs a simulated device: configure_game_view {device: \"iphone_15_pro\"}");
+                GameWindow* gw = c->gameWindow();
+                const uint8_t allowed = gw ? gw->getRotatableOrientations() : profileOrientationMask(*device);
+                if (!(allowed & PlatformRules::orientationBit(orientation))) {
+                    std::string text = std::string(device->name) + " cannot show " + PlatformRules::orientationName(orientation) + " now (allowed:";
+                    for (ScreenOrientation o : {ScreenOrientation::Portrait, ScreenOrientation::PortraitUpsideDown,
+                                                ScreenOrientation::LandscapeLeft, ScreenOrientation::LandscapeRight}) {
+                        if (allowed & PlatformRules::orientationBit(o)) text += std::string(" ") + PlatformRules::orientationName(o);
+                    }
+                    return text + "; the game sets them with Screen.orientation / Screen.autorotateTo*)";
+                }
+                Platform::setSimulatedOrientation(orientation);
+                return std::string();
+            }, gapFrames, 0, "app orientation");
+            return true;
+        }
+        error = "app action must be pause, resume, focus_lost, focus_gained, low_memory or orientation";
+        return false;
+    }
+
     error = "type must be key, text, ime, ime_commit, ime_cancel, mouse, mouse_leave, mouse_enter, touch, gamepad, action, "
-            "axis, axis_delta, wait or release_all";
+            "axis, axis_delta, app, wait or release_all";
     return false;
 }
 
@@ -3085,8 +3210,11 @@ bool advanceInput(InputRun& run, bool newFrame) {
     // the game frames that ran since the run last advanced (a call is polled once per editor
     // frame, which need not run exactly one game frame)
     const uint64_t gameFrame = Engine::getGameFrames();
-    const int elapsed = newFrame ? static_cast<int>(gameFrame - run.gameFrame) : 0;
+    int elapsed = newFrame ? static_cast<int>(gameFrame - run.gameFrame) : 0;
     run.gameFrame = gameFrame;
+    // an app paused by an `app` event does not update (as on a device): the editor's frames
+    // drive the steps meanwhile, so a later resume step still runs
+    if (newFrame && elapsed == 0 && Engine::isPaused()) elapsed = 1;
     if (run.pendingFrames > 0 || run.msPending) {
         if (elapsed <= 0) return false;
         run.frames += elapsed;
@@ -3301,7 +3429,7 @@ void sendInputTool(const CallPtr& call) {
         McpContext& c = call->ctx();
         observeSession(c);
         if (!inputPlayable(c, *run)) return true;
-        if (progress->stalled()) {
+        if (!Engine::isPaused() && progress->stalled()) {
             run->error = "the game did not advance for " + std::to_string((int)kStallSeconds) + " s (is it rendering?)";
             return true;
         }
@@ -3311,8 +3439,9 @@ void sendInputTool(const CallPtr& call) {
         }
         // frames_after: game frames after the last step
         const uint64_t gameFrame = Engine::getGameFrames();
-        const int elapsed = static_cast<int>(gameFrame - run->gameFrame);
+        int elapsed = static_cast<int>(gameFrame - run->gameFrame);
         run->gameFrame = gameFrame;
+        if (elapsed == 0 && Engine::isPaused()) elapsed = 1;
         if (*afterLeft > 0 && elapsed > 0) {
             const int counted = std::min(*afterLeft, elapsed);
             *afterLeft -= counted;
@@ -3572,7 +3701,9 @@ void waitTool(const CallPtr& call) {
             isError = true;
         } else if (ws->reason == "stalled") {
             text = "The game stopped advancing: no frame" + std::string(gameSeconds > 0.0 && frames <= 0 ? " or game time" : "") +
-                   " for " + std::to_string((int)kStallSeconds) + " s (" + elapsed + "; is it rendering, or the time scale 0?).";
+                   " for " + std::to_string((int)kStallSeconds) + " s (" + elapsed + "; " +
+                   (Engine::isPaused() ? "the app is paused by an app event: send_input {type: \"app\", action: \"resume\"}"
+                                       : "is it rendering, or the time scale 0?") + ").";
             isError = true;
         } else if (ws->reason == "timeout") {
             text = until.empty() ? "Timed out (" + elapsed + ")." : "Timed out (" + elapsed + "); the condition is still " +
@@ -3649,7 +3780,7 @@ void registerPlayTools(McpRegistry& registry) {
             "Play state: played and running scenes (child scenes run as copies with own ids), the session (time, "
             "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), "
             "console_cursor, script coroutines and timers (counts), the clock (time_scale, fixed_fps, auto_pause, held), "
-            "http (request counts, last failures); stopped: play_would_start.";
+            "platform (lifecycle, orientation, opened_urls...), http (request counts, last failures); stopped: play_would_start.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -3736,8 +3867,8 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "get_runtime_entity";
         tool.title = "Get Runtime GameObject";
         tool.description =
-            "Live values of a GameObject in the running game (runtime-spawned too): component properties this frame "
-            "and script state (Lua instance fields, C++ DPROPERTY members; coroutines with what they wait for, timers). "
+            "Live values of a running GameObject (runtime-spawned too): components this frame, script state (Lua "
+            "fields, C++ DPROPERTY members; coroutines with their waits, timers), physics contacts and callbacks. "
             "Only while playing.";
         tool.inputSchema = object({
             {"scene", runtimeScene},
@@ -3789,7 +3920,8 @@ void registerPlayTools(McpRegistry& registry) {
             "tap|start|move|end|cancel|swipe, pointer, x, y, to\nmouse/touch: target / to_target = CSS selector "
             "of a UI Document element (its center; document: which)\ngamepad: gamepad (0), button (a, b, start, "
             "dpad_up...) + action, or axis (left_x..right_trigger) + value -1..1\naction (input actions): name, "
-            "phase press|down|up; axis: name, value; axis_delta: name, delta\nwait: frames, ms. release_all.\nspace: "
+            "phase press|down|up; axis: name, value; axis_delta: name, delta\napp: action pause|resume|focus_lost|"
+            "focus_gained|low_memory|orientation (+orientation)\nwait: frames, ms. release_all.\nspace: "
             "canvas px from top-left, normalized 0..1, view = Game view px. down holds until up/release_all/stop. Returns frames, console lines, play state; "
             "auto_pause: only events + frames_after run.";
         tool.inputSchema = object({

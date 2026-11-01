@@ -77,7 +77,7 @@ defines them (no registration):
 | `onDisable(self)` | the script stops being active and enabled: `self.enabled = false`, its GameObject or a parent deactivated, destroy, scene unload, Play stop; always before `onDestroy` | `OnDisable` |
 | `onDestroy(self)` | once: `GameObject.destroy` (end of frame) / `destroyImmediate`, scene unload (a `SceneManager.loadScene`), Play stop / application quit; only if `init` ran | `OnDestroy` |
 | `onApplicationPause(self, paused)` | the app goes to the background (`true`) and returns (`false`); scripts of active GameObjects, enabled or not | `OnApplicationPause` |
-| `onApplicationFocus(self, focused)` | the app lost / gained the focus (platforms that report it) | `OnApplicationFocus` |
+| `onApplicationFocus(self, focused)` | the app lost / gained the focus (platforms that report it). Order: focus `false` before pause `true`, pause `false` before focus `true`; the same moments as `Engine.onFocus` / `onPause` / `onResume` ([platform-services.md](platform-services.md)) | `OnApplicationFocus` |
 | `onApplicationQuit(self)` | Play stop / app shutdown, before `onDisable`/`onDestroy` | `OnApplicationQuit` |
 
 Order, deterministic: a scene load runs all `init` (parents before children, siblings in order,
@@ -106,7 +106,17 @@ GameObject that defines it gets the call, enabled or not, after the fixed step t
 
 | Method | When |
 |---|---|
+| `onCollisionEnter(self, collision)`, `onCollisionStay`, `onCollisionExit` | a collider of this GameObject's Rigidbody started / keeps / stopped touching another (`Collision`, seen from this side; 4.14.1) |
+| `onTriggerEnter(self, other)`, `onTriggerStay`, `onTriggerExit` | a trigger pair (either side a trigger / sensor): `other` is the other `Collider` |
+| `onCollisionEnter2D(self, collision)`, `...Stay2D`, `...Exit2D`, `onTriggerEnter2D(self, other)`, `...Stay2D`, `...Exit2D` | the same for Rigidbody 2D (`Collision2D`, `Collider2D`; 4.13.2) |
 | `onJointBreak2D(self, joint)` | a `Joint2D` of this GameObject, or whose bodyA is it, broke (its `breakForce` / `breakTorque` passed; `joint` still exists during the call, its `breakAction` decides what follows) |
+| `onParticleSystemStopped(self)` | a version 2 `ParticleSystem` of this GameObject with `main.stopAction = ParticleSystemStopAction.Callback` finished (stopped and its last particle gone; never in an editor preview) |
+
+The contact callbacks come once per fixed step that steps (2D first, then 3D; triggers, then
+collisions; Enter, Stay, Exit), only while the GameObject is active; a collider's `receiver`
+("Send Callbacks To") also gets them. Sleeping bodies get no Stay and no Exit; when the other side
+is destroyed, deactivated or its collider removed you still get the Exit. Rules and data:
+`jasper://docs/physics` (Collision and trigger callbacks). They cannot yield.
 
 Every instance also has (Unity's MonoBehaviour members):
 
@@ -237,7 +247,10 @@ Engine events (names valid for `RegisterEngineEvent`; handler arguments in order
 | `onViewLoaded` | none | view ready |
 | `onCanvasChanged` | none | view/canvas size changed (C++ name is onViewChanged; Lua name is `onCanvasChanged`) |
 | `onViewDestroyed` | none | view destroyed |
-| `onPause`, `onResume`, `onShutdown` | none | application lifecycle |
+| `onPause`, `onResume`, `onShutdown` | none | application lifecycle (pause = to the background; idempotent) |
+| `onFocus` | `hasFocus` | the app gained or lost focus (a dialog, the notification shade, another window); `onFocus(false)` comes before `onPause`, `onFocus(true)` after `onResume` |
+| `onOrientationChanged` | `orientation` (`ScreenOrientation`) | the interface rotated, after `onCanvasChanged` |
+| `onLowMemory` | none | the system is short of memory (Android, iOS) |
 | `onSceneLoaded` | none | a scene loaded by SceneManager is ready |
 | `onKeyDown`, `onKeyUp` | `key, isRepeat, mods` | key event (`key` is an `Input.KEY_*` value) |
 | `onCharInput` | `codepoint` | text char typed |
@@ -280,8 +293,13 @@ RegisterEvent(self, self.scene:getPhysicsSystem().beginContact2D, "onBeginContac
 | same | `onBodyActivated3D`, `onBodyDeactivated3D` | `body` (Rigidbody) |
 | same | `shouldCollide3D` (return false to skip) | `bodyA, bodyB, baseOffset (Vector3), result (CollideShapeResult3D)` |
 
-Physics events are scene-wide: they fire for ANY pair of bodies. Filter in the handler, e.g.
-`if bodyA.entity == self.entity or bodyB.entity == self.entity then ... end`.
+Prefer the per-object callbacks (`onCollisionEnter`, `onTriggerEnter2D`..., 1.1): they come only
+to the GameObjects involved. These physics events are scene-wide: they fire for ANY pair of
+bodies. Filter in the handler, e.g.
+`if bodyA.entity == self.entity or bodyB.entity == self.entity then ... end`. They run on the main
+thread after the step (2D: also `stayContact2D`, `staySensorContact2D`, same arguments as the
+begin ones); 3D gets a `Contact3D` snapshot whose setters do nothing, unless
+`physicsSystem.synchronousContactEvents3D = true` (a Lua `shouldCollide3D` turns it on).
 2D contact events need "Contact Events" (sensor events: sensor + "Sensor Events", hit: "Hit
 Events") enabled on the Collider 2D (Inspector, or `body.shapeContactEvents = true`,
 `body.shapeSensorEvents = true`, `body.shapeEnableHitEvents = true`).
@@ -404,6 +422,57 @@ Mass: `self.body:getMass()` (method, kg). To get a target acceleration `a` in po
 3D equivalent: `local rb = Rigidbody(self.scene, self.entity)`; in `onFixedUpdate`:
 `rb:applyForce(Vector3(0, 10, 0))`; mass is a property: `rb.mass`.
 
+
+### 1.7 UI pointer callbacks (Unity's EventSystem)
+
+The component UI (RectTransform elements with an Image) sends Unity's pointer messages to scripts
+by method name, `e` a `PointerEventData`. Each finger and mouse button is its own pointer: two
+fingers press two buttons, lifting one releases only its own. A message goes to the element under
+the pointer, else its first ancestor whose script defines the method (ExecuteHierarchy).
+
+| Method | When |
+|---|---|
+| `onPointerEnter(e)` / `onPointerExit(e)` | the pointer comes over / leaves the element or a child (every GameObject on the way gets it; a finger enters on its down and leaves with its up) |
+| `onPointerDown(e)` / `onPointerUp(e)` | pressed; released or cancelled (`e.canceled`): the up goes to the GameObject that got the down |
+| `onPointerClick(e)` | released over the pressed GameObject without a drag (`e.clickCount`: 2 for a double click within 0.3 s) |
+| `onInitializePotentialDrag(e)` | on the down, to the drag handler (set `e.useDragThreshold = false` to start the drag at once) |
+| `onBeginDrag(e)`, `onDrag(e)`, `onEndDrag(e)` | past 4 px; each move; the release or cancel |
+| `onDrop(e)` | released while dragging, to the handler under the pointer (`e.pointerDrag` is what was dragged) |
+| `onScroll(e)` | the wheel over it (`e.scrollDelta`) |
+
+`PointerEventData` (read-only unless noted): `pointerId` (-1 / -2 / -3 the mouse's left / right /
+middle button, a finger's `Touch.fingerId`), `button` (`Input.MOUSE_BUTTON_*`), `isTouch`,
+`position`, `delta`, `pressPosition` (canvas px, y down, as `Input.getMousePosition`),
+`localPosition` (the receiving element's own), `uiPosition`, `uiDelta`, `scrollDelta`,
+`clickCount`, `clickTime`, `dragging`, `eligibleForClick`, `canceled`, `useDragThreshold` (rw),
+`used`, `use()` (a used down is not handled by the built-in Button, Panel, Scrollbar and
+InputField), and the GameObjects (or nil) `pointerEnter`, `pointerPress`, `rawPointerPress`,
+`pointerDrag`, `target` (the one receiving the call).
+
+```lua
+---@class Slot : ScriptInstance
+local Slot = {}
+function Slot:onBeginDrag(e) self.start = self.gameObject.position end
+function Slot:onDrag(e) local p = self.gameObject.position; self.gameObject.position = Vector3(p.x + e.delta.x, p.y + e.delta.y, p.z) end
+function Slot:onDrop(e) Log.print(e.pointerDrag.name .. " dropped on " .. self.gameObject.name) end
+return Slot
+```
+
+- The right and middle mouse buttons reach these callbacks (`e.button`); Button, Panel, Scrollbar
+  and InputField react to the left button and fingers only.
+- A press ends cancelled (`onPointerUp` with `e.canceled`, `onEndDrag`, no click, no drop) when the
+  touch is cancelled, released outside the canvas, the app pauses or loses focus, or the pressed
+  element is deactivated or disabled (`Button.disabled` too).
+- The legacy component events (`ui.onPointerDown(x, y)`, `onClick`, `onDrag`...) still fire per
+  pointer, on the element the pointer pressed only; `ui:getPointerEventData()` gives the event of
+  the one running. A method subscribed with `RegisterEvent` to such an event (the old pattern) is
+  not also called with `e` under the same name while subscribed.
+- `Input.isPointerOverUI([pointerId])`: the pointer (none: the mouse or any finger) is over UI that
+  takes it, or a press there holds it; check it before world clicks (Unity's
+  `EventSystem.IsPointerOverGameObject`).
+- C++ scripts override `onPointerDown(PointerEventData& e)` ... on `ScriptBase`.
+- Gestures (pinch, rotate) are two pointers: keep each finger's `position` by `pointerId`.
+
 ---
 
 ## 2. Globals and singletons
@@ -421,7 +490,10 @@ Mass: `self.body:getMass()` (method, kg). To get a target acceleration `a` in po
 | `gameTime` | ro | scaled seconds the update loop has run since start (not while paused or held) |
 | `frameCount` | ro | frames the update loop has run since start (not while paused or held) |
 | `interpolationAlpha` | ro | fixed-step interpolation factor: how far the frame is between the last fixed step and the next (bodies are drawn this far from their pose before the last step) |
-| `framerate` | ro | fps |
+| `framerate` | ro | fps (measured) |
+| `targetFrameRate` | rw | Unity's `Application.targetFrameRate`: -1 (default) = the platform's rate (60 on mobile, every animation frame on the web, vsync-paced on desktops); desktops and the editor ignore it while `vSyncCount > 0`. Kept across scene loads |
+| `vSyncCount` | rw | Unity's `QualitySettings.vSyncCount` 0..4 (present every Nth vblank); starts from the project's VSync; mobile and web ignore it |
+| `isFocused` | ro | Unity's `Application.isFocused` (true at start) |
 | `systemTime` | ro | |
 | `canvasWidth`, `canvasHeight` | ro | current canvas; can be 0 in `init()` of exported builds |
 | `preferredCanvasWidth`, `preferredCanvasHeight` | ro | project canvas size; safe in `init()` |
@@ -465,6 +537,7 @@ Functions:
 | `Input.getTouches()` | list of `Touch`: the fingers down now (`touch.pointer` is the old name of `fingerId`) |
 | `Input.isGamepadConnected(id)`, `Input.getGamepadName(id)`, `Input.isGamepadButtonPressed(id, button)`, `Input.getGamepadAxis(id, axis)`, `Input.numGamepads()`, `Input.getGamepadId(index)` | gamepad |
 | `Input.getModifiers()` | bitmask of `Input.MODIFIER_*` |
+| `Input.deviceOrientation` (property) | `DeviceOrientation.*`: how the device is held; `Unknown` on desktops and flat Android devices |
 
 Unity-style polling with edges, touches and input actions (details: `jasper://docs/input`).
 `key` is an `Input.KEY_*` code or a control name (`"space"`, `"a"`, `"left_shift"`,
@@ -481,6 +554,7 @@ Unity-style polling with edges, touches and input actions (details: `jasper://do
 | `Input.getPressedControl()` | string or nil: the first control pressed this frame (`"space"`, `"mouse_left"`, `"gamepad_a"`, `"left_x+"`) |
 | `Input.touchCount`, `Input.touches` (properties), `Input.getTouch(index)` (0-based), `Input.getTouchById(fingerId)` | Unity's touches this frame (ended/cancelled ones included in their last frame): `Touch` or nil |
 | `Input.multiTouchEnabled` (rw, default true), `Input.touchSupported` | false: only the first finger is reported / `System.isTouchDevice()` |
+| `Input.isPointerOverUI([pointerId])` | bool: the pointer (-1 the mouse, a finger's `fingerId`; none: the mouse or any finger) is over UI that takes events (component UI or HTML content) or held by it (1.7) |
 | `Input.getAxis(name)`, `Input.getAxisRaw(name)` | number: the input action's smoothed / raw value (-1..1, button 0..1; mouse movement unclamped) |
 | `Input.getButton(name)`, `getButtonDown(name)`, `getButtonUp(name)` | bool |
 | `Input.getVector(xName, yName)` | `Vector2`, length <= 1 |
@@ -688,6 +762,36 @@ export compiles Google Mobile Ads in only with the project settings `android.adm
 `gameplayStartCrazyGames()`, `gameplayStopCrazyGames()`, `loadingStartCrazyGames()`,
 `loadingStopCrazyGames()`.
 
+Platform services ([platform-services.md](platform-services.md) has the per-platform details):
+
+| Function | Returns |
+|---|---|
+| `System.openURL(url)` | bool: the system took it (browser, store, `mailto:`); `javascript:`/`data:`/`file:`/`vbscript:` and scheme-less URLs refused. Web: a blocked popup opens on the next click (false) |
+| `System.getSystemLanguage()` | `SystemLanguage.*` (Unity's `Application.systemLanguage`) |
+| `System.getLanguageCode()`, `getRegionCode()`, `getLocale()` | `"es"`, `"MX"` (the platform's region setting first; `""` unknown), `"es-MX"` |
+| `System.getPreferredLanguages()` | `{"es-MX", "en-US"}` (BCP 47, most preferred first) |
+| `System.getAppVersion()`, `getAppBuild()`, `getAppIdentifier()`, `getAppName()` | Player version, build (integer: Android versionCode, iOS `CFBundleVersion`), identifier, name of the running app |
+| `System.getOperatingSystem()` | Unity's `SystemInfo.operatingSystem` format (`"Android OS 14 / API-34 (...)"`, `"iOS 17.1"`) |
+| `System.getOperatingSystemVersion()`, `getAndroidApiLevel()` | `"14"`, 34 (0 off Android) |
+| `System.getDeviceModel()`, `getDeviceType()` | `"Google Pixel 8"`, `DeviceType.*` |
+| `System.getSystemMemorySize()`, `getProcessorCount()` | MiB (0 unknown), logical processors |
+| `System.isEditor()` | true only in the editor's Play mode |
+| `System.getInternetReachability()` | `NetworkReachability.*` (a network is there, not that a server answers; not every frame) |
+| `System.vibrate([ms])` | bool; 400 ms by default, iOS ignores the length |
+| `System.hapticFeedback(HapticFeedback.*)` | bool |
+
+### 2.5.1 Screen (static)
+
+| Name | Kind | Notes |
+|---|---|---|
+| `Screen.orientation` | rw | `ScreenOrientation.*`: get = how the interface is shown now (never `AutoRotation`); set = a fixed orientation or `AutoRotation` |
+| `Screen.autorotateToPortrait`, `autorotateToPortraitUpsideDown`, `autorotateToLandscapeLeft`, `autorotateToLandscapeRight` | rw | bools: where `AutoRotation` may turn (the last one cannot be turned off) |
+| `Screen.sleepTimeout` | rw | `SleepTimeout.NeverSleep` (-1, keeps the screen on) or `SleepTimeout.SystemSetting` (-2) |
+| `Screen.dpi`, `Screen.refreshRate` | ro | dots per inch (0 unknown), Hz |
+
+The pixel size is `System.getScreenWidth()` / `getScreenHeight()`; the canvas `Engine.canvasWidth` /
+`canvasHeight`. `LandscapeLeft` = the device turned counter-clockwise from portrait.
+
 Files (for saves prefer `File.readText` / `File.writeText` / `Json.readFile`, 2.4.2):
 `File()` / `File(path, write)` with `:open`, `:flush`, `:close`, `:readString()`,
 `:writeString(s)`, `:read8/16/32()`, `:eof()`, `:length()`, `:seek(n)`, `:pos()`;
@@ -886,6 +990,7 @@ Entities are plain integers (`0` = none).
 | `Physics2D.raycastAll(...)` | same args -> table of `RayReturn` |
 | `Physics.raycast(scene, origin, direction, maxDistance [, mask])`, `Physics.raycastAll(...)` | 3D, Vector3 origin/dir |
 | `ignoreLayerCollision(l1, l2 [, ignore=true])`, `getIgnoreLayerCollision(l1, l2)`, `getLayerCollisionMask(l)`, `setLayerCollisionMask(l, mask)`, `resetLayerCollisionMatrix()` | on both `Physics` and `Physics2D` |
+| `ignoreCollision(a, b [, ignore=true])`, `getIgnoreCollision(a, b)` | on both: two GameObjects / bodies (3D: Rigidbody, 2D: Rigidbody 2D) of one scene never collide; runtime only. Error if one has no body of that dimension |
 | `ALL_LAYERS`, `DEFAULT_RAYCAST_LAYERS`, `IGNORE_RAYCAST_LAYER` | static props on both |
 | `Physics.debugDraw`, `Physics.debugDrawContacts` | rw static bools: draw the colliders and joints (and contact points) of every playing scene, 3D and 2D (the Game view's Physics toggle) |
 
@@ -923,6 +1028,38 @@ end
 Buoyancy needs no script: a dynamic `Rigidbody` with `buoyancy > 0` floats (4.14). The
 `library:underwater` post-process pass switches itself on under a surface (shaders guide,
 "Water").
+
+### 2.10.2 Shader (static): global shader values
+
+Unity's `Shader.SetGlobal*` / `Shader.PropertyToID`: values every shader declaring them reads
+(a member of its `u_vs_globals` / `u_fs_globals` block, or a texture uniform of the name), and
+library shader parameters bound to them follow (the shaders guide, "Global values").
+Project Settings > Graphics > Shader Globals declares them with their defaults; Play starts and
+stops with those. `name` is the global's name or the id `propertyToID` gave. Setters return
+`false` (and log once) when the global is of another kind; wrong argument types raise an error.
+
+| Name | Notes |
+|---|---|
+| `Shader.propertyToID(name)` | a stable integer for this run |
+| `Shader.setGlobalFloat(name, n)`, `setGlobalInt(name, i)` | an int is stored as a float (Unity's SetGlobalInt) |
+| `Shader.setGlobalVector(name, Vector4 \| Vector3 \| Vector2)` | missing components 0 |
+| `Shader.setGlobalColor(name, Vector4 \| Vector3)` | sRGB in, stored linear (alpha as is) |
+| `Shader.setGlobalMatrix(name, Matrix4)` | only a `matrix4` global |
+| `Shader.setGlobalFloatArray(name, {n...})`, `setGlobalVectorArray(name, {Vector4...})` | 1..64; a first set fixes an undeclared array's size |
+| `Shader.setGlobalTexture(name, Texture \| "path" \| Framebuffer)` | `nil`: the default texture again |
+| `Shader.getGlobalFloat/Int/Vector/Color/Matrix/FloatArray/VectorArray/Texture(name)` | `getGlobalColor` is sRGB; `nil` when unknown or of another kind |
+| `Shader.hasGlobal(name)`, `Shader.getGlobalNames()` | declared first, then the ones scripts made |
+| `Shader.resetGlobals()` | back to the defaults; the names scripts made are dropped |
+
+```lua
+local tint = Shader.propertyToID("FogTint")
+function Fog:onUpdate()
+    Shader.setGlobalColor(tint, Vector4(1, 0.5 + 0.5 * math.sin(Engine.gameTime), 0, 1))
+end
+```
+
+Values outlive scene loads (like Unity). A material or component parameter can follow one:
+`setShaderGlobalBinding(member, global)` (4.3).
 
 ### 2.11 Angle (static)
 
@@ -1172,7 +1309,7 @@ EntityHandle
  |- Action -> Tween (AlphaTween, ColorTween, PositionTween, RotationTween, ScaleTween),
              ParticleSystem, SpriteAnimation, Animation,
              KeyframeTracks (MorphTracks, LatticeTracks, RotateTracks, ScaleTracks, TranslateTracks)
-Joint3D, AnimationState, AnimationEvent, VertexAnimatorSocketPose, PhysicsMaterial (standalone classes)
+Joint3D, AnimationState, AnimationEvent, AnimatorStateInfo, VertexAnimatorSocketPose, PhysicsMaterial (standalone classes)
 ```
 
 Constructors: every wrapper has `(Scene, Entity)` to wrap an existing entity. Most also have
@@ -1232,6 +1369,7 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | `getRay(direction)` | method | Ray from world position |
 | `getAnimationPlayer()` | method | the GameObject's `AnimationPlayer` (4.8.2), `nil` when it has none (it never adds one) |
 | `hasAnimationPlayer()` | method | bool |
+| `getAnimator()` | method | Unity's Animator: the same as `getAnimationPlayer()` (with or without an Animator Controller) |
 | `getVertexAnimator()` | method | the GameObject's `VertexAnimator` (4.8.3), `nil` when it has none (it never adds one) |
 | `hasVertexAnimator()` | method | bool |
 | `GameObject.instantiate`, `GameObject.destroy`, `GameObject.destroyImmediate` | static | section 2.6 |
@@ -1283,12 +1421,16 @@ first, before distance); methods `setShaderParam(name, value)` (colours linear; 
 faces, the layouts a Skybox takes) or `setShaderCubeTexture(uniform, front, back, left, right,
 up, down)` (six images), `getShaderTexture(uniform)` (a cube map's single image or front
 face), `setShaderFeature(define, on)` (a `@keywords` value is
-`"GROUP_VALUE"`), `isShaderFeatureEnabled(define)`. A material with `shader = ""` feeds the
+`"GROUP_VALUE"`), `isShaderFeatureEnabled(define)`, `setShaderGlobalBinding(member, global)`
+(the parameter follows a global shader value, 2.10.2, over its own; `nil` unbinds) and
+`getShaderGlobalBinding(member)` (`nil` unbound). A material with `shader = ""` feeds the
 shader its submesh draws with (the mesh's `customShader`, else the scene default): a copy from
 `getMaterial` / `material` resolves defaults and features against that one. UI (Image, Text,
-Polygon), Points, LineRenderer and Skybox objects have the same parameter/texture/feature
-methods for their `customShader` (but `setShaderCubeTexture`: set a cube uniform of theirs from
-the editor or MCP), and (but Skybox) `blendMode` and `depthWrite`.
+Polygon), Points, LineRenderer, TrailRenderer and Skybox objects have the same
+parameter/texture/feature/global binding methods for their `customShader` (but
+`setShaderCubeTexture`: set a cube uniform of theirs from the editor or MCP), and (but Skybox)
+`blendMode` and `depthWrite`; a post-process pass: `scene:setPostProcessGlobalBinding(index,
+member, global)`.
 `stencil` (`MaterialStencil()`: `compare` (`MaterialStencilCompare.*`: `AUTO` takes the shader's
 rule, `DISABLED`, `NEVER` ... `ALWAYS`), `ref`, `readMask`, `writeMask` (0-255), `pass`, `fail`,
 `depthFail` (`MaterialStencilOp.*`)) and `colorWrite` (`MaterialColorWrite.*`: `AUTO`, `NONE`,
@@ -1408,12 +1550,11 @@ on the next frame. User guide: `docs/animation-clips.md`; agents: `jasper://docs
 
 | Member | Notes |
 |---|---|
-| `play(name)` | instant: the other states stop (rewound), `name` plays from 0 at weight 1 (from its end when the speed is negative); clears the queue |
-| `play(name, fade)` | `fade` > 0: same as `crossFade(name, fade)` |
-| `crossFade(name [, fade])` | fades the others out and `name` in; no fade = `defaultFadeTime` |
+| `play(name [, fade [, mode]])` | instant: the other states of `name`'s layer stop (rewound), `name` plays from 0 at weight 1 (from its end when the speed is negative); clears that layer's queue. `mode`: `PlayMode.STOP_SAME_LAYER` (default) or `PlayMode.STOP_ALL` (every layer). `fade` > 0: same as `crossFade` |
+| `crossFade(name [, fade [, mode]])` | fades the other states of the layer (or all with `STOP_ALL`) out and `name` in; no fade = `defaultFadeTime` |
 | `blend(name, weight [, fade])` | moves one state's weight, the others untouched; total weight under 1 is filled by the rest (scene) pose |
-| `queue(name [, fade])` | plays after the playing states finish (loop / ping_pong: at the end of the current cycle; clamp_forever: on reaching its end); with a fade it starts `fade` s earlier and crossfades; queuing the playing state restarts it; nothing playing = play |
-| `stop()`, `stop(name)` | stop and rewind, the pose stays; clear the queue |
+| `queue(name [, fade])` | plays after the playing states of `name`'s layer finish (loop / ping_pong: at the end of the current cycle; clamp_forever: on reaching its end); with a fade it starts `fade` s earlier and crossfades; queuing the playing state restarts it; nothing playing on the layer = play. One queue per layer |
+| `stop()`, `stop(name)` | stop and rewind, the pose stays; `stop()` clears every queue, `stop(name)` the state's layer queue |
 | `rewind()`, `rewind(name)` | time 0 |
 | `sample()` | applies the current times once (e.g. paused) |
 | `isPlaying()`, `isPlaying(name)` | bool; false for a `once` state that ended (held) |
@@ -1423,8 +1564,46 @@ on the next frame. User guide: `docs/animation-clips.md`; agents: `jasper://docs
 | `speed`, `defaultClip`, `defaultFadeTime`, `playAutomatically`, `enabled` | rw; `speed` multiplies every state (negative plays backwards); `enabled = false`: time stops, nothing is written |
 | `isLoaded()` | every clip loaded and bound |
 | `onEvent` | rw, a function called with ONE `AnimationEvent` (below) per clip event |
-| `onFinish` | rw, a function called with the state name when a `once` state ends, and once when a `clamp_forever` state first reaches its end (never for loop / ping_pong) |
-| `getAnimationPlayerComponent()` | the ECS component: `enabled`, `defaultClip`, `playAutomatically`, `speed`, `defaultFadeTime`, `needsLoad`, `onEvent`, `onFinish` |
+| `onFinish` | rw, a function called with the state name when a `once` state ends, and once when a `clamp_forever` state first reaches its end (never for loop / ping_pong); fires on a zero-weight layer too |
+| `getLayerCount()` | >= 1 (layer 0 is the base layer) |
+| `getLayerName(i)`, `getLayerIndex(name)` | `""` / -1 when unknown |
+| `addLayer(name [, weight [, blend [, mask]]])` | appends an authored layer (`blend` `"override"` or `"additive"`, `mask` an asset-relative `.mask`); its index, or -1 when the name is taken |
+| `removeLayer(layer)` | not the base layer; its clip entries move to layer 0 (warning); bool |
+| `setLayerWeight(layer, w [, fade])`, `getLayerWeight(layer)` | runtime weight 0..1, fading linearly over `fade` s (scaled time); the getter returns the current, possibly fading, value; layer 0 is always 1 |
+| `setLayerMask(layer, path)`, `getLayerMask(layer)` | runtime Avatar Mask (`""` clears it); a layer whose mask is missing contributes nothing |
+| `setLayerBlendMode(layer, mode)`, `getLayerBlendMode(layer)` | runtime `"override"` / `"additive"` (layer 0: always override) |
+| `stopLayer(layer [, fade])` | fades every state of the layer out (instant without a fade) and clears its queue |
+| `controller` | rw, the Animator Controller (asset-relative `.controller`, `""` = none); setting it reloads |
+| `hasController()` | bool |
+| `setFloat(name, v [, dampTime])`, `getFloat(name)` | a controller parameter; `dampTime` > 0 eases toward `v` with SmoothDamp, a set without it snaps |
+| `setInteger(name, v)`, `getInteger(name)`, `setBool(name, b)`, `getBool(name)` | the other parameter types; a wrong type warns once and converts (`setBool` on a trigger sets it, `setFloat` on an int rounds) |
+| `setTrigger(name)`, `resetTrigger(name)` | a trigger stays set until a transition reading it fires |
+| `hasParameter(name)`, `getParameterType(name)` | bool; `"float"`, `"int"`, `"bool"`, `"trigger"` (`""` when unknown) |
+| `getCurrentStateName([layer])` | the layer's current state, without the layer prefix (`""` when none) |
+| `getCurrentStateInfo([layer])`, `getNextStateInfo([layer])` | an `AnimatorStateInfo` (below); the next state is valid only during a transition |
+| `isInTransition([layer])` | bool |
+| `playInLayer(name, layer [, normalizedTime])` | Unity's `Animator.Play`: with a controller, jumps to `name` (`"Layer.State"` or `"State"`) on `layer` (-1: any) at `normalizedTime` (default 0); without one, plays the clip state from that normalized time |
+| `crossFadeInLayer(name, seconds, layer)` | Unity's `CrossFadeInFixedTime`: a transition of `seconds` to `name` on `layer` (-1: any) |
+| `onStateEnter`, `onStateExit` | rw, functions called with `(layer, name)` when a controller state is entered / exited |
+| `getAnimationPlayerComponent()` | the ECS component: `enabled`, `defaultClip`, `playAutomatically`, `speed`, `defaultFadeTime`, `needsLoad`, `controller`, `onEvent`, `onFinish`, `onStateEnter`, `onStateExit` |
+
+`layer` arguments are a 0-based index or a layer name; an unknown layer warns once and does
+nothing (getters return 0, `""` or -1). Layers (Unity's animation layers): each clip entry plays on
+one; a layer has a weight, a blend (Override replaces what is below as much as its weight says,
+Additive adds the clip's change from its `additive_reference` time, default its first frame) and an
+optional Avatar Mask (`.mask`). Events fire only on layers with weight > 0 (the base always fires).
+
+With an **Animator Controller** (`controller` set; anim layers guide in `docs/animation-clips.md`)
+the controller owns the states and layers (the entries and layers are ignored): `play(name)` jumps
+to a state (`"Layer.State"` or `"State"`), `play(name, fade)` and `crossFade(name, seconds)` are a
+transition of that many seconds (a `PlayMode` has no effect), `playInLayer` / `crossFadeInLayer` add
+the layer and the normalized start time, `stop()` stops it until the next `play`
+or until the player is enabled again, `blend` and `queue` warn once and do nothing, `isPlaying(name)`
+takes controller state names. The parameter calls need a controller (without one they warn once
+and return defaults). The controller enters its default states on the first update
+(`playAutomatically` does not apply). After the frame's pose is written, `onStateEnter(layer,
+name)` / `onStateExit(layer, name)` call the subscribers, then the methods of those names on the
+GameObject's Lua scripts.
 
 A `once` state that reaches its end fires `onFinish`, stops advancing and **holds its last pose**
 at its weight until a fade (crossFade / play with a fade / blend to 0) or `stop` releases it, so
@@ -1435,8 +1614,17 @@ calls made inside them take effect next frame.
 
 `AnimationState` (by player + state name, looked up on every access; works across clip list
 changes): rw `time`, `normalizedTime`, `speed` (the state's own), `weight`, `wrap` (`"once"`,
-`"loop"`, `"ping_pong"`, `"clamp_forever"`; `"default"` = the entry's), `enabled` (false pauses);
-ro `name`, `clip`, `length`; `isValid()`. An unknown name reads defaults and writes nothing.
+`"loop"`, `"ping_pong"`, `"clamp_forever"`; `"default"` = the entry's), `enabled` (false pauses),
+`layer` (a runtime move: time and weight are kept, the tracks re-mask); ro `name`, `clip`, `length`;
+`isValid()`; `addMixingTransform(path [, recursive=true])`, `removeMixingTransform(path)`,
+`clearMixingTransforms()` (Unity's legacy AddMixingTransform: with any, the state animates only
+those paths, below them too unless `recursive` is false; multiplied with the layer's mask). An
+unknown name reads defaults and writes nothing.
+
+`PlayMode`: `PlayMode.STOP_SAME_LAYER` (0), `PlayMode.STOP_ALL` (1).
+
+`AnimatorStateInfo` (a copy, Unity's): `isValid`, `name`, `fullName` (`"Layer.State"`),
+`normalizedTime` (whole loops counted), `length` (seconds), `speed`, `loop`.
 
 `AnimationEvent` (a copy): `functionName`, `state`, `time` (seconds in the clip), `args` (a
 1-based table of numbers, strings and booleans), `getArgCount()`, `getArgType(i)` (`"number"`,
@@ -1460,6 +1648,20 @@ function Hero:init()
 end
 
 function Hero:onFootstep(side, strength) end    -- clip event {function: "onFootstep", args: ["left", 1]}
+```
+
+```lua
+-- layers: the right arm holds a can over the walk (the "Holding" layer has an arm mask)
+local w = self.player:getLayerWeight("Holding")
+self.player:setLayerWeight("Holding", w + ((self.holding and 1 or 0) - w) * math.min(1, Engine.deltatime * 15))
+self.player:crossFade("Hit", 0.05)          -- on an additive layer: over whatever plays
+
+-- an Animator Controller
+local animator = GameObject(self.scene, self.entity):getAnimator()
+animator:setFloat("Speed", speed)
+animator:setTrigger("Jump")
+if animator:getCurrentStateInfo(0).name == "Land" then ... end
+function Hero:onStateEnter(layer, name) print("entered", layer, name) end
 ```
 
 ### 4.8.3 VertexAnimator (EntityHandle)
@@ -1676,6 +1878,12 @@ UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example)
 | `Scrollbar` (Image) | `type` (`ScrollbarType.*`), `barSize`, `step`, `barColor`, `barAlpha` | `getScrollbarComponent()`, `setBarTexture(path)` |
 | `Progressbar` (Image) | `type`, `value` (0..1), `fillColor`, `fillAlpha` | `getProgressbarComponent()`, `setFillTexture(path)` |
 | `InputField` (Image) | `text`, `disabled`, `textColor`, `textFont`, `fontSize`, `maxTextSize`, `placeholder`, `placeholderColor`, `password`, `passwordChar`, `cursorIndex`, `cursorColor`, `selectionColor`, `cursorBlink`, `cursorWidth` | `getInputFieldComponent()`, `getTextObject()`, `setSelection(...)` |
+| `OnScreenStick` (Image) | `enabled`, `mode` (`OnScreenStickMode.*`), `background`, `handle` (entities), `handleRange`, `deadZone`, `moveThreshold`, `axes` (`OnScreenStickAxes.*`), `snapX`, `snapY`, `hideWhenReleased`, `clampToArea`, `horizontalAction`, `verticalAction`, `visibility`; ro `value` (Vector2, y up), `pressed`, `pointerId`; events `onValueChanged(x, y)`, `onPress`, `onRelease` | `getOnScreenStickComponent()` |
+| `OnScreenButton` (Image) | `enabled`, `action`, `value`, `pressWhenPointerEnters`, `releaseWhenPointerLeaves`, `visibility`; ro `pressed`; events `onPress`, `onRelease` | `getOnScreenButtonComponent()` |
+| `TouchArea` (Image) | `enabled`, `horizontalAction`, `verticalAction`, `sensitivity`, `invertX`, `invertY`, `visibility`; ro `delta` (this frame, canvas px), `pressed`, `pointerId`; event `onDrag(dx, dy)` | `getTouchAreaComponent()` |
+
+The three on-screen controls feed input actions (`jasper://docs/input` 4.1); wrapping a GameObject
+without the component adds it.
 
 Component structs returned by `get*Component()` expose the event objects of section 1.3 and
 some raw fields (`ButtonComponent.pressed`, `hovered` ro; `disabled` rw;
@@ -1811,6 +2019,22 @@ joint.maxMotorTorque = 10000
 function Car:onJointBreak2D(joint) Log.print("snap") end
 ```
 
+### 4.13.2 Collision2D, ContactPoint2D, Collider2D (the 2D callbacks' values, read-only)
+
+| Class | Members |
+|---|---|
+| `Collision2D` | `gameObject`, `collider`, `rigidbody` (the other side's), `thisCollider`, `thisRigidbody`, `otherCollider` / `otherRigidbody` (**this** side: Unity's names), `relativeVelocity` (Vector2, points/s, other minus this; Enter: before the step), `enabled`, `contactCount`, `getContact(i)`, `contacts` |
+| `ContactPoint2D` | `point`, `normal` (toward this one), `separation` (points), `normalImpulse`, `tangentImpulse`, `relativeVelocity`, `thisCollider`, `otherCollider` |
+| `Collider2D` | `gameObject`, `rigidbody` / `attachedRigidbody`, `index`, `type` (`Collider2DType`), `isTrigger` (sensor), `tag`, `compareTag(tag)`, `receiver`, `isValid()` |
+
+```lua
+function UpsideDown:onCollisionEnter2D(c)
+    if c.gameObject.tag == "Ground" and c.thisCollider.index == self.detectorCollider then
+        self.game:gameOver()
+    end
+end
+```
+
 ### 4.14 Rigidbody (EntityHandle) - 3D physics (Jolt)
 
 | Member | Kind | Notes |
@@ -1840,9 +2064,20 @@ function Car:onJointBreak2D(joint) Log.print("snap") end
 | `setAllowedDOFsAll()`, `setAllowedDOFs2DPlane()`, `setAllowedDOFs(...)`, `setOverrideMassAndInertia(...)` | methods | |
 | `getPointVelocity(p)`, `getAccumulatedForce()`, `getCenterOfMassPosition()` | methods | |
 
-`Contact3D`: `getWorldSpaceNormal()`, `getPenetrationDepth()`, `getBaseOffset()`,
-`getColliderIndex1()`, `getColliderIndex2()`, rw `combinedFriction`,
+`Contact3D` (global events): `getWorldSpaceNormal()`, `getPenetrationDepth()`, `getBaseOffset()`,
+`getColliderIndex1()`, `getColliderIndex2()`, `getRelativeContactPointsOnA(i)` / `OnB(i)`,
+`numContactPoints`, `snapshot` (true after the step: setters do nothing), rw `combinedFriction`,
 `combinedRestitution`, `sensor`.
+
+### 4.14.1 Collision, ContactPoint, Collider (the 3D callbacks' values, read-only)
+
+| Class | Members |
+|---|---|
+| `Collision` | `gameObject`, `rigidbody`, `collider` (the other side's), `thisCollider`, `thisRigidbody`, `impulse` (Vector3, estimated N s on this body), `relativeVelocity` (Vector3, other minus this), `contactCount`, `getContact(i)` (0-based, error out of range), `contacts` (new 1-based table each read) |
+| `ContactPoint` | `point`, `normal` (from the other collider toward this one), `separation` (< 0 penetrating), `impulse`, `thisCollider`, `otherCollider` |
+| `Collider` | `gameObject`, `rigidbody` / `attachedRigidbody`, `index`, `type` (`Collider3DType`), `isTrigger`, `tag`, `compareTag(tag)`, `receiver` (GameObject or nil), `isValid()`; `==` compares GameObject and index |
+
+Values are copies taken at the step (safe to keep); a GameObject gone since reads as nil.
 
 **Joint3D** (EntityHandle; `go:getJoint3D()`, `Joint3D(scene, entity)`, `Joint3D(scene)` a new
 GameObject): rw `enabled`, `type` (`Joint3DType.*`), `bodyA`, `bodyB` (alias `connectedBody`;
@@ -1931,7 +2166,66 @@ offsets (`relative` does not apply to it).
 `Ease(EaseType.X)` / `Ease.linear(t)`, `Ease.easeInQuad(t)`, `Ease.easeOutQuad(t)`,
 `Ease.easeInOutQuad(t)`, ... `Ease.easeOutBounce(t)` (static helpers, t in 0..1).
 
-### 4.16 ParticleSystem (Action) - partial
+### 4.16 ParticleSystem (Action)
+
+Unity's ParticleSystem (version 2, the module model; [particles.md](particles.md) has the
+modules, render modes, costs and the Unity importer). `GameObject > Effects > Particle System`,
+`create_particles` and the importer make version 2 systems; older scenes keep version 1 (the
+legacy model, below) until upgraded.
+
+```lua
+local ps = self.gameObject:getParticleSystem()   -- nil without one (GetComponent<ParticleSystem>)
+ps.emission.rateOverTime = 0                     -- the modules are live views
+local main = ps.main
+main.startLifetime = MinMaxCurve(0.8, 1.0)       -- random between two constants
+main.startColor = MinMaxGradient(Vector4(1, 0.5, 0, 1))   -- colours sRGB, as the pickers
+ps:play()                                        -- with children (play(false): only this one)
+ps:emit(10)                                      -- now, also while stopped
+if ps:isPlaying() then print(ps.particleCount, ps.time) end
+ps:stop(true, ParticleSystemStopBehavior.StopEmittingAndClear)
+```
+
+Control (children included unless `withChildren` is false; a version 1 system keeps the Action
+behaviour): `play([withChildren])`, `stop([withChildren], [ParticleSystemStopBehavior])`
+(`StopEmitting`: the particles live out, `StopEmittingAndClear`: gone now), `pause([withChildren])`,
+`clear([withChildren])`, `emit(count)` -> spawned, `simulate(t, [withChildren], [restart=true])`
+(advances t seconds, then paused, as Unity's Simulate), `isPlaying()`, `isPaused()`,
+`isStopped()`, `isEmitting()`, `isAlive([withChildren])` (methods, as Action's; Unity's are
+properties). rw `time` (the clock in the cycle), `randomSeed`, `useAutoRandomSeed`,
+`useUnscaledTime`, `version` (1 -> 2 upgrades); r `particleCount`. `upgrade([force])` converts a
+version 1 system and returns `{upgraded, items = {{field, status, message, maxError}, ...}}`
+(status `exact`, `approximated` or `dropped`). `ParticleSystem(scene)` makes a version 1 system,
+`ParticleSystem(scene, true)` a version 2 one on a new GameObject with the default quad.
+`play()` and `stop()` change the system at once; `onStart` / `onStop` of the Action follow at the
+next update. `GameObject:getParticleSystemsInChildren()` lists the GameObject's and its
+children's systems in hierarchy order. A script method `onParticleSystemStopped()` on the
+system's GameObject runs when it stops with `main.stopAction = ParticleSystemStopAction.Callback`.
+
+Modules (`ps.main`, `ps.emission`, `ps.shape`, `ps.velocityOverLifetime`,
+`ps.limitVelocityOverLifetime`, `ps.inheritVelocity`, `ps.forceOverLifetime`,
+`ps.colorOverLifetime`, `ps.colorBySpeed`, `ps.sizeOverLifetime`, `ps.sizeBySpeed`,
+`ps.rotationOverLifetime`, `ps.rotationBySpeed`, `ps.noise`, `ps.textureSheetAnimation`,
+`ps.renderer`): every field by its Unity name (the full list: [particles.md](particles.md#fields)).
+A MinMaxCurve field takes a number, a `MinMaxCurve` or an `AnimationCurve`; reading gives a
+`MinMaxCurve` copy (assign it back after editing). `<field>Multiplier` (`rateOverTimeMultiplier`,
+`startLifetimeMultiplier`, ...) reads and writes the constant / multiplier. A colour field takes
+a `Vector4` / `Vector3` (sRGB), a `Gradient` or a `MinMaxGradient`. Enum fields take the enum
+values (`ParticleSystemShapeType.Cone`) or their names (`"Cone"`). Angles and angular speeds
+are radians. Bursts: `ps.emission:setBursts({{time = 0, count = 10, cycles = 1, interval = 0.01,
+probability = 1}, ...})`, `getBurst(i)` / `setBurst(i, burst)` (0-based, as Unity), `burstCount`.
+Writing a module field of a version 1 system is an error naming `upgrade()`.
+
+`MinMaxCurve(v)`, `MinMaxCurve(min, max)`, `MinMaxCurve(multiplier, curve)`,
+`MinMaxCurve(multiplier, curveMin, curveMax)`: rw `mode` (`ParticleSystemCurveMode.Constant`,
+`Curve`, `TwoCurves`, `TwoConstants`), `constant`, `constantMin`, `constantMax`, `curve`,
+`curveMin`, `curveMax`, `curveMultiplier`; `evaluate(t [, random01])`.
+`MinMaxGradient(color)`, `MinMaxGradient(colorMin, colorMax)`, `MinMaxGradient(gradient)`,
+`MinMaxGradient(gradientMin, gradientMax)` (colours sRGB): rw `mode`
+(`ParticleSystemGradientMode.Color`, `Gradient`, `TwoColors`, `TwoGradients`, `RandomColor`),
+`color`, `colorMin`, `colorMax` (sRGB), `gradient`, `gradientMin`, `gradientMax`;
+`evaluate(t [, random01])` (linear RGBA).
+
+#### Version 1 (legacy)
 
 rw: `enabled`, `rate`, `maxPerUpdate`, `emitter`, `loop`, `localSpace`, `emitterShape`
 (`ParticleEmitterShape.*`). Methods: `reset()`, `addBurst(time, count)` / `addBurst(time, minCount, maxCount)`,
@@ -1942,6 +2236,9 @@ rw: `enabled`, `rate`, `maxPerUpdate`, `emitter`, `loop`, `localSpace`, `emitter
 `setSizeInitializer(...)`, `setRotationInitializer(...)`, `setScaleInitializer(...)`, and
 `set*Modifier(fromTime, toTime, from, to [, EaseType])` for Position/Velocity/Acceleration/
 Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause()`.
+On a version 2 system these legacy setters set the module fields they map to (as the upgrade
+does), with one deprecation warning each; the position modifier and `emitter` /
+`maxPerUpdate` have no module equivalent and do nothing there.
 Component: `getParticleSystemComponent()` (the old misspelt `getParticlesomponent()` still works, deprecated).
 
 ### 4.17 FluidSimulation (GameObject)
@@ -2180,7 +2477,25 @@ use the methods. Physics colliders keep the rest shape.
 | `CanvasGroupRenderMode` | `PER_ELEMENT`, `FLATTEN` |
 | `AlphaTweenTarget` | `AUTO`, `COLOR`, `CANVAS_GROUP` |
 | `ScrollbarType`, `ProgressbarType` | `VERTICAL`, `HORIZONTAL` |
+| `OnScreenStickMode` | `FIXED`, `FLOATING`, `DYNAMIC` |
+| `OnScreenStickAxes` | `BOTH`, `HORIZONTAL`, `VERTICAL` |
+| `OnScreenVisibility` | `ALWAYS`, `TOUCH_DEVICES_ONLY` |
 | `ParticleEmitterShape` | `Box`, `Sphere`, `Hemisphere`, `Circle`, `Cone` |
+| `ParticleSystemShapeType` | `Sphere`, `Hemisphere`, `Cone`, `ConeVolume`, `Box`, `BoxShell`, `BoxEdge`, `Circle`, `Edge`, `Rectangle`, `Donut` |
+| `ParticleSystemCurveMode` | `Constant`, `Curve`, `TwoCurves`, `TwoConstants` |
+| `ParticleSystemGradientMode` | `Color`, `Gradient`, `TwoColors`, `TwoGradients`, `RandomColor` |
+| `ParticleSystemSimulationSpace` | `Local`, `World` |
+| `ParticleSystemScalingMode` | `Hierarchy`, `Local`, `Shape` |
+| `ParticleSystemStopAction` | `None`, `Disable`, `Destroy`, `Callback` |
+| `ParticleSystemStopBehavior` | `StopEmittingAndClear`, `StopEmitting` |
+| `ParticleSystemRenderMode` | `Billboard`, `Stretch`, `HorizontalBillboard`, `VerticalBillboard`, `Mesh` |
+| `ParticleSystemSortMode` | `None`, `Distance`, `OldestInFront`, `YoungestInFront` |
+| `ParticleSystemRenderSpace` | `View`, `World`, `Local`, `Facing`, `Velocity` |
+| `ParticleSystemShapeMultiModeValue` | `Random`, `Loop`, `PingPong`, `BurstSpread` |
+| `ParticleSystemInheritVelocityMode` | `Initial`, `Current` |
+| `ParticleSystemAnimationMode` / `Type` / `RowMode` / `TimeMode` | `Grid`, `Sprites` / `WholeSheet`, `SingleRow` / `Custom`, `Random` / `Lifetime`, `Speed`, `FPS` |
+| `ParticleSystemGravitySource` | `Physics3D`, `Physics2D` |
+| `ParticleSystemEmitterVelocityMode` | `Transform`, `Rigidbody` |
 | `FogType` | `LINEAR`, `EXPONENTIAL`, `EXPONENTIALSQUARED` |
 | `RotationOrder` | `XYZ`, `XZY`, `YXZ`, `YZX`, `ZXY`, `ZYX` |
 | `RayFilter` | `BODY_2D`, `BODY_3D`, `BOUNDS` |
@@ -2217,6 +2532,13 @@ use the methods. Physics colliders keep the rest shape.
 | `FrustumPlane` | `FRUSTUM_PLANE_NEAR`, `_FAR`, `_LEFT`, `_RIGHT`, `_TOP`, `_BOTTOM` |
 | `GraphicBackend` | `GLCORE`, `GLES3`, `D3D11`, `METAL`, `WGPU` |
 | `AdMobRating` | `General`, `ParentalGuidance`, `Teen`, `MatureAudience` |
+| `SystemLanguage` | Unity's names and values: `Afrikaans` (0), `Arabic`, `Basque`, `Belarusian`, `Bulgarian`, `Catalan`, `Chinese`, `Czech`, `Danish`, `Dutch`, `English` (10), `Estonian`, `Faroese`, `Finnish`, `French`, `German`, `Greek`, `Hebrew`, `Hungarian`, `Icelandic`, `Indonesian`, `Italian`, `Japanese`, `Korean`, `Latvian`, `Lithuanian`, `Norwegian`, `Polish`, `Portuguese`, `Romanian`, `Russian`, `SerboCroatian`, `Slovak`, `Slovenian`, `Spanish` (34), `Swedish`, `Thai`, `Turkish`, `Ukrainian`, `Vietnamese`, `ChineseSimplified` (40), `ChineseTraditional`, `Unknown` (42), `Hindi` |
+| `ScreenOrientation` | `Portrait` (1), `PortraitUpsideDown` (2), `LandscapeLeft` (3), `LandscapeRight` (4), `AutoRotation` (5) |
+| `DeviceOrientation` | `Unknown` (0), `Portrait`, `PortraitUpsideDown`, `LandscapeLeft`, `LandscapeRight`, `FaceUp`, `FaceDown` |
+| `DeviceType` | `Unknown`, `Handheld`, `Console`, `Desktop` |
+| `NetworkReachability` | `NotReachable`, `ReachableViaCarrierDataNetwork`, `ReachableViaLocalAreaNetwork` |
+| `HapticFeedback` | `Light`, `Medium`, `Heavy`, `Selection`, `Success`, `Warning`, `Error` |
+| `SleepTimeout` | `NeverSleep` (-1), `SystemSetting` (-2) |
 | `ResourceLoadState` | `NotStarted`, `Loading`, `Finished`, `Failed` |
 | `LatticeInterpolation` | `SHARP`, `SMOOTH`, `CUBIC` |
 | `LatticeOutside` | `EXTEND`, `FADE` |
@@ -2287,8 +2609,11 @@ Rigidbody wrappers by index.
     state; "pressed this frame" is `Input.getKeyDown`, `getMouseButtonDown`, `getButtonDown`
     (read edges in `onUpdate`: every fixed step of a frame sees them). Prefer input actions
     (`Input.getAxis("Horizontal")`) to raw keys: they add the gamepad and on-screen controls.
-16. **Physics events are global** for the scene: compare `bodyA.entity` / `bodyB.entity`
-    with `self.entity`. 2D contact events require the per-collider event flags.
+16. **Per-object contact callbacks** (`onCollisionEnter`, `onTriggerEnter2D`...) need no flag and
+    come only to the GameObjects involved; the global events (`beginContact2D`,
+    `onContactAdded3D`...) fire for every pair of the scene (compare `bodyA.entity` /
+    `bodyB.entity` with `self.entity`) and 2D ones need the collider's event flags. A filter that
+    was a Lua `shouldCollide3D` is `Physics.ignoreCollision(a, b)` (or layers) now.
 17. **Unassigned references are `nil`**: an entity-reference or Prefab property not set in
     the Inspector is `nil`; guard (`if self.target then ... end`).
 18. **Scripts by class name, not `getComponent`**: `go:getScript("Enemy")` (same GameObject:
@@ -2315,7 +2640,7 @@ Rigidbody wrappers by index.
     empty object. A table with `nil` in the middle is not an array (`{1, nil, 3}` encodes as an
     object `{"1":1,"3":3}`): store `Json.null` to keep a place. `Json.decode` gives integers for
     `1` and floats for `1.0`; compare JSON nulls with `Json.null`, never `nil`.
-26. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
+28. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
     Android); `File.*` and `Json.*File` return `nil, message` on file problems instead of
     raising: check the first result. On Web, Lua `io` writes need `System.syncFileSystem()`.
 27. **`self.enabled` and the reserved names**: `self.enabled = false` disables the script

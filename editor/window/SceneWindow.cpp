@@ -2844,6 +2844,7 @@ void editor::SceneWindow::show() {
                     // Black until the first render creates the framebuffer.
                     const ImVec2 canvasMin = ImGui::GetCursorScreenPos();
                     Widgets::image(previewTex, canvasAvail, IM_COL32(0, 0, 0, 255));
+                    drawParticleOverlay(&sceneProject, canvasMin, canvasAvail);
 
                     // Camera Follow: the selected followers' Bounds and Dead Zone
                     {

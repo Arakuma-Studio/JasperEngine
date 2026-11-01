@@ -33,6 +33,8 @@
 #include "component/UIDocumentComponent.h"
 #include "htmlui/HtmlUIDependencies.h"
 #include "animation/AnimationClipDocument.h"
+#include "animation/AnimatorController.h"
+#include "animation/AvatarMask.h"
 #include "animation/VertexAnimation.h"
 #include "vat/VatDocument.h"
 #include "pose/PoseAnimationDocument.h"
@@ -112,8 +114,11 @@ std::string assetType(const fs::path& path) {
     if (Util::isPrefabFile(p)) return "prefab";
     if (Util::isMaterialFile(p)) return "material";
     if (Util::isShaderFile(p)) return "shader";
-    // clips (.anim) and pose animations (.poseanim), spec 9.R47
-    if (Util::isAnimationClipFile(p) || Util::isPoseAnimationFile(p)) return "animation";
+    // clips (.anim) and pose animations (.poseanim), spec 9.R47; Avatar Masks and Animator
+    // Controllers (anim layers spec 6.2, 11.1)
+    if (Util::isAnimationClipFile(p) || Util::isPoseAnimationFile(p) || Util::isAvatarMaskFile(p) || Util::isAnimatorControllerFile(p)) {
+        return "animation";
+    }
     // Vertex Animations (.vat; the generated .vat.glb is a model)
     if (Util::isVertexAnimationFile(p)) return "vertex_animation";
     // Shake Presets (.shake, camera shake spec 6)
@@ -126,7 +131,7 @@ bool isTextFile(const fs::path& path) {
         ".lua", ".cpp", ".cc", ".cxx", ".c", ".h", ".hh", ".hpp", ".hxx", ".inl",
         ".material", ".scene", ".prefab", ".yaml", ".yml", ".json", ".txt", ".md", ".csv", ".ini", ".cfg",
         ".glsl", ".vert", ".frag", ".hlsl", ".cmake", ".xml", ".gltf", ".obj", ".mtl", ".svg", ".tsx", ".tmx",
-        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim", ".vat", ".shake"
+        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim", ".vat", ".mask", ".controller", ".shake"
     };
     if (path.filename() == "CMakeLists.txt" || path.filename() == "AGENTS.md") return true;
     return text.count(extensionOf(path)) > 0;
@@ -427,7 +432,9 @@ void addAnimationFileProblems(Project* project, const fs::path& path, Json& prob
     const bool clip = Util::isAnimationClipFile(pathText);
     const bool vertexAnimation = Util::isVertexAnimationFile(pathText);
     const bool shake = Util::isShakePresetFile(pathText);
-    if (!clip && !vertexAnimation && !shake && !Util::isPoseAnimationFile(pathText)) return;
+    const bool mask = Util::isAvatarMaskFile(pathText);
+    const bool controller = Util::isAnimatorControllerFile(pathText);
+    if (!clip && !vertexAnimation && !mask && !controller && !shake && !Util::isPoseAnimationFile(pathText)) return;
     std::error_code ec;
     std::string text;
     if (!fs::is_regular_file(path, ec) || !ProjectChecks::readFile(path, text)) return;
@@ -458,6 +465,32 @@ void addAnimationFileProblems(Project* project, const fs::path& path, Json& prob
             return;
         }
         for (const ClipWarning& warning : parsed.warnings) {
+            warnings.push_back(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
+        }
+    } else if (mask || controller) {
+        // an Avatar Mask or an Animator Controller (anim layers spec 6.2, 11.1)
+        std::vector<ClipWarning> parsedWarnings;
+        anim::ClipParseError error;
+        if (mask) {
+            anim::AvatarMaskParseResult parsed = anim::parseAvatarMask(text);
+            error = parsed.error;
+            parsedWarnings = parsed.warnings;
+        } else {
+            anim::ControllerParseResult parsed = anim::parseController(text);
+            error = parsed.error;
+            parsedWarnings = parsed.warnings;
+        }
+        if (!error.empty()) {
+            Json problem = {{"path", rel}, {"message", std::string(mask ? "Not a valid Avatar Mask: " : "Not a valid Animator Controller: ") +
+                                                       error.message + " (its players keep the last valid one)."}};
+            if (error.line > 0) {
+                problem["line"] = error.line;
+                problem["col"] = error.column;
+            }
+            problems.push_back(problem);
+            return;
+        }
+        for (const ClipWarning& warning : parsedWarnings) {
             warnings.push_back(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
         }
     } else if (clip) {

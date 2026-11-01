@@ -37,6 +37,11 @@ namespace jasperengine::editor {
         // Game image size in engine pixels, and the scale from ImGui to engine pixels
         int width = 0;
         int height = 0;
+        // the simulated device's orientation the size above is laid out for
+        ScreenOrientation layoutOrientation = ScreenOrientation::Portrait;
+        // the Device menu's Custom language field
+        char customLanguage[32] = {0};
+        bool customLanguageOpen = false;
         ImVec2 engineScale = ImVec2(1.0f, 1.0f);
 
         // Scene drawn by the edit-mode pass and whether it needs drawing again
@@ -50,6 +55,9 @@ namespace jasperengine::editor {
 
         void loadSettings();
         void saveSettings();
+        // the device simulation of the settings into editor::Platform (System and Screen in Play)
+        void applySimulation();
+        void drawDeviceMenu();
         void drawToolbar();
         void drawContent(uint32_t sceneId);
         void drawStats(ImVec2 imageMin, ImVec2 imageMax, const SceneProject* sceneProject);
@@ -96,6 +104,21 @@ namespace jasperengine::editor {
         const GameViewSettings& getSettings();
         void applySettings(const GameViewSettings& newSettings);
         static int getAspectCount();
+
+        // the orientation of the simulated device the game image is laid out for (the engine's
+        // Screen.orientation with a device; App hands it over with the size)
+        ScreenOrientation getLayoutOrientation() const;
+        // Rotate: the simulated device's next orientation the game allows (Play) or any (stopped).
+        // False when it cannot turn (no device, or the game locks one orientation); error says why.
+        bool rotateDevice(std::string* error = nullptr);
+        // turns the simulated device to an orientation (the toolbar's setting too); false when
+        // there is no device or it cannot show it now (getRotatableOrientations)
+        bool turnDevice(ScreenOrientation orientation);
+        // The orientations the simulated device may turn to now: the device's, within what a
+        // playing game allows
+        uint8_t getRotatableOrientations() const;
+        // the Device menu's languages (BCP 47), System first as ""
+        static const std::vector<std::string>& languagePresets();
     };
 
 }

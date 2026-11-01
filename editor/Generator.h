@@ -118,7 +118,23 @@ namespace jasperengine::editor {
         unsigned int maxContactConstraints3D = 8192;
     };
 
+    // Player > Resolution and Presentation and the application, baked into the generated
+    // init() (Screen::initialize, Engine::setTargetFrameRate, System::setApplicationInfo)
+    struct PlayerSettings {
+        ScreenOrientation defaultOrientation = ScreenOrientation::AutoRotation;
+        uint8_t allowedOrientations = (1u << 1) | (1u << 3) | (1u << 4);
+        bool keepScreenOn = true;
+        int targetFrameRate = -1;
+        // what System.getAppName/Identifier/Version/Build return on each desktop and the web
+        // (with their platform overrides); Android and iOS read their package and bundle
+        ApplicationInfo linuxApp, windowsApp, macosApp, webApp;
+    };
+
+    // editor/tests/PlatformServicesTest.cpp: the generated platform source lists
+    struct GeneratorTestAccess;
+
     class Generator {
+        friend struct GeneratorTestAccess;
     private:
         std::future<void> buildFuture;
         std::atomic<bool> lastBuildSucceeded;
@@ -200,10 +216,13 @@ namespace jasperengine::editor {
         void writeSceneSource(Scene* scene, uint32_t sceneId, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources);
         void clearSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath);
         bool hasSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath) const;
-        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const std::string& inputActionsJson = "", bool allowInsecureHttp = false);
+        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const std::string& inputActionsJson = "", bool allowInsecureHttp = false, const std::vector<ShaderGlobalDecl>& shaderGlobals = {}, const PlayerSettings& playerSettings = PlayerSettings());
         // main.cpp's init line of Project Settings > Input: InputActions::loadJson of the project's
         // actions in a raw string literal (a delimiter the JSON does not hold), "" for the defaults
         static std::string inputActionsInitSource(const std::string& inputActionsJson);
+        // Project Settings > Graphics > Shader Globals in the generated main.cpp: the declarations
+        // (with their defaults) before any scene loads; "" when the project declares none
+        static std::string shaderGlobalsInitSource(const std::vector<ShaderGlobalDecl>& shaderGlobals);
         void build(const fs::path projectPath, const fs::path buildPath, const std::string& cCompiler = "", const std::string& cxxCompiler = "", const std::string& generator = "", unsigned int parallelJobs = 0);
         bool isBuildInProgress() const;
         void waitForBuildToComplete();

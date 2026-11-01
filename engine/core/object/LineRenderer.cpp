@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "LineRenderer.h"
+#include "shader/ShaderGlobals.h"
 #include "shader/ShaderManifest.h"
 #include "subsystem/RenderSystem.h"
 #include "render/LineRibbonBuilder.h"
@@ -543,6 +544,21 @@ Vector4 LineRenderer::getShaderParam(const std::string& name) const{
     LineRendererComponent& lines = getComponent<LineRendererComponent>();
 
     return ShaderLibraryValues::getParam(lines.shaderUniforms, lines.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines.customShader, name);
+}
+
+bool LineRenderer::setShaderGlobalBinding(const std::string& member, const std::string& global){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+
+    if (!ShaderGlobals::setBinding(lines.shaderGlobalBindings, member, global))
+        return false;
+    lines.needUpdateShaderUniforms = true;
+    return true;
+}
+
+std::string LineRenderer::getShaderGlobalBinding(const std::string& member) const{
+    const LineRendererComponent& lines = getComponent<LineRendererComponent>();
+
+    return ShaderGlobals::getBinding(lines.shaderGlobalBindings, member);
 }
 
 void LineRenderer::setShaderTexture(const std::string& name, const std::string& path){

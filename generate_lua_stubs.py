@@ -2033,6 +2033,24 @@ for _renderer, _what in (('LineRenderer', 'polyline point'), ('TrailRenderer', '
         'doc': [f'The {_what} at `index` (0-based); an index out of range is an error naming positionCount.'],
         'overloads': [([('index', 'integer')], 'Vector3')]}
 
+# Particle Systems of version 2 (particles spec 6.6, docs/mcp/guide/particles.md)
+OVERRIDES[('ParticleSystemModule', 'setBursts')] = {
+    'doc': ['ps.emission:setBursts({{time = 0, count = 10, cycles = 1, interval = 0.01, probability = 1}, ...}): replaces',
+            'the bursts (count a number or a MinMaxCurve; cycles 0 repeats forever). Version 2 systems only.'],
+    'overloads': [([('bursts', '{time: number, count: MinMaxCurve|number, cycles?: integer, interval?: number, probability?: number}[]')], '')]}
+OVERRIDES[('ParticleSystemModule', 'getBurst')] = {
+    'doc': ['ps.emission:getBurst(index): the burst at `index` (0-based, as Unity\'s GetBurst) as a table.'],
+    'overloads': [([('index', 'integer')], '{time: number, count: MinMaxCurve, cycles: integer, interval: number, probability: number}')]}
+OVERRIDES[('ParticleSystemModule', 'setBurst')] = {
+    'doc': ['ps.emission:setBurst(index, burst): sets the burst at `index` (0-based; burstCount appends).'],
+    'overloads': [([('index', 'integer'), ('burst', '{time?: number, count?: MinMaxCurve|number, cycles?: integer, interval?: number, probability?: number}')], '')]}
+OVERRIDES[('ParticleSystem', 'upgrade')] = {
+    'doc': ['Converts a version 1 (legacy) system to the module model (version 2) and returns the report:',
+            '`{upgraded = true, items = {{field, status = "exact"|"approximated"|"dropped", message, maxError}, ...}}`.',
+            'A position modifier has no module equivalent: nothing changes unless `force` is true.'],
+    'overloads': [([], '{upgraded: boolean, items: {field: string, status: string, message: string, maxError: number}[]}'),
+                  ([('force', 'boolean')], '{upgraded: boolean, items: {field: string, status: string, message: string, maxError: number}[]}')]}
+
 OVERRIDES[('Gradient', 'setKeys')] = {
     'doc': ['Replaces the keys: colorKeys are {time, color} (Vector3 sRGB) or GradientColorKey, alphaKeys',
             '{time, alpha} or GradientAlphaKey; sorted, at most 8 of each.',
@@ -2065,11 +2083,96 @@ OVERRIDES.update({
     ('Input', 'addAxisDelta'): {
         'doc': ['Adds `delta` to the action for this frame only, unclamped (like mouse movement).'],
         'overloads': [([('name', 'string'), ('delta', 'number'), ('source?', _INPUT_SOURCE)], '')]},
+    ('UIComponent', 'getPointerEventData'): {
+        'doc': ['The PointerEventData of the legacy callback running now (`onPointerDown(x, y)`, `onClick`...):',
+                'its pointerId, button, positions; nil outside one.'],
+        'overloads': [([], 'PointerEventData?')]},
+    ('Input', 'isPointerOverUI'): {
+        'doc': ['Whether the pointer is over UI that takes it (Unity\'s EventSystem.IsPointerOverGameObject):',
+                'a component UI element that receives events, HTML content, or a press either holds.',
+                '`pointerId`: -1 the mouse, a finger\'s `Touch.fingerId`; none: the mouse or any finger.'],
+        'overloads': [([('pointerId?', 'integer')], 'boolean')]},
     ('Input', 'clearSimulated'): {
         'doc': ['Removes the simulated values of `source` (without one: of every script).'],
         'overloads': [([('source?', _INPUT_SOURCE)], '')]},
 })
 
+# Shader (CoreClassesLua.cpp): global shader values (Unity's Shader.SetGlobal* / PropertyToID),
+# read by shaders declaring u_vs_globals / u_fs_globals members (or a texture uniform) of the name
+_GLOBAL = 'string|integer'
+OVERRIDES.update({
+    ('Shader', 'propertyToID'): {
+        'doc': ['A stable id of the global `name` for this run (Unity\'s Shader.PropertyToID): pass it instead of the name.'],
+        'overloads': [([('name', 'string')], 'integer')]},
+    ('Shader', 'setGlobalFloat'): {
+        'doc': ['Sets a float global (a vector global takes (value, 0, 0, 0)); false when it is a matrix, array or texture.'],
+        'overloads': [([('name', _GLOBAL), ('value', 'number')], 'boolean')]},
+    ('Shader', 'setGlobalInt'): {
+        'doc': ['As setGlobalFloat: the integer is stored as a float (Unity\'s SetGlobalInt).'],
+        'overloads': [([('name', _GLOBAL), ('value', 'integer')], 'boolean')]},
+    ('Shader', 'setGlobalVector'): {
+        'doc': ['Sets a vector global (missing components 0; a float global takes x).'],
+        'overloads': [([('name', _GLOBAL), ('value', 'Vector4|Vector3|Vector2')], 'boolean')]},
+    ('Shader', 'setGlobalColor'): {
+        'doc': ['Sets a colour global from sRGB (stored linear, alpha as is; a Vector3 is opaque).'],
+        'overloads': [([('name', _GLOBAL), ('color', 'Vector4|Vector3')], 'boolean')]},
+    ('Shader', 'setGlobalMatrix'): {
+        'doc': ['Sets a matrix4 global (only a matrix global takes it).'],
+        'overloads': [([('name', _GLOBAL), ('value', 'Matrix4')], 'boolean')]},
+    ('Shader', 'setGlobalFloatArray'): {
+        'doc': ['Sets the elements of a float array global (1..64; a first set fixes the size, longer ones are truncated).'],
+        'overloads': [([('name', _GLOBAL), ('values', 'number[]')], 'boolean')]},
+    ('Shader', 'setGlobalVectorArray'): {
+        'doc': ['Sets the elements of a vector4 array global (1..64; a first set fixes the size).'],
+        'overloads': [([('name', _GLOBAL), ('values', '(Vector4|Vector3|Vector2)[]')], 'boolean')]},
+    ('Shader', 'setGlobalTexture'): {
+        'doc': ['Sets a texture global: a Texture, an image path or a Framebuffer (a render target); nil restores its default.'],
+        'overloads': [([('name', _GLOBAL), ('texture', 'Texture|string|Framebuffer|nil')], 'boolean')]},
+    ('Shader', 'getGlobalFloat'): {
+        'doc': ['The global\'s value (a vector\'s x); nil when it does not exist or is a matrix or texture.'],
+        'overloads': [([('name', _GLOBAL)], 'number?')]},
+    ('Shader', 'getGlobalInt'): {
+        'doc': ['getGlobalFloat as an integer.'],
+        'overloads': [([('name', _GLOBAL)], 'integer?')]},
+    ('Shader', 'getGlobalVector'): {
+        'doc': ['The global\'s value (an array\'s element 0); nil when it does not exist or is a matrix or texture.'],
+        'overloads': [([('name', _GLOBAL)], 'Vector4?')]},
+    ('Shader', 'getGlobalColor'): {
+        'doc': ['getGlobalVector as sRGB (alpha as is).'],
+        'overloads': [([('name', _GLOBAL)], 'Vector4?')]},
+    ('Shader', 'getGlobalMatrix'): {
+        'doc': ['A matrix4 global\'s value; nil for any other.'],
+        'overloads': [([('name', _GLOBAL)], 'Matrix4?')]},
+    ('Shader', 'getGlobalFloatArray'): {
+        'doc': ['An array global\'s elements (x of each); nil when it is not an array.'],
+        'overloads': [([('name', _GLOBAL)], 'number[]?')]},
+    ('Shader', 'getGlobalVectorArray'): {
+        'doc': ['An array global\'s elements; nil when it is not an array.'],
+        'overloads': [([('name', _GLOBAL)], 'Vector4[]?')]},
+    ('Shader', 'getGlobalTexture'): {
+        'doc': ['The texture a texture global holds; nil for none (its fallback binds) or another kind.'],
+        'overloads': [([('name', _GLOBAL)], 'Texture?')]},
+    ('Shader', 'hasGlobal'): {
+        'doc': ['Whether the global exists (declared in Project Settings, or set by a script).'],
+        'overloads': [([('name', _GLOBAL)], 'boolean')]},
+    ('Shader', 'getGlobalNames'): {
+        'doc': ['The globals that exist: the declared ones first, then the ones scripts made.'],
+        'overloads': [([], 'string[]')]},
+})
+for _owner in ('Material', 'Image', 'Text', 'Polygon', 'Points', 'LineRenderer', 'Skybox', 'TrailRenderer'):
+    OVERRIDES[(_owner, 'setShaderGlobalBinding')] = {
+        'doc': ['Makes the shader parameter `member` follow the global shader value `global` (Shader.setGlobal*),',
+                'over its own value; nil unbinds. False when nothing changed.' + (' Then mesh:setMaterial(m).' if _owner == 'Material' else '')],
+        'overloads': [([('member', 'string'), ('global', 'string|nil')], 'boolean')]}
+    OVERRIDES[(_owner, 'getShaderGlobalBinding')] = {
+        'doc': ['The global `member` follows, nil when it has its own value.'],
+        'overloads': [([('member', 'string')], 'string?')]}
+OVERRIDES[('Scene', 'setPostProcessGlobalBinding')] = {
+    'doc': ['Makes the u_fs_postParams member of pass `index` follow a global shader value; nil unbinds.'],
+    'overloads': [([('index', 'integer'), ('member', 'string'), ('global', 'string|nil')], 'boolean')]}
+OVERRIDES[('Scene', 'getPostProcessGlobalBinding')] = {
+    'doc': ['The global the pass member follows, nil when none.'],
+    'overloads': [([('index', 'integer'), ('member', 'string')], 'string?')]}
 # Canvas Group fades (ui canvas group spec 7.6): AlphaTweens on the group from its current alpha
 OVERRIDES[('CanvasGroup', 'fadeTo')] = {
     'doc': ['Fades the group from its current alpha to `alpha` in `duration` seconds (LeanTween.alphaCanvas,',
@@ -2312,24 +2415,39 @@ OVERRIDES.update({
         'overloads': [([('name', 'string')], 'string?')]},
 })
 
+# Properties whose getter returns a LuaRef: (Lua type, a copy)
+
 # Properties whose getter returns a LuaRef, or whose lambda's return type is not inferred:
 # (Lua type, a copy)
 PROPERTY_OVERRIDES = {
     # the null sentinel (stubs/Json.lua: JsonNull)
     ('Json', 'null'): ('JsonNull', False),
     ('Mesh', 'material'): ('Material', True),
+    # the Particle System module views (binding/stubs/ParticleSystemModules.lua, from
+    # tools/gen_particle_stubs.py): live views, not copies
+    **{('ParticleSystem', _m): ('ParticleSystem' + _m[0].upper() + _m[1:] + 'Module', False) for _m in (
+        'main', 'emission', 'shape', 'velocityOverLifetime', 'limitVelocityOverLifetime', 'inheritVelocity',
+        'forceOverLifetime', 'colorOverLifetime', 'colorBySpeed', 'sizeOverLifetime', 'sizeBySpeed',
+        'rotationOverLifetime', 'rotationBySpeed', 'noise', 'textureSheetAnimation', 'renderer')},
     # AnimationEvent.args builds a 1-based table of the event's arguments
     ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
+    # ui-multitouch: the GameObjects of a PointerEventData (nil: none)
+    ('PointerEventData', 'pointerEnter'): ('GameObject?', False),
+    ('PointerEventData', 'pointerPress'): ('GameObject?', False),
+    ('PointerEventData', 'rawPointerPress'): ('GameObject?', False),
+    ('PointerEventData', 'pointerDrag'): ('GameObject?', False),
+    ('PointerEventData', 'target'): ('GameObject?', False),
     # a coroutine's error (with its traceback) and the script instance that started it
     ('Coroutine', 'error'): ('string?', False),
     ('Coroutine', 'owner'): ('ScriptInstance?', False),
-    # the GameObject a Camera Follow follows (same scene), nil without one
+    # the GameObject a Camera Follow follows (its scene or the persistent one), nil without one
     ('CameraFollow', 'target'): ('GameObject?', False),
     ('HttpRequest', 'response'): ('HttpResponse|nil', False),
     ('HttpResponse', 'headers'): ('table<string, string>', True),
     ('HttpResponse', 'body'): ('string', False),
     ('HttpResponse', 'data'): ('JsonValue', False),
     ('HttpResponse', 'textureData'): ('TextureData|nil', True),
+
     # the joint's bodies (std::optional<GameObject> lambdas): nil = the world
     ('Joint2D', 'bodyA'): ('GameObject|nil', False),
     ('Joint2D', 'bodyB'): ('GameObject|nil', False),
@@ -2338,6 +2456,32 @@ PROPERTY_OVERRIDES = {
     ('Joint3D', 'bodyB'): ('GameObject|nil', False),
     ('Joint3D', 'connectedBody'): ('GameObject|nil', False),
 }
+
+# physics-contacts: the callbacks' values. Their GameObject / body / receiver getters are
+# std::optional lambdas (nil once gone), contacts builds a table, getContact is a lua_CFunction
+for _col, _body, _contact in (('Collider', 'Rigidbody', 'ContactPoint'), ('Collider2D', 'Rigidbody2D', 'ContactPoint2D')):
+    PROPERTY_OVERRIDES[(_col, 'gameObject')] = ('GameObject|nil', False)
+    PROPERTY_OVERRIDES[(_col, 'rigidbody')] = (_body + '|nil', False)
+    PROPERTY_OVERRIDES[(_col, 'attachedRigidbody')] = (_body + '|nil', False)
+    PROPERTY_OVERRIDES[(_col, 'receiver')] = ('GameObject|nil', False)
+for _coll, _body, _contact in (('Collision', 'Rigidbody', 'ContactPoint'), ('Collision2D', 'Rigidbody2D', 'ContactPoint2D')):
+    PROPERTY_OVERRIDES[(_coll, 'gameObject')] = ('GameObject|nil', False)
+    PROPERTY_OVERRIDES[(_coll, 'rigidbody')] = (_body + '|nil', False)
+    PROPERTY_OVERRIDES[(_coll, 'thisRigidbody')] = (_body + '|nil', False)
+    PROPERTY_OVERRIDES[(_coll, 'contacts')] = (_contact + '[]', True)
+    OVERRIDES[(_coll, 'getContact')] = {
+        'doc': ['Contact point `index` (0-based, an error out of range). Allocates nothing, unlike `contacts`.'],
+        'overloads': [([('index', 'integer')], _contact)]}
+PROPERTY_OVERRIDES[('Collision2D', 'otherRigidbody')] = ('Rigidbody2D|nil', False)
+
+for _phys, _what in (('Physics', 'Rigidbody'), ('Physics2D', 'Rigidbody 2D')):
+    OVERRIDES[(_phys, 'ignoreCollision')] = {
+        'doc': [f'Makes the two bodies (GameObjects or bodies with a {_what}, one scene) collide or not, at run',
+                'time (Unity Physics.IgnoreCollision). `ignore` defaults to true; resting pairs are woken.'],
+        'overloads': [([('a', 'EntityHandle'), ('b', 'EntityHandle'), ('ignore?', 'boolean')], '')]}
+    OVERRIDES[(_phys, 'getIgnoreCollision')] = {
+        'doc': ['Whether ignoreCollision keeps the two bodies apart.'],
+        'overloads': [([('a', 'EntityHandle'), ('b', 'EntityHandle')], 'boolean')]}
 
 for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
     OVERRIDES[(_phys, 'ignoreLayerCollision')] = {
@@ -2484,12 +2628,24 @@ HTML_UI_FIELD_OVERRIDES = {
 HTML_UI_EVENT_TYPES = [
     ('click', 'a press and release on the element (Enter/Space on a focused button too)'),
     ('dblclick', 'a double click'),
-    ('mousedown', 'a pointer press (event.button: 0 left, 1 middle, 2 right)'),
+    ('mousedown', 'a pointer press (event.button: 0 left, 1 middle, 2 right; every finger too, event.pointerId)'),
     ('mouseup', 'a pointer release'),
     ('mousemove', 'the pointer moved over the element'),
     ('mouseover', 'the pointer entered the element or a child (bubbles)'),
     ('mouseout', 'the pointer left the element or a child (bubbles)'),
     ('wheel', 'the mouse wheel (event.deltaX/deltaY in steps, positive down/right)'),
+    ('pointerdown', 'a pointer pressed: the mouse (pointerId 1) or a finger (event.pointerType "touch", event.fingerId); each finger its own'),
+    ('pointermove', 'the pointer moved (to its capture when captured)'),
+    ('pointerup', 'the pointer released'),
+    ('pointercancel', 'the pointer ended without a release (a touch that started a pan, a cancelled touch)'),
+    ('pointerover', 'the pointer came over the element (bubbles)'),
+    ('pointerout', 'the pointer left the element (bubbles)'),
+    ('pointerenter', 'the pointer entered the element or a child (does not bubble)'),
+    ('pointerleave', 'the pointer left the element and its children (does not bubble)'),
+    ('gotpointercapture', 'the element captured the pointer (setPointerCapture, or a touch\'s pointerdown target)'),
+    ('lostpointercapture', 'the element lost the pointer\'s capture (release, up, cancel)'),
+    ('mouseenter', 'the pointer entered the element (does not bubble)'),
+    ('mouseleave', 'the pointer left the element (does not bubble)'),
     ('keydown', 'a key press on the focused element (event.key: "Enter", "Escape", "ArrowUp", "a"); gamepads too (event.code: "GamepadA", "GamepadDPadUp", ...)'),
     ('keyup', 'a key release (keyboard or gamepad)'),
     ('textinput', 'text typed into the focused element (event.data)'),
@@ -3463,9 +3619,13 @@ class Emitter:
             '---  onDisable(self)         it stops being active and enabled; before onDestroy',
             '---  onDestroy(self)         once: destroy, scene unload, Play stop / quit (only if init ran)',
             '---  onApplicationPause(self, paused) / onApplicationFocus(self, focused) / onApplicationQuit(self)',
+            '---The component UI\'s pointer callbacks (Unity\'s IPointerDownHandler...), e: PointerEventData, sent to',
+            '---the element under the pointer or its first ancestor whose script defines them (lua-api.md 1.7):',
+            '---  onPointerDown / onPointerUp / onPointerClick / onPointerEnter / onPointerExit(self, e)',
+            '---  onInitializePotentialDrag / onBeginDrag / onDrag / onEndDrag / onDrop / onScroll(self, e)',
             '---Update methods (onUpdate, onFixedUpdate, onPostUpdate) run only once registered with',
             '---RegisterEngineEvent; they are skipped while the script is not active and enabled.',
-            '---@class ScriptInstance',
+            '---@class ScriptInstance : ScriptCallbacks',
             '---@field scene Scene # the scene of the GameObject the script is attached to',
             '---@field entity integer # the GameObject\'s entity; wrap it: `Sprite(self.scene, self.entity)`',
             '---@field __name string # the script class name (the file name)',
@@ -3518,6 +3678,33 @@ class Emitter:
             '---@return boolean',
             'function ScriptInstance:isInvoking(timerOrMethodName) end',
             '',
+            '---The physics messages a script receives when it defines them (Unity OnCollisionEnter...): called',
+            '---on the main thread after the fixed step that caused them, enabled or not, while the GameObject',
+            '---is active (docs: jasper://docs/physics). The collision is seen from this side (`collision.collider`',
+            '---and `collision.gameObject` are the other\'s); triggers get the other collider.',
+            '---@class ScriptCallbacks',
+            'local ScriptCallbacks = {}',
+            '',
+        ]
+        for name, param, ptype, doc in (
+                ('onCollisionEnter', 'collision', 'Collision', 'started touching another collider (3D)'),
+                ('onCollisionStay', 'collision', 'Collision', 'still touching, once per fixed step (not while asleep)'),
+                ('onCollisionExit', 'collision', 'Collision', 'stopped touching (also when the other goes; no contacts then)'),
+                ('onTriggerEnter', 'other', 'Collider', 'a collider entered this trigger, or this entered a trigger (3D)'),
+                ('onTriggerStay', 'other', 'Collider', 'still overlapping, once per fixed step'),
+                ('onTriggerExit', 'other', 'Collider', 'stopped overlapping (also when the other goes)'),
+                ('onCollisionEnter2D', 'collision', 'Collision2D', 'started touching another collider (2D)'),
+                ('onCollisionStay2D', 'collision', 'Collision2D', 'still touching, once per fixed step while a body is awake'),
+                ('onCollisionExit2D', 'collision', 'Collision2D', 'stopped touching (also when the other goes)'),
+                ('onTriggerEnter2D', 'other', 'Collider2D', 'a collider entered this trigger, or this entered a trigger (2D)'),
+                ('onTriggerStay2D', 'other', 'Collider2D', 'still overlapping, once per fixed step'),
+                ('onTriggerExit2D', 'other', 'Collider2D', 'stopped overlapping (also when the other goes)'),
+                ('onJointBreak2D', 'joint', 'Joint2D', 'a 2D joint of this GameObject (or whose bodyA is it) broke')):
+            L.append('---' + doc[0].upper() + doc[1:] + '.')
+            L.append(f'---@param {param} {ptype}')
+            L.append(f'function ScriptCallbacks:{name}({param}) end')
+            L.append('')
+        L += [
         ]
         for name, doc in _GET_SCRIPT_DOCS.items():
             for line in doc:

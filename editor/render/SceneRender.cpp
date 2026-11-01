@@ -28,6 +28,8 @@ extern unsigned int bulb_icon_png_len;
 #include "util/Angle.h"
 #include "util/FluidEditorTools.h"
 #include "pose/PoseViewport.h"
+#include "render/gizmo/ParticleShapeGizmo.h"
+#include "component/ParticleSystemComponent.h"
 
 #include <algorithm>
 #include <cmath>
@@ -72,12 +74,42 @@ void editor::SceneRender::deleteGizmo(EntityHandle* gizmo, const RenderSystem& r
 void editor::SceneRender::dropGoneGizmos(){
     const RenderSystem& render = *scene->getSystem<RenderSystem>();
     dropGoneGizmos(latticeCages, render, &LatticeCageLines::overlay, &LatticeCageLines::depth);
+    dropGoneGizmos(particleShapeLines, render);
 }
 
 void editor::SceneRender::ensureOverlayLines(std::map<Entity, LineRenderer*>& lines, Entity entity){
     if (lines.find(entity) == lines.end()){
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
         lines[entity] = overlay(new LineRenderer(scene));
+    }
+}
+
+void editor::SceneRender::updateParticleShapeLines(Entity entity, bool selected, std::set<Entity>& current){
+    const ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity);
+    const Transform* transform = scene->findComponent<Transform>(entity);
+    if (!ps || !transform || ps->version < 2) return;
+    current.insert(entity);
+    ensureOverlayLines(particleShapeLines, entity);
+    LineRenderer* lines = particleShapeLines[entity];
+    lines->clearLines();
+    const bool visible = selected && transform->visible && ps->shape.enabled;
+    lines->setVisible(visible);
+    if (!visible) return;
+    // Unity's shape gizmo blue
+    const Vector4 color(0.58f, 0.78f, 1.0f, 1.0f);
+    for (const auto& segment : particleShapeGizmoSegments(ps->shape)){
+        lines->addLine(transform->modelMatrix * segment.first, transform->modelMatrix * segment.second, color);
+    }
+}
+
+void editor::SceneRender::dropParticleShapeLines(const std::set<Entity>& current){
+    for (auto it = particleShapeLines.begin(); it != particleShapeLines.end();){
+        if (current.find(it->first) == current.end()){
+            delete it->second;
+            it = particleShapeLines.erase(it);
+        }else{
+            ++it;
+        }
     }
 }
 
@@ -132,6 +164,9 @@ editor::SceneRender::~SceneRender(){
     }
 
     destroyLatticeCages();
+    for (auto& pair : particleShapeLines) {
+        delete pair.second;
+    }
     delete terrainBrushLines;
     delete physicsLines;
     delete camera;

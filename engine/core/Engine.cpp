@@ -3,9 +3,11 @@
 
 #include "manager/ObjectManager.h"
 #include "Engine.h"
+#include "shader/ShaderGlobals.h"
 #include "Log.h"
 #include "Scene.h"
 #include "Input.h"
+#include "Screen.h"
 #include "io/UserSettings.h"
 #include "input/InputActions.h"
 #include "render/SystemRender.h"
@@ -14,6 +16,7 @@
 #include "script/ScriptRuntime.h"
 #include "lua.hpp"
 #include "manager/SceneManager.h"
+#include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/CameraControlSystem.h"
 #include "subsystem/PhysicsSystem.h"
@@ -24,6 +27,8 @@
 #include "htmlui/anim/AnimEngine.h"
 #include "util/StringUtils.h"
 #include "util/Utf16Combiner.h"
+#include "util/PlatformRules.h"
+#include "component/ScriptComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/UIComponent.h"
 #include "component/PanelComponent.h"
@@ -43,6 +48,8 @@
 #include "pool/MeshLodPool.h"
 #include "pool/MeshBufferPool.h"
 #include "pool/AnimationClipPool.h"
+#include "pool/AvatarMaskPool.h"
+#include "pool/AnimatorControllerPool.h"
 #include "pool/ShakePresetPool.h"
 #include "pool/PhysicsMaterialPool.h"
 #include "pool/VertexAnimationPool.h"
@@ -131,7 +138,17 @@ bool Engine::clampNextDelta = false;
 
 std::atomic<bool> Engine::viewLoaded = false;
 std::atomic<bool> Engine::paused = false;
-bool Engine::focused = true;
+std::atomic<bool> Engine::focused = true;
+int Engine::targetFrameRate = -1;
+// the project's VSync setting in builds (the generated init() sets it too)
+#if defined(JASPERENGINE_VSYNC_ENABLED)
+int Engine::vSyncCount = JASPERENGINE_VSYNC_ENABLED ? 1 : 0;
+#else
+int Engine::vSyncCount = 1;
+#endif
+FramePacing Engine::framePacing;
+int Engine::lastOrientation = 0;
+double Engine::orientationPendingSince = 0.0;
 std::atomic<bool> Engine::asyncLoading = false;
 bool Engine::frameRunning = false;
 
@@ -155,6 +172,8 @@ FunctionSubscribe<void()> Engine::onPause;
 FunctionSubscribe<void()> Engine::onResume;
 FunctionSubscribe<void()> Engine::onShutdown;
 FunctionSubscribe<void(bool)> Engine::onFocus;
+FunctionSubscribe<void(int)> Engine::onOrientationChanged;
+FunctionSubscribe<void()> Engine::onLowMemory;
 FunctionSubscribe<void()> Engine::onSceneLoaded;
 FunctionSubscribe<void(int,float,float)> Engine::onTouchStart;
 FunctionSubscribe<void(int,float,float)> Engine::onTouchEnd;
@@ -526,6 +545,18 @@ bool Engine::isIgnoreEventsHandledByUI(){
 
 bool Engine::isUIEventReceived(){
     return uiEventReceived;
+}
+
+bool Engine::isPointerOverUI(int pointerId){
+    for (Scene* scene : getScenesSnapshot()){
+        if (!scene->canReceiveUIEvents())
+            continue;
+        if (scene->getSystem<UISystem>()->isPointerOverUI(pointerId))
+            return true;
+        if (scene->getSystem<UIDocumentSystem>()->isPointerOverUI(pointerId))
+            return true;
+    }
+    return false;
 }
 
 void Engine::setUpdateTimeMS(unsigned int updateTimeMS){
@@ -955,6 +986,8 @@ void Engine::endCompositeFramebuffer(){
 void Engine::clearPools(){
     // first: its assets' payload textures go back to the texture pools cleared next
     VertexAnimationPool::clear();
+    // the global shader textures (Shader.setGlobalTexture) hold pool entries too
+    ShaderGlobals::releaseTextures();
     TexturePool::clear();
     SoundPool::clear();
     TextureDataPool::clear();
@@ -964,6 +997,8 @@ void Engine::clearPools(){
     MeshLodPool::clear();
     MeshBufferPool::clear();
     AnimationClipPool::clear();
+    AvatarMaskPool::clear();
+    AnimatorControllerPool::clear();
     ShakePresetPool::clear();
     PhysicsMaterialPool::clear();
 }
@@ -979,6 +1014,8 @@ void Engine::clearUnusedPools(){
     MeshLodPool::clearUnused();
     MeshBufferPool::clearUnused();
     AnimationClipPool::clearUnused();
+    AvatarMaskPool::clearUnused();
+    AnimatorControllerPool::clearUnused();
     PhysicsMaterialPool::clearUnused();
 }
 
@@ -1019,6 +1056,8 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     onResume.removeByTagSubstring(substring);
     onShutdown.removeByTagSubstring(substring);
     onFocus.removeByTagSubstring(substring);
+    onOrientationChanged.removeByTagSubstring(substring);
+    onLowMemory.removeByTagSubstring(substring);
     onSceneLoaded.removeByTagSubstring(substring);
 
     // a released script instance's tag is "_<address>_": the input sources it owned go too
@@ -1072,6 +1111,8 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
         onResume.clear();
         onShutdown.clear();
         onFocus.clear();
+        onOrientationChanged.clear();
+        onLowMemory.clear();
     }
 }
 
@@ -1103,6 +1144,23 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
         ui.onDragStart.clear();
         ui.onDrag.clear();
         ui.onDragEnd.clear();
+    }
+
+    auto sticks = scene->getComponentArray<OnScreenStickComponent>();
+    for (size_t i = 0; i < sticks->size(); i++) {
+        OnScreenStickComponent& stick = sticks->getComponentFromIndex(i);
+        stick.onValueChanged.clear();
+        stick.onPress.clear();
+        stick.onRelease.clear();
+    }
+    auto onScreenButtons = scene->getComponentArray<OnScreenButtonComponent>();
+    for (size_t i = 0; i < onScreenButtons->size(); i++) {
+        onScreenButtons->getComponentFromIndex(i).onPress.clear();
+        onScreenButtons->getComponentFromIndex(i).onRelease.clear();
+    }
+    auto touchAreas = scene->getComponentArray<TouchAreaComponent>();
+    for (size_t i = 0; i < touchAreas->size(); i++) {
+        touchAreas->getComponentFromIndex(i).onDrag.clear();
     }
 
     auto panels = scene->getComponentArray<PanelComponent>();
@@ -1161,6 +1219,8 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
         AnimationPlayerComponent& player = players->getComponentFromIndex(i);
         player.onEvent.clear();
         player.onFinish.clear();
+        player.onStateEnter.clear();
+        player.onStateExit.clear();
     }
 
     auto vertexAnimators = scene->getComponentArray<VertexAnimatorComponent>();
@@ -1263,6 +1323,9 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
     updateTimeCount = 0;
     viewLoaded = false;
     paused = false;
+    focused = true;
+    lastOrientation = 0;
+    orientationPendingSince = 0.0;
 
     drawSemaphore.release();
 
@@ -1271,6 +1334,9 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
     
     std::vector<std::string> args(argv, argv + argc);
     System::instance().args = args;
+
+    // the platform's defaults until init() (the generated main, a script) changes them
+    applyFramePacing();
 
     LuaBinding::createLuaState();
 
@@ -1298,6 +1364,11 @@ void Engine::systemViewLoaded(){
     }
 
     getAsyncThreadDepthStorage() = 0;
+
+    // what init() asked for before the view existed: the swap interval needs the context,
+    // the orientation and screen sleep a window
+    applyFramePacing();
+    Screen::applyToPlatform();
 
     // systemViewDestroyed stopped async loads; a recreated view needs them again
     SoundPool::cancelShutdown();
@@ -1345,6 +1416,9 @@ void Engine::systemViewChanged(){
     }
 
     onViewChanged.call();
+
+    // a resize can be a rotation: onOrientationChanged comes after onCanvasChanged
+    systemOrientationChanged();
 }
 
 // With JASPERENGINE_READY_SIGNAL set (tools/smoke-test.sh sets it), logs once the frame
@@ -1390,8 +1464,13 @@ void Engine::signalReadyOnce(){
         if (frameStats){
             frames++;
             const uint64_t after = frames - signalledFrame;
-            if (frameStatsAll || after == 2 || after == 30 || after == 90)
+            // the particle simulation of this frame (particles spec 8: the CPU budget)
+            size_t alive = 0;
+            const double particleMs = ActionSystem::takeParticleSimMs(&alive);
+            if (frameStatsAll || after == 2 || after == 30 || after == 90){
                 SystemRender::logFrameStats(frames);
+                if (alive > 0) Log::print("Frame %llu particles_sim_ms %.3f (%zu particles)", (unsigned long long)frames, particleMs, alive);
+            }
         }
         return;
     }
@@ -1429,6 +1508,11 @@ void Engine::systemUpdate(){
 
 void Engine::runFrame(bool draw){
     const int MAX_UPDATES_PER_FRAME = 100;
+
+    // a quarter turn waiting for its view size (systemOrientationChanged's timeout)
+    if (orientationPendingSince > 0.0){
+        systemOrientationChanged();
+    }
 
     //Deltatime in seconds
     double rawDelta = stm_sec(stm_laptime(&lastTime));
@@ -1744,38 +1828,140 @@ void Engine::systemShutdown(){
 }
 
 void Engine::systemPause(){
+    if (paused) return;
+    // leaving: the focus goes first (Unity: OnApplicationFocus(false), then OnApplicationPause(true))
+    systemFocus(false);
+    paused = true;
     AudioSystem::pauseAll();
     ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 1); return 1; },
         [](ScriptBase& script) { script.onApplicationPause(true); });
     Engine::onPause.call();
-    paused = true;
-    // the key and button ups of a paused app never come: the first frame after resume sees them
-    Input::releaseAll();
 
-    // a paused app may be killed without another call
+    // the key and button ups of a paused app never come: the first frame after resume sees them
+    // (systemFocus(false) released them already unless the focus was gone before)
+    Input::releaseAll();
+    // so the presses of the documents and the component UI end now (cancelled: no click), the
+    // controls let go (D6)
+    cancelAllUIPointers();
+
+    // a paused app may be killed without another call (after the handlers, which may set some)
     UserSettings::save();
 }
 
 void Engine::systemResume(){
+    if (!paused) return;
+    paused = false;
     AudioSystem::resumeAll();
     ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 0); return 1; },
         [](ScriptBase& script) { script.onApplicationPause(false); });
     Engine::onResume.call();
-    paused = false;
 }
 
 void Engine::systemFocus(bool hasFocus){
-    if (focused == hasFocus){
-        return;
+    if (hasFocus == focused) return;
+    // coming back: the resume goes first (OnApplicationPause(false), then OnApplicationFocus(true))
+    if (hasFocus && paused){
+        systemResume();
     }
     focused = hasFocus;
-    Engine::onFocus.call(hasFocus);
+    // the key and button ups after a focus loss go to another window: the next frame sees them; the
+    // UI presses end now (D6, cancelled)
+    if (!hasFocus){
+        Input::releaseAll();
+        cancelAllUIPointers();
+    }
     ScriptRuntime::broadcast(ScriptMessage::ApplicationFocus, [hasFocus](lua_State* L) { lua_pushboolean(L, hasFocus ? 1 : 0); return 1; },
         [hasFocus](ScriptBase& script) { script.onApplicationFocus(hasFocus); });
+    Engine::onFocus.call(hasFocus);
+}
+
+void Engine::systemOrientationChanged(){
+    if (!System::hasInstance()) return;
+    const int orientation = (int)Screen::getOrientation();
+    if (orientation == lastOrientation){
+        orientationPendingSince = 0.0;
+        return;
+    }
+    // the first one is where the view starts, not a change
+    if (lastOrientation == 0){
+        lastOrientation = orientation;
+        return;
+    }
+    // A quarter turn is reported before the new view size on some platforms (Android's display
+    // rotation, the web's screen.orientation): it waits for the size to flip, so onCanvasChanged
+    // comes first (systemViewChanged calls this again), or ORIENTATION_SIZE_TIMEOUT seconds (a view
+    // that keeps its shape, e.g. a fixed canvas in a page). A half turn changes no size: at once.
+    auto landscape = [](int o){
+        return o == (int)ScreenOrientation::LandscapeLeft || o == (int)ScreenOrientation::LandscapeRight;
+    };
+    if (landscape(orientation) != landscape(lastOrientation)){
+        const int width = System::instance().getScreenWidth();
+        const int height = System::instance().getScreenHeight();
+        const bool sizeFlipped = width == height || landscape(orientation) == (width > height);
+        const double now = getSystemTime();
+        if (!sizeFlipped){
+            if (orientationPendingSince <= 0.0) orientationPendingSince = now;
+            if (now - orientationPendingSince < ORIENTATION_SIZE_TIMEOUT) return;
+        }
+    }
+    orientationPendingSince = 0.0;
+    lastOrientation = orientation;
+    Engine::onOrientationChanged.call(orientation);
+}
+
+void Engine::systemLowMemory(){
+    Engine::onLowMemory.call();
+}
+
+void Engine::resetApplicationState(){
+    if (paused){
+        paused = false;
+        AudioSystem::resumeAll();
+    }
+    focused = true;
+    lastOrientation = 0;
+    orientationPendingSince = 0.0;
+    targetFrameRate = -1;
+    applyFramePacing();
 }
 
 bool Engine::isFocused(){
     return focused;
+}
+
+bool Engine::isPaused(){
+    return paused;
+}
+
+void Engine::setTargetFrameRate(int fps){
+    targetFrameRate = fps <= 0 ? -1 : std::min(fps, 1000);
+    applyFramePacing();
+}
+
+int Engine::getTargetFrameRate(){
+    return targetFrameRate;
+}
+
+void Engine::setVSyncCount(int count){
+    vSyncCount = std::clamp(count, 0, 4);
+    applyFramePacing();
+}
+
+int Engine::getVSyncCount(){
+    return vSyncCount;
+}
+
+const FramePacing& Engine::getFramePacing(){
+    return framePacing;
+}
+
+void Engine::applyFramePacing(){
+    if (!System::hasInstance()) return;
+    System& system = System::instance();
+    framePacing = PlatformRules::computeFramePacing(getPlatform(), targetFrameRate, vSyncCount,
+                                                    system.getRefreshRate(), system.getMaxSwapInterval(),
+                                                    system.canDisableVSync());
+    system.applyFramePacing(framePacing);
 }
 
 // Scenes below a loading scene only get pointer-up, so nothing stays pressed
@@ -2089,10 +2275,13 @@ void Engine::systemTouchStart(int pointer, float x, float y){
         if (documentScene)
             uiEventReceived = true;
 
-        for (Scene* scene : scenes){
-            if (scene != documentScene && canSendUIEvents(scene))
-                if (scene->getSystem<UISystem>()->eventOnPointerDown(x, y))
-                    uiEventReceived = true;
+        // per pointer: a finger a document took never reaches the component UI (ui-multitouch)
+        if (!documentScene){
+            for (Scene* scene : scenes){
+                if (canSendUIEvents(scene))
+                    if (scene->getSystem<UISystem>()->eventOnPointerDown(pointer, D_MOUSE_BUTTON_1, x, y, true))
+                        uiEventReceived = true;
+            }
         }
 
         if (dispatchToWorldDocuments(scenes, uiEventReceived, false, [&](UIDocumentSystem* documents, bool covered){
@@ -2120,10 +2309,12 @@ void Engine::systemTouchStart(int pointer, float x, float y){
 void Engine::systemTouchEnd(int pointer, float x, float y){
     const bool visible = Input::isTouchVisible(pointer);
     if (!transformCoordPos(x, y)){
-        // lifted outside the canvas: no event, but the finger is not down any more
+        // lifted outside the canvas: no event, but the finger is not down any more, and the
+        // documents and the component UI that tracked it let go of it without a click (D6)
         Input::removeTouch(pointer);
         if (Engine::isCallMouseInTouchEvent() && visible)
             Input::releaseMousePressed(D_MOUSE_BUTTON_1);
+        cancelUIPointer(pointer, true);
         return;
     }
     {
@@ -2141,7 +2332,7 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
         for (Scene* scene : scenes){
             // a covered scene still gets the release
             if (scene->canReceiveUIEvents())
-                if (scene->getSystem<UISystem>()->eventOnPointerUp(x, y))
+                if (scene->getSystem<UISystem>()->eventOnPointerUp(pointer, D_MOUSE_BUTTON_1, x, y, true))
                     uiEventReceived = true;
         }
 
@@ -2180,7 +2371,7 @@ void Engine::systemTouchMove(int pointer, float x, float y){
 
         for (Scene* scene : scenes){
             if (canSendUIEvents(scene))
-                if (scene->getSystem<UISystem>()->eventOnPointerMove(x, y))
+                if (scene->getSystem<UISystem>()->eventOnPointerMove(pointer, x, y, true))
                     uiEventReceived = true;
         }
 
@@ -2203,6 +2394,25 @@ void Engine::systemTouchMove(int pointer, float x, float y){
     }
 }
 
+void Engine::cancelUIPointer(int pointerOrButton, bool touch){
+    for (Scene* scene : getScenesSnapshot()){
+        if (touch){
+            scene->getSystem<UIDocumentSystem>()->eventOnTouchCancel(pointerOrButton);
+            scene->getSystem<UISystem>()->eventOnPointerCancel(pointerOrButton);
+        }else{
+            scene->getSystem<UIDocumentSystem>()->eventOnMouseCancel(pointerOrButton);
+            scene->getSystem<UISystem>()->eventOnPointerCancel(-1 - pointerOrButton);
+        }
+    }
+}
+
+void Engine::cancelAllUIPointers(){
+    for (Scene* scene : getScenesSnapshot()){
+        scene->getSystem<UIDocumentSystem>()->cancelAllPointers();
+        scene->getSystem<UISystem>()->cancelAllPointers();
+    }
+}
+
 void Engine::systemTouchCancel(){
     std::vector<Touch> cancelled = Input::getTouches();
     for (const Touch& touch : cancelled)
@@ -2220,10 +2430,12 @@ void Engine::systemTouchCancel(int pointer){
         Input::releaseMousePressed(D_MOUSE_BUTTON_1);
     Input::cancelTouch(pointer);
 
-    // the documents that tracked it let go of it without a click
+    // the documents and the component UI that tracked it let go of it without a click
     bool consumed = false;
     for (Scene* scene : getScenesSnapshot()){
         if (scene->getSystem<UIDocumentSystem>()->eventOnTouchCancel(pointer))
+            consumed = true;
+        if (scene->canReceiveUIEvents() && scene->getSystem<UISystem>()->eventOnPointerCancel(pointer))
             consumed = true;
     }
 
@@ -2249,11 +2461,14 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
         if (documentScene)
             uiEventReceived = true;
 
-        for (Scene* scene : scenes){
-            if (scene != documentScene && canSendUIEvents(scene))
-                if (button == D_MOUSE_BUTTON_1)
-                    if (scene->getSystem<UISystem>()->eventOnPointerDown(x, y))
+        // the mouse's buttons are pointers -1, -2, -3 (Unity); the built-in widgets take the
+        // left one only. A press a document took never reaches the component UI.
+        if (!documentScene && button >= D_MOUSE_BUTTON_LEFT && button <= D_MOUSE_BUTTON_MIDDLE){
+            for (Scene* scene : scenes){
+                if (canSendUIEvents(scene))
+                    if (scene->getSystem<UISystem>()->eventOnPointerDown(-1 - button, button, x, y, false))
                         uiEventReceived = true;
+            }
         }
 
         if (dispatchToWorldDocuments(scenes, uiEventReceived, false, [&](UIDocumentSystem* documents, bool covered){
@@ -2273,10 +2488,12 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
 }
 void Engine::systemMouseUp(int button, float x, float y, int mods){
     if (!transformCoordPos(x, y)){
-        // released outside the canvas: no event, but the button is not held any more
+        // released outside the canvas: no event, but the button is not held any more, and the
+        // documents and the component UI that tracked it let go of it without a click (D6)
         Input::releaseMousePressed(button);
         if (Engine::isCallTouchInMouseEvent())
             Input::removeTouch(0);
+        cancelUIPointer(button, false);
         return;
     }
     {
@@ -2296,8 +2513,8 @@ void Engine::systemMouseUp(int button, float x, float y, int mods){
         for (Scene* scene : scenes){
             // a covered scene still gets the release, like the component UI
             if (scene->canReceiveUIEvents())
-                if (button == D_MOUSE_BUTTON_1)
-                    if (scene->getSystem<UISystem>()->eventOnPointerUp(x, y))
+                if (button >= D_MOUSE_BUTTON_LEFT && button <= D_MOUSE_BUTTON_MIDDLE)
+                    if (scene->getSystem<UISystem>()->eventOnPointerUp(-1 - button, button, x, y, false))
                         uiEventReceived = true;
         }
 
@@ -2349,9 +2566,9 @@ void Engine::systemMouseMove(float x, float y, int mods){
         for (Scene* scene : scenes){
             if (canSendUIEvents(scene)){
                 UISystem* ui = scene->getSystem<UISystem>().get();
-                if (ui->eventOnPointerMove(x, y))
+                if (ui->eventOnPointerMove(-1, x, y, false))
                     uiEventReceived = true;
-                if (ui->isPointerOverUI())
+                if (ui->isPointerOverUI(-1))
                     overComponentUI = true;
             }
         }
@@ -2389,9 +2606,16 @@ void Engine::systemMouseScroll(float xoffset, float yoffset, int mods){
     if (mods != 0)
         Input::setModifiers(mods);
 
-    const bool consumed = dispatchToDocuments(getScenesSnapshot(), [&](UIDocumentSystem* documents){
+    const std::vector<Scene*> scenes = getScenesSnapshot();
+    bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
         return documents->eventOnWheel(xoffset, yoffset, mods);
     }) != nullptr;
+
+    // then onScroll of the component UI element under the mouse (top layer first)
+    for (auto it = scenes.rbegin(); it != scenes.rend() && !consumed; ++it){
+        if (canSendUIEvents(*it) && (*it)->getSystem<UISystem>()->eventOnScroll(xoffset, yoffset))
+            consumed = true;
+    }
 
     if (!ignoreEventsHandledByUI || !consumed)
         Engine::onMouseScroll.call(xoffset, yoffset, mods);
@@ -2407,8 +2631,10 @@ void Engine::systemMouseEnter(){
 
 void Engine::systemMouseLeave(){
     Input::releaseMouseEntered();
-    for (Scene* scene : getScenesSnapshot())
+    for (Scene* scene : getScenesSnapshot()){
         scene->getSystem<UIDocumentSystem>()->eventOnMouseLeave();
+        scene->getSystem<UISystem>()->eventOnPointerLeave(-1);
+    }
     Engine::onMouseLeave.call();
 }
 

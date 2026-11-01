@@ -11,6 +11,7 @@
 #include "manager/ObjectManager.h"
 #include "manager/SceneManager.h"
 #include "component/ScriptComponent.h"
+#include "component/Transform.h"
 
 #include "lua.hpp"
 
@@ -456,6 +457,20 @@ void ScriptRuntime::broadcast(ScriptMessage m, const std::function<int(lua_State
             ScriptMessages::send(scene, entity, m, pushArgs, callCpp, DeliverRequireActive);
         }
     }
+}
+
+Entity ScriptRuntime::findHandler(Scene* scene, Entity entity, ScriptMessage m) {
+    if (!scene) {
+        return NULL_ENTITY;
+    }
+    for (Entity current = entity; current != NULL_ENTITY && scene->isEntityCreated(current);) {
+        if (scene->isEntityActiveInHierarchy(current) && ScriptMessages::defines(scene, current, m)) {
+            return current;
+        }
+        Transform* transform = scene->findComponent<Transform>(current);
+        current = transform ? transform->parent : NULL_ENTITY;
+    }
+    return NULL_ENTITY;
 }
 
 int ScriptRuntime::sendMessage(Scene* scene, Entity entity, ScriptMessage m,

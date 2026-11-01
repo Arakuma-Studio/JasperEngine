@@ -208,6 +208,7 @@ void HtmlUIContext::destroy(){
     context->UnloadAllDocuments();
     activeElement.reset();
     touches.clear();
+    touchPresses.clear();
 
     // geometry goes back through RmlRenderer::ReleaseGeometry
     RmlRenderer::unbindContext(context);
@@ -303,6 +304,10 @@ void HtmlUIContext::unloadDocument(Rml::ElementDocument* document){
     if (activeElement && activeElement->GetOwnerDocument() == document){
         activeElement.reset();
     }
+    for (auto& press : touchPresses){
+        if (press.second && press.second->GetOwnerDocument() == document)
+            press.second.reset();
+    }
 
     context->UnloadDocument(document);
 }
@@ -333,6 +338,8 @@ bool HtmlUIContext::processMouseButtonDown(int button, int modifiers){
         return false;
 
     context->ProcessMouseButtonDown(button, modifiers);
+    if (button >= 0 && button < 31)
+        mouseButtons |= 1 << button;
     if (button == 0)
         htmlui::EffectRuntime::get().onPointerButton(context, true);
 
@@ -357,6 +364,8 @@ bool HtmlUIContext::processMouseButtonUp(int button, int modifiers){
     const bool overContent = isPointerOverContent();
 
     context->ProcessMouseButtonUp(button, modifiers);
+    if (button >= 0 && button < 31)
+        mouseButtons &= ~(1 << button);
 
     if (button == 0){
         activeElement.reset();

@@ -15,6 +15,7 @@
 #include "PrefabAsset.h"
 #include "ObjectManager.h"
 #include "System.h"
+#include "Screen.h"
 
 #include "action/Action.h"
 #include "action/AlphaTween.h"
@@ -96,6 +97,7 @@
 #include "component/TerrainComponent.h"
 #include "component/TextComponent.h"
 #include "component/InputFieldComponent.h"
+#include "component/OnScreenControlComponents.h"
 #include "component/TilemapComponent.h"
 #include "component/TweenComponent.h"
 #include "component/Transform.h"
@@ -123,6 +125,10 @@
 
 #include "math/AnimationCurve.h"
 #include "math/Gradient.h"
+#include "particles/MinMax.h"
+#include "particles/ParticleModules.h"
+#include "particles/ParticleSimulation.h"
+#include "particles/ParticleUpgrade.h"
 #include "math/AABB.h"
 #include "math/Matrix3.h"
 #include "math/Matrix4.h"
@@ -188,6 +194,8 @@
 #include "object/ui/Scrollbar.h"
 #include "object/ui/Progressbar.h"
 #include "object/ui/InputField.h"
+#include "object/ui/OnScreenControls.h"
+#include "object/ui/PointerEventData.h"
 #include "object/ui/Text.h"
 #include "object/ui/RectTransform.h"
 #include "object/ui/UIDocument.h"
@@ -229,6 +237,7 @@
 #include "script/ScriptRuntime.h"
 
 #include "shader/ShaderData.h"
+#include "shader/ShaderGlobals.h"
 #include "shader/ShaderDataSerializer.h"
 
 #include "subsystem/ActionSystem.h"
@@ -273,6 +282,8 @@
 #include "util/Color.h"
 #include "util/SpriteFrameData.h"
 #include "util/FunctionSubscribe.h"
+#include "util/FrameLimiter.h"
+#include "util/PlatformRules.h"
 #include "util/StringUtils.h"
 #include "util/ThreadUtils.h"
 #include "util/UniqueToken.h"
