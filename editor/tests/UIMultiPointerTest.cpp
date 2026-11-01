@@ -628,7 +628,9 @@ TEST_F(UIMultiPointerTest, IsPointerOverUIPerPointer) {
 TEST(OnScreenControlsEditor, CatalogStreamAndExport) {
     using editor::Catalog;
     using editor::ComponentType;
-    EXPECT_EQ(editor::LastComponentType, ComponentType::TouchAreaComponent) << "appended at the end";
+    // appended after the older types; only the Text Effect (ui-scaling-text) came after them
+    EXPECT_EQ(static_cast<int>(ComponentType::TouchAreaComponent) + 1, static_cast<int>(ComponentType::TextEffectComponent));
+    EXPECT_EQ(editor::LastComponentType, ComponentType::TextEffectComponent);
     EXPECT_EQ(Catalog::getComponentName(ComponentType::OnScreenStickComponent, true), "onscreenstick");
     EXPECT_EQ(Catalog::getComponentType("onscreenbutton"), ComponentType::OnScreenButtonComponent);
     EXPECT_EQ(Catalog::getComponentType("toucharea"), ComponentType::TouchAreaComponent);
