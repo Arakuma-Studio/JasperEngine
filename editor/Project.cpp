@@ -3451,10 +3451,13 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
 }
 
 void editor::Project::collectSavedShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& keys) const {
-    // What the content needs, the variants the scene drew since its last save (a script's
-    // runtime meshes in Play), and the keys saved before
+    // What the content needs (derived from it without drawing: ShaderVariantCollector) and the
+    // keys the scene had: its file's, and what Play's run loaded (added at Stop, a recording the
+    // user made). Never the variants its objects were loaded with in the editor: those depend on
+    // what has drawn and when (a depth variant only while shadows or SSAO ran), so the same scene
+    // would save a different list. An export adds them where they are loaded
+    // (Exporter::resolveShaderKeys, collectSceneShaderKeys).
     collectRequiredShaderKeys(sceneProject, keys);
-    collectSceneShaderKeys(sceneProject, keys);
     if (sceneProject)
         keys.insert(sceneProject->shaderKeys.begin(), sceneProject->shaderKeys.end());
 }

@@ -908,8 +908,14 @@ void editor::Exporter::resolveShaderKeys() {
             keys.insert(ShaderPool::normalizeKey(key));
         }
     } else {
+        // each scene's saved keys and, where it is loaded, what its objects were loaded with
+        // and what its content needs now (a save writes no loaded state: Project::
+        // collectSavedShaderKeys), as the Export window and MCP's build list them
         for (const auto& sceneProject : project->getScenes()) {
-            for (ShaderKey key : sceneProject.shaderKeys) {
+            std::set<ShaderKey> sceneKeys = sceneProject.shaderKeys;
+            project->collectSceneShaderKeys(&sceneProject, sceneKeys);
+            project->collectRequiredShaderKeys(&sceneProject, sceneKeys);
+            for (ShaderKey key : sceneKeys) {
                 keys.insert(ShaderPool::normalizeKey(key));
             }
         }

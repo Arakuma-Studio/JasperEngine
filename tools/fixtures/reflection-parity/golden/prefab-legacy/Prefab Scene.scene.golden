@@ -48,9 +48,6 @@ maxValues:
 shaderKeys:
   - type: mesh
     properties: 3073
-  - type: depth
-  - type: depth
-    properties: 128
   - type: blit
 prefabs:
   - path: prefabs/Castle.prefab
