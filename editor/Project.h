@@ -857,6 +857,10 @@ namespace jasperengine::editor{
 
         // True when the standalone build sources need an update on the main thread
         std::atomic<bool> generatedSourcesDirty{false};
+        // An export and updateGeneratedSources never write .jasperengine/generated at once: the
+        // exports running (beginGeneratedExport), and the lock the regeneration writes under
+        std::mutex generatedMutex;
+        int generatedExports = 0;
 
         std::vector<SceneProject> scenes;
 
@@ -1742,6 +1746,11 @@ namespace jasperengine::editor{
 
         void updateGeneratedSources();
         void markGeneratedSourcesDirty();
+        // Exporter::runExport, around its whole run (any thread): updateGeneratedSources waits until
+        // the export has finished, keeping the dirty flag, so what changed meanwhile is regenerated
+        // after it. Waits for a regeneration in progress.
+        void beginGeneratedExport();
+        void endGeneratedExport();
 
         //=== Linked Material part ===
 

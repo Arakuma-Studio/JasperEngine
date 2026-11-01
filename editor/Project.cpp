@@ -6843,6 +6843,12 @@ void editor::Project::updateGeneratedSources() {
     if (!generatedSourcesDirty.load() || isAnyScenePlaying()) {
         return;
     }
+    // An export clears, rewrites and copies the folder from its own thread: the flag stays set
+    // until it has finished, so the change is regenerated after the build
+    std::lock_guard<std::mutex> lock(generatedMutex);
+    if (generatedExports > 0) {
+        return;
+    }
     generatedSourcesDirty.store(false);
 
     // nothing to update until a save or play creates the build
@@ -6861,6 +6867,16 @@ void editor::Project::updateGeneratedSources() {
 
 void editor::Project::markGeneratedSourcesDirty() {
     generatedSourcesDirty.store(true);
+}
+
+void editor::Project::beginGeneratedExport() {
+    std::lock_guard<std::mutex> lock(generatedMutex);
+    generatedExports++;
+}
+
+void editor::Project::endGeneratedExport() {
+    std::lock_guard<std::mutex> lock(generatedMutex);
+    if (generatedExports > 0) generatedExports--;
 }
 
 void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesystem::path& path, std::function<void(bool)> callback,

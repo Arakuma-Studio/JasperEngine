@@ -759,6 +759,14 @@ bool editor::Exporter::generateShaders(const ExportConfig& cfg) {
 }
 
 void editor::Exporter::runExport() {
+    // The editor's regeneration of .jasperengine/generated (a change picked up meanwhile, a
+    // setting) waits for the whole export, which clears, rewrites and copies that folder
+    struct GeneratedExportGuard {
+        Project* project;
+        explicit GeneratedExportGuard(Project* p) : project(p) { if (project) project->beginGeneratedExport(); }
+        ~GeneratedExportGuard() { if (project) project->endGeneratedExport(); }
+    } generatedGuard(project);
+
     // a player for a target: prebuilt, or this export's Desktop/Web build (S30 D1)
     if (project && config.mode == ExportMode::Player) {
         if (config.method == BuildMethod::Auto) {
