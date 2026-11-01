@@ -100,7 +100,7 @@
 #include "pose/PoseViewport.h"
 #include "animation/AnimationClipAppHooks.h"
 #include "animation/AnimationClipController.h"
-// SYNC4-ABSORB(particles): #include "unity/UnityParticleImport.h" (the importer, editor/unity)
+#include "unity/UnityParticleImport.h"
 
 #include <filesystem>
 #include <cstdlib>
@@ -4947,9 +4947,6 @@ void editor::App::saveAllCodeEditors() {
 }
 
 void editor::App::importUnityParticles() {
-    // SYNC4-ABSORB(particles): upstream's Unity ParticleSystem importer (editor/unity) writes
-    // version 2 Particle Systems; S20 takes it over (the Particles absorption)
-#if 0
     const std::string file = FileDialogs::openFileDialog("", FILE_DIALOG_UNITY_PREFAB_SCENE);
     if (file.empty()) return;
     unity::ImportOptions options;
@@ -4976,7 +4973,6 @@ void editor::App::importUnityParticles() {
     if (!result.reportFile.empty()) {
         Out::info("Import report: %s", result.reportFile.c_str());
     }
-#endif
 }
 
 void editor::App::registerAlert(std::string title, std::string message) {

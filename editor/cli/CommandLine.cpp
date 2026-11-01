@@ -3455,12 +3455,12 @@ int CommandLine::runBakeVatCommand(int argc, char** argv, const char* executable
     return vat::runBakeVat(argc, argv, getCommandName(executableName), std::cout, std::cerr);
 }
 
-[[maybe_unused]] static void printImportUnityParticlesUsage(const std::string& commandName) {
+static void printImportUnityParticlesUsage(const std::string& commandName) {
     std::cout
         << "Usage:\n"
         << "  " << commandName << " import-unity-particles <file.prefab|file.unity> --project <engine project> [options]\n\n"
-        << "Imports the Unity ParticleSystems of a prefab or scene as engine prefabs (version 2 Particle\n"
-        << "Systems), with their materials and textures, and writes a report of what was imported,\n"
+        << "Imports the Unity ParticleSystems of a prefab or scene as engine prefabs (Particle Systems,\n"
+        << "each renderer's material in its Renderer module) with their textures, and writes a report of what was imported,\n"
         << "approximated or not supported. The Unity project is only read.\n\n"
         << "Options:\n"
         << "  -p, --project <path>        The engine project (directory or project.yaml) the files go into.\n"
@@ -3470,19 +3470,14 @@ int CommandLine::runBakeVatCommand(int argc, char** argv, const char* executable
         << "      --unity-project <dir>   The Unity project (default: the nearest folder holding Assets/ and\n"
         << "                              ProjectSettings/ around the file).\n"
         << "      --report <file.json>    Also write the report there.\n"
-        << "      --overwrite             Replace existing prefabs, materials and textures (default: a numbered\n"
-        << "                              prefab name, existing materials and textures kept).\n"
+        << "      --overwrite             Replace existing prefabs and textures (default: a numbered prefab\n"
+        << "                              name, existing textures kept).\n"
         << "      --dry-run               Print the report, write nothing.\n"
         << "  -h, --help                  Show this help.\n\n"
         << "Exit code: 0 imported, 1 error, 2 imported with notes (approximations, unsupported modules).\n";
 }
 
 int CommandLine::runImportUnityParticlesCommand(int argc, char** argv, const char* executableName) {
-    // SYNC4-ABSORB(particles): upstream's Unity ParticleSystem importer (editor/unity, out of the build)
-    (void)argc; (void)argv; (void)executableName;
-    std::fprintf(stderr, "import-unity-particles is not available in this build yet.\n");
-    return 2;
-#if 0
     attachHostConsoleIfNeeded();
     const std::string commandName = getCommandName(executableName);
     unity::ImportOptions options;
@@ -3566,7 +3561,6 @@ int CommandLine::runImportUnityParticlesCommand(int argc, char** argv, const cha
         std::cerr << (options.dryRun ? "would write " : "wrote ") << prefab << "\n";
     }
     return result.hasWarnings ? 2 : 0;
-#endif
 }
 
 int CommandLine::runGenerateSpriteNormalsCommand(int argc, char** argv, const char* executableName) {

@@ -3,11 +3,12 @@
 
 #pragma once
 
-// The Unity ParticleSystem importer (particles spec 6.10): a `.prefab` or `.unity` file of a
-// Unity project becomes engine prefabs (one per selected root GameObject: its systems as
-// version 2 Particle Systems on single GameObjects, child systems as children), `.material`
-// files with library shaders, copied textures, and a report of what was imported, approximated
-// or not supported. It never writes into the Unity project. Pure enough to run without the GUI
+// The Unity ParticleSystem importer (docs/specs/S20-particles.md, Upstream absorption): a
+// `.prefab` or `.unity` file of a Unity project becomes engine prefabs (one per selected root
+// GameObject: its systems as S20 Particle Systems with inline effects, child systems as
+// children; each renderer's material in its Renderer module: texture, tint, tiling, soft
+// particles, blend), copied textures, and a report of what was imported, approximated or not
+// supported. It never writes into the Unity project. Pure enough to run without the GUI
 // (the CLI `import-unity-particles`, MCP `import_unity_particles`, Assets > Import Unity
 // Particle System...).
 
@@ -67,8 +68,8 @@ namespace jasperengine::editor::unity {
     ImportResult importParticlesIntoProject(jasperengine::editor::Project* project, ImportOptions options);
 
     // the shape rotation of a Unity shape (Euler degrees, Unity's Z-X-Y order) in the engine's
-    // shape frame (spec 5.4; Euler degrees applied X, then Y, then Z); `edge`: Unity's Edge,
-    // which emits along its +Y
+    // shape frame (S20's shape rotation: Euler degrees applied Z, then X, then Y); `edge`:
+    // Unity's Edge, which emits along its +Y
     void convertShapeRotation(const float unityEuler[3], bool edge, float engineEuler[3]);
 
 }
