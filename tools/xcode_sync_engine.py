@@ -47,7 +47,8 @@ def object_id(kind, path):
 
 def cmake_sources():
     with open(CMAKE, encoding="utf-8") as f:
-        text = f.read()
+        # (comments dropped: a ")" in one must not end the list)
+        text = re.sub(r"#[^\n]*", "", f.read())
     start = text.index("set(JASPERENGINE_SRCS")
     end = text.index(")", start)
     sources = []
