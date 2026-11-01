@@ -662,7 +662,17 @@ TEST_F(Layers, LuaApi){
 // for the whole ActionSystem update (Release). (Upstream measured its controller on the player;
 // controllers play on S21's Animator, whose budgets are je-bench-anim's.)
 TEST_F(Layers, PerformanceBudget){
-#ifdef NDEBUG
+    // Release: the budget; Debug and sanitizer builds (5-50x slower): a short run against a loose
+    // bound (as SchedulerTest), so the workload still runs there
+#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__) || !defined(NDEBUG)
+    constexpr double BUDGET_MS = 60.0;
+    constexpr int BATCHES = 1;
+    constexpr int FRAMES = 5;
+#else
+    constexpr double BUDGET_MS = 0.6;
+    constexpr int BATCHES = 8;
+    constexpr int FRAMES = 30;
+#endif
     constexpr int CHARACTERS = 40;
     constexpr int BONES = 65;
     ClipData walkData, runData, holdData;
@@ -717,8 +727,8 @@ TEST_F(Layers, PerformanceBudget){
     ASSERT_LT(players[0].getStateInfo("Run").weight, 1.0f);
     // the best of a few batches: the host is shared with other builds
     double ms = 1e9;
-    for (int batch = 0; batch < 8; batch++){
-        const int frames = 30;
+    for (int batch = 0; batch < BATCHES; batch++){
+        const int frames = FRAMES;
         const auto start = std::chrono::steady_clock::now();
         step(1.0 / 60.0, frames);
         ms = std::min(ms, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / frames);
@@ -729,14 +739,11 @@ TEST_F(Layers, PerformanceBudget){
     // over it on an overloaded host says nothing (skipped); under it passes whatever the load
 #if defined(__unix__) || defined(__APPLE__)
     double load[1] = {0.0};
-    if (ms >= 0.6 && getloadavg(load, 1) == 1 && load[0] > (double)std::thread::hardware_concurrency()){
+    if (ms >= BUDGET_MS && getloadavg(load, 1) == 1 && load[0] > (double)std::thread::hardware_concurrency()){
         GTEST_SKIP() << "load average " << load[0] << " above " << std::thread::hardware_concurrency() << " cores (measured " << ms << " ms)";
     }
 #endif
-    EXPECT_LT(ms, 0.6) << ms << " ms per frame";
-#else
-    GTEST_SKIP() << "timing needs a Release build";
-#endif
+    EXPECT_LT(ms, BUDGET_MS) << ms << " ms per frame";
 }
 
 TEST_F(Layers, RemovingALayerShiftsRuntimeMoves){
