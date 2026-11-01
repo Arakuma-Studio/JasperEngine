@@ -3058,18 +3058,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("resetTrigger", &AnimationPlayer::resetTrigger)
         .addFunction("hasParameter", &AnimationPlayer::hasParameter)
         .addFunction("getParameterType", &AnimationPlayer::getParameterType)
-        .addFunction("getCurrentStateName",
-            luabridge::constOverload<>(&AnimationPlayer::getCurrentStateName),
-            luabridge::constOverload<int>(&AnimationPlayer::getCurrentStateName))
-        .addFunction("getCurrentStateInfo",
-            luabridge::constOverload<>(&AnimationPlayer::getCurrentStateInfo),
-            luabridge::constOverload<int>(&AnimationPlayer::getCurrentStateInfo))
-        .addFunction("getNextStateInfo",
-            luabridge::constOverload<>(&AnimationPlayer::getNextStateInfo),
-            luabridge::constOverload<int>(&AnimationPlayer::getNextStateInfo))
-        .addFunction("isInTransition",
-            luabridge::constOverload<>(&AnimationPlayer::isInTransition),
-            luabridge::constOverload<int>(&AnimationPlayer::isInTransition))
+        // an optional layer read by hand (LuaBridge's overload resolution of () / (int) leaks the
+        // failed attempt's error text: LeakSanitizer)
+        .addFunction("getCurrentStateName", +[](const AnimationPlayer* self, lua_State* L) -> std::string {
+            return lua_isnumber(L, 2) ? self->getCurrentStateName((int)lua_tointeger(L, 2)) : self->getCurrentStateName();
+        })
+        .addFunction("getCurrentStateInfo", +[](const AnimationPlayer* self, lua_State* L) -> ControllerStateInfo {
+            return lua_isnumber(L, 2) ? self->getCurrentStateInfo((int)lua_tointeger(L, 2)) : self->getCurrentStateInfo();
+        })
+        .addFunction("getNextStateInfo", +[](const AnimationPlayer* self, lua_State* L) -> ControllerStateInfo {
+            return lua_isnumber(L, 2) ? self->getNextStateInfo((int)lua_tointeger(L, 2)) : self->getNextStateInfo();
+        })
+        .addFunction("isInTransition", +[](const AnimationPlayer* self, lua_State* L) -> bool {
+            return lua_isnumber(L, 2) ? self->isInTransition((int)lua_tointeger(L, 2)) : self->isInTransition();
+        })
         // functions called with (layer, state name) when a controller state is entered / exited
         .addProperty("onStateEnter", [] (AnimationPlayer* self, lua_State*) { return &self->getOnStateEnter(); }, [] (AnimationPlayer* self, lua_State* L) { self->getOnStateEnter() = L; })
         .addProperty("onStateExit", [] (AnimationPlayer* self, lua_State*) { return &self->getOnStateExit(); }, [] (AnimationPlayer* self, lua_State* L) { self->getOnStateExit() = L; })
@@ -3227,9 +3229,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getNextStateInfo", +[](const Animator* self, lua_State* L) -> ControllerStateInfo {
             return toControllerStateInfo(self->getNextState(lua_isnumber(L, 2) ? (int)lua_tointeger(L, 2) : 0));
         })
-        .addFunction("playInLayer",
-            +[](Animator* self, const std::string& name, int layer) { self->play(name, layer); },
-            +[](Animator* self, const std::string& name, int layer, float normalizedTime) { self->play(name, layer, normalizedTime); })
+        .addFunction("playInLayer", +[](Animator* self, const std::string& name, int layer, lua_State* L) {
+            if (lua_isnumber(L, 4)) self->play(name, layer, (float)lua_tonumber(L, 4));
+            else self->play(name, layer);
+        })
         .addFunction("crossFadeInLayer", +[](Animator* self, const std::string& name, float seconds, int layer) { self->crossFade(name, seconds, layer); })
         .addFunction("hasController", +[](const Animator* self) -> bool { return !self->getController().empty(); })
         .addFunction("hasParameter", +[](const Animator* self, const std::string& name) -> bool { return self->getParameterIndex(name) >= 0; })
