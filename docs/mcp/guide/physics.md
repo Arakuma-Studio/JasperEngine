@@ -400,7 +400,7 @@ function Coin:onTriggerEnter2D(other)            -- other: Collider2D
     if other:compareTag("Player") then GameObject.destroy(self.gameObject) end
 end
 function Car:onCollisionEnter2D(c)               -- c: Collision2D
-    if c.gameObject.tag == "Ground" and c.thisCollider.index == 1 then self.game:gameOver() end
+    if c.gameObject.tag == "Ground" and c.thisCollider.index == 1 then GameOver(self) end
 end
 function Shell:onCollisionEnter(c)               -- c: Collision (3D)
     local body = Rigidbody(self.scene, self.entity)

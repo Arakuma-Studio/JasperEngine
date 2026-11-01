@@ -1965,6 +1965,272 @@ OVERRIDES = {
     },
 }
 
+# script-lifecycle: the getScript family on every GameObject handle (and script instance, Script.lua),
+# GameObject's scene-wide finds and the Event class (lua_CFunctions)
+_GET_SCRIPT_DOCS = {
+    'getScript': ["The Lua script instance of class `className` on this GameObject, enabled or not (Unity's",
+                  "GetComponent<Script>()), or nil. Type it with `---@type Enemy` (LuaLS cannot infer the class)."],
+    'getScripts': ["Every Lua script instance of this GameObject, or those of class `className`, in component order."],
+    'getScriptInChildren': ["The first script of class `className` on this GameObject or a descendant (pre-order); inactive",
+                            "GameObjects only with `includeInactive`. Scripts may be disabled (Unity's GetComponentInChildren)."],
+    'getScriptsInChildren': ["Every script of class `className` on this GameObject and its descendants (pre-order); inactive",
+                             "GameObjects only with `includeInactive`."],
+    'getScriptInParent': ["The first script of class `className` on this GameObject or an ancestor (upward); inactive",
+                          "GameObjects only with `includeInactive`."],
+}
+_GET_SCRIPT_SIGS = {
+    'getScript': [([('className', 'string')], 'any')],
+    'getScripts': [([('className?', 'string')], 'ScriptInstance[]')],
+    'getScriptInChildren': [([('className', 'string'), ('includeInactive?', 'boolean')], 'any')],
+    'getScriptsInChildren': [([('className', 'string'), ('includeInactive?', 'boolean')], 'ScriptInstance[]')],
+    'getScriptInParent': [([('className', 'string'), ('includeInactive?', 'boolean')], 'any')],
+}
+for _name, _doc in _GET_SCRIPT_DOCS.items():
+    OVERRIDES[('EntityHandle', _name)] = {'doc': _doc, 'overloads': _GET_SCRIPT_SIGS[_name]}
+OVERRIDES.update({
+    ('GameObject', 'find'): {
+        'doc': ["The first active GameObject named `name` in the running scenes (main scene first, then the layers;",
+                "ascending ids within a scene), else nil. `\"Arm/Hand\"` is a Hand below an Arm, `\"/Monster/Arm/Hand\"`",
+                "a path from a root. Unity's GameObject.Find: not for every frame (a linear scan)."],
+        'overloads': [([('name', 'string')], 'GameObject')]},
+    ('GameObject', 'findWithTag'): {
+        'doc': ["The first active GameObject with the tag in the running scenes, else nil. A tag the project",
+                "does not define logs \"Tag: X is not defined.\" and finds nothing."],
+        'overloads': [([('tag', 'string')], 'GameObject')]},
+    ('GameObject', 'findGameObjectsWithTag'): {
+        'doc': ["Every active GameObject with the tag in the running scenes (possibly empty)."],
+        'overloads': [([('tag', 'string')], 'GameObject[]')]},
+    ('GameObject', 'findObjectOfType'): {
+        'doc': ["The first script instance of Lua class `className` that is active and enabled (any, with",
+                "`includeInactive`) in the running scenes, else nil. A component wrapper name (\"Camera\",",
+                "\"AudioSource\", \"Rigidbody\", ...) gives that wrapper for a GameObject with the component.",
+                "Unity's FindObjectOfType: not for every frame (a linear scan)."],
+        'overloads': [([('className', 'string'), ('includeInactive?', 'boolean')], 'any')]},
+    ('GameObject', 'findObjectsOfType'): {
+        'doc': ["Every match of findObjectOfType, in scene order (possibly empty)."],
+        'overloads': [([('className', 'string'), ('includeInactive?', 'boolean')], 'any[]')]},
+    ('Event', 'addListener'): {
+        'doc': ["Adds a listener (Unity's AddListener / C# `+=`): a function, or a method of a script instance",
+                "(`ev:addListener(self, \"onScore\")`), which is dropped once that script is destroyed. Adding the",
+                "same one again does nothing."],
+        'overloads': [([('fn', 'function')], ''), ([('owner', 'table'), ('methodName', 'string')], '')]},
+    ('Event', 'removeListener'): {
+        'doc': ["Removes a listener added with the same arguments (C# `-=`); true if one was removed."],
+        'overloads': [([('fn', 'function')], 'boolean'), ([('owner', 'table'), ('methodName', 'string')], 'boolean')]},
+    ('Event', 'removeAllListeners'): {
+        'doc': ["Removes every listener."],
+        'overloads': [([], '')]},
+    ('Event', 'invoke'): {
+        'doc': ["Calls the listeners in the order they were added with these arguments. A listener's error is",
+                "logged with its traceback and the others still run; one added meanwhile runs from the next invoke."],
+        'overloads': [([('...', 'any')], '')]},
+    ('Event', 'add'): {
+        'doc': ["Subscribes `fn` under `tag` (the event object protocol RegisterEvent uses); replaces that tag's."],
+        'overloads': [([('tag', 'string'), ('fn', 'function')], 'boolean')]},
+    ('Event', 'remove'): {
+        'doc': ["Removes the subscription with `tag`; true if there was one."],
+        'overloads': [([('tag', 'string')], 'boolean')]},
+    ('Event', 'has'): {
+        'doc': ["Whether a subscription with `tag` exists."],
+        'overloads': [([('tag', 'string')], 'boolean')]},
+    ('Event', '__tostring'): {
+        'doc': [],
+        'overloads': [([], 'string')]},
+    # persistence (DontDestroyOnLoad)
+    ('GameObject', 'dontDestroyOnLoad'): {
+        'doc': ["Unity's DontDestroyOnLoad (also the global `DontDestroyOnLoad`): the root GameObject of `obj` (a",
+                "script instance or a GameObject), with its children and running state, moves to the persistent",
+                "scene and survives every SceneManager.loadScene. False (warning) for a GameObject with a parent."],
+        'overloads': [([('obj', 'EntityHandle|ScriptInstance')], 'boolean')]},
+    ('GameObject', 'isPersistent'): {
+        'doc': ["In the persistent scene, or marked to move there (DontDestroyOnLoad)."],
+        'overloads': [([('obj', 'EntityHandle|ScriptInstance')], 'boolean')]},
+    ('GameObject', 'persistSingleton'): {
+        'doc': ["The surviving instance of `self`'s class: another one already persistent is returned (and `self`'s",
+                "GameObject destroyed at the end of the frame), else `self` is made persistent and returned.",
+                "In init: `if GameObject.persistSingleton(self) ~= self then return end`."],
+        'overloads': [([('self', 'ScriptInstance')], 'any')]},
+    ('SceneManager', 'moveGameObjectToScene'): {
+        'doc': ["Unity's MoveGameObjectToScene: a root GameObject goes to a running scene or the persistent scene",
+                "(at the next safe point, with its running state). False (logged) when the scene is not loaded."],
+        'overloads': [([('obj', 'EntityHandle|ScriptInstance'), ('scene', 'Scene')], 'boolean')]},
+})
+
+# Line and Trail Renderers (lines and trails spec 6.6): the points by 0-based index (Unity's
+# SetPosition / GetPosition); an index out of range raises an error naming positionCount.
+# setPosition(x, y[, z]) is still the GameObject's own position
+for _renderer, _what in (('LineRenderer', 'polyline point'), ('TrailRenderer', 'stored trail point (0 = the oldest)')):
+    OVERRIDES[(_renderer, 'setPosition')] = {
+        'doc': [f'Sets the {_what} at `index` (0-based, as Unity\'s SetPosition); an index out of range is an',
+                'error naming positionCount. With numbers only, (x, y[, z]) moves the GameObject itself.'],
+        'overloads': [([('index', 'integer'), ('position', 'Vector3')], ''),
+                      ([('x', 'number'), ('y', 'number'), ('z?', 'number')], '')]}
+    OVERRIDES[(_renderer, 'getPosition')] = {
+        'doc': [f'The {_what} at `index` (0-based); an index out of range is an error naming positionCount.'],
+        'overloads': [([('index', 'integer')], 'Vector3')]}
+
+# Particle Systems of version 2 (particles spec 6.6, docs/mcp/guide/particles.md)
+OVERRIDES[('ParticleSystemModule', 'setBursts')] = {
+    'doc': ['ps.emission:setBursts({{time = 0, count = 10, cycles = 1, interval = 0.01, probability = 1}, ...}): replaces',
+            'the bursts (count a number or a MinMaxCurve; cycles 0 repeats forever). Version 2 systems only.'],
+    'overloads': [([('bursts', '{time: number, count: MinMaxCurve|number, cycles?: integer, interval?: number, probability?: number}[]')], '')]}
+OVERRIDES[('ParticleSystemModule', 'getBurst')] = {
+    'doc': ['ps.emission:getBurst(index): the burst at `index` (0-based, as Unity\'s GetBurst) as a table.'],
+    'overloads': [([('index', 'integer')], '{time: number, count: MinMaxCurve, cycles: integer, interval: number, probability: number}')]}
+OVERRIDES[('ParticleSystemModule', 'setBurst')] = {
+    'doc': ['ps.emission:setBurst(index, burst): sets the burst at `index` (0-based; burstCount appends).'],
+    'overloads': [([('index', 'integer'), ('burst', '{time?: number, count?: MinMaxCurve|number, cycles?: integer, interval?: number, probability?: number}')], '')]}
+OVERRIDES[('ParticleSystem', 'upgrade')] = {
+    'doc': ['Converts a version 1 (legacy) system to the module model (version 2) and returns the report:',
+            '`{upgraded = true, items = {{field, status = "exact"|"approximated"|"dropped", message, maxError}, ...}}`.',
+            'A position modifier has no module equivalent: nothing changes unless `force` is true.'],
+    'overloads': [([], '{upgraded: boolean, items: {field: string, status: string, message: string, maxError: number}[]}'),
+                  ([('force', 'boolean')], '{upgraded: boolean, items: {field: string, status: string, message: string, maxError: number}[]}')]}
+
+OVERRIDES[('Gradient', 'setKeys')] = {
+    'doc': ['Replaces the keys: colorKeys are {time, color} (Vector3 sRGB) or GradientColorKey, alphaKeys',
+            '{time, alpha} or GradientAlphaKey; sorted, at most 8 of each.',
+            '`g:setKeys({{0, Vector3(1, 0.6, 0)}, {1, Vector3(1, 0.6, 0)}}, {{0, 1}, {1, 0}})`'],
+    'overloads': [([('colorKeys', '({[1]: number, [2]: Vector3}|GradientColorKey)[]'),
+                    ('alphaKeys?', '({[1]: number, [2]: number}|GradientAlphaKey)[]')], '')]}
+
+# Input (CoreClassesLua.cpp): the rebinding functions read and push tables, the simulated
+# sources take a name or a script instance
+_INPUT_SOURCE = 'string|ScriptInstance'
+OVERRIDES.update({
+    ('Input', 'getBindings'): {
+        'doc': ['The bindings the action uses now (a runtime override, else Project Settings > Input).'],
+        'overloads': [([('name', 'string')], 'InputBinding[]')]},
+    ('Input', 'setBindings'): {
+        'doc': ['Replaces the action\'s bindings at run time (a settings screen); `false, error` when invalid.',
+                'Input.resetBindings undoes it, Input.exportBindings saves it.'],
+        'overloads': [([('name', 'string'), ('bindings', 'InputBinding[]')], 'boolean, string?')]},
+    ('Input', 'importBindings'): {
+        'doc': ['Replaces the runtime bindings with what Input.exportBindings returned; `false, error` when invalid.'],
+        'overloads': [([('json', 'string')], 'boolean, string?')]},
+    ('Input', 'simulateButton'): {
+        'doc': ['Holds (or releases) the action\'s button like an on-screen button: a source keyed by `source`',
+                '(default "script"; `self` = gone with the script instance). Seen by getButton* next frame.'],
+        'overloads': [([('name', 'string'), ('pressed', 'boolean'), ('source?', _INPUT_SOURCE)], '')]},
+    ('Input', 'simulateAxis'): {
+        'doc': ['Adds `value` (-1..1) to the action like an on-screen stick, until set again; 0 removes it.',
+                '`source` as in simulateButton.'],
+        'overloads': [([('name', 'string'), ('value', 'number'), ('source?', _INPUT_SOURCE)], '')]},
+    ('Input', 'addAxisDelta'): {
+        'doc': ['Adds `delta` to the action for this frame only, unclamped (like mouse movement).'],
+        'overloads': [([('name', 'string'), ('delta', 'number'), ('source?', _INPUT_SOURCE)], '')]},
+    ('UIComponent', 'getPointerEventData'): {
+        'doc': ['The PointerEventData of the legacy callback running now (`onPointerDown(x, y)`, `onClick`...):',
+                'its pointerId, button, positions; nil outside one.'],
+        'overloads': [([], 'PointerEventData?')]},
+    ('Input', 'isPointerOverUI'): {
+        'doc': ['Whether the pointer is over UI that takes it (Unity\'s EventSystem.IsPointerOverGameObject):',
+                'a component UI element that receives events, HTML content, or a press either holds.',
+                '`pointerId`: -1 the mouse, a finger\'s `Touch.fingerId`; none: the mouse or any finger.'],
+        'overloads': [([('pointerId?', 'integer')], 'boolean')]},
+    ('Input', 'clearSimulated'): {
+        'doc': ['Removes the simulated values of `source` (without one: of every script).'],
+        'overloads': [([('source?', _INPUT_SOURCE)], '')]},
+})
+
+# Shader (CoreClassesLua.cpp): global shader values (Unity's Shader.SetGlobal* / PropertyToID),
+# read by shaders declaring u_vs_globals / u_fs_globals members (or a texture uniform) of the name
+_GLOBAL = 'string|integer'
+OVERRIDES.update({
+    ('Shader', 'propertyToID'): {
+        'doc': ['A stable id of the global `name` for this run (Unity\'s Shader.PropertyToID): pass it instead of the name.'],
+        'overloads': [([('name', 'string')], 'integer')]},
+    ('Shader', 'setGlobalFloat'): {
+        'doc': ['Sets a float global (a vector global takes (value, 0, 0, 0)); false when it is a matrix, array or texture.'],
+        'overloads': [([('name', _GLOBAL), ('value', 'number')], 'boolean')]},
+    ('Shader', 'setGlobalInt'): {
+        'doc': ['As setGlobalFloat: the integer is stored as a float (Unity\'s SetGlobalInt).'],
+        'overloads': [([('name', _GLOBAL), ('value', 'integer')], 'boolean')]},
+    ('Shader', 'setGlobalVector'): {
+        'doc': ['Sets a vector global (missing components 0; a float global takes x).'],
+        'overloads': [([('name', _GLOBAL), ('value', 'Vector4|Vector3|Vector2')], 'boolean')]},
+    ('Shader', 'setGlobalColor'): {
+        'doc': ['Sets a colour global from sRGB (stored linear, alpha as is; a Vector3 is opaque).'],
+        'overloads': [([('name', _GLOBAL), ('color', 'Vector4|Vector3')], 'boolean')]},
+    ('Shader', 'setGlobalMatrix'): {
+        'doc': ['Sets a matrix4 global (only a matrix global takes it).'],
+        'overloads': [([('name', _GLOBAL), ('value', 'Matrix4')], 'boolean')]},
+    ('Shader', 'setGlobalFloatArray'): {
+        'doc': ['Sets the elements of a float array global (1..64; a first set fixes the size, longer ones are truncated).'],
+        'overloads': [([('name', _GLOBAL), ('values', 'number[]')], 'boolean')]},
+    ('Shader', 'setGlobalVectorArray'): {
+        'doc': ['Sets the elements of a vector4 array global (1..64; a first set fixes the size).'],
+        'overloads': [([('name', _GLOBAL), ('values', '(Vector4|Vector3|Vector2)[]')], 'boolean')]},
+    ('Shader', 'setGlobalTexture'): {
+        'doc': ['Sets a texture global: a Texture, an image path or a Framebuffer (a render target); nil restores its default.'],
+        'overloads': [([('name', _GLOBAL), ('texture', 'Texture|string|Framebuffer|nil')], 'boolean')]},
+    ('Shader', 'getGlobalFloat'): {
+        'doc': ['The global\'s value (a vector\'s x); nil when it does not exist or is a matrix or texture.'],
+        'overloads': [([('name', _GLOBAL)], 'number?')]},
+    ('Shader', 'getGlobalInt'): {
+        'doc': ['getGlobalFloat as an integer.'],
+        'overloads': [([('name', _GLOBAL)], 'integer?')]},
+    ('Shader', 'getGlobalVector'): {
+        'doc': ['The global\'s value (an array\'s element 0); nil when it does not exist or is a matrix or texture.'],
+        'overloads': [([('name', _GLOBAL)], 'Vector4?')]},
+    ('Shader', 'getGlobalColor'): {
+        'doc': ['getGlobalVector as sRGB (alpha as is).'],
+        'overloads': [([('name', _GLOBAL)], 'Vector4?')]},
+    ('Shader', 'getGlobalMatrix'): {
+        'doc': ['A matrix4 global\'s value; nil for any other.'],
+        'overloads': [([('name', _GLOBAL)], 'Matrix4?')]},
+    ('Shader', 'getGlobalFloatArray'): {
+        'doc': ['An array global\'s elements (x of each); nil when it is not an array.'],
+        'overloads': [([('name', _GLOBAL)], 'number[]?')]},
+    ('Shader', 'getGlobalVectorArray'): {
+        'doc': ['An array global\'s elements; nil when it is not an array.'],
+        'overloads': [([('name', _GLOBAL)], 'Vector4[]?')]},
+    ('Shader', 'getGlobalTexture'): {
+        'doc': ['The texture a texture global holds; nil for none (its fallback binds) or another kind.'],
+        'overloads': [([('name', _GLOBAL)], 'Texture?')]},
+    ('Shader', 'hasGlobal'): {
+        'doc': ['Whether the global exists (declared in Project Settings, or set by a script).'],
+        'overloads': [([('name', _GLOBAL)], 'boolean')]},
+    ('Shader', 'getGlobalNames'): {
+        'doc': ['The globals that exist: the declared ones first, then the ones scripts made.'],
+        'overloads': [([], 'string[]')]},
+})
+for _owner in ('Material', 'Image', 'Text', 'Polygon', 'Points', 'LineRenderer', 'Skybox', 'TrailRenderer'):
+    OVERRIDES[(_owner, 'setShaderGlobalBinding')] = {
+        'doc': ['Makes the shader parameter `member` follow the global shader value `global` (Shader.setGlobal*),',
+                'over its own value; nil unbinds. False when nothing changed.' + (' Then mesh:setMaterial(m).' if _owner == 'Material' else '')],
+        'overloads': [([('member', 'string'), ('global', 'string|nil')], 'boolean')]}
+    OVERRIDES[(_owner, 'getShaderGlobalBinding')] = {
+        'doc': ['The global `member` follows, nil when it has its own value.'],
+        'overloads': [([('member', 'string')], 'string?')]}
+OVERRIDES[('Scene', 'setPostProcessGlobalBinding')] = {
+    'doc': ['Makes the u_fs_postParams member of pass `index` follow a global shader value; nil unbinds.'],
+    'overloads': [([('index', 'integer'), ('member', 'string'), ('global', 'string|nil')], 'boolean')]}
+OVERRIDES[('Scene', 'getPostProcessGlobalBinding')] = {
+    'doc': ['The global the pass member follows, nil when none.'],
+    'overloads': [([('index', 'integer'), ('member', 'string')], 'string?')]}
+# Canvas Group fades (ui canvas group spec 7.6): AlphaTweens on the group from its current alpha
+OVERRIDES[('CanvasGroup', 'fadeTo')] = {
+    'doc': ['Fades the group from its current alpha to `alpha` in `duration` seconds (LeanTween.alphaCanvas,',
+            'DOTween DOFade); a new fade stops the previous one. Returns the running AlphaTween.',
+            '`group:fadeTo(0, 0.25, {deactivate = true, onComplete = function() ... end})`'],
+    'overloads': [([('alpha', 'number'), ('duration', 'number'), ('options?', 'CanvasGroupFadeOptions')], 'AlphaTween')]}
+OVERRIDES[('CanvasGroup', 'fadeIn')] = {
+    'doc': ['fadeTo(1, duration, options).'],
+    'overloads': [([('duration', 'number'), ('options?', 'CanvasGroupFadeOptions')], 'AlphaTween')]}
+OVERRIDES[('CanvasGroup', 'fadeOut')] = {
+    'doc': ['fadeTo(0, duration, options); with `deactivate = true` the GameObject is deactivated at the end.'],
+    'overloads': [([('duration', 'number'), ('options?', 'CanvasGroupFadeOptions')], 'AlphaTween')]}
+OVERRIDES[('CanvasGroup', 'stopFade')] = {
+    'doc': ['Stops the running fade; `jumpToEnd` writes its end alpha and completes it now (onComplete, deactivate).'],
+    'overloads': [([('jumpToEnd?', 'boolean')], '')]}
+
+# <particle-system>: nil before its prefab is made or when its src failed (a LuaRef)
+OVERRIDES[('UIElement', 'getParticleSystem')] = {
+    'doc': ['The Particle System of a <particle-system> element\'s hidden GameObject; nil before the prefab',
+            'is made (document scripts, onLoad, edit mode) or when its src failed.'],
+    'overloads': [([], 'ParticleSystem|nil')]}
+
 # Mesh:getMaterial and Mesh.material push the Material copy themselves (a LuaRef: the copy
 # remembers the shader its submesh draws with, LuaBinding::setMaterialDrawnShader)
 OVERRIDES[('Mesh', 'getMaterial')] = {
@@ -1987,12 +2253,359 @@ OVERRIDES[('Scene', 'setDynamicResolutionOverride')] = {
     'overloads': [([('scale', 'number|nil')], '')],
 }
 
+# script-data (IOClassesLua.cpp): Json, File helpers and PlayerPrefs are lua_CFunctions (option
+# tables, `nil, err` results); JsonEncodeOptions / JsonDecodeOptions / JsonNull / JsonValue are
+# in engine/core/script/binding/stubs/Json.lua
+_JSON_VALUE = 'JsonValue'
+OVERRIDES.update({
+    ('Json', 'encode'): {
+        'doc': ['JSON text of `value` (tables, strings, numbers, booleans, Json.null, Vector2/3/4, Quaternion,',
+                'a `__tojson` metamethod). Keys sorted; a table with keys 1..n is an array, an empty one `[]`',
+                '(Json.object({}) or emptyTable = "object" for `{}`); integers stay integers, floats keep `.0`.',
+                'Raises with the place: "Json.encode: cannot encode a function at $.player.onHit".'],
+        'overloads': [([('value', 'any'), ('opts?', 'JsonEncodeOptions')], 'string')]},
+    ('Json', 'decode'): {
+        'doc': ['The Lua value of JSON `text`: objects and arrays become tables (empty ones marked, so they',
+                'encode back the same), null becomes Json.null (or nil with `null = "nil"`), integers integers.',
+                'Raises "Json.decode: syntax error at line 3, column 14: ...".'],
+        'overloads': [([('text', 'string'), ('opts?', 'JsonDecodeOptions')], _JSON_VALUE)]},
+    ('Json', 'tryEncode'): {
+        'doc': ['Json.encode without raising: the text, or nil and the message (options are still checked).'],
+        'overloads': [([('value', 'any'), ('opts?', 'JsonEncodeOptions')], 'string?, string?')]},
+    ('Json', 'tryDecode'): {
+        'doc': ['Json.decode without raising: the value, or nil and the message. A JSON `null` gives Json.null,',
+                'so nil always means failure.'],
+        'overloads': [([('text', 'string'), ('opts?', 'JsonDecodeOptions')], _JSON_VALUE + '?, string?')]},
+    ('Json', 'isNull'): {
+        'doc': ['`v` is Json.null.'],
+        'overloads': [([('v', 'any')], 'boolean')]},
+    ('Json', 'array'): {
+        'doc': ['Marks `t` (or a new table) to encode as a JSON array (`[]` when empty; holes are an error); returns it.'],
+        'overloads': [([('t?', 'table')], 'table')]},
+    ('Json', 'object'): {
+        'doc': ['Marks `t` (or a new table) to encode as a JSON object (`{}` when empty); returns it.'],
+        'overloads': [([('t?', 'table')], 'table')]},
+    ('Json', 'readFile'): {
+        'doc': ['File.readText + Json.decode: the value, or nil and "not found: data://save.json" /',
+                '"data://save.json: syntax error at line 2, column 5: ...". Paths as File.readText.'],
+        'overloads': [([('path', 'string'), ('opts?', 'JsonDecodeOptions')], _JSON_VALUE + '?, string?')]},
+    ('Json', 'writeFile'): {
+        'doc': ['Json.encode + File.writeText (atomic): true, or nil and the message. Paths as File.writeText.'],
+        'overloads': [([('path', 'string'), ('value', 'any'), ('opts?', 'JsonEncodeOptions')], 'true?, string?')]},
+    ('File', 'readText'): {
+        'doc': ['The whole file as a string, or nil and the message ("not found: data://save.json"). Paths:',
+                '"data://x" (user data, writable), "asset://x" and "lua://x" (read-only), a bare relative path',
+                'means data://; ".." is refused; absolute paths are read on desktop and in the editor only.'],
+        'overloads': [([('path', 'string')], 'string?, string?')]},
+    ('File', 'writeText'): {
+        'doc': ['Replaces the data:// file with `text` atomically (missing folders made): true, or nil and',
+                'the message. On the web it reaches IndexedDB within half a second (System.syncFileSystem: now).'],
+        'overloads': [([('path', 'string'), ('text', 'string')], 'true?, string?')]},
+    ('File', 'appendText'): {
+        'doc': ['Adds `text` to the end of the data:// file (made when missing; not atomic): true, or nil and the message.'],
+        'overloads': [([('path', 'string'), ('text', 'string')], 'true?, string?')]},
+    ('File', 'exists'): {
+        'doc': ['A file or folder is at `path` (paths as File.readText).'],
+        'overloads': [([('path', 'string')], 'boolean')]},
+    ('File', 'remove'): {
+        'doc': ['Removes the data:// file (never a folder): true (also when nothing was there), or nil and the message.'],
+        'overloads': [([('path', 'string')], 'true?, string?')]},
+    ('File', 'makeDirs'): {
+        'doc': ['Makes the data:// folder and the missing ones above it: true, or nil and the message.'],
+        'overloads': [([('path', 'string')], 'true?, string?')]},
+    ('File', 'list'): {
+        'doc': ['Names of the files and folders in a data:// folder, sorted, or nil and the message.'],
+        'overloads': [([('dir', 'string')], 'string[]?, string?')]},
+    ('PlayerPrefs', 'getInt'): {
+        'doc': ["Unity's PlayerPrefs.GetInt: the stored integer, or `default` (0) when the key is not there."],
+        'overloads': [([('key', 'string'), ('default?', 'integer')], 'integer')]},
+    ('PlayerPrefs', 'setInt'): {
+        'doc': ['Stores a 32-bit integer (3.5 raises "integer expected").'],
+        'overloads': [([('key', 'string'), ('value', 'integer')], '')]},
+    ('PlayerPrefs', 'getFloat'): {
+        'doc': ['The stored float, or `default` (0.0) when the key is not there.'],
+        'overloads': [([('key', 'string'), ('default?', 'number')], 'number')]},
+    ('PlayerPrefs', 'setFloat'): {
+        'doc': ['Stores a float (32-bit, as Unity).'],
+        'overloads': [([('key', 'string'), ('value', 'number')], '')]},
+    ('PlayerPrefs', 'getString'): {
+        'doc': ['The stored string (an empty one too), or `default` ("") when the key is not there.'],
+        'overloads': [([('key', 'string'), ('default?', 'string')], 'string')]},
+    ('PlayerPrefs', 'hasKey'): {
+        'doc': ['The key is stored (an empty value too).'],
+        'overloads': [([('key', 'string')], 'boolean')]},
+    ('PlayerPrefs', 'deleteKey'): {
+        'doc': ['Removes the key; nothing happens when it is not there.'],
+        'overloads': [([('key', 'string')], '')]},
+    ('PlayerPrefs', 'setString'): {
+        'doc': ['Stores a string (Json.encode a table to store it).'],
+        'overloads': [([('key', 'string'), ('value', 'string')], '')]},
+})
+
+# coroutines (binding/CoroutineClassesLua.cpp, lua_CFunctions of ScriptScheduler.cpp): the wait
+# helpers yield the running engine coroutine ('async': LuaLS ---@async, so calling one outside a
+# coroutine is flagged); TimerOptions is in engine/core/script/binding/stubs/Timer.lua
+_AWAITABLE = 'Coroutine|Timer|Action|AudioSource|AnimationPlayer|AnimeTimer|{isDone: fun(self): boolean}'
+OVERRIDES.update({
+    ('Coroutine', 'start'): {
+        'doc': ['Runs `fn(...)` in a new engine coroutine owned by no script (it survives scene loads and ends at',
+                'Play stop): for required modules and HTML UI document scripts; scripts use self:startCoroutine. The',
+                'code up to the first wait runs now. Errors are logged with the coroutine\'s traceback.'],
+        'overloads': [([('fn', 'async fun(...)'), ('...', 'any')], 'Coroutine')]},
+    ('Coroutine', 'running'): {
+        'doc': ['The engine coroutine running now, or nil (in onUpdate and other event handlers).'],
+        'overloads': [([], 'Coroutine?')]},
+    ('Coroutine', 'isInside'): {
+        'doc': ['True inside an engine coroutine (where the wait helpers work).'],
+        'overloads': [([], 'boolean')]},
+    ('Coroutine', 'wait'): {
+        'async': True,
+        'doc': ["Unity's WaitForSeconds: waits `seconds` of game time (scaled: never ends at Time.timeScale = 0;",
+                '<= 0 = the next frame). Returns the game seconds that passed.'],
+        'overloads': [([('seconds', 'number')], 'number')]},
+    ('Coroutine', 'waitRealtime'): {
+        'async': True,
+        'doc': ["Unity's WaitForSecondsRealtime: waits unscaled seconds (runs at time scale 0, stops while the app or",
+                "the editor's Play is paused). Returns the unscaled seconds that passed."],
+        'overloads': [([('seconds', 'number')], 'number')]},
+    ('Coroutine', 'nextFrame'): {
+        'async': True,
+        'doc': ["Unity's `yield return null`: resumes in the next frame, after onUpdate (as coroutine.yield())."],
+        'overloads': [([], '')]},
+    ('Coroutine', 'waitFrames'): {
+        'async': True,
+        'doc': ['Waits `n` (>= 1) frames.'],
+        'overloads': [([('n', 'integer')], '')]},
+    ('Coroutine', 'waitForFixedUpdate'): {
+        'async': True,
+        'doc': ["Unity's WaitForFixedUpdate: resumes after the next fixed step's physics (none at time scale 0)."],
+        'overloads': [([], '')]},
+    ('Coroutine', 'waitForEndOfFrame'): {
+        'async': True,
+        'doc': ["Unity's WaitForEndOfFrame: resumes after this frame's draw."],
+        'overloads': [([], '')]},
+    ('Coroutine', 'waitUntil'): {
+        'async': True,
+        'doc': ["Unity's WaitUntil: waits until `predicate()` is truthy (checked every frame after onUpdate; it must",
+                'not wait). With `timeout` seconds (unscaled when `unscaled`): false when it ran out, else true.'],
+        'overloads': [([('predicate', 'fun(): any'), ('timeout?', 'number'), ('unscaled?', 'boolean')], 'boolean')]},
+    ('Coroutine', 'waitWhile'): {
+        'async': True,
+        'doc': ["Unity's WaitWhile: waits while `predicate()` is truthy; `timeout` as in waitUntil."],
+        'overloads': [([('predicate', 'fun(): any'), ('timeout?', 'number'), ('unscaled?', 'boolean')], 'boolean')]},
+    ('Coroutine', 'waitFor'): {
+        'async': True,
+        'doc': ["`yield return StartCoroutine(...)` and friends: waits until `x` is done. A Coroutine: true and what",
+                'it returned, or false and its error ("stopped" when stopped; at once when it already ended); a Timer:',
+                'true when it fired, false when cancelled (not an endless every); a Tween/Action, AudioSource or',
+                'AnimationPlayer: true when stopped / not playing, false when its GameObject is gone; an anime',
+                'animation or timer: true completed, false cancelled; anything with isDone() (an HTTP request): true, x.'],
+        'overloads': [([('x', _AWAITABLE)], 'boolean, any')]},
+    ('Timer', 'after'): {
+        'doc': ['Calls `fn()` once after `delay` seconds (game time; `opts.unscaled` for real time), at the earliest',
+                'the next frame. Owned by no script unless `opts.owner = self` (then cancelled with it); in a script',
+                'self:invoke is shorter. For HTML UI animation timing anime.createTimer stays (milliseconds).'],
+        'overloads': [([('delay', 'number'), ('fn', 'fun()'), ('opts?', 'TimerOptions')], 'Timer')]},
+    ('Timer', 'every'): {
+        'doc': ['Calls `fn(timer)` every `interval` seconds (first after `opts.delay`, default the interval), at most',
+                'once a frame, `opts.count` times or until cancelled; `fn` returning false cancels it.'],
+        'overloads': [([('interval', 'number'), ('fn', 'fun(timer: Timer): boolean?'), ('opts?', 'TimerOptions')], 'Timer')]},
+})
+
+# audio-mixer (ECSClassesLua.cpp, GameObjectClassesLua.cpp): option tables ({unscaled = true}),
+# `nil` results and table results; AudioTimeOptions / AudioFadeOutOptions are in
+# engine/core/script/binding/stubs/Audio.lua
+OVERRIDES.update({
+    ('AudioMixer', 'setFloat'): {
+        'doc': ["Unity's AudioMixer.SetFloat: sets an exposed parameter (a group volume in dB, an effect value),",
+                'over `seconds` (default at once). It wins over snapshots until clearFloat. False (logged once)',
+                'for an unknown name. Remembered parameters are saved to UserSettings at the end of the frame.'],
+        'overloads': [([('name', 'string'), ('value', 'number'), ('seconds?', 'number'), ('opts?', 'AudioTimeOptions')], 'boolean')]},
+    ('AudioMixer', 'getFloat'): {
+        'doc': ['The value an exposed parameter has now (a script value, else the snapshot / mixer value); nil when unknown.'],
+        'overloads': [([('name', 'string')], 'number?')]},
+    ('AudioMixer', 'getParameterNames'): {
+        'doc': ['The exposed parameter names.'],
+        'overloads': [([], 'string[]')]},
+    ('AudioMixer', 'transitionTo'): {
+        'doc': ["Unity's AudioMixerSnapshot.TransitionTo: every parameter moves to the snapshot over `seconds`",
+                '(dB linearly, frequencies along log2). False for an unknown snapshot.'],
+        'overloads': [([('snapshot', 'string'), ('seconds', 'number'), ('opts?', 'AudioTimeOptions')], 'boolean')]},
+    ('AudioMixer', 'transitionToSnapshots'): {
+        'doc': ["Unity's AudioMixer.TransitionToSnapshots: to the weighted blend of snapshots (weights normalized)."],
+        'overloads': [([('snapshots', 'string[]'), ('weights', 'number[]'), ('seconds', 'number'), ('opts?', 'AudioTimeOptions')], 'boolean')]},
+    ('AudioMixer', 'getSnapshotNames'): {
+        'doc': ['The snapshot names.'],
+        'overloads': [([], 'string[]')]},
+    ('AudioMixer', 'getGroup'): {
+        'doc': ['A mixer group by name (live values; setting its volume is a script value, like setFloat), nil when none.'],
+        'overloads': [([('name', 'string')], 'AudioMixerGroup?')]},
+    ('AudioMixer', 'getGroupNames'): {
+        'doc': ['The group names, Master first, parents before children.'],
+        'overloads': [([], 'string[]')]},
+    ('AudioMixerGroup', 'getEffect'): {
+        'doc': ['An effect of the group by index (1-based) or type ("lowpass": the first of it); nil when none.'],
+        'overloads': [([('index', 'integer')], 'AudioMixerEffect?'), ([('type', 'string')], 'AudioMixerEffect?')]},
+    ('AudioMixerGroup', 'setVolume'): {
+        'doc': ['Moves the group volume (dB) over `seconds` (a script value, like setFloat).'],
+        'overloads': [([('db', 'number'), ('seconds?', 'number'), ('opts?', 'AudioTimeOptions')], '')]},
+    ('AudioMixerEffect', 'setParameter'): {
+        'doc': ['Sets a parameter of the effect ("cutoff", "resonance", "wet", ...: docs audio.md), over `seconds`.',
+                'A script value (wins over snapshots). False when the effect has no such parameter.'],
+        'overloads': [([('name', 'string'), ('value', 'number'), ('seconds?', 'number'), ('opts?', 'AudioTimeOptions')], 'boolean')]},
+    ('AudioMixerEffect', 'getParameter'): {
+        'doc': ['The value a parameter has now; nil when the effect has no such parameter.'],
+        'overloads': [([('name', 'string')], 'number?')]},
+    ('AudioSystem', 'preload'): {
+        'doc': ['Decodes (or opens, for streaming) a clip ahead so its first play or one-shot has no load; held until',
+                'the game ends. `loadType` as AudioSource.loadType (default Auto). False when the file does not load.'],
+        'overloads': [([('path', 'string'), ('loadType?', 'AudioLoadType')], 'boolean')]},
+    ('AudioSource', 'playOneShot'): {
+        'doc': ["Unity's PlayOneShot: the clip as an extra voice over what plays (volume x volumeScale, the",
+                "source's group, pitch, pan and position). Up to maxVoices voices; the oldest one-shot is stolen."],
+        'overloads': [([('path', 'string'), ('volumeScale?', 'number')], '')]},
+    ('AudioSource', 'fadeIn'): {
+        'doc': ['Plays from silence to the current volume over `seconds` (starting it when it is not playing).'],
+        'overloads': [([('seconds', 'number'), ('opts?', 'AudioTimeOptions')], '')]},
+    ('AudioSource', 'fadeOut'): {
+        'doc': ['To silence over `seconds`, then stops (opts.pause: pauses); the volume is put back for the next play().'],
+        'overloads': [([('seconds', 'number'), ('opts?', 'AudioFadeOutOptions')], '')]},
+    ('AudioSource', 'fadeTo'): {
+        'doc': ['The volume moves to `volume` over `seconds`.'],
+        'overloads': [([('volume', 'number'), ('seconds', 'number'), ('opts?', 'AudioTimeOptions')], '')]},
+    ('AudioSource', 'playClipAtPoint'): {
+        'doc': ["Unity's AudioSource.PlayClipAtPoint: the clip at a world position (3D when the scene has a camera),",
+                'through a mixer group (name; default Master); it belongs to `scene` and stops with it.'],
+        'overloads': [([('scene', 'Scene'), ('path', 'string'), ('position', 'Vector3'), ('volume?', 'number'), ('group?', 'string')], '')]},
+})
+
+# http (NetClassesLua.cpp): the request functions are lua_CFunctions (positional options and
+# callback, either may be left out); HttpOptions / HttpRequestOptions are in
+# engine/core/script/binding/stubs/Http.lua
+_HTTP_CB = 'fun(response: HttpResponse)'
+_HTTP_OPTS = 'HttpOptions'
+def _http_overloads(head):
+    return [
+        (head, 'HttpRequest'),
+        (head + [('callback', _HTTP_CB)], 'HttpRequest'),
+        (head + [('options', _HTTP_OPTS), ('callback?', _HTTP_CB)], 'HttpRequest'),
+    ]
+OVERRIDES.update({
+    ('Http', 'get'): {
+        'doc': ['GET `url` (UnityWebRequest.Get). The callback runs once on the main thread, before onUpdate, with',
+                'the response: `if res.ok then ... else print(res.errorCode, res.error) end`. Pass `owner = self` in',
+                'per-scene scripts: the request then ends (no callback) when the script goes.'],
+        'overloads': _http_overloads([('url', 'string')])},
+    ('Http', 'head'): {
+        'doc': ['HEAD `url`: the status and headers, no body (a connectivity check).'],
+        'overloads': _http_overloads([('url', 'string')])},
+    ('Http', 'delete'): {
+        'doc': ['DELETE `url`.'],
+        'overloads': _http_overloads([('url', 'string')])},
+    ('Http', 'post'): {
+        'doc': ['POST `body` to `url`: a string is sent as is (Content-Type: application/octet-stream unless options.headers',
+                'set one), a table as JSON (Content-Type: application/json), nil sends an empty body.'],
+        'overloads': _http_overloads([('url', 'string'), ('body', 'string|table|nil')])},
+    ('Http', 'put'): {
+        'doc': ['PUT `body` to `url` (body rules of Http.post).'],
+        'overloads': _http_overloads([('url', 'string'), ('body', 'string|table|nil')])},
+    ('Http', 'patch'): {
+        'doc': ['PATCH `body` to `url` (body rules of Http.post).'],
+        'overloads': _http_overloads([('url', 'string'), ('body', 'string|table|nil')])},
+    ('Http', 'request'): {
+        'doc': ['The full form: options.url (required), options.method (default "GET"), options.onComplete and every',
+                'other option.'],
+        'overloads': [([('options', 'HttpRequestOptions')], 'HttpRequest')]},
+    ('Http', 'download'): {
+        'doc': ['GET `url` into the file `path` (data://ads/x.mp4, or an absolute path inside System.getUserDataPath();',
+                'folders are made). Streamed to <path>.part and renamed on success: a failed or cancelled download',
+                'leaves an existing file as it was. response.file is the path.'],
+        'overloads': _http_overloads([('url', 'string'), ('path', 'string')])},
+    ('Http', 'getTexture'): {
+        'doc': ['GET an image (PNG, JPEG, BMP, TGA, GIF) and decode it off the main thread: response.textureData,',
+                'for image:setTexture(response.url, response.textureData). Not an image: errorCode "decode".'],
+        'overloads': _http_overloads([('url', 'string')])},
+    ('Http', 'encodeUrl'): {
+        'doc': ['Percent-encodes `text` (RFC 3986: letters, digits and -._~ stay): "a b&c" -> "a%20b%26c".'],
+        'overloads': [([('text', 'string')], 'string')]},
+    ('Http', 'decodeUrl'): {
+        'doc': ['Decodes %XX escapes, and "+" as a space.'],
+        'overloads': [([('text', 'string')], 'string')]},
+    ('HttpResponse', 'json'): {
+        'doc': ['Json.decode of the body: the value, or nil and the message.'],
+        'overloads': [([], 'JsonValue?, string?')]},
+    ('HttpResponse', 'header'): {
+        'doc': ['The header `name` (any case), or nil.'],
+        'overloads': [([('name', 'string')], 'string?')]},
+})
+
 # Properties whose getter returns a LuaRef: (Lua type, a copy)
+
+# Properties whose getter returns a LuaRef, or whose lambda's return type is not inferred:
+# (Lua type, a copy)
 PROPERTY_OVERRIDES = {
+    # the null sentinel (stubs/Json.lua: JsonNull)
+    ('Json', 'null'): ('JsonNull', False),
     ('Mesh', 'material'): ('Material', True),
+    # the Particle System module views (binding/stubs/ParticleSystemModules.lua, from
+    # tools/gen_particle_stubs.py): live views, not copies
+    **{('ParticleSystem', _m): ('ParticleSystem' + _m[0].upper() + _m[1:] + 'Module', False) for _m in (
+        'main', 'emission', 'shape', 'velocityOverLifetime', 'limitVelocityOverLifetime', 'inheritVelocity',
+        'forceOverLifetime', 'colorOverLifetime', 'colorBySpeed', 'sizeOverLifetime', 'sizeBySpeed',
+        'rotationOverLifetime', 'rotationBySpeed', 'noise', 'textureSheetAnimation', 'renderer')},
     # AnimationEvent.args builds a 1-based table of the event's arguments
     ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
+    # ui-multitouch: the GameObjects of a PointerEventData (nil: none)
+    ('PointerEventData', 'pointerEnter'): ('GameObject?', False),
+    ('PointerEventData', 'pointerPress'): ('GameObject?', False),
+    ('PointerEventData', 'rawPointerPress'): ('GameObject?', False),
+    ('PointerEventData', 'pointerDrag'): ('GameObject?', False),
+    ('PointerEventData', 'target'): ('GameObject?', False),
+    # a coroutine's error (with its traceback) and the script instance that started it
+    ('Coroutine', 'error'): ('string?', False),
+    ('Coroutine', 'owner'): ('ScriptInstance?', False),
+    # the GameObject a Camera Follow follows (its scene or the persistent one), nil without one
+    ('CameraFollow', 'target'): ('GameObject?', False),
+    ('HttpRequest', 'response'): ('HttpResponse|nil', False),
+    ('HttpResponse', 'headers'): ('table<string, string>', True),
+    ('HttpResponse', 'body'): ('string', False),
+    ('HttpResponse', 'data'): ('JsonValue', False),
+    ('HttpResponse', 'textureData'): ('TextureData|nil', True),
+
+    # the joint's bodies (std::optional<GameObject> lambdas): nil = the world
+    ('Joint2D', 'bodyA'): ('GameObject|nil', False),
+    ('Joint2D', 'bodyB'): ('GameObject|nil', False),
+    ('Joint2D', 'connectedBody'): ('GameObject|nil', False),
+    ('Joint3D', 'bodyA'): ('GameObject|nil', False),
+    ('Joint3D', 'bodyB'): ('GameObject|nil', False),
+    ('Joint3D', 'connectedBody'): ('GameObject|nil', False),
 }
+
+# physics-contacts: the callbacks' values. Their GameObject / body / receiver getters are
+# std::optional lambdas (nil once gone), contacts builds a table, getContact is a lua_CFunction
+for _col, _body, _contact in (('Collider', 'Rigidbody', 'ContactPoint'), ('Collider2D', 'Rigidbody2D', 'ContactPoint2D')):
+    PROPERTY_OVERRIDES[(_col, 'gameObject')] = ('GameObject|nil', False)
+    PROPERTY_OVERRIDES[(_col, 'rigidbody')] = (_body + '|nil', False)
+    PROPERTY_OVERRIDES[(_col, 'attachedRigidbody')] = (_body + '|nil', False)
+    PROPERTY_OVERRIDES[(_col, 'receiver')] = ('GameObject|nil', False)
+for _coll, _body, _contact in (('Collision', 'Rigidbody', 'ContactPoint'), ('Collision2D', 'Rigidbody2D', 'ContactPoint2D')):
+    PROPERTY_OVERRIDES[(_coll, 'gameObject')] = ('GameObject|nil', False)
+    PROPERTY_OVERRIDES[(_coll, 'rigidbody')] = (_body + '|nil', False)
+    PROPERTY_OVERRIDES[(_coll, 'thisRigidbody')] = (_body + '|nil', False)
+    PROPERTY_OVERRIDES[(_coll, 'contacts')] = (_contact + '[]', True)
+    OVERRIDES[(_coll, 'getContact')] = {
+        'doc': ['Contact point `index` (0-based, an error out of range). Allocates nothing, unlike `contacts`.'],
+        'overloads': [([('index', 'integer')], _contact)]}
+PROPERTY_OVERRIDES[('Collision2D', 'otherRigidbody')] = ('Rigidbody2D|nil', False)
+
+for _phys, _what in (('Physics', 'Rigidbody'), ('Physics2D', 'Rigidbody 2D')):
+    OVERRIDES[(_phys, 'ignoreCollision')] = {
+        'doc': [f'Makes the two bodies (GameObjects or bodies with a {_what}, one scene) collide or not, at run',
+                'time (Unity Physics.IgnoreCollision). `ignore` defaults to true; resting pairs are woken.'],
+        'overloads': [([('a', 'EntityHandle'), ('b', 'EntityHandle'), ('ignore?', 'boolean')], '')]}
+    OVERRIDES[(_phys, 'getIgnoreCollision')] = {
+        'doc': ['Whether ignoreCollision keeps the two bodies apart.'],
+        'overloads': [([('a', 'EntityHandle'), ('b', 'EntityHandle')], 'boolean')]}
 
 for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
     OVERRIDES[(_phys, 'ignoreLayerCollision')] = {
@@ -2064,6 +2677,27 @@ OVERRIDES[('InputActions', 'getConflicts')] = {
     'doc': ['The bindings of enabled maps in the same group as the binding with its path.'],
     'overloads': [([('action', 'string'), ('bindingId', 'string')],
                    '{action: string, id: string, path: string, groups: string[]}[]')]}
+
+# Camera shake (camera shake spec 8): the shake calls are lua_CFunctions (a preset is a name, a
+# .shake path or a table; options a table); ShakePreset and ShakeOptions are in
+# engine/core/script/binding/stubs/CameraShake.lua
+_SHAKE_PRESET = 'ShakePresetName|string|ShakePreset'
+for _cls, _who, _example in (
+        ('CameraShake', 'every global Camera Shaker (enabled, active, Global on, in every running scene)',
+         '`CameraShake.shake("explosion")`, `CameraShake.shake("assets/shakes/boom.shake", {strength = 0.5})`'),
+        ('CameraShaker', 'this shaker, whatever its Global flag',
+         '`self.gameObject:getCameraShaker():shake("punch", {seed = 7})`')):
+    OVERRIDES[(_cls, 'shake')] = {
+        'doc': [f'Starts a shake on {_who}.',
+                '`preset`: a built-in name (CameraShake.getPresetNames()), a .shake path or a preset table. Returns',
+                'the ShakeInstance (invalid when nothing was shaken; an unknown name logs one warning).',
+                _example],
+        'overloads': [([('preset', _SHAKE_PRESET), ('options?', 'ShakeOptions')], 'ShakeInstance')]}
+    OVERRIDES[(_cls, 'shakeAt')] = {
+        'doc': [f'As shake, on {_who}, with the strength and roughness scaled by',
+                'max(0, 1 - d / radius), d the distance from the shaker (x/y only in 2D); none at d >= radius.'],
+        'overloads': [([('position', 'Vector3'), ('radius', 'number'), ('preset', _SHAKE_PRESET),
+                        ('options?', 'ShakeOptions')], 'ShakeInstance')]}
 
 # HTML UI (phase 1, p1-lua): the element API's lua_CFunctions (they take Lua functions and
 # option tables, and raise errors with no C++ object alive)
@@ -2252,12 +2886,24 @@ HTML_UI_FIELD_OVERRIDES = {
 HTML_UI_EVENT_TYPES = [
     ('click', 'a press and release on the element (Enter/Space on a focused button too)'),
     ('dblclick', 'a double click'),
-    ('mousedown', 'a pointer press (event.button: 0 left, 1 middle, 2 right)'),
+    ('mousedown', 'a pointer press (event.button: 0 left, 1 middle, 2 right; every finger too, event.pointerId)'),
     ('mouseup', 'a pointer release'),
     ('mousemove', 'the pointer moved over the element'),
     ('mouseover', 'the pointer entered the element or a child (bubbles)'),
     ('mouseout', 'the pointer left the element or a child (bubbles)'),
     ('wheel', 'the mouse wheel (event.deltaX/deltaY in steps, positive down/right)'),
+    ('pointerdown', 'a pointer pressed: the mouse (pointerId 1) or a finger (event.pointerType "touch", event.fingerId); each finger its own'),
+    ('pointermove', 'the pointer moved (to its capture when captured)'),
+    ('pointerup', 'the pointer released'),
+    ('pointercancel', 'the pointer ended without a release (a touch that started a pan, a cancelled touch)'),
+    ('pointerover', 'the pointer came over the element (bubbles)'),
+    ('pointerout', 'the pointer left the element (bubbles)'),
+    ('pointerenter', 'the pointer entered the element or a child (does not bubble)'),
+    ('pointerleave', 'the pointer left the element and its children (does not bubble)'),
+    ('gotpointercapture', 'the element captured the pointer (setPointerCapture, or a touch\'s pointerdown target)'),
+    ('lostpointercapture', 'the element lost the pointer\'s capture (release, up, cancel)'),
+    ('mouseenter', 'the pointer entered the element (does not bubble)'),
+    ('mouseleave', 'the pointer left the element (does not bubble)'),
     ('keydown', 'a key press on the focused element (event.key: "Enter", "Escape", "ArrowUp", "a"); gamepads too (event.code: "GamepadA", "GamepadDPadUp", ...)'),
     ('keyup', 'a key release (keyboard or gamepad)'),
     ('textinput', 'text typed into the focused element (event.data)'),
@@ -2315,6 +2961,10 @@ HTML_UI_EVENT_TYPES = [
 # `any`): (Lua class, member, parameter name) -> Lua type. A `luabridge::LuaRef` parameter of a
 # bound function that takes a callback or a parameter table belongs here.
 _PARAM_TYPE_OVERRIDES = {
+    # 2D physics materials: a .physicsmaterial path, a PhysicsMaterial or nil (none)
+    ('Rigidbody2D', 'setColliderMaterial', 'value'): 'string|PhysicsMaterial|nil',
+    ('Rigidbody', 'setColliderMaterial', 'value'): 'string|PhysicsMaterial|nil',
+    ('PhysicsMaterial', 'new', 'params'): '{friction?: number, bounciness?: number, frictionCombine?: PhysicsMaterialCombine, bounceCombine?: PhysicsMaterialCombine}|nil',
 }
 # anime (engine/core/script/binding/HtmlUIAnimeLua.cpp, phase-1 p1-anim): the parameter tables
 # are the Anime*Params classes of engine/core/script/binding/stubs/anime.lua
@@ -2394,6 +3044,7 @@ ENGINE_EVENT_ARGS = {
     'onGamepadConnect': ['gamepad'], 'onGamepadDisconnect': ['gamepad'],
     'onGamepadButtonDown': ['gamepad', 'button'], 'onGamepadButtonUp': ['gamepad', 'button'],
     'onGamepadAxisMove': ['gamepad', 'axis', 'value'],
+    'onButtonDown': ['action'], 'onButtonUp': ['action'],
 }
 
 _LUA_KEYWORDS = {'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function', 'goto', 'if',
@@ -2488,7 +3139,7 @@ class Builder:
             fs = re.match(r'^FunctionSubscribe<(.*?)\((.*)\)>$', c.cpp) or \
                 re.match(r'^FunctionSubscribe<(.*?)\((.*)\)>$', c.base_cpp or '')
             for m in c.members:
-                if fs and m.kind == 'Method' and m.name in ('call', '__call', 'add'):
+                if fs and m.kind == 'Method' and m.name in ('call', '__call', 'add', 'remove', 'has'):
                     self.subscribe_member(c, m, fs.group(1), fs.group(2))
                     continue
                 if m.kind in ('Method', 'StaticMethod'):
@@ -2565,6 +3216,7 @@ class Builder:
             ov = OVERRIDES[key]
             m.lua_sigs = [self.override_sig(o) for o in ov['overloads']]
             m.doc = m.call.doc + ov.get('doc', [])
+            m.is_async = ov.get('async', False)
             return
         sigs = []
         m.cpp_sigs = []
@@ -2621,6 +3273,14 @@ class Builder:
         if m.name in ('call', '__call'):
             m.lua_sigs = [LuaSig(handler_params, ret)]
             m.doc = ['Calls every subscribed function with these arguments.'] if m.name == 'call' else []
+        elif m.name == 'remove':
+            m.lua_sigs = [LuaSig([('tag', 'string', False)], 'boolean')]
+            m.doc = ['Removes the subscription with `tag` (UnregisterEvent computes it); true if there was one.']
+            return
+        elif m.name == 'has':
+            m.lua_sigs = [LuaSig([('tag', 'string', False)], 'boolean')]
+            m.doc = ['Whether a subscription with `tag` exists.']
+            return
         else:
             fn = 'fun(' + ', '.join(f'{n}: {t}' for n, t, _ in handler_params) + ')' + (f': {ret}' if ret else '')
             m.lua_sigs = [LuaSig([('tag', 'string', False), ('fn', fn, False)], 'boolean')]

@@ -2241,7 +2241,7 @@ function Car:onJointBreak2D(joint) Log.print("snap") end
 ```lua
 function UpsideDown:onCollisionEnter2D(c)
     if c.gameObject.tag == "Ground" and c.thisCollider.index == self.detectorCollider then
-        self.game:gameOver()
+        GameOver(self)   -- the game's own function
     end
 end
 ```

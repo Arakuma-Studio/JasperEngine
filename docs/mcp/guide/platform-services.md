@@ -125,7 +125,7 @@ the next frame, as the input guide says) and a pause saves `PlayerPrefs`.
 
 ```lua
 function Music:init() RegisterEngineEvent(self, "onFocus") end
-function Music:onFocus(hasFocus) self.sound:setVolume(hasFocus and 1 or 0) end
+function Music:onFocus(hasFocus) self.sound.volume = hasFocus and 1 or 0 end
 ```
 
 ## Screen sleep

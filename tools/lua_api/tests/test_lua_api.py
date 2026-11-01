@@ -149,7 +149,9 @@ class Emitters(unittest.TestCase):
             return True
         if parent == 'ParticleSystemComponent' and kind == 'Property' and name in cls.S20_LEGACY_PARTICLE_FIELDS:
             return True
-        return (kind, parent, name) == ('CppMethod', 'ActionSystem', 'particleActionReset')
+        # SYNC#4: upstream's collider vectors replaced PhysicsSystem::loadCollider2D
+        return (kind, parent, name) in (('CppMethod', 'ActionSystem', 'particleActionReset'),
+                                        ('CppMethod', 'PhysicsSystem', 'loadCollider2D'))
 
     def test_suggestions_keep_what_the_regex_parser_knew(self):
         """generate_api_suggestions.py's symbols at its deletion (fixtures/regex_symbols.txt: kind
@@ -180,6 +182,9 @@ class Emitters(unittest.TestCase):
                 if kind == 'Event' and ('Constant', parent, name) in new:
                     continue
                 if kind == 'CppMethod' and name in self.REGEX_FALSE_CPP_METHODS.get(parent, ()):
+                    continue
+                # a C++-only method since bound to Lua (SYNC#4: Rigidbody.setType, System.syncFileSystem...)
+                if kind == 'CppMethod' and any(known(k, parent, name) for k in ('Method', 'StaticMethod', 'Property', 'StaticProperty')):
                     continue
                 missing.append(line)
         self.assertEqual(missing, [], 'symbols the regex parser listed and the one parser does not')

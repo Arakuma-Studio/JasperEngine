@@ -153,8 +153,11 @@ def _class(bd, c, repo_root):
         sigs = getattr(m, 'lua_sigs', [])
         cpp_sigs = getattr(m, 'cpp_sigs', [])
         overloads = [_sig(s, cpp_sigs[i] if i < len(cpp_sigs) and len(cpp_sigs) == len(sigs) else None) for i, s in enumerate(sigs)]
-        methods.append({'name': m.name, 'static': m.kind == 'StaticMethod', 'overloads': overloads, 'doc': list(m.doc),
-                        'conditions': _cond_notes(m.call.cond), 'unresolved': list(m.unresolved)})
+        method = {'name': m.name, 'static': m.kind == 'StaticMethod', 'overloads': overloads, 'doc': list(m.doc),
+                  'conditions': _cond_notes(m.call.cond), 'unresolved': list(m.unresolved)}
+        if getattr(m, 'is_async', False):
+            method['async'] = True   # it yields the running engine coroutine (LuaLS ---@async)
+        methods.append(method)
     out['methods'] = methods
 
     # the public C++ methods LuaBridge does not bind (C++ scripts only)
