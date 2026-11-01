@@ -18,6 +18,7 @@
 #include "component/SafeAreaComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/Transform.h"
+#include "component/CameraComponent.h"
 #include "object/Camera.h"
 
 #include "Catalog.h"
@@ -451,6 +452,13 @@ TEST_F(SafeAreaTest, ComponentInAScaledUIKeepsTheScreenFractions) {
     view(1000, 2000, 500, 1000, Scaling::FITWIDTH);
     Screen::setPlatformSafeArea(EdgeInsets(20, 100, 40, 50));
     Scene scene;
+    // a UI camera: the Canvas Scaler scales the UI it shows
+    const Entity camera = scene.createEntity();
+    scene.addComponent<Transform>(camera, Transform());
+    CameraComponent cameraComponent;
+    cameraComponent.type = CameraType::CAMERA_UI;
+    scene.addComponent<CameraComponent>(camera, cameraComponent);
+    scene.setCamera(camera);
     CanvasScalerSettings scaler;
     scaler.mode = UIScaleMode::ScaleWithScreenSize;
     scaler.referenceResolution = Vector2(1080, 1920);
