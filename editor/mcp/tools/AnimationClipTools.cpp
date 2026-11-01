@@ -1892,6 +1892,8 @@ void getClip(const CallPtr& call) {
     std::string sampled;
     std::vector<float> humanoidTimes;
     ClipWrapMode humanoidWrap = ClipWrapMode::Once;
+    // a clip the root's entry retargets: its bindings are the conversion's (what plays)
+    std::shared_ptr<const AnimationClip> retargeted;
     if (has(args, "times")) {
         const Json& times = args["times"];
         if (!times.is_array() || times.empty() || times.size() > 64) {
@@ -2007,6 +2009,7 @@ void getClip(const CallPtr& call) {
                     std::string convertError;
                     humanoidClip = AnimationClipPool::getOrLoad(anim::retargetPoolKey(entry.clip, true), &convertError);
                     if (!humanoidClip) out["retarget_report"] = {{"error", convertError}};
+                    retargeted = humanoidClip;
                     break;
                 }
             }
@@ -2075,8 +2078,9 @@ void getClip(const CallPtr& call) {
         }
     }
 
-    FixableClip fixable{document->isReadOnly() ? nullptr : &data, document->absolutePath()};
-    const Json bindings = root != NULL_ENTITY ? bindingsJson(scene, ClipValidation::validateInScene(project, scene, data, root), &fixable)
+    FixableClip fixable{document->isReadOnly() || retargeted ? nullptr : &data, document->absolutePath()};
+    const Json bindings = root != NULL_ENTITY ? bindingsJson(scene, ClipValidation::validateInScene(project, scene,
+                                                             retargeted ? retargeted->toData() : data, root), &fixable)
                                               : Json(nullptr);
     if (!bindings.is_null()) out["bindings"] = bindings;
 

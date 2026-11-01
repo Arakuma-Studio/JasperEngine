@@ -254,7 +254,8 @@ TEST_F(HumanoidEditorTest, ConvertToHumanoidClipWritesAVersionTwoClip) {
 }
 
 TEST_F(HumanoidEditorTest, RecordOnAHumanoidClipKeysTheSlotE) {
-    copyFixture("hero_tpose.gltf", "models/record/hero.gltf");
+    // a model with animations loads in its node hierarchy (Record refuses the legacy layout)
+    copyFixture("hero_animated.gltf", "models/record/hero.gltf");
     ModelScene s = modelScene("models/record/hero.gltf", "RecordHero");
     // a humanoid clip (one hips key) played by the model
     ClipData data;

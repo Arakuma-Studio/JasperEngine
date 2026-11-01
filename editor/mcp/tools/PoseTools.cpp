@@ -41,6 +41,7 @@
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 #include "util/ProjectChecks.h"
+#include "util/ProjectFileWrites.h"
 #include "util/Util.h"
 
 #include <algorithm>
