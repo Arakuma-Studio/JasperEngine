@@ -5,6 +5,8 @@
 
 #include "Project.h"
 #include "imgui.h"
+#include "util/ShaderGlobalsEdit.h"
+#include "util/ShaderGlobalsUsage.h"
 
 #include <string>
 #include <filesystem>
@@ -138,6 +140,16 @@ namespace jasperengine::editor {
         };
         InputListen m_inputListen;
 
+        // Shader Globals being edited (Project Settings > Graphics). Every valid edit is declared to
+        // the engine at once, so the Scene and Game views follow it; Cancel declares the project's
+        // again, OK makes the whole edit one project history step (a renamed global takes the
+        // material and component bindings of the open scenes along)
+        ShaderGlobalsEdit m_globalsEdit;
+        // "Used by", scanned when the page opens and on Refresh (not every frame)
+        std::vector<ShaderGlobalsUsage::Use> m_shaderGlobalUses;
+        bool m_shaderGlobalUsesScanned = false;
+        int m_shaderGlobalRemove = -1;   // the row whose removal asks first (bindings use it)
+
         // Unity-style category list; indexes ProjectCategory in the .cpp.
         int m_category = 0;
         char m_categorySearch[64] = {0};
@@ -145,6 +157,12 @@ namespace jasperengine::editor {
         void drawSettings();
         void drawPlayerSettings();
         void drawGraphicsSettings();
+        void drawShaderGlobals();
+        // the default (or, in Play, the live value) of a global: a field per type; matrices and
+        // arrays edit in a popup. True when `values` changed
+        bool drawShaderGlobalValue(const char* id, ShaderGlobalType type, unsigned int arraySize, std::vector<Vector4>& values);
+        bool drawShaderGlobalTexture(const char* id, ShaderGlobalType type, std::string& path);
+        void refreshShaderGlobalUses();
         void drawQualitySettings();
         void drawPhysicsSettings();
         void drawPhysics2DSettings();
