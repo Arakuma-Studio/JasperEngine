@@ -603,3 +603,73 @@ Land S09 early in wave 1 so the others build on it.
   when `JASPER_TEST_PERF_SLACK` is set: the benchmark run on server E
   (`env JASPER_TEST_PERF_SLACK=1 ... --gtest_filter=*Bench*:SchedulerTest.Process10kUnder2ms`,
   docs/testing.md). Other runs print the `[bench]` lines and check the results only.
+
+## Upstream absorption (sync 4: debug-overlay)
+
+Upstream's `debug-overlay` feature (`docs/superpowers/specs/2026-10-31-debug-overlay-design.md`,
+`docs/mcp/guide/debugging.md`) brought its own log core in `engine/core/Log.{h,cpp}`: a `LogLevel`
+(`Info, Verbose, Debug, Warn, Error` on the `D_LOG_*` values), a `LogEntry` ring buffer, `Log`
+listeners callable from any thread, and a direct `System::platformLog` path. The logging plumbing is
+S09's; upstream's genuinely new parts sit on top of it.
+
+- **One `LogLevel`.** Upstream's enum is gone: `LogEntry::level`, `Log::getCount`, the overlay's
+  filters and Lua's `LogLevel` are S09's `Trace < Debug < Info < Warn < Error < Fatal` (`Off`).
+  Upstream's `Verbose` is `Trace`; Lua keeps `LogLevel.VERBOSE` as an alias of `LogLevel.TRACE` and
+  gains `INFO`... `FATAL` with S09's values (scripts compare by name). The overlay counts and shows
+  `Fatal` with the errors.
+- **The buffer and the listeners are a sink.** `Log.cpp` installs `LogBufferSink` ("buffer"), an
+  `Inline` sink at `Trace`, at the engine library's start (and on first use of the `Log` API). Every
+  record of the process reaches it: `Log::*` (category `engine`, now `vwritef` again, so gated before
+  formatting, R3), `JE_LOG_*` of every category, Lua; its `categoryMask` leaves out the editor's own
+  categories (`editor`, `build`, `mcp`: `Out::*`, compiler output, the MCP server), so the buffer is
+  the game's log as upstream's was (its `Log::*` never saw `Out::*`). `LogEntry` carries the record's `id`
+  (S09's, R4), its `category`, its level; `message`/`stackTrace` are split at `stack traceback:` as
+  upstream did. Two small, generic `LogSink` capabilities make this possible:
+  - `resident()`: `Logger::shutdown()` keeps the sink, and records logged before `init()` / after
+    `shutdown()` reach it (on the logging thread, with an id, next to the stderr fallback), so
+    upstream's "captured from the first line" holds for the whole process;
+  - `wantsAfterWrite()` / `afterWrite()`: called on the thread that logged once the Logger's lock is
+    released, for the Inline sinks written under it. `write()` (under the lock) only copies the
+    record into the ring and the main thread's pending queue; the listeners run from `afterWrite()`.
+    This keeps upstream's guarantee that listeners are never called with a log lock held (a listener
+    can join a thread that logs), and S09's per-sink id order.
+  The rest is upstream's code unchanged: `AnyThread` listeners on the logging thread, `MainThread`
+  ones at once on the main thread or at `Log::dispatchPending()` (frame start) in order, the 1,000-line
+  pending queue with its one-line overflow report, no re-dispatch of a line logged inside a listener,
+  copy-on-write listener lists, and `removeListener` that waits for running calls on other threads
+  but never from inside a listener call (no hang on self or cross removal). `Log::emitEntry` hands
+  the sink its message and trace as given (a thread-local keyed by the text's address), so a message
+  containing `stack traceback:` is not split.
+- **What the buffer sees is what every sink sees.** A line below its category's level, held back by
+  the rate limit (R9) or dropped by a full queue (R12) is not buffered, not counted and not handed to
+  listeners; the `suppressed N similar messages` and `[log] dropped N messages` records are. Upstream's
+  tests that flood one call site log distinct texts through `"%s"` (keyed by text).
+- **Lua.** `Log.print/info/verbose/debug/warn/error` are upstream's `luaLogLine` (any values,
+  tab-joined, a traceback per Project Settings > Debug > Log Stack Traces) on S09's path: gated first,
+  category `lua`, `LogFlagLua | LogFlagNoBacktrace`, the calling chunk and line as the source (R5),
+  through `LuaBinding::logFromLua` (which takes the trace and goes through `Log::emitEntry`). R34's
+  `Log.category(name)` methods and `Log.setLevel/getLevel` stay; category methods get the traceback
+  per the same setting. `Log.getEntries` adds `category`.
+- **Stats on S15.** The stats panel and `DebugOverlay.getStats()` read S15's frame-time ring
+  (`FrameTimes`, R19) instead of upstream's own 240-float ring fed from `Engine::runFrame`;
+  `FrameTimes::recordSample` is the seam the tests use. The process memory has one reader,
+  `System::getProcessMemoryBytes` (`debug/ProcessMemory.cpp`), which S15's "Process RSS" monitor
+  now uses too (Apple reports the physical footprint there).
+- **Settings.** Project Settings > Debug is a reflection table (S08, `editor/reflect/DebugReflect.cpp`):
+  the `debug:` block of `project.yaml` (only what differs from the defaults), its enum tokens
+  (`DebugSettingsNames`), `jasper://reflection`'s `project_debug` schema, the S25 rows (`debug.*`
+  keys unchanged, labels, help, choices and range from the table) and the window's rows. `debug` is
+  a known root key of `project.yaml` (`StreamSchema`).
+- **Not taken.** Upstream's direct `System::platformLog` calls (the platform log is S09's sinks);
+  native backtraces in `LogEntry::stackTrace` (S09 symbolizes in the Async sinks only, R8: they stay
+  in the log file). No MCP tool was added (upstream added none; `get_log_config` lists the `buffer`
+  sink).
+- **Tests.** Upstream's `editor/tests/LogListenerTest.cpp`, `editor/tests/DebugSettingsTest.cpp`,
+  `engine/tests/htmlui/TestDebugOverlay.cpp` and `tools/mcp/tests/test_debug_overlay.py` run as
+  upstream wrote them, adapted where S09 or S15 decide (floods through `"%s"`, frames through
+  `FrameTimes`, the timing budgets of the off-cost test skipped in sanitizer builds).
+  `engine/tests/core/log/LogBufferSinkTest.cpp` checks that the sink gets exactly what another
+  Inline sink gets (ids, texts, levels), from six threads at once (each line once, `AnyThread` on its
+  own thread, `MainThread` in id order), outside the Logger's lock, before init and after shutdown,
+  and the rate limit's summary; it and `LogListenerTest` run under ThreadSanitizer
+  (`SANITIZE=thread tools/build.sh unit-tests`).

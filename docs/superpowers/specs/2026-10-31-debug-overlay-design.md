@@ -1,5 +1,7 @@
 # Debug overlay: on-device log console and stats overlay (design)
 
+Absorbed onto S09 in sync 4: see "Upstream absorption" in docs/specs/S09-core-utilities.md (one LogLevel, the buffer and listeners as a Logger sink, stats on S15's frame-time ring, settings on an S08 table).
+
 Feature `debug-overlay` (ledger #23, branch `gaps/debug-overlay`). Binding conventions:
 [AGENT-BRIEF.md](../../engine-gaps/AGENT-BRIEF.md) "Shared conventions" (main-thread delivery; editor Play = exports).
 
