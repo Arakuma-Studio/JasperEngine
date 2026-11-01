@@ -253,3 +253,9 @@ origin/main).
   task perf-canvasgroup bisects and fixes it (PhysicsContactsTest.ContactProcessingCostIsSmall checked too).
   asan-sweep pushed (d08d63b31 + this entry): Linux 0 warnings, unit 1799 passed + those two timing tests, full MCP
   944 passed with only the 10 baseline failures, 155 tools 114475; owner's Mac macOS + iOS 0 errors.
+- 2026-11-01: correction of the correction: the canvas group timing failure is not a regression from the batch.
+  Bisected on idle box 2201 (best of 250): the structural pass was ~420 us at both 7fd144900 and 5fde0ada4 (the
+  earlier pass at 7fd144900 was the test skipping itself under load). Root cause: getSignature/isCreated searched
+  EntityManager's std::map (tree cache misses, 43% of the pass). Task perf-canvasgroup: a paged signature cache next
+  to the map (812a7c3ac) -> 250 us; the physics contact timing test made robust (GC before each trial, best-of
+  rounds; noise, not a regression). In review (core ECS change).
