@@ -14,8 +14,9 @@
 # Headers phase that has ActionSystem.h. Object ids are "4A534E47" + 16 hex of the sha1 of the
 # kind and path: deterministic, and two branches adding different files do not collide.
 #
-# Only core/ is compared (and APPLE_ENGINE_SOURCES): the libraries (libs/) and the HTML UI compat
-# layer have their own sync scripts (tools/htmlui/xcode_sync_*.py) and their own source lists.
+# Only core/ is compared (and APPLE_ENGINE_SOURCES), plus the libraries listed in LIBRARIES (their
+# CMake add_library list against their own two targets, e.g. SoLoud's filters: soloud-ios/-macos);
+# the HTML UI libraries and compat layer have their own sync scripts (tools/htmlui/xcode_sync_*.py).
 
 import hashlib
 import os
@@ -38,6 +39,12 @@ HEADER_DIRECTORIES = ["core/component"]
 # them per platform): the HTTP client's NSURLSession backend
 APPLE_ENGINE_SOURCES = ["platform/apple/HttpBackendApple.mm"]
 
+# libraries whose CMake add_library(...) source list the project's targets of the anchor follow:
+# (CMakeLists.txt relative to engine/, the source prefix relative to engine/, the anchor source)
+LIBRARIES = [
+    ("libs/soloud/CMakeLists.txt", "libs/soloud", "libs/soloud/src/core/soloud_filter.cpp"),
+]
+
 OBJECT_RE = re.compile(r"^\t\t([0-9A-F]{24})(?: /\* (.*?) \*/)? = \{(.*)$")
 
 
@@ -55,6 +62,16 @@ def cmake_sources():
         if token.startswith("core/") and token.endswith(".cpp"):
             sources.append(token)
     return sources
+
+
+def library_sources(cmake, prefix):
+    """the .c/.cpp of the first add_library(...) of engine/<cmake>, as paths relative to engine/"""
+    with open(os.path.join(ENGINE, cmake), encoding="utf-8") as f:
+        text = f.read()
+    start = text.index("add_library(")
+    end = text.index(")", start)
+    return [prefix + "/" + token for token in text[start + len("add_library("):end].split()
+            if token.endswith((".c", ".cpp"))]
 
 
 def unquote(value):
@@ -163,21 +180,28 @@ def analyse():
     source_phases = phase_containing(objects, anchor_ref, "PBXSourcesBuildPhase")
     header_phases = phase_containing(objects, by_path[ANCHOR_HEADER][0], "PBXHeadersBuildPhase")
 
-    missing = []   # (rel path, what is missing)
-    for source in cmake_sources() + APPLE_ENGINE_SOURCES:
-        refs = by_path.get(source, [])
-        if not refs:
-            missing.append((source, "file"))
-        else:
-            for phase in source_phases:
-                if not any(objects.get(b, {}).get("fileRef") in refs for b in objects[phase]["files"]):
-                    missing.append((source, "phase " + phase))
+    missing = []   # (rel path, what is missing, the Sources phases the file belongs to)
+    source_sets = [(cmake_sources() + APPLE_ENGINE_SOURCES, source_phases)]
+    for cmake, prefix, anchor in LIBRARIES:
+        phases = phase_containing(objects, by_path[anchor][0], "PBXSourcesBuildPhase")
+        if len(phases) != 2:
+            raise SystemExit("expected 2 Sources phases with %s, found %d" % (anchor, len(phases)))
+        source_sets.append((library_sources(cmake, prefix), phases))
+    for sources, phases in source_sets:
+        for source in sources:
+            refs = by_path.get(source, [])
+            if not refs:
+                missing.append((source, "file", phases))
+            else:
+                for phase in phases:
+                    if not any(objects.get(b, {}).get("fileRef") in refs for b in objects[phase]["files"]):
+                        missing.append((source, "phase " + phase, phases))
     # the headers of every directory with a listed source (header-only ones too)
     for directory in sorted({os.path.dirname(s) for s in cmake_sources()} | set(HEADER_DIRECTORIES)):
         for name in sorted(os.listdir(os.path.join(ENGINE, directory))):
             header = directory + "/" + name
             if name.endswith(".h") and header not in by_path:
-                missing.append((header, "file"))
+                missing.append((header, "file", source_phases))
     return lines, objects, by_path, group_dirs, source_phases, header_phases, missing
 
 
@@ -243,32 +267,33 @@ def main():
     if len(source_phases) != 2:
         raise SystemExit("expected 2 engine Sources phases with %s, found %d" % (ANCHOR_SOURCE, len(source_phases)))
     if not missing:
-        print("Xcode project lists every engine source of engine/CMakeLists.txt")
+        print("Xcode project lists every engine source of engine/CMakeLists.txt (and of the LIBRARIES)")
         return 0
     if check:
         print("missing from the Xcode project (run python3 tools/xcode_sync_engine.py):")
-        for path, what in missing:
+        for path, what, _ in missing:
             print("  %s (%s)" % (path, what))
         return 1
 
-    for path, what in missing:
+    for path, what, set_phases in missing:
         name = os.path.basename(path)
         is_header = path.endswith(".h")
         if what == "file":
             gid = group_for_directory(lines, objects, group_dirs, os.path.dirname(path))
             ref = object_id("ref", path)
-            file_type = "sourcecode.c.h" if is_header else ("sourcecode.cpp.objcpp" if path.endswith(".mm") else "sourcecode.cpp.cpp")
+            file_type = "sourcecode.c.h" if is_header else ("sourcecode.cpp.objcpp" if path.endswith(".mm") else
+                                                           "sourcecode.c.c" if path.endswith(".c") else "sourcecode.cpp.cpp")
             insert_object(lines, objects, "PBXFileReference",
                           "\t\t%s /* %s */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = %s; path = %s; sourceTree = \"<group>\"; };"
                           % (ref, name, file_type, name))
             add_child(lines, objects, gid, ref, name)
             by_path.setdefault(path, []).append(ref)
-            phases = header_phases if is_header else source_phases
+            phases = header_phases if is_header else set_phases
         else:
             ref = by_path[path][0]
             phases = [what.split()[1]]
         for phase in phases:
-            index = source_phases.index(phase) if phase in source_phases else 0
+            index = set_phases.index(phase) if phase in set_phases else 0
             kind = "hdr" if is_header else "src%d" % (index + 1)
             build = object_id(kind, path)
             label = "%s in %s" % (name, "Headers" if is_header else "Sources")
@@ -278,7 +303,7 @@ def main():
 
     with open(PROJECT, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
-    print("added to the Xcode project: " + ", ".join(sorted({p for p, _ in missing})))
+    print("added to the Xcode project: " + ", ".join(sorted({p for p, _, _ in missing})))
     return 0
 
 
