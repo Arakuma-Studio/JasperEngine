@@ -456,8 +456,15 @@ namespace jasperengine::editor {
         static YAML::Node encodeMeshComponent(const MeshComponent& mesh, bool encodeBuffers = true, bool embedTextureData = true, bool encodeBones = true);
         static MeshComponent decodeMeshComponent(const YAML::Node& node, const MeshComponent* oldMesh = nullptr);
 
-        static YAML::Node encodeUIComponent(const UIComponent& ui, bool encodeBuffers = true, bool embedTextureData = true);
-        static UIComponent decodeUIComponent(const YAML::Node& node, const UIComponent* oldUI = nullptr);
+        // textureIsAtlas: a Text's UI, whose texture is the font atlas the UISystem publishes once the
+        // glyphs are built (a new id at each atlas change): only its sampler settings are written,
+        // and the decode keeps the atlas the live component shows
+        static YAML::Node encodeUIComponent(const UIComponent& ui, bool encodeBuffers = true, bool embedTextureData = true, bool textureIsAtlas = false);
+        static UIComponent decodeUIComponent(const YAML::Node& node, const UIComponent* oldUI = nullptr, bool textureIsAtlas = false);
+        // A Text's font atlas: only its sampler settings (authored, they outlive each atlas the
+        // UISystem publishes), null when they are a new texture's; never the atlas itself
+        static YAML::Node encodeAtlasSampler(const Texture& texture);
+        static void decodeAtlasSampler(const YAML::Node& node, Texture& texture);
 
         static YAML::Node encodeSpriteComponent(const SpriteComponent& sprite);
         static SpriteComponent decodeSpriteComponent(const YAML::Node& node, const SpriteComponent* oldSprite = nullptr);

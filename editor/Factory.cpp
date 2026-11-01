@@ -839,6 +839,21 @@ std::string editor::Factory::formatScriptPropertyValue(const ScriptPropertyValue
     return "ScriptPropertyValue{}";
 }
 
+std::string editor::Factory::formatAtlasSampler(int indentSpaces, const Texture& texture, const std::string& variableName) {
+    const YAML::Node sampler = Stream::encodeAtlasSampler(texture);
+    if (!sampler.IsMap()) return "";
+    std::ostringstream code;
+    std::string ind = indentation(indentSpaces);
+    if (texture.getAlphaBorder() != TextureAlphaBorder::AUTO) {
+        code << ind << variableName << ".setAlphaBorder(" << formatTextureAlphaBorder(texture.getAlphaBorder()) << ");\n";
+    }
+    code << ind << variableName << ".setMinFilter(" << formatTextureFilter(texture.getMinFilter()) << ");\n";
+    code << ind << variableName << ".setMagFilter(" << formatTextureFilter(texture.getMagFilter()) << ");\n";
+    code << ind << variableName << ".setWrapU(" << formatTextureWrap(texture.getWrapU()) << ");\n";
+    code << ind << variableName << ".setWrapV(" << formatTextureWrap(texture.getWrapV()) << ");\n";
+    return code.str();
+}
+
 std::string editor::Factory::formatTexture(int indentSpaces, const Texture& texture, const std::string& variableName, const fs::path& projectPath) {
     if (texture.empty()) return "";
     std::ostringstream code;
@@ -1283,7 +1298,11 @@ std::string editor::Factory::createUIComponent(int indentSpaces, EntityRegistry*
         code << ind << "ui.shaderUniforms = " << formatShaderUniforms(ui.shaderUniforms) << ";\n";
     code << formatComponentShaderLibrary(indentSpaces, ui.shaderTextures, ui.shaderFeatures, &ui.blendMode, &ui.depthWrite, "ui", projectPath);
     code << formatStencilAndColorWrite(indentSpaces, ui.stencil, ui.colorWrite, "ui");
-    code << formatTexture(indentSpaces, ui.texture, "ui.texture", projectPath);
+    // a Text's texture is its font atlas, which the game builds (Stream::encodeUIComponent)
+    if (scene->findComponent<TextComponent>(entity))
+        code << formatAtlasSampler(indentSpaces, ui.texture, "ui.texture");
+    else
+        code << formatTexture(indentSpaces, ui.texture, "ui.texture", projectPath);
     // flipY is worked out from the camera unless automaticFlipY is off
     code << ind << "ui.automaticFlipY = " << formatBool(ui.automaticFlipY) << ";\n";
     if (!ui.automaticFlipY)

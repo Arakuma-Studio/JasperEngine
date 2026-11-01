@@ -126,6 +126,8 @@ namespace jasperengine::editor{
         static std::string formatScriptPropertyValue(const ScriptPropertyValue& value, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
 
         static std::string formatTexture(int indentSpaces, const Texture& texture, const std::string& variableName, const fs::path& projectPath);
+        // a Text's font atlas: its sampler settings as Stream::encodeAtlasSampler writes them
+        static std::string formatAtlasSampler(int indentSpaces, const Texture& texture, const std::string& variableName);
         // shader library: the statements filling `target` (a shaderTextures vector) and the
         // initializer of a shaderFeatures list
         static std::string formatShaderTextures(int indentSpaces, const std::vector<std::pair<std::string, Texture>>& textures, const std::string& target, const fs::path& projectPath);
