@@ -54,6 +54,9 @@ namespace jasperengine {
         static void markHostWork();
         // the GPU time of an earlier frame, when its timer queries resolved (frames ago)
         static void setGpuMs(uint64_t frame, double gpuMs, bool sumOfPasses);
+        // A completed frame measured elsewhere (tests, a replayed capture): the newest sample,
+        // with the current frame's serial (the next frame starts now, as at beginFrame)
+        static void recordSample(float frameMs, float cpuMs = -1.0f);
 
         // the completed samples, oldest first (at most CAPACITY)
         static size_t size();

@@ -11,6 +11,7 @@
 #include "GpuMemory.h"
 #include "Profiler.h"
 #include "Scene.h"
+#include "System.h"
 #include "jobs/JobSystem.h"
 #include "render/SystemRender.h"
 #include "script/LuaBinding.h"
@@ -23,24 +24,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-
-#if defined(_WIN32)
-    #ifndef WIN32_LEAN_AND_MEAN
-    #define WIN32_LEAN_AND_MEAN
-    #endif
-    #ifndef NOMINMAX
-    #define NOMINMAX
-    #endif
-    #include <windows.h>
-    #include <psapi.h>
-    #if defined(_MSC_VER)
-        #pragma comment(lib, "psapi.lib")
-    #endif
-#elif defined(__APPLE__)
-    #include <mach/mach.h>
-#elif defined(__linux__) || defined(__ANDROID__)
-    #include <unistd.h>
-#endif
 
 using namespace jasperengine;
 using namespace jasperengine::profiler;
@@ -311,29 +294,11 @@ void profiler::engineShutdown(){
     jobs::setProfilerHooks(jobs::ProfilerHooks());
 }
 
+// one reader of the process's memory for the monitors and the debug overlay's stats
+// (debug/ProcessMemory.cpp: Linux/Android resident pages, Windows the working set, Apple the
+// physical footprint, Web the WebAssembly heap), a System's override included
 uint64_t profiler::processResidentBytes(){
-#if defined(_WIN32)
-    PROCESS_MEMORY_COUNTERS counters = {};
-    if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters)))
-        return (uint64_t)counters.WorkingSetSize;
-    return 0;
-#elif defined(__APPLE__)
-    mach_task_basic_info info = {};
-    mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
-    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t)&info, &count) == KERN_SUCCESS)
-        return (uint64_t)info.resident_size;
-    return 0;
-#elif defined(__linux__) || defined(__ANDROID__)
-    FILE* file = std::fopen("/proc/self/statm", "r");
-    if (!file)
-        return 0;
-    unsigned long long size = 0, resident = 0;
-    const int read = std::fscanf(file, "%llu %llu", &size, &resident);
-    std::fclose(file);
-    return read == 2 ? (uint64_t)resident * (uint64_t)sysconf(_SC_PAGESIZE) : 0;
-#else
-    return 0;
-#endif
+    return System::hasInstance() ? System::instance().getProcessMemoryBytes() : 0;
 }
 
 #endif

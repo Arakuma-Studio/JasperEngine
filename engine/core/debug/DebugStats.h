@@ -13,7 +13,9 @@
 namespace jasperengine {
 
     // What the stats overlay shows and DebugOverlay.getStats() returns. Frame times are of the
-    // last 2 s of frames (unscaled: what the device took, whatever the time scale)
+    // last 2 s of S15's frame-time ring (profiler/FrameTimes.h: a game's systemDraw to systemDraw,
+    // the editor's own frames in its Play; recorded in every build), draw calls of
+    // Engine::FrameStats, as S15's monitors read them
     struct DebugStatsSnapshot {
         float fps = 0.0f;                   // frames in the last 2 s / their duration
         float frameMs = 0.0f;               // the last frame
@@ -37,21 +39,20 @@ namespace jasperengine {
         uint32_t htmlUiDrawCalls = 0;       // HTML UI draw calls of the last frame, every scene
     };
 
-    // Frame-time history and the sampling of the stats. recordFrame is the only per-frame cost
-    // (a float into a ring); sample() reads everything when asked (main thread)
+    // The sampling of the stats: everything is read when asked (main thread); the overlay keeps
+    // no per-frame state of its own
     class JASPERENGINE_API DebugStats {
     public:
+        // frames the graph shows (FrameTimes keeps more: FrameTimes::CAPACITY)
         static constexpr size_t historySize = 240;
 
-        // Engine::runFrame, every frame: the measured frame time, before maxDeltatime clamps it
-        static void recordFrame(double unscaledFrameSeconds);
-        // milliseconds, oldest first; at most historySize
+        // the newest frames' times of FrameTimes, milliseconds, oldest first; at most
+        // historySize, a stall (a breakpoint, the app in the background) shown as 1 s
         static std::vector<float> frameHistory();
-        static size_t recordedFrames();     // frames recorded since the start (or the last reset)
-        static void reset();
+        // frames FrameTimes completed (its frame serial)
+        static size_t recordedFrames();
 
         static DebugStatsSnapshot sample();
-
     };
 
 }
