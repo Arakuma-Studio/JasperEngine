@@ -370,8 +370,14 @@ async def test_animator_window_live_parameters(ed: Editor):
         await ed.call("wait", game_seconds=0.3)
         await ed.call("select_entities", entities=["Hero"])
         await ed.call("focus_window", window="animator")
-        tab = await ui.item("animator.tab.parameters")
-        await ui.click(*center(tab))
+        await ui.focus_x()
+        # the Parameters tab (a click on an unfocused window may only focus it: again until it shows)
+        for _ in range(3):
+            tab = await ui.item("animator.tab.parameters")
+            await ui.click(*center(tab))
+            await ui.frames(6)
+            if "animator.parameter.1.value" in ed.ui_items():
+                break
         go = await ui.item("animator.parameter.1.value")
         await shot(ed, "10-live-parameters")
         await ui.click(*center(go))

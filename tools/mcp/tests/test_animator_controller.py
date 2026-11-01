@@ -182,7 +182,7 @@ async def test_all_or_nothing_and_undo(ed: Editor):
     ed.check_eq([l["name"] for l in r["controller"]["layers"]], ["Base Layer", "A", "B"], "layers")
     idle = next(s for s in machine(r["controller"])["states"] if s["name"] == "Idle")
     t = idle["transitions"][0]
-    ed.check_eq((t["to"], "exit_time" in t, t["duration"], t.get("fixed_duration", True), t["offset"], t["conditions"]),
+    ed.check_eq((t["to"], "exit_time" in t, round(t["duration"], 5), t.get("fixed_duration", True), round(t["offset"], 5), t["conditions"]),
                 ("Run", False, 0.4, True, 0.25, [{"parameter": "Go", "mode": "if"}]), f"set_transition: {t}")
     r = await ed.call("edit_animator_controller", path=MIX, ops=[{"op": "remove_state", "name": "Run"}])
     names = [s["name"] for s in machine(r["controller"])["states"]]
