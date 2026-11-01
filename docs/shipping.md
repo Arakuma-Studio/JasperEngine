@@ -74,7 +74,9 @@ navigation meshes. The build finds what the project reaches:
 - a UI Document, Rigidbody, joint, character controller or Buoyancy in a scene or prefab, or a
   Spline Extrude with collision;
 - a Lua script naming a module's API (`UIDocument`, `anime`, `getRigidbody`, `Joint3DType`...),
-  in code or in a string; comments do not count;
+  in code or in a string; a member's name counts after `.` or `:` or in a string, not as a local
+  or a table key (`local volume`, `{duration = 2}`); comments do not count. In a project with
+  the HTML UI, a member named like the video API (`self.duration`, `"volume"`) keeps video;
 - a script property of one of their types;
 - a `<video>` element in a document, or a script naming video, with the HTML UI;
 - the runtime shader compiler: a script that can change what an object draws with (makes a mesh,
@@ -87,9 +89,9 @@ navigation meshes. The build finds what the project reaches:
 A prebuilt build then uses the smallest player variant with those modules: `full`, `ui` (no
 video), `core` (no HTML UI), `lite3d` (3D physics and navigation only) or `lite2d` (2D physics and
 navigation only); a release runtime's id ends with the variant (`linux-x64-glcore-release-lite3d`).
-When a variant of fewer modules than the installed ones would fit, the build uses the best
-installed one and warns `W-PLAYER-VARIANT` with the id to download. A Compile build leaves the same modules out of what
-it compiles (a source export and a project with C++ scripts keep every module their settings
+When a variant of fewer modules than the one it uses would fit but is not installed, the build
+warns `W-PLAYER-VARIANT` with the id to download. A Compile build leaves the same modules out of
+what it compiles (a source export and a project with C++ scripts keep every module their settings
 allow). The player checks the modules its content needs when it starts (exit 5 when one is
 missing), and so does the build before it ships.
 

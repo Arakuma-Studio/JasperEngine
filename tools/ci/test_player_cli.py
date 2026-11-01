@@ -24,8 +24,8 @@ image of docker/runtime.Dockerfile:
   physics-placement (static primitives, no scripts, no physics components, no start scene in its
   project.yaml: no HTML UI, no runtime shader compiler) and the upgrade fixture
   tools/test-projects/upgrade-from-main/project (HTML UI documents without video, physics,
-  scripts; its `duration` script property renamed in the copy, as a video member has that name
-  and a name scan keeps video for it) built for Linux glcore get the player variant their modules
+  scripts; its `duration` script property and a `"load"` log label renamed in the copy, as video
+  members have those names and a name scan keeps video for them) built for Linux glcore get the player variant their modules
   need (no W-PLAYER-VARIANT), which leaves modules out; physics-placement also with the full
   player and lite3d alone (it takes lite3d, with no warning: no variant of fewer modules is
   missing); built with the full player alone they warn W-PLAYER-VARIANT and use it; each
@@ -286,18 +286,18 @@ def check_variants(args, players: Path, out: Path) -> None:
     def copy(fixture: str, target: Path) -> Path:
         project = fresh_copy(sources[fixture], target)
         if fixture == "upgrade-from-main":
-            # its directors' "duration" script property (self.duration, the scenes' values) is also
-            # the name of a video member (UIElement.duration), which a name scan keeps video for:
-            # the same game under another property name
+            # its directors' "duration" script property (self.duration, the scenes' values) and the
+            # title's "load" transcript label are also the names of video members (UIElement.duration,
+            # :load()), which a name scan keeps video for: the same game under other names
             renamed = 0
             for path in list(project.rglob("*.lua")) + list(project.rglob("*.scene")):
                 text = path.read_text(encoding="utf-8")
                 new = text.replace('name = "duration"', 'name = "runFrames"').replace("self.duration", "self.runFrames")
-                new = new.replace("- name: duration\n", "- name: runFrames\n")
+                new = new.replace("- name: duration\n", "- name: runFrames\n").replace('T.log("load"', 'T.log("loading"')
                 if new != text:
                     path.write_text(new, encoding="utf-8")
                     renamed += 1
-            leftover = [str(p) for p in project.rglob("*.lua") if re.search(r"\bduration\b", p.read_text(encoding="utf-8"))]
+            leftover = [str(p) for p in project.rglob("*.lua") if re.search(r"\bduration\b|\"load\"", p.read_text(encoding="utf-8"))]
             if renamed == 0 or leftover:
                 raise Failure(f"upgrade-from-main: renaming its duration property: {renamed} files, still in {leftover}")
         return project
