@@ -90,6 +90,7 @@ namespace jasperengine::editor{
             case ComponentType::TrailRendererComponent:
             case ComponentType::CameraShakerComponent:
             case ComponentType::CameraFollowComponent:
+            case ComponentType::SafeAreaComponent:
                 return true;
             // Transform.parent drives tree order and lock state.
             case ComponentType::Transform:

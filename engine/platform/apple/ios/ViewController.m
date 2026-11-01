@@ -6,6 +6,8 @@
 #import "EngineView.h"
 #import "JasperNative.h"
 
+#include <math.h>
+
 @implementation ViewController
 {
     EngineView *_view;
@@ -44,6 +46,9 @@
     [_renderer mtkView:_view drawableSizeWillChange:_view.drawableSize];
 
     _view.delegate = _renderer;
+
+    // Screen.safeArea from the start (zero until the view is in a window; the change follows)
+    [self updateSafeArea];
 
     // Input.deviceOrientation reads UIDevice.orientation
     [[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
@@ -124,12 +129,35 @@
     }
 }
 
+// Screen.safeArea: UIKit's safe area of the view (the notch, the Dynamic Island, rounded
+// corners, the home indicator), in drawable pixels
+- (void)viewSafeAreaInsetsDidChange
+{
+    [super viewSafeAreaInsetsDidChange];
+    [self updateSafeArea];
+}
+
+// During a rotation the view's bounds (and its insets) change before the drawable does: those
+// insets are pushed by mtkView:drawableSizeWillChange: with the new size instead, so the game sees
+// one change with the new insets and the new size together
+- (void)updateSafeArea
+{
+    if (!_renderer) return;
+    CGFloat scale = self.view.contentScaleFactor;
+    CGSize bounds = self.view.bounds.size;
+    CGSize drawable = _view.drawableSize;
+    if (fabs(bounds.width * scale - drawable.width) > 1.0 || fabs(bounds.height * scale - drawable.height) > 1.0) return;
+    [Renderer safeAreaOfView:self.view];
+}
+
 // onCanvasChanged comes with the new drawable size; onOrientationChanged once the rotation ended
 - (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator
 {
     [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
     [coordinator animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
         [Renderer orientationChanged];
+        // the drawable has its new size: the insets in its pixels again
+        [self updateSafeArea];
     }];
 }
 

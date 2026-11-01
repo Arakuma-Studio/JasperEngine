@@ -114,6 +114,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::TouchAreaComponent, "Drag area feeding Input actions (Mouse X / Mouse Y): touch look"},
             {ComponentType::LayoutGroupComponent, "Arranges child elements in a row, column or grid"},
             {ComponentType::CanvasGroupComponent, "Fades, disables or makes click-through a UI subtree"},
+            {ComponentType::SafeAreaComponent, "Fits the RectTransform to the screen's safe area (notch, rounded corners, banner)"},
             {ComponentType::PolygonComponent, "Filled UI polygon"},
             {ComponentType::UIDocumentComponent, "HTML/CSS document rendered by the engine"},
         }},

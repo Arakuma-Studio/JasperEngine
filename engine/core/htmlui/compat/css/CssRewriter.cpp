@@ -264,6 +264,12 @@ std::string Session::keyframeName(const std::string& css){
 
 bool Session::staticVar(const ComponentValue& var, ValueList& out) const{
     memoVarReads++;
+    // a runtime variable where a rewrite needs one static value: 0px (spec: safe-area 6.4)
+    if (CustomPropertyIndex::isDynamic(CustomPropertyIndex::varName(var))){
+        dynamicVarsFolded++;
+        out = CustomPropertyIndex::dynamicStaticValue();
+        return true;
+    }
     return vars.resolve(var, out);
 }
 
@@ -1655,7 +1661,12 @@ namespace {
                 }
             }
             normalize.remPx = session.rootFontSize.value_or(16.0);
-            normalize.resolveVar = [&session](const ComponentValue& var, ValueList& out){ return session.staticVar(var, out); };
+            // (a runtime variable has no static value here: math functions keep it, or fold it themselves)
+            normalize.resolveVar = [&session](const ComponentValue& var, ValueList& out){
+                if (CustomPropertyIndex::isDynamic(CustomPropertyIndex::varName(var)))
+                    return false;
+                return session.staticVar(var, out);
+            };
             // (one captured pointer: the std::function keeps it without an allocation)
             normalize.report = [ctx = &context](DiagCode code, Severity severity, const std::string& message, const std::string& suggestion){
                 const Declaration& declaration = ctx->declaration;
@@ -1678,6 +1689,7 @@ namespace {
                 return done;
 
             // 6. the property rewrite
+            const uint32_t foldedBefore = session.dynamicVarsFolded;
             if (name == "transform" && rule)
                 session.memoTaint++;
             if (name == "transform" && rule && ruleHasIndividualTransform(*rule) && !session.options.fork.has(ForkFeature::IndividualTransforms)){
@@ -1731,6 +1743,11 @@ namespace {
                     return done;
                 }
                 context.emit(name, text);
+            }
+            if (session.dynamicVarsFolded != foldedBefore && !context.dropped){
+                context.reportAs(Severity::Info, codes::ApproximatedMinor,
+                                 "env(safe-area-inset-*) is 0 here (static value): '" + name + "' is rewritten for RmlUi",
+                                 "write the inset where the property is read as written (padding, margin, top, width...)");
             }
         }
         if (context.dropped)

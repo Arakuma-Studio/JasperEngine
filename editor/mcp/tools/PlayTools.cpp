@@ -684,6 +684,20 @@ Json platformJson() {
     return out;
 }
 
+// Screen.safeArea as the game sees it (canvas units; stopped: for the project canvas, as the
+// Scene view lays UI out), the insets with extras, the extras, and the simulated device
+Json safeAreaJson() {
+    auto r = [](float v) { return std::round(v * 100.0f) / 100.0f; };
+    const Rect rect = Screen::getSafeArea();
+    const EdgeInsets insets = Screen::getSafeAreaInsets();
+    const EdgeInsets extra = Screen::getExtraInsets();
+    const PlatformSimulation& simulation = Platform::getSimulation();
+    return {{"rect", {r(rect.getX()), r(rect.getY()), r(rect.getWidth()), r(rect.getHeight())}},
+            {"insets", {r(insets.left), r(insets.top), r(insets.right), r(insets.bottom)}},
+            {"extra", {r(extra.left), r(extra.top), r(extra.right), r(extra.bottom)}},
+            {"device", simulation.device ? Json(simulation.device->id) : Json()}};
+}
+
 Json playStateJson(McpContext& ctx) {
     Project* project = ctx.project();
     PlayToolsState& s = state();
@@ -706,6 +720,7 @@ Json playStateJson(McpContext& ctx) {
         out["platform"] = platformJson();
         out["http"] = httpJson();
     }
+    out["safe_area"] = safeAreaJson();
     if (s.last.serial != 0) out["last_session"] = sessionJson(s.last);
     if (!s.held.empty()) out["held_input"] = heldInputJson();
     if (playId != NULL_PROJECT_SCENE && s.current.active) out["input"] = playInputJson();
@@ -3858,7 +3873,7 @@ void registerPlayTools(McpRegistry& registry) {
             "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), audio "
             "(voices, mixer_meters dB), "
             "console_cursor, script coroutines and timers (counts), the clock (time_scale, fixed_fps, auto_pause, held), "
-            "platform (lifecycle, orientation, opened_urls...), http (request counts, last failures); stopped: play_would_start.";
+            "platform (lifecycle, orientation, opened_urls...), http (request counts, last failures), safe_area; stopped: play_would_start.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

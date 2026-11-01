@@ -185,12 +185,14 @@ namespace jasperengine::editor{
         // per-character animation of a Text (ui-scaling-text spec 7.3)
         TextEffectComponent,
         // Unity's VideoPlayer (video-mp4 spec 6.4)
-        VideoPlayerComponent
+        VideoPlayerComponent,
+        // drives a RectTransform to Screen.safeArea (safe-area spec 6.3)
+        SafeAreaComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::VideoPlayerComponent;
+    constexpr ComponentType LastComponentType = ComponentType::SafeAreaComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
 
     enum class PropertyType{

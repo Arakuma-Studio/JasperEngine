@@ -1821,7 +1821,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `effect()` | rewritten | phase-5 UI effects in background-image, background, mask-image, filter and backdrop-filter (jasper://docs/html-ui-effects); elsewhere dropped (HTMLUI-FX-0002) |  |
 | `element()` | unsupported | image function not supported; layer dropped (HTMLUI-CSS-0015) | use url() or a gradient |
 | `ellipse()` | emulated | clip-path shape drawn by the html-shape decorator |  |
-| `env()` | rewritten | safe-area-inset-* -> 0px (or the fallback); other variables -> the fallback or dropped (Info) |  |
+| `env()` | rewritten | safe-area-inset-* (and safe-area-max-inset-*) -> the live safe area (Screen.safeAreaInsets, updated without a reload; 0 where a value is folded statically); other variables -> the fallback or dropped (Info) |  |
 | `exp()` | approximated | static folding in every fork state (load-time context for relative units) (HTMLUI-CSS-0005) |  |
 | `fit-content()` | native | read by the grid fallback until the fork has Grid |  |
 | `format()` | rewritten | @font-face source selection |  |

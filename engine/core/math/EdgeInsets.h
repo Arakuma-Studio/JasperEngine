@@ -6,6 +6,9 @@
 
 #include "Export.h"
 
+#include <cstdio>
+#include <string>
+
 namespace jasperengine {
 
     // Distances in from the four edges of a rectangle (safe-area insets, device cutouts)
@@ -24,6 +27,12 @@ namespace jasperengine {
         bool operator!=(const EdgeInsets& other) const { return !(*this == other); }
 
         bool isZero() const { return left == 0.0f && top == 0.0f && right == 0.0f && bottom == 0.0f; }
+
+        std::string toString() const {
+            char text[128];
+            std::snprintf(text, sizeof(text), "EdgeInsets(%g, %g, %g, %g)", left, top, right, bottom);
+            return text;
+        }
     };
 
 }

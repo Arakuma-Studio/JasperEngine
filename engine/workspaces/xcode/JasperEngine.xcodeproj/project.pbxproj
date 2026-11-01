@@ -3626,6 +3626,7 @@
 		4A534E47AF8E154ADAC11588 /* JasperNative.m in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4718CF4359AA4E6638 /* JasperNative.m */; };
 		4A534E477AADDB20250DF071 /* NativeBridge.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472D37DB0DC4282EA3 /* NativeBridge.h */; };
 		4A534E47C9C2950E74BDB174 /* NativePlatform.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477549737BA275AFB0 /* NativePlatform.h */; };
+		4A534E47616A59222953D876 /* SafeAreaComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4758E5D66F14FC1ED7 /* SafeAreaComponent.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -7209,6 +7210,7 @@
 		4A534E4718CF4359AA4E6638 /* JasperNative.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = JasperNative.m; sourceTree = "<group>"; };
 		4A534E472D37DB0DC4282EA3 /* NativeBridge.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NativeBridge.h; sourceTree = "<group>"; };
 		4A534E477549737BA275AFB0 /* NativePlatform.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NativePlatform.h; sourceTree = "<group>"; };
+		4A534E4758E5D66F14FC1ED7 /* SafeAreaComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SafeAreaComponent.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -8904,6 +8906,7 @@
 				4A534E476F1D7EA86CAA5EA6 /* CameraFollowComponent.h */,
 				4A534E4755A896E2EFAC63FB /* CameraShakerComponent.h */,
 				4A534E47C9EB4F5CD128ABB8 /* VideoPlayerComponent.h */,
+				4A534E4758E5D66F14FC1ED7 /* SafeAreaComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -12862,6 +12865,7 @@
 				4A534E47E561ADFD60E21F7A /* VideoPlayerSystem.h in Headers */,
 				4A534E477AADDB20250DF071 /* NativeBridge.h in Headers */,
 				4A534E47C9C2950E74BDB174 /* NativePlatform.h in Headers */,
+				4A534E47616A59222953D876 /* SafeAreaComponent.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

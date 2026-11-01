@@ -23,11 +23,15 @@ import android.os.Vibrator;
 import android.os.VibratorManager;
 import android.util.DisplayMetrics;
 import android.util.Log;
+import android.graphics.Rect;
 import android.view.Display;
+import android.view.DisplayCutout;
 import android.view.HapticFeedbackConstants;
 import android.view.OrientationEventListener;
 import android.view.Surface;
 import android.view.View;
+import android.view.ViewTreeObserver;
+import android.view.WindowInsets;
 
 import java.util.ArrayList;
 import java.util.Locale;
@@ -46,6 +50,19 @@ public final class JasperPlatform {
 	// OrientationEventListener degrees (0..359), -1 when the device lies flat or nothing reports
 	public static volatile int deviceDegrees = -1;
 
+	// Screen.safeArea (safe-area spec 6.5): the native side reads GameActivity's insets itself and
+	// this for the rest, kept on the UI thread by a layout listener: where the game's view lies in
+	// the window (insets are the window's) and the display cutout's rectangles (API 28+), as
+	// {left, top, right, bottom distances of the view from the window's edges, rectangle count,
+	// then left, top, right, bottom of each rectangle in window pixels}. The revision goes up
+	// with every change, so the game thread can compare one int a frame.
+	public static volatile int safeAreaRevision = 0;
+	public static volatile int[] safeAreaInfo = new int[]{0, 0, 0, 0, 0};
+
+	private static View.OnLayoutChangeListener safeAreaListener;
+	// every layout pass of the window (a half turn re-lays the window out with the cutout on the
+	// other side but leaves the content's bounds as they were)
+	private static ViewTreeObserver.OnGlobalLayoutListener safeAreaGlobalListener;
 	private static OrientationEventListener orientationListener;
 	private static DisplayManager.DisplayListener displayListener;
 	private static boolean warnedNetworkPermission = false;
@@ -57,6 +74,24 @@ public final class JasperPlatform {
 
 	public static void onCreate(final Activity activity) {
 		updateDisplayRotation(activity);
+		final View content = activity.findViewById(android.R.id.content);
+		if (content != null) {
+			safeAreaListener = new View.OnLayoutChangeListener() {
+				@Override
+				public void onLayoutChange(View v, int left, int top, int right, int bottom,
+				                           int oldLeft, int oldTop, int oldRight, int oldBottom) {
+					updateSafeAreaInfo(activity);
+				}
+			};
+			content.addOnLayoutChangeListener(safeAreaListener);
+			safeAreaGlobalListener = new ViewTreeObserver.OnGlobalLayoutListener() {
+				@Override
+				public void onGlobalLayout() {
+					updateSafeAreaInfo(activity);
+				}
+			};
+			activity.getWindow().getDecorView().getViewTreeObserver().addOnGlobalLayoutListener(safeAreaGlobalListener);
+		}
 		orientationListener = new OrientationEventListener(activity) {
 			@Override
 			public void onOrientationChanged(int degrees) {
@@ -70,6 +105,15 @@ public final class JasperPlatform {
 				@Override public void onDisplayRemoved(int displayId) {}
 				@Override public void onDisplayChanged(int displayId) {
 					updateDisplayRotation(activity);
+					// the cutout moves with a rotation: read again once the window has its new insets
+					View decor = activity.getWindow().getDecorView();
+					if (decor != null) {
+						decor.post(new Runnable() {
+							@Override public void run() {
+								updateSafeAreaInfo(activity);
+							}
+						});
+					}
 				}
 			};
 			displays.registerDisplayListener(displayListener, new Handler(Looper.getMainLooper()));
@@ -91,6 +135,16 @@ public final class JasperPlatform {
 	}
 
 	public static void onDestroy(Activity activity) {
+		View content = activity.findViewById(android.R.id.content);
+		if (content != null && safeAreaListener != null) {
+			content.removeOnLayoutChangeListener(safeAreaListener);
+		}
+		safeAreaListener = null;
+		if (safeAreaGlobalListener != null) {
+			ViewTreeObserver observer = activity.getWindow().getDecorView().getViewTreeObserver();
+			if (observer.isAlive()) observer.removeOnGlobalLayoutListener(safeAreaGlobalListener);
+		}
+		safeAreaGlobalListener = null;
 		if (orientationListener != null) {
 			orientationListener.disable();
 			orientationListener = null;
@@ -100,6 +154,43 @@ public final class JasperPlatform {
 			displays.unregisterDisplayListener(displayListener);
 		}
 		displayListener = null;
+	}
+
+	// UI thread (the layout listener): see safeAreaInfo
+	private static void updateSafeAreaInfo(Activity activity) {
+		try {
+			View decor = activity.getWindow().getDecorView();
+			View content = activity.findViewById(android.R.id.content);
+			if (decor == null || content == null) return;
+			int[] location = new int[2];
+			content.getLocationInWindow(location);
+			ArrayList<Integer> values = new ArrayList<>();
+			values.add(Math.max(0, location[0]));
+			values.add(Math.max(0, location[1]));
+			values.add(Math.max(0, decor.getWidth() - location[0] - content.getWidth()));
+			values.add(Math.max(0, decor.getHeight() - location[1] - content.getHeight()));
+			ArrayList<Rect> rects = new ArrayList<>();
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+				WindowInsets insets = decor.getRootWindowInsets();
+				DisplayCutout cutout = insets != null ? insets.getDisplayCutout() : null;
+				if (cutout != null) rects.addAll(cutout.getBoundingRects());
+			}
+			values.add(rects.size());
+			for (Rect rect : rects) {
+				values.add(rect.left);
+				values.add(rect.top);
+				values.add(rect.right);
+				values.add(rect.bottom);
+			}
+			int[] info = new int[values.size()];
+			for (int i = 0; i < info.length; i++) info[i] = values.get(i);
+			if (!java.util.Arrays.equals(info, safeAreaInfo)) {
+				safeAreaInfo = info;
+				safeAreaRevision++;
+			}
+		} catch (RuntimeException e) {
+			Log.w(TAG, "Screen.safeArea: could not read the window's layout", e);
+		}
 	}
 
 	@SuppressWarnings("deprecation")

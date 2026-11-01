@@ -1929,6 +1929,14 @@ OVERRIDES = {
     },
 }
 
+OVERRIDES[('Screen', 'setExtraInsets')] = {
+    'doc': ['Space the game keeps free per edge on top of the device insets (a banner ad): every safe-area',
+            'consumer includes it (Screen.safeArea, the Safe Area component, HTML env()). `unit` is',
+            '"canvas" (default) or "pixels" (view pixels, converted again when the canvas changes).'],
+    'overloads': [([('left', 'number'), ('top', 'number'), ('right', 'number'), ('bottom', 'number'),
+                    ('unit?', '"canvas"|"pixels"')], '')],
+}
+
 # script-lifecycle: the getScript family on every GameObject handle (and script instance, Script.lua),
 # GameObject's scene-wide finds and the Event class (lua_CFunctions)
 _GET_SCRIPT_DOCS = {

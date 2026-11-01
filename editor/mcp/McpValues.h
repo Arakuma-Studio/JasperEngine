@@ -125,6 +125,10 @@ namespace jasperengine::editor::mcp {
         // it expands in place (in the object form before the component's other values, which
         // then override it)
         static bool parseChanges(const Json& changes, std::vector<Change>& out, std::string& error);
+        // A RectTransform property the entity's Safe Area component drives (anchors, offsets,
+        // size): the error that refuses setting it, "" when it is free
+        static std::string safeAreaDrivenError(Scene* scene, Entity entity, const std::string& property);
+
         // parseChanges without the renamed names mapped to the current ones
         static bool parseChangesAsGiven(const Json& changes, std::vector<Change>& out, std::string& error);
         // The commands for `changes` on each entity, added to `multi`: per entity and

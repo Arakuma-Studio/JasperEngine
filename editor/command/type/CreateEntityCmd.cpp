@@ -425,6 +425,18 @@ bool editor::CreateEntityCmd::execute(){
         layout.usingAnchors = true;
         scene->addComponent<RectTransformComponent>(entity, layout);
         scene->addComponent<CanvasGroupComponent>(entity, {});
+    }else if (type == EntityCreationType::SAFE_AREA){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<RectTransformComponent>(entity, {});
+        scene->addComponent<SafeAreaComponent>(entity, {});
+
+        // stretched over its parent (the canvas at the root) until the component drives it
+        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+        layout.usingAnchors = true;
+        layout.anchorPreset = AnchorPreset::FULL_LAYOUT;
+        layout.width = 100;
+        layout.height = 100;
 
     }else if (type == EntityCreationType::LAYOUT_GROUP){
 

@@ -423,6 +423,8 @@ namespace jasperengine {
         static void runFrame(bool draw);
         // recomputes the frame pacing and hands it to the System
         static void applyFramePacing();
+        // desktop builds: JASPERENGINE_SIMULATE_SAFE_AREA as the platform's insets
+        static void applySimulatedSafeArea();
         
     public:
         class AsyncThreadScope {
@@ -679,6 +681,9 @@ namespace jasperengine {
         // ORIENTATION_SIZE_TIMEOUT seconds, checked every frame), a half turn fires at once.
         static void systemOrientationChanged();
         static constexpr double ORIENTATION_SIZE_TIMEOUT = 0.5;
+        // a quarter turn is known and waits for its view size (Screen holds the safe-area insets
+        // the platform pushes meanwhile: they belong to the new size)
+        static bool isOrientationPending();
         // The system is short of memory: onLowMemory, before the platform frees its own caches
         static void systemLowMemory();
         // Play stop / start in the editor: focused, not paused (neither hold), no orientation
@@ -777,6 +782,9 @@ namespace jasperengine {
         static FunctionSubscribe<void(int)> onOrientationChanged;
         // the system is short of memory (Android, iOS)
         static FunctionSubscribe<void()> onLowMemory;
+        // Screen.safeArea changed (a rotation, the platform's insets, Screen.setExtraInsets): once
+        // per change, after onCanvasChanged and onOrientationChanged
+        static FunctionSubscribe<void()> onSafeAreaChanged;
         // The stack loaded by SceneManager is ready, before its loading scene closes.
         static FunctionSubscribe<void()> onSceneLoaded;
         static FunctionSubscribe<void(int,float,float)> onTouchStart;

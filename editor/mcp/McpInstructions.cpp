@@ -235,6 +235,8 @@ Read the page before using these tools:
 - Lines, lasers, trails: line_renderer / trail_renderer (jasper://docs/lines-trails).
 - Video: type video_player / video_background, texture video|<id>; MP4 and WebM
   (jasper://docs/video).
+- Notches and safe areas: Screen.safeArea, the Safe Area component (create_ui safe_area), CSS
+  env(); phones in configure_game_view device (jasper://docs/safe-area).
 - Bend/squash: edit_lattice (jasper://docs/lattice). GPU fluid: type fluid_simulation
   (jasper://docs/fluid). Textures from examples: synthesize_texture
   (jasper://docs/texture-synthesis).

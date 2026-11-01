@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/ValueNormalizer.h"
+#include "htmlui/compat/css/CustomPropertyIndex.h"
 #include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/StringIndex.h"
@@ -436,7 +437,16 @@ namespace {
             }
         }
 
-        void math(const ComponentValue& v, ValueList& out){
+        void math(const ComponentValue& written, ValueList& out){
+            // env(safe-area-inset-*) inside is the runtime variable it stands for (a var() the
+            // fork substitutes, or 0px where the expression is folded below)
+            ComponentValue withVars;
+            const bool hasEnv = containsSafeAreaEnv(written.children);
+            if (hasEnv){
+                withVars = shell(written);
+                withVars.children = safeAreaEnvToVar(written.children);
+            }
+            const ComponentValue& v = hasEnv ? withVars : written;
             const std::string name = lowerAscii(v.name());
             const bool calcFamily = StaticCalc::isCalcFamily(name) || name == "-webkit-calc" || name == "-moz-calc";
             if (calcFamily && context.calcNative && context.compat().fork.has(ForkFeature::Calc)){
@@ -470,18 +480,31 @@ namespace {
             }
             const bool calcPresent = calcFamily && context.compat().fork.has(ForkFeature::Calc);
             CalcContext calc;
-            calc.resolveVar = context.resolveVar;
+            // folded statically: a runtime variable (the safe-area insets) counts as 0px here
+            bool foldedDynamic = false;
+            calc.resolveVar = [this, &foldedDynamic](const ComponentValue& var, ValueList& replacement){
+                if (CustomPropertyIndex::isDynamic(CustomPropertyIndex::varName(var))){
+                    foldedDynamic = true;
+                    replacement = CustomPropertyIndex::dynamicStaticValue();
+                    return true;
+                }
+                return context.resolveVar && context.resolveVar(var, replacement);
+            };
             calc.pxPerUnit = [this](std::string_view unit){ return pxPerUnit(unit); };
             std::string error;
             percentEstimated = false;
             std::optional<CalcValue> value = StaticCalc::evaluate(v, calc, &error);
-            const std::string written = serialize(v);
+            const std::string writtenText = serialize(written);
+            if (value && foldedDynamic){
+                report(codes::ApproximatedMinor, Severity::Info, "env(safe-area-inset-*) is 0 here (static value) in '" + writtenText + "'",
+                       "write the inset where the property is read as written (padding, margin, top, width...)");
+            }
             if (!value){
                 if (calc.varUnresolved){
-                    fail(codes::VarUntyped, "'" + written + "' uses a variable without one static value; declaration dropped",
+                    fail(codes::VarUntyped, "'" + writtenText + "' uses a variable without one static value; declaration dropped",
                          "give the variable one value, or compute the value without var()");
                 }else{
-                    fail(codes::UnsupportedValue, "'" + written + "' cannot be evaluated (" + error + "); declaration dropped",
+                    fail(codes::UnsupportedValue, "'" + writtenText + "' cannot be evaluated (" + error + "); declaration dropped",
                          "write the value without calc()");
                 }
                 return;
@@ -519,13 +542,13 @@ namespace {
                 // (with the fork's Calc, only values a rewrite reads token by token get here: not a
                 // fallback that a fork feature removes, an approximation of that rewrite)
                 report(calcPresent ? codes::ApproximatedVisible : codes::ForkFallback, Severity::Warning,
-                       "'" + written + "' compares a percentage with a length; it is decided for the current viewport" +
+                       "'" + writtenText + "' compares a percentage with a length; it is decided for the current viewport" +
                            std::string(calcPresent ? " (the engine evaluates calc() where it reads a value as written, not in this rewritten one)" : ""),
                        "set the size with max-width / min-width, or flex");
             }else if (calc.usedContext){
                 if (calc.usedViewport)
                     result.dependsOnViewport = true;
-                report(codes::ViewportDependent, Severity::Info, "'" + written + "' compares values in different units; it is decided for the load-time context" +
+                report(codes::ViewportDependent, Severity::Info, "'" + writtenText + "' compares values in different units; it is decided for the load-time context" +
                        std::string(calc.usedViewport ? " and re-evaluated when the viewport changes" : ""));
             }
             CalcValue folded = *value;
@@ -545,7 +568,7 @@ namespace {
                     }else{
                         const double percent = folded.get("%");
                         report(calcPresent ? codes::ApproximatedVisible : codes::ForkFallback, Severity::Warning,
-                               "'" + written + "' is reduced to '" + formatNumber(percent) + "%'" +
+                               "'" + writtenText + "' is reduced to '" + formatNumber(percent) + "%'" +
                                    (calcPresent ? std::string(" (the engine evaluates calc() where it reads a value as written, not in this rewritten one)")
                                                 : std::string(" until the fork has calc()")),
                                "size the element with box-sizing, padding or flex instead");
@@ -555,20 +578,96 @@ namespace {
                 if (folded.terms.size() > 1){
                     std::optional<CalcValue> px = StaticCalc::resolveToPx(folded, calc);
                     if (!px || px->terms.size() > 1){
-                        fail(codes::UnsupportedValue, "'" + written + "' mixes units that cannot be combined statically; declaration dropped",
+                        fail(codes::UnsupportedValue, "'" + writtenText + "' mixes units that cannot be combined statically; declaration dropped",
                              "write the value in one unit");
                         return;
                     }
                     if (calc.usedViewport)
                         result.dependsOnViewport = true;
-                    report(codes::ViewportDependent, Severity::Info, "'" + written + "' is evaluated for the load-time context as " +
+                    report(codes::ViewportDependent, Severity::Info, "'" + writtenText + "' is evaluated for the load-time context as " +
                            formatNumber(px->terms.empty() ? 0.0 : px->terms.front().second) + "px");
                     folded = *px;
                 }
             }else if (otherMath){
-                report(codes::ApproximatedMinor, Severity::Info, "'" + written + "' is computed at load (the engine has no math functions)");
+                report(codes::ApproximatedMinor, Severity::Info, "'" + writtenText + "' is computed at load (the engine has no math functions)");
             }
             emitCalc(folded, out);
+        }
+
+        // the edge of env(safe-area-inset-<edge>) or Safari's env(safe-area-max-inset-<edge>), "" otherwise
+        static std::string safeAreaEdge(const ComponentValue& v){
+            if (v.kind != ComponentValue::Kind::Function || lowerAscii(v.name()) != "env")
+                return std::string();
+            std::vector<ValueList> args = splitAtCommas(v.children);
+            if (args.empty())
+                return std::string();
+            const ValueList first = trimWhitespace(args[0]);
+            if (first.size() != 1 || !first[0].isToken(TokenType::Ident))
+                return std::string();
+            const std::string name = lowerAscii(first[0].token.value);
+            std::string edge;
+            if (name.compare(0, 16, "safe-area-inset-") == 0)
+                edge = name.substr(16);
+            else if (name.compare(0, 20, "safe-area-max-inset-") == 0)
+                edge = name.substr(20);
+            return (edge == "top" || edge == "right" || edge == "bottom" || edge == "left") ? edge : std::string();
+        }
+
+        // var(--jasper-safe-area-inset-<edge>, <fallback>): the inset UIDocumentSystem sets on the
+        // document (safe-area spec 6.4); the fallback (0px without one) is used where it is not set
+        static ComponentValue safeAreaVar(const std::string& edge, const ValueList& fallback){
+            ValueList children;
+            children.push_back(ValueNormalizer::ident("--jasper-safe-area-inset-" + edge));
+            children.push_back(ValueNormalizer::comma());
+            children.push_back(ValueNormalizer::whitespace());
+            if (fallback.empty()){
+                children.push_back(ValueNormalizer::dimension(0, "px"));
+            }else{
+                for (const ComponentValue& c : fallback)
+                    children.push_back(c);
+            }
+            return ValueNormalizer::function("var", std::move(children));
+        }
+
+        static ValueList envFallback(const ComponentValue& v){
+            std::vector<ValueList> args = splitAtCommas(v.children);
+            ValueList fallback;
+            for (size_t i = 1; i < args.size(); i++){
+                if (i > 1)
+                    fallback.push_back(ValueNormalizer::comma());
+                for (const ComponentValue& c : args[i])
+                    fallback.push_back(c);
+            }
+            return trimWhitespace(fallback);
+        }
+
+        static bool containsSafeAreaEnv(const ValueList& values){
+            for (const ComponentValue& v : values){
+                if (!safeAreaEdge(v).empty())
+                    return true;
+                if (v.kind != ComponentValue::Kind::Token && containsSafeAreaEnv(v.children))
+                    return true;
+            }
+            return false;
+        }
+
+        // every env(safe-area-inset-*) of a value as its var() (the fallbacks as written: the
+        // var() is normalized with the rest)
+        static ValueList safeAreaEnvToVar(const ValueList& values){
+            ValueList out;
+            for (const ComponentValue& v : values){
+                const std::string edge = safeAreaEdge(v);
+                if (!edge.empty()){
+                    out.push_back(safeAreaVar(edge, envFallback(v)));
+                }else if (v.kind != ComponentValue::Kind::Token){
+                    ComponentValue copy = shell(v);
+                    copy.children = safeAreaEnvToVar(v.children);
+                    out.push_back(std::move(copy));
+                }else{
+                    out.push_back(v);
+                }
+            }
+            return out;
         }
 
         void env(const ComponentValue& v, ValueList& out){
@@ -589,8 +688,15 @@ namespace {
                 }
                 fallback = trimWhitespace(fallback);
             }
-            if (name.compare(0, 16, "safe-area-inset-") == 0){
-                report(codes::ApproximatedMinor, Severity::Info, "'" + serialize(v) + "' is 0px (no safe area)");
+            // the live safe-area inset (Screen.safeAreaInsets): a runtime variable, so a rotation or
+            // Screen.setExtraInsets changes the layout without a reload
+            const std::string edge = safeAreaEdge(v);
+            if (!edge.empty()){
+                var(safeAreaVar(edge, fallback), out);
+                return;
+            }
+            if (name.compare(0, 16, "safe-area-inset-") == 0 || name.compare(0, 20, "safe-area-max-inset-") == 0){
+                report(codes::ApproximatedMinor, Severity::Info, "'" + serialize(v) + "' is 0px (not a safe-area edge: top, right, bottom or left)");
                 out.push_back(ValueNormalizer::dimension(0, "px"));
                 return;
             }

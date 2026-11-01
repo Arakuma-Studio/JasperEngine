@@ -4,11 +4,15 @@
 #pragma once
 
 #include "System.h"
+#include "AppSettings.h"
 #include "math/EdgeInsets.h"
 #include "math/Rect.h"
 
 #include <string>
 #include <vector>
+
+struct ImDrawList;
+struct ImVec2;
 
 namespace jasperengine::editor {
 
@@ -35,8 +39,29 @@ namespace jasperengine::editor {
     };
 
     const std::vector<DeviceProfile>& deviceProfiles();
-    // nullptr when there is no profile of that id
+    // nullptr when there is no profile of that id; "custom" is the Custom device
     const DeviceProfile* findDeviceProfile(const std::string& id);
+    // the Custom device's profile (id "custom"), as last set: the Game view's CustomDeviceSettings
+    // (a screen and its portrait insets, turned for the other orientations; no cutout shape)
+    const DeviceProfile& customDeviceProfile();
+    void setCustomDevice(const CustomDeviceSettings& device);
+    // portrait insets turned to an orientation's frame (LandscapeLeft: the portrait top on the left)
+    EdgeInsets rotateInsets(const EdgeInsets& portrait, ScreenOrientation orientation);
+    // the cutout in an orientation's frame, pixels (empty without one)
+    Rect profileCutout(const DeviceProfile& profile, ScreenOrientation orientation);
+    // the safe rectangle of the device's screen in an orientation, pixels
+    Rect profileSafeRect(const DeviceProfile& profile, ScreenOrientation orientation);
+
+    // The device's screen over a game image of w x h (the device's aspect): black outside the
+    // rounded corners and in the cutout, the home indicator (light gray, 60% opacity), and with
+    // safeAreaOutline a 1-pixel dashed green rectangle around `safeRect` (image pixels; the
+    // device's safe rectangle when null). RGBA rows top first (MCP screenshots).
+    // screen = false: the outline only (Device Overlay off, Safe Area on)
+    void rasterizeDeviceOverlay(uint8_t* rgba, int w, int h, const DeviceProfile& profile, ScreenOrientation orientation,
+                                bool safeAreaOutline, const Rect* safeRect = nullptr, bool screen = true);
+    // The same over the Game view's image (ImGui)
+    void drawDeviceOverlay(ImDrawList* drawList, ImVec2 min, ImVec2 max, const DeviceProfile& profile, ScreenOrientation orientation,
+                           bool safeAreaOutline, const Rect* safeRect = nullptr, bool screen = true);
     // the orientations the device can show (PlatformRules::orientationBit mask)
     uint8_t profileOrientationMask(const DeviceProfile& profile);
     // the screen in an orientation: width and height swapped in landscape

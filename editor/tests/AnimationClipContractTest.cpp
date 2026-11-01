@@ -49,13 +49,13 @@ namespace {
 TEST(AnimationClipContract, CatalogKnowsTheAnimationPlayer){
     // appended after it (prefab override masks use the ordinal): the Vertex Animator, then the
     // Trail Renderer, the Canvas Group, the Camera Shaker, the Camera Follow and the Text Effect; later
-    // types (the Video Player) after them
+    // types (the Video Player, the Safe Area) after them
     EXPECT_EQ(static_cast<int>(ComponentType::VertexAnimatorComponent), static_cast<int>(ComponentType::AnimationPlayerComponent) + 1);
     // later features append after it (the on-screen controls, ui-multitouch)
     EXPECT_GE(static_cast<int>(LastComponentType), static_cast<int>(ComponentType::VertexAnimatorComponent));
     EXPECT_EQ(ComponentTypeCount, static_cast<int>(LastComponentType) + 1);
-    // the Text Effect (ui-scaling-text); later types (the Video Player) after it
-    EXPECT_GE(static_cast<int>(LastComponentType), static_cast<int>(ComponentType::TextEffectComponent));
+    // the Text Effect (ui-scaling-text), then the Video Player and the Safe Area; later features append after them
+    EXPECT_GE(static_cast<int>(LastComponentType), static_cast<int>(ComponentType::SafeAreaComponent));
     EXPECT_EQ(Catalog::getComponentType("animationplayer"), ComponentType::AnimationPlayerComponent);
     EXPECT_EQ(Catalog::getComponentType("AnimationPlayerComponent"), ComponentType::AnimationPlayerComponent);
     EXPECT_EQ(Catalog::getComponentName(ComponentType::AnimationPlayerComponent, false), "AnimationPlayerComponent");
