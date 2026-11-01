@@ -2444,6 +2444,8 @@ OVERRIDES.update({
         'overloads': [([('name', 'string')], 'string?')]},
 })
 
+# Properties whose getter returns a LuaRef: (Lua type, a copy)
+
 # Properties whose getter returns a LuaRef, or whose lambda's return type is not inferred:
 # (Lua type, a copy)
 PROPERTY_OVERRIDES = {
