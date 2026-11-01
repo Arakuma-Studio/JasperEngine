@@ -60,6 +60,7 @@
 #include "window/ProjectWindow.h"
 
 #include "stb_image.h"
+#include "unity/UnityParticleImport.h"
 #include "stb_image_resize2.h"
 #include "stb_image_write.h"
 #include "yaml-cpp/yaml.h"
@@ -2980,6 +2981,8 @@ void checkShaderTool(const CallPtr& call) {
             std::vector<ProjectChecks::Finding> sceneFindings = ProjectChecks::stochasticTilingFindings(project);
             const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(project);
             sceneFindings.insert(sceneFindings.end(), lines.begin(), lines.end());
+            const std::vector<ProjectChecks::Finding> particleChecks = ProjectChecks::particleFindings(project);
+            sceneFindings.insert(sceneFindings.end(), particleChecks.begin(), particleChecks.end());
             std::string text = "No custom shader is used by the loaded scenes.";
             Json findings = Json::array();
             for (const ProjectChecks::Finding& finding : sceneFindings) {
@@ -3000,6 +3003,9 @@ void checkShaderTool(const CallPtr& call) {
         // Line and Trail Renderers: a hairline sampling a texture, a trail with Time 0
         const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(project);
         stateFindings.insert(stateFindings.end(), lines.begin(), lines.end());
+        // Particle Systems: legacy ones, points with a render mode, the mobile budget
+        const std::vector<ProjectChecks::Finding> particleChecks = ProjectChecks::particleFindings(project);
+        stateFindings.insert(stateFindings.end(), particleChecks.begin(), particleChecks.end());
     }
     checkShadersWithFindings(call, forks, [call, stateFindings](Json results, Json findings) {
         for (const ProjectChecks::Finding& finding : stateFindings) findings.push_back(ProjectChecks::toJson(finding));
@@ -3248,6 +3254,51 @@ void placeholderArtTool(const CallPtr& call) {
 // ------------------------------------------------------------------ search_files
 
 // Searches the project's text files (what read_file reads): literal or ECMAScript regex, per line
+// import_unity_particles: a Unity .prefab / .unity (absolute path) as engine prefabs (particles spec 6.10)
+void importUnityParticlesTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    if (!args.contains("path") || !args["path"].is_string() || args["path"].get<std::string>().empty()) {
+        call->fail("path is required: the absolute path of a .prefab or .unity file inside a Unity project.");
+        return;
+    }
+    unity::ImportOptions options;
+    options.file = fs::u8path(args["path"].get<std::string>()).lexically_normal();
+    if (!options.file.is_absolute()) {
+        call->fail("path must be absolute (the Unity project is outside the engine project).");
+        return;
+    }
+    if (args.contains("object") && args["object"].is_string()) options.object = args["object"].get<std::string>();
+    if (args.contains("dest") && args["dest"].is_string()) options.dest = args["dest"].get<std::string>();
+    if (args.contains("unity_project") && args["unity_project"].is_string()) {
+        options.unityProject = fs::u8path(args["unity_project"].get<std::string>()).lexically_normal();
+    }
+    options.dryRun = args.value("dry_run", false);
+    options.overwrite = args.value("overwrite", false);
+    // the output folder: inside the project once links are resolved
+    fs::path dest;
+    std::string error;
+    if (!McpRefs::resolveProjectWritePath(project, options.dest, dest, error, false)) {
+        call->fail(error);
+        return;
+    }
+    const unity::ImportResult result = unity::importParticlesIntoProject(project, options);
+    if (!result.ok) {
+        call->fail(result.error);
+        return;
+    }
+    int notes = 0;
+    for (const Json& system : result.report["systems"]) notes += (int)system["notes"].size();
+    notes += (int)result.report["warnings"].size();
+    std::string message = std::string(options.dryRun ? "Would import " : "Imported ") + std::to_string(result.report["systems"].size()) +
+                          " particle system(s) into " + std::to_string(result.prefabs.size()) + " prefab(s)";
+    message += notes ? " with " + std::to_string(notes) + " note(s) (see report)." : ".";
+    if (!options.dryRun) message += " Instantiate a prefab with instantiate_prefab; undo removes the files.";
+    Json data = {{"prefabs", result.prefabs}, {"report", result.report}};
+    if (!result.reportFile.empty()) data["report_file"] = result.reportFile;
+    call->ok(message, data);
+}
+
 void searchFilesTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -3821,6 +3872,27 @@ void registerAssetTools(McpRegistry& registry) {
             {"overwrite", withDefault(boolean(""), false)}
         }, {"path"});
         tool.handler = placeholderArtTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "import_unity_particles";
+        tool.title = "Import Unity Particles";
+        tool.description =
+            "Import the ParticleSystems of a Unity .prefab/.unity (absolute path; the Unity project is only read) as "
+            "engine prefabs with materials and textures. Returns the prefabs and a report (per module imported/"
+            "approximated/unsupported, notes). jasper://docs/particles";
+        tool.inputSchema = object({
+            {"path", string("Absolute .prefab or .unity path.")},
+            {"object", string("GameObject path, e.g. \"Player/Camera/EndParticles\".")},
+            {"dest", withDefault(assetPath(""), "assets/fx")},
+            {"unity_project", string("Default: found from path.")},
+            {"dry_run", withDefault(boolean(""), false)},
+            {"overwrite", withDefault(boolean(""), false)}
+        }, {"path"});
+        tool.annotations.openWorld = true;
+        tool.handler = importUnityParticlesTool;
         registry.addTool(std::move(tool));
     }
 

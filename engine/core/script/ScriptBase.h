@@ -131,6 +131,10 @@ namespace jasperengine {
         virtual void onTriggerStay2D(const ColliderRef2D& other);
         virtual void onTriggerExit2D(const ColliderRef2D& other);
 
+        // A Particle System of this GameObject with main.stopAction Callback finished: it stopped
+        // and its last particle died (Unity OnParticleSystemStopped).
+        virtual void onParticleSystemStopped();
+
         // the messages (ScriptMessage bits) whose base method ran: not overridden, so not sent
         // again and not among ScriptMessages::receivers
         uint32_t inheritedMessages = 0;

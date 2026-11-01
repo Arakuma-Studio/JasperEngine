@@ -131,7 +131,12 @@ LIMITS.update({"create_ragdoll": 900})
 # physics-contacts: get_runtime_entity's physics contacts / callbacks paid by a shorter description
 # (edit_colliders' receiver is in the guide); merged with main (shader-globals): 151 tools measured 107678
 # merged by the lead (platform-services + physics-contacts): provisional, re-measured on the merged tree
-TOTAL_LIMIT = 108200
+# particles: the new import_unity_particles (Unity ParticleSystem prefabs and scenes) and create_particles'
+# version 2 arguments (renderer, modules, upgrade, force, duration, speed)
+# particles merged with main (shader-globals, persistence, ui-canvas-group, physics-3d, http): 152 tools, total
+# 108637 (tool_budget.py on the merged tree)
+# merged by the lead (+ particles): provisional, re-measured on the merged tree
+TOTAL_LIMIT = 108800
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

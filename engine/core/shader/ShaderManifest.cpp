@@ -653,6 +653,7 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 else if (def == "normal") value = ShaderTextureDefault::NORMAL;
                 else if (def == "ripples") value = ShaderTextureDefault::RIPPLES;
                 else if (def == "noise") value = ShaderTextureDefault::NOISE;
+                else if (def == "particle") value = ShaderTextureDefault::PARTICLE;
                 else return false;
                 return true;
             };
@@ -668,7 +669,7 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 continue;
             }
             if (!parseDefault(args[1].text, texture.defaultTexture)){
-                report(lineNumber, true, "unknown @texture default '" + args[1].text + "' (white, black, gray, normal, ripples, noise)");
+                report(lineNumber, true, "unknown @texture default '" + args[1].text + "' (white, black, gray, normal, ripples, noise, particle)");
                 continue;
             }
             bool valid = true;
@@ -680,7 +681,7 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 if (!args[a].quoted && lower(text.substr(0, 8)) == "default[" && close != std::string::npos && close > 8){
                     texture.featureDefaultDefine = text.substr(8, close - 8);
                     if (!parseDefault(text.substr(close + 2), texture.featureDefaultTexture)){
-                        report(lineNumber, true, "unknown @texture default '" + text.substr(close + 2) + "' (white, black, gray, normal, ripples, noise)");
+                        report(lineNumber, true, "unknown @texture default '" + text.substr(close + 2) + "' (white, black, gray, normal, ripples, noise, particle)");
                         valid = false;
                     }
                 }else if (splitOption(args[a], key, value) && key == "feature"){

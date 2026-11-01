@@ -88,6 +88,7 @@ const char* ScriptMessages::methodName(ScriptMessage m) {
         case ScriptMessage::ApplicationPause: return "onApplicationPause";
         case ScriptMessage::ApplicationFocus: return "onApplicationFocus";
         case ScriptMessage::ApplicationQuit: return "onApplicationQuit";
+        case ScriptMessage::ParticleSystemStopped: return "onParticleSystemStopped";
         case ScriptMessage::Count: break;
     }
     return "";

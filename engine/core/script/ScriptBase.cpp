@@ -171,6 +171,10 @@ void ScriptBase::onJointBreak2D(Joint2D& joint) {
     inherited(*this, ScriptMessage::JointBreak2D);
 }
 
+void ScriptBase::onParticleSystemStopped() {
+    inherited(*this, ScriptMessage::ParticleSystemStopped);
+}
+
 void ScriptBase::onJointBreak(float force, Joint3D& joint) {
     (void)force;
     (void)joint;

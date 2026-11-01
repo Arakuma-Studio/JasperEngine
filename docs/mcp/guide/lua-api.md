@@ -109,6 +109,7 @@ GameObject that defines it gets the call, enabled or not, after the fixed step t
 | `onTriggerEnter(self, other)`, `onTriggerStay`, `onTriggerExit` | a trigger pair (either side a trigger / sensor): `other` is the other `Collider` |
 | `onCollisionEnter2D(self, collision)`, `...Stay2D`, `...Exit2D`, `onTriggerEnter2D(self, other)`, `...Stay2D`, `...Exit2D` | the same for Rigidbody 2D (`Collision2D`, `Collider2D`; 4.13.2) |
 | `onJointBreak2D(self, joint)` | a `Joint2D` of this GameObject, or whose bodyA is it, broke (its `breakForce` / `breakTorque` passed; `joint` still exists during the call, its `breakAction` decides what follows) |
+| `onParticleSystemStopped(self)` | a version 2 `ParticleSystem` of this GameObject with `main.stopAction = ParticleSystemStopAction.Callback` finished (stopped and its last particle gone; never in an editor preview) |
 
 The contact callbacks come once per fixed step that steps (2D first, then 3D; triggers, then
 collisions; Enter, Stay, Exit), only while the GameObject is active; a collider's `receiver`
@@ -1835,7 +1836,66 @@ offsets (`relative` does not apply to it).
 `Ease(EaseType.X)` / `Ease.linear(t)`, `Ease.easeInQuad(t)`, `Ease.easeOutQuad(t)`,
 `Ease.easeInOutQuad(t)`, ... `Ease.easeOutBounce(t)` (static helpers, t in 0..1).
 
-### 4.16 ParticleSystem (Action) - partial
+### 4.16 ParticleSystem (Action)
+
+Unity's ParticleSystem (version 2, the module model; [particles.md](particles.md) has the
+modules, render modes, costs and the Unity importer). `GameObject > Effects > Particle System`,
+`create_particles` and the importer make version 2 systems; older scenes keep version 1 (the
+legacy model, below) until upgraded.
+
+```lua
+local ps = self.gameObject:getParticleSystem()   -- nil without one (GetComponent<ParticleSystem>)
+ps.emission.rateOverTime = 0                     -- the modules are live views
+local main = ps.main
+main.startLifetime = MinMaxCurve(0.8, 1.0)       -- random between two constants
+main.startColor = MinMaxGradient(Vector4(1, 0.5, 0, 1))   -- colours sRGB, as the pickers
+ps:play()                                        -- with children (play(false): only this one)
+ps:emit(10)                                      -- now, also while stopped
+if ps:isPlaying() then print(ps.particleCount, ps.time) end
+ps:stop(true, ParticleSystemStopBehavior.StopEmittingAndClear)
+```
+
+Control (children included unless `withChildren` is false; a version 1 system keeps the Action
+behaviour): `play([withChildren])`, `stop([withChildren], [ParticleSystemStopBehavior])`
+(`StopEmitting`: the particles live out, `StopEmittingAndClear`: gone now), `pause([withChildren])`,
+`clear([withChildren])`, `emit(count)` -> spawned, `simulate(t, [withChildren], [restart=true])`
+(advances t seconds, then paused, as Unity's Simulate), `isPlaying()`, `isPaused()`,
+`isStopped()`, `isEmitting()`, `isAlive([withChildren])` (methods, as Action's; Unity's are
+properties). rw `time` (the clock in the cycle), `randomSeed`, `useAutoRandomSeed`,
+`useUnscaledTime`, `version` (1 -> 2 upgrades); r `particleCount`. `upgrade([force])` converts a
+version 1 system and returns `{upgraded, items = {{field, status, message, maxError}, ...}}`
+(status `exact`, `approximated` or `dropped`). `ParticleSystem(scene)` makes a version 1 system,
+`ParticleSystem(scene, true)` a version 2 one on a new GameObject with the default quad.
+`play()` and `stop()` change the system at once; `onStart` / `onStop` of the Action follow at the
+next update. `GameObject:getParticleSystemsInChildren()` lists the GameObject's and its
+children's systems in hierarchy order. A script method `onParticleSystemStopped()` on the
+system's GameObject runs when it stops with `main.stopAction = ParticleSystemStopAction.Callback`.
+
+Modules (`ps.main`, `ps.emission`, `ps.shape`, `ps.velocityOverLifetime`,
+`ps.limitVelocityOverLifetime`, `ps.inheritVelocity`, `ps.forceOverLifetime`,
+`ps.colorOverLifetime`, `ps.colorBySpeed`, `ps.sizeOverLifetime`, `ps.sizeBySpeed`,
+`ps.rotationOverLifetime`, `ps.rotationBySpeed`, `ps.noise`, `ps.textureSheetAnimation`,
+`ps.renderer`): every field by its Unity name (the full list: [particles.md](particles.md#fields)).
+A MinMaxCurve field takes a number, a `MinMaxCurve` or an `AnimationCurve`; reading gives a
+`MinMaxCurve` copy (assign it back after editing). `<field>Multiplier` (`rateOverTimeMultiplier`,
+`startLifetimeMultiplier`, ...) reads and writes the constant / multiplier. A colour field takes
+a `Vector4` / `Vector3` (sRGB), a `Gradient` or a `MinMaxGradient`. Enum fields take the enum
+values (`ParticleSystemShapeType.Cone`) or their names (`"Cone"`). Angles and angular speeds
+are radians. Bursts: `ps.emission:setBursts({{time = 0, count = 10, cycles = 1, interval = 0.01,
+probability = 1}, ...})`, `getBurst(i)` / `setBurst(i, burst)` (0-based, as Unity), `burstCount`.
+Writing a module field of a version 1 system is an error naming `upgrade()`.
+
+`MinMaxCurve(v)`, `MinMaxCurve(min, max)`, `MinMaxCurve(multiplier, curve)`,
+`MinMaxCurve(multiplier, curveMin, curveMax)`: rw `mode` (`ParticleSystemCurveMode.Constant`,
+`Curve`, `TwoCurves`, `TwoConstants`), `constant`, `constantMin`, `constantMax`, `curve`,
+`curveMin`, `curveMax`, `curveMultiplier`; `evaluate(t [, random01])`.
+`MinMaxGradient(color)`, `MinMaxGradient(colorMin, colorMax)`, `MinMaxGradient(gradient)`,
+`MinMaxGradient(gradientMin, gradientMax)` (colours sRGB): rw `mode`
+(`ParticleSystemGradientMode.Color`, `Gradient`, `TwoColors`, `TwoGradients`, `RandomColor`),
+`color`, `colorMin`, `colorMax` (sRGB), `gradient`, `gradientMin`, `gradientMax`;
+`evaluate(t [, random01])` (linear RGBA).
+
+#### Version 1 (legacy)
 
 rw: `enabled`, `rate`, `maxPerUpdate`, `emitter`, `loop`, `localSpace`, `emitterShape`
 (`ParticleEmitterShape.*`). Methods: `reset()`, `addBurst(time, count)` / `addBurst(time, minCount, maxCount)`,
@@ -1846,6 +1906,9 @@ rw: `enabled`, `rate`, `maxPerUpdate`, `emitter`, `loop`, `localSpace`, `emitter
 `setSizeInitializer(...)`, `setRotationInitializer(...)`, `setScaleInitializer(...)`, and
 `set*Modifier(fromTime, toTime, from, to [, EaseType])` for Position/Velocity/Acceleration/
 Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause()`.
+On a version 2 system these legacy setters set the module fields they map to (as the upgrade
+does), with one deprecation warning each; the position modifier and `emitter` /
+`maxPerUpdate` have no module equivalent and do nothing there.
 Component: `getParticleSystemComponent()` (the old misspelt `getParticlesomponent()` still works, deprecated).
 
 ### 4.17 FluidSimulation (GameObject)
@@ -2085,6 +2148,21 @@ use the methods. Physics colliders keep the rest shape.
 | `AlphaTweenTarget` | `AUTO`, `COLOR`, `CANVAS_GROUP` |
 | `ScrollbarType`, `ProgressbarType` | `VERTICAL`, `HORIZONTAL` |
 | `ParticleEmitterShape` | `Box`, `Sphere`, `Hemisphere`, `Circle`, `Cone` |
+| `ParticleSystemShapeType` | `Sphere`, `Hemisphere`, `Cone`, `ConeVolume`, `Box`, `BoxShell`, `BoxEdge`, `Circle`, `Edge`, `Rectangle`, `Donut` |
+| `ParticleSystemCurveMode` | `Constant`, `Curve`, `TwoCurves`, `TwoConstants` |
+| `ParticleSystemGradientMode` | `Color`, `Gradient`, `TwoColors`, `TwoGradients`, `RandomColor` |
+| `ParticleSystemSimulationSpace` | `Local`, `World` |
+| `ParticleSystemScalingMode` | `Hierarchy`, `Local`, `Shape` |
+| `ParticleSystemStopAction` | `None`, `Disable`, `Destroy`, `Callback` |
+| `ParticleSystemStopBehavior` | `StopEmittingAndClear`, `StopEmitting` |
+| `ParticleSystemRenderMode` | `Billboard`, `Stretch`, `HorizontalBillboard`, `VerticalBillboard`, `Mesh` |
+| `ParticleSystemSortMode` | `None`, `Distance`, `OldestInFront`, `YoungestInFront` |
+| `ParticleSystemRenderSpace` | `View`, `World`, `Local`, `Facing`, `Velocity` |
+| `ParticleSystemShapeMultiModeValue` | `Random`, `Loop`, `PingPong`, `BurstSpread` |
+| `ParticleSystemInheritVelocityMode` | `Initial`, `Current` |
+| `ParticleSystemAnimationMode` / `Type` / `RowMode` / `TimeMode` | `Grid`, `Sprites` / `WholeSheet`, `SingleRow` / `Custom`, `Random` / `Lifetime`, `Speed`, `FPS` |
+| `ParticleSystemGravitySource` | `Physics3D`, `Physics2D` |
+| `ParticleSystemEmitterVelocityMode` | `Transform`, `Rigidbody` |
 | `FogType` | `LINEAR`, `EXPONENTIAL`, `EXPONENTIALSQUARED` |
 | `RotationOrder` | `XYZ`, `XZY`, `YXZ`, `YZX`, `ZXY`, `ZYX` |
 | `RayFilter` | `BODY_2D`, `BODY_3D`, `BOUNDS` |

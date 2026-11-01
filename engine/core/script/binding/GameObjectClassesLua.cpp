@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "LuaBinding.h"
+#include "component/ActionComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "action/ParticleSystem.h"
 
 #include "lua.hpp"
 
@@ -513,6 +516,41 @@ namespace {
     }
 }
 
+namespace {
+
+    // the GameObject's own Particle System, else (the legacy layout) the system drawing on it
+    Entity particleSystemOf(Scene* scene, Entity entity){
+        if (scene->findComponent<ParticleSystemComponent>(entity)) return entity;
+        auto systems = scene->getComponentArray<ParticleSystemComponent>();
+        for (size_t i = 0; i < systems->size(); i++){
+            const Entity system = systems->getEntity(i);
+            const ActionComponent* action = scene->findComponent<ActionComponent>(system);
+            if (action && action->target == entity) return system;
+        }
+        return NULL_ENTITY;
+    }
+
+    // the GameObject and its descendants in hierarchy (Transform) order
+    std::vector<Entity> hierarchyOf(Scene* scene, Entity root){
+        std::vector<Entity> out{root};
+        auto transforms = scene->getComponentArray<Transform>();
+        if (!transforms->hasEntity(root)) return out;
+        for (size_t i = transforms->getIndex(root) + 1; i < transforms->size(); i++){
+            Entity parent = transforms->getComponentFromIndex(i).parent;
+            bool descendant = false;
+            while (parent != NULL_ENTITY){
+                if (parent == root){ descendant = true; break; }
+                const Transform* t = scene->findComponent<Transform>(parent);
+                parent = t ? t->parent : NULL_ENTITY;
+            }
+            if (!descendant) break;
+            out.push_back(transforms->getEntity(i));
+        }
+        return out;
+    }
+
+}
+
 void LuaBinding::registerGameObjectClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
 
@@ -925,6 +963,27 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             Scene* scene = self->getScene();
             return scene && scene->isEntityCreated(self->getEntity()) &&
                    scene->findComponent<TrailRendererComponent>(self->getEntity()) != nullptr;
+        })
+        // the Particle System of the GameObject (Unity's GetComponent<ParticleSystem>): its own, or
+        // in the legacy layout the system drawing on it; nil without one
+        .addFunction("getParticleSystem", +[](GameObject* self) -> std::optional<ParticleSystem> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity())) return std::nullopt;
+            const Entity system = particleSystemOf(scene, self->getEntity());
+            if (system == NULL_ENTITY) return std::nullopt;
+            return ParticleSystem(scene, system);
+        })
+        // the Particle Systems of the GameObject and its children, in hierarchy order (Unity's
+        // GetComponentsInChildren<ParticleSystem>)
+        .addFunction("getParticleSystemsInChildren", +[](GameObject* self) -> std::vector<ParticleSystem> {
+            std::vector<ParticleSystem> systems;
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity())) return systems;
+            for (Entity entity : hierarchyOf(scene, self->getEntity())){
+                const Entity system = particleSystemOf(scene, entity);
+                if (system != NULL_ENTITY) systems.push_back(ParticleSystem(scene, system));
+            }
+            return systems;
         })
         // Unity's AddComponent<TrailRenderer>(): its Trail Renderer, added when it has none
         .addFunction("addTrailRenderer", +[](GameObject* self) -> std::optional<TrailRenderer> {

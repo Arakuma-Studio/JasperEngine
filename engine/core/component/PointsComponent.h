@@ -90,6 +90,11 @@ namespace jasperengine{
         bool sceneInputsPredicted = false; // see MeshComponent::sceneInputsPredicted
         // its shader's @state priority=, the transparent queue order (points have no sortPriority)
         int sortPriority = 0;
+        // added to its camera distance in the transparent queue (a version 2 Particle System's
+        // renderer sortingFudge, written by it; runtime): lower draws on top, Unity
+        float sortingFudge = 0.0f;
+        // a version 2 Particle System's renderer sortPriority, added to sortPriority when queued (runtime)
+        int particleSortPriority = 0;
 
         Texture texture;
 

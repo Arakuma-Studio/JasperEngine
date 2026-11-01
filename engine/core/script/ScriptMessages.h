@@ -34,6 +34,8 @@ namespace jasperengine {
         JointBreak, JointBreak2D,
         // script-lifecycle
         Init, Start, Enable, Disable, Destroy, ApplicationPause, ApplicationFocus, ApplicationQuit,
+        // particles: a version 2 Particle System with stopAction Callback finished
+        ParticleSystemStopped,
         Count
     };
     static_assert(static_cast<int>(ScriptMessage::Count) <= 32, "ScriptMessageMask holds 32 messages");

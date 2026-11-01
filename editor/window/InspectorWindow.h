@@ -78,7 +78,10 @@ namespace jasperengine::editor{
         LayerMask,  // unsigned int culling mask: Unity's Nothing / Everything / per-layer dropdown
         // Unity AnimationCurve / Gradient (widget/CurveField.h, widget/GradientField.h)
         Curve,
-        Gradient
+        Gradient,
+        // Unity's MinMaxCurve / MinMaxGradient (widget/MinMaxFields.h)
+        MinMaxCurve,
+        MinMaxGradient
     };
 
     struct EnumEntry {
@@ -104,6 +107,9 @@ namespace jasperengine::editor{
         bool indent = false;
         std::string help = "";
         const char *format = "%.2f";
+        // MinMaxCurve rows: what the numbers show is the stored value times this (57.29578:
+        // degrees of a value stored in radians)
+        float displayScale = 1.0f;
         bool showColors = true;
         std::vector<EnumEntry>* enumEntries = nullptr;
         std::vector<int>* sliderValues = nullptr;
@@ -688,6 +694,16 @@ namespace jasperengine::editor{
         void drawAudioComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawSkyboxComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawParticleSystemComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // Particle Systems (InspectorParticles.cpp): version 1 keeps its legacy rows under the
+        // Upgrade to modules banner; version 2 shows Unity's modules
+        void drawParticleSystemLegacy(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawParticleUpgradeBanner(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawParticleModules(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawParticleModuleRows(const std::string& module, ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                    const ParticleSystemComponent& first);
+        void drawParticleBursts(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        // the upgrade popup's report and its force choice
+        bool particleUpgradeForce = false;
         void drawLineRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // Line and Trail Renderers (InspectorLinesTrails.cpp)
         void drawLineSegmentsList(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

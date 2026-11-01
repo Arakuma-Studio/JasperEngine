@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Stream.h"
+#include "particles/ParticleFields.h"
 #include "util/ShaderGlobalsJson.h"
 #include "AppSettings.h"
 #include "EditorHost.h"
@@ -2019,6 +2020,174 @@ Gradient editor::Stream::decodeGradient(const YAML::Node& node, const Gradient& 
     }
     gradient.normalize();
     return gradient;
+}
+
+YAML::Node editor::Stream::encodeColorValue(const Vector4& linear) {
+    // the gradient keys' rule for the colour, the alpha appended when not 1
+    const YAML::Node rgb = encodeGradientColor(Vector3(linear.x, linear.y, linear.z));
+    const float alpha = finiteOr(linear.w, 1.0f);
+    if (rgb.IsScalar()) {
+        const int a = (int)std::lround(std::min(std::max(alpha, 0.0f), 1.0f) * 255.0f);
+        if (alpha == 1.0f) return rgb;
+        if (std::fabs((float)a / 255.0f - alpha) <= 1e-6f) {
+            char text[4];
+            std::snprintf(text, sizeof(text), "%02X", a);
+            return YAML::Node(rgb.as<std::string>() + text);
+        }
+    }
+    YAML::Node node;
+    node.SetStyle(YAML::EmitterStyle::Flow);
+    node.push_back(YamlNumbers::text(finiteOr(linear.x)));
+    node.push_back(YamlNumbers::text(finiteOr(linear.y)));
+    node.push_back(YamlNumbers::text(finiteOr(linear.z)));
+    node.push_back(YamlNumbers::text(alpha));
+    return node;
+}
+
+YAML::Node editor::Stream::encodeMinMaxCurve(const MinMaxCurve& curve) {
+    switch (curve.mode) {
+        case ParticleSystemCurveMode::Constant:
+            return YAML::Node(YamlNumbers::text(finiteOr(curve.constant)));
+        case ParticleSystemCurveMode::TwoConstants: {
+            YAML::Node node;
+            node.SetStyle(YAML::EmitterStyle::Flow);
+            node["mode"] = "two_constants";
+            node["min"] = YamlNumbers::text(finiteOr(curve.constantMin));
+            node["max"] = YamlNumbers::text(finiteOr(curve.constant));
+            return node;
+        }
+        case ParticleSystemCurveMode::Curve: {
+            YAML::Node node;
+            node["mode"] = "curve";
+            node["multiplier"] = YamlNumbers::text(finiteOr(curve.constant));
+            node["curve"] = encodeCurve(curve.curve);
+            return node;
+        }
+        case ParticleSystemCurveMode::TwoCurves: {
+            YAML::Node node;
+            node["mode"] = "two_curves";
+            node["multiplier"] = YamlNumbers::text(finiteOr(curve.constant));
+            node["min"] = encodeCurve(curve.curveMin);
+            node["max"] = encodeCurve(curve.curve);
+            return node;
+        }
+    }
+    return YAML::Node(YamlNumbers::text(finiteOr(curve.constant)));
+}
+
+MinMaxCurve editor::Stream::decodeMinMaxCurve(const YAML::Node& node, const MinMaxCurve& fallback) {
+    if (!node || node.IsNull()) return fallback;
+    if (node.IsScalar()) {
+        try {
+            const float value = node.as<float>();
+            return std::isfinite(value) ? MinMaxCurve(value) : fallback;
+        } catch (const YAML::Exception&) {
+            return fallback;
+        }
+    }
+    if (!node.IsMap()) return fallback;
+    const std::string mode = node["mode"] ? node["mode"].as<std::string>() : std::string("constant");
+    MinMaxCurve curve;
+    if (mode == "two_constants") {
+        curve = MinMaxCurve::between(decodeFinite(node["min"], 0.0f), decodeFinite(node["max"], 0.0f));
+    } else if (mode == "curve") {
+        curve = MinMaxCurve::fromCurve(decodeCurve(node["curve"], AnimationCurve::constant(1.0f)), decodeFinite(node["multiplier"], 1.0f));
+    } else if (mode == "two_curves") {
+        curve = MinMaxCurve::between(decodeCurve(node["min"], AnimationCurve::constant(1.0f)),
+                                     decodeCurve(node["max"], AnimationCurve::constant(1.0f)), decodeFinite(node["multiplier"], 1.0f));
+    } else {
+        curve = MinMaxCurve(decodeFinite(node["value"] ? node["value"] : node["constant"], fallback.constant));
+    }
+    return curve;
+}
+
+YAML::Node editor::Stream::encodeMinMaxGradient(const MinMaxGradient& gradient) {
+    switch (gradient.mode) {
+        case ParticleSystemGradientMode::Color:
+            return encodeColorValue(gradient.color);
+        case ParticleSystemGradientMode::TwoColors: {
+            YAML::Node node;
+            node["mode"] = "two_colors";
+            node["min"] = encodeColorValue(gradient.colorMin);
+            node["max"] = encodeColorValue(gradient.color);
+            return node;
+        }
+        case ParticleSystemGradientMode::Gradient:
+        case ParticleSystemGradientMode::RandomColor: {
+            YAML::Node node;
+            node["mode"] = gradient.mode == ParticleSystemGradientMode::Gradient ? "gradient" : "random_color";
+            node["gradient"] = encodeGradient(gradient.gradient);
+            return node;
+        }
+        case ParticleSystemGradientMode::TwoGradients: {
+            YAML::Node node;
+            node["mode"] = "two_gradients";
+            node["min"] = encodeGradient(gradient.gradientMin);
+            node["max"] = encodeGradient(gradient.gradient);
+            return node;
+        }
+    }
+    return encodeColorValue(gradient.color);
+}
+
+MinMaxGradient editor::Stream::decodeMinMaxGradient(const YAML::Node& node, const MinMaxGradient& fallback) {
+    if (!node || node.IsNull()) return fallback;
+    Vector4 color;
+    bool hasAlpha = false;
+    if ((node.IsScalar() || node.IsSequence()) && decodeColorValue(node, color, hasAlpha)) {
+        return MinMaxGradient::fromColor(color);
+    }
+    if (!node.IsMap()) return fallback;
+    const std::string mode = node["mode"] ? node["mode"].as<std::string>() : std::string("color");
+    auto colorOf = [&](const YAML::Node& value, const Vector4& otherwise) {
+        Vector4 linear;
+        bool alpha = false;
+        return decodeColorValue(value, linear, alpha) ? linear : otherwise;
+    };
+    if (mode == "two_colors") {
+        return MinMaxGradient::between(colorOf(node["min"], Vector4(1, 1, 1, 1)), colorOf(node["max"], Vector4(1, 1, 1, 1)));
+    }
+    if (mode == "gradient" || mode == "random_color") {
+        MinMaxGradient g = MinMaxGradient::fromGradient(decodeGradient(node["gradient"], Gradient()));
+        if (mode == "random_color") g.mode = ParticleSystemGradientMode::RandomColor;
+        return g;
+    }
+    if (mode == "two_gradients") {
+        return MinMaxGradient::between(decodeGradient(node["min"], Gradient()), decodeGradient(node["max"], Gradient()));
+    }
+    return MinMaxGradient::fromColor(colorOf(node["color"], fallback.color));
+}
+
+YAML::Node editor::Stream::encodeParticleBursts(const std::vector<ParticleEmissionBurst>& bursts) {
+    YAML::Node list(YAML::NodeType::Sequence);
+    const ParticleEmissionBurst defaults;
+    for (const ParticleEmissionBurst& burst : bursts) {
+        YAML::Node node;
+        node.SetStyle(YAML::EmitterStyle::Flow);
+        node["time"] = YamlNumbers::text(finiteOr(burst.time));
+        node["count"] = encodeMinMaxCurve(burst.count);
+        if (burst.cycles != defaults.cycles) node["cycles"] = burst.cycles;
+        if (burst.interval != defaults.interval) node["interval"] = YamlNumbers::text(finiteOr(burst.interval));
+        if (burst.probability != defaults.probability) node["probability"] = YamlNumbers::text(finiteOr(burst.probability));
+        list.push_back(node);
+    }
+    return list;
+}
+
+std::vector<ParticleEmissionBurst> editor::Stream::decodeParticleBursts(const YAML::Node& node) {
+    std::vector<ParticleEmissionBurst> bursts;
+    if (!node || !node.IsSequence()) return bursts;
+    for (const YAML::Node& item : node) {
+        if (!item.IsMap()) continue;
+        ParticleEmissionBurst burst;
+        burst.time = std::max(0.0f, decodeFinite(item["time"], 0.0f));
+        if (item["count"]) burst.count = decodeMinMaxCurve(item["count"], burst.count);
+        if (item["cycles"]) burst.cycles = std::max(0, YamlNumbers::as<int>(item["cycles"]));
+        if (item["interval"]) burst.interval = std::max(0.0001f, decodeFinite(item["interval"], burst.interval));
+        if (item["probability"]) burst.probability = std::min(1.0f, std::max(0.0f, decodeFinite(item["probability"], 1.0f)));
+        bursts.push_back(burst);
+    }
+    return bursts;
 }
 
 YAML::Node editor::Stream::encodeShaderUniforms(const ShaderUniformValues& uniforms) {
@@ -10325,9 +10494,90 @@ LatticeTracksComponent editor::Stream::decodeLatticeTracksComponent(const YAML::
     return tracks;
 }
 
+// a version 2 field's value in the scene encoding (particles/ParticleFields)
+YAML::Node editor::Stream::encodeParticleField(const particles::FieldInfo& field, const ParticleSystemComponent& component) {
+    const void* value = field.get(component);
+    switch (field.type) {
+        case particles::FieldType::Bool: return YAML::Node(*static_cast<const bool*>(value));
+        case particles::FieldType::Int: return YAML::Node(*static_cast<const int*>(value));
+        case particles::FieldType::UInt: return YAML::Node(*static_cast<const unsigned int*>(value));
+        case particles::FieldType::Float: return YAML::Node(editor::YamlNumbers::text(*static_cast<const float*>(value)));
+        case particles::FieldType::Vector2: return editor::Stream::encodeVector2(*static_cast<const Vector2*>(value));
+        case particles::FieldType::Vector3: return editor::Stream::encodeVector3(*static_cast<const Vector3*>(value));
+        case particles::FieldType::Curve: return editor::Stream::encodeMinMaxCurve(*static_cast<const MinMaxCurve*>(value));
+        case particles::FieldType::Gradient: return editor::Stream::encodeMinMaxGradient(*static_cast<const MinMaxGradient*>(value));
+        case particles::FieldType::Enum: return YAML::Node(particles::enumName(field, *static_cast<const int*>(value)));
+        case particles::FieldType::Bursts: return editor::Stream::encodeParticleBursts(*static_cast<const std::vector<ParticleEmissionBurst>*>(value));
+        case particles::FieldType::IntList: {
+            YAML::Node list(YAML::NodeType::Sequence);
+            list.SetStyle(YAML::EmitterStyle::Flow);
+            for (int v : *static_cast<const std::vector<int>*>(value)) list.push_back(v);
+            return list;
+        }
+        case particles::FieldType::String: return YAML::Node(*static_cast<const std::string*>(value));
+    }
+    return YAML::Node();
+}
+
+void editor::Stream::decodeParticleField(const particles::FieldInfo& field, const YAML::Node& node, ParticleSystemComponent& component) {
+    void* value = field.get(component);
+    try {
+        switch (field.type) {
+            case particles::FieldType::Bool: *static_cast<bool*>(value) = editor::YamlNumbers::as<bool>(node); break;
+            case particles::FieldType::Int: *static_cast<int*>(value) = editor::YamlNumbers::as<int>(node); break;
+            case particles::FieldType::UInt: *static_cast<unsigned int*>(value) = editor::YamlNumbers::as<unsigned int>(node); break;
+            case particles::FieldType::Float: *static_cast<float*>(value) = editor::Stream::decodeFinite(node, *static_cast<float*>(value)); break;
+            case particles::FieldType::Vector2: *static_cast<Vector2*>(value) = editor::Stream::decodeVector2(node); break;
+            case particles::FieldType::Vector3: *static_cast<Vector3*>(value) = editor::Stream::decodeFiniteVector3(node, *static_cast<Vector3*>(value)); break;
+            case particles::FieldType::Curve: *static_cast<MinMaxCurve*>(value) = editor::Stream::decodeMinMaxCurve(node, *static_cast<MinMaxCurve*>(value)); break;
+            case particles::FieldType::Gradient: *static_cast<MinMaxGradient*>(value) = editor::Stream::decodeMinMaxGradient(node, *static_cast<MinMaxGradient*>(value)); break;
+            case particles::FieldType::Enum: {
+                const int parsed = node.IsScalar() ? particles::enumValue(field, node.as<std::string>()) : -1;
+                if (parsed >= 0) {
+                    *static_cast<int*>(value) = parsed;
+                } else if (node.IsScalar()) {
+                    // a number: the enum's value when it is one
+                    int number = 0;
+                    if (YAML::convert<int>::decode(node, number) && field.enumNames && number >= 0 && (size_t)number < field.enumNames->size()) {
+                        *static_cast<int*>(value) = number;
+                    }
+                }
+                break;
+            }
+            case particles::FieldType::Bursts: *static_cast<std::vector<ParticleEmissionBurst>*>(value) = editor::Stream::decodeParticleBursts(node); break;
+            case particles::FieldType::IntList: {
+                std::vector<int> list;
+                if (node.IsSequence()) {
+                    for (const YAML::Node& item : node) list.push_back(editor::YamlNumbers::as<int>(item));
+                }
+                *static_cast<std::vector<int>*>(value) = list;
+                break;
+            }
+            case particles::FieldType::String: *static_cast<std::string*>(value) = node.as<std::string>(); break;
+        }
+    } catch (const YAML::Exception&) {
+        // a malformed value keeps the one before (as the other components' fields)
+    }
+}
+
 YAML::Node editor::Stream::encodeParticleSystemComponent(const ParticleSystemComponent& particles) {
     YAML::Node node;
     node["enabled"] = particles.enabled;
+
+    if (particles.version >= 2) {
+        node["version"] = particles.version;
+        if (particles.useUnscaledTime) node["useUnscaledTime"] = true;
+        for (const std::string& module : particles::moduleNames()) {
+            YAML::Node moduleNode;
+            for (const particles::FieldInfo* field : particles::moduleFields(module)) {
+                if (!particles::isDefault(*field, particles)) {
+                    moduleNode[field->name] = encodeParticleField(*field, particles);
+                }
+            }
+            if (moduleNode.size() > 0) node[module] = moduleNode;
+        }
+        return node;
+    }
 
     node["maxParticles"] = particles.maxParticles;
     node["emitter"] = particles.emitter;
@@ -10491,6 +10741,9 @@ YAML::Node editor::Stream::encodeParticleSystemComponent(const ParticleSystemCom
     scaleMod["toScale"] = encodeVector3(particles.scaleModifier.toScale);
     scaleMod["function"] = encodeEase(particles.scaleModifier.function);
     node["scaleModifier"] = scaleMod;
+
+    // shared with version 2; written only when set, so older files stay as they were
+    if (particles.useUnscaledTime) node["useUnscaledTime"] = true;
 
     return node;
 }
@@ -10668,10 +10921,22 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
         if (n["function"]) particles.scaleModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->scaleModifier.function : nullptr);
     }
 
+    // version 2: the modules (a file without a version is version 1)
+    if (node["version"]) particles.version = std::max(1, YamlNumbers::as<int>(node["version"]));
+    if (node["useUnscaledTime"]) particles.useUnscaledTime = YamlNumbers::as<bool>(node["useUnscaledTime"]);
+    for (const std::string& module : particles::moduleNames()) {
+        const YAML::Node moduleNode = node[module];
+        if (!moduleNode || !moduleNode.IsMap()) continue;
+        for (const particles::FieldInfo* field : particles::moduleFields(module)) {
+            if (moduleNode[field->name]) decodeParticleField(*field, moduleNode[field->name], particles);
+        }
+    }
+
     // Reset runtime fields
     particles.particles.clear();
     particles.newParticlesCount = 0;
     particles.lastUsedParticle = 0;
+    particles.state = ParticleSimState();
 
     if (node["enabled"]) particles.enabled = YamlNumbers::as<bool>(node["enabled"]);
 

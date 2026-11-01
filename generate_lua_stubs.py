@@ -2033,6 +2033,24 @@ for _renderer, _what in (('LineRenderer', 'polyline point'), ('TrailRenderer', '
         'doc': [f'The {_what} at `index` (0-based); an index out of range is an error naming positionCount.'],
         'overloads': [([('index', 'integer')], 'Vector3')]}
 
+# Particle Systems of version 2 (particles spec 6.6, docs/mcp/guide/particles.md)
+OVERRIDES[('ParticleSystemModule', 'setBursts')] = {
+    'doc': ['ps.emission:setBursts({{time = 0, count = 10, cycles = 1, interval = 0.01, probability = 1}, ...}): replaces',
+            'the bursts (count a number or a MinMaxCurve; cycles 0 repeats forever). Version 2 systems only.'],
+    'overloads': [([('bursts', '{time: number, count: MinMaxCurve|number, cycles?: integer, interval?: number, probability?: number}[]')], '')]}
+OVERRIDES[('ParticleSystemModule', 'getBurst')] = {
+    'doc': ['ps.emission:getBurst(index): the burst at `index` (0-based, as Unity\'s GetBurst) as a table.'],
+    'overloads': [([('index', 'integer')], '{time: number, count: MinMaxCurve, cycles: integer, interval: number, probability: number}')]}
+OVERRIDES[('ParticleSystemModule', 'setBurst')] = {
+    'doc': ['ps.emission:setBurst(index, burst): sets the burst at `index` (0-based; burstCount appends).'],
+    'overloads': [([('index', 'integer'), ('burst', '{time?: number, count?: MinMaxCurve|number, cycles?: integer, interval?: number, probability?: number}')], '')]}
+OVERRIDES[('ParticleSystem', 'upgrade')] = {
+    'doc': ['Converts a version 1 (legacy) system to the module model (version 2) and returns the report:',
+            '`{upgraded = true, items = {{field, status = "exact"|"approximated"|"dropped", message, maxError}, ...}}`.',
+            'A position modifier has no module equivalent: nothing changes unless `force` is true.'],
+    'overloads': [([], '{upgraded: boolean, items: {field: string, status: string, message: string, maxError: number}[]}'),
+                  ([('force', 'boolean')], '{upgraded: boolean, items: {field: string, status: string, message: string, maxError: number}[]}')]}
+
 OVERRIDES[('Gradient', 'setKeys')] = {
     'doc': ['Replaces the keys: colorKeys are {time, color} (Vector3 sRGB) or GradientColorKey, alphaKeys',
             '{time, alpha} or GradientAlphaKey; sorted, at most 8 of each.',
@@ -2326,6 +2344,12 @@ PROPERTY_OVERRIDES = {
     # the null sentinel (stubs/Json.lua: JsonNull)
     ('Json', 'null'): ('JsonNull', False),
     ('Mesh', 'material'): ('Material', True),
+    # the Particle System module views (binding/stubs/ParticleSystemModules.lua, from
+    # tools/gen_particle_stubs.py): live views, not copies
+    **{('ParticleSystem', _m): ('ParticleSystem' + _m[0].upper() + _m[1:] + 'Module', False) for _m in (
+        'main', 'emission', 'shape', 'velocityOverLifetime', 'limitVelocityOverLifetime', 'inheritVelocity',
+        'forceOverLifetime', 'colorOverLifetime', 'colorBySpeed', 'sizeOverLifetime', 'sizeBySpeed',
+        'rotationOverLifetime', 'rotationBySpeed', 'noise', 'textureSheetAnimation', 'renderer')},
     # AnimationEvent.args builds a 1-based table of the event's arguments
     ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
     ('HttpRequest', 'response'): ('HttpResponse|nil', False),

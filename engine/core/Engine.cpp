@@ -15,6 +15,7 @@
 #include "script/ScriptRuntime.h"
 #include "lua.hpp"
 #include "manager/SceneManager.h"
+#include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -118,6 +119,7 @@ double Engine::timeScale = 1.0;
 double Engine::fixedDeltatime = 0.0;
 double Engine::gameTime = 0.0;
 uint64_t Engine::gameFrames = 0;
+double Engine::unscaledDeltatime = 0.0;
 std::atomic<bool> Engine::simulationHeld = false;
 bool Engine::clampNextDelta = false;
 
@@ -682,6 +684,10 @@ float Engine::getMaxDeltatime(){
 void Engine::setMaxDeltatime(float seconds){
     if (seconds > 0.0f)
         maxDeltatime = seconds;
+}
+
+float Engine::getUnscaledDeltatime(){
+    return (float)unscaledDeltatime;
 }
 
 double Engine::getSystemTime(){
@@ -1377,8 +1383,13 @@ void Engine::signalReadyOnce(){
         if (frameStats){
             frames++;
             const uint64_t after = frames - signalledFrame;
-            if (frameStatsAll || after == 2 || after == 30 || after == 90)
+            // the particle simulation of this frame (particles spec 8: the CPU budget)
+            size_t alive = 0;
+            const double particleMs = ActionSystem::takeParticleSimMs(&alive);
+            if (frameStatsAll || after == 2 || after == 30 || after == 90){
                 SystemRender::logFrameStats(frames);
+                if (alive > 0) Log::print("Frame %llu particles_sim_ms %.3f (%zu particles)", (unsigned long long)frames, particleMs, alive);
+            }
         }
         return;
     }
@@ -1440,6 +1451,7 @@ void Engine::runFrame(bool draw){
         frameTime = fixedDeltatime;
     }
     deltatime = simulationHeld ? 0.0 : frameTime * timeScale;
+    unscaledDeltatime = (paused || simulationHeld) ? 0.0 : frameTime;
     // the UI clock runs on the unscaled delta (a pause menu animates at time scale 0) and
     // stops with the updates: a held simulation or a paused app
     HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);

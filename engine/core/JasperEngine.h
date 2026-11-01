@@ -122,6 +122,10 @@
 
 #include "math/AnimationCurve.h"
 #include "math/Gradient.h"
+#include "particles/MinMax.h"
+#include "particles/ParticleModules.h"
+#include "particles/ParticleSimulation.h"
+#include "particles/ParticleUpgrade.h"
 #include "math/AABB.h"
 #include "math/Matrix3.h"
 #include "math/Matrix4.h"

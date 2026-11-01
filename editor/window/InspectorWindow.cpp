@@ -6,6 +6,7 @@
 #include "shader/ShaderGlobals.h"
 #include "window/widget/CurveField.h"
 #include "window/widget/GradientField.h"
+#include "window/widget/MinMaxFields.h"
 #include "SceneWindow.h"
 #include "script/ScriptRuntime.h"
 
@@ -4212,7 +4213,8 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (dif)
             ImGui::PopStyleColor();
 
-    }else if (type == RowPropertyType::Curve || type == RowPropertyType::Gradient){
+    }else if (type == RowPropertyType::Curve || type == RowPropertyType::Gradient ||
+              type == RowPropertyType::MinMaxCurve || type == RowPropertyType::MinMaxGradient){
         // Unity AnimationCurve / Gradient: an inline preview that opens its editor popup;
         // every frame of a drag is one merged command, the edit's end its own undo step
         auto valueRow = [&](auto sample, auto drawField){
@@ -4251,6 +4253,14 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         auto fieldWidth = [&](){ return std::max(ImGui::GetFontSize() * 4.0f, ImGui::GetContentRegionAvail().x - helpWidth); };
         if (type == RowPropertyType::Curve){
             valueRow(AnimationCurve(), [&](AnimationCurve& value, bool mixed){ return curveField(("##curve_" + id).c_str(), value, mixed, fieldWidth()); });
+        }else if (type == RowPropertyType::MinMaxCurve){
+            valueRow(MinMaxCurve(), [&](MinMaxCurve& value, bool mixed){
+                return minMaxCurveField(("##minmax_" + id).c_str(), value, mixed, fieldWidth(), settings.displayScale, settings.format, settings.stepSize);
+            });
+        }else if (type == RowPropertyType::MinMaxGradient){
+            valueRow(MinMaxGradient(), [&](MinMaxGradient& value, bool mixed){
+                return minMaxGradientField(("##minmaxgradient_" + id).c_str(), value, mixed, fieldWidth());
+            });
         }else{
             valueRow(jasperengine::Gradient(), [&](jasperengine::Gradient& value, bool mixed){ return gradientField(("##gradient_" + id).c_str(), value, mixed, fieldWidth()); });
         }
@@ -11180,7 +11190,7 @@ void editor::InspectorWindow::drawInstancedMeshComponent(ComponentType cpType, S
     }
 }
 
-void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawParticleSystemLegacy(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsFloat;
     settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
 
