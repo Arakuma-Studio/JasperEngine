@@ -1079,6 +1079,22 @@ later animation features plug into. Code references are to the `gaps/anim-layers
   `edit_animator` is 2290 (limit 3500); `TOTAL_LIMIT` was raised by the measured 2502 with a
   comment in `tools/mcp/tests/test_html_ui_tools.py`.
 
+### Performance (spec 13)
+
+- **Occlusion.** Before sampling, the evaluator sums, per single-element slot, the state weights ×
+  track masks of every Override layer at weight 1; where that reaches 1, the layers below do not
+  sample the slot (the layer's value replaces it exactly: a full override now writes the layer's
+  average directly). In the budget scenario the base walk/run tracks of the masked arm bones are
+  skipped. `Quaternion`'s copy constructor, assignment and plain constructors are inline (same
+  arithmetic, bit-identical results; test 1 still matches main's hash).
+- **Measured** (`Layers.PerformanceBudget`: 40 characters × 65 bones, a controller each with a
+  base crossfade and a masked Override layer, the whole `ActionSystem::update`, best of 8 × 30
+  frames): 0.52–0.56 ms on the 8-core host under heavy load; 0.597–0.608 ms on the shared 2.0 GHz
+  EPYC build box (load 20–30, beside an MCP suite). Like `CanvasGroupTest.PerformanceBudgets`, the
+  0.6 ms assertion is skipped when the load average exceeds the core count (the time is still
+  printed); on the box it sits at the line, which main's own Canvas Group budget test also
+  missed there. The mobile figure (1.5 ms on a Cortex-A76) was not measured on a device.
+
 ### Extension points
 
 - **anim-properties (#12).** `playerdetail::buildPoseSlots` skips `ClipChannel::Property` tracks
