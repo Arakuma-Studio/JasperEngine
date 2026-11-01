@@ -934,3 +934,28 @@ the `gaps/anim-retarget` branch (based on `gaps/anim-layers`).
   failures only the baseline test_animation_assets x5. Tool texts unchanged (153 tools, budget
   as before); TOOLS.md regenerated from the clean 7f2c6d8d1 build. Web: em++ -fsyntax-only of the
   12 changed engine sources clean.
+
+### Second review fixes (2026-11-01)
+
+- **M-1**: extra bones are live only while the (mirrored) clip has them (see "Mirror and one-sided
+  extra bones" above); docs/animation-clips.md and the MCP animation guide say so.
+- **M-2**: Map Bones (Apply disabled, applyMapping refuses), the Rig foldout
+  (`PoseRigProvider::setAnimationType`) and the Avatar window's Apply refuse a sidecar that exists
+  but does not read ("fix or delete the file first"); the window takes it again once it reads.
+- **M-3**: the Avatar test clip of the window's own model is the generic clip itself (a sub-clip
+  straight from the model, not the pool's humanoid conversion of an Animation Type: Humanoid
+  model) converted with the working copy, edited or not, once per working copy (a failure too);
+  another model's clip reloads when the pool changes.
+- **Lows**: a failed Apply in the close / open prompt keeps the prompt; dropped scale tracks compare
+  with the node's own rest scale (`HumanoidSource::restScale`); the editor previews keep their
+  humanoid rig (and bindings) when the pool changed but the rig did not
+  (`playerdetail::refreshHumanoidSlots`, shared with the player); `retarget_report.entry` names the
+  entry whose Mirror and Foot IK apply (the root's first entry playing the clip); a fractional
+  `layer` option is refused; tests: the Rig foldout's helper on an unreadable sidecar, Mirror alone
+  in the MCP check, one warning per rig build, the scale rest.
+- **Verification** (host `build/host`, -j3: box 2203 was at load ~25 from other agents, 2202 too):
+  0 warnings; anim-tests 204/204, pose-tests 219/219; editor unit suite 1648 passed, 8 skipped, 0
+  failed; MCP test_animation_retarget 4/4 and the animation, pose, test_html_ui_tools,
+  test_docs, test_html_ui_docs and test_stubs files 219 passed, 7 skipped, 5 failed (the
+  test_animation_assets baseline). Tool texts unchanged (153 tools); TOOLS.md from the clean
+  4edf79f64 build.
