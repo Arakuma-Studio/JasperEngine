@@ -128,9 +128,10 @@ LIMITS.update({"create_ragdoll": 900})
 # orientation and language, get_play_state's platform (+468 on its branch); merged with main
 # (ui-canvas-group, physics-3d, http): 151 tools measured 108094 (tool_budget.py), the limit set to it
 # merged by the lead (shader-globals + platform-services): provisional sum, re-measured on the merged tree
-TOTAL_LIMIT = 108160
 # debug overlay: no new tool; get_project_settings' category list (+ "debug") and get_play_state's
-# debug_overlay block (+22 measured); re-measured on the tree merged with main
+# debug_overlay block; measured on the tree merged with main (shader-globals, platform-services):
+# 151 tools, 108170, the limit set to it
+TOTAL_LIMIT = 108170
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
