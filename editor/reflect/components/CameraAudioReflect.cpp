@@ -84,12 +84,14 @@ namespace {
 
     // ---------------------------------------------------------------- Audio Source
 
-    std::string stoppedState(const FieldDesc&, const void*, const CodegenContext&) {
-        // a build starts every source stopped; Playing ones start through startTrigger
-        return "AudioSourceState::Stopped";
+    std::string exportedState(const FieldDesc&, const void* value, const CodegenContext&) {
+        // a build starts a Playing source stopped, and plays it through startTrigger
+        // (audioSourceCodegen); a Paused one stays Paused, as the editor's Play loads it
+        const AudioSourceState state = *static_cast<const AudioSourceState*>(value);
+        return state == AudioSourceState::Paused ? "AudioSourceState::Paused" : "AudioSourceState::Stopped";
     }
 
-    constexpr TypeOps kAudioStateOps = detail::withLiteral(ops::Enum<AudioSourceState>, &stoppedState);
+    constexpr TypeOps kAudioStateOps = detail::withLiteral(ops::Enum<AudioSourceState>, &exportedState);
 
     constexpr uint64_t kAudio = UpdateFlags_AudioSource;
 
