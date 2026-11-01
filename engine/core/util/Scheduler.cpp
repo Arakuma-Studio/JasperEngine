@@ -351,6 +351,21 @@ bool Scheduler::isActive(TimerHandle handle) const noexcept {
     return (generationOf(state) & kHandleGenerationMask) == (handle.id >> kSlotBits) && !(state & kCancelled);
 }
 
+bool Scheduler::info(TimerHandle handle, TimerInfo& out) const {
+    if (!isActive(handle)) return false;
+    const Slot& slot = slotAt(static_cast<uint32_t>(handle.id & kSlotMask));
+    if (!slot.inUse) return false;
+    out.id = handle.id;
+    out.domain = slot.domain;
+    out.due = slot.due;
+    out.remaining = slot.due - time[static_cast<size_t>(slot.domain)];
+    out.period = slot.period;
+    out.remainingRuns = slot.counted ? slot.remaining : 0;
+    out.ownerKey = slot.ownerKey;
+    out.debugName = slot.debugName ? slot.debugName : "timer";
+    return true;
+}
+
 size_t Scheduler::cancelOwner(uint64_t ownerKey) {
     if (ownerKey == 0) return 0;
     // found under the lock (other threads fill slots under it), cancelled outside it

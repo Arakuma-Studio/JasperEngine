@@ -50,10 +50,12 @@ void LuaBinding::registerCoroutineClasses(lua_State *L){
         .addStaticFunction("waitFor", &ScriptSchedulerLua::waitFor)
         .endClass();
 
-    // gameplay timers in seconds, scaled by default (self:invoke for scripts; anime.createTimer
-    // stays the HTML UI clock)
+    // what self:invoke / invokeRepeating return (a script's timer, in seconds, scaled by
+    // default). The global Timer (Timer.after / every / run...) is UtilClassesLua.cpp's, on the
+    // C++ Scheduler; its handles read the same fields (id, remaining, interval, unscaled,
+    // cancel, isDone). anime.createTimer stays the HTML UI clock
     luabridge::getGlobalNamespace(L)
-        .beginClass<ScriptTimer>("Timer")
+        .beginClass<ScriptTimer>("ScriptTimer")
         .addProperty("id", &ScriptTimer::getId)
         .addProperty("remaining", &ScriptTimer::getRemaining)
         .addProperty("interval", &ScriptTimer::getInterval)
@@ -61,8 +63,8 @@ void LuaBinding::registerCoroutineClasses(lua_State *L){
         .addFunction("cancel", &ScriptTimer::cancel)
         .addFunction("isDone", &ScriptTimer::isDone)
         .addFunction("__tostring", &ScriptTimer::toString)
-        .addStaticFunction("after", &ScriptSchedulerLua::timerAfter)
-        .addStaticFunction("every", &ScriptSchedulerLua::timerEvery)
+        // oe-port's handle name, so either family of scripts reads both
+        .addFunction("isActive", +[](const ScriptTimer* self){ return !self->isDone(); })
         .endClass();
 
     // Unity's Time (Engine.deltatime and the rest stay; lua-api.md maps the names)

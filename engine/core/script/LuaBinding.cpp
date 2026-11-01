@@ -908,9 +908,8 @@ void LuaBinding::registerClasses(lua_State *L){
     registerIOClasses(L);
     registerMathClasses(L); 
     registerNetClasses(L);
-    // before the util classes: their global Timer (oe-port's Scheduler timers) wins over the
-    // coroutines' ScriptTimer class of the same name, whose instances keep their methods
-    // SYNC4-ABSORB(Timer): one Lua Timer API (Timer.after / every on the Scheduler)
+    // the coroutines, invoke and Time (ScriptScheduler); the one global Timer, on the C++
+    // Scheduler, is the util classes' (its handles also work with Coroutine.waitFor)
     registerCoroutineClasses(L);
     registerUtilClasses(L);
     registerThreadClasses(L);

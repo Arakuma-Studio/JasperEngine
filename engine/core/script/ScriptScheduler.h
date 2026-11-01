@@ -109,6 +109,16 @@ namespace jasperengine {
         // The pending timers of `owner` (0 when it has none): cancelled / counted
         static size_t cancelTimersOf(const void* owner);
 
+        // ---- Lua values the scheduler does not own but Coroutine.waitFor takes: the global
+        // Timer's handles (binding/UtilClassesLua.cpp, on the C++ Scheduler). status: 1 done
+        // (waitFor gives true), 0 cancelled (false), -1 pending, -2 never done (a repeating timer
+        // without a count: waitFor raises)
+        struct ExternalAwaitable {
+            bool (*is)(lua_State* L, int index) = nullptr;
+            int (*status)(lua_State* L, int index) = nullptr;
+        };
+        static void setTimerAwaitable(ExternalAwaitable awaitable);
+
         // ---- stats (MCP get_play_state, the Inspector, the debug overlay)
         static size_t coroutineCount();     // running or suspended
         static size_t timerCount();         // pending

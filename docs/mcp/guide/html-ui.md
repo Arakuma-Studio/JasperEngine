@@ -710,7 +710,7 @@ own environment (globals readable, its definitions local; `_G.x = 1` shares a va
 runs once however often the file was saved; what it started outside its elements (an
 `anime.createTimer`, a `Timer.after` / `Coroutine.start`, globals) is not undone: guard it. The
 document script is no script instance: `self:invoke` / `self:startCoroutine` do not exist
-there, `Timer.after` and `Coroutine.start` do (unowned: they end at Play stop, lua-api 2.14). Errors point at the HTML line
+there, `Timer.after` and `Coroutine.start` do (unowned: they end at Play stop, lua-api 2.13 and 2.17). Errors point at the HTML line
 (`ui/menu.html:45: ... [HTMLUI-HTML-0022]`).
 
 ```html

@@ -57,7 +57,10 @@ namespace {
 
     enum class CoStatus : uint8_t { Running, Suspended, Finished, Stopped, Error };
     enum class Wait : uint8_t { None, Frames, Seconds, Fixed, EndOfFrame, Until, While, Target };
-    enum class Target : uint8_t { None, Coroutine, Timer, Action, AudioSource, AnimationPlayer, Anime, IsDone };
+    enum class Target : uint8_t { None, Coroutine, Timer, Action, AudioSource, AnimationPlayer, Anime, IsDone, External };
+
+    // the global Timer's handles (ScriptScheduler::setTimerAwaitable)
+    ScriptScheduler::ExternalAwaitable externalTimer;
 
     struct CoText {
         std::string className;  // the owner script's class, "" when unowned
@@ -515,7 +518,7 @@ namespace {
     // ------------------------------------------------------------------ awaitables
 
     enum AwaitKind : int { AWAIT_NONE = 0, AWAIT_COROUTINE, AWAIT_TIMER, AWAIT_ACTION, AWAIT_AUDIO, AWAIT_ANIMATION_PLAYER,
-                           AWAIT_ANIME, AWAIT_ISDONE };
+                           AWAIT_ANIME, AWAIT_ISDONE, AWAIT_EXTERNAL };
 
     // (value) -> the AwaitKind of what can be waited for (called protected: isDone is read with
     // its metamethods)
@@ -523,7 +526,8 @@ namespace {
         int kind = AWAIT_NONE;
         if (lua_type(L, 1) == LUA_TUSERDATA){
             using luabridge::detail::Userdata;
-            if (Userdata::isInstance<ScriptCoroutine>(L, 1)) kind = AWAIT_COROUTINE;
+            if (externalTimer.is && externalTimer.is(L, 1)) kind = AWAIT_EXTERNAL;
+            else if (Userdata::isInstance<ScriptCoroutine>(L, 1)) kind = AWAIT_COROUTINE;
             else if (Userdata::isInstance<ScriptTimer>(L, 1)) kind = AWAIT_TIMER;
             else if (Userdata::isInstance<Action>(L, 1)) kind = AWAIT_ACTION;
             else if (Userdata::isInstance<AudioSource>(L, 1)) kind = AWAIT_AUDIO;
@@ -661,6 +665,20 @@ namespace {
             case AWAIT_ISDONE:
                 target = Target::IsDone;
                 break;
+            case AWAIT_EXTERNAL: {
+                const int status = externalTimer.status(L, index);
+                if (status == -2){
+                    error = "Coroutine.waitFor: a repeating timer is never done (give Timer.every a count, or wait for a one-shot)";
+                    return false;
+                }
+                if (status >= 0){
+                    lua_pushboolean(pushTo, status);
+                    immediate = 1;
+                    return true;
+                }
+                target = Target::External;
+                break;
+            }
             default:
                 error = std::string("Coroutine.waitFor: cannot wait for a ") + luaL_typename(L, index) +
                         " (a Coroutine, Timer, Action/Tween, AudioSource, AnimationPlayer, anime animation or timer, or "
@@ -737,6 +755,15 @@ namespace {
                 lua_pop(L, 1);
                 if (timer && !timer->isCompleted() && !timer->isCancelled()) return -1;
                 lua_pushboolean(co, timer && timer->isCompleted() ? 1 : 0);
+                return 1;
+            }
+            case Target::External: {
+                lua_State* L = mainState();
+                lua_rawgeti(L, LUA_REGISTRYINDEX, rec.targetRef);
+                const int status = externalTimer.status ? externalTimer.status(L, -1) : 0;
+                lua_pop(L, 1);
+                if (status == -1) return -1;
+                lua_pushboolean(co, status > 0 ? 1 : 0);
                 return 1;
             }
             case Target::IsDone: {
@@ -1611,6 +1638,7 @@ namespace {
                     case Target::AnimationPlayer: return "for AnimationPlayer";
                     case Target::Anime: return "for anime";
                     case Target::IsDone: return "for isDone()";
+                    case Target::External: return "for Timer";
                     default: return "for";
                 }
             default:
@@ -2151,6 +2179,8 @@ std::string ScriptTimer::toString() const{
 }
 
 // ====================================================================== Lua functions
+
+void ScriptScheduler::setTimerAwaitable(ExternalAwaitable awaitable){ externalTimer = awaitable; }
 
 int ScriptSchedulerLua::start(lua_State* L){ return finish(L, coroutineStartImpl(L)); }
 
