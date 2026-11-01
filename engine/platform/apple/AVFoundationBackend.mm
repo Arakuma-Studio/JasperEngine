@@ -25,11 +25,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <map>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace jasperengine;
@@ -122,20 +125,28 @@ namespace {
         [file getResourceValue:&existing forKey:NSURLFileSizeKey error:nil];
         if (existing && existing.longLongValue == size)
             return file;
-        NSMutableData* bytes = [NSMutableData dataWithLength:(NSUInteger)size];
-        int64_t done = 0;
-        while (done < size){
-            const int64_t got = source.readAt(done, (uint8_t*)bytes.mutableBytes + done, (size_t)(size - done));
-            if (got <= 0){
-                error.code = MediaErrorCode::NETWORK;
-                error.message = "'" + source.path() + "' could not be read";
-                return nil;
-            }
-            done += got;
-        }
-        if (![bytes writeToURL:file atomically:YES]){
+        // copied in 1 MiB parts into a temporary file renamed into place (never the whole video in memory)
+        const std::string target = utf8(file.path);
+        const std::string temp = target + ".tmp";
+        FILE* out = std::fopen(temp.c_str(), "wb");
+        if (!out){
             error.code = MediaErrorCode::NETWORK;
             error.message = "the video could not be written for the decoder";
+            return nil;
+        }
+        std::vector<uint8_t> buffer((size_t)1 << 20);
+        int64_t done = 0;
+        bool ok = true;
+        while (ok && done < size){
+            const int64_t got = source.readAt(done, buffer.data(), (size_t)std::min<int64_t>((int64_t)buffer.size(), size - done));
+            ok = got > 0 && std::fwrite(buffer.data(), 1, (size_t)got, out) == (size_t)got;
+            done += std::max<int64_t>(got, 0);
+        }
+        ok = std::fclose(out) == 0 && ok;
+        if (!ok || std::rename(temp.c_str(), target.c_str()) != 0){
+            std::remove(temp.c_str());
+            error.code = MediaErrorCode::NETWORK;
+            error.message = "'" + source.path() + "' could not be copied for the decoder";
             return nil;
         }
         return file;
@@ -226,11 +237,28 @@ namespace {
         bool seek(double seconds) override{
             MediaError error;
             lastPts = kCMTimeInvalid;
+            interrupted = false;
             return startReader(CMTimeMakeWithSeconds(std::max(seconds, 0.0), 600000), error);
         }
 
         Step decodeNext(VideoFrame& frame, std::vector<float>& pcm, double& pcmStart, MediaError& error) override{
             @autoreleasepool {
+                if (interrupted){
+                    // a new reader after the last sample given out; while the app stays in the
+                    // background it fails the same way: a try every 100 ms (the decoding thread)
+                    if (restarts++ > 0)
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    const CMTime resume = CMTIME_IS_NUMERIC(lastPts) ? CMTimeAdd(lastPts, CMTimeMake(1, 600000)) : kCMTimeZero;
+                    MediaError restartError;
+                    if (!startReader(resume, restartError)){
+                        if (isInterruption(lastStartError))
+                            return Step::AGAIN;
+                        interrupted = false;
+                        error = restartError;
+                        return Step::ERROR;
+                    }
+                    interrupted = false;
+                }
                 if (!reader || !output)
                     return Step::END;
                 CMSampleBufferRef sample = [output copyNextSampleBuffer];
@@ -239,14 +267,9 @@ namespace {
                         NSError* failure = reader.error;
                         // iOS stops readers when the app goes to the background (and on a media
                         // services reset): read on from just after the last sample, in sync
-                        if (isInterruption(failure) && restarts < 16){
-                            restarts++;
-                            const CMTime resume = CMTIME_IS_NUMERIC(lastPts) ? CMTimeAdd(lastPts, CMTimeMake(1, 600000)) : kCMTimeZero;
-                            MediaError restartError;
-                            if (startReader(resume, restartError))
-                                return Step::AGAIN;
-                            error = restartError;
-                            return Step::ERROR;
+                        if (isInterruption(failure)){
+                            interrupted = true;
+                            return Step::AGAIN;
                         }
                         error.code = isCodecFailure(failure) ? MediaErrorCode::SRC_NOT_SUPPORTED : MediaErrorCode::DECODE;
                         error.message = isCodecFailure(failure) ? "this device has no " + codecLabel(codecName) + " decoder (" + utf8(failure.localizedDescription) + ")"
@@ -320,7 +343,9 @@ namespace {
                 [made addOutput:trackOutput];
                 if (CMTimeCompare(start, kCMTimeZero) > 0)
                     made.timeRange = CMTimeRangeMake(start, kCMTimePositiveInfinity);
+                lastStartError = nil;
                 if (![made startReading]){
+                    lastStartError = made.error;
                     error.code = isCodecFailure(made.error) || !made.error ? MediaErrorCode::SRC_NOT_SUPPORTED : MediaErrorCode::DECODE;
                     error.message = isCodecFailure(made.error) ? "this device has no " + codecLabel(codecName) + " decoder (" + utf8(made.error.localizedDescription) + ")"
                                                                : "AVFoundation cannot decode its " + codecLabel(codecName) + " (" + utf8(made.error.localizedDescription) + ")";
@@ -419,7 +444,9 @@ namespace {
         OSType pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
         std::string codecName;
         CMTime lastPts = kCMTimeInvalid;   // the last sample given out (an interrupted reader resumes after it)
-        int restarts = 0;
+        bool interrupted = false;          // the reader stopped by an interruption: a new one next
+        int restarts = 0;                  // readers restarted since the last sample
+        NSError* lastStartError = nil;     // why the last startReading failed
     };
 
 }
