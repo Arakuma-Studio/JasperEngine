@@ -15,6 +15,7 @@
 #include "util/ProjectChecks.h"
 #include "script/LuaBinding.h"
 #include "System.h"
+#include "pool/TextureDataPool.h"
 
 #include <algorithm>
 #include <cctype>
@@ -126,6 +127,19 @@ bool splitTrailingDuplicateNumber(const std::string& name, std::string& baseName
 }
 
 void editor::ProjectUtils::setDefaultSkyTexture(Texture& outTexture) {
+    const std::string id = "editor:resources:default_sky";
+
+    // the pool's faces while it has them: setCubeDatas keeps those and drops the ones it is
+    // given, and a TextureData does not own its pixels, so decoding again for every new scene,
+    // scene load and Inspector reset leaked six images each time (front, back, left, right, up,
+    // down are faces 4, 5, 1, 0, 2, 3)
+    const std::shared_ptr<std::array<TextureData, 6>> cached = TextureDataPool::get(id);
+    if (cached && TextureDataPool::hasTexturePixels(cached, 6)) {
+        outTexture.setId(id);
+        outTexture.setCubeDatas(id, cached->at(4), cached->at(5), cached->at(1), cached->at(0), cached->at(2), cached->at(3));
+        return;
+    }
+
     TextureData skyBack;
     TextureData skyBottom;
     TextureData skyFront;
@@ -140,8 +154,8 @@ void editor::ProjectUtils::setDefaultSkyTexture(Texture& outTexture) {
     skyRight.loadTextureFromMemory(Daylight_Box_Right_png, Daylight_Box_Right_png_len);
     skyTop.loadTextureFromMemory(Daylight_Box_Top_png, Daylight_Box_Top_png_len);
 
-    outTexture.setId("editor:resources:default_sky");
-    outTexture.setCubeDatas("editor:resources:default_sky", skyFront, skyBack, skyLeft, skyRight, skyTop, skyBottom);
+    outTexture.setId(id);
+    outTexture.setCubeDatas(id, skyFront, skyBack, skyLeft, skyRight, skyTop, skyBottom);
 }
 
 namespace {
