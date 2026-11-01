@@ -122,12 +122,13 @@ namespace {
         JE_FIELD(AudioSourceComponent, dopplerFactor, .ops = &ops::FiniteFloat, .flags = OmitIfNonFinite, .updateFlags = kAudio, .min = 0.0f,
                  .step = 0.01f, .format = "%.3f", .label = "Doppler", .group = "3D Audio Source Settings", .uiOrder = 14),
         // the loaded clip's: read only
-        // upstream (audio-mixer): written only when not their default
+        // upstream (audio-mixer): written only when not their default; the priority and the voice
+        // limit read clamped into their range (upstream's decode)
         JE_FIELD(AudioSourceComponent, outputGroup, .flags = OmitIfDefault, .updateFlags = kAudio, .label = "Output"),
         JE_FIELD(AudioSourceComponent, outputGroupName, .flags = OmitIfDefault | Hidden, .updateFlags = kAudio),
         JE_FIELD(AudioSourceComponent, loadType, .enumDesc = &kAudioLoadType, .flags = OmitIfDefault, .updateFlags = kAudio),
-        JE_FIELD(AudioSourceComponent, priority, .flags = OmitIfDefault, .updateFlags = kAudio, .min = 0.0f, .max = 256.0f),
-        JE_FIELD(AudioSourceComponent, maxVoices, .flags = OmitIfDefault, .updateFlags = kAudio, .min = 1.0f, .max = 64.0f),
+        JE_FIELD(AudioSourceComponent, priority, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault, .updateFlags = kAudio, .min = 0.0f, .max = 256.0f),
+        JE_FIELD(AudioSourceComponent, maxVoices, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault, .updateFlags = kAudio, .min = 1.0f, .max = 64.0f),
         JE_FIELD(AudioSourceComponent, ignoreListenerPause, .flags = OmitIfDefault, .updateFlags = kAudio),
         JE_FIELD(AudioSourceComponent, length, .flags = Transient | NoDefault | ReadOnly | Hidden, .unit = Unit::Seconds),
         JE_FIELD(AudioSourceComponent, playingTime, .flags = Transient | NoDefault | ReadOnly | Hidden, .unit = Unit::Seconds),

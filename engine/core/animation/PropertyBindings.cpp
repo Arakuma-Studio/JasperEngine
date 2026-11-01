@@ -6,6 +6,22 @@
 #include "Scene.h"
 #include "animation/CanvasGroupTracks.h"
 #include "component/AudioSourceComponent.h"
+#include "component/AnimatorComponent.h"
+#include "component/BuoyancyComponent.h"
+#include "component/CharacterController2DComponent.h"
+#include "component/CharacterControllerComponent.h"
+#include "component/ForceFieldComponent.h"
+#include "component/NavGridComponent.h"
+#include "component/NavMeshAgentComponent.h"
+#include "component/NavMeshLinkComponent.h"
+#include "component/NavMeshModifierComponent.h"
+#include "component/NavMeshObstacleComponent.h"
+#include "component/NavMeshSurfaceComponent.h"
+#include "component/SplineAnimateComponent.h"
+#include "component/SplineComponent.h"
+#include "component/SplineExtrudeComponent.h"
+#include "component/SplineInstantiateComponent.h"
+#include "component/WaterVolumeComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/CameraComponent.h"
 #include "component/CameraFollowComponent.h"
@@ -608,6 +624,24 @@ namespace {
         rows.push_back(enabledRow<TextEffectComponent>("texteffect"));
         rows.push_back(enabledRow<VideoPlayerComponent>("videoplayer"));
         rows.push_back(enabledRow<SafeAreaComponent>("safearea"));
+        // oe-port's components with the Inspector's enabled checkbox (their Lua setters, where they
+        // have one, only set the flag)
+        rows.push_back(enabledRow<ForceFieldComponent>("forcefield"));
+        rows.push_back(enabledRow<CharacterController2DComponent>("charactercontroller2d"));
+        rows.push_back(enabledRow<CharacterControllerComponent>("charactercontroller"));
+        rows.push_back(enabledRow<WaterVolumeComponent>("watervolume"));
+        rows.push_back(enabledRow<BuoyancyComponent>("buoyancy"));
+        rows.push_back(enabledRow<NavMeshSurfaceComponent>("navmeshsurface"));
+        rows.push_back(enabledRow<NavMeshAgentComponent>("navmeshagent"));
+        rows.push_back(enabledRow<NavMeshObstacleComponent>("navmeshobstacle"));
+        rows.push_back(enabledRow<NavMeshLinkComponent>("navmeshlink"));
+        rows.push_back(enabledRow<NavMeshModifierComponent>("navmeshmodifier"));
+        rows.push_back(enabledRow<NavGridComponent>("navgrid"));
+        rows.push_back(enabledRow<SplineComponent>("spline"));
+        rows.push_back(enabledRow<SplineExtrudeComponent>("splineextrude"));
+        rows.push_back(enabledRow<SplineInstantiateComponent>("splineinstantiate"));
+        rows.push_back(enabledRow<SplineAnimateComponent>("splineanimate"));
+        rows.push_back(enabledRow<AnimatorComponent>("animator"));
 
         // the canvas group rows' functions (filled here: the table holds plain pointers)
         for (Row& row : rows){

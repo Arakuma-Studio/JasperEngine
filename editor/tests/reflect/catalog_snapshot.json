@@ -20473,6 +20473,11 @@
      2147483648,
      true
     ],
+    "colorGradient": [
+     21,
+     268435456,
+     true
+    ],
     "colorWrite": [
      8,
      2147483648,
@@ -20600,6 +20605,11 @@
     ],
     "useWorldSpace": [
      0,
+     268435456,
+     true
+    ],
+    "widthCurve": [
+     20,
      268435456,
      true
     ],
@@ -20625,6 +20635,11 @@
      2147483648,
      true
     ],
+    "colorGradient": [
+     21,
+     268435456,
+     true
+    ],
     "colorWrite": [
      8,
      2147483648,
@@ -20752,6 +20767,11 @@
     ],
     "useWorldSpace": [
      0,
+     268435456,
+     true
+    ],
+    "widthCurve": [
+     20,
      268435456,
      true
     ],
@@ -23314,6 +23334,28 @@
       "Exponential Distance"
      ]
     ],
+    "loadType": [
+     [
+      0,
+      "auto",
+      "Auto"
+     ],
+     [
+      1,
+      "decompress_on_load",
+      "Decompress On Load"
+     ],
+     [
+      2,
+      "compressed_in_memory",
+      "Compressed In Memory"
+     ],
+     [
+      3,
+      "streaming",
+      "Streaming"
+     ]
+    ],
     "state": [
      [
       0,
@@ -23342,13 +23384,19 @@
     "enableClocked",
     "enabled",
     "filename",
+    "ignoreListenerPause",
     "inaudibleBehaviorKill",
     "inaudibleBehaviorMustTick",
+    "loadType",
     "looping",
     "loopingPoint",
     "maxDistance",
+    "maxVoices",
     "minDistance",
+    "outputGroup",
+    "outputGroupName",
     "pan",
+    "priority",
     "protectVoice",
     "speed",
     "state",
@@ -23386,6 +23434,11 @@
      134217728,
      true
     ],
+    "ignoreListenerPause": [
+     0,
+     134217728,
+     true
+    ],
     "inaudibleBehaviorKill": [
      0,
      134217728,
@@ -23400,6 +23453,11 @@
      3,
      0,
      false
+    ],
+    "loadType": [
+     13,
+     134217728,
+     true
     ],
     "looping": [
      0,
@@ -23416,8 +23474,23 @@
      134217728,
      true
     ],
+    "maxVoices": [
+     8,
+     134217728,
+     true
+    ],
     "minDistance": [
      2,
+     134217728,
+     true
+    ],
+    "outputGroup": [
+     1,
+     134217728,
+     true
+    ],
+    "outputGroupName": [
+     1,
      134217728,
      true
     ],
@@ -23430,6 +23503,11 @@
      3,
      0,
      false
+    ],
+    "priority": [
+     8,
+     134217728,
+     true
     ],
     "protectVoice": [
      0,
@@ -23483,6 +23561,11 @@
      134217728,
      true
     ],
+    "ignoreListenerPause": [
+     0,
+     134217728,
+     true
+    ],
     "inaudibleBehaviorKill": [
      0,
      134217728,
@@ -23497,6 +23580,11 @@
      3,
      0,
      false
+    ],
+    "loadType": [
+     13,
+     134217728,
+     true
     ],
     "looping": [
      0,
@@ -23513,8 +23601,23 @@
      134217728,
      true
     ],
+    "maxVoices": [
+     8,
+     134217728,
+     true
+    ],
     "minDistance": [
      2,
+     134217728,
+     true
+    ],
+    "outputGroup": [
+     1,
+     134217728,
+     true
+    ],
+    "outputGroupName": [
+     1,
      134217728,
      true
     ],
@@ -23527,6 +23630,11 @@
      3,
      0,
      false
+    ],
+    "priority": [
+     8,
+     134217728,
+     true
     ],
     "protectVoice": [
      0,
@@ -28475,9 +28583,17 @@
     "fontSize",
     "maxTextSize",
     "multiline",
+    "outlineColor",
+    "outlineWidth",
     "pivotBaseline",
     "pivotCentered",
-    "text"
+    "shadowColor",
+    "shadowDilate",
+    "shadowEnabled",
+    "shadowOffset",
+    "shadowSoftness",
+    "text",
+    "visibleCharacters"
    ],
    "name": "TextComponent",
    "properties_of_default": {
@@ -28511,6 +28627,16 @@
      32768,
      true
     ],
+    "outlineColor": [
+     6,
+     32768,
+     true
+    ],
+    "outlineWidth": [
+     2,
+     32768,
+     true
+    ],
     "pivotBaseline": [
      0,
      32768,
@@ -28521,8 +28647,38 @@
      32768,
      true
     ],
+    "shadowColor": [
+     6,
+     32768,
+     true
+    ],
+    "shadowDilate": [
+     2,
+     32768,
+     true
+    ],
+    "shadowEnabled": [
+     0,
+     32768,
+     true
+    ],
+    "shadowOffset": [
+     4,
+     32768,
+     true
+    ],
+    "shadowSoftness": [
+     2,
+     32768,
+     true
+    ],
     "text": [
      1,
+     32768,
+     true
+    ],
+    "visibleCharacters": [
+     8,
      32768,
      true
     ]
@@ -28558,6 +28714,16 @@
      32768,
      true
     ],
+    "outlineColor": [
+     6,
+     32768,
+     true
+    ],
+    "outlineWidth": [
+     2,
+     32768,
+     true
+    ],
     "pivotBaseline": [
      0,
      32768,
@@ -28568,8 +28734,38 @@
      32768,
      true
     ],
+    "shadowColor": [
+     6,
+     32768,
+     true
+    ],
+    "shadowDilate": [
+     2,
+     32768,
+     true
+    ],
+    "shadowEnabled": [
+     0,
+     32768,
+     true
+    ],
+    "shadowOffset": [
+     4,
+     32768,
+     true
+    ],
+    "shadowSoftness": [
+     2,
+     32768,
+     true
+    ],
     "text": [
      1,
+     32768,
+     true
+    ],
+    "visibleCharacters": [
+     8,
      32768,
      true
     ]
@@ -32825,6 +33021,7 @@
     "defaultClip",
     "defaultFadeTime",
     "enabled",
+    "layers",
     "playAutomatically",
     "speed"
    ],
@@ -32850,6 +33047,11 @@
      0,
      true
     ],
+    "layers": [
+     15,
+     8796093022208,
+     true
+    ],
     "playAutomatically": [
      0,
      0,
@@ -32872,13 +33074,33 @@
      8796093022208,
      true
     ],
+    "clips[].footIK": [
+     0,
+     8796093022208,
+     true
+    ],
     "clips[].guid": [
      1,
      8796093022208,
      true
     ],
+    "clips[].layer": [
+     8,
+     8796093022208,
+     true
+    ],
+    "clips[].mirror": [
+     0,
+     8796093022208,
+     true
+    ],
     "clips[].name": [
      1,
+     8796093022208,
+     true
+    ],
+    "clips[].retarget": [
+     0,
      8796093022208,
      true
     ],
@@ -32900,6 +33122,36 @@
     "enabled": [
      0,
      0,
+     true
+    ],
+    "layers": [
+     15,
+     8796093022208,
+     true
+    ],
+    "layers[].blend": [
+     15,
+     8796093022208,
+     true
+    ],
+    "layers[].mask": [
+     1,
+     8796093022208,
+     true
+    ],
+    "layers[].maskGuid": [
+     1,
+     8796093022208,
+     true
+    ],
+    "layers[].name": [
+     1,
+     8796093022208,
+     true
+    ],
+    "layers[].weight": [
+     2,
+     8796093022208,
      true
     ],
     "playAutomatically": [
@@ -36509,6 +36761,7 @@
     "colorGradient",
     "colorWrite",
     "customShader",
+    "customShaderGuid",
     "depthWrite",
     "emitting",
     "enabled",
@@ -36545,13 +36798,18 @@
      2147483648,
      true
     ],
+    "colorGradient": [
+     21,
+     1125899906842624,
+     true
+    ],
     "colorWrite": [
      8,
      2147483648,
      true
     ],
     "customShader": [
-     1,
+     19,
      2147483648,
      true
     ],
@@ -36657,6 +36915,11 @@
     ],
     "time": [
      2,
+     1125899906842624,
+     true
+    ],
+    "widthCurve": [
+     20,
      1125899906842624,
      true
     ],
@@ -36687,13 +36950,18 @@
      2147483648,
      true
     ],
+    "colorGradient": [
+     21,
+     1125899906842624,
+     true
+    ],
     "colorWrite": [
      8,
      2147483648,
      true
     ],
     "customShader": [
-     1,
+     19,
      2147483648,
      true
     ],
@@ -36799,6 +37067,11 @@
     ],
     "time": [
      2,
+     1125899906842624,
+     true
+    ],
+    "widthCurve": [
+     20,
      1125899906842624,
      true
     ],
@@ -37444,6 +37717,916 @@
    "type": 84,
    "type_of_key": 84,
    "type_of_name": 84
+  },
+  {
+   "display_name": "Camera Shaker",
+   "enum_options": {
+    "mode": [
+     [
+      0,
+      "auto",
+      "Auto"
+     ],
+     [
+      1,
+      "3d",
+      "3D"
+     ],
+     [
+      2,
+      "2d",
+      "2D"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ee939c",
+   "key": "camerashaker",
+   "known_keys": [
+    "enabled",
+    "global",
+    "mode",
+    "positionScale",
+    "rotationScale",
+    "startPreset",
+    "traumaDecay",
+    "traumaFrequency",
+    "traumaMaxAngle",
+    "traumaMaxOffset",
+    "traumaPower",
+    "unscaledTime"
+   ],
+   "name": "CameraShakerComponent",
+   "properties_of_default": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "global": [
+     0,
+     0,
+     true
+    ],
+    "mode": [
+     13,
+     0,
+     true
+    ],
+    "positionScale": [
+     2,
+     0,
+     true
+    ],
+    "rotationScale": [
+     2,
+     0,
+     true
+    ],
+    "startPreset": [
+     1,
+     0,
+     true
+    ],
+    "traumaDecay": [
+     2,
+     0,
+     true
+    ],
+    "traumaFrequency": [
+     2,
+     0,
+     true
+    ],
+    "traumaMaxAngle": [
+     5,
+     0,
+     true
+    ],
+    "traumaMaxOffset": [
+     5,
+     0,
+     true
+    ],
+    "traumaPower": [
+     2,
+     0,
+     true
+    ],
+    "unscaledTime": [
+     0,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "global": [
+     0,
+     0,
+     true
+    ],
+    "mode": [
+     13,
+     0,
+     true
+    ],
+    "positionScale": [
+     2,
+     0,
+     true
+    ],
+    "rotationScale": [
+     2,
+     0,
+     true
+    ],
+    "startPreset": [
+     1,
+     0,
+     true
+    ],
+    "traumaDecay": [
+     2,
+     0,
+     true
+    ],
+    "traumaFrequency": [
+     2,
+     0,
+     true
+    ],
+    "traumaMaxAngle": [
+     5,
+     0,
+     true
+    ],
+    "traumaMaxOffset": [
+     5,
+     0,
+     true
+    ],
+    "traumaPower": [
+     2,
+     0,
+     true
+    ],
+    "unscaledTime": [
+     0,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 85,
+   "type_of_key": 85,
+   "type_of_name": 85
+  },
+  {
+   "display_name": "Camera Follow",
+   "enum_options": {
+    "offsetSpace": [
+     [
+      0,
+      "world",
+      "World"
+     ],
+     [
+      1,
+      "target",
+      "Target"
+     ],
+     [
+      2,
+      "target_yaw",
+      "Target Yaw"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef9881",
+   "key": "camerafollow",
+   "known_keys": [
+    "boundsMax",
+    "boundsMin",
+    "damping",
+    "deadZone",
+    "enabled",
+    "lookAt",
+    "lookAtOffset",
+    "maxSpeed",
+    "offset",
+    "offsetSpace",
+    "rotationDamping",
+    "target",
+    "unscaledTime",
+    "useBounds"
+   ],
+   "name": "CameraFollowComponent",
+   "properties_of_default": {
+    "boundsMax": [
+     5,
+     0,
+     true
+    ],
+    "boundsMin": [
+     5,
+     0,
+     true
+    ],
+    "damping": [
+     5,
+     0,
+     true
+    ],
+    "deadZone": [
+     4,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "lookAt": [
+     0,
+     0,
+     true
+    ],
+    "lookAtOffset": [
+     5,
+     0,
+     true
+    ],
+    "maxSpeed": [
+     2,
+     0,
+     true
+    ],
+    "offset": [
+     5,
+     0,
+     true
+    ],
+    "offsetSpace": [
+     13,
+     0,
+     true
+    ],
+    "rotationDamping": [
+     2,
+     0,
+     true
+    ],
+    "target": [
+     16,
+     0,
+     true
+    ],
+    "unscaledTime": [
+     0,
+     0,
+     true
+    ],
+    "useBounds": [
+     0,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "boundsMax": [
+     5,
+     0,
+     true
+    ],
+    "boundsMin": [
+     5,
+     0,
+     true
+    ],
+    "damping": [
+     5,
+     0,
+     true
+    ],
+    "deadZone": [
+     4,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "lookAt": [
+     0,
+     0,
+     true
+    ],
+    "lookAtOffset": [
+     5,
+     0,
+     true
+    ],
+    "maxSpeed": [
+     2,
+     0,
+     true
+    ],
+    "offset": [
+     5,
+     0,
+     true
+    ],
+    "offsetSpace": [
+     13,
+     0,
+     true
+    ],
+    "rotationDamping": [
+     2,
+     0,
+     true
+    ],
+    "target": [
+     16,
+     0,
+     true
+    ],
+    "unscaledTime": [
+     0,
+     0,
+     true
+    ],
+    "useBounds": [
+     0,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 86,
+   "type_of_key": 86,
+   "type_of_name": 86
+  },
+  {
+   "display_name": "Text Effect",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ee8b8a",
+   "key": "texteffect",
+   "known_keys": [
+    "autoPlay",
+    "enabled",
+    "forWords",
+    "layers",
+    "length",
+    "loop",
+    "startIndex",
+    "useUnscaledTime"
+   ],
+   "name": "TextEffectComponent",
+   "properties_of_default": {
+    "autoPlay": [
+     0,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "forWords": [
+     1,
+     0,
+     true
+    ],
+    "length": [
+     8,
+     0,
+     true
+    ],
+    "loop": [
+     0,
+     0,
+     true
+    ],
+    "startIndex": [
+     8,
+     0,
+     true
+    ],
+    "useUnscaledTime": [
+     0,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "autoPlay": [
+     0,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "forWords": [
+     1,
+     0,
+     true
+    ],
+    "length": [
+     8,
+     0,
+     true
+    ],
+    "loop": [
+     0,
+     0,
+     true
+    ],
+    "startIndex": [
+     8,
+     0,
+     true
+    ],
+    "useUnscaledTime": [
+     0,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 87,
+   "type_of_key": 87,
+   "type_of_name": 87
+  },
+  {
+   "display_name": "Video Player",
+   "enum_options": {
+    "aspectRatio": [
+     [
+      0,
+      "no_scaling",
+      "No Scaling"
+     ],
+     [
+      1,
+      "fit_vertically",
+      "Fit Vertically"
+     ],
+     [
+      2,
+      "fit_horizontally",
+      "Fit Horizontally"
+     ],
+     [
+      3,
+      "fit_inside",
+      "Fit Inside"
+     ],
+     [
+      4,
+      "fit_outside",
+      "Fit Outside"
+     ],
+     [
+      5,
+      "stretch",
+      "Stretch"
+     ]
+    ],
+    "audioOutputMode": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "audio_source",
+      "Audio Source"
+     ],
+     [
+      2,
+      "direct",
+      "Direct"
+     ]
+    ],
+    "renderMode": [
+     [
+      0,
+      "camera_far_plane",
+      "Camera Far Plane"
+     ],
+     [
+      1,
+      "camera_near_plane",
+      "Camera Near Plane"
+     ],
+     [
+      2,
+      "render_texture",
+      "Render Texture"
+     ],
+     [
+      3,
+      "material_override",
+      "Material Override"
+     ],
+     [
+      4,
+      "api_only",
+      "API Only"
+     ]
+    ],
+    "source": [
+     [
+      0,
+      "clip",
+      "Video Clip"
+     ],
+     [
+      1,
+      "url",
+      "URL"
+     ]
+    ],
+    "timeUpdateMode": [
+     [
+      0,
+      "game_time",
+      "Game Time"
+     ],
+     [
+      1,
+      "unscaled_game_time",
+      "Unscaled Game Time"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef8088",
+   "key": "videoplayer",
+   "known_keys": [
+    "aspectRatio",
+    "audioOutputMode",
+    "clip",
+    "directMute",
+    "directVolume",
+    "enabled",
+    "isLooping",
+    "playOnAwake",
+    "playbackSpeed",
+    "renderMode",
+    "renderTextureHeight",
+    "renderTextureWidth",
+    "skipOnDrop",
+    "source",
+    "targetAudioSource",
+    "targetCamera",
+    "targetCameraAlpha",
+    "targetMaterialProperty",
+    "targetMaterialRenderer",
+    "targetSubmesh",
+    "timeUpdateMode",
+    "url",
+    "waitForFirstFrame"
+   ],
+   "name": "VideoPlayerComponent",
+   "properties_of_default": {
+    "aspectRatio": [
+     13,
+     0,
+     true
+    ],
+    "audioOutputMode": [
+     13,
+     0,
+     true
+    ],
+    "clip": [
+     1,
+     0,
+     true
+    ],
+    "directMute": [
+     0,
+     0,
+     true
+    ],
+    "directVolume": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "isLooping": [
+     0,
+     0,
+     true
+    ],
+    "playOnAwake": [
+     0,
+     0,
+     true
+    ],
+    "playbackSpeed": [
+     2,
+     0,
+     true
+    ],
+    "renderMode": [
+     13,
+     0,
+     true
+    ],
+    "renderTextureHeight": [
+     9,
+     0,
+     true
+    ],
+    "renderTextureWidth": [
+     9,
+     0,
+     true
+    ],
+    "skipOnDrop": [
+     0,
+     0,
+     true
+    ],
+    "source": [
+     13,
+     0,
+     true
+    ],
+    "targetAudioSource": [
+     16,
+     0,
+     true
+    ],
+    "targetCamera": [
+     16,
+     0,
+     true
+    ],
+    "targetCameraAlpha": [
+     2,
+     0,
+     true
+    ],
+    "targetMaterialProperty": [
+     1,
+     0,
+     true
+    ],
+    "targetMaterialRenderer": [
+     16,
+     0,
+     true
+    ],
+    "targetSubmesh": [
+     8,
+     0,
+     true
+    ],
+    "timeUpdateMode": [
+     13,
+     0,
+     true
+    ],
+    "url": [
+     1,
+     0,
+     true
+    ],
+    "waitForFirstFrame": [
+     0,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "aspectRatio": [
+     13,
+     0,
+     true
+    ],
+    "audioOutputMode": [
+     13,
+     0,
+     true
+    ],
+    "clip": [
+     1,
+     0,
+     true
+    ],
+    "directMute": [
+     0,
+     0,
+     true
+    ],
+    "directVolume": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "isLooping": [
+     0,
+     0,
+     true
+    ],
+    "playOnAwake": [
+     0,
+     0,
+     true
+    ],
+    "playbackSpeed": [
+     2,
+     0,
+     true
+    ],
+    "renderMode": [
+     13,
+     0,
+     true
+    ],
+    "renderTextureHeight": [
+     9,
+     0,
+     true
+    ],
+    "renderTextureWidth": [
+     9,
+     0,
+     true
+    ],
+    "skipOnDrop": [
+     0,
+     0,
+     true
+    ],
+    "source": [
+     13,
+     0,
+     true
+    ],
+    "targetAudioSource": [
+     16,
+     0,
+     true
+    ],
+    "targetCamera": [
+     16,
+     0,
+     true
+    ],
+    "targetCameraAlpha": [
+     2,
+     0,
+     true
+    ],
+    "targetMaterialProperty": [
+     1,
+     0,
+     true
+    ],
+    "targetMaterialRenderer": [
+     16,
+     0,
+     true
+    ],
+    "targetSubmesh": [
+     8,
+     0,
+     true
+    ],
+    "timeUpdateMode": [
+     13,
+     0,
+     true
+    ],
+    "url": [
+     1,
+     0,
+     true
+    ],
+    "waitForFirstFrame": [
+     0,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 88,
+   "type_of_key": 88,
+   "type_of_name": 88
+  },
+  {
+   "display_name": "Safe Area",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ef8f8d",
+   "key": "safearea",
+   "known_keys": [
+    "bottom",
+    "enabled",
+    "includeExtraInsets",
+    "left",
+    "right",
+    "top"
+   ],
+   "name": "SafeAreaComponent",
+   "properties_of_default": {
+    "bottom": [
+     0,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "includeExtraInsets": [
+     0,
+     0,
+     true
+    ],
+    "left": [
+     0,
+     0,
+     true
+    ],
+    "right": [
+     0,
+     0,
+     true
+    ],
+    "top": [
+     0,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "bottom": [
+     0,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "includeExtraInsets": [
+     0,
+     0,
+     true
+    ],
+    "left": [
+     0,
+     0,
+     true
+    ],
+    "right": [
+     0,
+     0,
+     true
+    ],
+    "top": [
+     0,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 89,
+   "type_of_key": 89,
+   "type_of_name": 89
   }
  ],
  "ease_options": [
@@ -37691,13 +38874,33 @@
     8796093022208,
     true
    ],
+   "clips[N].footIK": [
+    0,
+    8796093022208,
+    true
+   ],
    "clips[N].guid": [
     1,
     8796093022208,
     true
    ],
+   "clips[N].layer": [
+    8,
+    8796093022208,
+    true
+   ],
+   "clips[N].mirror": [
+    0,
+    8796093022208,
+    true
+   ],
    "clips[N].name": [
     1,
+    8796093022208,
+    true
+   ],
+   "clips[N].retarget": [
+    0,
     8796093022208,
     true
    ],
@@ -37719,6 +38922,11 @@
    "enabled": [
     0,
     0,
+    true
+   ],
+   "layers": [
+    15,
+    8796093022208,
     true
    ],
    "playAutomatically": [
@@ -37980,6 +39188,11 @@
     134217728,
     true
    ],
+   "ignoreListenerPause": [
+    0,
+    134217728,
+    true
+   ],
    "inaudibleBehaviorKill": [
     0,
     134217728,
@@ -37994,6 +39207,11 @@
     3,
     0,
     false
+   ],
+   "loadType": [
+    13,
+    134217728,
+    true
    ],
    "looping": [
     0,
@@ -38010,8 +39228,23 @@
     134217728,
     true
    ],
+   "maxVoices": [
+    8,
+    134217728,
+    true
+   ],
    "minDistance": [
     2,
+    134217728,
+    true
+   ],
+   "outputGroup": [
+    1,
+    134217728,
+    true
+   ],
+   "outputGroupName": [
+    1,
     134217728,
     true
    ],
@@ -38024,6 +39257,11 @@
     3,
     0,
     false
+   ],
+   "priority": [
+    8,
+    134217728,
+    true
    ],
    "protectVoice": [
     0,
@@ -38256,6 +39494,140 @@
    "yfov": [
     2,
     2,
+    true
+   ]
+  },
+  "CameraFollowComponent": {
+   "boundsMax": [
+    5,
+    0,
+    true
+   ],
+   "boundsMin": [
+    5,
+    0,
+    true
+   ],
+   "damping": [
+    5,
+    0,
+    true
+   ],
+   "deadZone": [
+    4,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "lookAt": [
+    0,
+    0,
+    true
+   ],
+   "lookAtOffset": [
+    5,
+    0,
+    true
+   ],
+   "maxSpeed": [
+    2,
+    0,
+    true
+   ],
+   "offset": [
+    5,
+    0,
+    true
+   ],
+   "offsetSpace": [
+    13,
+    0,
+    true
+   ],
+   "rotationDamping": [
+    2,
+    0,
+    true
+   ],
+   "target": [
+    16,
+    0,
+    true
+   ],
+   "unscaledTime": [
+    0,
+    0,
+    true
+   ],
+   "useBounds": [
+    0,
+    0,
+    true
+   ]
+  },
+  "CameraShakerComponent": {
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "global": [
+    0,
+    0,
+    true
+   ],
+   "mode": [
+    13,
+    0,
+    true
+   ],
+   "positionScale": [
+    2,
+    0,
+    true
+   ],
+   "rotationScale": [
+    2,
+    0,
+    true
+   ],
+   "startPreset": [
+    1,
+    0,
+    true
+   ],
+   "traumaDecay": [
+    2,
+    0,
+    true
+   ],
+   "traumaFrequency": [
+    2,
+    0,
+    true
+   ],
+   "traumaMaxAngle": [
+    5,
+    0,
+    true
+   ],
+   "traumaMaxOffset": [
+    5,
+    0,
+    true
+   ],
+   "traumaPower": [
+    2,
+    0,
+    true
+   ],
+   "unscaledTime": [
+    0,
+    0,
     true
    ]
   },
@@ -40015,6 +41387,11 @@
     2147483648,
     true
    ],
+   "colorGradient": [
+    21,
+    268435456,
+    true
+   ],
    "colorWrite": [
     8,
     2147483648,
@@ -40142,6 +41519,11 @@
    ],
    "useWorldSpace": [
     0,
+    268435456,
+    true
+   ],
+   "widthCurve": [
+    20,
     268435456,
     true
    ],
@@ -42594,6 +43976,38 @@
     false
    ]
   },
+  "SafeAreaComponent": {
+   "bottom": [
+    0,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "includeExtraInsets": [
+    0,
+    0,
+    true
+   ],
+   "left": [
+    0,
+    0,
+    true
+   ],
+   "right": [
+    0,
+    0,
+    true
+   ],
+   "top": [
+    0,
+    0,
+    true
+   ]
+  },
   "ScaleTracksComponent": {
    "inTangents": [
     15,
@@ -43641,6 +45055,16 @@
     32768,
     true
    ],
+   "outlineColor": [
+    6,
+    32768,
+    true
+   ],
+   "outlineWidth": [
+    2,
+    32768,
+    true
+   ],
    "pivotBaseline": [
     0,
     32768,
@@ -43651,9 +45075,76 @@
     32768,
     true
    ],
+   "shadowColor": [
+    6,
+    32768,
+    true
+   ],
+   "shadowDilate": [
+    2,
+    32768,
+    true
+   ],
+   "shadowEnabled": [
+    0,
+    32768,
+    true
+   ],
+   "shadowOffset": [
+    4,
+    32768,
+    true
+   ],
+   "shadowSoftness": [
+    2,
+    32768,
+    true
+   ],
    "text": [
     1,
     32768,
+    true
+   ],
+   "visibleCharacters": [
+    8,
+    32768,
+    true
+   ]
+  },
+  "TextEffectComponent": {
+   "autoPlay": [
+    0,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "forWords": [
+    1,
+    0,
+    true
+   ],
+   "length": [
+    8,
+    0,
+    true
+   ],
+   "loop": [
+    0,
+    0,
+    true
+   ],
+   "startIndex": [
+    8,
+    0,
+    true
+   ],
+   "useUnscaledTime": [
+    0,
+    0,
     true
    ]
   },
@@ -43757,13 +45248,18 @@
     2147483648,
     true
    ],
+   "colorGradient": [
+    21,
+    1125899906842624,
+    true
+   ],
    "colorWrite": [
     8,
     2147483648,
     true
    ],
    "customShader": [
-    1,
+    19,
     2147483648,
     true
    ],
@@ -43869,6 +45365,11 @@
    ],
    "time": [
     2,
+    1125899906842624,
+    true
+   ],
+   "widthCurve": [
+    20,
     1125899906842624,
     true
    ],
@@ -44171,6 +45672,123 @@
    ],
    "speed": [
     2,
+    0,
+    true
+   ]
+  },
+  "VideoPlayerComponent": {
+   "aspectRatio": [
+    13,
+    0,
+    true
+   ],
+   "audioOutputMode": [
+    13,
+    0,
+    true
+   ],
+   "clip": [
+    1,
+    0,
+    true
+   ],
+   "directMute": [
+    0,
+    0,
+    true
+   ],
+   "directVolume": [
+    2,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "isLooping": [
+    0,
+    0,
+    true
+   ],
+   "playOnAwake": [
+    0,
+    0,
+    true
+   ],
+   "playbackSpeed": [
+    2,
+    0,
+    true
+   ],
+   "renderMode": [
+    13,
+    0,
+    true
+   ],
+   "renderTextureHeight": [
+    9,
+    0,
+    true
+   ],
+   "renderTextureWidth": [
+    9,
+    0,
+    true
+   ],
+   "skipOnDrop": [
+    0,
+    0,
+    true
+   ],
+   "source": [
+    13,
+    0,
+    true
+   ],
+   "targetAudioSource": [
+    16,
+    0,
+    true
+   ],
+   "targetCamera": [
+    16,
+    0,
+    true
+   ],
+   "targetCameraAlpha": [
+    2,
+    0,
+    true
+   ],
+   "targetMaterialProperty": [
+    1,
+    0,
+    true
+   ],
+   "targetMaterialRenderer": [
+    16,
+    0,
+    true
+   ],
+   "targetSubmesh": [
+    8,
+    0,
+    true
+   ],
+   "timeUpdateMode": [
+    13,
+    0,
+    true
+   ],
+   "url": [
+    1,
+    0,
+    true
+   ],
+   "waitForFirstFrame": [
+    0,
     0,
     true
    ]

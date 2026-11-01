@@ -17,6 +17,7 @@
 #include "native/NativePlatform.h"
 #include "script/AsyncOwner.h"
 #include "thread/MainThreadQueue.h"
+#include "log/Logger.h"
 #include "util/NativeExportAndroid.h"
 #include "util/NativePlugins.h"
 
@@ -62,6 +63,7 @@ namespace {
         }
 
         int count(const std::string& needle) {
+            ::jasperengine::Logger::flush();   // the engine's logger delivers on its own thread
             std::lock_guard<std::mutex> lock(mutex);
             int n = 0;
             for (const std::string& w : warnings) if (w.find(needle) != std::string::npos) n++;
@@ -136,6 +138,7 @@ namespace {
             // a test's fake platform is gone with the test body
             NativeBridgeInternal::setPlatformForTests(nullptr);
             reset();
+            ::jasperengine::Logger::flush();   // nothing is delivered to the capture after it goes
             SystemTestAccess::swap(previous);
             lua_settop(L, 0);
             std::error_code ec;
