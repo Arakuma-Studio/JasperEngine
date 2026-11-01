@@ -24,6 +24,7 @@
 #include "LuaBridge.h"
 #include "json.hpp"
 #include "soloud.h"
+#include "soloud_wav.h"
 
 #include <cmath>
 #include <cstdint>
