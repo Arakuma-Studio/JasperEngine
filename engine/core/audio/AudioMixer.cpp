@@ -451,6 +451,10 @@ namespace {
         if (!group.meter) group.meter = std::make_unique<MeterFilter>();
         group.meter->reset();
         group.bus->setVisualizationEnable(true);
+        // a bus never ends by itself; and the vendored mixer reads a bus without autostop only for
+        // the frames of the mix call (no read-ahead: a voice started into it is heard in the next
+        // call, not up to 511 frames later; SoLoud's local patch in mixBus_internal)
+        group.bus->setAutoStop(false);
         group.bus->mBaseSamplerate = state().sampleRate;
         group.bus->setFilter(METER_SLOT, group.meter.get());
         for (SoLoud::Filter*& slot : group.slots) slot = nullptr;

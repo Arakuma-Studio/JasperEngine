@@ -15,6 +15,9 @@
 # a short read, stale or uninitialised floats).
 # A voice that ends plays its last block to the end (src/core/soloud.cpp mixBus_internal: it was stopped
 # at the end of the mix call that read that block, dropping what the block still held).
+# A bus never reads ahead (src/core/soloud.cpp mixBus_internal: a voice at step 1 with autostop off, the
+# engine's buses, reads only the frames the call still needs; a voice started into a bus was mixed at the
+# bus's next 512-frame block, up to 511 frames late, and seen ended up to a block early).
 
 include_directories ("${CMAKE_CURRENT_SOURCE_DIR}/include")
 
