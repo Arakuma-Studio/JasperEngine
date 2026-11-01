@@ -9,6 +9,8 @@
 #include "DebugSettings.h"
 #include "reflect/Reflect.h"
 #include "settings/SettingsRegistry.h"
+#include "Project.h"
+#include "command/CommandHistory.h"
 
 #include <gtest/gtest.h>
 
@@ -81,4 +83,24 @@ TEST(DebugReflect, OnlyChangedValuesAreWrittenAndBadOnesKeepTheirDefault){
     EXPECT_EQ(read.statsKey, DebugSettings().statsKey);
     EXPECT_EQ(rejected, (std::vector<std::string>{"statsKey"}));
     EXPECT_EQ(read.logBufferSize, DebugSettings::maxLogBufferSize);
+}
+
+// set_project_settings' path: each debug.* row applied is one undoable step of the project history
+TEST(DebugReflect, EachRowIsOneUndoStep){
+    Project project;
+    SettingsContext ctx;
+    ctx.projectPtr = &project;
+    const SettingsRegistry& registry = SettingsRegistry::get();
+    std::string error;
+    ASSERT_TRUE(registry.find("debug.log_buffer_size")->set(ctx, mcp::Json(200), true, error)) << error;
+    ASSERT_TRUE(registry.find("debug.overlay")->set(ctx, mcp::Json("always"), true, error)) << error;
+    ASSERT_TRUE(registry.find("debug.overlay_allow_lua")->set(ctx, mcp::Json("always"), true, error)) << error;
+    EXPECT_EQ(project.getDebugSettings().overlay, DebugSettings::Mode::AllBuilds);
+    EXPECT_EQ(project.getDebugSettings().logBufferSize, 200u);
+    project.getProjectCommandHistory()->undo();
+    EXPECT_EQ(project.getDebugSettings().allowLua, DebugSettings::AllowLua::Development);
+    EXPECT_EQ(project.getDebugSettings().overlay, DebugSettings::Mode::AllBuilds) << "one step undone";
+    EXPECT_EQ(project.getDebugSettings().logBufferSize, 200u);
+    project.getProjectCommandHistory()->redo();
+    EXPECT_EQ(project.getDebugSettings().allowLua, DebugSettings::AllowLua::AllBuilds);
 }
