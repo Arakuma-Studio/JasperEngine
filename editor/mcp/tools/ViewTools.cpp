@@ -1993,31 +1993,31 @@ void registerViewTools(McpRegistry& registry) {
         tool.name = "configure_game_view";
         tool.title = "Configure Game View";
         tool.description =
-            "Read (no arguments) or change the Game view toolbar settings (editor preferences, not undoable). aspect "
-            "project = the canvas size (a project setting); the game renders at render_size. resolution: a fixed size the "
-            "game renders at (screenshots too), with its dpi as Screen.dpi. device, orientation, "
-            "language: a simulated phone and system language (editor only); safe_area is Screen.safeArea.";
+            "Read (no arguments) or change the Game view toolbar (editor preferences, not undoable): aspect (project = "
+            "the canvas size), resolution (the game and screenshots render at it; its dpi is Screen.dpi), a simulated "
+            "device, orientation and language (editor only; safe_area is Screen.safeArea). Options: jasper://docs/ui.";
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
             {"scale", number("", 1, 5)},
             {"maximize_on_play", boolean("")},
             {"show_stats", boolean("")},
-            {"simulate_touch", boolean("Mouse = one finger. Not while playing.")},
-            {"simulate_textures", stringEnum("Cooked textures of this platform in every view.", {"desktop", "mobile", "android_etc2", "web"})},
-            {"atmosphere_quality", stringEnum("Preview Atmosphere Quality (project = the project's desktop tier).",
-                                              {"project", "off", "low", "medium", "high"})},
-            {"physics_debug", boolean("Collider/joint wireframes in Play.")},
+            {"simulate_touch", boolean("")},
+            {"simulate_textures", stringEnum("", {"desktop", "mobile", "android_etc2", "web"})},
+            {"atmosphere_quality", stringEnum("", {"project", "off", "low", "medium", "high"})},
+            {"physics_debug", boolean("")},
             {"physics_debug_contacts", boolean("")},
-            {"network", stringEnum("offline: Http to non-localhost fails with \"offline\". Works while playing.", {"online", "offline"})},
-            {"device", string("An id of devices, custom, or none.")},
+            {"network", stringEnum("", {"online", "offline"})},
+            {"device", string("A devices id, custom or none.")},
             {"orientation", stringEnum("", {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"})},
             {"language", string("es-MX..., or system.")},
             {"device_overlay", boolean("")},
             {"safe_area_outline", boolean("")},
-            {"custom_device", anyObject("{width, height, insets {top,right,bottom,left}, corner_radius} px, dpi")},
-            {"resolution", any("\"1920x1080\", \"WxH@dpi\", a resolutions name, free, or {width, height, dpi, name} (a name saves it).")}
+            {"custom_device", anyObject("")},
+            {"resolution", any("\"WxH\", \"WxH@dpi\", a name, free, or {width, height, dpi, name}.")}
         });
         tool.annotations.idempotent = true;
+        // the Game view's editor preferences (S31: outside the default listing)
+        tool.group = "editor_ux";
         tool.handler = configureGameViewTool;
         registry.addTool(std::move(tool));
     }

@@ -143,6 +143,26 @@ size, fitted to the view, and `Screen.dpi` is the preset's. Agents: `configure_g
 {resolution: "2400x1080"}` (or `"WxH@dpi"`, `{width, height, dpi, name}`; `"free"` back to the aspect),
 then `screenshot`. The Scene view lays a UI scene out at the UI size of the Game view's resolution.
 
+## The Game view (configure_game_view)
+
+`configure_game_view` (group editor_ux) with no arguments reads the Game view toolbar; its
+arguments change it. They are editor preferences, not undoable, and not saved with the project:
+- `aspect` (`project` = the canvas size, a project setting) and `scale` (1-5); the game renders
+  at `render_size`. `resolution`: `"1920x1080"`, `"WxH@dpi"`, a name from the resolutions menu,
+  `free` (back to the aspect) or `{width, height, dpi, name}` (a name saves it); the game and
+  screenshots render at it and its dpi is `Screen.dpi`.
+- `device` (an id of the devices list, `custom` or `none`), `orientation`, `language` (`es-MX`...,
+  or `system`), `device_overlay`, `safe_area_outline`, `custom_device` `{width, height, insets
+  {top, right, bottom, left}, corner_radius}` in pixels with `dpi`: a simulated phone and system
+  language, editor only; `safe_area` in the reply is `Screen.safeArea` (jasper://docs/safe-area).
+- `simulate_touch`: the mouse is one finger (not while playing); `simulate_textures`: every view
+  shows the cooked textures of `desktop`, `mobile`, `android_etc2` or `web`.
+- `atmosphere_quality`: the preview's Atmosphere Quality (`project` = the project's desktop tier;
+  jasper://docs/atmosphere); `physics_debug` (collider and joint wireframes in Play) and
+  `physics_debug_contacts` (jasper://docs/physics); `network: "offline"` makes Http to any host
+  but localhost fail with `offline`, also while playing (jasper://docs/networking);
+  `maximize_on_play`, `show_stats`.
+
 ## Text outline and shadow
 
 `Text` (TMP's outline and underlay): `outlineWidth` (UI units outside the glyph edge), `outlineColor`,

@@ -140,8 +140,6 @@ Log::print, never printf or std::cout. Angles are DEGREES. Build settings go in 
   sends send_input events while it waits (hold a key for 2 game seconds, then check).
 - run_build runs an exported desktop player (input events, screenshots_at seconds since
   launch); returns its errors and the log tail.
-- Device focus, pause, rotation, language: send_input type app, configure_game_view
-  (jasper://docs/platform-services). Saved data: user_settings.
 
 ## 2D and 3D
 - 2D: sprites, tilemaps, UI; units are points (pixels of the canvas, project canvasWidth x
@@ -155,10 +153,10 @@ Log::print, never printf or std::cout. Angles are DEGREES. Build settings go in 
   2D scene layout groups stack bottom-up and pointer input needs a UI camera.
 - Poses (.poseanim): get/edit/render_pose_animation (jasper://docs/pose-animation).
 - Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}; other rigs:
-  an Animator, clips[i].retarget, create.humanoid (jasper://docs/animation).
+  an Animator, clips[i].retarget, create.humanoid; property tracks: channel property
+  (jasper://docs/animation).
 - Crowds: bake_vertex_animation (preview, output) -> a .vat (jasper://docs/vertex-animation).
 - Animator (.controller): edit_animator_controller, control_animator (jasper://docs/animator).
-- Lines, lasers, trails: create_entity type line_renderer / trail_renderer (jasper://docs/lines-trails).
 
 ## Atmosphere
 A Fog of type "height" is physically based height fog (volumetric: true adds light shafts and
@@ -192,18 +190,12 @@ nothing fits; read the fork first. A failing shader draws as the built-in one. R
 uniforms: jasper://docs/shaders; Lit lobes, Lit Quality, light units: jasper://docs/materials.
 Screenshots wait for async shader creation; pending: get_render_stats shader_creation.
 
-Textures from examples: synthesize_texture (group assets_pipeline,
-jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
-(jasper://docs/fluid). Bend/squash: edit_lattice (group animation, jasper://docs/lattice).
-Colours ("#hex", {srgb}), curves, templates, recording: jasper://docs/editor-tools.
-Sprite normal maps for 2D lights: generate_sprite_normals (jasper://docs/sprite-normals).
-Clip property tracks (active, colours...): channel property; get_animation list_properties.
-Sound: audio_mixer (jasper://docs/audio). Shake/follow: camerashaker, camerafollow
-(jasper://docs/camera). Canvas Scaler, text effects, Game view resolutions and devices:
-configure_game_view (jasper://docs/ui); safe areas: create_ui safe_area
-(jasper://docs/safe-area). Video: type video_player (jasper://docs/video). On-device
-console/FPS: DebugOverlay (jasper://docs/debugging). Native SDKs: Native.call, native_plugins
-(jasper://docs/native-bridge).
+Feature pages, jasper://docs/<page>: texture-synthesis (synthesize_texture), fluid, lattice
+(edit_lattice), lines-trails, editor-tools (colours, curves, templates, recording),
+sprite-normals (generate_sprite_normals), audio (audio_mixer), camera (camerashaker,
+camerafollow), ui (configure_game_view: Canvas Scaler, text effects, devices), safe-area,
+video, debugging (DebugOverlay), native-bridge (Native.call, native_plugins),
+platform-services (focus, pause, rotation, language: send_input type app; user_settings).
 
 ## Post-processing
 Main camera only: apply_post_processing_preset (film, vhs, mobile_adaptive...), then

@@ -509,13 +509,14 @@ a slot's neutral pose about its direction); twists change the model's pose anima
 Without `clip`, edit_animation edits an Animation GameObject (`animation`, or `target` to create
 one): `tracks` as above but with `target` (a GameObject; default `target`) instead of `path` and
 an optional `start_time`; `tweens: [{type, from, to, duration, ease, loop, ping_pong, ...}]`:
-`type` position, rotation, scale, color or alpha; `from` defaults to the target's current value;
+`type` position, rotation, scale, color or alpha; `duration` > 0; `from` defaults to the target's current value;
 `ping_pong` goes there and back in twice the duration; a rotation tween with `spin: true` turns
 `from` by `angle` degrees (default 360) around `axis` (default `[0, 1, 0]`) instead of reaching
 `to` (for turns over 180 degrees, instead of middle keys); a track's `loop` starts it over after
 its last key; a `relative` track there offsets from the target's pose when it starts (an
-anchored UI element moves by its layout offset). `add_actions` nests existing actions;
-`set_frames` / `remove_actions` use the indices before the call; `loop`, `duration` (-1: until
+anchored UI element moves by its layout offset). `add_actions` nests existing actions (`duration`
+0: the action's own); `set_frames` (`duration` 0: automatic) / `remove_actions` use the indices
+before the call; `loop`, `duration` (-1: until
 the actions end), `autoplay`, `speed` set the Animation. One scene undo step per call.
 
 ## Common mistakes

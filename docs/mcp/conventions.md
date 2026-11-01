@@ -96,7 +96,7 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `assets_pipeline` | S04, S05, S14 |
 | `data_safety` | S03 (`get_load_report`, `list_scene_backups`, `discard_scene_backup`) |
 | `diagnostics` | S06 (`get_job_system_stats`, `set_job_system_config`, `get_memory_stats`), S07, S09 (`get_log_config`, `set_log_level`, `wait_for_log`, `list_timers`), S28 (`get_editor_health`, the one tool answered off the main thread: `ToolDef::offMainThread`; `get_crash_reports`, `dismiss_crash_notice`, `set_hang_watchdog`, `debug_crash`) |
-| `editor_ux` | S24 (`get_undo_history`, `get_play_changes`, `apply_play_changes`, `discard_play_changes`), S08 (`get_inspector_layout`), S25 (`search_editor`, `run_command`, `list_shortcuts`, `set_shortcut`, `edit_layout_presets`, `edit_asset_labels`, `edit_saved_searches`, `edit_bookmarks`), S26, `find_ui_item` (UI tests) |
+| `editor_ux` | S24 (`get_undo_history`, `get_play_changes`, `apply_play_changes`, `discard_play_changes`), S08 (`get_inspector_layout`), S25 (`search_editor`, `run_command`, `list_shortcuts`, `set_shortcut`, `edit_layout_presets`, `edit_asset_labels`, `edit_saved_searches`, `edit_bookmarks`), S26, `find_ui_item` (UI tests), upstream's ui-scaling-text / safe-area `configure_game_view` (out of core to fit the budget) |
 | `profiling` | S15 |
 | `rendering_fx` | S11 (`get_material_variant`, `set_light_unit`), S12, S13 |
 | `splines` | S18 |
@@ -111,6 +111,7 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `vcs` | S29 |
 | `html_ui` | S17 (`edit_ui_view`) |
 | `scripting` | S23 (`reload_scripts`, `get_script_status`, `set_script_settings`, `list_editor_menus`, `run_editor_menu`, `eval_expression`, the graph tools), upstream's `user_settings` (PlayerPrefs) |
+| `shipping` | S30, upstream's native-bridge `native_plugins` (out of core to fit the budget) |
 
 A spec may add a group: one row in `McpToolGroups.cpp` (name, one-line description), and a
 `budget.json` `groups` entry only if it needs other limits than the defaults. Registering a tool
