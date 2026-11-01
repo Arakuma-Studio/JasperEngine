@@ -167,8 +167,9 @@ private:
     // reads JasperPlatform.displayRotation; true when it changed since the last read
     bool refreshDisplayRotation();
     // GameActivity's display cutout insets (and the system bars when windowed), relative to the
-    // surface, to Screen when they changed: on APP_CMD_WINDOW_INSETS_CHANGED and every frame
-    // (cheap; the surface size and JasperPlatform's layout info can change without the command)
+    // surface, to Screen when they changed: every frame after the rotation and size checks
+    // (cheap; APP_CMD_WINDOW_INSETS_CHANGED, the surface size and JasperPlatform's layout info
+    // each arrive on their own schedule)
     void updateSafeArea();
 
 public:

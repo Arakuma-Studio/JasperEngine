@@ -27,7 +27,9 @@
 #include "window/DeviceProfiles.h"
 
 #include <algorithm>
+#include <chrono>
 #include <set>
+#include <thread>
 #include <string>
 #include <vector>
 
@@ -50,8 +52,12 @@ namespace {
     public:
         int width = 1000;
         int height = 2000;
+        // the display rotation as a platform reports it (Android's DisplayListener), apart from
+        // the surface size
+        ScreenOrientation orientation = ScreenOrientation::Portrait;
         int getScreenWidth() override { return width; }
         int getScreenHeight() override { return height; }
+        ScreenOrientation getScreenOrientation() override { return orientation; }
     };
 
     // a System of a given screen, the Engine's canvas and Screen's safe area reset around each test
@@ -260,6 +266,83 @@ TEST_F(SafeAreaTest, EventOncePerChangeAfterCanvasAndOrientation) {
     EXPECT_EQ(std::count(events.begin(), events.end(), std::string("safe")), 1);
     Screen::dispatchSafeAreaEvent();
     EXPECT_EQ(std::count(events.begin(), events.end(), std::string("safe")), 1);
+}
+
+TEST_F(SafeAreaTest, RotationArrivalOrdersGiveOneEventWithTheFinalValue) {
+    // Android learns a quarter turn, its insets and its new surface size on separate schedules:
+    // whatever the order, the game sees one change, with the landscape insets on the landscape size
+    const EdgeInsets portrait(0, 100, 0, 50);
+    const EdgeInsets landscape(100, 0, 0, 30);
+    auto start = [&]() {
+        Engine::resetApplicationState();
+        system.orientation = ScreenOrientation::Portrait;
+        view(1000, 2000, 500, 1000, Scaling::FITWIDTH);
+        Screen::setPlatformSafeArea(portrait);
+        Engine::systemOrientationChanged();   // the baseline orientation
+        Screen::dispatchSafeAreaEvent();
+    };
+    std::vector<Rect> seen;
+    Engine::onSafeAreaChanged.add("test_safe", [&seen]() { seen.push_back(Screen::getSafeArea()); });
+    auto expectLandscape = [&](const char* order) {
+        ASSERT_EQ(seen.size(), 1u) << order;
+        // 2000x1000 pixels on a 500-wide canvas: a quarter canvas unit per pixel
+        expectRect(seen[0], 25, 0, 475, 242.5f);
+    };
+
+    // 1. the rotation, then the insets (held: they are the landscape's), then the new size
+    start();
+    seen.clear();
+    system.orientation = ScreenOrientation::LandscapeLeft;
+    Engine::systemOrientationChanged();
+    EXPECT_TRUE(Engine::isOrientationPending());
+    Screen::setPlatformSafeArea(landscape);
+    Screen::dispatchSafeAreaEvent();
+    EXPECT_TRUE(seen.empty()) << "nothing against the old size";
+    system.width = 2000;
+    system.height = 1000;
+    Engine::systemViewChanged();
+    Screen::dispatchSafeAreaEvent();
+    expectLandscape("rotation, insets, size");
+
+    // 2. the insets and the rotation in one frame (no dispatch between them), then the size
+    start();
+    seen.clear();
+    Screen::setPlatformSafeArea(landscape);
+    system.orientation = ScreenOrientation::LandscapeLeft;
+    Engine::systemOrientationChanged();
+    system.width = 2000;
+    system.height = 1000;
+    Engine::systemViewChanged();
+    Screen::dispatchSafeAreaEvent();
+    expectLandscape("insets, rotation, size in one frame");
+
+    // 3. the rotation, the size, then the insets the frame after: the size first (a real change),
+    // then the insets
+    start();
+    seen.clear();
+    system.orientation = ScreenOrientation::LandscapeLeft;
+    Engine::systemOrientationChanged();
+    system.width = 2000;
+    system.height = 1000;
+    Engine::systemViewChanged();
+    Screen::setPlatformSafeArea(landscape);
+    Screen::dispatchSafeAreaEvent();
+    ASSERT_FALSE(seen.empty());
+    expectRect(seen.back(), 25, 0, 475, 242.5f);
+
+    // 4. a view that keeps its shape: the held insets apply when the turn times out
+    start();
+    seen.clear();
+    system.orientation = ScreenOrientation::LandscapeLeft;
+    Engine::systemOrientationChanged();
+    Screen::setPlatformSafeArea(landscape);
+    EXPECT_TRUE(seen.empty());
+    std::this_thread::sleep_for(std::chrono::duration<double>(Engine::ORIENTATION_SIZE_TIMEOUT + 0.1));
+    Engine::systemOrientationChanged();
+    EXPECT_FALSE(Engine::isOrientationPending());
+    Screen::dispatchSafeAreaEvent();
+    ASSERT_EQ(seen.size(), 1u);
+    EXPECT_NEAR(Screen::getSafeAreaInsets().left, 50.0f, 1e-3f) << "the landscape insets on the old size";
 }
 
 TEST_F(SafeAreaTest, ResetMakesTheNextValueABaseline) {
@@ -685,7 +768,10 @@ TEST(SafeAreaDevices, RasterizedOverlay) {
     const uint8_t* edge = &outlined[((size_t)20 * w + 10) * 4];
     EXPECT_EQ(edge[0], 0);
     EXPECT_EQ(edge[1], 255);
-    EXPECT_EQ(outlined[((size_t)0 * w + 0) * 4], 255) << "no screen drawn with screen = false";
+    EXPECT_EQ(outlined[((size_t)0 * w + 0) * 4], 255) << "no corner drawn with screen = false";
+    EXPECT_EQ(outlined[((size_t)4 * w + w / 2) * 4], 255) << "no cutout drawn with screen = false";
+    const uint8_t* noBar = &outlined[((size_t)barY * w + w / 2) * 4];
+    EXPECT_EQ(noBar[0], 255) << "no home indicator drawn with screen = false";
 
     // a punch hole turned with the device: on the left in LandscapeLeft
     const DeviceProfile* pixel8 = findDeviceProfile("pixel_8");

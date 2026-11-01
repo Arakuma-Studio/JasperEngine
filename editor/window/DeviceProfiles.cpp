@@ -296,8 +296,8 @@ void editor::rasterizeDeviceOverlay(uint8_t* rgba, int w, int h, const DevicePro
         for (int px = 0; px < w; px++){
             const float x = (float)px + 0.5f;
             uint8_t* p = rgba + ((size_t)py * (size_t)w + (size_t)px) * 4;
-            if (screen && !insideRounded(x, y, 0.0f, 0.0f, (float)w, (float)h, shapes.corner) ||
-                (shapes.cutout != CutoutShape::None && insideCutout(shapes, x, y))){
+            if (screen && (!insideRounded(x, y, 0.0f, 0.0f, (float)w, (float)h, shapes.corner) ||
+                           (shapes.cutout != CutoutShape::None && insideCutout(shapes, x, y)))){
                 p[0] = p[1] = p[2] = 0;
                 p[3] = 255;
                 continue;

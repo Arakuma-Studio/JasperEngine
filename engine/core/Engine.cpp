@@ -1764,6 +1764,8 @@ void Engine::systemOrientationChanged(){
     const int orientation = (int)Screen::getOrientation();
     if (orientation == lastOrientation){
         orientationPendingSince = 0.0;
+        // safe-area insets that came while a quarter turn waited (it was undone)
+        Screen::releaseHeldSafeArea();
         return;
     }
     // the first one is where the view starts, not a change
@@ -1791,6 +1793,13 @@ void Engine::systemOrientationChanged(){
     orientationPendingSince = 0.0;
     lastOrientation = orientation;
     Engine::onOrientationChanged.call(orientation);
+    // the insets the platform pushed while the turn waited for its size (the timeout: a view that
+    // keeps its shape); after a size change systemViewChanged already used them
+    Screen::releaseHeldSafeArea();
+}
+
+bool Engine::isOrientationPending(){
+    return orientationPendingSince > 0.0;
 }
 
 void Engine::systemLowMemory(){

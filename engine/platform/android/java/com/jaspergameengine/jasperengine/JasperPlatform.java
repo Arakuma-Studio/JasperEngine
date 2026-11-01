@@ -30,6 +30,7 @@ import android.view.HapticFeedbackConstants;
 import android.view.OrientationEventListener;
 import android.view.Surface;
 import android.view.View;
+import android.view.ViewTreeObserver;
 import android.view.WindowInsets;
 
 import java.util.ArrayList;
@@ -59,6 +60,9 @@ public final class JasperPlatform {
 	public static volatile int[] safeAreaInfo = new int[]{0, 0, 0, 0, 0};
 
 	private static View.OnLayoutChangeListener safeAreaListener;
+	// every layout pass of the window (a half turn re-lays the window out with the cutout on the
+	// other side but leaves the content's bounds as they were)
+	private static ViewTreeObserver.OnGlobalLayoutListener safeAreaGlobalListener;
 	private static OrientationEventListener orientationListener;
 	private static DisplayManager.DisplayListener displayListener;
 	private static boolean warnedNetworkPermission = false;
@@ -80,6 +84,13 @@ public final class JasperPlatform {
 				}
 			};
 			content.addOnLayoutChangeListener(safeAreaListener);
+			safeAreaGlobalListener = new ViewTreeObserver.OnGlobalLayoutListener() {
+				@Override
+				public void onGlobalLayout() {
+					updateSafeAreaInfo(activity);
+				}
+			};
+			activity.getWindow().getDecorView().getViewTreeObserver().addOnGlobalLayoutListener(safeAreaGlobalListener);
 		}
 		orientationListener = new OrientationEventListener(activity) {
 			@Override
@@ -94,6 +105,15 @@ public final class JasperPlatform {
 				@Override public void onDisplayRemoved(int displayId) {}
 				@Override public void onDisplayChanged(int displayId) {
 					updateDisplayRotation(activity);
+					// the cutout moves with a rotation: read again once the window has its new insets
+					View decor = activity.getWindow().getDecorView();
+					if (decor != null) {
+						decor.post(new Runnable() {
+							@Override public void run() {
+								updateSafeAreaInfo(activity);
+							}
+						});
+					}
 				}
 			};
 			displays.registerDisplayListener(displayListener, new Handler(Looper.getMainLooper()));
@@ -120,6 +140,11 @@ public final class JasperPlatform {
 			content.removeOnLayoutChangeListener(safeAreaListener);
 		}
 		safeAreaListener = null;
+		if (safeAreaGlobalListener != null) {
+			ViewTreeObserver observer = activity.getWindow().getDecorView().getViewTreeObserver();
+			if (observer.isAlive()) observer.removeOnGlobalLayoutListener(safeAreaGlobalListener);
+		}
+		safeAreaGlobalListener = null;
 		if (orientationListener != null) {
 			orientationListener.disable();
 			orientationListener = null;

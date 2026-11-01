@@ -133,6 +133,19 @@ TEST(SafeAreaEnv, FoldedStaticallyItIsZero){
     EXPECT_TRUE(r.reported("env(safe-area-inset-*) is 0 here")) << r.rcss;
 }
 
+TEST(SafeAreaEnv, TokenRewritesFoldToZero){
+    // rewrites that read a value token by token or write decorator arguments need static values:
+    // the inset is 0 there, with an Info, and the declaration is kept
+    for (const char* css : {".fab { transform: translateY(env(safe-area-inset-bottom)) rotate(10deg); }",
+                            ".card { box-shadow: 0 env(safe-area-inset-top, 4px) 8px #000; }",
+                            ".bar { background: linear-gradient(#f00 env(safe-area-inset-top), #00f); }"}){
+        const Rewritten r = rewrite(css);
+        EXPECT_EQ(r.warnings(), 0u) << css << "\n" << r.rcss;
+        EXPECT_TRUE(r.reported("env(safe-area-inset-*) is 0 here")) << css << "\n" << r.rcss;
+        EXPECT_FALSE(contains(r.rcss, "--jasper-safe-area-inset")) << "folded, not left for the fork: " << css << "\n" << r.rcss;
+    }
+}
+
 TEST(SafeAreaEnv, OtherEnvironmentVariablesAsBefore){
     Rewritten r = rewrite(".bar { padding-top: env(titlebar-area-height, 3px); }");
     EXPECT_EQ(r.value("padding-top"), "3px") << r.rcss;
@@ -186,6 +199,27 @@ TEST_F(SafeAreaDocumentTest, PaddingFollowsTheSafeAreaWithoutAReload){
     const Rml::Property* device = rmlDocument->GetProperty("--jasper-device-safe-area-inset-top");
     ASSERT_NE(device, nullptr);
     EXPECT_EQ(device->ToString(), "20px");
+    fixture.reset();
+}
+
+TEST_F(SafeAreaDocumentTest, ShorthandsLayOutWithTheInsets){
+    Screen::setPlatformSafeArea(EdgeInsets(30, 47, 0, 0));
+    page("short", "html, body { margin: 0; }\n#hud { padding: env(safe-area-inset-top) 0 0 env(safe-area-inset-left); }\n"
+                  "#item { height: 10px; width: 10px; }\n#box { margin: env(safe-area-inset-top) 0 0; height: 5px; }\n",
+         "<div id=\"hud\"><div id=\"item\"></div></div><div id=\"box\"></div>");
+    std::unique_ptr<SceneFixture> fixture(new SceneFixture());
+    UIDocument document = fixture->addDocument("ui/short.html");
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    Rml::Element* item = UIElementAccess::get(document.getElementById("item"));
+    ASSERT_NE(item, nullptr);
+    EXPECT_NEAR(item->GetAbsoluteOffset(Rml::BoxArea::Border).y, 47.0f, 0.01f);
+    EXPECT_NEAR(item->GetAbsoluteOffset(Rml::BoxArea::Border).x, 30.0f, 0.01f);
+    // the margin of the next block: below the hud (47 + 10) and its own 47
+    EXPECT_NEAR(offsetTop(document, "box"), 57.0f + 47.0f, 0.01f);
+    Screen::setPlatformSafeArea(EdgeInsets(0, 20, 0, 0));
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    EXPECT_NEAR(item->GetAbsoluteOffset(Rml::BoxArea::Border).y, 20.0f, 0.01f);
+    EXPECT_NEAR(item->GetAbsoluteOffset(Rml::BoxArea::Border).x, 0.0f, 0.01f);
     fixture.reset();
 }
 

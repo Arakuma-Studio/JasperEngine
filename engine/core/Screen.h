@@ -70,6 +70,7 @@ namespace jasperengine {
         static bool safeAreaComputed;
         static uint64_t safeAreaRevision;
         static bool safeAreaEventPending;
+        static bool safeAreaHeld;
         static bool warnedEmptySafeArea;
         static bool warnedExtraInsets;
 
@@ -121,7 +122,9 @@ namespace jasperengine {
         // origin (the space of the UI and Input), clipped to the canvas.
 
         // Platforms (engine thread): insets and cutout rects in view pixels, top-left origin,
-        // relative to the view the engine draws into. Recomputes; the change event follows.
+        // relative to the view the engine draws into. Recomputes; the change event follows. While a
+        // quarter turn waits for its view size (Engine::isOrientationPending) they are only stored:
+        // they are the new orientation's, and the size change uses them (one event, the final value).
         static void setPlatformSafeArea(const EdgeInsets& insetsPixels, const std::vector<Rect>& cutoutsPixels = {});
         static EdgeInsets getPlatformInsetsPixels();
 
@@ -152,6 +155,9 @@ namespace jasperengine {
         static void updateSafeArea();
         // Engine: fires onSafeAreaChanged if a change is waiting
         static void dispatchSafeAreaEvent();
+        // Engine: a quarter turn stopped waiting for its size (timeout or undone): the insets
+        // setPlatformSafeArea held meanwhile are applied
+        static void releaseHeldSafeArea();
         // Editor edit mode: UI is laid out for the project canvas (UISystem::setAnchorReferenceSize),
         // not the Engine's view (the Scene view). The safe area is computed as a Play at that
         // screen size would, then scaled to the canvas. clear: back to the Engine's view (Play).

@@ -378,7 +378,8 @@ void readGameView(const CaptureJobPtr& job, uint32_t sceneId, bool running) {
                     job->fail("Encoding the screenshot failed.");
                     return;
                 }
-                info["device_overlay"] = true;
+                // the device's screen drawn (false: the safe-area outline only)
+                info["device_overlay"] = gw->getSettings().deviceOverlay;
                 finishWithPng(job, std::move(png), width, height, fbWidth, fbHeight, std::move(info));
                 return;
             }

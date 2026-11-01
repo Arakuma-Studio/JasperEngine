@@ -5,6 +5,8 @@
 #import "Renderer.h"
 #import "EngineView.h"
 
+#include <math.h>
+
 @implementation ViewController
 {
     EngineView *_view;
@@ -131,16 +133,17 @@
     [self updateSafeArea];
 }
 
+// During a rotation the view's bounds (and its insets) change before the drawable does: those
+// insets are pushed by mtkView:drawableSizeWillChange: with the new size instead, so the game sees
+// one change with the new insets and the new size together
 - (void)updateSafeArea
 {
     if (!_renderer) return;
-    UIEdgeInsets insets = self.view.safeAreaInsets;
+    CGFloat scale = self.view.contentScaleFactor;
     CGSize bounds = self.view.bounds.size;
     CGSize drawable = _view.drawableSize;
-    CGFloat scale = self.view.contentScaleFactor;
-    CGFloat scaleX = (bounds.width > 0 && drawable.width > 0) ? drawable.width / bounds.width : scale;
-    CGFloat scaleY = (bounds.height > 0 && drawable.height > 0) ? drawable.height / bounds.height : scale;
-    [Renderer safeAreaChangedTop:insets.top left:insets.left bottom:insets.bottom right:insets.right scaleX:scaleX scaleY:scaleY];
+    if (fabs(bounds.width * scale - drawable.width) > 1.0 || fabs(bounds.height * scale - drawable.height) > 1.0) return;
+    [Renderer safeAreaOfView:self.view];
 }
 
 // onCanvasChanged comes with the new drawable size; onOrientationChanged once the rotation ended

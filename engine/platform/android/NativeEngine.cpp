@@ -1335,7 +1335,8 @@ void NativeEngine::doFrame() {
         jasperengine::Engine::systemOrientationChanged();
     }
     // insets that changed without a new surface size (a half turn moves the cutout; the
-    // event comes at the start of this frame's update)
+    // event comes at the start of this frame's update). During a quarter turn that waits for its
+    // surface size Screen holds them for that size (Engine::isOrientationPending)
     updateSafeArea();
 
     jasperengine::Engine::systemDraw();
@@ -1654,8 +1655,9 @@ void NativeEngine::handleCommand(int32_t cmd) {
             mIsVisible = true;
             break;
         case APP_CMD_WINDOW_INSETS_CHANGED:
-            // the display cutout or the system bars changed (doFrame also checks every frame)
-            updateSafeArea();
+            // the display cutout or the system bars changed: read in the next doFrame, after the
+            // display rotation and the surface size, so the insets go with the size they belong
+            // to (a rotation reports the new insets before the surface resizes)
             break;
         case APP_CMD_CONFIG_CHANGED:
             // a rotation or a locale change (configChanges keeps the activity): the surface size

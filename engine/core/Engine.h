@@ -626,6 +626,9 @@ namespace jasperengine {
         // ORIENTATION_SIZE_TIMEOUT seconds, checked every frame), a half turn fires at once.
         static void systemOrientationChanged();
         static constexpr double ORIENTATION_SIZE_TIMEOUT = 0.5;
+        // a quarter turn is known and waits for its view size (Screen holds the safe-area insets
+        // the platform pushes meanwhile: they belong to the new size)
+        static bool isOrientationPending();
         // The system is short of memory: onLowMemory, before the platform frees its own caches
         static void systemLowMemory();
         // Play stop / start in the editor: focused, not paused, no orientation seen yet, and the

@@ -530,19 +530,25 @@ spec was silent, ambiguous or did not fit the code:
    every static resolution (`staticValue`, `resolve`, `expandedValues`). env() inside a math function is
    rewritten to the variable first (StaticCalc has no `env()`); without the fork's calc() it folds with
    0px and an Info diagnostic. Reloaded documents get the properties before their first layout.
-10. **Android: insets relative to the surface, polled.** GameActivity's insets are the window's; a
-    windowed game's surface may not start at the window's corner, so `JasperPlatform` keeps (on the UI
-    thread, from a layout listener) where the content view lies in the window and the cutout rectangles
+10. **Android: insets relative to the surface, polled, held during a quarter turn.** GameActivity's
+    insets are the window's; a windowed game's surface may not start at the window's corner, so
+    `JasperPlatform` keeps (on the UI thread, from a window layout listener and after each display
+    change) where the content view lies in the window and the cutout rectangles
     (`DisplayCutout.getBoundingRects()`, API 28+) in a volatile `int[]` with a revision; the native side
-    subtracts the offsets. `NativeEngine::updateSafeArea` runs on `APP_CMD_WINDOW_INSETS_CHANGED` (present
-    in games-activity 2.0.2's glue), with each new surface size and once per frame (two struct reads and
-    one int field: nothing is pushed unless something changed).
+    subtracts the offsets. `NativeEngine::updateSafeArea` runs once per frame after the display rotation
+    and surface size checks (with a new size, just before `systemViewChanged`);
+    `APP_CMD_WINDOW_INSETS_CHANGED` is only a hint for it. Insets pushed while a quarter turn waits for
+    its new size (`Engine::isOrientationPending`, the orientation rule of platform-services) are held by
+    `Screen` and applied with the size change (or the turn's timeout), so a rotation gives one
+    `onSafeAreaChanged` with the final value (`SafeAreaTest.RotationArrivalOrders...` covers the arrival
+    orders). Insets that come only after the new size give a second, correct event.
 11. **`MainActivity.isFullscreenGame()`**, not `isImmersive()`: `android.app.Activity.isImmersive()`
     already exists (a system flag) and must not be overridden. The exporter's non-fullscreen patch turns it
     to `return false`; the native side reads it once at setup.
-12. **iOS** scales `safeAreaInsets` by the drawable/bounds ratio per axis (equal to `contentScaleFactor`
-    when the drawable follows the view), on `viewSafeAreaInsetsDidChange`, after `viewDidLoad` and after a
-    rotation transition.
+12. **iOS** pushes `safeAreaInsets` times `contentScaleFactor` (the drawable's pixels per point, spec
+    6.5) from `mtkView:drawableSizeWillChange:` just before `systemViewChanged`, so a rotation's insets
+    go with its new drawable size, and from `viewSafeAreaInsetsDidChange` (and after `viewDidLoad`) only
+    while the view's bounds times the scale already match the drawable (no size change pending).
 13. **Web**: the probe is read again with every canvas size change (`changeCanvasSize`, the canvas resize
     callback) besides `resize`, `orientationchange` and `visualViewport.resize`; values are pushed only on
     a change. The viewport meta is edited by a regex in `apply.cmake` (a `content=` that lacks
@@ -565,6 +571,13 @@ spec was silent, ambiguous or did not fit the code:
     `create_entity` also gets `type: "safe_area"`.
 18. **Guide budget.** The guide line shares one bullet with the platform-services line; four sentences
     elsewhere were shortened to stay within 16 KB.
+18b. **Nested Safe Areas lag one UI update** behind a moving parent: a nested panel's reference rect is
+    read in world axes from the parent's model matrix, which the transform update of the same frame
+    refreshes after the UI layout. A root panel (the usual setup, the spec's port) has no lag.
+18c. **Static folds outside math functions.** Rewrites that read a value token by token or write
+    decorator arguments (transform, box-shadow, gradients...) get env()'s variable from
+    `Session::staticVar`, which folds it to 0px and makes the declaration report "env(safe-area-inset-*)
+    is 0 here (static value)" (Info); properties written as they are read keep the live variable.
 19. **Merge note:** `ComponentType::SafeAreaComponent` is appended last (prefab override masks use the
     ordinal): a branch appending another type at the same place conflicts there and in
     `AnimationClipContractTest`. (The ECS `Signature` limit of 64 types was raised to 128 on `main`.)

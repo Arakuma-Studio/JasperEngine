@@ -213,6 +213,23 @@ async def test_screenshot_overlay_and_safe_area_in_image(ed: Editor):
     ed.check(min(rows2[0][0:3]) > 200, f"no overlay: the corner shows the game: {list(rows2[0][0:3])}")
     ed.check("safe_area_in_image" in plain.structured, "safe_area_in_image without the overlay too")
 
+    # Device Overlay off, Safe Area outline on: only the outline is drawn
+    await ed.call("configure_game_view", device_overlay=False, safe_area_outline=True)
+    try:
+        outlined = await ed.call_raw("screenshot", {"view": "game", "max_width": 0})
+        ed.check(not outlined.is_error and outlined.images, outlined.text)
+        ed.check_eq(outlined.structured.get("device_overlay"), False, "the screen is not drawn")
+        w3, h3, ch3, rows3 = decode_png(outlined.images[0][0])
+        ed.check(min(rows3[0][0:3]) > 200, f"no corner: {list(rows3[0][0:3])}")
+        notch3 = rows3[2][(w3 // 2) * ch3:(w3 // 2) * ch3 + 3]
+        ed.check(min(notch3) > 200, f"no notch without the device overlay: {list(notch3)}")
+        top = round(outlined.structured["safe_area_in_image"]["y"])
+        greens = sum(1 for x in range(w3) for y in (top - 1, top, top + 1) if 0 <= y < h3
+                     and rows3[y][x * ch3 + 1] > 200 and rows3[y][x * ch3] < 60 and rows3[y][x * ch3 + 2] < 60)
+        ed.check(greens > w3 // 4, f"the dashed green outline along the safe top ({greens} green pixels)")
+    finally:
+        await ed.call("configure_game_view", device_overlay=True, safe_area_outline=False)
+
 
 async def test_html_env_is_the_live_inset(ed: Editor):
     s = await setup(ed)

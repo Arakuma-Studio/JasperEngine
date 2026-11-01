@@ -136,6 +136,7 @@ SafeAreaResult Screen::safeArea;
 bool Screen::safeAreaComputed = false;
 uint64_t Screen::safeAreaRevision = 0;
 bool Screen::safeAreaEventPending = false;
+bool Screen::safeAreaHeld = false;
 bool Screen::warnedEmptySafeArea = false;
 bool Screen::warnedExtraInsets = false;
 
@@ -331,6 +332,8 @@ const SafeAreaResult& Screen::currentSafeArea(){
 }
 
 void Screen::updateSafeArea(){
+    // (computed now with the latest insets: nothing is held any more)
+    safeAreaHeld = false;
     SafeAreaResult result = computeSafeArea(currentSafeAreaInput());
     if (result.deviceRectEmpty && !warnedEmptySafeArea){
         warnedEmptySafeArea = true;
@@ -357,6 +360,18 @@ void Screen::dispatchSafeAreaEvent(){
 void Screen::setPlatformSafeArea(const EdgeInsets& insetsPixels, const std::vector<Rect>& cutoutsPixels){
     platformInsets = nonNegative(insetsPixels);
     platformCutouts = cutoutsPixels;
+    // a quarter turn waits for its size: these insets belong to it, not to the old size
+    if (Engine::isOrientationPending()){
+        safeAreaHeld = true;
+        return;
+    }
+    safeAreaHeld = false;
+    updateSafeArea();
+}
+
+void Screen::releaseHeldSafeArea(){
+    if (!safeAreaHeld) return;
+    safeAreaHeld = false;
     updateSafeArea();
 }
 
@@ -448,6 +463,7 @@ void Screen::resetSafeAreaState(){
     warnedEmptySafeArea = false;
     warnedExtraInsets = false;
     safeAreaEventPending = false;
+    safeAreaHeld = false;
     // the next computation is where the game starts, not a change; the revision keeps counting
     safeAreaComputed = false;
 }
