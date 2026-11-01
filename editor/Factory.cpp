@@ -2237,6 +2237,14 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
     ctx.entityName = entityName;
     ctx.assignExisting = assignExisting;
     ctx.entityVarNames = entityVarNames;
+    // A scene's Default Camera (a system entity) follows the editor's view (its clips and aspect
+    // are the editor window's at export time); the game's setCamera sizes it from the game's
+    // canvas before anything draws, so they are left out
+    static constexpr const char* kCanvasSizedCameraFields[] = {"left", "right", "bottom", "top", "aspect"};
+    if (componentType == ComponentType::CameraComponent && entity <= EntityManager::lastSystemEntity()) {
+        const CameraComponent* camera = static_cast<const CameraComponent*>(comp);
+        if (camera->autoResize && !camera->renderToTexture) ctx.omit = kCanvasSizedCameraFields;
+    }
     std::string code;
     if (desc->codegen) {
         code = desc->codegen(scene, entity, ctx);
