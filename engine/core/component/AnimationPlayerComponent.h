@@ -23,9 +23,11 @@
 //     always 1 and its blend Override (both ignored when authored). Entries reference their
 //     layer by index (`AnimationPlayerClip::layer`, out of range: 0). Runtime layer weights,
 //     masks and blends (Lua setLayerWeight...) live in AnimationPlayerRuntime::layers.
-//   * `controller` (an .anim-like asset-relative .controller path, `controllerGuid` editor-only,
-//     the clip GUID rules) owns the states when set: `clips`, `defaultClip` and `layers` are
-//     then ignored (anim layers spec 5.10).
+//   * masks are S21's Avatar Masks (.mask, AnimatorAssetPool; the weight rule AvatarMaskWeights.h).
+//   * no controller: an Animator Controller plays on the Animator component (S21). Upstream's
+//     `controller` / `controllerGuid` keys of this component are moved to an Animator by the
+//     scene migration (editor/StreamMigrations.cpp); the AnimationPlayer object forwards
+//     upstream's controller calls to the GameObject's Animator (object/AnimationPlayer.h).
 
 #ifndef ANIMATION_PLAYER_COMPONENT_H
 #define ANIMATION_PLAYER_COMPONENT_H
@@ -97,9 +99,6 @@ namespace jasperengine{
         float defaultFadeTime = 0.25f;
         // empty = one "Base Layer" (anim::playerLayers)
         std::vector<AnimationPlayerLayer> layers;
-        // an Animator Controller (.controller, asset-relative) that owns the states; "" = none
-        std::string controller;
-        std::string controllerGuid;     // editor (AssetDatabase)
 
         // runtime only (not serialised)
         bool needsLoad = true;      // the clip list changed: the next update (re)loads and rebinds
@@ -112,8 +111,9 @@ namespace jasperengine{
         FunctionSubscribe<void(const AnimationEvent&)> onEvent;
         // a once state ended, or a clamp_forever state first reached its end (the state name)
         FunctionSubscribe<void(const std::string&)> onFinish;
-        // an Animator Controller state was entered / exited (layer index, state name without the
-        // layer prefix; anim layers spec 11.2), after the frame's pose was written
+        // upstream's controller callbacks: a state of the GameObject's Animator was entered /
+        // exited (layer index, state name without the layer prefix; AnimatorSystem calls them
+        // with the Animator's onStateEnter / onStateExit)
         FunctionSubscribe<void(int, const std::string&)> onStateEnter;
         FunctionSubscribe<void(int, const std::string&)> onStateExit;
     };

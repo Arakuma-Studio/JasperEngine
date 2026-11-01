@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstring>
 #include <random>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::anim;
@@ -193,4 +194,45 @@ TEST(AnimatorPoseOps, RigSpaceKeepsNonUniformScale){
     const Affine inverse = world[2].inverse();
     const Affine identity = world[2] * inverse;
     for (int k = 0; k < 12; k++) EXPECT_NEAR(identity.m[k], Affine().m[k], 1e-5f);
+}
+
+// The one-element operations (the Animation Player's layers, docs/specs/S21-animation.md
+// "Upstream absorption") are the scalar lanes of poseBlend / poseAdditive: the same bits as the
+// Scalar back end, weight by weight (a per-bone mask carries each bone's weight)
+TEST(AnimatorPoseOps, ElementOpsMatchTheKernels){
+    BackendScope scalar(PoseBackend::Scalar);
+    std::mt19937 random(7);
+    std::uniform_real_distribution<float> w(0.0f, 1.0f);
+    const size_t bones = 29;
+    const size_t channels = 5;
+    Pose base(bones, channels), layer(bones, channels), blended(bones, channels), added(bones, channels);
+    randomPose(base, random);
+    randomPose(layer, random);
+    std::vector<float> mask(bones), channelMask(channels);
+    for (float& m : mask) m = w(random);
+    mask[0] = 0.0f;
+    mask[1] = 1.0f;
+    for (float& m : channelMask) m = w(random);
+    poseBlend(blended, base, layer, 1.0f, mask.data(), channelMask.data());
+    poseAdditive(added, base, layer, 1.0f, mask.data(), channelMask.data());
+    auto same = [](float a, float b){ return std::memcmp(&a, &b, sizeof(float)) == 0; };
+    for (size_t b = 0; b < bones; b++){
+        const Quaternion q = poseBlendRotation(base.rotation(b), layer.rotation(b), mask[b]);
+        const Quaternion a = poseAdditiveRotation(base.rotation(b), layer.rotation(b), mask[b]);
+        const Quaternion kq = blended.rotation(b), ka = added.rotation(b);
+        EXPECT_TRUE(same(q.x, kq.x) && same(q.y, kq.y) && same(q.z, kq.z) && same(q.w, kq.w)) << "blend rotation, bone " << b;
+        EXPECT_TRUE(same(a.x, ka.x) && same(a.y, ka.y) && same(a.z, ka.z) && same(a.w, ka.w)) << "additive rotation, bone " << b;
+        for (Pose::Array t : {Pose::TX, Pose::TY, Pose::TZ}){
+            EXPECT_TRUE(same(poseBlendValue(base.array(t)[b], layer.array(t)[b], mask[b]), blended.array(t)[b])) << "blend translation " << b;
+            EXPECT_TRUE(same(poseAdditiveValue(base.array(t)[b], layer.array(t)[b], mask[b]), added.array(t)[b])) << "additive translation " << b;
+        }
+        for (Pose::Array s : {Pose::SX, Pose::SY, Pose::SZ}){
+            EXPECT_TRUE(same(poseBlendValue(base.array(s)[b], layer.array(s)[b], mask[b]), blended.array(s)[b])) << "blend scale " << b;
+            EXPECT_TRUE(same(poseAdditiveScale(base.array(s)[b], layer.array(s)[b], mask[b]), added.array(s)[b])) << "additive scale " << b;
+        }
+    }
+    for (size_t c = 0; c < channels; c++){
+        EXPECT_TRUE(same(poseBlendValue(base.channelData()[c], layer.channelData()[c], channelMask[c]), blended.channelData()[c])) << "channel " << c;
+        EXPECT_TRUE(same(poseAdditiveValue(base.channelData()[c], layer.channelData()[c], channelMask[c]), added.channelData()[c])) << "channel " << c;
+    }
 }

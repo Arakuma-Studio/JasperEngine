@@ -15,8 +15,7 @@
 #include "animation/KeyframeSampling.h"
 #include "lattice/LatticeSolver.h"
 #include "pool/AnimationClipPool.h"
-#include "pool/AnimatorControllerPool.h"
-#include "pool/AvatarMaskPool.h"
+#include "pool/AnimatorAssetPool.h"
 #include "script/LuaBinding.h"
 
 #include <algorithm>
@@ -69,7 +68,6 @@ void playerdetail::completeRest(Scene* scene, Entity entity, anim::ChannelRest& 
 
 // the time a state is sampled at this update, in its clip
 float playerdetail::sampleTimeOf(const AnimationPlayerComponent& player, const anim::PlayerStateRuntime& state){
-    if (state.driven) return state.drivenTime;
     if (state.finishing || state.held) return state.finishTime;
     const float length = anim::stateLength(state);
     const ClipWrapMode wrap = anim::stateWrap(state);
@@ -584,18 +582,6 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
     anim::AnimationPlayerRuntime& runtime = anim::playerRuntime(player);
     const uint64_t revision = scene->hierarchyRevision();
 
-    // an Animator Controller owns the states: loaded (or reloaded after an edit) first; one
-    // cleared without a reload request gives the clip list back
-    if (player.controller.empty() && runtime.controller){
-        player.needsLoad = true;
-        anim::playerRuntime(player);
-    }
-    if (!player.controller.empty() &&
-        (!runtime.controller || !runtime.controller->controller || runtime.controller->path != player.controller || playerControllerPoolChanged ||
-         (!runtime.controller->clipsWarned && !player.clips.empty()))){
-        anim::ensureController(player, scene->getEntityName(entity), dt, playerControllerPoolChanged);
-    }
-
     // duplicate state names play under their " 2" alias (spec 3.2, R40): said once per player
     // and clip list
     if (runtime.duplicateStateNames != runtime.warnedDuplicateStateNames){
@@ -810,12 +796,6 @@ void ActionSystem::advancePlayer(Entity entity, AnimationPlayerComponent& player
         else layer.weight = std::max(layer.targetWeight, layer.weight - step);
     }
 
-    // a controller sets its states' weights and times itself (no fades, no queues: spec 11.2)
-    if (runtime.controller){
-        driveController(entity, player, dt);
-        return;
-    }
-
     // fades (real time), held states included
     for (anim::PlayerStateRuntime& state : states){
         fadeState(state, dt);
@@ -929,12 +909,9 @@ void ActionSystem::updatePlayers(double dt){
     const uint64_t poolRevision = AnimationClipPool::revision();
     const bool poolChanged = poolRevision != playerPoolRevision;
     playerPoolRevision = poolRevision;
-    const uint64_t maskPoolRevision = AvatarMaskPool::revision();
+    const uint64_t maskPoolRevision = AnimatorAssetPool::revision();
     playerMaskPoolChanged = maskPoolRevision != playerMaskPoolRevision;
     playerMaskPoolRevision = maskPoolRevision;
-    const uint64_t controllerPoolRevision = AnimatorControllerPool::revision();
-    playerControllerPoolChanged = controllerPoolRevision != playerControllerPoolRevision;
-    playerControllerPoolRevision = controllerPoolRevision;
     const float step = std::isfinite(dt) ? (float)dt : 0.0f;
 
     // nothing below adds or removes Animation Players: the array stays put (callbacks run later)
@@ -944,27 +921,16 @@ void ActionSystem::updatePlayers(double dt){
 
         // disabled or inactive: time stops and nothing is written (R25)
         if (!player.enabled || !scene->isEntityActiveInHierarchy(entity)){
-            if (player.runtime && player.runtime->controller) player.runtime->controller->sawDisabled = true;
             continue;
         }
 
         anim::AnimationPlayerRuntime& runtime = anim::playerRuntime(player);
         runtime.clock += step;
 
-        // a stopped controller enters its default states again when the player is enabled again
-        if (runtime.controller && runtime.controller->sawDisabled){
-            runtime.controller->sawDisabled = false;
-            if (runtime.controller->stopped){
-                runtime.controller->stopped = false;
-                for (anim::ControllerLayerRuntime& layer : runtime.controller->layers) layer.started = false;
-            }
-        }
-
-        // play automatically on the first update in a running scene (R44); an Animator
-        // Controller always runs (it enters its default states)
+        // play automatically on the first update in a running scene (R44)
         if (!player.started){
             player.started = true;
-            if (player.controller.empty() && player.playAutomatically && !runtime.states.empty()){
+            if (player.playAutomatically && !runtime.states.empty()){
                 const std::string name = player.defaultClip.empty() ? runtime.states[0].name : player.defaultClip;
                 anim::playState(player, name, 0.0f, scene->getEntityName(entity));
             }
@@ -1006,18 +972,6 @@ void ActionSystem::dispatchPlayerCallbacks(){
             if (callback.finish){
                 const std::string state = callback.event.state;
                 player->onFinish.call(state);
-                continue;
-            }
-            if (callback.stateEnter || callback.stateExit){
-                // Animator Controller states (spec 11.2): the subscribers, then the GameObject's
-                // Lua script methods onStateEnter / onStateExit (layer, state)
-                const int layer = callback.layer;
-                const std::string state = callback.event.state;
-                const char* method = callback.stateEnter ? "onStateEnter" : "onStateExit";
-                if (callback.stateEnter) player->onStateEnter.call(layer, state);
-                else player->onStateExit.call(layer, state);
-                if (!scene->isEntityCreated(entity)) break;
-                LuaBinding::callLuaScriptMethod(scene, entity, method, {AnimationEvent::numberArg(layer), AnimationEvent::stringArg(state)}, true);
                 continue;
             }
             const bool subscribed = player->onEvent.hasSubscribers();

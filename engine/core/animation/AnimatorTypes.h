@@ -65,27 +65,34 @@ namespace jasperengine{
 
     enum class TransitionInterruptionSource : uint8_t { None, Current, Next, CurrentThenNext, NextThenCurrent };
 
-    // a state's loop: its clips' own wrap (Loop / PingPong loop), or forced
-    enum class AnimatorStateLoop : uint8_t { Inherit, Loop, Once };
+    // a state's loop: its clips' own wrap (Loop / PingPong loop), or forced. Loop keeps a
+    // ping-pong clip ping-ponging; Repeat always loops forward from the start (upstream's state
+    // wrap "loop"); PingPong forces ping-pong; ClampForever holds the last frame like Once (the
+    // Animation Player's name, kept from upstream controllers)
+    enum class AnimatorStateLoop : uint8_t { Inherit, Loop, Once, PingPong, ClampForever, Repeat };
 
     // what an additive state's clips are a difference to
     enum class AdditiveReference : uint8_t {
         FirstFrame,     // the clip's pose at time 0
         Rest,           // the rig's rest pose
-        Time            // the clip's pose at `additiveTime`
+        Time,           // the clip's pose at `additiveTime`
+        Clip            // the clip's pose at its own additive_reference (.anim; 0 = the first frame)
     };
 
-    // The humanoid body parts of an avatar mask (Unity's AvatarMaskBodyPart without the IK goals)
+    // The humanoid body parts of an avatar mask (Unity's AvatarMaskBodyPart without the IK goals;
+    // the weight rule is AvatarMaskWeights.h)
     enum class AvatarBodyPart : uint8_t {
-        Root,       // root motion
-        Body,       // hips and spine chain, and every bone no other part claims
+        Root,       // root motion (and, with root_hierarchy, the GameObject and the transforms above the hips)
+        Body,       // hips and spine chain
         Head,       // neck, head
         LeftArm,    // shoulder, upper and lower arm
         RightArm,
-        LeftHand,   // the hand and everything under it
+        LeftHand,   // the hand bone
         RightHand,
         LeftLeg,    // upper and lower leg, foot, toes
         RightLeg,
+        LeftFingers,    // everything below the hand (fingers, props held)
+        RightFingers,
         Count
     };
 

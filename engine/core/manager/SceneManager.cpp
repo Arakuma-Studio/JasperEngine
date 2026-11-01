@@ -12,10 +12,9 @@
 #include "pool/TextureDataPool.h"
 #include "pool/SoundPool.h"
 #include "pool/AnimationClipPool.h"
-#include "pool/AnimatorControllerPool.h"
-#include "pool/AvatarMaskPool.h"
-#include "animation/AnimatorController.h"
-#include "animation/AvatarMask.h"
+#include "pool/AnimatorAssetPool.h"
+#include "animation/CompiledController.h"
+#include "animation/ControllerDef.h"
 #include "animation/AnimationClip.h"
 #include "animation/ModelSubClips.h"
 #include "animation/VertexAnimation.h"
@@ -678,22 +677,22 @@ void SceneManager::updatePreloads() {
         for (auto it = pending.masks.begin(); it != pending.masks.end();) {
             const std::string mask = *it;
             std::string error;
-            std::shared_ptr<const anim::AvatarMask> loaded = AvatarMaskPool::getOrLoad(mask, &error);
+            std::shared_ptr<const anim::AvatarMaskDef> loaded = AnimatorAssetPool::mask(mask, &error);
             if (!loaded) {
                 Log::warn("Preload of avatar mask %s failed: %s", mask.c_str(), error.c_str());
             }
-            keep(std::const_pointer_cast<anim::AvatarMask>(loaded), []() { AvatarMaskPool::clearUnused(); });
+            keep(std::const_pointer_cast<anim::AvatarMaskDef>(loaded), []() { AnimatorAssetPool::clearUnused(); });
             it = pending.masks.erase(it);
             if (oneFile) return;
         }
         for (auto it = pending.controllers.begin(); it != pending.controllers.end();) {
             const std::string controller = *it;
             std::string error;
-            std::shared_ptr<const anim::AnimatorController> loaded = AnimatorControllerPool::getOrLoad(controller, &error);
+            std::shared_ptr<const anim::CompiledController> loaded = AnimatorAssetPool::controller(controller, &error);
             if (!loaded) {
                 Log::warn("Preload of animator controller %s failed: %s", controller.c_str(), error.c_str());
             }
-            keep(std::const_pointer_cast<anim::AnimatorController>(loaded), []() { AnimatorControllerPool::clearUnused(); });
+            keep(std::const_pointer_cast<anim::CompiledController>(loaded), []() { AnimatorAssetPool::clearUnused(); });
             it = pending.controllers.erase(it);
             if (oneFile) return;
         }

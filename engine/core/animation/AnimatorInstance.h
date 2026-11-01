@@ -88,6 +88,10 @@ namespace jasperengine::anim{
         double time = 0.0;                  // normalised, unbounded (loops count up)
         double previous = 0.0;              // the time before this update's advance
         bool entered = false;               // entered during this update (events at its start fire)
+        // entered through a transition (or as a default state) and its events from the start not
+        // fired yet: they fire, from `start`, once it leads its layer (or every clip fires)
+        bool startPending = false;
+        double start = 0.0;
         float length = 0.0f;                // seconds of one cycle at speed 1 (the motion's weighted length)
     };
 
@@ -99,6 +103,8 @@ namespace jasperengine::anim{
         float duration = 0.0f;
         bool snapshot = false;              // current is the frozen pose of an interrupted transition
         float weight = 1.0f;
+        float targetWeight = 1.0f;          // setLayerWeight with a fade: weight moves toward it
+        float weightFadeSpeed = 0.0f;       // per second (0: no fade)
         Pose output;                        // this update's layer pose (a delta for additive layers)
         Pose snapshotPose;
         bool hasOutput = false;
@@ -221,6 +227,11 @@ namespace jasperengine::anim{
 
         std::vector<float> parameters;
         std::vector<float> velocities;      // setFloat damping state
+        // setFloatTarget: per parameter the value damped toward every update (dampTimes 0: none)
+        std::vector<float> dampTargets;
+        std::vector<float> dampTimes;
+        // per parameter: a trigger a transition consumed this update (reset after every layer)
+        std::vector<uint8_t> consumedTriggers;
         std::vector<AnimatorLayerRun> layers;
         std::vector<AnimatorClipSlot> clips;            // controller slots, then montage clips
         size_t controllerClipCount = 0;
@@ -274,6 +285,9 @@ namespace jasperengine::anim{
         int findParameter(const std::string& name) const;
         bool setFloat(const std::string& name, float value);
         bool setFloat(const std::string& name, float value, float dampTime, float deltaTime);
+        // a Float parameter SmoothDamps toward `value` once per update until another set
+        // (upstream's player setFloat(name, value, dampTime)); others are set at once
+        bool setFloatTarget(const std::string& name, float value, float dampTime);
         bool setInteger(const std::string& name, int value);
         bool setBool(const std::string& name, bool value);
         bool setTrigger(const std::string& name);
@@ -284,6 +298,11 @@ namespace jasperengine::anim{
         // a transition to the state (duration in source-state lengths, or seconds when fixed)
         bool crossFade(const std::string& state, float duration, bool fixed, int layer, float offset);
         void setLayerWeight(int layer, float weight);
+        // weight reached linearly over `fade` seconds (<= 0: at once)
+        void setLayerWeight(int layer, float weight, float fade);
+        // every layer back to its default state (transitions cancelled, montages stopped,
+        // parameters kept): Unity's Animator enabled again (upstream's player stop() and enable)
+        void restart();
         float getLayerWeight(int layer) const;
         int getLayerIndex(const std::string& name) const;
 
@@ -321,6 +340,7 @@ namespace jasperengine::anim{
             float normalizedTime = 0.0f;
             float length = 0.0f;
             bool loop = false;
+            float speed = 1.0f;             // the state's speed times its speed parameter
         };
         StateInfo currentState(int layer) const;
         StateInfo nextState(int layer) const;
@@ -364,8 +384,11 @@ namespace jasperengine::anim{
         float stateSpeed(int state) const;
         float motionLength(const CompiledMotion& motion);
         bool stateLoops(int state, int clipSlot) const;
+        // a looping state plays the clip back and forth (forced ping_pong, or a ping-pong clip
+        // under inherit / loop)
+        bool statePingPong(int state, int clipSlot) const;
         void collectLayer(size_t layer, const AnimatorComponent& component);
-        void collectLeaves(const AnimatorStateRun& run, float weight, bool leaderOnly, float& leaderWeight, int& leaderIndex);
+        void collectLeaves(const AnimatorStateRun& run, bool next, float weight, bool leaderOnly, float& leaderWeight, int& leaderIndex);
         void advanceMontages(float dt, const AnimatorComponent& component);
         void evaluateLayer(size_t layer, const AnimatorComponent& component);
         void evaluateMotion(size_t layer, const AnimatorStateRun& run, Pose& out, const AnimatorComponent& component);
@@ -385,6 +408,8 @@ namespace jasperengine::anim{
             double from = 0.0, to = 0.0;    // unwrapped clip seconds
             bool loops = false, pingPong = false, includeStart = false;
             int state = -1;
+            bool next = false;              // a leaf of the layer's next state (else its current)
+            double pendingStart = -1.0;     // clip seconds of a start its events did not fire at yet (-1: none)
         };
         std::vector<LeafRun> leafRuns;
         std::vector<CrossedEvent> crossed;

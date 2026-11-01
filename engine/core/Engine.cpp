@@ -54,8 +54,7 @@
 #include "pool/MeshLodPool.h"
 #include "pool/MeshBufferPool.h"
 #include "pool/AnimationClipPool.h"
-#include "pool/AvatarMaskPool.h"
-#include "pool/AnimatorControllerPool.h"
+#include "pool/AnimatorAssetPool.h"
 #include "pool/PhysicsMaterialPool.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
@@ -1299,8 +1298,7 @@ void Engine::clearPools(){
     MeshLodPool::clear();
     MeshBufferPool::clear();
     AnimationClipPool::clear();
-    AvatarMaskPool::clear();
-    AnimatorControllerPool::clear();
+    AnimatorAssetPool::clear();
     PhysicsMaterialPool::clear();
 }
 
@@ -1315,8 +1313,7 @@ void Engine::clearUnusedPools(){
     MeshLodPool::clearUnused();
     MeshBufferPool::clearUnused();
     AnimationClipPool::clearUnused();
-    AvatarMaskPool::clearUnused();
-    AnimatorControllerPool::clearUnused();
+    AnimatorAssetPool::clearUnused();
     PhysicsMaterialPool::clearUnused();
 }
 

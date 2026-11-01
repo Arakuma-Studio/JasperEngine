@@ -190,10 +190,12 @@ namespace {
         const std::string breath = writeFile("breath.anim", writeClip(motionClip(out.paths, 3, 0.0f, 0.0f, false, spineOnly)));
 
         AvatarMaskDef mask;
-        for (bool& part : mask.bodyParts) part = false;
-        mask.bodyParts[(int)AvatarBodyPart::Head] = true;
-        mask.bodyParts[(int)AvatarBodyPart::LeftArm] = mask.bodyParts[(int)AvatarBodyPart::RightArm] = true;
-        mask.bodyParts[(int)AvatarBodyPart::LeftHand] = mask.bodyParts[(int)AvatarBodyPart::RightHand] = true;
+        mask.defaultWeight = 0.0f;
+        for (std::optional<float>& part : mask.bodyParts) part = 0.0f;
+        mask.bodyParts[(int)AvatarBodyPart::Head] = 1.0f;
+        mask.bodyParts[(int)AvatarBodyPart::LeftArm] = mask.bodyParts[(int)AvatarBodyPart::RightArm] = 1.0f;
+        mask.bodyParts[(int)AvatarBodyPart::LeftHand] = mask.bodyParts[(int)AvatarBodyPart::RightHand] = 1.0f;
+        mask.bodyParts[(int)AvatarBodyPart::LeftFingers] = mask.bodyParts[(int)AvatarBodyPart::RightFingers] = 1.0f;
         const std::string maskPath = writeFile("upper.mask", writeMask(mask));
 
         ControllerDef def;

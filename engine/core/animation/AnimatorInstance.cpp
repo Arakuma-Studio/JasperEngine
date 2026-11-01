@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AnimatorInstance.h"
+#include "animation/AvatarMaskWeights.h"
 
 #include "Scene.h"
 #include "animation/AnimationClipIO.h"
@@ -61,23 +62,6 @@ namespace{
         return (float)fract(normalized) * length;
     }
 
-    // the avatar mask body part of a humanoid slot
-    void bodySlotPart(int slot, AvatarBodyPart& part){
-        using B = pose::HumanBone;
-        const B bone = pose::boneAt(slot);
-        switch (bone){
-            case B::Hips: case B::Spine: case B::Chest: case B::UpperChest: part = AvatarBodyPart::Body; break;
-            case B::Neck: case B::Head: part = AvatarBodyPart::Head; break;
-            case B::LeftShoulder: case B::LeftUpperArm: case B::LeftLowerArm: part = AvatarBodyPart::LeftArm; break;
-            case B::LeftHand: part = AvatarBodyPart::LeftHand; break;
-            case B::RightShoulder: case B::RightUpperArm: case B::RightLowerArm: part = AvatarBodyPart::RightArm; break;
-            case B::RightHand: part = AvatarBodyPart::RightHand; break;
-            case B::LeftUpperLeg: case B::LeftLowerLeg: case B::LeftFoot: case B::LeftToes: part = AvatarBodyPart::LeftLeg; break;
-            case B::RightUpperLeg: case B::RightLowerLeg: case B::RightFoot: case B::RightToes: part = AvatarBodyPart::RightLeg; break;
-            default: part = AvatarBodyPart::Body; break;
-        }
-    }
-
     // Unity's Mathf.SmoothDamp (Game Programming Gems 4, 1.10)
     float smoothDamp(float current, float target, float& velocity, float smoothTime, float dt){
         smoothTime = std::max(0.0001f, smoothTime);
@@ -121,6 +105,9 @@ void anim::AnimatorInstance::setController(const std::shared_ptr<const CompiledC
     if (!controller){
         parameters.clear();
         velocities.clear();
+        dampTargets.clear();
+        dampTimes.clear();
+        consumedTriggers.clear();
         layers.clear();
         clips.clear();
         controllerClipCount = 0;
@@ -131,6 +118,9 @@ void anim::AnimatorInstance::setController(const std::shared_ptr<const CompiledC
     // parameters: defaults, the values of same-named same-typed ones kept
     parameters.assign(controller->parameters.size(), 0.0f);
     velocities.assign(controller->parameters.size(), 0.0f);
+    dampTargets.assign(controller->parameters.size(), 0.0f);
+    dampTimes.assign(controller->parameters.size(), 0.0f);
+    consumedTriggers.assign(controller->parameters.size(), 0);
     for (size_t i = 0; i < controller->parameters.size(); i++){
         const ParameterDef& p = controller->parameters[i];
         parameters[i] = p.type == AnimatorParameterType::Trigger ? 0.0f : p.defaultValue;
@@ -174,7 +164,23 @@ void anim::AnimatorInstance::setController(const std::shared_ptr<const CompiledC
     for (size_t l = 0; l < layers.size(); l++){
         layers[l].weight = controller->layers[l].weight;
         bool kept = false;
-        if (previous && l < oldLayers.size() && oldLayers[l].current.state >= 0 &&
+        // a transition in flight completes: its destination is the layer's state (the source exits)
+        if (previous && l < oldLayers.size() && oldLayers[l].transition != -1 && oldLayers[l].next.state >= 0 &&
+                (size_t)oldLayers[l].next.state < previous->states.size()){
+            const int state = controller->findState(previous->states[(size_t)oldLayers[l].next.state].fullPath, (int)l);
+            if (state >= 0){
+                if (!oldLayers[l].snapshot && oldLayers[l].current.state >= 0){
+                    const int exited = controller->findState(previous->states[(size_t)oldLayers[l].current.state].fullPath, (int)l);
+                    if (exited >= 0) output.states.push_back({false, (int)l, exited});
+                }
+                layers[l].current = oldLayers[l].next;
+                layers[l].current.state = state;
+                layers[l].current.entered = false;
+                layers[l].weight = oldLayers[l].weight;
+                kept = true;
+            }
+        }
+        if (!kept && previous && l < oldLayers.size() && oldLayers[l].current.state >= 0 &&
                 (size_t)oldLayers[l].current.state < previous->states.size()){
             const int state = controller->findState(previous->states[(size_t)oldLayers[l].current.state].fullPath, (int)l);
             if (state >= 0){
@@ -295,47 +301,31 @@ void anim::AnimatorInstance::bind(Scene* scene, Entity root, const AnimatorCompo
         run.snapshotPose.resize(boneCount, channelCount);
         run.hasOutput = false;
         const AvatarMaskDef* mask = l < masks.size() ? masks[l].get() : nullptr;
-        run.masked = mask != nullptr;
-        run.rootMask = 1.0f;
+        // a layer whose mask does not load contributes nothing (safer than the whole body; the
+        // error is logged once by AnimatorSystem)
+        const bool missing = !mask && controller && l < controller->layers.size() && !controller->layers[l].mask.empty();
+        run.masked = mask != nullptr || missing;
+        run.rootMask = missing ? 0.0f : 1.0f;
         run.mask.assign(rig.rest.stride(), 0.0f);
         run.channelMask.assign(rig.rest.channelStride(), 0.0f);
         if (!mask) continue;
-        run.rootMask = mask->bodyParts[(int)AvatarBodyPart::Root] ? 1.0f : 0.0f;
-        // the slot of every bone: its own, else the nearest ancestor's
-        std::vector<int> slotOf(boneCount, -1);
+        // S21's mask rule (AvatarMaskWeights.h) over the rig's GameObjects; the humanoid is the
+        // Animator's avatar (its slot bones)
+        run.rootMask = maskRootMotionWeight(*mask);
+        HumanoidSlots slots;
         if (humanoid.valid){
+            slots.valid = true;
             for (int s = 0; s < pose::HUMAN_BONE_COUNT; s++){
                 const int bone = humanoid.slotBones[(size_t)s];
-                if (bone >= 0) slotOf[(size_t)bone] = s;
+                if (bone >= 0) slots.entities[(size_t)s] = rig.bones[(size_t)bone].entity;
             }
         }
+        const std::vector<Entity> pathEntities = bindMaskPaths(*mask, scene, root);
         for (size_t b = 0; b < boneCount; b++){
-            if (slotOf[b] < 0 && rig.parents[b] >= 0) slotOf[b] = slotOf[(size_t)rig.parents[b]];
-            AvatarBodyPart part = AvatarBodyPart::Body;
-            if (slotOf[b] >= 0) bodySlotPart(slotOf[b], part);
-            float weight = mask->bodyParts[(int)part] ? 1.0f : 0.0f;
-            for (const MaskPathDef& entry : mask->paths){
-                if (entry.path == rig.bones[b].path){
-                    weight = entry.weight;
-                    break;
-                }
-            }
-            run.mask[b] = weight;
+            run.mask[b] = maskWeightOf(*mask, scene, root, rig.bones[b].entity, pathEntities, &slots).weight;
         }
         for (size_t c = 0; c < channelCount; c++){
-            float weight = 1.0f;
-            const int bone = rig.findBone(rig.channels[c].entity);
-            if (bone >= 0) weight = run.mask[(size_t)bone];
-            std::string path;
-            if (relativePath(scene, root, rig.channels[c].entity, path)){
-                for (const MaskPathDef& entry : mask->paths){
-                    if (entry.path == path){
-                        weight = entry.weight;
-                        break;
-                    }
-                }
-            }
-            run.channelMask[c] = weight;
+            run.channelMask[c] = maskWeightOf(*mask, scene, root, rig.channels[c].entity, pathEntities, &slots).weight;
         }
     }
 
@@ -489,12 +479,25 @@ bool anim::AnimatorInstance::setFloat(const std::string& name, float value){
     else if (type != AnimatorParameterType::Float) value = value != 0.0f ? 1.0f : 0.0f;
     parameters[(size_t)index] = value;
     velocities[(size_t)index] = 0.0f;
+    dampTimes[(size_t)index] = 0.0f;
+    return true;
+}
+
+bool anim::AnimatorInstance::setFloatTarget(const std::string& name, float value, float dampTime){
+    const int index = findParameter(name);
+    if (index < 0 || !std::isfinite(value)) return false;
+    if (controller->parameters[(size_t)index].type != AnimatorParameterType::Float || !(dampTime > 0.0f) || !std::isfinite(dampTime)){
+        return setFloat(name, value);
+    }
+    dampTargets[(size_t)index] = value;
+    dampTimes[(size_t)index] = dampTime;
     return true;
 }
 
 bool anim::AnimatorInstance::setFloat(const std::string& name, float value, float dampTime, float deltaTime){
     const int index = findParameter(name);
     if (index < 0 || !std::isfinite(value)) return false;
+    dampTimes[(size_t)index] = 0.0f;
     if (controller->parameters[(size_t)index].type != AnimatorParameterType::Float) return setFloat(name, value);
     if (!(dampTime > 0.0f) || !(deltaTime > 0.0f)){
         parameters[(size_t)index] = value;
@@ -571,6 +574,8 @@ bool anim::AnimatorInstance::crossFade(const std::string& stateName, float durat
     run.next.state = state;
     run.next.time = run.next.previous = std::min(std::max(offset, 0.0f), 1.0f);
     run.next.entered = true;
+    run.next.startPending = true;
+    run.next.start = run.next.time;
     output.states.push_back({true, (int)l, state});
     run.transition = -2;
     run.elapsed = 0.0f;
@@ -579,8 +584,30 @@ bool anim::AnimatorInstance::crossFade(const std::string& stateName, float durat
 }
 
 void anim::AnimatorInstance::setLayerWeight(int layer, float weight){
+    setLayerWeight(layer, weight, 0.0f);
+}
+
+void anim::AnimatorInstance::setLayerWeight(int layer, float weight, float fade){
     if (layer < 0 || (size_t)layer >= layers.size() || !std::isfinite(weight)) return;
-    layers[(size_t)layer].weight = layer == 0 ? 1.0f : std::min(std::max(weight, 0.0f), 1.0f);
+    AnimatorLayerRun& run = layers[(size_t)layer];
+    run.targetWeight = layer == 0 ? 1.0f : std::min(std::max(weight, 0.0f), 1.0f);
+    if (!(fade > 0.0f) || !std::isfinite(fade) || layer == 0){
+        run.weight = run.targetWeight;
+        run.weightFadeSpeed = 0.0f;
+        return;
+    }
+    // linear over `fade` seconds of the Animator's time (upstream's layer fades)
+    run.weightFadeSpeed = std::fabs(run.targetWeight - run.weight) / fade;
+}
+
+void anim::AnimatorInstance::restart(){
+    if (!controller) return;
+    for (size_t l = 0; l < layers.size(); l++){
+        if (layers[l].current.state >= 0 && !layers[l].snapshot) output.states.push_back({false, (int)l, layers[l].current.state});
+        if (layers[l].transition != -1 && layers[l].next.state >= 0) output.states.push_back({false, (int)l, layers[l].next.state});
+        resetLayer(l);
+    }
+    stopMontage(nullptr, 0.0f);
 }
 
 float anim::AnimatorInstance::getLayerWeight(int layer) const{
@@ -736,6 +763,7 @@ anim::AnimatorInstance::StateInfo anim::AnimatorInstance::currentState(int layer
     info.normalizedTime = (float)run.time;
     info.length = run.length;
     info.loop = stateLoops(run.state, -1);
+    info.speed = stateSpeed(run.state);
     return info;
 }
 
@@ -752,6 +780,7 @@ anim::AnimatorInstance::StateInfo anim::AnimatorInstance::nextState(int layer) c
     info.normalizedTime = (float)run.time;
     info.length = run.length;
     info.loop = stateLoops(run.state, -1);
+    info.speed = stateSpeed(run.state);
     return info;
 }
 
@@ -775,6 +804,8 @@ void anim::AnimatorInstance::enterNode(size_t layer, TransitionTargetKind kind, 
             run.state = target;
             run.time = run.previous = offset;
             run.entered = true;
+            run.startPending = true;
+            run.start = offset;
             return;
         case TransitionTargetKind::Machine: {
             const CompiledMachine& machine = controller->machines[(size_t)target];
@@ -841,7 +872,10 @@ void anim::AnimatorInstance::consumeTriggers(const CompiledTransition& t){
     for (uint32_t i = 0; i < t.conditionCount; i++){
         const CompiledCondition& c = controller->conditions[t.conditionBegin + i];
         if (c.parameter >= 0 && controller->parameters[(size_t)c.parameter].type == AnimatorParameterType::Trigger){
-            parameters[(size_t)c.parameter] = 0.0f;
+            // reset after every layer of this update looked at it: a trigger two layers read
+            // fires on both (Unity's rule; upstream's player too)
+            if ((size_t)c.parameter < consumedTriggers.size()) consumedTriggers[(size_t)c.parameter] = 1;
+            else parameters[(size_t)c.parameter] = 0.0f;
         }
     }
 }
@@ -935,8 +969,8 @@ float anim::AnimatorInstance::motionLength(const CompiledMotion& motion){
 
 bool anim::AnimatorInstance::stateLoops(int state, int clipSlot) const{
     const CompiledState& s = controller->states[(size_t)state];
-    if (s.loop == AnimatorStateLoop::Loop) return true;
-    if (s.loop == AnimatorStateLoop::Once) return false;
+    if (s.loop == AnimatorStateLoop::Loop || s.loop == AnimatorStateLoop::PingPong || s.loop == AnimatorStateLoop::Repeat) return true;
+    if (s.loop == AnimatorStateLoop::Once || s.loop == AnimatorStateLoop::ClampForever) return false;
     // inherit: the clip's wrap (a tree: its first ready leaf's)
     if (clipSlot < 0){
         if (s.motion.kind == CompiledMotion::Kind::Clip) clipSlot = s.motion.index;
@@ -946,6 +980,15 @@ bool anim::AnimatorInstance::stateLoops(int state, int clipSlot) const{
     if (!slot.clip) return false;
     const ClipWrapMode wrap = slot.clip->getWrap();
     return wrap == ClipWrapMode::Loop || wrap == ClipWrapMode::PingPong;
+}
+
+bool anim::AnimatorInstance::statePingPong(int state, int clipSlot) const{
+    const CompiledState& s = controller->states[(size_t)state];
+    if (s.loop == AnimatorStateLoop::PingPong) return true;
+    // repeat: always forward; once / clamp_forever: no loop
+    if (s.loop != AnimatorStateLoop::Inherit && s.loop != AnimatorStateLoop::Loop) return false;
+    if (clipSlot < 0 || !clips[(size_t)clipSlot].clip) return false;
+    return stateLoops(state, clipSlot) && clips[(size_t)clipSlot].clip->getWrap() == ClipWrapMode::PingPong;
 }
 
 void anim::AnimatorInstance::advanceLayer(size_t layer, float dt){
@@ -1021,7 +1064,7 @@ void anim::AnimatorInstance::advanceLayer(size_t layer, float dt){
 
 // ---------------------------------------------------------------- events and root motion
 
-void anim::AnimatorInstance::collectLeaves(const AnimatorStateRun& run, float weight, bool leaderOnly, float& leaderWeight, int& leaderIndex){
+void anim::AnimatorInstance::collectLeaves(const AnimatorStateRun& run, bool next, float weight, bool leaderOnly, float& leaderWeight, int& leaderIndex){
     if (run.state < 0 || !(weight > 0.0f)) return;
     const CompiledState& s = controller->states[(size_t)run.state];
     const size_t count = motionLeaves(*controller, s.motion, parameters.data(), weight, leaves.data(), 0, leaves.size());
@@ -1035,11 +1078,15 @@ void anim::AnimatorInstance::collectLeaves(const AnimatorStateRun& run, float we
         leaf.slot = leaves[i].clip;
         leaf.weight = leaves[i].weight;
         leaf.loops = stateLoops(run.state, leaves[i].clip);
-        leaf.pingPong = leaf.loops && slot.clip->getWrap() == ClipWrapMode::PingPong;
+        leaf.pingPong = leaf.loops && statePingPong(run.state, leaves[i].clip);
         leaf.from = (run.previous + offset) * length;
         leaf.to = (run.time + offset) * length;
         leaf.includeStart = run.entered;
         leaf.state = run.state;
+        leaf.next = next;
+        // the events at the start of a state entered without leading its layer (a transition's
+        // destination) fire once it leads (upstream's rule; the rest of its time fires as usual)
+        if (run.startPending && !run.entered) leaf.pendingStart = (run.start + offset) * length;
         if (leafRuns.size() < leafRuns.capacity()) leafRuns.push_back(leaf);
         if (leaderOnly && leaf.weight > leaderWeight){
             leaderWeight = leaf.weight;
@@ -1058,14 +1105,17 @@ void anim::AnimatorInstance::collectLayer(size_t layer, const AnimatorComponent&
     const bool leaderOnly = component.eventMode == AnimatorEventMode::LeaderOnly;
     float leaderWeight = 0.0f;
     int leader = -1;
-    if (!run.snapshot) collectLeaves(run.current, run.transition != -1 ? 1.0f - progress : 1.0f, leaderOnly, leaderWeight, leader);
-    if (run.transition != -1) collectLeaves(run.next, progress, leaderOnly, leaderWeight, leader);
+    if (!run.snapshot) collectLeaves(run.current, false, run.transition != -1 ? 1.0f - progress : 1.0f, leaderOnly, leaderWeight, leader);
+    if (run.transition != -1) collectLeaves(run.next, true, progress, leaderOnly, leaderWeight, leader);
     const bool additive = controller->layers[layer].blending == AnimatorLayerBlending::Additive && layer > 0;
     for (size_t i = 0; i < leafRuns.size(); i++){
         const LeafRun& leaf = leafRuns[i];
         if (!leaderOnly || (int)i == leader){
             const ClipWrapMode wrap = leaf.loops ? (leaf.pingPong ? ClipWrapMode::PingPong : ClipWrapMode::Loop) : ClipWrapMode::Once;
+            if (leaf.pendingStart >= 0.0) fireEvents(leaf.slot, wrap, leaf.pendingStart, leaf.pendingStart + 1e-6, true, leaf.state, (int)layer);
             fireEvents(leaf.slot, wrap, leaf.from, leaf.to, leaf.includeStart, leaf.state, (int)layer);
+            // its start went out (a step that did not move keeps it for the next one)
+            if (leaf.to != leaf.from) (leaf.next ? run.next : run.current).startPending = false;
         }
         if (component.applyRootMotion && !additive){
             const AnimatorClipSlot& slot = clips[(size_t)leaf.slot];
@@ -1404,7 +1454,10 @@ void anim::AnimatorInstance::sampleSlot(size_t index, float clipTime, Pose& out,
     if (!slot.hasReference || slot.referenceKind != reference || (reference == AdditiveReference::Time && slot.referenceTime != referenceTime)){
         slot.reference.copyFrom(rig.rest);
         if (reference != AdditiveReference::Rest){
-            const float at = reference == AdditiveReference::Time ? std::min(std::max(referenceTime, 0.0f), slot.length()) : 0.0f;
+            // Clip: the .anim's own additive_reference (upstream's rule; 0 = the first frame)
+            const float at = reference == AdditiveReference::Time ? std::min(std::max(referenceTime, 0.0f), slot.length())
+                           : reference == AdditiveReference::Clip ? std::min(std::max(slot.clip->getAdditiveReference(), 0.0f), slot.length())
+                           : 0.0f;
             if (slot.retargeted) sampleRetargeted(slot.retarget, *slot.clip, at, slot.reference);
             else sampleClip(slot.binding, rig, at, slot.cursors, slot.reference);
             if (component.applyRootMotion) removeRootMotion(slot, slot.reference);
@@ -1438,7 +1491,7 @@ void anim::AnimatorInstance::evaluateMotion(size_t layer, const AnimatorStateRun
     if (count == 1){
         const AnimatorClipSlot& slot = clips[(size_t)leaves[0].clip];
         const bool loops = stateLoops(run.state, leaves[0].clip);
-        const float t = clipTimeAt(normalized, slot.length(), loops, loops && slot.clip->getWrap() == ClipWrapMode::PingPong);
+        const float t = clipTimeAt(normalized, slot.length(), loops, loops && statePingPong(run.state, leaves[0].clip));
         sampleSlot((size_t)leaves[0].clip, t, out, additive, s.additiveReference, s.additiveTime, component);
         return;
     }
@@ -1448,7 +1501,7 @@ void anim::AnimatorInstance::evaluateMotion(size_t layer, const AnimatorStateRun
         const AnimatorClipSlot& slot = clips[(size_t)leaves[i].clip];
         if (!slot.ready()) continue;
         const bool loops = stateLoops(run.state, leaves[i].clip);
-        const float t = clipTimeAt(normalized, slot.length(), loops, loops && slot.clip->getWrap() == ClipWrapMode::PingPong);
+        const float t = clipTimeAt(normalized, slot.length(), loops, loops && statePingPong(run.state, leaves[i].clip));
         sampleSlot((size_t)leaves[i].clip, t, temp, additive, s.additiveReference, s.additiveTime, component);
         poseAccumulate(out, temp, leaves[i].weight);
         total += leaves[i].weight;
@@ -1495,7 +1548,31 @@ void anim::AnimatorInstance::update(const AnimatorComponent& component, const An
     const float dt = context.dt * (std::isfinite(component.speed) ? component.speed : 0.0f);
     clock += std::fabs(context.dt);
 
-    for (size_t l = 0; l < layers.size(); l++) advanceLayer(l, dt);
+    // damped targets (setFloatTarget): one SmoothDamp step per update, in the Animator's time
+    for (size_t i = 0; i < dampTimes.size() && i < parameters.size(); i++){
+        if (dampTimes[i] > 0.0f && dt != 0.0f){
+            parameters[i] = smoothDamp(parameters[i], dampTargets[i], velocities[i], dampTimes[i], std::fabs(dt));
+        }
+    }
+
+    for (size_t l = 0; l < layers.size(); l++){
+        // a layer weight fade (setLayerWeight with a fade)
+        AnimatorLayerRun& run = layers[l];
+        if (run.weightFadeSpeed > 0.0f){
+            const float step = run.weightFadeSpeed * std::fabs(dt);
+            if (run.weight < run.targetWeight) run.weight = std::min(run.targetWeight, run.weight + step);
+            else run.weight = std::max(run.targetWeight, run.weight - step);
+            if (run.weight == run.targetWeight) run.weightFadeSpeed = 0.0f;
+        }
+        advanceLayer(l, dt);
+    }
+    // the triggers this update's transitions consumed
+    for (size_t i = 0; i < consumedTriggers.size() && i < parameters.size(); i++){
+        if (consumedTriggers[i]){
+            parameters[i] = 0.0f;
+            consumedTriggers[i] = 0;
+        }
+    }
     advanceMontages(dt, component);
     for (size_t l = 0; l < layers.size(); l++) collectLayer(l, component);
 
@@ -1680,6 +1757,7 @@ size_t anim::AnimatorInstance::runtimeStateBytes() const{
     // the instance less what it holds by value that is bone- or clip-sized
     size_t bytes = sizeof(*this) - sizeof(rig) - sizeof(humanoid) - 6 * sizeof(Pose);
     bytes += parameters.capacity() * sizeof(float) + velocities.capacity() * sizeof(float);
+    bytes += dampTargets.capacity() * sizeof(float) + dampTimes.capacity() * sizeof(float);
     bytes += layers.capacity() * sizeof(AnimatorLayerRun);
     bytes += montages.capacity() * sizeof(AnimatorMontageRun);
     for (const AnimatorMontageRun& run : montages){

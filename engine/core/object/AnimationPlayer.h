@@ -27,13 +27,24 @@
 //     target's layer. A layer is a 0-based index or a name: an unknown one warns once and does
 //     nothing (getters return 0, "" or -1). Layer weight, mask and blend setters are runtime
 //     (not saved); addLayer / removeLayer are authored (the next update reloads).
-//   * with an Animator Controller (anim layers spec 11.2-11.3): the controller owns the states.
-//     play(name) jumps to "<Layer>.<State>" or "<State>" instantly (play(name, layer,
-//     normalizedTime)), crossFade(name, seconds) is a transition in seconds, blend and queue warn
-//     once and do nothing, stop() stops everything until the next play (or a disable/enable).
-//     play(name, fade[, mode]) keeps its meaning (a fade crossfades); the layer and
-//     normalized-time forms are playInLayer / crossFadeInLayer.
-//     The parameter calls need a controller (without one they warn once and return defaults).
+//   * upstream's Animation Player with an Animator Controller (docs/specs/S21-animation.md
+//     "Upstream absorption"): the controller plays on the GameObject's Animator (S21), which
+//     the scene migration adds for upstream's controller players, leaving the player disabled.
+//     A player that is not enabled on a GameObject with an Animator hands its playback calls to
+//     the Animator: play(name) jumps to "<Layer>.<State>" or "<State>" instantly (playInLayer:
+//     a layer and normalized time), play / crossFade with a fade is a transition in seconds
+//     (crossFadeInFixedTime; crossFadeInLayer on a layer), blend and queue warn once and do
+//     nothing, stop() disables the Animator until the next play (setEnabled(true) restarts it
+//     from its default states), isPlaying names the Animator's current or next states,
+//     isEnabled / setEnabled, isLoaded and the layer calls (count, names, weights with fades)
+//     are the Animator's. setController sets the Animator's controller (adding the Animator)
+//     and hands over; setController("") gives the clip list back.
+//     The parameter and state calls (setFloat... getCurrentStateInfo, isInTransition) always
+//     go to the GameObject's Animator (without one they warn once and return defaults);
+//     setFloat(name, v, dampTime) damps toward v once per update until another set. The
+//     onStateEnter / onStateExit callbacks get the Animator's states (layer index, state name),
+//     after the update's events; a handing-over player also gets its events (onEvent) and
+//     calls its scripts' onStateEnter / onStateExit methods.
 
 #ifndef ANIMATIONPLAYER_H
 #define ANIMATIONPLAYER_H
@@ -65,12 +76,13 @@ namespace jasperengine{
         size_t trackCount = 0;
     };
 
-    // Unity's AnimatorStateInfo for the Animation Player's Controller (SYNC4-ABSORB(animator): renamed from
-    // AnimatorStateInfo, which is S21's Animator type): a copy of a controller layer's current (or next) state
+    // upstream's AnimatorStateInfo of the Animation Player's controller (named ControllerStateInfo
+    // here: AnimatorStateInfo is the Animator's, object/Animator.h): a copy of the GameObject's
+    // Animator layer's current (or next) state
     struct JASPERENGINE_API ControllerStateInfo{
         bool isValid = false;
         std::string name;               // the state name (without the layer)
-        std::string fullName;           // "<Layer>.<State>"
+        std::string fullName;           // "<Layer>.<State>" (sub-state machines in between: "<Layer>.<Machine>.<State>")
         float normalizedTime = 0.0f;    // whole loops counted
         float length = 0.0f;            // seconds
         float speed = 1.0f;
@@ -217,8 +229,9 @@ namespace jasperengine{
         void stopLayer(const std::string& layer);
         void stopLayer(const std::string& layer, float fade);
 
-        // ---- Animator Controller (anim layers spec 11.3) ----
-        // the controller asset (asset-relative .controller, "" = none); setting it reloads
+        // ---- Animator Controller (upstream's player API on the GameObject's Animator) ----
+        // the Animator's controller while the player hands over to it ("" otherwise); setting
+        // one adds the Animator when missing and hands over, "" gives the clip list back
         void setController(const std::string& controller);
         std::string getController() const;
         bool hasController() const;

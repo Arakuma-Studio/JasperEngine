@@ -20,6 +20,7 @@ namespace jasperengine{
         float normalizedTime = 0.0f;    // unbounded: 2.5 = the middle of the third loop
         float length = 0.0f;            // seconds of one cycle
         bool loop = false;
+        float speed = 1.0f;             // the state's speed times its speed parameter
     };
 
     // Unity's Animator (docs/animator.md, docs/specs/S21-animation.md D16): parameters, states,
@@ -78,6 +79,8 @@ namespace jasperengine{
         std::string getLayerName(int layer) const;
         int getLayerIndex(const std::string& name) const;
         void setLayerWeight(int layer, float weight);
+        // reached linearly over `fade` seconds of the Animator's time
+        void setLayerWeight(int layer, float weight, float fade);
         float getLayerWeight(int layer) const;
 
         // a .montage (asset-relative); false when it cannot play (no layer plays its slot)
@@ -127,6 +130,9 @@ namespace jasperengine{
     private:
         anim::AnimatorInstance* runtime() const;
         void unknown(const std::string& what, const std::string& name) const;
+        // a parameter set as another type (a trigger set as a bool...): warned once per
+        // (parameter, type), the value converted
+        void mismatch(const std::string& name, AnimatorParameterType as) const;
     };
 
 }

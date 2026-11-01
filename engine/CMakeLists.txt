@@ -1270,9 +1270,8 @@ set(JASPERENGINE_SRCS
     core/animation/AnimationClip.cpp
     core/animation/AnimationClipIO.cpp
     core/animation/AnimJson.cpp
-    core/animation/AvatarMask.cpp
-    core/animation/AnimatorController.cpp
-    core/animation/AnimatorControllerPlayback.cpp
+    core/animation/AvatarMaskWeights.cpp
+    core/animation/UpstreamAnimFormats.cpp
     core/animation/AnimationEvent.cpp
     core/animation/AnimationPlayerRuntime.cpp
     core/animation/AnimatorAssetIO.cpp
@@ -1500,8 +1499,6 @@ set(JASPERENGINE_SRCS
     core/pool/MeshLodPool.cpp
     core/pool/MeshBufferPool.cpp
     core/pool/AnimationClipPool.cpp
-    core/pool/AvatarMaskPool.cpp
-    core/pool/AnimatorControllerPool.cpp
     core/pool/PhysicsMaterialPool.cpp
     core/pool/VertexAnimationPool.cpp
     core/pool/AnimatorAssetPool.cpp
@@ -1589,7 +1586,6 @@ set(JASPERENGINE_SRCS
     # systems in the ActionSystem) is out of the build; S20's ParticleSubsystem runs them
     core/subsystem/ActionSystemPlayers.cpp
     core/subsystem/ActionSystemLayers.cpp
-    core/subsystem/ActionSystemController.cpp
     core/subsystem/PoseAnimatorSystem.cpp
     core/subsystem/VertexAnimatorSystem.cpp
     core/subsystem/AnimatorSystem.cpp
