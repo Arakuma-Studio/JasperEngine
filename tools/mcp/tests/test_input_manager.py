@@ -233,7 +233,7 @@ async def test_authoring_actions_over_mcp(ed: Editor):
     ed.check_eq(asset_map(ed, asset)["actions"][-1]["name"], "Dash", "the asset's Input Manager map")
     # Window > Input Actions and edit_input_actions see the same map
     text = await ed.call("get_input_actions", path=asset)
-    ed.check_in("Input Manager", [m["name"] for m in text["maps"]], "get_input_actions")
+    ed.check_in("Input Manager", [m["name"] for m in text["asset"]["maps"]], "get_input_actions")
 
     # validated: one bad binding changes nothing
     bad = got["input.manager_actions"] + [{"name": "Bad", "bindings": [{"kind": "buttons", "positive": ["lft"]}]}]

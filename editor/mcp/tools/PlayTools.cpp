@@ -4207,19 +4207,18 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "send_input";
         tool.title = "Send Input";
         tool.description =
-            "Input into the running game over frames. events in order, each {type, ...} (first action = "
-            "default):\nkey: key (space, a, left, f1, kp_0...), action press|down|up, hold_frames (2; 0: same frame), "
-            "hold_ms, mods [shift,ctrl,alt,super]\ntext: text (UTF-8); ime: text, cursor (code points; -1 selects); "
-            "ime_commit: text; ime_cancel\nmouse_leave, mouse_enter\nmouse: action "
-            "click|double_click|down|up|move|drag|scroll, x, y (default: pointer), button left|right|middle, to "
-            "[x,y] + steps (drag), dx, dy (scroll, or move w/o x, y)\ntouch: action tap|start|move|end|cancel|swipe, "
-            "pointer, x, y, to\ntarget / to_target: a UI Document element's CSS selector (center; document: "
-            "which)\ngamepad: gamepad (0), button (a, b, dpad_up...) + action, or axis (left_x..right_trigger) + value "
-            "-1..1\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
-            "phase press|down|up|value|delta\napp: action pause|resume|focus_lost|focus_gained|low_memory|orientation "
+            "Input into the running game, over frames. events in order, {type, ...} (first action: default):\nkey: key "
+            "(space, a, f1...), action press|down|up, hold_frames (2; 0: same frame), hold_ms, mods "
+            "[shift,ctrl,alt,super]\ntext: text; ime: text, cursor; ime_commit: text; ime_cancel\n"
+            "mouse_leave, mouse_enter\nmouse: action click|double_click|down|up|move|drag|scroll, x, y (default: "
+            "pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy (scroll; move w/o x, y)\ntouch: action "
+            "tap|start|move|end|cancel|swipe, pointer, x, y, to\ntarget / to_target: UI Document element CSS selector "
+            "(document: which)\ngamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + "
+            "value\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
+            "phase (press|down|up)|value|delta\napp: action pause|resume|focus_lost|focus_gained|low_memory|orientation "
             "(+orientation)\nwait: frames, ms. release_all.\nspace: canvas px, normalized 0..1, view = Game view px. "
-            "down holds until up/release_all/stop. Returns frames, console, play state; auto_pause: only events + "
-            "frames_after run.";
+            "down holds until up/release_all/stop. Returns frames, console, play state (auto_pause: events + "
+            "frames_after only).";
         tool.inputSchema = object({
             {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500}, {"items", eventItem}}},
             {"space", withDefault(stringEnum("", {"canvas", "normalized", "view"}), "canvas")},
