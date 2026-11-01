@@ -202,6 +202,8 @@ void ObjectPoolStorage::destroyLiveObjects(void (*destroy)(void*)) noexcept{
         std::fprintf(stderr, "ObjectPool: %zu object(s) still alive when the pool is destroyed (leak)\n", liveCount);
         assert(liveCount == 0 && "objects of this ObjectPool were never destroyed");
     }
+#else
+    (void)assertNoLeaks;   // the leak check's alone
 #endif
     deriveLiveSet();
     destroying = true;

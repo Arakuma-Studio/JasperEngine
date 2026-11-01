@@ -6,7 +6,7 @@
 #include "Engine.h"
 #include "Log.h"
 #include "System.h"
-#include "render/SystemRender.h"
+#include "pool/ShaderPool.h"
 #include "log/LogSink.h"
 #include "log/Logger.h"
 
@@ -36,9 +36,9 @@ namespace {
         // start at the ready frame, so a run's frames are the same every time (how many frames
         // come before it depends on how long shaders take). Loading and drawing go on meanwhile.
         bool heldUntilReady = false;
-        // the screenshot's frame came with shaders or pipelines still being created off the
-        // render thread (spec S32): the game is held and the capture waits for them (as the
-        // editor's screenshots do), up to CAPTURE_WAIT_SECONDS
+        // the screenshot's frame came with shaders still compiling at runtime, or shaders or
+        // pipelines still being created off the render thread (spec S32): the game is held and
+        // the capture waits for them (as the editor's screenshots do), up to CAPTURE_WAIT_SECONDS
         bool captureWaiting = false;
         bool captureHeldGame = false;
         std::chrono::steady_clock::time_point captureWaitStarted;
@@ -56,7 +56,7 @@ namespace {
     bool (*gpuCreationIdleProbe)() = nullptr;
 
     bool gpuCreationIdle() {
-        return gpuCreationIdleProbe ? gpuCreationIdleProbe() : SystemRender::isGpuCreationIdle();
+        return gpuCreationIdleProbe ? gpuCreationIdleProbe() : ShaderPool::isCreationIdle();
     }
 
     // the frame a screenshot is taken at: --screenshot-frame, else --quit-after's last

@@ -23,7 +23,6 @@ using namespace jasperengine::particles;
 namespace {
 
     constexpr float kDegToRad = 0.01745329251994329577f;
-    constexpr float kTwoPi = 6.28318530717958647692f;
 
     // ---------------------------------------------------------------- the pool
 

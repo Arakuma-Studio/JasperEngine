@@ -12,8 +12,14 @@
 
 #include <CoreServices/CoreServices.h>
 #include <dispatch/dispatch.h>
+#include <fcntl.h>
+#include <unistd.h>
 
+#include <chrono>
+#include <condition_variable>
 #include <mutex>
+#include <string>
+#include <vector>
 
 using namespace jasperengine;
 
@@ -22,6 +28,14 @@ namespace fs = std::filesystem;
 namespace {
 
     constexpr CFAbsoluteTime LATENCY_SECONDS = 0.05;
+    // the barrier's marker files, in the root's own excluded folder
+    const char* const FLUSH_MARKER_FOLDER = ".jasperengine";
+    const char* const FLUSH_MARKER_PREFIX = "watch-flush-";
+    // a marker not reported this long after it was written is written again (one written while
+    // the stream was not live yet is never reported)
+    constexpr std::chrono::milliseconds MARKER_REWRITE{100};
+    // how long start() waits for its stream to report changes
+    constexpr std::chrono::milliseconds START_LIVE_TIMEOUT{2000};
 
 }
 
@@ -48,12 +62,28 @@ namespace jasperengine::watch {
         FSEventStreamRef stream = nullptr;
         dispatch_queue_t queue = nullptr;
         std::mutex flushMutex;
+        // the barrier (flush, start): the markers of the barrier in progress are those numbered
+        // from markerFloor (0: none in progress) up to markerGeneration, the last one written;
+        // markerSeen once the stream reported one of them (markerMutex, markerSeenCv)
+        std::mutex markerMutex;
+        std::condition_variable markerSeenCv;
+        uint64_t markerFloor = 0;
+        uint64_t markerGeneration = 0;
+        bool markerSeen = false;
 
         static void callback(ConstFSEventStreamRef, void* info, size_t count, void* paths, const FSEventStreamEventFlags* flags,
                              const FSEventStreamEventId*);
         void handle(size_t count, const char* const* paths, const FSEventStreamEventFlags* flags);
         // an event path in the root's own spelling
         fs::path underRoot(const fs::path& path) const;
+        // the generation of `path` when it is a marker of the barrier in progress, else 0
+        uint64_t flushMarkerOf(const fs::path& path);
+        // that marker was reported, and the events before it handed to the sink
+        void markerDelivered(uint64_t generation);
+        // writes the next marker of the barrier in progress: its path, empty when it cannot
+        fs::path writeMarker();
+        // until the stream reports a marker written now, or the deadline (flushMutex held)
+        bool barrier(std::chrono::steady_clock::time_point deadline);
     };
 
 }
@@ -101,6 +131,11 @@ bool FsEventsBackend::start(const fs::path& rootIn, WatchSink& sinkIn, std::stri
         error = "FSEventStreamStart failed";
         return false;
     }
+    // A stream that starts "since now" reports nothing until fseventsd registered it, which
+    // FSEventStreamStart does not wait for: a change in the first moments was lost now and
+    // then (FileWatcherTests.CreateModifyDeleteRename/Native on macOS 26). Started means live.
+    std::lock_guard<std::mutex> lock(flushMutex);
+    barrier(std::chrono::steady_clock::now() + START_LIVE_TIMEOUT);
     return true;
 }
 
@@ -129,6 +164,7 @@ void FsEventsBackend::callback(ConstFSEventStreamRef, void* info, size_t count, 
 void FsEventsBackend::handle(size_t count, const char* const* paths, const FSEventStreamEventFlags* flags) {
     std::vector<RawEvent> events;
     bool rootChanged = false;
+    uint64_t marker = 0;
     for (size_t i = 0; i < count; i++) {
         const fs::path path = underRoot(fs::path(paths[i]).lexically_normal());
         const FSEventStreamEventFlags flag = flags[i];
@@ -142,6 +178,10 @@ void FsEventsBackend::handle(size_t count, const char* const* paths, const FSEve
             events.push_back(RawEvent{RawEvent::Type::Rescan, inside ? path : root, {}, true});
             continue;
         }
+        if (const uint64_t generation = flushMarkerOf(path)) {
+            marker = generation;
+            continue;
+        }
         if (!probePath.empty() && path == probePath) {
             if (!(flag & kFSEventStreamEventFlagItemRemoved)) sink->onProbe();
             continue;
@@ -150,6 +190,8 @@ void FsEventsBackend::handle(size_t count, const char* const* paths, const FSEve
         events.push_back(RawEvent{RawEvent::Type::Changed, path, {}, (flag & kFSEventStreamEventFlagItemIsDir) != 0});
     }
     if (!events.empty() && !suppressForTesting) sink->onRawEvents(std::move(events));
+    // after the batch reached the sink: the flush that waits for it may return at once
+    if (marker) markerDelivered(marker);
     if (rootChanged) sink->onBackendFailed("the project folder was moved or deleted");
 }
 
@@ -160,13 +202,94 @@ fs::path FsEventsBackend::underRoot(const fs::path& path) const {
     return rel == "." ? root : (root / rel).lexically_normal();
 }
 
+uint64_t FsEventsBackend::flushMarkerOf(const fs::path& path) {
+    const std::string name = path.filename().string();
+    const size_t prefix = std::char_traits<char>::length(FLUSH_MARKER_PREFIX);
+    if (name.compare(0, prefix, FLUSH_MARKER_PREFIX) != 0 || path.parent_path() != root / FLUSH_MARKER_FOLDER) return 0;
+    uint64_t generation = 0;
+    for (size_t i = prefix; i < name.size(); i++) {
+        if (name[i] < '0' || name[i] > '9') return 0;
+        generation = generation * 10 + (uint64_t)(name[i] - '0');
+    }
+    std::lock_guard<std::mutex> lock(markerMutex);
+    return (markerFloor != 0 && generation >= markerFloor && generation <= markerGeneration) ? generation : 0;
+}
+
+void FsEventsBackend::markerDelivered(uint64_t generation) {
+    std::lock_guard<std::mutex> lock(markerMutex);
+    // a barrier that gave up meanwhile does not count for the next one
+    if (markerFloor == 0 || generation < markerFloor) return;
+    markerSeen = true;
+    markerSeenCv.notify_all();
+}
+
+fs::path FsEventsBackend::writeMarker() {
+    fs::path path;
+    {
+        std::lock_guard<std::mutex> lock(markerMutex);
+        path = root / FLUSH_MARKER_FOLDER / (FLUSH_MARKER_PREFIX + std::to_string(++markerGeneration));
+    }
+    const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    if (fd < 0) return {};
+    ::close(fd);
+    return path;
+}
+
+// FSEventStreamFlushSync alone is no barrier (S05 R7): it delivers what fseventsd holds, and a
+// write that completed just before it has usually not reached fseventsd yet (999 of 1,000
+// misses in FileWatchServiceTests.FlushBarrier on macOS 26). FSEvents delivers in event id
+// order, so once the stream reports a marker file written now, every change completed before
+// it has been delivered too. Markers are numbered: a late one of an earlier barrier is never
+// taken for this one's. Without a writable root it is the plain flush.
+bool FsEventsBackend::barrier(std::chrono::steady_clock::time_point deadline) {
+    std::error_code ec;
+    fs::create_directories(root / FLUSH_MARKER_FOLDER, ec);
+    {
+        std::lock_guard<std::mutex> lock(markerMutex);
+        markerFloor = markerGeneration + 1;
+        markerSeen = false;
+    }
+    std::vector<fs::path> written;
+    fs::path path = writeMarker();
+    if (path.empty()) {
+        std::lock_guard<std::mutex> lock(markerMutex);
+        markerFloor = 0;
+        FSEventStreamFlushSync(stream);
+        return true;
+    }
+    written.push_back(path);
+    auto rewriteAt = std::chrono::steady_clock::now() + MARKER_REWRITE;
+
+    bool seen = false;
+    while (true) {
+        // runs the callback for every event fseventsd holds before it returns
+        FSEventStreamFlushSync(stream);
+        const auto now = std::chrono::steady_clock::now();
+        {
+            std::unique_lock<std::mutex> lock(markerMutex);
+            markerSeenCv.wait_until(lock, std::min(deadline, now + std::chrono::milliseconds(2)), [this]() { return markerSeen; });
+            if (markerSeen || std::chrono::steady_clock::now() >= deadline) {
+                seen = markerSeen;
+                markerFloor = 0;
+                break;
+            }
+        }
+        if (std::chrono::steady_clock::now() >= rewriteAt) {
+            path = writeMarker();
+            if (!path.empty()) written.push_back(path);
+            rewriteAt = std::chrono::steady_clock::now() + MARKER_REWRITE;
+        }
+    }
+    for (const fs::path& marker : written) fs::remove(marker, ec);
+    return seen;
+}
+
 bool FsEventsBackend::flush(std::chrono::milliseconds timeout) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
     if (!lockWithin(flushMutex, timeout)) return false;
     std::unique_lock<std::mutex> lock(flushMutex, std::adopt_lock);
     if (!stream) return false;
-    // runs the callback for every pending event before it returns (S05 R7)
-    FSEventStreamFlushSync(stream);
-    return true;
+    return barrier(deadline);
 }
 
 void FsEventsBackend::injectOverflowForTesting() {

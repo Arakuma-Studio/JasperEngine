@@ -73,7 +73,6 @@ namespace jasperengine {
 
         double uiNow = 0;
         double gameNow = 0;
-        double lastUiTime = -1;
         double lastGameSource = 0;
         bool ticked = false;
         bool updating = false;

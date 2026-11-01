@@ -32,6 +32,7 @@
 #include "util/Util.h"
 #include "window/ProjectWindow.h"
 #include "window/Widgets.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -2846,7 +2847,7 @@ void editor::TerrainEditWindow::drawLayerSurface(TerrainComponent& terrain, int 
         // tilt measured once per file, off this thread)
         const std::string normalPath = layer.pbr && !layer.normalTexture.empty() ? layer.normalTexture.getPath(0) : std::string();
         if (layer.stochasticRotation > 0.0f && !normalPath.empty()){
-            const fs::path normalFile = project->resolveAssetPath(fs::u8path(normalPath));
+            const fs::path normalFile = project->resolveAssetPath(editor::FileUtils::pathFromUtf8(normalPath));
             const NormalMapTiltResult tilt = NormalMapTilt::request(normalFile);
             if (tilt.ready && tilt.valid && tilt.degrees >= NormalMapTilt::WARNING_DEGREES){
                 ImGui::TableNextRow();

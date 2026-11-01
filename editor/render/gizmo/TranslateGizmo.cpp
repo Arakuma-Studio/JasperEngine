@@ -127,7 +127,7 @@ editor::GizmoSideSelected editor::TranslateGizmo::checkHover(const Ray& ray){
     AABB sphereaabb = sphere->getModelMatrix() * Matrix4::scaleMatrix(Vector3(1.5, 1.5, 1.5)) * sphere->getAABB();
     AABB supersphereaabb = sphere->getModelMatrix() * Matrix4::scaleMatrix(Vector3(5, 5, 5)) * sphere->getAABB();
 
-    RayReturn rreturn[7] = {0};
+    RayReturn rreturn[7] = {};
 
     rreturn[0] = ray.intersects(xaabb);
     rreturn[1] = ray.intersects(yaabb);

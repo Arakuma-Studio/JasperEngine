@@ -45,6 +45,9 @@ namespace jasperengine{
             this->scene = scene;
         }
 
+        // virtual: a Scene holds its systems as shared_ptr<SubSystem>
+        virtual ~SubSystem() = default;
+
         SubSystem(const SubSystem&) = delete;
         SubSystem& operator=(const SubSystem&) = delete;
 

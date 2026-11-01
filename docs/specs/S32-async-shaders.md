@@ -846,3 +846,32 @@ public:
 - **Next:** build GL + Vulkan WERROR, unit tests (write the golden `async_standin_fogged`), MCP
   suite, web, android, ASan+UBSan, smoke, xcode checks, E benches (worker, Vulkan, the sync red
   control), merge oe-port, TOOLS.md, re-gate.
+### Metal on macOS (BF4, 2026-10-31)
+
+The Metal path built and ran natively (macOS 26.2, Apple silicon, CommandLineTools clang 17):
+the core GPU suites run on the default Metal device, `[gpu] shader creation: metal`, and
+`AsyncCreateGpu` passes 7 of 7. One defect was found and fixed: `SokolObject::prewarmWith` made
+the right variant's pipelines on the layout of the stand-in the object had loaded on (another set
+of vertex inputs), and Metal failed them (`METAL_CREATE_RPS_FAILED`, "Vertex attribute a_color(3)
+is missing from the vertex descriptor", `SplineGpu.RoadOnTerrain` after `RenderGpu`); a variant
+with other vertex inputs is now left to its own load. R21/R22 timing on Apple GPUs is still
+unmeasured.
+In the macOS editor the creations were never published: BackendMac's own loop did not call
+`SystemRender::updateGpuCreation()` (EditorFrame::run does, on the other backends), so a shader
+created off the render thread stayed pending and the Scene view's Lines never loaded. The Mac loop
+now does EditorFrame::run's per-frame work (BF4, 0413db955).
+
+Screenshots wait for every creation, not only the GPU's (BF4, 2026-10-31). The editor's
+`captureView` and the player's `--screenshot` (`RunControl`) waited on
+`SystemRender::isGpuCreationIdle`, which a variant still compiling is not part of: a variant on
+the runtime compiler's worker (or queued for a later frame on the main thread), and one the
+editor's ShaderBuilder is building, left the wait idle and the captured frame showed its stand-in.
+They now wait on `ShaderPool::isCreationIdle`: no runtime compile pending
+(`RuntimeShaderCompiler::getPendingCount`, which also counts a variant a compile settled this
+frame that no draw has taken yet), no ShaderBuilder build running (the builder's count, given
+with `ShaderPool::setShaderBuilder`), and the GPU creation idle. Test:
+`AsyncCreateGpu.AScreenshotWaitsForAVariantCompilingAtRuntime` (red with the GPU-only wait: the
+frame without the variant was captured). `run_build`'s timed window grab
+(`screenshot_after_seconds`, `screenshots_at`) cannot see the player's creations and does not
+wait; `test_html_ui_effects_export.py::test_desktop_player_draws_the_effects` caught the effects'
+stand-ins that way with H at load 60 and now uses the player's own capture (`screenshot_frame`).

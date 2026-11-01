@@ -1425,7 +1425,7 @@ bool PhysicsSystem::syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent
                 continue;
             }
 
-            b2Circle circle = {0};
+            b2Circle circle{};
             circle.center = toBox2DPoint(scaledPoint(shapeData.pointA));
             circle.radius = radius;
             shapeData.shape = b2CreateCircleShape(body.body, &shapeDef, &circle);
@@ -1443,7 +1443,7 @@ bool PhysicsSystem::syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent
                 continue;
             }
 
-            b2Capsule capsule = {0};
+            b2Capsule capsule{};
             capsule.center1 = toBox2DPoint(center1);
             capsule.center2 = toBox2DPoint(center2);
             capsule.radius = radius;
@@ -1456,7 +1456,7 @@ bool PhysicsSystem::syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent
                 continue;
             }
 
-            b2Segment segment = {0};
+            b2Segment segment{};
             segment.point1 = toBox2DPoint(point1);
             segment.point2 = toBox2DPoint(point2);
             shapeData.shape = b2CreateSegmentShape(body.body, &shapeDef, &segment);

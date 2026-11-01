@@ -8,6 +8,10 @@
 // linked into libjasperengine only): the tile cache's deflate compressor (stb's zlib pair, spec
 // R30), its scratch allocator and the mesh process that sets polygon flags and links.
 
+// JASPERENGINE_NAVIGATION's default, for a build that does not define it (the Xcode project):
+// tested before it, this file compiled empty there while NavMeshBuilder.cpp called into it
+#include "navigation/NavTypes.h"
+
 #if JASPERENGINE_NAVIGATION
 
 #include "navigation/NavBakeInput.h"

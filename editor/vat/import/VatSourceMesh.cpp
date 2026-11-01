@@ -272,7 +272,7 @@ namespace{
                             out.tangents.push_back((float)sign);
                         }
                         if (anyColors){
-                            ufbx_vec4 color = {{1, 1, 1, 1}};
+                            ufbx_vec4 color = {{{1, 1, 1, 1}}};
                             if (mesh->vertex_color.exists) color = ufbx_get_vertex_vec4(&mesh->vertex_color, ix);
                             out.colors.push_back((float)color.x);
                             out.colors.push_back((float)color.y);

@@ -257,7 +257,9 @@ TEST(AtomicFile, ReadOnlyRefused){
     EXPECT_EQ(result.error, io::WriteError::ReadOnlyTarget);
     EXPECT_EQ(result.attempts, 0);
     EXPECT_EQ(TestTempDir::read(target), "checked in");
-    EXPECT_EQ(fs::last_write_time(target), mtime);
+    // clock ticks: gtest would print time points with C++20 chrono formatting, unavailable
+    // below macOS 13.3 (the engine's deployment target is 12.0)
+    EXPECT_EQ(fs::last_write_time(target).time_since_epoch().count(), mtime.time_since_epoch().count());
     EXPECT_TRUE(temporarySiblings(dir.path()).empty());
     EXPECT_NE(io::describeWriteError(result).find("read-only"), std::string::npos);
 }
@@ -302,7 +304,7 @@ TEST(AtomicFile, UnchangedKeepsMtime){
     EXPECT_EQ(same.error, io::WriteError::Unchanged);
     EXPECT_TRUE(same.ok());
     EXPECT_FALSE(same.written());
-    EXPECT_EQ(fs::last_write_time(target), past);
+    EXPECT_EQ(fs::last_write_time(target).time_since_epoch().count(), past.time_since_epoch().count());   // ticks, as above
 
     const io::WriteResult changed = io::writeFileAtomic(target, "different", options);
     EXPECT_EQ(changed.error, io::WriteError::None);

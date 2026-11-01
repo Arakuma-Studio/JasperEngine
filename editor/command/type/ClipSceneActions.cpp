@@ -75,7 +75,7 @@ namespace {
     // a project-relative .anim path to write: inside the project, .anim
     bool checkClipPath(Project* project, const std::string& clipPath, fs::path& absolute, std::string& error){
         if (clipPath.empty()) return fail(error, "no clip path given (a project-relative .anim path, e.g. assets/anim/walk.anim)");
-        fs::path given = fs::u8path(clipPath);
+        fs::path given = editor::FileUtils::pathFromUtf8(clipPath);
         absolute = (given.is_absolute() ? given : project->getProjectPath() / given).lexically_normal();
         const fs::path relative = project->normalizeToProjectRelative(absolute);
         const std::string text = FileUtils::pathToGenericUtf8(relative);
@@ -131,7 +131,7 @@ namespace {
             if (anim::isSubClipReference(entry.clip)){
                 if (!anim::buildModelSubClip(entry.clip, data, ignored, &failure)) continue;
             }else{
-                const anim::ClipParseResult parsed = anim::parseClip(readText(project->resolveAssetPath(fs::u8path(entry.clip))));
+                const anim::ClipParseResult parsed = anim::parseClip(readText(project->resolveAssetPath(editor::FileUtils::pathFromUtf8(entry.clip))));
                 if (!parsed.ok()) continue;
                 data = *parsed.data;
             }
@@ -277,7 +277,7 @@ std::string ClipSceneActions::newClipText(Project* project, ClipData data, const
     std::string guid;
     if (!keepGuidOf.empty()){
         std::string text;
-        if (readWholeFile(fs::u8path(keepGuidOf), text)) guid = anim::readClipGuid(text);
+        if (readWholeFile(editor::FileUtils::pathFromUtf8(keepGuidOf), text)) guid = anim::readClipGuid(text);
     }
     if (!anim::isClipGuid(guid)){
         const AssetDatabase* database = project ? &project->getAssetDatabase() : nullptr;
@@ -328,7 +328,7 @@ bool ClipSceneActions::runStep(Project* project, uint32_t sceneId, const std::ve
                                std::vector<Command*> commands, Entity playerRoot, ClipActionResult& result, std::string& error){
     std::vector<CreateClipCmd::File> written;
     for (const auto& file : files){
-        fs::path path = fs::u8path(file.first);
+        fs::path path = editor::FileUtils::pathFromUtf8(file.first);
         if (!path.is_absolute()) path = project->getProjectPath() / path;
         written.push_back({path.lexically_normal(), file.second});
     }
@@ -617,13 +617,13 @@ bool ClipSceneActions::addClipsToPlayer(Project* project, uint32_t sceneId, Enti
             }
             continue;
         }
-        std::string extension = fs::u8path(clip).extension().string();
+        std::string extension = editor::FileUtils::pathFromUtf8(clip).extension().string();
         std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c){ return (char)std::tolower(c); });
         if (extension != ".anim"){
             return fail(error, "'" + clip + "' is not an animation clip (.anim, a model file, or \"<model>#<clip>\")");
         }
         AnimationPlayerClip entry = ClipConverters::playerEntry(project, clip);
-        const fs::path file = project->resolveAssetPath(fs::u8path(entry.clip));
+        const fs::path file = project->resolveAssetPath(editor::FileUtils::pathFromUtf8(entry.clip));
         std::error_code ec;
         if (!fs::is_regular_file(file, ec)) return fail(error, "'" + clip + "' does not exist");
         if (!project->isInsideAssetsPath(file)) return fail(error, "'" + clip + "' is outside the assets folder");
@@ -687,7 +687,7 @@ void ClipSceneActions::stopPreviewsFor(uint32_t sceneId, std::vector<Entity> roo
 std::string ClipSceneActions::askNewClipPath(Project* project, const std::string& directory, const std::string& name){
     fs::path start = project->getProjectPath();
     if (!directory.empty()){
-        const fs::path given = fs::u8path(directory);
+        const fs::path given = editor::FileUtils::pathFromUtf8(directory);
         const fs::path absolute = (given.is_absolute() ? given : start / given).lexically_normal();
         const fs::path relative = project->normalizeToProjectRelative(absolute);
         if (!relative.empty() && !relative.is_absolute() && FileUtils::pathToGenericUtf8(relative).compare(0, 2, "..") != 0){
@@ -697,7 +697,7 @@ std::string ClipSceneActions::askNewClipPath(Project* project, const std::string
     const std::string chosen = FileDialogs::saveFileDialog(FileUtils::pathToGenericUtf8(start), (name.empty() ? "New Animation" : name) + ".anim",
                                                            FILE_DIALOG_ANIMATION_CLIP);
     if (chosen.empty()) return "";
-    fs::path path = fs::u8path(chosen);
+    fs::path path = editor::FileUtils::pathFromUtf8(chosen);
     std::string extension = path.extension().string();
     std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c){ return (char)std::tolower(c); });
     if (extension != ".anim") path += ".anim";
@@ -707,7 +707,7 @@ std::string ClipSceneActions::askNewClipPath(Project* project, const std::string
 std::string ClipSceneActions::subClipDirectory(Project* project, const std::string& subClip){
     anim::SubClipReference reference;
     if (!project || !anim::parseSubClipReference(subClip, reference)) return "";
-    const fs::path modelFile = project->resolveAssetPath(fs::u8path(reference.model));
+    const fs::path modelFile = project->resolveAssetPath(editor::FileUtils::pathFromUtf8(reference.model));
     const fs::path directory = project->normalizeToProjectRelative(modelFile.parent_path());
     const std::string text = FileUtils::pathToGenericUtf8(directory);
     if (directory.is_absolute() || text.compare(0, 2, "..") == 0) return "";

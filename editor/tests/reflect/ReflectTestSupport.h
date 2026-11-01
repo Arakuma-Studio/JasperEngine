@@ -61,7 +61,7 @@ namespace jasperengine::editor::test {
 
         std::string text() {
             static const char* const samples[] = {"", "a", "Hello, YAML: [1, 2]", "with \"quotes\"", "true", "123", "~", "- dash",
-                "#hash", "multi\nline", "\xC3\xBC" "mlaut", "  padded  ", "textures/a.png", "a/b/c.html"};
+                "#hash", "multi\nline", "\xC3\xBCmlaut", "  padded  ", "textures/a.png", "a/b/c.html"};
             return samples[integer(0, static_cast<int>(std::size(samples)) - 1)];
         }
 

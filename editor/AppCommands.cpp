@@ -74,7 +74,7 @@ void editor::App::registerCommands(){
     // Duplicate, Delete and Rename leave the Project window and the Jobs & Memory panel to
     // their own keys (as before the catalog)
     auto notAssetPanel = [this]() { return !projectWindow->isFocused() && !jobsMemoryWindow->isFocused(); };
-    auto noDrag = [this]() { return !ImGui::IsMouseDown(ImGuiMouseButton_Right) && !ImGui::IsAnyItemActive(); };
+    auto noDrag = []() { return !ImGui::IsMouseDown(ImGuiMouseButton_Right) && !ImGui::IsAnyItemActive(); };
     // the scene's editing keys stay off while the Animation window editing a clip or the Pose
     // Animation window (or a Scene view posing for it) has the keys: F2 would move the focus to
     // the Inspector's name, Delete / Ctrl+D act on the poses and the clip keys there

@@ -257,7 +257,7 @@ std::string projectRel(Project* project, const fs::path& absolute) {
 
 // preview_model is stored relative to the assets folder (as model files are); tools show it project-relative
 fs::path previewModelFile(Project* project, const PoseAnimationData& data) {
-    return project->resolveAssetPath(fs::u8path(data.previewModel)).lexically_normal();
+    return project->resolveAssetPath(editor::FileUtils::pathFromUtf8(data.previewModel)).lexically_normal();
 }
 
 std::string previewModelPath(Project* project, const PoseAnimationData& data) {
@@ -1204,7 +1204,7 @@ bool resolveAnimationPath(Project* project, const Json& args, std::string& relat
         return false;
     }
     relative = args["path"].get<std::string>();
-    if (lower(fs::u8path(relative).extension().string()) != ".poseanim") {
+    if (lower(editor::FileUtils::pathFromUtf8(relative).extension().string()) != ".poseanim") {
         error = "path: '" + relative + "' must end in .poseanim";
         return false;
     }
@@ -1336,7 +1336,7 @@ bool readBakeClip(Project* project, const Json& bake, bool& toClip, std::string&
     if (!bake.contains("clip") || bake["clip"].is_null() || (bake["clip"].is_boolean() && !bake["clip"].get<bool>())) return true;
     toClip = true;
     if (bake["clip"].is_boolean()) return true;
-    if (!bake["clip"].is_string() || lower(fs::u8path(bake["clip"].get<std::string>()).extension().string()) != ".anim") {
+    if (!bake["clip"].is_string() || lower(editor::FileUtils::pathFromUtf8(bake["clip"].get<std::string>()).extension().string()) != ".anim") {
         error = "bake.clip must be true (a clip next to the pose animation) or a project-relative .anim path (e.g. assets/anim/walk.anim).";
         return false;
     }
@@ -1578,7 +1578,7 @@ void editPoseAnimationTool(const CallPtr& call) {
         }
     }
     for (const auto& [file, text] : state.templateFiles) {
-        extras.push_back({fs::u8path(file), text});
+        extras.push_back({editor::FileUtils::pathFromUtf8(file), text});
         std::string existing;
         std::error_code ec;
         if (!fs::is_regular_file(extras.back().path, ec) || !ProjectChecks::readFile(extras.back().path, existing) || existing != text) {
@@ -1885,7 +1885,7 @@ void renderPoseAnimationTool(const CallPtr& call) {
         }
         info = PoseRigProvider::forSceneModel(project, scene->scene, entity);
         const std::string& file = scene->scene->getComponent<ModelComponent>(entity).filename;
-        modelFile = project->resolveAssetPath(fs::u8path(file)).lexically_normal();
+        modelFile = project->resolveAssetPath(editor::FileUtils::pathFromUtf8(file)).lexically_normal();
         modelJson = McpRefs::entityJson(scene, entity);
     } else {
         if (data.previewModel.empty()) {
@@ -1942,7 +1942,7 @@ void renderPoseAnimationTool(const CallPtr& call) {
     fs::path saveTarget;
     if (args.contains("save_path")) {
         const std::string savePath = args["save_path"].is_string() ? args["save_path"].get<std::string>() : std::string();
-        if (lower(fs::u8path(savePath).extension().string()) != ".png") {
+        if (lower(editor::FileUtils::pathFromUtf8(savePath).extension().string()) != ".png") {
             call->fail("save_path must be a project-relative .png path.");
             return;
         }

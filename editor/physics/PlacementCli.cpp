@@ -139,7 +139,7 @@ namespace jasperengine::editor {
                     o.help = true;
                 } else if (arg == "-p" || arg == "--project") {
                     if (!need()) return false;
-                    o.project = CommandLine::projectArgPath(fs::u8path(value));
+                    o.project = CommandLine::projectArgPath(editor::FileUtils::pathFromUtf8(value));
                 } else if (arg == "-s" || arg == "--scene") {
                     if (!need()) return false;
                     o.scene = value;
@@ -447,7 +447,7 @@ namespace jasperengine::editor {
         // A scene of the project by name, file name or path (absolute, relative to the current
         // directory, else to the project)
         SceneProject* findScene(Project& project, const std::string& ref) {
-            const fs::path refPath = fs::u8path(ref);
+            const fs::path refPath = editor::FileUtils::pathFromUtf8(ref);
             std::error_code ec;
             fs::path asPath = CommandLine::absoluteArgPath(refPath);
             if (refPath.is_relative() && !fs::is_regular_file(asPath, ec)) {
