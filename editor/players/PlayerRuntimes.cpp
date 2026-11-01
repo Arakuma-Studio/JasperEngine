@@ -163,7 +163,8 @@ const PlayerVariant& PlayerRuntimes::variantFor(const std::vector<std::string>& 
         const bool holds = std::all_of(modules.begin(), modules.end(), [&](const std::string& m) {
             return std::find(variant.modules.begin(), variant.modules.end(), m) != variant.modules.end();
         });
-        if (holds && variant.modules.size() < best->modules.size()) best = &variant;
+        // (a tie goes to the later one: variants.json lists them from the largest to the smallest)
+        if (holds && variant.modules.size() <= best->modules.size()) best = &variant;
     }
     return *best;
 }

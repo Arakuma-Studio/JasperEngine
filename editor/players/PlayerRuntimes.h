@@ -75,7 +75,7 @@ namespace jasperengine::editor {
         // when it cannot be read), the full one first
         static const std::vector<PlayerVariant>& variants();
         // The release variant a project needing these modules ships with: the one of fewest
-        // modules holding all of them (the full player always does)
+        // modules holding all of them (the full player always does), of those the last listed
         static const PlayerVariant& variantFor(const std::vector<std::string>& modules);
         // the editor's version, and whether it is a release (an exact v<major>.<minor>.<patch>)
         static std::string editorVersion();

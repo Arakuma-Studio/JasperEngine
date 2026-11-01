@@ -87,8 +87,8 @@ navigation meshes. The build finds what the project reaches:
 A prebuilt build then uses the smallest player variant with those modules: `full`, `ui` (no
 video), `core` (no HTML UI), `lite3d` (3D physics and navigation only) or `lite2d` (2D physics and
 navigation only); a release runtime's id ends with the variant (`linux-x64-glcore-release-lite3d`).
-When the variant that fits is not installed the build uses the best installed one and warns
-`W-PLAYER-VARIANT` with the id to download. A Compile build leaves the same modules out of what
+When a variant of fewer modules than the installed ones would fit, the build uses the best
+installed one and warns `W-PLAYER-VARIANT` with the id to download. A Compile build leaves the same modules out of what
 it compiles (a source export and a project with C++ scripts keep every module their settings
 allow). The player checks the modules its content needs when it starts (exit 5 when one is
 missing), and so does the build before it ships.

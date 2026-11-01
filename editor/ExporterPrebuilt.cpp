@@ -373,7 +373,13 @@ bool editor::Exporter::selectPlayerVariant() {
                  (PlayerRuntimes::isReleaseEditor() ? " (Build Settings > Download)" : " (tools/build.sh players)"));
         return false;
     }
-    if (best->id != fittingId && best->shippedBytes > 0) {
+    // only when a variant of fewer modules than the chosen one holds the project and is missing
+    // (of two that hold it with as many modules, the installed one is as good)
+    const size_t bestModules = std::count_if(player::allModules().begin(), player::allModules().end(), [&](const std::string& module) {
+        return std::find(best->features.begin(), best->features.end(), module) != best->features.end();
+    });
+    const bool fittingInstalled = std::any_of(installed.begin(), installed.end(), [&](const PlayerInfo& info) { return info.id == fittingId; });
+    if (!fittingInstalled && fitting.modules.size() < bestModules && best->shippedBytes > 0) {
         warn("W-PLAYER-VARIANT", "the smaller player " + fittingId + " fits this project (modules: " + [&]() {
                  std::string list;
                  for (const std::string& module : fitting.modules) list += (list.empty() ? "" : " ") + module;
@@ -771,7 +777,14 @@ bool editor::Exporter::writeContentManifest(bool prebuilt) {
     manifest.method = prebuilt ? "prebuilt" : "compile";
     manifest.backend = config.graphicBackend.empty() ? getCMakeGraphicBackend(*config.selectedBackends.begin()) : normalizeBackend(config.graphicBackend);
     manifest.allowPlayerMismatch = config.allowPlayerMismatch;
+    // the start scene game.json names (writeGameConfig): the first scene when the project's start
+    // scene is none of its scenes (a project.yaml without startScene)
     manifest.startScene = config.startSceneId != 0 ? config.startSceneId : project->getStartSceneId();
+    {
+        const std::vector<SceneProject>& scenes = project->getScenes();
+        const bool known = std::any_of(scenes.begin(), scenes.end(), [&](const SceneProject& scene) { return scene.id == manifest.startScene; });
+        if (!known && !scenes.empty()) manifest.startScene = scenes.front().id;
+    }
     // the modules the content needs (S34 R3): a player without one of them refuses to start
     manifest.modules = prebuilt ? moduleUsage.list() : compiledModules();
     manifest.hasModules = true;

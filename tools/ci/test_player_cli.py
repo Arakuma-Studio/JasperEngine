@@ -21,11 +21,13 @@ image of docker/runtime.Dockerfile:
   one reload: pthreads player), without them and with the service worker blocked (single-thread
   player), and a build with Web: Multithreaded off has no -mt files and runs single-thread.
 - variants (S34 AC3, AC5): tools/fixtures/unified-lighting (scripts that build meshes: no HTML UI),
-  atmosphere (no scripts: no HTML UI, no runtime shader compiler) and the upgrade fixture
-  tools/test-projects/upgrade-from-main/project (HTML UI documents without video, physics,
+  atmosphere (no scripts, no physics: no HTML UI, no runtime shader compiler) and the upgrade
+  fixture tools/test-projects/upgrade-from-main/project (HTML UI documents without video, physics,
   scripts) built for Linux glcore get the player variant their modules need (no
-  W-PLAYER-VARIANT), which leaves modules out; built with the full player alone they warn
-  W-PLAYER-VARIANT and use it; both run headless to the same frame, pixel for pixel.
+  W-PLAYER-VARIANT), which leaves modules out; atmosphere also with the full player and lite3d
+  alone (it takes lite3d, with no warning: no variant of fewer modules is missing); built with the
+  full player alone they warn W-PLAYER-VARIANT and use it; each variant's build and the full
+  player's run headless to the same frame, pixel for pixel.
 - fallback (AC3): tools/fixtures/prefab-runtime (C++ scripts) reports `method: compile` and
   `compile_reason: C++ scripts (...)`, and here fails with `needs a C++ toolchain`; with
   --method prebuilt it fails listing the reasons.
@@ -272,7 +274,9 @@ def check_variants(args, players: Path, out: Path) -> None:
     shutil.rmtree(full_only, ignore_errors=True)
     full_only.mkdir(parents=True)
     (full_only / full_id).symlink_to(players / full_id, target_is_directory=True)
-    expected = {"unified-lighting": "core", "atmosphere": "lite3d", "upgrade-from-main": "ui"}
+    # the variant each fixture gets from every installed variant, then the others it also runs
+    # with when they are the only variant installed next to the full player
+    expected = {"unified-lighting": ["core"], "atmosphere": ["lite2d", "lite3d"], "upgrade-from-main": ["ui"]}
     sources = {"unified-lighting": FIXTURES / "unified-lighting", "atmosphere": FIXTURES / "atmosphere",
                "upgrade-from-main": REPO / "tools/test-projects/upgrade-from-main/project"}
 
@@ -284,32 +288,43 @@ def check_variants(args, players: Path, out: Path) -> None:
         if pngdiff.flat(pngdiff.load(shot), tolerance=8):
             raise Failure(f"{exe}: the frame is one colour (nothing drawn): {shot}")
 
+    def with_variant(variant_id: str) -> Path:  # a players directory with the full player and this variant
+        directory = out / f"players-{variant_id}"
+        shutil.rmtree(directory, ignore_errors=True)
+        directory.mkdir(parents=True)
+        for runtime in (full_id, variant_id):
+            (directory / runtime).symlink_to(players / runtime, target_is_directory=True)
+        return directory
+
     with Xvfb():
-        for fixture, variant in expected.items():
-            variant_id = f"{full_id}-{variant}"
-            if not (players / variant_id).is_dir():
-                raise Failure(f"no {variant_id} in {players}: run tools/build.sh players (every release variant)")
-            project = fresh_copy(sources[fixture], out / f"variant-{fixture}-project")
-            stripped = build(args.editor, players, project, out / f"variant-{fixture}", "linux", "--backend", "glcore")
-            if lines(stripped, "player") != [variant_id] or "W-PLAYER-VARIANT" in stripped.stdout:
-                raise Failure(f"{fixture}: expected the player {variant_id}:\n{stripped.stdout}")
-            left_out = lines(stripped, "left_out")[0].split()
-            if not left_out or left_out == ["none"]:
-                raise Failure(f"{fixture}: {variant_id} left nothing out:\n{stripped.stdout}")
-            print(f"ok: {fixture} -> {variant_id} (modules: {lines(stripped, 'modules')[0]}; left out: {' '.join(left_out)})")
-            for reason in lines(stripped, "module"):
-                print(f"    module: {reason}")
+        for fixture, variants in expected.items():
             whole = build(args.editor, full_only, fresh_copy(sources[fixture], out / f"full-{fixture}-project"), out / f"full-{fixture}",
                           "linux", "--backend", "glcore")
-            if lines(whole, "player") != [full_id] or f"W-PLAYER-VARIANT: the smaller player {variant_id} fits" not in whole.stdout:
-                raise Failure(f"{fixture}: with the full player alone expected it and W-PLAYER-VARIANT naming {variant_id}:\n{whole.stdout}")
-            shots = {}
-            for name, result in (("variant", stripped), ("full", whole)):
-                shots[name] = out / f"{name}-{fixture}.png"
-                frame(Path(lines(result, "executable")[0]), shots[name])
-            run([sys.executable, REPO / "tools/mcp/pngdiff.py", shots["variant"], shots["full"], "--tolerance", "0", "--max-fraction", "0",
-                 "--diff", out / f"variant-{fixture}-diff.png"])
-            print(f"ok: {fixture}: {variant_id} and {full_id} draw the same frame")
+            first_id = f"{full_id}-{variants[0]}"
+            if lines(whole, "player") != [full_id] or f"W-PLAYER-VARIANT: the smaller player {first_id} fits" not in whole.stdout:
+                raise Failure(f"{fixture}: with the full player alone expected it and W-PLAYER-VARIANT naming {first_id}:\n{whole.stdout}")
+            full_shot = out / f"full-{fixture}.png"
+            frame(Path(lines(whole, "executable")[0]), full_shot)
+            for index, variant in enumerate(variants):
+                variant_id = f"{full_id}-{variant}"
+                if not (players / variant_id).is_dir():
+                    raise Failure(f"no {variant_id} in {players}: run tools/build.sh players (every release variant)")
+                source_players = players if index == 0 else with_variant(variant_id)
+                project = fresh_copy(sources[fixture], out / f"variant-{fixture}-{variant}-project")
+                stripped = build(args.editor, source_players, project, out / f"variant-{fixture}-{variant}", "linux", "--backend", "glcore")
+                if lines(stripped, "player") != [variant_id] or "W-PLAYER-VARIANT" in stripped.stdout:
+                    raise Failure(f"{fixture}: expected the player {variant_id}:\n{stripped.stdout}")
+                left_out = lines(stripped, "left_out")[0].split()
+                if not left_out or left_out == ["none"]:
+                    raise Failure(f"{fixture}: {variant_id} left nothing out:\n{stripped.stdout}")
+                print(f"ok: {fixture} -> {variant_id} (modules: {lines(stripped, 'modules')[0]}; left out: {' '.join(left_out)})")
+                for reason in lines(stripped, "module"):
+                    print(f"    module: {reason}")
+                shot = out / f"variant-{fixture}-{variant}.png"
+                frame(Path(lines(stripped, "executable")[0]), shot)
+                run([sys.executable, REPO / "tools/mcp/pngdiff.py", shot, full_shot, "--tolerance", "0", "--max-fraction", "0",
+                     "--diff", out / f"variant-{fixture}-{variant}-diff.png"])
+                print(f"ok: {fixture}: {variant_id} and {full_id} draw the same frame")
 
 
 def check_fallback(args, players: Path, out: Path) -> None:

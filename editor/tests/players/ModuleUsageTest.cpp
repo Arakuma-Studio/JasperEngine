@@ -362,7 +362,9 @@ TEST(PlayerVariants, TheSmallestVariantHoldingTheModules) {
     EXPECT_EQ(variants.front().modules, player::allModules());
     EXPECT_EQ(PlayerRuntimes::variantFor({"physics3d", "navigation"}).name, "lite3d");
     EXPECT_EQ(PlayerRuntimes::variantFor({"physics2d"}).name, "lite2d");
-    EXPECT_EQ(PlayerRuntimes::variantFor({}).name == "lite3d" || PlayerRuntimes::variantFor({}).name == "lite2d", true);
+    // of two with as many modules, the later (smaller) one
+    EXPECT_EQ(PlayerRuntimes::variantFor({}).name, "lite2d");
+    EXPECT_EQ(PlayerRuntimes::variantFor({"navigation"}).name, "lite2d");
     EXPECT_EQ(PlayerRuntimes::variantFor({"runtimeshaders", "physics3d"}).name, "core");
     EXPECT_EQ(PlayerRuntimes::variantFor({"htmlui", "physics2d"}).name, "ui");
     EXPECT_EQ(PlayerRuntimes::variantFor({"htmlui", "video"}).name, "full");
