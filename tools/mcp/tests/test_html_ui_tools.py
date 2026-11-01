@@ -155,8 +155,9 @@ LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 
 # merged by the lead (guide-headroom + anim-layers): provisional, re-measured on the merged tree
 # safe area (spec 6.7): configure_game_view's device_overlay, safe_area_outline, custom_device and
 # safe_area, screenshot's device_overlay / safe_area_in_image, create_ui / create_entity safe_area,
-# get_play_state's safe_area (+390 on its branch); measured on the merged tree below
-TOTAL_LIMIT = 112600
+# get_play_state's safe_area (+390 on its branch); measured on the tree merged with main (fda5c0d0f:
+# everything above): 153 tools, total 112291 (tool_budget.py)
+TOTAL_LIMIT = 112300
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
