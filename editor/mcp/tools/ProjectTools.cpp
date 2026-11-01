@@ -32,6 +32,8 @@
 #include "command/type/InputActionsCmd.h"
 #include "input/InputActions.h"
 #include "registry/TagManager.h"
+#include "command/type/ShaderGlobalsCmd.h"
+#include "util/ShaderGlobalsJson.h"
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
@@ -42,10 +44,12 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 #include <cctype>
 #include <chrono>
 #include <fstream>
 #include <functional>
+#include <map>
 #include <memory>
 #include <set>
 #include <sstream>
@@ -1042,6 +1046,88 @@ Setting inputActionsSetting() {
     return s;
 }
 
+// Project Settings > Graphics > Shader Globals: the list (replaced whole) and one global by name
+// (upsert, null removes), each change one undo step of the project history
+constexpr const char* kShaderGlobalsKey = "graphics.shader_globals";
+
+bool applyShaderGlobals(McpContext& ctx, const std::vector<ShaderGlobalDecl>& decls, const std::map<std::string, std::string>& renames,
+                        std::string& error) {
+    Project* p = ctx.project();
+    if (decls == p->getShaderGlobals()) return true;
+    auto* command = new ShaderGlobalsCmd(p, p->getShaderGlobals(), decls, renames);
+    command->setNoMerge();
+    if (!p->getProjectCommandHistory()->addCommand(command)) {
+        error = "the shader globals could not be applied";
+        return false;
+    }
+    return true;
+}
+
+Setting shaderGlobalsSetting() {
+    Setting s;
+    s.key = kShaderGlobalsKey;
+    s.type = "list";
+    s.description =
+        "Project Settings > Graphics > Shader Globals: global shader values (Lua Shader.setGlobal*) with their defaults, "
+        "read by shaders declaring u_vs_globals / u_fs_globals members (or a texture uniform) of the same name. Each "
+        "{name, type: float|vector2|vector3|vector4|color|matrix4|float_array|vector4_array|texture2d|texturecube, "
+        "array_size (arrays, 1-64), default}: color \"#RRGGBB[AA]\" or [r,g,b,a] sRGB, vectors [x,y,...], matrix4 16 "
+        "numbers column-major, arrays N values, textures an asset path. Setting it replaces the list; "
+        "graphics.shader_globals.<name> upserts one ({type, default, array_size, name: renames}; null removes). The "
+        "read result adds glsl_vs / glsl_fs, the blocks to paste. Undoable. Details: jasper://docs/shaders#global-values.";
+    s.get = [](McpContext& ctx) { return ShaderGlobalsJson::listToJson(ctx.project()->getShaderGlobals()); };
+    s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+        std::vector<ShaderGlobalDecl> decls;
+        if (!value.is_null() && !ShaderGlobalsJson::listFromJson(value, decls, error)) return false;
+        return !apply || applyShaderGlobals(ctx, decls, {}, error);
+    };
+    return s;
+}
+
+// graphics.shader_globals.<name>: {type, default, array_size} (a missing field keeps the current
+// one), name: a rename (bindings follow), null: removed
+Setting shaderGlobalSetting(const std::string& name) {
+    Setting s;
+    s.key = std::string(kShaderGlobalsKey) + "." + name;
+    s.type = "object";
+    s.description = "One shader global of graphics.shader_globals: {type, default, array_size}; name renames it; null removes it.";
+    s.get = [name](McpContext& ctx) {
+        for (const ShaderGlobalDecl& decl : ctx.project()->getShaderGlobals()) {
+            if (decl.name == name) {
+                Json json = ShaderGlobalsJson::declToJson(decl);
+                json.erase("name");
+                return json;
+            }
+        }
+        return Json();
+    };
+    s.set = [name](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+        std::vector<ShaderGlobalDecl> decls = ctx.project()->getShaderGlobals();
+        auto it = std::find_if(decls.begin(), decls.end(), [&name](const ShaderGlobalDecl& d) { return d.name == name; });
+        std::map<std::string, std::string> renames;
+        if (value.is_null()) {
+            if (it == decls.end()) {
+                error = "no shader global is named \"" + name + "\"";
+                return false;
+            }
+            decls.erase(it);
+        } else {
+            ShaderGlobalDecl decl;
+            if (!ShaderGlobalsJson::declFromJson(value, decl, error, name, it != decls.end() ? &*it : nullptr)) return false;
+            if (it != decls.end()) {
+                if (decl.name != name) renames[name] = decl.name;
+                *it = decl;
+            } else {
+                decls.push_back(decl);
+            }
+            error = ShaderGlobals::validate(decls);
+            if (!error.empty()) return false;
+        }
+        return !apply || applyShaderGlobals(ctx, decls, renames, error);
+    };
+    return s;
+}
+
 const std::vector<Setting>& settingsTable() {
     static const std::vector<Setting> table = [] {
         std::vector<Setting> t;
@@ -1457,6 +1543,7 @@ const std::vector<Setting>& settingsTable() {
             };
             add(s);
         }
+        add(shaderGlobalsSetting());
         add(boolSetting("graphics.runtime_shaders", "Builds carry the runtime shader compiler for variants not shipped precompiled (scripted meshes/materials). Off makes builds smaller and faster to compile.",
                         [](Project& p) { return p.isRuntimeShadersEnabled(); }, [](Project& p, bool v) { p.setRuntimeShadersEnabled(v); }));
         add(boolSetting("quality.vsync", "VSync in the built player.",
@@ -1877,6 +1964,14 @@ const Setting* findSetting(const std::string& key) {
     for (const Setting& s : settingsTable()) {
         if (s.key == key) return &s;
     }
+    // one shader global by name (made for the key on first use)
+    const std::string prefix = std::string(kShaderGlobalsKey) + ".";
+    if (key.size() > prefix.size() && key.compare(0, prefix.size(), prefix) == 0) {
+        static std::map<std::string, Setting> perGlobal;
+        auto it = perGlobal.find(key);
+        if (it == perGlobal.end()) it = perGlobal.emplace(key, shaderGlobalSetting(key.substr(prefix.size()))).first;
+        return &it->second;
+    }
     return nullptr;
 }
 
@@ -1965,6 +2060,14 @@ void getProjectSettingsTool(const CallPtr& call) {
     }
     Json data = {{"settings", values}};
     if (describe) data["describe"] = schema;
+    // the shader globals' declarations to paste into a shader (one block per stage)
+    const bool globalsAsked = std::any_of(selected.begin(), selected.end(), [](const Setting* s) {
+        return s->key.compare(0, std::strlen(kShaderGlobalsKey), kShaderGlobalsKey) == 0;
+    });
+    if (globalsAsked && !ctx.project()->getShaderGlobals().empty()) {
+        data["glsl_vs"] = ShaderGlobals::getGlslBlock(ctx.project()->getShaderGlobals(), ShaderStageType::VERTEX);
+        data["glsl_fs"] = ShaderGlobals::getGlslBlock(ctx.project()->getShaderGlobals(), ShaderStageType::FRAGMENT);
+    }
     if (!args.contains("keys") && args.value("category", "").empty()) {
         data["note"] = "Platform overrides (web, linux, windows, macos, ios, android) and input (input.actions) are left "
                        "out: pass category or keys.";

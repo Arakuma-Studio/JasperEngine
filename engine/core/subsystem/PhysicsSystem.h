@@ -548,7 +548,7 @@ namespace jasperengine{
 		// the contact listener's points for Physics.debugDrawContacts (any thread)
 		void recordDebugContact3D(const JPH::ContactManifold& manifold);
 
-		// The size of the 3D worlds made from now on (project setting physics3D): bodies, body
+		// The size of the 3D worlds made from now on (project setting physics3DWorld): bodies, body
 		// pairs and contact constraints. Defaults 8192 / 8192 / 8192 (a world takes 3.6 MB with them, Physics3DBodyTest). A world past one of them
 		// reports it once with the setting to raise.
 		static void setWorldCapacity3D(unsigned int maxBodies, unsigned int maxBodyPairs, unsigned int maxContactConstraints);
