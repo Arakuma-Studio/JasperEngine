@@ -189,6 +189,25 @@ async def test_capture_profile(ed: Editor):
     ed.check(ui["profiler"]["target"] != 0, "its target is the loaded capture")
 
 
+async def test_capture_game_view_passes(ed: Editor):
+    """A capture taken while playing: view "game" (the engine's frame then) lists the Game view's
+    camera passes with their times, as the real-GPU benches read them (docs/perf/gpu-campaign.md)."""
+    scene = await red_scene(ed)
+    await ed.call("play", action="start", scene=scene)
+    try:
+        await ed.call("wait", frames=30)
+        r = await ed.call("capture_profile", frames=30, gpu=True)
+        game = await ed.call("get_gpu_passes", view="game", capture_id=r["capture_id"])
+        every = await ed.call("get_gpu_passes", capture_id=r["capture_id"])
+    finally:
+        await ed.call("play", action="stop")
+    labels = [p["label"] for p in game["passes"]]
+    ed.check(game["frames_with_gpu"] > 10 and any("camera" in label for label in labels),
+             f"the Game view's camera passes: {labels} over {game.get('frames_with_gpu')} frames")
+    ed.check(set(labels) <= {p["label"] for p in every["passes"]}, f"no view has the game's passes: {every['passes']}")
+    ed.check(game["frame_gpu_ms"] and game["frame_gpu_ms"]["median"] > 0, f"the Game view's GPU time: {game['frame_gpu_ms']}")
+
+
 async def test_frame_times_spikes(ed: Editor):
     """A script that busy-waits every 30th frame (AC11: 50 ms; here 1-2 s of wall clock, os.time's
     resolution, so a slow software-rendered frame of a loaded build server, up to a few hundred ms,

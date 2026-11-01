@@ -8,6 +8,8 @@
 -- forces a tier; SHADOWS_STATIC=<n> and SHADOWS_DYNAMIC=<n> set the static and dynamic caster
 -- counts (default 2000 and 20: with 0 dynamic casters and a still camera every shadow slot is
 -- cached, and the frame has no shadow pass at all; JASPERENGINE_FRAME_STATS=1 lists its passes).
+-- SHADOWS_LIGHTS=sun keeps only the sun and SHADOWS_SUN=none|hard|soft sets its shadow (default
+-- soft): the "receiver, full-screen sun" row is the camera pass with soft against none.
 -- Every 120 frames the game logs its frame rate and the shadow tier it renders.
 local Shadows = { properties = {} }
 
@@ -54,9 +56,11 @@ function Shadows:init()
     sun.type = LightType.DIRECTIONAL
     sun:setDirection(-0.45, -1.0, -0.35)
     sun.intensity = 2.5
-    sun.shadowType = ShadowType.SOFT
+    local SUN_SHADOWS = { none = ShadowType.NONE, hard = ShadowType.HARD, soft = ShadowType.SOFT }
+    sun.shadowType = SUN_SHADOWS[os.getenv("SHADOWS_SUN") or ""] or ShadowType.SOFT
+    local otherLights = os.getenv("SHADOWS_LIGHTS") ~= "sun"
 
-    for i = 0, 3 do
+    for i = 0, otherLights and 3 or -1 do
         local spot = keep(Light(scene))
         spot.type = LightType.SPOT
         spot.position = Vector3(-12 + i * 8, 7, -4 + (i % 2) * 8)
@@ -67,7 +71,7 @@ function Shadows:init()
         spot.shadowType = (i % 2 == 0) and ShadowType.SOFT or ShadowType.HARD
     end
 
-    for i = 0, 1 do
+    for i = 0, otherLights and 1 or -1 do
         local point = keep(Light(scene))
         point.type = LightType.POINT
         point.position = Vector3(-6 + i * 12, 3.5, 6)

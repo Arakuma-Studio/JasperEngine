@@ -99,3 +99,23 @@ On this software renderer the 200-sphere scenes are bound by the vertex work (23
 within 1%, High within 0-3.4% of Standard. Transmission costs 2.4x: every transmissive sphere
 draws in the transparent queue over the scene-colour copy. Absolute and fragment-bound
 numbers (the R13 ratios, hex terrain against the 1.35x bound) come from the GPU campaign.
+
+### AC11 on a GPU (GPU campaign: RTX 3080 Ti, GL, 3840x2160, S15 GPU pass timers, 5 runs)
+
+`tools/perf/gpu_campaign.py pbr --size 3840 2160`, the Game view's GPU time in ms (docs/perf/gpu-campaign.md):
+
+| Scene | Standard | vs Lit Baseline | R13 | High / Standard |
+|---|---|---|---|---|
+| Lit Baseline | 0.648 | | | 1.079 (≤ 1.05) |
+| Lobes Off | 0.647 | -0.2 % | ≤ +2 % | 1.082 |
+| Lobe Clearcoat | 0.788 | +21.6 % | ≤ +25 % | 1.025 |
+| Lobe Sheen | 0.755 | +16.5 % | ≤ +15 % | 1.103 |
+| Lobe Anisotropy | 0.720 | +11.1 % | ≤ +15 % | 1.122 |
+| Lobe Iridescence | 0.823 | +27.0 % | ≤ +30 % | 1.075 |
+| Lobe Specular | 0.705 | +8.8 % | ≤ +3 % | 1.054 |
+| Lobe Transmission | 1.982 | +205.9 % (scene-colour copy included) | ≤ +20 % excluding it | 1.047 |
+| Lobe Hex | 1.222 | +88.6 % | ≤ 3x the hexed maps' taps | 1.025 |
+| Terrain Baseline | 1.173 | | | 1.038 |
+| Hex Terrain | 6.056 | 5.16x the terrain | ≤ 1.35x | 1.012 |
+
+Over: Sheen, Specular/IOR and High quality by a few points, and the hex terrain by 4x (open).

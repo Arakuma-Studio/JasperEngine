@@ -463,6 +463,9 @@ per-file header, so we add the OE copyright line to each copied file.
 9. **AC23 (device budget)** was not measured: no Mali-G57 / Adreno 610 class phone is available to
    this stream and the emulator's GPU is the host's. The shader costs are bounded statically
    (AC12) instead; the measurement remains for a device run with S15 timings.
+   GPU campaign (desktop only, RTX 3080 Ti, GL, the post-processing fixture at 1920x1080, S15 pass
+   timers, 5 runs): the Game view costs 0.25-0.27 ms with any preset; `film` and `vhs` cost -0.002 /
+   -0.008 ms over `mobile`, within noise. The phone budget itself stays pending.
 10. **Exports ship `licenses/post-fx-LICENSE.txt`** (from `engine/shaderlib/includes/LICENSE.post-fx.txt`:
     punikonta's, the film-simulation package's with AMD's, and OpenEngine's notices) when a shipped
     uber variant has VHS, film damage or the Lens / Filmic grain, as the shaders.com notice ships with

@@ -106,7 +106,7 @@ namespace jasperengine::editor {
     struct ShaderCreationProjectSettings {
         bool asyncCreation = true;
         float mainThreadBudgetMs = 2.0f;     // 0.5-16
-        bool glWarmDraws = false;
+        bool glWarmDraws = true;             // desktop hardware GL (S32, GPU campaign)
         bool recordDuringPlay = false;       // the editor's Play records the warm-up list
         bool includeInBuilds = true;         // exports build and ship the list's variants
         bool holdFirstScene = true;          // a game's first scene waits for the list

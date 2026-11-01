@@ -21,8 +21,11 @@ namespace jasperengine {
         // the render thread's share of finishing creations, per frame (one always finishes)
         float mainThreadBudgetMs = 2.0f;
         // GL with a worker context: draw a new program and state once there before the frame uses
-        // them, so the driver's first-draw compile happens on the worker
-        bool glWarmDraws = false;
+        // them, so the driver's first-draw compile happens on the worker. On by default since the
+        // GPU campaign (NVIDIA GL: an 8 ms first-draw compile per new variant moved off the render
+        // thread); desktop GL only (GLES waits for a device run; JASPER_GL_WARM_DRAWS=1 allows it),
+        // never on a software GL
+        bool glWarmDraws = true;
         // a game replaying its shader warm-up list (ShaderWarmup) reports its scenes loaded only
         // once the list is ready, so the loading screen covers it
         bool holdFirstSceneForWarmup = true;

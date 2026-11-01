@@ -167,6 +167,9 @@ Json renderStatsJson(uint32_t tag, const std::string& viewName){
     const GpuTimingState gpu = SystemRender::getGpuTimingState();
     Json gpuJson = gpuStateJson(gpu);
     gpuJson["frame_ms"] = stats.gpuFrameValid ? Json(round3(stats.gpuFrameMs)) : Json(nullptr);
+    // the device the frames render on (GL_RENDERER or the Vulkan device): benches record it
+    gpuJson["backend"] = SystemRender::getBackendName();
+    gpuJson["device"] = SystemRender::getDeviceName();
     return Json{
         {"view", viewName},
         {"view_tag", tag == FRAME_TAG ? -1 : (long long)tag},

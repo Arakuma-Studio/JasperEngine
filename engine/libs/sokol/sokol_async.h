@@ -75,6 +75,12 @@ typedef struct sgj_gl_program {
 // glCompileShader x2 and glLinkProgram, without reading a status (vertex and fragment only:
 // false for a compute shader, which takes the synchronous path)
 bool sgj_gl_issue(const sg_shader_desc* desc, sgj_gl_program* out);
+// glMaxShaderCompilerThreadsKHR/ARB(0xFFFFFFFF) on the current context, where the extension is
+// listed: the driver's compile threads (NVIDIA starts with none). SokolAsyncCreate calls it on the
+// render thread's context in parallel mode only: with a worker context, NVIDIA's link on the worker
+// then returns before the program is built (the setting reaches the share group), and the render
+// thread's first draw of it waits for the build; false when not available
+bool sgj_gl_enable_compile_threads(void);
 // GL_COMPLETION_STATUS_KHR of the program (never waits); true without the extension
 bool sgj_gl_is_complete(const sgj_gl_program* prog);
 // Reads the link status (a wait if the driver is not done) and, linked, hands the program to

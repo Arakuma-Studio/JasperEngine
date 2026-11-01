@@ -757,3 +757,9 @@ one line pointing here.
   adds no component field to S08's reflection tables; its reflection goldens take S16's project
   settings, generated render options and shader key (d7848f9e6); `inspect_ui` is 44 characters
   shorter so the default listing fits (6e2e283bc).
+- **GPU campaign (RTX 3080 Ti, GL).** `HtmlUIRenderPerf` drew nothing since S32: the documents'
+  pipelines were still being created through every measured frame (llvmpipe too), so the benches
+  compared empty frames. They now wait until creation is idle over 5 drawn frames. On the GPU (5
+  runs): B2 1,115 -> 3 draws, engine 1.40 -> 0.30 ms (21 %), frame 3.10 -> 0.36 ms; B3 39 -> 1 draw;
+  B6 as B2. R24 has no pass-level GPU number (the HTML UI harness has no GPU pass timers); the frame
+  with the GPU idle at its start is 8.6x faster than the baseline's.
