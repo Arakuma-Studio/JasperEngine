@@ -123,8 +123,12 @@ TEST(Physics2DReview, OldColliderOverrideNamesAreMigratedAndCopied) {
 
         // a single point by its current name
         instance.getComponent<Rigidbody2DComponent>(instanceRoot).colliders[0].points[1] = Vector2(1.5f, 2.5f);
+        prefab.getComponent<Rigidbody2DComponent>(prefabRoot).needUpdateColliders = false;
         Catalog::copyPropertyValue(&instance, instanceRoot, &prefab, prefabRoot, ComponentType::Rigidbody2DComponent, "colliders[0].points[1]");
         EXPECT_EQ(prefab.getComponent<Rigidbody2DComponent>(prefabRoot).colliders[0].points[1], Vector2(1.5f, 2.5f));
+        // a name only the lookup resolves (not enumerated) still applies its update flags: the
+        // shapes are rebuilt (they were read from the end() iterator of the enumerated names)
+        EXPECT_TRUE(prefab.getComponent<Rigidbody2DComponent>(prefabRoot).needUpdateColliders);
     }
 }
 
