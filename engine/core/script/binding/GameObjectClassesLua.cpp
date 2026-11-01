@@ -50,7 +50,7 @@
 #include "Scrollbar.h"
 #include "Progressbar.h"
 #include "InputField.h"
-#include "OnScreenControls.h"
+#include "object/ui/OnScreenControls.h"
 
 #include <algorithm>
 #include "LayoutGroup.h"
