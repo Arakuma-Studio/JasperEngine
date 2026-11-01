@@ -176,6 +176,9 @@ namespace jasperengine {
         static void update(double scaledDt, double unscaledDt);
         // the unscaled delta of the current frame (fades with unscaled time)
         static double getFrameUnscaledDelta();
+        // the unscaled seconds of every frame so far (monotonic): a clocked voice starts at it, so
+        // sounds played in the frames one output buffer spans start as far apart as those frames
+        static double getClockTime();
 
         static float dbToLinear(float db);
         static float linearToDb(float linear);

@@ -693,7 +693,8 @@ unsigned int AudioSystem::startVoice(AudioSourceComponent& audio, SoLoud::AudioS
     }
 
     const bool clocked = mainVoice && audio.enableClocked;
-    unsigned int handle = AudioMixer::play(audio.resolvedGroup, sample, use3D, position, volume, clocked, Engine::getDeltatime());
+    // the game time it was played at: SoLoud delays it from the first clocked start of the buffer
+    unsigned int handle = AudioMixer::play(audio.resolvedGroup, sample, use3D, position, volume, clocked, AudioMixer::getClockTime());
     if (handle == 0) return 0;
 
     applyVoiceParameters(audio, handle, mainVoice, use3D);

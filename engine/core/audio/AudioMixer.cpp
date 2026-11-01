@@ -99,6 +99,8 @@ namespace {
         bool built = false;
         bool masterPaused = false;
         double frameUnscaled = 0.0;
+        // the unscaled time of every frame so far: the clock clocked voices start on
+        double clock = 0.0;
         unsigned int voiceLimitChanges = 0;
         unsigned int filterBuilds = 0;
         float sampleRate = 44100.0f;
@@ -1110,6 +1112,7 @@ void AudioMixer::update(double scaledDt, double unscaledDt){
     ensureInitialized();
     State& s = state();
     s.frameUnscaled = unscaledDt;
+    if (unscaledDt > 0.0) s.clock += unscaledDt;
     advance(scaledDt, unscaledDt);
     applyAll(unscaledDt);
 
@@ -1132,6 +1135,10 @@ void AudioMixer::update(double scaledDt, double unscaledDt){
 
 double AudioMixer::getFrameUnscaledDelta(){
     return state().frameUnscaled;
+}
+
+double AudioMixer::getClockTime(){
+    return state().clock;
 }
 
 float AudioMixer::dbToLinear(float db){
