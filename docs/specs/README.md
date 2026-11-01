@@ -100,3 +100,9 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 | S30 | Shipping: prebuilt-player export (no compiler), headless player flags, publish/verify pipeline | 3 |
 | S31 | Agent tooling: `jasperengine-editor call <tool>` CLI, contributor AGENTS.md/CLAUDE.md | 3 |
 | S32 | Asynchronous shader and pipeline creation: GL worker context + warm draws, KHR_parallel_shader_compile, Vulkan pipeline cache, Metal/D3D11 async, stand-ins, warm-up list | 3 |
+| S35 | Agent audio: deterministic game-time audio driver, Play capture, `audio_session` report and sound-QA checks, Recorder on one tap | 4A (sound; spec-first) |
+| S36 | Sound library and generator: `analyze_audio`, `generate_sound`, 40-clip essentials, 927-clip CC0 starter library (editor only), audio import settings and provenance in `.meta`, export credits, `search_sounds` | 4A (sound; spec-first) |
+| S37 | Sound Events (`.soundevent`, GUID in `.meta`), gameplay triggers, Lua `Audio` API and `SoundHandle`, Sound Browser, `edit_sound_event` | 4A (sound; spec-first) |
+| S38 | Loudness: `AudioMeter` (LUFS, true peak), true-peak lookahead `limiter`, new-project mixer and audio defaults | 4A (sound; M1 first) |
+| S39 | Music system: tracks and playlists, tempo, bars and beats, quantized transitions with snapshots, stingers, tempo detection | 4B (sound; spec-first) |
+| S40 | Timeline audio: audio cues on animation clips for the Animation Player, Animator and montages | 4B (sound; spec-first) |
