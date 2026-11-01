@@ -130,8 +130,8 @@ LIMITS.update({"create_ragdoll": 900})
 # merged by the lead (shader-globals + platform-services): provisional sum, re-measured on the merged tree
 # audio mixer (spec 2026-10-31-audio-mixer 10): the audio_mixer tool (get / edit with ops; the ops and effect
 # parameters in jasper://docs/audio) and get_play_state's audio block (+725 on its branch); measured on the
-# tree merged with main: MEASURED
-TOTAL_LIMIT = 108160
+# tree merged with main (shader-globals, platform-services): 152 tools, total 108947, the limit set to it
+TOTAL_LIMIT = 108947
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
