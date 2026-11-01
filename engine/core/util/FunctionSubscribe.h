@@ -298,6 +298,23 @@ namespace jasperengine {
             return add(tag, std::function<Ret(Args...)>(*t.get()));
         }
 
+        // A probe of the subscription `tag` (empty when there is none): true while some copy of
+        // this event still lists it (not removed, cleared or destroyed with its component)
+        std::function<bool()> subscriptionProbe(const std::string& tag) const {
+            if (subscribers) {
+                for (const auto& subscriber : *subscribers) {
+                    if (subscriber->tag == tag && !subscriber->removed) {
+                        std::weak_ptr<Subscriber> weak = subscriber;
+                        return [weak]() {
+                            std::shared_ptr<Subscriber> alive = weak.lock();
+                            return alive && !alive->removed;
+                        };
+                    }
+                }
+            }
+            return {};
+        }
+
         bool remove(const std::string& tag){
             for (size_t i = 0; subscribers && i < subscribers->size(); i++) {
                 if ((*subscribers)[i]->tag == tag) {

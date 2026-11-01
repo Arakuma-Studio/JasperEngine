@@ -889,6 +889,7 @@ endif()
 
 set(JASPERENGINE_SRCS
     core/Engine.cpp
+    core/EngineTime.cpp
     core/Input.cpp
     core/input/InputActions.cpp
     core/input/InputControlNames.cpp
@@ -981,6 +982,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/vector/LottiePlayback.cpp
     core/htmlui/vector/UIElementLottie.cpp
     core/htmlui/vector/UILottieElement.cpp
+    core/htmlui/controls/OnScreenControls.cpp
     core/htmlui/media/Av1Decoder.cpp
     core/htmlui/media/UIElementVideo.cpp
     core/htmlui/media/OpusAudioDecoder.cpp
@@ -1067,6 +1069,7 @@ set(JASPERENGINE_SRCS
     core/object/environment/Skybox.cpp
     core/object/environment/Water.cpp
     core/object/ui/Button.cpp
+    core/object/ui/OnScreenControls.cpp
     core/object/ui/LayoutGroup.cpp
     core/object/ui/CanvasGroup.cpp
     core/object/ui/Image.cpp
@@ -1126,6 +1129,7 @@ set(JASPERENGINE_SRCS
     core/script/LuaJson.cpp
     core/script/LuaScript.cpp
     core/script/ScriptBase.cpp
+    core/script/ScriptScheduler.cpp
     core/script/ScriptEvent.cpp
     core/script/ScriptMessages.cpp
     core/script/ScriptProperty.cpp
@@ -1144,6 +1148,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/UtilClassesLua.cpp
     core/script/binding/HtmlUIClassesLua.cpp
     core/script/binding/HtmlUIAnimeLua.cpp
+    core/script/binding/CoroutineClassesLua.cpp
     core/script/binding/ScriptClassesLua.cpp
     core/shader/RuntimeShaderCompiler.cpp
     core/shader/ShaderData.cpp
@@ -1177,6 +1182,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/PhysicsSystemDebugDraw.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/UISystem.cpp
+    core/subsystem/UISystemPointer.cpp
     core/subsystem/UIDocumentSystem.cpp
     core/subsystem/UIDocumentSystemRender.cpp
     core/subsystem/UIDocumentSystemInput.cpp

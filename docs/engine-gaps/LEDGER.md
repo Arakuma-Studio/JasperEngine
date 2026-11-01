@@ -198,3 +198,11 @@ origin/main).
   2D-only export would fail) -> physics-3d agent fixing, also checking PHYSICS_2D=OFF and both OFF. audio-mixer
   review: 2 high (live mixer edits reallocating SoLoud voice buffers -> dropouts; voice limit beyond SoLoud's 255
   -> audio-thread overflow / Windows break), fixes in progress.
+- 2026-11-01: merged locally (not pushed): physics-contacts, particles, ui-canvas-group's resave fix,
+  ui-multitouch, coroutines (lead resolved ScriptMessages enum/strings for particles + pointer callbacks, focus loss
+  releasing input AND cancelling UI pointers with one onFocus call, Engine time statics, stub generator blocks; the
+  ScriptMessages static_assert now < 64). Mac check of the batch through physics-contacts: iOS and macOS 0 errors.
+  Push blocked only on the physics-3d fix for builds with 3D physics OFF. The agent guide hit 16383/16384 bytes:
+  new task `guide-headroom` restructures it to ~15 KB (details to docs/mcp/guide). New task `asan-sweep`: the unit
+  suite under ASan+UBSan with root-cause fixes (leads: a stack-use-after-scope in Catalog::copyPropertyValue
+  from physics-2d's override migration; a heap error once in PersistenceTest).

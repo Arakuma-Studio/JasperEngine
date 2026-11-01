@@ -192,6 +192,8 @@ void SceneManager::runFactory(uint32_t id) {
     }
 
     currentId = id;
+    // Time.timeSinceLevelLoad counts from this load
+    Engine::markLevelLoad();
     const bool nested = factoryRunning;
     factoryRunning = true;
     std::vector<Scene*> nestedUnloading = std::move(unloadingScenes);
@@ -423,6 +425,7 @@ bool SceneManager::isCoveredByLoading(Scene* scene) {
 void SceneManager::setCurrentScene(uint32_t id) {
     pendingId.reset();
     currentId = id;
+    Engine::markLevelLoad();
     loadingState = LoadingState::Loading;
     resetLoadProgress();
 }
@@ -846,6 +849,14 @@ uint32_t SceneManager::getSceneId(const std::string& name) {
 std::string SceneManager::getSceneName(uint32_t id) {
     const SceneEntry* entry = findEntry(id);
     return entry ? entry->name : "";
+}
+
+std::string SceneManager::getSceneNameOf(const Scene* scene) {
+    if (!scene) return "";
+    for (const auto& [id, ptr] : scenePtrs) {
+        if (ptr == scene) return getSceneName(id);
+    }
+    return "";
 }
 
 std::vector<std::string> SceneManager::getSceneNames() {

@@ -25,7 +25,7 @@ Prefab = .prefab asset (PrefabComponent on the instance root; PrefabAsset in scr
 Mesh Filter/Renderer = MeshComponent (Primitive for box/sphere/plane...). Sprite Renderer =
 SpriteComponent. Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent
 (Box2D). Collider = an entry of the Rigidbody's colliders list, not a separate component.
-Most others: Unity's name + "Component" (AudioSourceComponent, Light2DComponent...).
+Most others: Unity's name + "Component" (AudioSourceComponent...).
 Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequences).
 
 ## Addressing
@@ -126,24 +126,25 @@ return Player
 - Lifecycle by name: init (Awake: first activation, even disabled), onEnable, start,
   onDisable, onDestroy; self.enabled; obj:getScript("Enemy") (lua-api 1.1). Survive loads:
   DontDestroyOnLoad(self); singleton: if GameObject.persistSingleton(self)~=self then return end
-- Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
-  Engine.deltatime ("attempt to call a nil value": no such method). Check
+- Bound getters are often PROPERTIES: go.position, sprite.width, body.mass, Engine.deltatime
+  ("attempt to call a nil value": no such method). Check
   jasper://docs/lua-api (an index), the Lua stubs or search_engine_api for unseen names.
 - Input.getAxis/getButtonDown('Jump') read Project Settings > Input actions; getKeyDown(key)
   is an edge, isKeyPressed held. Test with send_input action/axis events (jasper://docs/input).
   Log.print/warn/error take ONE string (use ..).
-- Time: Engine.timeScale, fixedDeltatime (rw), gameTime, frameCount. No C++ default args.
+- Time.deltaTime/unscaledDeltaTime; waits: self:startCoroutine(fn) + Coroutine.wait;
+  timers: self:invoke. No C++ default args.
 - Saves: PlayerPrefs, Json, File.writeText("data://x") (lua-api 2.4; tool user_settings).
   HTTP: Http.get/post, main-thread callbacks (jasper://docs/networking).
-- Lua has no Dori.Script, getComponent, setProperty or timers. Never put editor property
-  paths (submeshes[0]...) in scripts.
+- No Dori.Script, getComponent or setProperty in Lua; no editor property paths
+  (submeshes[0]...) in scripts.
 
 ## C++ scripts
 Two kinds (create_script): a ScriptBase subclass, or a subclass of the GameObject's own class
 (Mesh, Primitive, Sprite, ...) to call its methods on `this`. No reflection macros
 (GENERATED_BODY, GDCLASS): inherit, declare a (jasperengine::Scene*, jasperengine::Entity)
 constructor, expose fields with DPROPERTY("Speed") (DPROPERTY("Tint", Color4) for colors).
-Includes are flat and quoted ("ScriptBase.h", "Engine.h", "Input.h", "Log.h", "Mesh.h"), never
+Includes are flat and quoted ("ScriptBase.h", "Engine.h", "Mesh.h"), never
 <core/...>. Override init/start/onEnable/onDisable/onDestroy as in Lua.
 REGISTER_ENGINE_EVENT(onUpdate) in the constructor or init, UNREGISTER_ENGINE_EVENT in the
 destructor; components: REGISTER_BUTTON_EVENT / REGISTER_UI_EVENT / REGISTER_COMPONENT_EVENT
@@ -151,7 +152,7 @@ destructor; components: REGISTER_BUTTON_EVENT / REGISTER_UI_EVENT / REGISTER_COM
 DEGREES: Quaternion(angle, axis); std::sin/cos want radians (Angle::defaultToRad). Script
 directories are include roots compiled whole (a build runs only with a C++ script attached);
 build settings go in ProjectBuild.cmake, never the generated CMakeLists.txt.
-compile_scripts reports errors without playing. More: jasper://docs/cpp-scripting.
+More: jasper://docs/cpp-scripting.
 
 ## Play and time
 - play: start, stop, pause, resume, step (frames), restart; clock options with any action (or
@@ -161,7 +162,7 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   sends send_input events while it waits.
 - run_build runs an exported desktop player (input events, screenshots_at seconds); returns
   its errors (Lua too) and the log tail.
-- Simulated focus, pause, rotation, language, URLs: jasper://docs/platform-services.
+- Simulate focus, pause, rotation, language: jasper://docs/platform-services.
 
 ## 2D and 3D
 - 2D: sprites, tilemaps, UI; units are points (canvas pixels, y up), 64 per Box2D meter
@@ -178,7 +179,9 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   Player (jasper://docs/animation).
 - Crowds: bake_vertex_animation (preview, then output) makes a .vat played on the GPU by a
   Vertex Animator (jasper://docs/vertex-animation).
-- UI (text, image, button, panel, layout group...; HTML/CSS: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
+- UI (text, image, button, panel, layout group...; onscreen_stick/onscreen_button/touch_area feed
+  Input actions; onPointerDown(e)...: lua-api 1.7; HTML/CSS: below):
+  create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
   and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
   UI camera: put HUDs and menus in a child UI scene (set_child_scene). Fade, disable or
   click-through a UI subtree: Canvas Group (jasper://docs/ui).

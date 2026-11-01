@@ -2290,13 +2290,16 @@ void ActionSystem::updateActionPreview(double dt, Entity entity){
 // The unscaled frame delta of an update given the scaled one. While the time scale is above 0
 // it is dt / timeScale (the frame delta before the scale, exact for any dt a caller steps
 // with); at time scale 0 it is the frame delta the engine measured (the fixed frame delta
-// when set, else the last frame's, capped like Engine::deltatime).
-// TODO(coroutines): Engine::getUnscaledDeltatime() replaces the time scale 0 case when the
-// coroutines feature (which adds it) is on main.
+// when set, else the last frame's, capped like Engine::deltatime): Engine::getUnscaledDeltatime(),
+// or, for an update stepped outside an engine frame, the same value worked out here.
 double ActionSystem::unscaledDeltatime(double dt){
     const double timeScale = Engine::getTimeScale();
     if (timeScale > 0.0){
         return dt / timeScale;
+    }
+    const double frameUnscaled = Engine::getUnscaledDeltatime();
+    if (frameUnscaled > 0.0){
+        return frameUnscaled;
     }
     if (Engine::getFixedDeltatime() > 0.0){
         return Engine::getFixedDeltatime();

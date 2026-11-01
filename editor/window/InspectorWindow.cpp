@@ -15,6 +15,7 @@
 #include "util/Util.h"
 #include "util/UIUtils.h"
 #include "util/FileDialogs.h"
+#include "script/ScriptScheduler.h"
 #include "util/FileUtils.h"
 #include "window/CodeEditor.h"
 #include "subsystem/UIDocumentSystem.h"
@@ -3559,9 +3560,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
 
         bool inputChanged = false;
+        const bool suggestions = settings.stringSuggestions && type == RowPropertyType::String;
         if (type == RowPropertyType::MultilineString){
             inputChanged = ImGui::InputTextMultiline(("##input_string_"+id).c_str(), buffer.data(), buffer.size(), ImVec2(0, ImGui::GetTextLineHeight() * 6));
         }else{
+            if (suggestions)
+                ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemInnerSpacing.x));
             inputChanged = ImGui::InputText(("##input_string_"+id).c_str(), buffer.data(), buffer.size());
         }
 
@@ -3573,6 +3577,27 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         }
         if (dif)
             ImGui::PopStyleColor();
+
+        if (suggestions){
+            ImGui::SameLine(0, ImGui::GetStyle().ItemInnerSpacing.x);
+            const std::string popupId = "string_suggestions_" + id;
+            if (ImGui::ArrowButton(("##suggest_" + id).c_str(), ImGuiDir_Down))
+                ImGui::OpenPopup(popupId.c_str());
+            if (ImGui::BeginPopup(popupId.c_str())){
+                if (settings.stringSuggestions->empty() && settings.suggestionsEmpty)
+                    ImGui::TextDisabled("%s", settings.suggestionsEmpty);
+                for (const std::string& option : *settings.stringSuggestions){
+                    if (ImGui::Selectable(option.c_str(), !dif && option == newValue)){
+                        for (Entity& entity : entities){
+                            cmd = new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, id, option, settings.onValueChanged);
+                            CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                        }
+                        finishProperty = true;
+                    }
+                }
+                ImGui::EndPopup();
+            }
+        }
 
     }else if (type == RowPropertyType::Bool){
         bool* value = nullptr;
@@ -7924,6 +7949,161 @@ void editor::InspectorWindow::drawProgressbarComponent(ComponentType cpType, Sce
     endTable();
 }
 
+namespace {
+    // the project's Input action names, axes first (the stick's and touch area's dropdowns)
+    std::vector<std::string> inputActionNames(const editor::Project* project, bool axesFirst){
+        std::vector<std::string> names;
+        for (int pass = 0; pass < 2; pass++){
+            for (const InputAction& action : project->getInputActions()){
+                const bool axis = action.type == InputActionType::Axis;
+                if ((pass == 0) == (axis == axesFirst) && std::find(names.begin(), names.end(), action.name) == names.end())
+                    names.push_back(action.name);
+            }
+        }
+        return names;
+    }
+
+    const char* const noInputActions = "No actions: Project Settings > Input";
+}
+
+void editor::InspectorWindow::drawOnScreenStickComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    static std::vector<editor::EnumEntry> entriesMode = {
+        { (int)OnScreenStickMode::FIXED, "Fixed" },
+        { (int)OnScreenStickMode::FLOATING, "Floating" },
+        { (int)OnScreenStickMode::DYNAMIC, "Dynamic" }
+    };
+    static std::vector<editor::EnumEntry> entriesAxes = {
+        { (int)OnScreenStickAxes::BOTH, "Both" },
+        { (int)OnScreenStickAxes::HORIZONTAL, "Horizontal" },
+        { (int)OnScreenStickAxes::VERTICAL, "Vertical" }
+    };
+    static std::vector<editor::EnumEntry> entriesVisibility = {
+        { (int)OnScreenVisibility::ALWAYS, "Always" },
+        { (int)OnScreenVisibility::TOUCH_DEVICES_ONLY, "Touch Devices Only" }
+    };
+    const std::vector<std::string> actions = inputActionNames(project, true);
+
+    RowSettings settings;
+    RowSettings settingsMode;
+    settingsMode.enumEntries = &entriesMode;
+    settingsMode.help = "Fixed: the base stays. Floating: it appears under the finger. Dynamic: it also follows the finger past Move Threshold (Joystick Pack).";
+    RowSettings settingsAxes;
+    settingsAxes.enumEntries = &entriesAxes;
+    RowSettings settingsVisibility;
+    settingsVisibility.enumEntries = &entriesVisibility;
+    settingsVisibility.help = "Touch Devices Only hides it where System.isTouchDevice() is false (the Game view's Simulate Touch counts as touch).";
+    RowSettings settingsRange;
+    settingsRange.stepSize = 0.01f;
+    settingsRange.secondColSize = 6 * ImGui::GetFontSize();
+    RowSettings settingsDead = settingsRange;
+    settingsDead.help = "|input| at or below this reads 0 (in radii of the base).";
+    RowSettings settingsThreshold = settingsRange;
+    settingsThreshold.help = "Dynamic: the base follows the finger once it is this far out (radii).";
+    RowSettings settingsAction;
+    settingsAction.stringSuggestions = &actions;
+    settingsAction.suggestionsEmpty = noInputActions;
+    RowSettings settingsEntity;
+    settingsEntity.entityFilter.set(sceneProject->scene->getComponentId<ImageComponent>());
+
+    beginTable(cpType, getLabelSize("Horizontal Action"));
+    propertyRow(RowPropertyType::Enum, cpType, "mode", "Mode", sceneProject, entities, settingsMode);
+    propertyRow(RowPropertyType::LocalEntity, cpType, "background", "Background", sceneProject, entities, settingsEntity);
+    propertyRow(RowPropertyType::LocalEntity, cpType, "handle", "Handle", sceneProject, entities, settingsEntity);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "handleRange", "Handle Range", sceneProject, entities, settingsRange);
+    propertyRow(RowPropertyType::Float_0_1, cpType, "deadZone", "Dead Zone", sceneProject, entities, settingsDead);
+    propertyRow(RowPropertyType::Enum, cpType, "axes", "Axis Options", sceneProject, entities, settingsAxes);
+    propertyRow(RowPropertyType::Bool, cpType, "snapX", "Snap X", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::Bool, cpType, "snapY", "Snap Y", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "moveThreshold", "Move Threshold", sceneProject, entities, settingsThreshold);
+    propertyRow(RowPropertyType::Bool, cpType, "hideWhenReleased", "Hide Released", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::Bool, cpType, "clampToArea", "Clamp To Area", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::String, cpType, "horizontalAction", "Horizontal Action", sceneProject, entities, settingsAction);
+    propertyRow(RowPropertyType::String, cpType, "verticalAction", "Vertical Action", sceneProject, entities, settingsAction);
+    propertyRow(RowPropertyType::Enum, cpType, "visibility", "Visibility", sceneProject, entities, settingsVisibility);
+    endTable();
+
+    // live state while playing
+    if (entities.size() == 1 && project->isAnyScenePlaying()){
+        if (const OnScreenStickComponent* stick = sceneProject->scene->findComponent<OnScreenStickComponent>(entities[0])){
+            ImGui::TextDisabled("Value (%.2f, %.2f)  %s", stick->value.x, stick->value.y,
+                                stick->pressed ? ("held by pointer " + std::to_string(stick->pointerId)).c_str() : "released");
+        }
+    }
+}
+
+void editor::InspectorWindow::drawOnScreenButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    static std::vector<editor::EnumEntry> entriesVisibility = {
+        { (int)OnScreenVisibility::ALWAYS, "Always" },
+        { (int)OnScreenVisibility::TOUCH_DEVICES_ONLY, "Touch Devices Only" }
+    };
+    const std::vector<std::string> actions = inputActionNames(project, false);
+
+    RowSettings settings;
+    RowSettings settingsAction;
+    settingsAction.stringSuggestions = &actions;
+    settingsAction.suggestionsEmpty = noInputActions;
+    settingsAction.help = "The Input action it presses (Input.getButton(\"Fire1\")); on an axis it adds Value.";
+    RowSettings settingsValue;
+    settingsValue.stepSize = 0.01f;
+    settingsValue.floatMin = -1.0f;
+    settingsValue.floatMax = 1.0f;
+    settingsValue.secondColSize = 6 * ImGui::GetFontSize();
+    RowSettings settingsEnters;
+    settingsEnters.help = "A finger already down that slides onto it presses it.";
+    RowSettings settingsLeaves;
+    settingsLeaves.help = "A finger that slides off it releases it.";
+    RowSettings settingsVisibility;
+    settingsVisibility.enumEntries = &entriesVisibility;
+
+    beginTable(cpType, getLabelSize("Release On Leave"));
+    propertyRow(RowPropertyType::String, cpType, "action", "Action", sceneProject, entities, settingsAction);
+    propertyRow(RowPropertyType::Float, cpType, "value", "Value", sceneProject, entities, settingsValue);
+    propertyRow(RowPropertyType::Bool, cpType, "pressWhenPointerEnters", "Press On Enter", sceneProject, entities, settingsEnters);
+    propertyRow(RowPropertyType::Bool, cpType, "releaseWhenPointerLeaves", "Release On Leave", sceneProject, entities, settingsLeaves);
+    propertyRow(RowPropertyType::Enum, cpType, "visibility", "Visibility", sceneProject, entities, settingsVisibility);
+    endTable();
+
+    if (entities.size() == 1 && project->isAnyScenePlaying()){
+        if (const OnScreenButtonComponent* control = sceneProject->scene->findComponent<OnScreenButtonComponent>(entities[0])){
+            ImGui::TextDisabled("%s", control->pressed ? ("Pressed by " + std::to_string(control->pointers.size()) + " pointer(s)").c_str() : "Released");
+        }
+    }
+}
+
+void editor::InspectorWindow::drawTouchAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    static std::vector<editor::EnumEntry> entriesVisibility = {
+        { (int)OnScreenVisibility::ALWAYS, "Always" },
+        { (int)OnScreenVisibility::TOUCH_DEVICES_ONLY, "Touch Devices Only" }
+    };
+    const std::vector<std::string> actions = inputActionNames(project, true);
+
+    RowSettings settings;
+    RowSettings settingsAction;
+    settingsAction.stringSuggestions = &actions;
+    settingsAction.suggestionsEmpty = noInputActions;
+    RowSettings settingsSensitivity;
+    settingsSensitivity.stepSize = 0.01f;
+    settingsSensitivity.secondColSize = 6 * ImGui::GetFontSize();
+    settingsSensitivity.help = "Canvas pixels to action units; 0.1 is the default Mouse X/Y sensitivity, so a drag feels like the mouse.";
+    RowSettings settingsVisibility;
+    settingsVisibility.enumEntries = &entriesVisibility;
+
+    beginTable(cpType, getLabelSize("Horizontal Action"));
+    propertyRow(RowPropertyType::String, cpType, "horizontalAction", "Horizontal Action", sceneProject, entities, settingsAction);
+    propertyRow(RowPropertyType::String, cpType, "verticalAction", "Vertical Action", sceneProject, entities, settingsAction);
+    propertyRow(RowPropertyType::Float, cpType, "sensitivity", "Sensitivity", sceneProject, entities, settingsSensitivity);
+    propertyRow(RowPropertyType::Bool, cpType, "invertX", "Invert X", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::Bool, cpType, "invertY", "Invert Y", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::Enum, cpType, "visibility", "Visibility", sceneProject, entities, settingsVisibility);
+    endTable();
+
+    if (entities.size() == 1 && project->isAnyScenePlaying()){
+        if (const TouchAreaComponent* area = sceneProject->scene->findComponent<TouchAreaComponent>(entities[0])){
+            ImGui::TextDisabled("%s", area->pressed ? ("Dragged by pointer " + std::to_string(area->pointerId)).c_str() : "Released");
+        }
+    }
+}
+
 void editor::InspectorWindow::drawInputFieldComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settings;
     settings.onValueChanged = [sceneProject, entities](){
@@ -10908,6 +11088,22 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
             ImGui::EndDisabled();
 
             ImGui::PopStyleVar();
+
+            // during Play: what the script started and is still running (coroutines, timers)
+            if (entities.size() == 1 && script.instance) {
+                // the owner: a Lua instance's ref, a C++ script's ScriptBase
+                const void* owner = script.type == ScriptType::CPP && script.cppScript ? static_cast<const void*>(script.cppScript) : script.instance;
+                const size_t coroutines = ScriptScheduler::coroutineCountOf(owner);
+                const size_t timers = ScriptScheduler::timerCountOf(owner);
+                if (coroutines > 0 || timers > 0) {
+                    propertyHeader("Running");
+                    ImGui::TextDisabled("Coroutines: %zu, Timers: %zu", coroutines, timers);
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("Started by this script (self:startCoroutine, self:invoke): coroutines stop when the "
+                                          "GameObject is deactivated, timers when it is destroyed");
+                    }
+                }
+            }
 
             endTable();
 
@@ -16371,6 +16567,12 @@ void editor::InspectorWindow::show(){
                     drawProgressbarComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::InputFieldComponent){
                     drawInputFieldComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::OnScreenStickComponent){
+                    drawOnScreenStickComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::OnScreenButtonComponent){
+                    drawOnScreenButtonComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::TouchAreaComponent){
+                    drawTouchAreaComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::PanelComponent){
                     drawPanelComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::PolygonComponent){

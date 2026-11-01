@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ObjectManager.h"
+#include "script/ScriptScheduler.h"
 #include "script/AsyncOwner.h"
 #include "PrefabManager.h"
 #include "PrefabAsset.h"
@@ -491,8 +492,11 @@ std::vector<Entity> ObjectManager::moveToScene(Scene* from, Entity root, Scene* 
             if (entry.cppScript) {
                 entry.cppScript->rebind(to, copies[i]);
             }
-            // (coroutines: ScriptScheduler::rebind(entry.instance, to, copies[i]): its
-            // coroutines and timers follow their owner)
+            // its coroutines and timers follow their owner (they keep running)
+            const void* owner = entry.type == ScriptType::LUA ? entry.instance : static_cast<const void*>(entry.cppScript);
+            if (owner) {
+                ScriptScheduler::rebind(owner, to, copies[i]);
+            }
         }
     }
     // every moved GameObject (old -> new): the generated code finds the scripts among them and

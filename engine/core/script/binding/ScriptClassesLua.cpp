@@ -34,6 +34,7 @@
 #include "component/FogComponent.h"
 #include "component/ImageComponent.h"
 #include "component/InputFieldComponent.h"
+#include "component/OnScreenControlComponents.h"
 #include "component/LatticeComponent.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/Light2DComponent.h"
@@ -288,6 +289,9 @@ namespace {
             {"Scrollbar", hasComponent<ScrollbarComponent>()},
             {"Progressbar", hasComponent<ProgressbarComponent>()},
             {"InputField", hasComponent<InputFieldComponent>()},
+            {"OnScreenStick", hasComponent<OnScreenStickComponent>()},
+            {"OnScreenButton", hasComponent<OnScreenButtonComponent>()},
+            {"TouchArea", hasComponent<TouchAreaComponent>()},
             {"UIDocument", hasComponent<UIDocumentComponent>()},
             {"Bone", hasComponent<BoneComponent>()},
             {"Fog", hasComponent<FogComponent>()},
