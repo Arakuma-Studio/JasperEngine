@@ -2380,6 +2380,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getGroupsBlockRaycasts", &RectTransform::getGroupsBlockRaycasts)
         .addFunction("isInteractable", &RectTransform::isInteractable)
         .addFunction("getRectTransformComponent", &RectTransform::getComponent<RectTransformComponent>)
+        // the Safe Area component driving this RectTransform, nil when it has none
+        .addFunction("getSafeAreaComponent", [] (RectTransform* self) -> SafeAreaComponent* {
+            return self->getScene()->findComponent<SafeAreaComponent>(self->getEntity());
+        })
         .endClass();
 
     // Unity's CanvasGroup: fades, disables or makes click-through a UI subtree. The fade options
@@ -3153,6 +3157,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::constOverload<>(&AnimationPlayer::isPlaying),
             luabridge::constOverload<const std::string&>(&AnimationPlayer::isPlaying))
         .addFunction("getState", &AnimationPlayer::getState)
+        .addFunction("getAnimatedProperties", &AnimationPlayer::getAnimatedProperties)
         .addFunction("addClip",
             luabridge::overload<const std::string&>(&AnimationPlayer::addClip),
             luabridge::overload<const std::string&, const std::string&>(&AnimationPlayer::addClip),

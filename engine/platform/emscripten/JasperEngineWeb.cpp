@@ -13,6 +13,7 @@
 
 #include "Engine.h"
 #include "Input.h"
+#include "Screen.h"
 #include "System.h"
 #include "Log.h"
 #include "util/FrameLimiter.h"
@@ -167,7 +168,53 @@ extern "C" {
     void jasper_web_orientation_changed() {
         jasperengine::Engine::systemOrientationChanged();
     }
+
+    // the page's env(safe-area-inset-*) over the canvas, CSS pixels of the canvas (the engine's
+    // screen on the web is the canvas's CSS size): jasper_safe_area_read, on a change only
+    EMSCRIPTEN_KEEPALIVE
+    void jasper_web_safe_area(float left, float top, float right, float bottom) {
+        jasperengine::Screen::setPlatformSafeArea(jasperengine::EdgeInsets(left, top, right, bottom));
+    }
 }
+
+// Screen.safeArea on the web: a hidden fixed <div id="jasper-safe-area"> padded by the page's
+// env(safe-area-inset-*) (non-zero with viewport-fit=cover on phones with a notch) gives the
+// viewport's safe rectangle; intersected with the canvas, it becomes canvas-local insets.
+// Read again on resize, orientationchange and visualViewport resize, and with each canvas size.
+EM_JS(void, jasper_safe_area_create, (), {
+    if (document.getElementById('jasper-safe-area')) return;
+    var probe = document.createElement('div');
+    probe.id = 'jasper-safe-area';
+    probe.setAttribute('aria-hidden', 'true');
+    probe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;' +
+        'padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);';
+    (document.body || document.documentElement).appendChild(probe);
+    Module.jasperSafeArea = null;
+    Module.jasperReadSafeArea = function() {
+        var canvas = Module.canvas;
+        if (!canvas || !probe.isConnected) return;
+        var style = getComputedStyle(probe);
+        var pt = parseFloat(style.paddingTop) || 0, pr = parseFloat(style.paddingRight) || 0;
+        var pb = parseFloat(style.paddingBottom) || 0, pl = parseFloat(style.paddingLeft) || 0;
+        var vw = document.documentElement.clientWidth || window.innerWidth;
+        var vh = document.documentElement.clientHeight || window.innerHeight;
+        var rect = canvas.getBoundingClientRect();
+        var l = Math.max(0, pl - rect.left), t = Math.max(0, pt - rect.top);
+        var r = Math.max(0, rect.right - (vw - pr)), b = Math.max(0, rect.bottom - (vh - pb));
+        var last = Module.jasperSafeArea;
+        if (last && last[0] === l && last[1] === t && last[2] === r && last[3] === b) return;
+        Module.jasperSafeArea = [l, t, r, b];
+        ccall('jasper_web_safe_area', null, ['number', 'number', 'number', 'number'], [l, t, r, b]);
+    };
+    var read = function() { Module.jasperReadSafeArea(); };
+    window.addEventListener('resize', read);
+    window.addEventListener('orientationchange', read);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', read);
+});
+
+EM_JS(void, jasper_safe_area_read, (), {
+    if (Module.jasperReadSafeArea) Module.jasperReadSafeArea();
+});
 
 
 
@@ -423,6 +470,7 @@ int JasperEngineWeb::init(int argc, char **argv){
     startTime = emscripten_get_now();
 
     jasper_ime_create();
+    jasper_safe_area_create();
 
     sampleCount = 4;
 
@@ -521,6 +569,8 @@ void JasperEngineWeb::changeCanvasSize(int width, int height){
     JasperEngineWeb::screenWidth = width;
     JasperEngineWeb::screenHeight = height;
     // the page may resize before the project starts; the view is loaded with this size then
+    // (and where the canvas now lies under the page's safe area first)
+    jasper_safe_area_read();
     if (projectStarted)
         jasperengine::Engine::systemViewChanged();
 }
@@ -800,6 +850,8 @@ EM_BOOL JasperEngineWeb::canvas_resize(int eventType, const void *reserved, void
     JasperEngineWeb::screenWidth = w;
     JasperEngineWeb::screenHeight = h;
     // before the project starts the view is not loaded yet: it gets this size when it is
+    // (and where the canvas now lies under the page's safe area first)
+    jasper_safe_area_read();
     if (projectStarted)
         jasperengine::Engine::systemViewChanged();
 

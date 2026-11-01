@@ -3129,6 +3129,7 @@ bool editor::Exporter::writeExportSettingsScript(std::string& cmakeContent) {
     value("head", web.headInclude);
     value("resize", web.resizeCanvasToWindow ? "ON" : "OFF");
     value("hide_ui", web.hideEmscriptenUI ? "ON" : "OFF");
+    value("viewport_cover", web.viewportFitCover ? "ON" : "OFF");
     value("name", stripDesktopEntryControlChars(project->getApplicationName(linuxSettings.applicationName)));
     value("comment", stripDesktopEntryControlChars(linuxSettings.comment));
     value("categories", stripDesktopEntryControlChars(linuxSettings.categories));
@@ -3216,6 +3217,18 @@ if(WEB)
         foreach(native_file IN LISTS native_files)
             file(COPY "${CMAKE_CURRENT_LIST_DIR}/../plugins/native/web/${native_file}" DESTINATION "${output}/plugins")
         endforeach()
+    endif()
+    if(viewport_cover)
+        # the page covers the notch: env(safe-area-inset-*) and so Screen.safeArea report it
+        string(REGEX MATCH "<meta[^>]*name=[\"']viewport[\"'][^>]*>" viewport "${html}")
+        if(viewport)
+            if(NOT viewport MATCHES "viewport-fit")
+                string(REGEX REPLACE "content=([\"'])" "content=\\1viewport-fit=cover, " covered "${viewport}")
+                string(REPLACE "${viewport}" "${covered}" html "${html}")
+            endif()
+        else()
+            string(APPEND extra "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">\n")
+        endif()
     endif()
     string(REPLACE "{{JASPERENGINE_TITLE}}" "${title}" html "${html}")
     string(FIND "${html}" "{{JASPERENGINE_HEAD_INCLUDE}}" marker)
@@ -3767,6 +3780,8 @@ bool editor::Exporter::writeAndroidProjectSettings() {
             "\t\t// When false, we render behind any system UI windows.\n"
             "\t\tWindowCompat.setDecorFitsSystemWindows(getWindow(), true);");
         replaceAll(activity, "\t\thideSystemUI();\n", "");
+        // the native side reads it for Screen.safeArea: a windowed game keeps clear of the bars too
+        replaceAll(activity, "public boolean isFullscreenGame() {\n\t\treturn true;", "public boolean isFullscreenGame() {\n\t\treturn false;");
     }
     // the screen stays on through Screen.sleepTimeout (Player > Keep Screen On), not a patch here
     FileUtils::writeIfChanged(mainActivityPath, activity);

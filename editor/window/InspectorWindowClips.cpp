@@ -227,7 +227,12 @@ namespace{
 }
 
 std::string inspectorclips::trackProblemText(const TrackReport& track){
-    std::string text = leafName(track.path) + " : " + channelLabel(track.channel) + ": ";
+    std::string text = leafName(track.path) + " : " + (track.channel == ClipChannel::Property ? track.property : channelLabel(track.channel)) + ": ";
+    if (track.channel == ClipChannel::Property && !track.reason.empty() &&
+        (track.status == TrackBindingStatus::MissingComponent || track.status == TrackBindingStatus::UnknownProperty)){
+        // the binding's own reason ("no 'light' component", "did you mean 'intensity'?")
+        return text + track.reason;
+    }
     switch (track.status){
         case TrackBindingStatus::MissingPath: text += "missing"; break;
         case TrackBindingStatus::DuplicateSiblingName: text += "several siblings share a name"; break;
@@ -236,6 +241,7 @@ std::string inspectorclips::trackProblemText(const TrackReport& track){
         case TrackBindingStatus::MorphIndexOutOfRange: text += "more weights than morph targets"; break;
         case TrackBindingStatus::LegacyModelLayout: text += "under a legacy-layout model"; break;
         case TrackBindingStatus::UnaddressableName: text += "a name on the path can't be addressed"; break;
+        case TrackBindingStatus::UnknownProperty: text += "not an animatable property"; break;
         default: text += "not bound"; break;
     }
     if (!track.nearest.empty()){
@@ -1959,8 +1965,11 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
                 const ClipTrackData& track = data.tracks[(size_t)i];
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-                std::string label = (track.path.empty() ? std::string(clipui::rootLabel()) : track.path) + " : " + inspectorclips::channelLabel(track.channel);
-                if (track.channel == ClipChannel::Property) label += " (not played)";
+                // a property track: "path : component.property" (anim-properties spec 10)
+                std::string label = (track.path.empty() ? std::string(clipui::rootLabel()) : track.path) + " : " +
+                                    (track.channel == ClipChannel::Property ? track.component + "." + track.property
+                                                                            : std::string(inspectorclips::channelLabel(track.channel)));
+                if (track.channel == ClipChannel::Property && !track.known) label += " (not animatable: kept, not played)";
                 ImGui::TextUnformatted(inspectorclips::elideStart(label, ImGui::GetContentRegionAvail().x, textWidth).c_str());
                 ImGui::SetItemTooltip("%s", label.c_str());
                 ImGui::TableNextColumn();

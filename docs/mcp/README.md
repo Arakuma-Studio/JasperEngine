@@ -23,6 +23,9 @@ editor, doing what you would do by hand:
 - simulate a phone in the Game view (model, dpi, rotation), another system language, and the
   app's focus, pause and low-memory events, and see the URLs the game opened
   ([guide/platform-services.md](guide/platform-services.md), `send_input` `app` events, `configure_game_view`)
+- see the phone's notch, rounded corners and safe area over the game (and in screenshots), and
+  check UI against `Screen.safeArea` ([guide/safe-area.md](guide/safe-area.md), `configure_game_view`
+  `device`, `screenshot` `safe_area_in_image`)
 - read the Console, then export and build the game
 
 Every edit goes through the editor's command system. You can undo it with Ctrl+Z, and if you

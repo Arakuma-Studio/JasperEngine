@@ -27,7 +27,8 @@
 //   (its call sites do not ask claims()). A write notifies once per channel it writes: a Transform
 //   property write ("position") one channel, a whole-Transform write (gizmo, paste, reset) three
 //   (Position, Rotation, Scale), a lattice offsets write Lattice, a whole MeshComponent write
-//   Morph; before* runs before the value changes, after* once it changed (also for undo/redo).
+//   Morph and Property (every property of the component: Reset, Paste Component Values);
+//   before* runs before the value changes, after* once it changed (also for undo/redo).
 //   Listeners only write values of existing components (never add or remove components or
 //   entities): the call sites hold component pointers across the call.
 
@@ -48,12 +49,25 @@ namespace jasperengine::editor{
     // Catalog.h
     enum class ComponentType : int;
 
+    // An animatable property as a track names it (anim-properties spec 5.1): the Catalog
+    // component key ("ui", "light"), "gameobject" or "script:<Class>", and the whole property
+    // (no swizzle)
+    struct ClipPropertyKey{
+        std::string component;
+        std::string property;
+        bool empty() const { return component.empty(); }
+        bool operator==(const ClipPropertyKey& other) const { return component == other.component && property == other.property; }
+        bool operator!=(const ClipPropertyKey& other) const { return !(*this == other); }
+    };
+
     // A value as Record writes it: the channel's flattened key value (ClipKey::value layout:
-    // position/scale 3, rotation 4 x y z w, morph one per target, lattice 3 per point of `points`)
+    // position/scale 3, rotation 4 x y z w, morph one per target, lattice 3 per point of `points`;
+    // a property its whole value in key space: sRGB colours, cone degrees, bools 0/1)
     struct ClipRecordValue{
         ClipChannel channel = ClipChannel::Position;
         std::vector<float> value;
         std::vector<int> points;            // lattice only: the flat indices `value` lists
+        ClipPropertyKey property;           // channel Property only
     };
 
     struct ClipRecordListener{
@@ -64,7 +78,13 @@ namespace jasperengine::editor{
         // (T3c) the open clip has a track for this channel of this entity (the Inspector tints
         // animated rows stronger than rows Record would only start keying); optional
         std::function<bool(uint32_t sceneId, Entity entity, ClipChannel channel)> animates;
+        // the same for an animatable property (channel Property): record() gets its values
+        std::function<bool(uint32_t sceneId, Entity entity, const ClipPropertyKey& property)> claimsProperty;
+        std::function<bool(uint32_t sceneId, Entity entity, const ClipPropertyKey& property)> animatesProperty;
     };
+
+    // a scene write of an animatable property (PropertyCmd, the active and enabled checkboxes)
+    using PropertyWriteListener = std::function<void(uint32_t sceneId, Entity entity, const ClipPropertyKey& property)>;
 
     // (T3c) who holds a record gesture: each source owns its own, so one source's open gesture
     // never merges (or records) another source's edits
@@ -83,6 +103,9 @@ namespace jasperengine::editor{
 
         static Id addRecordListener(ClipRecordListener listener);
         static void removeRecordListener(Id id);
+        // some listener is installed (Record is on somewhere): the sources skip resolving their
+        // rows' keys every frame otherwise
+        static bool hasRecordListeners();
         // some listener claims it
         static bool claims(uint32_t sceneId, Entity entity, ClipChannel channel);
         // the first claiming listener records it; false when none claimed (build the scene command)
@@ -103,8 +126,39 @@ namespace jasperengine::editor{
 
         // The channels a component write touches (implemented): Transform "position" / "rotation"
         // / "scale" that one, "" (the whole component) all three, other Transform properties none;
-        // LatticeComponent "offsets" or "" Lattice; MeshComponent "" or "morphWeights[i]" Morph; anything else none
+        // LatticeComponent "offsets" Lattice, "" Lattice and Property; MeshComponent
+        // "morphWeights[i]" Morph, "" Morph and Property; a property of the animatable registry
+        // (anim-properties: "ui" "color", "light" "intensity", "enabled" of a component with the
+        // checkbox), a Lua script row ("scripts[N].<field>") or the whole of a component with
+        // registry rows ("") Property; anything else none
         static std::vector<ClipChannel> channelsOf(ComponentType type, const std::string& property);
+        // The animatable property a Catalog (component, property) write is (propertyOf), false
+        // when none: the registry name (submesh material rows "submeshes[N]...", shader-library
+        // members) or "enabled"; script properties go through scriptPropertyOf
+        static bool propertyOf(ComponentType type, const std::string& property, ClipPropertyKey& out);
+        // A Lua script's declared property, "script:<Class>" "<name>"
+        static ClipPropertyKey scriptPropertyOf(const std::string& className, const std::string& name);
+        static ClipPropertyKey activeProperty();    // "gameobject" "active"
+        // The property key a component write notifies (before/afterComponentWrite): propertyOf's;
+        // a whole-component write ("") the component with an empty property (every property of
+        // it); a ScriptComponent write scriptRowComponent() with the Catalog row
+        // ("scripts[N].<field>", "" for all), which listeners resolve on the GameObject (the
+        // script's class). False when the write touches no animatable property
+        static bool componentWriteKey(ComponentType type, const std::string& property, ClipPropertyKey& out);
+        static const char* scriptRowComponent(){ return "scripts"; }
+        // "scripts[N].<field>" split (false for other names)
+        static bool scriptRow(const std::string& property, size_t& index, std::string& field);
+
+        // ---- property record and writes (anim-properties spec 10) ----
+
+        static bool claimsProperty(uint32_t sceneId, Entity entity, const ClipPropertyKey& property);
+        static bool claimsAnyProperty(uint32_t sceneId, const std::vector<Entity>& entities, const ClipPropertyKey& property);
+        static bool animatesProperty(uint32_t sceneId, Entity entity, const ClipPropertyKey& property);
+        static Id addBeforePropertyWrite(PropertyWriteListener listener);
+        static Id addAfterPropertyWrite(PropertyWriteListener listener);
+        // (removed with removeChannelWriteListener)
+        static void beforePropertyWrite(uint32_t sceneId, Entity entity, const ClipPropertyKey& property);
+        static void afterPropertyWrite(uint32_t sceneId, Entity entity, const ClipPropertyKey& property);
         // before/afterChannelWrite for every channel of channelsOf (the command call sites)
         static void beforeComponentWrite(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property);
         static void afterComponentWrite(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property);

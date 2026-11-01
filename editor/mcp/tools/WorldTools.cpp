@@ -3838,6 +3838,10 @@ void editAnimationTool(const CallPtr& call) {
 
 void getAnimationTool(const CallPtr& call) {
     const Json& args = call->args();
+    if (has(args, "list_properties")) {
+        clip_tools::listProperties(call);
+        return;
+    }
     if (has(args, "clip")) {
         clip_tools::getClip(call);
         return;
@@ -4043,6 +4047,10 @@ bool addRectLayout(MultiPropertyCmd& multi, const Target& target, Entity entity,
         error = "layout must be an object {anchor, size, position, pivot, margins}.";
         return false;
     }
+    if (const std::string driven = McpValues::safeAreaDrivenError(scene, entity, ""); !driven.empty()) {
+        error = driven;
+        return false;
+    }
     const bool mirrored = uiMirrored(target);
     const ComponentType rt = ComponentType::RectTransformComponent;
     Vector2 size, position(0.0f, 0.0f), pivot;
@@ -4176,6 +4184,7 @@ const std::vector<std::pair<const char*, EntityCreationType>>& uiTypes() {
         {"button", EntityCreationType::BUTTON}, {"input_field", EntityCreationType::INPUT_FIELD},
         {"progress_bar", EntityCreationType::PROGRESSBAR}, {"scrollbar", EntityCreationType::SCROLLBAR},
         {"layout_group", EntityCreationType::LAYOUT_GROUP}, {"container", EntityCreationType::GAMEOBJECT},
+        {"safe_area", EntityCreationType::SAFE_AREA},
         {"polygon", EntityCreationType::POLYGON}, {"onscreen_stick", EntityCreationType::ONSCREEN_STICK_FIXED},
         {"onscreen_button", EntityCreationType::ONSCREEN_BUTTON}, {"touch_area", EntityCreationType::TOUCH_AREA}};
     return table;
@@ -4214,6 +4223,11 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
     }
     if (++build.count > 300) {
         error = "create_ui builds at most 300 elements per call.";
+        return false;
+    }
+    if (type == EntityCreationType::SAFE_AREA && has(node, "layout")) {
+        error = where + ": a safe_area is laid out by its Safe Area component (it fits the screen's safe area); "
+                "drop layout and lay its children out inside it.";
         return false;
     }
     std::string name = stringOr(node, "name", "");
@@ -5932,7 +5946,7 @@ void registerWorldTools(McpRegistry& registry) {
         "Animation Player plays it; create {from?: entity Animation or \"model.gltf#Walk\"}; root checks paths "
         "(bindings); a project undo step (from an Animation, or a model clip with root: scene). Without clip: an entity Animation (creates one under target), tweens, "
         "actions; a scene step. tracks: keys {time, value|points, ease} of local position/scale, rotation, "
-        "morph weights or lattice points; the same "
+        "morph weights, lattice points or a component property (channel property: component, property); the same "
         "path|target+channel replaces or merges. Humanoid: create.humanoid {model?} converts from; tracks {channel: "
         "humanoid|humanoid_position, bone, keys}. "
         "Guide: jasper://docs/animation.",
@@ -5945,9 +5959,11 @@ void registerWorldTools(McpRegistry& registry) {
             {"target", entityRef("Required to create.")},
             {"name", string("")},
             {"tracks", array(object({
-                {"channel", stringEnum("", {"position", "rotation", "scale", "morph", "lattice", "humanoid", "humanoid_position"})},
+                {"channel", stringEnum("", {"position", "rotation", "scale", "morph", "lattice", "property", "humanoid", "humanoid_position"})},
                 {"keys", array(openKeyItem, "")},
                 {"path", string("")},
+                {"component", string("")},
+                {"property", string("")},
                 {"bone", string("")},
                 {"target", entityRef("Default: target.")},
                 {"start_time", number("")},
@@ -5988,7 +6004,7 @@ void registerWorldTools(McpRegistry& registry) {
         "values), or for another GameObject the animations targeting it or its children (model clips too) and "
         "the Animation Player playing it (states, layers, controller, bindings; live in play). clip (.anim or "
         "\"model.gltf#Walk\"): settings, tracks, events, users; times: values sampled there; root: bindings (humanoid: "
-        "retarget_report, realised at times). "
+        "retarget_report, realised at times); root + list_properties (a path): its animatable properties. "
         "mask (.mask; root: coverage) or controller (.controller summary).",
         object({
             {"scene", sceneRef()},
@@ -5998,6 +6014,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"controller", assetPath("")},
             {"times", array(number(""), "Seconds.")},
             {"root", entityRef("")},
+            {"list_properties", string("")},
             {"max_keys", withDefault(integer("Per track."), 50)}
         }),
         getAnimationTool, true, true);
@@ -6023,7 +6040,7 @@ void registerWorldTools(McpRegistry& registry) {
         "color}, shadow {offset, color, softness}, color, colors, texture, value, placeholder, direction, multiline, "
         "properties, children}. Types: panel (text "
         "= title), image, text, button (text = label), input_field, progress_bar (value 0-1), scrollbar, "
-        "layout_group (direction), container, polygon; touch controls feeding Input actions: onscreen_stick "
+        "layout_group (direction), container, polygon, safe_area (fits Screen.safeArea); touch controls feeding Input actions: onscreen_stick "
         "(mode fixed|floating|dynamic, actions [h, v]), onscreen_button (action, value, text), touch_area "
         "(actions). layout {anchor, size, position, pivot, margins} in px, "
         "y down: an anchor (top_left, center, top_wide, ..., stretch) pins to the parent (screen for roots), "

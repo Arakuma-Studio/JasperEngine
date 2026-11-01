@@ -110,6 +110,7 @@
 #include "component/UIComponent.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/CanvasGroupComponent.h"
+#include "component/SafeAreaComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/UIDocumentComponent.h"
 
@@ -270,6 +271,7 @@
 #include "animation/AnimationEvent.h"
 #include "animation/ClipBinding.h"
 #include "animation/KeyframeSampling.h"
+#include "animation/PropertyBindings.h"
 // camera shake: presets, the shake maths, the static CameraShake and its instance handles
 #include "camera/ShakePreset.h"
 #include "camera/ShakePresets.h"

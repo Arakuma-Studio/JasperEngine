@@ -38,6 +38,14 @@ Projects made before the rename are migrated once with
 | Window menu | View menu |
 | GameObject, Component, Assets menus | Scene and Project menus, the Structure "+" menu |
 | Animation Clip (`.anim` asset; Assets > Create > Animation Clip) | none (new): keyframe animations lived only inside a scene or prefab as an Animation entity. A JasperEngine clip is JSON (`{"format": "jasperengine.anim"}`, not Unity's YAML), binds tracks by path relative to the GameObject that plays it, and is referenced by GUID; see [animation-clips.md](animation-clips.md) |
+| An Animation Clip's `m_IsActive` curve (GameObject active) | the property track `gameobject.active` (stepped; applied after the other values, parents first) |
+| An Animation Clip's `m_Enabled` curve (a component's checkbox) | the property track `<component>.enabled` (`ui`, `light`, `canvasgroup`, `rigidbody`...; `script:<Class>.enabled` for a Lua script) |
+| An Animation Clip's `m_Color` curve (Image, Text, SpriteRenderer), TMP `m_fontColor` | `ui.color` on the UI element (keys in sRGB); a sprite's `mesh.submeshes[0].material.baseColorFactor` (Add Property: Sprite Renderer : Color); one channel: `ui.color.a` |
+| Material curves (`material._Color`, `_EmissionColor`, `_Metallic`, `_MainTex_ST`) | `mesh.submeshes[N].material.baseColorFactor`, `.emissiveFactor`, `.metallicFactor`, `submeshes[N].textureRect`; shader library parameters `submeshes[N].material.shaderParams.<member>` |
+| An Animation Clip's MonoBehaviour field curves | `script:<Class>.<field>` (a declared Lua `properties` field: bool, int, float, vector, color); not C++ script fields |
+| `m_AnchoredPosition`, `m_SizeDelta`, `m_Pivot`, `m_AnchorMin` / `m_AnchorMax` curves (RectTransform) | `recttransform.positionOffset`, `width` / `height`, `pivot`, `anchorPointLeft` / `Right` / `Bottom` / `Top`; layout space is y-down, so y values convert: position y -> -y, pivot y -> 1 - y, `m_AnchorMin.y` -> `anchorPointBottom` 1 - y, `m_AnchorMax.y` -> `anchorPointTop` 1 - y |
+| A sprite swap (`m_Sprite` PPtr curve) | `sprite.frame` (the frame index, stepped) |
+| Animation window key tangents (Clamped Auto, Free Smooth, Flat, Broken, Linear / Constant per side) | the curves view's key menu (Auto, Free Smooth, Flat, Broken, Left / Right / Both Tangents) and its draggable handles |
 | Animation window with an Animation Clip (Preview, Record, Dopesheet / Curves, Add Property, events) | Animation window (entity Animations only). It now edits clips when the selected GameObject or an ancestor has an Animation Player, or when a clip is opened from the Project window or the Inspector; entity Animations still open in its older mode |
 | A model's imported clips (the Animation tab of a model's Import Settings; sub-assets such as `Take 001`) | none (new): model clips, read-only, named `<model>#<animation>` (`hero.gltf#Walk`; `"Wave 2"` for a second animation named Wave), with **Extract to .anim** for an editable copy and the Model section's **Use Animation Player** |
 | none: Unity has no pose-to-pose animation (the closest is keyframing a humanoid clip in the Animation window) | none (new): Pose Animation (Window > Animation > Pose Animation; `.poseanim` assets and templates), played by the Pose Animator or baked to an Animation Clip or an Animation; see [pose-animation.md](pose-animation.md) |
@@ -177,7 +185,13 @@ New: the engine had none of these. Unity's members became `System`, `Screen`, `E
 | `Application.internetReachability` | `System.getInternetReachability()` (`NetworkReachability.*`) |
 | `Handheld.Vibrate()` | `System.vibrate([ms])`; iOS-style feedback: `System.hapticFeedback(HapticFeedback.*)` |
 | Player > Default Orientation, Allowed Orientations for Auto Rotation | Project Settings > Player > Resolution and Presentation (`player.default_orientation`, `player.allowed_orientations`; shared by Android and iOS) |
-| Device Simulator (orientation, language, `SystemInfo.deviceModel`) | the Game view's Device menu (device, Rotate, Language) |
+| Device Simulator (orientation, language, `SystemInfo.deviceModel`, safe area, notch overlay) | the Game view's Device menu (device or Custom..., Rotate, Language), Device Overlay and Safe Area toggles; MCP `configure_game_view {device}` |
+| `Screen.safeArea` (pixels, bottom-left origin) | `Screen.safeArea` (canvas units, top-left origin); pixels: `Screen.safeAreaPixels` (top-left); insets: `Screen.safeAreaInsets` (`EdgeInsets`) |
+| `Screen.cutouts` | `Screen.cutouts` (canvas units; empty on iOS) |
+| Community `SafeArea` script (Crystal SafeArea, a `CanvasHelper` safe panel) | the Safe Area component (GameObject > UI > Safe Area; per-edge Left/Top/Right/Bottom) |
+| A banner margin added to the safe panel | `Screen.setExtraInsets(l, t, r, b [, "pixels"])` |
+| Player > Android > *Render outside safe area* | the default Android fullscreen (the game draws under the cutout; `Screen.safeArea` keeps the UI out) |
+| CSS `env(safe-area-inset-*)` (`viewport-fit=cover`) | the same in HTML UI documents (live); web export `web.viewport_fit_cover` |
 
 ## UI scaling, TextMesh Pro, UI particles
 

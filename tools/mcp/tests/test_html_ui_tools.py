@@ -184,7 +184,19 @@ LIMITS.update({"edit_animation": 3700, "get_animation": 870, "edit_pose_animatio
 # the merged tree), the limit set to it
 # lead: + native-bridge (+1022 over the measured 112193 of main 2e916ebb9) on main measured 113357 + video's 96: provisional 114475, re-measured on the merged tree
 # measured on main 5fde0ada4 (everything above merged): 155 tools, total 114475 (tool_budget.py)
-TOTAL_LIMIT = 114475
+# safe area (spec 6.7): configure_game_view's device_overlay, safe_area_outline, custom_device and
+# safe_area, screenshot's device_overlay / safe_area_in_image, create_ui / create_entity safe_area,
+# get_play_state's safe_area (+390 on its branch), custom_device's dpi; measured on the tree merged
+# with main 7fd144900 (everything above): 154 tools, total 113752 (test_budget), the limit set to it
+# lead: + safe-area (+395 over the measured 113357 of main 7fd144900) on main's measured 114475: provisional 114870, re-measured on the merged tree
+# anim properties (spec 2026-10-31-anim-properties 11): edit_animation's property channel (channel enum,
+# component, property), get_animation's list_properties, preview_animation's properties_total; measured on
+# the tree merged with main d08d63b31 (everything above): edit_animation 3786, get_animation 958, 155 tools,
+# total 114703 (tool_budget.py), the limits set to them
+LIMITS.update({"edit_animation": 3800, "get_animation": 960})
+# lead: + anim-properties (+228 over the measured 114475 of main d08d63b31) on the provisional 114870: provisional 115098, re-measured on the merged tree
+# measured on main 1b753e5d4 (everything above merged): 155 tools, total 115098 (tool_budget.py)
+TOTAL_LIMIT = 115098
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

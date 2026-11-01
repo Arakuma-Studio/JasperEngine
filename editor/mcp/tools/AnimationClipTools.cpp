@@ -24,6 +24,7 @@
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/ClipBinding.h"
 #include "animation/ClipConverters.h"
+#include "animation/ClipPropertyNames.h"
 #include "animation/ClipEditorUtil.h"
 #include "animation/AvatarMask.h"
 #include "animation/HumanoidClip.h"
@@ -33,6 +34,7 @@
 #include "pose/PoseMath.h"
 #include "pose/PoseRig.h"
 #include "animation/ClipValidation.h"
+#include "animation/PropertyBindings.h"
 #include "animation/KeyframeSampling.h"
 #include "animation/ModelSubClips.h"
 #include "component/ActionComponent.h"
@@ -249,14 +251,37 @@ Json valueJson(const ClipTrackData& track, const std::vector<float>& value) {
     }
 }
 
+// a property value in key space (anim-properties spec 11): bools as JSON bools, ints and frames
+// as integers, one float as a number, else an array (colours sRGB)
+Json propertyValueJson(PropertyKind kind, const std::vector<float>& value) {
+    if (value.empty()) return nullptr;
+    if (kind == PropertyKind::Bool && value.size() == 1) return value[0] > 0.5f;
+    if ((kind == PropertyKind::Int || kind == PropertyKind::Frame) && value.size() == 1) return (long long)std::llround(value[0]);
+    if (value.size() == 1) return r6(value[0]);
+    return floatsJson(value, 0, value.size());
+}
+
+const char* tangentModeName(ClipTangentMode mode) {
+    switch (mode) {
+        case ClipTangentMode::Auto: return "auto";
+        case ClipTangentMode::Free: return "free";
+        case ClipTangentMode::Flat: return "flat";
+        case ClipTangentMode::Broken: return "broken";
+        case ClipTangentMode::Linear: return "linear";
+        default: return "";
+    }
+}
+
 Json keyJson(const ClipTrackData& track, const ClipKey& key) {
     Json item = {{"time", r6(key.time)}};
     if (track.channel == ClipChannel::Lattice) item["points"] = valueJson(track, key.value);
+    else if (track.channel == ClipChannel::Property) item["value"] = propertyValueJson(track.kind, key.value);
     else item["value"] = valueJson(track, key.value);
     if (key.ease != EaseType::LINEAR) item["ease"] = anim::easeName(key.ease);
     if (key.hasTangents() && track.channel != ClipChannel::Lattice) {
         item["in"] = floatsJson(key.inTangent, 0, key.inTangent.size());
         item["out"] = floatsJson(key.outTangent, 0, key.outTangent.size());
+        if (key.tangentMode != ClipTangentMode::None) item["tangent_mode"] = tangentModeName(key.tangentMode);
     }
     return item;
 }
@@ -270,8 +295,10 @@ Json trackJson(const ClipTrackData& track, size_t index, size_t maxKeys) {
     if (track.channel == ClipChannel::Property) {
         item["component"] = track.component;
         item["property"] = track.property;
-        item["sampled"] = false;
-        return item;
+        item["sampled"] = track.known;
+        if (!track.known) return item;
+        item["kind"] = anim::kindName(track.kind);
+        if (track.discrete) item["discrete"] = true;
     }
     Json keys = Json::array();
     for (size_t k = 0; k < track.keys.size() && k < maxKeys; k++) keys.push_back(keyJson(track, track.keys[k]));
@@ -349,6 +376,7 @@ const char* statusName(TrackBindingStatus status) {
         case TrackBindingStatus::LegacyModelLayout: return "legacy_model_layout";
         case TrackBindingStatus::UnaddressableName: return "unaddressable_name";
         case TrackBindingStatus::NotSampled: return "not_sampled";
+        case TrackBindingStatus::UnknownProperty: return "unknown_property";
         case TrackBindingStatus::HumanoidNoRig: return "humanoid_no_rig";
         case TrackBindingStatus::Unchecked: return "unchecked";
     }
@@ -427,13 +455,16 @@ Json bindingsJson(SceneProject* scene, const ClipValidationReport& report, const
         }
         Json item = {{"path", track.path}, {"channel", anim::channelName(track.channel)}, {"status", statusName(track.status)},
                      {"nearest", track.nearest}};
+        if (track.channel == ClipChannel::Property) item["property"] = track.property;
         if (isHumanoidChannel(track.channel)) {
             item.erase("path");
             item["bone"] = anim::humanoidTrackBoneName(track.channel, track.humanBone);
         }
         if (!track.badPoints.empty()) item["points"] = track.badPoints;
         if (!track.message.empty()) item["message"] = track.message;
-        if (clip && clip->data && track.status == TrackBindingStatus::MissingPath && !track.nearest.empty()) {
+        // (property tracks share their path line prefix: no write_file rename for them)
+        if (clip && clip->data && track.status == TrackBindingStatus::MissingPath && !track.nearest.empty() &&
+            track.channel != ClipChannel::Property) {
             const Json probe = renameTrackEdit(track.path, track.channel, track.path);
             if (fileText.find(probe["old_text"].get<std::string>()) == std::string::npos) {
                 notCanonical = true;
@@ -795,6 +826,109 @@ bool sameKeyValue(ClipChannel channel, const std::vector<float>& a, const std::v
     return close(1.0f) || (channel == ClipChannel::Rotation && close(-1.0f));
 }
 
+// A property track (anim-properties spec 11): {path, channel: "property", component, property,
+// keys, mode, loop}. component: the Catalog key or the Inspector's name ("Image" -> ui); keys
+// [{time, value, ease, in, out, tangent_mode}] (or [time, value, ease]) in key space, read by the
+// .anim parser itself (bools, ints, "#RRGGBB[AA]" colours, the step rule), its warnings in changes
+bool applyPropertyTrack(EditContext& ctx, const Json& item, const std::string& where, const std::string& path, ClipData& data,
+                        std::string& error) {
+    if (!has(item, "component") || !item["component"].is_string() || !has(item, "property") || !item["property"].is_string()) {
+        error = where + ": a property track needs component (\"ui\", \"light\", \"gameobject\", \"script:<Class>\"...) and property "
+                "(\"color\", \"color.a\", \"intensity\", \"active\"...); get_animation {root, list_properties: \"<path>\"} lists them.";
+        return false;
+    }
+    if (has(item, "relative") && item["relative"].is_boolean() && item["relative"].get<bool>()) {
+        error = where + ".relative: only position, rotation and scale tracks can be relative.";
+        return false;
+    }
+    std::string component, property, nameError;
+    if (!ClipPropertyNames::resolve(item["component"].get<std::string>(), item["property"].get<std::string>(), component, property, nameError)) {
+        error = where + ": " + nameError + ".";
+        return false;
+    }
+    const std::string mode = item.contains("mode") && item["mode"].is_string() ? lower(item["mode"].get<std::string>()) : "replace";
+    if (mode != "replace" && mode != "merge") {
+        error = where + ".mode must be replace or merge.";
+        return false;
+    }
+    const bool merge = mode == "merge";
+    const std::string label = path + " : " + component + "." + property;
+    if (component != item["component"].get<std::string>() || property != item["property"].get<std::string>()) {
+        ctx.changes.push_back(where + ": " + item["component"].get<std::string>() + "." + item["property"].get<std::string>() + " is " +
+                              component + "." + property);
+    }
+    int index = data.findPropertyTrack(path, component, property);
+    const Json keysJson = has(item, "keys") ? item["keys"] : Json::array();
+    if (!keysJson.is_array()) {
+        error = where + ".keys must be an array of {time, value} (value in the Inspector's units: sRGB colours, cone degrees, true/false).";
+        return false;
+    }
+    if (keysJson.empty()) {
+        if (merge) {
+            error = where + ".keys is empty: merge adds keys; to remove the track use mode replace with keys [].";
+            return false;
+        }
+        if (index < 0) {
+            error = where + ": the clip has no " + label + " track to remove (keys: [] removes one).";
+            return false;
+        }
+        data.tracks.erase(data.tracks.begin() + index);
+        ctx.changes.push_back("removed track " + label);
+        return true;
+    }
+    // the keys through the clip parser (one track document): the file's own rules
+    Json document = {{"format", anim::ANIM_FORMAT}, {"version", anim::ANIM_VERSION}, {"tracks", Json::array()}};
+    Json trackDoc = {{"path", path}, {"channel", "property"}, {"component", component}, {"property", property}, {"keys", keysJson}};
+    if (has(item, "loop")) trackDoc["loop"] = item["loop"];
+    document["tracks"].push_back(trackDoc);
+    anim::ClipParseResult parsed = anim::parseClip(document.dump());
+    if (!parsed.ok() || parsed.data->tracks.empty()) {
+        error = where + ": " + (parsed.ok() ? std::string("no keys could be read") : parsed.error.toString()) + ".";
+        return false;
+    }
+    ClipTrackData track = parsed.data->tracks.front();
+    for (const ClipWarning& warning : parsed.warnings) {
+        std::string at = warning.path;
+        if (at.compare(0, 9, "tracks[0]") == 0) at = where + at.substr(9);
+        ctx.changes.push_back("warning: " + (at.empty() ? where : at) + ": " + warning.message);
+    }
+    if (track.keys.empty()) {
+        error = where + ".keys: no key could be read (values in the Inspector's units: true/false, numbers, [r, g, b, a] sRGB or \"#RRGGBB\").";
+        return false;
+    }
+    // a script field's declared type (Int, Color) when the root binds it
+    if (ctx.root != NULL_ENTITY && ctx.scene && track.swizzle < 0) {
+        const Entity entity = anim::resolvePath(ctx.scene->scene, ctx.root, path);
+        anim::PropertyRef ref;
+        if (entity != NULL_ENTITY && anim::parsePropertyRef(component, property, ref) && ref.script) {
+            const anim::PropertyBinding binding = anim::bindProperty(ctx.scene->scene, entity, ref, track.width);
+            if (binding.status == anim::PropertyBindStatus::Bound && binding.width == track.width) track.kind = binding.kind;
+        }
+    }
+    ClipTrackData* existing = index >= 0 ? &data.tracks[(size_t)index] : nullptr;
+    if (existing && !has(item, "loop")) track.loop = existing->loop;
+    if (merge && existing) {
+        std::vector<ClipKey> keys = existing->keys;
+        for (const ClipKey& key : track.keys) {
+            auto same = std::find_if(keys.begin(), keys.end(), [&](const ClipKey& k) { return std::abs(k.time - key.time) < MERGE_TIME; });
+            if (same != keys.end()) *same = key;
+            else keys.push_back(key);
+        }
+        std::stable_sort(keys.begin(), keys.end(), [](const ClipKey& a, const ClipKey& b) { return a.time < b.time; });
+        track.keys = keys;
+    }
+    if (existing) {
+        ctx.changes.push_back(std::string(merge ? "merged " : "replaced ") + std::to_string(keysJson.size()) + " key(s) into " + label +
+                              " (" + std::to_string(track.keys.size()) + " now)");
+        *existing = track;
+    } else {
+        ctx.changes.push_back("added track " + label + " (" + std::to_string(track.keys.size()) + " key(s), " + anim::kindName(track.kind) +
+                              (track.discrete ? ", stepped" : "") + ")");
+        data.tracks.push_back(track);
+    }
+    return true;
+}
+
 // the humanoid track bone names nearest `name` (did-you-mean)
 std::string nearestHumanoidBone(ClipChannel channel, const std::string& name) {
     auto distance = [](const std::string& a, const std::string& b) {
@@ -1041,9 +1175,10 @@ bool applyTrack(EditContext& ctx, const Json& item, size_t t, ClipData& data, st
         return false;
     }
     for (auto it = item.begin(); it != item.end(); ++it) {
-        static const std::set<std::string> keys = {"path", "target", "channel", "keys", "mode", "loop", "relative"};
+        static const std::set<std::string> keys = {"path", "target", "channel", "keys", "mode", "loop", "relative", "component", "property"};
         if (!keys.count(it.key())) {
-            error = where + ": unknown key \"" + it.key() + "\" (a clip track is {path, target, channel, keys, mode, loop, relative}).";
+            error = where + ": unknown key \"" + it.key() + "\" (a clip track is {path, target, channel, keys, mode, loop, relative}; "
+                    "a property track adds component and property).";
             return false;
         }
     }
@@ -1091,8 +1226,9 @@ bool applyTrack(EditContext& ctx, const Json& item, size_t t, ClipData& data, st
     // the channel
     ClipChannel channel = ClipChannel::Position;
     const std::string channelName = item.contains("channel") && item["channel"].is_string() ? lower(item["channel"].get<std::string>()) : "position";
-    if (channelName == "property") {
-        error = where + ".channel: property tracks are reserved (not supported yet): use position, rotation, scale, morph or lattice.";
+    if (channelName == "property") return applyPropertyTrack(ctx, item, where, path, data, error);
+    if (has(item, "component") || has(item, "property")) {
+        error = where + ": component and property name a property track: give channel \"property\".";
         return false;
     }
     bool known = false;
@@ -1103,7 +1239,7 @@ bool applyTrack(EditContext& ctx, const Json& item, size_t t, ClipData& data, st
         }
     }
     if (!known) {
-        error = where + ".channel \"" + channelName + "\" is not valid. Use one of: position, rotation, scale, morph, lattice, humanoid, humanoid_position.";
+        error = where + ".channel \"" + channelName + "\" is not valid. Use one of: position, rotation, scale, morph, lattice, property, humanoid, humanoid_position.";
         return false;
     }
     if ((channel == ClipChannel::Morph || channel == ClipChannel::Lattice) && item.contains("relative") && item["relative"].is_boolean() &&
@@ -1941,6 +2077,55 @@ void editClip(const CallPtr& call) {
     call->ok(text, out);
 }
 
+void listProperties(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    SceneProject* scene = nullptr;
+    Entity root = NULL_ENTITY;
+    std::string error;
+    if (!has(args, "root") && !has(args, "entity")) {
+        call->fail("list_properties needs root (the GameObject whose Animation Player plays the clip): "
+                   "get_animation {root, list_properties: \"Panel/Stats\"} (\"\" = the root itself).");
+        return;
+    }
+    if (!resolveRoot(project, args, has(args, "root") ? "root" : "entity", scene, root, error)) {
+        call->fail(error);
+        return;
+    }
+    if (!args["list_properties"].is_string()) {
+        call->fail("list_properties is a path under root (names joined by '/', \"\" = the root itself).");
+        return;
+    }
+    const std::string path = args["list_properties"].get<std::string>();
+    Scene* engineScene = scene->scene;
+    const Entity entity = anim::resolvePath(engineScene, root, path);
+    if (entity == NULL_ENTITY) {
+        const std::vector<std::string> nearest = ClipValidation::nearestPaths(engineScene, root, path, 3);
+        call->fail("list_properties: no GameObject at \"" + path + "\" under root \"" + engineScene->getEntityName(root) + "\"" +
+                   (nearest.empty() ? std::string(".") : ": did you mean \"" + nearest[0] + "\"?"));
+        return;
+    }
+    Json properties = Json::array();
+    std::string text = "\"" + (path.empty() ? engineScene->getEntityName(root) : path) + "\": animatable properties (track component, property, kind):";
+    for (const anim::AnimatablePropertyInfo& info : anim::listAnimatableProperties(engineScene, entity)) {
+        anim::PropertyRef ref;
+        anim::parsePropertyRef(info.component, info.property, ref);
+        const anim::PropertyBinding binding = anim::bindProperty(engineScene, entity, ref, 0);
+        float value[4] = {0, 0, 0, 0};
+        Json item = {{"component", info.component}, {"property", info.property}, {"kind", anim::kindName(info.kind)},
+                     {"label", info.label}, {"group", ClipPropertyNames::groupLabel(engineScene, entity, info.component)}};
+        if (info.discrete) item["discrete"] = true;
+        if (binding.status == anim::PropertyBindStatus::Bound && anim::readPropertyKeySpace(engineScene, entity, binding, value)) {
+            item["value"] = propertyValueJson(binding.kind, std::vector<float>(value, value + binding.width));
+        }
+        properties.push_back(item);
+        text += "\n" + info.component + " " + info.property + " (" + anim::kindName(info.kind) + (info.discrete ? ", stepped" : "") + ")";
+    }
+    Json out = {{"root", McpRefs::entityJson(scene, root)}, {"path", path}, {"entity", McpRefs::entityJson(scene, entity)},
+                {"properties", properties}};
+    call->ok(text, out);
+}
+
 void getClip(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -2059,12 +2244,18 @@ void getClip(const CallPtr& call) {
                         values.push_back(points);
                         break;
                     }
-                    default:
-                        values.push_back(nullptr);
+                    case ClipChannel::Property:
+                        // key space: sRGB colours, bools as true / false
+                        values.push_back(propertyValueJson(track.swizzle >= 0 ? PropertyKind::Float : track.kind, sample->weights));
+                        break;
                 }
             }
             Json item = {{"index", i}, {"path", track.path}, {"channel", anim::channelName(track.channel)}, {"relative", track.relative},
                          {"values", values}};
+            if (track.channel == ClipChannel::Property) {
+                item["component"] = track.component;
+                item["property"] = track.property;
+            }
             if (isHumanoidChannel(track.channel)) {
                 item.erase("path");
                 item.erase("relative");
@@ -2393,6 +2584,20 @@ bool previewPlayer(const CallPtr& call, SceneProject* scene, Entity entity) {
         }
         data["bound"] = bound;
         data["bound_total"] = all.size();
+        // the clip's properties as the preview shows them (key space: sRGB colours, bools)
+        Json properties = Json::array();
+        const std::vector<AnimationClipController::BoundProperty> allProperties = c.sampledBoundProperties(std::numeric_limits<size_t>::max());
+        for (size_t i = 0; i < allProperties.size() && i < 16; i++) {
+            const AnimationClipController::BoundProperty& p = allProperties[i];
+            Json item = {{"path", p.path}, {"component", p.component}, {"property", p.property},
+                         {"value", propertyValueJson(p.kind, p.value)}};
+            if (sp && p.entity != NULL_ENTITY) item["entity"] = McpRefs::entityJson(sp, p.entity);
+            properties.push_back(item);
+        }
+        if (!properties.empty()) {
+            data["properties"] = properties;
+            data["properties_total"] = allProperties.size();
+        }
         data["unresolved"] = c.getUnresolvedPaths();
         // the preview loops the clip whatever its wrap (the window's playback); Play mode follows wrap
         std::string text = "Clip preview: " + action + " \"" + c.getStateName() + "\" (" + c.getClipPath() + ") at " + fmt(c.getTime()) + " s" +

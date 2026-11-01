@@ -7,6 +7,8 @@
 #include "animation/AnimationClipIO.h"
 #include "animation/ClipBinding.h"
 #include "animation/ClipEditorUtil.h"
+#include "animation/PropertyBindings.h"
+#include "component/ButtonComponent.h"
 #include "animation/HumanoidClip.h"
 #include "component/LatticeComponent.h"
 #include "component/MeshComponent.h"
@@ -502,11 +504,15 @@ ClipValidationReport ClipValidation::validate(const ClipData& data, EntityRegist
         track.track = i;
         track.path = clipTrack.path;
         track.channel = clipTrack.channel;
+        if (clipTrack.channel == ClipChannel::Property) track.property = clipTrack.component + "." + clipTrack.property;
         const std::string label = trackLabel(clipTrack);
 
-        if (clipTrack.channel == ClipChannel::Property){
-            track.status = TrackBindingStatus::NotSampled;
-            track.message = label + ": property tracks are not supported yet (kept, not played)";
+        // a property this engine cannot animate (anim-properties spec 6): kept verbatim, not played
+        anim::PropertyRef propertyRef;
+        if (clipTrack.channel == ClipChannel::Property && !anim::parsePropertyRef(clipTrack.component, clipTrack.property, propertyRef)){
+            track.status = TrackBindingStatus::UnknownProperty;
+            track.reason = propertyRef.error;
+            track.message = label + ": " + propertyRef.error + " (kept, not played)";
             report.tracks.push_back(track);
             continue;
         }
@@ -655,7 +661,33 @@ ClipValidationReport ClipValidation::validate(const ClipData& data, EntityRegist
                 }
                 break;
             }
-            case ClipChannel::Property:
+            case ClipChannel::Property: {
+                // the component, submesh, shader member or script field (anim-properties spec 8)
+                const anim::PropertyBinding binding = anim::bindProperty(registry, entity, propertyRef, clipTrack.width);
+                if (binding.status != anim::PropertyBindStatus::Bound){
+                    track.status = binding.status == anim::PropertyBindStatus::UnknownProperty ? TrackBindingStatus::UnknownProperty
+                                                                                               : TrackBindingStatus::MissingComponent;
+                    track.reason = binding.message;
+                    track.message = label + ": " + entityLabel(registry, entity) + ": " + binding.message;
+                    failed = true;
+                    break;
+                }
+                // P5: a Button writes its graphic's colour from its state colours
+                if (clipTrack.component == "ui" && propertyRef.base == "color" && registry->findComponent<ButtonComponent>(entity)){
+                    ClipWarning warning;
+                    warning.path = "tracks[" + std::to_string(i) + "]";
+                    warning.message = label + ": " + entityLabel(registry, entity) + " is a Button: it writes ui.color from its state "
+                                      "colours every frame (animate button.colorNormal instead)";
+                    report.warnings.push_back(warning);
+                }
+                if (clipTrack.component == "gameobject" && entity == root){
+                    ClipWarning warning;
+                    warning.path = "tracks[" + std::to_string(i) + "]";
+                    warning.message = label + ": animates its own active state: the player stops when it turns it off";
+                    report.warnings.push_back(warning);
+                }
+                break;
+            }
             case ClipChannel::Humanoid:
             case ClipChannel::HumanoidPosition:
                 break;
@@ -671,6 +703,26 @@ ClipValidationReport ClipValidation::validate(const ClipData& data, EntityRegist
             report.resolved++;
         }
         report.tracks.push_back(track);
+    }
+
+    // a swizzle track and the whole-property track of the same property: the swizzle wins for
+    // its component (anim-properties spec 6, Overlapping tracks)
+    for (size_t i = 0; i < data.tracks.size(); i++){
+        const ClipTrackData& part = data.tracks[i];
+        if (part.channel != ClipChannel::Property || !part.known || part.swizzle < 0) continue;
+        const size_t dot = part.property.rfind('.');
+        if (dot == std::string::npos) continue;
+        const std::string base = part.property.substr(0, dot);
+        for (const ClipTrackData& whole : data.tracks){
+            if (whole.channel != ClipChannel::Property || whole.path != part.path || whole.component != part.component || whole.property != base) continue;
+            static const char* const colorNames[] = {"red", "green", "blue", "alpha"};
+            const bool colour = whole.kind == PropertyKind::Color3 || whole.kind == PropertyKind::Color4;
+            ClipWarning warning;
+            warning.path = "tracks[" + std::to_string(i) + "]";
+            warning.message = part.property + " overrides the " + (colour ? colorNames[part.swizzle] : std::string(1, "xyzw"[part.swizzle])) +
+                              " of the " + base + " track" + (part.path.empty() ? "" : " on " + quotedPath(part.path));
+            report.warnings.push_back(warning);
+        }
     }
 
     // every legacy-layout model on or under the root, its own outcome with a fix (R3): a player
@@ -841,6 +893,7 @@ std::vector<std::string> ClipValidation::nearestPaths(EntityRegistry* registry, 
 }
 
 std::string ClipValidation::trackLabel(const ClipTrackData& track){
+    if (track.channel == ClipChannel::Property) return track.path + " : " + track.component + "." + track.property;
     if (isHumanoidChannel(track.channel)) return clipui::humanoidTrackLabel(track.channel, track.humanBone);
     return track.path + " : " + anim::channelName(track.channel);
 }

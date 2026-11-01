@@ -3597,6 +3597,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (web.resizeCanvasToWindow != defaultWeb.resizeCanvasToWindow) webNode["resizeCanvasToWindow"] = web.resizeCanvasToWindow;
         if (web.hideEmscriptenUI != defaultWeb.hideEmscriptenUI) webNode["hideEmscriptenUI"] = web.hideEmscriptenUI;
         encodeStringList(webNode, "scriptUrls", web.scriptUrls);
+        if (web.viewportFitCover != defaultWeb.viewportFitCover) webNode["viewportFitCover"] = web.viewportFitCover;
         if (webNode.size() != 0) root["web"] = webNode;
     }
 
@@ -4128,6 +4129,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (webNode["resizeCanvasToWindow"].IsDefined()) web.resizeCanvasToWindow = YamlNumbers::as<bool>(webNode["resizeCanvasToWindow"]);
         if (webNode["hideEmscriptenUI"].IsDefined()) web.hideEmscriptenUI = YamlNumbers::as<bool>(webNode["hideEmscriptenUI"]);
         web.scriptUrls = decodeStringList(webNode["scriptUrls"]);
+        if (webNode["viewportFitCover"].IsDefined()) web.viewportFitCover = YamlNumbers::as<bool>(webNode["viewportFitCover"]);
     }
 
     if (node["linux"] && node["linux"].IsMap()) {
@@ -5775,6 +5777,11 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
         compNode[Catalog::getComponentName(ComponentType::CanvasGroupComponent, true)] = encodeCanvasGroupComponent(group);
     }
 
+    if (signature.test(registry->getComponentId<SafeAreaComponent>())) {
+        const SafeAreaComponent& safeArea = registry->getComponent<SafeAreaComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::SafeAreaComponent, true)] = encodeSafeAreaComponent(safeArea);
+    }
+
     if (signature.test(registry->getComponentId<TextComponent>())) {
         const TextComponent& text = registry->getComponent<TextComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::TextComponent, true)] = encodeTextComponent(text);
@@ -6223,6 +6230,17 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::RectTransformComponent, existing, &layout);
             registry->getComponent<RectTransformComponent>(entity) = std::move(layout);
             Catalog::updateEntity(registry, entity, flags);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::SafeAreaComponent, true);
+    if (compNode[compName]) {
+        SafeAreaComponent* existing = registry->findComponent<SafeAreaComponent>(entity);
+        SafeAreaComponent safeArea = decodeSafeAreaComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<SafeAreaComponent>())){
+            registry->addComponent<SafeAreaComponent>(entity, std::move(safeArea));
+        }else{
+            registry->getComponent<SafeAreaComponent>(entity) = std::move(safeArea);
         }
     }
 
@@ -7667,6 +7685,34 @@ RectTransformComponent editor::Stream::decodeRectTransformComponent(const YAML::
     if (node["ignoreEvents"]) layout.ignoreEvents = YamlNumbers::as<bool>(node["ignoreEvents"]);
 
     return layout;
+}
+
+YAML::Node editor::Stream::encodeSafeAreaComponent(const SafeAreaComponent& safeArea) {
+    // an empty map when every field is the default: `safearea: {}`
+    YAML::Node node(YAML::NodeType::Map);
+    const SafeAreaComponent defaults;
+    if (safeArea.enabled != defaults.enabled) node["enabled"] = YamlNumbers::text(safeArea.enabled);
+    if (safeArea.left != defaults.left) node["left"] = YamlNumbers::text(safeArea.left);
+    if (safeArea.top != defaults.top) node["top"] = YamlNumbers::text(safeArea.top);
+    if (safeArea.right != defaults.right) node["right"] = YamlNumbers::text(safeArea.right);
+    if (safeArea.bottom != defaults.bottom) node["bottom"] = YamlNumbers::text(safeArea.bottom);
+    if (safeArea.includeExtraInsets != defaults.includeExtraInsets) node["includeExtraInsets"] = YamlNumbers::text(safeArea.includeExtraInsets);
+    if (node.size() == 0) node.SetStyle(YAML::EmitterStyle::Flow);
+    return node;
+}
+
+SafeAreaComponent editor::Stream::decodeSafeAreaComponent(const YAML::Node& node, const SafeAreaComponent* oldSafeArea) {
+    // from the defaults (a field left out is the default), the runtime state kept
+    SafeAreaComponent safeArea;
+    if (oldSafeArea) safeArea.appliedRevision = oldSafeArea->appliedRevision;
+    if (!node.IsMap()) return safeArea;
+    if (node["enabled"]) safeArea.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["left"]) safeArea.left = YamlNumbers::as<bool>(node["left"]);
+    if (node["top"]) safeArea.top = YamlNumbers::as<bool>(node["top"]);
+    if (node["right"]) safeArea.right = YamlNumbers::as<bool>(node["right"]);
+    if (node["bottom"]) safeArea.bottom = YamlNumbers::as<bool>(node["bottom"]);
+    if (node["includeExtraInsets"]) safeArea.includeExtraInsets = YamlNumbers::as<bool>(node["includeExtraInsets"]);
+    return safeArea;
 }
 
 YAML::Node editor::Stream::encodeLayoutGroupComponent(const LayoutGroupComponent& container) {

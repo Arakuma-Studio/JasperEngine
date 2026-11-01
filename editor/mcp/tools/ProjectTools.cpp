@@ -1526,6 +1526,7 @@ const std::vector<Setting>& settingsTable() {
         add(stringListField("web.script_urls", "Native plugins: SDK script URLs, each a <script src> in <head> before plugins/native/web/*.js (in order).",
                             [](Project& p) -> std::vector<std::string>& { return p.getWebProjectSettings().scriptUrls; },
                             [](const std::string& v) { return v.find_first_of("<>\"") != std::string::npos ? std::string("is not a URL") : std::string(); }));
+        add(boolField("web.viewport_fit_cover", "Page viewport-fit=cover: canvas under the notch, safe area from env().", [](Project& p) -> bool& { return p.getWebProjectSettings().viewportFitCover; }));
         add(stringSetting("linux.application_name", "Linux .desktop name override.", [](Project& p) -> std::string& { return p.getLinuxProjectSettings().applicationName; }));
         add(stringSetting("linux.comment", "Linux .desktop comment.", [](Project& p) -> std::string& { return p.getLinuxProjectSettings().comment; }));
         add(stringSetting("linux.categories", "Linux .desktop categories (e.g. Game;).", [](Project& p) -> std::string& { return p.getLinuxProjectSettings().categories; }));

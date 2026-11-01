@@ -44,6 +44,21 @@ const std::vector<CustomPropertyIndex::Entry>* CustomPropertyIndex::find(const s
     return it == entries.end() ? nullptr : &it->second;
 }
 
+bool CustomPropertyIndex::isDynamic(const std::string& name){
+    return name.compare(0, 19, "--jasper-safe-area-") == 0 || name.compare(0, 26, "--jasper-device-safe-area-") == 0;
+}
+
+ValueList CustomPropertyIndex::dynamicStaticValue(){
+    // as ValueNormalizer::dimension(0, "px")
+    ComponentValue zero;
+    zero.token.type = TokenType::Dimension;
+    zero.token.number = 0.0;
+    zero.token.unit = std::string("px");
+    ValueList value;
+    value.push_back(std::move(zero));
+    return value;
+}
+
 std::string CustomPropertyIndex::varName(const ComponentValue& var, ValueList* fallback, bool* hasFallback){
     if (hasFallback)
         *hasFallback = false;
@@ -118,6 +133,8 @@ namespace {
 }
 
 std::optional<ValueList> CustomPropertyIndex::staticValue(const std::string& name) const{
+    if (isDynamic(name))
+        return std::nullopt;
     const std::vector<Entry>* list = find(name);
     if (!list || list->empty())
         return std::nullopt;
@@ -148,7 +165,7 @@ bool CustomPropertyIndex::resolve(const ComponentValue& var, ValueList& out) con
     ValueList fallback;
     bool hasFallback = false;
     const std::string name = varName(var, &fallback, &hasFallback);
-    if (name.empty())
+    if (name.empty() || isDynamic(name))
         return false;
     if (std::optional<ValueList> value = staticValue(name)){
         out = std::move(*value);
@@ -164,7 +181,7 @@ bool CustomPropertyIndex::resolve(const ComponentValue& var, ValueList& out) con
 bool CustomPropertyIndex::expandedValues(const std::string& name, std::vector<ValueList>& out) const{
     thread_local int depth = 0;
     const std::vector<Entry>* list = find(name);
-    if (!list || depth > kMaxDepth)
+    if (!list || depth > kMaxDepth || isDynamic(name))
         return false;
     depth++;
     bool ok = true;

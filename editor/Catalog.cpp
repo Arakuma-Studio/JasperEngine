@@ -905,6 +905,15 @@ namespace {
     // GUID (editor); `attachments` (Custom: the whole list, what a prefab override holds) plus
     // attachments[i].socket / .entity (resolveVertexAnimatorPropertyFast). The runtime fields
     // are not properties; the settings are read by the system when it plays (no update flag).
+    // the Safe Area component: UISystem drives the RectTransform from these every update
+    static const FastPropertyDescriptor kSafeAreaProperties[] = {
+        makeFastProperty<SafeAreaComponent, bool, &SafeAreaComponent::left>("left", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<SafeAreaComponent, bool, &SafeAreaComponent::top>("top", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<SafeAreaComponent, bool, &SafeAreaComponent::right>("right", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<SafeAreaComponent, bool, &SafeAreaComponent::bottom>("bottom", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<SafeAreaComponent, bool, &SafeAreaComponent::includeExtraInsets>("includeExtraInsets", PropertyType::Bool, UpdateFlags_None),
+    };
+
     static const FastPropertyDescriptor kVertexAnimatorProperties[] = {
         makeFastProperty<VertexAnimatorComponent, std::string, &VertexAnimatorComponent::animation>("animation", PropertyType::String, UpdateFlags_VertexAnimator_Reload),
         makeFastProperty<VertexAnimatorComponent, std::string, &VertexAnimatorComponent::guid>("guid", PropertyType::String, UpdateFlags_VertexAnimator_Reload),
@@ -2146,6 +2155,10 @@ namespace {
 
     PropertyData resolveLightPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<LightComponent*>(comp), propertyName, kLightProperties);
+    }
+
+    PropertyData resolveSafeAreaPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<SafeAreaComponent*>(comp), propertyName, kSafeAreaProperties);
     }
 
     PropertyData resolveFogPropertyFast(void* comp, const std::string& propertyName) {
@@ -3442,6 +3455,10 @@ namespace {
         enumerateFromDescriptors(comp, ps, kLightProperties);
     }
 
+    void enumerateSafeAreaProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kSafeAreaProperties);
+    }
+
     void enumerateFogProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kFogProperties);
     }
@@ -4354,6 +4371,7 @@ namespace {
         {ComponentType::OnScreenButtonComponent, &findComponentPtr<OnScreenButtonComponent>, &resolveOnScreenButtonPropertyFast, &enumerateOnScreenButtonProperties},
         {ComponentType::TouchAreaComponent, &findComponentPtr<TouchAreaComponent>, &resolveTouchAreaPropertyFast, &enumerateTouchAreaProperties},
         {ComponentType::VideoPlayerComponent, &findComponentPtr<VideoPlayerComponent>, &resolveVideoPlayerPropertyFast, &enumerateVideoPlayerProperties},
+        {ComponentType::SafeAreaComponent, &findComponentPtr<SafeAreaComponent>, &resolveSafeAreaPropertyFast, &enumerateSafeAreaProperties},
         {ComponentType::Light2DComponent, &findComponentPtr<Light2DComponent>, &resolveLight2DPropertyFast, &enumerateLight2DProperties},
         {ComponentType::ShadowCaster2DComponent, &findComponentPtr<ShadowCaster2DComponent>, &resolveShadowCaster2DPropertyFast, &enumerateShadowCaster2DProperties},
         {ComponentType::CameraComponent, &findComponentPtr<CameraComponent>, &resolveCameraPropertyFast, &enumerateCameraProperties},
@@ -4443,6 +4461,7 @@ namespace {
             case ComponentType::CameraFollowComponent: return &getEnabledRef<CameraFollowComponent>;
             case ComponentType::TextEffectComponent: return &getEnabledRef<TextEffectComponent>;
             case ComponentType::VideoPlayerComponent: return &getEnabledRef<VideoPlayerComponent>;
+            case ComponentType::SafeAreaComponent: return &getEnabledRef<SafeAreaComponent>;
             default: return nullptr;
         }
     }
@@ -4612,6 +4631,8 @@ std::string computeComponentName(editor::ComponentType component){
         name = "TextEffectComponent";
     }else if(component == ComponentType::VideoPlayerComponent){
         name = "VideoPlayerComponent";
+    }else if(component == ComponentType::SafeAreaComponent){
+        name = "SafeAreaComponent";
     }else if(component == ComponentType::Light2DComponent){
         name = "Light2DComponent";
     }else if(component == ComponentType::ShadowCaster2DComponent){
@@ -4772,6 +4793,7 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::CameraFollowComponent: return "Camera Follow";
         case ComponentType::TextEffectComponent: return "Text Effect";
         case ComponentType::VideoPlayerComponent: return "Video Player";
+        case ComponentType::SafeAreaComponent: return "Safe Area";
     }
     return getComponentName(component);
 }
@@ -4849,6 +4871,7 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::CameraFollowComponent: return ICON_FA_LOCATION_CROSSHAIRS;
         case ComponentType::TextEffectComponent: return ICON_FA_WAND_MAGIC_SPARKLES;
         case ComponentType::VideoPlayerComponent: return ICON_FA_FILM;
+        case ComponentType::SafeAreaComponent: return ICON_FA_MOBILE_SCREEN_BUTTON;
     }
     return ICON_FA_PUZZLE_PIECE;
 }
@@ -4928,6 +4951,8 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<TextEffectComponent>();
         case ComponentType::VideoPlayerComponent:
             return registry->getComponentId<VideoPlayerComponent>();
+        case ComponentType::SafeAreaComponent:
+            return registry->getComponentId<SafeAreaComponent>();
         case ComponentType::Light2DComponent:
             return registry->getComponentId<Light2DComponent>();
         case ComponentType::ShadowCaster2DComponent:
@@ -5066,6 +5091,8 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::TextEffectComponent;
     }else if(normalizedName == "videoplayer"){
         return ComponentType::VideoPlayerComponent;
+    }else if(normalizedName == "safearea"){
+        return ComponentType::SafeAreaComponent;
     }else if(normalizedName == "light2d"){
         return ComponentType::Light2DComponent;
     }else if(normalizedName == "shadowcaster2d"){
@@ -5311,6 +5338,9 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->isComponentRegistered<VideoPlayerComponent>() && registry->findComponent<VideoPlayerComponent>(entity)){
         ret.push_back(ComponentType::VideoPlayerComponent);
+    }
+    if (registry->findComponent<SafeAreaComponent>(entity)){
+        ret.push_back(ComponentType::SafeAreaComponent);
     }
     if (registry->findComponent<MorphTracksComponent>(entity)){
         ret.push_back(ComponentType::MorphTracksComponent);
@@ -6461,6 +6491,12 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
         case ComponentType::RectTransformComponent: {
             YAML::Node encoded = Stream::encodeRectTransformComponent(sourceRegistry->getComponent<RectTransformComponent>(sourceEntity));
             targetRegistry->getComponent<RectTransformComponent>(targetEntity) = Stream::decodeRectTransformComponent(encoded);
+            break;
+        }
+
+        case ComponentType::SafeAreaComponent: {
+            YAML::Node encoded = Stream::encodeSafeAreaComponent(sourceRegistry->getComponent<SafeAreaComponent>(sourceEntity));
+            targetRegistry->getComponent<SafeAreaComponent>(targetEntity) = Stream::decodeSafeAreaComponent(encoded);
             break;
         }
 

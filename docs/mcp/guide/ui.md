@@ -53,7 +53,7 @@ at time scale 0 (pause menus). The tween goes with the group and with the scene.
 
 **Animation clips.** Property tracks `component: "canvasgroup"`, `property: "alpha"` (Unity
 `m_Alpha`), and the bools `interactable`, `blocksRaycasts`, `ignoreParentGroups`, `enabled`
-(available with the clip property channel, feature anim-properties).
+(jasper://docs/animation, Property tracks).
 
 **Render modes.** `PER_ELEMENT` multiplies each element's alpha at no extra draw cost: overlapping
 children show through each other (darker overlaps). `FLATTEN` draws the subtree into a layer and

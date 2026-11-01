@@ -591,6 +591,9 @@ namespace jasperengine::editor{
         bool hideEmscriptenUI = false;
         // native plugins (web.script_urls): <script src> in <head>, before plugins/native/web/*.js
         std::vector<std::string> scriptUrls;
+        // the page's viewport covers the whole screen (viewport-fit=cover): the canvas reaches
+        // under a phone's notch and env(safe-area-inset-*) reports it (Screen.safeArea)
+        bool viewportFitCover = true;
     };
 
     struct LinuxProjectSettings {

@@ -327,6 +327,9 @@ namespace jasperengine::htmlui::compat {
         // counts the reads of the custom property index: the same for every declaration of the
         // session once the index is complete (a rule has no custom properties of its own here)
         mutable uint32_t memoVarReads = 0;
+        // the runtime variables (env(safe-area-inset-*): CustomPropertyIndex::isDynamic) a rewrite
+        // that reads values token by token folded to 0px through staticVar; the declaration reports it
+        mutable uint32_t dynamicVarsFolded = 0;
         bool memoOn = false;
         bool memoDisabled = false;         // JASPER_HTMLUI_CSS_MEMO=off
         bool memoCheck = false;            // JASPER_HTMLUI_CSS_MEMO=check: every memo hit is compared with the pipeline's output

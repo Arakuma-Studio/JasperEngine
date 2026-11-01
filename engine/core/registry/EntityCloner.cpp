@@ -749,6 +749,12 @@ void prepare<CanvasGroupComponent>(CanvasGroupComponent& group, Entity, CloneCon
 }
 
 template<>
+void prepare<SafeAreaComponent>(SafeAreaComponent& safeArea, Entity, CloneContext&) {
+    // the copy drives its own RectTransform at the next UI update
+    safeArea.appliedRevision = 0;
+}
+
+template<>
 void prepare<RectTransformComponent>(RectTransformComponent& layout, Entity, CloneContext& ctx) {
     layout.panel = ctx.remap(layout.panel);
     layout.needUpdateSizes = true;
@@ -1048,6 +1054,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<MirrorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LayoutGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CanvasGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<SafeAreaComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteAnimationComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

@@ -75,10 +75,32 @@ namespace jasperengine::editor::clipui{
 
     // (channelLabel, lastSegment: animation/ClipEditorUtil.h, shared with the Inspector)
 
+    // a property track's (component, property) as one string ("ui.color.a"), "" for the others
+    inline std::string propertyId(const ClipTrackData& track){
+        return track.channel == ClipChannel::Property ? track.component + "." + track.property : std::string();
+    }
+
+    // a track's identity: path and channel, and a property track's component and property
     inline std::string rowKey(const ClipTrackData& track){
         // humanoid tracks have no path: their bone tells them apart
         if (isHumanoidChannel(track.channel)) return std::string("humanoid:") + anim::humanoidTrackBoneName(track.channel, track.humanBone) + "|" + anim::channelName(track.channel);
-        return track.path + "|" + anim::channelName(track.channel);
+        const std::string key = track.path + "|" + anim::channelName(track.channel);
+        return track.channel == ClipChannel::Property ? key + "|" + propertyId(track) : key;
+    }
+
+    // the track of an identity (path, channel, propertyId), -1 when none (a humanoid track's
+    // path is its bone name)
+    inline int findTrackById(const ClipData& data, const std::string& path, ClipChannel channel, const std::string& property){
+        if (channel != ClipChannel::Property) return data.findTrack(path, channel);
+        // "component.property": a component key (or script:<Class>) has no '.'
+        const size_t dot = property.find('.');
+        if (dot == std::string::npos) return -1;
+        return data.findPropertyTrack(path, property.substr(0, dot), property.substr(dot + 1));
+    }
+
+    // the built clip's track of a data track (the same identity), -1 when none
+    inline int builtTrack(const AnimationClip& clip, const ClipTrackData& track){
+        return clipui::findRuntimeTrack(clip, track);
     }
 
     inline std::string lower(std::string s){
@@ -155,14 +177,13 @@ namespace jasperengine::editor::clipui{
                 return out;
             }
             case ClipChannel::Morph:
+            case ClipChannel::Property:
                 return sample.weights;
             case ClipChannel::Lattice: {
                 std::vector<float> out;
                 for (const Vector3& v : sample.offsets) out.insert(out.end(), {v.x, v.y, v.z});
                 return out;
             }
-            case ClipChannel::Property:
-                break;
         }
         return {};
     }

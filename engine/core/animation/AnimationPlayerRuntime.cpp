@@ -22,6 +22,26 @@ std::string anim::defaultStateName(const AnimationPlayerClip& entry){
     return dot == std::string::npos || dot == 0 ? file : file.substr(0, dot);
 }
 
+bool anim::readPropertyRest(Scene* scene, Entity entity, const PropertyBinding& binding, PropertyRest& rest){
+    float stored[4] = {0, 0, 0, 0};
+    if (!readPropertyStored(scene, entity, binding, stored)) return false;
+    rest.has = true;
+    for (int k = 0; k < 4; k++){
+        rest.stored[k] = stored[k];
+        rest.value[k] = stored[k];
+    }
+    storedToKey(binding.kind, binding.display, rest.value, std::min<size_t>(binding.width, 4));
+    rest.hasSnapshot = snapshotProperty(scene, entity, binding, rest.snapshot);
+    return true;
+}
+
+bool anim::restorePropertyRest(Scene* scene, Entity entity, const PropertyRest& rest){
+    if (!rest.has) return false;
+    const bool written = writePropertyStored(scene, entity, rest.binding, rest.stored);
+    if (rest.hasSnapshot) restoreProperty(scene, entity, rest.binding, rest.snapshot);
+    return written;
+}
+
 std::vector<std::string> anim::playerStateNames(const std::vector<AnimationPlayerClip>& clips){
     std::vector<std::string> names;
     names.reserve(clips.size());
@@ -69,6 +89,7 @@ void anim::ClipPreviewSession::reset(){
     rest.clear();
     bindings.clear();
     written.clear();
+    writtenProperties.clear();
     previousTimes.clear();
     scratch = PlayerPoseScratch();
     trackSlots.clear();

@@ -218,7 +218,7 @@ async def test_file_mode_rejections(ed: Editor):
     track = {"path": "", "channel": "position", "keys": [{"time": 0, "value": [0, 0, 0]}]}
     for change, contains in (
             ({"start_time": 1}, "shift the keys"), ({"name": "x"}, "path and channel"), ({"path": "a//b"}, "malformed"),
-            ({"path": 3}, "must be a string"), ({"channel": "colour"}, "Use one of"), ({"channel": "property"}, "reserved"),
+            ({"path": 3}, "must be a string"), ({"channel": "colour"}, "Use one of"), ({"channel": "property"}, "needs component"),
             ({"channel": "morph", "relative": True, "keys": [{"time": 0, "value": [1]}]}, "only position, rotation and scale"),
             ({"target": "Hero"}, "give path or target"), ({"path": None, "target": "Hero"}, "turn target into a path"),
             ({"mode": "add"}, "replace or merge"), ({"keys": [{"time": -1, "value": [0, 0, 0]}]}, "time must be"),
@@ -1092,6 +1092,9 @@ async def test_guide_names_exist(ed: Editor):
               # mask's humanoid parts and the clip / controller file keys
               "humanoid_rig", "coverage_total", "mask_coverage", "live_weight", "normalized_time", "additive_reference",
               "automate_thresholds", "left_arm", "right_arm", "left_leg", "right_leg", "left_fingers", "right_fingers",
+              # property tracks (test_animation_properties): a status, the tangent key member and
+              # preview_animation's count of previewed properties
+              "unknown_property", "tangent_mode", "properties_total",
               # humanoid clips (test_animation_retarget): get_animation's realisation and report, the Avatar
               # (get_asset_info, set_humanoid) and the humanoid bone names
               "retarget_report", "scale_ratio", "foot_ik", "missing_on_target", "unmapped_source_bones", "hips_local_position",

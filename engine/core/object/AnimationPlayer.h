@@ -45,6 +45,7 @@
 #include "component/AnimationPlayerComponent.h"
 
 #include <string>
+#include <vector>
 
 namespace jasperengine{
 
@@ -178,6 +179,9 @@ namespace jasperengine{
         AnimationState getState(const std::string& name) const;
         // the runtime view of a state (default-constructed when unknown)
         AnimationStateInfo getStateInfo(const std::string& name) const;
+        // the property tracks a state's clip binds now, as "path:component.property" (debugging;
+        // empty while its clip loads or for an unknown state)
+        std::vector<std::string> getAnimatedProperties(const std::string& name) const;
 
         // clip list (an authored change: the next update reloads)
         // path: asset-relative .anim or "<model>#<clip>"; name empty = default name. False when

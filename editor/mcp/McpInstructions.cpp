@@ -221,6 +221,7 @@ camera only: apply_post_processing_preset, then set_scene_settings post_processi
 Read the page before using these tools:
 - Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}; play with an
   Animation Player (jasper://docs/animation).
+  Property tracks (active, colours...): channel property; get_animation list_properties.
 - Humanoid poses (.poseanim): get/edit/render_pose_animation, mirror_pose; degrees from
   standing, arms down (jasper://docs/pose-animation).
 - Clip on another humanoid rig: clips[i].retarget or create.humanoid (jasper://docs/animation).
@@ -235,6 +236,8 @@ Read the page before using these tools:
 - Lines, lasers, trails: line_renderer / trail_renderer (jasper://docs/lines-trails).
 - Video: type video_player / video_background, texture video|<id>; MP4 and WebM
   (jasper://docs/video).
+- Notches and safe areas: Screen.safeArea, the Safe Area component (create_ui safe_area), CSS
+  env(); phones in configure_game_view device (jasper://docs/safe-area).
 - Bend/squash: edit_lattice (jasper://docs/lattice). GPU fluid: type fluid_simulation
   (jasper://docs/fluid). Textures from examples: synthesize_texture
   (jasper://docs/texture-synthesis).

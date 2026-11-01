@@ -921,6 +921,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     snprintf(m_webHeadIncludeBuffer, sizeof(m_webHeadIncludeBuffer), "%s", web.headInclude.c_str());
     m_webResizeCanvasToWindow = web.resizeCanvasToWindow;
     m_webHideEmscriptenUI = web.hideEmscriptenUI;
+    m_webViewportFitCover = web.viewportFitCover;
 
     const LinuxProjectSettings& linuxSettings = project->getLinuxProjectSettings();
     snprintf(m_linuxApplicationNameBuffer, sizeof(m_linuxApplicationNameBuffer), "%s", linuxSettings.applicationName.c_str());
@@ -2080,6 +2081,13 @@ void ProjectSettingsWindow::drawWebSettings() {
     }
     ImGui::Checkbox("##WebHideEmscriptenUI", &m_webHideEmscriptenUI);
     endSettingsRow("Hide the standard logo, status, controls and output console. Runtime scripts remain active. Custom HTML elements are not removed.");
+
+    if (beginSettingsRow("Viewport Fit Cover", !m_webViewportFitCover)) {
+        m_webViewportFitCover = true;
+    }
+    ImGui::Checkbox("##WebViewportFitCover", &m_webViewportFitCover);
+    endSettingsRow("Adds viewport-fit=cover to the page's viewport: on phones the page reaches under the notch and the "
+                   "safe area comes from env(safe-area-inset-*) (Screen.safeArea, the Safe Area component).");
 }
 
 void ProjectSettingsWindow::drawLinuxSettings() {
@@ -3290,6 +3298,7 @@ bool ProjectSettingsWindow::applySettings() {
     web.resizeCanvasToWindow = m_webResizeCanvasToWindow;
     web.hideEmscriptenUI = m_webHideEmscriptenUI;
     web.scriptUrls = nonEmpty(m_webScriptUrls);
+    web.viewportFitCover = m_webViewportFitCover;
 
     LinuxProjectSettings& linuxSettings = m_project->getLinuxProjectSettings();
     applyOverride(linuxSettings.applicationName, m_linuxApplicationNameBuffer, inheritedName);

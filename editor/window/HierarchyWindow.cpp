@@ -530,6 +530,7 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"UI", "Layout Group", ICON_FA_OBJECT_GROUP, T::LAYOUT_GROUP, "Layout Group", CREATE_IN_ALL, true},
         {"UI", "Canvas Group", ICON_FA_LAYER_GROUP, T::CANVAS_GROUP, "Canvas Group", CREATE_IN_ALL},
         {"UI", "Particle System", ICON_FA_FIRE, T::UI_PARTICLE_SYSTEM, "UI Particles", CREATE_IN_ALL},
+        {"UI", "Safe Area", ICON_FA_MOBILE_SCREEN_BUTTON, T::SAFE_AREA, "Safe Area", CREATE_IN_ALL},
         {"UI", "UI Document", ICON_FA_FILE_CODE, T::UI_DOCUMENT, "UI Document", CREATE_IN_ALL, true},
 
         {"Physics", "Rigidbody", ICON_FA_WEIGHT_HANGING, T::RIGIDBODY, "Rigidbody", CREATE_IN_3D},
@@ -1083,6 +1084,8 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
     }else if (signature.test(scene->getComponentId<CanvasGroupComponent>()) && !signature.test(scene->getComponentId<UIComponent>())){
         // a group container (an element with its own group keeps its element's icon)
         return ICON_FA_LAYER_GROUP;
+    }else if (signature.test(scene->getComponentId<SafeAreaComponent>())){
+        return ICON_FA_MOBILE_SCREEN_BUTTON;
     }else if (signature.test(scene->getComponentId<ButtonComponent>())){
         return ICON_FA_SQUARE_CARET_RIGHT;
     }else if (signature.test(scene->getComponentId<ScrollbarComponent>())){

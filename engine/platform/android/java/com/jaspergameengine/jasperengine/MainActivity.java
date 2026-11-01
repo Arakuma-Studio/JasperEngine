@@ -159,6 +159,13 @@ public class MainActivity extends GameActivity {
 		JasperNative.dispatchConfigurationChanged(newConfig);
 	}
 
+	// Player > Android > Fullscreen (android.fullscreen): the export writes false here for a game
+	// that shows the system bars; its safe area then keeps clear of them too (safe-area spec 6.5).
+	// Read once by the native side.
+	public boolean isFullscreenGame() {
+		return true;
+	}
+
 	public UserSettings getUserSettings() {
 		return userSettings;
 	}

@@ -96,7 +96,9 @@ namespace jasperengine::editor{
         // LatticeEditorOps::createLattice, which fits and binds it around the selection
         LATTICE,
         // not a GameObject: the Hierarchy's "3D Object > Ragdoll..." opens the wizard on the selection
-        RAGDOLL_WIZARD
+        RAGDOLL_WIZARD,
+        // a full-stretch RectTransform the Safe Area component drives (GameObject > UI > Safe Area)
+        SAFE_AREA
     };
 
     class CreateEntityCmd: public Command{

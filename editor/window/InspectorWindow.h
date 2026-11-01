@@ -14,6 +14,7 @@
 #include "window/dialog/ShaderForkDialog.h"
 #include "window/dialog/ComponentAddDialog.h"
 #include "window/dialog/TextureSlicerToolDialog.h"
+#include "animation/ClipRecordHooks.h"
 
 #include "imgui.h"
 #include "yaml-cpp/yaml.h"
@@ -728,6 +729,7 @@ namespace jasperengine::editor{
         // "Inherited alpha 0.25 · not interactable · click-through (Canvas Group: Panel)" and a
         // Select button, when the entity is under a Canvas Group
         void drawCanvasGroupInheritedLine(SceneProject* sceneProject, Entity entity);
+        void drawSafeAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawImageComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -831,6 +833,18 @@ namespace jasperengine::editor{
                            const std::vector<Entity>& entities, const std::function<std::vector<float>(Entity)>& valueOf);
         // the row was let go (deactivated): its record gesture ends
         void finishRecordRow();
+        // anim-properties: the animatable property a row edits on `entity` (a component's Catalog
+        // property, "enabled", a Lua script's "scripts[N].<field>"), empty when none
+        ClipPropertyKey rowPropertyKey(SceneProject* sceneProject, Entity entity, ComponentType cpType, const std::string& id) const;
+        // a row's command of an animatable property: recorded (its values keyed at the playhead
+        // and previewed, no scene step) when Record claims it for some entities, which deletes it
+        // (cmd is cleared); else added to the scene's history
+        void submitRowCommand(SceneProject* sceneProject, ComponentType cpType, const std::string& id);
+        bool recordPropertyCommand(SceneProject* sceneProject, ComponentType cpType, const std::string& id, Command* command);
+        // a checkbox of a property (GameObject active, a component's enabled) set to `value`:
+        // recorded for the claimed entities when Record claims it, false when it does not
+        bool recordPropertyToggle(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType,
+                                  const ClipPropertyKey& key, bool value);
         // The Blend Shapes rows (MeshComponent morph weights): weight `index` of `entities` set to
         // `value`; recorded when Record claims the channel, else one scene step per drag (the
         // command notifies the channel write listeners); finishMorphEdit when the slider is let go

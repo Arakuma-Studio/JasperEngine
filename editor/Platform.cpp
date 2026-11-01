@@ -327,7 +327,7 @@ bool editor::Platform::hapticFeedback(HapticFeedback type){
 }
 
 float editor::Platform::getScreenDpi(){
-    if (simulation.device) return simulation.device->dpi;
+    if (simulation.device && simulation.device->dpi > 0.0f) return simulation.device->dpi;
     if (simulation.dpi > 0.0f) return simulation.dpi;
     return HostServices::screenDpi();
 }
