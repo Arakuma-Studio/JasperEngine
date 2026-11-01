@@ -208,11 +208,12 @@ TEST(AnimatorPoseOps, ElementOpsMatchTheKernels){
     Pose base(bones, channels), layer(bones, channels), blended(bones, channels), added(bones, channels);
     randomPose(base, random);
     randomPose(layer, random);
-    std::vector<float> mask(bones), channelMask(channels);
-    for (float& m : mask) m = w(random);
+    // (masks span the pose's padded strides, as the kernels read them in lanes)
+    std::vector<float> mask(base.stride(), 0.0f), channelMask(base.channelStride(), 0.0f);
+    for (size_t b = 0; b < bones; b++) mask[b] = w(random);
     mask[0] = 0.0f;
     mask[1] = 1.0f;
-    for (float& m : channelMask) m = w(random);
+    for (size_t c = 0; c < channels; c++) channelMask[c] = w(random);
     poseBlend(blended, base, layer, 1.0f, mask.data(), channelMask.data());
     poseAdditive(added, base, layer, 1.0f, mask.data(), channelMask.data());
     auto same = [](float a, float b){ return std::memcmp(&a, &b, sizeof(float)) == 0; };
