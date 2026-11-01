@@ -921,3 +921,10 @@ the `gaps/anim-retarget` branch (based on `gaps/anim-layers`).
   Record test expects independent values (the neutral pose keys E = identity, a 40 degree turn
   from it keys a 40 degree E); the Avatar test checks Redo's bytes; Convert's Use in this player
   and the undo of both forms are tested.
+- **Verification after the review fixes** (host build `build/host`, -j3, 0 warnings): anim-tests
+  201/201, pose-tests 219/219, editor unit suite 1647 passed, 8 skipped, 0 failed;
+  test_animation_retarget 4/4; the animation, pose, tool budget (test_html_ui_tools), docs and
+  stubs MCP files 214 passed + test_animation_clip 32/32 after its known-words fix, 7 skipped,
+  failures only the baseline test_animation_assets x5. Tool texts unchanged (153 tools, budget
+  as before); TOOLS.md regenerated from the clean 7f2c6d8d1 build. Web: em++ -fsyntax-only of the
+  12 changed engine sources clean.

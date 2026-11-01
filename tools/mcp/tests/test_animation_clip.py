@@ -1094,7 +1094,7 @@ async def test_guide_names_exist(ed: Editor):
               "automate_thresholds", "left_arm", "right_arm", "left_leg", "right_leg", "left_fingers", "right_fingers",
               # humanoid clips (test_animation_retarget): get_animation's realisation and report, the Avatar
               # (get_asset_info, set_humanoid) and the humanoid bone names
-              "retarget_report", "scale_ratio", "missing_on_target", "unmapped_source_bones", "hips_local_position",
+              "retarget_report", "scale_ratio", "foot_ik", "missing_on_target", "unmapped_source_bones", "hips_local_position",
               "local_rotation", "set_humanoid", "animation_type", "extra_mapped", "human_scale", "extra_bones",
               "humanoid_position", "left_upper_arm", "left_index_proximal", "left_eye", "right_eye", "right_toes",
               "left_foot", "right_foot"}
