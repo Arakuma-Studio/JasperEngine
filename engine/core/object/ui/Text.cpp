@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Text.h"
+#include "shader/ShaderGlobals.h"
 #include "shader/ShaderManifest.h"
 
 #include "Log.h"
@@ -402,6 +403,21 @@ Vector4 Text::getShaderParam(const std::string& name) const{
     UIComponent& ui = getComponent<UIComponent>();
 
     return ShaderLibraryValues::getParam(ui.shaderUniforms, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader.path, name);
+}
+
+bool Text::setShaderGlobalBinding(const std::string& member, const std::string& global){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    if (!ShaderGlobals::setBinding(ui.shaderGlobalBindings, member, global))
+        return false;
+    ui.needUpdateShaderUniforms = true;
+    return true;
+}
+
+std::string Text::getShaderGlobalBinding(const std::string& member) const{
+    const UIComponent& ui = getComponent<UIComponent>();
+
+    return ShaderGlobals::getBinding(ui.shaderGlobalBindings, member);
 }
 
 void Text::setShaderTexture(const std::string& name, const std::string& path){

@@ -6,6 +6,8 @@
 #include "LoadReport.h"
 #include "SceneBackup.h"
 
+#include "ecs/Entity.h"
+
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -124,6 +126,12 @@ namespace jasperengine::editor {
         // Animation..."), or a .vat (its recipe: "Open in Baker"); bakeNow runs it at once
         // ("Rebake": written over the .vat, one undo step)
         virtual void openVertexAnimationBaker(const std::filesystem::path& path, bool bakeNow);
+        // Window > Sprite Normal Map with images ("Generate Normal Map(s)...": one = single, more =
+        // batch), or a generated map's recipe restored (editRecipe, "Edit Normal Map...")
+        virtual void openSpriteNormals(const std::vector<std::filesystem::path>& images, bool editRecipe);
+        // ... with a GameObject's submesh texture as the source and Assign on (the Inspector's
+        // wand and "Normal Map..."); now: generate, save and assign without opening it
+        virtual void openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, unsigned submesh, bool now);
 
         virtual InspectorWindow* getInspectorWindow() const;
         virtual CodeEditor* getCodeEditor() const;

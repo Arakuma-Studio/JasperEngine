@@ -467,6 +467,107 @@ async def test_cli_anims_guid_mismatch_and_unreadable_yaml():
         check_eq(code, 0, f"warnings only: exit 0: {data}")
 
 
+async def test_cli_anims_masks_and_controllers():
+    """--anims reads Avatar Masks (.mask) and Animator Controllers (.controller): their format
+    (line:col, JSON paths of dropped parts) and the controller validation (anim layers spec 5.11)"""
+    with scratch_project() as project:
+        write(project, "assets/anim/good.anim", GOOD_CLIP)
+        write(project, "assets/anim/arm.mask",
+              '{"format": "jasperengine.mask", "version": 1, "default": 0, "humanoid": {"right_arm": 1, "left_hand_ik": 1},\n'
+              ' "transforms": [{"weight": 1}]}\n')
+        write(project, "assets/anim/broken.mask", '{"format": "jasperengine.mask",\n "version": 1,,}\n')
+        write(project, "assets/anim/unity.controller", "%YAML 1.1\n--- !u!91 &9100000\nAnimatorController:\n")
+        write(project, "assets/anim/granjero.controller", """{"format": "jasperengine.controller", "version": 1,
+  "parameters": [{"name": "Speed", "type": "float"}, {"name": "Watering", "type": "bool"}, {"name": "Unused", "type": "int"}],
+  "layers": [{"name": "Base Layer", "states": [{"name": "Idle", "clip": "anim/good.anim"},
+      {"name": "Watering", "clip": "anim/missing.anim"}],
+    "transitions": [{"from": "Idle", "to": "Watering", "conditions": [{"parameter": "Watering", "mode": "if"}],
+      "has_exit_time": false}]}, {"name": "Holding", "mask": "anim/nomask.mask", "states": []}]}""")
+        code, data = run_json(project, "--anims")
+        found = {}
+        for f in data["findings"]:
+            found.setdefault(f["path"], []).append((f["severity"], f["line"], f["message"]))
+        mask = found.get("assets/anim/arm.mask", [])
+        check(any("humanoid.left_hand_ik" in m for _, _, m in mask), f"an IK part is reported with its JSON path: {mask}")
+        check(any("transforms[0].path" in m for _, _, m in mask), f"a dropped entry is reported with its JSON path: {mask}")
+        broken = found.get("assets/anim/broken.mask", [])
+        check(len(broken) == 1 and broken[0][0] == "error" and broken[0][1] == 2, f"broken JSON: an error with its line: {broken}")
+        unity = found.get("assets/anim/unity.controller", [])
+        check(len(unity) == 1 and "Unity .controller" in unity[0][2], f"Unity YAML is refused: {unity}")
+        controller = [m for _, _, m in found.get("assets/anim/granjero.controller", [])]
+        check(any("layers[0].states[1].clip" in m and "does not load" in m for m in controller), f"a missing clip: {controller}")
+        check(any("parameters[2]" in m and "unused" in m for m in controller), f"an unused parameter: {controller}")
+        check(any("layers[1].mask" in m and "does not exist" in m for m in controller), f"a missing mask: {controller}")
+        check(any("parameters[0]" in m and "unused" in m for m in controller), f"Speed is read by nothing: {controller}")
+        check_eq(code, 1, f"errors: exit 1: {data}")
+        # --files: one controller alone
+        code, data = run_json(project, "--files", "assets/anim/granjero.controller")
+        check_eq(data["checked"], {"anims": 1}, f"--files a controller: {data}")
+
+
+MASK_GUID = "11111111111111111111111111111111"
+CONTROLLER_GUID = "22222222222222222222222222222222"
+# Animation Players naming masks and a controller (anim layers): one there, one missing, one moved
+# (found by its GUID), a controller missing
+LAYER_SCENE = """name: Layers
+entities:
+  - name: Hero
+    components:
+      animationplayer:
+        clips: []
+        layers:
+          - name: Base Layer
+          - name: Arm
+            mask: anim/arm.mask
+            maskGuid: 11111111111111111111111111111111
+          - name: Gone
+            mask: anim/gone.mask
+          - name: Moved
+            mask: old/arm.mask
+            maskGuid: 11111111111111111111111111111111
+        controller: anim/gone.controller
+        controllerGuid: 33333333333333333333333333333333
+  - name: Other
+    components:
+      animationplayer:
+        clips: []
+        controller: old/hero.controller
+        controllerGuid: 22222222222222222222222222222222
+"""
+
+
+async def test_cli_anims_player_mask_and_controller_references():
+    with scratch_project() as project:
+        write(project, "assets/anim/arm.mask", json.dumps({"format": "jasperengine.mask", "version": 1, "guid": MASK_GUID,
+                                                          "default": 0, "transforms": []}, indent=2) + "\n")
+        write(project, "assets/anim/hero.controller", json.dumps({"format": "jasperengine.controller", "version": 1, "guid": CONTROLLER_GUID,
+                                                                 "parameters": [], "layers": [{"name": "Base Layer", "states": []}]}, indent=2) + "\n")
+        write(project, "Layers.scene", LAYER_SCENE)
+        code, data = run_json(project, "--anims")
+        scene = sorted((f["severity"], f["message"]) for f in data["findings"] if f["path"] == "Layers.scene")
+        check_eq(code, 1, f"errors exit 1: {data}")
+        check_eq(len(scene), 4, f"the missing mask and controller, the moved mask and controller: {scene}")
+        check(any(s == "error" and "layers[2].mask 'anim/gone.mask'" in m and "does not exist" in m for s, m in scene), f"missing mask: {scene}")
+        check(any(s == "error" and "controller 'anim/gone.controller'" in m and "does not exist" in m for s, m in scene),
+              f"missing controller: {scene}")
+        check(any(s == "warning" and "'old/arm.mask'" in m and "moved to 'assets/anim/arm.mask'" in m for s, m in scene),
+              f"a moved mask found by its GUID: {scene}")
+        check(any(s == "warning" and "'old/hero.controller'" in m and "moved to 'assets/anim/hero.controller'" in m for s, m in scene),
+              f"a moved controller found by its GUID: {scene}")
+
+        # a controller naming a moved clip and mask by GUID: checked where they are, also with --files
+        write(project, "assets/anim/good.anim", GOOD_CLIP)
+        write(project, "assets/anim/follow.controller", json.dumps({"format": "jasperengine.controller", "version": 1, "layers": [
+            {"name": "Base Layer", "states": [{"name": "Run", "clip": "old/good.anim", "clip_guid": CLIP_GUID}]},
+            {"name": "Arm", "mask": "old/arm.mask", "mask_guid": MASK_GUID, "states": []}]}, indent=2) + "\n")
+        for args in (("--anims",), ("--files", "assets/anim/follow.controller")):
+            code, data = run_json(project, *args)
+            follow = sorted((f["severity"], f["message"]) for f in data["findings"] if f["path"] == "assets/anim/follow.controller")
+            check(not any(s == "error" for s, _ in follow) and not any("does not load" in m for _, m in follow), f"{args}: found by GUID: {follow}")
+            check(any("layers[0].states[0].clip: 'old/good.anim' moved to 'assets/anim/good.anim'" in m for _, m in follow), f"{args}: the clip: {follow}")
+            check(any("layers[1].mask: 'old/arm.mask' moved to 'assets/anim/arm.mask'" in m for _, m in follow), f"{args}: the mask: {follow}")
+
+
 # ---------------------------------------------------------------------------- CLI: vertex animations
 
 VAT_MODELS = harness.REPO / "tools" / "fixtures" / "vertex-animation" / "assets" / "models"

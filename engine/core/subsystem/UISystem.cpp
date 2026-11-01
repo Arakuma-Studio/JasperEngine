@@ -17,8 +17,6 @@
 
 using namespace jasperengine;
 
-static constexpr float UI_DRAG_START_DISTANCE = 4.0f;
-static constexpr double UI_DOUBLE_CLICK_TIME = 0.3;
 
 UISystem::UISystem(Scene* scene): SubSystem(scene){
     signature.set(scene->getComponentId<RectTransformComponent>());
@@ -33,19 +31,18 @@ UISystem::UISystem(Scene* scene): SubSystem(scene){
     progressbarId = scene->getComponentId<ProgressbarComponent>();
     inputFieldId = scene->getComponentId<InputFieldComponent>();
     textId = scene->getComponentId<TextComponent>();
-    for (ComponentId id : {uiId, rectTransformId, imageId, transformId, buttonId, panelId, scrollbarId, progressbarId, inputFieldId, textId}){
+    canvasGroupId = scene->getComponentId<CanvasGroupComponent>();
+    pointsId = scene->getComponentId<PointsComponent>();
+    actionId = scene->getComponentId<ActionComponent>();
+    onScreenStickId = scene->getComponentId<OnScreenStickComponent>();
+    onScreenButtonId = scene->getComponentId<OnScreenButtonComponent>();
+    touchAreaId = scene->getComponentId<TouchAreaComponent>();
+    for (ComponentId id : {uiId, rectTransformId, imageId, transformId, buttonId, panelId, scrollbarId, progressbarId, inputFieldId, textId,
+                           canvasGroupId, pointsId, actionId, onScreenStickId, onScreenButtonId, touchAreaId}){
         declareHookType(id);
     }
 
-    lastUIFromPointer = NULL_ENTITY;
-    lastUIFromPointerHover = NULL_ENTITY;
     lastUIFromClick = NULL_ENTITY;
-    lastPanelFromPointer = NULL_ENTITY;
-    inputFieldSelecting = NULL_ENTITY;
-    lastPointerDownPos = Vector2(-1, -1);
-    lastPointerPos = Vector2(-1, -1);
-    pointerDragging = false;
-    pointerInternalGesture = false;
     lastClickTime = -1.0;
 
     anchorReferenceWidth = 0;
@@ -55,6 +52,10 @@ UISystem::UISystem(Scene* scene): SubSystem(scene){
 }
 
 UISystem::~UISystem(){
+    // scene unload: the queued widgets and the helper fades go with it (their tweens are the
+    // scene's entities, destroyed with it)
+    interactabilityLost.clear();
+    canvasGroupFades.clear();
 }
 
 bool UISystem::createImagePatches(ImageComponent& img, UIComponent& ui, RectTransformComponent& layout){
@@ -628,7 +629,8 @@ void UISystem::applyButtonVisual(ButtonComponent& button, UIComponent& ui){
     Texture targetTexture;
     Vector4 targetColor;
 
-    if (button.disabled){
+    // the own flag or a non-interactable Canvas Group (Unity Selectable.IsInteractable)
+    if (button.disabled || !ui.groupInteractable){
         targetTexture = button.textureDisabled;
         targetColor = button.colorDisabled;
     }else if (button.pressed){
@@ -1830,6 +1832,7 @@ bool UISystem::isEntityChild(Entity child, Entity parent) const{
 }
 
 void UISystem::load(){
+    canvasGroupsStructuralDirty = true;
     update(0);
 }
 
@@ -1858,6 +1861,8 @@ void UISystem::destroy(){
 }
 
 void UISystem::draw(){
+    // before RenderSystem draws: a write after the update (onPostUpdate) shows this frame
+    syncCanvasGroups();
 }
 
 void UISystem::createOrUpdateUiComponent(RectTransformComponent& layout, Entity entity, Signature signature){
@@ -2032,9 +2037,15 @@ void UISystem::calculateUIAABB(UIComponent& ui){
 void UISystem::update(double dt){
     pendingImages = false;
 
+    syncCanvasGroups();
+
     if (paused) {
         return;
     }
+
+    // what a Canvas Group change or a finished fade calls back, outside any draw or raycast
+    processInteractabilityLost();
+    processCanvasGroupFades();
 
     // need to be ordered by Transform
     auto layouts = scene->getComponentArray<RectTransformComponent>();
@@ -2616,6 +2627,9 @@ void UISystem::update(double dt){
         }
     }
 
+    // the on-screen controls (UISystemPointer.cpp): visibility, the Touch Areas' frame drags,
+    // presses of elements that went inactive cancelled
+    updateControls();
 }
 
 bool UISystem::hasPendingImages() const{
@@ -2637,22 +2651,6 @@ bool UISystem::isInputFieldFocused(){
     return false;
 }
 
-void UISystem::resetButtonStates() {
-    auto buttons = scene->getComponentArray<ButtonComponent>();
-    for (int i = 0; i < buttons->size(); i++) {
-        ButtonComponent& button = buttons->getComponentFromIndex(i);
-        if (!button.pressed) continue;
-
-        Entity entity = buttons->getEntity(i);
-        Signature signature = scene->getSignature(entity);
-        button.pressed = false;
-        if (signature.test(scene->getComponentId<UIComponent>())) {
-            UIComponent& ui = scene->getComponent<UIComponent>(entity);
-            applyButtonVisual(button, ui);
-        }
-    }
-}
-
 bool UISystem::eventOnCharInput(wchar_t codepoint){
     // what the event handlers destroy goes when the dispatch is over
     StructuralDeferScope deferScope(*scene);
@@ -2664,7 +2662,9 @@ bool UISystem::eventOnCharInput(wchar_t codepoint){
             InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
 
-            if (ui.focused && isUIActive(entity, signature)){
+            // a field that became non-interactable (own flag or Canvas Group) takes no typing,
+            // also before the next update drops its focus
+            if (ui.focused && isUIActive(entity, signature) && isInteractable(entity)){
                 TextComponent* text = scene->findComponent<TextComponent>(inputfield.text);
                 if (text && handleInputFieldCharInput(inputfield, *text, ui, codepoint)){
                     return true;
@@ -2687,7 +2687,9 @@ bool UISystem::eventOnKeyDown(int key, bool repeat, int mods){
             InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
 
-            if (ui.focused && isUIActive(entity, signature)){
+            // a field that became non-interactable (own flag or Canvas Group) takes no typing,
+            // also before the next update drops its focus
+            if (ui.focused && isUIActive(entity, signature) && isInteractable(entity)){
                 TextComponent* text = scene->findComponent<TextComponent>(inputfield.text);
                 if (text && handleInputFieldKeyDown(inputfield, *text, ui, key, repeat, mods)){
                     return true;
@@ -2720,670 +2722,6 @@ bool UISystem::isLiveUIEntity(Entity entity, Signature signature) const {
         && signature.test(scene->getComponentId<UIComponent>());
 }
 
-// Entity must be a live UI entity. Every user callback here can create or destroy
-// entities, which invalidates the component references
-void UISystem::pointerDownOnUI(Entity entity, float x, float y){
-    Signature signature = scene->getSignature(entity);
-    UIComponent* ui = scene->findComponent<UIComponent>(entity);
-    ui->pointerMoved = false;
-
-    if (signature.test(scene->getComponentId<ButtonComponent>())){
-        ButtonComponent* button = scene->findComponent<ButtonComponent>(entity);
-        if (button && !button->disabled && !button->pressed){
-            button->pressed = true;
-            applyButtonVisual(*button, *ui);
-            button->onPress.call();
-
-            ui = scene->findComponent<UIComponent>(entity);
-            if (!ui)
-                return;
-            signature = scene->getSignature(entity);
-        }
-    }
-
-    Transform* transform = scene->findComponent<Transform>(entity);
-    RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
-    if (!transform || !layout)
-        return;
-
-    if (signature.test(scene->getComponentId<InputFieldComponent>())){
-        InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
-        if (!inputfield.disabled){
-            TextComponent* text = scene->findComponent<TextComponent>(inputfield.text);
-            ImageComponent* img = scene->findComponent<ImageComponent>(entity);
-            if (text && img){
-                float localX = x - transform->worldPosition.x;
-                bool extendSelection = (Input::getModifiers() & D_MODIFIER_SHIFT) != 0;
-                if (text->text.empty()){
-                    inputfield.cursorIndex = 0;
-                    if (!extendSelection){
-                        inputfield.selectionAnchor = 0;
-                    }
-                    inputFieldResetBlink(inputfield);
-                    inputfield.needUpdateInputField = true;
-                }else{
-                    setInputFieldCursorFromLocalX(inputfield, *text, *img, localX, extendSelection);
-                }
-                inputFieldSelecting = entity;
-
-                bool hadInvalid = false;
-                std::wstring wideText = StringUtils::utf8ToWString(text->text, hadInvalid);
-                System::instance().showVirtualKeyboard(wideText);
-            }
-        }
-    }else{
-        System::instance().hideVirtualKeyboard();
-    }
-
-    if (signature.test(scene->getComponentId<ScrollbarComponent>())){
-        ScrollbarComponent& scrollbar = scene->getComponent<ScrollbarComponent>(entity);
-        if (scrollbar.bar != NULL_ENTITY &&
-            scene->findComponent<Transform>(scrollbar.bar) &&
-            scene->findComponent<RectTransformComponent>(scrollbar.bar)){
-            Transform& bartransform = scene->getComponent<Transform>(scrollbar.bar);
-            RectTransformComponent& barlayout = scene->getComponent<RectTransformComponent>(scrollbar.bar);
-
-            if (isCoordInside(x, y, bartransform, barlayout)){
-                scrollbar.barPointerDown = true;
-                pointerInternalGesture = true;
-                if (scrollbar.type == ScrollbarType::VERTICAL){
-                    scrollbar.barPointerPos = y - transform->worldPosition.y - (bartransform.position.y * bartransform.worldScale.y);
-                }else if (scrollbar.type == ScrollbarType::HORIZONTAL){
-                    scrollbar.barPointerPos = x - transform->worldPosition.x - (bartransform.position.x * bartransform.worldScale.x);
-                }
-            }else if (scrollbar.barSize < 1.0){
-                scrollbar.barPointerDown = true;
-                pointerInternalGesture = true;
-                if (scrollbar.type == ScrollbarType::VERTICAL){
-                    float innerHeight = std::max(0.0f, (float)layout->height - scrollbar.barMarginTop - scrollbar.barMarginBottom);
-                    scrollbar.barPointerPos = innerHeight * scrollbar.barSize / 2.0f;
-                }else if (scrollbar.type == ScrollbarType::HORIZONTAL){
-                    float innerWidth = std::max(0.0f, (float)layout->width - scrollbar.barMarginLeft - scrollbar.barMarginRight);
-                    scrollbar.barPointerPos = innerWidth * scrollbar.barSize / 2.0f;
-                }
-                applyScrollbarPointerPosition(entity, x, y);
-            }
-        }
-    }
-
-    if (!scene->isEntityCreated(entity))
-        return;
-    signature = scene->getSignature(entity);
-    if (!signature.test(scene->getComponentId<Transform>()) ||
-        !signature.test(scene->getComponentId<RectTransformComponent>()) ||
-        !signature.test(scene->getComponentId<UIComponent>()))
-        return;
-    transform = &scene->getComponent<Transform>(entity);
-    layout = &scene->getComponent<RectTransformComponent>(entity);
-    ui = &scene->getComponent<UIComponent>(entity);
-
-    if (signature.test(scene->getComponentId<PanelComponent>())){
-        PanelComponent& panel = scene->getComponent<PanelComponent>(entity);
-        RectTransformComponent defaultHeaderLayout;
-        const RectTransformComponent& headerlayout = panel.headercontainer != NULL_ENTITY && scene->findComponent<RectTransformComponent>(panel.headercontainer)
-            ? scene->getComponent<RectTransformComponent>(panel.headercontainer)
-            : defaultHeaderLayout;
-
-        Rect edgeRight;
-        Rect edgeRightBottom;
-        Rect edgeBottom;
-        Rect edgeLeftBottom;
-        Rect edgeLeft;
-        getPanelEdges(panel, *layout, *transform, headerlayout, edgeRight, edgeRightBottom, edgeBottom, edgeLeftBottom, edgeLeft);
-
-        if (panel.canResize){
-            panelSizeAcc = Vector2(0, 0);
-            if (edgeRight.contains(Vector2(x, y))){
-                panel.edgePointerDown = PanelEdge::RIGHT;
-            }else if (edgeRightBottom.contains(Vector2(x, y))){
-                panel.edgePointerDown = PanelEdge::RIGHT_BOTTOM;
-            }else if (edgeBottom.contains(Vector2(x, y))){
-                panel.edgePointerDown = PanelEdge::BOTTOM;
-            }else if (edgeLeftBottom.contains(Vector2(x, y))){
-                panel.edgePointerDown = PanelEdge::LEFT_BOTTOM;
-            }else if (edgeLeft.contains(Vector2(x, y))){
-                panel.edgePointerDown = PanelEdge::LEFT;
-            }else{
-                panel.edgePointerDown = PanelEdge::NONE;
-            }
-
-            if (panel.edgePointerDown != PanelEdge::NONE){
-                pointerInternalGesture = true;
-            }
-        }
-
-        if (panel.canMove && panel.headercontainer != NULL_ENTITY){
-            Transform* headertransform = scene->findComponent<Transform>(panel.headercontainer);
-            RectTransformComponent* headerlayoutPtr = scene->findComponent<RectTransformComponent>(panel.headercontainer);
-            if (headertransform && headerlayoutPtr && isCoordInside(x, y, *headertransform, *headerlayoutPtr)){
-                panel.headerPointerDown = true;
-                pointerInternalGesture = true;
-            }
-        }
-    }
-
-    ui->onPointerDown(x - transform->worldPosition.x, y - transform->worldPosition.y);
-
-    ui = scene->findComponent<UIComponent>(entity);
-    if (!ui)
-        return;
-
-    if (!ui->focused){
-        ui->focused = true;
-        ui->onGetFocus.call();
-        ui = scene->findComponent<UIComponent>(entity);
-        if (!ui)
-            return;
-    }
-
-    if (scene->findComponent<InputFieldComponent>(entity))
-        scene->getComponent<InputFieldComponent>(entity).needUpdateInputField = true;
-}
-
-bool UISystem::eventOnPointerDown(float x, float y){
-    // what the event handlers destroy goes when the dispatch is over
-    StructuralDeferScope deferScope(*scene);
-    lastUIFromPointer = NULL_ENTITY;
-    lastPanelFromPointer = NULL_ENTITY;
-    lastPointerDownPos = Vector2(x, y);
-    lastPointerPos = Vector2(x, y);
-    pointerDragging = false;
-    pointerInternalGesture = false;
-
-    auto layouts = scene->getComponentArray<RectTransformComponent>();
-
-    std::vector<Entity> layoutEntities;
-    layoutEntities.reserve(layouts->size());
-    for (int i = 0; i < layouts->size(); i++){
-        layoutEntities.push_back(layouts->getEntity(i));
-    }
-
-    for (Entity entity : layoutEntities){
-        RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
-        if (!layout){
-            continue;
-        }
-
-        Signature signature = scene->getSignature(entity);
-        if (signature.test(scene->getComponentId<Transform>())){
-            Transform& transform = scene->getComponent<Transform>(entity);
-
-            if (transform.visible && isUIActive(entity, signature)){
-                if (signature.test(scene->getComponentId<ImageComponent>())){
-                    Rect uirect(transform.worldPosition.x, transform.worldPosition.y, layout->width * transform.worldScale.x, layout->height * transform.worldScale.y);
-
-                    if (layout->panel != NULL_ENTITY){
-                        uirect = fitOnPanel(uirect, layout->panel);
-                    }
-
-                    if (uirect.contains(Vector2(x, y)) && !layout->ignoreEvents){ //TODO: inside to polygon
-                        lastUIFromPointer = entity;
-                        lastPanelFromPointer = layout->panel;
-                    }
-
-                    if (signature.test(scene->getComponentId<PanelComponent>())){
-                        if (uirect.contains(Vector2(x, y)) && !layout->ignoreEvents){
-                            lastPanelFromPointer = entity;
-                        }
-                    }
-                }
-
-                if (signature.test(scene->getComponentId<UIComponent>())){
-                    UIComponent& ui = scene->getComponent<UIComponent>(entity);
-                    if (ui.focused){
-                        ui.focused = false;
-                        ui.onLostFocus.call();
-                        if (scene->isEntityCreated(entity)){
-                            signature = scene->getSignature(entity);
-                            if (signature.test(scene->getComponentId<InputFieldComponent>())){
-                                InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
-                                inputfield.needUpdateInputField = true;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (isLiveUIEntity(lastUIFromPointer)){
-        pointerDownOnUI(lastUIFromPointer, x, y);
-    }else{
-        lastUIFromPointer = NULL_ENTITY;
-        System::instance().hideVirtualKeyboard();
-    }
-
-    if (PanelComponent* panel = scene->findComponent<PanelComponent>(lastPanelFromPointer)){
-        if (panel->canBringToFront){
-            scene->moveChildToTop(lastPanelFromPointer);
-        }
-    }else{
-        lastPanelFromPointer = NULL_ENTITY;
-    }
-
-    if (!isLiveUIEntity(lastUIFromPointer)){
-        lastUIFromPointer = NULL_ENTITY;
-    }
-
-    if (lastUIFromPointer != NULL_ENTITY)
-        return true;
-
-    return false;
-}
-
-bool UISystem::eventOnPointerUp(float x, float y){
-    // what the event handlers destroy goes when the dispatch is over
-    StructuralDeferScope deferScope(*scene);
-    lastPointerPos = Vector2(-1, -1);
-
-    auto layouts = scene->getComponentArray<RectTransformComponent>();
-    Entity currentUIFromPointer = NULL_ENTITY;
-
-    std::vector<Entity> layoutEntities;
-    layoutEntities.reserve(layouts->size());
-    for (int i = 0; i < layouts->size(); i++){
-        layoutEntities.push_back(layouts->getEntity(i));
-    }
-
-    for (Entity entity : layoutEntities){
-        RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
-        if (!layout)
-            continue;
-        Signature signature = scene->getSignature(entity);
-        if (!isLiveUIEntity(entity, signature))
-            continue;
-
-        Transform* transform = scene->findComponent<Transform>(entity);
-        UIComponent* ui = scene->findComponent<UIComponent>(entity);
-
-        if (transform->visible && isUIActive(entity, signature) && signature.test(scene->getComponentId<ImageComponent>())){
-            Rect uirect(transform->worldPosition.x, transform->worldPosition.y, layout->width * transform->worldScale.x, layout->height * transform->worldScale.y);
-
-            if (layout->panel != NULL_ENTITY){
-                uirect = fitOnPanel(uirect, layout->panel);
-            }
-
-            if (uirect.contains(Vector2(x, y)) && !layout->ignoreEvents){
-                currentUIFromPointer = entity;
-            }
-        }
-
-        if (signature.test(scene->getComponentId<ButtonComponent>())){
-            ButtonComponent* button = scene->findComponent<ButtonComponent>(entity);
-            if (button && !button->disabled && button->pressed){
-                button->pressed = false;
-                applyButtonVisual(*button, *ui);
-                button->onRelease.call();
-
-                transform = scene->findComponent<Transform>(entity);
-                ui = scene->findComponent<UIComponent>(entity);
-                if (!transform || !ui)
-                    continue;
-                signature = scene->getSignature(entity);
-            }
-        }
-
-        if (signature.test(scene->getComponentId<ScrollbarComponent>())){
-            scene->getComponent<ScrollbarComponent>(entity).barPointerDown = false;
-        }
-
-        if (signature.test(scene->getComponentId<PanelComponent>())){
-            PanelComponent& panel = scene->getComponent<PanelComponent>(entity);
-
-            panel.headerPointerDown = false;
-            panel.edgePointerDown = PanelEdge::NONE;
-        }
-
-        ui->onPointerUp(x - transform->worldPosition.x, y - transform->worldPosition.y);
-    }
-
-    if (isLiveUIEntity(lastUIFromPointer)){
-        Signature signature = scene->getSignature(lastUIFromPointer);
-        Transform* transform = scene->findComponent<Transform>(lastUIFromPointer);
-        UIComponent* ui = scene->findComponent<UIComponent>(lastUIFromPointer);
-        if (transform && ui){
-            if (pointerDragging){
-                ui->onDragEnd.call(x - transform->worldPosition.x, y - transform->worldPosition.y);
-            }else if (!pointerInternalGesture && currentUIFromPointer == lastUIFromPointer){
-                bool canClick = true;
-                if (signature.test(scene->getComponentId<ButtonComponent>())){
-                    ButtonComponent* button = scene->findComponent<ButtonComponent>(lastUIFromPointer);
-                    canClick = button && !button->disabled;
-                }
-
-                if (canClick){
-                    float localX = x - transform->worldPosition.x;
-                    float localY = y - transform->worldPosition.y;
-                    ui->onClick.call(localX, localY);
-
-                    transform = scene->findComponent<Transform>(lastUIFromPointer);
-                    ui = scene->findComponent<UIComponent>(lastUIFromPointer);
-                    if (transform && ui){
-                        double clickTime = Engine::getSystemTime();
-                        if (lastUIFromClick == lastUIFromPointer && clickTime - lastClickTime <= UI_DOUBLE_CLICK_TIME){
-                            ui->onDoubleClick.call(x - transform->worldPosition.x, y - transform->worldPosition.y);
-                            lastUIFromClick = NULL_ENTITY;
-                            lastClickTime = -1.0;
-                        }else{
-                            lastUIFromClick = lastUIFromPointer;
-                            lastClickTime = clickTime;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    lastPanelFromPointer = NULL_ENTITY;
-    pointerDragging = false;
-    pointerInternalGesture = false;
-    inputFieldSelecting = NULL_ENTITY;
-
-    if (lastUIFromPointer != NULL_ENTITY){
-        lastUIFromPointer = NULL_ENTITY;
-
-        Engine::setMouseCursor(CursorType::ARROW);
-        return true;
-    }
-
-    return false;
-}
-
-void UISystem::applyScrollbarPointerPosition(Entity entity, float x, float y){
-    Transform* transform = scene->findComponent<Transform>(entity);
-    RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
-    ScrollbarComponent* scrollbar = scene->findComponent<ScrollbarComponent>(entity);
-    if (!transform || !layout || !scrollbar || !scrollbar->barPointerDown || scrollbar->barSize >= 1.0)
-        return;
-    if (!scene->findComponent<Transform>(scrollbar->bar) || !scene->findComponent<RectTransformComponent>(scrollbar->bar))
-        return;
-
-    Entity bar = scrollbar->bar;
-
-    float innerHeight = std::max(0.0f, (float)layout->height - scrollbar->barMarginTop - scrollbar->barMarginBottom);
-    float innerWidth = std::max(0.0f, (float)layout->width - scrollbar->barMarginLeft - scrollbar->barMarginRight);
-
-    float trackStartNorm = 0;
-    float trackEndNorm = 1;
-    float halfBarParent = 0;
-    float pos = 0;
-
-    if (scrollbar->type == ScrollbarType::VERTICAL){
-        float barSizePixel = innerHeight * scrollbar->barSize;
-        float barLocalY = (y - transform->worldPosition.y) / transform->worldScale.y;
-        float posAlongInner = innerHeight > 0 ? (barLocalY - scrollbar->barMarginTop + (barSizePixel / 2.0) - scrollbar->barPointerPos) / innerHeight : 0;
-        trackStartNorm = layout->height > 0 ? scrollbar->barMarginTop / (float)layout->height : 0;
-        trackEndNorm = layout->height > 0 ? 1.0f - scrollbar->barMarginBottom / (float)layout->height : 1;
-        halfBarParent = layout->height > 0 ? (barSizePixel / 2.0f) / layout->height : 0;
-        pos = trackStartNorm + posAlongInner * (trackEndNorm - trackStartNorm);
-    }else if (scrollbar->type == ScrollbarType::HORIZONTAL){
-        float barSizePixel = innerWidth * scrollbar->barSize;
-        float barLocalX = (x - transform->worldPosition.x) / transform->worldScale.x;
-        float posAlongInner = innerWidth > 0 ? (barLocalX - scrollbar->barMarginLeft + (barSizePixel / 2.0) - scrollbar->barPointerPos) / innerWidth : 0;
-        trackStartNorm = layout->width > 0 ? scrollbar->barMarginLeft / (float)layout->width : 0;
-        trackEndNorm = layout->width > 0 ? 1.0f - scrollbar->barMarginRight / (float)layout->width : 1;
-        halfBarParent = layout->width > 0 ? (barSizePixel / 2.0f) / layout->width : 0;
-        pos = trackStartNorm + posAlongInner * (trackEndNorm - trackStartNorm);
-    }
-
-    float movableStart = trackStartNorm + halfBarParent;
-    float movableEnd = trackEndNorm - halfBarParent;
-    if (pos < movableStart){
-        pos = movableStart;
-    }else if (pos > movableEnd){
-        pos = movableEnd;
-    }
-
-    float newStep = movableEnd > movableStart ? (pos - movableStart) / (movableEnd - movableStart) : 0;
-
-    if (newStep != scrollbar->step){
-        scrollbar->step = newStep;
-        scrollbar->onChange.call(newStep);
-        scrollbar = scene->findComponent<ScrollbarComponent>(entity);
-    }
-
-    RectTransformComponent* barlayout = scene->findComponent<RectTransformComponent>(bar);
-    if (scrollbar && barlayout){
-        if (scrollbar->type == ScrollbarType::VERTICAL){
-            barlayout->anchorPointTop = pos;
-            barlayout->anchorPointBottom = pos;
-        }else if (scrollbar->type == ScrollbarType::HORIZONTAL){
-            barlayout->anchorPointLeft = pos;
-            barlayout->anchorPointRight = pos;
-        }
-    }
-}
-
-// Every user callback here can create or destroy entities, which invalidates the
-// component references, so they are fetched again after each call
-void UISystem::pointerMoveOnUI(Entity entity, float x, float y, Vector2 pointerDiff, CursorType& cursor){
-    Transform* transform = scene->findComponent<Transform>(entity);
-    UIComponent* ui = scene->findComponent<UIComponent>(entity);
-    if (!transform || !ui)
-        return;
-
-    float localX = x - transform->worldPosition.x;
-    float localY = y - transform->worldPosition.y;
-
-    ui->onPointerMove.call(localX, localY);
-    ui = scene->findComponent<UIComponent>(entity);
-    if (!ui)
-        return;
-    ui->pointerMoved = true;
-
-    if (!pointerInternalGesture){
-        if (!pointerDragging && Vector2(x, y).squaredDistance(lastPointerDownPos) >= UI_DRAG_START_DISTANCE * UI_DRAG_START_DISTANCE){
-            pointerDragging = true;
-            ui->onDragStart.call(localX, localY);
-            ui = scene->findComponent<UIComponent>(entity);
-            if (!ui)
-                return;
-        }
-
-        if (pointerDragging){
-            ui->onDrag.call(localX, localY);
-            ui = scene->findComponent<UIComponent>(entity);
-            if (!ui)
-                return;
-        }
-
-        if (inputFieldSelecting == entity){
-            InputFieldComponent* inputfield = scene->findComponent<InputFieldComponent>(entity);
-            if (inputfield && !inputfield->disabled){
-                TextComponent* text = scene->findComponent<TextComponent>(inputfield->text);
-                ImageComponent* img = scene->findComponent<ImageComponent>(entity);
-                if (text && img){
-                    setInputFieldCursorFromLocalX(*inputfield, *text, *img, localX, true);
-                }
-            }
-        }
-    }
-
-    applyScrollbarPointerPosition(entity, x, y);
-
-    transform = scene->findComponent<Transform>(entity);
-    RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
-    PanelComponent* panel = scene->findComponent<PanelComponent>(entity);
-    if (!transform || !layout || !panel)
-        return;
-
-    if (panel->headerPointerDown){
-        transform->position += Vector3(pointerDiff.x / transform->worldScale.x, pointerDiff.y / transform->worldScale.y, 0);
-        transform->needUpdate = true;
-
-        panel->onMove.call();
-        transform = scene->findComponent<Transform>(entity);
-        layout = scene->findComponent<RectTransformComponent>(entity);
-        panel = scene->findComponent<PanelComponent>(entity);
-        if (!transform || !layout || !panel)
-            return;
-    }
-
-    if (panel->edgePointerDown != PanelEdge::NONE){
-        panelSizeAcc += Vector2(pointerDiff.x / transform->worldScale.x, pointerDiff.y / transform->worldScale.y);
-        if (panel->edgePointerDown == PanelEdge::RIGHT){
-            layout->width += (int)panelSizeAcc.x;
-            layout->needUpdateSizes = true;
-            cursor = CursorType::RESIZE_EW;
-        }else if (panel->edgePointerDown == PanelEdge::RIGHT_BOTTOM){
-            layout->width += (int)panelSizeAcc.x;
-            layout->height += (int)panelSizeAcc.y;
-            layout->needUpdateSizes = true;
-            cursor = CursorType::RESIZE_NWSE;
-        }else if (panel->edgePointerDown == PanelEdge::BOTTOM){
-            layout->height += (int)panelSizeAcc.y;
-            layout->needUpdateSizes = true;
-            cursor = CursorType::RESIZE_NS;
-        }else if (panel->edgePointerDown == PanelEdge::LEFT_BOTTOM){
-            transform->position += Vector3(pointerDiff.x / transform->worldScale.x, 0, 0);
-            transform->needUpdate = true;
-            layout->width -= (int)panelSizeAcc.x;
-            layout->height += (int)panelSizeAcc.y;
-            layout->needUpdateSizes = true;
-            cursor = CursorType::RESIZE_NESW;
-        }else if (panel->edgePointerDown == PanelEdge::LEFT){
-            transform->position += Vector3(pointerDiff.x / transform->worldScale.x, 0, 0);
-            transform->needUpdate = true;
-            layout->width -= (int)panelSizeAcc.x;
-            layout->needUpdateSizes = true;
-            cursor = CursorType::RESIZE_EW;
-        }
-        if (layout->width < panel->minWidth){
-            layout->width = panel->minWidth;
-        }
-        if (layout->height < panel->minHeight){
-            layout->height = panel->minHeight;
-        }
-        panelSizeAcc -= Vector2((int)panelSizeAcc.x, (int)panelSizeAcc.y);
-
-        panel->onResize.call(layout->width, layout->height);
-    }
-}
-
-bool UISystem::eventOnPointerMove(float x, float y){
-    // what the event handlers destroy goes when the dispatch is over
-    StructuralDeferScope deferScope(*scene);
-    auto layouts = scene->getComponentArray<RectTransformComponent>();
-
-    CursorType cursor = CursorType::ARROW;
-    Entity currentUIFromPointerHover = NULL_ENTITY;
-
-    for (int i = 0; i < layouts->size(); i++){
-        RectTransformComponent& layout = layouts->getComponentFromIndex(i);
-
-        Entity entity = layouts->getEntity(i);
-        Signature signature = scene->getSignature(entity);
-        if (signature.test(scene->getComponentId<Transform>())){
-            Transform& transform = scene->getComponent<Transform>(entity);
-
-            if (transform.visible && isUIActive(entity, signature)){
-                if (signature.test(scene->getComponentId<ImageComponent>())){
-                    Rect uirect(transform.worldPosition.x, transform.worldPosition.y, layout.width * transform.worldScale.x, layout.height * transform.worldScale.y);
-
-                    if (layout.panel != NULL_ENTITY){
-                        uirect = fitOnPanel(uirect, layout.panel);
-                    }
-
-                    if (uirect.contains(Vector2(x, y)) && !layout.ignoreEvents){
-                        currentUIFromPointerHover = entity;
-                        cursor = CursorType::ARROW;
-
-                        if (signature.test(scene->getComponentId<InputFieldComponent>())){
-                            cursor = CursorType::IBEAM;
-
-                        }else if (signature.test(scene->getComponentId<PanelComponent>())){
-                            PanelComponent& panel = scene->getComponent<PanelComponent>(entity);
-
-                            RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
-                            Transform& transform = scene->getComponent<Transform>(entity);
-                            RectTransformComponent defaultHeaderLayout;
-                            const RectTransformComponent& headerlayout = panel.headercontainer != NULL_ENTITY && scene->findComponent<RectTransformComponent>(panel.headercontainer)
-                                ? scene->getComponent<RectTransformComponent>(panel.headercontainer)
-                                : defaultHeaderLayout;
-
-                            Rect edgeRight;
-                            Rect edgeRightBottom;
-                            Rect edgeBottom;
-                            Rect edgeLeftBottom;
-                            Rect edgeLeft;
-                            getPanelEdges(panel, layout, transform, headerlayout, edgeRight, edgeRightBottom, edgeBottom, edgeLeftBottom, edgeLeft);
-
-                            if (panel.canResize){
-                                if (edgeRight.contains(Vector2(x, y))){
-                                    cursor = CursorType::RESIZE_EW;
-                                }else if (edgeRightBottom.contains(Vector2(x, y))){
-                                    cursor = CursorType::RESIZE_NWSE;
-                                }else if (edgeBottom.contains(Vector2(x, y))){
-                                    cursor = CursorType::RESIZE_NS;
-                                }else if (edgeLeftBottom.contains(Vector2(x, y))){
-                                    cursor = CursorType::RESIZE_NESW;
-                                }else if (edgeLeft.contains(Vector2(x, y))){
-                                    cursor = CursorType::RESIZE_EW;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (currentUIFromPointerHover != lastUIFromPointerHover){
-        if (isLiveUIEntity(lastUIFromPointerHover)){
-            Signature signature = scene->getSignature(lastUIFromPointerHover);
-            Transform* transform = scene->findComponent<Transform>(lastUIFromPointerHover);
-            UIComponent* ui = scene->findComponent<UIComponent>(lastUIFromPointerHover);
-            if (transform && ui){
-                if (signature.test(scene->getComponentId<ButtonComponent>())){
-                    ButtonComponent* button = scene->findComponent<ButtonComponent>(lastUIFromPointerHover);
-                    if (button){
-                        button->hovered = false;
-                        applyButtonVisual(*button, *ui);
-                    }
-                }
-
-                ui->onPointerLeave.call(x - transform->worldPosition.x, y - transform->worldPosition.y);
-            }
-        }
-
-        if (isLiveUIEntity(currentUIFromPointerHover)){
-            Signature signature = scene->getSignature(currentUIFromPointerHover);
-            Transform* transform = scene->findComponent<Transform>(currentUIFromPointerHover);
-            UIComponent* ui = scene->findComponent<UIComponent>(currentUIFromPointerHover);
-            if (transform && ui){
-                if (signature.test(scene->getComponentId<ButtonComponent>())){
-                    ButtonComponent* button = scene->findComponent<ButtonComponent>(currentUIFromPointerHover);
-                    if (button){
-                        button->hovered = true;
-                        applyButtonVisual(*button, *ui);
-                    }
-                }
-
-                ui->onPointerEnter.call(x - transform->worldPosition.x, y - transform->worldPosition.y);
-            }
-        }
-
-        lastUIFromPointerHover = currentUIFromPointerHover;
-    }
-
-    if (isLiveUIEntity(lastUIFromPointer)){
-        pointerMoveOnUI(lastUIFromPointer, x, y, Vector2(x, y) - lastPointerPos, cursor);
-    }
-
-    Engine::setMouseCursor(cursor);
-
-    lastPointerPos = Vector2(x, y);
-
-    if (lastUIFromPointer != NULL_ENTITY)
-        return true;
-
-    return false;
-}
-
-bool UISystem::isPointerOverUI() const{
-    return isLiveUIEntity(lastUIFromPointerHover) || isLiveUIEntity(lastUIFromPointer);
-}
-
 bool UISystem::isCoordInside(float x, float y, Transform& transform, RectTransformComponent& layout){
     Vector3 point = transform.worldRotation.getRotationMatrix() * Vector3(x, y, 0);
 
@@ -3397,22 +2735,76 @@ bool UISystem::isCoordInside(float x, float y, Transform& transform, RectTransfo
 }
 
 void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
+    if (componentId == canvasGroupId ||
+        componentId == uiId ||
+        componentId == pointsId ||
+        componentId == rectTransformId ||
+        componentId == transformId) {
+        canvasGroupsStructuralDirty = true;
+    }
+    if (componentId == canvasGroupId) {
+        // the group's helper fade is cancelled with it (brief: cancelled with the owner)
+        for (size_t i = 0; i < canvasGroupFades.size(); i++) {
+            if (canvasGroupFades[i].group == entity) {
+                CanvasGroupFade fade = std::move(canvasGroupFades[i]);
+                canvasGroupFades.erase(canvasGroupFades.begin() + i);
+                finishCanvasGroupFade(std::move(fade), false);
+                break;
+            }
+        }
+    } else if (componentId == actionId) {
+        // a helper fade's tween destroyed by someone else: the fade is over, unfinished
+        for (size_t i = 0; i < canvasGroupFades.size(); i++) {
+            if (canvasGroupFades[i].tween == entity) {
+                canvasGroupFades.erase(canvasGroupFades.begin() + i);
+                break;
+            }
+        }
+    }
+
     if (componentId == uiId ||
         componentId == rectTransformId ||
         componentId == imageId ||
         componentId == transformId) {
-        if (entity == lastUIFromPointer) {
-            lastUIFromPointer = NULL_ENTITY;
-            pointerDragging = false;
-            pointerInternalGesture = false;
+        // a destroyed element: the pointer states drop it without callbacks (D6)
+        for (auto& pair : pointers) {
+            UIPointerState& state = pair.second;
+            for (Entity* target : {&state.hit, &state.hover, &state.rawPress, &state.press, &state.drag, &state.widget,
+                                   &state.buttonPressed, &state.panelGesture, &state.scrollbar, &state.inputFieldSelecting}) {
+                if (*target == entity)
+                    *target = NULL_ENTITY;
+            }
+            if (state.drag == NULL_ENTITY)
+                state.dragging = false;
+            if (state.widget == NULL_ENTITY) {
+                state.legacyDragging = false;
+                state.internalGesture = false;
+            }
+            state.enterChain.erase(std::remove(state.enterChain.begin(), state.enterChain.end(), entity), state.enterChain.end());
         }
-        if (entity == lastUIFromPointerHover) {
-            lastUIFromPointerHover = NULL_ENTITY;
+        for (auto& pair : clickRecords) {
+            if (pair.second.element == entity)
+                pair.second.element = NULL_ENTITY;
         }
         if (entity == lastUIFromClick) {
             lastUIFromClick = NULL_ENTITY;
             lastClickTime = -1.0;
         }
+    }
+
+    // an on-screen control goes: what it holds and the input it wrote go with it
+    if (componentId == onScreenStickId ||
+        componentId == onScreenButtonId ||
+        componentId == touchAreaId ||
+        componentId == transformId) {
+        for (auto& pair : pointers) {
+            if (pair.second.control == entity)
+                pair.second.control = NULL_ENTITY;
+            if (pair.second.enteredButton == entity)
+                pair.second.enteredButton = NULL_ENTITY;
+        }
+        clearControlSources(entity);
+        controlOwners.erase(entity);
     }
 
     if (componentId == buttonId) {
@@ -3483,5 +2875,544 @@ void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
     } else if (componentId == textId) {
         TextComponent& text = scene->getComponent<TextComponent>(entity);
         destroyText(text);
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Canvas Groups (ui canvas group spec 7.2, 7.4)
+// ---------------------------------------------------------------------------------------
+
+static constexpr uint8_t CANVAS_GROUP_MAX_LAYER_DEPTH = 4;
+
+static bool canvasGroupChanged(const CanvasGroupComponent& group){
+    const CanvasGroupComponent::Seen& seen = group.seen;
+    return !seen.valid || seen.enabled != group.enabled || seen.alpha != group.alpha ||
+           seen.interactable != group.interactable || seen.blocks != group.blocksRaycasts ||
+           seen.ignore != group.ignoreParentGroups || seen.renderMode != group.renderMode;
+}
+
+static void markCanvasGroupSeen(CanvasGroupComponent& group){
+    group.seen.valid = true;
+    group.seen.enabled = group.enabled;
+    group.seen.alpha = group.alpha;
+    group.seen.interactable = group.interactable;
+    group.seen.blocks = group.blocksRaycasts;
+    group.seen.ignore = group.ignoreParentGroups;
+    group.seen.renderMode = group.renderMode;
+}
+
+bool UISystem::sanitizeCanvasGroup(Entity entity, CanvasGroupComponent& group){
+    if (std::isnan(group.alpha)){
+        // rejected: the last value seen stays
+        group.alpha = group.seen.valid ? group.seen.alpha : 1.0f;
+        if (!group.warnedInvalidAlpha){
+            group.warnedInvalidAlpha = true;
+            Log::warn("Canvas Group of '%s': alpha NaN rejected, kept %g", scene->getEntityName(entity).c_str(), group.alpha);
+        }
+        return true;
+    }
+    if (group.alpha < 0.0f){
+        group.alpha = 0.0f;
+        return true;
+    }
+    if (group.alpha > 1.0f){
+        group.alpha = 1.0f;
+        return true;
+    }
+    return false;
+}
+
+UISystem::CanvasGroupEntry UISystem::combineCanvasGroup(const CanvasGroupEntry& parent, Entity entity, Signature signature, CanvasGroupComponent* group, bool warn){
+    CanvasGroupEntry entry = parent;
+    entry.underRect = parent.underRect || signature.test(scene->getComponentId<RectTransformComponent>());
+
+    if (!group || !group->enabled){
+        return entry;
+    }
+
+    const bool ignore = group->ignoreParentGroups;
+    entry.alpha = group->alpha * (ignore ? 1.0f : parent.alpha);
+    // the chain's alpha up to this group, relative to the enclosing layer
+    const float chainAlpha = group->alpha * (ignore ? 1.0f : parent.layerAlpha);
+    entry.layerAlpha = chainAlpha;
+    entry.interactable = group->interactable && (ignore || parent.interactable);
+    entry.blocks = group->blocksRaycasts && (ignore || parent.blocks);
+    entry.group = entity;
+
+    group->layerAlpha = chainAlpha;
+    bool layered = false;
+    if (group->renderMode == CanvasGroupRenderMode::FLATTEN && chainAlpha > 0.0f && chainAlpha < 1.0f && group->subtreeDraws >= 2){
+        if (parent.layerDepth < CANVAS_GROUP_MAX_LAYER_DEPTH){
+            layered = true;
+        }else if (warn){
+            Log::warn("Canvas Group '%s': more than %i nested Flatten layers, drawn Per Element",
+                      scene->getEntityName(entity).c_str(), (int)CANVAS_GROUP_MAX_LAYER_DEPTH);
+        }
+    }
+    group->layered = layered;
+    if (layered){
+        // the layer starts here: the group's own element and its subtree draw into it at
+        // their alpha relative to it, and the layer is composited at layerAlpha
+        entry.layerAlpha = 1.0f;
+        entry.layerDepth = parent.layerDepth + 1;
+    }
+
+    return entry;
+}
+
+void UISystem::applyCanvasGroupEntry(Entity entity, Signature signature, const CanvasGroupEntry& entry){
+    if (signature.test(scene->getComponentId<UIComponent>())){
+        UIComponent& ui = scene->getComponent<UIComponent>(entity);
+        ui.groupAlpha = entry.alpha;
+        ui.groupLayerAlpha = entry.layerAlpha;
+        ui.groupBlocksRaycasts = entry.blocks;
+        ui.groupEntity = entry.group;
+        if (ui.groupInteractable != entry.interactable){
+            ui.groupInteractable = entry.interactable;
+            // the visual changes now; the widgets drop what they hold in the next update
+            if (signature.test(scene->getComponentId<ButtonComponent>())){
+                applyButtonVisual(scene->getComponent<ButtonComponent>(entity), ui);
+            }
+            if (signature.test(scene->getComponentId<InputFieldComponent>())){
+                scene->getComponent<InputFieldComponent>(entity).needUpdateInputField = true;
+            }
+            if (!entry.interactable){
+                interactabilityLost.push_back(entity);
+            }
+        }
+    }
+    if (signature.test(scene->getComponentId<PointsComponent>())){
+        PointsComponent& points = scene->getComponent<PointsComponent>(entity);
+        const float alpha = entry.underRect ? entry.alpha : 1.0f;
+        if (points.uiGroupAlpha != alpha){
+            points.uiGroupAlpha = alpha;
+            points.needUpdate = true;
+            points.needUpdateGroupAlpha = true;
+        }
+    }
+}
+
+void UISystem::canvasGroupFullPass(){
+    auto transforms = scene->getComponentArray<Transform>();
+    const size_t count = transforms->size();
+    const ComponentId groupId = scene->getComponentId<CanvasGroupComponent>();
+    const ComponentId uiId = scene->getComponentId<UIComponent>();
+
+    canvasGroupStats.fullPasses++;
+    canvasGroupStats.visited += count;
+
+    // parents by array index (a parent always comes before its children); siblings follow
+    // each other, so the last parent found answers most lookups
+    canvasGroupParents.assign(count, SIZE_MAX);
+    Entity lastParent = NULL_ENTITY;
+    size_t lastParentIndex = SIZE_MAX;
+    for (size_t i = 0; i < count; i++){
+        const Entity parent = transforms->getComponentFromIndex(i).parent;
+        if (parent == NULL_ENTITY)
+            continue;
+        if (parent != lastParent){
+            lastParent = parent;
+            lastParentIndex = transforms->hasEntity(parent) ? transforms->getIndex(parent) : SIZE_MAX;
+        }
+        if (lastParentIndex < i){
+            canvasGroupParents[i] = lastParentIndex;
+        }
+    }
+
+    // UI elements per branch, children first (the FLATTEN leaf rule; UI particles draw in the
+    // colour pass, not in a layer): only needed when a group can make a layer
+    bool anyFlatten = false;
+    auto groups = scene->getComponentArray<CanvasGroupComponent>();
+    for (size_t i = 0; i < groups->size() && !anyFlatten; i++){
+        anyFlatten = groups->getComponentFromIndex(i).renderMode == CanvasGroupRenderMode::FLATTEN;
+    }
+    if (anyFlatten){
+        std::vector<uint32_t> draws(count, 0);
+        for (size_t i = count; i-- > 0;){
+            const Entity entity = transforms->getEntity(i);
+            const Signature signature = scene->getSignature(entity);
+            if (signature.test(uiId)){
+                draws[i]++;
+            }
+            if (signature.test(groupId)){
+                scene->getComponent<CanvasGroupComponent>(entity).subtreeDraws = draws[i];
+            }
+            if (canvasGroupParents[i] != SIZE_MAX){
+                draws[canvasGroupParents[i]] += draws[i];
+            }
+        }
+    }
+
+    canvasGroupScratch.assign(count, CanvasGroupEntry());
+    for (size_t i = 0; i < count; i++){
+        const Entity entity = transforms->getEntity(i);
+        const Signature signature = scene->getSignature(entity);
+        const CanvasGroupEntry parent = canvasGroupParents[i] != SIZE_MAX ? canvasGroupScratch[canvasGroupParents[i]] : CanvasGroupEntry();
+        CanvasGroupComponent* group = signature.test(groupId) ? &scene->getComponent<CanvasGroupComponent>(entity) : nullptr;
+        const bool warn = group && canvasGroupChanged(*group);
+        canvasGroupScratch[i] = combineCanvasGroup(parent, entity, signature, group, warn);
+        applyCanvasGroupEntry(entity, signature, canvasGroupScratch[i]);
+    }
+
+    for (size_t i = 0; i < groups->size(); i++){
+        markCanvasGroupSeen(groups->getComponentFromIndex(i));
+    }
+    canvasGroupsApplied = true;
+}
+
+void UISystem::canvasGroupSubtreePass(Entity groupEntity){
+    auto transforms = scene->getComponentArray<Transform>();
+    if (!transforms->hasEntity(groupEntity)){
+        return;
+    }
+    const ComponentId groupId = scene->getComponentId<CanvasGroupComponent>();
+
+    // the state the group inherits: its ancestors folded from the root down (O(depth))
+    std::vector<Entity> ancestors;
+    Entity parentEntity = transforms->getComponent(groupEntity).parent;
+    while (parentEntity != NULL_ENTITY && transforms->hasEntity(parentEntity) && ancestors.size() < 4096){
+        ancestors.push_back(parentEntity);
+        parentEntity = transforms->getComponent(parentEntity).parent;
+    }
+    CanvasGroupEntry inherited;
+    for (size_t a = ancestors.size(); a-- > 0;){
+        const Entity ancestor = ancestors[a];
+        const Signature signature = scene->getSignature(ancestor);
+        CanvasGroupComponent* group = signature.test(groupId) ? &scene->getComponent<CanvasGroupComponent>(ancestor) : nullptr;
+        inherited = combineCanvasGroup(inherited, ancestor, signature, group, false);
+    }
+
+    const size_t first = transforms->getIndex(groupEntity);
+    const size_t last = scene->findBranchLastIndex(groupEntity);
+
+    canvasGroupStats.subtreePasses++;
+    canvasGroupStats.visited += last - first + 1;
+
+    canvasGroupScratch.assign(last - first + 1, CanvasGroupEntry());
+    for (size_t i = first; i <= last; i++){
+        const Entity entity = transforms->getEntity(i);
+        const Signature signature = scene->getSignature(entity);
+        CanvasGroupEntry parent = inherited;
+        if (i > first){
+            const Entity parentOfEntity = transforms->getComponentFromIndex(i).parent;
+            const size_t parentIndex = transforms->getIndex(parentOfEntity);
+            if (parentIndex >= first && parentIndex < i){
+                parent = canvasGroupScratch[parentIndex - first];
+            }
+        }
+        CanvasGroupComponent* group = signature.test(groupId) ? &scene->getComponent<CanvasGroupComponent>(entity) : nullptr;
+        const bool warn = group && canvasGroupChanged(*group);
+        canvasGroupScratch[i - first] = combineCanvasGroup(parent, entity, signature, group, warn);
+        applyCanvasGroupEntry(entity, signature, canvasGroupScratch[i - first]);
+        if (group){
+            markCanvasGroupSeen(*group);
+        }
+    }
+    canvasGroupsApplied = true;
+}
+
+void UISystem::canvasGroupResetPass(){
+    canvasGroupStats.fullPasses++;
+    const CanvasGroupEntry none;
+    auto uis = scene->getComponentArray<UIComponent>();
+    for (size_t i = 0; i < uis->size(); i++){
+        const Entity entity = uis->getEntity(i);
+        applyCanvasGroupEntry(entity, scene->getSignature(entity), none);
+    }
+    auto points = scene->getComponentArray<PointsComponent>();
+    for (size_t i = 0; i < points->size(); i++){
+        const Entity entity = points->getEntity(i);
+        applyCanvasGroupEntry(entity, scene->getSignature(entity), none);
+    }
+    canvasGroupStats.visited += uis->size() + points->size();
+    canvasGroupsApplied = false;
+}
+
+void UISystem::syncCanvasGroups(){
+    if (scene->hierarchyRevision() != canvasGroupsRevision){
+        canvasGroupsRevision = scene->hierarchyRevision();
+        canvasGroupsStructuralDirty = true;
+    }
+
+    auto groups = scene->getComponentArray<CanvasGroupComponent>();
+    if (groups->size() == 0){
+        // with no group nothing runs; the last one removed resets the elements once
+        if (canvasGroupsApplied){
+            canvasGroupResetPass();
+        }
+        canvasGroupsStructuralDirty = false;
+        return;
+    }
+
+    canvasGroupDirty.clear();
+    for (size_t i = 0; i < groups->size(); i++){
+        CanvasGroupComponent& group = groups->getComponentFromIndex(i);
+        sanitizeCanvasGroup(groups->getEntity(i), group);
+        if (canvasGroupChanged(group)){
+            canvasGroupDirty.push_back(groups->getEntity(i));
+            // a render mode change counts the subtree's UI elements again (the FLATTEN leaf
+            // rule; the full pass counts them only while some group is FLATTEN)
+            if (group.seen.valid && group.seen.renderMode != group.renderMode){
+                canvasGroupsStructuralDirty = true;
+            }
+        }
+    }
+
+    if (canvasGroupsStructuralDirty){
+        canvasGroupsStructuralDirty = false;
+        canvasGroupFullPass();
+        return;
+    }
+
+    if (canvasGroupDirty.empty()){
+        return;
+    }
+
+    // outermost first: a dirty group inside a walked branch was covered by that walk
+    auto transforms = scene->getComponentArray<Transform>();
+    std::vector<std::pair<size_t, Entity>> ordered;
+    ordered.reserve(canvasGroupDirty.size());
+    for (Entity entity : canvasGroupDirty){
+        if (transforms->hasEntity(entity)){
+            ordered.push_back({transforms->getIndex(entity), entity});
+        }else{
+            // a group without a Transform is in no hierarchy
+            markCanvasGroupSeen(scene->getComponent<CanvasGroupComponent>(entity));
+        }
+    }
+    std::sort(ordered.begin(), ordered.end());
+    size_t coveredUntil = 0;
+    bool anyWalk = false;
+    for (const auto& item : ordered){
+        if (anyWalk && item.first <= coveredUntil){
+            continue;
+        }
+        CanvasGroupComponent* group = scene->findComponent<CanvasGroupComponent>(item.second);
+        if (!group || !canvasGroupChanged(*group)){
+            continue;
+        }
+        canvasGroupSubtreePass(item.second);
+        coveredUntil = scene->findBranchLastIndex(item.second);
+        anyWalk = true;
+    }
+}
+
+CanvasGroupState UISystem::getCanvasGroupState(Entity entity) const{
+    CanvasGroupState state;
+    if (entity == NULL_ENTITY || !scene->isEntityCreated(entity)){
+        return state;
+    }
+    Entity current = entity;
+    int guard = 0;
+    while (current != NULL_ENTITY && guard++ < 4096){
+        const CanvasGroupComponent* group = scene->findComponent<CanvasGroupComponent>(current);
+        if (group && group->enabled){
+            const float alpha = std::isnan(group->alpha) ? 1.0f : std::clamp(group->alpha, 0.0f, 1.0f);
+            state.alpha *= alpha;
+            state.interactable = state.interactable && group->interactable;
+            state.blocksRaycasts = state.blocksRaycasts && group->blocksRaycasts;
+            if (state.group == NULL_ENTITY){
+                state.group = current;
+            }
+            if (group->ignoreParentGroups){
+                break;
+            }
+        }
+        const Transform* transform = scene->findComponent<Transform>(current);
+        current = transform ? transform->parent : NULL_ENTITY;
+    }
+    return state;
+}
+
+bool UISystem::isInteractable(Entity entity) const{
+    if (entity == NULL_ENTITY || !scene->isEntityCreated(entity)){
+        return false;
+    }
+    if (const UIComponent* ui = scene->findComponent<UIComponent>(entity)){
+        if (!ui->groupInteractable){
+            return false;
+        }
+    }
+    if (const ButtonComponent* button = scene->findComponent<ButtonComponent>(entity)){
+        if (button->disabled){
+            return false;
+        }
+    }
+    if (const InputFieldComponent* inputfield = scene->findComponent<InputFieldComponent>(entity)){
+        if (inputfield->disabled){
+            return false;
+        }
+    }
+    return true;
+}
+
+const CanvasGroupStats& UISystem::getCanvasGroupStats() const{
+    return canvasGroupStats;
+}
+
+void UISystem::resetCanvasGroupStats(){
+    canvasGroupStats = CanvasGroupStats();
+}
+
+// Ui canvas group spec 7.2: interactability lost while a widget held a press, the focus or
+// a gesture: a D6 cancel for every pointer pressing the widget (ui-multitouch), the focus goes
+void UISystem::processInteractabilityLost(){
+    if (interactabilityLost.empty()){
+        return;
+    }
+    std::vector<Entity> entities;
+    entities.swap(interactabilityLost);
+
+    for (Entity entity : entities){
+        if (!isLiveUIEntity(entity)){
+            continue;
+        }
+        UIComponent* ui = scene->findComponent<UIComponent>(entity);
+        if (!ui || ui->groupInteractable){
+            continue;
+        }
+
+        // the pointers pressing it: cancelled (no click; the Button releases, the gestures end)
+        std::vector<int> pressing;
+        for (const auto& pair : pointers){
+            const UIPointerState& state = pair.second;
+            if (state.down && (state.widget == entity || state.buttonPressed == entity || state.panelGesture == entity ||
+                               state.scrollbar == entity || state.inputFieldSelecting == entity || state.control == entity)){
+                pressing.push_back(pair.first);
+            }
+        }
+        for (int pointerId : pressing){
+            endPress(pointerId, false);
+        }
+        if (!isLiveUIEntity(entity)){
+            continue;
+        }
+        ui = scene->findComponent<UIComponent>(entity);
+
+        if (InputFieldComponent* inputfield = scene->findComponent<InputFieldComponent>(entity)){
+            if (ui->focused){
+                ui->focused = false;
+                inputfield->needUpdateInputField = true;
+                System::instance().hideVirtualKeyboard();
+                ui->onLostFocus.call();
+                if (!isLiveUIEntity(entity)){
+                    continue;
+                }
+            }
+        }
+    }
+}
+
+void UISystem::startCanvasGroupFade(Entity group, Entity tween, float endAlpha, bool deactivate, std::function<void()> onComplete){
+    // the previous helper fade of the group stops (no fighting tweens)
+    for (size_t i = 0; i < canvasGroupFades.size(); i++){
+        if (canvasGroupFades[i].group == group){
+            CanvasGroupFade previous = std::move(canvasGroupFades[i]);
+            canvasGroupFades.erase(canvasGroupFades.begin() + i);
+            finishCanvasGroupFade(std::move(previous), false);
+            break;
+        }
+    }
+
+    CanvasGroupFade fade;
+    fade.group = group;
+    fade.tween = tween;
+    fade.endAlpha = endAlpha;
+    fade.deactivate = deactivate;
+    fade.onComplete = std::move(onComplete);
+    canvasGroupFades.push_back(std::move(fade));
+
+    if (ActionComponent* action = scene->findComponent<ActionComponent>(tween)){
+        Scene* fadeScene = scene;
+        action->onStop.add("canvasGroupFade", std::function<void()>([fadeScene, tween](){
+            const TweenComponent* timed = fadeScene->findComponent<TweenComponent>(tween);
+            // onStop runs before the tween is rewound: a finished tween is at its end
+            const bool atEnd = timed && timed->time >= 1.0f;
+            fadeScene->getSystem<UISystem>()->onCanvasGroupFadeStopped(tween, atEnd);
+        }));
+    }
+}
+
+void UISystem::onCanvasGroupFadeStopped(Entity tween, bool atEnd){
+    for (CanvasGroupFade& fade : canvasGroupFades){
+        if (fade.tween == tween && !fade.finished){
+            fade.finished = true;
+            fade.completed = atEnd;
+        }
+    }
+}
+
+void UISystem::finishCanvasGroupFade(CanvasGroupFade fade, bool runCompletion){
+    if (fade.tween != NULL_ENTITY && scene->isEntityCreated(fade.tween)){
+        if (ActionComponent* action = scene->findComponent<ActionComponent>(fade.tween)){
+            action->onStop.remove("canvasGroupFade");
+        }
+        scene->destroyEntity(fade.tween);
+    }
+    if (!runCompletion){
+        return;
+    }
+    // the final value was written by the tween (or stopCanvasGroupFade): then onComplete,
+    // then the deactivation
+    if (fade.onComplete){
+        fade.onComplete();
+    }
+    if (fade.deactivate && fade.group != NULL_ENTITY && scene->isEntityCreated(fade.group)){
+        scene->setEntityActive(fade.group, false);
+    }
+}
+
+void UISystem::stopCanvasGroupFade(Entity group, bool jumpToEnd){
+    for (size_t i = 0; i < canvasGroupFades.size(); i++){
+        if (canvasGroupFades[i].group == group){
+            CanvasGroupFade fade = std::move(canvasGroupFades[i]);
+            canvasGroupFades.erase(canvasGroupFades.begin() + i);
+            if (jumpToEnd){
+                if (CanvasGroupComponent* component = scene->findComponent<CanvasGroupComponent>(group)){
+                    component->alpha = fade.endAlpha;
+                }
+            }
+            finishCanvasGroupFade(std::move(fade), jumpToEnd);
+            return;
+        }
+    }
+}
+
+bool UISystem::isCanvasGroupFading(Entity group) const{
+    for (const CanvasGroupFade& fade : canvasGroupFades){
+        if (fade.group == group && !fade.finished){
+            return true;
+        }
+    }
+    return false;
+}
+
+void UISystem::processCanvasGroupFades(){
+    for (size_t i = 0; i < canvasGroupFades.size();){
+        if (!canvasGroupFades[i].finished){
+            i++;
+            continue;
+        }
+        CanvasGroupFade fade = std::move(canvasGroupFades[i]);
+        canvasGroupFades.erase(canvasGroupFades.begin() + i);
+        const bool completed = fade.completed;
+        // (a callback may start another fade: the list is re-read from the same index)
+        finishCanvasGroupFade(std::move(fade), completed);
+    }
+}
+
+Entity UISystem::raycast(Vector2 point){
+    syncCanvasGroups();
+    return raycastHit(point);
+}
+
+void UISystem::onComponentAdded(Entity entity, ComponentId componentId){
+    (void)entity;
+    if (componentId == scene->getComponentId<CanvasGroupComponent>() ||
+        componentId == scene->getComponentId<UIComponent>() ||
+        componentId == scene->getComponentId<PointsComponent>() ||
+        componentId == scene->getComponentId<RectTransformComponent>() ||
+        componentId == scene->getComponentId<Transform>()){
+        canvasGroupsStructuralDirty = true;
     }
 }

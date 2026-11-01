@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "Catalog.h"
+#include "particles/ParticleFields.h"
+#include "action/ParticleSystem.h"
+#include "subsystem/ActionSystem.h"
+#include "script/ScriptRuntime.h"
 
 #include "Stream.h"
 #include "reflect/Reflect.h"
@@ -27,6 +31,44 @@ namespace {
     bool endsWith(const std::string& text, const char* suffix) {
         const size_t length = std::strlen(suffix);
         return text.size() >= length && text.compare(text.size() - length, length, suffix) == 0;
+    }
+
+    // a collider's authored data over another; the target's body is made again (its Box2D
+    // shapes go with it), so no live handle or runtime copy travels
+    void copyCollider2D(const Collider2D& source, Collider2D& target) {
+        target = source;
+        target.shapes.clear();
+        target.chain = b2_nullChainId;
+        target.dirty = true;
+        target.materialInstance.reset();
+        target.ownsMaterialInstance = false;
+        target.decompositionKey = 0;
+        target.pieces.clear();
+    }
+
+    void copyColliders2D(const std::vector<Collider2D>& source, std::vector<Collider2D>& target) {
+        target.resize(source.size());
+        for (size_t i = 0; i < source.size(); i++) {
+            copyCollider2D(source[i], target[i]);
+        }
+    }
+
+    // a 3D collider's authored data over another; the target's shape is made again, so no live
+    // shape, surface or runtime material copy travels
+    void copyCollider3D(const Collider3D& source, Collider3D& target) {
+        target = source;
+        target.shape = nullptr;
+        target.surface = nullptr;
+        target.dirty = true;
+        target.materialInstance.reset();
+        target.ownsMaterialInstance = false;
+    }
+
+    void copyColliders3D(const std::vector<Collider3D>& source, std::vector<Collider3D>& target) {
+        target.resize(source.size());
+        for (size_t i = 0; i < source.size(); i++) {
+            copyCollider3D(source[i], target[i]);
+        }
     }
 
     bool parseIndex(const std::string& text, size_t& pos, size_t& value) {
@@ -79,6 +121,7 @@ namespace {
         {"material.shaderParams", SubmeshOverride_ShaderParams},
         {"material.shaderTextures", SubmeshOverride_ShaderTextures},
         {"material.shaderFeatures", SubmeshOverride_ShaderFeatures},
+        {"material.shaderGlobalBindings", SubmeshOverride_ShaderGlobalBindings},
         {"material.blendMode", SubmeshOverride_BlendMode},
         {"material.cullMode", SubmeshOverride_CullMode},
         {"material.depthWrite", SubmeshOverride_DepthWrite},
@@ -428,6 +471,18 @@ uint64_t editor::Catalog::getChangedUpdateFlags(ComponentType compType, void* ol
                 changed = static_cast<EntityReference*>(oldProp.ref)->entity != static_cast<EntityReference*>(newProp.ref)->entity ||
                           static_cast<EntityReference*>(oldProp.ref)->sceneId != static_cast<EntityReference*>(newProp.ref)->sceneId;
                 break;
+            case PropertyType::Curve:
+                changed = *static_cast<AnimationCurve*>(oldProp.ref) != *static_cast<AnimationCurve*>(newProp.ref);
+                break;
+            case PropertyType::Gradient:
+                changed = *static_cast<Gradient*>(oldProp.ref) != *static_cast<Gradient*>(newProp.ref);
+                break;
+            case PropertyType::MinMaxCurve:
+                changed = *static_cast<MinMaxCurve*>(oldProp.ref) != *static_cast<MinMaxCurve*>(newProp.ref);
+                break;
+            case PropertyType::MinMaxGradient:
+                changed = *static_cast<MinMaxGradient*>(oldProp.ref) != *static_cast<MinMaxGradient*>(newProp.ref);
+                break;
             case PropertyType::Custom:
                 // Conservative: assume changed for complex types
                 changed = true;
@@ -499,6 +554,12 @@ std::vector<const CustomUniformBlock*> editor::Catalog::getShaderUniformBlocks(E
                 blocks.push_back(&lines->customFSParams);
             }
             break;
+        case ComponentType::TrailRendererComponent:
+            if (TrailRendererComponent* trail = registry->findComponent<TrailRendererComponent>(entity)) {
+                blocks.push_back(&trail->customVSParams);
+                blocks.push_back(&trail->customFSParams);
+            }
+            break;
         case ComponentType::SkyboxComponent:
             if (SkyboxComponent* sky = registry->findComponent<SkyboxComponent>(entity)) {
                 blocks.push_back(&sky->customVSParams);
@@ -565,6 +626,10 @@ bool editor::Catalog::isCustomShaderBuildFailed(Scene* scene, Entity entity, Com
             if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity))
                 return failed(lines->customShader, ShaderType::LINES, lines->loaded, lines->needReload, lines->customShaderId);
             break;
+        case ComponentType::TrailRendererComponent:
+            if (TrailRendererComponent* trail = scene->findComponent<TrailRendererComponent>(entity))
+                return failed(trail->customShader, ShaderType::LINES, trail->loaded, trail->needReload, trail->customShaderId);
+            break;
         case ComponentType::SkyboxComponent:
             if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity))
                 return failed(sky->customShader, ShaderType::SKYBOX, sky->loaded, sky->needReload, sky->customShaderId);
@@ -584,7 +649,7 @@ bool editor::Catalog::isCustomDepthShaderBuildFailed(Scene* scene, Entity entity
 }
 
 bool editor::Catalog::splitShaderEntryProperty(const std::string& propertyName, std::string& collection, std::string& key) {
-    for (const char* name : {"shaderParams.", "shaderTextures.", "shaderUniforms."}) {
+    for (const char* name : {"shaderParams.", "shaderTextures.", "shaderUniforms.", "shaderGlobalBindings."}) {
         const size_t at = propertyName.find(name);
         if (at == std::string::npos) continue;
         const std::string prefix = propertyName.substr(0, at);
@@ -592,9 +657,11 @@ bool editor::Catalog::splitShaderEntryProperty(const std::string& propertyName, 
         const bool material = prefix.compare(0, 10, "submeshes[") == 0 &&
                               (endsWith(prefix, "].material.") || endsWith(prefix, "].material.extraPass."));
         const bool component = prefix.empty();
-        // a material has shaderParams, a component shaderUniforms; both have shaderTextures
+        // a material has shaderParams, a component shaderUniforms; both have shaderTextures and
+        // shaderGlobalBindings (an extra pass has none)
         const std::string field(name, std::strlen(name) - 1);
-        if ((material && field == "shaderUniforms") || (component && field == "shaderParams") || (!material && !component)) {
+        if ((material && field == "shaderUniforms") || (component && field == "shaderParams") || (!material && !component) ||
+                (field == "shaderGlobalBindings" && endsWith(prefix, "extraPass."))) {
             return false;
         }
         key = propertyName.substr(at + std::strlen(name));
@@ -633,6 +700,10 @@ std::string editor::Catalog::getShaderReferenceForProperty(Scene* scene, Entity 
             if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity))
                 return lines->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines->customShader.path;
             break;
+        case ComponentType::TrailRendererComponent:
+            if (TrailRendererComponent* trail = scene->findComponent<TrailRendererComponent>(entity))
+                return trail->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : trail->customShader;
+            break;
         case ComponentType::SkyboxComponent:
             if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity))
                 return sky->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky->customShader.path;
@@ -659,6 +730,10 @@ std::vector<MaterialLighting> editor::Catalog::getShaderLightingModes(const Shad
         if (mode != defaultMode && RenderSystem::supportsLighting(mode, manifest)) modes.push_back(mode);
     }
     return modes;
+}
+
+bool editor::Catalog::shaderReadsMaterialNormalMap(const ShaderManifest* manifest, const std::vector<std::string>& features) {
+    return manifest && manifest->present && (manifest->resolveRequire(features) & ShaderRequire_NormalMap) != 0;
 }
 
 bool editor::Catalog::supportsLighting(MaterialLighting mode, const ShaderManifest* manifest) {
@@ -840,6 +915,30 @@ uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Mat
 }
 
 void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint64_t updateFlags){
+    if (updateFlags & UpdateFlags_Particle_Mesh){
+        // the Mesh render mode's primitive, drawn by the system's target
+        Scene* scene = dynamic_cast<Scene*>(registry);
+        const ParticleSystemComponent* ps = registry->findComponent<ParticleSystemComponent>(entity);
+        if (scene && ps && ps->version >= 2){
+            ParticleSystem::applyRendererMesh(scene, scene->getSystem<ActionSystem>()->particleTarget(entity), ps->renderer.mesh);
+        }
+    }
+    if (updateFlags & UpdateFlags_CanvasGroup){
+        // alpha in [0, 1] at once (a NaN keeps the value UISystem last saw)
+        if (CanvasGroupComponent* group = registry->findComponent<CanvasGroupComponent>(entity)){
+            if (std::isnan(group->alpha)){
+                group->alpha = group->seen.valid ? group->seen.alpha : 1.0f;
+            }else{
+                group->alpha = std::clamp(group->alpha, 0.0f, 1.0f);
+            }
+        }
+    }
+    if (updateFlags & UpdateFlags_Script_Enabled){
+        // in Play the Inspector checkbox, MCP and undo enable scripts as Lua's self.enabled does
+        if (Scene* scene = dynamic_cast<Scene*>(registry)){
+            ScriptRuntime::refreshEntity(scene, entity);
+        }
+    }
     if (updateFlags & UpdateFlags_Transform){
         if (Transform* transform = registry->findComponent<Transform>(entity)){
             transform->needUpdate = true;
@@ -945,6 +1044,7 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
         if (UIComponent* u = registry->findComponent<UIComponent>(entity)) u->needReload = true;
         if (PointsComponent* p = registry->findComponent<PointsComponent>(entity)) p->needReload = true;
         if (LineRendererComponent* l = registry->findComponent<LineRendererComponent>(entity)) l->needReload = true;
+        if (TrailRendererComponent* t = registry->findComponent<TrailRendererComponent>(entity)) t->needReload = true;
         if (SkyboxComponent* s = registry->findComponent<SkyboxComponent>(entity)) s->needReload = true;
     }
     if (updateFlags & UpdateFlags_Shader_Uniforms){
@@ -952,6 +1052,7 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
         if (UIComponent* u = registry->findComponent<UIComponent>(entity)) u->needUpdateShaderUniforms = true;
         if (PointsComponent* p = registry->findComponent<PointsComponent>(entity)) p->needUpdateShaderUniforms = true;
         if (LineRendererComponent* l = registry->findComponent<LineRendererComponent>(entity)) l->needUpdateShaderUniforms = true;
+        if (TrailRendererComponent* t = registry->findComponent<TrailRendererComponent>(entity)) t->needUpdateShaderUniforms = true;
         if (SkyboxComponent* s = registry->findComponent<SkyboxComponent>(entity)) s->needUpdateShaderUniforms = true;
     }
     if (updateFlags & UpdateFlags_Sprite){
@@ -982,8 +1083,28 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
     }
     if (updateFlags & UpdateFlags_Rigidbody){
         if (RigidbodyComponent* body = registry->findComponent<RigidbodyComponent>(entity)){
-            body->needReloadBody = true;
+            // a live body swaps its shape (it keeps its id, velocities and joints, D13); one not
+            // made yet is made
+            if (body->body.IsInvalid()){
+                body->needReloadBody = true;
+            }
+            for (Collider3D& collider : body->colliders){
+                collider.dirty = true;
+            }
             body->needUpdateColliders = true;
+            body->appliedMaterialRevision = 0;
+        }
+    }
+    if (updateFlags & UpdateFlags_Rigidbody_Params){
+        if (RigidbodyComponent* body = registry->findComponent<RigidbodyComponent>(entity)){
+            body->needApplyParameters = true;
+            body->massDirty = true;
+            body->appliedMaterialRevision = 0;
+        }
+    }
+    if (updateFlags & UpdateFlags_Rigidbody2D_Params){
+        if (Rigidbody2DComponent* body = registry->findComponent<Rigidbody2DComponent>(entity)){
+            body->needApplyParameters = true;
         }
     }
     if (updateFlags & UpdateFlags_Joint2D){
@@ -991,9 +1112,28 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             joint->needUpdateJoint = true;
         }
     }
+    if (updateFlags & UpdateFlags_Joint2D_Params){
+        if (Joint2DComponent* joint = registry->findComponent<Joint2DComponent>(entity)){
+            joint->needApplyParameters = true;
+            // a joint broken by its threshold can break again
+            joint->breakArmed = true;
+        }
+    }
     if (updateFlags & UpdateFlags_Joint3D){
         if (Joint3DComponent* joint = registry->findComponent<Joint3DComponent>(entity)){
             joint->needUpdateJoint = true;
+        }
+    }
+    if (updateFlags & UpdateFlags_Joint3D_Params){
+        if (Joint3DComponent* joint = registry->findComponent<Joint3DComponent>(entity)){
+            joint->needApplyParameters = true;
+            // a joint broken by its threshold can break again
+            joint->breakArmed = true;
+        }
+    }
+    if (updateFlags & UpdateFlags_Ragdoll){
+        if (RagdollComponent* ragdoll = registry->findComponent<RagdollComponent>(entity)){
+            ragdoll->needCollectParts = true;
         }
     }
     if (updateFlags & UpdateFlags_Model){
@@ -1031,6 +1171,14 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
     }
     if (updateFlags & (UpdateFlags_Lines | UpdateFlags_Lines_Reload)){
         if (LineRendererComponent* lines = registry->findComponent<LineRendererComponent>(entity)){
+            // clamped as the Lua setters do; the geometry (ribbon, polyline segments) is built
+            // again by the render system, which reloads when the variant or capacity changed
+            lines->widthMultiplier = (std::isfinite(lines->widthMultiplier) && lines->widthMultiplier > 0.0f) ? lines->widthMultiplier : 0.0f;
+            lines->numCornerVertices = std::min(lines->numCornerVertices, LINE_RIBBON_MAX_FAN_VERTICES);
+            lines->numCapVertices = std::min(lines->numCapVertices, LINE_RIBBON_MAX_FAN_VERTICES);
+            lines->widthCurve.normalize();
+            lines->colorGradient.normalize();
+            lines->needUpdateRibbon = true;
             bool needsLargerBuffer = lines->lines.size() > lines->maxLines;
             if (needsLargerBuffer){
                 lines->maxLines = static_cast<unsigned int>(lines->lines.size());
@@ -1041,6 +1189,19 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             }else{
                 lines->needUpdateBuffer = true;
             }
+        }
+    }
+    if (updateFlags & UpdateFlags_Trail){
+        if (TrailRendererComponent* trail = registry->findComponent<TrailRendererComponent>(entity)){
+            auto nonNegative = [](float value){ return (std::isfinite(value) && value > 0.0f) ? value : 0.0f; };
+            trail->time = nonNegative(trail->time);
+            trail->minVertexDistance = nonNegative(trail->minVertexDistance);
+            trail->widthMultiplier = nonNegative(trail->widthMultiplier);
+            trail->numCornerVertices = std::min(trail->numCornerVertices, LINE_RIBBON_MAX_FAN_VERTICES);
+            trail->numCapVertices = std::min(trail->numCapVertices, LINE_RIBBON_MAX_FAN_VERTICES);
+            trail->widthCurve.normalize();
+            trail->colorGradient.normalize();
+            trail->needUpdateRibbon = true;
         }
     }
     if (updateFlags & UpdateFlags_AudioSource){
@@ -1188,14 +1349,20 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
                                        EntityRegistry* targetRegistry, Entity targetEntity, 
                                        ComponentType compType, const std::string& property) {
 
-    // Get the property data to determine the type
+    // Get the property data to determine the type: the enumerated names, else the lookup (names
+    // it resolves but does not list, such as a 2D collider's "colliders[i].points[j]")
     auto sourceProperties = Catalog::findEntityProperties(sourceRegistry, sourceEntity, compType);
     auto propIt = sourceProperties.find(property);
-    if (propIt == sourceProperties.end()) {
-        return; // Property not found
+    PropertyType propType;
+    if (propIt != sourceProperties.end()) {
+        propType = propIt->second.type;
+    } else {
+        const PropertyData found = Catalog::findProperty(sourceRegistry, sourceEntity, compType, property);
+        if (!found.ref || !Catalog::findProperty(targetRegistry, targetEntity, compType, property).ref) {
+            return; // Property not found
+        }
+        propType = found.type;
     }
-
-    PropertyType propType = propIt->second.type;
 
     // Copy based on property type
     switch (propType) {
@@ -1319,8 +1486,40 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             if (source && target) *target = *source;
             break;
         }
+        case PropertyType::Curve: {
+            AnimationCurve* source = Catalog::getPropertyRef<AnimationCurve>(sourceRegistry, sourceEntity, compType, property);
+            AnimationCurve* target = Catalog::getPropertyRef<AnimationCurve>(targetRegistry, targetEntity, compType, property);
+            if (source && target) *target = *source;
+            break;
+        }
+        case PropertyType::Gradient: {
+            Gradient* source = Catalog::getPropertyRef<Gradient>(sourceRegistry, sourceEntity, compType, property);
+            Gradient* target = Catalog::getPropertyRef<Gradient>(targetRegistry, targetEntity, compType, property);
+            if (source && target) *target = *source;
+            break;
+        }
+        case PropertyType::MinMaxCurve: {
+            MinMaxCurve* source = Catalog::getPropertyRef<MinMaxCurve>(sourceRegistry, sourceEntity, compType, property);
+            MinMaxCurve* target = Catalog::getPropertyRef<MinMaxCurve>(targetRegistry, targetEntity, compType, property);
+            if (source && target) *target = *source;
+            break;
+        }
+        case PropertyType::MinMaxGradient: {
+            MinMaxGradient* source = Catalog::getPropertyRef<MinMaxGradient>(sourceRegistry, sourceEntity, compType, property);
+            MinMaxGradient* target = Catalog::getPropertyRef<MinMaxGradient>(targetRegistry, targetEntity, compType, property);
+            if (source && target) *target = *source;
+            break;
+        }
         case PropertyType::Custom:
-            if (compType == ComponentType::ScriptComponent) {
+            if (compType == ComponentType::ParticleSystemComponent && property == "emission.bursts") {
+                auto* source = Catalog::getPropertyRef<std::vector<ParticleEmissionBurst>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<ParticleEmissionBurst>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::ParticleSystemComponent && property == "textureSheetAnimation.sprites") {
+                auto* source = Catalog::getPropertyRef<std::vector<int>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<int>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::ScriptComponent) {
                 copyComponent(sourceRegistry, sourceEntity, targetRegistry, targetEntity, compType);
             } else if (compType == ComponentType::TerrainComponent && property == "foliageLayers") {
                 auto* source = Catalog::getPropertyRef<std::vector<TerrainFoliageLayer>>(sourceRegistry, sourceEntity, compType, property);
@@ -1355,6 +1554,14 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
                 auto* source = Catalog::getPropertyRef<std::vector<std::vector<Vector3>>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<std::vector<Vector3>>>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
+            } else if (compType == ComponentType::LineRendererComponent && property == "positions") {
+                auto* source = Catalog::getPropertyRef<std::vector<Vector3>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<Vector3>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::LineRendererComponent && property == "lines") {
+                auto* source = Catalog::getPropertyRef<std::vector<LineData>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<LineData>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
             } else if (compType == ComponentType::LatticeTracksComponent && property.compare(0, 7, "values[") == 0) {
                 auto* source = Catalog::getPropertyRef<std::vector<Vector3>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<Vector3>>(targetRegistry, targetEntity, compType, property);
@@ -1374,6 +1581,10 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             } else if (property == "shaderTextures" || endsWith(property, "material.shaderTextures") || endsWith(property, "extraPass.shaderTextures")) {
                 auto* source = Catalog::getPropertyRef<std::vector<std::pair<std::string, Texture>>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<std::pair<std::string, Texture>>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (property == "shaderGlobalBindings" || endsWith(property, "material.shaderGlobalBindings")) {
+                auto* source = Catalog::getPropertyRef<ShaderGlobalBindings>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<ShaderGlobalBindings>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
             } else if (property == "shaderFeatures" || endsWith(property, "material.shaderFeatures") || endsWith(property, "extraPass.shaderFeatures")) {
                 auto* source = Catalog::getPropertyRef<std::vector<std::string>>(sourceRegistry, sourceEntity, compType, property);

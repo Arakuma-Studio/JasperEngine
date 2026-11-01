@@ -109,6 +109,74 @@ def skip(reason: str) -> None:
     raise Skip(reason)
 
 
+def make_native_player(path: Path, c_body: str) -> Path:
+    """Compile a native fake player at `path`. run_build runs only the player recorded by the
+    project's last Desktop build: record it with record_built_player first. Skips the test without
+    a C compiler."""
+    if not shutil.which("cc"):
+        skip("no C compiler (cc) to build a fake player")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    src = path.parent / (path.name + ".c")
+    src.write_text("#include <stdio.h>\n#include <stdlib.h>\n#include <unistd.h>\n" + c_body)
+    subprocess.run(["cc", "-o", str(path), str(src)], check=True)
+    src.unlink()
+    return path
+
+
+def record_built_player(project_dir: str | Path, player_path: str | Path, mode: str = "desktop") -> dict:
+    """Record `player_path` (as it is now) as the player built for `mode` in `project_dir`, in
+    .jasperengine/user/runbuild.yaml, exactly as the editor's own Desktop build does
+    (editor/util/BuiltPlayers.cpp): one entry per mode, keys resolved (realpath), dev, ino, size,
+    mtime (st_mtime_ns), sha256 (lowercase hex); other modes' entries are kept.
+
+    A TEST FIXTURE standing in for build_project mode=desktop (a multi-minute engine build), so the
+    run_build tests can run a small fake player. run_build only runs a recorded file that is still
+    unchanged, so record it after the last change to it. Returns the entry written."""
+    import hashlib
+
+    player = Path(player_path)
+    resolved = Path(os.path.realpath(player))
+    st = os.stat(resolved)
+    sha = hashlib.sha256(resolved.read_bytes()).hexdigest()
+    record = Path(project_dir) / ".jasperengine" / "user" / "runbuild.yaml"
+    root: Any = None
+    if record.is_file():
+        try:
+            root = yaml.safe_load(record.read_text())
+        except yaml.YAMLError:
+            root = None
+    if not isinstance(root, dict):
+        root = {}
+    entry = {"resolved": str(resolved), "dev": st.st_dev, "ino": st.st_ino, "size": st.st_size,
+             "mtime": st.st_mtime_ns, "sha256": sha}
+    root[mode] = entry
+    record.parent.mkdir(parents=True, exist_ok=True)
+    tmp = record.with_name(record.name + ".tmp")
+    tmp.write_text(yaml.safe_dump(root, sort_keys=False, default_flow_style=False) + "\n")
+    os.replace(tmp, record)
+    return entry
+
+
+async def project_player_name(ed: "Editor") -> str:
+    """The player executable name run_build expects for this project (from its own message)."""
+    empty = ed.scratch.root / "fake-players" / "empty-dir-for-name"
+    empty.mkdir(parents=True, exist_ok=True)
+    msg = await ed.call("run_build", path=str(empty), expect_error=True)
+    return msg.split("(expected ")[1].split(")")[0]
+
+
+def symlinks_permitted() -> bool:
+    """Whether this process may create symbolic links (Windows may not): the symlink tests skip without."""
+    probe = Path(tempfile.mkdtemp(prefix="jasper-symlink-probe-"))
+    try:
+        os.symlink(probe / "missing", probe / "link")
+        return True
+    except (OSError, NotImplementedError):
+        return False
+    finally:
+        shutil.rmtree(probe, ignore_errors=True)
+
+
 # ---------------------------------------------------------------------------
 # Locations
 
@@ -282,6 +350,9 @@ class Scratch:
         settings = {
             "window": {"width": 1600, "height": 900, "maximized": True},
             "mcp": {"http_token": HTTP_TOKEN},
+            # builds an agent starts go to the default export location (or the project's chosen
+            # export folder): the scratch dir, so the tests' output_dir under it is allowed
+            "export": {"default_dir": str(root)},
         }
         if not create:
             settings["last_project_path"] = str(proj)

@@ -12,11 +12,22 @@
 #include "pool/TextureDataPool.h"
 #include "pool/SoundPool.h"
 #include "pool/AnimationClipPool.h"
+#include "pool/AnimatorControllerPool.h"
+#include "pool/AvatarMaskPool.h"
+#include "animation/AnimatorController.h"
+#include "animation/AvatarMask.h"
 #include "animation/AnimationClip.h"
 #include "animation/ModelSubClips.h"
 #include "animation/VertexAnimation.h"
 #include "pool/VertexAnimationPool.h"
 #include "thread/ResourceProgress.h"
+#include "script/ScriptRuntime.h"
+#include "manager/ObjectManager.h"
+#include "subsystem/UIDocumentSystem.h"
+#include "component/Transform.h"
+#include "component/CameraComponent.h"
+#include "component/ScriptComponent.h"
+#include "ecs/EntityManager.h"
 
 #include <algorithm>
 
@@ -27,6 +38,7 @@ uint32_t SceneManager::currentId = 0;
 std::optional<uint32_t> SceneManager::pendingId;
 std::map<uint32_t, Scene*> SceneManager::scenePtrs;
 bool SceneManager::factoryRunning = false;
+std::vector<Scene*> SceneManager::unloadingScenes;
 
 uint32_t SceneManager::loadingSceneId = 0;
 float SceneManager::loadingDelay = 0.0f;
@@ -41,6 +53,37 @@ float SceneManager::loadingProgress = 0.0f;
 int SceneManager::loadingHolds = 0;
 
 std::vector<SceneManager::Preload> SceneManager::preloads;
+
+Scene* SceneManager::persistentScene = nullptr;
+std::function<Scene*()> SceneManager::persistentCreate;
+std::function<void(Scene*)> SceneManager::persistentDestroy;
+std::vector<SceneManager::PendingMove> SceneManager::pendingMoves;
+bool SceneManager::flushingMoves = false;
+int SceneManager::startingScenes = 0;
+
+namespace {
+
+// destroyPersistentScene is releasing its scripts: nothing makes a new one meanwhile
+bool destroyingPersistent = false;
+
+bool isRootObject(Scene* scene, Entity entity) {
+    const Transform* transform = scene->findComponent<Transform>(entity);
+    return !transform || transform->parent == NULL_ENTITY;
+}
+
+// `entity` is `root` or one of its descendants
+bool isInHierarchyOf(Scene* scene, Entity entity, Entity root) {
+    for (int depth = 0; entity != NULL_ENTITY && depth < 4096; depth++) {
+        if (entity == root) {
+            return true;
+        }
+        const Transform* transform = scene->findComponent<Transform>(entity);
+        entity = transform ? transform->parent : NULL_ENTITY;
+    }
+    return false;
+}
+
+}
 
 std::vector<uint32_t> SceneManager::buildSceneStackIds(uint32_t id, const std::vector<uint32_t>& sceneIds) {
     std::vector<uint32_t> result;
@@ -111,6 +154,11 @@ SceneManager::SceneEntry* SceneManager::findEntry(uint32_t id) {
 }
 
 void SceneManager::runFactory(uint32_t id) {
+    if (!findEntry(id)) return;
+
+    // what was marked to persist leaves the scenes about to go, with its state
+    flushPersistentMoves();
+
     SceneEntry* entry = findEntry(id);
     if (!entry) return;
 
@@ -122,22 +170,54 @@ void SceneManager::runFactory(uint32_t id) {
         loadingScenes = getRunningScenes(loadingSceneId);
     }
 
+    // every scene whose scripts run now: the factory tears them down (a stack loaded again
+    // too), except the loading scene's, still on screen, and the persistent scene
+    const std::vector<Scene*> previous = ScriptRuntime::getStartedScenes();
+
     Engine::removeAllScenes();
 
     // still running, so the factory does not delete them
     for (Scene* scene : loadingScenes) {
         Engine::addSceneLayer(scene);
     }
+    if (persistentScene) {
+        Engine::addSceneLayer(persistentScene);
+    }
+
+    std::vector<Scene*> unloading;
+    for (Scene* scene : previous) {
+        if (scene != persistentScene && std::find(loadingScenes.begin(), loadingScenes.end(), scene) == loadingScenes.end()) {
+            unloading.push_back(scene);
+        }
+    }
 
     currentId = id;
+    // Time.timeSinceLevelLoad counts from this load
+    Engine::markLevelLoad();
     const bool nested = factoryRunning;
     factoryRunning = true;
+    std::vector<Scene*> nestedUnloading = std::move(unloadingScenes);
+    unloadingScenes = unloading;
+    // Unity: the old scenes' onDisable and onDestroy, before the new scenes' init (a singleton
+    // clearing itself in onDestroy does not clobber the new one)
+    ScriptRuntime::unloadScenes(unloading);
     loadFactory();
+    unloadingScenes = std::move(nestedUnloading);
     factoryRunning = nested;
 
+    // above the new stack, below the loading scene
+    raisePersistentScene();
     if (loadingSceneShown) {
         raiseLoadingScene();
     }
+}
+
+bool SceneManager::isFactoryRunning() {
+    return factoryRunning;
+}
+
+const std::vector<Scene*>& SceneManager::getUnloadingScenes() {
+    return unloadingScenes;
 }
 
 bool SceneManager::loadScene(uint32_t id) {
@@ -345,6 +425,7 @@ bool SceneManager::isCoveredByLoading(Scene* scene) {
 void SceneManager::setCurrentScene(uint32_t id) {
     pendingId.reset();
     currentId = id;
+    Engine::markLevelLoad();
     loadingState = LoadingState::Loading;
     resetLoadProgress();
 }
@@ -393,7 +474,8 @@ float SceneManager::getPreloadProgress(uint32_t id) {
     if (preload->total == 0) return 1.0f;
 
     const SceneResources& pending = preload->pending;
-    size_t remaining = pending.textures.size() + pending.sounds.size() + pending.models.size() + pending.clips.size() + pending.vats.size();
+    size_t remaining = pending.textures.size() + pending.sounds.size() + pending.models.size() + pending.clips.size() + pending.vats.size() +
+                       pending.masks.size() + pending.controllers.size();
     return (float)(preload->total - remaining) / (float)preload->total;
 }
 
@@ -413,6 +495,8 @@ void SceneManager::cancelPreload(uint32_t id) {
         preload->pending.sounds.clear();
         preload->pending.clips.clear();
         preload->pending.vats.clear();
+        preload->pending.masks.clear();
+        preload->pending.controllers.clear();
     }
 }
 
@@ -458,13 +542,20 @@ void SceneManager::startPreload(uint32_t id) {
         for (const std::string& vat : resources.vats) {
             addFile(pending.vats, vat);
         }
+        for (const std::string& mask : resources.masks) {
+            addFile(pending.masks, mask);
+        }
+        for (const std::string& controller : resources.controllers) {
+            addFile(pending.controllers, controller);
+        }
     }
 
     preload = findPreload(id);
     if (!preload) return;
 
     preload->started = true;
-    preload->total = pending.textures.size() + pending.sounds.size() + pending.models.size() + pending.clips.size() + pending.vats.size();
+    preload->total = pending.textures.size() + pending.sounds.size() + pending.models.size() + pending.clips.size() + pending.vats.size() +
+                       pending.masks.size() + pending.controllers.size();
     preload->pending = std::move(pending);
 }
 
@@ -583,8 +674,32 @@ void SceneManager::updatePreloads() {
             if (oneFile) return;
         }
 
+        // Avatar Masks and Animator Controllers: small JSON files, read on this thread
+        for (auto it = pending.masks.begin(); it != pending.masks.end();) {
+            const std::string mask = *it;
+            std::string error;
+            std::shared_ptr<const anim::AvatarMask> loaded = AvatarMaskPool::getOrLoad(mask, &error);
+            if (!loaded) {
+                Log::warn("Preload of avatar mask %s failed: %s", mask.c_str(), error.c_str());
+            }
+            keep(std::const_pointer_cast<anim::AvatarMask>(loaded), []() { AvatarMaskPool::clearUnused(); });
+            it = pending.masks.erase(it);
+            if (oneFile) return;
+        }
+        for (auto it = pending.controllers.begin(); it != pending.controllers.end();) {
+            const std::string controller = *it;
+            std::string error;
+            std::shared_ptr<const anim::AnimatorController> loaded = AnimatorControllerPool::getOrLoad(controller, &error);
+            if (!loaded) {
+                Log::warn("Preload of animator controller %s failed: %s", controller.c_str(), error.c_str());
+            }
+            keep(std::const_pointer_cast<anim::AnimatorController>(loaded), []() { AnimatorControllerPool::clearUnused(); });
+            it = pending.controllers.erase(it);
+            if (oneFile) return;
+        }
+
         const bool inFlight = !pending.textures.empty() || !pending.sounds.empty() || !pending.models.empty() || !pending.clips.empty() ||
-                              !pending.vats.empty();
+                              !pending.vats.empty() || !pending.masks.empty() || !pending.controllers.empty();
         if (preload.cancelled && !inFlight) {
             releasePreload(preload);
             preloads.erase(preloads.begin() + i);
@@ -674,6 +789,12 @@ bool SceneManager::addChildScene(uint32_t id) {
         Engine::addSceneLayer(getScenePtr(sceneId));
     }
 
+    // the persistent scene stays above the game's scenes, the loading scene above it
+    raisePersistentScene();
+    if (loadingSceneShown) {
+        raiseLoadingScene();
+    }
+
     return true;
 }
 
@@ -730,6 +851,14 @@ std::string SceneManager::getSceneName(uint32_t id) {
     return entry ? entry->name : "";
 }
 
+std::string SceneManager::getSceneNameOf(const Scene* scene) {
+    if (!scene) return "";
+    for (const auto& [id, ptr] : scenePtrs) {
+        if (ptr == scene) return getSceneName(id);
+    }
+    return "";
+}
+
 std::vector<std::string> SceneManager::getSceneNames() {
     std::vector<std::string> names;
     names.reserve(entries.size());
@@ -752,6 +881,8 @@ std::string SceneManager::getCurrentSceneName() {
 }
 
 void SceneManager::clearAll() {
+    destroyPersistentScene();
+
     entries.clear();
     currentId = 0;
     pendingId.reset();
@@ -798,4 +929,268 @@ std::vector<Scene*> SceneManager::getScenePtrs() {
         scenes.push_back(pair.second);
     }
     return scenes;
+}
+
+// ---- persistent objects (DontDestroyOnLoad)
+
+void SceneManager::setPersistentSceneFactory(std::function<Scene*()> create, std::function<void(Scene*)> destroy) {
+    persistentCreate = std::move(create);
+    persistentDestroy = std::move(destroy);
+}
+
+Scene* SceneManager::getPersistentScene() {
+    return persistentScene;
+}
+
+Scene* SceneManager::ensurePersistentScene() {
+    if (persistentScene) {
+        return persistentScene;
+    }
+    if (destroyingPersistent) {
+        return nullptr;
+    }
+
+    Scene* scene = persistentCreate ? persistentCreate() : new Scene();
+    if (!scene) {
+        return nullptr;
+    }
+    persistentScene = scene;
+    setScenePtr(PERSISTENT_SCENE_ID, scene);
+
+    // started from the beginning: what moves in keeps running, what is instantiated in it
+    // starts, its HTML documents run their scripts
+    ScriptRuntime::awakeScene(scene);
+    scene->getSystem<UIDocumentSystem>()->startDocumentScripts();
+
+    Engine::addSceneLayer(scene);
+    // without a view nothing loads it yet: its default camera (the UI camera) is made now
+    if (scene->getCamera() == NULL_ENTITY) {
+        scene->load();
+    }
+    raisePersistentScene();
+    if (loadingSceneShown) {
+        raiseLoadingScene();
+    }
+    return scene;
+}
+
+void SceneManager::raisePersistentScene() {
+    Scene* scene = persistentScene;
+    if (!scene || scene == Engine::getMainScene()) {
+        return;
+    }
+
+    // already on top of every scene but the shown loading scene's
+    const std::vector<Scene*> layers = Engine::getSceneLayers();
+    auto it = std::find(layers.begin(), layers.end(), scene);
+    if (it != layers.end()) {
+        std::vector<Scene*> loadingScenes;
+        if (loadingSceneShown) {
+            loadingScenes = getRunningScenes(loadingSceneId);
+        }
+        const bool onTop = std::all_of(it + 1, layers.end(), [&loadingScenes](Scene* above) {
+            return std::find(loadingScenes.begin(), loadingScenes.end(), above) != loadingScenes.end();
+        });
+        if (onTop) {
+            return;
+        }
+    }
+
+    Engine::removeScene(scene);
+    Engine::addSceneLayer(scene);
+}
+
+void SceneManager::destroyPersistentScene() {
+    Scene* scene = persistentScene;
+    // moves to or from it end here
+    pendingMoves.erase(std::remove_if(pendingMoves.begin(), pendingMoves.end(), [scene](const PendingMove& move) {
+        return scene && (move.to == scene || move.from == scene);
+    }), pendingMoves.end());
+    if (!scene) {
+        return;
+    }
+
+    // its scripts go (the quit pass ran their onDestroy; otherwise it runs now), while it is
+    // still the persistent scene, so a callback cannot make another one
+    destroyingPersistent = true;
+    std::vector<Entity> scripted;
+    auto scripts = scene->getComponentArray<ScriptComponent>();
+    for (size_t i = 0; i < scripts->size(); i++) {
+        scripted.push_back(scripts->getEntity(i));
+    }
+    ObjectManager::cleanupScripts(scene, scripted);
+    scene->getSystem<UIDocumentSystem>()->releaseScriptState();
+    destroyingPersistent = false;
+
+    Engine::removeScene(scene);
+    if (getScenePtr(PERSISTENT_SCENE_ID) == scene) {
+        removeScenePtr(PERSISTENT_SCENE_ID);
+    }
+    persistentScene = nullptr;
+
+    if (persistentDestroy) {
+        persistentDestroy(scene);
+    } else {
+        // ~Scene stops its sounds
+        delete scene;
+    }
+}
+
+bool SceneManager::queueMove(Scene* from, Entity root, Scene* to, const char* caller) {
+    if (!from || root == NULL_ENTITY || !from->isEntityCreated(root)) {
+        Log::warn("%s: the GameObject does not exist", caller);
+        return false;
+    }
+    if (!isRootObject(from, root)) {
+        Log::warn("%s only works for root GameObjects ('%s' has a parent)", caller, from->getEntityName(root).c_str());
+        return false;
+    }
+
+    // a move of it queued before is replaced
+    pendingMoves.erase(std::remove_if(pendingMoves.begin(), pendingMoves.end(), [from, root](const PendingMove& move) {
+        return move.from == from && move.root == root;
+    }), pendingMoves.end());
+    if (to != from) {
+        pendingMoves.push_back({from, root, to});
+    }
+    return true;
+}
+
+bool SceneManager::dontDestroyOnLoad(Scene* scene, Entity root) {
+    if (!scene || root == NULL_ENTITY || !scene->isEntityCreated(root)) {
+        Log::warn("DontDestroyOnLoad: the GameObject does not exist");
+        return false;
+    }
+    if (!isRootObject(scene, root)) {
+        Log::warn("DontDestroyOnLoad only works for root GameObjects ('%s' has a parent)", scene->getEntityName(root).c_str());
+        return false;
+    }
+    if (persistentScene && scene == persistentScene) {
+        // a move out of it asked for this frame is called off: it stays
+        pendingMoves.erase(std::remove_if(pendingMoves.begin(), pendingMoves.end(), [scene, root](const PendingMove& move) {
+            return move.from == scene && move.root == root;
+        }), pendingMoves.end());
+        return true;
+    }
+    if (isPersistent(scene, root)) {
+        return true;
+    }
+
+    Scene* target = ensurePersistentScene();
+    if (!target) {
+        Log::warn("DontDestroyOnLoad: '%s' stays, there is no persistent scene while the game is not running",
+                  scene->getEntityName(root).c_str());
+        return false;
+    }
+    return queueMove(scene, root, target, "DontDestroyOnLoad");
+}
+
+bool SceneManager::isPersistent(Scene* scene, Entity entity) {
+    if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity)) {
+        return false;
+    }
+    if (persistentScene && scene == persistentScene) {
+        // ...unless its root is about to move out (moveGameObjectToScene)
+        for (const PendingMove& move : pendingMoves) {
+            if (move.from == scene && isInHierarchyOf(scene, entity, move.root)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    for (const PendingMove& move : pendingMoves) {
+        if (move.to == persistentScene && move.from == scene && isInHierarchyOf(scene, entity, move.root)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool SceneManager::moveGameObjectToScene(Scene* from, Entity root, Scene* to) {
+    if (!to || (to != persistentScene && !Engine::isSceneRunning(to))) {
+        Log::error("SceneManager.moveGameObjectToScene: the target scene is not loaded");
+        return false;
+    }
+    return queueMove(from, root, to, "SceneManager.moveGameObjectToScene");
+}
+
+void SceneManager::flushPersistentMoves() {
+    if (flushingMoves || pendingMoves.empty()) {
+        return;
+    }
+    flushingMoves = true;
+    std::vector<PendingMove> moves;
+    moves.swap(pendingMoves);
+    for (const PendingMove& move : moves) {
+        // destroyed meanwhile: the destroy wins
+        if (!move.from || !move.to || move.from == move.to || !move.from->isEntityCreated(move.root)) {
+            continue;
+        }
+        const std::vector<Entity> moved = ObjectManager::moveToScene(move.from, move.root, move.to);
+        if (moved.empty() || move.to != persistentScene) {
+            continue;
+        }
+        // the first Camera a persistent GameObject brings is the persistent scene's camera
+        // (until then it draws with its default UI camera, a system entity)
+        const Entity camera = persistentScene->getCamera();
+        if (camera == NULL_ENTITY || camera <= EntityManager::lastSystemEntity() ||
+                !persistentScene->findComponent<CameraComponent>(camera)) {
+            for (Entity entity : moved) {
+                if (persistentScene->findComponent<CameraComponent>(entity)) {
+                    persistentScene->setCamera(entity);
+                    break;
+                }
+            }
+        }
+    }
+    flushingMoves = false;
+}
+
+bool SceneManager::hasPendingMoves(Scene* scene) {
+    if (!scene) {
+        return !pendingMoves.empty();
+    }
+    return std::any_of(pendingMoves.begin(), pendingMoves.end(), [scene](const PendingMove& move) {
+        return move.from == scene || move.to == scene;
+    });
+}
+
+std::vector<std::pair<Scene*, Entity>> SceneManager::getPendingPersistentRoots() {
+    std::vector<std::pair<Scene*, Entity>> roots;
+    for (const PendingMove& move : pendingMoves) {
+        if (persistentScene && move.to == persistentScene) {
+            roots.push_back({move.from, move.root});
+        }
+    }
+    return roots;
+}
+
+void SceneManager::forgetPendingMoves(Scene* scene) {
+    if (!scene) {
+        return;
+    }
+    pendingMoves.erase(std::remove_if(pendingMoves.begin(), pendingMoves.end(), [scene](const PendingMove& move) {
+        return move.from == scene || move.to == scene;
+    }), pendingMoves.end());
+    // deleted by someone else (its factory's owner): never reached again
+    if (scene == persistentScene) {
+        persistentScene = nullptr;
+        if (getScenePtr(PERSISTENT_SCENE_ID) == scene) {
+            removeScenePtr(PERSISTENT_SCENE_ID);
+        }
+    }
+}
+
+void SceneManager::beginStartingScenes() {
+    startingScenes++;
+}
+
+void SceneManager::endStartingScenes() {
+    if (startingScenes > 0) {
+        startingScenes--;
+    }
+}
+
+bool SceneManager::isStartingScenes() {
+    return factoryRunning || startingScenes > 0;
 }

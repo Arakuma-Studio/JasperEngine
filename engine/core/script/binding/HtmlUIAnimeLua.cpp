@@ -49,11 +49,13 @@ namespace {
         return *refs;
     }
 
+    // A registry reference, kept with the main thread of the state (never a coroutine's thread,
+    // which ends long before an animation callback runs: LuaBinding::mainThread)
     class LuaRefHolder {
     public:
-        LuaRefHolder(lua_State* L, int index): L(L){
-            lua_pushvalue(L, index);
-            ref = luaL_ref(L, LUA_REGISTRYINDEX);
+        LuaRefHolder(lua_State* from, int index): L(LuaBinding::mainThread(from)){
+            lua_pushvalue(from, index);
+            ref = luaL_ref(from, LUA_REGISTRYINDEX);
             animeLiveRefs().insert(this);
         }
         ~LuaRefHolder(){
@@ -71,11 +73,15 @@ namespace {
         bool isAlive() const{
             return ref != LUA_NOREF && L && LuaBinding::getLuaState() == L;
         }
-        // pushes the value; false (nothing pushed) once released or the state is gone
+        // pushes the value on the main thread; false (nothing pushed) once released or the state is gone
         bool push() const{
-            if (!isAlive())
+            return push(L);
+        }
+        // pushes the value on `onto`, any thread of the state (the one running the binding)
+        bool push(lua_State* onto) const{
+            if (!isAlive() || !onto || LuaBinding::mainThread(onto) != L)
                 return false;
-            lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+            lua_rawgeti(onto, LUA_REGISTRYINDEX, ref);
             return true;
         }
         lua_State* state() const{ return L; }
@@ -122,7 +128,8 @@ namespace {
         TableTarget(lua_State* L, int index): table(std::make_shared<LuaRefHolder>(L, index)), identity(lua_topointer(L, index)) {}
 
         const void* getIdentity() const override{ return identity; }
-        bool push() const{ return table->push(); }
+        bool isAlive() const{ return table->isAlive(); }
+        bool push(lua_State* onto) const{ return table->push(onto); }
 
         AnimRawValue getValue(const std::string& property, AnimTweenType type, AnimRawValue* inlineValue) override{
             (void)type;
@@ -197,8 +204,7 @@ namespace {
         auto it = targets.find(identity);
         if (it != targets.end()){
             std::shared_ptr<TableTarget> existing = it->second.lock();
-            if (existing && existing->push()){
-                lua_pop(L, 1);
+            if (existing && existing->isAlive()){
                 return existing;
             }
         }
@@ -234,7 +240,7 @@ namespace {
             return;
         }
         TableTarget* table = dynamic_cast<TableTarget*>(target.get());
-        if (table && table->push())
+        if (table && table->push(L))
             return;
         lua_settop(L, top);
         lua_pushnil(L);

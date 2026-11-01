@@ -23,6 +23,7 @@
 #include "component/PointsComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "component/LineRendererComponent.h"
+#include "component/TrailRendererComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/SpriteComponent.h"
@@ -355,6 +356,19 @@ namespace jasperengine{
 		float padding[3];
 	} vs_points_params_t;
 
+	// u_vs_linesParams of a ribbon: a thick line or a trail (includes/lines_vs.glsl, LINE_RIBBON)
+	typedef struct vs_lines_ribbon_params_t {
+		Matrix4 mvpMatrix;
+		Matrix4 modelMatrix;
+		Matrix4 viewProjection;
+		// xyz world position (w 0), or the direction towards the camera (w 1, orthographic)
+		Vector4 cameraPosition;
+		// xyz world normal of TransformZ alignment, w 1 TransformZ / 0 View
+		Vector4 alignAxis;
+		// xy render target size in pixels
+		Vector4 viewport;
+	} vs_lines_ribbon_params_t;
+
 	typedef struct check_load_t {
 		Scene* scene;
 		Entity entity;
@@ -557,7 +571,10 @@ namespace jasperengine{
 		enum class TransparentRenderType{
 			MESH,
 			POINTS,
-			PARTICLES
+			PARTICLES,
+			// a thick Line Renderer, a Trail Renderer (blended ribbons)
+			LINES,
+			TRAIL
 		};
 
 		struct TransparentRenderData{
@@ -576,6 +593,8 @@ namespace jasperengine{
 			// submission order: equal priority and distance draw in it, deterministically
 			uint32_t order;
 			ParticleSystemComponent* particles = nullptr;
+			LineRendererComponent* lines = nullptr;
+			TrailRendererComponent* trail = nullptr;
 		};
 
 		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
@@ -670,7 +689,6 @@ namespace jasperengine{
 
 		static uint32_t pixelsWhite[64];
 		static uint32_t pixelsBlack[64];
-		static uint32_t pixelsNormal[64];
 
 		static TextureRender emptyWhite;
 		static TextureRender emptyArrayWhite;
@@ -693,6 +711,10 @@ namespace jasperengine{
 		static uint32_t pixelsNoise[DEFAULT_PATTERN_SIZE * DEFAULT_PATTERN_SIZE];
 		static TextureRender defaultRipples;
 		static TextureRender defaultNoise;
+		// @texture default "particle" (Particle Systems' default quad): a soft white disc
+		static constexpr int DEFAULT_PARTICLE_SIZE = 64;
+		static uint32_t pixelsParticle[DEFAULT_PARTICLE_SIZE * DEFAULT_PARTICLE_SIZE];
+		static TextureRender defaultParticle;
 		static TextureRender emptyCubeGray;
 		// zeros for the morph inputs a mesh's shader declares and the mesh has none of
 		// (bindUnfedMorphInputs): one vertex buffer per size asked for, shared by every
@@ -1650,6 +1672,7 @@ namespace jasperengine{
 		bool postProcessLoaded;
 		bool postProcessNeedReload;
 		bool postProcessNeedUpdateUniforms;    // rewrite pass values, no chain rebuild
+		uint64_t postProcessGlobalsVersion = 0; // ShaderGlobals version the pass values bind
 		// the scene's PostProcessingSettings changed since they were applied (phase 4)
 		bool postProcessingDirty = true;
 		// what the applied settings turn on (getPostProcessingTiers), and their colour LUTs
@@ -1758,6 +1781,52 @@ namespace jasperengine{
 		};
 		SceneInputStats sceneInputStats;
 		SceneInputStats lastSceneInputStats;
+
+		// FLATTEN Canvas Groups (ui canvas group spec 7.10): before a camera's colour pass, each
+		// layered group's subtree (its UI elements and UI particles) is drawn into a pooled
+		// target the size of the pass target, cleared to transparent (innermost groups first,
+		// so a nested layer is composited into its parent's). The colour pass composites the
+		// layer at the group's place in the Hierarchy order, premultiplied at layerAlpha,
+		// scissored to the subtree's bounds, and skips the UI it holds
+		struct CanvasLayer{
+			Framebuffer framebuffer;
+			uint64_t lastUsedFrame = 0;
+			// used by the camera pass being drawn, for the layers at these bounds (siblings
+			// elsewhere on screen share a target)
+			bool inUse = false;
+			std::vector<Rect> usedRects;
+		};
+		struct PassCanvasLayer{
+			size_t layer = 0;           // index in canvasLayers
+			Rect bounds;                // pass target pixels the subtree covers
+			bool hasBounds = false;
+		};
+		std::vector<std::unique_ptr<CanvasLayer>> canvasLayers;
+		std::unordered_map<Entity, PassCanvasLayer> passCanvasLayers;
+		CameraRender canvasLayerPass;
+		ObjectRender canvasCompositeObject;
+		std::shared_ptr<ShaderRender> canvasCompositeShader;
+		int canvasCompositeVsSlot = -1;
+		int canvasCompositeFsSlot = -1;
+		std::pair<int, int> canvasCompositeTextureSlot = {-1, -1};
+		bool canvasCompositeLoaded = false;
+		uint64_t canvasLayerFrame = 0;
+		uint64_t canvasLayerTargetsCreated = 0;
+		bool loadCanvasComposite();
+		void destroyCanvasLayers();
+		// the layers of one camera pass (passCanvasLayers), drawn outside any pass
+		void renderCanvasGroupLayers(CameraComponent& camera, Transform& cameraTransform, const Rect& colorPassViewport,
+		                             unsigned int targetWidth, unsigned int targetHeight, bool perCameraMVP, uint32_t cullingMask);
+		// composites a pass layer into the current pass (the pass's pipeline type and samples)
+		void drawCanvasLayer(Entity group, const PassCanvasLayer& layer, float alpha, PipelineType pipelineType, int msaaSamples,
+		                     const Rect& colorPassViewport, unsigned int targetWidth, unsigned int targetHeight, CameraRender& render);
+		// releases the layers unused for 120 frames
+		void trimCanvasLayers();
+		// the render points of Points whose uiGroupAlpha changed since the update
+		void refreshGroupFadedPoints();
+		// a Points GameObject in the UI hierarchy (a RectTransform on it or above): a UI
+		// particle, which Canvas Groups fade and FLATTEN layers hold
+		bool isUIParticle(Entity entity) const;
 
 		static void changeLoaded(void* data);
 		static void changeDestroy(void* data);
@@ -1928,7 +1997,13 @@ namespace jasperengine{
 		uint64_t postColorProperty(ShaderType type) const;
 		// the size of the target a camera's colour pass renders into
 		Vector2 passFrameResolution(const CameraComponent& camera) const;
+		// the frame block of the pass (and the post colour, the blurred scene and the globals)
 		void applyFrameBlock(ObjectRender& render, const ShaderLibraryBindings& bindings);
+		// the global shader values a draw's shader declares (ShaderGlobals: its globals blocks,
+		// repacked when a value changed, and its texture globals)
+		void applyGlobals(ObjectRender& render, const ShaderLibraryBindings& bindings);
+		// its texture globals only (at load, outside a pass)
+		void applyGlobalTextures(ObjectRender& render, const ShaderLibraryBindings& bindings);
 		// the scene inputs of the pass being drawn, to a colour draw whose shader declares them
 		// (the far-plane depth and black where the pass has none)
 		void applySceneInputs(ObjectRender& render, const ShaderLibraryBindings& bindings);
@@ -1993,6 +2068,12 @@ namespace jasperengine{
 		void updateInstanceBuffers();
 		void uploadInstanceViews(RenderView& renderView);
 		Rect getScissorRect(RectTransformComponent& layout, ImageComponent& img, Transform& transform, const Rect& passViewport);
+		// The UI scissor of a pass entity (a RectTransform): its parent's (unless ignoreScissor)
+		// is applied, its own (an Image's rect) is kept for its children. True when the
+		// parent's is empty: the entity draws nothing
+		bool applyPassScissor(Entity entity, Signature signature, Transform& transform, CameraRender& render, const Rect& colorPassViewport, bool& hasActiveScissor);
+		// the pixel rect (pass target pixels, within passViewport) a local rectangle covers
+		Rect projectLocalRect(const Matrix4& mvp, float localLeft, float localTop, float localRight, float localBottom, const Rect& passViewport);
 
 		// mesh LOD
 		struct LodAttribute{
@@ -2125,6 +2206,15 @@ namespace jasperengine{
 		const Matrix4* objectMatrices(Transform& transform, Matrix4 (&scratch)[3]);
 		const Matrix4& objectMVP(Transform& transform) const;
 		const Matrix4& objectModel(Transform& transform) const;
+	public:
+		// Whether a draw of the mesh with this model matrix reverses the face winding of its
+		// pipelines (ObjectRender::beginDraw mirrored): a negative determinant turns its triangles
+		// over on screen, so its front faces would cull and shade (gl_FrontFacing) as backs,
+		// unless the mesh's winding order already compensates that mirror
+		// (MeshComponent::mirroredWinding). Per draw, so a mirrored instance of an instanced mesh
+		// is not covered (its instance matrix is the GPU's)
+		static bool isMirroredDraw(const MeshComponent& mesh, const Matrix4& modelMatrix);
+	private:
 		float objectDistance(Transform& transform) const;
 		PassScissor passScissor(Transform& transform, RectTransformComponent& layout);
 		const Matrix4& passSkyViewProjection(const SkyboxComponent& sky) const;
@@ -2249,7 +2339,8 @@ namespace jasperengine{
 		// blending: drawn in the transparent queue, as with a transparent texture
 		bool lendsTransparentFluid(Entity entity, const Submesh& submesh) const;
 		// textureOverride: shown instead of the UI's texture (a FluidSimulation's MATERIAL output)
-		bool drawUI(UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride = nullptr);
+		// inCanvasLayer: drawn into a FLATTEN Canvas Group layer (its alpha relative to the layer)
+		bool drawUI(UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride = nullptr, bool inCanvasLayer = false);
 		void destroyUI(Entity entity, UIComponent& ui);
 
 		bool drawPoints(Entity entity, PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType);
@@ -2296,8 +2387,33 @@ namespace jasperengine{
 		float computePointsScale(const CameraComponent& camera, float viewportHeight) const;
 		void destroyPoints(Entity entity, PointsComponent& points);
 
-		bool drawLines(LineRendererComponent& lines, Transform& transform, Transform& camTransform, PipelineType pipType);
+		bool drawLines(Entity entity, LineRendererComponent& lines, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType);
 		void destroyLines(Entity entity, LineRendererComponent& lines);
+		static void changeTrailLoaded(void* data);
+		static void changeTrailDestroy(void* data);
+		// a thick line's or a trail's draw: the ribbon params for this camera, the blocks, textures
+		template<typename T>
+		bool drawRibbon(T& component, const Matrix4& modelMatrix, const Vector3& alignAxis, bool transformZ,
+		                CameraComponent& camera, Transform& camTransform, PipelineType pipType);
+		bool drawTrail(Entity entity, TrailRendererComponent& trail, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType);
+		// scratch of updateTrail: a trail's centre line and its points' parameters
+		std::vector<Vector3> trailPoints;
+		std::vector<float> trailPointT;
+		void destroyTrail(Entity entity, TrailRendererComponent& trail);
+		// the GPU side of a ribbon (thick line or trail): shader variant, buffers sized to its
+		// capacity, bindings and pipelines; `ribbonVariant` the variant properties without the
+		// post colour bit
+		template<typename T>
+		bool loadRibbonRender(Entity entity, T& component, uint16_t pipelines, uint64_t ribbonVariant, BufferUsage usage);
+		template<typename T>
+		void destroyRibbonRender(Entity entity, T& component);
+		// CPU: the ribbon of a thick line or the segments of a hairline polyline, when dirty;
+		// needReload when the variant or the capacity the data needs changed
+		void updateLinesGeometry(Entity entity, LineRendererComponent& lines, float dt);
+		// a trail's activity for this pass (its own enabled, not the GameObject's other renderers)
+		bool isTrailRenderActive(Entity entity, const TrailRendererComponent& trail, uint32_t cullingMask) const;
+		// the world bounds of a line's ribbon (with its width), null when not culled (pixel widths)
+		AABB linesWorldBounds(const LineRendererComponent& lines, const Transform& transform) const;
 
 		bool drawSky(SkyboxComponent& sky, PipelineType pipType, const Matrix4& viewProjection);
 		void destroySky(Entity entity, SkyboxComponent& sky);
@@ -2321,6 +2437,28 @@ namespace jasperengine{
 
 		void sortPoints(PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform);
 		void sortInstancedMesh(InstancedMeshComponent& instmesh, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform);
+		// sortInstancedMesh's buffers, kept between frames (a distance-sorted batch sorts every frame)
+		std::vector<unsigned int> sortOrderScratch;
+		std::vector<float> sortDepthScratch;
+		std::vector<InstanceRenderData> sortInstancesScratch;
+		std::vector<InstanceBounds> sortBoundsScratch;
+		std::vector<InstanceVatRenderData> sortVatScratch;
+
+	public:
+		// what the FLATTEN Canvas Groups drew in the last frame (tests, diagnostics)
+		struct CanvasGroupRenderStats{
+			uint32_t layers = 0;            // layers drawn and composited
+			uint32_t skippedBranches = 0;   // FLATTEN groups at alpha 0: their UI was skipped whole
+			uint32_t fallbacks = 0;         // layered groups drawn Per Element (an element not ready for the layer)
+			uint32_t pooled = 0;            // layer targets in the pool
+			uint32_t sharedTargets = 0;     // layers drawn into a target another layer of the pass uses
+			uint64_t targetsCreated = 0;    // layer targets created or resized since the scene started
+		};
+		const CanvasGroupRenderStats& getCanvasGroupRenderStats() const { return lastCanvasGroupRenderStats; }
+
+	private:
+		CanvasGroupRenderStats canvasGroupRenderStats;
+		CanvasGroupRenderStats lastCanvasGroupRenderStats;
 
 	public:
 
@@ -2525,6 +2663,7 @@ namespace jasperengine{
 		bool loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelines, InstancedMeshComponent* instmesh, TerrainComponent* terrain);
 		bool loadPoints(Entity entity, PointsComponent& points, uint16_t pipelines);
 		bool loadLines(Entity entity, LineRendererComponent& lines, uint16_t pipelines);
+		bool loadTrail(Entity entity, TrailRendererComponent& trail, uint16_t pipelines);
 		bool loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bool isText);
 		bool loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelines);
 
@@ -2548,7 +2687,20 @@ namespace jasperengine{
 		bool isInsideCamera(const float cameraFar, const Plane frustumPlanes[6], const Vector3& center, const float& radius);
 
 		void needReloadPoints();
+		// Line Renderers and Trail Renderers
 		void needReloadLines();
+
+		// Trail Renderers (TrailSystem calls it once per trail per update, after simulating):
+		// builds the ribbon when its points or settings changed, loads or reloads it
+		void updateTrail(Entity entity, TrailRendererComponent& trail, float dt);
+		// the shader variant properties (without the post colour bit) a Line Renderer / Trail
+		// Renderer loads: the hairline (Vc4) or the ribbon (Rib, Tex with a base texture on a
+		// shader without manifest, Pxw for pixel widths). Shader warmup and the editor's
+		// variant collection use them too
+		static uint64_t getLinesVariantProperties(const Scene* scene, const LineRendererComponent& lines);
+		static uint64_t getTrailVariantProperties(const Scene* scene, const TrailRendererComponent& trail);
+		// the base texture (shaderTextures' u_baseTexture), empty without one
+		static const Texture* getLinesBaseTexture(const std::vector<std::pair<std::string, Texture>>& shaderTextures);
 		void needReloadMeshes();
 		// a change of the scene's shader environment that leaves every resource the loaded
 		// variants bind alive (light cap, fog, lights added or removed, reflection probes, 2D

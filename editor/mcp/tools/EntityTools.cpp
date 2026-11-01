@@ -206,6 +206,7 @@ const std::vector<EntityKind>& entityKinds() {
         {"fluid_simulation", EntityCreationType::FLUID_SIMULATION, "Fluid Simulation"},
         {"points", EntityCreationType::POINTS, "Points"},
         {"line_renderer", EntityCreationType::LINE_RENDERER, "Line Renderer"},
+        {"trail_renderer", EntityCreationType::TRAIL_RENDERER, "Trail Renderer"},
         {"mesh_polygon", EntityCreationType::MESH_POLYGON, "Mesh Polygon"},
         {"sprite", EntityCreationType::SPRITE, "Sprite"},
         {"tilemap", EntityCreationType::TILEMAP, "Tilemap"},
@@ -223,9 +224,13 @@ const std::vector<EntityKind>& entityKinds() {
         {"scrollbar", EntityCreationType::SCROLLBAR, "Scrollbar"},
         {"progressbar", EntityCreationType::PROGRESSBAR, "Progress Bar"},
         {"input_field", EntityCreationType::INPUT_FIELD, "Input Field"},
+        {"onscreen_stick", EntityCreationType::ONSCREEN_STICK_FIXED, "On-Screen Stick"},
+        {"onscreen_button", EntityCreationType::ONSCREEN_BUTTON, "On-Screen Button"},
+        {"touch_area", EntityCreationType::TOUCH_AREA, "Touch Area"},
         {"panel", EntityCreationType::PANEL, "Panel"},
         {"polygon", EntityCreationType::POLYGON, "Polygon"},
         {"layout_group", EntityCreationType::LAYOUT_GROUP, "Layout Group"},
+        {"canvas_group", EntityCreationType::CANVAS_GROUP, "Canvas Group"},
         {"ui_document", EntityCreationType::UI_DOCUMENT, "UI Document"},
         {"animation", EntityCreationType::ANIMATION, "Animation"},
         {"sprite_animation", EntityCreationType::SPRITE_ANIMATION, "Sprite Animation"},
@@ -255,7 +260,7 @@ const EntityKind* findKind(const std::string& given) {
         {"rigidbody3d", "rigidbody"}, {"joint", "joint3d"}, {"joint_2d", "joint2d"}, {"progress_bar", "progressbar"},
         {"sun", "directional_light"}, {"audio", "audio_source"}, {"ui_image", "image"}, {"ui_text", "text"},
         {"label", "text"}, {"quad", "plane"}, {"uidocument", "ui_document"}, {"html", "ui_document"},
-        {"fluid", "fluid_simulation"}
+        {"fluid", "fluid_simulation"}, {"line", "line_renderer"}, {"trail", "trail_renderer"}
     };
     auto alias = aliases.find(key);
     if (alias != aliases.end()) key = alias->second;
@@ -713,7 +718,8 @@ void createEntityRun(const CallPtr& call, bool waited) {
     const bool stepsOk = stepCount == 0 ? (delete steps, true) : runSceneCommand(sceneId, steps, error);
     if (kind->type == EntityCreationType::LATTICE) {
         if (!stepsOk) {
-            while (history->position() > start && history->canUndo()) history->undo();
+            // a refused undo leaves the position (CommandHistory::undo false): it ends the loop too
+            while (history->position() > start && history->canUndo() && history->undo()) {}
         } else {
             history->groupSince(start);
             if (!select) project->replaceSelectedEntities(sceneId, selectedBefore);

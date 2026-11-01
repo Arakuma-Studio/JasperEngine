@@ -3,6 +3,11 @@
 
 #include "ProjectChecks.h"
 #include "io/AtomicFile.h"
+#include "component/ActionComponent.h"
+#include "component/PointsComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "shader/ShaderGlobals.h"
+#include "util/FileUtils.h"
 
 #include "AppSettings.h"
 #include "Catalog.h"
@@ -67,6 +72,8 @@ int toolOrder(const std::string& tool) {
     if (tool == "shader") return 1;
     if (tool == "cpp") return 2;
     if (tool == "ui") return 3;
+    // sprite normal maps after every other tool (texture, anim, vat)
+    if (tool == "normals") return 5;
     return 4;
 }
 
@@ -1081,6 +1088,7 @@ bool editor::ProjectChecks::shaderTypeForComponent(ComponentType component, Shad
         case ComponentType::UIComponent: out = ShaderType::UI; return true;
         case ComponentType::PointsComponent: out = ShaderType::POINTS; return true;
         case ComponentType::LineRendererComponent: out = ShaderType::LINES; return true;
+        case ComponentType::TrailRendererComponent: out = ShaderType::LINES; return true;
         case ComponentType::SkyboxComponent: out = ShaderType::SKYBOX; return true;
         default: return false;
     }
@@ -1144,6 +1152,7 @@ std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::shaderForks
             if (UIComponent* ui = scene->findComponent<UIComponent>(entity)) addComponent(ui->customShader, ui->shaderFeatures, ShaderType::UI, ui->blendMode);
             if (PointsComponent* points = scene->findComponent<PointsComponent>(entity)) addComponent(points->customShader, points->shaderFeatures, ShaderType::POINTS, points->blendMode);
             if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity)) addComponent(lines->customShader, lines->shaderFeatures, ShaderType::LINES, lines->blendMode);
+            if (TrailRendererComponent* trail = scene->findComponent<TrailRendererComponent>(entity)) addComponent(trail->customShader, trail->shaderFeatures, ShaderType::LINES, trail->blendMode);
             if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity)) addComponent(sky->customShader, sky->shaderFeatures, ShaderType::SKYBOX, MaterialBlendMode::AUTO);
         }
         const std::pair<const char*, ShaderType> defaults[] = {
@@ -1519,7 +1528,34 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
                     check.log += rel + ":" + std::to_string(line) + ": " + mismatch + "\n";
                 }
             }
-        } else if (use.shaderType != static_cast<int>(ShaderType::DEPTH)) {
+        }
+        if (!effect) {
+            // the global shader values it reads, against Project Settings > Graphics > Shader
+            // Globals, at its fragment shader (vertex when only the vertex stage reads them)
+            const Util::CustomShaderPaths paths = ShaderReference::isLibrary(use.base) ? Util::CustomShaderPaths()
+                                                                                        : project->resolveCustomShaderFiles(use.base);
+            const std::string file = ShaderReference::isLibrary(use.base)
+                ? "engine/shaderlib/library/" + ShaderReference::getLibraryName(use.base) + ".frag"
+                : (paths.frag.empty() ? paths.vert : paths.frag);
+            for (const ShaderGlobalDiagnostic& d : ShaderGlobals::checkShader(data, project->getShaderGlobals())) {
+                check.findings.push_back({"shader", file, 0, 0, d.error ? "error" : "warning", d.code + ": " + d.message, d.code});
+                if (!d.error) continue;
+                check.ok = false;
+                check.errors.push_back({{"severity", "error"}, {"source", file}, {"line", 0}, {"message", d.code + ": " + d.message}});
+                check.log += file + ": error: " + d.code + ": " + d.message + "\n";
+            }
+            // sokol binds at most 8 uniform blocks a stage (a globals block counts)
+            for (const ShaderStage& stage : data.stages) {
+                if (stage.uniformblocks.size() <= 8) continue;
+                const std::string message = std::string("uniform-block-limit: the ") + (stage.type == ShaderStageType::VERTEX ? "vertex" : "fragment") +
+                    " stage declares " + std::to_string(stage.uniformblocks.size()) + " uniform blocks, over the 8 a stage binds";
+                check.findings.push_back({"shader", file, 0, 0, "error", message, "uniform-block-limit"});
+                check.ok = false;
+                check.errors.push_back({{"severity", "error"}, {"source", file}, {"line", 0}, {"message", message}});
+                check.log += file + ": error: " + message + "\n";
+            }
+        }
+        if (!effect && use.shaderType != static_cast<int>(ShaderType::DEPTH)) {
             // a shader-library manifest (a UI effect's comment header is its own manifest,
             // checked above): its syntax, and its @property/@texture rows against what compiled
             for (const ShaderManifestDiagnostic& d : validateShaderManifest(use.base, {&data}, true)) {
@@ -1578,8 +1614,11 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
                 : ShaderReference::isLibrary(use.base)
                 ? "engine/shaderlib/library/" + ShaderReference::getLibraryName(use.base) + ".frag"
                 : project->resolveCustomShaderFiles(use.base).frag;
-            check.findings.push_back({"shader", entry, 0, 0, "error", first.empty() ? std::string(e.what()) : first,
-                                      effect ? fx::compat::codes::EffectShaderCompile.id() : std::string()});
+            // a globals block over its size fails the compile with its own code
+            const std::string what = e.what();
+            const bool globalsTooLarge = what.rfind("globals-block-too-large", 0) == 0;
+            check.findings.push_back({"shader", entry, 0, 0, "error", globalsTooLarge ? what : (first.empty() ? what : first),
+                                      effect ? fx::compat::codes::EffectShaderCompile.id() : globalsTooLarge ? std::string("globals-block-too-large") : std::string()});
         }
     }
     return check;
@@ -1722,7 +1761,8 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
         check.pngs++;
         if (cache.pngs.contains(key) && cachedStamp(cache.pngs[key], time, size) && cache.pngs[key][2] == 0) return std::nullopt;
         std::string readError;
-        const std::optional<std::string> text = editor::texsynth::readRecipeTextHead(png, &readError);
+        editor::texsynth::RecipeReadError origin = editor::texsynth::RecipeReadError::None;
+        const std::optional<std::string> text = editor::texsynth::readRecipeTextHead(png, &readError, editor::texsynth::kRecipeKeyword, &origin);
         std::optional<Json> recipe;
         if (text) {
             Json parsed = Json::parse(*text, nullptr, false);
@@ -1730,8 +1770,10 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
             if (parsed.is_discarded()) recipe = Json("the jasper.synthesis chunk is not JSON");
             else if (!editor::texsynth::validateRecipe(parsed, invalid)) recipe = Json(invalid);
             else recipe = parsed;
-        } else if (!readError.empty() && readError.find("jasper.synthesis") != std::string::npos) {
-            recipe = Json(readError);   // garbled chunk (CRC mismatch, compressed, malformed)
+        } else if (origin == editor::texsynth::RecipeReadError::Chunk) {
+            // garbled chunk (CRC mismatch, compressed, malformed); a file that is not a PNG or
+            // can't be read has no recipe (decided on the error's origin, not its text)
+            recipe = Json(readError);
         }
         if (cacheable(key)) {
             cache.pngs[key] = Json::array({time, size, recipe ? 1 : 0});
@@ -1997,6 +2039,84 @@ std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::stochasticTil
                     warn(where + ": " + NormalMapTilt::describe(file, degrees) + ", and Stochastic Tiling turns its cells (Rotation " +
                          formatValue(material.stochasticRotation) + "): the rotated cells look tilted", tiltCode, tiltFix);
                 }
+            }
+        }
+    }
+    return findings;
+}
+
+std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::lineTrailFindings(Project* project) {
+    std::vector<Finding> findings;
+    const fs::path root = project->getProjectPath();
+
+    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
+        if (!sceneProject->scene) continue;
+        Scene* scene = sceneProject->scene;
+        const std::string path = sceneProject->filepath.empty() ? std::string() : projectRelative(root, root / sceneProject->filepath);
+        for (Entity entity : sceneProject->entities) {
+            const std::string name = "GameObject '" + scene->getEntityName(entity) + "'";
+
+            if (const LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity)) {
+                if (lines->widthMultiplier <= 0.0f) {
+                    const std::string& shader = lines->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines->customShader;
+                    const std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+                    bool samples = RenderSystem::getLinesBaseTexture(lines->shaderTextures) != nullptr;
+                    if (manifest && manifest->present) {
+                        samples = samples || !manifest->textures.empty() || (manifest->getPossibleRequire() & ShaderRequire_UV1);
+                    }
+                    if (samples) {
+                        findings.push_back({"lines", path, 0, 0, "warning",
+                            name + ": its Line Renderer has no width (a 1-pixel hairline, without texture coordinates) but its shader " +
+                            (shader.empty() ? std::string("samples a base texture") : "'" + shader + "' samples a texture") +
+                            ": the texture reads one texel", "line-texture-no-uv",
+                            "give it a width (widthMultiplier > 0, e.g. 0.1) so it draws a textured ribbon, or remove the texture"});
+                    }
+                }
+            }
+            if (const TrailRendererComponent* trail = scene->findComponent<TrailRendererComponent>(entity)) {
+                if (!(trail->time > 0.0f)) {
+                    findings.push_back({"lines", path, 0, 0, "warning",
+                        name + ": its Trail Renderer's Time is 0, so it keeps no point and draws nothing", "trail-zero-time",
+                        "set time to how long a point lives in seconds (Unity's default is 5; a bullet trail ~0.3)"});
+                }
+            }
+        }
+    }
+    return findings;
+}
+
+std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::particleFindings(Project* project) {
+    std::vector<Finding> findings;
+    const fs::path root = project->getProjectPath();
+
+    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
+        if (!sceneProject->scene) continue;
+        Scene* scene = sceneProject->scene;
+        const std::string path = sceneProject->filepath.empty() ? std::string() : projectRelative(root, root / sceneProject->filepath);
+        for (Entity entity : sceneProject->entities) {
+            const ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity);
+            if (!ps) continue;
+            const std::string name = "GameObject '" + scene->getEntityName(entity) + "'";
+            if (ps->version < 2) {
+                findings.push_back({"particles", path, 0, 0, "info",
+                    name + ": its Particle System uses the legacy model (version 1)", "particles-legacy",
+                    "upgrade it to Unity's modules: the Inspector's Upgrade to modules, create_particles {entity, upgrade: true} or Lua ps:upgrade()"});
+                continue;
+            }
+            const ActionComponent* action = scene->findComponent<ActionComponent>(entity);
+            const Entity target = (action && action->target != NULL_ENTITY && scene->isEntityCreated(action->target)) ? action->target : entity;
+            if (scene->findComponent<PointsComponent>(target) && ps->renderer.renderMode != ParticleSystemRenderMode::Billboard) {
+                findings.push_back({"particles", path, 0, 0, "warning",
+                    name + ": its Particle System draws as points, which are billboards only: its render mode " +
+                    particles::enumName(*particles::findField("renderer.renderMode"), (int)ps->renderer.renderMode) + " is drawn as Billboard",
+                    "particles-points-render-mode",
+                    "draw it with the quad renderer (create_particles renderer: quads, or GameObject > Effects > Particle System) or set renderer.renderMode Billboard"});
+            }
+            if (ps->main.maxParticles > 5000) {
+                findings.push_back({"particles", path, 0, 0, "warning",
+                    name + ": its Particle System allows " + std::to_string(ps->main.maxParticles) +
+                    " particles, past the mobile budget of 5000 (the simulation runs on the CPU)", "particles-max-exceeded-budget",
+                    "lower main.maxParticles (and the emission rate), or keep the system off mobile builds"});
             }
         }
     }

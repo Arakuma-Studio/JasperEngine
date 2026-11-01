@@ -158,6 +158,10 @@ namespace jasperengine{
         // focus / interaction / scroll / geometry
 
         void focus(); void blur(); void click();
+        // DOM pointer capture (ui-multitouch): the element gets that pointer's move, up and cancel
+        // events until released or the pointer is up; pointerId as event.pointerId (1 the mouse,
+        // fingerId + 2 a finger). false when the pointer is not pressed (set) or not captured here (release)
+        bool setPointerCapture(int pointerId); bool releasePointerCapture(int pointerId); bool hasPointerCapture(int pointerId) const;
         void scrollIntoView(bool alignToTop = true);
         void scrollTo(float x, float y, bool smooth = false); void scrollBy(float dx, float dy, bool smooth = false);
         float getScrollTop() const; void setScrollTop(float value); float getScrollLeft() const; void setScrollLeft(float value);

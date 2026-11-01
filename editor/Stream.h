@@ -13,6 +13,9 @@
 #include "math/Matrix4.h"
 #include "component/FluidSimulationComponent.h"
 #include "particles/LegacyParticleSystem.h"
+#include "component/TrailRendererComponent.h"
+#include "math/AnimationCurve.h"
+#include "math/Gradient.h"
 
 #include <filesystem>
 #include <set>
@@ -134,6 +137,10 @@ namespace jasperengine::editor {
 
         static std::string layoutGroupTypeToString(LayoutGroupType type);
         static LayoutGroupType stringToLayoutGroupType(const std::string& str);
+        static std::string canvasGroupRenderModeToString(CanvasGroupRenderMode mode);
+        static CanvasGroupRenderMode stringToCanvasGroupRenderMode(const std::string& str);
+        static std::string alphaTweenTargetToString(AlphaTweenTarget target);
+        static AlphaTweenTarget stringToAlphaTweenTarget(const std::string& str);
 
         static std::string scrollbarTypeToString(ScrollbarType type);
         static ScrollbarType stringToScrollbarType(const std::string& str);
@@ -285,6 +292,47 @@ namespace jasperengine::editor {
         static YAML::Node encodeMaterialPass(const MaterialPass& pass, bool embedTextureData);
         static MaterialPass decodeMaterialPass(const YAML::Node& node);
 
+        // the Line and Trail Renderer settings both have (Stream.cpp)
+        template<typename T>
+        static void encodeRibbonFields(YAML::Node& node, const T& component, const T& defaults);
+        template<typename T>
+        static void decodeRibbonFields(const YAML::Node& node, T& component, const T& defaults);
+
+    public:
+        // custom-block members that follow a global shader value: {member: global}
+        static YAML::Node encodeShaderGlobalBindings(const ShaderGlobalBindings& bindings);
+        static ShaderGlobalBindings decodeShaderGlobalBindings(const YAML::Node& node);
+        // Unity AnimationCurve and Gradient (lines and trails spec 6.1; the Trail Renderer's until it
+        // moves onto S27's Curve). A curve: {keys: [[time, value], [time, value, inTangent,
+        // outTangent]...], pre: clamp|loop|ping_pong, post: ...} (wraps written when not clamp,
+        // tangents when not flat, .inf steps); a bare number reads as a constant curve. A gradient:
+        // {mode: blend|fixed, colors: [[time, colour]...], alphas: [[time, alpha]...]}, a colour
+        // "#RRGGBB" (sRGB, written when the linear value is exactly an 8-bit one) or [r, g, b]
+        // (linear); a single colour ("#RRGGBB[AA]", [r, g, b(, a)]) reads as a constant gradient
+        static YAML::Node encodeCurve(const AnimationCurve& curve);
+        static AnimationCurve decodeCurve(const YAML::Node& node, const AnimationCurve& fallback = AnimationCurve::constant(1.0f));
+        static YAML::Node encodeGradient(const Gradient& gradient);
+        static Gradient decodeGradient(const YAML::Node& node, const Gradient& fallback = Gradient());
+        static std::string curveWrapToString(CurveWrap wrap);
+        static CurveWrap stringToCurveWrap(const std::string& str);
+        // "#RRGGBB" / "#RRGGBBAA" (the # optional) as 0..1 sRGB values; false for other text
+        static bool parseHexColor(const std::string& text, Vector4& srgb, bool& hasAlpha);
+        // a colour value of the YAML/JSON forms: a hex string (sRGB, converted) or [r, g, b(, a)]
+        // (linear) as linear RGBA
+        static bool decodeColorValue(const YAML::Node& node, Vector4& linear, bool& hasAlpha);
+
+        // upstream's components without a reflection field table of their own yet: their codecs
+        // (the descriptors in editor/reflect/components/UpstreamReflect.cpp use them)
+        // ui-multitouch: the on-screen controls (their runtime state is never written)
+        static YAML::Node encodeOnScreenStickComponent(const OnScreenStickComponent& stick);
+        static OnScreenStickComponent decodeOnScreenStickComponent(const YAML::Node& node, const OnScreenStickComponent* oldStick = nullptr);
+        static YAML::Node encodeOnScreenButtonComponent(const OnScreenButtonComponent& button);
+        static OnScreenButtonComponent decodeOnScreenButtonComponent(const YAML::Node& node, const OnScreenButtonComponent* oldButton = nullptr);
+        static YAML::Node encodeTouchAreaComponent(const TouchAreaComponent& area);
+        static TouchAreaComponent decodeTouchAreaComponent(const YAML::Node& node, const TouchAreaComponent* oldArea = nullptr);
+        static YAML::Node encodeCanvasGroupComponent(const CanvasGroupComponent& group);
+        static CanvasGroupComponent decodeCanvasGroupComponent(const YAML::Node& node, const CanvasGroupComponent* oldGroup = nullptr);
+
         // A shader variant key (scene shaderKeys, project shaderAdditions/shaderExclusions):
         // a map of type, properties (a plain integer of up to 64 bits, left out when 0) and
         // customShader (a fork's project-relative path: the session-local id is not written;
@@ -358,6 +406,8 @@ namespace jasperengine::editor {
         // The workspace supplies the per-user half of the project (tabs, cameras,
         // viewport toggles); project.yaml no longer carries it. See Workspace.h.
         static void decodeProject(Project* project, const YAML::Node& node, const Workspace& workspace);
+        // android.orientation of an older project.yaml as the shared Player orientation (false: none)
+        static bool migrateAndroidOrientation(const std::string& value, PresentationSettings& presentation);
 
         // Per-user state, written to .jasperengine/user/workspace.yaml. Kept here so the
         // reader that still accepts them from an old project.yaml and the writer
@@ -367,6 +417,11 @@ namespace jasperengine::editor {
         // Every field by name; a missing, unknown or unreadable value keeps its default
         static YAML::Node encodePhysicsPlacementSettings(const PhysicsPlacementSettings& settings);
         static PhysicsPlacementSettings decodePhysicsPlacementSettings(const YAML::Node& node);
+        // The Sprite Normal Map window's: the settings as the recipe writes them (snake_case),
+        // the view, light, toggles. A missing or unreadable value keeps its default; settings
+        // out of their ranges throw (the workspace reader warns and keeps the defaults)
+        static YAML::Node encodeSpriteNormalsSettings(const SpriteNormalsWindowSettings& settings);
+        static SpriteNormalsWindowSettings decodeSpriteNormalsSettings(const YAML::Node& node);
 
         static YAML::Node encodeSceneDisplaySettings(const SceneDisplaySettings& settings);
         static void decodeSceneDisplaySettings(const YAML::Node& node, SceneDisplaySettings& settings);
@@ -463,9 +518,17 @@ namespace jasperengine::editor {
 
         static std::string joint2DTypeToString(Joint2DType type);
         static Joint2DType stringToJoint2DType(const std::string& str);
+        static std::string jointAnchorSpaceToString(JointAnchorSpace space);
+        static JointAnchorSpace stringToJointAnchorSpace(const std::string& str);
+        static std::string jointBreakActionToString(JointBreakAction action);
+        static JointBreakAction stringToJointBreakAction(const std::string& str);
 
         static std::string joint3DTypeToString(Joint3DType type);
         static Joint3DType stringToJoint3DType(const std::string& str);
+        static std::string jointMotionToString(JointMotion motion);
+        static JointMotion stringToJointMotion(const std::string& str);
+        static std::string rigidbodyInterpolationToString(RigidbodyInterpolation interpolation);
+        static RigidbodyInterpolation stringToRigidbodyInterpolation(const std::string& str);
 
         static YAML::Node encodeRigidbody2DComponent(const Rigidbody2DComponent& body);
         static Rigidbody2DComponent decodeRigidbody2DComponent(const YAML::Node& node, const Rigidbody2DComponent* oldBody = nullptr);
@@ -486,6 +549,9 @@ namespace jasperengine::editor {
         static NavMeshModifierComponent decodeNavMeshModifierComponent(const YAML::Node& node, const NavMeshModifierComponent* oldComponent = nullptr);
         static YAML::Node encodeNavGridComponent(const NavGridComponent& component);
         static NavGridComponent decodeNavGridComponent(const YAML::Node& node, const NavGridComponent* oldComponent = nullptr);
+
+        static YAML::Node encodeRagdollComponent(const RagdollComponent& ragdoll);
+        static RagdollComponent decodeRagdollComponent(const YAML::Node& node, const RagdollComponent* oldRagdoll = nullptr);
 
         static std::string actionStateToString(ActionState state);
         static ActionState stringToActionState(const std::string& str);
@@ -535,6 +601,20 @@ namespace jasperengine::editor {
         static VertexAnimatorComponent decodeVertexAnimatorComponent(const YAML::Node& node, const VertexAnimatorComponent* oldAnimator = nullptr);
 
         static YAML::Node encodeParticleSystemComponent(const ParticleSystemComponent& particles);
+        // Unity's MinMaxCurve / MinMaxGradient (particles spec 6.1): a curve is a number
+        // (Constant), {mode: curve, multiplier, curve}, {mode: two_constants, min, max} or {mode:
+        // two_curves, multiplier, min, max} (min/max: curves); a gradient a colour ("#RRGGBB[AA]"
+        // sRGB or [r, g, b, a] linear: Color), {mode: gradient, gradient}, {mode: two_colors,
+        // min, max}, {mode: two_gradients, min, max} or {mode: random_color, gradient}
+        static YAML::Node encodeMinMaxCurve(const MinMaxCurve& curve);
+        static MinMaxCurve decodeMinMaxCurve(const YAML::Node& node, const MinMaxCurve& fallback = MinMaxCurve());
+        static YAML::Node encodeMinMaxGradient(const MinMaxGradient& gradient);
+        static MinMaxGradient decodeMinMaxGradient(const YAML::Node& node, const MinMaxGradient& fallback = MinMaxGradient());
+        // a colour as "#RRGGBB" / "#RRGGBBAA" when its linear value is exactly that 8-bit sRGB
+        // value, else [r, g, b, a] (linear)
+        static YAML::Node encodeColorValue(const Vector4& linear);
+        static YAML::Node encodeParticleBursts(const std::vector<ParticleEmissionBurst>& bursts);
+        static std::vector<ParticleEmissionBurst> decodeParticleBursts(const YAML::Node& node);
         static ParticleSystemComponent decodeParticleSystemComponent(const YAML::Node& node, const ParticleSystemComponent* oldParticles = nullptr);
         // a scene's particle system as written before S20 (the scene migration reads it)
         static LegacyParticleSystem decodeLegacyParticleSystem(const YAML::Node& node);
@@ -560,6 +640,20 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeLineRendererComponent(const LineRendererComponent& lines);
         static LineRendererComponent decodeLineRendererComponent(const YAML::Node& node, const LineRendererComponent* oldLines = nullptr);
+        // a Line Renderer's polyline, width and ribbon keys (each written when not its default;
+        // decoding an absent key gives the default)
+        static void encodeLineRibbonSettings(YAML::Node& node, const LineRendererComponent& lines);
+        static void decodeLineRibbonSettings(const YAML::Node& node, LineRendererComponent& lines);
+        static YAML::Node encodeTrailRendererComponent(const TrailRendererComponent& trail);
+        static TrailRendererComponent decodeTrailRendererComponent(const YAML::Node& node, const TrailRendererComponent* oldTrail = nullptr);
+        static std::string lineRendererModeToString(LineRendererMode mode);
+        static LineRendererMode stringToLineRendererMode(const std::string& str);
+        static std::string lineWidthUnitToString(LineWidthUnit unit);
+        static LineWidthUnit stringToLineWidthUnit(const std::string& str);
+        static std::string lineAlignmentToString(LineAlignment alignment);
+        static LineAlignment stringToLineAlignment(const std::string& str);
+        static std::string lineTextureModeToString(LineTextureMode mode);
+        static LineTextureMode stringToLineTextureMode(const std::string& str);
 
         static YAML::Node encodePolygonComponent(const PolygonComponent& polygon);
         static PolygonComponent decodePolygonComponent(const YAML::Node& node, const PolygonComponent* oldPolygon = nullptr);

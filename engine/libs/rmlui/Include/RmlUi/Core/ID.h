@@ -379,6 +379,8 @@ enum class PropertyId : uint16_t {
 	WebkitBoxOrient,
 	// Fork (S16-F3): 'text-rendering' (SVG 2): how text follows its on-screen scale.
 	TextRendering,
+	// Pointer Events (fork, engine-gaps G5-4): what a touch on the element may pan (read when a touch starts).
+	TouchAction,
 
 	NumDefinedIds,
 	FirstCustomId = NumDefinedIds,
@@ -470,6 +472,20 @@ enum class EventId : uint16_t {
 	Transitionrun,
 	Transitionstart,
 	Transitioncancel,
+
+	// DOM Pointer Events (fork, engine-gaps G5-2)
+	Pointerdown,
+	Pointermove,
+	Pointerup,
+	Pointercancel,
+	Pointerover,
+	Pointerout,
+	Pointerenter,
+	Pointerleave,
+	Gotpointercapture,
+	Lostpointercapture,
+	Mouseenter,
+	Mouseleave,
 
 	NumDefinedIds,
 

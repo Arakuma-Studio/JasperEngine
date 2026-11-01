@@ -49,6 +49,8 @@ namespace jasperengine::editor {
         const std::string& getError() const { return plan.error; }
 
         bool execute() override;
+
+        std::vector<Touched> touchedPaths(bool undo) const override;
         void undo() override;
 
         // "Fork Shader shaders/myMesh"

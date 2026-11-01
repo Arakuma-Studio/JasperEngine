@@ -4,16 +4,22 @@
 #import "Renderer.h"
 
 #include "Engine.h"
+#include "Screen.h"
 #include "JasperEngineApple.h"
 #include "../common/PlatformDefaults.h"
 #include "player/Launch.h"
 #include "MetalReadback.h"
+#include "util/PlatformRules.h"
 #import "JasperEngineGameController.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <vector>
+
+NSString* const JasperEngineOrientationPolicyNotification = @"JasperEngineOrientationPolicyNotification";
 
 @implementation Renderer
 
@@ -64,6 +70,8 @@ static CGSize _screenSize;
         _screenSize.width = (float) view.drawableSize.width;
         _screenSize.height = (float) view.drawableSize.height;
         jasperengine::Engine::systemViewLoaded();
+        // what init() set before the view existed
+        [Renderer applyFramePacing];
     }
 
     return self;
@@ -98,5 +106,49 @@ static CGSize _screenSize;
 + (void)focusChanged:(BOOL)focused {
     jasperengine::Engine::systemFocusChanged(focused);
 }
+
++ (void)focusGame:(BOOL)focused {
+    jasperengine::Engine::systemFocusChanged(focused == YES);
+    jasperengine::Engine::systemFocus(focused == YES);
+}
+
++ (void)lowMemory {
+    jasperengine::Engine::systemLowMemory();
+}
+
++ (void)orientationChanged {
+    jasperengine::Engine::systemOrientationChanged();
+}
+
++ (void)applyFramePacing {
+    if (!_view) return;
+    const jasperengine::FramePacing& pacing = jasperengine::Engine::getFramePacing();
+#if TARGET_OS_IPHONE
+    // 120 needs CADisableMinimumFrameDurationOnPhone (iOS Supports High Refresh Rate)
+    _view.preferredFramesPerSecond = pacing.mobileFps;
+#else
+    // MTKView presents synchronized: a vSyncCount past 1 or a frame rate cap lowers its rate
+    NSScreen* screen = _view.window.screen ?: NSScreen.mainScreen;
+    const NSInteger maximum = screen ? screen.maximumFramesPerSecond : 60;
+    NSInteger fps = maximum;
+    if (pacing.limiterFps > 0.0) fps = std::min<NSInteger>(maximum, (NSInteger)std::lround(pacing.limiterFps));
+    else if (pacing.swapInterval > 1) fps = std::max<NSInteger>(1, maximum / pacing.swapInterval);
+    _view.preferredFramesPerSecond = std::max<NSInteger>(1, fps);
+#endif
+}
+
+#if TARGET_OS_IPHONE
++ (NSUInteger)supportedInterfaceOrientations {
+    const NSUInteger mask = jasperengine::PlatformRules::iosSupportedMask(jasperengine::Screen::getRequestedOrientation(),
+                                                                          jasperengine::Screen::getAllowedMask());
+    return mask ? mask : UIInterfaceOrientationMaskAll;
+}
+
++ (NSInteger)requestedInterfaceOrientation {
+    const jasperengine::ScreenOrientation requested = jasperengine::Screen::getRequestedOrientation();
+    if (!jasperengine::PlatformRules::isFixedOrientation(requested)) return 0;
+    return jasperengine::PlatformRules::iosInterfaceOrientation(requested);
+}
+#endif
 
 @end

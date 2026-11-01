@@ -33,6 +33,7 @@
 #include "component/Transform.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/CanvasGroupComponent.h"
 #include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/effects/EffectRegistry.h"
@@ -534,8 +535,12 @@ namespace {
                 if (const ParticleSystemComponent* particles = registry->findComponent<ParticleSystemComponent>(entity)){
                     collectParticles(*particles);
                 }
+                // the hairline, or the ribbon variant a width loads (pixel widths, a base texture)
                 if (const LineRendererComponent* lines = registry->findComponent<LineRendererComponent>(entity)){
-                    insertKeys(ShaderType::LINES, ShaderPool::getLinesProperties(false, true), shaderId(lines->customShader, ShaderType::LINES, lines->shaderFeatures, lines->blendMode));
+                    insertKeys(ShaderType::LINES, RenderSystem::getLinesVariantProperties(scene, *lines), shaderId(lines->customShader, ShaderType::LINES, lines->shaderFeatures, lines->blendMode));
+                }
+                if (const TrailRendererComponent* trail = registry->findComponent<TrailRendererComponent>(entity)){
+                    insertKeys(ShaderType::LINES, RenderSystem::getTrailVariantProperties(scene, *trail), shaderId(trail->customShader, ShaderType::LINES, trail->shaderFeatures, trail->blendMode));
                 }
                 if (const SkyboxComponent* sky = registry->findComponent<SkyboxComponent>(entity)){
                     insertKeys(ShaderType::SKYBOX, 0, shaderId(sky->customShader, ShaderType::SKYBOX, sky->shaderFeatures, MaterialBlendMode::AUTO));
@@ -1105,6 +1110,10 @@ std::set<uint32_t> editor::ShaderVariantCollector::plausibleUberFeatures(const P
             add(flipped(1u << i));
     }
     return features;
+}
+
+void editor::ShaderVariantCollector::addBuildRequiredKeys(std::set<ShaderKey>& keys){
+    keys.insert(ShaderPool::getShaderKey(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH)));
 }
 
 void editor::ShaderVariantCollector::addFluidKeys(std::set<ShaderKey>& keys){

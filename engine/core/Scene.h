@@ -53,6 +53,7 @@ namespace jasperengine{
 
         // Alive from construction to the start of the destructor (see getLifetime)
         std::shared_ptr<char> lifetime;
+        bool tearingDown = false;
 
         void init();
         Entity createDefaultCamera();
@@ -106,6 +107,10 @@ namespace jasperengine{
             }
         }
 
+        // the scripts' onEnable / onDisable (and a first init) once they started (ScriptRuntime)
+        bool isActivationObserved() const override;
+        void onActiveInHierarchyChanged(const std::vector<Entity>& changed, bool nowActive) override;
+
         void onEntityDestroyed(Entity entity, Signature signature) override {
             for (auto const& pair : systems) {
                 SubSystem* system = pair.second.get();
@@ -140,6 +145,11 @@ namespace jasperengine{
         // lua_close at shutdown). The scene destroys all its entities, so nothing leaks.
         std::weak_ptr<char> getLifetime() const;
 
+        // Being deleted (set first thing in the destructor): what goes with it sends no
+        // callbacks (physics contact Exits...). Not Scene::destroy, which also runs when a
+        // view is recreated.
+        bool isTearingDown() const { return tearingDown; }
+
         void load();
         void destroy();
         void draw();
@@ -157,6 +167,9 @@ namespace jasperengine{
         void setCamera(Camera* camera);
         void setCamera(Entity camera);
         Entity getCamera() const;
+        // Back to the scene's own default camera (a UI camera, made if needed): its camera
+        // GameObject went to another scene (SceneManager::moveGameObjectToScene)
+        void useDefaultCamera();
 
         void setBackgroundColor(Vector4 color);
         void setBackgroundColor(float red, float green, float blue);
@@ -296,6 +309,10 @@ namespace jasperengine{
         void setPhysicsInterpolation(bool interpolation);
         bool isPhysicsInterpolation() const;
 
+        // forwarder to PhysicsSystem::setSubSteps2D: Box2D sub-steps of each fixed step (1..16)
+        void setPhysics2DSubSteps(int subSteps);
+        int getPhysics2DSubSteps() const;
+
         void setDefaultMeshShader(const std::string& path);
         const std::string& getDefaultMeshShader() const;
 
@@ -329,6 +346,10 @@ namespace jasperengine{
         void setPostProcessUniform(unsigned int index, const std::string& name, float value);
         Vector4 getPostProcessUniform(unsigned int index, const std::string& name) const;
         bool removePostProcessUniform(unsigned int index, const std::string& name);
+        // a u_fs_postParams member of pass index that follows a global shader value
+        // (Shader.setGlobal*); "" unbinds. False when nothing changed
+        bool setPostProcessGlobalBinding(unsigned int index, const std::string& member, const std::string& global);
+        std::string getPostProcessGlobalBinding(unsigned int index, const std::string& member) const;
         void setPostProcessPassEnabled(unsigned int index, bool enabled);
         bool isPostProcessPassEnabled(unsigned int index) const;
 

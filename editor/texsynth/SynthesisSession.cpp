@@ -5,8 +5,8 @@
 #include "util/FileUtils.h"
 #include "thread/ThreadUtil.h"
 
-#include "mcp/McpServer.h"
-#include "mcp/tools/W4Shared.h"
+#include "Project.h"
+#include "util/ProjectFileWrites.h"
 #include "util/Util.h"
 
 #include "stb_image.h"
@@ -568,10 +568,12 @@ namespace jasperengine::editor::texsynth {
         return true;
     }
 
-    bool writeOutputsUndoable(const std::vector<OutputFile>& files, std::string& error) {
-        std::vector<mcp::w4::WriteFilesCmd::Item> items;
+    bool writeOutputsUndoable(Project* project, const std::vector<OutputFile>& files, std::string& error, const std::filesystem::path& beneath) {
+        std::vector<WriteFilesCmd::Item> items;
         for (const OutputFile& file : files) items.push_back({file.absolute, file.bytes});
-        return mcp::w4::writeFilesUndoable(mcp::McpServer::get().context(), std::move(items), error);
+        // beneath `beneath` (the MCP tool: the project) when they are written; the window: each
+        // file beneath its own folder (no new refusal for a folder linked in from a library)
+        return ProjectFileWrites::writeUndoable(project, std::move(items), error, nullptr, nullptr, beneath, beneath.empty());
     }
 
     // ------------------------------------------------------------------ feedback

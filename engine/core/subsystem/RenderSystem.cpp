@@ -16,6 +16,8 @@
 #include "render/Render.h"
 #include "render/ObjectRender.h"
 #include "render/SystemRender.h"
+#include "render/UIDrawColor.h"
+#include "render/PipelineState.h"
 #include "pool/ShaderPool.h"
 #include "pool/TexturePool.h"
 #include "pool/MeshBufferPool.h"
@@ -34,11 +36,16 @@
 #include "lattice/LatticeRender.h"
 #include "animation/VertexAnimation.h"
 #include "component/VertexAnimatorComponent.h"
+#include "component/CanvasGroupComponent.h"
 #include "texture/Texture.h"
 #include "object/environment/Water.h"
 #include "subsystem/FluidSystem.h"
 #include "particles/ParticleRender.h"
 #include "subsystem/ParticleSystemState.h"
+#include "subsystem/TrailSystem.h"
+#include "shader/ShaderGlobals.h"
+#include "render/LineRibbonBuilder.h"
+#include <cstddef>
 #include <memory>
 #include <algorithm>
 #include <chrono>
@@ -55,6 +62,26 @@
 
 using namespace jasperengine;
 using namespace jasperengine::rendershared;
+
+namespace {
+
+    // the soft white disc of the "particle" texture default (upstream's
+    // particles::makeParticleTexture, whose particles/ParticleSimulation S20 replaces): RGBA
+    // bytes in memory (little endian), the alpha falling off as (1 - r^2)^2
+    void makeSoftDiscTexture(uint32_t* pixels, int size){
+        for (int y = 0; y < size; y++){
+            for (int x = 0; x < size; x++){
+                const float u = ((float)x + 0.5f) / (float)size * 2.0f - 1.0f;
+                const float v = ((float)y + 0.5f) / (float)size * 2.0f - 1.0f;
+                const float r2 = std::min(1.0f, u * u + v * v);
+                const float a = (1.0f - r2) * (1.0f - r2);
+                const uint32_t alpha = (uint32_t)std::lround(std::min(1.0f, std::max(0.0f, a)) * 255.0f);
+                pixels[y * size + x] = 0x00FFFFFFu | (alpha << 24);
+            }
+        }
+    }
+
+}
 
 namespace {
 
@@ -225,6 +252,183 @@ namespace {
         render.applyUniformBlock(slot, sizeof(normAdjust), &normAdjust);
     }
 
+    // fade distance past which instances can be dropped: only the built-in triangle
+    // shaders shrink them to nothing, and the SSR G-buffer has no fade yet
+    float instanceFadeCullEnd(const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Scene& scene){
+        if (scene.isSSREnabled() || !scene.getDefaultMeshShader().empty() ||
+            !instmesh.distanceFade || !mesh.customShader.empty() || !mesh.customDepthShader.empty() ||
+            !(instmesh.fadeEnd > instmesh.fadeStart) || !std::isfinite(instmesh.fadeStart) ||
+            !std::isfinite(instmesh.fadeEnd) || instmesh.fadeEnd < 0.0f){
+            return -1.0f;
+        }
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+            const auto primitive = mesh.submeshes[s].primitiveType;
+            if (primitive != PrimitiveType::TRIANGLES && primitive != PrimitiveType::TRIANGLE_STRIP){
+                return -1.0f;
+            }
+        }
+        return instmesh.fadeEnd;
+    }
+
+    // the mesh model matrix without its translation, inverted: what brings a world rotation
+    // and scale back into the mesh's space (a particle instance is built in the world)
+    Matrix4 inverseLinear(const Matrix4& model){
+        Matrix4 linear = model;
+        linear.set(3, 0, 0.0f);
+        linear.set(3, 1, 0.0f);
+        linear.set(3, 2, 0.0f);
+        const Matrix4 inverse = linear.inverse();
+        return inverse.isValid() ? inverse : Matrix4();
+    }
+
+    // A version 2 Particle System's instance (InstanceParticleRender, particles spec 6.4) in
+    // its mesh's space: the instance's position is there already; its rotation and its scale
+    // (the particle's world size) are made in the world for the alignment and the camera,
+    // limited to the min/max share of the viewport height, moved by the pivot (in particle
+    // sizes), then brought back by `inverseLinear` (the mesh's own rotation and scale undone)
+    Matrix4 particleInstanceMatrix(const InstanceData& instance, const InstanceParticleRender& render, const Transform& transform,
+                                   const Matrix4& inverseLinearModel, const Quaternion& cameraRotation, const Vector3& cameraPosition,
+                                   const CameraComponent& camera){
+        const Vector3 worldPosition = transform.modelMatrix * instance.position;
+        Vector3 scale = instance.scale;
+        Quaternion rotation;
+        // the min/max share of the viewport (Billboard particles only: the sync writes them for
+        // that mode), before a stretch lengthens the quad
+        if (render.minSize > 0.0f || render.maxSize > 0.0f){
+            const float extent = std::max(std::fabs(scale.x), std::fabs(scale.y));
+            float viewport;
+            if (camera.type == CameraType::CAMERA_PERSPECTIVE){
+                const Vector3 forward = cameraRotation * Vector3(0.0f, 0.0f, -1.0f);
+                const float depth = std::max(1e-4f, (worldPosition - cameraPosition).dotProduct(forward));
+                viewport = depth * 2.0f * std::tan(camera.yfov * 0.5f);
+            }else{
+                viewport = std::fabs(camera.topClip - camera.bottomClip);
+            }
+            if (viewport > 0.0f && extent > 0.0f){
+                const float fraction = extent / viewport;
+                float limited = fraction;
+                if (render.maxSize > 0.0f) limited = std::min(limited, render.maxSize);
+                if (render.minSize > 0.0f) limited = std::max(limited, render.minSize);
+                scale = scale * (limited / fraction);
+            }
+        }
+
+        const Vector3 cameraUp = cameraRotation * Vector3(0.0f, 1.0f, 0.0f);
+        auto roll = [&](float angle){
+            Quaternion q;
+            q.fromAngleAxis(Angle::radToDefault(angle), Vector3(0.0f, 0.0f, 1.0f));
+            return q;
+        };
+        switch (render.alignment){
+            case InstanceAlignment::None:
+            case InstanceAlignment::View:
+                rotation = cameraRotation * instance.rotation;
+                break;
+            case InstanceAlignment::World:
+                rotation = instance.rotation;
+                break;
+            case InstanceAlignment::Local:
+                rotation = transform.worldRotation * instance.rotation;
+                break;
+            case InstanceAlignment::Facing: {
+                const Vector3 toCamera = cameraPosition - worldPosition;
+                rotation = (toCamera.squaredLength() > 1e-12f ? Quaternion::lookRotation(toCamera, cameraUp) : cameraRotation) * instance.rotation;
+                break;
+            }
+            case InstanceAlignment::Velocity: {
+                const Vector3& v = instance.velocity;
+                rotation = (v.squaredLength() > 1e-12f ? Quaternion::lookRotation(v, Vector3(0.0f, 1.0f, 0.0f)) : Quaternion()) * instance.rotation;
+                break;
+            }
+            case InstanceAlignment::Vertical: {
+                // upright, turned about the world's Y to the camera
+                Vector3 toCamera = cameraPosition - worldPosition;
+                toCamera.y = 0.0f;
+                if (toCamera.squaredLength() < 1e-12f){
+                    toCamera = cameraRotation * Vector3(0.0f, 0.0f, 1.0f);
+                    toCamera.y = 0.0f;
+                }
+                rotation = (toCamera.squaredLength() > 1e-12f ? Quaternion::lookRotation(toCamera, Vector3(0.0f, 1.0f, 0.0f)) : Quaternion()) * roll(instance.roll);
+                break;
+            }
+            case InstanceAlignment::Horizontal: {
+                // flat, facing up, turned about the world's Y by the roll
+                Quaternion flat;
+                flat.fromAngleAxis(Angle::radToDefault(-1.57079632679f), Vector3(1.0f, 0.0f, 0.0f));
+                Quaternion turn;
+                turn.fromAngleAxis(Angle::radToDefault(instance.roll), Vector3(0.0f, 1.0f, 0.0f));
+                rotation = turn * flat;
+                break;
+            }
+            case InstanceAlignment::Stretched: {
+                const Vector3& v = instance.velocity;
+                const float speed = v.length();
+                Vector3 toCamera = cameraPosition - worldPosition;
+                if (speed > 1e-5f && toCamera.squaredLength() > 1e-12f){
+                    // X along the velocity, the face turned to the camera about it
+                    const Vector3 axisX = v / speed;
+                    toCamera.normalize();
+                    Vector3 normal = toCamera - axisX * toCamera.dotProduct(axisX);
+                    if (normal.squaredLength() < 1e-10f){
+                        // moving along the view ray: any axis across the velocity (the camera's
+                        // up, or its right when the velocity is vertical on screen)
+                        Vector3 across = cameraUp;
+                        if (std::fabs(across.dotProduct(axisX)) > 0.99f) across = cameraRotation * Vector3(1.0f, 0.0f, 0.0f);
+                        normal = across - axisX * across.dotProduct(axisX);
+                    }
+                    normal.normalize();
+                    const Vector3 axisY = normal.crossProduct(axisX);
+                    rotation = Quaternion(axisX, axisY, normal);
+                    const float length = std::fabs(scale.x) * render.lengthScale + speed * render.velocityScale;
+                    scale.x = std::copysign(length, scale.x);
+                }else{
+                    rotation = cameraRotation * roll(instance.roll);
+                }
+                break;
+            }
+        }
+
+        const Matrix4 world = rotation.getRotationMatrix() * Matrix4::scaleMatrix(scale) * Matrix4::translateMatrix(render.pivot);
+        return Matrix4::translateMatrix(instance.position) * inverseLinearModel * world;
+    }
+
+    // shadow-map texels of error a caster may lose, well inside the PCF blur
+    const float SHADOW_LOD_TEXELS = 2.0f;
+
+    // an instanced mesh with culling off keeps its whole batch, bounds or not
+    bool cullsBatch(const MeshComponent& mesh, const InstancedMeshComponent* instmesh){
+        return mesh.worldAABB != AABB::ZERO && (!instmesh || instmesh->cullInstances);
+    }
+
+    // a VAT batch's states parallel to its render list, null for any other batch (or one whose
+    // list is shorter: no state is read past it)
+    const InstanceVatRenderData* instanceVatData(const InstancedMeshComponent& instmesh){
+        if (instmesh.renderVat.empty() || instmesh.renderVat.size() < instmesh.numVisible)
+            return nullptr;
+        return instmesh.renderVat.data();
+    }
+
+    // a box without finite bounds counts as inside
+    bool isInsidePlanes(const Plane* planes, int count, const AABB& box){
+        if (!box.isFinite())
+            return true;
+
+        const Vector3 center = box.getCenter();
+        const Vector3 halfSize = box.getHalfSize();
+        for (int i = 0; i < count; i++){
+            if (planes[i].getSide(center, halfSize) == Plane::NEGATIVE_SIDE)
+                return false;
+        }
+        return true;
+    }
+
+    // A directional cascade only gets the casters that can shadow the surfaces reading it
+    // (RenderSystem::getShadowReceiverPlanes). Not with a negative depth bias: it lets a
+    // caster just behind a receiver shadow it.
+    bool cullsShadowReceivers(const LightComponent& light, const LightCamera& shadowCamera){
+        return light.type == LightType::DIRECTIONAL && shadowCamera.hasReceiver && light.shadowBias >= 0.0f;
+    }
+
     // getCenter() asserts on null/infinite boxes. New foliage (and any empty
     // instanced mesh) leaves worldAABB null; AABB::ZERO is the unloaded default
     // and is not a useful sample point.
@@ -256,10 +460,12 @@ namespace {
     void writeSubmeshCustomUniforms(const MeshComponent& mesh, Submesh& submesh){
         const ShaderUniformValues& values = submesh.material.shaderParams;
         const ShaderManifest* manifest = submesh.manifest.get();
-        submesh.customVSParams.writeValues(values, &mesh.shaderUniforms, manifest);
-        submesh.customFSParams.writeValues(values, &mesh.shaderUniforms, manifest);
-        submesh.customVSDepthParams.writeValues(values, &mesh.shaderUniforms, manifest);
-        submesh.customFSDepthParams.writeValues(values, &mesh.shaderUniforms, manifest);
+        // members bound to a global (Material::shaderGlobalBindings) take its current value
+        const ShaderGlobalBindings* bindings = submesh.material.shaderGlobalBindings.empty() ? nullptr : &submesh.material.shaderGlobalBindings;
+        submesh.customVSParams.writeValues(values, &mesh.shaderUniforms, manifest, bindings);
+        submesh.customFSParams.writeValues(values, &mesh.shaderUniforms, manifest, bindings);
+        submesh.customVSDepthParams.writeValues(values, &mesh.shaderUniforms, manifest, bindings);
+        submesh.customFSDepthParams.writeValues(values, &mesh.shaderUniforms, manifest, bindings);
         // the extra pass: its own parameters, else its manifest's defaults (not while a component
         // copy still shares the original's: its load makes its own and writes that one)
         if (submesh.extraPass && submesh.extraPass.use_count() == 1){
@@ -271,6 +477,15 @@ namespace {
 
     // the mesh blocks of both forks, from whichever pass draws first (depth runs before color)
     void writeCustomUniforms(MeshComponent& mesh){
+        // a global a material binds changed since its blocks were written
+        const uint64_t globalsVersion = ShaderGlobals::getVersion();
+        if (mesh.globalsVersionSeen != globalsVersion){
+            mesh.globalsVersionSeen = globalsVersion;
+            for (int i = 0; i < mesh.numSubmeshes && !mesh.needUpdateShaderUniforms; i++){
+                if (!mesh.submeshes[i].material.shaderGlobalBindings.empty())
+                    mesh.needUpdateShaderUniforms = true;
+            }
+        }
         if (!mesh.needUpdateShaderUniforms)
             return;
 
@@ -280,14 +495,26 @@ namespace {
         mesh.needUpdateShaderUniforms = false;
     }
 
+    // both stages of a single-block component, from its values, the globals it binds and its
+    // manifest defaults (globalsVersionSeen: the ShaderGlobals version they were written with)
+    void writeComponentUniforms(CustomUniformBlock& vsBlock, CustomUniformBlock& fsBlock, const ShaderUniformValues& values,
+                                const ShaderManifest* manifest, const ShaderGlobalBindings& bindings, uint64_t& globalsVersionSeen){
+        const ShaderGlobalBindings* bound = bindings.empty() ? nullptr : &bindings;
+        vsBlock.writeValues(values, nullptr, manifest, bound);
+        fsBlock.writeValues(values, nullptr, manifest, bound);
+        globalsVersionSeen = ShaderGlobals::getVersion();
+    }
+
     // both stages of a single-block component with manifest defaults, rewritten first when
-    // its values changed
+    // its values changed (or a global it binds did)
     void applyComponentUniforms(ObjectRender& render, CustomUniformBlock& vsBlock, CustomUniformBlock& fsBlock,
                                 const ShaderUniformValues& values, const ShaderManifest* manifest, bool& needUpdate,
+                                const ShaderGlobalBindings& bindings, uint64_t& globalsVersionSeen,
                                 float frameTime, const Vector2& resolution){
+        if (ShaderGlobals::isOutdated(bindings, globalsVersionSeen))
+            needUpdate = true;
         if (needUpdate){
-            vsBlock.writeValues(values, nullptr, manifest);
-            fsBlock.writeValues(values, nullptr, manifest);
+            writeComponentUniforms(vsBlock, fsBlock, values, manifest, bindings, globalsVersionSeen);
             needUpdate = false;
         }
         applyCustomUniforms(render, vsBlock, frameTime, resolution);
@@ -304,6 +531,16 @@ namespace {
             case BlendMode::PREMULTIPLIED: return POST_BLEND_PREMULTIPLIED;
             case BlendMode::MULTIPLY:      return POST_BLEND_MULTIPLY;
             default:                       return POST_BLEND_OWN;
+        }
+    }
+
+    MaterialBlendMode toMaterialBlendMode(BlendMode mode){
+        switch (mode){
+            case BlendMode::NONE:          return MaterialBlendMode::NONE;
+            case BlendMode::PREMULTIPLIED: return MaterialBlendMode::PREMULTIPLIED;
+            case BlendMode::ADDITIVE:      return MaterialBlendMode::ADDITIVE;
+            case BlendMode::MULTIPLY:      return MaterialBlendMode::MULTIPLY;
+            default:                       return MaterialBlendMode::ALPHA;
         }
     }
 
@@ -543,7 +780,6 @@ namespace {
 uint32_t RenderSystem::pixelsWhite[64];
 uint32_t RenderSystem::pixelsBlack[64];
 uint32_t RenderSystem::pixelsTransparent[64];
-uint32_t RenderSystem::pixelsNormal[64];
 
 TextureRender RenderSystem::emptyWhite;
 TextureRender RenderSystem::emptyArrayWhite;
@@ -562,6 +798,8 @@ uint32_t RenderSystem::pixelsRipples[DEFAULT_PATTERN_SIZE * DEFAULT_PATTERN_SIZE
 uint32_t RenderSystem::pixelsNoise[DEFAULT_PATTERN_SIZE * DEFAULT_PATTERN_SIZE];
 TextureRender RenderSystem::defaultRipples;
 TextureRender RenderSystem::defaultNoise;
+uint32_t RenderSystem::pixelsParticle[DEFAULT_PARTICLE_SIZE * DEFAULT_PARTICLE_SIZE];
+TextureRender RenderSystem::defaultParticle;
 TextureRender RenderSystem::emptyCubeGray;
 std::vector<RenderSystem::ZeroVertexBuffer> RenderSystem::zeroVertexBuffers;
 std::mutex RenderSystem::zeroVertexBuffersMutex;
@@ -687,6 +925,9 @@ void RenderSystem::load(){
 void RenderSystem::destroy(){
     // View teardown keeps the scene alive; retain CPU assets for its next load.
     const bool reloadView = !Engine::isViewLoaded();
+
+    // the FLATTEN Canvas Group layers and their composite (made again on use)
+    destroyCanvasLayers();
 
     // Before the transform traversal below, which the camera entities are part of.
     while (!mirrorCameras.empty()){
@@ -870,6 +1111,16 @@ void RenderSystem::destroy(){
     sceneInputParticles.clear();
     destroyParticleBuffers();
 
+    // trails coexist with the GameObject's other renderer: their own loop
+    auto trails = scene->getComponentArray<TrailRendererComponent>();
+    for (size_t i = 0; i < trails->size(); i++){
+        TrailRendererComponent& trail = trails->getComponentFromIndex(i);
+        if (trail.loaded){
+            if (reloadView) trail.needReload = true;
+            destroyTrail(trails->getEntity(i), trail);
+        }
+    }
+
     // Cached GPU arrays cannot survive renderer shutdown, even when CPU assets are retained.
     while (!terrainDetailArrays.empty()){
         destroyTerrainDetailArray(terrainDetailArrays.begin()->first);
@@ -890,12 +1141,15 @@ void RenderSystem::createEmptyTextures(){
         void* data_array[6];
         size_t size_array[6];
 
+        // (128, 128, 255): the flat tangent-space normal, bytes in memory order R, G, B, A on
+        // little-endian. What a normal map that fails to load (a missing file, a bad image) draws
+        // with, and the shader library's "normal" @texture default (emptyFlatNormal)
         for (int i = 0; i < 64; i++) {
-            pixelsNormal[i] = 0xFF808080;
+            pixelsFlatNormal[i] = 0xFFFF8080;
         }
 
         for (int i = 0; i < 6; i++){
-            data_array[i]  = (void*)pixelsNormal;
+            data_array[i]  = (void*)pixelsFlatNormal;
             size_array[i] = 8 * 8 * 4;
         }
 
@@ -953,10 +1207,10 @@ void RenderSystem::createEmptyTextures(){
                 "empty|cube|black", 8, 8, ColorFormat::RGBA, TextureType::TEXTURE_CUBE, 6, data_array, size_array, 
                 TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::REPEAT, TextureWrap::REPEAT);
 
-        // shader library @texture defaults: mid gray, and a flat tangent-space normal (0.5, 0.5, 1)
+        // shader library @texture defaults: mid gray, and the flat tangent-space normal (0.5, 0.5, 1)
+        // filled above
         for (int i = 0; i < 64; i++) {
             pixelsGray[i] = 0xFF808080;
-            pixelsFlatNormal[i] = 0xFFFF8080;
         }
 
         for (int i = 0; i < 6; i++){
@@ -990,6 +1244,14 @@ void RenderSystem::createEmptyTextures(){
                 "default|noise", DEFAULT_PATTERN_SIZE, DEFAULT_PATTERN_SIZE, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data_array, size_array,
                 TextureFilter::LINEAR_MIPMAP_LINEAR, TextureFilter::LINEAR, TextureWrap::REPEAT, TextureWrap::REPEAT);
 
+        // the Particle Systems' default: a soft disc, clamped (particles spec 6.4)
+        makeSoftDiscTexture(pixelsParticle, DEFAULT_PARTICLE_SIZE);
+        size_array[0] = DEFAULT_PARTICLE_SIZE * DEFAULT_PARTICLE_SIZE * 4;
+        data_array[0] = (void*)pixelsParticle;
+        defaultParticle.createTexture(
+                "default|particle", DEFAULT_PARTICLE_SIZE, DEFAULT_PARTICLE_SIZE, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data_array, size_array,
+                TextureFilter::LINEAR, TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE);
+
         emptyTexturesCreated = true;
     }
 
@@ -1011,7 +1273,7 @@ void RenderSystem::createEmptyTextures(){
 void RenderSystem::destroyEmptyTextures(){
     TextureRender* textures[] = {
         &emptyWhite, &emptyArrayWhite, &emptyBlack, &emptyCubeBlack, &emptyCubeWhite, &emptyNormal,
-        &emptyShadowDepth, &emptyGray, &emptyFlatNormal, &defaultRipples, &defaultNoise, &emptyCubeGray, &emptyTransparent
+        &emptyShadowDepth, &emptyGray, &emptyFlatNormal, &defaultRipples, &defaultNoise, &defaultParticle, &emptyCubeGray, &emptyTransparent
     };
     // (destroyTexture skips handles that are already gone and clears them)
     for (TextureRender* texture : textures){
@@ -3130,8 +3392,12 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
             shaderId(points->customShader, ShaderType::POINTS, points->shaderFeatures, points->blendMode));
     }
     if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity)){
-        add(ShaderType::LINES, ShaderPool::getLinesProperties(false, true) | postColorProperty(ShaderType::LINES),
+        add(ShaderType::LINES, getLinesVariantProperties(scene, *lines) | postColorProperty(ShaderType::LINES),
             shaderId(lines->customShader, ShaderType::LINES, lines->shaderFeatures, lines->blendMode));
+    }
+    if (TrailRendererComponent* trail = scene->findComponent<TrailRendererComponent>(entity)){
+        add(ShaderType::LINES, getTrailVariantProperties(scene, *trail) | postColorProperty(ShaderType::LINES),
+            shaderId(trail->customShader, ShaderType::LINES, trail->shaderFeatures, trail->blendMode));
     }
     if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity)){
         add(ShaderType::SKYBOX, postColorProperty(ShaderType::SKYBOX), shaderId(sky->customShader, ShaderType::SKYBOX, sky->shaderFeatures, MaterialBlendMode::AUTO));
@@ -3140,6 +3406,11 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
     if (scene->findComponent<UIDocumentComponent>(entity)){
         for (const auto& variant : ShaderPool::getHtmlUIVariants())
             add(variant.first, variant.second, 0);
+    }
+    // a Canvas Group's FLATTEN layers composite with the HTML UI passthrough (any group: a
+    // script can switch it to FLATTEN)
+    if (scene->findComponent<CanvasGroupComponent>(entity)){
+        add(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH), 0);
     }
 }
 
@@ -3512,6 +3783,14 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         p_hasNormal = (requiresNormals || p_punctual || p_vertexLights) && inputs.normal;
         p_hasTangent = p_hasNormal && (require & ShaderRequire_Tangents) && inputs.tangent;
         p_hasNormalMap = false;
+        // @require normalmap: the material's normal map on the 2D light path (tangent frame
+        // from the mesh, read at uv1: includes/lighting2d.glsl, surface_vs.glsl)
+        if ((require & ShaderRequire_NormalMap) && useLight2D && inputs.normalTexture && inputs.normal && inputs.tangent &&
+                p_hasTexture1 && !inputs.terrain){
+            p_hasNormal = true;
+            p_hasTangent = true;
+            p_hasNormalMap = true;
+        }
     }
     if (p_lattice){
         p_vertexColorVec3 = p_vertexColorVec3 || inputs.vertexColor3;
@@ -3641,6 +3920,7 @@ TextureRender* RenderSystem::getDefaultShaderTexture(int fallback, bool cube){
         case ShaderTextureDefault::NORMAL: return cube ? &emptyCubeGray : &emptyFlatNormal;
         case ShaderTextureDefault::RIPPLES: return cube ? &emptyCubeGray : &defaultRipples;
         case ShaderTextureDefault::NOISE:  return cube ? &emptyCubeGray : &defaultNoise;
+        case ShaderTextureDefault::PARTICLE: return cube ? &emptyCubeWhite : &defaultParticle;
         default:                           return cube ? &emptyCubeWhite : &emptyWhite;
     }
 }
@@ -3731,6 +4011,43 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
         for (const auto& texture : textures)
             addTexture(texture.first, static_cast<int>(ShaderTextureDefault::WHITE));
     }
+
+    // the global shader values (ShaderGlobals): the globals blocks, and every texture uniform
+    // nothing above claims named like a global (engine textures are all u_*, which globals
+    // cannot be), bound per draw by applyGlobals
+    bindings.slotVSGlobals = shaderData.getUniformBlockIndexByName(ShaderGlobals::VERTEX_BLOCK);
+    bindings.slotFSGlobals = shaderData.getUniformBlockIndexByName(ShaderGlobals::FRAGMENT_BLOCK);
+    if (bindings.slotVSGlobals != -1)
+        bindings.vsGlobals = ShaderGlobals::acquireLayout(shaderData, ShaderGlobals::VERTEX_BLOCK);
+    if (bindings.slotFSGlobals != -1)
+        bindings.fsGlobals = ShaderGlobals::acquireLayout(shaderData, ShaderGlobals::FRAGMENT_BLOCK);
+    if (!bindings.vsGlobals)
+        bindings.slotVSGlobals = -1;
+    if (!bindings.fsGlobals)
+        bindings.slotFSGlobals = -1;
+    for (const ShaderStage& stage : shaderData.stages){
+        for (const ShaderTexture& texture : stage.textures){
+            if (!ShaderGlobals::isValidName(texture.name))
+                continue;
+            const std::pair<int, int> slot = shaderData.getTextureIndexByName(texture.name);
+            if (slot.first == -1)
+                continue;
+            const bool claimed = std::any_of(bindings.textures.begin(), bindings.textures.end(), [&slot](const ShaderTextureSlot& t) {
+                return t.slot == slot;
+            }) || std::any_of(bindings.globalTextures.begin(), bindings.globalTextures.end(), [&slot](const GlobalTextureSlot& t) {
+                return t.slot == slot;
+            });
+            if (claimed)
+                continue;
+            GlobalTextureSlot globalSlot;
+            globalSlot.slot = slot;
+            globalSlot.globalId = ShaderGlobals::propertyToID(texture.name);
+            globalSlot.cube = texture.type == TextureType::TEXTURE_CUBE;
+            bindings.globalTextures.push_back(globalSlot);
+        }
+    }
+    // (the blocks are pushed per draw, inside its pass)
+    applyGlobalTextures(render, bindings);
 
     return bindShaderTextures(bindings, render, textures);
 }
@@ -4015,6 +4332,15 @@ bool RenderSystem::postColorVariantsReady(){
         const uint64_t bit = ShaderPool::getPostColorProperty(ShaderType::LINES);
         const uint64_t properties = (lines.shaderProperties & ~bit) | postColorProperty(ShaderType::LINES);
         allReady = ready(ShaderType::LINES, properties, lines.customShaderId) && allReady;
+    }
+    auto trailArray = scene->getComponentArray<TrailRendererComponent>();
+    for (size_t i = 0; i < trailArray->size(); i++){
+        const TrailRendererComponent& trail = trailArray->getComponentFromIndex(i);
+        if (!trail.loaded || trail.needReload)
+            continue;
+        const uint64_t bit = ShaderPool::getPostColorProperty(ShaderType::LINES);
+        const uint64_t properties = (trail.shaderProperties & ~bit) | postColorProperty(ShaderType::LINES);
+        allReady = ready(ShaderType::LINES, properties, trail.customShaderId) && allReady;
     }
     auto skyArray = scene->getComponentArray<SkyboxComponent>();
     for (size_t i = 0; i < skyArray->size(); i++){
@@ -4657,6 +4983,29 @@ void RenderSystem::applyFrameBlock(ObjectRender& render, const ShaderLibraryBind
     applyBlurredScene(render, bindings);
     if (bindings.slotFSHeightFog != -1)
         render.applyUniformBlock(bindings.slotFSHeightFog, sizeof(height_fog_t), &passHeightFog);
+    applyGlobals(render, bindings);
+}
+
+void RenderSystem::applyGlobals(ObjectRender& render, const ShaderLibraryBindings& bindings){
+    // packed again only when a value changed since (once per change for every program
+    // sharing the layout), then pushed per draw like the frame block
+    if (bindings.slotVSGlobals != -1 && bindings.vsGlobals){
+        bindings.vsGlobals->update();
+        render.applyUniformBlock(bindings.slotVSGlobals, bindings.vsGlobals->size, bindings.vsGlobals->bytes.data());
+    }
+    if (bindings.slotFSGlobals != -1 && bindings.fsGlobals){
+        bindings.fsGlobals->update();
+        render.applyUniformBlock(bindings.slotFSGlobals, bindings.fsGlobals->size, bindings.fsGlobals->bytes.data());
+    }
+    applyGlobalTextures(render, bindings);
+}
+
+void RenderSystem::applyGlobalTextures(ObjectRender& render, const ShaderLibraryBindings& bindings){
+    for (const GlobalTextureSlot& textureSlot : bindings.globalTextures){
+        TextureRender* fallback = textureSlot.cube ? &emptyCubeBlack : &emptyWhite;
+        TextureRender* textureRender = ShaderGlobals::getTextureRender(textureSlot.globalId, textureSlot.cube, fallback);
+        render.addTexture(textureSlot.slot, ShaderStageType::FRAGMENT, textureRender);
+    }
 }
 
 void RenderSystem::applyPostColor(ObjectRender& render, const ShaderLibraryBindings& bindings){
@@ -7571,7 +7920,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
 
     // the editor's "no face culling" view keeps the pass's culling: it is part of the technique
     // (an inverted hull drawn unculled covers its object)
-    if (!render.beginDraw(pipType, false)){
+    if (!render.beginDraw(pipType, false, isMirroredDraw(mesh, objectModel(transform)))){
         // (one still being created or warmed draws nothing and waits: spec S32)
         if (!render.isDrawWaiting())
             mesh.needReload = true;
@@ -7785,8 +8134,10 @@ void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& ma
             continue;
         }
 
-        // the main camera keeps the order where it is the layering: blended batches and 2D
-        InstanceOrder order = (mesh->isTransparent() || !sortsByDistance(mainCamera)) ? InstanceOrder::KEEP : InstanceOrder::NEAREST;
+        // the main camera keeps the order where it is the layering: blended batches, 2D and a
+        // Particle System's own order or distance sort (sortInstancedMesh made it)
+        const bool particleOrder = instmesh.particle.alignment != InstanceAlignment::None && instmesh.particle.sort != InstanceSortMode::Auto;
+        InstanceOrder order = (mesh->isTransparent() || particleOrder || !sortsByDistance(mainCamera)) ? InstanceOrder::KEEP : InstanceOrder::NEAREST;
         const Vector3& eye = mainCameraTransform.worldPosition;
         const InstanceRenderData* instances = instmesh.renderInstances.data();
         const InstanceVatRenderData* vat = instanceVatData(instmesh);
@@ -8156,6 +8507,8 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         // model, normal and mvp matrices of this pass (one uniform block)
         Matrix4 objectScratch[3];
         const Matrix4* objectBlock = objectMatrices(transform, objectScratch);
+        // a mirroring model matrix draws with the face winding reversed (front faces stay front)
+        const bool mirroredDraw = isMirroredDraw(mesh, objectBlock[0]);
         // Transform::normalMatrix is kept only while the scene has lights (and is saved with
         // the scene), but library shaders read it whatever the lighting (outline widths,
         // fresnel, matcap, rim): without lights theirs is made here
@@ -8278,7 +8631,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                     render.addTexture(mesh.submeshes[i].shader.get()->shaderData.getTextureIndex(TextureShaderType::BASECOLOR), ShaderStageType::FRAGMENT, fluidTexture);
             }
 
-            if (!render.beginDraw(pipType, passNoFaceCulling())){
+            if (!render.beginDraw(pipType, passNoFaceCulling(), mirroredDraw)){
                 // a submesh whose pipeline is still being created or warmed (spec S32) draws
                 // nothing this frame, the others draw
                 if (render.isDrawWaiting())
@@ -8534,6 +8887,10 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
         updateMeshBuffers(mesh);
         writeCustomUniforms(mesh);
 
+        // a mirroring model matrix draws with the face winding reversed (the shadow and depth
+        // passes cull as the colour pass)
+        const bool mirroredDraw = isMirroredDraw(mesh, objectModel(transform));
+
         // the depth pass renders the view camera's selection (view 0 in draw())
         TerrainView* terrainNodes = nullptr;
         if (terrain){
@@ -8580,7 +8937,7 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                 bindShaderTextures(depthBindings, depthRender, mesh.submeshes[i].material.shaderTextures);
             }
 
-            if (!depthRender.beginDraw(pipelineType, passNoFaceCulling())){
+            if (!depthRender.beginDraw(pipelineType, passNoFaceCulling(), mirroredDraw)){
                 // a submesh without this depth program is left out of a pre-pass (its scene
                 // gives every mesh one when a pass needs them all: updateSceneInputPrograms);
                 // reloading would not give it one and would leave the mesh out of its colour
@@ -9367,6 +9724,9 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
 
     updateMeshBuffers(mesh);
 
+    // a mirroring model matrix draws with the face winding reversed (as the colour pass)
+    const bool mirroredDraw = isMirroredDraw(mesh, objectModel(transform));
+
     // the G-buffer pass renders the view camera's selection (view 0 in draw())
     TerrainView* terrainNodes = nullptr;
     if (terrain){
@@ -9401,7 +9761,7 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
             }
         }
 
-        if (!gbufferRender.beginDraw(PIP_GBUFFER, passNoFaceCulling())){
+        if (!gbufferRender.beginDraw(PIP_GBUFFER, passNoFaceCulling(), mirroredDraw)){
             // (still being created or warmed: spec S32, this submesh waits)
             if (gbufferRender.isDrawWaiting())
                 continue;
@@ -9955,7 +10315,8 @@ void RenderSystem::loadPostProcess(){
         // stored by name, so a renamed or removed member just drops; unset members take the
         // manifest's @property defaults
         if (pass.params.resolve(sd, "u_fs_postParams")){
-            pass.params.writeValues(passes[i].uniforms, nullptr, manifest);
+            pass.params.writeValues(passes[i].uniforms, nullptr, manifest,
+                                    passes[i].shaderGlobalBindings.empty() ? nullptr : &passes[i].shaderGlobalBindings);
         }
 
         postProcessPasses.push_back(std::move(pass));
@@ -9967,15 +10328,28 @@ void RenderSystem::loadPostProcess(){
 
 // rewrites the pass values from the scene chain, keeping the compiled shaders
 void RenderSystem::updatePostProcessUniforms(){
-    if (!postProcessNeedUpdateUniforms || !postProcessLoaded)
+    if (!postProcessLoaded)
         return;
 
     const std::vector<PostProcessPass>& passes = scene->getPostProcessPasses();
+    // a global a pass binds changed since its values were written
+    const uint64_t globalsVersion = ShaderGlobals::getVersion();
+    if (postProcessGlobalsVersion != globalsVersion){
+        postProcessGlobalsVersion = globalsVersion;
+        for (const PostProcessRuntime& pass : postProcessPasses){
+            if (pass.passIndex < (int)passes.size() && !passes[pass.passIndex].shaderGlobalBindings.empty())
+                postProcessNeedUpdateUniforms = true;
+        }
+    }
+    if (!postProcessNeedUpdateUniforms)
+        return;
+
     for (int i = 0; i < (int)postProcessPasses.size(); i++){
         PostProcessRuntime& pass = postProcessPasses[i];
         if (pass.passIndex < (int)passes.size()){
             const ShaderManifest* manifest = (pass.manifest && pass.manifest->present) ? pass.manifest.get() : nullptr;
-            pass.params.writeValues(passes[pass.passIndex].uniforms, nullptr, manifest);
+            const ShaderGlobalBindings& bindings = passes[pass.passIndex].shaderGlobalBindings;
+            pass.params.writeValues(passes[pass.passIndex].uniforms, nullptr, manifest, bindings.empty() ? nullptr : &bindings);
         }
     }
 
@@ -10462,8 +10836,8 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     ui.shaderManifest = (ui.customShaderId != 0) ? findManifest(uiShaderBase) : nullptr;
     ui.customVSParams.resolve(shaderData, "u_vs_customParams");
     ui.customFSParams.resolve(shaderData, "u_fs_customParams");
-    ui.customVSParams.writeValues(ui.shaderUniforms, nullptr, ui.shaderManifest.get());
-    ui.customFSParams.writeValues(ui.shaderUniforms, nullptr, ui.shaderManifest.get());
+    writeComponentUniforms(ui.customVSParams, ui.customFSParams, ui.shaderUniforms, ui.shaderManifest.get(),
+                           ui.shaderGlobalBindings, ui.globalsVersionSeen);
     ui.needUpdateShaderUniforms = false;
 
     size_t bufferSize;
@@ -10519,10 +10893,15 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     
     ui.needUpdateTexture = false;
 
-    if (!render.endLoad(pipelines, resolveComponentRenderState(ui.blendMode, ui.depthWrite, ui.stencil, ui.colorWrite, ui.shaderManifest.get(), ui.shaderFeatures, false),
-                        msaaPipelineSamples)){
+    const RenderState uiState = resolveComponentRenderState(ui.blendMode, ui.depthWrite, ui.stencil, ui.colorWrite, ui.shaderManifest.get(), ui.shaderFeatures, false);
+    if (!render.endLoad(pipelines, uiState, msaaPipelineSamples)){
         return false;
     }
+    // what a Canvas Group fades (uiDrawColor) and whether the draw is a stencil mask
+    ui.loadedPipelines = pipelines;
+    ui.drawBlendMode = toMaterialBlendMode(uiState.blend);
+    ui.writesStencil = uiState.stencilEnabled && uiState.stencilWriteMask != 0 &&
+                       (uiState.stencilPass != StencilOp::KEEP || uiState.stencilFail != StencilOp::KEEP || uiState.stencilDepthFail != StencilOp::KEEP);
 
     ui.needReload = false;
     ui.needUpdateAABB = true;
@@ -10542,7 +10921,7 @@ bool RenderSystem::lendsTransparentFluid(Entity entity, const Submesh& submesh) 
     return frameFluids->getMaterialTexture(entity, &transparent) && transparent;
 }
 
-bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride){
+bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride, bool inCanvasLayer){
     if (ui.loaded && ui.buffer.getSize() > 0){
 
         if (ui.needUpdateTexture || ui.texture.isFramebufferOutdated()){
@@ -10582,9 +10961,11 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
             return false;
         }
         render.applyUniformBlock(ui.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
-        //Color
-        render.applyUniformBlock(ui.slotFSParams, sizeof(float) * 4, &ui.color);
-        applyComponentUniforms(render, ui.customVSParams, ui.customFSParams, ui.shaderUniforms, ui.shaderManifest.get(), ui.needUpdateShaderUniforms, frameTime, passResolution);
+        //Color, faded by the element's Canvas Groups
+        Vector4 drawColor = uiDrawColor(ui.color, inCanvasLayer ? ui.groupLayerAlpha : ui.groupAlpha, ui.drawBlendMode);
+        render.applyUniformBlock(ui.slotFSParams, sizeof(float) * 4, &drawColor);
+        applyComponentUniforms(render, ui.customVSParams, ui.customFSParams, ui.shaderUniforms, ui.shaderManifest.get(), ui.needUpdateShaderUniforms,
+                               ui.shaderGlobalBindings, ui.globalsVersionSeen, frameTime, passResolution);
         applyFrameBlock(render, ui.libraryBindings);
         render.draw(0, ui.vertexCount, 1);
 
@@ -10693,8 +11074,8 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
     points.sceneInputsPredicted = false;
     points.customVSParams.resolve(shaderData, "u_vs_customParams");
     points.customFSParams.resolve(shaderData, "u_fs_customParams");
-    points.customVSParams.writeValues(points.shaderUniforms, nullptr, points.shaderManifest.get());
-    points.customFSParams.writeValues(points.shaderUniforms, nullptr, points.shaderManifest.get());
+    writeComponentUniforms(points.customVSParams, points.customFSParams, points.shaderUniforms, points.shaderManifest.get(),
+                           points.shaderGlobalBindings, points.globalsVersionSeen);
     points.needUpdateShaderUniforms = false;
 
     points.buffer.clear();
@@ -10745,9 +11126,545 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
 
     points.needReload = false;
     points.loadCalled = true;
+    points.loadedPipelines = pipelines;
     SystemRender::addQueueCommand(&changeLoaded, new check_load_t{scene, entity});
 
     return true;
+}
+
+// ---------------------------------------------------------------- thick lines and trails (ribbons)
+
+namespace {
+
+    // a ribbon's GPU buffers hold at least this many vertices / indices, then powers of two
+    const unsigned int RIBBON_MIN_VERTICES = 64;
+    const unsigned int RIBBON_MIN_INDICES = 192;
+    // a buffer under a quarter used for this long shrinks back (seconds)
+    const float RIBBON_SHRINK_DELAY = 5.0f;
+
+    unsigned int ribbonCapacity(size_t count, unsigned int minimum){
+        unsigned int capacity = minimum;
+        while (capacity < count && capacity < 0x80000000u)
+            capacity *= 2;
+        return capacity;
+    }
+
+    // a ribbon variant: what the built-in shader samples (a base texture), pixel widths
+    uint64_t ribbonVariantProperties(const Scene* scene, const std::string& customShader, LineWidthUnit unit,
+                                     const std::vector<std::pair<std::string, Texture>>& textures){
+        const std::string& base = customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : customShader;
+        // a library shader (or a fork with a manifest) declares and binds its own textures
+        const bool texture = RenderSystem::getLinesBaseTexture(textures) != nullptr && !findManifest(base);
+        return ShaderPool::getLinesProperties(false, true, true, texture, unit == LineWidthUnit::Pixels);
+    }
+
+    // the same, for the check every frame: the manifest lookup remembered in the ribbon
+    uint64_t ribbonVariantPropertiesCached(const Scene* scene, const std::string& customShader, LineWidthUnit unit,
+                                           const std::vector<std::pair<std::string, Texture>>& textures, LineRibbonData& ribbon){
+        bool texture = RenderSystem::getLinesBaseTexture(textures) != nullptr;
+        if (texture){
+            const std::string& base = customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : customShader;
+            if (!ribbon.manifestKnown || ribbon.manifestShader != base){
+                ribbon.manifestShader = base;
+                ribbon.hasManifest = findManifest(base) != nullptr;
+                ribbon.manifestKnown = true;
+            }
+            texture = !ribbon.hasManifest;
+        }
+        return ShaderPool::getLinesProperties(false, true, true, texture, unit == LineWidthUnit::Pixels);
+    }
+
+    // the shrink timer of a ribbon's buffers: true once they should be made smaller
+    bool ribbonShouldShrink(LineRibbonData& ribbon, float dt){
+        const bool lowUse = ribbon.maxVertices > RIBBON_MIN_VERTICES && ribbon.vertices.size() < ribbon.maxVertices / 4 &&
+                            ribbon.indices.size() < ribbon.maxIndices / 4;
+        if (!lowUse){
+            ribbon.lowUseTime = 0.0f;
+            return false;
+        }
+        ribbon.lowUseTime += dt;
+        if (ribbon.lowUseTime < RIBBON_SHRINK_DELAY)
+            return false;
+        ribbon.lowUseTime = 0.0f;
+        return true;
+    }
+
+    void finishRibbon(LineRibbonData& ribbon){
+        ribbon.indexCount = (unsigned int)ribbon.indices.size();
+    }
+
+}
+
+const Texture* RenderSystem::getLinesBaseTexture(const std::vector<std::pair<std::string, Texture>>& shaderTextures){
+    for (const auto& entry : shaderTextures){
+        if (entry.first == LINE_BASE_TEXTURE_UNIFORM && !entry.second.empty())
+            return &entry.second;
+    }
+    return nullptr;
+}
+
+uint64_t RenderSystem::getLinesVariantProperties(const Scene* scene, const LineRendererComponent& lines){
+    if (lines.widthMultiplier > 0.0f)
+        return ribbonVariantProperties(scene, lines.customShader, lines.widthUnit, lines.shaderTextures);
+    // the hairline, as it always was
+    return ShaderPool::getLinesProperties(false, true);
+}
+
+uint64_t RenderSystem::getTrailVariantProperties(const Scene* scene, const TrailRendererComponent& trail){
+    return ribbonVariantProperties(scene, trail.customShader, trail.widthUnit, trail.shaderTextures);
+}
+
+// the ribbon of a thick line, or the segments of a hairline polyline, from the component's data
+static void rebuildLinesGeometry(LineRendererComponent& lines){
+    LineRibbonData& ribbon = lines.ribbon;
+    ribbon.vertices.clear();
+    ribbon.indices.clear();
+    ribbon.bounds.setNull();
+    ribbon.length = 0.0f;
+    ribbon.maxHalfWidth = 0.0f;
+    lines.polylineSegments.clear();
+
+    size_t invalidPoints = 0;
+    if (lines.widthMultiplier > 0.0f){
+        LineRibbonSettings settings;
+        settings.widthMultiplier = lines.widthMultiplier;
+        settings.widthCurve = &lines.widthCurve;
+        settings.colorGradient = &lines.colorGradient;
+        settings.numCornerVertices = lines.numCornerVertices;
+        settings.numCapVertices = lines.numCapVertices;
+        settings.textureMode = lines.textureMode;
+        settings.textureScale = lines.textureScale;
+        auto add = [&](const LineRibbonResult& result){
+            if (!result.bounds.isNull())
+                ribbon.bounds.merge(result.bounds);
+            ribbon.length += result.length;
+            ribbon.maxHalfWidth = std::max(ribbon.maxHalfWidth, result.maxHalfWidth);
+            invalidPoints += result.invalidPoints;
+        };
+        if (lines.mode == LineRendererMode::Polyline){
+            settings.loop = lines.loop;
+            add(LineRibbonBuilder::build(lines.positions.data(), lines.positions.size(), settings, ribbon.vertices, ribbon.indices));
+        }else{
+            // every segment its own ribbon: the curve over each, its own colours, no joints
+            for (const LineData& line : lines.lines){
+                const Vector3 points[2] = {line.pointA, line.pointB};
+                const Vector4 colors[2] = {line.colorA, line.colorB};
+                add(LineRibbonBuilder::build(points, 2, settings, ribbon.vertices, ribbon.indices, nullptr, colors));
+            }
+        }
+    }else if (lines.mode == LineRendererMode::Polyline){
+        // a width-0 polyline still shows: connected hairline segments with the gradient's colours
+        thread_local std::vector<Vector3> points;
+        points.clear();
+        points.reserve(lines.positions.size());
+        for (const Vector3& point : lines.positions){
+            if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z)){
+                points.push_back(point);
+            }else{
+                invalidPoints++;
+            }
+        }
+        if (points.size() >= 2){
+            const size_t segments = lines.loop ? points.size() : points.size() - 1;
+            float total = 0.0f;
+            for (size_t i = 0; i < segments; i++)
+                total += points[i].distance(points[(i + 1) % points.size()]);
+            float length = 0.0f;
+            for (size_t i = 0; i < segments; i++){
+                const Vector3& a = points[i];
+                const Vector3& b = points[(i + 1) % points.size()];
+                const float next = length + a.distance(b);
+                LineData segment;
+                segment.pointA = a;
+                segment.pointB = b;
+                segment.colorA = lines.colorGradient.evaluate(total > 0.0f ? length / total : 0.0f);
+                segment.colorB = lines.colorGradient.evaluate(total > 0.0f ? next / total : 1.0f);
+                lines.polylineSegments.push_back(segment);
+                length = next;
+            }
+        }
+    }
+    finishRibbon(ribbon);
+
+    if (invalidPoints > 0 && !lines.warnedInvalidPoints){
+        lines.warnedInvalidPoints = true;
+        Log::warn("Line Renderer: %zu point(s) are not finite numbers (NaN or infinite) and are skipped", invalidPoints);
+    }
+}
+
+// the hairline segments a Line Renderer draws: its own (Segments) or its polyline's
+static const std::vector<LineData>& hairlineSegments(const LineRendererComponent& lines){
+    return (lines.mode == LineRendererMode::Polyline) ? lines.polylineSegments : lines.lines;
+}
+
+void RenderSystem::updateLinesGeometry(Entity entity, LineRendererComponent& lines, float dt){
+    (void)entity;
+    // another variant (width on or off, pixel widths, a base texture added or removed)
+    const uint64_t variant = (lines.widthMultiplier > 0.0f)
+        ? ribbonVariantPropertiesCached(scene, lines.customShader, lines.widthUnit, lines.shaderTextures, lines.ribbon)
+        : ShaderPool::getLinesProperties(false, true);
+    if (lines.loaded && !lines.needReload && variant != lines.loadedRibbonKey){
+        lines.needReload = true;
+    }
+
+    if (lines.needUpdateRibbon){
+        lines.needUpdateRibbon = false;
+        rebuildLinesGeometry(lines);
+        if (lines.loaded && lines.loadedRibbon){
+            if (lines.ribbon.vertices.size() > lines.ribbon.maxVertices || lines.ribbon.indices.size() > lines.ribbon.maxIndices){
+                lines.needReload = true;
+            }
+        }else if (lines.mode == LineRendererMode::Polyline && lines.polylineSegments.size() > lines.maxLines){
+            lines.maxLines = ribbonCapacity(lines.polylineSegments.size(), std::max(1u, lines.maxLines));
+            lines.needReload = true;
+        }
+        lines.needUpdateBuffer = true;
+    }
+
+    if (lines.loaded && lines.loadedRibbon && !lines.needReload && ribbonShouldShrink(lines.ribbon, dt)){
+        lines.needReload = true;
+    }
+}
+
+template<typename T>
+bool RenderSystem::loadRibbonRender(Entity entity, T& component, uint16_t pipelines, uint64_t ribbonVariant, BufferUsage usage){
+    (void)entity;
+    ObjectRender& render = component.render;
+
+    render.beginLoad(PrimitiveType::TRIANGLES);
+
+    component.shaderProperties = ribbonVariant | postColorProperty(ShaderType::LINES);
+    const std::string& shaderBase = component.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : component.customShader;
+    const std::string shaderSrc = getComponentShaderReference(shaderBase, component.shaderFeatures, component.blendMode);
+    component.customShaderId = ShaderPool::registerCustomShader(shaderSrc);
+    component.shader = ShaderPool::get(ShaderType::LINES, component.shaderProperties, component.customShaderId);
+    if (!component.shader->isCreated()){
+        // a custom shader that failed to compile falls back to the built-in shader
+        if (component.customShaderId != 0 && ShaderPool::isShaderBuildFailed(ShaderType::LINES, component.shaderProperties, component.customShaderId)){
+            Log::error("Custom shader '%s' failed to compile; using the built-in shader", shaderSrc.c_str());
+            component.customShaderId = 0;
+            component.shader = ShaderPool::get(ShaderType::LINES, component.shaderProperties, 0);
+        }
+        if (!component.shader->isCreated())
+            return false;
+    }
+    render.setShader(component.shader.get());
+    ShaderData& shaderData = component.shader.get()->shaderData;
+
+    component.slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::LINES_VS_PARAMS);
+    component.shaderManifest = (component.customShaderId != 0) ? findManifest(shaderBase) : nullptr;
+    component.customVSParams.resolve(shaderData, "u_vs_customParams");
+    component.customFSParams.resolve(shaderData, "u_fs_customParams");
+    writeComponentUniforms(component.customVSParams, component.customFSParams, component.shaderUniforms, component.shaderManifest.get(),
+                           component.shaderGlobalBindings, component.globalsVersionSeen);
+    component.needUpdateShaderUniforms = false;
+
+    // the buffers, sized to the data with room to grow (powers of two)
+    LineRibbonData& ribbon = component.ribbon;
+    ribbon.maxVertices = ribbonCapacity(ribbon.vertices.size(), RIBBON_MIN_VERTICES);
+    ribbon.maxIndices = ribbonCapacity(ribbon.indices.size(), RIBBON_MIN_INDICES);
+    ribbon.index32 = ribbon.maxVertices > 65536;
+    ribbon.lowUseTime = 0.0f;
+
+    component.buffer.clear();
+    component.buffer.addAttribute(AttributeType::POSITION, 3, offsetof(LineRibbonVertex, position));
+    component.buffer.addAttribute(AttributeType::COLOR, 4, offsetof(LineRibbonVertex, color));
+    component.buffer.addAttribute(AttributeType::TEXCOORD1, 2, offsetof(LineRibbonVertex, uv));
+    component.buffer.addAttribute(AttributeType::LINETANGENTIN, 3, offsetof(LineRibbonVertex, tangentIn));
+    component.buffer.addAttribute(AttributeType::LINETANGENTOUT, 3, offsetof(LineRibbonVertex, tangentOut));
+    component.buffer.addAttribute(AttributeType::LINEPARAMS, 4, offsetof(LineRibbonVertex, params));
+    component.buffer.setStride(sizeof(LineRibbonVertex));
+    component.buffer.setRenderAttributes(true);
+    component.buffer.setUsage(usage);
+    component.buffer.getRender()->createBuffer(ribbon.maxVertices * sizeof(LineRibbonVertex), nullptr, component.buffer.getType(), usage);
+    for (auto const& attr : component.buffer.getAttributes()){
+        render.addAttribute(shaderData.getAttrIndex(attr.first), component.buffer.getRender(), attr.second.getElements(), attr.second.getDataType(),
+                            component.buffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
+    }
+
+    const AttributeDataType indexType = ribbon.index32 ? AttributeDataType::UNSIGNED_INT : AttributeDataType::UNSIGNED_SHORT;
+    const unsigned int indexSize = ribbon.index32 ? sizeof(uint32_t) : sizeof(uint16_t);
+    ribbon.indexBuffer.clear();
+    ribbon.indexBuffer.setType(BufferType::INDEX_BUFFER);
+    ribbon.indexBuffer.setUsage(usage);
+    ribbon.indexBuffer.setStride(indexSize);
+    ribbon.indexBuffer.getRender()->createBuffer(ribbon.maxIndices * indexSize, nullptr, BufferType::INDEX_BUFFER, usage);
+    render.setIndex(ribbon.indexBuffer.getRender(), indexType, 0);
+
+    component.needUpdateBuffer = true;
+
+    const std::vector<std::string> features = ShaderReference::getEnabledFeatures(component.customShader, component.shaderFeatures);
+    if (!loadShaderLibraryBindings(component.libraryBindings, shaderData, render, component.shaderTextures, component.shaderManifest.get(), features)){
+        return false;
+    }
+
+    RenderState state = resolveComponentRenderState(component.blendMode, component.depthWrite, component.stencil, component.colorWrite,
+                                                    component.shaderManifest.get(), component.shaderFeatures, false);
+    // both faces: which one a camera sees depends on its side of the ribbon
+    state.faceCulling = false;
+    // AUTO writes no depth when blended: blended ribbons writing it cut each other; an opaque
+    // ribbon writes it like any opaque object (an explicit choice, or the manifest's zwrite=,
+    // stays)
+    MaterialDepthWrite manifestDepthWrite = MaterialDepthWrite::AUTO;
+    if (component.shaderManifest)
+        manifestDepthWrite = component.shaderManifest->resolveState(component.shaderManifest->resolveFeatures(component.shaderFeatures)).depthWrite;
+    if (component.depthWrite == MaterialDepthWrite::AUTO && manifestDepthWrite == MaterialDepthWrite::AUTO && state.blend != BlendMode::NONE)
+        state.depthWrite = false;
+    component.transparent = state.blend != BlendMode::NONE;
+    // the transparent queue order is the component's, offset by the shader's @state priority=
+    component.queuePriority = 0;
+    if (component.shaderManifest)
+        component.queuePriority = component.shaderManifest->resolveState(component.shaderManifest->resolveFeatures(component.shaderFeatures)).priority;
+    component.libraryBindings.postColorBlend = postColorBlendOf(state, component.shaderManifest != nullptr);
+    if (!render.endLoad(pipelines, state, msaaPipelineSamples)){
+        return false;
+    }
+    return true;
+}
+
+template<typename T>
+void RenderSystem::destroyRibbonRender(Entity entity, T& component){
+    (void)entity;
+    if (!component.needReload){
+        if (component.shader){
+            component.shader.reset();
+            ShaderPool::remove(ShaderType::LINES, component.shaderProperties, component.customShaderId);
+        }
+        for (auto& shaderTexture : component.shaderTextures){
+            shaderTexture.second.destroy();
+        }
+    }
+    component.render.destroy();
+    if (!component.needReload){
+        component.buffer.clearAll();
+        component.ribbon.indexBuffer.clearAll();
+    }
+    component.buffer.getRender()->destroyBuffer();
+    component.ribbon.indexBuffer.getRender()->destroyBuffer();
+    component.ribbon.maxVertices = 0;
+    component.ribbon.maxIndices = 0;
+
+    component.slotVSParams = -1;
+    component.customVSParams.clear();
+    component.customFSParams.clear();
+    component.libraryBindings.clear();
+}
+
+template<typename T>
+bool RenderSystem::drawRibbon(T& component, const Matrix4& modelMatrix, const Vector3& alignAxis, bool transformZ,
+                              CameraComponent& camera, Transform& camTransform, PipelineType pipType){
+    LineRibbonData& ribbon = component.ribbon;
+    if (!component.loaded || ribbon.indexCount == 0)
+        return true;
+    // grown past the buffers: the reload this update asked for draws it
+    if (ribbon.vertices.size() > ribbon.maxVertices || ribbon.indices.size() > ribbon.maxIndices)
+        return true;
+
+    if (component.needUpdateBuffer){
+        // once a frame (the buffers are shared by every camera): setData here because the
+        // component may have moved in its array since the last frame
+        component.buffer.setData((unsigned char*)ribbon.vertices.data(), ribbon.vertices.size() * sizeof(LineRibbonVertex));
+        component.buffer.getRender()->updateBuffer(component.buffer.getSize(), component.buffer.getData());
+        if (ribbon.index32){
+            ribbon.indexBuffer.setData((unsigned char*)ribbon.indices.data(), ribbon.indices.size() * sizeof(uint32_t));
+        }else{
+            ribbon.indices16.assign(ribbon.indices.begin(), ribbon.indices.end());
+            ribbon.indexBuffer.setData((unsigned char*)ribbon.indices16.data(), ribbon.indices16.size() * sizeof(uint16_t));
+        }
+        ribbon.indexBuffer.getRender()->updateBuffer(ribbon.indexBuffer.getSize(), ribbon.indexBuffer.getData());
+        component.needUpdateBuffer = false;
+    }
+
+    ObjectRender& render = component.render;
+
+    if (!component.libraryBindings.textures.empty() && shaderTexturesOutdated(component.libraryBindings, component.shaderTextures)){
+        bindShaderTextures(component.libraryBindings, render, component.shaderTextures);
+    }
+
+    if (!render.beginDraw(pipType)){
+        component.needReload = true;
+        return false;
+    }
+
+    vs_lines_ribbon_params_t params = {};
+    params.viewProjection = camera.viewProjectionMatrix;
+    if (isRenderingFlipped(camera)){
+        static const Matrix4 flipYMatrix = Matrix4::scaleMatrix(Vector3(1, -1, 1));
+        params.viewProjection = flipYMatrix * params.viewProjection;
+    }
+    params.modelMatrix = modelMatrix;
+    params.mvpMatrix = params.viewProjection * modelMatrix;
+    // worldDirection is the view's backward axis: towards the camera
+    params.cameraPosition = (camera.type != CameraType::CAMERA_PERSPECTIVE)
+        ? Vector4(camera.worldDirection.x, camera.worldDirection.y, camera.worldDirection.z, 1.0f)
+        : Vector4(camTransform.worldPosition.x, camTransform.worldPosition.y, camTransform.worldPosition.z, 0.0f);
+    params.alignAxis = Vector4(alignAxis.x, alignAxis.y, alignAxis.z, transformZ ? 1.0f : 0.0f);
+    params.viewport = Vector4(passResolution.x, passResolution.y, 0.0f, 0.0f);
+    render.applyUniformBlock(component.slotVSParams, sizeof(vs_lines_ribbon_params_t), &params);
+    applyComponentUniforms(render, component.customVSParams, component.customFSParams, component.shaderUniforms, component.shaderManifest.get(),
+                           component.needUpdateShaderUniforms, component.shaderGlobalBindings, component.globalsVersionSeen, frameTime, passResolution);
+    applyFrameBlock(render, component.libraryBindings);
+    render.draw(0, ribbon.indexCount, 1);
+
+    return true;
+}
+
+// the world normal of the transform's XY plane (TransformZ alignment): the cross product of
+// its X and Y axes (the normal matrix's Z: with a non-uniform scale and a rotation the model's
+// Z axis is not perpendicular to that plane), else its Z axis when X or Y is scaled to 0
+static Vector3 transformZAxis(const Matrix4& model){
+    const Vector3 origin = model * Vector3(0.0f, 0.0f, 0.0f);
+    const Vector3 x = (model * Vector3(1.0f, 0.0f, 0.0f)) - origin;
+    const Vector3 y = (model * Vector3(0.0f, 1.0f, 0.0f)) - origin;
+    Vector3 axis = x.crossProduct(y);
+    float length = axis.length();
+    if (!(length > 1e-12f)){
+        axis = (model * Vector3(0.0f, 0.0f, 1.0f)) - origin;
+        length = axis.length();
+    }
+    return (length > 1e-12f) ? axis / length : Vector3(0.0f, 0.0f, 1.0f);
+}
+
+AABB RenderSystem::linesWorldBounds(const LineRendererComponent& lines, const Transform& transform) const{
+    AABB bounds;
+    bounds.setNull();
+    if (!lines.loadedRibbon || lines.widthUnit == LineWidthUnit::Pixels || lines.ribbon.bounds.isNull())
+        return bounds;
+    bounds = lines.useWorldSpace ? lines.ribbon.bounds : (transform.modelMatrix * lines.ribbon.bounds);
+    if (bounds.isNull() || !bounds.isFinite()){
+        bounds.setNull();
+        return bounds;
+    }
+    const float grow = lines.ribbon.maxHalfWidth * LineRibbonBuilder::boundsGrowth(lines.numCornerVertices);
+    bounds.setExtents(bounds.getMinimum() - Vector3(grow, grow, grow), bounds.getMaximum() + Vector3(grow, grow, grow));
+    return bounds;
+}
+
+bool RenderSystem::isTrailRenderActive(Entity entity, const TrailRendererComponent& trail, uint32_t cullingMask) const{
+    if (!trail.enabled || !scene->isEntityActiveInHierarchy(entity) || !isLayerVisible(entity, cullingMask))
+        return false;
+#ifdef JASPERENGINE_EDITOR
+    if (!passDrawsOverlays && isEditorOverlay(entity))
+        return false;
+    if (entity == passExcludedEntity)
+        return false;
+#endif
+    return true;
+}
+
+void RenderSystem::changeTrailLoaded(void* data){
+    check_load_t* loadObj = (check_load_t*)data;
+    if (Engine::isViewLoaded()){
+        if (TrailRendererComponent* trail = loadObj->scene->findComponent<TrailRendererComponent>(loadObj->entity))
+            trail->loaded = true;
+    }
+    delete loadObj;
+}
+
+void RenderSystem::changeTrailDestroy(void* data){
+    check_load_t* loadObj = (check_load_t*)data;
+    if (TrailRendererComponent* trail = loadObj->scene->findComponent<TrailRendererComponent>(loadObj->entity)){
+        trail->loaded = false;
+        trail->loadCalled = false;
+    }
+    delete loadObj;
+}
+
+bool RenderSystem::loadTrail(Entity entity, TrailRendererComponent& trail, uint16_t pipelines){
+    if (!Engine::isViewLoaded())
+        return false;
+
+    // looked up again (a manifest added or removed reloads)
+    trail.ribbon.manifestKnown = false;
+    const uint64_t variant = getTrailVariantProperties(scene, trail);
+    if (!loadRibbonRender(entity, trail, pipelines, variant, BufferUsage::STREAM))
+        return false;
+    trail.loadedRibbonKey = variant;
+    trail.needReload = false;
+    trail.loadCalled = true;
+    SystemRender::addQueueCommand(&changeTrailLoaded, new check_load_t{scene, entity});
+    return true;
+}
+
+void RenderSystem::destroyTrail(Entity entity, TrailRendererComponent& trail){
+    if (!trail.loaded)
+        return;
+    destroyRibbonRender(entity, trail);
+    SystemRender::addQueueCommand(&changeTrailDestroy, new check_load_t{scene, entity});
+}
+
+void RenderSystem::updateTrail(Entity entity, TrailRendererComponent& trail, float dt){
+    if (trail.loaded && !trail.needReload &&
+            ribbonVariantPropertiesCached(scene, trail.customShader, trail.widthUnit, trail.shaderTextures, trail.ribbon) != trail.loadedRibbonKey){
+        trail.needReload = true;
+    }
+
+    if (trail.needUpdateRibbon){
+        trail.needUpdateRibbon = false;
+
+        LineRibbonData& ribbon = trail.ribbon;
+        ribbon.vertices.clear();
+        ribbon.indices.clear();
+        ribbon.bounds.setNull();
+        ribbon.length = 0.0f;
+        ribbon.maxHalfWidth = 0.0f;
+        trail.worldAABB.setNull();
+
+        if (std::shared_ptr<TrailSystem> trails = scene->getSystem<TrailSystem>()){
+            trails->getRibbonPoints(entity, trail, trailPoints, trailPointT);
+        }else{
+            trailPoints.clear();
+            trailPointT.clear();
+        }
+        if (trailPoints.size() >= 2){
+            LineRibbonSettings settings;
+            settings.widthMultiplier = trail.widthMultiplier;
+            settings.widthCurve = &trail.widthCurve;
+            settings.colorGradient = &trail.colorGradient;
+            settings.numCornerVertices = trail.numCornerVertices;
+            settings.numCapVertices = trail.numCapVertices;
+            settings.textureMode = trail.textureMode;
+            settings.textureScale = trail.textureScale;
+            const LineRibbonResult result = LineRibbonBuilder::build(trailPoints.data(), trailPoints.size(), settings,
+                                                                     ribbon.vertices, ribbon.indices, trailPointT.data());
+            ribbon.bounds = result.bounds;
+            ribbon.length = result.length;
+            ribbon.maxHalfWidth = result.maxHalfWidth;
+            if (trail.widthUnit == LineWidthUnit::World && !result.bounds.isNull() && result.bounds.isFinite()){
+                const float half = result.maxHalfWidth * LineRibbonBuilder::boundsGrowth(trail.numCornerVertices);
+                const Vector3 grow(half, half, half);
+                trail.worldAABB = AABB(result.bounds.getMinimum() - grow, result.bounds.getMaximum() + grow);
+            }
+        }
+        finishRibbon(ribbon);
+
+        if (trail.loaded && (ribbon.vertices.size() > ribbon.maxVertices || ribbon.indices.size() > ribbon.maxIndices)){
+            trail.needReload = true;
+        }
+        trail.needUpdateBuffer = true;
+    }
+
+    if (trail.loaded && !trail.needReload && ribbonShouldShrink(trail.ribbon, dt)){
+        trail.needReload = true;
+    }
+
+    if (trail.loaded && trail.needReload){
+        destroyTrail(entity, trail);
+    }
+    if (!trail.loadCalled){
+        loadTrail(entity, trail, getScenePipelines());
+    }
+}
+
+bool RenderSystem::drawTrail(Entity entity, TrailRendererComponent& trail, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType){
+    (void)entity;
+    if (!trail.worldAABB.isNull() && !isInsideCamera(camera, trail.worldAABB))
+        return true;
+    // trails live in world space
+    static const Matrix4 identity;
+    const bool transformZ = trail.alignment == LineAlignment::TransformZ;
+    return drawRibbon(trail, identity, transformZ ? transformZAxis(objectModel(transform)) : Vector3(0.0f, 0.0f, 1.0f), transformZ,
+                      camera, camTransform, pipType);
 }
 
 bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16_t pipelines){
@@ -10755,8 +11672,30 @@ bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16
     if (!Engine::isViewLoaded()) 
         return false;
 
-    if (lines.lines.size() == 0)
+    if (lines.needUpdateRibbon){
+        lines.needUpdateRibbon = false;
+        rebuildLinesGeometry(lines);
+    }
+
+    // a width: the ribbon (thick line), loaded even before it has points so its shader is ready
+    if (lines.widthMultiplier > 0.0f){
+        lines.ribbon.manifestKnown = false;
+        const uint64_t variant = getLinesVariantProperties(scene, lines);
+        if (!loadRibbonRender(entity, lines, pipelines, variant, BufferUsage::DYNAMIC))
+            return false;
+        lines.loadedRibbon = true;
+        lines.loadedRibbonKey = variant;
+        lines.needReload = false;
+        lines.loadCalled = true;
+        SystemRender::addQueueCommand(&changeLoaded, new check_load_t{scene, entity});
+        return true;
+    }
+
+    // the hairline: the 1-pixel LINES primitive, as it always was
+    if (hairlineSegments(lines).size() == 0)
         return false;
+    if (hairlineSegments(lines).size() > lines.maxLines)
+        lines.maxLines = (unsigned int)hairlineSegments(lines).size();
 
     ObjectRender& render = lines.render;
 
@@ -10785,8 +11724,8 @@ bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16
     lines.shaderManifest = (lines.customShaderId != 0) ? findManifest(linesShaderBase) : nullptr;
     lines.customVSParams.resolve(shaderData, "u_vs_customParams");
     lines.customFSParams.resolve(shaderData, "u_fs_customParams");
-    lines.customVSParams.writeValues(lines.shaderUniforms, nullptr, lines.shaderManifest.get());
-    lines.customFSParams.writeValues(lines.shaderUniforms, nullptr, lines.shaderManifest.get());
+    writeComponentUniforms(lines.customVSParams, lines.customFSParams, lines.shaderUniforms, lines.shaderManifest.get(),
+                           lines.shaderGlobalBindings, lines.globalsVersionSeen);
     lines.needUpdateShaderUniforms = false;
 
     lines.buffer.clear();
@@ -10824,6 +11763,8 @@ bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16
         return false;
     }
 
+    lines.loadedRibbon = false;
+    lines.loadedRibbonKey = ShaderPool::getLinesProperties(false, true);
     lines.needReload = false;
     lines.loadCalled = true;
     SystemRender::addQueueCommand(&changeLoaded, new check_load_t{scene, entity});
@@ -10914,7 +11855,8 @@ bool RenderSystem::drawPoints(Entity entity, PointsComponent& points, Transform&
         vsParams.mvpMatrix = objectMVP(transform);
         vsParams.pointScale = computePointsScale(camera, getPointsViewportHeight(camera));
         render.applyUniformBlock(points.slotVSParams, sizeof(vs_points_params_t), &vsParams);
-        applyComponentUniforms(render, points.customVSParams, points.customFSParams, points.shaderUniforms, points.shaderManifest.get(), points.needUpdateShaderUniforms, frameTime, passResolution);
+        applyComponentUniforms(render, points.customVSParams, points.customFSParams, points.shaderUniforms, points.shaderManifest.get(), points.needUpdateShaderUniforms,
+                               points.shaderGlobalBindings, points.globalsVersionSeen, frameTime, passResolution);
         applyFrameBlock(render, points.libraryBindings);
         applySceneInputs(render, points.libraryBindings);
 #ifdef JASPERENGINE_EDITOR
@@ -10967,12 +11909,26 @@ void RenderSystem::destroyPoints(Entity entity, PointsComponent& points){
     SystemRender::addQueueCommand(&changeDestroy, new check_load_t{scene, entity});
 }
 
-bool RenderSystem::drawLines(LineRendererComponent& lines, Transform& transform, Transform& camTransform, PipelineType pipType){
-    if (lines.loaded && lines.lines.size() > 0){
+bool RenderSystem::drawLines(Entity entity, LineRendererComponent& lines, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType){
+    (void)entity;
+    if (lines.loadedRibbon){
+        const AABB bounds = linesWorldBounds(lines, transform);
+        if (!bounds.isNull() && !isInsideCamera(camera, bounds))
+            return true;
+        static const Matrix4 identity;
+        const Matrix4& model = objectModel(transform);
+        const bool transformZ = lines.alignment == LineAlignment::TransformZ;
+        return drawRibbon(lines, lines.useWorldSpace ? identity : model, transformZ ? transformZAxis(model) : Vector3(0.0f, 0.0f, 1.0f),
+                          transformZ, camera, camTransform, pipType);
+    }
+
+    const std::vector<LineData>& segments = hairlineSegments(lines);
+    // past the buffer: the reload this update asked for draws them
+    if (lines.loaded && segments.size() > 0 && segments.size() <= lines.maxLines){
 
         if (lines.needUpdateBuffer){
             // setData here because component can change order and lose reference
-            lines.buffer.setData((unsigned char*)(&lines.lines[0]), sizeof(LineData)*lines.lines.size());
+            lines.buffer.setData((unsigned char*)(&segments[0]), sizeof(LineData)*segments.size());
             lines.buffer.getRender()->updateBuffer(lines.buffer.getSize(), lines.buffer.getData());
             lines.needUpdateBuffer = false;
         }
@@ -10989,10 +11945,21 @@ bool RenderSystem::drawLines(LineRendererComponent& lines, Transform& transform,
                 lines.needReload = true;
             return false;
         }
-        render.applyUniformBlock(lines.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
-        applyComponentUniforms(render, lines.customVSParams, lines.customFSParams, lines.shaderUniforms, lines.shaderManifest.get(), lines.needUpdateShaderUniforms, frameTime, passResolution);
+        if (lines.useWorldSpace){
+            // world points: the camera's matrix alone
+            Matrix4 viewProjection = camera.viewProjectionMatrix;
+            if (isRenderingFlipped(camera)){
+                static const Matrix4 flipYMatrix = Matrix4::scaleMatrix(Vector3(1, -1, 1));
+                viewProjection = flipYMatrix * viewProjection;
+            }
+            render.applyUniformBlock(lines.slotVSParams, sizeof(float) * 16, (void*)&viewProjection);
+        }else{
+            render.applyUniformBlock(lines.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
+        }
+        applyComponentUniforms(render, lines.customVSParams, lines.customFSParams, lines.shaderUniforms, lines.shaderManifest.get(), lines.needUpdateShaderUniforms,
+                               lines.shaderGlobalBindings, lines.globalsVersionSeen, frameTime, passResolution);
         applyFrameBlock(render, lines.libraryBindings);
-        render.draw(0, lines.lines.size() * 2, 1);
+        render.draw(0, segments.size() * 2, 1);
     }
 
     return true;
@@ -11001,6 +11968,13 @@ bool RenderSystem::drawLines(LineRendererComponent& lines, Transform& transform,
 void RenderSystem::destroyLines(Entity entity, LineRendererComponent& lines){
     if (!lines.loaded)
         return;
+
+    if (lines.loadedRibbon){
+        destroyRibbonRender(entity, lines);
+        lines.loadedRibbon = false;
+        SystemRender::addQueueCommand(&changeDestroy, new check_load_t{scene, entity});
+        return;
+    }
 
     if (!lines.needReload){
         //Destroy shader
@@ -11110,8 +12084,8 @@ bool RenderSystem::loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelin
     sky.shaderManifest = (sky.customShaderId != 0) ? findManifest(skyShaderBase) : nullptr;
     sky.customVSParams.resolve(shaderData, "u_vs_customParams");
     sky.customFSParams.resolve(shaderData, "u_fs_customParams");
-    sky.customVSParams.writeValues(sky.shaderUniforms, nullptr, sky.shaderManifest.get());
-    sky.customFSParams.writeValues(sky.shaderUniforms, nullptr, sky.shaderManifest.get());
+    writeComponentUniforms(sky.customVSParams, sky.customFSParams, sky.shaderUniforms, sky.shaderManifest.get(),
+                           sky.shaderGlobalBindings, sky.globalsVersionSeen);
     sky.needUpdateShaderUniforms = false;
 
     if (TextureRender* textureRender = sky.texture.getRender(&emptyCubeWhite)){
@@ -11183,7 +12157,8 @@ bool RenderSystem::drawSky(SkyboxComponent& sky, PipelineType pipType, const Mat
         }
         render.applyUniformBlock(sky.slotVSParams, sizeof(float) * 16, (void*)&viewProjection);
         render.applyUniformBlock(sky.slotFSParams, sizeof(float) * 4, &sky.color);
-        applyComponentUniforms(render, sky.customVSParams, sky.customFSParams, sky.shaderUniforms, sky.shaderManifest.get(), sky.needUpdateShaderUniforms, frameTime, passResolution);
+        applyComponentUniforms(render, sky.customVSParams, sky.customFSParams, sky.shaderUniforms, sky.shaderManifest.get(), sky.needUpdateShaderUniforms,
+                               sky.shaderGlobalBindings, sky.globalsVersionSeen, frameTime, passResolution);
         applyFrameBlock(render, sky.libraryBindings);
         render.draw(0, 36, 1);
     }
@@ -11263,17 +12238,61 @@ static Rect intersectScissor(const Rect& rect, const Rect& bounds){
     return Rect(left, bottom, right - left, top - bottom);
 }
 
+bool RenderSystem::applyPassScissor(Entity entity, Signature signature, Transform& transform, CameraRender& render, const Rect& colorPassViewport, bool& hasActiveScissor){
+    RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+    PassScissor scissor = passScissor(transform, layout);
+
+    Rect parentScissor;
+    bool parentScissorActive = false;
+
+    if (transform.parent != NULL_ENTITY){
+        Signature parentSignature = scene->getSignature(transform.parent);
+        if (parentSignature.test(scene->getComponentId<RectTransformComponent>())){
+            RectTransformComponent& parentLayout = scene->getComponent<RectTransformComponent>(transform.parent);
+            Transform& parentTransform = scene->getComponent<Transform>(transform.parent);
+            PassScissor parent = passScissor(parentTransform, parentLayout);
+
+            parentScissorActive = *parent.active;
+            parentScissor = *parent.rect;
+        }
+    }
+
+    // recomputed every pass, so children never get a stale rect
+    *scissor.active = false;
+
+    bool inheritsScissor = parentScissorActive && !layout.ignoreScissor;
+    bool clippedAway = false;
+
+    if (inheritsScissor){
+        *scissor.rect = parentScissor;
+        *scissor.active = true;
+
+        if (parentScissor.getWidth() <= 0 || parentScissor.getHeight() <= 0){
+            // sokol widens a scissor to 1x1 on Metal, Vulkan and WebGPU, so an
+            // empty rect would leak a pixel: skip the draw instead
+            clippedAway = true;
+        }else{
+            render.applyScissor(parentScissor);
+
+            hasActiveScissor = true;
+        }
+    }
+
+    if (signature.test(scene->getComponentId<ImageComponent>())){
+        ImageComponent& img = scene->getComponent<ImageComponent>(entity);
+
+        *scissor.rect = getScissorRect(layout, img, transform, colorPassViewport);
+        // applied or not: a clipped away element still passes the empty rect down
+        if (inheritsScissor){
+            *scissor.rect = intersectScissor(*scissor.rect, parentScissor);
+        }
+        *scissor.active = true;
+    }
+
+    return clippedAway;
+}
+
 Rect RenderSystem::getScissorRect(RectTransformComponent& layout, ImageComponent& img, Transform& transform, const Rect& passViewport){
-    // the scissor is in the pass target pixels, so it follows the viewport the color pass
-    // applied: offscreen targets start at (0,0), a swapchain keeps the letterbox offset
-    float viewX = passViewport.getX();
-    float viewY = passViewport.getY();
-    float viewWidth = passViewport.getWidth();
-    float viewHeight = passViewport.getHeight();
-
-    if (viewWidth <= 0.0f || viewHeight <= 0.0f)
-        return Rect(0, 0, 0, 0);
-
     float localLeft = (float) img.patchMarginLeft;
     float localTop = (float) img.patchMarginTop;
     float localRight = (float) layout.width - (float) img.patchMarginRight;
@@ -11284,7 +12303,19 @@ Rect RenderSystem::getScissorRect(RectTransformComponent& layout, ImageComponent
     if (localBottom < localTop)
         localBottom = localTop;
 
-    const Matrix4& mvp = objectMVP(transform);
+    return projectLocalRect(objectMVP(transform), localLeft, localTop, localRight, localBottom, passViewport);
+}
+
+Rect RenderSystem::projectLocalRect(const Matrix4& mvp, float localLeft, float localTop, float localRight, float localBottom, const Rect& passViewport){
+    // the scissor is in the pass target pixels, so it follows the viewport the color pass
+    // applied: offscreen targets start at (0,0), a swapchain keeps the letterbox offset
+    float viewX = passViewport.getX();
+    float viewY = passViewport.getY();
+    float viewWidth = passViewport.getWidth();
+    float viewHeight = passViewport.getHeight();
+
+    if (viewWidth <= 0.0f || viewHeight <= 0.0f)
+        return Rect(0, 0, 0, 0);
 
     Vector4 corners[4] = {
         mvp * Vector4(localLeft, localTop, 0.0f, 1.0f),
@@ -11614,6 +12645,8 @@ void RenderSystem::updatePoints(PointsComponent& points, Transform& transform, C
             PointRenderData& renderPoint = points.renderPoints[points.numVisible];
             renderPoint.position = points.points[i].position;
             renderPoint.color = points.points[i].color;
+            // a UI particle under a Canvas Group
+            renderPoint.color.w *= points.uiGroupAlpha;
             renderPoint.size = points.points[i].size * worldScale;
             renderPoint.rotation = points.points[i].rotation;
             renderPoint.textureRect = points.points[i].textureRect;
@@ -11877,6 +12910,10 @@ void RenderSystem::needReloadLines() {
         LineRendererComponent& lines = linesArray->getComponentFromIndex(i);
         lines.needReload = true;
     }
+    auto trails = scene->getComponentArray<TrailRendererComponent>();
+    for (size_t i = 0; i < trails->size(); i++) {
+        trails->getComponentFromIndex(i).needReload = true;
+    }
 }
 
 void RenderSystem::needReloadMeshes() {
@@ -12067,10 +13104,20 @@ void RenderSystem::forEachLoad(const std::function<void(bool, Entity, const char
     auto linesArray = scene->getComponentArray<LineRendererComponent>();
     for (int i = 0; i < linesArray->size(); i++) {
         const LineRendererComponent& lines = linesArray->getComponentFromIndex(i);
-        // An empty Lines never loads: addLine() only sets needReload when maxLines grows.
-        if (!lines.lines.empty())
+        // An empty hairline never loads: addLine() only sets needReload when maxLines grows. A
+        // thick line loads without points (its shader made ready)
+        const bool hasData = lines.widthMultiplier > 0.0f ||
+                             (lines.mode == LineRendererMode::Polyline ? lines.positions.size() >= 2 : !lines.lines.empty());
+        if (hasData)
             visit(lines.loaded || (!lines.loadCalled && isShaderUnavailable(lines.shader, ShaderType::LINES, lines.shaderProperties, lines.customShaderId)),
                   linesArray->getEntity(i), "lines");
+    }
+
+    // Check TrailRendererComponents (loaded without points, so their shader is ready)
+    auto trailArray = scene->getComponentArray<TrailRendererComponent>();
+    for (size_t i = 0; i < trailArray->size(); i++) {
+        const TrailRendererComponent& trail = trailArray->getComponentFromIndex(i);
+        count(trail.loaded || (!trail.loadCalled && isShaderUnavailable(trail.shader, ShaderType::LINES, trail.shaderProperties, trail.customShaderId)));
     }
 
     // Check the SkyboxComponent: only the first is drawn (and loaded), so another one would
@@ -12158,6 +13205,15 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
         bRotation = transform.worldRotation.inverse() * bRotation;
     }
 
+    // a version 2 Particle System's instances, aligned for the main camera
+    const bool particleAligned = instmesh.particle.alignment != InstanceAlignment::None;
+    Matrix4 particleInverseLinear;
+    Quaternion particleCameraRotation;
+    if (particleAligned){
+        particleInverseLinear = inverseLinear(transform.modelMatrix);
+        particleCameraRotation.fromRotationMatrix(camera.viewMatrix.inverse());
+    }
+
     // Not AABB::ZERO: that is a finite box at the origin, so merging into it stretches every
     // instanced mesh back to its own origin and defeats culling.
     mesh.aabb.setNull();
@@ -12171,17 +13227,23 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
             if (cullEnd >= 0.0f && dx * dx + dz * dz > cullRadiusSquared){
                 continue;
             }
-            Matrix4 translateMatrix = Matrix4::translateMatrix(instmesh.instances[i].position);
-            Matrix4 rotationMatrix;
-            Matrix4 scaleMatrix = Matrix4::scaleMatrix(instmesh.instances[i].scale);
-
-            if (instmesh.instancedBillboard){
-                rotationMatrix = bRotation.getRotationMatrix();
+            Matrix4 instanceMatrix;
+            if (particleAligned){
+                instanceMatrix = particleInstanceMatrix(instmesh.instances[i], instmesh.particle, transform, particleInverseLinear,
+                                                        particleCameraRotation, camTransform.worldPosition, camera);
             }else{
-                rotationMatrix = instmesh.instances[i].rotation.getRotationMatrix();
-            }
+                Matrix4 translateMatrix = Matrix4::translateMatrix(instmesh.instances[i].position);
+                Matrix4 rotationMatrix;
+                Matrix4 scaleMatrix = Matrix4::scaleMatrix(instmesh.instances[i].scale);
 
-            Matrix4 instanceMatrix = translateMatrix * rotationMatrix * scaleMatrix;
+                if (instmesh.instancedBillboard){
+                    rotationMatrix = bRotation.getRotationMatrix();
+                }else{
+                    rotationMatrix = instmesh.instances[i].rotation.getRotationMatrix();
+                }
+
+                instanceMatrix = translateMatrix * rotationMatrix * scaleMatrix;
+            }
 
             instmesh.renderInstances.push_back({});
             instmesh.renderInstances[instmesh.numVisible].instanceMatrix = instanceMatrix;
@@ -12213,11 +13275,15 @@ void RenderSystem::sortInstancedMesh(InstancedMeshComponent& instmesh, MeshCompo
     Vector3 camDir = (camTransform.worldPosition - camera.worldTarget).normalize();
 
     // the bounds follow the sort so the instance views keep matching
-    const auto order = detail::instanceDepthOrder(instmesh.renderInstances, transform.modelMatrix, camDir);
-    std::vector<InstanceRenderData> sortedInstances(order.size());
-    std::vector<InstanceBounds> sortedBounds(std::min(order.size(), instmesh.renderBounds.size()));
+    detail::instanceDepthOrder(instmesh.renderInstances, transform.modelMatrix, camDir, sortOrderScratch, sortDepthScratch);
+    const std::vector<unsigned int>& order = sortOrderScratch;
+    std::vector<InstanceRenderData>& sortedInstances = sortInstancesScratch;
+    sortedInstances.resize(order.size());
+    std::vector<InstanceBounds>& sortedBounds = sortBoundsScratch;
+    sortedBounds.resize(std::min(order.size(), instmesh.renderBounds.size()));
     // a VAT batch's states move with their instances
-    std::vector<InstanceVatRenderData> sortedVat(std::min(order.size(), instmesh.renderVat.size()));
+    std::vector<InstanceVatRenderData>& sortedVat = sortVatScratch;
+    sortedVat.resize(std::min(order.size(), instmesh.renderVat.size()));
     for (unsigned int i = 0; i < order.size(); i++){
         sortedInstances[i] = instmesh.renderInstances[order[i]];
         if (order[i] < sortedBounds.size() && i < sortedBounds.size())
@@ -12747,6 +13813,12 @@ const Matrix4& RenderSystem::objectMVP(Transform& transform) const{
     return transform.modelViewProjectionMatrix;
 }
 
+bool RenderSystem::isMirroredDraw(const MeshComponent& mesh, const Matrix4& modelMatrix){
+    // the transform mirrors the mesh (its triangles turn over on screen) unless its winding
+    // order already compensates that mirror (MeshComponent::mirroredWinding, glTF import)
+    return (modelMatrix.determinant() < 0.0f) != mesh.mirroredWinding;
+}
+
 const Matrix4& RenderSystem::objectModel(Transform& transform) const{
 #ifdef JASPERENGINE_EDITOR
     size_t index;
@@ -13229,6 +14301,15 @@ void RenderSystem::update(double dt){
     }
     uint16_t pipelines = getScenePipelines();
     updateParticleRenders(pipelines);
+    // UI elements and UI particles under a FLATTEN Canvas Group draw into an offscreen layer:
+    // with any group in the scene (a script can switch one to FLATTEN) they also load the
+    // offscreen colour pipelines of the cameras
+    uint16_t uiPipelines = pipelines;
+    if (scene->getComponentArray<CanvasGroupComponent>()->size() > 0){
+        for (int i = 0; i < cameras->size(); i++){
+            uiPipelines |= cameras->getComponentFromIndex(i).depthTest ? PIP_RTT : PIP_RTT_NODEPTH;
+        }
+    }
 
     hasMultipleCameras = false;
     for (int i = 0; i < cameras->size(); i++){
@@ -13459,7 +14540,12 @@ void RenderSystem::update(double dt){
                         (inverseModel * fadeEyePosition) : fadeEyePosition;
                 }
 
-                bool sortTransparentInstances = mesh.isTransparent() && batchSort;
+                // a Particle System's sort mode: by distance (opaque too) or its own order
+                const InstanceSortMode particleSort = instmesh->particle.alignment != InstanceAlignment::None ? instmesh->particle.sort : InstanceSortMode::Auto;
+                bool sortTransparentInstances = batchSort && ((mesh.isTransparent() && particleSort == InstanceSortMode::Auto) ||
+                                                              particleSort == InstanceSortMode::ByDistance);
+                // instances that face or scale with the camera are rebuilt when it moves
+                const bool cameraBound = instmesh->instancedBillboard || instmesh->particle.cameraDependent();
 
                 const float cullEnd = instanceFadeCullEnd(*instmesh, mesh, *scene);
                 const bool fadeSelectionChanged = cullEnd != instmesh->lastFadeCullEnd ||
@@ -13468,15 +14554,16 @@ void RenderSystem::update(double dt){
                 bool instancesNeedUpdate = instmesh->needUpdateInstances || mesh.needUpdateAABB ||
                     batchSortChanged || fadeSelectionChanged;
 
-                if (instancesNeedUpdate && !instmesh->instancedBillboard){
+                if (instancesNeedUpdate && !cameraBound){
                     updateInstancedMesh(*instmesh, mesh, transform, mainCamera, mainCameraTransform);
                 }
 
-                if (instancesNeedUpdate || ((mainCamera.needUpdate || transform.needUpdate) && sortTransparentInstances)){
+                const bool particleCamera = instmesh->particle.cameraDependent();
+                if (instancesNeedUpdate || ((mainCamera.needUpdate || transform.needUpdate) && (sortTransparentInstances || particleCamera))){
                     // The instance buffer is shared by every camera and sokol allows one
                     // sg_update_buffer per frame (VALIDATE_UPDATEBUF_ONCE), so the main camera
                     // fixes the batch order and every other camera reuses it.
-                    if (instmesh->instancedBillboard){
+                    if (cameraBound){
                         updateInstancedMesh(*instmesh, mesh, transform, mainCamera, mainCameraTransform);
                     }
                     if (sortTransparentInstances){
@@ -13605,7 +14692,13 @@ void RenderSystem::update(double dt){
                         mesh.needVariantReload = true;
                     }
                     if (mesh.submeshes[s].manifest){
-                        // no normal map variant: its lighting comes from the manifest
+                        // a normal map variant only with @require normalmap (its 2D lights): one
+                        // gained or lost since the load picks it again
+                        if (mesh.submeshes[s].manifest->getPossibleRequire() & ShaderRequire_NormalMap){
+                            if (mesh.submeshes[s].hasNormalMap != !mesh.submeshes[s].material.normalTexture.empty()){
+                                mesh.needReload = true;
+                            }
+                        }
                     }else if (!mesh.submeshes[s].material.normalTexture.empty()){
                         if (!(mesh.submeshes[s].shaderProperties & (1 << 7))){ // not 'Nmp'
                             mesh.needReload = true;
@@ -13739,7 +14832,7 @@ void RenderSystem::update(double dt){
                 destroyUI(entity, ui);
             }
             if (!ui.loadCalled){
-                loadUI(entity, ui, pipelines, isText);
+                loadUI(entity, ui, uiPipelines, isText);
             }
             if (ui.needUpdateAABB || transform.needUpdate){
                 ui.worldAABB = transform.modelMatrix * ui.aabb;
@@ -13765,7 +14858,7 @@ void RenderSystem::update(double dt){
                 destroyPoints(entity, points);
             }
             if (!points.loadCalled){
-                loadPoints(entity, points, pipelines);
+                loadPoints(entity, points, uiPipelines);
             }
 
             bool sortTransparentPoints = points.isTransparent() && batchSort;
@@ -13790,6 +14883,8 @@ void RenderSystem::update(double dt){
             }
         }else if (signature.test(scene->getComponentId<LineRendererComponent>())){
             LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
+            // the ribbon or the polyline's hairline segments, rebuilt when the data changed
+            updateLinesGeometry(entity, lines, (float)dt);
             if (lines.loaded && lines.needReload){
                 destroyLines(entity, lines);
             }
@@ -13910,6 +15005,549 @@ void RenderSystem::update(double dt){
 }
 
 //-----Per-camera lighting and shadow maps-----
+
+bool RenderSystem::ShadowAtlasKey::sameDepths(const ShadowAtlasKey& other) const{
+    if (slots != other.slots || cameraCasters != other.cameraCasters)
+        return false;
+    for (int s = 0; s < SHADOW_KEY_SLOTS; s++){
+        if (casterMask[s] != other.casterMask[s] || viewProjection[s] != other.viewProjection[s] ||
+                receiver[s] != other.receiver[s])
+            return false;
+    }
+    return true;
+}
+
+RenderSystem::CameraShadows::~CameraShadows(){
+    release();
+}
+
+void RenderSystem::CameraShadows::releaseProjective(){
+    ownProjective.destroyFramebuffer();
+    ownProjectiveWidth = 0;
+    ownProjectiveHeight = 0;
+    projectiveKey.epoch = 0;
+    if (projectiveAtlas == &ownProjective)
+        projectiveAtlas = nullptr;
+}
+
+void RenderSystem::CameraShadows::releasePoint(){
+    ownPoint.destroyFramebuffer();
+    ownPointWidth = 0;
+    ownPointHeight = 0;
+    pointKey.epoch = 0;
+    if (pointAtlas == &ownPoint)
+        pointAtlas = nullptr;
+}
+
+void RenderSystem::CameraShadows::releaseInstances(){
+    for (InstanceView& view : instanceViews){
+        view.buffer.getRender()->destroyBuffer();
+        view.data.clear();
+        view.data.shrink_to_fit();
+        view.capacity = 0;
+        view.vatBuffer.getRender()->destroyBuffer();
+        view.vatData.clear();
+        view.vatData.shrink_to_fit();
+        view.vatCapacity = 0;
+        view.needUpload = false;
+    }
+    instanceRanges.clear();
+    instanceBuild = 0;
+}
+
+void RenderSystem::CameraShadows::release(){
+    releaseProjective();
+    releasePoint();
+    releaseInstances();
+    projectiveAtlas = nullptr;
+    pointAtlas = nullptr;
+    drawProjective = false;
+    drawPoint = false;
+    keysEpoch = 0;
+}
+
+RenderSystem::CameraShadows& RenderSystem::getCameraShadows(Entity entity){
+    std::unique_ptr<CameraShadows>& shadows = cameraShadows[entity];
+    if (!shadows){
+        shadows = std::make_unique<CameraShadows>();
+    }
+    return *shadows;
+}
+
+// A camera that stopped rendering keeps its maps a moment, so one that comes back
+// (re-enabled, a probe capturing again) reallocates nothing.
+void RenderSystem::releaseUnusedCameraShadows(){
+    static constexpr uint64_t KEEP_UNUSED_DRAWS = 120;
+    for (auto it = cameraShadows.begin(); it != cameraShadows.end();){
+        if (drawCount - it->second->lastUsed > KEEP_UNUSED_DRAWS){
+            it = cameraShadows.erase(it);
+        }else{
+            ++it;
+        }
+    }
+}
+
+// The layers holding meshes the shadow passes draw this update, and among them those whose
+// casters a camera draws its own way: a terrain through its CDLOD cut, a billboard turned
+// to it, instances culled or faded from its eye.
+void RenderSystem::ensureCasterLayers(){
+    if (casterLayersEpoch == shadowEpoch)
+        return;
+    casterLayersEpoch = shadowEpoch;
+    shadowCasterLayers = 0;
+    cameraCasterLayers = 0;
+
+    // the spot and point lights the shadow passes draw: their shadow cameras are the
+    // lights' own, so what reaches their maps is the same for every camera. Only lights
+    // holding a shadow slot, so at most one per slot.
+    auto lights = scene->getComponentArray<LightComponent>();
+    const int numLights = (int)lights->size();
+    lightCasterLayers.assign(numLights, 0u);
+    int localLights[MAX_SHADOW_ATLAS_SLOTS + MAX_POINT_SHADOW_LIGHTS];
+    int numLocalLights = 0;
+    for (int l = 0; l < numLights; l++){
+        const LightComponent& light = lights->getComponentFromIndex(l);
+        if (light.type != LightType::DIRECTIONAL && light.shadows && light.intensity > 0 && light.shadowMapIndex >= 0 &&
+                isLightActive(lights->getEntity(l), light) &&
+                numLocalLights < MAX_SHADOW_ATLAS_SLOTS + MAX_POINT_SHADOW_LIGHTS){
+            localLights[numLocalLights++] = l;
+        }
+    }
+
+#ifdef JASPERENGINE_EDITOR
+    // what a shadow pass draws: never the editor's gizmos and icons, always a mirror
+    const bool drawsOverlays = passDrawsOverlays;
+    const Entity excludedEntity = passExcludedEntity;
+    passDrawsOverlays = false;
+    passExcludedEntity = NULL_ENTITY;
+#endif
+
+    auto meshes = scene->getComponentArray<MeshComponent>();
+    for (int i = 0; i < meshes->size(); i++){
+        MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        if (!mesh.loaded || mesh.needReload || !mesh.castShadows)
+            continue;
+        Entity entity = meshes->getEntity(i);
+        Transform* transform = scene->findComponent<Transform>(entity);
+        if (!transform || !transform->visible || !isRenderActive(entity))
+            continue;
+
+        const uint32_t layerBit = 1u << scene->getEntityLayer(entity);
+        shadowCasterLayers |= layerBit;
+
+        // a terrain's cut stays inside its bounds; a turned billboard or a camera's own
+        // instance list may not stay inside the frame's
+        const bool terrain = scene->findComponent<TerrainComponent>(entity) != nullptr;
+        bool unbounded = transform->billboard && !transform->fakeBillboard && !mesh.shadowsBillboard;
+        InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
+        if (instmesh){
+            unbounded = unbounded || instmesh->instancedBillboard || instmesh->particle.cameraDependent() ||
+                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f ||
+                (instmesh->cullInstances && std::isfinite(instmesh->cullDistance) && instmesh->cullDistance > 0.0f);
+        }
+        if (terrain || unbounded){
+            cameraCasterLayers |= layerBit;
+        }
+
+        // the batch test of the depth passes (isBatchVisible), against each shadow camera
+        const bool everywhere = unbounded || !cullsBatch(mesh, instmesh);
+        for (int i = 0; i < numLocalLights; i++){
+            const int l = localLights[i];
+            if (lightCasterLayers[l] & layerBit)
+                continue;
+            const LightComponent& light = lights->getComponentFromIndex(l);
+            bool reaches = everywhere;
+            const int faces = (light.type == LightType::POINT) ? SHADOW_CUBE_FACES : 1;
+            for (int c = 0; c < faces && !reaches; c++){
+                reaches = isInsideCamera(light.cameras[c].nearFar.y, light.cameras[c].frustumPlanes, mesh.worldAABB);
+            }
+            if (reaches){
+                lightCasterLayers[l] |= layerBit;
+            }
+        }
+    }
+
+    for (int l = 0; l < numLights; l++){
+        if (lights->getComponentFromIndex(l).type == LightType::DIRECTIONAL){
+            lightCasterLayers[l] = shadowCasterLayers;
+        }
+    }
+
+#ifdef JASPERENGINE_EDITOR
+    passDrawsOverlays = drawsOverlays;
+    passExcludedEntity = excludedEntity;
+#endif
+}
+
+// What target's atlases hold once drawn: each slot's shadow camera and the layers casting
+// into it. A slot nothing casts into is plain clear depth, whatever its camera.
+void RenderSystem::computeShadowKeys(const CameraShadows& target, ShadowAtlasKey& projective, ShadowAtlasKey& point){
+    for (ShadowAtlasKey* key : {&projective, &point}){
+        key->slots = 0;
+        key->cameraCasters = nullptr;
+        for (int s = 0; s < SHADOW_KEY_SLOTS; s++){
+            key->viewProjection[s] = Matrix4();
+            key->casterMask[s] = 0;
+            key->receiver[s] = Matrix4();
+        }
+    }
+    if (!hasShadows)
+        return;
+
+    ensureCasterLayers();
+
+    auto lights = scene->getComponentArray<LightComponent>();
+    const int numLights = std::min((int)lights->size(), (int)lightCasterLayers.size());
+    for (int l = 0; l < numLights; l++){
+        LightComponent& light = lights->getComponentFromIndex(l);
+        // the lights renderShadowMaps draws
+        if (light.intensity <= 0 || !light.shadows || light.shadowMapIndex < 0 ||
+                !isLightActive(lights->getEntity(l), light))
+            continue;
+
+        const uint32_t mask = target.cameraMask & light.cullingMask & lightCasterLayers[l];
+        const void* cameraCasters = (mask & cameraCasterLayers) ? (const void*)&target : nullptr;
+
+        if (light.type == LightType::POINT){
+            if (!hasShadowPointAtlas)
+                continue;
+            for (int c = 0; c < SHADOW_CUBE_FACES; c++){
+                const int slot = light.shadowMapIndex + c;
+                if (slot < 0 || slot >= MAX_POINT_SHADOW_ATLAS_SLOTS)
+                    continue;
+                point.slots++;
+                point.casterMask[slot] = mask;
+                if (mask)
+                    point.viewProjection[slot] = lightCamera(target, l, light, c).lightViewProjectionMatrix;
+                if (cameraCasters)
+                    point.cameraCasters = cameraCasters;
+            }
+        }else{
+            if (!hasShadowAtlas)
+                continue;
+            const int numCameras = (light.type == LightType::DIRECTIONAL) ? (int)lightCascades(target, l, light) : 1;
+            for (int c = 0; c < numCameras; c++){
+                const int slot = light.shadowMapIndex + ((light.type == LightType::DIRECTIONAL) ? c : 0);
+                if (slot < 0 || slot >= shadowAtlasUsedSlots)
+                    continue;
+                projective.slots++;
+                projective.casterMask[slot] = mask;
+                if (mask){
+                    const LightCamera& shadowCamera = lightCamera(target, l, light, c);
+                    projective.viewProjection[slot] = shadowCamera.lightViewProjectionMatrix;
+                    // its casters depend on the surfaces reading it too (renderShadowMaps)
+                    if (cullsShadowReceivers(light, shadowCamera))
+                        projective.receiver[slot] = shadowCamera.receiverViewProjection;
+                }
+                if (cameraCasters)
+                    projective.cameraCasters = cameraCasters;
+            }
+        }
+    }
+}
+
+// An atlas drawn after this update holding what target wants: the frame's, target's own
+// from an earlier draw, or another camera's. Null when none does.
+FramebufferRender* RenderSystem::findShadowSource(CameraShadows& target, const ShadowAtlasKey& wanted, bool projective){
+    auto holds = [&](const CameraShadows& source){
+        const ShadowAtlasKey& key = projective ? source.projectiveKey : source.pointKey;
+        return key.epoch == shadowEpoch && key.sameDepths(wanted);
+    };
+
+    // the frame's maps, described the first time a camera asks after the update
+    CameraShadows& frame = primaryView.shadows;
+    if ((frame.projectiveKey.epoch == shadowEpoch || frame.pointKey.epoch == shadowEpoch) && frame.keysEpoch != shadowEpoch){
+        const uint64_t projectiveEpoch = frame.projectiveKey.epoch;
+        const uint64_t pointEpoch = frame.pointKey.epoch;
+        computeShadowKeys(frame, frame.projectiveKey, frame.pointKey);
+        frame.projectiveKey.epoch = projectiveEpoch;
+        frame.pointKey.epoch = pointEpoch;
+        frame.keysEpoch = shadowEpoch;
+    }
+    if (holds(frame))
+        return projective ? &shadowAtlasFramebuffer : &shadowPointAtlasFramebuffer;
+
+    if (holds(target))
+        return projective ? &target.ownProjective : &target.ownPoint;
+
+    auto other = [&](CameraShadows& source) -> FramebufferRender*{
+        if (&source == &target || !holds(source))
+            return nullptr;
+        return projective ? &source.ownProjective : &source.ownPoint;
+    };
+    for (auto& entry : cameraShadows){
+        if (FramebufferRender* atlas = other(*entry.second))
+            return atlas;
+    }
+#ifdef JASPERENGINE_EDITOR
+    for (auto& entry : secondaryViews){
+        if (FramebufferRender* atlas = other(entry.second->shadows))
+            return atlas;
+        for (auto& mirror : entry.second->mirrors){
+            if (FramebufferRender* atlas = other(mirror.second->shadows))
+                return atlas;
+        }
+    }
+#endif
+    return nullptr;
+}
+
+int RenderSystem::ownPointAtlasRows() const{
+    auto lights = scene->getComponentArray<LightComponent>();
+    const int numLights = (int)lights->size();
+    int usedSlots = 0;
+    for (int l = 0; l < numLights; l++){
+        const LightComponent& light = lights->getComponentFromIndex(l);
+        if (light.type == LightType::POINT && light.shadows && light.shadowMapIndex >= 0){
+            usedSlots = std::max(usedSlots, std::min(light.shadowMapIndex + SHADOW_CUBE_FACES, MAX_POINT_SHADOW_ATLAS_SLOTS));
+        }
+    }
+    return std::max(1, (usedSlots + SHADOW_POINT_ATLAS_COLS - 1) / SHADOW_POINT_ATLAS_COLS);
+}
+
+// A camera's own projective atlas has the frame's layout, so the slots and their uniforms
+// line up; its own point atlas has the frame's slots in only the rows its lights use
+bool RenderSystem::ensureOwnShadowAtlas(CameraShadows& target, bool projective){
+    if (projective){
+        const int width = (int)shadowAtlasSlotResolution * shadowAtlasCols;
+        const int height = (int)shadowAtlasSlotResolution * shadowAtlasRows;
+        if (target.ownProjective.isCreated() && target.ownProjectiveWidth == width && target.ownProjectiveHeight == height)
+            return true;
+        target.releaseProjective();
+        // LINEAR on a comparison sampler is hardware PCF, as on the frame's atlas
+        if (width <= 0 || height <= 0 || !target.ownProjective.createDepthOnlyFramebuffer(
+                width, height,
+                TextureFilter::LINEAR, TextureFilter::LINEAR,
+                TextureWrap::CLAMP_TO_BORDER, TextureWrap::CLAMP_TO_BORDER, true)){
+            return false;
+        }
+        target.ownProjectiveWidth = width;
+        target.ownProjectiveHeight = height;
+        return true;
+    }
+
+    const int width = (int)shadowPointAtlasSlotResolution * SHADOW_POINT_ATLAS_COLS;
+    const int height = (int)shadowPointAtlasSlotResolution * ownPointAtlasRows();
+    if (target.ownPoint.isCreated() && target.ownPointWidth == width && target.ownPointHeight == height)
+        return true;
+    target.releasePoint();
+    if (width <= 0 || height <= 0 || !target.ownPoint.createFramebuffer(
+            TextureType::TEXTURE_2D, width, height,
+            TextureFilter::NEAREST, TextureFilter::NEAREST,
+            TextureWrap::CLAMP_TO_BORDER, TextureWrap::CLAMP_TO_BORDER, true)){
+        return false;
+    }
+    target.ownPointWidth = width;
+    target.ownPointHeight = height;
+    return true;
+}
+
+void RenderSystem::prepareCameraShadows(CameraShadows& target, const CameraComponent& camera, const Transform& cameraTransform, int terrainView, bool ownInstances){
+    target.lastUsed = drawCount;
+    target.cameraMask = camera.cullingMask;
+    target.terrainView = terrainView;
+    target.ownLightCameras = true;
+    target.ownShadowInstances = ownInstances;
+
+    auto lights = scene->getComponentArray<LightComponent>();
+    const int numLights = (int)lights->size();
+
+    // directional cascades fitted to this camera's frustum, by the light's base shadow slot
+    for (int i = 0; i < numLights; i++){
+        LightComponent& light = lights->getComponentFromIndex(i);
+        if (light.type != LightType::DIRECTIONAL || light.shadowMapIndex < 0 || light.shadowMapIndex >= MAX_SHADOW_ATLAS_SLOTS)
+            continue;
+        LightCameraSet& cameras = target.lightCameras[light.shadowMapIndex];
+        cameras.numCascades = light.numShadowCascades;
+
+        if (!hasShadows || !light.shadows || light.intensity <= 0)
+            continue;
+
+        Transform* transform = scene->findComponent<Transform>(lights->getEntity(i));
+        if (!transform){
+            for (int c = 0; c < MAX_SHADOWCASCADES; c++){
+                cameras.cameras[c] = light.cameras[c];
+                // fitted to the scene camera, not this one: every caster stays
+                cameras.cameras[c].hasReceiver = false;
+            }
+            continue;
+        }
+
+        Vector2 nearFar = light.shadowCameraNearFar;
+        if (light.automaticShadowCamera){
+            nearFar.x = camera.nearClip;
+            nearFar.y = (light.range == 0.0f) ? camera.farClip : light.range;
+        }
+        computeLightCameras(light, *transform, camera, cameraTransform, nearFar, cameras.cameras, cameras.numCascades);
+    }
+
+    // the atlas layout and every camera-independent value are the frame's
+    const CameraShadows& frame = primaryView.shadows;
+    target.fs_lighting = frame.fs_lighting;
+    target.vs_shadows = frame.vs_shadows;
+    target.fs_shadows = frame.fs_shadows;
+    target.fs_point_shadows = frame.fs_point_shadows;
+    processLights(target, numLights, camera, cameraTransform);
+
+    target.projectiveAtlas = nullptr;
+    target.pointAtlas = nullptr;
+    target.drawProjective = false;
+    target.drawPoint = false;
+
+    if (!hasShadows){
+        target.releaseProjective();
+        target.releasePoint();
+        target.releaseInstances();
+        return;
+    }
+
+    computeShadowKeys(target, wantedProjectiveKey, wantedPointKey);
+
+    if (wantedProjectiveKey.slots == 0){
+        target.releaseProjective();
+        target.releaseInstances();
+    }else if (FramebufferRender* source = findShadowSource(target, wantedProjectiveKey, true)){
+        target.projectiveAtlas = source;
+        if (source != &target.ownProjective){
+            target.releaseProjective();
+            target.releaseInstances();
+        }
+    }else if (ensureOwnShadowAtlas(target, true)){
+        target.projectiveKey = wantedProjectiveKey;
+        target.projectiveKey.epoch = 0; // until drawn
+        target.projectiveAtlas = &target.ownProjective;
+        target.drawProjective = true;
+    }
+
+    if (wantedPointKey.slots == 0){
+        target.releasePoint();
+    }else if (FramebufferRender* source = findShadowSource(target, wantedPointKey, false)){
+        target.pointAtlas = source;
+        if (source != &target.ownPoint){
+            target.releasePoint();
+        }
+    }else if (ensureOwnShadowAtlas(target, false)){
+        target.pointKey = wantedPointKey;
+        target.pointKey.epoch = 0; // until drawn
+        target.pointAtlas = &target.ownPoint;
+        target.drawPoint = true;
+    }
+
+    // a camera's own point atlas (this one's or another's) keeps only the rows in use
+    if (target.pointAtlas && target.pointAtlas != &shadowPointAtlasFramebuffer){
+        const int rows = ownPointAtlasRows();
+        for (int s = 0; s < MAX_POINT_SHADOW_ATLAS_SLOTS; s++){
+            const int col = s % SHADOW_POINT_ATLAS_COLS;
+            const int row = s / SHADOW_POINT_ATLAS_COLS;
+            target.fs_point_shadows.atlasRect[s] = (row < rows) ? Vector4(
+                (float)col / (float)SHADOW_POINT_ATLAS_COLS,
+                (float)row / (float)rows,
+                1.0f / (float)SHADOW_POINT_ATLAS_COLS,
+                1.0f / (float)rows) : Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+        }
+    }
+}
+
+void RenderSystem::buildCameraShadowInstances(CameraShadows& target){
+    if (!target.drawProjective || !target.ownShadowInstances)
+        return;
+
+    auto instmeshes = scene->getComponentArray<InstancedMeshComponent>();
+    if (instmeshes->size() == 0){
+        if (target.instanceBuild != 0)
+            target.releaseInstances();
+        return;
+    }
+
+    // the slots, their cameras and detail levels are target's
+    CameraShadows* previousShadows = passShadows;
+    passShadows = &target;
+
+    const std::vector<ShadowSlot>& slots = collectShadowSlots();
+
+    uint64_t shadowHash = 1469598103934665603ULL;
+    for (const ShadowSlot& shadow : slots){
+        const LightCamera& shadowCamera = lightCamera(shadow.lightIndex, *shadow.light, shadow.cameraIndex);
+        const unsigned char* bytes = reinterpret_cast<const unsigned char*>(&shadowCamera.lightViewProjectionMatrix);
+        for (size_t b = 0; b < sizeof(Matrix4); b++){
+            shadowHash = (shadowHash ^ bytes[b]) * 1099511628211ULL;
+        }
+        shadowHash = (shadowHash ^ (uint64_t)(shadow.slot + 1)) * 1099511628211ULL;
+    }
+
+    if (target.instanceBuild != 0 && target.instanceRevision == instanceRevision && target.instanceShadowHash == shadowHash){
+        passShadows = previousShadows;
+        return;
+    }
+    target.instanceBuild++;
+    target.instanceRevision = instanceRevision;
+    target.instanceShadowHash = shadowHash;
+
+    for (InstanceView& view : target.instanceViews){
+        view.data.clear();
+        view.vatData.clear();
+    }
+
+    for (int i = 0; i < instmeshes->size(); i++){
+        InstancedMeshComponent& instmesh = instmeshes->getComponentFromIndex(i);
+        Entity entity = instmeshes->getEntity(i);
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        Transform* transform = scene->findComponent<Transform>(entity);
+
+        CameraShadows::InstanceRanges& ranges = target.instanceRanges[entity];
+        ranges.build = target.instanceBuild;
+        ranges.slots.fill(InstanceViewRange());
+        if (!mesh || !transform || !mesh->loaded || !mesh->castShadows)
+            continue;
+
+        // the frame's list, the one this camera's color pass draws
+        const InstanceRenderData* instances = instmesh.renderInstances.data();
+        const InstanceVatRenderData* vat = instanceVatData(instmesh);
+        const InstanceBounds* bounds = instmesh.renderBounds.data();
+        const unsigned int count = (instmesh.renderBounds.size() < instmesh.numVisible) ? 0 : instmesh.numVisible;
+
+        for (const ShadowSlot& shadow : slots){
+            const LightCamera& shadowCamera = lightCamera(shadow.lightIndex, *shadow.light, shadow.cameraIndex);
+            LodView shadowLod = shadowLodView(*shadow.light, shadow.lightIndex, shadow.cameraIndex, shadow.slot);
+            Vector3 lightDirection = (shadow.light->type == LightType::DIRECTIONAL) ? shadow.light->worldDirection : Vector3::ZERO;
+            buildInstanceView(target.instanceViews[shadow.slot], ranges.slots[shadow.slot], instances, vat, bounds, count, instmesh, *mesh, *transform,
+                shadowCamera.nearFar.y, shadowCamera.frustumPlanes, shadowLod, shadowLod.origin, shadowLod.origin, lightDirection, InstanceOrder::NEAREST, false);
+        }
+    }
+
+    // batches that went away
+    for (auto it = target.instanceRanges.begin(); it != target.instanceRanges.end();){
+        if (it->second.build != target.instanceBuild){
+            it = target.instanceRanges.erase(it);
+        }else{
+            ++it;
+        }
+    }
+
+    for (InstanceView& view : target.instanceViews){
+        view.needUpload = !view.data.empty();
+    }
+    uploadInstanceViews(target.instanceViews, MAX_SHADOW_ATLAS_SLOTS);
+
+    passShadows = previousShadows;
+}
+
+void RenderSystem::renderCameraShadows(CameraShadows& target){
+    if (!target.drawProjective && !target.drawPoint)
+        return;
+
+    CameraShadows* previousShadows = passShadows;
+    passShadows = &target;
+    renderShadowMaps(target.drawProjective, target.drawPoint);
+    passShadows = previousShadows;
+
+    if (target.drawProjective)
+        target.projectiveKey.epoch = shadowEpoch;
+    if (target.drawPoint)
+        target.pointKey.epoch = shadowEpoch;
+    target.drawProjective = false;
+    target.drawPoint = false;
+}
 
 // The CDLOD cut a render-to-texture camera draws, selected before its shadow passes so
 // they draw the same terrain its color pass does
@@ -14080,6 +15718,11 @@ void RenderSystem::render2DShadows(){
 }
 
 void RenderSystem::draw(){
+    // the FLATTEN Canvas Group layers of the last frame: stats, unused targets released
+    trimCanvasLayers();
+    // UI particles whose Canvas Group alpha changed after this frame's update (the UI draw
+    // synced it): their render points again, so this frame shows it
+    refreshGroupFadedPoints();
     drawFramePasses();
     drawCameras(true);
 
@@ -14578,8 +16221,16 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     FramebufferRender* colorTarget = nullptr;
     bool colorPassViewportApplied = false;
     camera.render.setLabel(pass.renderToTexture ? "camera rtt" : (isBaseLayer() ? "camera" : "camera layer"));
+    // the size of the colour pass target (the FLATTEN Canvas Group layers match it)
+    unsigned int colorTargetWidth = 0;
+    unsigned int colorTargetHeight = 0;
+    passCanvasLayers.clear();
     auto startColorPass = [&](FramebufferRender* framebuffer){
         colorTarget = framebuffer;
+        colorTargetWidth = (unsigned int)framebuffer->getColorTexture().getWidth();
+        colorTargetHeight = (unsigned int)framebuffer->getColorTexture().getHeight();
+        // before the pass: the layers are passes of their own
+        renderCanvasGroupLayers(camera, cameraTransform, colorPassViewport, colorTargetWidth, colorTargetHeight, perCameraMVP, cullingMask);
         if (passMsaa > 1){
             // the multisampled target the size of the one it resolves into
             TextureRender& resolve = framebuffer->getColorTexture();
@@ -14658,6 +16309,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         colorPassViewport = Rect(0, 0, (float)rv().msaaResolveFramebuffer.getWidth(), (float)rv().msaaResolveFramebuffer.getHeight());
         startColorPass(&rv().msaaResolveFramebuffer.getRender());
     }else if (!pass.renderToTexture){
+        colorPassViewport = viewRect;
         if (target){
             if (!target->isCreated()){
                 JE_GPU_ALLOC_SCOPE(RenderTargets, "View target");
@@ -14665,9 +16317,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             }
             startColorPass(&target->getRender());
         }else{
+            colorTargetWidth = (unsigned int)System::instance().getScreenWidth();
+            colorTargetHeight = (unsigned int)System::instance().getScreenHeight();
+            renderCanvasGroupLayers(camera, cameraTransform, colorPassViewport, colorTargetWidth, colorTargetHeight, perCameraMVP, cullingMask);
             camera.render.startRenderPass();
         }
-        colorPassViewport = viewRect;
         camera.render.applyViewport(colorPassViewport);
         colorPassViewportApplied = true;
     }else{
@@ -14764,7 +16418,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 opaqueRenders.push_back({entity, &mesh, instmesh, terrain, tilemap, &transform, distance, mesh.opaqueSortPriority, (uint32_t)opaqueRenders.size()});
             }
             if (mesh.isTransparent() && distanceSort){
-                transparentRenders.push_back({TransparentRenderType::MESH, entity, &mesh, nullptr, instmesh, terrain, tilemap, &transform, objectDistance(transform), mesh.transparentSortPriority, transparentOrder++});
+                // a Particle System's sorting fudge moves it in the queue (lower: on top)
+                const bool particles = instmesh && instmesh->particle.alignment != InstanceAlignment::None;
+                const float fudge = particles ? instmesh->particle.sortingFudge : 0.0f;
+                const int priority = mesh.transparentSortPriority + (particles ? instmesh->particle.sortPriority : 0);
+                transparentRenders.push_back({TransparentRenderType::MESH, entity, &mesh, nullptr, instmesh, terrain, tilemap, &transform, objectDistance(transform) + fudge, priority, transparentOrder++});
             }
         }
 
@@ -14844,6 +16502,33 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         screenFluids->drawScreen(targetFormatFor(colorPip, passMsaa), isRenderingFlipped(camera));
     };
 
+    // A Trail Renderer: drawn after its GameObject's own renderer (whatever that is), in the
+    // transparent queue when it blends and the pass sorts, else in place (a 2D pass: in the
+    // hierarchy order, like sprites)
+    auto drawOrQueueTrail = [&](Entity entity, Signature signature, Transform& transform){
+        if (!signature.test(scene->getComponentId<TrailRendererComponent>()))
+            return;
+        TrailRendererComponent& trail = scene->getComponent<TrailRendererComponent>(entity);
+        if (!transform.visible || !trail.loaded || trail.ribbon.indexCount == 0 || !isTrailRenderActive(entity, trail, cullingMask))
+            return;
+        if (trail.transparent && distanceSort){
+            if (!trail.worldAABB.isNull() && !isInsideCamera(camera, trail.worldAABB))
+                return;
+            const Vector3 centre = trail.worldAABB.isNull() ? transform.worldPosition : trail.worldAABB.getCenter();
+            transparentRenders.push_back({TransparentRenderType::TRAIL, entity, nullptr, nullptr, nullptr, nullptr, nullptr, &transform,
+                                          (centre - cameraTransform.worldPosition).length(), trail.sortPriority + trail.queuePriority, transparentOrder++, nullptr, &trail});
+        }else{
+            drawTrail(entity, trail, transform, camera, cameraTransform, colorPip);
+        }
+    };
+    // FLATTEN Canvas Groups: the UI of a branch drawn into a layer (composited at its group)
+    // or faded out whole (alpha 0) is not drawn again below
+    const ComponentId canvasGroupId = scene->getComponentId<CanvasGroupComponent>();
+    const bool hasCanvasGroups = scene->getComponentArray<CanvasGroupComponent>()->size() > 0;
+    size_t canvasSkipLast = 0;
+    bool canvasSkipping = false;
+    Entity canvasSkipGroup = NULL_ENTITY;
+
     for (int i = 0; i < transforms->size(); i++){
         Transform& transform = transforms->getComponentFromIndex(i);
         Entity entity = transforms->getEntity(i);
@@ -14852,6 +16537,31 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         if (signature.test(scene->getComponentId<CameraComponent>())){
             continue;
         }
+
+        if (canvasSkipping && (size_t)i > canvasSkipLast){
+            canvasSkipping = false;
+        }
+        if (hasCanvasGroups && !canvasSkipping && signature.test(canvasGroupId)){
+            const CanvasGroupComponent& group = scene->getComponent<CanvasGroupComponent>(entity);
+            if (group.enabled && group.renderMode == CanvasGroupRenderMode::FLATTEN){
+                auto layer = passCanvasLayers.find(entity);
+                if (layer != passCanvasLayers.end()){
+                    // the layer goes where the group is, under its parent's scissor
+                    drawCanvasLayer(entity, layer->second, group.layerAlpha, colorPip, passMsaa, colorPassViewport, colorTargetWidth, colorTargetHeight, camera.render);
+                    canvasSkipping = true;
+                    canvasSkipGroup = entity;
+                    canvasSkipLast = scene->findBranchLastIndex(entity);
+                }else if (group.layerAlpha <= 0.0f){
+                    // CSS opacity 0: the whole subtree, stencil writers included
+                    canvasGroupRenderStats.skippedBranches++;
+                    canvasSkipping = true;
+                    canvasSkipGroup = entity;
+                    canvasSkipLast = scene->findBranchLastIndex(entity);
+                }
+            }
+        }
+        // what a layer drew (or a group at 0 hides): its scissors still pass down
+        const bool canvasSkipped = canvasSkipping;
 
         // (a UI element this pass draws: not one hidden, inactive or culled)
         if (screenFluidsPending && signature.test(scene->getComponentId<UIComponent>()) && transform.visible &&
@@ -14867,6 +16577,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
 
         if (distanceSort && signature.test(scene->getComponentId<MeshComponent>())){
+            drawOrQueueTrail(entity, signature, transform);
             continue; // drawn above
         }
 
@@ -14881,57 +16592,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
         // apply scissor on UI
         if (signature.test(scene->getComponentId<RectTransformComponent>())){
-            RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
-            PassScissor scissor = passScissor(transform, layout);
-
-            Rect parentScissor;
-            bool parentScissorActive = false;
-
-            if (transform.parent != NULL_ENTITY){
-                Signature parentSignature = scene->getSignature(transform.parent);
-                if (parentSignature.test(scene->getComponentId<RectTransformComponent>())){
-                    RectTransformComponent& parentLayout = scene->getComponent<RectTransformComponent>(transform.parent);
-                    Transform& parentTransform = scene->getComponent<Transform>(transform.parent);
-                    PassScissor parent = passScissor(parentTransform, parentLayout);
-
-                    parentScissorActive = *parent.active;
-                    parentScissor = *parent.rect;
-                }
-            }
-
-            // recomputed every pass, so children never get a stale rect
-            *scissor.active = false;
-
-            bool inheritsScissor = parentScissorActive && !layout.ignoreScissor;
-            bool clippedAway = false;
-
-            if (inheritsScissor){
-                *scissor.rect = parentScissor;
-                *scissor.active = true;
-
-                if (parentScissor.getWidth() <= 0 || parentScissor.getHeight() <= 0){
-                    // sokol widens a scissor to 1x1 on Metal, Vulkan and WebGPU, so an
-                    // empty rect would leak a pixel: skip the draw instead
-                    clippedAway = true;
-                }else{
-                    camera.render.applyScissor(parentScissor);
-
-                    hasActiveScissor = true;
-                }
-            }
-
-            if (signature.test(scene->getComponentId<ImageComponent>())){
-                ImageComponent& img = scene->getComponent<ImageComponent>(entity);
-
-                *scissor.rect = getScissorRect(layout, img, transform, colorPassViewport);
-                // applied or not: a clipped away element still passes the empty rect down
-                if (inheritsScissor){
-                    *scissor.rect = intersectScissor(*scissor.rect, parentScissor);
-                }
-                *scissor.active = true;
-            }
-
-            if (clippedAway)
+            if (applyPassScissor(entity, signature, transform, camera.render, colorPassViewport, hasActiveScissor))
                 continue;
         }
 
@@ -14966,7 +16627,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }else if (signature.test(scene->getComponentId<UIComponent>())){
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
 
-            if (transform.visible && renderActive && !samplesCameraTarget(camera, ui.texture))
+            if (transform.visible && renderActive && !canvasSkipped && !samplesCameraTarget(camera, ui.texture) &&
+                    !uiDrawSkipped(ui.color, ui.groupAlpha, ui.drawBlendMode, ui.writesStencil))
                 drawUI(ui, transform, colorPip,
                        (frameFluids && frameFluids->hasMaterialFluids()) ? frameFluids->getMaterialTexture(entity) : nullptr);
 
@@ -14977,19 +16639,34 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             // shared across all cameras and sokol only allows one sg_update_buffer per
             // buffer per frame (VALIDATE_UPDATEBUF_ONCE). Every camera reuses the main
             // camera's ordering computed in update().
-            if (transform.visible && renderActive && !samplesCameraTarget(camera, points.texture)){
+            // (UI particles draw here, over a FLATTEN layer of their group: hidden only at its alpha 0)
+            if (transform.visible && renderActive && !(canvasSkipped && isUIParticle(entity) && !passCanvasLayers.count(canvasSkipGroup)) &&
+                    !samplesCameraTarget(camera, points.texture)){
                 if (!points.isTransparent() || !distanceSort){
                     drawPoints(entity, points, transform, camera, cameraTransform, colorPip);
                 }else{
-                    transparentRenders.push_back({TransparentRenderType::POINTS, entity, nullptr, &points, nullptr, nullptr, nullptr, &transform, objectDistance(transform), points.sortPriority, transparentOrder++});
+                    transparentRenders.push_back({TransparentRenderType::POINTS, entity, nullptr, &points, nullptr, nullptr, nullptr, &transform, objectDistance(transform) + points.sortingFudge, points.sortPriority + points.particleSortPriority, transparentOrder++});
                 }
             }
 
         }else if (signature.test(scene->getComponentId<LineRendererComponent>())){
             LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
 
-            if (transform.visible && renderActive)
-                drawLines(lines, transform, cameraTransform, colorPip);
+            if (transform.visible && renderActive){
+                // a blended thick line sorts with the transparent renderers; a hairline and an
+                // opaque ribbon draw in place, as lines always did
+                if (lines.loadedRibbon && lines.transparent && distanceSort){
+                    const AABB bounds = linesWorldBounds(lines, transform);
+                    if (bounds.isNull() || isInsideCamera(camera, bounds)){
+                        const float distance = (lines.useWorldSpace && !bounds.isNull())
+                            ? (bounds.getCenter() - cameraTransform.worldPosition).length() : objectDistance(transform);
+                        transparentRenders.push_back({TransparentRenderType::LINES, entity, nullptr, nullptr, nullptr, nullptr, nullptr, &transform,
+                                                      distance, lines.sortPriority + lines.queuePriority, transparentOrder++, &lines, nullptr});
+                    }
+                }else{
+                    drawLines(entity, lines, transform, camera, cameraTransform, colorPip);
+                }
+            }
 
         }
 
@@ -15007,6 +16684,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 transparentRenders.push_back(data);
             }
         }
+
+        drawOrQueueTrail(entity, signature, transform);
 
         if (hasActiveScissor){
             // screen pixels would overflow an offscreen SSR / post-process attachment
@@ -15028,6 +16707,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             drawPoints(renderData.entity, *renderData.points, *renderData.transform, camera, cameraTransform, colorPip);
         }else if (renderData.type == TransparentRenderType::PARTICLES){
             drawParticles(renderData.entity, *renderData.particles, *renderData.transform, camera, cameraTransform, colorPip);
+        }else if (renderData.type == TransparentRenderType::LINES){
+            drawLines(renderData.entity, *renderData.lines, *renderData.transform, camera, cameraTransform, colorPip);
+        }else if (renderData.type == TransparentRenderType::TRAIL){
+            drawTrail(renderData.entity, *renderData.trail, *renderData.transform, camera, cameraTransform, colorPip);
         }
     }
 
@@ -15126,6 +16809,435 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     passHidesEditorHidden = false;
 }
 
+// ---------------------------------------------------------------------------------------
+// FLATTEN Canvas Groups (ui canvas group spec 7.10)
+// ---------------------------------------------------------------------------------------
+
+namespace {
+    // the HTML UI's passthrough composite (htmlui_post: a premultiplied image times params.x)
+    struct CanvasCompositeVs{
+        float uvTransform[4] = {1.0f, 1.0f, 0.0f, 0.0f};
+    };
+    struct CanvasCompositeFs{
+        float params[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+        float texCoordMinMax[4] = {0.0f, 0.0f, 1.0f, 1.0f};
+        float color[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        float weights[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+        float colorMatrix[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+    };
+    constexpr size_t CANVAS_LAYER_MAX_UNUSED_FRAMES = 120;
+}
+
+void RenderSystem::refreshGroupFadedPoints(){
+    auto pointsArray = scene->getComponentArray<PointsComponent>();
+    if (pointsArray->size() == 0)
+        return;
+    const Entity cameraEntity = scene->getCamera();
+    CameraComponent* camera = scene->findComponent<CameraComponent>(cameraEntity);
+    Transform* cameraTransform = scene->findComponent<Transform>(cameraEntity);
+    for (size_t i = 0; i < pointsArray->size(); i++){
+        PointsComponent& points = pointsArray->getComponentFromIndex(i);
+        if (!points.needUpdateGroupAlpha)
+            continue;
+        points.needUpdateGroupAlpha = false;
+        Transform* transform = scene->findComponent<Transform>(pointsArray->getEntity(i));
+        if (!points.loaded || !transform || !camera || !cameraTransform)
+            continue;
+        updatePoints(points, *transform, *camera, *cameraTransform);
+        if (points.isTransparent())
+            sortPoints(points, *transform, *camera, *cameraTransform);
+    }
+}
+
+bool RenderSystem::isUIParticle(Entity entity) const{
+    Entity current = entity;
+    int guard = 0;
+    while (current != NULL_ENTITY && guard++ < 4096){
+        if (scene->findComponent<RectTransformComponent>(current))
+            return true;
+        const Transform* transform = scene->findComponent<Transform>(current);
+        current = transform ? transform->parent : NULL_ENTITY;
+    }
+    return false;
+}
+
+bool RenderSystem::loadCanvasComposite(){
+    if (canvasCompositeLoaded)
+        return true;
+    if (!Engine::isViewLoaded())
+        return false;
+    if (!canvasCompositeShader || !canvasCompositeShader->isCreated()){
+        canvasCompositeShader = ShaderPool::get(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH));
+    }
+    // still compiling (or missing from the build: logged by the pool): asked again next frame
+    if (!canvasCompositeShader || !canvasCompositeShader->isCreated())
+        return false;
+
+    ShaderData& data = canvasCompositeShader->shaderData;
+    canvasCompositeVsSlot = data.getUniformBlockIndexByName("u_vs_htmluiPost");
+    canvasCompositeFsSlot = data.getUniformBlockIndexByName("u_fs_htmluiPost");
+    canvasCompositeTextureSlot = data.getTextureIndexByName("u_htmluiPostTex");
+    // vertexless: a triangle from gl_VertexIndex over the viewport
+    canvasCompositeObject.beginLoad(PrimitiveType::TRIANGLES);
+    canvasCompositeObject.setShader(canvasCompositeShader.get());
+    canvasCompositeObject.addTexture(canvasCompositeTextureSlot, ShaderStageType::FRAGMENT, &emptyWhite);
+    if (!canvasCompositeObject.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::NONE)){
+        Log::error("Canvas Group: could not load the Flatten composite");
+        return false;
+    }
+    canvasCompositeLoaded = true;
+    return true;
+}
+
+void RenderSystem::destroyCanvasLayers(){
+    for (auto& layer : canvasLayers){
+        layer->framebuffer.destroy();
+    }
+    canvasLayers.clear();
+    passCanvasLayers.clear();
+    if (canvasCompositeLoaded){
+        canvasCompositeObject.destroy();
+        canvasCompositeLoaded = false;
+    }
+    if (canvasCompositeShader){
+        canvasCompositeShader.reset();
+        ShaderPool::remove(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH));
+    }
+}
+
+void RenderSystem::trimCanvasLayers(){
+    canvasLayerFrame++;
+    for (size_t i = 0; i < canvasLayers.size();){
+        CanvasLayer& layer = *canvasLayers[i];
+        if (canvasLayerFrame - layer.lastUsedFrame > CANVAS_LAYER_MAX_UNUSED_FRAMES){
+            layer.framebuffer.destroy();
+            canvasLayers.erase(canvasLayers.begin() + i);
+            continue;
+        }
+        i++;
+    }
+    canvasGroupRenderStats.pooled = (uint32_t)canvasLayers.size();
+    canvasGroupRenderStats.targetsCreated = canvasLayerTargetsCreated;
+    lastCanvasGroupRenderStats = canvasGroupRenderStats;
+    canvasGroupRenderStats = CanvasGroupRenderStats();
+}
+
+void RenderSystem::renderCanvasGroupLayers(CameraComponent& camera, Transform& cameraTransform, const Rect& colorPassViewport,
+                                           unsigned int targetWidth, unsigned int targetHeight, bool perCameraMVP, uint32_t cullingMask){
+    passCanvasLayers.clear();
+    auto groups = scene->getComponentArray<CanvasGroupComponent>();
+    if (groups->size() == 0 || targetWidth == 0 || targetHeight == 0)
+        return;
+    // the last pass composited its layers: their targets are free again
+    for (auto& layer : canvasLayers){
+        layer->inUse = false;
+        layer->usedRects.clear();
+    }
+
+    auto transforms = scene->getComponentArray<Transform>();
+    // the layered groups this pass draws, innermost (highest index) first: a nested layer is
+    // ready when its parent's is drawn
+    std::vector<std::pair<size_t, Entity>> layered;
+    for (size_t i = 0; i < groups->size(); i++){
+        const CanvasGroupComponent& group = groups->getComponentFromIndex(i);
+        const Entity entity = groups->getEntity(i);
+        if (!group.enabled || group.renderMode != CanvasGroupRenderMode::FLATTEN || !group.layered || !transforms->hasEntity(entity))
+            continue;
+        if (!scene->isEntityActiveInHierarchy(entity) || !scene->getComponent<Transform>(entity).visible)
+            continue;
+        layered.push_back({transforms->getIndex(entity), entity});
+    }
+    if (layered.empty())
+        return;
+    std::sort(layered.begin(), layered.end(), [](const auto& a, const auto& b){ return a.first > b.first; });
+
+    if (!loadCanvasComposite()){
+        // drawn Per Element meanwhile (UISystem's groupAlpha is the chain's product)
+        canvasGroupRenderStats.fallbacks += (uint32_t)layered.size();
+        return;
+    }
+
+    const PipelineType layerPip = camera.depthTest ? PIP_RTT : PIP_RTT_NODEPTH;
+    const ComponentId uiId = scene->getComponentId<UIComponent>();
+    const ComponentId rectId = scene->getComponentId<RectTransformComponent>();
+    const ComponentId groupId = scene->getComponentId<CanvasGroupComponent>();
+    const ComponentId cameraId = scene->getComponentId<CameraComponent>();
+    // what an element of a layer draws: visible, active, in the camera's layers, not faded out
+    auto drawsInLayer = [&](Entity entity, Signature signature, Transform& transform) -> UIComponent* {
+        if (!signature.test(uiId) || signature.test(cameraId) || !transform.visible)
+            return nullptr;
+        UIComponent& ui = scene->getComponent<UIComponent>(entity);
+        if (!isRenderActive(entity, signature) || !isLayerVisible(entity, cullingMask) || samplesCameraTarget(camera, ui.texture) ||
+                uiDrawSkipped(ui.color, ui.groupLayerAlpha, ui.drawBlendMode, ui.writesStencil))
+            return nullptr;
+        return &ui;
+    };
+    auto unite = [](Rect& into, bool& has, const Rect& rect){
+        if (rect.getWidth() <= 0.0f || rect.getHeight() <= 0.0f)
+            return;
+        if (!has){
+            into = rect;
+            has = true;
+            return;
+        }
+        const float x0 = std::min(into.getX(), rect.getX());
+        const float y0 = std::min(into.getY(), rect.getY());
+        const float x1 = std::max(into.getX() + into.getWidth(), rect.getX() + rect.getWidth());
+        const float y1 = std::max(into.getY() + into.getHeight(), rect.getY() + rect.getHeight());
+        into = Rect(x0, y0, x1 - x0, y1 - y0);
+    };
+    auto overlaps = [](const Rect& a, const Rect& b){
+        // a pixel apart counts (the bounds are rounded out when composited)
+        return a.getX() <= b.getX() + b.getWidth() + 1.0f && b.getX() <= a.getX() + a.getWidth() + 1.0f &&
+               a.getY() <= b.getY() + b.getHeight() + 1.0f && b.getY() <= a.getY() + a.getHeight() + 1.0f;
+    };
+
+    // the groups whose layer failed: their ancestors' layers fail too (an inner subtree drawn
+    // Per Element cannot sit in a layer), and so do the layers inside them (composited at an
+    // alpha relative to the missing layer, they would be too opaque)
+    std::vector<size_t> failed;
+    auto fail = [&](size_t first, size_t last){
+        failed.push_back(first);
+        canvasGroupRenderStats.fallbacks++;
+        for (auto it = passCanvasLayers.begin(); it != passCanvasLayers.end();){
+            const size_t index = transforms->getIndex(it->first);
+            if (index > first && index <= last){
+                it = passCanvasLayers.erase(it);
+                canvasGroupRenderStats.layers--;
+            }else{
+                ++it;
+            }
+        }
+    };
+
+    for (const auto& item : layered){
+        const size_t first = item.first;
+        const Entity groupEntity = item.second;
+        const size_t last = scene->findBranchLastIndex(groupEntity);
+
+        bool ready = true;
+        for (size_t f : failed){
+            if (f > first && f <= last)
+                ready = false;
+        }
+        // every element must have the layer's pipelines (one loaded before the scene had a
+        // Canvas Group reloads with them: Per Element this frame); the subtree's bounds, in
+        // the pass target's pixels: what the layer covers (nothing this camera draws: no layer)
+        Rect bounds;
+        bool hasBounds = false;
+        for (size_t i = first; i <= last && ready; i++){
+            Transform& transform = transforms->getComponentFromIndex(i);
+            const Entity entity = transforms->getEntity(i);
+            const Signature signature = scene->getSignature(entity);
+            if (perCameraMVP)
+                updateMVP(i, transform, camera, cameraTransform);
+            UIComponent* ui = drawsInLayer(entity, signature, transform);
+            if (!ui)
+                continue;
+            if (ui->loaded && !(ui->loadedPipelines & layerPip)){
+                ui->needReload = true;
+                ready = false;
+                break;
+            }
+            const Vector3 minimum = ui->aabb.getMinimum();
+            const Vector3 maximum = ui->aabb.getMaximum();
+            unite(bounds, hasBounds, projectLocalRect(objectMVP(transform), minimum.x, minimum.y, maximum.x, maximum.y, colorPassViewport));
+        }
+        if (!ready){
+            fail(first, last);
+            continue;
+        }
+        if (!hasBounds)
+            continue;
+
+        // a target the size of the pass target (so scissors and viewport are the pass's): one
+        // this pass already uses when the layers it holds are elsewhere on screen (siblings
+        // share it), else a free one of that size, else a free one resized, else a new one
+        size_t layerIndex = canvasLayers.size();
+        bool shared = false;
+        for (size_t l = 0; l < canvasLayers.size() && layerIndex == canvasLayers.size(); l++){
+            CanvasLayer& candidate = *canvasLayers[l];
+            if (!candidate.inUse || candidate.framebuffer.getWidth() != targetWidth || candidate.framebuffer.getHeight() != targetHeight)
+                continue;
+            bool clear = true;
+            for (const Rect& used : candidate.usedRects){
+                clear = clear && !overlaps(used, bounds);
+            }
+            if (clear){
+                layerIndex = l;
+                shared = true;
+            }
+        }
+        for (int pass = 0; pass < 2 && layerIndex == canvasLayers.size(); pass++){
+            for (size_t l = 0; l < canvasLayers.size(); l++){
+                CanvasLayer& candidate = *canvasLayers[l];
+                const bool sized = candidate.framebuffer.isCreated() && candidate.framebuffer.getWidth() == targetWidth &&
+                                   candidate.framebuffer.getHeight() == targetHeight;
+                if (!candidate.inUse && (pass == 1 || sized)){
+                    layerIndex = l;
+                    break;
+                }
+            }
+        }
+        if (layerIndex == canvasLayers.size()){
+            canvasLayers.push_back(std::make_unique<CanvasLayer>());
+        }
+        CanvasLayer& layer = *canvasLayers[layerIndex];
+        Framebuffer& framebuffer = layer.framebuffer;
+        if (!framebuffer.isCreated() || framebuffer.getWidth() != targetWidth || framebuffer.getHeight() != targetHeight){
+            framebuffer.destroy();
+            framebuffer.setWidth(targetWidth);
+            framebuffer.setHeight(targetHeight);
+            framebuffer.setMinFilter(TextureFilter::NEAREST);
+            framebuffer.setMagFilter(TextureFilter::NEAREST);
+            framebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+            framebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+            framebuffer.create();
+            canvasLayerTargetsCreated++;
+        }
+        if (!framebuffer.isCreated()){
+            fail(first, last);
+            continue;
+        }
+        layer.inUse = true;
+        layer.lastUsedFrame = canvasLayerFrame;
+        layer.usedRects.push_back(bounds);
+
+        // the scissors of the group's ancestors, root first (this pass has not drawn them yet)
+        std::vector<size_t> ancestors;
+        Entity parent = scene->getComponent<Transform>(groupEntity).parent;
+        while (parent != NULL_ENTITY && transforms->hasEntity(parent) && ancestors.size() < 4096){
+            ancestors.push_back(transforms->getIndex(parent));
+            parent = scene->getComponent<Transform>(parent).parent;
+        }
+
+        // the first layer of a target clears it (transparent); a sibling sharing it keeps the
+        // others' pixels: its own part was cleared then and never drawn
+        const LoadAction load = shared ? LoadAction::LOAD : LoadAction::CLEAR;
+        canvasLayerPass.setColorActions(load, StoreAction::STORE, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+        canvasLayerPass.setDepthStencilActions(load, StoreAction::STORE);
+        canvasLayerPass.setLabel("canvas group layer");
+        canvasLayerPass.startRenderPass(&framebuffer.getRender());
+        canvasLayerPass.applyViewport(colorPassViewport);
+
+        bool hasActiveScissor = false;
+        for (size_t a = ancestors.size(); a-- > 0;){
+            const size_t index = ancestors[a];
+            Transform& transform = transforms->getComponentFromIndex(index);
+            const Entity entity = transforms->getEntity(index);
+            const Signature signature = scene->getSignature(entity);
+            if (perCameraMVP)
+                updateMVP(index, transform, camera, cameraTransform);
+            if (signature.test(rectId))
+                applyPassScissor(entity, signature, transform, canvasLayerPass, colorPassViewport, hasActiveScissor);
+        }
+
+        PassCanvasLayer passLayer;
+        passLayer.layer = layerIndex;
+        passLayer.bounds = bounds;
+        passLayer.hasBounds = true;
+
+        size_t skipLast = 0;
+        bool skipping = false;
+        for (size_t i = first; i <= last; i++){
+            Transform& transform = transforms->getComponentFromIndex(i);
+            const Entity entity = transforms->getEntity(i);
+            const Signature signature = scene->getSignature(entity);
+            if (skipping && i > skipLast)
+                skipping = false;
+
+            // a nested layer (drawn before, innermost first) goes where its group is
+            if (!skipping && i > first && signature.test(groupId)){
+                auto nested = passCanvasLayers.find(entity);
+                const CanvasGroupComponent& group = scene->getComponent<CanvasGroupComponent>(entity);
+                if (nested != passCanvasLayers.end()){
+                    drawCanvasLayer(entity, nested->second, group.layerAlpha, layerPip, 1, colorPassViewport, targetWidth, targetHeight, canvasLayerPass);
+                    skipping = true;
+                    skipLast = scene->findBranchLastIndex(entity);
+                }else if (group.enabled && group.renderMode == CanvasGroupRenderMode::FLATTEN && group.layerAlpha <= 0.0f){
+                    skipping = true;
+                    skipLast = scene->findBranchLastIndex(entity);
+                }
+            }
+
+            bool clippedAway = false;
+            if (signature.test(rectId))
+                clippedAway = applyPassScissor(entity, signature, transform, canvasLayerPass, colorPassViewport, hasActiveScissor);
+
+            if (!clippedAway && !skipping){
+                if (UIComponent* ui = drawsInLayer(entity, signature, transform)){
+                    drawUI(*ui, transform, layerPip,
+                           (frameFluids && frameFluids->hasMaterialFluids()) ? frameFluids->getMaterialTexture(entity) : nullptr, true);
+                }
+            }
+
+            if (hasActiveScissor){
+                canvasLayerPass.applyScissor(colorPassViewport);
+                hasActiveScissor = false;
+            }
+        }
+        canvasLayerPass.endRenderPass();
+
+        passCanvasLayers[groupEntity] = passLayer;
+        canvasGroupRenderStats.layers++;
+        if (shared)
+            canvasGroupRenderStats.sharedTargets++;
+    }
+}
+
+void RenderSystem::drawCanvasLayer(Entity group, const PassCanvasLayer& layer, float alpha, PipelineType pipelineType, int msaaSamples,
+                                   const Rect& colorPassViewport, unsigned int targetWidth, unsigned int targetHeight, CameraRender& render){
+    if (!canvasCompositeLoaded || layer.layer >= canvasLayers.size() || !layer.hasBounds || targetWidth == 0 || targetHeight == 0)
+        return;
+
+    // the group's own place: its parent's scissor, unless it ignores it
+    Rect clip = intersectScissor(layer.bounds, colorPassViewport);
+    Transform* transform = scene->findComponent<Transform>(group);
+    RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(group);
+    if (transform && transform->parent != NULL_ENTITY && !(layout && layout->ignoreScissor)){
+        Transform* parentTransform = scene->findComponent<Transform>(transform->parent);
+        RectTransformComponent* parentLayout = scene->findComponent<RectTransformComponent>(transform->parent);
+        if (parentTransform && parentLayout){
+            PassScissor parent = passScissor(*parentTransform, *parentLayout);
+            if (*parent.active)
+                clip = intersectScissor(clip, *parent.rect);
+        }
+    }
+    // rounded out to whole pixels
+    const float x0 = std::floor(clip.getX());
+    const float y0 = std::floor(clip.getY());
+    const float x1 = std::ceil(clip.getX() + clip.getWidth());
+    const float y1 = std::ceil(clip.getY() + clip.getHeight());
+    if (x1 - x0 <= 0.0f || y1 - y0 <= 0.0f)
+        return;
+
+    PipelineState state;
+    state.target = targetFormatFor(pipelineType, msaaSamples);
+    state.blend = BlendMode::PREMULTIPLIED;
+    if (!canvasCompositeObject.beginDraw(state))
+        return;
+    render.applyScissor(Rect(x0, y0, x1 - x0, y1 - y0));
+
+    // the viewport's part of the layer, rows as stored (GL counts them from the bottom)
+    const float w = (float)targetWidth;
+    const float h = (float)targetHeight;
+    const float rowStart = Engine::isOpenGL() ? colorPassViewport.getY() : h - colorPassViewport.getY() - colorPassViewport.getHeight();
+    CanvasCompositeVs vs;
+    vs.uvTransform[0] = colorPassViewport.getWidth() / w;
+    vs.uvTransform[1] = colorPassViewport.getHeight() / h;
+    vs.uvTransform[2] = colorPassViewport.getX() / w;
+    vs.uvTransform[3] = rowStart / h;
+    CanvasCompositeFs fs;
+    fs.params[0] = std::clamp(alpha, 0.0f, 1.0f);
+
+    canvasCompositeObject.addTexture(canvasCompositeTextureSlot, ShaderStageType::FRAGMENT, &canvasLayers[layer.layer]->framebuffer.getRender().getColorTexture());
+    canvasCompositeObject.applyUniformBlock(canvasCompositeVsSlot, sizeof(CanvasCompositeVs), &vs);
+    canvasCompositeObject.applyUniformBlock(canvasCompositeFsSlot, sizeof(CanvasCompositeFs), &fs);
+    canvasCompositeObject.draw(0, 3, 1);
+
+    render.applyScissor(colorPassViewport);
+}
+
 void RenderSystem::onComponentAdded(Entity entity, ComponentId componentId) {
     if (componentId == scene->getComponentId<LightComponent>()) {
         needReloadMeshVariants();
@@ -15175,6 +17287,9 @@ void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
     } else if (componentId == scene->getComponentId<LineRendererComponent>()) {
         LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
         destroyLines(entity, lines);
+    } else if (componentId == scene->getComponentId<TrailRendererComponent>()) {
+        TrailRendererComponent& trail = scene->getComponent<TrailRendererComponent>(entity);
+        destroyTrail(entity, trail);
     } else if (componentId == scene->getComponentId<SkyboxComponent>()) {
         SkyboxComponent& sky = scene->getComponent<SkyboxComponent>(entity);
         destroySky(entity, sky);
@@ -15644,6 +17759,18 @@ void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, con
         billboardRotation = transform.worldRotation.inverse() * billboardRotation;
     }
 
+    // a version 2 Particle System's instances, aligned for this camera
+    const bool particleAligned = instmesh.particle.alignment != InstanceAlignment::None;
+    Matrix4 particleInverseLinear;
+    Quaternion particleCameraRotation;
+    Vector3 particleCameraPosition;
+    if (particleAligned){
+        particleInverseLinear = inverseLinear(transform.modelMatrix);
+        const Matrix4 cameraWorld = camera.viewMatrix.inverse();
+        particleCameraRotation.fromRotationMatrix(cameraWorld);
+        particleCameraPosition = cameraWorld * Vector3(0.0f, 0.0f, 0.0f);
+    }
+
     AABB localAABB;
     localAABB.setNull();
 
@@ -15661,8 +17788,14 @@ void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, con
         if (cullEnd >= 0.0f && dx * dx + dz * dz > cullRadiusSquared)
             continue;
 
-        Matrix4 rotationMatrix = instmesh.instancedBillboard ? billboardRotation.getRotationMatrix() : instance.rotation.getRotationMatrix();
-        Matrix4 instanceMatrix = Matrix4::translateMatrix(instance.position) * rotationMatrix * Matrix4::scaleMatrix(instance.scale);
+        Matrix4 instanceMatrix;
+        if (particleAligned){
+            instanceMatrix = particleInstanceMatrix(instance, instmesh.particle, transform, particleInverseLinear,
+                                                    particleCameraRotation, particleCameraPosition, camera);
+        }else{
+            Matrix4 rotationMatrix = instmesh.instancedBillboard ? billboardRotation.getRotationMatrix() : instance.rotation.getRotationMatrix();
+            instanceMatrix = Matrix4::translateMatrix(instance.position) * rotationMatrix * Matrix4::scaleMatrix(instance.scale);
+        }
 
         InstanceRenderData renderData{};
         renderData.instanceMatrix = instanceMatrix;
@@ -15762,7 +17895,7 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
         const InstanceVatRenderData* vat;
         const InstanceBounds* bounds;
         unsigned int count;
-        source.own = instmesh.instancedBillboard || instanceFadeCullEnd(instmesh, *mesh, *scene) >= 0.0f;
+        source.own = instmesh.instancedBillboard || instmesh.particle.cameraDependent() || instanceFadeCullEnd(instmesh, *mesh, *scene) >= 0.0f;
         if (source.own){
             buildInstanceList(instmesh, *mesh, *transform, camera, source.fadeEyeLocal, source);
             instances = source.instances.data();
@@ -15779,12 +17912,14 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
             count = (instmesh.renderBounds.size() < instmesh.numVisible) ? 0 : instmesh.numVisible;
         }
 
-        // blended batches go back to front from this camera, 2D keeps its layering
+        // blended batches go back to front from this camera, 2D keeps its layering; a Particle
+        // System keeps its own order (the age sorts) or sorts by distance (also when opaque)
+        const InstanceSortMode particleSort = instmesh.particle.alignment != InstanceAlignment::None ? instmesh.particle.sort : InstanceSortMode::Auto;
         InstanceOrder order = InstanceOrder::NEAREST;
         Vector3 direction = Vector3::ZERO;
-        if (!sortsByDistance(camera)){
+        if (!sortsByDistance(camera) || particleSort == InstanceSortMode::Keep){
             order = InstanceOrder::KEEP;
-        }else if (mesh->isTransparent()){
+        }else if (mesh->isTransparent() || particleSort == InstanceSortMode::ByDistance){
             order = InstanceOrder::BACK_TO_FRONT;
             direction = towardCamera;
         }

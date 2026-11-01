@@ -131,15 +131,15 @@ bool SokolObject::isDynamicWarm(sg_pipeline pipeline){
     return true;
 }
 
-// Forgets the variants without destroying them: a copy of this object shares the
-// handles, as it shares the pipelines, and destroy() releases them once
+// Releases this object's references to the shared pipeline variants (SokolPipelineCache
+// destroys a variant with its last reference) and forgets which pipelines already cull nothing
 void SokolObject::resetPipelines(){
-#ifdef JASPERENGINE_EDITOR
-    for (sg_pipeline& variant : noCullPipelines){
-        variant.id = SG_INVALID_ID;
-    }
+    variants.clear();
     noCullSame = 0;
-#endif
+}
+
+size_t SokolObject::getSharedVariantCount(){
+    return SokolPipelineCache::variantCount();
 }
 
 int SokolObject::getLivePipelineCount(){
@@ -153,6 +153,61 @@ int SokolObject::getUnfedVertexInputLoads(){
 SokolObject::SokolObject(const SokolObject& rhs) = default;
 
 SokolObject& SokolObject::operator=(const SokolObject& rhs) = default;
+
+SokolVariantRefs::SokolVariantRefs(const SokolVariantRefs& rhs): list(rhs.list){
+    const uint64_t context = SystemRender::getContextId();
+    for (const Variant& variant : list){
+        if (variant.context == context)
+            SokolPipelineCache::retainVariant(variant.pipeline);
+    }
+}
+
+SokolVariantRefs& SokolVariantRefs::operator=(const SokolVariantRefs& rhs){
+    if (this != &rhs){
+        const uint64_t context = SystemRender::getContextId();
+        for (const Variant& variant : rhs.list){
+            if (variant.context == context)
+                SokolPipelineCache::retainVariant(variant.pipeline);
+        }
+        clear();
+        list = rhs.list;
+    }
+    return *this;
+}
+
+SokolVariantRefs::~SokolVariantRefs(){
+    clear();
+}
+
+const SokolVariantRefs::Variant* SokolVariantRefs::find(uint8_t kind, uint8_t type) const{
+    const uint64_t context = SystemRender::getContextId();
+    for (const Variant& variant : list){
+        if (variant.kind == kind && variant.type == type && variant.context == context)
+            return &variant;
+    }
+    return nullptr;
+}
+
+void SokolVariantRefs::add(uint8_t kind, uint8_t type, sg_pipeline pipeline){
+    for (Variant& variant : list){
+        if (variant.kind == kind && variant.type == type){
+            // one from an earlier context (find skips it): nothing to release
+            variant.pipeline = pipeline;
+            variant.context = SystemRender::getContextId();
+            return;
+        }
+    }
+    list.push_back({kind, type, pipeline, SystemRender::getContextId()});
+}
+
+void SokolVariantRefs::clear(){
+    const uint64_t context = SystemRender::getContextId();
+    for (const Variant& variant : list){
+        if (variant.context == context)
+            SokolPipelineCache::releaseVariant(variant.pipeline);
+    }
+    list.clear();
+}
 
 sg_vertex_format SokolObject::getVertexFormat(unsigned int elements, AttributeDataType dataType, bool normalized){
     if (dataType == AttributeDataType::BYTE){
@@ -933,7 +988,7 @@ bool SokolObject::beginDraw(const PipelineState& state){
     return true;
 }
 
-bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
+bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling, bool mirrored){
     uniformsDropped = false; // a new draw: its uniforms come next
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     sg_pipeline selectedPipeline = pipelineOf(pipType);
@@ -959,30 +1014,51 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
         return false;
     }
 
-#ifdef JASPERENGINE_EDITOR
-    if (disableFaceCulling){
-        const int index = pipelineIndex(pipType);
-        if (index < PIPELINE_TYPES){
-            sg_pipeline& variant = noCullPipelines[index];
-            if (variant.id == SG_INVALID_ID && !(noCullSame & (1u << index))){
-                sg_pipeline_desc desc = makePipelineDesc(pipType);
-                if (desc.cull_mode == SG_CULLMODE_BACK || desc.cull_mode == SG_CULLMODE_FRONT){
-                    desc.cull_mode = SG_CULLMODE_NONE;
-                    variant = makePipeline(desc, immediatePipelines);
-                }else{
-                    // already culls nothing: the pipeline is its own variant
-                    noCullSame |= (uint16_t)(1u << index);
-                }
+#ifndef JASPERENGINE_EDITOR
+    disableFaceCulling = false;
+#endif
+
+    const int index = pipelineIndex(pipType);
+    if ((disableFaceCulling || mirrored) && index < PIPELINE_TYPES){
+        const int kind = mirrored ? (disableFaceCulling ? VARIANT_MIRRORED_NO_CULL : VARIANT_MIRRORED) : VARIANT_NO_CULL;
+        const bool sameAsPipeline = (kind == VARIANT_NO_CULL) && (noCullSame & (1u << index));
+        const SokolVariantRefs::Variant* held = variants.find((uint8_t)kind, (uint8_t)index);
+        if (!held && !sameAsPipeline){
+            sg_pipeline_desc desc = makePipelineDesc(pipType);
+            const bool culls = desc.cull_mode == SG_CULLMODE_BACK || desc.cull_mode == SG_CULLMODE_FRONT;
+            if (disableFaceCulling){
+                desc.cull_mode = SG_CULLMODE_NONE;
             }
-            // a variant that failed to build leaves the pipeline as it is
-            if (variant.id != SG_INVALID_ID && sg_query_pipeline_state(variant) == SG_RESOURCESTATE_VALID){
-                selectedPipeline = variant;
+            if (mirrored){
+                // the winding of the front faces on screen turns with the mirror (sokol's
+                // default winding is CW)
+                desc.face_winding = (desc.face_winding == SG_FACEWINDING_CCW) ? SG_FACEWINDING_CW : SG_FACEWINDING_CCW;
+            }
+            if (kind == VARIANT_NO_CULL && !culls){
+                // already culls nothing: the pipeline is its own variant
+                noCullSame |= (uint16_t)(1u << index);
+            }else{
+                // shared by every object with the same description, an interned pipeline made
+                // through the asynchronous creation (spec S32; a failed one is kept as invalid,
+                // so it is not tried again each frame)
+                const sg_pipeline variant = SokolPipelineCache::acquireVariant(desc);
+                // the passes of the frame wait for theirs (setImmediatePipelines)
+                if (immediatePipelines && !Engine::isAsyncThread() && SokolAsyncCreate::isPending(variant))
+                    SokolAsyncCreate::waitFor(variant);
+                variants.add((uint8_t)kind, (uint8_t)index, variant);
+                held = variants.find((uint8_t)kind, (uint8_t)index);
             }
         }
+        if (held && held->pipeline.id != SG_INVALID_ID && sg_query_pipeline_state(held->pipeline) == SG_RESOURCESTATE_VALID){
+            selectedPipeline = held->pipeline;
+        }else if (mirrored && held && held->pipeline.id != SG_INVALID_ID && sg_query_pipeline_state(held->pipeline) == SG_RESOURCESTATE_ALLOC){
+            // a mirrored draw waits for its variant (the plain pipeline would cull its front faces)
+            drawWaiting = true;
+            waitingDraws++;
+            return false;
+        }
+        // a variant that failed to build (or a no-cull one still being made) leaves the pipeline as it is
     }
-#else
-    (void)disableFaceCulling;
-#endif
 
     {
         const int index = pipelineIndex(pipType);
@@ -1029,15 +1105,12 @@ bool SokolObject::draw(unsigned int baseElement, unsigned int vertexCount, unsig
 }
 
 void SokolObject::destroy(){
+    // let go of its pipelines and their shared variants (resetPipelines): each is destroyed
+    // with its last holder
     if (sg_isvalid()){
         for (sg_pipeline& pipeline : pipelines){
             destroyPipeline(pipeline);
         }
-#ifdef JASPERENGINE_EDITOR
-        for (sg_pipeline& variant : noCullPipelines){
-            destroyPipeline(variant);
-        }
-#endif
         for (Prewarmed& made : prewarmed){
             destroyPipeline(made.pipeline);
         }

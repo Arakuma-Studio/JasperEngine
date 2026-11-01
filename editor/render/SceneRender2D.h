@@ -24,6 +24,7 @@ namespace jasperengine::editor{
         std::map<Entity, LineRenderer*> linePointLines;
         std::map<Entity, LineRenderer*> polygonPointLines;
         std::map<Entity, LineRenderer*> trackLines;
+        std::map<Entity, LineRenderer*> stickLines;   // On-Screen Stick: handle range and dead zone
         std::map<Entity, CameraObjects> cameraObjects;
         std::map<Entity, SoundObjects> soundObjects;
         std::map<Entity, Light2DObjects> light2DObjects;
@@ -40,10 +41,11 @@ namespace jasperengine::editor{
         void applyZoomProjection();
         void updateGridLines();
         void addPointHandle(LineRenderer* linesObj, const Vector3& worldPoint, float halfSize, const Vector4& color);
-        void createOrUpdateBodyLines(Entity entity, const Transform& transform, const Rigidbody2DComponent& body, bool visible, bool highlighted);
+        void createOrUpdateBodyLines(Entity entity, const Transform& transform, Rigidbody2DComponent& body, bool visible, bool highlighted);
         void createOrUpdateJointLines(Entity entity, const Joint2DComponent& joint, bool visible, bool highlighted);
         void createOrUpdateController2DLines(Entity entity, const Transform& transform, const CharacterController2DComponent& controller, bool visible, bool highlighted);
         void createOrUpdateLight2DLines(Entity entity, const Transform& transform, const Light2DComponent& light, bool visible, bool highlighted);
+        void createOrUpdateStickLines(Entity entity, const OnScreenStickComponent& stick, bool visible);
         void createOrUpdateShadowCaster2DLines(Entity entity, const Transform& transform, const ShadowCaster2DComponent& occluder, bool visible, bool highlighted);
         void createOrUpdateLinePointLines(Entity entity, const Transform& transform, const LineRendererComponent& lines, bool visible);
         void createOrUpdatePolygonPointLines(Entity entity, const Transform& transform, const std::vector<PolygonPoint>& points, bool isMesh, bool visible);

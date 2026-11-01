@@ -24,6 +24,7 @@
 #include "imgui.h"
 #include "yaml-cpp/yaml.h"
 #include "ecs/Signature.h"
+#include "subsystem/PhysicsSystem.h"
 #include "soloud.h"
 #include "soloud_wav.h"
 
@@ -37,6 +38,7 @@
 namespace jasperengine::particles {
     struct ParticleEffectDocument;
 }
+#include <tuple>
 
 namespace jasperengine::editor{
 
@@ -120,6 +122,9 @@ namespace jasperengine::editor{
         bool indent = false;
         std::string help = "";
         const char *format = "%.2f";
+        // MinMaxCurve rows: what the numbers show is the stored value times this (57.29578:
+        // degrees of a value stored in radians)
+        float displayScale = 1.0f;
         bool showColors = true;
         // Color3L / Color4L (S27 R1): HDR (an Intensity in the Color window), and a colour stored
         // as shown (S08 ColorSRGB) instead of linear
@@ -140,6 +145,13 @@ namespace jasperengine::editor{
         // Entities hidden from the LocalEntity picker and rejected on drag-drop
         // (e.g. to prevent self-references)
         std::vector<Entity> excludeEntities;
+        // Texture rows: one more square button after the row's own (the Normal Texture's
+        // Sprite Normal Map wand), drawn with the rows' button size
+        std::function<void(const ImVec2&)> extraButton = nullptr;
+        // String rows: a dropdown of these values beside the field (free text still allowed),
+        // e.g. the project's Input actions
+        const std::vector<std::string>* stringSuggestions = nullptr;
+        const char* suggestionsEmpty = nullptr;   // shown in the dropdown when there are none
         // What a number typed into the row's fields is in (25cm on a Meters field), S23 R25
         NumericUnit unit = NumericUnit::None;
     };
@@ -175,6 +187,12 @@ namespace jasperengine::editor{
         Command* cmd;
         // the split bar drag's undo step, merged while the handle is held
         Command* splitBarCmd = nullptr;
+        // Commands that can run scripts at once while playing (a GameObject's Active and a
+        // script's enabled checkbox: onEnable / onDisable, which may instantiate or destroy and
+        // move the component arrays): run at the start of the next show(), when the Inspector
+        // holds no reference into the scene
+        std::vector<std::function<void()>> deferredCommands;
+        void runDeferredCommands();
 
         bool windowOpen;
         bool focusRequested;
@@ -347,6 +365,25 @@ namespace jasperengine::editor{
         std::vector<std::string> modelSubClipNames(const std::string& model);
         void drawAnimationClipButtons(SceneProject* sceneProject, Entity entity);
 
+        // ---- animation layers, masks and controllers (InspectorWindowAnimLayers.cpp; anim layers spec 9, 11.4) ----
+        std::unique_ptr<InspectorLayerState, InspectorLayerStateDeleter> layerStatePtr;
+        InspectorLayerState& layerState();
+        // the Controller field (Open, Create Controller from Clips; with one: what it ignores, its problems)
+        void drawAnimationPlayerController(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        // the Layers table (one scene step per edit, PlayerLayerActions)
+        void drawAnimationPlayerLayers(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        void setPlayerLayerMask(SceneProject* sceneProject, Entity entity, int layer, const std::string& mask);
+        // a clip entry's Layer combo
+        void drawPlayerClipLayerRow(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index);
+        // Bindings: "mask: N/M bound entities covered" per masked layer, the masks' warnings
+        void drawPlayerMaskCoverage(SceneProject* sceneProject, Entity entity);
+        // play mode: a layer's header in the States panel (live weight slider) and a controller's state
+        void drawPlayerLayerStatesHeader(SceneProject* sceneProject, Entity entity, int layer);
+        void drawControllerPlayState(SceneProject* sceneProject, Entity entity);
+        // the inspected .mask / .controller
+        void drawAvatarMaskAsset(const std::filesystem::path& asset);
+        void drawControllerAsset(const std::filesystem::path& asset);
+
         // ---- vertex animation (InspectorWindowVat.cpp; vertex animation spec 3.6, 5.2, 5.4) ----
         std::unique_ptr<InspectorVatState, InspectorVatStateDeleter> vatStatePtr;
         InspectorVatState& vatState();
@@ -364,7 +401,18 @@ namespace jasperengine::editor{
         void clearVertexAnimatorPreviewScene(uint32_t sceneId);
         // the inspected .vat (Project window click)
         void drawVatAsset(const std::filesystem::path& asset);
+        // a .physicsmaterial: friction, bounciness and their combine modes (InspectorPhysics2D.cpp)
+        void drawPhysicsMaterialAsset(const std::filesystem::path& asset);
+        // a .physicsmaterial path field (drop from the Project window, pick, clear) with undo
+        bool physicsMaterialRow(ComponentType cpType, const std::string& property, const std::string& label,
+                                SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& help = "");
         void drawCreateCrowdDialog();
+        // Sprite normals (InspectorWindowSpriteNormals.cpp): a generated normal map (or its source
+        // image) clicked in the Project window; false for any other image (the scene selection
+        // stays). The Normal Texture rows' settings with the Sprite Normal Map wand added when the
+        // submesh's Base Texture is an image file.
+        bool drawSpriteNormalsAsset(const std::filesystem::path& asset);
+        RowSettings normalTextureRowSettings(const RowSettings& base, SceneProject* sceneProject, const std::vector<Entity>& entities, unsigned int submesh);
         void updateParticlePreviewSnapshot(YAML::Node& components, const ParticleSystemComponent& particles);
 
         // Dirty material helpers
@@ -505,6 +553,8 @@ namespace jasperengine::editor{
         void openNewScriptDialog(SceneProject* sceneProject, const std::vector<Entity>& entities);
         // Add Tag... / Add Layer... asked for Project Settings > Tags and Layers
         bool tagsAndLayersRequested = false;
+        // a parameter row's link popup asked for Project Settings > Graphics (Shader Globals)
+        bool shaderGlobalsRequested = false;
         // layer picked for GameObjects with children, waiting for the Change Layer answer
         uint32_t pendingLayerSceneId = NULL_PROJECT_SCENE;
         std::vector<Entity> pendingLayerEntities;
@@ -537,6 +587,15 @@ namespace jasperengine::editor{
         void endTable();
         bool propertyHeader(std::string label, float secondColSize = -1, bool defChanged = false, bool child = false, bool indent = false);
         bool propertyRow(RowPropertyType type, ComponentType cpType, std::string id, std::string label, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings = RowSettings());
+        // Play mode, under a Rigidbody (2D): the pairs it touches and the contact callbacks its
+        // scripts define (physics-contacts 6.3)
+        void drawPhysicsContacts(SceneProject* sceneProject, Entity entity, bool is2D);
+        struct PhysicsContactsView{
+            double readAt = -1.0;
+            std::vector<ContactSummary> contacts;
+            std::vector<std::string> callbacks;
+        };
+        std::map<std::tuple<uint32_t, Entity, bool>, PhysicsContactsView> physicsContactsViews;
         bool propertyRowWithAutoButton(RowPropertyType propType, ComponentType cpType, std::string id, std::string label, std::string autoId, std::string autoLabel, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings = RowSettings());
         // Shared "Shader" row for components that support forking a built-in shader
         // (Mesh/UI/Points/Lines/Sky): fork, edit files, open .vert/.frag, reset to built-in,
@@ -557,7 +616,9 @@ namespace jasperengine::editor{
         void drawShaderUniformRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const ShaderUniformRows& rows);
         // one member row: a label for engine-written and non-editable members, else a
         // drag field; true with newValue when it changed
-        bool drawShaderUniformRow(const ShaderUniform& uniform, const ShaderUniformValues& values, const std::string& idPrefix, Vector4& newValue);
+        // reserveRight: room left after the field (a link button drawn on the same line)
+        bool drawShaderUniformRow(const ShaderUniform& uniform, const ShaderUniformValues& values, const std::string& idPrefix, Vector4& newValue,
+                                  float reserveRight = 0.0f);
         // Under a Stochastic Tiling Rotation row (a material's, a terrain layer's): when the rotation is
         // on and the normal map's average normal leans (util/NormalMapTilt), a warning and a button that
         // sets rotationProperty to 0 on every entity in one undo step
@@ -565,6 +626,16 @@ namespace jasperengine::editor{
                                            const std::string& rotationProperty, float rotation, const Texture& normalTexture,
                                            const std::function<void()>& onValueChanged);
         void drawShaderUniformWarnings(const std::vector<std::string>& warnings);
+        // ---- global shader values (shader globals spec 6.6, InspectorShaderLibrary.cpp) ----
+        // The link button closing a shader parameter row's value cell (on the same line, after
+        // it): its popup binds the member to a global of its kind (components: the member's, 1-4; a
+        // colour and a vector4 take each other) or unbinds it, through `set` (one undo step)
+        void drawGlobalLinkButton(const std::string& member, int components, const ShaderGlobalBindings& bindings,
+                                  const std::function<void(const ShaderGlobalBindings&)>& set);
+        // The value cell of a bound row: @Global and the global's current value, read-only, in
+        // `width` (the cell less the link button)
+        void drawBoundGlobalValue(const std::string& global, int components, bool color, float width);
+        float getGlobalLinkButtonWidth() const;
         // ---- shader library (InspectorShaderLibrary.cpp) ----
         // The Shader picker: the built-in shader, the library shaders of `type` grouped by
         // @category (with @description tooltips) and "Custom file..." (the Edit Shader Files
@@ -586,7 +657,7 @@ namespace jasperengine::editor{
         // fields. True with `edited` when it changed; `continuous` false for a one-click change
         // (its own undo step) and true while dragging (merged until released)
         bool drawShaderPropertyValue(const ShaderManifestProperty& property, const std::string& id, const Vector4& value,
-                                     Vector4& edited, bool& continuous);
+                                     Vector4& edited, bool& continuous, float itemWidth = -1.0f);
         // A submesh material's Shader row and manifest rows; true when the built-in PBR rows
         // apply (built-in Lit or a fork)
         bool drawMaterialShaderRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
@@ -713,7 +784,14 @@ namespace jasperengine::editor{
         void drawModelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawUIComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawInputFieldComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawOnScreenStickComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawOnScreenButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawTouchAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLayoutGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawCanvasGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // "Inherited alpha 0.25 · not interactable · click-through (Canvas Group: Panel)" and a
+        // Select button, when the entity is under a Canvas Group
+        void drawCanvasGroupInheritedLine(SceneProject* sceneProject, Entity entity);
         void drawImageComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -775,6 +853,12 @@ namespace jasperengine::editor{
         // the curve and gradient fields whose keys are open, by field path
         std::set<std::string> particleExpanded;
         void drawLineRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // Line and Trail Renderers (InspectorLinesTrails.cpp)
+        void drawLineSegmentsList(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawLinePositionsList(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawLineRibbonRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities, bool hairline, bool gradient);
+        void drawLineTextureRow(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawTrailRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPolygonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawMeshPolygonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPointsComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -804,6 +888,7 @@ namespace jasperengine::editor{
         void drawNavGridComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void navAreaMaskRow(ComponentType cpType, const std::string& id, const std::string& label, SceneProject* sceneProject,
                             std::vector<Entity> entities, const char* help);
+        void drawRagdollComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPositionTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawRotationTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -856,6 +941,8 @@ namespace jasperengine::editor{
         bool addComponentToSelection(ComponentType type, std::string* why = nullptr);
         // true once after Add Tag... or Add Layer...: the App opens Project Settings on Tags and Layers
         bool consumeTagsAndLayersRequest();
+        // true once after a link popup's "Shader Globals...": the App opens Project Settings on Graphics
+        bool consumeShaderGlobalsRequest();
 
         // ---- Record sources (animation clips 9.R5; the rows and the window test hook call them) ----
 

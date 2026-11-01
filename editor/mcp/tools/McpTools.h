@@ -37,6 +37,8 @@ namespace jasperengine::editor::mcp {
     void registerSceneViewTools(McpRegistry& registry);   // S26
     void registerShadowTools(McpRegistry& registry);
     void registerConsoleTools(McpRegistry& registry);
+    // DataTools.cpp: user_settings (the UserSettings / PlayerPrefs store)
+    void registerDataTools(McpRegistry& registry);
     void registerScriptTools(McpRegistry& registry);
     void registerAssetTools(McpRegistry& registry);
     void registerMaterialsLightingTools(McpRegistry& registry);
@@ -47,12 +49,15 @@ namespace jasperengine::editor::mcp {
     void registerBuildTools(McpRegistry& registry);
     void registerPublishTools(McpRegistry& registry);   // S30
     void registerWorldTools(McpRegistry& registry);
+    // AnimatorTools.cpp: edit_animator (Animator Controllers, anim layers spec 11.5)
+    void registerAnimatorTools(McpRegistry& registry);
     void registerLatticeTools(McpRegistry& registry);
     void registerHtmlUiTools(McpRegistry& registry);
     void registerUiEffectTools(McpRegistry& registry);
     void registerSynthesisTools(McpRegistry& registry);
     void registerPlacementTools(McpRegistry& registry);
     void registerVatTools(McpRegistry& registry);
+    void registerSpriteNormalsTools(McpRegistry& registry);
 
     // PlacementTools.cpp: puts back the preview poses a place_with_physics screenshot shows for a
     // few frames (App::stopTransientPreviews: before a save or Play)
@@ -95,6 +100,22 @@ namespace jasperengine::editor::mcp {
     // rebake message); `warnings` the lenient reader's
     bool checkVatText(Project* project, const std::filesystem::path& file, const std::string& content,
                       std::vector<std::string>& warnings, std::string& error);
+
+    // SpriteNormalsTools.cpp (sprite normals Phase 3, 3.9): the sprite normal map parts of the asset
+    // tools. A PNG with a jasper.spritenormals recipe: {sprite_normals: {role, source: {path, kind,
+    // entity?, state: fresh|changed|missing|invalid}, preset, frames: {from, count}, outputs, stale}}
+    // plus, with full, the raw recipe and `regenerate` (generate_sprite_normals arguments writing it
+    // again); a garbled recipe {sprite_normals: {error}}. Another image whose default-name normal map
+    // (<stem>_normal.png, <stem>_sheet_normal.png) was made from it: {normal_map: {path, stale}}.
+    // Null otherwise.
+    Json spriteNormalsAssetInfo(Project* project, const std::filesystem::path& file, bool full);
+    // " Sprite normal map (normal, preset default) of assets/hero.png; source unchanged.",
+    // " Its normal map: assets/hero_normal.png (up to date)." or ""
+    std::string spriteNormalsAssetText(const Json& info);
+    // a changed image (file sync, auto-sync): the normal maps made from it (the default-name probe
+    // and the check cache's index, no scan) whose source changed or went missing go to `problems`
+    // ({path: <normal map>, message})
+    void spriteNormalsFileChanged(Project* project, const std::filesystem::path& path, Json& problems);
 
     // the pose documents' files-written hook (their writes reach the asset database and the
     // Project window like any MCP file change): installed once, when the MCP context exists

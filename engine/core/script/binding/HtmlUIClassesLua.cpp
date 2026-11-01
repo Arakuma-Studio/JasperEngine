@@ -991,9 +991,10 @@ namespace {
 
 // ---- HtmlUILuaRef ----
 
-HtmlUILuaRef::HtmlUILuaRef(lua_State* L, int index): L(L){
-    lua_pushvalue(L, index);
-    ref = luaL_ref(L, LUA_REGISTRYINDEX);
+HtmlUILuaRef::HtmlUILuaRef(lua_State* from, int index): L(LuaBinding::mainThread(from)){
+    // the main thread is kept, never a coroutine's (it ends long before a listener fires)
+    lua_pushvalue(from, index);
+    ref = luaL_ref(from, LUA_REGISTRYINDEX);
     liveRefs++;
 }
 
@@ -1023,9 +1024,10 @@ bool HtmlUILuaRef::isSet() const{
 
 bool HtmlUILuaRef::push(lua_State* current) const{
     // the state closes before the scenes are destroyed (Engine::systemShutdown)
-    if (!isSet() || !current || current != L || LuaBinding::getLuaState() != L)
+    if (!isSet() || !current || LuaBinding::getLuaState() != L || LuaBinding::mainThread(current) != L)
         return false;
-    lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+    // on the thread running now (a coroutine's, or the main one)
+    lua_rawgeti(current, LUA_REGISTRYINDEX, ref);
     return true;
 }
 
@@ -1202,6 +1204,14 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("button", &UIEvent::getButton)
         .addProperty("deltaX", &UIEvent::getDeltaX)
         .addProperty("deltaY", &UIEvent::getDeltaY)
+        .addProperty("pointerId", &UIEvent::getPointerId)
+        .addProperty("pointerType", &UIEvent::getPointerType)
+        .addProperty("isPrimary", &UIEvent::isPrimary)
+        .addProperty("buttons", &UIEvent::getButtons)
+        .addProperty("pressure", &UIEvent::getPressure)
+        .addProperty("width", &UIEvent::getWidth)
+        .addProperty("height", &UIEvent::getHeight)
+        .addProperty("fingerId", &UIEvent::getFingerId)
         .addProperty("data", &UIEvent::getData)
         .addProperty("animationName", &UIEvent::getAnimationName)
         .addProperty("propertyName", &UIEvent::getPropertyName)
@@ -1343,6 +1353,9 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addFunction("focus", &UIElement::focus)
         .addFunction("blur", &UIElement::blur)
         .addFunction("click", &UIElement::click)
+        .addFunction("setPointerCapture", &UIElement::setPointerCapture)
+        .addFunction("releasePointerCapture", &UIElement::releasePointerCapture)
+        .addFunction("hasPointerCapture", &UIElement::hasPointerCapture)
         .addFunction("scrollIntoView", [](UIElement* self, std::optional<bool> alignToTop) { self->scrollIntoView(alignToTop.value_or(true)); })
         .addFunction("scrollTo", [](UIElement* self, float x, float y, std::optional<bool> smooth) { self->scrollTo(x, y, smooth.value_or(false)); })
         .addFunction("scrollBy", [](UIElement* self, float dx, float dy, std::optional<bool> smooth) { self->scrollBy(dx, dy, smooth.value_or(false)); })

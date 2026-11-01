@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Points.h"
+#include "shader/ShaderGlobals.h"
 #include "shader/ShaderManifest.h"
 #include "subsystem/RenderSystem.h"
 
@@ -406,6 +407,21 @@ Vector4 Points::getShaderParam(const std::string& name) const{
     PointsComponent& points = getComponent<PointsComponent>();
 
     return ShaderLibraryValues::getParam(points.shaderUniforms, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader.path, name);
+}
+
+bool Points::setShaderGlobalBinding(const std::string& member, const std::string& global){
+    PointsComponent& points = getComponent<PointsComponent>();
+
+    if (!ShaderGlobals::setBinding(points.shaderGlobalBindings, member, global))
+        return false;
+    points.needUpdateShaderUniforms = true;
+    return true;
+}
+
+std::string Points::getShaderGlobalBinding(const std::string& member) const{
+    const PointsComponent& points = getComponent<PointsComponent>();
+
+    return ShaderGlobals::getBinding(points.shaderGlobalBindings, member);
 }
 
 void Points::setShaderTexture(const std::string& name, const std::string& path){

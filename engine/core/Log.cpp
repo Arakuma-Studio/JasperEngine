@@ -5,6 +5,7 @@
 #include "log/Logger.h"
 
 #include <stdarg.h>
+#include <stdio.h>
 
 using namespace jasperengine;
 

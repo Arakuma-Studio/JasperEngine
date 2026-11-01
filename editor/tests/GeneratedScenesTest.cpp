@@ -12,6 +12,11 @@
 
 #include <unistd.h>
 
+#include "Scene.h"
+#include "component/CanvasGroupComponent.h"
+#include <cstdlib>
+#include <sstream>
+
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -124,4 +129,62 @@ TEST(GeneratedScenes, StringScriptPropertyIsAStdString) {
     EXPECT_NE(code.find("\"Level1\""), std::string::npos) << code;
     // the other alternatives keep their own forms
     EXPECT_EQ(Factory::formatScriptPropertyValue(ScriptPropertyValue(6)), "6");
+}
+
+// ui-canvas-group (spec 10): the Factory code of a Canvas Group, an AlphaTween aimed at it and
+// an unscaled Tween compiles against the engine headers (what an exported build compiles)
+TEST(GeneratedScenes, CanvasGroupFactoryCodeCompiles){
+#if defined(JASPER_EDITOR_TEST_ENGINE_FLAGS) && defined(JASPER_EDITOR_TEST_CXX)
+    std::ifstream flagsFile(JASPER_EDITOR_TEST_ENGINE_FLAGS);
+    if (!flagsFile){
+        GTEST_SKIP() << "no engine flags file " << JASPER_EDITOR_TEST_ENGINE_FLAGS;
+    }
+    std::string flags, line;
+    bool defines = false;
+    while (std::getline(flagsFile, line)){
+        if (line.empty()) continue;
+        if (line == "#defines"){ defines = true; continue; }
+        flags += (defines ? " -D'" : " -isystem '") + line + "'";
+    }
+
+    Scene scene;
+    const Entity entity = scene.createUserEntity();
+    scene.addComponent<Transform>(entity, {});
+    CanvasGroupComponent group;
+    group.alpha = 0.25f;
+    group.interactable = false;
+    group.renderMode = CanvasGroupRenderMode::FLATTEN;
+    scene.addComponent<CanvasGroupComponent>(entity, group);
+    TweenComponent tween;
+    tween.useUnscaledTime = true;
+    scene.addComponent<TweenComponent>(entity, tween);
+    AlphaTweenComponent alpha{0.0f, 1.0f};
+    alpha.alphaTarget = AlphaTweenTarget::CANVAS_GROUP;
+    scene.addComponent<AlphaTweenComponent>(entity, alpha);
+
+    const std::string groupCode = Factory::createComponent(4, &scene, entity, ComponentType::CanvasGroupComponent, "", "scene", "entity");
+    const std::string tweenCode = Factory::createComponent(4, &scene, entity, ComponentType::TweenComponent, "", "scene", "entity");
+    const std::string alphaCode = Factory::createComponent(4, &scene, entity, ComponentType::AlphaTweenComponent, "", "scene", "entity");
+    EXPECT_NE(groupCode.find("CanvasGroupRenderMode::FLATTEN"), std::string::npos) << groupCode;
+    EXPECT_NE(tweenCode.find("useUnscaledTime = true"), std::string::npos) << tweenCode;
+    EXPECT_NE(alphaCode.find("AlphaTweenTarget::CANVAS_GROUP"), std::string::npos) << alphaCode;
+
+    std::ostringstream source;
+    source << "#include \"Scene.h\"\n#include \"component/Transform.h\"\nusing namespace jasperengine;\n"
+           << "void generatedGroup(Scene* scene, Entity entity){\n"
+           << "{\n" << groupCode << "}\n{\n" << tweenCode << "}\n{\n" << alphaCode << "}\n}\n";
+    const fs::path dir = fs::temp_directory_path() / ("jasper-canvas-group-factory-" + std::to_string(::getpid()));
+    fs::create_directories(dir);
+    const fs::path file = dir / "generated.cpp";
+    std::ofstream(file) << source.str();
+    const std::string command = std::string("'") + JASPER_EDITOR_TEST_CXX + "' -std=gnu++17 -fsyntax-only" + flags +
+                                " '" + file.string() + "' > '" + (dir / "log.txt").string() + "' 2>&1";
+    const int status = std::system(command.c_str());
+    std::ifstream log(dir / "log.txt");
+    const std::string output((std::istreambuf_iterator<char>(log)), std::istreambuf_iterator<char>());
+    EXPECT_EQ(status, 0) << output << "\n" << source.str();
+    fs::remove_all(dir);
+#else
+    GTEST_SKIP() << "built without the engine flags";
+#endif
 }

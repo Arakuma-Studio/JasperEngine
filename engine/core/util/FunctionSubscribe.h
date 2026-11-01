@@ -12,6 +12,7 @@
 #include <functional>
 #include <type_traits>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <typeinfo>
 #include <utility>
@@ -229,6 +230,19 @@ namespace jasperengine {
             return add(tag, function, SubscriptionOwnerIndex::registrationOwner());
         }
 
+        // The live subscribers that are Lua functions (physics runs a 3D world on the main
+        // thread while its shouldCollide3D has one): the ones add(tag, lua_State*) made
+        size_t luaSubscriberCount() const {
+            size_t count = 0;
+            if (state) {
+                state->invoke([&count](Slot& slot) {
+                    if (slot.function.target_type() == typeid(LuaFunction<Ret>)) count++;
+                    return true;
+                });
+            }
+            return count;
+        }
+
         bool add(const std::string& tag, std::function<Ret(Args...)> function, uint64_t ownerKey = 0) {
             List& slots = list();
             slots.removeTag(tag);
@@ -265,8 +279,27 @@ namespace jasperengine {
             return Subscription(std::weak_ptr<detail::SlotStateBase>(state), id);
         }
 
+        // A probe of the subscription `tag` (empty when there is none): true while some copy of
+        // this event still lists it (not removed, cleared or destroyed with its component)
+        // (the list of this object, which a move keeps; a copy has a list of its own)
+        std::function<bool()> subscriptionProbe(const std::string& tag) const {
+            if (!state || !state->hasTag(tag)) {
+                return {};
+            }
+            std::weak_ptr<List> weak = state;
+            return [weak, tag]() {
+                std::shared_ptr<List> alive = weak.lock();
+                return alive && alive->hasTag(tag);
+            };
+        }
+
         bool remove(const std::string& tag){
             return state && state->removeTag(tag);
+        }
+
+        // A live subscription with this tag (RegisterEvent / add)
+        bool has(const std::string& tag) const{
+            return state && state->hasTag(tag);
         }
 
         size_t removeByTagSubstring(const std::string& substring){
@@ -275,6 +308,23 @@ namespace jasperengine {
 
         size_t removeOwner(uint64_t ownerKey) {
             return state ? state->removeOwner(ownerKey) : 0;
+        }
+
+        // Every live subscriber, without the crash guard (process-wide signal handlers: not for
+        // callers on several threads at once, as Jolt's job threads are). Void events only.
+        // SlotList's invoke is not for concurrent callers: the calls of one signature take
+        // turns on a lock (subscribers are added and removed outside those calls)
+        void callDirect(Args... args){
+            static_assert(std::is_void<Ret>::value, "callDirect is for void events");
+            if (!enabled || !state){
+                return;
+            }
+            static std::mutex directMutex;
+            std::lock_guard<std::mutex> lock(directMutex);
+            state->invoke([&](Slot& slot) {
+                slot.function(args...);
+                return true;
+            });
         }
 
         Ret call(Args... args){
@@ -328,7 +378,8 @@ namespace jasperengine {
     class Scene;
 
     // True when a script instance may receive engine events: its GameObject is active
-    // in hierarchy and its script entry is enabled (defined in ScriptBase.cpp).
+    // in hierarchy, its script entry is enabled, and it is not enabled-but-not-started yet
+    // (start runs before its first update; defined in ScriptBase.cpp).
     JASPERENGINE_API bool isScriptActive(Scene* scene, unsigned int entity, const void* instance);
 
     namespace detail {

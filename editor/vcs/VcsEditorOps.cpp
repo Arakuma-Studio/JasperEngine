@@ -151,7 +151,7 @@ void revertFiles(Project& project, const std::vector<fs::path>& files, std::func
             auto* command = new RevertFilesCmd(owner, plan->backup, plan->files, reverted);
             const std::string name = command->describe();
             if (!owner->getProjectCommandHistory()->addCommand(command)) {
-                const std::string message = "Reverted, but the step could not be recorded: " + CommandHistory::lastRefusal();
+                const std::string message = "Reverted, but the step could not be recorded: " + CommandHistory::lastBusyRefusal();
                 Out::warning("%s", message.c_str());
                 if (done) done(VcsResult::failure(message), std::string());
                 return;

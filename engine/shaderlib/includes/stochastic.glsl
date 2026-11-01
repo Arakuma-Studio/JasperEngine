@@ -64,8 +64,9 @@
 //     greenSign is the way the caller's tangent frame reads green against +v, which decides
 //     the way a rotation turns the slopes back (a tap must read as the texel a turned copy of
 //     the map would hold):
-//       STOCHASTIC_NORMAL_GL (-1): green read against +v. Lit and the library shaders (their
-//         bitangent points up the image while images load top row first).
+//       STOCHASTIC_NORMAL_GL (-1): green read against +v. Lit, the library shaders and the 2D
+//         meshes (Sprite, Polygon, Tilemap) (their bitangent points up the image while images
+//         load top row first).
 //       STOCHASTIC_NORMAL_DX (+1): green read along +v. The terrain layers, whose whiteout
 //         blend takes green as +v on the flat and side projections.
 //     Rotation 0 makes it irrelevant (the taps are not turned).

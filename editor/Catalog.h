@@ -82,6 +82,28 @@ namespace jasperengine::editor{
         UpdateFlags_Animator_Reload = (uint64_t)1 << 45,
         // a Vertex Animator's animation changed: load it again (the fade is kept >= 0)
         UpdateFlags_VertexAnimator_Reload = (uint64_t)1 << 46,
+        // upstream's (its 44-52), after oe-port's Spline (44), Animator (45) and Vertex Animator (46)
+        // a 2D joint's motor, spring, limit or break field: applied to the live joint, no rebuild
+        UpdateFlags_Joint2D_Params      = (uint64_t)1 << 47,
+        // a Rigidbody 2D's gravity scale, damping, mass...: applied to the live body, no rebuild
+        UpdateFlags_Rigidbody2D_Params  = (uint64_t)1 << 48,
+        // a script entry's enabled flag (or the list) changed: while the scene's scripts run,
+        // onEnable / onDisable as due (ScriptRuntime::refreshEntity)
+        UpdateFlags_Script_Enabled      = (uint64_t)1 << 49,
+        // a Trail Renderer's ribbon settings (width, colour, joints, caps, texture layout): its
+        // ribbon is built again (values clamped: widths and time >= 0, vertex counts 0..90)
+        UpdateFlags_Trail               = (uint64_t)1 << 50,
+        // a Canvas Group field: its alpha is clamped to [0, 1] (UISystem sees the change itself)
+        UpdateFlags_CanvasGroup         = (uint64_t)1 << 51,
+        // a Rigidbody's type, damping, mass fields...: applied to the live body (a type switch,
+        // the mass again), no rebuild
+        UpdateFlags_Rigidbody_Params    = (uint64_t)1 << 52,
+        // a 3D joint's motor, spring, limit, friction or break field: applied to the live joint
+        UpdateFlags_Joint3D_Params      = (uint64_t)1 << 53,
+        // a Ragdoll's root or animator: its parts are collected again
+        UpdateFlags_Ragdoll             = (uint64_t)1 << 54,
+        // a version 2 Particle System's renderer.mesh: its target draws that primitive now
+        UpdateFlags_Particle_Mesh       = (uint64_t)1 << 55,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -172,12 +194,23 @@ namespace jasperengine::editor{
         // Unity's Animator (docs/specs/S21-animation.md)
         AnimatorComponent,
         // baked vertex / bone animation played on the GPU (vertex animation spec 3.3)
-        VertexAnimatorComponent
+        VertexAnimatorComponent,
+        // Unity's Trail Renderer (lines and trails spec 6.4)
+        TrailRendererComponent,
+        // Unity's CanvasGroup: group alpha, interactable, blocks raycasts (ui canvas group spec 7.5)
+        CanvasGroupComponent,
+        // on-screen controls feeding Input actions (ui-multitouch spec 7.4)
+        OnScreenStickComponent,
+        OnScreenButtonComponent,
+        TouchAreaComponent,
+        // a character's bone bodies switched between animated and simulated (upstream's physics-3d;
+        // appended here, not after Joint3D as upstream has it, so oe-port's ordinals stay)
+        RagdollComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::VertexAnimatorComponent;
+    constexpr ComponentType LastComponentType = ComponentType::RagdollComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;
@@ -301,6 +334,11 @@ namespace jasperengine::editor{
         // default. Asks RenderSystem::resolveLighting / supportsLighting (the runtime's rules).
         static std::vector<MaterialLighting> getShaderLightingModes(const ShaderManifest* manifest);
         static bool supportsLighting(MaterialLighting mode, const ShaderManifest* manifest);
+        // Whether a shader with this manifest reads the material's own Normal Texture (on the 2D
+        // light path: @require normalmap, ShaderRequire_NormalMap) with the enabled features
+        // (ShaderReference::getEnabledFeatures). False for the built-in shader and forks without
+        // a manifest (null; they read it on every path) and for an absent manifest
+        static bool shaderReadsMaterialNormalMap(const ShaderManifest* manifest, const std::vector<std::string>& features);
         // The update flags a change from one material value to another needs (a whole-material
         // assignment outside a property command: linked material files)
         static uint64_t getMaterialUpdateFlags(const Material& from, const Material& to);
@@ -522,6 +560,11 @@ namespace jasperengine::editor{
             else if (propertyName == "physics_interpolation") {
                 if constexpr (std::is_same_v<T, bool>) {
                     return scene->isPhysicsInterpolation();
+                }
+            }
+            else if (propertyName == "physics_2d_sub_steps") {
+                if constexpr (std::is_same_v<T, int>) {
+                    return scene->getPhysics2DSubSteps();
                 }
             }
             else if (propertyName == "light_state") {
@@ -750,6 +793,9 @@ namespace jasperengine::editor{
             else if (propertyName == "physics_interpolation") {
                 if constexpr (std::is_same_v<T, bool>) return d.physicsInterpolation;
             }
+            else if (propertyName == "physics_2d_sub_steps") {
+                if constexpr (std::is_same_v<T, int>) return d.physics2DSubSteps;
+            }
             else if (propertyName == "light_state") {
                 if constexpr (std::is_same_v<T, LightState>) return d.lightState;
             }
@@ -938,6 +984,11 @@ namespace jasperengine::editor{
             else if (propertyName == "physics_interpolation") {
                 if constexpr (std::is_same_v<T, bool>) {
                     scene->setPhysicsInterpolation(value);
+                }
+            }
+            else if (propertyName == "physics_2d_sub_steps") {
+                if constexpr (std::is_same_v<T, int>) {
+                    scene->setPhysics2DSubSteps(value);
                 }
             }
             else if (propertyName == "light_state") {

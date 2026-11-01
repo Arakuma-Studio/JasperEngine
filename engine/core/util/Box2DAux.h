@@ -8,6 +8,7 @@
 #include "box2d/box2d.h"
 #include "subsystem/PhysicsSystem.h"
 #include "registry/PhysicsLayers.h"
+#include "physics/PhysicsMaterial.h"
 
 namespace jasperengine{
 
@@ -86,6 +87,16 @@ namespace jasperengine{
     class Box2DAux{
     public:
 
+        // Box2D friction / restitution callbacks: the shapes' user material ids carry the
+        // combine modes of their PhysicsMaterial (0 = none, today's rule)
+        static float CombineFriction(float frictionA, int userMaterialIdA, float frictionB, int userMaterialIdB){
+            return combineSurface(frictionA, frictionModeOf2D(userMaterialIdA), frictionB, frictionModeOf2D(userMaterialIdB), PhysicsMaterialCombine::GEOMETRIC_MEAN);
+        }
+
+        static float CombineRestitution(float restitutionA, int userMaterialIdA, float restitutionB, int userMaterialIdB){
+            return combineSurface(restitutionA, bounceModeOf2D(userMaterialIdA), restitutionB, bounceModeOf2D(userMaterialIdB), PhysicsMaterialCombine::MAXIMUM);
+        }
+
         static bool CollisionFilter(b2ShapeId shapeIdA, b2ShapeId shapeIdB, void* context){
             Scene* scene = (Scene*)context;
 
@@ -108,7 +119,13 @@ namespace jasperengine{
             Entity entityA = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdA));
             Entity entityB = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdB));
 
-            return scene->getSystem<PhysicsSystem>()->shouldCollide2D.callRet(Rigidbody2D(scene, entityA), shapeIndexA, Rigidbody2D(scene, entityB), shapeIndexB, true);
+            // Physics2D.ignoreCollision
+            std::shared_ptr<PhysicsSystem> physics = scene->getSystem<PhysicsSystem>();
+            if (physics->isIgnoredPair2D(entityA, entityB)){
+                return false;
+            }
+
+            return physics->shouldCollide2D.callRet(Rigidbody2D(scene, entityA), shapeIndexA, Rigidbody2D(scene, entityB), shapeIndexB, true);
         }
 
         static bool PreSolve(b2ShapeId shapeIdA, b2ShapeId shapeIdB, b2Manifold* manifold, void* context){
@@ -124,101 +141,6 @@ namespace jasperengine{
             Entity entityB = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdB));
 
             return scene->getSystem<PhysicsSystem>()->preSolve2D.callRet(Rigidbody2D(scene, entityA), shapeIndexA, Rigidbody2D(scene, entityB), shapeIndexB, Manifold2D(scene, manifold), true);
-        }
-
-        // A shape destroyed since the step (a body removed or recreated, or by an earlier
-        // callback) still has its events, so they are skipped
-        static void manageEvents(Scene* scene, b2WorldId world){
-            b2ContactEvents contactEvents = b2World_GetContactEvents(world);
-            b2SensorEvents sensorEvents = b2World_GetSensorEvents(world);
-
-            for (int i = 0; i < contactEvents.beginCount; ++i){
-                b2ContactBeginTouchEvent* beginEvent = contactEvents.beginEvents + i;
-                if (!b2Shape_IsValid(beginEvent->shapeIdA) || !b2Shape_IsValid(beginEvent->shapeIdB))
-                    continue;
-
-                size_t shapeIndexA = reinterpret_cast<size_t>(b2Shape_GetUserData(beginEvent->shapeIdA));
-                size_t shapeIndexB = reinterpret_cast<size_t>(b2Shape_GetUserData(beginEvent->shapeIdB));
-
-                b2BodyId bodyIdA = b2Shape_GetBody(beginEvent->shapeIdA);
-                b2BodyId bodyIdB = b2Shape_GetBody(beginEvent->shapeIdB);
-
-                Entity entityA = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdA));
-                Entity entityB = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdB));
-
-                scene->getSystem<PhysicsSystem>()->beginContact2D.call(Rigidbody2D(scene, entityA), shapeIndexA, Rigidbody2D(scene, entityB), shapeIndexB);
-            }
-
-            for (int i = 0; i < contactEvents.endCount; ++i){
-                b2ContactEndTouchEvent* endEvent = contactEvents.endEvents + i;
-                if (!b2Shape_IsValid(endEvent->shapeIdA) || !b2Shape_IsValid(endEvent->shapeIdB))
-                    continue;
-
-                size_t shapeIndexA = reinterpret_cast<size_t>(b2Shape_GetUserData(endEvent->shapeIdA));
-                size_t shapeIndexB = reinterpret_cast<size_t>(b2Shape_GetUserData(endEvent->shapeIdB));
-
-                b2BodyId bodyIdA = b2Shape_GetBody(endEvent->shapeIdA);
-                b2BodyId bodyIdB = b2Shape_GetBody(endEvent->shapeIdB);
-
-                Entity entityA = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdA));
-                Entity entityB = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdB));
-
-                scene->getSystem<PhysicsSystem>()->endContact2D.call(Rigidbody2D(scene, entityA), shapeIndexA, Rigidbody2D(scene, entityB), shapeIndexB);
-            }
-
-            for (int i = 0; i < contactEvents.hitCount; ++i){
-                b2ContactHitEvent* hitEvent = contactEvents.hitEvents + i;
-                if (!b2Shape_IsValid(hitEvent->shapeIdA) || !b2Shape_IsValid(hitEvent->shapeIdB))
-                    continue;
-
-                size_t shapeIndexA = reinterpret_cast<size_t>(b2Shape_GetUserData(hitEvent->shapeIdA));
-                size_t shapeIndexB = reinterpret_cast<size_t>(b2Shape_GetUserData(hitEvent->shapeIdB));
-
-                b2BodyId bodyIdA = b2Shape_GetBody(hitEvent->shapeIdA);
-                b2BodyId bodyIdB = b2Shape_GetBody(hitEvent->shapeIdB);
-
-                Entity entityA = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdA));
-                Entity entityB = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdB));
-
-                Vector2 point(hitEvent->point.x, hitEvent->point.y);
-                Vector2 normal(hitEvent->normal.x, hitEvent->normal.y);
-
-                scene->getSystem<PhysicsSystem>()->hitContact2D.call(Rigidbody2D(scene, entityA), shapeIndexA, Rigidbody2D(scene, entityB), shapeIndexB, point, normal, hitEvent->approachSpeed);
-            }
-
-            for (int i = 0; i < sensorEvents.beginCount; ++i){
-                b2SensorBeginTouchEvent* beginTouch = sensorEvents.beginEvents + i;
-                if (!b2Shape_IsValid(beginTouch->sensorShapeId) || !b2Shape_IsValid(beginTouch->visitorShapeId))
-                    continue;
-
-                size_t shapeIndexSensor = reinterpret_cast<size_t>(b2Shape_GetUserData(beginTouch->sensorShapeId));
-                size_t shapeIndexVisitor = reinterpret_cast<size_t>(b2Shape_GetUserData(beginTouch->visitorShapeId));
-
-                b2BodyId bodyIdSensor = b2Shape_GetBody(beginTouch->sensorShapeId);
-                b2BodyId bodyIdVisitor = b2Shape_GetBody(beginTouch->visitorShapeId);
-
-                Entity entitySensor = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdSensor));
-                Entity entityVisitor = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdVisitor));
-
-                scene->getSystem<PhysicsSystem>()->beginSensorContact2D.call(Rigidbody2D(scene, entitySensor), shapeIndexSensor, Rigidbody2D(scene, entityVisitor), shapeIndexVisitor);
-            }
-
-            for (int i = 0; i < sensorEvents.endCount; ++i){
-                b2SensorEndTouchEvent* endTouch = sensorEvents.endEvents + i;
-                if (!b2Shape_IsValid(endTouch->sensorShapeId) || !b2Shape_IsValid(endTouch->visitorShapeId))
-                    continue;
-
-                size_t shapeIndexSensor = reinterpret_cast<size_t>(b2Shape_GetUserData(endTouch->sensorShapeId));
-                size_t shapeIndexVisitor = reinterpret_cast<size_t>(b2Shape_GetUserData(endTouch->visitorShapeId));
-
-                b2BodyId bodyIdSensor = b2Shape_GetBody(endTouch->sensorShapeId);
-                b2BodyId bodyIdVisitor = b2Shape_GetBody(endTouch->visitorShapeId);
-
-                Entity entitySensor = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdSensor));
-                Entity entityVisitor = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdVisitor));
-
-                scene->getSystem<PhysicsSystem>()->endSensorContact2D.call(Rigidbody2D(scene, entitySensor), shapeIndexSensor, Rigidbody2D(scene, entityVisitor), shapeIndexVisitor);
-            }
         }
 
         // -1 skips the shape, the fraction clips the ray to find the closest hit,

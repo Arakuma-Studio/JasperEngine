@@ -59,6 +59,8 @@ namespace jasperengine::editor{
         void setVariant(size_t index, bool variant) { if (index < items.size()) items[index].variant = variant; }
 
         bool execute() override;
+
+        std::vector<Touched> touchedPaths(bool undo) const override;
         void undo() override;
 
         // "Create Prefab Player.prefab", "Create Prefab Variant Door Variant.prefab", "Create 2 Prefabs"

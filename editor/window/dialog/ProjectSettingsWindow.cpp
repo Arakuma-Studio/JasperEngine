@@ -11,6 +11,8 @@
 #include "texture/TextureCookReport.h"
 #include "util/FileDialogs.h"
 #include "Backend.h"
+#include "App.h"
+#include "util/Util.h"
 #include "window/Widgets.h"
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
@@ -24,6 +26,9 @@
 #include "command/type/HtmlUiRenderSettingsCmd.h"
 #include "command/type/ThreadingSettingsCmd.h"
 #include "navigation/NavigationSettingsCmd.h"
+#include "command/type/ShaderGlobalsCmd.h"
+#include "util/Color.h"
+#include "imgui_internal.h"
 
 #include <algorithm>
 #include <array>
@@ -76,16 +81,18 @@ static const char* const* cxxStandardNames() {
     return names.data();
 }
 
-static const char* androidOrientationNames[] = { "Unspecified", "Portrait", "Landscape", "Sensor Portrait", "Sensor Landscape", "Full Sensor" };
-static const AndroidOrientation androidOrientationValues[] = {
-    AndroidOrientation::Unspecified,
-    AndroidOrientation::Portrait,
-    AndroidOrientation::Landscape,
-    AndroidOrientation::SensorPortrait,
-    AndroidOrientation::SensorLandscape,
-    AndroidOrientation::FullSensor
+static const char* androidInternetAccessNames[] = { "Auto", "Require" };
+static constexpr int androidInternetAccessCount = 2;
+// Player > Resolution and Presentation, Unity's names and order
+static const char* defaultOrientationNames[] = { "Portrait", "Portrait Upside Down", "Landscape Left", "Landscape Right", "Auto Rotation" };
+static const ScreenOrientation defaultOrientationValues[] = {
+    ScreenOrientation::Portrait,
+    ScreenOrientation::PortraitUpsideDown,
+    ScreenOrientation::LandscapeLeft,
+    ScreenOrientation::LandscapeRight,
+    ScreenOrientation::AutoRotation
 };
-static const int androidOrientationCount = sizeof(androidOrientationValues) / sizeof(androidOrientationValues[0]);
+static const int defaultOrientationCount = sizeof(defaultOrientationValues) / sizeof(defaultOrientationValues[0]);
 
 struct AndroidPermissionInfo {
     const char* key;
@@ -203,11 +210,11 @@ static int findCxxStandardIndex(int standard) {
     return 0;
 }
 
-static int findAndroidOrientationIndex(AndroidOrientation orientation) {
-    for (int i = 0; i < androidOrientationCount; i++) {
-        if (androidOrientationValues[i] == orientation) return i;
+static int findDefaultOrientationIndex(ScreenOrientation orientation) {
+    for (int i = 0; i < defaultOrientationCount; i++) {
+        if (defaultOrientationValues[i] == orientation) return i;
     }
-    return 0;
+    return defaultOrientationCount - 1;
 }
 
 // Opening and accepting the dialog must not truncate untouched persisted text.
@@ -948,14 +955,22 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
         }
         std::sort(m_inputActionsFiles.begin(), m_inputActionsFiles.end());
     }
+    m_physics3DWorld = project->getPhysics3DWorldSettings();
     m_runtimeShadersEnabled = project->isRuntimeShadersEnabled();
     m_mobilePbrTierIndex = findMobilePbrTierIndex(project->getMobilePbrTier());
+
+    const PresentationSettings& presentation = project->getPresentationSettings();
+    m_defaultOrientationIndex = findDefaultOrientationIndex(presentation.defaultOrientation);
+    m_allowedOrientations = presentation.allowedOrientations;
+    m_keepScreenOn = presentation.keepScreenOn;
+    m_targetFrameRate = presentation.targetFrameRate;
 
     const ApplicationSettings& application = project->getApplicationSettings();
     snprintf(m_applicationNameBuffer, sizeof(m_applicationNameBuffer), "%s", application.name.c_str());
     snprintf(m_applicationIdentifierBuffer, sizeof(m_applicationIdentifierBuffer), "%s", application.identifier.c_str());
     snprintf(m_applicationVersionBuffer, sizeof(m_applicationVersionBuffer), "%s", application.version.c_str());
     m_applicationBuild = static_cast<int>(application.build);
+    m_allowInsecureHttp = application.allowInsecureHttp;
 
     const WebProjectSettings& web = project->getWebProjectSettings();
     snprintf(m_webApplicationNameBuffer, sizeof(m_webApplicationNameBuffer), "%s", web.applicationName.c_str());
@@ -1012,15 +1027,14 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     }
     m_androidMinSdk = static_cast<int>(android.minSdk);
     m_androidTargetSdk = static_cast<int>(android.targetSdk);
-    m_androidOrientationIndex = findAndroidOrientationIndex(android.orientation);
     m_androidAbiArmeabiV7a = android.abiArmeabiV7a;
     m_androidAbiArm64V8a = android.abiArm64V8a;
     m_androidAbiX86 = android.abiX86;
     m_androidAbiX86_64 = android.abiX86_64;
     m_androidPermissions = android.permissions;
+    m_androidInternetAccessIndex = android.internetAccess == AndroidInternetAccess::Require ? 1 : 0;
     m_androidAllowBackup = android.allowBackup;
     m_androidFullscreen = android.fullscreen;
-    m_androidKeepScreenOn = android.keepScreenOn;
     m_androidAdmobEnabled = android.admobEnabled;
     snprintf(m_androidAdmobAppIdBuffer, sizeof(m_androidAdmobAppIdBuffer), "%s", android.admobAppId.c_str());
     m_androidPackageFormatIndex = indexOfName(androidPackageFormats, android.packageFormat);
@@ -1058,6 +1072,19 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
 
     m_layerCollision3D = project->getLayerCollisionMatrix3D();
     m_layerCollision2D = project->getLayerCollisionMatrix2D();
+
+    m_inputActions = project->getInputActions();
+    m_inputCommitted = m_inputActions;
+    m_inputCommittedJson = InputActions::actionsToJson(m_inputActions);
+    m_inputUndo.clear();
+    m_inputRedo.clear();
+    m_inputSelected = std::clamp(m_inputSelected, 0, std::max(0, static_cast<int>(m_inputActions.size()) - 1));
+    m_inputSearch[0] = '\0';
+    m_inputListen = InputListen();
+
+    m_globalsEdit.begin(project);
+    m_shaderGlobalUsesScanned = false;
+    m_shaderGlobalRemove = -1;
 }
 
 void ProjectSettingsWindow::show() {
@@ -1089,9 +1116,15 @@ void ProjectSettingsWindow::show() {
         }
         ImGui::EndPopup();
     }
+
+    // closed without OK: the engine declares the project's shader globals again
+    if (!m_isOpen && m_globalsEdit.isPreviewed())
+        m_globalsEdit.cancel();
 }
 
 void ProjectSettingsWindow::drawSettings() {
+    // the Input page's Listen takes Escape: it must not close the dialog in the frame it ends
+    const bool listening = m_inputListen.action >= 0;
     const ImGuiStyle& style = ImGui::GetStyle();
     const float footerY = ImGui::GetWindowHeight() - style.WindowPadding.y - ImGui::GetFrameHeight();
     float regionHeight = std::max(1.0f, footerY - style.ItemSpacing.y * 2.0f - ImGui::GetCursorPosY());
@@ -1141,7 +1174,9 @@ void ProjectSettingsWindow::drawSettings() {
 
     const bool hasAbi = hasAndroidAbiSelection(m_androidAbiArmeabiV7a, m_androidAbiArm64V8a, m_androidAbiX86, m_androidAbiX86_64);
     const std::string tagsAndLayersProblem = tagsAndLayersError();
-    const bool canSave = hasAbi && tagsAndLayersProblem.empty();
+    const std::string inputProblem = inputError();
+    const std::string shaderGlobalsProblem = m_globalsEdit.error();
+    const bool canSave = hasAbi && tagsAndLayersProblem.empty() && inputProblem.empty() && shaderGlobalsProblem.empty();
 
     ImGui::BeginDisabled(!canSave);
     if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
@@ -1154,14 +1189,19 @@ void ProjectSettingsWindow::drawSettings() {
     if (!canSave && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
         if (!hasAbi) {
             ImGui::SetTooltip("Select at least one Android architecture (Player > Android).");
-        } else {
+        } else if (!tagsAndLayersProblem.empty()) {
             ImGui::SetTooltip("%s (Tags and Layers).", tagsAndLayersProblem.c_str());
+        } else if (!inputProblem.empty()) {
+            ImGui::SetTooltip("%s (Input).", inputProblem.c_str());
+        } else {
+            ImGui::SetTooltip("%s (Graphics > Shader Globals).", shaderGlobalsProblem.c_str());
         }
     }
 
     ImGui::SameLine();
+    // Escape cancels a Listen of the Input page first
     if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) ||
-        (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
+        (!listening && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
         ImGui::CloseCurrentPopup();
     }
@@ -1331,6 +1371,8 @@ void ProjectSettingsWindow::drawPlayerSettings() {
                 ImGui::SetNextItemWidth(-1);
                 ImGui::InputTextWithHint("##WindowTitle", titleHint.c_str(), m_windowTitleBuffer, sizeof(m_windowTitleBuffer));
             }
+
+            drawPresentationSettings();
 
             ImGui::EndTable();
         }
@@ -1563,6 +1605,20 @@ void ProjectSettingsWindow::drawPlayerSettings() {
             ImGui::EndTable();
         }
 
+        if (settingsFoldout("Other Settings") && beginSettingsTable("##PlayerOtherTable")) {
+            if (settingsui::beginRow("player.allow_insecure_http")) {
+                const bool defaultInsecureHttp = ApplicationSettings{}.allowInsecureHttp;
+                if (projectBeginSettingsRow("Allow Insecure HTTP", m_allowInsecureHttp != defaultInsecureHttp)) {
+                    m_allowInsecureHttp = defaultInsecureHttp;
+                }
+                ImGui::Checkbox("##AllowInsecureHttp", &m_allowInsecureHttp);
+                endSettingsRow("Plain http:// URLs other than localhost. Off: they fail with insecure_http on every platform; "
+                    "exports set Android cleartext and iOS ATS to match.");
+            }
+
+            ImGui::EndTable();
+        }
+
         if (settingsFoldout("Publishing Settings") && beginSettingsTable("##PlayerPublishingTable")) {
             if (settingsui::beginRow("player.pack_native_resources")) {
                 if (projectBeginSettingsRow("Native Resource Pack", m_packNativeResources != Project::defaultPackNativeResources)) {
@@ -1593,6 +1649,68 @@ void ProjectSettingsWindow::drawPlayerSettings() {
         drawPlatformsSettings();
     }
     endSettingsPanel();
+}
+
+void ProjectSettingsWindow::drawPresentationSettings() {
+    const PresentationSettings defaults;
+
+    drawComboSetting("Default Orientation", "##DefaultOrientation", defaultOrientationNames, defaultOrientationCount,
+        m_defaultOrientationIndex, findDefaultOrientationIndex(defaults.defaultOrientation),
+        "Orientation the game starts in on phones and tablets (Android and iOS). Auto Rotation follows the device "
+        "within the allowed orientations below. Scripts change it with Screen.orientation.");
+
+    const bool autoRotation = defaultOrientationValues[std::clamp(m_defaultOrientationIndex, 0, defaultOrientationCount - 1)] ==
+        ScreenOrientation::AutoRotation;
+    if (beginSettingsRow("Allowed Orientations", m_allowedOrientations != defaults.allowedOrientations)) {
+        m_allowedOrientations = defaults.allowedOrientations;
+    }
+    ImGui::BeginDisabled(!autoRotation);
+    const struct { const char* label; ScreenOrientation orientation; } choices[] = {
+        {"Portrait##Allowed", ScreenOrientation::Portrait},
+        {"Portrait Upside Down##Allowed", ScreenOrientation::PortraitUpsideDown},
+        {"Landscape Left##Allowed", ScreenOrientation::LandscapeLeft},
+        {"Landscape Right##Allowed", ScreenOrientation::LandscapeRight},
+    };
+    for (const auto& choice : choices) {
+        const uint8_t bit = PlatformRules::orientationBit(choice.orientation);
+        bool on = (m_allowedOrientations & bit) != 0;
+        if (ImGui::Checkbox(choice.label, &on)) {
+            const uint8_t mask = on ? (uint8_t)(m_allowedOrientations | bit) : (uint8_t)(m_allowedOrientations & ~bit);
+            // at least one stays (Unity refuses the last one too)
+            if (mask & PlatformRules::ALL_ORIENTATIONS) m_allowedOrientations = mask;
+        }
+    }
+    ImGui::EndDisabled();
+    endSettingsRow("Allowed Orientations for Auto Rotation (Screen.autorotateTo*): where the device may turn the game. "
+        "Landscape Left is the device turned counter-clockwise from portrait.");
+    if (autoRotation) {
+        bool androidUnsupported = false;
+        PlatformRules::androidRequestedOrientation(ScreenOrientation::AutoRotation, m_allowedOrientations, &androidUnsupported);
+        if (androidUnsupported) {
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Android cannot limit rotation to this set; it allows all four.");
+        }
+    }
+
+    if (beginSettingsRow("Keep Screen On", m_keepScreenOn != defaults.keepScreenOn)) {
+        m_keepScreenOn = defaults.keepScreenOn;
+    }
+    ImGui::Checkbox("##KeepScreenOn", &m_keepScreenOn);
+    endSettingsRow("Android and iOS: the screen never dims or locks while the game runs (Screen.sleepTimeout = "
+        "SleepTimeout.NeverSleep). Off: the device's own setting. Desktops and the web follow the system unless a "
+        "script sets NeverSleep (as Unity).");
+
+    if (beginSettingsRow("Target Frame Rate", m_targetFrameRate != defaults.targetFrameRate)) {
+        m_targetFrameRate = defaults.targetFrameRate;
+    }
+    ImGui::SetNextItemWidth(-helpMarkerWidth());
+    const int before = m_targetFrameRate;
+    ImGui::InputInt("##TargetFrameRate", &m_targetFrameRate);
+    // 0 is no rate: the step buttons go from -1 to 1 and back
+    if (m_targetFrameRate == 0) m_targetFrameRate = before < 0 ? 1 : -1;
+    if (m_targetFrameRate < 0) m_targetFrameRate = -1;
+    m_targetFrameRate = std::min(m_targetFrameRate, 1000);
+    endSettingsRow("Initial Engine.targetFrameRate. -1 = the platform's rate: 60 on mobile, every browser frame on the web, "
+        "as fast as vsync allows on desktops (which ignore it while VSync is on, as Unity).");
 }
 
 void ProjectSettingsWindow::drawGraphicsSettings() {
@@ -1688,6 +1806,9 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
             endSettingsRow("Exported builds compile the shader variants they do not ship precompiled, such as those of meshes and materials "
                 "that scripts build or change, in the background and cache them on disk. When off, the build carries only the "
                 "variants in Build Settings > Shaders and leaves out what draws with any other. Play always compiles.");
+        }
+        if (settingsFoldout("Shader Globals", ImGuiTreeNodeFlags_DefaultOpen)) {
+            drawShaderGlobals();
         }
     });
 }
@@ -1905,6 +2026,28 @@ void ProjectSettingsWindow::drawPhysicsSettings() {
                 endSettingsRow("Jolt-based 3D physics. When off, Jolt is left out of exported builds, along with any Rigidbodies and joints the scenes still use. Play always runs with both backends available.");
             }
             ImGui::EndTable();
+        }
+
+        if (settingsFoldout("3D World Capacity", ImGuiTreeNodeFlags_DefaultOpen)) {
+            drawSectionNote("Limits of each scene's 3D physics world, reserved when the scene starts playing. "
+                "Past Max Bodies no more Rigidbodies are made (the console names the setting); "
+                "past the pairs or contact constraints some contacts are dropped for that step.");
+            if (beginSettingsTable("##WorldCapacityTable")) {
+                const Physics3DWorldSettings defaults;
+                const int maxIndex = 8388607;
+                auto capacityRow = [&](const char* label, const char* id, unsigned int& field, unsigned int defaultValue, const char* tooltip) {
+                    int value = (int)std::min<unsigned int>(field, (unsigned int)maxIndex);
+                    drawIntSetting(label, id, value, (int)defaultValue, 16, tooltip);
+                    field = (unsigned int)std::min(value, maxIndex);
+                };
+                capacityRow("Max Bodies", "##Physics3DMaxBodies", m_physics3DWorld.maxBodies, defaults.maxBodies,
+                    "The most Rigidbodies a scene can have at once (Jolt's maxBodies).");
+                capacityRow("Max Body Pairs", "##Physics3DMaxBodyPairs", m_physics3DWorld.maxBodyPairs, defaults.maxBodyPairs,
+                    "The most pairs of bodies whose bounds overlap in one step (Jolt's maxBodyPairs).");
+                capacityRow("Max Contact Constraints", "##Physics3DMaxContacts", m_physics3DWorld.maxContactConstraints, defaults.maxContactConstraints,
+                    "The most touching body pairs solved in one step (Jolt's maxContactConstraints).");
+                ImGui::EndTable();
+            }
         }
 
         if (settingsFoldout("Layer Collision Matrix", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -2647,6 +2790,10 @@ void ProjectSettingsWindow::drawMacOSSettings() {
 }
 
 void ProjectSettingsWindow::drawIOSSettings() {
+    beginSettingsRow("Orientation");
+    ImGui::TextDisabled("From Player > Resolution and Presentation");
+    endSettingsRow("Default Orientation and Allowed Orientations for Auto Rotation are shared by Android and iOS.");
+
     if (settingsui::beginRow("ios.application_name")) {
         drawOverrideSetting("App Name", "##IOSAppName", m_iosApplicationNameBuffer, inheritedApplicationName(),
             "iOS bundle display name. Empty means the shared application name.");
@@ -2795,10 +2942,14 @@ void ProjectSettingsWindow::drawAndroidSettings() {
         m_androidTargetSdk = std::max(m_androidTargetSdk, m_androidMinSdk);
     }
 
-    if (settingsui::beginRow("android.orientation")) {
-        drawComboSetting("Orientation", "##AndroidOrientation", androidOrientationNames, androidOrientationCount,
-            m_androidOrientationIndex, findAndroidOrientationIndex(defaults.orientation),
-            "Screen orientation requested by the Android activity.");
+    beginSettingsRow("Orientation");
+    ImGui::TextDisabled("From Player > Resolution and Presentation");
+    endSettingsRow("Default Orientation and Allowed Orientations for Auto Rotation are shared by Android and iOS.");
+
+    if (settingsui::beginRow("android.internet_access")) {
+        drawComboSetting("Internet Access", "##AndroidInternetAccess", androidInternetAccessNames, androidInternetAccessCount,
+            m_androidInternetAccessIndex, defaults.internetAccess == AndroidInternetAccess::Require ? 1 : 0,
+            "Auto adds INTERNET when Lua or C++ code uses Http (checked at export). Require always adds it.");
     }
 
     if (settingsui::beginRow("android.abis")) {
@@ -2843,18 +2994,14 @@ void ProjectSettingsWindow::drawAndroidSettings() {
         endSettingsRow("Android permissions written to AndroidManifest.xml. Some permissions still require runtime approval in your Android code.");
     }
 
-    if (settingsui::beginRow({"android.allow_backup", "android.keep_screen_on"})) {
-        if (projectBeginSettingsRow("Application Options", m_androidAllowBackup != defaults.allowBackup || m_androidKeepScreenOn != defaults.keepScreenOn)) {
+    if (settingsui::beginRow("android.allow_backup")) {
+        if (projectBeginSettingsRow("Application Options", m_androidAllowBackup != defaults.allowBackup)) {
             m_androidAllowBackup = defaults.allowBackup;
-            m_androidKeepScreenOn = defaults.keepScreenOn;
         }
 
         ImGui::Checkbox("Allow Backup", &m_androidAllowBackup);
         ImGui::SetItemTooltip("Maps to android:allowBackup.");
-
-        ImGui::Checkbox("Keep Screen On", &m_androidKeepScreenOn);
-        ImGui::SetItemTooltip("Adds FLAG_KEEP_SCREEN_ON to the Android activity.");
-        endSettingsRow("Android application/activity behavior.");
+        endSettingsRow("Android application/activity behavior. Keep Screen On is in Player > Resolution and Presentation.");
     }
 
     if (settingsui::beginRow("android.fullscreen")) {
@@ -2915,11 +3062,590 @@ void ProjectSettingsWindow::drawAndroidSettings() {
     }
 }
 
+// ---- Input (Project Settings > Input): the input actions
+
+namespace {
+
+    const char* inputKindLabels[] = { "Key or Mouse Button", "Gamepad Axis", "Mouse Movement" };
+    const char* mouseAxisLabels[] = { "X (right)", "Y (up)", "Wheel (up)" };
+
+    std::string inputUniqueName(const std::vector<InputAction>& actions, const std::string& base) {
+        auto taken = [&actions](const std::string& name) {
+            return std::any_of(actions.begin(), actions.end(), [&name](const InputAction& a) { return a.name == name; });
+        };
+        if (!taken(base)) return base;
+        for (int n = 1;; n++) {
+            const std::string name = base + " (" + std::to_string(n) + ")";
+            if (!taken(name)) return name;
+        }
+    }
+
+    std::string inputControlsText(const std::vector<InputControl>& controls) {
+        std::string text;
+        for (const InputControl& control : controls) text += (text.empty() ? "" : ", ") + InputControlNames::name(control);
+        return text.empty() ? std::string("none") : text;
+    }
+
+    // "Key or Mouse Button: right, d / left, a"
+    std::string inputBindingSummary(const InputAction& action, const InputBinding& binding) {
+        switch (binding.kind) {
+            case InputBindingKind::Buttons: {
+                std::string text = std::string(inputKindLabels[0]) + ": " + inputControlsText(binding.positive);
+                if (action.type == InputActionType::Axis && !binding.negative.empty())
+                    text += " / " + inputControlsText(binding.negative);
+                return text;
+            }
+            case InputBindingKind::GamepadAxis:
+                return std::string(inputKindLabels[1]) + ": " + InputControlNames::gamepadAxisName(binding.axis) +
+                       (binding.invert ? " (inverted)" : "");
+            case InputBindingKind::MouseDelta:
+                return std::string(inputKindLabels[2]) + ": " + InputActions::mouseAxisName(binding.mouseAxis);
+        }
+        return "";
+    }
+
+    bool inputPlaying(Project* project) {
+        return project && project->getPlaySessionSceneId() != NULL_PROJECT_SCENE;
+    }
+
+    // a non-negative number field with Unity's label
+    bool inputNumberRow(const char* label, const char* id, float& value, float defaultValue, float speed, float maximum,
+                        const char* tooltip) {
+        if (beginSettingsRow(label, value != defaultValue)) value = defaultValue;
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        const bool changed = ImGui::DragFloat(id, &value, speed, 0.0f, maximum, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+        endSettingsRow(tooltip);
+        return changed;
+    }
+
+}
+
+std::string ProjectSettingsWindow::inputError() const {
+    // names are trimmed when their field is left (and on OK): no error while one is typed
+    std::vector<InputAction> actions = m_inputActions;
+    for (InputAction& action : actions) action.name = TagManager::trimName(action.name);
+    return InputActions::validate(actions);
+}
+
+void ProjectSettingsWindow::commitInputEdit() {
+    // a drag or a text edit is one step, taken when it ends
+    if (ImGui::IsAnyItemActive()) return;
+    const std::string json = InputActions::actionsToJson(m_inputActions);
+    if (json == m_inputCommittedJson) return;
+    m_inputUndo.push_back(m_inputCommitted);
+    if (m_inputUndo.size() > 200) m_inputUndo.erase(m_inputUndo.begin());
+    m_inputRedo.clear();
+    m_inputCommitted = m_inputActions;
+    m_inputCommittedJson = json;
+}
+
+void ProjectSettingsWindow::undoInputEdit() {
+    commitInputEdit();
+    if (m_inputUndo.empty()) return;
+    m_inputRedo.push_back(m_inputActions);
+    m_inputActions = m_inputUndo.back();
+    m_inputUndo.pop_back();
+    m_inputCommitted = m_inputActions;
+    m_inputCommittedJson = InputActions::actionsToJson(m_inputActions);
+    m_inputListen = InputListen();
+}
+
+void ProjectSettingsWindow::redoInputEdit() {
+    if (m_inputRedo.empty()) return;
+    m_inputUndo.push_back(m_inputActions);
+    m_inputActions = m_inputRedo.back();
+    m_inputRedo.pop_back();
+    m_inputCommitted = m_inputActions;
+    m_inputCommittedJson = InputActions::actionsToJson(m_inputActions);
+    m_inputListen = InputListen();
+}
+
+void ProjectSettingsWindow::pollInputListen() {
+    if (m_inputListen.action < 0) return;
+    if (m_inputListen.action >= static_cast<int>(m_inputActions.size()) ||
+        m_inputListen.binding >= static_cast<int>(m_inputActions[m_inputListen.action].bindings.size())) {
+        m_inputListen = InputListen();
+        return;
+    }
+    // the click that started it is not the control
+    if (++m_inputListen.frames < 3) return;
+
+    InputBinding& binding = m_inputActions[m_inputListen.action].bindings[m_inputListen.binding];
+    auto finish = [this]() { m_inputListen = InputListen(); };
+    auto addControl = [&binding, this, &finish](InputControl control) {
+        std::vector<InputControl>& list = m_inputListen.list == 1 ? binding.negative : binding.positive;
+        if (std::find(list.begin(), list.end(), control) == list.end()) list.push_back(control);
+        finish();
+    };
+
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        finish();
+        return;
+    }
+
+    // a gamepad axis binding takes an axis: the stick or trigger moved past half way
+    if (m_inputListen.list == 2) {
+        struct AxisKey { ImGuiKey key; int axis; };
+        const AxisKey axisKeys[] = {
+            {ImGuiKey_GamepadLStickLeft, D_GAMEPAD_AXIS_LEFT_X}, {ImGuiKey_GamepadLStickRight, D_GAMEPAD_AXIS_LEFT_X},
+            {ImGuiKey_GamepadLStickUp, D_GAMEPAD_AXIS_LEFT_Y}, {ImGuiKey_GamepadLStickDown, D_GAMEPAD_AXIS_LEFT_Y},
+            {ImGuiKey_GamepadRStickLeft, D_GAMEPAD_AXIS_RIGHT_X}, {ImGuiKey_GamepadRStickRight, D_GAMEPAD_AXIS_RIGHT_X},
+            {ImGuiKey_GamepadRStickUp, D_GAMEPAD_AXIS_RIGHT_Y}, {ImGuiKey_GamepadRStickDown, D_GAMEPAD_AXIS_RIGHT_Y},
+            {ImGuiKey_GamepadL2, D_GAMEPAD_AXIS_LEFT_TRIGGER}, {ImGuiKey_GamepadR2, D_GAMEPAD_AXIS_RIGHT_TRIGGER},
+        };
+        for (const AxisKey& entry : axisKeys) {
+            if (ImGui::GetKeyData(entry.key)->AnalogValue >= 0.5f) {
+                binding.axis = entry.axis;
+                finish();
+                return;
+            }
+        }
+        // a pad the running game reads (Input.getPressedControl names axes "left_x+")
+        std::string pressed = Input::getPressedControl();
+        if (!pressed.empty() && (pressed.back() == '+' || pressed.back() == '-')) pressed.pop_back();
+        const int axis = InputControlNames::parseGamepadAxis(pressed);
+        if (axis >= 0) {
+            binding.axis = axis;
+            finish();
+        }
+        return;
+    }
+
+    for (int key = ImGuiKey_NamedKey_BEGIN; key < ImGuiKey_NamedKey_END; key++) {
+        if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(key), false)) continue;
+        const int engineKey = PlayInput::engineKey(static_cast<ImGuiKey>(key));
+        if (engineKey != D_KEY_UNKNOWN) {
+            addControl({InputDevice::Key, engineKey});
+            return;
+        }
+        const int button = PlayInput::engineGamepadButton(static_cast<ImGuiKey>(key));
+        if (button >= 0) {
+            addControl({InputDevice::GamepadButton, button});
+            return;
+        }
+    }
+    // a click on the dialog (Listen again, another field) is not a binding: click empty space
+    for (int button = 0; button < 5 && !ImGui::IsAnyItemHovered(); button++) {
+        if (ImGui::IsMouseClicked(button)) {
+            addControl({InputDevice::Mouse, button});
+            return;
+        }
+    }
+    // a pad the running game reads
+    InputControl control;
+    if (InputControlNames::parseButton(Input::getPressedControl(), control) && control.device == InputDevice::GamepadButton)
+        addControl(control);
+}
+
+void ProjectSettingsWindow::drawInputSettings() {
+    ImGuiIO& io = ImGui::GetIO();
+    if (m_inputListen.action < 0 && !io.WantTextInput && io.KeyCtrl) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Y, false) || (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false))) {
+            redoInputEdit();
+        } else if (!io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+            undoInputEdit();
+        }
+    }
+
+    if (beginSettingsPanel("##InputSettingsPanel")) {
+        drawSectionNote("Input actions are Unity's virtual axes and buttons: scripts read Input.getAxis(\"Horizontal\") and "
+            "Input.getButtonDown(\"Jump\"), and the keyboard, gamepad and on-screen controls bound to an action add up. "
+            "Saved with the project; a game can rebind them at run time (Input.setBindings).");
+
+        ImGui::BeginDisabled(m_inputUndo.empty() && InputActions::actionsToJson(m_inputActions) == m_inputCommittedJson);
+        if (ImGui::Button(ICON_FA_ROTATE_LEFT " Undo")) undoInputEdit();
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("Undo the last Input change (Ctrl+Z)");
+        ImGui::SameLine();
+        ImGui::BeginDisabled(m_inputRedo.empty());
+        if (ImGui::Button(ICON_FA_ROTATE_RIGHT " Redo")) redoInputEdit();
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("Redo (Ctrl+Y)");
+        ImGui::SameLine();
+        if (ImGui::Button("Reset to Unity Defaults")) {
+            m_inputActions = InputActions::defaults();
+            m_inputSelected = 0;
+            m_inputListen = InputListen();
+        }
+        ImGui::SetItemTooltip("Horizontal, Vertical, Fire1-3, Jump, Mouse X/Y, Mouse ScrollWheel, Submit and Cancel "
+                              "as Unity's Input Manager has them");
+
+        const std::string problem = inputError();
+        if (!problem.empty()) {
+            ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", problem.c_str());
+        }
+
+        const float listWidth = std::min(Theme::dpi(220.0f), ImGui::GetContentRegionAvail().x * 0.35f);
+        ImGui::BeginChild("##InputActionList", ImVec2(listWidth, 0), ImGuiChildFlags_Borders);
+        drawInputActionList();
+        ImGui::EndChild();
+        ImGui::SameLine();
+        ImGui::BeginChild("##InputActionDetails", ImVec2(0, 0), ImGuiChildFlags_None);
+        if (m_inputSelected >= 0 && m_inputSelected < static_cast<int>(m_inputActions.size())) {
+            drawInputActionDetails(m_inputActions[m_inputSelected], m_inputSelected);
+        } else {
+            ImGui::TextDisabled("No action selected. Add one with +.");
+        }
+        ImGui::EndChild();
+    }
+    endSettingsPanel();
+
+    pollInputListen();
+    commitInputEdit();
+}
+
+void ProjectSettingsWindow::drawInputActionList() {
+    const float buttonWidth = ImGui::GetFrameHeight();
+    if (ImGui::Button(ICON_FA_PLUS "##AddInputAction", ImVec2(buttonWidth, 0))) {
+        InputAction action;
+        action.name = inputUniqueName(m_inputActions, "New Action");
+        action.bindings.push_back(InputActions::makeBinding(InputBindingKind::Buttons));
+        const int at = std::clamp(m_inputSelected + 1, 0, static_cast<int>(m_inputActions.size()));
+        m_inputActions.insert(m_inputActions.begin() + at, action);
+        m_inputSelected = at;
+        m_inputSearch[0] = '\0';
+    }
+    ImGui::SetItemTooltip("Add an action");
+    ImGui::SameLine();
+    const bool hasSelection = m_inputSelected >= 0 && m_inputSelected < static_cast<int>(m_inputActions.size());
+    ImGui::BeginDisabled(!hasSelection);
+    if (ImGui::Button(ICON_FA_COPY "##DuplicateInputAction", ImVec2(buttonWidth, 0)) && hasSelection) {
+        InputAction copy = m_inputActions[m_inputSelected];
+        copy.name = inputUniqueName(m_inputActions, copy.name);
+        m_inputActions.insert(m_inputActions.begin() + m_inputSelected + 1, copy);
+        m_inputSelected++;
+    }
+    ImGui::SetItemTooltip("Duplicate the action");
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_TRASH "##DeleteInputAction", ImVec2(buttonWidth, 0)) && hasSelection) {
+        m_inputActions.erase(m_inputActions.begin() + m_inputSelected);
+        m_inputSelected = std::min(m_inputSelected, static_cast<int>(m_inputActions.size()) - 1);
+        m_inputListen = InputListen();
+    }
+    ImGui::SetItemTooltip("Delete the action (scripts reading it then log an error and read 0)");
+    ImGui::EndDisabled();
+
+    ImGui::SetNextItemWidth(-1);
+    ImGui::InputTextWithHint("##InputActionSearch", ICON_FA_MAGNIFYING_GLASS " Search", m_inputSearch, sizeof(m_inputSearch));
+    std::string search = m_inputSearch;
+    std::transform(search.begin(), search.end(), search.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    const bool playing = inputPlaying(m_project);
+    int moveFrom = -1, moveTo = -1;
+    for (int i = 0; i < static_cast<int>(m_inputActions.size()); i++) {
+        const InputAction& action = m_inputActions[i];
+        std::string lower = action.name;
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (!search.empty() && lower.find(search) == std::string::npos) continue;
+
+        ImGui::PushID(i);
+        // a live dot while the game plays: pressed (green) or moved off rest (dim)
+        std::string label = action.name.empty() ? std::string("(no name)") : action.name;
+        if (playing) {
+            InputActions::State state;
+            if (InputActions::getState(action.name, state)) {
+                ImVec4 color = state.pressed ? ImVec4(0.35f, 0.85f, 0.4f, 1.0f)
+                             : (std::fabs(state.value) > 0.0005f ? ImVec4(0.9f, 0.75f, 0.3f, 1.0f) : ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+                ImGui::TextColored(color, ICON_FA_CIRCLE);
+                ImGui::SameLine();
+            }
+        }
+        if (ImGui::Selectable(label.c_str(), i == m_inputSelected)) {
+            m_inputSelected = i;
+        }
+        // drag to reorder (the order is the one getActionNames lists)
+        if (search.empty() && ImGui::BeginDragDropSource()) {
+            ImGui::SetDragDropPayload("INPUT_ACTION_INDEX", &i, sizeof(int));
+            ImGui::TextUnformatted(label.c_str());
+            ImGui::EndDragDropSource();
+        }
+        if (search.empty() && ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("INPUT_ACTION_INDEX")) {
+                moveFrom = *static_cast<const int*>(payload->Data);
+                moveTo = i;
+            }
+            ImGui::EndDragDropTarget();
+        }
+        ImGui::PopID();
+    }
+    if (moveFrom >= 0 && moveTo >= 0 && moveFrom != moveTo) {
+        InputAction moved = m_inputActions[moveFrom];
+        m_inputActions.erase(m_inputActions.begin() + moveFrom);
+        m_inputActions.insert(m_inputActions.begin() + moveTo, moved);
+        m_inputSelected = moveTo;
+        m_inputListen = InputListen();
+    }
+}
+
+void ProjectSettingsWindow::drawInputActionDetails(InputAction& action, int actionIndex) {
+    ImGui::PushID(actionIndex);
+    if (beginSettingsTable("##InputActionTable")) {
+        beginSettingsRow("Name");
+        char name[128];
+        snprintf(name, sizeof(name), "%s", action.name.c_str());
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        if (ImGui::InputText("##InputActionName", name, sizeof(name))) action.name = name;
+        if (ImGui::IsItemDeactivatedAfterEdit()) action.name = TagManager::trimName(action.name);
+        endSettingsRow("What scripts pass to Input.getAxis / getButton. Unique, case-sensitive.");
+
+        if (beginSettingsRow("Type", action.type != InputActionType::Axis)) action.type = InputActionType::Axis;
+        int type = action.type == InputActionType::Button ? 1 : 0;
+        const char* typeLabels[] = { "Axis", "Button" };
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        if (ImGui::Combo("##InputActionType", &type, typeLabels, 2)) action.type = type == 1 ? InputActionType::Button : InputActionType::Axis;
+        endSettingsRow("Axis: -1..1 from a positive and a negative side. Button: 0..1, negative buttons are not read.");
+
+        beginSettingsRow("Description");
+        char description[256];
+        snprintf(description, sizeof(description), "%s", action.description.c_str());
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        if (ImGui::InputText("##InputActionDescription", description, sizeof(description))) action.description = description;
+        endSettingsRow("For you and settings screens; the game does not read it.");
+
+        if (beginSettingsRow("Press Point", action.pressPoint != 0.5f)) action.pressPoint = 0.5f;
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::DragFloat("##InputActionPressPoint", &action.pressPoint, 0.01f, 0.01f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        endSettingsRow("How far a gamepad axis or an on-screen stick goes before getButton is true.");
+
+        if (inputPlaying(m_project)) {
+            beginSettingsRow("Live");
+            InputActions::State state;
+            if (InputActions::getState(action.name, state)) {
+                const float low = action.type == InputActionType::Button ? 0.0f : -1.0f;
+                const float fraction = std::clamp((state.value - low) / (1.0f - low), 0.0f, 1.0f);
+                char overlay[32];
+                snprintf(overlay, sizeof(overlay), "%.3f", state.value);
+                ImGui::TextColored(state.pressed ? ImVec4(0.35f, 0.85f, 0.4f, 1.0f) : ImGui::GetStyle().Colors[ImGuiCol_TextDisabled], ICON_FA_CIRCLE);
+                ImGui::SetItemTooltip(state.pressed ? "Pressed (getButton)" : "Not pressed");
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::ProgressBar(fraction, ImVec2(-helpMarkerWidth(), 0), overlay);
+                endSettingsRow("Input.getAxis of the running game (its definition: what OK last applied).");
+            } else {
+                ImGui::TextDisabled("Not in the running game yet: OK applies it");
+            }
+        }
+        ImGui::EndTable();
+    }
+
+    ImGui::Spacing();
+    int removeBinding = -1, moveUp = -1, moveDown = -1;
+    for (int b = 0; b < static_cast<int>(action.bindings.size()); b++) {
+        ImGui::PushID(b);
+        const std::string header = "Binding " + std::to_string(b + 1) + ": " + inputBindingSummary(action, action.bindings[b]) +
+                                   "###InputBinding";
+        const bool open = Theme::foldoutHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+        if (open) {
+            const float buttonWidth = ImGui::GetFrameHeight();
+            ImGui::BeginDisabled(b == 0);
+            if (ImGui::Button(ICON_FA_ARROW_UP, ImVec2(buttonWidth, 0))) moveUp = b;
+            ImGui::EndDisabled();
+            ImGui::SetItemTooltip("Move up");
+            ImGui::SameLine();
+            ImGui::BeginDisabled(b + 1 >= static_cast<int>(action.bindings.size()));
+            if (ImGui::Button(ICON_FA_ARROW_DOWN, ImVec2(buttonWidth, 0))) moveDown = b;
+            ImGui::EndDisabled();
+            ImGui::SetItemTooltip("Move down");
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_TRASH " Remove")) removeBinding = b;
+            drawInputBinding(action, actionIndex, b);
+        }
+        ImGui::PopID();
+    }
+    if (removeBinding >= 0) {
+        action.bindings.erase(action.bindings.begin() + removeBinding);
+        m_inputListen = InputListen();
+    } else if (moveUp > 0) {
+        std::swap(action.bindings[moveUp], action.bindings[moveUp - 1]);
+        m_inputListen = InputListen();
+    } else if (moveDown >= 0) {
+        std::swap(action.bindings[moveDown], action.bindings[moveDown + 1]);
+        m_inputListen = InputListen();
+    }
+
+    if (ImGui::Button(ICON_FA_PLUS " Add Binding")) ImGui::OpenPopup("##AddInputBinding");
+    if (ImGui::BeginPopup("##AddInputBinding")) {
+        for (int kind = 0; kind < 3; kind++) {
+            if (ImGui::MenuItem(inputKindLabels[kind])) {
+                action.bindings.push_back(InputActions::makeBinding(static_cast<InputBindingKind>(kind)));
+            }
+        }
+        ImGui::EndPopup();
+    }
+    ImGui::PopID();
+}
+
+void ProjectSettingsWindow::drawInputControls(const char* id, std::vector<InputControl>& controls, int actionIndex, int bindingIndex, int list) {
+    ImGui::PushID(id);
+    int remove = -1;
+    for (size_t c = 0; c < controls.size(); c++) {
+        ImGui::PushID(static_cast<int>(c));
+        const std::string label = InputControlNames::name(controls[c]) + " " ICON_FA_XMARK;
+        if (ImGui::SmallButton(label.c_str())) remove = static_cast<int>(c);
+        ImGui::SetItemTooltip("Remove");
+        ImGui::SameLine();
+        ImGui::PopID();
+    }
+    if (remove >= 0) controls.erase(controls.begin() + remove);
+
+    if (ImGui::SmallButton(ICON_FA_PLUS)) {
+        m_inputControlFilter[0] = '\0';
+        ImGui::OpenPopup("##PickControl");
+    }
+    ImGui::SetItemTooltip("Add a key, mouse button or gamepad button");
+    if (ImGui::BeginPopup("##PickControl")) {
+        if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+        ImGui::SetNextItemWidth(Theme::dpi(200.0f));
+        ImGui::InputTextWithHint("##ControlFilter", "Filter (space, mouse, gamepad...)", m_inputControlFilter, sizeof(m_inputControlFilter));
+        const std::string filter = m_inputControlFilter;
+        ImGui::BeginChild("##ControlNames", ImVec2(Theme::dpi(220.0f), Theme::dpi(260.0f)));
+        auto group = [&](const char* title, const std::vector<std::string>& names) {
+            bool shownTitle = false;
+            for (const std::string& name : names) {
+                if (!filter.empty() && name.find(filter) == std::string::npos) continue;
+                if (!shownTitle) {
+                    ImGui::TextDisabled("%s", title);
+                    shownTitle = true;
+                }
+                if (ImGui::Selectable(name.c_str())) {
+                    InputControl control;
+                    if (InputControlNames::parseButton(name, control) &&
+                            std::find(controls.begin(), controls.end(), control) == controls.end())
+                        controls.push_back(control);
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+        };
+        group("Keys", InputControlNames::keyNames());
+        group("Mouse", InputControlNames::mouseButtonNames());
+        group("Gamepad", InputControlNames::gamepadButtonNames());
+        ImGui::EndChild();
+        ImGui::EndPopup();
+    }
+    ImGui::SameLine();
+    const bool listening = m_inputListen.action == actionIndex && m_inputListen.binding == bindingIndex && m_inputListen.list == list;
+    if (listening) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_ButtonActive]);
+    if (ImGui::SmallButton(listening ? "Press a key or button... (Esc)" : ICON_FA_EAR_LISTEN " Listen")) {
+        if (listening) {
+            m_inputListen = InputListen();
+        } else {
+            m_inputListen = InputListen();
+            m_inputListen.action = actionIndex;
+            m_inputListen.binding = bindingIndex;
+            m_inputListen.list = list;
+        }
+    }
+    if (listening) ImGui::PopStyleColor();
+    ImGui::SetItemTooltip("Adds the next key or gamepad button you press, or a mouse button clicked on empty space "
+                          "(a pad the playing game reads too). Esc or Listen again cancels.");
+    ImGui::PopID();
+}
+
+void ProjectSettingsWindow::drawInputBinding(InputAction& action, int actionIndex, int bindingIndex) {
+    InputBinding& binding = action.bindings[bindingIndex];
+    if (!beginSettingsTable("##InputBindingTable")) return;
+
+    beginSettingsRow("Kind");
+    int kind = static_cast<int>(binding.kind);
+    ImGui::SetNextItemWidth(-helpMarkerWidth());
+    if (ImGui::Combo("##BindingKind", &kind, inputKindLabels, 3) && kind != static_cast<int>(binding.kind)) {
+        binding = InputActions::makeBinding(static_cast<InputBindingKind>(kind));
+        m_inputListen = InputListen();
+    }
+    endSettingsRow("Unity's Input Manager types: Key or Mouse Button, Joystick Axis, Mouse Movement.");
+
+    const InputBinding defaults = InputActions::makeBinding(binding.kind);
+    auto gamepadRow = [&binding]() {
+        if (beginSettingsRow("Gamepad", binding.gamepad != -1)) binding.gamepad = -1;
+        std::string preview = binding.gamepad < 0 ? std::string("Any") : "Gamepad " + std::to_string(binding.gamepad);
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        if (ImGui::BeginCombo("##BindingGamepad", preview.c_str())) {
+            if (ImGui::Selectable("Any", binding.gamepad < 0)) binding.gamepad = -1;
+            for (int pad = 0; pad < 16; pad++) {
+                if (ImGui::Selectable(("Gamepad " + std::to_string(pad)).c_str(), binding.gamepad == pad)) binding.gamepad = pad;
+            }
+            ImGui::EndCombo();
+        }
+        endSettingsRow("The gamepad id (0-15) whose buttons and axes this binding reads; Any reads every connected pad.");
+    };
+
+    switch (binding.kind) {
+        case InputBindingKind::Buttons: {
+            beginSettingsRow(action.type == InputActionType::Axis ? "Positive Buttons" : "Buttons");
+            drawInputControls("##Positive", binding.positive, actionIndex, bindingIndex, 0);
+            if (action.type == InputActionType::Axis) {
+                beginSettingsRow("Negative Buttons");
+                drawInputControls("##Negative", binding.negative, actionIndex, bindingIndex, 1);
+            }
+            gamepadRow();
+            inputNumberRow("Gravity", "##Gravity", binding.gravity, defaults.gravity, 0.1f, 1000.0f,
+                "Speed in units per second that the value falls back to 0 when no button is pressed (0: at once).");
+            inputNumberRow("Dead", "##Dead", binding.dead, defaults.dead, 0.001f, 0.999f,
+                "Values smaller than this read 0.");
+            inputNumberRow("Sensitivity", "##Sensitivity", binding.sensitivity, defaults.sensitivity, 0.1f, 1000.0f,
+                "Speed in units per second that the value moves to the target (0: at once).");
+            if (beginSettingsRow("Snap", binding.snap)) binding.snap = false;
+            ImGui::Checkbox("##Snap", &binding.snap);
+            endSettingsRow("Pressing the opposite side jumps to 0 first instead of sliding through it.");
+            break;
+        }
+        case InputBindingKind::GamepadAxis: {
+            beginSettingsRow("Axis");
+            int axis = binding.axis;
+            const std::vector<std::string>& axes = InputControlNames::gamepadAxisNames();
+            ImGui::SetNextItemWidth(Theme::dpi(160.0f));
+            if (ImGui::BeginCombo("##BindingAxis", InputControlNames::gamepadAxisName(axis).c_str())) {
+                for (int a = 0; a < static_cast<int>(axes.size()); a++) {
+                    if (ImGui::Selectable(axes[a].c_str(), a == axis)) binding.axis = a;
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::SameLine();
+            const bool listening = m_inputListen.action == actionIndex && m_inputListen.binding == bindingIndex && m_inputListen.list == 2;
+            if (ImGui::SmallButton(listening ? "Move a stick or trigger... (Esc)" : ICON_FA_EAR_LISTEN " Listen##Axis")) {
+                m_inputListen = InputListen();
+                if (!listening) {
+                    m_inputListen.action = actionIndex;
+                    m_inputListen.binding = bindingIndex;
+                    m_inputListen.list = 2;
+                }
+            }
+            endSettingsRow("Sticks read -1..1 (up is -1 on the Y axes: Invert makes it positive), triggers 0..1.");
+            gamepadRow();
+            inputNumberRow("Dead", "##Dead", binding.dead, defaults.dead, 0.01f, 0.999f,
+                "The dead zone: below it the axis reads 0, above it the value is rescaled to start at 0.");
+            inputNumberRow("Sensitivity", "##Sensitivity", binding.sensitivity, defaults.sensitivity, 0.01f, 100.0f,
+                "Multiplies the value.");
+            break;
+        }
+        case InputBindingKind::MouseDelta: {
+            beginSettingsRow("Axis");
+            int axis = static_cast<int>(binding.mouseAxis);
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            if (ImGui::Combo("##BindingMouseAxis", &axis, mouseAxisLabels, 3)) binding.mouseAxis = static_cast<MouseDeltaAxis>(axis);
+            endSettingsRow("Mouse movement this frame in canvas px (wheel: steps); not clamped to -1..1.");
+            inputNumberRow("Sensitivity", "##Sensitivity", binding.sensitivity, defaults.sensitivity, 0.01f, 100.0f,
+                "Multiplies the movement (Unity's default 0.1).");
+            break;
+        }
+    }
+    if (beginSettingsRow("Invert", binding.invert)) binding.invert = false;
+    ImGui::Checkbox("##Invert", &binding.invert);
+    endSettingsRow("Flips the sign.");
+    ImGui::EndTable();
+}
+
 bool ProjectSettingsWindow::applySettings() {
     if (!hasAndroidAbiSelection(m_androidAbiArmeabiV7a, m_androidAbiArm64V8a, m_androidAbiX86, m_androidAbiX86_64)) {
         return false;
     }
     if (!tagsAndLayersError().empty()) {
+        return false;
+    }
+    if (!inputError().empty()) {
+        return false;
+    }
+    if (!m_globalsEdit.error().empty()) {
         return false;
     }
     // The edit buffer truncates long names. Only write back when the value
@@ -2953,6 +3679,12 @@ bool ProjectSettingsWindow::applySettings() {
     }
     m_project->setWindowIcon(m_windowIcon);
 
+    PresentationSettings& presentation = m_project->getPresentationSettings();
+    presentation.defaultOrientation = defaultOrientationValues[std::clamp(m_defaultOrientationIndex, 0, defaultOrientationCount - 1)];
+    presentation.allowedOrientations = m_allowedOrientations ? m_allowedOrientations : PresentationSettings{}.allowedOrientations;
+    presentation.keepScreenOn = m_keepScreenOn;
+    presentation.targetFrameRate = m_targetFrameRate <= 0 ? -1 : std::min(m_targetFrameRate, 1000);
+
     ApplicationSettings& application = m_project->getApplicationSettings();
     applyTextBuffer(application.name, m_applicationNameBuffer);
     applyTextBuffer(application.identifier, m_applicationIdentifierBuffer);
@@ -2964,6 +3696,7 @@ bool ProjectSettingsWindow::applySettings() {
         application.version = Project::toAppleVersion(application.version);  // trim, do not discard
     }
     application.build = static_cast<unsigned int>(std::max(1, m_applicationBuild));
+    application.allowInsecureHttp = m_allowInsecureHttp;
 
     // Moves the referenced files in and rewrites every reference to the new roots
     m_project->changeAssetRoots(m_assetsDir, m_luaDir);
@@ -2976,6 +3709,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setPhysics3DEnabled(m_physics3DEnabled);
     m_project->setInputActionsAsset(m_inputActionsAsset);
     m_project->setInputDeadzone(m_inputDeadzone);
+    m_project->setPhysics3DWorldSettings(m_physics3DWorld);
     m_project->setRuntimeShadersEnabled(m_runtimeShadersEnabled);
     m_project->setMobilePbrTier(mobilePbrTierValues[m_mobilePbrTierIndex]);
 
@@ -3056,15 +3790,14 @@ bool ProjectSettingsWindow::applySettings() {
     android.adaptiveIconBackground = m_androidAdaptiveIconBackground;
     android.minSdk = static_cast<unsigned int>(std::max(1, m_androidMinSdk));
     android.targetSdk = static_cast<unsigned int>(std::max(m_androidMinSdk, m_androidTargetSdk));
-    android.orientation = androidOrientationValues[std::clamp(m_androidOrientationIndex, 0, androidOrientationCount - 1)];
     android.abiArmeabiV7a = m_androidAbiArmeabiV7a;
     android.abiArm64V8a = m_androidAbiArm64V8a;
     android.abiX86 = m_androidAbiX86;
     android.abiX86_64 = m_androidAbiX86_64;
     android.permissions = m_androidPermissions;
+    android.internetAccess = m_androidInternetAccessIndex == 1 ? AndroidInternetAccess::Require : AndroidInternetAccess::Auto;
     android.allowBackup = m_androidAllowBackup;
     android.fullscreen = m_androidFullscreen;
-    android.keepScreenOn = m_androidKeepScreenOn;
     android.admobEnabled = m_androidAdmobEnabled;
     applyTextBuffer(android.admobAppId, m_androidAdmobAppIdBuffer);
     android.packageFormat = androidPackageFormats[std::clamp(m_androidPackageFormatIndex, 0, static_cast<int>(IM_ARRAYSIZE(androidPackageFormats)) - 1)];
@@ -3111,10 +3844,388 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setTagsAndLayers(tags, m_layerNames);
     m_project->setLayerCollisionMatrices(m_layerCollision3D, m_layerCollision2D);
 
+    // Input: one undoable step of the project history (Edit > Undo with the Project window
+    // focused, MCP undo scope project)
+    for (InputAction& action : m_inputActions) action.name = TagManager::trimName(action.name);
+    if (InputActions::actionsToJson(m_inputActions) != InputActions::actionsToJson(m_project->getInputActions())) {
+        auto* command = new InputActionsCmd(m_project, m_project->getInputActions(), m_inputActions);
+        command->setNoMerge();
+        m_project->getProjectCommandHistory()->addCommand(command);
+    }
+
+    // Shader Globals: one undoable step too; a renamed global's bindings follow it
+    m_globalsEdit.commit();
+
     // the standalone build's main.cpp bakes these settings in
     m_project->markGeneratedSourcesDirty();
 
     return m_project->saveProjectFile();
+}
+
+
+// ---------------------------------------------------------------------------- Shader Globals
+
+void ProjectSettingsWindow::refreshShaderGlobalUses() {
+    m_shaderGlobalUses = m_project ? ShaderGlobalsUsage::find(m_project) : std::vector<ShaderGlobalsUsage::Use>();
+    m_shaderGlobalUsesScanned = true;
+}
+
+static const ShaderGlobalType shaderGlobalTypes[] = {
+    ShaderGlobalType::Float, ShaderGlobalType::Vector2, ShaderGlobalType::Vector3, ShaderGlobalType::Vector4,
+    ShaderGlobalType::Color, ShaderGlobalType::Matrix4, ShaderGlobalType::FloatArray, ShaderGlobalType::Vector4Array,
+    ShaderGlobalType::Texture2D, ShaderGlobalType::TextureCube};
+static const char* const shaderGlobalTypeLabels[] = {
+    "Float", "Vector2", "Vector3", "Vector4", "Color", "Matrix4", "Float Array", "Vector4 Array", "Texture 2D", "Texture Cube"};
+
+bool ProjectSettingsWindow::drawShaderGlobalValue(const char* id, ShaderGlobalType type, unsigned int arraySize, std::vector<Vector4>& values) {
+    const unsigned int slots = ShaderGlobals::getSlotCount(type, arraySize);
+    if (values.size() < slots) values.resize(slots, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+    bool changed = false;
+    ImGui::PushID(id);
+    ImGui::SetNextItemWidth(-1);
+    switch (type) {
+        case ShaderGlobalType::Float:
+            changed = ImGui::DragFloat("##value", &values[0].x, 0.01f);
+            break;
+        case ShaderGlobalType::Vector2:
+        case ShaderGlobalType::Vector3:
+        case ShaderGlobalType::Vector4: {
+            float fields[4] = {values[0].x, values[0].y, values[0].z, values[0].w};
+            if (ImGui::DragScalarN("##value", ImGuiDataType_Float, fields, ShaderGlobals::getComponentCount(type), 0.01f)) {
+                values[0] = Vector4(fields[0], fields[1], fields[2], fields[3]);
+                changed = true;
+            }
+            break;
+        }
+        case ShaderGlobalType::Color: {
+            // edited as sRGB, stored linear (alpha as is)
+            const Vector4 srgb = Color::linearTosRGB(values[0]);
+            float color[4] = {srgb.x, srgb.y, srgb.z, values[0].w};
+            if (ImGui::ColorEdit4("##value", color, ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf)) {
+                const Vector4 linear = Color::sRGBToLinear(Vector4(color[0], color[1], color[2], color[3]));
+                values[0] = Vector4(linear.x, linear.y, linear.z, color[3]);
+                changed = true;
+            }
+            break;
+        }
+        case ShaderGlobalType::Matrix4:
+        case ShaderGlobalType::FloatArray:
+        case ShaderGlobalType::Vector4Array: {
+            // a summary that opens the grid / element list
+            std::string summary;
+            if (type == ShaderGlobalType::Matrix4) {
+                const bool identity = values[0] == Vector4(1, 0, 0, 0) && values[1] == Vector4(0, 1, 0, 0) &&
+                                      values[2] == Vector4(0, 0, 1, 0) && values[3] == Vector4(0, 0, 0, 1);
+                summary = identity ? "Identity" : "Matrix";
+            } else {
+                summary = std::to_string(slots) + (type == ShaderGlobalType::FloatArray ? " floats" : " vectors");
+            }
+            if (ImGui::Button((summary + "  " ICON_FA_PEN "##edit").c_str(), ImVec2(-1, 0)))
+                ImGui::OpenPopup("##values_popup");
+            if (ImGui::BeginPopup("##values_popup")) {
+                if (type == ShaderGlobalType::Matrix4) {
+                    // rows on screen, stored column-major (values[c] is column c)
+                    ImGui::TextDisabled("Rows of the matrix (stored by column)");
+                    auto at = [&values](int column, int row) -> float& {
+                        Vector4& v = values[column];
+                        return row == 0 ? v.x : row == 1 ? v.y : row == 2 ? v.z : v.w;
+                    };
+                    for (int r = 0; r < 4; r++) {
+                        float row[4] = {at(0, r), at(1, r), at(2, r), at(3, r)};
+                        ImGui::SetNextItemWidth(Theme::dpi(320.0f));
+                        if (ImGui::DragFloat4(("##row" + std::to_string(r)).c_str(), row, 0.01f)) {
+                            for (int c = 0; c < 4; c++) at(c, r) = row[c];
+                            changed = true;
+                        }
+                    }
+                    if (ImGui::Button("Identity")) {
+                        values = {Vector4(1, 0, 0, 0), Vector4(0, 1, 0, 0), Vector4(0, 0, 1, 0), Vector4(0, 0, 0, 1)};
+                        changed = true;
+                    }
+                } else {
+                    ImGui::BeginChild("##elements", ImVec2(Theme::dpi(360.0f), std::min(Theme::dpi(300.0f), ImGui::GetFrameHeightWithSpacing() * slots + 4)));
+                    for (unsigned int e = 0; e < slots; e++) {
+                        ImGui::AlignTextToFramePadding();
+                        ImGui::Text("[%u]", e);
+                        ImGui::SameLine(Theme::dpi(40.0f));
+                        ImGui::SetNextItemWidth(-1);
+                        if (type == ShaderGlobalType::FloatArray) {
+                            changed |= ImGui::DragFloat(("##e" + std::to_string(e)).c_str(), &values[e].x, 0.01f);
+                        } else {
+                            float fields[4] = {values[e].x, values[e].y, values[e].z, values[e].w};
+                            if (ImGui::DragFloat4(("##e" + std::to_string(e)).c_str(), fields, 0.01f)) {
+                                values[e] = Vector4(fields[0], fields[1], fields[2], fields[3]);
+                                changed = true;
+                            }
+                        }
+                    }
+                    ImGui::EndChild();
+                }
+                ImGui::EndPopup();
+            }
+            break;
+        }
+        default:
+            break;
+    }
+    ImGui::PopID();
+    return changed;
+}
+
+bool ProjectSettingsWindow::drawShaderGlobalTexture(const char* id, ShaderGlobalType type, std::string& path) {
+    bool changed = false;
+    ImGui::PushID(id);
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float buttonWidth = ImGui::CalcTextSize(ICON_FA_FOLDER_OPEN).x + style.FramePadding.x * 2.0f;
+    const std::string shown = path.empty() ? (type == ShaderGlobalType::TextureCube ? "Black" : "White") : fs::path(path).filename().string();
+    ImGui::PushStyleColor(ImGuiCol_Text, path.empty() ? style.Colors[ImGuiCol_TextDisabled] : style.Colors[ImGuiCol_Text]);
+    ImGui::Button((shown + "##slot").c_str(), ImVec2(std::max(1.0f, ImGui::GetContentRegionAvail().x - (buttonWidth + style.ItemSpacing.x) * 2.0f), 0));
+    ImGui::PopStyleColor();
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s\nDrop an image here%s", path.empty() ? "No texture: the shader reads the fallback" : path.c_str(),
+                          type == ShaderGlobalType::TextureCube ? " (a cube map: one image with the six faces)" : "");
+    auto assign = [&](const std::string& absolutePath) {
+        if (!m_project->isInsideAssetsPath(absolutePath)) {
+            Backend::getApp().registerOutsideAssetsAlert(absolutePath);
+            return;
+        }
+        path = m_project->normalizeToAssetsRelative(absolutePath).generic_string();
+        changed = true;
+    };
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
+            std::vector<std::string> received = Util::getStringsFromPayload(payload);
+            if (!received.empty() && Util::isImageFile(received[0])) assign(received[0]);
+        }
+        ImGui::EndDragDropTarget();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_FOLDER_OPEN "##pick")) {
+        const std::string selected = FileDialogs::openFileDialog(m_project->getAssetsPath().string(), FILE_DIALOG_IMAGE);
+        if (!selected.empty()) assign(selected);
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(path.empty());
+    if (ImGui::Button(ICON_FA_XMARK "##clear")) {
+        path.clear();
+        changed = true;
+    }
+    ImGui::EndDisabled();
+    ImGui::PopID();
+    return changed;
+}
+
+void ProjectSettingsWindow::drawShaderGlobals() {
+    if (!m_shaderGlobalUsesScanned) refreshShaderGlobalUses();
+    const bool playing = m_project && m_project->isAnyScenePlaying();
+    const ImGuiStyle& style = ImGui::GetStyle();
+
+    drawSectionNote("Values every shader can read: a member of the same name in a u_vs_globals / u_fs_globals block (or a texture "
+                    "uniform of the name), or a library shader parameter bound to it with the link button in the Inspector. Scripts set "
+                    "them with Shader.setGlobal*; Play starts and stops with these defaults.");
+
+    bool edited = false;
+    std::vector<ShaderGlobalsEdit::Row>& shaderGlobalRows = m_globalsEdit.rows();
+    if (ImGui::Button(ICON_FA_PLUS " Add")) {
+        m_globalsEdit.add();
+        edited = true;
+    }
+    ImGui::SameLine();
+    // the declarations to paste into a shader: the selected rows, else all
+    std::vector<std::string> selected;
+    for (const ShaderGlobalsEdit::Row& row : shaderGlobalRows) {
+        if (row.selected) selected.push_back(row.decl.name);
+    }
+    const std::vector<ShaderGlobalDecl> decls = m_globalsEdit.decls();
+    ImGui::BeginDisabled(decls.empty());
+    if (ImGui::Button(ICON_FA_COPY " Copy GLSL: Vertex")) ImGui::SetClipboardText(ShaderGlobals::getGlslBlock(decls, ShaderStageType::VERTEX, selected).c_str());
+    ImGui::SetItemTooltip("The u_vs_globals block of %s, for a .vert", selected.empty() ? "every global" : "the checked globals");
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_COPY " Fragment")) ImGui::SetClipboardText(ShaderGlobals::getGlslBlock(decls, ShaderStageType::FRAGMENT, selected).c_str());
+    ImGui::SetItemTooltip("The u_fs_globals block and texture uniforms of %s, for a .frag", selected.empty() ? "every global" : "the checked globals");
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_ROTATE "##refresh_uses")) refreshShaderGlobalUses();
+    ImGui::SetItemTooltip("Scan the open scenes again for what uses the globals (Used by)");
+    if (playing) {
+        ImGui::SameLine();
+        if (ImGui::Button("Copy Live Values to Defaults")) {
+            for (ShaderGlobalsEdit::Row& row : shaderGlobalRows) {
+                ShaderGlobalValue live;
+                if (ShaderGlobals::isTexture(row.decl.type) || !ShaderGlobals::get(ShaderGlobals::findID(row.decl.name), live)) continue;
+                if (live.type == row.decl.type && live.values.size() == row.decl.defaultValue.size()) row.decl.defaultValue = live.values;
+            }
+            edited = true;
+        }
+        ImGui::SetItemTooltip("The values scripts or the Live column set now become the defaults (saved with OK)");
+    }
+
+    const int columns = playing ? 7 : 6;
+    const ImGuiTableFlags flags = ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_RowBg |
+                                  ImGuiTableFlags_SizingStretchProp;
+    if (!shaderGlobalRows.empty() && ImGui::BeginTable("##ShaderGlobalsTable", columns, flags)) {
+        ImGui::TableSetupColumn("##select", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFrameHeight());
+        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.3f);
+        ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthStretch, 0.9f);
+        ImGui::TableSetupColumn("Default", ImGuiTableColumnFlags_WidthStretch, 1.6f);
+        if (playing) ImGui::TableSetupColumn("Live", ImGuiTableColumnFlags_WidthStretch, 1.6f);
+        ImGui::TableSetupColumn("Used by", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Used by").x + style.CellPadding.x * 2.0f);
+        ImGui::TableSetupColumn("##remove", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFrameHeight());
+        ImGui::TableHeadersRow();
+
+        int removeRow = -1;
+        for (int i = 0; i < (int)shaderGlobalRows.size(); i++) {
+            ShaderGlobalsEdit::Row& row = shaderGlobalRows[i];
+            ImGui::PushID(i);
+            ImGui::TableNextRow();
+
+            ImGui::TableNextColumn();
+            ImGui::Checkbox("##selected", &row.selected);
+            ImGui::SetItemTooltip("In Copy GLSL (none checked: every global)");
+
+            // the name, checked as typed (a GLSL identifier, not u_ / gl_, no duplicates)
+            ImGui::TableNextColumn();
+            std::string nameError;
+            ShaderGlobals::isValidName(row.nameBuffer, &nameError);
+            for (int j = 0; j < (int)shaderGlobalRows.size() && nameError.empty(); j++) {
+                if (j != i && shaderGlobalRows[j].decl.name == row.nameBuffer) nameError = "another global is named '" + std::string(row.nameBuffer) + "'";
+            }
+            if (!nameError.empty()) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.35f, 1.0f));
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::InputText("##name", row.nameBuffer, sizeof(row.nameBuffer), ImGuiInputTextFlags_CharsNoBlank)) {
+                row.decl.name = row.nameBuffer;
+                edited = true;
+            }
+            if (!nameError.empty()) ImGui::PopStyleColor();
+            if (ImGui::IsItemHovered()) {
+                if (!nameError.empty())
+                    ImGui::SetTooltip("%s", nameError.c_str());
+                else if (!row.originalName.empty() && row.originalName != row.decl.name)
+                    ImGui::SetTooltip("Renamed from %s: bindings follow it on OK. Shaders keep their member names: rename them in the GLSL too.",
+                                      row.originalName.c_str());
+                else
+                    ImGui::SetTooltip("The GLSL member (or texture uniform) name shaders declare; Unity's leading _ is fine");
+            }
+
+            ImGui::TableNextColumn();
+            int typeIndex = 0;
+            for (int t = 0; t < (int)std::size(shaderGlobalTypes); t++) {
+                if (shaderGlobalTypes[t] == row.decl.type) typeIndex = t;
+            }
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::Combo("##type", &typeIndex, shaderGlobalTypeLabels, (int)std::size(shaderGlobalTypeLabels)) &&
+                    shaderGlobalTypes[typeIndex] != row.decl.type) {
+                // another type starts from its own default
+                row.decl = ShaderGlobals::makeDecl(row.decl.name, shaderGlobalTypes[typeIndex], 4);
+                edited = true;
+            }
+            if (ShaderGlobals::isArray(row.decl.type)) {
+                int size = (int)row.decl.arraySize;
+                ImGui::SetNextItemWidth(-1);
+                if (ImGui::InputInt("##size", &size)) {
+                    size = std::clamp(size, 1, (int)ShaderGlobals::MAX_ARRAY_SIZE);
+                    if (size != (int)row.decl.arraySize) {
+                        row.decl.arraySize = (unsigned int)size;
+                        row.decl.defaultValue.resize(size, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+                        edited = true;
+                    }
+                }
+                ImGui::SetItemTooltip("Elements (1 to %u)", ShaderGlobals::MAX_ARRAY_SIZE);
+            }
+
+            ImGui::TableNextColumn();
+            if (ShaderGlobals::isTexture(row.decl.type))
+                edited |= drawShaderGlobalTexture("##default", row.decl.type, row.decl.defaultTexture);
+            else
+                edited |= drawShaderGlobalValue("##default", row.decl.type, row.decl.arraySize, row.decl.defaultValue);
+
+            if (playing) {
+                // what scripts set now; an edit here lasts until Play stops
+                ImGui::TableNextColumn();
+                const int id = ShaderGlobals::findID(row.decl.name);
+                ShaderGlobalValue live;
+                if (!ShaderGlobals::get(id, live)) {
+                    ImGui::TextDisabled("(not declared yet)");
+                } else if (ShaderGlobals::isTexture(live.type)) {
+                    const std::string path = live.texture.isFramebuffer() ? std::string("render target") : live.texture.getPath(0);
+                    ImGui::TextDisabled("%s", path.empty() ? "(default)" : path.c_str());
+                } else if (live.type == row.decl.type) {
+                    std::vector<Vector4> values = live.values;
+                    if (drawShaderGlobalValue("##live", live.type, live.arraySize, values)) ShaderGlobals::setValues(id, values);
+                } else {
+                    ImGui::TextDisabled("(set as %s)", ShaderGlobals::getTypeName(live.type));
+                }
+            }
+
+            // what uses it: bindings and loaded shaders
+            ImGui::TableNextColumn();
+            int bindings = 0;
+            int shaders = 0;
+            std::string uses;
+            for (const ShaderGlobalsUsage::Use& use : m_shaderGlobalUses) {
+                if (use.global != row.decl.name && !(use.global == row.originalName && use.binding)) continue;
+                (use.binding ? bindings : shaders)++;
+                if (uses.size() < 2000) uses += "\n" + ShaderGlobalsUsage::describe(use);
+            }
+            if (bindings + shaders == 0) {
+                ImGui::TextDisabled("-");
+            } else {
+                ImGui::Text("%d", bindings + shaders);
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", (bindings + shaders == 0) ? "No binding or loaded shader of the open scenes uses it"
+                                         : (std::to_string(bindings) + " binding(s), " + std::to_string(shaders) + " shader(s):" + uses).c_str());
+
+            ImGui::TableNextColumn();
+            if (ImGui::Button(ICON_FA_TRASH "##remove")) {
+                if (bindings > 0) {
+                    m_shaderGlobalRemove = i;
+                    ImGui::OpenPopup("##remove_global");
+                } else {
+                    removeRow = i;
+                }
+            }
+            ImGui::SetItemTooltip("Remove");
+            if (ImGui::BeginPopup("##remove_global")) {
+                ImGui::Text("%d binding(s) use %s:", bindings, row.decl.name.c_str());
+                for (const ShaderGlobalsUsage::Use& use : m_shaderGlobalUses) {
+                    if (use.binding && (use.global == row.decl.name || use.global == row.originalName))
+                        ImGui::BulletText("%s", ShaderGlobalsUsage::describe(use).c_str());
+                }
+                ImGui::TextDisabled("They stay, reading 0 until a script sets the global (check_shader reports them).");
+                if (ImGui::Button("Remove")) {
+                    removeRow = m_shaderGlobalRemove;
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+                ImGui::EndPopup();
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+        if (removeRow >= 0 && removeRow < (int)shaderGlobalRows.size()) {
+            shaderGlobalRows.erase(shaderGlobalRows.begin() + removeRow);
+            m_shaderGlobalRemove = -1;
+            edited = true;
+        }
+    } else if (shaderGlobalRows.empty()) {
+        ImGui::TextDisabled("No shader globals. Add one, or let scripts make them (Shader.setGlobalColor(\"_Tint\", c)).");
+    }
+
+    const std::string problem = m_globalsEdit.error();
+    if (!problem.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.35f, 1.0f));
+        ImGui::TextWrapped("%s", problem.c_str());
+        ImGui::PopStyleColor();
+    }
+    bool renamed = false;
+    for (const ShaderGlobalsEdit::Row& row : shaderGlobalRows) renamed |= !row.originalName.empty() && row.originalName != row.decl.name;
+    if (renamed) {
+        drawSectionNote("Renamed globals take their Inspector bindings along on OK; shaders are not rewritten: rename the "
+                        "u_vs_globals / u_fs_globals members (and texture uniforms) too.");
+    }
+    if (edited) m_globalsEdit.preview();
 }
 
 } // namespace jasperengine::editor

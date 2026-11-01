@@ -141,6 +141,12 @@ int ShaderData::getAttrIndex(AttributeType type){
         attrstr = "i_vat0";
     }else if (type == AttributeType::INSTANCEVAT1){
         attrstr = "i_vat1";
+    }else if (type == AttributeType::LINETANGENTIN){
+        attrstr = "a_tangentIn";
+    }else if (type == AttributeType::LINETANGENTOUT){
+        attrstr = "a_tangentOut";
+    }else if (type == AttributeType::LINEPARAMS){
+        attrstr = "a_lineParams";
     }
 
     if (attrstr.empty()){

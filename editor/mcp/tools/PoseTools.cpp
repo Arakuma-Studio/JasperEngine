@@ -41,6 +41,7 @@
 #include "pose/PoseTypes.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
@@ -1198,7 +1199,8 @@ Json clampJson(const std::vector<ClampReport>& reports) {
     return out;
 }
 
-bool resolveAnimationPath(Project* project, const Json& args, std::string& relative, fs::path& absolute, std::string& error) {
+// `write`: the tool writes the file (edit_pose_animation): inside the project once links are resolved
+bool resolveAnimationPath(Project* project, const Json& args, std::string& relative, fs::path& absolute, std::string& error, bool write = false) {
     if (!args.contains("path") || !args["path"].is_string()) {
         error = "path is required: the project-relative .poseanim file (e.g. assets/anim/walk.poseanim).";
         return false;
@@ -1208,7 +1210,10 @@ bool resolveAnimationPath(Project* project, const Json& args, std::string& relat
         error = "path: '" + relative + "' must end in .poseanim";
         return false;
     }
-    if (!McpRefs::resolveProjectPath(project, relative, absolute, error, false)) return false;
+    if (write ? !McpRefs::resolveProjectWritePath(project, relative, absolute, error, false)
+              : !McpRefs::resolveProjectPath(project, relative, absolute, error, false)) {
+        return false;
+    }
     absolute = absolute.lexically_normal();
     relative = projectRel(project, absolute);
     return true;
@@ -1341,7 +1346,7 @@ bool readBakeClip(Project* project, const Json& bake, bool& toClip, std::string&
         return false;
     }
     fs::path absolute;
-    if (!McpRefs::resolveProjectPath(project, bake["clip"].get<std::string>(), absolute, error, false)) {
+    if (!McpRefs::resolveProjectWritePath(project, bake["clip"].get<std::string>(), absolute, error, false)) {
         error = "bake.clip: " + error;
         return false;
     }
@@ -1430,7 +1435,7 @@ void editPoseAnimationTool(const CallPtr& call) {
     }
     std::string relative, error;
     fs::path absolute;
-    if (!resolveAnimationPath(project, args, relative, absolute, error)) {
+    if (!resolveAnimationPath(project, args, relative, absolute, error, true)) {
         call->fail(error);
         return;
     }
@@ -1946,7 +1951,7 @@ void renderPoseAnimationTool(const CallPtr& call) {
             call->fail("save_path must be a project-relative .png path.");
             return;
         }
-        if (!McpRefs::resolveProjectPath(project, savePath, saveTarget, error, false)) {
+        if (!McpRefs::resolveProjectWritePath(project, savePath, saveTarget, error, false)) {
             call->fail("save_path: " + error);
             return;
         }
@@ -2093,10 +2098,10 @@ void renderPoseAnimationTool(const CallPtr& call) {
                 created = created.parent_path();
             }
             ScopedExpectedWrite expected(created, created != saveTarget);
-            if (saveTarget.has_parent_path()) fs::create_directories(saveTarget.parent_path(), ec);
-            // atomic (S03): a failed write leaves an existing file whole
-            if (!io::writeFileAtomic(saveTarget, std::string_view(reinterpret_cast<const char*>(png.data()), png.size())).ok()) {
-                call->fail("Could not write the PNG to " + projectRel(project, saveTarget) + ".");
+            // beneath the project: no link planted on the way since the check is followed
+            std::string why;
+            if (!safewrite::writeFileResolvedBeneath(McpRefs::rootFor(project, saveTarget), saveTarget, std::string(png.begin(), png.end()), why)) {
+                call->fail("Could not write the PNG to " + projectRel(project, saveTarget) + ": " + why);
                 return;
             }
             for (fs::path dir = saveTarget.parent_path(); created != saveTarget; dir = dir.parent_path()) {

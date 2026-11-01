@@ -11,11 +11,14 @@
 #include "asset/AssetTypes.h"
 #include "asset/ContentHash.h"
 #include "asset/ModelSubAssets.h"
+#include "util/SafeWrite.h"
 #include "util/SHA1.h"
 #include "util/Util.h"
 
 #include "json.hpp"
 #include "animation/AnimationClipIO.h"
+#include "animation/AnimatorController.h"
+#include "animation/AvatarMask.h"
 #include "animation/VertexAnimation.h"
 #include "animation/AnimatorAssetIO.h"
 #include "yaml-cpp/yaml.h"
@@ -284,8 +287,8 @@ namespace {
         return rewriteIdentity(anim::parseMontage(text), &anim::writeMontage, text, guid, formerGuids);
     }
 
-    // the JSON asset parses as its own type; a broken or foreign file (a Unity YAML .anim, broken
-    // JSON) is left alone: its error must keep its line
+    // the JSON asset parses as its own type; a broken or foreign file (a Unity YAML .anim, .mask
+    // or .controller, broken JSON) is left alone: its error must keep its line
     bool parsesAsJsonAsset(const fs::path& path, const std::string& text) {
         if (editor::Util::isVertexAnimationFile(path.string())) {
             return vat::parseVat(text).ok();
@@ -1379,6 +1382,10 @@ void editor::AssetDatabase::writeCache(const CacheSnapshot& snapshot) {
     root["caseInsensitive"] = snapshot.caseInsensitive;
     root["assets"] = assets;
     std::string error;
+    // the cache lives in the editor's internal folder, which an MCP call's deny-by-default guard
+    // refuses otherwise (util/SafeWrite.h, EditorInternal; a token is per thread: named here)
+    safewrite::EditorInternal ownCache(snapshot.file.parent_path());
+    safewrite::EditorInternal ownLegacy(snapshot.legacyFile);
     if (!assetio::writeFile(snapshot.file, cacheText(root, "assets"), assetio::Durability::Cache, &error)) {
         Out::warning("Could not write the asset database cache: %s", error.c_str());
     }

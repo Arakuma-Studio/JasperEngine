@@ -107,6 +107,8 @@ namespace jasperengine::editor{
         // absolutePath() and the registry key change, the data stays, listeners get Reloaded
         static void filesMoved(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
         // Forgets every open document (the project closed)
+        // (filesChanged, filesMoved, checkDiskChanges, closeAll and setFilesWrittenHook also
+        // reach the Avatar Mask and Animator Controller documents: AnimAssetDocument.h)
         static void closeAll();
         // Called after a WriteFilesCmd of a document ran, was undone or redone (the MCP server
         // sets it to its file sync: asset database, Project window, McpAutoSync stamps)

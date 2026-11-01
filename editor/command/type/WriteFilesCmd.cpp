@@ -6,6 +6,7 @@
 #include "util/FileUtils.h"
 #include "asset/AssetTypes.h"
 #include "command/CommandNames.h"
+#include "util/SafeWrite.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -41,17 +42,67 @@ std::vector<fs::path> editor::WriteFilesCmd::paths() const {
 }
 
 void editor::WriteFilesCmd::fail(const std::string& message) {
+    lastFailure = message;
     if (failureSink) *failureSink = message;
 }
 
-bool editor::WriteFilesCmd::restore(size_t i) {
+fs::path editor::WriteFilesCmd::rootOf(const fs::path& path) const {
+    if (!explicitRoot.empty()) return explicitRoot;
+    if (!writeRoot().empty() || !ownFolders) return rootFor(path);
+    // where the write lands (a live link at the name followed), its folder the root
+    const fs::path where = safewrite::writeLocation(path);
+    return where.empty() ? fs::path() : safewrite::existingFolderOf(where.parent_path());
+}
+
+std::string editor::WriteFilesCmd::undoRefusal() const {
+    const std::string why = Command::undoRefusal();
+    return why.empty() && !explicitRoot.empty() ? escapeFor(explicitRoot, true) : why;
+}
+
+std::string editor::WriteFilesCmd::redoRefusal() const {
+    const std::string why = Command::redoRefusal();
+    return why.empty() && !explicitRoot.empty() ? escapeFor(explicitRoot, false) : why;
+}
+
+std::vector<editor::Command::Touched> editor::WriteFilesCmd::touchedPaths(bool undo) const {
+    std::vector<Touched> out;
+    for (size_t i = 0; i < items.size(); i++) {
+        // an undo writes the previous bytes back (a write) or removes the file it made (the entry);
+        // a redo writes each file again
+        const bool existed = i < previous.size() && previous[i].existed;
+        out.push_back({items[i].path, undo && !existed});
+    }
+    if (undo) {
+        for (const fs::path& dir : createdDirs) out.push_back({dir, true});
+    }
+    return out;
+}
+
+bool editor::WriteFilesCmd::restore(size_t i, std::string* why) {
     std::error_code ec;
+    // beneath its write root, or the active write scope's (an MCP call undoing a step the GUI made)
+    const fs::path beneathRoot = rootOf(items[i].path);
+    if (!beneathRoot.empty()) {
+        // beneath the root: the previous bytes written back / the new file removed (the entry
+        // itself), never through a link made since
+        std::string error;
+        // every write scope in force allows it too (an explicit root is checked against them)
+        const std::string refused = safewrite::scopesRefusal(items[i].path, !previous[i].existed);
+        if (!refused.empty()) {
+            if (why) *why = refused;
+            return false;
+        }
+        const bool ok = previous[i].existed ? safewrite::writeFileResolvedBeneath(beneathRoot, items[i].path, previous[i].content, error)
+                                            : safewrite::removeFileResolvedBeneath(beneathRoot, items[i].path, error);
+        if (!ok && why) *why = error;
+        return ok;
+    }
     if (previous[i].existed) return FileUtils::writeFileReplacing(items[i].path, previous[i].content);
     // a file it created (or began to): gone again; never a directory that was there
-    if (fs::is_regular_file(items[i].path, ec) || fs::is_symlink(items[i].path, ec)) fs::remove(items[i].path, ec);
+    if (fs::is_regular_file(items[i].path, ec) || fs::is_symlink(items[i].path, ec)) FileUtils::removePath(items[i].path, ec);
     // and the meta the asset database gave it (S04): a created file leaves no orphan behind
     const fs::path meta = AssetTypes::metaPathFor(items[i].path);
-    if (!previous[i].metaExisted && fs::is_regular_file(meta, ec)) fs::remove(meta, ec);
+    if (!previous[i].metaExisted && fs::is_regular_file(meta, ec)) FileUtils::removePath(meta, ec);
     return !fs::exists(fs::symlink_status(items[i].path, ec));
 }
 
@@ -59,13 +110,20 @@ void editor::WriteFilesCmd::removeCreatedDirs() {
     std::vector<fs::path> dirs = createdDirs;
     std::sort(dirs.begin(), dirs.end(), [](const fs::path& a, const fs::path& b) { return a.native().size() > b.native().size(); });
     for (const fs::path& dir : dirs) {
+        const fs::path beneathRoot = rootOf(dir);
+        if (!beneathRoot.empty()) {
+            std::string ignored;
+            safewrite::removeEmptyDirResolvedBeneath(beneathRoot, dir, ignored);
+            continue;
+        }
         std::error_code ec;
-        if (fs::is_directory(dir, ec) && fs::is_empty(dir, ec)) fs::remove(dir, ec);
+        if (fs::is_directory(dir, ec) && fs::is_empty(dir, ec)) FileUtils::removePath(dir, ec);
     }
     createdDirs.clear();
 }
 
 bool editor::WriteFilesCmd::execute() {
+    lastFailure.clear();
     if (!captured) {
         previous.clear();
         for (const Item& item : items) {
@@ -82,6 +140,7 @@ bool editor::WriteFilesCmd::execute() {
         captured = true;
     }
     createdDirs.clear();
+    failedPath.clear();
     // on a failure at item `failed`: items [0, touched) back to their previous state, the
     // directories created removed
     auto rollback = [&](size_t touched, const std::string& why) {
@@ -97,6 +156,18 @@ bool editor::WriteFilesCmd::execute() {
     for (size_t i = 0; i < items.size(); i++) {
         const Item& item = items[i];
         std::error_code ec;
+        const fs::path beneathRoot = rootOf(item.path);
+        if (!beneathRoot.empty()) {
+            // the missing folders are made by the write (and listed for undo); a failed write
+            // left the file as it was
+            std::string why = safewrite::scopesRefusal(item.path, false);
+            if (!why.empty() || !safewrite::writeFileResolvedBeneath(beneathRoot, item.path, item.content, why, &createdDirs)) {
+                failedPath = item.path;
+                const bool named = why.rfind("can't ", 0) == 0;
+                return rollback(i, named ? why : "can't write " + FileUtils::pathToGenericUtf8(item.path) + ": " + why);
+            }
+            continue;
+        }
         const fs::path parent = item.path.parent_path();
         if (!parent.empty() && !fs::exists(parent, ec)) {
             // every directory created, for undo (and a rollback)
@@ -110,6 +181,7 @@ bool editor::WriteFilesCmd::execute() {
                 std::error_code exists;
                 if (fs::is_directory(dir, exists)) createdDirs.push_back(dir);
             }
+            if (ec) failedPath = item.path;
             if (ec) return rollback(i, "can't create the directory " + FileUtils::pathToGenericUtf8(parent) + " for " +
                                        FileUtils::pathToGenericUtf8(item.path) + ": " + ec.message());
         }
@@ -118,6 +190,7 @@ bool editor::WriteFilesCmd::execute() {
             const int code = errno;
             std::string reason = code ? std::strerror(code) : std::string("write failed");
             if (fs::is_directory(item.path, ec)) reason = "it is a directory";
+            failedPath = item.path;
             // the file itself may be half written: restored too
             return rollback(i + 1, "can't write " + FileUtils::pathToGenericUtf8(item.path) + ": " + reason);
         }
@@ -127,7 +200,14 @@ bool editor::WriteFilesCmd::execute() {
 }
 
 void editor::WriteFilesCmd::undo() {
-    for (size_t i = 0; i < items.size() && i < previous.size(); i++) restore(i);
+    // checked first (canUndo); a restore that still fails (a link planted since) is reported
+    for (size_t i = 0; i < items.size() && i < previous.size(); i++) {
+        std::string why;
+        if (!restore(i, &why)) {
+            const std::string problem = "could not put back " + FileUtils::pathToGenericUtf8(items[i].path) + (why.empty() ? std::string() : ": " + why);
+            undoProblem += (undoProblem.empty() ? "" : "; ") + problem;
+        }
+    }
     removeCreatedDirs();
     if (afterChange) afterChange(paths());
 }

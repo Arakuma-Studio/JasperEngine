@@ -10,11 +10,13 @@
 #include "Backend.h"
 #include "Engine.h"
 #include "Log.h"
+#include "Platform.h"
 
 #include "imgui.h"
 #include "profiler/FrameTimes.h"
 #include "profiler/Profile.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <thread>
@@ -123,10 +125,15 @@ bool EditorFrame::run(EditorFrameState& state){
     const double frameStart = frameMonotonicSeconds();
     const bool idleFrame = !state.forceRedraw && isIdle();
 
+    // the window's focus reaches the game as Engine::onFocus (Unity's OnApplicationFocus)
+    Platform::forwardHostFocus(state.focused, playSessionActive);
+
     // Unfocused always drops synchronization, so a blocked present can never
-    // stall the event loop that serves clipboard requests.
+    // stall the event loop that serves clipboard requests. While playing, the game's
+    // Engine.vSyncCount decides (it starts from the project's VSync setting).
+    const FramePacing& pacing = Engine::getFramePacing();
     const bool vsync = (app->isBenchmarkMode() || app->isRecording()) ? false : (playSessionActive
-        ? project->isVSyncEnabled()
+        ? pacing.swapInterval > 0
         : AppSettings::getEditorVSyncEnabled());
     const bool frameSync = state.focused && vsync;
     const bool targetReady =
@@ -219,10 +226,22 @@ bool EditorFrame::run(EditorFrameState& state){
         app->recordFrameTime((frameMonotonicSeconds() - frameStart) * 1000.0);
     }
 
+    // Engine.targetFrameRate without vsync (or a vSyncCount past 1): the game's frame limiter
+    const bool playLimited = playSessionActive && !app->isBenchmarkMode() && !state.minimized && pacing.limiterFps > 0.0;
+    if (playLimited){
+        // an unfocused editor never runs past its unfocused rate
+        const double limit = state.focused || state.framePeriod <= 0.0
+            ? pacing.limiterFps : std::min(pacing.limiterFps, 1.0 / state.framePeriod);
+        playLimiter.wait(limit);
+        frameDeadline = monotonicSeconds();
+    }else{
+        playLimiter.reset();
+    }
+
     // Unfocused and minimized frames have no vsync to pace them. A benchmark measures
     // the frames as fast as they go, focused or not (a headless X server gives no window the
-    // focus)
-    if ((!state.focused || state.minimized) && !app->isBenchmarkMode()){
+    // focus), unless the game limits them (Engine.targetFrameRate)
+    if (!playLimited && (!state.focused || state.minimized) && !app->isBenchmarkMode()){
         // Paced by deadline, so a late wake-up is made up on the next frame
         const double now = frameMonotonicSeconds();
         frameDeadline += state.framePeriod;

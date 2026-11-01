@@ -3,6 +3,7 @@
 
 #include "DeleteFileCmd.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 
 #include "util/Util.h"
 #include "asset/AssetOps.h"
@@ -23,6 +24,20 @@ editor::DeleteFileCmd::DeleteFileCmd(Project* project, std::vector<fs::path> fil
     this->trash = rootPath / ".trash";
 }
 
+std::vector<editor::Command::Touched> editor::DeleteFileCmd::touchedPaths(bool undo) const{
+    std::vector<Touched> out;
+    for (const DeleteFilesData& file : files){
+        if (undo){
+            if (file.trashFile.empty()) continue;
+            out.push_back({file.trashFile, true});
+        }
+        out.push_back({file.originalFile, true});
+    }
+    if (!undo) out.push_back({trash, true});
+    return out;
+}
+
+
 // Deleting moves the files (metas included) to the project trash through AssetOps: the
 // references to them stay and show as Missing, and an undo resolves them again (S04 R15)
 bool editor::DeleteFileCmd::execute(){
@@ -37,10 +52,14 @@ bool editor::DeleteFileCmd::execute(){
         // what is already in the trash is deleted for good
         const fs::path relToTrash = file.originalFile.lexically_normal().lexically_relative(trash.lexically_normal());
         if (file.originalFile == trash || (!relToTrash.empty() && *relToTrash.begin() != "..")) {
-            fs::remove_all(file.originalFile, ec);
+            // one removal beneath the write scope's root, never following a link
+            FileUtils::removeAll(file.originalFile, ec);
             file.trashFile.clear();
             continue;
         }
+        // the trash is .trash (a hidden folder an MCP call's deny-by-default guard refuses): named
+        // so the editor's own trash move goes through (util/SafeWrite.h, EditorInternal)
+        safewrite::EditorInternal trashDir(trash);
         const AssetOps::Result result = AssetOps::remove(*project, file.originalFile, file.trashFile);
         if (!result.ok) {
             Out::error("Couldn't delete \"%s\": %s", file.originalFile.filename().string().c_str(), result.error.c_str());
@@ -62,6 +81,8 @@ void editor::DeleteFileCmd::undo(){
     if (!project) {
         return;
     }
+    // the files come back out of .trash (the editor's own folder, util/SafeWrite.h)
+    safewrite::EditorInternal trashDir(trash);
     for (auto it = files.rbegin(); it != files.rend(); ++it) {
         DeleteFilesData& file = *it;
         std::error_code ec;

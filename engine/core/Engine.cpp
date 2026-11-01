@@ -3,6 +3,7 @@
 
 #include "manager/ObjectManager.h"
 #include "Engine.h"
+#include "shader/ShaderGlobals.h"
 #include "Log.h"
 #include "log/Logger.h"
 #include "diag/CrashHandler.h"
@@ -11,11 +12,17 @@
 #include "util/Scheduler.h"
 #include "Scene.h"
 #include "Input.h"
+#include "Screen.h"
+#include "io/UserSettings.h"
 #include "input/InputActions.h"
 #include "render/SystemRender.h"
 #include "shader/ShaderWarmup.h"
 #include "script/LuaBinding.h"
+#include "script/ScriptScheduler.h"
+#include "script/ScriptRuntime.h"
+#include "lua.hpp"
 #include "manager/SceneManager.h"
+#include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -25,6 +32,8 @@
 #include "htmlui/anim/AnimEngine.h"
 #include "util/StringUtils.h"
 #include "util/Utf16Combiner.h"
+#include "util/PlatformRules.h"
+#include "component/ScriptComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/UIComponent.h"
 #include "component/PanelComponent.h"
@@ -45,8 +54,13 @@
 #include "pool/MeshLodPool.h"
 #include "pool/MeshBufferPool.h"
 #include "pool/AnimationClipPool.h"
+#include "pool/AvatarMaskPool.h"
+#include "pool/AnimatorControllerPool.h"
+#include "pool/PhysicsMaterialPool.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
+#include "net/Http.h"
+#include "thread/MainThreadQueue.h"
 #include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
 #include "memory/Arena.h"
@@ -140,12 +154,29 @@ double Engine::shaderTime = 0.0;
 bool Engine::shaderTimeFixed = false;
 double Engine::pinnedShaderTime = -1.0;
 uint64_t Engine::gameFrames = 0;
+// the clocks of Time (EngineTime.h): the unscaled frame delta and its sum, the fixed steps' sum,
+// the game time at the last scene load, the wall clock at start
+double Engine::unscaledDeltatime = 0.0;
+double Engine::unscaledTime = 0.0;
+double Engine::fixedTime = 0.0;
+double Engine::levelLoadGameTime = 0.0;
+uint64_t Engine::startupTime = 0;
+bool Engine::inFixedStep = false;
+float Engine::smoothDeltatime = 0.0f;
 std::atomic<bool> Engine::simulationHeld = false;
 bool Engine::clampNextDelta = false;
 
 std::atomic<bool> Engine::viewLoaded = false;
 std::atomic<bool> Engine::paused = false;
 bool Engine::gameEventsPaused = false;
+std::atomic<bool> Engine::focused = true;
+int Engine::targetFrameRate = -1;
+// the project's VSync setting (platformConfig().vsync, set in systemInit; the generated init()
+// may set it again)
+int Engine::vSyncCount = 1;
+FramePacing Engine::framePacing;
+int Engine::lastOrientation = 0;
+double Engine::orientationPendingSince = 0.0;
 std::atomic<bool> Engine::asyncLoading = false;
 bool Engine::frameRunning = false;
 
@@ -169,6 +200,9 @@ FunctionSubscribe<void()> Engine::onPostUpdate;
 FunctionSubscribe<void()> Engine::onPause;
 FunctionSubscribe<void()> Engine::onResume;
 FunctionSubscribe<void()> Engine::onShutdown;
+FunctionSubscribe<void(bool)> Engine::onFocus;
+FunctionSubscribe<void(int)> Engine::onOrientationChanged;
+FunctionSubscribe<void()> Engine::onLowMemory;
 FunctionSubscribe<void()> Engine::onSceneLoaded;
 FunctionSubscribe<void(int,float,float)> Engine::onTouchStart;
 FunctionSubscribe<void(int,float,float)> Engine::onTouchEnd;
@@ -188,6 +222,8 @@ FunctionSubscribe<void(int)> Engine::onGamepadDisconnect;
 FunctionSubscribe<void(int,int)> Engine::onGamepadButtonDown;
 FunctionSubscribe<void(int,int)> Engine::onGamepadButtonUp;
 FunctionSubscribe<void(int,int,float)> Engine::onGamepadAxisMove;
+FunctionSubscribe<void(const std::string&)> Engine::onButtonDown;
+FunctionSubscribe<void(const std::string&)> Engine::onButtonUp;
 
 FunctionSubscribe<void()>& Engine::getOnInit() {
     // This static variable is guaranteed to be created the first time this function is called
@@ -227,8 +263,15 @@ void Engine::setScene(Scene* scene){
 
 Scene* Engine::getScene(){
     std::lock_guard<std::mutex> lock(sceneListMutex);
-    // none before the first scene is set (a scene's scripts start before it is)
-    return Engine::scenes.empty() ? nullptr : Engine::scenes[0];
+    // none before the first scene is set (a scene's scripts start before it is); never the
+    // persistent scene (DontDestroyOnLoad), first while a load builds its new scenes
+    Scene* persistent = SceneManager::getPersistentScene();
+    for (Scene* scene : Engine::scenes) {
+        if (scene != persistent) {
+            return scene;
+        }
+    }
+    return nullptr;
 }
 
 std::vector<Scene*> Engine::getScenesSnapshot(){
@@ -438,6 +481,8 @@ void Engine::pauseGameEvents(bool pause) {
     onGamepadButtonDown.setEnabled(!pause);
     onGamepadButtonUp.setEnabled(!pause);
     onGamepadAxisMove.setEnabled(!pause);
+    onButtonDown.setEnabled(!pause);
+    onButtonUp.setEnabled(!pause);
 }
 
 void Engine::includeScene(Scene* scene){
@@ -593,6 +638,18 @@ bool Engine::isIgnoreEventsHandledByUI(){
 
 bool Engine::isUIEventReceived(){
     return uiEventReceived;
+}
+
+bool Engine::isPointerOverUI(int pointerId){
+    for (Scene* scene : getScenesSnapshot()){
+        if (!scene->canReceiveUIEvents())
+            continue;
+        if (scene->getSystem<UISystem>()->isPointerOverUI(pointerId))
+            return true;
+        if (scene->getSystem<UIDocumentSystem>()->isPointerOverUI(pointerId))
+            return true;
+    }
+    return false;
 }
 
 void Engine::setUpdateTimeMS(unsigned int updateTimeMS){
@@ -858,8 +915,43 @@ float Engine::getMaxDeltatime(){
 }
 
 void Engine::setMaxDeltatime(float seconds){
-    if (seconds > 0.0f)
-        maxDeltatime = seconds;
+    if (!(seconds > 0.0f) || std::isinf(seconds)){
+        Log::warn("Engine::setMaxDeltatime: non-positive or non-finite value (%f) ignored", seconds);
+        return;
+    }
+    maxDeltatime = seconds;
+}
+
+float Engine::getUnscaledDeltatime(){
+    return (float)unscaledDeltatime;
+}
+
+double Engine::getUnscaledTime(){
+    return unscaledTime;
+}
+
+double Engine::getFixedTime(){
+    return fixedTime;
+}
+
+double Engine::getRealtimeSinceStartup(){
+    return stm_sec(stm_since(startupTime));
+}
+
+double Engine::getTimeSinceLevelLoad(){
+    return gameTime - levelLoadGameTime;
+}
+
+void Engine::markLevelLoad(){
+    levelLoadGameTime = gameTime;
+}
+
+bool Engine::isInFixedStep(){
+    return inFixedStep;
+}
+
+float Engine::getSmoothDeltatime(){
+    return smoothDeltatime;
 }
 
 double Engine::getSystemTime(){
@@ -1196,6 +1288,8 @@ void Engine::endCompositeFramebuffer(){
 void Engine::clearPools(){
     // first: its assets' payload textures go back to the texture pools cleared next
     VertexAnimationPool::clear();
+    // the global shader textures (Shader.setGlobalTexture) hold pool entries too
+    ShaderGlobals::releaseTextures();
     TexturePool::clear();
     SoundPool::clear();
     TextureDataPool::clear();
@@ -1205,6 +1299,9 @@ void Engine::clearPools(){
     MeshLodPool::clear();
     MeshBufferPool::clear();
     AnimationClipPool::clear();
+    AvatarMaskPool::clear();
+    AnimatorControllerPool::clear();
+    PhysicsMaterialPool::clear();
 }
 
 void Engine::clearUnusedPools(){
@@ -1218,6 +1315,9 @@ void Engine::clearUnusedPools(){
     MeshLodPool::clearUnused();
     MeshBufferPool::clearUnused();
     AnimationClipPool::clearUnused();
+    AvatarMaskPool::clearUnused();
+    AnimatorControllerPool::clearUnused();
+    PhysicsMaterialPool::clearUnused();
 }
 
 void Engine::removeSubscriptionsByTag(const std::string& substring) {
@@ -1246,6 +1346,8 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     onGamepadButtonDown.removeByTagSubstring(substring);
     onGamepadButtonUp.removeByTagSubstring(substring);
     onGamepadAxisMove.removeByTagSubstring(substring);
+    onButtonDown.removeByTagSubstring(substring);
+    onButtonUp.removeByTagSubstring(substring);
 
     onViewLoaded.removeByTagSubstring(substring);
     onViewChanged.removeByTagSubstring(substring);
@@ -1254,7 +1356,24 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     onPause.removeByTagSubstring(substring);
     onResume.removeByTagSubstring(substring);
     onShutdown.removeByTagSubstring(substring);
+    onFocus.removeByTagSubstring(substring);
+    onOrientationChanged.removeByTagSubstring(substring);
+    onLowMemory.removeByTagSubstring(substring);
     onSceneLoaded.removeByTagSubstring(substring);
+
+    // a released script instance's tag is "_<address>_": the input sources it owned go too
+    // (Input.simulateAxis(name, value, self), InputActions::setSourceValue(this, ...))
+    // SYNC4-ABSORB(Input): upstream's per-owner input sources (setSourceValue / clearSource) are
+    // not in S22's InputActions; port them (or map them onto inject / setVirtual) to restore this
+#if 0
+    if (substring.size() > 2 && substring.front() == '_' && substring.back() == '_' &&
+            std::all_of(substring.begin() + 1, substring.end() - 1, [](char c) { return c >= '0' && c <= '9'; })) {
+        try {
+            InputActions::clearSource(static_cast<uintptr_t>(std::stoull(substring.substr(1, substring.size() - 2))));
+        } catch (const std::exception&) {
+        }
+    }
+#endif
 }
 
 void Engine::clearAllSubscriptions(bool includeLifecycle) {
@@ -1285,6 +1404,8 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
     onGamepadButtonDown.clear();
     onGamepadButtonUp.clear();
     onGamepadAxisMove.clear();
+    onButtonDown.clear();
+    onButtonUp.clear();
 
     if (includeLifecycle) {
         onViewLoaded.clear();
@@ -1294,6 +1415,9 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
         onPause.clear();
         onResume.clear();
         onShutdown.clear();
+        onFocus.clear();
+        onOrientationChanged.clear();
+        onLowMemory.clear();
     }
 }
 
@@ -1325,6 +1449,23 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
         ui.onDragStart.clear();
         ui.onDrag.clear();
         ui.onDragEnd.clear();
+    }
+
+    auto sticks = scene->getComponentArray<OnScreenStickComponent>();
+    for (size_t i = 0; i < sticks->size(); i++) {
+        OnScreenStickComponent& stick = sticks->getComponentFromIndex(i);
+        stick.onValueChanged.clear();
+        stick.onPress.clear();
+        stick.onRelease.clear();
+    }
+    auto onScreenButtons = scene->getComponentArray<OnScreenButtonComponent>();
+    for (size_t i = 0; i < onScreenButtons->size(); i++) {
+        onScreenButtons->getComponentFromIndex(i).onPress.clear();
+        onScreenButtons->getComponentFromIndex(i).onRelease.clear();
+    }
+    auto touchAreas = scene->getComponentArray<TouchAreaComponent>();
+    for (size_t i = 0; i < touchAreas->size(); i++) {
+        touchAreas->getComponentFromIndex(i).onDrag.clear();
     }
 
     auto panels = scene->getComponentArray<PanelComponent>();
@@ -1383,6 +1524,8 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
         AnimationPlayerComponent& player = players->getComponentFromIndex(i);
         player.onEvent.clear();
         player.onFinish.clear();
+        player.onStateEnter.clear();
+        player.onStateExit.clear();
     }
 
     auto vertexAnimators = scene->getComponentArray<VertexAnimatorComponent>();
@@ -1611,10 +1754,12 @@ namespace {
 #endif
 }
 
-void Engine::systemInit(int argc, char* argv[], System* system){
+void Engine::systemInit(int argc, char* argv[], System* system, bool startProject){
     jobs::markMainThread();
 
     System::setSystemInstance(system);
+    // the thread that delivers async results (MainThreadQueue)
+    MainThreadQueue::setMainThread();
 
     if (!Logger::isInitialized()) {
         startGameLogger(system, std::vector<std::string>(argv, argv + argc));
@@ -1634,10 +1779,14 @@ void Engine::systemInit(int argc, char* argv[], System* system){
     updateTimeCount = 0;
     viewLoaded = false;
     paused = false;
+    focused = true;
+    lastOrientation = 0;
+    orientationPendingSince = 0.0;
 
     drawSemaphore.release();
 
     stm_setup();
+    startupTime = stm_now();
     
     std::vector<std::string> args(argv, argv + argc);
     System::instance().args = args;
@@ -1647,10 +1796,20 @@ void Engine::systemInit(int argc, char* argv[], System* system){
     profiler::engineInit(args);
 #endif
 
+    // the build's (or a prebuilt player's game.json) VSync, then the platform's defaults until
+    // init() (the generated main, a script) changes them
+    vSyncCount = platformConfig().vsync ? 1 : 0;
+    applyFramePacing();
+
     LuaBinding::createLuaState();
     // the watchdog names (and in editor Play interrupts) a runaway Lua function
     LuaWatchdog::attach();
 
+    if (startProject)
+        systemStartProject();
+}
+
+void Engine::systemStartProject(){
     #ifndef NO_LUA_INIT
     LuaBinding::init();
     #endif
@@ -1690,6 +1849,11 @@ void Engine::systemViewLoaded(){
     }
 
     getAsyncThreadDepthStorage() = 0;
+
+    // what init() asked for before the view existed: the swap interval needs the context,
+    // the orientation and screen sleep a window
+    applyFramePacing();
+    Screen::applyToPlatform();
 
     // systemViewDestroyed stopped async loads; a recreated view needs them again
     SoundPool::cancelShutdown();
@@ -1737,6 +1901,9 @@ void Engine::systemViewChanged(){
     }
 
     onViewChanged.call();
+
+    // a resize can be a rotation: onOrientationChanged comes after onCanvasChanged
+    systemOrientationChanged();
 }
 
 // With JASPERENGINE_READY_SIGNAL set (tools/smoke-test.sh sets it), logs once the frame
@@ -1834,8 +2001,13 @@ void Engine::signalReadyOnce(){
         if (frameStats){
             frames++;
             const uint64_t after = frames - signalledFrame;
-            if (frameStatsAll || after == 2 || after == 30 || after == 90)
+            // the particle simulation of this frame (particles spec 8: the CPU budget)
+            size_t alive = 0;
+            const double particleMs = ActionSystem::takeParticleSimMs(&alive);
+            if (frameStatsAll || after == 2 || after == 30 || after == 90){
                 SystemRender::logFrameStats(frames);
+                if (alive > 0) Log::print("Frame %llu particles_sim_ms %.3f (%zu particles)", (unsigned long long)frames, particleMs, alive);
+            }
         }
         return;
     }
@@ -1913,6 +2085,11 @@ void Engine::runFrame(bool draw){
     }
 #endif
 
+    // a quarter turn waiting for its view size (systemOrientationChanged's timeout)
+    if (orientationPendingSince > 0.0){
+        systemOrientationChanged();
+    }
+
     //Deltatime in seconds
     double rawDelta = stm_sec(stm_laptime(&lastTime));
     const uint64_t frameStart = lastTime;
@@ -1933,8 +2110,13 @@ void Engine::runFrame(bool draw){
         frameTime = fixedDeltatime;
     }
     deltatime = simulationHeld ? 0.0 : frameTime * timeScale;
-    // the UI clock runs on the unscaled delta (a pause menu animates at time scale 0) and
-    // stops with the updates: a held simulation or a paused app
+    // the unscaled delta (Time.unscaledDeltaTime, realtime waits): it runs at time scale 0 (a
+    // pause menu animates) and stops with the game: a held simulation, a paused app, or the game
+    // events paused (the editor's Play pause, edit time)
+    // (getUnscaledDeltatime(): also 0 while Engine::pauseGameEvents(true), the editor's Play pause)
+    unscaledDeltatime = (paused || simulationHeld || !onUpdate.isEnabled()) ? 0.0 : frameTime;
+    // the UI clock: the same, but it keeps running while only the game events are paused (HTML
+    // UI documents animate in edit mode and in a paused Play)
     HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);
 
     // timers: what other threads posted, then the real clock (runs paused or loading too)
@@ -1986,6 +2168,10 @@ void Engine::runFrame(bool draw){
 
     frameRunning = true;
 
+    // what DontDestroyOnLoad / MoveGameObjectToScene asked for between frames (input
+    // callbacks, the editor's tools), at this frame's first safe point
+    SceneManager::flushPersistentMoves();
+
     // a transition requested during the last frame; one requested by its factory waits again
     SceneManager::applyPendingLoad();
 
@@ -2009,6 +2195,18 @@ void Engine::runFrame(bool draw){
         // the scheduler's game clocks: stopped by the editor's Pause too (gameTime is not)
         const bool gameClocks = advanceGameClocks(scheduler, frameTime);
 
+        unscaledTime += unscaledDeltatime;
+        smoothDeltatime = (gameFrames <= 1) ? (float)frameDelta : smoothDeltatime + 0.2f * ((float)frameDelta - smoothDeltatime);
+
+        // the script coroutines and timers advance with the game events: not at edit time nor
+        // while the editor's Play is paused (Engine::pauseGameEvents)
+        if (onUpdate.isEnabled())
+            ScriptScheduler::beginFrame(frameDelta, unscaledDeltatime);
+
+        // 0) start of the scripts enabled since the last frame, before their first fixed
+        //    update and update (Unity)
+        ScriptRuntime::flushStarts();
+
         // 1) Fixed-timestep phase (deterministic). Runs zero or more times per frame.
         //    Used for physics, networking, and any subsystem overriding fixedUpdate().
         if (updateTime > 0.0) {
@@ -2025,6 +2223,8 @@ void Engine::runFrame(bool draw){
                     fixedStepsLeft++;
                 }
 
+                inFixedStep = true;
+                ScriptScheduler::beginFixedStep();
                 Engine::onFixedUpdate.call();
                 for (int i = 0; i < scenes.size(); i++) {
                     scenes[i]->fixedUpdate(updateTime);
@@ -2035,6 +2235,10 @@ void Engine::runFrame(bool draw){
                 }
                 Input::endFixedStep();
                 InputActions::endFixedStep();
+                // after the physics step: Coroutine.waitForFixedUpdate
+                ScriptScheduler::fixedPhase();
+                fixedTime += updateTime;
+                inFixedStep = false;
                 updateTimeCount -= updateTime;
                 fixedLoops++;
             }
@@ -2057,7 +2261,15 @@ void Engine::runFrame(bool draw){
         // 2) Variable-timestep phase. Runs exactly once per frame with the real frame delta.
         //    Used for animation, input, UI, and any subsystem overriding update().
         JE_PROFILE_SCOPE("Update");
+        // What other threads finished (HTTP responses, native callbacks) reaches the game here,
+        // right before onUpdate, while game events run (not in the editor outside Play)
+        if (Engine::onUpdate.isEnabled()) {
+            MainThreadQueue::drain();
+        }
         Engine::onUpdate.call();
+        // timers, then the coroutines waiting seconds, frames, predicates or other work (Unity's
+        // yield null / WaitForSeconds point: after Update, before LateUpdate)
+        ScriptScheduler::updatePhase();
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->update(frameDelta);
         }
@@ -2126,6 +2338,9 @@ void Engine::runFrame(bool draw){
         }
     }
 
+    // Coroutine.waitForEndOfFrame: after the draw (nothing when the update did not run)
+    ScriptScheduler::endOfFramePhase();
+
     // after the draw, so the new scenes are drawn loaded before the loading scene goes
     SceneManager::updateLoading();
 
@@ -2144,6 +2359,9 @@ void Engine::runFrame(bool draw){
     // the built-in monitors, and the command line's capture once the scenes are loaded
     profiler::engineFrameEnd(areScenesLoaded());
 #endif
+
+    // desktop UserSettings: written a second after a change, not on every set
+    UserSettings::tick();
 
     frameRunning = false;
 
@@ -2236,12 +2454,28 @@ void Engine::systemShutdown(){
     // teardown is watched on its own window; the job system is not read past here
     if (engineOwnsDiagnostics) diag::watchdog::beginShutdownWatch();
 #endif
+    // Unity's quit: onApplicationQuit to every script, then onDisable and onDestroy (the OS
+    // may end a mobile app without this)
+    ScriptRuntime::quitAll();
+
     Engine::onShutdown.call();
 
-    // anime's, the timers' and the input actions' Lua references go while the Lua state still exists
+    // what the game (and its onShutdown handlers) stored is on disk before it goes
+    UserSettings::save();
+
+    // anime's, the timers', the script coroutines' and the input actions' Lua references go
+    // while the Lua state still exists
     AnimEngine::instance().reset();
     Scheduler::game().clear();
+    ScriptScheduler::clear();
     InputActions::unload();
+    // the persistent scene's scripts (their onDestroy ran above) are released, and it goes
+    SceneManager::destroyPersistentScene();
+
+    // HTTP requests end without their callbacks and the HTTP stack's threads stop; what other
+    // threads posted for the game is dropped
+    Http::terminate();
+    MainThreadQueue::clear();
     LuaBinding::cleanup();
 
     removeAllSceneLayers(true);
@@ -2263,6 +2497,10 @@ void Engine::systemShutdown(){
     }
 #endif
 
+    // and what scripts stored while their scenes went (onDestroy): the last write. Desktop
+    // System objects live until the process ends, so ~System never gets to write it.
+    UserSettings::save();
+
     // what the game logged (the workers' last lines too) reaches its sinks before the process goes
     if (engineOwnsLogger) {
         engineOwnsLogger = false;
@@ -2271,18 +2509,148 @@ void Engine::systemShutdown(){
 }
 
 void Engine::systemPause(){
+    if (paused) return;
     // a backgrounded app expects no heartbeat; resume re-arms on the next frame
     diag::watchdog::setPaused(true);
-    AudioSystem::pauseAll();
-    Engine::onPause.call();
+    // leaving: the focus goes first (Unity: OnApplicationFocus(false), then OnApplicationPause(true))
+    systemFocus(false);
     paused = true;
+    AudioSystem::pauseAll();
+    ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 1); return 1; },
+        [](ScriptBase& script) { script.onApplicationPause(true); });
+    Engine::onPause.call();
+
+    // the key and button ups of a paused app never come: what is held comes up now (S22's
+    // focus release; systemFocus(false) or the platform did it already unless the window kept
+    // the focus)
+    if (windowFocused)
+        systemFocusChanged(false);
+    // so the presses of the documents and the component UI end now (cancelled: no click), the
+    // controls let go (D6)
+    cancelAllUIPointers();
+
+    // a paused app may be killed without another call (after the handlers, which may set some)
+    UserSettings::save();
 }
 
 void Engine::systemResume(){
+    if (!paused) return;
     diag::watchdog::setPaused(false);
-    AudioSystem::resumeAll();
-    Engine::onResume.call();
     paused = false;
+    AudioSystem::resumeAll();
+    ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 0); return 1; },
+        [](ScriptBase& script) { script.onApplicationPause(false); });
+    Engine::onResume.call();
+}
+
+void Engine::systemFocus(bool hasFocus){
+    if (hasFocus == focused) return;
+    // coming back: the resume goes first (OnApplicationPause(false), then OnApplicationFocus(true))
+    if (hasFocus && paused){
+        systemResume();
+    }
+    focused = hasFocus;
+    // the key and button ups after a focus loss go to another window: the next frame sees them; the
+    // UI presses end now (D6, cancelled)
+    if (!hasFocus){
+        // held input comes up through S22's focus release (the platforms call
+        // systemFocusChanged first: then nothing is held any more)
+        if (windowFocused)
+            systemFocusChanged(false);
+        cancelAllUIPointers();
+    }
+    ScriptRuntime::broadcast(ScriptMessage::ApplicationFocus, [hasFocus](lua_State* L) { lua_pushboolean(L, hasFocus ? 1 : 0); return 1; },
+        [hasFocus](ScriptBase& script) { script.onApplicationFocus(hasFocus); });
+    Engine::onFocus.call(hasFocus);
+}
+
+void Engine::systemOrientationChanged(){
+    if (!System::hasInstance()) return;
+    const int orientation = (int)Screen::getOrientation();
+    if (orientation == lastOrientation){
+        orientationPendingSince = 0.0;
+        return;
+    }
+    // the first one is where the view starts, not a change
+    if (lastOrientation == 0){
+        lastOrientation = orientation;
+        return;
+    }
+    // A quarter turn is reported before the new view size on some platforms (Android's display
+    // rotation, the web's screen.orientation): it waits for the size to flip, so onCanvasChanged
+    // comes first (systemViewChanged calls this again), or ORIENTATION_SIZE_TIMEOUT seconds (a view
+    // that keeps its shape, e.g. a fixed canvas in a page). A half turn changes no size: at once.
+    auto landscape = [](int o){
+        return o == (int)ScreenOrientation::LandscapeLeft || o == (int)ScreenOrientation::LandscapeRight;
+    };
+    if (landscape(orientation) != landscape(lastOrientation)){
+        const int width = System::instance().getScreenWidth();
+        const int height = System::instance().getScreenHeight();
+        const bool sizeFlipped = width == height || landscape(orientation) == (width > height);
+        const double now = getSystemTime();
+        if (!sizeFlipped){
+            if (orientationPendingSince <= 0.0) orientationPendingSince = now;
+            if (now - orientationPendingSince < ORIENTATION_SIZE_TIMEOUT) return;
+        }
+    }
+    orientationPendingSince = 0.0;
+    lastOrientation = orientation;
+    Engine::onOrientationChanged.call(orientation);
+}
+
+void Engine::systemLowMemory(){
+    Engine::onLowMemory.call();
+}
+
+void Engine::resetApplicationState(){
+    if (paused){
+        paused = false;
+        AudioSystem::resumeAll();
+    }
+    focused = true;
+    lastOrientation = 0;
+    orientationPendingSince = 0.0;
+    targetFrameRate = -1;
+    applyFramePacing();
+}
+
+bool Engine::isFocused(){
+    return focused;
+}
+
+bool Engine::isPaused(){
+    return paused;
+}
+
+void Engine::setTargetFrameRate(int fps){
+    targetFrameRate = fps <= 0 ? -1 : std::min(fps, 1000);
+    applyFramePacing();
+}
+
+int Engine::getTargetFrameRate(){
+    return targetFrameRate;
+}
+
+void Engine::setVSyncCount(int count){
+    vSyncCount = std::clamp(count, 0, 4);
+    applyFramePacing();
+}
+
+int Engine::getVSyncCount(){
+    return vSyncCount;
+}
+
+const FramePacing& Engine::getFramePacing(){
+    return framePacing;
+}
+
+void Engine::applyFramePacing(){
+    if (!System::hasInstance()) return;
+    System& system = System::instance();
+    framePacing = PlatformRules::computeFramePacing(getPlatform(), targetFrameRate, vSyncCount,
+                                                    system.getRefreshRate(), system.getMaxSwapInterval(),
+                                                    system.canDisableVSync());
+    system.applyFramePacing(framePacing);
 }
 
 // Scenes below a loading scene only get pointer-up, so nothing stays pressed
@@ -2596,10 +2964,13 @@ void Engine::systemTouchStart(int pointer, float x, float y){
         if (documentScene)
             uiEventReceived = true;
 
-        for (Scene* scene : scenes){
-            if (scene != documentScene && canSendUIEvents(scene))
-                if (scene->getSystem<UISystem>()->eventOnPointerDown(x, y))
-                    uiEventReceived = true;
+        // per pointer: a finger a document took never reaches the component UI (ui-multitouch)
+        if (!documentScene){
+            for (Scene* scene : scenes){
+                if (canSendUIEvents(scene))
+                    if (scene->getSystem<UISystem>()->eventOnPointerDown(pointer, D_MOUSE_BUTTON_1, x, y, true))
+                        uiEventReceived = true;
+            }
         }
 
         if (dispatchToWorldDocuments(scenes, uiEventReceived, false, [&](UIDocumentSystem* documents, bool covered){
@@ -2623,7 +2994,20 @@ void Engine::systemTouchStart(int pointer, float x, float y){
 }
 
 void Engine::systemTouchEnd(int pointer, float x, float y){
-    if (transformCoordPos(x, y)){
+    // SYNC4-ABSORB(Input): upstream's Input.multiTouchEnabled hid some fingers from the simulated
+    // mouse (Input::isTouchVisible); S22's Input has every finger visible
+    const bool visible = true;
+    if (!transformCoordPos(x, y)){
+        // lifted outside the canvas: no event, but the finger is not down any more, and the
+        // documents and the component UI that tracked it let go of it without a click (D6)
+        Input::removeTouch(pointer);
+        if (Engine::isCallMouseInTouchEvent() && visible)
+            Input::releaseMousePressed(D_MOUSE_BUTTON_1);
+        cancelUIPointer(pointer, true);
+        return;
+    }
+    {
+        Input::setTouchPosition(pointer, x, y);
         Input::removeTouch(pointer);
 
         uiEventReceived = false;
@@ -2637,7 +3021,7 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
         for (Scene* scene : scenes){
             // a covered scene still gets the release
             if (scene->canReceiveUIEvents())
-                if (scene->getSystem<UISystem>()->eventOnPointerUp(x, y))
+                if (scene->getSystem<UISystem>()->eventOnPointerUp(pointer, D_MOUSE_BUTTON_1, x, y, true))
                     uiEventReceived = true;
         }
 
@@ -2649,7 +3033,8 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onTouchEnd.call(pointer, x, y);
             if (Engine::isCallMouseInTouchEvent()){
-                Input::releaseMousePressed(D_MOUSE_BUTTON_1);
+                if (visible)
+                    Input::releaseMousePressed(D_MOUSE_BUTTON_1);
                 Input::setMousePosition(x, y);
                 Engine::onMouseUp.call(D_MOUSE_BUTTON_1, x, y, 0);
             }
@@ -2660,6 +3045,8 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
 
 void Engine::systemTouchMove(int pointer, float x, float y){
     if (transformCoordPos(x, y)){
+        const bool known = Input::findTouchIndex(pointer) != (size_t)-1;
+        const Vector2 previous = Input::getTouchPosition(pointer);
         Input::setTouchPosition(pointer, x, y);
 
         uiEventReceived = false;
@@ -2673,7 +3060,7 @@ void Engine::systemTouchMove(int pointer, float x, float y){
 
         for (Scene* scene : scenes){
             if (canSendUIEvents(scene))
-                if (scene->getSystem<UISystem>()->eventOnPointerMove(x, y))
+                if (scene->getSystem<UISystem>()->eventOnPointerMove(pointer, x, y, true))
                     uiEventReceived = true;
         }
 
@@ -2693,10 +3080,29 @@ void Engine::systemTouchMove(int pointer, float x, float y){
     }
 }
 
+void Engine::cancelUIPointer(int pointerOrButton, bool touch){
+    for (Scene* scene : getScenesSnapshot()){
+        if (touch){
+            scene->getSystem<UIDocumentSystem>()->eventOnTouchCancel(pointerOrButton);
+            scene->getSystem<UISystem>()->eventOnPointerCancel(pointerOrButton);
+        }else{
+            scene->getSystem<UIDocumentSystem>()->eventOnMouseCancel(pointerOrButton);
+            scene->getSystem<UISystem>()->eventOnPointerCancel(-1 - pointerOrButton);
+        }
+    }
+}
+
+void Engine::cancelAllUIPointers(){
+    for (Scene* scene : getScenesSnapshot()){
+        scene->getSystem<UIDocumentSystem>()->cancelAllPointers();
+        scene->getSystem<UISystem>()->cancelAllPointers();
+    }
+}
+
 void Engine::systemTouchCancel(){
     std::vector<Touch> cancelled = Input::getTouches();
     for (const Touch& touch : cancelled)
-        systemTouchCancel(touch.pointer);
+        systemTouchCancel(touch.fingerId);
 }
 
 void Engine::systemTouchCancel(int pointer){
@@ -2707,10 +3113,12 @@ void Engine::systemTouchCancel(int pointer){
     Vector2 pos = Input::getTouchPosition(pointer);
     Input::cancelTouch(pointer);
 
-    // the documents that tracked it let go of it without a click
+    // the documents and the component UI that tracked it let go of it without a click
     bool consumed = false;
     for (Scene* scene : getScenesSnapshot()){
         if (scene->getSystem<UIDocumentSystem>()->eventOnTouchCancel(pointer))
+            consumed = true;
+        if (scene->canReceiveUIEvents() && scene->getSystem<UISystem>()->eventOnPointerCancel(pointer))
             consumed = true;
     }
 
@@ -2736,11 +3144,14 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
         if (documentScene)
             uiEventReceived = true;
 
-        for (Scene* scene : scenes){
-            if (scene != documentScene && canSendUIEvents(scene))
-                if (button == D_MOUSE_BUTTON_1)
-                    if (scene->getSystem<UISystem>()->eventOnPointerDown(x, y))
+        // the mouse's buttons are pointers -1, -2, -3 (Unity); the built-in widgets take the
+        // left one only. A press a document took never reaches the component UI.
+        if (!documentScene && button >= D_MOUSE_BUTTON_LEFT && button <= D_MOUSE_BUTTON_MIDDLE){
+            for (Scene* scene : scenes){
+                if (canSendUIEvents(scene))
+                    if (scene->getSystem<UISystem>()->eventOnPointerDown(-1 - button, button, x, y, false))
                         uiEventReceived = true;
+            }
         }
 
         if (dispatchToWorldDocuments(scenes, uiEventReceived, false, [&](UIDocumentSystem* documents, bool covered){
@@ -2761,7 +3172,16 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
     }
 }
 void Engine::systemMouseUp(int button, float x, float y, int mods){
-    if (transformCoordPos(x, y)){
+    if (!transformCoordPos(x, y)){
+        // released outside the canvas: no event, but the button is not held any more, and the
+        // documents and the component UI that tracked it let go of it without a click (D6)
+        Input::releaseMousePressed(button);
+        if (Engine::isCallTouchInMouseEvent())
+            Input::removeTouch(0);
+        cancelUIPointer(button, false);
+        return;
+    }
+    {
         Input::releaseMousePressed(button);
         Input::setMousePosition(x, y);
         if (mods != 0)
@@ -2778,8 +3198,8 @@ void Engine::systemMouseUp(int button, float x, float y, int mods){
         for (Scene* scene : scenes){
             // a covered scene still gets the release, like the component UI
             if (scene->canReceiveUIEvents())
-                if (button == D_MOUSE_BUTTON_1)
-                    if (scene->getSystem<UISystem>()->eventOnPointerUp(x, y))
+                if (button >= D_MOUSE_BUTTON_LEFT && button <= D_MOUSE_BUTTON_MIDDLE)
+                    if (scene->getSystem<UISystem>()->eventOnPointerUp(-1 - button, button, x, y, false))
                         uiEventReceived = true;
         }
 
@@ -2828,9 +3248,9 @@ void Engine::systemMouseMove(float x, float y, int mods){
         for (Scene* scene : scenes){
             if (canSendUIEvents(scene)){
                 UISystem* ui = scene->getSystem<UISystem>().get();
-                if (ui->eventOnPointerMove(x, y))
+                if (ui->eventOnPointerMove(-1, x, y, false))
                     uiEventReceived = true;
-                if (ui->isPointerOverUI())
+                if (ui->isPointerOverUI(-1))
                     overComponentUI = true;
             }
         }
@@ -2868,11 +3288,18 @@ void Engine::systemMouseScroll(float xoffset, float yoffset, int mods){
     if (mods != 0)
         Input::setModifiers(mods);
 
-    const bool consumed = dispatchToDocuments(getScenesSnapshot(), [&](UIDocumentSystem* documents){
+    const std::vector<Scene*> scenes = getScenesSnapshot();
+    bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
         return documents->eventOnWheel(xoffset, yoffset, mods);
     }) != nullptr;
     if (!consumed)
         Input::addMouseScrollForGame(xoffset, yoffset);
+
+    // then onScroll of the component UI element under the mouse (top layer first)
+    for (auto it = scenes.rbegin(); it != scenes.rend() && !consumed; ++it){
+        if (canSendUIEvents(*it) && (*it)->getSystem<UISystem>()->eventOnScroll(xoffset, yoffset))
+            consumed = true;
+    }
 
     if (!ignoreEventsHandledByUI || !consumed)
         Engine::onMouseScroll.call(xoffset, yoffset, mods);
@@ -2886,8 +3313,10 @@ void Engine::systemMouseEnter(){
 
 void Engine::systemMouseLeave(){
     Input::releaseMouseEntered();
-    for (Scene* scene : getScenesSnapshot())
+    for (Scene* scene : getScenesSnapshot()){
         scene->getSystem<UIDocumentSystem>()->eventOnMouseLeave();
+        scene->getSystem<UISystem>()->eventOnPointerLeave(-1);
+    }
     Engine::onMouseLeave.call();
 }
 
@@ -2936,6 +3365,8 @@ void Engine::systemCharInput(wchar_t codepoint){
 
     std::vector<uint32_t> codepoints;
     charInputCombiner.push((uint32_t)codepoint, codepoints);
+    // SYNC4-ABSORB(Input): upstream's Input.inputString took these codepoints
+    // (Input::addInputCharacter); S22's Input has no text buffer yet
 
     bool consumed;
     if (!codepoints.empty()){
@@ -2978,6 +3409,11 @@ void Engine::systemTextInput(const std::string& utf8){
 
     const std::vector<Scene*> scenes = getScenesSnapshot();
 
+    bool hadInvalid = false;
+    const std::vector<uint32_t> codepoints = StringUtils::decodeUtf8ToCodepoints(utf8, hadInvalid);
+    // SYNC4-ABSORB(Input): upstream's Input.inputString took these codepoints
+    // (Input::addInputCharacter); S22's Input has no text buffer yet
+
     const bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
         return documents->eventOnTextInput(utf8);
     }) != nullptr;
@@ -2985,8 +3421,7 @@ void Engine::systemTextInput(const std::string& utf8){
     if (ignoreEventsHandledByUI && consumed)
         return;
 
-    bool hadInvalid = false;
-    for (uint32_t codepoint : StringUtils::decodeUtf8ToCodepoints(utf8, hadInvalid))
+    for (uint32_t codepoint : codepoints)
         sendCharacterToGame(codepoint, !consumed, true, scenes);
 }
 
@@ -3093,6 +3528,16 @@ void Engine::systemGamepadAxisMove(int gamepad, int axis, float value){
 
 bool Engine::wantsGamepadNavigation(){
     return documentsHaveGamepadFocus(getScenesSnapshot());
+}
+
+bool Engine::isTextInputFocused(){
+    for (Scene* scene : getScenesSnapshot()){
+        if (canSendUIEvents(scene) && scene->getSystem<UISystem>()->isInputFieldFocused())
+            return true;
+        if (canSendDocumentEvents(scene) && scene->getSystem<UIDocumentSystem>()->hasFocusedTextInput())
+            return true;
+    }
+    return false;
 }
 
 void Engine::updateGamepadNavigation(){

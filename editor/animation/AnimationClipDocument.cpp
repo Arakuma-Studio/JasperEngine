@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AnimationClipDocument.h"
+#include "AnimAssetDocument.h"
 
 #include "animation/AnimatorAssetIO.h"
 #include "pool/AnimatorAssetPool.h"
@@ -415,6 +416,10 @@ std::vector<ClipHintEdit> jasperengine::editor::remapClipHints(Project* project,
         return Util::isModelFile(p) || Util::isPrefabFile(p) || Util::isSceneFile(p) || Util::isPoseAnimationFile(p) ||
                Util::isAnimationClipFile(p) || Util::isAvatarMaskFile(p);
     };
+    // the controllers naming a moved clip, model or mask (their GUIDs stay; the runtime loads by path)
+    for (const AnimAssetHintEdit& edit : remapControllerReferences(project, oldAbsolute, newAbsolute)){
+        edits.push_back({edit.file, edit.before, edit.after});
+    }
     if (!fs::is_directory(newAbsolute, ec) && !hintable(oldAbsolute) && !hintable(newAbsolute)){
         return edits;
     }
@@ -532,6 +537,9 @@ void jasperengine::editor::restoreClipHints(Project* project, const std::vector<
 // ---- documents ----
 
 void AnimationClipDocument::setFilesWrittenHook(std::function<void(const std::vector<fs::path>&)> hook){
+    // the mask and controller documents' commits reach the same file sync
+    AvatarMaskDocument::setFilesWrittenHook(hook);
+    AnimatorControllerDocument::setFilesWrittenHook(hook);
     registry().filesWrittenHook = std::move(hook);
 }
 
@@ -874,6 +882,9 @@ bool AnimationClipDocument::commit(const ClipData& newData, const std::string& u
 void AnimationClipDocument::filesChanged(const std::vector<fs::path>& givenPaths, Project* project){
     Registry& reg = registry();
     if (!project) project = reg.project;
+    // the masks and controllers hear of the same changes (one broadcast for the animation assets)
+    AvatarMaskDocument::filesChanged(givenPaths, project);
+    AnimatorControllerDocument::filesChanged(givenPaths, project);
 
     // a .gltf's buffer changed: the .gltf did
     std::vector<fs::path> paths = givenPaths;
@@ -943,6 +954,8 @@ void AnimationClipDocument::filesChanged(const std::vector<fs::path>& givenPaths
 }
 
 void AnimationClipDocument::filesMoved(const fs::path& oldPath, const fs::path& newPath){
+    AvatarMaskDocument::filesMoved(oldPath, newPath);
+    AnimatorControllerDocument::filesMoved(oldPath, newPath);
     Registry& reg = registry();
     std::vector<std::pair<std::string, std::shared_ptr<AnimationClipDocument>>> moved;
     for (const auto& entry : reg.documents){
@@ -981,6 +994,8 @@ void AnimationClipDocument::filesMoved(const fs::path& oldPath, const fs::path& 
 }
 
 void AnimationClipDocument::checkDiskChanges(Project* project){
+    AvatarMaskDocument::checkDiskChanges();
+    AnimatorControllerDocument::checkDiskChanges();
     std::vector<std::shared_ptr<AnimationClipDocument>> documents;
     for (const auto& entry : registry().documents){
         if (entry.second->stampChanged()){
@@ -1039,6 +1054,8 @@ void AnimationClipDocument::checkDiskChanges(Project* project){
 }
 
 void AnimationClipDocument::closeAll(){
+    AvatarMaskDocument::closeAll();
+    AnimatorControllerDocument::closeAll();
     Registry& reg = registry();
     reg.documents.clear();
     reg.project = nullptr;

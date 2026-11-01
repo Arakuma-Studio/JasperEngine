@@ -80,6 +80,7 @@ struct PanelVisibilitySettings {
     bool textureSynthesis = false;
     bool vertexAnimationBaker = false;
     bool physicsPlacement = false;
+    bool spriteNormals = false;
     bool mcp = false;
     bool game = true;
     bool undoHistory = true;
@@ -96,6 +97,7 @@ struct PanelVisibilitySettings {
             && textureSynthesis == other.textureSynthesis
             && vertexAnimationBaker == other.vertexAnimationBaker
             && physicsPlacement == other.physicsPlacement
+            && spriteNormals == other.spriteNormals
             && mcp == other.mcp
             && game == other.game
             && undoHistory == other.undoHistory;
@@ -114,11 +116,17 @@ struct GameViewSettings {
     bool showStats = false;
     // Preview Atmosphere Quality: -1 the project's, else an AtmosphereQuality (Off..High)
     int atmosphereQuality = -1;
+    // device simulation (window/DeviceProfiles.h): a profile id ("" = none), how it is turned
+    // (ScreenOrientation) and the simulated language (BCP 47, "" = the system's)
+    std::string device;
+    int orientation = 1;
+    std::string language;
 
     bool operator==(const GameViewSettings& other) const {
         return aspect == other.aspect && scale == other.scale
             && maximizeOnPlay == other.maximizeOnPlay && showStats == other.showStats
-            && atmosphereQuality == other.atmosphereQuality;
+            && atmosphereQuality == other.atmosphereQuality
+            && device == other.device && orientation == other.orientation && language == other.language;
     }
     bool operator!=(const GameViewSettings& other) const { return !(*this == other); }
 };

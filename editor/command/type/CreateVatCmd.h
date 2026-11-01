@@ -76,13 +76,16 @@ namespace jasperengine::editor{
         CreateVatCmd& operator=(const CreateVatCmd&) = delete;
 
         bool execute() override;
+
+        std::vector<Touched> touchedPaths(bool undo) const override;
+        std::string failure() const override { return failureText; }
         void undo() override;
         bool affectsStructure() const override;
         // "Bake Vertex Animation walk.vat" (its .vat; S24's step names)
         std::string describe() const override;
         const char* typeName() const override { return "CreateVatCmd"; }
 
-        const std::string& getFailure() const{ return failure; }
+        const std::string& getFailure() const{ return failureText; }
         void reportFailureTo(std::shared_ptr<std::string> sink){ failureSink = std::move(sink); }
         // the placed GameObject (NULL_ENTITY before the first execute, or with Mode::None)
         Entity getEntity() const{ return entity; }
@@ -110,7 +113,8 @@ namespace jasperengine::editor{
         Entity entity = NULL_ENTITY;
         bool wasModified = false;
         std::vector<Entity> previousSelection;
-        std::string failure;
+        std::string failureText;
+        unsigned long long failureMark = 0;   // safewrite::scopedFailureCount() when execute began
         std::shared_ptr<std::string> failureSink;
         bool executedOnce = false;
         std::vector<bool> existedFirst;

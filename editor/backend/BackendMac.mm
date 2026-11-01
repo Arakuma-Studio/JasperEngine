@@ -8,6 +8,8 @@
 
 #include "JasperEngineGameController.h"
 #include "Engine.h"
+#include "Platform.h"
+#include "util/FrameLimiter.h"
 #include "WindowMac.h"
 
 #include "imgui_impl_metal.h"
@@ -985,6 +987,7 @@ int editor::Backend::init(int argc, char* argv[]) {
         Project* activeProject = app.getProject();
         double lastActivityTime = monotonicSeconds();
         bool currentFrameSync = true;
+        FrameLimiter playLimiter;
 
         while (!backend->shouldClose) {
             @autoreleasepool {
@@ -1007,8 +1010,12 @@ int editor::Backend::init(int argc, char* argv[]) {
                 const bool focused = NSApp.active;
                 const bool playSessionActive =
                     activeProject->isPlaySessionActive();
+                // the window's focus reaches the game as Engine::onFocus
+                editor::Platform::forwardHostFocus(focused, playSessionActive);
+                // while playing, the game's Engine.vSyncCount decides
+                const FramePacing& pacing = Engine::getFramePacing();
                 const bool frameSync = app.isBenchmarkMode() ? false : (playSessionActive
-                    ? activeProject->isVSyncEnabled()
+                    ? pacing.swapInterval > 0
                     : AppSettings::getEditorVSyncEnabled());
                 setMouseControlSuspended(playSessionActive &&
                     !activeProject->isMainScenePlaying());
@@ -1068,7 +1075,17 @@ int editor::Backend::init(int argc, char* argv[]) {
                 }
                 backend->frameInProgress = false;
 
-                if (!focused || minimized) {
+                // Engine.targetFrameRate without vsync: the game's frame limiter
+                const bool playLimited = playSessionActive && !app.isBenchmarkMode() && !minimized &&
+                    pacing.limiterFps > 0.0;
+                if (playLimited) {
+                    const double limit = focused || backend->framePeriod <= 0.0
+                        ? pacing.limiterFps : std::min(pacing.limiterFps, 1.0 / backend->framePeriod);
+                    playLimiter.wait(limit);
+                } else {
+                    playLimiter.reset();
+                }
+                if (!playLimited && (!focused || minimized)) {
                     const double remaining = backend->framePeriod -
                         (monotonicSeconds() - frameStart);
                     if (remaining > 0.0)

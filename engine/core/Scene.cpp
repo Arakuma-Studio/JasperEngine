@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "manager/ObjectManager.h"
+#include "script/ScriptRuntime.h"
 #include "Scene.h"
+#include "shader/ShaderGlobals.h"
+#include "script/AsyncOwner.h"
 
 #include "object/Camera.h"
 #include "Engine.h"
@@ -11,6 +14,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/LatticeSystem.h"
 #include "subsystem/VertexAnimatorSystem.h"
+#include "subsystem/TrailSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/FluidSystem.h"
@@ -58,6 +62,8 @@ void Scene::init(){
     registerSystem<UIDocumentSystem>();
     registerSystem<FluidSystem>();
     registerSystem<RenderSystem>();
+    // after Render, whose update makes this frame's world transforms (the trails' heads)
+    registerSystem<TrailSystem>();
     // before physics: agents set their bodies' velocities before the world steps (S19 D2)
     registerSystem<NavigationSystem>();
     registerSystem<PhysicsSystem>();
@@ -74,11 +80,16 @@ void Scene::init(){
 }
 
 Scene::~Scene(){
+    tearingDown = true;
+    // async work owned by the scene or its GameObjects ends without its callbacks
+    AsyncOwners::sceneDestroyed(this);
     // first: handles that own entities of this scene and go during (or after) its teardown
     // leave them to it
     lifetime.reset();
     // GameObject::destroy calls still pending for it
     ObjectManager::forgetScene(this);
+    // and the starts of its scripts still queued
+    ScriptRuntime::forgetScene(this);
     // sounds of a deleted scene would play on; not in destroy(), which also runs on view recreation
     getSystem<AudioSystem>()->stopSceneSounds();
     destroy();
@@ -91,6 +102,14 @@ static void removeComponentSubscriptionsByTag(Scene* scene, const std::string& s
     for (size_t i = 0; i < components->size(); i++) {
         callback(components->getComponentFromIndex(i), substring);
     }
+}
+
+bool Scene::isActivationObserved() const{
+    return ScriptRuntime::hasStarted(const_cast<Scene*>(this));
+}
+
+void Scene::onActiveInHierarchyChanged(const std::vector<Entity>& changed, bool nowActive){
+    ScriptRuntime::onActiveInHierarchyChanged(this, changed, nowActive);
 }
 
 std::weak_ptr<char> Scene::getLifetime() const{
@@ -122,6 +141,8 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
     removeComponentSubscriptionsByTag<AnimationPlayerComponent>(this, substring, [](AnimationPlayerComponent& player, const std::string& tag) {
         player.onEvent.removeByTagSubstring(tag);
         player.onFinish.removeByTagSubstring(tag);
+        player.onStateEnter.removeByTagSubstring(tag);
+        player.onStateExit.removeByTagSubstring(tag);
     });
 
     removeComponentSubscriptionsByTag<VertexAnimatorComponent>(this, substring, [](VertexAnimatorComponent& animator, const std::string& tag) {
@@ -173,6 +194,21 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
         inputField.onSubmit.removeByTagSubstring(tag);
     });
 
+    removeComponentSubscriptionsByTag<OnScreenStickComponent>(this, substring, [](OnScreenStickComponent& stick, const std::string& tag) {
+        stick.onValueChanged.removeByTagSubstring(tag);
+        stick.onPress.removeByTagSubstring(tag);
+        stick.onRelease.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<OnScreenButtonComponent>(this, substring, [](OnScreenButtonComponent& button, const std::string& tag) {
+        button.onPress.removeByTagSubstring(tag);
+        button.onRelease.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<TouchAreaComponent>(this, substring, [](TouchAreaComponent& area, const std::string& tag) {
+        area.onDrag.removeByTagSubstring(tag);
+    });
+
     getSystem<PhysicsSystem>()->removeSubscriptionsByTag(substring);
 }
 
@@ -198,6 +234,17 @@ void Scene::setCamera(Entity camera){
 
 Entity Scene::getCamera() const{
     return camera;
+}
+
+void Scene::useDefaultCamera(){
+    if (defaultCamera == NULL_ENTITY || !isEntityCreated(defaultCamera)){
+        defaultCamera = createDefaultCamera();
+    }
+    camera = defaultCamera;
+    if (CameraComponent* cameracomp = findComponent<CameraComponent>(camera)){
+        cameracomp->needUpdate = true;
+    }
+    updateCameraSize();
 }
 
 Entity Scene::createDefaultCamera(){
@@ -595,6 +642,22 @@ bool Scene::isPhysicsInterpolation() const{
     return const_cast<Scene*>(this)->getSystem<PhysicsSystem>()->isInterpolation();
 }
 
+void Scene::setPhysics2DSubSteps(int subSteps){
+#ifdef JASPERENGINE_PHYSICS_2D
+    getSystem<PhysicsSystem>()->setSubSteps2D(subSteps);
+#else
+    (void)subSteps;
+#endif
+}
+
+int Scene::getPhysics2DSubSteps() const{
+#ifdef JASPERENGINE_PHYSICS_2D
+    return const_cast<Scene*>(this)->getSystem<PhysicsSystem>()->getSubSteps2D();
+#else
+    return SceneSettings().physics2DSubSteps;
+#endif
+}
+
 void Scene::setDefaultMeshShader(const std::string& path){
     if (settings.defaultMeshShader != path){
         settings.defaultMeshShader = path;
@@ -758,6 +821,25 @@ bool Scene::removePostProcessUniform(unsigned int index, const std::string& name
 
     getSystem<RenderSystem>()->needUpdatePostProcessUniforms();
     return true;
+}
+
+bool Scene::setPostProcessGlobalBinding(unsigned int index, const std::string& member, const std::string& global){
+    if (index >= settings.postProcess.size()){
+        Log::error("Post-process pass %u does not exist, cannot bind '%s'", index, member.c_str());
+        return false;
+    }
+    if (!ShaderGlobals::setBinding(settings.postProcess[index].shaderGlobalBindings, member, global))
+        return false;
+
+    getSystem<RenderSystem>()->needUpdatePostProcessUniforms();
+    return true;
+}
+
+std::string Scene::getPostProcessGlobalBinding(unsigned int index, const std::string& member) const{
+    if (index >= settings.postProcess.size())
+        return "";
+
+    return ShaderGlobals::getBinding(settings.postProcess[index].shaderGlobalBindings, member);
 }
 
 const PostProcessingSettings& Scene::getPostProcessing() const{

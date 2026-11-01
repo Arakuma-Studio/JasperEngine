@@ -22,6 +22,7 @@
 #include "Engine.h"
 #include "PlatformConfig.h"
 #include "player/RunControl.h"
+#include "util/FrameLimiter.h"
 #if defined(SOKOL_METAL)
 #include "../apple/MetalReadback.h"
 #endif
@@ -33,6 +34,9 @@
 using namespace jasperengine;
 
 namespace {
+    // Engine.targetFrameRate without vsync: frames the timer below skips
+    FrameLimiter frameLimiter;
+
 #if defined(SOKOL_METAL)
     MacViewMetal* gameView = nil;
 #elif defined(SOKOL_VULKAN)
@@ -49,7 +53,7 @@ namespace {
         VulkanContextConfig config;
         config.surfaceExtension = VK_EXT_METAL_SURFACE_EXTENSION_NAME;
         config.createSurface = createWindowSurface;
-        config.vsync = platformConfig().vsync;
+        config.vsync = Engine::getFramePacing().swapInterval > 0;
         return VulkanContext::create(config);
     }
 #else
@@ -102,7 +106,7 @@ namespace {
     gameView.delegate = self;
 
     WindowMac::setContentView((__bridge void*)gameView);
-    static_cast<CAMetalLayer*>(gameView.layer).displaySyncEnabled = platform.vsync ? YES : NO;
+    JasperEngineMac::applySwapInterval(Engine::getFramePacing().swapInterval);
     // --screenshot reads the composite on sokol's queue
     installMetalReadback();
 #elif defined(SOKOL_VULKAN)
@@ -127,7 +131,7 @@ namespace {
 
     WindowMac::setContentView((__bridge void*)gameView);
     [gameView makeContextCurrent];
-    [gameView setSwapInterval:platform.vsync ? 1 : 0];
+    JasperEngineMac::applySwapInterval(Engine::getFramePacing().swapInterval);
     // the shader creation thread's context (spec S32)
     MacViewGL* sharingView = gameView;
     setGpuWorkerContextFactory([sharingView]() { return makeMacGLWorkerContext(sharingView); });
@@ -155,6 +159,8 @@ namespace {
 
 - (void)renderFrame {
     if (!gameView) return;
+    // the timer runs at 240 Hz; a frame rate cap draws only the frames due
+    if (!frameLimiter.isDue(Engine::getFramePacing().limiterFps)) return;
 #if defined(SOKOL_METAL)
     // Runs drawInMTKView below, the only place currentDrawable is valid
     [gameView draw];
@@ -188,15 +194,18 @@ namespace {
     WindowMac::refreshDrawableSize();
 }
 
-// held keys and buttons come up while another window has the keyboard
-- (void)windowDidResignKey:(NSNotification*)notification {
-    (void)notification;
-    Engine::systemFocusChanged(false);
-}
-
+// Unity's OnApplicationFocus: the game window is the key window; held keys and buttons come
+// up while another window has the keyboard
 - (void)windowDidBecomeKey:(NSNotification*)notification {
     (void)notification;
     Engine::systemFocusChanged(true);
+    Engine::systemFocus(true);
+}
+
+- (void)windowDidResignKey:(NSNotification*)notification {
+    (void)notification;
+    Engine::systemFocusChanged(false);
+    Engine::systemFocus(false);
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender {
@@ -234,6 +243,18 @@ namespace {
 }
 
 @end
+
+void JasperEngineMac::applySwapInterval(int interval) {
+    if (!gameView) return;
+#if defined(SOKOL_METAL)
+    static_cast<CAMetalLayer*>(gameView.layer).displaySyncEnabled = interval > 0 ? YES : NO;
+#elif defined(SOKOL_VULKAN)
+    VulkanContext::setVSync(interval > 0);
+#else
+    [gameView makeContextCurrent];
+    [gameView setSwapInterval:interval > 0 ? 1 : 0];
+#endif
+}
 
 int JasperEngineMac::init(int argc, char **argv) {
     @autoreleasepool {

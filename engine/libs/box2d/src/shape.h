@@ -19,6 +19,8 @@ typedef struct b2Shape
 	float density;
 	float friction;
 	float restitution;
+	// JASPER PATCH: surface callbacks (upstream 3.1 API)
+	int userMaterialId;
 
 	b2AABB aabb;
 	b2AABB fatAABB;
@@ -56,6 +58,8 @@ typedef struct b2ChainShape
 	int* shapeIndices;
 	float friction;
 	float restitution;
+	// JASPER PATCH: surface callbacks (upstream 3.1 API)
+	int userMaterialId;
 	uint16_t revision;
 } b2ChainShape;
 

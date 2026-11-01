@@ -259,7 +259,7 @@ TEST(AnimationPlayerProject, RefusalsNameTheProblemAndGiveAnExample) {
     EXPECT_EQ(refusal(s, player({{"clips", Json::array({Json{{"clip", "assets/anim/walk.anim"}, {"wrap", "sideways"}}})}})),
               list + "clips[0].wrap \"sideways\" is not a wrap mode (default, once, loop, ping_pong, clamp_forever).");
     EXPECT_EQ(refusal(s, player({{"clips", Json::array({Json{{"clip", "assets/anim/walk.anim"}, {"loop", true}}})}})),
-              list + "clips[0]: unknown key \"loop\" (an entry is {clip, name, wrap}; its guid follows the clip).");
+              list + "clips[0]: unknown key \"loop\" (an entry is {clip, name, wrap, layer}; its guid follows the clip).");
     EXPECT_EQ(refusal(s, player({{"clips", Json::array({Json{{"clip", "assets/anim/nope.anim"}}})}})),
               list + "clips[0].clip: assets/anim/nope.anim does not exist: create it first with edit_animation {clip, create: {}}" +
               EXAMPLE + ".");

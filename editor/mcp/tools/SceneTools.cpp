@@ -4,6 +4,7 @@
 // W1: scenes (list, create, open, close, select, save, rename, delete), child scenes, main
 // camera, scene settings
 #include "McpTools.h"
+#include "shader/ShaderGlobals.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -88,7 +89,8 @@ bool scenePathArg(Project* project, const std::string& given, fs::path& relative
     fs::path rel = FileUtils::pathFromUtf8(given).lexically_normal();
     if (rel.extension() != ".scene") rel += ".scene";
     fs::path absolute;
-    if (!McpRefs::resolveProjectPath(project, FileUtils::pathToGenericUtf8(rel), absolute, error)) return false;
+    // a file the tool writes: inside the project once links are resolved
+    if (!McpRefs::resolveProjectWritePath(project, FileUtils::pathToGenericUtf8(rel), absolute, error)) return false;
     relative = rel;
     return true;
 }
@@ -404,7 +406,7 @@ void saveSceneTool(const CallPtr& call) {
                 return;
             }
             std::error_code ec;
-            fs::create_directories((project->getProjectPath() / relative).parent_path(), ec);
+            FileUtils::createDirectories((project->getProjectPath() / relative).parent_path(), ec);
             if (!project->saveSceneToPath(id, relative)) {
                 call->fail("Failed to save the scene to " + FileUtils::pathToGenericUtf8(relative) + " (see the console).");
                 return;
@@ -413,6 +415,14 @@ void saveSceneTool(const CallPtr& call) {
             SceneProject* saved = project->getScene(id);
             call->ok("Saved scene " + std::to_string(id) + " as " + FileUtils::pathToGenericUtf8(relative) + ".",
                      Json{{"scene", sceneInfo(project, *saved)}, {"degraded", degradedJson(*saved)}});
+            return;
+        }
+    }
+    // saved in place: its file (a link out of the project would be written through) stays inside
+    if (!scene->filepath.empty()) {
+        const fs::path file = scene->filepath.is_absolute() ? scene->filepath : project->getProjectPath() / scene->filepath;
+        if (const std::string escape = McpRefs::writeEscape(project, file); !escape.empty()) {
+            call->fail(escape);
             return;
         }
     }
@@ -622,6 +632,12 @@ void deleteSceneTool(const CallPtr& call) {
     const std::string name = scene->name;
     const fs::path relative = project->normalizeToProjectRelative(scene->filepath);
     const fs::path absolute = project->getProjectPath() / relative;
+    if (deleteFile) {
+        if (const std::string escape = McpRefs::writeEscape(project, absolute, McpRefs::WriteUse::Entry); !escape.empty()) {
+            call->fail(escape);
+            return;
+        }
+    }
     CommandHistory* history = project->getProjectCommandHistory();
     const size_t mark = history->mark();
     std::string error;
@@ -630,8 +646,10 @@ void deleteSceneTool(const CallPtr& call) {
         return;
     }
     if (deleteFile) {
-        if (!runProjectCommand(project, new DeleteFileCmd(project, {absolute}, project->getProjectPath()), error,
-                               "The scene file could not be deleted.")) {
+        // the file moved to the trash beneath the project (a link: the link itself)
+        auto* deleteCmd = new DeleteFileCmd(project, {absolute}, project->getProjectPath());
+        deleteCmd->setWriteRoots(McpRefs::trustedRoots(project));
+        if (!runProjectCommand(project, deleteCmd, error, "The scene file could not be deleted.")) {
             history->undo();
             call->fail(error);
             return;
@@ -794,6 +812,7 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"physics_gravity_2d", SettingKind::Vector2, "2D gravity [x,y]"},
         {"physics_gravity_3d", SettingKind::Vector3, "3D gravity [x,y,z]"},
         {"physics_interpolation", SettingKind::Bool, "draw bodies between their last two fixed steps (smooth at any frame rate)"},
+        {"physics_2d_sub_steps", SettingKind::Int, "Box2D sub-steps per fixed step, 1-16 (default 4; more = stiffer joints)"},
         {"mesh_lod_enabled", SettingKind::Bool, "build and use mesh detail levels"},
         {"mesh_lod_threshold", SettingKind::Float, "pixels of error a detail level may show"},
         {"depth_prepass_enabled", SettingKind::Bool, "depth-only pass before opaque draws"},
@@ -1035,6 +1054,12 @@ Json postProcessToJson(const std::vector<PostProcessPass>& passes, Project* proj
         Json textures = McpValues::shaderTexturesToJson(project, nullptr, pass.textures);
         if (!textures.empty()) item["textures"] = textures;
         if (pass.scale != 1.0f) item["scale"] = pass.scale;
+        // members following global shader values {member: global}, only when set
+        if (!pass.shaderGlobalBindings.empty()) {
+            Json bindings = Json::object();
+            for (const auto& binding : pass.shaderGlobalBindings) bindings[binding.first] = binding.second;
+            item["shaderGlobalBindings"] = bindings;
+        }
         list.push_back(item);
     }
     return list;
@@ -1153,6 +1178,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             if (!value.is_number_integer()) return expect("an integer");
             if (name.rfind("fixed_resolution_", 0) == 0 && value.get<int>() < 1) return expect("at least 1");
             if (name == "max_lights_per_object" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
+            if (name == "physics_2d_sub_steps" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
             return new ScenePropertyCmd<int>(project, id, name, value.get<int>());
         case SettingKind::Float:
             if (!value.is_number()) return expect("a number");
@@ -1226,9 +1252,10 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
                 }
                 // a misspelt key would otherwise be dropped without a word
                 for (auto key = item.begin(); key != item.end(); ++key) {
-                    static const std::set<std::string> known = {"shader", "enabled", "uniforms", "textures", "scale"};
+                    static const std::set<std::string> known = {"shader", "enabled", "uniforms", "textures", "scale", "shaderGlobalBindings"};
                     if (!known.count(key.key())) {
-                        error = where + ": unknown key \"" + key.key() + "\". A pass is {shader, enabled, uniforms, textures, scale}.";
+                        error = where + ": unknown key \"" + key.key() + "\". A pass is {shader, enabled, uniforms, textures, scale, "
+                                "shaderGlobalBindings}.";
                         return nullptr;
                     }
                 }
@@ -1274,6 +1301,23 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
                         return nullptr;
                     }
                     pass.scale = item["scale"].get<float>();
+                }
+                if (item.contains("shaderGlobalBindings")) {
+                    // {member: global}: u_fs_postParams members that follow global shader values
+                    const Json& bindings = item["shaderGlobalBindings"];
+                    if (!bindings.is_object()) {
+                        error = where + ".shaderGlobalBindings is an object {member: global name}.";
+                        return nullptr;
+                    }
+                    for (auto it = bindings.begin(); it != bindings.end(); ++it) {
+                        std::string invalid;
+                        if (it.value().is_null()) continue;
+                        if (!it.value().is_string() || !ShaderGlobals::isValidName(it.value().get<std::string>(), &invalid)) {
+                            error = where + ".shaderGlobalBindings." + it.key() + ": " + (invalid.empty() ? "a global's name" : invalid) + ".";
+                            return nullptr;
+                        }
+                        ShaderGlobals::setBinding(pass.shaderGlobalBindings, it.key(), it.value().get<std::string>());
+                    }
                 }
                 passes.push_back(pass);
             }

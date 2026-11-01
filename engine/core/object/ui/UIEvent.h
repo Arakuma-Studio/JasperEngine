@@ -42,6 +42,13 @@ namespace jasperengine{
         float getClientX() const; float getClientY() const; int getButton() const;
 
         float getDeltaX() const; float getDeltaY() const;   // wheel steps, positive down/right
+        // Pointer Events (ui-multitouch; also on the compatibility mouse events and click): pointerId
+        // 1 the mouse (every button), fingerId + 2 a finger; pointerType "mouse" / "touch" / "pen";
+        // buttons the DOM bitmask (1 left, 2 right, 4 middle); pressure 0.5 while pressed; width /
+        // height the contact size; fingerId the Input finger id (-1 for the mouse). 0 / "" / false
+        // on events of no pointer
+        int getPointerId() const; std::string getPointerType() const; bool isPrimary() const; int getButtons() const;
+        float getPressure() const; float getWidth() const; float getHeight() const; int getFingerId() const;
         std::string getData() const;                  // textinput / IME text
         UIValue getDetail() const;                    // custom events (dispatchEvent)
 

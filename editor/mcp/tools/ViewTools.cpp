@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // W3: screenshots, Scene view camera, window focus, Game view settings
+#include "registry/PhysicsLayers.h"
 #include "McpTools.h"
 #include "texture/TextureCookQueue.h"
 #include "window/dialog/EditorSettingsWindow.h"
@@ -20,19 +21,25 @@
 #include "Backend.h"
 #include "AppSettings.h"
 #include "Engine.h"
+#include "Platform.h"
 #include "Project.h"
+#include "net/Http.h"
 #include "mcp/McpActivityWindow.h"
 #include "render/SceneRender.h"
 #include "render/SceneRender2D.h"
 #include "render/SystemRender.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "object/ui/UIDocument.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "util/GraphicUtils.h"
+#include "util/PlatformRules.h"
+#include "window/DeviceProfiles.h"
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
 #include "window/JobsMemoryWindow.h"
@@ -292,19 +299,21 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
         Project* project = job->call->ctx().project();
         fs::path target;
         std::string error;
-        // Inside the project only, like every file a tool writes
-        if (!McpRefs::resolveProjectPath(project, job->req.savePath, target, error)) {
+        // Inside the project only, like every file a tool writes (also once links are resolved),
+        // and written beneath it: no link planted on the way since the check is followed
+        if (!McpRefs::resolveProjectWritePath(project, job->req.savePath, target, error)) {
             job->fail("save_path: " + error);
             return;
         }
-        std::error_code ec;
-        if (target.has_parent_path()) fs::create_directories(target.parent_path(), ec);
-        io::AtomicWriteOptions options;
-        options.durability = io::Durability::Cache;
-        const io::WriteResult written = io::writeFileAtomic(target,
-                std::string_view(reinterpret_cast<const char*>(png.data()), png.size()), options);
-        if (!written.ok()) {
-            job->fail("Could not write the PNG to " + FileUtils::pathToGenericUtf8(target) + ": " + io::describeWriteError(written) + ".");
+        // not an editor-owned or hidden file (project.yaml, .jasperengine, CMakeLists.txt ...): a
+        // screenshot is an asset, never a path the editor owns
+        if (const std::string owned = McpRefs::protectedPlace(project, target); !owned.empty()) {
+            job->fail("save_path: " + owned);
+            return;
+        }
+        // beneath the project: no link planted on the way since the check is followed
+        if (!safewrite::writeFileResolvedBeneath(McpRefs::rootFor(project, target), target, std::string(png.begin(), png.end()), error)) {
+            job->fail("Could not write the PNG to " + FileUtils::pathToGenericUtf8(target) + ": " + error);
             return;
         }
         info["saved_to"] = FileUtils::pathToGenericUtf8(target);
@@ -1376,6 +1385,10 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "animation") {
         ctx.animationWindow()->setOpen(true);
         imguiName = AnimationWindow::WINDOW_NAME;
+    } else if (window == "animator") {
+        // it shows the selected GameObject's controller (or the .controller opened last)
+        app.getAnimatorWindow()->setOpen(true);
+        imguiName = AnimatorWindow::WINDOW_NAME;
     } else if (window == "terrain") {
         ctx.terrainEditWindow()->setOpen(true);
         imguiName = TerrainEditWindow::WINDOW_NAME;
@@ -1420,10 +1433,13 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "vertex_animation_baker") {
         app.getVertexAnimationBakerWindow()->open();
         imguiName = VertexAnimationBakerWindow::WINDOW_NAME;
+    } else if (window == "sprite_normals") {
+        app.getSpriteNormalsWindow()->open();
+        imguiName = SpriteNormalsWindow::WINDOW_NAME;
     } else {
         call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, pose_animation, terrain, mcp, "
                    "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
-                   "vertex_animation_baker.");
+                   "vertex_animation_baker, sprite_normals.");
         return;
     }
     if (args.contains("pose") && window != "pose_animation") {
@@ -1544,7 +1560,88 @@ void configureGameViewTool(const CallPtr& call) {
         TextureCookQueue::get().setViewFamily(family);
         changed.push_back("simulate_textures");
     }
+    // the runtime collider / joint wireframes (Physics.debugDraw): every scene, Play and exports
+    if (args.contains("physics_debug")) {
+        Physics::setDebugDraw(args.value("physics_debug", false));
+        changed.push_back("physics_debug");
+    }
+    if (args.contains("physics_debug_contacts")) {
+        Physics::setDebugDrawContacts(args.value("physics_debug_contacts", false));
+        changed.push_back("physics_debug_contacts");
+    }
+    if (args.contains("network")) {
+        const std::string network = args.value("network", "");
+        if (network != "online" && network != "offline") {
+            call->fail("network must be online or offline (simulated: Http requests to hosts other than localhost fail with "
+                       "errorCode \"offline\").");
+            return;
+        }
+        Http::setOfflineSimulated(network == "offline");
+        changed.push_back("network");
+    }
+
+    if (args.contains("device")) {
+        const std::string device = args["device"].is_string() ? args["device"].get<std::string>() : std::string();
+        if (device == "none" || device.empty()) {
+            settings.device.clear();
+        } else if (findDeviceProfile(device)) {
+            settings.device = device;
+        } else {
+            std::string ids;
+            for (const DeviceProfile& profile : deviceProfiles()) ids += std::string(" ") + profile.id;
+            call->fail("device must be none or one of:" + ids + ".");
+            return;
+        }
+        changed.push_back("device");
+    }
+    if (args.contains("language")) {
+        const std::string language = args["language"].is_string() ? args["language"].get<std::string>() : std::string();
+        const std::string tag = (language == "system" || language.empty()) ? std::string() : LocaleRules::normalize(language);
+        if (!language.empty() && language != "system" && LocaleRules::languageCode(tag).size() < 2) {
+            call->fail("language must be \"system\" or a BCP 47 tag like es-MX, pt-BR, zh-Hant.");
+            return;
+        }
+        settings.language = tag;
+        changed.push_back("language");
+    }
+
     if (!changed.empty()) gw->applySettings(settings);
+
+    if (args.contains("orientation")) {
+        ScreenOrientation orientation;
+        const std::string name = args.value("orientation", "");
+        if (!PlatformRules::parseOrientationName(name, orientation) || !PlatformRules::isFixedOrientation(orientation)) {
+            call->fail("orientation must be portrait, portrait_upside_down, landscape_left or landscape_right.");
+            return;
+        }
+        const DeviceProfile* device = Platform::getSimulation().device;
+        if (!device) {
+            call->fail("orientation turns a simulated device: pass device too (e.g. {device: \"iphone_15_pro\", "
+                       "orientation: \"" + name + "\"}).");
+            return;
+        }
+        if (!(gw->getRotatableOrientations() & PlatformRules::orientationBit(orientation))) {
+            call->fail(std::string(device->name) + " cannot show " + name + " now" +
+                       (project->isAnyScenePlaying() ? " (the playing game allows other orientations: Screen.orientation / "
+                                                       "Screen.autorotateTo*)." : " (iPhones do not turn upside down)."));
+            return;
+        }
+        // as Rotate: the toolbar's orientation, and the device turned now
+        gw->turnDevice(orientation);
+        changed.push_back("orientation");
+    }
+    settings = gw->getSettings();
+
+    const PlatformSimulation& simulation = Platform::getSimulation();
+    Json devices = Json::array();
+    for (const DeviceProfile& profile : deviceProfiles()) devices.push_back(profile.id);
+
+    // the lines the playing scenes drew last frame (0 until a frame is drawn after turning it on)
+    size_t physicsDebugLines = 0;
+    for (const SceneProject& sceneProject : project->getScenes()) {
+        if (sceneProject.playState == ScenePlayState::STOPPED || !sceneProject.scene) continue;
+        if (auto physics = sceneProject.scene->getSystem<PhysicsSystem>()) physicsDebugLines += physics->getDebugLineCount();
+    }
 
     Json data = {
         {"aspect", aspectNames()[std::clamp(settings.aspect, 0, (int)aspectNames().size() - 1)]},
@@ -1554,11 +1651,19 @@ void configureGameViewTool(const CallPtr& call) {
         {"simulate_touch", project->isSimulateTouch()},
         {"simulate_textures", textureFamilyName(TextureCookQueue::get().getViewFamily())},
         {"atmosphere_quality", atmosphereNames[std::clamp(settings.atmosphereQuality + 1, 0, 4)]},
+        {"physics_debug", Physics::isDebugDraw()},
+        {"physics_debug_contacts", Physics::isDebugDrawContacts()},
+        {"physics_debug_lines", physicsDebugLines},
+        {"network", Http::isOfflineSimulated() ? "offline" : "online"},
         {"open", gw->isOpen()},
         {"visible", gw->isVisible()},
         {"view_size", {gw->getWidth(), gw->getHeight()}},
         {"render_size", {gw->getRenderWidth(), gw->getRenderHeight()}},
         {"canvas", {project->getCanvasWidth(), project->getCanvasHeight()}},
+        {"device", simulation.device ? Json(simulation.device->id) : Json("none")},
+        {"orientation", PlatformRules::orientationName(simulation.orientation)},
+        {"language", settings.language.empty() ? std::string("system") : settings.language},
+        {"devices", devices},
         {"changed", changed}
     };
     call->ok(std::string(changed.empty() ? "Game view settings: " : "Updated the Game view: ") + data.dump(), data);
@@ -1681,7 +1786,7 @@ void registerViewTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "pose_animation",
                                        "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
-                                       "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker"})},
+                                       "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"console", object({
                 {"hidden_categories", array(string(""), "The Category filter: categories not shown.")},
@@ -1722,7 +1827,8 @@ void registerViewTools(McpRegistry& registry) {
         tool.title = "Configure Game View";
         tool.description =
             "Read (no arguments) or change the Game view toolbar settings (editor preferences, not undoable). aspect "
-            "project = the canvas size (a project setting); the game renders at render_size.";
+            "project = the canvas size (a project setting); the game renders at render_size. device, orientation, "
+            "language: a simulated phone and system language (editor only).";
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
             {"scale", number("", 1, 5)},
@@ -1731,7 +1837,13 @@ void registerViewTools(McpRegistry& registry) {
             {"simulate_touch", boolean("Mouse = one finger. Not while playing.")},
             {"simulate_textures", stringEnum("Cooked textures of this platform in every view.", {"desktop", "mobile", "android_etc2", "web"})},
             {"atmosphere_quality", stringEnum("Preview Atmosphere Quality (project = the project's desktop tier).",
-                                              {"project", "off", "low", "medium", "high"})}
+                                              {"project", "off", "low", "medium", "high"})},
+            {"physics_debug", boolean("Collider/joint wireframes in Play.")},
+            {"physics_debug_contacts", boolean("")},
+            {"network", stringEnum("offline: Http to non-localhost fails with \"offline\". Works while playing.", {"online", "offline"})},
+            {"device", string("An id of devices, or none.")},
+            {"orientation", stringEnum("", {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"})},
+            {"language", string("es-MX..., or system.")}
         });
         tool.annotations.idempotent = true;
         tool.handler = configureGameViewTool;

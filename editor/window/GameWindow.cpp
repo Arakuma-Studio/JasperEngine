@@ -10,11 +10,17 @@
 
 #include "imgui_internal.h"
 #include "Engine.h"
+#include "Platform.h"
+#include "Screen.h"
+#include "util/PlatformRules.h"
+#include "window/DeviceProfiles.h"
 #include "Backend.h"
 #include "Theme.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "registry/PhysicsLayers.h"
 #include "Widgets.h"
 #include "external/IconsFontAwesome6.h"
+#include "net/Http.h"
 #include "subsystem/UIDocumentSystem.h"
 
 #include <algorithm>
@@ -72,6 +78,82 @@ void editor::GameWindow::loadSettings() {
     settings = AppSettings::getGameViewSettings();
     settings.aspect = std::clamp(settings.aspect, 0, ASPECT_COUNT - 1);
     settings.scale = std::clamp(settings.scale, MIN_SCALE, MAX_SCALE);
+    applySimulation();
+}
+
+void editor::GameWindow::applySimulation() {
+    const DeviceProfile* device = settings.device.empty() ? nullptr : findDeviceProfile(settings.device);
+    if (!device) settings.device.clear();
+    ScreenOrientation orientation = PlatformRules::isOrientation(settings.orientation)
+        ? (ScreenOrientation)settings.orientation : ScreenOrientation::Portrait;
+    if (!PlatformRules::isFixedOrientation(orientation) ||
+        (device && !(profileOrientationMask(*device) & PlatformRules::orientationBit(orientation)))) {
+        orientation = ScreenOrientation::Portrait;
+    }
+    settings.orientation = (int)orientation;
+    // a playing game keeps where its requests turned the device, unless the device changed
+    const PlatformSimulation& current = Platform::getSimulation();
+    const bool playing = project->getPlaySessionSceneId() != NULL_PROJECT_SCENE;
+    if (playing && device && current.device == device) {
+        // the toolbar's orientation stays what Play stop goes back to
+        const ScreenOrientation turned = current.orientation;
+        Platform::setSimulatedDevice(device, orientation);
+        Platform::setSimulatedOrientation(turned);
+    } else {
+        Platform::setSimulatedDevice(device, orientation);
+    }
+    Platform::setSimulatedLanguage(settings.language);
+    editPassDirty = true;
+}
+
+ScreenOrientation editor::GameWindow::getLayoutOrientation() const {
+    return layoutOrientation;
+}
+
+uint8_t editor::GameWindow::getRotatableOrientations() const {
+    const DeviceProfile* device = Platform::getSimulation().device;
+    if (!device) return 0;
+    uint8_t mask = profileOrientationMask(*device);
+    if (project->getPlaySessionSceneId() != NULL_PROJECT_SCENE) {
+        mask &= PlatformRules::effectiveMask(Platform::getRequestedOrientation(), Platform::getAllowedMask());
+    }
+    return mask;
+}
+
+bool editor::GameWindow::rotateDevice(std::string* error) {
+    loadSettings();
+    const DeviceProfile* device = Platform::getSimulation().device;
+    if (!device) {
+        if (error) *error = "no device is simulated (pick one in the Game view's Device menu)";
+        return false;
+    }
+    const ScreenOrientation current = Platform::getSimulation().orientation;
+    const ScreenOrientation next = nextProfileOrientation(*device, current, getRotatableOrientations());
+    if (next == current) {
+        if (error) *error = std::string("the game allows only ") + PlatformRules::orientationName(current) +
+                            " (Screen.orientation / Screen.autorotateTo*)";
+        return false;
+    }
+    return turnDevice(next);
+}
+
+bool editor::GameWindow::turnDevice(ScreenOrientation orientation) {
+    loadSettings();
+    const DeviceProfile* device = Platform::getSimulation().device;
+    if (!device || !(getRotatableOrientations() & PlatformRules::orientationBit(orientation))) return false;
+    settings.orientation = (int)orientation;
+    Platform::setSimulatedDevice(device, orientation);
+    editPassDirty = true;
+    saveSettings();
+    return true;
+}
+
+const std::vector<std::string>& editor::GameWindow::languagePresets() {
+    static const std::vector<std::string> languages = {
+        "", "en-US", "es-ES", "es-MX", "pt-BR", "fr-FR", "de-DE", "it-IT", "ja-JP", "ko-KR", "zh-Hans", "zh-Hant",
+        "ru-RU", "ar-SA", "hi-IN"
+    };
+    return languages;
 }
 
 void editor::GameWindow::saveSettings() {
@@ -209,6 +291,7 @@ void editor::GameWindow::applySettings(const GameViewSettings& newSettings) {
     settings = newSettings;
     settings.aspect = std::clamp(settings.aspect, 0, ASPECT_COUNT - 1);
     settings.scale = std::clamp(settings.scale, MIN_SCALE, MAX_SCALE);
+    applySimulation();
     editPassDirty = true;
     saveSettings();
 }
@@ -218,6 +301,13 @@ int editor::GameWindow::getAspectCount() {
 }
 
 bool editor::GameWindow::computeAspect(float& aspect) const {
+    // a simulated device has its own screen, turned as it is now
+    if (const DeviceProfile* device = Platform::getSimulation().device) {
+        int deviceWidth = 0, deviceHeight = 0;
+        profileSize(*device, Platform::getSimulation().orientation, deviceWidth, deviceHeight);
+        aspect = (float)deviceWidth / (float)std::max(1, deviceHeight);
+        return true;
+    }
     if (settings.aspect == ASPECT_PROJECT) {
         const float w = (float)project->getCanvasWidth();
         const float h = (float)project->getCanvasHeight();
@@ -336,8 +426,20 @@ void editor::GameWindow::drawToolbar() {
     };
 
     ImGui::SameLine();
+    drawDeviceMenu();
+
+    const DeviceProfile* device = Platform::getSimulation().device;
+    std::string deviceAspect;
+    if (device) {
+        int deviceWidth = 0, deviceHeight = 0;
+        profileSize(*device, Platform::getSimulation().orientation, deviceWidth, deviceHeight);
+        deviceAspect = std::to_string(deviceWidth) + "x" + std::to_string(deviceHeight) + " (Device)";
+    }
+
+    ImGui::SameLine();
     ImGui::SetNextItemWidth(Theme::dpi(150.0f));
-    if (ImGui::BeginCombo("##GameAspect", aspectLabel(settings.aspect))) {
+    ImGui::BeginDisabled(device != nullptr);
+    if (ImGui::BeginCombo("##GameAspect", device ? deviceAspect.c_str() : aspectLabel(settings.aspect))) {
         for (int i = 0; i < ASPECT_COUNT; i++) {
             if (ImGui::Selectable(aspectLabel(i), settings.aspect == i)) {
                 settings.aspect = i;
@@ -347,7 +449,8 @@ void editor::GameWindow::drawToolbar() {
         }
         ImGui::EndCombo();
     }
-    ImGui::SetItemTooltip("Aspect ratio of the game view");
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip(device ? "The simulated device's screen sets the aspect" : "Aspect ratio of the game view");
 
     ImGui::SameLine(0, Theme::dpi(12.0f));
     ImGui::AlignTextToFramePadding();
@@ -403,19 +506,21 @@ void editor::GameWindow::drawToolbar() {
     // Right side toggles, as icons when the view is too narrow for their names
     const char* debuggerLabel = "HTML UI Debugger##GameHtmlUiDebugger";
     const char* touchLabel = ICON_FA_MOBILE_SCREEN "##GameTouch";
+    const char* networkLabel = ICON_FA_WIFI "##GameNetwork";
     const char* maximizeLabel = "Maximize On Play##GameMaximize";
     const char* statsLabel = "Stats##GameStats";
     // Simulate platform textures (S14 R26): the family the views render cooked textures with
     TextureCookQueue& cooks = TextureCookQueue::get();
     const TextureFamily viewFamily = cooks.getViewFamily();
     std::string texturesLabel = std::string(ICON_FA_IMAGE " ") + textureFamilyLabel(viewFamily) + "##GameTextures";
+    const char* physicsLabel = "Physics##GamePhysicsDebug";
     const ImGuiStyle& style = ImGui::GetStyle();
     auto buttonWidth = [&](const char* label) {
         return ImGui::CalcTextSize(label, nullptr, true).x + style.FramePadding.x * 2.0f;
     };
     auto groupWidth = [&]() {
-        return buttonWidth(texturesLabel.c_str()) + buttonWidth(debuggerLabel) + buttonWidth(touchLabel) + buttonWidth(maximizeLabel) +
-               buttonWidth(statsLabel) + style.ItemSpacing.x * 4.0f;
+        return buttonWidth(texturesLabel.c_str()) + buttonWidth(debuggerLabel) + buttonWidth(networkLabel) + buttonWidth(touchLabel) +
+               buttonWidth(maximizeLabel) + buttonWidth(statsLabel) + buttonWidth(physicsLabel) + style.ItemSpacing.x * 6.0f;
     };
     ImGui::SameLine();
     const float contentRight = ImGui::GetWindowContentRegionMax().x;
@@ -424,6 +529,7 @@ void editor::GameWindow::drawToolbar() {
         maximizeLabel = ICON_FA_MAXIMIZE "##GameMaximize";
         statsLabel = ICON_FA_CHART_SIMPLE "##GameStats";
         texturesLabel = ICON_FA_IMAGE "##GameTextures";
+        physicsLabel = ICON_FA_CUBES "##GamePhysicsDebug";
     }
     const float rightX = contentRight - groupWidth();
     if (rightX > ImGui::GetCursorPosX()) {
@@ -455,10 +561,27 @@ void editor::GameWindow::drawToolbar() {
     }
     ImGui::EndDisabled();
 
+    // Network: simulate no connection (HTTP requests to hosts other than localhost fail with
+    // "offline"); works while playing, editor-only, back to Online when the editor restarts
+    ImGui::SameLine();
+    const bool offline = Http::isOfflineSimulated();
+    if (toggleButton(networkLabel, offline, offline
+            ? "Network: Offline (simulated). Http requests to hosts other than localhost fail with errorCode \"offline\"."
+            : "Network: Online. Simulate a device without a connection (Http requests fail with \"offline\")")) {
+        ImGui::OpenPopup("##GameNetworkMenu");
+    }
+    if (ImGui::BeginPopup("##GameNetworkMenu")) {
+        if (ImGui::MenuItem("Online", nullptr, !offline)) Http::setOfflineSimulated(false);
+        if (ImGui::MenuItem("Offline (simulated)", nullptr, offline)) Http::setOfflineSimulated(true);
+        ImGui::Separator();
+        ImGui::TextDisabled("localhost is never affected; not saved into builds");
+        ImGui::EndPopup();
+    }
+
     ImGui::SameLine();
     const bool simulateTouch = project->isSimulateTouch();
     ImGui::BeginDisabled(project->isAnyScenePlaying());
-    if (toggleButton(touchLabel, simulateTouch, "Simulate touch: play as a touch device (the mouse acts as one finger)")) {
+    if (toggleButton(touchLabel, simulateTouch, "Simulate touch: play as a touch device (the mouse acts as one finger). Release the left button with Alt held to keep that finger down: the next drag is a second finger (release Alt to lift the first)")) {
         project->setSimulateTouch(!simulateTouch);
         project->saveWorkspaceFile();
     }
@@ -476,7 +599,102 @@ void editor::GameWindow::drawToolbar() {
         saveSettings();
     }
 
+    ImGui::SameLine();
+    // the runtime collider / joint / contact lines (Physics.debugDraw), for every playing scene
+    const bool physicsShown = Physics::isDebugDraw();
+    if (toggleButton(physicsLabel, physicsShown, "Physics: draw colliders, joints and contacts while playing")) {
+        Physics::setDebugDraw(!physicsShown);
+    }
+
     ImGui::SetCursorPosY(toolbarRowY + ImGui::GetTextLineHeightWithSpacing());
+}
+
+// Device simulation (Unity's Device Simulator): a phone or tablet, how it is turned and the
+// language the game sees. Editor only: builds never see any of it.
+void editor::GameWindow::drawDeviceMenu() {
+    const PlatformSimulation& simulation = Platform::getSimulation();
+    const DeviceProfile* device = simulation.device;
+    const std::string languageLabel = settings.language.empty() ? std::string() : " | " + settings.language;
+    const std::string label = std::string(ICON_FA_MOBILE_SCREEN_BUTTON " ") + (device ? device->name : "No Device") + languageLabel +
+        "##GameDevice";
+
+    const float comboWidth = std::min(ImGui::CalcTextSize(label.c_str(), nullptr, true).x + ImGui::GetFrameHeight() +
+                                      ImGui::GetStyle().FramePadding.x * 2.0f, Theme::dpi(240.0f));
+    ImGui::SetNextItemWidth(comboWidth);
+    if (ImGui::BeginCombo("##GameDeviceCombo", label.c_str(), ImGuiComboFlags_HeightLarge)) {
+        ImGui::TextDisabled("Device");
+        if (ImGui::Selectable("No Device", device == nullptr)) {
+            settings.device.clear();
+            applySimulation();
+            saveSettings();
+        }
+        for (const DeviceProfile& profile : deviceProfiles()) {
+            const std::string itemLabel = std::string(profile.name) + "##device_" + profile.id;
+            if (ImGui::Selectable(itemLabel.c_str(), device == &profile)) {
+                settings.device = profile.id;
+                applySimulation();
+                saveSettings();
+            }
+        }
+        ImGui::Separator();
+        if (ImGui::BeginMenu("Language")) {
+            for (const std::string& language : languagePresets()) {
+                const char* name = language.empty() ? "System" : language.c_str();
+                if (ImGui::MenuItem(name, nullptr, settings.language == language)) {
+                    settings.language = language;
+                    applySimulation();
+                    saveSettings();
+                }
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Custom...")) {
+                snprintf(customLanguage, sizeof(customLanguage), "%s", settings.language.c_str());
+                customLanguageOpen = true;
+            }
+            ImGui::EndMenu();
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SetItemTooltip("Device simulation: the phone or tablet the game sees (System.getDeviceModel, Screen.dpi, "
+                          "Screen.orientation) and the language (System.getSystemLanguage). Editor only.");
+
+    if (customLanguageOpen) {
+        ImGui::OpenPopup("Simulated Language##GameLanguage");
+        customLanguageOpen = false;
+    }
+    if (ImGui::BeginPopup("Simulated Language##GameLanguage")) {
+        ImGui::TextUnformatted("Language tag (BCP 47), e.g. es-MX, pt-BR, zh-Hant-TW:");
+        ImGui::SetNextItemWidth(Theme::dpi(160.0f));
+        if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+        const bool entered = ImGui::InputText("##CustomLanguage", customLanguage, sizeof(customLanguage),
+                                              ImGuiInputTextFlags_EnterReturnsTrue);
+        ImGui::SameLine();
+        if (ImGui::Button("Apply") || entered) {
+            settings.language = LocaleRules::normalize(customLanguage);
+            applySimulation();
+            saveSettings();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    ImGui::SameLine();
+    const uint8_t rotatable = getRotatableOrientations();
+    const bool canRotate = device && nextProfileOrientation(*device, simulation.orientation, rotatable) != simulation.orientation;
+    ImGui::BeginDisabled(!canRotate);
+    if (ImGui::Button(ICON_FA_ROTATE "##GameRotate")) {
+        rotateDevice();
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        if (!device) {
+            ImGui::SetTooltip("Rotate the simulated device (pick a device first)");
+        } else if (!canRotate) {
+            ImGui::SetTooltip("The game allows only %s (Screen.orientation)", PlatformRules::orientationName(simulation.orientation));
+        } else {
+            ImGui::SetTooltip("Rotate the simulated device (now %s)", PlatformRules::orientationName(simulation.orientation));
+        }
+    }
 }
 
 void editor::GameWindow::drawContent(uint32_t sceneId) {
@@ -534,6 +752,18 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
             height = newHeight;
             editPassDirty = true;
             resized = true;
+        }
+        // the layout above is the simulated device's orientation now
+        const ScreenOrientation simulatedOrientation = Platform::getSimulation().orientation;
+        if (simulatedOrientation != layoutOrientation) {
+            layoutOrientation = simulatedOrientation;
+            editPassDirty = true;
+            resized = true;
+        }
+        // stopped, Screen.orientation (eval_lua in edit mode) is the layout; while playing App
+        // hands it to the engine with the size it goes with
+        if (project->getPlaySessionSceneId() == NULL_PROJECT_SCENE) {
+            Platform::setShownOrientation(layoutOrientation);
         }
 
         // Scale zooms into the image around its centre; the child clips the rest
@@ -623,12 +853,19 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     const float fps = ImGui::GetIO().Framerate;
     const float ms = fps > 0.0f ? 1000.0f / fps : 0.0f;
 
-    char lines[7][112];
-    int lineCount = 4;
+    char lines[10][112];
+    int lineCount = 5;
     snprintf(lines[0], sizeof(lines[0]), "Statistics");
     snprintf(lines[1], sizeof(lines[1]), "Graphics: %.1f FPS (%.1f ms)", fps, ms);
     snprintf(lines[2], sizeof(lines[2]), "Draw calls: %u   Tris: %llu", frameStats.drawCalls, (unsigned long long)frameStats.triangles);
     snprintf(lines[3], sizeof(lines[3]), "Screen: %dx%d", width, height);
+    // Engine.targetFrameRate / vSyncCount of the playing game (-1: the platform's rate)
+    const int targetFps = Engine::getTargetFrameRate();
+    if (targetFps > 0) {
+        snprintf(lines[4], sizeof(lines[4]), "Target: %d fps  VSync: %d", targetFps, Engine::getVSyncCount());
+    } else {
+        snprintf(lines[4], sizeof(lines[4]), "Target: default  VSync: %d", Engine::getVSyncCount());
+    }
     // the frame's CPU time, and its GPU time while something times the passes (the Profiler)
     const FrameTimeSample frameTime = FrameTimes::latest();
     if (frameTime.frame > 0) {
@@ -643,6 +880,11 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
             snprintf(lines[lineCount], sizeof(lines[lineCount]), "CPU %.2f ms  GPU %.2f ms", frameTime.cpuMs, gpuMs);
         else
             snprintf(lines[lineCount], sizeof(lines[lineCount]), "CPU %.2f ms", frameTime.cpuMs);
+        lineCount++;
+    }
+    if (const DeviceProfile* device = Platform::getSimulation().device) {
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "Device: %s, %s", device->name,
+                 PlatformRules::orientationName(Platform::getSimulation().orientation));
         lineCount++;
     }
     // the scene's HTML UI documents (their offscreen passes are not in the counters above)

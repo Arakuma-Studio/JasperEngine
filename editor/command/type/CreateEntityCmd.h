@@ -34,9 +34,16 @@ namespace jasperengine::editor{
         SCROLLBAR,
         PROGRESSBAR,
         INPUT_FIELD,
+        // ui-multitouch: on-screen controls (the stick in Joystick Pack's three modes)
+        ONSCREEN_STICK_FIXED,
+        ONSCREEN_STICK_FLOATING,
+        ONSCREEN_STICK_DYNAMIC,
+        ONSCREEN_BUTTON,
+        TOUCH_AREA,
         PANEL,
         POLYGON,
         LAYOUT_GROUP,
+        CANVAS_GROUP,
         POINT_LIGHT,
         DIRECTIONAL_LIGHT,
         SPOT_LIGHT,
@@ -64,10 +71,12 @@ namespace jasperengine::editor{
         MORPH_TRACKS,
         LATTICE_TRACKS,
         MODEL,
+        // a version 2 Particle System on its own GameObject (Unity's: the default quad renderer)
         PARTICLE_SYSTEM,
         FORCE_FIELD,
         POINTS,
         LINE_RENDERER,
+        TRAIL_RENDERER,
         MESH_POLYGON,
         TERRAIN,
         REFLECTION_PROBE,
@@ -93,7 +102,9 @@ namespace jasperengine::editor{
         SPLINE_SQUARE,
         SPLINE_EDGE_2D,
         SPLINE_FILL_2D,
-        SPLINE_CIRCLE_2D
+        SPLINE_CIRCLE_2D,
+        // not a GameObject: the Hierarchy's "3D Object > Ragdoll..." opens the wizard on the selection
+        RAGDOLL_WIZARD
     };
 
     class CreateEntityCmd: public Command{

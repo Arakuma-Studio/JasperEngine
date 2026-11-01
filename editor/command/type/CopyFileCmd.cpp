@@ -5,6 +5,9 @@
 #include "util/FileUtils.h"
 #include "io/AtomicFile.h"
 
+#include "util/FileUtils.h"
+#include "util/SafeWrite.h"
+
 #include "util/Util.h"
 #include "asset/AssetOps.h"
 #include "Out.h"
@@ -120,6 +123,20 @@ namespace {
         }
     }
 
+}
+
+std::vector<editor::Command::Touched> editor::CopyFileCmd::touchedPaths(bool undo) const{
+    std::vector<Touched> out;
+    for (const auto& fdata : files) {
+        const fs::path source = fdata.sourceDirectory / fdata.filename;
+        const fs::path destination = fdata.destination.empty() ? fdata.targetDirectory / fdata.filename : fdata.destination;
+        // a copy: its destination made (redo) or removed (undo); a move: both entries renamed;
+        // an overwrite's backup (in the project's trash) is written back on the undo
+        if (!copy) out.push_back({source, true});
+        out.push_back({destination, true});
+        if (undo && !fdata.backup.empty()) out.push_back({fdata.backup, true});
+    }
+    return out;
 }
 
 // Moves and copies go through AssetOps: files and metas together, GUIDs kept by moves and

@@ -28,9 +28,11 @@ namespace {
 
     // main thread in practice (UI drawing); the mutex covers a shader destroyed by a loader
     // thread while the main thread draws
+    // never destroyed: an object holding a shared variant may let go of it in a destructor that
+    // runs at exit (SokolObject)
     std::mutex& cacheMutex(){
-        static std::mutex mutex;
-        return mutex;
+        static std::mutex* mutex = new std::mutex();
+        return *mutex;
     }
 
     std::unordered_map<uint64_t, PipelineCacheEntry>& entries(){
@@ -50,6 +52,13 @@ namespace {
     std::unordered_map<uint64_t, InternEntry>& interned(){
         static std::unordered_map<uint64_t, InternEntry> map;
         return map;
+    }
+
+    // the interned pipelines held as variants (acquireVariant): pipeline id -> references
+    // (never destroyed, as cacheMutex: a variant may be let go of at exit)
+    std::unordered_map<uint32_t, int>& variantRefs(){
+        static auto* map = new std::unordered_map<uint32_t, int>();
+        return *map;
     }
 
     // pipeline id -> its key in interned()
@@ -565,6 +574,7 @@ void SokolPipelineCache::releaseShader(sg_shader shader){
                 lastApplied = SG_INVALID_ID;
             destroyCachedPipeline(it->second.pipeline);
             internedKeys().erase(it->second.pipeline.id);
+            variantRefs().erase(it->second.pipeline.id);
             it = internMap.erase(it);
         }else{
             ++it;
@@ -597,7 +607,50 @@ void SokolPipelineCache::clear(){
     interned().clear();
     internedKeys().clear();
     retiring().clear();
+    variantRefs().clear();
     lastApplied = SG_INVALID_ID;
+}
+
+// The variants are interned pipelines like SokolObject's own (spec S32 R3): made through the
+// asynchronous creation (pending until ready, as any interned pipeline) and shared by equal
+// descriptions. variantRefs() only counts which of them are held as variants.
+sg_pipeline SokolPipelineCache::acquireVariant(const sg_pipeline_desc& desc){
+    const sg_pipeline pipeline = acquire(desc);
+    if (pipeline.id == SG_INVALID_ID)
+        return pipeline;
+    std::lock_guard<std::mutex> lock(cacheMutex());
+    variantRefs()[pipeline.id]++;
+    return pipeline;
+}
+
+void SokolPipelineCache::retainVariant(sg_pipeline pipeline){
+    // (after shutdown, clear() destroyed them all: also at exit, when the maps may be gone)
+    if (pipeline.id == SG_INVALID_ID || !sg_isvalid())
+        return;
+    if (!retain(pipeline))
+        return;
+    std::lock_guard<std::mutex> lock(cacheMutex());
+    variantRefs()[pipeline.id]++;
+}
+
+void SokolPipelineCache::releaseVariant(sg_pipeline pipeline){
+    // (after shutdown, clear() destroyed them all: also at exit, when the maps may be gone)
+    if (pipeline.id == SG_INVALID_ID || !sg_isvalid())
+        return;
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex());
+        auto it = variantRefs().find(pipeline.id);
+        if (it == variantRefs().end())
+            return;
+        if (--it->second <= 0)
+            variantRefs().erase(it);
+    }
+    release(pipeline);
+}
+
+size_t SokolPipelineCache::variantCount(){
+    std::lock_guard<std::mutex> lock(cacheMutex());
+    return variantRefs().size();
 }
 
 size_t SokolPipelineCache::size(){

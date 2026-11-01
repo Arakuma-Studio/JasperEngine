@@ -1,0 +1,116 @@
+# Version 1 (legacy) Particle Systems as create_particles made them before the module model
+# (3D presets, scale 1: editor/mcp/tools/WorldTools.cpp addParticleWrites) and the editor's
+# default (GameObject > Effects > Particle System: a default component). Each entry is the
+# component's scene encoding; ParticleLegacyIdentityTest simulates them on a Points target
+# (and fire also on a Mesh target) and compares with capture.json, recorded from the code
+# before particles version 2 existed.
+default:
+  {}
+fire:
+  maxParticles: 200
+  rate: 60
+  loop: true
+  bursts: []
+  lifeInitializer: {minLife: 0.5, maxLife: 1}
+  positionInitializer: {shape: Circle, minPosition: [0, 0, 0], maxPosition: [0, 0, 0], radius: 0.25, innerRadius: 0, coneAngle: 25, coneHeight: 1}
+  velocityInitializer: {minVelocity: [-0.15, 1, -0.15], maxVelocity: [0.15, 2, 0.15]}
+  accelerationInitializer: {minAcceleration: [0, 0, 0], maxAcceleration: [0, 0, 0]}
+  sizeInitializer: {minSize: 0.35, maxSize: 0.5}
+  colorInitializer: {minColor: [1, 1, 1], maxColor: [1, 1, 1]}
+  colorGradient:
+    useSRGB: true
+    stops: [{time: 0, color: [1, 0.9, 0.4]}, {time: 0.4, color: [1, 0.45, 0.1]}, {time: 1, color: [0.35, 0.08, 0.03]}]
+  sizeModifier: {fromTime: 0, toTime: 1, fromSize: 0.45, toSize: 0.05}
+  alphaModifier: {fromTime: 0, toTime: 1, fromAlpha: 1, toAlpha: 0}
+smoke:
+  maxParticles: 120
+  rate: 15
+  loop: true
+  bursts: []
+  lifeInitializer: {minLife: 2.5, maxLife: 4}
+  positionInitializer: {shape: Circle, minPosition: [0, 0, 0], maxPosition: [0, 0, 0], radius: 0.3, innerRadius: 0, coneAngle: 25, coneHeight: 1}
+  velocityInitializer: {minVelocity: [-0.2, 0.5, -0.2], maxVelocity: [0.2, 1, 0.2]}
+  accelerationInitializer: {minAcceleration: [0.05, 0.1, 0], maxAcceleration: [0.05, 0.1, 0]}
+  sizeInitializer: {minSize: 0.5, maxSize: 0.8}
+  colorInitializer: {minColor: [1, 1, 1], maxColor: [1, 1, 1]}
+  colorGradient:
+    useSRGB: true
+    stops: [{time: 0, color: [0.55, 0.55, 0.55]}, {time: 1, color: [0.25, 0.25, 0.25]}]
+  sizeModifier: {fromTime: 0, toTime: 4, fromSize: 0.6, toSize: 2}
+  alphaModifier: {fromTime: 0, toTime: 4, fromAlpha: 0.6, toAlpha: 0}
+sparks:
+  maxParticles: 300
+  rate: 80
+  loop: true
+  bursts: []
+  lifeInitializer: {minLife: 0.3, maxLife: 0.8}
+  positionInitializer: {shape: Sphere, minPosition: [0, 0, 0], maxPosition: [0, 0, 0], radius: 0.05, innerRadius: 0, coneAngle: 25, coneHeight: 1}
+  velocityInitializer: {minVelocity: [-3, 1.5, -3], maxVelocity: [3, 5, 3]}
+  accelerationInitializer: {minAcceleration: [0, -9.8, 0], maxAcceleration: [0, -9.8, 0]}
+  sizeInitializer: {minSize: 0.05, maxSize: 0.1}
+  colorInitializer: {minColor: [1, 1, 1], maxColor: [1, 1, 1]}
+  colorGradient:
+    useSRGB: true
+    stops: [{time: 0, color: [1, 1, 0.8]}, {time: 0.5, color: [1, 0.75, 0.2]}, {time: 1, color: [1, 0.3, 0.05]}]
+  sizeModifier: {fromTime: 0, toTime: 0, fromSize: 0, toSize: 0}
+  alphaModifier: {fromTime: 0, toTime: 0.8, fromAlpha: 1, toAlpha: 0}
+explosion:
+  maxParticles: 250
+  rate: 0
+  loop: false
+  bursts: [{time: 0, minCount: 160, maxCount: 200}]
+  lifeInitializer: {minLife: 0.5, maxLife: 1.2}
+  positionInitializer: {shape: Sphere, minPosition: [0, 0, 0], maxPosition: [0, 0, 0], radius: 0.2, innerRadius: 0, coneAngle: 25, coneHeight: 1}
+  velocityInitializer: {minVelocity: [-6, -6, -6], maxVelocity: [6, 6, 6]}
+  accelerationInitializer: {minAcceleration: [0, 0, 0], maxAcceleration: [0, 0, 0]}
+  sizeInitializer: {minSize: 0.4, maxSize: 0.8}
+  colorInitializer: {minColor: [1, 1, 1], maxColor: [1, 1, 1]}
+  colorGradient:
+    useSRGB: true
+    stops: [{time: 0, color: [1, 1, 0.6]}, {time: 0.3, color: [1, 0.45, 0.1]}, {time: 1, color: [0.2, 0.2, 0.2]}]
+  sizeModifier: {fromTime: 0, toTime: 1.2, fromSize: 0.6, toSize: 1.6}
+  alphaModifier: {fromTime: 0, toTime: 1.2, fromAlpha: 1, toAlpha: 0}
+snow:
+  maxParticles: 400
+  rate: 40
+  loop: true
+  bursts: []
+  lifeInitializer: {minLife: 6, maxLife: 8}
+  positionInitializer: {shape: Box, minPosition: [-10, 8, -10], maxPosition: [10, 8, 10], radius: 0.1, innerRadius: 0, coneAngle: 25, coneHeight: 1}
+  velocityInitializer: {minVelocity: [-0.3, -1.2, -0.3], maxVelocity: [0.3, -0.8, 0.3]}
+  accelerationInitializer: {minAcceleration: [0, 0, 0], maxAcceleration: [0, 0, 0]}
+  sizeInitializer: {minSize: 0.05, maxSize: 0.12}
+  colorInitializer: {minColor: [1, 1, 1], maxColor: [1, 1, 1]}
+  colorGradient: {useSRGB: true, stops: []}
+  sizeModifier: {fromTime: 0, toTime: 0, fromSize: 0, toSize: 0}
+  alphaModifier: {fromTime: 0, toTime: 0, fromAlpha: 0, toAlpha: 0}
+rain:
+  maxParticles: 800
+  rate: 250
+  loop: true
+  bursts: []
+  lifeInitializer: {minLife: 1, maxLife: 1.2}
+  positionInitializer: {shape: Box, minPosition: [-10, 10, -10], maxPosition: [10, 10, 10], radius: 0.1, innerRadius: 0, coneAngle: 25, coneHeight: 1}
+  velocityInitializer: {minVelocity: [0, -15, 0], maxVelocity: [0, -12, 0]}
+  accelerationInitializer: {minAcceleration: [0, 0, 0], maxAcceleration: [0, 0, 0]}
+  sizeInitializer: {minSize: 0.03, maxSize: 0.04}
+  colorInitializer: {minColor: [0.7, 0.8, 1], maxColor: [0.7, 0.8, 1]}
+  colorGradient: {useSRGB: true, stops: []}
+  sizeModifier: {fromTime: 0, toTime: 0, fromSize: 0, toSize: 0}
+  alphaModifier: {fromTime: 0, toTime: 1.2, fromAlpha: 0.6, toAlpha: 0.6}
+magic:
+  maxParticles: 150
+  rate: 30
+  loop: true
+  bursts: []
+  lifeInitializer: {minLife: 1, maxLife: 2}
+  positionInitializer: {shape: Sphere, minPosition: [0, 0, 0], maxPosition: [0, 0, 0], radius: 0.5, innerRadius: 0, coneAngle: 25, coneHeight: 1}
+  velocityInitializer: {minVelocity: [-0.3, 0.2, -0.3], maxVelocity: [0.3, 0.8, 0.3]}
+  accelerationInitializer: {minAcceleration: [0, 0, 0], maxAcceleration: [0, 0, 0]}
+  sizeInitializer: {minSize: 0.08, maxSize: 0.15}
+  colorInitializer: {minColor: [1, 1, 1], maxColor: [1, 1, 1]}
+  colorGradient:
+    useSRGB: true
+    stops: [{time: 0, color: [0.4, 0.9, 1]}, {time: 1, color: [0.7, 0.3, 1]}]
+  sizeModifier: {fromTime: 0, toTime: 2, fromSize: 0.12, toSize: 0}
+  alphaModifier: {fromTime: 0, toTime: 2, fromAlpha: 1, toAlpha: 0}

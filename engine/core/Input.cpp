@@ -843,6 +843,10 @@ int Input::getModifiers(){
     return state().modifiers;
 }
 
+DeviceOrientation Input::getDeviceOrientation(){
+    return System::hasInstance() ? System::instance().getDeviceOrientation() : DeviceOrientation::Unknown;
+}
+
 int Input::getHeldModifierKeys(){
     const ControlRecord* controls = state().controls;
     int mods = 0;

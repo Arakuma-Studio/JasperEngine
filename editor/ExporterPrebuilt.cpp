@@ -1024,6 +1024,7 @@ bool editor::Exporter::finalizeAndroid() {
     platform::AndroidPackage package;
     const AndroidProjectSettings& android = project->getAndroidProjectSettings();
     package.settings = android;
+    package.presentation = project->getPresentationSettings();
     package.label = project->getApplicationName(android.applicationName);
     if (package.label.empty()) package.label = project->getName();
     package.applicationId = project->getApplicationIdentifier(android.packageName);

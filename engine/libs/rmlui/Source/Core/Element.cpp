@@ -1698,6 +1698,24 @@ void Element::SetInnerRML(const String& rml)
 		Factory::InstanceElementText(this, rml);
 }
 
+bool Element::SetPointerCapture(PointerId pointer_id)
+{
+	Context* context = GetContext();
+	return context && context->SetPointerCapture(this, pointer_id);
+}
+
+bool Element::ReleasePointerCapture(PointerId pointer_id)
+{
+	Context* context = GetContext();
+	return context && context->ReleasePointerCapture(this, pointer_id);
+}
+
+bool Element::HasPointerCapture(PointerId pointer_id) const
+{
+	Context* context = const_cast<Element*>(this)->GetContext();
+	return context && context->HasPointerCapture(this, pointer_id);
+}
+
 bool Element::Focus(bool focus_visible)
 {
 	// Are we allowed focus? (Not 'focus: none', not a disabled form control.)
@@ -2709,26 +2727,10 @@ Element* Element::GetClosestScrollableContainer()
 	return nullptr;
 }
 
-void Element::ProcessDefaultAction(Event& event)
+void Element::ProcessDefaultAction(Event& /*event*/)
 {
-	if (event == EventId::Mousedown)
-	{
-		const Vector2f mouse_pos(event.GetParameter("mouse_x", 0.f), event.GetParameter("mouse_y", 0.f));
-
-		if (IsPointWithinElement(mouse_pos) && event.GetParameter("button", 0) == 0)
-			SetPseudoClass("active", true);
-	}
-
-	if (event.GetPhase() == EventPhase::Target)
-	{
-		switch (event.GetId())
-		{
-		case EventId::Mouseover: SetPseudoClass("hover", true); break;
-		case EventId::Mouseout: SetPseudoClass("hover", false); break;
-		// The focus pseudo-classes are set by Context::OnFocusChange (phase 3: ':focus' on the focused element only).
-		default: break;
-		}
-	}
+	// ':hover' and ':active' are set by the context, counted over its pointers (fork, engine-gaps G5-1: a lifted finger
+	// no longer clears another finger's); the focus pseudo-classes by Context::OnFocusChange (phase 3).
 }
 
 const Style::ComputedValues& Element::GetComputedValues() const

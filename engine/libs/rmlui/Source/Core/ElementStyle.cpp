@@ -2245,6 +2245,10 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		values.box_orient((BoxOrient)p->Get<int>());
 		break;
 
+	// -- Pointer Events (fork, engine-gaps G5-4): read by the context, no computed value --
+	case PropertyId::TouchAction:
+		break;
+
 	// Invalid properties
 	case PropertyId::Invalid:
 	case PropertyId::NumDefinedIds:

@@ -149,7 +149,3 @@ void GpuEnvironment::shutdown(){
     HeadlessContext::destroy();
 #endif
 }
-
-void GpuTestEnvironment::TearDown(){
-    GpuEnvironment::shutdown();
-}

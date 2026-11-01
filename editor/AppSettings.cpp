@@ -11,6 +11,7 @@
 #include "io/AtomicFile.h"
 #include "io/ScopedFileLock.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/VideoImporter.h"
 #include <fstream>
@@ -471,6 +472,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (panelsNode["textureSynthesis"]) panelVisibility.textureSynthesis = panelsNode["textureSynthesis"].as<bool>();
                 if (panelsNode["vertexAnimationBaker"]) panelVisibility.vertexAnimationBaker = panelsNode["vertexAnimationBaker"].as<bool>();
                 if (panelsNode["physicsPlacement"]) panelVisibility.physicsPlacement = panelsNode["physicsPlacement"].as<bool>();
+                if (panelsNode["spriteNormals"]) panelVisibility.spriteNormals = panelsNode["spriteNormals"].as<bool>();
                 if (panelsNode["mcp"]) panelVisibility.mcp = panelsNode["mcp"].as<bool>();
                 if (panelsNode["game"]) panelVisibility.game = panelsNode["game"].as<bool>();
                 if (panelsNode["undo_history"]) panelVisibility.undoHistory = panelsNode["undo_history"].as<bool>();
@@ -482,6 +484,9 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (gameNode["maximize_on_play"]) gameViewSettings.maximizeOnPlay = gameNode["maximize_on_play"].as<bool>();
                 if (gameNode["stats"]) gameViewSettings.showStats = gameNode["stats"].as<bool>();
                 if (gameNode["atmosphere_quality"]) gameViewSettings.atmosphereQuality = std::clamp(gameNode["atmosphere_quality"].as<int>(), -1, 3);
+                if (gameNode["device"]) gameViewSettings.device = gameNode["device"].as<std::string>();
+                if (gameNode["orientation"]) gameViewSettings.orientation = gameNode["orientation"].as<int>();
+                if (gameNode["language"]) gameViewSettings.language = gameNode["language"].as<std::string>();
             }
             if (editorNode["scene_view"]) {
                 auto sceneNode = editorNode["scene_view"];
@@ -755,6 +760,7 @@ bool AppSettings::saveSettings() {
         panelsNode["textureSynthesis"] = panelVisibility.textureSynthesis;
         panelsNode["vertexAnimationBaker"] = panelVisibility.vertexAnimationBaker;
         panelsNode["physicsPlacement"] = panelVisibility.physicsPlacement;
+        panelsNode["spriteNormals"] = panelVisibility.spriteNormals;
         panelsNode["mcp"] = panelVisibility.mcp;
         panelsNode["game"] = panelVisibility.game;
         panelsNode["undo_history"] = panelVisibility.undoHistory;
@@ -765,6 +771,9 @@ bool AppSettings::saveSettings() {
         gameNode["maximize_on_play"] = gameViewSettings.maximizeOnPlay;
         gameNode["stats"] = gameViewSettings.showStats;
         gameNode["atmosphere_quality"] = gameViewSettings.atmosphereQuality;
+        if (!gameViewSettings.device.empty()) gameNode["device"] = gameViewSettings.device;
+        if (gameViewSettings.orientation != GameViewSettings{}.orientation) gameNode["orientation"] = gameViewSettings.orientation;
+        if (!gameViewSettings.language.empty()) gameNode["language"] = gameViewSettings.language;
         editorNode["game_view"] = gameNode;
         YAML::Node sceneViewNode;
         sceneViewNode["exact_pick"] = sceneViewSettings.exactPick;
@@ -1510,11 +1519,18 @@ YAML::Node loadLocalSettings(const std::filesystem::path& projectFile) {
 bool storeLocalSettings(const std::filesystem::path& projectFile, const YAML::Node& node) {
     const std::filesystem::path file = localSettingsFile(projectFile);
     std::error_code ec;
-    std::filesystem::create_directories(file.parent_path(), ec);
-    if (ec) {
-        Out::error("Failed to create local settings directory: %s", ec.message().c_str());
-        return false;
+    // .jasperengine/user/build.yaml: this machine's settings, which only the editor writes, with a
+    // token naming this one file so an MCP-set build_jobs saves while no tool can write the file
+    // itself (util/SafeWrite.h)
+    if (!std::filesystem::is_directory(file.parent_path(), ec)) {
+        safewrite::EditorInternal makeDir(file.parent_path());
+        FileUtils::createDirectories(file.parent_path(), ec);
+        if (ec) {
+            Out::error("Failed to create local settings directory: %s", ec.message().c_str());
+            return false;
+        }
     }
+    safewrite::EditorInternal ownBuildSettings(file);
 
     const std::string text = "# Build configuration for this machine only. Version control ignores .jasperengine/.\n" +
             YAML::Dump(node) + "\n";

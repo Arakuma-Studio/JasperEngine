@@ -133,26 +133,6 @@
 #define MAX_BROADPHASELAYER_3D 6
 #endif
 
-#ifndef MAX_COLLIDERS_2D
-#define MAX_COLLIDERS_2D 10
-#endif
-
-#ifndef MAX_COLLIDER_POINTS_2D
-#define MAX_COLLIDER_POINTS_2D 16
-#endif
-
-#ifndef MAX_COLLIDERS_3D
-#define MAX_COLLIDERS_3D 10
-#endif
-
-#ifndef MAX_COLLIDER_VERTICES_3D
-#define MAX_COLLIDER_VERTICES_3D 256
-#endif
-
-#ifndef MAX_COLLIDER_INDICES_3D
-#define MAX_COLLIDER_INDICES_3D 768
-#endif
-
 #include "Export.h"
 #include "render/GpuCreation.h"
 #include "System.h"
@@ -397,6 +377,13 @@ namespace jasperengine {
         // setPinnedShaderTime's time, negative when not pinned
         static double pinnedShaderTime;
         static uint64_t gameFrames;
+        static double unscaledDeltatime;
+        static double unscaledTime;
+        static double fixedTime;
+        static double levelLoadGameTime;
+        static uint64_t startupTime;
+        static bool inFixedStep;
+        static float smoothDeltatime;
         static std::atomic<bool> simulationHeld;
         static bool clampNextDelta;
         // pauseGameEvents: the editor's Pause (and edit mode), which stops the scheduler's game clocks
@@ -404,6 +391,16 @@ namespace jasperengine {
 
         static std::atomic<bool> viewLoaded;
         static std::atomic<bool> paused;
+        static std::atomic<bool> focused;
+
+        // Engine.targetFrameRate / vSyncCount and the pacing the platform applies
+        static int targetFrameRate;
+        static int vSyncCount;
+        static FramePacing framePacing;
+        // last orientation systemOrientationChanged saw (0: none yet), and since when (system
+        // time) a quarter turn waits for its view size (0: none waits)
+        static int lastOrientation;
+        static double orientationPendingSince;
         static std::atomic<bool> asyncLoading;
         static bool frameRunning;
 
@@ -436,6 +433,11 @@ namespace jasperengine {
         static bool readCompositeFrame(std::vector<uint8_t>& rgba, int& width, int& height, std::string& error);
 
         static bool transformCoordPos(float& x, float& y);
+        // ui-multitouch D6: a pointer ends without a click in the documents and the component
+        // UI of every scene (a finger or mouse button released outside the canvas; touch false:
+        // pointerOrButton is the mouse button), or every pointer (pause, focus loss)
+        static void cancelUIPointer(int pointerOrButton, bool touch);
+        static void cancelAllUIPointers();
         // systemDraw: a high surrogate that never got its low one reaches documents as U+FFFD
         static void flushCharInput();
         // systemDraw: the held gamepad directions a document took repeat (UI clock)
@@ -452,6 +454,8 @@ namespace jasperengine {
         static void beginCompositeFramebuffer();
         static void endCompositeFramebuffer();
         static void runFrame(bool draw);
+        // recomputes the frame pacing and hands it to the System
+        static void applyFramePacing();
         
     public:
         class AsyncThreadScope {
@@ -556,6 +560,10 @@ namespace jasperengine {
         static unsigned int getMeshRaycastMaxTriangles();
 
         static bool isUIEventReceived();
+        // Input.isPointerOverUI (Unity's EventSystem.IsPointerOverGameObject, ui-multitouch D15):
+        // that pointer (-1 / -2 / -3 the mouse, >= 0 a finger; INT_MIN the mouse or any finger)
+        // is over a component UI element that takes events or HTML content, or either holds it
+        static bool isPointerOverUI(int pointerId);
         
         static void setUpdateTimeMS(unsigned int updateTimeMS);
         static void setUpdateTime(float updateTime);
@@ -658,6 +666,27 @@ namespace jasperengine {
         static double getGameTime();
         static uint64_t getGameFrames();
 
+        // The frame delta before timeScale (Unity's Time.unscaledDeltaTime): the measured frame
+        // time capped by maxDeltatime, or the fixed frame delta when set; 0 while the app is
+        // paused, the simulation held or the game events paused (the editor's Play pause). It keeps
+        // running at time scale 0 (a pause menu).
+        static float getUnscaledDeltatime();
+        // Sum of getUnscaledDeltatime() over the frames the update loop has run
+        static double getUnscaledTime();
+        // Sum of the fixed steps run (game seconds); inside a step, the time at its start
+        static double getFixedTime();
+        // Wall clock seconds since Engine::systemInit (pauses included)
+        static double getRealtimeSinceStartup();
+        // Game seconds since the last scene load (SceneManager)
+        static double getTimeSinceLevelLoad();
+        // A scene stack was loaded now (SceneManager): getTimeSinceLevelLoad() counts from here
+        static void markLevelLoad();
+        // True inside a fixed step: onFixedUpdate, the scenes' fixed update (physics) and the
+        // coroutines waiting for it
+        static bool isInFixedStep();
+        // Exponential average of getDeltatime() (Unity's Time.smoothDeltaTime)
+        static float getSmoothDeltatime();
+
         // A host (the editor's MCP server) holds the simulation: frames may still draw, but no
         // update runs and no game time passes. Released, the first frame measures at most one
         // fixed step, not the time it was held. Default false.
@@ -752,7 +781,10 @@ namespace jasperengine {
 #endif
 
         //-----JasperEngine API functions-----
-        static void systemInit(int argc, char* argv[], System* system);
+        // startProject false leaves the project's main.lua and C++ init() (which load the first
+        // scene) to a later systemStartProject(): the web build waits for its saved files first
+        static void systemInit(int argc, char* argv[], System* system, bool startProject = true);
+        static void systemStartProject();
         static void systemViewLoaded();
         static void systemViewChanged();
         static void systemDraw();
@@ -765,8 +797,43 @@ namespace jasperengine {
         static void systemViewDestroyed();
         static void systemShutdown();
 
+        // The app goes to the background (pause) and comes back (resume). Idempotent: a
+        // second pause or resume in a row does nothing. Leaving, a focused app loses focus
+        // first (onFocus(false), then onPause); onResume always comes before onFocus(true).
         static void systemPause();
         static void systemResume();
+        // The app became frontmost and gets input (true), or something covers it: a system
+        // dialog, the notification shade, another window (false). Idempotent; gaining focus
+        // while paused resumes first. Fires onFocus.
+        static void systemFocus(bool hasFocus);
+        // After a rotation or resize: fires onOrientationChanged when Screen::getOrientation()
+        // differs from the last one seen. systemViewChanged calls it after onCanvasChanged; a
+        // quarter turn reported before the view size flips waits for it (at most
+        // ORIENTATION_SIZE_TIMEOUT seconds, checked every frame), a half turn fires at once.
+        static void systemOrientationChanged();
+        static constexpr double ORIENTATION_SIZE_TIMEOUT = 0.5;
+        // The system is short of memory: onLowMemory, before the platform frees its own caches
+        static void systemLowMemory();
+        // Play stop / start in the editor: focused, not paused, no orientation seen yet, and the
+        // default frame pacing again, without any event (nothing listens any more)
+        static void resetApplicationState();
+
+        //-----Frame pacing and application state-----
+        // Unity's Application.targetFrameRate: -1 (default) is the platform's rate (60 on
+        // mobile, every animation frame on the web, as fast as vsync lets on desktops); 0 and
+        // below count as -1, more than 1000 as 1000. Desktops and the editor ignore it while
+        // vSyncCount > 0, as Unity. Kept across scene loads.
+        static void setTargetFrameRate(int fps);
+        static int getTargetFrameRate();
+        // Unity's QualitySettings.vSyncCount: present every Nth vblank (0..4; 0 = no vsync).
+        // Starts from the project's VSync setting; mobile and the web ignore it.
+        static void setVSyncCount(int count);
+        static int getVSyncCount();
+        // what the two values above give on this platform (PlatformRules::computeFramePacing)
+        static const FramePacing& getFramePacing();
+        // Unity's Application.isFocused (true at start)
+        static bool isFocused();
+        static bool isPaused();
 
         // The platform window gained or lost the keyboard focus. On a loss what is held comes
         // up (key, mouse button: their events and Input edges) and the fingers are cancelled,
@@ -824,6 +891,9 @@ namespace jasperengine {
         // an element of a document has focus, so the d-pad, the left stick and A go to the UI
         // (a game that polls Input can check it)
         static bool wantsGamepadNavigation();
+        // a text field has keyboard focus (a native InputField or a document text control): the
+        // keyboard does not drive input actions then (Input::beginFrame)
+        static bool isTextInputFocused();
 
         //-----JasperEngine user events-----
         // Safe accessor for the Init event
@@ -840,6 +910,12 @@ namespace jasperengine {
         static FunctionSubscribe<void()> onPause;
         static FunctionSubscribe<void()> onResume;
         static FunctionSubscribe<void()> onShutdown;
+        // systemFocus: the app gained (true) or lost (false) focus
+        static FunctionSubscribe<void(bool)> onFocus;
+        // the interface rotated: the new ScreenOrientation, after onCanvasChanged
+        static FunctionSubscribe<void(int)> onOrientationChanged;
+        // the system is short of memory (Android, iOS)
+        static FunctionSubscribe<void()> onLowMemory;
         // The stack loaded by SceneManager is ready, before its loading scene closes.
         static FunctionSubscribe<void()> onSceneLoaded;
         static FunctionSubscribe<void(int,float,float)> onTouchStart;
@@ -861,6 +937,10 @@ namespace jasperengine {
         static FunctionSubscribe<void(int,int)> onGamepadButtonDown;
         static FunctionSubscribe<void(int,int)> onGamepadButtonUp;
         static FunctionSubscribe<void(int,int,float)> onGamepadAxisMove;
+        // An input action's button went down / up in this frame (Project Settings > Input), with
+        // the action's name; fired before onUpdate (Input::beginFrame)
+        static FunctionSubscribe<void(const std::string&)> onButtonDown;
+        static FunctionSubscribe<void(const std::string&)> onButtonUp;
 
     };
     

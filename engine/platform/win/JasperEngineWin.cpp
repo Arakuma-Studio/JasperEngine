@@ -19,6 +19,7 @@
 #endif
 
 #include "Engine.h"
+#include "util/FrameLimiter.h"
 
 #include <chrono>
 #include <cmath>
@@ -77,11 +78,15 @@ int chosenPixelFormat = 0;
 
 GamepadWin gamepads;
 WinInputRouter inputRouter;
+// Engine.targetFrameRate without vsync (Engine::getFramePacing().limiterFps)
+FrameLimiter frameLimiter;
 
 bool shouldClose = false;
+bool contextReady = false;
 bool inSizeMove = false;
 
 void drawFrame();
+void setSwapInterval(int interval);
 
 #if defined(SOKOL_GLCORE)
 template <typename T>
@@ -153,6 +158,10 @@ LRESULT CALLBACK windowProc(HWND handle, UINT message,
             // held keys and buttons come up, so none stays pressed
             Engine::systemFocusChanged(false);
             break;
+        case WM_ACTIVATE:
+            // the game window is in front and gets input, or another window took over
+            Engine::systemFocus(LOWORD(wParam) != WA_INACTIVE);
+            break;
         case WM_SETCURSOR:
             if (LOWORD(lParam) == HTCLIENT && WindowWin::isCursorHidden()) {
                 SetCursor(nullptr);
@@ -184,11 +193,18 @@ bool createContext() {
     VulkanContextConfig config;
     config.surfaceExtension = VK_KHR_WIN32_SURFACE_EXTENSION_NAME;
     config.createSurface = createWindowSurface;
-    config.vsync = platformConfig().vsync;
-    return VulkanContext::create(config);
+    config.vsync = Engine::getFramePacing().swapInterval > 0;
+    contextReady = VulkanContext::create(config);
+    return contextReady;
+}
+
+void setSwapInterval(int interval) {
+    // FIFO presents every vblank; longer intervals come from the limiter (getMaxSwapInterval)
+    VulkanContext::setVSync(interval > 0);
 }
 
 void destroyContext() {
+    contextReady = false;
     VulkanContext::destroy();
 }
 
@@ -204,11 +220,17 @@ void endFrame() {
 
 bool createContext() {
     D3D11ContextConfig config;
-    config.vsync = platformConfig().vsync;
-    return D3D11Context::create(config);
+    config.swapInterval = Engine::getFramePacing().swapInterval;
+    contextReady = D3D11Context::create(config);
+    return contextReady;
+}
+
+void setSwapInterval(int interval) {
+    D3D11Context::setSwapInterval(interval);
 }
 
 void destroyContext() {
+    contextReady = false;
     D3D11Context::destroy();
 }
 
@@ -275,17 +297,25 @@ bool createContext() {
         return false;
     }
 
-    const auto swapIntervalEXT = wglProc<SwapIntervalProc>("wglSwapIntervalEXT");
-    if (swapIntervalEXT) swapIntervalEXT(platformConfig().vsync ? 1 : 0);
     // the shader creation thread's context (spec S32), with the same attributes
     setGpuWorkerContextFactory([]() {
         return WglWorkerContext::create(glContext, chosenPixelFormat, chosenDescriptor, contextAttributes);
     });
+    // the swap interval of the frame pacing (vSyncCount, from the project's VSync)
+    contextReady = true;
+    setSwapInterval(Engine::getFramePacing().swapInterval);
     return true;
+}
+
+void setSwapInterval(int interval) {
+    if (!glContext) return;
+    const auto swapIntervalEXT = wglProc<SwapIntervalProc>("wglSwapIntervalEXT");
+    if (swapIntervalEXT) swapIntervalEXT(interval);
 }
 
 void destroyContext() {
     setGpuWorkerContextFactory(nullptr);
+    contextReady = false;
     if (glContext) {
         wglMakeCurrent(nullptr, nullptr);
         wglDeleteContext(glContext);
@@ -313,6 +343,10 @@ void drawFrame() {
     beginFrame();
     Engine::systemDraw();
     endFrame();
+
+    // not while the modal resize loop draws from its timer
+    if (!inSizeMove)
+        frameLimiter.wait(Engine::getFramePacing().limiterFps);
 }
 
 double monotonicSeconds() {
@@ -378,6 +412,10 @@ HICON loadIconFromPng(const std::string& path) {
     return icon;
 }
 
+}
+
+void JasperEngineWin::applySwapInterval(int interval) {
+    if (contextReady) setSwapInterval(interval);
 }
 
 int JasperEngineWin::init(int argc, char **argv) {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Ray.h"
+#include "physics/ContactTracker.h"
 
 #include "Scene.h"
 #include "component/MeshComponent.h"
@@ -376,7 +377,13 @@ RayReturn Ray::intersects(const Rigidbody2D& body) const{
 RayReturn Ray::intersects(const Rigidbody2D& body, size_t shape) const{
     Rigidbody2DComponent& bodycomp = body.getComponent<Rigidbody2DComponent>();
 
-    if (shape >= bodycomp.numColliders || !b2Shape_IsValid(bodycomp.colliders[shape].shape)){
+    if (shape >= bodycomp.colliders.size()){
+        return NO_HIT;
+    }
+
+    // every Box2D shape of the collider: the convex pieces of a polygon, a chain's segments
+    std::vector<b2ShapeId> shapeIds = body.getBox2DShapes(shape);
+    if (shapeIds.empty()){
         return NO_HIT;
     }
 
@@ -388,15 +395,22 @@ RayReturn Ray::intersects(const Rigidbody2D& body, size_t shape) const{
 
     b2Vec2 translation = b2Sub(bEnd, bOrigin);
 
-    b2ShapeId shapeid = bodycomp.colliders[shape].shape;
     const b2RayCastInput rayCastInput = {bOrigin, translation, 1.0};
-    b2CastOutput castOutput = b2Shape_RayCast(shapeid, &rayCastInput);
+    bool hit = false;
+    b2CastOutput closest = {};
+    for (const b2ShapeId& shapeid : shapeIds){
+        b2CastOutput castOutput = b2Shape_RayCast(shapeid, &rayCastInput);
+        if (castOutput.hit && (!hit || castOutput.fraction < closest.fraction)){
+            closest = castOutput;
+            hit = true;
+        }
+    }
 
-    if (castOutput.hit){
-        Vector3 point = Vector3(castOutput.point.x * ptmScale, castOutput.point.y * ptmScale, 0);
-        Vector3 normal = Vector3(castOutput.normal.x, castOutput.normal.y, 0);
+    if (hit){
+        Vector3 point = Vector3(closest.point.x * ptmScale, closest.point.y * ptmScale, 0);
+        Vector3 normal = Vector3(closest.normal.x, closest.normal.y, 0);
 
-        return {true, castOutput.fraction, point, normal, body.getEntity(), shape};
+        return {true, closest.fraction, point, normal, body.getEntity(), shape};
     }
 
     return NO_HIT;
@@ -414,6 +428,16 @@ RayReturn Ray::intersects(const Rigidbody& body) const{
         JPH::RayCastResult hit;
 
         JPH::ShapeRefC shapeRef = physicsSystem->getBodyInterface3D().GetShape(bodycomp.body);
+        // trigger colliders of a body with solid ones are on their own body (PhysicsSystem): the nearer
+        if (!bodycomp.triggerBody.IsInvalid()){
+            JPH::ShapeRefC triggers = physicsSystem->getBodyInterface3D().GetShape(bodycomp.triggerBody);
+            JPH::RayCastResult solidHit;
+            const bool solid = shapeRef->CastRay(ray, id_creator, solidHit);
+            JPH::RayCastResult triggerHit;
+            if (triggers && triggers->CastRay(ray, id_creator, triggerHit) && (!solid || triggerHit.mFraction < solidHit.mFraction)){
+                shapeRef = triggers;
+            }
+        }
 
         if (shapeRef->CastRay(ray, id_creator, hit)){
             JPH::Vec3 normal = shapeRef->GetSurfaceNormal(hit.mSubShapeID2, ray.GetPointOnRay(hit.mFraction));
@@ -435,7 +459,7 @@ RayReturn Ray::intersects(const Rigidbody& body, size_t shape) const{
         JPH::SubShapeIDCreator id_creator;
         JPH::RayCastResult hit;
 
-        if (shape < bodycomp.numColliders){
+        if (shape < bodycomp.colliders.size()){
             if (bodycomp.colliders[shape].shape->CastRay(ray, id_creator, hit)){
                 JPH::Vec3 normal = bodycomp.colliders[shape].shape->GetSurfaceNormal(hit.mSubShapeID2, ray.GetPointOnRay(hit.mFraction));
 
@@ -614,7 +638,8 @@ RayReturn Ray::cast(Scene* scene, RayFilter raytest, int broadPhaseLayer3D, bool
         }
 
         std::shared_ptr<PhysicsSystem> physicsSystem = scene->getSystem<PhysicsSystem>();
-        JPH::PhysicsSystem* world = physicsSystem->getWorld3D();
+        // no 3D world made yet (no body ever): nothing to hit
+        JPH::PhysicsSystem* world = physicsSystem->hasWorld3D() ? physicsSystem->getWorld3D() : nullptr;
 
         if (world){
             JPH::RayCast ray(JPH::Vec3(origin.x, origin.y, origin.z), JPH::Vec3(direction.x, direction.y, direction.z));
@@ -636,7 +661,7 @@ RayReturn Ray::cast(Scene* scene, RayFilter raytest, int broadPhaseLayer3D, bool
                 if (lock.Succeeded()){
                     const JPH::Body &hit_body = lock.GetBody();
                     normal = hit_body.GetWorldSpaceSurfaceNormal(subShapeId, ray.GetPointOnRay(fraction));
-                    entity = hit_body.GetUserData();
+                    entity = PhysicsCallbacks::bodyEntity(hit_body.GetUserData());
                     colliderIndex = hit_body.GetShape()->GetSubShapeUserData(subShapeId);
                 }
                 return {true, fraction, getPoint(fraction), Vector3(normal.GetX(), normal.GetY(), normal.GetZ()), entity, colliderIndex};

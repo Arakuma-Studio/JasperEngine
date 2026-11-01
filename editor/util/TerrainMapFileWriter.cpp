@@ -4,7 +4,9 @@
 #include "util/TerrainMapFileWriter.h"
 
 #include "Out.h"
+#include "util/FileUtils.h"
 #include "util/PngWriter.h"
+#include "util/SafeWrite.h"
 #include "stb_image_write.h"
 
 #include <cstdio>
@@ -19,7 +21,8 @@ TerrainMapFileWriter& TerrainMapFileWriter::get(){
     return instance;
 }
 
-void TerrainMapFileWriter::enqueue(const fs::path& path, int width, int height, int channels, int bytesPerChannel, std::vector<unsigned char> pixels){
+void TerrainMapFileWriter::enqueue(const fs::path& path, int width, int height, int channels, int bytesPerChannel, std::vector<unsigned char> pixels,
+                                   const fs::path& root){
     std::unique_lock<std::mutex> lock(mutex);
     failedJobs.erase(path.string());  // superseded by newer pixels
     Job& job = jobs[path.string()];
@@ -28,6 +31,7 @@ void TerrainMapFileWriter::enqueue(const fs::path& path, int width, int height, 
     job.channels = channels;
     job.bytesPerChannel = bytesPerChannel;
     job.pixels = std::move(pixels);
+    job.root = root;
     startWorkerLocked();
     condition.notify_all();
 }
@@ -95,10 +99,26 @@ TerrainMapFileWriter::~TerrainMapFileWriter(){
 }
 
 bool TerrainMapFileWriter::writeJob(const std::string& path, const Job& job){
+    // encoded in memory, then written: beneath the job's root when it has one (the queuing
+    // thread's write scope), else as a plain replace-by-rename
+    std::string bytes;
     if (job.bytesPerChannel >= 2){
-        return writeGray16Png(fs::path(path), job.width, job.height, job.pixels.data(), job.pixels.size());
+        std::vector<unsigned char> png;
+        if (!encodePng16(job.width, job.height, 1, job.pixels.data(), job.pixels.size(), png)) return false;
+        bytes.assign(png.begin(), png.end());
+    } else {
+        auto append = [](void* context, void* data, int size) {
+            static_cast<std::string*>(context)->append(static_cast<const char*>(data), static_cast<size_t>(size));
+        };
+        if (!stbi_write_png_to_func(append, &bytes, job.width, job.height, job.channels, job.pixels.data(), job.width * job.channels)) return false;
     }
-    return writePng(fs::path(path), job.width, job.height, job.channels, job.pixels.data(), job.width * job.channels);
+    if (!job.root.empty()){
+        std::string error;
+        if (safewrite::writeFileResolvedBeneath(job.root, fs::path(path), bytes, error)) return true;
+        std::fprintf(stderr, "[ERROR] %s\n", error.c_str());
+        return false;
+    }
+    return FileUtils::writeFileReplacing(fs::path(path), bytes);
 }
 
 void TerrainMapFileWriter::startWorkerLocked(){

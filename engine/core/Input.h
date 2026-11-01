@@ -191,6 +191,7 @@
 #include <string>
 #include "Export.h"
 #include "math/Vector2.h"
+#include "System.h"
 
 // Gamepads with their own edge and level state at once (more connect and are ignored)
 #define D_INPUT_MAX_GAMEPADS             16
@@ -386,6 +387,10 @@ namespace jasperengine {
         static int getModifiers();
         // D_MODIFIER_SHIFT/CONTROL/ALT/SUPER of the modifier keys held now
         static int getHeldModifierKeys();
+
+        // Unity's Input.deviceOrientation: how the device is held (FaceUp/FaceDown on iOS),
+        // Unknown where nothing reports it (desktops, flat Android devices)
+        static DeviceOrientation getDeviceOrientation();
 
         static size_t findTouchIndex(int pointer);
         static size_t findGamepadIndex(int id);

@@ -392,7 +392,7 @@ bool TextureSynthesisWindow::save(bool overwrite, std::vector<std::string>& writ
     }
     std::vector<ts::OutputFile> files;
     if (!ts::encodeOutputs(root, saving, run->request(), run->result(), files, error)) return false;
-    if (!ts::writeOutputsUndoable(files, error)) return false;
+    if (!ts::writeOutputsUndoable(project, files, error)) return false;
     for (const ts::OutputFile& f : files) written.push_back(f.path);
     resultSaved = true;
     savedOutput = paths.output;

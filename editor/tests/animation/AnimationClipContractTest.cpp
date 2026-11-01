@@ -50,9 +50,10 @@ TEST(AnimationClipContract, CatalogKnowsTheAnimationPlayer){
     // within the types every loop runs over (S19's navigation components follow it)
     EXPECT_LE(static_cast<int>(ComponentType::AnimationPlayerComponent), static_cast<int>(LastComponentType));
     EXPECT_LT(static_cast<int>(ComponentType::AnimationPlayerComponent), ComponentTypeCount);
-    // and upstream's Vertex Animator is last
-    EXPECT_EQ(LastComponentType, ComponentType::VertexAnimatorComponent);
-    EXPECT_EQ(ComponentTypeCount, static_cast<int>(ComponentType::VertexAnimatorComponent) + 1);
+    // later features append after the Vertex Animator (prefab override masks use the ordinal):
+    // upstream's Trail Renderer, Canvas Group, on-screen controls and Ragdoll
+    EXPECT_GT(static_cast<int>(LastComponentType), static_cast<int>(ComponentType::VertexAnimatorComponent));
+    EXPECT_EQ(ComponentTypeCount, static_cast<int>(LastComponentType) + 1);
     EXPECT_EQ(Catalog::getComponentType("animationplayer"), ComponentType::AnimationPlayerComponent);
     EXPECT_EQ(Catalog::getComponentType("AnimationPlayerComponent"), ComponentType::AnimationPlayerComponent);
     EXPECT_EQ(Catalog::getComponentName(ComponentType::AnimationPlayerComponent, false), "AnimationPlayerComponent");

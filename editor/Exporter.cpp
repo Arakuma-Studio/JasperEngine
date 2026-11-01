@@ -1,9 +1,13 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "util/SafeWrite.h"
 #include "Exporter.h"
 #include "shader/ShaderWarmup.h"
+#include "shader/ShaderVariantCollector.h"
 #include "util/EditorScripts.h"
+#include "util/ExportFeatureScan.h"
+#include "util/PngEditorChunks.h"
 #include "navigation/NavigationEditor.h"
 #include "asset/AssetFileWrite.h"
 #include "asset/AssetMap.h"
@@ -23,6 +27,7 @@
 #include "io/AtomicFile.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
+#include "util/ShellEnv.h"
 #include "util/MsBuildProgress.h"
 #include "util/ShaderHeaderBuilder.h"
 #include "pool/ShaderPool.h"
@@ -55,10 +60,28 @@
 #include <fstream>
 #include <future>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <set>
 #include <sstream>
 #include <vector>
+
+
+namespace {
+    // fs::remove_all that never follows a link: the entry removed beneath its own (resolved)
+    // folder, a link in the tree removed as a link (util/SafeWrite.h). ec set on failure.
+    void removeAllNoFollow(const std::filesystem::path& path, std::error_code& ec) {
+        ec.clear();
+        std::error_code status;
+        if (!std::filesystem::exists(std::filesystem::symlink_status(path, status))) return;
+        const std::filesystem::path root = jasperengine::editor::safewrite::existingFolderOf(path.parent_path());
+        std::string error;
+        if (root.empty() || !jasperengine::editor::safewrite::removeTreeBeneath(root, jasperengine::editor::safewrite::entryLocation(path), error)) {
+            ec = std::make_error_code(std::errc::operation_not_permitted);
+            jasperengine::editor::safewrite::warn(error.empty() ? "can't remove " + path.string() : error);
+        }
+    }
+}
 
 using namespace jasperengine;
 
@@ -282,16 +305,56 @@ namespace {
         return escapeXmlAttribute(out + '"');
     }
 
-    std::string androidOrientationManifestValue(editor::AndroidOrientation orientation) {
-        switch (orientation) {
-            case editor::AndroidOrientation::Portrait: return "portrait";
-            case editor::AndroidOrientation::Landscape: return "landscape";
-            case editor::AndroidOrientation::SensorPortrait: return "sensorPortrait";
-            case editor::AndroidOrientation::SensorLandscape: return "sensorLandscape";
-            case editor::AndroidOrientation::FullSensor: return "fullSensor";
-            case editor::AndroidOrientation::Unspecified:
-            default: return "";
+    // Platform services a project's scripts use that need an Android permission
+    // (System.vibrate: VIBRATE, System.getInternetReachability: ACCESS_NETWORK_STATE), found
+    // by name in its Lua and C++ sources; a mention in a comment adds a harmless permission
+    struct ScriptServiceUse {
+        bool vibrate = false;
+        bool reachability = false;
+        fs::path vibrateFile;
+        fs::path reachabilityFile;
+    };
+
+    ScriptServiceUse scanScriptServiceUse(const std::vector<fs::path>& roots) {
+        ScriptServiceUse use;
+        std::error_code ec;
+        std::set<fs::path> seen;
+        for (const fs::path& root : roots) {
+            if (!fs::is_directory(root, ec)) continue;
+            fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end;
+            for (; !ec && it != end; it.increment(ec)) {
+                const fs::path& path = it->path();
+                const std::string name = path.filename().string();
+                std::error_code entryError;
+                if (it->is_directory(entryError)) {
+                    if (!name.empty() && name[0] == '.') it.disable_recursion_pending();
+                    continue;
+                }
+                std::string extension = path.extension().string();
+                for (char& c : extension) c = (char)std::tolower((unsigned char)c);
+                const bool lua = extension == ".lua";
+                const bool cpp = extension == ".cpp" || extension == ".cc" || extension == ".cxx" || extension == ".h" || extension == ".hpp";
+                if (!lua && !cpp) continue;
+                if (!seen.insert(fs::weakly_canonical(path, entryError)).second) continue;
+                const uintmax_t size = it->file_size(entryError);
+                if (entryError || size > 4 * 1024 * 1024) continue;
+                std::ifstream file(path, std::ios::binary);
+                const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+                auto mentions = [&](const char* luaName, const char* cppCall) {
+                    return lua ? text.find(luaName) != std::string::npos : text.find(cppCall) != std::string::npos;
+                };
+                if (!use.vibrate && (mentions("System.vibrate", "vibrate(") || mentions("System:vibrate", ".vibrate("))) {
+                    use.vibrate = true;
+                    use.vibrateFile = path;
+                }
+                if (!use.reachability && mentions("getInternetReachability", "getInternetReachability(")) {
+                    use.reachability = true;
+                    use.reachabilityFile = path;
+                }
+                if (use.vibrate && use.reachability) return use;
+            }
         }
+        return use;
     }
 
     const char* androidPermissionManifestName(const std::string& key) {
@@ -407,6 +470,36 @@ namespace {
         plist.replace(stringStart, stringEnd - stringStart, escapeXmlAttribute(value));
     }
 
+    // Sets a top-level key to an array of strings, replacing its value or adding the key
+    void replacePlistStringArray(std::string& plist, const std::string& key, const std::vector<std::string>& values) {
+        std::string array = "\t<array>\n";
+        for (const std::string& value : values) array += "\t\t<string>" + escapeXmlAttribute(value) + "</string>\n";
+        array += "\t</array>";
+
+        const std::string keyTag = "\t<key>" + key + "</key>";
+        const size_t keyPos = plist.find(keyTag);
+        if (keyPos == std::string::npos) {
+            const size_t dictEnd = plist.rfind("</dict>");
+            if (dictEnd == std::string::npos) return;
+            plist.insert(dictEnd, keyTag + "\n" + array + "\n");
+            return;
+        }
+        const size_t valueStart = plist.find_first_not_of(" \t\r\n", keyPos + keyTag.size());
+        if (valueStart == std::string::npos) return;
+        size_t valueEnd = std::string::npos;
+        if (plist.compare(valueStart, 7, "<array>") == 0) {
+            valueEnd = plist.find("</array>", valueStart);
+            if (valueEnd != std::string::npos) valueEnd += std::string("</array>").size();
+        } else if (plist.compare(valueStart, 8, "<array/>") == 0) {
+            valueEnd = valueStart + 8;
+        }
+        if (valueEnd == std::string::npos) return;
+        // the value's own indentation is in `array`
+        const size_t lineStart = plist.rfind('\n', valueStart);
+        const size_t replaceStart = lineStart == std::string::npos ? valueStart : lineStart + 1;
+        plist.replace(replaceStart, valueEnd - replaceStart, array);
+    }
+
     // Removes a top-level key holding a string, if present
     void removePlistStringValue(std::string& plist, const std::string& key) {
         const std::string keyTag = "\t<key>" + key + "</key>";
@@ -462,6 +555,56 @@ namespace {
         } else if (plist.compare(valueStart, 8, "<false/>") == 0) {
             plist.replace(valueStart, 8, value ? "<true/>" : "<false/>");
         }
+    }
+
+    // Replaces (or adds) the top-level key holding a dictionary; `body` is the dictionary's
+    // inner lines, indented with two tabs
+    void replacePlistDictValue(std::string& plist, const std::string& key, const std::string& body) {
+        const std::string keyTag = "\t<key>" + key + "</key>";
+        const std::string value = "\t<dict>\n" + body + "\t</dict>\n";
+        size_t keyPos = plist.find(keyTag);
+        if (keyPos == std::string::npos) {
+            const size_t dictEnd = plist.rfind("</dict>");
+            if (dictEnd == std::string::npos) return;
+            plist.insert(dictEnd, keyTag + "\n" + value);
+            return;
+        }
+        const size_t valueStart = plist.find_first_not_of(" \t\r\n", keyPos + keyTag.size());
+        if (valueStart == std::string::npos || plist.compare(valueStart, 6, "<dict>") != 0) return;
+        // the matching </dict> (nested dictionaries counted)
+        int depth = 0;
+        size_t pos = valueStart;
+        size_t valueEnd = std::string::npos;
+        while (pos < plist.size()) {
+            const size_t open = plist.find("<dict>", pos);
+            const size_t close = plist.find("</dict>", pos);
+            if (close == std::string::npos) return;
+            if (open != std::string::npos && open < close) {
+                depth++;
+                pos = open + 6;
+            } else {
+                depth--;
+                pos = close + 7;
+                if (depth == 0) {
+                    valueEnd = pos;
+                    break;
+                }
+            }
+        }
+        if (valueEnd == std::string::npos) return;
+        if (valueEnd < plist.size() && plist[valueEnd] == '\n') valueEnd++;
+        const size_t lineStart = plist.rfind('\n', valueStart);
+        const size_t eraseStart = lineStart == std::string::npos ? valueStart : lineStart + 1;
+        plist.replace(eraseStart, valueEnd - eraseStart, value);
+    }
+
+    // App Transport Security from Project Settings > Player > Allow Insecure HTTP. Apple ignores
+    // NSAllowsArbitraryLoads when NSAllowsLocalNetworking is there too, so only one is written:
+    // arbitrary loads (any http://, localhost included) or local networking alone.
+    void writeAppTransportSecurity(std::string& plist, bool allowInsecureHttp) {
+        replacePlistDictValue(plist, "NSAppTransportSecurity", allowInsecureHttp
+            ? "\t\t<key>NSAllowsArbitraryLoads</key>\n\t\t<true/>\n"
+            : "\t\t<key>NSAllowsLocalNetworking</key>\n\t\t<true/>\n");
     }
 
     std::array<int, 4> parseWindowsVersion(const std::string& value) {
@@ -703,10 +846,13 @@ void editor::Exporter::startExport(Project* proj, const ExportConfig& cfg) {
     this->project = proj;
     this->config = cfg;
     cancelRequested.store(false);
+    this->fixedAppName.clear();
+    this->fixedAppName = getAppName();
     {
         std::lock_guard<std::mutex> lock(progressMutex);
         this->progress = ExportProgress();
         this->progress.started = true;
+        this->producedExecutable.clear();
     }
 
     // the export reads the open scenes and prefabs while the frames go on: the holes of
@@ -728,10 +874,13 @@ bool editor::Exporter::exportProject(Project* proj, const ExportConfig& cfg) {
     this->project = proj;
     this->config = cfg;
     cancelRequested.store(false);
+    this->fixedAppName.clear();
+    this->fixedAppName = getAppName();
     {
         std::lock_guard<std::mutex> lock(progressMutex);
         this->progress = ExportProgress();
         this->progress.started = true;
+        this->producedExecutable.clear();
     }
 
     runExport();
@@ -798,6 +947,15 @@ void editor::Exporter::runExport() {
         ~SharedTreeRelease() { lock.reset(); }
     } sharedTreeRelease{sharedBuildLock};
 
+    if (buildMode && config.mode == ExportMode::Web) {
+        // emcc.bat runs through cmd.exe on Windows: no '%' in the folders it is given
+        std::string refusal = webBuildRefusal({project->getProjectPath(), getBuildCacheDir(), config.destinationDir});
+        if (refusal.empty()) refusal = webTreeRefusal(webSourceRoots(project));   // the files it copies / compiles
+        if (!refusal.empty()) {
+            setError(refusal + ".");
+            return;
+        }
+    }
     if (buildMode) {
         if (!prepareCacheTarget()) return;
     } else {
@@ -914,6 +1072,12 @@ void editor::Exporter::resolveShaderKeys() {
             }
         }
     }
+    // what every build ships (the FLATTEN Canvas Group composite), whatever the scenes hold
+    std::set<ShaderKey> required;
+    ShaderVariantCollector::addBuildRequiredKeys(required);
+    for (ShaderKey key : required) {
+        keys.insert(ShaderPool::normalizeKey(key));
+    }
     for (ShaderKey key : config.shaderAdditions) {
         keys.insert(ShaderPool::normalizeKey(key));
     }
@@ -964,10 +1128,40 @@ fs::path editor::Exporter::getAssetsSourceDir() const {
 }
 
 std::string editor::Exporter::getAppName() const {
-    if (project->getName().empty()) {
+    if (!fixedAppName.empty()) return fixedAppName;   // fixed at the start of the export
+    if (!project || project->getName().empty()) {
         return "jasperengine-project";
     }
     return Factory::toIdentifier(project->getName());
+}
+
+fs::path editor::Exporter::getProducedExecutable() const {
+    std::lock_guard<std::mutex> lock(progressMutex);
+    return producedExecutable;
+}
+
+std::string editor::Exporter::webPathRefusal(const std::vector<fs::path>& paths) {
+    for (const fs::path& path : paths) {
+        if (path.empty()) continue;
+        const std::string text = path.string();
+        if (text.find_first_of("%\"") != std::string::npos) {
+            return "Web builds on Windows can't use a folder whose path contains % (or \"): rename the folder (" + text + ")";
+        }
+    }
+    return std::string();
+}
+
+std::string editor::Exporter::webBuildRefusal(const std::vector<fs::path>& paths) {
+#ifdef _WIN32
+    return webPathRefusal(paths);
+#else
+    (void)paths;
+    return std::string();
+#endif
+}
+
+fs::path editor::Exporter::buildCacheDirFor(Project* project, ExportMode mode) {
+    return project->getProjectInternalPath() / "export" / (mode == ExportMode::Desktop ? "desktop" : "web");
 }
 
 fs::path editor::Exporter::getBuildCacheDir() const {
@@ -1126,7 +1320,7 @@ bool editor::Exporter::prepareCacheTarget() {
     // the exported CMake's recursive glob and break the link, so the (small)
     // project tree is wiped and fully re-copied every export. The engine tree is
     // kept and synced with copyTreeIfChanged() so the build stays incremental.
-    fs::remove_all(getExportProjectRoot(), ec);
+    removeAllNoFollow(getExportProjectRoot(), ec);
     if (ec) {
         setError("Failed to clear cached project sources: " + ec.message());
         return false;
@@ -1146,18 +1340,17 @@ bool editor::Exporter::configureBuild() {
     // different toolchain because it rebuilds the engine from source.
     const std::string platform = config.mode == ExportMode::Desktop
         ? Generator::getGeneratorPlatform(config.cmakeGenerator) : "";
-    std::string emcmake;
+    EmsdkInfo emsdk;
     std::string kitId;
     if (config.mode == ExportMode::Web) {
-        EmsdkInfo emsdk = detectEmsdk(config.emsdkPath);
+        emsdk = detectEmsdk(config.emsdkPath);
         if (!emsdk.found) {
-            setError("Emscripten SDK not found. Set it in Preferences > External Tools, set EMSDK, or add emcmake to PATH.");
+            setError("Emscripten SDK not found. Set it in Preferences > External Tools, set EMSDK, or add emcc to PATH.");
             return false;
         }
-        emcmake = emsdk.emcmake;
         Out::info("Using Emscripten %s", emsdk.description.c_str());
-        kitId = "web\n" + emcmake + "\n" + config.buildType + "\n" + config.graphicBackend + "\n" + extraCMakeArgs +
-                (config.developmentBuild ? "\ndevelopment" : "");
+        kitId = "web\n" + Generator::cmakeProgram() + "\n" + emsdk.toolchainFile + "\n" + config.buildType + "\n" + config.graphicBackend +
+                "\n" + extraCMakeArgs + (config.developmentBuild ? "\ndevelopment" : "");
     } else {
         std::string effectiveGenerator = getEffectiveGenerator();
         // The Xcode generator builds a macOS .app bundle (MACOSX_BUNDLE in the
@@ -1193,7 +1386,7 @@ bool editor::Exporter::configureBuild() {
         }
         if (prevKit != kitId) {
             Out::warning("Build settings or export location changed. Cleaning export build directory...");
-            fs::remove_all(buildDir, ec);
+            removeAllNoFollow(buildDir, ec);
             if (ec) {
                 setError("Failed to clean export build directory: " + ec.message());
                 return false;
@@ -1209,54 +1402,65 @@ bool editor::Exporter::configureBuild() {
         return out;
     };
 
-    std::string cmd;
+    if (!config.cmakeGenerator.empty() && !Generator::isKnownGenerator(config.cmakeGenerator)) {
+        setError("Unknown CMake generator \"" + config.cmakeGenerator + "\"; set it in Preferences > External Tools.");
+        return false;
+    }
+    // launched as an argv array, never a shell (CommandRunner::run): the target path and the build
+    // settings are literal arguments, so metacharacters in them can't start a command
+    std::vector<std::string> argv;
     if (config.mode == ExportMode::Web) {
-        // The emcmake wrapper injects the Emscripten toolchain file; the
-        // subsequent cmake --build needs no wrapper. emcmake resolves the cmake
-        // it wraps itself, so the editor override does not apply here.
-        // Keep the SDK wrapper: it selects Python using the SDK environment.
-        // Calling emcmake.py with an arbitrary system python3 can break a
-        // correctly configured SDK and does not fix an outdated interpreter.
-        cmd = "\"" + toCMakePath(emcmake) + "\" cmake ";
+        // CMake run directly with what emcmake.py adds (no emcmake wrapper: emcmake.bat would run
+        // through cmd.exe, which parses its arguments), in the SDK's environment (below)
+        argv = { Generator::cmakeProgram() };
+        std::string emError;
+        const CommandRunner::Environment sdkEnv = emscriptenEnvironment(emsdk);
+        for (const std::string& arg : emscriptenCMakeArgs(emsdk, !config.cmakeGenerator.empty(), sdkEnv, emError)) argv.push_back(arg);
+        if (!emError.empty()) {
+            setError("Web build: " + emError + ".");
+            return false;
+        }
     } else {
-        cmd = Generator::cmakeExecutable() + " ";
-        if (!config.cmakeGenerator.empty()) {
-            cmd += "-G \"" + config.cmakeGenerator + "\" ";
-        }
-        if (!platform.empty()) {
-            cmd += "-A " + platform + " ";
-        }
-        if (!config.cmakeCCompiler.empty()) {
-            cmd += "-DCMAKE_C_COMPILER=\"" + toCMakePath(config.cmakeCCompiler) + "\" ";
-        }
-        if (!config.cmakeCxxCompiler.empty()) {
-            cmd += "-DCMAKE_CXX_COMPILER=\"" + toCMakePath(config.cmakeCxxCompiler) + "\" ";
-        }
+        argv = { Generator::cmakeProgram() };
+        if (!config.cmakeGenerator.empty()) { argv.push_back("-G"); argv.push_back(config.cmakeGenerator); }
+        if (!platform.empty()) { argv.push_back("-A"); argv.push_back(platform); }
+        if (!config.cmakeCCompiler.empty()) argv.push_back("-DCMAKE_C_COMPILER=" + toCMakePath(config.cmakeCCompiler));
+        if (!config.cmakeCxxCompiler.empty()) argv.push_back("-DCMAKE_CXX_COMPILER=" + toCMakePath(config.cmakeCxxCompiler));
     }
-    cmd += "-DCMAKE_BUILD_TYPE=" + config.buildType + " ";
-    if (config.developmentBuild) {
-        cmd += "-DJASPERENGINE_DEVELOPMENT_BUILD=ON ";
+    argv.push_back("-DCMAKE_BUILD_TYPE=" + config.buildType);
+    if (config.developmentBuild) argv.push_back("-DJASPERENGINE_DEVELOPMENT_BUILD=ON");
+    if (!config.graphicBackend.empty()) argv.push_back("-DGRAPHIC_BACKEND=" + config.graphicBackend);
+    // the variant's own definitions (a threaded web build), one argument each
+    {
+        std::istringstream extra(extraCMakeArgs);
+        for (std::string arg; extra >> arg;) argv.push_back(arg);
     }
-    if (!config.graphicBackend.empty()) {
-        cmd += "-DGRAPHIC_BACKEND=" + config.graphicBackend + " ";
-    }
-    cmd += extraCMakeArgs;
-    cmd += "\"" + toCMakePath(config.targetDir.string()) + "\" ";
-    cmd += "-B \"" + toCMakePath(buildDir.string()) + "\"";
+    argv.push_back(toCMakePath(config.targetDir.string()));
+    argv.push_back("-B");
+    argv.push_back(toCMakePath(buildDir.string()));
 
-    if (config.mode == ExportMode::Desktop) {
-        cmd = CommandRunner::msvcEnvPrefix(getEffectiveGenerator()) + cmd;
+    // Windows + Ninja: the MSVC environment (vcvars, loaded once and cached), cmake launched with it
+    CommandRunner::Environment toolEnv;
+    std::string msvcError;
+    if (config.mode == ExportMode::Desktop && !CommandRunner::msvcEnvironment(getEffectiveGenerator(), toolEnv, msvcError)) {
+        setError(msvcError);
+        return false;
     }
 
-    Out::info("Configuring export build: %s", cmd.c_str());
+
+    // Web: the SDK's environment (PATH, EMSDK, EM_CONFIG, EMSDK_NODE, EMSDK_PYTHON) for CMake and emcc
+    if (config.mode == ExportMode::Web) toolEnv = emscriptenEnvironment(emsdk);
+
+    Out::info("Configuring export build (%zu args)...", argv.size());
     bool incompatiblePython = false;
-    bool ok = commandRunner.run(cmd, config.targetDir, [this, &incompatiblePython](const std::string& line) {
+    auto onConfigure = [this, &incompatiblePython](const std::string& line) {
         if (line.find("TypeError: 'type' object is not subscriptable") != std::string::npos) {
             incompatiblePython = true;
         }
         Out::build("%s", line.c_str());
         setDetail(line);
-    });
+    };
+    bool ok = commandRunner.run(argv, config.targetDir, onConfigure, toolEnv.empty() ? nullptr : &toolEnv);
 
     if (!ok) {
         if (isCancelled()) {
@@ -1285,17 +1489,22 @@ bool editor::Exporter::runBuild() {
     unsigned int jobs = config.buildJobs == 0 ? Generator::getAutomaticParallelBuildJobs() : config.buildJobs;
     jobs = std::min(jobs, Generator::getMaxParallelBuildJobs());
 
-    // A Web tree was configured by the cmake emcmake picked, and driving its
-    // build with a different one either fails or reconfigures the tree.
-    const std::string cmakeCmd = config.mode == ExportMode::Web
-        ? std::string("cmake")
-        : Generator::cmakeExecutable();
+    // the CMake that configured the tree (Web too: no emcmake picking its own any more)
+    const std::string cmakeCmd = Generator::cmakeProgram();
 
-    std::string cmd = cmakeCmd + " --build \"" + buildDir.string() + "\" --config " + config.buildType + " --parallel " + std::to_string(jobs);
-    if (config.mode == ExportMode::Desktop) {
-        // The build step invokes the compiler/linker, so it needs the same
-        // MSVC environment as configure.
-        cmd = CommandRunner::msvcEnvPrefix(getEffectiveGenerator()) + cmd;
+    std::vector<std::string> argv = { cmakeCmd, "--build", buildDir.string(), "--config", config.buildType,
+                                      "--parallel", std::to_string(jobs) };
+    // The build step invokes the compiler/linker, so it needs the same MSVC environment as configure.
+    CommandRunner::Environment toolEnv;
+    std::string msvcError;
+    if (config.mode == ExportMode::Desktop && !CommandRunner::msvcEnvironment(getEffectiveGenerator(), toolEnv, msvcError)) {
+        setError(msvcError);
+        return false;
+    }
+    // Web: emcc runs in the SDK's environment
+    if (config.mode == ExportMode::Web) {
+        const EmsdkInfo emsdk = detectEmsdk(config.emsdkPath);
+        if (emsdk.found) toolEnv = emscriptenEnvironment(emsdk);
     }
 
     // Initialization only predicts the work denominator. Do not advance the
@@ -1303,7 +1512,7 @@ bool editor::Exporter::runBuild() {
     MsBuildProgress msBuildProgress(buildDir, config.buildType);
 
     Out::info("Building export with %u parallel jobs...", jobs);
-    bool ok = commandRunner.run(cmd, buildDir, [this, &msBuildProgress](const std::string& line) {
+    auto onBuild = [this, &msBuildProgress](const std::string& line) {
         Out::build("%s", line.c_str());
         float fraction = 0.0f;
         bool hasProgress = parseBuildProgress(line, fraction);
@@ -1320,7 +1529,8 @@ bool editor::Exporter::runBuild() {
                     + (buildEnd - BUILD_PROGRESS_START) * fraction;
             }
         }
-    });
+    };
+    bool ok = commandRunner.run(argv, buildDir, onBuild, toolEnv.empty() ? nullptr : &toolEnv);
 
     if (!ok) {
         if (isCancelled()) {
@@ -1368,10 +1578,18 @@ bool editor::Exporter::collectDesktopArtifacts() {
         return false;
     }
 
-    fs::copy_file(exePath, config.destinationDir / exeName, fs::copy_options::overwrite_existing, ec);
+    // a symbolic link at the player's name is replaced, never written through
+    const fs::path producedPath = config.destinationDir / exeName;
+    if (fs::is_symlink(fs::symlink_status(producedPath, ec))) fs::remove(producedPath, ec);
+    ec.clear();
+    fs::copy_file(exePath, producedPath, fs::copy_options::overwrite_existing, ec);
     if (ec) {
         setError("Failed to copy executable: " + ec.message());
         return false;
+    }
+    {
+        std::lock_guard<std::mutex> lock(progressMutex);
+        producedExecutable = producedPath;
     }
     if (!copyLicenses()) {
         return false;
@@ -1397,7 +1615,7 @@ bool editor::Exporter::collectDesktopArtifacts() {
     if (packCreated) {
         for (const char* dir : {"assets", "lua"}) {
             ec.clear();
-            fs::remove_all(config.destinationDir / dir, ec);
+            removeAllNoFollow(config.destinationDir / dir, ec);
             if (ec) {
                 setError(std::string("Failed to remove unpacked ") + dir + ": " + ec.message());
                 return false;
@@ -1418,10 +1636,10 @@ bool editor::Exporter::collectDesktopArtifacts() {
     }
 
 #if defined(__linux__)
-    const std::string settingsCommand = Generator::cmakeExecutable() + " -DAPP_FILE=\""
-        + (fs::absolute(config.destinationDir) / exeName).string() + "\" -DWEB=OFF -P \""
-        + (projectRoot / "export-settings" / "apply.cmake").string() + "\"";
-    if (!commandRunner.run(settingsCommand, config.targetDir, [](const std::string& line) { Out::build("%s", line.c_str()); })) {
+    const std::vector<std::string> settingsArgv = { Generator::cmakeProgram(),
+        "-DAPP_FILE=" + (fs::absolute(config.destinationDir) / exeName).string(), "-DWEB=OFF",
+        "-P", (projectRoot / "export-settings" / "apply.cmake").string() };
+    if (!commandRunner.run(settingsArgv, config.targetDir, [](const std::string& line) { Out::build("%s", line.c_str()); })) {
         setError("Failed to generate Linux launcher");
         return false;
     }
@@ -1655,7 +1873,7 @@ bool editor::Exporter::collectSourceResourcePack() {
     if (!collectPackedTreeEntries(luaDir, removable)) return false;
 
     for (const fs::path& path : removable) {
-        fs::remove_all(path, ec);
+        removeAllNoFollow(path, ec);
         if (ec) {
             setError("Failed to remove unpacked resource after packing: " + path.string() + ": " + ec.message());
             return false;
@@ -1831,7 +2049,7 @@ bool editor::Exporter::clearGenerated() {
 
     std::error_code ec;
     if (fs::exists(generatedDir, ec)) {
-        fs::remove_all(generatedDir, ec);
+        removeAllNoFollow(generatedDir, ec);
         if (ec) {
             setError("Failed to clear generated directory: " + ec.message());
             return false;
@@ -2474,6 +2692,10 @@ bool editor::Exporter::copyAssets() {
         // is, so the game logs the same error the editor does
         if (Util::isColorLutFile(entry.path().string()) && cookColorLut(entry.path(), destPath)) continue;
 
+        // a PNG ships without the editor's own chunks (the sprite normals recipe and paint layer,
+        // the texture synthesis recipe: jasper.* text chunks a game never reads); losslessly, the
+        // file read once
+        if (copyPngWithoutEditorChunks(entry.path(), destPath)) continue;
         fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
     }
 
@@ -2504,6 +2726,34 @@ bool editor::Exporter::cookColorLut(const fs::path& source, const fs::path& dest
     // it is not part of this one
     std::error_code ec;
     fs::remove(destination, ec);
+    return true;
+}
+
+bool editor::Exporter::copyPngWithoutEditorChunks(const fs::path& source, const fs::path& destination) {
+    std::string ext = source.extension().u8string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (ext != ".png") return false;
+    // an explicit sized read: a short or failed read (an I/O error mid-file) falls back to the
+    // caller's copy_file instead of shipping truncated bytes
+    std::error_code ec;
+    const uintmax_t size = fs::file_size(source, ec);
+    if (ec || size > static_cast<uintmax_t>(std::numeric_limits<std::streamsize>::max())) return false;
+    std::ifstream in(source, std::ios::binary);
+    if (!in) return false;
+    std::vector<uint8_t> bytes(static_cast<size_t>(size));
+    if (size > 0 && (!in.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(size)) ||
+                     in.gcount() != static_cast<std::streamsize>(size))) {
+        return false;
+    }
+    // read once: the stripped bytes, or (nothing to strip, not a well-formed PNG) the bytes as read
+    std::vector<uint8_t> stripped;
+    const std::vector<uint8_t>& shipped = pngchunks::stripEditorChunks(bytes, stripped) ? stripped : bytes;
+    // written the atomic way (S03): a failed write leaves no part of a file to ship
+    io::AtomicWriteOptions options;
+    options.skipIfUnchanged = true;     // a re-export keeps the build cache's file time
+    if (!io::writeFileAtomic(destination, std::string_view(reinterpret_cast<const char*>(shipped.data()), shipped.size()), options).ok()) {
+        return false;   // copied as it is instead
+    }
     return true;
 }
 
@@ -2827,7 +3077,7 @@ void editor::Exporter::copyTreeIfChanged(const fs::path& src, const fs::path& ds
         }
         for (const fs::path& path : stale) {
             // No-op for children of an already-removed directory.
-            fs::remove_all(path);
+            { std::error_code removeError; removeAllNoFollow(path, removeError); }
         }
     } catch (const fs::filesystem_error& e) {
         ec = e.code();
@@ -3032,6 +3282,8 @@ bool editor::Exporter::copyEngine() {
         const std::string identifier = project->getApplicationIdentifier();
         const std::string storageId = (identifier != ApplicationSettings{}.identifier) ? identifier : project->getName();
         projectSettings += indent + "set(JASPERENGINE_STORAGE_ID \"" + toStorageId(storageId) + "\")";
+        // Desktop saves (data://) go to a per-user folder named after it (System::getUserDataPath)
+        projectSettings += indent + "set(JASPERENGINE_APP_IDENTIFIER \"" + toStorageId(storageId) + "\")";
         if (iconGenerated) {
             projectSettings += indent + "set(JASPERENGINE_WINDOW_ICON ON)";
         }
@@ -3061,6 +3313,9 @@ bool editor::Exporter::copyEngine() {
         const IOSProjectSettings& ios = project->getIOSProjectSettings();
         const bool iosAdMob = isAdMobIncluded(ios.admobEnabled, ios.admobAppId, "iOS", iosSampleAdMobAppId, false);
         projectSettings += indent + std::string("set(JASPERENGINE_ADMOB ") + (iosAdMob ? "ON" : "OFF") + ")";
+        // App Transport Security of a bare macOS executable (Ninja/Makefile builds have no bundle)
+        projectSettings += indent + std::string("set(JASPERENGINE_ALLOW_INSECURE_HTTP ") +
+                           (project->getApplicationSettings().allowInsecureHttp ? "ON" : "OFF") + ")";
         cmakeContent.replace(projectSettingsPos, projectSettingsMarker.size(), projectSettings);
     } else {
         Out::warning("Exported CMakeLists.txt is missing the project settings marker; using platform defaults");
@@ -3259,11 +3514,6 @@ std::vector<std::pair<std::string, unsigned int>> editor::Exporter::sceneMaxValu
         agg.maxExternalBuffers  = std::max(agg.maxExternalBuffers, sceneProject.maxValues.maxExternalBuffers);
         agg.maxSpriteFrames     = std::max(agg.maxSpriteFrames, sceneProject.maxValues.maxSpriteFrames);
         agg.maxBones            = std::max(agg.maxBones, sceneProject.maxValues.maxBones);
-        agg.maxColliders2D         = std::max(agg.maxColliders2D, sceneProject.maxValues.maxColliders2D);
-        agg.maxColliderPoints2D    = std::max(agg.maxColliderPoints2D, sceneProject.maxValues.maxColliderPoints2D);
-        agg.maxColliders3D         = std::max(agg.maxColliders3D, sceneProject.maxValues.maxColliders3D);
-        agg.maxColliderVertices3D  = std::max(agg.maxColliderVertices3D, sceneProject.maxValues.maxColliderVertices3D);
-        agg.maxColliderIndices3D   = std::max(agg.maxColliderIndices3D, sceneProject.maxValues.maxColliderIndices3D);
     }
 
     // Floor each capacity at the engine default declared in core/Engine.h: growing past the
@@ -3281,11 +3531,6 @@ std::vector<std::pair<std::string, unsigned int>> editor::Exporter::sceneMaxValu
         {"MAX_SPRITE_FRAMES", capacity(agg.maxSpriteFrames, MAX_SPRITE_FRAMES)},
         {"MAX_EXTERNAL_BUFFERS", capacity(agg.maxExternalBuffers, MAX_EXTERNAL_BUFFERS)},
         {"MAX_BONES", capacity(agg.maxBones, MAX_BONES)},
-        {"MAX_COLLIDERS_2D", capacity(agg.maxColliders2D, MAX_COLLIDERS_2D)},
-        {"MAX_COLLIDER_POINTS_2D", capacity(agg.maxColliderPoints2D, MAX_COLLIDER_POINTS_2D)},
-        {"MAX_COLLIDERS_3D", capacity(agg.maxColliders3D, MAX_COLLIDERS_3D)},
-        {"MAX_COLLIDER_VERTICES_3D", capacity(agg.maxColliderVertices3D, MAX_COLLIDER_VERTICES_3D)},
-        {"MAX_COLLIDER_INDICES_3D", capacity(agg.maxColliderIndices3D, MAX_COLLIDER_INDICES_3D)},
     };
 }
 
@@ -3429,11 +3674,59 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         iconReference = "@mipmap/ic_launcher";
     }
 
+    // INTERNET: Internet Access "require", the permission ticked, or Http in the exported code
+    // (Lua, HTML UI Lua, C++ scripts)
+    const bool internetTicked = android.permissions.count("internet") > 0;
+    bool internet = internetTicked || android.internetAccess == AndroidInternetAccess::Require;
+    if (!internet) {
+        // what the build packs and compiles: the Lua and asset trees (HTML UI documents) and the
+        // C++ scripts, as they are in the export folder (a file an earlier export left there
+        // ships too); not the generated sources, which call Http themselves
+        const fs::path exportRoot = getExportProjectRoot();
+        std::vector<fs::path> shipped;
+        ExportFeatureScan::collect(exportRoot, exportRoot / "lua", shipped);
+        ExportFeatureScan::collect(exportRoot, exportRoot / "assets", shipped);
+        ExportFeatureScan::collect(exportRoot, exportRoot / "scripts", shipped);
+        const std::vector<ExportFeatureScan::Use> uses = ExportFeatureScan::scanFiles(exportRoot, shipped, {ExportFeatureScan::http()});
+        if (!uses.empty()) {
+            internet = true;
+            Out::info("Android: added INTERNET (Http used in %s%s)", uses[0].file.c_str(),
+                      uses[0].files > 1 ? (" and " + std::to_string(uses[0].files - 1) + " more").c_str() : "");
+        } else {
+            // a native plugin's own networking is invisible to the scan
+            std::error_code pluginError;
+            if (fs::is_directory(project->getProjectPath() / "plugins" / "native", pluginError)) {
+                Out::warning("project.yaml:1: warning: Android export without the INTERNET permission: no Lua or C++ uses Http, "
+                             "but the project has native plugins (plugins/native). If they use the network, set "
+                             "Project Settings > Android > Internet Access to Require (android.internet_access: require)");
+            }
+        }
+    }
+
     std::string manifest;
     manifest += "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
     manifest += "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n\n";
     bool wrotePermission = false;
-    for (const std::string& permission : android.permissions) {
+    // what the scripts' platform services need, on top of the chosen permissions
+    std::set<std::string> permissions = android.permissions;
+    const ScriptServiceUse serviceUse = scanScriptServiceUse(webSourceRoots(project));
+    if (serviceUse.vibrate && permissions.insert("vibrate").second) {
+        Out::info("Android: added the VIBRATE permission (System.vibrate in %s)", serviceUse.vibrateFile.filename().string().c_str());
+    }
+    // with INTERNET, ACCESS_NETWORK_STATE is written anyway (below)
+    if (serviceUse.reachability && !internet && permissions.insert("access_network_state").second) {
+        Out::info("Android: added the ACCESS_NETWORK_STATE permission (System.getInternetReachability in %s)",
+                  serviceUse.reachabilityFile.filename().string().c_str());
+    }
+    if (internet) {
+        manifest += "    <uses-permission android:name=\"android.permission.INTERNET\" />\n";
+        // a normal permission (no prompt): lets Http tell "offline" from a DNS failure
+        manifest += "    <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />\n";
+        wrotePermission = true;
+    }
+    for (const std::string& permission : permissions) {
+        // written above, once
+        if (permission == "internet" || (internet && permission == "access_network_state")) continue;
         const char* manifestName = androidPermissionManifestName(permission);
         if (!manifestName) continue;
         manifest += "    <uses-permission android:name=\"android.permission.";
@@ -3445,6 +3738,8 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     manifest += "    <application\n";
     manifest += std::string("        android:allowBackup=\"") + (android.allowBackup ? "true" : "false") + "\"\n";
     manifest += "        android:icon=\"" + iconReference + "\"\n";
+    // plain http:// (cleartext): Project Settings > Player > Allow Insecure HTTP; localhost always
+    manifest += "        android:networkSecurityConfig=\"@xml/network_security_config\"\n";
     manifest += "        android:label=\"@string/app_name\">\n\n";
     if (admob) {
         manifest += "        <meta-data\n";
@@ -3453,11 +3748,22 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     }
     manifest += "        <activity android:name=\".MainActivity\"\n";
     manifest += "            android:label=\"@string/app_name\"\n";
-    manifest += "            android:configChanges=\"orientation|keyboardHidden|keyboard|screenSize\"\n";
+    // rotations, locale and display changes reach the running game, which never restarts
+    manifest += "            android:configChanges=\"mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|"
+                "screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density\"\n";
     manifest += "            android:theme=\"@style/AppTheme\"\n";
-    const std::string orientation = androidOrientationManifestValue(android.orientation);
-    if (!orientation.empty()) {
-        manifest += "            android:screenOrientation=\"" + orientation + "\"\n";
+    // Player > Resolution and Presentation: the default orientation, or auto-rotation within the
+    // allowed ones (the user's rotation lock kept); scripts change it with Screen.orientation
+    {
+        const PresentationSettings& presentation = project->getPresentationSettings();
+        bool unsupported = false;
+        const int requested = PlatformRules::androidRequestedOrientation(presentation.defaultOrientation,
+            presentation.effectiveAllowedOrientations(), &unsupported);
+        if (unsupported) {
+            Out::warning("Android cannot restrict auto-rotation to the allowed orientations of Player settings; "
+                         "the export allows all four (fullUser)");
+        }
+        manifest += std::string("            android:screenOrientation=\"") + PlatformRules::androidManifestOrientation(requested) + "\"\n";
     }
     manifest += "            android:exported=\"true\">\n";
     manifest += "            <meta-data android:name=\"android.app.lib_name\" android:value=\"jasperengine-android\" />\n";
@@ -3477,6 +3783,27 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     manifest += "</manifest>";
     FileUtils::writeIfChanged(manifestPath, manifest);
 
+    // The cleartext policy Http enforces itself (player.allow_insecure_http), declared to Android
+    // too: localhost / 127.0.0.1 always, other hosts only when insecure HTTP is allowed
+    {
+        const bool cleartext = project->getApplicationSettings().allowInsecureHttp;
+        std::string config;
+        config += "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
+        config += "<!-- Written by the export from Project Settings > Player > Allow Insecure HTTP -->\n";
+        config += "<network-security-config>\n";
+        config += std::string("    <base-config cleartextTrafficPermitted=\"") + (cleartext ? "true" : "false") + "\"/>\n";
+        config += "    <domain-config cleartextTrafficPermitted=\"true\">\n";
+        config += "        <domain includeSubdomains=\"false\">localhost</domain>\n";
+        config += "        <domain includeSubdomains=\"false\">127.0.0.1</domain>\n";
+        config += "        <domain includeSubdomains=\"false\">::1</domain>\n";
+        config += "    </domain-config>\n";
+        config += "</network-security-config>\n";
+        const fs::path xmlDir = androidAppDir / "src" / "main" / "res" / "xml";
+        std::error_code xmlError;
+        fs::create_directories(xmlDir, xmlError);
+        FileUtils::writeIfChanged(xmlDir / "network_security_config.xml", config);
+    }
+
     std::string strings;
     strings += "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\n";
     strings += "<resources>\n";
@@ -3495,9 +3822,8 @@ bool editor::Exporter::writeAndroidProjectSettings() {
 
     std::string activity;
     if (!readText(mainActivityPath, activity)) return false;
-    if ((!android.fullscreen && (activity.find("WindowCompat.setDecorFitsSystemWindows(getWindow(), false);") == std::string::npos
-            || activity.find("\t\thideSystemUI();\n") == std::string::npos))
-            || (android.keepScreenOn && activity.find("\t\tsuper.onCreate(savedInstanceState);") == std::string::npos)) {
+    if (!android.fullscreen && (activity.find("WindowCompat.setDecorFitsSystemWindows(getWindow(), false);") == std::string::npos
+            || activity.find("\t\thideSystemUI();\n") == std::string::npos)) {
         setError("Incompatible Android Activity export template");
         return false;
     }
@@ -3512,10 +3838,7 @@ bool editor::Exporter::writeAndroidProjectSettings() {
             "\t\tWindowCompat.setDecorFitsSystemWindows(getWindow(), true);");
         replaceAll(activity, "\t\thideSystemUI();\n", "");
     }
-    const std::string superOnCreate = "\t\tsuper.onCreate(savedInstanceState);";
-    if (android.keepScreenOn && activity.find("FLAG_KEEP_SCREEN_ON") == std::string::npos) {
-        replaceAll(activity, superOnCreate, "\t\tgetWindow().addFlags(LayoutParams.FLAG_KEEP_SCREEN_ON);\n\n" + superOnCreate);
-    }
+    // the screen stays on through Screen.sleepTimeout (Player > Keep Screen On), not a patch here
     FileUtils::writeIfChanged(mainActivityPath, activity);
 
     return true;
@@ -3610,6 +3933,7 @@ bool editor::Exporter::writeAppleProjectSettings() {
         replacePlistStringValue(macOSPlist, "CFBundleVersion",
             Project::toAppleVersion(project->getApplicationBuild(macOS.buildNumber)));
         replacePlistBoolValue(macOSPlist, "NSHighResolutionCapable", macOS.highDpi);
+        writeAppTransportSecurity(macOSPlist, project->getApplicationSettings().allowInsecureHttp);
         FileUtils::writeIfChanged(macOSPlistPath, macOSPlist);
     }
 
@@ -3839,7 +4163,25 @@ bool editor::Exporter::writeAppleProjectSettings() {
         replacePlistStringValue(iosPlist, "CFBundleVersion",
             Project::toAppleVersion(project->getApplicationBuild(ios.buildNumber)));
         replacePlistBoolValue(iosPlist, "UIStatusBarHidden", ios.hideStatusBar);
+        // Player > Resolution and Presentation: the allowed set, the default first (a fixed
+        // default alone); iPad multitasking ignores orientation locks unless the app is full screen
+        {
+            const PresentationSettings& presentation = project->getPresentationSettings();
+            const uint8_t allowed = presentation.effectiveAllowedOrientations();
+            const std::vector<std::string> orientations =
+                PlatformRules::iosPlistOrientations(presentation.defaultOrientation, allowed);
+            replacePlistStringArray(iosPlist, "UISupportedInterfaceOrientations", orientations);
+            replacePlistStringArray(iosPlist, "UISupportedInterfaceOrientations~ipad", orientations);
+            const bool allFour = !PlatformRules::isFixedOrientation(presentation.defaultOrientation) &&
+                allowed == PlatformRules::ALL_ORIENTATIONS;
+            replacePlistBoolValue(iosPlist, "UIRequiresFullScreen", !allFour);
+            if (!allFour) {
+                Out::info("iOS: UIRequiresFullScreen is on (iPad Split View would ignore the orientations of Player settings "
+                          "unless all four are allowed)");
+            }
+        }
         replacePlistBoolValue(iosPlist, "CADisableMinimumFrameDurationOnPhone", ios.supportsHighRefreshRate);
+        writeAppTransportSecurity(iosPlist, project->getApplicationSettings().allowInsecureHttp);
         if (iosAdMob) {
             replacePlistStringValue(iosPlist, "GADApplicationIdentifier", ios.admobAppId);
         } else {
@@ -4643,38 +4985,138 @@ const char* editor::Exporter::androidPermissionName(const std::string& key) {
     return androidPermissionManifestName(key);
 }
 
-std::string editor::Exporter::androidOrientationValue(AndroidOrientation orientation) {
-    return androidOrientationManifestValue(orientation);
-}
-
 std::string editor::Exporter::escapeXml(const std::string& value) {
     return escapeXmlAttribute(value);
+}
+
+namespace {
+    // A folder holding Emscripten itself: its CMake toolchain file and emcc
+    bool isEmscriptenDir(const fs::path& dir) {
+        std::error_code ec;
+        return fs::is_regular_file(dir / "cmake" / "Modules" / "Platform" / "Emscripten.cmake", ec) &&
+               (fs::exists(dir / "emcc", ec) || fs::exists(dir / "emcc.bat", ec) || fs::exists(dir / "emcc.py", ec));
+    }
+
+    bool isEmsdkRoot(const fs::path& dir) {
+        std::error_code ec;
+        return !dir.empty() && (fs::exists(dir / "emsdk.py", ec) || fs::exists(dir / "emsdk", ec) || fs::exists(dir / "emsdk.bat", ec));
+    }
+
+    // The newest <base>/<version>/<rel> (emsdk installs tools as node/20.18.0_64bit/bin/node ...)
+    fs::path newestTool(const fs::path& base, const fs::path& rel) {
+        std::error_code ec;
+        if (!fs::is_directory(base, ec)) return fs::path();
+        std::vector<fs::path> found;
+        for (const auto& entry : fs::directory_iterator(base, ec)) {
+            const fs::path candidate = entry.path() / rel;
+            if (fs::is_regular_file(candidate, ec)) found.push_back(candidate);
+        }
+        if (found.empty()) return fs::path();
+        std::sort(found.begin(), found.end());
+        return found.back();
+    }
+
+    // NODE_JS from a .emscripten config (Python): a quoted path, or emsdk_path + '/...' (what emsdk
+    // writes; emsdk_path is the config's folder). "" when it says something else.
+    fs::path configNode(const fs::path& configFile) {
+        std::ifstream in(configFile);
+        std::string line;
+        while (std::getline(in, line)) {
+            size_t at = line.find_first_not_of(" \t");
+            if (at == std::string::npos || line.compare(at, 7, "NODE_JS") != 0) continue;
+            const size_t eq = line.find('=', at);
+            if (eq == std::string::npos) continue;
+            std::string value = line.substr(eq + 1);
+            auto quoted = [](const std::string& text) -> std::string {
+                const size_t open = text.find_first_of("'\"");
+                if (open == std::string::npos) return std::string();
+                const size_t close = text.find(text[open], open + 1);
+                return close == std::string::npos ? std::string() : text.substr(open + 1, close - open - 1);
+            };
+            const size_t first = value.find_first_not_of(" \t");
+            if (first == std::string::npos) continue;
+            value = value.substr(first);
+            if (value.rfind("emsdk_path", 0) == 0) {
+                const std::string rest = quoted(value);
+                if (!rest.empty()) return configFile.parent_path() / fs::path(rest).relative_path();
+            } else if (value[0] == '\'' || value[0] == '"') {
+                const std::string path = quoted(value);
+                if (!path.empty()) return fs::path(path);
+            }
+        }
+        return fs::path();
+    }
+
+    void fillEmsdk(editor::EmsdkInfo& info, const fs::path& emscripten, const fs::path& emsdkHint, const std::string& source) {
+        std::error_code ec;
+        info.found = true;
+        info.emscripten = emscripten.string();
+        info.toolchainFile = (emscripten / "cmake" / "Modules" / "Platform" / "Emscripten.cmake").string();
+        fs::path root = emsdkHint;
+        if (root.empty() || !isEmsdkRoot(root)) {
+            const fs::path above = emscripten.parent_path().parent_path();   // <emsdk>/upstream/emscripten
+            root = isEmsdkRoot(above) ? above : fs::path();
+        }
+        info.emsdkRoot = root.string();
+        info.description = "from " + source + " (" + emscripten.string() + ")";
+
+        // the config emcc reads: EM_CONFIG (a file), else <emscripten>/.emscripten, the emsdk's, ~/.emscripten
+        fs::path config;
+        if (const char* env = std::getenv("EM_CONFIG"); env && *env && std::string(env).find_first_of("\n;") == std::string::npos &&
+            fs::is_regular_file(fs::path(env), ec)) {
+            config = fs::path(env);
+        }
+        const fs::path home = editor::ShellEnv::homeDirectory();
+        for (const fs::path& candidate : {emscripten / ".emscripten", root.empty() ? fs::path() : root / ".emscripten",
+                                          home.empty() ? fs::path() : home / ".emscripten"}) {
+            if (!config.empty()) break;
+            if (!candidate.empty() && fs::is_regular_file(candidate, ec)) config = candidate;
+        }
+        info.configFile = config.string();
+
+#ifdef _WIN32
+        const fs::path nodeRel = fs::path("bin") / "node.exe";
+        const fs::path pythonRel = "python.exe";
+#else
+        const fs::path nodeRel = fs::path("bin") / "node";
+        const fs::path pythonRel = fs::path("bin") / "python3";
+#endif
+        fs::path node = config.empty() ? fs::path() : configNode(config);
+        if (!node.empty() && !fs::is_regular_file(node, ec)) node.clear();
+        if (node.empty() && !root.empty()) node = newestTool(root / "node", nodeRel);
+        if (node.empty()) {
+            if (const char* env = std::getenv("EMSDK_NODE"); env && *env && fs::is_regular_file(fs::path(env), ec)) node = fs::path(env);
+        }
+        info.node = node.string();
+        const fs::path python = root.empty() ? fs::path() : newestTool(root / "python", pythonRel);
+        info.python = python.string();
+
+        info.pathDirs.clear();
+        auto addDir = [&info](const fs::path& dir) {
+            if (dir.empty()) return;
+            const std::string text = dir.string();
+            if (std::find(info.pathDirs.begin(), info.pathDirs.end(), text) == info.pathDirs.end()) info.pathDirs.push_back(text);
+        };
+        addDir(root);
+        addDir(emscripten);
+        if (!node.empty()) addDir(node.parent_path());
+        if (!python.empty()) addDir(python.parent_path());
+    }
 }
 
 editor::EmsdkInfo editor::Exporter::detectEmsdk(const std::string& overridePath) {
     EmsdkInfo info;
 
-#ifdef _WIN32
-    const char* emcmakeName = "emcmake.bat";
-#else
-    const char* emcmakeName = "emcmake";
-#endif
-
     auto tryRoot = [&](const fs::path& root, const std::string& source) -> bool {
         if (root.empty()) return false;
-        std::error_code ec;
         // Accept both the emsdk root and the emscripten dir pointed at directly.
-        const fs::path candidates[] = {
-            root / "upstream" / "emscripten" / emcmakeName,
-            root / emcmakeName
-        };
-        for (const fs::path& candidate : candidates) {
-            if (fs::exists(candidate, ec)) {
-                info.found = true;
-                info.emcmake = candidate.string();
-                info.description = "from " + source;
-                return true;
-            }
+        if (isEmscriptenDir(root / "upstream" / "emscripten")) {
+            fillEmsdk(info, root / "upstream" / "emscripten", root, source);
+            return true;
+        }
+        if (isEmscriptenDir(root)) {
+            fillEmsdk(info, root, fs::path(), source);
+            return true;
         }
         return false;
     };
@@ -4690,19 +5132,125 @@ editor::EmsdkInfo editor::Exporter::detectEmsdk(const std::string& overridePath)
         return info;
     }
 
-#ifdef _WIN32
-    if (!CommandRunner::runCaptureNoWindow("where emcmake.bat 2>nul").empty()) {
-        info.found = true;
-        info.emcmake = "emcmake";
-        info.description = "on PATH";
+    // emcc on PATH (no shell: PATH searched in-process), its real folder (a distribution's
+    // /usr/bin/emcc links into /usr/share/emscripten)
+    const std::string emcc = ShellEnv::findExecutable("emcc");
+    if (!emcc.empty()) {
+        std::error_code ec;
+        const fs::path real = fs::weakly_canonical(fs::path(emcc), ec);
+        for (const fs::path& dir : {real.parent_path(), fs::path(emcc).parent_path()}) {
+            if (isEmscriptenDir(dir)) {
+                fillEmsdk(info, dir, fs::path(), "PATH");
+                break;
+            }
+        }
     }
-#else
-    if (std::system("command -v emcmake >/dev/null 2>&1") == 0) {
-        info.found = true;
-        info.emcmake = "emcmake";
-        info.description = "on PATH";
-    }
-#endif
 
     return info;
+}
+
+std::vector<std::string> editor::Exporter::emscriptenWindowsGeneratorArgs(const CommandRunner::Environment& env, bool generatorGiven,
+                                                                          std::string& error) {
+    error.clear();
+    // emcmake.py: only when neither -G nor CMAKE_GENERATOR picks one (CMake reads that itself)
+    if (generatorGiven || !CommandRunner::variable(env, "CMAKE_GENERATOR").empty()) return {};
+    std::vector<fs::path> dirs;
+    const std::string path = CommandRunner::variable(env, "PATH");
+    size_t pos = 0;
+    while (pos <= path.size()) {
+        size_t end = path.find(';', pos);
+        if (end == std::string::npos) end = path.size();
+        std::string dir = path.substr(pos, end - pos);
+        pos = end + 1;
+        if (dir.size() >= 2 && dir.front() == '"' && dir.back() == '"') dir = dir.substr(1, dir.size() - 2);
+        if (!dir.empty()) dirs.push_back(fs::path(dir));
+    }
+    fs::path found;
+    if (CommandRunner::resolveWindowsProgram("mingw32-make", dirs, found).empty()) return {"-G", "MinGW Makefiles"};
+    if (CommandRunner::resolveWindowsProgram("ninja", dirs, found).empty()) return {"-G", "Ninja"};
+    error = "no CMake generator for Emscripten: install Ninja (https://ninja-build.org) or mingw32-make and put it on PATH, "
+            "or set CMAKE_GENERATOR";
+    return {};
+}
+
+std::vector<std::string> editor::Exporter::emscriptenCMakeArgs(const EmsdkInfo& sdk, bool generatorGiven,
+                                                               const CommandRunner::Environment& env, std::string& error) {
+    error.clear();
+    std::vector<std::string> args;
+    auto cmakePath = [](std::string path) {
+        std::replace(path.begin(), path.end(), '\\', '/');
+        return path;
+    };
+    // what emcmake.py adds (emscripten/emcmake.py)
+    args.push_back("-DCMAKE_TOOLCHAIN_FILE=" + cmakePath(sdk.toolchainFile));
+    if (!sdk.node.empty()) args.push_back("-DCMAKE_CROSSCOMPILING_EMULATOR=" + cmakePath(sdk.node));
+#ifdef _WIN32
+    // keep CMake from picking Visual Studio, as emcmake does (looked up on the SDK environment's PATH)
+    for (const std::string& arg : emscriptenWindowsGeneratorArgs(env, generatorGiven, error)) args.push_back(arg);
+#else
+    (void)generatorGiven;
+    (void)env;
+#endif
+    return args;
+}
+
+std::string editor::Exporter::webTreePathRefusal(const std::vector<fs::path>& roots, size_t maxEntries) {
+    size_t seen = 0;
+    for (const fs::path& root : roots) {
+        std::error_code ec;
+        if (root.empty() || !fs::is_directory(root, ec)) continue;
+        if (const std::string refusal = webPathRefusal({root}); !refusal.empty()) return refusal;
+        fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end;
+        for (; !ec && it != end; it.increment(ec)) {
+            if (++seen > maxEntries) {
+                return "Web builds on Windows check every file name for % and this project has more than " + std::to_string(maxEntries) +
+                       " files in " + root.string() + ": too many to check";
+            }
+            const std::string name = it->path().filename().string();
+            if (name.find_first_of("%\"") != std::string::npos) {
+                return "Web builds on Windows can't use a file or folder whose name contains % (or \"): rename " + it->path().string();
+            }
+        }
+    }
+    return std::string();
+}
+
+std::string editor::Exporter::webTreeRefusal(const std::vector<fs::path>& roots) {
+#ifdef _WIN32
+    return webTreePathRefusal(roots);
+#else
+    (void)roots;
+    return std::string();
+#endif
+}
+
+std::vector<fs::path> editor::Exporter::webSourceRoots(Project* project) {
+    std::vector<fs::path> roots = {project->getAssetsPath(), project->getLuaPath()};
+    for (const fs::path& dir : project->getScriptDirs()) {
+        roots.push_back(dir.is_absolute() ? dir : (project->getProjectPath() / dir).lexically_normal());
+    }
+    return roots;
+}
+
+editor::CommandRunner::Environment editor::Exporter::emscriptenEnvironment(const EmsdkInfo& sdk) {
+    CommandRunner::Environment env = CommandRunner::currentEnvironment();
+#ifdef _WIN32
+    const char separator = ';';
+#else
+    const char separator = ':';
+#endif
+    std::string path;
+    for (const std::string& dir : sdk.pathDirs) {
+        path += dir;
+        path.push_back(separator);
+    }
+    const std::string current = CommandRunner::variable(env, "PATH");
+    path += current;
+    if (!path.empty() && path.back() == separator) path.pop_back();
+    CommandRunner::setVariable(env, "PATH", path);
+    if (!sdk.emsdkRoot.empty()) CommandRunner::setVariable(env, "EMSDK", sdk.emsdkRoot);
+    if (!sdk.configFile.empty()) CommandRunner::setVariable(env, "EM_CONFIG", sdk.configFile);
+    if (!sdk.node.empty()) CommandRunner::setVariable(env, "EMSDK_NODE", sdk.node);
+    if (!sdk.python.empty()) CommandRunner::setVariable(env, "EMSDK_PYTHON", sdk.python);
+    return env;
 }

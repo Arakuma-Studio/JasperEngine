@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "RenameFileCmd.h"
+
+#include "util/SafeWrite.h"
+
 #include "util/FileUtils.h"
 
 #include "util/Util.h"
@@ -44,6 +47,17 @@ bool editor::RenameFileCmd::renameFile(const fs::path& sourceFs, const fs::path&
         Out::warning("%s:%u still refers to %s", broken.referrer.c_str(), broken.line, broken.target.c_str());
     }
     return true;
+}
+
+std::vector<editor::Command::Touched> editor::RenameFileCmd::touchedPaths(bool) const{
+    std::vector<Touched> out = {{directory / oldFilename, true}, {directory / newFilename, true}};
+    if (!pairOldName.empty()) {
+        out.push_back({directory / pairOldName, true});
+        out.push_back({directory / pairNewName, true});
+    }
+    // the renamed .vat's mesh field, written back
+    if (!meshFieldFile.empty()) out.push_back({meshFieldFile, false});
+    return out;
 }
 
 bool editor::RenameFileCmd::execute(){

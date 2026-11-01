@@ -142,7 +142,7 @@ void runBatchStep(const std::shared_ptr<BatchState>& state) {
             // Completed later (a deferred call): continue on the main thread
             App& app = state->call->ctx().app();
             if (app.isMainThread()) runBatchStep(state);
-            else app.enqueueMainThreadTask([state]() { runBatchStep(state); });
+            else app.enqueueMainThreadTask([state]() { McpWriteScope writeScope; runBatchStep(state); });
         });
         int expected = 0;
         if (phase->compare_exchange_strong(expected, 2)) {
@@ -215,11 +215,37 @@ void cancelJobTool(const CallPtr& call) {
 // ------------------------------------------------------------------ undo / redo
 
 // One step of a single history (scope scene or project), with what it took
-bool historyStep(CommandHistory* history, bool undo, std::vector<UndoTimeline::Step>& steps, bool project, uint32_t sceneId) {
+// What an undo/redo call learns of the steps it takes (the sandbox hardening): why one was
+// refused, the files a taken one could not put back
+struct StepReport {
+    std::vector<std::filesystem::path> projectRoots;   // the project's trusted roots
+    std::string refusedWhy;
+    std::vector<std::string> problems;
+};
+
+// A step the GUI made (no write root of its own): its files must stay inside the project too,
+// once links are resolved (Command::escapeFor); it then runs in this call's write scope
+bool escapesProject(const Command* next, bool undo, StepReport& report) {
+    if (!next) return false;
+    const std::string escape = next->escapeFor(report.projectRoots, undo);
+    if (escape.empty()) return false;
+    report.refusedWhy = escape;
+    return true;
+}
+
+bool historyStep(CommandHistory* history, bool undo, std::vector<UndoTimeline::Step>& steps, bool project, uint32_t sceneId,
+                 StepReport& report) {
     const UndoEntry* next = undo ? history->top() : history->nextRedo();
     if (!next) return false;
+    if (escapesProject(next->cmd.get(), undo, report)) return false;
     UndoTimeline::Step step{next->info.id, next->name(), project, sceneId};
-    if (!(undo ? history->undo() : history->redo())) return false;
+    // the command itself can refuse (it would make a child scene cycle; a file it changes
+    // resolves out of its write root through a link): the history keeps its place
+    if (!(undo ? history->undo() : history->redo())) {
+        report.refusedWhy = history->lastRefusal();
+        return false;
+    }
+    if (!history->lastUndoProblem().empty()) report.problems.push_back(history->lastUndoProblem());
     steps.push_back(step);
     return true;
 }
@@ -305,11 +331,30 @@ void undoRedo(const CallPtr& call, bool undo) {
                        ": nothing changed. get_undo_history lists the steps.", data);
             return;
         }
+        // (an undo, or a redo, taken whose files could not all be written: "Undo / Redo incomplete")
+        if (!history->lastUndoProblem().empty()) problems.push_back(history->lastUndoProblem());
     }
 
     std::vector<UndoTimeline::Step> done;
     std::string why;
     bool stopped = false;   // a step did not move: refused (busy, or by the command) or nothing left
+    StepReport report;
+    report.projectRoots = McpRefs::trustedRoots(project);
+    // the timeline's next step: checked as historyStep checks its own, its history's report read after
+    auto timelineStep = [&](bool undoing) {
+        UndoTimeline::EntryView next = undoing ? UndoTimeline::nextUndo(sceneId) : UndoTimeline::nextRedo(sceneId);
+        if (next && escapesProject(next.entry->cmd.get(), undoing, report)) return false;
+        const size_t before = done.size();
+        const bool moved = undoing ? UndoTimeline::undo(sceneId, &why, &done) : UndoTimeline::redo(sceneId, &why, &done);
+        for (size_t i = before; i < done.size(); i++) {
+            CommandHistory* stepHistory = done[i].project ? project->getProjectCommandHistory() : CommandHandle::get(done[i].sceneId);
+            if (stepHistory && !stepHistory->lastUndoProblem().empty()) report.problems.push_back(stepHistory->lastUndoProblem());
+        }
+        if (!moved && why.empty() && next && next.history && !next.history->lastRefusal().empty()) {
+            report.refusedWhy = next.history->lastRefusal();
+        }
+        return moved;
+    };
     if (args.contains("to_id") && !args["to_id"].is_null()) {
         const uint64_t target = args["to_id"].get<uint64_t>();
         if (!inScope(target)) {
@@ -323,7 +368,7 @@ void undoRedo(const CallPtr& call, bool undo) {
         if (history) {
             // undo until it is the newest applied step, or redo until it is applied
             while (undo ? (history->top() && history->top()->info.id != target) : !history->isApplied(target)) {
-                if (!historyStep(history, undo, done, scope == "project", sceneId)) {
+                if (!historyStep(history, undo, done, scope == "project", sceneId, report)) {
                     stopped = true;
                     break;
                 }
@@ -334,25 +379,32 @@ void undoRedo(const CallPtr& call, bool undo) {
     } else {
         for (int i = 0; i < steps; i++) {
             if (history) {
-                if (!historyStep(history, undo, done, scope == "project", sceneId)) {
+                if (!historyStep(history, undo, done, scope == "project", sceneId, report)) {
                     stopped = true;
                     break;
                 }
-            } else if (!(undo ? UndoTimeline::undo(sceneId, &why, &done) : UndoTimeline::redo(sceneId, &why, &done))) {
+            } else if (!timelineStep(undo)) {
                 stopped = true;
                 break;
             }
         }
     }
-    if (history && why.empty() && !CommandHistory::lastRefusal().empty()) {
-        why = "Busy: " + CommandHistory::lastRefusal();
+    if (history && why.empty() && report.refusedWhy.empty() && !CommandHistory::lastBusyRefusal().empty()) {
+        why = "Busy: " + CommandHistory::lastBusyRefusal();
     }
     const bool busy = why.rfind("Busy", 0) == 0;
     // the next step is there but did not move: the command refused (it would make a child scene cycle)
     const bool refused = stopped && !busy && nextId() != 0;
-    const std::string refusal = std::string("The next step cannot be ") + (undo ? "undone" : "redone") +
-        " now: it would make a child scene cycle (read_console has the scenes).";
+    const std::string refusal = std::string("The next step cannot be ") + (undo ? "undone" : "redone") + " now: " +
+        (report.refusedWhy.empty() ? std::string("it would make a child scene cycle (read_console has the scenes).") : report.refusedWhy);
     if (refused) data["refused"] = true;
+    if (refused && !report.refusedWhy.empty()) data["refusal"] = report.refusedWhy;
+    // a step taken whose files could not all be put back (a link planted after its check)
+    std::string problemText;
+    if (!report.problems.empty()) {
+        data["problems"] = report.problems;
+        for (const std::string& problem : report.problems) problemText += std::string(undo ? " Undo incomplete: " : " Redo incomplete: ") + problem + ".";
+    }
     bool touchedProject = false;
     Json list = Json::array();
     for (const UndoTimeline::Step& step : done) {
@@ -381,6 +433,11 @@ void undoRedo(const CallPtr& call, bool undo) {
     for (const UndoTimeline::Step& step : done) {
         if (!names.empty()) names += ", ";
         names += "\"" + step.name + "\"";
+    }
+    if (!report.problems.empty()) {
+        call->fail(std::string(undo ? "Undid " : "Redid ") + std::to_string(done.size()) + " step(s) in the " + scope + " history: " +
+                   names + "." + problemText + " Remove the link, then check those files.", data);
+        return;
     }
     call->ok(std::string(undo ? "Undid " : "Redid ") + std::to_string(done.size()) + " step(s) in the " + scope +
              " history: " + names + "." + (refused ? " Stopped there: " + refusal : std::string()), data);

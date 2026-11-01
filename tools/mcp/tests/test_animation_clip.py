@@ -1094,7 +1094,11 @@ async def test_guide_names_exist(ed: Editor):
               "unaddressable_name", "duplicate_sibling_name", "missing_path", "quad_out", "in_out", "external_changes", "frame_rate",
               # results of calls this test does not repeat: create {from}, an extract, a missing path with a fix, > 50 users
               "added_player", "removed_tracks", "model_clip_users", "fix_with", "users_total", "fix_path", "fix_conflict",
-              "rest_mismatch", "rig_mismatch"}
+              "rest_mismatch", "rig_mismatch",
+              # layers, masks and controllers (test_animation_layers / test_animator_controller): their results, the
+              # mask's humanoid parts and the clip / controller file keys
+              "humanoid_rig", "coverage_total", "mask_coverage", "live_weight", "normalized_time", "additive_reference",
+              "automate_thresholds", "left_arm", "right_arm", "left_leg", "right_leg", "left_fingers", "right_fingers"}
     words = set(re.findall(r"(?<![\w./:-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w(])", text))
     unknown = sorted(w for w in words if w not in known)
     ed.check(not unknown, f"the guide names unknown things: {unknown}")

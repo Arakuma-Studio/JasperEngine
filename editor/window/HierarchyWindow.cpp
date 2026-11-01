@@ -10,6 +10,8 @@
 #include "window/BookmarksWindow.h"
 #include "window/dialog/DataSafetyDialogs.h"
 #include "StreamPreserved.h"
+#include "util/PhysicsMaterialAssets.h"
+#include "window/dialog/RagdollWizardDialog.h"
 #include "pose/PoseEditSession.h"
 
 #include "App.h"
@@ -21,6 +23,7 @@
 #include "command/PlayChangeReview.h"
 #include "command/CommandHandle.h"
 #include "command/type/MoveEntityOrderCmd.h"
+#include "component/Rigidbody2DComponent.h"
 #include "command/type/AddChildSceneCmd.h"
 #include "command/type/RemoveChildSceneCmd.h"
 #include "command/type/SetChildSceneStartActiveCmd.h"
@@ -499,6 +502,8 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"3D Object", "Terrain", ICON_FA_MOUNTAIN, T::TERRAIN, "Terrain", CREATE_IN_3D},
         {"3D Object", "Mirror", ICON_FA_CLONE, T::MIRROR, "Mirror", CREATE_IN_3D},
         {"3D Object", "Water", ICON_FA_WATER, T::WATER, "Water", CREATE_IN_3D},
+        // Unity's Ragdoll Wizard on the selected character (or the row's GameObject)
+        {"3D Object", "Ragdoll...", ICON_FA_PERSON_FALLING, T::RAGDOLL_WIZARD, "Ragdoll", CREATE_IN_3D, true},
         // around the selection (or its row's GameObject) when there is one, see createGameObject
         {"3D Object", "Lattice", ICON_FA_BORDER_NONE, T::LATTICE, "Lattice", CREATE_IN_3D, true},
 
@@ -511,6 +516,8 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"Effects", "Particle System", ICON_FA_FIRE, T::PARTICLE_SYSTEM, "Particle System", CREATE_IN_WORLD},
         {"Effects", "Force Field", ICON_FA_WIND, T::FORCE_FIELD, "Force Field", CREATE_IN_3D},
         {"Effects", "Line Renderer", ICON_FA_GRIP_LINES, T::LINE_RENDERER, "Line", CREATE_IN_WORLD},
+        // on the selected GameObject when it has none, else as a child (createGameObject)
+        {"Effects", "Trail Renderer", ICON_FA_WIND, T::TRAIL_RENDERER, "Trail", CREATE_IN_WORLD},
         {"Effects", "Point Renderer", ICON_FA_CIRCLE, T::POINTS, "Points", CREATE_IN_WORLD},
         {"Effects", "Fluid Simulation", ICON_FA_DROPLET, T::FLUID_SIMULATION, "Fluid Simulation", CREATE_IN_WORLD},
         {"Effects", "Fog", ICON_FA_SMOG, T::FOG, "Fog", CREATE_IN_3D, true},
@@ -534,7 +541,13 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"UI", "Input Field", ICON_FA_I_CURSOR, T::INPUT_FIELD, "Input Field", CREATE_IN_ALL},
         {"UI", "Panel", ICON_FA_WINDOW_MAXIMIZE, T::PANEL, "Panel", CREATE_IN_ALL},
         {"UI", "Polygon", ICON_FA_DRAW_POLYGON, T::POLYGON, "Polygon", CREATE_IN_ALL},
+        {"UI", "On-Screen Stick (Fixed)", ICON_FA_GAMEPAD, T::ONSCREEN_STICK_FIXED, "On-Screen Stick", CREATE_IN_ALL, true},
+        {"UI", "On-Screen Stick (Floating)", ICON_FA_GAMEPAD, T::ONSCREEN_STICK_FLOATING, "On-Screen Stick", CREATE_IN_ALL},
+        {"UI", "On-Screen Stick (Dynamic)", ICON_FA_GAMEPAD, T::ONSCREEN_STICK_DYNAMIC, "On-Screen Stick", CREATE_IN_ALL},
+        {"UI", "On-Screen Button", ICON_FA_CIRCLE_DOT, T::ONSCREEN_BUTTON, "On-Screen Button", CREATE_IN_ALL},
+        {"UI", "Touch Area", ICON_FA_HAND_POINTER, T::TOUCH_AREA, "Touch Area", CREATE_IN_ALL},
         {"UI", "Layout Group", ICON_FA_OBJECT_GROUP, T::LAYOUT_GROUP, "Layout Group", CREATE_IN_ALL, true},
+        {"UI", "Canvas Group", ICON_FA_LAYER_GROUP, T::CANVAS_GROUP, "Canvas Group", CREATE_IN_ALL},
         {"UI", "UI Document", ICON_FA_FILE_CODE, T::UI_DOCUMENT, "UI Document", CREATE_IN_ALL, true},
 
         {"Physics", "Rigidbody", ICON_FA_WEIGHT_HANGING, T::RIGIDBODY, "Rigidbody", CREATE_IN_3D},
@@ -591,6 +604,16 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
     if (!sceneProject || !sceneProject->scene) {
         return;
     }
+    if (entry.type == EntityCreationType::RAGDOLL_WIZARD) {
+        std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
+        const Entity character = parent != NULL_ENTITY ? parent : (selected.size() == 1 ? selected[0] : NULL_ENTITY);
+        if (character == NULL_ENTITY) {
+            Out::warning("Ragdoll: select the character's root GameObject first (the one holding its model)");
+            return;
+        }
+        RagdollWizardDialog::instance().open(project, sceneProject->id, character);
+        return;
+    }
     if (entry.type == EntityCreationType::LATTICE) {
         // a lattice wraps GameObjects instead of being made under one: the row it was asked
         // from (unless that row is in the selection), else the selection
@@ -603,6 +626,25 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
     }
     if (entry.rootOnly) {
         parent = NULL_ENTITY;
+    }
+    // a Joint 2D goes under the selected Rigidbody 2D, which it is then on (Unity adds the
+    // joint to the body)
+    if (entry.type == EntityCreationType::JOINT2D && parent == NULL_ENTITY) {
+        std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
+        if (selected.size() == 1 && sceneProject->scene->findComponent<Rigidbody2DComponent>(selected[0])) {
+            parent = selected[0];
+        }
+    }
+    // Unity puts a trail on the moving object itself: the selected GameObject gets one when it
+    // has none and is not locked (one undo step, its own Trail Renderer); else a child trail
+    if (entry.type == EntityCreationType::TRAIL_RENDERER && parent != NULL_ENTITY &&
+            sceneProject->scene->isEntityCreated(parent) && sceneProject->scene->findComponent<Transform>(parent) &&
+            !ProjectUtils::isEntityLocked(sceneProject->scene, parent) &&
+            !sceneProject->scene->findComponent<TrailRendererComponent>(parent)) {
+        CommandHandle::get(sceneProject->id)->addCommandNoMerge(
+            new AddComponentCmd(project, sceneProject->id, parent, ComponentType::TrailRendererComponent));
+        project->setSelectedEntity(sceneProject->id, parent);
+        return;
     }
     CreateEntityCmd* createCmd = new CreateEntityCmd(project, sceneProject->id, entry.entityName, entry.type, parent, addToPrefab);
     CommandHandle::get(sceneProject->id)->addCommandNoMerge(createCmd);
@@ -1041,6 +1083,9 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
     }else if (signature.test(scene->getComponentId<FluidSimulationComponent>())){
         // before the Sprite or Mesh it is drawn on: the fluid is what the object is
         return ICON_FA_DROPLET;
+    }else if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
+        // before the Mesh it draws with (a version 2 system's own quad)
+        return ICON_FA_FIRE;
     }else if (signature.test(scene->getComponentId<TilemapComponent>())){
         return ICON_FA_BORDER_ALL;
     }else if (signature.test(scene->getComponentId<SpriteComponent>())){
@@ -1065,6 +1110,15 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
         return ICON_FA_FILE_CODE;
     }else if (signature.test(scene->getComponentId<LayoutGroupComponent>())){
         return ICON_FA_OBJECT_GROUP;
+    }else if (signature.test(scene->getComponentId<OnScreenStickComponent>())){
+        return ICON_FA_GAMEPAD;
+    }else if (signature.test(scene->getComponentId<OnScreenButtonComponent>())){
+        return ICON_FA_CIRCLE_DOT;
+    }else if (signature.test(scene->getComponentId<TouchAreaComponent>())){
+        return ICON_FA_HAND_POINTER;
+    }else if (signature.test(scene->getComponentId<CanvasGroupComponent>()) && !signature.test(scene->getComponentId<UIComponent>())){
+        // a group container (an element with its own group keeps its element's icon)
+        return ICON_FA_LAYER_GROUP;
     }else if (signature.test(scene->getComponentId<ButtonComponent>())){
         return ICON_FA_SQUARE_CARET_RIGHT;
     }else if (signature.test(scene->getComponentId<ScrollbarComponent>())){
@@ -1136,6 +1190,8 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
         return ICON_FA_PERSON_WALKING;
     }else if (signature.test(scene->getComponentId<Rigidbody2DComponent>()) || signature.test(scene->getComponentId<RigidbodyComponent>())){
         return ICON_FA_WEIGHT_HANGING;
+    }else if (signature.test(scene->getComponentId<TrailRendererComponent>())){
+        return ICON_FA_WIND;
     }else if (signature.test(scene->getComponentId<Transform>())){
         return ICON_FA_CUBE; // plain GameObject, Unity's generic cube
     }
@@ -1642,7 +1698,10 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             }
         }
         const std::string pathText = childScenePath.empty() ? "Unsaved scene" : childScenePath.generic_string();
-        if (node.runtimeSceneId != 0) {
+        if (node.isPersistent) {
+            ImGui::SetItemTooltip("DontDestroyOnLoad\nThe GameObjects that survive scene loads (DontDestroyOnLoad)\n"
+                "Running: they go on Stop");
+        } else if (node.runtimeSceneId != 0) {
             ImGui::SetItemTooltip("%s\nPath: %s\nRunning: changes made while playing revert on Stop",
                 node.isRuntimeLayer ? "Scene run by the game" : "Child Scene", pathText.c_str());
         } else if (node.isNotRunning) {
@@ -1950,6 +2009,22 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             }
         }
 
+        // a physics material onto a GameObject: the material of all its colliders, one step
+        if (!allowResourceDragDrop && !node.isScene && !node.isPlayCreated && !project->isAnyScenePlaying()) {
+            const ImGuiPayload* peek = ImGui::GetDragDropPayload();
+            std::vector<std::string> received;
+            if (peek && peek->IsDataType("resource_files")) received = Util::getStringsFromPayload(peek);
+            if (!received.empty() && PhysicsMaterialAssets::isPhysicsMaterialFile(received[0]) && project->isInsideAssetsPath(received[0]) &&
+                ImGui::AcceptDragDropPayload("resource_files")) {
+                std::string error;
+                const std::string assetPath = project->normalizeToAssetsRelative(received[0]).generic_string();
+                if (!PhysicsMaterialAssets::applyToObject(project, getNodeSceneId(node), node.id, assetPath, error)) {
+                    Out::warning("%s", error.c_str());
+                }
+                ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);
+            }
+        }
+
         ImGui::EndDragDropTarget();
     }
 
@@ -2024,7 +2099,14 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     }
 
     if (!node.isScene && ImGui::BeginPopup("ContextMenu")) {
-        if (node.isChildScene) {
+        if (node.isPersistent) {
+            // made by the game, no scene file: nothing to open, show or remove
+            ImGui::TextDisabled("%s", node.name.c_str());
+            ImGui::Separator();
+            ImGui::TextDisabled("Persistent GameObjects (DontDestroyOnLoad)");
+            ImGui::TextDisabled("Running: they go on Stop");
+            ImGui::EndPopup();
+        } else if (node.isChildScene) {
             ImGui::TextDisabled("%s", node.name.c_str());
             ImGui::Separator();
             SceneProject* childScene = project->getScene(node.childSceneId);
@@ -2732,8 +2814,14 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
     }
 
     // scenes the game runs that are no child scene of this one: nested deeper, or added by scripts
+    // (the DontDestroyOnLoad scene goes last, below the played scene's GameObjects)
+    SceneProject* persistentLayer = nullptr;
     for (SceneProject* runtime : runningLayers) {
         if (listedLayers.count(runtime->id) || !runtime->scene) {
+            continue;
+        }
+        if (project->isPersistentPlayScene(runtime->id)) {
+            persistentLayer = runtime;
             continue;
         }
         TreeNode layerNode;
@@ -2942,6 +3030,26 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
             splicedNew = true;
         }
     } while (splicedNew);
+
+    // Unity's DontDestroyOnLoad scene in Play: the persistent GameObjects, live
+    if (persistentLayer) {
+        TreeNode persistentNode;
+        persistentNode.icon = ICON_FA_THUMBTACK;
+        persistentNode.name = persistentLayer->name;
+        persistentNode.isChildScene = true;
+        persistentNode.isRuntimeLayer = true;
+        persistentNode.isPersistent = true;
+        persistentNode.id = project->getPlaySourceSceneId(persistentLayer->id);
+        persistentNode.childSceneId = persistentNode.id;
+        persistentNode.ownerSceneId = sceneProject->id;
+        persistentNode.runtimeSceneId = persistentLayer->id;
+        persistentNode.order = order++;
+        addSceneContents(persistentNode, persistentLayer, persistentLayer->id);
+        if (!root.children.empty()) {
+            root.children.back().separator = true;
+        }
+        root.children.push_back(persistentNode);
+    }
 
     markPrefabScripts(root);
     markPrefabRows(root);

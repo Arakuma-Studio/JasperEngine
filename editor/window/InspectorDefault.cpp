@@ -443,6 +443,12 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::SplineAnimateComponent: return &InspectorWindow::drawSplineAnimateComponent;
         case ComponentType::AnimatorComponent: return &InspectorWindow::drawAnimatorComponent;
         case ComponentType::VertexAnimatorComponent: return &InspectorWindow::drawVertexAnimatorComponent;
+        // upstream's (InspectorUpstream.cpp)
+        case ComponentType::OnScreenStickComponent: return &InspectorWindow::drawOnScreenStickComponent;
+        case ComponentType::OnScreenButtonComponent: return &InspectorWindow::drawOnScreenButtonComponent;
+        case ComponentType::TouchAreaComponent: return &InspectorWindow::drawTouchAreaComponent;
+        case ComponentType::RagdollComponent: return &InspectorWindow::drawRagdollComponent;
+        case ComponentType::CanvasGroupComponent: return &InspectorWindow::drawCanvasGroupComponent;
         default: return nullptr;
     }
 }

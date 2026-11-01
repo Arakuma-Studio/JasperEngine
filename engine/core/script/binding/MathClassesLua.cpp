@@ -483,6 +483,162 @@ void LuaBinding::registerMathClasses(lua_State *L){
         .addFunction("isNaN", &Vector4::isNaN)
         .endClass();
 
+    // SYNC4-ABSORB(Curve): upstream's AnimationCurve / CurveKey / Gradient Lua classes (lines and
+    // trails spec 6.1) are S27's Curve classes here (registerCurveClasses, the same Lua names);
+    // what the Line and Trail Renderers' scripts need from upstream's API is to be ported onto them
+#if 0
+    // Unity AnimationCurve (lines and trails spec 6.1): keys are 1-based here (Lua), a
+    // property of this type on a component is a copy: edit it, then assign it back
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("CurveWrap")
+        .addVariable("Clamp", CurveWrap::Clamp)
+        .addVariable("Loop", CurveWrap::Loop)
+        .addVariable("PingPong", CurveWrap::PingPong)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<CurveKey>("CurveKey")
+        .addConstructor<void(), void(float, float), void(float, float, float, float)>()
+        .addProperty("time", &CurveKey::time, &CurveKey::time)
+        .addProperty("value", &CurveKey::value, &CurveKey::value)
+        // slopes (value per time unit); math.huge is a step
+        .addProperty("inTangent", &CurveKey::inTangent, &CurveKey::inTangent)
+        .addProperty("outTangent", &CurveKey::outTangent, &CurveKey::outTangent)
+        .addFunction("__eq", &equalsLua<CurveKey>)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AnimationCurve>("AnimationCurve")
+        .addConstructor<void()>()
+        .addStaticFunction("constant", &AnimationCurve::constant)
+        .addStaticFunction("linear", &AnimationCurve::linear)
+        .addStaticFunction("easeInOut", &AnimationCurve::easeInOut)
+        .addFunction("evaluate", &AnimationCurve::evaluate)
+        // the key's index (1-based), -1 when a key is at that time already
+        .addFunction("addKey",
+            luabridge::overload<AnimationCurve*, float, float>(+[](AnimationCurve* self, float time, float value) -> int {
+                const int index = self->addKey(CurveKey(time, value));
+                return index < 0 ? -1 : index + 1;
+            }),
+            luabridge::overload<AnimationCurve*, float, float, float, float>(+[](AnimationCurve* self, float time, float value, float inTangent, float outTangent) -> int {
+                const int index = self->addKey(CurveKey(time, value, inTangent, outTangent));
+                return index < 0 ? -1 : index + 1;
+            }),
+            luabridge::overload<AnimationCurve*, const CurveKey&>(+[](AnimationCurve* self, const CurveKey& key) -> int {
+                const int index = self->addKey(key);
+                return index < 0 ? -1 : index + 1;
+            }))
+        // false out of range (1..keyCount)
+        .addFunction("removeKey", +[](AnimationCurve* self, int index) -> bool {
+            return index >= 1 && self->removeKey((size_t)(index - 1));
+        })
+        // moves key `index` (its tangents kept, or the key given): the index it ends at, -1
+        // when out of range or another key is at that time
+        .addFunction("moveKey",
+            luabridge::overload<AnimationCurve*, int, float, float>(+[](AnimationCurve* self, int index, float time, float value) -> int {
+                if (index < 1 || (size_t)index > self->keys.size()) return -1;
+                CurveKey key = self->keys[(size_t)(index - 1)];
+                key.time = time;
+                key.value = value;
+                const int moved = self->moveKey((size_t)(index - 1), key);
+                return moved < 0 ? -1 : moved + 1;
+            }),
+            luabridge::overload<AnimationCurve*, int, const CurveKey&>(+[](AnimationCurve* self, int index, const CurveKey& key) -> int {
+                if (index < 1) return -1;
+                const int moved = self->moveKey((size_t)(index - 1), key);
+                return moved < 0 ? -1 : moved + 1;
+            }))
+        // a copy of key `index` (1-based), nil out of range
+        .addFunction("getKey", +[](const AnimationCurve* self, int index) -> std::optional<CurveKey> {
+            if (index < 1 || (size_t)index > self->keys.size()) return std::nullopt;
+            return self->keys[(size_t)(index - 1)];
+        })
+        .addProperty("keyCount", +[](const AnimationCurve* self) -> int { return (int)self->keys.size(); })
+        // every key (a copy); set it to replace them (sorted, equal times dropped)
+        .addProperty("keys",
+            +[](const AnimationCurve* self) -> std::vector<CurveKey> { return self->keys; },
+            +[](AnimationCurve* self, std::vector<CurveKey> keys) { self->keys = std::move(keys); self->normalize(); })
+        .addProperty("preWrapMode",
+            +[](const AnimationCurve* self) -> CurveWrap { return self->preWrap; },
+            +[](AnimationCurve* self, CurveWrap wrap) { self->preWrap = wrap; })
+        .addProperty("postWrapMode",
+            +[](const AnimationCurve* self) -> CurveWrap { return self->postWrap; },
+            +[](AnimationCurve* self, CurveWrap wrap) { self->postWrap = wrap; })
+        .addFunction("__eq", &equalsLua<AnimationCurve>)
+        .endClass();
+
+    // Unity Gradient: colours given and read in sRGB (as the pickers show them), stored
+    // linear; evaluate gives linear RGBA. Keys are 1-based; at most 8 of each
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("GradientMode")
+        .addVariable("Blend", GradientMode::Blend)
+        .addVariable("Fixed", GradientMode::Fixed)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<GradientColorKey>("GradientColorKey")
+        .addConstructor(
+            +[](void* ptr) { return new (ptr) GradientColorKey(); },
+            +[](void* ptr, float time, const Vector3& color) { return new (ptr) GradientColorKey(time, Color::sRGBToLinear(color)); })
+        .addProperty("time", &GradientColorKey::time, &GradientColorKey::time)
+        // sRGB
+        .addProperty("color",
+            +[](const GradientColorKey* self) -> Vector3 { return Color::linearTosRGB(self->color); },
+            +[](GradientColorKey* self, const Vector3& color) { self->color = Color::sRGBToLinear(color); })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<GradientAlphaKey>("GradientAlphaKey")
+        .addConstructor<void(), void(float, float)>()
+        .addProperty("time", &GradientAlphaKey::time, &GradientAlphaKey::time)
+        .addProperty("alpha", &GradientAlphaKey::alpha, &GradientAlphaKey::alpha)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<Gradient>("Gradient")
+        // white, opaque (a key at each end)
+        .addConstructor<void()>()
+        .addFunction("setKeys", &luaGradientSetKeys)
+        // linear RGBA at t (0..1)
+        .addFunction("evaluate", &Gradient::evaluate)
+        .addProperty("mode",
+            +[](const Gradient* self) -> GradientMode { return self->mode; },
+            +[](Gradient* self, GradientMode mode) { self->mode = mode; })
+        .addProperty("colorKeyCount", +[](const Gradient* self) -> int { return (int)self->colorKeys.size(); })
+        .addProperty("alphaKeyCount", +[](const Gradient* self) -> int { return (int)self->alphaKeys.size(); })
+        // a copy of colour key `index` (1-based; its colour sRGB), nil out of range
+        .addFunction("getColorKey", +[](const Gradient* self, int index) -> std::optional<GradientColorKey> {
+            if (index < 1 || (size_t)index > self->colorKeys.size()) return std::nullopt;
+            return self->colorKeys[(size_t)(index - 1)];
+        })
+        .addFunction("getAlphaKey", +[](const Gradient* self, int index) -> std::optional<GradientAlphaKey> {
+            if (index < 1 || (size_t)index > self->alphaKeys.size()) return std::nullopt;
+            return self->alphaKeys[(size_t)(index - 1)];
+        })
+        .addProperty("colorKeys",
+            +[](const Gradient* self) -> std::vector<GradientColorKey> { return self->colorKeys; },
+            +[](Gradient* self, std::vector<GradientColorKey> keys, lua_State* L) {
+                if (keys.size() > Gradient::MAX_KEYS){
+                    luaL_error(L, "Gradient.colorKeys: at most %d keys (got %d)", (int)Gradient::MAX_KEYS, (int)keys.size());
+                    return;
+                }
+                self->colorKeys = std::move(keys);
+                self->normalize();
+            })
+        .addProperty("alphaKeys",
+            +[](const Gradient* self) -> std::vector<GradientAlphaKey> { return self->alphaKeys; },
+            +[](Gradient* self, std::vector<GradientAlphaKey> keys, lua_State* L) {
+                if (keys.size() > Gradient::MAX_KEYS){
+                    luaL_error(L, "Gradient.alphaKeys: at most %d keys (got %d)", (int)Gradient::MAX_KEYS, (int)keys.size());
+                    return;
+                }
+                self->alphaKeys = std::move(keys);
+                self->normalize();
+            })
+        .addFunction("__eq", &equalsLua<Gradient>)
+        .endClass();
+#endif
+
     luabridge::getGlobalNamespace(L)
         .beginClass<Rect>("Rect")
         .addConstructor<void(), void(float, float, float, float)>()

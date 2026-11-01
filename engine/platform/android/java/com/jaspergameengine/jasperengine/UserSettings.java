@@ -101,4 +101,29 @@ public class UserSettings {
     public void removeKey(String key) {
         sharedPref.edit().remove(key).apply();
     }
+
+    public boolean hasKey(String key) {
+        try {
+            return sharedPref.contains(key);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+
+        return false;
+    }
+
+    public void removeAllKeys() {
+        sharedPref.edit().clear().apply();
+    }
+
+    // commit() writes synchronously, after every apply() still pending
+    public boolean save() {
+        try {
+            return sharedPref.edit().commit();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+
+        return false;
+    }
 }

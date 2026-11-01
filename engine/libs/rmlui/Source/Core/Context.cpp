@@ -251,10 +251,14 @@ bool Context::Render()
 	root->Render();
 
 	// Render the cursor proxy so that any attached drag clone will be rendered below the cursor.
-	if (drag_clone)
+	bool pointer_clones = false;
+	for (const auto& pair : pointers)
+		pointer_clones = pointer_clones || pair.second.drag_clone;
+	if (drag_clone || pointer_clones)
 	{
 		// (fork, S16-F6: the proxy moves)
 		render_manager->ResetClipMemo();
+		PositionPointerDragClones();
 		static_cast<ElementDocument&>(*cursor_proxy).UpdateDocument();
 		cursor_proxy->SetOffset(
 			Vector2f((float)Math::Clamp(mouse_position.x, 0, dimensions.x), (float)Math::Clamp(mouse_position.y, 0, dimensions.y)), nullptr);
@@ -399,6 +403,34 @@ void Context::UnloadDocument(ElementDocument* _document)
 		drag_hover = nullptr;
 	}
 
+	// the touch and pen pointers drop the document's elements, without events (fork, engine-gaps G5)
+	auto in_document = [document](Element* element) { return element && element->GetOwnerDocument() == document; };
+	if (in_document(mouse_capture))
+		mouse_capture = nullptr;
+	if (in_document(mouse_pending_capture))
+		mouse_pending_capture = nullptr;
+	for (auto it = pointers.begin(); it != pointers.end();)
+	{
+		PointerState& state = it->second;
+		if (in_document(state.hover) || in_document(state.active) || in_document(state.capture) || in_document(state.drag))
+		{
+			for (Element* element : state.active_chain)
+				RemoveActiveRef(element);
+			for (Element* element : state.hover_chain)
+				RemoveHoverRef(element);
+			if (state.drag_clone)
+				cursor_proxy->RemoveChild(state.drag_clone);
+			it = pointers.erase(it);
+		}
+		else
+			++it;
+	}
+	for (auto it = hover_refs.begin(); it != hover_refs.end();)
+		it = in_document(it->first) ? hover_refs.erase(it) : std::next(it);
+	for (auto it = active_refs.begin(); it != active_refs.end();)
+		it = in_document(it->first) ? active_refs.erase(it) : std::next(it);
+	active_chain.erase(std::remove_if(active_chain.begin(), active_chain.end(), in_document), active_chain.end());
+
 	// Rebuild the hover state.
 	UpdateHoverChain(mouse_position);
 }
@@ -413,6 +445,12 @@ void Context::UnloadAllDocuments()
 	active_chain.clear();
 	hover_chain.clear();
 	drag_hover_chain.clear();
+	pointers.clear();
+	hover_refs.clear();
+	active_refs.clear();
+	mouse_capture = nullptr;
+	mouse_pending_capture = nullptr;
+	mouse_pending_capture_set = false;
 }
 
 void Context::EnableMouseCursor(bool enable)
@@ -620,19 +658,22 @@ bool Context::ProcessMouseMove(int x, int y, int key_modifier_state)
 	mouse_active = true;
 
 	// Update the current hover chain. This will send all necessary 'onmouseout', 'onmouseover', 'ondragout' and 'ondragover' messages.
+	ProcessPendingCapture(MousePointerId);
 	Dictionary parameters, drag_parameters;
 	UpdateHoverChain(old_mouse_position, key_modifier_state, &parameters, &drag_parameters);
 
-	// Dispatch any 'onmousemove' events.
+	// Dispatch any 'onmousemove' events: 'pointermove' first, to the capture or the hover (fork, engine-gaps G5-2).
 	if (mouse_moved)
 	{
-		if (hover)
+		if (Element* target = GetPointerTarget(MousePointerId))
 		{
-			hover->DispatchEvent(EventId::Mousemove, parameters);
-
-			if (drag_hover && drag_verbose)
-				drag_hover->DispatchEvent(EventId::Dragmove, drag_parameters);
+			ObserverPtr<Element> target_obs = target->GetObserverPtr();
+			target->DispatchEvent(EventId::Pointermove, parameters);
+			if (target_obs)
+				target_obs->DispatchEvent(EventId::Mousemove, parameters);
 		}
+		if (hover && drag_hover && drag_verbose)
+			drag_hover->DispatchEvent(EventId::Dragmove, drag_parameters);
 	}
 
 	return !IsMouseInteracting();
@@ -654,9 +695,17 @@ static Element* FindFocusElement(Element* element)
 
 bool Context::ProcessMouseButtonDown(int button_index, int key_modifier_state)
 {
+	// fork (engine-gaps G5-2): 'pointerdown' for the first button pressed (a later one: 'pointermove', DOM chorded
+	// buttons), to the capture or the hover; prevented, it suppresses the compatibility 'mousedown' and the focus change
+	const bool first_button = (mouse_buttons == 0);
+	if (button_index >= 0 && button_index < 3)
+		mouse_buttons |= (button_index == 0 ? 1 : button_index == 1 ? 2 : 4);
+	ProcessPendingCapture(MousePointerId);
 	Dictionary parameters;
-	GenerateMouseEventParameters(parameters, button_index);
-	GenerateKeyModifierEventParameters(parameters, key_modifier_state);
+	GenerateMousePointerParameters(parameters, button_index, key_modifier_state);
+	bool pointer_prevented = false;
+	if (Element* target = GetPointerTarget(MousePointerId))
+		target->DispatchEvent(first_button ? EventId::Pointerdown : EventId::Pointermove, parameters, &pointer_prevented);
 
 	bool propagate = true;
 
@@ -668,7 +717,7 @@ bool Context::ProcessMouseButtonDown(int button_index, int key_modifier_state)
 		if (hover)
 		{
 			new_focus = FindFocusElement(hover);
-			if (new_focus && new_focus != focus)
+			if (!pointer_prevented && new_focus && new_focus != focus)
 			{
 				if (!new_focus->Focus())
 					return !IsMouseInteracting();
@@ -679,7 +728,7 @@ bool Context::ProcessMouseButtonDown(int button_index, int key_modifier_state)
 		active = new_focus;
 
 		// Call 'onmousedown' on every item in the hover chain, and copy the hover chain to the active chain.
-		if (hover)
+		if (hover && !pointer_prevented)
 			propagate = hover->DispatchEvent(EventId::Mousedown, parameters);
 
 		if (propagate)
@@ -709,7 +758,15 @@ bool Context::ProcessMouseButtonDown(int button_index, int key_modifier_state)
 
 		last_click_mouse_position = mouse_position;
 
-		active_chain.insert(active_chain.end(), hover_chain.begin(), hover_chain.end());
+		// ':active' where the point is within the element, counted with the other pointers' (G5-1)
+		for (Element* element : hover_chain)
+		{
+			if (element->IsPointWithinElement(Vector2f(mouse_position)))
+			{
+				active_chain.push_back(element);
+				AddActiveRef(element);
+			}
+		}
 
 		if (propagate)
 		{
@@ -733,7 +790,7 @@ bool Context::ProcessMouseButtonDown(int button_index, int key_modifier_state)
 	else
 	{
 		// Not the primary mouse button, so we're not doing any special processing.
-		if (hover)
+		if (hover && !pointer_prevented)
 			propagate = hover->DispatchEvent(EventId::Mousedown, parameters);
 	}
 
@@ -758,20 +815,29 @@ bool Context::ProcessMouseButtonDown(int button_index, int key_modifier_state)
 
 bool Context::ProcessMouseButtonUp(int button_index, int key_modifier_state)
 {
-	Dictionary parameters;
-	GenerateMouseEventParameters(parameters, button_index);
-	GenerateKeyModifierEventParameters(parameters, key_modifier_state);
-
 	// We want to return the interaction state before handling the mouse up events, so that any active element that is released is considered to
 	// capture the event.
 	const bool result = !IsMouseInteracting();
 
+	// fork (engine-gaps G5-2/3): 'pointerup' when the last button goes (else 'pointermove'), then the compatibility
+	// 'mouseup', to the capture or the hover; the capture goes with the last button
+	ProcessPendingCapture(MousePointerId);
+	if (button_index >= 0 && button_index < 3)
+		mouse_buttons &= ~(button_index == 0 ? 1 : button_index == 1 ? 2 : 4);
+	const bool last_button = (mouse_buttons == 0);
+	Dictionary parameters;
+	GenerateMousePointerParameters(parameters, button_index, key_modifier_state);
+	Element* up_target = GetPointerTarget(MousePointerId);
+	ObserverPtr<Element> up_target_obs = up_target ? up_target->GetObserverPtr() : ObserverPtr<Element>();
+	if (up_target)
+		up_target->DispatchEvent(last_button ? EventId::Pointerup : EventId::Pointermove, parameters);
+
 	// Process primary click.
 	if (button_index == 0)
 	{
-		// The elements in the new hover chain have the 'onmouseup' event called on them.
-		if (hover)
-			hover->DispatchEvent(EventId::Mouseup, parameters);
+		// The elements in the new hover chain have the 'onmouseup' event called on them (the capture's when captured).
+		if (mouse_capture ? up_target_obs.get() : hover)
+			(mouse_capture ? up_target_obs.get() : hover)->DispatchEvent(EventId::Mouseup, parameters);
 
 		// If the active element (the one that was being hovered over when the mouse button was pressed) is still being
 		// hovered over, we click it.
@@ -826,6 +892,13 @@ bool Context::ProcessMouseButtonUp(int button_index, int key_modifier_state)
 	// If we have autoscrolled while holding the middle mouse button, release the autoscroll mode now.
 	if (scroll_controller->HasAutoscrollMoved())
 		scroll_controller->Reset();
+
+	if (last_button && (mouse_capture || mouse_pending_capture_set))
+	{
+		mouse_pending_capture = nullptr;
+		mouse_pending_capture_set = true;
+		ProcessPendingCapture(MousePointerId);
+	}
 
 	return result;
 }
@@ -883,219 +956,6 @@ bool Context::ProcessMouseLeave()
 bool Context::IsMouseInteracting() const
 {
 	return (hover && hover != root.get()) || (active && active != root.get()) || scroll_controller->GetMode() == ScrollController::Mode::Autoscroll;
-}
-
-Context::TouchState* Context::LookupTouch(TouchId identifier)
-{
-	auto touch_it = touch_states.find(identifier);
-	return touch_it != touch_states.end() ? &touch_it->second : nullptr;
-}
-
-bool Context::ProcessTouchStart(const TouchList& touches, int key_modifier_state)
-{
-	bool result = true;
-	for (const auto& touch : touches)
-		result &= ProcessTouchStart(touch, key_modifier_state);
-	return result;
-}
-
-bool Context::ProcessTouchMove(const TouchList& touches, int key_modifier_state)
-{
-	bool result = true;
-	for (const auto& touch : touches)
-		result &= ProcessTouchMove(touch, key_modifier_state);
-	return result;
-}
-
-bool Context::ProcessTouchEnd(const TouchList& touches, int key_modifier_state)
-{
-	bool result = true;
-	for (const auto& touch : touches)
-		result &= ProcessTouchEnd(touch, key_modifier_state);
-	return result;
-}
-
-bool Context::ProcessTouchCancel(const TouchList& touches)
-{
-	bool result = true;
-	for (const auto& touch : touches)
-		result &= ProcessTouchCancel(touch);
-	return result;
-}
-
-bool Context::ProcessTouchStart(const Touch& touch, int key_modifier_state)
-{
-	TouchState* state = LookupTouch(touch.identifier);
-	RMLUI_ASSERTMSG(state == nullptr, "Receiving touch start event for an already started touch.");
-	if (!state)
-	{
-		auto it_inserted = touch_states.emplace(touch.identifier, TouchState()).first;
-		state = &it_inserted->second;
-	}
-
-	state->start_position = touch.position;
-	state->inertia_position = touch.position;
-	state->last_position = touch.position;
-	state->scrolling_start_time_x = 0;
-	state->scrolling_start_time_y = 0;
-	state->scrolling_last_time = GetSystemInterface()->GetElapsedTime();
-
-	Element* touch_element = GetElementAtPoint(touch.position);
-	state->scroll_container = touch_element ? touch_element->GetClosestScrollableContainer() : nullptr;
-
-	// reset any scrolling when we touch the element
-	if (state->scroll_container && scroll_controller->GetTarget() == state->scroll_container)
-		scroll_controller->Reset();
-
-	ProcessMouseMove(static_cast<int>(touch.position.x), static_cast<int>(touch.position.y), key_modifier_state);
-
-	// always assume touch press/release events are handled as left mouse button
-	const bool result = ProcessMouseButtonDown(0, key_modifier_state);
-
-	// Fork (P7-H): inside a scroll container a touch scrolls; a draggable element under it drags after a long press.
-	state->drag_candidate = nullptr;
-	if (drag && !drag_started && state->scroll_container && drag != state->scroll_container &&
-		state->scroll_container->IsPointWithinElement(touch.position))
-	{
-		state->drag_candidate = drag->GetObserverPtr();
-		state->drag_candidate_verbose = drag_verbose;
-		state->start_time = GetSystemInterface()->GetElapsedTime();
-		drag = nullptr;
-	}
-	return result;
-}
-
-bool Context::ProcessTouchMove(const Touch& touch, int key_modifier_state)
-{
-	TouchState* state = LookupTouch(touch.identifier);
-	if (!state)
-		return true;
-
-	state->scrolling_last_time = GetSystemInterface()->GetElapsedTime();
-
-	// Fork (P7-H): a long press without moving away makes the waiting element the drag; moving away first lets the
-	// touch scroll.
-	if (state->drag_candidate)
-	{
-		const float long_press_distance = TOUCH_LONG_PRESS_DISTANCE * density_independent_pixel_ratio;
-		const bool moved_away = (touch.position - state->start_position).SquaredMagnitude() > long_press_distance * long_press_distance;
-		const bool long_press = state->scrolling_last_time - state->start_time >= TOUCH_LONG_PRESS_TIME;
-		if (long_press && !moved_away && !drag)
-		{
-			drag = state->drag_candidate.get();
-			drag_verbose = state->drag_candidate_verbose;
-			drag_started = false;
-			state->drag_candidate = nullptr;
-		}
-		else if (moved_away)
-			state->drag_candidate = nullptr;
-	}
-
-	if (state->scroll_container)
-	{
-		const Vector2f delta = touch.position - state->last_position;
-
-		if (drag || state->drag_candidate)
-		{
-			// Don't scroll and reset scrolling state when dragging any element (scrollbars and others), or while a
-			// long press may still start one (fork P7-H)
-			state->inertia_position = touch.position;
-			state->last_position = touch.position;
-			state->scrolling_start_time_x = 0;
-			state->scrolling_start_time_y = 0;
-		}
-		else if (delta.x != 0 || delta.y != 0)
-		{
-			// Use instant scrolling when touch is pressed even when default scroll behavior is smooth.
-			scroll_controller->InstantScrollOnTarget(state->scroll_container, -delta);
-
-			const double current_time = GetSystemInterface()->GetElapsedTime();
-
-			enum { Horizontal = 0, Vertical = 1 };
-			for (int axis : {Horizontal, Vertical})
-			{
-				bool& state_scrolling_positive = (axis == Horizontal ? state->scrolling_right : state->scrolling_down);
-				double& state_scrolling_start_time = (axis == Horizontal ? state->scrolling_start_time_x : state->scrolling_start_time_y);
-
-				// Time set to 0 means no touch move events happened before and direction is unclear.
-				const bool scroll_start = (state_scrolling_start_time == 0);
-
-				// If the user changes direction, reset the start time and position.
-				const bool going_positive = (delta[axis] > 0);
-				if (delta[axis] != 0 && (going_positive != state_scrolling_positive || scroll_start))
-				{
-					state->inertia_position[axis] = touch.position[axis];
-					state_scrolling_positive = going_positive;
-					state_scrolling_start_time = state->scrolling_last_time;
-				}
-				else
-				{
-					// Move inertia position towards end position with a weight of e^-kt to better capture and
-					// calculate velocity of the very last touch movements before touch release.
-					const float elapsed_time = static_cast<float>(current_time - state_scrolling_start_time);
-					const float weight = Math::Exp(-elapsed_time * TOUCH_MOVEMENT_DECAY_RATE);
-
-					state->inertia_position[axis] = touch.position[axis] - (touch.position[axis] - state->inertia_position[axis]) * weight;
-					state_scrolling_start_time = current_time - (current_time - state_scrolling_start_time) * weight;
-				}
-			}
-
-			const float touch_max_distance = TOUCH_CLICK_MAX_DISTANCE * density_independent_pixel_ratio;
-			const Vector2f delta_from_start = touch.position - state->start_position;
-			if (delta_from_start.SquaredMagnitude() >= touch_max_distance * touch_max_distance)
-				ResetActiveChain();
-		}
-	}
-
-	state->last_position = touch.position;
-
-	return ProcessMouseMove(static_cast<int>(touch.position.x), static_cast<int>(touch.position.y), key_modifier_state);
-}
-
-bool Context::ProcessTouchEnd(const Touch& touch, int key_modifier_state)
-{
-	TouchState* state = LookupTouch(touch.identifier);
-	if (!state)
-		return true;
-
-	if (state->scroll_container)
-	{
-		double current_time = GetSystemInterface()->GetElapsedTime();
-		double time_since_last_move = current_time - state->scrolling_last_time;
-		if (time_since_last_move < SCROLL_INERTIA_DELAY)
-		{
-			// apply scrolling inertia
-			Vector2f delta = touch.position - state->inertia_position;
-
-			Vector2f velocity = -delta;
-			float elapsed_time_x = static_cast<float>(current_time - state->scrolling_start_time_x);
-			float elapsed_time_y = static_cast<float>(current_time - state->scrolling_start_time_y);
-			if (elapsed_time_x > 0)
-				velocity.x /= elapsed_time_x;
-			if (elapsed_time_y > 0)
-				velocity.y /= elapsed_time_y;
-
-			scroll_controller->ActivateInertia(state->scroll_container, velocity);
-		}
-	}
-
-	touch_states.erase(touch.identifier);
-
-	ProcessMouseMove(static_cast<int>(touch.position.x), static_cast<int>(touch.position.y), key_modifier_state);
-
-	// always assume touch press/release events are handled as left mouse button
-	return ProcessMouseButtonUp(0, key_modifier_state);
-}
-
-bool Context::ProcessTouchCancel(const Touch& touch)
-{
-	TouchState* state = LookupTouch(touch.identifier);
-	if (!state)
-		return false;
-
-	touch_states.erase(touch.identifier);
-
-	return ProcessMouseButtonUp(0, 0);
 }
 
 void Context::SetDefaultScrollBehavior(ScrollBehavior scroll_behavior, float speed_factor)
@@ -1242,14 +1102,8 @@ void Context::OnElementDetach(Element* element)
 	if (scroll_controller->GetTarget() == element)
 		scroll_controller->Reset();
 
-	// Clear TouchState if we're touching element
-	for (auto touch_it = touch_states.begin(); touch_it != touch_states.end();)
-	{
-		if (touch_it->second.scroll_container == element)
-			touch_it = touch_states.erase(touch_it);
-		else
-			++touch_it;
-	}
+	// the touch and pen pointers, the captures and the counted pseudo-classes (fork, engine-gaps G5)
+	DetachFromPointers(element);
 }
 
 bool Context::OnFocusChange(Element* new_focus, bool focus_visible)
@@ -1361,9 +1215,8 @@ void Context::UpdateHoverChain(Vector2i old_mouse_position, int key_modifier_sta
 	Dictionary& parameters = out_parameters ? *out_parameters : local_parameters;
 	Dictionary& drag_parameters = out_drag_parameters ? *out_drag_parameters : local_drag_parameters;
 
-	// Generate the parameters for the mouse events (there could be a few!).
-	GenerateMouseEventParameters(parameters);
-	GenerateKeyModifierEventParameters(parameters, key_modifier_state);
+	// Generate the parameters for the mouse events (there could be a few!), with the pointer's (fork, engine-gaps G5-2).
+	GenerateMousePointerParameters(parameters, -1, key_modifier_state);
 
 	GenerateMouseEventParameters(drag_parameters);
 	GenerateDragEventParameters(drag_parameters);
@@ -1405,6 +1258,7 @@ void Context::UpdateHoverChain(Vector2i old_mouse_position, int key_modifier_sta
 		}
 	}
 
+	Element* old_hover = hover;
 	hover = mouse_active ? GetElementAtPoint(position) : nullptr;
 
 	if (enable_cursor)
@@ -1434,9 +1288,9 @@ void Context::UpdateHoverChain(Vector2i old_mouse_position, int key_modifier_sta
 		element = element->GetParentNode();
 	}
 
-	// Send mouseout / mouseover events.
-	SendEvents(hover_chain, new_hover_chain, EventId::Mouseout, parameters);
-	SendEvents(new_hover_chain, hover_chain, EventId::Mouseover, parameters);
+	// Send pointerout / mouseout, pointerleave / mouseleave, pointerover / mouseover, pointerenter / mouseenter events, with
+	// the counted ':hover' (fork, engine-gaps G5-1/2). The new chain is swapped in.
+	SwapHoverChain(old_hover, hover, hover_chain, new_hover_chain, parameters, true);
 
 	// Send out drag events.
 	if (drag && mouse_active)
@@ -1460,17 +1314,15 @@ void Context::UpdateHoverChain(Vector2i old_mouse_position, int key_modifier_sta
 
 		drag_hover_chain.swap(new_drag_hover_chain);
 	}
-
-	// Swap the new chain in.
-	hover_chain.swap(new_hover_chain);
 }
 
 void Context::ResetActiveChain()
 {
 	// Unset the 'active' pseudo-class on all the elements in the active chain; because they may not necessarily
-	// have had 'onmouseup' called on them, we can't guarantee this has happened already.
+	// have had 'onmouseup' called on them, we can't guarantee this has happened already. Counted with the other
+	// pointers' (fork, engine-gaps G5-1).
 	for (Element* element : active_chain)
-		element->SetPseudoClass("active", false);
+		RemoveActiveRef(element);
 
 	active_chain.clear();
 	active = nullptr;

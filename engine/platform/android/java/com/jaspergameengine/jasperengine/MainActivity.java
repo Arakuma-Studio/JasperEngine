@@ -98,12 +98,28 @@ public class MainActivity extends GameActivity {
 		});
 
 		super.onCreate(savedInstanceState);
+
+		// display rotation and device orientation listeners (Screen.orientation, Input.deviceOrientation)
+		JasperPlatform.onCreate(this);
 	}
 
 	@Override
 	protected void onResume() {
 		super.onResume();
 		hideSystemUI();
+		JasperPlatform.onResume(this);
+	}
+
+	@Override
+	protected void onPause() {
+		JasperPlatform.onPause(this);
+		super.onPause();
+	}
+
+	@Override
+	protected void onDestroy() {
+		JasperPlatform.onDestroy(this);
+		super.onDestroy();
 	}
 
 	public UserSettings getUserSettings() {

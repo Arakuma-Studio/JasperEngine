@@ -251,6 +251,30 @@ std::string editor::Factory::formatShaderUniforms(const ShaderUniformValues& uni
     return out + "}";
 }
 
+std::string editor::Factory::formatShaderGlobalBindings(const ShaderGlobalBindings& bindings) {
+    std::string out = "{";
+    for (size_t i = 0; i < bindings.size(); i++) {
+        if (i > 0)
+            out += ", ";
+        out += "{" + formatString(bindings[i].first) + ", " + formatString(bindings[i].second) + "}";
+    }
+    return out + "}";
+}
+
+std::string editor::Factory::formatShaderGlobalDecl(const ShaderGlobalDecl& decl) {
+    static const char* const typeNames[] = {"Float", "Vector2", "Vector3", "Vector4", "Color", "Matrix4", "FloatArray",
+                                            "Vector4Array", "Texture2D", "TextureCube"};
+    std::string values = "{";
+    for (size_t i = 0; i < decl.defaultValue.size(); i++) {
+        if (i > 0)
+            values += ", ";
+        values += formatVector4(decl.defaultValue[i]);
+    }
+    values += "}";
+    return "ShaderGlobalDecl{" + formatString(decl.name) + ", ShaderGlobalType::" + typeNames[static_cast<int>(decl.type)] + ", " +
+           std::to_string(decl.arraySize) + "u, " + values + ", " + formatString(decl.defaultTexture) + "}";
+}
+
 std::string editor::Factory::formatShaderTextures(int indentSpaces, const std::vector<std::pair<std::string, Texture>>& textures, const std::string& target, const fs::path& projectPath) {
     std::ostringstream code;
     const std::string ind = indentation(indentSpaces);
@@ -455,6 +479,8 @@ std::string editor::Factory::formatMaterialShaderLibrary(int indentSpaces, const
     code << formatShaderTextures(indentSpaces, material.shaderTextures, target + ".shaderTextures", projectPath);
     if (!material.shaderFeatures.empty())
         code << ind << target << ".shaderFeatures = " << formatShaderFeatures(material.shaderFeatures) << ";\n";
+    if (!material.shaderGlobalBindings.empty())
+        code << ind << target << ".shaderGlobalBindings = " << formatShaderGlobalBindings(material.shaderGlobalBindings) << ";\n";
     if (material.blendMode != MaterialBlendMode::AUTO)
         code << ind << target << ".blendMode = " << formatBlendMode(material.blendMode) << ";\n";
     if (material.cullMode != MaterialCullMode::AUTO)
@@ -585,6 +611,128 @@ std::string editor::Factory::formatFloat(float value) {
     oss << std::fixed << std::setprecision(6);
     oss << sanitizeFiniteNumber(value) << "f";
     return oss.str();
+}
+
+namespace {
+
+    std::string formatCurveNumber(float value) {
+        if (std::isinf(value)) return value > 0.0f ? "AnimationCurve::STEP" : "-AnimationCurve::STEP";
+        return editor::Factory::formatFloat(value);
+    }
+
+    const char* formatCurveWrap(CurveWrap wrap) {
+        switch (wrap) {
+            case CurveWrap::Loop: return "CurveWrap::Loop";
+            case CurveWrap::PingPong: return "CurveWrap::PingPong";
+            default: return "CurveWrap::Clamp";
+        }
+    }
+
+    const char* formatLineWidthUnit(LineWidthUnit unit) {
+        return unit == LineWidthUnit::Pixels ? "LineWidthUnit::Pixels" : "LineWidthUnit::World";
+    }
+
+    const char* formatLineAlignment(LineAlignment alignment) {
+        return alignment == LineAlignment::TransformZ ? "LineAlignment::TransformZ" : "LineAlignment::View";
+    }
+
+    const char* formatLineTextureMode(LineTextureMode mode) {
+        switch (mode) {
+            case LineTextureMode::Tile: return "LineTextureMode::Tile";
+            case LineTextureMode::DistributePerSegment: return "LineTextureMode::DistributePerSegment";
+            case LineTextureMode::RepeatPerSegment: return "LineTextureMode::RepeatPerSegment";
+            default: return "LineTextureMode::Stretch";
+        }
+    }
+
+    // the ribbon settings Line and Trail Renderers share, each away from its default
+    template<typename T>
+    void formatRibbonFields(std::ostringstream& code, const std::string& ind, const std::string& var, const T& component, const T& defaults) {
+        using editor::Factory;
+        if (component.widthMultiplier != defaults.widthMultiplier)
+            code << ind << var << ".widthMultiplier = " << Factory::formatFloat(component.widthMultiplier) << ";\n";
+        if (component.widthCurve != defaults.widthCurve)
+            code << ind << var << ".widthCurve = " << Factory::formatCurve(component.widthCurve) << ";\n";
+        if (component.widthUnit != defaults.widthUnit)
+            code << ind << var << ".widthUnit = " << formatLineWidthUnit(component.widthUnit) << ";\n";
+        if (component.colorGradient != defaults.colorGradient)
+            code << ind << var << ".colorGradient = " << Factory::formatGradient(component.colorGradient) << ";\n";
+        if (component.numCornerVertices != defaults.numCornerVertices)
+            code << ind << var << ".numCornerVertices = " << std::to_string(component.numCornerVertices) << ";\n";
+        if (component.numCapVertices != defaults.numCapVertices)
+            code << ind << var << ".numCapVertices = " << std::to_string(component.numCapVertices) << ";\n";
+        if (component.alignment != defaults.alignment)
+            code << ind << var << ".alignment = " << formatLineAlignment(component.alignment) << ";\n";
+        if (component.textureMode != defaults.textureMode)
+            code << ind << var << ".textureMode = " << formatLineTextureMode(component.textureMode) << ";\n";
+        if (component.textureScale != defaults.textureScale)
+            code << ind << var << ".textureScale = Vector2(" << Factory::formatFloat(component.textureScale.x) << ", " << Factory::formatFloat(component.textureScale.y) << ");\n";
+        if (component.sortPriority != defaults.sortPriority)
+            code << ind << var << ".sortPriority = " << std::to_string(component.sortPriority) << ";\n";
+    }
+
+}
+
+std::string editor::Factory::formatCurve(const AnimationCurve& curve) {
+    std::ostringstream code;
+    code << "AnimationCurve({";
+    for (size_t i = 0; i < curve.keys.size(); i++) {
+        const CurveKey& key = curve.keys[i];
+        if (i > 0) code << ", ";
+        code << "CurveKey(" << formatFloat(key.time) << ", " << formatFloat(key.value) << ", "
+             << formatCurveNumber(key.inTangent) << ", " << formatCurveNumber(key.outTangent) << ")";
+    }
+    code << "}, " << formatCurveWrap(curve.preWrap) << ", " << formatCurveWrap(curve.postWrap) << ")";
+    return code.str();
+}
+
+std::string editor::Factory::formatGradient(const Gradient& gradient) {
+    std::ostringstream code;
+    code << "Gradient({";
+    for (size_t i = 0; i < gradient.colorKeys.size(); i++) {
+        if (i > 0) code << ", ";
+        code << "GradientColorKey(" << formatFloat(gradient.colorKeys[i].time) << ", " << formatVector3(gradient.colorKeys[i].color) << ")";
+    }
+    code << "}, {";
+    for (size_t i = 0; i < gradient.alphaKeys.size(); i++) {
+        if (i > 0) code << ", ";
+        code << "GradientAlphaKey(" << formatFloat(gradient.alphaKeys[i].time) << ", " << formatFloat(gradient.alphaKeys[i].alpha) << ")";
+    }
+    code << "}, " << (gradient.mode == GradientMode::Fixed ? "GradientMode::Fixed" : "GradientMode::Blend") << ")";
+    return code.str();
+}
+
+std::string editor::Factory::formatMinMaxCurve(const MinMaxCurve& curve) {
+    switch (curve.mode) {
+        case ParticleSystemCurveMode::Constant:
+            return "MinMaxCurve(" + formatFloat(curve.constant) + ")";
+        case ParticleSystemCurveMode::TwoConstants:
+            return "MinMaxCurve::between(" + formatFloat(curve.constantMin) + ", " + formatFloat(curve.constant) + ")";
+        case ParticleSystemCurveMode::Curve:
+            return "MinMaxCurve::fromCurve(" + formatCurve(curve.curve) + ", " + formatFloat(curve.constant) + ")";
+        case ParticleSystemCurveMode::TwoCurves:
+            return "MinMaxCurve::between(" + formatCurve(curve.curveMin) + ", " + formatCurve(curve.curve) + ", " + formatFloat(curve.constant) + ")";
+    }
+    return "MinMaxCurve(" + formatFloat(curve.constant) + ")";
+}
+
+std::string editor::Factory::formatMinMaxGradient(const MinMaxGradient& gradient) {
+    switch (gradient.mode) {
+        case ParticleSystemGradientMode::Color:
+            return "MinMaxGradient::fromColor(" + formatVector4(gradient.color) + ")";
+        case ParticleSystemGradientMode::TwoColors:
+            return "MinMaxGradient::between(" + formatVector4(gradient.colorMin) + ", " + formatVector4(gradient.color) + ")";
+        case ParticleSystemGradientMode::Gradient:
+            return "MinMaxGradient::fromGradient(" + formatGradient(gradient.gradient) + ")";
+        case ParticleSystemGradientMode::TwoGradients:
+            return "MinMaxGradient::between(" + formatGradient(gradient.gradientMin) + ", " + formatGradient(gradient.gradient) + ")";
+        case ParticleSystemGradientMode::RandomColor: {
+            // a gradient read at a random point
+            return "[]{ MinMaxGradient g = MinMaxGradient::fromGradient(" + formatGradient(gradient.gradient) +
+                   "); g.mode = ParticleSystemGradientMode::RandomColor; return g; }()";
+        }
+    }
+    return "MinMaxGradient::fromColor(" + formatVector4(gradient.color) + ")";
 }
 
 std::string editor::Factory::formatPositiveFloat(float value) {
@@ -718,6 +866,9 @@ std::string editor::Factory::formatAttributeType(AttributeType type) {
         case AttributeType::VAT_INDEX: return "AttributeType::VAT_INDEX";
         case AttributeType::INSTANCEVAT0: return "AttributeType::INSTANCEVAT0";
         case AttributeType::INSTANCEVAT1: return "AttributeType::INSTANCEVAT1";
+        case AttributeType::LINETANGENTIN: return "AttributeType::LINETANGENTIN";
+        case AttributeType::LINETANGENTOUT: return "AttributeType::LINETANGENTOUT";
+        case AttributeType::LINEPARAMS: return "AttributeType::LINEPARAMS";
         default: return "AttributeType::POSITION";
     }
 }
@@ -1031,6 +1182,8 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
     code << ind << "mesh.autoTransparency = " << formatBool(mesh.autoTransparency) << ";\n";
     code << ind << "mesh.cullingMode = " << formatCullingMode(mesh.cullingMode) << ";\n";
     code << ind << "mesh.windingOrder = " << formatWindingOrder(mesh.windingOrder) << ";\n";
+    if (mesh.mirroredWinding)
+        code << ind << "mesh.mirroredWinding = true;\n";
     // a model load sets these again from its file
     if (mesh.normAdjustJoint != 1.0f)
         code << ind << "mesh.normAdjustJoint = " << formatFloat(mesh.normAdjustJoint) << ";\n";
@@ -1281,6 +1434,8 @@ std::string editor::Factory::createUIComponent(int indentSpaces, EntityRegistry*
         code << ind << "ui.customShader = " << formatString(ui.customShader) << ";\n";
     if (!ui.shaderUniforms.empty())
         code << ind << "ui.shaderUniforms = " << formatShaderUniforms(ui.shaderUniforms) << ";\n";
+    if (!ui.shaderGlobalBindings.empty())
+        code << ind << "ui.shaderGlobalBindings = " << formatShaderGlobalBindings(ui.shaderGlobalBindings) << ";\n";
     code << formatComponentShaderLibrary(indentSpaces, ui.shaderTextures, ui.shaderFeatures, &ui.blendMode, &ui.depthWrite, "ui", projectPath);
     code << formatStencilAndColorWrite(indentSpaces, ui.stencil, ui.colorWrite, "ui");
     code << formatTexture(indentSpaces, ui.texture, "ui.texture", projectPath);
@@ -1595,6 +1750,8 @@ std::string editor::Factory::createSkyboxComponent(int indentSpaces, EntityRegis
         code << ind << "sky.customShader = " << formatString(sky.customShader) << ";\n";
     if (!sky.shaderUniforms.empty())
         code << ind << "sky.shaderUniforms = " << formatShaderUniforms(sky.shaderUniforms) << ";\n";
+    if (!sky.shaderGlobalBindings.empty())
+        code << ind << "sky.shaderGlobalBindings = " << formatShaderGlobalBindings(sky.shaderGlobalBindings) << ";\n";
     code << formatComponentShaderLibrary(indentSpaces, sky.shaderTextures, sky.shaderFeatures, nullptr, nullptr, "sky", projectPath);
 
     addComponentCode(code, ind, sceneName, entityName, entity, "SkyboxComponent", "sky", assignExisting);
@@ -1630,35 +1787,71 @@ std::string editor::Factory::createRigidbody2DComponent(int indentSpaces, Entity
     Rigidbody2DComponent& body = scene->getComponent<Rigidbody2DComponent>(entity);
     std::ostringstream code;
     const std::string ind = indentation(indentSpaces);
+    const Rigidbody2DComponent def;
+    const Collider2D defCollider;
     code << ind << "Rigidbody2DComponent rigidbody2d;\n";
     code << ind << "rigidbody2d.type = " << formatBodyType(body.type) << ";\n";
     code << ind << "rigidbody2d.needReloadBody = " << formatBool(body.needReloadBody) << ";\n";
     code << ind << "rigidbody2d.needUpdateColliders = " << formatBool(body.needUpdateColliders) << ";\n";
     code << ind << "rigidbody2d.newBody = " << formatBool(body.newBody) << ";\n";
-    code << ind << "rigidbody2d.numColliders = " << body.numColliders << ";\n";
 
-    for (size_t i = 0; i < body.numColliders; i++) {
-        const std::string idx = std::to_string(i);
-        code << ind << "rigidbody2d.colliders[" << idx << "].type = " << formatCollider2DType(body.colliders[i].type) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].pointA = " << formatVector2(body.colliders[i].pointA) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].pointB = " << formatVector2(body.colliders[i].pointB) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].radius = " << formatFloat(body.colliders[i].radius) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].numVertices = " << (int)body.colliders[i].numVertices << ";\n";
-        for (size_t j = 0; j < body.colliders[i].numVertices; j++) {
-            code << ind << "rigidbody2d.colliders[" << idx << "].vertices[" << j << "] = " << formatVector2(body.colliders[i].vertices[j]) << ";\n";
+    // the body fields that differ from the defaults
+    if (body.gravityScale != def.gravityScale) code << ind << "rigidbody2d.gravityScale = " << formatFloat(body.gravityScale) << ";\n";
+    if (body.linearDamping != def.linearDamping) code << ind << "rigidbody2d.linearDamping = " << formatFloat(body.linearDamping) << ";\n";
+    if (body.angularDamping != def.angularDamping) code << ind << "rigidbody2d.angularDamping = " << formatFloat(body.angularDamping) << ";\n";
+    if (body.fixedRotation != def.fixedRotation) code << ind << "rigidbody2d.fixedRotation = " << formatBool(body.fixedRotation) << ";\n";
+    if (body.collisionDetection != def.collisionDetection) code << ind << "rigidbody2d.collisionDetection = CollisionDetectionMode2D::CONTINUOUS;\n";
+    if (body.sleepingMode == RigidbodySleepMode2D::NEVER_SLEEP) code << ind << "rigidbody2d.sleepingMode = RigidbodySleepMode2D::NEVER_SLEEP;\n";
+    if (body.sleepingMode == RigidbodySleepMode2D::START_ASLEEP) code << ind << "rigidbody2d.sleepingMode = RigidbodySleepMode2D::START_ASLEEP;\n";
+    if (body.useAutoMass != def.useAutoMass) code << ind << "rigidbody2d.useAutoMass = " << formatBool(body.useAutoMass) << ";\n";
+    if (body.mass != def.mass) code << ind << "rigidbody2d.mass = " << formatFloat(body.mass) << ";\n";
+    if (body.autoCenterOfMass != def.autoCenterOfMass) code << ind << "rigidbody2d.autoCenterOfMass = " << formatBool(body.autoCenterOfMass) << ";\n";
+    if (body.centerOfMass != def.centerOfMass) code << ind << "rigidbody2d.centerOfMass = " << formatVector2(body.centerOfMass) << ";\n";
+    if (body.autoInertia != def.autoInertia) code << ind << "rigidbody2d.autoInertia = " << formatBool(body.autoInertia) << ";\n";
+    if (body.inertia != def.inertia) code << ind << "rigidbody2d.inertia = " << formatFloat(body.inertia) << ";\n";
+    if (!body.material.empty()) code << ind << "rigidbody2d.material = " << formatString(body.material) << ";\n";
+
+    if (!body.colliders.empty()) {
+        code << ind << "rigidbody2d.colliders.resize(" << body.colliders.size() << ");\n";
+    }
+    for (size_t i = 0; i < body.colliders.size(); i++) {
+        const Collider2D& collider = body.colliders[i];
+        const std::string target = "rigidbody2d.colliders[" + std::to_string(i) + "]";
+        code << ind << target << ".type = " << formatCollider2DType(collider.type) << ";\n";
+        code << ind << target << ".pointA = " << formatVector2(collider.pointA) << ";\n";
+        code << ind << target << ".pointB = " << formatVector2(collider.pointB) << ";\n";
+        code << ind << target << ".radius = " << formatFloat(collider.radius) << ";\n";
+        // any number of points: one statement per 64 so a long terrain compiles everywhere
+        const size_t chunk = 64;
+        for (size_t start = 0; start < collider.points.size(); start += chunk) {
+            const size_t end = std::min(collider.points.size(), start + chunk);
+            if (start == 0) {
+                code << ind << target << ".points = {";
+            } else {
+                code << ind << target << ".points.insert(" << target << ".points.end(), {";
+            }
+            for (size_t j = start; j < end; j++) {
+                if (j > start) code << ", ";
+                code << formatVector2(collider.points[j]);
+            }
+            code << (start == 0 ? "};\n" : "});\n");
         }
-        code << ind << "rigidbody2d.colliders[" << idx << "].loop = " << formatBool(body.colliders[i].loop) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].density = " << formatFloat(body.colliders[i].density) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].friction = " << formatFloat(body.colliders[i].friction) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].restitution = " << formatFloat(body.colliders[i].restitution) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].sensor = " << formatBool(body.colliders[i].sensor) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].enableHitEvents = " << formatBool(body.colliders[i].enableHitEvents) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].contactEvents = " << formatBool(body.colliders[i].contactEvents) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].preSolveEvents = " << formatBool(body.colliders[i].preSolveEvents) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].sensorEvents = " << formatBool(body.colliders[i].sensorEvents) << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].categoryBits = " << body.colliders[i].categoryBits << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].maskBits = " << body.colliders[i].maskBits << ";\n";
-        code << ind << "rigidbody2d.colliders[" << idx << "].groupIndex = " << body.colliders[i].groupIndex << ";\n";
+        code << ind << target << ".loop = " << formatBool(collider.loop) << ";\n";
+        code << ind << target << ".density = " << formatFloat(collider.density) << ";\n";
+        code << ind << target << ".friction = " << formatFloat(collider.friction) << ";\n";
+        code << ind << target << ".restitution = " << formatFloat(collider.restitution) << ";\n";
+        if (!collider.material.empty()) code << ind << target << ".material = " << formatString(collider.material) << ";\n";
+        code << ind << target << ".sensor = " << formatBool(collider.sensor) << ";\n";
+        code << ind << target << ".enableHitEvents = " << formatBool(collider.enableHitEvents) << ";\n";
+        code << ind << target << ".contactEvents = " << formatBool(collider.contactEvents) << ";\n";
+        code << ind << target << ".preSolveEvents = " << formatBool(collider.preSolveEvents) << ";\n";
+        code << ind << target << ".sensorEvents = " << formatBool(collider.sensorEvents) << ";\n";
+        code << ind << target << ".categoryBits = " << collider.categoryBits << ";\n";
+        code << ind << target << ".maskBits = " << collider.maskBits << ";\n";
+        code << ind << target << ".groupIndex = " << collider.groupIndex << ";\n";
+        if (collider.receiver != defCollider.receiver) {
+            code << ind << target << ".receiver = " << formatEntity(collider.receiver, entityVarNames) << ";\n";
+        }
     }
 
     if (!body.enabled) code << ind << "rigidbody2d.enabled = false;\n";
@@ -1690,7 +1883,38 @@ std::string editor::Factory::createRigidbodyComponent(int indentSpaces, EntityRe
     code << ind << "rigidbody.overrideMassProperties = " << formatBool(body.overrideMassProperties) << ";\n";
     code << ind << "rigidbody.solidBoxSize = " << formatVector3(body.solidBoxSize) << ";\n";
     code << ind << "rigidbody.solidBoxDensity = " << formatFloat(body.solidBoxDensity) << ";\n";
-    code << ind << "rigidbody.numColliders = " << body.numColliders << ";\n";
+    // the Rigidbody fields (written when not at their defaults)
+    const RigidbodyComponent def{};
+    auto floatField = [&](const char* name, float value, float defaultValue) {
+        if (value != defaultValue) code << ind << "rigidbody." << name << " = " << formatFloat(value) << ";\n";
+    };
+    auto boolField = [&](const char* name, bool value, bool defaultValue) {
+        if (value != defaultValue) code << ind << "rigidbody." << name << " = " << formatBool(value) << ";\n";
+    };
+    if (!body.material.empty()) code << ind << "rigidbody.material = " << formatString(body.material) << ";\n";
+    floatField("linearDamping", body.linearDamping, def.linearDamping);
+    floatField("angularDamping", body.angularDamping, def.angularDamping);
+    floatField("maxLinearVelocity", body.maxLinearVelocity, def.maxLinearVelocity);
+    floatField("maxAngularVelocity", body.maxAngularVelocity, def.maxAngularVelocity);
+    boolField("automaticMass", body.automaticMass, def.automaticMass);
+    floatField("mass", body.mass, def.mass);
+    boolField("automaticCenterOfMass", body.automaticCenterOfMass, def.automaticCenterOfMass);
+    if (body.centerOfMass != def.centerOfMass) code << ind << "rigidbody.centerOfMass = " << formatVector3(body.centerOfMass) << ";\n";
+    boolField("automaticInertiaTensor", body.automaticInertiaTensor, def.automaticInertiaTensor);
+    if (body.inertiaTensor != def.inertiaTensor) code << ind << "rigidbody.inertiaTensor = " << formatVector3(body.inertiaTensor) << ";\n";
+    if (body.inertiaTensorRotation != def.inertiaTensorRotation) code << ind << "rigidbody.inertiaTensorRotation = " << formatQuaternion(body.inertiaTensorRotation) << ";\n";
+    boolField("allowSleeping", body.allowSleeping, def.allowSleeping);
+    boolField("collideKinematicVsNonDynamic", body.collideKinematicVsNonDynamic, def.collideKinematicVsNonDynamic);
+    if (body.interpolation != def.interpolation) {
+        const char* interpolation = "RigidbodyInterpolation::SCENE";
+        if (body.interpolation == RigidbodyInterpolation::NONE) interpolation = "RigidbodyInterpolation::NONE";
+        else if (body.interpolation == RigidbodyInterpolation::INTERPOLATE) interpolation = "RigidbodyInterpolation::INTERPOLATE";
+        else if (body.interpolation == RigidbodyInterpolation::EXTRAPOLATE) interpolation = "RigidbodyInterpolation::EXTRAPOLATE";
+        code << ind << "rigidbody.interpolation = " << interpolation << ";\n";
+    }
+    if (!body.colliders.empty()) {
+        code << ind << "rigidbody.colliders.resize(" << body.colliders.size() << ");\n";
+    }
 
     auto sanitizeSourceForType = [](Collider3DType type, Collider3DSource source) {
         if (type == Collider3DType::CONVEX_HULL){
@@ -1711,35 +1935,59 @@ std::string editor::Factory::createRigidbodyComponent(int indentSpaces, EntityRe
         return source;
     };
 
-    for (size_t i = 0; i < body.numColliders; i++) {
-        const std::string idx = std::to_string(i);
-        const Collider3DSource source = sanitizeSourceForType(body.colliders[i].type, body.colliders[i].source);
+    for (size_t i = 0; i < body.colliders.size(); i++) {
+        const Collider3D& collider = body.colliders[i];
+        const std::string target = "rigidbody.colliders[" + std::to_string(i) + "]";
+        const Collider3DSource source = sanitizeSourceForType(collider.type, collider.source);
         const Entity sourceEntity =
-            (source != Collider3DSource::NONE && body.colliders[i].sourceEntity == NULL_ENTITY)
+            (source != Collider3DSource::NONE && collider.sourceEntity == NULL_ENTITY)
                 ? entity
-                : body.colliders[i].sourceEntity;
+                : collider.sourceEntity;
 
-        code << ind << "rigidbody.colliders[" << idx << "].type = " << formatCollider3DType(body.colliders[i].type) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].position = " << formatVector3(body.colliders[i].position) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].rotation = " << formatQuaternion(body.colliders[i].rotation) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].width = " << formatFloat(body.colliders[i].width) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].height = " << formatFloat(body.colliders[i].height) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].depth = " << formatFloat(body.colliders[i].depth) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].radius = " << formatFloat(body.colliders[i].radius) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].halfHeight = " << formatFloat(body.colliders[i].halfHeight) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].topRadius = " << formatFloat(body.colliders[i].topRadius) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].bottomRadius = " << formatFloat(body.colliders[i].bottomRadius) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].density = " << formatFloat(body.colliders[i].density) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].source = " << formatCollider3DSource(source) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].sourceEntity = " << formatEntity(sourceEntity, entityVarNames) << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].samplesSize = " << body.colliders[i].samplesSize << ";\n";
-        code << ind << "rigidbody.colliders[" << idx << "].numVertices = " << body.colliders[i].numVertices << ";\n";
-        for (size_t j = 0; j < body.colliders[i].numVertices; j++) {
-            code << ind << "rigidbody.colliders[" << idx << "].vertices[" << j << "] = " << formatVector3(body.colliders[i].vertices[j]) << ";\n";
+        code << ind << target << ".type = " << formatCollider3DType(collider.type) << ";\n";
+        code << ind << target << ".position = " << formatVector3(collider.position) << ";\n";
+        code << ind << target << ".rotation = " << formatQuaternion(collider.rotation) << ";\n";
+        code << ind << target << ".width = " << formatFloat(collider.width) << ";\n";
+        code << ind << target << ".height = " << formatFloat(collider.height) << ";\n";
+        code << ind << target << ".depth = " << formatFloat(collider.depth) << ";\n";
+        code << ind << target << ".radius = " << formatFloat(collider.radius) << ";\n";
+        code << ind << target << ".halfHeight = " << formatFloat(collider.halfHeight) << ";\n";
+        code << ind << target << ".topRadius = " << formatFloat(collider.topRadius) << ";\n";
+        code << ind << target << ".bottomRadius = " << formatFloat(collider.bottomRadius) << ";\n";
+        code << ind << target << ".density = " << formatFloat(collider.density) << ";\n";
+        code << ind << target << ".source = " << formatCollider3DSource(source) << ";\n";
+        code << ind << target << ".sourceEntity = " << formatEntity(sourceEntity, entityVarNames) << ";\n";
+        code << ind << target << ".samplesSize = " << collider.samplesSize << ";\n";
+        if (collider.isTrigger) code << ind << target << ".isTrigger = true;\n";
+        if (!collider.material.empty()) code << ind << target << ".material = " << formatString(collider.material) << ";\n";
+        if (collider.receiver != NULL_ENTITY) code << ind << target << ".receiver = " << formatEntity(collider.receiver, entityVarNames) << ";\n";
+        // any size: one statement per 64 values so a large mesh compiles everywhere
+        const size_t chunk = 64;
+        for (size_t start = 0; start < collider.vertices.size(); start += chunk) {
+            const size_t end = std::min(collider.vertices.size(), start + chunk);
+            if (start == 0) {
+                code << ind << target << ".vertices = {";
+            } else {
+                code << ind << target << ".vertices.insert(" << target << ".vertices.end(), {";
+            }
+            for (size_t j = start; j < end; j++) {
+                if (j > start) code << ", ";
+                code << formatVector3(collider.vertices[j]);
+            }
+            code << (start == 0 ? "};\n" : "});\n");
         }
-        code << ind << "rigidbody.colliders[" << idx << "].numIndices = " << body.colliders[i].numIndices << ";\n";
-        for (size_t j = 0; j < body.colliders[i].numIndices; j++) {
-            code << ind << "rigidbody.colliders[" << idx << "].indices[" << j << "] = " << body.colliders[i].indices[j] << ";\n";
+        for (size_t start = 0; start < collider.indices.size(); start += chunk) {
+            const size_t end = std::min(collider.indices.size(), start + chunk);
+            if (start == 0) {
+                code << ind << target << ".indices = {";
+            } else {
+                code << ind << target << ".indices.insert(" << target << ".indices.end(), {";
+            }
+            for (size_t j = start; j < end; j++) {
+                if (j > start) code << ", ";
+                code << collider.indices[j] << "u";
+            }
+            code << (start == 0 ? "};\n" : "});\n");
         }
     }
 
@@ -2650,6 +2898,8 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     out << ind2 << "scene->setGravity3D(" << formatVector3(scene->getGravity3D()) << ");\n";
     if (scene->isPhysicsInterpolation() != SceneSettings().physicsInterpolation)
         out << ind2 << "scene->setPhysicsInterpolation(" << formatBool(scene->isPhysicsInterpolation()) << ");\n";
+    if (scene->getPhysics2DSubSteps() != SceneSettings().physics2DSubSteps)
+        out << ind2 << "scene->setPhysics2DSubSteps(" << scene->getPhysics2DSubSteps() << ");\n";
     out << ind2 << "scene->setLightState(" << formatLightState(scene->getLightState()) << ");\n";
     out << ind2 << "scene->setSSAOEnabled(" << formatBool(scene->isSSAOEnabled()) << ");\n";
     out << ind2 << "scene->setSSAORadius(" << formatFloat(scene->getSSAORadius()) << ");\n";
@@ -2685,6 +2935,8 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
             out << formatShaderTextures(indentSpaces + 8, pass.textures, "postProcess.back().textures", projectPath);
             if (pass.scale != 1.0f)
                 out << ind3 << "postProcess.back().scale = " << formatFloat(pass.scale) << ";\n";
+            if (!pass.shaderGlobalBindings.empty())
+                out << ind3 << "postProcess.back().shaderGlobalBindings = " << formatShaderGlobalBindings(pass.shaderGlobalBindings) << ";\n";
         }
         out << ind3 << "scene->setPostProcessPasses(postProcess);\n";
         out << ind2 << "}\n";
@@ -2722,6 +2974,12 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     }
     for (const std::string& vat : resources.vats) {
         out << ind2 << "resources.vats.push_back(" << formatString(vat) << ");\n";
+    }
+    for (const std::string& mask : resources.masks) {
+        out << ind2 << "resources.masks.push_back(" << formatString(mask) << ");\n";
+    }
+    for (const std::string& controller : resources.controllers) {
+        out << ind2 << "resources.controllers.push_back(" << formatString(controller) << ");\n";
     }
     out << ind2 << "return resources;\n";
     out << ind << "}\n";
@@ -3220,6 +3478,8 @@ std::string editor::Factory::createPointsComponent(int indentSpaces, EntityRegis
         code << ind << "pointscomp.customShader = " << formatString(p.customShader) << ";\n";
     if (!p.shaderUniforms.empty())
         code << ind << "pointscomp.shaderUniforms = " << formatShaderUniforms(p.shaderUniforms) << ";\n";
+    if (!p.shaderGlobalBindings.empty())
+        code << ind << "pointscomp.shaderGlobalBindings = " << formatShaderGlobalBindings(p.shaderGlobalBindings) << ";\n";
     code << formatComponentShaderLibrary(indentSpaces, p.shaderTextures, p.shaderFeatures, &p.blendMode, &p.depthWrite, "pointscomp", projectPath);
     code << formatStencilAndColorWrite(indentSpaces, p.stencil, p.colorWrite, "pointscomp");
     code << formatTexture(indentSpaces, p.texture, "pointscomp.texture", projectPath);
@@ -3272,6 +3532,8 @@ std::string editor::Factory::createLineRendererComponent(int indentSpaces, Entit
         code << ind << "linescomp.customShader = " << formatString(l.customShader) << ";\n";
     if (!l.shaderUniforms.empty())
         code << ind << "linescomp.shaderUniforms = " << formatShaderUniforms(l.shaderUniforms) << ";\n";
+    if (!l.shaderGlobalBindings.empty())
+        code << ind << "linescomp.shaderGlobalBindings = " << formatShaderGlobalBindings(l.shaderGlobalBindings) << ";\n";
     code << formatComponentShaderLibrary(indentSpaces, l.shaderTextures, l.shaderFeatures, &l.blendMode, &l.depthWrite, "linescomp", fs::path());
     code << formatStencilAndColorWrite(indentSpaces, l.stencil, l.colorWrite, "linescomp");
 
@@ -3287,8 +3549,51 @@ std::string editor::Factory::createLineRendererComponent(int indentSpaces, Entit
         code << ind << "}\n";
     }
 
+    // the polyline and its ribbon (lines and trails spec 6.7), away from the defaults
+    static const LineRendererComponent defaults;
+    if (l.mode != defaults.mode)
+        code << ind << "linescomp.mode = LineRendererMode::Polyline;\n";
+    if (!l.positions.empty()) {
+        code << ind << "linescomp.positions = {";
+        for (size_t i = 0; i < l.positions.size(); i++) {
+            code << (i > 0 ? ", " : "") << formatVector3(l.positions[i]);
+        }
+        code << "};\n";
+    }
+    if (l.loop) code << ind << "linescomp.loop = true;\n";
+    if (l.useWorldSpace) code << ind << "linescomp.useWorldSpace = true;\n";
+    formatRibbonFields(code, ind, "linescomp", l, defaults);
+
     if (!l.enabled) code << ind << "linescomp.enabled = false;\n";
 
     addComponentCode(code, ind, sceneName, entityName, entity, "LineRendererComponent", "linescomp", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createTrailRendererComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    (void)entityVarNames;
+    if (!scene->findComponent<TrailRendererComponent>(entity)) return "";
+    TrailRendererComponent& t = scene->getComponent<TrailRendererComponent>(entity);
+    static const TrailRendererComponent defaults;
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+
+    code << ind << "TrailRendererComponent trailcomp;\n";
+    if (t.time != defaults.time) code << ind << "trailcomp.time = " << formatFloat(t.time) << ";\n";
+    if (t.minVertexDistance != defaults.minVertexDistance) code << ind << "trailcomp.minVertexDistance = " << formatFloat(t.minVertexDistance) << ";\n";
+    if (t.emitting != defaults.emitting) code << ind << "trailcomp.emitting = " << (t.emitting ? "true" : "false") << ";\n";
+    if (t.autodestruct != defaults.autodestruct) code << ind << "trailcomp.autodestruct = " << (t.autodestruct ? "true" : "false") << ";\n";
+    formatRibbonFields(code, ind, "trailcomp", t, defaults);
+    if (!t.customShader.empty())
+        code << ind << "trailcomp.customShader = " << formatString(t.customShader) << ";\n";
+    if (!t.shaderUniforms.empty())
+        code << ind << "trailcomp.shaderUniforms = " << formatShaderUniforms(t.shaderUniforms) << ";\n";
+    code << formatComponentShaderLibrary(indentSpaces, t.shaderTextures, t.shaderFeatures, &t.blendMode, &t.depthWrite, "trailcomp", fs::path());
+    code << formatStencilAndColorWrite(indentSpaces, t.stencil, t.colorWrite, "trailcomp");
+    if (!t.shaderGlobalBindings.empty())
+        code << ind << "trailcomp.shaderGlobalBindings = " << formatShaderGlobalBindings(t.shaderGlobalBindings) << ";\n";
+    if (!t.enabled) code << ind << "trailcomp.enabled = false;\n";
+
+    addComponentCode(code, ind, sceneName, entityName, entity, "TrailRendererComponent", "trailcomp", assignExisting);
     return code.str();
 }

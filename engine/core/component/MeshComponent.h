@@ -76,9 +76,13 @@ namespace jasperengine{
         // which a glTF model sets (KHR_materials_*; S11's, after Stochastic Tiling's bit)
         SubmeshOverride_PbrExtensions            = 1ull << 31,
         SubmeshOverride_EmissiveStrength         = 1ull << 32,
+        // material.shaderGlobalBindings (shader globals; upstream's 1 << 31 is S11's PbrExtensions
+        // here, so it comes after S11's bits)
+        SubmeshOverride_ShaderGlobalBindings     = 1ull << 33,
 
         SubmeshOverride_ShaderLibrary = SubmeshOverride_Shader | SubmeshOverride_ShaderParams |
                                         SubmeshOverride_ShaderTextures | SubmeshOverride_ShaderFeatures |
+                                        SubmeshOverride_ShaderGlobalBindings |
                                         SubmeshOverride_BlendMode | SubmeshOverride_CullMode |
                                         SubmeshOverride_DepthWrite | SubmeshOverride_DepthTest |
                                         SubmeshOverride_DepthOffset | SubmeshOverride_SortPriority |
@@ -405,6 +409,9 @@ namespace jasperengine{
         // values of the fork's custom uniform blocks, by member name, shared by all submeshes
         ShaderUniformValues shaderUniforms;
         bool needUpdateShaderUniforms = false;
+        // ShaderGlobals::getVersion() when the custom blocks of the submeshes whose materials
+        // bind globals (Material::shaderGlobalBindings) were last written
+        uint64_t globalsVersionSeen = 0;
 
         HybridArray<Matrix4, MAX_BONES> bonesMatrix;
         BufferRender bonesBuffer;
@@ -508,6 +515,12 @@ namespace jasperengine{
 
         CullingMode cullingMode = CullingMode::BACK;
         WindingOrder windingOrder = WindingOrder::CCW;
+        // The winding order already compensates a mirroring transform: a glTF import whose
+        // scene root or node with a negative determinant is placed on the entity transforms
+        // turns windingOrder to CW for it (MeshSystem::loadGLTF). Any other draw whose model
+        // matrix mirrors (negative determinant) reverses the face winding itself, so front faces
+        // stay front: RenderSystem::isMirroredDraw
+        bool mirroredWinding = false;
 
         bool needUpdateAABB = false;
         bool needUpdateBuffer = false;

@@ -141,6 +141,8 @@ namespace jasperengine::editor::mcp {
         // is now light.new"); one that is read-only, or a value outside its hard range, is refused.
         // Properties no table describes are left to the edit.
         static bool checkReflectedChanges(std::vector<Change>& changes, std::vector<std::string>& warnings, std::string& error);
+        // parseChanges without the renamed names mapped to the current ones
+        static bool parseChangesAsGiven(const Json& changes, std::vector<Change>& out, std::string& error);
         // The commands for `changes` on each entity, added to `multi`: per entity and
         // component, the custom (YAML) edits first as one component rewrite, then the typed
         // PropertyCmds. False with `error` (multi may hold part of the commands then).
@@ -183,6 +185,17 @@ namespace jasperengine::editor::mcp {
         static Json toJson(const Quaternion& value);
         static Vector3 eulerDegrees(const Quaternion& value);
 
+        // Animation references as MCP passes them (project-relative; the stored form of an existing
+        // file is taken too) to the stored (asset-relative) form and the file's GUID: a clip (.anim
+        // that exists, or "<model>#<animation>" of an existing model, checked against its
+        // animations), a .mask / .controller (it must exist and parse). Empty clears. The error
+        // names what is wrong with an example (no field prefix).
+        static bool clipReferenceFromJson(Project* project, const std::string& text, std::string& stored, std::string& guid, std::string& error);
+        static bool animAssetReferenceFromJson(Project* project, const std::string& text, bool mask, std::string& stored, std::string& guid,
+                                               std::string& error);
+        // a stored clip reference shown project-relative ("assets/anim/walk.anim", "assets/hero.gltf#Walk")
+        static std::string clipReferenceToJson(Project* project, const std::string& stored);
+
         // Recomputes every Transform's world matrix and values now (the transform system only runs
         // between frames, so a GameObject made or moved this frame reads stale world values)
         static void refreshTransforms(SceneProject* scene);
@@ -191,6 +204,30 @@ namespace jasperengine::editor::mcp {
         static bool entityFromJson(SceneProject* scene, const Json& value, Entity& out, std::string& error);
         static Json entityReferenceToJson(Project* project, SceneProject* scene, const EntityReference& value);
         static bool entityReferenceFromJson(Project* project, SceneProject* scene, const Json& value, EntityReference& out, std::string& error);
+
+        // Unity AnimationCurve / Gradient (docs/mcp/guide/lines-trails.md): a curve is
+        // {"keys": [[time, value] | [time, value, inTangent, outTangent]...], "pre", "post":
+        // "clamp"|"loop"|"ping_pong"} (an infinite tangent, a step, is "inf" / "-inf"); writes
+        // also take a number (constant) or the keys array alone. A gradient is {"mode":
+        // "blend"|"fixed", "colors": [[time, colour]...], "alphas": [[time, alpha]...]}, colours
+        // "#RRGGBB" (sRGB, read back as such when exact) or [r, g, b] (linear); writes also take
+        // one colour ("#RRGGBB[AA]" or [r, g, b(, a)] linear) for a constant gradient
+        static Json curveToJson(const AnimationCurve& curve);
+        static bool curveFromJson(const Json& value, AnimationCurve& out, std::string& error);
+        static Json gradientToJson(const Gradient& gradient);
+        static bool gradientFromJson(const Json& value, Gradient& out, std::string& error);
+        // Unity's MinMaxCurve / MinMaxGradient (docs/mcp/guide/particles.md): a curve is a number
+        // (constant), {"mode": "two_constants", "min", "max"}, {"mode": "curve", "multiplier",
+        // "curve"} or {"mode": "two_curves", "multiplier", "min", "max"} (curves as above); a
+        // gradient is one colour, {"mode": "gradient", "gradient"}, {"mode": "two_colors", "min",
+        // "max"}, {"mode": "two_gradients", "min", "max"} or {"mode": "random_color", "gradient"}
+        static Json minMaxCurveToJson(const MinMaxCurve& curve);
+        static bool minMaxCurveFromJson(const Json& value, MinMaxCurve& out, std::string& error);
+        static Json minMaxGradientToJson(const MinMaxGradient& gradient);
+        static bool minMaxGradientFromJson(const Json& value, MinMaxGradient& out, std::string& error);
+        // emission.bursts: [{"time", "count" (a curve value), "cycles", "interval", "probability"}]
+        static Json particleBurstsToJson(const std::vector<ParticleEmissionBurst>& bursts);
+        static bool particleBurstsFromJson(const Json& value, std::vector<ParticleEmissionBurst>& out, std::string& error);
 
         static Json textureToJson(Project* project, SceneProject* scene, const Texture& texture);
         // `camera` gets the camera entity of a {"camera": ...} value (NULL_ENTITY otherwise; a
@@ -247,6 +284,10 @@ namespace jasperengine::editor::mcp {
         // only: FluidStats in snake_case plus the matching preset, the device's support and the
         // simulator's last error; null when the entity has no FluidSimulationComponent
         static Json fluidStatsToJson(Scene* scene, Entity entity);
+        // A UI element's Canvas Group chain (ui canvas group spec 7.8): {inherited_alpha,
+        // interactable, blocks_raycasts, group: "<path>"}; null outside any group or without a
+        // RectTransform; a FLATTEN group adds flatten {layered, layer_alpha, the scene's layer stats}
+        static Json canvasGroupStateToJson(Scene* scene, Entity entity);
 
         static Json shaderParamsToJson(const ShaderUniformValues& values);
         // `out` replaced by `value` (null clears); `manifest` (may be null) types colour hex
@@ -341,6 +382,11 @@ namespace jasperengine::editor::mcp {
         bool execute() override;
         void undo() override;
         bool affectsStructure() const override { return true; }
+        // its steps' files and refusals (Command::touchedPaths; a step's own canUndo / canRedo)
+        std::vector<Touched> touchedPaths(bool undo) const override;
+        std::string undoRefusal() const override;
+        std::string redoRefusal() const override;
+        std::string failure() const override { return !redoFailure.empty() ? redoFailure : error ? *error : std::string(); }
 
         // Its first step's name, "(+N more)" for the others
         std::string describe() const override;
@@ -356,6 +402,7 @@ namespace jasperengine::editor::mcp {
         std::vector<std::unique_ptr<Command>> done;
         bool built = false;
         std::shared_ptr<std::string> error = std::make_shared<std::string>();
+        std::string redoFailure;   // why the last redo failed (a step's own failure, or a refused scoped write)
         Project* transformProject = nullptr;
         uint32_t transformSceneId = 0;
         void refresh();

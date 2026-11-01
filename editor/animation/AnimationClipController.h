@@ -104,6 +104,24 @@ namespace jasperengine::editor{
         // the binding report of the open clip on the root (empty report without one)
         ClipValidationReport getBindings() const;
 
+        // ---- layers (anim layers spec 9) ----
+
+        // the layer the open state plays on in the bound player (0 without one); its name
+        int getStateLayer() const;
+        std::string getLayerName(int layer) const;
+        // the bound player's state names grouped by layer: (layer name, states), in layer order
+        std::vector<std::pair<std::string, std::vector<std::string>>> getStatesByLayer() const;
+        // Preview over: a base layer state composed under the open state (on its layer, with its
+        // mask) at the playhead (ActionSystem::previewPlayer, layered); "" = none. Record still
+        // keys the open clip only. Kept per bound root.
+        void setPreviewOver(const std::string& baseState);
+        const std::string& getPreviewOver() const;
+        // the base layer's states (what Preview over can choose)
+        std::vector<std::string> previewOverChoices() const;
+        // per track of the open clip: why its target is masked out on the state's layer
+        // ("masked out by Arm.mask on layer Holding"), "" when it is not
+        std::vector<std::string> maskedTracks() const;
+
         // ---- preview and transport ----
 
         bool startPreview(std::string* error);
@@ -261,6 +279,11 @@ namespace jasperengine::editor{
         std::shared_ptr<AnimationClipDocument> document;
         std::string clipPath;
         std::string stateName;
+        std::string previewOver;
+        // maskedTracks' cache: what it was computed for
+        mutable std::vector<std::string> maskedCache;
+        mutable std::string maskedKey;
+        mutable double maskedAt = -1.0;
         float time = 0.0f;
         float playbackSpeed = 1.0f;
         bool previewing = false;

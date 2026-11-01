@@ -26,8 +26,12 @@
 #include "component/UIComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/LayoutGroupComponent.h"
+#include "component/CanvasGroupComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/InputFieldComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "object/GameObject.h"
+#include "PointerEventData.h"
 #include "component/ParticleSystemComponent.h"
 #include "particles/LegacyParticleSystem.h"
 #include "component/AudioSourceComponent.h"
@@ -48,6 +52,14 @@
 #include "component/LatticeTracksComponent.h"
 
 using namespace jasperengine;
+
+// a PointerEventData GameObject field: the GameObject, or nil for none (and once its scene
+// was deleted: an event a script kept, review LOW-MEDIUM 5)
+static luabridge::LuaRef pointerEventEntity(lua_State* L, Scene* scene, Entity entity){
+    if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity))
+        return luabridge::LuaRef(L);
+    return luabridge::LuaRef(L, GameObject(scene, entity));
+}
 
 void LuaBinding::registerECSClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
@@ -110,9 +122,35 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("CanvasGroupRenderMode")
+        .addVariable("PER_ELEMENT", CanvasGroupRenderMode::PER_ELEMENT)
+        .addVariable("FLATTEN", CanvasGroupRenderMode::FLATTEN)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
         .beginNamespace("ScrollbarType")
         .addVariable("VERTICAL", ScrollbarType::VERTICAL)
         .addVariable("HORIZONTAL", ScrollbarType::HORIZONTAL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("OnScreenStickMode")
+        .addVariable("FIXED", OnScreenStickMode::FIXED)
+        .addVariable("FLOATING", OnScreenStickMode::FLOATING)
+        .addVariable("DYNAMIC", OnScreenStickMode::DYNAMIC)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("OnScreenStickAxes")
+        .addVariable("BOTH", OnScreenStickAxes::BOTH)
+        .addVariable("HORIZONTAL", OnScreenStickAxes::HORIZONTAL)
+        .addVariable("VERTICAL", OnScreenStickAxes::VERTICAL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("OnScreenVisibility")
+        .addVariable("ALWAYS", OnScreenVisibility::ALWAYS)
+        .addVariable("TOUCH_DEVICES_ONLY", OnScreenVisibility::TOUCH_DEVICES_ONLY)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -279,6 +317,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("interpolation", &PhysicsSystem::isInterpolation, &PhysicsSystem::setInterpolation)
 #ifdef JASPERENGINE_PHYSICS_2D
         .addProperty("pointsToMeterScale2D", &PhysicsSystem::getPointsToMeterScale2D,  &PhysicsSystem::setPointsToMeterScale2D)
+        // Box2D sub-steps of each fixed step (1-16, the scene setting physics2DSubSteps)
+        .addProperty("subSteps2D", &PhysicsSystem::getSubSteps2D, &PhysicsSystem::setSubSteps2D)
         .addProperty("beginContact2D", [] (PhysicsSystem* self, lua_State* L) { return &self->beginContact2D; }, [] (PhysicsSystem* self, lua_State* L) { self->beginContact2D = L; })
         .addProperty("endContact2D", [] (PhysicsSystem* self, lua_State* L) { return &self->endContact2D; }, [] (PhysicsSystem* self, lua_State* L) { self->endContact2D = L; })
         .addProperty("beginSensorContact2D", [] (PhysicsSystem* self, lua_State* L) { return &self->beginSensorContact2D; }, [] (PhysicsSystem* self, lua_State* L) { self->beginSensorContact2D = L; })
@@ -286,6 +326,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("hitContact2D", [] (PhysicsSystem* self, lua_State* L) { return &self->hitContact2D; }, [] (PhysicsSystem* self, lua_State* L) { self->hitContact2D = L; })
         .addProperty("preSolve2D", [] (PhysicsSystem* self, lua_State* L) { return &self->preSolve2D; }, [] (PhysicsSystem* self, lua_State* L) { self->preSolve2D = L; })
         .addProperty("shouldCollide2D", [] (PhysicsSystem* self, lua_State* L) { return &self->shouldCollide2D; }, [] (PhysicsSystem* self, lua_State* L) { self->shouldCollide2D = L; })
+        .addProperty("stayContact2D", [] (PhysicsSystem* self, lua_State* L) { return &self->stayContact2D; }, [] (PhysicsSystem* self, lua_State* L) { self->stayContact2D = L; })
+        .addProperty("staySensorContact2D", [] (PhysicsSystem* self, lua_State* L) { return &self->staySensorContact2D; }, [] (PhysicsSystem* self, lua_State* L) { self->staySensorContact2D = L; })
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
         .addProperty("lock3DBodies", &PhysicsSystem::isLock3DBodies, &PhysicsSystem::setLock3DBodies)
@@ -299,6 +341,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("shouldCollide3D", [] (PhysicsSystem* self, lua_State* L) { return &self->shouldCollide3D; }, [] (PhysicsSystem* self, lua_State* L) { self->shouldCollide3D = L; })
         .addProperty("onControllerColliderHit", [] (PhysicsSystem* self, lua_State* L) { return &self->onControllerColliderHit; }, [] (PhysicsSystem* self, lua_State* L) { self->onControllerColliderHit = L; })
         .addFunction("setRootMotion", &PhysicsSystem::setRootMotion)
+        // global 3D contact events inside the step with live Contact3D (main thread)
+        .addProperty("synchronousContactEvents3D", &PhysicsSystem::isSynchronousContactEvents3D, &PhysicsSystem::setSynchronousContactEvents3D)
 #endif
 #ifdef JASPERENGINE_PHYSICS_2D
         .addFunction("createRigidbody2D", &PhysicsSystem::createRigidbody2D)
@@ -355,9 +399,20 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addFunction("isInputFieldFocused", &UISystem::isInputFieldFocused)
         .addFunction("eventOnCharInput", &UISystem::eventOnCharInput)
         .addFunction("eventOnKeyDown", &UISystem::eventOnKeyDown)
-        .addFunction("eventOnPointerDown", &UISystem::eventOnPointerDown)
-        .addFunction("eventOnPointerUp", &UISystem::eventOnPointerUp)
-        .addFunction("eventOnPointerMove", &UISystem::eventOnPointerMove)
+        // (x, y): the mouse's left button; (pointerId, button, x, y, touch): any pointer (ui-multitouch)
+        .addFunction("eventOnPointerDown",
+            luabridge::overload<float, float>(&UISystem::eventOnPointerDown),
+            luabridge::overload<int, int, float, float, bool>(&UISystem::eventOnPointerDown))
+        .addFunction("eventOnPointerUp",
+            luabridge::overload<float, float>(&UISystem::eventOnPointerUp),
+            luabridge::overload<int, int, float, float, bool>(&UISystem::eventOnPointerUp))
+        .addFunction("eventOnPointerMove",
+            luabridge::overload<float, float>(&UISystem::eventOnPointerMove),
+            luabridge::overload<int, float, float, bool>(&UISystem::eventOnPointerMove))
+        .addFunction("eventOnPointerCancel", &UISystem::eventOnPointerCancel)
+        .addFunction("isPointerOverUI",
+            luabridge::overload<>(&UISystem::isPointerOverUI),
+            luabridge::overload<int>(&UISystem::isPointerOverUI))
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -415,6 +470,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("duration", &TweenComponent::duration, &setTrackedMember<&TweenComponent::duration>)
         .addProperty("loop", &TweenComponent::loop, &setTrackedMember<&TweenComponent::loop>)
         .addProperty("pingPong", &TweenComponent::pingPong, &setTrackedMember<&TweenComponent::pingPong>)
+        .addProperty("useUnscaledTime", &TweenComponent::useUnscaledTime, &setTrackedMember<&TweenComponent::useUnscaledTime>)
         .addProperty("function", [] (TweenComponent* self, lua_State* L) { return &self->function; }, [] (TweenComponent* self, lua_State* L) { self->function = L; })
         .addProperty("curve", &TweenComponent::curve, &setTrackedMember<&TweenComponent::curve>)
         .endClass();
@@ -465,6 +521,11 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("onDragStart", [] (UIComponent* self, lua_State* L) { return &self->onDragStart; }, [] (UIComponent* self, lua_State* L) { self->onDragStart = L; })
         .addProperty("onDrag", [] (UIComponent* self, lua_State* L) { return &self->onDrag; }, [] (UIComponent* self, lua_State* L) { self->onDrag = L; })
         .addProperty("onDragEnd", [] (UIComponent* self, lua_State* L) { return &self->onDragEnd; }, [] (UIComponent* self, lua_State* L) { self->onDragEnd = L; })
+        // the PointerEventData of the legacy callback running now (onPointerDown(x, y) ...), else nil
+        .addFunction("getPointerEventData", [] (const UIComponent*, lua_State* L) -> luabridge::LuaRef {
+            const PointerEventData* event = UISystem::getCurrentLegacyEvent();
+            return event ? luabridge::LuaRef(L, *event) : luabridge::LuaRef(L);
+        })
         .addProperty("automaticFlipY", &UIComponent::automaticFlipY, &setTrackedMember<&UIComponent::automaticFlipY>)
         .addProperty("flipY", &UIComponent::flipY, &setTrackedMember<&UIComponent::flipY>)
         .addProperty("pointerMoved", &UIComponent::pointerMoved)
@@ -472,6 +533,20 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("needReload", &UIComponent::needReload, &setTrackedMember<&UIComponent::needReload>)
         .addProperty("needUpdateBuffer", &UIComponent::needUpdateBuffer, &setTrackedMember<&UIComponent::needUpdateBuffer>)
         .addProperty("needUpdateTexture", &UIComponent::needUpdateTexture, &setTrackedMember<&UIComponent::needUpdateTexture>)
+        // the Canvas Groups' state over the element (runtime, UISystem)
+        .addProperty("groupAlpha", &UIComponent::groupAlpha)
+        .addProperty("groupInteractable", &UIComponent::groupInteractable)
+        .addProperty("groupBlocksRaycasts", &UIComponent::groupBlocksRaycasts)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<CanvasGroupComponent>("CanvasGroupComponent")
+        .addProperty("enabled", &CanvasGroupComponent::enabled, &setTrackedMember<&CanvasGroupComponent::enabled>)
+        .addProperty("alpha", &CanvasGroupComponent::alpha, &setTrackedMember<&CanvasGroupComponent::alpha>)
+        .addProperty("interactable", &CanvasGroupComponent::interactable, &setTrackedMember<&CanvasGroupComponent::interactable>)
+        .addProperty("blocksRaycasts", &CanvasGroupComponent::blocksRaycasts, &setTrackedMember<&CanvasGroupComponent::blocksRaycasts>)
+        .addProperty("ignoreParentGroups", &CanvasGroupComponent::ignoreParentGroups, &setTrackedMember<&CanvasGroupComponent::ignoreParentGroups>)
+        .addProperty("renderMode", &CanvasGroupComponent::renderMode, &setTrackedMember<&CanvasGroupComponent::renderMode>)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -492,6 +567,87 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("hovered", &ButtonComponent::hovered)
         .addProperty("disabled", &ButtonComponent::disabled, &setTrackedMember<&ButtonComponent::disabled>)
         .addProperty("needUpdateButton", &ButtonComponent::needUpdateButton, &setTrackedMember<&ButtonComponent::needUpdateButton>)
+        .endClass();
+
+    // ui-multitouch: the EventSystem callbacks' argument (Unity's PointerEventData)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<PointerEventData>("PointerEventData")
+        .addProperty("pointerId", &PointerEventData::pointerId)
+        .addProperty("button", &PointerEventData::button)
+        .addProperty("isTouch", &PointerEventData::isTouch)
+        .addProperty("position", &PointerEventData::position)
+        .addProperty("delta", &PointerEventData::delta)
+        .addProperty("pressPosition", &PointerEventData::pressPosition)
+        .addProperty("localPosition", &PointerEventData::localPosition)
+        .addProperty("uiPosition", &PointerEventData::uiPosition)
+        .addProperty("uiDelta", &PointerEventData::uiDelta)
+        .addProperty("scrollDelta", &PointerEventData::scrollDelta)
+        .addProperty("clickCount", &PointerEventData::clickCount)
+        .addProperty("clickTime", &PointerEventData::clickTime)
+        .addProperty("dragging", &PointerEventData::dragging)
+        .addProperty("eligibleForClick", &PointerEventData::eligibleForClick)
+        .addProperty("canceled", &PointerEventData::canceled)
+        .addProperty("used", &PointerEventData::used)
+        .addProperty("useDragThreshold", &PointerEventData::useDragThreshold, &PointerEventData::useDragThreshold)
+        .addProperty("pointerEnter", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->pointerEnter); })
+        .addProperty("pointerPress", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->pointerPress); })
+        .addProperty("rawPointerPress", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->rawPointerPress); })
+        .addProperty("pointerDrag", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->pointerDrag); })
+        .addProperty("target", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->target); })
+        .addFunction("use", &PointerEventData::use)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<OnScreenStickComponent>("OnScreenStickComponent")
+        .addProperty("enabled", &OnScreenStickComponent::enabled, &OnScreenStickComponent::enabled)
+        .addProperty("mode", &OnScreenStickComponent::mode, &OnScreenStickComponent::mode)
+        .addProperty("background", &OnScreenStickComponent::background, &OnScreenStickComponent::background)
+        .addProperty("handle", &OnScreenStickComponent::handle, &OnScreenStickComponent::handle)
+        .addProperty("handleRange", &OnScreenStickComponent::handleRange, &OnScreenStickComponent::handleRange)
+        .addProperty("deadZone", &OnScreenStickComponent::deadZone, &OnScreenStickComponent::deadZone)
+        .addProperty("moveThreshold", &OnScreenStickComponent::moveThreshold, &OnScreenStickComponent::moveThreshold)
+        .addProperty("axes", &OnScreenStickComponent::axes, &OnScreenStickComponent::axes)
+        .addProperty("snapX", &OnScreenStickComponent::snapX, &OnScreenStickComponent::snapX)
+        .addProperty("snapY", &OnScreenStickComponent::snapY, &OnScreenStickComponent::snapY)
+        .addProperty("hideWhenReleased", &OnScreenStickComponent::hideWhenReleased, &OnScreenStickComponent::hideWhenReleased)
+        .addProperty("clampToArea", &OnScreenStickComponent::clampToArea, &OnScreenStickComponent::clampToArea)
+        .addProperty("horizontalAction", &OnScreenStickComponent::horizontalAction, &OnScreenStickComponent::horizontalAction)
+        .addProperty("verticalAction", &OnScreenStickComponent::verticalAction, &OnScreenStickComponent::verticalAction)
+        .addProperty("visibility", &OnScreenStickComponent::visibility, &OnScreenStickComponent::visibility)
+        .addProperty("value", &OnScreenStickComponent::value)
+        .addProperty("pressed", &OnScreenStickComponent::pressed)
+        .addProperty("pointerId", &OnScreenStickComponent::pointerId)
+        .addProperty("onValueChanged", [] (OnScreenStickComponent* self, lua_State* L) { return &self->onValueChanged; }, [] (OnScreenStickComponent* self, lua_State* L) { self->onValueChanged = L; })
+        .addProperty("onPress", [] (OnScreenStickComponent* self, lua_State* L) { return &self->onPress; }, [] (OnScreenStickComponent* self, lua_State* L) { self->onPress = L; })
+        .addProperty("onRelease", [] (OnScreenStickComponent* self, lua_State* L) { return &self->onRelease; }, [] (OnScreenStickComponent* self, lua_State* L) { self->onRelease = L; })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<OnScreenButtonComponent>("OnScreenButtonComponent")
+        .addProperty("enabled", &OnScreenButtonComponent::enabled, &OnScreenButtonComponent::enabled)
+        .addProperty("action", &OnScreenButtonComponent::action, &OnScreenButtonComponent::action)
+        .addProperty("value", &OnScreenButtonComponent::value, &OnScreenButtonComponent::value)
+        .addProperty("pressWhenPointerEnters", &OnScreenButtonComponent::pressWhenPointerEnters, &OnScreenButtonComponent::pressWhenPointerEnters)
+        .addProperty("releaseWhenPointerLeaves", &OnScreenButtonComponent::releaseWhenPointerLeaves, &OnScreenButtonComponent::releaseWhenPointerLeaves)
+        .addProperty("visibility", &OnScreenButtonComponent::visibility, &OnScreenButtonComponent::visibility)
+        .addProperty("pressed", &OnScreenButtonComponent::pressed)
+        .addProperty("onPress", [] (OnScreenButtonComponent* self, lua_State* L) { return &self->onPress; }, [] (OnScreenButtonComponent* self, lua_State* L) { self->onPress = L; })
+        .addProperty("onRelease", [] (OnScreenButtonComponent* self, lua_State* L) { return &self->onRelease; }, [] (OnScreenButtonComponent* self, lua_State* L) { self->onRelease = L; })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<TouchAreaComponent>("TouchAreaComponent")
+        .addProperty("enabled", &TouchAreaComponent::enabled, &TouchAreaComponent::enabled)
+        .addProperty("horizontalAction", &TouchAreaComponent::horizontalAction, &TouchAreaComponent::horizontalAction)
+        .addProperty("verticalAction", &TouchAreaComponent::verticalAction, &TouchAreaComponent::verticalAction)
+        .addProperty("sensitivity", &TouchAreaComponent::sensitivity, &TouchAreaComponent::sensitivity)
+        .addProperty("invertX", &TouchAreaComponent::invertX, &TouchAreaComponent::invertX)
+        .addProperty("invertY", &TouchAreaComponent::invertY, &TouchAreaComponent::invertY)
+        .addProperty("visibility", &TouchAreaComponent::visibility, &TouchAreaComponent::visibility)
+        .addProperty("delta", &TouchAreaComponent::delta)
+        .addProperty("pressed", &TouchAreaComponent::pressed)
+        .addProperty("pointerId", &TouchAreaComponent::pointerId)
+        .addProperty("onDrag", [] (TouchAreaComponent* self, lua_State* L) { return &self->onDrag; }, [] (TouchAreaComponent* self, lua_State* L) { self->onDrag = L; })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -611,6 +767,9 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("needsLoad", &AnimationPlayerComponent::needsLoad, &AnimationPlayerComponent::needsLoad)
         .addProperty("onEvent", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onEvent; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onEvent = L; })
         .addProperty("onFinish", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onFinish; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onFinish = L; })
+        .addProperty("controller", &AnimationPlayerComponent::controller, &AnimationPlayerComponent::controller)
+        .addProperty("onStateEnter", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onStateEnter; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onStateEnter = L; })
+        .addProperty("onStateExit", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onStateExit; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onStateExit = L; })
         .endClass();
 
     // The Vertex Animator's data (the VertexAnimator object plays it: play, crossFade, blend...)

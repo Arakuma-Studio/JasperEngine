@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "animation/AnimatorEditorHooks.h"
+#include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
@@ -14,16 +15,20 @@
 #include "command/type/RemovePreservedComponentCmd.h"
 #include "StreamPreserved.h"
 #include "DocumentFile.h"
+#include "shader/ShaderGlobals.h"
 #include "SceneWindow.h"
+#include "script/ScriptRuntime.h"
 
 #include "imgui_internal.h"
 
 #include "util/Util.h"
 #include "util/UIUtils.h"
 #include "util/FileDialogs.h"
+#include "script/ScriptScheduler.h"
 #include "util/FileUtils.h"
 #include "window/CodeEditor.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/UISystem.h"
 #include "htmlui/HtmlUiImportPanel.h"
 #include "util/EntityPayload.h"
 #include "util/CameraTextureLink.h"
@@ -99,6 +104,7 @@
 #include "pose/PoseAnimatorRuntime.h"
 #include "pose/PoseInspectorHooks.h"
 #include "window/InspectorVatBake.h"
+#include "window/SpriteNormalsEntry.h"
 #include "pose/PoseEditSession.h"
 #include "animation/PreviewOwner.h"
 #include "animation/ClipRecordHooks.h"
@@ -1602,6 +1608,12 @@ void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProj
             addMenuCommand(ComponentValuesCmd::buildReset(project, sceneProject->id, entities, cpType));
         }
         reasonTooltip(canReset, reason);
+        if (cpType == ComponentType::ModelComponent && entities.size() == 1) {
+            // a model root: the Ragdoll wizard over its bones
+            if (ImGui::MenuItem(ICON_FA_PERSON_FALLING " Create Ragdoll...")) {
+                RagdollWizardDialog::instance().open(project, sceneProject->id, entities[0]);
+            }
+        }
         ImGui::Separator();
 
         bool canRemove = !(cpType == ComponentType::Transform && isPrefab);
@@ -1804,9 +1816,18 @@ void editor::InspectorWindow::drawGameObjectHeader(SceneProject* sceneProject, c
     ImGui::BeginDisabled(readOnly);
     bool activeValue = active && !activeMixed;
     if (activeMixed) ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, true);
-    if (ImGui::Checkbox("##active", &activeValue)){
-        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
-            EntityStateCmd::active(project, sceneProject->id, entities, activeMixed ? true : activeValue));
+    const bool activeClicked = ImGui::Checkbox("##active", &activeValue);
+    UIProbe::item("inspector.active");
+    if (activeClicked){
+        // after this frame's drawing: in Play it runs onEnable / onDisable (deferredCommands)
+        const uint32_t commandSceneId = project->getSelectedSceneId();
+        const uint32_t stateSceneId = sceneProject->id;
+        const std::vector<Entity> targets = entities;
+        const bool value = activeMixed ? true : activeValue;
+        deferredCommands.push_back([this, commandSceneId, stateSceneId, targets, value]() {
+            if (!project->getScene(stateSceneId)) return;
+            CommandHandle::get(commandSceneId)->addCommandNoMerge(EntityStateCmd::active(project, stateSceneId, targets, value));
+        });
     }
     if (activeMixed) ImGui::PopItemFlag();
     ImGui::EndDisabled();
@@ -1921,6 +1942,12 @@ void editor::InspectorWindow::drawTagCombo(SceneProject* sceneProject, const std
 bool editor::InspectorWindow::consumeTagsAndLayersRequest(){
     bool requested = tagsAndLayersRequested;
     tagsAndLayersRequested = false;
+    return requested;
+}
+
+bool editor::InspectorWindow::consumeShaderGlobalsRequest(){
+    bool requested = shaderGlobalsRequested;
+    shaderGlobalsRequested = false;
     return requested;
 }
 
@@ -3645,9 +3672,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
 
         bool inputChanged = false;
+        const bool suggestions = settings.stringSuggestions && type == RowPropertyType::String;
         if (type == RowPropertyType::MultilineString){
             inputChanged = ImGui::InputTextMultiline(("##input_string_"+id).c_str(), buffer.data(), buffer.size(), ImVec2(0, ImGui::GetTextLineHeight() * 6));
         }else{
+            if (suggestions)
+                ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemInnerSpacing.x));
             inputChanged = ImGui::InputText(("##input_string_"+id).c_str(), buffer.data(), buffer.size());
         }
 
@@ -3659,6 +3689,27 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         }
         if (dif)
             ImGui::PopStyleColor();
+
+        if (suggestions){
+            ImGui::SameLine(0, ImGui::GetStyle().ItemInnerSpacing.x);
+            const std::string popupId = "string_suggestions_" + id;
+            if (ImGui::ArrowButton(("##suggest_" + id).c_str(), ImGuiDir_Down))
+                ImGui::OpenPopup(popupId.c_str());
+            if (ImGui::BeginPopup(popupId.c_str())){
+                if (settings.stringSuggestions->empty() && settings.suggestionsEmpty)
+                    ImGui::TextDisabled("%s", settings.suggestionsEmpty);
+                for (const std::string& option : *settings.stringSuggestions){
+                    if (ImGui::Selectable(option.c_str(), !dif && option == newValue)){
+                        for (Entity& entity : entities){
+                            cmd = new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, id, option, settings.onValueChanged);
+                            CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                        }
+                        finishProperty = true;
+                    }
+                }
+                ImGui::EndPopup();
+            }
+        }
 
     }else if (type == RowPropertyType::Bool){
         bool* value = nullptr;
@@ -4361,6 +4412,62 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (dif)
             ImGui::PopStyleColor();
 
+    }else if (type == RowPropertyType::Curve || type == RowPropertyType::Gradient ||
+              type == RowPropertyType::MinMaxCurve || type == RowPropertyType::MinMaxGradient){
+        // Unity AnimationCurve / Gradient: an inline preview that opens its editor popup;
+        // every frame of a drag is one merged command, the edit's end its own undo step
+        auto valueRow = [&](auto sample, auto drawField){
+            using T = decltype(sample);
+            std::map<Entity, T> eValue;
+            const T* defValue = nullptr;
+            bool dif = false;
+            for (Entity& entity : entities){
+                PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, cpType, id);
+                defValue = static_cast<const T*>(prop.def);
+                eValue[entity] = *static_cast<T*>(prop.ref);
+                if (eValue[entity] != eValue[entities[0]])
+                    dif = true;
+            }
+            T newValue = eValue[entities[0]];
+            const bool defChanged = defValue && newValue != *defValue;
+            if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent) && defValue){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<T>(project, sceneProject->id, entity, cpType, id, *defValue, settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
+                finishProperty = true;
+            }
+            const auto edit = drawField(newValue, dif);
+            if (edit.changed){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<T>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
+            }
+            if (edit.finished)
+                finishProperty = true;
+        };
+        // the field leaves room for the help marker after it
+        const float helpWidth = settings.help.empty() ? 0.0f : ImGui::CalcTextSize("(?)").x + ImGui::GetStyle().ItemSpacing.x;
+        auto fieldWidth = [&](){ return std::max(ImGui::GetFontSize() * 4.0f, ImGui::GetContentRegionAvail().x - helpWidth); };
+        if (type == RowPropertyType::Curve){
+            valueRow(AnimationCurve(), [&](AnimationCurve& value, bool mixed){ return curveField(("##curve_" + id).c_str(), value, mixed, fieldWidth()); });
+        }else if (type == RowPropertyType::MinMaxCurve){
+            valueRow(MinMaxCurve(), [&](MinMaxCurve& value, bool mixed){
+                return minMaxCurveField(("##minmax_" + id).c_str(), value, mixed, fieldWidth(), settings.displayScale, settings.format, settings.stepSize);
+            });
+        }else if (type == RowPropertyType::MinMaxGradient){
+            valueRow(MinMaxGradient(), [&](MinMaxGradient& value, bool mixed){
+                return minMaxGradientField(("##minmaxgradient_" + id).c_str(), value, mixed, fieldWidth());
+            });
+        }else{
+            valueRow(jasperengine::Gradient(), [&](jasperengine::Gradient& value, bool mixed){ return gradientField(("##gradient_" + id).c_str(), value, mixed, fieldWidth()); });
+        }
+        if (!settings.help.empty()){
+            ImGui::SameLine();
+            helpMarker(settings.help);
+        }
+
     }else if (type == RowPropertyType::Font){
         FontArray* value = nullptr;
         std::map<Entity, FontArray> eValue;
@@ -4490,6 +4597,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         // when applicable), with one gap between each item and a trailing gap on the right
         int texButtonCount = settings.allowCameraTexture ? 3 : 1;
         if (showTexSettings) texButtonCount++;
+        if (settings.extraButton) texButtonCount++;
         float texButtonsReserve = texButtonSize.x * texButtonCount + ImGui::GetStyle().ItemSpacing.x * (texButtonCount + 1);
         ImGui::BeginChild("textureframe", ImVec2(-texButtonsReserve, ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2),
             false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
@@ -4590,6 +4698,11 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 ImGui::OpenPopup("texturesettingspopup");
             }
             ImGui::SetItemTooltip("Texture settings (filter, wrap, SVG scale)");
+        }
+
+        if (settings.extraButton) {
+            ImGui::SameLine();
+            settings.extraButton(texButtonSize);
         }
 
         ImGui::PopStyleVar();
@@ -5075,6 +5188,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (ImGui::ArrowButton("##toggle_mesh", materialButtonGroups[id] ? ImGuiDir_Up : ImGuiDir_Down)){
             materialButtonGroups[id] = !materialButtonGroups[id];
         }
+        UIProbe::item("inspector.materialToggle." + id);
 
         ImGui::SameLine();
 
@@ -6234,7 +6348,23 @@ void editor::InspectorWindow::drawShaderUniformWarnings(const std::vector<std::s
     }
 }
 
-bool editor::InspectorWindow::drawShaderUniformRow(const ShaderUniform& uniform, const ShaderUniformValues& values, const std::string& idPrefix, Vector4& newValue){
+namespace {
+    // the components a value member of a custom block has (0: not a value a global can feed)
+    int uniformComponents(const ShaderUniform& uniform){
+        if (uniform.arrayCount > 1 || ShaderUniforms::isReserved(uniform.name) || !ShaderUniforms::isEditable(uniform))
+            return 0;
+        switch (uniform.type){
+            case ShaderUniformType::FLOAT: case ShaderUniformType::INT: return 1;
+            case ShaderUniformType::FLOAT2: case ShaderUniformType::INT2: return 2;
+            case ShaderUniformType::FLOAT3: case ShaderUniformType::INT3: return 3;
+            case ShaderUniformType::FLOAT4: case ShaderUniformType::INT4: return 4;
+            default: return 0;
+        }
+    }
+}
+
+bool editor::InspectorWindow::drawShaderUniformRow(const ShaderUniform& uniform, const ShaderUniformValues& values, const std::string& idPrefix, Vector4& newValue,
+                                                   float reserveRight){
     const std::string& name = uniform.name;
 
     ImGui::TableNextRow();
@@ -6279,7 +6409,7 @@ bool editor::InspectorWindow::drawShaderUniformRow(const ShaderUniform& uniform,
     float fields[4] = {value.x, value.y, value.z, value.w};
     bool changed = false;
     std::string uniformId = idPrefix + name;
-    ImGui::SetNextItemWidth(-1);
+    ImGui::SetNextItemWidth(reserveRight > 0.0f ? -reserveRight : -1.0f);
     if (isInt){
         int intFields[4] = {(int)fields[0], (int)fields[1], (int)fields[2], (int)fields[3]};
         changed = ImGui::DragScalarN(uniformId.c_str(), ImGuiDataType_S32, intFields, components, 1.0f);
@@ -6312,10 +6442,33 @@ void editor::InspectorWindow::drawShaderUniformRows(ComponentType cpType, SceneP
         return;
     const ShaderUniformValues values = *valuesRef;
     const uint32_t sceneId = sceneProject->id;
+    // members that follow a global shader value (a mesh keeps them on its materials)
+    ShaderGlobalBindings* bindingsRef = cpType == ComponentType::MeshComponent ? nullptr
+        : Catalog::getPropertyRef<ShaderGlobalBindings>(sceneProject->scene, entity, cpType, "shaderGlobalBindings");
+    const ShaderGlobalBindings bindings = bindingsRef ? *bindingsRef : ShaderGlobalBindings();
+    auto setBindings = [&](const ShaderGlobalBindings& value) {
+        CommandHandle::get(sceneId)->addCommandNoMerge(
+            new PropertyCmd<ShaderGlobalBindings>(project, sceneId, entity, cpType, "shaderGlobalBindings", value));
+    };
+    const float linkWidth = getGlobalLinkButtonWidth() + ImGui::GetStyle().ItemSpacing.x;
 
     for (const ShaderUniform& uniform : rows.members) {
+        const int components = bindingsRef ? uniformComponents(uniform) : 0;
+        const std::string bound = components > 0 ? ShaderGlobals::getBinding(bindings, uniform.name) : std::string();
+        ImGui::PushID(("uniform_" + uniform.name).c_str());
+        if (!bound.empty()) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("%s", uniform.name.c_str());
+            ImGui::TableSetColumnIndex(1);
+            drawBoundGlobalValue(bound, components, false, ImGui::GetContentRegionAvail().x - linkWidth);
+            drawGlobalLinkButton(uniform.name, components, bindings, setBindings);
+            ImGui::PopID();
+            continue;
+        }
         Vector4 newValue;
-        if (drawShaderUniformRow(uniform, values, "##shader_uniform_", newValue)) {
+        if (drawShaderUniformRow(uniform, values, "##shader_uniform_", newValue, components > 0 ? linkWidth : 0.0f)) {
             ShaderUniformValues newValues = values;
             ShaderUniforms::set(newValues, uniform.name, newValue);
 
@@ -6327,6 +6480,9 @@ void editor::InspectorWindow::drawShaderUniformRows(ComponentType cpType, SceneP
             cmd->setNoMerge();
             cmd = nullptr;
         }
+        if (components > 0)
+            drawGlobalLinkButton(uniform.name, components, bindings, setBindings);
+        ImGui::PopID();
     }
 
     drawShaderUniformWarnings(rows.warnings);
@@ -6428,8 +6584,32 @@ void editor::InspectorWindow::drawPostProcessUniforms(uint32_t sceneId, const st
     }
 
     const ShaderUniformValues& values = passes[index].uniforms;
+    // members that follow a global shader value
+    const ShaderGlobalBindings& bindings = passes[index].shaderGlobalBindings;
+    auto setBindings = [&](const ShaderGlobalBindings& value){
+        std::vector<PostProcessPass> newPasses = passes;
+        newPasses[index].shaderGlobalBindings = value;
+        CommandHandle::get(sceneId)->addCommandNoMerge(
+            new ScenePropertyCmd<std::vector<PostProcessPass>>(project, sceneId, "post_process", newPasses));
+    };
+    const float linkWidth = getGlobalLinkButtonWidth() + ImGui::GetStyle().ItemSpacing.x;
     for (const ShaderUniform& uniform : resolved.block.members){
         ImGui::PushID(uniform.name.c_str());
+        const int components = uniformComponents(uniform);
+        const std::string bound = components > 0 ? ShaderGlobals::getBinding(bindings, uniform.name) : std::string();
+        if (!bound.empty()){
+            const ShaderManifestProperty* property = resolved.manifest ? resolved.manifest->findProperty(uniform.name) : nullptr;
+            const bool color = property && (property->kind == ShaderPropertyKind::COLOR || property->kind == ShaderPropertyKind::HDRCOLOR);
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(property && !property->label.empty() ? property->label.c_str() : uniform.name.c_str());
+            ImGui::TableSetColumnIndex(1);
+            drawBoundGlobalValue(bound, components, color, ImGui::GetContentRegionAvail().x - linkWidth);
+            drawGlobalLinkButton(uniform.name, components, bindings, setBindings);
+            ImGui::PopID();
+            continue;
+        }
         // a member the shader's manifest declares (@property): its label, range and widget, and
         // its default while unset (what the engine renders), with a reset arrow once set
         const ShaderManifestProperty* property = resolved.manifest ? resolved.manifest->findProperty(uniform.name) : nullptr;
@@ -6467,7 +6647,7 @@ void editor::InspectorWindow::drawPostProcessUniforms(uint32_t sceneId, const st
             ImGui::TableSetColumnIndex(1);
             Vector4 edited;
             bool continuous = true;
-            if (drawShaderPropertyValue(*property, "##pp_param_" + uniform.name, value, edited, continuous)){
+            if (drawShaderPropertyValue(*property, "##pp_param_" + uniform.name, value, edited, continuous, components > 0 ? -linkWidth : -1.0f)){
                 std::vector<PostProcessPass> newPasses = passes;
                 newPasses[index].setUniform(uniform.name, edited);
                 Command* passCmd = new ScenePropertyCmd<std::vector<PostProcessPass>>(project, sceneId, "post_process", newPasses);
@@ -6483,7 +6663,7 @@ void editor::InspectorWindow::drawPostProcessUniforms(uint32_t sceneId, const st
                 ImGui::SetTooltip("%s", uniform.name.c_str());
         }else{
             Vector4 newValue;
-            if (drawShaderUniformRow(uniform, values, "##pp_uniform_", newValue)){
+            if (drawShaderUniformRow(uniform, values, "##pp_uniform_", newValue, components > 0 ? linkWidth : 0.0f)){
                 std::vector<PostProcessPass> newPasses = passes;
                 newPasses[index].setUniform(uniform.name, newValue);
 
@@ -6499,6 +6679,8 @@ void editor::InspectorWindow::drawPostProcessUniforms(uint32_t sceneId, const st
             cmd->setNoMerge();
             cmd = nullptr;
         }
+        if (components > 0)
+            drawGlobalLinkButton(uniform.name, components, bindings, setBindings);
         ImGui::PopID();
     }
 
@@ -7286,6 +7468,11 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
             RowSettings settingsAlphaMode = settingsMaterial;
             settingsAlphaMode.enumEntries = &entriesMaterialAlphaMode;
 
+            // with the Sprite Normal Map wand when the Base Texture is an image (both Normal Texture rows)
+            RowSettings settingsNormalTexture = normalTextureRowSettings(settingsMaterial, sceneProject, entities, (unsigned int)s);
+            settingsNormalTexture.help = "Tangent-space normal map, OpenGL convention (green up). On sprites, tilemaps and polygons it answers "
+                                         "Light 2Ds whose Height is above 0; same size and frame layout as the Base Texture.";
+
             // the shader (built-in Lit, a library shader or a custom file) and its own rows
             beginTable(cpType, getLabelSize("Met. Roug. Texture"), "submeshes_material_shader");
             // one-click setups of the shader, extra pass and state (shader library phase 2)
@@ -7309,7 +7496,7 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
             propertyRow(RowPropertyType::FloatPositive, cpType, "submeshes["+std::to_string(s)+"].material.emissiveStrength", "Emission Intensity", sceneProject, entities, settingsEmission);
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.emissiveTexture", "Emissive Texture", sceneProject, entities, settingsMaterial);
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.occlusionTexture", "Occlusion Texture", sceneProject, entities, settingsMaterial);
-            propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.normalTexture", "Normal Texture", sceneProject, entities, settingsMaterial);
+            propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.normalTexture", "Normal Texture", sceneProject, entities, settingsNormalTexture);
 
             // Stochastic Tiling of these maps (includes/pbr.glsl), its values while it is on
             const std::string materialPrefix = "submeshes[" + std::to_string(s) + "].material.";
@@ -7344,6 +7531,20 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
             }
             endTable();
             drawMaterialAdvancedSurfaceRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
+            }else{
+                // a library shader with @require normalmap reads the material's own Normal Texture
+                // (the 2D lights' normal map): the one PBR row it keeps
+                Scene* materialScene = sceneProject->scene;
+                MeshComponent& firstMesh = materialScene->getComponent<MeshComponent>(entities[0]);
+                const std::string drawnShader = RenderSystem::getSubmeshShader(firstMesh, firstMesh.submeshes[s],
+                                                                               materialScene->getDefaultCustomShader(ShaderType::MESH));
+                std::shared_ptr<const ShaderManifest> drawnManifest = drawnShader.empty() ? nullptr : ShaderManifests::get(drawnShader);
+                const std::vector<std::string> features = ShaderReference::getEnabledFeatures(drawnShader, firstMesh.submeshes[s].material.shaderFeatures);
+                if (Catalog::shaderReadsMaterialNormalMap(drawnManifest.get(), features)){
+                    beginTable(cpType, getLabelSize("Met. Roug. Texture"), "submeshes_material_normal_map");
+                    propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.normalTexture", "Normal Texture", sceneProject, entities, settingsNormalTexture);
+                    endTable();
+                }
             }
 
             separatorText("Surface");
@@ -7624,6 +7825,122 @@ void editor::InspectorWindow::drawUIComponent(ComponentType cpType, SceneProject
     endTable();
 
     drawCustomShaderRow(cpType, ShaderType::UI, sceneProject, entities);
+
+    // what the Canvas Groups above make of the element (ui canvas group spec 7.7)
+    if (entities.size() == 1){
+        drawCanvasGroupInheritedLine(sceneProject, entities[0]);
+    }
+}
+
+void editor::InspectorWindow::drawCanvasGroupInheritedLine(SceneProject* sceneProject, Entity entity){
+    Scene* scene = sceneProject->scene;
+    const CanvasGroupState state = scene->getSystem<UISystem>()->getCanvasGroupState(entity);
+    if (state.group == NULL_ENTITY){
+        return;
+    }
+
+    char alphaText[32];
+    snprintf(alphaText, sizeof(alphaText), "%.2f", state.alpha);
+    std::string line = std::string("Inherited alpha ") + alphaText;
+    if (!state.interactable){
+        line += " \xc2\xb7 not interactable";
+    }
+    if (!state.blocksRaycasts){
+        line += " \xc2\xb7 click-through";
+    }
+    std::string groupName = scene->getEntityName(state.group);
+    if (groupName.empty()){
+        groupName = "GameObject " + std::to_string(state.group);
+    }
+    line += " (Canvas Group: " + groupName + ")";
+
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+    ImGui::TextWrapped("%s", line.c_str());
+    ImGui::PopStyleColor();
+    if (state.group != entity){
+        ImGui::SameLine();
+        if (ImGui::SmallButton(ICON_FA_ARROW_POINTER " Select##canvas_group_select")){
+            project->setSelectedSceneForProperties(sceneProject->id);
+            project->setSelectedEntity(sceneProject->id, state.group);
+        }
+        if (ImGui::IsItemHovered()){
+            ImGui::SetTooltip("Select the nearest Canvas Group of this element");
+        }
+    }
+}
+
+void editor::InspectorWindow::drawCanvasGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    static std::vector<editor::EnumEntry> entriesRenderMode = {
+        { (int)CanvasGroupRenderMode::PER_ELEMENT, "Per Element" },
+        { (int)CanvasGroupRenderMode::FLATTEN, "Flatten" }
+    };
+
+    RowSettings settingsAlpha;
+    settingsAlpha.floatMin = 0.0f;
+    settingsAlpha.floatMax = 1.0f;
+    settingsAlpha.help = "Multiplied into the alpha of every UI element of this GameObject and its children (nested groups multiply). "
+                         "To hide a panel like Unity: alpha 0, Interactable and Blocks Raycasts off (alpha 0 alone still blocks clicks)";
+
+    RowSettings settingsInteractable;
+    settingsInteractable.help = "Off: Buttons, Input Fields, Scrollbars and Panels below stop reacting and show their disabled look. "
+                                "Pointer callbacks of plain images still fire";
+
+    RowSettings settingsBlocks;
+    settingsBlocks.help = "Off: clicks and touches go through the elements below to what is behind them "
+                          "(a dragged item keeps its drag; the drop finds the slot behind it)";
+
+    RowSettings settingsIgnore;
+    settingsIgnore.help = "The Canvas Groups above this one stop counting for this subtree (unlike Unity, it shows even under a parent at alpha 0)";
+
+    RowSettings settingsRenderMode;
+    settingsRenderMode.enumEntries = &entriesRenderMode;
+    settingsRenderMode.help = "How overlapping children fade.\n"
+                              "Per Element (Unity, no cost): each element is faded, overlaps show through:\n"
+                              "   [A][AB][B]   the overlap AB is darker than A and B\n"
+                              "Flatten (CSS opacity): the subtree is drawn as one layer, then faded:\n"
+                              "   [A][A ][B]   the overlap looks like the front element\n"
+                              "Flatten costs, while alpha is between 0 and 1, one offscreen pass per camera (a cleared screen-size\n"
+                              "target; flattened siblings share one) and a quad over the group's bounds";
+
+    beginTable(cpType, getLabelSize("Ignore Parent Groups"));
+    propertyRow(RowPropertyType::Float_0_1, cpType, "alpha", "Alpha", sceneProject, entities, settingsAlpha);
+    propertyRow(RowPropertyType::Bool, cpType, "interactable", "Interactable", sceneProject, entities, settingsInteractable);
+    propertyRow(RowPropertyType::Bool, cpType, "blocksRaycasts", "Blocks Raycasts", sceneProject, entities, settingsBlocks);
+    propertyRow(RowPropertyType::Bool, cpType, "ignoreParentGroups", "Ignore Parent Groups", sceneProject, entities, settingsIgnore);
+    propertyRow(RowPropertyType::Enum, cpType, "renderMode", "Render Mode", sceneProject, entities, settingsRenderMode);
+    endTable();
+
+    // HTML UI documents have their own opacity and pointer-events (CSS)
+    Scene* scene = sceneProject->scene;
+    bool holdsDocument = false;
+    auto transforms = scene->getComponentArray<Transform>();
+    for (Entity entity : entities){
+        if (!transforms->hasEntity(entity)){
+            continue;
+        }
+        const size_t first = transforms->getIndex(entity);
+        const size_t last = scene->findBranchLastIndex(entity);
+        for (size_t i = first; i <= last && !holdsDocument; i++){
+            holdsDocument = scene->findComponent<UIDocumentComponent>(transforms->getEntity(i)) != nullptr;
+        }
+    }
+    if (holdsDocument){
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        ImGui::TextWrapped(ICON_FA_CIRCLE_INFO " HTML documents ignore Canvas Groups: use CSS opacity / pointer-events");
+        ImGui::PopStyleColor();
+    }
+
+    // the groups above this one
+    if (entities.size() == 1){
+        Entity parent = NULL_ENTITY;
+        if (Transform* transform = scene->findComponent<Transform>(entities[0])){
+            parent = transform->parent;
+        }
+        const CanvasGroupComponent& own = scene->getComponent<CanvasGroupComponent>(entities[0]);
+        if (parent != NULL_ENTITY && !own.ignoreParentGroups){
+            drawCanvasGroupInheritedLine(sceneProject, parent);
+        }
+    }
 }
 
 void editor::InspectorWindow::drawInputFieldComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
@@ -7838,7 +8155,9 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
         int activeFrameCount = (int)sprite.numFramesRect;
 
         // Sprite slicer tool button
-        if (ImGui::Button(ICON_FA_GRIP " Slicer Tool", ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
+        // the Slicer Tool and the Sprite Normal Map (this texture with these frames), side by side
+        const float spriteFramesHalf = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+        if (ImGui::Button(ICON_FA_GRIP " Slicer Tool", ImVec2(spriteFramesHalf, 0))) {
             textureSlicerToolDialog.open(
                 previewTexture,
                 static_cast<int>(sprite.width),
@@ -7890,6 +8209,9 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
                 }
             );
         }
+        ImGui::SameLine();
+        spritenormalsentry::normalMapButton(sceneProject, entities[0], ImGui::GetContentRegionAvail().x);
+        spritenormalsentry::normalMapHint(sceneProject, entities[0]);
 
         beginTable(cpType, getLabelSize("Frames"), "sprite_frames_header");
         propertyHeader("Frames", -1, false, false);
@@ -10731,19 +11053,61 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
 
             if (mixed) ImGui::PushStyleColor(ImGuiCol_CheckMark, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
             ImGui::Checkbox(("##script_enabled_" + std::to_string(scriptIdx)).c_str(), &enabled);
+            UIProbe::item("inspector.scriptEnabled." + std::to_string(scriptIdx));
             if (mixed) ImGui::PopStyleColor();
 
             if (ImGui::IsItemDeactivatedAfterEdit()) {
-                std::string propName = "scripts[" + std::to_string(scriptIdx) + "].enabled";
-                for (const Entity& entity : entities) {
-                    cmd = new PropertyCmd<bool>(project, sceneProject->id, entity, ComponentType::ScriptComponent, propName, enabled);
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                }
-                if (cmd) cmd->setNoMerge();
+                // after this frame's drawing: in Play it runs onEnable / onDisable, which may move
+                // the components `script` and the loop below point into (deferredCommands)
+                const std::string propName = "scripts[" + std::to_string(scriptIdx) + "].enabled";
+                const uint32_t commandSceneId = project->getSelectedSceneId();
+                const uint32_t stateSceneId = sceneProject->id;
+                const std::vector<Entity> targets = entities;
+                deferredCommands.push_back([this, propName, commandSceneId, stateSceneId, targets, enabled]() {
+                    if (!project->getScene(stateSceneId)) return;
+                    Command* last = nullptr;
+                    for (const Entity& entity : targets) {
+                        last = new PropertyCmd<bool>(project, stateSceneId, entity, ComponentType::ScriptComponent, propName, enabled);
+                        CommandHandle::get(commandSceneId)->addCommand(last);
+                    }
+                    if (last) last->setNoMerge();
+                });
             }
 
             ImGui::SameLine();
             ImGui::TextUnformatted(script.className.c_str());
+
+            // in Play, where the script is in its lifecycle (as get_runtime_entity reports it)
+            if (entities.size() == 1 && ScriptRuntime::hasStarted(sceneProject->scene)) {
+                const ScriptEntry& live = sceneProject->scene->getComponent<ScriptComponent>(entities[0]).scripts[scriptIdx];
+                const ScriptState* state = ScriptRuntime::getState(live.instance);
+                const char* status = nullptr;
+                const char* help = nullptr;
+                if (!live.instance) {
+                    status = "not running";
+                    help = "No instance: the script failed to load (see the Console) or its C++ class is not built.";
+                } else if (state && state->destroyed) {
+                    status = "destroyed";
+                    help = "onDestroy ran.";
+                } else if (!state || !state->initialized) {
+                    status = "not initialized";
+                    help = "The GameObject has not been active yet: init runs when it is first activated.";
+                } else if (state->started) {
+                    status = state->enabledLatch ? "started" : "started, inactive";
+                    help = state->enabledLatch ? "init, onEnable and start ran." : "start ran; the script is disabled or its GameObject inactive now (onDisable ran).";
+                } else if (state->enabledLatch) {
+                    status = "waiting to start";
+                    help = "onEnable ran; start runs at the beginning of the next frame.";
+                } else {
+                    status = "initialized";
+                    help = "init ran; onEnable and start wait until the script is enabled and its GameObject active.";
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled("(%s)", status);
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s", help);
+                }
+            }
 
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x / 3.0, ImGui::GetStyle().FramePadding.y / 2.0));
 
@@ -11013,6 +11377,22 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
             ImGui::EndDisabled();
 
             ImGui::PopStyleVar();
+
+            // during Play: what the script started and is still running (coroutines, timers)
+            if (entities.size() == 1 && script.instance) {
+                // the owner: a Lua instance's ref, a C++ script's ScriptBase
+                const void* owner = script.type == ScriptType::CPP && script.cppScript ? static_cast<const void*>(script.cppScript) : script.instance;
+                const size_t coroutines = ScriptScheduler::coroutineCountOf(owner);
+                const size_t timers = ScriptScheduler::timerCountOf(owner);
+                if (coroutines > 0 || timers > 0) {
+                    propertyHeader("Running");
+                    ImGui::TextDisabled("Coroutines: %zu, Timers: %zu", coroutines, timers);
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("Started by this script (self:startCoroutine, self:invoke): coroutines stop when the "
+                                          "GameObject is deactivated, timers when it is destroyed");
+                    }
+                }
+            }
 
             endTable();
 
@@ -11420,7 +11800,17 @@ void editor::InspectorWindow::revealAssetInProject(const std::filesystem::path& 
 
 // ---------------------------------------------------------------- Lattice (spec §9.1)
 
+void editor::InspectorWindow::runDeferredCommands(){
+    std::vector<std::function<void()>> commands;
+    commands.swap(deferredCommands);
+    for (const std::function<void()>& command : commands) {
+        command();
+    }
+}
+
 void editor::InspectorWindow::show(){
+    runDeferredCommands();
+
     // Flush any debounced material file writes
     flushDirtyMaterials(ImGui::GetIO().DeltaTime);
 
@@ -11903,6 +12293,10 @@ void editor::InspectorWindow::show(){
                     }
                     drawScenePropertyRow<bool>(sceneProject, "physics_interpolation", "Interpolate", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
                         "Draws bodies between their last two fixed steps, so they move smoothly at any frame rate (a frame behind the simulation by up to one step). Bodies moved by a script or an animation keep the pose they were given.");
+                    if (sceneProject->sceneType != SceneType::SCENE_3D) {
+                        drawScenePropertyRow<int>(sceneProject, "physics_2d_sub_steps", "Sub Steps", ScenePropertyInputType::DragInt, 6 * ImGui::GetFontSize(), 1.0f, 16.0f,
+                            "Box2D solver sub-steps of each fixed step (1-16, default 4). More sub-steps make joint chains, stacks and stiff springs steadier, at a cost.");
+                    }
 
                     ImGui::EndTable();
                 }
@@ -12008,6 +12402,7 @@ void editor::InspectorWindow::show(){
 
     scriptCreateDialog.show();
     shaderForkDialog.show();
+    RagdollWizardDialog::instance().show();
     textureSlicerToolDialog.show();
 
     ImGui::End();

@@ -7,6 +7,7 @@
 #include "SceneManager.h"
 #include "Catalog.h"
 #include "action/Ease.h"
+#include "shader/ShaderGlobals.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -163,6 +164,16 @@ namespace jasperengine::editor{
         // C++ string literal of the value, quotes included
         static std::string formatString(const std::string& value);
         static std::string formatFloat(float value);
+        // AnimationCurve / Gradient literals (lines and trails spec 6.1): a step tangent is
+        // AnimationCurve::STEP
+        static std::string formatCurve(const AnimationCurve& curve);
+        static std::string formatGradient(const Gradient& gradient);
+        // Unity's MinMaxCurve / MinMaxGradient literals (particles spec 6.7)
+        static std::string formatMinMaxCurve(const MinMaxCurve& curve);
+        static std::string formatMinMaxGradient(const MinMaxGradient& gradient);
+        // {{"member", "global"}, ...} and a ShaderGlobalDecl{...} literal (shader globals spec 6.5)
+        static std::string formatShaderGlobalBindings(const ShaderGlobalBindings& bindings);
+        static std::string formatShaderGlobalDecl(const ShaderGlobalDecl& decl);
 
         static std::string prefabToFunctionName(const std::filesystem::path& prefabPath);
         static std::string prefabToBuildFunctionName(const std::filesystem::path& prefabPath);
@@ -233,6 +244,7 @@ namespace jasperengine::editor{
         static std::string createCharacterControllerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false);
         static std::string createCharacterController2DComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false);
         static std::string createLineRendererComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
+        static std::string createTrailRendererComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createPointsComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createInstancedMeshComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
     };

@@ -5,6 +5,8 @@
 
 #include "Project.h"
 #include "imgui.h"
+#include "util/ShaderGlobalsEdit.h"
+#include "util/ShaderGlobalsUsage.h"
 
 #include <string>
 #include <filesystem>
@@ -49,6 +51,11 @@ namespace jasperengine::editor {
         char m_windowTitleBuffer[256] = {0};
         std::string m_windowTitleOriginal;
         fs::path m_windowIcon;
+        // Player > Resolution and Presentation
+        int m_defaultOrientationIndex = 4;
+        uint8_t m_allowedOrientations = PresentationSettings{}.allowedOrientations;
+        bool m_keepScreenOn = true;
+        int m_targetFrameRate = -1;
         char m_applicationNameBuffer[256] = {0};
         char m_applicationIdentifierBuffer[256] = {0};
         char m_applicationVersionBuffer[64] = {0};
@@ -75,6 +82,7 @@ namespace jasperengine::editor {
         float m_inputDeadzone = 0.15f;
         std::vector<fs::path> m_inputActionsFiles;
         std::string m_inputStatus;
+        Physics3DWorldSettings m_physics3DWorld;
         bool m_runtimeShadersEnabled = true;
         int m_mobilePbrTierIndex = 1;
         bool m_packNativeResources = false;
@@ -86,6 +94,7 @@ namespace jasperengine::editor {
         char m_androidKeystoreAliasBuffer[128] = {0};
         char m_iosTeamIdBuffer[32] = {0};
         int m_iosExportMethodIndex = 0;        // development, ad-hoc, app-store, enterprise
+        bool m_allowInsecureHttp = false;
         bool m_versionControlMetadata = true;
         VcsProjectSettings m_vcs;
         char m_webApplicationNameBuffer[256] = {0};
@@ -126,15 +135,14 @@ namespace jasperengine::editor {
         char m_androidVersionCodeBuffer[16] = {0};
         int m_androidMinSdk = 21;
         int m_androidTargetSdk = 33;
-        int m_androidOrientationIndex = 0;
         bool m_androidAbiArmeabiV7a = true;
         bool m_androidAbiArm64V8a = true;
         bool m_androidAbiX86 = true;
         bool m_androidAbiX86_64 = true;
         std::set<std::string> m_androidPermissions;
+        int m_androidInternetAccessIndex = 0;
         bool m_androidAllowBackup = true;
         bool m_androidFullscreen = true;
-        bool m_androidKeepScreenOn = false;
         bool m_androidAdmobEnabled = false;
         char m_androidAdmobAppIdBuffer[128] = {0};
 
@@ -148,14 +156,52 @@ namespace jasperengine::editor {
         LayerCollisionRows m_layerCollision3D = allLayersCollide();
         LayerCollisionRows m_layerCollision2D = allLayersCollide();
 
+        // Input actions being edited (Project Settings > Input). The page has its own undo
+        // (Ctrl+Z / Ctrl+Y while it shows); OK makes the whole edit one project history step.
+        std::vector<InputAction> m_inputActions;
+        std::vector<InputAction> m_inputCommitted;      // the state of the last page undo step
+        std::string m_inputCommittedJson;
+        std::vector<std::vector<InputAction>> m_inputUndo;
+        std::vector<std::vector<InputAction>> m_inputRedo;
+        int m_inputSelected = 0;
+        char m_inputSearch[64] = {0};
+        char m_inputControlFilter[64] = {0};
+        // Listen: the next key, mouse button or gamepad control pressed goes to this binding
+        // (list 0: positive, 1: negative, 2: the gamepad axis)
+        struct InputListen {
+            int action = -1;
+            int binding = -1;
+            int list = 0;
+            int frames = 0;
+        };
+        InputListen m_inputListen;
+
+        // Shader Globals being edited (Project Settings > Graphics). Every valid edit is declared to
+        // the engine at once, so the Scene and Game views follow it; Cancel declares the project's
+        // again, OK makes the whole edit one project history step (a renamed global takes the
+        // material and component bindings of the open scenes along)
+        ShaderGlobalsEdit m_globalsEdit;
+        // "Used by", scanned when the page opens and on Refresh (not every frame)
+        std::vector<ShaderGlobalsUsage::Use> m_shaderGlobalUses;
+        bool m_shaderGlobalUsesScanned = false;
+        int m_shaderGlobalRemove = -1;   // the row whose removal asks first (bindings use it)
+
         // Unity-style category list; indexes ProjectCategory in the .cpp.
         int m_category = 0;
         char m_categorySearch[64] = {0};
 
         void drawSettings();
         void drawPlayerSettings();
+        // Default Orientation, Allowed Orientations, Keep Screen On, Target Frame Rate (rows of the open table)
+        void drawPresentationSettings();
         void drawGraphicsSettings();
         void drawShaderCreationSettings();
+        void drawShaderGlobals();
+        // the default (or, in Play, the live value) of a global: a field per type; matrices and
+        // arrays edit in a popup. True when `values` changed
+        bool drawShaderGlobalValue(const char* id, ShaderGlobalType type, unsigned int arraySize, std::vector<Vector4>& values);
+        bool drawShaderGlobalTexture(const char* id, ShaderGlobalType type, std::string& path);
+        void refreshShaderGlobalUses();
         void drawQualitySettings();
         void drawTextureSettings();
         void drawPhysicsSettings();
@@ -165,6 +211,18 @@ namespace jasperengine::editor {
         // Unity's triangular Layer Collision Matrix over the named layers (as typed in
         // Tags and Layers, not yet applied)
         void drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows);
+        void drawInputSettings();
+        void drawInputActionList();
+        void drawInputActionDetails(InputAction& action, int actionIndex);
+        void drawInputBinding(InputAction& action, int actionIndex, int bindingIndex);
+        // a binding's control list: names to remove, a picker to add, Listen
+        void drawInputControls(const char* id, std::vector<InputControl>& controls, int actionIndex, int bindingIndex, int list);
+        void pollInputListen();
+        void commitInputEdit();
+        void undoInputEdit();
+        void redoInputEdit();
+        // First Input problem that blocks OK, "" when there is none
+        std::string inputError() const;
         void drawScriptingSettings();
         void drawTagsAndLayersSettings();
         // Why the New Tag Name field cannot be added ("" when it can)

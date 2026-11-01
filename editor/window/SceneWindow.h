@@ -125,7 +125,31 @@ namespace jasperengine::editor {
         ImVec2 canvasEngineScale(uint32_t sceneId) const;
         float canvasDpi(uint32_t sceneId) const;
         void toEngineCanvas(uint32_t sceneId, float& x, float& y) const;
-        
+
+        // The Particle Effect overlay (particles spec 6.8): with a version 2 Particle System (or a
+        // GameObject holding them) selected in edit mode, Play / Pause / Restart / Stop, the
+        // playback speed and time and the particle count; the preview steps the selected systems
+        // and their children (or every system of the scene: Simulate Layers all) with a fixed seed
+        // so restarts repeat, and puts their action state back when it stops (the authored values,
+        // edits made meanwhile included, are never touched). SceneParticleOverlay.cpp.
+        struct ParticleOverlay {
+            uint32_t sceneId = 0;
+            Entity root = NULL_ENTITY;          // the selection the systems were collected from
+            std::vector<Entity> systems;
+            std::vector<std::pair<Entity, int>> actionStates;   // ActionState before the preview
+            bool active = false;                // previewing (playing or paused)
+            bool playing = false;
+            bool all = false;                   // Simulate Layers: all systems of the scene
+            float speed = 1.0f;
+            float time = 0.0f;
+        };
+        ParticleOverlay particleOverlay;
+        // the systems to show for the selection of `sceneProject` (empty: no overlay)
+        std::vector<Entity> particleOverlaySystems(SceneProject* sceneProject, Entity& root) const;
+        void drawParticleOverlay(SceneProject* sceneProject, const ImVec2& canvasMin, const ImVec2& canvasSize);
+        void startParticleOverlay(SceneProject* sceneProject);
+        void stopParticleOverlay(SceneProject* sceneProject);
+
     public:
         // The ImGui id of Prefab Mode's tab: one tab, whichever stage it shows
         static constexpr const char* PREFAB_STAGE_WINDOW_ID = "###PrefabMode";

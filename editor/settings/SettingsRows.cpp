@@ -15,6 +15,7 @@
 #include "SceneBackup.h"
 #include "diag/CrashHandler.h"
 #include "Project.h"
+#include "util/PlatformRules.h"
 #include "command/CommandHistory.h"
 #include "command/type/ShaderCreationSettingsCmd.h"
 #include "reflect/Reflect.h"
@@ -60,6 +61,8 @@ struct Setting {
     // Validates `value`; applies it when apply is true. Returns false with error.
     std::function<bool(SettingsContext&, const Json& value, bool apply, std::string& error)> set;
     bool preference = false;   // editor/machine preference, not project.yaml
+    // a program to run or a folder outside the project: only the user sets it (read-only over MCP)
+    bool userOnly = false;
 };
 
 template <typename T>
@@ -80,10 +83,12 @@ const EnumMap<ShadowTier> shadowTiers[] = {
     {"low", ShadowTier::LOW}, {"medium", ShadowTier::MEDIUM}, {"high", ShadowTier::HIGH}, {"ultra", ShadowTier::ULTRA}};
 const EnumMap<WindowMode> windowModes[] = {
     {"windowed", WindowMode::WINDOWED}, {"maximized", WindowMode::MAXIMIZED}, {"fullscreen", WindowMode::FULLSCREEN}};
-const EnumMap<AndroidOrientation> androidOrientations[] = {
-    {"unspecified", AndroidOrientation::Unspecified}, {"portrait", AndroidOrientation::Portrait},
-    {"landscape", AndroidOrientation::Landscape}, {"sensor_portrait", AndroidOrientation::SensorPortrait},
-    {"sensor_landscape", AndroidOrientation::SensorLandscape}, {"full_sensor", AndroidOrientation::FullSensor}};
+const EnumMap<ScreenOrientation> playerOrientations[] = {
+    {"portrait", ScreenOrientation::Portrait}, {"portrait_upside_down", ScreenOrientation::PortraitUpsideDown},
+    {"landscape_left", ScreenOrientation::LandscapeLeft}, {"landscape_right", ScreenOrientation::LandscapeRight},
+    {"auto_rotation", ScreenOrientation::AutoRotation}};
+const EnumMap<AndroidInternetAccess> androidInternetAccesses[] = {
+    {"auto", AndroidInternetAccess::Auto}, {"require", AndroidInternetAccess::Require}};
 
 template <typename T, size_t N>
 std::vector<std::string> enumNames(const EnumMap<T> (&map)[N]) {
@@ -467,6 +472,78 @@ std::vector<Setting> mcpSettingsTable() {
         add(stringSetting("player.version", "Application version (1 to 3 numeric parts, e.g. 1.2.0).",
                           [](Project& p) -> std::string& { return p.getApplicationSettings().version; },
                           [](const std::string& v) { return isNumericVersion(v, 3, 65535); }, "1 to 3 numeric parts, each 0-65535"));
+        // Player > Resolution and Presentation (upstream's platform services; android.orientation and
+        // android.keep_screen_on of earlier projects migrate to these)
+        {
+            Setting s;
+            s.key = "player.default_orientation";
+            s.type = "enum";
+            s.values = enumNames(playerOrientations);
+            s.description = "Orientation phones and tablets start in (Android and iOS); auto_rotation turns within "
+                            "player.allowed_orientations. landscape_left = device turned counter-clockwise.";
+            s.get = [](SettingsContext& ctx) {
+                return Json(enumName(playerOrientations, ctx.project()->getPresentationSettings().defaultOrientation));
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                ScreenOrientation o;
+                if (!parseEnum(playerOrientations, value, o, error)) return false;
+                if (apply) ctx.project()->getPresentationSettings().defaultOrientation = o;
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "player.allowed_orientations";
+            s.type = "list";
+            s.values = {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"};
+            s.description = "Allowed Orientations for Auto Rotation: non-empty subset; a fixed default is always allowed too.";
+            s.get = [](SettingsContext& ctx) {
+                Json list = Json::array();
+                const uint8_t mask = ctx.project()->getPresentationSettings().allowedOrientations;
+                for (int i = 0; i < 4; i++) {
+                    if (mask & PlatformRules::orientationBit(playerOrientations[i].value)) list.push_back(playerOrientations[i].name);
+                }
+                return list;
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array() || value.empty()) {
+                    error = "must be a non-empty list of portrait, portrait_upside_down, landscape_left, landscape_right";
+                    return false;
+                }
+                uint8_t mask = 0;
+                for (const Json& item : value) {
+                    ScreenOrientation o;
+                    if (!parseEnum(playerOrientations, item, o, error) || !PlatformRules::isFixedOrientation(o)) {
+                        error = "must be a non-empty list of portrait, portrait_upside_down, landscape_left, landscape_right";
+                        return false;
+                    }
+                    mask |= PlatformRules::orientationBit(o);
+                }
+                if (apply) ctx.project()->getPresentationSettings().allowedOrientations = mask;
+                return true;
+            };
+            add(s);
+        }
+        add(boolField("player.keep_screen_on", "Initial Screen.sleepTimeout on Android/iOS: true = NeverSleep, false = the device setting.",
+                      [](Project& p) -> bool& { return p.getPresentationSettings().keepScreenOn; }));
+        {
+            Setting s;
+            s.key = "player.target_frame_rate";
+            s.type = "int";
+            s.description = "Initial Engine.targetFrameRate; -1 = platform default (60 mobile; desktops ignore it with vsync on).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getPresentationSettings().targetFrameRate); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, -1, 1000, v, error)) return false;
+                if (apply) ctx.project()->getPresentationSettings().targetFrameRate = v <= 0 ? -1 : (int)v;
+                return true;
+            };
+            add(s);
+        }
+        add(boolField("player.allow_insecure_http", "Plain http:// to hosts other than localhost/127.0.0.1/::1 (Http). Off (default): "
+                      "insecure_http on every platform, editor Play included; exports set Android cleartext and iOS/macOS ATS to match.",
+                      [](Project& p) -> bool& { return p.getApplicationSettings().allowInsecureHttp; }));
         add(intField("player.build", "Build number (Apple build number, Android version code).", 1, 2100000000,
                      [](Project& p) -> unsigned int& { return p.getApplicationSettings().build; }));
         {
@@ -766,21 +843,6 @@ std::vector<Setting> mcpSettingsTable() {
         add(intField("android.target_sdk", "Android target SDK level.", 1, 100, [](Project& p) -> unsigned int& { return p.getAndroidProjectSettings().targetSdk; }));
         {
             Setting s;
-            s.key = "android.orientation";
-            s.type = "enum";
-            s.values = enumNames(androidOrientations);
-            s.description = "Android screen orientation.";
-            s.get = [](SettingsContext& ctx) { return Json(enumName(androidOrientations, ctx.project()->getAndroidProjectSettings().orientation)); };
-            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
-                AndroidOrientation o;
-                if (!parseEnum(androidOrientations, value, o, error)) return false;
-                if (apply) ctx.project()->getAndroidProjectSettings().orientation = o;
-                return true;
-            };
-            add(s);
-        }
-        {
-            Setting s;
             s.key = "android.abis";
             s.type = "list";
             s.values = {"armeabi-v7a", "arm64-v8a", "x86", "x86_64"};
@@ -852,7 +914,22 @@ std::vector<Setting> mcpSettingsTable() {
         }
         add(boolField("android.allow_backup", "Android allowBackup.", [](Project& p) -> bool& { return p.getAndroidProjectSettings().allowBackup; }));
         add(boolField("android.fullscreen", "Android fullscreen theme.", [](Project& p) -> bool& { return p.getAndroidProjectSettings().fullscreen; }));
-        add(boolField("android.keep_screen_on", "Keep the Android screen on.", [](Project& p) -> bool& { return p.getAndroidProjectSettings().keepScreenOn; }));
+        {
+            Setting s;
+            s.key = "android.internet_access";
+            s.type = "enum";
+            s.values = enumNames(androidInternetAccesses);
+            s.description = "INTERNET permission: auto adds it when exported Lua/C++ uses Http (or android.permissions has internet); "
+                            "require always adds it (e.g. a native plugin uses the network).";
+            s.get = [](SettingsContext& ctx) { return Json(enumName(androidInternetAccesses, ctx.project()->getAndroidProjectSettings().internetAccess)); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                AndroidInternetAccess access;
+                if (!parseEnum(androidInternetAccesses, value, access, error)) return false;
+                if (apply) ctx.project()->getAndroidProjectSettings().internetAccess = access;
+                return true;
+            };
+            add(s);
+        }
         add(boolField("android.admob_enabled", "Compile Google Mobile Ads into the Android export (System.initializeAdMob and the interstitial calls); needs android.admob_app_id.",
                       [](Project& p) -> bool& { return p.getAndroidProjectSettings().admobEnabled; }));
         add(stringSetting("android.admob_app_id", "Android AdMob App ID (com.google.android.gms.ads.APPLICATION_ID) from the AdMob console; without it the export leaves AdMob out.",
@@ -1643,6 +1720,7 @@ std::vector<Setting> mcpSettingsTable() {
             s.key = key;
             s.type = "string";
             s.preference = true;
+            s.userOnly = true;
             s.description = description;
             s.get = [get](SettingsContext&) { return Json(get()); };
             s.set = [set](SettingsContext&, const Json& value, bool apply, std::string& error) {
@@ -1792,6 +1870,8 @@ std::vector<Setting> mcpSettingsTable() {
             s.key = field.key;
             s.type = "string";
             s.preference = true;
+            // the compilers are programs the build runs: user-only (the generator is just a name)
+            s.userOnly = field.member != &LocalBuildSettings::generator;
             s.description = field.description;
             auto member = field.member;
             s.get = [member](SettingsContext& ctx) {
@@ -1859,6 +1939,11 @@ const Placement placements[] = {
     {"player.identifier", "Player", "", "Application Identifier", "bundle package reverse domain"},
     {"player.version", "Player", "", "Version", ""},
     {"player.build", "Player", "", "Build", "build number version code"},
+    {"player.default_orientation", "Player", "Resolution and Presentation", "Default Orientation", "orientation portrait landscape auto rotation android ios"},
+    {"player.allowed_orientations", "Player", "Resolution and Presentation", "Allowed Orientations for Auto Rotation", "orientation rotation android ios"},
+    {"player.keep_screen_on", "Player", "Resolution and Presentation", "Keep Screen On", "sleep timeout screen on"},
+    {"player.target_frame_rate", "Player", "Resolution and Presentation", "Target Frame Rate", "fps frame rate vsync"},
+    {"player.allow_insecure_http", "Player", "Other Settings", "Allow Insecure HTTP", "http cleartext network"},
     {"player.window_icon", "Player", "Icon", "Default Icon", "icon window taskbar"},
     {"player.window_mode", "Player", "Resolution and Presentation", "Fullscreen Mode", "window mode windowed maximized"},
     {"player.window_width", "Player", "Resolution and Presentation", "Default Screen Width", "window resolution"},
@@ -1930,11 +2015,10 @@ const Placement placements[] = {
     {"android.adaptive_icon_background", "Player", "Android", "Adaptive Background", "android launcher icons adaptive icon"},
     {"android.min_sdk", "Player", "Android", "Min SDK", "android api level"},
     {"android.target_sdk", "Player", "Android", "Target SDK", "android api level"},
-    {"android.orientation", "Player", "Android", "Orientation", "android portrait landscape"},
+    {"android.internet_access", "Player", "Android", "Internet Access", "android internet permission network http"},
     {"android.abis", "Player", "Android", "Architectures", "android abi arm64 x86"},
     {"android.permissions", "Player", "Android", "Permissions", "android"},
     {"android.allow_backup", "Player", "Android", "Application Options", "android allow backup"},
-    {"android.keep_screen_on", "Player", "Android", "Keep Screen On", "android application options"},
     {"android.fullscreen", "Player", "Android", "Screen Options", "android fullscreen"},
     {"android.admob_enabled", "Player", "Android", "Google AdMob", "android ads advertising mobile ads sdk"},
     {"android.admob_app_id", "Player", "Android", "AdMob App ID", "android ads advertising application id"},
@@ -2151,6 +2235,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         row.get = setting.get;
         row.set = setting.set;
         row.mcp = true;
+        row.userOnly = setting.userOnly;
         row.tooltip = setting.description;
         if (const Placement* placement = placementOf(setting.key)) {
             row.page = placement->page;

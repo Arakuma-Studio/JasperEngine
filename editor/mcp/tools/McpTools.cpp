@@ -36,9 +36,11 @@ const ToolModule TOOL_MODULES[] = {
     {registerSceneViewTools, "Scene view: picking, bookmarks, layouts, measures, filters", "editor_ux"},   // S26
     {registerShadowTools, "Shadows", "rendering_fx"},   // S10
     {registerConsoleTools, "Console", ""},
+    {registerDataTools, "Saved data (PlayerPrefs)", "scripting"},   // upstream (script-data: UserSettings / PlayerPrefs)
     {registerScriptTools, "Scripts", ""},
     {registerAssetTools, "Assets, materials and shaders", ""},
     {registerSynthesisTools, "Texture synthesis", "assets_pipeline"},   // upstream (texture synthesis)
+    {registerSpriteNormalsTools, "Sprite normal maps", "assets_pipeline"},   // upstream (sprite normals)
     {registerMaterialsLightingTools, "Assets, materials and shaders", "rendering_fx"},   // S11
     {registerAssetIdentityTools, "Asset identity: GUIDs, references, missing assets", "assets_pipeline"},   // S04
     {registerTextureTools, "Textures: import settings and cooks", "assets_pipeline"},   // S14

@@ -7,6 +7,10 @@
 
 #include "io/watch/FileWatchService.h"
 
+#include <algorithm>
+#include <atomic>
+#include <cerrno>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -28,6 +32,7 @@
     #include <sys/sysctl.h>
 #endif
 #ifndef _WIN32
+    #include <fcntl.h>
     #include <unistd.h>
 #endif
 
@@ -135,10 +140,87 @@ public:
 
     enum class WriteResult { Unchanged, Written, Failed };
 
+    // While a write scope is active (util/SafeWrite.h, safewrite::Scope: an MCP tool call), these
+    // route the writes of paths inside its root beneath it (no symbolic link followed out of it;
+    // installed by the first Scope). Each returns -1 when `path` is not in an active scope (then
+    // the plain std::filesystem call runs), 1 when done, 0 when it failed (`ec` set; why:
+    // safewrite::lastScopedError()).
+    struct ScopedOps {
+        int (*write)(const std::filesystem::path& path, const std::string& content, std::error_code& ec);
+        int (*createDirectories)(const std::filesystem::path& path, std::error_code& ec);
+        int (*remove)(const std::filesystem::path& path, std::error_code& ec);
+        int (*removeAll)(const std::filesystem::path& path, std::error_code& ec);
+        int (*rename)(const std::filesystem::path& from, const std::filesystem::path& to, std::error_code& ec);
+        int (*copy)(const std::filesystem::path& from, const std::filesystem::path& to, bool overwrite, std::error_code& ec);
+    };
+    static std::atomic<const ScopedOps*>& scopedOpsSlot() {
+        static std::atomic<const ScopedOps*> ops{nullptr};
+        return ops;
+    }
+    static const ScopedOps* scopedOps() { return scopedOpsSlot().load(std::memory_order_acquire); }
+    static void installScopedOps(const ScopedOps* ops) { scopedOpsSlot().store(ops, std::memory_order_release); }
+
+    // std::filesystem::create_directories / remove / remove_all / rename / copy (recursive, with
+    // overwrite_existing when `overwrite`), beneath the active write scope's root when the path is
+    // inside it (see ScopedOps). Never throw.
+    static bool createDirectories(const std::filesystem::path& path, std::error_code& ec) {
+        ec.clear();
+        if (const ScopedOps* ops = scopedOps()) {
+            const int r = ops->createDirectories(path, ec);
+            if (r >= 0) return r == 1;
+        }
+        std::filesystem::create_directories(path, ec);
+        return !ec;
+    }
+    static bool removePath(const std::filesystem::path& path, std::error_code& ec) {
+        ec.clear();
+        if (const ScopedOps* ops = scopedOps()) {
+            const int r = ops->remove(path, ec);
+            if (r >= 0) return r == 1;
+        }
+        std::filesystem::remove(path, ec);
+        return !ec;
+    }
+    static bool removeAll(const std::filesystem::path& path, std::error_code& ec) {
+        ec.clear();
+        if (const ScopedOps* ops = scopedOps()) {
+            const int r = ops->removeAll(path, ec);
+            if (r >= 0) return r == 1;
+        }
+        std::filesystem::remove_all(path, ec);
+        return !ec;
+    }
+    static bool renamePath(const std::filesystem::path& from, const std::filesystem::path& to, std::error_code& ec) {
+        ec.clear();
+        if (const ScopedOps* ops = scopedOps()) {
+            const int r = ops->rename(from, to, ec);
+            if (r >= 0) return r == 1;
+        }
+        std::filesystem::rename(from, to, ec);
+        return !ec;
+    }
+    static bool copyPath(const std::filesystem::path& from, const std::filesystem::path& to, bool overwrite, std::error_code& ec) {
+        ec.clear();
+        if (const ScopedOps* ops = scopedOps()) {
+            const int r = ops->copy(from, to, overwrite, ec);
+            if (r >= 0) return r == 1;
+        }
+        std::filesystem::copy(from, to, std::filesystem::copy_options::recursive |
+                                            (overwrite ? std::filesystem::copy_options::overwrite_existing
+                                                       : std::filesystem::copy_options::none), ec);
+        return !ec;
+    }
+
     // Writes newContent only when the file does not already hold it (its mtime stays then).
     // Atomic (io::writeFileAtomic, Cache durability): a crash leaves the old file or the new
     // one, never a truncation. Generated output; user documents use DocumentFiles::write.
     static WriteResult writeFile(const std::filesystem::path& filePath, const std::string& newContent) {
+        // inside an active write scope: beneath its root (its missing folders made the same way)
+        if (const ScopedOps* ops = scopedOps()) {
+            std::error_code ec;
+            const int r = ops->write(filePath, newContent, ec);
+            if (r >= 0) return r == 1 ? WriteResult::Written : WriteResult::Failed;
+        }
         io::AtomicWriteOptions options;
         options.durability = io::Durability::Cache;
         options.skipIfUnchanged = true;
@@ -242,15 +324,85 @@ public:
         return toCrlf(text);
     }
 
+    // Creates `path` and writes `size` bytes to it; fails when anything is there already (a
+    // file, a symbolic link: O_EXCL / CREATE_NEW, so a link planted at the name is never
+    // followed). errno tells why (EEXIST when something was there).
+    static bool writeNewFile(const std::filesystem::path& path, const char* data, size_t size) {
+#ifdef _WIN32
+        // FILE_FLAG_OPEN_REPARSE_POINT: a reparse point already at the name (a symlink, a
+        // junction) is the entry itself, so CREATE_NEW fails with ERROR_FILE_EXISTS instead of
+        // following it
+        const HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                                        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+        if (file == INVALID_HANDLE_VALUE) {
+            const DWORD code = GetLastError();
+            errno = (code == ERROR_FILE_EXISTS || code == ERROR_ALREADY_EXISTS) ? EEXIST
+                  : code == ERROR_ACCESS_DENIED ? EACCES
+                  : (code == ERROR_FILE_NOT_FOUND || code == ERROR_PATH_NOT_FOUND) ? ENOENT
+                  : code == ERROR_SHARING_VIOLATION ? EBUSY
+                  : code == ERROR_INVALID_NAME ? EINVAL : EIO;
+            return false;
+        }
+        size_t done = 0;
+        bool ok = true;
+        while (ok && done < size) {
+            const DWORD chunk = static_cast<DWORD>(std::min<size_t>(size - done, 1u << 30));
+            DWORD wrote = 0;
+            ok = WriteFile(file, data + done, chunk, &wrote, nullptr) && wrote > 0;
+            if (!ok) {
+                const DWORD code = GetLastError();
+                errno = (code == ERROR_DISK_FULL || code == ERROR_HANDLE_DISK_FULL) ? ENOSPC : EIO;
+            }
+            done += wrote;
+        }
+        if (!CloseHandle(file) && ok) {
+            errno = EIO;
+            ok = false;
+        }
+        return ok;
+#else
+        const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0666);
+        if (fd < 0) {
+            return false;
+        }
+        size_t done = 0;
+        while (done < size) {
+            const ssize_t wrote = ::write(fd, data + done, size - done);
+            if (wrote < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                const int code = errno;
+                ::close(fd);
+                errno = code;
+                return false;
+            }
+            done += static_cast<size_t>(wrote);
+        }
+        return ::close(fd) == 0;
+#endif
+    }
+
     // A document written the atomic way (io::writeFileAtomic, Document durability: fsync, mode
     // and symlink kept, a read-only file refused, retried publish), with its line endings
     // (withLineEndings). A failed write leaves the old file whole. DocumentFiles::write is the
     // same with the reason of a failure.
     static bool writeFileReplacing(const std::filesystem::path& filePath, const std::string& content,
                                    LineEndings lineEndings = LineEndings::AsGiven) {
+        const std::string data = withLineEndings(filePath, content, lineEndings);
+        // inside an active write scope (an MCP call): beneath its root, no link on the way followed
+        // out of it (util/SafeWrite.h); errno tells why it failed
+        if (const ScopedOps* ops = scopedOps()) {
+            std::error_code scopedError;
+            const int r = ops->write(filePath, data, scopedError);
+            if (r >= 0) {
+                if (r == 0) errno = scopedError.value() ? scopedError.value() : EACCES;
+                return r == 1;
+            }
+        }
         io::AtomicWriteOptions options;
         options.durability = io::Durability::Document;
-        return io::writeFileAtomic(filePath, withLineEndings(filePath, content, lineEndings), options).ok();
+        return io::writeFileAtomic(filePath, data, options).ok();
     }
 
     // True when the file holds newContent afterwards, written or already up to date.

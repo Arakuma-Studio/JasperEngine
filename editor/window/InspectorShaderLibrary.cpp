@@ -17,6 +17,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "material/MaterialChange.h"
 #include "material/MaterialPresets.h"
+#include "shader/ShaderGlobals.h"
 #include "shader/ShaderManifest.h"
 #include "subsystem/RenderSystem.h"
 #include "Theme.h"
@@ -26,6 +27,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <filesystem>
 #include <map>
 
@@ -350,12 +352,114 @@ void editor::InspectorWindow::drawLibraryShaderCombo(const std::string& currentS
         ImGui::OpenPopup(popupName.c_str());
 }
 
+float editor::InspectorWindow::getGlobalLinkButtonWidth() const{
+    return ImGui::CalcTextSize(ICON_FA_LINK).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+}
+
+void editor::InspectorWindow::drawGlobalLinkButton(const std::string& member, int components, const ShaderGlobalBindings& bindings,
+                                                   const std::function<void(const ShaderGlobalBindings&)>& set){
+    const std::string bound = ShaderGlobals::getBinding(bindings, member);
+    // at the right end of the cell
+    ImGui::SameLine();
+    const float buttonWidth = getGlobalLinkButtonWidth();
+    const float avail = ImGui::GetContentRegionAvail().x;
+    if (avail > buttonWidth)
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - buttonWidth);
+
+    const std::string popup = "##global_link_popup_" + member;
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_Text, bound.empty() ? ImGui::GetStyle().Colors[ImGuiCol_TextDisabled] : ImGui::GetStyle().Colors[ImGuiCol_CheckMark]);
+    if (ImGui::Button((std::string(ICON_FA_LINK) + "##global_link_" + member).c_str()))
+        ImGui::OpenPopup(popup.c_str());
+    ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar();
+    if (ImGui::IsItemHovered()) {
+        if (bound.empty())
+            ImGui::SetTooltip("Bind to a global shader value...\nThe parameter then follows the global (Project Settings > Graphics > Shader Globals, Shader.setGlobal*)");
+        else
+            ImGui::SetTooltip("Follows the global '%s'. Click to change or unbind", bound.c_str());
+    }
+
+    if (!ImGui::BeginPopup(popup.c_str()))
+        return;
+    ImGui::TextDisabled("Bind %s to a global", member.c_str());
+    ImGui::Separator();
+    // the globals of the member's kind: same components, a colour also takes vector4 and back
+    bool any = false;
+    for (const std::string& name : ShaderGlobals::getNames()) {
+        ShaderGlobalValue value;
+        if (!ShaderGlobals::get(ShaderGlobals::findID(name), value))
+            continue;
+        const int globalComponents = ShaderGlobals::isArray(value.type) || ShaderGlobals::isTexture(value.type) ? 0
+                                   : ShaderGlobals::getComponentCount(value.type);
+        if (globalComponents != components)
+            continue;
+        any = true;
+        const std::string label = name + "  (" + ShaderGlobals::getTypeName(value.type) + (value.declared ? "" : ", set by a script") + ")";
+        if (ImGui::Selectable(label.c_str(), name == bound) && name != bound) {
+            ShaderGlobalBindings changed = bindings;
+            ShaderGlobals::setBinding(changed, member, name);
+            set(changed);
+        }
+    }
+    if (!any) {
+        const char* kind = components == 1 ? "float" : components == 2 ? "vector2" : components == 3 ? "vector3" : "vector4 or color";
+        ImGui::TextDisabled("No %s global is declared", kind);
+    }
+    ImGui::Separator();
+    if (!bound.empty() && ImGui::Selectable(ICON_FA_LINK_SLASH "  Unbind")) {
+        ShaderGlobalBindings changed = bindings;
+        ShaderGlobals::setBinding(changed, member, "");
+        set(changed);
+    }
+    if (ImGui::Selectable("Shader Globals..."))
+        shaderGlobalsRequested = true;
+    ImGui::EndPopup();
+}
+
+void editor::InspectorWindow::drawBoundGlobalValue(const std::string& global, int components, bool color, float width){
+    Vector4 value;
+    const bool has = ShaderGlobals::getBoundValue(global, value);
+    const float start = ImGui::GetCursorPosX();
+    ImGui::AlignTextToFramePadding();
+    if (color && has) {
+        const Vector4 srgb = Color::linearTosRGB(value);
+        const float size = ImGui::GetFrameHeight();
+        ImGui::ColorButton(("##bound_swatch_" + global).c_str(), ImVec4(srgb.x, srgb.y, srgb.z, value.w),
+                           ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_NoTooltip, ImVec2(size * 1.5f, size));
+        ImGui::SameLine();
+    }
+    std::string text = "@" + global;
+    if (has) {
+        const float c[4] = {value.x, value.y, value.z, value.w};
+        char number[32];
+        text += "  ";
+        for (int i = 0; i < std::max(1, std::min(components, 4)); i++) {
+            snprintf(number, sizeof(number), i == 0 ? "%.3g" : ", %.3g", c[i]);
+            text += number;
+        }
+    } else {
+        text += "  (not set)";
+    }
+    // clipped to the cell left of the link button
+    const ImVec2 min = ImGui::GetCursorScreenPos();
+    const float room = std::max(1.0f, width - (ImGui::GetCursorPosX() - start));
+    ImGui::PushClipRect(min, ImVec2(min.x + room, min.y + ImGui::GetFrameHeight()), true);
+    ImGui::TextUnformatted(text.c_str());
+    ImGui::PopClipRect();
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Follows the global shader value '%s'%s.\nIts default is in Project Settings > Graphics > Shader Globals; scripts "
+                          "set it with Shader.setGlobal*. The link button unbinds it.",
+                          global.c_str(), has ? "" : " (no global of this name is declared or set: it reads 0)");
+}
+
 bool editor::InspectorWindow::drawShaderPropertyValue(const ShaderManifestProperty& property, const std::string& id, const Vector4& value,
-                                                      Vector4& edited, bool& continuous){
+                                                      Vector4& edited, bool& continuous, float itemWidth){
     edited = value;
     continuous = true;
     bool changed = false;
-    ImGui::SetNextItemWidth(-1);
+    ImGui::SetNextItemWidth(itemWidth);
     switch (property.kind) {
         case ShaderPropertyKind::COLOR:
         case ShaderPropertyKind::HDRCOLOR: {
@@ -529,14 +633,45 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
         return ShaderLibraryValues::isFeatureEnabled(features, shader, feature);
     };
 
+    // members that follow a global shader value: a material's or a component's bindings (an
+    // extra pass has none)
+    std::string bindingsProperty;
+    const std::string materialParams = "material.shaderParams";
+    if (paramsProperty == "shaderUniforms")
+        bindingsProperty = "shaderGlobalBindings";
+    else if (paramsProperty.size() > materialParams.size() &&
+             paramsProperty.compare(paramsProperty.size() - materialParams.size(), materialParams.size(), materialParams) == 0)
+        bindingsProperty = paramsProperty.substr(0, paramsProperty.size() - std::strlen("shaderParams")) + "shaderGlobalBindings";
+    ShaderGlobalBindings* bindingsRef = bindingsProperty.empty() ? nullptr
+        : Catalog::getPropertyRef<ShaderGlobalBindings>(scene, entity, cpType, bindingsProperty);
+    const ShaderGlobalBindings bindings = bindingsRef ? *bindingsRef : ShaderGlobalBindings();
+    auto setBindings = [&](const ShaderGlobalBindings& value) {
+        CommandHandle::get(sceneId)->addCommandNoMerge(
+            new PropertyCmd<ShaderGlobalBindings>(project, sceneId, entity, cpType, bindingsProperty, value, onValueChanged));
+    };
+
     // ---- parameters
     for (const ShaderManifestProperty& property : manifest->properties) {
         if (!featureOn(property.feature))
             continue;
         const bool hasValue = ShaderUniforms::has(params, property.member);
         const Vector4 value = hasValue ? ShaderUniforms::get(params, property.member) : property.defaultValue;
+        const bool color = property.kind == ShaderPropertyKind::COLOR || property.kind == ShaderPropertyKind::HDRCOLOR;
+        const int components = property.kind == ShaderPropertyKind::VECTOR2 ? 2
+                             : property.kind == ShaderPropertyKind::VECTOR3 ? 3
+                             : (property.kind == ShaderPropertyKind::VECTOR4 || color) ? 4 : 1;
+        const std::string bound = bindingsRef ? ShaderGlobals::getBinding(bindings, property.member) : std::string();
 
         ImGui::PushID(("param_" + property.member).c_str());
+        if (!bound.empty()) {
+            // a bound parameter shows the global's live value; its own stays stored, unused
+            prefabRowProperty = bindingsProperty;
+            propertyHeader(rowLabel(property.label, property.member), -1, false);
+            drawBoundGlobalValue(bound, components, color, ImGui::GetContentRegionAvail().x - getGlobalLinkButtonWidth() - ImGui::GetStyle().ItemSpacing.x);
+            drawGlobalLinkButton(property.member, components, bindings, setBindings);
+            ImGui::PopID();
+            continue;
+        }
         prefabRowProperty = paramsProperty;
         if (propertyHeader(rowLabel(property.label, property.member), -1, hasValue)) {
             // back to the manifest default
@@ -549,8 +684,8 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
         const std::string id = "##param_value_" + property.member;
         Vector4 edited = value;
         bool continuous = true;
-        ImGui::SetNextItemWidth(-1);
-        const bool changed = drawShaderPropertyValue(property, id, value, edited, continuous);
+        const float itemWidth = bindingsRef ? -(getGlobalLinkButtonWidth() + ImGui::GetStyle().ItemSpacing.x) : -1.0f;
+        const bool changed = drawShaderPropertyValue(property, id, value, edited, continuous, itemWidth);
         if (changed) {
             ShaderUniformValues newParams = params;
             ShaderUniforms::set(newParams, property.member, edited);
@@ -559,6 +694,8 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
         finishDrag();
         if (ImGui::IsItemHovered() && !ImGui::IsItemActive())
             ImGui::SetTooltip("%s", property.member.c_str());
+        if (bindingsRef)
+            drawGlobalLinkButton(property.member, components, bindings, setBindings);
         ImGui::PopID();
     }
 

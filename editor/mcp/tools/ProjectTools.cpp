@@ -33,19 +33,29 @@
 #include "Generator.h"
 #include "Out.h"
 #include "Project.h"
+#include "command/type/InputActionsCmd.h"
+#include "input/InputActions.h"
 #include "registry/TagManager.h"
+#include "command/type/ShaderGlobalsCmd.h"
+#include "util/ShaderGlobalsJson.h"
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
+#include "util/ShellEnv.h"
 #include "window/CodeEditor.h"
 #include "window/ConsoleWindow.h"
 #include "window/ProjectWindow.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <cstring>
 #include <cctype>
 #include <chrono>
 #include <fstream>
 #include <functional>
+#include <map>
 #include <memory>
+#include <map>
 #include <set>
 #include <sstream>
 
@@ -289,6 +299,152 @@ bool hasUnsaved(const Json& state) {
 
 // ------------------------------------------------------------------ create / open
 
+// An asset or Lua root value (assetsDir / luaDir in project.yaml, editor.assets_dir /
+// scripting.lua_dir): "" when it is a plain project-relative folder, else why it isn't (absolute,
+// a drive, or a ".." step: a root out of the project folder is one only the user sets)
+std::string rootValueRefusal(const std::string& text) {
+    const fs::path value = FileUtils::pathFromUtf8(text);
+    if (value.is_absolute() || value.has_root_name() || value.has_root_directory()) return "\"" + text + "\" is absolute";
+    for (const fs::path& part : value) {
+        if (part == "..") return "\"" + text + "\" has a '..' step";
+        // an editor-owned or hidden folder (.jasperengine, .trash, .git ...) is never an asset root
+        const std::string name = safewrite::comparableName(part);
+        if (!name.empty() && name[0] == '.' && name != ".") return "\"" + text + "\" goes through the hidden folder " + FileUtils::pathToUtf8(part);
+        if (safewrite::isProjectFileName(part) || name == "cmakelists.txt") return "\"" + text + "\" names a file the editor owns";
+    }
+    return std::string();
+}
+
+// A project opened or created over MCP whose project.yaml points its assets or Lua folder out of
+// the project folder (absolute, or with ".."): the editor GUI opens it (the user chose it), an MCP
+// call doesn't (the folder would become a trusted root of the agent's choosing). "" when fine.
+std::string outsideRootsRefusal(const fs::path& projectDir) {
+    const fs::path file = projectDir / "project.yaml";
+    std::error_code ec;
+    if (!fs::is_regular_file(file, ec)) return std::string();
+    YAML::Node node;
+    try {
+        std::ifstream in(file, std::ios::binary);
+        node = YAML::Load(in);
+    } catch (const std::exception& e) {
+        return "its project.yaml can't be read (" + std::string(e.what()) + ")";
+    }
+    if (!node.IsMap()) return std::string();
+    for (const char* key : {"assetsDir", "luaDir"}) {
+        const YAML::Node value = node[key];
+        if (!value) continue;
+        std::string text;
+        try {
+            text = value.as<std::string>();
+        } catch (const std::exception&) {
+            return std::string("its ") + key + " is not a folder name";
+        }
+        if (const std::string why = rootValueRefusal(text); !why.empty()) {
+            return std::string("this project's ") + (std::string(key) == "assetsDir" ? "assets_dir" : "lua_dir") + " (" + why +
+                   ") points outside the project folder; open it from the editor";
+        }
+    }
+    return std::string();
+}
+
+// The user's home folder, resolved ("" when unknown): $HOME / %USERPROFILE%, else the account's
+// own (getpwuid, SHGetKnownFolderPath) so an unset HOME doesn't switch the home rules off
+fs::path homeFolder() {
+    const fs::path home = ShellEnv::homeDirectory();
+    if (home.empty()) return fs::path();
+    return safewrite::resolvedPath(home);
+}
+
+bool isFilesystemRoot(const fs::path& path) {
+    return !path.empty() && (path == path.root_path() || !path.has_relative_path());
+}
+
+bool samePlace(const fs::path& a, const fs::path& b) {
+    return !a.empty() && !b.empty() && safewrite::isAtOrBelow(a, b) && safewrite::isAtOrBelow(b, a);
+}
+
+// Where an MCP create_project / Save As may put a new project. Allowed: a new or empty folder (not a
+// link) whose parent IS the current project's parent folder (spelled and resolved), or one at or
+// below the user's default export folder (resolved). Below its anchor no path component may be
+// hidden ('.'-named); the anchor may not be the user's home folder itself (a project in the home
+// root gets siblings only through the GUI). "" when allowed.
+std::string switchTargetRefusal(Project* project, const fs::path& target) {
+    const fs::path normal = target.lexically_normal();
+    std::error_code ec;
+    if (fs::is_symlink(fs::symlink_status(normal, ec))) {
+        return FileUtils::pathToGenericUtf8(normal) + " is a symbolic link: a new project goes in a real, new or empty folder";
+    }
+    const fs::path parent = normal.parent_path();
+    const fs::path parentReal = safewrite::resolvedPath(parent);
+    const fs::path targetReal = safewrite::writeLocation(normal);
+    const fs::path home = homeFolder();
+    auto hiddenBelow = [](const fs::path& rel) {
+        for (const fs::path& part : rel) {
+            const std::string name = safewrite::comparableName(part);
+            if (!name.empty() && name[0] == '.' && name != "." && name != "..") return true;
+        }
+        return false;
+    };
+    // never the home folder itself, nor a folder directly in it (a project there gets siblings only
+    // through the GUI): checked where the target and its parent resolve
+    if (!home.empty() && (samePlace(targetReal, home) || samePlace(parentReal, home))) {
+        return "it is your home folder (or a folder directly inside it): create the project from the editor (File > New Project)";
+    }
+    // ... and the same for EVERY folder the call would create on the way (<home>/bin/z would make
+    // <home>/bin): none may be the home folder, directly inside it, or directly in a filesystem root
+    {
+        fs::path existing = normal;
+        std::vector<fs::path> missing;
+        std::error_code ex;
+        while (!fs::exists(fs::symlink_status(existing, ex)) && existing.has_relative_path() && existing.has_parent_path() &&
+               existing != existing.parent_path()) {
+            missing.insert(missing.begin(), existing.filename());
+            existing = existing.parent_path();
+        }
+        fs::path made = safewrite::resolvedPath(existing);
+        for (const fs::path& name : missing) {
+            const fs::path above = made;
+            made /= name;
+            if (!home.empty() && (samePlace(made, home) || samePlace(above, home))) {
+                return "it would create " + FileUtils::pathToGenericUtf8(made) +
+                       " directly in your home folder: create the project from the editor (File > New Project)";
+            }
+            if (isFilesystemRoot(above)) {
+                return "it would create " + FileUtils::pathToGenericUtf8(made) + " directly in a filesystem root";
+            }
+        }
+    }
+    const fs::path cur = project && !project->getProjectPath().empty() ? project->getProjectPath().lexically_normal() : fs::path();
+    // (a) a sibling of the current project: same parent, spelled and resolved
+    if (!cur.empty() && cur.has_parent_path()) {
+        const fs::path curParent = cur.parent_path();
+        // not when the project's parent is a filesystem / drive root, spelled or once resolved (a
+        // link to "/"): "beside it" would be the root
+        const bool parentIsRoot = isFilesystemRoot(curParent) || isFilesystemRoot(safewrite::resolvedPath(curParent));
+        if (!parentIsRoot && parent == curParent && samePlace(parentReal, safewrite::resolvedPath(curParent))) {
+            if (hiddenBelow(normal.filename())) {
+                return "a hidden ('.'-named) folder is not a project folder an MCP call makes";
+            }
+            return std::string();
+        }
+    }
+    // (b) at or below the user's default export folder (resolved)
+    if (const fs::path def = AppSettings::getDefaultExportDirectory(); !def.empty()) {
+        const fs::path defReal = safewrite::resolvedPath(def);
+        if (!defReal.empty() && !targetReal.empty() && safewrite::isAtOrBelow(targetReal, defReal) && !samePlace(targetReal, defReal)) {
+            if (hiddenBelow(targetReal.lexically_relative(defReal))) {
+                return "a hidden ('.'-named) folder is not a project folder an MCP call makes";
+            }
+            if (!cur.empty() && safewrite::isAtOrBelow(targetReal, safewrite::resolvedPath(cur))) {
+                return "it is inside the currently open project: a project nested in another is not made over MCP";
+            }
+            return std::string();
+        }
+    }
+    return "it is neither beside the current project (same parent folder) nor under the default export folder "
+           "(Edit > Preferences): create the project from the editor (File > New Project, or Save As), then open it with open_project";
+}
+
 struct SwitchState {
     bool ran = false;
     bool ok = false;
@@ -325,6 +481,17 @@ void switchProjectTool(const CallPtr& call, bool create) {
             call->fail(FileUtils::pathToGenericUtf8(path) + " is a file, not a directory.");
             return;
         }
+        // a new or empty folder only: the project becomes a trusted root, so an agent can't turn
+        // a folder that holds other things (a home directory) into one
+        if (fs::is_directory(path, ec) && !fs::is_empty(path, ec)) {
+            call->fail(FileUtils::pathToGenericUtf8(path) + " is not empty: create_project makes a project in a new or empty folder. "
+                       "Pick a new folder (it is created), or create the project in the editor's New Project dialog.");
+            return;
+        }
+        if (const std::string refusal = switchTargetRefusal(project, path); !refusal.empty()) {
+            call->fail("create_project here is refused: " + refusal);
+            return;
+        }
     } else {
         if (path.filename() == "project.yaml") path = path.parent_path();
         if (!fs::exists(path / "project.yaml", ec)) {
@@ -335,6 +502,10 @@ void switchProjectTool(const CallPtr& call, bool create) {
         if (fs::equivalent(path, project->getProjectPath(), eq)) {
             Json data = projectSummary(ctx);
             call->ok("That project is already open. " + summaryText(data), data);
+            return;
+        }
+        if (const std::string refusal = outsideRootsRefusal(path); !refusal.empty()) {
+            call->fail("Not opened: " + refusal + ".");
             return;
         }
     }
@@ -378,6 +549,12 @@ void switchProjectTool(const CallPtr& call, bool create) {
     auto switchState = std::make_shared<SwitchState>();
     app.requestProjectChange([switchState, project, path, name, create]() {
         switchState->ran = true;
+        // checked again right before the load (the file may have changed since the call came in)
+        if (const std::string refusal = outsideRootsRefusal(path); !refusal.empty()) {
+            switchState->ok = false;
+            switchState->error = refusal;
+            return;
+        }
         switchState->ok = create ? project->createProjectAt(path, name, &switchState->error)
                                  : project->openProjectNow(path, &switchState->error);
     });
@@ -435,7 +612,7 @@ void saveProjectTool(const CallPtr& call) {
     if (!sceneDirText.empty()) {
         fs::path absolute;
         std::string error;
-        if (!McpRefs::resolveProjectPath(project, sceneDirText, absolute, error)) {
+        if (!McpRefs::resolveProjectWritePath(project, sceneDirText, absolute, error)) {
             call->fail("untitled_scene_dir: " + error);
             return;
         }
@@ -467,6 +644,10 @@ void saveProjectTool(const CallPtr& call) {
             }
             if (fs::exists(target, ec) && (!fs::is_directory(target, ec) || !fs::is_empty(target, ec))) {
                 call->fail(FileUtils::pathToGenericUtf8(target) + " must be a new or empty directory.");
+                return;
+            }
+            if (const std::string refusal = switchTargetRefusal(project, target); !refusal.empty()) {
+                call->fail("Save As here is refused: " + refusal);
                 return;
             }
         }
@@ -503,6 +684,9 @@ void saveProjectTool(const CallPtr& call) {
     bool ok;
     if (!target.empty()) {
         std::error_code ec;
+        // Save As: the explicit target outside the project is the user's choice (a temporary
+        // project's new home): the call's strict write scope is suspended for it
+        safewrite::Scope saveAs{fs::path()};
         fs::create_directories(target.parent_path(), ec);   // saveProjectToPath makes only the last level
         ok = project->saveProjectToPath(target);
         if (ok) ctx.app().updateWindowTitle(project->getName());
@@ -564,10 +748,22 @@ const Setting* findSetting(const std::string& key) {
     for (const Setting& s : settingsTable()) {
         if (s.key == key) return &s;
     }
+    // one shader global by name (made for the key on first use)
+    const std::string prefix = std::string(kShaderGlobalsKey) + ".";
+    if (key.size() > prefix.size() && key.compare(0, prefix.size(), prefix) == 0) {
+        static std::map<std::string, Setting> perGlobal;
+        auto it = perGlobal.find(key);
+        if (it == perGlobal.end()) it = perGlobal.emplace(key, shaderGlobalSetting(key.substr(prefix.size()))).first;
+        return &it->second;
+    }
     return nullptr;
 }
 
 std::string unknownKeyMessage(const std::string& key) {
+    const auto renamed = renamedSettings().find(key);
+    if (renamed != renamedSettings().end()) {
+        return "\"" + key + "\" was renamed: use " + renamed->second + ".";
+    }
     std::string text = "Unknown setting \"" + key + "\".";
     const std::string category = categoryOf(key);
     std::string sameCategory;
@@ -644,7 +840,8 @@ void getProjectSettingsTool(const CallPtr& call) {
         for (const Setting& s : settingsTable()) {
             const std::string c = categoryOf(s.key);
             if (category.empty()) {
-                if (platformCategories().count(c)) continue;
+                // the platform overrides, and the input actions (long): asked for by name
+                if (platformCategories().count(c) || c == "input") continue;
             } else if (category != "all" && c != category) {
                 continue;
             }
@@ -660,13 +857,23 @@ void getProjectSettingsTool(const CallPtr& call) {
             Json info = {{"type", s->type}, {"description", s->description}};
             if (!s->values.empty()) info["values"] = s->values;
             if (isPreference(*s)) info["preference"] = true;
+            if (s->userOnly) info["read_only"] = true;
             schema[s->key] = info;
         }
     }
     Json data = {{"settings", values}};
     if (describe) data["describe"] = schema;
+    // the shader globals' declarations to paste into a shader (one block per stage)
+    const bool globalsAsked = std::any_of(selected.begin(), selected.end(), [](const Setting* s) {
+        return s->key.compare(0, std::strlen(kShaderGlobalsKey), kShaderGlobalsKey) == 0;
+    });
+    if (globalsAsked && !ctx.project()->getShaderGlobals().empty()) {
+        data["glsl_vs"] = ShaderGlobals::getGlslBlock(ctx.project()->getShaderGlobals(), ShaderStageType::VERTEX);
+        data["glsl_fs"] = ShaderGlobals::getGlslBlock(ctx.project()->getShaderGlobals(), ShaderStageType::FRAGMENT);
+    }
     if (!args.contains("keys") && args.value("category", "").empty()) {
-        data["note"] = "Platform overrides (web, linux, windows, macos, ios, android) are left out: pass category or keys.";
+        data["note"] = "Platform overrides (web, linux, windows, macos, ios, android) and input (input.actions) are left "
+                       "out: pass category or keys.";
     }
     call->ok(std::to_string(values.size()) + " setting(s).", data);
 }
@@ -690,6 +897,11 @@ void setProjectSettingsTool(const CallPtr& call) {
         const Setting* s = findSetting(it.key());
         if (!s) {
             call->fail(unknownKeyMessage(it.key()) + " Nothing was changed.");
+            return;
+        }
+        if (s->userOnly) {
+            call->fail(s->key + " is a machine-level preference only the user changes: change it in Edit > Preferences. "
+                       "Nothing was changed.");
             return;
         }
         std::string error;
@@ -937,15 +1149,22 @@ void editProjectBuildFileTool(const CallPtr& call) {
                    "build and exported players), and use ${JASPERENGINE_SCRIPTS_DIR} as the root of script paths.");
         return;
     }
-    std::error_code ec;
+    // written (or removed) beneath the project: a link there leading out of it is refused, and no
+    // link planted on the way since the check is followed
+    std::string why;
+    if (const std::string escape = McpRefs::writeEscape(project, path, content.empty() ? McpRefs::WriteUse::Entry : McpRefs::WriteUse::Write);
+        !escape.empty()) {
+        call->fail(escape);
+        return;
+    }
     if (content.empty()) {
-        fs::remove(path, ec);
-    } else {
-        const io::WriteResult written = DocumentFiles::write(path, content);
-        if (!written.ok()) {
-            call->fail(DocumentFiles::saveFailureMessage("ProjectBuild.cmake", written));
+        if (!safewrite::removeFileResolvedBeneath(McpRefs::rootFor(project, path, McpRefs::WriteUse::Entry), path, why)) {
+            call->fail("Could not remove ProjectBuild.cmake: " + why);
             return;
         }
+    } else if (!safewrite::writeFileResolvedBeneath(McpRefs::rootFor(project, path), path, content, why)) {
+        call->fail("Could not write ProjectBuild.cmake: " + why);
+        return;
     }
     if (ctx.projectWindow()) ctx.projectWindow()->refreshCurrentDirectory();
     Out::info("MCP: %s ProjectBuild.cmake", content.empty() ? "removed" : "updated");

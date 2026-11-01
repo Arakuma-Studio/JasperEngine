@@ -784,7 +784,7 @@ namespace {
         {"text-wrap-style", R, FF::None, R, true, "auto", false, RW::WhiteSpace, "", "balance, pretty, stable ignored (Info)", "", "css-text-4"},
         {"timeline-scope", U, FF::None, U, false, "none", false, RW::None, "", "scroll-driven animations are not supported", "drive the animation from Lua (anime API)", "scroll-animations-1"},
         {"top", N, FF::None, N, false, "auto", false, RW::None, "", "", "", "css-position-3"},
-        {"touch-action", I, FF::None, I, false, "auto", false, RW::None, "", "browser interaction hint; no effect in a game UI", "", "pointerevents-3"},
+        {"touch-action", N, FF::None, N, false, "auto", false, RW::None, "", "native with the fork (engine-gaps G5-4): what a touch on the element may pan", "", "pointerevents-3"},
         {"transform", N, FF::None, N, false, "none", false, RW::None, "", "", "", "css-transforms-1"},
         {"transform-box", U, FF::None, U, false, "view-box", false, RW::None, "", "not supported (Info)", "set transform-origin explicitly", "css-transforms-1"},
         {"transform-origin", N, FF::None, N, false, "50% 50% 0", false, RW::None, "", "", "", "css-transforms-1"},

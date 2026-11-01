@@ -32,6 +32,7 @@
 #include "component/LatticeComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "animation/ClipTypes.h"
+#include "particles/ParticleSimulation.h"
 
 namespace jasperengine{
 
@@ -44,6 +45,7 @@ namespace jasperengine{
 		struct ClipBindings;
 		struct PlayerStateRuntime;
 		struct QueuedState;
+		struct PlayerPoseScratch;
 	}
 
 	class JASPERENGINE_API ActionSystem : public SubSystem {
@@ -74,6 +76,20 @@ namespace jasperengine{
 			Vector3 restPosition = Vector3(0, 0, 0);
 			Quaternion restRotation;
 			Vector3 restScale = Vector3(1, 1, 1);
+
+			// back to "nothing accumulated" (clearPoseBlend keeps the map's nodes between frames;
+			// the reference and rest values only count with their flags set)
+			void reset(){
+				positionSum.x = positionSum.y = positionSum.z = 0.0f;
+				positionWeight = 0.0f;
+				scaleSum.x = scaleSum.y = scaleSum.z = 0.0f;
+				scaleWeight = 0.0f;
+				rotationSum.w = rotationSum.x = rotationSum.y = rotationSum.z = 0.0f;
+				rotationWeight = 0.0f;
+				hasRotationRef = false;
+				hasRestPosition = hasRestRotation = hasRestScale = false;
+			}
+			bool empty() const { return positionWeight <= 0.0f && scaleWeight <= 0.0f && rotationWeight <= 0.0f; }
 		};
 		struct MorphBlendAccum {
 			float sums[MAX_MORPHTARGETS] = {0};
@@ -147,6 +163,23 @@ namespace jasperengine{
 
 		void processRunningAction(double dt, Entity entity, ActionComponent& action);
 
+		// version 2 Particle Systems (particles spec 6.5; ActionSystemParticles.cpp): stepped in
+		// a pass of their own after the actions' (a stopped system with emitted particles
+		// simulates too), their stop actions run at the end of update()
+		bool isParticleSystemV2(Entity entity) const;
+		void collectParticleSystems(Entity entity, bool withChildren, std::vector<Entity>& out);
+		void prepareParticleRenderer(Entity entity, ParticleSystemComponent& ps);
+		void particleSystemStart(Entity entity, ParticleSystemComponent& ps);
+		void particleSystemHardStop(Entity entity);
+		void stepParticleSystem(double dt, double unscaledDt, Entity entity);
+		void updateParticleSystems(double dt);
+		void finishParticleSystem(Entity entity);
+		void queueParticleStopAction(Entity entity);
+		void runParticleStopActions();
+		std::vector<Entity> pendingParticleStops;
+		// updateParticleSystems' list of systems, kept between frames
+		std::vector<Entity> particleUpdateScratch;
+
 		float getDuration(Entity entity, int depth);
 		bool isAnimationReachable(Entity from, Entity target, std::unordered_set<Entity>& visited);
 
@@ -179,12 +212,36 @@ namespace jasperengine{
 		bool preparePlayer(Entity entity, AnimationPlayerComponent& player, float dt, bool poolChanged);
 		void advancePlayer(Entity entity, AnimationPlayerComponent& player, float dt);
 		void startQueuedState(Entity entity, AnimationPlayerComponent& player, const anim::QueuedState& head, float offset, float dt);
-		void samplePlayerStates(AnimationPlayerComponent& player);
+		void samplePlayerStates(Entity entity, AnimationPlayerComponent& player);
 		// one clip at `clipTime` with `weight` into the pose blend, rest values from `rest` (taken
 		// there on the first write of an entity); `written` (optional) gets the entries written
 		void accumulateClip(const AnimationClip& clip, anim::ClipBindings& bindings, float clipTime, float weight,
 		                    std::unordered_map<Entity, anim::ChannelRest>& rest,
 		                    std::vector<std::pair<Entity, ClipChannel>>* written);
+
+		// The layered evaluator (anim layers spec 7.3; ActionSystemLayers.cpp). A player that is
+		// not anim::isDefaultLayering samples through it: preparePlayerLayers (end of
+		// preparePlayer) loads the layers' masks, resolves the humanoid rig a humanoid mask needs,
+		// builds the slot table and the per-track mask weights and additive references when their
+		// stamps change; evaluateLayeredPlayer composes the layers into the pose blend.
+		void preparePlayerLayers(Entity entity, AnimationPlayerComponent& player, float dt, bool modelsReloaded);
+		void evaluateLayeredPlayer(Entity entity, AnimationPlayerComponent& player, bool includeFinishing);
+		// the shared core (players and the layered preview): scratch.stateInputs per
+		// scratch.layerInputs, composed bottom-up, every composed slot added to the pose blend
+		// with weight 1; `written` (optional) gets the (entity, channel) entries written
+		void composePlayerLayers(anim::PlayerPoseScratch& scratch, std::vector<std::pair<Entity, ClipChannel>>* written);
+		// AvatarMaskPool::revision() seen by the last player update
+		uint64_t playerMaskPoolRevision = 0;
+		bool playerMaskPoolChanged = false;
+		// The Animator Controller driver (anim layers spec 11.2; ActionSystemController.cpp):
+		// advancePlayer calls it instead of the fades and queues for a player with a controller
+		void driveController(Entity entity, AnimationPlayerComponent& player, float dt);
+		// AnimatorControllerPool::revision() seen by the last player update
+		uint64_t playerControllerPoolRevision = 0;
+		bool playerControllerPoolChanged = false;
+		std::vector<float> controllerWeights;
+		std::vector<float> controllerThresholds;
+		std::vector<int> controllerConsumed;
 
 	public:
 		ActionSystem(Scene* scene);
@@ -193,6 +250,34 @@ namespace jasperengine{
 		void actionStart(Entity entity, bool newRun = true);
 		void actionStop(Entity entity);
 		void actionPause(Entity entity);
+
+		// version 2 Particle Systems (Unity's ParticleSystem control): every version 2 system of
+		// the GameObject and, withChildren, of its children in hierarchy order. play() and
+		// stop() change the system now; onStart / onStop follow at the next update
+		void particleSystemPlay(Entity entity, bool withChildren);
+		// the time spent simulating version 2 Particle Systems (every scene) since the last call,
+		// in milliseconds, and the particles alive after it (frame stats: particles_sim_ms)
+		static double takeParticleSimMs(size_t* alive = nullptr);
+		void particleSystemStop(Entity entity, bool withChildren, ParticleSystemStopBehavior behavior);
+		void particleSystemPause(Entity entity, bool withChildren);
+		void particleSystemClear(Entity entity, bool withChildren);
+		// `count` particles now (also while stopped); the number spawned
+		int particleSystemEmit(Entity entity, int count);
+		// Unity's Simulate: advanced `time` seconds (from a restart), then paused
+		void particleSystemSimulate(Entity entity, float time, bool withChildren, bool restart);
+		// stopped and empty without callbacks nor stop action (an editor preview's end)
+		void particleSystemReset(Entity entity);
+		std::vector<Entity> particleSystemsOf(Entity entity, bool withChildren);
+		// the GameObject drawing the particles: the action's target, else the system's own
+		Entity particleTarget(Entity entity) const;
+		// the emitter (its Transform, or the target's in the legacy layout) and the gravity now
+		ParticleEmitterFrame particleEmitterFrame(Entity entity);
+		ParticleEnvironment particleEnvironment();
+		// writes the particles to the renderer (instances or points)
+		void syncParticleRenderer(Entity entity, ParticleSystemComponent& ps);
+		// the Scene view's particle preview (edit mode): steps these systems (their triggers
+		// applied), never running stop actions
+		void updateParticlePreview(double dt, const std::vector<Entity>& entities);
 
 		// Edit-mode preview of clips on a root (animation clips spec 9.R21): what the Animation
 		// window's clip mode and MCP preview_animation drive (through AnimationClipController).
@@ -209,12 +294,25 @@ namespace jasperengine{
 			float time = 0.0f;
 			ClipWrapMode wrap = ClipWrapMode::Default;
 			float weight = 1.0f;
+			// layered previews: the index into PlayerPreview::layers it plays on
+			int layer = 0;
+		};
+		// one layer of a layered preview (anim layers spec 7.5): the Animation window's "Preview
+		// over", MCP preview_animation `over`
+		struct PlayerPreviewLayer {
+			float weight = 1.0f;		// ignored for layer 0
+			AnimationLayerBlend blend = AnimationLayerBlend::Override;
+			std::string mask;			// asset-relative .mask (AvatarMaskPool), "" = none
 		};
 		struct PlayerPreview {
 			std::vector<PlayerPreviewState> states;
 			// events crossed since the session's previous call (session.previousTimes) reach the
 			// root's player onEvent; off by default: edit-mode previews never run game code
 			bool fireEvents = false;
+			// compose the states per layer through the layered evaluator (layers, their masks and
+			// blends); false: the states blend as one layer, as without layers
+			bool layered = false;
+			std::vector<PlayerPreviewLayer> layers;
 		};
 		struct PlayerPreviewResult {
 			// every state's clip was available (false: a state name unknown, its clip not loaded
@@ -267,8 +365,24 @@ namespace jasperengine{
 		void destroy() override;
 		void update(double dt) override;
 
+		// the unscaled delta of an update whose scaled delta is dt (Tween.useUnscaledTime)
+		static double unscaledDeltatime(double dt);
+
 		void onComponentAdded(Entity entity, ComponentId componentId) override;
 		void onComponentRemoved(Entity entity, ComponentId componentId) override;
+
+	private:
+		// previewPlayer's layered branch: the states' bindings (`bindings`, by index) composed per
+		// preview.layers through composePlayerLayers (ActionSystemLayers.cpp)
+		struct LayeredPreviewState {
+			size_t bindings = 0;
+			float time = 0.0f;
+			float weight = 0.0f;
+			int layer = 0;
+		};
+		void previewLayers(Entity root, const PlayerPreview& preview, anim::ClipPreviewSession& session,
+		                   std::vector<anim::ClipBindings>& bindings, const std::vector<LayeredPreviewState>& states,
+		                   std::vector<std::pair<Entity, ClipChannel>>& written);
 	};
 
 }

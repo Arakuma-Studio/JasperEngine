@@ -96,7 +96,9 @@ bool pathArg(Project* project, const Json& value, const std::string& field, bool
         return false;
     }
     fs::path absolute;
-    if (!McpRefs::resolveProjectPath(project, value.get<std::string>(), absolute, error, mustExist)) {
+    // an output (!mustExist) is written: inside the project once links are resolved; inputs are read
+    if (mustExist ? !McpRefs::resolveProjectPath(project, value.get<std::string>(), absolute, error, true)
+                  : !McpRefs::resolveProjectWritePath(project, value.get<std::string>(), absolute, error, false)) {
         error = field + ": " + error;
         return false;
     }
@@ -574,7 +576,7 @@ void finishSynthesis(McpContext& ctx, const std::shared_ptr<SynthesisCall>& stat
             ok = window->save(state->overwrite, written, error, &spec);
         } else {
             std::vector<ts::OutputFile> files;
-            ok = ts::encodeOutputs(state->root, spec, run.request(), result, files, error) && ts::writeOutputsUndoable(files, error);
+            ok = ts::encodeOutputs(state->root, spec, run.request(), result, files, error) && ts::writeOutputsUndoable(ctx.project(), files, error);
             for (const ts::OutputFile& f : files) written.push_back(f.path);
         }
         if (!ok) {
@@ -698,6 +700,8 @@ void synthesizeTextureTool(const CallPtr& call) {
     };
     ts::SynthesisRun::Finished onFinished = [context, state, job](ts::SynthesisRun&) {
         getEditorHost().enqueueMainThreadTask([context, state, job]() {
+            // a continuation writes beneath the project, as the tool's run did
+            McpWriteScope writeScope;
             // the run may finish before start() returned to the handler
             if (!state->run) return;
             // whatever goes wrong, the job ends (the main-thread loop would swallow an exception
@@ -759,9 +763,12 @@ void synthesizeTextureTool(const CallPtr& call) {
 
 Json synthesisAssetInfo(Project* project, const fs::path& file, bool full) {
     std::string readError;
-    const std::optional<nlohmann::json> recipe = ts::readRecipe(file, &readError);
+    ts::RecipeReadError origin = ts::RecipeReadError::None;
+    const std::optional<nlohmann::json> recipe = ts::readRecipe(file, &readError, &origin);
     if (!recipe) {
-        if (!readError.empty()) return Json{{"error", readError}};
+        // only a damaged jasper.synthesis chunk is an unusable recipe; a file that is not a PNG
+        // (a JPEG named .png) or can't be read has none (decided on the error's origin)
+        if (origin == ts::RecipeReadError::Chunk) return Json{{"error", readError}};
         return Json();
     }
     // a garbled recipe (another writer, a hand edit) is reported as such, the rest of the asset info stays
@@ -822,11 +829,10 @@ void registerSynthesisTools(McpRegistry& registry) {
     tool.name = "synthesize_texture";
     tool.title = "Synthesize Texture";
     tool.description =
-        "Example-based texture synthesis (editor-side): a new texture like the examples (extend), a seamless tiling one (tileable), an "
-        "image made seamless (make_tileable), a masked region regenerated (inpaint), or examples following a guide (guided). PBR "
-        "companions (normal, roughness...) get the same arrangement. Without output nothing is written: a preview with images and "
-        "metrics; the same arguments + the returned seed + output write exactly that (one undo step, PNGs with a recipe). Read "
-        "hint. Guide: jasper://docs/texture-synthesis.";
+        "Example-based texture synthesis: mode extend, tileable, make_tileable, inpaint or guided; PBR companions "
+        "get the same arrangement. Without output nothing is written: a preview with images, metrics and a hint; the same "
+        "arguments + the returned seed + output write exactly that (one undo step, PNGs with a recipe). "
+        "Guide: jasper://docs/texture-synthesis.";
 
     // what each argument does: docs/mcp/guide/texture-synthesis.md
     const Json pathOrObject = [&] {
@@ -857,7 +863,7 @@ void registerSynthesisTools(McpRegistry& registry) {
         {"size", size},
         {"quality", withDefault(stringEnum("", {"draft", "balanced", "high"}), "balanced")},
         // the fields and their ranges: docs/mcp/guide/texture-synthesis.md (the handler checks them)
-        {"params", anyObject("Expert overrides.")},
+        {"params", anyObject("")},
         {"border", withDefault(number("", 0.0001, 0.5), 0.125)},
         {"seed", [] {
              Json j;

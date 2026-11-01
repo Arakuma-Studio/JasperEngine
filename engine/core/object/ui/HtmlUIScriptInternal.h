@@ -72,7 +72,8 @@ namespace jasperengine{
         bool warned = false;   // C++ use after removal is logged once per model
     };
 
-    // a Lua function kept in the registry (counted by HtmlUIScriptState::liveLuaRefs)
+    // a Lua function kept in the registry (counted by HtmlUIScriptState::liveLuaRefs), with the
+    // main thread of the state (LuaBinding::mainThread), whatever thread made it
     struct HtmlUILuaRef {
         lua_State* L = nullptr;
         int ref = -2;   // LUA_NOREF
@@ -86,7 +87,8 @@ namespace jasperengine{
         HtmlUILuaRef& operator=(const HtmlUILuaRef&) = delete;
 
         bool isSet() const;
-        // pushes the value on the creating state; false (nothing pushed) if that state is gone
+        // pushes the value on `current`, any thread of the creating state; false (nothing
+        // pushed) if that state is gone
         bool push(lua_State* current) const;
         void reset();
     };

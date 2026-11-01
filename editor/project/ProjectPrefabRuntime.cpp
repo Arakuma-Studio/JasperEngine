@@ -183,7 +183,8 @@ void editor::Project::appendPrefabCppScripts(std::vector<SceneScriptSource>& scr
         auto components = registry->getComponentArray<ScriptComponent>();
         for (size_t i = 0; i < components->size(); i++) {
             for (const ScriptEntry& entry : components->getComponentFromIndex(i).scripts) {
-                if (!entry.enabled || entry.type == ScriptType::LUA || entry.path.empty()) {
+                // disabled scripts too: they exist at runtime and can be enabled (Unity)
+                if (entry.type == ScriptType::LUA || entry.path.empty()) {
                     continue;
                 }
                 fs::path sourcePath = entry.path;
@@ -322,6 +323,10 @@ void editor::Project::registerPrefabManager() {
             sceneProject->structureVersion++;
         }
         sceneProject->needUpdateRender = true;
+    });
+    // ...and one DontDestroyOnLoad / MoveGameObjectToScene moved goes along
+    ObjectManager::setMoveListener([this](Scene* from, Scene* to, const std::unordered_map<Entity, Entity>& moved) {
+        onPlayObjectsMoved(from, to, moved);
     });
 
     // The export's list and order (Generator::configure gets the same collectAllPrefabs),

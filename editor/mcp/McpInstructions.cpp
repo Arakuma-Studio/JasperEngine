@@ -68,7 +68,7 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
    project.yaml. Group many edits in one `batch` call
    (undo_group: one undo step, see Undo). Edit code with your own tools (see Code).
 3. Save the scenes you changed.
-4. Play the start scene; a C++ project builds first (seconds to minutes).
+4. Play the start scene; a C++ project builds first.
 5. Look: screenshot the Game view (Scene view for layout). Drive the game with
    send_input / wait; query runtime state while playing (get_runtime_entity, eval_lua).
 6. Read the Console since your last cursor: compile, script and Lua errors, missing assets.
@@ -133,13 +133,15 @@ REGISTER_ENGINE_EVENT(onUpdate) in the constructor, UNREGISTER_ENGINE_EVENT in t
 Log::print, never printf or std::cout. Angles are DEGREES. Build settings go in ProjectBuild.cmake.
 
 ## Play and time
-- play: start, stop, pause, resume, step (frames), restart; clock options with any action (or
-  action "set"): time_scale, fixed_fps (each frame exactly 1/fixed_fps s: reproducible runs),
+- play: start, stop, pause, resume, step (frames), restart; clock options with any action
+  (or "set"): time_scale, fixed_fps (exactly 1/fixed_fps s a frame: reproducible),
   auto_pause (frozen between your calls; runs only inside wait, send_input or step).
 - wait: run for seconds, game_seconds or frames, or until a Lua condition is truthy; input
   sends send_input events while it waits (hold a key for 2 game seconds, then check).
 - run_build runs an exported desktop player (input events, screenshots_at seconds since
   launch); returns its errors and the log tail.
+- Device focus, pause, rotation, language: send_input type app, configure_game_view
+  (jasper://docs/platform-services). Saved data: user_settings.
 
 ## 2D and 3D
 - 2D: sprites, tilemaps, UI; units are points (pixels of the canvas, project canvasWidth x
@@ -157,6 +159,7 @@ Log::print, never printf or std::cout. Angles are DEGREES. Build settings go in 
 - Crowds: bake_vertex_animation (preview, then output): a .vat a Vertex Animator plays on the
   GPU (jasper://docs/vertex-animation).
 - Animator (.controller): edit_animator_controller, control_animator (jasper://docs/animator).
+- Lines, lasers, trails: create_entity type line_renderer / trail_renderer (jasper://docs/lines-trails).
 
 ## Atmosphere
 A Fog of type "height" is physically based height fog (volumetric: true adds light shafts and
@@ -194,6 +197,7 @@ Textures from examples: synthesize_texture (group assets_pipeline,
 jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
 (jasper://docs/fluid). Bend/squash: edit_lattice (group animation, jasper://docs/lattice).
 Colours ("#hex", {srgb}), curves, templates, recording: jasper://docs/editor-tools.
+Sprite normal maps for 2D lights: generate_sprite_normals (jasper://docs/sprite-normals).
 
 ## Post-processing
 Main camera only: apply_post_processing_preset (film, vhs, mobile_adaptive...), then

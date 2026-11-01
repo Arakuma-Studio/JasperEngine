@@ -26,6 +26,7 @@
 #include "component/VolumetricCloudsComponent.h"
 #include "render/shadow/ShadowTypes.h"
 #include "render/shadow/ShadowTiers.h"
+#include "component/LineRendererComponent.h"
 
 using namespace jasperengine;
 
@@ -38,7 +39,8 @@ namespace luabridge
     {
         static auto push(lua_State* L, T value) -> std::enable_if_t<std::is_enum_v<T>, luabridge::Result>
         {
-            lua_pushinteger(L, static_cast<std::size_t>(value));
+            // signed: SleepTimeout's values are negative
+            lua_pushinteger(L, static_cast<lua_Integer>(value));
             return {};
         }
 
@@ -124,6 +126,14 @@ namespace luabridge
     template<> struct Stack<ResourceLoadState> : EnumWrapper<ResourceLoadState>{};
     template<> struct Stack<LightState> : EnumWrapper<LightState>{};
     template<> struct Stack<UIEventState> : EnumWrapper<UIEventState>{};
+    // platform services (System, Screen, Input.deviceOrientation)
+    template<> struct Stack<SystemLanguage> : EnumWrapper<SystemLanguage>{};
+    template<> struct Stack<ScreenOrientation> : EnumWrapper<ScreenOrientation>{};
+    template<> struct Stack<DeviceOrientation> : EnumWrapper<DeviceOrientation>{};
+    template<> struct Stack<DeviceType> : EnumWrapper<DeviceType>{};
+    template<> struct Stack<NetworkReachability> : EnumWrapper<NetworkReachability>{};
+    template<> struct Stack<HapticFeedback> : EnumWrapper<HapticFeedback>{};
+    template<> struct Stack<SleepTimeout> : EnumWrapper<SleepTimeout>{};
 
     template<> struct Stack<EntityPool> : EnumWrapper<EntityPool>{};
 
@@ -141,6 +151,7 @@ namespace luabridge
     template<> struct Stack<AtmosphereQuality> : EnumWrapper<AtmosphereQuality>{};
     template<> struct Stack<AtmosphereQualityOverride> : EnumWrapper<AtmosphereQualityOverride>{};
     template<> struct Stack<CameraType> : EnumWrapper<CameraType>{};
+    template<> struct Stack<PlayMode> : EnumWrapper<PlayMode>{};
     template<> struct Stack<FrustumPlane> : EnumWrapper<FrustumPlane>{};
     template<> struct Stack<LightType> : EnumWrapper<LightType>{};
     template<> struct Stack<LightShading> : EnumWrapper<LightShading>{};
@@ -169,6 +180,9 @@ namespace luabridge
 
     template<> struct Stack<AnchorPreset> : EnumWrapper<AnchorPreset>{};
     template<> struct Stack<LayoutGroupType> : EnumWrapper<LayoutGroupType>{};
+    // Canvas Groups (ui canvas group spec 7.6)
+    template<> struct Stack<CanvasGroupRenderMode> : EnumWrapper<CanvasGroupRenderMode>{};
+    template<> struct Stack<AlphaTweenTarget> : EnumWrapper<AlphaTweenTarget>{};
     template<> struct Stack<PivotPreset> : EnumWrapper<PivotPreset>{};
 
     template<> struct Stack<ScrollbarType> : EnumWrapper<ScrollbarType>{};
@@ -178,6 +192,12 @@ namespace luabridge
     template<> struct Stack<Collider3DType> : EnumWrapper<Collider3DType>{};
     template<> struct Stack<BodyType> : EnumWrapper<BodyType>{};
     template<> struct Stack<Joint2DType> : EnumWrapper<Joint2DType>{};
+    template<> struct Stack<JointLimitState2D> : EnumWrapper<JointLimitState2D>{};
+    template<> struct Stack<CollisionDetectionMode2D> : EnumWrapper<CollisionDetectionMode2D>{};
+    template<> struct Stack<RigidbodySleepMode2D> : EnumWrapper<RigidbodySleepMode2D>{};
+    template<> struct Stack<JointAnchorSpace> : EnumWrapper<JointAnchorSpace>{};
+    template<> struct Stack<JointBreakAction> : EnumWrapper<JointBreakAction>{};
+    template<> struct Stack<PhysicsMaterialCombine> : EnumWrapper<PhysicsMaterialCombine>{};
     template<> struct Stack<UIDocumentRenderMode> : EnumWrapper<UIDocumentRenderMode>{};
     template<> struct Stack<FluidOutput> : EnumWrapper<FluidOutput>{};
     // bound enums that had none: LuaBridge pushed them as unregistered userdata (an error
@@ -185,6 +205,23 @@ namespace luabridge
     template<> struct Stack<ReflectionProbeMode> : EnumWrapper<ReflectionProbeMode>{};
     template<> struct Stack<ReflectionProbeUpdateMode> : EnumWrapper<ReflectionProbeUpdateMode>{};
     template<> struct Stack<ParticleEmitterShape> : EnumWrapper<ParticleEmitterShape>{};
+    // version 2 Particle Systems (particles spec 6.6)
+    template<> struct Stack<ParticleSystemSimulationSpace> : EnumWrapper<ParticleSystemSimulationSpace>{};
+    template<> struct Stack<ParticleSystemScalingMode> : EnumWrapper<ParticleSystemScalingMode>{};
+    template<> struct Stack<ParticleSystemStopAction> : EnumWrapper<ParticleSystemStopAction>{};
+    template<> struct Stack<ParticleSystemEmitterVelocityMode> : EnumWrapper<ParticleSystemEmitterVelocityMode>{};
+    template<> struct Stack<ParticleSystemGravitySource> : EnumWrapper<ParticleSystemGravitySource>{};
+    template<> struct Stack<ParticleSystemStopBehavior> : EnumWrapper<ParticleSystemStopBehavior>{};
+    template<> struct Stack<ParticleSystemShapeType> : EnumWrapper<ParticleSystemShapeType>{};
+    template<> struct Stack<ParticleSystemShapeMultiModeValue> : EnumWrapper<ParticleSystemShapeMultiModeValue>{};
+    template<> struct Stack<ParticleSystemInheritVelocityMode> : EnumWrapper<ParticleSystemInheritVelocityMode>{};
+    template<> struct Stack<ParticleSystemAnimationMode> : EnumWrapper<ParticleSystemAnimationMode>{};
+    template<> struct Stack<ParticleSystemAnimationType> : EnumWrapper<ParticleSystemAnimationType>{};
+    template<> struct Stack<ParticleSystemAnimationRowMode> : EnumWrapper<ParticleSystemAnimationRowMode>{};
+    template<> struct Stack<ParticleSystemAnimationTimeMode> : EnumWrapper<ParticleSystemAnimationTimeMode>{};
+    template<> struct Stack<ParticleSystemRenderMode> : EnumWrapper<ParticleSystemRenderMode>{};
+    template<> struct Stack<ParticleSystemSortMode> : EnumWrapper<ParticleSystemSortMode>{};
+    template<> struct Stack<ParticleSystemRenderSpace> : EnumWrapper<ParticleSystemRenderSpace>{};
     template<> struct Stack<RigidbodyMotionQuality> : EnumWrapper<RigidbodyMotionQuality>{};
     template<> struct Stack<Joint3DType> : EnumWrapper<Joint3DType>{};
     template<> struct Stack<ShaderType> : EnumWrapper<ShaderType>{};
@@ -200,6 +237,11 @@ namespace luabridge
     template<> struct Stack<MaterialStencilCompare> : EnumWrapper<MaterialStencilCompare>{};
     template<> struct Stack<MaterialStencilOp> : EnumWrapper<MaterialStencilOp>{};
     template<> struct Stack<MaterialColorWriteBits> : EnumWrapper<MaterialColorWriteBits>{};
+    // Line and Trail Renderers (lines and trails spec 6.6)
+    template<> struct Stack<LineRendererMode> : EnumWrapper<LineRendererMode>{};
+    template<> struct Stack<LineWidthUnit> : EnumWrapper<LineWidthUnit>{};
+    template<> struct Stack<LineAlignment> : EnumWrapper<LineAlignment>{};
+    template<> struct Stack<LineTextureMode> : EnumWrapper<LineTextureMode>{};
 
     template <>
     struct Stack <Touch>

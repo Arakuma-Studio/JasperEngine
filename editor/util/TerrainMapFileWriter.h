@@ -36,7 +36,10 @@ public:
     static TerrainMapFileWriter& get();
 
     // Queue a full-map write; latest pixels win per path. Takes ownership of pixels.
-    void enqueue(const std::filesystem::path& path, int width, int height, int channels, int bytesPerChannel, std::vector<unsigned char> pixels);
+    // `root`: the write scope's root of the caller ("" none: a plain write); the worker writes
+    // beneath it (util/SafeWrite.h: no link on the way followed)
+    void enqueue(const std::filesystem::path& path, int width, int height, int channels, int bytesPerChannel, std::vector<unsigned char> pixels,
+                 const std::filesystem::path& root = {});
 
     // Blocks until a pending write for this path (if any) has been attempted;
     // previously failed writes get one retry first.
@@ -63,6 +66,8 @@ private:
         int channels = 0;
         int bytesPerChannel = 1;
         std::vector<unsigned char> pixels;
+        // the write scope's root of the thread that queued it ("" none): written beneath it
+        std::filesystem::path root;
     };
 
     TerrainMapFileWriter() = default;

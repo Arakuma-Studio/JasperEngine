@@ -395,7 +395,7 @@ TEST_F(CommandHistoryTests, BeforeMutationRefuses) {
     CommandHistory::beforeMutation = [](std::string& why) { why = "Play mode is starting"; return false; };
     EXPECT_FALSE(history.addCommand(make("b", 2)));
     EXPECT_FALSE(history.undo());
-    EXPECT_EQ(CommandHistory::lastRefusal(), "Play mode is starting");
+    EXPECT_EQ(CommandHistory::lastBusyRefusal(), "Play mode is starting");
     EXPECT_EQ(state.value, 1);
     CommandHistory::beforeMutation = nullptr;
     EXPECT_TRUE(history.undo());

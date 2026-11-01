@@ -9,6 +9,7 @@
 #include "RmlSystem.h"
 #include "vector/UILottieElement.h"
 #include "media/UIVideoElement.h"
+#include "controls/OnScreenControls.h"
 #include "compat/runtime/RuntimeRegistry.h"
 #include "widgets/WidgetsRuntime.h"
 #include "effects/EffectRegistry.h"
@@ -95,6 +96,8 @@ bool HtmlUI::acquire(){
     ThorVGRuntime::acquire();
     UILottieElement::registerInstancer();
     UIVideoElement::registerInstancer();
+    // the on-screen controls (ui-multitouch): <onscreen-stick>, <onscreen-button>, <touch-area>
+    UIOnScreenControl::registerInstancers();
     // the compat layer's runtime emulations (phase-2 hook H1), before any document loads
     htmlui::compat::registerRuntime();
     // the S17 widgets: virtual views, markdown, tooltips, drag and drop
@@ -136,6 +139,7 @@ void HtmlUI::release(){
     // after Rml::Shutdown: the documents (and their ThorVG animations) are gone
     UILottieElement::releaseInstancer();
     UIVideoElement::releaseInstancer();
+    UIOnScreenControl::releaseInstancers();
     htmlui::compat::releaseRuntime();
     htmlui::WidgetsRuntime::releaseAll();
     htmlui::EffectRegistry::get().shutdown();

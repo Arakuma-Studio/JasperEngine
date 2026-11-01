@@ -55,6 +55,7 @@ function Bad:init()
     SceneManager.currentSceneName = 3
     Engine.scene = "main"
     Engine["fixedDeltatime"] = false
+    Http.maxConcurrentRequests = "many"
 end
 
 return Bad
@@ -80,6 +81,7 @@ BAD_LUA_EXPECTED = {
     24: "assign-type-mismatch",  # string <- integer
     25: "assign-type-mismatch",  # Scene <- string
     26: "assign-type-mismatch",  # number <- boolean, indexed with a string
+    27: "assign-type-mismatch",  # integer <- string (Http)
 }
 
 # A script without engine fields assigned: the plugin leaves the checks driven by the doc
@@ -127,6 +129,30 @@ function Good:init()
     GameState = { level = 1 }  -- the game's own global table
     GameState.level = "boss"
     Log.print("frames " .. tostring(Engine.frameCount) .. " " .. tostring(Engine.gameTime))
+    -- coroutines, timers and Time (the wait helpers are async: fine inside the coroutine's function)
+    local co = self:startCoroutine(function()
+        local elapsed = Coroutine.wait(0.5) + Coroutine.waitRealtime(0.1)
+        Coroutine.nextFrame()
+        Coroutine.waitFrames(2)
+        local ok = Coroutine.waitUntil(function() return self.counter > 3 end, 2.0, true)
+        local done, value = Coroutine.waitFor(Timer.after(1, function() end))
+        Coroutine.waitForFixedUpdate()
+        Coroutine.waitForEndOfFrame()
+        print(elapsed, ok, done, value, Time.deltaTime, Time.unscaledDeltaTime, Time.fixedDeltaTime)
+    end)
+    print(co.status, co:isDone(), co.error, co.owner, co.id)
+    self:startCoroutine("onUpdate")
+    self:stopCoroutine(co)
+    self:stopAllCoroutines()
+    self:invokeRepeating("onUpdate", 1, 0.5)
+    local timer = self:invoke(function() print("later") end, 2, true)
+    print(timer.remaining, timer.interval, timer.unscaled, timer:isDone(), self:isInvoking(timer), self:isInvoking())
+    self:cancelInvoke("onUpdate")
+    Timer.every(0.5, function(t) return t.remaining > 0 end, {count = 3, unscaled = true, owner = self, delay = 0})
+    Coroutine.start(function() Coroutine.wait(1) end)
+    Time.timeScale = 0.5
+    Time.captureDeltaTime = 0
+    print(Engine.unscaledDeltatime, Engine.unscaledTime, Engine.maxDeltatime, Coroutine.running(), Coroutine.isInside())
 end
 
 function Good:onContact(bodyA, shapeA, bodyB, shapeB)
@@ -162,6 +188,43 @@ function Good:onUpdate()
     ---@type integer
     local pending = ShaderPool.getPendingShaderCount()
     print(ready, pending, ShaderPool.isShaderReady("mesh:Ult,Vc3"))
+    -- script data: PlayerPrefs, Json, File (the hand-written signatures and option classes)
+    PlayerPrefs.setInt("coins", PlayerPrefs.getInt("coins", 0) + 1)
+    if PlayerPrefs.hasKey("name") then print(PlayerPrefs.getString("name", "")) end
+    PlayerPrefs.setFloat("volume", PlayerPrefs.getFloat("volume") * 0.5)
+    PlayerPrefs.save()
+    local text = Json.encode({coins = 1, list = Json.array(), none = Json.null}, {pretty = true, emptyTable = "object"})
+    local value, err = Json.tryDecode(text, {null = "nil", allowComments = true})
+    if not value then print(err) end
+    print(Json.isNull(Json.null), Json.decode(text), Json.object({}))
+    local ok, werr = Json.writeFile("data://save.json", {coins = 1})
+    local saved, rerr = Json.readFile("data://save.json")
+    local body, ferr = File.readText("data://save.json")
+    print(ok, werr, saved, rerr, body, ferr, File.exists("save.json"), File.list("data://"))
+    print(File.writeText("data://a.txt", "x"), File.appendText("a.txt", "y"), File.remove("a.txt"), File.makeDirs("data://d"))
+    print(UserSettings.hasKey("coins"), System.syncFileSystem(), System.isUserDataLoaded())
+    UserSettings.deleteKey("coins")
+    UserSettings.deleteAll()
+    -- http: the hand-written signatures and option classes
+    local req = Http.get("https://example.com/data.json", {timeout = 10, responseType = "json", owner = self}, function(res)
+        if res.ok then
+            print(res.status, res.data, res.body, res.headers["content-type"], res:header("etag"), res.url, res.redirected)
+        else
+            print(res.errorCode, res.error, res.elapsed)
+        end
+    end)
+    Http.post("https://example.com/api", {score = 3}, function(res) print(res.ok, res:json()) end)
+    Http.post("https://example.com/raw", "a=1", {headers = {["Content-Type"] = "text/plain"}})
+    Http.request{url = "https://example.com/x", method = "PUT", json = {a = 1}, onComplete = function(res) print(res.method) end}
+    Http.download("https://example.com/a.mp4", "data://ads/a.mp4", {resume = true, onProgress = function(r, got, total)
+        print(r.progress, r.bytesReceived, got, total)
+    end})
+    Http.getTexture("https://example.com/i.png", function(res) if res.textureData then print(res.textureData:getWidth()) end end)
+    Http.head("https://example.com", {redirects = false, query = {a = 1, b = "x"}})
+    print(req.state == HttpState.Done, req:isDone(), req.bytesTotal, req.response, Http.maxConcurrentRequests, Http.encodeUrl("a b"))
+    Http.timeout = 20
+    Http.logFailures = true
+    req:cancel()
 end
 
 return Good
@@ -491,7 +554,8 @@ async def test_clangd_cpp_templates_parse(ed: Editor):
     await wait_tooling(ed)
     await ed.call("set_project_settings", values={"scripting.cxx_standard": 20})
     # Tooling is regenerated on project open/build, rather than on each settings edit.
-    with tempfile.TemporaryDirectory(prefix="jasper-tooling-reopen-") as other:
+    # beside the current project: create_project over MCP makes a project there, not in an unrelated folder
+    with tempfile.TemporaryDirectory(prefix="jasper-tooling-reopen-", dir=ed.scratch.root) as other:
         await ed.call("create_project", path=str(Path(other) / "Other"), name="ToolingReload", unsaved="discard")
         await ed.call("open_project", path=str(ed.project), unsaved="discard")
     await wait_tooling(ed)

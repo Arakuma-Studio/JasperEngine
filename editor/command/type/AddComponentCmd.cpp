@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 #include "AddComponentCmd.h"
+#include "component/ActionComponent.h"
+#include "component/ParticleSystemComponent.h"
 
 #include <algorithm>
 
 #include "Out.h"
+#include "component/Light2DComponent.h"
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
 
@@ -58,6 +61,48 @@ bool editor::AddComponentCmd::execute() {
             for (const auto& [requiredEntity, requiredType] : required){
                 if (requiredEntity == entity && requiredType == ComponentType::SplineComponent && sceneProject->sceneType == SceneType::SCENE_2D){
                     scene->getComponent<SplineComponent>(entity).spline.setUpAxis(Vector3(0.0f, 0.0f, 1.0f));
+                }
+            }
+
+            // a Light 2D added in the editor (Add Component, add_component) starts at the
+            // virtual height normal maps respond to, as a created one (CreateEntityCmd); the
+            // struct default (0) stays the loader's and the scripts'. Redo adds it again here
+            if (componentType == ComponentType::Light2DComponent){
+                if (Light2DComponent* light = scene->findComponent<Light2DComponent>(entity)){
+                    light->height = 64.0f;
+                }
+            }
+
+            // a Line or Trail Renderer added in the editor starts as a new one from the menu does
+            // (a 2-point polyline with a width, a fading trail); the struct defaults stay the
+            // loader's and the scripts'
+            if (componentType == ComponentType::LineRendererComponent){
+                if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity)){
+                    ProjectUtils::setupNewLineRenderer(*lines, sceneProject->sceneType != SceneType::SCENE_3D);
+                }
+            }
+            if (componentType == ComponentType::TrailRendererComponent){
+                if (TrailRendererComponent* trail = scene->findComponent<TrailRendererComponent>(entity)){
+                    ProjectUtils::setupNewTrailRenderer(*trail, sceneProject->sceneType != SceneType::SCENE_3D);
+                }
+            }
+
+            // a Particle System added in the editor is Unity's (version 2 modules) drawing on its
+            // own GameObject's renderer (a Mesh's instances or Points); the loader's and the
+            // scripts' default stays version 1
+            if (componentType == ComponentType::ParticleSystemComponent){
+                if (ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity)){
+                    *ps = ParticleSystemComponent();
+                    ps->version = 2;
+                    if (sceneProject->sceneType != SceneType::SCENE_3D){
+                        ps->main.startSpeed = MinMaxCurve(200.0f);
+                        ps->main.startSize = MinMaxCurve(40.0f);
+                        ps->main.gravitySource = ParticleSystemGravitySource::Physics2D;
+                        ps->shape.radius = 40.0f;
+                    }
+                }
+                if (ActionComponent* action = scene->findComponent<ActionComponent>(entity)){
+                    if (action->target == NULL_ENTITY) action->target = entity;
                 }
             }
 

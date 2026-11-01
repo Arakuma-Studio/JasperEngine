@@ -3,6 +3,7 @@
 
 #include "HtmlUITemplates.h"
 #include "io/AtomicFile.h"
+#include "util/FileUtils.h"
 
 #include <fstream>
 
@@ -89,7 +90,7 @@ bool editor::HtmlUITemplates::createDocument(const fs::path& directory, const st
     const io::WriteResult htmlWritten = io::writeFileAtomic(html, documentText(name), options);
     if (!htmlWritten.ok()){
         std::error_code ignored;
-        fs::remove(css, ignored);
+        FileUtils::removePath(css, ignored);
         error = "could not write " + html.string() + ": " + io::describeWriteError(htmlWritten);
         return false;
     }

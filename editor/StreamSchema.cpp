@@ -157,18 +157,6 @@ const EnumTable<AnchorPreset>& StreamSchema::anchorPreset() {
     return table;
 }
 
-const EnumTable<AndroidOrientation>& StreamSchema::androidOrientation() {
-    static const EnumTable<AndroidOrientation> table("AndroidOrientation", {
-        {AndroidOrientation::Portrait, "portrait"},
-        {AndroidOrientation::Landscape, "landscape"},
-        {AndroidOrientation::SensorPortrait, "sensorPortrait"},
-        {AndroidOrientation::SensorLandscape, "sensorLandscape"},
-        {AndroidOrientation::FullSensor, "fullSensor"},
-        {AndroidOrientation::Unspecified, "unspecified"},
-    }, AndroidOrientation::Unspecified);
-    return table;
-}
-
 const EnumTable<AttributeDataType>& StreamSchema::attributeDataType() {
     static const EnumTable<AttributeDataType> table("AttributeDataType", {
         {AttributeDataType::BYTE, "byte"},
@@ -233,6 +221,9 @@ const EnumTable<AttributeType>& StreamSchema::attributeType() {
         {AttributeType::PARTICLEVELOCITY, "particlevelocity"},
         {AttributeType::PARTICLEROTATION, "particlerotation"},
         {AttributeType::PARTICLECUSTOM, "particlecustom"},
+        {AttributeType::LINETANGENTIN, "linetangentin"},
+        {AttributeType::LINETANGENTOUT, "linetangentout"},
+        {AttributeType::LINEPARAMS, "lineparams"},
     }, AttributeType::POSITION);
     return table;
 }

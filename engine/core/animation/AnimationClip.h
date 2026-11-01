@@ -123,6 +123,10 @@ namespace jasperengine{
         ClipWrapMode wrap = ClipWrapMode::Once;
         // explicit length in seconds; < 0 = automatic (last key or event time)
         float length = -1.0f;
+        // the time an additive layer measures this clip's delta from (anim layers spec 6.1, file
+        // key "additive_reference", written only when not 0); normalize clamps it to
+        // [0, effectiveLength()]
+        float additiveReference = 0.0f;
         std::vector<ClipTrackData> tracks;
         std::vector<ClipEventData> events;
         // editor-only hint: a model or prefab to preview the clip on (asset-relative)
@@ -202,6 +206,8 @@ namespace jasperengine{
         // the effective length (ClipData::effectiveLength), seconds
         float getLength() const { return length; }
         bool hasExplicitLength() const { return explicitLength; }
+        // ClipData::additiveReference (seconds, in [0, getLength()])
+        float getAdditiveReference() const { return additiveReference; }
 
         const std::string& getGuid() const { return guid; }
         const std::string& getPreviewModel() const { return previewModel; }
@@ -227,6 +233,7 @@ namespace jasperengine{
         ClipWrapMode wrap = ClipWrapMode::Once;
         float length = 0.0f;
         bool explicitLength = false;
+        float additiveReference = 0.0f;
         std::string guid;
         std::string previewModel;
         ClipSource source;

@@ -100,6 +100,9 @@ namespace jasperengine::anim{
     // loaded, else one parse of the file kept for the next calls (the last file parsed this way, its
     // animation data only), so the N sub-clips of a library file cost one parse
     JASPERENGINE_API bool listModelFileClips(const std::string& modelPath, std::vector<ModelClipInfo>& out, std::string* error);
+    // the paths of a model file's nodes relative to the model root (modelNodePaths; the Avatar
+    // Mask Inspector's tree), same parse rules
+    JASPERENGINE_API bool listModelFileNodes(const std::string& modelPath, std::vector<std::string>& out, std::string* error);
     JASPERENGINE_API bool buildModelSubClip(const std::string& reference, ClipData& out,
                                             std::vector<ClipWarning>& warnings, std::string* error);
     // drops the kept parse of `modelPath` (every file when empty): AnimationClipPool::invalidateModel

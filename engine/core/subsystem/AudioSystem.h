@@ -28,6 +28,8 @@ namespace jasperengine{
 		static float globalVolume;
 
 		Vector3 cameraLastPosition;
+		// the 3D listener at that scene's camera (the persistent scene's system, every frame)
+		void placeListener(Scene& listenerScene);
 		bool outputRequested = false;
 		// off while the scheduler skips the system (Systems window): its sounds hold too
 		bool schedulerEnabled = true;

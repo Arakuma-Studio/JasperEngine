@@ -34,6 +34,20 @@ namespace jasperengine {
         // Returns the copies in the same order; `map` (optional) gets source -> copy.
         static std::vector<Entity> clone(EntityRegistry* source, const std::vector<Entity>& sources, Scene* target,
                                          Entity targetRoot = NULL_ENTITY, std::unordered_map<Entity, Entity>* map = nullptr);
+
+        // The move of `sources` (collectHierarchy order) from `source` to `target`, keeping what
+        // they run (persistence): copies like clone(), but the copies take over the originals'
+        // runtime state, which the originals no longer hold, so destroying them afterwards (the
+        // caller does: ObjectManager::moveToScene) stops, releases and calls nothing. Taken over:
+        // script instances and their bound properties, sound voices, running actions, tweens,
+        // particles, lattice jiggle, the subscriptions of component events, body velocities (the
+        // target's physics makes the bodies), Animation Players and Pose Animators when every id
+        // is kept. Reloaded as for a clone: GPU state, render targets, UI documents, fluids,
+        // Vertex Animators. A joint to a body outside `sources` is dropped with a warning.
+        // Each GameObject keeps its id when it is free in `target` (user ids), else gets a new
+        // one; `map` gets source -> copy. Returns the copies in the same order.
+        static std::vector<Entity> move(Scene* source, const std::vector<Entity>& sources, Scene* target,
+                                        std::unordered_map<Entity, Entity>& map);
     };
 
 }

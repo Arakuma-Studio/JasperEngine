@@ -5,6 +5,7 @@
 
 #include "Exporter.h"
 #include "Out.h"
+#include "util/PlatformRules.h"
 #include "io/AtomicFile.h"
 #include "platform/AndroidTools.h"
 #include "util/ZipArchive.h"
@@ -98,7 +99,15 @@ bool platform::writeAndroidManifest(const AndroidPackage& package, const std::st
     }
     const bool launcher = !package.settings.launcherIcon.empty();
     const bool adaptive = !package.settings.adaptiveIconForeground.empty() && !package.settings.adaptiveIconBackground.empty();
-    const std::string orientation = Exporter::androidOrientationValue(package.settings.orientation);
+    // the default orientation, or auto-rotation within the allowed ones (the user's rotation lock kept)
+    bool unsupportedRotation = false;
+    const int requestedOrientation = PlatformRules::androidRequestedOrientation(package.presentation.defaultOrientation,
+        package.presentation.effectiveAllowedOrientations(), &unsupportedRotation);
+    if (unsupportedRotation) {
+        Out::warning("Android cannot restrict auto-rotation to the allowed orientations of Player settings; "
+                     "the package allows all four (fullUser)");
+    }
+    const std::string orientation = PlatformRules::androidManifestOrientation(requestedOrientation);
     replaceAll(manifest, "{{VERSION_CODE}}", std::to_string(package.versionCode));
     replaceAll(manifest, "{{VERSION_NAME}}", Exporter::escapeXml(package.versionName));
     replaceAll(manifest, "{{MIN_SDK}}", std::to_string(package.settings.minSdk));
@@ -110,7 +119,7 @@ bool platform::writeAndroidManifest(const AndroidPackage& package, const std::st
     replaceAll(manifest, "{{THEME}}", package.settings.fullscreen ? "@style/AppTheme" : "@style/AppThemeWindowed");
     replaceAll(manifest, "{{ORIENTATION}}", orientation.empty() ? "" : "\n            android:screenOrientation=\"" + orientation + "\"");
     replaceAll(manifest, "{{FULLSCREEN}}", package.settings.fullscreen ? "true" : "false");
-    replaceAll(manifest, "{{KEEP_SCREEN_ON}}", package.settings.keepScreenOn ? "true" : "false");
+    replaceAll(manifest, "{{KEEP_SCREEN_ON}}", package.presentation.keepScreenOn ? "true" : "false");
     replaceAll(manifest, "{{TEXTURE_SUPPORT}}", package.astc ? "    <supports-gl-texture android:name=\"GL_KHR_texture_compression_astc_ldr\" />\n" : "");
     // compressed libraries are extracted at install (the template says false: stored, loaded from
     // the APK)

@@ -12,6 +12,10 @@ file(GLOB_RECURSE EDITOR_TEST_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_LIST_DIR}/*Test.cpp
     ${CMAKE_CURRENT_LIST_DIR}/support/*.cpp
     ${CMAKE_CURRENT_LIST_DIR}/reflect/legacy/*.cpp)
+# SYNC4-ABSORB: upstream's tests of the features S20/S21/S22/S27 absorb (particles v2, Unity
+# particle import, Animation Player layers and controller, input actions, curves and gradients)
+# wait in sync4-absorb/ until their absorption ports them; not built meanwhile
+list(FILTER EDITOR_TEST_SOURCES EXCLUDE REGEX "/sync4-absorb/")
 # the reflection codec's benchmark against the legacy codecs (docs/specs/S08-reflection.md R17)
 list(APPEND EDITOR_TEST_SOURCES ${CMAKE_SOURCE_DIR}/tools/performance/reflect_codec.cpp)
 
@@ -30,6 +34,13 @@ set_target_properties(je_log_crash_helper PROPERTIES
     CXX_STANDARD_REQUIRED ON
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
     FOLDER "tests")
+
+# HttpTest's HTTP server on 127.0.0.1 (POSIX sockets)
+if(NOT WIN32)
+    list(APPEND EDITOR_TEST_SOURCES ${CMAKE_CURRENT_LIST_DIR}/util/TestHttpServer.cpp)
+else()
+    list(FILTER EDITOR_TEST_SOURCES EXCLUDE REGEX "/HttpTest\\.cpp$")
+endif()
 
 # the child ProcessExecTest runs (argument echo, environment, timeouts, a process tree, floods)
 add_executable(je_vcs_process_helper ${CMAKE_CURRENT_LIST_DIR}/vcs/ProcessHelper.cpp)
@@ -94,3 +105,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         FOLDER "tests")
     add_dependencies(jasperengine-editor-tests jasperengine-texsynth-oom)
 endif()
+
+# The engine's include directories and definitions, for tests that compile the C++ the editor
+# generates for exports (LineRendererStreamTest: Factory's component code against the engine
+# headers, with the compiler that builds the tests)
+file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt CONTENT
+"$<JOIN:$<TARGET_PROPERTY:jasperengine,INCLUDE_DIRECTORIES>,\n>\n#defines\n$<JOIN:$<TARGET_PROPERTY:jasperengine,COMPILE_DEFINITIONS>,\n>\n")
+target_compile_definitions(jasperengine-editor-tests PRIVATE
+    JASPER_EDITOR_TEST_ENGINE_FLAGS="${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt"
+    JASPER_EDITOR_TEST_CXX="${CMAKE_CXX_COMPILER}")

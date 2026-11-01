@@ -36,10 +36,15 @@
 #include "render/shadow/ShadowTiers.h"
 #include "texture/TextureImportSettings.h"
 #include "vcs/VcsTypes.h"
+#include "util/PlatformRules.h"
+#include "window/SpriteNormalsWindowSettings.h"
+#include "input/InputActions.h"
+#include "shader/ShaderGlobals.h"
 
 #include "yaml-cpp/yaml.h"
 
 #include <filesystem>
+#include <optional>
 #include <chrono>
 #include <future>
 #include "jobs/JobSystem.h"
@@ -50,6 +55,7 @@
 #include <span>
 #include <tuple>
 #include <atomic>
+#include <memory>
 #include <future>
 #include <mutex>
 
@@ -133,6 +139,18 @@ namespace jasperengine::editor{
         std::string filepath;
     };
 
+    // the 3D world capacity (project.yaml physics3DWorld; physics3D is the 3D physics switch); defaults = PhysicsSystem's
+    struct Physics3DWorldSettings {
+        unsigned int maxBodies = 8192;
+        unsigned int maxBodyPairs = 8192;
+        unsigned int maxContactConstraints = 8192;
+
+        bool operator==(const Physics3DWorldSettings& other) const {
+            return maxBodies == other.maxBodies && maxBodyPairs == other.maxBodyPairs && maxContactConstraints == other.maxContactConstraints;
+        }
+        bool operator!=(const Physics3DWorldSettings& other) const { return !(*this == other); }
+    };
+
     struct SceneMaxValues {
         unsigned int maxSubmeshes = 0;
         unsigned int maxTilemapTilesRect = 0;
@@ -140,11 +158,14 @@ namespace jasperengine::editor{
         unsigned int maxExternalBuffers = 0;
         unsigned int maxSpriteFrames = 0;
         unsigned int maxBones = 0;
-        unsigned int maxColliders2D = 0;
-        unsigned int maxColliderPoints2D = 0;
-        unsigned int maxColliders3D = 0;
-        unsigned int maxColliderVertices3D = 0;
-        unsigned int maxColliderIndices3D = 0;
+        // the collider caps of scenes saved before colliders had none (maxColliders2D,
+        // maxColliderPoints2D, maxColliders3D, maxColliderVertices3D, maxColliderIndices3D):
+        // nothing reads them, kept as they were so re-saving an old scene changes no line
+        std::optional<unsigned int> legacyMaxColliders2D;
+        std::optional<unsigned int> legacyMaxColliderPoints2D;
+        std::optional<unsigned int> legacyMaxColliders3D;
+        std::optional<unsigned int> legacyMaxColliderVertices3D;
+        std::optional<unsigned int> legacyMaxColliderIndices3D;
     };
 
     struct ChildSceneRef {
@@ -553,6 +574,31 @@ namespace jasperengine::editor{
         std::string identifier = "com.yourcompany.project";
         std::string version = "1.0";
         unsigned int build = 1;  // Apple build number and Android version code
+        // Plain http:// to hosts other than localhost (Http, every platform and the editor's
+        // Play); exports set Android cleartext and iOS/macOS ATS to match
+        bool allowInsecureHttp = false;
+    };
+
+    // Player > Resolution and Presentation, shared by every platform: Unity's Default
+    // Orientation and Allowed Orientations for Auto Rotation (Android's screenOrientation, the
+    // iOS Info.plist), the initial Screen.sleepTimeout and Engine.targetFrameRate. The project's
+    // VSync setting gives the initial Engine.vSyncCount.
+    struct PresentationSettings {
+        ScreenOrientation defaultOrientation = ScreenOrientation::AutoRotation;
+        // PlatformRules::orientationBit of each; a fixed default is always in it
+        uint8_t allowedOrientations = PlatformRules::DEFAULT_ALLOWED_ORIENTATIONS;
+        bool keepScreenOn = true;
+        // -1 = the platform's rate
+        int targetFrameRate = -1;
+
+        // the allowed set with a fixed default in it, never empty
+        uint8_t effectiveAllowedOrientations() const;
+
+        bool operator==(const PresentationSettings& other) const {
+            return defaultOrientation == other.defaultOrientation && allowedOrientations == other.allowedOrientations
+                && keepScreenOn == other.keepScreenOn && targetFrameRate == other.targetFrameRate;
+        }
+        bool operator!=(const PresentationSettings& other) const { return !(*this == other); }
     };
 
     // Name, identifier, version and build below are overrides: empty (or 0)
@@ -606,13 +652,11 @@ namespace jasperengine::editor{
         std::string exportMethod = "development";   // development, ad-hoc, app-store
     };
 
-    enum class AndroidOrientation {
-        Unspecified,
-        Portrait,
-        Landscape,
-        SensorPortrait,
-        SensorLandscape,
-        FullSensor
+    // Android INTERNET permission: Auto adds it when the exported Lua or C++ uses Http (or the
+    // permission is ticked), Require always adds it (Unity's Internet Access)
+    enum class AndroidInternetAccess {
+        Auto,
+        Require
     };
 
     struct AndroidProjectSettings {
@@ -625,15 +669,15 @@ namespace jasperengine::editor{
         std::filesystem::path adaptiveIconBackground;
         unsigned int minSdk = 21;
         unsigned int targetSdk = 36;
-        AndroidOrientation orientation = AndroidOrientation::Unspecified;
+        // the orientation comes from PresentationSettings (Player > Resolution and Presentation)
         bool abiArmeabiV7a = true;
         bool abiArm64V8a = true;
         bool abiX86 = true;
         bool abiX86_64 = true;
         std::set<std::string> permissions;
+        AndroidInternetAccess internetAccess = AndroidInternetAccess::Auto;
         bool allowBackup = true;
         bool fullscreen = true;
-        bool keepScreenOn = false;
         // Google Mobile Ads is compiled in only when enabled
         bool admobEnabled = false;
         std::string admobAppId;
@@ -743,6 +787,10 @@ namespace jasperengine::editor{
         std::string windowTitle;  // empty = use the project name
         std::filesystem::path windowIcon;  // project-relative image path; empty = no icon
         std::filesystem::path assetsDir;
+        // the trusted roots, resolved on the main thread when the project loads or a root setting
+        // changes (refreshTrustedRoots) and published whole: workers read the snapshot, never
+        // resolve or change it (std::atomic_load / std::atomic_store)
+        std::shared_ptr<const std::vector<std::filesystem::path>> trustedRoots;
         std::filesystem::path luaDir;
         std::vector<std::filesystem::path> scriptDirs;  // extra C++ include and source roots
         int cxxStandard;  // C++ standard for Play and exported builds
@@ -757,6 +805,19 @@ namespace jasperengine::editor{
         // Layer Collision Matrices of Physics (3D) and Physics 2D, all layers collide by default
         LayerCollisionRows layerCollisionMatrix3D = allLayersCollide();
         LayerCollisionRows layerCollisionMatrix2D = allLayersCollide();
+        Physics3DWorldSettings physics3DWorld;
+#if 0 // SYNC4-ABSORB(input): upstream's Input Manager actions (S22 owns Project Settings > Input)
+        // Project Settings > Input; Unity's Input Manager defaults (and nothing in project.yaml)
+        // until edited
+        bool inputActionsCustomized = false;
+        std::vector<InputAction> inputActions = InputActions::defaults();
+        // an input node of project.yaml that could not be read: written back as it was until
+        // the actions are edited, so a typo made by hand does not lose them
+        std::string unreadableInputNode;
+#endif
+        // Project Settings > Graphics > Shader Globals: the global shader values the project
+        // declares (name, type, default), applied to the engine's ShaderGlobals
+        std::vector<ShaderGlobalDecl> shaderGlobals;
         bool packNativeResources;
         bool versionControlMetadata;
         VcsProjectSettings vcsProjectSettings;
@@ -771,6 +832,7 @@ namespace jasperengine::editor{
         std::string buildMethod = "auto";
         bool packContent = false;
         ApplicationSettings applicationSettings;
+        PresentationSettings presentationSettings;
         WebProjectSettings webProjectSettings;
         LinuxProjectSettings linuxProjectSettings;
         WindowsProjectSettings windowsProjectSettings;
@@ -791,6 +853,7 @@ namespace jasperengine::editor{
         std::vector<std::filesystem::path> inspectedAssets;
         PhysicsPlacementSettings physicsPlacementSettings;
         NavigationProjectSettings navigationSettings;
+        SpriteNormalsWindowSettings spriteNormalsSettings;
         bool simulateTouch;
 
         // True while project.yaml holds the only copy of this user's editor state
@@ -885,6 +948,10 @@ namespace jasperengine::editor{
             bool ownedRuntime = false;       // true when the scene used is a copy, deleted with the session
             bool initialized = false;        // true when scripts and library are initialized
             bool initializing = false;       // true while its scripts run, to stop re-entrant init
+            bool scriptsRan = false;         // its scripts were started once (a load replacing it retires it)
+            // the DontDestroyOnLoad scene (SceneManager's persistent scene): no load replaces it,
+            // Stop deletes it with the session
+            bool persistent = false;
         };
 
         // The scene a runtime entry plays (the Engine's while playing): its copy, or the played
@@ -895,6 +962,9 @@ namespace jasperengine::editor{
         struct PlaySession {
             uint32_t mainSceneId = NULL_PROJECT_SCENE;
             std::vector<PlayRuntimeScene> runtimeScenes;
+            // scenes a scene load replaced (script-lifecycle 9.4): out of the game, their scripts
+            // released; a Play copy is deleted and the played scene restored at Stop
+            std::vector<PlayRuntimeScene> retiredRuntimeScenes;
             std::atomic<bool> cancelled{false};
             std::atomic<bool> startupThreadDone{false};  // Set when connect thread exits
             std::atomic<bool> startupSucceeded{false};   // True only if finalizeStart was called
@@ -910,6 +980,17 @@ namespace jasperengine::editor{
         float stepSavedMaxDeltatime = 0.0f;
 
         SceneProject* createRuntimeCloneFromSource(const SceneProject* source);
+        // ...from a scene node (the file's, or the played scene's Play-start snapshot)
+        SceneProject* createRuntimeCloneFromNode(const SceneProject* source, const YAML::Node& sceneNode);
+        // A load factory's first step: the session's scenes that load replaced (their scripts
+        // unloaded) leave the game, so the stack is built anew as an exported build does
+        void retireReplacedRuntimeScenes();
+        // SceneManager's persistent scene factory while the session plays: a runtime scene of
+        // the session named "DontDestroyOnLoad" (null when nothing plays)
+        Scene* createPersistentRuntimeScene();
+        // What DontDestroyOnLoad / MoveGameObjectToScene moved: the lists the editor shows
+        // (authored GameObjects, the selection) follow
+        void onPlayObjectsMoved(Scene* from, Scene* to, const std::unordered_map<Entity, Entity>& moved);
 
         // Play copies (the child scenes of the played scene run as copies, see PlaySession)
         // answer to ids of their own while the session lasts, so getScene(), selection,
@@ -1463,10 +1544,50 @@ namespace jasperengine::editor{
         // with Physics.ignoreLayerCollision during a Play
         void applyLayerCollisionMatrices() const;
 
+        // Project Settings > Physics > 3D World Capacity: the size of every 3D world made from
+        // now on (Play scenes and exported builds alike, PhysicsSystem::setWorldCapacity3D).
+        // Values are clamped to 16.. (and Jolt's body id range); a running Play keeps its world.
+        void setPhysics3DWorldSettings(const Physics3DWorldSettings& settings);
+        const Physics3DWorldSettings& getPhysics3DWorldSettings() const;
+
+#if 0 // SYNC4-ABSORB(input)
+        // Project Settings > Input: the input actions (virtual axes and buttons). Setting them
+        // validates nothing (callers do: InputActions::validate) and applies them to the
+        // engine's InputActions, which Play reads; actions equal to Unity's defaults are
+        // stored as "not customized" (no input node in project.yaml)
+        void setInputActions(const std::vector<InputAction>& actions);
+        const std::vector<InputAction>& getInputActions() const;
+        bool hasCustomInputActions() const;
+        void resetInputActions();
+        void applyInputActions() const;
+        // the actions as InputActions::loadJson reads them; "" for the defaults (exports emit nothing)
+        std::string getInputActionsJsonForBuild() const;
+        void setUnreadableInputNode(const std::string& yaml);
+        const std::string& getUnreadableInputNode() const;
+#endif
+        // Play starts and stops with clean input: no held keys, touches, rebinding overrides,
+        // disabled actions or simulated sources of the last Play
+        void resetPlayInput() const;
+
+        // Project Settings > Graphics > Shader Globals. Setting them validates nothing (callers
+        // do: ShaderGlobals::validate) and declares them to the engine's ShaderGlobals (the
+        // Scene and Game views and a running Play read them at once)
+        void setShaderGlobals(const std::vector<ShaderGlobalDecl>& decls);
+        const std::vector<ShaderGlobalDecl>& getShaderGlobals() const;
+        void applyShaderGlobals() const;
+        // a Play starts and stops with the declared defaults (the values scripts set are gone)
+        void resetPlayShaderGlobals() const;
+
         // Absolute roots stored references are relative to: assets for textures, models,
         // sounds and fonts ("asset://"), Lua for script entries ("lua://").
         std::filesystem::path getAssetsPath() const;
         std::filesystem::path getLuaPath() const;
+        // The project's trusted roots (its directory, its configured assets and Lua directories),
+        // resolved when the project loaded or a root setting changed, and kept: moving a folder
+        // and putting a link in its place doesn't re-point them (util/SafeWrite.h pins them)
+        std::vector<std::filesystem::path> getTrustedRoots() const;
+        // Resolves the trusted roots of the current configuration and publishes them (main thread)
+        void refreshTrustedRoots();
 
         std::filesystem::path normalizeToProjectRelative(const std::filesystem::path& path) const;
         std::filesystem::path resolveAssetPath(const std::filesystem::path& assetRelative) const;
@@ -1555,6 +1676,13 @@ namespace jasperengine::editor{
         }
         ApplicationSettings& getApplicationSettings();
         const ApplicationSettings& getApplicationSettings() const;
+        PresentationSettings& getPresentationSettings();
+        const PresentationSettings& getPresentationSettings() const;
+        // Play start: Engine.targetFrameRate / vSyncCount, Screen and the application info from
+        // these settings, before any script runs (the generated main of an export does the same)
+        void applyPresentationSettings();
+        // what the generated init() of a build sets (Generator::configure)
+        PlayerSettings getPlayerSettings() const;
 
         // The platform override when set, otherwise the shared block.
         std::string getApplicationName(const std::string& platformOverride = {}) const;
@@ -1618,6 +1746,11 @@ namespace jasperengine::editor{
         // navigation settings too (every scene's systems refresh their filters)
         const NavigationProjectSettings& getNavigationSettings() const;
         void setNavigationSettings(const NavigationProjectSettings& settings);
+
+        // The Sprite Normal Map window's last settings, view and light, and the auto-regenerate
+        // opt-in, per user (workspace.yaml)
+        SpriteNormalsWindowSettings& getSpriteNormalsSettings();
+        const SpriteNormalsWindowSettings& getSpriteNormalsSettings() const;
 
         // Play acts as a touch device: the mouse is one finger and isTouchDevice() is true
         bool isSimulateTouch() const;
@@ -1874,8 +2007,15 @@ namespace jasperengine::editor{
         // The scene a Play copy id is a copy of; any other id is returned as is
         uint32_t getPlaySourceSceneId(uint32_t sceneId) const;
         bool isPlayRuntimeScene(uint32_t sceneId) const;
-        // The Play copies of sceneId's running game layers, as the Scene view draws them
+        // The Play copies of sceneId's running game layers, as the Scene view draws them (in the
+        // Engine's layer order: the persistent scene above the game's, the loading scene last)
         std::vector<SceneProject*> getRunningRuntimeLayerScenes(uint32_t sceneId);
+        // The DontDestroyOnLoad scene of the session (Play id), NULL_PROJECT_SCENE without one
+        uint32_t getPersistentPlaySceneId() const;
+        bool isPersistentPlayScene(uint32_t sceneId) const;
+        // SceneManager's persistent scene factory outside Play: refuses (DontDestroyOnLoad moves
+        // nothing in edit mode); Play installs the session's (createPersistentRuntimeScene)
+        static void refusePersistentScenes();
         // Once a frame: a Play copy no longer running, or its GameObjects destroyed, are
         // no longer selected
         void syncPlayRuntimeSelections();
@@ -2678,6 +2818,9 @@ namespace jasperengine::editor{
         void waitForPlaySessionToFinish();
 
         std::vector<Scene*> getRunningRuntimeLayers(uint32_t sceneId);
+        // A scene load replaced the played scene itself (another scene, or a fresh copy of it):
+        // the game shows the stack that load built, not the played scene
+        bool isPlayedSceneReplaced(uint32_t sceneId);
     };
 
 }

@@ -14,6 +14,7 @@
 #include "Engine.h"
 #include "PlatformConfig.h"
 #include "player/RunControl.h"
+#include "util/FrameLimiter.h"
 
 #if defined(SOKOL_VULKAN)
 // After WindowLinux.h: the Xlib surface entry points come from <X11/Xlib.h>
@@ -44,8 +45,11 @@ bool glxContextError = false;
 
 GamepadLinux gamepads;
 LinuxInputRouter inputRouter;
+// Engine.targetFrameRate without vsync (Engine::getFramePacing().limiterFps)
+FrameLimiter frameLimiter;
 
 bool shouldClose = false;
+bool contextReady = false;
 
 double monotonicSeconds() {
     timespec now{};
@@ -175,22 +179,29 @@ bool createContext() {
         return false;
     }
 
-    if (hasGlxExtension(display, screen, "GLX_EXT_swap_control")) {
-        const auto swapIntervalEXT = glxProc<SwapIntervalProc>("glXSwapIntervalEXT");
-        if (swapIntervalEXT)
-            swapIntervalEXT(display, WindowLinux::handle(),
-                            platformConfig().vsync ? 1 : 0);
-    }
     // the shader creation thread's context (spec S32), with the same attributes
     static const int* workerAttributes = attributes;
     setGpuWorkerContextFactory([]() {
         return GlxWorkerContext::create(WindowLinux::display(), framebufferConfig, glContext, workerAttributes);
     });
+    // the swap interval of the frame pacing (vSyncCount, from the project's VSync)
+    contextReady = true;
+    JasperEngineLinux::applySwapInterval(Engine::getFramePacing().swapInterval);
     return true;
+}
+
+void setSwapInterval(int interval) {
+    Display* display = WindowLinux::display();
+    if (!glContext || !display) return;
+    if (!hasGlxExtension(display, WindowLinux::screen(), "GLX_EXT_swap_control")) return;
+    const auto swapIntervalEXT = glxProc<SwapIntervalProc>("glXSwapIntervalEXT");
+    if (swapIntervalEXT)
+        swapIntervalEXT(display, WindowLinux::handle(), interval);
 }
 
 void destroyContext() {
     setGpuWorkerContextFactory(nullptr);
+    contextReady = false;
     Display* display = WindowLinux::display();
     if (glContext && display) {
         glXMakeCurrent(display, None, nullptr);
@@ -221,11 +232,18 @@ bool createContext() {
     VulkanContextConfig config;
     config.surfaceExtension = VK_KHR_XLIB_SURFACE_EXTENSION_NAME;
     config.createSurface = createWindowSurface;
-    config.vsync = platformConfig().vsync;
-    return VulkanContext::create(config);
+    config.vsync = Engine::getFramePacing().swapInterval > 0;
+    contextReady = VulkanContext::create(config);
+    return contextReady;
+}
+
+void setSwapInterval(int interval) {
+    // FIFO presents every vblank; longer intervals come from the limiter (getMaxSwapInterval)
+    VulkanContext::setVSync(interval > 0);
 }
 
 void destroyContext() {
+    contextReady = false;
     VulkanContext::destroy();
 }
 
@@ -270,14 +288,20 @@ void processEvents() {
                 // the window loses focus so it can never be trapped.
                 WindowLinux::releasePointerGrab();
                 inputRouter.setFocus(false);
-                // held keys and buttons come up, so none stays pressed
+                // held keys and buttons come up, so none stays pressed (a grab's too: its
+                // key ups go to the window manager)
                 Engine::systemFocusChanged(false);
+                // the grabs of a window manager's own shortcuts come and go: no real change
+                if (event.xfocus.mode != NotifyGrab && event.xfocus.mode != NotifyUngrab)
+                    Engine::systemFocus(false);
                 break;
             case FocusIn:
                 if (WindowLinux::isRelativeMouse())
                     WindowLinux::setMouseMode(MouseMode::CAPTURED);
                 inputRouter.setFocus(true);
                 Engine::systemFocusChanged(true);
+                if (event.xfocus.mode != NotifyGrab && event.xfocus.mode != NotifyUngrab)
+                    Engine::systemFocus(true);
                 break;
             default:
                 break;
@@ -285,6 +309,10 @@ void processEvents() {
     }
 }
 
+}
+
+void JasperEngineLinux::applySwapInterval(int interval) {
+    if (contextReady) setSwapInterval(interval);
 }
 
 int JasperEngineLinux::init(int argc, char **argv) {
@@ -371,6 +399,8 @@ int JasperEngineLinux::init(int argc, char **argv) {
         beginFrame();
         Engine::systemDraw();
         endFrame();
+
+        frameLimiter.wait(Engine::getFramePacing().limiterFps);
     }
 
     Engine::systemViewDestroyed();

@@ -3,6 +3,8 @@
 
 #include "ImportManifestWriter.h"
 #include "io/AtomicFile.h"
+#include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 
 #include "json.hpp"
 #include "util/FileUtils.h"

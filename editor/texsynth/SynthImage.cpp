@@ -91,7 +91,26 @@ namespace jasperengine::editor::texsynth {
     bool probeImage(const fs::path& path, int& width, int& height) {
         int comp = 0;
         width = height = 0;
-        return stbi_info(path.string().c_str(), &width, &height, &comp) != 0;
+        // through an fs::path stream (a narrow path string is not the file's name on Windows
+        // when it has non-ASCII characters); stb reads only the header
+        std::ifstream file(path, std::ios::binary);
+        if (!file) return false;
+        stbi_io_callbacks callbacks;
+        callbacks.read = [](void* user, char* data, int size) {
+            std::ifstream& in = *static_cast<std::ifstream*>(user);
+            in.read(data, size);
+            return static_cast<int>(in.gcount());
+        };
+        callbacks.skip = [](void* user, int n) {
+            std::ifstream& in = *static_cast<std::ifstream*>(user);
+            in.clear();
+            in.seekg(n, std::ios::cur);
+        };
+        callbacks.eof = [](void* user) {
+            std::ifstream& in = *static_cast<std::ifstream*>(user);
+            return in.peek() == std::ifstream::traits_type::eof() ? 1 : 0;
+        };
+        return stbi_info_from_callbacks(&callbacks, &file, &width, &height, &comp) != 0;
     }
 
     bool loadImage(const fs::path& path, Image& out, std::string& error, std::string* sha1, int maxSide) {

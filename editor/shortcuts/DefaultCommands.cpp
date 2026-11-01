@@ -130,6 +130,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("edit.step", "Step", AppMenuCommand::StepFrame, C::Global, "Ctrl+Alt+P").description = "Advance a paused game by one frame";
     b.menu("edit.stop", "Stop", AppMenuCommand::StopScene);
     b.menu("edit.projectSettings", "Project Settings...", AppMenuCommand::ProjectSettings);
+    b.menu("edit.clearUserSettings", "Clear User Settings (PlayerPrefs)...", AppMenuCommand::ClearUserSettings).description =
+        "Delete what the game saved with UserSettings / PlayerPrefs on this machine";
     b.menu("edit.preferences", "Preferences...", AppMenuCommand::EditorSettings);
     b.menu("edit.shortcuts", "Shortcuts...", AppMenuCommand::Shortcuts).description = "View and rebind the editor's keyboard shortcuts";
 
@@ -219,6 +221,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.inputActions", "Input Actions", AppMenuCommand::ToggleInputActions);
     b.menu("window.navigation", "Navigation", AppMenuCommand::ToggleNavigation);
     b.menu("window.textureSynthesis", "Texture Synthesis", AppMenuCommand::ToggleTextureSynthesis);
+    b.menu("window.spriteNormals", "Sprite Normal Map", AppMenuCommand::ToggleSpriteNormals).description =
+        "Generate and edit normal maps for 2D sprites";
     b.menu("window.physicsPlacement", "Physics Placement", AppMenuCommand::TogglePhysicsPlacement);
     b.menu("window.missingAssets", "Missing Assets", AppMenuCommand::ToggleMissingAssets);
     b.menu("window.assetReferences", "References", AppMenuCommand::ToggleAssetReferences);

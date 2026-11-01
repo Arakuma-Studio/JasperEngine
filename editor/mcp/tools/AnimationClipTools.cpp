@@ -8,6 +8,7 @@
 // plays it. The key grammar is edit_animation's (AnimationKeys.h); results report the bindings
 // against a root (ClipValidation), the components sharing the file and the undo scope.
 #include "AnimationClipTools.h"
+#include "AnimatorTools.h"
 #include "AnimationKeys.h"
 
 #include "mcp/McpContext.h"
@@ -129,8 +130,9 @@ std::string wrapNames() {
 
 // `value`: a project-relative .anim path, or (allowSubClip) "<model>#<clip>". `relative` gets
 // the project-relative form (the document key), `absolute` the file (the model of a sub-clip).
+// `write`: the tool writes the .anim (edit_animation): inside the project once links are resolved
 bool resolveClipArg(Project* project, const Json& value, const std::string& what, bool allowSubClip,
-                    std::string& relative, fs::path& absolute, bool& subClip, std::string& error) {
+                    std::string& relative, fs::path& absolute, bool& subClip, std::string& error, bool write = false) {
     if (!value.is_string() || value.get<std::string>().empty()) {
         error = what + " must be a project-relative .anim path (e.g. assets/anim/bob.anim)" +
                 std::string(allowSubClip ? " or a model clip \"assets/models/hero.gltf#Walk\"" : "") + ".";
@@ -149,7 +151,8 @@ bool resolveClipArg(Project* project, const Json& value, const std::string& what
                 std::string(allowSubClip ? " (or name a model clip: \"assets/models/hero.gltf#Walk\")" : "") + ".";
         return false;
     }
-    if (!McpRefs::resolveProjectPath(project, file, absolute, error, subClip)) {
+    if ((write && !subClip) ? !McpRefs::resolveProjectWritePath(project, file, absolute, error, false)
+                            : !McpRefs::resolveProjectPath(project, file, absolute, error, subClip)) {
         error = what + ": " + error;
         return false;
     }
@@ -1334,7 +1337,7 @@ void editClip(const CallPtr& call) {
     std::string relative;
     fs::path absolute;
     bool subClip = false;
-    if (!resolveClipArg(project, args["clip"], "clip", true, relative, absolute, subClip, error)) {
+    if (!resolveClipArg(project, args["clip"], "clip", true, relative, absolute, subClip, error, true)) {
         call->fail(error);
         return;
     }
@@ -1483,11 +1486,12 @@ void editClip(const CallPtr& call) {
     struct MadeFolders {
         std::vector<fs::path> folders;      // deepest first
         bool keep = false;
+        // before the call fails (its reply may reach the client before this function returns)
         void removeNow() {
             if (keep) return;
             for (const fs::path& folder : folders) {
                 std::error_code ignored;
-                if (fs::is_directory(folder, ignored) && fs::is_empty(folder, ignored)) fs::remove(folder, ignored);
+                if (fs::is_directory(folder, ignored) && fs::is_empty(folder, ignored)) FileUtils::removePath(folder, ignored);
             }
             folders.clear();
         }
@@ -1499,7 +1503,7 @@ void editClip(const CallPtr& call) {
             madeFolders.folders.push_back(folder);
             if (folder == folder.parent_path()) break;
         }
-        fs::create_directories(absolute.parent_path(), folderError);
+        FileUtils::createDirectories(absolute.parent_path(), folderError);
         if (!fs::is_directory(absolute.parent_path(), folderError)) {
             madeFolders.removeNow();
             call->fail("create: cannot make the folder " + projectRel(project, absolute.parent_path()) +
@@ -1760,6 +1764,8 @@ Json playersJson(Project* project, SceneProject* scene, Entity entity) {
                  {"play_automatically", player.playAutomatically}, {"speed", player.speed}, {"enabled", player.enabled},
                  {"bindings", bindings}};
     if (root != entity) item["plays"] = McpRefs::entityJson(scene, entity);
+    // layers (live weights and queues in play), the masks' coverage, the controller (anim layers spec 10, 11.5)
+    animator_tools::addPlayerLayers(project, scene, root, item);
     out.push_back(item);
     return out;
 }
@@ -1800,6 +1806,12 @@ bool previewPlayer(const CallPtr& call, SceneProject* scene, Entity entity) {
                    "{animationplayer: {clips: [{clip: \"assets/anim/<name>.anim\"}]}}.");
         return true;
     }
+    const AnimationPlayerComponent& playerComponent = engineScene->getComponent<AnimationPlayerComponent>(root);
+    if (!playerComponent.controller.empty()) {
+        call->fail("\"" + engineScene->getEntityName(root) + "\" plays an Animator Controller: preview its clips by state with "
+                   "preview_animation on a GameObject without one, or play the scene (play_scene) and drive parameters with eval_lua.");
+        return true;
+    }
     if (args.contains("state") && args["state"].is_string()) {
         const std::string state = args["state"].get<std::string>();
         if (controller.getStateName() != state || !controller.getDocument()) {
@@ -1821,6 +1833,27 @@ bool previewPlayer(const CallPtr& call, SceneProject* scene, Entity entity) {
         call->fail("\"" + engineScene->getEntityName(root) + "\"'s clip \"" + controller.getStateName() +
                    "\" can't be opened (missing file?): pass state, or fix clips with set_properties.");
         return true;
+    }
+    // over: a base layer state composed under the state of a higher layer (anim layers spec 7.5)
+    if (args.contains("over") && action != "stop") {
+        const std::string over = args["over"].is_string() ? args["over"].get<std::string>() : std::string();
+        if (!over.empty()) {
+            const std::vector<std::string> choices = controller.previewOverChoices();
+            if (controller.getStateLayer() == 0) {
+                call->fail("over composes a state of a layer above the base under a base state; \"" + controller.getStateName() +
+                           "\" plays on the base layer.");
+                return true;
+            }
+            if (std::find(choices.begin(), choices.end(), over) == choices.end()) {
+                std::string list;
+                for (const std::string& name : choices) list += (list.empty() ? "" : ", ") + ("\"" + name + "\"");
+                call->fail("over: no base layer state \"" + over + "\" (" + (list.empty() ? std::string("the base layer has none") : "base states: " + list) + ").");
+                return true;
+            }
+        }
+        controller.setPreviewOver(over);
+    } else if (action != "stop") {
+        controller.setPreviewOver("");
     }
     if (action == "stop") {
         controller.stopPreview();
@@ -1845,6 +1878,10 @@ bool previewPlayer(const CallPtr& call, SceneProject* scene, Entity entity) {
         Json data = {{"animation", sp ? McpRefs::entityJson(sp, root) : Json(nullptr)}, {"action", action}, {"state", c.getStateName()},
                      {"clip", c.getClipPath()}, {"previewing", c.isPreviewing()}, {"playing", c.isPlaying()},
                      {"time", r6(c.getTime())}, {"length", r6(c.getLength())}};
+        if (c.getStateLayer() > 0) {
+            data["layer"] = c.getLayerName(c.getStateLayer());
+            data["over"] = c.getPreviewOver();
+        }
         Json bound = Json::array();
         const std::vector<AnimationClipController::BoundTransform> all = c.sampledBoundTransforms(std::numeric_limits<size_t>::max());
         for (size_t i = 0; i < all.size() && i < 8; i++) {

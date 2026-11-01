@@ -1,0 +1,400 @@
+# Audio mixer: groups, effects, exposed parameters, snapshots, streaming, one-shots, fades, voices
+
+Feature `audio-mixer` (ledger #6), branch `gaps/audio-mixer`. Status: specced 2026-10-31.
+Binding conventions: [AGENT-BRIEF.md](../../engine-gaps/AGENT-BRIEF.md). Gap: [GAP-REPORT.md](../../engine-gaps/GAP-REPORT.md) §6.
+
+## 1. Goals
+
+1. An **Audio Mixer** asset (`.mixer`, JSON) chosen in Project Settings > Audio: a tree of groups (Master > Music,
+   SFX, ...), volume in dB, mute, solo, bypass, up to 8 effects per group (low-pass, high-pass, band-pass, echo,
+   reverb, equalizer, distortion, flanger, lo-fi, bass boost, duck, limiter), built on SoLoud buses and filters.
+2. **Exposed parameters** with names, set from Lua like Unity (`AudioMixer.setFloat("MusicVolume", -80)`), also
+   smoothly over seconds; optional automatic persistence in `UserSettings` (the game's music/SFX mute toggles
+   become zero code).
+3. **Snapshots** with `transitionTo(name, seconds)` (Unity `AudioMixerSnapshot.TransitionTo`) and weighted blends.
+4. `AudioSource` gains an **Output** group, a **Load Type** (Decompress On Load / Compressed In Memory / Streaming /
+   Auto by size), `playOneShot(clip, volumeScale)` with overlapping voices, `AudioSource.playClipAtPoint`, fades
+   (`fadeIn`, `fadeOut` with stop/pause, `fadeTo`), `priority` and `maxVoices` with voice stealing,
+   `ignoreListenerPause`, `pitch` (alias of `speed`), and working `onStart/onPause/onStop` events.
+5. Editor: **Window > Audio > Audio Mixer** with channel strips (faders, M/S/B, live meters, effects, exposed
+   parameters, snapshots), AudioSource Inspector additions, Project Settings > Audio.
+6. MCP and Lua surfaces, docs; the game's `VolumeController` and `MinigameSongs` port line by line.
+7. Correct behaviour across scene loads, app pause, headless CI (deterministic meters with no audio device).
+
+## 2. Non-goals
+
+- Several mixers routed into each other, sends/receives between groups (Unity Send/Receive), group pitch, the
+  Unity mixer "Views". One project mixer; the duck effect covers side-chain ducking.
+- Importing Unity's `.mixer` YAML (the game's mixer is 3 groups; recreated by hand or by an agent in one tool call).
+- Per-clip import settings (the engine has no audio import-settings system; Load Type is per AudioSource).
+- Audio time-stretching with `Engine.timeScale` (Unity does not either).
+- Spatializer plugins, HRTF, reverb zones.
+
+## 3. Users and stories
+
+- Porting `VolumeController`: mixer with exposed `MusicVolume`, `SFXVolume`, `MASTERVOLUME` (group volumes),
+  "Remember" on; the settings toggles call `AudioMixer.setFloat("MusicVolume", mute and -80 or 0)`; values come back
+  on the next launch.
+- Porting `MinigameSongs`: Music group with Lowpass (`lowPassCutoff`) and Highpass (`highPassCutoff`) exposed;
+  menu ↔ gameplay sweeps become `AudioMixer.setFloat("lowPassCutoff", 525, 0.9)` or two snapshots "Menu" and
+  "Gameplay" with `AudioMixer.transitionTo("Gameplay", 0.65)`.
+- 58 MB of music plays streamed (memory = compressed size), SFX decoded for zero-latency one-shots; ten
+  overlapping coin pickups from one source.
+- A pause menu: `AudioListener.pause = true`, the UI click source has `ignoreListenerPause`.
+- Agent: `audio_mixer {action:"edit", ...}` builds the mixer; `set_properties` sets `outputGroup: "Music"`; in Play
+  `eval_lua "return AudioMixer.getMeter('Music')"` proves music is audible, even on a CI box without a sound card.
+
+## 4. Research summary
+
+| Source | Take | Leave (why) |
+|---|---|---|
+| Unity Audio Mixer <https://docs.unity3d.com/Manual/AudioMixer.html>, `AudioMixer` <https://docs.unity3d.com/ScriptReference/Audio.AudioMixer.html>, snapshots <https://docs.unity3d.com/ScriptReference/Audio.AudioMixerSnapshot.html> | Groups tree, dB faders (-80..+20), mute/solo/bypass, effect order, exposed parameters by name (`SetFloat/GetFloat/ClearFloat`: a set value overrides snapshots until cleared), `TransitionTo`, `TransitionToSnapshots` weights, update mode (scaled default, unscaled option) | Sends/receives, multiple mixers, views, the "Edit in Play Mode" toggle (our edits are always live) |
+| Unity AudioClip load types <https://docs.unity3d.com/Manual/class-AudioClip.html>, `AudioSource` <https://docs.unity3d.com/ScriptReference/AudioSource.html> | Decompress On Load / Compressed In Memory / Streaming; `PlayOneShot`, `PlayClipAtPoint`, `priority` 0..256 (128), `outputAudioMixerGroup`, `ignoreListenerPause`, `AudioListener.pause/volume` | Per-clip settings (no import-settings system) |
+| Godot audio buses <https://docs.godotengine.org/en/stable/tutorials/audio/audio_buses.html>, `AudioServer`, `AudioEffectLowPassFilter`, `AudioStreamPlayer.max_polyphony` | Bus layout as a project resource, `linear_to_db/db_to_linear`, per-player polyphony limit, effects with `cutoff_hz`/`resonance`, limiter on master | Bus send-to arbitrary bus (we keep a tree) |
+| SoLoud <https://solhsa.com/soloud/> (engine/libs/soloud) | `Bus` (a voice that mixes children; filters per bus up to 8, `FILTERS_PER_STREAM`), live `setFilterParameter/fadeFilterParameter`, `fadeVolume`, `scheduleStop`, `WavStream` (on-the-fly decoding, from file or memory), bus visualization (`getApproximateVolume`), max active voices (default 16) with inaudible virtualisation, `setProtectVoice`, backends `nosound`/`null` | Its single-instance flag for shared samples (the engine sets it, see §5) |
+| The game | Mixer groups Master/MUSIC/SFX; MUSIC effects Attenuation, Lowpass, Highpass (`Audio/Mixer.mixer`); exposed MusicVolume, SFXVolume, MASTERVOLUME, lowPassCutoff, highPassCutoff; mute = -80 dB (`VolumeController.cs:43`); sweeps 22000↔525 Hz LP, 10↔430 Hz HP over 0.65-0.9 s with `Mathf.Lerp` per frame on scaled time (`MinigameSongs.cs:124-147`); state persisted with PlayerPrefs | Its `LeanTween.delayedCall(0.01f)` double-set (a Unity startup workaround) |
+
+## 5. Engine today
+
+- `AudioSystem` (per scene subsystem, static SoLoud instance, `AudioSystem.cpp:24-30`): plays each
+  `AudioSourceComponent` on one SoLoud voice (`handle`, `AudioSystem.cpp:345-356`), 2D or 3D against the scene
+  camera, global volume only (`AudioSystem.globalVolume`), app pause = `setPauseAll` (`Engine.cpp:1580-1590`).
+- `SoundPool` decodes every file fully with `Wav::loadMem` (`pool/SoundPool.cpp:157`) and calls
+  `setSingleInstance(true)` (`:179`): a second play of the same file **from any source** stops the first, so two
+  sources cannot play one clip at once and there can be no one-shots.
+- `WavStream` and the `null`/`nosound` backends are in the tree but not compiled (`engine/libs/soloud/CMakeLists.txt`;
+  the Xcode project lists SoLoud files too, `engine/workspaces/xcode/JasperEngine.xcodeproj/project.pbxproj`).
+- `AudioSource::isPlaying` compares `getStreamTime` (wall time since start, never wraps) with the length
+  (`AudioSource.cpp:113-119`): a looping sound reads "not playing" after one length, pitch ≠ 1 is wrong too.
+- `onStart/onPause/onStop` are bound and documented (`ECSClassesLua.cpp:773-775`, `lua-api.md:178`) but never
+  called.
+- `resumeAll` after an app pause un-pauses sources the game had paused.
+- Without an audio device (CI, xvfb) `init` fails and every sound is silent and "stopped" (`AudioSystem.cpp:34-47`).
+- Serialization `Stream.cpp:7678-7740`, catalog `Catalog.cpp:789+`, generated code `Factory.cpp:2108`, Inspector
+  preview `InspectorWindow.cpp:675-800,8398`.
+
+## 6. Product decisions
+
+- **A1. The mixer is an asset** (`assets/.../*.mixer`, JSON `{"format": "jasperengine.mixer"}`), like Unity, so it is
+  versioned, diffable and editable by agents; Project Settings > Audio names the project mixer (default
+  `assets/audio/Main.mixer`, created on first use). One mixer active at a time.
+- **A2. No mixer = an implicit Master at 0 dB**: old projects sound exactly the same. `AudioSystem.globalVolume`
+  stays the SoLoud global volume (= `AudioListener.volume`), outside the mixer.
+- **A3. Groups are referenced by a stable id** (8 hex chars) plus the name for readability; Lua/MCP/Inspector use
+  names (unique in a mixer, enforced). A source whose id is not in the mixer falls back to the group with its saved
+  name, then Master, with a one-time warning.
+- **A4. Volumes in dB** (-80..+20), linear helpers. `<= -80 dB` is silence (linear 0). Mute multiplies by 0, solo
+  follows Unity (any soloed group mutes every group that is neither soloed, an ancestor nor a descendant of a
+  soloed group).
+- **A5. Effects map to SoLoud filters** (table §7.2); an engine `LimiterFilter` (custom `SoLoud::Filter`) adds a
+  peak limiter. Low-pass at or above 0.45 × sample rate and high-pass at or below 10 Hz are bypassed (wet 0)
+  instead of running a biquad near Nyquist/DC (unstable; Unity's 22000 Hz "off" value then behaves as off).
+- **A6. Exposed parameters** target a group volume or an effect parameter; `setFloat` overrides snapshots for that
+  parameter until `clearFloat` (Unity). `remember: true` saves script-set values to `UserSettings`
+  (`audio.mixer.<name>`) at the end of the frame and restores them when the mixer loads, before any sound plays.
+- **A7. Snapshots store every parameter** of the mixer; transitions interpolate volumes in dB, frequencies in
+  log2(Hz), everything else linearly; `transitionToSnapshots` blends weighted. Transitions and timed `setFloat` use
+  **scaled time by default** (Unity's Normal update mode, brief time convention), with an asset-level
+  `updateMode: "scaled" | "unscaled"` and per-call `{unscaled = true}`.
+- **A8. Load Type per AudioSource**, default **Auto**: files ≥ 1 MiB (on disk/compressed) stream, smaller ones are
+  decompressed on load. Streaming reads from the asset file through an engine `SoLoud::File` adapter; where the
+  file cannot be opened for random access (resource pack, some Web setups) it becomes Compressed In Memory
+  (`WavStream::loadMem` of the file bytes). Samples are cached by `(file, loadType)`.
+- **A9. Shared samples are multi-instance** (remove `setSingleInstance(true)`): sources play the same clip at once.
+  `play()` on a playing source restarts it (stops its own main voice first, Unity).
+- **A10. One-shots** are extra voices owned by the source: same output group, the source's volume × scale, pitch,
+  pan, 3D position updated every frame (they follow the source, Unity). `stop()` stops one-shots too (Unity).
+  `maxVoices` (default 8) caps main + one-shot voices per source: the oldest one-shot is stolen.
+- **A11. Global voice budget**: Project Settings > Audio `maxRealVoices` (32, SoLoud active voices + one per group)
+  and `maxVoices` (256): starting a voice past `maxVoices` stops the playing voice with the highest `priority`
+  number (least important), oldest first; if the new voice is the least important it does not start. Protected
+  voices (`protectVoice`) are never virtualised by SoLoud nor stolen.
+- **A12. Fades are volume animations** of the source's `volume` (`fadeTo` changes `volume`; `fadeIn` plays from 0 to
+  the current `volume`; `fadeOut` goes to 0, then stops (or pauses with `{pause=true}`) and restores `volume` so the
+  next `play()` is at the authored level). Scaled time by default (A7), `{unscaled=true}` option. Implemented on the
+  main thread with SoLoud `fadeVolume` per frame segment (click-free).
+- **A13. Pause.** App pause pauses the Master bus voice (every routed voice stops advancing, per-source pause state
+  intact; fixes `resumeAll`). `AudioListener.pause` (Lua) pauses all sources except `ignoreListenerPause` ones
+  (implemented by pausing their voices individually and resuming only those it paused).
+- **A14. Headless audio.** When no output device opens, the engine starts SoLoud with the `nosound` backend (it
+  mixes in its own thread with no output): playback, `isPlaying`, events, fades and meters behave as on a device. The
+  log line "No audio output available: mixing without output" replaces "sounds are muted".
+- **A15. `onStart/onPause/onStop` fire** (main thread, from `AudioSystem::update`): onStart when a voice starts,
+  onPause on pause, onStop on `stop()` and on natural end of a non-looping sound (end detected by voice validity).
+  `isPlaying` uses voice validity and `getStreamPosition`.
+- **A16. Scene loads**: the mixer and its transitions are engine-global and survive; a scene's sources stop with
+  the scene (unless made persistent by feature `persistence`), their one-shots and fades too; `playClipAtPoint`
+  voices belong to the scene passed and stop with it.
+
+## 7. Design: runtime C++
+
+### 7.1 Classes (new engine/core/audio/)
+
+```cpp
+struct AudioMixerEffectDef { std::string id; AudioEffectType type; bool bypass = false; float wet = 1.0f;
+                             std::map<std::string, float> params; };
+struct AudioMixerGroupDef { std::string id, name, parentId; float volumeDb = 0; bool mute = false, solo = false,
+                            bypassEffects = false; std::vector<AudioMixerEffectDef> effects; };
+struct AudioMixerExposedDef { std::string name; std::string target; /* "<groupId>/volume" | "<effectId>/<param>" */
+                              bool remember = false; };
+struct AudioMixerSnapshotDef { std::string name; std::map<std::string, float> values; /* target -> value */ };
+struct AudioMixerDef { int version = 1; bool unscaled = false; std::vector<AudioMixerGroupDef> groups;
+                       std::vector<AudioMixerExposedDef> exposed; std::vector<AudioMixerSnapshotDef> snapshots;
+                       std::string startSnapshot; };
+namespace AudioMixerIO { bool parse(const std::string& json, AudioMixerDef&, std::string* error);
+                         std::string write(const AudioMixerDef&); }
+
+class JASPERENGINE_API AudioMixer {             // static, the project mixer
+public:
+    static bool load(const std::string& path);  // asset-relative; "" = implicit Master
+    static void apply(const AudioMixerDef&);    // editor live edits (keeps voices playing)
+    static SoLoud::Bus* getBus(const std::string& groupIdOrName); static unsigned int getBusHandle(...);
+    static bool setFloat(const std::string& name, float value, float seconds = 0, bool unscaled = false);
+    static bool getFloat(const std::string& name, float& value);
+    static bool clearFloat(const std::string& name);
+    static bool transitionTo(const std::string& snapshot, float seconds, bool unscaled = false);
+    static bool transitionToSnapshots(const std::vector<std::string>&, const std::vector<float>& weights, float seconds, bool unscaled = false);
+    static float getMeterDb(const std::string& group);   // peak of the bus's approximate volume, -80 when silent
+    static void update(double scaledDt, double unscaledDt);   // Engine::runFrame, every frame (also paused game)
+    static void saveRemembered(); static void loadRemembered();
+    static float dbToLinear(float db); static float linearToDb(float linear);
+};
+```
+
+Runtime build (`load`/`apply`): one `SoLoud::Bus` per group; Master is played on the core (`soloud.play(master)`,
+protected, visualization on), each child bus is played into its parent bus (`parent.play(child)`), protected,
+visualization on (meters, duck). Effects: `bus.setFilter(slot, filter)` in order (≤ 8; the editor refuses a 9th).
+Parameter writes: `soloud.setFilterParameter(busHandle, slot, attr, v)`; volume: `soloud.setVolume(busHandle,
+linear × muteSolo)`. Timed changes: per-frame interpolation in `update` (A7 curves) plus `fadeVolume` /
+`fadeFilterParameter` over the frame's dt for smoothness. `apply` diffs ids: changed parameters are written live,
+added/removed effects rebuild that bus's filter slots, added/removed/reparented groups rebuild the bus graph and
+re-route their voices (`AudioSystem` re-plays nothing; voices of a removed group go to Master on their next start,
+running voices keep playing until they end).
+
+SoLoud core settings at `AudioSystem::init`: `setMaxActiveVoiceCount(maxRealVoices + groupCount)`, sample rate
+from settings (0 = backend default), backend fallback A14. Compile `soloud_wavstream.cpp` and the `nosound` backend
+(`WITH_NOSOUND`) in `engine/libs/soloud/CMakeLists.txt` and the Xcode project.
+
+### 7.2 Effects
+
+| Type (`type`) | SoLoud | Parameters (default) |
+|---|---|---|
+| `lowpass` | `BiquadResonantFilter` LOWPASS | `cutoff` Hz (5000), `resonance` 0.1..20 (1) |
+| `highpass` | Biquad HIGHPASS | `cutoff` (500), `resonance` (1) |
+| `bandpass` | Biquad BANDPASS | `cutoff` (1000), `resonance` (1) |
+| `echo` | `EchoFilter` | `delay` s (0.3), `decay` 0..1 (0.5), `filter` 0..1 (0) |
+| `reverb` | `FreeverbFilter` | `roomSize` (0.5), `damp` (0.5), `width` (1), `freeze` 0/1 (0) |
+| `equalizer` | `EqFilter` | `band1`..`band8` gain 0..4 (1) |
+| `distortion` | `WaveShaperFilter` | `amount` -1..1 (0.5) |
+| `flanger` | `FlangerFilter` | `delay` s (0.005), `frequency` Hz (10) |
+| `lofi` | `LofiFilter` | `sampleRate` Hz (8000), `bitDepth` (8) |
+| `bassboost` | `BassboostFilter` | `boost` (4) |
+| `duck` | `DuckFilter` listening to another group's bus | `sidechainGroup` (name), `level` 0..1 (0.5), `attack` s (0.1), `release` s (0.5) |
+| `limiter` | engine `LimiterFilter` (lookahead-free peak limiter, per-sample gain smoothing) | `threshold` dB (-1), `release` s (0.1) |
+
+Every effect also has `wet` (0..1, default 1) and `bypass`. Cutoffs clamp to [10, 0.49 × sample rate]; A5 bypass
+rule. Unknown types in a file are kept (round trip) and inactive, with a load warning.
+
+### 7.3 AudioSourceComponent additions (component/AudioSourceComponent.h)
+
+| Field | Default | Serialized key |
+|---|---|---|
+| `outputGroup` (id) / `outputGroupName` | "" (Master) | `outputGroup`, `outputGroupName` |
+| `loadType` (`Auto, DecompressOnLoad, CompressedInMemory, Streaming`) | Auto | `loadType` |
+| `priority` (0 highest .. 256) | 128 | `priority` |
+| `maxVoices` (1..64) | 8 | `maxVoices` |
+| `ignoreListenerPause` | false | `ignoreListenerPause` |
+| runtime: `std::shared_ptr<SoLoud::AudioSource> sample` (Wav or WavStream), `oneShots` (handles + start time), fade state, `lastValid` | | |
+
+`sample` becomes `std::shared_ptr<SoLoud::AudioSource>` (was `Wav`); `SoundPool` caches
+`std::shared_ptr<SoLoud::AudioSource>` keyed `"<file>#<loadType>"` and gains `SoundPool::loadClip(path, loadType)`
+for one-shots. `AudioSystem::update`: plays through `AudioMixer::getBus(outputGroup)->play(...)` (paused, set
+parameters, unpause), detects ends (`!isValidVoiceHandle`) → state Stopped + `onStop`, updates one-shot 3D
+positions, ticks fades, applies `AudioListener.pause`, enforces A10/A11. Defaults not serialized when equal (old files
+unchanged); `Factory.cpp` emits the new fields for exports.
+
+### 7.4 Mixer file format (version 1)
+
+```json
+{
+  "format": "jasperengine.mixer", "version": 1, "updateMode": "scaled",
+  "groups": [
+    {"id": "00000001", "name": "Master", "parent": null, "volume": 0, "effects": [{"id": "e1a2b3c4", "type": "limiter"}]},
+    {"id": "9b51c0de", "name": "Music", "parent": "00000001", "volume": 0, "mute": false, "solo": false,
+     "bypassEffects": false, "effects": [
+       {"id": "c4f00d01", "type": "lowpass", "params": {"cutoff": 22000, "resonance": 1}},
+       {"id": "c4f00d02", "type": "highpass", "params": {"cutoff": 10, "resonance": 1}}]},
+    {"id": "5fx00001", "name": "SFX", "parent": "00000001"}
+  ],
+  "exposed": [
+    {"name": "MusicVolume", "target": "9b51c0de/volume", "remember": true},
+    {"name": "lowPassCutoff", "target": "c4f00d01/cutoff"}
+  ],
+  "snapshots": [{"name": "Normal", "values": {"9b51c0de/volume": 0, "c4f00d01/cutoff": 22000}}],
+  "startSnapshot": "Normal"
+}
+```
+
+Omitted fields take defaults; Master (`parent: null`) must exist exactly once; names unique; exposed names unique;
+targets must resolve; snapshot values missing a target take the group/effect value. Parsing errors list path and
+reason (like `AnimationClipIO`). The editor writes keys in this order, 2-space indent.
+
+### 7.5 Exported builds
+
+The `.mixer` ships with the assets (`Exporter::copyAssets`, `Exporter.cpp:2047`). `Generator.cpp` init emits
+`AudioSystem::configure({maxRealVoices, maxVoices, sampleRate});` and `AudioMixer::load("<path>");` (when set).
+Play mode: `Project` loads the mixer at play start and `apply`s live edits.
+
+## 8. Lua API
+
+- `AudioMixer` (static): `setFloat(name, value [, seconds [, opts]])` → bool, `getFloat(name)` → number or nil,
+  `clearFloat(name)`, `hasParameter(name)`, `getParameterNames()`, `transitionTo(snapshot, seconds [, opts])`,
+  `transitionToSnapshots(names, weights, seconds [, opts])`, `getSnapshotNames()`, `getGroup(name)` →
+  `AudioMixerGroup` or nil, `getGroupNames()`, `getMeter(groupName)` → dB, `saveParameters()`, `loadParameters()`,
+  `dbToLinear(db)`, `linearToDb(v)`. `opts = { unscaled = bool }`.
+- `AudioMixerGroup`: `name` (ro), `volume` (dB rw), `mute`, `solo`, `bypassEffects` (rw), `getEffect(indexOrType)`
+  → `AudioMixerEffect` (`type` ro, `bypass`, `wet` rw, `setParameter(name, value [, seconds [, opts]])`,
+  `getParameter(name)`), `getEffectCount()`.
+- `AudioSource` additions: `outputGroup` (name string rw; "" = Master), `loadType` (`AudioLoadType.Auto|
+  DecompressOnLoad|CompressedInMemory|Streaming`), `priority`, `maxVoices`, `ignoreListenerPause`, `pitch` (= `speed`),
+  `playOneShot(path [, volumeScale])`, `fadeIn(seconds [, opts])`, `fadeOut(seconds [, opts])` (`opts.pause`,
+  `opts.unscaled`), `fadeTo(volume, seconds [, opts])`, `isFading()`; static
+  `AudioSource.playClipAtPoint(scene, path, position [, volume [, group]])`.
+- `AudioListener` (static): `pause` (rw), `volume` (rw, = `AudioSystem.globalVolume`).
+- `AudioSystem.preload(path [, loadType])` (decode ahead; a one-shot of a clip not yet loaded starts when it is,
+  and is dropped if that takes longer than 0.25 s, with a once-per-clip warning).
+- Events `onStart`, `onPause`, `onStop` now fire (A15).
+
+## 9. Editor UX
+
+- **Window > Audio > Audio Mixer** (new `editor/window/AudioMixerWindow.*`): the project mixer (or the `.mixer`
+  opened from the Project window). Left panel: groups tree (add child, rename, delete, drag to reparent), snapshots
+  (add, rename, delete, set start, "Save current values"), exposed parameters (rename, remember checkbox, remove).
+  Main area: a channel strip per group: name, vertical fader -80..+20 dB with value field, M / S / B toggles, live
+  peak meter while playing (`getMeterDb`), effect slots (add menu, drag to reorder, bypass, wet, parameters as
+  knobs/sliders with units; right-click a parameter or the fader → "Expose to script" which prompts for a name).
+  Edits are undoable commands on the asset (saved with the project; live in Play mode, Unity's "Edit in Play Mode"
+  always on).
+- Assets > Create > Audio Mixer; selecting a `.mixer` shows an Inspector summary and "Open in Audio Mixer".
+- AudioSource Inspector: Output (dropdown of groups), Load Type (with the resolved type for Auto and the file
+  size), Priority slider, Max Voices, Ignore Listener Pause, Pitch label for speed; the preview plays through the
+  selected group (`InspectorWindow.cpp:675-800`).
+- Project Settings > Audio (new category): Mixer asset field, Max Real Voices, Max Voices, Sample Rate
+  (Auto/44100/48000), Default output group for new AudioSources.
+
+## 10. MCP / agent surfaces
+
+- New tool `audio_mixer` (`editor/mcp/tools/AudioTools.cpp`): `action: "get"` (structure; in Play also live values
+  and meters) and `action: "edit"` with `ops` (`add_group {name, parent}`, `remove_group`, `set_group {name, volume,
+  mute, solo, bypass}`, `add_effect {group, type, params, index}`, `set_effect {group, index|type, params, wet,
+  bypass}`, `remove_effect`, `expose {name, group, param|volume, remember}`, `unexpose`, `add_snapshot {name}`
+  (captures current values), `set_snapshot {name, values}`, `remove_snapshot`, `set_start_snapshot`), one undo
+  step per call; `mixer` path optional (default the project's, created if missing). Tool description kept short
+  for the budget; details in the guide.
+- `set_project_settings`: `audio.mixer`, `audio.max_real_voices`, `audio.max_voices`, `audio.sample_rate`.
+- `set_properties` on AudioSource accepts `outputGroup` by name and reports names.
+- `get_play_state` gains `audio: {voices, mixer_meters: {group: dB}}` (only groups above -60 dB).
+- Guide: new `docs/mcp/guide/audio.md` (mixer format, effects table, Lua API, porting recipes for VolumeController
+  and MinigameSongs); one line in `McpInstructions.cpp`.
+
+## 11. Per-platform notes
+
+- All platforms: SoLoud miniaudio backend as today; `nosound` fallback (A14). Web: SoLoud runs single-threaded with
+  the emscripten audio path; streaming uses `WavStream::loadMem` (A8 fallback) because the preloaded asset FS is in
+  memory anyway; AudioContext unlock on first user gesture as today.
+- Android: streaming opens APK assets through the engine `File` (AAssetManager) via the `SoLoud::File` adapter
+  (`engine/core/audio/SoloudEngineFile.*` wrapping `io/File.h`: `read`, `seek`, `length`, `pos`, `eof`).
+- iOS/macOS: add the new SoLoud sources to the Xcode project; audio session behaviour unchanged.
+- Resource packs (`player.pack_native_resources`): `File` reads from the pack if it supports seek, else A8 fallback.
+
+## 12. Behaviour rules and edge cases
+
+- Order per frame: `AudioMixer::update` (transitions, timed setFloat, remembered saves) runs once per frame in
+  `Engine::runFrame` before scene updates; `AudioSystem::update` per scene as today.
+- Time scale 0: scaled transitions/fades freeze; unscaled continue; sounds keep playing (Unity).
+- Editor Play pause: scaled time stops; app pause (A13) pauses everything at the Master bus.
+- `setFloat` during a snapshot transition: the exposed parameter jumps/fades to the script value and stays there
+  (override); `clearFloat` returns it to the current snapshot value (immediately).
+- `setFloat` with an unknown name: returns false and logs once per name (Unity returns false).
+- Group deleted while sources route to it: they fall back to Master (warning once per source).
+- Lowpass sweep 22000 → 525 Hz: starts bypassed (A5), becomes active as soon as the value drops below the
+  threshold; no click (wet switches with the filter state reset at a value close to the bypass frequency).
+- One-shot of a streamed clip: each voice streams independently (WavStream instances); recommend
+  DecompressOnLoad for SFX (Auto does that for small files).
+- Scene load during a fade: the source's fade dies with the source; persistent sources (feature `persistence`)
+  keep fading.
+- No device + nosound: meters report real levels; `AudioSystem.isOutputAvailable()` is false.
+- Old AudioSources: Master, Auto (a big music file now streams: lower memory, same sound), priority 128.
+
+## 13. Performance (mobile)
+
+- Buses: one extra voice and mix pass per group (3-6 groups typical); biquads cheap; freeverb ~1-2% of a mobile core
+  per instance (the editor shows "cost: high" on reverb/eq).
+- Streaming keeps memory at the compressed size: the game's 53 MB of music (≈ 600 MB as PCM) stays ≈ 53 MB,
+  decoding on the audio thread.
+- Meters: bus visualization reads per mix buffer (enabled per bus; negligible).
+- Per frame main-thread work O(sources + one-shots + active transitions).
+
+## 14. Tests
+
+Editor unit tests (`editor/tests`, nosound backend forced by `JASPERENGINE_AUDIO_BACKEND=nosound` env or API):
+- `AudioMixerIOTest`: parse/write round trip of the §7.4 example, defaults, errors (two Masters, duplicate names,
+  bad targets, unknown effect kept), stable key order.
+- `AudioMixerMathTest`: dB↔linear (0 dB = 1, -6.02 dB ≈ 0.5, -80 = 0), solo resolution on a 3-level tree, snapshot
+  interpolation curves (dB linear, log2 Hz: 22000→525 midpoint ≈ 3398 Hz), weighted blend, override/clear.
+- `AudioMixerRuntimeTest` (nosound): a 1 kHz test tone (generated WAV in the test) on Music → `getMeterDb("Music")`
+  > -20 within 0.2 s; mute → < -79; `setFloat("MusicVolume", -80, 0.5)` reaches -80 after 0.5 s of updates;
+  low-pass at 200 Hz reduces the tone's meter by > 12 dB; bypass rule at 22000 Hz; remembered parameter saved to
+  `UserSettings` and restored on reload; group removal falls back to Master.
+- `AudioSourceTest`: two sources play the same clip simultaneously (regression of single-instance), `play()` restarts,
+  `playOneShot` ×10 with `maxVoices` 8 → 8 voices, oldest stolen; global `maxVoices` stealing by priority;
+  `isPlaying` true for a looping sound after 3 lengths; `onStop` on natural end and on `stop()`; fades (`fadeOut`
+  stops and restores volume; `{pause=true}`), scaled vs unscaled with time scale 0; Auto load type threshold;
+  `AudioListener.pause` with `ignoreListenerPause`; app pause/resume keeps a game-paused source paused.
+- `GeneratorAudioTest`: init contains `AudioMixer::load` and configure values.
+MCP e2e (`tools/mcp/tests/test_audio_mixer.py`): `audio_mixer edit` builds Master/Music/SFX with LP/HP exposed;
+`set_properties` routes a looping music source to Music; play; `eval_lua AudioMixer.getMeter('Music') > -40`;
+`setFloat('MusicVolume', -80)` → meter < -79 next frames; `transitionTo` between two snapshots changes the exposed
+cutoff value over time (`getFloat` samples monotonic); undo of the edit restores the file; stop/replay keeps the
+remembered volume. Stubs test for the new classes. Export: Linux build plays the scene (log shows mixer loaded,
+nosound in CI).
+
+## 15. Acceptance criteria
+
+1. The game's VolumeController and MinigameSongs behaviours are reproduced with the documented recipes (MCP test
+   covers mute and sweeps).
+2. Old projects sound identical (implicit Master; default fields; existing audio tests green).
+3. Same clip from many sources and one-shots overlap; looping `isPlaying` correct; events fire.
+4. Music ≥ 1 MiB streams on every platform (memory check in a unit test via SoundPool stats); Android/Web/iOS
+   compile with the new SoLoud sources.
+5. Audio Mixer window, Inspector, Project Settings > Audio work with undo; MCP tool and settings keys documented in
+   generated `docs/mcp/TOOLS.md` within the tool budget.
+6. CI without a sound card reports real meters (nosound).
+7. Docs: `docs/mcp/guide/audio.md`, lua-api.md §4.12 and the `AudioSystem` lines, unity-glossary rows (AudioMixer,
+   AudioMixerGroup, AudioMixerSnapshot, exposed parameters, `PlayOneShot`, `PlayClipAtPoint`, load types,
+   `AudioListener.pause`, `outputAudioMixerGroup` → `outputGroup`).
+
+## 16. Integration points
+
+- `engine/core/subsystem/AudioSystem.h/.cpp` (init `:33-55`, update `:258-415`, pause `:166-205`),
+  `component/AudioSourceComponent.h`, `object/sound/AudioSource.h/.cpp` (`isPlaying` `:113`), `pool/SoundPool.h/.cpp`
+  (`:157` loadMem, `:179` single instance), new `engine/core/audio/*`, `engine/libs/soloud/CMakeLists.txt`,
+  `engine/workspaces/xcode/JasperEngine.xcodeproj/project.pbxproj`.
+- `engine/core/Engine.cpp:1335-1440` (`AudioMixer::update` per frame), `:1580-1590` (app pause → Master bus).
+- `engine/core/script/binding/ECSClassesLua.cpp:186-192,762-790` (AudioSystem, AudioSourceComponent), the
+  AudioSource wrapper binding in `GameObjectClassesLua.cpp`.
+- Editor: `Stream.cpp:7678-7740`, `Catalog.cpp:789+`, `Factory.cpp:2108-2135`, `window/InspectorWindow.cpp:675-800,
+  8398,8511`, `window/dialog/ProjectSettingsWindow.cpp:120-148` (Audio category), new `window/AudioMixerWindow.*`,
+  View/Window menu, Project window create menu, `Generator.cpp:2301`, `mcp/tools/` (new AudioTools.cpp, settings
+  keys in ProjectTools.cpp, `get_play_state` in PlayTools.cpp), `mcp/McpInstructions.cpp`.
+
+## 17. Cross-feature dependencies
+
+- **persistence**: persistent (DontDestroyOnLoad) objects keep their AudioSources, voices, one-shots and fades
+  across loads; the mixer itself is global and needs nothing. Contract: `AudioSystem` must be able to move a
+  source's voices with its entity when persistence re-homes the entity into the persistent scene (voice handles are
+  engine-global, so moving the component keeps them valid); persistence must not call `destroySound` on move.
+- **script-data**: none required (`remember` uses `UserSettings` directly); `Json` is not needed.
+- **coroutines**: fades/transitions are engine-driven, no coroutine needed; scripts may still tween with coroutines.
+- **platform-services**: app focus loss can pause audio with `AudioListener.pause` (game choice); `onFocus` event
+  lives there.

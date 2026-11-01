@@ -26,7 +26,15 @@ documents have their own effects library instead, `effect(<name>, ...)` in CSS (
   `set_properties` makes it the GameObject's own material (unlinked, the file untouched: a
   linked submesh takes the file's values when its scene opens); `update_material` changes them all.
 - **UI, Points, Lines and Sky shaders** go in the component's `customShader`; their
-  parameters are its `shaderUniforms`.
+  parameters are its `shaderUniforms`. A Line Renderer and a Trail Renderer both take `lines`
+  shaders (`list_shaders type=lines`, e.g. `library:line_flipbook`); with a width they draw a
+  textured ribbon: the built-in line shader samples `shaderTextures.u_baseTexture` (the
+  `texture` shortcut) times the line's colour, a library or forked one its own textures at
+  `lineUV()` (`includes/lines_fs.glsl`). A hairline (width 0) has no texture coordinates
+  (jasper://docs/lines-trails).
+  A UI shader gets the element's colour with its Canvas Group alpha already applied in
+  `uiParams.color` (jasper://docs/ui): one that ignores that uniform does not fade with its
+  group, but the element is still not drawn at group alpha 0.
 - Values (paths of the submesh's material, `submeshes[N].material.<key>`):
   - `shaderParams`: `{member: value}`, or one entry `shaderParams.<member>`. Numbers or
     `[x,y,z,w]` as stored: colours are **linear**; a `"#RRGGBB[AA]"` string is sRGB and is
@@ -34,7 +42,7 @@ documents have their own effects library instead, `effect(<name>, ...)` in CSS (
     `set_shader_uniform` (entity + `submesh`) sets one and `get_shader_uniforms` lists them
     with labels and defaults.
   - `shaderTextures`: `{uniform: "assets/path.png" | null}`, or `shaderTextures.<uniform>`.
-    Unset ones bind the declared default (white, black, gray, flat normal, or the engine's seamless `ripples` normal map and `noise`), or the one a `default[<DEFINE>]=` rule picks while that feature is on (`list_shaders`: `default_with`). Images only: a
+    Unset ones bind the declared default (white, black, gray, flat normal, or the engine's seamless `ripples` normal map, `noise` and soft `particle`), or the one a `default[<DEFINE>]=` rule picks while that feature is on (`list_shaders`: `default_with`). Images only: a
     camera's render texture goes in a built-in material texture (`baseColorTexture`, ...).
   - `shaderFeatures`: the enabled `@feature` defines and chosen `@keywords` values
     (`"<GROUP>_<VALUE>"`), e.g. `["RIM", "SPEC_MODE_HARD"]`; `"!RIM"` turns off a feature that
@@ -45,7 +53,7 @@ documents have their own effects library instead, `effect(<name>, ...)` in CSS (
     less, less_equal, equal, greater_equal, greater, not_equal, always), `depthOffsetFactor` /
     `depthOffsetUnits` (polygon offset; negative pulls towards the camera), `sortPriority`
     (draw order within the opaque or the transparent queue, lower first, before distance). `auto` takes the shader's default state, else the
-    engine's. UI, Points and Lines have `blendMode` and `depthWrite`.
+    engine's. UI, Points, Lines and Trails have `blendMode` and `depthWrite` (a thick line's or a trail's auto: alpha, no depth write).
   - `lighting`: auto, pixel, vertex, mixed or none (unlit), only the modes the shader lists
     (`list_shaders` gives them, the default first; the built-in Lit takes pixel, vertex, mixed
     and none, which draws the base colour only: a glTF material with `KHR_materials_unlit`
@@ -299,6 +307,159 @@ uniform u_fs_customParams {
   `read_engine_source`): its parameters then get labels and defaults, and it takes
   `shaderTextures` and `shaderFeatures` like a library shader.
 
+## Global values
+
+Values set once and read by every shader that declares them: Unity's `Shader.SetGlobalColor`
+/ `SetGlobalVector` / `PropertyToID`, Godot's global uniforms. Wind, a fog tint, the player's
+position, a game's own lights.
+
+**Declare** them in Project Settings > Graphics > Shader Globals, or with
+`set_project_settings {"graphics.shader_globals": [{name, type, default, array_size}]}`
+(`graphics.shader_globals.<name>` upserts one: `{type, default}`, `name` renames it, `null`
+removes it; undoable). The Scene and Game views show the defaults; Play starts and stops with
+them; exported builds declare them before the first scene loads. Names are GLSL identifiers
+(Unity's leading `_` is fine), not `u_...` or `gl_...`; at most 256.
+
+| type | GLSL member | `default` |
+|---|---|---|
+| `float` | `float` | `0.5` |
+| `vector2` / `vector3` / `vector4` | `vec2` / `vec3` / `vec4` | `[x, y, ...]` |
+| `color` | `vec4` (linear) | `"#RRGGBB[AA]"` or `[r, g, b, a]`, sRGB |
+| `matrix4` | `mat4` | 16 numbers, column-major |
+| `float_array` / `vector4_array` | `vec4 x[N]` (a float array in `.x`) / `vec4 x[N]` (`array_size` N, 1..64) | N values |
+| `texture2d` / `texturecube` | `uniform texture2D x;` + `uniform sampler x_smp;` | an asset path (`""`: white / black) |
+
+**Read** them in a fork through one block per stage: `u_vs_globals` in the .vert,
+`u_fs_globals` in the .frag, any instance name, members named like the globals, only the ones
+the stage reads (a block of its own, beside `u_*_customParams`). `get_project_settings keys:
+["graphics.shader_globals"]` returns `glsl_vs` / `glsl_fs`, the blocks for the whole list (the
+Project Settings page copies them: Copy GLSL). A texture global binds to a texture uniform of
+its name in either stage (its sampler is the one the shader pairs with it).
+
+```glsl
+uniform u_fs_globals {
+    vec4 FogTint;
+    vec4 _Wind[4];    // a float_array: x[i].x
+} globals;
+uniform texture2D _NoiseTex;
+uniform sampler _NoiseTex_smp;
+// ... texture(sampler2D(_NoiseTex, _NoiseTex_smp), uv) * globals.FogTint
+```
+
+**Set** them from Lua (main thread; a set in `onUpdate` shows in that frame):
+
+```lua
+Shader.setGlobalColor("FogTint", Vector4(1, 0.5, 0, 1))      -- sRGB in, linear in the shader
+local wind = Shader.propertyToID("_Wind")                     -- once
+Shader.setGlobalFloatArray(wind, {0.2, 0.4, 0.1, 0})          -- per frame
+Shader.setGlobalTexture("_NoiseTex", "textures/noise2.png")  -- a Texture, a path, a Framebuffer; nil: the default
+```
+
+Also `setGlobalFloat`, `setGlobalInt` (stored as a float, like Unity), `setGlobalVector`,
+`setGlobalMatrix`, `setGlobalVectorArray`, their `getGlobal*` (colours back as sRGB; nil when
+unknown), `hasGlobal`, `getGlobalNames` and `resetGlobals` (back to the defaults; the names
+scripts made are dropped). A name nobody declared exists from its first set (typed by that
+setter; an array sized by it) until Play stops; `check_shader` warns about shader members that
+are not declared. C++: `ShaderGlobals::propertyToID`, `setColor`, `setVector`...
+(`shader/ShaderGlobals.h`). Values persist across scene loads, like Unity.
+
+**Bind a library shader's parameter** (no fork): the link button at the end of a parameter row
+in the Inspector, `set_properties submeshes[0].material.shaderGlobalBindings.tint: "FogTint"`
+(a component: `shaderGlobalBindings.<member>`; `null` unbinds; a post-process pass:
+`shaderGlobalBindings` in its `set_scene_settings post_process` entry), or Lua
+`m:setShaderGlobalBinding("tint", "FogTint"); mesh:setMaterial(m)` (also on Image, Text,
+Polygon, Points, LineRenderer, TrailRenderer, Skybox, and `scene:setPostProcessGlobalBinding`).
+The parameter then takes the global's current value over its own and the manifest default; a
+colour binds to colour and vector4 globals, a vector to one of its size, a float to a float.
+`get_shader_uniforms` lists `globals` (what the shader reads, with the values) and
+`global_bindings`.
+
+Rules:
+- A member no global feeds reads 0 (the bytes are zero). A member of another type reads the
+  global's leading components (a `vec3` of a `vector4`: xyz; a `float` of a vector: x; a
+  `vec4` of a float: (x, 0, 0, 0)); a `mat4` reads only a `matrix4`. An array longer than the
+  global's reads 0 past it, a shorter one its first elements. Only float members (no `int`,
+  `mat3`, `bool`). The OpenGL and WebGL targets flatten blocks: arrays only of `vec4` (a float
+  array in `.x`: std140 strides it 16 bytes either way) or `mat4`, and no indexing of a block's
+  vector by a variable (copy it to a local first, as below). `check_shader` reports `global-undeclared` and `global-type-mismatch`
+  (warnings), `globals-block-too-large` (error: a block over 1024 bytes, 64 vec4, fails like
+  any compile error and the object draws with the built-in shader) and `uniform-block-limit`
+  (error: more than 8 blocks in a stage; a globals block counts).
+- Both stages declaring a global read the same value. Depth and shadow forks that read globals
+  in the vertex stage (wind) get them too, so shadows match.
+- Cost: a shader without the blocks pays nothing. One that declares them gets its block pushed
+  per draw like the frame block, packed once per change of any value (shared by every program
+  with the same block). A bound parameter rewrites its object's block once per frame in which
+  a global changed.
+- Renaming a global, or removing one that bindings use, waits for Play to stop (Project
+  Settings refuses it while playing, and its undo too; `set_project_settings` is refused while
+  playing anyway).
+- A texture global holding a render target (a camera's, a `Framebuffer` from Lua) that is
+  destroyed takes its default texture again (a warning says so); a file that cannot be loaded
+  binds the fallback until the value changes (warned once).
+- Not here: global keywords (`Shader.EnableKeyword`; features are per-material variants), and
+  integer globals.
+
+**Vertex work at the world position**: a fork on the library vertex path defines
+`SURFACE_VERTEX` and gets `surfaceVertex(worldPosition, worldNormal, color, uv)` called after
+the engine's own vertex code, to write varyings of its own. The game's four vertex lights
+(Unity `VertexLightsUpdater`: colours and the X/Y/Z positions and radii of four lights, as
+vec4s, set every frame):
+
+```glsl
+// lights.vert
+#version 450
+#define SURFACE_VERTEX
+#define SURFACE_NO_VERTEX_COLOR
+#include "includes/surface_vs.glsl"
+uniform u_vs_globals {
+    vec4 _LightPositionX; vec4 _LightPositionY; vec4 _LightPositionZ; vec4 _LightRadius;
+    vec4 _VertexLightColor0; vec4 _VertexLightColor1; vec4 _VertexLightColor2; vec4 _VertexLightColor3;
+} globals;
+out vec3 v_light;
+void surfaceVertex(vec3 worldPosition, vec3 worldNormal, vec4 color, vec2 uv) {
+    vec4 colors[4] = vec4[4](globals._VertexLightColor0, globals._VertexLightColor1,
+                             globals._VertexLightColor2, globals._VertexLightColor3);
+    // copies: the GL targets cannot index a block's vector by a variable
+    vec4 px = globals._LightPositionX, py = globals._LightPositionY, pz = globals._LightPositionZ, radius = globals._LightRadius;
+    v_light = vec3(0.0);
+    for (int i = 0; i < 4; i++) {
+        vec3 toLight = vec3(px[i], py[i], pz[i]) - worldPosition;
+        float fade = clamp(1.0 - length(toLight) / max(radius[i], 0.0001), 0.0, 1.0);
+        v_light += colors[i].rgb * fade * max(dot(worldNormal, normalize(toLight)), 0.0);
+    }
+}
+```
+
+```glsl
+// lights.frag
+#version 450
+in vec3 v_light;
+out vec4 g_finalColor;
+#include "includes/output.glsl"
+void main() { g_finalColor = finalizeColor(vec4(v_light, 1.0)); }
+```
+
+```lua
+-- VertexLightsUpdater.lua: four light GameObjects in `lights`
+function Updater:onUpdate()
+    local x, y, z = {}, {}, {}
+    for i = 1, 4 do
+        local p = self.lights[i]:getWorldPosition()
+        x[i], y[i], z[i] = p.x, p.y, p.z
+        Shader.setGlobalColor("_VertexLightColor" .. (i - 1), self.colors[i])
+    end
+    Shader.setGlobalVector("_LightPositionX", Vector4(x[1], x[2], x[3], x[4]))
+    Shader.setGlobalVector("_LightPositionY", Vector4(y[1], y[2], y[3], y[4]))
+    Shader.setGlobalVector("_LightPositionZ", Vector4(z[1], z[2], z[3], z[4]))
+    local r = self.radius
+    Shader.setGlobalVector("_LightRadius", Vector4(r, r, r, r))
+end
+```
+
+`tools/fixtures/shader-globals` has these shaders and a fork reading a colour and a texture
+global.
+
 ## Manifest: conditional state, requires and blend
 
 Manifest lines (library shaders and forks that declare them) beyond the basic ones:
@@ -314,15 +475,26 @@ Manifest lines (library shaders and forks that declare them) beyond the basic on
 - `// @texture <uniform> <default> ... default[<DEFINE>]=<default>`: while that `@feature` (or
   `@keywords` value; `[!<DEFINE>]`: while it is off) is on, an unset slot binds the second
   default instead. Defaults: `white`, `black`, `gray`, `normal` (flat), `ripples` (a seamless
-  ripple normal map) and `noise` (seamless grey value noise), the last two built by the engine,
-  so a material can use them without image files (`library:water`'s `BUILTIN_TEXTURES`).
+  ripple normal map), `noise` (seamless grey value noise) and `particle` (a soft white disc, Unity's
+  Default-Particle), the last three built by the engine, so a material can use them without image
+  files (`library:water`'s `BUILTIN_TEXTURES`, `library:unlit`'s `PARTICLE_TEXTURE`: what Particle
+  Systems draw with when no base map is set, jasper://docs/particles).
 - `// @require <inputs> feature=<DEFINE>`: inputs required only while that define is on
   (`feature=!<DEFINE>`: while off). Inputs: `normals tangents uv1 uv2 color rawcolor
-  position smoothnormals`; `rawcolor` gives `v_rawColor`, the vertex colour without the
+  position smoothnormals normalmap`; `rawcolor` gives `v_rawColor`, the vertex colour without the
   instance colour (`v_color` is their product); `smoothnormals` gives a `SURFACE_DISPLACE`
   hook `surfaceSmoothNormal`, the object-space normal averaged over the vertices sharing a
   position (the engine makes it), so an inverted hull pushed along it has no gaps at hard
-  edges.
+  edges; `normalmap` (2D lights read the material's Normal Texture through `getNormal2D()`;
+  `library:sprite` uses it): under Light 2Ds, with a normal texture, on a mesh with tangents
+  and `uv1` (sprites, tilemaps, polygons), `includes/lighting2d.glsl` samples it in the OpenGL
+  convention (green up) and the light's height shapes it; the shader must include that file.
+  A Light 2D's height shapes only normals that mean something: `lighting2d.glsl`'s
+  `getLight2DIntensity` applies N.L (with the light raised by its height) only when it sampled
+  the normal map itself (`normalmap` above) or when the shader defines `LIGHT2D_SURFACE_NORMALS`
+  before including it; a shader that passes its own normals (from `getNormal2D()`, a texture of
+  its own, real 3D normals) must `#define LIGHT2D_SURFACE_NORMALS` first, otherwise its normal is
+  ignored and the light falls as from height 0 (`mesh.frag`'s lit path does this).
 - The engine defines the blend mode a variant draws with: `BLEND_NONE`, `BLEND_ALPHA`,
   `BLEND_PREMULTIPLIED`, `BLEND_ADDITIVE` or `BLEND_MULTIPLY` (`#ifdef BLEND_ADDITIVE`).
   `finalizeColor` fogs by it (additive fades to black, multiply to white);

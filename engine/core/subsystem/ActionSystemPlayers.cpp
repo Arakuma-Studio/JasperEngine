@@ -5,6 +5,7 @@
 // and binding, states, fades, queue, events, the rest term in the pose blend, edit-mode preview.
 
 #include "ActionSystem.h"
+#include "ActionSystemPlayersDetail.h"
 
 #include "Scene.h"
 #include "Log.h"
@@ -14,6 +15,8 @@
 #include "animation/KeyframeSampling.h"
 #include "lattice/LatticeSolver.h"
 #include "pool/AnimationClipPool.h"
+#include "pool/AnimatorControllerPool.h"
+#include "pool/AvatarMaskPool.h"
 #include "script/LuaBinding.h"
 
 #include <algorithm>
@@ -21,6 +24,63 @@
 #include <limits>
 
 using namespace jasperengine;
+using playerdetail::completeRest;
+using playerdetail::sampleTimeOf;
+
+// the scene value of the channels of `entity` (R2) that have none yet
+void playerdetail::completeRest(Scene* scene, Entity entity, anim::ChannelRest& rest, ClipChannel channel){
+    switch (channel){
+        case ClipChannel::Position:
+        case ClipChannel::Rotation:
+        case ClipChannel::Scale:
+            if (!rest.hasTransform){
+                if (Transform* transform = scene->findComponent<Transform>(entity)){
+                    rest.hasTransform = true;
+                    rest.position = transform->position;
+                    rest.rotation = transform->rotation;
+                    rest.scale = transform->scale;
+                }
+            }
+            break;
+        case ClipChannel::Morph:
+            if (!rest.hasMorph){
+                if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+                    rest.hasMorph = true;
+                    rest.morphWeights.assign(mesh->morphWeights, mesh->morphWeights + MAX_MORPHTARGETS);
+                }
+            }
+            break;
+        case ClipChannel::Lattice:
+            if (!rest.hasLattice){
+                if (LatticeComponent* latticecomp = scene->findComponent<LatticeComponent>(entity)){
+                    rest.hasLattice = true;
+                    const size_t pointCount = (size_t)lattice::pointCount(latticecomp->resolutionX, latticecomp->resolutionY, latticecomp->resolutionZ);
+                    rest.latticeOffsets.assign(pointCount, Vector3(0, 0, 0));
+                    for (size_t i = 0; i < pointCount && i < latticecomp->offsets.size(); i++){
+                        rest.latticeOffsets[i] = latticecomp->offsets[i];
+                    }
+                }
+            }
+            break;
+        case ClipChannel::Property:
+            break;
+    }
+}
+
+// the time a state is sampled at this update, in its clip
+float playerdetail::sampleTimeOf(const AnimationPlayerComponent& player, const anim::PlayerStateRuntime& state){
+    if (state.driven) return state.drivenTime;
+    if (state.finishing || state.held) return state.finishTime;
+    const float length = anim::stateLength(state);
+    const ClipWrapMode wrap = anim::stateWrap(state);
+    if (wrap == ClipWrapMode::Loop || wrap == ClipWrapMode::PingPong){
+        const float time = anim::wrapClipTime(state.time, length, wrap);
+        // a loop going backwards reaches its start at the end of the clip (M2)
+        if (wrap == ClipWrapMode::Loop && time == 0.0f && anim::effectiveSpeed(player, state) < 0.0f) return length;
+        return time;
+    }
+    return std::min(std::max(state.time, 0.0f), length);
+}
 
 namespace {
 
@@ -61,46 +121,6 @@ namespace {
         return entity;
     }
 
-    // the scene value of the channels of `entity` (R2) that have none yet
-    void completeRest(Scene* scene, Entity entity, anim::ChannelRest& rest, ClipChannel channel){
-        switch (channel){
-            case ClipChannel::Position:
-            case ClipChannel::Rotation:
-            case ClipChannel::Scale:
-                if (!rest.hasTransform){
-                    if (Transform* transform = scene->findComponent<Transform>(entity)){
-                        rest.hasTransform = true;
-                        rest.position = transform->position;
-                        rest.rotation = transform->rotation;
-                        rest.scale = transform->scale;
-                    }
-                }
-                break;
-            case ClipChannel::Morph:
-                if (!rest.hasMorph){
-                    if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
-                        rest.hasMorph = true;
-                        rest.morphWeights.assign(mesh->morphWeights, mesh->morphWeights + MAX_MORPHTARGETS);
-                    }
-                }
-                break;
-            case ClipChannel::Lattice:
-                if (!rest.hasLattice){
-                    if (LatticeComponent* latticecomp = scene->findComponent<LatticeComponent>(entity)){
-                        rest.hasLattice = true;
-                        const size_t pointCount = (size_t)lattice::pointCount(latticecomp->resolutionX, latticecomp->resolutionY, latticecomp->resolutionZ);
-                        rest.latticeOffsets.assign(pointCount, Vector3(0, 0, 0));
-                        for (size_t i = 0; i < pointCount && i < latticecomp->offsets.size(); i++){
-                            rest.latticeOffsets[i] = latticecomp->offsets[i];
-                        }
-                    }
-                }
-                break;
-            case ClipChannel::Property:
-                break;
-        }
-    }
-
     size_t sampledTrackCount(const AnimationClip& clip){
         size_t count = 0;
         for (const AnimationClip::Track& track : clip.getTracks()){
@@ -109,9 +129,13 @@ namespace {
         return count;
     }
 
+    // ClipBindings::serial: one number per resolve, process-wide (main thread)
+    uint64_t bindSerial = 0;
+
     // Every track of the bindings' clip resolved again from `root`; the rest of every newly bound
     // channel is taken now, before anything writes it
     void resolveBindings(Scene* scene, Entity root, anim::ClipBindings& bindings, anim::RestMap* rest){
+        bindings.serial = ++bindSerial;
         const std::vector<AnimationClip::Track>& tracks = bindings.clip->getTracks();
         const size_t count = tracks.size();
         bindings.targets.assign(count, NULL_ENTITY);
@@ -315,6 +339,8 @@ namespace {
     // into it: wrap, the stop at a cycle end for a queue, events (R16) and finishes (R18)
     void advanceState(const AnimationPlayerComponent& player, anim::AnimationPlayerRuntime& runtime,
                       anim::PlayerStateRuntime& state, float offset, float span){
+        // a layer at weight 0 fires nothing (anim layers spec 5.8); the base layer always fires
+        const float layerWeight = runtime.layerWeight(runtime.stateLayer(state));
         if (!state.enabled || !state.bindings.clip) return;
         const AnimationClip& clip = *state.bindings.clip;
         const double length = clip.getLength();
@@ -325,7 +351,7 @@ namespace {
         const bool includeStart = state.startedThisUpdate;
         // only the states that are not fading out fire (during a crossfade the incoming one); a
         // state that starts without weight keeps its start events until it fires or moves on
-        const bool fires = state.weight > 0.0f && state.targetWeight > 0.0f;
+        const bool fires = state.weight > 0.0f && state.targetWeight > 0.0f && layerWeight > 0.0f;
         if (fires || delta != 0.0) state.startedThisUpdate = false;
         auto when = [&](double position){
             return delta != 0.0 ? offset + (float)((double)span * std::min(1.0, std::max(0.0, (position - from) / delta))) : offset;
@@ -414,19 +440,6 @@ namespace {
         }
     }
 
-    // the time a state is sampled at this update, in its clip
-    float sampleTimeOf(const AnimationPlayerComponent& player, const anim::PlayerStateRuntime& state){
-        if (state.finishing || state.held) return state.finishTime;
-        const float length = anim::stateLength(state);
-        const ClipWrapMode wrap = anim::stateWrap(state);
-        if (wrap == ClipWrapMode::Loop || wrap == ClipWrapMode::PingPong){
-            const float time = anim::wrapClipTime(state.time, length, wrap);
-            // a loop going backwards reaches its start at the end of the clip (M2)
-            if (wrap == ClipWrapMode::Loop && time == 0.0f && anim::effectiveSpeed(player, state) < 0.0f) return length;
-            return time;
-        }
-        return std::min(std::max(state.time, 0.0f), length);
-    }
 
 }
 
@@ -571,6 +584,18 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
     anim::AnimationPlayerRuntime& runtime = anim::playerRuntime(player);
     const uint64_t revision = scene->hierarchyRevision();
 
+    // an Animator Controller owns the states: loaded (or reloaded after an edit) first; one
+    // cleared without a reload request gives the clip list back
+    if (player.controller.empty() && runtime.controller){
+        player.needsLoad = true;
+        anim::playerRuntime(player);
+    }
+    if (!player.controller.empty() &&
+        (!runtime.controller || !runtime.controller->controller || runtime.controller->path != player.controller || playerControllerPoolChanged ||
+         (!runtime.controller->clipsWarned && !player.clips.empty()))){
+        anim::ensureController(player, scene->getEntityName(entity), dt, playerControllerPoolChanged);
+    }
+
     // duplicate state names play under their " 2" alias (spec 3.2, R40): said once per player
     // and clip list
     if (runtime.duplicateStateNames != runtime.warnedDuplicateStateNames){
@@ -706,6 +731,10 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
         collectModels(scene, entity, runtime);
         runtime.modelsRevision = revision;
     }
+    // layers, masks, mixing transforms (anim layers spec 7.3): what the evaluator needs
+    if (!anim::isDefaultLayering(player)){
+        preparePlayerLayers(entity, player, dt, reloaded);
+    }
     return !clipsLoading;
 }
 
@@ -747,11 +776,12 @@ void ActionSystem::startQueuedState(Entity entity, AnimationPlayerComponent& pla
     before.reserve(states.size());
     for (const anim::PlayerStateRuntime& state : states) before.push_back({state.targetWeight, state.fadeSpeed});
 
-    // the rest of the queue stays queued
+    // the rest of the layer's queue stays queued
+    std::deque<anim::QueuedState>& queue = runtime.layers[(size_t)runtime.stateLayer(target)].queue;
     std::deque<anim::QueuedState> rest;
-    rest.swap(runtime.queue);
+    rest.swap(queue);
     anim::playState(player, target.name, head.fade, scene->getEntityName(entity));
-    runtime.queue.swap(rest);
+    runtime.layers[(size_t)runtime.stateLayer(target)].queue.swap(rest);
     if (restart && head.fade > 0.0f){
         anim::startState(player, target);
         target.weight = std::max(weight, 1e-6f);
@@ -771,22 +801,38 @@ void ActionSystem::advancePlayer(Entity entity, AnimationPlayerComponent& player
     anim::AnimationPlayerRuntime& runtime = *player.runtime;
     std::vector<anim::PlayerStateRuntime>& states = runtime.states;
 
+    // layer weight fades (linear, the player's time: anim layers spec 5.9), before the states'
+    for (size_t l = 1; l < runtime.layers.size(); l++){
+        anim::LayerRuntime& layer = runtime.layers[l];
+        if (layer.weight == layer.targetWeight) continue;
+        const float step = layer.fadeSpeed > 0.0f && std::isfinite(layer.fadeSpeed) ? layer.fadeSpeed * dt : std::abs(layer.targetWeight - layer.weight);
+        if (layer.weight < layer.targetWeight) layer.weight = std::min(layer.targetWeight, layer.weight + step);
+        else layer.weight = std::max(layer.targetWeight, layer.weight - step);
+    }
+
+    // a controller sets its states' weights and times itself (no fades, no queues: spec 11.2)
+    if (runtime.controller){
+        driveController(entity, player, dt);
+        return;
+    }
+
     // fades (real time), held states included
     for (anim::PlayerStateRuntime& state : states){
         fadeState(state, dt);
     }
 
-    // the queue's head waits for the states playing now (R17): they stop at their next end
+    // each layer's queue head waits for the states playing now on that layer (R17 per layer):
+    // they stop at their next end
     std::vector<float> offsets(states.size(), 0.0f);
-    std::vector<char> advanced(states.size(), 0);
-    if (!runtime.queue.empty()){
-        const anim::QueuedState head = runtime.queue.front();
+    for (size_t l = 0; l < runtime.layers.size(); l++){
+        if (runtime.layers[l].queue.empty()) continue;
+        const anim::QueuedState head = runtime.layers[l].queue.front();
         float remaining = 0.0f;
         bool blocked = false;
         bool headPlaying = false;
         for (size_t i = 0; i < states.size(); i++){
             anim::PlayerStateRuntime& state = states[i];
-            if (!state.enabled || state.targetWeight <= 0.0f) continue;
+            if (!state.enabled || state.targetWeight <= 0.0f || (size_t)runtime.stateLayer(state) != l) continue;
             state.stopAtCycleEnd = true;
             blocked = true;
             remaining = std::max(remaining, remainingSeconds(player, state));
@@ -795,13 +841,13 @@ void ActionSystem::advancePlayer(Entity entity, AnimationPlayerComponent& player
         // a fading head starts `fade` seconds before their end and crossfades
         if (blocked && head.fade > 0.0f && !headPlaying && head.state < states.size() &&
             std::isfinite(remaining) && remaining - head.fade <= dt){
-            runtime.queue.pop_front();
+            runtime.layers[l].queue.pop_front();
             const float offset = std::max(0.0f, remaining - head.fade);
             startQueuedState(entity, player, head, offset, dt);
             offsets[head.state] = offset;
             // the others still stop at their end
             for (size_t i = 0; i < states.size(); i++){
-                if (i != head.state && states[i].enabled) states[i].stopAtCycleEnd = true;
+                if (i != head.state && states[i].enabled && (size_t)runtime.stateLayer(states[i]) == l) states[i].stopAtCycleEnd = true;
             }
         }
     }
@@ -810,28 +856,36 @@ void ActionSystem::advancePlayer(Entity entity, AnimationPlayerComponent& player
         advanceState(player, runtime, states[i], offsets[i], dt - offsets[i]);
     }
 
-    // a head without a fade (or the playing state queued again) starts when the last of them ended
-    while (!runtime.queue.empty()){
-        bool blocked = false;
-        float ended = 0.0f;
-        for (const anim::PlayerStateRuntime& state : states){
-            if (state.finishing) ended = std::max(ended, state.finishWhen);
-            else if (state.enabled && state.targetWeight > 0.0f) blocked = true;
+    // a head without a fade (or the playing state queued again) starts when the last of its
+    // layer's states ended
+    for (size_t l = 0; l < runtime.layers.size(); l++){
+        while (!runtime.layers[l].queue.empty()){
+            bool blocked = false;
+            float ended = 0.0f;
+            for (const anim::PlayerStateRuntime& state : states){
+                if ((size_t)runtime.stateLayer(state) != l) continue;
+                if (state.finishing) ended = std::max(ended, state.finishWhen);
+                else if (state.enabled && state.targetWeight > 0.0f) blocked = true;
+            }
+            if (blocked) break;
+            const anim::QueuedState head = runtime.layers[l].queue.front();
+            runtime.layers[l].queue.pop_front();
+            if (head.state >= states.size()) continue;
+            startQueuedState(entity, player, head, ended, dt);
+            advanceState(player, runtime, states[head.state], ended, std::max(0.0f, dt - ended));
+            break;
         }
-        if (blocked) break;
-        const anim::QueuedState head = runtime.queue.front();
-        runtime.queue.pop_front();
-        if (head.state >= states.size()) continue;
-        startQueuedState(entity, player, head, ended, dt);
-        advanceState(player, runtime, states[head.state], ended, std::max(0.0f, dt - ended));
-        break;
     }
 }
 
-void ActionSystem::samplePlayerStates(AnimationPlayerComponent& player){
+void ActionSystem::samplePlayerStates(Entity entity, AnimationPlayerComponent& player){
     anim::AnimationPlayerRuntime& runtime = *player.runtime;
+    // the v1 fast path for a player without layers, masks or mixing transforms (spec 5.5, L1);
+    // every other player goes through the layered evaluator
+    const bool layered = !anim::isDefaultLayering(player);
+    if (layered) evaluateLayeredPlayer(entity, player, true);
     for (anim::PlayerStateRuntime& state : runtime.states){
-        if ((state.enabled || state.finishing || state.held) && state.bindings.clip && state.weight > 0.0f){
+        if (!layered && (state.enabled || state.finishing || state.held) && state.bindings.clip && state.weight > 0.0f){
             accumulateClip(*state.bindings.clip, state.bindings, sampleTimeOf(player, state), state.weight, runtime.rest, nullptr);
         }
         if (state.finishing){
@@ -875,6 +929,12 @@ void ActionSystem::updatePlayers(double dt){
     const uint64_t poolRevision = AnimationClipPool::revision();
     const bool poolChanged = poolRevision != playerPoolRevision;
     playerPoolRevision = poolRevision;
+    const uint64_t maskPoolRevision = AvatarMaskPool::revision();
+    playerMaskPoolChanged = maskPoolRevision != playerMaskPoolRevision;
+    playerMaskPoolRevision = maskPoolRevision;
+    const uint64_t controllerPoolRevision = AnimatorControllerPool::revision();
+    playerControllerPoolChanged = controllerPoolRevision != playerControllerPoolRevision;
+    playerControllerPoolRevision = controllerPoolRevision;
     const float step = std::isfinite(dt) ? (float)dt : 0.0f;
 
     // nothing below adds or removes Animation Players: the array stays put (callbacks run later)
@@ -884,16 +944,27 @@ void ActionSystem::updatePlayers(double dt){
 
         // disabled or inactive: time stops and nothing is written (R25)
         if (!player.enabled || !scene->isEntityActiveInHierarchy(entity)){
+            if (player.runtime && player.runtime->controller) player.runtime->controller->sawDisabled = true;
             continue;
         }
 
         anim::AnimationPlayerRuntime& runtime = anim::playerRuntime(player);
         runtime.clock += step;
 
-        // play automatically on the first update in a running scene (R44)
+        // a stopped controller enters its default states again when the player is enabled again
+        if (runtime.controller && runtime.controller->sawDisabled){
+            runtime.controller->sawDisabled = false;
+            if (runtime.controller->stopped){
+                runtime.controller->stopped = false;
+                for (anim::ControllerLayerRuntime& layer : runtime.controller->layers) layer.started = false;
+            }
+        }
+
+        // play automatically on the first update in a running scene (R44); an Animator
+        // Controller always runs (it enters its default states)
         if (!player.started){
             player.started = true;
-            if (player.playAutomatically && !runtime.states.empty()){
+            if (player.controller.empty() && player.playAutomatically && !runtime.states.empty()){
                 const std::string name = player.defaultClip.empty() ? runtime.states[0].name : player.defaultClip;
                 anim::playState(player, name, 0.0f, scene->getEntityName(entity));
             }
@@ -903,7 +974,7 @@ void ActionSystem::updatePlayers(double dt){
             continue;
         }
         advancePlayer(entity, player, step);
-        samplePlayerStates(player);
+        samplePlayerStates(entity, player);
 
         if (!runtime.pending.empty() &&
             std::find(playersWithCallbacks.begin(), playersWithCallbacks.end(), entity) == playersWithCallbacks.end()){
@@ -937,6 +1008,18 @@ void ActionSystem::dispatchPlayerCallbacks(){
                 player->onFinish.call(state);
                 continue;
             }
+            if (callback.stateEnter || callback.stateExit){
+                // Animator Controller states (spec 11.2): the subscribers, then the GameObject's
+                // Lua script methods onStateEnter / onStateExit (layer, state)
+                const int layer = callback.layer;
+                const std::string state = callback.event.state;
+                const char* method = callback.stateEnter ? "onStateEnter" : "onStateExit";
+                if (callback.stateEnter) player->onStateEnter.call(layer, state);
+                else player->onStateExit.call(layer, state);
+                if (!scene->isEntityCreated(entity)) break;
+                LuaBinding::callLuaScriptMethod(scene, entity, method, {AnimationEvent::numberArg(layer), AnimationEvent::stringArg(state)}, true);
+                continue;
+            }
             const bool subscribed = player->onEvent.hasSubscribers();
             const AnimationEvent event = callback.event;
             player->onEvent.call(event);
@@ -959,13 +1042,18 @@ void ActionSystem::samplePlayer(Entity entity){
     AnimationPlayerComponent* player = scene->isEntityCreated(entity) ? scene->findComponent<AnimationPlayerComponent>(entity) : nullptr;
     if (!player) return;
     anim::playerRuntime(*player);
+    playerMaskPoolChanged = true;   // generations decide
     if (!preparePlayer(entity, *player, 0.0f, true)) return;
 
     clearPoseBlend();
     anim::AnimationPlayerRuntime& runtime = *player->runtime;
-    for (anim::PlayerStateRuntime& state : runtime.states){
-        if ((state.enabled || state.held) && state.bindings.clip && state.weight > 0.0f){
-            accumulateClip(*state.bindings.clip, state.bindings, sampleTimeOf(*player, state), state.weight, runtime.rest, nullptr);
+    if (!anim::isDefaultLayering(*player)){
+        evaluateLayeredPlayer(entity, *player, false);
+    }else{
+        for (anim::PlayerStateRuntime& state : runtime.states){
+            if ((state.enabled || state.held) && state.bindings.clip && state.weight > 0.0f){
+                accumulateClip(*state.bindings.clip, state.bindings, sampleTimeOf(*player, state), state.weight, runtime.rest, nullptr);
+            }
         }
     }
     flushPoseBlend();
@@ -992,6 +1080,8 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
     std::vector<AnimationEvent> fired;
     std::vector<anim::ClipBindings> kept;
     kept.reserve(preview.states.size());
+    // the layered preview (anim layers spec 7.5): each state's bindings, time, weight and layer
+    std::vector<LayeredPreviewState> layeredStates;
     std::unordered_map<std::string, float> times;
     std::vector<std::pair<Entity, ClipChannel>> channels;
 
@@ -1054,7 +1144,11 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
 
         const float length = clip->getLength();
         const float clipTime = anim::wrapClipTime(state.time, length, wrap);
-        accumulateClip(*clip, *bindings, clipTime, state.weight, session.rest, &channels);
+        if (preview.layered){
+            layeredStates.push_back({(size_t)(bindings - kept.data()), clipTime, state.weight, state.layer});
+        }else{
+            accumulateClip(*clip, *bindings, clipTime, state.weight, session.rest, &channels);
+        }
 
         if (preview.fireEvents){
             auto previous = session.previousTimes.find(key);
@@ -1073,6 +1167,9 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
             }
         }
         times[key] = state.time;
+    }
+    if (preview.layered && !layeredStates.empty()){
+        previewLayers(root, preview, session, kept, layeredStates, channels);
     }
     // drop the bindings (and times) of clips this call does not name
     session.bindings = std::move(kept);
@@ -1157,6 +1254,8 @@ void ActionSystem::resetPlayers(){
         // play's scripts and C++ libraries are gone after it: their callbacks with them
         player.onEvent.clear();
         player.onFinish.clear();
+        player.onStateEnter.clear();
+        player.onStateExit.clear();
     }
     playersWithCallbacks.clear();
     warnedEventHandlers.clear();

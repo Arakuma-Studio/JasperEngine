@@ -116,6 +116,14 @@ void EditorHost::openVertexAnimationBaker(const std::filesystem::path& path, boo
     Out::warning("The Vertex Animation Baker needs the editor window: %s not opened", path.string().c_str());
 }
 
+void EditorHost::openSpriteNormals(const std::vector<std::filesystem::path>&, bool) {
+    Out::warning("Sprite Normal Map needs the editor window: use the generate_sprite_normals MCP tool or the generate-sprite-normals command");
+}
+
+void EditorHost::openSpriteNormalsForEntity(uint32_t, jasperengine::Entity, unsigned, bool) {
+    Out::warning("Sprite Normal Map needs the editor window: use the generate_sprite_normals MCP tool or the generate-sprite-normals command");
+}
+
 void EditorHost::registerSaveSceneDialog(uint32_t, std::function<void()> callback) {
     if (callback) {
         callback();

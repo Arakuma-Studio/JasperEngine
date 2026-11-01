@@ -29,7 +29,9 @@ namespace jasperengine::editor{
         FILE_DIALOG_ANIMATOR_CONTROLLER = 1 << 12,
         FILE_DIALOG_AVATAR_MASK = 1 << 13,
         FILE_DIALOG_ANIMATION_MONTAGE = 1 << 14,
-        FILE_DIALOG_VERTEX_ANIMATION = 1 << 15
+        FILE_DIALOG_VERTEX_ANIMATION = 1 << 15,
+        // a Unity prefab or scene (Assets > Import Unity Particle System...)
+        FILE_DIALOG_UNITY_PREFAB_SCENE = 1 << 16
     };
 
     class FileDialogs{
@@ -84,6 +86,15 @@ namespace jasperengine::editor{
             }
             if (filterFlags & FILE_DIALOG_VERTEX_ANIMATION) {
                 filterItems.push_back({ "Vertex Animations", "vat" });
+            }
+            if (filterFlags & FILE_DIALOG_UNITY_PREFAB_SCENE) {
+                filterItems.push_back({ "Unity prefabs and scenes", "prefab,unity" });
+            }
+            if (filterFlags & FILE_DIALOG_AVATAR_MASK) {
+                filterItems.push_back({ "Avatar Masks", "mask" });
+            }
+            if (filterFlags & FILE_DIALOG_ANIMATOR_CONTROLLER) {
+                filterItems.push_back({ "Animator Controllers", "controller" });
             }
             return filterItems;
         }
