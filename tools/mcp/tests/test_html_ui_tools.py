@@ -155,8 +155,8 @@ LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 
 # merged by the lead (guide-headroom + anim-layers): provisional, re-measured on the merged tree
 # camera-shake (camerashaker/camerafollow component types, get_runtime_entity's shake/follow state,
 # .shake assets): +91 on its branch (107717 on main 1acde245f); merged with main 5762bb259:
-# MEASURED_COMMENT
-TOTAL_LIMIT = 112100
+# 153 tools, total 111909 (tool_budget.py on the merged tree), the limit set to it
+TOTAL_LIMIT = 111909
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
