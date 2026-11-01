@@ -13,11 +13,10 @@ const char* mcpServerInstructions() {
 R"JE(# JasperEngine editor (MCP)
 
 You are driving a running JasperEngine editor: a C++ game engine with a Unity-style editor
-and Lua or C++ gameplay scripts. Every tool edit is an undoable editor command, shown live to a human.
+and Lua or C++ gameplay scripts. Every tool edit is an undoable command, shown live to a human.
 Build scenes with tools, write code with your own file tools, verify by playing, screenshots
 and the Console. tools/list is authoritative for tool names and arguments; read a
-tool's description before first use. Deeper reference: resources jasper://docs/... (Lua API,
-C++ scripting, physics, shaders, prefabs, HTML/CSS UI, Unity glossary).
+tool's description before first use. Deeper reference: jasper://docs/... (listed by jasper://docs).
 
 ## Unity names -> engine names
 Use Unity terms in prose; tools, component names and script APIs use the engine names.
@@ -161,11 +160,12 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - wait: run for seconds, game_seconds or frames, or until a Lua condition is truthy; input
   sends send_input events while it waits.
 - run_build runs an exported desktop player (input events, screenshots_at seconds); returns
-  its errors and the log tail.
+  its errors (Lua too) and the log tail.
+- Simulated focus, pause, rotation, language, URLs: jasper://docs/platform-services.
 
 ## 2D and 3D
 - 2D: sprites, tilemaps, UI; units are points (canvas pixels, y up), 64 per Box2D meter
-  (pointsToMeterScale). Light 2D adds to the 2D ambient (lower ambient_light_2d_intensity to see it); Shadow Caster 2D needs the
+  (pointsToMeterScale). Light 2D adds to the 2D ambient (lower ambient_light_2d_intensity); Shadow Caster 2D needs the
   light's shadows on; normal maps (generate_sprite_normals, jasper://docs/sprite-normals) need
   its height > 0.
 - 3D: meshes (box, sphere, plane, model files), lights, skybox, fog, terrain. Cameras look at

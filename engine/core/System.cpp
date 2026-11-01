@@ -6,14 +6,18 @@
 #include "util/Base64.h"
 #include "util/NumberText.h"
 #include "Log.h"
+#include "util/PlatformRules.h"
 #include <limits>
 #include <mutex>
 #include <set>
 #include <stdlib.h>
+#include <algorithm>
+#include <thread>
 
 using namespace jasperengine;
 
 System* System::systemInstance = nullptr;
+ApplicationInfo System::applicationInfo;
 
 System& System::instance(){
     if (!systemInstance) {
@@ -136,6 +140,153 @@ void System::setWindowTitle(const std::string& title){
 
 void System::quit(){
     Log::warn("quit() is not supported on this platform");
+}
+
+bool System::openURL(const std::string& url){
+    const std::string problem = UrlRules::check(url);
+    if (!problem.empty()){
+        Log::error("System.openURL(\"%s\"): %s", url.c_str(), problem.c_str());
+        return false;
+    }
+    return platformOpenURL(url);
+}
+
+bool System::platformOpenURL(const std::string& url){
+    Log::warn("System.openURL is not supported on this platform (%s)", url.c_str());
+    return false;
+}
+
+std::vector<std::string> System::getPreferredLocales(){
+    return {"en-US"};
+}
+
+std::string System::getLocale(){
+    const std::vector<std::string> locales = getPreferredLocales();
+    for (const std::string& locale : locales){
+        const std::string normalized = LocaleRules::normalize(locale);
+        if (!normalized.empty()) return normalized;
+    }
+    return "en-US";
+}
+
+std::string System::getLanguageCode(){
+    return LocaleRules::languageCode(getLocale());
+}
+
+std::string System::getRegionCode(){
+    return LocaleRules::resolveRegion(getRegionOverride(), getLocale());
+}
+
+std::string System::getRegionOverride(){
+    return "";
+}
+
+SystemLanguage System::getSystemLanguage(){
+    return LocaleRules::toSystemLanguage(getLocale());
+}
+
+void System::setApplicationInfo(const ApplicationInfo& info){
+    applicationInfo = info;
+}
+
+const ApplicationInfo& System::getApplicationInfo(){
+    return applicationInfo;
+}
+
+std::string System::getAppVersion(){
+    return applicationInfo.version;
+}
+
+int64_t System::getAppBuild(){
+    return std::max<int64_t>(0, applicationInfo.build);
+}
+
+std::string System::getAppIdentifier(){
+    return applicationInfo.identifier;
+}
+
+std::string System::getAppName(){
+    return applicationInfo.name;
+}
+
+std::string System::getOperatingSystem(){
+    return "Unknown";
+}
+
+std::string System::getOperatingSystemVersion(){
+    return "";
+}
+
+int System::getAndroidApiLevel(){
+    return 0;
+}
+
+std::string System::getDeviceModel(){
+    return "PC";
+}
+
+DeviceType System::getDeviceType(){
+    return isTouchDevice() ? DeviceType::Handheld : DeviceType::Desktop;
+}
+
+int System::getSystemMemorySize(){
+    return 0;
+}
+
+int System::getProcessorCount(){
+    return std::max(1u, std::thread::hardware_concurrency());
+}
+
+bool System::isEditor(){
+    return false;
+}
+
+NetworkReachability System::getInternetReachability(){
+    return NetworkReachability::NotReachable;
+}
+
+bool System::vibrate(int milliseconds){
+    return false;
+}
+
+bool System::hapticFeedback(HapticFeedback type){
+    return false;
+}
+
+float System::getScreenDpi(){
+    return 0.0f;
+}
+
+float System::getRefreshRate(){
+    return 60.0f;
+}
+
+void System::setKeepScreenOn(bool keepOn){
+
+}
+
+void System::applyOrientationPolicy(ScreenOrientation requested, uint8_t allowedMask){
+
+}
+
+ScreenOrientation System::getScreenOrientation(){
+    return PlatformRules::orientationFromSize(getScreenWidth(), getScreenHeight());
+}
+
+DeviceOrientation System::getDeviceOrientation(){
+    return DeviceOrientation::Unknown;
+}
+
+void System::applyFramePacing(const FramePacing& pacing){
+
+}
+
+int System::getMaxSwapInterval(){
+    return 1;
+}
+
+bool System::canDisableVSync(){
+    return true;
 }
 
 char System::getDirSeparator(){

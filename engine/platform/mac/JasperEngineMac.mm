@@ -20,12 +20,9 @@
 #include "WindowMac.h"
 
 #include "Engine.h"
+#include "util/FrameLimiter.h"
 
 #import "JasperEngineGameController.h"
-
-#ifndef JASPERENGINE_VSYNC_ENABLED
-#define JASPERENGINE_VSYNC_ENABLED 1
-#endif
 
 // 0 = windowed, 1 = maximized (zoomed), 2 = fullscreen
 #ifndef JASPERENGINE_WINDOW_MODE
@@ -43,6 +40,9 @@
 using namespace jasperengine;
 
 namespace {
+    // Engine.targetFrameRate without vsync: frames the timer below skips
+    FrameLimiter frameLimiter;
+
 #if defined(SOKOL_METAL)
     MacViewMetal* gameView = nil;
 #elif defined(SOKOL_VULKAN)
@@ -59,7 +59,7 @@ namespace {
         VulkanContextConfig config;
         config.surfaceExtension = VK_EXT_METAL_SURFACE_EXTENSION_NAME;
         config.createSurface = createWindowSurface;
-        config.vsync = JASPERENGINE_VSYNC_ENABLED != 0;
+        config.vsync = Engine::getFramePacing().swapInterval > 0;
         return VulkanContext::create(config);
     }
 #else
@@ -111,7 +111,7 @@ namespace {
     gameView.delegate = self;
 
     WindowMac::setContentView((__bridge void*)gameView);
-    static_cast<CAMetalLayer*>(gameView.layer).displaySyncEnabled = JASPERENGINE_VSYNC_ENABLED ? YES : NO;
+    JasperEngineMac::applySwapInterval(Engine::getFramePacing().swapInterval);
 #elif defined(SOKOL_VULKAN)
     gameView = [[MacViewVulkan alloc] initWithFrame:viewFrame];
     WindowMac::setContentView((__bridge void*)gameView);
@@ -134,7 +134,7 @@ namespace {
 
     WindowMac::setContentView((__bridge void*)gameView);
     [gameView makeContextCurrent];
-    [gameView setSwapInterval:JASPERENGINE_VSYNC_ENABLED ? 1 : 0];
+    JasperEngineMac::applySwapInterval(Engine::getFramePacing().swapInterval);
 #endif
 
     Engine::systemViewLoaded();
@@ -155,6 +155,8 @@ namespace {
 
 - (void)renderFrame {
     if (!gameView) return;
+    // the timer runs at 240 Hz; a frame rate cap draws only the frames due
+    if (!frameLimiter.isDue(Engine::getFramePacing().limiterFps)) return;
 #if defined(SOKOL_METAL)
     // Runs drawInMTKView below, the only place currentDrawable is valid
     [gameView draw];
@@ -186,6 +188,17 @@ namespace {
 - (void)windowDidResize:(NSNotification*)notification {
     (void)notification;
     WindowMac::refreshDrawableSize();
+}
+
+// Unity's OnApplicationFocus: the game window is the key window
+- (void)windowDidBecomeKey:(NSNotification*)notification {
+    (void)notification;
+    Engine::systemFocus(true);
+}
+
+- (void)windowDidResignKey:(NSNotification*)notification {
+    (void)notification;
+    Engine::systemFocus(false);
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender {
@@ -221,6 +234,18 @@ namespace {
 }
 
 @end
+
+void JasperEngineMac::applySwapInterval(int interval) {
+    if (!gameView) return;
+#if defined(SOKOL_METAL)
+    static_cast<CAMetalLayer*>(gameView.layer).displaySyncEnabled = interval > 0 ? YES : NO;
+#elif defined(SOKOL_VULKAN)
+    VulkanContext::setVSync(interval > 0);
+#else
+    [gameView makeContextCurrent];
+    [gameView setSwapInterval:interval > 0 ? 1 : 0];
+#endif
+}
 
 int JasperEngineMac::init(int argc, char **argv) {
     @autoreleasepool {

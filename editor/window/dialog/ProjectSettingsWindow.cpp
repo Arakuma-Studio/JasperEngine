@@ -54,16 +54,16 @@ static_assert(std::size(cxxStandardNames) == std::size(cxxStandards));
 
 static const char* androidInternetAccessNames[] = { "Auto", "Require" };
 static constexpr int androidInternetAccessCount = 2;
-static const char* androidOrientationNames[] = { "Unspecified", "Portrait", "Landscape", "Sensor Portrait", "Sensor Landscape", "Full Sensor" };
-static const AndroidOrientation androidOrientationValues[] = {
-    AndroidOrientation::Unspecified,
-    AndroidOrientation::Portrait,
-    AndroidOrientation::Landscape,
-    AndroidOrientation::SensorPortrait,
-    AndroidOrientation::SensorLandscape,
-    AndroidOrientation::FullSensor
+// Player > Resolution and Presentation, Unity's names and order
+static const char* defaultOrientationNames[] = { "Portrait", "Portrait Upside Down", "Landscape Left", "Landscape Right", "Auto Rotation" };
+static const ScreenOrientation defaultOrientationValues[] = {
+    ScreenOrientation::Portrait,
+    ScreenOrientation::PortraitUpsideDown,
+    ScreenOrientation::LandscapeLeft,
+    ScreenOrientation::LandscapeRight,
+    ScreenOrientation::AutoRotation
 };
-static const int androidOrientationCount = sizeof(androidOrientationValues) / sizeof(androidOrientationValues[0]);
+static const int defaultOrientationCount = sizeof(defaultOrientationValues) / sizeof(defaultOrientationValues[0]);
 
 struct AndroidPermissionInfo {
     const char* key;
@@ -145,7 +145,8 @@ enum class ProjectCategory {
 // Order matches ProjectCategory. Keywords are the page's setting labels, for the search field.
 static const settingsui::Category projectCategories[] = {
     {"Player", "", "project product name application identifier version build default icon resolution presentation "
-                   "fullscreen mode screen width height resizable window title start scene splash loading async publishing "
+                   "fullscreen mode screen width height resizable window title orientation auto rotation portrait landscape "
+                   "keep screen on sleep target frame rate fps start scene splash loading async publishing "
                    "native resource pack windows macos linux ios android web company bundle identifier package favicon "
                    "google admob ads app id other settings network allow insecure http downloads over http cleartext "
                    "internet access permission"},
@@ -197,11 +198,11 @@ static int findCxxStandardIndex(int standard) {
     return 0;
 }
 
-static int findAndroidOrientationIndex(AndroidOrientation orientation) {
-    for (int i = 0; i < androidOrientationCount; i++) {
-        if (androidOrientationValues[i] == orientation) return i;
+static int findDefaultOrientationIndex(ScreenOrientation orientation) {
+    for (int i = 0; i < defaultOrientationCount; i++) {
+        if (defaultOrientationValues[i] == orientation) return i;
     }
-    return 0;
+    return defaultOrientationCount - 1;
 }
 
 // Opening and accepting the dialog must not truncate untouched persisted text.
@@ -882,6 +883,12 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_physics3DWorld = project->getPhysics3DWorldSettings();
     m_runtimeShadersEnabled = project->isRuntimeShadersEnabled();
 
+    const PresentationSettings& presentation = project->getPresentationSettings();
+    m_defaultOrientationIndex = findDefaultOrientationIndex(presentation.defaultOrientation);
+    m_allowedOrientations = presentation.allowedOrientations;
+    m_keepScreenOn = presentation.keepScreenOn;
+    m_targetFrameRate = presentation.targetFrameRate;
+
     const ApplicationSettings& application = project->getApplicationSettings();
     snprintf(m_applicationNameBuffer, sizeof(m_applicationNameBuffer), "%s", application.name.c_str());
     snprintf(m_applicationIdentifierBuffer, sizeof(m_applicationIdentifierBuffer), "%s", application.identifier.c_str());
@@ -942,7 +949,6 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     }
     m_androidMinSdk = static_cast<int>(android.minSdk);
     m_androidTargetSdk = static_cast<int>(android.targetSdk);
-    m_androidOrientationIndex = findAndroidOrientationIndex(android.orientation);
     m_androidAbiArmeabiV7a = android.abiArmeabiV7a;
     m_androidAbiArm64V8a = android.abiArm64V8a;
     m_androidAbiX86 = android.abiX86;
@@ -951,7 +957,6 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_androidInternetAccessIndex = android.internetAccess == AndroidInternetAccess::Require ? 1 : 0;
     m_androidAllowBackup = android.allowBackup;
     m_androidFullscreen = android.fullscreen;
-    m_androidKeepScreenOn = android.keepScreenOn;
     m_androidAdmobEnabled = android.admobEnabled;
     snprintf(m_androidAdmobAppIdBuffer, sizeof(m_androidAdmobAppIdBuffer), "%s", android.admobAppId.c_str());
 
@@ -1247,6 +1252,8 @@ void ProjectSettingsWindow::drawPlayerSettings() {
             ImGui::SetNextItemWidth(-1);
             ImGui::InputTextWithHint("##WindowTitle", titleHint.c_str(), m_windowTitleBuffer, sizeof(m_windowTitleBuffer));
 
+            drawPresentationSettings();
+
             ImGui::EndTable();
         }
 
@@ -1346,6 +1353,68 @@ void ProjectSettingsWindow::drawPlayerSettings() {
         drawPlatformsSettings();
     }
     endSettingsPanel();
+}
+
+void ProjectSettingsWindow::drawPresentationSettings() {
+    const PresentationSettings defaults;
+
+    drawComboSetting("Default Orientation", "##DefaultOrientation", defaultOrientationNames, defaultOrientationCount,
+        m_defaultOrientationIndex, findDefaultOrientationIndex(defaults.defaultOrientation),
+        "Orientation the game starts in on phones and tablets (Android and iOS). Auto Rotation follows the device "
+        "within the allowed orientations below. Scripts change it with Screen.orientation.");
+
+    const bool autoRotation = defaultOrientationValues[std::clamp(m_defaultOrientationIndex, 0, defaultOrientationCount - 1)] ==
+        ScreenOrientation::AutoRotation;
+    if (beginSettingsRow("Allowed Orientations", m_allowedOrientations != defaults.allowedOrientations)) {
+        m_allowedOrientations = defaults.allowedOrientations;
+    }
+    ImGui::BeginDisabled(!autoRotation);
+    const struct { const char* label; ScreenOrientation orientation; } choices[] = {
+        {"Portrait##Allowed", ScreenOrientation::Portrait},
+        {"Portrait Upside Down##Allowed", ScreenOrientation::PortraitUpsideDown},
+        {"Landscape Left##Allowed", ScreenOrientation::LandscapeLeft},
+        {"Landscape Right##Allowed", ScreenOrientation::LandscapeRight},
+    };
+    for (const auto& choice : choices) {
+        const uint8_t bit = PlatformRules::orientationBit(choice.orientation);
+        bool on = (m_allowedOrientations & bit) != 0;
+        if (ImGui::Checkbox(choice.label, &on)) {
+            const uint8_t mask = on ? (uint8_t)(m_allowedOrientations | bit) : (uint8_t)(m_allowedOrientations & ~bit);
+            // at least one stays (Unity refuses the last one too)
+            if (mask & PlatformRules::ALL_ORIENTATIONS) m_allowedOrientations = mask;
+        }
+    }
+    ImGui::EndDisabled();
+    endSettingsRow("Allowed Orientations for Auto Rotation (Screen.autorotateTo*): where the device may turn the game. "
+        "Landscape Left is the device turned counter-clockwise from portrait.");
+    if (autoRotation) {
+        bool androidUnsupported = false;
+        PlatformRules::androidRequestedOrientation(ScreenOrientation::AutoRotation, m_allowedOrientations, &androidUnsupported);
+        if (androidUnsupported) {
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Android cannot limit rotation to this set; it allows all four.");
+        }
+    }
+
+    if (beginSettingsRow("Keep Screen On", m_keepScreenOn != defaults.keepScreenOn)) {
+        m_keepScreenOn = defaults.keepScreenOn;
+    }
+    ImGui::Checkbox("##KeepScreenOn", &m_keepScreenOn);
+    endSettingsRow("Android and iOS: the screen never dims or locks while the game runs (Screen.sleepTimeout = "
+        "SleepTimeout.NeverSleep). Off: the device's own setting. Desktops and the web follow the system unless a "
+        "script sets NeverSleep (as Unity).");
+
+    if (beginSettingsRow("Target Frame Rate", m_targetFrameRate != defaults.targetFrameRate)) {
+        m_targetFrameRate = defaults.targetFrameRate;
+    }
+    ImGui::SetNextItemWidth(-helpMarkerWidth());
+    const int before = m_targetFrameRate;
+    ImGui::InputInt("##TargetFrameRate", &m_targetFrameRate);
+    // 0 is no rate: the step buttons go from -1 to 1 and back
+    if (m_targetFrameRate == 0) m_targetFrameRate = before < 0 ? 1 : -1;
+    if (m_targetFrameRate < 0) m_targetFrameRate = -1;
+    m_targetFrameRate = std::min(m_targetFrameRate, 1000);
+    endSettingsRow("Initial Engine.targetFrameRate. -1 = the platform's rate: 60 on mobile, every browser frame on the web, "
+        "as fast as vsync allows on desktops (which ignore it while VSync is on, as Unity).");
 }
 
 void ProjectSettingsWindow::drawGraphicsSettings() {
@@ -1911,6 +1980,10 @@ void ProjectSettingsWindow::drawMacOSSettings() {
 }
 
 void ProjectSettingsWindow::drawIOSSettings() {
+    beginSettingsRow("Orientation");
+    ImGui::TextDisabled("From Player > Resolution and Presentation");
+    endSettingsRow("Default Orientation and Allowed Orientations for Auto Rotation are shared by Android and iOS.");
+
     drawOverrideSetting("App Name", "##IOSAppName", m_iosApplicationNameBuffer, inheritedApplicationName(),
         "iOS bundle display name. Empty means the shared application name.");
 
@@ -2005,9 +2078,9 @@ void ProjectSettingsWindow::drawAndroidSettings() {
         "Android API level the app declares as its target.");
     m_androidTargetSdk = std::max(m_androidTargetSdk, m_androidMinSdk);
 
-    drawComboSetting("Orientation", "##AndroidOrientation", androidOrientationNames, androidOrientationCount,
-        m_androidOrientationIndex, findAndroidOrientationIndex(defaults.orientation),
-        "Screen orientation requested by the Android activity.");
+    beginSettingsRow("Orientation");
+    ImGui::TextDisabled("From Player > Resolution and Presentation");
+    endSettingsRow("Default Orientation and Allowed Orientations for Auto Rotation are shared by Android and iOS.");
 
     beginSettingsRow("Architectures");
     ImGui::Checkbox("armeabi-v7a", &m_androidAbiArmeabiV7a);
@@ -2051,17 +2124,13 @@ void ProjectSettingsWindow::drawAndroidSettings() {
     ImGui::EndChild();
     endSettingsRow("Android permissions written to AndroidManifest.xml. Some permissions still require runtime approval in your Android code.");
 
-    if (beginSettingsRow("Application Options", m_androidAllowBackup != defaults.allowBackup || m_androidKeepScreenOn != defaults.keepScreenOn)) {
+    if (beginSettingsRow("Application Options", m_androidAllowBackup != defaults.allowBackup)) {
         m_androidAllowBackup = defaults.allowBackup;
-        m_androidKeepScreenOn = defaults.keepScreenOn;
     }
 
     ImGui::Checkbox("Allow Backup", &m_androidAllowBackup);
     ImGui::SetItemTooltip("Maps to android:allowBackup.");
-
-    ImGui::Checkbox("Keep Screen On", &m_androidKeepScreenOn);
-    ImGui::SetItemTooltip("Adds FLAG_KEEP_SCREEN_ON to the Android activity.");
-    endSettingsRow("Android application/activity behavior.");
+    endSettingsRow("Android application/activity behavior. Keep Screen On is in Player > Resolution and Presentation.");
 
     if (beginSettingsRow("Screen Options", m_androidFullscreen != defaults.fullscreen)) {
         m_androidFullscreen = defaults.fullscreen;
@@ -2700,6 +2769,12 @@ bool ProjectSettingsWindow::applySettings() {
     }
     m_project->setWindowIcon(m_windowIcon);
 
+    PresentationSettings& presentation = m_project->getPresentationSettings();
+    presentation.defaultOrientation = defaultOrientationValues[std::clamp(m_defaultOrientationIndex, 0, defaultOrientationCount - 1)];
+    presentation.allowedOrientations = m_allowedOrientations ? m_allowedOrientations : PresentationSettings{}.allowedOrientations;
+    presentation.keepScreenOn = m_keepScreenOn;
+    presentation.targetFrameRate = m_targetFrameRate <= 0 ? -1 : std::min(m_targetFrameRate, 1000);
+
     ApplicationSettings& application = m_project->getApplicationSettings();
     applyTextBuffer(application.name, m_applicationNameBuffer);
     applyTextBuffer(application.identifier, m_applicationIdentifierBuffer);
@@ -2800,7 +2875,6 @@ bool ProjectSettingsWindow::applySettings() {
     android.adaptiveIconBackground = m_androidAdaptiveIconBackground;
     android.minSdk = static_cast<unsigned int>(std::max(1, m_androidMinSdk));
     android.targetSdk = static_cast<unsigned int>(std::max(m_androidMinSdk, m_androidTargetSdk));
-    android.orientation = androidOrientationValues[std::clamp(m_androidOrientationIndex, 0, androidOrientationCount - 1)];
     android.abiArmeabiV7a = m_androidAbiArmeabiV7a;
     android.abiArm64V8a = m_androidAbiArm64V8a;
     android.abiX86 = m_androidAbiX86;
@@ -2809,7 +2883,6 @@ bool ProjectSettingsWindow::applySettings() {
     android.internetAccess = m_androidInternetAccessIndex == 1 ? AndroidInternetAccess::Require : AndroidInternetAccess::Auto;
     android.allowBackup = m_androidAllowBackup;
     android.fullscreen = m_androidFullscreen;
-    android.keepScreenOn = m_androidKeepScreenOn;
     android.admobEnabled = m_androidAdmobEnabled;
     applyTextBuffer(android.admobAppId, m_androidAdmobAppIdBuffer);
 

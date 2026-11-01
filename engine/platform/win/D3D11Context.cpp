@@ -231,9 +231,13 @@ void D3D11Context::beginFrame() {
 
 void D3D11Context::endFrame() {
     if (!gValid) return;
-    const HRESULT result = gSwapChain->Present(gConfig.vsync ? 1 : 0, 0);
+    const HRESULT result = gSwapChain->Present(static_cast<UINT>(gConfig.swapInterval), 0);
     if (FAILED(result))
         std::fprintf(stderr, "Error: Could not present the D3D11 swapchain (0x%08lx).\n", result);
+}
+
+void D3D11Context::setSwapInterval(int interval) {
+    gConfig.swapInterval = interval < 0 ? 0 : (interval > 4 ? 4 : interval);
 }
 
 sg_environment D3D11Context::environment() {

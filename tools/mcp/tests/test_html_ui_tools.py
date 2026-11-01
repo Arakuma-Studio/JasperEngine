@@ -124,7 +124,11 @@ LIMITS.update({"create_ragdoll": 900})
 # shader globals (spec 2026-10-31-shader-globals 6.7): no new tool; get_shader_uniforms names the globals a
 # shader reads and its global_bindings (+51); merged with main (persistence, ui-canvas-group, physics-3d,
 # http): 151 tools measured 107680, the limit set to it
-TOTAL_LIMIT = 107680
+# platform services (spec 6.9): send_input's `app` events, configure_game_view's device,
+# orientation and language, get_play_state's platform (+468 on its branch); merged with main
+# (ui-canvas-group, physics-3d, http): 151 tools measured 108094 (tool_budget.py), the limit set to it
+# merged by the lead (shader-globals + platform-services): provisional sum, re-measured on the merged tree
+TOTAL_LIMIT = 108160
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
