@@ -104,6 +104,21 @@ namespace {
         return pose;
     }
 
+    // SoLoud's velocity of what went from `from` to `to` in `seconds`: units a second, the other way
+    // round (SoLoud's Doppler takes its velocities negated). None for a move faster than sound (a
+    // teleport, a camera cut), and at most half the speed of sound over the Doppler factor, below
+    // which SoLoud's Doppler never divides by zero.
+    Vector3 dopplerVelocity(const Vector3& from, const Vector3& to, double seconds, float factor) {
+        if (!(seconds > 0.0)) return Vector3(0, 0, 0);
+        Vector3 velocity = (from - to) / (float)seconds;
+        const float sound = AudioSystem::getSoloud().get3dSoundSpeed();
+        const float speed = velocity.length();
+        if (!(speed < sound)) return Vector3(0, 0, 0);
+        const float limit = 0.5f * sound / std::max(1.0f, factor);
+        if (speed > limit) velocity *= limit / speed;
+        return velocity;
+    }
+
     // 0 for a voice that could not start
     void registerVoice(unsigned int handle, Scene* owner, const std::string& groupId, int priority, bool isProtected) {
         if (handle == 0) return;
@@ -369,6 +384,7 @@ void AudioSystem::moveSourceVoices(Scene* from, AudioSourceComponent& source, Sc
     target.state = source.state;
     target.playingTime = source.playingTime;
     target.lastPosition = source.lastPosition;
+    target.positionTracked = source.positionTracked;
     target.oneShots = source.oneShots;
     target.pendingOneShots = source.pendingOneShots;
     target.fade = source.fade;
@@ -1001,6 +1017,9 @@ void AudioSystem::update(double dt){
     preloadSoundAssets();
 
     if (paused) {
+        // what moves while it holds is not a speed
+        motionFresh = false;
+        listenerTracked = false;
         return;
     }
 
@@ -1025,6 +1044,23 @@ void AudioSystem::update(double dt){
     // speeds are near the speed of sound (343.3 units a second)
     const bool doppler = hasListener && cameraPose(*listenerScene).perspective;
     bool any3D = false;
+
+    // the listener's velocity: where it heard from last frame to where it hears now, in units a
+    // second (none for its first frame, another camera, or a frame after the system held)
+    listenerVelocity = Vector3(0, 0, 0);
+    if (hasListener) {
+        const Vector3 position = cameraPose(*listenerScene).position;
+        const Entity cameraEntity = listenerScene->getCamera();
+        if (doppler && motionFresh && listenerTracked && listenerTrackedScene == listenerScene && listenerTrackedCamera == cameraEntity) {
+            listenerVelocity = dopplerVelocity(cameraLastPosition, position, unscaledDt, 1.0f);
+        }
+        cameraLastPosition = position;
+        listenerTracked = true;
+        listenerTrackedScene = listenerScene;
+        listenerTrackedCamera = cameraEntity;
+    } else {
+        listenerTracked = false;
+    }
 
     // The persistent scene's 3D sounds are heard by the loaded main scene's camera every frame
     // (the main scene's own system places it only when it plays 3D voices), before they are
@@ -1086,7 +1122,23 @@ void AudioSystem::update(double dt){
             audio.stopTrigger = false;
             if (audio.fade.active && audio.fade.restore) audio.volume = audio.fade.restoreVolume;
             audio.fade = AudioFade();
+            audio.positionTracked = false;
             continue;
+        }
+
+        // its velocity (units a second) from where it was last frame, tracked while it is silent
+        // too: a one-shot or a play of a moving source starts at its speed
+        Vector3 velocity(0, 0, 0);
+        bool moved = false;
+        if (use3DAudio) {
+            if (doppler && motionFresh && audio.positionTracked) {
+                velocity = dopplerVelocity(audio.lastPosition, worldPosition, unscaledDt, audio.dopplerFactor);
+            }
+            moved = !audio.positionTracked || audio.lastPosition != worldPosition;
+            audio.lastPosition = worldPosition;
+            audio.positionTracked = true;
+        } else {
+            audio.positionTracked = false;
         }
 
         const std::string groupBefore = audio.resolvedGroup;
@@ -1193,9 +1245,6 @@ void AudioSystem::update(double dt){
                         audio.lastVolumeApplied = audio.volume;
                         audio.needUpdate = true;
                         events.push_back({entity, EventStart});
-                        if (use3DAudio) {
-                            audio.lastPosition = worldPosition;
-                        }
                     }
                 }
             }
@@ -1251,18 +1300,19 @@ void AudioSystem::update(double dt){
         }
 
         // 3D voices follow the source (its one-shots too, Unity)
-        if (use3DAudio && (audio.needUpdate || audio.lastPosition != worldPosition)) {
-            const Vector3 velocity = doppler ? audio.lastPosition - worldPosition : Vector3(0, 0, 0);
+        if (use3DAudio && (audio.needUpdate || moved)) {
             if (audio.handle != 0) apply3dParameters(audio, audio.handle, worldPosition, velocity);
             for (const AudioOneShot& shot : audio.oneShots) apply3dParameters(audio, shot.handle, worldPosition, velocity);
-            audio.lastPosition = worldPosition;
-            any3D = true;
-        } else if (use3DAudio) {
+        }
+        if (use3DAudio) {
             any3D = true;
         }
 
         audio.needUpdate = false;
     }
+
+    // the next frame's velocities measure from this one's positions
+    motionFresh = true;
 
     updatePointVoices(unscaledDt);
     for (const PointVoice& voice : pointVoices) any3D = any3D || voice.is3D;
@@ -1289,13 +1339,12 @@ void AudioSystem::placeListener(Scene& listenerScene){
     const Vector3& position = pose.position;
     const Vector3& view = pose.view;
     const Vector3& up = pose.worldUp;
-    const Vector3 velocity = pose.perspective ? cameraLastPosition - position : Vector3(0, 0, 0);
+    const Vector3& velocity = listenerVelocity;
     getSoloud().set3dListenerParameters(position.x, position.y, position.z, view.x, view.y, view.z,
                                         up.x, up.y, up.z, velocity.x, velocity.y, velocity.z);
     if (inited){
         getSoloud().update3dAudio();
     }
-    cameraLastPosition = position;
 }
 
 void AudioSystem::draw(){

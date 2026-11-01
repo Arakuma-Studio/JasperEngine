@@ -54,7 +54,14 @@ namespace jasperengine{
 
 		static float globalVolume;
 
+		// where the listener heard from last frame (the camera that heard), and its velocity this frame
 		Vector3 cameraLastPosition;
+		bool listenerTracked = false;
+		Scene* listenerTrackedScene = nullptr;
+		Entity listenerTrackedCamera = NULL_ENTITY;
+		Vector3 listenerVelocity;
+		// the sources' and the listener's last positions are last frame's (false after the system held)
+		bool motionFresh = false;
 		// the 3D listener at that scene's camera (the persistent scene's system, every frame)
 		void placeListener(Scene& listenerScene);
 		bool outputRequested = false;

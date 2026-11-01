@@ -90,7 +90,9 @@ namespace jasperengine{
         bool loadFailed = false;
 
         bool enableClocked = false;
+        // where a 3D source was last frame (its velocity is the move from there); runtime
         Vector3 lastPosition = Vector3(0, 0, 0);
+        bool positionTracked = false;
 
         bool startTrigger = false;
         bool stopTrigger = false;
