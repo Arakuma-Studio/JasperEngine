@@ -24,7 +24,7 @@
 #include "asset/AssetMap.h"
 #include "Input.h"
 #include "input/InputActions.h"
-#include "input/InputControlNames.h"
+// SYNC4-ABSORB(input): upstream's input/InputControlNames.h left out (S22's InputControlNames is input/InputControlPath.h)
 #include "json.hpp"
 
 #include <set>

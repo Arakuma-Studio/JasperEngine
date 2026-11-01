@@ -10,6 +10,7 @@
 #include <cmath>
 
 using namespace jasperengine;
+using namespace jasperengine::upcurve;   // SYNC4-ABSORB(curve)
 
 GradientColorKey::GradientColorKey(float time, const Vector3& color): time(time), color(color){
 }

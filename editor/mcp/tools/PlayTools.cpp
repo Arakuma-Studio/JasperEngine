@@ -669,7 +669,7 @@ Json playStateJson(McpContext& ctx) {
     for (uint32_t sceneId : PlayChangeReview::get().pendingScenes()) pending += PlayChangeReview::get().pendingCount(sceneId);
     out["pending_play_changes"] = pending;
     if (!s.held.empty()) out["held_input"] = heldInputJson();
-    if (playId != NULL_PROJECT_SCENE && s.current.active) out["input"] = playInputJson();
+    // SYNC4-ABSORB(input): upstream's "input" block (its actions' state, playInputJson) waits for the Input absorption
     // script coroutines and pending timers of the game (get_runtime_entity lists them per script)
     out["coroutines"] = ScriptScheduler::coroutineCount();
     out["timers"] = ScriptScheduler::timerCount();

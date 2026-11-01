@@ -204,25 +204,25 @@ namespace jasperengine::navtest {
         for (int i = 0; i < 4; i++) {
             const Entity entity = staticBody(Vector3(boxes[i].x, boxes[i].y, 0.0f));
             Rigidbody2DComponent& body = scene.getComponent<Rigidbody2DComponent>(entity);
+            body.colliders.resize(1);
             Collider2D& collider = body.colliders[0];
             collider.type = Collider2DType::POLYGON;
-            collider.numVertices = 4;
-            collider.vertices[0] = Vector2(-halves[i].x, -halves[i].y);
-            collider.vertices[1] = Vector2(halves[i].x, -halves[i].y);
-            collider.vertices[2] = Vector2(halves[i].x, halves[i].y);
-            collider.vertices[3] = Vector2(-halves[i].x, halves[i].y);
-            body.numColliders = 1;
+            collider.points.resize(4);
+            collider.points[0] = Vector2(-halves[i].x, -halves[i].y);
+            collider.points[1] = Vector2(halves[i].x, -halves[i].y);
+            collider.points[2] = Vector2(halves[i].x, halves[i].y);
+            collider.points[3] = Vector2(-halves[i].x, halves[i].y);
             fixture.boxes.emplace_back(boxes[i], halves[i]);
         }
         const Vector3 circles[] = {{200.0f, 700.0f, 70.0f}, {1050.0f, 250.0f, 90.0f}};
         for (const Vector3& circle : circles) {
             const Entity entity = staticBody(Vector3(circle.x, circle.y, 0.0f));
             Rigidbody2DComponent& body = scene.getComponent<Rigidbody2DComponent>(entity);
+            body.colliders.resize(1);
             Collider2D& collider = body.colliders[0];
             collider.type = Collider2DType::CIRCLE;
             collider.pointA = Vector2(0.0f, 0.0f);
             collider.radius = circle.z;
-            body.numColliders = 1;
             fixture.circles.push_back(circle);
         }
         resolveTransforms(scene);

@@ -1132,25 +1132,25 @@ Vector4 editor::Stream::decodeVector4(const YAML::Node& node) {
     return Vector4(decodeFinite(node[0], 0.0f), decodeFinite(node[1], 0.0f), decodeFinite(node[2], 0.0f), decodeFinite(node[3], 0.0f));
 }
 
-std::string editor::Stream::curveWrapToString(CurveWrap wrap) {
+std::string editor::Stream::curveWrapToString(upcurve::CurveWrap wrap) {
     switch (wrap) {
-        case CurveWrap::Clamp: return "clamp";
-        case CurveWrap::Loop: return "loop";
-        case CurveWrap::PingPong: return "ping_pong";
+        case upcurve::CurveWrap::Clamp: return "clamp";
+        case upcurve::CurveWrap::Loop: return "loop";
+        case upcurve::CurveWrap::PingPong: return "ping_pong";
     }
     return "clamp";
 }
 
-CurveWrap editor::Stream::stringToCurveWrap(const std::string& str) {
-    if (str == "loop" || str == "repeat") return CurveWrap::Loop;
-    if (str == "ping_pong" || str == "pingpong" || str == "pingPong") return CurveWrap::PingPong;
-    return CurveWrap::Clamp;
+upcurve::CurveWrap editor::Stream::stringToCurveWrap(const std::string& str) {
+    if (str == "loop" || str == "repeat") return upcurve::CurveWrap::Loop;
+    if (str == "ping_pong" || str == "pingpong" || str == "pingPong") return upcurve::CurveWrap::PingPong;
+    return upcurve::CurveWrap::Clamp;
 }
 
-YAML::Node editor::Stream::encodeCurve(const AnimationCurve& curve) {
+YAML::Node editor::Stream::encodeCurve(const upcurve::AnimationCurve& curve) {
     YAML::Node node;
     YAML::Node keys(YAML::NodeType::Sequence);
-    for (const CurveKey& key : curve.keys) {
+    for (const upcurve::CurveKey& key : curve.keys) {
         YAML::Node keyNode;
         keyNode.SetStyle(YAML::EmitterStyle::Flow);
         keyNode.push_back(YamlNumbers::text(key.time));
@@ -1162,26 +1162,26 @@ YAML::Node editor::Stream::encodeCurve(const AnimationCurve& curve) {
         keys.push_back(keyNode);
     }
     node["keys"] = keys;
-    if (curve.preWrap != CurveWrap::Clamp) node["pre"] = curveWrapToString(curve.preWrap);
-    if (curve.postWrap != CurveWrap::Clamp) node["post"] = curveWrapToString(curve.postWrap);
+    if (curve.preWrap != upcurve::CurveWrap::Clamp) node["pre"] = curveWrapToString(curve.preWrap);
+    if (curve.postWrap != upcurve::CurveWrap::Clamp) node["post"] = curveWrapToString(curve.postWrap);
     return node;
 }
 
-AnimationCurve editor::Stream::decodeCurve(const YAML::Node& node, const AnimationCurve& fallback) {
+upcurve::AnimationCurve editor::Stream::decodeCurve(const YAML::Node& node, const upcurve::AnimationCurve& fallback) {
     if (!node || node.IsNull()) return fallback;
     // a number: a constant curve
     if (node.IsScalar()) {
         try {
-            return AnimationCurve::constant(node.as<float>());
+            return upcurve::AnimationCurve::constant(node.as<float>());
         } catch (const YAML::Exception&) {
             return fallback;
         }
     }
-    AnimationCurve curve;
+    upcurve::AnimationCurve curve;
     YAML::Node keys = node.IsSequence() ? node : node["keys"];
     if (keys && keys.IsSequence()) {
         for (const YAML::Node& keyNode : keys) {
-            CurveKey key;
+            upcurve::CurveKey key;
             try {
                 if (keyNode.IsSequence() && keyNode.size() >= 2) {
                     key.time = keyNode[0].as<float>();
@@ -1289,11 +1289,11 @@ namespace {
 
 }
 
-YAML::Node editor::Stream::encodeGradient(const Gradient& gradient) {
+YAML::Node editor::Stream::encodeGradient(const upcurve::Gradient& gradient) {
     YAML::Node node;
-    node["mode"] = gradient.mode == GradientMode::Fixed ? "fixed" : "blend";
+    node["mode"] = gradient.mode == upcurve::GradientMode::Fixed ? "fixed" : "blend";
     YAML::Node colors(YAML::NodeType::Sequence);
-    for (const GradientColorKey& key : gradient.colorKeys) {
+    for (const upcurve::GradientColorKey& key : gradient.colorKeys) {
         YAML::Node keyNode;
         keyNode.SetStyle(YAML::EmitterStyle::Flow);
         keyNode.push_back(YamlNumbers::text(key.time));
@@ -1302,7 +1302,7 @@ YAML::Node editor::Stream::encodeGradient(const Gradient& gradient) {
     }
     node["colors"] = colors;
     YAML::Node alphas(YAML::NodeType::Sequence);
-    for (const GradientAlphaKey& key : gradient.alphaKeys) {
+    for (const upcurve::GradientAlphaKey& key : gradient.alphaKeys) {
         YAML::Node keyNode;
         keyNode.SetStyle(YAML::EmitterStyle::Flow);
         keyNode.push_back(YamlNumbers::text(key.time));
@@ -1313,20 +1313,20 @@ YAML::Node editor::Stream::encodeGradient(const Gradient& gradient) {
     return node;
 }
 
-Gradient editor::Stream::decodeGradient(const YAML::Node& node, const Gradient& fallback) {
+upcurve::Gradient editor::Stream::decodeGradient(const YAML::Node& node, const upcurve::Gradient& fallback) {
     if (!node || node.IsNull()) return fallback;
     // a single colour: a constant gradient
     Vector4 single;
     bool singleAlpha = false;
     if ((node.IsScalar() || (node.IsSequence() && node.size() >= 3 && node[0].IsScalar())) && decodeColorValue(node, single, singleAlpha)) {
-        return Gradient::constant(single);
+        return upcurve::Gradient::constant(single);
     }
     if (!node.IsMap()) return fallback;
 
-    Gradient gradient({}, {});
+    upcurve::Gradient gradient({}, {});
     if (node["mode"]) {
         if (node["mode"].IsScalar()) {
-            gradient.mode = (node["mode"].Scalar() == "fixed") ? GradientMode::Fixed : GradientMode::Blend;
+            gradient.mode = (node["mode"].Scalar() == "fixed") ? upcurve::GradientMode::Fixed : upcurve::GradientMode::Blend;
         } else {
             Out::warning("Gradient: mode is not blend or fixed: blend");
         }
@@ -1337,19 +1337,19 @@ Gradient editor::Stream::decodeGradient(const YAML::Node& node, const Gradient& 
             Vector4 color;
             bool hasAlpha = false;
             if (!decodeColorValue(keyNode[1], color, hasAlpha)) continue;
-            gradient.colorKeys.push_back(GradientColorKey(decodeFinite(keyNode[0], 0.0f), Vector3(color.x, color.y, color.z)));
+            gradient.colorKeys.push_back(upcurve::GradientColorKey(decodeFinite(keyNode[0], 0.0f), Vector3(color.x, color.y, color.z)));
         }
     }
     if (node["alphas"] && node["alphas"].IsSequence()) {
         for (const YAML::Node& keyNode : node["alphas"]) {
             if (!keyNode.IsSequence() || keyNode.size() < 2) continue;
-            gradient.alphaKeys.push_back(GradientAlphaKey(decodeFinite(keyNode[0], 0.0f), decodeFinite(keyNode[1], 1.0f)));
+            gradient.alphaKeys.push_back(upcurve::GradientAlphaKey(decodeFinite(keyNode[0], 0.0f), decodeFinite(keyNode[1], 1.0f)));
         }
     }
     // more than Unity's 8 keys: the file still loads, with the first 7 and the last (normalize)
-    if (gradient.colorKeys.size() > Gradient::MAX_KEYS || gradient.alphaKeys.size() > Gradient::MAX_KEYS) {
+    if (gradient.colorKeys.size() > upcurve::Gradient::MAX_KEYS || gradient.alphaKeys.size() > upcurve::Gradient::MAX_KEYS) {
         Out::warning("Gradient: %zu colour and %zu alpha keys, at most %zu each: the first %zu and the last are kept",
-                     gradient.colorKeys.size(), gradient.alphaKeys.size(), Gradient::MAX_KEYS, Gradient::MAX_KEYS - 1);
+                     gradient.colorKeys.size(), gradient.alphaKeys.size(), upcurve::Gradient::MAX_KEYS, upcurve::Gradient::MAX_KEYS - 1);
     }
     gradient.normalize();
     return gradient;
@@ -1377,6 +1377,7 @@ YAML::Node editor::Stream::encodeColorValue(const Vector4& linear) {
     return node;
 }
 
+#if 0 // SYNC4-ABSORB(particles): upstream's version 2 particle values (MinMaxCurve/Gradient, bursts)
 YAML::Node editor::Stream::encodeMinMaxCurve(const MinMaxCurve& curve) {
     switch (curve.mode) {
         case ParticleSystemCurveMode::Constant:
@@ -1522,6 +1523,8 @@ std::vector<ParticleEmissionBurst> editor::Stream::decodeParticleBursts(const YA
     }
     return bursts;
 }
+
+#endif // SYNC4-ABSORB(particles)
 
 YAML::Node editor::Stream::encodeShaderUniforms(const ShaderUniformValues& uniforms) {
     YAML::Node node;

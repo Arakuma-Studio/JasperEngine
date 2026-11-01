@@ -2730,7 +2730,7 @@ bool editor::Exporter::cookColorLut(const fs::path& source, const fs::path& dest
 }
 
 bool editor::Exporter::copyPngWithoutEditorChunks(const fs::path& source, const fs::path& destination) {
-    std::string ext = source.extension().u8string();
+    std::string ext = jasperengine::editor::FileUtils::pathToUtf8(source.extension());
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     if (ext != ".png") return false;
     // an explicit sized read: a short or failed read (an I/O error mid-file) falls back to the

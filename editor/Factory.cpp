@@ -616,15 +616,15 @@ std::string editor::Factory::formatFloat(float value) {
 namespace {
 
     std::string formatCurveNumber(float value) {
-        if (std::isinf(value)) return value > 0.0f ? "AnimationCurve::STEP" : "-AnimationCurve::STEP";
+        if (std::isinf(value)) return value > 0.0f ? "upcurve::AnimationCurve::STEP" : "-upcurve::AnimationCurve::STEP";
         return editor::Factory::formatFloat(value);
     }
 
-    const char* formatCurveWrap(CurveWrap wrap) {
+    const char* formatCurveWrap(upcurve::CurveWrap wrap) {
         switch (wrap) {
-            case CurveWrap::Loop: return "CurveWrap::Loop";
-            case CurveWrap::PingPong: return "CurveWrap::PingPong";
-            default: return "CurveWrap::Clamp";
+            case upcurve::CurveWrap::Loop: return "upcurve::CurveWrap::Loop";
+            case upcurve::CurveWrap::PingPong: return "upcurve::CurveWrap::PingPong";
+            default: return "upcurve::CurveWrap::Clamp";
         }
     }
 
@@ -673,35 +673,36 @@ namespace {
 
 }
 
-std::string editor::Factory::formatCurve(const AnimationCurve& curve) {
+std::string editor::Factory::formatCurve(const upcurve::AnimationCurve& curve) {
     std::ostringstream code;
-    code << "AnimationCurve({";
+    code << "upcurve::AnimationCurve({";
     for (size_t i = 0; i < curve.keys.size(); i++) {
-        const CurveKey& key = curve.keys[i];
+        const upcurve::CurveKey& key = curve.keys[i];
         if (i > 0) code << ", ";
-        code << "CurveKey(" << formatFloat(key.time) << ", " << formatFloat(key.value) << ", "
+        code << "upcurve::CurveKey(" << formatFloat(key.time) << ", " << formatFloat(key.value) << ", "
              << formatCurveNumber(key.inTangent) << ", " << formatCurveNumber(key.outTangent) << ")";
     }
     code << "}, " << formatCurveWrap(curve.preWrap) << ", " << formatCurveWrap(curve.postWrap) << ")";
     return code.str();
 }
 
-std::string editor::Factory::formatGradient(const Gradient& gradient) {
+std::string editor::Factory::formatGradient(const upcurve::Gradient& gradient) {
     std::ostringstream code;
-    code << "Gradient({";
+    code << "upcurve::Gradient({";
     for (size_t i = 0; i < gradient.colorKeys.size(); i++) {
         if (i > 0) code << ", ";
-        code << "GradientColorKey(" << formatFloat(gradient.colorKeys[i].time) << ", " << formatVector3(gradient.colorKeys[i].color) << ")";
+        code << "upcurve::GradientColorKey(" << formatFloat(gradient.colorKeys[i].time) << ", " << formatVector3(gradient.colorKeys[i].color) << ")";
     }
     code << "}, {";
     for (size_t i = 0; i < gradient.alphaKeys.size(); i++) {
         if (i > 0) code << ", ";
-        code << "GradientAlphaKey(" << formatFloat(gradient.alphaKeys[i].time) << ", " << formatFloat(gradient.alphaKeys[i].alpha) << ")";
+        code << "upcurve::GradientAlphaKey(" << formatFloat(gradient.alphaKeys[i].time) << ", " << formatFloat(gradient.alphaKeys[i].alpha) << ")";
     }
-    code << "}, " << (gradient.mode == GradientMode::Fixed ? "GradientMode::Fixed" : "GradientMode::Blend") << ")";
+    code << "}, " << (gradient.mode == upcurve::GradientMode::Fixed ? "upcurve::GradientMode::Fixed" : "upcurve::GradientMode::Blend") << ")";
     return code.str();
 }
 
+#if 0 // SYNC4-ABSORB(particles): upstream's MinMaxCurve / MinMaxGradient literals
 std::string editor::Factory::formatMinMaxCurve(const MinMaxCurve& curve) {
     switch (curve.mode) {
         case ParticleSystemCurveMode::Constant:
@@ -734,6 +735,7 @@ std::string editor::Factory::formatMinMaxGradient(const MinMaxGradient& gradient
     }
     return "MinMaxGradient::fromColor(" + formatVector4(gradient.color) + ")";
 }
+#endif
 
 std::string editor::Factory::formatPositiveFloat(float value) {
     return formatFloat(std::isfinite(value) && value > 0.0f ? value : 1.0f);

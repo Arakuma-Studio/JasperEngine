@@ -20,6 +20,7 @@
 #include <new>
 #include <numeric>
 #include <system_error>
+#include "util/FileUtils.h"
 
 namespace fs = std::filesystem;
 
@@ -986,7 +987,7 @@ namespace jasperengine::editor::spritenormals {
     }
 
     bool probeSource(const fs::path& path, SourceInfo& info, std::vector<Problem>& problems) {
-        const Errors e{path.filename().u8string(), &problems};
+        const Errors e{jasperengine::editor::FileUtils::pathToUtf8(path.filename()), &problems};
         return guarded(e, [&] {
             std::vector<uint8_t> bytes;
             if (!readFile(path, bytes, e)) return false;
@@ -995,7 +996,7 @@ namespace jasperengine::editor::spritenormals {
     }
 
     bool loadSource(const fs::path& path, Source& out, std::vector<Problem>& problems) {
-        const Errors e{path.filename().u8string(), &problems};
+        const Errors e{jasperengine::editor::FileUtils::pathToUtf8(path.filename()), &problems};
         return guarded(e, [&] {
             std::vector<uint8_t> bytes;
             if (!readFile(path, bytes, e)) return false;

@@ -233,7 +233,7 @@ bool EditorFrame::run(EditorFrameState& state){
         const double limit = state.focused || state.framePeriod <= 0.0
             ? pacing.limiterFps : std::min(pacing.limiterFps, 1.0 / state.framePeriod);
         playLimiter.wait(limit);
-        frameDeadline = monotonicSeconds();
+        frameDeadline = frameMonotonicSeconds();
     }else{
         playLimiter.reset();
     }

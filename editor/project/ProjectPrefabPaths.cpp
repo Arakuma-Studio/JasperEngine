@@ -626,7 +626,7 @@ void editor::Project::applyClipAssetChanges(const std::vector<AssetDatabase::Cha
         }
     }
     // (their documents reload there)
-    relinkControllerGuids(this, relinked);
+    // SYNC4-ABSORB(animator): upstream relinked its .controller files' clip GUIDs here (relinkControllerGuids)
     AnimationClipDocument::filesChanged(touched, this);
     // Vertex Animations: their documents reload, the pool drops them, their animators reload
     VatDocument::filesChanged(touched, this);

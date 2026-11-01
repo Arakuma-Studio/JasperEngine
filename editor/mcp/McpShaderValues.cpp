@@ -69,6 +69,7 @@ const char* textureDefaultName(ShaderTextureDefault value) {
         case ShaderTextureDefault::NORMAL: return "normal";
         case ShaderTextureDefault::RIPPLES: return "ripples";
         case ShaderTextureDefault::NOISE: return "noise";
+        case ShaderTextureDefault::PARTICLE: return "particle";
     }
     return "white";
 }

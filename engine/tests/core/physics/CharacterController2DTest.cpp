@@ -67,11 +67,11 @@ namespace {
             transform.needUpdate = true;
             Rigidbody2DComponent rigidbody;
             rigidbody.type = type;
+            rigidbody.colliders.resize(1);
             rigidbody.colliders[0].type = Collider2DType::POLYGON;
             rigidbody.colliders[0].pointA = Vector2(-size.x * 0.5f, -size.y * 0.5f);
             rigidbody.colliders[0].pointB = Vector2(size.x * 0.5f, size.y * 0.5f);
             rigidbody.colliders[0].density = density;
-            rigidbody.numColliders = 1;
             scene->addComponent<Rigidbody2DComponent>(entity, rigidbody);
             return entity;
         }

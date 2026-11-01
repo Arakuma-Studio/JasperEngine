@@ -282,7 +282,7 @@ namespace {
             return anim::replaceClipGuid(text, guid.str());
         }
         const std::string kind = anim::animatorAssetKind(text);
-        if (kind == "controller") return rewriteIdentity(anim::parseController(text), &anim::writeController, text, guid, formerGuids);
+        if (kind == "controller") return rewriteIdentity(anim::parseController(text), static_cast<std::string (*)(const anim::ControllerDef&)>(&anim::writeController), text, guid, formerGuids);
         if (kind == "mask") return rewriteIdentity(anim::parseMask(text), &anim::writeMask, text, guid, formerGuids);
         return rewriteIdentity(anim::parseMontage(text), &anim::writeMontage, text, guid, formerGuids);
     }

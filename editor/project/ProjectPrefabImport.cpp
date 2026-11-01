@@ -122,10 +122,12 @@ namespace jasperengine::editor::prefabinternal {
                 const EntityReference* rb = static_cast<EntityReference*>(b.ref);
                 return ra->entity == rb->entity && ra->sceneId == rb->sceneId;
             }
+#if 0 // SYNC4-ABSORB(curve): upstream's AnimationCurve / Gradient / MinMax property types
             case PropertyType::Curve: return *static_cast<AnimationCurve*>(a.ref) == *static_cast<AnimationCurve*>(b.ref);
             case PropertyType::Gradient: return *static_cast<Gradient*>(a.ref) == *static_cast<Gradient*>(b.ref);
             case PropertyType::MinMaxCurve: return *static_cast<MinMaxCurve*>(a.ref) == *static_cast<MinMaxCurve*>(b.ref);
             case PropertyType::MinMaxGradient: return *static_cast<MinMaxGradient*>(a.ref) == *static_cast<MinMaxGradient*>(b.ref);
+#endif
             default: return false;
         }
     }

@@ -2609,7 +2609,7 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
         if (Util::isImageFile(fileEntry.extension)){
             fileEntry.type = FileType::IMAGE;
             // a Sprite Normal Map output (its recipe; read again only when the file changed)
-            updateSpriteNormalsBadge(fileEntry, entry.path());
+            updateSpriteNormalsBadge(fileEntry, path);
         }else if (Util::isSceneFile(fileEntry.extension)){
             fileEntry.type = FileType::SCENE;
             fileEntry.icon = sceneIcon.getRender();
@@ -3831,7 +3831,7 @@ void editor::ProjectWindow::drawSpriteNormalsMenuItems(const FileEntry& file, co
             editor::getEditorHost().openSpriteNormals(images, false);
         }
         UIProbe::item("project.menu.generateNormalMap");
-        ImGui::SetItemTooltip("Sprite Normal Map with this image: preview it lit, then save %s_normal.png", imagePath.stem().u8string().c_str());
+        ImGui::SetItemTooltip("Sprite Normal Map with this image: preview it lit, then save %s_normal.png", jasperengine::editor::FileUtils::pathToUtf8(imagePath.stem()).c_str());
     }
     // a generated output (its recipe), or a source with its generated map beside it
     const fs::path root = project->getProjectPath();
@@ -3852,7 +3852,7 @@ void editor::ProjectWindow::drawSpriteNormalsMenuItems(const FileEntry& file, co
             // on the worker; the window's tick writes it (one undo step) and refreshes this window
             std::string error;
             if (!Backend::getApp().getSpriteNormalsWindow()->startRegenerate(output, error)) {
-                editor::getEditorHost().registerAlert("Sprite Normal Map", "Can't regenerate " + output.filename().u8string() + ": " + error);
+                editor::getEditorHost().registerAlert("Sprite Normal Map", "Can't regenerate " + jasperengine::editor::FileUtils::pathToUtf8(output.filename()) + ": " + error);
             }
         }
         UIProbe::item("project.menu.regenerateNormalMap");

@@ -185,6 +185,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
             case ShaderTextureDefault::NORMAL: return "flat normal";
             case ShaderTextureDefault::RIPPLES: return "built-in ripples";
             case ShaderTextureDefault::NOISE: return "built-in noise";
+            case ShaderTextureDefault::PARTICLE: return "built-in particle";
         }
         return "white";
     }

@@ -32,7 +32,7 @@
 #include "component/LatticeComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "animation/ClipTypes.h"
-#include "particles/ParticleSimulation.h"
+// SYNC4-ABSORB(particles): upstream's particles/ParticleSimulation.h (version 2) left out
 
 namespace jasperengine{
 
@@ -163,6 +163,7 @@ namespace jasperengine{
 
 		void processRunningAction(double dt, Entity entity, ActionComponent& action);
 
+#if 0 // SYNC4-ABSORB(particles): upstream's version 2 Particle System control (ActionSystemParticles.cpp, out of the build)
 		// version 2 Particle Systems (particles spec 6.5; ActionSystemParticles.cpp): stepped in
 		// a pass of their own after the actions' (a stopped system with emitted particles
 		// simulates too), their stop actions run at the end of update()
@@ -179,6 +180,8 @@ namespace jasperengine{
 		std::vector<Entity> pendingParticleStops;
 		// updateParticleSystems' list of systems, kept between frames
 		std::vector<Entity> particleUpdateScratch;
+
+#endif
 
 		float getDuration(Entity entity, int depth);
 		bool isAnimationReachable(Entity from, Entity target, std::unordered_set<Entity>& visited);
@@ -251,6 +254,7 @@ namespace jasperengine{
 		void actionStop(Entity entity);
 		void actionPause(Entity entity);
 
+#if 0 // SYNC4-ABSORB(particles): upstream's version 2 Particle System control (ActionSystemParticles.cpp, out of the build)
 		// version 2 Particle Systems (Unity's ParticleSystem control): every version 2 system of
 		// the GameObject and, withChildren, of its children in hierarchy order. play() and
 		// stop() change the system now; onStart / onStop follow at the next update
@@ -278,6 +282,8 @@ namespace jasperengine{
 		// the Scene view's particle preview (edit mode): steps these systems (their triggers
 		// applied), never running stop actions
 		void updateParticlePreview(double dt, const std::vector<Entity>& entities);
+
+#endif
 
 		// Edit-mode preview of clips on a root (animation clips spec 9.R21): what the Animation
 		// window's clip mode and MCP preview_animation drive (through AnimationClipController).

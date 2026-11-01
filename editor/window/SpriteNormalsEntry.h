@@ -28,6 +28,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "util/FileUtils.h"
 
 namespace jasperengine::editor::spritenormalsentry {
 
@@ -43,7 +44,7 @@ namespace jasperengine::editor::spritenormalsentry {
     };
 
     inline std::string lowerExtension(const fs::path& path) {
-        std::string ext = path.extension().u8string();
+        std::string ext = jasperengine::editor::FileUtils::pathToUtf8(path.extension());
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return ext;
     }
@@ -63,7 +64,7 @@ namespace jasperengine::editor::spritenormalsentry {
         if (ec) return RecipeHead();
         const uintmax_t size = fs::file_size(png, ec);
         if (ec) return RecipeHead();
-        const std::string key = png.lexically_normal().generic_u8string();
+        const std::string key = jasperengine::editor::FileUtils::pathToGenericUtf8(png.lexically_normal());
         auto it = cache.find(key);
         if (it != cache.end() && it->second.time == time && it->second.size == size) return it->second.head;
         Entry entry;
@@ -87,14 +88,14 @@ namespace jasperengine::editor::spritenormalsentry {
     }
 
     inline std::string fileName(const std::string& path) {
-        const std::string name = fs::u8path(path).filename().u8string();
+        const std::string name = jasperengine::editor::FileUtils::pathToUtf8(fs::u8path(path).filename());
         return name.empty() ? path : name;
     }
 
     // The generated normal map beside a source image (<stem>_normal.png or <stem>_sheet_normal.png)
     // whose recipe names that image; empty when there is none
     inline fs::path pairedOutput(const fs::path& projectDir, const fs::path& source) {
-        const std::string stem = source.stem().u8string();
+        const std::string stem = jasperengine::editor::FileUtils::pathToUtf8(source.stem());
         for (const char* suffix : {"_normal.png", "_sheet_normal.png"}) {
             const fs::path candidate = source.parent_path() / fs::u8path(stem + suffix);
             const RecipeHead head = recipeHead(projectDir, candidate);

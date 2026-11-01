@@ -8,6 +8,8 @@
 #include "Catalog.h"
 #include "Out.h"
 #include "Project.h"
+#include "DocumentFile.h"
+#include "Stream.h"
 #include "animation/AnimationClipDocument.h"
 #include "command/CommandHistory.h"
 #include "pool/TextureDataPool.h"
@@ -225,7 +227,19 @@ editor::ProjectFileWrites::Refreshed editor::ProjectFileWrites::refresh(Project*
     AnimationClipDocument::filesChanged(changedPaths, project);
     VatDocument::filesChanged(changedPaths, project);
 
-    if (anyMaterial || force) project->refreshLinkedMaterials(true);
+    if (anyMaterial || force) {
+        // the linked .material files written (every one when forced) read again into their
+        // submeshes (oe-port's Project::applyLinkedMaterialFile; upstream's refreshLinkedMaterials)
+        for (const std::string& linked : project->getLinkedMaterialFiles()) {
+            const fs::path path = (project->getProjectPath() / linked).lexically_normal();
+            if (!force && changed.count(path) == 0) continue;
+            try {
+                project->applyLinkedMaterialFile(linked, Stream::decodeMaterial(DocumentFiles::read(path, DocumentKind::Material).root));
+            } catch (const std::exception& e) {
+                Out::error("%s", e.what());
+            }
+        }
+    }
     if (anyShader || force) project->invalidateCustomShaders();
     refreshed.shadersInvalidated = anyShader;
     refreshed.texturesReloaded = reloadTextures(project, images);

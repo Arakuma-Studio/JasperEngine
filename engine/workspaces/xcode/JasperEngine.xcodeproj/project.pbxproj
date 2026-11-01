@@ -4089,8 +4089,6 @@
 		4A534E4771F369477A4B22CC /* CurveJson.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4707AEFC0DB5C2DC02 /* CurveJson.h */; };
 		4A534E47D17B678C8F81B040 /* InputActions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730DD301E6ACE24A9 /* InputActions.cpp */; };
 		4A534E47AC81945749605313 /* InputActions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730DD301E6ACE24A9 /* InputActions.cpp */; };
-		4A534E47A988705C5C005E19 /* InputControlNames.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */; };
-		4A534E479968450BA2CEF5BB /* InputControlNames.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */; };
 		4A534E4749E3318561E17181 /* InputActions.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47DA77C1DF72E1D462 /* InputActions.h */; };
 		4A534E47CC9B5D8BFDD75814 /* InputControlNames.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4763010A7AB6271A0C /* InputControlNames.h */; };
 		4A534E471E54C5C8414BD121 /* CanvasGroup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CC52175BD8DE955D /* CanvasGroup.cpp */; };
@@ -4193,24 +4191,8 @@
 		4A534E474269687D105CA51D /* Collision.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4733724F6EEF14DB82 /* Collision.h */; };
 		4A534E471B213535798BF4BE /* Collision2D.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474FA579066E077C7A /* Collision2D.h */; };
 		4A534E474A7C68D81C25A4F3 /* ContactTracker.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E00F9DE4AB0805F0 /* ContactTracker.h */; };
-		4A534E47DCB3649B76DF662D /* MinMax.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AEEF734FC9A1DE06 /* MinMax.cpp */; };
-		4A534E473B31CA976C874AE9 /* MinMax.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AEEF734FC9A1DE06 /* MinMax.cpp */; };
-		4A534E470BB68EBC69A7983C /* ParticleFields.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DB3BE228C037C932 /* ParticleFields.cpp */; };
-		4A534E47FF513E8087E55C99 /* ParticleFields.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DB3BE228C037C932 /* ParticleFields.cpp */; };
 		4A534E47BF2A3508605C2AA6 /* ParticleModules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47851D966449DCE973 /* ParticleModules.cpp */; };
 		4A534E47882646202CB563DB /* ParticleModules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47851D966449DCE973 /* ParticleModules.cpp */; };
-		4A534E47BEFC2B7543B83919 /* ParticleNoise.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4771A1933E13DF24F7 /* ParticleNoise.cpp */; };
-		4A534E47676AFE1161B8D47F /* ParticleNoise.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4771A1933E13DF24F7 /* ParticleNoise.cpp */; };
-		4A534E47BB623145D4A66BBD /* ParticleShapes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478E98CE2FBA02618E /* ParticleShapes.cpp */; };
-		4A534E47A342B7B089A7F257 /* ParticleShapes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478E98CE2FBA02618E /* ParticleShapes.cpp */; };
-		4A534E47160DFF77DA91001C /* ParticleSimulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E03698B4E85B5BAA /* ParticleSimulation.cpp */; };
-		4A534E4748581C624395D4BB /* ParticleSimulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E03698B4E85B5BAA /* ParticleSimulation.cpp */; };
-		4A534E473F24882C1A62997B /* ParticleUpgrade.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D6C732341EF9921D /* ParticleUpgrade.cpp */; };
-		4A534E4715A1589DC34790B4 /* ParticleUpgrade.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D6C732341EF9921D /* ParticleUpgrade.cpp */; };
-		4A534E476DACC88BC9C47409 /* ParticleClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */; };
-		4A534E4738981FC54EBE9280 /* ParticleClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */; };
-		4A534E47BAC7D2CEF29CFFE6 /* ActionSystemParticles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471CF047A32835BE30 /* ActionSystemParticles.cpp */; };
-		4A534E4734884D6ECAFA0459 /* ActionSystemParticles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471CF047A32835BE30 /* ActionSystemParticles.cpp */; };
 		4A534E4757FF1BC3B82F464F /* ParticleSystemModule.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4725212AA03130A5CA /* ParticleSystemModule.h */; };
 		4A534E4791220744CF917054 /* MinMax.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475C7CE6EBA1324928 /* MinMax.h */; };
 		4A534E471D0E2F3B1D9AD1CA /* ParticleFields.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474699FAACECE71F31 /* ParticleFields.h */; };
@@ -17277,7 +17259,6 @@
 				4A534E47B21F9A6344B4CC05 /* AnimatorSystem.cpp in Sources */,
 				4A534E477F1D537B5FCAB48A /* CurveJson.cpp in Sources */,
 				4A534E47D17B678C8F81B040 /* InputActions.cpp in Sources */,
-				4A534E47A988705C5C005E19 /* InputControlNames.cpp in Sources */,
 				4A534E47FAB0AB03DCC4FB57 /* PhysicsMaterialPool.cpp in Sources */,
 				4A534E471DFCCEA6BE1F6704 /* PhysicsMaterial.cpp in Sources */,
 				4A534E47E92F88382C9E5395 /* PolygonDecomposition2D.cpp in Sources */,
@@ -17309,15 +17290,7 @@
 				4A534E47AB9CC6E5C6D9F2FB /* Collision2D.cpp in Sources */,
 				4A534E4791F8F1B509D23D29 /* ContactTracker.cpp in Sources */,
 				4A534E476C5FB9A5FFF8B365 /* PhysicsSystemContacts.cpp in Sources */,
-				4A534E47DCB3649B76DF662D /* MinMax.cpp in Sources */,
-				4A534E470BB68EBC69A7983C /* ParticleFields.cpp in Sources */,
 				4A534E47BF2A3508605C2AA6 /* ParticleModules.cpp in Sources */,
-				4A534E47BEFC2B7543B83919 /* ParticleNoise.cpp in Sources */,
-				4A534E47BB623145D4A66BBD /* ParticleShapes.cpp in Sources */,
-				4A534E47160DFF77DA91001C /* ParticleSimulation.cpp in Sources */,
-				4A534E473F24882C1A62997B /* ParticleUpgrade.cpp in Sources */,
-				4A534E476DACC88BC9C47409 /* ParticleClassesLua.cpp in Sources */,
-				4A534E47BAC7D2CEF29CFFE6 /* ActionSystemParticles.cpp in Sources */,
 				4A534E47CE4DDDD5406DCD9F /* OnScreenControls.cpp in Sources */,
 				4A534E475734202A34670B36 /* OnScreenControls.cpp in Sources */,
 				4A534E476A7F8F86DF73A561 /* UISystemPointer.cpp in Sources */,
@@ -18041,7 +18014,6 @@
 				4A534E475068D6F918B554F4 /* AnimatorSystem.cpp in Sources */,
 				4A534E47EDF76759E42FAB79 /* CurveJson.cpp in Sources */,
 				4A534E47AC81945749605313 /* InputActions.cpp in Sources */,
-				4A534E479968450BA2CEF5BB /* InputControlNames.cpp in Sources */,
 				4A534E474B176E0554781362 /* PhysicsMaterialPool.cpp in Sources */,
 				4A534E479093D6E5BB6D8523 /* PhysicsMaterial.cpp in Sources */,
 				4A534E472D1D3FE08F50731F /* PolygonDecomposition2D.cpp in Sources */,
@@ -18073,15 +18045,7 @@
 				4A534E470BBAB467919681F6 /* Collision2D.cpp in Sources */,
 				4A534E47A30D915728D13D43 /* ContactTracker.cpp in Sources */,
 				4A534E47298606EA1E9962DE /* PhysicsSystemContacts.cpp in Sources */,
-				4A534E473B31CA976C874AE9 /* MinMax.cpp in Sources */,
-				4A534E47FF513E8087E55C99 /* ParticleFields.cpp in Sources */,
 				4A534E47882646202CB563DB /* ParticleModules.cpp in Sources */,
-				4A534E47676AFE1161B8D47F /* ParticleNoise.cpp in Sources */,
-				4A534E47A342B7B089A7F257 /* ParticleShapes.cpp in Sources */,
-				4A534E4748581C624395D4BB /* ParticleSimulation.cpp in Sources */,
-				4A534E4715A1589DC34790B4 /* ParticleUpgrade.cpp in Sources */,
-				4A534E4738981FC54EBE9280 /* ParticleClassesLua.cpp in Sources */,
-				4A534E4734884D6ECAFA0459 /* ActionSystemParticles.cpp in Sources */,
 				4A534E472B759C831029D9FF /* OnScreenControls.cpp in Sources */,
 				4A534E4775C989A97F7DAD2F /* OnScreenControls.cpp in Sources */,
 				4A534E475C8615BE887AD90C /* UISystemPointer.cpp in Sources */,

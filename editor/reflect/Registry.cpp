@@ -99,6 +99,12 @@ namespace {
         &kSplineAnimateDesc,
         &kAnimatorDesc,
         &kVertexAnimatorDesc,
+        &kTrailRendererDesc,
+        &kCanvasGroupDesc,
+        &kOnScreenStickDesc,
+        &kOnScreenButtonDesc,
+        &kTouchAreaDesc,
+        &kRagdollDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
 
@@ -183,6 +189,13 @@ namespace {
         &kMeshPolygonDesc,
         &kInstancedMeshDesc,
         &kPrefabDesc,
+        // upstream's (UpstreamReflect.cpp)
+        &kTrailRendererDesc,
+        &kCanvasGroupDesc,
+        &kOnScreenStickDesc,
+        &kOnScreenButtonDesc,
+        &kTouchAreaDesc,
+        &kRagdollDesc,
     };
 
     // the order a GameObject lists its components in (Catalog::findComponents: the exported code)
@@ -266,6 +279,12 @@ namespace {
         &kUIDesc,
         &kLayoutGroupDesc,
         &kRectTransformDesc,
+        &kTrailRendererDesc,
+        &kCanvasGroupDesc,
+        &kOnScreenStickDesc,
+        &kOnScreenButtonDesc,
+        &kTouchAreaDesc,
+        &kRagdollDesc,
     };
 
     constexpr const EnumDesc* kEnums[] = {
@@ -290,6 +309,9 @@ namespace {
         &enums::kSplineExtrudeShape, &enums::kSplineWidthSource, &enums::kSplineCornerStyle, &enums::kSplineGrade, &enums::kSplineConform,
         &enums::kSplineCollision, &enums::kSplineInstantiateMode, &enums::kSplineSpacingFit, &enums::kSplinePlantMode,
         &enums::kSplineSpanOverrideKind, &enums::kSplineAnimateMethod, &enums::kSplineLoop, &enums::kSplineEasing, &enums::kSplineAlignment,
+        &enums::kLineRendererMode, &enums::kLineWidthUnit, &enums::kLineAlignment, &enums::kLineTextureMode, &enums::kCanvasGroupRenderMode, &enums::kOnScreenStickMode,
+        &enums::kOnScreenStickAxes, &enums::kOnScreenVisibility, &enums::kJointAnchorSpace, &enums::kJointBreakAction,
+        &enums::kJointMotion, &enums::kJointSwingType, &enums::kAlphaTweenTarget,
     };
 
     bool equalsIgnoreCase(std::string_view a, std::string_view b) {

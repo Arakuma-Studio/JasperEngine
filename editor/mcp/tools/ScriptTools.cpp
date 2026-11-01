@@ -176,6 +176,16 @@ bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items,
         files.insert(files.end(), alsoSync.begin(), alsoSync.end());
         syncFiles(*context, files, false);
     });
+    cmd->setNoMerge();
+    auto failure = std::make_shared<std::string>();
+    cmd->reportFailureTo(failure);
+    // addCommand runs execute() and deletes the command when it fails (execute then changed nothing)
+    if (!ctx.project()->getProjectCommandHistory()->addCommand(cmd)) {
+        error = "Writing the file(s) failed: " +
+                (failure->empty() ? std::string("permissions, a read-only disk, or a parent path that is a file") : *failure) + ".";
+        return false;
+    }
+    return true;
 }
 
 // ------------------------------------------------------------------ syncFiles

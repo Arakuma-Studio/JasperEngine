@@ -205,6 +205,7 @@ namespace jasperengine::editor::mcp {
         static Json entityReferenceToJson(Project* project, SceneProject* scene, const EntityReference& value);
         static bool entityReferenceFromJson(Project* project, SceneProject* scene, const Json& value, EntityReference& out, std::string& error);
 
+#if 0 // SYNC4-ABSORB(curve, particles): upstream's AnimationCurve / Gradient / MinMax / burst JSON (S27's is curvejson)
         // Unity AnimationCurve / Gradient (docs/mcp/guide/lines-trails.md): a curve is
         // {"keys": [[time, value] | [time, value, inTangent, outTangent]...], "pre", "post":
         // "clamp"|"loop"|"ping_pong"} (an infinite tangent, a step, is "inf" / "-inf"); writes
@@ -228,6 +229,7 @@ namespace jasperengine::editor::mcp {
         // emission.bursts: [{"time", "count" (a curve value), "cycles", "interval", "probability"}]
         static Json particleBurstsToJson(const std::vector<ParticleEmissionBurst>& bursts);
         static bool particleBurstsFromJson(const Json& value, std::vector<ParticleEmissionBurst>& out, std::string& error);
+#endif
 
         static Json textureToJson(Project* project, SceneProject* scene, const Texture& texture);
         // `camera` gets the camera entity of a {"camera": ...} value (NULL_ENTITY otherwise; a

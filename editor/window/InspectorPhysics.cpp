@@ -102,493 +102,43 @@
 #include <algorithm>
 #include <unordered_set>
 #include <memory>
+#include "script/ScriptMessages.h"
 
 using namespace jasperengine;
 
-void editor::InspectorWindow::drawRigidbody2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    Rigidbody2DComponent& body = sceneProject->scene->getComponent<Rigidbody2DComponent>(entities[0]);
-
-    auto getSizeForShape = [sceneProject](Entity entity, float defaultSize = 100.0f) -> Vector2 {
-        float width = defaultSize;
-        float height = defaultSize;
-
-        if (SpriteComponent* spriteComp = sceneProject->scene->findComponent<SpriteComponent>(entity)){
-            if (spriteComp->width > 0){
-                width = (float)spriteComp->width;
-            }
-            if (spriteComp->height > 0){
-                height = (float)spriteComp->height;
-            }
-        }else if (RectTransformComponent* layoutComp = sceneProject->scene->findComponent<RectTransformComponent>(entity)){
-            if (layoutComp->width > 0){
-                width = (float)layoutComp->width;
-            }
-            if (layoutComp->height > 0){
-                height = (float)layoutComp->height;
-            }
-        }
-
-        return Vector2(width, height);
-    };
-
-    RowSettings settingsBodyType;
-    settingsBodyType.enumEntries = enumEntries(reflect::enums::kBodyType);
-
-    beginTable(cpType, getLabelSize("Update Colliders"));
-    propertyRow(RowPropertyType::Enum, cpType, "type", "Body Type", sceneProject, entities, settingsBodyType);
-    endTable();
-
-    separatorText("Colliders");
-    ImGui::Text("Colliders: %zu", body.numColliders);
-
-    static int createCollider2DType = (int)Collider2DType::POLYGON;
-    const char* createCollider2DLabel = "Polygon";
-    for (const EnumEntry& entry : (*enumEntries(reflect::enums::kCollider2DType))){
-        if (entry.value == createCollider2DType){
-            createCollider2DLabel = entry.name;
-            break;
-        }
-    }
-
-    ImGui::SetNextItemWidth(9 * ImGui::GetFontSize());
-    if (ImGui::BeginCombo("##shape2d_create_type", createCollider2DLabel)){
-        for (const EnumEntry& entry : (*enumEntries(reflect::enums::kCollider2DType))){
-            bool selected = (createCollider2DType == entry.value);
-            if (ImGui::Selectable(entry.name, selected)){
-                createCollider2DType = entry.value;
-            }
-            if (selected){
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-        ImGui::EndCombo();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Add Collider##rigidbody2d")){
-        MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-
-        for (Entity entity : entities){
-            if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-
-                Collider2D shape;
-                shape.type = (Collider2DType)createCollider2DType;
-
-                switch (shape.type){
-                case Collider2DType::POLYGON:
-                {
-                    Vector2 layoutSize = getSizeForShape(entity, 0.0f);
-
-                    shape.numVertices = 4;
-
-                    if (layoutSize != Vector2::ZERO){
-                        shape.pointA = Vector2(0.0f, 0.0f);
-                        shape.pointB = Vector2(layoutSize.x, layoutSize.y);
-                        shape.vertices[0] = Vector2(0.0f, 0.0f);
-                        shape.vertices[1] = Vector2(layoutSize.x, 0.0f);
-                        shape.vertices[2] = Vector2(layoutSize.x, layoutSize.y);
-                        shape.vertices[3] = Vector2(0.0f, layoutSize.y);
-                    }else{
-                        layoutSize = Vector2(100.0f, 100.0f);
-
-                        const float halfW = layoutSize.x * 0.5f;
-                        const float halfH = layoutSize.y * 0.5f;
-
-                        shape.pointA = Vector2(-halfW, -halfH);
-                        shape.pointB = Vector2(halfW, halfH);
-                        shape.vertices[0] = Vector2(-halfW, -halfH);
-                        shape.vertices[1] = Vector2(halfW, -halfH);
-                        shape.vertices[2] = Vector2(halfW, halfH);
-                        shape.vertices[3] = Vector2(-halfW, halfH);
-                    }
-
-                    break;
-                }
-                case Collider2DType::CIRCLE:
-                    shape.pointA = Vector2::ZERO;
-                    shape.radius = 0.5f;
-                    break;
-                case Collider2DType::CAPSULE:
-                    shape.pointA = Vector2(0.0f, -0.5f);
-                    shape.pointB = Vector2(0.0f, 0.5f);
-                    shape.radius = 0.5f;
-                    break;
-                case Collider2DType::SEGMENT:
-                    shape.pointA = Vector2(-1.0f, 0.0f);
-                    shape.pointB = Vector2(1.0f, 0.0f);
-                    break;
-                case Collider2DType::CHAIN:
-                    shape.numVertices = 4;
-                    shape.vertices[0] = Vector2(-0.5f, -0.5f);
-                    shape.vertices[1] = Vector2(0.5f, -0.5f);
-                    shape.vertices[2] = Vector2(0.5f, 0.5f);
-                    shape.vertices[3] = Vector2(-0.5f, 0.5f);
-                    break;
-                }
-
-                size_t shapeIdx = bodyComp->numColliders;
-                multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, "colliders[" + std::to_string(shapeIdx) + "]", shape);
-                multiCmd->addPropertyCmd<size_t>(project, sceneProject->id, entity, cpType, "numColliders", shapeIdx + 1);
-            }
-        }
-
-        multiCmd->setNoMerge();
-        CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-    }
-
-    size_t numColliders = body.numColliders;
-    for (Entity entity : entities){
-        numColliders = std::min(numColliders, sceneProject->scene->getComponent<Rigidbody2DComponent>(entity).numColliders);
-    }
-
-    RowSettings settingsShapeType;
-    settingsShapeType.enumEntries = enumEntries(reflect::enums::kCollider2DType);
-
-    RowSettings settingsShapeValue;
-
-    for (size_t s = 0; s < numColliders; s++){
-        Rigidbody2DComponent& bodyRef = sceneProject->scene->getComponent<Rigidbody2DComponent>(entities[0]);
-        Collider2D& shape = bodyRef.colliders[s];
-
-        separatorText(("Collider " + std::to_string(s + 1)).c_str());
-        ImGui::PushID((int)s);
-        if (ImGui::Button("Remove Collider")){
-            MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-
-            for (Entity entity : entities){
-                if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-                    if (s >= bodyComp->numColliders){
-                        continue;
-                    }
-
-                    for (size_t i = s + 1; i < bodyComp->numColliders; i++){
-                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, "colliders[" + std::to_string(i - 1) + "]", bodyComp->colliders[i]);
-                    }
-
-                    multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, "colliders[" + std::to_string(bodyComp->numColliders - 1) + "]", Collider2D());
-                    multiCmd->addPropertyCmd<size_t>(project, sceneProject->id, entity, cpType, "numColliders", bodyComp->numColliders - 1);
-                }
-            }
-
-            multiCmd->setNoMerge();
-            CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-            ImGui::PopID();
-            break;
-        }
-        ImGui::PopID();
-
-        std::string shapeKey = "colliders[" + std::to_string(s) + "]";
-
-        beginTable(cpType, getLabelSize("Enable Hit Events"), "rigidbody2d_collider");
-        propertyRow(RowPropertyType::Enum, cpType, shapeKey + ".type", "Type", sceneProject, entities, settingsShapeType);
-
-        RowSettings settingsFloat;
-        settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
-
-        if (shape.type == Collider2DType::POLYGON){
-            propertyHeader("Vertices");
-            ImGui::Text("%d", shape.numVertices);
-            ImGui::SameLine();
-            if (ImGui::Button("Add Vertex")){
-                MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-                for (Entity entity : entities){
-                    if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-                        if (s >= bodyComp->numColliders) continue;
-                        Collider2D shapeValue = bodyComp->colliders[s];
-
-                        const uint8_t oldCount = shapeValue.numVertices;
-                        if (oldCount >= 2){
-                            shapeValue.vertices[oldCount] = shapeValue.vertices[oldCount - 1] + (shapeValue.vertices[oldCount - 1] - shapeValue.vertices[oldCount - 2]);
-                        }else if (oldCount == 1){
-                            shapeValue.vertices[oldCount] = shapeValue.vertices[0] + Vector2(10.0f, 0.0f);
-                        }else{
-                            shapeValue.vertices[oldCount] = Vector2::ZERO;
-                        }
-                        shapeValue.numVertices = oldCount + 1;
-                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
-                    }
-                }
-                multiCmd->setNoMerge();
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-            }
-            bool removedVertex = false;
-            float clearButtonFramePadding = ImGui::GetStyle().FramePadding.x / 4.0f;
-            float clearButtonWidth = ImGui::CalcTextSize(ICON_FA_TRASH_CAN).x;
-            ImVec2 inputVerSize = ImVec2(ImGui::GetContentRegionAvail().x - clearButtonWidth - ImGui::GetStyle().ItemSpacing.x - clearButtonFramePadding * 2, 0);
-            if (inputVerSize.x < 100.0f){
-                inputVerSize.x = 100.0f;
-            }
-
-            RowSettings settingsVertex = settingsShapeValue;
-            settingsVertex.secondColSize = inputVerSize.x;
-
-            for (int v = 0; v < (int)shape.numVertices; v++){
-
-                propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".vertices[" + std::to_string(v) + "]", "Vertex " + std::to_string(v + 1), sceneProject, entities, settingsVertex);
-
-                ImGui::SameLine();
-
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(clearButtonFramePadding, ImGui::GetStyle().FramePadding.y));
-                std::string removeVertexId = std::string(ICON_FA_TRASH_CAN) + "##remove_polygon_vertex_" + std::to_string(s) + "_" + std::to_string(v);
-                if (ImGui::Button(removeVertexId.c_str())){
-                    MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-                    for (Entity entity : entities){
-                        if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-                            if (s >= bodyComp->numColliders) continue;
-
-                            Collider2D shapeValue = bodyComp->colliders[s];
-                            if (v >= shapeValue.numVertices) continue;
-
-                            for (size_t i = (size_t)v + 1; i < shapeValue.numVertices; i++){
-                                shapeValue.vertices[i - 1] = shapeValue.vertices[i];
-                            }
-                            shapeValue.numVertices -= 1;
-
-                            multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
-                        }
-                    }
-
-                    multiCmd->setNoMerge();
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-
-                    removedVertex = true;
-                    ImGui::PopStyleVar();
-                    ImGui::PopStyleColor(2);
-                    break;
-                }
-                ImGui::PopStyleVar();
-                ImGui::PopStyleColor(2);
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Remove vertex");
-                }
-            }
-
-            if (removedVertex){
-                endTable();
-                return;
-            }
-
-            propertyRow(RowPropertyType::Float, cpType, shapeKey + ".radius", "Radius", sceneProject, entities, settingsFloat);
-        }else if (shape.type == Collider2DType::CIRCLE){
-            propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".pointA", "Center", sceneProject, entities);
-            propertyRow(RowPropertyType::Float, cpType, shapeKey + ".radius", "Radius", sceneProject, entities, settingsFloat);
-        }else if (shape.type == Collider2DType::CAPSULE){
-            propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".pointA", "Center A", sceneProject, entities);
-            propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".pointB", "Center B", sceneProject, entities);
-            propertyRow(RowPropertyType::Float, cpType, shapeKey + ".radius", "Radius", sceneProject, entities, settingsFloat);
-        }else if (shape.type == Collider2DType::SEGMENT){
-            propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".pointA", "Point A", sceneProject, entities);
-            propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".pointB", "Point B", sceneProject, entities);
-        }else if (shape.type == Collider2DType::CHAIN){
-            RowSettings loopSettings;
-            loopSettings.help = "An open chain doesn't collide on its first and last edges";
-            propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".loop", "Loop", sceneProject, entities, loopSettings);
-
-            propertyHeader("Collision Side");
-            if (ImGui::Button("Reverse")){
-                MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-                for (Entity entity : entities){
-                    if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-                        if (s >= bodyComp->numColliders) continue;
-                        Collider2D shapeValue = bodyComp->colliders[s];
-
-                        std::reverse(shapeValue.vertices.data(), shapeValue.vertices.data() + shapeValue.numVertices);
-                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
-                    }
-                }
-                multiCmd->setNoMerge();
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-            }
-            if (ImGui::IsItemHovered()){
-                ImGui::SetTooltip("Flip the side that collides, shown by the ticks in the scene");
-            }
-
-            propertyHeader("Vertices");
-            ImGui::Text("%d", shape.numVertices);
-            ImGui::SameLine();
-            if (ImGui::Button("Add Vertex")){
-                MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-                for (Entity entity : entities){
-                    if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-                        if (s >= bodyComp->numColliders) continue;
-                        Collider2D shapeValue = bodyComp->colliders[s];
-
-                        const uint8_t oldCount = shapeValue.numVertices;
-                        if (oldCount >= 2){
-                            shapeValue.vertices[oldCount] = shapeValue.vertices[oldCount - 1] + (shapeValue.vertices[oldCount - 1] - shapeValue.vertices[oldCount - 2]);
-                        }else if (oldCount == 1){
-                            shapeValue.vertices[oldCount] = shapeValue.vertices[0] + Vector2(10.0f, 0.0f);
-                        }else{
-                            shapeValue.vertices[oldCount] = Vector2::ZERO;
-                        }
-                        shapeValue.numVertices = oldCount + 1;
-                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
-                    }
-                }
-                multiCmd->setNoMerge();
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-            }
-
-            bool removedVertex = false;
-            float clearButtonFramePadding = ImGui::GetStyle().FramePadding.x / 4.0f;
-            float clearButtonWidth = ImGui::CalcTextSize(ICON_FA_TRASH_CAN).x;
-            ImVec2 inputVerSize = ImVec2(ImGui::GetContentRegionAvail().x - clearButtonWidth - ImGui::GetStyle().ItemSpacing.x - clearButtonFramePadding * 2, 0);
-            if (inputVerSize.x < 100.0f){
-                inputVerSize.x = 100.0f;
-            }
-
-            RowSettings settingsVertex = settingsShapeValue;
-            settingsVertex.secondColSize = inputVerSize.x;
-
-            for (int v = 0; v < (int)shape.numVertices; v++){
-                propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".vertices[" + std::to_string(v) + "]", "Vertex " + std::to_string(v + 1), sceneProject, entities, settingsVertex);
-
-                ImGui::SameLine();
-
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(clearButtonFramePadding, ImGui::GetStyle().FramePadding.y));
-                std::string removeVertexId = std::string(ICON_FA_TRASH_CAN) + "##remove_chain_vertex_" + std::to_string(s) + "_" + std::to_string(v);
-                if (ImGui::Button(removeVertexId.c_str())){
-                    MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-                    for (Entity entity : entities){
-                        if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-                            if (s >= bodyComp->numColliders) continue;
-
-                            Collider2D shapeValue = bodyComp->colliders[s];
-                            if (v >= shapeValue.numVertices) continue;
-
-                            for (size_t i = (size_t)v + 1; i < shapeValue.numVertices; i++){
-                                shapeValue.vertices[i - 1] = shapeValue.vertices[i];
-                            }
-                            shapeValue.numVertices -= 1;
-
-                            multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
-                        }
-                    }
-
-                    multiCmd->setNoMerge();
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-
-                    removedVertex = true;
-                    ImGui::PopStyleVar();
-                    ImGui::PopStyleColor(2);
-                    break;
-                }
-                ImGui::PopStyleVar();
-                ImGui::PopStyleColor(2);
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Remove vertex");
-                }
-            }
-
-            if (removedVertex){
-                endTable();
-                return;
-            }
-        }
-
-        if (shape.type != Collider2DType::SEGMENT && shape.type != Collider2DType::CHAIN){
-            propertyRow(RowPropertyType::Float, cpType, shapeKey + ".density", "Density", sceneProject, entities, settingsFloat);
-        }
-        propertyRow(RowPropertyType::Float, cpType, shapeKey + ".friction", "Friction", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, shapeKey + ".restitution", "Restitution", sceneProject, entities, settingsFloat);
-        if (shape.type != Collider2DType::CHAIN){
-            RowSettings sensorSettings;
-            sensorSettings.help = "Overlap only: never collides and always reports its sensor events";
-            propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".sensor", "Sensor", sceneProject, entities, sensorSettings);
-            propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".enableHitEvents", "Enable Hit Events", sceneProject, entities);
-            propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".contactEvents", "Contact Events", sceneProject, entities);
-            propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".preSolveEvents", "PreSolve Events", sceneProject, entities);
-            if (!shape.sensor){
-                propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".sensorEvents", "Sensor Events", sceneProject, entities);
-            }
-        }
-        if (shape.type == Collider2DType::POLYGON){
-            ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubtleText);
-            propertyHeader("Reset Collider");
-            ImGui::PopStyleColor();
-            if (ImGui::SmallButton(("Box##shape_preset_box_" + std::to_string(s)).c_str())){
-                MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-                for (Entity entity : entities){
-                    if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-                        if (s >= bodyComp->numColliders) continue;
-
-                        Collider2D shapeValue = bodyComp->colliders[s];
-                        Vector2 layoutSize = getSizeForShape(entity);
-
-                        shapeValue.numVertices = 4;
-                        shapeValue.radius = 0.0f;
-                        shapeValue.pointA = Vector2(0.0f, 0.0f);
-                        shapeValue.pointB = Vector2(layoutSize.x, layoutSize.y);
-                        shapeValue.vertices[0] = Vector2(0.0f, 0.0f);
-                        shapeValue.vertices[1] = Vector2(layoutSize.x, 0.0f);
-                        shapeValue.vertices[2] = Vector2(layoutSize.x, layoutSize.y);
-                        shapeValue.vertices[3] = Vector2(0.0f, layoutSize.y);
-
-                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
-                    }
-                }
-                multiCmd->setNoMerge();
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-            }
-            if (ImGui::SmallButton(("Centered Box##shape_preset_centered_box_" + std::to_string(s)).c_str())){
-                MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-                for (Entity entity : entities){
-                    if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-                        if (s >= bodyComp->numColliders) continue;
-
-                        Collider2D shapeValue = bodyComp->colliders[s];
-                        Vector2 layoutSize = getSizeForShape(entity);
-                        const float halfW = layoutSize.x * 0.5f;
-                        const float halfH = layoutSize.y * 0.5f;
-
-                        shapeValue.numVertices = 4;
-                        shapeValue.radius = 0.0f;
-                        shapeValue.pointA = Vector2(-halfW, -halfH);
-                        shapeValue.pointB = Vector2(halfW, halfH);
-                        shapeValue.vertices[0] = Vector2(-halfW, -halfH);
-                        shapeValue.vertices[1] = Vector2(halfW, -halfH);
-                        shapeValue.vertices[2] = Vector2(halfW, halfH);
-                        shapeValue.vertices[3] = Vector2(-halfW, halfH);
-
-                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
-                    }
-                }
-                multiCmd->setNoMerge();
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-            }
-            if (ImGui::SmallButton(("Rounded Box##shape_preset_rounded_box_" + std::to_string(s)).c_str())){
-                MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-                for (Entity entity : entities){
-                    if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-                        if (s >= bodyComp->numColliders) continue;
-
-                        Collider2D shapeValue = bodyComp->colliders[s];
-                        Vector2 layoutSize = getSizeForShape(entity);
-                        const float halfW = layoutSize.x * 0.5f;
-                        const float halfH = layoutSize.y * 0.5f;
-
-                        shapeValue.numVertices = 4;
-                        shapeValue.radius = std::max(1.0f, std::min(layoutSize.x, layoutSize.y) * 0.04f);
-                        shapeValue.pointA = Vector2(-halfW, -halfH);
-                        shapeValue.pointB = Vector2(halfW, halfH);
-                        shapeValue.vertices[0] = Vector2(-halfW, -halfH);
-                        shapeValue.vertices[1] = Vector2(halfW, -halfH);
-                        shapeValue.vertices[2] = Vector2(halfW, halfH);
-                        shapeValue.vertices[3] = Vector2(-halfW, halfH);
-
-                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
-                    }
-                }
-                multiCmd->setNoMerge();
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-            }
-        }
-        endTable();
-    }
-}
+// drawRigidbody2DComponent / drawJoint2DComponent: upstream's (physics-2d) in InspectorPhysics2D.cpp
+
+
+// upstream's (physics-3d) enums without a reflection table of their own yet
+static std::vector<editor::EnumEntry> entriesJointMotion3D = {
+    { (int)JointMotion::LOCKED, "Locked" },
+    { (int)JointMotion::LIMITED, "Limited" },
+    { (int)JointMotion::FREE, "Free" }
+};
+
+static std::vector<editor::EnumEntry> entriesJointSwingType3D = {
+    { (int)JointSwingType::CONE, "Cone" },
+    { (int)JointSwingType::PYRAMID, "Pyramid" }
+};
+
+static std::vector<editor::EnumEntry> entriesJointAnchorSpace3D = {
+    { (int)JointAnchorSpace::WORLD, "World" },
+    { (int)JointAnchorSpace::LOCAL, "Local" }
+};
+
+static std::vector<editor::EnumEntry> entriesJointBreakAction3D = {
+    { (int)JointBreakAction::IGNORE, "Ignore" },
+    { (int)JointBreakAction::CALLBACK_ONLY, "Callback Only" },
+    { (int)JointBreakAction::DISABLE, "Disable" },
+    { (int)JointBreakAction::DESTROY, "Destroy" }
+};
+
+static std::vector<editor::EnumEntry> entriesRigidbodyInterpolation = {
+    { (int)RigidbodyInterpolation::SCENE, "Scene" },
+    { (int)RigidbodyInterpolation::NONE, "None" },
+    { (int)RigidbodyInterpolation::INTERPOLATE, "Interpolate" },
+    { (int)RigidbodyInterpolation::EXTRAPOLATE, "Extrapolate" }
+};
 
 void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RigidbodyComponent& body = sceneProject->scene->getComponent<RigidbodyComponent>(entities[0]);
@@ -601,29 +151,109 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
 
     RowSettings settingsBodyValue;
 
-    beginTable(cpType, getLabelSize("Water Angular Drag"));
+    RowSettings settingsInterpolation;
+    settingsInterpolation.enumEntries = &entriesRigidbodyInterpolation;
+    settingsInterpolation.help = "How it is drawn between fixed steps. Scene: the scene's Physics Interpolation";
+    RowSettings settingsMass;
+    settingsMass.help = "Mass in kg. With Automatic it comes from the colliders (volume x density; triggers do not count)";
+    RowSettings settingsDamping;
+    settingsDamping.help = "Slows the body down (Unity Drag / Angular Drag); 0.05 by default, Jolt's";
+    RowSettings settingsCenter;
+    settingsCenter.help = "Body-local, in world units (not scaled). Automatic: the colliders' centre of mass";
+    RowSettings settingsInertia;
+    settingsInertia.help = "Principal moments of inertia (kg m\xC2\xB2) about the centre of mass. Automatic: from the colliders";
+    RowSettings settingsKinematicContacts;
+    settingsKinematicContacts.help = "A kinematic body also touches static and kinematic bodies (one with a trigger collider always does)";
+    RowSettings settingsSurface;
+    settingsSurface.help = "The surface of the colliders without a material (theirs or the body's): two of them combine by geometric mean friction and the larger restitution";
+
+    const bool playing = sceneProject->playState != ScenePlayState::STOPPED;
+
+    beginTable(cpType, getLabelSize("Contacts With Static/Kinematic"));
     propertyRow(RowPropertyType::Enum, cpType, "type", "Body Type", sceneProject, entities, settingsBodyType);
-    propertyRow(RowPropertyType::Enum, cpType, "motionQuality", "Motion Quality", sceneProject, entities, settingsMotionQuality);
-    propertyRow(RowPropertyType::Bool, cpType, "sensor", "Sensor", sceneProject, entities, settingsBodyValue);
-    propertyRow(RowPropertyType::Float, cpType, "gravityFactor", "Gravity Factor", sceneProject, entities, settingsBodyValue);
-    propertyRow(RowPropertyType::Float, cpType, "friction", "Friction", sceneProject, entities, settingsBodyValue);
-    propertyRow(RowPropertyType::Float, cpType, "restitution", "Restitution", sceneProject, entities, settingsBodyValue);
+    if (body.type != BodyType::STATIC){
+        propertyRowWithAutoButton(RowPropertyType::FloatPositive, cpType, "mass", "Mass", "automaticMass", "Automatic Mass (from the colliders)", sceneProject, entities, settingsMass);
+        if (body.automaticMass && entities.size() == 1){
+            // what the colliders give, as the body will have it
+            PhysicsSystem::MassInfo3D info;
+            if (sceneProject->scene->getSystem<PhysicsSystem>()->computeMassProperties3D(entities[0], body, info)){
+                propertyHeader("");
+                ImGui::TextDisabled("Automatic: %.3f kg", info.mass);
+            }
+        }
+        propertyRow(RowPropertyType::FloatPositive, cpType, "linearDamping", "Linear Damping", sceneProject, entities, settingsDamping);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "angularDamping", "Angular Damping", sceneProject, entities, settingsDamping);
+        propertyRow(RowPropertyType::Float, cpType, "gravityFactor", "Gravity Factor", sceneProject, entities, settingsBodyValue);
+        propertyRow(RowPropertyType::Enum, cpType, "interpolation", "Interpolation", sceneProject, entities, settingsInterpolation);
+        propertyRow(RowPropertyType::Enum, cpType, "motionQuality", "Collision Detection", sceneProject, entities, settingsMotionQuality);
+        propertyRow(RowPropertyType::Bool, cpType, "allowSleeping", "Allow Sleeping", sceneProject, entities, settingsBodyValue);
+    }
+    physicsMaterialRow(cpType, "material", "Default Material", sceneProject, entities,
+                       "The material of the colliders that have none of their own (friction, bounciness, combine modes)");
     // floating in a library:water (Water.h): 0 ignores the water
     propertyRow(RowPropertyType::Float, cpType, "buoyancy", "Buoyancy", sceneProject, entities, settingsBodyValue);
     if (body.buoyancy > 0.0f) {
         propertyRow(RowPropertyType::Float, cpType, "waterDrag", "Water Drag", sceneProject, entities, settingsBodyValue);
         propertyRow(RowPropertyType::Float, cpType, "waterAngularDrag", "Water Angular Drag", sceneProject, entities, settingsBodyValue);
     }
-    propertyRow(RowPropertyType::Bool, cpType, "overrideMassProperties", "Override Mass", sceneProject, entities, settingsBodyValue);
-
-    if (body.overrideMassProperties) {
-        propertyRow(RowPropertyType::Vector3, cpType, "solidBoxSize", "Solid Box Size", sceneProject, entities, settingsBodyValue);
-        propertyRow(RowPropertyType::Float, cpType, "solidBoxDensity", "Solid Box Density", sceneProject, entities, settingsBodyValue);
+    // the body-level sensor of before per-collider triggers, shown only when it is on
+    if (body.sensor) {
+        RowSettings settingsSensor;
+        settingsSensor.help = "Old body-wide trigger: prefer Is Trigger on the colliders";
+        propertyRow(RowPropertyType::Bool, cpType, "sensor", "Is Trigger (body)", sceneProject, entities, settingsSensor);
+        propertyHeader("");
+        if (ImGui::SmallButton("Convert to collider triggers##rigidbody")){
+            MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
+            for (Entity entity : entities){
+                if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
+                    for (size_t i = 0; i < bodyComp->colliders.size(); i++){
+                        multiCmd->addPropertyCmd<bool>(project, sceneProject->id, entity, cpType, "colliders[" + std::to_string(i) + "].isTrigger", true);
+                    }
+                    multiCmd->addPropertyCmd<bool>(project, sceneProject->id, entity, cpType, "sensor", false);
+                }
+            }
+            multiCmd->setNoMerge();
+            CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
+        }
     }
     endTable();
 
+    if (ImGui::TreeNode("Advanced##rigidbody3d")){
+        beginTable(cpType, getLabelSize("Contacts With Static/Kinematic"), "rigidbody_advanced");
+        propertyRow(RowPropertyType::FloatPositive, cpType, "maxLinearVelocity", "Max Linear Velocity", sceneProject, entities, settingsBodyValue);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "maxAngularVelocity", "Max Angular Velocity", sceneProject, entities, settingsBodyValue);
+        propertyRowWithAutoButton(RowPropertyType::Vector3, cpType, "centerOfMass", "Center of Mass", "automaticCenterOfMass", "Automatic Center of Mass (the colliders')", sceneProject, entities, settingsCenter);
+        propertyRowWithAutoButton(RowPropertyType::Vector3, cpType, "inertiaTensor", "Inertia Tensor", "automaticInertiaTensor", "Automatic Inertia Tensor (from the colliders)", sceneProject, entities, settingsInertia);
+        if (!body.automaticInertiaTensor){
+            propertyRow(RowPropertyType::Quat, cpType, "inertiaTensorRotation", "Inertia Tensor Rotation", sceneProject, entities, settingsBodyValue);
+        }
+        if (body.type == BodyType::KINEMATIC){
+            propertyRow(RowPropertyType::Bool, cpType, "collideKinematicVsNonDynamic", "Contacts With Static/Kinematic", sceneProject, entities, settingsKinematicContacts);
+        }
+        propertyRow(RowPropertyType::Float, cpType, "friction", "Friction (no material)", sceneProject, entities, settingsSurface);
+        propertyRow(RowPropertyType::Float, cpType, "restitution", "Restitution (no material)", sceneProject, entities, settingsSurface);
+        propertyRow(RowPropertyType::Bool, cpType, "overrideMassProperties", "Override Mass (solid box)", sceneProject, entities, settingsBodyValue);
+        if (body.overrideMassProperties) {
+            propertyRow(RowPropertyType::Vector3, cpType, "solidBoxSize", "Solid Box Size", sceneProject, entities, settingsBodyValue);
+            propertyRow(RowPropertyType::Float, cpType, "solidBoxDensity", "Solid Box Density", sceneProject, entities, settingsBodyValue);
+        }
+        endTable();
+        ImGui::TreePop();
+    }
+
+    if (playing && !body.body.IsInvalid() && entities.size() == 1){
+        // the live body (read only)
+        separatorText("Runtime");
+        Rigidbody live(sceneProject->scene, entities[0]);
+        const Vector3 velocity = live.getLinearVelocity();
+        const Vector3 angular = live.getAngularVelocity();
+        ImGui::TextDisabled("Mass %.3f kg   %s", live.getMass(), live.isSleeping() ? "asleep" : "awake");
+        ImGui::TextDisabled("Velocity (%.2f, %.2f, %.2f) m/s", velocity.x, velocity.y, velocity.z);
+        ImGui::TextDisabled("Angular (%.2f, %.2f, %.2f) rad/s", angular.x, angular.y, angular.z);
+    }
+
     separatorText("Colliders");
-    ImGui::Text("Colliders: %zu", body.numColliders);
+    ImGui::Text("Colliders: %zu", body.colliders.size());
 
     static int createCollider3DType = (int)Collider3DType::BOX;
     const char* createCollider3DLabel = "Unknown";
@@ -674,9 +304,10 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
                     }
                 }
 
-                size_t shapeIdx = bodyComp->numColliders;
-                multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, "colliders[" + std::to_string(shapeIdx) + "]", shape);
-                multiCmd->addPropertyCmd<size_t>(project, sceneProject->id, entity, cpType, "numColliders", shapeIdx + 1);
+                // the whole list: one undo step
+                std::vector<Collider3D> colliders = bodyComp->colliders;
+                colliders.push_back(shape);
+                multiCmd->addPropertyCmd<std::vector<Collider3D>>(project, sceneProject->id, entity, cpType, "colliders", colliders);
             }
         }
 
@@ -684,9 +315,9 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
         CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
     }
 
-    size_t numColliders = body.numColliders;
+    size_t numColliders = body.colliders.size();
     for (Entity entity : entities){
-        numColliders = std::min(numColliders, sceneProject->scene->getComponent<RigidbodyComponent>(entity).numColliders);
+        numColliders = std::min(numColliders, sceneProject->scene->getComponent<RigidbodyComponent>(entity).colliders.size());
     }
 
     RowSettings settingsShapeSourceConvexHull;
@@ -724,7 +355,7 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
         Transform* bodyTransform = sceneProject->scene->findComponent<Transform>(entities[0]);
         const Vector3 bodyScale = bodyTransform ? bodyTransform->scale : Vector3::UNIT_SCALE;
         const float physicsOffset = (shape.position * bodyScale).length();
-        const bool suspiciousSingleShapeOffset = bodyRef.numColliders == 1 && physicsOffset > Stream::MAX_SINGLE_SHAPE_PHYSICS_OFFSET;
+        const bool suspiciousSingleShapeOffset = bodyRef.colliders.size() == 1 && physicsOffset > Stream::MAX_SINGLE_SHAPE_PHYSICS_OFFSET;
 
         separatorText(("Collider " + std::to_string(s + 1)).c_str());
         ImGui::PushID((int)s);
@@ -733,16 +364,13 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
 
             for (Entity entity : entities){
                 if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
-                    if (s >= bodyComp->numColliders){
+                    if (s >= bodyComp->colliders.size()){
                         continue;
                     }
 
-                    for (size_t i = s + 1; i < bodyComp->numColliders; i++){
-                        multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, "colliders[" + std::to_string(i - 1) + "]", bodyComp->colliders[i]);
-                    }
-
-                    multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, "colliders[" + std::to_string(bodyComp->numColliders - 1) + "]", Collider3D());
-                    multiCmd->addPropertyCmd<size_t>(project, sceneProject->id, entity, cpType, "numColliders", bodyComp->numColliders - 1);
+                    std::vector<Collider3D> colliders = bodyComp->colliders;
+                    colliders.erase(colliders.begin() + (std::ptrdiff_t)s);
+                    multiCmd->addPropertyCmd<std::vector<Collider3D>>(project, sceneProject->id, entity, cpType, "colliders", colliders);
                 }
             }
 
@@ -755,7 +383,7 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
 
         std::string shapeKey = "colliders[" + std::to_string(s) + "]";
 
-        beginTable(cpType, getLabelSize("Bottom Radius"), "rigidbody_collider");
+        beginTable(cpType, getLabelSize("Send Callbacks To"), "rigidbody_collider");
 
         PropertyData shapeTypeProp = Catalog::getProperty(sceneProject->scene, entities[0], cpType, shapeKey + ".type");
         int* shapeTypeDef = static_cast<int*>(shapeTypeProp.def);
@@ -799,7 +427,7 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
 
             for (Entity entity : entities){
                 if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
-                    if (s >= bodyComp->numColliders) continue;
+                    if (s >= bodyComp->colliders.size()) continue;
 
                     multiCmd->addPropertyCmd<int>(project, sceneProject->id, entity, cpType, shapeKey + ".type", (int)resetType);
 
@@ -830,7 +458,7 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
 
             for (Entity entity : entities){
                 if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
-                    if (s >= bodyComp->numColliders) continue;
+                    if (s >= bodyComp->colliders.size()) continue;
 
                     multiCmd->addPropertyCmd<int>(project, sceneProject->id, entity, cpType, shapeKey + ".type", (int)newShapeType);
 
@@ -872,7 +500,7 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
 
                 for (Entity entity : entities){
                     if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
-                        if (s >= bodyComp->numColliders){
+                        if (s >= bodyComp->colliders.size()){
                             continue;
                         }
 
@@ -908,23 +536,22 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
                 propertyRow(RowPropertyType::LocalEntity, cpType, shapeKey + ".sourceEntity", "Source GameObject", sceneProject, entities, settingsShapeValue);
             }else if (normalizedSourceUI == Collider3DSource::RAW_VERTICES){
                 propertyHeader("Vertices");
-                ImGui::Text("%d", shape.numVertices);
+                ImGui::Text("%zu", shape.vertices.size());
                 ImGui::SameLine();
                 if (ImGui::Button(("Add Vertex##convex_" + std::to_string(s)).c_str())){
                     MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                     for (Entity entity : entities){
                         if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
-                            if (s >= bodyComp->numColliders) continue;
+                            if (s >= bodyComp->colliders.size()) continue;
                             Collider3D shapeValue = bodyComp->colliders[s];
-                            const uint16_t oldCount = shapeValue.numVertices;
+                            const size_t oldCount = shapeValue.vertices.size();
                             if (oldCount >= 2){
-                                shapeValue.vertices[oldCount] = shapeValue.vertices[oldCount - 1] + (shapeValue.vertices[oldCount - 1] - shapeValue.vertices[oldCount - 2]);
+                                shapeValue.vertices.push_back(shapeValue.vertices[oldCount - 1] + (shapeValue.vertices[oldCount - 1] - shapeValue.vertices[oldCount - 2]));
                             }else if (oldCount == 1){
-                                shapeValue.vertices[oldCount] = shapeValue.vertices[0] + Vector3(1.0f, 0.0f, 0.0f);
+                                shapeValue.vertices.push_back(shapeValue.vertices[0] + Vector3(1.0f, 0.0f, 0.0f));
                             }else{
-                                shapeValue.vertices[oldCount] = Vector3::ZERO;
+                                shapeValue.vertices.push_back(Vector3::ZERO);
                             }
-                            shapeValue.numVertices = oldCount + 1;
                             multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                         }
                     }
@@ -941,7 +568,7 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
                 RowSettings settingsVertex = settingsShapeValue;
                 settingsVertex.secondColSize = inputVerSize.x;
 
-                for (int v = 0; v < (int)shape.numVertices; v++){
+                for (int v = 0; v < (int)shape.vertices.size(); v++){
                     propertyRow(RowPropertyType::Vector3, cpType, shapeKey + ".vertices[" + std::to_string(v) + "]", "Vertex " + std::to_string(v + 1), sceneProject, entities, settingsVertex);
                     ImGui::SameLine();
 
@@ -953,13 +580,10 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
                         MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                         for (Entity entity : entities){
                             if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
-                                if (s >= bodyComp->numColliders) continue;
+                                if (s >= bodyComp->colliders.size()) continue;
                                 Collider3D shapeValue = bodyComp->colliders[s];
-                                if (v >= shapeValue.numVertices) continue;
-                                for (int vi = v; vi < shapeValue.numVertices - 1; vi++){
-                                    shapeValue.vertices[vi] = shapeValue.vertices[vi + 1];
-                                }
-                                shapeValue.numVertices--;
+                                if (v >= (int)shapeValue.vertices.size()) continue;
+                                shapeValue.vertices.erase(shapeValue.vertices.begin() + v);
                                 multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                             }
                         }
@@ -980,23 +604,22 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
             }else if (normalizedSourceUI == Collider3DSource::RAW_MESH){
                 // Vertices
                 propertyHeader("Vertices");
-                ImGui::Text("%d", shape.numVertices);
+                ImGui::Text("%zu", shape.vertices.size());
                 ImGui::SameLine();
                 if (ImGui::Button(("Add Vertex##mesh_" + std::to_string(s)).c_str())){
                     MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                     for (Entity entity : entities){
                         if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
-                            if (s >= bodyComp->numColliders) continue;
+                            if (s >= bodyComp->colliders.size()) continue;
                             Collider3D shapeValue = bodyComp->colliders[s];
-                            const uint16_t oldCount = shapeValue.numVertices;
+                            const size_t oldCount = shapeValue.vertices.size();
                             if (oldCount >= 2){
-                                shapeValue.vertices[oldCount] = shapeValue.vertices[oldCount - 1] + (shapeValue.vertices[oldCount - 1] - shapeValue.vertices[oldCount - 2]);
+                                shapeValue.vertices.push_back(shapeValue.vertices[oldCount - 1] + (shapeValue.vertices[oldCount - 1] - shapeValue.vertices[oldCount - 2]));
                             }else if (oldCount == 1){
-                                shapeValue.vertices[oldCount] = shapeValue.vertices[0] + Vector3(1.0f, 0.0f, 0.0f);
+                                shapeValue.vertices.push_back(shapeValue.vertices[0] + Vector3(1.0f, 0.0f, 0.0f));
                             }else{
-                                shapeValue.vertices[oldCount] = Vector3::ZERO;
+                                shapeValue.vertices.push_back(Vector3::ZERO);
                             }
-                            shapeValue.numVertices = oldCount + 1;
                             multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                         }
                     }
@@ -1013,7 +636,7 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
                 RowSettings settingsVertex = settingsShapeValue;
                 settingsVertex.secondColSize = inputVerSize.x;
 
-                for (int v = 0; v < (int)shape.numVertices; v++){
+                for (int v = 0; v < (int)shape.vertices.size(); v++){
                     propertyRow(RowPropertyType::Vector3, cpType, shapeKey + ".vertices[" + std::to_string(v) + "]", "Vertex " + std::to_string(v + 1), sceneProject, entities, settingsVertex);
                     ImGui::SameLine();
 
@@ -1025,13 +648,10 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
                         MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                         for (Entity entity : entities){
                             if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
-                                if (s >= bodyComp->numColliders) continue;
+                                if (s >= bodyComp->colliders.size()) continue;
                                 Collider3D shapeValue = bodyComp->colliders[s];
-                                if (v >= shapeValue.numVertices) continue;
-                                for (int vi = v; vi < shapeValue.numVertices - 1; vi++){
-                                    shapeValue.vertices[vi] = shapeValue.vertices[vi + 1];
-                                }
-                                shapeValue.numVertices--;
+                                if (v >= (int)shapeValue.vertices.size()) continue;
+                                shapeValue.vertices.erase(shapeValue.vertices.begin() + v);
                                 multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                             }
                         }
@@ -1046,7 +666,7 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
                 }
 
                 // Triangles (indices)
-                const int triangleCount = shape.numIndices / 3;
+                const int triangleCount = (int)(shape.indices.size() / 3);
                 propertyHeader("Triangles");
                 ImGui::Text("%d", triangleCount);
                 ImGui::SameLine();
@@ -1054,13 +674,12 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
                     MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                     for (Entity entity : entities){
                         if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
-                            if (s >= bodyComp->numColliders) continue;
+                            if (s >= bodyComp->colliders.size()) continue;
                             Collider3D shapeValue = bodyComp->colliders[s];
-                            const uint16_t idx = shapeValue.numIndices;
-                            shapeValue.indices[idx] = 0;
-                            shapeValue.indices[idx + 1] = (shapeValue.numVertices > 1) ? (uint16_t)1 : (uint16_t)0;
-                            shapeValue.indices[idx + 2] = (shapeValue.numVertices > 2) ? (uint16_t)2 : (uint16_t)0;
-                            shapeValue.numIndices = idx + 3;
+                            shapeValue.indices.resize((shapeValue.indices.size() / 3) * 3);
+                            shapeValue.indices.push_back(0);
+                            shapeValue.indices.push_back(shapeValue.vertices.size() > 1 ? 1u : 0u);
+                            shapeValue.indices.push_back(shapeValue.vertices.size() > 2 ? 2u : 0u);
                             multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                         }
                     }
@@ -1079,17 +698,17 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
                     ImGui::SetNextItemWidth(inputVerSize.x);
                     if (ImGui::InputInt3(triId.c_str(), triIndices)){
                         for (int k = 0; k < 3; k++){
-                            triIndices[k] = std::max(0, std::min(triIndices[k], (int)shape.numVertices - 1));
+                            triIndices[k] = std::max(0, std::min(triIndices[k], (int)shape.vertices.size() - 1));
                         }
                         MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                         for (Entity entity : entities){
                             if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
-                                if (s >= bodyComp->numColliders) continue;
+                                if (s >= bodyComp->colliders.size()) continue;
                                 Collider3D shapeValue = bodyComp->colliders[s];
-                                if (baseIdx + 2 >= shapeValue.numIndices) continue;
-                                shapeValue.indices[baseIdx] = (uint16_t)triIndices[0];
-                                shapeValue.indices[baseIdx + 1] = (uint16_t)triIndices[1];
-                                shapeValue.indices[baseIdx + 2] = (uint16_t)triIndices[2];
+                                if (baseIdx + 2 >= (int)shapeValue.indices.size()) continue;
+                                shapeValue.indices[baseIdx] = (uint32_t)triIndices[0];
+                                shapeValue.indices[baseIdx + 1] = (uint32_t)triIndices[1];
+                                shapeValue.indices[baseIdx + 2] = (uint32_t)triIndices[2];
                                 multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                             }
                         }
@@ -1105,13 +724,10 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
                         MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                         for (Entity entity : entities){
                             if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
-                                if (s >= bodyComp->numColliders) continue;
+                                if (s >= bodyComp->colliders.size()) continue;
                                 Collider3D shapeValue = bodyComp->colliders[s];
-                                if (baseIdx + 2 >= shapeValue.numIndices) continue;
-                                for (int ii = baseIdx; ii < shapeValue.numIndices - 3; ii++){
-                                    shapeValue.indices[ii] = shapeValue.indices[ii + 3];
-                                }
-                                shapeValue.numIndices -= 3;
+                                if (baseIdx + 2 >= (int)shapeValue.indices.size()) continue;
+                                shapeValue.indices.erase(shapeValue.indices.begin() + baseIdx, shapeValue.indices.begin() + baseIdx + 3);
                                 multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                             }
                         }
@@ -1134,70 +750,23 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
         }
 
         propertyRow(RowPropertyType::Float, cpType, shapeKey + ".density", "Density", sceneProject, entities, settingsShapeValue);
+        RowSettings settingsTrigger;
+        settingsTrigger.help = "Overlaps are reported (trigger contacts), nothing is pushed; a trigger has no mass unless every collider is one";
+        propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".isTrigger", "Is Trigger", sceneProject, entities, settingsTrigger);
+        physicsMaterialRow(cpType, shapeKey + ".material", "Material", sceneProject, entities,
+                           "Friction, bounciness and how they combine with the other collider's; over the body's material");
+        RowSettings settingsReceiver;
+        settingsReceiver.help = "Another GameObject that also gets this collider's contact callbacks";
+        propertyRow(RowPropertyType::LocalEntity, cpType, shapeKey + ".receiver", "Send Callbacks To", sceneProject, entities, settingsReceiver);
         endTable();
     }
+
+    // Play: what the body touches, and the contact callbacks its scripts define
+    if (sceneProject->playState != ScenePlayState::STOPPED && entities.size() == 1){
+        drawPhysicsContacts(sceneProject, entities[0], false);
+    }
 }
 
-void editor::InspectorWindow::drawJoint2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    Joint2DComponent& joint = sceneProject->scene->getComponent<Joint2DComponent>(entities[0]);
-
-    auto markJoint2DDirty = [sceneProject, entities](){
-        for (Entity entity : entities){
-            if (Joint2DComponent* jointComp = sceneProject->scene->findComponent<Joint2DComponent>(entity)){
-                jointComp->needUpdateJoint = true;
-            }
-        }
-    };
-
-    RowSettings settingsJointType;
-    settingsJointType.enumEntries = enumEntries(reflect::enums::kJoint2DType);
-    settingsJointType.onValueChanged = markJoint2DDirty;
-
-    RowSettings settingsJointValue;
-    settingsJointValue.onValueChanged = markJoint2DDirty;
-    settingsJointValue.entityFilter.set(sceneProject->scene->getComponentId<Rigidbody2DComponent>());
-
-    beginTable(cpType, getLabelSize("Joint Type"));
-    propertyRow(RowPropertyType::Enum, cpType, "type", "Joint Type", sceneProject, entities, settingsJointType);
-    propertyRow(RowPropertyType::LocalEntity, cpType, "bodyA", "Rigidbody A", sceneProject, entities, settingsJointValue);
-    propertyRow(RowPropertyType::LocalEntity, cpType, "bodyB", "Rigidbody B", sceneProject, entities, settingsJointValue);
-
-    endTable();
-
-    bool hasTypeSettings = joint.type != Joint2DType::MOTOR;
-    if (!hasTypeSettings){
-        return;
-    }
-
-    const char* joint2DTableLabel = "Anchor";
-    if (joint.type == Joint2DType::DISTANCE){
-        joint2DTableLabel = "Anchor A";
-    }else if (joint.type == Joint2DType::MOUSE){
-        joint2DTableLabel = "Target";
-    }
-
-    separatorText("Joint settings");
-    std::string joint2DTypeTableId = "joint2d_type_settings_" + std::to_string((int)joint.type);
-    beginTable(cpType, getLabelSize(joint2DTableLabel), joint2DTypeTableId);
-
-    if (joint.type == Joint2DType::DISTANCE){
-        propertyRow(RowPropertyType::Bool, cpType, "autoAnchors", "Auto Anchors", sceneProject, entities, settingsJointValue);
-        if (!joint.autoAnchors){
-            propertyRow(RowPropertyType::Vector2, cpType, "anchorA", "Anchor A", sceneProject, entities, settingsJointValue);
-            propertyRow(RowPropertyType::Vector2, cpType, "anchorB", "Anchor B", sceneProject, entities, settingsJointValue);
-        }
-        propertyRow(RowPropertyType::Bool, cpType, "rope", "Rope", sceneProject, entities, settingsJointValue);
-    }else if (joint.type == Joint2DType::REVOLUTE || joint.type == Joint2DType::WELD){
-        propertyRow(RowPropertyType::Vector2, cpType, "anchorA", "Anchor", sceneProject, entities, settingsJointValue);
-    }else if (joint.type == Joint2DType::PRISMATIC || joint.type == Joint2DType::WHEEL){
-        propertyRow(RowPropertyType::Vector2, cpType, "anchorA", "Anchor", sceneProject, entities, settingsJointValue);
-        propertyRow(RowPropertyType::Vector2, cpType, "axis", "Axis", sceneProject, entities, settingsJointValue);
-    }else if (joint.type == Joint2DType::MOUSE){
-        propertyRow(RowPropertyType::Vector2, cpType, "target", "Target", sceneProject, entities, settingsJointValue);
-    }
-
-    endTable();
-}
 
 void editor::InspectorWindow::drawJoint3DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     Joint3DComponent& joint = sceneProject->scene->getComponent<Joint3DComponent>(entities[0]);
@@ -1218,17 +787,130 @@ void editor::InspectorWindow::drawJoint3DComponent(ComponentType cpType, ScenePr
     settingsJointValue.onValueChanged = markJoint3DDirty;
     settingsJointValue.entityFilter.set(sceneProject->scene->getComponentId<RigidbodyComponent>());
 
-    beginTable(cpType, getLabelSize("Joint Type"));
+    // the parameters reach the live joint (no rebuild)
+    RowSettings settingsParam;
+    RowSettings settingsDistance;
+    settingsDistance.help = "-1: the distance when the joint is made";
+    RowSettings settingsSwingType;
+    settingsSwingType.enumEntries = &entriesJointSwingType3D;
+    settingsSwingType.onValueChanged = markJoint3DDirty;
+    RowSettings settingsMotion;
+    settingsMotion.enumEntries = &entriesJointMotion3D;
+    // motions and limits reach the live joint (no rebuild: its zero stays)
+    RowSettings settingsAnchorSpace;
+    settingsAnchorSpace.enumEntries = &entriesJointAnchorSpace3D;
+    settingsAnchorSpace.onValueChanged = markJoint3DDirty;
+    settingsAnchorSpace.help = "Local: anchors and axes in the bodies' own frames, so the joint works wherever its prefab is placed (Unity). World: world points taken when the joint is made (scenes saved before)";
+    RowSettings settingsAnchor;
+    settingsAnchor.onValueChanged = markJoint3DDirty;
+    RowSettings settingsCollision;
+    settingsCollision.help = "The two connected bodies collide with each other (off: they pass through each other, Unity's default)";
+
+    const bool local = joint.anchorSpace == JointAnchorSpace::LOCAL;
+    const bool usesAnchor = joint.type != Joint3DType::GEAR && joint.type != Joint3DType::RACKANDPINON && joint.type != Joint3DType::PATH;
+
+    beginTable(cpType, getLabelSize("Auto Configure Connected"));
     propertyRow(RowPropertyType::Enum, cpType, "type", "Joint Type", sceneProject, entities, settingsJointType);
     propertyRow(RowPropertyType::LocalEntity, cpType, "bodyA", "Rigidbody A", sceneProject, entities, settingsJointValue);
-    propertyRow(RowPropertyType::LocalEntity, cpType, "bodyB", "Rigidbody B", sceneProject, entities, settingsJointValue);
+    propertyRow(RowPropertyType::LocalEntity, cpType, "bodyB", local ? "Connected Body" : "Rigidbody B", sceneProject, entities, settingsJointValue);
+    propertyRow(RowPropertyType::Enum, cpType, "anchorSpace", "Anchor Space", sceneProject, entities, settingsAnchorSpace);
+    if (!local && entities.size() == 1){
+        propertyHeader("");
+        if (ImGui::SmallButton("Convert to Local##joint3d")){
+            // the world points and axes as the bodies' local ones, where the bodies stand now;
+            // the joint behaves as before as long as the bodies start where they are
+            Scene* scene = sceneProject->scene;
+            Joint3DComponent converted = joint;
+            auto frame = [scene](Entity e, Vector3& position, Quaternion& rotation, Vector3& scale){
+                position = Vector3::ZERO; rotation = Quaternion::IDENTITY; scale = Vector3::UNIT_SCALE;
+                if (Transform* t = (e != NULL_ENTITY) ? scene->findComponent<Transform>(e) : nullptr){
+                    position = t->worldPosition; rotation = t->worldRotation; scale = t->worldScale;
+                }
+            };
+            auto toLocal = [](const Vector3& p, const Vector3& position, const Quaternion& rotation, const Vector3& scale){
+                Vector3 l = rotation.inverse() * (p - position);
+                return Vector3(scale.x != 0 ? l.x / scale.x : l.x, scale.y != 0 ? l.y / scale.y : l.y, scale.z != 0 ? l.z / scale.z : l.z);
+            };
+            Vector3 posA, scaleA, posB, scaleB;
+            Quaternion rotA, rotB;
+            frame(joint.bodyA, posA, rotA, scaleA);
+            frame(joint.bodyB, posB, rotB, scaleB);
+            Vector3 worldA = joint.anchor, worldB = joint.anchor;
+            if (joint.type == Joint3DType::DISTANCE){
+                worldA = joint.autoAnchors ? posA : joint.anchorA;
+                worldB = joint.autoAnchors ? posB : joint.anchorB;
+            }else if (joint.type == Joint3DType::SIXDOF || joint.type == Joint3DType::PULLEY){
+                worldA = joint.anchorA;
+                worldB = joint.anchorB;
+            }else if (joint.type == Joint3DType::PRISMATIC || joint.type == Joint3DType::FIXED){
+                worldA = worldB = (posA + posB) * 0.5f;
+            }
+            converted.anchorSpace = JointAnchorSpace::LOCAL;
+            converted.anchor = toLocal(worldA, posA, rotA, scaleA);
+            converted.anchorB = joint.bodyB != NULL_ENTITY ? toLocal(worldB, posB, rotB, scaleB) : worldB;
+            converted.autoAnchors = false;
+            const Quaternion inverse = rotA.inverse();
+            converted.axis = inverse * joint.axis;
+            converted.normal = inverse * joint.normal;
+            converted.twistAxis = inverse * joint.twistAxis;
+            converted.planeAxis = inverse * joint.planeAxis;
+            converted.axisX = inverse * joint.axisX;
+            converted.axisY = inverse * joint.axisY;
+            if (joint.type == Joint3DType::PRISMATIC && joint.useLimits){
+                // a world slider starts at 0 inside its (shifted) range: the same range from the start
+                float limitsMin = std::min(joint.limitsMin, joint.limitsMax);
+                float limitsMax = std::max(joint.limitsMin, joint.limitsMax);
+                if (limitsMin > 0.0f){ limitsMax -= limitsMin; limitsMin = 0.0f; }
+                else if (limitsMax < 0.0f){ limitsMin -= limitsMax; limitsMax = 0.0f; }
+                converted.limitsMin = limitsMin;
+                converted.limitsMax = limitsMax;
+            }
+            MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
+            for (const char* name : {"anchorSpace", "anchor", "anchorB", "autoAnchors", "axis", "normal", "twistAxis", "planeAxis", "axisX", "axisY", "limitsMin", "limitsMax"}){
+                const std::string property = name;
+                PropertyData data = Catalog::getProperty(scene, entities[0], cpType, property);
+                if (!data.ref) continue;
+                if (property == "anchorSpace") multiCmd->addPropertyCmd<int>(project, sceneProject->id, entities[0], cpType, property, (int)converted.anchorSpace);
+                else if (property == "autoAnchors") multiCmd->addPropertyCmd<bool>(project, sceneProject->id, entities[0], cpType, property, converted.autoAnchors);
+                else if (property == "limitsMin") multiCmd->addPropertyCmd<float>(project, sceneProject->id, entities[0], cpType, property, converted.limitsMin);
+                else if (property == "limitsMax") multiCmd->addPropertyCmd<float>(project, sceneProject->id, entities[0], cpType, property, converted.limitsMax);
+                else {
+                    const Joint3DComponent& c = converted;
+                    const Vector3 value = property == "anchor" ? c.anchor : property == "anchorB" ? c.anchorB : property == "axis" ? c.axis :
+                                          property == "normal" ? c.normal : property == "twistAxis" ? c.twistAxis : property == "planeAxis" ? c.planeAxis :
+                                          property == "axisX" ? c.axisX : c.axisY;
+                    multiCmd->addPropertyCmd<Vector3>(project, sceneProject->id, entities[0], cpType, property, value);
+                }
+            }
+            multiCmd->setNoMerge();
+            CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
+        }
+        if (ImGui::IsItemHovered()){
+            ImGui::SetTooltip("Anchors and axes in the bodies' frames (Unity), measured where the bodies are now");
+        }
+    }
+    if (local && usesAnchor){
+        RowSettings settingsLocalAnchor = settingsAnchor;
+        settingsLocalAnchor.help = "Where the joint holds Rigidbody A, in its local space (collider units)";
+        propertyRow(RowPropertyType::Vector3, cpType, "anchor", "Anchor", sceneProject, entities, settingsLocalAnchor);
+        if (joint.type != Joint3DType::DISTANCE){
+            RowSettings settingsAuto = settingsAnchor;
+            settingsAuto.help = "The connected anchor is where Anchor is when the joint is made (Unity Auto Configure Connected Anchor)";
+            propertyRow(RowPropertyType::Bool, cpType, "autoAnchors", "Auto Configure Connected", sceneProject, entities, settingsAuto);
+        }
+        if (!joint.autoAnchors || joint.type == Joint3DType::DISTANCE){
+            RowSettings settingsConnected = settingsAnchor;
+            settingsConnected.help = joint.bodyB != NULL_ENTITY ? "Where the joint holds the connected body, in its local space"
+                                                                 : "No connected body: a world point the joint holds Rigidbody A to";
+            propertyRow(RowPropertyType::Vector3, cpType, "anchorB", "Connected Anchor", sceneProject, entities, settingsConnected);
+        }
+    }
+    propertyRow(RowPropertyType::Bool, cpType, "enableCollision", "Enable Collision", sceneProject, entities, settingsCollision);
 
     endTable();
 
     bool hasTypeSettings = joint.type != Joint3DType::FIXED;
-    if (!hasTypeSettings){
-        return;
-    }
+    if (hasTypeSettings){
 
     const char* joint3DTableLabel = "Anchor";
     switch (joint.type){
@@ -1274,37 +956,61 @@ void editor::InspectorWindow::drawJoint3DComponent(ComponentType cpType, ScenePr
     beginTable(cpType, getLabelSize(joint3DTableLabel), joint3DTypeTableId);
 
     if (joint.type == Joint3DType::DISTANCE){
-        propertyRow(RowPropertyType::Bool, cpType, "autoAnchors", "Auto Anchors", sceneProject, entities, settingsJointValue);
-        if (!joint.autoAnchors){
+        if (!local){
+            propertyRow(RowPropertyType::Bool, cpType, "autoAnchors", "Auto Anchors", sceneProject, entities, settingsJointValue);
+            if (!joint.autoAnchors){
+                propertyRow(RowPropertyType::Vector3, cpType, "anchorA", "Anchor A", sceneProject, entities, settingsJointValue);
+                propertyRow(RowPropertyType::Vector3, cpType, "anchorB", "Anchor B", sceneProject, entities, settingsJointValue);
+            }
+        }
+        propertyRow(RowPropertyType::Float, cpType, "minDistance", "Min Distance", sceneProject, entities, settingsDistance);
+        propertyRow(RowPropertyType::Float, cpType, "maxDistance", "Max Distance", sceneProject, entities, settingsDistance);
+    }else if (joint.type == Joint3DType::POINT){
+        if (!local) propertyRow(RowPropertyType::Vector3, cpType, "anchor", "Anchor", sceneProject, entities, settingsJointValue);
+    }else if (joint.type == Joint3DType::HINGE){
+        if (!local) propertyRow(RowPropertyType::Vector3, cpType, "anchor", "Anchor", sceneProject, entities, settingsJointValue);
+        propertyRow(RowPropertyType::Vector3, cpType, "axis", "Axis", sceneProject, entities, settingsJointValue);
+        propertyRow(RowPropertyType::Vector3, cpType, "normal", "Secondary Axis", sceneProject, entities, settingsJointValue);
+    }else if (joint.type == Joint3DType::CONE){
+        if (!local) propertyRow(RowPropertyType::Vector3, cpType, "anchor", "Anchor", sceneProject, entities, settingsJointValue);
+        propertyRow(RowPropertyType::Vector3, cpType, "twistAxis", "Twist Axis", sceneProject, entities, settingsJointValue);
+        propertyRow(RowPropertyType::Float, cpType, "coneHalfAngle", "Cone Half Angle", sceneProject, entities, settingsParam);
+    }else if (joint.type == Joint3DType::PRISMATIC){
+        propertyRow(RowPropertyType::Vector3, cpType, "axis", "Axis", sceneProject, entities, settingsJointValue);
+    }else if (joint.type == Joint3DType::SWINGTWIST){
+        if (!local) propertyRow(RowPropertyType::Vector3, cpType, "anchor", "Anchor", sceneProject, entities, settingsJointValue);
+        propertyRow(RowPropertyType::Vector3, cpType, "twistAxis", "Twist Axis", sceneProject, entities, settingsJointValue);
+        propertyRow(RowPropertyType::Vector3, cpType, "planeAxis", "Swing Axis", sceneProject, entities, settingsJointValue);
+        propertyRow(RowPropertyType::Enum, cpType, "swingType", "Swing Type", sceneProject, entities, settingsSwingType);
+        // Unity CharacterJoint's names: twist about the twist axis, swing 1 about the swing axis
+        // (Jolt's normal half cone), swing 2 about their normal (Jolt's plane half cone)
+        propertyRow(RowPropertyType::Float, cpType, "twistMinAngle", "Low Twist", sceneProject, entities, settingsParam);
+        propertyRow(RowPropertyType::Float, cpType, "twistMaxAngle", "High Twist", sceneProject, entities, settingsParam);
+        propertyRow(RowPropertyType::Float, cpType, "normalHalfConeAngle", "Swing 1", sceneProject, entities, settingsParam);
+        propertyRow(RowPropertyType::Float, cpType, "planeHalfConeAngle", "Swing 2", sceneProject, entities, settingsParam);
+    }else if (joint.type == Joint3DType::SIXDOF){
+        if (!local){
             propertyRow(RowPropertyType::Vector3, cpType, "anchorA", "Anchor A", sceneProject, entities, settingsJointValue);
             propertyRow(RowPropertyType::Vector3, cpType, "anchorB", "Anchor B", sceneProject, entities, settingsJointValue);
         }
-    }else if (joint.type == Joint3DType::POINT){
-        propertyRow(RowPropertyType::Vector3, cpType, "anchor", "Anchor", sceneProject, entities, settingsJointValue);
-    }else if (joint.type == Joint3DType::HINGE){
-        propertyRow(RowPropertyType::Vector3, cpType, "anchor", "Anchor", sceneProject, entities, settingsJointValue);
-        propertyRow(RowPropertyType::Vector3, cpType, "axis", "Axis", sceneProject, entities, settingsJointValue);
-        propertyRow(RowPropertyType::Vector3, cpType, "normal", "Normal", sceneProject, entities, settingsJointValue);
-    }else if (joint.type == Joint3DType::CONE){
-        propertyRow(RowPropertyType::Vector3, cpType, "anchor", "Anchor", sceneProject, entities, settingsJointValue);
-        propertyRow(RowPropertyType::Vector3, cpType, "twistAxis", "Twist Axis", sceneProject, entities, settingsJointValue);
-    }else if (joint.type == Joint3DType::PRISMATIC){
-        propertyRow(RowPropertyType::Vector3, cpType, "axis", "Axis", sceneProject, entities, settingsJointValue);
-        propertyRow(RowPropertyType::Float, cpType, "limitsMin", "Limits Min", sceneProject, entities, settingsJointValue);
-        propertyRow(RowPropertyType::Float, cpType, "limitsMax", "Limits Max", sceneProject, entities, settingsJointValue);
-    }else if (joint.type == Joint3DType::SWINGTWIST){
-        propertyRow(RowPropertyType::Vector3, cpType, "anchor", "Anchor", sceneProject, entities, settingsJointValue);
-        propertyRow(RowPropertyType::Vector3, cpType, "twistAxis", "Twist Axis", sceneProject, entities, settingsJointValue);
-        propertyRow(RowPropertyType::Vector3, cpType, "planeAxis", "Plane Axis", sceneProject, entities, settingsJointValue);
-        propertyRow(RowPropertyType::Float, cpType, "normalHalfConeAngle", "Normal HalfCone", sceneProject, entities, settingsJointValue);
-        propertyRow(RowPropertyType::Float, cpType, "planeHalfConeAngle", "Plane HalfCone", sceneProject, entities, settingsJointValue);
-        propertyRow(RowPropertyType::Float, cpType, "twistMinAngle", "Twist Min Angle", sceneProject, entities, settingsJointValue);
-        propertyRow(RowPropertyType::Float, cpType, "twistMaxAngle", "Twist Max Angle", sceneProject, entities, settingsJointValue);
-    }else if (joint.type == Joint3DType::SIXDOF){
-        propertyRow(RowPropertyType::Vector3, cpType, "anchorA", "Anchor A", sceneProject, entities, settingsJointValue);
-        propertyRow(RowPropertyType::Vector3, cpType, "anchorB", "Anchor B", sceneProject, entities, settingsJointValue);
         propertyRow(RowPropertyType::Vector3, cpType, "axisX", "Axis X", sceneProject, entities, settingsJointValue);
         propertyRow(RowPropertyType::Vector3, cpType, "axisY", "Axis Y", sceneProject, entities, settingsJointValue);
+        propertyRow(RowPropertyType::Enum, cpType, "xMotion", "X Motion", sceneProject, entities, settingsMotion);
+        propertyRow(RowPropertyType::Enum, cpType, "yMotion", "Y Motion", sceneProject, entities, settingsMotion);
+        propertyRow(RowPropertyType::Enum, cpType, "zMotion", "Z Motion", sceneProject, entities, settingsMotion);
+        propertyRow(RowPropertyType::Enum, cpType, "angularXMotion", "Angular X Motion", sceneProject, entities, settingsMotion);
+        propertyRow(RowPropertyType::Enum, cpType, "angularYMotion", "Angular Y Motion", sceneProject, entities, settingsMotion);
+        propertyRow(RowPropertyType::Enum, cpType, "angularZMotion", "Angular Z Motion", sceneProject, entities, settingsMotion);
+        const bool linearLimited = joint.xMotion == JointMotion::LIMITED || joint.yMotion == JointMotion::LIMITED || joint.zMotion == JointMotion::LIMITED;
+        const bool angularLimited = joint.angularXMotion == JointMotion::LIMITED || joint.angularYMotion == JointMotion::LIMITED || joint.angularZMotion == JointMotion::LIMITED;
+        if (linearLimited){
+            propertyRow(RowPropertyType::Vector3, cpType, "linearLimitMin", "Linear Limit Min", sceneProject, entities, settingsParam);
+            propertyRow(RowPropertyType::Vector3, cpType, "linearLimitMax", "Linear Limit Max", sceneProject, entities, settingsParam);
+        }
+        if (angularLimited){
+            propertyRow(RowPropertyType::Vector3, cpType, "angularLimitMin", "Angular Limit Min", sceneProject, entities, settingsParam);
+            propertyRow(RowPropertyType::Vector3, cpType, "angularLimitMax", "Angular Limit Max", sceneProject, entities, settingsParam);
+        }
     }else if (joint.type == Joint3DType::GEAR){
         propertyRow(RowPropertyType::LocalEntity, cpType, "hingeA", "Hinge A", sceneProject, entities, settingsJointValue);
         propertyRow(RowPropertyType::LocalEntity, cpType, "hingeB", "Hinge B", sceneProject, entities, settingsJointValue);
@@ -1317,8 +1023,10 @@ void editor::InspectorWindow::drawJoint3DComponent(ComponentType cpType, ScenePr
         propertyRow(RowPropertyType::Int, cpType, "numTeethGear", "Teeth Gear", sceneProject, entities, settingsJointValue);
         propertyRow(RowPropertyType::Int, cpType, "rackLength", "Rack Length", sceneProject, entities, settingsJointValue);
     }else if (joint.type == Joint3DType::PULLEY){
-        propertyRow(RowPropertyType::Vector3, cpType, "anchorA", "Anchor A", sceneProject, entities, settingsJointValue);
-        propertyRow(RowPropertyType::Vector3, cpType, "anchorB", "Anchor B", sceneProject, entities, settingsJointValue);
+        if (!local){
+            propertyRow(RowPropertyType::Vector3, cpType, "anchorA", "Anchor A", sceneProject, entities, settingsJointValue);
+            propertyRow(RowPropertyType::Vector3, cpType, "anchorB", "Anchor B", sceneProject, entities, settingsJointValue);
+        }
         propertyRow(RowPropertyType::Vector3, cpType, "fixedPointA", "Fixed Point A", sceneProject, entities, settingsJointValue);
         propertyRow(RowPropertyType::Vector3, cpType, "fixedPointB", "Fixed Point B", sceneProject, entities, settingsJointValue);
     }else if (joint.type == Joint3DType::PATH){
@@ -1406,6 +1114,150 @@ void editor::InspectorWindow::drawJoint3DComponent(ComponentType cpType, ScenePr
     }
 
     endTable();
+    }
+
+    const bool hinge = joint.type == Joint3DType::HINGE;
+    const bool slider = joint.type == Joint3DType::PRISMATIC;
+    const bool distance = joint.type == Joint3DType::DISTANCE;
+    const bool swingTwist = joint.type == Joint3DType::SWINGTWIST;
+    const bool sixDOF = joint.type == Joint3DType::SIXDOF;
+
+    if (hinge || slider){
+        separatorText("Limits");
+        beginTable(cpType, getLabelSize("Spring Frequency"), "joint3d_limits");
+        propertyRow(RowPropertyType::Bool, cpType, "useLimits", "Use Limits", sceneProject, entities, settingsParam);
+        if (joint.useLimits){
+            RowSettings settingsLimit;
+            settingsLimit.help = hinge ? "Angles measured from the pose the joint starts in (any range, Unity's 10..50 too)"
+                                       : "Metres along the axis, measured from where the joint starts";
+            propertyRow(RowPropertyType::Float, cpType, "limitsMin", hinge ? "Min" : "Min (m)", sceneProject, entities, settingsLimit);
+            propertyRow(RowPropertyType::Float, cpType, "limitsMax", hinge ? "Max" : "Max (m)", sceneProject, entities, settingsLimit);
+            RowSettings settingsSoft;
+            settingsSoft.help = "Soft limits: a spring of this frequency (Hz) pulls back past them; 0 = hard";
+            propertyRow(RowPropertyType::FloatPositive, cpType, "limitsSpringFrequency", "Spring Frequency", sceneProject, entities, settingsSoft);
+            propertyRow(RowPropertyType::FloatPositive, cpType, "limitsSpringDamping", "Spring Damping", sceneProject, entities, settingsParam);
+            if (!local && ((joint.limitsMin > 0.0f && joint.limitsMax > 0.0f) || (joint.limitsMin < 0.0f && joint.limitsMax < 0.0f))){
+                propertyHeader("");
+                ImGui::TextColored(Theme::Colors::WarningText, "World joints start at 0: convert to Local for a range not containing 0");
+            }
+        }
+        endTable();
+    }
+
+    if (hinge || slider || distance){
+        separatorText("Spring");
+        beginTable(cpType, getLabelSize("Target Position"), "joint3d_spring");
+        RowSettings settingsUseSpring;
+        settingsUseSpring.help = distance ? "A soft rope: a spring (Unity SpringJoint) between Min and Max Distance"
+                                          : "A spring to the target (Unity HingeJoint.spring)";
+        propertyRow(RowPropertyType::Bool, cpType, "useSpring", "Use Spring", sceneProject, entities, settingsUseSpring);
+        if (joint.useSpring){
+            propertyRow(RowPropertyType::FloatPositive, cpType, "springStiffness", "Spring", sceneProject, entities, settingsParam);
+            propertyRow(RowPropertyType::FloatPositive, cpType, "springDamper", "Damper", sceneProject, entities, settingsParam);
+            if (!distance){
+                propertyRow(RowPropertyType::Float, cpType, "springTargetPosition", "Target Position", sceneProject, entities, settingsParam);
+            }
+        }
+        endTable();
+    }
+
+    if (hinge || slider || swingTwist){
+        separatorText("Motor");
+        beginTable(cpType, getLabelSize("Target Velocity"), "joint3d_motor");
+        propertyRow(RowPropertyType::Bool, cpType, "useMotor", "Use Motor", sceneProject, entities, settingsParam);
+        if (joint.useMotor){
+            if (!swingTwist){
+                RowSettings settingsVelocity;
+                settingsVelocity.help = hinge ? "Angular speed per second" : "Metres per second";
+                propertyRow(RowPropertyType::Float, cpType, "motorTargetVelocity", "Target Velocity", sceneProject, entities, settingsVelocity);
+            }else{
+                propertyRow(RowPropertyType::Quat, cpType, "motorTargetRotation", "Target Rotation", sceneProject, entities, settingsParam);
+                propertyRow(RowPropertyType::FloatPositive, cpType, "motorSpringFrequency", "Frequency", sceneProject, entities, settingsParam);
+                propertyRow(RowPropertyType::FloatPositive, cpType, "motorSpringDamping", "Damping", sceneProject, entities, settingsParam);
+            }
+            RowSettings settingsForce;
+            settingsForce.help = slider ? "Newtons" : "Newton metres";
+            propertyRow(RowPropertyType::FloatPositive, cpType, "motorMaxForce", "Max Force", sceneProject, entities, settingsForce);
+            if (joint.useSpring && !swingTwist){
+                propertyHeader("");
+                ImGui::TextColored(Theme::Colors::WarningText, "Motor and spring are both on: the motor drives it");
+            }
+        }
+        endTable();
+    }
+
+    if (hinge || slider || swingTwist || sixDOF){
+        beginTable(cpType, getLabelSize("Max Friction"), "joint3d_friction");
+        RowSettings settingsFriction;
+        settingsFriction.help = slider ? "Friction force (N) when no motor drives it" : "Friction torque (N m) when no motor drives it";
+        propertyRow(RowPropertyType::FloatPositive, cpType, "maxFriction", "Max Friction", sceneProject, entities, settingsFriction);
+        endTable();
+    }
+
+    if (sixDOF){
+        separatorText("Drives");
+        beginTable(cpType, getLabelSize("Angular Drive Stiffness"), "joint3d_drives");
+        propertyRow(RowPropertyType::Bool, cpType, "useDrive", "Use Drive", sceneProject, entities, settingsParam);
+        if (joint.useDrive){
+            RowSettings settingsDrive;
+            settingsDrive.help = "A stiffness drives to the target pose, a damping alone to the target velocity (Unity's drives)";
+            propertyRow(RowPropertyType::FloatPositive, cpType, "driveStiffness", "Drive Stiffness", sceneProject, entities, settingsDrive);
+            propertyRow(RowPropertyType::FloatPositive, cpType, "driveDamping", "Drive Damping", sceneProject, entities, settingsDrive);
+            propertyRow(RowPropertyType::FloatPositive, cpType, "angularDriveStiffness", "Angular Drive Stiffness", sceneProject, entities, settingsDrive);
+            propertyRow(RowPropertyType::FloatPositive, cpType, "angularDriveDamping", "Angular Drive Damping", sceneProject, entities, settingsDrive);
+            propertyRow(RowPropertyType::Float, cpType, "driveMaxForce", "Max Force", sceneProject, entities, settingsParam);
+            propertyRow(RowPropertyType::Float, cpType, "driveMaxTorque", "Max Torque", sceneProject, entities, settingsParam);
+            propertyRow(RowPropertyType::Vector3, cpType, "targetPosition", "Target Position", sceneProject, entities, settingsParam);
+            propertyRow(RowPropertyType::Quat, cpType, "targetRotation", "Target Rotation", sceneProject, entities, settingsParam);
+            propertyRow(RowPropertyType::Vector3, cpType, "targetVelocity", "Target Velocity", sceneProject, entities, settingsParam);
+            propertyRow(RowPropertyType::Vector3, cpType, "targetAngularVelocity", "Target Angular Velocity", sceneProject, entities, settingsParam);
+        }
+        endTable();
+    }
+
+    separatorText("Break");
+    beginTable(cpType, getLabelSize("Break Torque"), "joint3d_break");
+    RowSettings settingsBreak;
+    settingsBreak.help = "Breaks past this force (N) / torque (N m); empty or infinite: never";
+    propertyRow(RowPropertyType::Float, cpType, "breakForce", "Break Force", sceneProject, entities, settingsBreak);
+    propertyRow(RowPropertyType::Float, cpType, "breakTorque", "Break Torque", sceneProject, entities, settingsBreak);
+    if (std::isfinite(joint.breakForce) || std::isfinite(joint.breakTorque)){
+        RowSettings settingsAction;
+        settingsAction.enumEntries = &entriesJointBreakAction3D;
+        settingsAction.help = "Ignore: nothing. Callback Only: onJointBreak(force, joint). Disable: the joint is disabled, then the callback.\nDestroy: the callback, then the component is removed (Unity)";
+        propertyRow(RowPropertyType::Enum, cpType, "breakAction", "Action", sceneProject, entities, settingsAction);
+        propertyHeader("");
+        if (ImGui::SmallButton("Never##joint3d_break")){
+            MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
+            for (Entity entity : entities){
+                multiCmd->addPropertyCmd<float>(project, sceneProject->id, entity, cpType, "breakForce", std::numeric_limits<float>::infinity());
+                multiCmd->addPropertyCmd<float>(project, sceneProject->id, entity, cpType, "breakTorque", std::numeric_limits<float>::infinity());
+            }
+            multiCmd->setNoMerge();
+            CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
+        }
+    }
+    endTable();
+
+    const bool playing = sceneProject->playState != ScenePlayState::STOPPED;
+    if (playing && entities.size() == 1){
+        separatorText("Runtime");
+        Joint3D live(sceneProject->scene, entities[0]);
+        if (!live.isLive()){
+            ImGui::TextDisabled(joint.broken ? "Broken" : "Not made (see the console)");
+        }else{
+            const Vector3 force = live.getCurrentForce();
+            const Vector3 torque = live.getCurrentTorque();
+            ImGui::TextDisabled("Force %.1f N   Torque %.1f N m", force.length(), torque.length());
+            if (hinge){
+                ImGui::TextDisabled("Angle %.2f   Velocity %.2f /s", live.getAngle(), live.getVelocity());
+            }else if (slider){
+                ImGui::TextDisabled("Position %.3f m   Speed %.3f m/s", live.getPosition(), live.getSpeed());
+            }else if (distance){
+                ImGui::TextDisabled("Length %.3f m", live.getCurrentLength());
+            }
+        }
+    }
 }
 
 // S22's gameplay components: the character controllers, the water volume and the buoyancy
@@ -1676,3 +1528,46 @@ void editor::InspectorWindow::drawBuoyancyComponent(ComponentType cpType, SceneP
     }
 }
 
+// upstream (physics-contacts): the body's callbacks and what it touches, in Play
+void editor::InspectorWindow::drawPhysicsContacts(SceneProject* sceneProject, Entity entity, bool is2D){
+    Scene* scene = sceneProject->scene;
+    // read again at most 10 times a second
+    PhysicsContactsView& view = physicsContactsViews[{sceneProject->id, entity, is2D}];
+    const double now = ImGui::GetTime();
+    if (view.readAt < 0.0 || now - view.readAt >= 0.1){
+        view.readAt = now;
+        std::shared_ptr<PhysicsSystem> physics = scene->getSystem<PhysicsSystem>();
+        view.contacts.clear();
+#ifdef JASPERENGINE_PHYSICS_2D
+        if (is2D && scene->findComponent<Rigidbody2DComponent>(entity)) view.contacts = physics->getContactSummary2D(entity);
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+        if (!is2D && scene->findComponent<RigidbodyComponent>(entity)) view.contacts = physics->getContactSummary3D(entity);
+#endif
+        view.callbacks = ScriptMessages::describeReceivers(scene, entity, is2D ? PhysicsCallbacks::ALL_2D : PhysicsCallbacks::ALL_3D);
+    }
+
+    ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubtleText);
+    std::string callbacks;
+    for (const std::string& name : view.callbacks){
+        callbacks += (callbacks.empty() ? "" : ", ") + name;
+    }
+    ImGui::TextWrapped("Callbacks: %s", callbacks.empty() ? "none (define onCollisionEnter / onTriggerEnter on a script)" : callbacks.c_str());
+    ImGui::PopStyleColor();
+
+    const std::string title = "Contacts (" + std::to_string(view.contacts.size()) + ")##physics_contacts_" + std::string(is2D ? "2d" : "3d");
+    if (ImGui::TreeNode(title.c_str())){
+        if (view.contacts.empty()){
+            ImGui::TextDisabled("Touching nothing");
+        }
+        for (const ContactSummary& contact : view.contacts){
+            const std::string other = scene->isEntityCreated(contact.other) ? scene->getEntityName(contact.other) : ("#" + std::to_string(contact.other));
+            std::string line = other + "  collider " + std::to_string(contact.collider) + " / " + std::to_string(contact.otherCollider);
+            if (contact.trigger) line += "  trigger";
+            if (contact.sinceStep > 0) line += "  since step " + std::to_string(contact.sinceStep);
+            if (contact.asleep) line += "  asleep";
+            ImGui::BulletText("%s", line.c_str());
+        }
+        ImGui::TreePop();
+    }
+}

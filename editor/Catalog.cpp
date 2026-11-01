@@ -3,7 +3,7 @@
 
 #include "Catalog.h"
 #include "particles/ParticleFields.h"
-#include "action/ParticleSystem.h"
+#include "object/ParticleSystem.h"
 #include "subsystem/ActionSystem.h"
 #include "script/ScriptRuntime.h"
 
@@ -471,6 +471,7 @@ uint64_t editor::Catalog::getChangedUpdateFlags(ComponentType compType, void* ol
                 changed = static_cast<EntityReference*>(oldProp.ref)->entity != static_cast<EntityReference*>(newProp.ref)->entity ||
                           static_cast<EntityReference*>(oldProp.ref)->sceneId != static_cast<EntityReference*>(newProp.ref)->sceneId;
                 break;
+#if 0 // SYNC4-ABSORB(curve): upstream's AnimationCurve / Gradient / MinMax property types
             case PropertyType::Curve:
                 changed = *static_cast<AnimationCurve*>(oldProp.ref) != *static_cast<AnimationCurve*>(newProp.ref);
                 break;
@@ -483,6 +484,7 @@ uint64_t editor::Catalog::getChangedUpdateFlags(ComponentType compType, void* ol
             case PropertyType::MinMaxGradient:
                 changed = *static_cast<MinMaxGradient*>(oldProp.ref) != *static_cast<MinMaxGradient*>(newProp.ref);
                 break;
+#endif
             case PropertyType::Custom:
                 // Conservative: assume changed for complex types
                 changed = true;
@@ -919,9 +921,8 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
         // the Mesh render mode's primitive, drawn by the system's target
         Scene* scene = dynamic_cast<Scene*>(registry);
         const ParticleSystemComponent* ps = registry->findComponent<ParticleSystemComponent>(entity);
-        if (scene && ps && ps->version >= 2){
-            ParticleSystem::applyRendererMesh(scene, scene->getSystem<ActionSystem>()->particleTarget(entity), ps->renderer.mesh);
-        }
+        // SYNC4-ABSORB(particles): upstream's version 2 Mesh render mode (ParticleSystem::applyRendererMesh)
+        (void)scene; (void)ps;
     }
     if (updateFlags & UpdateFlags_CanvasGroup){
         // alpha in [0, 1] at once (a NaN keeps the value UISystem last saw)
@@ -1486,6 +1487,7 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             if (source && target) *target = *source;
             break;
         }
+#if 0 // SYNC4-ABSORB(curve): upstream's AnimationCurve / Gradient / MinMax property types
         case PropertyType::Curve: {
             AnimationCurve* source = Catalog::getPropertyRef<AnimationCurve>(sourceRegistry, sourceEntity, compType, property);
             AnimationCurve* target = Catalog::getPropertyRef<AnimationCurve>(targetRegistry, targetEntity, compType, property);
@@ -1510,14 +1512,37 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             if (source && target) *target = *source;
             break;
         }
+#endif
         case PropertyType::Custom:
-            if (compType == ComponentType::ParticleSystemComponent && property == "emission.bursts") {
-                auto* source = Catalog::getPropertyRef<std::vector<ParticleEmissionBurst>>(sourceRegistry, sourceEntity, compType, property);
-                auto* target = Catalog::getPropertyRef<std::vector<ParticleEmissionBurst>>(targetRegistry, targetEntity, compType, property);
+            // SYNC4-ABSORB(particles): upstream's version 2 "emission.bursts" / "textureSheetAnimation.sprites" copies
+            // upstream's collider lists: their authored data, no live shape (copyCollider2D / 3D)
+            if (compType == ComponentType::RigidbodyComponent && property == "colliders") {
+                auto* source = Catalog::getPropertyRef<std::vector<Collider3D>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<Collider3D>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) copyColliders3D(*source, *target);
+            } else if (compType == ComponentType::RigidbodyComponent && property.compare(0, 10, "colliders[") == 0 && endsWith(property, "]")) {
+                auto* source = Catalog::getPropertyRef<Collider3D>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<Collider3D>(targetRegistry, targetEntity, compType, property);
+                if (source && target) copyCollider3D(*source, *target);
+            } else if (compType == ComponentType::RigidbodyComponent && property.compare(0, 10, "colliders[") == 0 && endsWith(property, "].vertices")) {
+                auto* source = Catalog::getPropertyRef<std::vector<Vector3>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<Vector3>>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
-            } else if (compType == ComponentType::ParticleSystemComponent && property == "textureSheetAnimation.sprites") {
-                auto* source = Catalog::getPropertyRef<std::vector<int>>(sourceRegistry, sourceEntity, compType, property);
-                auto* target = Catalog::getPropertyRef<std::vector<int>>(targetRegistry, targetEntity, compType, property);
+            } else if (compType == ComponentType::RigidbodyComponent && property.compare(0, 10, "colliders[") == 0 && endsWith(property, "].indices")) {
+                auto* source = Catalog::getPropertyRef<std::vector<uint32_t>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<uint32_t>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::Rigidbody2DComponent && property == "colliders") {
+                auto* source = Catalog::getPropertyRef<std::vector<Collider2D>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<Collider2D>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) copyColliders2D(*source, *target);
+            } else if (compType == ComponentType::Rigidbody2DComponent && property.compare(0, 10, "colliders[") == 0 && endsWith(property, "]")) {
+                auto* source = Catalog::getPropertyRef<Collider2D>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<Collider2D>(targetRegistry, targetEntity, compType, property);
+                if (source && target) copyCollider2D(*source, *target);
+            } else if (compType == ComponentType::Rigidbody2DComponent && property.compare(0, 10, "colliders[") == 0 && endsWith(property, "].points")) {
+                auto* source = Catalog::getPropertyRef<std::vector<Vector2>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<Vector2>>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
             } else if (compType == ComponentType::ScriptComponent) {
                 copyComponent(sourceRegistry, sourceEntity, targetRegistry, targetEntity, compType);

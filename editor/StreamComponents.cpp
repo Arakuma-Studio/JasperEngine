@@ -111,6 +111,8 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
 
     node["cullingMode"] = cullingModeToString(mesh.cullingMode);
     node["windingOrder"] = windingOrderToString(mesh.windingOrder);
+    if (mesh.mirroredWinding)
+        node["mirroredWinding"] = true;
 
     if (!mesh.customShader.empty())
         encodeShaderRef(node, "customShader", mesh.customShader);
@@ -204,6 +206,7 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
 
     if (node["cullingMode"]) mesh.cullingMode = decodeEnum(node, "cullingMode", StreamSchema::cullingMode());
     if (node["windingOrder"]) mesh.windingOrder = decodeEnum(node, "windingOrder", StreamSchema::windingOrder());
+    if (node["windingOrder"]) mesh.mirroredWinding = node["mirroredWinding"] && YamlNumbers::as<bool>(node["mirroredWinding"]);
 
     if (node["customShader"]) mesh.customShader = decodeShaderRef(node, "customShader");
     if (node["customDepthShader"]) mesh.customDepthShader = decodeShaderRef(node, "customDepthShader");
@@ -245,6 +248,8 @@ YAML::Node editor::Stream::encodeUIComponent(const UIComponent& ui, bool encodeB
         encodeShaderRef(node, "customShader", ui.customShader);
     if (!ui.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(ui.shaderUniforms);
+    if (!ui.shaderGlobalBindings.empty())
+        node["shaderGlobalBindings"] = encodeShaderGlobalBindings(ui.shaderGlobalBindings);
     encodeComponentShaderLibrary(node, ui.shaderTextures, ui.shaderFeatures, &ui.blendMode, &ui.depthWrite, embedTextureData);
     encodeStencilAndColorWrite(node, ui.stencil, ui.colorWrite);
 
@@ -281,6 +286,7 @@ UIComponent editor::Stream::decodeUIComponent(const YAML::Node& node, const UICo
 
     if (node["customShader"]) ui.customShader = decodeShaderRef(node, "customShader");
     ui.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
+    ui.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
     ui.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, ui.shaderTextures, ui.shaderFeatures, &ui.blendMode, &ui.depthWrite);
     decodeStencilAndColorWrite(node, ui.stencil, ui.colorWrite);
@@ -913,6 +919,8 @@ YAML::Node editor::Stream::encodeSkyboxComponent(const SkyboxComponent& sky) {
         encodeShaderRef(node, "customShader", sky.customShader);
     if (!sky.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(sky.shaderUniforms);
+    if (!sky.shaderGlobalBindings.empty())
+        node["shaderGlobalBindings"] = encodeShaderGlobalBindings(sky.shaderGlobalBindings);
     encodeComponentShaderLibrary(node, sky.shaderTextures, sky.shaderFeatures, nullptr, nullptr, true);
 
     return node;
@@ -948,6 +956,7 @@ SkyboxComponent editor::Stream::decodeSkyboxComponent(const YAML::Node& node, co
 
     if (node["customShader"]) sky.customShader = decodeShaderRef(node, "customShader");
     sky.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
+    sky.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
     sky.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, sky.shaderTextures, sky.shaderFeatures, nullptr, nullptr);
 
@@ -1010,39 +1019,86 @@ Joint3DType editor::Stream::stringToJoint3DType(const std::string& str) {
 // Rigidbody2DComponent encode/decode
 // ==============================
 
+namespace {
+
+    std::string collisionDetection2DToString(CollisionDetectionMode2D mode){
+        return mode == CollisionDetectionMode2D::CONTINUOUS ? "continuous" : "discrete";
+    }
+
+    CollisionDetectionMode2D stringToCollisionDetection2D(const std::string& text){
+        return text == "continuous" ? CollisionDetectionMode2D::CONTINUOUS : CollisionDetectionMode2D::DISCRETE;
+    }
+
+    std::string sleepMode2DToString(RigidbodySleepMode2D mode){
+        switch (mode){
+            case RigidbodySleepMode2D::NEVER_SLEEP: return "never_sleep";
+            case RigidbodySleepMode2D::START_ASLEEP: return "start_asleep";
+            default: return "start_awake";
+        }
+    }
+
+    RigidbodySleepMode2D stringToSleepMode2D(const std::string& text){
+        if (text == "never_sleep") return RigidbodySleepMode2D::NEVER_SLEEP;
+        if (text == "start_asleep") return RigidbodySleepMode2D::START_ASLEEP;
+        return RigidbodySleepMode2D::START_AWAKE;
+    }
+
+}
+
 YAML::Node editor::Stream::encodeRigidbody2DComponent(const Rigidbody2DComponent& body) {
     YAML::Node node;
     node["enabled"] = body.enabled;
 
     node["type"] = bodyTypeToString(body.type);
-    node["numColliders"] = static_cast<unsigned int>(body.numColliders);
+    // still written for editors from before colliders had no count limit
+    node["numColliders"] = static_cast<unsigned int>(body.colliders.size());
+
+    node["gravityScale"] = body.gravityScale;
+    node["linearDamping"] = body.linearDamping;
+    node["angularDamping"] = body.angularDamping;
+    node["fixedRotation"] = body.fixedRotation;
+    node["collisionDetection"] = collisionDetection2DToString(body.collisionDetection);
+    node["sleepingMode"] = sleepMode2DToString(body.sleepingMode);
+    node["useAutoMass"] = body.useAutoMass;
+    node["mass"] = body.mass;
+    node["autoCenterOfMass"] = body.autoCenterOfMass;
+    node["centerOfMass"] = encodeVector2(body.centerOfMass);
+    node["autoInertia"] = body.autoInertia;
+    node["inertia"] = body.inertia;
+    node["material"] = body.material;
 
     YAML::Node shapesNode;
-    for (size_t i = 0; i < body.numColliders; i++) {
+    for (const Collider2D& collider : body.colliders) {
         YAML::Node shapeNode;
-        shapeNode["type"] = collider2DTypeToString(body.colliders[i].type);
-        shapeNode["pointA"] = encodeVector2(body.colliders[i].pointA);
-        shapeNode["pointB"] = encodeVector2(body.colliders[i].pointB);
-        shapeNode["radius"] = body.colliders[i].radius;
-        shapeNode["loop"] = body.colliders[i].loop;
+        shapeNode["type"] = collider2DTypeToString(collider.type);
+        shapeNode["pointA"] = encodeVector2(collider.pointA);
+        shapeNode["pointB"] = encodeVector2(collider.pointB);
+        shapeNode["radius"] = collider.radius;
+        shapeNode["loop"] = collider.loop;
 
-        shapeNode["density"] = body.colliders[i].density;
-        shapeNode["friction"] = body.colliders[i].friction;
-        shapeNode["restitution"] = body.colliders[i].restitution;
-        shapeNode["sensor"] = body.colliders[i].sensor;
-        shapeNode["enableHitEvents"] = body.colliders[i].enableHitEvents;
-        shapeNode["contactEvents"] = body.colliders[i].contactEvents;
-        shapeNode["preSolveEvents"] = body.colliders[i].preSolveEvents;
-        shapeNode["sensorEvents"] = body.colliders[i].sensorEvents;
-        shapeNode["categoryBits"] = body.colliders[i].categoryBits;
-        shapeNode["maskBits"] = body.colliders[i].maskBits;
-        shapeNode["groupIndex"] = body.colliders[i].groupIndex;
-
-        YAML::Node verticesNode;
-        for (size_t j = 0; j < body.colliders[i].numVertices; j++) {
-            verticesNode.push_back(encodeVector2(body.colliders[i].vertices[j]));
+        shapeNode["density"] = collider.density;
+        shapeNode["friction"] = collider.friction;
+        shapeNode["restitution"] = collider.restitution;
+        if (!collider.material.empty()) {
+            shapeNode["material"] = collider.material;
         }
-        shapeNode["vertices"] = verticesNode;
+        shapeNode["sensor"] = collider.sensor;
+        shapeNode["enableHitEvents"] = collider.enableHitEvents;
+        shapeNode["contactEvents"] = collider.contactEvents;
+        shapeNode["preSolveEvents"] = collider.preSolveEvents;
+        shapeNode["sensorEvents"] = collider.sensorEvents;
+        shapeNode["categoryBits"] = collider.categoryBits;
+        shapeNode["maskBits"] = collider.maskBits;
+        shapeNode["groupIndex"] = collider.groupIndex;
+        if (collider.receiver != NULL_ENTITY) {
+            shapeNode["receiver"] = collider.receiver;
+        }
+
+        YAML::Node pointsNode;
+        for (const Vector2& point : collider.points) {
+            pointsNode.push_back(encodeVector2(point));
+        }
+        shapeNode["points"] = pointsNode;
 
         shapesNode.push_back(shapeNode);
     }
@@ -1056,48 +1112,87 @@ Rigidbody2DComponent editor::Stream::decodeRigidbody2DComponent(const YAML::Node
 
     if (oldBody) {
         body = *oldBody;
+        // a script's material objects (runtime only) do not outlive what is decoded over them
+        body.materialInstance.reset();
+        body.appliedMaterialRevision = 0;
     }
 
     if (node["type"]) body.type = decodeEnum(node, "type", StreamSchema::bodyType());
-    if (node["numColliders"]) body.numColliders = YamlNumbers::as<unsigned int>(node["numColliders"]);
+
+    if (node["gravityScale"]) body.gravityScale = YamlNumbers::as<float>(node["gravityScale"]);
+    if (node["linearDamping"]) body.linearDamping = YamlNumbers::as<float>(node["linearDamping"]);
+    if (node["angularDamping"]) body.angularDamping = YamlNumbers::as<float>(node["angularDamping"]);
+    if (node["fixedRotation"]) body.fixedRotation = YamlNumbers::as<bool>(node["fixedRotation"]);
+    if (node["collisionDetection"]) body.collisionDetection = stringToCollisionDetection2D(node["collisionDetection"].as<std::string>());
+    if (node["sleepingMode"]) body.sleepingMode = stringToSleepMode2D(node["sleepingMode"].as<std::string>());
+    if (node["useAutoMass"]) body.useAutoMass = YamlNumbers::as<bool>(node["useAutoMass"]);
+    if (node["mass"]) body.mass = YamlNumbers::as<float>(node["mass"]);
+    if (node["autoCenterOfMass"]) body.autoCenterOfMass = YamlNumbers::as<bool>(node["autoCenterOfMass"]);
+    if (node["centerOfMass"]) body.centerOfMass = decodeVector2(node["centerOfMass"]);
+    if (node["autoInertia"]) body.autoInertia = YamlNumbers::as<bool>(node["autoInertia"]);
+    if (node["inertia"]) body.inertia = YamlNumbers::as<float>(node["inertia"]);
+    // keys written only when set: absent is the default, also over an existing component
+    body.material = node["material"] ? node["material"].as<std::string>() : std::string();
 
     if (node["colliders"]) {
-        size_t count = node["colliders"].size();
+        const YAML::Node collidersNode = node["colliders"];
+        size_t count = collidersNode.size();
+        // files of older editors also say how many colliders count
+        if (node["numColliders"]) {
+            count = std::min(count, (size_t)YamlNumbers::as<unsigned int>(node["numColliders"]));
+        }
+
+        const size_t previousCount = body.colliders.size();
+        body.colliders.resize(count);
         for (size_t i = 0; i < count; i++) {
-            if (node["colliders"][i]["type"]) {
-                body.colliders[i].type = decodeEnum(node["colliders"][i], "type", StreamSchema::collider2DType());
+            const YAML::Node shapeNode = collidersNode[i];
+            Collider2D& collider = body.colliders[i];
+            // a collider new to the component: keys missing from files of before default as
+            // they did then (contact events off)
+            if (i >= previousCount) {
+                collider.contactEvents = false;
             }
-            if (node["colliders"][i]["pointA"]) {
-                body.colliders[i].pointA = decodeVector2(node["colliders"][i]["pointA"]);
-            }
-            if (node["colliders"][i]["pointB"]) {
-                body.colliders[i].pointB = decodeVector2(node["colliders"][i]["pointB"]);
-            }
-            if (node["colliders"][i]["radius"]) body.colliders[i].radius = YamlNumbers::as<float>(node["colliders"][i]["radius"]);
-            if (node["colliders"][i]["loop"]) body.colliders[i].loop = YamlNumbers::as<bool>(node["colliders"][i]["loop"]);
 
-            if (node["colliders"][i]["density"]) body.colliders[i].density = YamlNumbers::as<float>(node["colliders"][i]["density"]);
-            if (node["colliders"][i]["friction"]) body.colliders[i].friction = YamlNumbers::as<float>(node["colliders"][i]["friction"]);
-            if (node["colliders"][i]["restitution"]) body.colliders[i].restitution = YamlNumbers::as<float>(node["colliders"][i]["restitution"]);
-            if (node["colliders"][i]["sensor"]) body.colliders[i].sensor = YamlNumbers::as<bool>(node["colliders"][i]["sensor"]);
-            if (node["colliders"][i]["enableHitEvents"]) body.colliders[i].enableHitEvents = YamlNumbers::as<bool>(node["colliders"][i]["enableHitEvents"]);
-            if (node["colliders"][i]["contactEvents"]) body.colliders[i].contactEvents = YamlNumbers::as<bool>(node["colliders"][i]["contactEvents"]);
-            if (node["colliders"][i]["preSolveEvents"]) body.colliders[i].preSolveEvents = YamlNumbers::as<bool>(node["colliders"][i]["preSolveEvents"]);
-            if (node["colliders"][i]["sensorEvents"]) body.colliders[i].sensorEvents = YamlNumbers::as<bool>(node["colliders"][i]["sensorEvents"]);
-            if (node["colliders"][i]["categoryBits"]) body.colliders[i].categoryBits = YamlNumbers::as<uint16_t>(node["colliders"][i]["categoryBits"]);
-            if (node["colliders"][i]["maskBits"]) body.colliders[i].maskBits = YamlNumbers::as<uint16_t>(node["colliders"][i]["maskBits"]);
-            if (node["colliders"][i]["groupIndex"]) body.colliders[i].groupIndex = YamlNumbers::as<int16_t>(node["colliders"][i]["groupIndex"]);
+            if (shapeNode["type"]) {
+                collider.type = decodeEnum(shapeNode, "type", StreamSchema::collider2DType());
+            }
+            if (shapeNode["pointA"]) {
+                collider.pointA = decodeVector2(shapeNode["pointA"]);
+            }
+            if (shapeNode["pointB"]) {
+                collider.pointB = decodeVector2(shapeNode["pointB"]);
+            }
+            if (shapeNode["radius"]) collider.radius = YamlNumbers::as<float>(shapeNode["radius"]);
+            if (shapeNode["loop"]) collider.loop = YamlNumbers::as<bool>(shapeNode["loop"]);
 
-            if (node["colliders"][i]["vertices"]) {
-                size_t vcount = node["colliders"][i]["vertices"].size();
-                body.colliders[i].numVertices = (uint8_t)vcount;
-                for (size_t j = 0; j < vcount; j++) {
-                    body.colliders[i].vertices[j] = decodeVector2(node["colliders"][i]["vertices"][j]);
+            if (shapeNode["density"]) collider.density = YamlNumbers::as<float>(shapeNode["density"]);
+            if (shapeNode["friction"]) collider.friction = YamlNumbers::as<float>(shapeNode["friction"]);
+            if (shapeNode["restitution"]) collider.restitution = YamlNumbers::as<float>(shapeNode["restitution"]);
+            collider.material = shapeNode["material"] ? shapeNode["material"].as<std::string>() : std::string();
+            collider.materialInstance.reset();
+            collider.ownsMaterialInstance = false;
+            if (shapeNode["sensor"]) collider.sensor = YamlNumbers::as<bool>(shapeNode["sensor"]);
+            if (shapeNode["enableHitEvents"]) collider.enableHitEvents = YamlNumbers::as<bool>(shapeNode["enableHitEvents"]);
+            if (shapeNode["contactEvents"]) collider.contactEvents = YamlNumbers::as<bool>(shapeNode["contactEvents"]);
+            if (shapeNode["preSolveEvents"]) collider.preSolveEvents = YamlNumbers::as<bool>(shapeNode["preSolveEvents"]);
+            if (shapeNode["sensorEvents"]) collider.sensorEvents = YamlNumbers::as<bool>(shapeNode["sensorEvents"]);
+            if (shapeNode["categoryBits"]) collider.categoryBits = YamlNumbers::as<uint16_t>(shapeNode["categoryBits"]);
+            if (shapeNode["maskBits"]) collider.maskBits = YamlNumbers::as<uint16_t>(shapeNode["maskBits"]);
+            if (shapeNode["groupIndex"]) collider.groupIndex = YamlNumbers::as<int16_t>(shapeNode["groupIndex"]);
+            collider.receiver = shapeNode["receiver"] ? YamlNumbers::as<Entity>(shapeNode["receiver"]) : NULL_ENTITY;
+
+            // "vertices": files of before
+            const YAML::Node pointsNode = shapeNode["points"] ? shapeNode["points"] : shapeNode["vertices"];
+            if (pointsNode) {
+                collider.points.resize(pointsNode.size());
+                for (size_t j = 0; j < pointsNode.size(); j++) {
+                    collider.points[j] = decodeVector2(pointsNode[j]);
                 }
             }
 
-            body.colliders[i].shape = b2_nullShapeId;
-            body.colliders[i].chain = b2_nullChainId;
+            collider.shapes.clear();
+            collider.chain = b2_nullChainId;
+            collider.dirty = true;
         }
     }
 
@@ -1128,6 +1223,26 @@ YAML::Node editor::Stream::encodeRigidbodyComponent(const RigidbodyComponent& bo
     node["buoyancy"] = body.buoyancy;
     node["waterDrag"] = body.waterDrag;
     node["waterAngularDrag"] = body.waterAngularDrag;
+    node["material"] = body.material;
+    node["linearDamping"] = body.linearDamping;
+    node["angularDamping"] = body.angularDamping;
+    node["maxLinearVelocity"] = body.maxLinearVelocity;
+    node["maxAngularVelocity"] = body.maxAngularVelocity;
+    node["automaticMass"] = body.automaticMass;
+    node["mass"] = body.mass;
+    node["automaticCenterOfMass"] = body.automaticCenterOfMass;
+    node["centerOfMass"] = encodeVector3(body.centerOfMass);
+    node["automaticInertiaTensor"] = body.automaticInertiaTensor;
+    node["inertiaTensor"] = encodeVector3(body.inertiaTensor);
+    node["inertiaTensorRotation"] = encodeQuaternion(body.inertiaTensorRotation);
+    node["allowSleeping"] = body.allowSleeping;
+    node["collideKinematicVsNonDynamic"] = body.collideKinematicVsNonDynamic;
+    node["interpolation"] = rigidbodyInterpolationToString(body.interpolation);
+    if (body.overrideMassProperties) {
+        node["overrideMassProperties"] = true;
+        node["solidBoxSize"] = encodeVector3(body.solidBoxSize);
+        node["solidBoxDensity"] = body.solidBoxDensity;
+    }
 
     // Six booleans instead of the bit mask, so the file stays readable.
     YAML::Node dofsNode;
@@ -1142,24 +1257,25 @@ YAML::Node editor::Stream::encodeRigidbodyComponent(const RigidbodyComponent& bo
     dof("rotationZ", RigidbodyAllowedDOF_RotationZ);
     node["allowedDOFs"] = dofsNode;
 
-    node["numColliders"] = static_cast<unsigned int>(body.numColliders);
+    // read by editors from before the list had no cap
+    node["numColliders"] = static_cast<unsigned int>(body.colliders.size());
 
-    YAML::Node shapesNode;
-    for (size_t i = 0; i < body.numColliders; i++) {
+    YAML::Node shapesNode = YAML::Node(YAML::NodeType::Sequence);
+    for (const Collider3D& collider : body.colliders) {
         YAML::Node shapeNode;
-        shapeNode["type"] = collider3DTypeToString(body.colliders[i].type);
-        shapeNode["position"] = encodeVector3(body.colliders[i].position);
-        shapeNode["rotation"] = encodeQuaternion(body.colliders[i].rotation);
-        shapeNode["width"] = body.colliders[i].width;
-        shapeNode["height"] = body.colliders[i].height;
-        shapeNode["depth"] = body.colliders[i].depth;
-        shapeNode["radius"] = body.colliders[i].radius;
-        shapeNode["halfHeight"] = body.colliders[i].halfHeight;
-        shapeNode["topRadius"] = body.colliders[i].topRadius;
-        shapeNode["bottomRadius"] = body.colliders[i].bottomRadius;
-        shapeNode["density"] = body.colliders[i].density;
+        shapeNode["type"] = collider3DTypeToString(collider.type);
+        shapeNode["position"] = encodeVector3(collider.position);
+        shapeNode["rotation"] = encodeQuaternion(collider.rotation);
+        shapeNode["width"] = collider.width;
+        shapeNode["height"] = collider.height;
+        shapeNode["depth"] = collider.depth;
+        shapeNode["radius"] = collider.radius;
+        shapeNode["halfHeight"] = collider.halfHeight;
+        shapeNode["topRadius"] = collider.topRadius;
+        shapeNode["bottomRadius"] = collider.bottomRadius;
+        shapeNode["density"] = collider.density;
 
-        switch (body.colliders[i].source) {
+        switch (collider.source) {
             case Collider3DSource::RAW_VERTICES: shapeNode["source"] = "raw_vertices"; break;
             case Collider3DSource::RAW_MESH: shapeNode["source"] = "raw_mesh"; break;
             case Collider3DSource::ENTITY_MESH: shapeNode["source"] = "entity_mesh"; break;
@@ -1167,18 +1283,25 @@ YAML::Node editor::Stream::encodeRigidbodyComponent(const RigidbodyComponent& bo
             default: shapeNode["source"] = "none"; break;
         }
 
-        shapeNode["sourceEntity"] = body.colliders[i].sourceEntity;
-        shapeNode["samplesSize"] = body.colliders[i].samplesSize;
+        shapeNode["sourceEntity"] = collider.sourceEntity;
+        shapeNode["samplesSize"] = collider.samplesSize;
+        shapeNode["isTrigger"] = collider.isTrigger;
+        if (!collider.material.empty()) {
+            shapeNode["material"] = collider.material;
+        }
+        if (collider.receiver != NULL_ENTITY) {
+            shapeNode["receiver"] = collider.receiver;
+        }
 
-        YAML::Node verticesNode;
-        for (size_t j = 0; j < body.colliders[i].numVertices; j++) {
-            verticesNode.push_back(encodeVector3(body.colliders[i].vertices[j]));
+        YAML::Node verticesNode = YAML::Node(YAML::NodeType::Sequence);
+        for (const Vector3& vertex : collider.vertices) {
+            verticesNode.push_back(encodeVector3(vertex));
         }
         shapeNode["vertices"] = verticesNode;
 
-        YAML::Node indicesNode;
-        for (size_t j = 0; j < body.colliders[i].numIndices; j++) {
-            indicesNode.push_back(body.colliders[i].indices[j]);
+        YAML::Node indicesNode = YAML::Node(YAML::NodeType::Sequence);
+        for (uint32_t index : collider.indices) {
+            indicesNode.push_back(index);
         }
         shapeNode["indices"] = indicesNode;
 
@@ -1194,6 +1317,11 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
 
     if (oldBody) {
         body = *oldBody;
+        // keys left out at their default decode to it over a live component too (Stop's restore)
+        body.material.clear();
+        body.materialInstance.reset();
+        body.overrideMassProperties = false;
+        body.hasPendingType = false;
     }
 
     if (node["type"]) body.type = decodeEnum(node, "type", StreamSchema::bodyType());
@@ -1205,6 +1333,25 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
     if (node["buoyancy"]) body.buoyancy = YamlNumbers::as<float>(node["buoyancy"]);
     if (node["waterDrag"]) body.waterDrag = YamlNumbers::as<float>(node["waterDrag"]);
     if (node["waterAngularDrag"]) body.waterAngularDrag = YamlNumbers::as<float>(node["waterAngularDrag"]);
+    // the Rigidbody fields; a scene saved before them gets what Jolt used (the struct defaults)
+    if (node["material"]) body.material = node["material"].as<std::string>();
+    if (node["linearDamping"]) body.linearDamping = YamlNumbers::as<float>(node["linearDamping"]);
+    if (node["angularDamping"]) body.angularDamping = YamlNumbers::as<float>(node["angularDamping"]);
+    if (node["maxLinearVelocity"]) body.maxLinearVelocity = YamlNumbers::as<float>(node["maxLinearVelocity"]);
+    if (node["maxAngularVelocity"]) body.maxAngularVelocity = YamlNumbers::as<float>(node["maxAngularVelocity"]);
+    if (node["automaticMass"]) body.automaticMass = YamlNumbers::as<bool>(node["automaticMass"]);
+    if (node["mass"]) body.mass = YamlNumbers::as<float>(node["mass"]);
+    if (node["automaticCenterOfMass"]) body.automaticCenterOfMass = YamlNumbers::as<bool>(node["automaticCenterOfMass"]);
+    if (node["centerOfMass"]) body.centerOfMass = decodeVector3(node["centerOfMass"]);
+    if (node["automaticInertiaTensor"]) body.automaticInertiaTensor = YamlNumbers::as<bool>(node["automaticInertiaTensor"]);
+    if (node["inertiaTensor"]) body.inertiaTensor = decodeVector3(node["inertiaTensor"]);
+    if (node["inertiaTensorRotation"]) body.inertiaTensorRotation = decodeQuaternion(node["inertiaTensorRotation"]);
+    if (node["allowSleeping"]) body.allowSleeping = YamlNumbers::as<bool>(node["allowSleeping"]);
+    if (node["collideKinematicVsNonDynamic"]) body.collideKinematicVsNonDynamic = YamlNumbers::as<bool>(node["collideKinematicVsNonDynamic"]);
+    if (node["interpolation"]) body.interpolation = stringToRigidbodyInterpolation(node["interpolation"].as<std::string>());
+    if (node["overrideMassProperties"]) body.overrideMassProperties = YamlNumbers::as<bool>(node["overrideMassProperties"]);
+    if (node["solidBoxSize"]) body.solidBoxSize = decodeVector3(node["solidBoxSize"]);
+    if (node["solidBoxDensity"]) body.solidBoxDensity = YamlNumbers::as<float>(node["solidBoxDensity"]);
 
     if (node["allowedDOFs"]) {
         const YAML::Node& dofsNode = node["allowedDOFs"];
@@ -1224,74 +1371,72 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
         body.allowedDOFs = dofs == 0 ? static_cast<uint8_t>(RigidbodyAllowedDOF_All) : dofs;
     }
 
-    if (node["numColliders"]) body.numColliders = YamlNumbers::as<unsigned int>(node["numColliders"]);
-
     if (node["colliders"]) {
-        size_t count = node["colliders"].size();
+        const YAML::Node& collidersNode = node["colliders"];
+        size_t count = collidersNode.size();
+        // an older editor's count of the list (it kept unused slots)
+        if (node["numColliders"]) {
+            count = std::min(count, (size_t)YamlNumbers::as<unsigned int>(node["numColliders"]));
+        }
+        body.colliders.clear();
+        body.colliders.resize(count);
         for (size_t i = 0; i < count; i++) {
-            if (node["colliders"][i]["type"]) {
-                body.colliders[i].type = decodeEnum(node["colliders"][i], "type", StreamSchema::collider3DType());
-            }
-            if (node["colliders"][i]["position"]) {
-                body.colliders[i].position = decodeVector3(node["colliders"][i]["position"]);
+            const YAML::Node& shapeNode = collidersNode[i];
+            Collider3D& collider = body.colliders[i];
+            if (shapeNode["type"]) collider.type = decodeEnum(shapeNode, "type", StreamSchema::collider3DType());
+            if (shapeNode["position"]) {
+                collider.position = decodeVector3(shapeNode["position"]);
 
-                const float physicsOffset = (body.colliders[i].position * bodyScale).length();
-                if (body.numColliders == 1 && physicsOffset > MAX_SINGLE_SHAPE_PHYSICS_OFFSET) {
+                const float physicsOffset = (collider.position * bodyScale).length();
+                if (count == 1 && physicsOffset > MAX_SINGLE_SHAPE_PHYSICS_OFFSET) {
                     Log::warn("Rigidbody shape position after transform scale is too large (%.2f). Physics may be unstable.", physicsOffset);
                 }
             }
-            if (node["colliders"][i]["rotation"]) {
-                body.colliders[i].rotation = decodeQuaternion(node["colliders"][i]["rotation"]);
-            }
-            if (node["colliders"][i]["width"]) body.colliders[i].width = YamlNumbers::as<float>(node["colliders"][i]["width"]);
-            if (node["colliders"][i]["height"]) body.colliders[i].height = YamlNumbers::as<float>(node["colliders"][i]["height"]);
-            if (node["colliders"][i]["depth"]) body.colliders[i].depth = YamlNumbers::as<float>(node["colliders"][i]["depth"]);
-            if (node["colliders"][i]["radius"]) body.colliders[i].radius = YamlNumbers::as<float>(node["colliders"][i]["radius"]);
-            if (node["colliders"][i]["halfHeight"]) body.colliders[i].halfHeight = YamlNumbers::as<float>(node["colliders"][i]["halfHeight"]);
-            if (node["colliders"][i]["topRadius"]) body.colliders[i].topRadius = YamlNumbers::as<float>(node["colliders"][i]["topRadius"]);
-            if (node["colliders"][i]["bottomRadius"]) body.colliders[i].bottomRadius = YamlNumbers::as<float>(node["colliders"][i]["bottomRadius"]);
-            if (node["colliders"][i]["density"]) body.colliders[i].density = YamlNumbers::as<float>(node["colliders"][i]["density"]);
+            if (shapeNode["rotation"]) collider.rotation = decodeQuaternion(shapeNode["rotation"]);
+            if (shapeNode["width"]) collider.width = YamlNumbers::as<float>(shapeNode["width"]);
+            if (shapeNode["height"]) collider.height = YamlNumbers::as<float>(shapeNode["height"]);
+            if (shapeNode["depth"]) collider.depth = YamlNumbers::as<float>(shapeNode["depth"]);
+            if (shapeNode["radius"]) collider.radius = YamlNumbers::as<float>(shapeNode["radius"]);
+            if (shapeNode["halfHeight"]) collider.halfHeight = YamlNumbers::as<float>(shapeNode["halfHeight"]);
+            if (shapeNode["topRadius"]) collider.topRadius = YamlNumbers::as<float>(shapeNode["topRadius"]);
+            if (shapeNode["bottomRadius"]) collider.bottomRadius = YamlNumbers::as<float>(shapeNode["bottomRadius"]);
+            if (shapeNode["density"]) collider.density = YamlNumbers::as<float>(shapeNode["density"]);
 
-            if (node["colliders"][i]["source"]) {
-                std::string source = node["colliders"][i]["source"].as<std::string>();
-                if (source == "raw_vertices") body.colliders[i].source = Collider3DSource::RAW_VERTICES;
-                else if (source == "raw_mesh") body.colliders[i].source = Collider3DSource::RAW_MESH;
-                else if (source == "entity_mesh") body.colliders[i].source = Collider3DSource::ENTITY_MESH;
-                else if (source == "entity_heightfield") body.colliders[i].source = Collider3DSource::ENTITY_HEIGHTFIELD;
-                else body.colliders[i].source = Collider3DSource::NONE;
+            if (shapeNode["source"]) {
+                std::string source = shapeNode["source"].as<std::string>();
+                if (source == "raw_vertices") collider.source = Collider3DSource::RAW_VERTICES;
+                else if (source == "raw_mesh") collider.source = Collider3DSource::RAW_MESH;
+                else if (source == "entity_mesh") collider.source = Collider3DSource::ENTITY_MESH;
+                else if (source == "entity_heightfield") collider.source = Collider3DSource::ENTITY_HEIGHTFIELD;
+                else collider.source = Collider3DSource::NONE;
             }
 
-            if (body.colliders[i].source == Collider3DSource::NONE) {
-                if (body.colliders[i].type == Collider3DType::CONVEX_HULL) {
-                    body.colliders[i].source = Collider3DSource::ENTITY_MESH;
-                } else if (body.colliders[i].type == Collider3DType::MESH) {
-                    body.colliders[i].source = Collider3DSource::ENTITY_MESH;
-                } else if (body.colliders[i].type == Collider3DType::HEIGHTFIELD) {
-                    body.colliders[i].source = Collider3DSource::ENTITY_HEIGHTFIELD;
+            if (collider.source == Collider3DSource::NONE) {
+                if (collider.type == Collider3DType::CONVEX_HULL) {
+                    collider.source = Collider3DSource::ENTITY_MESH;
+                } else if (collider.type == Collider3DType::MESH) {
+                    collider.source = Collider3DSource::ENTITY_MESH;
+                } else if (collider.type == Collider3DType::HEIGHTFIELD) {
+                    collider.source = Collider3DSource::ENTITY_HEIGHTFIELD;
                 }
             }
 
-            if (node["colliders"][i]["sourceEntity"]) body.colliders[i].sourceEntity = YamlNumbers::as<Entity>(node["colliders"][i]["sourceEntity"]);
+            if (shapeNode["sourceEntity"]) collider.sourceEntity = YamlNumbers::as<Entity>(shapeNode["sourceEntity"]);
+            if (shapeNode["samplesSize"]) collider.samplesSize = YamlNumbers::as<unsigned int>(shapeNode["samplesSize"]);
+            if (shapeNode["isTrigger"]) collider.isTrigger = YamlNumbers::as<bool>(shapeNode["isTrigger"]);
+            if (shapeNode["material"]) collider.material = shapeNode["material"].as<std::string>();
+            if (shapeNode["receiver"]) collider.receiver = YamlNumbers::as<Entity>(shapeNode["receiver"]);
 
-            if (node["colliders"][i]["samplesSize"]) body.colliders[i].samplesSize = YamlNumbers::as<unsigned int>(node["colliders"][i]["samplesSize"]);
-
-            if (node["colliders"][i]["vertices"]) {
-                size_t vcount = node["colliders"][i]["vertices"].size();
-                body.colliders[i].numVertices = (uint16_t)vcount;
-                for (size_t j = 0; j < vcount; j++) {
-                    body.colliders[i].vertices[j] = decodeVector3(node["colliders"][i]["vertices"][j]);
+            if (shapeNode["vertices"]) {
+                for (const YAML::Node& vertex : shapeNode["vertices"]) {
+                    collider.vertices.push_back(decodeVector3(vertex));
                 }
             }
-
-            if (node["colliders"][i]["indices"]) {
-                size_t icount = node["colliders"][i]["indices"].size();
-                body.colliders[i].numIndices = (uint16_t)icount;
-                for (size_t j = 0; j < icount; j++) {
-                    body.colliders[i].indices[j] = YamlNumbers::as<uint16_t>(node["colliders"][i]["indices"][j]);
+            if (shapeNode["indices"]) {
+                for (const YAML::Node& index : shapeNode["indices"]) {
+                    collider.indices.push_back(YamlNumbers::as<uint32_t>(index));
                 }
             }
-
-            body.colliders[i].shape = NULL;
         }
     }
 
@@ -2018,6 +2163,8 @@ YAML::Node editor::Stream::encodePointsComponent(const PointsComponent& points) 
         encodeShaderRef(node, "customShader", points.customShader);
     if (!points.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(points.shaderUniforms);
+    if (!points.shaderGlobalBindings.empty())
+        node["shaderGlobalBindings"] = encodeShaderGlobalBindings(points.shaderGlobalBindings);
     encodeComponentShaderLibrary(node, points.shaderTextures, points.shaderFeatures, &points.blendMode, &points.depthWrite, true);
     encodeStencilAndColorWrite(node, points.stencil, points.colorWrite);
 
@@ -2059,6 +2206,7 @@ PointsComponent editor::Stream::decodePointsComponent(const YAML::Node& node, co
 
     if (node["customShader"]) points.customShader = decodeShaderRef(node, "customShader");
     points.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
+    points.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
     points.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, points.shaderTextures, points.shaderFeatures, &points.blendMode, &points.depthWrite);
     decodeStencilAndColorWrite(node, points.stencil, points.colorWrite);
@@ -2095,10 +2243,16 @@ YAML::Node editor::Stream::encodeLineRendererComponent(const LineRendererCompone
     }
     node["lines"] = linesNode;
 
+    // the polyline, width and ribbon settings (lines and trails spec 6.7): written only away
+    // from their defaults, so a scene without them is written as it always was
+    encodeLineRibbonSettings(node, lines);
+
     if (!lines.customShader.empty())
         encodeShaderRef(node, "customShader", lines.customShader);
     if (!lines.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(lines.shaderUniforms);
+    if (!lines.shaderGlobalBindings.empty())
+        node["shaderGlobalBindings"] = encodeShaderGlobalBindings(lines.shaderGlobalBindings);
     encodeComponentShaderLibrary(node, lines.shaderTextures, lines.shaderFeatures, &lines.blendMode, &lines.depthWrite, true);
     encodeStencilAndColorWrite(node, lines.stencil, lines.colorWrite);
 
@@ -2127,16 +2281,31 @@ LineRendererComponent editor::Stream::decodeLineRendererComponent(const YAML::No
         lines.maxLines = static_cast<unsigned int>(lines.lines.size());
     }
 
+    // not merged: an absent key is the default (encode leaves defaults out)
+    decodeLineRibbonSettings(node, lines);
+
     if (node["customShader"]) lines.customShader = decodeShaderRef(node, "customShader");
     lines.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
+    lines.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
     lines.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, lines.shaderTextures, lines.shaderFeatures, &lines.blendMode, &lines.depthWrite);
     decodeStencilAndColorWrite(node, lines.stencil, lines.colorWrite);
 
-    lines.loaded = false;
-    lines.loadCalled = false;
     lines.needUpdateBuffer = false;
-    lines.needReload = false;
+    lines.needUpdateRibbon = true;
+    lines.polylineSegments.clear();
+    if (oldLines && oldLines->loaded) {
+        // decoded over a loaded line: the render system destroys its GPU objects and loads it
+        // again (dropping them here would leak its buffers and pipelines)
+        lines.needReload = true;
+    } else {
+        lines.loaded = false;
+        lines.loadCalled = false;
+        lines.needReload = false;
+        lines.loadedRibbon = false;
+        lines.loadedRibbonKey = 0;
+        lines.ribbon = LineRibbonData();
+    }
 
     if (node["enabled"]) lines.enabled = YamlNumbers::as<bool>(node["enabled"]);
 

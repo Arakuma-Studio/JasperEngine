@@ -18,7 +18,10 @@
 #include <cstdint>
 #include <vector>
 
-namespace jasperengine {
+// SYNC4-ABSORB(curve): upstream's AnimationCurve / Gradient, in a namespace of their own so they
+// do not collide with S27's (math/Curve.h). Their users (Line / Trail Renderer, LineRibbonBuilder,
+// their codecs) move onto S27's types in the Curve absorption, which then deletes this file.
+namespace jasperengine::upcurve {
 
     struct JASPERENGINE_API GradientColorKey {
         float time = 0;

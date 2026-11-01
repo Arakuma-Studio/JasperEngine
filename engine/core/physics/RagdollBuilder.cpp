@@ -129,11 +129,6 @@ namespace {
         float mass = 0.0f;
     };
 
-    std::string lowerCase(std::string text){
-        std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c){ return (char)std::tolower(c); });
-        return text;
-    }
-
     // a capsule along a bone-local axis, Jolt's capsule being along Y
     Quaternion axisRotation(int direction){
         if (direction == 0){

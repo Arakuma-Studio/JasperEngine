@@ -196,12 +196,12 @@ namespace {
                 float offset = limitsMin;
                 limitsMin -= offset;
                 limitsMax -= offset;
-                Log::warn("Prismatic 3D joint limits did not include 0. Normalized range to [{0}, {1}]", limitsMin, limitsMax);
+                Log::warn("Prismatic 3D joint limits did not include 0. Normalized range to [%f, %f]", limitsMin, limitsMax);
             }else if (limitsMax < 0.0f){
                 float offset = limitsMax;
                 limitsMin -= offset;
                 limitsMax -= offset;
-                Log::warn("Prismatic 3D joint limits did not include 0. Normalized range to [{0}, {1}]", limitsMin, limitsMax);
+                Log::warn("Prismatic 3D joint limits did not include 0. Normalized range to [%f, %f]", limitsMin, limitsMax);
             }
         }
         if (std::fabs(limitsMax - limitsMin) < 1.0e-6f && !(joint.limitsSpringFrequency > 0.0f)){

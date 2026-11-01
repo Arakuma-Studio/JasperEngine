@@ -19,6 +19,18 @@
 
 using namespace jasperengine;
 
+namespace {
+    // SYNC4-ABSORB(input): upstream listed its Input Manager actions here (axes first); until the
+    // Input absorption maps the on-screen controls onto S22's actions, a control's action names an
+    // S22 virtual control (virtual/<name>, input/InputSourceShim.h): no suggestions
+    std::vector<std::string> inputActionNames(const editor::Project* project, bool axesFirst){
+        (void)project; (void)axesFirst;
+        return {};
+    }
+
+    const char* const noInputActions = "A virtual control name (Input Actions: virtual/<name>)";
+}
+
 void editor::InspectorWindow::drawOnScreenStickComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     static std::vector<editor::EnumEntry> entriesMode = {
         { (int)OnScreenStickMode::FIXED, "Fixed" },

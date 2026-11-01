@@ -291,6 +291,20 @@ namespace {
         JE_FIELD(LineRendererComponent, stencil, .flags = ListWhole, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kShaderReload, .min = -1.0f, .max = 15.0f),
         JE_FIELD(LineRendererComponent, lines, .flags = ListWhole, .updateFlags = kLines),
+        // upstream (lines and trails): the polyline and its ribbon. SYNC4-ABSORB(curve): widthCurve and
+        // colorGradient are upstream's curve types (the codec writes them; no reflection ops yet)
+        JE_FIELD(LineRendererComponent, mode, .enumDesc = &enums::kLineRendererMode, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, positions, .ops = &ops::PushBackList<Vector3>, .flags = NoDefault | ListWhole, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, loop, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, useWorldSpace, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, widthMultiplier, .updateFlags = kLines, .min = 0.0f),
+        JE_FIELD(LineRendererComponent, widthUnit, .enumDesc = &enums::kLineWidthUnit, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, numCornerVertices, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, numCapVertices, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, alignment, .enumDesc = &enums::kLineAlignment),
+        JE_FIELD(LineRendererComponent, textureMode, .enumDesc = &enums::kLineTextureMode, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, textureScale, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, sortPriority),
     };
 
     // ---------------------------------------------------------------- Mesh instancing
@@ -528,7 +542,9 @@ const ComponentDesc kPointsDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kLineRendererKnownKeys[] = {"blendMode", "colorWrite", "customShader", "depthWrite", "enabled", "lines", "maxLines", "shaderFeatures", "shaderTextures", "shaderUniforms", "stencil"};
+    constexpr const char* kLineRendererKnownKeys[] = {"alignment", "blendMode", "colorGradient", "colorWrite", "customShader", "depthWrite", "enabled", "lines", "loop",
+        "maxLines", "mode", "numCapVertices", "numCornerVertices", "positions", "shaderFeatures", "shaderGlobalBindings", "shaderTextures", "shaderUniforms",
+        "sortPriority", "stencil", "textureMode", "textureScale", "useWorldSpace", "widthCurve", "widthMultiplier", "widthUnit"};
 
 }
 

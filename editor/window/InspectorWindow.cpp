@@ -4412,6 +4412,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (dif)
             ImGui::PopStyleColor();
 
+#if 0 // SYNC4-ABSORB(curve, particles): upstream's AnimationCurve / Gradient / MinMax rows
     }else if (type == RowPropertyType::Curve || type == RowPropertyType::Gradient ||
               type == RowPropertyType::MinMaxCurve || type == RowPropertyType::MinMaxGradient){
         // Unity AnimationCurve / Gradient: an inline preview that opens its editor popup;
@@ -4468,6 +4469,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             helpMarker(settings.help);
         }
 
+#endif
     }else if (type == RowPropertyType::Font){
         FontArray* value = nullptr;
         std::map<Entity, FontArray> eValue;

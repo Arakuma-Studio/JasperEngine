@@ -174,14 +174,14 @@ float TrailRenderer::getEndWidth() const{
     return LineRibbonBuilder::widthAt(trail.widthMultiplier, trail.widthCurve, 1.0f);
 }
 
-void TrailRenderer::setWidthCurve(const AnimationCurve& curve){
+void TrailRenderer::setWidthCurve(const upcurve::AnimationCurve& curve){
     TrailRendererComponent& trail = getComponent<TrailRendererComponent>();
     trail.widthCurve = curve;
     trail.widthCurve.normalize();
     trail.needUpdateRibbon = true;
 }
 
-AnimationCurve TrailRenderer::getWidthCurve() const{
+upcurve::AnimationCurve TrailRenderer::getWidthCurve() const{
     return getComponent<TrailRendererComponent>().widthCurve;
 }
 
@@ -195,14 +195,14 @@ LineWidthUnit TrailRenderer::getWidthUnit() const{
     return getComponent<TrailRendererComponent>().widthUnit;
 }
 
-void TrailRenderer::setColorGradient(const Gradient& gradient){
+void TrailRenderer::setColorGradient(const upcurve::Gradient& gradient){
     TrailRendererComponent& trail = getComponent<TrailRendererComponent>();
     trail.colorGradient = gradient;
     trail.colorGradient.normalize();
     trail.needUpdateRibbon = true;
 }
 
-Gradient TrailRenderer::getColorGradient() const{
+upcurve::Gradient TrailRenderer::getColorGradient() const{
     return getComponent<TrailRendererComponent>().colorGradient;
 }
 

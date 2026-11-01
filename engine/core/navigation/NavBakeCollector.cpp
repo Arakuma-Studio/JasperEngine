@@ -695,7 +695,7 @@ namespace {
             const Vector3 scale = transform->worldScale;
             const Vector3 absScale(std::fabs(scale.x), std::fabs(scale.y), std::fabs(scale.z));
             const Matrix4 bodyWorld = Matrix4::translateMatrix(transform->worldPosition) * transform->worldRotation.getRotationMatrix();
-            for (size_t c = 0; c < body.numColliders; c++) {
+            for (size_t c = 0; c < body.colliders.size(); c++) {
                 const Collider3D& collider = body.colliders[c];
                 const Matrix4 colliderWorld = bodyWorld * Matrix4::translateMatrix(collider.position * scale) * collider.rotation.getRotationMatrix();
                 Mesh mesh;
@@ -725,9 +725,9 @@ namespace {
                         const bool raw = collider.source == Collider3DSource::RAW_VERTICES || collider.source == Collider3DSource::RAW_MESH;
                         Mesh source;
                         if (raw) {
-                            for (size_t v = 0; v < collider.numVertices; v++)
+                            for (size_t v = 0; v < collider.vertices.size(); v++)
                                 source.vertices.push_back(collider.vertices[v] * scale);
-                            for (size_t i = 0; i + 2 < collider.numIndices; i += 3) {
+                            for (size_t i = 0; i + 2 < collider.indices.size(); i += 3) {
                                 source.indices.push_back(collider.indices[i]);
                                 source.indices.push_back(collider.indices[i + 1]);
                                 source.indices.push_back(collider.indices[i + 2]);
@@ -824,7 +824,7 @@ namespace {
                 const Vector3 rotated = transform->worldRotation * Vector3(local.x * scale.x, local.y * scale.y, 0.0f);
                 return Vector2(transform->worldPosition.x + rotated.x, transform->worldPosition.y + rotated.y);
             };
-            for (size_t c = 0; c < body.numColliders; c++) {
+            for (size_t c = 0; c < body.colliders.size(); c++) {
                 const Collider2D& collider = body.colliders[c];
                 if (collider.sensor)
                     continue;
@@ -833,9 +833,9 @@ namespace {
                 switch (collider.type) {
                     case Collider2DType::POLYGON: {
                         std::vector<Vector2> points;
-                        if (collider.numVertices >= 3) {
-                            for (size_t v = 0; v < collider.numVertices; v++)
-                                points.push_back(collider.vertices[v]);
+                        if (collider.points.size() >= 3) {
+                            for (size_t v = 0; v < collider.points.size(); v++)
+                                points.push_back(collider.points[v]);
                         } else {
                             points = {collider.pointA, Vector2(collider.pointB.x, collider.pointA.y), collider.pointB,
                                       Vector2(collider.pointA.x, collider.pointB.y)};
@@ -877,8 +877,8 @@ namespace {
                         if (collider.type == Collider2DType::SEGMENT) {
                             points = {toWorld(collider.pointA), toWorld(collider.pointB)};
                         } else {
-                            for (size_t v = 0; v < collider.numVertices; v++)
-                                points.push_back(toWorld(collider.vertices[v]));
+                            for (size_t v = 0; v < collider.points.size(); v++)
+                                points.push_back(toWorld(collider.points[v]));
                             if (collider.loop && points.size() > 2)
                                 points.push_back(points.front());
                         }

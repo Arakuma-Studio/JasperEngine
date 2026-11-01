@@ -23,6 +23,7 @@
 #include <string>
 #include <system_error>
 #include <vector>
+#include "util/FileUtils.h"
 
 namespace jasperengine::editor::mcp {
 
@@ -73,7 +74,7 @@ namespace jasperengine::editor::mcp {
             std::string why;
             if (touched && existed) {
                 ok = safewrite::writeFileResolvedBeneath(base, target, previous, why);
-                if (!ok && warning) *warning = "the sheet replaced " + target.generic_u8string() + " and its previous version could not be written back (" + why + ")";
+                if (!ok && warning) *warning = "the sheet replaced " + jasperengine::editor::FileUtils::pathToGenericUtf8(target) + " and its previous version could not be written back (" + why + ")";
             } else if (touched) {
                 safewrite::removeFileResolvedBeneath(base, target, why);
             }

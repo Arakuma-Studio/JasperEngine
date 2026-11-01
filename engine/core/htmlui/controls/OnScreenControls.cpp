@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include "input/InputSourceShim.h"   // SYNC4-ABSORB(input)
 
 using namespace jasperengine;
 
@@ -49,10 +50,8 @@ namespace {
 
     // the action has a mouse-movement binding: the mouse already moves it
     bool mouseBound(const std::string& action){
-        for (const InputBinding& binding : InputActions::getBindings(action)){
-            if (binding.kind == InputBindingKind::MouseDelta)
-                return true;
-        }
+        if (sync4input::mouseBound(action))   // SYNC4-ABSORB(input)
+            return true;
         return false;
     }
 
@@ -81,7 +80,7 @@ UIOnScreenControl::UIOnScreenControl(const Rml::String& tag): Rml::Element(tag){
 
 UIOnScreenControl::~UIOnScreenControl(){
     // removed or unloaded: nothing stays held
-    InputActions::clearSource(owner());
+    sync4input::clearSource(owner());
     if (listening){
         for (Rml::EventId id : {Rml::EventId::Pointerdown, Rml::EventId::Pointermove, Rml::EventId::Pointerup,
                                 Rml::EventId::Pointercancel, Rml::EventId::Pointerover, Rml::EventId::Pointerout})
@@ -248,7 +247,7 @@ void UIOnScreenControl::press(Rml::Event& event, int pointerId){
             const std::string action = attributeString("action", "Fire1");
             const float value = std::max(-1.0f, std::min(1.0f, attributeFloat("value", 1.0f)));
             if (!action.empty())
-                InputActions::setSourceValue(owner(), action, value);
+                sync4input::setSourceValue(owner(), action, value);
         }
     }else{
         lastX = px;
@@ -278,9 +277,9 @@ void UIOnScreenControl::move(Rml::Event& event, int pointerId){
     const std::string horizontal = attributeString("horizontal-action", "Mouse X");
     const std::string vertical = attributeString("vertical-action", "Mouse Y");
     if (!horizontal.empty() && !(pointerIsMouse && mouseBound(horizontal)))
-        InputActions::addSourceDelta(owner(), horizontal, dx * sx);
+        sync4input::addSourceDelta(owner(), horizontal, dx * sx);
     if (!vertical.empty() && !(pointerIsMouse && mouseBound(vertical)))
-        InputActions::addSourceDelta(owner(), vertical, -dy * sy);
+        sync4input::addSourceDelta(owner(), vertical, -dy * sy);
     valueX = dx;
     valueY = dy;
     dispatchControlEvent("areadrag", dx, dy);
@@ -301,7 +300,7 @@ void UIOnScreenControl::release(int pointerId, bool dispatch){
         valueX = valueY = 0;
         return;
     }
-    InputActions::clearSource(owner());
+    sync4input::clearSource(owner());
     if (kind == Kind::STICK){
         valueX = valueY = 0;
         SetAttribute("data-x", "0");
@@ -318,7 +317,7 @@ void UIOnScreenControl::releaseAll(bool dispatch){
     const std::vector<int> held = pointers;
     for (int pointerId : held)
         release(pointerId, dispatch);
-    InputActions::clearSource(owner());
+    sync4input::clearSource(owner());
 }
 
 // The Joystick Pack maths of UISystem's stick in document px: the base's half width is the radius
@@ -407,9 +406,9 @@ void UIOnScreenControl::updateStick(float px, float py, bool first){
     const std::string horizontal = attributeString("horizontal-action", "Horizontal");
     const std::string vertical = attributeString("vertical-action", "Vertical");
     if (!horizontal.empty())
-        InputActions::setSourceValue(owner(), horizontal, vx);
+        sync4input::setSourceValue(owner(), horizontal, vx);
     if (!vertical.empty())
-        InputActions::setSourceValue(owner(), vertical, vy);
+        sync4input::setSourceValue(owner(), vertical, vy);
     SetAttribute("data-x", formatValue(vx));
     SetAttribute("data-y", formatValue(vy));
 }

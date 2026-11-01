@@ -37,6 +37,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include "util/FileUtils.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -281,7 +282,7 @@ bool editor::InspectorWindow::drawSpriteNormalsAsset(const fs::path& asset) {
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted("Normal map:");
         ImGui::SameLine();
-        if (ImGui::SmallButton((s.output.filename().u8string() + "##snAssetPaired").c_str())) reveal(s.output);
+        if (ImGui::SmallButton((jasperengine::editor::FileUtils::pathToUtf8(s.output.filename()) + "##snAssetPaired").c_str())) reveal(s.output);
         UIProbe::item("snAsset.paired");
         ImGui::SetItemTooltip("Select it in the Project window");
         loadThumbnail(s, s.pairedThumbnail, s.output);
@@ -308,11 +309,11 @@ bool editor::InspectorWindow::drawSpriteNormalsAsset(const fs::path& asset) {
         // on the worker: the Sprite Normal Map window's tick writes it (one Project undo step)
         std::string error;
         if (Backend::getApp().getSpriteNormalsWindow()->startRegenerate(s.output, error)) {
-            s.status = "Regenerating " + s.output.filename().u8string() + "...";
+            s.status = "Regenerating " + jasperengine::editor::FileUtils::pathToUtf8(s.output.filename()) + "...";
             s.statusError = false;
             s.probedAt = -1.0;
         } else {
-            s.status = "Can't regenerate " + s.output.filename().u8string() + ": " + error;
+            s.status = "Can't regenerate " + jasperengine::editor::FileUtils::pathToUtf8(s.output.filename()) + ": " + error;
             s.statusError = true;
             getEditorHost().registerAlert("Sprite Normal Map", s.status);
         }
@@ -337,20 +338,19 @@ bool editor::InspectorWindow::drawSpriteNormalsAsset(const fs::path& asset) {
     std::string atlas;
     if (s.recipe.is_object() && s.recipe.contains("outputs") && s.recipe["outputs"].is_object() && s.recipe["outputs"].contains("atlas") &&
         s.recipe["outputs"]["atlas"].is_string()) {
-        atlas = fs::u8path(s.recipe["outputs"]["atlas"].get<std::string>()).lexically_normal().generic_u8string();
+        atlas = jasperengine::editor::FileUtils::pathToGenericUtf8(fs::u8path(s.recipe["outputs"]["atlas"].get<std::string>()).lexically_normal());
     }
     const uint32_t sceneId = project->getSelectedSceneId();
     SceneProject* sceneProject = project->getScene(sceneId);
     std::vector<sn::ApplyRequest> requests;
     if (sceneProject && sceneProject->scene && normalHead.role == "normal") {
-        const std::string source = fs::u8path(normalHead.source).lexically_normal().generic_u8string();
+        const std::string source = jasperengine::editor::FileUtils::pathToGenericUtf8(fs::u8path(normalHead.source).lexically_normal());
         const std::string normalRel = sn::projectRelative(root, normal);
         for (Entity e : project->getSelectedEntities(sceneId)) {
             MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(e);
             if (!mesh || !sceneProject->scene->findComponent<SpriteComponent>(e)) continue;
-            const std::string base = fs::u8path(mcp::McpValues::assetPathToJson(project, mesh->submeshes[0].material.baseColorTexture.getPath()))
-                                         .lexically_normal()
-                                         .generic_u8string();
+            const std::string base = jasperengine::editor::FileUtils::pathToGenericUtf8(
+                fs::u8path(mcp::McpValues::assetPathToJson(project, mesh->submeshes[0].material.baseColorTexture.getPath())).lexically_normal());
             if (base.empty() || (base != source && base != atlas)) continue;
             sn::ApplyRequest request;
             request.sceneId = sceneId;

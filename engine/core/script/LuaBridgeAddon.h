@@ -205,6 +205,7 @@ namespace luabridge
     template<> struct Stack<ReflectionProbeMode> : EnumWrapper<ReflectionProbeMode>{};
     template<> struct Stack<ReflectionProbeUpdateMode> : EnumWrapper<ReflectionProbeUpdateMode>{};
     template<> struct Stack<ParticleEmitterShape> : EnumWrapper<ParticleEmitterShape>{};
+#if 0 // SYNC4-ABSORB(particles): upstream's version 2 Particle System enums
     // version 2 Particle Systems (particles spec 6.6)
     template<> struct Stack<ParticleSystemSimulationSpace> : EnumWrapper<ParticleSystemSimulationSpace>{};
     template<> struct Stack<ParticleSystemScalingMode> : EnumWrapper<ParticleSystemScalingMode>{};
@@ -222,6 +223,7 @@ namespace luabridge
     template<> struct Stack<ParticleSystemRenderMode> : EnumWrapper<ParticleSystemRenderMode>{};
     template<> struct Stack<ParticleSystemSortMode> : EnumWrapper<ParticleSystemSortMode>{};
     template<> struct Stack<ParticleSystemRenderSpace> : EnumWrapper<ParticleSystemRenderSpace>{};
+#endif
     template<> struct Stack<RigidbodyMotionQuality> : EnumWrapper<RigidbodyMotionQuality>{};
     template<> struct Stack<Joint3DType> : EnumWrapper<Joint3DType>{};
     template<> struct Stack<ShaderType> : EnumWrapper<ShaderType>{};

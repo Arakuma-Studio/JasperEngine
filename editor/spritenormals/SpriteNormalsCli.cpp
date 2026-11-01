@@ -47,6 +47,7 @@
 #include <set>
 #include <sstream>
 #include <vector>
+#include "util/FileUtils.h"
 
 #if defined(_WIN32)
     #include <fcntl.h>
@@ -602,16 +603,16 @@ namespace jasperengine::editor::spritenormals {
             const std::string fix = "give a Sprite, Polygon or Tilemap GameObject of the scene (path or unique name) and its --scene";
             // reading changes no project file
             project.getAssetDatabase().setReadOnly(true);
-            if (!project.loadProject(o.project, false)) return state.fail(2, "usage", "the project could not be loaded: " + o.project.u8string(), "give a project directory or its project.yaml");
+            if (!project.loadProject(o.project, false)) return state.fail(2, "usage", "the project could not be loaded: " + jasperengine::editor::FileUtils::pathToUtf8(o.project), "give a project directory or its project.yaml");
             ::jasperengine::Engine::setAsyncLoading(false);
             SceneProject* found = nullptr;
             std::string names;
             for (SceneProject& sp : project.getScenes()) {
                 if (sp.filepath.empty()) continue;
-                names += (names.empty() ? "" : ", ") + sp.name + " (" + sp.filepath.generic_u8string() + ")";
+                names += (names.empty() ? "" : ", ") + sp.name + " (" + jasperengine::editor::FileUtils::pathToGenericUtf8(sp.filepath) + ")";
                 if (o.scene.empty() ? sp.id == project.getStartSceneId()
-                                    : (sp.name == o.scene || sp.filepath.filename().u8string() == o.scene ||
-                                       sp.filepath.generic_u8string() == o.scene ||
+                                    : (sp.name == o.scene || jasperengine::editor::FileUtils::pathToUtf8(sp.filepath.filename()) == o.scene ||
+                                       jasperengine::editor::FileUtils::pathToGenericUtf8(sp.filepath) == o.scene ||
                                        CommandLine::absoluteArgPath(fs::u8path(o.scene)) ==
                                            CommandLine::absoluteArgPath(sp.filepath.is_absolute() ? sp.filepath : project.getProjectPath() / sp.filepath))) {
                     found = &sp;
@@ -682,16 +683,16 @@ namespace jasperengine::editor::spritenormals {
         // current directory when below it, else absolute
         std::string shown(const Options& o, const fs::path& absolute) {
             if (absolute.empty()) return std::string();
-            if (!o.project.empty() && below(absolute, o.project)) return absolute.lexically_normal().lexically_relative(o.project).generic_u8string();
+            if (!o.project.empty() && below(absolute, o.project)) return jasperengine::editor::FileUtils::pathToGenericUtf8(absolute.lexically_normal().lexically_relative(o.project));
             if (o.project.empty() && below(absolute, CommandLine::invocationDirectory())) {
-                return absolute.lexically_normal().lexically_relative(CommandLine::invocationDirectory()).generic_u8string();
+                return jasperengine::editor::FileUtils::pathToGenericUtf8(absolute.lexically_normal().lexically_relative(CommandLine::invocationDirectory()));
             }
-            return absolute.lexically_normal().generic_u8string();
+            return jasperengine::editor::FileUtils::pathToGenericUtf8(absolute.lexically_normal());
         }
 
         // A spec path: project-relative with a project, else absolute
         std::string specPath(const Options& o, const fs::path& absolute) {
-            return o.project.empty() ? absolute.lexically_normal().generic_u8string() : projectRelative(o.project, absolute);
+            return o.project.empty() ? jasperengine::editor::FileUtils::pathToGenericUtf8(absolute.lexically_normal()) : projectRelative(o.project, absolute);
         }
 
         fs::path specAbsolute(const Options& o, const std::string& path) {
@@ -886,7 +887,7 @@ namespace jasperengine::editor::spritenormals {
             }
             if (!o.project.empty()) {
                 std::error_code ec;
-                if (!fs::is_regular_file(o.project / "project.yaml", ec)) return state.fail(2, "usage", "no project.yaml in " + o.project.u8string(), "give a project directory or its project.yaml");
+                if (!fs::is_regular_file(o.project / "project.yaml", ec)) return state.fail(2, "usage", "no project.yaml in " + jasperengine::editor::FileUtils::pathToUtf8(o.project), "give a project directory or its project.yaml");
             }
             // invalid paint operations: usage errors naming paint[i].<field>
             if (!o.paintProblems.empty()) {
@@ -965,7 +966,7 @@ namespace jasperengine::editor::spritenormals {
                     continue;
                 }
                 if (!o.project.empty() && !below(item.source, o.project)) {
-                    state.fail(2, "invalid_source", item.label + " is outside the project " + o.project.u8string(), "give an image inside the project, or leave --project out", item.label);
+                    state.fail(2, "invalid_source", item.label + " is outside the project " + jasperengine::editor::FileUtils::pathToUtf8(o.project), "give an image inside the project, or leave --project out", item.label);
                     continue;
                 }
                 if (!probeSource(item.source, item.info, probe)) {

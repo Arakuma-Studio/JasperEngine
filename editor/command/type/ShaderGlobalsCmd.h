@@ -54,6 +54,10 @@ namespace jasperengine::editor{
 
         std::vector<Touched> touchedPaths(bool undo) const override;
         bool affectsStructure() const override { return false; }
+
+        // S24's step label and type name
+        std::string describe() const override { return "Edit Shader Globals"; }
+        const char* typeName() const override { return "ShaderGlobalsCmd"; }
     };
 
 }

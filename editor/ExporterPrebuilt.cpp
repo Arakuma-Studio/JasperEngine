@@ -176,9 +176,8 @@ editor::BuildMethodChoice editor::Exporter::chooseBuildMethod(Project* proj, con
         if (capacity == 0) {
             static const std::map<std::string, unsigned int> defaults = {
                 {"MAX_SUBMESHES", MAX_SUBMESHES}, {"MAX_TILEMAP_TILESRECT", MAX_TILEMAP_TILESRECT}, {"MAX_TILEMAP_TILES", MAX_TILEMAP_TILES},
-                {"MAX_SPRITE_FRAMES", MAX_SPRITE_FRAMES}, {"MAX_EXTERNAL_BUFFERS", MAX_EXTERNAL_BUFFERS}, {"MAX_BONES", MAX_BONES},
-                {"MAX_COLLIDERS_2D", MAX_COLLIDERS_2D}, {"MAX_COLLIDER_POINTS_2D", MAX_COLLIDER_POINTS_2D}, {"MAX_COLLIDERS_3D", MAX_COLLIDERS_3D},
-                {"MAX_COLLIDER_VERTICES_3D", MAX_COLLIDER_VERTICES_3D}, {"MAX_COLLIDER_INDICES_3D", MAX_COLLIDER_INDICES_3D}};
+                {"MAX_SPRITE_FRAMES", MAX_SPRITE_FRAMES}, {"MAX_EXTERNAL_BUFFERS", MAX_EXTERNAL_BUFFERS}, {"MAX_BONES", MAX_BONES}};
+            // (no collider capacities since upstream's unbounded collider lists)
             auto it = defaults.find(macro);
             capacity = it != defaults.end() ? it->second : value;
         }

@@ -1765,7 +1765,7 @@ Json playersJson(Project* project, SceneProject* scene, Entity entity) {
                  {"bindings", bindings}};
     if (root != entity) item["plays"] = McpRefs::entityJson(scene, entity);
     // layers (live weights and queues in play), the masks' coverage, the controller (anim layers spec 10, 11.5)
-    animator_tools::addPlayerLayers(project, scene, root, item);
+    // SYNC4-ABSORB(animator): upstream's layers, masks' coverage and controller (animator_tools::addPlayerLayers)
     out.push_back(item);
     return out;
 }

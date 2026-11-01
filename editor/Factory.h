@@ -165,12 +165,14 @@ namespace jasperengine::editor{
         static std::string formatString(const std::string& value);
         static std::string formatFloat(float value);
         // AnimationCurve / Gradient literals (lines and trails spec 6.1): a step tangent is
-        // AnimationCurve::STEP
-        static std::string formatCurve(const AnimationCurve& curve);
-        static std::string formatGradient(const Gradient& gradient);
+        // AnimationCurve::STEP (SYNC4-ABSORB(curve): upstream's types, upcurve::)
+        static std::string formatCurve(const upcurve::AnimationCurve& curve);
+        static std::string formatGradient(const upcurve::Gradient& gradient);
+#if 0 // SYNC4-ABSORB(particles): upstream's MinMax literals
         // Unity's MinMaxCurve / MinMaxGradient literals (particles spec 6.7)
         static std::string formatMinMaxCurve(const MinMaxCurve& curve);
         static std::string formatMinMaxGradient(const MinMaxGradient& gradient);
+#endif
         // {{"member", "global"}, ...} and a ShaderGlobalDecl{...} literal (shader globals spec 6.5)
         static std::string formatShaderGlobalBindings(const ShaderGlobalBindings& bindings);
         static std::string formatShaderGlobalDecl(const ShaderGlobalDecl& decl);

@@ -90,7 +90,10 @@ bool editor::AddComponentCmd::execute() {
             // a Particle System added in the editor is Unity's (version 2 modules) drawing on its
             // own GameObject's renderer (a Mesh's instances or Points); the loader's and the
             // scripts' default stays version 1
+            // SYNC4-ABSORB(particles): upstream made an editor-added Particle System a version 2 one
+            // (Unity's modules, its own renderer) drawing on its own GameObject
             if (componentType == ComponentType::ParticleSystemComponent){
+#if 0 // SYNC4-ABSORB(particles)
                 if (ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity)){
                     *ps = ParticleSystemComponent();
                     ps->version = 2;
@@ -101,6 +104,7 @@ bool editor::AddComponentCmd::execute() {
                         ps->shape.radius = 40.0f;
                     }
                 }
+#endif
                 if (ActionComponent* action = scene->findComponent<ActionComponent>(entity)){
                     if (action->target == NULL_ENTITY) action->target = entity;
                 }

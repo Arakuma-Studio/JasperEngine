@@ -72,13 +72,13 @@ std::string number(double v) {
 }
 
 std::string lowerExtension(const std::string& path) {
-    std::string ext = fs::u8path(path).extension().u8string();
+    std::string ext = jasperengine::editor::FileUtils::pathToUtf8(fs::u8path(path).extension());
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return ext;
 }
 
 std::string fileName(const std::string& path) {
-    const std::string name = fs::u8path(path).filename().u8string();
+    const std::string name = jasperengine::editor::FileUtils::pathToUtf8(fs::u8path(path).filename());
     return name.empty() ? path : name;
 }
 
@@ -711,7 +711,7 @@ Json applyArgs(Project* project, const NormalsCall& state, const std::vector<std
             for (const sn::Delay& d : p.source.delays) ms.push_back(d.playbackMs());
             calls.push_back({{"tool", "set_properties"}, {"arguments", {{"scene", scene->id}, {"entity", state.sourceEntity}, {"values", {{"mesh", values}}}}}});
             calls.push_back({{"tool", "set_sprite_animation"},
-                             {"arguments", {{"scene", scene->id}, {"sprite", state.sourceEntity}, {"name", fs::u8path(p.sourcePath).stem().u8string()},
+                             {"arguments", {{"scene", scene->id}, {"sprite", state.sourceEntity}, {"name", jasperengine::editor::FileUtils::pathToUtf8(fs::u8path(p.sourcePath).stem())},
                                             {"frame_ms", ms}, {"loop", p.source.loopCount != 1}}}});
             return calls;
         }
@@ -737,7 +737,7 @@ void finishNormals(const NormalsCallPtr& state) {
     if (state->generation != texsynth::projectGeneration() || !project || project->getProjectPath() != state->root) {
         failJob(job, "Nothing was written:",
                 {problem("project_changed", "", std::string(sn::kProjectChangedMessage) + " The project changed while the normal map was generated (it was started in " +
-                                                    state->root.u8string() + "); nothing was written.",
+                                                    jasperengine::editor::FileUtils::pathToUtf8(state->root) + "); nothing was written.",
                          "call generate_sprite_normals again in the open project")});
         return;
     }
@@ -899,7 +899,7 @@ void finishNormals(const NormalsCallPtr& state) {
                 request.frames = first.source.cells;
                 for (const sn::Delay& d : first.source.delays) request.frameMs.push_back(d.playbackMs());
                 request.loopCount = first.source.loopCount;
-                request.animationName = fs::u8path(first.sourcePath).stem().u8string();
+                request.animationName = jasperengine::editor::FileUtils::pathToUtf8(fs::u8path(first.sourcePath).stem());
             }
             const sn::ApplyResult result = sn::applyToSprite(project, request);
             if (!result.ok) {
@@ -1303,7 +1303,7 @@ void generateSpriteNormalsTool(const CallPtr& call) {
             return;
         }
         // compared with their links resolved: an alias of a file is that file
-        inputs.insert(sn::resolvedPath(prepared[i].sourceAbsolute).generic_u8string());
+        inputs.insert(jasperengine::editor::FileUtils::pathToGenericUtf8(sn::resolvedPath(prepared[i].sourceAbsolute)));
         if (state->write && output.framesJson && prepared[i].request.cells.empty()) {
             failCall(call, problem("output_invalid", "output.frames", "output.frames writes a frames JSON, but " + prepared[i].sourcePath + " has no frames (one whole image)",
                                    "pass frames (a grid or cells) or a GIF/APNG, or leave output.frames out"));
@@ -1311,10 +1311,10 @@ void generateSpriteNormalsTool(const CallPtr& call) {
         }
     }
     // outputs of different tilesets must differ, and never replace an input of the call (or the sheet)
-    const std::string sheetKey = state->savePath.empty() ? std::string() : sn::resolvedPath(state->root / fs::u8path(state->savePath)).generic_u8string();
+    const std::string sheetKey = state->savePath.empty() ? std::string() : jasperengine::editor::FileUtils::pathToGenericUtf8(sn::resolvedPath(state->root / fs::u8path(state->savePath)));
     for (size_t i = 0; state->write && i < prepared.size(); i++) {
         for (const sn::PlannedOutput& o : prepared[i].outputs) {
-            const std::string key = sn::resolvedPath(state->root / fs::u8path(o.path)).generic_u8string();
+            const std::string key = jasperengine::editor::FileUtils::pathToGenericUtf8(sn::resolvedPath(state->root / fs::u8path(o.path)));
             if (inputs.count(key) || !outputs.insert(key).second || (!sheetKey.empty() && key == sheetKey)) {
                 failCall(call, problem("output_invalid", "output." + o.role, o.path + " is an input of this call, or written twice by it",
                                        "an assets path ending in .png, or output: true"));
@@ -1439,7 +1439,7 @@ bool sameFile(const fs::path& a, const fs::path& b) {
 
 // The default-name normal maps of an image (contract 5): <stem>_normal.png, <stem>_sheet_normal.png
 std::vector<fs::path> defaultMapsOf(const fs::path& image) {
-    const std::string stem = image.stem().u8string();
+    const std::string stem = jasperengine::editor::FileUtils::pathToUtf8(image.stem());
     return {image.parent_path() / fs::u8path(stem + "_normal.png"), image.parent_path() / fs::u8path(stem + "_sheet_normal.png")};
 }
 

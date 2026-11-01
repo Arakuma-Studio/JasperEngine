@@ -278,15 +278,15 @@ namespace{
         data.layers.push_back(std::move(layer));
     }
 
-    anim::ControllerParseResult parseText(const std::string& text){
-        anim::ControllerParseResult result;
+    anim::ControllerFileParseResult parseText(const std::string& text){
+        anim::ControllerFileParseResult result;
         if (anim::isUnityYamlController(text)){
             result.error.message = anim::unityYamlControllerRefusal();
             return result;
         }
         OJson root;
         if (!parseDocument(text, root, result.error)) return result;
-        if (!checkHeader(root, anim::CONTROLLER_FORMAT, anim::CONTROLLER_VERSION, "an Animator Controller", "Animator Controller", result.error)){
+        if (!checkHeader(root, anim::CONTROLLER_FORMAT, anim::CONTROLLER_FILE_VERSION, "an Animator Controller", "Animator Controller", result.error)){
             return result;
         }
         std::vector<ClipWarning>& warnings = result.warnings;
@@ -591,15 +591,15 @@ void anim::normalizeController(ControllerData& data, std::vector<ClipWarning>* w
     data.layers = std::move(layers);
 }
 
-anim::ControllerParseResult anim::parseController(const std::string& text){
+anim::ControllerFileParseResult anim::parseControllerFile(const std::string& text){
     try{
         return parseText(text);
     }catch (const std::exception& e){
-        ControllerParseResult result;
+        ControllerFileParseResult result;
         result.error.message = std::string("cannot read the Animator Controller: ") + e.what();
         return result;
     }catch (...){
-        ControllerParseResult result;
+        ControllerFileParseResult result;
         result.error.message = "cannot read the Animator Controller";
         return result;
     }
@@ -610,7 +610,7 @@ std::string anim::writeController(const ControllerData& input){
     normalizeController(data, nullptr);
     std::string text = "{\n";
     text += std::string("  \"format\": ") + quote(CONTROLLER_FORMAT) + ",\n";
-    text += "  \"version\": " + std::to_string(CONTROLLER_VERSION) + ",\n";
+    text += "  \"version\": " + std::to_string(CONTROLLER_FILE_VERSION) + ",\n";
     if (!data.guid.empty()) text += "  \"guid\": " + quote(data.guid) + ",\n";
 
     if (data.parameters.empty()){

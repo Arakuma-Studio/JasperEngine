@@ -33,6 +33,7 @@
 #include <system_error>
 #include <thread>
 #include <utility>
+#include "util/FileUtils.h"
 
 namespace fs = std::filesystem;
 using nlohmann::json;
@@ -46,7 +47,7 @@ namespace jasperengine::editor::spritenormals {
             return text;
         }
 
-        std::string extensionOf(const std::string& path) { return lower(fs::u8path(path).extension().u8string()); }
+        std::string extensionOf(const std::string& path) { return lower(jasperengine::editor::FileUtils::pathToUtf8(fs::u8path(path).extension())); }
 
         void add(std::vector<Problem>& problems, const char* kind, const std::string& field, const std::string& message, const std::string& fix = "") {
             problems.push_back({kind, field, message, fix});
@@ -67,7 +68,7 @@ namespace jasperengine::editor::spritenormals {
         }
 
         std::string fileName(const std::string& path) {
-            const std::string name = fs::u8path(path).filename().u8string();
+            const std::string name = jasperengine::editor::FileUtils::pathToUtf8(fs::u8path(path).filename());
             return name.empty() ? path : name;
         }
 
@@ -149,7 +150,7 @@ namespace jasperengine::editor::spritenormals {
             }
             if (!isAtOrBelow(real, realAssets)) {
                 return shownPath + " resolves outside the project's assets directory (" + projectRelative(projectDir, assets) +
-                       "): a symbolic link on its way leads to " + texsynth::printableUtf8(real.generic_u8string()) + ".";
+                       "): a symbolic link on its way leads to " + texsynth::printableUtf8(jasperengine::editor::FileUtils::pathToGenericUtf8(real)) + ".";
             }
             // (the assets directory itself may be a link out of the project: it is a trusted root,
             // resolved once; only links below it are checked)
@@ -158,7 +159,7 @@ namespace jasperengine::editor::spritenormals {
                 const fs::path back = real.lexically_relative(resolvedPath(projectDir));
                 if (!back.empty() && *back.begin() != "..") {
                     for (auto it = back.begin(); it != back.end() && std::next(it) != back.end(); ++it) {
-                        const std::string part = it->u8string();
+                        const std::string part = jasperengine::editor::FileUtils::pathToUtf8(*it);
                         if (!part.empty() && part[0] == '.' && part != "." && part != "..") {
                             return shownPath + " resolves into the hidden directory " + texsynth::printableUtf8(part) +
                                    " through a symbolic link.";
@@ -238,7 +239,7 @@ namespace jasperengine::editor::spritenormals {
         // alike): project-relative, or outside a project (empty projectDir) the texture's own
         // absolute path, since a relative one would be read from the working directory
         std::string spriteSourcePath(const fs::path& projectDir, const SpriteInfo& info) {
-            return projectDir.empty() ? info.texture.generic_u8string() : projectRelative(projectDir, info.texture);
+            return projectDir.empty() ? jasperengine::editor::FileUtils::pathToGenericUtf8(info.texture) : projectRelative(projectDir, info.texture);
         }
 
         // ---- running workers (SpriteNormalsRun::cancelAll): the texsynth SynthesisRun pattern,
@@ -318,7 +319,7 @@ namespace jasperengine::editor::spritenormals {
         // a hidden directory (.jasperengine is the editor's own, .git ...)
         for (auto it = back.begin(); it != back.end(); ++it) {
             if (std::next(it) == back.end()) break;
-            const std::string part = it->u8string();
+            const std::string part = jasperengine::editor::FileUtils::pathToUtf8(*it);
             if (!part.empty() && part[0] == '.') {
                 error = "\"" + texsynth::printableUtf8(rel) + "\" is inside the hidden directory " + texsynth::printableUtf8(part);
                 return false;
@@ -329,16 +330,16 @@ namespace jasperengine::editor::spritenormals {
     }
 
     std::string projectRelative(const fs::path& projectDir, const fs::path& absolute) {
-        if (projectDir.empty()) return absolute.lexically_normal().generic_u8string();
+        if (projectDir.empty()) return jasperengine::editor::FileUtils::pathToGenericUtf8(absolute.lexically_normal());
         const fs::path rel = absolute.lexically_normal().lexically_relative(projectDir.lexically_normal());
-        if (rel.empty() || *rel.begin() == ".." || rel.is_absolute()) return absolute.lexically_normal().generic_u8string();
-        return rel.generic_u8string();
+        if (rel.empty() || *rel.begin() == ".." || rel.is_absolute()) return jasperengine::editor::FileUtils::pathToGenericUtf8(absolute.lexically_normal());
+        return jasperengine::editor::FileUtils::pathToGenericUtf8(rel);
     }
 
     std::vector<PlannedOutput> defaultOutputs(const std::string& sourcePath, SourceKind kind, bool height, bool framesJson) {
         const fs::path source = fs::u8path(sourcePath);
-        const std::string stem = source.stem().u8string();
-        auto sibling = [&](const std::string& name) { return (source.parent_path() / fs::u8path(name)).generic_u8string(); };
+        const std::string stem = jasperengine::editor::FileUtils::pathToUtf8(source.stem());
+        auto sibling = [&](const std::string& name) { return jasperengine::editor::FileUtils::pathToGenericUtf8((source.parent_path() / fs::u8path(name))); };
         std::vector<PlannedOutput> out;
         if (kind == SourceKind::Gif || kind == SourceKind::Apng) {
             out.push_back({"normal", sibling(stem + "_sheet_normal.png")});
@@ -395,7 +396,7 @@ namespace jasperengine::editor::spritenormals {
             if (path.empty()) {
                 // <atlas stem>.frames.json, else <normal stem>.frames.json
                 const fs::path base = fs::u8path(animated ? atlas : normal);
-                if (!base.empty()) path = (base.parent_path() / fs::u8path(base.stem().u8string() + ".frames.json")).generic_u8string();
+                if (!base.empty()) path = jasperengine::editor::FileUtils::pathToGenericUtf8((base.parent_path() / fs::u8path(jasperengine::editor::FileUtils::pathToUtf8(base.stem()) + ".frames.json")));
             }
             out.push_back({"frames_json", path, std::nullopt});
         }
@@ -560,7 +561,7 @@ namespace jasperengine::editor::spritenormals {
             std::set<std::string> written;
             const fs::path assets = projectDir.empty() ? fs::path() : assetsRoot(projectDir);
             // the source and the outputs compared with their links resolved (an alias is the same file)
-            const std::string sourceKey = c.sourceAbsolute.empty() ? std::string() : resolvedPath(c.sourceAbsolute).generic_u8string();
+            const std::string sourceKey = c.sourceAbsolute.empty() ? std::string() : jasperengine::editor::FileUtils::pathToGenericUtf8(resolvedPath(c.sourceAbsolute));
             for (const PlannedOutput& out : c.outputs) {
                 const std::string field = "output." + out.role;
                 if (out.path.empty()) {
@@ -596,7 +597,7 @@ namespace jasperengine::editor::spritenormals {
                         continue;
                     }
                 }
-                const std::string key = resolvedPath(abs).generic_u8string();
+                const std::string key = jasperengine::editor::FileUtils::pathToGenericUtf8(resolvedPath(abs));
                 if (!written.insert(key).second) {
                     add(problems, "output_invalid", field, "Two outputs would be written to " + out.path + ".", "Give each output its own path.");
                     continue;
@@ -654,8 +655,8 @@ namespace jasperengine::editor::spritenormals {
             }();
             std::error_code ec;
             if (normal.empty() || !fs::is_regular_file(normal, ec)) return true;
-            const std::string rel = out.projectDir.empty() ? normal.generic_u8string() : projectRelative(out.projectDir, normal);
-            const std::string name = normal.filename().u8string();
+            const std::string rel = out.projectDir.empty() ? jasperengine::editor::FileUtils::pathToGenericUtf8(normal) : projectRelative(out.projectDir, normal);
+            const std::string name = jasperengine::editor::FileUtils::pathToUtf8(normal.filename());
             std::string why;
             std::optional<PaintOverlay> kept = readPaint(normal, &why);
             if (!kept) {
@@ -757,7 +758,7 @@ namespace jasperengine::editor::spritenormals {
         std::string recordedPath(const Prepared& prepared, const fs::path& path, const fs::path& carrier) {
             if (!prepared.projectDir.empty()) return projectRelative(prepared.projectDir, path);
             const fs::path rel = path.lexically_normal().lexically_relative(carrier.parent_path().lexically_normal());
-            return rel.empty() ? path.lexically_normal().generic_u8string() : rel.generic_u8string();
+            return rel.empty() ? jasperengine::editor::FileUtils::pathToGenericUtf8(path.lexically_normal()) : jasperengine::editor::FileUtils::pathToGenericUtf8(rel);
         }
 
         fs::path plannedAbsolute(const Prepared& prepared, const std::string& role) {
@@ -947,7 +948,7 @@ namespace jasperengine::editor::spritenormals {
         if (!beneath.empty()) command.writeBeneath(beneath);
         else command.writeBeneathOwnFolders();
         if (command.execute()) return true;
-        failedPath = command.getFailedPath().empty() ? files.front().absolute.u8string() : command.getFailedPath().u8string();
+        failedPath = command.getFailedPath().empty() ? jasperengine::editor::FileUtils::pathToUtf8(files.front().absolute) : jasperengine::editor::FileUtils::pathToUtf8(command.getFailedPath());
         error = failure->empty() ? std::string("the files could not be written") : *failure;
         const std::string putBack = "; nothing was changed (the files written before it were put back)";
         if (error.size() >= putBack.size() && error.compare(error.size() - putBack.size(), putBack.size(), putBack) == 0) {
@@ -995,7 +996,7 @@ namespace jasperengine::editor::spritenormals {
 
     Staleness checkStaleness(const fs::path& projectDir, const fs::path& png) {
         Staleness s;
-        const std::string pngName = png.filename().u8string();
+        const std::string pngName = jasperengine::editor::FileUtils::pathToUtf8(png.filename());
         std::string error;
         RecipeReadError origin = RecipeReadError::None;
         const std::optional<json> recipe = readRecipeHead(png, &error, &origin);
@@ -1085,7 +1086,7 @@ namespace jasperengine::editor::spritenormals {
         out.output.atlas = recordedRelative(projectDir, png, outputs.contains("atlas") ? outputs["atlas"] : json());
         out.output.height = recordedRelative(projectDir, png, outputs.contains("height") ? outputs["height"] : json());
         const std::string role = recipe.contains("role") ? recipe["role"].get<std::string>() : std::string("normal");
-        const std::string self = projectDir.empty() ? png.generic_u8string() : projectRelative(projectDir, png);
+        const std::string self = projectDir.empty() ? jasperengine::editor::FileUtils::pathToGenericUtf8(png) : projectRelative(projectDir, png);
         if (role == "normal" && out.output.normal.empty()) out.output.normal = self;
         if (role == "atlas" && out.output.atlas.empty()) out.output.atlas = self;
         if (role == "height" && out.output.height.empty()) out.output.height = self;

@@ -1455,7 +1455,7 @@ void editCollidersTool(const CallPtr& call) {
         addProp<BodyType>(*multi, target, target.entity, bodyType, "type", type);
     }
 
-    size_t oldCount = 0;
+    [[maybe_unused]] size_t oldCount = 0;
     size_t newCount = 0;
     Json colliders = Json::array();
     Json bodyMaterial = Json::object();  // 3D friction / restitution given on shapes
@@ -3861,14 +3861,7 @@ void getAnimationTool(const CallPtr& call) {
         return;
     }
     // an Avatar Mask (root: its coverage) or an Animator Controller (anim layers spec 10, 11.5)
-    if (has(args, "mask")) {
-        animator_tools::getMask(call);
-        return;
-    }
-    if (has(args, "controller")) {
-        animator_tools::getController(call);
-        return;
-    }
+    // SYNC4-ABSORB(animator): upstream's mask / controller reads (animator_tools::getMask / getController)
     if (has(args, "times") || has(args, "root")) {
         call->fail(std::string(has(args, "times") ? "times samples" : "root checks the bindings of") +
                    " a clip file: pass clip (an .anim path or a model clip \"assets/models/hero.gltf#Walk\").");
@@ -5609,8 +5602,8 @@ void setShapePointsTool(const CallPtr& call) {
             addProp<std::vector<Vector3>>(*multi, target, target.entity, lineType, "positions", positions);
             addProp<bool>(*multi, target, target.entity, lineType, "loop", boolOr(args, "closed", false));
             if (has(args, "colors")) {
-                if (colors.size() > Gradient::MAX_KEYS) {
-                    call->fail("colors: a polyline's gradient takes at most " + std::to_string(Gradient::MAX_KEYS) +
+                if (colors.size() > upcurve::Gradient::MAX_KEYS) {
+                    call->fail("colors: a polyline's gradient takes at most " + std::to_string(upcurve::Gradient::MAX_KEYS) +
                                " keys (one per point); set colorGradient with set_properties for more points.");
                     return;
                 }
@@ -5618,16 +5611,16 @@ void setShapePointsTool(const CallPtr& call) {
                 std::vector<float> at(points.size(), 0.0f);
                 for (size_t i = 1; i < points.size(); i++) at[i] = at[i - 1] + points[i - 1].distance(points[i]);
                 const float total = at.back();
-                Gradient gradient({}, {});
+                upcurve::Gradient gradient({}, {});
                 for (size_t i = 0; i < points.size(); i++) {
                     const float t = total > 0.0f ? at[i] / total : (float)i / (float)(points.size() - 1);
-                    gradient.colorKeys.push_back(GradientColorKey(t, Vector3(colors[i].x, colors[i].y, colors[i].z)));
-                    gradient.alphaKeys.push_back(GradientAlphaKey(t, colors[i].w));
+                    gradient.colorKeys.push_back(upcurve::GradientColorKey(t, Vector3(colors[i].x, colors[i].y, colors[i].z)));
+                    gradient.alphaKeys.push_back(upcurve::GradientAlphaKey(t, colors[i].w));
                 }
                 gradient.normalize();
-                addProp<Gradient>(*multi, target, target.entity, lineType, "colorGradient", gradient);
+                addProp<upcurve::Gradient>(*multi, target, target.entity, lineType, "colorGradient", gradient);
             } else if (has(args, "color")) {
-                addProp<Gradient>(*multi, target, target.entity, lineType, "colorGradient", Gradient::constant(color));
+                addProp<upcurve::Gradient>(*multi, target, target.entity, lineType, "colorGradient", upcurve::Gradient::constant(color));
             }
             written = points.size();
         }

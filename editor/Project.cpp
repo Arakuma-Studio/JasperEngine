@@ -5392,7 +5392,7 @@ void editor::Project::resetConfigs() {
     setTagsAndLayers({}, {});
     setLayerCollisionMatrices(allLayersCollide(), allLayersCollide());
     setPhysics3DWorldSettings(Physics3DWorldSettings());
-    resetInputActions();
+    // SYNC4-ABSORB(input): upstream reset its Input Manager actions here (resetInputActions)
     setShaderGlobals({});
     packNativeResources = defaultPackNativeResources;
     versionControlMetadata = defaultVersionControlMetadata;

@@ -812,9 +812,7 @@ void editor::InspectorWindow::drawAnimationPlayerComponent(ComponentType cpType,
     // layers are hidden (the Controller field says what is ignored)
     bool hasController = false;
     if (entities.size() == 1){
-        drawAnimationPlayerController(cpType, sceneProject, entities[0]);
-        const AnimationPlayerComponent* player = sceneProject->scene->findComponent<AnimationPlayerComponent>(entities[0]);
-        hasController = player && !player->controller.empty();
+        // SYNC4-ABSORB(animator): upstream's Controller field and controller-driven players (InspectorWindowAnimLayers.cpp)
     }
 
     // Unity's order: the default clip ("Animation"), the list, then the settings
@@ -826,7 +824,7 @@ void editor::InspectorWindow::drawAnimationPlayerComponent(ComponentType cpType,
 
     if (entities.size() == 1){
         if (!hasController){
-            drawAnimationPlayerLayers(cpType, sceneProject, entities[0]);
+            // SYNC4-ABSORB(animator): upstream's layers (drawAnimationPlayerLayers)
             drawAnimationPlayerClips(cpType, sceneProject, entities[0]);
         }
     }else{
@@ -847,7 +845,7 @@ void editor::InspectorWindow::drawAnimationPlayerComponent(ComponentType cpType,
     }
     if (hasController){
         if (sceneProject->playState != ScenePlayState::STOPPED){
-            drawControllerPlayState(sceneProject, entities[0]);
+            // SYNC4-ABSORB(animator): upstream's controller play state (drawControllerPlayState)
         }
         return;
     }
@@ -1005,7 +1003,7 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
             }
 
             drawPlayerClipNameRow(cpType, sceneProject, entity, i);
-            drawPlayerClipLayerRow(cpType, sceneProject, entity, i);
+            // SYNC4-ABSORB(animator): upstream's clip layer row (drawPlayerClipLayerRow)
 
             // wrap: a one-byte enum (PropertyCmd<ClipWrapMode>, never the int Enum row)
             ClipWrapMode clipWrap = ClipWrapMode::Once;
@@ -1337,7 +1335,7 @@ void editor::InspectorWindow::drawAnimationPlayerBindings(SceneProject* scenePro
         ImGui::PopID();
     }
     // the layers' masks: how many bound entities each covers (anim layers spec 9)
-    drawPlayerMaskCoverage(sceneProject, entity);
+    // SYNC4-ABSORB(animator): upstream's mask coverage (drawPlayerMaskCoverage)
     ImGui::TreePop();
 }
 
@@ -1356,7 +1354,7 @@ void editor::InspectorWindow::drawAnimationPlayerStates(ComponentType cpType, Sc
     // grouped under their layers (anim layers spec 9: a live weight per layer)
     const size_t layerCount = std::max<size_t>(1, runtime.layers.size());
     for (size_t layer = 0; layer < layerCount; layer++){
-        if (layerCount > 1) drawPlayerLayerStatesHeader(sceneProject, entity, (int)layer);
+        // SYNC4-ABSORB(animator): upstream's per-layer header (drawPlayerLayerStatesHeader)
         beginTable(cpType, getLabelSize("Play Automatically"), "player_states" + std::to_string(layer));
         for (size_t i = 0; i < states.size(); i++){
             const int stateIndex = runtime.findState(states[i]);
@@ -1432,9 +1430,8 @@ bool editor::InspectorWindow::drawInspectedAsset(){
     if (Util::isAvatarMaskFile(file) || Util::isAnimatorControllerFile(file)){
         std::error_code ec;
         if (!fs::is_regular_file(asset, ec)) return false;
-        if (Util::isAvatarMaskFile(file)) drawAvatarMaskAsset(asset);
-        else drawControllerAsset(asset);
-        return true;
+        // SYNC4-ABSORB(animator): upstream's mask / controller asset views (S21's drawAnimatorAsset above takes them)
+        return false;
     }
     const bool clip = Util::isAnimationClipFile(file);
     if (!clip && !Util::isModelFile(file)) return false;

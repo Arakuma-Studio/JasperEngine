@@ -246,7 +246,7 @@ void FluidSystem::update(double dt){
             // touches (a mouse the platform mirrors from them aside)
             std::set<int> now;
             for (const Touch& touch : touches){
-                const int id = 1 + touch.fingerId;
+                const int id = 1 + touch.pointer;
                 now.insert(id);
                 Vector2 point;
                 const bool hit = toFluid(touch.position, point);

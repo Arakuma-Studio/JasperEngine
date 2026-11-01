@@ -8,7 +8,7 @@
 #include "Input.h"
 #include "input/InputActions.h"
 #include "input/InputVirtualControls.h"
-#include "input/InputControlNames.h"
+// SYNC4-ABSORB(input): upstream's input/InputControlNames.h left out (S22's InputControlNames is input/InputControlPath.h)
 #include "Log.h"
 #include "Scene.h"
 #include "SceneManager.h"

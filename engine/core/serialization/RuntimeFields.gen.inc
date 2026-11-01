@@ -568,7 +568,7 @@ const FieldEntry kStruct_Collider2D_fields[] = {
     JE_RF(Collider2D, pointA, 0xa771e2f2u, Vector2),
     JE_RF(Collider2D, pointB, 0xa671e15fu, Vector2),
     JE_RF(Collider2D, radius, 0x3049256du, Float),
-    JE_RF(Collider2D, vertices, 0xe4264318u, Array),
+    JE_RF(Collider2D, points, 0xd5722b5cu, Array),
     JE_RF(Collider2D, loop, 0xc84e2765u, Bool),
     JE_RF(Collider2D, density, 0xef4d1e01u, Float),
     JE_RF(Collider2D, friction, 0x20636d81u, Float),
@@ -602,8 +602,6 @@ const FieldEntry kStruct_Collider3D_fields[] = {
     JE_RF_ENTITY(Collider3D, sourceEntity, 0x801cb5ceu, Entity),
     JE_RF(Collider3D, samplesSize, 0x66556b56u, UInt),
     JE_RF(Collider3D, vertices, 0x2f676f0bu, Array),
-    JE_RF(Collider3D, numVertices, 0x26c3348bu, UInt),
-    JE_RF(Collider3D, numIndices, 0x6ab7e4e9u, UInt),
 };
 const StructTable kStruct_Collider3D{"Collider3D", kStruct_Collider3D_fields, std::size(kStruct_Collider3D_fields)};
 void Codec<Collider3D>::write(Writer& w, const Collider3D& value) { writeStruct(w, kStruct_Collider3D, &value); }
@@ -1038,7 +1036,6 @@ const StructTable kBody_AudioSourceComponent{"audiosource", kBody_AudioSourceCom
 const FieldEntry kBody_Rigidbody2DComponent_fields[] = {
     JE_RF(Rigidbody2DComponent, enabled, 0x8e78c911u, Bool),
     JE_RF(Rigidbody2DComponent, type, 0x89be1638u, Enum),
-    JE_RF(Rigidbody2DComponent, numColliders, 0xd73a3475u, UInt),
     JE_RF(Rigidbody2DComponent, colliders, 0xa1ab1c35u, Array),
 };
 const StructTable kBody_Rigidbody2DComponent{"rigidbody2d", kBody_Rigidbody2DComponent_fields, std::size(kBody_Rigidbody2DComponent_fields)};
@@ -1059,7 +1056,6 @@ const FieldEntry kBody_RigidbodyComponent_fields[] = {
     JE_RF(RigidbodyComponent, overrideMassProperties, 0xe2db2b67u, Bool),
     JE_RF(RigidbodyComponent, solidBoxSize, 0x7b744dabu, Vector3),
     JE_RF(RigidbodyComponent, solidBoxDensity, 0x7dc7bb26u, Float),
-    JE_RF(RigidbodyComponent, numColliders, 0xe60980d3u, UInt),
     JE_RF(RigidbodyComponent, colliders, 0xaa51737bu, Array),
 };
 const StructTable kBody_RigidbodyComponent{"rigidbody", kBody_RigidbodyComponent_fields, std::size(kBody_RigidbodyComponent_fields)};

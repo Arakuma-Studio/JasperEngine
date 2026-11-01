@@ -813,6 +813,10 @@ std::vector<std::string> AnimationClipController::previewOverChoices() const{
 
 std::vector<std::string> AnimationClipController::maskedTracks() const{
     std::vector<std::string> masked;
+    // SYNC4-ABSORB(animator): upstream's layer masks (an Animation Player layer's .mask through AvatarMaskDocument,
+    // AnimAssetDocument.cpp, out of the build): no track is masked until the Animator absorption
+    return masked;
+#if 0
     if (!document || !hasPlayer()) return masked;
     const size_t trackCount = document->data().tracks.size();
     const int layer = getStateLayer();
@@ -846,6 +850,7 @@ std::vector<std::string> AnimationClipController::maskedTracks() const{
     }
     maskedCache = masked;
     return masked;
+#endif
 }
 
 bool AnimationClipController::isReadOnly() const{

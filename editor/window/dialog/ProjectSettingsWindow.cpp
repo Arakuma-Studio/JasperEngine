@@ -1073,6 +1073,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_layerCollision3D = project->getLayerCollisionMatrix3D();
     m_layerCollision2D = project->getLayerCollisionMatrix2D();
 
+#if 0 // SYNC4-ABSORB(input): upstream's Input Manager page (S22 owns Project Settings > Input)
     m_inputActions = project->getInputActions();
     m_inputCommitted = m_inputActions;
     m_inputCommittedJson = InputActions::actionsToJson(m_inputActions);
@@ -1082,6 +1083,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_inputSearch[0] = '\0';
     m_inputListen = InputListen();
 
+#endif
     m_globalsEdit.begin(project);
     m_shaderGlobalUsesScanned = false;
     m_shaderGlobalRemove = -1;
@@ -1124,7 +1126,7 @@ void ProjectSettingsWindow::show() {
 
 void ProjectSettingsWindow::drawSettings() {
     // the Input page's Listen takes Escape: it must not close the dialog in the frame it ends
-    const bool listening = m_inputListen.action >= 0;
+    const bool listening = false;   // SYNC4-ABSORB(input): upstream's Input page Listen (m_inputListen)
     const ImGuiStyle& style = ImGui::GetStyle();
     const float footerY = ImGui::GetWindowHeight() - style.WindowPadding.y - ImGui::GetFrameHeight();
     float regionHeight = std::max(1.0f, footerY - style.ItemSpacing.y * 2.0f - ImGui::GetCursorPosY());
@@ -1174,7 +1176,7 @@ void ProjectSettingsWindow::drawSettings() {
 
     const bool hasAbi = hasAndroidAbiSelection(m_androidAbiArmeabiV7a, m_androidAbiArm64V8a, m_androidAbiX86, m_androidAbiX86_64);
     const std::string tagsAndLayersProblem = tagsAndLayersError();
-    const std::string inputProblem = inputError();
+    const std::string inputProblem;   // SYNC4-ABSORB(input): upstream's inputError()
     const std::string shaderGlobalsProblem = m_globalsEdit.error();
     const bool canSave = hasAbi && tagsAndLayersProblem.empty() && inputProblem.empty() && shaderGlobalsProblem.empty();
 
@@ -1661,7 +1663,7 @@ void ProjectSettingsWindow::drawPresentationSettings() {
 
     const bool autoRotation = defaultOrientationValues[std::clamp(m_defaultOrientationIndex, 0, defaultOrientationCount - 1)] ==
         ScreenOrientation::AutoRotation;
-    if (beginSettingsRow("Allowed Orientations", m_allowedOrientations != defaults.allowedOrientations)) {
+    if (projectBeginSettingsRow("Allowed Orientations", m_allowedOrientations != defaults.allowedOrientations)) {
         m_allowedOrientations = defaults.allowedOrientations;
     }
     ImGui::BeginDisabled(!autoRotation);
@@ -1691,7 +1693,7 @@ void ProjectSettingsWindow::drawPresentationSettings() {
         }
     }
 
-    if (beginSettingsRow("Keep Screen On", m_keepScreenOn != defaults.keepScreenOn)) {
+    if (projectBeginSettingsRow("Keep Screen On", m_keepScreenOn != defaults.keepScreenOn)) {
         m_keepScreenOn = defaults.keepScreenOn;
     }
     ImGui::Checkbox("##KeepScreenOn", &m_keepScreenOn);
@@ -1699,7 +1701,7 @@ void ProjectSettingsWindow::drawPresentationSettings() {
         "SleepTimeout.NeverSleep). Off: the device's own setting. Desktops and the web follow the system unless a "
         "script sets NeverSleep (as Unity).");
 
-    if (beginSettingsRow("Target Frame Rate", m_targetFrameRate != defaults.targetFrameRate)) {
+    if (projectBeginSettingsRow("Target Frame Rate", m_targetFrameRate != defaults.targetFrameRate)) {
         m_targetFrameRate = defaults.targetFrameRate;
     }
     ImGui::SetNextItemWidth(-helpMarkerWidth());
@@ -2790,7 +2792,7 @@ void ProjectSettingsWindow::drawMacOSSettings() {
 }
 
 void ProjectSettingsWindow::drawIOSSettings() {
-    beginSettingsRow("Orientation");
+    projectBeginSettingsRow("Orientation");
     ImGui::TextDisabled("From Player > Resolution and Presentation");
     endSettingsRow("Default Orientation and Allowed Orientations for Auto Rotation are shared by Android and iOS.");
 
@@ -2942,7 +2944,7 @@ void ProjectSettingsWindow::drawAndroidSettings() {
         m_androidTargetSdk = std::max(m_androidTargetSdk, m_androidMinSdk);
     }
 
-    beginSettingsRow("Orientation");
+    projectBeginSettingsRow("Orientation");
     ImGui::TextDisabled("From Player > Resolution and Presentation");
     endSettingsRow("Default Orientation and Allowed Orientations for Auto Rotation are shared by Android and iOS.");
 
@@ -3062,6 +3064,7 @@ void ProjectSettingsWindow::drawAndroidSettings() {
     }
 }
 
+#if 0 // SYNC4-ABSORB(input): upstream's Input Manager page helpers
 // ---- Input (Project Settings > Input): the input actions
 
 namespace {
@@ -3111,7 +3114,7 @@ namespace {
     // a non-negative number field with Unity's label
     bool inputNumberRow(const char* label, const char* id, float& value, float defaultValue, float speed, float maximum,
                         const char* tooltip) {
-        if (beginSettingsRow(label, value != defaultValue)) value = defaultValue;
+        if (projectBeginSettingsRow(label, value != defaultValue)) value = defaultValue;
         ImGui::SetNextItemWidth(-helpMarkerWidth());
         const bool changed = ImGui::DragFloat(id, &value, speed, 0.0f, maximum, "%.3f", ImGuiSliderFlags_AlwaysClamp);
         endSettingsRow(tooltip);
@@ -3119,7 +3122,10 @@ namespace {
     }
 
 }
+#endif
 
+
+#if 0 // SYNC4-ABSORB(input): upstream's Input Manager page (S22 owns Project Settings > Input)
 std::string ProjectSettingsWindow::inputError() const {
     // names are trimmed when their field is left (and on OK): no error while one is typed
     std::vector<InputAction> actions = m_inputActions;
@@ -3380,7 +3386,7 @@ void ProjectSettingsWindow::drawInputActionList() {
 void ProjectSettingsWindow::drawInputActionDetails(InputAction& action, int actionIndex) {
     ImGui::PushID(actionIndex);
     if (beginSettingsTable("##InputActionTable")) {
-        beginSettingsRow("Name");
+        projectBeginSettingsRow("Name");
         char name[128];
         snprintf(name, sizeof(name), "%s", action.name.c_str());
         ImGui::SetNextItemWidth(-helpMarkerWidth());
@@ -3388,27 +3394,27 @@ void ProjectSettingsWindow::drawInputActionDetails(InputAction& action, int acti
         if (ImGui::IsItemDeactivatedAfterEdit()) action.name = TagManager::trimName(action.name);
         endSettingsRow("What scripts pass to Input.getAxis / getButton. Unique, case-sensitive.");
 
-        if (beginSettingsRow("Type", action.type != InputActionType::Axis)) action.type = InputActionType::Axis;
+        if (projectBeginSettingsRow("Type", action.type != InputActionType::Axis)) action.type = InputActionType::Axis;
         int type = action.type == InputActionType::Button ? 1 : 0;
         const char* typeLabels[] = { "Axis", "Button" };
         ImGui::SetNextItemWidth(-helpMarkerWidth());
         if (ImGui::Combo("##InputActionType", &type, typeLabels, 2)) action.type = type == 1 ? InputActionType::Button : InputActionType::Axis;
         endSettingsRow("Axis: -1..1 from a positive and a negative side. Button: 0..1, negative buttons are not read.");
 
-        beginSettingsRow("Description");
+        projectBeginSettingsRow("Description");
         char description[256];
         snprintf(description, sizeof(description), "%s", action.description.c_str());
         ImGui::SetNextItemWidth(-helpMarkerWidth());
         if (ImGui::InputText("##InputActionDescription", description, sizeof(description))) action.description = description;
         endSettingsRow("For you and settings screens; the game does not read it.");
 
-        if (beginSettingsRow("Press Point", action.pressPoint != 0.5f)) action.pressPoint = 0.5f;
+        if (projectBeginSettingsRow("Press Point", action.pressPoint != 0.5f)) action.pressPoint = 0.5f;
         ImGui::SetNextItemWidth(-helpMarkerWidth());
         ImGui::DragFloat("##InputActionPressPoint", &action.pressPoint, 0.01f, 0.01f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
         endSettingsRow("How far a gamepad axis or an on-screen stick goes before getButton is true.");
 
         if (inputPlaying(m_project)) {
-            beginSettingsRow("Live");
+            projectBeginSettingsRow("Live");
             InputActions::State state;
             if (InputActions::getState(action.name, state)) {
                 const float low = action.type == InputActionType::Button ? 0.0f : -1.0f;
@@ -3545,7 +3551,7 @@ void ProjectSettingsWindow::drawInputBinding(InputAction& action, int actionInde
     InputBinding& binding = action.bindings[bindingIndex];
     if (!beginSettingsTable("##InputBindingTable")) return;
 
-    beginSettingsRow("Kind");
+    projectBeginSettingsRow("Kind");
     int kind = static_cast<int>(binding.kind);
     ImGui::SetNextItemWidth(-helpMarkerWidth());
     if (ImGui::Combo("##BindingKind", &kind, inputKindLabels, 3) && kind != static_cast<int>(binding.kind)) {
@@ -3556,7 +3562,7 @@ void ProjectSettingsWindow::drawInputBinding(InputAction& action, int actionInde
 
     const InputBinding defaults = InputActions::makeBinding(binding.kind);
     auto gamepadRow = [&binding]() {
-        if (beginSettingsRow("Gamepad", binding.gamepad != -1)) binding.gamepad = -1;
+        if (projectBeginSettingsRow("Gamepad", binding.gamepad != -1)) binding.gamepad = -1;
         std::string preview = binding.gamepad < 0 ? std::string("Any") : "Gamepad " + std::to_string(binding.gamepad);
         ImGui::SetNextItemWidth(-helpMarkerWidth());
         if (ImGui::BeginCombo("##BindingGamepad", preview.c_str())) {
@@ -3571,10 +3577,10 @@ void ProjectSettingsWindow::drawInputBinding(InputAction& action, int actionInde
 
     switch (binding.kind) {
         case InputBindingKind::Buttons: {
-            beginSettingsRow(action.type == InputActionType::Axis ? "Positive Buttons" : "Buttons");
+            projectBeginSettingsRow(action.type == InputActionType::Axis ? "Positive Buttons" : "Buttons");
             drawInputControls("##Positive", binding.positive, actionIndex, bindingIndex, 0);
             if (action.type == InputActionType::Axis) {
-                beginSettingsRow("Negative Buttons");
+                projectBeginSettingsRow("Negative Buttons");
                 drawInputControls("##Negative", binding.negative, actionIndex, bindingIndex, 1);
             }
             gamepadRow();
@@ -3584,13 +3590,13 @@ void ProjectSettingsWindow::drawInputBinding(InputAction& action, int actionInde
                 "Values smaller than this read 0.");
             inputNumberRow("Sensitivity", "##Sensitivity", binding.sensitivity, defaults.sensitivity, 0.1f, 1000.0f,
                 "Speed in units per second that the value moves to the target (0: at once).");
-            if (beginSettingsRow("Snap", binding.snap)) binding.snap = false;
+            if (projectBeginSettingsRow("Snap", binding.snap)) binding.snap = false;
             ImGui::Checkbox("##Snap", &binding.snap);
             endSettingsRow("Pressing the opposite side jumps to 0 first instead of sliding through it.");
             break;
         }
         case InputBindingKind::GamepadAxis: {
-            beginSettingsRow("Axis");
+            projectBeginSettingsRow("Axis");
             int axis = binding.axis;
             const std::vector<std::string>& axes = InputControlNames::gamepadAxisNames();
             ImGui::SetNextItemWidth(Theme::dpi(160.0f));
@@ -3619,7 +3625,7 @@ void ProjectSettingsWindow::drawInputBinding(InputAction& action, int actionInde
             break;
         }
         case InputBindingKind::MouseDelta: {
-            beginSettingsRow("Axis");
+            projectBeginSettingsRow("Axis");
             int axis = static_cast<int>(binding.mouseAxis);
             ImGui::SetNextItemWidth(-helpMarkerWidth());
             if (ImGui::Combo("##BindingMouseAxis", &axis, mouseAxisLabels, 3)) binding.mouseAxis = static_cast<MouseDeltaAxis>(axis);
@@ -3629,11 +3635,12 @@ void ProjectSettingsWindow::drawInputBinding(InputAction& action, int actionInde
             break;
         }
     }
-    if (beginSettingsRow("Invert", binding.invert)) binding.invert = false;
+    if (projectBeginSettingsRow("Invert", binding.invert)) binding.invert = false;
     ImGui::Checkbox("##Invert", &binding.invert);
     endSettingsRow("Flips the sign.");
     ImGui::EndTable();
 }
+#endif
 
 bool ProjectSettingsWindow::applySettings() {
     if (!hasAndroidAbiSelection(m_androidAbiArmeabiV7a, m_androidAbiArm64V8a, m_androidAbiX86, m_androidAbiX86_64)) {
@@ -3642,9 +3649,7 @@ bool ProjectSettingsWindow::applySettings() {
     if (!tagsAndLayersError().empty()) {
         return false;
     }
-    if (!inputError().empty()) {
-        return false;
-    }
+    // SYNC4-ABSORB(input): upstream's inputError() (its Input page)
     if (!m_globalsEdit.error().empty()) {
         return false;
     }
@@ -3844,6 +3849,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setTagsAndLayers(tags, m_layerNames);
     m_project->setLayerCollisionMatrices(m_layerCollision3D, m_layerCollision2D);
 
+#if 0 // SYNC4-ABSORB(input): upstream's Input Manager page (S22 owns Project Settings > Input)
     // Input: one undoable step of the project history (Edit > Undo with the Project window
     // focused, MCP undo scope project)
     for (InputAction& action : m_inputActions) action.name = TagManager::trimName(action.name);
@@ -3853,6 +3859,7 @@ bool ProjectSettingsWindow::applySettings() {
         m_project->getProjectCommandHistory()->addCommand(command);
     }
 
+#endif
     // Shader Globals: one undoable step too; a renamed global's bindings follow it
     m_globalsEdit.commit();
 

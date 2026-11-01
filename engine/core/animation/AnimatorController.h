@@ -14,7 +14,7 @@
 //   "layers", unknown keys...}. Canonical and lenient like .anim: format + version required
 //   (Unity YAML refused), every other bad value dropped or repaired with a warning carrying its
 //   JSON path, unknown keys (top level, layers, states, transitions, blend trees and their
-//   children) kept and written back. writeController(parseController(writeController(d))) ==
+//   children) kept and written back. writeController(parseControllerFile(writeController(d))) ==
 //   writeController(d) byte for byte.
 // - Canonical details: 2-space indent; "guid" only when set; one parameter, state and transition
 //   per line; a layer is a block. Parameters {"name", "type", "default"} ("default" not for
@@ -38,6 +38,7 @@
 
 #include "Export.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/AnimatorAssetIO.h"
 #include "animation/ClipTypes.h"
 #include "component/AnimationPlayerComponent.h"
 
@@ -50,9 +51,8 @@
 
 namespace jasperengine::anim{
 
-    constexpr const char* CONTROLLER_FORMAT = "jasperengine.controller";
-    constexpr int CONTROLLER_VERSION = 1;
-    constexpr const char* CONTROLLER_EXTENSION = ".controller";
+    // SYNC4-ABSORB(animator): CONTROLLER_FORMAT / CONTROLLER_EXTENSION are S21's (AnimatorAssetIO.h)
+    constexpr int CONTROLLER_FILE_VERSION = 1;
     // the reserved `from` of Any State transitions
     constexpr const char* ANY_STATE = "any";
 
@@ -172,7 +172,9 @@ namespace jasperengine::anim{
         int findLayer(const std::string& name) const;
     };
 
-    struct JASPERENGINE_API ControllerParseResult{
+    // SYNC4-ABSORB(animator): renamed from ControllerParseResult / parseController, the names of S21's
+    // AnimatorAssetIO.h (the Animator absorption converts these files to S21's and removes this one)
+    struct JASPERENGINE_API ControllerFileParseResult{
         std::optional<ControllerData> data;
         std::vector<ClipWarning> warnings;
         ClipParseError error;
@@ -180,7 +182,7 @@ namespace jasperengine::anim{
         bool ok() const { return data.has_value(); }
     };
 
-    JASPERENGINE_API ControllerParseResult parseController(const std::string& text);
+    JASPERENGINE_API ControllerFileParseResult parseControllerFile(const std::string& text);
     // the canonical text of `data` (normalized first)
     JASPERENGINE_API std::string writeController(const ControllerData& data);
     // restores the invariants above on hand-built data; what changed goes to `warnings`

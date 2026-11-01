@@ -1221,7 +1221,7 @@ set(JASPERENGINE_SRCS
     core/input/InputActions.cpp
     core/input/InputRebind.cpp
     core/input/InputVirtualControls.cpp
-    core/input/InputControlNames.cpp
+    # SYNC4-ABSORB(input): upstream's core/input/InputControlNames.cpp (its class name is S22's, InputControlPath.h) out of the build
     core/Log.cpp
     core/diag/CrashHandler.cpp
     core/diag/CrashHandlerPosix.cpp
@@ -1561,7 +1561,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/IOClassesLua.cpp
     core/script/binding/MathClassesLua.cpp
     core/script/binding/NetClassesLua.cpp
-    core/script/binding/ParticleClassesLua.cpp
+    # SYNC4-ABSORB(particles): upstream's core/script/binding/ParticleClassesLua.cpp (version 2 Lua API) out of the build
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ProfilerClassesLua.cpp
     core/script/binding/GameplayClassesLua.cpp

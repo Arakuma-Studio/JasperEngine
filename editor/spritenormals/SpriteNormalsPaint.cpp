@@ -14,6 +14,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include "util/FileUtils.h"
 
 namespace fs = std::filesystem;
 using nlohmann::json;
@@ -1113,7 +1114,7 @@ namespace jasperengine::editor::spritenormals {
         if (problem) problem->clear();
         std::ifstream file(png, std::ios::binary);
         if (!file) {
-            if (problem) *problem = "cannot open " + png.u8string();
+            if (problem) *problem = "cannot open " + jasperengine::editor::FileUtils::pathToUtf8(png);
             return std::nullopt;
         }
         const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());

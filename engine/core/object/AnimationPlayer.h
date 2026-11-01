@@ -65,8 +65,9 @@ namespace jasperengine{
         size_t trackCount = 0;
     };
 
-    // Unity's AnimatorStateInfo: a copy of an Animator Controller layer's current (or next) state
-    struct JASPERENGINE_API AnimatorStateInfo{
+    // Unity's AnimatorStateInfo for the Animation Player's Controller (SYNC4-ABSORB(animator): renamed from
+    // AnimatorStateInfo, which is S21's Animator type): a copy of a controller layer's current (or next) state
+    struct JASPERENGINE_API ControllerStateInfo{
         bool isValid = false;
         std::string name;               // the state name (without the layer)
         std::string fullName;           // "<Layer>.<State>"
@@ -244,11 +245,11 @@ namespace jasperengine{
         // the current state of a layer (default 0), without the layer prefix ("" when none)
         std::string getCurrentStateName() const;
         std::string getCurrentStateName(int layer) const;
-        AnimatorStateInfo getCurrentStateInfo() const;
-        AnimatorStateInfo getCurrentStateInfo(int layer) const;
+        ControllerStateInfo getCurrentStateInfo() const;
+        ControllerStateInfo getCurrentStateInfo(int layer) const;
         // the destination of the layer's transition (isValid only during one)
-        AnimatorStateInfo getNextStateInfo() const;
-        AnimatorStateInfo getNextStateInfo(int layer) const;
+        ControllerStateInfo getNextStateInfo() const;
+        ControllerStateInfo getNextStateInfo(int layer) const;
         bool isInTransition() const;
         bool isInTransition(int layer) const;
 

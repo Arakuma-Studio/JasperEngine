@@ -331,8 +331,6 @@ void undoRedo(const CallPtr& call, bool undo) {
                        ": nothing changed. get_undo_history lists the steps.", data);
             return;
         }
-        // (an undo, or a redo, taken whose files could not all be written: "Undo / Redo incomplete")
-        if (!history->lastUndoProblem().empty()) problems.push_back(history->lastUndoProblem());
     }
 
     std::vector<UndoTimeline::Step> done;

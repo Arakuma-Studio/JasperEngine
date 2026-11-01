@@ -17,6 +17,7 @@
 #include "animation/AnimationPlayerRuntime.h"
 #include "htmlui/anim/AnimTimer.h"
 #include "util/FunctionSubscribe.h"
+#include "util/CrashHook.h"
 
 #include "lua.hpp"
 #include "LuaBridge.h"
@@ -248,13 +249,8 @@ namespace {
     // A script error: the editor's crash handler when one is set (the same as an event
     // callback's error: LuaFunctionBase), else the log
     void reportScriptError(const std::string& tag, const std::string& message){
-        #ifdef JASPERENGINE_CRASH_GUARD
-        auto& handler = FunctionSubscribeGlobal::getCrashHandler();
-        if (handler){
-            handler(tag, message);
-            return;
-        }
-        #endif
+        // oe-port's CrashHook (upstream's FunctionSubscribeGlobal crash handler)
+        if (CrashHook::active() && CrashHook::report(tag, message)) return;
         Log::error("%s", message.c_str());
     }
 
@@ -776,18 +772,16 @@ namespace {
 
     // lua_resume, under the crash guard when the editor set one; false when it caught a crash
     bool guardedResume(lua_State* co, lua_State* from, int nargs, int& status, int& nres, const std::string& origin){
-        #ifdef JASPERENGINE_CRASH_GUARD
-        auto& handler = FunctionSubscribeGlobal::getCrashHandler();
-        if (handler){
-            CrashInfo info{};
-            const bool ok = callWithCrashGuard([&](){ status = lua_resume(co, from, nargs, &nres); }, &info);
-            if (!ok){
-                handler("coroutine:" + origin, std::string(info.name ? info.name : "UNKNOWN") + " (" +
-                        (info.description ? info.description : "") + ") [code=" + std::to_string(info.code) + "]");
-            }
+        if (CrashHook::active()){
+            struct Resume { lua_State* co; lua_State* from; int nargs; int* status; int* nres; } r{co, from, nargs, &status, &nres};
+            std::string errorInfo;
+            const bool ok = CrashHook::runGuarded([](void* data){
+                Resume* c = static_cast<Resume*>(data);
+                *c->status = lua_resume(c->co, c->from, c->nargs, c->nres);
+            }, &r, errorInfo);
+            if (!ok) CrashHook::report("coroutine:" + origin, errorInfo);
             return ok;
         }
-        #endif
         (void)origin;
         status = lua_resume(co, from, nargs, &nres);
         return true;
@@ -1033,18 +1027,14 @@ namespace {
             // the same callable every call (its state stays), alive through the call
             const std::shared_ptr<std::function<void()>> fn = timer->cpp;
             if (last) endTimer(*timer, false);
-            #ifdef JASPERENGINE_CRASH_GUARD
-            auto& handler = FunctionSubscribeGlobal::getCrashHandler();
-            if (handler){
-                CrashInfo info{};
-                if (!callWithCrashGuard([&](){ (*fn)(); }, &info)){
-                    handler("timer:C++", std::string(info.name ? info.name : "UNKNOWN") + " (" +
-                            (info.description ? info.description : "") + ")");
+            if (CrashHook::active()){
+                std::string errorInfo;
+                if (!CrashHook::runGuarded([](void* data){ (*static_cast<std::function<void()>*>(data))(); }, fn.get(), errorInfo)){
+                    CrashHook::report("timer:C++", errorInfo);
                     if (TimerRecord* again = findTimer(id)) endTimer(*again, true);
                 }
                 return;
             }
-            #endif
             (*fn)();
             return;
         }

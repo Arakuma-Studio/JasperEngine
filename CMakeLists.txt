@@ -743,6 +743,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/AnimatorReflect.cpp
     ${EDITOR_DIR}/reflect/components/ParticlesReflect.cpp
     ${EDITOR_DIR}/reflect/components/RenderReflect.cpp
+    ${EDITOR_DIR}/reflect/components/UpstreamReflect.cpp
     ${EDITOR_DIR}/reflect/components/TransformPhysicsReflect.cpp
     ${EDITOR_DIR}/reflect/components/UIReflect.cpp
     ${EDITOR_DIR}/reflect/components/LatticeFluidReflect.cpp
@@ -1155,8 +1156,10 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/dialog/PrefabsWindow.cpp
     ${EDITOR_DIR}/window/dialog/AboutWindow.cpp
     ${EDITOR_DIR}/window/dialog/ScenesWindow.cpp
-    # SYNC4-ABSORB(curve): upstream's window/widget CurveField / CurveFieldLogic / MinMaxFields (and
-    # GradientField) collide with S27's editor/widget ones; the Curve absorption moves their users
+    # SYNC4-ABSORB(curve): upstream's window/widget CurveField / CurveFieldLogic / MinMaxFields /
+    # GradientField collide with S27's editor/widget ones (window/ files including "widget/CurveField.h"
+    # found them first): parked in editor/sync4-absorb/window/widget/, not built; the Curve absorption
+    # moves their users
     ${EDITOR_DIR}/window/widget/CustomTextEditor.cpp
     ${EDITOR_DIR}/window/widget/GraphCanvas.cpp
     ${EDITOR_DIR}/window/widget/HtmlCssLexer.cpp

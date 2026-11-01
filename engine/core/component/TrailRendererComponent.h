@@ -59,10 +59,10 @@ namespace jasperengine{
         float minVertexDistance = 0.1f;
         // width = widthMultiplier x widthCurve over the trail (0 = the head, 1 = the tail)
         float widthMultiplier = 1.0f;
-        AnimationCurve widthCurve = AnimationCurve::constant(1.0f);
+        upcurve::AnimationCurve widthCurve = upcurve::AnimationCurve::constant(1.0f);
         LineWidthUnit widthUnit = LineWidthUnit::World;
         // over the trail by age: 0 = the head, 1 = the oldest point
-        Gradient colorGradient;
+        upcurve::Gradient colorGradient;
         unsigned int numCornerVertices = 0;
         unsigned int numCapVertices = 0;
         LineAlignment alignment = LineAlignment::View;

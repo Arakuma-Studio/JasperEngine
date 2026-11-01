@@ -589,7 +589,7 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
             const float S = e.weight;
             const bool rotation = slot.channel == ClipChannel::Rotation;
             const bool hadResult = e.hasResult;
-            float rest[4];
+            float rest[4] = {0.0f, 0.0f, 0.0f, 0.0f};
             const bool needRest = l == 0 ? S < 1.0f : !e.hasResult;
             if (needRest || rotation) restOf(slot, index - slot.first, rest);
 

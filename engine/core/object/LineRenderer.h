@@ -86,12 +86,12 @@ namespace jasperengine{
         float getStartWidth() const;
         void setEndWidth(float width);
         float getEndWidth() const;
-        void setWidthCurve(const AnimationCurve& curve);
-        AnimationCurve getWidthCurve() const;
+        void setWidthCurve(const upcurve::AnimationCurve& curve);
+        upcurve::AnimationCurve getWidthCurve() const;
         void setWidthUnit(LineWidthUnit unit);
         LineWidthUnit getWidthUnit() const;
-        void setColorGradient(const Gradient& gradient);
-        Gradient getColorGradient() const;
+        void setColorGradient(const upcurve::Gradient& gradient);
+        upcurve::Gradient getColorGradient() const;
         // Unity shortcuts on the gradient's ends (sRGB colour, alpha)
         void setStartColor(Vector4 color);
         Vector4 getStartColor() const;

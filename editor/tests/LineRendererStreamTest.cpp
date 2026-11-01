@@ -69,11 +69,11 @@ namespace {
         lines.loop = true;
         lines.useWorldSpace = true;
         lines.widthMultiplier = 0.35f;
-        lines.widthCurve = AnimationCurve({CurveKey(0.0f, 1.0f, 0.0f, -2.0f), CurveKey(1.0f, 0.25f, std::numeric_limits<float>::infinity(), 0.0f)},
-                                          CurveWrap::Clamp, CurveWrap::Loop);
+        lines.widthCurve = upcurve::AnimationCurve({upcurve::CurveKey(0.0f, 1.0f, 0.0f, -2.0f), upcurve::CurveKey(1.0f, 0.25f, std::numeric_limits<float>::infinity(), 0.0f)},
+                                          upcurve::CurveWrap::Clamp, upcurve::CurveWrap::Loop);
         lines.widthUnit = LineWidthUnit::Pixels;
-        lines.colorGradient = Gradient({GradientColorKey(0.0f, Vector3(1, 0, 0)), GradientColorKey(0.6f, Vector3(0.2f, 0.4f, 0.8f))},
-                                       {GradientAlphaKey(0.0f, 1.0f), GradientAlphaKey(1.0f, 0.0f)}, GradientMode::Fixed);
+        lines.colorGradient = upcurve::Gradient({upcurve::GradientColorKey(0.0f, Vector3(1, 0, 0)), upcurve::GradientColorKey(0.6f, Vector3(0.2f, 0.4f, 0.8f))},
+                                       {upcurve::GradientAlphaKey(0.0f, 1.0f), upcurve::GradientAlphaKey(1.0f, 0.0f)}, upcurve::GradientMode::Fixed);
         lines.numCornerVertices = 4;
         lines.numCapVertices = 6;
         lines.alignment = LineAlignment::TransformZ;
@@ -93,8 +93,8 @@ TEST(LineRendererStreamTest, OldFileDecodesToTheHairlineAndWritesTheSameText){
     EXPECT_TRUE(lines.positions.empty());
     EXPECT_FALSE(lines.loop);
     EXPECT_FALSE(lines.useWorldSpace);
-    EXPECT_EQ(lines.widthCurve, AnimationCurve::constant(1.0f));
-    EXPECT_EQ(lines.colorGradient, Gradient());
+    EXPECT_EQ(lines.widthCurve, upcurve::AnimationCurve::constant(1.0f));
+    EXPECT_EQ(lines.colorGradient, upcurve::Gradient());
     EXPECT_EQ(lines.lines.size(), 2u);
 
     const std::string first = dump(Stream::encodeLineRendererComponent(lines));
@@ -133,7 +133,7 @@ TEST(LineRendererStreamTest, EveryFieldRoundTrips){
     EXPECT_EQ(decoded.widthCurve, authored.widthCurve);
     EXPECT_EQ(decoded.widthUnit, authored.widthUnit);
     ASSERT_EQ(decoded.colorGradient.colorKeys.size(), 2u);
-    EXPECT_EQ(decoded.colorGradient.mode, GradientMode::Fixed);
+    EXPECT_EQ(decoded.colorGradient.mode, upcurve::GradientMode::Fixed);
     for (size_t i = 0; i < 2; i++){
         EXPECT_NEAR(decoded.colorGradient.colorKeys[i].color.x, authored.colorGradient.colorKeys[i].color.x, 1e-6f);
         EXPECT_NEAR(decoded.colorGradient.colorKeys[i].color.z, authored.colorGradient.colorKeys[i].color.z, 1e-6f);
@@ -166,8 +166,8 @@ TEST(LineRendererStreamTest, TrailRoundTripKeepsNoRuntime){
     trail.time = 0.3f;
     trail.minVertexDistance = 0.1f;
     trail.widthMultiplier = 1.0f;
-    trail.widthCurve = AnimationCurve({CurveKey(0.0f, 0.22307944f), CurveKey(1.0f, 0.0f)});
-    trail.colorGradient = Gradient::twoColors(Vector4(1.0f, 0.3f, 0.0f, 1.0f), Vector4(1.0f, 0.3f, 0.0f, 0.0f));
+    trail.widthCurve = upcurve::AnimationCurve({upcurve::CurveKey(0.0f, 0.22307944f), upcurve::CurveKey(1.0f, 0.0f)});
+    trail.colorGradient = upcurve::Gradient::twoColors(Vector4(1.0f, 0.3f, 0.0f, 1.0f), Vector4(1.0f, 0.3f, 0.0f, 0.0f));
     trail.emitting = false;
     trail.autodestruct = true;
     trail.customShader = "library:line_flipbook";
@@ -250,7 +250,7 @@ TEST(LineRendererStreamTest, TrailRegistrationAndCatalog){
     const Entity other = scene.createUserEntity();
     scene.addComponent<Transform>(other, {});
     scene.addComponent<TrailRendererComponent>(other, {});
-    trail.widthCurve = AnimationCurve::linear(0.0f, 2.0f, 1.0f, 0.0f);
+    trail.widthCurve = upcurve::AnimationCurve::linear(0.0f, 2.0f, 1.0f, 0.0f);
     Catalog::copyPropertyValue(&scene, entity, &scene, other, type, "widthCurve");
     EXPECT_EQ(scene.getComponent<TrailRendererComponent>(other).widthCurve, trail.widthCurve);
 }
@@ -292,15 +292,15 @@ TEST(LineRendererStreamTest, LineCatalogPositionsAndFlags){
 }
 
 TEST(LineRendererStreamTest, FactoryEmitsCurvesGradientsAndFields){
-    const AnimationCurve curve({CurveKey(0.0f, 1.0f, 0.0f, std::numeric_limits<float>::infinity()), CurveKey(1.0f, 0.0f)},
-                               CurveWrap::PingPong, CurveWrap::Loop);
+    const upcurve::AnimationCurve curve({upcurve::CurveKey(0.0f, 1.0f, 0.0f, std::numeric_limits<float>::infinity()), upcurve::CurveKey(1.0f, 0.0f)},
+                               upcurve::CurveWrap::PingPong, upcurve::CurveWrap::Loop);
     EXPECT_EQ(Factory::formatCurve(curve),
-              "AnimationCurve({CurveKey(0.000000f, 1.000000f, 0.000000f, AnimationCurve::STEP), "
-              "CurveKey(1.000000f, 0.000000f, 0.000000f, 0.000000f)}, CurveWrap::PingPong, CurveWrap::Loop)");
-    const Gradient gradient({GradientColorKey(0.0f, Vector3(1, 0, 0))}, {GradientAlphaKey(0.0f, 1.0f), GradientAlphaKey(1.0f, 0.0f)}, GradientMode::Fixed);
+              "upcurve::AnimationCurve({upcurve::CurveKey(0.000000f, 1.000000f, 0.000000f, upcurve::AnimationCurve::STEP), "
+              "upcurve::CurveKey(1.000000f, 0.000000f, 0.000000f, 0.000000f)}, upcurve::CurveWrap::PingPong, upcurve::CurveWrap::Loop)");
+    const upcurve::Gradient gradient({upcurve::GradientColorKey(0.0f, Vector3(1, 0, 0))}, {upcurve::GradientAlphaKey(0.0f, 1.0f), upcurve::GradientAlphaKey(1.0f, 0.0f)}, upcurve::GradientMode::Fixed);
     EXPECT_EQ(Factory::formatGradient(gradient),
-              "Gradient({GradientColorKey(0.000000f, Vector3(1.000000f, 0.000000f, 0.000000f))}, "
-              "{GradientAlphaKey(0.000000f, 1.000000f), GradientAlphaKey(1.000000f, 0.000000f)}, GradientMode::Fixed)");
+              "upcurve::Gradient({upcurve::GradientColorKey(0.000000f, Vector3(1.000000f, 0.000000f, 0.000000f))}, "
+              "{upcurve::GradientAlphaKey(0.000000f, 1.000000f), upcurve::GradientAlphaKey(1.000000f, 0.000000f)}, upcurve::GradientMode::Fixed)");
 
     Scene scene;
     const Entity entity = scene.createUserEntity();
@@ -314,8 +314,8 @@ TEST(LineRendererStreamTest, FactoryEmitsCurvesGradientsAndFields){
     const std::string lines = Factory::createComponent(0, &scene, entity, ComponentType::LineRendererComponent, "", "scene", "entity");
     for (const char* expected : {"linescomp.mode = LineRendererMode::Polyline;", "linescomp.positions = {Vector3(",
                                  "linescomp.loop = true;", "linescomp.useWorldSpace = true;", "linescomp.widthMultiplier = 0.350000f;",
-                                 "linescomp.widthCurve = AnimationCurve({", "linescomp.widthUnit = LineWidthUnit::Pixels;",
-                                 "linescomp.colorGradient = Gradient({", "linescomp.numCornerVertices = 4;", "linescomp.numCapVertices = 6;",
+                                 "linescomp.widthCurve = upcurve::AnimationCurve({", "linescomp.widthUnit = LineWidthUnit::Pixels;",
+                                 "linescomp.colorGradient = upcurve::Gradient({", "linescomp.numCornerVertices = 4;", "linescomp.numCapVertices = 6;",
                                  "linescomp.alignment = LineAlignment::TransformZ;", "linescomp.textureMode = LineTextureMode::Tile;",
                                  "linescomp.textureScale = Vector2(2.000000f, 0.500000f);", "linescomp.sortPriority = -3;"}){
         EXPECT_NE(lines.find(expected), std::string::npos) << expected << "\n" << lines;
@@ -329,7 +329,7 @@ TEST(LineRendererStreamTest, FactoryEmitsCurvesGradientsAndFields){
     const std::string trailCode = Factory::createComponent(0, &scene, entity, ComponentType::TrailRendererComponent, "", "scene", "entity");
     EXPECT_NE(trailCode.find("TrailRendererComponent trailcomp;"), std::string::npos) << trailCode;
     EXPECT_NE(trailCode.find("trailcomp.time = 0.300000f;"), std::string::npos) << trailCode;
-    EXPECT_NE(trailCode.find("trailcomp.colorGradient = Gradient({"), std::string::npos) << trailCode;
+    EXPECT_NE(trailCode.find("trailcomp.colorGradient = upcurve::Gradient({"), std::string::npos) << trailCode;
     EXPECT_EQ(trailCode.find("minVertexDistance"), std::string::npos) << "defaults are not written";
 }
 
@@ -381,8 +381,8 @@ TEST(LineRendererStreamTest, FactoryCodeCompiles){
     scene.addComponent<LineRendererComponent>(entity, authoredLines());
     TrailRendererComponent trail;
     trail.time = 0.3f;
-    trail.widthCurve = AnimationCurve({CurveKey(0.0f, 1.0f, 0.0f, std::numeric_limits<float>::infinity()), CurveKey(1.0f, 0.0f)});
-    trail.colorGradient = Gradient::twoColors(Vector4(1, 0, 0, 1), Vector4(0, 0, 1, 0));
+    trail.widthCurve = upcurve::AnimationCurve({upcurve::CurveKey(0.0f, 1.0f, 0.0f, std::numeric_limits<float>::infinity()), upcurve::CurveKey(1.0f, 0.0f)});
+    trail.colorGradient = upcurve::Gradient::twoColors(Vector4(1, 0, 0, 1), Vector4(0, 0, 1, 0));
     trail.shaderGlobalBindings = {{"tint", "_Tint"}};
     trail.customShader = "library:line_flipbook";
     scene.addComponent<TrailRendererComponent>(entity, trail);
@@ -452,18 +452,18 @@ TEST(LineRendererStreamTest, McpLineDataPicksTheMode){
 
 TEST(LineRendererStreamTest, MalformedCurveAndGradientFallBack){
     // a wrap or a mode that is not a name: the default, no exception
-    const AnimationCurve curve = editor::Stream::decodeCurve(YAML::Load("{keys: [[0, 1], [1, 2]], pre: [1, 2], post: {a: 1}}"), AnimationCurve::constant(5.0f));
+    const upcurve::AnimationCurve curve = editor::Stream::decodeCurve(YAML::Load("{keys: [[0, 1], [1, 2]], pre: [1, 2], post: {a: 1}}"), upcurve::AnimationCurve::constant(5.0f));
     EXPECT_EQ(curve.keys.size(), 2u);
-    EXPECT_EQ(curve.preWrap, CurveWrap::Clamp);
-    EXPECT_EQ(curve.postWrap, CurveWrap::Clamp);
-    const Gradient gradient = editor::Stream::decodeGradient(YAML::Load("{mode: [x], colors: [[0, '#FF0000'], [1, '#0000FF']]}"), Gradient());
-    EXPECT_EQ(gradient.mode, GradientMode::Blend);
+    EXPECT_EQ(curve.preWrap, upcurve::CurveWrap::Clamp);
+    EXPECT_EQ(curve.postWrap, upcurve::CurveWrap::Clamp);
+    const upcurve::Gradient gradient = editor::Stream::decodeGradient(YAML::Load("{mode: [x], colors: [[0, '#FF0000'], [1, '#0000FF']]}"), upcurve::Gradient());
+    EXPECT_EQ(gradient.mode, upcurve::GradientMode::Blend);
     EXPECT_EQ(gradient.colorKeys.size(), 2u);
     // more than 8 keys in a file: loaded with the first 7 and the last
     std::string many = "{colors: [";
     for (int i = 0; i <= 10; i++) many += std::string(i ? ", " : "") + "[" + std::to_string(i / 10.0f) + ", '#FFFFFF']";
     many += "]}";
-    const Gradient capped = editor::Stream::decodeGradient(YAML::Load(many), Gradient());
-    ASSERT_EQ(capped.colorKeys.size(), Gradient::MAX_KEYS);
+    const upcurve::Gradient capped = editor::Stream::decodeGradient(YAML::Load(many), upcurve::Gradient());
+    ASSERT_EQ(capped.colorKeys.size(), upcurve::Gradient::MAX_KEYS);
     EXPECT_FLOAT_EQ(capped.colorKeys.back().time, 1.0f);
 }

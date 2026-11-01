@@ -14,7 +14,7 @@ namespace{
     JsonAssetPool<anim::AnimatorController>& pool(){
         static JsonAssetPool<anim::AnimatorController>* instance = new JsonAssetPool<anim::AnimatorController>(
             [](const std::string& text, std::string* error) -> std::shared_ptr<const anim::AnimatorController> {
-                anim::ControllerParseResult parsed = anim::parseController(text);
+                anim::ControllerFileParseResult parsed = anim::parseControllerFile(text);
                 if (!parsed.ok()){
                     if (error) *error = parsed.error.toString();
                     return nullptr;

@@ -1723,9 +1723,9 @@ void editor::ProjectUtils::setupNewTrailRenderer(TrailRendererComponent& trail, 
     if (scene2D){
         trail.minVertexDistance = 2.0f;
     }
-    trail.widthCurve = AnimationCurve::linear(0.0f, 1.0f, 1.0f, 0.0f);
-    trail.colorGradient = Gradient({GradientColorKey(0.0f, Vector3(1.0f, 1.0f, 1.0f)), GradientColorKey(1.0f, Vector3(1.0f, 1.0f, 1.0f))},
-                                   {GradientAlphaKey(0.0f, 1.0f), GradientAlphaKey(1.0f, 0.0f)});
+    trail.widthCurve = upcurve::AnimationCurve::linear(0.0f, 1.0f, 1.0f, 0.0f);
+    trail.colorGradient = upcurve::Gradient({upcurve::GradientColorKey(0.0f, Vector3(1.0f, 1.0f, 1.0f)), upcurve::GradientColorKey(1.0f, Vector3(1.0f, 1.0f, 1.0f))},
+                                   {upcurve::GradientAlphaKey(0.0f, 1.0f), upcurve::GradientAlphaKey(1.0f, 0.0f)});
     trail.needUpdateRibbon = true;
 }
 

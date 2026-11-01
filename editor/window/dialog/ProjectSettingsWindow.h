@@ -156,6 +156,7 @@ namespace jasperengine::editor {
         LayerCollisionRows m_layerCollision3D = allLayersCollide();
         LayerCollisionRows m_layerCollision2D = allLayersCollide();
 
+#if 0 // SYNC4-ABSORB(input): upstream's Input Manager page (S22 owns Project Settings > Input)
         // Input actions being edited (Project Settings > Input). The page has its own undo
         // (Ctrl+Z / Ctrl+Y while it shows); OK makes the whole edit one project history step.
         std::vector<InputAction> m_inputActions;
@@ -175,6 +176,7 @@ namespace jasperengine::editor {
             int frames = 0;
         };
         InputListen m_inputListen;
+#endif
 
         // Shader Globals being edited (Project Settings > Graphics). Every valid edit is declared to
         // the engine at once, so the Scene and Game views follow it; Cancel declares the project's
@@ -211,7 +213,7 @@ namespace jasperengine::editor {
         // Unity's triangular Layer Collision Matrix over the named layers (as typed in
         // Tags and Layers, not yet applied)
         void drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows);
-        void drawInputSettings();
+#if 0 // SYNC4-ABSORB(input): upstream's Input Manager page (S22 owns Project Settings > Input)
         void drawInputActionList();
         void drawInputActionDetails(InputAction& action, int actionIndex);
         void drawInputBinding(InputAction& action, int actionIndex, int bindingIndex);
@@ -223,6 +225,7 @@ namespace jasperengine::editor {
         void redoInputEdit();
         // First Input problem that blocks OK, "" when there is none
         std::string inputError() const;
+#endif
         void drawScriptingSettings();
         void drawTagsAndLayersSettings();
         // Why the New Tag Name field cannot be added ("" when it can)

@@ -32,7 +32,7 @@ extern unsigned int bulb_icon_png_len;
 #include "util/Angle.h"
 #include "util/FluidEditorTools.h"
 #include "pose/PoseViewport.h"
-#include "render/gizmo/ParticleShapeGizmo.h"
+// SYNC4-ABSORB(particles): render/gizmo/ParticleShapeGizmo.h (version 2 shapes)
 #include "component/ParticleSystemComponent.h"
 
 #include <algorithm>
@@ -89,6 +89,9 @@ void editor::SceneRender::ensureOverlayLines(std::map<Entity, LineRenderer*>& li
 }
 
 void editor::SceneRender::updateParticleShapeLines(Entity entity, bool selected, std::set<Entity>& current){
+    // SYNC4-ABSORB(particles): upstream's version 2 shape gizmo (render/gizmo/ParticleShapeGizmo, out of the build)
+    (void)entity; (void)selected; (void)current;
+#if 0
     const ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity);
     const Transform* transform = scene->findComponent<Transform>(entity);
     if (!ps || !transform || ps->version < 2) return;
@@ -104,6 +107,7 @@ void editor::SceneRender::updateParticleShapeLines(Entity entity, bool selected,
     for (const auto& segment : particleShapeGizmoSegments(ps->shape)){
         lines->addLine(transform->modelMatrix * segment.first, transform->modelMatrix * segment.second, color);
     }
+#endif
 }
 
 void editor::SceneRender::dropParticleShapeLines(const std::set<Entity>& current){

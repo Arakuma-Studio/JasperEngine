@@ -12,6 +12,13 @@
 #include "component/LatticeComponent.h"
 #include "component/LatticeModifierComponent.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/LineRendererComponent.h"
+#include "component/PhysicsCommon.h"
+#include "component/Joint3DComponent.h"
+#include "component/AlphaTweenComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "render/LineRibbonBuilder.h"
 
 #include <cctype>
 
@@ -272,6 +279,72 @@ namespace {
         {v(ForceFieldKind::Vortex), "vortex", "Vortex", "ForceFieldKind::Vortex"},
         {v(ForceFieldKind::Turbulence), "turbulence", "Turbulence", "ForceFieldKind::Turbulence"},
         {v(ForceFieldKind::Drag), "drag", "Drag", "ForceFieldKind::Drag"},
+    };
+
+    // upstream's components: the tokens their codecs write (StreamUpstream.cpp)
+    constexpr EnumItem kLineRendererModeItems[] = {
+        {v(LineRendererMode::Segments), "segments", "Segments", "LineRendererMode::Segments"},
+        {v(LineRendererMode::Polyline), "polyline", "Polyline", "LineRendererMode::Polyline"},
+    };
+    constexpr EnumItem kLineWidthUnitItems[] = {
+        {v(LineWidthUnit::World), "world", "World", "LineWidthUnit::World"},
+        {v(LineWidthUnit::Pixels), "pixels", "Pixels", "LineWidthUnit::Pixels"},
+    };
+    constexpr EnumItem kLineAlignmentItems[] = {
+        {v(LineAlignment::View), "view", "View", "LineAlignment::View"},
+        {v(LineAlignment::TransformZ), "transform_z", "Transform Z", "LineAlignment::TransformZ"},
+    };
+    constexpr EnumItem kLineTextureModeItems[] = {
+        {v(LineTextureMode::Stretch), "stretch", "Stretch", "LineTextureMode::Stretch"},
+        {v(LineTextureMode::Tile), "tile", "Tile", "LineTextureMode::Tile"},
+        {v(LineTextureMode::DistributePerSegment), "distribute_per_segment", "Distribute Per Segment", "LineTextureMode::DistributePerSegment"},
+        {v(LineTextureMode::RepeatPerSegment), "repeat_per_segment", "Repeat Per Segment", "LineTextureMode::RepeatPerSegment"},
+    };
+    constexpr const char* kCanvasGroupPerElementAliases[] = {"PER_ELEMENT"};
+    constexpr const char* kCanvasGroupFlattenAliases[] = {"FLATTEN"};
+    constexpr EnumItem kCanvasGroupRenderModeItems[] = {
+        {v(CanvasGroupRenderMode::PER_ELEMENT), "per_element", "Per Element", "CanvasGroupRenderMode::PER_ELEMENT", nullptr, kCanvasGroupPerElementAliases},
+        {v(CanvasGroupRenderMode::FLATTEN), "flatten", "Flatten", "CanvasGroupRenderMode::FLATTEN", nullptr, kCanvasGroupFlattenAliases},
+    };
+    constexpr EnumItem kOnScreenStickModeItems[] = {
+        {v(OnScreenStickMode::FIXED), "fixed", "Fixed", "OnScreenStickMode::FIXED"},
+        {v(OnScreenStickMode::FLOATING), "floating", "Floating", "OnScreenStickMode::FLOATING"},
+        {v(OnScreenStickMode::DYNAMIC), "dynamic", "Dynamic", "OnScreenStickMode::DYNAMIC"},
+    };
+    constexpr EnumItem kOnScreenStickAxesItems[] = {
+        {v(OnScreenStickAxes::BOTH), "both", "Both", "OnScreenStickAxes::BOTH"},
+        {v(OnScreenStickAxes::HORIZONTAL), "horizontal", "Horizontal", "OnScreenStickAxes::HORIZONTAL"},
+        {v(OnScreenStickAxes::VERTICAL), "vertical", "Vertical", "OnScreenStickAxes::VERTICAL"},
+    };
+    constexpr EnumItem kOnScreenVisibilityItems[] = {
+        {v(OnScreenVisibility::ALWAYS), "always", "Always", "OnScreenVisibility::ALWAYS"},
+        {v(OnScreenVisibility::TOUCH_DEVICES_ONLY), "touch_devices_only", "Touch Devices Only", "OnScreenVisibility::TOUCH_DEVICES_ONLY"},
+    };
+
+    constexpr EnumItem kJointAnchorSpaceItems[] = {
+        {v(JointAnchorSpace::WORLD), "world", "World", "JointAnchorSpace::WORLD"},
+        {v(JointAnchorSpace::LOCAL), "local", "Local", "JointAnchorSpace::LOCAL"},
+    };
+    constexpr EnumItem kJointBreakActionItems[] = {
+        {v(JointBreakAction::IGNORE), "ignore", "Ignore", "JointBreakAction::IGNORE"},
+        {v(JointBreakAction::CALLBACK_ONLY), "callback_only", "Callback Only", "JointBreakAction::CALLBACK_ONLY"},
+        {v(JointBreakAction::DISABLE), "disable", "Disable", "JointBreakAction::DISABLE"},
+        {v(JointBreakAction::DESTROY), "destroy", "Destroy", "JointBreakAction::DESTROY"},
+    };
+    constexpr EnumItem kJointMotionItems[] = {
+        {v(JointMotion::LOCKED), "locked", "Locked", "JointMotion::LOCKED"},
+        {v(JointMotion::LIMITED), "limited", "Limited", "JointMotion::LIMITED"},
+        {v(JointMotion::FREE), "free", "Free", "JointMotion::FREE"},
+    };
+    constexpr EnumItem kJointSwingTypeItems[] = {
+        {v(JointSwingType::CONE), "cone", "Cone", "JointSwingType::CONE"},
+        {v(JointSwingType::PYRAMID), "pyramid", "Pyramid", "JointSwingType::PYRAMID"},
+    };
+    // the tokens upstream's codec wrote
+    constexpr EnumItem kAlphaTweenTargetItems[] = {
+        {v(AlphaTweenTarget::AUTO), "AUTO", "Auto", "AlphaTweenTarget::AUTO"},
+        {v(AlphaTweenTarget::COLOR), "COLOR", "Color", "AlphaTweenTarget::COLOR"},
+        {v(AlphaTweenTarget::CANVAS_GROUP), "CANVAS_GROUP", "Canvas Group", "AlphaTweenTarget::CANVAS_GROUP"},
     };
 
     constexpr EnumItem kWaterVolumeWavesItems[] = {
@@ -608,6 +681,19 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kForceFieldKind{"ForceFieldKind", kForceFieldKindItems, v(ForceFieldKind::Directional)};
     const EnumDesc kWaterVolumeWaves{"WaterVolumeWaves", kWaterVolumeWavesItems, v(WaterVolumeWaves::FROM_MATERIAL)};
     const EnumDesc kBuoyancyColumns{"BuoyancyColumns", kBuoyancyColumnsItems, v(BuoyancyColumns::AUTO_2x2)};
+    const EnumDesc kLineRendererMode{"LineRendererMode", kLineRendererModeItems, v(LineRendererMode::Segments)};
+    const EnumDesc kLineWidthUnit{"LineWidthUnit", kLineWidthUnitItems, v(LineWidthUnit::World)};
+    const EnumDesc kLineAlignment{"LineAlignment", kLineAlignmentItems, v(LineAlignment::View)};
+    const EnumDesc kLineTextureMode{"LineTextureMode", kLineTextureModeItems, v(LineTextureMode::Stretch)};
+    const EnumDesc kCanvasGroupRenderMode{"CanvasGroupRenderMode", kCanvasGroupRenderModeItems, v(CanvasGroupRenderMode::PER_ELEMENT)};
+    const EnumDesc kOnScreenStickMode{"OnScreenStickMode", kOnScreenStickModeItems, v(OnScreenStickMode::FIXED)};
+    const EnumDesc kOnScreenStickAxes{"OnScreenStickAxes", kOnScreenStickAxesItems, v(OnScreenStickAxes::BOTH)};
+    const EnumDesc kOnScreenVisibility{"OnScreenVisibility", kOnScreenVisibilityItems, v(OnScreenVisibility::ALWAYS)};
+    const EnumDesc kJointAnchorSpace{"JointAnchorSpace", kJointAnchorSpaceItems, v(JointAnchorSpace::WORLD)};
+    const EnumDesc kJointBreakAction{"JointBreakAction", kJointBreakActionItems, v(JointBreakAction::DESTROY)};
+    const EnumDesc kJointMotion{"JointMotion", kJointMotionItems, v(JointMotion::FREE)};
+    const EnumDesc kJointSwingType{"JointSwingType", kJointSwingTypeItems, v(JointSwingType::CONE)};
+    const EnumDesc kAlphaTweenTarget{"AlphaTweenTarget", kAlphaTweenTargetItems, v(AlphaTweenTarget::AUTO)};
     const EnumDesc kClipWrapMode{"ClipWrapMode", kClipWrapModeItems, v(ClipWrapMode::Default)};
     const EnumDesc kAnimatorUpdateMode{"AnimatorUpdateMode", kAnimatorUpdateModeItems, v(AnimatorUpdateMode::Normal)};
     const EnumDesc kAnimatorCullingMode{"AnimatorCullingMode", kAnimatorCullingModeItems, v(AnimatorCullingMode::AlwaysAnimate)};

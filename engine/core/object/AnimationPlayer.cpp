@@ -739,8 +739,8 @@ std::string AnimationPlayer::getCurrentStateName(int layer) const{
 
 namespace {
 
-    AnimatorStateInfo stateInfoOf(AnimationPlayerComponent& player, int layer, bool next, const std::string& who){
-        AnimatorStateInfo info;
+    ControllerStateInfo stateInfoOf(AnimationPlayerComponent& player, int layer, bool next, const std::string& who){
+        ControllerStateInfo info;
         if (player.controller.empty()) return info;
         anim::ensureController(player, who, 0.0f, false);
         const anim::ControllerStateView view = anim::controllerStateInfo(player, layer, next);
@@ -756,19 +756,19 @@ namespace {
 
 }
 
-AnimatorStateInfo AnimationPlayer::getCurrentStateInfo() const{
+ControllerStateInfo AnimationPlayer::getCurrentStateInfo() const{
     return getCurrentStateInfo(0);
 }
 
-AnimatorStateInfo AnimationPlayer::getCurrentStateInfo(int layer) const{
+ControllerStateInfo AnimationPlayer::getCurrentStateInfo(int layer) const{
     return stateInfoOf(getComponent<AnimationPlayerComponent>(), layer, false, getName());
 }
 
-AnimatorStateInfo AnimationPlayer::getNextStateInfo() const{
+ControllerStateInfo AnimationPlayer::getNextStateInfo() const{
     return getNextStateInfo(0);
 }
 
-AnimatorStateInfo AnimationPlayer::getNextStateInfo(int layer) const{
+ControllerStateInfo AnimationPlayer::getNextStateInfo(int layer) const{
     return stateInfoOf(getComponent<AnimationPlayerComponent>(), layer, true, getName());
 }
 

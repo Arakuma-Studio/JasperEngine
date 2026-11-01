@@ -84,6 +84,7 @@ namespace {
             case ShaderTextureDefault::NORMAL: return "Default (flat normal)";
             case ShaderTextureDefault::RIPPLES: return "Default (built-in ripples)";
             case ShaderTextureDefault::NOISE: return "Default (built-in noise)";
+            case ShaderTextureDefault::PARTICLE: return "Default (built-in particle)";
         }
         return "Default";
     }

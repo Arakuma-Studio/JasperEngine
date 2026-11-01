@@ -118,6 +118,13 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kSplineAnimateDesc;
     extern const ComponentDesc kAnimatorDesc;
     extern const ComponentDesc kVertexAnimatorDesc;
+    // upstream's components (UpstreamReflect.cpp)
+    extern const ComponentDesc kTrailRendererDesc;
+    extern const ComponentDesc kCanvasGroupDesc;
+    extern const ComponentDesc kOnScreenStickDesc;
+    extern const ComponentDesc kOnScreenButtonDesc;
+    extern const ComponentDesc kTouchAreaDesc;
+    extern const ComponentDesc kRagdollDesc;
 
 }
 

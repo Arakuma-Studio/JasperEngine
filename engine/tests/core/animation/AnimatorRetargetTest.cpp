@@ -166,11 +166,11 @@ namespace {
             scene.addComponent<Transform>(entity, transform);
             RigidbodyComponent body;
             body.type = BodyType::STATIC;
+            body.colliders.resize(1);
             body.colliders[0].type = Collider3DType::BOX;
             body.colliders[0].width = 10.0f;
             body.colliders[0].height = 1.0f;
             body.colliders[0].depth = 10.0f;
-            body.numColliders = 1;
             scene.addComponent<RigidbodyComponent>(entity, body);
         }
 

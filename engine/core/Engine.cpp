@@ -2001,12 +2001,10 @@ void Engine::signalReadyOnce(){
         if (frameStats){
             frames++;
             const uint64_t after = frames - signalledFrame;
-            // the particle simulation of this frame (particles spec 8: the CPU budget)
-            size_t alive = 0;
-            const double particleMs = ActionSystem::takeParticleSimMs(&alive);
+            // SYNC4-ABSORB(particles): upstream's particles_sim_ms line (ActionSystem::takeParticleSimMs,
+            // version 2 systems) is not logged until the Particles absorption gives S20 an equivalent
             if (frameStatsAll || after == 2 || after == 30 || after == 90){
                 SystemRender::logFrameStats(frames);
-                if (alive > 0) Log::print("Frame %llu particles_sim_ms %.3f (%zu particles)", (unsigned long long)frames, particleMs, alive);
             }
         }
         return;
@@ -3045,8 +3043,6 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
 
 void Engine::systemTouchMove(int pointer, float x, float y){
     if (transformCoordPos(x, y)){
-        const bool known = Input::findTouchIndex(pointer) != (size_t)-1;
-        const Vector2 previous = Input::getTouchPosition(pointer);
         Input::setTouchPosition(pointer, x, y);
 
         uiEventReceived = false;
@@ -3102,7 +3098,7 @@ void Engine::cancelAllUIPointers(){
 void Engine::systemTouchCancel(){
     std::vector<Touch> cancelled = Input::getTouches();
     for (const Touch& touch : cancelled)
-        systemTouchCancel(touch.fingerId);
+        systemTouchCancel(touch.pointer);
 }
 
 void Engine::systemTouchCancel(int pointer){

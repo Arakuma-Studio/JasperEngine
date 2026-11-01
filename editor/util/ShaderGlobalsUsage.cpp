@@ -40,9 +40,13 @@ namespace {
     }
 
     // the shader a component draws with (its own, else the scene's default of its type)
+    // a component's custom shader: a ShaderRef (S04) or upstream's plain path
+    inline const std::string& shaderPathOf(const ShaderRef& ref) { return ref.path; }
+    inline const std::string& shaderPathOf(const std::string& path) { return path; }
+
     template<typename T>
     std::string componentShader(Scene* scene, const T& component, ShaderType type) {
-        return component.customShader.empty() ? scene->getDefaultCustomShader(type) : component.customShader;
+        return component.customShader.empty() ? scene->getDefaultCustomShader(type) : shaderPathOf(component.customShader);
     }
 
     // what a loaded program reads of the globals (its layouts' members, its texture slots)
@@ -212,7 +216,7 @@ std::vector<ShaderGlobalsUsage::Use> ShaderGlobalsUsage::find(Project* project, 
                 base.where = whereOf(Owner::Material, (int)s);
                 base.shader = RenderSystem::getSubmeshShader(mesh, mesh.submeshes[s], scene->getDefaultCustomShader(ShaderType::MESH));
                 addShaderUses(uses, base, mesh.submeshes[s].libraryBindings, global);
-                base.shader = mesh.customDepthShader.empty() ? base.shader : mesh.customDepthShader;
+                base.shader = mesh.customDepthShader.empty() ? base.shader : mesh.customDepthShader.path;
                 addShaderUses(uses, base, mesh.submeshes[s].depthLibraryBindings, global);
             }
         }

@@ -7,6 +7,7 @@
 #include <cmath>
 
 using namespace jasperengine;
+using namespace jasperengine::upcurve;   // SYNC4-ABSORB(curve)
 
 CurveKey::CurveKey(float time, float value, float inTangent, float outTangent):
     time(time), value(value), inTangent(inTangent), outTangent(outTangent){

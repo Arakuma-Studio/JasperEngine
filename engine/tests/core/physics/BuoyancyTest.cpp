@@ -90,12 +90,12 @@ namespace {
             transform.needUpdate = true;
             RigidbodyComponent rigidbody;
             rigidbody.type = BodyType::DYNAMIC;
+            rigidbody.colliders.resize(1);
             rigidbody.colliders[0].type = Collider3DType::BOX;
             rigidbody.colliders[0].width = 1.0f;
             rigidbody.colliders[0].height = 1.0f;
             rigidbody.colliders[0].depth = 1.0f;
             rigidbody.colliders[0].density = density;
-            rigidbody.numColliders = 1;
             scene->addComponent<RigidbodyComponent>(entity, rigidbody);
             scene->addComponent<BuoyancyComponent>(entity, BuoyancyComponent{});
             return entity;
@@ -186,8 +186,8 @@ TEST_F(BuoyancyTest, NoWorkWhenAbsent){
         const Entity entity = test::makeTransformEntity(*scene);
         RigidbodyComponent rigidbody;
         rigidbody.type = BodyType::DYNAMIC;
+        rigidbody.colliders.resize(1);
         rigidbody.colliders[0].type = Collider3DType::BOX;
-        rigidbody.numColliders = 1;
         scene->addComponent<RigidbodyComponent>(entity, rigidbody);
     }
     const uint64_t before = WaterSystem::getWaveEvaluations();

@@ -1136,7 +1136,7 @@ bool animAssetPathFromJson(Project* project, const std::string& text, bool mask,
         return false;
     }
     const std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    const anim::ClipParseError parseError = mask ? anim::parseAvatarMask(content).error : anim::parseController(content).error;
+    const anim::ClipParseError parseError = mask ? anim::parseAvatarMask(content).error : anim::parseControllerFile(content).error;
     if (!parseError.empty()) {
         error = text + " does not load: " + parseError.toString();
         stored.clear();
@@ -1468,6 +1468,7 @@ bool McpValues::entityReferenceFromJson(Project* project, SceneProject* scene, c
     return true;
 }
 
+#if 0 // SYNC4-ABSORB(curve, particles): upstream's AnimationCurve / Gradient / MinMax / burst JSON (S27's is curvejson)
 namespace {
 
     Json curveNumber(float value) {
@@ -1961,6 +1962,7 @@ bool McpValues::particleBurstsFromJson(const Json& value, std::vector<ParticleEm
     }
     return true;
 }
+#endif
 
 Json McpValues::textureToJson(Project* project, SceneProject* scene, const Texture& texture) {
     const Entity camera = CameraTextureLink::parse(texture.getId());
@@ -2745,6 +2747,7 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         if (ref && isPlayerLayerBlendProperty(ctx.component, name)) {
             return anim::layerBlendName(*static_cast<AnimationLayerBlend*>(ref));
         }
+#if 0 // SYNC4-ABSORB(particles)
         // a version 2 Particle System's bursts and sprite frames
         if (ref && ctx.component == ComponentType::ParticleSystemComponent && name == "emission.bursts") {
             return particleBurstsToJson(*static_cast<std::vector<ParticleEmissionBurst>*>(ref));
@@ -2752,6 +2755,7 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         if (ref && ctx.component == ComponentType::ParticleSystemComponent && name == "textureSheetAnimation.sprites") {
             return Json(*static_cast<std::vector<int>*>(ref));
         }
+#endif
         bool found = false;
         return readYamlProperty(ctx, name, found);
     }
@@ -2814,6 +2818,7 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
             return entityToJson(ctx.scene, *static_cast<Entity*>(ref));
         case PropertyType::EntityReference:
             return entityReferenceToJson(ctx.project, ctx.scene, *static_cast<EntityReference*>(ref));
+#if 0 // SYNC4-ABSORB(curve): upstream's AnimationCurve / Gradient / MinMax property types
         case PropertyType::Curve:
             return curveToJson(*static_cast<AnimationCurve*>(ref));
         case PropertyType::Gradient:
@@ -2822,6 +2827,7 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
             return minMaxCurveToJson(*static_cast<MinMaxCurve*>(ref));
         case PropertyType::MinMaxGradient:
             return minMaxGradientToJson(*static_cast<MinMaxGradient*>(ref));
+#endif
         case PropertyType::Material: {
             std::string linked;
             unsigned int submesh = 0;
@@ -3390,6 +3396,7 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
             }
             return new PropertyCmd<EntityReference>(project, sceneId, entity, component, propertyName, ref, onChanged);
         }
+#if 0 // SYNC4-ABSORB(curve): upstream's AnimationCurve / Gradient / MinMax property types
         case PropertyType::Curve: {
             AnimationCurve curve;
             std::string why;
@@ -3426,6 +3433,7 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
             }
             return new PropertyCmd<MinMaxGradient>(project, sceneId, entity, component, propertyName, gradient, onChanged);
         }
+#endif
         case PropertyType::Material: {
             unsigned int submesh = 0;
             const bool linkable = component == ComponentType::MeshComponent && submeshMaterialIndex(propertyName, submesh);
@@ -3601,6 +3609,7 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                 if (!cmd) error = "Property " + propertyName + ": " + why;
                 return cmd;
             }
+#if 0 // SYNC4-ABSORB(particles): upstream's version 2 bursts and sprite frames
             if (component == ComponentType::ParticleSystemComponent && propertyName == "emission.bursts") {
                 std::vector<ParticleEmissionBurst> bursts;
                 std::string why;
@@ -3623,6 +3632,7 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                 }
                 return new PropertyCmd<std::vector<int>>(project, sceneId, entity, component, propertyName, frames, onChanged);
             }
+#endif
             error = "Property " + propertyName + " is custom: set it with set_properties (component encoding).";
             return nullptr;
     }

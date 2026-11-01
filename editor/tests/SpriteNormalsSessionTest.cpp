@@ -50,6 +50,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "util/FileUtils.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -438,7 +439,7 @@ TEST(SpriteNormalsSession, OutputsThroughALinkOutOfTheAssetsAreRefused) {
     normal.output.normal = dir + "/out/hero_normal.png";
     const std::string message = refusal(normal, "output.normal");
     EXPECT_EQ(message, dir + "/out/hero_normal.png resolves outside the project's assets directory (assets): a symbolic link on its way leads to " +
-                           (fs::weakly_canonical(outside) / "hero_normal.png").generic_u8string() + ".");
+                           jasperengine::editor::FileUtils::pathToGenericUtf8((fs::weakly_canonical(outside) / "hero_normal.png")) + ".");
     sn::Spec height = stillSpec(dir + "/hero.png");
     height.settings.height = true;
     height.output.height = dir + "/out/hero_height.png";
@@ -1543,7 +1544,7 @@ TEST(SpriteNormalsScene, SubmeshSourcesAndSpriteFrameRules) {
         const std::vector<sn::PlannedOutput> planned = sn::plannedOutputs(fs::path(), defaults, sn::SourceKind::Image);
         EXPECT_EQ(paths(planned), paths(p0.outputs));
         ASSERT_FALSE(planned.empty());
-        EXPECT_EQ(planned[0].path, (root() / fs::u8path(dir) / "a_normal.png").lexically_normal().generic_u8string());
+        EXPECT_EQ(planned[0].path, jasperengine::editor::FileUtils::pathToGenericUtf8((root() / fs::u8path(dir) / "a_normal.png").lexically_normal()));
     }
 
     // overlapping Sprite frames

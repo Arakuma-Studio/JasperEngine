@@ -576,6 +576,7 @@ std::string editor::InspectorWindow::formatPrefabValue(EntityRegistry* registry,
             }
             return registry && registry->isEntityCreated(entity) ? registry->getEntityName(entity) : "GameObject " + std::to_string(entity);
         }
+#if 0 // SYNC4-ABSORB(curve): upstream's AnimationCurve / Gradient / MinMax property types
         case PropertyType::Curve: {
             const AnimationCurve& curve = *static_cast<AnimationCurve*>(prop.ref);
             if (curve.keys.size() == 1)
@@ -607,6 +608,7 @@ std::string editor::InspectorWindow::formatPrefabValue(EntityRegistry* registry,
             }
             return "(value)";
         }
+#endif
         case PropertyType::Custom:
             return "(value)";
         default:

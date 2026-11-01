@@ -5324,10 +5324,6 @@ editor::PoseAnimationWindow* editor::App::getPoseAnimationWindow() const{
     return poseAnimationWindow;
 }
 
-editor::AnimatorWindow* editor::App::getAnimatorWindow() const{
-    return animatorWindow;
-}
-
 editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{
     return terrainEditWindow;
 }

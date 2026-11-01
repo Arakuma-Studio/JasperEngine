@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <memory>
+#include "util/FileUtils.h"
 
 namespace fs = std::filesystem;
 
@@ -55,7 +56,7 @@ namespace jasperengine::editor::spritenormals {
             bool added = false;
         };
 
-        std::string normalized(const std::string& path) { return fs::u8path(path).lexically_normal().generic_u8string(); }
+        std::string normalized(const std::string& path) { return jasperengine::editor::FileUtils::pathToGenericUtf8(fs::u8path(path).lexically_normal()); }
 
         // A project-relative image's pixel size from its header
         bool imageSize(Project* project, const std::string& rel, int& width, int& height) {

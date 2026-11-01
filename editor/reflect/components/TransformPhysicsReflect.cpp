@@ -64,12 +64,44 @@ namespace {
         JE_FIELD(Joint2DComponent, target, .updateFlags = UpdateFlags_Joint2D),
         JE_FIELD(Joint2DComponent, autoAnchors, .updateFlags = UpdateFlags_Joint2D),
         JE_FIELD(Joint2DComponent, rope, .updateFlags = UpdateFlags_Joint2D),
+        // upstream (physics-2d / physics-3d): motors, springs, limits, breaking, anchor space
+        JE_FIELD(Joint2DComponent, anchorSpace, .enumDesc = &enums::kJointAnchorSpace, .updateFlags = UpdateFlags_Joint2D),
+        JE_FIELD(Joint2DComponent, enableCollision, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, breakForce, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, breakTorque, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, breakAction, .enumDesc = &enums::kJointBreakAction, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, useLimits, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, lowerAngle, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, upperAngle, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, lowerTranslation, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, upperTranslation, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, useMotor, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, motorSpeed, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, maxMotorTorque, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, maxMotorForce, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, enableSpring, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, frequency, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, dampingRatio, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, length, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, autoLength, .updateFlags = UpdateFlags_Joint2D),
+        JE_FIELD(Joint2DComponent, minLength, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, maxLength, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, linearFrequency, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, angularFrequency, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, linearDampingRatio, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, angularDampingRatio, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, linearOffset, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, angularOffset, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, autoOffset, .updateFlags = UpdateFlags_Joint2D),
+        JE_FIELD(Joint2DComponent, maxForce, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, maxTorque, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, correctionFactor, .updateFlags = UpdateFlags_Joint2D_Params),
         // the exported joint is built on load
         JE_FIELD(Joint2DComponent, needUpdateJoint, .flags = NoSave | Derived | Hidden | CodegenRuntime),
     };
 
     constexpr const char* kJoint2DCodegenOrder[] = {
-        "type", "bodyA", "bodyB", "anchorA", "anchorB", "axis", "target", "autoAnchors", "rope", "needUpdateJoint", "enabled"
+        "type", "bodyA", "bodyB", "anchorA", "anchorB", "axis", "target", "autoAnchors", "rope", "anchorSpace", "enableCollision", "breakForce", "breakTorque", "breakAction", "useLimits", "lowerAngle", "upperAngle", "lowerTranslation", "upperTranslation", "useMotor", "motorSpeed", "maxMotorTorque", "maxMotorForce", "enableSpring", "frequency", "dampingRatio", "length", "autoLength", "minLength", "maxLength", "linearFrequency", "angularFrequency", "linearDampingRatio", "angularDampingRatio", "linearOffset", "angularOffset", "autoOffset", "maxForce", "maxTorque", "correctionFactor", "needUpdateJoint", "enabled"
     };
 
     void joint2DPostDecode(void* comp, const DecodeContext& ctx) {
@@ -116,6 +148,51 @@ namespace {
         JE_FIELD(Joint3DComponent, pathPosition, .updateFlags = kJoint3D),
         JE_FIELD(Joint3DComponent, isLooping, .updateFlags = kJoint3D),
         JE_FIELD(Joint3DComponent, autoAnchors, .updateFlags = kJoint3D),
+        // upstream (physics-2d / physics-3d): motors, springs, limits, breaking, anchor space
+        JE_FIELD(Joint3DComponent, anchorSpace, .enumDesc = &enums::kJointAnchorSpace, .updateFlags = UpdateFlags_Joint3D),
+        JE_FIELD(Joint3DComponent, enableCollision, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, breakForce, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, breakTorque, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, breakAction, .enumDesc = &enums::kJointBreakAction, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, useLimits, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, limitsSpringFrequency, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, limitsSpringDamping, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, useMotor, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, motorTargetVelocity, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, motorMaxForce, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, useSpring, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, springStiffness, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, springDamper, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, springTargetPosition, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, maxFriction, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, minDistance, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, maxDistance, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, coneHalfAngle, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, swingType, .enumDesc = &enums::kJointSwingType, .updateFlags = UpdateFlags_Joint3D),
+        JE_FIELD(Joint3DComponent, motorTargetRotation, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, motorSpringFrequency, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, motorSpringDamping, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, xMotion, .enumDesc = &enums::kJointMotion, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, yMotion, .enumDesc = &enums::kJointMotion, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, zMotion, .enumDesc = &enums::kJointMotion, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, angularXMotion, .enumDesc = &enums::kJointMotion, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, angularYMotion, .enumDesc = &enums::kJointMotion, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, angularZMotion, .enumDesc = &enums::kJointMotion, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, linearLimitMin, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, linearLimitMax, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, angularLimitMin, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, angularLimitMax, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, useDrive, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, driveStiffness, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, driveDamping, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, angularDriveStiffness, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, angularDriveDamping, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, driveMaxForce, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, driveMaxTorque, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, targetPosition, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, targetRotation, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, targetVelocity, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, targetAngularVelocity, .updateFlags = UpdateFlags_Joint3D_Params),
         JE_FIELD(Joint3DComponent, needUpdateJoint, .flags = NoSave | Derived | Hidden | CodegenRuntime),
     };
 
@@ -123,7 +200,7 @@ namespace {
         "type", "bodyA", "bodyB", "anchorA", "anchorB", "anchor", "axis", "normal", "twistAxis", "planeAxis", "axisX", "axisY", "limitsMin",
         "limitsMax", "normalHalfConeAngle", "planeHalfConeAngle", "twistMinAngle", "twistMaxAngle", "fixedPointA", "fixedPointB", "hingeA",
         "hingeB", "hinge", "slider", "numTeethGearA", "numTeethGearB", "numTeethRack", "numTeethGear", "rackLength", "pathPoints",
-        "pathPosition", "isLooping", "autoAnchors", "needUpdateJoint", "enabled"
+        "pathPosition", "isLooping", "autoAnchors", "anchorSpace", "enableCollision", "breakForce", "breakTorque", "breakAction", "useLimits", "limitsSpringFrequency", "limitsSpringDamping", "useMotor", "motorTargetVelocity", "motorMaxForce", "useSpring", "springStiffness", "springDamper", "springTargetPosition", "maxFriction", "minDistance", "maxDistance", "coneHalfAngle", "swingType", "motorTargetRotation", "motorSpringFrequency", "motorSpringDamping", "xMotion", "yMotion", "zMotion", "angularXMotion", "angularYMotion", "angularZMotion", "linearLimitMin", "linearLimitMax", "angularLimitMin", "angularLimitMax", "useDrive", "driveStiffness", "driveDamping", "angularDriveStiffness", "angularDriveDamping", "driveMaxForce", "driveMaxTorque", "targetPosition", "targetRotation", "targetVelocity", "targetAngularVelocity", "needUpdateJoint", "enabled"
     };
 
     void joint3DPostDecode(void* comp, const DecodeContext& ctx) {
@@ -140,7 +217,8 @@ namespace {
         JE_FIELD(Collider2D, pointA, .updateFlags = kBody2D),
         JE_FIELD(Collider2D, pointB, .updateFlags = kBody2D),
         JE_FIELD(Collider2D, radius, .updateFlags = kBody2D, .min = 0.0f),
-        JE_FIELD(Collider2D, vertices, .flags = ListElements | ListTemplate, .updateFlags = kBody2D, .count = JE_COUNT(Collider2D, numVertices)),
+        // upstream (physics-2d): the polygon / chain points, a list without a count of its own
+        JE_FIELD(Collider2D, points, .flags = ListElements | ListTemplate, .updateFlags = kBody2D),
         JE_FIELD(Collider2D, loop, .updateFlags = kBody2D),
         JE_FIELD(Collider2D, density, .updateFlags = kBody2D, .min = 0.0f),
         JE_FIELD(Collider2D, friction, .updateFlags = kBody2D, .min = 0.0f),
@@ -169,9 +247,8 @@ namespace {
         JE_FIELD(Collider3D, source, .enumDesc = &enums::kCollider3DSource, .updateFlags = kBody3D),
         JE_FIELD(Collider3D, sourceEntity, .ops = &ops::Entity, .updateFlags = kBody3D),
         JE_FIELD(Collider3D, samplesSize, .updateFlags = kBody3D),
-        JE_FIELD(Collider3D, vertices, .flags = ListElements | ListTemplate, .updateFlags = kBody3D, .count = JE_COUNT(Collider3D, numVertices)),
-        JE_FIELD(Collider3D, numVertices, .ops = &ops::UIntAs<uint16_t>, .updateFlags = kBody3D),
-        JE_FIELD(Collider3D, numIndices, .ops = &ops::UIntAs<uint16_t>, .updateFlags = kBody3D),
+        // upstream (physics-3d): the mesh / convex points and indices are lists without counts
+        JE_FIELD(Collider3D, vertices, .flags = ListElements | ListTemplate, .updateFlags = kBody3D),
     };
 
 }
@@ -186,9 +263,10 @@ namespace {
     constexpr FieldDesc kRigidbody2DFields[] = {
         JE_FIELD(Rigidbody2DComponent, enabled),
         JE_FIELD(Rigidbody2DComponent, type, .enumDesc = &enums::kBodyType, .updateFlags = kBody2D),
-        JE_FIELD(Rigidbody2DComponent, numColliders, .ops = &ops::UIntAs<size_t>, .updateFlags = kBody2D),
-        JE_FIELD(Rigidbody2DComponent, colliders, .flags = ListEachElement | ListTemplate, .updateFlags = kBody2D,
-                 .count = JE_COUNT(Rigidbody2DComponent, numColliders)),
+        // upstream: a body's colliders are a list without a count limit (the files still write
+        // numColliders, which the codec reads): the whole list is one property (a prefab override
+        // when the count changes), each collider's members too
+        JE_FIELD(Rigidbody2DComponent, colliders, .flags = ListWhole | ListEachElement | ListTemplate, .updateFlags = kBody2D),
     };
 
     constexpr FieldDesc kRigidbodyFields[] = {
@@ -206,9 +284,7 @@ namespace {
         JE_FIELD(RigidbodyComponent, overrideMassProperties, .updateFlags = kBody3D),
         JE_FIELD(RigidbodyComponent, solidBoxSize, .updateFlags = kBody3D),
         JE_FIELD(RigidbodyComponent, solidBoxDensity, .updateFlags = kBody3D, .min = 0.0f),
-        JE_FIELD(RigidbodyComponent, numColliders, .ops = &ops::UIntAs<size_t>, .updateFlags = kBody3D),
-        JE_FIELD(RigidbodyComponent, colliders, .flags = ListEachElement | ListTemplate, .updateFlags = kBody3D,
-                 .count = JE_COUNT(RigidbodyComponent, numColliders)),
+        JE_FIELD(RigidbodyComponent, colliders, .flags = ListWhole | ListEachElement | ListTemplate, .updateFlags = kBody3D),
     };
 
     const ComponentCodec kRigidbody2DCodec = JE_STREAM_CODEC(Rigidbody2DComponent, encodeRigidbody2DComponent, decodeRigidbody2DComponent);
@@ -245,28 +321,45 @@ const ComponentDesc kTransformDesc{
     .codegen = &transformCodegen,
 };
 
+namespace {
+
+    // upstream's joint codecs (StreamUpstream.cpp): legacy defaults for keys older scenes lack,
+    // breaking forces written only when finite
+    const ComponentCodec kJoint2DCodec = JE_STREAM_CODEC(Joint2DComponent, encodeJoint2DComponent, decodeJoint2DComponent);
+    const ComponentCodec kJoint3DCodec = JE_STREAM_CODEC(Joint3DComponent, encodeJoint3DComponent, decodeJoint3DComponent);
+    constexpr const char* kJoint2DKnownKeys[] = {"anchorA", "anchorB", "anchorSpace", "angularDampingRatio", "angularFrequency", "angularOffset", "autoAnchors", "autoLength", "autoOffset", "axis", "bodyA", "bodyB", "breakAction", "breakForce", "breakTorque", "correctionFactor", "dampingRatio", "enableCollision", "enableSpring", "enabled", "frequency", "length", "linearDampingRatio", "linearFrequency", "linearOffset", "lowerAngle", "lowerTranslation", "maxForce", "maxLength", "maxMotorForce", "maxMotorTorque", "maxTorque", "minLength", "motorSpeed", "rope", "target", "type", "upperAngle", "upperTranslation", "useLimits", "useMotor"};
+    constexpr const char* kJoint3DKnownKeys[] = {"anchor", "anchorA", "anchorB", "anchorSpace", "angularDriveDamping", "angularDriveStiffness", "angularLimitMax", "angularLimitMin", "angularXMotion", "angularYMotion", "angularZMotion", "autoAnchors", "axis", "axisX", "axisY", "bodyA", "bodyB", "breakAction", "breakForce", "breakTorque", "coneHalfAngle", "driveDamping", "driveMaxForce", "driveMaxTorque", "driveStiffness", "enableCollision", "enabled", "fixedPointA", "fixedPointB", "hinge", "hingeA", "hingeB", "isLooping", "limitsMax", "limitsMin", "limitsSpringDamping", "limitsSpringFrequency", "linearLimitMax", "linearLimitMin", "maxDistance", "maxFriction", "minDistance", "motorMaxForce", "motorSpringDamping", "motorSpringFrequency", "motorTargetRotation", "motorTargetVelocity", "normal", "normalHalfConeAngle", "numTeethGear", "numTeethGearA", "numTeethGearB", "numTeethRack", "pathPoints", "pathPosition", "planeAxis", "planeHalfConeAngle", "rackLength", "slider", "springDamper", "springStiffness", "springTargetPosition", "swingType", "targetAngularVelocity", "targetPosition", "targetRotation", "targetVelocity", "twistAxis", "twistMaxAngle", "twistMinAngle", "type", "useDrive", "useLimits", "useMotor", "useSpring", "xMotion", "yMotion", "zMotion"};
+
+}
+
 const ComponentDesc kJoint2DDesc{
     .type = ComponentType::Joint2DComponent, .cppName = "Joint2DComponent", .key = "joint2d", .displayName = "Joint 2D", .icon = ICON_FA_LINK,
     .body = JE_STRUCT_DESC(Joint2DComponent, "Joint2DComponent", kJoint2DFields),
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(Joint2DComponent),
+    .codec = &kJoint2DCodec,
     .postDecode = &joint2DPostDecode,
     .codegenVar = "joint2d", .codegenOrder = kJoint2DCodegenOrder,
     .codegenGuard = "JASPERENGINE_PHYSICS_2D",
+    .extraKeys = kJoint2DKnownKeys,
 };
 
 const ComponentDesc kJoint3DDesc{
     .type = ComponentType::Joint3DComponent, .cppName = "Joint3DComponent", .key = "joint3d", .displayName = "Joint", .icon = ICON_FA_LINK,
     .body = JE_STRUCT_DESC(Joint3DComponent, "Joint3DComponent", kJoint3DFields),
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(Joint3DComponent),
+    .codec = &kJoint3DCodec,
     .postDecode = &joint3DPostDecode,
     .codegenVar = "joint3d", .codegenOrder = kJoint3DCodegenOrder,
     .codegenGuard = "JASPERENGINE_PHYSICS_3D",
+    .extraKeys = kJoint3DKnownKeys,
 };
 
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kRigidbody2DKnownKeys[] = {"colliders", "enabled", "numColliders", "type"};
+    constexpr const char* kRigidbody2DKnownKeys[] = {"angularDamping", "autoCenterOfMass", "autoInertia", "centerOfMass", "colliders", "collisionDetection",
+                                                      "enabled", "fixedRotation", "gravityScale", "inertia", "linearDamping", "mass", "material",
+                                                      "numColliders", "sleepingMode", "type", "useAutoMass"};
 
 }
 
@@ -284,7 +377,11 @@ const ComponentDesc kRigidbody2DDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kRigidbodyKnownKeys[] = {"allowedDOFs", "buoyancy", "colliders", "enabled", "friction", "gravityFactor", "motionQuality", "numColliders", "restitution", "sensor", "type", "waterAngularDrag", "waterDrag"};
+    constexpr const char* kRigidbodyKnownKeys[] = {"allowSleeping", "allowedDOFs", "angularDamping", "automaticCenterOfMass", "automaticInertiaTensor",
+                                                    "automaticMass", "buoyancy", "centerOfMass", "collideKinematicVsNonDynamic", "colliders", "enabled", "friction",
+                                                    "gravityFactor", "inertiaTensor", "inertiaTensorRotation", "interpolation", "linearDamping", "mass", "material",
+                                                    "maxAngularVelocity", "maxLinearVelocity", "motionQuality", "numColliders", "overrideMassProperties", "restitution",
+                                                    "sensor", "solidBoxDensity", "solidBoxSize", "type", "waterAngularDrag", "waterDrag"};
 
 }
 

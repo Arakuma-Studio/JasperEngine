@@ -903,7 +903,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerCoreClasses(L);
     registerGameObjectClasses(L);
     registerActionClasses(L);
-    registerParticleClasses(L);
+    // SYNC4-ABSORB(particles): upstream's version 2 Particle System Lua classes (registerParticleClasses)
     registerECSClasses(L);
     registerIOClasses(L);
     registerMathClasses(L); 

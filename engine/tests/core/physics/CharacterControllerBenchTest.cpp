@@ -57,11 +57,11 @@ namespace {
             transform.needUpdate = true;
             RigidbodyComponent rigidbody;
             rigidbody.type = BodyType::STATIC;
+            rigidbody.colliders.resize(1);
             rigidbody.colliders[0].type = Collider3DType::BOX;
             rigidbody.colliders[0].width = size.x;
             rigidbody.colliders[0].height = size.y;
             rigidbody.colliders[0].depth = size.z;
-            rigidbody.numColliders = 1;
             scene->addComponent<RigidbodyComponent>(entity, rigidbody);
             return entity;
         }

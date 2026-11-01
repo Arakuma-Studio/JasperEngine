@@ -33,7 +33,7 @@
 #include "Generator.h"
 #include "Out.h"
 #include "Project.h"
-#include "command/type/InputActionsCmd.h"
+// SYNC4-ABSORB(input): upstream's command/type/InputActionsCmd.h (its input.actions setting) left out
 #include "input/InputActions.h"
 #include "registry/TagManager.h"
 #include "command/type/ShaderGlobalsCmd.h"
@@ -742,6 +742,78 @@ std::vector<std::string> categories() {
         if (std::find(out.begin(), out.end(), c) == out.end()) out.push_back(c);
     }
     return out;
+}
+
+// keys of earlier versions and what replaced them (set_project_settings / get_project_settings say so)
+const std::map<std::string, std::string>& renamedSettings() {
+    static const std::map<std::string, std::string> renamed = {
+        {"android.orientation", "player.default_orientation / player.allowed_orientations (shared by Android and iOS)"},
+        {"android.keep_screen_on", "player.keep_screen_on (every platform; true by default, as Android builds always did)"},
+    };
+    return renamed;
+}
+
+// Project Settings > Graphics > Shader Globals: the list is graphics.shader_globals (SettingsRows);
+// graphics.shader_globals.<name> is one global by name (upsert, null removes), each change one undo
+// step of the project history
+constexpr const char* kShaderGlobalsKey = "graphics.shader_globals";
+
+bool applyShaderGlobals(SettingsContext& ctx, const std::vector<ShaderGlobalDecl>& decls, const std::map<std::string, std::string>& renames,
+                        std::string& error) {
+    Project* p = ctx.project();
+    if (decls == p->getShaderGlobals()) return true;
+    auto* command = new ShaderGlobalsCmd(p, p->getShaderGlobals(), decls, renames);
+    command->setNoMerge();
+    if (!p->getProjectCommandHistory()->addCommand(command)) {
+        error = "the shader globals could not be applied";
+        return false;
+    }
+    return true;
+}
+
+// graphics.shader_globals.<name>: {type, default, array_size} (a missing field keeps the current
+// one), name: a rename (bindings follow), null: removed
+Setting shaderGlobalSetting(const std::string& name) {
+    Setting s;
+    s.key = std::string(kShaderGlobalsKey) + "." + name;
+    s.mcp = true;
+    s.type = "object";
+    s.description = "One shader global of graphics.shader_globals: {type, default, array_size}; name renames it; null removes it.";
+    s.get = [name](SettingsContext& ctx) {
+        for (const ShaderGlobalDecl& decl : ctx.project()->getShaderGlobals()) {
+            if (decl.name == name) {
+                Json json = ShaderGlobalsJson::declToJson(decl);
+                json.erase("name");
+                return json;
+            }
+        }
+        return Json();
+    };
+    s.set = [name](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+        std::vector<ShaderGlobalDecl> decls = ctx.project()->getShaderGlobals();
+        auto it = std::find_if(decls.begin(), decls.end(), [&name](const ShaderGlobalDecl& d) { return d.name == name; });
+        std::map<std::string, std::string> renames;
+        if (value.is_null()) {
+            if (it == decls.end()) {
+                error = "no shader global is named \"" + name + "\"";
+                return false;
+            }
+            decls.erase(it);
+        } else {
+            ShaderGlobalDecl decl;
+            if (!ShaderGlobalsJson::declFromJson(value, decl, error, name, it != decls.end() ? &*it : nullptr)) return false;
+            if (it != decls.end()) {
+                if (decl.name != name) renames[name] = decl.name;
+                *it = decl;
+            } else {
+                decls.push_back(decl);
+            }
+            error = ShaderGlobals::validate(decls);
+            if (!error.empty()) return false;
+        }
+        return !apply || applyShaderGlobals(ctx, decls, renames, error);
+    };
+    return s;
 }
 
 const Setting* findSetting(const std::string& key) {

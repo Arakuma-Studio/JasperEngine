@@ -21,6 +21,7 @@
 #include <iterator>
 #include <set>
 #include <stdexcept>
+#include "util/FileUtils.h"
 
 namespace fs = std::filesystem;
 namespace sn = jasperengine::editor::spritenormals;
@@ -40,7 +41,7 @@ namespace {
     }
 
     std::string fileName(const std::string& path) {
-        const std::string name = fs::u8path(path).filename().u8string();
+        const std::string name = jasperengine::editor::FileUtils::pathToUtf8(fs::u8path(path).filename());
         return name.empty() ? path : name;
     }
 
@@ -132,9 +133,9 @@ void SpriteNormalsWatcher::startScan() {
                 if (ProjectChecks::isSkippedDir(path)) it.disable_recursion_pending();
                 continue;
             }
-            const std::string name = path.filename().u8string();
+            const std::string name = jasperengine::editor::FileUtils::pathToUtf8(path.filename());
             if (name.empty() || name[0] == '.' || !it->is_regular_file(ec)) continue;
-            std::string ext = path.extension().u8string();
+            std::string ext = jasperengine::editor::FileUtils::pathToUtf8(path.extension());
             std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             if (ext == ".png") pngs.push_back(path);
         }
@@ -315,7 +316,7 @@ void SpriteNormalsWatcher::tickRegeneration() {
         regenOutput.clear();
         const sn::Result& result = done->result();
         const sn::Prepared& prepared = done->prepared();
-        const std::string name = output.filename().u8string();
+        const std::string name = jasperengine::editor::FileUtils::pathToUtf8(output.filename());
         if (result.status == sn::Status::Cancelled) return;
         if (done->generation() != texsynth::projectGeneration()) return;
         if (result.status != sn::Status::Ok) {
@@ -358,7 +359,7 @@ void SpriteNormalsWatcher::tickRegeneration() {
         queue.pop_front();
         auto it = outputs.find(output);
         if (it == outputs.end() || !it->second.stale || it->second.missing) continue;
-        const std::string name = output.filename().u8string();
+        const std::string name = jasperengine::editor::FileUtils::pathToUtf8(output.filename());
         std::string error;
         const std::optional<nlohmann::json> recipe = sn::readRecipeHead(output, &error);
         sn::Spec spec;
@@ -420,8 +421,8 @@ bool SpriteNormalsWatcher::wouldIndex(const fs::path& path) const {
     const fs::path key = path.lexically_normal();
     const fs::path relative = key.lexically_relative(root);
     if (relative.empty() || *relative.begin() == "..") return false;
-    const std::string name = key.filename().u8string();
-    std::string ext = key.extension().u8string();
+    const std::string name = jasperengine::editor::FileUtils::pathToUtf8(key.filename());
+    std::string ext = jasperengine::editor::FileUtils::pathToUtf8(key.extension());
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     if (name.empty() || name[0] == '.' || ext != ".png") return false;
     return !ProjectChecks::isInSkippedDir(relative);

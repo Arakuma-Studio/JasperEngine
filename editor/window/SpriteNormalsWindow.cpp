@@ -42,6 +42,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
+#include "util/FileUtils.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -65,7 +66,7 @@ namespace {
     }
 
     std::string fileName(const std::string& path) {
-        const std::string name = fs::u8path(path).filename().u8string();
+        const std::string name = jasperengine::editor::FileUtils::pathToUtf8(fs::u8path(path).filename());
         return name.empty() ? path : name;
     }
 
@@ -128,7 +129,7 @@ namespace {
         const std::string rel = mcp::McpValues::assetPathToJson(project, base.getPath());
         std::error_code ec;
         if (!Util::isImageFile(rel) || !fs::is_regular_file(absoluteOf(project, rel), ec)) return std::string();
-        return fs::u8path(rel).lexically_normal().generic_u8string();
+        return jasperengine::editor::FileUtils::pathToGenericUtf8(fs::u8path(rel).lexically_normal());
     }
 
     // Whether the ImGui frame belongs to the real editor (a platform backend): the Project
@@ -230,7 +231,7 @@ void SpriteNormalsWindow::waitJobWorkers() {
 
 SpriteNormalsWindow::RegenerateOutcome SpriteNormalsWindow::regenerateOutcome(const fs::path& generatedPng) const {
     const fs::path png = generatedPng.is_absolute() ? generatedPng : project->getProjectPath() / generatedPng;
-    auto it = regenerateOutcomes.find(png.lexically_normal().generic_u8string());
+    auto it = regenerateOutcomes.find(jasperengine::editor::FileUtils::pathToGenericUtf8(png.lexically_normal()));
     return it == regenerateOutcomes.end() ? RegenerateOutcome() : it->second;
 }
 
@@ -553,10 +554,10 @@ bool SpriteNormalsWindow::openSources(const std::vector<fs::path>& images, std::
     std::vector<std::string> skipped;
     for (const fs::path& given : images) {
         const fs::path abs = given.is_absolute() ? given.lexically_normal() : (root / given).lexically_normal();
-        const std::string ext = lower(abs.extension().u8string());
+        const std::string ext = lower(jasperengine::editor::FileUtils::pathToUtf8(abs.extension()));
         std::error_code ec;
         if (!Util::isImageFile(ext) || ext == ".svg" || !fs::is_regular_file(abs, ec)) {
-            skipped.push_back(abs.filename().u8string());
+            skipped.push_back(jasperengine::editor::FileUtils::pathToUtf8(abs.filename()));
             continue;
         }
         sn::Spec spec;
@@ -698,7 +699,7 @@ bool SpriteNormalsWindow::openForEntity(uint32_t sceneId, Entity entity, unsigne
         if (!stored.empty()) {
             const fs::path png = absoluteOf(project, mcp::McpValues::assetPathToJson(project, stored));
             std::error_code ec;
-            if (lower(png.extension().u8string()) == ".png" && fs::is_regular_file(png, ec)) {
+            if (lower(jasperengine::editor::FileUtils::pathToUtf8(png.extension())) == ".png" && fs::is_regular_file(png, ec)) {
                 if (const std::optional<nlohmann::json> recipe = sn::readRecipeHead(png)) {
                     sn::Spec fromRecipe;
                     std::string recipeError;
@@ -942,7 +943,7 @@ void SpriteNormalsWindow::setOutput(const std::string& projectRelative) {
         return;
     }
     endStroke();
-    paintTarget = next.generic_u8string();
+    paintTarget = jasperengine::editor::FileUtils::pathToGenericUtf8(next);
     paintSaved = sn::PaintOverlay();
     paintProblem.clear();
     recordPaintStamp();
@@ -1175,7 +1176,7 @@ bool SpriteNormalsWindow::writeResults(const std::vector<size_t>& itemIndices, b
     // what is saved now (the stroke stack stays: Ctrl+Z still undoes strokes)
     if (!isBatch()) {
         for (const sn::OutputFile& f : all) {
-            if (f.role == "normal") paintTarget = f.absolute.lexically_normal().generic_u8string();
+            if (f.role == "normal") paintTarget = jasperengine::editor::FileUtils::pathToGenericUtf8(f.absolute.lexically_normal());
         }
         paintSaved = paint;
         paintProblem.clear();
@@ -1427,11 +1428,11 @@ bool SpriteNormalsWindow::startRegenerate(const fs::path& generatedPng, std::str
     work->threads = workerThreads();
     QuickJob job;
     job.overwrite = true;
-    job.label = png.filename().u8string();
+    job.label = jasperengine::editor::FileUtils::pathToUtf8(png.filename());
     job.png = png;
     job.work = work;
     // the in-progress outcome before the job moves into the list
-    regenerateOutcomes[png.generic_u8string()] = {true, false, false, "Regenerating " + job.label + "..."};
+    regenerateOutcomes[jasperengine::editor::FileUtils::pathToGenericUtf8(png)] = {true, false, false, "Regenerating " + job.label + "..."};
     startWork(work);
     quickJobs.push_back(std::move(job));
     return true;
@@ -1448,7 +1449,7 @@ void SpriteNormalsWindow::tickQuickJobs() {
         const bool assigning = job.target.entity != NULL_ENTITY;
         // a Regenerate written while a scene plays would reload what the game draws: it waits
         if (!assigning && project->isAnyScenePlaying()) {
-            regenerateOutcomes[job.png.generic_u8string()] = {true, false, false, "Regenerating " + job.label + " once the scene stops..."};
+            regenerateOutcomes[jasperengine::editor::FileUtils::pathToGenericUtf8(job.png)] = {true, false, false, "Regenerating " + job.label + " once the scene stops..."};
             j++;
             continue;
         }
@@ -1469,7 +1470,7 @@ void SpriteNormalsWindow::tickQuickJobs() {
             } else if (project->isAnyScenePlaying()) {
                 targetProblem = "a scene is playing";
             } else if (baseTextureOf(project, sp->scene, job.target.entity, job.target.submesh) !=
-                       fs::u8path(prepared.sourcePath).lexically_normal().generic_u8string()) {
+                       jasperengine::editor::FileUtils::pathToGenericUtf8(fs::u8path(prepared.sourcePath).lexically_normal())) {
                 targetProblem = "\"" + job.target.name + "\" no longer draws " + fileName(prepared.sourcePath);
             }
         }
@@ -1514,7 +1515,7 @@ void SpriteNormalsWindow::tickQuickJobs() {
                 }
             }
         }
-        if (!assigning) regenerateOutcomes[job.png.generic_u8string()] = {true, true, ok, outcome};
+        if (!assigning) regenerateOutcomes[jasperengine::editor::FileUtils::pathToGenericUtf8(job.png)] = {true, true, ok, outcome};
         quickJobs.erase(quickJobs.begin() + static_cast<std::ptrdiff_t>(j));
     }
 }
@@ -2191,7 +2192,7 @@ bool SpriteNormalsWindow::setSourcePath(const std::string& text, std::string& er
     }
     const fs::path abs = absoluteOf(project, text);
     std::error_code ec;
-    const std::string ext = lower(abs.extension().u8string());
+    const std::string ext = lower(jasperengine::editor::FileUtils::pathToUtf8(abs.extension()));
     if (!fs::is_regular_file(abs, ec)) {
         error = text + " does not exist.";
         return false;
@@ -2229,12 +2230,12 @@ bool SpriteNormalsWindow::targetDraws(const Item& item) const {
     if (!sp || !sp->scene) return false;
     const std::string base = baseTextureOf(project, sp->scene, target.entity, target.submesh);
     if (base.empty()) return false;
-    if (base == fs::u8path(item.texturePath).lexically_normal().generic_u8string()) return true;
+    if (base == jasperengine::editor::FileUtils::pathToGenericUtf8(fs::u8path(item.texturePath).lexically_normal())) return true;
     // an animation's atlas (a GIF assigned before draws its sheet)
     sn::Spec spec = specOf(item);
     if (spec.hasSprite()) spec.source = item.texturePath;
     for (const sn::PlannedOutput& out : sn::plannedOutputs(project->getProjectPath(), spec, item.info.kind)) {
-        if (out.role == "atlas" && fs::u8path(out.path).lexically_normal().generic_u8string() == base) return true;
+        if (out.role == "atlas" && jasperengine::editor::FileUtils::pathToGenericUtf8(fs::u8path(out.path).lexically_normal()) == base) return true;
     }
     return false;
 }
@@ -2288,7 +2289,7 @@ std::string SpriteNormalsWindow::sourceSummary() const {
         }
         return text;
     }
-    std::string ext = lower(fs::u8path(item.texturePath).extension().u8string());
+    std::string ext = lower(jasperengine::editor::FileUtils::pathToUtf8(fs::u8path(item.texturePath).extension()));
     if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
     std::string text = size + " " + ext;
@@ -2565,7 +2566,7 @@ void SpriteNormalsWindow::drawSource() {
             while (offset < static_cast<size_t>(payload->DataSize)) {
                 const std::string file(data + offset, strnlen(data + offset, static_cast<size_t>(payload->DataSize) - offset));
                 offset += file.size() + 1;
-                if (file.empty() || !Util::isImageFile(file) || lower(fs::u8path(file).extension().u8string()) == ".svg") continue;
+                if (file.empty() || !Util::isImageFile(file) || lower(jasperengine::editor::FileUtils::pathToUtf8(fs::u8path(file).extension())) == ".svg") continue;
                 if (!setSourcePath(file, error)) setStatus(error, true);
                 break;
             }
@@ -4140,7 +4141,7 @@ void SpriteNormalsWindow::loadPaintForTarget() {
         for (const sn::PlannedOutput& out : plannedOutputs()) {
             if (out.role != "normal" || out.path.empty()) continue;
             const fs::path abs = absoluteOf(project, out.path);
-            paintTarget = abs.generic_u8string();
+            paintTarget = jasperengine::editor::FileUtils::pathToGenericUtf8(abs);
             std::error_code ec;
             if (!fs::is_regular_file(abs, ec)) break;
             std::string why;

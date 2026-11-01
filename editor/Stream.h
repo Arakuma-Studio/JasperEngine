@@ -309,12 +309,12 @@ namespace jasperengine::editor {
         // {mode: blend|fixed, colors: [[time, colour]...], alphas: [[time, alpha]...]}, a colour
         // "#RRGGBB" (sRGB, written when the linear value is exactly an 8-bit one) or [r, g, b]
         // (linear); a single colour ("#RRGGBB[AA]", [r, g, b(, a)]) reads as a constant gradient
-        static YAML::Node encodeCurve(const AnimationCurve& curve);
-        static AnimationCurve decodeCurve(const YAML::Node& node, const AnimationCurve& fallback = AnimationCurve::constant(1.0f));
-        static YAML::Node encodeGradient(const Gradient& gradient);
-        static Gradient decodeGradient(const YAML::Node& node, const Gradient& fallback = Gradient());
-        static std::string curveWrapToString(CurveWrap wrap);
-        static CurveWrap stringToCurveWrap(const std::string& str);
+        static YAML::Node encodeCurve(const upcurve::AnimationCurve& curve);
+        static upcurve::AnimationCurve decodeCurve(const YAML::Node& node, const upcurve::AnimationCurve& fallback = upcurve::AnimationCurve::constant(1.0f));
+        static YAML::Node encodeGradient(const upcurve::Gradient& gradient);
+        static upcurve::Gradient decodeGradient(const YAML::Node& node, const upcurve::Gradient& fallback = upcurve::Gradient());
+        static std::string curveWrapToString(upcurve::CurveWrap wrap);
+        static upcurve::CurveWrap stringToCurveWrap(const std::string& str);
         // "#RRGGBB" / "#RRGGBBAA" (the # optional) as 0..1 sRGB values; false for other text
         static bool parseHexColor(const std::string& text, Vector4& srgb, bool& hasAlpha);
         // a colour value of the YAML/JSON forms: a hex string (sRGB, converted) or [r, g, b(, a)]
@@ -523,6 +523,12 @@ namespace jasperengine::editor {
         static std::string jointBreakActionToString(JointBreakAction action);
         static JointBreakAction stringToJointBreakAction(const std::string& str);
 
+        // upstream's joint codecs (StreamUpstream.cpp; the descriptors' codecs)
+        static YAML::Node encodeJoint2DComponent(const Joint2DComponent& joint);
+        static Joint2DComponent decodeJoint2DComponent(const YAML::Node& node, const Joint2DComponent* oldJoint = nullptr);
+        static YAML::Node encodeJoint3DComponent(const Joint3DComponent& joint);
+        static Joint3DComponent decodeJoint3DComponent(const YAML::Node& node, const Joint3DComponent* oldJoint = nullptr);
+
         static std::string joint3DTypeToString(Joint3DType type);
         static Joint3DType stringToJoint3DType(const std::string& str);
         static std::string jointMotionToString(JointMotion motion);
@@ -606,15 +612,19 @@ namespace jasperengine::editor {
         // two_curves, multiplier, min, max} (min/max: curves); a gradient a colour ("#RRGGBB[AA]"
         // sRGB or [r, g, b, a] linear: Color), {mode: gradient, gradient}, {mode: two_colors,
         // min, max}, {mode: two_gradients, min, max} or {mode: random_color, gradient}
+#if 0 // SYNC4-ABSORB(particles)
         static YAML::Node encodeMinMaxCurve(const MinMaxCurve& curve);
         static MinMaxCurve decodeMinMaxCurve(const YAML::Node& node, const MinMaxCurve& fallback = MinMaxCurve());
         static YAML::Node encodeMinMaxGradient(const MinMaxGradient& gradient);
         static MinMaxGradient decodeMinMaxGradient(const YAML::Node& node, const MinMaxGradient& fallback = MinMaxGradient());
+#endif
         // a colour as "#RRGGBB" / "#RRGGBBAA" when its linear value is exactly that 8-bit sRGB
         // value, else [r, g, b, a] (linear)
         static YAML::Node encodeColorValue(const Vector4& linear);
+#if 0 // SYNC4-ABSORB(particles)
         static YAML::Node encodeParticleBursts(const std::vector<ParticleEmissionBurst>& bursts);
         static std::vector<ParticleEmissionBurst> decodeParticleBursts(const YAML::Node& node);
+#endif
         static ParticleSystemComponent decodeParticleSystemComponent(const YAML::Node& node, const ParticleSystemComponent* oldParticles = nullptr);
         // a scene's particle system as written before S20 (the scene migration reads it)
         static LegacyParticleSystem decodeLegacyParticleSystem(const YAML::Node& node);

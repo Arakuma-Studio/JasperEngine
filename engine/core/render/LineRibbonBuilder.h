@@ -24,8 +24,8 @@
 
 namespace jasperengine {
 
-    struct AnimationCurve;
-    struct Gradient;
+    // SYNC4-ABSORB(curve): upstream's curve types (math/AnimationCurve.h, math/Gradient.h)
+    namespace upcurve { struct AnimationCurve; struct Gradient; }
 
     // Unity LineTextureMode: how u runs along the line
     enum class LineTextureMode : int {
@@ -91,9 +91,9 @@ namespace jasperengine {
         bool loop = false;
         float widthMultiplier = 1.0f;
         // over t (null: 1)
-        const AnimationCurve* widthCurve = nullptr;
+        const upcurve::AnimationCurve* widthCurve = nullptr;
         // over t (null: white); ignored when pointColors are given
-        const Gradient* colorGradient = nullptr;
+        const upcurve::Gradient* colorGradient = nullptr;
         unsigned int numCornerVertices = 0;
         unsigned int numCapVertices = 0;
         LineTextureMode textureMode = LineTextureMode::Stretch;
@@ -149,12 +149,12 @@ namespace jasperengine {
         // Unity's startWidth / endWidth and startColor / endColor shortcuts of the line and
         // trail renderers. The width at t (multiplier x curve(t)); setting the two ends makes
         // the curve linear between them with the multiplier 1 (widths below 0 are 0)
-        static float widthAt(float multiplier, const AnimationCurve& curve, float t);
-        static void setEndWidths(float& multiplier, AnimationCurve& curve, float start, float end);
+        static float widthAt(float multiplier, const upcurve::AnimationCurve& curve, float t);
+        static void setEndWidths(float& multiplier, upcurve::AnimationCurve& curve, float start, float end);
         // the gradient's colour at t as sRGB (alpha as is); setting one keys the colour and
         // the alpha at that end (time 0 or 1: the key there replaced, else one added)
-        static Vector4 colorAt(const Gradient& gradient, float t);
-        static void setEndColor(Gradient& gradient, float t, const Vector4& srgbColor);
+        static Vector4 colorAt(const upcurve::Gradient& gradient, float t);
+        static void setEndColor(upcurve::Gradient& gradient, float t, const Vector4& srgbColor);
     };
 
 }

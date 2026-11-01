@@ -94,13 +94,13 @@ namespace jasperengine::editor::spritenormals {
         }
 
         std::string lowerExt(const fs::path& path) {
-            std::string ext = path.extension().u8string();
+            std::string ext = jasperengine::editor::FileUtils::pathToUtf8(path.extension());
             std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             return ext;
         }
 
         std::string name(const fs::path& path) {
-            return path.filename().u8string();
+            return jasperengine::editor::FileUtils::pathToUtf8(path.filename());
         }
 
         // ---- what a PNG is (cached by mtime and size)
@@ -581,7 +581,7 @@ namespace jasperengine::editor::spritenormals {
 
         // <stem>_normal.png, <stem>_sheet_normal.png beside an image
         std::vector<fs::path> defaultMaps(const fs::path& image) {
-            const std::string stem = image.stem().u8string();
+            const std::string stem = jasperengine::editor::FileUtils::pathToUtf8(image.stem());
             return {image.parent_path() / fs::u8path(stem + "_normal.png"), image.parent_path() / fs::u8path(stem + "_sheet_normal.png")};
         }
 

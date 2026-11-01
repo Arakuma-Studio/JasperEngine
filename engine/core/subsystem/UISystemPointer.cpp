@@ -26,6 +26,7 @@
 #include <climits>
 #include <cmath>
 #include <functional>
+#include "input/InputSourceShim.h"   // SYNC4-ABSORB(input)
 
 using namespace jasperengine;
 
@@ -1425,7 +1426,7 @@ uintptr_t UISystem::controlOwner(Entity entity){
 void UISystem::clearControlSources(Entity entity){
     auto it = controlOwners.find(entity);
     if (it != controlOwners.end() && it->second)
-        InputActions::clearSource(reinterpret_cast<uintptr_t>(it->second.get()));
+        sync4input::clearSource(reinterpret_cast<uintptr_t>(it->second.get()));
 }
 
 void UISystem::controlDown(UIPointerState& state, Entity entity){
@@ -1538,17 +1539,15 @@ void UISystem::controlMove(UIPointerState& state){
         // the mouse already moves the actions it is bound to (Mouse X/Y): no second count
         auto mouseBound = [&](const std::string& action){
             if (!state.touch && !action.empty()){
-                for (const InputBinding& binding : InputActions::getBindings(action)){
-                    if (binding.kind == InputBindingKind::MouseDelta)
-                        return true;
-                }
+                if (sync4input::mouseBound(action))   // SYNC4-ABSORB(input)
+                    return true;
             }
             return false;
         };
         if (!area.horizontalAction.empty() && !mouseBound(area.horizontalAction))
-            InputActions::addSourceDelta(owner, area.horizontalAction, delta.x * sx);
+            sync4input::addSourceDelta(owner, area.horizontalAction, delta.x * sx);
         if (!area.verticalAction.empty() && !mouseBound(area.verticalAction))
-            InputActions::addSourceDelta(owner, area.verticalAction, -delta.y * sy);
+            sync4input::addSourceDelta(owner, area.verticalAction, -delta.y * sy);
     }
 }
 
@@ -1644,9 +1643,9 @@ void UISystem::stickUpdate(Entity entity, OnScreenStickComponent& stick, const V
 
     const uintptr_t owner = controlOwner(entity);
     if (!stick.horizontalAction.empty())
-        InputActions::setSourceValue(owner, stick.horizontalAction, value.x);
+        sync4input::setSourceValue(owner, stick.horizontalAction, value.x);
     if (!stick.verticalAction.empty())
-        InputActions::setSourceValue(owner, stick.verticalAction, value.y);
+        sync4input::setSourceValue(owner, stick.verticalAction, value.y);
 
     if (value.x != stick.value.x || value.y != stick.value.y){
         stick.value = value;
@@ -1689,7 +1688,7 @@ void UISystem::buttonControlPress(Entity entity, int pointerId){
         return;
     control->pressed = true;
     if (!control->action.empty())
-        InputActions::setSourceValue(controlOwner(entity), control->action, control->value);
+        sync4input::setSourceValue(controlOwner(entity), control->action, control->value);
     control->onPress.call();
     refreshButtonPressed(entity);
 }

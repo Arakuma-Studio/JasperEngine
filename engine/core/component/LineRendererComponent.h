@@ -100,10 +100,10 @@ namespace jasperengine{
         // the width is widthMultiplier x widthCurve over the normalized length; 0 = the
         // hairline (today's 1-pixel LINES primitive)
         float widthMultiplier = 0.0f;
-        AnimationCurve widthCurve = AnimationCurve::constant(1.0f);
+        upcurve::AnimationCurve widthCurve = upcurve::AnimationCurve::constant(1.0f);
         LineWidthUnit widthUnit = LineWidthUnit::World;
         // Polyline mode: over the normalized length (Segments mode uses the segment colours)
-        Gradient colorGradient;
+        upcurve::Gradient colorGradient;
         // 0 = miter joint (bevel past 4x the half width), else a round joint (0..90)
         unsigned int numCornerVertices = 0;
         // 0 = flat butt caps, else round caps (0..90)

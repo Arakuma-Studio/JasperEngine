@@ -1245,7 +1245,9 @@ void writeFileTool(const CallPtr& call) {
     if (Util::isAvatarMaskFile(rel) || Util::isAnimatorControllerFile(rel)) {
         std::string why;
         const bool mask = Util::isAvatarMaskFile(rel);
-        if (mask ? !animator_tools::checkMaskText(content, animWarnings, why) : !animator_tools::checkControllerText(project, content, animWarnings, why)) {
+        // SYNC4-ABSORB(animator): upstream's checkMaskText / checkControllerText (its file format, not S21's)
+        (void)mask;
+        if (false) {
             call->fail(std::string(mask ? "Not a valid Avatar Mask: " : "Not a valid Animator Controller: ") + why +
                        (mask ? ". The format: jasper://docs/animation (Layers and masks)." : ". Prefer edit_animator (jasper://docs/animation)."));
             return;
@@ -3482,6 +3484,10 @@ void placeholderArtTool(const CallPtr& call) {
 // Searches the project's text files (what read_file reads): literal or ECMAScript regex, per line
 // import_unity_particles: a Unity .prefab / .unity (absolute path) as engine prefabs (particles spec 6.10)
 void importUnityParticlesTool(const CallPtr& call) {
+    // SYNC4-ABSORB(particles): upstream's Unity ParticleSystem importer (editor/unity, out of the build) writes
+    // version 2 systems; the Particles absorption moves it onto S20's
+    call->fail("import_unity_particles is not available in this build yet (the Unity importer moves onto the engine's particle effects).");
+#if 0
     const Json& args = call->args();
     Project* project = call->ctx().project();
     if (!args.contains("path") || !args["path"].is_string() || args["path"].get<std::string>().empty()) {
@@ -3523,6 +3529,7 @@ void importUnityParticlesTool(const CallPtr& call) {
     Json data = {{"prefabs", result.prefabs}, {"report", result.report}};
     if (!result.reportFile.empty()) data["report_file"] = result.reportFile;
     call->ok(message, data);
+#endif
 }
 
 void searchFilesTool(const CallPtr& call) {

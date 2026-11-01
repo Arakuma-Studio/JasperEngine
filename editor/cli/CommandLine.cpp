@@ -2633,7 +2633,7 @@ void checkAnimAssetFiles(const fs::path& root, const std::vector<fs::path>& mask
         const std::string rel = ProjectChecks::projectRelative(root, file);
         if (!ProjectChecks::readFile(file, text)) continue;
         check.clips++;
-        const anim::ControllerParseResult parsed = anim::parseController(text);
+        const anim::ControllerFileParseResult parsed = anim::parseControllerFile(text);
         if (!parsed.ok()) {
             check.findings.push_back({"anim", rel, parsed.error.line, parsed.error.column, "error", parsed.error.message});
             continue;
@@ -3455,7 +3455,7 @@ int CommandLine::runBakeVatCommand(int argc, char** argv, const char* executable
     return vat::runBakeVat(argc, argv, getCommandName(executableName), std::cout, std::cerr);
 }
 
-static void printImportUnityParticlesUsage(const std::string& commandName) {
+[[maybe_unused]] static void printImportUnityParticlesUsage(const std::string& commandName) {
     std::cout
         << "Usage:\n"
         << "  " << commandName << " import-unity-particles <file.prefab|file.unity> --project <engine project> [options]\n\n"
@@ -3478,6 +3478,11 @@ static void printImportUnityParticlesUsage(const std::string& commandName) {
 }
 
 int CommandLine::runImportUnityParticlesCommand(int argc, char** argv, const char* executableName) {
+    // SYNC4-ABSORB(particles): upstream's Unity ParticleSystem importer (editor/unity, out of the build)
+    (void)argc; (void)argv; (void)executableName;
+    std::fprintf(stderr, "import-unity-particles is not available in this build yet.\n");
+    return 2;
+#if 0
     attachHostConsoleIfNeeded();
     const std::string commandName = getCommandName(executableName);
     unity::ImportOptions options;
@@ -3561,6 +3566,7 @@ int CommandLine::runImportUnityParticlesCommand(int argc, char** argv, const cha
         std::cerr << (options.dryRun ? "would write " : "wrote ") << prefab << "\n";
     }
     return result.hasWarnings ? 2 : 0;
+#endif
 }
 
 int CommandLine::runGenerateSpriteNormalsCommand(int argc, char** argv, const char* executableName) {

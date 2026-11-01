@@ -366,8 +366,10 @@ namespace jasperengine::editor{
         void drawAnimationClipButtons(SceneProject* sceneProject, Entity entity);
 
         // ---- animation layers, masks and controllers (InspectorWindowAnimLayers.cpp; anim layers spec 9, 11.4) ----
+#if 0 // SYNC4-ABSORB(animator): upstream's layer, mask and controller state (InspectorWindowAnimLayers.cpp, out of the build)
         std::unique_ptr<InspectorLayerState, InspectorLayerStateDeleter> layerStatePtr;
         InspectorLayerState& layerState();
+#endif
         // the Controller field (Open, Create Controller from Clips; with one: what it ignores, its problems)
         void drawAnimationPlayerController(ComponentType cpType, SceneProject* sceneProject, Entity entity);
         // the Layers table (one scene step per edit, PlayerLayerActions)

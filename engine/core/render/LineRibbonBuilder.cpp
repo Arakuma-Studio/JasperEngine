@@ -302,58 +302,58 @@ LineRibbonResult LineRibbonBuilder::build(const Vector3* points, size_t count, c
     return result;
 }
 
-float LineRibbonBuilder::widthAt(float multiplier, const AnimationCurve& curve, float t){
+float LineRibbonBuilder::widthAt(float multiplier, const upcurve::AnimationCurve& curve, float t){
     return multiplier * curve.evaluate(t);
 }
 
-void LineRibbonBuilder::setEndWidths(float& multiplier, AnimationCurve& curve, float start, float end){
+void LineRibbonBuilder::setEndWidths(float& multiplier, upcurve::AnimationCurve& curve, float start, float end){
     start = std::isfinite(start) ? std::max(0.0f, start) : 0.0f;
     end = std::isfinite(end) ? std::max(0.0f, end) : 0.0f;
     multiplier = 1.0f;
-    curve = (start == end) ? AnimationCurve::constant(start) : AnimationCurve::linear(0.0f, start, 1.0f, end);
+    curve = (start == end) ? upcurve::AnimationCurve::constant(start) : upcurve::AnimationCurve::linear(0.0f, start, 1.0f, end);
 }
 
-Vector4 LineRibbonBuilder::colorAt(const Gradient& gradient, float t){
+Vector4 LineRibbonBuilder::colorAt(const upcurve::Gradient& gradient, float t){
     const Vector4 color = gradient.evaluate(t);
     const Vector3 srgb = Color::linearTosRGB(Vector3(color.x, color.y, color.z));
     return Vector4(srgb.x, srgb.y, srgb.z, color.w);
 }
 
-void LineRibbonBuilder::setEndColor(Gradient& gradient, float t, const Vector4& srgbColor){
+void LineRibbonBuilder::setEndColor(upcurve::Gradient& gradient, float t, const Vector4& srgbColor){
     const Vector3 linear = Color::sRGBToLinear(Vector3(srgbColor.x, srgbColor.y, srgbColor.z));
     const bool atEnd = t > 0.5f;
     gradient.normalize();
 
     // the key at that end, else a new one (the nearest replaced when the list is full)
     bool found = false;
-    for (GradientColorKey& key : gradient.colorKeys){
+    for (upcurve::GradientColorKey& key : gradient.colorKeys){
         if (key.time == t){
             key.color = linear;
             found = true;
         }
     }
     if (!found){
-        if (gradient.colorKeys.size() >= Gradient::MAX_KEYS){
-            GradientColorKey& key = atEnd ? gradient.colorKeys.back() : gradient.colorKeys.front();
-            key = GradientColorKey(t, linear);
+        if (gradient.colorKeys.size() >= upcurve::Gradient::MAX_KEYS){
+            upcurve::GradientColorKey& key = atEnd ? gradient.colorKeys.back() : gradient.colorKeys.front();
+            key = upcurve::GradientColorKey(t, linear);
         }else{
-            gradient.colorKeys.push_back(GradientColorKey(t, linear));
+            gradient.colorKeys.push_back(upcurve::GradientColorKey(t, linear));
         }
     }
 
     found = false;
-    for (GradientAlphaKey& key : gradient.alphaKeys){
+    for (upcurve::GradientAlphaKey& key : gradient.alphaKeys){
         if (key.time == t){
             key.alpha = srgbColor.w;
             found = true;
         }
     }
     if (!found){
-        if (gradient.alphaKeys.size() >= Gradient::MAX_KEYS){
-            GradientAlphaKey& key = atEnd ? gradient.alphaKeys.back() : gradient.alphaKeys.front();
-            key = GradientAlphaKey(t, srgbColor.w);
+        if (gradient.alphaKeys.size() >= upcurve::Gradient::MAX_KEYS){
+            upcurve::GradientAlphaKey& key = atEnd ? gradient.alphaKeys.back() : gradient.alphaKeys.front();
+            key = upcurve::GradientAlphaKey(t, srgbColor.w);
         }else{
-            gradient.alphaKeys.push_back(GradientAlphaKey(t, srgbColor.w));
+            gradient.alphaKeys.push_back(upcurve::GradientAlphaKey(t, srgbColor.w));
         }
     }
     gradient.normalize();

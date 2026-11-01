@@ -28,6 +28,7 @@
 #ifndef AVATAR_MASK_H
 #define AVATAR_MASK_H
 
+#include "animation/AnimatorAssetIO.h"
 #include "Export.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/ClipTypes.h"
@@ -48,9 +49,8 @@ namespace jasperengine{
 
 namespace jasperengine::anim{
 
-    constexpr const char* MASK_FORMAT = "jasperengine.mask";
+    // SYNC4-ABSORB(animator): MASK_FORMAT / MASK_EXTENSION are S21's (AnimatorAssetIO.h)
     constexpr int MASK_VERSION = 1;
-    constexpr const char* MASK_EXTENSION = ".mask";
 
     // Unity's AvatarMaskBodyPart without the four IK goals (file names snake_case)
     enum class AvatarMaskPart : uint8_t {

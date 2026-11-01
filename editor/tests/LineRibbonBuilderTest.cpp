@@ -173,8 +173,8 @@ TEST(LineRibbonBuilderTest, TextureU){
 }
 
 TEST(LineRibbonBuilderTest, WidthsAndColours){
-    const AnimationCurve curve = AnimationCurve::linear(0.0f, 1.0f, 1.0f, 0.0f);
-    const Gradient gradient = Gradient::twoColors(Vector4(1, 0, 0, 1), Vector4(0, 0, 1, 0));
+    const upcurve::AnimationCurve curve = upcurve::AnimationCurve::linear(0.0f, 1.0f, 1.0f, 0.0f);
+    const upcurve::Gradient gradient = upcurve::Gradient::twoColors(Vector4(1, 0, 0, 1), Vector4(0, 0, 1, 0));
     LineRibbonSettings settings;
     settings.widthMultiplier = 2.0f;
     settings.widthCurve = &curve;
@@ -197,7 +197,7 @@ TEST(LineRibbonBuilderTest, WidthsAndColours){
     EXPECT_TRUE(middle);
 
     // a negative curve is width 0, never flipped
-    const AnimationCurve negative = AnimationCurve::constant(-1.0f);
+    const upcurve::AnimationCurve negative = upcurve::AnimationCurve::constant(-1.0f);
     settings.widthCurve = &negative;
     Built flat = build({Vector3(0, 0, 0), Vector3(1, 0, 0)}, settings);
     for (const LineRibbonVertex& vertex : flat.vertices){
@@ -329,7 +329,7 @@ TEST(LineRibbonBuilderTest, LoopClosesTheLine){
 
 TEST(LineRibbonBuilderTest, WidthAndColourShortcuts){
     float multiplier = 0.0f;
-    AnimationCurve curve = AnimationCurve::constant(1.0f);
+    upcurve::AnimationCurve curve = upcurve::AnimationCurve::constant(1.0f);
     LineRibbonBuilder::setEndWidths(multiplier, curve, 0.35f, 0.1f);
     EXPECT_FLOAT_EQ(multiplier, 1.0f);
     EXPECT_FLOAT_EQ(LineRibbonBuilder::widthAt(multiplier, curve, 0.0f), 0.35f);
@@ -337,7 +337,7 @@ TEST(LineRibbonBuilderTest, WidthAndColourShortcuts){
     LineRibbonBuilder::setEndWidths(multiplier, curve, -1.0f, 0.1f);
     EXPECT_FLOAT_EQ(LineRibbonBuilder::widthAt(multiplier, curve, 0.0f), 0.0f);
 
-    Gradient gradient;
+    upcurve::Gradient gradient;
     LineRibbonBuilder::setEndColor(gradient, 0.0f, Vector4(1.0f, 0.5f, 0.0f, 1.0f));
     LineRibbonBuilder::setEndColor(gradient, 1.0f, Vector4(0.0f, 0.0f, 1.0f, 0.0f));
     const Vector4 start = LineRibbonBuilder::colorAt(gradient, 0.0f);

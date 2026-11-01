@@ -18,6 +18,8 @@
 #include "util/PlatformRules.h"
 #include "command/CommandHistory.h"
 #include "command/type/ShaderCreationSettingsCmd.h"
+#include "command/type/ShaderGlobalsCmd.h"
+#include "util/ShaderGlobalsJson.h"
 #include "reflect/Reflect.h"
 #include "input/InputActions.h"
 #include "players/PlayerRuntimes.h"
@@ -1115,6 +1117,37 @@ std::vector<Setting> mcpSettingsTable() {
                     return false;
                 }
                 if (apply) ctx.project()->setHtmlUiMsaaSamples(static_cast<int>(v));
+                return true;
+            };
+            add(s);
+        }
+        // Project Settings > Graphics > Shader Globals (upstream's shader globals): the list, replaced
+        // whole, one undo step of the project history (graphics.shader_globals.<name>: ProjectTools)
+        {
+            Setting s;
+            s.key = "graphics.shader_globals";
+            s.type = "list";
+            s.description =
+                "Project Settings > Graphics > Shader Globals: global shader values (Lua Shader.setGlobal*) with their defaults, "
+                "read by shaders declaring u_vs_globals / u_fs_globals members (or a texture uniform) of the same name. Each "
+                "{name, type: float|vector2|vector3|vector4|color|matrix4|float_array|vector4_array|texture2d|texturecube, "
+                "array_size (arrays, 1-64), default}: color \"#RRGGBB[AA]\" or [r,g,b,a] sRGB, vectors [x,y,...], matrix4 16 "
+                "numbers column-major, arrays N values, textures an asset path. Setting it replaces the list; "
+                "graphics.shader_globals.<name> upserts one ({type, default, array_size, name: renames}; null removes). The "
+                "read result adds glsl_vs / glsl_fs, the blocks to paste. Undoable. Details: jasper://docs/shaders#global-values.";
+            s.get = [](SettingsContext& ctx) { return ShaderGlobalsJson::listToJson(ctx.project()->getShaderGlobals()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                std::vector<ShaderGlobalDecl> decls;
+                if (!value.is_null() && !ShaderGlobalsJson::listFromJson(value, decls, error)) return false;
+                if (!apply) return true;
+                Project* p = ctx.project();
+                if (decls == p->getShaderGlobals()) return true;
+                auto* command = new ShaderGlobalsCmd(p, p->getShaderGlobals(), decls, {});
+                command->setNoMerge();
+                if (!p->getProjectCommandHistory()->addCommand(command)) {
+                    error = "the shader globals could not be applied";
+                    return false;
+                }
                 return true;
             };
             add(s);

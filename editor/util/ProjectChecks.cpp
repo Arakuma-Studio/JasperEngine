@@ -2058,7 +2058,7 @@ std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::lineTrailFind
 
             if (const LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity)) {
                 if (lines->widthMultiplier <= 0.0f) {
-                    const std::string& shader = lines->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines->customShader;
+                    const std::string& shader = lines->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines->customShader.path;
                     const std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
                     bool samples = RenderSystem::getLinesBaseTexture(lines->shaderTextures) != nullptr;
                     if (manifest && manifest->present) {
@@ -2097,6 +2097,7 @@ std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::particleFindi
             const ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity);
             if (!ps) continue;
             const std::string name = "GameObject '" + scene->getEntityName(entity) + "'";
+#if 0 // SYNC4-ABSORB(particles): upstream's version 2 Particle System checks
             if (ps->version < 2) {
                 findings.push_back({"particles", path, 0, 0, "info",
                     name + ": its Particle System uses the legacy model (version 1)", "particles-legacy",
@@ -2118,6 +2119,8 @@ std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::particleFindi
                     " particles, past the mobile budget of 5000 (the simulation runs on the CPU)", "particles-max-exceeded-budget",
                     "lower main.maxParticles (and the emission rate), or keep the system off mobile builds"});
             }
+#endif
+            (void)ps; (void)name; (void)path;
         }
     }
     return findings;

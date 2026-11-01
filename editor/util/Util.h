@@ -210,15 +210,7 @@ namespace jasperengine::editor{
             return isAnimationClipFile(path) || isVertexAnimationFile(path) || isAvatarMaskFile(path) || isAnimatorControllerFile(path);
         }
 
-        // Avatar Masks (.mask, an Animation Player layer's mask) and Animator Controllers
-        // (.controller): GUID-tracked JSON assets like .anim (anim layers spec 6.2, 11.1)
-        inline static bool isAvatarMaskFile(const std::string& path) {
-            return fileExtension(path) == ".mask";
-        }
-
-        inline static bool isAnimatorControllerFile(const std::string& path) {
-            return fileExtension(path) == ".controller";
-        }
+        // (upstream's isAvatarMaskFile / isAnimatorControllerFile: S21's above, the same extensions)
 
         // Files referenced relative to the assets directory
         inline static bool isAssetFile(const std::string& path) {

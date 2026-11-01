@@ -311,7 +311,7 @@ entities:
         }
     }
     const Collider2D& polygon = loaded.scene->scene->getComponent<Rigidbody2DComponent>(source.scene->entities[0]).colliders[0];
-    EXPECT_EQ(polygon.numVertices, 4u);
+    EXPECT_EQ(polygon.points.size(), 4u);
     EXPECT_EQ(polygon.groupIndex, -2);
 }
 

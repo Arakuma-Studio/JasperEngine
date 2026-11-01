@@ -132,6 +132,7 @@ namespace jasperengine::editor {
         // and their children (or every system of the scene: Simulate Layers all) with a fixed seed
         // so restarts repeat, and puts their action state back when it stops (the authored values,
         // edits made meanwhile included, are never touched). SceneParticleOverlay.cpp.
+#if 0 // SYNC4-ABSORB(particles): upstream's Edit-mode particle preview (SceneParticleOverlay.cpp, out of the build)
         struct ParticleOverlay {
             uint32_t sceneId = 0;
             Entity root = NULL_ENTITY;          // the selection the systems were collected from
@@ -149,6 +150,7 @@ namespace jasperengine::editor {
         void drawParticleOverlay(SceneProject* sceneProject, const ImVec2& canvasMin, const ImVec2& canvasSize);
         void startParticleOverlay(SceneProject* sceneProject);
         void stopParticleOverlay(SceneProject* sceneProject);
+#endif
 
     public:
         // The ImGui id of Prefab Mode's tab: one tab, whichever stage it shows

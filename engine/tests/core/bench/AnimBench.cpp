@@ -309,11 +309,11 @@ namespace {
             const Entity ground = node(scene, NULL_ENTITY, "Ground", Vector3(0, -0.5f, 0));
             RigidbodyComponent body;
             body.type = BodyType::STATIC;
+            body.colliders.resize(1);
             body.colliders[0].type = Collider3DType::BOX;
             body.colliders[0].width = 400.0f;
             body.colliders[0].height = 1.0f;
             body.colliders[0].depth = 400.0f;
-            body.numColliders = 1;
             scene.addComponent<RigidbodyComponent>(ground, body);
         }
         crowd->lookTarget = node(scene, NULL_ENTITY, "LookTarget", Vector3(0, 1.6f, 50.0f));
