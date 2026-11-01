@@ -101,6 +101,22 @@ struct Touch {
 };
 using TouchList = Vector<Touch>;
 
+// Fork (engine-gaps G5-1): DOM Pointer Events. The mouse is pointer 1 for all its buttons; touch and pen pointers use
+// other ids, chosen by the application, from their press to their release.
+using PointerId = int;
+static constexpr PointerId MousePointerId = 1;
+enum class PointerType : uint8_t { Mouse, Touch, Pen };
+struct PointerInput {
+	PointerId id = MousePointerId;
+	PointerType type = PointerType::Mouse;
+	Vector2f position;
+	int button = 0;            // 0 primary, 1 right, 2 middle (presses and releases)
+	int key_modifier_state = 0;
+	float pressure = -1.f;     // < 0: the DOM default (0.5 while pressed, 0 otherwise)
+	float width = 1.f;         // contact size in px
+	float height = 1.f;
+};
+
 enum class StableVectorIndex : uint32_t { Invalid = uint32_t(-1) };
 enum class TextureFileIndex : uint32_t { Invalid = uint32_t(-1) };
 

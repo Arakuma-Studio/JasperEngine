@@ -98,6 +98,7 @@ an exported build's shutdown): `onApplicationQuit` to every script, then `onDisa
 | References | After all instances of the scene exist, entity-reference properties are resolved (second pass). So in `init()` all references are valid, but the referenced script's own `init()` may not have run yet. |
 | Lifecycle | `init`, `onEnable`, `start`, ... as above. Register events in `init` (or `onEnable`, unregistering in `onDisable`). |
 | Events | Methods registered with `RegisterEngineEvent` / `RegisterEvent` are called by the engine. |
+| Coroutines, timers | `self:startCoroutine(fn)` and `self:invoke(...)` belong to the instance: deactivating the GameObject stops its coroutines (not its timers), destroying it or unloading its scene ends both (2.14). |
 | Release | After `onDestroy` (or for a GameObject never active, without it): subscriptions made through `RegisterEngineEvent`/`RegisterEvent` and `Event` listeners the instance owns are removed. |
 
 Script messages besides the lifecycle (defined methods, no registration; every script of the
@@ -105,7 +106,17 @@ GameObject that defines it gets the call, enabled or not, after the fixed step t
 
 | Method | When |
 |---|---|
+| `onCollisionEnter(self, collision)`, `onCollisionStay`, `onCollisionExit` | a collider of this GameObject's Rigidbody started / keeps / stopped touching another (`Collision`, seen from this side; 4.14.1) |
+| `onTriggerEnter(self, other)`, `onTriggerStay`, `onTriggerExit` | a trigger pair (either side a trigger / sensor): `other` is the other `Collider` |
+| `onCollisionEnter2D(self, collision)`, `...Stay2D`, `...Exit2D`, `onTriggerEnter2D(self, other)`, `...Stay2D`, `...Exit2D` | the same for Rigidbody 2D (`Collision2D`, `Collider2D`; 4.13.2) |
 | `onJointBreak2D(self, joint)` | a `Joint2D` of this GameObject, or whose bodyA is it, broke (its `breakForce` / `breakTorque` passed; `joint` still exists during the call, its `breakAction` decides what follows) |
+| `onParticleSystemStopped(self)` | a version 2 `ParticleSystem` of this GameObject with `main.stopAction = ParticleSystemStopAction.Callback` finished (stopped and its last particle gone; never in an editor preview) |
+
+The contact callbacks come once per fixed step that steps (2D first, then 3D; triggers, then
+collisions; Enter, Stay, Exit), only while the GameObject is active; a collider's `receiver`
+("Send Callbacks To") also gets them. Sleeping bodies get no Stay and no Exit; when the other side
+is destroyed, deactivated or its collider removed you still get the Exit. Rules and data:
+`jasper://docs/physics` (Collision and trigger callbacks). They cannot yield.
 
 Every instance also has (Unity's MonoBehaviour members):
 
@@ -282,8 +293,13 @@ RegisterEvent(self, self.scene:getPhysicsSystem().beginContact2D, "onBeginContac
 | same | `onBodyActivated3D`, `onBodyDeactivated3D` | `body` (Rigidbody) |
 | same | `shouldCollide3D` (return false to skip) | `bodyA, bodyB, baseOffset (Vector3), result (CollideShapeResult3D)` |
 
-Physics events are scene-wide: they fire for ANY pair of bodies. Filter in the handler, e.g.
-`if bodyA.entity == self.entity or bodyB.entity == self.entity then ... end`.
+Prefer the per-object callbacks (`onCollisionEnter`, `onTriggerEnter2D`..., 1.1): they come only
+to the GameObjects involved. These physics events are scene-wide: they fire for ANY pair of
+bodies. Filter in the handler, e.g.
+`if bodyA.entity == self.entity or bodyB.entity == self.entity then ... end`. They run on the main
+thread after the step (2D: also `stayContact2D`, `staySensorContact2D`, same arguments as the
+begin ones); 3D gets a `Contact3D` snapshot whose setters do nothing, unless
+`physicsSystem.synchronousContactEvents3D = true` (a Lua `shouldCollide3D` turns it on).
 2D contact events need "Contact Events" (sensor events: sensor + "Sensor Events", hit: "Hit
 Events") enabled on the Collider 2D (Inspector, or `body.shapeContactEvents = true`,
 `body.shapeSensorEvents = true`, `body.shapeEnableHitEvents = true`).
@@ -406,6 +422,57 @@ Mass: `self.body:getMass()` (method, kg). To get a target acceleration `a` in po
 3D equivalent: `local rb = Rigidbody(self.scene, self.entity)`; in `onFixedUpdate`:
 `rb:applyForce(Vector3(0, 10, 0))`; mass is a property: `rb.mass`.
 
+
+### 1.7 UI pointer callbacks (Unity's EventSystem)
+
+The component UI (RectTransform elements with an Image) sends Unity's pointer messages to scripts
+by method name, `e` a `PointerEventData`. Each finger and mouse button is its own pointer: two
+fingers press two buttons, lifting one releases only its own. A message goes to the element under
+the pointer, else its first ancestor whose script defines the method (ExecuteHierarchy).
+
+| Method | When |
+|---|---|
+| `onPointerEnter(e)` / `onPointerExit(e)` | the pointer comes over / leaves the element or a child (every GameObject on the way gets it; a finger enters on its down and leaves with its up) |
+| `onPointerDown(e)` / `onPointerUp(e)` | pressed; released or cancelled (`e.canceled`): the up goes to the GameObject that got the down |
+| `onPointerClick(e)` | released over the pressed GameObject without a drag (`e.clickCount`: 2 for a double click within 0.3 s) |
+| `onInitializePotentialDrag(e)` | on the down, to the drag handler (set `e.useDragThreshold = false` to start the drag at once) |
+| `onBeginDrag(e)`, `onDrag(e)`, `onEndDrag(e)` | past 4 px; each move; the release or cancel |
+| `onDrop(e)` | released while dragging, to the handler under the pointer (`e.pointerDrag` is what was dragged) |
+| `onScroll(e)` | the wheel over it (`e.scrollDelta`) |
+
+`PointerEventData` (read-only unless noted): `pointerId` (-1 / -2 / -3 the mouse's left / right /
+middle button, a finger's `Touch.fingerId`), `button` (`Input.MOUSE_BUTTON_*`), `isTouch`,
+`position`, `delta`, `pressPosition` (canvas px, y down, as `Input.getMousePosition`),
+`localPosition` (the receiving element's own), `uiPosition`, `uiDelta`, `scrollDelta`,
+`clickCount`, `clickTime`, `dragging`, `eligibleForClick`, `canceled`, `useDragThreshold` (rw),
+`used`, `use()` (a used down is not handled by the built-in Button, Panel, Scrollbar and
+InputField), and the GameObjects (or nil) `pointerEnter`, `pointerPress`, `rawPointerPress`,
+`pointerDrag`, `target` (the one receiving the call).
+
+```lua
+---@class Slot : ScriptInstance
+local Slot = {}
+function Slot:onBeginDrag(e) self.start = self.gameObject.position end
+function Slot:onDrag(e) local p = self.gameObject.position; self.gameObject.position = Vector3(p.x + e.delta.x, p.y + e.delta.y, p.z) end
+function Slot:onDrop(e) Log.print(e.pointerDrag.name .. " dropped on " .. self.gameObject.name) end
+return Slot
+```
+
+- The right and middle mouse buttons reach these callbacks (`e.button`); Button, Panel, Scrollbar
+  and InputField react to the left button and fingers only.
+- A press ends cancelled (`onPointerUp` with `e.canceled`, `onEndDrag`, no click, no drop) when the
+  touch is cancelled, released outside the canvas, the app pauses or loses focus, or the pressed
+  element is deactivated or disabled (`Button.disabled` too).
+- The legacy component events (`ui.onPointerDown(x, y)`, `onClick`, `onDrag`...) still fire per
+  pointer, on the element the pointer pressed only; `ui:getPointerEventData()` gives the event of
+  the one running. A method subscribed with `RegisterEvent` to such an event (the old pattern) is
+  not also called with `e` under the same name while subscribed.
+- `Input.isPointerOverUI([pointerId])`: the pointer (none: the mouse or any finger) is over UI that
+  takes it, or a press there holds it; check it before world clicks (Unity's
+  `EventSystem.IsPointerOverGameObject`).
+- C++ scripts override `onPointerDown(PointerEventData& e)` ... on `ScriptBase`.
+- Gestures (pinch, rotate) are two pointers: keep each finger's `position` by `pointerId`.
+
 ---
 
 ## 2. Globals and singletons
@@ -414,10 +481,12 @@ Mass: `self.body:getMass()` (method, kg). To get a target acceleration `a` in po
 
 | Name | Kind | Notes |
 |---|---|---|
-| `deltatime` | ro | seconds since last frame (clamped, times `timeScale`). Same value inside `onFixedUpdate`. |
-| `updateTime` | rw | fixed step in seconds (default 1/60). Also `Engine.setUpdateTimeMS(ms)` |
+| `deltatime` | ro | seconds since last frame (clamped, times `timeScale`). Same value inside `onFixedUpdate` (`Time.deltaTime` gives the fixed step there, 2.13). |
+| `unscaledDeltatime`, `unscaledTime` | ro | the frame delta before `timeScale` (0 while paused or held) and its sum: `Time.unscaledDeltaTime` / `Time.unscaledTime` |
+| `maxDeltatime` | rw | cap of a frame's delta (default 0.25 s; values <= 0 are ignored with a warning): `Time.maximumDeltaTime` |
+| `updateTime` | rw | fixed step in seconds (default 1/60), Unity's `Time.fixedDeltaTime`. Also `Engine.setUpdateTimeMS(ms)` |
 | `timeScale` | rw | game speed (Unity's `Time.timeScale`): scales the frame delta, physics steps, actions, animations, tweens, particles. 1 = real time, 0 = frozen (frames still draw, `onUpdate` runs with delta 0). Clamped to [0, 100] |
-| `fixedDeltatime` | rw | when > 0, every frame advances exactly this many seconds (before `timeScale`) whatever the wall clock measured: reproducible runs. 0 (default) = measured frame time |
+| `fixedDeltatime` | rw | when > 0, every frame advances exactly this many seconds (before `timeScale`) whatever the wall clock measured: reproducible runs. 0 (default) = measured frame time. NOT the fixed step (that is `updateTime`): Unity's `Time.captureDeltaTime` |
 | `gameTime` | ro | scaled seconds the update loop has run since start (not while paused or held) |
 | `frameCount` | ro | frames the update loop has run since start (not while paused or held) |
 | `interpolationAlpha` | ro | fixed-step interpolation factor: how far the frame is between the last fixed step and the next (bodies are drawn this far from their pose before the last step) |
@@ -486,6 +555,7 @@ Unity-style polling with edges, touches and input actions (details: `jasper://do
 | `Input.getPressedControl()` | string or nil: the first control pressed this frame (`"space"`, `"mouse_left"`, `"gamepad_a"`, `"left_x+"`) |
 | `Input.touchCount`, `Input.touches` (properties), `Input.getTouch(index)` (0-based), `Input.getTouchById(fingerId)` | Unity's touches this frame (ended/cancelled ones included in their last frame): `Touch` or nil |
 | `Input.multiTouchEnabled` (rw, default true), `Input.touchSupported` | false: only the first finger is reported / `System.isTouchDevice()` |
+| `Input.isPointerOverUI([pointerId])` | bool: the pointer (-1 the mouse, a finger's `fingerId`; none: the mouse or any finger) is over UI that takes events (component UI or HTML content) or held by it (1.7) |
 | `Input.getAxis(name)`, `Input.getAxisRaw(name)` | number: the input action's smoothed / raw value (-1..1, button 0..1; mouse movement unclamped) |
 | `Input.getButton(name)`, `getButtonDown(name)`, `getButtonUp(name)` | bool |
 | `Input.getVector(xName, yName)` | `Vector2`, length <= 1 |
@@ -943,6 +1013,7 @@ Entities are plain integers (`0` = none).
 | `Physics2D.raycastAll(...)` | same args -> table of `RayReturn` |
 | `Physics.raycast(scene, origin, direction, maxDistance [, mask])`, `Physics.raycastAll(...)` | 3D, Vector3 origin/dir |
 | `ignoreLayerCollision(l1, l2 [, ignore=true])`, `getIgnoreLayerCollision(l1, l2)`, `getLayerCollisionMask(l)`, `setLayerCollisionMask(l, mask)`, `resetLayerCollisionMatrix()` | on both `Physics` and `Physics2D` |
+| `ignoreCollision(a, b [, ignore=true])`, `getIgnoreCollision(a, b)` | on both: two GameObjects / bodies (3D: Rigidbody, 2D: Rigidbody 2D) of one scene never collide; runtime only. Error if one has no body of that dimension |
 | `ALL_LAYERS`, `DEFAULT_RAYCAST_LAYERS`, `IGNORE_RAYCAST_LAYER` | static props on both |
 | `Physics.debugDraw`, `Physics.debugDrawContacts` | rw static bools: draw the colliders and joints (and contact points) of every playing scene, 3D and 2D (the Game view's Physics toggle) |
 
@@ -1024,8 +1095,137 @@ Values outlive scene loads (like Unity). A material or component parameter can f
 `Color.linearTosRGB(...)`, `Color.sRGBToLinear(...)`: accept `Vector3`, `Vector4`, `(r,g,b)`
 or `(r,g,b,a)`.
 
-No timer API is bound: accumulate `Engine.deltatime` in `self`, or use
-`GameObject.destroy(obj, delay)` for delayed destruction, or Tweens/Actions.
+### 2.13 Time (static, Unity's Time)
+
+The game clocks under their Unity names. `Engine.deltatime` and the other `Engine` names stay;
+prefer `Time` in new code: its names are Unity's and they avoid the `Engine.updateTime` /
+`Engine.fixedDeltatime` trap.
+
+| Name | Kind | Notes |
+|---|---|---|
+| `deltaTime` | ro | game seconds of this frame (times `timeScale`); inside `onFixedUpdate` (a fixed step) the fixed step `fixedDeltaTime` |
+| `unscaledDeltaTime` | ro | the frame delta before `timeScale` (runs at time scale 0: pause menus); inside a fixed step `fixedUnscaledDeltaTime`; 0 while the app or the editor's Play is paused |
+| `fixedDeltaTime` | rw | game seconds per fixed step (physics, `onFixedUpdate`), default 1/60 |
+| `fixedUnscaledDeltaTime` | ro | `fixedDeltaTime / timeScale` (0 at time scale 0) |
+| `time` | ro | game seconds since start (inside a fixed step, `fixedTime`) |
+| `fixedTime` | ro | sum of the fixed steps run (inside a step: the time at its start) |
+| `unscaledTime` | ro | sum of `unscaledDeltaTime` |
+| `realtimeSinceStartup` | ro | wall clock seconds since the engine started (pauses included) |
+| `timeSinceLevelLoad` | ro | game seconds since the last `SceneManager.loadScene` (or Play start) |
+| `frameCount` | ro | frames the update loop has run |
+| `timeScale` | rw | game speed, [0, 100]: scales the frame delta, physics, actions, tweens, animations, particles, `Coroutine.wait` and timers (not `waitRealtime`, unscaled timers, audio, HTML UI) |
+| `maximumDeltaTime` | rw | cap of a frame's delta (default 0.25; values <= 0 are ignored with a warning) |
+| `captureDeltaTime` | rw | when > 0 every frame advances exactly this many seconds (before `timeScale`); 0 = measured frames |
+| `smoothDeltaTime` | ro | exponential average of `deltaTime` |
+| `inFixedTimeStep` | ro | true inside `onFixedUpdate`, the physics step and the coroutines waiting for it |
+
+| Old name | `Time` name |
+|---|---|
+| `Engine.deltatime` | `Time.deltaTime` (but the frame delta inside `onFixedUpdate` too) |
+| `Engine.updateTime` | `Time.fixedDeltaTime` (the fixed step) |
+| `Engine.fixedDeltatime` | `Time.captureDeltaTime` (a fixed frame delta, NOT the fixed step) |
+| `Engine.timeScale` | `Time.timeScale` |
+| `Engine.gameTime` | `Time.time` |
+| `Engine.frameCount` | `Time.frameCount` |
+| `Engine.unscaledDeltatime`, `Engine.unscaledTime` | `Time.unscaledDeltaTime`, `Time.unscaledTime` |
+| `Engine.maxDeltatime` | `Time.maximumDeltaTime` |
+| `Engine.systemTime` | `Time.realtimeSinceStartup` (from engine start, not an absolute clock) |
+
+### 2.14 Coroutines and timers (Coroutine, Timer, self:startCoroutine, self:invoke)
+
+Engine coroutines are Lua functions the engine resumes: a wait helper suspends the running one
+until its condition holds, then it continues on a later frame (Unity's `StartCoroutine` /
+`yield return`). Lua yields through plain calls, so helpers compose (`self:moveTo(p)` may wait).
+
+```lua
+function Spawner:init()
+    self.loop = self:startCoroutine(function()
+        Coroutine.wait(2)                         -- WaitForSeconds(2): game time
+        while true do
+            self:spawn()
+            Coroutine.wait(self.interval)
+        end
+    end)
+    self:invokeRepeating("blink", 1, 0.5)          -- InvokeRepeating("blink", 1, 0.5)
+end
+function Spawner:openDoor()                        -- `yield return StartCoroutine(Open())`
+    self:startCoroutine(function()
+        local ok = Coroutine.waitFor(self:startCoroutine(self.animateOpen, self))
+        Coroutine.waitUntil(function() return self.player.ready end, 5)   -- false after 5 s
+    end)
+end
+```
+
+| Script instance method | What it does |
+|---|---|
+| `self:startCoroutine(fn, ...)` / `self:startCoroutine("method", ...)` | runs `fn(...)` (or `self:method(...)`) in a new coroutine owned by this script, now until its first wait, and returns its `Coroutine`. Raises when the GameObject is inactive or the method is missing; allowed on a disabled script. An error inside is logged with the coroutine's traceback (the handle gets status `"error"`), never raised in the caller |
+| `self:stopCoroutine(co)` / `self:stopCoroutine("method")` | stops that coroutine (it must be this script's) / every coroutine of this script started with that method name; ended or unknown: nothing |
+| `self:stopAllCoroutines()` | every coroutine this script started (no other script's) |
+| `self:invoke(fn, delay [, unscaled])` / `self:invoke("method", delay [, unscaled])` | calls `fn()` / `self:method()` once after `delay` seconds; returns a `Timer`. A missing method is logged once when it fires |
+| `self:invokeRepeating(fnOrName, delay, interval [, unscaled])` | first after `delay`, then every `interval` (> 0) seconds |
+| `self:cancelInvoke([timerOrName])` | no argument: every timer of this script; a method name: its timers; a Timer: that one |
+| `self:isInvoking([timerOrName])` | a matching timer is pending |
+
+| Wait helper (inside an engine coroutine) | Resumes | Returns |
+|---|---|---|
+| `Coroutine.wait(seconds)` | after `seconds` of game time (scaled; never at `timeScale` 0; <= 0: next frame) | elapsed game seconds |
+| `Coroutine.waitRealtime(seconds)` | after unscaled seconds (runs at time scale 0) | elapsed unscaled seconds |
+| `Coroutine.nextFrame()` (= `coroutine.yield()`) | next frame (Unity's `yield return null`) | nothing |
+| `Coroutine.waitFrames(n)` | after `n` frames (n >= 1) | nothing |
+| `Coroutine.waitForFixedUpdate()` | after the next fixed step's physics (none at time scale 0) | nothing |
+| `Coroutine.waitForEndOfFrame()` | after this frame's draw | nothing |
+| `Coroutine.waitUntil(pred [, timeout [, unscaled]])` | when `pred()` is truthy, checked every frame | `true`, or `false` on timeout |
+| `Coroutine.waitWhile(pred [, timeout [, unscaled]])` | when `pred()` is falsy | same |
+| `Coroutine.waitFor(x)` (= `coroutine.yield(x)`) | when `x` is done | see below |
+
+`waitFor(x)`: a `Coroutine` -> `true, ...what it returned` / `false, error` (`false, "stopped"`),
+at once when it already ended; a `Timer` -> `true` when it fired, `false` when cancelled (an
+endless `every` raises "never done"); a Tween or any Action, an `AudioSource`, an
+`AnimationPlayer` -> `true` when stopped / not playing, `false` when its GameObject is gone; an
+anime animation or timer -> `true` completed, `false` cancelled; anything else with an
+`isDone()` method (the HTTP request handle) -> `true, x` once `x:isDone()` is truthy.
+
+Statics: `Coroutine.start(fn, ...)` (unowned: survives scene loads, ends at Play stop; for
+`require`d modules and HTML UI document scripts), `Coroutine.running()` (the handle or nil),
+`Coroutine.isInside()`. A `Coroutine` handle: `status` (`"running"`, `"suspended"`,
+`"finished"`, `"stopped"`, `"error"`), `error` (string with traceback, or nil), `owner` (the
+script instance or nil), `id`, `isDone()`, `stop()`. Lua's own `coroutine` library is untouched:
+`coroutine.wrap` generators work inside engine coroutines (the wait helpers do not, inside them);
+`coroutine.resume` of an engine coroutine (`coroutine.running()` inside one) is refused with an error
+and the engine ends it. Two coroutines waiting for each other (`waitFor`) raise "they would wait for
+each other forever".
+
+Timers outside scripts: `Timer.after(delay, fn [, opts])` and `Timer.every(interval, fn [, opts])`,
+`opts = {unscaled = bool, owner = self, delay = firstDelay (every), count = n (every)}`; `every`
+passes the Timer to `fn` and returning `false` cancels it. A `Timer`: `cancel()`, `isDone()`,
+`remaining` (seconds to the next call), `interval` (0 for a one-shot), `unscaled`, `id`. Timers
+count seconds (scaled by default), fire at most once a frame (a late repeat is rescheduled from
+now, no catch-up burst) and run after `onUpdate`. HTML UI animation timing stays
+`anime.createTimer` (milliseconds, the UI clock); for gameplay use `self:invoke` / `Timer.after`.
+
+Frame order: fixed steps (`onFixedUpdate`, physics, then the coroutines waiting
+`waitForFixedUpdate`), `onUpdate`, then timers and the coroutines whose wait is over (seconds,
+frames, predicates, `waitFor`; in the order they were started), the scenes' update,
+`onPostUpdate`, destroys, the draw, then the coroutines waiting `waitForEndOfFrame`. Every wait
+resumes on a later frame, except `waitForEndOfFrame` (same frame) and a `waitFor` of an ended
+coroutine (at once).
+
+Lifetime:
+
+| Event | Coroutines of the script | Its timers | Unowned (`Coroutine.start`, `Timer.after`) |
+|---|---|---|---|
+| `self.enabled = false` (script disabled) | continue | continue | - |
+| GameObject (or a parent) deactivated | stopped (to-be-closed variables close) | continue | - |
+| GameObject destroyed, scene unloaded (`loadScene`), Play stop | stopped | cancelled | continue on loads; end at Play stop |
+| `Time.timeScale = 0` | scaled waits wait | scaled timers wait | same |
+| App in background, editor Play paused | nothing runs, no clock advances (realtime too) | same | same |
+
+A coroutine that stops itself (`self:stopAllCoroutines()`, `Coroutine.running():stop()`) runs
+on to its next wait, which ends it. Errors read `Lua coroutine error in Spawner (GameObject
+'Spawner', scene 'Level1'), started at Spawner.lua:12: ... stack traceback: ...` (timers:
+`Lua timer error in ..., created at ...`). In the editor such an error stops Play, like an
+error in an event callback ("Script crash" in the Console). MCP `get_runtime_entity` lists each
+script's coroutines (what each waits for) and timers; `get_play_state` has the totals.
 
 ### 2.13 Http (static, HTTP(S) requests)
 
@@ -1561,6 +1761,12 @@ UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example)
 | `Scrollbar` (Image) | `type` (`ScrollbarType.*`), `barSize`, `step`, `barColor`, `barAlpha` | `getScrollbarComponent()`, `setBarTexture(path)` |
 | `Progressbar` (Image) | `type`, `value` (0..1), `fillColor`, `fillAlpha` | `getProgressbarComponent()`, `setFillTexture(path)` |
 | `InputField` (Image) | `text`, `disabled`, `textColor`, `textFont`, `fontSize`, `maxTextSize`, `placeholder`, `placeholderColor`, `password`, `passwordChar`, `cursorIndex`, `cursorColor`, `selectionColor`, `cursorBlink`, `cursorWidth` | `getInputFieldComponent()`, `getTextObject()`, `setSelection(...)` |
+| `OnScreenStick` (Image) | `enabled`, `mode` (`OnScreenStickMode.*`), `background`, `handle` (entities), `handleRange`, `deadZone`, `moveThreshold`, `axes` (`OnScreenStickAxes.*`), `snapX`, `snapY`, `hideWhenReleased`, `clampToArea`, `horizontalAction`, `verticalAction`, `visibility`; ro `value` (Vector2, y up), `pressed`, `pointerId`; events `onValueChanged(x, y)`, `onPress`, `onRelease` | `getOnScreenStickComponent()` |
+| `OnScreenButton` (Image) | `enabled`, `action`, `value`, `pressWhenPointerEnters`, `releaseWhenPointerLeaves`, `visibility`; ro `pressed`; events `onPress`, `onRelease` | `getOnScreenButtonComponent()` |
+| `TouchArea` (Image) | `enabled`, `horizontalAction`, `verticalAction`, `sensitivity`, `invertX`, `invertY`, `visibility`; ro `delta` (this frame, canvas px), `pressed`, `pointerId`; event `onDrag(dx, dy)` | `getTouchAreaComponent()` |
+
+The three on-screen controls feed input actions (`jasper://docs/input` 4.1); wrapping a GameObject
+without the component adds it.
 
 Component structs returned by `get*Component()` expose the event objects of section 1.3 and
 some raw fields (`ButtonComponent.pressed`, `hovered` ro; `disabled` rw;
@@ -1696,6 +1902,22 @@ joint.maxMotorTorque = 10000
 function Car:onJointBreak2D(joint) Log.print("snap") end
 ```
 
+### 4.13.2 Collision2D, ContactPoint2D, Collider2D (the 2D callbacks' values, read-only)
+
+| Class | Members |
+|---|---|
+| `Collision2D` | `gameObject`, `collider`, `rigidbody` (the other side's), `thisCollider`, `thisRigidbody`, `otherCollider` / `otherRigidbody` (**this** side: Unity's names), `relativeVelocity` (Vector2, points/s, other minus this; Enter: before the step), `enabled`, `contactCount`, `getContact(i)`, `contacts` |
+| `ContactPoint2D` | `point`, `normal` (toward this one), `separation` (points), `normalImpulse`, `tangentImpulse`, `relativeVelocity`, `thisCollider`, `otherCollider` |
+| `Collider2D` | `gameObject`, `rigidbody` / `attachedRigidbody`, `index`, `type` (`Collider2DType`), `isTrigger` (sensor), `tag`, `compareTag(tag)`, `receiver`, `isValid()` |
+
+```lua
+function UpsideDown:onCollisionEnter2D(c)
+    if c.gameObject.tag == "Ground" and c.thisCollider.index == self.detectorCollider then
+        self.game:gameOver()
+    end
+end
+```
+
 ### 4.14 Rigidbody (EntityHandle) - 3D physics (Jolt)
 
 | Member | Kind | Notes |
@@ -1725,9 +1947,20 @@ function Car:onJointBreak2D(joint) Log.print("snap") end
 | `setAllowedDOFsAll()`, `setAllowedDOFs2DPlane()`, `setAllowedDOFs(...)`, `setOverrideMassAndInertia(...)` | methods | |
 | `getPointVelocity(p)`, `getAccumulatedForce()`, `getCenterOfMassPosition()` | methods | |
 
-`Contact3D`: `getWorldSpaceNormal()`, `getPenetrationDepth()`, `getBaseOffset()`,
-`getColliderIndex1()`, `getColliderIndex2()`, rw `combinedFriction`,
+`Contact3D` (global events): `getWorldSpaceNormal()`, `getPenetrationDepth()`, `getBaseOffset()`,
+`getColliderIndex1()`, `getColliderIndex2()`, `getRelativeContactPointsOnA(i)` / `OnB(i)`,
+`numContactPoints`, `snapshot` (true after the step: setters do nothing), rw `combinedFriction`,
 `combinedRestitution`, `sensor`.
+
+### 4.14.1 Collision, ContactPoint, Collider (the 3D callbacks' values, read-only)
+
+| Class | Members |
+|---|---|
+| `Collision` | `gameObject`, `rigidbody`, `collider` (the other side's), `thisCollider`, `thisRigidbody`, `impulse` (Vector3, estimated N s on this body), `relativeVelocity` (Vector3, other minus this), `contactCount`, `getContact(i)` (0-based, error out of range), `contacts` (new 1-based table each read) |
+| `ContactPoint` | `point`, `normal` (from the other collider toward this one), `separation` (< 0 penetrating), `impulse`, `thisCollider`, `otherCollider` |
+| `Collider` | `gameObject`, `rigidbody` / `attachedRigidbody`, `index`, `type` (`Collider3DType`), `isTrigger`, `tag`, `compareTag(tag)`, `receiver` (GameObject or nil), `isValid()`; `==` compares GameObject and index |
+
+Values are copies taken at the step (safe to keep); a GameObject gone since reads as nil.
 
 **Joint3D** (EntityHandle; `go:getJoint3D()`, `Joint3D(scene, entity)`, `Joint3D(scene)` a new
 GameObject): rw `enabled`, `type` (`Joint3DType.*`), `bodyA`, `bodyB` (alias `connectedBody`;
@@ -1816,7 +2049,66 @@ offsets (`relative` does not apply to it).
 `Ease(EaseType.X)` / `Ease.linear(t)`, `Ease.easeInQuad(t)`, `Ease.easeOutQuad(t)`,
 `Ease.easeInOutQuad(t)`, ... `Ease.easeOutBounce(t)` (static helpers, t in 0..1).
 
-### 4.16 ParticleSystem (Action) - partial
+### 4.16 ParticleSystem (Action)
+
+Unity's ParticleSystem (version 2, the module model; [particles.md](particles.md) has the
+modules, render modes, costs and the Unity importer). `GameObject > Effects > Particle System`,
+`create_particles` and the importer make version 2 systems; older scenes keep version 1 (the
+legacy model, below) until upgraded.
+
+```lua
+local ps = self.gameObject:getParticleSystem()   -- nil without one (GetComponent<ParticleSystem>)
+ps.emission.rateOverTime = 0                     -- the modules are live views
+local main = ps.main
+main.startLifetime = MinMaxCurve(0.8, 1.0)       -- random between two constants
+main.startColor = MinMaxGradient(Vector4(1, 0.5, 0, 1))   -- colours sRGB, as the pickers
+ps:play()                                        -- with children (play(false): only this one)
+ps:emit(10)                                      -- now, also while stopped
+if ps:isPlaying() then print(ps.particleCount, ps.time) end
+ps:stop(true, ParticleSystemStopBehavior.StopEmittingAndClear)
+```
+
+Control (children included unless `withChildren` is false; a version 1 system keeps the Action
+behaviour): `play([withChildren])`, `stop([withChildren], [ParticleSystemStopBehavior])`
+(`StopEmitting`: the particles live out, `StopEmittingAndClear`: gone now), `pause([withChildren])`,
+`clear([withChildren])`, `emit(count)` -> spawned, `simulate(t, [withChildren], [restart=true])`
+(advances t seconds, then paused, as Unity's Simulate), `isPlaying()`, `isPaused()`,
+`isStopped()`, `isEmitting()`, `isAlive([withChildren])` (methods, as Action's; Unity's are
+properties). rw `time` (the clock in the cycle), `randomSeed`, `useAutoRandomSeed`,
+`useUnscaledTime`, `version` (1 -> 2 upgrades); r `particleCount`. `upgrade([force])` converts a
+version 1 system and returns `{upgraded, items = {{field, status, message, maxError}, ...}}`
+(status `exact`, `approximated` or `dropped`). `ParticleSystem(scene)` makes a version 1 system,
+`ParticleSystem(scene, true)` a version 2 one on a new GameObject with the default quad.
+`play()` and `stop()` change the system at once; `onStart` / `onStop` of the Action follow at the
+next update. `GameObject:getParticleSystemsInChildren()` lists the GameObject's and its
+children's systems in hierarchy order. A script method `onParticleSystemStopped()` on the
+system's GameObject runs when it stops with `main.stopAction = ParticleSystemStopAction.Callback`.
+
+Modules (`ps.main`, `ps.emission`, `ps.shape`, `ps.velocityOverLifetime`,
+`ps.limitVelocityOverLifetime`, `ps.inheritVelocity`, `ps.forceOverLifetime`,
+`ps.colorOverLifetime`, `ps.colorBySpeed`, `ps.sizeOverLifetime`, `ps.sizeBySpeed`,
+`ps.rotationOverLifetime`, `ps.rotationBySpeed`, `ps.noise`, `ps.textureSheetAnimation`,
+`ps.renderer`): every field by its Unity name (the full list: [particles.md](particles.md#fields)).
+A MinMaxCurve field takes a number, a `MinMaxCurve` or an `AnimationCurve`; reading gives a
+`MinMaxCurve` copy (assign it back after editing). `<field>Multiplier` (`rateOverTimeMultiplier`,
+`startLifetimeMultiplier`, ...) reads and writes the constant / multiplier. A colour field takes
+a `Vector4` / `Vector3` (sRGB), a `Gradient` or a `MinMaxGradient`. Enum fields take the enum
+values (`ParticleSystemShapeType.Cone`) or their names (`"Cone"`). Angles and angular speeds
+are radians. Bursts: `ps.emission:setBursts({{time = 0, count = 10, cycles = 1, interval = 0.01,
+probability = 1}, ...})`, `getBurst(i)` / `setBurst(i, burst)` (0-based, as Unity), `burstCount`.
+Writing a module field of a version 1 system is an error naming `upgrade()`.
+
+`MinMaxCurve(v)`, `MinMaxCurve(min, max)`, `MinMaxCurve(multiplier, curve)`,
+`MinMaxCurve(multiplier, curveMin, curveMax)`: rw `mode` (`ParticleSystemCurveMode.Constant`,
+`Curve`, `TwoCurves`, `TwoConstants`), `constant`, `constantMin`, `constantMax`, `curve`,
+`curveMin`, `curveMax`, `curveMultiplier`; `evaluate(t [, random01])`.
+`MinMaxGradient(color)`, `MinMaxGradient(colorMin, colorMax)`, `MinMaxGradient(gradient)`,
+`MinMaxGradient(gradientMin, gradientMax)` (colours sRGB): rw `mode`
+(`ParticleSystemGradientMode.Color`, `Gradient`, `TwoColors`, `TwoGradients`, `RandomColor`),
+`color`, `colorMin`, `colorMax` (sRGB), `gradient`, `gradientMin`, `gradientMax`;
+`evaluate(t [, random01])` (linear RGBA).
+
+#### Version 1 (legacy)
 
 rw: `enabled`, `rate`, `maxPerUpdate`, `emitter`, `loop`, `localSpace`, `emitterShape`
 (`ParticleEmitterShape.*`). Methods: `reset()`, `addBurst(time, count)` / `addBurst(time, minCount, maxCount)`,
@@ -1827,6 +2119,9 @@ rw: `enabled`, `rate`, `maxPerUpdate`, `emitter`, `loop`, `localSpace`, `emitter
 `setSizeInitializer(...)`, `setRotationInitializer(...)`, `setScaleInitializer(...)`, and
 `set*Modifier(fromTime, toTime, from, to [, EaseType])` for Position/Velocity/Acceleration/
 Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause()`.
+On a version 2 system these legacy setters set the module fields they map to (as the upgrade
+does), with one deprecation warning each; the position modifier and `emitter` /
+`maxPerUpdate` have no module equivalent and do nothing there.
 Component: `getParticleSystemComponent()` (the old misspelt `getParticlesomponent()` still works, deprecated).
 
 ### 4.17 FluidSimulation (GameObject)
@@ -2065,7 +2360,25 @@ use the methods. Physics colliders keep the rest shape.
 | `CanvasGroupRenderMode` | `PER_ELEMENT`, `FLATTEN` |
 | `AlphaTweenTarget` | `AUTO`, `COLOR`, `CANVAS_GROUP` |
 | `ScrollbarType`, `ProgressbarType` | `VERTICAL`, `HORIZONTAL` |
+| `OnScreenStickMode` | `FIXED`, `FLOATING`, `DYNAMIC` |
+| `OnScreenStickAxes` | `BOTH`, `HORIZONTAL`, `VERTICAL` |
+| `OnScreenVisibility` | `ALWAYS`, `TOUCH_DEVICES_ONLY` |
 | `ParticleEmitterShape` | `Box`, `Sphere`, `Hemisphere`, `Circle`, `Cone` |
+| `ParticleSystemShapeType` | `Sphere`, `Hemisphere`, `Cone`, `ConeVolume`, `Box`, `BoxShell`, `BoxEdge`, `Circle`, `Edge`, `Rectangle`, `Donut` |
+| `ParticleSystemCurveMode` | `Constant`, `Curve`, `TwoCurves`, `TwoConstants` |
+| `ParticleSystemGradientMode` | `Color`, `Gradient`, `TwoColors`, `TwoGradients`, `RandomColor` |
+| `ParticleSystemSimulationSpace` | `Local`, `World` |
+| `ParticleSystemScalingMode` | `Hierarchy`, `Local`, `Shape` |
+| `ParticleSystemStopAction` | `None`, `Disable`, `Destroy`, `Callback` |
+| `ParticleSystemStopBehavior` | `StopEmittingAndClear`, `StopEmitting` |
+| `ParticleSystemRenderMode` | `Billboard`, `Stretch`, `HorizontalBillboard`, `VerticalBillboard`, `Mesh` |
+| `ParticleSystemSortMode` | `None`, `Distance`, `OldestInFront`, `YoungestInFront` |
+| `ParticleSystemRenderSpace` | `View`, `World`, `Local`, `Facing`, `Velocity` |
+| `ParticleSystemShapeMultiModeValue` | `Random`, `Loop`, `PingPong`, `BurstSpread` |
+| `ParticleSystemInheritVelocityMode` | `Initial`, `Current` |
+| `ParticleSystemAnimationMode` / `Type` / `RowMode` / `TimeMode` | `Grid`, `Sprites` / `WholeSheet`, `SingleRow` / `Custom`, `Random` / `Lifetime`, `Speed`, `FPS` |
+| `ParticleSystemGravitySource` | `Physics3D`, `Physics2D` |
+| `ParticleSystemEmitterVelocityMode` | `Transform`, `Rigidbody` |
 | `FogType` | `LINEAR`, `EXPONENTIAL`, `EXPONENTIALSQUARED` |
 | `RotationOrder` | `XYZ`, `XZY`, `YXZ`, `YZX`, `ZXY`, `ZYX` |
 | `RayFilter` | `BODY_2D`, `BODY_3D`, `BOUNDS` |
@@ -2156,7 +2469,8 @@ Rigidbody wrappers by index.
    use radians: convert with `math.rad`/`math.deg` or `Angle.degToRad`/`Angle.radToDeg`.
 9. **Forces in `onFixedUpdate`, without deltatime.** Forces are applied per physics step;
    do not multiply by `Engine.deltatime` (which is the frame delta even inside
-   `onFixedUpdate`; the fixed step is `Engine.updateTime`). Impulses are one-off and can be
+   `onFixedUpdate`; the fixed step is `Engine.updateTime`, `Time.fixedDeltaTime`, and
+   `Time.deltaTime` is the fixed step there). Impulses are one-off and can be
    applied anywhere. 2D forces/impulses are in Box2D units (kg, meters); positions and
    velocities read/written through Rigidbody2D are in points (`pointsToMeterScale`, default 64).
 10. **Pass every argument.** LuaBridge ignores C++ default arguments. A missing trailing
@@ -2179,8 +2493,11 @@ Rigidbody wrappers by index.
     state; "pressed this frame" is `Input.getKeyDown`, `getMouseButtonDown`, `getButtonDown`
     (read edges in `onUpdate`: every fixed step of a frame sees them). Prefer input actions
     (`Input.getAxis("Horizontal")`) to raw keys: they add the gamepad and on-screen controls.
-16. **Physics events are global** for the scene: compare `bodyA.entity` / `bodyB.entity`
-    with `self.entity`. 2D contact events require the per-collider event flags.
+16. **Per-object contact callbacks** (`onCollisionEnter`, `onTriggerEnter2D`...) need no flag and
+    come only to the GameObjects involved; the global events (`beginContact2D`,
+    `onContactAdded3D`...) fire for every pair of the scene (compare `bodyA.entity` /
+    `bodyB.entity` with `self.entity`) and 2D ones need the collider's event flags. A filter that
+    was a Lua `shouldCollide3D` is `Physics.ignoreCollision(a, b)` (or layers) now.
 17. **Unassigned references are `nil`**: an entity-reference or Prefab property not set in
     the Inspector is `nil`; guard (`if self.target then ... end`).
 18. **Scripts by class name, not `getComponent`**: `go:getScript("Enemy")` (same GameObject:
@@ -2208,7 +2525,7 @@ Rigidbody wrappers by index.
     empty object. A table with `nil` in the middle is not an array (`{1, nil, 3}` encodes as an
     object `{"1":1,"3":3}`): store `Json.null` to keep a place. `Json.decode` gives integers for
     `1` and floats for `1.0`; compare JSON nulls with `Json.null`, never `nil`.
-26. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
+28. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
     Android); `File.*` and `Json.*File` return `nil, message` on file problems instead of
     raising: check the first result. On Web, Lua `io` writes need `System.syncFileSystem()`.
 27. **`self.enabled` and the reserved names**: `self.enabled = false` disables the script
@@ -2223,3 +2540,14 @@ Rigidbody wrappers by index.
     for a persistent manager, or keep shared state in a `require`d module table.
 30. **After `DontDestroyOnLoad`**, wrappers of the object kept outside the script's own fields
     name the old scene once it moved: use `self.gameObject` or wrap again (2.8.1).
+31. **Event handlers cannot wait.** `onUpdate`, input events, `init`, `onEnable`, `onDisable`
+    and `onDestroy` are called from C: `Coroutine.wait` there raises "not inside an engine
+    coroutine" (`start` may wait: it runs as a coroutine). Start a coroutine
+    (`self:startCoroutine(function() ... end)`). Waits inside a `table.sort` comparator, a
+    metamethod or another C callback raise too ("waits cannot cross a C function").
+32. **Realtime stops when paused.** `Coroutine.waitRealtime` and unscaled timers run at
+    `timeScale = 0` but not while the app is in the background or the editor's Play is paused
+    (unlike Unity's wall clock).
+33. **Timers outlive deactivation; coroutines do not.** `self:invoke` keeps firing while the
+    GameObject is inactive (Unity); coroutines stop when it is deactivated and do not come back
+    on reactivation: start them again (in `onEnable`, or where you reactivate).

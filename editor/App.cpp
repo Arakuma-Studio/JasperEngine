@@ -56,6 +56,7 @@
 #include "pose/PoseViewport.h"
 #include "animation/AnimationClipAppHooks.h"
 #include "animation/AnimationClipController.h"
+#include "unity/UnityParticleImport.h"
 
 #include <filesystem>
 #include <cstdlib>
@@ -313,6 +314,7 @@ enum class AppMenuCommand : uint32_t {
     AssetsRename,
     AssetsDelete,
     AssetsImport,
+    AssetsImportUnityParticles,
     AssetsRefresh,
     About,
     Documentation,
@@ -619,6 +621,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuCommand(AppMenuCommand::AssetsDelete, "Delete", assetSelected),
         menuSeparator(),
         menuCommand(AppMenuCommand::AssetsImport, "Import New Asset..."),
+        menuCommand(AppMenuCommand::AssetsImportUnityParticles, "Import Unity Particle System...", !isProjectBusy),
         menuCommand(AppMenuCommand::AssetsRefresh, "Refresh"),
         menuSeparator(),
         menuCommand(AppMenuCommand::ProjectScenes, "Scenes in Build...", !isProjectBusy),
@@ -1027,6 +1030,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsImport:
             projectWindow->assetsImport();
+            break;
+        case AppMenuCommand::AssetsImportUnityParticles:
+            importUnityParticles();
             break;
         case AppMenuCommand::AssetsRefresh:
             projectWindow->assetsRefresh();
@@ -3941,6 +3947,35 @@ void editor::App::flushSceneMaterialWrites(uint32_t sceneId) {
 void editor::App::saveAllCodeEditors() {
     if (codeEditor) {
         codeEditor->saveAll();
+    }
+}
+
+void editor::App::importUnityParticles() {
+    const std::string file = FileDialogs::openFileDialog("", FILE_DIALOG_UNITY_PREFAB_SCENE);
+    if (file.empty()) return;
+    unity::ImportOptions options;
+    options.file = fs::u8path(file);
+    const unity::ImportResult result = unity::importParticlesIntoProject(&project, options);
+    if (!result.ok) {
+        Out::error("Import Unity Particle System: %s", result.error.c_str());
+        registerAlert("Import Unity Particle System", result.error);
+        return;
+    }
+    for (const std::string& prefab : result.prefabs) {
+        Out::info("Imported Unity particles: %s", prefab.c_str());
+    }
+    // the report's notes, one line each
+    for (const auto& system : result.report["systems"]) {
+        for (const auto& note : system["notes"]) {
+            Out::warning("%s: %s: %s", system["path"].get<std::string>().c_str(), note["code"].get<std::string>().c_str(),
+                         note["message"].get<std::string>().c_str());
+        }
+    }
+    for (const auto& warning : result.report["warnings"]) {
+        Out::warning("Import Unity Particle System: %s", warning.get<std::string>().c_str());
+    }
+    if (!result.reportFile.empty()) {
+        Out::info("Import report: %s", result.reportFile.c_str());
     }
 }
 

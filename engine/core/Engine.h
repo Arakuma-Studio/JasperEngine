@@ -352,6 +352,13 @@ namespace jasperengine {
         static double gameTime;
         // read by Log from any thread (the frame of a line)
         static std::atomic<uint64_t> gameFrames;
+        static double unscaledDeltatime;
+        static double unscaledTime;
+        static double fixedTime;
+        static double levelLoadGameTime;
+        static uint64_t startupTime;
+        static bool inFixedStep;
+        static float smoothDeltatime;
         static std::atomic<bool> simulationHeld;
         static bool clampNextDelta;
 
@@ -388,6 +395,11 @@ namespace jasperengine {
         static Framebuffer compositeFramebuffer;
 
         static bool transformCoordPos(float& x, float& y);
+        // ui-multitouch D6: a pointer ends without a click in the documents and the component
+        // UI of every scene (a finger or mouse button released outside the canvas; touch false:
+        // pointerOrButton is the mouse button), or every pointer (pause, focus loss)
+        static void cancelUIPointer(int pointerOrButton, bool touch);
+        static void cancelAllUIPointers();
         // systemDraw: a high surrogate that never got its low one reaches documents as U+FFFD
         static void flushCharInput();
         // systemDraw: the held gamepad directions a document took repeat (UI clock)
@@ -474,6 +486,10 @@ namespace jasperengine {
         static bool isIgnoreEventsHandledByUI();
 
         static bool isUIEventReceived();
+        // Input.isPointerOverUI (Unity's EventSystem.IsPointerOverGameObject, ui-multitouch D15):
+        // that pointer (-1 / -2 / -3 the mouse, >= 0 a finger; INT_MIN the mouse or any finger)
+        // is over a component UI element that takes events or HTML content, or either holds it
+        static bool isPointerOverUI(int pointerId);
         
         static void setUpdateTimeMS(unsigned int updateTimeMS);
         static void setUpdateTime(float updateTime);
@@ -533,6 +549,27 @@ namespace jasperengine {
         // Scaled seconds and frames the update loop has run (since start; not while paused or held)
         static double getGameTime();
         static uint64_t getGameFrames();
+
+        // The frame delta before timeScale (Unity's Time.unscaledDeltaTime): the measured frame
+        // time capped by maxDeltatime, or the fixed frame delta when set; 0 while the app is
+        // paused, the simulation held or the game events paused (the editor's Play pause). It keeps
+        // running at time scale 0 (a pause menu).
+        static float getUnscaledDeltatime();
+        // Sum of getUnscaledDeltatime() over the frames the update loop has run
+        static double getUnscaledTime();
+        // Sum of the fixed steps run (game seconds); inside a step, the time at its start
+        static double getFixedTime();
+        // Wall clock seconds since Engine::systemInit (pauses included)
+        static double getRealtimeSinceStartup();
+        // Game seconds since the last scene load (SceneManager)
+        static double getTimeSinceLevelLoad();
+        // A scene stack was loaded now (SceneManager): getTimeSinceLevelLoad() counts from here
+        static void markLevelLoad();
+        // True inside a fixed step: onFixedUpdate, the scenes' fixed update (physics) and the
+        // coroutines waiting for it
+        static bool isInFixedStep();
+        // Exponential average of getDeltatime() (Unity's Time.smoothDeltaTime)
+        static float getSmoothDeltatime();
 
         // A host (the editor's MCP server) holds the simulation: frames may still draw, but no
         // update runs and no game time passes. Released, the first frame measures at most one

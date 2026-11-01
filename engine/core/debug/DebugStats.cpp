@@ -7,6 +7,7 @@
 #include "Scene.h"
 #include "System.h"
 #include "script/LuaBinding.h"
+#include "script/ScriptScheduler.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/UIDocumentSystem.h"
@@ -34,8 +35,6 @@ namespace {
         return instance;
     }
 
-    std::atomic<DebugStats::CountFunction> coroutineCounter{nullptr};
-    std::atomic<DebugStats::CountFunction> timerCounter{nullptr};
 
     // a stall (a breakpoint, the app in the background) is one long frame, not the scale of the graph
     constexpr double maxRecordedSeconds = 1.0;
@@ -73,11 +72,6 @@ size_t DebugStats::recordedFrames(){
 
 void DebugStats::reset(){
     history() = History();
-}
-
-void DebugStats::setTaskCounters(CountFunction coroutines, CountFunction timers){
-    coroutineCounter.store(coroutines);
-    timerCounter.store(timers);
 }
 
 DebugStatsSnapshot DebugStats::sample(){
@@ -144,10 +138,8 @@ DebugStatsSnapshot DebugStats::sample(){
     s.entities = toCount(entities);
     s.htmlUiDrawCalls = htmlUiDrawCalls;
 
-    if (CountFunction counter = coroutineCounter.load())
-        s.coroutines = toCount(counter());
-    if (CountFunction counter = timerCounter.load())
-        s.timers = toCount(counter());
+    s.coroutines = toCount(ScriptScheduler::coroutineCount());
+    s.timers = toCount(ScriptScheduler::timerCount());
 
     return s;
 }

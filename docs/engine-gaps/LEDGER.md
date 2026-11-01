@@ -48,9 +48,9 @@ origin/main).
 | 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | merged |
 | 8 | `physics-contacts` | per-object collision/trigger callbacks (enter/stay/exit) for 3D and 2D, delivered on the main thread; 3D global handlers off the job threads | review |
 | 9 | `physics-3d` | damping, centre of mass, safe body-type switching, per-collider sensor/material, collider removal, 3D joint limits/motors/springs, cone fix, ragdoll, runtime-sized collider data and world capacity | review |
-| 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | impl |
-| 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | specced |
-| 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | specced |
+| 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | review |
+| 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | impl |
+| 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | impl |
 | 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | merged |
 | 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | review |
 | 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | review |
@@ -191,3 +191,23 @@ origin/main).
   Generator::configure taking both shaderGlobals and playerSettings). Known load flakes: test_autosync::
   test_external_property_picked_up, ConvexDecomposition.ConcurrentRequests, CanvasGroupTest.PerformanceBudgets
   (being made robust).
+- 2026-11-01: rule change: agents merge main ONCE at handoff and do not chase it; the lead merges later main changes
+  and verifies combined trees in batches. video-mp4 review fixes done (18 defects + spec items; unit 1436, htmlui
+  3114, MCP only baseline + the known canvas resave). It found a merge-blocker on local main: physics-3d sources
+  compile even with JASPERENGINE_PHYSICS_3D=OFF, which the Exporter sets for projects without 3D physics (every
+  2D-only export would fail) -> physics-3d agent fixing, also checking PHYSICS_2D=OFF and both OFF. audio-mixer
+  review: 2 high (live mixer edits reallocating SoLoud voice buffers -> dropouts; voice limit beyond SoLoud's 255
+  -> audio-thread overflow / Windows break), fixes in progress.
+- 2026-11-01: merged locally (not pushed): physics-contacts, particles, ui-canvas-group's resave fix,
+  ui-multitouch, coroutines (lead resolved ScriptMessages enum/strings for particles + pointer callbacks, focus loss
+  releasing input AND cancelling UI pointers with one onFocus call, Engine time statics, stub generator blocks; the
+  ScriptMessages static_assert now < 64). Mac check of the batch through physics-contacts: iOS and macOS 0 errors.
+  Push blocked only on the physics-3d fix for builds with 3D physics OFF. The agent guide hit 16383/16384 bytes:
+  new task `guide-headroom` restructures it to ~15 KB (details to docs/mcp/guide). New task `asan-sweep`: the unit
+  suite under ASan+UBSan with root-cause fixes (leads: a stack-use-after-scope in Catalog::copyPropertyValue
+  from physics-2d's override migration; a heap error once in PersistenceTest).
+- 2026-11-01: the physics-3d fix for builds with physics OFF merged (f873f2ce9; tools/check-physics-off.sh). The
+  anim-layers agent found main did not compile: the coroutines merge had brought a second identical
+  Engine::getUnscaledDeltatime -> fixed (94a22289c); lead now builds after each batch of merges before moving on.
+  Final verification of the batch (Linux full suites + physics-off variants on box 2201, iOS/macOS on the owner's
+  Mac) running. anim-layers implemented (both phases), in review; anim-properties and anim-retarget started on it.

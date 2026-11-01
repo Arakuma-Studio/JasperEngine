@@ -296,8 +296,8 @@ TEST_F(ScriptLuaTest, Listeners){
     EXPECT_NE(lua(R"(doc:getElementById("btn"):addEventListener("click", 5))"), "");
     EXPECT_NE(lua(R"(doc:getElementById("btn"):addEventListener("click", function() end, "x"))"), "");
     // documents never get these: a warning, no error
-    EXPECT_LUA(R"(doc:getElementById("btn"):addEventListener("mouseenter", function() end))");
-    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "'mouseenter'"), 1u);
+    EXPECT_LUA(R"(doc:getElementById("btn"):addEventListener("contextmenu", function() end))");
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "'contextmenu'"), 1u);
     TestSystem::get().clearLogs();
 
     // unloading the document frees every listener and its Lua reference

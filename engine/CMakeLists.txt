@@ -894,6 +894,7 @@ endif()
 
 set(JASPERENGINE_SRCS
     core/Engine.cpp
+    core/EngineTime.cpp
     core/Input.cpp
     core/input/InputActions.cpp
     core/input/InputControlNames.cpp
@@ -986,6 +987,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/vector/LottiePlayback.cpp
     core/htmlui/vector/UIElementLottie.cpp
     core/htmlui/vector/UILottieElement.cpp
+    core/htmlui/controls/OnScreenControls.cpp
     core/htmlui/media/Av1Decoder.cpp
     core/htmlui/media/UIElementVideo.cpp
     core/htmlui/media/OpusAudioDecoder.cpp
@@ -1036,6 +1038,13 @@ set(JASPERENGINE_SRCS
     core/math/Vector2.cpp
     core/math/Vector3.cpp
     core/math/Vector4.cpp
+    core/particles/MinMax.cpp
+    core/particles/ParticleFields.cpp
+    core/particles/ParticleModules.cpp
+    core/particles/ParticleNoise.cpp
+    core/particles/ParticleShapes.cpp
+    core/particles/ParticleSimulation.cpp
+    core/particles/ParticleUpgrade.cpp
     core/object/Bone.cpp
     core/object/Camera.cpp
     core/object/EntityHandle.cpp
@@ -1065,6 +1074,7 @@ set(JASPERENGINE_SRCS
     core/object/environment/Skybox.cpp
     core/object/environment/Water.cpp
     core/object/ui/Button.cpp
+    core/object/ui/OnScreenControls.cpp
     core/object/ui/LayoutGroup.cpp
     core/object/ui/CanvasGroup.cpp
     core/object/ui/Image.cpp
@@ -1093,10 +1103,13 @@ set(JASPERENGINE_SRCS
     core/pool/AnimationClipPool.cpp
     core/pool/PhysicsMaterialPool.cpp
     core/pool/VertexAnimationPool.cpp
+    core/object/physics/Collision.cpp
+    core/object/physics/Collision2D.cpp
     core/registry/EntityCloner.cpp
     core/registry/EntityRegistry.cpp
     core/registry/TagManager.cpp
     core/registry/PhysicsLayers.cpp
+    core/physics/ContactTracker.cpp
     core/physics/ConvexDecomposition.cpp
     core/physics/JoltShapeBuilder.cpp
     core/physics/PhysicsDebugLines.cpp
@@ -1119,6 +1132,7 @@ set(JASPERENGINE_SRCS
     core/script/LuaJson.cpp
     core/script/LuaScript.cpp
     core/script/ScriptBase.cpp
+    core/script/ScriptScheduler.cpp
     core/script/ScriptEvent.cpp
     core/script/ScriptMessages.cpp
     core/script/ScriptProperty.cpp
@@ -1129,6 +1143,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/IOClassesLua.cpp
     core/script/binding/MathClassesLua.cpp
     core/script/binding/NetClassesLua.cpp
+    core/script/binding/ParticleClassesLua.cpp
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
@@ -1136,6 +1151,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/UtilClassesLua.cpp
     core/script/binding/HtmlUIClassesLua.cpp
     core/script/binding/HtmlUIAnimeLua.cpp
+    core/script/binding/CoroutineClassesLua.cpp
     core/script/binding/ScriptClassesLua.cpp
     core/shader/RuntimeShaderCompiler.cpp
     core/shader/ShaderData.cpp
@@ -1146,6 +1162,7 @@ set(JASPERENGINE_SRCS
     core/shader/ShaderVariantCollection.cpp
     core/shader/ShaderVariantCompiler.cpp
     core/subsystem/ActionSystem.cpp
+    core/subsystem/ActionSystemParticles.cpp
     core/subsystem/ActionSystemPlayers.cpp
     core/subsystem/PoseAnimatorSystem.cpp
     core/subsystem/VertexAnimatorSystem.cpp
@@ -1160,11 +1177,13 @@ set(JASPERENGINE_SRCS
     core/lattice/LatticePresets.cpp
     core/lattice/LatticeRender.cpp
     core/subsystem/PhysicsSystem.cpp
+    core/subsystem/PhysicsSystemContacts.cpp
     core/subsystem/PhysicsSystemJoints3D.cpp
     core/subsystem/PhysicsSystemRagdoll.cpp
     core/subsystem/PhysicsSystemDebugDraw.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/UISystem.cpp
+    core/subsystem/UISystemPointer.cpp
     core/subsystem/UIDocumentSystem.cpp
     core/subsystem/UIDocumentSystemRender.cpp
     core/subsystem/UIDocumentSystemInput.cpp

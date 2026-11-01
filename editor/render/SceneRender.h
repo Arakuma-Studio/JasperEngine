@@ -299,6 +299,13 @@ namespace jasperengine::editor{
         float overlayPx(float logicalPixels) const { return logicalPixels * overlayScale; }
         void ensureOverlayLines(std::map<Entity, LineRenderer*>& lines, Entity entity);
 
+        // the wire of a selected version 2 Particle System's Shape module (particles spec 6.8):
+        // `entity` noted in `current`; the wires of systems not in it are dropped by
+        // dropParticleShapeLines after the entity loop
+        void updateParticleShapeLines(Entity entity, bool selected, std::set<Entity>& current);
+        void dropParticleShapeLines(const std::set<Entity>& current);
+        std::map<Entity, LineRenderer*> particleShapeLines;
+
         // Marks an editor gizmo or icon created in the scene it annotates: only the
         // Scene view draws it, never the game or a camera image
         template<typename T>

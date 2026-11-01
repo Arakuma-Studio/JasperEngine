@@ -299,6 +299,11 @@ int Rigidbody2D::createChainCollider(std::vector<Vector2> vertices, bool loop){
 void Rigidbody2D::removeAllColliders(){
     Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
     std::shared_ptr<PhysicsSystem> physics = scene->getSystem<PhysicsSystem>();
+    // their pairs end at the next step with an invalid collider index (physics-contacts 6.1.6);
+    // from the last, so no index shifts onto a removed one
+    for (size_t i = body.colliders.size(); i-- > 0;){
+        physics->contactColliderRemoved2D(entity, i);
+    }
     if (b2Body_IsValid(body.body) && physics->isSteppingWorld2D()){
         // Box2D is locked: the body is made again after the step
         body.colliders.clear();

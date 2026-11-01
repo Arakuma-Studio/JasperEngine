@@ -40,7 +40,7 @@ documents have their own effects library instead, `effect(<name>, ...)` in CSS (
     `set_shader_uniform` (entity + `submesh`) sets one and `get_shader_uniforms` lists them
     with labels and defaults.
   - `shaderTextures`: `{uniform: "assets/path.png" | null}`, or `shaderTextures.<uniform>`.
-    Unset ones bind the declared default (white, black, gray, flat normal, or the engine's seamless `ripples` normal map and `noise`), or the one a `default[<DEFINE>]=` rule picks while that feature is on (`list_shaders`: `default_with`). Images only: a
+    Unset ones bind the declared default (white, black, gray, flat normal, or the engine's seamless `ripples` normal map, `noise` and soft `particle`), or the one a `default[<DEFINE>]=` rule picks while that feature is on (`list_shaders`: `default_with`). Images only: a
     camera's render texture goes in a built-in material texture (`baseColorTexture`, ...).
   - `shaderFeatures`: the enabled `@feature` defines and chosen `@keywords` values
     (`"<GROUP>_<VALUE>"`), e.g. `["RIM", "SPEC_MODE_HARD"]`; `"!RIM"` turns off a feature that
@@ -462,8 +462,10 @@ Manifest lines (library shaders and forks that declare them) beyond the basic on
 - `// @texture <uniform> <default> ... default[<DEFINE>]=<default>`: while that `@feature` (or
   `@keywords` value; `[!<DEFINE>]`: while it is off) is on, an unset slot binds the second
   default instead. Defaults: `white`, `black`, `gray`, `normal` (flat), `ripples` (a seamless
-  ripple normal map) and `noise` (seamless grey value noise), the last two built by the engine,
-  so a material can use them without image files (`library:water`'s `BUILTIN_TEXTURES`).
+  ripple normal map), `noise` (seamless grey value noise) and `particle` (a soft white disc, Unity's
+  Default-Particle), the last three built by the engine, so a material can use them without image
+  files (`library:water`'s `BUILTIN_TEXTURES`, `library:unlit`'s `PARTICLE_TEXTURE`: what Particle
+  Systems draw with when no base map is set, jasper://docs/particles).
 - `// @require <inputs> feature=<DEFINE>`: inputs required only while that define is on
   (`feature=!<DEFINE>`: while off). Inputs: `normals tangents uv1 uv2 color rawcolor
   position smoothnormals normalmap`; `rawcolor` gives `v_rawColor`, the vertex colour without the

@@ -437,9 +437,8 @@ the code:
     every export get it. Entities and bodies are summed over `Engine::getSceneLayers()`.
     `AudioSystem::getVoiceCounts`, `EntityRegistry::getEntityCount` added.
 12. **Cross-feature hooks** (record what to wire when they merge):
-    - **coroutines**: `DebugStats::setTaskCounters(&ScriptScheduler::coroutineCount, &ScriptScheduler::timerCount)`
-      (both `size_t()` statics in the coroutines spec) at engine start, e.g. in `Engine::systemInit`;
-      until then `coroutines` and `timers` are 0.
+    - **coroutines** (merged): `DebugStats::sample` reads `ScriptScheduler::coroutineCount()` and
+      `timerCount()` directly.
     - **safe-area**: `DebugOverlay::setSafeAreaInsetsProvider(fn)` with a function filling the
       canvas-px insets from `Screen::getSafeAreaInsets()`; the overlay moves its body's edges in by
       them (RCSS of an `.rml` document has no `env()`), re-applied when they change. Until then 0.

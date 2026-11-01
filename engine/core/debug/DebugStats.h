@@ -32,8 +32,8 @@ namespace jasperengine {
         uint32_t bodies3D = 0;
         uint32_t entities = 0;              // entities of the running scenes (system ones included)
         uint32_t scenes = 0;                // running scenes (Engine::getSceneLayers)
-        uint32_t coroutines = 0;            // engine coroutines running (feature coroutines)
-        uint32_t timers = 0;                // engine timers pending (feature coroutines)
+        uint32_t coroutines = 0;            // engine coroutines running or waiting (ScriptScheduler)
+        uint32_t timers = 0;                // engine timers pending (ScriptScheduler)
         uint32_t htmlUiDrawCalls = 0;       // HTML UI draw calls of the last frame, every scene
     };
 
@@ -52,10 +52,6 @@ namespace jasperengine {
 
         static DebugStatsSnapshot sample();
 
-        // Counts another feature provides (coroutines: ScriptScheduler::coroutineCount and
-        // timerCount); null = 0
-        using CountFunction = size_t (*)();
-        static void setTaskCounters(CountFunction coroutines, CountFunction timers);
     };
 
 }

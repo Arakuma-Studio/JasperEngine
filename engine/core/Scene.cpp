@@ -64,6 +64,7 @@ void Scene::init(){
 }
 
 Scene::~Scene(){
+    tearingDown = true;
     // async work owned by the scene or its GameObjects ends without its callbacks
     AsyncOwners::sceneDestroyed(this);
     // first: handles that own entities of this scene and go during (or after) its teardown
@@ -161,6 +162,21 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
     removeComponentSubscriptionsByTag<InputFieldComponent>(this, substring, [](InputFieldComponent& inputField, const std::string& tag) {
         inputField.onChange.removeByTagSubstring(tag);
         inputField.onSubmit.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<OnScreenStickComponent>(this, substring, [](OnScreenStickComponent& stick, const std::string& tag) {
+        stick.onValueChanged.removeByTagSubstring(tag);
+        stick.onPress.removeByTagSubstring(tag);
+        stick.onRelease.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<OnScreenButtonComponent>(this, substring, [](OnScreenButtonComponent& button, const std::string& tag) {
+        button.onPress.removeByTagSubstring(tag);
+        button.onRelease.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<TouchAreaComponent>(this, substring, [](TouchAreaComponent& area, const std::string& tag) {
+        area.onDrag.removeByTagSubstring(tag);
     });
 
     getSystem<PhysicsSystem>()->removeSubscriptionsByTag(substring);

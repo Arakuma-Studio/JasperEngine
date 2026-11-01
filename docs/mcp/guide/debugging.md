@@ -111,7 +111,7 @@ adds a table. Initial mode: `debug.overlay_stats`; corner: `debug.overlay_stats_
 | `audioVoices`, `audioVoicesMax` | sounds playing now, and the most that can play at once |
 | `bodies2D`, `bodies3D` | physics bodies of the running scenes |
 | `entities`, `scenes` | of the running scenes (`Engine.getSceneLayers()`) |
-| `coroutines`, `timers` | engine coroutines and timers (0 until the coroutines feature is in the build) |
+| `coroutines`, `timers` | engine coroutines (running or waiting) and pending timers (`self:startCoroutine`, `self:invoke`, `Timer.after/every`) |
 | `htmlUiDrawCalls` | HTML UI draw calls of the last frame |
 
 `DebugOverlay.statsMode` reads and sets the panel: `DebugOverlay.STATS_OFF`, `STATS_FPS`, `STATS_FULL`.
