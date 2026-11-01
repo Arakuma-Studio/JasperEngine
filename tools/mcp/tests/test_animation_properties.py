@@ -178,9 +178,8 @@ async def test_preview_shows_properties_and_restores(ed: Editor):
     ed.check(props.get(BASE + "puntaje:gameobject.active") is True, f"the preview shows puntaje on at 0.5: {props!r}")
     ed.check(props.get(BASE + "record:gameobject.active") is False, f"record still off: {props!r}")
     await ed.call("preview_animation", scene=sid, animation="GameOverMenu", action="stop")
-    state = await ed.call("get_entity", scene=sid, entity=f"GameOverMenu/{BASE}puntaje")
-    ed.check(state.get("active") is False or state.get("active_self") is False or "inactive" in json.dumps(state).lower(),
-             f"stop restored the inactive stat: {json.dumps(state)[:400]}")
+    found = await ed.call("find_entities", scene=sid, name="puntaje", active=False)
+    ed.check(found["count"] == 1, f"stop restored the inactive stat: {json.dumps(found)[:400]}")
 
 
 async def test_play_matches_unity_timings(ed: Editor):

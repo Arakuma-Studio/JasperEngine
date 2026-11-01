@@ -3476,6 +3476,9 @@
 		4A534E474B028A49F22E7413 /* AvatarMaskPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */; };
 		4A534E4790F1AB4DDB5485FE /* JsonAssetPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */; };
 		4A534E47658965B013EA1310 /* ActionSystemPlayersDetail.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */; };
+		4A534E473B1A2E46AE148B95 /* PropertyBindings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4716571C4B1C05C647 /* PropertyBindings.cpp */; };
+		4A534E472525AA220A4DED69 /* PropertyBindings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4716571C4B1C05C647 /* PropertyBindings.cpp */; };
+		4A534E47FBA128E1400C82D3 /* PropertyBindings.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474F5A325E3E0B7DBB /* PropertyBindings.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6967,6 +6970,8 @@
 		4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AvatarMaskPool.h; sourceTree = "<group>"; };
 		4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JsonAssetPool.h; sourceTree = "<group>"; };
 		4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ActionSystemPlayersDetail.h; sourceTree = "<group>"; };
+		4A534E4716571C4B1C05C647 /* PropertyBindings.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyBindings.cpp; sourceTree = "<group>"; };
+		4A534E474F5A325E3E0B7DBB /* PropertyBindings.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PropertyBindings.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -8269,6 +8274,8 @@
 				4A534E47D659E046BA39D1C5 /* AnimJson.h */,
 				4A534E47E8C82FBFE31A0756 /* AnimatorController.h */,
 				4A534E4785CD3820E9AA2297 /* AvatarMask.h */,
+				4A534E4716571C4B1C05C647 /* PropertyBindings.cpp */,
+				4A534E474F5A325E3E0B7DBB /* PropertyBindings.h */,
 			);
 			path = animation;
 			sourceTree = "<group>";
@@ -12420,6 +12427,7 @@
 				4A534E474B028A49F22E7413 /* AvatarMaskPool.h in Headers */,
 				4A534E4790F1AB4DDB5485FE /* JsonAssetPool.h in Headers */,
 				4A534E47658965B013EA1310 /* ActionSystemPlayersDetail.h in Headers */,
+				4A534E47FBA128E1400C82D3 /* PropertyBindings.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14525,6 +14533,7 @@
 				4A534E4792CE3E8DF5963EC5 /* AnimatorControllerPool.cpp in Sources */,
 				4A534E47DC0E92FD3966E7E3 /* ActionSystemLayers.cpp in Sources */,
 				4A534E470D249A6CD7FD5DDC /* ActionSystemController.cpp in Sources */,
+				4A534E473B1A2E46AE148B95 /* PropertyBindings.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -15009,6 +15018,7 @@
 				4A534E4784007B7DE713386D /* AnimatorControllerPool.cpp in Sources */,
 				4A534E47B6383C70AF9337CE /* ActionSystemLayers.cpp in Sources */,
 				4A534E4765A4B02E89DDFB2A /* ActionSystemController.cpp in Sources */,
+				4A534E472525AA220A4DED69 /* PropertyBindings.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

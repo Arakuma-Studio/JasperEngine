@@ -600,9 +600,10 @@ TEST(ClipIO, MixedTangentTracksReportEachDroppedEase){
     ASSERT_EQ(data.tracks.size(), 1u);
     for (const ClipKey& key : data.tracks[0].keys){
         EXPECT_TRUE(key.hasTangents());
-        EXPECT_EQ(key.ease, EaseType::LINEAR);
+        // a step stays (a Constant segment holds the key's value: anim-properties' tangent edits)
+        EXPECT_EQ(key.ease, key.time == 1.0f ? EaseType::STEP : EaseType::LINEAR);
     }
-    EXPECT_TRUE(hasWarning(warnings, "tracks[0].keys[1].ease", "the track uses tangents")) << listWarnings(warnings);
+    EXPECT_FALSE(hasWarning(warnings, "tracks[0].keys[1].ease", "the track uses tangents")) << listWarnings(warnings);
     EXPECT_TRUE(hasWarning(warnings, "tracks[0].keys[3].ease", "the track uses tangents")) << listWarnings(warnings);
     EXPECT_FALSE(hasWarning(warnings, "tracks[0].keys[2].ease", "")) << "a linear key loses nothing";
 }
