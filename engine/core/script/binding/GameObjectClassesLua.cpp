@@ -2625,11 +2625,16 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("play",
             luabridge::overload<const std::string&>(&AnimationPlayer::play),
             luabridge::overload<const std::string&, float>(&AnimationPlayer::play),
-            luabridge::overload<const std::string&, float, float>(&AnimationPlayer::playWithArguments))
+            luabridge::overload<const std::string&, float, PlayMode>(&AnimationPlayer::play))
         .addFunction("crossFade",
             luabridge::overload<const std::string&>(&AnimationPlayer::crossFade),
             luabridge::overload<const std::string&, float>(&AnimationPlayer::crossFade),
-            luabridge::overload<const std::string&, float, float>(&AnimationPlayer::crossFadeWithArguments))
+            luabridge::overload<const std::string&, float, PlayMode>(&AnimationPlayer::crossFade))
+        // Unity's Animator.Play(name, layer, normalizedTime) / CrossFadeInFixedTime(name, seconds, layer)
+        .addFunction("playInLayer",
+            luabridge::overload<const std::string&, int>(&AnimationPlayer::playInLayer),
+            luabridge::overload<const std::string&, int, float>(&AnimationPlayer::playInLayer))
+        .addFunction("crossFadeInLayer", &AnimationPlayer::crossFadeInLayer)
         .addFunction("blend",
             luabridge::overload<const std::string&, float>(&AnimationPlayer::blend),
             luabridge::overload<const std::string&, float, float>(&AnimationPlayer::blend))

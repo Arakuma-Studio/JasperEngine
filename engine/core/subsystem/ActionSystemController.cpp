@@ -87,12 +87,15 @@ namespace {
         return exitTime > from && exitTime <= to;
     }
 
-    void pendStateCallback(AnimationPlayerRuntime& runtime, int layer, const std::string& state, bool enter){
+    // `when`: at the end of the step (the transition is picked after the step's clip events), so
+    // the order is the step's clip events, then onStateExit, then onStateEnter
+    void pendStateCallback(AnimationPlayerRuntime& runtime, int layer, const std::string& state, bool enter, float when){
         PendingPlayerCallback callback;
         callback.stateEnter = enter;
         callback.stateExit = !enter;
         callback.layer = layer;
         callback.event.state = state;
+        callback.when = when;
         runtime.pending.push_back(std::move(callback));
     }
 
@@ -171,7 +174,7 @@ void ActionSystem::driveController(Entity entity, AnimationPlayerComponent& play
             layer.current = start;
             layer.lastEntered = start;
             layer.started = true;
-            pendStateCallback(runtime, li, layerData.states[(size_t)start].data->name, true);
+            pendStateCallback(runtime, li, layerData.states[(size_t)start].data->name, true, 0.0f);
         }
 
         // normalized times (a state entered last update starts moving now)
@@ -249,9 +252,11 @@ void ActionSystem::driveController(Entity entity, AnimationPlayerComponent& play
             return true;
         };
         int chosen = -1;
-        auto pick = [&](const std::vector<int>& list, int fromState, bool any){
+        // `stopAt`: Unity's ordered interruption: a current_state source checks only the
+        // transitions listed before the running one
+        auto pick = [&](const std::vector<int>& list, int fromState, bool any, int stopAt = -1){
             for (int index : list){
-                if (chosen >= 0) return;
+                if (chosen >= 0 || index == stopAt) return;
                 const AnimatorController::Transition& transition = layerData.transitions[(size_t)index];
                 if (any){
                     if (layer.transition.active && transition.to == layer.transition.to) continue;
@@ -272,7 +277,7 @@ void ActionSystem::driveController(Entity entity, AnimationPlayerComponent& play
         }else if (interruption != TransitionInterruption::None){
             pick(layerData.anyTransitions, layer.transition.to, true);
             if (interruption == TransitionInterruption::CurrentState && layer.current >= 0){
-                pick(layerData.states[(size_t)layer.current].transitions, layer.current, false);
+                pick(layerData.states[(size_t)layer.current].transitions, layer.current, false, layer.transition.transition);
             }else if (interruption == TransitionInterruption::NextState){
                 pick(layerData.states[(size_t)layer.transition.to].transitions, layer.transition.to, false);
             }
@@ -318,8 +323,8 @@ void ActionSystem::driveController(Entity entity, AnimationPlayerComponent& play
             enterGroup(layer.groups[(size_t)transition.to], transitionData.offset > 0.0f ? transitionData.offset : destination.cycleOffset);
             if (!layer.transition.active && layer.current < 0) layer.current = source;
             layer.transition = started;
-            if (layer.lastEntered >= 0) pendStateCallback(runtime, li, layerData.states[(size_t)layer.lastEntered].data->name, false);
-            pendStateCallback(runtime, li, destination.name, true);
+            if (layer.lastEntered >= 0) pendStateCallback(runtime, li, layerData.states[(size_t)layer.lastEntered].data->name, false, dt);
+            pendStateCallback(runtime, li, destination.name, true, dt);
             layer.lastEntered = transition.to;
             // the triggers it read are consumed (after every layer)
             for (const AnimatorController::Condition& condition : transition.conditions){

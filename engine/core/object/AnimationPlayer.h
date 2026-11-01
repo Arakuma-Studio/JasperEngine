@@ -31,6 +31,8 @@
 //     play(name) jumps to "<Layer>.<State>" or "<State>" instantly (play(name, layer,
 //     normalizedTime)), crossFade(name, seconds) is a transition in seconds, blend and queue warn
 //     once and do nothing, stop() stops everything until the next play (or a disable/enable).
+//     play(name, fade[, mode]) keeps its meaning (a fade crossfades); the layer and
+//     normalized-time forms are playInLayer / crossFadeInLayer.
 //     The parameter calls need a controller (without one they warn once and return defaults).
 
 #ifndef ANIMATIONPLAYER_H
@@ -219,13 +221,14 @@ namespace jasperengine{
         void setController(const std::string& controller);
         std::string getController() const;
         bool hasController() const;
-        // play with a controller: the state (on its layer, or `layer`) from `normalizedTime`
-        void play(const std::string& name, int layer, float normalizedTime);
-        void crossFade(const std::string& name, float seconds, int layer);
-        // Lua's three-argument forms: with a controller play(name, layer, normalizedTime) and
-        // crossFade(name, seconds, layer); without one play/crossFade(name, fade, PlayMode)
-        void playWithArguments(const std::string& name, float fadeOrLayer, float modeOrNormalizedTime);
-        void crossFadeWithArguments(const std::string& name, float seconds, float modeOrLayer);
+        // Unity's Animator.Play(name, layer, normalizedTime) and CrossFadeInFixedTime(name,
+        // seconds, layer): a controller state ("Layer.State" or "State") on `layer` (-1: any)
+        // from `normalizedTime`. Without a controller: the clip state (its own layer) from that
+        // normalized time / with that fade. play / crossFade(name, fade, PlayMode) keep their
+        // meaning with a controller (a fade crossfades; the mode does not apply)
+        void playInLayer(const std::string& name, int layer);
+        void playInLayer(const std::string& name, int layer, float normalizedTime);
+        void crossFadeInLayer(const std::string& name, float seconds, int layer);
         void setFloat(const std::string& name, float value);
         void setFloat(const std::string& name, float value, float dampTime);
         float getFloat(const std::string& name) const;

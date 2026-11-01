@@ -1582,7 +1582,8 @@ on the next frame. User guide: `docs/animation-clips.md`; agents: `jasper://docs
 | `getCurrentStateName([layer])` | the layer's current state, without the layer prefix (`""` when none) |
 | `getCurrentStateInfo([layer])`, `getNextStateInfo([layer])` | an `AnimatorStateInfo` (below); the next state is valid only during a transition |
 | `isInTransition([layer])` | bool |
-| `play(name, layer, normalizedTime)` | with a controller: jumps to `name` (`"Layer.State"` or `"State"`) at once; `layer` -1 searches every layer |
+| `playInLayer(name, layer [, normalizedTime])` | Unity's `Animator.Play`: with a controller, jumps to `name` (`"Layer.State"` or `"State"`) on `layer` (-1: any) at `normalizedTime` (default 0); without one, plays the clip state from that normalized time |
+| `crossFadeInLayer(name, seconds, layer)` | Unity's `CrossFadeInFixedTime`: a transition of `seconds` to `name` on `layer` (-1: any) |
 | `onStateEnter`, `onStateExit` | rw, functions called with `(layer, name)` when a controller state is entered / exited |
 | `getAnimationPlayerComponent()` | the ECS component: `enabled`, `defaultClip`, `playAutomatically`, `speed`, `defaultFadeTime`, `needsLoad`, `controller`, `onEvent`, `onFinish`, `onStateEnter`, `onStateExit` |
 
@@ -1594,8 +1595,9 @@ optional Avatar Mask (`.mask`). Events fire only on layers with weight > 0 (the 
 
 With an **Animator Controller** (`controller` set; anim layers guide in `docs/animation-clips.md`)
 the controller owns the states and layers (the entries and layers are ignored): `play(name)` jumps
-to a state (`"Layer.State"` or `"State"`; `play(name, layer[, normalizedTime])`), `crossFade(name,
-seconds[, layer])` is a transition of that many seconds, `stop()` stops it until the next `play`
+to a state (`"Layer.State"` or `"State"`), `play(name, fade)` and `crossFade(name, seconds)` are a
+transition of that many seconds (a `PlayMode` has no effect), `playInLayer` / `crossFadeInLayer` add
+the layer and the normalized start time, `stop()` stops it until the next `play`
 or until the player is enabled again, `blend` and `queue` warn once and do nothing, `isPlaying(name)`
 takes controller state names. The parameter calls need a controller (without one they warn once
 and return defaults). The controller enters its default states on the first update

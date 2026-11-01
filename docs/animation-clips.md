@@ -517,8 +517,10 @@ end
 
 `setFloat(name, v, dampTime)` eases the value with Unity's SmoothDamp. A call of the wrong type
 warns once and converts: `setBool` on a trigger sets it (the Garden game's `VictoryDance` bug is
-reported that way). `play(name[, layer[, normalizedTime]])` jumps to a state (`"Layer.State"` or
-`"State"`), `crossFade(name, seconds)` blends to it, `getCurrentStateInfo([layer])` and
+reported that way). `play(name)` jumps to a state (`"Layer.State"` or `"State"`),
+`crossFade(name, seconds)` blends to it, `playInLayer(name, layer[, normalizedTime])` and
+`crossFadeInLayer(name, seconds, layer)` are Unity's `Animator.Play` and `CrossFadeInFixedTime`,
+`getCurrentStateInfo([layer])` and
 `getNextStateInfo([layer])` describe the states, and `stop()` stops the controller until the next
 `play` or until the player is enabled again. `blend` and `queue` have no controller form.
 
