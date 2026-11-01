@@ -7,6 +7,7 @@
 #include "Project.h"
 #include "AppSettings.h"
 #include "window/PlayInput.h"
+#include "window/GameResolutions.h"
 
 namespace jasperengine::editor {
 
@@ -43,6 +44,16 @@ namespace jasperengine::editor {
         char customLanguage[32] = {0};
         bool customLanguageOpen = false;
         ImVec2 engineScale = ImVec2(1.0f, 1.0f);
+        // the game renders at a fixed resolution (a preset or a device) shown at fitScale
+        bool fixed = false;
+        float fitScale = 1.0f;
+        // the "Add custom..." popup's fields
+        char customName[64] = {0};
+        int customWidth = 1920;
+        int customHeight = 1080;
+        float customDpi = 0.0f;
+        bool customPopupRequested = false;
+        void drawCustomResolutionPopup();
 
         // Scene drawn by the edit-mode pass and whether it needs drawing again
         uint32_t editPassSceneId = NULL_PROJECT_SCENE;
@@ -119,6 +130,15 @@ namespace jasperengine::editor {
         uint8_t getRotatableOrientations() const;
         // the Device menu's languages (BCP 47), System first as ""
         static const std::vector<std::string>& languagePresets();
+
+        // A fixed resolution the game renders at: the simulated device's screen, else the
+        // resolution preset; false in aspect mode (the view's own size)
+        bool getFixedResolution(int& width, int& height, float& dpi) const;
+        // a preset or custom name, "WxH", "WxH@dpi"; "" or "free" back to aspect mode
+        bool setResolution(const std::string& name, std::string* error = nullptr);
+        // the project's custom resolutions (editor workspace); a name already used is replaced
+        bool addCustomResolution(const GameResolution& resolution, std::string* error = nullptr);
+        void removeCustomResolution(const std::string& name);
     };
 
 }

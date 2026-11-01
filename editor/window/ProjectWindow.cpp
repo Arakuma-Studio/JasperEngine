@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectWindow.h"
+#include "audio/AudioMixerDocument.h"
 #include "util/BidiText.h"
 
 #include "ImageViewerWindow.h"
@@ -25,6 +26,10 @@
 #include "command/type/CopyFileCmd.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateMaterialFileCmd.h"
+#include "camera/ShakePreset.h"
+#include "camera/ShakePresets.h"
+#include "animation/AnimationClipIO.h"
+#include "util/ProjectFileWrites.h"
 #include "command/type/RenameFileCmd.h"
 #include "command/type/CreateDirCmd.h"
 #include "command/type/DeleteFileCmd.h"
@@ -975,6 +980,14 @@ void editor::ProjectWindow::renderCreateMenuItems() {
     }
     if (ImGui::MenuItem(ICON_FA_CHILD_REACHING " Create Avatar Mask")){
         assetsCreateAvatarMask();
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_BURST " Create Shake Preset")){
+        assetsCreateShakePreset();
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_SLIDERS " Create Audio Mixer")){
+        assetsCreateAudioMixer();
         ImGui::CloseCurrentPopup();
     }
     if (ImGui::MenuItem(ICON_FA_CIRCLE_HALF_STROKE " Create Physics Material")){
@@ -4216,6 +4229,29 @@ void editor::ProjectWindow::assetsCreateAvatarMask() {
     startRename(fileName);
 }
 
+void editor::ProjectWindow::assetsCreateShakePreset() {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    camera::ShakePresetFile file;
+    file.guid = anim::generateClipGuid();
+    file.preset = *camera::findBuiltinShakePreset(camera::defaultNewShakePresetName());
+    const fs::path relative = uniqueRelativePath(currentPath, "New Shake Preset", camera::SHAKE_EXTENSION);
+    std::string error;
+    if (!ProjectFileWrites::writeUndoable(project, {{project->getProjectPath() / relative, camera::writeShakePreset(file)}}, error)) {
+        Backend::getApp().registerAlert("Create Shake Preset", error);
+        return;
+    }
+    scanDirectory(currentPath);
+    const std::string fileName = relative.filename().string();
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+    updateInspectedAsset(fileName);
+    startRename(fileName);
+}
+
 void editor::ProjectWindow::assetsCreateAnimationClip() {
     if (currentPath.empty()) {
         return;
@@ -4256,6 +4292,27 @@ void editor::ProjectWindow::assetsCreatePhysicsMaterial(bool preset2D) {
     }
     scanDirectory(currentPath);
     const std::string fileName = created.filename().string();
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+    updateInspectedAsset(fileName);
+    startRename(fileName);
+}
+
+void editor::ProjectWindow::assetsCreateAudioMixer() {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    // Unity's Create > Audio Mixer: Master only; the Audio Mixer window adds the groups
+    const fs::path relative = uniqueRelativePath(currentPath, "New Audio Mixer", AudioMixerIO::EXTENSION);
+    std::string error;
+    if (!AudioMixerDocument::commit(project, project->getProjectPath() / relative, AudioMixerIO::createDefault(), "", &error)) {
+        Backend::getApp().registerAlert("Create Audio Mixer", error);
+        return;
+    }
+    scanDirectory(currentPath);
+    const std::string fileName = relative.filename().string();
     selectedFiles.clear();
     selectedFiles.insert(fileName);
     lastSelectedFile = fileName;
@@ -4357,6 +4414,8 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
         animationClipInspectorHooks().openClip(project, 0, NULL_ENTITY, clip);
     } else if (Util::isPrefabFile(filePath.string())) {
         editor::getEditorHost().openPrefabAsset(filePath);  // Unity: Prefab Mode
+    } else if (filePath.extension() == AudioMixerIO::EXTENSION) {
+        editor::getEditorHost().openAudioMixerWindow(filePath);
     } else {
         // text files (an .anim only when the clip hooks are unset: its JSON text)
         codeEditor->openFile(filePath.string(), true);

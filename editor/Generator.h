@@ -96,6 +96,22 @@ namespace jasperengine::editor {
         bool asyncLoading = false;
     };
 
+    // Project Settings > Audio (audio-mixer spec 9): the exported init configures the voices and
+    // loads the mixer before the first scene
+    struct AudioSettings {
+        std::string mixer;              // asset-relative path of the project's .mixer ("" = none: an implicit Master)
+        int maxRealVoices = 32;
+        int maxVoices = 256;
+        int sampleRate = 0;             // 0 = the device's
+        std::string defaultOutputGroup; // the group new Audio Sources get ("" = Master)
+
+        bool operator==(const AudioSettings& other) const {
+            return mixer == other.mixer && maxRealVoices == other.maxRealVoices && maxVoices == other.maxVoices &&
+                   sampleRate == other.sampleRate && defaultOutputGroup == other.defaultOutputGroup;
+        }
+        bool operator!=(const AudioSettings& other) const { return !(*this == other); }
+    };
+
     // Layer Collision Matrix of Project Settings > Physics or Physics 2D: index = layer,
     // bit j set when that layer and layer j collide (kept symmetric)
     using LayerCollisionRows = std::array<uint32_t, MAX_LAYERS>;
@@ -140,6 +156,8 @@ namespace jasperengine::editor {
         std::future<void> buildFuture;
         std::atomic<bool> lastBuildSucceeded;
         CommandRunner commandRunner;
+        // the project's UI Scale, emitted by configure (setUIScale before it)
+        CanvasScalerSettings uiScale;
 
         static fs::path getGeneratedPath(const fs::path& projectInternalPath);
         static std::string getEditorPluginAbiCheck();
@@ -217,13 +235,17 @@ namespace jasperengine::editor {
         void writeSceneSource(Scene* scene, uint32_t sceneId, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources);
         void clearSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath);
         bool hasSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath) const;
-        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const std::string& inputActionsJson = "", bool allowInsecureHttp = false, const std::vector<ShaderGlobalDecl>& shaderGlobals = {}, const PlayerSettings& playerSettings = PlayerSettings(), const DebugSettings& debugSettings = DebugSettings());
+        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const std::string& inputActionsJson = "", bool allowInsecureHttp = false, const std::vector<ShaderGlobalDecl>& shaderGlobals = {}, const PlayerSettings& playerSettings = PlayerSettings(), const AudioSettings& audioSettings = AudioSettings(), const DebugSettings& debugSettings = DebugSettings());
+        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const std::string& inputActionsJson = "", bool allowInsecureHttp = false, const std::vector<ShaderGlobalDecl>& shaderGlobals = {}, const PlayerSettings& playerSettings = PlayerSettings(), const AudioSettings& audioSettings = AudioSettings(), const DebugSettings& debugSettings = DebugSettings());
+        void setUIScale(const CanvasScalerSettings& settings) { uiScale = settings; }
         // main.cpp's init line of Project Settings > Input: InputActions::loadJson of the project's
         // actions in a raw string literal (a delimiter the JSON does not hold), "" for the defaults
         static std::string inputActionsInitSource(const std::string& inputActionsJson);
         // Project Settings > Graphics > Shader Globals in the generated main.cpp: the declarations
         // (with their defaults) before any scene loads; "" when the project declares none
         static std::string shaderGlobalsInitSource(const std::vector<ShaderGlobalDecl>& shaderGlobals);
+        // AudioSystem::configure / AudioMixer::load lines of main.cpp ("" for the defaults)
+        static std::string audioInitSource(const AudioSettings& audioSettings);
         // The generated init's lines of Project Settings > Debug: the development build flag
         // (JASPERENGINE_DEVELOPMENT_BUILD of a Debug-type export, DEBUG of Xcode's Debug
         // configuration), the log buffer and stack traces, DebugOverlay::configure

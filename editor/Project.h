@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "window/GameResolutions.h"
 #include "Scene.h"
 #include "Catalog.h"
 #include "render/SceneRender.h"
@@ -646,6 +647,12 @@ namespace jasperengine::editor{
         unsigned int canvasWidth;
         unsigned int canvasHeight;
         Scaling scalingMode;
+        // Project Settings > Graphics > UI Scale (the Canvas Scaler's project default)
+        CanvasScalerSettings uiScale;
+        // the Game view's image (setEditViewSize); 0 = the canvas
+        float editViewWidth = 0.0f;
+        float editViewHeight = 0.0f;
+        float editViewDpi = 0.0f;
         TextureStrategy textureStrategy;
         bool vsyncEnabled;
         int htmlUiMsaaSamples;
@@ -701,11 +708,13 @@ namespace jasperengine::editor{
 
         uint32_t startSceneId;
         LoadingSettings loadingSettings;
+        AudioSettings audioSettings;
         DebugSettings debugSettings;
         TerrainEditorSettings terrainEditorSettings;
         PhysicsPlacementSettings physicsPlacementSettings;
         SpriteNormalsWindowSettings spriteNormalsSettings;
         bool simulateTouch;
+        std::vector<GameResolution> customResolutions;
 
         // True while project.yaml holds the only copy of this user's editor state
         bool workspaceMigrationPending = false;
@@ -1190,6 +1199,19 @@ namespace jasperengine::editor{
         void setScalingMode(Scaling scalingMode);
         Scaling getScalingMode() const;
 
+        // the Canvas Scaler every scene uses unless it overrides it; applied to the Engine at
+        // Play and by the generated main of exports. A change relays the edit-mode UI scenes out.
+        void setUIScale(const CanvasScalerSettings& uiScale);
+        const CanvasScalerSettings& getUIScale() const;
+        // The UI size an edit-mode scene lays out at: its Canvas Scaler for the Game view's
+        // resolution (getEditViewSize), so the Scene view shows what the Game view will
+        void applyEditCanvasScale(Scene* scene, SceneType type, SceneRender* sceneRender) const;
+        void applyEditCanvasScaleToAll();
+        // The view the Scene view lays UI out for: what the Game view shows (its fixed
+        // resolution, else its size; GameWindow sets it), the canvas before; dpi 0 = unknown
+        void setEditViewSize(float width, float height, float dpi);
+        void getEditViewSize(float& width, float& height, float& dpi) const;
+
         void setTextureStrategy(TextureStrategy textureStrategy);
         TextureStrategy getTextureStrategy() const;
 
@@ -1396,6 +1418,25 @@ namespace jasperengine::editor{
         LoadingSettings& getLoadingSettings();
         const LoadingSettings& getLoadingSettings() const;
 
+        // Project Settings > Audio (audio-mixer spec 9): the mixer asset, the voices, the sample
+        // rate, the group new Audio Sources get. Setting them loads the mixer into the engine.
+        const AudioSettings& getAudioSettings() const;
+        void setAudioSettings(const AudioSettings& settings);
+        // the project mixer's file (absolute; empty when none is set)
+        std::filesystem::path getAudioMixerFile() const;
+        // where a new project mixer goes (audio/Main.mixer, assets-relative)
+        static constexpr const char* defaultAudioMixerPath = "audio/Main.mixer";
+        // Loads the project mixer into the engine's AudioMixer with the asset's values (Edit mode
+        // and live edits keep their runtime; Play starts it over); a missing or broken file leaves
+        // the implicit Master (logged). False + error when it does not read.
+        bool applyAudioMixer(std::string* error = nullptr);
+        // a file changed on disk (an editor write, its undo / redo, an external edit): the project
+        // mixer reloads when it is that file
+        void audioFilesChanged(const std::vector<std::filesystem::path>& changed);
+        // Play starts from the start snapshot and the remembered values; Play stops back to the
+        // asset's values (no script overrides, the listener unpaused)
+        void resetPlayAudio(bool starting) const;
+
         // Project Settings > Debug (project.yaml `debug:`); a running Play keeps what it started
         // with. Changed through DebugSettingsCmd (undoable), read by Generator and Play start
         const DebugSettings& getDebugSettings() const;
@@ -1419,6 +1460,9 @@ namespace jasperengine::editor{
         // Play acts as a touch device: the mouse is one finger and isTouchDevice() is true
         bool isSimulateTouch() const;
         void setSimulateTouch(bool simulateTouch);
+        // the Game view's custom resolutions (editor workspace, this user's)
+        const std::vector<GameResolution>& getCustomResolutions() const;
+        void setCustomResolutions(const std::vector<GameResolution>& resolutions);
 
         CommandHistory* getProjectCommandHistory();
 
@@ -2310,6 +2354,9 @@ namespace jasperengine::editor{
         uint32_t getPlaySessionSceneId() const;
         // Camera the game renders through: the main camera, else the scene default
         Entity getGameCamera(uint32_t sceneId) const;
+        // the Camera Shaker Inspector's edit-mode shake preview (CameraControlSystem::stopPreview) of every
+        // stopped scene: Play, a save
+        void stopCameraShakePreviews();
         void waitForPlaySessionToFinish();
 
         std::vector<Scene*> getRunningRuntimeLayers(uint32_t sceneId);

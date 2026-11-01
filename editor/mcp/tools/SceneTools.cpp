@@ -610,7 +610,7 @@ void setMainCameraTool(const CallPtr& call) {
 // ------------------------------------------------------------------ scene settings
 
 enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, Filter, PostProcess,
-                         PostProcessing, PostProcessingField };
+                         PostProcessing, PostProcessingField, CanvasScaler };
 
 struct SceneSetting {
     std::string name;
@@ -654,6 +654,11 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"ssr_blur", SettingKind::Float, "SSR blur"},
         {"ssr_max_steps", SettingKind::Int, "SSR ray march steps"},
         {"ssr_debug_mode", SettingKind::Int, "SSR debug view (0 off)"},
+        {"canvas_scaler", SettingKind::CanvasScaler,
+         "UI scale (Canvas Scaler) of the scene's UI and screen HTML documents: {use_project_default, mode: follow_game_canvas|"
+         "constant_pixel_size|scale_with_screen_size|constant_physical_size, reference: [w,h], match_mode: "
+         "match_width_or_height|expand|shrink, match: 0..1, scale_factor, physical_unit, fallback_dpi}; fields given "
+         "override the project default (use_project_default false)"},
         {"fixed_resolution_enabled", SettingKind::Bool, "render at a fixed resolution, then scale"},
         {"fixed_resolution_width", SettingKind::Int, "fixed resolution width (>= 1)"},
         {"fixed_resolution_height", SettingKind::Int, "fixed resolution height (>= 1)"},
@@ -828,6 +833,7 @@ const char* kindName(SettingKind kind) {
         case SettingKind::PostProcess: return "post_process";
         case SettingKind::PostProcessing: return "post_processing";
         case SettingKind::PostProcessingField: return "post_processing_field";
+        case SettingKind::CanvasScaler: return "canvas_scaler";
     }
     return "unknown";
 }
@@ -915,6 +921,13 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
         case SettingKind::PostProcess:
             return postProcessToJson(defaults ? Catalog::getScenePropertyDefault<std::vector<PostProcessPass>>(setting.name)
                                               : Catalog::getSceneProperty<std::vector<PostProcessPass>>(scene, setting.name), project);
+        case SettingKind::CanvasScaler: {
+            const SceneCanvasScaler value = defaults ? Catalog::getScenePropertyDefault<SceneCanvasScaler>(setting.name)
+                                                     : Catalog::getSceneProperty<SceneCanvasScaler>(scene, setting.name);
+            Json json = McpValues::canvasScalerToJson(value.settings);
+            json["use_project_default"] = value.useProjectDefault;
+            return json;
+        }
     }
     return nullptr;
 }
@@ -1026,6 +1039,27 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
         case SettingKind::PostProcessing:
         case SettingKind::PostProcessingField:
             break; // setSceneSettingsTool gathers them (applyPostProcessingSetting)
+        case SettingKind::CanvasScaler: {
+            if (!value.is_object()) return expect("an object {use_project_default, mode, reference, match_mode, match, ...}");
+            SceneCanvasScaler scaler = Catalog::getSceneProperty<SceneCanvasScaler>(scene->scene, name);
+            Json fields = value;
+            bool useDefaultGiven = false;
+            if (value.contains("use_project_default")) {
+                if (!value["use_project_default"].is_boolean()) return expect("an object whose use_project_default is true or false");
+                useDefaultGiven = true;
+                fields.erase("use_project_default");
+            }
+            // fields on a scene that used the project default start from that default
+            if (!fields.empty() && scaler.useProjectDefault && !useDefaultGiven)
+                scaler.settings = project->getUIScale();
+            std::string why;
+            if (!McpValues::canvasScalerFromJson(fields, scaler.settings, why)) {
+                error = name + ": " + why + ".";
+                return nullptr;
+            }
+            scaler.useProjectDefault = useDefaultGiven ? value["use_project_default"].get<bool>() : (fields.empty() && scaler.useProjectDefault);
+            return new ScenePropertyCmd<SceneCanvasScaler>(project, id, name, scaler);
+        }
         case SettingKind::PostProcess: {
             if (!value.is_array()) return expect("an array of {shader, enabled, uniforms, textures, scale}");
             std::vector<PostProcessPass> passes;

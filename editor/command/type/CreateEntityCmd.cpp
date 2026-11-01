@@ -3,6 +3,8 @@
 
 #include "CreateEntityCmd.h"
 
+#include "audio/AudioMixerDocument.h"
+
 #include "editor/Out.h"
 #include "util/PrimitiveParameters.h"
 #include "util/ProjectUtils.h"
@@ -742,12 +744,12 @@ bool editor::CreateEntityCmd::execute(){
 
     }else if (type == EntityCreationType::AUDIO_SOURCE){
 
-        scene->addComponent<AudioSourceComponent>(entity, {});
+        scene->addComponent<AudioSourceComponent>(entity, AudioMixerDocument::newAudioSource());
 
     }else if (type == EntityCreationType::AUDIO_SOURCE_3D){
 
         scene->addComponent<Transform>(entity, {});
-        scene->addComponent<AudioSourceComponent>(entity, {});
+        scene->addComponent<AudioSourceComponent>(entity, AudioMixerDocument::newAudioSource());
 
     }else if (type == EntityCreationType::MODEL){
 
@@ -778,6 +780,50 @@ bool editor::CreateEntityCmd::execute(){
         if (parent != NULL_ENTITY){
             scene->getComponent<ActionComponent>(entity).target = parent;
         }
+
+    }else if (type == EntityCreationType::UI_PARTICLE_SYSTEM){
+
+        // the emitter draws between its siblings, in UI units, clipped by the nearest panel
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<PointsComponent>(entity, {});
+        const std::string softTexture = ProjectUtils::ensureSoftParticleTexture(project);
+        if (!softTexture.empty()) {
+            scene->getComponent<PointsComponent>(entity).texture = Texture(softTexture);
+        }
+
+        Entity system = scene->createUserEntity();
+        scene->addComponent<Transform>(system, {});
+        scene->addEntityChild(entity, system, false);
+        scene->setEntityName(system, "Particle System");
+        scene->addComponent<ActionComponent>(system, {});
+        scene->addComponent<ParticleSystemComponent>(system, {});
+        ActionComponent& action = scene->getComponent<ActionComponent>(system);
+        action.target = entity;
+        action.state = ActionState::Running;
+
+        // a soft sparkle rising and falling (UI is y down), at time scale 0 too
+        ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(system);
+        particles.useUnscaledTime = true;
+        particles.localSpace = true;
+        particles.maxParticles = 100;
+        particles.rate = 25;
+        particles.lifeInitializer.minLife = 0.8f;
+        particles.lifeInitializer.maxLife = 1.6f;
+        particles.positionInitializer.shape = ParticleEmitterShape::Box;
+        particles.positionInitializer.minPosition = Vector3(-20.0f, -5.0f, 0.0f);
+        particles.positionInitializer.maxPosition = Vector3(20.0f, 5.0f, 0.0f);
+        particles.velocityInitializer.minVelocity = Vector3(-60.0f, -220.0f, 0.0f);
+        particles.velocityInitializer.maxVelocity = Vector3(60.0f, -120.0f, 0.0f);
+        particles.accelerationInitializer.minAcceleration = Vector3(0.0f, 240.0f, 0.0f);
+        particles.accelerationInitializer.maxAcceleration = Vector3(0.0f, 240.0f, 0.0f);
+        particles.sizeInitializer.minSize = 16.0f;
+        particles.sizeInitializer.maxSize = 28.0f;
+        particles.alphaModifier.fromTime = 0.0f;
+        particles.alphaModifier.toTime = 1.6f;
+        particles.alphaModifier.fromAlpha = 1.0f;
+        particles.alphaModifier.toAlpha = 0.0f;
+
+        registerChildEntity(system, entity);
 
     }else if (type == EntityCreationType::POINTS){
 

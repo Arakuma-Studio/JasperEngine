@@ -226,6 +226,11 @@ Read the page before using these tools:
 - Crowds: bake_vertex_animation (preview, then output) -> .vat on a Vertex Animator
   (jasper://docs/vertex-animation).
 - Particles: create_particles, import_unity_particles (jasper://docs/particles).
+- Sound: audio_mixer (jasper://docs/audio).
+- Shake/follow: camerashaker, CameraShake.shake("explosion"); camerafollow (jasper://docs/camera).
+- UI scale (Canvas Scaler: scene setting canvas_scaler, graphics.ui_scale), text outline,
+  shadow and effects (TextEffect), UI particles; Game view resolutions: configure_game_view
+  (jasper://docs/ui).
 - Lines, lasers, trails: line_renderer / trail_renderer (jasper://docs/lines-trails).
 - On-device console and FPS/stats: DebugOverlay, Log.getEntries (jasper://docs/debugging).
 - Bend/squash: edit_lattice (jasper://docs/lattice). GPU fluid: type fluid_simulation

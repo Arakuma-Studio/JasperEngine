@@ -153,10 +153,20 @@ LIMITS.update({"create_ragdoll": 900})
 # platform-services, shader-globals): 153 tools, total 111616 (tool_budget.py), the limit set to it
 LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 2400})
 # merged by the lead (guide-headroom + anim-layers): provisional, re-measured on the merged tree
+# camera-shake (camerashaker/camerafollow component types, get_runtime_entity's shake/follow state,
+# .shake assets): +91 on its branch (107717 on main 1acde245f); merged with main 5762bb259:
+# 153 tools, total 111909 (tool_budget.py on the merged tree), the limit set to it
+# ui-scaling-text: configure_game_view's resolution (a preset, "WxH[@dpi]", {width, height, dpi, name}) and
+# create_ui's outline/shadow text props (+284 on its branch); measured on the tree merged with main
+# 5762bb259 (everything above): 153 tools, total 112185 (tool_budget.py), the limit set to it
+# merged on main with camera-shake (lead, 9c8c6c584 + ui-scaling-text): provisional sum, re-measured below
+# audio mixer (spec 2026-10-31-audio-mixer 10): the audio_mixer tool (get / edit with ops; the ops and effect
+# parameters in jasper://docs/audio) and get_play_state's audio block; merged with main 9c8c6c584:
+# 154 tools, total 112708 (tool_budget.py on the merged tree), the limit set to it
+# lead: main with camera-shake + ui-scaling-text + audio-mixer: provisional (112276 + audio-mixer's +799), re-measured on the merged tree
+TOTAL_LIMIT = 113075
 # debug overlay: no new tool; get_project_settings' category list (+ "debug") and get_play_state's
-# debug_overlay block (+22); measured on the tree merged with main (anim-layers): 153 tools, 111923,
-# the limit set to it
-TOTAL_LIMIT = 111923
+# debug_overlay block (+22); re-measured on the tree merged with main
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

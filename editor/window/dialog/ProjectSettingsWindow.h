@@ -28,6 +28,7 @@ namespace jasperengine::editor {
         int m_canvasWidth = 0;
         int m_canvasHeight = 0;
         int m_scalingModeIndex = 0;
+        CanvasScalerSettings m_uiScale;
         int m_textureStrategyIndex = 0;
         bool m_vsyncEnabled = true;
         int m_htmlUiMsaaIndex = 2;   // htmlUiMsaaValues: 1, 2, 4, 8
@@ -53,6 +54,9 @@ namespace jasperengine::editor {
         std::unordered_map<std::string, Texture> m_thumbnailTextures;
         uint32_t m_startSceneId = NULL_PROJECT_SCENE;
         LoadingSettings m_loadingSettings;
+        AudioSettings m_audioSettings;
+        char m_audioMixerBuffer[512] = {0};
+        char m_audioDefaultGroupBuffer[128] = {0};
         DebugSettings m_debugSettings;
         fs::path m_assetsDir;
         fs::path m_luaDir;
@@ -176,6 +180,7 @@ namespace jasperengine::editor {
         // Tags and Layers, not yet applied)
         void drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows);
         void drawInputSettings();
+        void drawAudioSettings();
         void drawInputActionList();
         void drawInputActionDetails(InputAction& action, int actionIndex);
         void drawInputBinding(InputAction& action, int actionIndex, int bindingIndex);

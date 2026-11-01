@@ -13,6 +13,7 @@
 //                          (replaces add_project_scene / set_start_scene)
 //   edit_project_build_file  read / write ProjectBuild.cmake (replaces update_project_build_file)
 #include "McpTools.h"
+#include "W4Shared.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -30,6 +31,7 @@
 #include "Out.h"
 #include "Project.h"
 #include "command/type/InputActionsCmd.h"
+#include "audio/AudioMixer.h"
 #include "command/type/DebugSettingsCmd.h"
 #include "DebugSettings.h"
 #include "input/InputActions.h"
@@ -1630,6 +1632,24 @@ const std::vector<Setting>& settingsTable() {
         }
         {
             Setting s;
+            s.key = "graphics.ui_scale";
+            s.type = "object";
+            s.description = "Canvas Scaler of every scene's UI and screen HTML documents unless a scene overrides it (scene setting "
+                            "canvas_scaler): {mode: follow_game_canvas (default, UI = game canvas)|constant_pixel_size|"
+                            "scale_with_screen_size|constant_physical_size, reference: [w,h], match_mode: "
+                            "match_width_or_height|expand|shrink, match: 0 width..1 height, scale_factor, physical_unit, "
+                            "fallback_dpi}; fields not given keep their value.";
+            s.get = [](McpContext& ctx) { return McpValues::canvasScalerToJson(ctx.project()->getUIScale()); };
+            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                CanvasScalerSettings settings = ctx.project()->getUIScale();
+                if (!McpValues::canvasScalerFromJson(value, settings, error)) return false;
+                if (apply) ctx.project()->setUIScale(settings);
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
             s.key = "graphics.texture_strategy";
             s.type = "enum";
             s.values = enumNames(textureStrategies);
@@ -1703,6 +1723,140 @@ const std::vector<Setting>& settingsTable() {
 
         // ---- input
         add(inputActionsSetting());
+
+        // ---- audio (Project Settings > Audio)
+        {
+            Setting s;
+            s.key = "audio.mixer";
+            s.type = "path";
+            s.description = "The project's Audio Mixer (a .mixer in the assets; \"\" = none: an implicit Master). audio_mixer "
+                            "edit creates audio/Main.mixer there when unset. Guide: jasper://docs/audio.";
+            s.get = [](McpContext& ctx) {
+                Project* p = ctx.project();
+                return Json(p->getAudioSettings().mixer.empty() ? std::string() : w4::projectRelative(p, p->getAudioMixerFile()));
+            };
+            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_string()) {
+                    error = "must be a .mixer path (\"audio/Main.mixer\") or \"\"";
+                    return false;
+                }
+                std::string text = value.get<std::string>();
+                Project* p = ctx.project();
+                std::string relative;
+                if (!text.empty()) {
+                    const fs::path asProject = p->getProjectPath() / FileUtils::pathFromUtf8(text);
+                    std::error_code ec;
+                    fs::path absolute = fs::exists(asProject, ec) || text.rfind("assets/", 0) == 0 ? asProject : p->resolveAssetPath(FileUtils::pathFromUtf8(text));
+                    if (!p->isInsideAssetsPath(absolute)) {
+                        error = "must be inside the assets directory";
+                        return false;
+                    }
+                    relative = FileUtils::pathToGenericUtf8(p->normalizeToAssetsRelative(absolute));
+                    if (FileUtils::pathFromUtf8(relative).extension() != ".mixer") {
+                        error = "must be a .mixer file";
+                        return false;
+                    }
+                }
+                if (apply) {
+                    AudioSettings settings = p->getAudioSettings();
+                    settings.mixer = relative;
+                    p->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
+        auto audioInt = [&add](const char* key, const char* description, long long minimum, long long maximum, int AudioSettings::*field) {
+            Setting s;
+            s.key = key;
+            s.type = "int";
+            s.description = description;
+            s.get = [field](McpContext& ctx) { return Json(ctx.project()->getAudioSettings().*field); };
+            s.set = [field, minimum, maximum](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, minimum, maximum, v, error)) return false;
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.*field = static_cast<int>(v);
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        };
+        audioInt("audio.max_real_voices", "Voices mixed at once (default 32); the quietest others are virtualised. At most 255 minus "
+                 "the mixer's groups.", 1, 255, &AudioSettings::maxRealVoices);
+        {
+            // SoLoud mixes at most 255 voices at once, the mixer's buses among them
+            Setting& s = t.back();
+            auto inner = s.set;
+            s.set = [inner](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                const long long groups = (long long)AudioMixer::getGroupNames().size();
+                const long long limit = (long long)AudioMixer::maxActiveVoices - groups;
+                if (value.is_number_integer() && value.get<long long>() > limit) {
+                    error = "must be at most " + std::to_string(limit) + " (255 voices at once, the mixer's " +
+                            std::to_string(groups) + " group(s) included)";
+                    return false;
+                }
+                return inner(ctx, value, apply, error);
+            };
+        }
+        audioInt("audio.max_voices", "Voices playing at all (default 256); past it the least important (AudioSource priority) stops.", 1, 1000, &AudioSettings::maxVoices);
+        {
+            Setting s;
+            s.key = "audio.sample_rate";
+            s.type = "enum";
+            s.values = {"auto", "22050", "44100", "48000"};
+            s.description = "Output sample rate (auto = the device's).";
+            s.get = [](McpContext& ctx) {
+                const int rate = ctx.project()->getAudioSettings().sampleRate;
+                return Json(rate == 0 ? std::string("auto") : std::to_string(rate));
+            };
+            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                int rate = -1;
+                if (value.is_string()) {
+                    const std::string text = value.get<std::string>();
+                    if (text == "auto") rate = 0;
+                    else if (text == "22050" || text == "44100" || text == "48000") rate = std::stoi(text);
+                } else if (value.is_number_integer()) {
+                    const int v = value.get<int>();
+                    if (v == 0 || v == 22050 || v == 44100 || v == 48000) rate = v;
+                }
+                if (rate < 0) {
+                    error = "must be one of: auto 22050 44100 48000";
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.sampleRate = rate;
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "audio.default_output_group";
+            s.type = "string";
+            s.description = "The mixer group new Audio Sources play through (\"\" = Master).";
+            s.get = [](McpContext& ctx) { return Json(ctx.project()->getAudioSettings().defaultOutputGroup); };
+            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                std::string text;
+                if (!readString(value, text, error, 64)) return false;
+                if (!text.empty() && !AudioMixer::hasGroup(text)) {
+                    error = "no mixer group '" + text + "' (audio_mixer get lists them)";
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.defaultOutputGroup = text;
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
 
         // ---- scripting
         {

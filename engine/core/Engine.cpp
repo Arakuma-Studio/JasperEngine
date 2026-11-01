@@ -20,6 +20,8 @@
 #include "manager/SceneManager.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
+#include "subsystem/CameraControlSystem.h"
+#include "audio/AudioMixer.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
@@ -51,6 +53,7 @@
 #include "pool/AnimationClipPool.h"
 #include "pool/AvatarMaskPool.h"
 #include "pool/AnimatorControllerPool.h"
+#include "pool/ShakePresetPool.h"
 #include "pool/PhysicsMaterialPool.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
@@ -93,6 +96,7 @@ int Engine::preferredCanvasHeight;
 Rect Engine::viewRect;
 
 Scaling Engine::scalingMode = Scaling::FITWIDTH;
+CanvasScalerSettings Engine::defaultCanvasScaler;
 TextureStrategy Engine::textureStrategy = TextureStrategy::NONE;
 
 bool Engine::callMouseInTouchEvent = false;
@@ -494,6 +498,20 @@ void Engine::setScalingMode(Scaling scalingMode){
 
 Scaling Engine::getScalingMode(){
     return scalingMode;
+}
+
+void Engine::setDefaultCanvasScaler(const CanvasScalerSettings& settings){
+    Engine::defaultCanvasScaler = settings;
+
+    if (viewLoaded){
+        for (Scene* scene : getScenesSnapshot()){
+            scene->updateCameraSize();
+        }
+    }
+}
+
+const CanvasScalerSettings& Engine::getDefaultCanvasScaler(){
+    return defaultCanvasScaler;
 }
 
 void Engine::setTextureStrategy(TextureStrategy textureStrategy){
@@ -1009,6 +1027,7 @@ void Engine::clearPools(){
     AnimationClipPool::clear();
     AvatarMaskPool::clear();
     AnimatorControllerPool::clear();
+    ShakePresetPool::clear();
     PhysicsMaterialPool::clear();
 }
 
@@ -1561,6 +1580,9 @@ void Engine::runFrame(bool draw){
     // the UI clock: the same, but it keeps running while only the game events are paused (HTML
     // UI documents animate in edit mode and in a paused Play)
     HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);
+    // the audio mixer's snapshot transitions and timed values, once a frame before the scenes
+    // (scaled ones hold at time scale 0; both hold while the app or the simulation is held)
+    AudioMixer::update(paused ? 0.0 : deltatime, (paused || simulationHeld) ? 0.0 : frameTime);
 
     // the input of this frame is over: no low surrogate will follow a pending high one
     flushCharInput();
@@ -1610,6 +1632,12 @@ void Engine::runFrame(bool draw){
         // while the editor's Play is paused (Engine::pauseGameEvents)
         if (onUpdate.isEnabled())
             ScriptScheduler::beginFrame(frameDelta, unscaledDeltatime);
+
+        // transform-mode Camera Shakers write their base back before anything of this frame
+        // moves their GameObjects (they shake it again in the scene update)
+        for (int i = 0; i < scenes.size(); i++) {
+            if (auto cameras = scenes[i]->findSystem<CameraControlSystem>()) cameras->preUpdate();
+        }
 
         // 0) start of the scripts enabled since the last frame, before their first fixed
         //    update and update (Unity)

@@ -8,6 +8,7 @@
 
 #include "Out.h"
 #include "util/FileUtils.h"
+#include "stb_image_write.h"
 #include "Catalog.h"
 #include "Stream.h"
 #include "shader/ShaderVariantCompiler.h"
@@ -17,6 +18,7 @@
 #include "System.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cctype>
 #include <cmath>
 #include <fstream>
@@ -44,6 +46,7 @@
 #include "component/LineRendererComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/AudioSourceComponent.h"
+#include "audio/AudioMixerDocument.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/UIComponent.h"
@@ -1052,7 +1055,7 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
             break;
         case ComponentType::AudioSourceComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<AudioSourceComponent>(entity, {});
+                registry->addComponent<AudioSourceComponent>(entity, AudioMixerDocument::newAudioSource());
             }else{
                 registry->addComponent<AudioSourceComponent>(entity, Stream::decodeAudioSourceComponent(componentNode));
             }
@@ -1162,6 +1165,20 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<LatticeFollowerComponent>(entity, {});
             }else{
                 registry->addComponent<LatticeFollowerComponent>(entity, Stream::decodeLatticeFollowerComponent(componentNode));
+            }
+            break;
+        case ComponentType::CameraShakerComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<CameraShakerComponent>(entity, {});
+            }else{
+                registry->addComponent<CameraShakerComponent>(entity, Stream::decodeCameraShakerComponent(componentNode));
+            }
+            break;
+        case ComponentType::CameraFollowComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<CameraFollowComponent>(entity, {});
+            }else{
+                registry->addComponent<CameraFollowComponent>(entity, Stream::decodeCameraFollowComponent(componentNode));
             }
             break;
         case ComponentType::LatticeTracksComponent:
@@ -1459,6 +1476,13 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<TranslateTracksComponent>(entity, Stream::decodeTranslateTracksComponent(componentNode));
             }
             break;
+        case ComponentType::TextEffectComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<TextEffectComponent>(entity, {});
+            }else{
+                registry->addComponent<TextEffectComponent>(entity, Stream::decodeTextEffectComponent(componentNode));
+            }
+            break;
         case ComponentType::LayoutGroupComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
                 registry->addComponent<LayoutGroupComponent>(entity, {});
@@ -1714,6 +1738,19 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeLatticeFollowerComponent(registry->getComponent<LatticeFollowerComponent>(entity));
             }
             registry->removeComponent<LatticeFollowerComponent>(entity);
+            break;
+        case ComponentType::CameraShakerComponent:
+            // the view offset (or the transform-mode base) goes back (CameraControlSystem::onComponentRemoved)
+            if (encodeComponent){
+                oldComponent = Stream::encodeCameraShakerComponent(registry->getComponent<CameraShakerComponent>(entity));
+            }
+            registry->removeComponent<CameraShakerComponent>(entity);
+            break;
+        case ComponentType::CameraFollowComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeCameraFollowComponent(registry->getComponent<CameraFollowComponent>(entity));
+            }
+            registry->removeComponent<CameraFollowComponent>(entity);
             break;
         case ComponentType::LatticeTracksComponent:
             if (encodeComponent){
@@ -1980,6 +2017,12 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeCanvasGroupComponent(registry->getComponent<CanvasGroupComponent>(entity));
             }
             registry->removeComponent<CanvasGroupComponent>(entity);
+            break;
+        case ComponentType::TextEffectComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeTextEffectComponent(registry->getComponent<TextEffectComponent>(entity));
+            }
+            registry->removeComponent<TextEffectComponent>(entity);
             break;
         default:
             break;
@@ -2527,6 +2570,35 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
 
 std::string editor::ProjectUtils::getEntityTypeName(Scene* scene, Entity entity) {
     return getEntityClassInfo(scene, entity).name;
+}
+
+std::string editor::ProjectUtils::ensureSoftParticleTexture(Project* project) {
+    if (!project) return "";
+    // project-relative, as texture paths are ("assets/ui/particle_soft.png")
+    const std::string relative = (project->getAssetsDir() / "ui" / "particle_soft.png").generic_string();
+    const fs::path file = project->getAssetsPath() / "ui" / "particle_soft.png";
+    std::error_code ec;
+    if (fs::exists(file, ec)) return relative;
+
+    // a 64 x 64 white disc whose alpha falls off smoothly to the edge
+    constexpr int size = 64;
+    std::vector<unsigned char> pixels((size_t)size * size * 4, 255);
+    for (int y = 0; y < size; y++) {
+        for (int x = 0; x < size; x++) {
+            const float dx = ((float)x + 0.5f) / (float)size * 2.0f - 1.0f;
+            const float dy = ((float)y + 0.5f) / (float)size * 2.0f - 1.0f;
+            const float d = std::sqrt(dx * dx + dy * dy);
+            const float t = std::clamp(1.0f - d, 0.0f, 1.0f);
+            const float alpha = t * t * (3.0f - 2.0f * t);
+            pixels[((size_t)y * size + x) * 4 + 3] = (unsigned char)std::lround(alpha * 255.0f);
+        }
+    }
+    fs::create_directories(file.parent_path(), ec);
+    if (!stbi_write_png(FileUtils::pathToUtf8(file).c_str(), size, size, 4, pixels.data(), size * 4)) {
+        Out::warning("Could not write %s", FileUtils::pathToUtf8(file).c_str());
+        return "";
+    }
+    return relative;
 }
 
 void editor::ProjectUtils::setupNewLineRenderer(LineRendererComponent& lines, bool scene2D){

@@ -226,6 +226,24 @@ std::string editor::Factory::toIdentifier(const std::string& name) {
     return out;
 }
 
+std::string editor::Factory::formatCanvasScaler(const CanvasScalerSettings& settings) {
+    static const char* const modes[] = {"UIScaleMode::FollowGameCanvas", "UIScaleMode::ConstantPixelSize",
+                                        "UIScaleMode::ScaleWithScreenSize", "UIScaleMode::ConstantPhysicalSize"};
+    static const char* const matchModes[] = {"ScreenMatchMode::MatchWidthOrHeight", "ScreenMatchMode::Expand", "ScreenMatchMode::Shrink"};
+    static const char* const units[] = {"PhysicalUnit::Centimeters", "PhysicalUnit::Millimeters", "PhysicalUnit::Inches",
+                                        "PhysicalUnit::Points", "PhysicalUnit::Picas"};
+    const CanvasScalerSettings d;
+    std::string out = "[](){ CanvasScalerSettings s;";
+    if (settings.mode != d.mode) out += std::string(" s.mode = ") + modes[(int)settings.mode] + ";";
+    if (settings.scaleFactor != d.scaleFactor) out += " s.scaleFactor = " + formatFloat(settings.scaleFactor) + ";";
+    if (settings.referenceResolution != d.referenceResolution) out += " s.referenceResolution = " + formatVector2(settings.referenceResolution) + ";";
+    if (settings.screenMatchMode != d.screenMatchMode) out += std::string(" s.screenMatchMode = ") + matchModes[(int)settings.screenMatchMode] + ";";
+    if (settings.matchWidthOrHeight != d.matchWidthOrHeight) out += " s.matchWidthOrHeight = " + formatFloat(settings.matchWidthOrHeight) + ";";
+    if (settings.physicalUnit != d.physicalUnit) out += std::string(" s.physicalUnit = ") + units[(int)settings.physicalUnit] + ";";
+    if (settings.fallbackScreenDPI != d.fallbackScreenDPI) out += " s.fallbackScreenDPI = " + formatFloat(settings.fallbackScreenDPI) + ";";
+    return out + " return s; }()";
+}
+
 std::string editor::Factory::formatVector2(const Vector2& v) {
     return "Vector2(" + formatFloat(v.x) + ", " + formatFloat(v.y) + ")";
 }
@@ -660,6 +678,16 @@ std::string editor::Factory::formatAudioSourceState(AudioSourceState state) {
         case AudioSourceState::Stopped: return "AudioSourceState::Stopped";
         default: return "AudioSourceState::Stopped";
     }
+}
+
+std::string editor::Factory::formatAudioLoadType(AudioLoadType loadType) {
+    switch (loadType) {
+        case AudioLoadType::Auto: return "AudioLoadType::Auto";
+        case AudioLoadType::DecompressOnLoad: return "AudioLoadType::DecompressOnLoad";
+        case AudioLoadType::CompressedInMemory: return "AudioLoadType::CompressedInMemory";
+        case AudioLoadType::Streaming: return "AudioLoadType::Streaming";
+    }
+    return "AudioLoadType::Auto";
 }
 
 std::string editor::Factory::formatAudioSourceAttenuation(AudioSourceAttenuation attenuation) {
@@ -1870,7 +1898,58 @@ std::string editor::Factory::createTextComponent(int indentSpaces, EntityRegistr
     code << ind << "text.fixedHeight = " << formatBool(text.fixedHeight) << ";\n";
     code << ind << "text.pivotBaseline = " << formatBool(text.pivotBaseline) << ";\n";
     code << ind << "text.pivotCentered = " << formatBool(text.pivotCentered) << ";\n";
+    // outline, shadow and visible characters only when set
+    const TextComponent d;
+    if (text.outlineWidth != d.outlineWidth) code << ind << "text.outlineWidth = " << formatFloat(text.outlineWidth) << ";\n";
+    if (text.outlineColor != d.outlineColor) code << ind << "text.outlineColor = " << formatVector4(text.outlineColor) << ";\n";
+    if (text.shadowEnabled != d.shadowEnabled) code << ind << "text.shadowEnabled = " << formatBool(text.shadowEnabled) << ";\n";
+    if (text.shadowColor != d.shadowColor) code << ind << "text.shadowColor = " << formatVector4(text.shadowColor) << ";\n";
+    if (text.shadowOffset != d.shadowOffset) code << ind << "text.shadowOffset = " << formatVector2(text.shadowOffset) << ";\n";
+    if (text.shadowSoftness != d.shadowSoftness) code << ind << "text.shadowSoftness = " << formatFloat(text.shadowSoftness) << ";\n";
+    if (text.shadowDilate != d.shadowDilate) code << ind << "text.shadowDilate = " << formatFloat(text.shadowDilate) << ";\n";
+    if (text.visibleCharacters != d.visibleCharacters) code << ind << "text.visibleCharacters = " << text.visibleCharacters << ";\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "TextComponent", "text", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createTextEffectComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<TextEffectComponent>(entity)) return "";
+    TextEffectComponent& effect = scene->getComponent<TextEffectComponent>(entity);
+    static const char* const types[] = {"None", "Wave", "Bounce", "Shake", "Pulse", "Typewriter", "FadeIn", "Grow", "Unfold", "Rainbow", "Gradient"};
+    static const char* const mixes[] = {"Multiply", "Add", "Replace"};
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    const TextEffectComponent d;
+    const TextEffectLayer dl;
+    code << ind << "TextEffectComponent textEffect;\n";
+    if (effect.enabled != d.enabled) code << ind << "textEffect.enabled = " << formatBool(effect.enabled) << ";\n";
+    for (size_t i = 0; i < effect.layers.size(); i++){
+        const TextEffectLayer& l = effect.layers[i];
+        if (l == dl) continue;
+        const std::string layer = "textEffect.layers[" + std::to_string(i) + "]";
+        code << ind << layer << ".type = TextEffectType::" << types[std::min((size_t)l.type, (size_t)10)] << ";\n";
+        if (l.enabled != dl.enabled) code << ind << layer << ".enabled = " << formatBool(l.enabled) << ";\n";
+        if (l.amplitude != dl.amplitude) code << ind << layer << ".amplitude = " << formatFloat(l.amplitude) << ";\n";
+        if (l.duration != dl.duration) code << ind << layer << ".duration = " << formatFloat(l.duration) << ";\n";
+        if (l.spread != dl.spread) code << ind << layer << ".spread = " << formatFloat(l.spread) << ";\n";
+        if (l.phaseStep != dl.phaseStep) code << ind << layer << ".phaseStep = " << formatFloat(l.phaseStep) << ";\n";
+        if (l.frequency != dl.frequency) code << ind << layer << ".frequency = " << formatFloat(l.frequency) << ";\n";
+        if (l.charactersPerSecond != dl.charactersPerSecond) code << ind << layer << ".charactersPerSecond = " << formatFloat(l.charactersPerSecond) << ";\n";
+        if (l.fadeTime != dl.fadeTime) code << ind << layer << ".fadeTime = " << formatFloat(l.fadeTime) << ";\n";
+        for (const TextEffectGradientStop& stop : l.gradient){
+            code << ind << layer << ".gradient.push_back(TextEffectGradientStop{" << formatVector4(stop.color) << ", " << formatFloat(stop.position) << "});\n";
+        }
+        if (l.mix != dl.mix) code << ind << layer << ".mix = TextEffectMix::" << mixes[std::min((size_t)l.mix, (size_t)2)] << ";\n";
+        if (l.saturation != dl.saturation) code << ind << layer << ".saturation = " << formatFloat(l.saturation) << ";\n";
+        if (l.lightness != dl.lightness) code << ind << layer << ".lightness = " << formatFloat(l.lightness) << ";\n";
+    }
+    if (effect.autoPlay != d.autoPlay) code << ind << "textEffect.autoPlay = " << formatBool(effect.autoPlay) << ";\n";
+    if (effect.loop != d.loop) code << ind << "textEffect.loop = " << formatBool(effect.loop) << ";\n";
+    if (effect.useUnscaledTime != d.useUnscaledTime) code << ind << "textEffect.useUnscaledTime = " << formatBool(effect.useUnscaledTime) << ";\n";
+    if (effect.startIndex != d.startIndex) code << ind << "textEffect.startIndex = " << effect.startIndex << ";\n";
+    if (effect.length != d.length) code << ind << "textEffect.length = " << effect.length << ";\n";
+    if (!effect.forWords.empty()) code << ind << "textEffect.forWords = " << formatString(effect.forWords) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "TextEffectComponent", "textEffect", assignExisting);
     return code.str();
 }
 
@@ -2405,6 +2484,14 @@ std::string editor::Factory::createAudioSourceComponent(int indentSpaces, Entity
     code << ind << "audio.attenuationModel = " << formatAudioSourceAttenuation(audio.attenuationModel) << ";\n";
     code << ind << "audio.attenuationRolloffFactor = " << formatFloat(audio.attenuationRolloffFactor) << ";\n";
     code << ind << "audio.dopplerFactor = " << formatFloat(audio.dopplerFactor) << ";\n";
+    // audio mixer fields, only when not their default
+    const AudioSourceComponent defaults;
+    if (!audio.outputGroup.empty()) code << ind << "audio.outputGroup = " << formatString(audio.outputGroup) << ";\n";
+    if (!audio.outputGroupName.empty()) code << ind << "audio.outputGroupName = " << formatString(audio.outputGroupName) << ";\n";
+    if (audio.loadType != defaults.loadType) code << ind << "audio.loadType = " << formatAudioLoadType(audio.loadType) << ";\n";
+    if (audio.priority != defaults.priority) code << ind << "audio.priority = " << audio.priority << ";\n";
+    if (audio.maxVoices != defaults.maxVoices) code << ind << "audio.maxVoices = " << audio.maxVoices << ";\n";
+    if (audio.ignoreListenerPause != defaults.ignoreListenerPause) code << ind << "audio.ignoreListenerPause = " << formatBool(audio.ignoreListenerPause) << ";\n";
     code << ind << "audio.needUpdate = true;\n";
     if (audio.state == AudioSourceState::Playing) {
         code << ind << "audio.startTrigger = true;\n";
@@ -3442,6 +3529,56 @@ std::string editor::Factory::createLatticeModifierComponent(int indentSpaces, En
     return code.str();
 }
 
+std::string editor::Factory::createCameraShakerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    (void)entityVarNames;
+    if (!scene->findComponent<CameraShakerComponent>(entity)) return "";
+    const CameraShakerComponent& shaker = scene->getComponent<CameraShakerComponent>(entity);
+    const CameraShakerComponent defaults;
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "CameraShakerComponent camerashaker;\n";
+    if (!shaker.enabled) code << ind << "camerashaker.enabled = false;\n";
+    if (shaker.global != defaults.global) code << ind << "camerashaker.global = " << formatBool(shaker.global) << ";\n";
+    if (shaker.unscaledTime != defaults.unscaledTime) code << ind << "camerashaker.unscaledTime = " << formatBool(shaker.unscaledTime) << ";\n";
+    if (shaker.mode == CameraShakeMode::Mode3D) code << ind << "camerashaker.mode = CameraShakeMode::Mode3D;\n";
+    if (shaker.mode == CameraShakeMode::Mode2D) code << ind << "camerashaker.mode = CameraShakeMode::Mode2D;\n";
+    code << ind << "camerashaker.positionScale = " << formatFloat(shaker.positionScale) << ";\n";
+    code << ind << "camerashaker.rotationScale = " << formatFloat(shaker.rotationScale) << ";\n";
+    if (!shaker.startPreset.empty()) code << ind << "camerashaker.startPreset = " << formatString(shaker.startPreset) << ";\n";
+    code << ind << "camerashaker.traumaDecay = " << formatFloat(shaker.traumaDecay) << ";\n";
+    code << ind << "camerashaker.traumaPower = " << formatFloat(shaker.traumaPower) << ";\n";
+    code << ind << "camerashaker.traumaMaxOffset = " << formatVector3(shaker.traumaMaxOffset) << ";\n";
+    code << ind << "camerashaker.traumaMaxAngle = " << formatVector3(shaker.traumaMaxAngle) << ";\n";
+    code << ind << "camerashaker.traumaFrequency = " << formatFloat(shaker.traumaFrequency) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "CameraShakerComponent", "camerashaker", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createCameraFollowComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<CameraFollowComponent>(entity)) return "";
+    const CameraFollowComponent& follow = scene->getComponent<CameraFollowComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "CameraFollowComponent camerafollow;\n";
+    if (!follow.enabled) code << ind << "camerafollow.enabled = false;\n";
+    code << ind << "camerafollow.target = " << formatEntity(follow.target, entityVarNames) << ";\n";
+    code << ind << "camerafollow.offset = " << formatVector3(follow.offset) << ";\n";
+    if (follow.offsetSpace == FollowOffsetSpace::Target) code << ind << "camerafollow.offsetSpace = FollowOffsetSpace::Target;\n";
+    if (follow.offsetSpace == FollowOffsetSpace::TargetYaw) code << ind << "camerafollow.offsetSpace = FollowOffsetSpace::TargetYaw;\n";
+    code << ind << "camerafollow.damping = " << formatVector3(follow.damping) << ";\n";
+    code << ind << "camerafollow.maxSpeed = " << formatFloat(follow.maxSpeed) << ";\n";
+    code << ind << "camerafollow.lookAt = " << formatBool(follow.lookAt) << ";\n";
+    code << ind << "camerafollow.lookAtOffset = " << formatVector3(follow.lookAtOffset) << ";\n";
+    code << ind << "camerafollow.rotationDamping = " << formatFloat(follow.rotationDamping) << ";\n";
+    code << ind << "camerafollow.deadZone = " << formatVector2(follow.deadZone) << ";\n";
+    code << ind << "camerafollow.useBounds = " << formatBool(follow.useBounds) << ";\n";
+    code << ind << "camerafollow.boundsMin = " << formatVector3(follow.boundsMin) << ";\n";
+    code << ind << "camerafollow.boundsMax = " << formatVector3(follow.boundsMax) << ";\n";
+    code << ind << "camerafollow.unscaledTime = " << formatBool(follow.unscaledTime) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "CameraFollowComponent", "camerafollow", assignExisting);
+    return code.str();
+}
+
 std::string editor::Factory::createLatticeFollowerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<LatticeFollowerComponent>(entity)) return "";
     LatticeFollowerComponent& follower = scene->getComponent<LatticeFollowerComponent>(entity);
@@ -3502,6 +3639,7 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::LayoutGroupComponent: return createLayoutGroupComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::CanvasGroupComponent: return createCanvasGroupComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::TextComponent: return createTextComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::TextEffectComponent: return createTextEffectComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ImageComponent: return createImageComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::SpriteComponent: return createSpriteComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::TilemapComponent: return createTilemapComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
@@ -3517,6 +3655,8 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::PoseAnimatorComponent: return createPoseAnimatorComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::AnimationPlayerComponent: return createAnimationPlayerComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::VertexAnimatorComponent: return createVertexAnimatorComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::CameraShakerComponent: return createCameraShakerComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::CameraFollowComponent: return createCameraFollowComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::CameraComponent: return createCameraComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::AudioSourceComponent: return createAudioSourceComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ScriptComponent: return createScriptComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
@@ -3963,6 +4103,11 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     out << ind2 << "scene->setGravity3D(" << formatVector3(scene->getGravity3D()) << ");\n";
     if (scene->isPhysicsInterpolation() != SceneSettings().physicsInterpolation)
         out << ind2 << "scene->setPhysicsInterpolation(" << formatBool(scene->isPhysicsInterpolation()) << ");\n";
+    // the scene's own Canvas Scaler (it uses the project default otherwise)
+    if (scene->getCanvasScaler() != CanvasScalerSettings())
+        out << ind2 << "scene->setCanvasScaler(" << formatCanvasScaler(scene->getCanvasScaler()) << ");\n";
+    if (!scene->isCanvasScalerUseProjectDefault())
+        out << ind2 << "scene->setCanvasScalerUseProjectDefault(false);\n";
     if (scene->getPhysics2DSubSteps() != SceneSettings().physics2DSubSteps)
         out << ind2 << "scene->setPhysics2DSubSteps(" << scene->getPhysics2DSubSteps() << ");\n";
     out << ind2 << "scene->setLightState(" << formatLightState(scene->getLightState()) << ");\n";

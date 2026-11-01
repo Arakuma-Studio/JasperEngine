@@ -165,6 +165,24 @@ New: the engine had none of these. Unity's members became `System`, `Screen`, `E
 | Player > Default Orientation, Allowed Orientations for Auto Rotation | Project Settings > Player > Resolution and Presentation (`player.default_orientation`, `player.allowed_orientations`; shared by Android and iOS) |
 | Device Simulator (orientation, language, `SystemInfo.deviceModel`) | the Game view's Device menu (device, Rotate, Language) |
 
+## UI scaling, TextMesh Pro, UI particles
+
+New with ui-scaling-text (details: [ui.md](mcp/guide/ui.md), HTML: [html-ui.md](mcp/guide/html-ui.md)).
+
+| Unity term | JasperEngine |
+|---|---|
+| `CanvasScaler` (UI Scale Mode, Reference Resolution, Screen Match Mode, Match, Scale Factor, Physical Unit, Fallback Screen DPI) | the Canvas Scaler: Project Settings > Graphics > UI Scale (`graphics.ui_scale`), a scene's Canvas Scaler (scene setting `canvas_scaler`, Lua `scene:getCanvasScaler()`: `uiScaleMode`, `referenceResolution`, `screenMatchMode`, `matchWidthOrHeight`, `scaleFactor`, `physicalUnit`, `fallbackScreenDPI`); the extra mode Follow Game Canvas (default) keeps the game canvas |
+| `CanvasScaler.ScaleMode.*`, `ScreenMatchMode.*`, `CanvasScaler.Unit.*` | `UIScaleMode.*`, `ScreenMatchMode.*`, `PhysicalUnit.*` (same names) |
+| A script switching `matchWidthOrHeight` between 0 and 1 by aspect (`CanvasScaleAdjuster`) | Screen Match Mode Expand |
+| `RectTransformUtility.ScreenPointToLocalPointInRectangle` (screen to canvas units) | `UI.canvasToUI(scene, point)` / `UI.uiToCanvas(scene, point)` |
+| Game view resolution presets (fixed resolution, custom sizes) | the Game view's resolution menu (Resolutions, Add custom...); MCP `configure_game_view {resolution}` |
+| TMP Outline (Thickness, Color) | Text `outlineWidth` (UI units), `outlineColor` |
+| TMP Underlay (Offset, Softness, Dilate, Color) | Text `shadowEnabled`, `shadowOffset` (UI units, right-down), `shadowSoftness`, `shadowDilate`, `shadowColor` |
+| TMP `maxVisibleCharacters` | Text `visibleCharacters` |
+| TextMesh Pro Effect (Waves, Grow, Unfold, Bounce, Sketch; Duration, Amplitude, Character Duration Ratio, Gradient + Mix, Repeat, AutoPlay, ForWords) | Text Effect component (`TextEffect` in Lua): layers Wave (amplitude 0.3 x TMP Amplitude em), Grow, Unfold, Bounce, Shake, Gradient (spread = Character Duration Ratio, mix add/multiply), `loop`, `autoPlay`, `forWords`; HTML: CSS `text-effect` |
+| Coffee `UIParticle` (particles in a canvas) | a Particle System under the UI element (GameObject > UI > Particle System, `useUnscaledTime`); HTML: `<particle-system src="....prefab">` |
+| `ParticleSystem.main.useUnscaledTime` | `ParticleSystem.useUnscaledTime` |
+
 ## Coroutines, timers and time
 
 Rules and the frame order: [lua-api.md](mcp/guide/lua-api.md) 2.13 (Time) and 2.14 (coroutines
@@ -186,6 +204,25 @@ and timers); C++ timers: [cpp-scripting.md](mcp/guide/cpp-scripting.md).
 | `Time.deltaTime`, `unscaledDeltaTime`, `fixedDeltaTime`, `fixedUnscaledDeltaTime` | `Time.deltaTime`, `Time.unscaledDeltaTime`, `Time.fixedDeltaTime`, `Time.fixedUnscaledDeltaTime` (also `Engine.deltatime`, `Engine.unscaledDeltatime`, `Engine.updateTime`) |
 | `Time.time`, `fixedTime`, `unscaledTime`, `realtimeSinceStartup`, `timeSinceLevelLoad`, `frameCount` | the same names on `Time` (`Engine.gameTime`, `Engine.frameCount`) |
 | `Time.timeScale`, `maximumDeltaTime`, `captureDeltaTime`, `smoothDeltaTime`, `inFixedTimeStep` | the same names on `Time` (`Engine.timeScale`, `Engine.maxDeltatime`, `Engine.fixedDeltatime`: a fixed frame delta, not the fixed step) |
+
+## Camera shake and camera follow
+
+Rules, presets and the frame order: [camera.md](mcp/guide/camera.md) (users:
+[docs/camera.md](camera.md)); Lua: [lua-api.md](mcp/guide/lua-api.md) 4.9.1.
+
+| Unity term | JasperEngine name |
+|---|---|
+| MilkShake `Shaker` (component) | Camera Shaker component (`camerashaker`; Lua `CameraShaker`, `go:getCameraShaker()`): on a camera a view offset, the Transform never written |
+| MilkShake `Shaker.ShakeAll(preset)`, `GlobalShakers`, `addToGlobalShakers` | `CameraShake.shake(preset)` on every shaker with `global` on (default on) |
+| MilkShake `shaker.Shake(preset, seed)`, `ShakeFromPoint(point, maxDistance, preset)` | `shaker:shake(preset, {seed = s})`, `shaker:shakeAt(point, radius, preset)` / `CameraShake.shakeAt` |
+| MilkShake `ShakePreset` (asset), `ShakeParameters` | Shake Preset: a `.shake` file (Assets > Create > Shake Preset) or a built-in name (`CameraShake.getPresetNames()`), or a Lua table |
+| MilkShake `ShakeInstance`: `Stop(fade, true)`, `Pause(fade)`, `Resume(fade)`, `StrengthScale`, `RoughnessScale`, `State`, `IsFinished` | `ShakeInstance`: `stop([fade])`, `pause([fade])`, `resume([fade])`, `strengthScale`, `roughnessScale`, `state`, `isFinished()` (plus `isValid()`) |
+| EZ Camera Shake `CameraShakePresets.Bump / HandheldCamera / Vibration` | built-ins `bump`, `handheld`, `vibration` (strength = magnitude / 2) |
+| Trauma shake ("Juicing Your Cameras With Math") | `CameraShake.addTrauma(x)`, `traumaPower`, `traumaDecay`, `traumaMaxOffset`, `traumaMaxAngle` |
+| Cinemachine Impulse Source (`GenerateImpulse`) / Impulse Listener (gain) | `CameraShake.shake` / `shakeAt` (distance falloff only, no propagation speed) / Camera Shaker (`positionScale`, `rotationScale`; `mode` "2d") |
+| Cinemachine virtual camera follow (Transposer / Framing Transposer + Composer), simple cases | Camera Follow component (`camerafollow`): `target`, `offset` (`offsetSpace`), `damping`, `lookAt`, `deadZone` (2D), bounds; no blending, priorities or collision |
+| `Mathf.SmoothDamp` in a hand-written follow script | Camera Follow `damping` (the same formula, per world axis) and `maxSpeed` |
+| `transform.localPosition = shake` on a child camera (MilkShake's setup) | not needed: the shake is a view offset, put the Camera Shaker on the camera itself |
 
 ## Saves and data
 
@@ -257,6 +294,28 @@ rescaled (Unity clips); `getButton` on an axis is true for both sides; an unknow
 and reads 0 (Unity throws). On-screen sticks and buttons feed the same actions, so
 `Input.getAxis("Horizontal")` sums keyboard, gamepad and the touch stick. See
 [mcp/guide/input.md](mcp/guide/input.md).
+
+## Audio
+
+The project has one Audio Mixer asset (`.mixer`, JSON), chosen in Project Settings > Audio and
+edited in Window > Audio > Audio Mixer or with MCP `audio_mixer`. Without one every sound plays
+through an implicit Master at 0 dB. See [mcp/guide/audio.md](mcp/guide/audio.md).
+
+| Unity term | JasperEngine name |
+|---|---|
+| `AudioMixer` (asset) | `.mixer` asset (Assets > Create > Audio Mixer); Lua `AudioMixer` (static: the project's mixer) |
+| `AudioMixerGroup`, `AudioSource.outputAudioMixerGroup` | mixer group; `AudioSource.outputGroup` (the group's name, "" = Master); Lua `AudioMixer.getGroup(name)` -> `AudioMixerGroup` |
+| `AudioMixer.SetFloat` / `GetFloat` / `ClearFloat`, exposed parameters | `AudioMixer.setFloat(name, value [, seconds [, opts]])` / `getFloat(name)` / `clearFloat(name)`; expose in the Audio Mixer window (right-click a fader or a value) or `audio_mixer` op `expose`; "Remember" keeps script values in UserSettings |
+| `AudioMixerSnapshot.TransitionTo`, `AudioMixer.TransitionToSnapshots`, `FindSnapshot` | `AudioMixer.transitionTo(name, seconds [, opts])`, `AudioMixer.transitionToSnapshots(names, weights, seconds)`, snapshots by name |
+| Audio Mixer update mode Normal / Unscaled Time | mixer `updateMode` "scaled" / "unscaled"; per call `{unscaled = true}` |
+| Lowpass / Highpass / Echo / SFX Reverb / ParamEQ / Distortion / Flange / Duck Volume effects | mixer effects `lowpass`, `highpass`, `bandpass`, `echo`, `reverb`, `equalizer`, `distortion`, `flanger`, `lofi`, `bassboost`, `duck`, `limiter` (up to 8 per group) |
+| `AudioSource.PlayOneShot(clip, volumeScale)` | `sound:playOneShot(path [, volumeScale])` (up to `maxVoices` overlapping voices) |
+| `AudioSource.PlayClipAtPoint(clip, position, volume)` | `AudioSource.playClipAtPoint(scene, path, position [, volume [, group]])` |
+| AudioClip Load Type Decompress On Load / Compressed In Memory / Streaming | `AudioSource.loadType` (`AudioLoadType.DecompressOnLoad` / `CompressedInMemory` / `Streaming`, default `Auto`: streams files of 1 MiB and more): per source, no clip import settings |
+| `AudioSource.pitch` | `pitch` (= `speed`) |
+| `AudioSource.priority`, Project Settings Real / Virtual Voices | `priority` (0..256, 128); Project Settings > Audio Max Real Voices (32) and Max Voices (256) |
+| `AudioSource.ignoreListenerPause`, `AudioListener.pause`, `AudioListener.volume` | the same names (`AudioListener.volume` = `AudioSystem.globalVolume`) |
+| volume fades (tweens, `DOFade`) | `sound:fadeIn(seconds)`, `fadeOut(seconds [, {pause = true}])`, `fadeTo(volume, seconds)` |
 
 ## Layers and physics
 
