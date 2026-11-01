@@ -156,8 +156,9 @@ LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 
 # (then TOTAL_LIMIT = 112100)
 # video-mp4 (spec 6.10): no new tool; create_entity's video_player / video_background, get_asset_info's
 # video probe and playable_on, inspect_ui's media backend, set_runtime_property's videoplayer state /
-# time / frame (+~180 on its branch); merged with main 5762bb259: MEASURED
-TOTAL_LIMIT = 112100
+# time / frame (+~180 on its branch); merged with main 5762bb259: 153 tools measured 111997, the limit
+# set to it
+TOTAL_LIMIT = 111997
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
