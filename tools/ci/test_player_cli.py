@@ -21,10 +21,11 @@ image of docker/runtime.Dockerfile:
   one reload: pthreads player), without them and with the service worker blocked (single-thread
   player), and a build with Web: Multithreaded off has no -mt files and runs single-thread.
 - variants (S34 AC3, AC5): tools/fixtures/unified-lighting (scripts that build meshes: no HTML UI),
-  atmosphere (no scripts: no HTML UI, no runtime shader compiler) and html-ui (documents, no
-  video) built for Linux glcore get the player variant their modules need (no W-PLAYER-VARIANT),
-  which leaves modules out; built with the full player alone they warn W-PLAYER-VARIANT and use
-  it; both run headless to the same frame, pixel for pixel.
+  atmosphere (no scripts: no HTML UI, no runtime shader compiler) and the upgrade fixture
+  tools/test-projects/upgrade-from-main/project (HTML UI documents without video, physics,
+  scripts) built for Linux glcore get the player variant their modules need (no
+  W-PLAYER-VARIANT), which leaves modules out; built with the full player alone they warn
+  W-PLAYER-VARIANT and use it; both run headless to the same frame, pixel for pixel.
 - fallback (AC3): tools/fixtures/prefab-runtime (C++ scripts) reports `method: compile` and
   `compile_reason: C++ scripts (...)`, and here fails with `needs a C++ toolchain`; with
   --method prebuilt it fails listing the reasons.
@@ -271,7 +272,9 @@ def check_variants(args, players: Path, out: Path) -> None:
     shutil.rmtree(full_only, ignore_errors=True)
     full_only.mkdir(parents=True)
     (full_only / full_id).symlink_to(players / full_id, target_is_directory=True)
-    expected = {"unified-lighting": "core", "atmosphere": "lite3d", "html-ui": "ui"}
+    expected = {"unified-lighting": "core", "atmosphere": "lite3d", "upgrade-from-main": "ui"}
+    sources = {"unified-lighting": FIXTURES / "unified-lighting", "atmosphere": FIXTURES / "atmosphere",
+               "upgrade-from-main": REPO / "tools/test-projects/upgrade-from-main/project"}
 
     def frame(exe: Path, shot: Path) -> None:
         game = run([exe, "--headless", "--after-ready", "--quit-after", "30", "--fixed-fps", "60", "--screenshot", shot, "--fail-on-error"],
@@ -286,7 +289,7 @@ def check_variants(args, players: Path, out: Path) -> None:
             variant_id = f"{full_id}-{variant}"
             if not (players / variant_id).is_dir():
                 raise Failure(f"no {variant_id} in {players}: run tools/build.sh players (every release variant)")
-            project = fresh_copy(FIXTURES / fixture, out / f"variant-{fixture}-project")
+            project = fresh_copy(sources[fixture], out / f"variant-{fixture}-project")
             stripped = build(args.editor, players, project, out / f"variant-{fixture}", "linux", "--backend", "glcore")
             if lines(stripped, "player") != [variant_id] or "W-PLAYER-VARIANT" in stripped.stdout:
                 raise Failure(f"{fixture}: expected the player {variant_id}:\n{stripped.stdout}")
@@ -296,7 +299,7 @@ def check_variants(args, players: Path, out: Path) -> None:
             print(f"ok: {fixture} -> {variant_id} (modules: {lines(stripped, 'modules')[0]}; left out: {' '.join(left_out)})")
             for reason in lines(stripped, "module"):
                 print(f"    module: {reason}")
-            whole = build(args.editor, full_only, fresh_copy(FIXTURES / fixture, out / f"full-{fixture}-project"), out / f"full-{fixture}",
+            whole = build(args.editor, full_only, fresh_copy(sources[fixture], out / f"full-{fixture}-project"), out / f"full-{fixture}",
                           "linux", "--backend", "glcore")
             if lines(whole, "player") != [full_id] or f"W-PLAYER-VARIANT: the smaller player {variant_id} fits" not in whole.stdout:
                 raise Failure(f"{fixture}: with the full player alone expected it and W-PLAYER-VARIANT naming {variant_id}:\n{whole.stdout}")
