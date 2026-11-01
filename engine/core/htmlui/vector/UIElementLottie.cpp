@@ -203,7 +203,7 @@ ParticleSystem UIElement::getParticleSystem() const{
     }else{
         Log::error("[HTML UI] UIElement::getParticleSystem: not a <particle-system> element");
     }
-    return ParticleSystem(nullptr, NULL_ENTITY);
+    return ParticleSystem(static_cast<Scene*>(nullptr), static_cast<Entity>(NULL_ENTITY));
 }
 
 void UIElement::restartTextEffect(){
